@@ -157,6 +157,19 @@ Measured on the 67 government PDFs of ICDAR 2013 and on a scanned CDC table. Det
 
 Label words in small scanned type can still be misread, so check a scanned table before you insert it.
 
+## Office files and ebooks
+
+Drop a Word, PowerPoint, Excel, OpenDocument, CSV, or EPUB file on the board, or choose Convert to cards on a file-link card. Plexus fetches that file only after the drop or the menu choice. Nothing is fetched when the board opens.
+
+| File | What happens |
+|---|---|
+| PDF | Built-in engine, always |
+| Scan | OCR source, then the same table engine |
+| Word, Excel, PowerPoint, OpenDocument, CSV, EPUB | anydoc, when you drop the file or choose Convert to cards |
+| PDF, other reading | anydoc only if you choose Alternative read in the Outline engine menu. The label says no tables guarantee |
+
+A spreadsheet keeps the first 300 rows and says so. A long ebook or deck writes at most 45 blocks, then offers the next 45. An encrypted upload stays in Roam's reader.
+
 ## Tasks and statuses (opt-in)
 
 The Task tool and Better Tasks start off. Turn them on under Settings → Integrations. A Task tool you already saved stays on. With both off, the dock has no Task button and K does nothing.

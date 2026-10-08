@@ -101,6 +101,7 @@ test("removed furniture, chips, copy, and scan copy are pure", () => {
   assert.equal(engineChip({ helper: "wrong-token" }).text, "Docling: wrong token");
   assert.equal(engineChip({ helper: "models-missing" }).text, "Docling: downloading models");
   assert.equal(engineChip({ phase: "running", page: 4, pageCount: 12 }).text, "Page 4 of 12");
+  assert.equal(engineChip({ engine: "anydoc", helper: "not-running", ms: 400 }).text, "Alternative read · 0.4 s");
   assert.equal(engineChip({ phase: "running", page: 4, pageCount: 12 }).cancel, true);
   const doc = sample();
   assert.equal(copyText(doc, ["p1"]).format, "md");
@@ -188,6 +189,10 @@ test("parsed body keeps reading order, filters, spans, selection, and keys", asy
     doc.body.append(view.element());
     // The stub freezes textContent when it is assigned, so the message lives on the lead.
     assert.match(view.element().querySelector(".pxd-parse__lead").textContent, /No parse yet/);
+    const alt = view.element().querySelector(".pxd-parse__alt");
+    assert.match(alt.textContent, /Alternative read/);
+    assert.match(alt.textContent, /no tables guarantee/);
+    assert.equal(alt.getAttribute("data-guarantee"), "no tables guarantee");
     assert.ok(view.element().querySelector(".pxd-parse__go"));
     assert.equal(stub.listenerCount() > before, true);
 

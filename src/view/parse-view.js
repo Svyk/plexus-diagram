@@ -17,6 +17,8 @@ import { createPageChips, runChipAction } from "./page-chips.js";
 import { cropRect, createCropQueue } from "./parse-crop.js";
 import { makeHighlight } from "./make-highlight.js";
 import { isTextEntryTarget } from "./cards.js";
+import { createAnydocHost } from "../host/anydoc.js";
+import { markdownToParse } from "../model/anydoc-to-parse.js";
 
 export const PARSE_MIME = "application/x-plexus-parse";
 export const BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
@@ -59,8 +61,12 @@ export function defaultRangeChoice(pageCount) {
 }
 
 export function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
+  if (phase !== "running" && engine === "anydoc") {
+    if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
+    return { text: "Alternative read" };
+  }
   if (phase === "running") {
-    const which = engine === "docling" ? "Docling" : "built-in";
+    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : "built-in";
     return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
   }
   if (helper === "not-running" || helper === "disabled") {
@@ -258,6 +264,7 @@ export function createParseView({
   getContext = null,
   clock = null,
   scanAuto = false,
+  anydoc = null,
 } = {}) {
   const el = (tag, cls, parent) => {
     const node = doc.createElement(tag);
@@ -266,6 +273,7 @@ export function createParseView({
     return node;
   };
   const now = () => (typeof clock === "function" ? clock() : Date.now());
+  const anydocHost = anydoc || createAnydocHost();
   const root = el("div", "pxd-parse");
   root.tabIndex = -1;
   root.setAttribute("role", "region");
@@ -287,6 +295,14 @@ export function createParseView({
   doclingBtn.textContent = "Parse with Docling";
   doclingBtn.setAttribute("data-tip", "parse.docling");
   setHidden(doclingBtn, true);
+  const altBtn = el("button", "pxd-parse__alt", enginePop);
+  altBtn.type = "button";
+  const altLabel = el("span", "pxd-parse__alt-label", altBtn);
+  altLabel.textContent = "Alternative read";
+  const altNote = el("span", "pxd-parse__alt-note", altBtn);
+  altNote.textContent = "no tables guarantee";
+  altBtn.setAttribute("aria-label", "Alternative read, no tables guarantee");
+  altBtn.setAttribute("data-guarantee", "no tables guarantee");
   const cancelBtn = el("button", "pxd-parse__cancel", enginePop);
   cancelBtn.type = "button";
   cancelBtn.textContent = "Cancel";
@@ -939,6 +955,47 @@ export function createParseView({
     onProgress?.({ page: progress.pageCount, pageCount: progress.pageCount, fraction: 1 });
   }
 
+  async function readAlternative() {
+    if (dead || phase === "running") return;
+    const previous = parsed;
+    phase = "running";
+    progress = { page: 0, pageCount: progress.pageCount || 0, engine: "anydoc" };
+    paintChip();
+    const t0 = now();
+    try {
+      const pdf = typeof getPdf === "function" ? await getPdf() : null;
+      if (dead) return;
+      const raw = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+      const bytes = raw ? new Uint8Array(raw) : null;
+      if (!bytes) {
+        phase = "idle";
+        parsed = previous;
+        progress = { page: 0, pageCount: 0, engine: previous?.engine || "builtin" };
+        paintChip();
+        onToast?.("Could not convert this file");
+        return;
+      }
+      const converted = await anydocHost.convert(bytes, "pdf");
+      if (dead) return;
+      const sha = await sha256Hex(bytes);
+      const docResult = markdownToParse(converted.markdown, {
+        format: "pdf",
+        engine: "anydoc",
+        sha256: sha,
+        createdAt: new Date(now()).toISOString(),
+      });
+      await finishDoc(docResult, typeof converted.ms === "number" ? converted.ms : now() - t0);
+    } catch (err) {
+      if (dead) return;
+      phase = "idle";
+      parsed = previous;
+      progress = { page: 0, pageCount: 0, engine: previous?.engine || "builtin" };
+      paintChip();
+      if (err?.code === "needsOcr") onToast?.("This scan needs OCR. The built-in parse stays.");
+      else onToast?.("Could not convert this file");
+    }
+  }
+
   async function parseBuiltin(explicit) {
     cancel();
     const ctrl = new AbortController();
@@ -1291,6 +1348,7 @@ export function createParseView({
       if (helperState === "ready") await parseDocling();
     })();
   });
+  listen(altBtn, "click", () => { closeMenus(); void readAlternative(); });
   listen(rangeBtn, "click", () => { toggleMenu(rangePop); });
   listen(filterBtn, "click", () => { toggleMenu(filterPop); });
   listen(currentBtn, "click", () => {
@@ -1377,7 +1435,7 @@ export function createParseView({
     const hit = await store.findByUrl(currentUrl);
     if (!hit?.sha256) return null;
     const hash = await optionsHash(BUILTIN_OPTIONS);
-    const engines = ["builtin", "docling", "mixed"];
+    const engines = ["builtin", "docling", "mixed", "anydoc"];
     for (const engine of engines) {
       const found = await store.getParse(hit.sha256, engine, hash);
       if (found) {

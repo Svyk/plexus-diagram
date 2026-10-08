@@ -15,6 +15,18 @@ const rejectRemoteImports = {
   },
 };
 
+// The glue mentions anydoc_wasm_bg.wasm via import.meta.url. That URL is never fetched:
+// init() receives the hashed bytes. Leaving the file external keeps the 6.7 MB wasm out of extension.js.
+const anydocWasmExternal = {
+  name: "anydoc-wasm-external",
+  setup(build) {
+    build.onResolve({ filter: /anydoc_wasm_bg\.wasm$/ }, (args) => ({
+      path: args.path,
+      external: true,
+    }));
+  },
+};
+
 export function artifactBanner(version) {
   return `/* Plexus Diagram v${version} | MIT | generated; edit src/ */`;
 }
@@ -42,7 +54,7 @@ export function bundleBuildOptions({
     sourcemap: false,
     treeShaking: true,
     logLevel: "silent",
-    plugins: [rejectRemoteImports],
+    plugins: [rejectRemoteImports, anydocWasmExternal],
     banner: banner ? { js: banner } : undefined,
     metafile: Boolean(metafile),
   };
@@ -123,7 +135,25 @@ export async function build(rootDirectory = defaultRoot, options = {}) {
     )),
     writeFile(resolve(deployDir, ".nojekyll"), "", "utf8"),
   ]);
+  await copyAnydocAssets(rootDirectory, deployDir);
   process.stdout.write(`Built extension.js, extension.css, and ${deployDir}\n`);
+}
+
+// build() wipes deploy/. The Pages copy is rebuilt from assets/anydoc/, which is the committed source.
+async function copyAnydocAssets(rootDirectory, deployDir) {
+  const src = resolve(rootDirectory, "assets", "anydoc");
+  let names;
+  try {
+    names = await readdir(src);
+  } catch {
+    throw new Error("assets/anydoc is missing");
+  }
+  const dest = resolve(deployDir, "assets", "anydoc");
+  await mkdir(dest, { recursive: true });
+  for (const name of names) {
+    const from = resolve(src, name);
+    await copyFile(from, resolve(dest, name));
+  }
 }
 
 export async function verifyGeneratedArtifacts(rootDirectory = defaultRoot) {

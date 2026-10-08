@@ -7266,6 +7266,458 @@ var init_timeline2 = __esm({
   }
 });
 
+// src/model/anydoc-to-parse.js
+function officeFormatFromName(name) {
+  const text3 = String(name || "");
+  if (ENC.test(text3)) return null;
+  const base = text3.split(/[?#]/)[0];
+  const match = /\.([A-Za-z0-9]+)$/.exec(base);
+  if (!match) return null;
+  const ext = match[1].toLowerCase();
+  return OFFICE_EXT.has(ext) ? ext : null;
+}
+function officeFormatFromUrl(url) {
+  const text3 = String(url || "").trim();
+  if (!text3 || ENC.test(text3)) return null;
+  let path = text3.split(/[?#]/)[0];
+  try {
+    path = new URL(text3).pathname;
+  } catch {
+  }
+  return officeFormatFromName(path);
+}
+function nameFromUrl(url) {
+  try {
+    const last = new URL(url).pathname.split("/").filter(Boolean).pop() || "";
+    return decodeURIComponent(last);
+  } catch {
+    return String(url || "").split("/").pop()?.split(/[?#]/)[0] || "";
+  }
+}
+function officeFetchAllowed(url) {
+  const text3 = String(url || "").trim();
+  if (!text3 || ENC.test(text3)) return false;
+  return /^https:\/\//i.test(text3);
+}
+function officeTargetFromText(text3) {
+  const raw = String(text3 || "").trim();
+  if (!raw || raw.length > 4e3) return null;
+  const linked = /^\[([^\]]*)\]\(([^)\s]+)\)\s*$/.exec(raw);
+  if (linked) {
+    const url = linked[2];
+    const format = officeFormatFromUrl(url) || officeFormatFromName(linked[1]);
+    if (!format || !officeFetchAllowed(url)) return null;
+    return { format, name: linked[1] || nameFromUrl(url), url };
+  }
+  if (/^https:\/\/\S+$/i.test(raw)) {
+    const format = officeFormatFromUrl(raw);
+    if (!format || !officeFetchAllowed(raw)) return null;
+    return { format, name: nameFromUrl(raw), url: raw };
+  }
+  const anchor = /^\s*<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>[^<]*<\/a>\s*$/i.exec(raw);
+  if (anchor) {
+    const url = anchor[1];
+    const format = officeFormatFromUrl(url);
+    if (!format || !officeFetchAllowed(url)) return null;
+    return { format, name: nameFromUrl(url), url };
+  }
+  return null;
+}
+function inlineText(value) {
+  let text3 = String(value ?? "");
+  text3 = text3.replace(/!\[[^\]]*\]\([^)]*\)/g, " ");
+  text3 = text3.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
+  text3 = text3.replace(/`([^`]*)`/g, "$1");
+  text3 = text3.replace(/\*\*([^*]+)\*\*/g, "$1");
+  text3 = text3.replace(/~~([^~]+)~~/g, "$1");
+  text3 = text3.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1$2");
+  text3 = text3.replace(/<[^>]+>/g, "");
+  return text3.replace(/\s+/g, " ").trim();
+}
+function isAnchorLine(line) {
+  return /^\s*<a\s+id="[^"]*"\s*\/?\s*>(?:\s*<\/a>)?\s*$/i.test(line);
+}
+function isRule(line) {
+  return /^(-{3,}|\*{3,}|_{3,})\s*$/.test(line.trim());
+}
+function isListLine(line) {
+  return /^(\s*)([-*+]|\d+\.)\s+\S/.test(line);
+}
+function splitRow(line) {
+  let text3 = String(line || "").trim();
+  if (text3.startsWith("|")) text3 = text3.slice(1);
+  if (text3.endsWith("|")) text3 = text3.slice(0, -1);
+  return text3.split("|").map((cell) => cell.trim());
+}
+function isSeparator(line) {
+  const cells = splitRow(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s/g, "")));
+}
+function isTableStart(lines, index) {
+  return lines[index].includes("|") && index + 1 < lines.length && isSeparator(lines[index + 1]);
+}
+function isStructural(lines, index) {
+  const line = lines[index];
+  if (!line.trim() || isAnchorLine(line) || isRule(line)) return true;
+  if (/^(#{1,6})\s+/.test(line)) return true;
+  if (line.trimStart().startsWith("```") || line.trim() === "$$") return true;
+  if (line.trimStart().startsWith(">")) return true;
+  if (isTableStart(lines, index) || isListLine(line)) return true;
+  return false;
+}
+function parseTable(lines, index) {
+  const header = splitRow(lines[index]).map(inlineText);
+  let cursor = index + 2;
+  const body = [];
+  while (cursor < lines.length && lines[cursor].includes("|") && lines[cursor].trim()) {
+    if (isSeparator(lines[cursor])) break;
+    body.push(splitRow(lines[cursor]).map(inlineText));
+    cursor += 1;
+  }
+  const cols = Math.max(header.length, ...body.map((row4) => row4.length), 1);
+  const rows = body.length + 1;
+  const cells = [];
+  const put = (r, values, headerRow) => {
+    for (let c = 0; c < cols; c += 1) {
+      cells.push({
+        r,
+        c,
+        rowSpan: 1,
+        colSpan: 1,
+        text: values[c] || "",
+        header: headerRow
+      });
+    }
+  };
+  put(0, header, true);
+  body.forEach((values, r) => put(r + 1, values, false));
+  return {
+    next: cursor,
+    table: { type: "table", rows, cols, headerRows: 1, cells }
+  };
+}
+function parseBlocks(markdown) {
+  const lines = String(markdown ?? "").replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim() || isAnchorLine(line) || isRule(line)) {
+      i += 1;
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (heading) {
+      blocks.push({ type: "heading", level: heading[1].length, text: inlineText(heading[2]) });
+      i += 1;
+      continue;
+    }
+    if (line.trimStart().startsWith("```")) {
+      i += 1;
+      const buf2 = [];
+      while (i < lines.length && !lines[i].trimStart().startsWith("```")) {
+        buf2.push(lines[i]);
+        i += 1;
+      }
+      if (i < lines.length) i += 1;
+      blocks.push({ type: "code", text: buf2.join("\n") });
+      continue;
+    }
+    if (line.trim() === "$$") {
+      i += 1;
+      const buf2 = [];
+      while (i < lines.length && lines[i].trim() !== "$$") {
+        buf2.push(lines[i]);
+        i += 1;
+      }
+      if (i < lines.length) i += 1;
+      blocks.push({ type: "formula", latex: inlineText(buf2.join(" ")) });
+      continue;
+    }
+    if (line.trimStart().startsWith(">")) {
+      const buf2 = [];
+      while (i < lines.length && lines[i].trimStart().startsWith(">")) {
+        buf2.push(lines[i].replace(/^\s*>\s?/, ""));
+        i += 1;
+      }
+      blocks.push({ type: "para", text: inlineText(buf2.join(" ")), note: true });
+      continue;
+    }
+    if (isTableStart(lines, i)) {
+      const parsed = parseTable(lines, i);
+      blocks.push(parsed.table);
+      i = parsed.next;
+      continue;
+    }
+    if (isListLine(line)) {
+      const items = [];
+      while (i < lines.length) {
+        if (!lines[i].trim()) {
+          let j = i + 1;
+          while (j < lines.length && !lines[j].trim()) j += 1;
+          if (j < lines.length && isListLine(lines[j])) {
+            i = j;
+            continue;
+          }
+          break;
+        }
+        if (!isListLine(lines[i])) break;
+        const match = /^(\s*)([-*+]|\d+\.)\s+(.*)$/.exec(lines[i]);
+        const indent = match[1].replace(/\t/g, "    ").length;
+        const marker = match[2];
+        const ordered = /^\d+\.$/.test(marker);
+        items.push({
+          text: inlineText(match[3]),
+          level: Math.floor(indent / 2),
+          marker: ordered ? marker : "•",
+          ordered
+        });
+        i += 1;
+      }
+      blocks.push({
+        type: "list",
+        ordered: items.length > 0 && items.every((item) => item.ordered),
+        items: items.map(({ text: text4, level, marker }) => ({ text: text4, level, marker }))
+      });
+      continue;
+    }
+    const buf = [line];
+    i += 1;
+    while (i < lines.length && lines[i].trim() && !isStructural(lines, i)) {
+      buf.push(lines[i]);
+      i += 1;
+    }
+    const text3 = inlineText(buf.join(" "));
+    if (text3) blocks.push({ type: "para", text: text3 });
+  }
+  return blocks;
+}
+function markdownToParse(markdown, {
+  format = "",
+  title = "",
+  engine = "anydoc",
+  engineVersion = "anydoc-wasm/0.2.4",
+  createdAt = "",
+  sha256 = ""
+} = {}) {
+  const blocks = {};
+  const order = [];
+  parseBlocks(markdown).forEach((block, index) => {
+    const id = `b${index + 1}`;
+    blocks[id] = { ...block, id };
+    order.push(id);
+  });
+  const doc = { schema: SCHEMA, engine, engineVersion, order, blocks };
+  if (title) doc.title = title;
+  if (format) doc.sourceFormat = format;
+  if (createdAt) doc.createdAt = createdAt;
+  if (sha256) doc.sha256 = sha256;
+  return doc;
+}
+function capTable(table, cap4 = ROW_CAP) {
+  if (!table || !Number.isInteger(table.rows) || table.rows <= cap4) {
+    return { table, truncated: false };
+  }
+  const cells = [];
+  for (const cell of table.cells || []) {
+    if (!Number.isInteger(cell?.r) || cell.r >= cap4) continue;
+    const rowSpan = Math.min(cell.rowSpan ?? 1, cap4 - cell.r);
+    if (rowSpan < 1) continue;
+    cells.push({ ...cell, rowSpan });
+  }
+  return { table: { ...table, rows: cap4, cells }, truncated: true };
+}
+function cardMarkdown(title, body) {
+  const blocks = {};
+  const order = [];
+  let n2 = 0;
+  const add = (block) => {
+    n2 += 1;
+    const id = `k${n2}`;
+    const copy = { ...block, id };
+    delete copy.note;
+    blocks[id] = copy;
+    order.push(id);
+  };
+  if (title) add({ type: "para", text: title });
+  for (const block of body || []) {
+    if (block.type === "heading") add({ type: "para", text: block.text || "" });
+    else add(block);
+  }
+  if (!order.length) return "";
+  return toRoamMarkdown({ schema: SCHEMA, engine: "anydoc", order, blocks }, order).markdown;
+}
+function batchRows(rows, offset) {
+  const start = Math.max(0, Number.isFinite(offset) ? Math.floor(offset) : 0);
+  const slice = rows.slice(start, start + OFFICE_BATCH);
+  const next = start + slice.length;
+  const more = next < rows.length;
+  return {
+    sections: slice,
+    more,
+    nextOffset: more ? next : void 0,
+    offer: more ? NEXT_OFFER : void 0
+  };
+}
+function slidesFrom(doc) {
+  const slides = [];
+  let current3 = null;
+  const close = () => {
+    if (!current3) return;
+    slides.push(current3);
+    current3 = null;
+  };
+  const open = (title) => {
+    close();
+    current3 = { title, body: [] };
+  };
+  for (const block of selectBlocks(doc, null)) {
+    if (block.type === "heading") {
+      open(String(block.text || "").trim());
+      continue;
+    }
+    if (block.type === "para" && block.note) {
+      if (!current3) open("");
+      current3.body.push({ type: "para", text: block.text || "" });
+      close();
+      continue;
+    }
+    if (!current3) {
+      if (block.type === "para") open(String(block.text || "").trim());
+      else {
+        open("");
+        current3.body.push(block);
+      }
+      continue;
+    }
+    current3.body.push(block);
+  }
+  close();
+  return slides.map((slide) => ({ title: slide.title, markdown: cardMarkdown(slide.title, slide.body) }));
+}
+function chaptersFrom(doc) {
+  const chapters = [];
+  let current3 = null;
+  const push = () => {
+    if (current3) chapters.push(current3);
+  };
+  for (const block of selectBlocks(doc, null)) {
+    if (block.type === "heading") {
+      push();
+      current3 = { title: String(block.text || "").trim(), body: [] };
+      continue;
+    }
+    if (!current3) current3 = { title: "", body: [] };
+    current3.body.push(block);
+  }
+  push();
+  return chapters.map((chapter) => ({
+    title: chapter.title,
+    markdown: cardMarkdown(chapter.title, chapter.body)
+  }));
+}
+function gridsFrom(doc) {
+  const tables = [];
+  let name = "";
+  for (const block of selectBlocks(doc, null)) {
+    if (block.type === "heading") {
+      name = String(block.text || "").trim();
+      continue;
+    }
+    if (block.type !== "table") continue;
+    const capped = capTable(block);
+    const sheet = name || "Sheet";
+    tables.push({
+      name: sheet,
+      truncated: capped.truncated,
+      table: { ...capped.table, caption: sheet }
+    });
+  }
+  return tables;
+}
+function planFromParse(doc, { format = "", offset = 0, planSections } = {}) {
+  const kind = String(format || doc?.sourceFormat || "").toLowerCase();
+  if (kind === "docx" || kind === "odt") {
+    if (typeof planSections !== "function") return { action: "empty" };
+    const full = planSections(doc, { kind: "blocks", ids: Array.isArray(doc?.order) ? doc.order : [] });
+    if (full?.action !== "sections") return full || { action: "empty" };
+    return { action: "sections", ...batchRows(full.sections || [], offset) };
+  }
+  if (kind === "pptx" || kind === "odp") {
+    return { action: "slides", ...batchRows(slidesFrom(doc), offset) };
+  }
+  if (kind === "epub") {
+    return { action: "chapters", ...batchRows(chaptersFrom(doc), offset) };
+  }
+  if (kind === "xlsx" || kind === "csv" || kind === "ods") {
+    const all = gridsFrom(doc);
+    const batched = batchRows(all, offset);
+    const toast = batched.sections.some((row4) => row4.truncated) ? ROW_TOAST : void 0;
+    return { action: "grids", tables: batched.sections, toast, more: batched.more, nextOffset: batched.nextOffset, offer: batched.offer };
+  }
+  return { action: "empty" };
+}
+var ROW_CAP, ROW_TOAST, WRITE_CAP, WRITES_PER_CARD, OFFICE_BATCH, NEXT_OFFER, OFFICE_STEP, OFFICE_EXT, ENC;
+var init_anydoc_to_parse = __esm({
+  "src/model/anydoc-to-parse.js"() {
+    init_parse_schema();
+    init_parse_to_roam_md();
+    ROW_CAP = 300;
+    ROW_TOAST = "first 300 rows";
+    WRITE_CAP = 45;
+    WRITES_PER_CARD = 2;
+    OFFICE_BATCH = Math.floor(WRITE_CAP / WRITES_PER_CARD);
+    NEXT_OFFER = "next 45";
+    OFFICE_STEP = 184;
+    OFFICE_EXT = /* @__PURE__ */ new Set(["docx", "pptx", "xlsx", "odt", "ods", "odp", "epub", "csv"]);
+    ENC = /\.enc(?:[?#]|$)/i;
+  }
+});
+
+// src/model/parse-hash.js
+function bytesOf(input) {
+  if (input == null) return new Uint8Array();
+  if (typeof input === "string") return new TextEncoder().encode(input);
+  if (input instanceof ArrayBuffer) return new Uint8Array(input);
+  if (ArrayBuffer.isView(input)) return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  throw new TypeError("sha256Hex expects bytes");
+}
+async function sha256Hex(bytes) {
+  const view = bytesOf(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", view);
+  const hex = [];
+  for (const byte2 of new Uint8Array(digest)) hex.push(byte2.toString(16).padStart(2, "0"));
+  return hex.join("");
+}
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const key of Object.keys(value).sort()) out[key] = canonicalize(value[key]);
+    return out;
+  }
+  return value;
+}
+function canonicalOptions(options) {
+  const src = options && typeof options === "object" && !Array.isArray(options) ? options : {};
+  const copy = {};
+  for (const key of Object.keys(src).sort()) {
+    if (key === "scope") continue;
+    copy[key] = canonicalize(src[key]);
+  }
+  return copy;
+}
+function canonicalOptionsJson(options) {
+  return JSON.stringify(canonicalOptions(options));
+}
+async function optionsHash(options) {
+  return sha256Hex(canonicalOptionsJson(options));
+}
+var init_parse_hash = __esm({
+  "src/model/parse-hash.js"() {
+  }
+});
+
 // src/model/drop.js
 function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   if (!dataTransfer) return [];
@@ -7288,6 +7740,8 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   const resolve = typeof resolveUid === "function" ? resolveUid : (uid) => `((${uid}))`;
   const own = take(CARD_MIME).trim();
   if (own) return [{ string: own }];
+  const officeFiles = officeFilesFrom(dataTransfer);
+  if (officeFiles.length) return officeFiles.map((office) => ({ office }));
   const tokens = (text3) => text3.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
   let uids = tokens(take("roam/block-uid-list-only-parents"));
   if (!uids.length) uids = tokens(take("roam/block-uid-list"));
@@ -7319,8 +7773,19 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
       }
       if (typeof string === "string" && string.trim()) out.push({ string });
     }
+    if (out.length === 1) {
+      const office = officeTargetFromText(out[0].string);
+      if (office) return [{ office }];
+    }
     if (out.length) return out;
   }
+  const soleOffice = (text3) => {
+    const lines = String(text3 || "").split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+    if (lines.length !== 1) return null;
+    return officeTargetFromText(lines[0]);
+  };
+  const droppedOffice = soleOffice(take("text/uri-list")) || soleOffice(take("text/plain")) || officeTargetFromText(take("text/html").trim());
+  if (droppedOffice) return [{ office: droppedOffice }];
   const chunks = [take("text/plain"), take("text/html")];
   const types = dataTransfer.types;
   if (types) for (const type of types) chunks.push(take(type));
@@ -7409,9 +7874,153 @@ async function handleParseDrop({ payload, store, session, point, toast } = {}) {
   }
   return { ok: false, reason: "empty", uids: [] };
 }
+function eachDroppedFile(dataTransfer, visit) {
+  const files = dataTransfer?.files;
+  if (files && typeof files.length === "number" && files.length) {
+    for (let i = 0; i < files.length; i += 1) visit(files[i]);
+    return;
+  }
+  const items = dataTransfer?.items;
+  if (!items || typeof items.length !== "number") return;
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    if (item?.kind !== "file" || typeof item.getAsFile !== "function") continue;
+    let file = null;
+    try {
+      file = item.getAsFile();
+    } catch {
+      file = null;
+    }
+    if (file) visit(file);
+  }
+}
+function officeFilesFrom(dataTransfer) {
+  const out = [];
+  eachDroppedFile(dataTransfer, (file) => {
+    const format = officeFormatFromName(file?.name || "");
+    if (!format) return;
+    out.push({ format, name: file.name, file });
+  });
+  return out;
+}
+async function readOfficeBytes(office, fetchImpl) {
+  const format = office?.format;
+  if (!format || format === "pdf") return null;
+  if (office?.file && typeof office.file.arrayBuffer === "function") {
+    const bytes = new Uint8Array(await office.file.arrayBuffer());
+    return { bytes, format };
+  }
+  const url = typeof office?.url === "string" ? office.url : "";
+  if (!officeFetchAllowed(url)) {
+    const err = new Error("fetch");
+    err.code = "fetch";
+    throw err;
+  }
+  const fetchFn = fetchImpl || globalThis.fetch?.bind(globalThis);
+  if (typeof fetchFn !== "function") {
+    const err = new Error("fetch");
+    err.code = "fetch";
+    throw err;
+  }
+  let res;
+  try {
+    res = await fetchFn(url, { mode: "cors", credentials: "omit" });
+  } catch (err) {
+    if (err && typeof err === "object" && !err.code) err.code = "fetch";
+    throw err;
+  }
+  if (!res?.ok) {
+    const err = new Error("fetch");
+    err.code = "fetch";
+    throw err;
+  }
+  return { bytes: new Uint8Array(await res.arrayBuffer()), format };
+}
+async function applyOfficePlan({ plan, session, x, y }) {
+  if (!plan || plan.action === "empty") return { ok: false, uids: [], count: 0 };
+  if (plan.action === "grids") {
+    const uids2 = [];
+    let py = y;
+    const tables = plan.tables || [];
+    for (const row4 of tables) {
+      const res2 = await session?.insertParsedTable?.({ x, y: py, table: row4.table, mode: "grid" });
+      if (res2?.uid) uids2.push(res2.uid);
+      const height = Number(res2?.h);
+      py += (Number.isFinite(height) && height > 0 ? height : 280) + 24;
+    }
+    return { ok: uids2.length > 0, uids: uids2, count: tables.length, nextY: py };
+  }
+  if (plan.action === "card" && plan.markdown) {
+    const res2 = await session?.insertParsedCard?.({ x, y, markdown: plan.markdown });
+    return { ok: Boolean(res2?.uid), uids: res2?.uid ? [res2.uid] : [], count: res2?.uid ? 1 : 0, nextY: y + OFFICE_STEP };
+  }
+  const sections = plan.sections || [];
+  if (!sections.length) return { ok: false, uids: [], count: 0 };
+  const res = await session?.sendParsedToBoard?.({ x, y, sections });
+  const uids = Array.isArray(res?.uids) ? res.uids : [];
+  return { ok: uids.length > 0, uids, count: sections.length, nextY: y + sections.length * OFFICE_STEP };
+}
+async function handleOfficeDrop({ office, convert, fetch: fetchImpl, session, point, doc = null, offset = 0 } = {}) {
+  const x = Number.isFinite(point?.x) ? point.x : 0;
+  const y = Number.isFinite(point?.y) ? point.y : 0;
+  try {
+    let parsed = doc;
+    let ms = 0;
+    if (!parsed) {
+      const loaded = await readOfficeBytes(office, fetchImpl);
+      if (!loaded) return { ok: false, reason: "fetch", toast: "Could not fetch this file", uids: [] };
+      if (typeof convert !== "function") return { ok: false, reason: "convert", toast: "Could not convert this file", uids: [] };
+      const out = await convert(loaded.bytes, loaded.format);
+      ms = Number(out?.ms) || 0;
+      let sha = "";
+      try {
+        sha = await sha256Hex(loaded.bytes);
+      } catch {
+        sha = "";
+      }
+      parsed = markdownToParse(out?.markdown || "", {
+        format: loaded.format,
+        title: office?.name || "",
+        sha256: sha
+      });
+    }
+    const plan = planFromParse(parsed, {
+      format: office?.format || parsed?.sourceFormat,
+      offset,
+      planSections: planParseInsert
+    });
+    const applied = await applyOfficePlan({ plan, session, x, y });
+    if (!applied.ok) return { ok: false, reason: "empty", toast: "Could not convert this file", uids: [], ms };
+    const more = Boolean(plan.more);
+    return {
+      ok: true,
+      uids: applied.uids,
+      toast: plan.toast || "",
+      offer: more ? plan.offer || NEXT_OFFER : "",
+      more,
+      ms,
+      continue: more ? () => handleOfficeDrop({
+        office,
+        convert,
+        fetch: fetchImpl,
+        session,
+        doc: parsed,
+        offset: plan.nextOffset,
+        point: { x, y: applied.nextY ?? y + OFFICE_STEP }
+      }) : void 0
+    };
+  } catch (err) {
+    const code = err?.code;
+    if (code === "encrypted") return { ok: false, reason: "encrypted", toast: "Encrypted files stay in Roam's reader", uids: [] };
+    if (code === "fetch" || code === "cors") return { ok: false, reason: "fetch", toast: "Could not fetch this file", uids: [] };
+    return { ok: false, reason: code || "convert", toast: "Could not convert this file", uids: [] };
+  }
+}
 var CARD_MIME, PARSE_MIME, PARSE_MISSING_TOAST, MAX_DROP, URL_LINE, APP_URL;
 var init_drop = __esm({
   "src/model/drop.js"() {
+    init_anydoc_to_parse();
+    init_parse_hash();
     init_parse_schema();
     init_parse_to_roam_md();
     CARD_MIME = "application/x-plexus-card";
@@ -29080,45 +29689,8 @@ function applyMotionClasses(root, level) {
   return profile;
 }
 
-// src/model/parse-hash.js
-function bytesOf(input) {
-  if (input == null) return new Uint8Array();
-  if (typeof input === "string") return new TextEncoder().encode(input);
-  if (input instanceof ArrayBuffer) return new Uint8Array(input);
-  if (ArrayBuffer.isView(input)) return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
-  throw new TypeError("sha256Hex expects bytes");
-}
-async function sha256Hex(bytes) {
-  const view = bytesOf(bytes);
-  const digest = await crypto.subtle.digest("SHA-256", view);
-  const hex = [];
-  for (const byte2 of new Uint8Array(digest)) hex.push(byte2.toString(16).padStart(2, "0"));
-  return hex.join("");
-}
-function canonicalize(value) {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value && typeof value === "object") {
-    const out = {};
-    for (const key of Object.keys(value).sort()) out[key] = canonicalize(value[key]);
-    return out;
-  }
-  return value;
-}
-function canonicalOptions(options) {
-  const src = options && typeof options === "object" && !Array.isArray(options) ? options : {};
-  const copy = {};
-  for (const key of Object.keys(src).sort()) {
-    if (key === "scope") continue;
-    copy[key] = canonicalize(src[key]);
-  }
-  return copy;
-}
-function canonicalOptionsJson(options) {
-  return JSON.stringify(canonicalOptions(options));
-}
-async function optionsHash(options) {
-  return sha256Hex(canonicalOptionsJson(options));
-}
+// src/view/parse-view.js
+init_parse_hash();
 
 // src/model/parse/lines.js
 var LIGATURES = { "ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl", "ﬅ": "st", "ﬆ": "st" };
@@ -33037,6 +33609,7 @@ ${block.text ?? ""}
 }
 
 // src/host/parse-store.js
+init_parse_hash();
 var PARSE_DOC_CAP = 50;
 var PARSE_IMAGE_CAP = 200 * 1024 * 1024;
 var META_KEY = "meta:lru";
@@ -34225,6 +34798,441 @@ async function makeHighlight({ block, live, pageEl, page, getContext, adoptCreat
 
 // src/view/parse-view.js
 init_cards();
+
+// assets/anydoc/anydoc_wasm.js
+function toMarkdownBytes(bytes, format) {
+  let deferred3_0;
+  let deferred3_1;
+  try {
+    const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export);
+    const len0 = WASM_VECTOR_LEN;
+    wasm.toMarkdownBytes(retptr, ptr0, len0, isLikeNone(format) ? 13 : (__wbindgen_enum_Format.indexOf(format) + 1 || 13) - 1);
+    var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+    var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+    var r22 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+    var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+    var ptr2 = r0;
+    var len2 = r1;
+    if (r3) {
+      ptr2 = 0;
+      len2 = 0;
+      throw takeObject(r22);
+    }
+    deferred3_0 = ptr2;
+    deferred3_1 = len2;
+    return getStringFromWasm0(ptr2, len2);
+  } finally {
+    wasm.__wbindgen_add_to_stack_pointer(16);
+    wasm.__wbindgen_export4(deferred3_0, deferred3_1, 1);
+  }
+}
+function __wbg_get_imports() {
+  const import0 = {
+    __proto__: null,
+    __wbg_String_8564e559799eccda: function(arg0, arg1) {
+      const ret = String(getObject(arg1));
+      const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+      const len1 = WASM_VECTOR_LEN;
+      getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
+      getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+    },
+    __wbg___wbindgen_throw_344f42d3211c4765: function(arg0, arg1) {
+      throw new Error(getStringFromWasm0(arg0, arg1));
+    },
+    __wbg_from_13e323c65fc8f464: function(arg0) {
+      const ret = Array.from(getObject(arg0));
+      return addHeapObject(ret);
+    },
+    __wbg_getRandomValues_cc7f052a444bb2ce: function() {
+      return handleError(function(arg0, arg1) {
+        globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
+      }, arguments);
+    },
+    __wbg_new_32b398fb48b6d94a: function() {
+      const ret = new Array();
+      return addHeapObject(ret);
+    },
+    __wbg_new_b667d279fd5aa943: function(arg0, arg1) {
+      const ret = new Error(getStringFromWasm0(arg0, arg1));
+      return addHeapObject(ret);
+    },
+    __wbg_new_cd45aabdf6073e84: function(arg0) {
+      const ret = new Uint8Array(getObject(arg0));
+      return addHeapObject(ret);
+    },
+    __wbg_new_da52cf8fe3429cb2: function() {
+      const ret = new Object();
+      return addHeapObject(ret);
+    },
+    __wbg_push_d2ae3af0c1217ae6: function(arg0, arg1) {
+      const ret = getObject(arg0).push(getObject(arg1));
+      return ret;
+    },
+    __wbg_set_6be42768c690e380: function(arg0, arg1, arg2) {
+      getObject(arg0)[takeObject(arg1)] = takeObject(arg2);
+    },
+    __wbg_set_8535240470bf2500: function() {
+      return handleError(function(arg0, arg1, arg2) {
+        const ret = Reflect.set(getObject(arg0), getObject(arg1), getObject(arg2));
+        return ret;
+      }, arguments);
+    },
+    __wbg_set_8a16b38e4805b298: function(arg0, arg1, arg2) {
+      getObject(arg0)[arg1 >>> 0] = takeObject(arg2);
+    },
+    __wbindgen_cast_0000000000000001: function(arg0) {
+      const ret = arg0;
+      return addHeapObject(ret);
+    },
+    __wbindgen_cast_0000000000000002: function(arg0, arg1) {
+      const ret = getArrayU8FromWasm0(arg0, arg1);
+      return addHeapObject(ret);
+    },
+    __wbindgen_cast_0000000000000003: function(arg0, arg1) {
+      const ret = getStringFromWasm0(arg0, arg1);
+      return addHeapObject(ret);
+    },
+    __wbindgen_object_clone_ref: function(arg0) {
+      const ret = getObject(arg0);
+      return addHeapObject(ret);
+    },
+    __wbindgen_object_drop_ref: function(arg0) {
+      takeObject(arg0);
+    }
+  };
+  return {
+    __proto__: null,
+    "./anydoc_wasm_bg.js": import0
+  };
+}
+var __wbindgen_enum_Format = ["doc", "docx", "odt", "pdf", "ppt", "pptx", "rtf", "epub", "xlsx", "ods", "odp", "csv"];
+function addHeapObject(obj) {
+  if (heap_next === heap.length) heap.push(heap.length + 1);
+  const idx = heap_next;
+  heap_next = heap[idx];
+  heap[idx] = obj;
+  return idx;
+}
+function dropObject(idx) {
+  if (idx < 1028) return;
+  heap[idx] = heap_next;
+  heap_next = idx;
+}
+function getArrayU8FromWasm0(ptr, len) {
+  ptr = ptr >>> 0;
+  return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
+}
+var cachedDataViewMemory0 = null;
+function getDataViewMemory0() {
+  if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || cachedDataViewMemory0.buffer.detached === void 0 && cachedDataViewMemory0.buffer !== wasm.memory.buffer) {
+    cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
+  }
+  return cachedDataViewMemory0;
+}
+function getStringFromWasm0(ptr, len) {
+  return decodeText(ptr >>> 0, len);
+}
+var cachedUint8ArrayMemory0 = null;
+function getUint8ArrayMemory0() {
+  if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
+    cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
+  }
+  return cachedUint8ArrayMemory0;
+}
+function getObject(idx) {
+  return heap[idx];
+}
+function handleError(f, args) {
+  try {
+    return f.apply(this, args);
+  } catch (e2) {
+    wasm.__wbindgen_export3(addHeapObject(e2));
+  }
+}
+var heap = new Array(1024).fill(void 0);
+heap.push(void 0, null, true, false);
+var heap_next = heap.length;
+function isLikeNone(x) {
+  return x === void 0 || x === null;
+}
+function passArray8ToWasm0(arg, malloc) {
+  const ptr = malloc(arg.length * 1, 1) >>> 0;
+  getUint8ArrayMemory0().set(arg, ptr / 1);
+  WASM_VECTOR_LEN = arg.length;
+  return ptr;
+}
+function passStringToWasm0(arg, malloc, realloc) {
+  if (realloc === void 0) {
+    const buf = cachedTextEncoder.encode(arg);
+    const ptr2 = malloc(buf.length, 1) >>> 0;
+    getUint8ArrayMemory0().subarray(ptr2, ptr2 + buf.length).set(buf);
+    WASM_VECTOR_LEN = buf.length;
+    return ptr2;
+  }
+  let len = arg.length;
+  let ptr = malloc(len, 1) >>> 0;
+  const mem = getUint8ArrayMemory0();
+  let offset = 0;
+  for (; offset < len; offset++) {
+    const code = arg.charCodeAt(offset);
+    if (code > 127) break;
+    mem[ptr + offset] = code;
+  }
+  if (offset !== len) {
+    if (offset !== 0) {
+      arg = arg.slice(offset);
+    }
+    ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
+    const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
+    const ret = cachedTextEncoder.encodeInto(arg, view);
+    offset += ret.written;
+    ptr = realloc(ptr, len, offset, 1) >>> 0;
+  }
+  WASM_VECTOR_LEN = offset;
+  return ptr;
+}
+function takeObject(idx) {
+  const ret = getObject(idx);
+  dropObject(idx);
+  return ret;
+}
+var cachedTextDecoder = new TextDecoder("utf-8", { ignoreBOM: true, fatal: true });
+cachedTextDecoder.decode();
+var MAX_SAFARI_DECODE_BYTES = 2146435072;
+var numBytesDecoded = 0;
+function decodeText(ptr, len) {
+  numBytesDecoded += len;
+  if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
+    cachedTextDecoder = new TextDecoder("utf-8", { ignoreBOM: true, fatal: true });
+    cachedTextDecoder.decode();
+    numBytesDecoded = len;
+  }
+  return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
+}
+var cachedTextEncoder = new TextEncoder();
+if (!("encodeInto" in cachedTextEncoder)) {
+  cachedTextEncoder.encodeInto = function(arg, view) {
+    const buf = cachedTextEncoder.encode(arg);
+    view.set(buf);
+    return {
+      read: arg.length,
+      written: buf.length
+    };
+  };
+}
+var WASM_VECTOR_LEN = 0;
+var wasmModule;
+var wasmInstance;
+var wasm;
+function __wbg_finalize_init(instance, module) {
+  wasmInstance = instance;
+  wasm = instance.exports;
+  wasmModule = module;
+  cachedDataViewMemory0 = null;
+  cachedUint8ArrayMemory0 = null;
+  return wasm;
+}
+async function __wbg_load(module, imports) {
+  if (typeof Response === "function" && module instanceof Response) {
+    if (typeof WebAssembly.instantiateStreaming === "function") {
+      try {
+        return await WebAssembly.instantiateStreaming(module, imports);
+      } catch (e2) {
+        const validResponse = module.ok && expectedResponseType(module.type);
+        if (validResponse && module.headers.get("Content-Type") !== "application/wasm") {
+          console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e2);
+        } else {
+          throw e2;
+        }
+      }
+    }
+    const bytes = await module.arrayBuffer();
+    return await WebAssembly.instantiate(bytes, imports);
+  } else {
+    const instance = await WebAssembly.instantiate(module, imports);
+    if (instance instanceof WebAssembly.Instance) {
+      return { instance, module };
+    } else {
+      return instance;
+    }
+  }
+  function expectedResponseType(type) {
+    switch (type) {
+      case "basic":
+      case "cors":
+      case "default":
+        return true;
+    }
+    return false;
+  }
+}
+async function __wbg_init(module_or_path) {
+  if (wasm !== void 0) return wasm;
+  if (module_or_path !== void 0) {
+    if (Object.getPrototypeOf(module_or_path) === Object.prototype) {
+      ({ module_or_path } = module_or_path);
+    } else {
+      console.warn("using deprecated parameters for the initialization function; pass a single object instead");
+    }
+  }
+  if (module_or_path === void 0) {
+    module_or_path = new URL("anydoc_wasm_bg.wasm", import.meta.url);
+  }
+  const imports = __wbg_get_imports();
+  if (typeof module_or_path === "string" || typeof Request === "function" && module_or_path instanceof Request || typeof URL === "function" && module_or_path instanceof URL) {
+    module_or_path = fetch(module_or_path);
+  }
+  const { instance, module } = await __wbg_load(await module_or_path, imports);
+  return __wbg_finalize_init(instance, module);
+}
+
+// src/host/anydoc.js
+init_parse_hash();
+
+// src/host/anydoc-manifest.js
+var ANYDOC_MANIFEST = Object.freeze({
+  name: "@firecrawl/anydoc-wasm",
+  version: "0.2.4",
+  files: Object.freeze({
+    "anydoc_wasm.js": Object.freeze({
+      sha256: "4860ad4c02c523593a5dae7698e186e8d7cf75a0e0bf3c2c294373de58eaee74",
+      bytes: 14366
+    }),
+    "anydoc_wasm_bg.wasm": Object.freeze({
+      sha256: "9f37cd53b17bf4028ac5ae6a2ac4cf625e9c53be511797168780bab495de1a9e",
+      bytes: 6691779
+    })
+  })
+});
+
+// src/host/anydoc.js
+var ANYDOC_CACHE = "plexus-diagram-models";
+var ANYDOC_ORIGIN = "https://svyk.github.io/plexus-diagram";
+function anydocAssetUrl(name, origin = ANYDOC_ORIGIN) {
+  const base = String(origin || ANYDOC_ORIGIN).replace(/\/$/, "");
+  return `${base}/assets/anydoc/${name}`;
+}
+function asBytes(value) {
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  return new Uint8Array();
+}
+function createAnydocHost({
+  fetch: fetchImpl,
+  caches: cachesImpl,
+  origin = ANYDOC_ORIGIN,
+  now: now3,
+  engine
+} = {}) {
+  const fetchFn = fetchImpl || globalThis.fetch?.bind(globalThis);
+  const cachesApi = cachesImpl === void 0 ? globalThis.caches : cachesImpl;
+  const clock = typeof now3 === "function" ? now3 : () => typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+  const glue = engine?.init || __wbg_init;
+  const convertBytes = engine?.toMarkdownBytes || toMarkdownBytes;
+  let ready = null;
+  let fetchCount = 0;
+  async function openCache() {
+    if (!cachesApi || typeof cachesApi.open !== "function") return null;
+    try {
+      return await cachesApi.open(ANYDOC_CACHE);
+    } catch {
+      return null;
+    }
+  }
+  async function loadAsset(name) {
+    const spec = ANYDOC_MANIFEST.files[name];
+    if (!spec) {
+      const err = new Error("hash");
+      err.code = "hash";
+      throw err;
+    }
+    const url = anydocAssetUrl(name, origin);
+    const cache = await openCache();
+    if (cache && typeof cache.match === "function") {
+      try {
+        const hit = await cache.match(url);
+        if (hit) {
+          const buf2 = asBytes(await hit.arrayBuffer());
+          const hex2 = await sha256Hex(buf2);
+          if (hex2 === spec.sha256 && buf2.byteLength === spec.bytes) return buf2;
+        }
+      } catch {
+      }
+    }
+    if (typeof fetchFn !== "function") {
+      const err = new Error("fetch");
+      err.code = "fetch";
+      throw err;
+    }
+    fetchCount += 1;
+    let res;
+    try {
+      res = await fetchFn(url, { mode: "cors", credentials: "omit" });
+    } catch (err) {
+      if (err && typeof err === "object" && !err.code) err.code = "fetch";
+      throw err;
+    }
+    if (!res || !res.ok) {
+      const err = new Error("fetch");
+      err.code = "fetch";
+      throw err;
+    }
+    const buf = asBytes(await res.arrayBuffer());
+    const hex = await sha256Hex(buf);
+    if (hex !== spec.sha256 || buf.byteLength !== spec.bytes) {
+      const err = new Error("hash");
+      err.code = "hash";
+      throw err;
+    }
+    if (cache && typeof cache.put === "function") {
+      try {
+        const type = name.endsWith(".wasm") ? "application/wasm" : "text/javascript";
+        await cache.put(url, new Response(buf, { headers: { "content-type": type } }));
+      } catch {
+      }
+    }
+    return buf;
+  }
+  async function ensure() {
+    if (ready) return ready;
+    const pending = (async () => {
+      await loadAsset("anydoc_wasm.js");
+      const wasm2 = await loadAsset("anydoc_wasm_bg.wasm");
+      await glue({ module_or_path: wasm2 });
+    })();
+    ready = pending;
+    try {
+      await pending;
+    } catch (err) {
+      if (ready === pending) ready = null;
+      throw err;
+    }
+  }
+  return {
+    get fetchCount() {
+      return fetchCount;
+    },
+    async convert(bytes, format) {
+      await ensure();
+      const t0 = clock();
+      const view = asBytes(bytes);
+      let markdown;
+      try {
+        markdown = convertBytes(view, format);
+      } catch (err) {
+        if (err && typeof err === "object" && !err.code) err.code = "convert";
+        throw err;
+      }
+      const text3 = typeof markdown === "string" ? markdown : new TextDecoder().decode(asBytes(markdown));
+      return { markdown: text3, ms: clock() - t0, format };
+    }
+  };
+}
+
+// src/view/parse-view.js
+init_anydoc_to_parse();
 var PARSE_MIME2 = "application/x-plexus-parse";
 var BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
 var SYNC_MS = 250;
@@ -34260,8 +35268,12 @@ function defaultRangeChoice(pageCount) {
   return "current";
 }
 function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
+  if (phase !== "running" && engine === "anydoc") {
+    if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
+    return { text: "Alternative read" };
+  }
   if (phase === "running") {
-    const which = engine === "docling" ? "Docling" : "built-in";
+    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : "built-in";
     return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
   }
   if (helper === "not-running" || helper === "disabled") {
@@ -34444,7 +35456,8 @@ function createParseView({
   adoptCreated = null,
   getContext = null,
   clock = null,
-  scanAuto = false
+  scanAuto = false,
+  anydoc = null
 } = {}) {
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
@@ -34453,6 +35466,7 @@ function createParseView({
     return node2;
   };
   const now3 = () => typeof clock === "function" ? clock() : Date.now();
+  const anydocHost = anydoc || createAnydocHost();
   const root = el("div", "pxd-parse");
   root.tabIndex = -1;
   root.setAttribute("role", "region");
@@ -34474,6 +35488,14 @@ function createParseView({
   doclingBtn.textContent = "Parse with Docling";
   doclingBtn.setAttribute("data-tip", "parse.docling");
   setHidden(doclingBtn, true);
+  const altBtn = el("button", "pxd-parse__alt", enginePop);
+  altBtn.type = "button";
+  const altLabel = el("span", "pxd-parse__alt-label", altBtn);
+  altLabel.textContent = "Alternative read";
+  const altNote = el("span", "pxd-parse__alt-note", altBtn);
+  altNote.textContent = "no tables guarantee";
+  altBtn.setAttribute("aria-label", "Alternative read, no tables guarantee");
+  altBtn.setAttribute("data-guarantee", "no tables guarantee");
   const cancelBtn = el("button", "pxd-parse__cancel", enginePop);
   cancelBtn.type = "button";
   cancelBtn.textContent = "Cancel";
@@ -35154,6 +36176,46 @@ function createParseView({
     render();
     onProgress?.({ page: progress.pageCount, pageCount: progress.pageCount, fraction: 1 });
   }
+  async function readAlternative() {
+    if (dead || phase === "running") return;
+    const previous = parsed;
+    phase = "running";
+    progress = { page: 0, pageCount: progress.pageCount || 0, engine: "anydoc" };
+    paintChip();
+    const t0 = now3();
+    try {
+      const pdf = typeof getPdf === "function" ? await getPdf() : null;
+      if (dead) return;
+      const raw = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+      const bytes = raw ? new Uint8Array(raw) : null;
+      if (!bytes) {
+        phase = "idle";
+        parsed = previous;
+        progress = { page: 0, pageCount: 0, engine: previous?.engine || "builtin" };
+        paintChip();
+        onToast?.("Could not convert this file");
+        return;
+      }
+      const converted = await anydocHost.convert(bytes, "pdf");
+      if (dead) return;
+      const sha = await sha256Hex(bytes);
+      const docResult = markdownToParse(converted.markdown, {
+        format: "pdf",
+        engine: "anydoc",
+        sha256: sha,
+        createdAt: new Date(now3()).toISOString()
+      });
+      await finishDoc(docResult, typeof converted.ms === "number" ? converted.ms : now3() - t0);
+    } catch (err) {
+      if (dead) return;
+      phase = "idle";
+      parsed = previous;
+      progress = { page: 0, pageCount: 0, engine: previous?.engine || "builtin" };
+      paintChip();
+      if (err?.code === "needsOcr") onToast?.("This scan needs OCR. The built-in parse stays.");
+      else onToast?.("Could not convert this file");
+    }
+  }
   async function parseBuiltin(explicit) {
     cancel();
     const ctrl = new AbortController();
@@ -35543,6 +36605,10 @@ function createParseView({
       if (helperState === "ready") await parseDocling();
     })();
   });
+  listen(altBtn, "click", () => {
+    closeMenus();
+    void readAlternative();
+  });
   listen(rangeBtn, "click", () => {
     toggleMenu(rangePop);
   });
@@ -35647,7 +36713,7 @@ function createParseView({
     const hit = await store.findByUrl(currentUrl);
     if (!hit?.sha256) return null;
     const hash = await optionsHash(BUILTIN_OPTIONS);
-    const engines = ["builtin", "docling", "mixed"];
+    const engines = ["builtin", "docling", "mixed", "anydoc"];
     for (const engine of engines) {
       const found = await store.getParse(hit.sha256, engine, hash);
       if (found) {
@@ -35763,7 +36829,11 @@ function createParseView({
   };
 }
 
+// src/view/read-pane.js
+init_parse_hash();
+
 // src/host/parse-helper-client.js
+init_parse_hash();
 init_parse_schema();
 var HEALTH_TIMEOUT_MS = 1500;
 var HEALTH_CACHE_MS = 6e4;
@@ -43688,6 +44758,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
 init_info();
 init_panel();
 init_drop();
+init_anydoc_to_parse();
 
 // src/view/parse-actions.js
 init_drop();
@@ -44437,6 +45508,7 @@ function buildMenu(kind, ctx = {}) {
         ...c.isPdf ? [make("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : [],
         ...c.isPdf ? [make("parse-pdf", "Parse PDF…")] : [],
         ...c.isPdf && c.hasParse ? [make("open-parsed", "Open parsed")] : [],
+        ...c.officeFile ? [make("convert-office", "Convert to cards")] : [],
         sep(),
         make("copy", "Copy", { hint: "Cmd C" }),
         make("copy-png", "Copy selection as PNG"),
@@ -49567,7 +50639,16 @@ function buildBoardView(onFail, {
         const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
         const task = isTaskItem(item) ? taskMeta(item.string, item.content) : null;
         const pdfUrl = item?.kind === "pdf" ? pdfMacroUrl(item?.string || "") || "" : "";
-        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        let officeText = item?.string || "";
+        if (item?.target?.kind === "block") {
+          try {
+            const blockText = host?.blockString?.(item.target.uid);
+            if (blockText) officeText = blockText;
+          } catch {
+          }
+        }
+        const officeFile = officeTargetFromText(officeText);
+        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -49637,6 +50718,34 @@ function buildBoardView(onFail, {
   };
   let contextLineFor = async () => "";
   let bindInfoHover = () => {
+  };
+  const anydocHost = createAnydocHost();
+  const showOffice = (res) => {
+    if (disposed || !res) return;
+    if (res.toast) toast(res.toast);
+    if (Array.isArray(res.uids) && res.uids.length) ctl.select(res.uids);
+    if (!res.more || !res.offer || typeof res.continue !== "function") return;
+    const next = res.continue;
+    chrome.toast.show({
+      message: res.offer,
+      action: {
+        label: res.offer,
+        run: () => {
+          void Promise.resolve(next()).then(showOffice).catch(() => toast("Could not convert this file"));
+        }
+      }
+    });
+  };
+  const runOffice = (office, world2) => {
+    if (!office) return;
+    const point = world2 || viewCenterWorld();
+    void handleOfficeDrop({
+      office,
+      convert: (bytes, format) => anydocHost.convert(bytes, format),
+      fetch: doc.defaultView?.fetch?.bind(doc.defaultView),
+      session,
+      point
+    }).then(showOffice).catch(() => toast("Could not convert this file"));
   };
   const onMenuPick = (id) => {
     const b = board2();
@@ -50033,6 +51142,11 @@ function buildBoardView(onFail, {
           ensureReadPane().parse?.();
         } catch {
         }
+        break;
+      }
+      case "convert-office": {
+        const office = menuContext("card", item?.uid).officeFile;
+        if (office) runOffice(office, world2);
         break;
       }
       case "open-parsed": {
@@ -52720,6 +53834,10 @@ function buildBoardView(onFail, {
     const resolveUid = (u) => host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`;
     const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "" });
     if (!list.length) return;
+    if (list.every((row4) => row4.office)) {
+      list.forEach((row4, index) => runOffice(row4.office, { x: p.x, y: p.y + index * 184 }));
+      return;
+    }
     if (list.length === 1 && list[0].parse) {
       void handleParseDrop({
         payload: list[0].parse,

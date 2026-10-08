@@ -36610,6 +36610,8 @@ function parsedBoxPlan(block, page) {
 }
 var COPY_ICON = 18;
 var COPY_GAP = 5;
+var COPY_INSIDE = 2;
+var COPIED_MS = 1200;
 var MIN_BOX_H = 14;
 var MIN_BOX_W = 40;
 var MIN_IMAGE = 24;
@@ -36625,6 +36627,24 @@ function skipParsedBox(block, plan, page) {
   if (block?.type !== "table" && text3 && MARK_TEXT.test(text3)) return true;
   return false;
 }
+function copyIconSpot(entry, page, dy = 0, size = COPY_ICON) {
+  const W = Number(page?.w) > 0 ? Number(page.w) : 612;
+  const H = Number(page?.h) > 0 ? Number(page.h) : 792;
+  const left = entry.left / 100 * W - BOX_PAD;
+  const top = entry.top / 100 * H - BOX_PAD;
+  const gutter = left - COPY_GAP - size;
+  const inside7 = gutter < 0;
+  return { x: inside7 ? left + COPY_INSIDE : gutter, y: top + (dy || 0) - 1, size, inside: inside7 };
+}
+function chipClearLeft(chipLeft, chip, spot) {
+  if (!spot) return chipLeft;
+  const w = Number(chip?.w) || 0;
+  const h = Number(chip?.h) || 20;
+  const top = Number(chip?.top) || 0;
+  const across = top < spot.y + spot.size && top + h > spot.y;
+  if (!across || chipLeft >= spot.x + spot.size || chipLeft + w <= spot.x) return chipLeft;
+  return spot.x + spot.size + COPY_GAP;
+}
 function copyHoverId(entries, x, y, page, size = COPY_ICON) {
   const W = Number(page?.w) > 0 ? Number(page.w) : 612;
   const H = Number(page?.h) > 0 ? Number(page.h) : 792;
@@ -36633,9 +36653,8 @@ function copyHoverId(entries, x, y, page, size = COPY_ICON) {
   for (const e2 of entries || []) {
     const left = e2.left / 100 * W - BOX_PAD;
     const top = e2.top / 100 * H - BOX_PAD;
-    const iconLeft = left - COPY_GAP - size;
-    const iconTop = top + (e2.dy || 0);
-    if (x >= iconLeft && x <= iconLeft + size && y >= iconTop && y <= iconTop + size) return e2.id;
+    const spot = copyIconSpot(e2, page, e2.dy, size);
+    if (x >= spot.x && x <= spot.x + size && y >= spot.y && y <= spot.y + size) return e2.id;
     const right = left + e2.width / 100 * W + 2 * BOX_PAD;
     const bottom = top + e2.height / 100 * H + 2 * BOX_PAD;
     if (x < left || x > right || y < top || y > bottom) continue;
@@ -36913,9 +36932,10 @@ function createPageChips({
       icon.setAttribute("data-block", plan.id);
       icon.setAttribute("aria-label", block.type === "table" ? "Copy table as Markdown" : "Copy text");
       icon.setAttribute("data-tip", "page-chip.copy");
-      icon.style.left = `calc(${plan.left}% - ${BOX_PAD}px)`;
       const nudge = nudges.get(plan.id) || 0;
-      icon.style.top = nudge ? `calc(${plan.top}% - ${BOX_PAD}px + ${nudge}px)` : `calc(${plan.top}% - ${BOX_PAD}px)`;
+      const spot = copyIconSpot(plan, pagePx, nudge);
+      icon.style.left = spot.inside ? `calc(${plan.left}% - ${BOX_PAD}px + ${COPY_INSIDE}px)` : `calc(${plan.left}% - ${BOX_PAD}px - ${COPY_GAP + COPY_ICON}px)`;
+      icon.style.top = `calc(${plan.top}% - ${BOX_PAD}px + ${nudge - 1}px)`;
       icon.textContent = "⧉";
       layer.append(box2, icon);
       boxes.set(plan.id, box2);
@@ -37006,6 +37026,17 @@ function createPageChips({
     event.stopPropagation?.();
     return icon;
   };
+  const markCopied = (icon) => {
+    if (!icon.__label) icon.__label = icon.getAttribute("aria-label");
+    icon.setAttribute("aria-label", "Copied");
+    icon.classList.add("pxd-parsed-copy--copied");
+    if (icon.__copiedTimer != null) (win()?.clearTimeout || clearTimeout)(icon.__copiedTimer);
+    icon.__copiedTimer = later(() => {
+      icon.__copiedTimer = null;
+      icon.setAttribute("aria-label", icon.__label);
+      icon.classList.remove("pxd-parsed-copy--copied");
+    }, COPIED_MS);
+  };
   const onIconDown = (event) => {
     if (onIcon(event)) event.preventDefault?.();
   };
@@ -37020,6 +37051,7 @@ function createPageChips({
       copy?.(block);
     } catch {
     }
+    markCopied(icon);
   };
   const show = (block, el, parsed) => {
     const plan = chipPlan(block, parsed, { latexReady: Boolean(isLatexReady?.()) });
@@ -37043,6 +37075,7 @@ function createPageChips({
     chipNode.style.position = "absolute";
     chipNode.style.left = `${rect.left + rect.width}px`;
     chipNode.style.top = `${Math.max(0, rect.top)}px`;
+    const chipLabel = plan.label;
     chipNode.style.pointerEvents = "auto";
     const main = button2("pxd-page-chip__main", plan.label, `page-chip.${plan.type}`);
     chipNode.append(main);
@@ -37084,6 +37117,21 @@ function createPageChips({
       chipNode.append(menu);
     }
     el.append(chipNode);
+    {
+      let w = 0;
+      try {
+        w = chipNode.offsetWidth || chipNode.getBoundingClientRect?.().width || 0;
+      } catch {
+        w = 0;
+      }
+      if (!(w > 0)) w = 16 + String(chipLabel).length * 7 + (plan.menu.length ? 22 : 0);
+      const r = layers.get(block.page)?.rects.find((q) => q.id === block.id);
+      const bx = el.getBoundingClientRect?.();
+      const pagePx = { w: bx?.width > 0 ? bx.width : info(block.page)?.w, h: bx?.height > 0 ? bx.height : info(block.page)?.h };
+      const spot = r ? copyIconSpot(r, pagePx, r.dy) : null;
+      const top = Math.max(0, rect.top);
+      chipNode.style.left = `${chipClearLeft(rect.left + rect.width - w, { w, top, h: 20 }, spot)}px`;
+    }
     const mine = bound.splice(bound.findIndex((entry) => entry[0] === node2));
     chipNode.__release = () => mine.forEach(off);
   };

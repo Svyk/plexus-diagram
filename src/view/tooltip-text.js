@@ -222,10 +222,13 @@ export const TIP_TEXT = {
   "parse.merges-flat": e("Merged cells shown flat", "Roam Grid draws merges. Native Roam shows the covered cells empty.", null, "Insert as flat table repeats the anchor text into covered cells."),
   "parse.insert-flat": e("Insert as flat table", "Repeat the anchor text into covered cells so a native table still reads."),
 
+  "pdf.highlights": e("Add highlights", "Pick highlights from this PDF and place them on the board as cards."),
+  "pdf.open": e("Open", "Open this PDF in the reader beside the board.", ["Enter"]),
   "pdf.parse": e("Parse", "Parse this PDF with the built-in engine and open the parsed view."),
   "parse.mode.reader": e("Read", "Read the PDF. Select text on any page, scanned pages too, to copy it, make a card or drag it to the board."),
   "parse.mode.parsed": e("Read + Outline", "The PDF beside its outline: headings, tables and figures with their pages."),
   "parse.mode.both": e("Read + Outline", "The PDF beside its outline: headings, tables and figures with their pages. Select several rows to insert or send them together."),
+  "parse.outline-tab": e("Outline", "Show the outline of the parsed PDF in place of the page. Click again to go back to the page."),
   "parse.read-text": e("Read text", "Read the text of the scanned pages so you can select, copy and highlight it. Nothing is written to your graph."),
   "read.sel.copy": e("Copy", "Copy the selected text."),
   "read.sel.card": e("Card", "A note card beside the PDF with the selected text and its page."),

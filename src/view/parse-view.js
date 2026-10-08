@@ -27,6 +27,21 @@ export const BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tabl
 export const SYNC_MS = 250;
 export const LOW_CONFIDENCE = 0.75;
 export const BOTH_MIN_PX = 640;
+
+// Outline rows indent 8 px per heading level below the first, at most five steps.
+export function outlineIndent(level) {
+  const n = Math.min(6, Math.max(1, Math.floor(Number(level) || 1)));
+  return (n - 1) * 8;
+}
+
+// The scroll position that puts `node` at the top of `body`. offsetTop is from the offset parent, which is the
+// body only when the body is positioned; measure against the body's own rect otherwise.
+export function outlineScrollTop(node, body) {
+  const nr = node?.getBoundingClientRect?.();
+  const br = body?.getBoundingClientRect?.();
+  if (nr && br && (nr.height || br.height)) return Math.max(0, (Number(body.scrollTop) || 0) + (nr.top - br.top));
+  return Math.max(0, Number(node?.offsetTop) || 0);
+}
 const URLS_KEY = "pxd-parse-urls";
 const TEXT_TYPES = new Set(["heading", "para", "list", "caption", "footnote", "code"]);
 const INDEX_TYPES = new Set(["heading", "table", "figure", "formula"]);
@@ -479,6 +494,7 @@ export function createParseView({
   let wheelingUntil = 0;
   let lastJump = null;
   let echo = false;
+  let pageWatch = null;
   let abort = null;
   let jobId = "";
   let helperState = "";
@@ -674,7 +690,7 @@ export function createParseView({
   function renderOutlineRow(block, main) {
     const label = el(block.type === "heading" ? "div" : "div", `pxd-parse__olabel pxd-parse__olabel--${block.type}`, main);
     label.textContent = outlineLabel(block);
-    if (block.type === "heading") label.style.paddingLeft = `${Math.max(0, (Math.min(6, block.level || 1) - 1) * 12)}px`;
+    if (block.type === "heading") label.style.paddingLeft = `${outlineIndent(block.level)}px`;
     const page = el("span", "pxd-parse__opage", main);
     page.textContent = block.page ? `p. ${block.page}` : "";
   }
@@ -1730,22 +1746,47 @@ export function createParseView({
     isBusy: () => phase === "running",
     armKeys,
     refreshHelper,
+    // Page 1 (or no page) is the top of the outline; another page is its first block.
+    scrollToPage(page) {
+      const n = Number(page) || 1;
+      echo = true;
+      const node = n > 1 ? body.querySelector?.(`[data-page="${n}"]`) : null;
+      body.scrollTop = node ? outlineScrollTop(node, body) : 0;
+      echo = false;
+      return body.scrollTop;
+    },
+    // One watch per page field. The pane calls this on every mode switch; a second call on the same field is a
+    // no-op (each extra observer used to repeat the forced-layout scroll below on every Roam re-render).
     watchPageInput(input) {
-      if (!input) return;
+      if (!input) return false;
+      if (pageWatch?.input === input) return false;
+      try { pageWatch?.off?.(); } catch { /* gone */ }
+      pageWatch = null;
+      // Roam re-renders its page field many times while a PDF loads. Each scroll here forces a layout of the
+      // whole reader, so act only when the page number actually changed.
+      let lastPage = 0;
       const apply = () => {
         const page = Number(String(input.value || "").trim());
-        if (!page) return;
+        if (!page || page === lastPage) return;
+        lastPage = page;
         echo = true;
-        const node = body.querySelector?.(`[data-page="${page}"]`);
-        if (node) body.scrollTop = Number(node.offsetTop) || 0;
+        const node = page > 1 ? body.querySelector?.(`[data-page="${page}"]`) : null;
+        body.scrollTop = node ? outlineScrollTop(node, body) : 0;
         echo = false;
       };
-      listen(input, "input", apply);
+      input.addEventListener?.("input", apply);
+      let obs = null;
       if (typeof doc.defaultView?.MutationObserver === "function") {
-        const obs = new doc.defaultView.MutationObserver(apply);
+        obs = new doc.defaultView.MutationObserver(apply);
         try { obs.observe(input, { attributes: true, characterData: true, subtree: true }); } catch { /* stub */ }
-        armed.push([null, "observer", () => obs.disconnect(), false]);
       }
+      const off = () => {
+        input.removeEventListener?.("input", apply);
+        try { obs?.disconnect(); } catch { /* gone */ }
+      };
+      pageWatch = { input, off };
+      armed.push([null, "observer", off, false]);
+      return true;
     },
     dispose() {
       dead = true;

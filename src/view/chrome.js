@@ -7,6 +7,7 @@ import { changelogEntry } from "../model/changelog.js";
 import { CHANGELOG_TEXT } from "../changelog-text.js";
 import { buildColorPicker } from "./color-picker.js";
 import { placeNearAnchor } from "./avoid.js";
+import { avoidDock, readerLimit } from "../model/card-face.js";
 import { tipIdForClass } from "./tooltip-text.js";
 
 const CTX_GAP = 12;
@@ -842,6 +843,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     }
     const now = kids.findIndex((k) => k.getAttribute("data-ctx-overflow"));
     if ((now < 0 ? kids.length : now) === keep) return;
+    // Same estimate as last time, already trimmed further to the drawn width: nothing to redo.
+    if (now >= 0 && now < keep && Number(row.getAttribute("data-ctx-est")) === keep) return;
     closeCtxMore();
     more?.remove();
     kids.forEach((k, idx) => {
@@ -857,6 +860,21 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     });
     btn.setAttribute("aria-haspopup", "menu");
     btn.setAttribute("aria-expanded", "false");
+    // The estimate above uses a 4 px gap; the real bar can come out wider (gaps, padding). Hide one more tool
+    // while the drawn bar still runs past the limit (onto the rail), never below one tool.
+    // One read of the drawn width; each hidden tool frees its width plus a gap (no layout read per step).
+    row.setAttribute("data-ctx-est", String(keep));
+    let excess = (ctx.offsetWidth || 0) - limit;
+    let guard = keep;
+    while (guard > 1 && excess > 0) {
+      guard -= 1;
+      const k = kids[guard];
+      k.style.display = "none";
+      k.setAttribute("data-ctx-overflow", "1");
+      k.setAttribute("data-ctx-w", String(widths[guard]));
+      hidden.unshift(k);
+      excess -= widths[guard] + 6;
+    }
   };
 
   const positionCtx = () => {
@@ -865,7 +883,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     if (!a) { ctx.style.display = "none"; return; }
     const rootRect = root.getBoundingClientRect();
     const W = rootRect.width || 0;
-    const H = rootRect.height || 0;
+    const Hroot = rootRect.height || 0;
     const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP;
     // The bar never covers the toolbar (two rows tall) or an open side panel: it flips below / stays left of them.
     const tb = toolbar.getBoundingClientRect();
@@ -880,12 +898,15 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const pr = panelEl && panelEl.style?.display !== "none" ? panelEl.getBoundingClientRect() : null;
     // The format bar is placed with left, so a CSS right offset would crush it. The open
     // reader is the same kind of right-edge obstacle as the side panel.
+    // Stacked under a narrow board, the reader is a bottom edge instead (its left is the root's left, which used
+    // to leave the bar no room at all: a lone "…").
     const readEl = root.classList?.contains?.("pxd-root--read") ? root.querySelector?.(".pxd-read") : null;
-    const readBox = readEl ? readEl.getBoundingClientRect() : null;
+    const readEdge = readEl ? readerLimit(rootRect, readEl.getBoundingClientRect()) : null;
     const stops = [];
     if (pr?.width) stops.push(pr.left - (rootRect.left || 0));
-    if (readBox?.width) stops.push(readBox.left - (rootRect.left || 0));
+    if (readEdge?.right != null) stops.push(readEdge.right);
     const room = stops.length ? Math.min(W, ...stops) : W;
+    const H = readEdge?.bottom != null ? Math.min(Hroot, readEdge.bottom) : Hroot;
     // A bar wider than the space left of the panel or the reader wraps into more rows instead of covering them.
     ctx.style.maxWidth = stops.length && room > 2 * CTX_MARGIN ? `${Math.round(room - 2 * CTX_MARGIN)}px` : "";
     fitCtxRow(stops.length ? room - 2 * CTX_MARGIN : W - railClear - 2 * CTX_MARGIN);
@@ -895,6 +916,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     let top = a.rect.y - gap - barH;
     if (top < topLimit) top = a.rect.y + a.rect.h + gap; // flip below near the top edge
     if (top + barH > H - CTX_MARGIN && a.rect.y - gap - barH >= topLimit) top = a.rect.y - gap - barH;
+    // Never below the board area's bottom edge (a stacked reader starts there).
+    if (top + barH > H - CTX_MARGIN) top = H - CTX_MARGIN - barH;
     top = Math.max(top, topLimit); // a card panned under the toolbar: the bar sits at the toolbar's edge, never over it
     let left = a.rect.x + a.rect.w / 2 - barW / 2;
     left = Math.max(CTX_MARGIN, Math.min(left, rightLimit - barW - CTX_MARGIN));
@@ -904,9 +927,18 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       if (below + barH <= H - CTX_MARGIN) top = Math.max(top, below);
       else left = Math.max(left, propsRight + CTX_MARGIN);
     }
+    // The tool dock is never covered: above the card, or clear above the dock.
+    const dockEl = palette.style.display !== "none" ? palette : null;
+    const db = dockEl?.getBoundingClientRect?.();
+    if (db?.width && db?.height) {
+      const dock = { left: db.left - (rootRect.left || 0), top: db.top - (rootRect.top || 0), right: db.right - (rootRect.left || 0), bottom: db.bottom - (rootRect.top || 0) };
+      const placed = avoidDock({ left, top, w: barW, h: barH }, { card: a.rect, dock, gap, topLimit, margin: CTX_MARGIN });
+      top = placed.top;
+    }
     ctx.style.left = `${Math.round(left)}px`;
     ctx.style.top = `${Math.round(top)}px`;
     ctx.classList.toggle("pxd-ctx--below", top > a.rect.y);
+    on.ctxPlaced?.();
   };
 
   const ctxApi = {

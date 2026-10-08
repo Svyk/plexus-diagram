@@ -2,6 +2,7 @@
 // The document is cached while that url is showing and destroyed on deselect, a tier change, or dispose.
 // No graph write, no console. A missing pdf.js or a .enc url leaves the cover as it is.
 
+import { flipArrowsShown } from "../model/card-face.js";
 import { detectPdfjs, firstPageAllowed } from "./pdf-first-page.js";
 
 export const PDF_DARK_CLASSES = Object.freeze(["pxd-pdf-dark--off", "pxd-pdf-dark--dim", "pxd-pdf-dark--invert"]);
@@ -157,6 +158,13 @@ export function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = nul
   };
   const paintBar = () => {
     if (pagesEl) pagesEl.textContent = pageBarText(page, total);
+    if (!bar) return;
+    const arrows = flipArrowsShown(total);
+    for (const step of bar.querySelectorAll?.(".pxd-pdf-bar__step") || []) {
+      if (arrows) step.removeAttribute?.("hidden");
+      else step.setAttribute?.("hidden", "");
+    }
+    bar.classList?.toggle?.("pxd-pdf-bar--single", !arrows);
   };
   const cancelRender = () => {
     const current = renderTask;
@@ -447,6 +455,9 @@ export function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = nul
     },
     destroy() { dropLive(); },
     live() { return Boolean(pdf || loading); },
+    // The page the card shows right now (1 when it is not the live card).
+    pageOf(uid) { return uid && uid === currentUid && pdf ? page : 1; },
+    totalOf(uid) { return uid && uid === currentUid && pdf ? total : 0; },
     liveUid() { return currentUid; },
     idle() { return job; },
   };

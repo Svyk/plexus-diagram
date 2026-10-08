@@ -15,6 +15,7 @@ import {
   lensRowLabel,
   openHighlightDialog,
   pdfHighlightButton,
+  setHighlightCount,
   planDroppedCards,
 } from "../src/view/board-view.js";
 import { createChrome } from "../src/view/chrome.js";
@@ -114,15 +115,25 @@ test("picker list is 5 enabled of 7 when two target uids are placed", () => {
     ],
   });
   assert.equal(byCardUid.some((row) => row.placed), false);
-  assert.equal(PDF_HIGHLIGHTS_LABEL, "Add highlights\u2026");
+  assert.equal(PDF_HIGHLIGHTS_LABEL, "Add highlights");
 });
 
-test("the PDF header button label is Add highlights…", () => {
+test("the PDF header button is a highlighter icon with the Add highlights tooltip and a count above zero", () => {
   withDom((stub) => {
     const btn = pdfHighlightButton(stub.document, () => {});
-    assert.equal(btn.textContent, "Add highlights\u2026");
-    assert.equal(btn.getAttribute("aria-label"), PDF_HIGHLIGHTS_LABEL);
+    assert.equal(btn.textContent, "");
+    assert.equal(btn.getAttribute("aria-label"), "Add highlights");
+    assert.equal(btn.getAttribute("data-tip"), "pdf.highlights");
     assert.equal(btn.classList.contains("pxd-pdf-highlights"), true);
+    assert.ok(btn.querySelector(".pxd-pdf-highlights__glyph"));
+    assert.equal(btn.getAttribute("data-count"), "0");
+    assert.equal(setHighlightCount(btn, 3), "3");
+    assert.equal(btn.textContent, "3");
+    assert.equal(btn.getAttribute("data-count"), "3");
+    assert.equal(setHighlightCount(btn, 0), "");
+    assert.equal(btn.querySelector(".pxd-pdf-highlights__count").hasAttribute("hidden"), true);
+    const counted = pdfHighlightButton(stub.document, () => {}, 12);
+    assert.equal(counted.textContent, "12");
   });
 });
 

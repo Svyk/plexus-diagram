@@ -3,6 +3,7 @@
 // renderBlock / renderPage. The PDF cover is the one <img>: a page image the integrator
 // already cached. Nothing here fetches the file or writes the graph.
 
+import { countText } from "../model/card-face.js";
 import { placeNearAnchor } from "./avoid.js";
 import { createRowScheduler, isHeavyRow, mountFpsFromStamps } from "./progressive.js";
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
@@ -683,6 +684,7 @@ export function createItemRenderer({
   pdfMetaTitle = null,
   onPdfOpenRequest = null,
   onPdfParse = null,
+  pdfCardPage = null,
   onHighlightHover = null,
   onHighlightMenu = null,
   readingUid = null,
@@ -3029,9 +3031,17 @@ export function createItemRenderer({
       open.type = "button";
       open.textContent = "Open";
       open.setAttribute("aria-label", "Open reader");
+      open.setAttribute("data-tip", "pdf.open");
       for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
       open.addEventListener("click", (event) => {
         stopEvent(event);
+        // A card flipped past page 1 opens the reader on that page; otherwise Roam's own last page stands.
+        let page = 1;
+        try { page = Number(pdfCardPage?.(item.uid)) || 1; } catch { page = 1; }
+        if (page > 1 && typeof onPdfOpen === "function") {
+          try { onPdfOpen(item.uid, page); } catch { /* host */ }
+          return;
+        }
         openPdf(item.uid);
       });
       const parse = el("button", "pxd-pdf-parse pxd-pdf-pill pxd-chrome", pills);
@@ -4299,10 +4309,10 @@ export function createItemRenderer({
     if (!visible) return clear();
     const info = badgeMap?.get?.(rec.uid) || null;
     const chips = [];
-    if (info?.refs > 0) chips.push({ cls: "refs", text: `${info.refs} refs`, title: `${info.refs} references to this card` });
+    if (info?.refs > 0) chips.push({ cls: "refs", text: countText(info.refs, "ref", "refs"), title: `${countText(info.refs, "reference", "references")} to this card` });
     const regionCount = imageRegionRows(item.content).length;
     if (regionCount > 0) chips.push({ cls: "regions", text: regionBadge(regionCount), title: `${regionCount} ${regionCount === 1 ? "region" : "regions"}` });
-    if (info?.boards > 0) chips.push({ cls: "boards", text: `on ${info.boards} boards`, title: "Shown on other boards", action: "boards" });
+    if (info?.boards > 0) chips.push({ cls: "boards", text: `on ${countText(info.boards, "board", "boards")}`, title: "Shown on other boards", action: "boards" });
     if (info && (info.open > 0 || info.done > 0)) chips.push({ cls: "todo", text: `${info.open || 0}/${info.done || 0}`, title: `${info.open || 0} open, ${info.done || 0} done` });
     const comments = commentCount(lastBoard, rec.uid);
     if (comments > 0) chips.push({ cls: "comments", text: `${comments}`, title: `${comments} comments` });
@@ -5306,8 +5316,10 @@ export function createItemRenderer({
     markRows,
     setRowHot,
     revealRow,
-    repaintStyles() {
-      syncBoardHighlighter(doc, boardRoot());
+    // The colour-highlighter probe reads the body's computed style, a forced style recalc of the whole page.
+    // A reading-card change (pane open/close) does not change the highlighter, so it skips that probe.
+    repaintStyles({ highlighter = true } = {}) {
+      if (highlighter) syncBoardHighlighter(doc, boardRoot());
       if (!lastBoard) return;
       for (const [uid, rec] of shells) {
         if (editing?.uid === uid) continue;

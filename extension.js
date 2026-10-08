@@ -4855,7 +4855,8 @@ function readPaneWidth(mountWidth, stored) {
   const hasStored = Number.isFinite(given) && given > 0;
   if (stacked) return { stacked: true, width: Math.round(mount) };
   const raw = hasStored ? given : mount > 0 ? Math.round(mount * 0.42) : 360;
-  const width = Math.min(720, Math.max(360, Math.round(raw)));
+  const room = mount > 0 ? Math.max(360, mount - 360) : 720;
+  const width = Math.min(720, room, Math.max(360, Math.round(raw)));
   return { stacked: false, width };
 }
 var PDF_MACRO, PDF_READER_W, PDF_READER_H, PDF_CARD_MAX, ROMAN_ONLY, HEAVY_MACRO, HEAVY_ONE, REF_ONLY2, EMBED_ONLY;
@@ -5692,10 +5693,13 @@ var init_tooltip_text = __esm({
       "parse.footnotes": e("Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert."),
       "parse.merges-flat": e("Merged cells shown flat", "Roam Grid draws merges. Native Roam shows the covered cells empty.", null, "Insert as flat table repeats the anchor text into covered cells."),
       "parse.insert-flat": e("Insert as flat table", "Repeat the anchor text into covered cells so a native table still reads."),
+      "pdf.highlights": e("Add highlights", "Pick highlights from this PDF and place them on the board as cards."),
+      "pdf.open": e("Open", "Open this PDF in the reader beside the board.", ["Enter"]),
       "pdf.parse": e("Parse", "Parse this PDF with the built-in engine and open the parsed view."),
       "parse.mode.reader": e("Read", "Read the PDF. Select text on any page, scanned pages too, to copy it, make a card or drag it to the board."),
       "parse.mode.parsed": e("Read + Outline", "The PDF beside its outline: headings, tables and figures with their pages."),
       "parse.mode.both": e("Read + Outline", "The PDF beside its outline: headings, tables and figures with their pages. Select several rows to insert or send them together."),
+      "parse.outline-tab": e("Outline", "Show the outline of the parsed PDF in place of the page. Click again to go back to the page."),
       "parse.read-text": e("Read text", "Read the text of the scanned pages so you can select, copy and highlight it. Nothing is written to your graph."),
       "read.sel.copy": e("Copy", "Copy the selected text."),
       "read.sel.card": e("Card", "A note card beside the PDF with the selected text and its page."),
@@ -7338,6 +7342,108 @@ var init_task_popover = __esm({
     init_avoid();
     PRIORITIES = ["low", "medium", "high"];
     GAP4 = 6;
+  }
+});
+
+// src/model/card-face.js
+function countText(n2, one, many) {
+  const raw = Number(n2);
+  const count = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+  return `${count} ${count === 1 ? one : many}`;
+}
+function flipArrowsShown(total) {
+  const raw = Number(total);
+  return Number.isFinite(raw) && raw > 1;
+}
+function boardCramped(area) {
+  const w = Number(area?.width);
+  const h = Number(area?.height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return false;
+  return w < MINIMAP_MIN_W || h < MINIMAP_MIN_H;
+}
+function freeBoardArea(viewport, toolbar) {
+  const w = Number(viewport?.width) || 0;
+  const h = Number(viewport?.height) || 0;
+  const top = Number(viewport?.top) || 0;
+  const barBottom = Number(toolbar?.bottom);
+  const barH = Number(toolbar?.height) || 0;
+  const covered = barH > 0 && Number.isFinite(barBottom) && barBottom > top ? Math.min(h, barBottom - top) : 0;
+  return { width: w, height: Math.max(0, h - covered) };
+}
+function readerLimit(rootRect, readRect) {
+  const rl = Number(rootRect?.left) || 0;
+  const rt = Number(rootRect?.top) || 0;
+  const rw = Number(rootRect?.width) || 0;
+  const w = Number(readRect?.width) || 0;
+  const h = Number(readRect?.height) || 0;
+  if (!(w > 0) || !(h > 0)) return null;
+  const left = (Number(readRect.left) || 0) - rl;
+  const top = (Number(readRect.top) || 0) - rt;
+  if (left <= 8 && w >= rw - 8) return { bottom: top };
+  return { right: left };
+}
+function avoidDock(bar, { card: card2, dock, gap = 10, topLimit = 0, margin = 8 } = {}) {
+  if (!bar || !dock) return bar;
+  const box2 = (b) => ({ left: b.left, top: b.top, right: b.left + b.w, bottom: b.top + b.h });
+  if (!overlaps(box2(bar), dock)) return bar;
+  if (card2) {
+    const above = card2.y - gap - bar.h;
+    if (above >= topLimit) {
+      const next = { ...bar, top: above };
+      if (!overlaps(box2(next), dock)) return next;
+    }
+  }
+  const hop = dock.top - margin - bar.h;
+  if (hop >= topLimit) return { ...bar, top: hop };
+  return bar;
+}
+function quickLookTitle(item, displayTitle) {
+  const shown = typeof displayTitle === "string" ? displayTitle.trim() : "";
+  if (shown && !shown.startsWith("{{") && !shown.startsWith("((")) return shown;
+  const title = typeof item?.title === "string" ? item.title.trim() : "";
+  if (title && !title.startsWith("{{") && !title.startsWith("((")) return title;
+  const text3 = typeof item?.string === "string" ? item.string.trim() : "";
+  if (text3 && !text3.startsWith("{{") && !text3.startsWith("((")) return text3;
+  return item?.kind === "pdf" ? "PDF" : text3;
+}
+function startPage(cardPage, total) {
+  const n2 = Math.floor(Number(cardPage));
+  const t = Math.floor(Number(total));
+  const at = Number.isFinite(n2) && n2 >= 1 ? n2 : 1;
+  return Number.isFinite(t) && t >= 1 ? Math.min(at, t) : at;
+}
+function pdfDockLift(card2, obstacles, zoom = 1, { clipBottom = Infinity } = {}) {
+  const z = Number(zoom) > 0 ? Number(zoom) : 1;
+  const left = Number(card2?.left) || 0;
+  const top = Number(card2?.top) || 0;
+  const w = Number(card2?.w) || 0;
+  const h = Number(card2?.h) || 0;
+  const list = (Array.isArray(obstacles) ? obstacles : [obstacles]).filter((r) => r && r.right > left && r.left < left + w);
+  if (!(w > 0) || !(h > 0)) return 0;
+  const bottom = top + h;
+  const floor = top + Math.min(h * 0.35, 96);
+  const clip4 = Number(clipBottom);
+  let edge = Number.isFinite(clip4) && clip4 < bottom ? clip4 - 6 : bottom;
+  for (let pass = 0; pass < list.length; pass += 1) {
+    let moved = false;
+    for (const r of list) {
+      if (r.top < edge && r.bottom > edge - 12 && r.top < bottom) {
+        edge = r.top - 6;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  if (edge >= bottom) return 0;
+  if (edge < floor) return 0;
+  return Math.round((bottom - edge) / z);
+}
+var MINIMAP_MIN_W, MINIMAP_MIN_H, overlaps;
+var init_card_face = __esm({
+  "src/model/card-face.js"() {
+    MINIMAP_MIN_W = 420;
+    MINIMAP_MIN_H = 280;
+    overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
   }
 });
 
@@ -12411,6 +12517,7 @@ function createItemRenderer({
   pdfMetaTitle = null,
   onPdfOpenRequest = null,
   onPdfParse = null,
+  pdfCardPage = null,
   onHighlightHover = null,
   onHighlightMenu = null,
   readingUid = null,
@@ -14932,9 +15039,23 @@ function createItemRenderer({
       open.type = "button";
       open.textContent = "Open";
       open.setAttribute("aria-label", "Open reader");
+      open.setAttribute("data-tip", "pdf.open");
       for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
       open.addEventListener("click", (event) => {
         stopEvent(event);
+        let page = 1;
+        try {
+          page = Number(pdfCardPage?.(item.uid)) || 1;
+        } catch {
+          page = 1;
+        }
+        if (page > 1 && typeof onPdfOpen === "function") {
+          try {
+            onPdfOpen(item.uid, page);
+          } catch {
+          }
+          return;
+        }
         openPdf(item.uid);
       });
       const parse = el("button", "pxd-pdf-parse pxd-pdf-pill pxd-chrome", pills);
@@ -16313,10 +16434,10 @@ function createItemRenderer({
     if (!visible2) return clear();
     const info = badgeMap?.get?.(rec.uid) || null;
     const chips = [];
-    if (info?.refs > 0) chips.push({ cls: "refs", text: `${info.refs} refs`, title: `${info.refs} references to this card` });
+    if (info?.refs > 0) chips.push({ cls: "refs", text: countText(info.refs, "ref", "refs"), title: `${countText(info.refs, "reference", "references")} to this card` });
     const regionCount = imageRegionRows(item.content).length;
     if (regionCount > 0) chips.push({ cls: "regions", text: regionBadge(regionCount), title: `${regionCount} ${regionCount === 1 ? "region" : "regions"}` });
-    if (info?.boards > 0) chips.push({ cls: "boards", text: `on ${info.boards} boards`, title: "Shown on other boards", action: "boards" });
+    if (info?.boards > 0) chips.push({ cls: "boards", text: `on ${countText(info.boards, "board", "boards")}`, title: "Shown on other boards", action: "boards" });
     if (info && (info.open > 0 || info.done > 0)) chips.push({ cls: "todo", text: `${info.open || 0}/${info.done || 0}`, title: `${info.open || 0} open, ${info.done || 0} done` });
     const comments = commentCount(lastBoard, rec.uid);
     if (comments > 0) chips.push({ cls: "comments", text: `${comments}`, title: `${comments} comments` });
@@ -17425,8 +17546,10 @@ function createItemRenderer({
     markRows,
     setRowHot,
     revealRow,
-    repaintStyles() {
-      syncBoardHighlighter(doc, boardRoot());
+    // The colour-highlighter probe reads the body's computed style, a forced style recalc of the whole page.
+    // A reading-card change (pane open/close) does not change the highlighter, so it skips that probe.
+    repaintStyles({ highlighter: highlighter2 = true } = {}) {
+      if (highlighter2) syncBoardHighlighter(doc, boardRoot());
       if (!lastBoard) return;
       for (const [uid, rec] of shells) {
         if (editing?.uid === uid) continue;
@@ -17480,6 +17603,7 @@ function createItemRenderer({
 var SIDES3, CHUNK_MS, LRU_CAP, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now, HL_NAMES2, NOTE_CARET_SKIP, childString4, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
 var init_cards = __esm({
   "src/view/cards.js"() {
+    init_card_face();
     init_avoid();
     init_progressive();
     init_schema();
@@ -38085,6 +38209,16 @@ var BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "buil
 var SYNC_MS = 250;
 var LOW_CONFIDENCE = 0.75;
 var BOTH_MIN_PX = 640;
+function outlineIndent(level) {
+  const n2 = Math.min(6, Math.max(1, Math.floor(Number(level) || 1)));
+  return (n2 - 1) * 8;
+}
+function outlineScrollTop(node2, body) {
+  const nr = node2?.getBoundingClientRect?.();
+  const br = body?.getBoundingClientRect?.();
+  if (nr && br && (nr.height || br.height)) return Math.max(0, (Number(body.scrollTop) || 0) + (nr.top - br.top));
+  return Math.max(0, Number(node2?.offsetTop) || 0);
+}
 var URLS_KEY = "pxd-parse-urls";
 var TEXT_TYPES = /* @__PURE__ */ new Set(["heading", "para", "list", "caption", "footnote", "code"]);
 var INDEX_TYPES = /* @__PURE__ */ new Set(["heading", "table", "figure", "formula"]);
@@ -38507,6 +38641,7 @@ function createParseView({
   let wheelingUntil = 0;
   let lastJump = null;
   let echo = false;
+  let pageWatch = null;
   let abort = null;
   let jobId = "";
   let helperState = "";
@@ -38710,7 +38845,7 @@ function createParseView({
   function renderOutlineRow(block, main) {
     const label = el(block.type === "heading" ? "div" : "div", `pxd-parse__olabel pxd-parse__olabel--${block.type}`, main);
     label.textContent = outlineLabel(block);
-    if (block.type === "heading") label.style.paddingLeft = `${Math.max(0, (Math.min(6, block.level || 1) - 1) * 12)}px`;
+    if (block.type === "heading") label.style.paddingLeft = `${outlineIndent(block.level)}px`;
     const page = el("span", "pxd-parse__opage", main);
     page.textContent = block.page ? `p. ${block.page}` : "";
   }
@@ -39889,25 +40024,54 @@ function createParseView({
     isBusy: () => phase === "running",
     armKeys,
     refreshHelper,
+    // Page 1 (or no page) is the top of the outline; another page is its first block.
+    scrollToPage(page) {
+      const n2 = Number(page) || 1;
+      echo = true;
+      const node2 = n2 > 1 ? body.querySelector?.(`[data-page="${n2}"]`) : null;
+      body.scrollTop = node2 ? outlineScrollTop(node2, body) : 0;
+      echo = false;
+      return body.scrollTop;
+    },
+    // One watch per page field. The pane calls this on every mode switch; a second call on the same field is a
+    // no-op (each extra observer used to repeat the forced-layout scroll below on every Roam re-render).
     watchPageInput(input) {
-      if (!input) return;
+      if (!input) return false;
+      if (pageWatch?.input === input) return false;
+      try {
+        pageWatch?.off?.();
+      } catch {
+      }
+      pageWatch = null;
+      let lastPage = 0;
       const apply = () => {
         const page = Number(String(input.value || "").trim());
-        if (!page) return;
+        if (!page || page === lastPage) return;
+        lastPage = page;
         echo = true;
-        const node2 = body.querySelector?.(`[data-page="${page}"]`);
-        if (node2) body.scrollTop = Number(node2.offsetTop) || 0;
+        const node2 = page > 1 ? body.querySelector?.(`[data-page="${page}"]`) : null;
+        body.scrollTop = node2 ? outlineScrollTop(node2, body) : 0;
         echo = false;
       };
-      listen(input, "input", apply);
+      input.addEventListener?.("input", apply);
+      let obs = null;
       if (typeof doc.defaultView?.MutationObserver === "function") {
-        const obs = new doc.defaultView.MutationObserver(apply);
+        obs = new doc.defaultView.MutationObserver(apply);
         try {
           obs.observe(input, { attributes: true, characterData: true, subtree: true });
         } catch {
         }
-        armed.push([null, "observer", () => obs.disconnect(), false]);
       }
+      const off = () => {
+        input.removeEventListener?.("input", apply);
+        try {
+          obs?.disconnect();
+        } catch {
+        }
+      };
+      pageWatch = { input, off };
+      armed.push([null, "observer", off, false]);
+      return true;
     },
     dispose() {
       dead = true;
@@ -41451,6 +41615,13 @@ function createReadPane({
   showParsedBtn.setAttribute("data-tip", "parse.show-parsed");
   showParsedBtn.setAttribute("aria-label", "Show parsed text boxes");
   showParsedBtn.setAttribute("aria-pressed", readShowParsed(storage) ? "true" : "false");
+  const outlineTabBtn = el("button", "pxd-read__mode pxd-read__outlinetab", modes);
+  outlineTabBtn.type = "button";
+  outlineTabBtn.textContent = "Outline";
+  outlineTabBtn.setAttribute("data-tip", "parse.outline-tab");
+  outlineTabBtn.setAttribute("aria-label", "Show the outline");
+  outlineTabBtn.setAttribute("aria-pressed", "false");
+  setHidden2(outlineTabBtn, true);
   const progress = el("div", "pxd-read__progress", pane);
   setHidden2(progress, true);
   const progressFill = el("div", "pxd-read__progressfill", progress);
@@ -42435,10 +42606,11 @@ function createReadPane({
     root?.classList?.remove("pxd-root--pdf-drag");
   };
   const endPdfDrag = () => {
+    const was = dragging;
     dragging = false;
     clearDragClass();
     dropChip();
-    clearLiveSelection();
+    if (was) clearLiveSelection();
     disarm2();
   };
   const paintChip = (data, color, text3) => {
@@ -43366,6 +43538,7 @@ function createReadPane({
   let parseStore = null;
   let parseHelper = null;
   let viewMode = "reader";
+  let narrowTab = "page";
   let explicitMode = false;
   const ensureStore2 = () => {
     if (!parseStore) parseStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
@@ -43428,12 +43601,17 @@ function createReadPane({
     pane.classList.add("pxd-read--modes");
   };
   function applyModeClass() {
-    pane.classList.remove("pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
+    pane.classList.remove("pxd-read--parsed", "pxd-read--both", "pxd-read--narrow", "pxd-read--both-page");
     const width = Number(pane.clientWidth) || Number(mountW) || 0;
-    if (viewMode === "both") {
+    const narrow = viewMode === "both" && width > 0 && width < BOTH_MIN_PX;
+    if (narrow && narrowTab === "page") {
+      pane.classList.add("pxd-read--both-page");
+    } else if (viewMode === "both") {
       pane.classList.add("pxd-read--both");
-      if (width > 0 && width < BOTH_MIN_PX) pane.classList.add("pxd-read--narrow");
+      if (narrow) pane.classList.add("pxd-read--narrow");
     }
+    setHidden2(outlineTabBtn, !narrow);
+    outlineTabBtn.setAttribute("aria-pressed", narrow && narrowTab === "outline" ? "true" : "false");
     for (const [id, button2] of Object.entries(modeBtns)) {
       button2.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
     }
@@ -43809,6 +43987,7 @@ function createReadPane({
     }
     return parsedView;
   };
+  const pageNowOf = () => Number(String(readerField()?.value || "").trim()) || 1;
   function dropParsed() {
     try {
       parsedView?.dispose?.();
@@ -43819,7 +43998,9 @@ function createReadPane({
     viewMode = "reader";
     setHidden2(modes, true);
     setHidden2(progress, true);
-    pane.classList.remove("pxd-read--modes", "pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
+    pane.classList.remove("pxd-read--modes", "pxd-read--parsed", "pxd-read--both", "pxd-read--narrow", "pxd-read--both-page");
+    setHidden2(outlineTabBtn, true);
+    narrowTab = "page";
     setHidden2(pill, false);
     for (const [id, button2] of Object.entries(modeBtns)) {
       button2.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
@@ -43910,6 +44091,10 @@ function createReadPane({
       found = null;
     }
     if (!openFlag) return;
+    try {
+      view2.scrollToPage?.(pageNowOf());
+    } catch {
+    }
     if (!found && view2.blockCount() === 0) {
       try {
         await view2.parseBuiltin();
@@ -43922,6 +44107,16 @@ function createReadPane({
     const next = showParsedBtn.getAttribute("aria-pressed") !== "true";
     const on = parsedView ? parsedView.setShowParsed(next) : (writeShowParsed(storage, next), next);
     showParsedBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+  listen(outlineTabBtn, "click", (event) => {
+    event.stopPropagation?.();
+    narrowTab = narrowTab === "outline" ? "page" : "outline";
+    applyModeClass();
+    if (narrowTab === "outline" && !live.querySelector?.(".rm-pdf-container")) {
+      settleNoted = false;
+      mountReader(current3.blockUid);
+      armSettle();
+    }
   });
   listen(modes, "click", (event) => {
     const id = event.target?.closest?.("[data-mode]")?.getAttribute?.("data-mode");
@@ -43973,13 +44168,13 @@ function createReadPane({
     userZoomed = false;
     settleNoted = false;
     clearLive();
-    emitReading("");
     root?.classList?.remove("pxd-root--read", "pxd-root--read-stack");
     try {
       root?.style?.removeProperty?.("--pxd-read-w");
     } catch {
     }
     pane.remove();
+    emitReading("");
     if (notify) {
       try {
         onClose?.();
@@ -45291,6 +45486,7 @@ function createThemeFollow({ doc, root, getMode, timers } = {}) {
 }
 
 // src/view/pdf-flip.js
+init_card_face();
 var PDF_DARK_CLASSES = Object.freeze(["pxd-pdf-dark--off", "pxd-pdf-dark--dim", "pxd-pdf-dark--invert"]);
 var HOVER_MS = 120;
 function normalizePdfDark(value) {
@@ -45453,6 +45649,13 @@ function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, host
   };
   const paintBar = () => {
     if (pagesEl) pagesEl.textContent = pageBarText(page, total);
+    if (!bar) return;
+    const arrows = flipArrowsShown(total);
+    for (const step of bar.querySelectorAll?.(".pxd-pdf-bar__step") || []) {
+      if (arrows) step.removeAttribute?.("hidden");
+      else step.setAttribute?.("hidden", "");
+    }
+    bar.classList?.toggle?.("pxd-pdf-bar--single", !arrows);
   };
   const cancelRender = () => {
     const current3 = renderTask;
@@ -45786,6 +45989,13 @@ function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, host
     },
     live() {
       return Boolean(pdf || loading);
+    },
+    // The page the card shows right now (1 when it is not the live card).
+    pageOf(uid) {
+      return uid && uid === currentUid2 && pdf ? page : 1;
+    },
+    totalOf(uid) {
+      return uid && uid === currentUid2 && pdf ? total : 0;
     },
     liveUid() {
       return currentUid2;
@@ -47006,6 +47216,7 @@ function buildColorPicker(doc, onPick, listen, fourth) {
 
 // src/view/chrome.js
 init_avoid();
+init_card_face();
 init_tooltip_text();
 var CTX_GAP = 12;
 var CTX_EDGE_CLEARANCE = 28;
@@ -47873,6 +48084,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     }
     const now3 = kids.findIndex((k) => k.getAttribute("data-ctx-overflow"));
     if ((now3 < 0 ? kids.length : now3) === keep) return;
+    if (now3 >= 0 && now3 < keep && Number(row4.getAttribute("data-ctx-est")) === keep) return;
     closeCtxMore();
     more?.remove();
     kids.forEach((k, idx) => {
@@ -47896,6 +48108,18 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     });
     btn2.setAttribute("aria-haspopup", "menu");
     btn2.setAttribute("aria-expanded", "false");
+    row4.setAttribute("data-ctx-est", String(keep));
+    let excess = (ctx.offsetWidth || 0) - limit;
+    let guard = keep;
+    while (guard > 1 && excess > 0) {
+      guard -= 1;
+      const k = kids[guard];
+      k.style.display = "none";
+      k.setAttribute("data-ctx-overflow", "1");
+      k.setAttribute("data-ctx-w", String(widths[guard]));
+      hidden.unshift(k);
+      excess -= widths[guard] + 6;
+    }
   };
   const positionCtx = () => {
     if (ctx.style.display === "none" || !ctxAnchor) return;
@@ -47906,7 +48130,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     }
     const rootRect = root.getBoundingClientRect();
     const W = rootRect.width || 0;
-    const H = rootRect.height || 0;
+    const Hroot = rootRect.height || 0;
     const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP;
     const tb = toolbar.getBoundingClientRect();
     const propsEl = root.querySelector?.(".pxd-props");
@@ -47919,11 +48143,12 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const panelEl = root.querySelector?.(".pxd-panel");
     const pr = panelEl && panelEl.style?.display !== "none" ? panelEl.getBoundingClientRect() : null;
     const readEl = root.classList?.contains?.("pxd-root--read") ? root.querySelector?.(".pxd-read") : null;
-    const readBox = readEl ? readEl.getBoundingClientRect() : null;
+    const readEdge = readEl ? readerLimit(rootRect, readEl.getBoundingClientRect()) : null;
     const stops = [];
     if (pr?.width) stops.push(pr.left - (rootRect.left || 0));
-    if (readBox?.width) stops.push(readBox.left - (rootRect.left || 0));
+    if (readEdge?.right != null) stops.push(readEdge.right);
     const room = stops.length ? Math.min(W, ...stops) : W;
+    const H = readEdge?.bottom != null ? Math.min(Hroot, readEdge.bottom) : Hroot;
     ctx.style.maxWidth = stops.length && room > 2 * CTX_MARGIN ? `${Math.round(room - 2 * CTX_MARGIN)}px` : "";
     fitCtxRow(stops.length ? room - 2 * CTX_MARGIN : W - railClear - 2 * CTX_MARGIN);
     const barW = ctx.offsetWidth || 320;
@@ -47932,6 +48157,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     let top = a.rect.y - gap - barH;
     if (top < topLimit) top = a.rect.y + a.rect.h + gap;
     if (top + barH > H - CTX_MARGIN && a.rect.y - gap - barH >= topLimit) top = a.rect.y - gap - barH;
+    if (top + barH > H - CTX_MARGIN) top = H - CTX_MARGIN - barH;
     top = Math.max(top, topLimit);
     let left = a.rect.x + a.rect.w / 2 - barW / 2;
     left = Math.max(CTX_MARGIN, Math.min(left, rightLimit - barW - CTX_MARGIN));
@@ -47940,9 +48166,17 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       if (below + barH <= H - CTX_MARGIN) top = Math.max(top, below);
       else left = Math.max(left, propsRight + CTX_MARGIN);
     }
+    const dockEl = palette.style.display !== "none" ? palette : null;
+    const db = dockEl?.getBoundingClientRect?.();
+    if (db?.width && db?.height) {
+      const dock = { left: db.left - (rootRect.left || 0), top: db.top - (rootRect.top || 0), right: db.right - (rootRect.left || 0), bottom: db.bottom - (rootRect.top || 0) };
+      const placed = avoidDock({ left, top, w: barW, h: barH }, { card: a.rect, dock, gap, topLimit, margin: CTX_MARGIN });
+      top = placed.top;
+    }
     ctx.style.left = `${Math.round(left)}px`;
     ctx.style.top = `${Math.round(top)}px`;
     ctx.classList.toggle("pxd-ctx--below", top > a.rect.y);
+    on.ctxPlaced?.();
   };
   const ctxApi = {
     el: ctx,
@@ -52859,13 +53093,15 @@ init_status_tags();
 
 // src/view/quicklook.js
 init_board();
+init_card_face();
 var DEPTH = 3;
 var LIMIT2 = 24;
 var STOP_EVENTS2 = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "wheel", "keydown", "keyup", "contextmenu"];
 var childString5 = (c) => c?.[":block/string"] ?? c?.string ?? "";
 var childKids2 = (c) => c?.[":block/children"] ?? c?.children ?? [];
-function createQuickLook({ doc = globalThis.document, root, host, timers, on = {} } = {}) {
+function createQuickLook({ doc = globalThis.document, root, host, timers, on = {}, win = doc?.defaultView || null, pdfLib = null } = {}) {
   let node2 = null;
+  let pdfOff = null;
   let roots = [];
   let current3 = null;
   let cancelPending = null;
@@ -52911,6 +53147,11 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
   };
   const close = () => {
     if (!node2) return false;
+    try {
+      pdfOff?.();
+    } catch {
+    }
+    pdfOff = null;
     cancelPending?.();
     cancelPending = null;
     unmountRoots();
@@ -52925,7 +53166,158 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     target.addEventListener(type, fn, opts);
     offs.push(() => target.removeEventListener(type, fn, opts));
   };
+  const engine = () => {
+    if (pdfLib && typeof pdfLib.getDocument === "function") return pdfLib;
+    return detectPdfjs2(win)?.lib || null;
+  };
+  const fillPdf = (body, item) => {
+    let spec = null;
+    try {
+      spec = on.pdfOf?.(item) || null;
+    } catch {
+      spec = null;
+    }
+    const url = typeof spec?.url === "string" ? spec.url : "";
+    const lib = engine();
+    if (!lib || !firstPageAllowed(url)) return false;
+    node2.classList.add("pxd-quicklook--pdf");
+    const stage = el("div", "pxd-ql__pdf", body);
+    const canvas = el("canvas", "pxd-ql__canvas", stage);
+    const pill = el("div", "pxd-ql__pill", node2);
+    pill.setAttribute("role", "toolbar");
+    pill.setAttribute("aria-label", "Pages");
+    const prev = el("button", "pxd-ql__step", pill, "‹");
+    prev.type = "button";
+    prev.setAttribute("aria-label", "Previous page");
+    const pages = el("span", "pxd-ql__pages", pill, "");
+    const next = el("button", "pxd-ql__step", pill, "›");
+    next.type = "button";
+    next.setAttribute("aria-label", "Next page");
+    let pdf = null;
+    let task = null;
+    let render = null;
+    let page = startPage(spec?.page, 0);
+    let total = 0;
+    let seq = 0;
+    let live = true;
+    const paint2 = () => {
+      pages.textContent = total ? `${page} / ${total}` : "";
+      prev.disabled = page <= 1;
+      next.disabled = !total || page >= total;
+      pill.classList.toggle("pxd-ql__pill--single", total <= 1);
+    };
+    const draw = async () => {
+      const mine = ++seq;
+      if (!pdf) return;
+      let proxy = null;
+      try {
+        proxy = await pdf.getPage(page);
+      } catch {
+        return;
+      }
+      if (!live || mine !== seq || !proxy) return;
+      let base = null;
+      try {
+        base = proxy.getViewport({ scale: 1 });
+      } catch {
+        return;
+      }
+      const width = Number(stage.clientWidth) || 600;
+      const dpr = Number(win?.devicePixelRatio) || 1;
+      const scale = width / (Number(base?.width) || width);
+      let view = null;
+      try {
+        view = proxy.getViewport({ scale: scale * dpr });
+      } catch {
+        return;
+      }
+      canvas.width = Math.max(1, Math.round(view.width));
+      canvas.height = Math.max(1, Math.round(view.height));
+      canvas.style.width = `${Math.round(view.width / dpr)}px`;
+      canvas.style.height = `${Math.round(view.height / dpr)}px`;
+      try {
+        render?.cancel?.();
+      } catch {
+      }
+      try {
+        render = proxy.render({ canvasContext: canvas.getContext("2d"), viewport: view });
+      } catch {
+        return;
+      }
+      try {
+        await (render?.promise || render);
+      } catch {
+      }
+      if (mine === seq) stage.scrollTop = 0;
+    };
+    const step = (delta) => {
+      const to = flipStep(page, total || 1, delta);
+      if (to === page) return false;
+      page = to;
+      paint2();
+      void draw();
+      return true;
+    };
+    for (const [button2, delta] of [[prev, -1], [next, 1]]) {
+      button2.addEventListener("click", (event) => {
+        event.stopPropagation();
+        step(delta);
+      });
+    }
+    const onKey = (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (step(event.key === "ArrowLeft" ? -1 : 1)) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+      }
+    };
+    doc.addEventListener("keydown", onKey, true);
+    pdfOff = () => {
+      live = false;
+      doc.removeEventListener("keydown", onKey, true);
+      try {
+        render?.cancel?.();
+      } catch {
+      }
+      try {
+        task?.destroy?.();
+      } catch {
+      }
+      try {
+        pdf?.destroy?.();
+      } catch {
+      }
+      render = null;
+      task = null;
+      pdf = null;
+    };
+    paint2();
+    (async () => {
+      try {
+        task = lib.getDocument({ url });
+      } catch {
+        task = null;
+      }
+      if (!task) return;
+      let got = null;
+      try {
+        got = await (task.promise || task);
+      } catch {
+        got = null;
+      }
+      if (!live || !got) return;
+      pdf = got;
+      total = Number(got.numPages) || 1;
+      page = startPage(spec?.page, total);
+      paint2();
+      await draw();
+    })().catch(() => {
+    });
+    return true;
+  };
   const fill = (body, item) => {
+    if (item.kind === "pdf" && fillPdf(body, item)) return;
+    if (item.kind === "pdf") node2.classList.add("pxd-quicklook--pdf-roam");
     const blocksInto = (result) => {
       if (!node2 || !body.parentElement) return;
       const budget = { n: 0 };
@@ -52982,7 +53374,13 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     node2.setAttribute("aria-label", "Quick Look");
     for (const type of STOP_EVENTS2) listen(node2, type, (event) => event.stopPropagation());
     const head = el("div", "pxd-ql__head", node2);
-    el("div", "pxd-ql__title", head, item.kind === "board" ? item.title : item.title || item.string || "");
+    let shown = "";
+    try {
+      shown = item.kind === "pdf" ? on.titleOf?.(item) || "" : "";
+    } catch {
+      shown = "";
+    }
+    el("div", "pxd-ql__title", head, item.kind === "board" ? item.title : item.kind === "pdf" ? quickLookTitle(item, shown) : item.title || item.string || "");
     let refs = null;
     try {
       refs = on.getRefCount?.(item);
@@ -53021,6 +53419,9 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     }
   };
 }
+
+// src/view/board-view.js
+init_card_face();
 
 // src/view/present.js
 init_board();
@@ -54002,7 +54403,7 @@ function pdfEscapeAction({ live, fullscreen } = {}) {
   return "pass";
 }
 var CONTEXTS_QUERY = '[:find ?u ?s ?pt ?t ?ps :in $ ?uid :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/uid ?u] [?b :block/string ?s] [?b :create/time ?t] [?b :block/page ?pg] [?pg :node/title ?pt] [?b :block/parents ?p] [?p :block/children ?b] [(get-else $ ?p :block/string "") ?ps]]';
-var PDF_HIGHLIGHTS_LABEL = "Add highlights…";
+var PDF_HIGHLIGHTS_LABEL = "Add highlights";
 var DATE_BLOCK = /^\[\[([^\[\]]+)\]\]$/;
 var BLOCK_REF = /^\(\(([^()\s]+)\)\)$/;
 function pageKey(page) {
@@ -54107,12 +54508,31 @@ function selectHighlightPage(rows, { color, page } = {}) {
     return { ...row4, selected: true };
   });
 }
-function pdfHighlightButton(doc, onClick) {
+var HL_GLYPH = "M5.5 9.5L10.5 2.5l3 2.2-5 7zM5.5 9.5l-.9 2.7 3.9-.5M2 14.5h7";
+function pdfHighlightButton(doc, onClick, count = 0) {
   const btn2 = doc.createElement("button");
   btn2.type = "button";
   btn2.className = "pxd-pdf-highlights pxd-chrome";
-  btn2.textContent = PDF_HIGHLIGHTS_LABEL;
   btn2.setAttribute("aria-label", PDF_HIGHLIGHTS_LABEL);
+  btn2.setAttribute("data-tip", "pdf.highlights");
+  if (typeof doc.createElementNS === "function") {
+    const svg = doc.createElementNS(SVG_NS4, "svg");
+    svg.setAttribute("class", "pxd-pdf-highlights__glyph");
+    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.setAttribute("aria-hidden", "true");
+    const path = doc.createElementNS(SVG_NS4, "path");
+    path.setAttribute("d", HL_GLYPH);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "1.4");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.append(path);
+    btn2.append(svg);
+  }
+  const num6 = doc.createElement("span");
+  num6.className = "pxd-pdf-highlights__count";
+  btn2.append(num6);
+  setHighlightCount(btn2, count);
   const stop2 = (event) => {
     event.preventDefault?.();
     event.stopPropagation?.();
@@ -54125,6 +54545,18 @@ function pdfHighlightButton(doc, onClick) {
     onClick?.(event);
   });
   return btn2;
+}
+function setHighlightCount(btn2, count) {
+  const n2 = Number(count);
+  const text3 = Number.isFinite(n2) && n2 > 0 ? String(Math.floor(n2)) : "";
+  const num6 = btn2?.querySelector?.(".pxd-pdf-highlights__count");
+  if (num6 && num6.textContent !== text3) num6.textContent = text3;
+  if (num6) {
+    if (text3) num6.removeAttribute?.("hidden");
+    else num6.setAttribute?.("hidden", "");
+  }
+  btn2?.setAttribute?.("data-count", text3 || "0");
+  return text3;
 }
 function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
   let rowsState = (Array.isArray(rows) ? rows : []).map((row4) => ({ ...row4, selected: false }));
@@ -55124,12 +55556,29 @@ function buildBoardView(onFail, {
   const coverFaces = /* @__PURE__ */ new Map();
   const coverGen = /* @__PURE__ */ new Map();
   const flashedMarks = [];
+  const syncCramped = () => {
+    let box2 = null;
+    let bar = null;
+    try {
+      box2 = viewport.getBoundingClientRect?.();
+    } catch {
+      box2 = null;
+    }
+    try {
+      bar = root.querySelector?.(".pxd-toolbar")?.getBoundingClientRect?.() || null;
+    } catch {
+      bar = null;
+    }
+    const want = boardCramped(freeBoardArea(box2, bar));
+    if (root.classList.contains("pxd-root--cramped") !== want) root.classList.toggle("pxd-root--cramped", want);
+  };
   const measure = () => {
     const r = root.getBoundingClientRect();
     rootRect = { left: r.left || 0, top: r.top || 0, width: r.width || 0, height: r.height || 0 };
     size = { width: rootRect.width, height: rootRect.height };
     root.classList.toggle("pxd-root--narrow", size.width > 0 && size.width < 560);
     readPane?.layout?.(size.width);
+    syncCramped();
   };
   onFail.push(
     () => {
@@ -55248,16 +55697,27 @@ function buildBoardView(onFail, {
       } catch {
       }
     },
+    // Parse opens the reader on the card's page (page 1 unless the card was flipped), so the outline starts at
+    // the top instead of at the last page Roam remembered. A reader already on this card keeps its page.
     onPdfParse: (uid) => {
-      try {
-        itemsR.openPdf?.(uid);
-      } catch {
+      const already = readPane?.isOpen?.() === true && readPane?.cardUid?.() === uid;
+      if (already) {
+        try {
+          itemsR.openPdf?.(uid);
+        } catch {
+        }
+      } else {
+        try {
+          void itemsR.openPdfAt?.(uid, pdfFlip?.pageOf?.(uid) || 1);
+        } catch {
+        }
       }
       try {
         ensureReadPane().parse?.();
       } catch {
       }
     },
+    pdfCardPage: (uid) => pdfFlip?.pageOf?.(uid) || 1,
     onHighlightHover: (uid, on) => {
       try {
         flashPaneMarks(uid, on);
@@ -55295,9 +55755,11 @@ function buildBoardView(onFail, {
         measure();
         const r = rects().get(cardUid);
         if (!r) return;
-        const area = root.querySelector?.(".pxd-viewport")?.getBoundingClientRect?.();
-        const w = Number(area?.width) || size.width;
-        moveViewport({ x: w / 2 - (r.x + r.w / 2) * vp.zoom, y: size.height / 2 - (r.y + r.h / 2) * vp.zoom, zoom: vp.zoom });
+        const paneEl = readPane?.element?.();
+        const beside = !root.classList.contains("pxd-root--read-stack") && paneEl?.offsetLeft > 0;
+        const w = beside ? paneEl.offsetLeft : Number(root.querySelector?.(".pxd-viewport")?.getBoundingClientRect?.()?.width) || size.width;
+        const y = size.height / 2 - (r.y + r.h / 2) * vp.zoom;
+        moveViewport({ x: w / 2 - (r.x + r.w / 2) * vp.zoom, y, zoom: vp.zoom });
       });
     }
   });
@@ -55406,7 +55868,7 @@ function buildBoardView(onFail, {
           }
         }
       }
-      if (!disposed) itemsR.repaintStyles();
+      if (!disposed) itemsR.repaintStyles({ highlighter: false });
       if (!disposed) {
         try {
           chrome.ctx.reposition();
@@ -58798,6 +59260,63 @@ function buildBoardView(onFail, {
       hovered: hoverItem?.kind === "pdf" && !hoverItem.collapsed ? pdfHoverUid : "",
       lod: tier
     });
+    scheduleLift();
+  };
+  let liftedUids = /* @__PURE__ */ new Set();
+  let liftHoverUid = "";
+  let liftFrame = null;
+  const scheduleLift = () => {
+    if (liftFrame || disposed) return;
+    liftFrame = timers.frame(() => {
+      liftFrame = null;
+      liftPdfControls();
+    });
+  };
+  const liftPdfControls = () => {
+    if (disposed || gesturing) return;
+    const want = /* @__PURE__ */ new Map();
+    const obstacles = [];
+    if (tier === "detail") {
+      for (const sel of [".pxd-dock", ".pxd-ctx", ".pxd-minimap"]) {
+        const node2 = root.querySelector?.(sel);
+        if (!node2 || node2.style?.display === "none") continue;
+        let r = null;
+        try {
+          r = node2.getBoundingClientRect?.() || null;
+        } catch {
+          r = null;
+        }
+        if (r?.width && r?.height) obstacles.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+      }
+    }
+    let clipBottom = Infinity;
+    try {
+      clipBottom = Number(viewport.getBoundingClientRect?.()?.bottom) || Infinity;
+    } catch {
+      clipBottom = Infinity;
+    }
+    if (tier === "detail") {
+      const z = Number(vp.zoom) || 1;
+      const ids = new Set([liftHoverUid, selection.items[selection.items.length - 1]].filter(Boolean));
+      for (const uid of ids) {
+        const item = board2()?.items.get(uid);
+        const r = item?.kind === "pdf" ? rects().get(uid) : null;
+        if (!r) continue;
+        const lift = pdfDockLift({
+          left: rootRect.left + vp.x + r.x * z,
+          top: rootRect.top + vp.y + r.y * z,
+          w: r.w * z,
+          h: r.h * z
+        }, obstacles, z, { clipBottom });
+        if (lift > 0) want.set(uid, lift);
+      }
+    }
+    for (const uid of liftedUids) {
+      if (want.has(uid)) continue;
+      itemsR.shellOf?.(uid)?.style?.removeProperty?.("--pxd-pdf-lift");
+    }
+    for (const [uid, lift] of want) itemsR.shellOf?.(uid)?.style?.setProperty?.("--pxd-pdf-lift", `${lift}px`);
+    liftedUids = new Set(want.keys());
   };
   const pdfChipsFor = (item) => chipsForPdf(item, board2()?.items, {
     source: pdfSourceOfItem,
@@ -58926,6 +59445,9 @@ function buildBoardView(onFail, {
       chromeRebuilt: () => {
         tooltipCheck();
         bindInfoHover();
+      },
+      ctxPlaced: () => {
+        if (liftedUids.size || liftHoverUid || selection.items.length) scheduleLift();
       },
       openBoard: () => {
         const it = singleItem();
@@ -59632,7 +60154,9 @@ function buildBoardView(onFail, {
     host,
     timers,
     on: {
-      getRefCount: (item) => badgeCache.get(badgeKeyOf(item))?.stats?.refs
+      getRefCount: (item) => badgeCache.get(badgeKeyOf(item))?.stats?.refs,
+      titleOf: (item) => pdfDisplayTitle(item),
+      pdfOf: (item) => ({ url: pdfUrlOf(item.uid), page: pdfFlip?.pageOf?.(item.uid) || 1 })
     }
   });
   const presenter = createPresenter({
@@ -60850,6 +61374,12 @@ function buildBoardView(onFail, {
   listen(root, "pointermove", (event) => {
     tablePointer = inRoamTable(event.target) ? event.target : null;
     lastPointer = { x: event.clientX || 0, y: event.clientY || 0 };
+    const pdfNode = event.target?.closest?.(".pxd-item--pdf");
+    const pdfUnder = pdfNode?.getAttribute?.("data-uid") || "";
+    if (pdfUnder !== liftHoverUid) {
+      liftHoverUid = pdfUnder;
+      scheduleLift();
+    }
     if (event.target?.closest?.(".pxd-chrome")) {
       if (hoverPending && event.target.closest(".pxd-ctx")) cancelHoverGrace();
       return;
@@ -60958,15 +61488,27 @@ function buildBoardView(onFail, {
       placeNearAnchor(node2, anchor.getBoundingClientRect(), root, { gap: 6 });
     }
   };
-  const ensurePdfHighlightButtons = () => {
+  const ensurePdfHighlightButtons = (changed2 = null) => {
     if (disposed) return;
     const b = board2();
     if (!b) return;
     for (const item of b.items.values()) {
       if (item?.kind !== "pdf") continue;
       const shell = itemsR.shellOf?.(item.uid);
-      if (!shell || shell.querySelector?.(".pxd-pdf-highlights")) continue;
-      const btn2 = pdfHighlightButton(doc, () => openHighlightPicker(item, btn2));
+      if (!shell) continue;
+      const have = shell.querySelector?.(".pxd-pdf-highlights");
+      if (have && changed2 && !changed2.has(item.uid)) continue;
+      let count = 0;
+      try {
+        count = Number(host?.pdfCover?.(pdfSourceOf(item))?.count) || 0;
+      } catch {
+        count = 0;
+      }
+      if (have) {
+        setHighlightCount(have, count);
+        continue;
+      }
+      const btn2 = pdfHighlightButton(doc, () => openHighlightPicker(item, btn2), count);
       btn2.classList.add("pxd-hl-add");
       shell.append(btn2);
     }
@@ -61448,6 +61990,19 @@ function buildBoardView(onFail, {
       }));
       ro.observe(root);
       observers.push(ro);
+      let areaWait = null;
+      const area = trackObserver(new RO(() => {
+        if (disposed || suspended) return;
+        areaWait?.();
+        areaWait = timers.later(() => {
+          areaWait = null;
+          if (disposed || suspended) return;
+          syncCramped();
+          chrome.ctx.reposition();
+        }, 240);
+      }));
+      area.observe(viewport);
+      observers.push(area);
     } catch {
     }
   }
@@ -61507,7 +62062,7 @@ function buildBoardView(onFail, {
         view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null
       });
       if (laneMarks || lanePreviewLayout) applyLaneMarks();
-      ensurePdfHighlightButtons();
+      ensurePdfHighlightButtons(dirty.all || dirty.structural ? null : dirty.items);
       syncEmptyHint(emptyHint, b);
       itemsChanged = true;
       syncTrailPaint(b);
@@ -61572,12 +62127,14 @@ function buildBoardView(onFail, {
       if (suggestMode !== "off" && selection.items.join("|") !== suggestSelKey) refreshSuggest();
       if (!gesturing && !itemsR.isEditing()) showCtx();
       else chrome.ctx.hide();
+      scheduleLift();
       syncProps();
       if (lensTag && dirty.structural) rebuildLens();
       if (focusOn || lensTag) applyFocus();
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
+    if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLift();
     if (itemsChanged || dirty.minimap || dirty.viewport && !gesturing) {
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });

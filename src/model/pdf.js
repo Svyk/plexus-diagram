@@ -379,6 +379,8 @@ export function readPaneWidth(mountWidth, stored) {
   const hasStored = Number.isFinite(given) && given > 0;
   if (stacked) return { stacked: true, width: Math.round(mount) };
   const raw = hasStored ? given : (mount > 0 ? Math.round(mount * 0.42) : 360);
-  const width = Math.min(720, Math.max(360, Math.round(raw)));
+  // Beside the board, the board keeps at least 360 px: a width stored on a wider window must not leave a sliver.
+  const room = mount > 0 ? Math.max(360, mount - 360) : 720;
+  const width = Math.min(720, room, Math.max(360, Math.round(raw)));
   return { stacked: false, width };
 }

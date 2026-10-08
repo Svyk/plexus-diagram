@@ -475,6 +475,11 @@ test("badges: refs / boards / todo chips, up to three attribute chips, hidden of
     const next = h.shell("cardAAAA1").querySelector(".pxd-item__badges");
     assert.equal(next.querySelector(".pxd-badge-chip--boards"), null);
     assert.equal(next.querySelector(".pxd-badge-chip--refs").textContent, "4 refs");
+    h.r.setBadges(new Map([["cardAAAA1", { refs: 1, boards: 1, open: 0, done: 0 }]]));
+    const single = h.shell("cardAAAA1").querySelector(".pxd-item__badges");
+    assert.equal(single.querySelector(".pxd-badge-chip--refs").textContent, "1 ref", "singular at one");
+    assert.equal(single.querySelector(".pxd-badge-chip--boards").textContent, "on 1 board");
+    assert.equal(single.querySelector(".pxd-badge-chip--refs").title, "1 reference to this card");
     h.r.setLod("map", 0.3);
     assert.equal(h.shell("cardAAAA1").querySelector(".pxd-item__badges"), null, "hidden at map");
     h.r.setLod("overview", 0.1);

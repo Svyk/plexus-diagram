@@ -1,0 +1,120 @@
+/* U2. OCR text layer inside a scanned page's .textLayer. Words are transparent, sized like pdf.js text,
+   and only the selection shows (the link colour of the followed Roam theme at 30%). */
+
+.textLayer > .pxd-tl-word {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  color: transparent;
+  font-family: sans-serif;
+  line-height: 1;
+  white-space: pre;
+  transform-origin: 0 0;
+  cursor: text;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.textLayer > br[data-pxd-word] {
+  user-select: none;
+}
+
+.textLayer > .pxd-tl-word::selection {
+  color: transparent;
+  background: color-mix(in srgb, var(--pxd-link, #2563eb) 30%, transparent);
+}
+
+/* U5. Card-shaped drag ghost. It is a real card (.pxd-item) in a fixed layer; only its transform moves. */
+
+.pxd-root .pxd-item.pxd-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  width: 280px;
+  max-height: 240px;
+  overflow: hidden;
+  pointer-events: none;
+  will-change: transform;
+  contain: content;
+  opacity: .94;
+  transition: opacity var(--pxd-zoom-ms, 120ms) ease-out;
+}
+
+.pxd-root .pxd-ghost .pxd-ghost__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--pxd-text);
+}
+
+.pxd-root .pxd-ghost .pxd-ghost__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.pxd-root .pxd-ghost[data-kind="highlight"] .pxd-ghost__text {
+  padding-left: 8px;
+  border-left: 3px solid var(--pxd-ghost-bar, var(--pxd-yellow-line, #ca8a04));
+}
+
+.pxd-root .pxd-ghost .pxd-ghost__bar { display: none; }
+.pxd-root .pxd-ghost:has(.pxd-ghost__bar[data-color="green"]) { --pxd-ghost-bar: var(--pxd-green-line); }
+.pxd-root .pxd-ghost:has(.pxd-ghost__bar[data-color="blue"]) { --pxd-ghost-bar: var(--pxd-blue-line); }
+.pxd-root .pxd-ghost:has(.pxd-ghost__bar[data-color="red"]) { --pxd-ghost-bar: var(--pxd-red-line); }
+.pxd-root .pxd-ghost:has(.pxd-ghost__bar[data-color="orange"]) { --pxd-ghost-bar: var(--pxd-orange-line); }
+.pxd-root .pxd-ghost:has(.pxd-ghost__bar[data-color="purple"]) { --pxd-ghost-bar: var(--pxd-purple-line); }
+.pxd-root .pxd-ghost:has(.pxd-ghost__bar[data-color="gray"]) { --pxd-ghost-bar: var(--pxd-gray-line); }
+
+.pxd-root .pxd-ghost .pxd-ghost__table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pxd-root .pxd-ghost .pxd-ghost__table td {
+  padding: 2px 6px;
+  border: 1px solid var(--pxd-border);
+  white-space: nowrap;
+}
+
+.pxd-root .pxd-ghost .pxd-ghost__img {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+}
+
+.pxd-root .pxd-ghost .pxd-ghost__page {
+  color: var(--pxd-muted);
+  font-size: 11px;
+}
+
+/* Over the board: the dashed outline is where the card lands. */
+.pxd-root .pxd-item.pxd-ghost--board {
+  outline: 2px dashed var(--pxd-accent);
+  outline-offset: 2px;
+}
+
+.pxd-root .pxd-item.pxd-ghost--blocked {
+  opacity: .45;
+}
+
+.pxd-root .pxd-item.pxd-ghost--land,
+.pxd-root .pxd-item.pxd-ghost--cancel {
+  opacity: 0;
+}
+
+.pxd-root.pxd-root--motion-off .pxd-item.pxd-ghost {
+  transition: none;
+}
+
+.pxd-root.pxd-root--pdf-drag:has(.pxd-ghost--blocked) {
+  cursor: not-allowed;
+}

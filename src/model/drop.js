@@ -6,11 +6,12 @@
 // A page uid resolves to [[Title]] and a block uid to ((uid)) through the injected resolveUid.
 
 import { selectBlocks } from "./parse-schema.js";
-import { toRoamMarkdown } from "./parse-to-roam-md.js";
+import { escapeMarkdownText, flattenLine, linkSafeText, toRoamMarkdown } from "./parse-to-roam-md.js";
 
 export const CARD_MIME = "application/x-plexus-card";
 export const PARSE_MIME = "application/x-plexus-parse";
 export const PARSE_MISSING_TOAST = "Parse result not found; parse the PDF again";
+export const TEXT_CARD_MAX = 4000;
 const MAX_DROP = 50;
 const URL_LINE = /^(?:https?|roam):\/\//i;
 const APP_URL = /#\/app\/([^/?#]+)(?:\/page\/([\w-]+))?/;
@@ -82,6 +83,18 @@ export function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) 
   return [];
 }
 
+// U3/U5. A text payload ({ kind: "text", text, page, pdfUid, quote }) becomes one note card: the text on
+// one line plus " (p. N)". A quote is a Roam blockquote. Links and tags in the text stay plain text.
+export function textCardMarkdown({ text, page, quote = false } = {}) {
+  let line = flattenLine(text);
+  if (!line) return "";
+  if (line.length > TEXT_CARD_MAX) line = `${line.slice(0, TEXT_CARD_MAX - 1).trimEnd()}…`;
+  const n = Number(page);
+  const suffix = Number.isInteger(n) && n > 0 ? ` (p. ${n})` : "";
+  const body = escapeMarkdownText(linkSafeText(line) + suffix, { leading: !quote });
+  return `- ${quote ? "> " : ""}${body}`;
+}
+
 function headingTitle(block) {
   return String(block?.text ?? "").replace(/\s+/g, " ").trim();
 }
@@ -124,6 +137,16 @@ export function planParseInsert(doc, payload) {
 // Missing cache writes nothing and toasts PARSE_MISSING_TOAST. The session methods
 // own the write budget. Returns { ok, uids, ... } for the board to select.
 export async function handleParseDrop({ payload, store, session, point, toast } = {}) {
+  if (payload?.kind === "text") {
+    const markdown = textCardMarkdown(payload);
+    if (!markdown) return { ok: false, reason: "empty", uids: [] };
+    const res = await session?.insertParsedCard?.({
+      x: Number.isFinite(point?.x) ? point.x : 0,
+      y: Number.isFinite(point?.y) ? point.y : 0,
+      markdown,
+    });
+    return { ...(res || { ok: false, reason: "empty" }), uids: res?.uid ? [res.uid] : [] };
+  }
   let doc = null;
   try {
     doc = await store?.getParse?.(payload?.sha256, payload?.engine, payload?.optsHash);

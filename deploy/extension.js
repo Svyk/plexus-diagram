@@ -873,15 +873,15 @@ function mergePropsForWrite(props, plexus) {
 }
 function normalizeItemLayout(plexus) {
   const p = isObject(plexus) ? plexus : {};
-  const num4 = (v) => isNum(v) ? v : void 0;
+  const num6 = (v) => isNum(v) ? v : void 0;
   const type = ITEM_TYPES.includes(p.type) ? p.type : "card";
   const section2 = type === "section";
   return {
     type,
-    x: num4(p.x),
-    y: num4(p.y),
-    w: num4(p.w),
-    h: num4(p.h),
+    x: num6(p.x),
+    y: num6(p.y),
+    w: num6(p.w),
+    h: num6(p.h),
     color: styleColor(p.color),
     collapsed: p.collapsed === true ? true : p.collapsed === false ? false : void 0,
     // Sections use titleSize. Cards and text take an integer 10–48 (text used to be the four steps only).
@@ -2468,16 +2468,16 @@ function pointInPolygon(point, polygon) {
   for (let i = 0, j = n2 - 1; i < n2; j = i++) {
     if (onSegment(polygon[j], polygon[i], point)) return true;
   }
-  let inside5 = false;
+  let inside6 = false;
   for (let i = 0, j = n2 - 1; i < n2; j = i++) {
     const yi = polygon[i].y;
     const yj = polygon[j].y;
     const xi = polygon[i].x;
     const xj = polygon[j].x;
     const intersect = yi > point.y !== yj > point.y && point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi;
-    if (intersect) inside5 = !inside5;
+    if (intersect) inside6 = !inside6;
   }
-  return inside5;
+  return inside6;
 }
 function itemsInPolygon(board2, polygon, rects) {
   if (!board2 || !Array.isArray(polygon) || polygon.length < 3) return [];
@@ -5323,9 +5323,14 @@ var init_tooltip_text = __esm({
       "parse.merges-flat": e("Merged cells shown flat", "Roam Grid draws merges. Native Roam shows the covered cells empty.", null, "Insert as flat table repeats the anchor text into covered cells."),
       "parse.insert-flat": e("Insert as flat table", "Repeat the anchor text into covered cells so a native table still reads."),
       "pdf.parse": e("Parse", "Parse this PDF with the built-in engine and open the parsed view."),
-      "parse.mode.reader": e("Reader", "Show the PDF reader."),
-      "parse.mode.parsed": e("Parsed", "Show the parsed blocks. The page strip stays."),
-      "parse.mode.both": e("Both", "Reader and parsed view side by side when the pane is wide enough."),
+      "parse.mode.reader": e("Read", "Read the PDF. Select text on any page, scanned pages too, to copy it, make a card or drag it to the board."),
+      "parse.mode.parsed": e("Read + Outline", "The PDF beside its outline: headings, tables and figures with their pages."),
+      "parse.mode.both": e("Read + Outline", "The PDF beside its outline: headings, tables and figures with their pages. Select several rows to insert or send them together."),
+      "parse.read-text": e("Read text", "Read the text of the scanned pages so you can select, copy and highlight it. Nothing is written to your graph."),
+      "read.sel.copy": e("Copy", "Copy the selected text."),
+      "read.sel.card": e("Card", "A note card beside the PDF with the selected text and its page."),
+      "read.sel.quote": e("Quote", "A quote card beside the PDF with the selected text and its page."),
+      "read.sel.drag": e("Drag to the board", "Drag the selection onto the board as a card. Hold Alt when you drop for a quote."),
       "parse.range": e("Page range", "All, the current page, or a range such as 1–5."),
       "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),
       "parse.chip": e("Parse engine", "Built-in runs on this machine. Docling uses the local helper."),
@@ -5818,7 +5823,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
   if (!a || !b) return null;
   const bounds = boundsOf([a, b]);
   const view = { x: bounds.x - pad2, y: bounds.y - pad2, w: bounds.w + 2 * pad2, h: bounds.h + 2 * pad2 };
-  const inside5 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
+  const inside6 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
   const label = (item) => itemLabel(item, blockText) || item.title || "";
   const cards = [];
   let others = 0;
@@ -5827,7 +5832,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     if (!r) continue;
     const role = item.uid === edge.from ? "from" : item.uid === edge.to ? "to" : "other";
     if (role === "other") {
-      if (!inside5(r) || others >= maxOthers) continue;
+      if (!inside6(r) || others >= maxOthers) continue;
       others += 1;
     }
     cards.push({ uid: item.uid, type: item.type, rect: r, title: label(item), role });
@@ -6792,8 +6797,8 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
         focusEl3(back);
         return;
       }
-      const inside5 = node2.contains?.(event.target) || node2.contains?.(doc.activeElement);
-      if (!inside5) return;
+      const inside6 = node2.contains?.(event.target) || node2.contains?.(doc.activeElement);
+      if (!inside6) return;
       const tag = fieldTag(event);
       if (tag === "input" || tag === "textarea" || tag === "select") return;
       const buttons = [...node2.querySelectorAll("button")];
@@ -6905,8 +6910,8 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
     if (event.key !== "Enter" && event.key !== " " && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     const tag = String(event.target?.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea") return;
-    const inside5 = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
-    if (!inside5) return;
+    const inside6 = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
+    if (!inside6) return;
     event.preventDefault();
     event.stopPropagation();
     if (event.key === "Enter" || event.key === " ") {
@@ -7367,6 +7372,15 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   }
   return [];
 }
+function textCardMarkdown({ text: text3, page, quote = false } = {}) {
+  let line = flattenLine(text3);
+  if (!line) return "";
+  if (line.length > TEXT_CARD_MAX) line = `${line.slice(0, TEXT_CARD_MAX - 1).trimEnd()}…`;
+  const n2 = Number(page);
+  const suffix = Number.isInteger(n2) && n2 > 0 ? ` (p. ${n2})` : "";
+  const body = escapeMarkdownText(linkSafeText(line) + suffix, { leading: !quote });
+  return `- ${quote ? "> " : ""}${body}`;
+}
 function headingTitle(block) {
   return String(block?.text ?? "").replace(/\s+/g, " ").trim();
 }
@@ -7403,6 +7417,16 @@ function planParseInsert(doc, payload) {
   return { action: "card", markdown: toRoamMarkdown(doc, ids).markdown };
 }
 async function handleParseDrop({ payload, store, session, point, toast } = {}) {
+  if (payload?.kind === "text") {
+    const markdown = textCardMarkdown(payload);
+    if (!markdown) return { ok: false, reason: "empty", uids: [] };
+    const res = await session?.insertParsedCard?.({
+      x: Number.isFinite(point?.x) ? point.x : 0,
+      y: Number.isFinite(point?.y) ? point.y : 0,
+      markdown
+    });
+    return { ...res || { ok: false, reason: "empty" }, uids: res?.uid ? [res.uid] : [] };
+  }
   let doc = null;
   try {
     doc = await store?.getParse?.(payload?.sha256, payload?.engine, payload?.optsHash);
@@ -7430,7 +7454,7 @@ async function handleParseDrop({ payload, store, session, point, toast } = {}) {
   }
   return { ok: false, reason: "empty", uids: [] };
 }
-var CARD_MIME, PARSE_MIME, PARSE_MISSING_TOAST, MAX_DROP, URL_LINE, APP_URL;
+var CARD_MIME, PARSE_MIME, PARSE_MISSING_TOAST, TEXT_CARD_MAX, MAX_DROP, URL_LINE, APP_URL;
 var init_drop = __esm({
   "src/model/drop.js"() {
     init_parse_schema();
@@ -7438,6 +7462,7 @@ var init_drop = __esm({
     CARD_MIME = "application/x-plexus-card";
     PARSE_MIME = "application/x-plexus-parse";
     PARSE_MISSING_TOAST = "Parse result not found; parse the PDF again";
+    TEXT_CARD_MAX = 4e3;
     MAX_DROP = 50;
     URL_LINE = /^(?:https?|roam):\/\//i;
     APP_URL = /#\/app\/([^/?#]+)(?:\/page\/([\w-]+))?/;
@@ -29927,13 +29952,13 @@ function connected(s, t, tol = 4) {
   return v.pos >= h.a - tol && v.pos <= h.b + tol && h.pos >= v.a - tol && h.pos <= v.b + tol;
 }
 function rowsBetween(words, { x0, x1, y0, y1 }) {
-  const inside5 = words.filter((w) => {
+  const inside6 = words.filter((w) => {
     const cx = (w.x0 + w.x1) / 2;
     const cy = w.base - 0.3 * w.size;
     return cx >= x0 - 2 && cx <= x1 + 2 && cy > y0 && cy < y1;
   }).sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
-  for (const w of inside5) {
+  for (const w of inside6) {
     const r = rows[rows.length - 1];
     if (r && Math.abs(r.base - w.base) <= 0.3 * Math.max(r.size, w.size)) r.words.push(w);
     else rows.push({ base: w.base, size: w.size, words: [w] });
@@ -30204,8 +30229,8 @@ function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, 
   }
   const usedBoxes = /* @__PURE__ */ new Set();
   for (const b of boxes) {
-    const inside5 = tables.some((t) => b.x0 >= t.bbox[0] - 2 && b.x1 <= t.bbox[2] + 2 && b.y0 >= t.bbox[1] - 2 && b.y1 <= t.bbox[3] + 2);
-    if (inside5) usedBoxes.add(b);
+    const inside6 = tables.some((t) => b.x0 >= t.bbox[0] - 2 && b.x1 <= t.bbox[2] + 2 && b.y0 >= t.bbox[1] - 2 && b.y1 <= t.bbox[3] + 2);
+    if (inside6) usedBoxes.add(b);
   }
   return { tables, bands, usedWords, usedRules, usedBoxes, released, segments: segs };
 }
@@ -30581,8 +30606,8 @@ function looksLikeChart(band, graphics) {
   const width = band.x1 - band.x0;
   let bars = 0;
   for (const b of graphics.boxes || []) {
-    const inside5 = b.x0 >= band.x0 - 2 && b.x1 <= band.x1 + 2 && b.y0 >= band.y0 - 2 && b.y1 <= band.y1 + 2;
-    if (!inside5 || b.light) continue;
+    const inside6 = b.x0 >= band.x0 - 2 && b.x1 <= band.x1 + 2 && b.y0 >= band.y0 - 2 && b.y1 <= band.y1 + 2;
+    if (!inside6 || b.light) continue;
     if (b.x1 - b.x0 < 0.6 * width && b.y1 - b.y0 > 4 && b.x1 - b.x0 > 4) bars++;
   }
   return bars >= 4;
@@ -30725,7 +30750,7 @@ function headingLevel(line, { bodySize, classes, nextIsBody = true, isolated = f
     return Math.min(4, classes.length + 1);
   }
   const depth = numberedDepth(text3);
-  const rest = depth ? text3.replace(NUMBERED_RE, (m, num4, a, b, ...r) => m.slice(m.length - 1)) : "";
+  const rest = depth ? text3.replace(NUMBERED_RE, (m, num6, a, b, ...r) => m.slice(m.length - 1)) : "";
   const wordy = depth && /^[A-Z][A-Za-z]{2,}/.test(rest) && (line.mathShare || 0) < 0.1 && !line.words.some((w) => w.sup || w.sub);
   if (wordy && bodySized && wordCount(text3) <= 14 && !/[.?!,;:]$/.test(text3) && (line.bold || line.italic || isolated) && nextIsBody) {
     return Math.min(6, classes.length + depth);
@@ -30938,9 +30963,9 @@ function splitColumn(rowsIn, col, size) {
   const edges = [col.x0, ...seps.map((g) => (g.x0 + g.x1) / 2), col.x1];
   const cols = [];
   for (let k = 0; k + 1 < edges.length; k++) {
-    const inside5 = rows.flat().filter((w) => (w.x0 + w.x1) / 2 >= edges[k] && (w.x0 + w.x1) / 2 < edges[k + 1]);
-    if (!inside5.length) continue;
-    cols.push({ x0: Math.max(edges[k], Math.min(...inside5.map((w) => w.x0))), x1: Math.min(edges[k + 1], Math.max(...inside5.map((w) => w.x1))) });
+    const inside6 = rows.flat().filter((w) => (w.x0 + w.x1) / 2 >= edges[k] && (w.x0 + w.x1) / 2 < edges[k + 1]);
+    if (!inside6.length) continue;
+    cols.push({ x0: Math.max(edges[k], Math.min(...inside6.map((w) => w.x0))), x1: Math.min(edges[k + 1], Math.max(...inside6.map((w) => w.x1))) });
   }
   return { cols: cols.length >= 2 ? cols : [col], seps: cols.length >= 2 ? seps : [] };
 }
@@ -31383,12 +31408,12 @@ function coveredAt(cellMap, r, c, span) {
   return false;
 }
 function tableFromBand(band, words) {
-  const inside5 = words.filter((w) => {
+  const inside6 = words.filter((w) => {
     const cx = (w.x0 + w.x1) / 2;
     const cy = w.base - 0.3 * w.size;
     return cx >= band.x0 - 4 && cx <= band.x1 + 4 && cy >= band.y0 - 1 && cy <= band.y1 + 1;
   });
-  if (!inside5.length) return null;
+  if (!inside6.length) return null;
   const fullYs = band.ys.filter((b) => b.full).map((b) => b.y);
   const partial = band.ys.filter((b) => !b.full);
   const rowsIn = [];
@@ -31396,7 +31421,7 @@ function tableFromBand(band, words) {
   let headerBands = 0;
   const edges = [band.y0 - 1, ...fullYs.filter((y) => y > band.y0 + 1 && y < band.y1 - 1), band.y1 + 1];
   for (let i = 0; i + 1 < edges.length; i++) {
-    const ws = inside5.filter((w) => {
+    const ws = inside6.filter((w) => {
       const cy = w.base - 0.3 * w.size;
       return cy >= edges[i] && cy < edges[i + 1];
     });
@@ -31452,7 +31477,7 @@ function tableFromBand(band, words) {
   mergeWrappedLabelRows(rowsIn, headerRowsHint);
   const table = buildTable(rowsIn, { bands: band, headerRowsHint });
   if (!table) return null;
-  table.usedWords = inside5;
+  table.usedWords = inside6;
   return table;
 }
 function hasSubRows(words, band) {
@@ -31780,10 +31805,10 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
         if (used.has(wd)) continue;
         const cx = (wd.x0 + wd.x1) / 2;
         const cy = (wd.y0 + wd.y1) / 2;
-        const inside5 = cx >= fig.x0 && cx <= fig.x1 && cy >= fig.y0 && cy <= fig.y1;
+        const inside6 = cx >= fig.x0 && cx <= fig.x1 && cy >= fig.y0 && cy <= fig.y1;
         const margin = 12;
         const near = wd.size <= 0.85 * bodySize && cx >= fig.x0 - margin && cx <= fig.x1 + margin && cy >= fig.y0 - margin && cy <= fig.y1 + margin;
-        if (!inside5 && !near) continue;
+        if (!inside6 && !near) continue;
         used.add(wd);
         fig.x0 = Math.min(fig.x0, wd.x0);
         fig.x1 = Math.max(fig.x1, wd.x1);
@@ -32444,9 +32469,9 @@ function ocrGraphics(data, w, h) {
   }
   return { rules, boxes: [], dots, shapes: [], images: [{ x0: 0, y0: 0, x1: w, y1: h }], segments: rules.length, truncated: false };
 }
-function assembleDocument(pageRecords, { numPages, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {}, from = 1, to = numPages } = {}) {
+function assembleDocument(pageRecords2, { numPages, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {}, from = 1, to = numPages } = {}) {
   const t1 = now2();
-  for (const pg of pageRecords) {
+  for (const pg of pageRecords2) {
     pg.free = [];
     for (const line of pg.lines) {
       const ws = line.words.filter((w) => !pg.used.has(w));
@@ -32454,13 +32479,13 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
       pg.free.push(ws.length === line.words.length ? line : makeLine(ws));
     }
   }
-  const furniture = findFurniture(pageRecords.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
-  for (const pg of pageRecords) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
-  const allFree = pageRecords.flatMap((pg) => pg.free);
+  const furniture = findFurniture(pageRecords2.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
+  for (const pg of pageRecords2) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
+  const allFree = pageRecords2.flatMap((pg) => pg.free);
   const bodySize = bodySizeOf(allFree) || 10;
   const bodyFont = dominantFont(allFree);
   let classes = headingClasses(allFree, bodySize);
-  const firstPage = pageRecords[0];
+  const firstPage = pageRecords2[0];
   if (firstPage && classes.length) {
     const onFirst = classes.filter((k) => firstPage.free.some((l) => Math.round(l.size * 2) / 2 === k && l.chars >= 3));
     if (onFirst.length) classes = classes.filter((k) => k <= onFirst[0]);
@@ -32476,7 +32501,7 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
   const refs = [];
   const footnotes = [];
   const perPage = [];
-  for (const pg of pageRecords) {
+  for (const pg of pageRecords2) {
     const units = [];
     if (pg.kind === "scan") {
       const id = nextId("s");
@@ -33815,7 +33840,7 @@ function createPageChips({
       return false;
     }
   };
-  const pageNumberOf2 = (target2, parsed) => {
+  const pageNumberOf3 = (target2, parsed) => {
     const hit = target2?.closest?.(".page");
     if (!hit) return 0;
     const n2 = Number(hit.getAttribute?.("data-page-number"));
@@ -33939,7 +33964,7 @@ function createPageChips({
       if (current3) hideAll();
       return;
     }
-    const n2 = pageNumberOf2(event.target, parsed);
+    const n2 = pageNumberOf3(event.target, parsed);
     const el = n2 ? pageEl?.(n2) : null;
     let hit = null;
     if (el) {
@@ -34247,9 +34272,331 @@ async function makeHighlight({ block, live, pageEl, page, getContext, adoptCreat
   }
   return { path: "picker", message };
 }
+function selectionInReader(sel, readerEl) {
+  if (!sel || sel.isCollapsed || !readerEl || typeof sel.rangeCount === "number" && sel.rangeCount < 1) return null;
+  const text3 = String(sel.toString?.() ?? "").replace(/\s+/g, " ").trim();
+  if (!text3) return null;
+  const elOf = (node2) => node2?.nodeType === 1 ? node2 : node2?.parentElement || null;
+  const start = elOf(sel.anchorNode);
+  const end = elOf(sel.focusNode);
+  if (!start || !end || !readerEl.contains?.(start) || !readerEl.contains?.(end)) return null;
+  const pageEl = start.closest?.(".page") || end.closest?.(".page");
+  if (!pageEl || !readerEl.contains?.(pageEl)) return null;
+  const page = Number(pageEl.getAttribute?.("data-page-number")) || null;
+  let range = null;
+  try {
+    range = sel.getRangeAt?.(0) || null;
+  } catch {
+    range = null;
+  }
+  let rect = null;
+  try {
+    rect = range?.getBoundingClientRect?.() || null;
+  } catch {
+    rect = null;
+  }
+  if (!rect || !(rect.right > rect.left)) {
+    try {
+      rect = pageEl.getBoundingClientRect?.() || null;
+    } catch {
+      rect = null;
+    }
+  }
+  const box2 = rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.right - rect.left, height: rect.bottom - rect.top } : null;
+  return { text: text3, page, pageEl, range, rect: box2 };
+}
+function unionRect3(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  const left = Math.min(a.left, b.left);
+  const top = Math.min(a.top, b.top);
+  const right = Math.max(a.right, b.right);
+  const bottom = Math.max(a.bottom, b.bottom);
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+function rectsOverlap(a, b) {
+  if (!a || !b) return false;
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+function selectionBarPlacement({ selection, tip = null, size, viewport, obstacles = [], place: place2 } = {}) {
+  if (!selection || !viewport || typeof place2 !== "function") return { hidden: true };
+  const anchor = unionRect3(selection, tip);
+  const at = place2({ anchor, size, viewport, gap: 6, obstacles: tip ? [...obstacles, tip] : obstacles });
+  const box2 = { left: at.left, top: at.top, right: at.left + (at.width || size.w), bottom: at.top + (at.maxHeight || size.h) };
+  return { hidden: Boolean(tip && rectsOverlap(box2, tip)), left: at.left, top: at.top, side: at.side };
+}
 
 // src/view/parse-view.js
 init_cards();
+
+// src/view/drag-ghost.js
+init_avoid();
+var GHOST_W = 280;
+var MORPH_MS = 150;
+var LAND_MS = 120;
+var PANE_SCALE = 0.9;
+var MIN_SCALE = 0.05;
+var MAX_SCALE = 4;
+var num4 = (value, fallback = 0) => {
+  const n2 = Number(value);
+  return Number.isFinite(n2) ? n2 : fallback;
+};
+var clamp3 = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+var easeOut = (t) => 1 - (1 - clamp3(t, 0, 1)) ** 3;
+function boardZoom(root, win = root?.ownerDocument?.defaultView || globalThis) {
+  let raw = "";
+  try {
+    raw = root?.style?.getPropertyValue?.("--pxd-screen-px") || "";
+  } catch {
+    raw = "";
+  }
+  if (!raw) {
+    try {
+      raw = win?.getComputedStyle?.(root)?.getPropertyValue?.("--pxd-screen-px") || "";
+    } catch {
+      raw = "";
+    }
+  }
+  const px = parseFloat(raw);
+  return px > 0 ? clamp3(1 / px, MIN_SCALE, MAX_SCALE) : 1;
+}
+var inside4 = (r, x, y) => Boolean(r) && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+function zoneAt(x, y, { rootRect = null, paneRect = null, blocked: blocked3 = [] } = {}) {
+  if (!inside4(rootRect, x, y)) return "out";
+  if (inside4(paneRect, x, y)) return "pane";
+  for (const r of blocked3 || []) if (inside4(r, x, y)) return "blocked";
+  return "board";
+}
+function zoneScale(zone, zoom) {
+  if (zone === "board") return clamp3(num4(zoom, 1) || 1, MIN_SCALE, MAX_SCALE);
+  return PANE_SCALE;
+}
+function ghostContent(source = {}) {
+  const kind = ["text", "table", "figure", "highlight", "blocks"].includes(source.kind) ? source.kind : "text";
+  const text3 = String(source.text ?? "").replace(/\s+/g, " ").trim();
+  const rows = Array.isArray(source.rows) ? source.rows.slice(0, 3).map((row4) => Array.isArray(row4) ? row4.slice(0, 6).map((cell) => String(cell ?? "")) : []) : [];
+  const src = typeof source.src === "string" ? source.src : "";
+  const color = typeof source.color === "string" ? source.color : "";
+  const page = Number.isFinite(Number(source.page)) && Number(source.page) > 0 ? Number(source.page) : null;
+  return { kind, text: text3, rows, src, color, page };
+}
+function ghostOrigin(pointer, grab, size, sx, sy) {
+  return { x: pointer.x - grab.fx * size.w * sx, y: pointer.y - grab.fy * size.h * sy };
+}
+function buildGhost(doc, content) {
+  const el = (tag, cls, parent) => {
+    const node2 = doc.createElement(tag);
+    if (cls) node2.className = cls;
+    parent?.append?.(node2);
+    return node2;
+  };
+  const card2 = el("div", "pxd-item pxd-item--card pxd-ghost");
+  card2.setAttribute("aria-hidden", "true");
+  card2.setAttribute("data-kind", content.kind);
+  const body = el("div", "pxd-ghost__body", card2);
+  if (content.color) {
+    const bar = el("span", "pxd-ghost__bar", body);
+    bar.setAttribute("data-color", content.color);
+  }
+  if (content.kind === "table" && content.rows.length) {
+    const table = el("table", "pxd-ghost__table", body);
+    for (const row4 of content.rows) {
+      const tr = el("tr", "", table);
+      for (const cell of row4) el("td", "", tr).textContent = cell;
+    }
+  } else if (content.kind === "figure" && content.src) {
+    const img = el("img", "pxd-ghost__img", body);
+    img.alt = "";
+    img.src = content.src;
+  }
+  if (content.text && !(content.kind === "table" && content.rows.length)) el("div", "pxd-ghost__text", body).textContent = content.text;
+  if (content.page) el("div", "pxd-ghost__page", body).textContent = `p. ${content.page}`;
+  return card2;
+}
+function createDragGhost({
+  doc = globalThis.document,
+  root,
+  pane = null,
+  from = null,
+  pointer = { x: 0, y: 0 },
+  content = {},
+  zoom = null,
+  blocked: blocked3 = null,
+  now: now3 = () => globalThis.performance?.now?.() ?? Date.now()
+} = {}) {
+  const win = doc?.defaultView || globalThis;
+  const host = root || doc?.body;
+  const look = ghostContent(content);
+  const node2 = buildGhost(doc, look);
+  node2.style.width = `${GHOST_W}px`;
+  node2.style.transform = "translate3d(-10000px, -10000px, 0)";
+  host?.append?.(node2);
+  let origin = { x: 0, y: 0 };
+  let height = 120;
+  try {
+    node2.style.transform = "translate3d(0px, 0px, 0)";
+    const box2 = node2.getBoundingClientRect?.();
+    if (box2) origin = { x: num4(box2.left), y: num4(box2.top) };
+    height = num4(node2.offsetHeight, 0) || num4(box2?.height, 0) || 120;
+  } catch {
+  }
+  const size = { w: GHOST_W, h: height };
+  const rects = {
+    rootRect: root?.getBoundingClientRect?.() || null,
+    paneRect: pane?.getBoundingClientRect?.() || null,
+    blocked: blocked3 || chromeObstacles(root, { win })
+  };
+  if (rects.rootRect && !(rects.rootRect.right > rects.rootRect.left)) rects.rootRect = null;
+  const zoomNow = zoom != null ? num4(zoom, 1) : boardZoom(root, win);
+  const start = { x: num4(pointer?.x), y: num4(pointer?.y) };
+  const src = from && num4(from.width) > 0 && num4(from.height) > 0 ? from : { left: start.x - 8, top: start.y - 8, width: 16, height: 16 };
+  const grab = {
+    fx: clamp3((start.x - num4(src.left)) / num4(src.width, 1), 0, 1),
+    fy: clamp3((start.y - num4(src.top)) / num4(src.height, 1), 0, 1)
+  };
+  let current3 = { x: start.x, y: start.y };
+  let zone = rects.rootRect ? zoneAt(start.x, start.y, rects) : "pane";
+  let sx = clamp3(num4(src.width) / size.w, MIN_SCALE, MAX_SCALE);
+  let sy = clamp3(num4(src.height) / size.h, MIN_SCALE, MAX_SCALE);
+  let anim = { fromX: sx, fromY: sy, to: zoneScale(zone, zoomNow), at: now3(), ms: MORPH_MS };
+  let raf2 = 0;
+  let dirty = true;
+  let ended = false;
+  const timing = { frames: 0, total: 0, max: 0 };
+  let painted = { x: NaN, y: NaN, sx: NaN, sy: NaN, zone: "" };
+  const paintZone = () => {
+    node2.classList.toggle("pxd-ghost--board", zone === "board");
+    node2.classList.toggle("pxd-ghost--blocked", zone === "blocked" || zone === "out");
+  };
+  paintZone();
+  node2.style.transformOrigin = "0 0";
+  function frame(at = now3()) {
+    raf2 = 0;
+    if (ended) return false;
+    const t0 = now3();
+    const k = anim ? easeOut((at - anim.at) / anim.ms) : 1;
+    if (anim) {
+      sx = anim.fromX + (anim.to - anim.fromX) * k;
+      sy = anim.fromY + (anim.to - anim.fromY) * k;
+      if (k >= 1) anim = null;
+    }
+    const at2 = ghostOrigin(current3, grab, size, sx, sy);
+    if (dirty || at2.x !== painted.x || at2.y !== painted.y || sx !== painted.sx || sy !== painted.sy) {
+      node2.style.transform = `translate3d(${(at2.x - origin.x).toFixed(1)}px, ${(at2.y - origin.y).toFixed(1)}px, 0) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
+      if (painted.zone !== zone) paintZone();
+      painted = { x: at2.x, y: at2.y, sx, sy, zone };
+    }
+    dirty = false;
+    const spent = now3() - t0;
+    timing.frames += 1;
+    timing.total += spent;
+    timing.max = Math.max(timing.max, spent);
+    if (anim) schedule();
+    return true;
+  }
+  function schedule() {
+    if (raf2 || ended) return;
+    const req = win?.requestAnimationFrame;
+    if (typeof req !== "function") {
+      frame();
+      return;
+    }
+    raf2 = req(() => frame(now3()));
+  }
+  const stop2 = () => {
+    ended = true;
+    if (raf2) {
+      try {
+        win?.cancelAnimationFrame?.(raf2);
+      } catch {
+      }
+      raf2 = 0;
+    }
+  };
+  const fadeOut = (cls) => {
+    stop2();
+    node2.classList.add(cls);
+    const kill = () => {
+      try {
+        node2.remove();
+      } catch {
+      }
+    };
+    const later = win?.setTimeout || globalThis.setTimeout;
+    try {
+      later(kill, LAND_MS + 20);
+    } catch {
+      kill();
+    }
+  };
+  frame();
+  return {
+    element: () => node2,
+    move(x, y) {
+      if (ended) return;
+      current3 = { x: num4(x, current3.x), y: num4(y, current3.y) };
+      const next = rects.rootRect ? zoneAt(current3.x, current3.y, rects) : zone;
+      if (next !== zone) {
+        zone = next;
+        anim = { fromX: sx, fromY: sy, to: zoneScale(zone, zoomNow), at: now3(), ms: LAND_MS };
+      }
+      schedule();
+    },
+    frame,
+    zone: () => zone,
+    scale: () => ({ sx, sy }),
+    // Client point of the ghost's top-left, its size on screen, and its centre (ref-card drops centre the card).
+    dropPoint() {
+      const s = anim ? anim.to : sx;
+      const at2 = ghostOrigin(current3, grab, size, s, anim ? anim.to : sy);
+      const w = size.w * s;
+      const h = size.h * (anim ? anim.to : sy);
+      return { x: at2.x, y: at2.y, w, h, cx: at2.x + w / 2, cy: at2.y + h / 2 };
+    },
+    land() {
+      fadeOut("pxd-ghost--land");
+    },
+    cancel() {
+      fadeOut("pxd-ghost--cancel");
+    },
+    stats: () => ({ frames: timing.frames, avgMs: timing.frames ? timing.total / timing.frames : 0, maxMs: timing.max, zoom: zoomNow })
+  };
+}
+function dispatchDrop({ doc = globalThis.document, root, pointer, at, entries = [] } = {}) {
+  const win = doc?.defaultView || globalThis;
+  const target = doc?.elementFromPoint?.(num4(pointer?.x), num4(pointer?.y)) || null;
+  if (!target || root && !root.contains?.(target) || target.closest?.(".pxd-read")) return false;
+  const x = num4(at?.x, num4(pointer?.x));
+  const y = num4(at?.y, num4(pointer?.y));
+  const Transfer = win.DataTransfer;
+  const Drag = win.DragEvent;
+  if (typeof Transfer === "function" && typeof Drag === "function") {
+    const data = new Transfer();
+    for (const [type, value] of entries) data.setData(type, value);
+    try {
+      data.effectAllowed = "copy";
+    } catch {
+    }
+    const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: data };
+    target.dispatchEvent(new Drag("dragover", init));
+    target.dispatchEvent(new Drag("drop", init));
+    return true;
+  }
+  const map = new Map(entries);
+  const transfer = { types: [...map.keys()], getData: (type) => map.get(type) || "", setData() {
+  } };
+  const plain = { type: "drop", bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer, preventDefault() {
+  }, stopPropagation() {
+  } };
+  try {
+    target.dispatchEvent(plain);
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+// src/view/parse-view.js
 var PARSE_MIME2 = "application/x-plexus-parse";
 var BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
 var SYNC_MS = 250;
@@ -34258,6 +34605,7 @@ var BOTH_MIN_PX = 640;
 var URLS_KEY = "pxd-parse-urls";
 var HELPER_START = "tools/parse-helper/bin/plexus-parse-helper serve";
 var TEXT_TYPES = /* @__PURE__ */ new Set(["heading", "para", "list", "caption", "footnote", "code"]);
+var INDEX_TYPES = /* @__PURE__ */ new Set(["heading", "table", "figure", "formula"]);
 function reasonLabel(reason) {
   if (reason === "page-number") return "page numbers";
   if (reason === "running-header" || reason === "header") return "running header";
@@ -34397,15 +34745,47 @@ function tableChipLabel(table) {
   const conf = typeof table.confidence === "number" ? table.confidence.toFixed(2) : "";
   return conf ? `${method} · ${conf}` : method;
 }
-function scanSpan(doc) {
+function scanPageNumbers(doc) {
   const pages = (doc?.pages || []).filter((page) => page.kind === "scan").map((page) => page.n);
   const blocks = selectBlocks(doc, null).filter((block) => block.type === "scan").map((block) => block.page);
-  const nums = [.../* @__PURE__ */ new Set([...pages, ...blocks])].sort((a, b) => a - b);
+  return [.../* @__PURE__ */ new Set([...pages, ...blocks])].sort((a, b) => a - b);
+}
+function scanSpan(doc) {
+  const nums = scanPageNumbers(doc);
   if (!nums.length) return "";
   const from = nums[0];
   const to = nums[nums.length - 1];
-  const label = from === to ? String(from) : `${from}–${to}`;
-  return `Scanned pages ${label} · Parse with Docling for OCR`;
+  const label = from === to ? `Scanned page ${from}` : `Scanned pages ${from}–${to}`;
+  return `${label} · the page is an image`;
+}
+function outlineBlocks(blocks) {
+  return (blocks || []).filter((block) => INDEX_TYPES.has(block?.type));
+}
+function sectionIds2(doc, headingId) {
+  const all = selectBlocks(doc, null);
+  const at = all.findIndex((block) => block.id === headingId);
+  if (at < 0) return [];
+  const head = all[at];
+  if (head.type !== "heading") return [head.id];
+  const level = head.level || 1;
+  const out = [head.id];
+  for (let i = at + 1; i < all.length; i += 1) {
+    const block = all[i];
+    if (block.type === "heading" && (block.level || 1) <= level) break;
+    if (block.type === "scan") continue;
+    out.push(block.id);
+  }
+  return out;
+}
+function outlineLabel(block) {
+  if (!block) return "";
+  if (block.type === "table") {
+    const size = block.rows && block.cols ? ` ${block.rows}×${block.cols}` : "";
+    return `Table${size}${block.caption ? ` · ${block.caption}` : ""}`;
+  }
+  if (block.type === "figure") return `Figure${block.text ? ` · ${block.text}` : ""}`;
+  if (block.type === "formula") return `Formula${block.latex ? ` · ${block.latex}` : ""}`;
+  return String(block.text || "");
 }
 function setHidden(node2, on) {
   if (!node2) return;
@@ -34469,7 +34849,12 @@ function createParseView({
   adoptCreated = null,
   getContext = null,
   clock = null,
-  scanAuto = false
+  scanAuto = false,
+  outline = false,
+  onNeedOcr = null,
+  onOcrPages = null,
+  ghostRoot = null,
+  ghostPane = null
 } = {}) {
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
@@ -34666,7 +35051,16 @@ function createParseView({
     return { w: fromDoc?.w || given?.w || 612, h: fromDoc?.h || given?.h || 792, rotation: fromDoc?.rotation || given?.rotation || 0, ...given || {} };
   }
   function shown() {
-    return visibleBlocks(parsed, { filters, query, range });
+    const blocks = visibleBlocks(parsed, { filters, query, range });
+    return outline && !String(query || "").trim() ? outlineBlocks(blocks) : blocks;
+  }
+  function expand(blocks) {
+    if (!outline || !parsed) return blocks;
+    const ids = [];
+    for (const block of blocks || []) {
+      for (const id of block.type === "heading" ? sectionIds2(parsed, block.id) : [block.id]) if (!ids.includes(id)) ids.push(id);
+    }
+    return selectBlocks(parsed, ids);
   }
   const pageChips2 = createPageChips({
     doc,
@@ -34693,7 +35087,7 @@ function createParseView({
     return (blocks || shown()).map((block) => block.id);
   }
   function payload(blocks) {
-    const list = blocks || shown().filter((block) => selected.includes(block.id));
+    const list = expand(blocks || shown().filter((block) => selected.includes(block.id)));
     return dragPayload({
       sha256: parsed?.sha256 || "",
       engine: parsed?.engine || "builtin",
@@ -34756,6 +35150,13 @@ function createParseView({
     }
     return node2;
   }
+  function renderOutlineRow(block, main) {
+    const label = el(block.type === "heading" ? "div" : "div", `pxd-parse__olabel pxd-parse__olabel--${block.type}`, main);
+    label.textContent = outlineLabel(block);
+    if (block.type === "heading") label.style.paddingLeft = `${Math.max(0, (Math.min(6, block.level || 1) - 1) * 12)}px`;
+    const page = el("span", "pxd-parse__opage", main);
+    page.textContent = block.page ? `p. ${block.page}` : "";
+  }
   function renderBlock(block, parent) {
     const row4 = el("article", "pxd-parse__block", parent);
     row4.tabIndex = 0;
@@ -34776,7 +35177,10 @@ function createParseView({
     check.checked = selected.includes(block.id);
     check.setAttribute("aria-label", "Select");
     const main = el("div", "pxd-parse__main", row4);
-    if (block.type === "heading") {
+    if (outline && !String(query || "").trim()) {
+      row4.classList.add("pxd-parse__orow");
+      renderOutlineRow(block, main);
+    } else if (block.type === "heading") {
       const level = Math.min(6, Math.max(1, block.level || 1));
       const heading = el(`h${level}`, "pxd-parse__h", main);
       heading.textContent = block.text || "";
@@ -34832,6 +35236,26 @@ function createParseView({
     listenBlock(handle, "pointerdown", (event) => beginPointerDrag(event, [block]));
     return row4;
   }
+  function needOcr() {
+    const pages = parsed ? scanPagesOf(parsed) : [];
+    if (typeof onNeedOcr === "function") {
+      try {
+        onNeedOcr({ pages: pages.length ? pages : scanPageNumbers(parsed), readScan: readScanNow, helperState });
+      } catch {
+      }
+      return;
+    }
+    void (async () => {
+      await refreshHelper();
+      if (helperState === "ready") await readScanNow();
+      else {
+        try {
+          onToast?.("Scanned page: start the local helper to read its text (Settings → Parse)");
+        } catch {
+        }
+      }
+    })();
+  }
   function render() {
     if (dead) return;
     clearBlockListeners();
@@ -34857,8 +35281,17 @@ function createParseView({
       const note = el("div", "pxd-parse__empty", body);
       const scan = scanSpan(parsed);
       const filtered = Boolean(query) || Object.values(filters).some((on) => !on);
-      if (scan && !filtered) note.textContent = scan;
-      else if (!filtered && (helperState === "not-running" || helperState === "disabled")) note.textContent = `Helper not running · Start: ${HELPER_START}`;
+      if (scan && !filtered) {
+        el("span", "pxd-parse__scantext", note).textContent = scan;
+        const read2 = el("button", "pxd-parse__readtext", note);
+        read2.type = "button";
+        read2.textContent = "Read text";
+        read2.setAttribute("data-tip", "parse.read-text");
+        listenBlock(read2, "click", (event) => {
+          event.stopPropagation?.();
+          needOcr();
+        });
+      } else if (!filtered && (helperState === "not-running" || helperState === "disabled")) note.textContent = `Helper not running · Start: ${HELPER_START}`;
       else note.textContent = "Nothing matches";
     }
     let page = null;
@@ -34941,8 +35374,9 @@ function createParseView({
     }
   }
   async function copySelection(shift) {
-    const ids = selected.length ? selected : focusId ? [focusId] : [];
-    if (!ids.length || !parsed) return;
+    const picked = selected.length ? selected : focusId ? [focusId] : [];
+    if (!picked.length || !parsed) return;
+    const ids = expand(selectBlocks(parsed, picked)).map((block) => block.id);
     const result = copyText(parsed, ids, { shift });
     await writeClipboard2(result.text);
   }
@@ -34959,7 +35393,7 @@ function createParseView({
   }
   function insertSelection() {
     const blocks = shown().filter((block) => selected.includes(block.id));
-    const kind = kindOf(blocks.length ? blocks : shown().filter((block) => block.id === focusId));
+    const kind = kindOf(expand(blocks.length ? blocks : shown().filter((block) => block.id === focusId)));
     if ((kind === "figure" || kind === "formula") && callSession("insertParsedCard")) return true;
     return callSession("insertParsedBelow");
   }
@@ -34979,55 +35413,92 @@ function createParseView({
     }
     event.stopPropagation?.();
   }
+  function ghostSource(blocks) {
+    const list = expand(blocks);
+    if (list.length === 1 && list[0].type === "table") {
+      const rows = tableGrid(list[0]).slice(0, 3).map((row4) => row4.filter((slot2) => !slot2.covered).map((slot2) => slot2.cell?.text ?? ""));
+      return { kind: "table", rows, page: list[0].page };
+    }
+    const text3 = list.map((block) => block.type === "list" ? (block.items || []).map((item) => item.text).join(" ") : block.text || block.latex || "").join(" ");
+    const kind = list.length === 1 && list[0].type === "figure" ? "figure" : "blocks";
+    return { kind, text: text3, page: list[0]?.page };
+  }
   function beginPointerDrag(event, blocks) {
     if (event.button != null && event.button !== 0) return;
     const startX = Number(event.clientX) || 0;
     const startY = Number(event.clientY) || 0;
+    const rowEl = event.target?.closest?.(".pxd-parse__block") || null;
     let moved = false;
+    let ghost = null;
     const win = doc.defaultView || doc;
-    const move2 = (ev) => {
-      if (Math.abs((Number(ev.clientX) || 0) - startX) + Math.abs((Number(ev.clientY) || 0) - startY) > 4) moved = true;
+    const drop = (x, y, at) => {
+      const json = JSON.stringify(payload(blocks));
+      if (!doc.elementFromPoint) return;
+      dispatchDrop({ doc, root: ghostRoot, pointer: { x, y }, at, entries: [[PARSE_MIME2, json], ["text/plain", json]] });
     };
-    const up = (ev) => {
+    const finish = () => {
       win?.removeEventListener?.("pointermove", move2, true);
       win?.removeEventListener?.("pointerup", up, true);
-      const moveIdx = armed.findIndex((entry) => entry[2] === move2);
-      if (moveIdx >= 0) armed.splice(moveIdx, 1);
-      const upIdx = armed.findIndex((entry) => entry[2] === up);
-      if (upIdx >= 0) armed.splice(upIdx, 1);
+      win?.removeEventListener?.("keydown", key, true);
+      win?.removeEventListener?.("dragstart", native, true);
+      win?.removeEventListener?.("pointercancel", cancelled, true);
+      for (const fn of [move2, up, key, native, cancelled]) {
+        const idx = armed.findIndex((entry) => entry[2] === fn);
+        if (idx >= 0) armed.splice(idx, 1);
+      }
+    };
+    const move2 = (ev) => {
+      const x = Number(ev.clientX) || 0;
+      const y = Number(ev.clientY) || 0;
+      if (!moved && Math.abs(x - startX) + Math.abs(y - startY) > 4) {
+        moved = true;
+        if (ghostRoot) {
+          let from = null;
+          try {
+            from = rowEl?.getBoundingClientRect?.() || null;
+          } catch {
+            from = null;
+          }
+          ghost = createDragGhost({ doc, root: ghostRoot, pane: ghostPane, from, pointer: { x: startX, y: startY }, content: ghostSource(blocks) });
+        }
+      }
+      ghost?.move(x, y);
+    };
+    const native = (ev) => {
+      if (ghost) {
+        ev.preventDefault?.();
+        return;
+      }
+      finish();
+    };
+    const cancelled = () => {
+      finish();
+      ghost?.cancel();
+      ghost = null;
+    };
+    const key = (ev) => {
+      if (ev.key !== "Escape") return;
+      ev.stopPropagation?.();
+      finish();
+      ghost?.cancel();
+      ghost = null;
+    };
+    const up = (ev) => {
+      finish();
       if (!moved) return;
       const x = Number(ev.clientX) || 0;
       const y = Number(ev.clientY) || 0;
-      const hit = doc.elementFromPoint?.(x, y) || doc.body;
-      const json = JSON.stringify(payload(blocks));
-      const transfer = {
-        types: [PARSE_MIME2, "text/plain"],
-        getData: (type) => type === PARSE_MIME2 || type === "text/plain" ? json : "",
-        setData() {
-        }
-      };
-      const plain = { type: "drop", bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer, preventDefault() {
-      }, stopPropagation() {
-      } };
-      let dropped = plain;
-      try {
-        if (typeof Event === "function" && hit && !hit.listeners) {
-          const evn = new Event("drop", { bubbles: true, cancelable: true });
-          Object.defineProperty(evn, "clientX", { value: x });
-          Object.defineProperty(evn, "clientY", { value: y });
-          Object.defineProperty(evn, "dataTransfer", { value: transfer });
-          dropped = evn;
-        }
-      } catch {
-        dropped = plain;
-      }
-      try {
-        hit?.dispatchEvent?.(dropped);
-      } catch {
-      }
+      ghost?.move(x, y);
+      const at = ghost && ghost.zone() === "board" ? ghost.dropPoint() : { x, y };
+      drop(x, y, at);
+      ghost?.land();
+      ghost = null;
     };
     listen(win, "pointermove", move2, true);
     listen(win, "pointerup", up, true);
+    listen(win, "keydown", key, true);
+    listen(win, "dragstart", native, true);
+    listen(win, "pointercancel", cancelled, true);
   }
   function wordsFor(table) {
     const rec = records.find((row4) => row4.n === table.page);
@@ -35283,6 +35754,13 @@ function createParseView({
       });
       if (ctrl.signal.aborted) return;
       if (result?.records) records = result.records;
+      const read2 = (result?.records || []).filter((rec) => rec?.ocr && (result.pages || pages).includes(rec.n));
+      if (read2.length) {
+        try {
+          onOcrPages?.(read2, parsed.sha256);
+        } catch {
+        }
+      }
       await finishDoc(result.doc, (parsed.stats?.ms || 0) + (now3() - t0));
     } catch (error) {
       if (error?.name !== "AbortError") {
@@ -36166,6 +36644,318 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
 }
 
 // src/view/read-pane.js
+init_relchips();
+init_avoid();
+
+// src/view/text-layer.js
+var WORD_CLASS = "pxd-tl-word";
+var WORD_ATTR = "data-pxd-word";
+var MARK_ATTR = "data-pxd-tl";
+var NEAR_EMPTY_CHARS = 8;
+var FONT_PX = 100;
+var FALLBACK_EM = 0.52;
+var ASCENT = 0.8;
+var num5 = (value, fallback = 0) => {
+  const n2 = Number(value);
+  return Number.isFinite(n2) ? n2 : fallback;
+};
+function ocrWords(record) {
+  if (!record || typeof record !== "object" || record.textRotation) return [];
+  const out = [];
+  if (Array.isArray(record.boxes)) {
+    for (const box2 of record.boxes) {
+      if (!Array.isArray(box2)) continue;
+      const text3 = String(box2[0] ?? "").trim();
+      const w = num5(box2[3]);
+      const h = num5(box2[4]);
+      if (text3 && w > 0 && h > 0) out.push({ text: text3, x: num5(box2[1]), y: num5(box2[2]), w, h });
+    }
+    return out;
+  }
+  if (Array.isArray(record.items)) {
+    for (const item of record.items) {
+      const text3 = String(item?.str ?? "").trim();
+      if (!text3) continue;
+      const m = Array.isArray(item.transform) ? item.transform : [0, 0, 0, 0, 0, 0];
+      const height = num5(item.height, Math.hypot(num5(m[2]), num5(m[3])));
+      const y0 = Number.isFinite(Number(item.y0)) ? Number(item.y0) : num5(m[5]) - height;
+      const y1 = Number.isFinite(Number(item.y1)) ? Number(item.y1) : num5(m[5]);
+      const h = y1 - y0 > 0 ? y1 - y0 : height;
+      const w = num5(item.width);
+      if (!(h > 0) || !(w > 0)) continue;
+      out.push({ text: text3, x: num5(m[4]), y: y0, w, h });
+    }
+    return out;
+  }
+  const words = Array.isArray(record.words) ? record.words : Array.isArray(record.lines) ? record.lines.flatMap((line) => line?.words || []) : [];
+  for (const word of words) {
+    const text3 = String(word?.text ?? "").trim();
+    if (!text3 || word.rotated) continue;
+    const size = num5(word.size);
+    const w = num5(word.x1) - num5(word.x0);
+    if (!(size > 0) || !(w > 0)) continue;
+    out.push({ text: text3, x: num5(word.x0), y: num5(word.base) - size * ASCENT, w, h: size });
+  }
+  return out;
+}
+function orderWords(words) {
+  const list = (words || []).slice().sort((a, b) => a.y + a.h / 2 - (b.y + b.h / 2) || a.x - b.x);
+  const rows = [];
+  for (const word of list) {
+    const mid = word.y + word.h / 2;
+    const row4 = rows.length ? rows[rows.length - 1] : null;
+    if (row4 && Math.abs(mid - row4.mid) <= 0.5 * Math.max(row4.h, word.h)) {
+      row4.words.push(word);
+      row4.h = Math.max(row4.h, word.h);
+    } else rows.push({ mid, h: word.h, words: [word] });
+  }
+  const ordered = [];
+  const breaks = [];
+  for (const row4 of rows) {
+    row4.words.sort((a, b) => a.x - b.x);
+    row4.words.forEach((word, i) => {
+      ordered.push(word);
+      breaks.push(i === row4.words.length - 1);
+    });
+  }
+  return { words: ordered, breaks };
+}
+function needsTextLayer(layer, { minChars = NEAR_EMPTY_CHARS } = {}) {
+  if (!layer) return false;
+  let chars = 0;
+  for (const child of layer.children || []) {
+    if (child?.hasAttribute?.(WORD_ATTR)) continue;
+    chars += String(child?.textContent ?? "").trim().length;
+    if (chars >= minChars) return false;
+  }
+  return true;
+}
+function createMeasure(doc) {
+  let ctx = null;
+  try {
+    const canvas = doc?.createElement?.("canvas");
+    const got = canvas?.getContext?.("2d");
+    if (got && typeof got.measureText === "function") {
+      got.font = `${FONT_PX}px sans-serif`;
+      ctx = got;
+    }
+  } catch {
+    ctx = null;
+  }
+  const cache = /* @__PURE__ */ new Map();
+  return (text3) => {
+    const key = String(text3 ?? "");
+    const hit = cache.get(key);
+    if (hit != null) return hit;
+    let w = 0;
+    if (ctx) {
+      try {
+        w = Number(ctx.measureText(key)?.width) || 0;
+      } catch {
+        w = 0;
+      }
+    }
+    if (!(w > 0)) w = key.length * FALLBACK_EM * FONT_PX;
+    if (cache.size < 4e3) cache.set(key, w);
+    return w;
+  };
+}
+function wordStyle(word, scale, naturalAt100) {
+  const font = word.h * scale;
+  const natural = num5(naturalAt100) * font / FONT_PX;
+  const target = word.w * scale;
+  const sx = natural > 0 ? target / natural : 1;
+  return `left:${(word.x * scale).toFixed(2)}px;top:${(word.y * scale).toFixed(2)}px;font-size:${font.toFixed(2)}px;transform:scaleX(${sx.toFixed(4)})`;
+}
+var prepCache = /* @__PURE__ */ new WeakMap();
+function prepared(record) {
+  let hit = prepCache.get(record);
+  if (!hit) {
+    const ordered = orderWords(ocrWords(record));
+    hit = { w: num5(record?.w, 612) || 612, words: ordered.words, breaks: ordered.breaks };
+    prepCache.set(record, hit);
+  }
+  return hit;
+}
+function removeWords(layer) {
+  const nodes = layer?.querySelectorAll?.(`[${WORD_ATTR}]`) || [];
+  for (const node2 of [...nodes]) {
+    try {
+      node2.remove();
+    } catch {
+    }
+  }
+  try {
+    layer?.removeAttribute?.(MARK_ATTR);
+  } catch {
+  }
+}
+function mountWords(layer, record, { doc = layer?.ownerDocument || globalThis.document, widthPx = 0, measure = null, key = "", now: now3 = () => Date.now() } = {}) {
+  const t0 = now3();
+  if (!layer || !doc) return { count: 0, ms: 0 };
+  const prep = prepared(record);
+  removeWords(layer);
+  const scale = widthPx > 0 ? widthPx / prep.w : 1;
+  const width = measure || createMeasure(doc);
+  const frag = typeof doc.createDocumentFragment === "function" ? doc.createDocumentFragment() : null;
+  const sink = frag || layer;
+  const n2 = record?.n ?? "";
+  prep.words.forEach((word, i) => {
+    const span = doc.createElement("span");
+    span.className = WORD_CLASS;
+    span.setAttribute(WORD_ATTR, String(i));
+    span.setAttribute("role", "presentation");
+    span.style.cssText = wordStyle(word, scale, width(word.text));
+    span.textContent = `${word.text} `;
+    sink.append(span);
+    if (prep.breaks[i]) {
+      const br = doc.createElement("br");
+      br.setAttribute(WORD_ATTR, "br");
+      br.setAttribute("role", "presentation");
+      sink.append(br);
+    }
+  });
+  if (frag) layer.append(frag);
+  layer.setAttribute(MARK_ATTR, key || `${n2}:${Math.round(widthPx)}`);
+  return { count: prep.words.length, ms: now3() - t0 };
+}
+function compactPage(record) {
+  const r22 = (v) => Math.round(v * 100) / 100;
+  return {
+    n: Number(record?.n),
+    w: num5(record?.w, 612) || 612,
+    h: num5(record?.h, 792) || 792,
+    boxes: ocrWords(record).map((word) => [word.text, r22(word.x), r22(word.y), r22(word.w), r22(word.h)])
+  };
+}
+var pageNumberOf2 = (pageEl) => Number(pageEl?.getAttribute?.("data-page-number"));
+function pageRecords(input) {
+  if (!input) return [];
+  if (Array.isArray(input)) return input.filter((rec) => rec && Number.isFinite(Number(rec.n)));
+  if (Array.isArray(input.pages)) return pageRecords(input.pages);
+  return Number.isFinite(Number(input.n)) ? [input] : [];
+}
+function createTextLayer({ doc = globalThis.document, readerEl = null, measure = null, now: now3 = () => globalThis.performance?.now?.() ?? Date.now() } = {}) {
+  const view = () => doc?.defaultView || globalThis;
+  const records = /* @__PURE__ */ new Map();
+  const width = measure || createMeasure(doc);
+  let observer = null;
+  let frame = 0;
+  let dead = false;
+  const stats = { mounts: 0, words: 0, lastMs: 0, maxMs: 0 };
+  const ensureObserver = () => {
+    if (observer || dead || !readerEl || !records.size) return;
+    const MO = view().MutationObserver;
+    if (typeof MO !== "function") return;
+    observer = new MO((list) => {
+      if (onlyOurs(list)) return;
+      schedule();
+    });
+    try {
+      observer.observe(readerEl, { childList: true, subtree: true, attributes: true, attributeFilter: ["style"] });
+    } catch {
+      observer = null;
+    }
+  };
+  const onlyOurs = (list) => {
+    for (const rec of list || []) {
+      if (rec.type === "attributes") {
+        if (rec.target?.classList?.contains?.("page")) return false;
+        continue;
+      }
+      if (rec.removedNodes?.length) return false;
+      for (const node2 of rec.addedNodes || []) {
+        if (node2?.nodeType !== 1 || !node2.hasAttribute?.(WORD_ATTR)) return false;
+      }
+    }
+    return true;
+  };
+  const schedule = () => {
+    if (dead || frame) return;
+    const raf2 = view().requestAnimationFrame;
+    if (typeof raf2 !== "function") {
+      refresh();
+      return;
+    }
+    frame = raf2(() => {
+      frame = 0;
+      refresh();
+    });
+  };
+  function refresh() {
+    if (dead || !readerEl || !records.size) return [];
+    const pages = readerEl.querySelectorAll?.(".page") || [];
+    const plan = [];
+    for (const pageEl of pages) {
+      const n2 = pageNumberOf2(pageEl);
+      const record = records.get(n2);
+      if (!record) continue;
+      const layer = pageEl.querySelector?.(".textLayer");
+      if (!layer) continue;
+      const widthPx = num5(pageEl.clientWidth);
+      const key = `${n2}:${Math.round(widthPx)}`;
+      const ours = layer.querySelector?.(`[${WORD_ATTR}]`);
+      if (ours && layer.getAttribute?.(MARK_ATTR) === key) continue;
+      if (!ours && !needsTextLayer(layer)) continue;
+      plan.push({ layer, record, widthPx, key });
+    }
+    const done = [];
+    for (const job of plan) {
+      const res = mountWords(job.layer, job.record, { doc, widthPx: job.widthPx, measure: width, key: job.key, now: now3 });
+      stats.mounts += 1;
+      stats.words += res.count;
+      stats.lastMs = res.ms;
+      stats.maxMs = Math.max(stats.maxMs, res.ms);
+      done.push(Number(job.key.split(":")[0]));
+    }
+    try {
+      observer?.takeRecords?.();
+    } catch {
+    }
+    return done;
+  }
+  return {
+    setPages(input) {
+      if (dead) return 0;
+      const list = pageRecords(input);
+      for (const rec of list) records.set(Number(rec.n), rec);
+      if (list.length) {
+        ensureObserver();
+        schedule();
+      }
+      return list.length;
+    },
+    hasPage: (n2) => records.has(Number(n2)),
+    pageNumbers: () => [...records.keys()].sort((a, b) => a - b),
+    clear() {
+      records.clear();
+      const layers = readerEl?.querySelectorAll?.(`[${MARK_ATTR}]`) || [];
+      for (const layer of layers) removeWords(layer);
+      try {
+        observer?.disconnect?.();
+      } catch {
+      }
+      observer = null;
+    },
+    refresh,
+    schedule,
+    stats: () => ({ ...stats }),
+    dispose() {
+      if (dead) return;
+      this.clear();
+      dead = true;
+      if (frame) {
+        try {
+          view().cancelAnimationFrame?.(frame);
+        } catch {
+        }
+        frame = 0;
+      }
+    }
+  };
+}
+
+// src/view/read-pane.js
 var liveDrawer = null;
 Promise.resolve().then(() => (init_read_drawer(), read_drawer_exports)).then((mod) => {
   liveDrawer = typeof mod?.createReadDrawer === "function" ? mod.createReadDrawer : null;
@@ -36177,6 +36967,44 @@ var PLACE_H = 140;
 var FLASH_MS = 1600;
 var ONE_REF = /^\(\(([\w-]+)\)\)$/;
 var COLORS = ["gray", ...HIGHLIGHT_COLORS];
+var READ_MODE_KEY = "pxd-read-mode";
+var OCR_LAYER_ID = "ocr-layer";
+var BAR_SETTLE_MS = 160;
+function normalizeReadMode(value) {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (["parsed", "both", "outline", "read+outline", "read-outline"].includes(v)) return "both";
+  return "reader";
+}
+function storedReadMode(storage) {
+  let raw = null;
+  try {
+    raw = storage?.getItem?.(READ_MODE_KEY);
+  } catch {
+    raw = null;
+  }
+  if (raw == null || raw === "") return "reader";
+  const mode = normalizeReadMode(raw);
+  const fresh = mode === "both" ? "read+outline" : "read";
+  if (raw !== fresh) {
+    try {
+      storage?.setItem?.(READ_MODE_KEY, fresh);
+    } catch {
+    }
+  }
+  return mode;
+}
+function writeReadMode(storage, mode) {
+  try {
+    storage?.setItem?.(READ_MODE_KEY, normalizeReadMode(mode) === "both" ? "read+outline" : "read");
+  } catch {
+  }
+}
+function mergeOcrPages(stored, fresh) {
+  const byPage = /* @__PURE__ */ new Map();
+  for (const rec of pageRecords(stored)) byPage.set(Number(rec.n), rec);
+  for (const rec of pageRecords(fresh)) byPage.set(Number(rec.n), Array.isArray(rec.boxes) ? rec : compactPage(rec));
+  return [...byPage.values()].sort((a, b) => a.n - b.n);
+}
 function placedHighlightUid(items, refUid) {
   if (typeof refUid !== "string" || refUid === "") return "";
   const list = Array.isArray(items) ? items : [];
@@ -36296,7 +37124,8 @@ function createReadPane({
   coverSrc,
   createDrawer,
   session = null,
-  settings = null
+  settings = null,
+  onNeedOcr = null
 } = {}) {
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
@@ -36354,7 +37183,7 @@ function createReadPane({
   modes.setAttribute("aria-label", "Reader mode");
   setHidden2(modes, true);
   const modeBtns = {};
-  for (const [id, label, tip] of [["reader", "Reader", "parse.mode.reader"], ["parsed", "Parsed", "parse.mode.parsed"], ["both", "Both", "parse.mode.both"]]) {
+  for (const [id, label, tip] of [["reader", "Read", "parse.mode.reader"], ["both", "Read + Outline", "parse.mode.both"]]) {
     const button = el("button", "pxd-read__mode", modes);
     button.type = "button";
     button.textContent = label;
@@ -36382,6 +37211,23 @@ function createReadPane({
   const searchBtn = pillButton(doc, el, pill, "Search", "⌕");
   const parsedMount = el("div", "pxd-read__parsed", pane);
   const drawerMount = el("div", "pxd-read__drawer", pane);
+  const bar = el("div", "pxd-selbar", pane);
+  bar.setAttribute("role", "toolbar");
+  bar.setAttribute("aria-label", "Selection");
+  setHidden2(bar, true);
+  for (const [act, text3, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"]]) {
+    const button = el("button", "pxd-selbar__btn pxd-chrome", bar);
+    button.type = "button";
+    button.textContent = text3;
+    button.setAttribute("data-act", act);
+    button.setAttribute("data-tip", tip);
+  }
+  const barHandle = el("button", "pxd-selbar__handle pxd-chrome", bar);
+  barHandle.type = "button";
+  barHandle.textContent = "⠿";
+  barHandle.setAttribute("aria-label", "Drag to the board");
+  barHandle.setAttribute("data-tip", "read.sel.drag");
+  const textLayer = createTextLayer({ doc, readerEl: live });
   let colorSel = null;
   let pageFilt = null;
   let snipFilt = null;
@@ -36498,9 +37344,9 @@ function createReadPane({
     liveBlock = "";
   };
   const readerField = () => {
-    const bar = live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
+    const bar2 = live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
     const boxed = live.querySelector?.(".rm-pdf-container");
-    const pool = bar?.querySelectorAll ? [...bar.querySelectorAll("input")] : [];
+    const pool = bar2?.querySelectorAll ? [...bar2.querySelectorAll("input")] : [];
     const inputs = pool.length ? pool : [...boxed?.querySelectorAll?.("input") || []];
     const named = inputs.find((node2) => node2.classList?.contains?.("bp3-input") && /^\d+$/.test(String(node2.value || "").trim()));
     if (named) return named;
@@ -36748,8 +37594,8 @@ function createReadPane({
         node2.setAttribute("data-uid", row4.uid);
         node2.draggable = true;
         node2.setAttribute("draggable", "true");
-        const bar = el("span", "pxd-read__bar", node2);
-        bar.setAttribute("data-color", String(row4.color || ""));
+        const bar2 = el("span", "pxd-read__bar", node2);
+        bar2.setAttribute("data-color", String(row4.color || ""));
         const source = sourceByUid.get(row4.uid);
         const model = source ? highlightModel({ string: source.string, props: source.props, children: source.children }) : null;
         if (model?.image && source) {
@@ -36857,6 +37703,10 @@ function createReadPane({
     if (target?.closest?.(".rm-pdf-container")) return;
     if (isTextEntryTarget(target)) return;
     if (event.key === "Escape") {
+      if (escSeen === event) {
+        escSeen = null;
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       close({ notify: true });
@@ -37127,6 +37977,18 @@ function createReadPane({
     node2?.addEventListener?.(type, fn, true);
     pressOff.push(() => node2?.removeEventListener?.(type, fn, true));
   };
+  let ghost = null;
+  const endPointerDrag = () => {
+    dragging = false;
+    clearDragClass();
+    const g = ghost;
+    ghost = null;
+    try {
+      g?.cancel();
+    } catch {
+    }
+    disarm2();
+  };
   const endPress = () => {
     while (pressOff.length) {
       try {
@@ -37134,14 +37996,10 @@ function createReadPane({
       } catch {
       }
     }
-    const wasActive = press?.active;
+    const was = press;
     press = null;
-    if (wasActive) endPdfDrag();
-  };
-  const moveChip = (x, y) => {
-    if (!dragChip) return;
-    dragChip.style.left = `${Math.round(x + 12)}px`;
-    dragChip.style.top = `${Math.round(y + 12)}px`;
+    if (was?.row) restoreDrag(was.row, was.rowPrev);
+    if (was?.active) endPointerDrag();
   };
   let swallowOff = null;
   const swallowClick = () => {
@@ -37160,24 +38018,25 @@ function createReadPane({
       w.clearTimeout?.(timer);
     };
   };
-  const dropAt = (uid, x, y) => {
-    const w = view();
-    const target = doc?.elementFromPoint?.(x, y);
-    if (!target || !root?.contains?.(target) || target.closest?.(".pxd-read")) return false;
-    const Transfer = w.DataTransfer;
-    const Drag = w.DragEvent;
-    if (typeof Transfer !== "function" || typeof Drag !== "function") return false;
-    const data = new Transfer();
-    data.setData(CARD_MIME, `((${uid}))`);
-    data.setData("text/plain", `((${uid}))`);
-    try {
-      data.effectAllowed = "copy";
-    } catch {
+  const fullText = (uid, highlight) => {
+    const row4 = catalog.find((entry) => entry.uid === uid);
+    return String(row4 && row4.snippet || highlight?.content?.text || "");
+  };
+  const ghostContentOf = (p) => {
+    if (p.kind === "text") return { kind: "text", text: p.text, page: p.page };
+    const row4 = catalog.find((entry) => entry.uid === p.uid);
+    const color = row4 && row4.color || (typeof p.highlight?.color === "string" ? p.highlight.color : "");
+    const page = typeof row4?.page === "number" ? row4.page : null;
+    return { kind: "highlight", text: fullText(p.uid, p.highlight), color, page };
+  };
+  const dropPress = (p, x, y, alt) => {
+    const spot = ghost && ghost.zone() === "board" ? ghost.dropPoint() : null;
+    if (p.kind === "text") {
+      const json = JSON.stringify({ kind: "text", text: p.text, page: p.page, pdfUid: current3.cardUid || "", quote: Boolean(alt) });
+      return dispatchDrop({ doc, root, pointer: { x, y }, at: spot ? { x: spot.x, y: spot.y } : { x, y }, entries: [[PARSE_MIME, json], ["text/plain", p.text]] });
     }
-    const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: data };
-    target.dispatchEvent(new Drag("dragover", init));
-    target.dispatchEvent(new Drag("drop", init));
-    return true;
+    const ref = `((${p.uid}))`;
+    return dispatchDrop({ doc, root, pointer: { x, y }, at: spot ? { x: spot.cx, y: spot.cy } : { x, y }, entries: [[CARD_MIME, ref], ["text/plain", ref]] });
   };
   const onPressMove = (event) => {
     if (!press) return;
@@ -37191,28 +38050,37 @@ function createReadPane({
       if (Math.hypot(x - press.x, y - press.y) < DRAG_START_PX) return;
       press.active = true;
       dragging = true;
-      const label = chipLabel(press.uid, press.highlight);
-      paintChip(null, label.color, label.text);
-      if (dragChip) {
-        dragChip.style.pointerEvents = "none";
-        dragChip.style.zIndex = "60";
-      }
+      hideBar();
       root?.classList?.add("pxd-root--pdf-drag");
-      clearLiveSelection();
+      try {
+        ghost = createDragGhost({ doc, root, pane, from: press.from, pointer: { x: press.x, y: press.y }, content: ghostContentOf(press) });
+      } catch {
+        ghost = null;
+      }
     }
-    moveChip(x, y);
+    ghost?.move(x, y);
     event.preventDefault?.();
   };
   const onPressUp = (event) => {
     if (!press) return;
-    const { active, uid } = press;
+    const p = press;
     const x = Number(event.clientX);
     const y = Number(event.clientY);
-    if (active) {
+    if (p.active) {
       swallowClick();
-      dropChip();
-      dropAt(uid, x, y);
+      ghost?.move(x, y);
+      if (dropPress(p, x, y, event.altKey === true)) {
+        const g = ghost;
+        ghost = null;
+        try {
+          g?.land();
+        } catch {
+        }
+        if (p.kind === "text") clearLiveSelection();
+      }
+    } else if (p.kind === "text" && !p.fromBar) {
       clearLiveSelection();
+      hideBar();
     }
     endPress();
   };
@@ -37221,20 +38089,71 @@ function createReadPane({
     event.stopPropagation();
     endPress();
   };
-  const onLiveDown = (event) => {
-    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || selectionBusy()) {
-      disarm2();
-      return;
-    }
-    if (event.button !== 0 || !armedUid || !targetIsArmed(event.target)) return;
+  const startPress = (info, event) => {
     endPress();
-    press = { x: Number(event.clientX), y: Number(event.clientY), uid: armedUid, highlight: armedHighlight, active: false };
+    press = { ...info, x: Number(event.clientX), y: Number(event.clientY), active: false };
     const w = view();
     pressListen(w, "pointermove", onPressMove);
     pressListen(w, "pointerup", onPressUp);
     pressListen(w, "pointercancel", endPress);
     pressListen(w, "keydown", onPressKey);
     pressListen(w, "blur", endPress);
+  };
+  const rectOf4 = (node2) => {
+    try {
+      return node2?.getBoundingClientRect?.() || null;
+    } catch {
+      return null;
+    }
+  };
+  const selectionUnder = (x, y) => {
+    const info = selectionInReader(selectionOf(), live);
+    if (!info?.range) return null;
+    let rects = [];
+    try {
+      rects = [...info.range.getClientRects?.() || []];
+    } catch {
+      rects = [];
+    }
+    return rects.some((r) => pointIn(r, x, y)) ? info : null;
+  };
+  const onLiveDown = (event) => {
+    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || selectionBusy()) {
+      disarm2();
+      return;
+    }
+    if (event.button !== 0) return;
+    if (armedUid && targetIsArmed(event.target)) {
+      startPress({ kind: "mark", uid: armedUid, highlight: armedHighlight, from: rectOf4(armedPart) }, event);
+      return;
+    }
+    const x = Number(event.clientX);
+    const y = Number(event.clientY);
+    const hit = Number.isFinite(x) && Number.isFinite(y) ? selectionUnder(x, y) : null;
+    if (hit) {
+      startPress({ kind: "text", text: hit.text, page: hit.page, from: hit.rect }, event);
+      return;
+    }
+    hideBar();
+  };
+  const onLiveMouseDown = (event) => {
+    if (press?.kind === "text" && !press.active) event.preventDefault?.();
+  };
+  const onDrawerDown = (event) => {
+    if (event.button != null && event.button !== 0) return;
+    if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
+    const row4 = event.target?.closest?.(".pxd-read-drawer__row");
+    if (!row4 || !drawerMount.contains?.(row4)) return;
+    if (event.target?.closest?.("button, input, select, textarea, a")) return;
+    const uid = row4.getAttribute?.("data-uid") || "";
+    if (!uid) return;
+    const rowPrev = dragAttr(row4);
+    try {
+      row4.setAttribute?.("draggable", "false");
+    } catch {
+    }
+    row4.draggable = false;
+    startPress({ kind: "row", uid, highlight: null, from: rectOf4(row4), row: row4, rowPrev }, event);
   };
   const onLiveLeave = () => {
     if (!dragging) disarm2();
@@ -37269,8 +38188,8 @@ function createReadPane({
     chip.style.position = "fixed";
     chip.style.left = "-1000px";
     chip.style.top = "0";
-    const bar = el("span", "pxd-read__bar", chip);
-    if (color) bar.setAttribute("data-color", color);
+    const bar2 = el("span", "pxd-read__bar", chip);
+    if (color) bar2.setAttribute("data-color", color);
     el("span", "pxd-read__dragtext", chip).textContent = text3 || "";
     pane.append(chip);
     try {
@@ -37309,6 +38228,11 @@ function createReadPane({
     return Boolean(armedEl.contains?.(target));
   };
   const onMarkDrag = (event) => {
+    if (press?.active) {
+      event.preventDefault?.();
+      return;
+    }
+    if (press) endPress();
     if (!armedUid || !targetIsArmed(event.target)) return;
     const label = chipLabel(armedUid, armedHighlight);
     dragging = beginDrag(event, armedUid, label.color, label.text) === true;
@@ -37336,6 +38260,119 @@ function createReadPane({
       sel.removeAllRanges();
     } catch {
     }
+  };
+  let barInfo = null;
+  let barTimers = [];
+  const barOff = [];
+  const cancelBarTimers = () => {
+    for (const id of barTimers) cancelLater(id);
+    barTimers = [];
+  };
+  const disarmBarKeys = () => {
+    while (barOff.length) {
+      try {
+        barOff.pop()();
+      } catch {
+      }
+    }
+  };
+  const onBarKey = (event) => {
+    if (event.key !== "Escape" || !barInfo) return;
+    escSeen = event;
+    hideBar();
+  };
+  let escSeen = null;
+  const armBarKeys = () => {
+    if (barOff.length) return;
+    const w = view();
+    w.addEventListener?.("keydown", onBarKey, true);
+    barOff.push(() => w.removeEventListener?.("keydown", onBarKey, true));
+  };
+  function hideBar() {
+    cancelBarTimers();
+    disarmBarKeys();
+    barInfo = null;
+    setHidden2(bar, true);
+  }
+  const tipRect = () => {
+    const tip = live.querySelector?.(".PdfHighlighter__tip-container");
+    const r = rectOf4(tip);
+    return r && r.right > r.left && r.bottom > r.top ? r : null;
+  };
+  const placeBar = () => {
+    if (!openFlag || dragging) return;
+    const info = selectionInReader(selectionOf(), live);
+    if (!info || !info.rect) {
+      hideBar();
+      return;
+    }
+    barInfo = info;
+    armBarKeys();
+    setHidden2(bar, false);
+    const paneBox = rectOf4(pane);
+    const usePane = paneBox && paneBox.right > paneBox.left && paneBox.bottom > paneBox.top;
+    const viewport = usePane ? paneBox : rectOf4(root);
+    if (!viewport) return;
+    const size = { w: Number(bar.offsetWidth) || 200, h: Number(bar.offsetHeight) || 30 };
+    let obstacles = [];
+    try {
+      obstacles = chromeObstacles(root);
+    } catch {
+      obstacles = [];
+    }
+    const at = selectionBarPlacement({ selection: info.rect, tip: tipRect(), size, viewport, obstacles, place: placePopover });
+    if (at.hidden) {
+      setHidden2(bar, true);
+      return;
+    }
+    const originX = usePane ? paneBox.left : 0;
+    const originY = usePane ? paneBox.top : 0;
+    bar.style.left = `${Math.round(at.left - originX)}px`;
+    bar.style.top = `${Math.round(at.top - originY)}px`;
+  };
+  const onLiveMouseUp = () => {
+    if (dragging || press?.active) return;
+    cancelBarTimers();
+    barTimers.push(later(placeBar, 0), later(placeBar, BAR_SETTLE_MS));
+  };
+  const writeClip = async (text3) => {
+    const clip4 = doc.defaultView?.navigator?.clipboard || globalThis.navigator?.clipboard;
+    if (!clip4 || typeof clip4.writeText !== "function") throw new Error("no clipboard");
+    await clip4.writeText(text3);
+  };
+  const toast = (message) => {
+    try {
+      host?.toast?.(message);
+    } catch {
+    }
+  };
+  const onSelBarClick = (event) => {
+    const act = event.target?.closest?.("[data-act]")?.getAttribute?.("data-act");
+    if (!act || !barInfo) return;
+    event.stopPropagation?.();
+    const { text: text3, page } = barInfo;
+    if (act === "copy") {
+      void writeClip(text3).then(() => toast("Copied"), () => toast("Copy failed"));
+      return;
+    }
+    hideBar();
+    const fn = session?.insertTextCard;
+    if (typeof fn !== "function") return;
+    try {
+      void Promise.resolve(fn({ text: text3, page, pdfUid: current3.cardUid || "", quote: act === "quote" })).catch(() => {
+      });
+    } catch {
+    }
+  };
+  const onSelBarMouseDown = (event) => {
+    event.preventDefault?.();
+  };
+  const onBarHandleDown = (event) => {
+    if (event.button != null && event.button !== 0) return;
+    if (!barInfo) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    startPress({ kind: "text", text: barInfo.text, page: barInfo.page, from: barInfo.rect, fromBar: true }, event);
   };
   const clearFlash = () => {
     if (flashTimer) {
@@ -37489,7 +38526,7 @@ function createReadPane({
     pane.classList.toggle("pxd-read--tools", toolsOn || searchHold);
   };
   const totalCandidates = (input) => {
-    const bar = input?.closest?.(".rm-pdf-toolbar") || live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
+    const bar2 = input?.closest?.(".rm-pdf-toolbar") || live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
     const out = [];
     const push = (node2) => {
       if (!node2 || node2 === input) return;
@@ -37498,11 +38535,11 @@ function createReadPane({
     push(input?.nextElementSibling);
     push(input?.previousElementSibling);
     const parent = input?.parentElement;
-    if (parent && parent !== bar) {
+    if (parent && parent !== bar2) {
       push(parent.nextElementSibling);
       push(parent.previousElementSibling);
     }
-    const spans = bar?.querySelectorAll?.("span") || [];
+    const spans = bar2?.querySelectorAll?.("span") || [];
     for (const span of spans) push(span);
     return out;
   };
@@ -37529,9 +38566,9 @@ function createReadPane({
   };
   const toolbarEl = () => live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
   const toolbarButtons = () => {
-    const bar = toolbarEl();
-    if (!bar?.querySelectorAll) return [];
-    return [...bar.querySelectorAll("button")];
+    const bar2 = toolbarEl();
+    if (!bar2?.querySelectorAll) return [];
+    return [...bar2.querySelectorAll("button")];
   };
   const searchInput = () => {
     const box2 = live.querySelector?.(".rm-pdf-container");
@@ -37617,6 +38654,7 @@ function createReadPane({
     armed.push([node2, type, fn, capture]);
   };
   const onReaderScroll = () => {
+    if (barInfo) hideBar();
     const raf2 = clock().requestAnimationFrame;
     if (typeof raf2 !== "function") {
       paintPill();
@@ -37649,11 +38687,11 @@ function createReadPane({
     }
   };
   const attachReaderWatch = () => {
-    const bar = toolbarEl();
-    if (bar && bar !== barNode) {
+    const bar2 = toolbarEl();
+    if (bar2 && bar2 !== barNode) {
       forget(barNode, "click", onBarClick);
-      barNode = bar;
-      listen(bar, "click", onBarClick);
+      barNode = bar2;
+      listen(bar2, "click", onSelBarClick);
     }
     const input = readerField();
     if (input && input !== pageInputNode) {
@@ -37994,6 +39032,12 @@ function createReadPane({
   listen(live, "pointermove", onPointerMove, { capture: true, passive: true });
   listen(live, "pointerleave", onLiveLeave);
   listen(live, "pointerdown", onLiveDown);
+  listen(live, "mousedown", onLiveMouseDown, true);
+  listen(live, "mouseup", onLiveMouseUp);
+  listen(drawerMount, "pointerdown", onDrawerDown, true);
+  listen(bar, "click", onSelBarClick);
+  listen(bar, "mousedown", onSelBarMouseDown);
+  listen(barHandle, "pointerdown", onBarHandleDown);
   listen(live, "dragstart", onMarkDrag);
   if (root) listen(root, "drop", clearDragClass);
   listen(list, "click", onListClick);
@@ -38061,6 +39105,7 @@ function createReadPane({
   let parseStore = null;
   let parseHelper = null;
   let viewMode = "reader";
+  let explicitMode = false;
   const ensureStore2 = () => {
     if (!parseStore) parseStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
     return parseStore;
@@ -38114,17 +39159,84 @@ function createReadPane({
   function applyModeClass() {
     pane.classList.remove("pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
     const width = Number(pane.clientWidth) || Number(mountW) || 0;
-    if (viewMode === "parsed") pane.classList.add("pxd-read--parsed");
-    else if (viewMode === "both") {
+    if (viewMode === "both") {
       pane.classList.add("pxd-read--both");
       if (width > 0 && width < BOTH_MIN_PX) pane.classList.add("pxd-read--narrow");
     }
     for (const [id, button] of Object.entries(modeBtns)) {
       button.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
     }
-    setHidden2(pill, viewMode === "parsed" || pane.classList.contains("pxd-read--narrow"));
+    setHidden2(pill, pane.classList.contains("pxd-read--narrow"));
     paintPill();
   }
+  let ocrSha = "";
+  const persistOcr = async (pages, sha) => {
+    if (!sha) return;
+    const store = ensureStore2();
+    const key = imageKey(sha, OCR_LAYER_ID);
+    let stored = [];
+    try {
+      const raw = await store.getImage(key);
+      stored = typeof raw === "string" ? JSON.parse(raw) : [];
+    } catch {
+      stored = [];
+    }
+    try {
+      await store.putImage(key, JSON.stringify(mergeOcrPages(stored, pages)));
+    } catch {
+    }
+  };
+  const setOcrPages = (input, { sha256 = "", persist = true } = {}) => {
+    const pages = pageRecords(input);
+    const n2 = textLayer.setPages(pages);
+    const sha = sha256 || ocrSha;
+    if (n2 && persist && sha) void persistOcr(pages, sha);
+    return n2;
+  };
+  const loadOcrLayer = async (sha) => {
+    if (!sha) return 0;
+    ocrSha = sha;
+    try {
+      const raw = await ensureStore2().getImage(imageKey(sha, OCR_LAYER_ID));
+      if (typeof raw !== "string" || !openFlag || sha !== ocrSha) return 0;
+      return textLayer.setPages(JSON.parse(raw));
+    } catch {
+      return 0;
+    }
+  };
+  const needOcr = (info) => {
+    if (typeof onNeedOcr === "function") {
+      try {
+        onNeedOcr({ ...info || {}, url: pdfUrl(), cardUid: current3.cardUid || "", setOcrPages });
+      } catch {
+      }
+      return;
+    }
+    void (async () => {
+      try {
+        await parsedView?.refreshHelper?.();
+      } catch {
+      }
+      if (info?.helperState === "ready" || await helperReady()) {
+        try {
+          await info?.readScan?.();
+        } catch {
+        }
+        return;
+      }
+      try {
+        host?.toast?.("Scanned page: start the local helper to read its text (Settings → Parse)");
+      } catch {
+      }
+    })();
+  };
+  const helperReady = async () => {
+    try {
+      return (await ensureHelper().health())?.state === "ready";
+    } catch {
+      return false;
+    }
+  };
   const ensureParsed = () => {
     if (parsedView) return parsedView;
     parsedView = createParseView({
@@ -38161,6 +39273,13 @@ function createReadPane({
         }
       },
       getContext: () => readerContext(),
+      outline: true,
+      onNeedOcr: (info) => needOcr(info),
+      onOcrPages: (pages, sha) => {
+        setOcrPages(pages, { sha256: sha || "" });
+      },
+      ghostRoot: root,
+      ghostPane: pane,
       scanAuto: (() => {
         try {
           return (settings?.get?.("parse-engine-default") || "auto") === "auto";
@@ -38195,9 +39314,12 @@ function createReadPane({
   async function noteCached() {
     const url = pdfUrl();
     if (!url || !openFlag) return;
-    if (readParsedUrls(storage).has(url)) revealModes();
+    const known = readParsedUrls(storage).has(url);
+    if (known) revealModes();
+    if (known && viewMode === "reader" && !explicitMode && storedReadMode(storage) === "both") void enterParsed("both");
     try {
       const hit = await ensureStore2().findByUrl(url);
+      if (hit?.sha256 && openFlag && url === pdfUrl()) void loadOcrLayer(hit.sha256);
       if (hit?.sha256 && openFlag) revealModes();
       if (hit?.sha256 && openFlag && !realTitle(current3.title) && !parsedTitle) {
         const hash = await optionsHash(BUILTIN_OPTIONS);
@@ -38212,10 +39334,10 @@ function createReadPane({
     } catch {
     }
   }
-  async function enterParsed(which) {
+  async function enterParsed() {
     if (!openFlag) return;
     revealModes();
-    viewMode = which === "both" ? "both" : "parsed";
+    viewMode = "both";
     applyModeClass();
     try {
       drawer?.close?.();
@@ -38249,13 +39371,14 @@ function createReadPane({
   listen(modes, "click", (event) => {
     const id = event.target?.closest?.("[data-mode]")?.getAttribute?.("data-mode");
     if (!id) return;
-    if (id === "reader") {
+    writeReadMode(storage, id);
+    if (normalizeReadMode(id) === "reader") {
       viewMode = "reader";
       revealModes();
       applyModeClass();
       return;
     }
-    void enterParsed(id);
+    void enterParsed("both");
   });
   function close(opts) {
     cancelPageWait();
@@ -38269,6 +39392,9 @@ function createReadPane({
     const wasOpen = openFlag;
     if (!openFlag && !pane.isConnected) return;
     dropParsed();
+    hideBar();
+    textLayer.clear();
+    ocrSha = "";
     if (wasOpen) emitSnapshot("close");
     openFlag = false;
     endSplit();
@@ -38304,6 +39430,10 @@ function createReadPane({
       const next = detail && typeof detail === "object" ? detail : {};
       const blockUid2 = typeof next.blockUid === "string" ? next.blockUid : "";
       if (!blockUid2 || !root) return;
+      if (blockUid2 !== current3.blockUid) {
+        textLayer.clear();
+        ocrSha = "";
+      }
       if (!openFlag || blockUid2 !== current3.blockUid) {
         fitDone = false;
         userZoomed = false;
@@ -38345,9 +39475,10 @@ function createReadPane({
       armWatch(current3.title);
       paintSwitcher();
       refreshList();
+      explicitMode = next.mode != null && next.mode !== "";
       void noteCached();
-      if (next.mode === "parsed" || next.mode === "both") void enterParsed(next.mode);
-      else if (parsedView && viewMode !== "reader") void enterParsed(viewMode);
+      if (explicitMode && normalizeReadMode(next.mode) === "both") void enterParsed("both");
+      else if (parsedView && viewMode !== "reader") void enterParsed("both");
     },
     close,
     dispose() {
@@ -38359,6 +39490,7 @@ function createReadPane({
         drawer?.dispose?.();
       } catch {
       }
+      textLayer.dispose();
       for (const [node2, type, fn, capture] of armed) node2.removeEventListener?.(type, fn, capture);
       armed.length = 0;
     },
@@ -38378,11 +39510,19 @@ function createReadPane({
     fitInfo: () => ({ path: fitState.path, clicks: fitState.clicks, done: fitDone, userZoomed }),
     element: () => pane,
     parse() {
-      void enterParsed(viewMode === "both" ? "both" : "parsed");
+      void enterParsed("both");
     },
     showParsed() {
-      void enterParsed("parsed");
-    }
+      void enterParsed("both");
+    },
+    showOutline() {
+      void enterParsed("both");
+    },
+    mode: () => viewMode,
+    // U2 contract for OCR sources: pxd-ocr/1 page records (or { pages }) for the open PDF.
+    setOcrPages: (pages, opts) => setOcrPages(pages, opts),
+    textLayerStats: () => textLayer.stats(),
+    selectionBarOpen: () => Boolean(barInfo) && !bar.hasAttribute("hidden")
   };
 }
 
@@ -40285,7 +41425,7 @@ function blockUidFromNode(node2) {
   }
   return null;
 }
-var inside4 = (node2, ancestor) => {
+var inside5 = (node2, ancestor) => {
   let el = node2;
   while (el && el.nodeType === 1) {
     if (el === ancestor) return true;
@@ -40297,7 +41437,7 @@ function inputBlockRole(node2, rootUid) {
   const uid = blockUidFromNode(node2);
   const editor = node2?.closest?.(".pxd-item__editor") || null;
   const nest = node2?.closest?.(".rm-block-children") || null;
-  if (nest && inside4(nest, editor)) return { role: "child", uid };
+  if (nest && inside5(nest, editor)) return { role: "child", uid };
   if (uid && rootUid && uid !== rootUid) return { role: "child", uid };
   return { role: "root", uid: uid || rootUid || null };
 }
@@ -40500,28 +41640,28 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const PILL_CHAR = 6;
   const PILL_PAD = 16;
   const PILL_MIN = 40;
-  const placeBend = (rec, end, point, clamp3, zoom, side2, cardW = 0) => {
+  const placeBend = (rec, end, point, clamp4, zoom, side2, cardW = 0) => {
     const bend = bendOf(rec, end);
     const scale = screenPx(zoom);
     bend.g.setAttribute("transform", `translate(${point.x} ${point.y}) scale(${scale})`);
-    if (bend.clamp !== clamp3) {
-      bend.clamp = clamp3;
-      bend.g.setAttribute("class", `pxd-edge__bend${clamp3 ? " pxd-edge__bend--clamped" : ""}`);
-      bend.g.setAttribute("data-clamp", clamp3 || "");
-      bend.g.setAttribute("data-tip-state", clamp3 ? "clamped" : "inline");
-      bend.g.querySelector?.(".pxd-edge__bend-chevron")?.setAttribute("d", clamp3 === "bottom" ? "M-3 -1.5L0 1.5L3 -1.5" : "M-3 1.5L0 -1.5L3 1.5");
+    if (bend.clamp !== clamp4) {
+      bend.clamp = clamp4;
+      bend.g.setAttribute("class", `pxd-edge__bend${clamp4 ? " pxd-edge__bend--clamped" : ""}`);
+      bend.g.setAttribute("data-clamp", clamp4 || "");
+      bend.g.setAttribute("data-tip-state", clamp4 ? "clamped" : "inline");
+      bend.g.querySelector?.(".pxd-edge__bend-chevron")?.setAttribute("d", clamp4 === "bottom" ? "M-3 -1.5L0 1.5L3 -1.5" : "M-3 1.5L0 -1.5L3 1.5");
     }
-    const full = clamp3 ? `${clamp3 === "bottom" ? "↓" : "↑"} ${bend.words || "Block"}` : "";
+    const full = clamp4 ? `${clamp4 === "bottom" ? "↓" : "↑"} ${bend.words || "Block"}` : "";
     const cardScreen = cardW > 0 ? cardW * (Number(zoom) > 0 ? Number(zoom) : 1) : Infinity;
     const maxW = Math.max(PILL_MIN, cardScreen - PILL_PAD);
     const wantW = Math.max(PILL_MIN, full.length * PILL_CHAR + PILL_PAD);
     const w = Math.round(Math.min(wantW, maxW));
     const fit = Math.max(1, Math.floor((w - PILL_PAD) / PILL_CHAR));
     const label = full.length > fit ? `${full.slice(0, Math.max(1, fit - 1))}…` : full;
-    const key = `${clamp3 || ""}|${side2 || ""}|${label}|${w}`;
+    const key = `${clamp4 || ""}|${side2 || ""}|${label}|${w}`;
     if (bend.pillKey !== key) {
       bend.pillKey = key;
-      if (clamp3) {
+      if (clamp4) {
         const inward = side2 === "left" ? 1 : -1;
         bend.text.textContent = label;
         bend.pill.setAttribute("width", String(w));
@@ -43962,6 +45102,18 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
         return res || { ok: false, reason: "no-session" };
       }
       return { ok: false, reason: "empty" };
+    },
+    // U3. Card / Quote from a reader selection: one note card beside the PDF (fromMarkdown + props, 2 writes).
+    async insertTextCard(payload) {
+      const markdown = textCardMarkdown(payload || {});
+      if (!markdown) return { ok: false, reason: "empty" };
+      const at = Number.isFinite(payload.x) && Number.isFinite(payload.y) ? { x: payload.x, y: payload.y } : spot(payload.pdfUid, CARD_SIZE);
+      const res = await session?.insertParsedCard?.({ ...at, markdown });
+      if (res?.ok) {
+        pick(res.uid ? [res.uid] : []);
+        say(payload.quote ? "Quote card inserted" : "Card inserted");
+      }
+      return res || { ok: false, reason: "no-session" };
     },
     async insertParsedCard(payload) {
       const doc = await load(payload);
@@ -53045,8 +54197,8 @@ function buildBoardView(onFail, {
     }
     const inputFocused = isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement);
     if (inputFocused) {
-      const inside5 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
-      if (!inside5 && !itemsR.isEditing()) return;
+      const inside6 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
+      if (!inside6 && !itemsR.isEditing()) return;
       if ((event.metaKey || event.ctrlKey) && !event.altKey && String(event.key).toLowerCase() === "z") return;
     } else if (!ownsKeyboard()) {
       return;

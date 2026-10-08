@@ -214,13 +214,16 @@ function windowClick(rig) {
   return { cancelled: event.defaultPrevented === true && bubbled === 0, bubbled, event };
 }
 
+// U5: a pointer drag shows the card-shaped ghost (not the old chip); it fades out when the drag ends.
 function assertDragging(rig) {
   assert.equal(rig.dragstarts, 0);
   assert.equal(rig.root.classList.contains("pxd-root--pdf-drag"), true);
-  const chip = rig.root.querySelector(".pxd-read__drag");
-  assert.ok(chip, "pointer chip");
-  assert.equal(chip.style.pointerEvents, "none");
-  assert.equal(chip.style.zIndex, "60");
+  assert.equal(rig.root.querySelector(".pxd-read__drag"), null);
+  const ghost = rig.root.querySelector(".pxd-ghost");
+  assert.ok(ghost, "pointer ghost");
+  assert.equal(ghost.classList.contains("pxd-item"), true);
+  assert.match(ghost.style.transform, /^translate3d\(/);
+  assert.equal(ghost.querySelector(".pxd-ghost__text").textContent, "quoted passage");
 }
 
 function assertIdle(rig, base) {
@@ -228,6 +231,8 @@ function assertIdle(rig, base) {
   assert.equal(rig.events.some((entry) => entry.type === "drop"), false);
   assert.equal(rig.root.classList.contains("pxd-root--pdf-drag"), false);
   assert.equal(rig.root.querySelector(".pxd-read__drag"), null);
+  const ghost = rig.root.querySelector(".pxd-ghost");
+  assert.ok(!ghost || ghost.classList.contains("pxd-ghost--cancel"), "ghost fading out");
   assert.equal(rig.track.net(), base);
 }
 

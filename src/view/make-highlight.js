@@ -148,3 +148,51 @@ export async function makeHighlight({ block, live, pageEl, page, getContext, ado
   try { toast?.(message); } catch { /* host */ }
   return { path: "picker", message };
 }
+
+// U3. The live selection when it sits inside a reader page: its text, the page number, and its client rect.
+export function selectionInReader(sel, readerEl) {
+  if (!sel || sel.isCollapsed || !readerEl || (typeof sel.rangeCount === "number" && sel.rangeCount < 1)) return null;
+  const text = String(sel.toString?.() ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  const elOf = (node) => (node?.nodeType === 1 ? node : node?.parentElement || null);
+  const start = elOf(sel.anchorNode);
+  const end = elOf(sel.focusNode);
+  if (!start || !end || !readerEl.contains?.(start) || !readerEl.contains?.(end)) return null;
+  const pageEl = start.closest?.(".page") || end.closest?.(".page");
+  if (!pageEl || !readerEl.contains?.(pageEl)) return null;
+  const page = Number(pageEl.getAttribute?.("data-page-number")) || null;
+  let range = null;
+  try { range = sel.getRangeAt?.(0) || null; } catch { range = null; }
+  let rect = null;
+  try { rect = range?.getBoundingClientRect?.() || null; } catch { rect = null; }
+  if (!rect || !(rect.right > rect.left)) {
+    try { rect = pageEl.getBoundingClientRect?.() || null; } catch { rect = null; }
+  }
+  const box = rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.right - rect.left, height: rect.bottom - rect.top } : null;
+  return { text, page, pageEl, range, rect: box };
+}
+
+export function unionRect(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  const left = Math.min(a.left, b.left);
+  const top = Math.min(a.top, b.top);
+  const right = Math.max(a.right, b.right);
+  const bottom = Math.max(a.bottom, b.bottom);
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
+export function rectsOverlap(a, b) {
+  if (!a || !b) return false;
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+// Our bar goes below the selection and below Roam's own tip when it is open; the tip and board chrome are
+// obstacles. If the only free spot still overlaps the tip, the bar stays hidden while the tip is open.
+export function selectionBarPlacement({ selection, tip = null, size, viewport, obstacles = [], place } = {}) {
+  if (!selection || !viewport || typeof place !== "function") return { hidden: true };
+  const anchor = unionRect(selection, tip);
+  const at = place({ anchor, size, viewport, gap: 6, obstacles: tip ? [...obstacles, tip] : obstacles });
+  const box = { left: at.left, top: at.top, right: at.left + (at.width || size.w), bottom: at.top + (at.maxHeight || size.h) };
+  return { hidden: Boolean(tip && rectsOverlap(box, tip)), left: at.left, top: at.top, side: at.side };
+}

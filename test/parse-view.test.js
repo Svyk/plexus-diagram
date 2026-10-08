@@ -113,7 +113,8 @@ test("removed furniture, chips, copy, and scan copy are pure", () => {
     pages: [{ n: 3, kind: "scan" }, { n: 9, kind: "scan" }],
     order: [],
     blocks: {},
-  }), "Scanned pages 3–9 · Parse with Docling for OCR");
+  }), "Scanned pages 3–9 · the page is an image");
+  assert.equal(scanSpan({ pages: [{ n: 4, kind: "scan" }], order: [], blocks: {} }), "Scanned page 4 · the page is an image");
   assert.equal(blockGroup("heading"), "text");
   assert.equal(visibleBlocks(doc, { filters: { text: false, table: true, figure: true, formula: true } }).some((b) => b.type === "heading"), false);
   assert.equal(keyCommand({ key: "ArrowDown" }, { owned: false }), null);
@@ -469,7 +470,7 @@ test("a helper that is not running replaces the timing chip", async () => {
   }
 });
 
-test("Parsed mode shows the strip and dispose drops its listeners", async () => {
+test("Read + Outline shows the strip and dispose drops its listeners", async () => {
   const { stub, doc, restore } = mount();
   const root = doc.createElement("div");
   root.className = "pxd-root";
@@ -484,14 +485,13 @@ test("Parsed mode shows the strip and dispose drops its listeners", async () => 
     });
     pane.open({ blockUid: "blk", cardUid: "card", title: "Paper", source: "{{[[pdf]]: https://example.test/a.pdf}}" });
     assert.equal(pane.element().querySelector(".pxd-read__modes").hasAttribute("hidden"), true);
-    pane.element().querySelector('[data-mode="parsed"]').click();
+    assert.deepEqual(pane.element().querySelectorAll(".pxd-read__mode").map((b) => b.textContent), ["Read", "Read + Outline"]);
+    assert.equal(pane.element().querySelector('[data-mode="parsed"]'), null);
+    pane.element().querySelector('[data-mode="both"]').click();
     await new Promise((resolve) => setTimeout(resolve, 30));
-    assert.equal(pane.element().classList.contains("pxd-read--parsed"), true);
-    assert.equal(pane.element().querySelector(".pxd-read__pill").hasAttribute("hidden"), true);
+    assert.equal(stub.localStorage.getItem("pxd-read-mode"), "read+outline");
     assert.equal(pane.element().querySelector(".pxd-read__modes").hasAttribute("hidden"), false);
     assert.ok(pane.element().querySelector(".pxd-parse"));
-    pane.element().querySelector('[data-mode="both"]').click();
-    await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(pane.element().classList.contains("pxd-read--both"), true);
     assert.equal(pane.element().querySelector(".pxd-read__pill").hasAttribute("hidden"), false);
     pane.element()._rect = { left: 0, top: 0, width: 360, height: 600, right: 360, bottom: 600, x: 0, y: 0 };

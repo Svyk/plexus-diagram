@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { LEXICON_FILE, MODEL_FILES, SCHEMA, dictLines } from "../../src/model/ocr/manifest.js";
 import { parseLexicon } from "../../src/model/ocr/lexicon.js";
 import { preparePageImage, recognizeCells } from "../../src/model/ocr/recognize.js";
+import { steadyImageScaling } from "../../src/host/ocr-web.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const modelDir = join(root, "assets/ocr");
@@ -61,7 +62,28 @@ export function loadLexicon() {
   return parseLexicon(gunzipSync(readFileSync(join(modelDir, LEXICON_FILE.file))).toString("utf8"));
 }
 
+// PXD_RENDER=pdfjs renders the way the browser does (pdf.js on a canvas, steadyImageScaling; PXD_STEADY=0
+// leaves pdf.js its own choice), instead of pypdfium2.
+async function renderPdfjs(pdfPath, n, dpi) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(pdfPath)), verbosity: 0, isEvalSupported: false }).promise;
+  const page = await doc.getPage(n);
+  const viewport = page.getViewport({ scale: dpi / 72 });
+  const width = Math.ceil(viewport.width);
+  const height = Math.ceil(viewport.height);
+  const { canvas, context } = doc.canvasFactory.create(width, height);
+  if (process.env.PXD_STEADY !== "0") steadyImageScaling(context);
+  await page.render({ canvasContext: context, viewport, canvas }).promise;
+  const px = context.getImageData(0, 0, width, height).data;
+  const rgb = new Uint8Array(width * height * 3);
+  for (let i = 0, j = 0; i < px.length; i += 4, j += 3) { rgb[j] = px[i]; rgb[j + 1] = px[i + 1]; rgb[j + 2] = px[i + 2]; }
+  const pageCount = doc.numPages;
+  await doc.destroy();
+  return { rgb, width, height, pointW: viewport.width * 72 / dpi, pointH: viewport.height * 72 / dpi, pageCount, dpi };
+}
+
 export function renderPdfPage(pdfPath, n, dpi) {
+  if (process.env.PXD_RENDER === "pdfjs") return renderPdfjs(pdfPath, n, dpi);
   const buf = execFileSync("python3", ["-c", RENDER_PY, pdfPath, String(n), String(dpi)], {
     maxBuffer: 128 * 1024 * 1024,
   });
@@ -84,7 +106,7 @@ export function createPpocrSource({ pdfPath, dpi = 300, log = () => {}, options 
   async function pageOf(n, signal) {
     if (prepared.has(n)) return prepared.get(n);
     await sessions();
-    const rendered = renderPdfPage(pdfPath, n, dpi);
+    const rendered = await renderPdfPage(pdfPath, n, dpi);
     pageCount = rendered.pageCount || pageCount;
     const t0 = performance.now();
     const prep = await preparePageImage({

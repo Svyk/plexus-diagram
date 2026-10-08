@@ -1,6 +1,6 @@
 // PDF-1 cover plan. The reader is Roam's. No fetch and no :pdf write.
 
-import { capTitle, isCutPrefix, isJunkTitleText, titleWordCount } from "./title-cap.js";
+import { capTitle, isBannerOf, isCutPrefix, isJunkTitleText, titleWordCount } from "./title-cap.js";
 
 const PDF_MACRO = "{{[[pdf]]:";
 
@@ -90,6 +90,22 @@ export function pdfTitlePlan(source) {
   return file || "PDF";
 }
 
+// Running headers and the text of page 1 of a parsed document (capped), for the metadata banner check.
+export function parsedTitleLines(doc) {
+  if (!doc || typeof doc !== "object") return [];
+  const out = [];
+  for (const r of Array.isArray(doc.removed) ? doc.removed : []) if (r?.text && r.reason !== "page-number") out.push(String(r.text));
+  const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
+  for (const id of Array.isArray(doc.order) ? doc.order : Object.keys(blocks)) {
+    const block = blocks[id];
+    if (!block || block.page !== 1 || typeof block.text !== "string") continue;
+    const text = block.text.replace(/\s+/g, " ").trim();
+    if (text) out.push(text.slice(0, 160));
+    if (out.length >= 80) break;
+  }
+  return [...new Set(out)].slice(0, 60);
+}
+
 // The parsed document's name for the PDF: its title, else the first level-1 heading, else the first
 // table caption, else a short first paragraph on page 1. Never a storage path.
 export function parsedDocTitle(doc) {
@@ -101,10 +117,12 @@ function parsedDocTitleRaw(doc) {
   const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
   const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
   const norm = (value) => String(value ?? "").replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
-  const running = new Set((Array.isArray(doc.removed) ? doc.removed : []).filter((r) => r && r.reason !== "page-number").map((r) => norm(r.text)));
+  const runningTexts = (Array.isArray(doc.removed) ? doc.removed : []).filter((r) => r && r.reason !== "page-number" && r.text).map((r) => String(r.text));
+  const running = new Set(runningTexts.map(norm));
   const usable = (value) => {
     const real = cleanPdfTitle(value);
-    return real && !isJunkTitleText(real) && !running.has(norm(real)) ? real : "";
+    if (!real || isJunkTitleText(real) || running.has(norm(real))) return "";
+    return runningTexts.some((line) => isBannerOf(real, line, { exact: false })) ? "" : real;
   };
   const given = usable(doc.title);
   if (given) {

@@ -138,8 +138,19 @@ function revive(raw) {
     pageCount: Number.isInteger(raw.pageCount) && raw.pageCount >= 1 ? raw.pageCount : null,
     w: Number.isInteger(raw.w) && raw.w >= 1 ? raw.w : null,
     h: Number.isInteger(raw.h) && raw.h >= 1 ? raw.h : null,
+    ...titleOf(raw),
     ts: typeof raw.ts === "number" && Number.isFinite(raw.ts) ? raw.ts : 0,
   };
+}
+
+const TITLE_LINES = 60;
+const TITLE_LINE_CHARS = 160;
+
+// The page title read during a warm and the page-1 lines behind it (null: never read).
+function titleOf(raw) {
+  const pageTitle = typeof raw?.pageTitle === "string" ? raw.pageTitle.slice(0, 300) : null;
+  const lines = Array.isArray(raw?.titleLines) ? raw.titleLines.filter((t) => typeof t === "string").slice(0, TITLE_LINES).map((t) => t.slice(0, TITLE_LINE_CHARS)) : [];
+  return { pageTitle, titleLines: lines };
 }
 
 export function createCoverStore({ indexedDB, storage } = {}) {
@@ -273,6 +284,7 @@ export function createCoverStore({ indexedDB, storage } = {}) {
         pageCount: record.pageCount ?? null,
         w: record.w ?? null,
         h: record.h ?? null,
+        ...titleOf(record),
         ts: typeof record.ts === "number" ? record.ts : 0,
       };
       remember(record.url);
@@ -333,6 +345,7 @@ export function createCoverStore({ indexedDB, storage } = {}) {
           pageCount: Number.isInteger(record.pageCount) && record.pageCount >= 1 ? record.pageCount : null,
           w: Number.isInteger(record.w) && record.w >= 1 ? record.w : null,
           h: Number.isInteger(record.h) && record.h >= 1 ? record.h : null,
+          ...titleOf(record),
           ts: typeof record.ts === "number" && Number.isFinite(record.ts) ? record.ts : 0,
         };
         if (!idbDead) {

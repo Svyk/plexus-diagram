@@ -34,14 +34,19 @@ function wordConf(it) { return it.mean ?? it.conf ?? 1; }
 export function textLines(page, tableBoxes = []) {
   const items = page?.items || [];
   const cand = [];
+  const squeezed = [];
   items.forEach((it, i) => {
     if (!it || !it.str || !it.str.trim() || !Array.isArray(it.transform)) return;
     if (it.transform[1] || it.transform[2]) return;
     const size = itemSize(it);
     if (!(size > 0)) return;
     if (it.y0 != null && it.y1 != null && it.y1 - it.y0 > 1.6 * size) return;
-    // A rotated word (a page-edge running title) comes back as a tall, narrow box.
-    if (it.y0 != null && it.y1 != null && it.str.length >= 3 && it.y1 - it.y0 > 2.5 * it.width) return;
+    // A rotated word (a page-edge running title) comes back as a tall, narrow box. One only a line
+    // high is a squeezed word of a horizontal line instead; it may belong in a gap of that line.
+    if (it.y0 != null && it.y1 != null && it.str.length >= 3 && it.y1 - it.y0 > 2.5 * it.width) {
+      if (it.y1 - it.y0 <= 1.25 * size) squeezed.push(i);
+      return;
+    }
     if (inside(it, tableBoxes)) return;
     cand.push(i);
   });
@@ -70,6 +75,7 @@ export function textLines(page, tableBoxes = []) {
       }
     }
   }
+  absorbGapFragments(lines, items, squeezed);
   const out = lines.map((l) => {
     const its = l.idx.map((i) => items[i]);
     const bases = its.map((t) => t.transform[5]).sort((a, b) => a - b);
@@ -98,6 +104,48 @@ export function textLines(page, tableBoxes = []) {
     l.bbox = l.bbox.map(r2);
   }
   return out.map(({ idx, bbox, size }) => ({ idx, bbox, size }));
+}
+
+// Words that sit in a gap between two words of a longer line, a little off its baseline (under 0.8
+// of a size) and overlapping it vertically, are part of that line: the recogniser sometimes boxes a
+// word or two of a line on their own, squeezed and shifted ("cases per" of the CDC title on a pdf.js
+// raster). Left apart, the whole-line re-read reads them again and the paragraph has them twice.
+// `squeezed`: item indices dropped as too narrow for their height, but only a line high.
+function absorbGapFragments(lines, items, squeezed = []) {
+  const left = (i) => items[i].transform[4];
+  const right = (i) => items[i].transform[4] + items[i].width;
+  const mid = (i) => left(i) + items[i].width / 2;
+  const band = (i) => [items[i].y0 ?? items[i].transform[5] - 0.8 * itemSize(items[i]), items[i].y1 ?? items[i].transform[5] + 0.2 * itemSize(items[i])];
+  const span = (idx) => idx.map(band).reduce((a, b) => [Math.min(a[0], b[0]), Math.max(a[1], b[1])]);
+  const hostFor = (idx, exclude) => {
+    const base = items[idx[0]].transform[5];
+    const size = itemSize(items[idx[0]]);
+    const x0 = Math.min(...idx.map(mid));
+    const x1 = Math.max(...idx.map(mid));
+    const [fy0, fy1] = span(idx);
+    return lines.find((host) => {
+      if (host === exclude || host.idx.length < 3 || host.idx.length <= idx.length) return false;
+      if (Math.abs(base - items[host.idx[0]].transform[5]) > 0.8 * host.size || Math.abs(size - host.size) > 0.3 * host.size) return false;
+      const sorted = [...host.idx].sort((a, b) => left(a) - left(b));
+      const inGap = sorted.some((i, k) => k > 0 && right(sorted[k - 1]) <= x0 + 0.5 && left(i) >= x1 - 0.5);
+      if (!inGap) return false;
+      const [hy0, hy1] = span(host.idx);
+      return Math.min(hy1, fy1) - Math.max(hy0, fy0) > 0;
+    }) || null;
+  };
+  const gone = new Set();
+  for (const frag of lines) {
+    if (frag.idx.length > 3) continue;
+    const host = hostFor(frag.idx, frag);
+    if (!host || gone.has(host)) continue;
+    host.idx = [...host.idx, ...frag.idx].sort((a, b) => left(a) - left(b));
+    gone.add(frag);
+  }
+  for (let k = lines.length - 1; k >= 0; k -= 1) if (gone.has(lines[k])) lines.splice(k, 1);
+  for (const i of squeezed) {
+    const host = hostFor([i], null);
+    if (host) host.idx = [...host.idx, i].sort((a, b) => left(a) - left(b));
+  }
 }
 
 // Split a line into pieces the rec model reads whole, at word gaps.

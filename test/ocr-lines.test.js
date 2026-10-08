@@ -279,3 +279,35 @@ test("ocr-web loads the word list from our origin, checks its hash, caches it, a
     LEXICON_FILE.bytes = realBytes;
   }
 });
+
+test("textLines puts squeezed or split-off words back into the gap of their line", () => {
+  const it = (str, x, w, base, extra = {}) => ({ str, transform: [6, 0, 0, 6, x, base], width: w, y0: base - 4.8, y1: base + 1.32, mean: 1, ...extra });
+  const page = {
+    n: 1,
+    engine: "ppocr-web",
+    items: [
+      it("Summary", 268.5, 29.5, 15.12),
+      it("of", 298, 7.7, 15.12),
+      it("reported", 305.7, 51.1, 15.12),
+      it("100,000", 359.4, 56.1, 15.12),
+      it("population,", 418.5, 30, 15.12),
+      // The CDC title on a pdf.js raster: "cases per" boxed apart, 1 pt wide and 3.8 pt lower.
+      it("csses", 357.05, 0.96, 18.95),
+      it("per", 358.49, 0.72, 18.95),
+      // A rotated page-edge word stays out.
+      it("NOTIFIABLE", 580, 6, 120, { y0: 90, y1: 126 }),
+      // A separate line well below is not absorbed.
+      it("Note:", 100, 20, 40),
+      it("rates", 122, 20, 40),
+    ],
+  };
+  const lines = textLines(page, []);
+  const words = lines.map((l) => l.idx.map((i) => page.items[i].str).join(" "));
+  assert.ok(words.includes("Summary of reported csses per 100,000 population,"), words.join(" | "));
+  assert.ok(words.includes("Note: rates"));
+  assert.equal(words.some((w) => w.includes("NOTIFIABLE")), false);
+  const split = { ...page, items: page.items.map((x) => (x.str === "csses" || x.str === "per" ? { ...x, width: x.str === "csses" ? 1.2 * 6 * 2 : 6 } : x)) };
+  split.items[5] = { ...split.items[5], transform: [6, 0, 0, 6, 357.1, 18.4] };
+  const again = textLines(split, []).map((l) => l.idx.map((i) => split.items[i].str).join(" "));
+  assert.equal(again.filter((w) => w.includes("csses")).length, 1, "never twice");
+});

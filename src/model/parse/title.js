@@ -1,5 +1,5 @@
 // Parse step: the paper's title from the page text, not from a running header. Pure.
-import { isJunkTitleText, titleWordCount } from "../title-cap.js";
+import { isBannerOf, isJunkTitleText, titleWordCount } from "../title-cap.js";
 import { normalizeFurniture } from "./furniture.js";
 
 const MAX_LINES = 6;
@@ -11,8 +11,14 @@ function textOf(line) {
 
 // Stack consecutive candidate lines of one size and weight into one title block. Returns the
 // block with the biggest type, bold before regular at one size, then the one higher on the page.
+// A block whose words sit again inside a running header or another line with only volume, year and
+// page numbers around them is the journal banner, not the title.
 export function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
   const furniture = new Set(removed.map((r) => normalizeFurniture(r.text || "")));
+  const running = removed.filter((r) => r && r.reason !== "page-number" && r.text).map((r) => r.text);
+  const pageLines = pages.flatMap((pg) => (pg && !pg.ocr && pg.kind !== "scan" ? (pg.free || []).map(textOf) : []));
+  const banner = (text) => running.some((line) => isBannerOf(text, line, { exact: false }))
+    || pageLines.some((line) => isBannerOf(text, line, { exact: false }));
   for (const pg of pages) {
     if (!pg || pg.ocr || pg.kind === "scan") continue;
     const lines = (pg.free || []).map((line) => ({ line, text: textOf(line) }))
@@ -36,6 +42,7 @@ export function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
       const words = titleWordCount(text);
       if (words < 3 || words > MAX_WORDS) continue;
       if (!(first.size > 1.1 * bodySize || (first.bold && first.size >= bodySize - 0.3))) continue;
+      if (banner(text)) continue;
       const cand = { text, size: first.size, bold: Boolean(first.bold), y: first.base, page: pg.n };
       if (!best || cand.size > best.size + 0.5 || (Math.abs(cand.size - best.size) <= 0.5 && ((cand.bold && !best.bold) || (cand.bold === best.bold && cand.y < best.y)))) best = cand;
     }

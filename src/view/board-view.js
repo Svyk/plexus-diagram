@@ -19,7 +19,8 @@ import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, noteActionPlan } from "../model/highlight.js";
-import { cleanPdfTitle, coverModel, embedSplit, parsedDocTitle, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
+import { cleanPdfTitle, coverModel, embedSplit, parsedDocTitle, parsedTitleLines, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
+import { isMetaBanner } from "../model/title-cap.js";
 import { COVER_MAX_W, WARM_AFTER_MS, coverKey, coverState, densityTicks, sharpCoverPlan, warmPlan } from "../model/pdf-cover.js";
 import { PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { createCoverStore } from "../host/cover-store.js";
@@ -1508,6 +1509,8 @@ function buildBoardView(onFail, {
   let itemsR = null;
   let notePdfMeta = () => "";
   const parsedTitles = new Map();
+  // Page-1 lines behind a parsed title, for the metadata banner check (url → { pageTitle, lines }).
+  const parsedEvidence = new Map();
   let pdfDisplayTitle = (card) => {
     const title = typeof card?.title === "string" ? card.title.trim() : "";
     return title && title !== "PDF" && !title.startsWith("{{") ? title : "PDF";
@@ -1691,8 +1694,9 @@ function buildBoardView(onFail, {
       if (!disposed) itemsR.repaintStyles({ highlighter: false });
       if (!disposed) { try { chrome.ctx.reposition(); chrome.toolbar.scheduleDock?.(); } catch { /* chrome */ } }
     },
-    onParsedTitle: (url, title) => {
+    onParsedTitle: (url, title, lines) => {
       if (disposed || typeof url !== "string" || !url || !title) return;
+      if (Array.isArray(lines)) parsedEvidence.set(url, { pageTitle: title, lines });
       if (parsedTitles.get(url) === title) return;
       parsedTitles.set(url, title);
       try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
@@ -1778,20 +1782,33 @@ function buildBoardView(onFail, {
       const title = found ? parsedDocTitle(found) : "";
       if (disposed || !title || parsedTitles.get(key)) return;
       parsedTitles.set(key, title);
+      parsedEvidence.set(key, { pageTitle: title, lines: parsedTitleLines(found) });
       try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
       try { readPane?.refreshCards?.(); } catch { /* switcher */ }
     }).catch(() => {});
   };
   const metaQueued = new Set();
   let metaTail = Promise.resolve();
+  // The title the cover warm read from page 1, when no parse names the PDF.
+  const warmTitleOf = (key) => {
+    const face = coverFaces.get(key);
+    const title = typeof face?.pageTitle === "string" ? cleanPdfTitle(face.pageTitle) : "";
+    return title ? { pageTitle: title, lines: face.titleLines || [] } : null;
+  };
   notePdfMeta = (url) => {
     const key = typeof url === "string" ? url.trim() : "";
     if (!key) return "";
-    const parsedKnown = parsedTitles.get(key) || "";
-    if (!parsedKnown) noteStoredTitle(key);
+    const parsedOnly = parsedTitles.get(key) || "";
+    if (!parsedOnly) noteStoredTitle(key);
+    const warm = parsedOnly ? null : warmTitleOf(key);
+    const parsedKnown = parsedOnly || warm?.pageTitle || "";
+    const evidence = parsedOnly ? parsedEvidence.get(key) : warm;
     try { probePdfjs(); } catch { return parsedKnown; }
     if (!pdfMeta) return parsedKnown;
-    const known = cleanPdfTitle(pdfMeta.title(key)) || parsedKnown;
+    const meta = cleanPdfTitle(pdfMeta.title(key));
+    // A metadata Title that only repeats the journal banner of page 1 loses to the page's own title.
+    const banner = meta && parsedKnown && isMetaBanner(meta, { pageTitle: parsedKnown, lines: evidence?.lines || [] });
+    const known = (banner ? "" : meta) || parsedKnown;
     if (!known && !metaQueued.has(key)) {
       metaQueued.add(key);
       const meta = pdfMeta;
@@ -1920,6 +1937,10 @@ function buildBoardView(onFail, {
     }
     return "";
   };
+  const titleFace = (record) => ({
+    pageTitle: typeof record?.pageTitle === "string" ? record.pageTitle : null,
+    titleLines: Array.isArray(record?.titleLines) ? record.titleLines : [],
+  });
   const emptyFace = (state, record) => ({
     state: state === "ready" ? "none" : state,
     src: "",
@@ -1927,6 +1948,7 @@ function buildBoardView(onFail, {
     h: record?.h ?? null,
     lastPage: record?.lastPage ?? null,
     pageCount: record?.pageCount ?? null,
+    ...titleFace(record),
   });
   const srcOfCover = async (image) => {
     if (typeof image === "string") return image.startsWith("data:") ? image : "";
@@ -1949,10 +1971,13 @@ function buildBoardView(onFail, {
         const src = await srcOfCover(image);
         if (disposed || coverGen.get(url) !== gen) return;
         coverFaces.set(url, src
-          ? { state: "ready", src, w: record?.w ?? null, h: record?.h ?? null, lastPage: record?.lastPage ?? null, pageCount: record?.pageCount ?? null }
+          ? { state: "ready", src, w: record?.w ?? null, h: record?.h ?? null, lastPage: record?.lastPage ?? null, pageCount: record?.pageCount ?? null, ...titleFace(record) }
           : emptyFace("error", record));
       }
       if (!disposed) itemsR.repaintStyles();
+      if (!disposed && typeof record?.pageTitle === "string" && record.pageTitle) {
+        try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+      }
       scheduleSharpCovers();
     }).catch(() => {
       if (disposed || coverGen.get(url) !== gen) return;
@@ -2006,7 +2031,7 @@ function buildBoardView(onFail, {
       break;
     }
     if (!picked) return;
-    Promise.resolve(firstPage.render({ url: picked.url, maxW: picked.maxW })).then((result) => {
+    Promise.resolve(firstPage.render({ url: picked.url, maxW: picked.maxW, title: false })).then((result) => {
       if (disposed) {
         if (result?.blob) return;
         return;
@@ -2132,6 +2157,8 @@ function buildBoardView(onFail, {
         blockUid,
         kind: "pdf",
         hasCover: coverFaces.get(url)?.state === "ready",
+        needsTitle: coverFaces.get(url)?.state === "ready" && typeof coverFaces.get(url)?.pageTitle !== "string"
+          && !parsedTitles.get(url) && firstPageAllowed(url),
         url,
         ...(hash ? { hash } : {}),
       });

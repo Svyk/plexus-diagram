@@ -75,7 +75,8 @@ test("title rule: real metadata, then the first parsed heading, then the file na
   assert.equal(pdfTitlePlan({ metadataTitle: "I", url: "https://x.test/o/imgs%2Fapp%2Fg%2FAbCdEfGhIjK.pdf" }), "PDF");
   assert.equal(coverModel({ metadataTitle: "Untitled", url }).title, "EU regulation 2073");
   const board = read("../src/view/board-view.js");
-  assert.match(board, /cleanPdfTitle\(pdfMeta\.title\(key\)\) \|\| parsedKnown/);
+  assert.match(board, /const meta = cleanPdfTitle\(pdfMeta\.title\(key\)\);/);
+  assert.match(board, /const known = \(banner \? "" : meta\) \|\| parsedKnown;/);
 });
 
 test("the pane header ignores a junk metadata title and uses the file name", () => {

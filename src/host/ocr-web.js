@@ -64,6 +64,48 @@ async function readBody(res, onBytes, signal) {
   return out.buffer;
 }
 
+// How a scanned image is scaled into the OCR raster, the same on every screen. pdf.js picks image
+// smoothing from the display's pixel ratio, so a 200 dpi scan drawn at 300 dpi came out with
+// nearest-neighbour, uneven pixel rows on a 1x screen and smoothed on a 2x one. Here: a whole-number
+// upscale copies pixels (sharp and even), any other upscale is bilinear, a downscale is smoothed.
+export function imageScaling(sw, sh, dw, dh) {
+  const kx = Math.abs(Number(dw) / Number(sw));
+  const ky = Math.abs(Number(dh) / Number(sh));
+  if (!(kx > 0) || !(ky > 0) || !Number.isFinite(kx) || !Number.isFinite(ky)) return null;
+  if (kx <= 1.01 && ky <= 1.01) return true;
+  const whole = (k) => k <= 1.01 || Math.abs(k - Math.round(k)) <= 0.02;
+  return !(whole(kx) && whole(ky));
+}
+
+export function steadyImageScaling(ctx) {
+  if (!ctx || typeof ctx.drawImage !== "function") return ctx;
+  const draw = ctx.drawImage;
+  try {
+    Object.defineProperty(ctx, "drawImage", {
+      configurable: true,
+      writable: true,
+      value(...args) {
+        if (args.length !== 9) return draw.apply(this, args);
+        let m = null;
+        try { m = typeof this.getTransform === "function" ? this.getTransform() : null; } catch { m = null; }
+        const sx = m ? Math.hypot(m.a, m.b) || 1 : 1;
+        const sy = m ? Math.hypot(m.c, m.d) || 1 : 1;
+        const smooth = imageScaling(args[3], args[4], args[7] * sx, args[8] * sy);
+        if (smooth == null) return draw.apply(this, args);
+        const was = this.imageSmoothingEnabled;
+        const quality = this.imageSmoothingQuality;
+        this.imageSmoothingEnabled = smooth;
+        if (smooth) this.imageSmoothingQuality = "low";
+        try { return draw.apply(this, args); } finally {
+          this.imageSmoothingEnabled = was;
+          if (quality !== undefined) this.imageSmoothingQuality = quality;
+        }
+      },
+    });
+  } catch { /* a frozen context keeps pdf.js's own choice */ }
+  return ctx;
+}
+
 // One page of an open pdf.js document as RGB at `dpi`.
 export async function renderPdfPage(pdfDoc, n, dpi = DPI) {
   const page = await pdfDoc.getPage(n);
@@ -75,7 +117,7 @@ export async function renderPdfPage(pdfDoc, n, dpi = DPI) {
     : globalThis.document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const ctx = steadyImageScaling(canvas.getContext("2d", { willReadFrequently: true }));
   await page.render({ canvasContext: ctx, viewport }).promise;
   const pixels = ctx.getImageData(0, 0, width, height).data;
   const rgb = new Uint8Array(width * height * 3);

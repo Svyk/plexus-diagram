@@ -14,14 +14,14 @@ import { detectFormulas } from "./formulas.js";
 import { FOOTNOTE_MARK_RE, groupParagraphs, inlineUnlinkedRefs, joinLines, spansOf } from "./blocks.js";
 import { boxOfUnits, crossesGutter, detectColumns, orderUnits, splitAtGutters } from "./xycut.js";
 import { repairOcrTable } from "./ocr-fix.js";
-import { capTitle, isCutPrefix, isJunkTitleText } from "../title-cap.js";
+import { capTitle, isCutPrefix, isJunkTitleText, isMetaBanner } from "../title-cap.js";
 import { cleanPdfTitle } from "../pdf.js";
 
 export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 2;
+export const PARSE_REV = 3;
 
 const now = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
 
@@ -188,18 +188,49 @@ export async function parsePdf({ getPage, numPages, pages, signal, onPage, info 
   return doc;
 }
 
+function freeLinesOf(pg) {
+  const free = [];
+  for (const line of pg.lines || []) {
+    const ws = line.words.filter((w) => !pg.used?.has?.(w));
+    if (!ws.length) continue;
+    free.push(ws.length === line.words.length ? line : makeLine(ws));
+  }
+  return free;
+}
+
+const EVIDENCE_LINES = 60;
+const EVIDENCE_CHARS = 160;
+
+// Running headers and the text lines of the first page, for the metadata-title banner check.
+export function titleEvidenceLines(pageRecords, removed = []) {
+  const out = [];
+  for (const r of removed || []) if (r?.text && r.reason !== "page-number") out.push(String(r.text));
+  const first = (pageRecords || [])[0];
+  for (const line of first?.free || first?.lines || []) {
+    const text = line.words.map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
+    if (text) out.push(text);
+  }
+  return [...new Set(out.map((t) => t.slice(0, EVIDENCE_CHARS)))].slice(0, EVIDENCE_LINES);
+}
+
+// The page title from the geometry of pages 1-2 alone (the cover warm reads only those): the same
+// furniture cut and findPageTitle as a full parse, no tables or headings. Pure.
+export function quickPageTitle(pageRecords) {
+  const recs = (pageRecords || []).filter(Boolean);
+  if (!recs.length) return { pageTitle: "", lines: [] };
+  for (const pg of recs) pg.free = freeLinesOf(pg);
+  const furniture = findFurniture(recs.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
+  for (const pg of recs) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
+  const bodySize = bodySizeOf(recs.flatMap((pg) => pg.free)) || 10;
+  const found = findPageTitle(recs.slice(0, 2), { bodySize, removed: furniture.removed });
+  return { pageTitle: found ? capTitle(found) : "", lines: titleEvidenceLines(recs, furniture.removed) };
+}
+
 // Pass 2: document-level structure from the page geometry records. Pure.
 export function assembleDocument(pageRecords, { numPages, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {}, from = 1, to = numPages } = {}) {
   const t1 = now();
   // Free lines: words not consumed by tables or figures.
-  for (const pg of pageRecords) {
-    pg.free = [];
-    for (const line of pg.lines) {
-      const ws = line.words.filter((w) => !pg.used.has(w));
-      if (!ws.length) continue;
-      pg.free.push(ws.length === line.words.length ? line : makeLine(ws));
-    }
-  }
+  for (const pg of pageRecords) pg.free = freeLinesOf(pg);
   const furniture = findFurniture(pageRecords.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
   for (const pg of pageRecords) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
   const allFree = pageRecords.flatMap((pg) => pg.free);
@@ -440,6 +471,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
   let title = info && typeof info.Title === "string" ? cleanPdfTitle(info.Title) || null : null;
   const runningTexts = new Set(furniture.removed.filter((r) => r.reason !== "page-number").map((r) => normalizeFurniture(r.text)));
   if (title && (runningTexts.has(normalizeFurniture(title)) || isJunkTitleText(title))) title = null;
+  if (title && pageTitle && isMetaBanner(title, { pageTitle, lines: titleEvidenceLines(pageRecords, furniture.removed) })) title = null;
   const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1) && !isJunkTitleText(h.text)) || headings.find((h) => h.level === 1 && !isJunkTitleText(h.text));
   if (!title) title = pageTitle || (h1 ? h1.text : null);
   else if (h1 && isCutPrefix(title, h1.text)) title = h1.text;

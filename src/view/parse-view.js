@@ -9,7 +9,7 @@ import { resplitColumns } from "../model/parse/resplit.js";
 import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { toCSV, toMarkdown } from "../model/parse-to-text.js";
 import { imageKey, restorableByUrl } from "../host/parse-store.js";
-import { parsedDocTitle } from "../model/pdf.js";
+import { parsedDocTitle, parsedTitleLines } from "../model/pdf.js";
 import { loadPageData, mergeOcrPageRecords, readScan, rereadCells, rereadLines } from "./parse-engine.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { createParseOverlay } from "./parse-overlay.js";
@@ -793,7 +793,7 @@ export function createParseView({
     if (parsed) {
       const chips = chipsOn();
       if (chips.__doc !== parsed) { chips.__doc = parsed; try { chips.refresh(); } catch { /* reader */ } }
-      try { onTitle?.(parsedDocTitle(parsed)); } catch { /* host */ }
+      try { onTitle?.(parsedDocTitle(parsed), parsedTitleLines(parsed)); } catch { /* host */ }
     }
     if (parsed && typeof onScan === "function") {
       const scanned = scanPagesOf(parsed);

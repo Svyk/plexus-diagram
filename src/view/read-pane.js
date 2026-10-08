@@ -5,7 +5,7 @@
 import { CARD_MIME, PARSE_MIME } from "../model/drop.js";
 import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
-import { cleanPdfTitle, coverModel, parsedDocTitle, pdfFileTitle, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
+import { cleanPdfTitle, coverModel, parsedDocTitle, parsedTitleLines, pdfFileTitle, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
 import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { fitDecision, fitWidthStep, fitsWidth, pageIndicator, pageTotalText, pdfDocumentFromFiber, pillActions, viewerFromFiber } from "../model/read-pane-model.js";
 import { isTextEntryTarget } from "./cards.js";
@@ -1932,12 +1932,12 @@ export function createReadPane({
     const options = switcher.querySelectorAll?.("option") || [];
     for (const opt of options) if (opt.value === current.cardUid) opt.textContent = text;
   };
-  const noteParsedTitle = (value) => {
+  const noteParsedTitle = (value, lines) => {
     const text = cleanPdfTitle(value);
     if (text === parsedTitle) return;
     parsedTitle = text;
     if (openFlag) paintTitle();
-    if (text) { try { onParsedTitle?.(pdfUrl(), text); } catch { /* host */ } }
+    if (text) { try { onParsedTitle?.(pdfUrl(), text, Array.isArray(lines) ? lines : undefined); } catch { /* host */ } }
   };
   const readerPdf = () => {
     try {
@@ -2306,7 +2306,7 @@ export function createReadPane({
         const found = await restorableByUrl(ensureStore(), url, { plainOptions: BUILTIN_OPTIONS });
         const title = found ? parsedDocTitle(found) : "";
         // The restore may have named the document while this lookup ran; never blank it.
-        if (title && !parsedTitle && openFlag && url === pdfUrl()) noteParsedTitle(title);
+        if (title && !parsedTitle && openFlag && url === pdfUrl()) noteParsedTitle(title, parsedTitleLines(found));
       }
     } catch { /* store */ }
   }

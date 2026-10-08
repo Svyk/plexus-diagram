@@ -712,3 +712,94 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert {
 .pxd-root.pxd-root--docked.pxd-root--dock-labels.pxd-root--read .pxd-dock__label {
   display: none;
 }
+
+/* U3. Selection bar below the selection (and below Roam's own tip). Borders carry meaning; no fills. */
+.pxd-read .pxd-selbar {
+  position: absolute;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 3px;
+  border: 1px solid var(--pxd-border-strong, var(--pxd-border, #d0d7de));
+  border-radius: 6px;
+  background: var(--pxd-chrome-bg, var(--pxd-surface, #fff));
+  color: var(--pxd-text, inherit);
+  box-shadow: var(--pxd-shadow, none);
+  font-size: 12px;
+  user-select: none;
+}
+
+.pxd-read .pxd-selbar[hidden] {
+  display: none;
+}
+
+.pxd-read .pxd-selbar__btn,
+.pxd-read .pxd-selbar__handle {
+  height: 24px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pxd-read .pxd-selbar__btn:hover,
+.pxd-read .pxd-selbar__btn:focus-visible,
+.pxd-read .pxd-selbar__handle:hover {
+  border-color: var(--pxd-accent, currentColor);
+}
+
+.pxd-read .pxd-selbar__handle {
+  padding: 0 6px;
+  color: var(--pxd-muted, inherit);
+  cursor: grab;
+  touch-action: none;
+}
+
+.pxd-root.pxd-root--dark .pxd-read .pxd-selbar {
+  background: var(--pxd-chrome-bg, #1e2a35);
+  box-shadow: none;
+}
+
+/* U6. Outline rows: one line per heading, table, figure and formula, with its page. */
+.pxd-read .pxd-parse__orow .pxd-parse__main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pxd-read .pxd-parse__olabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pxd-read .pxd-parse__olabel--heading {
+  font-weight: 600;
+}
+
+.pxd-read .pxd-parse__opage {
+  flex: 0 0 auto;
+  color: var(--pxd-muted, inherit);
+  font-size: 11px;
+}
+
+.pxd-read .pxd-parse__readtext {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--pxd-accent, currentColor);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

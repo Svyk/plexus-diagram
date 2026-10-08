@@ -1,7 +1,7 @@
 // Payload-style insert actions for the parsed view. The parse view sends
 // { sha256, engine, optsHash, ids, pdfUid, kind }; the session wants converted content.
 
-import { planParseInsert, PARSE_MISSING_TOAST } from "../model/drop.js";
+import { planParseInsert, PARSE_MISSING_TOAST, textCardMarkdown } from "../model/drop.js";
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
 import { selectBlocks } from "../model/parse-schema.js";
 import { parsedTableSize } from "../model/roam-table.js";
@@ -133,6 +133,19 @@ export function createParseActions({ session, store, placeBeside, toast, select,
         return res || { ok: false, reason: "no-session" };
       }
       return { ok: false, reason: "empty" };
+    },
+
+    // U3. Card / Quote from a reader selection: one note card beside the PDF (fromMarkdown + props, 2 writes).
+    async insertTextCard(payload) {
+      const markdown = textCardMarkdown(payload || {});
+      if (!markdown) return { ok: false, reason: "empty" };
+      const at = Number.isFinite(payload.x) && Number.isFinite(payload.y) ? { x: payload.x, y: payload.y } : spot(payload.pdfUid, CARD_SIZE);
+      const res = await session?.insertParsedCard?.({ ...at, markdown });
+      if (res?.ok) {
+        pick(res.uid ? [res.uid] : []);
+        say(payload.quote ? "Quote card inserted" : "Card inserted");
+      }
+      return res || { ok: false, reason: "no-session" };
     },
 
     async insertParsedCard(payload) {

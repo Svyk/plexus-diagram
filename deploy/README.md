@@ -131,7 +131,16 @@ The card cover is the page image, first page or the last page you read, with a t
 
 ## Parse a PDF
 
-Parse turns a PDF into text, headings, lists, tables and figures you can insert into Roam. Open the reading pane, then pick Parse. Reader shows the PDF, Parsed shows the parse, and Both shows them side by side (a narrow pane stacks them). Nothing is written until you insert.
+Parse turns a PDF into text, headings, lists, tables and figures you can insert into Roam. Open the reading pane, then pick Parse. Read shows the PDF; Read + Outline puts the outline beside it (a narrow pane stacks them). The outline lists headings, tables, figures and formulas with their pages; search also finds paragraphs, and a heading row stands for its whole section when you insert, send, copy or drag. Nothing is written until you insert.
+
+Read on the page itself:
+
+| Gesture | What happens |
+|---|---|
+| Select text | A small bar appears under the selection, below Roam's own highlight tip: Copy, Card (a note card beside the PDF with the text and its page), Quote (the same as a blockquote), and a drag handle. Esc closes it. Roam's tip still makes the highlight |
+| Drag a selection | Press inside the selection and drag, or drag the bar's handle. A card-shaped ghost follows the pointer, takes the board's zoom over the board with a dashed outline, and the card lands where the ghost is. Hold Alt as you drop for a quote. Esc or a drop outside the board keeps the selection |
+| Drag a highlight | A highlight on the page or a row in the highlight list drags the same ghost and places the highlight card. Hold Shift on a list row for the browser's own drag, to drop into a Roam block |
+| Scanned pages | Once a scanned page has been read (Read text, or Read the scan with the helper), its words become an invisible text layer on the page. Selecting, copying, the bar and Roam's own highlighter then work on the scan. The layer is kept on this device per PDF, not in your graph |
 
 The built-in parser needs no install. It reads text, headings, lists, ruled and borderless tables with merged cells, figures, and formulas as crops. It follows two-column order and removes running headers and footers.
 
@@ -141,7 +150,7 @@ The optional local helper adds Docling for formulas as LaTeX and for OCR. For a 
 |---|---|
 | Start | Run `tools/parse-helper/bin/plexus-parse-helper serve` |
 | Token | Run `plexus-parse-helper token`, then paste the result into Settings, Plexus Diagram, Parse helper token |
-| Scans | Read the scan appears on scanned pages when the helper is ready |
+| Scans | Read the scan appears on scanned pages when the helper is ready. The outline's Read text button asks for the same reading |
 
 An insert is one Roam write per table or page range, plus the card layout. Roam Grid tables keep merged cells when Roam Grid 0.18.3 or later is installed.
 
@@ -293,6 +302,8 @@ Each row is the most writes one gesture makes, measured by `test/pol-2-writes.te
 | Lay out by date | 45 | 1 |
 | Source chip | 0 | 0 |
 | Lenses and timeline viewing | 0 | 0 |
+| Card or Quote from a PDF selection, or a dropped selection | 2 | 2 |
+| Select, copy, drag preview, text layer | 0 | 0 |
 
 ## Settings
 

@@ -522,3 +522,69 @@ test("Read + Outline shows the strip and dispose drops its listeners", async () 
     restore();
   }
 });
+
+const PIXEL = "data:image/png;base64,iVBORw0KGgo=";
+
+async function copyFigure({ clip, writeText, withCaption = false, target = "f1" }) {
+  const { doc, restore } = mount();
+  try {
+    const parsed = sample();
+    if (withCaption) parsed.blocks.c1 = { id: "c1", type: "caption", for: "f1", page: 2, text: "Figure 1. Plant layout", bbox: [0, 80, 20, 85] };
+    const toasts = [];
+    doc.defaultView = {
+      navigator: { clipboard: clip },
+      ClipboardItem: class { constructor(items) { this.items = items; } },
+      Blob: class { constructor(parts, opts) { this.parts = parts; this.type = opts?.type || ""; } },
+    };
+    const view = createParseView({
+      doc,
+      writeText,
+      store: { async getImage() { return PIXEL; } },
+      onToast(m) { toasts.push(m); },
+    });
+    doc.body.append(view.element());
+    view.showDoc(parsed);
+    view.element().querySelector(`[data-id="${target}"]`).click();
+    [...view.element().querySelectorAll(".pxd-parse__act")].find((n) => n.textContent === "Copy").click();
+    for (let i = 0; i < 10; i += 1) await new Promise((r) => setTimeout(r, 0));
+    view.dispose();
+    return toasts;
+  } finally {
+    restore();
+  }
+}
+
+test("copying a figure writes the crop as image/png with the caption as text", async () => {
+  const writes = [];
+  const toasts = await copyFigure({ clip: { async write(items) { writes.push(items); } }, withCaption: true });
+  assert.equal(writes.length, 1);
+  const item = writes[0][0].items;
+  assert.equal(item["image/png"].type, "image/png");
+  assert.deepEqual(item["text/plain"].parts, ["Figure 1. Plant layout"]);
+  assert.deepEqual(toasts, ["Copied"]);
+  const plain = [];
+  await copyFigure({ clip: { async write(items) { plain.push(items); } } });
+  assert.deepEqual(plain[0][0].items["text/plain"].parts, ["Figure (p. 2)"]);
+});
+
+test("figure copy falls back to the caption text, and reports failure", async () => {
+  const texts = [];
+  const toasts = await copyFigure({ clip: { async write() { throw new Error("denied"); } }, writeText: async (t) => { texts.push(t); }, withCaption: true });
+  assert.deepEqual(texts, ["Figure 1. Plant layout"]);
+  assert.deepEqual(toasts, ["Copied"]);
+  const none = [];
+  await copyFigure({ clip: {}, writeText: async (t) => { none.push(t); } });
+  assert.deepEqual(none, ["Figure (p. 2)"]);
+  const failed = await copyFigure({ clip: { async write() { throw new Error("x"); }, async writeText() { throw new Error("y"); } } });
+  assert.deepEqual(failed, ["Could not copy"]);
+});
+
+test("table and paragraph copy stay Markdown text", async () => {
+  const texts = [];
+  const writes = [];
+  await copyFigure({ clip: { async write(i) { writes.push(i); } }, writeText: async (t) => { texts.push(t); }, target: "p1" });
+  assert.deepEqual(texts, ["Hello alpha"]);
+  await copyFigure({ clip: { async write(i) { writes.push(i); } }, writeText: async (t) => { texts.push(t); }, target: "t1" });
+  assert.equal(writes.length, 0);
+  assert.match(texts[1], /Head/);
+});

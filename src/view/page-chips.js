@@ -481,7 +481,12 @@ export function createPageChips({
     const id = icon.getAttribute("data-block");
     const block = getParsed?.()?.blocks?.[id];
     if (!block) return;
-    try { copy?.(block); } catch { /* host */ }
+    let result;
+    try { result = copy?.(block); } catch { /* host */ }
+    if (result && typeof result.then === "function") {
+      void result.then((ok) => { if (ok !== false) markCopied(icon); }, () => {});
+      return;
+    }
     markCopied(icon);
   };
 

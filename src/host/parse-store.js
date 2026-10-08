@@ -36,6 +36,20 @@ export async function restorableParse(store, sha, { engines, plainHash, readHash
   return null;
 }
 
+export const RESTORE_ENGINES = Object.freeze(["builtin", "docling", "mixed", "anydoc"]);
+
+// restorableParse for a PDF url: the url index gives the sha, `plainOptions` the options of the plain parse.
+export async function restorableByUrl(store, url, { plainOptions, engines = RESTORE_ENGINES } = {}) {
+  if (!store || !url) return null;
+  const hit = await store.findByUrl(url);
+  if (!hit?.sha256) return null;
+  return restorableParse(store, hit.sha256, {
+    engines,
+    plainHash: await optionsHash(plainOptions),
+    readHashOf: (plain) => optionsHash({ ...(plain.options || plainOptions), ocr: "vision" }),
+  });
+}
+
 export function imageKey(sha256, blockId) {
   return `${sha256}/${blockId}`;
 }

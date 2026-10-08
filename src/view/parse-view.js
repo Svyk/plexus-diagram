@@ -8,7 +8,7 @@ import { assembleDocument, parsePageGeometry } from "../model/parse/index.js";
 import { resplitColumns } from "../model/parse/resplit.js";
 import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { toCSV, toMarkdown } from "../model/parse-to-text.js";
-import { imageKey, restorableParse } from "../host/parse-store.js";
+import { imageKey, restorableByUrl } from "../host/parse-store.js";
 import { parsedDocTitle } from "../model/pdf.js";
 import { loadPageData, mergeOcrPageRecords, readScan, rereadCells } from "./parse-engine.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
@@ -1662,15 +1662,8 @@ export function createParseView({
 
   async function restore() {
     if (!store || !currentUrl) return null;
-    const hit = await store.findByUrl(currentUrl);
-    if (!hit?.sha256) return null;
-    const hash = await optionsHash(BUILTIN_OPTIONS);
     // The OCR-merged parse supersedes the scan-only one saved before the read.
-    const found = await restorableParse(store, hit.sha256, {
-      engines: ["builtin", "docling", "mixed", "anydoc"],
-      plainHash: hash,
-      readHashOf: (plain) => optionsHash({ ...(plain.options || BUILTIN_OPTIONS), ocr: "vision" }),
-    });
+    const found = await restorableByUrl(store, currentUrl, { plainOptions: BUILTIN_OPTIONS });
     if (!found) return null;
     parsed = found;
     rememberParsedUrl(storage, currentUrl);

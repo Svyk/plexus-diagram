@@ -7,6 +7,8 @@
 import { bboxToPagePercent, bboxToPageRect } from "./parse-overlay.js";
 
 const HIDE_MS = 220;
+const SYNC_RETRIES = 40;
+const SYNC_RETRY_MS = 250;
 const DOT_CAP = 400;
 // Breathing room around the exact block extent, in CSS px (the box geometry itself is exact).
 export const BOX_PAD = 3;
@@ -150,6 +152,7 @@ export function createPageChips({
   const layers = new Map();
   let boxCount = 0;
   let syncFrame = 0;
+  let syncRetries = 0;
 
   const on = (node, type, fn, capture = false) => {
     if (!node || typeof node.addEventListener !== "function") return;
@@ -334,6 +337,13 @@ export function createPageChips({
       if (marked && !el.hasAttribute?.("data-loaded")) continue;
       layers.set(n, buildLayer(n, el, parsed));
     }
+    // A reopened PDF restores its parse before the reader has drawn the page: look again until one is there.
+    if (layers.size === 0 && syncRetries < SYNC_RETRIES) {
+      syncRetries += 1;
+      later(queueSync, SYNC_RETRY_MS);
+    } else if (layers.size > 0) {
+      syncRetries = 0;
+    }
   };
 
   function queueSync() {
@@ -511,6 +521,7 @@ export function createPageChips({
     // Repaint the persistent boxes (new parse, new pages). Writes nothing to the graph.
     refresh() {
       if (disposed) return;
+      syncRetries = 0;
       dropLayers();
       if (showParsed) sync();
     },
@@ -519,6 +530,7 @@ export function createPageChips({
     setShown(on) {
       showParsed = Boolean(on);
       writeShowParsed(storage, showParsed);
+      syncRetries = 0;
       dropLayers();
       if (showParsed) sync();
       return showParsed;

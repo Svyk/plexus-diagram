@@ -226,6 +226,7 @@ export function buildMenu(kind, ctx = {}) {
         ...(c.isPdf ? [make("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : []),
         ...(c.isPdf ? [make("parse-pdf", "Parse PDF…")] : []),
         ...(c.isPdf && c.hasParse ? [make("open-parsed", "Open parsed")] : []),
+        ...(c.officeFile ? [make("convert-office", "Convert to cards")] : []),
         sep(),
         make("copy", "Copy", { hint: "Cmd C" }),
         make("copy-png", "Copy selection as PNG"),

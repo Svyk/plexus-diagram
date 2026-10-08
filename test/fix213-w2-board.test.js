@@ -1,4 +1,5 @@
 // 2.13.0 fix pass, worker W2. Each test mounts the real board view over a fake host and session.
+import { noteSpeedFlags } from "../src/settings.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -466,6 +467,7 @@ test("D6/D7: a saved-view map draws only the cards in its frame, and view change
 // ---------------------------------------------------------------- B1
 
 test("B1: an open PDF reader stays in the pane, so the arrow stays on the card", async () => {
+  noteSpeedFlags('{"budgetedMount":false}'); // card bodies mount in wall-clock chunks; a loaded machine must not change what the test sees
   const tree = pulled({ extra: [block("pdfCard001", "{{[[pdf]]: https://example.test/papers/Risk.pdf}}", { ":x": 0, ":y": 800, ":w": 280, ":h": 160 }, 20)] });
   tree[":block/children"].find((c) => c[":block/uid"] === "edgesEEE5")[":block/children"].push(
     block("edgePDF001", "((pdfCard001)) → ((cardAAAA1))", { ":type": "edge", ":from": "pdfCard001", ":to": "cardAAAA1" }, 1),
@@ -483,6 +485,7 @@ test("B1: an open PDF reader stays in the pane, so the arrow stays on the card",
     await f.flush();
     assert.equal(path(), before, "the pane keeps the cover, so the arrow stays on the card");
   } finally {
+    noteSpeedFlags(null);
     f.done();
   }
 });

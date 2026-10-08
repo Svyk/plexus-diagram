@@ -90,15 +90,9 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   onPhase?.({ phase: "ocr", pages: wanted });
   const got = await helper.ocr({ bytes, sha256, pages: wanted, signal });
   throwIfAborted();
-  const byPage = new Map((got?.pages || []).map((p) => [p.n, p]));
-  const next = records.map((rec) => (byPage.has(rec.n) ? parsePageGeometry(byPage.get(rec.n), rec.n) : rec));
-  for (const n of wanted) if (byPage.has(n) && !records.some((r) => r.n === n)) next.push(parsePageGeometry(byPage.get(n), n));
-  next.sort((a, b) => a.n - b.n);
-  const lo = from ?? next[0]?.n ?? 1;
-  const hi = to ?? next[next.length - 1]?.n ?? numPages;
-  const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...(base?.options || {}), ...options, ocr: "vision" }, from: lo, to: hi });
-  const merged = mergeOcrDocument(base, fresh, { pages: wanted });
+  const merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
   const doc = merged.doc;
+  const next = merged.records;
   // Second read for cells the numeric repair left unreadable or empty.
   const tables = doc.order.map((id) => doc.blocks[id]).filter((b) => b && b.type === "table" && b.repairs && b.ocrSource !== "layer");
   const requests = tables.flatMap((t) => cellsToReread(t, { numericCols: t.repairs.numericCols }));
@@ -115,4 +109,19 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   }
   doc.ocr = { ...(doc.ocr || {}), rereads: rereads.reduce((n, r) => n + r.applied.length, 0), elapsedMs: got?.elapsedMs ?? null };
   return { doc, choices: merged.choices, rereads, pages: wanted, records: next };
+}
+
+// The offline half of readScan: pxd-ocr/1 page records (helper or on-device) replace the geometry of
+// their pages, the document is assembled again, and the merge keeps the better table reading.
+export function mergeOcrPageRecords({ base, ocrPages, records, pages, numPages, info = null, options = {}, from, to, sha256 } = {}) {
+  const wanted = pages && pages.length ? pages : scanPagesOf(base);
+  const byPage = new Map((ocrPages || []).map((p) => [p.n, p]));
+  const next = (records || []).map((rec) => (byPage.has(rec.n) ? parsePageGeometry(byPage.get(rec.n), rec.n) : rec));
+  for (const n of wanted) if (byPage.has(n) && !next.some((r) => r.n === n)) next.push(parsePageGeometry(byPage.get(n), n));
+  next.sort((a, b) => a.n - b.n);
+  const lo = from ?? next[0]?.n ?? 1;
+  const hi = to ?? next[next.length - 1]?.n ?? numPages;
+  const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...(base?.options || {}), ...options, ocr: "vision" }, from: lo, to: hi });
+  const merged = mergeOcrDocument(base, fresh, { pages: wanted });
+  return { doc: merged.doc, choices: merged.choices, records: next };
 }

@@ -16,8 +16,9 @@ from plexus_parse_helper import HELPER_NAME, HELPER_VERSION, SCHEMA_ID
 from plexus_parse_helper.auth import token_matches
 from plexus_parse_helper.cache import ParseCache
 from plexus_parse_helper.jobs import JobCancelled, JobManager, expand_pages
-from plexus_parse_helper.models import model_report, start_download
+from plexus_parse_helper.models import model_report, start_download, stop_download
 from plexus_parse_helper.ocr import ocr_cells, ocr_options_hash, ocr_pdf
+from plexus_parse_helper.pair import close_window, window_open
 from plexus_parse_helper.schema import normalize_options, options_hash, sha256_bytes
 
 MAX_BODY = 200 * 1024 * 1024
@@ -181,7 +182,7 @@ class JobBook:
         return 204
 
 
-def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobManager | None = None, cache: ParseCache | None = None, ocr_runner=None, cell_runner=None) -> FastAPI:
+def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobManager | None = None, cache: ParseCache | None = None, ocr_runner=None, cell_runner=None, pair_file=None) -> FastAPI:
     allow = set(allow_origins or ["https://roamresearch.com"])
     manager = jobs or JobManager()
     store = cache or ParseCache()
@@ -193,6 +194,7 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
     run_ocr = ocr_runner or ocr_pdf
     run_cells = cell_runner or ocr_cells
     ocr_lock = threading.Lock()
+    pair_lock = threading.Lock()
 
     def authed(request: Request) -> bool:
         return token_matches(request.headers.get("authorization"), token)
@@ -212,18 +214,45 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
             "warm": bool(manager.warm),
         }
 
+    @app.get("/v1/pair")
+    def pair(request: Request):
+        """No bearer: this route is how a browser gets it. 404 unless the pairing window is
+        open and the Origin is on the allow list; the first caller in the window gets the token."""
+        origin = request.headers.get("origin")
+        if not origin or origin not in allow:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        with pair_lock:
+            if not window_open(pair_file) or not close_window(pair_file):
+                return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse(
+            {"token": token, "helper": HELPER_NAME, "version": HELPER_VERSION},
+            headers={"Cache-Control": "no-store"},
+        )
+
     @app.get("/v1/models")
     def models(request: Request):
         if not authed(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         report = model_report()
-        return {"state": report["state"], "items": report["items"]}
+        return {
+            "state": report["state"],
+            "items": report["items"],
+            "bytes": report["bytes"],
+            "done": report["done"],
+            "fraction": report["fraction"],
+        }
 
     @app.post("/v1/models/download")
     def download(request: Request):
         if not authed(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         return JSONResponse(start_download(), status_code=202)
+
+    @app.delete("/v1/models/download")
+    def cancel_download(request: Request):
+        if not authed(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return JSONResponse(stop_download(), status_code=200)
 
     @app.head("/v1/cache/{sha256}")
     def head_cache(sha256: str, request: Request):

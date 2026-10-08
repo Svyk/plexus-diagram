@@ -15,6 +15,18 @@ const rejectRemoteImports = {
   },
 };
 
+// The glue mentions anydoc_wasm_bg.wasm via import.meta.url. That URL is never fetched:
+// init() receives the hashed bytes. Leaving the file external keeps the 6.7 MB wasm out of extension.js.
+const anydocWasmExternal = {
+  name: "anydoc-wasm-external",
+  setup(build) {
+    build.onResolve({ filter: /anydoc_wasm_bg\.wasm$/ }, (args) => ({
+      path: args.path,
+      external: true,
+    }));
+  },
+};
+
 export function artifactBanner(version) {
   return `/* Plexus Diagram v${version} | MIT | generated; edit src/ */`;
 }
@@ -42,7 +54,7 @@ export function bundleBuildOptions({
     sourcemap: false,
     treeShaking: true,
     logLevel: "silent",
-    plugins: [rejectRemoteImports],
+    plugins: [rejectRemoteImports, anydocWasmExternal],
     banner: banner ? { js: banner } : undefined,
     metafile: Boolean(metafile),
   };
@@ -70,6 +82,9 @@ export async function bundleEntry({
   }
   return output.text;
 }
+
+// Served by Pages as /helper/install.sh. The source lives beside the helper it installs.
+const HELPER_INSTALLER = "tools/parse-helper/install.sh";
 
 export async function readCss(rootDirectory = defaultRoot) {
   const root = resolve(rootDirectory);
@@ -114,8 +129,9 @@ export async function build(rootDirectory = defaultRoot, options = {}) {
     writeFile(resolve(rootDirectory, "extension.css"), css, "utf8"),
   ]);
   await rm(deployDir, { recursive: true, force: true });
-  await mkdir(deployDir, { recursive: true });
+  await mkdir(resolve(deployDir, "helper"), { recursive: true });
   await Promise.all([
+    copyFile(resolve(rootDirectory, HELPER_INSTALLER), resolve(deployDir, "helper", "install.sh")),
     writeFile(resolve(deployDir, "extension.js"), javascript, "utf8"),
     writeFile(resolve(deployDir, "extension.css"), css, "utf8"),
     ...["README.md", "CHANGELOG.md", "LICENSE"].map((name) => (
@@ -123,8 +139,26 @@ export async function build(rootDirectory = defaultRoot, options = {}) {
     )),
     writeFile(resolve(deployDir, ".nojekyll"), "", "utf8"),
   ]);
+  await copyAnydocAssets(rootDirectory, deployDir);
   await publishOcrAssets(rootDirectory, deployDir);
   process.stdout.write(`Built extension.js, extension.css, and ${deployDir}\n`);
+}
+
+// build() wipes deploy/. The Pages copy is rebuilt from assets/anydoc/, which is the committed source.
+async function copyAnydocAssets(rootDirectory, deployDir) {
+  const src = resolve(rootDirectory, "assets", "anydoc");
+  let names;
+  try {
+    names = await readdir(src);
+  } catch {
+    throw new Error("assets/anydoc is missing");
+  }
+  const dest = resolve(deployDir, "assets", "anydoc");
+  await mkdir(dest, { recursive: true });
+  for (const name of names) {
+    const from = resolve(src, name);
+    await copyFile(from, resolve(dest, name));
+  }
 }
 
 // Models live in assets/ so a rebuild can wipe deploy/ and copy them back. The worker bundle
@@ -163,6 +197,7 @@ export async function verifyGeneratedArtifacts(rootDirectory = defaultRoot) {
     ["deploy/README.md", await readFile(resolve(rootDirectory, "README.md"), "utf8")],
     ["deploy/CHANGELOG.md", await readFile(resolve(rootDirectory, "CHANGELOG.md"), "utf8")],
     ["deploy/LICENSE", await readFile(resolve(rootDirectory, "LICENSE"), "utf8")],
+    ["deploy/helper/install.sh", await readFile(resolve(rootDirectory, HELPER_INSTALLER), "utf8")],
     ["deploy/.nojekyll", ""],
   ];
   const drift = [];

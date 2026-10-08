@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { noteSpeedFlags } from "../src/settings.js";
 import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
@@ -396,6 +397,7 @@ test("TSK-6 the card color picker stays inside a narrow board", async () => {
 });
 
 test("hover toolbar works on a note, a page and a block ref", async () => {
+  noteSpeedFlags('{"budgetedMount":false}'); // card bodies mount in wall-clock chunks; a loaded machine must not change what the test sees
   const calls = [];
   const f = mountFixture({
     extraChildren: [{
@@ -446,6 +448,7 @@ test("hover toolbar works on a note, a page and a block ref", async () => {
     assert.ok(root.querySelector(".pxd-contexts"));
     assert.match(root.querySelector("[data-uid=refRRRR01]").textContent, /ref child/);
   } finally {
+    noteSpeedFlags(null);
     f.view.dispose();
     f.restore();
   }

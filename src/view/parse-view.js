@@ -10,12 +10,16 @@ import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { toCSV, toMarkdown } from "../model/parse-to-text.js";
 import { imageKey } from "../host/parse-store.js";
 import { parsedDocTitle } from "../model/pdf.js";
-import { loadPageData, readScan } from "./parse-engine.js";
+import { loadPageData, mergeOcrPageRecords, readScan } from "./parse-engine.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { createParseOverlay } from "./parse-overlay.js";
+import { createPageChips, runChipAction } from "./page-chips.js";
 import { cropRect, createCropQueue } from "./parse-crop.js";
 import { makeHighlight } from "./make-highlight.js";
 import { isTextEntryTarget } from "./cards.js";
+import { createDragGhost, dispatchDrop } from "./drag-ghost.js";
+import { createAnydocHost } from "../host/anydoc.js";
+import { markdownToParse } from "../model/anydoc-to-parse.js";
 
 export const PARSE_MIME = "application/x-plexus-parse";
 export const BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
@@ -23,8 +27,8 @@ export const SYNC_MS = 250;
 export const LOW_CONFIDENCE = 0.75;
 export const BOTH_MIN_PX = 640;
 const URLS_KEY = "pxd-parse-urls";
-const HELPER_START = "tools/parse-helper/bin/plexus-parse-helper serve";
 const TEXT_TYPES = new Set(["heading", "para", "list", "caption", "footnote", "code"]);
+const INDEX_TYPES = new Set(["heading", "table", "figure", "formula"]);
 
 function reasonLabel(reason) {
   if (reason === "page-number") return "page numbers";
@@ -58,16 +62,20 @@ export function defaultRangeChoice(pageCount) {
 }
 
 export function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
+  if (phase !== "running" && engine === "anydoc") {
+    if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
+    return { text: "Alternative read" };
+  }
   if (phase === "running") {
-    const which = engine === "docling" ? "Docling" : "built-in";
+    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : "built-in";
     return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
   }
   if (helper === "not-running" || helper === "disabled") {
-    return { text: "Docling: not running", tip: `${HELPER_START}. Paste the token into Settings.` };
+    return { text: "Local helper: off", tip: "Open Engines (the gear) to set up or start the local helper." };
   }
-  if (helper === "wrong-token") return { text: "Docling: wrong token", tip: "Paste the helper token into Settings." };
-  if (helper === "models-missing") return { text: "Docling: downloading models", tip: "The helper is downloading models." };
-  if (helper === "newer-schema") return { text: "Docling: newer schema", tip: "This Plexus is older than the helper." };
+  if (helper === "wrong-token") return { text: "Local helper: wrong token", tip: "Open Engines (the gear) and pair the local helper again." };
+  if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
+  if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
   if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
@@ -179,15 +187,54 @@ export function tableChipLabel(table) {
   return conf ? `${method} · ${conf}` : method;
 }
 
-export function scanSpan(doc) {
+export function scanPageNumbers(doc) {
   const pages = (doc?.pages || []).filter((page) => page.kind === "scan").map((page) => page.n);
   const blocks = selectBlocks(doc, null).filter((block) => block.type === "scan").map((block) => block.page);
-  const nums = [...new Set([...pages, ...blocks])].sort((a, b) => a - b);
+  return [...new Set([...pages, ...blocks])].sort((a, b) => a - b);
+}
+
+// U6. Never a bare message: the scanned-page note always comes with a Read text button (onNeedOcr).
+export function scanSpan(doc) {
+  const nums = scanPageNumbers(doc);
   if (!nums.length) return "";
   const from = nums[0];
   const to = nums[nums.length - 1];
-  const label = from === to ? String(from) : `${from}–${to}`;
-  return `Scanned pages ${label} · Parse with Docling for OCR`;
+  const label = from === to ? `Scanned page ${from}` : `Scanned pages ${from}–${to}`;
+  return `${label} · the page is an image`;
+}
+
+// U6. Outline rows: headings, tables, figures and formulas. A heading stands for its section: itself and
+// the blocks after it up to the next heading of the same or a higher level.
+export function outlineBlocks(blocks) {
+  return (blocks || []).filter((block) => INDEX_TYPES.has(block?.type));
+}
+
+export function sectionIds(doc, headingId) {
+  const all = selectBlocks(doc, null);
+  const at = all.findIndex((block) => block.id === headingId);
+  if (at < 0) return [];
+  const head = all[at];
+  if (head.type !== "heading") return [head.id];
+  const level = head.level || 1;
+  const out = [head.id];
+  for (let i = at + 1; i < all.length; i += 1) {
+    const block = all[i];
+    if (block.type === "heading" && (block.level || 1) <= level) break;
+    if (block.type === "scan") continue;
+    out.push(block.id);
+  }
+  return out;
+}
+
+export function outlineLabel(block) {
+  if (!block) return "";
+  if (block.type === "table") {
+    const size = block.rows && block.cols ? ` ${block.rows}×${block.cols}` : "";
+    return `Table${size}${block.caption ? ` · ${block.caption}` : ""}`;
+  }
+  if (block.type === "figure") return `Figure${block.text ? ` · ${block.text}` : ""}`;
+  if (block.type === "formula") return `Formula${block.latex ? ` · ${block.latex}` : ""}`;
+  return String(block.text || "");
 }
 
 function setHidden(node, on) {
@@ -258,6 +305,14 @@ export function createParseView({
   clock = null,
   scanAuto = false,
   ocrSource = null,
+  lazyKeys = false,
+  outline = false,
+  onNeedOcr = null,
+  onScan = null,
+  onOcrPages = null,
+  ghostRoot = null,
+  ghostPane = null,
+  anydoc = null,
 } = {}) {
   const el = (tag, cls, parent) => {
     const node = doc.createElement(tag);
@@ -266,6 +321,7 @@ export function createParseView({
     return node;
   };
   const now = () => (typeof clock === "function" ? clock() : Date.now());
+  const anydocHost = anydoc || createAnydocHost();
   const root = el("div", "pxd-parse");
   root.tabIndex = -1;
   root.setAttribute("role", "region");
@@ -287,6 +343,14 @@ export function createParseView({
   doclingBtn.textContent = "Parse with Docling";
   doclingBtn.setAttribute("data-tip", "parse.docling");
   setHidden(doclingBtn, true);
+  const altBtn = el("button", "pxd-parse__alt", enginePop);
+  altBtn.type = "button";
+  const altLabel = el("span", "pxd-parse__alt-label", altBtn);
+  altLabel.textContent = "Alternative read";
+  const altNote = el("span", "pxd-parse__alt-note", altBtn);
+  altNote.textContent = "no tables guarantee";
+  altBtn.setAttribute("aria-label", "Alternative read, no tables guarantee");
+  altBtn.setAttribute("data-guarantee", "no tables guarantee");
   const cancelBtn = el("button", "pxd-parse__cancel", enginePop);
   cancelBtn.type = "button";
   cancelBtn.textContent = "Cancel";
@@ -456,15 +520,47 @@ export function createParseView({
   }
 
   function shown() {
-    return visibleBlocks(parsed, { filters, query, range });
+    const blocks = visibleBlocks(parsed, { filters, query, range });
+    return outline && !String(query || "").trim() ? outlineBlocks(blocks) : blocks;
   }
+
+  // Outline headings stand for their sections when inserting, sending, copying or dragging.
+  function expand(blocks) {
+    if (!outline || !parsed) return blocks;
+    const ids = [];
+    for (const block of blocks || []) {
+      for (const id of block.type === "heading" ? sectionIds(parsed, block.id) : [block.id]) if (!ids.includes(id)) ids.push(id);
+    }
+    return selectBlocks(parsed, ids);
+  }
+
+  let pageChips = null;
+  const chipsOn = () => pageChips || (pageChips = createPageChips({
+    doc,
+    host: readerEl || null,
+    getParsed: () => parsed,
+    pageEl: (n) => pageEl?.(n) || null,
+    pageOf: (n) => pageInfo(n),
+    isLatexReady: () => helperState === "ready",
+    run: (act, item) => {
+      runChipAction({ act, ...item }, {
+        session,
+        payload: (ids) => payload(ids.map((id) => parsed?.blocks?.[id]).filter(Boolean)),
+        copy: (ids) => { if (parsed) void writeClipboard(copyText(parsed, ids, { shift: false }).text); },
+        latex: (block) => {
+          if (block?.latex) void writeClipboard(`$$${block.latex}$$`);
+          else onToast?.("Run Docling on this page to read the formula as LaTeX");
+        },
+      });
+    },
+  }));
 
   function idsOf(blocks) {
     return (blocks || shown()).map((block) => block.id);
   }
 
   function payload(blocks) {
-    const list = blocks || shown().filter((block) => selected.includes(block.id));
+    const list = expand(blocks || shown().filter((block) => selected.includes(block.id)));
     return dragPayload({
       sha256: parsed?.sha256 || "",
       engine: parsed?.engine || "builtin",
@@ -535,6 +631,14 @@ export function createParseView({
     return node;
   }
 
+  function renderOutlineRow(block, main) {
+    const label = el(block.type === "heading" ? "div" : "div", `pxd-parse__olabel pxd-parse__olabel--${block.type}`, main);
+    label.textContent = outlineLabel(block);
+    if (block.type === "heading") label.style.paddingLeft = `${Math.max(0, (Math.min(6, block.level || 1) - 1) * 12)}px`;
+    const page = el("span", "pxd-parse__opage", main);
+    page.textContent = block.page ? `p. ${block.page}` : "";
+  }
+
   function renderBlock(block, parent) {
     const row = el("article", "pxd-parse__block", parent);
     row.tabIndex = 0;
@@ -555,7 +659,10 @@ export function createParseView({
     check.checked = selected.includes(block.id);
     check.setAttribute("aria-label", "Select");
     const main = el("div", "pxd-parse__main", row);
-    if (block.type === "heading") {
+    if (outline && !String(query || "").trim()) {
+      row.classList.add("pxd-parse__orow");
+      renderOutlineRow(block, main);
+    } else if (block.type === "heading") {
       const level = Math.min(6, Math.max(1, block.level || 1));
       const heading = el(`h${level}`, "pxd-parse__h", main);
       heading.textContent = block.text || "";
@@ -609,12 +716,29 @@ export function createParseView({
     return row;
   }
 
+  function needOcr() {
+    const pages = parsed ? scanPagesOf(parsed) : [];
+    if (typeof onNeedOcr === "function") {
+      try { onNeedOcr({ pages: pages.length ? pages : scanPageNumbers(parsed), readScan: readScanNow, helperState }); } catch { /* host */ }
+      return;
+    }
+    void (async () => {
+      await refreshHelper();
+      if (helperState === "ready") await readScanNow();
+      else { try { onToast?.("Scanned page: start the local helper to read its text (Settings → Parse)"); } catch { /* host */ } }
+    })();
+  }
+
   function render() {
     if (dead) return;
     clearBlockListeners();
     const blocks = shown();
     body.replaceChildren?.();
-    if (parsed) { try { onTitle?.(parsedDocTitle(parsed)); } catch { /* host */ } }
+    if (parsed) { chipsOn(); try { onTitle?.(parsedDocTitle(parsed)); } catch { /* host */ } }
+    if (parsed && typeof onScan === "function") {
+      const scanned = scanPagesOf(parsed);
+      try { onScan({ pages: scanned.length ? scanned : scanPageNumbers(parsed), readScan: readScanNow, helperState, partial: phase === "running", sha256: parsed.sha256 || "" }); } catch { /* host */ }
+    }
     if (!parsed) {
       body.append(empty);
       empty.textContent = "";
@@ -629,8 +753,15 @@ export function createParseView({
       const note = el("div", "pxd-parse__empty", body);
       const scan = scanSpan(parsed);
       const filtered = Boolean(query) || Object.values(filters).some((on) => !on);
-      if (scan && !filtered) note.textContent = scan;
-      else if (!filtered && (helperState === "not-running" || helperState === "disabled")) note.textContent = `Helper not running · Start: ${HELPER_START}`;
+      if (scan && !filtered) {
+        el("span", "pxd-parse__scantext", note).textContent = scan;
+        const read = el("button", "pxd-parse__readtext", note);
+        read.type = "button";
+        read.textContent = "Read text";
+        read.setAttribute("data-tip", "parse.read-text");
+        listenBlock(read, "click", (event) => { event.stopPropagation?.(); needOcr(); });
+      }
+      else if (!filtered && (helperState === "not-running" || helperState === "disabled")) note.textContent = "Local helper is off · open Engines (the gear) to start it";
       else note.textContent = "Nothing matches";
     }
     let page = null;
@@ -704,8 +835,9 @@ export function createParseView({
   }
 
   async function copySelection(shift) {
-    const ids = selected.length ? selected : (focusId ? [focusId] : []);
-    if (!ids.length || !parsed) return;
+    const picked = selected.length ? selected : (focusId ? [focusId] : []);
+    if (!picked.length || !parsed) return;
+    const ids = expand(selectBlocks(parsed, picked)).map((block) => block.id);
     const result = copyText(parsed, ids, { shift });
     await writeClipboard(result.text);
   }
@@ -721,7 +853,7 @@ export function createParseView({
 
   function insertSelection() {
     const blocks = shown().filter((block) => selected.includes(block.id));
-    const kind = kindOf(blocks.length ? blocks : shown().filter((block) => block.id === focusId));
+    const kind = kindOf(expand(blocks.length ? blocks : shown().filter((block) => block.id === focusId)));
     if ((kind === "figure" || kind === "formula") && callSession("insertParsedCard")) return true;
     return callSession("insertParsedBelow");
   }
@@ -737,49 +869,89 @@ export function createParseView({
     event.stopPropagation?.();
   }
 
+  function ghostSource(blocks) {
+    const list = expand(blocks);
+    if (list.length === 1 && list[0].type === "table") {
+      const rows = tableGrid(list[0]).slice(0, 3).map((row) => row.filter((slot) => !slot.covered).map((slot) => slot.cell?.text ?? ""));
+      return { kind: "table", rows, page: list[0].page };
+    }
+    const text = list.map((block) => (block.type === "list" ? (block.items || []).map((item) => item.text).join(" ") : block.text || block.latex || "")).join(" ");
+    const kind = list.length === 1 && list[0].type === "figure" ? "figure" : "blocks";
+    return { kind, text, page: list[0]?.page };
+  }
+
+  // U5. The handle drags a card-shaped ghost; the drop lands at the ghost's top-left.
   function beginPointerDrag(event, blocks) {
     if (event.button != null && event.button !== 0) return;
     const startX = Number(event.clientX) || 0;
     const startY = Number(event.clientY) || 0;
+    const rowEl = event.target?.closest?.(".pxd-parse__block") || null;
     let moved = false;
+    let ghost = null;
     const win = doc.defaultView || doc;
-    const move = (ev) => {
-      if (Math.abs((Number(ev.clientX) || 0) - startX) + Math.abs((Number(ev.clientY) || 0) - startY) > 4) moved = true;
+    const drop = (x, y, at) => {
+      const json = JSON.stringify(payload(blocks));
+      if (!doc.elementFromPoint) return;
+      dispatchDrop({ doc, root: ghostRoot, pointer: { x, y }, at, entries: [[PARSE_MIME, json], ["text/plain", json]] });
     };
-    const up = (ev) => {
+    const finish = () => {
       win?.removeEventListener?.("pointermove", move, true);
       win?.removeEventListener?.("pointerup", up, true);
-      const moveIdx = armed.findIndex((entry) => entry[2] === move);
-      if (moveIdx >= 0) armed.splice(moveIdx, 1);
-      const upIdx = armed.findIndex((entry) => entry[2] === up);
-      if (upIdx >= 0) armed.splice(upIdx, 1);
+      win?.removeEventListener?.("keydown", key, true);
+      win?.removeEventListener?.("dragstart", native, true);
+      win?.removeEventListener?.("pointercancel", cancelled, true);
+      for (const fn of [move, up, key, native, cancelled]) {
+        const idx = armed.findIndex((entry) => entry[2] === fn);
+        if (idx >= 0) armed.splice(idx, 1);
+      }
+    };
+    const move = (ev) => {
+      const x = Number(ev.clientX) || 0;
+      const y = Number(ev.clientY) || 0;
+      if (!moved && Math.abs(x - startX) + Math.abs(y - startY) > 4) {
+        moved = true;
+        if (ghostRoot) {
+          let from = null;
+          try { from = rowEl?.getBoundingClientRect?.() || null; } catch { from = null; }
+          ghost = createDragGhost({ doc, root: ghostRoot, pane: ghostPane, from, pointer: { x: startX, y: startY }, content: ghostSource(blocks) });
+        }
+      }
+      ghost?.move(x, y);
+    };
+    // The handle is also a native drag source. Once the ghost runs it owns the drag; before that the
+    // browser's drag wins and this press ends.
+    const native = (ev) => {
+      if (ghost) { ev.preventDefault?.(); return; }
+      finish();
+    };
+    const cancelled = () => {
+      finish();
+      ghost?.cancel();
+      ghost = null;
+    };
+    const key = (ev) => {
+      if (ev.key !== "Escape") return;
+      ev.stopPropagation?.();
+      finish();
+      ghost?.cancel();
+      ghost = null;
+    };
+    const up = (ev) => {
+      finish();
       if (!moved) return;
       const x = Number(ev.clientX) || 0;
       const y = Number(ev.clientY) || 0;
-      const hit = doc.elementFromPoint?.(x, y) || doc.body;
-      const json = JSON.stringify(payload(blocks));
-      const transfer = {
-        types: [PARSE_MIME, "text/plain"],
-        getData: (type) => (type === PARSE_MIME || type === "text/plain" ? json : ""),
-        setData() {},
-      };
-      const plain = { type: "drop", bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer, preventDefault() {}, stopPropagation() {} };
-      let dropped = plain;
-      try {
-        // A plain object is not an Event. The browser throws and the drop never lands.
-        // The test document stores listeners on the node, and its dispatcher wants the plain object.
-        if (typeof Event === "function" && hit && !hit.listeners) {
-          const evn = new Event("drop", { bubbles: true, cancelable: true });
-          Object.defineProperty(evn, "clientX", { value: x });
-          Object.defineProperty(evn, "clientY", { value: y });
-          Object.defineProperty(evn, "dataTransfer", { value: transfer });
-          dropped = evn;
-        }
-      } catch { dropped = plain; }
-      try { hit?.dispatchEvent?.(dropped); } catch { /* stub */ }
+      ghost?.move(x, y);
+      const at = ghost && ghost.zone() === "board" ? ghost.dropPoint() : { x, y };
+      drop(x, y, at);
+      ghost?.land();
+      ghost = null;
     };
     listen(win, "pointermove", move, true);
     listen(win, "pointerup", up, true);
+    listen(win, "keydown", key, true);
+    listen(win, "dragstart", native, true);
+    listen(win, "pointercancel", cancelled, true);
   }
 
   function wordsFor(table) {
@@ -919,6 +1091,47 @@ export function createParseView({
     onProgress?.({ page: progress.pageCount, pageCount: progress.pageCount, fraction: 1 });
   }
 
+  async function readAlternative() {
+    if (dead || phase === "running") return;
+    const previous = parsed;
+    phase = "running";
+    progress = { page: 0, pageCount: progress.pageCount || 0, engine: "anydoc" };
+    paintChip();
+    const t0 = now();
+    try {
+      const pdf = typeof getPdf === "function" ? await getPdf() : null;
+      if (dead) return;
+      const raw = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+      const bytes = raw ? new Uint8Array(raw) : null;
+      if (!bytes) {
+        phase = "idle";
+        parsed = previous;
+        progress = { page: 0, pageCount: 0, engine: previous?.engine || "builtin" };
+        paintChip();
+        onToast?.("Could not convert this file");
+        return;
+      }
+      const converted = await anydocHost.convert(bytes, "pdf");
+      if (dead) return;
+      const sha = await sha256Hex(bytes);
+      const docResult = markdownToParse(converted.markdown, {
+        format: "pdf",
+        engine: "anydoc",
+        sha256: sha,
+        createdAt: new Date(now()).toISOString(),
+      });
+      await finishDoc(docResult, typeof converted.ms === "number" ? converted.ms : now() - t0);
+    } catch (err) {
+      if (dead) return;
+      phase = "idle";
+      parsed = previous;
+      progress = { page: 0, pageCount: 0, engine: previous?.engine || "builtin" };
+      paintChip();
+      if (err?.code === "needsOcr") onToast?.("This scan needs OCR. The built-in parse stays.");
+      else onToast?.("Could not convert this file");
+    }
+  }
+
   async function parseBuiltin(explicit) {
     cancel();
     const ctrl = new AbortController();
@@ -1029,6 +1242,8 @@ export function createParseView({
       });
       if (ctrl.signal.aborted) return;
       if (result?.records) records = result.records;
+      const read = (result?.records || []).filter((rec) => rec?.ocr && (result.pages || pages).includes(rec.n));
+      if (read.length) { try { onOcrPages?.(read, parsed.sha256); } catch { /* host */ } }
       await finishDoc(result.doc, (parsed.stats?.ms || 0) + (now() - t0));
     } catch (error) {
       if (error?.name !== "AbortError") { try { onToast?.(`Read the scan failed: ${error?.message || error}`); } catch { /* host */ } }
@@ -1036,6 +1251,35 @@ export function createParseView({
       paintChip();
     }
     paintScan();
+  }
+
+  // OCR pages from the pane (on-device read): the same merge readScan does, without a helper.
+  async function applyOcr(ocrPages) {
+    if (dead || !parsed || phase === "running") return false;
+    const incoming = (Array.isArray(ocrPages) ? ocrPages : []).filter((p) => p && Number.isFinite(Number(p.n)));
+    const pages = scanPagesOf(parsed).filter((n) => incoming.some((p) => Number(p.n) === n));
+    if (!pages.length) return false;
+    const base = parsed;
+    try {
+      const pdf = typeof getPdf === "function" ? await getPdf() : null;
+      if (dead || parsed !== base) return false;
+      const [from, to] = base.stats?.range || [1, base.pageCount || 1];
+      const recs = records.length ? records : [];
+      if (!recs.length) {
+        for (let n = from; n <= to; n += 1) {
+          if (pages.includes(n)) continue;
+          recs.push(await geometryOf(n, pdf));
+          if (dead || parsed !== base) return false;
+        }
+      }
+      const t0 = now();
+      const merged = mergeOcrPageRecords({ base, ocrPages: incoming, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
+      records = merged.records;
+      await finishDoc(merged.doc, (base.stats?.ms || 0) + (now() - t0));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async function parseDocling() {
@@ -1282,6 +1526,7 @@ export function createParseView({
       if (helperState === "ready") await parseDocling();
     })();
   });
+  listen(altBtn, "click", () => { closeMenus(); void readAlternative(); });
   listen(rangeBtn, "click", () => { toggleMenu(rangePop); });
   listen(filterBtn, "click", () => { toggleMenu(filterPop); });
   listen(currentBtn, "click", () => {
@@ -1368,15 +1613,19 @@ export function createParseView({
     const hit = await store.findByUrl(currentUrl);
     if (!hit?.sha256) return null;
     const hash = await optionsHash(BUILTIN_OPTIONS);
-    const engines = ["builtin", "docling", "mixed"];
+    const engines = ["builtin", "docling", "mixed", "anydoc"];
     for (const engine of engines) {
       const found = await store.getParse(hit.sha256, engine, hash);
       if (found) {
         parsed = found;
+        if (scanPagesOf(found).length) {
+          const read = await store.getParse(hit.sha256, engine, await optionsHash({ ...(found.options || BUILTIN_OPTIONS), ocr: "vision" }));
+          if (read) parsed = read;
+        }
         rememberParsedUrl(storage, currentUrl);
         try { onCached?.(currentUrl); } catch { /* host */ }
         render();
-        return found;
+        return parsed;
       }
     }
     return null;
@@ -1393,7 +1642,7 @@ export function createParseView({
     paintChip();
   }
 
-  armKeys();
+  if (!lazyKeys) armKeys();
   render();
   void refreshHelper();
 
@@ -1401,6 +1650,7 @@ export function createParseView({
     element: () => root,
     refreshHelper,
     readScan: readScanNow,
+    applyOcr,
     setTarget(next) {
       currentUrl = next?.url || "";
       currentUid = next?.pdfUid || "";
@@ -1419,6 +1669,8 @@ export function createParseView({
     chipText: () => chip.textContent,
     selectedIds: () => selected.slice(),
     blockCount: () => shown().length,
+    isBusy: () => phase === "running",
+    armKeys,
     refreshHelper,
     watchPageInput(input) {
       if (!input) return;
@@ -1443,6 +1695,7 @@ export function createParseView({
       try { cropObserver?.disconnect(); } catch { /* gone */ }
       cropWaiting.clear();
       overlay.dispose();
+      pageChips?.dispose();
       clearBlockListeners();
       for (const [node, type, fn, capture] of armed) {
         if (type === "observer") { try { fn(); } catch { /* observer */ } continue; }

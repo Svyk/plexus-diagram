@@ -95,7 +95,9 @@ import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
 import { LONG_PRESS_CANCEL_PX, LONG_PRESS_MS, longPressAt } from "../model/touch.js";
 import { closeTab, openTab, tabAt } from "../model/tabs.js";
 import { createPanel, parseDropPayload } from "./panel.js";
-import { handleParseDrop } from "../model/drop.js";
+import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
+import { officeTargetFromText } from "../model/anydoc-to-parse.js";
+import { createAnydocHost } from "../host/anydoc.js";
 import { createParseStore } from "../host/parse-store.js";
 import { createParseActions, freeSpotBeside } from "./parse-actions.js";
 import { createMenu } from "./menu.js";
@@ -1632,6 +1634,7 @@ function buildBoardView(onFail, {
     },
     session: parseActions(),
     settings: { get: (id) => readSetting(id) },
+    setSetting: (id, value) => (typeof onSetDefaults === "function" ? onSetDefaults({ [id]: value }) : undefined),
     onPlace: (row) => {
       const items = [...(board()?.items.values() || [])];
       const card = board()?.items.get(readPane?.cardUid?.() || "");
@@ -3660,7 +3663,15 @@ function buildBoardView(onFail, {
         const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
         const task = isTaskItem(item) ? taskMeta(item.string, item.content) : null;
         const pdfUrl = item?.kind === "pdf" ? (pdfMacroUrl(item?.string || "") || "") : "";
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        let officeText = item?.string || "";
+        if (item?.target?.kind === "block") {
+          try {
+            const blockText = host?.blockString?.(item.target.uid);
+            if (blockText) officeText = blockText;
+          } catch { /* keep the card string */ }
+        }
+        const officeFile = officeTargetFromText(officeText);
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -3717,6 +3728,34 @@ function buildBoardView(onFail, {
   let closeHalo = () => {};
   let contextLineFor = async () => "";
   let bindInfoHover = () => {};
+  const anydocHost = createAnydocHost();
+  const showOffice = (res) => {
+    if (disposed || !res) return;
+    if (res.toast) toast(res.toast);
+    if (Array.isArray(res.uids) && res.uids.length) ctl.select(res.uids);
+    if (!res.more || !res.offer || typeof res.continue !== "function") return;
+    const next = res.continue;
+    chrome.toast.show({
+      message: res.offer,
+      action: {
+        label: res.offer,
+        run: () => {
+          void Promise.resolve(next()).then(showOffice).catch(() => toast("Could not convert this file"));
+        },
+      },
+    });
+  };
+  const runOffice = (office, world) => {
+    if (!office) return;
+    const point = world || viewCenterWorld();
+    void handleOfficeDrop({
+      office,
+      convert: (bytes, format) => anydocHost.convert(bytes, format),
+      fetch: doc.defaultView?.fetch?.bind(doc.defaultView),
+      session,
+      point,
+    }).then(showOffice).catch(() => toast("Could not convert this file"));
+  };
   const onMenuPick = (id) => {
     const b = board();
     if (!b || disposed) return;
@@ -3994,6 +4033,11 @@ function buildBoardView(onFail, {
         if (!item || item.kind !== "pdf") break;
         try { itemsR.openPdf?.(item.uid); } catch { /* host */ }
         try { ensureReadPane().parse?.(); } catch { /* pane */ }
+        break;
+      }
+      case "convert-office": {
+        const office = menuContext("card", item?.uid).officeFile;
+        if (office) runOffice(office, world);
         break;
       }
       case "open-parsed": {
@@ -6179,6 +6223,10 @@ function buildBoardView(onFail, {
     const resolveUid = (u) => (host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`);
     const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "" });
     if (!list.length) return;
+    if (list.every((row) => row.office)) {
+      list.forEach((row, index) => runOffice(row.office, { x: p.x, y: p.y + index * 184 }));
+      return;
+    }
     if (list.length === 1 && list[0].parse) {
       void handleParseDrop({
         payload: list[0].parse,

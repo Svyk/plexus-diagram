@@ -95,12 +95,13 @@ test("removed furniture, chips, copy, and scan copy are pure", () => {
   assert.equal(removedSummary(sample().removed), "Removed: running header (3) · page numbers (3)");
   assert.equal(engineChip({ ms: 400 }).text, "Built-in · 0.4 s");
   assert.equal(engineChip({ engine: "docling", ms: 24000 }).text, "Docling · 24 s");
-  assert.equal(engineChip({ helper: "not-running" }).text, "Docling: not running");
-  assert.match(engineChip({ helper: "not-running" }).tip, /plexus-parse-helper serve/);
-  assert.match(engineChip({ helper: "disabled" }).tip, /Paste the token/);
-  assert.equal(engineChip({ helper: "wrong-token" }).text, "Docling: wrong token");
-  assert.equal(engineChip({ helper: "models-missing" }).text, "Docling: downloading models");
+  assert.equal(engineChip({ helper: "not-running" }).text, "Local helper: off");
+  assert.match(engineChip({ helper: "not-running" }).tip, /Engines/);
+  assert.match(engineChip({ helper: "disabled" }).tip, /Engines/);
+  assert.equal(engineChip({ helper: "wrong-token" }).text, "Local helper: wrong token");
+  assert.equal(engineChip({ helper: "models-missing" }).text, "Local helper: downloading models");
   assert.equal(engineChip({ phase: "running", page: 4, pageCount: 12 }).text, "Page 4 of 12");
+  assert.equal(engineChip({ engine: "anydoc", helper: "not-running", ms: 400 }).text, "Alternative read · 0.4 s");
   assert.equal(engineChip({ phase: "running", page: 4, pageCount: 12 }).cancel, true);
   const doc = sample();
   assert.equal(copyText(doc, ["p1"]).format, "md");
@@ -113,7 +114,8 @@ test("removed furniture, chips, copy, and scan copy are pure", () => {
     pages: [{ n: 3, kind: "scan" }, { n: 9, kind: "scan" }],
     order: [],
     blocks: {},
-  }), "Scanned pages 3–9 · Parse with Docling for OCR");
+  }), "Scanned pages 3–9 · the page is an image");
+  assert.equal(scanSpan({ pages: [{ n: 4, kind: "scan" }], order: [], blocks: {} }), "Scanned page 4 · the page is an image");
   assert.equal(blockGroup("heading"), "text");
   assert.equal(visibleBlocks(doc, { filters: { text: false, table: true, figure: true, formula: true } }).some((b) => b.type === "heading"), false);
   assert.equal(keyCommand({ key: "ArrowDown" }, { owned: false }), null);
@@ -126,7 +128,7 @@ test("removed furniture, chips, copy, and scan copy are pure", () => {
   assert.equal(syncDecision({ now: 400, last: 0 }).jump, true);
   assert.equal(BOTH_MIN_PX, 640);
   assert.equal(tipEntry("pdf.parse").name, "Parse");
-  assert.equal(tipEntry("parse.docling-off").name, "Docling: not running");
+  assert.equal(tipEntry("parse.docling-off").name, "Local helper: off");
 });
 
 test("overlay maps viewport boxes by page scale and user-space boxes through rotation", () => {
@@ -188,6 +190,10 @@ test("parsed body keeps reading order, filters, spans, selection, and keys", asy
     doc.body.append(view.element());
     // The stub freezes textContent when it is assigned, so the message lives on the lead.
     assert.match(view.element().querySelector(".pxd-parse__lead").textContent, /No parse yet/);
+    const alt = view.element().querySelector(".pxd-parse__alt");
+    assert.match(alt.textContent, /Alternative read/);
+    assert.match(alt.textContent, /no tables guarantee/);
+    assert.equal(alt.getAttribute("data-guarantee"), "no tables guarantee");
     assert.ok(view.element().querySelector(".pxd-parse__go"));
     assert.equal(stub.listenerCount() > before, true);
 
@@ -462,14 +468,14 @@ test("a helper that is not running replaces the timing chip", async () => {
     doc.body.append(view.element());
     view.showDoc(sample());
     await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(view.chipText(), "Docling: not running");
+    assert.equal(view.chipText(), "Local helper: off");
     assert.equal(view.element().querySelector(".pxd-parse__docling").hidden, true);
   } finally {
     restore();
   }
 });
 
-test("Parsed mode shows the strip and dispose drops its listeners", async () => {
+test("Read + Outline shows the strip and dispose drops its listeners", async () => {
   const { stub, doc, restore } = mount();
   const root = doc.createElement("div");
   root.className = "pxd-root";
@@ -484,14 +490,13 @@ test("Parsed mode shows the strip and dispose drops its listeners", async () => 
     });
     pane.open({ blockUid: "blk", cardUid: "card", title: "Paper", source: "{{[[pdf]]: https://example.test/a.pdf}}" });
     assert.equal(pane.element().querySelector(".pxd-read__modes").hasAttribute("hidden"), true);
-    pane.element().querySelector('[data-mode="parsed"]').click();
+    assert.deepEqual(pane.element().querySelectorAll(".pxd-read__mode").map((b) => b.textContent), ["Read", "Read + Outline"]);
+    assert.equal(pane.element().querySelector('[data-mode="parsed"]'), null);
+    pane.element().querySelector('[data-mode="both"]').click();
     await new Promise((resolve) => setTimeout(resolve, 30));
-    assert.equal(pane.element().classList.contains("pxd-read--parsed"), true);
-    assert.equal(pane.element().querySelector(".pxd-read__pill").hasAttribute("hidden"), true);
+    assert.equal(stub.localStorage.getItem("pxd-read-mode"), "read+outline");
     assert.equal(pane.element().querySelector(".pxd-read__modes").hasAttribute("hidden"), false);
     assert.ok(pane.element().querySelector(".pxd-parse"));
-    pane.element().querySelector('[data-mode="both"]').click();
-    await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(pane.element().classList.contains("pxd-read--both"), true);
     assert.equal(pane.element().querySelector(".pxd-read__pill").hasAttribute("hidden"), false);
     pane.element()._rect = { left: 0, top: 0, width: 360, height: 600, right: 360, bottom: 600, x: 0, y: 0 };

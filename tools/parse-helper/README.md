@@ -20,7 +20,17 @@ Token: …
 Paste this in Roam → Settings → Plexus Diagram → Parse helper token
 ```
 
-`install-agent` writes `~/Library/LaunchAgents/com.plexus.parse-helper.plist` from `launchd/com.plexus.parse-helper.plist.template`. Do not run it from a work order.
+`install-agent` writes `~/Library/LaunchAgents/com.plexus.parse-helper.plist` (built in `agent.py`, pointing at the installed `plexus-parse-helper`), reloads the agent and starts it. Running it twice is safe. Do not run it from a work order.
+
+## Install and pair
+
+```sh
+curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh
+```
+
+`install.sh` installs `uv` when it is missing, runs `uv tool install --force "git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper"`, runs `install-agent`, waits for the helper to answer, opens the pairing window and prints "Back to Roam: click Pair.". The source is `tools/parse-helper/install.sh`; `npm run build` copies it to `deploy/helper/install.sh`.
+
+`plexus-parse-helper pair` opens a 90 s window (a `0600` file `pair-until` beside the token). While it is open, `GET /v1/pair` from an allowed `Origin` returns `{token, helper, version}` once and closes the window. Outside the window, without an `Origin`, or from any other `Origin`, the route is `404` (a disallowed `Origin` is `403`, as everywhere). The Roam **Pair** button calls it and stores the token, so nothing is copied by hand. Pasting the token in Settings still works.
 
 ## HTTP
 
@@ -29,8 +39,10 @@ All routes except a rejected `Origin` require `Authorization: Bearer <token>`. H
 | Method | Path | Result |
 |---|---|---|
 | GET | `/v1/health` | `{helper, version:"0.1.0", schema:"pxd-parse/1", engines:["docling","ocr"], models, busy, warm}` |
-| GET | `/v1/models` | `{state, items:[{name, state, bytes, done}]}` |
+| GET | `/v1/pair` | no bearer. `200` `{token, helper, version}` once while the pairing window is open and `Origin` is allowed; else `404` |
+| GET | `/v1/models` | `{state:"ready"\|"missing"\|"downloading", items:[{name, state, bytes, done}], bytes, done, fraction}`. `bytes`/`done` on a missing model are the expected size and what is on disk now (partial files count), so the Engines row shows a progress bar |
 | POST | `/v1/models/download` | `202` starts `docling-tools models download` |
+| DELETE | `/v1/models/download` | `200` `{stopped}` stops a running download; files already fetched stay |
 | HEAD, GET | `/v1/cache/{sha256}?opts={optsHash}` | cached document, or 404 |
 | POST | `/v1/jobs` | body is the PDF (max 200 MB). `X-Pxd-Options` is JSON. `202` `{job, sha256, pages, cached}` |
 | POST | `/v1/ocr` | body is the PDF. `X-Pxd-Options` `{pages}` → `200` `{schema:"pxd-ocr/1", pageCount, pages:[…], sha256, elapsedMs, cached}` (Vision word boxes + OpenCV rules for scanned pages, cached by sha256 + pages, 50 pages per call). `{cells:[{page, bbox}]}` → `{cells:[{page, bbox, text, conf, glyph}]}`, a 3× re-read of single cells, never cached (400 cells per call). Synchronous; one OCR runs at a time. |

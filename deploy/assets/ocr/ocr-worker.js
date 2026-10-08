@@ -424,7 +424,7 @@ function open1d(mask, width, height, length, horizontal) {
 function round2(n) {
   return Math.round(n * 100) / 100;
 }
-function rulesFromCanvas(gray, width, height, scale, { minLenPt = 18 } = {}) {
+function rulesFromCanvas(gray, width, height, scale, { minLenPt = 18, fills = [] } = {}) {
   if (!gray || width < 8 || height < 8 || !(scale > 0)) return [];
   const ink = inkMask(gray, width, height);
   const minLen = Math.max(8, Math.round(minLenPt * scale));
@@ -466,7 +466,11 @@ function rulesFromCanvas(gray, width, height, scale, { minLenPt = 18 } = {}) {
     }
   }
   out.sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
-  return out;
+  return fills.length ? out.filter((r) => !fills.some((f) => insideFill(r, f))) : out;
+}
+function insideFill(r, f, m = 1) {
+  if (r.y0 === r.y1) return r.y0 > f.y0 + m && r.y0 < f.y1 - m && r.x0 >= f.x0 - m && r.x1 <= f.x1 + m;
+  return r.x0 > f.x0 + m && r.x0 < f.x1 - m && r.y0 >= f.y0 - m && r.y1 <= f.y1 + m;
 }
 function inkGlyph(gray, width, height) {
   if (!gray || width < 2 || height < 2) return null;
@@ -485,6 +489,180 @@ function inkGlyph(gray, width, height) {
   if (bw >= 3 * bh && bw >= 8 && bh <= 0.3 * height && area >= 0.6 * bw * bh) return "\u2014";
   if (bw / Math.max(1, bh) >= 0.6 && bw / Math.max(1, bh) <= 1.6 && bw <= 0.5 * height && bh <= 0.5 * height && bw >= 5) return "*";
   return null;
+}
+function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, minHPt = 4, edge = 0.8, solid = 0.55, openPt = 2 } = {}) {
+  if (!gray || width < 8 || height < 8 || !(scale > 0)) return [];
+  const step = Math.max(1, Math.floor(scale / 2));
+  const sw = Math.floor(width / step);
+  const sh = Math.floor(height / step);
+  if (sw < 4 || sh < 4) return [];
+  const g = new Uint8Array(sw * sh);
+  for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) g[y * sw + x] = gray[y * step * width + x * step];
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < g.length; i++) hist[g[i]]++;
+  const ink = otsuThreshold(g);
+  let paper = 255;
+  let best = -1;
+  for (let v = ink + 1; v < 256; v++) if (hist[v] > best) {
+    best = hist[v];
+    paper = v;
+  }
+  const seedMax = paper - 2 * tol;
+  if (seedMax <= 0) return [];
+  const per = scale / step;
+  const minW = minWPt * per;
+  const minH = minHPt * per;
+  const k = Math.max(3, Math.round(openPt * per));
+  const label = new Int32Array(sw * sh);
+  const queue = new Int32Array(sw * sh);
+  const pageArea = sw * sh;
+  const out = [];
+  let next = 0;
+  for (let sy = 1; sy < sh - 1; sy++) {
+    for (let sx = 1; sx < sw - 1; sx++) {
+      const s = sy * sw + sx;
+      if (label[s] || g[s] > seedMax) continue;
+      let lo = 255;
+      let hi = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const v = g[s + dy * sw + dx];
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+      if (hi - lo > 6) continue;
+      const id = ++next;
+      const seed = g[s];
+      let head = 0;
+      let tail = 0;
+      queue[tail++] = s;
+      label[s] = id;
+      let x0 = sx;
+      let x1 = sx;
+      let y0 = sy;
+      let y1 = sy;
+      while (head < tail) {
+        const i = queue[head++];
+        const x = i % sw;
+        const y = (i - x) / sw;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+        if (x > 0) {
+          const j = i - 1;
+          if (!label[j] && Math.abs(g[j] - seed) <= tol) {
+            label[j] = id;
+            queue[tail++] = j;
+          }
+        }
+        if (x + 1 < sw) {
+          const j = i + 1;
+          if (!label[j] && Math.abs(g[j] - seed) <= tol) {
+            label[j] = id;
+            queue[tail++] = j;
+          }
+        }
+        if (y > 0) {
+          const j = i - sw;
+          if (!label[j] && Math.abs(g[j] - seed) <= tol) {
+            label[j] = id;
+            queue[tail++] = j;
+          }
+        }
+        if (y + 1 < sh) {
+          const j = i + sw;
+          if (!label[j] && Math.abs(g[j] - seed) <= tol) {
+            label[j] = id;
+            queue[tail++] = j;
+          }
+        }
+      }
+      if (x1 - x0 + 1 < minW || y1 - y0 + 1 < minH || tail < 0.5 * minW * minH) continue;
+      const lw = x1 - x0 + 1 + 2 * k;
+      const lh = y1 - y0 + 1 + 2 * k;
+      const local = new Uint8Array(lw * lh);
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (label[y * sw + x] === id) local[(y - y0 + k) * lw + (x - x0 + k)] = 1;
+      let opened = morph1d(local, lw, lh, k, true, false);
+      opened = morph1d(opened, lw, lh, k, false, false);
+      opened = morph1d(opened, lw, lh, k, true, true);
+      opened = morph1d(opened, lw, lh, k, false, true);
+      for (const part of flatParts(opened, lw, lh)) {
+        const bw = part.x1 - part.x0 + 1;
+        const bh = part.y1 - part.y0 + 1;
+        if (bw < minW || bh < minH) continue;
+        if (bw * bh >= 0.8 * pageArea || part.area < solid * bw * bh) continue;
+        const share = (ax, ay, bx, by) => {
+          let hit = 0;
+          let n2 = 0;
+          for (let y = ay; y <= by; y++) for (let x = ax; x <= bx; x++) {
+            n2++;
+            if (part.mask[y * lw + x]) hit++;
+          }
+          return n2 ? hit / n2 : 0;
+        };
+        const iy0 = Math.min(part.y1, part.y0 + 1);
+        const iy1 = Math.max(part.y0, part.y1 - 1);
+        const ix0 = Math.min(part.x1, part.x0 + 1);
+        const ix1 = Math.max(part.x0, part.x1 - 1);
+        if (share(part.x0, iy0, part.x1, iy0) < edge || share(part.x0, iy1, part.x1, iy1) < edge) continue;
+        if (share(ix0, part.y0, ix0, part.y1) < edge || share(ix1, part.y0, ix1, part.y1) < edge) continue;
+        const corner = (x, y) => part.mask[y * lw + x];
+        if (!corner(part.x0, part.y0) || !corner(part.x1, part.y0) || !corner(part.x0, part.y1) || !corner(part.x1, part.y1)) continue;
+        let sum = 0;
+        let n = 0;
+        for (let y = part.y0; y <= part.y1; y++) for (let x = part.x0; x <= part.x1; x++) {
+          if (!part.mask[y * lw + x]) continue;
+          sum += g[(y + y0 - k) * sw + (x + x0 - k)];
+          n++;
+        }
+        const gx0 = part.x0 + x0 - k;
+        const gy0 = part.y0 + y0 - k;
+        out.push({
+          x0: round2(gx0 * step / scale),
+          y0: round2(gy0 * step / scale),
+          x1: round2((gx0 + bw) * step / scale),
+          y1: round2((gy0 + bh) * step / scale),
+          gray: Math.round(sum / n / 255 * 1e3) / 1e3
+        });
+      }
+    }
+  }
+  out.sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  return out;
+}
+function flatParts(mask, w, h) {
+  const seen = new Uint8Array(w * h);
+  const queue = new Int32Array(w * h);
+  const parts = [];
+  for (let s = 0; s < mask.length; s++) {
+    if (!mask[s] || seen[s]) continue;
+    const own = new Uint8Array(w * h);
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = s;
+    seen[s] = 1;
+    let x0 = w;
+    let x1 = -1;
+    let y0 = h;
+    let y1 = -1;
+    while (head < tail) {
+      const i = queue[head++];
+      own[i] = 1;
+      const x = i % w;
+      const y = (i - x) / w;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+      for (const j of [x > 0 ? i - 1 : -1, x + 1 < w ? i + 1 : -1, y > 0 ? i - w : -1, y + 1 < h ? i + w : -1]) {
+        if (j < 0 || seen[j] || !mask[j]) continue;
+        seen[j] = 1;
+        queue[tail++] = j;
+      }
+    }
+    parts.push({ x0, y0, x1, y1, area: tail, mask: own });
+  }
+  return parts;
 }
 
 // src/model/ocr/words-from-ctc.js
@@ -1028,9 +1206,12 @@ function localMask(gray, mask, pageW, pageH, box, minContrast = 60) {
     }
   }
   if (meanLight - meanDark < minContrast) return false;
+  let dark = 0;
+  for (let t = 0; t <= thresh; t++) dark += hist[t];
+  const inverted = dark > 0.6 * total;
   for (let y = y0; y < y1; y++) {
     const row = y * pageW;
-    for (let x = x0; x < x1; x++) mask[row + x] = gray[row + x] <= thresh ? 1 : 0;
+    for (let x = x0; x < x1; x++) mask[row + x] = gray[row + x] <= thresh !== inverted ? 1 : 0;
   }
   return true;
 }
@@ -1104,6 +1285,75 @@ function dashFromShape(blob, em) {
   return "\u2014";
 }
 
+// src/model/ocr/fine-skew.js
+function rowsOf(items) {
+  const sorted = [...items].sort((a, b) => a.transform[4] - b.transform[4]);
+  const rows = [];
+  for (const it of sorted) {
+    const size = it.transform[0];
+    const base = it.transform[5];
+    let best = null;
+    for (const row of rows) {
+      const last = row[row.length - 1];
+      if (it.transform[4] < last.transform[4] + last.width - 0.5) continue;
+      const d = Math.abs(last.transform[5] - base);
+      if (d <= 0.3 * Math.max(size, last.transform[0]) && (!best || d < best.d)) best = { row, d };
+    }
+    if (best) best.row.push(it);
+    else rows.push([it]);
+  }
+  return rows;
+}
+function baselineSkew(items, { minSpan = 150, minWords = 3, minRows = 3 } = {}) {
+  const votes = [];
+  for (const row of rowsOf(items.filter((it) => it.str && it.str.trim()))) {
+    if (row.length < minWords) continue;
+    const xs = row.map((it) => it.transform[4] + it.width / 2);
+    const span = Math.max(...row.map((it) => it.transform[4] + it.width)) - Math.min(...row.map((it) => it.transform[4]));
+    if (span < minSpan) continue;
+    const ys = row.map((it) => it.transform[5]);
+    const mx = xs.reduce((s, v) => s + v, 0) / xs.length;
+    const my = ys.reduce((s, v) => s + v, 0) / ys.length;
+    let sxx = 0;
+    let sxy = 0;
+    for (let i = 0; i < xs.length; i++) {
+      sxx += (xs[i] - mx) ** 2;
+      sxy += (xs[i] - mx) * (ys[i] - my);
+    }
+    if (!sxx) continue;
+    votes.push({ a: Math.atan(sxy / sxx) * 180 / Math.PI, w: span });
+  }
+  if (votes.length < minRows) return null;
+  votes.sort((p, q) => p.a - q.a);
+  const total = votes.reduce((s, v) => s + v.w, 0);
+  let acc = 0;
+  for (const v of votes) {
+    acc += v.w;
+    if (acc >= total / 2) return v.a;
+  }
+  return votes[votes.length - 1].a;
+}
+function rotateItems(items, degrees, w, h, scaleX, scaleY) {
+  const rad = degrees * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const cx = (w - 1) / 2;
+  const cy = (h - 1) / 2;
+  const r2 = (n) => Math.round(n * 100) / 100;
+  for (const it of items) {
+    const dx = it.transform[4] * scaleX - cx;
+    const dy = it.transform[5] * scaleY - cy;
+    const x = (cx + dx * cos + dy * sin) / scaleX;
+    const base = (cy - dx * sin + dy * cos) / scaleY;
+    const shift = base - it.transform[5];
+    it.transform[4] = r2(x);
+    it.transform[5] = r2(base);
+    if (Number.isFinite(it.y0)) it.y0 = r2(it.y0 + shift);
+    if (Number.isFinite(it.y1)) it.y1 = r2(it.y1 + shift);
+  }
+  return items;
+}
+
 // src/model/ocr/recognize.js
 var DET_LIMIT = "auto";
 var DET_PROBE = 1600;
@@ -1127,7 +1377,7 @@ function aborted() {
 function throwIfAborted(signal) {
   if (signal?.aborted) throw aborted();
 }
-function pageRecord(n, items, rules, w, h, dpi, deskew) {
+function pageRecord(n, items, rules, w, h, dpi, deskew, fills = []) {
   return {
     n,
     w: round22(w),
@@ -1140,6 +1390,7 @@ function pageRecord(n, items, rules, w, h, dpi, deskew) {
     fonts: { ocr: { name: "ocr" } },
     items,
     rules,
+    fills,
     ops: { fnArray: [], argsArray: [] },
     engine: "ppocr-web"
   };
@@ -1426,7 +1677,8 @@ async function preparePageImage({
   padYRatio = 0.1,
   whiteRatio = 0,
   orphans = true,
-  localInk = true
+  localInk = true,
+  fineSkew = true
 } = {}) {
   throwIfAborted(signal);
   const detOpts = { detLimit, unclipRatio, boxThresh };
@@ -1441,9 +1693,9 @@ async function preparePageImage({
     for (const applied of [-tilt, tilt]) {
       const rotated = rotateRgb(image, w, h, applied);
       const again = await detect(rotated.rgb, rotated.w, rotated.h, runDet, signal, detOpts.chosenLimit ? { ...detOpts, detLimit: detOpts.chosenLimit } : detOpts);
-      const residual = Math.abs(dominantAngle(again));
-      if (residual + 0.02 < bestResidual) {
-        bestResidual = residual;
+      const residual2 = Math.abs(dominantAngle(again));
+      if (residual2 + 0.02 < bestResidual) {
+        bestResidual = residual2;
         image = rotated.rgb;
         w = rotated.w;
         h = rotated.h;
@@ -1456,8 +1708,7 @@ async function preparePageImage({
   const scaleY = h / (pointH || h * 72 / dpi);
   const ptW = pointW || w / (dpi / 72);
   const ptH = pointH || h / (dpi / 72);
-  const gray = grayFromRgb(image, w, h);
-  const rules = rulesFromCanvas(gray, w, h, scaleX);
+  let gray = grayFromRgb(image, w, h);
   const ordered = [...boxes].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
   let raw;
   if (split) {
@@ -1473,10 +1724,22 @@ async function preparePageImage({
     }
     raw = await readCrops(crops, scaleX, scaleY, runRec, dict2, signal);
   }
+  const residual = fineSkew ? baselineSkew(raw) : null;
+  if (residual != null && Math.abs(residual) >= 0.05 && Math.abs(residual) <= 1) {
+    const turned = rotateRgb(image, w, h, residual);
+    if (turned.w === w && turned.h === h) {
+      rotateItems(raw, residual, w, h, scaleX, scaleY);
+      image = turned.rgb;
+      gray = grayFromRgb(image, w, h);
+      deskew += residual;
+    }
+  }
+  const fills = fillsFromCanvas(gray, w, h, scaleX);
+  const rules = rulesFromCanvas(gray, w, h, scaleX, { fills });
   const items = snapOcrItems(raw);
   const frame = { rgb: image, width: w, height: h, dpi };
   await polishDirty(items, frame, page, runRec, dict2, signal);
-  return { record: pageRecord(page, items, rules, ptW, ptH, dpi, deskew), rgb: image, width: w, height: h, dpi };
+  return { record: pageRecord(page, items, rules, ptW, ptH, dpi, deskew, fills), rgb: image, width: w, height: h, dpi };
 }
 async function polishDirty(items, frame, page, runRec, dict2, signal) {
   const dirty = items.filter((item) => {

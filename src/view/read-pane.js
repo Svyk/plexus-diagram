@@ -2,7 +2,7 @@
 // Width is localStorage. No :pdf-highlight write, no palette command.
 // This pane adds no document key listener. The parsed view adds one while it is open and removes it on dispose.
 
-import { CARD_MIME } from "../model/drop.js";
+import { CARD_MIME, PARSE_MIME } from "../model/drop.js";
 import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
 import { coverModel, parsedDocTitle, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
@@ -14,6 +14,14 @@ import { BOTH_MIN_PX, BUILTIN_OPTIONS, createParseView, readParsedUrls } from ".
 import { optionsHash } from "../model/parse-hash.js";
 import { createParseStore } from "../host/parse-store.js";
 import { createHelperClient } from "../host/parse-helper-client.js";
+import { imageKey } from "../host/parse-store.js";
+import { placePopover } from "../relchips.js";
+import { chromeObstacles } from "./avoid.js";
+import { createDragGhost, dispatchDrop } from "./drag-ghost.js";
+import { renderEnginesPanel } from "./engines-panel.js";
+import { selectionBarPlacement, selectionInReader } from "./make-highlight.js";
+import { renderParseStatus } from "./parse-status.js";
+import { compactPage, createTextLayer, pageRecords } from "./text-layer.js";
 
 // U4 owns the visible drawer. The import is async so a missing file leaves the pane's own list.
 let liveDrawer = null;
@@ -28,6 +36,39 @@ const PLACE_H = 140;
 const FLASH_MS = 1600;
 const ONE_REF = /^\(\(([\w-]+)\)\)$/;
 const COLORS = ["gray", ...HIGHLIGHT_COLORS];
+export const READ_MODE_KEY = "pxd-read-mode";
+export const OCR_LAYER_ID = "ocr-layer";
+const BAR_SETTLE_MS = 160;
+
+// U6. Two modes: Read ("reader") and Read + Outline ("both"). Old values ("parsed", "both") mean the outline.
+export function normalizeReadMode(value) {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (["parsed", "both", "outline", "read+outline", "read-outline"].includes(v)) return "both";
+  return "reader";
+}
+
+// The last mode on this device. An old stored value is rewritten in the new form.
+export function storedReadMode(storage) {
+  let raw = null;
+  try { raw = storage?.getItem?.(READ_MODE_KEY); } catch { raw = null; }
+  if (raw == null || raw === "") return "reader";
+  const mode = normalizeReadMode(raw);
+  const fresh = mode === "both" ? "read+outline" : "read";
+  if (raw !== fresh) { try { storage?.setItem?.(READ_MODE_KEY, fresh); } catch { /* private mode */ } }
+  return mode;
+}
+
+export function writeReadMode(storage, mode) {
+  try { storage?.setItem?.(READ_MODE_KEY, normalizeReadMode(mode) === "both" ? "read+outline" : "read"); } catch { /* private mode */ }
+}
+
+// Merges stored text-layer pages with new ones, page by page.
+export function mergeOcrPages(stored, fresh) {
+  const byPage = new Map();
+  for (const rec of pageRecords(stored)) byPage.set(Number(rec.n), rec);
+  for (const rec of pageRecords(fresh)) byPage.set(Number(rec.n), Array.isArray(rec.boxes) ? rec : compactPage(rec));
+  return [...byPage.values()].sort((a, b) => a.n - b.n);
+}
 
 export function placedHighlightUid(items, refUid) {
   if (typeof refUid !== "string" || refUid === "") return "";
@@ -163,6 +204,11 @@ export function createReadPane({
   createDrawer,
   session = null,
   settings = null,
+  onNeedOcr = null,
+  setSetting = null,
+  // Injection point for an in-browser OCR source: { status(): {state, progress?, mb?}, download(), cancel(),
+  // read({ pages, url, getPdf, signal, onProgress }) -> pxd-ocr/1 page records }. None ships yet.
+  deviceOcr = null,
 } = {}) {
   const el = (tag, cls, parent) => {
     const node = doc.createElement(tag);
@@ -215,12 +261,14 @@ export function createReadPane({
   if (cross) closeBtn.append(cross);
   else closeBtn.textContent = "✕";
   closeBtn.setAttribute("aria-label", "Close");
+  const stripMount = el("div", "pxd-read__strip", pane);
+  const enginesMount = el("div", "pxd-read__engines", pane);
   const modes = el("div", "pxd-read__modes", pane);
   modes.setAttribute("role", "toolbar");
   modes.setAttribute("aria-label", "Reader mode");
   setHidden(modes, true);
   const modeBtns = {};
-  for (const [id, label, tip] of [["reader", "Reader", "parse.mode.reader"], ["parsed", "Parsed", "parse.mode.parsed"], ["both", "Both", "parse.mode.both"]]) {
+  for (const [id, label, tip] of [["reader", "Read", "parse.mode.reader"], ["both", "Read + Outline", "parse.mode.both"]]) {
     const button = el("button", "pxd-read__mode", modes);
     button.type = "button";
     button.textContent = label;
@@ -248,6 +296,24 @@ export function createReadPane({
   const searchBtn = pillButton(doc, el, pill, "Search", "⌕");
   const parsedMount = el("div", "pxd-read__parsed", pane);
   const drawerMount = el("div", "pxd-read__drawer", pane);
+  // U3. Selection bar: Copy · Card · Quote · drag handle. Placed below Roam's own tip, never over it.
+  const bar = el("div", "pxd-selbar", pane);
+  bar.setAttribute("role", "toolbar");
+  bar.setAttribute("aria-label", "Selection");
+  setHidden(bar, true);
+  for (const [act, text, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"]]) {
+    const button = el("button", "pxd-selbar__btn pxd-chrome", bar);
+    button.type = "button";
+    button.textContent = text;
+    button.setAttribute("data-act", act);
+    button.setAttribute("data-tip", tip);
+  }
+  const barHandle = el("button", "pxd-selbar__handle pxd-chrome", bar);
+  barHandle.type = "button";
+  barHandle.textContent = "⠿";
+  barHandle.setAttribute("aria-label", "Drag to the board");
+  barHandle.setAttribute("data-tip", "read.sel.drag");
+  const textLayer = createTextLayer({ doc, readerEl: live });
   let colorSel = null;
   let pageFilt = null;
   let snipFilt = null;
@@ -655,6 +721,7 @@ export function createReadPane({
     if (target?.closest?.(".rm-pdf-container")) return;
     if (isTextEntryTarget(target)) return;
     if (event.key === "Escape") {
+      if (escSeen === event) { escSeen = null; return; }
       event.preventDefault();
       event.stopPropagation();
       close({ notify: true });
@@ -874,16 +941,21 @@ export function createReadPane({
     node?.addEventListener?.(type, fn, true);
     pressOff.push(() => node?.removeEventListener?.(type, fn, true));
   };
+  let ghost = null;
+  const endPointerDrag = () => {
+    dragging = false;
+    clearDragClass();
+    const g = ghost;
+    ghost = null;
+    try { g?.cancel(); } catch { /* gone */ }
+    disarm();
+  };
   const endPress = () => {
     while (pressOff.length) { try { pressOff.pop()(); } catch { /* gone */ } }
-    const wasActive = press?.active;
+    const was = press;
     press = null;
-    if (wasActive) endPdfDrag();
-  };
-  const moveChip = (x, y) => {
-    if (!dragChip) return;
-    dragChip.style.left = `${Math.round(x + 12)}px`;
-    dragChip.style.top = `${Math.round(y + 12)}px`;
+    if (was?.row) restoreDrag(was.row, was.rowPrev);
+    if (was?.active) endPointerDrag();
   };
   // The drop's mousedown and mouseup land on different nodes, so the browser sends one click to their
   // common ancestor right after pointerup. Swallow only that click: the listener goes on the next task.
@@ -900,21 +972,27 @@ export function createReadPane({
       w.clearTimeout?.(timer);
     };
   };
-  const dropAt = (uid, x, y) => {
-    const w = view();
-    const target = doc?.elementFromPoint?.(x, y);
-    if (!target || !root?.contains?.(target) || target.closest?.(".pxd-read")) return false;
-    const Transfer = w.DataTransfer;
-    const Drag = w.DragEvent;
-    if (typeof Transfer !== "function" || typeof Drag !== "function") return false;
-    const data = new Transfer();
-    data.setData(CARD_MIME, `((${uid}))`);
-    data.setData("text/plain", `((${uid}))`);
-    try { data.effectAllowed = "copy"; } catch { /* read only */ }
-    const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: data };
-    target.dispatchEvent(new Drag("dragover", init));
-    target.dispatchEvent(new Drag("drop", init));
-    return true;
+  const fullText = (uid, highlight) => {
+    const row = catalog.find((entry) => entry.uid === uid);
+    return String((row && row.snippet) || highlight?.content?.text || "");
+  };
+  const ghostContentOf = (p) => {
+    if (p.kind === "text") return { kind: "text", text: p.text, page: p.page };
+    const row = catalog.find((entry) => entry.uid === p.uid);
+    const color = (row && row.color) || (typeof p.highlight?.color === "string" ? p.highlight.color : "");
+    const page = typeof row?.page === "number" ? row.page : null;
+    return { kind: "highlight", text: fullText(p.uid, p.highlight), color, page };
+  };
+  // Text lands at the ghost's top-left (a parse drop places the card's corner); a ((uid)) card is centred on
+  // the drop point by the board, so it gets the ghost's centre.
+  const dropPress = (p, x, y, alt) => {
+    const spot = ghost && ghost.zone() === "board" ? ghost.dropPoint() : null;
+    if (p.kind === "text") {
+      const json = JSON.stringify({ kind: "text", text: p.text, page: p.page, pdfUid: current.cardUid || "", quote: Boolean(alt) });
+      return dispatchDrop({ doc, root, pointer: { x, y }, at: spot ? { x: spot.x, y: spot.y } : { x, y }, entries: [[PARSE_MIME, json], ["text/plain", p.text]] });
+    }
+    const ref = `((${p.uid}))`;
+    return dispatchDrop({ doc, root, pointer: { x, y }, at: spot ? { x: spot.cx, y: spot.cy } : { x, y }, entries: [[CARD_MIME, ref], ["text/plain", ref]] });
   };
   const onPressMove = (event) => {
     if (!press) return;
@@ -926,28 +1004,34 @@ export function createReadPane({
       if (Math.hypot(x - press.x, y - press.y) < DRAG_START_PX) return;
       press.active = true;
       dragging = true;
-      const label = chipLabel(press.uid, press.highlight);
-      paintChip(null, label.color, label.text);
-      if (dragChip) {
-        dragChip.style.pointerEvents = "none";
-        dragChip.style.zIndex = "60";
-      }
+      hideBar();
       root?.classList?.add("pxd-root--pdf-drag");
-      clearLiveSelection();
+      try {
+        ghost = createDragGhost({ doc, root, pane, from: press.from, pointer: { x: press.x, y: press.y }, content: ghostContentOf(press) });
+      } catch { ghost = null; }
     }
-    moveChip(x, y);
+    ghost?.move(x, y);
     event.preventDefault?.();
   };
+  // The live selection stays until a drop lands, so a cancelled drag leaves it as it was.
   const onPressUp = (event) => {
     if (!press) return;
-    const { active, uid } = press;
+    const p = press;
     const x = Number(event.clientX);
     const y = Number(event.clientY);
-    if (active) {
+    if (p.active) {
       swallowClick();
-      dropChip();
-      dropAt(uid, x, y);
+      ghost?.move(x, y);
+      if (dropPress(p, x, y, event.altKey === true)) {
+        const g = ghost;
+        ghost = null;
+        try { g?.land(); } catch { /* gone */ }
+        if (p.kind === "text") clearLiveSelection();
+      }
+    } else if (p.kind === "text" && !p.fromBar) {
+      // A click inside the selection collapses it, as it would without us.
       clearLiveSelection();
+      hideBar();
     }
     endPress();
   };
@@ -956,17 +1040,60 @@ export function createReadPane({
     event.stopPropagation();
     endPress();
   };
-  const onLiveDown = (event) => {
-    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || selectionBusy()) { disarm(); return; }
-    if (event.button !== 0 || !armedUid || !targetIsArmed(event.target)) return;
+  const startPress = (info, event) => {
     endPress();
-    press = { x: Number(event.clientX), y: Number(event.clientY), uid: armedUid, highlight: armedHighlight, active: false };
+    press = { ...info, x: Number(event.clientX), y: Number(event.clientY), active: false };
     const w = view();
     pressListen(w, "pointermove", onPressMove);
     pressListen(w, "pointerup", onPressUp);
     pressListen(w, "pointercancel", endPress);
     pressListen(w, "keydown", onPressKey);
     pressListen(w, "blur", endPress);
+  };
+  const rectOf = (node) => {
+    try { return node?.getBoundingClientRect?.() || null; } catch { return null; }
+  };
+  // Pointer over the live selection: its text and page, for a drag that starts on the selection itself.
+  const selectionUnder = (x, y) => {
+    const info = selectionInReader(selectionOf(), live);
+    if (!info?.range) return null;
+    let rects = [];
+    try { rects = [...(info.range.getClientRects?.() || [])]; } catch { rects = []; }
+    return rects.some((r) => pointIn(r, x, y)) ? info : null;
+  };
+  const onLiveDown = (event) => {
+    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || selectionBusy()) { disarm(); return; }
+    if (event.button !== 0) return;
+    if (armedUid && targetIsArmed(event.target)) {
+      startPress({ kind: "mark", uid: armedUid, highlight: armedHighlight, from: rectOf(armedPart) }, event);
+      return;
+    }
+    const x = Number(event.clientX);
+    const y = Number(event.clientY);
+    const hit = Number.isFinite(x) && Number.isFinite(y) ? selectionUnder(x, y) : null;
+    if (hit) {
+      startPress({ kind: "text", text: hit.text, page: hit.page, from: hit.rect }, event);
+      return;
+    }
+    hideBar();
+  };
+  // Mousedown inside the selection would collapse it or start the browser's own text drag.
+  const onLiveMouseDown = (event) => {
+    if (press?.kind === "text" && !press.active) event.preventDefault?.();
+  };
+  // Highlight drawer rows drag the same ghost. Shift keeps the browser's drag (drop into a Roam block).
+  const onDrawerDown = (event) => {
+    if (event.button != null && event.button !== 0) return;
+    if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
+    const row = event.target?.closest?.(".pxd-read-drawer__row");
+    if (!row || !drawerMount.contains?.(row)) return;
+    if (event.target?.closest?.("button, input, select, textarea, a")) return;
+    const uid = row.getAttribute?.("data-uid") || "";
+    if (!uid) return;
+    const rowPrev = dragAttr(row);
+    try { row.setAttribute?.("draggable", "false"); } catch { /* stub */ }
+    row.draggable = false;
+    startPress({ kind: "row", uid, highlight: null, from: rectOf(row), row, rowPrev }, event);
   };
   const onLiveLeave = () => { if (!dragging) disarm(); };
   const chipLabel = (uid, highlight) => {
@@ -1026,6 +1153,9 @@ export function createReadPane({
     return Boolean(armedEl.contains?.(target));
   };
   const onMarkDrag = (event) => {
+    // The ghost already owns this drag: no second, native one. A press that has not moved yet gives way.
+    if (press?.active) { event.preventDefault?.(); return; }
+    if (press) endPress();
     if (!armedUid || !targetIsArmed(event.target)) return;
     const label = chipLabel(armedUid, armedHighlight);
     dragging = beginDrag(event, armedUid, label.color, label.text) === true;
@@ -1048,6 +1178,98 @@ export function createReadPane({
     const el = node.nodeType === 1 ? node : node.parentElement;
     if (!el || !live.contains?.(el)) return;
     try { sel.removeAllRanges(); } catch { /* stub */ }
+  };
+  // U3. Selection bar. It reads the selection after mouseup (and once more after Roam's tip settles),
+  // places itself below the selection and below Roam's tip, and hides on Esc, scroll, a new press or close.
+  let barInfo = null;
+  let barTimers = [];
+  const barOff = [];
+  const cancelBarTimers = () => {
+    for (const id of barTimers) cancelLater(id);
+    barTimers = [];
+  };
+  const disarmBarKeys = () => {
+    while (barOff.length) { try { barOff.pop()(); } catch { /* gone */ } }
+  };
+  const onBarKey = (event) => {
+    if (event.key !== "Escape" || !barInfo) return;
+    escSeen = event;
+    hideBar();
+  };
+  let escSeen = null;
+  const armBarKeys = () => {
+    if (barOff.length) return;
+    const w = view();
+    w.addEventListener?.("keydown", onBarKey, true);
+    barOff.push(() => w.removeEventListener?.("keydown", onBarKey, true));
+  };
+  function hideBar() {
+    cancelBarTimers();
+    disarmBarKeys();
+    barInfo = null;
+    setHidden(bar, true);
+  }
+  const tipRect = () => {
+    const tip = live.querySelector?.(".PdfHighlighter__tip-container");
+    const r = rectOf(tip);
+    return r && r.right > r.left && r.bottom > r.top ? r : null;
+  };
+  const placeBar = () => {
+    if (!openFlag || dragging) return;
+    const info = selectionInReader(selectionOf(), live);
+    if (!info || !info.rect) { hideBar(); return; }
+    barInfo = info;
+    armBarKeys();
+    setHidden(bar, false);
+    const paneBox = rectOf(pane);
+    const usePane = paneBox && paneBox.right > paneBox.left && paneBox.bottom > paneBox.top;
+    const viewport = usePane ? paneBox : rectOf(root);
+    if (!viewport) return;
+    const size = { w: Number(bar.offsetWidth) || 200, h: Number(bar.offsetHeight) || 30 };
+    let obstacles = [];
+    try { obstacles = chromeObstacles(root); } catch { obstacles = []; }
+    const at = selectionBarPlacement({ selection: info.rect, tip: tipRect(), size, viewport, obstacles, place: placePopover });
+    if (at.hidden) { setHidden(bar, true); return; }
+    const originX = usePane ? paneBox.left : 0;
+    const originY = usePane ? paneBox.top : 0;
+    bar.style.left = `${Math.round(at.left - originX)}px`;
+    bar.style.top = `${Math.round(at.top - originY)}px`;
+  };
+  const onLiveMouseUp = () => {
+    if (dragging || press?.active) return;
+    cancelBarTimers();
+    barTimers.push(later(placeBar, 0), later(placeBar, BAR_SETTLE_MS));
+  };
+  const writeClip = async (text) => {
+    const clip = doc.defaultView?.navigator?.clipboard || globalThis.navigator?.clipboard;
+    if (!clip || typeof clip.writeText !== "function") throw new Error("no clipboard");
+    await clip.writeText(text);
+  };
+  const toast = (message) => { try { host?.toast?.(message); } catch { /* host */ } };
+  const onSelBarClick = (event) => {
+    const act = event.target?.closest?.("[data-act]")?.getAttribute?.("data-act");
+    if (!act || !barInfo) return;
+    event.stopPropagation?.();
+    const { text, page } = barInfo;
+    if (act === "copy") {
+      void writeClip(text).then(() => toast("Copied"), () => toast("Copy failed"));
+      return;
+    }
+    hideBar();
+    const fn = session?.insertTextCard;
+    if (typeof fn !== "function") return;
+    try {
+      void Promise.resolve(fn({ text, page, pdfUid: current.cardUid || "", quote: act === "quote" })).catch(() => {});
+    } catch { /* host */ }
+  };
+  // Buttons on the bar must not take the selection away.
+  const onSelBarMouseDown = (event) => { event.preventDefault?.(); };
+  const onBarHandleDown = (event) => {
+    if (event.button != null && event.button !== 0) return;
+    if (!barInfo) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    startPress({ kind: "text", text: barInfo.text, page: barInfo.page, from: barInfo.rect, fromBar: true }, event);
   };
   const clearFlash = () => {
     if (flashTimer) { cancelLater(flashTimer); flashTimer = null; }
@@ -1283,6 +1505,7 @@ export function createReadPane({
     armed.push([node, type, fn, capture]);
   };
   const onReaderScroll = () => {
+    if (barInfo) hideBar();
     const raf = clock().requestAnimationFrame;
     if (typeof raf !== "function") { paintPill(); return; }
     if (pillFrame) return;
@@ -1313,7 +1536,7 @@ export function createReadPane({
     if (bar && bar !== barNode) {
       forget(barNode, "click", onBarClick);
       barNode = bar;
-      listen(bar, "click", onBarClick);
+      listen(bar, "click", onSelBarClick);
     }
     const input = readerField();
     if (input && input !== pageInputNode) {
@@ -1577,6 +1800,8 @@ export function createReadPane({
     toolsOn = !toolsOn;
     toolsBtn.setAttribute("aria-pressed", toolsOn ? "true" : "false");
     paintTools();
+    if (toolsOn) openEngines();
+    else closeEngines();
   };
   const onSwitchBtn = (event) => {
     event.stopPropagation();
@@ -1599,6 +1824,12 @@ export function createReadPane({
   listen(live, "pointermove", onPointerMove, { capture: true, passive: true });
   listen(live, "pointerleave", onLiveLeave);
   listen(live, "pointerdown", onLiveDown);
+  listen(live, "mousedown", onLiveMouseDown, true);
+  listen(live, "mouseup", onLiveMouseUp);
+  listen(drawerMount, "pointerdown", onDrawerDown, true);
+  listen(bar, "click", onSelBarClick);
+  listen(bar, "mousedown", onSelBarMouseDown);
+  listen(barHandle, "pointerdown", onBarHandleDown);
   listen(live, "dragstart", onMarkDrag);
   if (root) listen(root, "drop", clearDragClass);
   listen(list, "click", onListClick);
@@ -1650,12 +1881,18 @@ export function createReadPane({
   let parseStore = null;
   let parseHelper = null;
   let viewMode = "reader";
+  let explicitMode = false;
   const ensureStore = () => {
     if (!parseStore) parseStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
     return parseStore;
   };
+  function setSettingFn(id, value) {
+    if (typeof setSetting === "function") return setSetting(id, value);
+    if (typeof settings?.set === "function") return settings.set(id, value);
+    return undefined;
+  }
   const ensureHelper = () => {
-    if (!parseHelper) parseHelper = createHelperClient({ settings, fetch: doc.defaultView?.fetch });
+    if (!parseHelper) parseHelper = createHelperClient({ settings, setSetting: setSettingFn, fetch: doc.defaultView?.fetch });
     return parseHelper;
   };
   const pdfUrl = () => pdfMacroUrl(current.source || "") || "";
@@ -1697,17 +1934,221 @@ export function createReadPane({
   function applyModeClass() {
     pane.classList.remove("pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
     const width = Number(pane.clientWidth) || Number(mountW) || 0;
-    if (viewMode === "parsed") pane.classList.add("pxd-read--parsed");
-    else if (viewMode === "both") {
+    if (viewMode === "both") {
       pane.classList.add("pxd-read--both");
       if (width > 0 && width < BOTH_MIN_PX) pane.classList.add("pxd-read--narrow");
     }
     for (const [id, button] of Object.entries(modeBtns)) {
       button.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
     }
-    setHidden(pill, viewMode === "parsed" || pane.classList.contains("pxd-read--narrow"));
+    setHidden(pill, pane.classList.contains("pxd-read--narrow"));
     paintPill();
   }
+  // U2. Text layer pages: from the outline's Read text, the helper, or any other OCR source (pxd-ocr/1
+  // page records or built-in geometry records). Stored per PDF on this device, never in the graph.
+  let ocrSha = "";
+  const persistOcr = async (pages, sha) => {
+    if (!sha) return;
+    const store = ensureStore();
+    const key = imageKey(sha, OCR_LAYER_ID);
+    let stored = [];
+    try {
+      const raw = await store.getImage(key);
+      stored = typeof raw === "string" ? JSON.parse(raw) : [];
+    } catch { stored = []; }
+    try { await store.putImage(key, JSON.stringify(mergeOcrPages(stored, pages))); } catch { /* cache */ }
+  };
+  let ocrCovered = false;
+  let ocrGot = 0;
+  const setOcrPages = (input, { sha256 = "", persist = true } = {}) => {
+    const pages = pageRecords(input);
+    const n = textLayer.setPages(pages);
+    if (n) { ocrCovered = true; ocrGot += 1; paintStrip(); }
+    const sha = sha256 || ocrSha;
+    if (n && persist && sha) void persistOcr(pages, sha);
+    return n;
+  };
+  const loadOcrLayer = async (sha) => {
+    if (!sha) return 0;
+    ocrSha = sha;
+    try {
+      const raw = await ensureStore().getImage(imageKey(sha, OCR_LAYER_ID));
+      if (typeof raw !== "string" || !openFlag || sha !== ocrSha) return 0;
+      const n = textLayer.setPages(JSON.parse(raw));
+      if (n) { ocrCovered = true; paintStrip(); }
+      return n;
+    } catch { return 0; }
+  };
+  // No dead end: a scanned page always has a status strip with the next step. Source order for a read:
+  // the in-browser source when it is ready, else the local helper; otherwise the Engines panel opens on
+  // the setup sheet. Nothing here writes to the graph.
+  const autoReadOn = () => { try { return settings?.get?.("parse-auto-read") !== false; } catch { return true; } };
+  let helperSnap = { state: "not-installed", paired: false };
+  let deviceNow = null;
+  let scanInfo = null;
+  let ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+  let runCtl = null;
+  let running = false;
+  let strip = null;
+  let panel = null;
+  const dismissedUrls = new Set();
+  const autoTried = new Set();
+  const stripLater = (fn, ms) => {
+    const id = setTimeout(fn, ms);
+    id?.unref?.();
+    return () => clearTimeout(id);
+  };
+  const stripInput = () => {
+    const pages = scanInfo?.pages || [];
+    return {
+      scanned: pages.length > 0 && !ocrCovered,
+      dismissed: dismissedUrls.has(pdfUrl()),
+      ocr: {
+        state: ocrRun.state,
+        source: ocrRun.source,
+        ms: ocrRun.ms,
+        progress: ocrRun.progress,
+        modelsCached: deviceNow?.state === "ready",
+        modelMB: deviceNow?.mb,
+        deviceAvailable: Boolean(deviceOcr) && deviceNow?.state !== "unavailable",
+      },
+      helper: { state: helperSnap.state, paired: helperSnap.paired },
+    };
+  };
+  function paintStrip() {
+    if (!strip && !scanInfo) return;
+    if (!strip) strip = renderParseStatus(doc, stripMount, stripInput(), { onAction: onStripAction, later: stripLater });
+    else strip.update(stripInput());
+  }
+  const readDevice = async () => {
+    if (!deviceOcr || typeof deviceOcr.status !== "function") return null;
+    try { return (await deviceOcr.status()) || null; } catch { return null; }
+  };
+  const refreshSnaps = async (force = true) => {
+    try {
+      const status = await ensureHelper().status({ force });
+      helperSnap = { state: status?.state || "not-installed", paired: Boolean(status?.paired) };
+    } catch { helperSnap = { state: "not-installed", paired: false }; }
+    deviceNow = await readDevice();
+    paintStrip();
+  };
+  const deviceReady = () => deviceNow?.state === "ready" && typeof deviceOcr?.read === "function";
+  const helperIsReady = () => helperSnap.state === "ready";
+  function openEngines({ sheet = false } = {}) {
+    if (!panel) {
+      panel = renderEnginesPanel(doc, enginesMount, {
+        client: ensureHelper(),
+        ...(deviceOcr ? { device: deviceOcr } : {}),
+        setSetting: setSettingFn,
+        copy: (text) => doc.defaultView?.navigator?.clipboard?.writeText?.(text),
+        toast: (text) => { try { host?.toast?.(text); } catch { /* host */ } },
+        onUpdate: () => { void refreshSnaps(false); },
+      });
+    }
+    panel.setVisible(true);
+    if (sheet) panel.showSheet();
+  }
+  const closeEngines = () => { try { panel?.setVisible(false); } catch { /* panel */ } };
+  const runRead = async (prefer = "", { fresh = true } = {}) => {
+    if (running || !scanInfo) return;
+    running = true;
+    const info = scanInfo;
+    let ctl = null;
+    try {
+      if (fresh) await refreshSnaps(true);
+      let source = "";
+      if (prefer !== "helper" && deviceReady()) source = "device";
+      else if (helperIsReady()) source = "helper";
+      if (!source) { openEngines({ sheet: true }); return; }
+      ctl = new AbortController();
+      runCtl = ctl;
+      ocrRun = { state: "running", source, ms: 0, progress: null };
+      paintStrip();
+      // The OCR source needs the reader's pdf.js document for the page images and bytes.
+      if (live.querySelector?.(".rm-pdf-container")) await waitReaderPdf(bgGen);
+      const t0 = Date.now();
+      const before = ocrGot;
+      ocrRun = { state: "running", source, ms: 0, progress: null };
+      paintStrip();
+      try {
+        if (source === "device") {
+          const out = await deviceOcr.read({
+            pages: info.pages,
+            url: pdfUrl(),
+            getPdf,
+            signal: ctl.signal,
+            onProgress: (fraction) => { ocrRun = { ...ocrRun, progress: Number(fraction) }; paintStrip(); },
+          });
+          if (!ctl.signal.aborted) {
+            setOcrPages(out, { sha256: ocrSha });
+            try { await parsedView?.applyOcr?.(pageRecords(out)); } catch { /* view */ }
+          }
+        } else {
+          try { await parsedView?.refreshHelper?.(); } catch { /* helper */ }
+          await info.readScan();
+        }
+        if (ctl.signal.aborted) ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+        else ocrRun = { state: ocrGot > before ? "done" : "failed", source, ms: Date.now() - t0, progress: null };
+      } catch {
+        ocrRun = ctl.signal.aborted ? { state: "idle", source: "", ms: 0, progress: null } : { state: "failed", source, ms: 0, progress: null };
+      }
+    } finally {
+      running = false;
+      if (runCtl === ctl) runCtl = null;
+      paintStrip();
+    }
+  };
+  function onStripAction(id) {
+    if (id === "read-text") void runRead();
+    else if (id === "use-helper") void runRead("helper");
+    else if (id === "retry") { ocrRun = { state: "idle", source: "", ms: 0, progress: null }; void runRead(); }
+    else if (id === "not-now") { dismissedUrls.add(pdfUrl()); paintStrip(); }
+    else if (id === "start-helper" || id === "setup-helper") openEngines({ sheet: true });
+    else if (id === "cancel") {
+      try { runCtl?.abort(); } catch { /* abort */ }
+      try { parsedView?.cancel?.(); } catch { /* view */ }
+      ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+      paintStrip();
+    }
+  }
+  // The parse reports its scanned pages; the strip follows, and auto-read starts once per page set.
+  const noteScan = (info) => {
+    if (info?.partial) return;
+    const pages = Array.isArray(info?.pages) ? info.pages : [];
+    scanInfo = pages.length ? { ...info, pages } : null;
+    if (!scanInfo) { paintStrip(); return; }
+    const sig = `${pdfUrl()}|${pages.join(",")}`;
+    const first = !autoTried.has(sig);
+    autoTried.add(sig);
+    paintStrip();
+    if (!first) return;
+    void (async () => {
+      await refreshSnaps(true);
+      if (info?.sha256 && !ocrCovered) await loadOcrLayer(info.sha256);
+      if (autoReadOn() && !ocrCovered && !dismissedUrls.has(pdfUrl()) && ocrRun.state === "idle" && (deviceReady() || helperIsReady())) {
+        await runRead("", { fresh: false });
+      }
+    })();
+  };
+  const resetOcrState = () => {
+    try { runCtl?.abort(); } catch { /* abort */ }
+    scanInfo = null;
+    ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+    ocrCovered = false;
+    autoTried.clear();
+    try { strip?.dispose(); } catch { /* strip */ }
+    strip = null;
+  };
+  const needOcr = (info) => {
+    if (typeof onNeedOcr === "function") {
+      try { onNeedOcr({ ...(info || {}), url: pdfUrl(), cardUid: current.cardUid || "", setOcrPages }); } catch { /* host */ }
+      return;
+    }
+    const pages = Array.isArray(info?.pages) ? info.pages : [];
+    scanInfo = { ...(info || {}), pages: pages.length ? pages : [0] };
+    dismissedUrls.delete(pdfUrl());
+    void runRead();
+  };
   const ensureParsed = () => {
     if (parsedView) return parsedView;
     parsedView = createParseView({
@@ -1728,13 +2169,21 @@ export function createReadPane({
       onCached: () => revealModes(),
       onTitle: noteParsedTitle,
       onProgress: (info) => {
+        if (bgParsing && viewMode === "reader") return;
         const running = info && info.fraction != null && info.fraction < 1;
         setHidden(progress, !running);
         progressFill.style.width = `${Math.round((Number(info?.fraction) || 0) * 100)}%`;
       },
       adoptCreated: () => { try { refreshList(); } catch { /* list */ } },
       getContext: () => readerContext(),
-      scanAuto: (() => { try { return (settings?.get?.("parse-engine-default") || "auto") === "auto"; } catch { return false; } })(),
+      outline: true,
+      onNeedOcr: (info) => needOcr(info),
+      onScan: (info) => noteScan(info),
+      onOcrPages: (pages, sha) => { setOcrPages(pages, { sha256: sha || "" }); },
+      ghostRoot: root,
+      ghostPane: pane,
+      scanAuto: false,
+      lazyKeys: true,
     });
     parsedMount.append(parsedView.element());
     try { parsedView.watchPageInput(readerField()); } catch { /* field */ }
@@ -1753,12 +2202,43 @@ export function createReadPane({
       button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
     }
   }
+  // Read mode parses quietly: the cached parse, else the built-in engine on the reader's own pdf.js document
+  // (no network, no graph writes, a yield between pages). It feeds the chips, the title and the scan strip.
+  let bgParsing = false;
+  let bgGen = 0;
+  const waitReaderPdf = async (gen) => {
+    for (let i = 0; i < 80; i += 1) {
+      if (gen !== bgGen || !openFlag) return null;
+      const pdf = readerPdf();
+      if (pdf) return pdf;
+      await new Promise((resolve) => { const id = setTimeout(resolve, 250); id?.unref?.(); });
+    }
+    return null;
+  };
+  async function backgroundParse() {
+    const url = pdfUrl();
+    if (!url || !openFlag) return;
+    const gen = ++bgGen;
+    const view = ensureParsed();
+    view.setTarget({ url, pdfUid: current.cardUid });
+    let found = null;
+    try { found = await view.restore(); } catch { found = null; }
+    if (found || gen !== bgGen || !openFlag || url !== pdfUrl()) return;
+    if (view.blockCount() > 0 || view.isBusy()) return;
+    if (!(await waitReaderPdf(gen))) return;
+    if (view.blockCount() > 0 || view.isBusy()) return;
+    bgParsing = true;
+    try { await view.parseBuiltin(); } catch { /* parse */ } finally { bgParsing = false; }
+  }
   async function noteCached() {
     const url = pdfUrl();
     if (!url || !openFlag) return;
-    if (readParsedUrls(storage).has(url)) revealModes();
+    const known = readParsedUrls(storage).has(url);
+    if (known) revealModes();
+    if (known && viewMode === "reader" && !explicitMode && storedReadMode(storage) === "both") void enterParsed("both");
     try {
       const hit = await ensureStore().findByUrl(url);
+      if (hit?.sha256 && openFlag && url === pdfUrl()) void loadOcrLayer(hit.sha256);
       if (hit?.sha256 && openFlag) revealModes();
       if (hit?.sha256 && openFlag && !realTitle(current.title) && !parsedTitle) {
         const hash = await optionsHash(BUILTIN_OPTIONS);
@@ -1772,10 +2252,10 @@ export function createReadPane({
       }
     } catch { /* store */ }
   }
-  async function enterParsed(which) {
+  async function enterParsed() {
     if (!openFlag) return;
     revealModes();
-    viewMode = which === "both" ? "both" : "parsed";
+    viewMode = "both";
     applyModeClass();
     try { drawer?.close?.(); } catch { /* drawer */ }
     if (viewMode === "both" && pane.classList.contains("pxd-read--narrow") && !live.querySelector?.(".rm-pdf-container")) {
@@ -1783,7 +2263,9 @@ export function createReadPane({
       mountReader(current.blockUid);
       armSettle();
     }
+    void refreshSnaps(true);
     const view = ensureParsed();
+    view.armKeys();
     view.setTarget({ url: pdfUrl(), pdfUid: current.cardUid });
     try { view.watchPageInput(readerField()); } catch { /* field */ }
     let found = null;
@@ -1796,13 +2278,14 @@ export function createReadPane({
   listen(modes, "click", (event) => {
     const id = event.target?.closest?.("[data-mode]")?.getAttribute?.("data-mode");
     if (!id) return;
-    if (id === "reader") {
+    writeReadMode(storage, id);
+    if (normalizeReadMode(id) === "reader") {
       viewMode = "reader";
       revealModes();
       applyModeClass();
       return;
     }
-    void enterParsed(id);
+    void enterParsed("both");
   });
 
   function close(opts) {
@@ -1816,7 +2299,11 @@ export function createReadPane({
     const notify = !opts || opts.notify !== false;
     const wasOpen = openFlag;
     if (!openFlag && !pane.isConnected) return;
+    bgGen += 1;
     dropParsed();
+    hideBar();
+    textLayer.clear();
+    ocrSha = "";
     if (wasOpen) emitSnapshot("close");
     openFlag = false;
     endSplit();
@@ -1829,6 +2316,9 @@ export function createReadPane({
     toolsOn = false;
     paintTools();
     toolsBtn.setAttribute("aria-pressed", "false");
+    resetOcrState();
+    try { panel?.dispose(); } catch { /* panel */ }
+    panel = null;
     fitDone = false;
     userZoomed = false;
     settleNoted = false;
@@ -1847,6 +2337,12 @@ export function createReadPane({
       const next = detail && typeof detail === "object" ? detail : {};
       const blockUid = typeof next.blockUid === "string" ? next.blockUid : "";
       if (!blockUid || !root) return;
+      if (blockUid !== current.blockUid) {
+        textLayer.clear();
+        ocrSha = "";
+        resetOcrState();
+        if (parsedView && viewMode === "reader") dropParsed();
+      }
       if (!openFlag || blockUid !== current.blockUid) {
         fitDone = false;
         userZoomed = false;
@@ -1887,9 +2383,11 @@ export function createReadPane({
       armWatch(current.title);
       paintSwitcher();
       refreshList();
+      explicitMode = next.mode != null && next.mode !== "";
       void noteCached();
-      if (next.mode === "parsed" || next.mode === "both") void enterParsed(next.mode);
-      else if (parsedView && viewMode !== "reader") void enterParsed(viewMode);
+      void backgroundParse();
+      if (explicitMode && normalizeReadMode(next.mode) === "both") void enterParsed("both");
+      else if (parsedView && viewMode !== "reader") void enterParsed("both");
     },
     close,
     dispose() {
@@ -1898,6 +2396,7 @@ export function createReadPane({
       dropSearchWatch();
       detachReaderWatch();
       try { drawer?.dispose?.(); } catch { /* drawer */ }
+      textLayer.dispose();
       for (const [node, type, fn, capture] of armed) node.removeEventListener?.(type, fn, capture);
       armed.length = 0;
     },
@@ -1916,7 +2415,17 @@ export function createReadPane({
     // P32-3 probe: which path fitted the page (viewer | steps | viewer+steps | none) and the presses it took.
     fitInfo: () => ({ path: fitState.path, clicks: fitState.clicks, done: fitDone, userZoomed }),
     element: () => pane,
-    parse() { void enterParsed(viewMode === "both" ? "both" : "parsed"); },
-    showParsed() { void enterParsed("parsed"); },
+    parse() { void enterParsed("both"); },
+    showParsed() { void enterParsed("both"); },
+    showOutline() { void enterParsed("both"); },
+    mode: () => viewMode,
+    // U2 contract for OCR sources: pxd-ocr/1 page records (or { pages }) for the open PDF.
+    setOcrPages: (pages, opts) => setOcrPages(pages, opts),
+    noteScan,
+    openEngines,
+    stripKind: () => strip?.kind() ?? null,
+    ocrRun: () => ({ ...ocrRun }),
+    textLayerStats: () => textLayer.stats(),
+    selectionBarOpen: () => Boolean(barInfo) && !bar.hasAttribute("hidden"),
   };
 }

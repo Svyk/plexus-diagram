@@ -5338,6 +5338,196 @@ body.roam-body.dark .pxd-root .pxd-memory {
   contain-intrinsic-size: var(--pxd-iw, 200px) var(--pxd-ih, 80px);
 }
 
+/* P-ONBOARD. The status strip and the Engines panel. A border carries state; fills stay clear. */
+
+.pxd-parse-status.pxd-parse-status {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--pxd-border, #d0d7de);
+  color: var(--pxd-text, inherit);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.pxd-parse-status.pxd-parse-status[hidden] {
+  display: none;
+}
+
+.pxd-parse-status .pxd-parse-status__text {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.pxd-parse-status .pxd-parse-status__bar,
+.pxd-engines .pxd-engines__bar {
+  flex: 0 0 72px;
+  height: 2px;
+  background: var(--pxd-border, #d0d7de);
+}
+
+.pxd-parse-status .pxd-parse-status__fill,
+.pxd-engines .pxd-engines__fill {
+  display: block;
+  height: 2px;
+  background: var(--pxd-accent, #0f766e);
+}
+
+.pxd-parse-status .pxd-parse-status__btn,
+.pxd-engines .pxd-engines__btn {
+  height: 22px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pxd-text, inherit);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.pxd-parse-status .pxd-parse-status__btn--primary,
+.pxd-engines .pxd-engines__btn--primary {
+  border-color: var(--pxd-accent, #0f766e);
+  box-shadow: inset 0 -2px 0 var(--pxd-accent, #0f766e);
+}
+
+.pxd-parse-status .pxd-parse-status__btn:focus-visible,
+.pxd-engines .pxd-engines__btn:focus-visible {
+  outline: 2px solid var(--pxd-accent, #0f766e);
+  outline-offset: 1px;
+}
+
+.pxd-engines.pxd-engines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 6px;
+  color: var(--pxd-text, inherit);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.pxd-engines.pxd-engines[hidden] {
+  display: none;
+}
+
+.pxd-engines .pxd-engines__title {
+  font-weight: 600;
+}
+
+.pxd-engines .pxd-engines__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pxd-engines .pxd-engines__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 28px;
+}
+
+.pxd-engines .pxd-engines__row--disabled {
+  color: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-engines .pxd-engines__dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border: 2px solid var(--pxd-muted, #5f6b7c);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.pxd-engines .pxd-engines__dot--ok {
+  border-color: var(--pxd-accent, #0f766e);
+  background: var(--pxd-accent, #0f766e);
+}
+
+.pxd-engines .pxd-engines__dot--warn {
+  border-color: var(--pxd-text, #1f2937);
+}
+
+.pxd-engines .pxd-engines__dot--busy {
+  border-color: var(--pxd-accent, #0f766e);
+}
+
+.pxd-engines .pxd-engines__name {
+  flex: 0 0 auto;
+  min-width: 112px;
+  font-weight: 500;
+}
+
+.pxd-engines .pxd-engines__text {
+  flex: 1 1 120px;
+  min-width: 0;
+  color: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-engines .pxd-engines__sheet {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 6px;
+}
+
+.pxd-engines .pxd-engines__sheet-title {
+  font-weight: 600;
+}
+
+.pxd-engines .pxd-engines__command {
+  display: block;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.pxd-engines .pxd-engines__note {
+  color: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-engines .pxd-engines__advanced {
+  color: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-engines .pxd-engines__token {
+  height: 22px;
+  margin: 4px 6px 0 0;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pxd-text, inherit);
+  font: inherit;
+  font-size: 12px;
+}
+
 /* Overlays: Quick Look, presentation HUD, Alt+drag ghosts, focus dimming.
    Borders carry the semantics; fills stay on the chrome token (no tinted fills in dark). */
 
@@ -5892,6 +6082,88 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 .pxd-root .pxd-block__plain--heavy {
   min-height: 1.4em;
   color: var(--pxd-muted);
+}
+
+.page > .pxd-page-outline {
+  box-sizing: border-box;
+  border: 1.5px solid var(--pxd-accent);
+  border-radius: 3px;
+  background: transparent;
+  pointer-events: none;
+}
+
+.page > .pxd-page-chip {
+  display: flex;
+  align-items: stretch;
+  transform: translateX(-100%);
+  z-index: 4;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--pxd-fg, inherit);
+  background: var(--pxd-surface);
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.page > .pxd-page-chip button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 1px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.page > .pxd-page-chip .pxd-page-chip__more {
+  padding: 1px 6px;
+  border-left: 1px solid var(--pxd-border-strong);
+}
+
+.page > .pxd-page-chip button:hover,
+.page > .pxd-page-chip button:focus-visible {
+  outline: 1px solid var(--pxd-accent);
+  outline-offset: -1px;
+}
+
+.page > .pxd-page-chip .pxd-page-chip__menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 2px;
+  min-width: 100%;
+  background: var(--pxd-surface);
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 4px;
+}
+
+.page > .pxd-page-chip .pxd-page-chip__menu[hidden] {
+  display: none;
+}
+
+.page > .pxd-page-chip .pxd-page-chip__item {
+  text-align: left;
+}
+
+.page > .pxd-page-dot {
+  box-sizing: border-box;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--pxd-accent);
+  border-radius: 8px;
+  background: var(--pxd-surface);
+  color: var(--pxd-fg, inherit);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  opacity: 0.75;
+  pointer-events: none;
+  z-index: 4;
 }
 
 /* PGE-1. A page card keeps its box while Roam's editor is open.
@@ -6464,6 +6736,7 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 .pxd-parse .pxd-parse__searchbtn,
 .pxd-parse .pxd-parse__engine,
 .pxd-parse .pxd-parse__docling,
+.pxd-parse .pxd-parse__alt,
 .pxd-parse .pxd-parse__again,
 .pxd-parse .pxd-parse__lock,
 .pxd-parse .pxd-parse__cancel,
@@ -6508,6 +6781,26 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 .pxd-parse .pxd-parse__docling {
   color: var(--pxd-text);
   border-color: var(--pxd-border);
+}
+
+.pxd-parse .pxd-parse__alt {
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: 4px 8px;
+  border-color: var(--pxd-border);
+  background: transparent;
+  color: var(--pxd-text);
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.pxd-parse .pxd-parse__alt-note {
+  color: var(--pxd-muted);
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .pxd-parse .pxd-parse__track {
@@ -8816,6 +9109,97 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert {
   display: none;
 }
 
+/* U3. Selection bar below the selection (and below Roam's own tip). Borders carry meaning; no fills. */
+.pxd-read .pxd-selbar {
+  position: absolute;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 3px;
+  border: 1px solid var(--pxd-border-strong, var(--pxd-border, #d0d7de));
+  border-radius: 6px;
+  background: var(--pxd-chrome-bg, var(--pxd-surface, #fff));
+  color: var(--pxd-text, inherit);
+  box-shadow: var(--pxd-shadow, none);
+  font-size: 12px;
+  user-select: none;
+}
+
+.pxd-read .pxd-selbar[hidden] {
+  display: none;
+}
+
+.pxd-read .pxd-selbar__btn,
+.pxd-read .pxd-selbar__handle {
+  height: 24px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pxd-read .pxd-selbar__btn:hover,
+.pxd-read .pxd-selbar__btn:focus-visible,
+.pxd-read .pxd-selbar__handle:hover {
+  border-color: var(--pxd-accent, currentColor);
+}
+
+.pxd-read .pxd-selbar__handle {
+  padding: 0 6px;
+  color: var(--pxd-muted, inherit);
+  cursor: grab;
+  touch-action: none;
+}
+
+.pxd-root.pxd-root--dark .pxd-read .pxd-selbar {
+  background: var(--pxd-chrome-bg, #1e2a35);
+  box-shadow: none;
+}
+
+/* U6. Outline rows: one line per heading, table, figure and formula, with its page. */
+.pxd-read .pxd-parse__orow .pxd-parse__main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pxd-read .pxd-parse__olabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pxd-read .pxd-parse__olabel--heading {
+  font-weight: 600;
+}
+
+.pxd-read .pxd-parse__opage {
+  flex: 0 0 auto;
+  color: var(--pxd-muted, inherit);
+  font-size: 11px;
+}
+
+.pxd-read .pxd-parse__readtext {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--pxd-accent, currentColor);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
 /* ECO-3. The thumb fits the card. The 1px border is the button signal, not a shadow. */
 
 .pxd-root .pxd-region-thumb {
@@ -9867,6 +10251,39 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   display: none;
 }
 
+/* A Roam Grid table fills its card. Roam Grid caps .rg-root at --rg-max-width and the viewport at
+   min(68vh, 720px), so a card dragged bigger kept the grid at its old size. The card is the container:
+   every box from the card down to the viewport takes the card height, and the viewport scrolls. */
+.pxd-root .pxd-roam-table--grid {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.pxd-root .pxd-roam-table--grid > .pxd-roam-table__fit {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+.pxd-root .pxd-roam-table--grid :is(.pxd-rs__live, .rm-api-render--block, .roam-block-container, .rm-block-main, .rm-block__input, .dont-focus-block, .dont-focus-block > span) {
+  height: 100%;
+  min-height: 0;
+}
+.pxd-root .pxd-roam-table--grid :is(.dont-focus-block, .dont-focus-block > span) {
+  display: block;
+}
+.pxd-root .pxd-roam-table--grid .rg-root {
+  max-width: none;
+  height: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pxd-root .pxd-roam-table--grid .rg-viewport {
+  max-height: none;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 /* Fullscreen board tabs. Inside .pxd-root so the chrome tokens apply. Not on document.body.
    P32-6: the strip is painted only from two tabs up (board-view paintTabStrip), and it is 28 px tall. */
 
@@ -10326,6 +10743,127 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   background: transparent;
   color: var(--pxd-text);
   font: inherit;
+}
+
+/* U2. OCR text layer inside a scanned page's .textLayer. Words are transparent, sized like pdf.js text,
+   and only the selection shows (the link colour of the followed Roam theme at 30%). */
+
+.textLayer > .pxd-tl-word {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  color: transparent;
+  font-family: sans-serif;
+  line-height: 1;
+  white-space: pre;
+  transform-origin: 0 0;
+  cursor: text;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.textLayer > br[data-pxd-word] {
+  user-select: none;
+}
+
+.textLayer > .pxd-tl-word::selection {
+  color: transparent;
+  background: color-mix(in srgb, var(--pxd-link, #2563eb) 30%, transparent);
+}
+
+/* U5. Card-shaped drag ghost. It is a real card (.pxd-item) in a fixed layer; only its transform moves. */
+
+.pxd-root .pxd-item.pxd-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  width: 280px;
+  max-height: 240px;
+  overflow: hidden;
+  pointer-events: none;
+  will-change: transform;
+  contain: content;
+  opacity: .94;
+  transition: opacity var(--pxd-zoom-ms, 120ms) ease-out;
+}
+
+.pxd-root .pxd-ghost .pxd-ghost__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--pxd-text);
+}
+
+.pxd-root .pxd-ghost .pxd-ghost__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.pxd-root .pxd-ghost[data-kind="highlight"] .pxd-ghost__text {
+  padding-left: 8px;
+  border-left: 3px solid var(--pxd-ghost-bar, var(--pxd-yellow-line, #ca8a04));
+}
+
+.pxd-root .pxd-ghost .pxd-ghost__bar { display: none; }
+.pxd-root .pxd-ghost:has(.pxd-ghost__bar[data-color="green"]) { --pxd-ghost-bar: var(--pxd-green-line); }
+.pxd-root .pxd-ghost:has(.pxd-ghost__bar[data-color="blue"]) { --pxd-ghost-bar: var(--pxd-blue-line); }
+.pxd-root .pxd-ghost:has(.pxd-ghost__bar[data-color="red"]) { --pxd-ghost-bar: var(--pxd-red-line); }
+.pxd-root .pxd-ghost:has(.pxd-ghost__bar[data-color="orange"]) { --pxd-ghost-bar: var(--pxd-orange-line); }
+.pxd-root .pxd-ghost:has(.pxd-ghost__bar[data-color="purple"]) { --pxd-ghost-bar: var(--pxd-purple-line); }
+.pxd-root .pxd-ghost:has(.pxd-ghost__bar[data-color="gray"]) { --pxd-ghost-bar: var(--pxd-gray-line); }
+
+.pxd-root .pxd-ghost .pxd-ghost__table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pxd-root .pxd-ghost .pxd-ghost__table td {
+  padding: 2px 6px;
+  border: 1px solid var(--pxd-border);
+  white-space: nowrap;
+}
+
+.pxd-root .pxd-ghost .pxd-ghost__img {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+}
+
+.pxd-root .pxd-ghost .pxd-ghost__page {
+  color: var(--pxd-muted);
+  font-size: 11px;
+}
+
+/* Over the board: the dashed outline is where the card lands. */
+.pxd-root .pxd-item.pxd-ghost--board {
+  outline: 2px dashed var(--pxd-accent);
+  outline-offset: 2px;
+}
+
+.pxd-root .pxd-item.pxd-ghost--blocked {
+  opacity: .45;
+}
+
+.pxd-root .pxd-item.pxd-ghost--land,
+.pxd-root .pxd-item.pxd-ghost--cancel {
+  opacity: 0;
+}
+
+.pxd-root.pxd-root--motion-off .pxd-item.pxd-ghost {
+  transition: none;
+}
+
+.pxd-root.pxd-root--pdf-drag:has(.pxd-ghost--blocked) {
+  cursor: not-allowed;
 }
 
 /* NAV-3. Daily-notes spine in the Info panel. Borders only, no tinted fills. */

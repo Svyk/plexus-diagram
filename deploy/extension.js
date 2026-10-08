@@ -1,4 +1,4 @@
-/* Plexus Diagram v3.5.0 | MIT | generated; edit src/ */
+/* Plexus Diagram v3.6.0 | MIT | generated; edit src/ */
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __esm = (fn, res, err) => function __init() {
@@ -873,15 +873,15 @@ function mergePropsForWrite(props, plexus) {
 }
 function normalizeItemLayout(plexus) {
   const p = isObject(plexus) ? plexus : {};
-  const num4 = (v) => isNum(v) ? v : void 0;
+  const num6 = (v) => isNum(v) ? v : void 0;
   const type = ITEM_TYPES.includes(p.type) ? p.type : "card";
   const section2 = type === "section";
   return {
     type,
-    x: num4(p.x),
-    y: num4(p.y),
-    w: num4(p.w),
-    h: num4(p.h),
+    x: num6(p.x),
+    y: num6(p.y),
+    w: num6(p.w),
+    h: num6(p.h),
     color: styleColor(p.color),
     collapsed: p.collapsed === true ? true : p.collapsed === false ? false : void 0,
     // Sections use titleSize. Cards and text take an integer 10–48 (text used to be the four steps only).
@@ -1602,18 +1602,18 @@ function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
       arrow2.textContent = "→";
       parent.append(arrow2);
     }
-    const btn = doc.createElement("button");
-    btn.type = "button";
-    btn.className = "pxd-trail-strip__stop";
-    if (stop2?.uid) btn.dataset.uid = stop2.uid;
-    btn.textContent = stop2?.title || "";
-    btn.setAttribute("aria-label", stop2?.title || "Trail stop");
-    btn.addEventListener("click", (event) => {
+    const btn2 = doc.createElement("button");
+    btn2.type = "button";
+    btn2.className = "pxd-trail-strip__stop";
+    if (stop2?.uid) btn2.dataset.uid = stop2.uid;
+    btn2.textContent = stop2?.title || "";
+    btn2.setAttribute("aria-label", stop2?.title || "Trail stop");
+    btn2.addEventListener("click", (event) => {
       event.preventDefault?.();
       event.stopPropagation?.();
       onStop?.(stop2);
     });
-    parent.append(btn);
+    parent.append(btn2);
   });
   const walk2 = doc.createElement("button");
   walk2.type = "button";
@@ -1639,9 +1639,9 @@ function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
         now3.onWalk?.();
         return;
       }
-      const btn = target?.closest?.(".pxd-trail-strip__stop");
-      if (!btn) return;
-      const i = [...parent.querySelectorAll(".pxd-trail-strip__stop")].indexOf(btn);
+      const btn2 = target?.closest?.(".pxd-trail-strip__stop");
+      if (!btn2) return;
+      const i = [...parent.querySelectorAll(".pxd-trail-strip__stop")].indexOf(btn2);
       if (i < 0) return;
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -2468,16 +2468,16 @@ function pointInPolygon(point, polygon) {
   for (let i = 0, j = n2 - 1; i < n2; j = i++) {
     if (onSegment(polygon[j], polygon[i], point)) return true;
   }
-  let inside5 = false;
+  let inside6 = false;
   for (let i = 0, j = n2 - 1; i < n2; j = i++) {
     const yi = polygon[i].y;
     const yj = polygon[j].y;
     const xi = polygon[i].x;
     const xj = polygon[j].x;
     const intersect = yi > point.y !== yj > point.y && point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi;
-    if (intersect) inside5 = !inside5;
+    if (intersect) inside6 = !inside6;
   }
-  return inside5;
+  return inside6;
 }
 function itemsInPolygon(board2, polygon, rects) {
   if (!board2 || !Array.isArray(polygon) || polygon.length < 3) return [];
@@ -5305,27 +5305,59 @@ var init_tooltip_text = __esm({
       "relpop.sidebar": e("Open in sidebar", "Open the board in the right sidebar."),
       "edge.row": e("Linked block", "An arrow on the board ends on this block."),
       // ---- PDF parse (settings descriptions, and the flat-merge chip)
+      "page-chip.table": e("Table", "Insert this table as a Roam Grid with its merged cells. Open the arrow for native, flat, Markdown or a card."),
+      "page-chip.more": e("More ways", "Other ways to insert this block."),
+      "page-chip.figure": e("Figure", "Send this figure to the board as a card."),
+      "page-chip.formula": e("Formula", "Send this formula to the board as a card."),
+      "page-chip.heading": e("Section", "Send this heading and the text up to the next heading to the board as a card."),
+      "page-chip.list": e("List", "Insert this list below the PDF."),
       "parse.helper-url": e("Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
       "parse.helper-token": e("Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address."),
       "parse.engine": e("Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper."),
       "parse.formula": e("Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
       "parse.ocr": e("Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR."),
+      "parse.auto-read": e("Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
       "parse.link-safe": e("Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
       "parse.numbered": e("Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
       "parse.footnotes": e("Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert."),
       "parse.merges-flat": e("Merged cells shown flat", "Roam Grid draws merges. Native Roam shows the covered cells empty.", null, "Insert as flat table repeats the anchor text into covered cells."),
       "parse.insert-flat": e("Insert as flat table", "Repeat the anchor text into covered cells so a native table still reads."),
       "pdf.parse": e("Parse", "Parse this PDF with the built-in engine and open the parsed view."),
-      "parse.mode.reader": e("Reader", "Show the PDF reader."),
-      "parse.mode.parsed": e("Parsed", "Show the parsed blocks. The page strip stays."),
-      "parse.mode.both": e("Both", "Reader and parsed view side by side when the pane is wide enough."),
+      "parse.mode.reader": e("Read", "Read the PDF. Select text on any page, scanned pages too, to copy it, make a card or drag it to the board."),
+      "parse.mode.parsed": e("Read + Outline", "The PDF beside its outline: headings, tables and figures with their pages."),
+      "parse.mode.both": e("Read + Outline", "The PDF beside its outline: headings, tables and figures with their pages. Select several rows to insert or send them together."),
+      "parse.read-text": e("Read text", "Read the text of the scanned pages so you can select, copy and highlight it. Nothing is written to your graph."),
+      "read.sel.copy": e("Copy", "Copy the selected text."),
+      "read.sel.card": e("Card", "A note card beside the PDF with the selected text and its page."),
+      "read.sel.quote": e("Quote", "A quote card beside the PDF with the selected text and its page."),
+      "read.sel.drag": e("Drag to the board", "Drag the selection onto the board as a card. Hold Alt when you drop for a quote."),
       "parse.range": e("Page range", "All, the current page, or a range such as 1–5."),
       "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),
       "parse.chip": e("Parse engine", "Built-in runs on this machine. Docling uses the local helper."),
       "parse.docling": e("Parse with Docling", "Send this PDF to the local helper. Nothing is sent until you press this."),
-      "parse.docling-off": e("Docling: not running", "Start tools/parse-helper/bin/plexus-parse-helper serve, then paste the token into Settings."),
-      "parse.docling-token": e("Docling: wrong token", "Paste the helper token into Settings."),
-      "parse.docling-models": e("Docling: downloading models", "The helper is downloading models. Parsing waits until they are ready."),
+      "parse.docling-off": e("Local helper: off", "Open Engines (the gear) to set up or start the local helper."),
+      "parse.docling-token": e("Local helper: wrong token", "Open Engines (the gear) and pair the local helper again."),
+      "parse.docling-models": e("Local helper: downloading models", "The helper is downloading models. Parsing waits until they are ready."),
+      "parse.strip.read-text": e("Read text", "Read the words on this scanned page on this device. Nothing leaves your computer."),
+      "parse.strip.use-helper": e("Use local helper", "Open Engines to set up or pair the local helper (Docling and Apple Vision)."),
+      "parse.strip.not-now": e("Not now", "Hide this notice for this page."),
+      "parse.strip.start-helper": e("Start helper", "Open Engines to start the local helper."),
+      "parse.strip.setup-helper": e("Set up helper", "Open Engines to install the local helper (Docling and Apple Vision)."),
+      "parse.strip.retry": e("Retry", "Try to read this page again."),
+      "parse.strip.cancel": e("Cancel", "Stop reading this page."),
+      "engines.builtin": e("On this device", "The built-in parser. It runs in Roam and needs nothing installed."),
+      "engines.ocr": e("In-browser reading", "Reads the words on scanned pages inside Roam. The models download once, after you ask."),
+      "engines.helper": e("Local helper", "Docling for layout, formulas and tables, and Apple Vision for scans. It runs on this Mac and listens only on 127.0.0.1."),
+      "engines.cloud": e("Cloud", "Reading through a service with your own key. Not available yet."),
+      "engines.pair": e("Pair", "Fetch the helper's token. Works for 90 seconds after the installer or plexus-parse-helper pair."),
+      "engines.setup": e("Set up", "Show the one command that installs the local helper."),
+      "engines.start": e("Start", "Show how to start the local helper."),
+      "engines.download": e("Download", "Download the helper's models. They are stored on this Mac."),
+      "engines.download-device": e("Download", "Download the reading models into this browser's storage, once."),
+      "engines.cancel": e("Cancel", "Stop the download. What is already fetched is kept."),
+      "engines.update": e("Update Plexus", "The helper is newer than this Plexus. Reload the extension from Roam Depot."),
+      "engines.copy": e("Copy command", "Copy the command, then paste it in Terminal."),
+      "engines.token-save": e("Save token", "Store a token you copied by hand. Pair is easier."),
       "parse.cancel": e("Cancel", "Stop this parse. Nothing is written to the graph."),
       "parse.sync": e("Sync scroll", "Parsed scrolling follows the reader. Click to unlock."),
       "parse.copy": e("Copy", "Copy Markdown. One table copies as CSV. Shift copies tables as CSV."),
@@ -5791,7 +5823,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
   if (!a || !b) return null;
   const bounds = boundsOf([a, b]);
   const view = { x: bounds.x - pad2, y: bounds.y - pad2, w: bounds.w + 2 * pad2, h: bounds.h + 2 * pad2 };
-  const inside5 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
+  const inside6 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
   const label = (item) => itemLabel(item, blockText) || item.title || "";
   const cards = [];
   let others = 0;
@@ -5800,7 +5832,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     if (!r) continue;
     const role = item.uid === edge.from ? "from" : item.uid === edge.to ? "to" : "other";
     if (role === "other") {
-      if (!inside5(r) || others >= maxOthers) continue;
+      if (!inside6(r) || others >= maxOthers) continue;
       others += 1;
     }
     cards.push({ uid: item.uid, type: item.type, rect: r, title: label(item), role });
@@ -5993,7 +6025,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     else mk("div", "pxd-relpop__empty", el, "The connected cards could not be found on the board.");
     if (rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip2(rel.toBlockText, 60)}”`);
     const row4 = mk("div", "pxd-relpop__actions", el);
-    const button = (tip, text3, fn) => {
+    const button2 = (tip, text3, fn) => {
       const b = mk("button", "pxd-btn pxd-relpop__btn", row4, text3);
       b.type = "button";
       b.setAttribute("data-tip", tip);
@@ -6003,11 +6035,11 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       });
       return b;
     };
-    button("relpop.board", "Open on board", () => {
+    button2("relpop.board", "Open on board", () => {
       closePop();
       if (boardUid) openOnBoard(boardUid, edgeUid);
     });
-    button("relpop.sidebar", "Open in sidebar", () => {
+    button2("relpop.sidebar", "Open in sidebar", () => {
       closePop();
       if (boardUid) {
         try {
@@ -6658,7 +6690,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     const res = await bt.modify(uid, { attributes });
     if (!res.ok) toast({ message: `Better Tasks could not change that: ${res.reason}` });
   };
-  const button = (parent, label, run, cls = "pxd-task-pop__btn") => {
+  const button2 = (parent, label, run, cls = "pxd-task-pop__btn") => {
     const b = el("button", cls, parent, label);
     b.type = "button";
     b.setAttribute("aria-label", label);
@@ -6669,14 +6701,14 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     return b;
   };
   const fillDue = (box2, uid) => {
-    for (const choice of dayChoices(today())) button(box2, choice.label, () => apply(uid, { due: choice.value }));
+    for (const choice of dayChoices(today())) button2(box2, choice.label, () => apply(uid, { due: choice.value }));
     const pick = el("input", "pxd-task-pop__input", box2);
     pick.type = "date";
     pick.setAttribute("aria-label", "Pick a date");
     pick.addEventListener("change", () => {
       if (pick.value) void apply(uid, { due: pick.value });
     });
-    button(box2, "Clear", () => apply(uid, { due: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
+    button2(box2, "Clear", () => apply(uid, { due: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
   const fillProject = (box2, uid) => {
     const list = el("div", "pxd-task-pop__list", box2);
@@ -6685,7 +6717,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
       if (!node2 || openFor !== uid) return;
       list.replaceChildren();
       if (!names.length) el("div", "pxd-task-pop__hint", list, "No projects yet");
-      for (const name of names) button(list, name, () => apply(uid, { project: name }));
+      for (const name of names) button2(list, name, () => apply(uid, { project: name }));
       placeAgain();
       const active = doc.activeElement;
       const tag = String(active?.tagName || "").toLowerCase();
@@ -6693,11 +6725,11 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
         focusEl3(list.querySelector("button"));
       }
     });
-    button(box2, "Clear", () => apply(uid, { project: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
+    button2(box2, "Clear", () => apply(uid, { project: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
   const fillPriority = (box2, uid) => {
-    for (const level of PRIORITIES) button(box2, level, () => apply(uid, { priority: level }));
-    button(box2, "Clear", () => apply(uid, { priority: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
+    for (const level of PRIORITIES) button2(box2, level, () => apply(uid, { priority: level }));
+    button2(box2, "Clear", () => apply(uid, { priority: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
   const fillRepeat = (box2, uid) => {
     const input = el("input", "pxd-task-pop__input", box2);
@@ -6715,8 +6747,8 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
         go();
       }
     });
-    button(box2, "Set", go);
-    button(box2, "Clear", () => apply(uid, { repeat: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
+    button2(box2, "Set", go);
+    button2(box2, "Clear", () => apply(uid, { repeat: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
     try {
       input.focus({ preventScroll: true });
     } catch {
@@ -6765,8 +6797,8 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
         focusEl3(back);
         return;
       }
-      const inside5 = node2.contains?.(event.target) || node2.contains?.(doc.activeElement);
-      if (!inside5) return;
+      const inside6 = node2.contains?.(event.target) || node2.contains?.(doc.activeElement);
+      if (!inside6) return;
       const tag = fieldTag(event);
       if (tag === "input" || tag === "textarea" || tag === "select") return;
       const buttons = [...node2.querySelectorAll("button")];
@@ -6878,8 +6910,8 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
     if (event.key !== "Enter" && event.key !== " " && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     const tag = String(event.target?.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea") return;
-    const inside5 = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
-    if (!inside5) return;
+    const inside6 = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
+    if (!inside6) return;
     event.preventDefault();
     event.stopPropagation();
     if (event.key === "Enter" || event.key === " ") {
@@ -7191,17 +7223,17 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
     for (const year of grouped) {
       const group = document.createElement("div");
       group.className = "pxd-timeline__group";
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "pxd-timeline__year";
-      button.setAttribute("data-year", String(year.year));
+      const button2 = document.createElement("button");
+      button2.type = "button";
+      button2.className = "pxd-timeline__year";
+      button2.setAttribute("data-year", String(year.year));
       const shut = collapsed.has(year.year);
-      button.setAttribute("aria-expanded", shut ? "false" : "true");
-      button.setAttribute("aria-label", `Year ${year.year}`);
+      button2.setAttribute("aria-expanded", shut ? "false" : "true");
+      button2.setAttribute("aria-label", `Year ${year.year}`);
       const label = document.createElement("span");
       label.className = "pxd-timeline__year-label";
       label.textContent = String(year.year);
-      button.append(label);
+      button2.append(label);
       const days = document.createElement("div");
       days.className = "pxd-timeline__days";
       if (shut) days.setAttribute("hidden", "");
@@ -7226,7 +7258,7 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
         row4.append(open, count, show);
         days.append(row4);
       }
-      group.append(button, days);
+      group.append(button2, days);
       el.append(group);
     }
   };
@@ -7260,6 +7292,458 @@ var init_timeline2 = __esm({
   }
 });
 
+// src/model/anydoc-to-parse.js
+function officeFormatFromName(name) {
+  const text3 = String(name || "");
+  if (ENC.test(text3)) return null;
+  const base = text3.split(/[?#]/)[0];
+  const match = /\.([A-Za-z0-9]+)$/.exec(base);
+  if (!match) return null;
+  const ext = match[1].toLowerCase();
+  return OFFICE_EXT.has(ext) ? ext : null;
+}
+function officeFormatFromUrl(url) {
+  const text3 = String(url || "").trim();
+  if (!text3 || ENC.test(text3)) return null;
+  let path = text3.split(/[?#]/)[0];
+  try {
+    path = new URL(text3).pathname;
+  } catch {
+  }
+  return officeFormatFromName(path);
+}
+function nameFromUrl(url) {
+  try {
+    const last = new URL(url).pathname.split("/").filter(Boolean).pop() || "";
+    return decodeURIComponent(last);
+  } catch {
+    return String(url || "").split("/").pop()?.split(/[?#]/)[0] || "";
+  }
+}
+function officeFetchAllowed(url) {
+  const text3 = String(url || "").trim();
+  if (!text3 || ENC.test(text3)) return false;
+  return /^https:\/\//i.test(text3);
+}
+function officeTargetFromText(text3) {
+  const raw = String(text3 || "").trim();
+  if (!raw || raw.length > 4e3) return null;
+  const linked = /^\[([^\]]*)\]\(([^)\s]+)\)\s*$/.exec(raw);
+  if (linked) {
+    const url = linked[2];
+    const format = officeFormatFromUrl(url) || officeFormatFromName(linked[1]);
+    if (!format || !officeFetchAllowed(url)) return null;
+    return { format, name: linked[1] || nameFromUrl(url), url };
+  }
+  if (/^https:\/\/\S+$/i.test(raw)) {
+    const format = officeFormatFromUrl(raw);
+    if (!format || !officeFetchAllowed(raw)) return null;
+    return { format, name: nameFromUrl(raw), url: raw };
+  }
+  const anchor = /^\s*<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>[^<]*<\/a>\s*$/i.exec(raw);
+  if (anchor) {
+    const url = anchor[1];
+    const format = officeFormatFromUrl(url);
+    if (!format || !officeFetchAllowed(url)) return null;
+    return { format, name: nameFromUrl(url), url };
+  }
+  return null;
+}
+function inlineText(value) {
+  let text3 = String(value ?? "");
+  text3 = text3.replace(/!\[[^\]]*\]\([^)]*\)/g, " ");
+  text3 = text3.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
+  text3 = text3.replace(/`([^`]*)`/g, "$1");
+  text3 = text3.replace(/\*\*([^*]+)\*\*/g, "$1");
+  text3 = text3.replace(/~~([^~]+)~~/g, "$1");
+  text3 = text3.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1$2");
+  text3 = text3.replace(/<[^>]+>/g, "");
+  return text3.replace(/\s+/g, " ").trim();
+}
+function isAnchorLine(line) {
+  return /^\s*<a\s+id="[^"]*"\s*\/?\s*>(?:\s*<\/a>)?\s*$/i.test(line);
+}
+function isRule(line) {
+  return /^(-{3,}|\*{3,}|_{3,})\s*$/.test(line.trim());
+}
+function isListLine(line) {
+  return /^(\s*)([-*+]|\d+\.)\s+\S/.test(line);
+}
+function splitRow(line) {
+  let text3 = String(line || "").trim();
+  if (text3.startsWith("|")) text3 = text3.slice(1);
+  if (text3.endsWith("|")) text3 = text3.slice(0, -1);
+  return text3.split("|").map((cell) => cell.trim());
+}
+function isSeparator(line) {
+  const cells = splitRow(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s/g, "")));
+}
+function isTableStart(lines, index) {
+  return lines[index].includes("|") && index + 1 < lines.length && isSeparator(lines[index + 1]);
+}
+function isStructural(lines, index) {
+  const line = lines[index];
+  if (!line.trim() || isAnchorLine(line) || isRule(line)) return true;
+  if (/^(#{1,6})\s+/.test(line)) return true;
+  if (line.trimStart().startsWith("```") || line.trim() === "$$") return true;
+  if (line.trimStart().startsWith(">")) return true;
+  if (isTableStart(lines, index) || isListLine(line)) return true;
+  return false;
+}
+function parseTable(lines, index) {
+  const header = splitRow(lines[index]).map(inlineText);
+  let cursor = index + 2;
+  const body = [];
+  while (cursor < lines.length && lines[cursor].includes("|") && lines[cursor].trim()) {
+    if (isSeparator(lines[cursor])) break;
+    body.push(splitRow(lines[cursor]).map(inlineText));
+    cursor += 1;
+  }
+  const cols = Math.max(header.length, ...body.map((row4) => row4.length), 1);
+  const rows = body.length + 1;
+  const cells = [];
+  const put = (r, values, headerRow) => {
+    for (let c = 0; c < cols; c += 1) {
+      cells.push({
+        r,
+        c,
+        rowSpan: 1,
+        colSpan: 1,
+        text: values[c] || "",
+        header: headerRow
+      });
+    }
+  };
+  put(0, header, true);
+  body.forEach((values, r) => put(r + 1, values, false));
+  return {
+    next: cursor,
+    table: { type: "table", rows, cols, headerRows: 1, cells }
+  };
+}
+function parseBlocks(markdown) {
+  const lines = String(markdown ?? "").replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim() || isAnchorLine(line) || isRule(line)) {
+      i += 1;
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (heading) {
+      blocks.push({ type: "heading", level: heading[1].length, text: inlineText(heading[2]) });
+      i += 1;
+      continue;
+    }
+    if (line.trimStart().startsWith("```")) {
+      i += 1;
+      const buf2 = [];
+      while (i < lines.length && !lines[i].trimStart().startsWith("```")) {
+        buf2.push(lines[i]);
+        i += 1;
+      }
+      if (i < lines.length) i += 1;
+      blocks.push({ type: "code", text: buf2.join("\n") });
+      continue;
+    }
+    if (line.trim() === "$$") {
+      i += 1;
+      const buf2 = [];
+      while (i < lines.length && lines[i].trim() !== "$$") {
+        buf2.push(lines[i]);
+        i += 1;
+      }
+      if (i < lines.length) i += 1;
+      blocks.push({ type: "formula", latex: inlineText(buf2.join(" ")) });
+      continue;
+    }
+    if (line.trimStart().startsWith(">")) {
+      const buf2 = [];
+      while (i < lines.length && lines[i].trimStart().startsWith(">")) {
+        buf2.push(lines[i].replace(/^\s*>\s?/, ""));
+        i += 1;
+      }
+      blocks.push({ type: "para", text: inlineText(buf2.join(" ")), note: true });
+      continue;
+    }
+    if (isTableStart(lines, i)) {
+      const parsed = parseTable(lines, i);
+      blocks.push(parsed.table);
+      i = parsed.next;
+      continue;
+    }
+    if (isListLine(line)) {
+      const items = [];
+      while (i < lines.length) {
+        if (!lines[i].trim()) {
+          let j = i + 1;
+          while (j < lines.length && !lines[j].trim()) j += 1;
+          if (j < lines.length && isListLine(lines[j])) {
+            i = j;
+            continue;
+          }
+          break;
+        }
+        if (!isListLine(lines[i])) break;
+        const match = /^(\s*)([-*+]|\d+\.)\s+(.*)$/.exec(lines[i]);
+        const indent = match[1].replace(/\t/g, "    ").length;
+        const marker = match[2];
+        const ordered = /^\d+\.$/.test(marker);
+        items.push({
+          text: inlineText(match[3]),
+          level: Math.floor(indent / 2),
+          marker: ordered ? marker : "•",
+          ordered
+        });
+        i += 1;
+      }
+      blocks.push({
+        type: "list",
+        ordered: items.length > 0 && items.every((item) => item.ordered),
+        items: items.map(({ text: text4, level, marker }) => ({ text: text4, level, marker }))
+      });
+      continue;
+    }
+    const buf = [line];
+    i += 1;
+    while (i < lines.length && lines[i].trim() && !isStructural(lines, i)) {
+      buf.push(lines[i]);
+      i += 1;
+    }
+    const text3 = inlineText(buf.join(" "));
+    if (text3) blocks.push({ type: "para", text: text3 });
+  }
+  return blocks;
+}
+function markdownToParse(markdown, {
+  format = "",
+  title = "",
+  engine = "anydoc",
+  engineVersion = "anydoc-wasm/0.2.4",
+  createdAt = "",
+  sha256 = ""
+} = {}) {
+  const blocks = {};
+  const order = [];
+  parseBlocks(markdown).forEach((block, index) => {
+    const id = `b${index + 1}`;
+    blocks[id] = { ...block, id };
+    order.push(id);
+  });
+  const doc = { schema: SCHEMA, engine, engineVersion, order, blocks };
+  if (title) doc.title = title;
+  if (format) doc.sourceFormat = format;
+  if (createdAt) doc.createdAt = createdAt;
+  if (sha256) doc.sha256 = sha256;
+  return doc;
+}
+function capTable(table, cap4 = ROW_CAP) {
+  if (!table || !Number.isInteger(table.rows) || table.rows <= cap4) {
+    return { table, truncated: false };
+  }
+  const cells = [];
+  for (const cell of table.cells || []) {
+    if (!Number.isInteger(cell?.r) || cell.r >= cap4) continue;
+    const rowSpan = Math.min(cell.rowSpan ?? 1, cap4 - cell.r);
+    if (rowSpan < 1) continue;
+    cells.push({ ...cell, rowSpan });
+  }
+  return { table: { ...table, rows: cap4, cells }, truncated: true };
+}
+function cardMarkdown(title, body) {
+  const blocks = {};
+  const order = [];
+  let n2 = 0;
+  const add = (block) => {
+    n2 += 1;
+    const id = `k${n2}`;
+    const copy = { ...block, id };
+    delete copy.note;
+    blocks[id] = copy;
+    order.push(id);
+  };
+  if (title) add({ type: "para", text: title });
+  for (const block of body || []) {
+    if (block.type === "heading") add({ type: "para", text: block.text || "" });
+    else add(block);
+  }
+  if (!order.length) return "";
+  return toRoamMarkdown({ schema: SCHEMA, engine: "anydoc", order, blocks }, order).markdown;
+}
+function batchRows(rows, offset) {
+  const start = Math.max(0, Number.isFinite(offset) ? Math.floor(offset) : 0);
+  const slice = rows.slice(start, start + OFFICE_BATCH);
+  const next = start + slice.length;
+  const more = next < rows.length;
+  return {
+    sections: slice,
+    more,
+    nextOffset: more ? next : void 0,
+    offer: more ? NEXT_OFFER : void 0
+  };
+}
+function slidesFrom(doc) {
+  const slides = [];
+  let current3 = null;
+  const close = () => {
+    if (!current3) return;
+    slides.push(current3);
+    current3 = null;
+  };
+  const open = (title) => {
+    close();
+    current3 = { title, body: [] };
+  };
+  for (const block of selectBlocks(doc, null)) {
+    if (block.type === "heading") {
+      open(String(block.text || "").trim());
+      continue;
+    }
+    if (block.type === "para" && block.note) {
+      if (!current3) open("");
+      current3.body.push({ type: "para", text: block.text || "" });
+      close();
+      continue;
+    }
+    if (!current3) {
+      if (block.type === "para") open(String(block.text || "").trim());
+      else {
+        open("");
+        current3.body.push(block);
+      }
+      continue;
+    }
+    current3.body.push(block);
+  }
+  close();
+  return slides.map((slide) => ({ title: slide.title, markdown: cardMarkdown(slide.title, slide.body) }));
+}
+function chaptersFrom(doc) {
+  const chapters = [];
+  let current3 = null;
+  const push = () => {
+    if (current3) chapters.push(current3);
+  };
+  for (const block of selectBlocks(doc, null)) {
+    if (block.type === "heading") {
+      push();
+      current3 = { title: String(block.text || "").trim(), body: [] };
+      continue;
+    }
+    if (!current3) current3 = { title: "", body: [] };
+    current3.body.push(block);
+  }
+  push();
+  return chapters.map((chapter) => ({
+    title: chapter.title,
+    markdown: cardMarkdown(chapter.title, chapter.body)
+  }));
+}
+function gridsFrom(doc) {
+  const tables = [];
+  let name = "";
+  for (const block of selectBlocks(doc, null)) {
+    if (block.type === "heading") {
+      name = String(block.text || "").trim();
+      continue;
+    }
+    if (block.type !== "table") continue;
+    const capped = capTable(block);
+    const sheet = name || "Sheet";
+    tables.push({
+      name: sheet,
+      truncated: capped.truncated,
+      table: { ...capped.table, caption: sheet }
+    });
+  }
+  return tables;
+}
+function planFromParse(doc, { format = "", offset = 0, planSections } = {}) {
+  const kind = String(format || doc?.sourceFormat || "").toLowerCase();
+  if (kind === "docx" || kind === "odt") {
+    if (typeof planSections !== "function") return { action: "empty" };
+    const full = planSections(doc, { kind: "blocks", ids: Array.isArray(doc?.order) ? doc.order : [] });
+    if (full?.action !== "sections") return full || { action: "empty" };
+    return { action: "sections", ...batchRows(full.sections || [], offset) };
+  }
+  if (kind === "pptx" || kind === "odp") {
+    return { action: "slides", ...batchRows(slidesFrom(doc), offset) };
+  }
+  if (kind === "epub") {
+    return { action: "chapters", ...batchRows(chaptersFrom(doc), offset) };
+  }
+  if (kind === "xlsx" || kind === "csv" || kind === "ods") {
+    const all = gridsFrom(doc);
+    const batched = batchRows(all, offset);
+    const toast = batched.sections.some((row4) => row4.truncated) ? ROW_TOAST : void 0;
+    return { action: "grids", tables: batched.sections, toast, more: batched.more, nextOffset: batched.nextOffset, offer: batched.offer };
+  }
+  return { action: "empty" };
+}
+var ROW_CAP, ROW_TOAST, WRITE_CAP, WRITES_PER_CARD, OFFICE_BATCH, NEXT_OFFER, OFFICE_STEP, OFFICE_EXT, ENC;
+var init_anydoc_to_parse = __esm({
+  "src/model/anydoc-to-parse.js"() {
+    init_parse_schema();
+    init_parse_to_roam_md();
+    ROW_CAP = 300;
+    ROW_TOAST = "first 300 rows";
+    WRITE_CAP = 45;
+    WRITES_PER_CARD = 2;
+    OFFICE_BATCH = Math.floor(WRITE_CAP / WRITES_PER_CARD);
+    NEXT_OFFER = "next 45";
+    OFFICE_STEP = 184;
+    OFFICE_EXT = /* @__PURE__ */ new Set(["docx", "pptx", "xlsx", "odt", "ods", "odp", "epub", "csv"]);
+    ENC = /\.enc(?:[?#]|$)/i;
+  }
+});
+
+// src/model/parse-hash.js
+function bytesOf(input) {
+  if (input == null) return new Uint8Array();
+  if (typeof input === "string") return new TextEncoder().encode(input);
+  if (input instanceof ArrayBuffer) return new Uint8Array(input);
+  if (ArrayBuffer.isView(input)) return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  throw new TypeError("sha256Hex expects bytes");
+}
+async function sha256Hex(bytes) {
+  const view = bytesOf(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", view);
+  const hex = [];
+  for (const byte2 of new Uint8Array(digest)) hex.push(byte2.toString(16).padStart(2, "0"));
+  return hex.join("");
+}
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const key of Object.keys(value).sort()) out[key] = canonicalize(value[key]);
+    return out;
+  }
+  return value;
+}
+function canonicalOptions(options) {
+  const src = options && typeof options === "object" && !Array.isArray(options) ? options : {};
+  const copy = {};
+  for (const key of Object.keys(src).sort()) {
+    if (key === "scope") continue;
+    copy[key] = canonicalize(src[key]);
+  }
+  return copy;
+}
+function canonicalOptionsJson(options) {
+  return JSON.stringify(canonicalOptions(options));
+}
+async function optionsHash(options) {
+  return sha256Hex(canonicalOptionsJson(options));
+}
+var init_parse_hash = __esm({
+  "src/model/parse-hash.js"() {
+  }
+});
+
 // src/model/drop.js
 function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   if (!dataTransfer) return [];
@@ -7282,6 +7766,8 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   const resolve = typeof resolveUid === "function" ? resolveUid : (uid) => `((${uid}))`;
   const own = take(CARD_MIME).trim();
   if (own) return [{ string: own }];
+  const officeFiles = officeFilesFrom(dataTransfer);
+  if (officeFiles.length) return officeFiles.map((office) => ({ office }));
   const tokens = (text3) => text3.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
   let uids = tokens(take("roam/block-uid-list-only-parents"));
   if (!uids.length) uids = tokens(take("roam/block-uid-list"));
@@ -7313,8 +7799,19 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
       }
       if (typeof string === "string" && string.trim()) out.push({ string });
     }
+    if (out.length === 1) {
+      const office = officeTargetFromText(out[0].string);
+      if (office) return [{ office }];
+    }
     if (out.length) return out;
   }
+  const soleOffice = (text3) => {
+    const lines = String(text3 || "").split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+    if (lines.length !== 1) return null;
+    return officeTargetFromText(lines[0]);
+  };
+  const droppedOffice = soleOffice(take("text/uri-list")) || soleOffice(take("text/plain")) || officeTargetFromText(take("text/html").trim());
+  if (droppedOffice) return [{ office: droppedOffice }];
   const chunks = [take("text/plain"), take("text/html")];
   const types = dataTransfer.types;
   if (types) for (const type of types) chunks.push(take(type));
@@ -7339,6 +7836,15 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
     if (typeof string === "string" && string.trim()) return [{ string }];
   }
   return [];
+}
+function textCardMarkdown({ text: text3, page, quote = false } = {}) {
+  let line = flattenLine(text3);
+  if (!line) return "";
+  if (line.length > TEXT_CARD_MAX) line = `${line.slice(0, TEXT_CARD_MAX - 1).trimEnd()}…`;
+  const n2 = Number(page);
+  const suffix = Number.isInteger(n2) && n2 > 0 ? ` (p. ${n2})` : "";
+  const body = escapeMarkdownText(linkSafeText(line) + suffix, { leading: !quote });
+  return `- ${quote ? "> " : ""}${body}`;
 }
 function headingTitle(block) {
   return String(block?.text ?? "").replace(/\s+/g, " ").trim();
@@ -7376,6 +7882,16 @@ function planParseInsert(doc, payload) {
   return { action: "card", markdown: toRoamMarkdown(doc, ids).markdown };
 }
 async function handleParseDrop({ payload, store, session, point, toast } = {}) {
+  if (payload?.kind === "text") {
+    const markdown = textCardMarkdown(payload);
+    if (!markdown) return { ok: false, reason: "empty", uids: [] };
+    const res = await session?.insertParsedCard?.({
+      x: Number.isFinite(point?.x) ? point.x : 0,
+      y: Number.isFinite(point?.y) ? point.y : 0,
+      markdown
+    });
+    return { ...res || { ok: false, reason: "empty" }, uids: res?.uid ? [res.uid] : [] };
+  }
   let doc = null;
   try {
     doc = await store?.getParse?.(payload?.sha256, payload?.engine, payload?.optsHash);
@@ -7403,14 +7919,159 @@ async function handleParseDrop({ payload, store, session, point, toast } = {}) {
   }
   return { ok: false, reason: "empty", uids: [] };
 }
-var CARD_MIME, PARSE_MIME, PARSE_MISSING_TOAST, MAX_DROP, URL_LINE, APP_URL;
+function eachDroppedFile(dataTransfer, visit) {
+  const files = dataTransfer?.files;
+  if (files && typeof files.length === "number" && files.length) {
+    for (let i = 0; i < files.length; i += 1) visit(files[i]);
+    return;
+  }
+  const items = dataTransfer?.items;
+  if (!items || typeof items.length !== "number") return;
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    if (item?.kind !== "file" || typeof item.getAsFile !== "function") continue;
+    let file = null;
+    try {
+      file = item.getAsFile();
+    } catch {
+      file = null;
+    }
+    if (file) visit(file);
+  }
+}
+function officeFilesFrom(dataTransfer) {
+  const out = [];
+  eachDroppedFile(dataTransfer, (file) => {
+    const format = officeFormatFromName(file?.name || "");
+    if (!format) return;
+    out.push({ format, name: file.name, file });
+  });
+  return out;
+}
+async function readOfficeBytes(office, fetchImpl) {
+  const format = office?.format;
+  if (!format || format === "pdf") return null;
+  if (office?.file && typeof office.file.arrayBuffer === "function") {
+    const bytes = new Uint8Array(await office.file.arrayBuffer());
+    return { bytes, format };
+  }
+  const url = typeof office?.url === "string" ? office.url : "";
+  if (!officeFetchAllowed(url)) {
+    const err = new Error("fetch");
+    err.code = "fetch";
+    throw err;
+  }
+  const fetchFn = fetchImpl || globalThis.fetch?.bind(globalThis);
+  if (typeof fetchFn !== "function") {
+    const err = new Error("fetch");
+    err.code = "fetch";
+    throw err;
+  }
+  let res;
+  try {
+    res = await fetchFn(url, { mode: "cors", credentials: "omit" });
+  } catch (err) {
+    if (err && typeof err === "object" && !err.code) err.code = "fetch";
+    throw err;
+  }
+  if (!res?.ok) {
+    const err = new Error("fetch");
+    err.code = "fetch";
+    throw err;
+  }
+  return { bytes: new Uint8Array(await res.arrayBuffer()), format };
+}
+async function applyOfficePlan({ plan, session, x, y }) {
+  if (!plan || plan.action === "empty") return { ok: false, uids: [], count: 0 };
+  if (plan.action === "grids") {
+    const uids2 = [];
+    let py = y;
+    const tables = plan.tables || [];
+    for (const row4 of tables) {
+      const res2 = await session?.insertParsedTable?.({ x, y: py, table: row4.table, mode: "grid" });
+      if (res2?.uid) uids2.push(res2.uid);
+      const height = Number(res2?.h);
+      py += (Number.isFinite(height) && height > 0 ? height : 280) + 24;
+    }
+    return { ok: uids2.length > 0, uids: uids2, count: tables.length, nextY: py };
+  }
+  if (plan.action === "card" && plan.markdown) {
+    const res2 = await session?.insertParsedCard?.({ x, y, markdown: plan.markdown });
+    return { ok: Boolean(res2?.uid), uids: res2?.uid ? [res2.uid] : [], count: res2?.uid ? 1 : 0, nextY: y + OFFICE_STEP };
+  }
+  const sections = plan.sections || [];
+  if (!sections.length) return { ok: false, uids: [], count: 0 };
+  const res = await session?.sendParsedToBoard?.({ x, y, sections });
+  const uids = Array.isArray(res?.uids) ? res.uids : [];
+  return { ok: uids.length > 0, uids, count: sections.length, nextY: y + sections.length * OFFICE_STEP };
+}
+async function handleOfficeDrop({ office, convert, fetch: fetchImpl, session, point, doc = null, offset = 0 } = {}) {
+  const x = Number.isFinite(point?.x) ? point.x : 0;
+  const y = Number.isFinite(point?.y) ? point.y : 0;
+  try {
+    let parsed = doc;
+    let ms = 0;
+    if (!parsed) {
+      const loaded = await readOfficeBytes(office, fetchImpl);
+      if (!loaded) return { ok: false, reason: "fetch", toast: "Could not fetch this file", uids: [] };
+      if (typeof convert !== "function") return { ok: false, reason: "convert", toast: "Could not convert this file", uids: [] };
+      const out = await convert(loaded.bytes, loaded.format);
+      ms = Number(out?.ms) || 0;
+      let sha = "";
+      try {
+        sha = await sha256Hex(loaded.bytes);
+      } catch {
+        sha = "";
+      }
+      parsed = markdownToParse(out?.markdown || "", {
+        format: loaded.format,
+        title: office?.name || "",
+        sha256: sha
+      });
+    }
+    const plan = planFromParse(parsed, {
+      format: office?.format || parsed?.sourceFormat,
+      offset,
+      planSections: planParseInsert
+    });
+    const applied = await applyOfficePlan({ plan, session, x, y });
+    if (!applied.ok) return { ok: false, reason: "empty", toast: "Could not convert this file", uids: [], ms };
+    const more = Boolean(plan.more);
+    return {
+      ok: true,
+      uids: applied.uids,
+      toast: plan.toast || "",
+      offer: more ? plan.offer || NEXT_OFFER : "",
+      more,
+      ms,
+      continue: more ? () => handleOfficeDrop({
+        office,
+        convert,
+        fetch: fetchImpl,
+        session,
+        doc: parsed,
+        offset: plan.nextOffset,
+        point: { x, y: applied.nextY ?? y + OFFICE_STEP }
+      }) : void 0
+    };
+  } catch (err) {
+    const code = err?.code;
+    if (code === "encrypted") return { ok: false, reason: "encrypted", toast: "Encrypted files stay in Roam's reader", uids: [] };
+    if (code === "fetch" || code === "cors") return { ok: false, reason: "fetch", toast: "Could not fetch this file", uids: [] };
+    return { ok: false, reason: code || "convert", toast: "Could not convert this file", uids: [] };
+  }
+}
+var CARD_MIME, PARSE_MIME, PARSE_MISSING_TOAST, TEXT_CARD_MAX, MAX_DROP, URL_LINE, APP_URL;
 var init_drop = __esm({
   "src/model/drop.js"() {
+    init_anydoc_to_parse();
+    init_parse_hash();
     init_parse_schema();
     init_parse_to_roam_md();
     CARD_MIME = "application/x-plexus-card";
     PARSE_MIME = "application/x-plexus-parse";
     PARSE_MISSING_TOAST = "Parse result not found; parse the PDF again";
+    TEXT_CARD_MAX = 4e3;
     MAX_DROP = 50;
     URL_LINE = /^(?:https?|roam):\/\//i;
     APP_URL = /#\/app\/([^/?#]+)(?:\/page\/([\w-]+))?/;
@@ -8898,20 +9559,20 @@ function paintThumb(doc, node2, blob) {
 }
 function mountButton(doc, node2, className, text3, onClick) {
   node2.querySelector(`.${className}`)?.remove();
-  const btn = doc.createElement("button");
-  btn.type = "button";
-  btn.setAttribute("type", "button");
-  btn.className = className;
-  btn.textContent = text3;
-  btn.setAttribute("aria-label", text3);
+  const btn2 = doc.createElement("button");
+  btn2.type = "button";
+  btn2.setAttribute("type", "button");
+  btn2.className = className;
+  btn2.textContent = text3;
+  btn2.setAttribute("aria-label", text3);
   const stop2 = (event) => event.stopPropagation?.();
-  btn.addEventListener("pointerdown", stop2);
-  btn.addEventListener("mousedown", stop2);
-  btn.addEventListener("click", (event) => {
+  btn2.addEventListener("pointerdown", stop2);
+  btn2.addEventListener("mousedown", stop2);
+  btn2.addEventListener("click", (event) => {
     stop2(event);
     onClick();
   });
-  node2.append(btn);
+  node2.append(btn2);
 }
 function wantsThumb(hooks) {
   return hooks?.tier === "detail" && hooks.visible !== false && typeof hooks.thumbnail === "function";
@@ -8932,10 +9593,10 @@ function renderRegionCard(doc, card2, model, hooks = {}) {
     node2._pxdRegionKeys = true;
     node2.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
-      const btn = event.target?.closest?.("button");
-      if (!btn || !node2.contains(btn)) return;
+      const btn2 = event.target?.closest?.("button");
+      if (!btn2 || !node2.contains(btn2)) return;
       event.preventDefault();
-      btn.click();
+      btn2.click();
     });
   }
   mountButton(doc, node2, "pxd-region-open", "Open drawing", () => open({ sidebar: false }));
@@ -8995,14 +9656,14 @@ function onPress(el, fn) {
 }
 function mountButton2(doc, node2, className, text3, fn) {
   node2.querySelector(`.${className}`)?.remove();
-  const btn = doc.createElement("button");
-  btn.type = "button";
-  btn.setAttribute("type", "button");
-  btn.className = className;
-  btn.textContent = text3;
-  onPress(btn, fn);
-  node2.append(btn);
-  return btn;
+  const btn2 = doc.createElement("button");
+  btn2.type = "button";
+  btn2.setAttribute("type", "button");
+  btn2.className = className;
+  btn2.textContent = text3;
+  onPress(btn2, fn);
+  node2.append(btn2);
+  return btn2;
 }
 function showThumb(hooks) {
   if (hooks?.tier !== "detail" || hooks.visible === false) return false;
@@ -9139,29 +9800,29 @@ function paintPdfChipStrip(doc, parent, chips, handlers) {
   for (const type of ["pointerdown", "mousedown", "dblclick"]) strip.addEventListener(type, stop2);
   strip.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
-    const button = event.target?.closest?.(".pxd-pdf-chip");
-    if (!button || !strip.contains(button)) return;
+    const button2 = event.target?.closest?.(".pxd-pdf-chip");
+    if (!button2 || !strip.contains(button2)) return;
     event.preventDefault();
     stop2(event);
-    handlers?.onOpen?.(button._pxdPage);
+    handlers?.onOpen?.(button2._pxdPage);
   });
   for (const chip of chips || []) {
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.setAttribute("type", "button");
-    button.className = "pxd-pdf-chip pxd-chrome";
-    button._pxdPage = chip.page;
-    button.setAttribute("data-page", String(chip.page));
-    button.setAttribute("aria-label", `Page ${chip.page}, ${chip.count}`);
-    button.append(doc.createTextNode(String(chip.page)));
+    const button2 = doc.createElement("button");
+    button2.type = "button";
+    button2.setAttribute("type", "button");
+    button2.className = "pxd-pdf-chip pxd-chrome";
+    button2._pxdPage = chip.page;
+    button2.setAttribute("data-page", String(chip.page));
+    button2.setAttribute("aria-label", `Page ${chip.page}, ${chip.count}`);
+    button2.append(doc.createTextNode(String(chip.page)));
     const badge = doc.createElement("span");
     badge.className = "pxd-pdf-chip__n";
     badge.textContent = String(chip.count);
-    button.append(badge);
+    button2.append(badge);
     let armed = false;
-    button.addEventListener("pointerdown", stop2);
-    button.addEventListener("mousedown", stop2);
-    button.addEventListener("click", () => {
+    button2.addEventListener("pointerdown", stop2);
+    button2.addEventListener("mousedown", stop2);
+    button2.addEventListener("click", () => {
       armed = true;
       handlers.later(() => {
         if (!armed) return;
@@ -9169,12 +9830,12 @@ function paintPdfChipStrip(doc, parent, chips, handlers) {
         handlers.onPulse(chip.uids);
       }, 280);
     });
-    button.addEventListener("dblclick", (event) => {
+    button2.addEventListener("dblclick", (event) => {
       armed = false;
       stop2(event);
       handlers.onOpen(chip.page);
     });
-    strip.append(button);
+    strip.append(button2);
   }
   parent.append(strip);
   return strip;
@@ -10062,6 +10723,7 @@ var init_settings = __esm({
       parseEngineDefault: "parse-engine-default",
       parseFormula: "parse-formula",
       parseOcr: "parse-ocr",
+      parseAutoRead: "parse-auto-read",
       parseLinkSafe: "parse-link-safe",
       parseNumbered: "parse-numbered",
       parseFootnotes: "parse-footnotes",
@@ -10128,6 +10790,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseEngineDefault]: "auto",
       [SETTING_IDS.parseFormula]: false,
       [SETTING_IDS.parseOcr]: "auto",
+      [SETTING_IDS.parseAutoRead]: true,
       [SETTING_IDS.parseLinkSafe]: true,
       [SETTING_IDS.parseNumbered]: false,
       [SETTING_IDS.parseFootnotes]: "inline"
@@ -10264,6 +10927,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
       [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
       [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
+      [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
       [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
       [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
       [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"])
@@ -10346,6 +11010,7 @@ var init_settings = __esm({
         SETTING_IDS.parseEngineDefault,
         SETTING_IDS.parseFormula,
         SETTING_IDS.parseOcr,
+        SETTING_IDS.parseAutoRead,
         SETTING_IDS.parseLinkSafe,
         SETTING_IDS.parseNumbered,
         SETTING_IDS.parseFootnotes
@@ -10415,28 +11080,28 @@ function sourceChipKey(chip) {
 }
 function buildSourceChip(doc, chip, { onOpen } = {}) {
   if (!chip || typeof doc?.createElement !== "function") return null;
-  const button = doc.createElement("button");
-  button.type = "button";
-  button.setAttribute("type", "button");
-  button.className = "pxd-chip pxd-chip--source";
-  button.textContent = chip.text || "";
-  button.setAttribute("aria-label", `Open ${chip.text || chip.title || "source"}`);
+  const button2 = doc.createElement("button");
+  button2.type = "button";
+  button2.setAttribute("type", "button");
+  button2.className = "pxd-chip pxd-chip--source";
+  button2.textContent = chip.text || "";
+  button2.setAttribute("aria-label", `Open ${chip.text || chip.title || "source"}`);
   const stop2 = (event) => {
     event.stopPropagation?.();
   };
-  button.addEventListener("pointerdown", stop2);
-  button.addEventListener("mousedown", stop2);
+  button2.addEventListener("pointerdown", stop2);
+  button2.addEventListener("mousedown", stop2);
   const open = (event) => {
     stop2(event);
     if (typeof onOpen === "function") onOpen(chip.pageUid);
   };
-  button.addEventListener("click", open);
-  button.addEventListener("keydown", (event) => {
+  button2.addEventListener("click", open);
+  button2.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
     event.preventDefault?.();
     open(event);
   });
-  return button;
+  return button2;
 }
 var READING_PREFIXES, AUTHOR_PREFIX;
 var init_source_chip = __esm({
@@ -12537,12 +13202,12 @@ function createItemRenderer({
     if (!want) return dropKidsBadge(rec);
     const text3 = `${item.kids ? "▾" : "▸"} ${rec.kidCount}`;
     if (!rec.kidsBtn) {
-      const btn = el("button", "pxd-kids", rec.el);
-      btn.type = "button";
+      const btn2 = el("button", "pxd-kids", rec.el);
+      btn2.type = "button";
       rec.kidsOffs = [];
       const on = (type, fn) => {
-        btn.addEventListener(type, fn);
-        rec.kidsOffs.push(() => btn.removeEventListener(type, fn));
+        btn2.addEventListener(type, fn);
+        rec.kidsOffs.push(() => btn2.removeEventListener(type, fn));
       };
       for (const type of ["pointerdown", "mousedown", "dblclick"]) {
         on(type, (event) => {
@@ -12561,7 +13226,7 @@ function createItemRenderer({
         peekTimer = later(() => openPeek(rec), PEEK_DELAY_MS);
       });
       on("mouseleave", () => closePeek());
-      rec.kidsBtn = btn;
+      rec.kidsBtn = btn2;
     }
     rec.kidsBtn.textContent = text3;
     rec.kidsBtn.setAttribute("aria-expanded", item.kids ? "true" : "false");
@@ -12608,7 +13273,7 @@ function createItemRenderer({
       el("div", "pxd-board-preview__empty", holder).textContent = "Empty board";
     } else {
       const canvas = el("div", "pxd-board-preview__canvas", holder);
-      const pct = (n2) => `${Math.round(n2 * 1e4) / 100}%`;
+      const pct2 = (n2) => `${Math.round(n2 * 1e4) / 100}%`;
       const addMini = (r) => {
         const cls = ["pxd-mini"];
         if (r.type === "section") cls.push("pxd-mini--section");
@@ -12616,10 +13281,10 @@ function createItemRenderer({
         if (r.color) cls.push(`pxd-c-${r.color}`);
         if (r.w * innerW < TINY_MINI_PX) cls.push("pxd-mini--tiny");
         const mini = el("div", cls.join(" "), canvas);
-        mini.style.left = pct(r.x);
-        mini.style.top = pct(r.y);
-        mini.style.width = pct(r.w);
-        mini.style.height = pct(r.h);
+        mini.style.left = pct2(r.x);
+        mini.style.top = pct2(r.y);
+        mini.style.width = pct2(r.w);
+        mini.style.height = pct2(r.h);
         let title = r.title;
         if (!title && r.ref) {
           const text3 = host?.blockString?.(r.ref);
@@ -24740,7 +25405,7 @@ function createLifecycle() {
 // package.json
 var package_default = {
   name: "plexus-diagram",
-  version: "3.5.0",
+  version: "3.6.0",
   private: true,
   description: "Heptabase-style whiteboard for Roam {{[[diagram]]}} blocks: cards, colored sections, and connections that are real Roam blocks and links",
   type: "module",
@@ -26148,18 +26813,18 @@ function openHaloPopover({
   if (!company2.length) withRow.append("none");
   company2.forEach((row4, index) => {
     if (index) withRow.append(", ");
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.className = "pxd-halo__company";
+    const button2 = doc.createElement("button");
+    button2.type = "button";
+    button2.className = "pxd-halo__company";
     const label = row4.label || "card";
-    button.textContent = label;
-    button.setAttribute("aria-label", label);
-    button.setAttribute("data-uid", row4.uid || "");
-    button.addEventListener("click", (event) => {
+    button2.textContent = label;
+    button2.setAttribute("aria-label", label);
+    button2.setAttribute("data-uid", row4.uid || "");
+    button2.addEventListener("click", (event) => {
       event.stopPropagation();
       if (row4.uid) onPulse?.(row4.uid);
     });
-    withRow.append(button);
+    withRow.append(button2);
   });
   pop.append(withRow);
   const refs = doc.createElement("div");
@@ -26791,23 +27456,23 @@ function mountContextsDrawer({
         head.textContent = year ? String(year) : "Undated";
         list.append(head);
       }
-      const button = doc.createElement("button");
-      button.type = "button";
-      button.className = "pxd-contexts__row";
-      button.setAttribute("data-uid", row4.uid);
+      const button2 = doc.createElement("button");
+      button2.type = "button";
+      button2.className = "pxd-contexts__row";
+      button2.setAttribute("data-uid", row4.uid);
       const crumb = doc.createElement("div");
       crumb.className = "pxd-contexts__crumb";
       crumb.textContent = row4.crumb || "Untitled";
       const snippet = doc.createElement("div");
       snippet.className = "pxd-contexts__snippet";
       snippet.textContent = row4.snippet || "";
-      button.append(crumb, snippet);
-      button.addEventListener("click", (event) => {
+      button2.append(crumb, snippet);
+      button2.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         onOpen?.(row4.uid, { sidebar: Boolean(event.shiftKey) });
       });
-      list.append(button);
+      list.append(button2);
     }
   };
   if (chunks[0]) paint2(chunks[0]);
@@ -26865,17 +27530,17 @@ function mountMemoryLane({
   const ticks = doc.createElement("div");
   ticks.className = "pxd-memory__ticks";
   for (const snap of snapshots) {
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.className = "pxd-memory__tick";
-    button.textContent = snap.title || "Snapshot";
-    button.addEventListener("click", (event) => {
+    const button2 = doc.createElement("button");
+    button2.type = "button";
+    button2.className = "pxd-memory__tick";
+    button2.textContent = snap.title || "Snapshot";
+    button2.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       const preview = previewLayout(snap.items);
       onPreview?.(preview);
     });
-    ticks.append(button);
+    ticks.append(button2);
   }
   bar.append(play, range, ticks);
   parent?.append(bar);
@@ -28933,25 +29598,25 @@ function tokensOf(node2) {
   return out;
 }
 var PLAIN = /* @__PURE__ */ new Set(["bp3-button", "bp3-minimal", "bp3-small", "bp3-icon"]);
-function blocked(button) {
-  if (!button || typeof button !== "object") return true;
-  if (button.classList?.contains?.("rm-pdf-color-button")) return true;
-  const tokens = tokensOf(button);
+function blocked(button2) {
+  if (!button2 || typeof button2 !== "object") return true;
+  if (button2.classList?.contains?.("rm-pdf-color-button")) return true;
+  const tokens = tokensOf(button2);
   if (tokens.some((name) => BLOCKED_ICONS.has(name))) return true;
-  const aria = button.getAttribute?.("aria-label") || "";
-  const title = button.getAttribute?.("title") || "";
+  const aria = button2.getAttribute?.("aria-label") || "";
+  const title = button2.getAttribute?.("title") || "";
   const named = tokens.some((name) => name.startsWith("bp3-icon-") || name && !PLAIN.has(name) && !name.startsWith("bp3-"));
   if (!named && !aria && !title) return true;
   return false;
 }
-function matches(button, spec) {
+function matches(button2, spec) {
   if (!spec || typeof spec !== "object") return false;
-  const tokens = tokensOf(button);
+  const tokens = tokensOf(button2);
   if (spec.icon && tokens.includes(spec.icon)) return true;
   const label = typeof spec.label === "string" ? spec.label : "";
   if (!label) return false;
-  const aria = button.getAttribute?.("aria-label") || "";
-  const title = button.getAttribute?.("title") || "";
+  const aria = button2.getAttribute?.("aria-label") || "";
+  const title = button2.getAttribute?.("title") || "";
   return aria === label || title === label;
 }
 function pageIndicator(inputValue, siblingText) {
@@ -28982,10 +29647,10 @@ function pillActions(toolbarButtons, selectors = PILL_SELECTORS) {
   for (const key of Object.keys(out)) {
     const spec = table[key];
     if (!spec) continue;
-    for (const button of buttons) {
-      if (blocked(button)) continue;
-      if (!matches(button, spec)) continue;
-      out[key] = button;
+    for (const button2 of buttons) {
+      if (blocked(button2)) continue;
+      if (!matches(button2, spec)) continue;
+      out[key] = button2;
       break;
     }
   }
@@ -29075,45 +29740,8 @@ function applyMotionClasses(root, level) {
   return profile;
 }
 
-// src/model/parse-hash.js
-function bytesOf(input) {
-  if (input == null) return new Uint8Array();
-  if (typeof input === "string") return new TextEncoder().encode(input);
-  if (input instanceof ArrayBuffer) return new Uint8Array(input);
-  if (ArrayBuffer.isView(input)) return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
-  throw new TypeError("sha256Hex expects bytes");
-}
-async function sha256Hex(bytes) {
-  const view = bytesOf(bytes);
-  const digest = await crypto.subtle.digest("SHA-256", view);
-  const hex = [];
-  for (const byte2 of new Uint8Array(digest)) hex.push(byte2.toString(16).padStart(2, "0"));
-  return hex.join("");
-}
-function canonicalize(value) {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value && typeof value === "object") {
-    const out = {};
-    for (const key of Object.keys(value).sort()) out[key] = canonicalize(value[key]);
-    return out;
-  }
-  return value;
-}
-function canonicalOptions(options) {
-  const src = options && typeof options === "object" && !Array.isArray(options) ? options : {};
-  const copy = {};
-  for (const key of Object.keys(src).sort()) {
-    if (key === "scope") continue;
-    copy[key] = canonicalize(src[key]);
-  }
-  return copy;
-}
-function canonicalOptionsJson(options) {
-  return JSON.stringify(canonicalOptions(options));
-}
-async function optionsHash(options) {
-  return sha256Hex(canonicalOptionsJson(options));
-}
+// src/view/parse-view.js
+init_parse_hash();
 
 // src/model/parse/lines.js
 var LIGATURES = { "ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl", "ﬅ": "st", "ﬆ": "st" };
@@ -29897,13 +30525,13 @@ function connected(s, t, tol = 4) {
   return v.pos >= h.a - tol && v.pos <= h.b + tol && h.pos >= v.a - tol && h.pos <= v.b + tol;
 }
 function rowsBetween(words, { x0, x1, y0, y1 }) {
-  const inside5 = words.filter((w) => {
+  const inside6 = words.filter((w) => {
     const cx = (w.x0 + w.x1) / 2;
     const cy = w.base - 0.3 * w.size;
     return cx >= x0 - 2 && cx <= x1 + 2 && cy > y0 && cy < y1;
   }).sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
-  for (const w of inside5) {
+  for (const w of inside6) {
     const r = rows[rows.length - 1];
     if (r && Math.abs(r.base - w.base) <= 0.3 * Math.max(r.size, w.size)) r.words.push(w);
     else rows.push({ base: w.base, size: w.size, words: [w] });
@@ -30174,8 +30802,8 @@ function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, 
   }
   const usedBoxes = /* @__PURE__ */ new Set();
   for (const b of boxes) {
-    const inside5 = tables.some((t) => b.x0 >= t.bbox[0] - 2 && b.x1 <= t.bbox[2] + 2 && b.y0 >= t.bbox[1] - 2 && b.y1 <= t.bbox[3] + 2);
-    if (inside5) usedBoxes.add(b);
+    const inside6 = tables.some((t) => b.x0 >= t.bbox[0] - 2 && b.x1 <= t.bbox[2] + 2 && b.y0 >= t.bbox[1] - 2 && b.y1 <= t.bbox[3] + 2);
+    if (inside6) usedBoxes.add(b);
   }
   return { tables, bands, usedWords, usedRules, usedBoxes, released, segments: segs };
 }
@@ -30551,8 +31179,8 @@ function looksLikeChart(band, graphics) {
   const width = band.x1 - band.x0;
   let bars = 0;
   for (const b of graphics.boxes || []) {
-    const inside5 = b.x0 >= band.x0 - 2 && b.x1 <= band.x1 + 2 && b.y0 >= band.y0 - 2 && b.y1 <= band.y1 + 2;
-    if (!inside5 || b.light) continue;
+    const inside6 = b.x0 >= band.x0 - 2 && b.x1 <= band.x1 + 2 && b.y0 >= band.y0 - 2 && b.y1 <= band.y1 + 2;
+    if (!inside6 || b.light) continue;
     if (b.x1 - b.x0 < 0.6 * width && b.y1 - b.y0 > 4 && b.x1 - b.x0 > 4) bars++;
   }
   return bars >= 4;
@@ -30695,7 +31323,7 @@ function headingLevel(line, { bodySize, classes, nextIsBody = true, isolated = f
     return Math.min(4, classes.length + 1);
   }
   const depth = numberedDepth(text3);
-  const rest = depth ? text3.replace(NUMBERED_RE, (m, num4, a, b, ...r) => m.slice(m.length - 1)) : "";
+  const rest = depth ? text3.replace(NUMBERED_RE, (m, num6, a, b, ...r) => m.slice(m.length - 1)) : "";
   const wordy = depth && /^[A-Z][A-Za-z]{2,}/.test(rest) && (line.mathShare || 0) < 0.1 && !line.words.some((w) => w.sup || w.sub);
   if (wordy && bodySized && wordCount(text3) <= 14 && !/[.?!,;:]$/.test(text3) && (line.bold || line.italic || isolated) && nextIsBody) {
     return Math.min(6, classes.length + depth);
@@ -30908,9 +31536,9 @@ function splitColumn(rowsIn, col, size) {
   const edges = [col.x0, ...seps.map((g) => (g.x0 + g.x1) / 2), col.x1];
   const cols = [];
   for (let k = 0; k + 1 < edges.length; k++) {
-    const inside5 = rows.flat().filter((w) => (w.x0 + w.x1) / 2 >= edges[k] && (w.x0 + w.x1) / 2 < edges[k + 1]);
-    if (!inside5.length) continue;
-    cols.push({ x0: Math.max(edges[k], Math.min(...inside5.map((w) => w.x0))), x1: Math.min(edges[k + 1], Math.max(...inside5.map((w) => w.x1))) });
+    const inside6 = rows.flat().filter((w) => (w.x0 + w.x1) / 2 >= edges[k] && (w.x0 + w.x1) / 2 < edges[k + 1]);
+    if (!inside6.length) continue;
+    cols.push({ x0: Math.max(edges[k], Math.min(...inside6.map((w) => w.x0))), x1: Math.min(edges[k + 1], Math.max(...inside6.map((w) => w.x1))) });
   }
   return { cols: cols.length >= 2 ? cols : [col], seps: cols.length >= 2 ? seps : [] };
 }
@@ -31353,12 +31981,12 @@ function coveredAt(cellMap, r, c, span) {
   return false;
 }
 function tableFromBand(band, words) {
-  const inside5 = words.filter((w) => {
+  const inside6 = words.filter((w) => {
     const cx = (w.x0 + w.x1) / 2;
     const cy = w.base - 0.3 * w.size;
     return cx >= band.x0 - 4 && cx <= band.x1 + 4 && cy >= band.y0 - 1 && cy <= band.y1 + 1;
   });
-  if (!inside5.length) return null;
+  if (!inside6.length) return null;
   const fullYs = band.ys.filter((b) => b.full).map((b) => b.y);
   const partial = band.ys.filter((b) => !b.full);
   const rowsIn = [];
@@ -31366,7 +31994,7 @@ function tableFromBand(band, words) {
   let headerBands = 0;
   const edges = [band.y0 - 1, ...fullYs.filter((y) => y > band.y0 + 1 && y < band.y1 - 1), band.y1 + 1];
   for (let i = 0; i + 1 < edges.length; i++) {
-    const ws = inside5.filter((w) => {
+    const ws = inside6.filter((w) => {
       const cy = w.base - 0.3 * w.size;
       return cy >= edges[i] && cy < edges[i + 1];
     });
@@ -31422,7 +32050,7 @@ function tableFromBand(band, words) {
   mergeWrappedLabelRows(rowsIn, headerRowsHint);
   const table = buildTable(rowsIn, { bands: band, headerRowsHint });
   if (!table) return null;
-  table.usedWords = inside5;
+  table.usedWords = inside6;
   return table;
 }
 function hasSubRows(words, band) {
@@ -31750,10 +32378,10 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
         if (used.has(wd)) continue;
         const cx = (wd.x0 + wd.x1) / 2;
         const cy = (wd.y0 + wd.y1) / 2;
-        const inside5 = cx >= fig.x0 && cx <= fig.x1 && cy >= fig.y0 && cy <= fig.y1;
+        const inside6 = cx >= fig.x0 && cx <= fig.x1 && cy >= fig.y0 && cy <= fig.y1;
         const margin = 12;
         const near = wd.size <= 0.85 * bodySize && cx >= fig.x0 - margin && cx <= fig.x1 + margin && cy >= fig.y0 - margin && cy <= fig.y1 + margin;
-        if (!inside5 && !near) continue;
+        if (!inside6 && !near) continue;
         used.add(wd);
         fig.x0 = Math.min(fig.x0, wd.x0);
         fig.x1 = Math.max(fig.x1, wd.x1);
@@ -32412,11 +33040,17 @@ function ocrGraphics(data, w, h) {
     if (horizontal) rules.push({ axis: "h", x0: Math.min(r.x0, r.x1), x1: Math.max(r.x0, r.x1), y0: (r.y0 + r.y1) / 2, y1: (r.y0 + r.y1) / 2, thick });
     else rules.push({ axis: "v", x0: (r.x0 + r.x1) / 2, x1: (r.x0 + r.x1) / 2, y0: Math.min(r.y0, r.y1), y1: Math.max(r.y0, r.y1), thick });
   }
-  return { rules, boxes: [], dots, shapes: [], images: [{ x0: 0, y0: 0, x1: w, y1: h }], segments: rules.length, truncated: false };
+  const boxes = [];
+  for (const f of data.fills || []) {
+    boxes.push({ x0: f.x0, y0: f.y0, x1: f.x1, y1: f.y1, fill: f.gray, light: (luminanceOf(f.gray) ?? 0) >= 0.7 });
+    rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y0, y1: f.y0, thick: 0.5, fromBox: true });
+    rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y1, y1: f.y1, thick: 0.5, fromBox: true });
+  }
+  return { rules, boxes, dots, shapes: [], images: [{ x0: 0, y0: 0, x1: w, y1: h }], segments: rules.length, truncated: false };
 }
-function assembleDocument(pageRecords, { numPages, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {}, from = 1, to = numPages } = {}) {
+function assembleDocument(pageRecords2, { numPages, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {}, from = 1, to = numPages } = {}) {
   const t1 = now2();
-  for (const pg of pageRecords) {
+  for (const pg of pageRecords2) {
     pg.free = [];
     for (const line of pg.lines) {
       const ws = line.words.filter((w) => !pg.used.has(w));
@@ -32424,13 +33058,13 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
       pg.free.push(ws.length === line.words.length ? line : makeLine(ws));
     }
   }
-  const furniture = findFurniture(pageRecords.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
-  for (const pg of pageRecords) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
-  const allFree = pageRecords.flatMap((pg) => pg.free);
+  const furniture = findFurniture(pageRecords2.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
+  for (const pg of pageRecords2) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
+  const allFree = pageRecords2.flatMap((pg) => pg.free);
   const bodySize = bodySizeOf(allFree) || 10;
   const bodyFont = dominantFont(allFree);
   let classes = headingClasses(allFree, bodySize);
-  const firstPage = pageRecords[0];
+  const firstPage = pageRecords2[0];
   if (firstPage && classes.length) {
     const onFirst = classes.filter((k) => firstPage.free.some((l) => Math.round(l.size * 2) / 2 === k && l.chars >= 3));
     if (onFirst.length) classes = classes.filter((k) => k <= onFirst[0]);
@@ -32446,7 +33080,7 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
   const refs = [];
   const footnotes = [];
   const perPage = [];
-  for (const pg of pageRecords) {
+  for (const pg of pageRecords2) {
     const units = [];
     if (pg.kind === "scan") {
       const id = nextId("s");
@@ -33032,6 +33666,7 @@ ${block.text ?? ""}
 }
 
 // src/host/parse-store.js
+init_parse_hash();
 var PARSE_DOC_CAP = 50;
 var PARSE_IMAGE_CAP = 200 * 1024 * 1024;
 var META_KEY = "meta:lru";
@@ -33415,15 +34050,9 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   onPhase?.({ phase: "ocr", pages: wanted });
   const got = await helper.ocr({ bytes, sha256, pages: wanted, signal });
   throwIfAborted();
-  const byPage = new Map((got?.pages || []).map((p) => [p.n, p]));
-  const next = records.map((rec) => byPage.has(rec.n) ? parsePageGeometry(byPage.get(rec.n), rec.n) : rec);
-  for (const n2 of wanted) if (byPage.has(n2) && !records.some((r) => r.n === n2)) next.push(parsePageGeometry(byPage.get(n2), n2));
-  next.sort((a, b) => a.n - b.n);
-  const lo = from ?? next[0]?.n ?? 1;
-  const hi = to ?? next[next.length - 1]?.n ?? numPages;
-  const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...base?.options || {}, ...options, ocr: "vision" }, from: lo, to: hi });
-  const merged = mergeOcrDocument(base, fresh, { pages: wanted });
+  const merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
   const doc = merged.doc;
+  const next = merged.records;
   const tables = doc.order.map((id) => doc.blocks[id]).filter((b) => b && b.type === "table" && b.repairs && b.ocrSource !== "layer");
   const requests = tables.flatMap((t) => cellsToReread(t, { numericCols: t.repairs.numericCols }));
   let rereads = [];
@@ -33439,6 +34068,18 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   }
   doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), elapsedMs: got?.elapsedMs ?? null };
   return { doc, choices: merged.choices, rereads, pages: wanted, records: next };
+}
+function mergeOcrPageRecords({ base, ocrPages, records, pages, numPages, info = null, options = {}, from, to, sha256 } = {}) {
+  const wanted = pages && pages.length ? pages : scanPagesOf(base);
+  const byPage = new Map((ocrPages || []).map((p) => [p.n, p]));
+  const next = (records || []).map((rec) => byPage.has(rec.n) ? parsePageGeometry(byPage.get(rec.n), rec.n) : rec);
+  for (const n2 of wanted) if (byPage.has(n2) && !next.some((r) => r.n === n2)) next.push(parsePageGeometry(byPage.get(n2), n2));
+  next.sort((a, b) => a.n - b.n);
+  const lo = from ?? next[0]?.n ?? 1;
+  const hi = to ?? next[next.length - 1]?.n ?? numPages;
+  const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...base?.options || {}, ...options, ocr: "vision" }, from: lo, to: hi });
+  const merged = mergeOcrDocument(base, fresh, { pages: wanted });
+  return { doc: merged.doc, choices: merged.choices, records: next };
 }
 
 // src/view/parse-overlay.js
@@ -33676,6 +34317,343 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
   };
 }
 
+// src/view/page-chips.js
+var HIDE_MS = 220;
+var DOT_CAP = 400;
+var CHIP_TYPES = Object.freeze(["table", "figure", "heading", "list", "formula"]);
+function tableShape2(table) {
+  const grid = table?.grid;
+  let rows = Number(table?.rows) || (Array.isArray(grid?.ys) ? grid.ys.length - 1 : 0);
+  let cols = Number(table?.cols) || (Array.isArray(grid?.xs) ? grid.xs.length - 1 : 0);
+  if (!(rows > 0) || !(cols > 0)) {
+    for (const cell of table?.cells || []) {
+      rows = Math.max(rows, (Number(cell.row) || 0) + (Number(cell.rowSpan) || 1));
+      cols = Math.max(cols, (Number(cell.col) || 0) + (Number(cell.colSpan) || 1));
+    }
+  }
+  return { rows: Math.max(0, rows), cols: Math.max(0, cols) };
+}
+function sectionIds(doc, headingId) {
+  const order = Array.isArray(doc?.order) ? doc.order : [];
+  const at = order.indexOf(headingId);
+  if (at < 0) return [];
+  const ids = [headingId];
+  for (let i = at + 1; i < order.length; i += 1) {
+    if (doc.blocks?.[order[i]]?.type === "heading") break;
+    ids.push(order[i]);
+  }
+  return ids;
+}
+function chipPlan(block, doc, { latexReady = false } = {}) {
+  if (!block || !CHIP_TYPES.includes(block.type)) return null;
+  const ids = [block.id];
+  if (block.type === "table") {
+    const { rows, cols } = tableShape2(block);
+    const size = rows && cols ? ` ${rows}×${cols}` : "";
+    return {
+      type: "table",
+      label: `Table${size} · Roam Grid`,
+      primary: { act: "table", ids, extra: { mode: "grid", kind: "table" } },
+      menu: [
+        { label: "Native", act: "table", ids, extra: { mode: "native", kind: "table" } },
+        { label: "Flat", act: "table", ids, extra: { mode: "flat", kind: "table" } },
+        { label: "Copy as Markdown", act: "copy", ids },
+        { label: "Card", act: "card", ids }
+      ]
+    };
+  }
+  if (block.type === "figure") {
+    return { type: "figure", label: "Figure · Card", primary: { act: "card", ids }, menu: [] };
+  }
+  if (block.type === "formula") {
+    return {
+      type: "formula",
+      label: "Card",
+      primary: { act: "card", ids },
+      menu: latexReady ? [{ label: "LaTeX", act: "latex", ids }] : []
+    };
+  }
+  if (block.type === "heading") {
+    return { type: "heading", label: "Insert section", primary: { act: "board", ids: sectionIds(doc, block.id) }, menu: [] };
+  }
+  return { type: "list", label: "Insert list", primary: { act: "below", ids }, menu: [] };
+}
+function createPageChips({
+  doc,
+  host = null,
+  getParsed,
+  pageEl,
+  pageOf: pageOf3,
+  run,
+  isLatexReady = null,
+  getSelection = null
+} = {}) {
+  const win = () => doc?.defaultView || null;
+  const bound = [];
+  let outline = null;
+  let chipNode = null;
+  let dots = [];
+  let hideTimer = null;
+  let current3 = null;
+  let disposed = false;
+  const on = (node2, type, fn, capture = false) => {
+    if (!node2 || typeof node2.addEventListener !== "function") return;
+    node2.addEventListener(type, fn, capture);
+    bound.push([node2, type, fn, capture]);
+  };
+  const off = (entry) => {
+    try {
+      entry[0].removeEventListener(entry[1], entry[2], entry[3]);
+    } catch {
+    }
+  };
+  const drop = (node2) => {
+    try {
+      node2?.remove?.();
+    } catch {
+    }
+  };
+  const stopTimer = () => {
+    if (hideTimer == null) return;
+    (win()?.clearTimeout || clearTimeout)(hideTimer);
+    hideTimer = null;
+  };
+  const selecting = () => {
+    try {
+      const sel = typeof getSelection === "function" ? getSelection() : doc?.getSelection?.() || win()?.getSelection?.();
+      return Boolean(sel && !sel.isCollapsed && String(sel).length > 0);
+    } catch {
+      return false;
+    }
+  };
+  const pageNumberOf3 = (target2, parsed) => {
+    const hit = target2?.closest?.(".page");
+    if (!hit) return 0;
+    const n2 = Number(hit.getAttribute?.("data-page-number"));
+    if (Number.isFinite(n2) && n2 > 0) return n2;
+    for (const page of parsed?.pages || []) if (pageEl?.(page.n) === hit) return page.n;
+    return 0;
+  };
+  const pageBlocks = (parsed, n2) => {
+    const out = [];
+    for (const id of parsed?.order || []) {
+      const block = parsed.blocks?.[id];
+      if (block && block.page === n2 && CHIP_TYPES.includes(block.type)) out.push(block);
+    }
+    return out;
+  };
+  const info = (n2) => pageOf3?.(n2) || {};
+  const hide = () => {
+    stopTimer();
+    current3 = null;
+    drop(outline);
+    drop(chipNode);
+    outline = null;
+    chipNode = null;
+  };
+  const later = (fn, ms) => (win()?.setTimeout || setTimeout)(fn, ms);
+  const button2 = (cls, text3, tip) => {
+    const node2 = doc.createElement("button");
+    node2.type = "button";
+    node2.className = cls;
+    node2.textContent = text3;
+    if (tip) node2.setAttribute("data-tip", tip);
+    return node2;
+  };
+  const fire2 = (item, block) => {
+    hideAll();
+    try {
+      run?.(item.act, { ids: item.ids, extra: item.extra || null, block });
+    } catch {
+    }
+  };
+  const show = (block, el, parsed) => {
+    const plan = chipPlan(block, parsed, { latexReady: Boolean(isLatexReady?.()) });
+    const rect = bboxToPageRect(block.bbox, info(block.page), el);
+    if (!plan || !rect) return;
+    hide();
+    current3 = block.id;
+    outline = doc.createElement("div");
+    outline.className = "pxd-page-outline";
+    outline.style.position = "absolute";
+    outline.style.left = `${rect.left}px`;
+    outline.style.top = `${rect.top}px`;
+    outline.style.width = `${Math.max(0, rect.width)}px`;
+    outline.style.height = `${Math.max(0, rect.height)}px`;
+    outline.style.pointerEvents = "none";
+    el.append(outline);
+    chipNode = doc.createElement("div");
+    chipNode.className = `pxd-page-chip pxd-page-chip--${plan.type}`;
+    chipNode.setAttribute("data-block", block.id);
+    chipNode.style.position = "absolute";
+    chipNode.style.left = `${rect.left + rect.width}px`;
+    chipNode.style.top = `${Math.max(0, rect.top)}px`;
+    chipNode.style.pointerEvents = "auto";
+    const main = button2("pxd-page-chip__main", plan.label, `page-chip.${plan.type}`);
+    chipNode.append(main);
+    const node2 = chipNode;
+    const swallow = (event) => {
+      event.stopPropagation?.();
+    };
+    on(node2, "pointerdown", swallow);
+    on(node2, "mousedown", swallow);
+    on(main, "click", (event) => {
+      event.stopPropagation?.();
+      fire2(plan.primary, block);
+    });
+    if (plan.menu.length) {
+      const caret = button2("pxd-page-chip__more", "▾", "page-chip.more");
+      caret.setAttribute("aria-haspopup", "menu");
+      const menu = doc.createElement("div");
+      menu.className = "pxd-page-chip__menu";
+      menu.setAttribute("role", "menu");
+      menu.hidden = true;
+      for (const item of plan.menu) {
+        const entry = button2("pxd-page-chip__item", item.label);
+        entry.setAttribute("role", "menuitem");
+        entry.setAttribute("data-act", item.act);
+        if (item.extra?.mode) entry.setAttribute("data-mode", item.extra.mode);
+        on(entry, "click", (event) => {
+          event.stopPropagation?.();
+          fire2(item, block);
+        });
+        menu.append(entry);
+      }
+      on(caret, "click", (event) => {
+        event.stopPropagation?.();
+        menu.hidden = !menu.hidden;
+        caret.setAttribute("aria-expanded", menu.hidden ? "false" : "true");
+      });
+      chipNode.append(caret);
+      chipNode.append(menu);
+    }
+    el.append(chipNode);
+    const mine = bound.splice(bound.findIndex((entry) => entry[0] === node2));
+    chipNode.__release = () => mine.forEach(off);
+  };
+  const release = () => {
+    chipNode?.__release?.();
+  };
+  const hideAll = () => {
+    release();
+    hide();
+  };
+  const onMove = (event) => {
+    if (disposed) return;
+    const parsed = getParsed?.();
+    if (!parsed) return;
+    if (chipNode && chipNode.contains?.(event.target)) {
+      stopTimer();
+      return;
+    }
+    if (selecting()) {
+      if (current3) hideAll();
+      return;
+    }
+    const n2 = pageNumberOf3(event.target, parsed);
+    const el = n2 ? pageEl?.(n2) : null;
+    let hit = null;
+    if (el) {
+      const box2 = el.getBoundingClientRect();
+      const x = (Number(event.clientX) || 0) - box2.left;
+      const y = (Number(event.clientY) || 0) - box2.top;
+      let best = Infinity;
+      for (const block of pageBlocks(parsed, n2)) {
+        const r = bboxToPageRect(block.bbox, info(n2), el);
+        if (!r || x < r.left || x > r.left + r.width || y < r.top || y > r.top + r.height) continue;
+        const area = r.width * r.height;
+        if (area < best) {
+          best = area;
+          hit = block;
+        }
+      }
+    }
+    if (!hit) {
+      if (current3 && hideTimer == null) hideTimer = later(hideAll, HIDE_MS);
+      return;
+    }
+    stopTimer();
+    if (hit.id === current3) return;
+    release();
+    show(hit, el, parsed);
+  };
+  const clearDots = () => {
+    for (const node2 of dots) drop(node2);
+    dots = [];
+  };
+  const showDots = () => {
+    const parsed = getParsed?.();
+    if (!parsed || dots.length) return;
+    const order = parsed.order || [];
+    let count = 0;
+    for (let i = 0; i < order.length && count < DOT_CAP; i += 1) {
+      const block = parsed.blocks?.[order[i]];
+      if (!block) continue;
+      const el = pageEl?.(block.page);
+      if (!el) continue;
+      const rect = bboxToPageRect(block.bbox, info(block.page), el);
+      if (!rect) continue;
+      const dot = doc.createElement("div");
+      dot.className = "pxd-page-dot";
+      dot.textContent = String(i + 1);
+      dot.style.position = "absolute";
+      dot.style.left = `${rect.left}px`;
+      dot.style.top = `${rect.top}px`;
+      dot.style.pointerEvents = "none";
+      el.append(dot);
+      dots.push(dot);
+      count += 1;
+    }
+  };
+  const onKeyDown = (event) => {
+    if (event.key === "Shift" && !selecting()) showDots();
+  };
+  const onKeyUp = (event) => {
+    if (event.key === "Shift") clearDots();
+  };
+  const onSelection = () => {
+    if (selecting()) hideAll();
+  };
+  const onLeave = () => {
+    if (current3 && hideTimer == null) hideTimer = later(hideAll, HIDE_MS);
+  };
+  const target = host || doc;
+  on(target, "pointermove", onMove, true);
+  on(target, "pointerleave", onLeave, true);
+  on(doc, "selectionchange", onSelection);
+  on(win(), "keydown", onKeyDown, true);
+  on(win(), "keyup", onKeyUp, true);
+  on(win(), "blur", clearDots);
+  return {
+    hover: onMove,
+    hide: hideAll,
+    current: () => current3,
+    dispose() {
+      disposed = true;
+      hideAll();
+      clearDots();
+      while (bound.length) off(bound.pop());
+    }
+  };
+}
+function runChipAction({ act, ids, extra, block }, { session, payload, copy, latex } = {}) {
+  const blocks = ids || [];
+  if (act === "copy") {
+    copy?.(blocks);
+    return true;
+  }
+  if (act === "latex") {
+    latex?.(block);
+    return true;
+  }
+  const name = act === "table" ? "insertParsedTable" : act === "card" ? "insertParsedCard" : act === "board" ? "sendParsedToBoard" : act === "below" ? "insertParsedBelow" : null;
+  const fn = name ? session?.[name] : null;
+  if (typeof fn !== "function") return false;
+  const body = payload(blocks);
+  fn(extra ? { ...body, ...extra } : body);
+  return true;
+}
+
 // src/view/parse-crop.js
 function cropRect(bbox, pageW, pageH, viewportW, viewportH) {
   if (!Array.isArray(bbox) || bbox.length < 4) return null;
@@ -33880,17 +34858,772 @@ async function makeHighlight({ block, live, pageEl, page, getContext, adoptCreat
   }
   return { path: "picker", message };
 }
+function selectionInReader(sel, readerEl) {
+  if (!sel || sel.isCollapsed || !readerEl || typeof sel.rangeCount === "number" && sel.rangeCount < 1) return null;
+  const text3 = String(sel.toString?.() ?? "").replace(/\s+/g, " ").trim();
+  if (!text3) return null;
+  const elOf = (node2) => node2?.nodeType === 1 ? node2 : node2?.parentElement || null;
+  const start = elOf(sel.anchorNode);
+  const end = elOf(sel.focusNode);
+  if (!start || !end || !readerEl.contains?.(start) || !readerEl.contains?.(end)) return null;
+  const pageEl = start.closest?.(".page") || end.closest?.(".page");
+  if (!pageEl || !readerEl.contains?.(pageEl)) return null;
+  const page = Number(pageEl.getAttribute?.("data-page-number")) || null;
+  let range = null;
+  try {
+    range = sel.getRangeAt?.(0) || null;
+  } catch {
+    range = null;
+  }
+  let rect = null;
+  try {
+    rect = range?.getBoundingClientRect?.() || null;
+  } catch {
+    rect = null;
+  }
+  if (!rect || !(rect.right > rect.left)) {
+    try {
+      rect = pageEl.getBoundingClientRect?.() || null;
+    } catch {
+      rect = null;
+    }
+  }
+  const box2 = rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.right - rect.left, height: rect.bottom - rect.top } : null;
+  return { text: text3, page, pageEl, range, rect: box2 };
+}
+function unionRect3(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  const left = Math.min(a.left, b.left);
+  const top = Math.min(a.top, b.top);
+  const right = Math.max(a.right, b.right);
+  const bottom = Math.max(a.bottom, b.bottom);
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+function rectsOverlap(a, b) {
+  if (!a || !b) return false;
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+function selectionBarPlacement({ selection, tip = null, size, viewport, obstacles = [], place: place2 } = {}) {
+  if (!selection || !viewport || typeof place2 !== "function") return { hidden: true };
+  const anchor = unionRect3(selection, tip);
+  const at = place2({ anchor, size, viewport, gap: 6, obstacles: tip ? [...obstacles, tip] : obstacles });
+  const box2 = { left: at.left, top: at.top, right: at.left + (at.width || size.w), bottom: at.top + (at.maxHeight || size.h) };
+  return { hidden: Boolean(tip && rectsOverlap(box2, tip)), left: at.left, top: at.top, side: at.side };
+}
 
 // src/view/parse-view.js
 init_cards();
+
+// src/view/drag-ghost.js
+init_avoid();
+var GHOST_W = 280;
+var MORPH_MS = 150;
+var LAND_MS = 120;
+var PANE_SCALE = 0.9;
+var MIN_SCALE = 0.05;
+var MAX_SCALE = 4;
+var num4 = (value, fallback = 0) => {
+  const n2 = Number(value);
+  return Number.isFinite(n2) ? n2 : fallback;
+};
+var clamp3 = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+var easeOut = (t) => 1 - (1 - clamp3(t, 0, 1)) ** 3;
+function boardZoom(root, win = root?.ownerDocument?.defaultView || globalThis) {
+  let raw = "";
+  try {
+    raw = root?.style?.getPropertyValue?.("--pxd-screen-px") || "";
+  } catch {
+    raw = "";
+  }
+  if (!raw) {
+    try {
+      raw = win?.getComputedStyle?.(root)?.getPropertyValue?.("--pxd-screen-px") || "";
+    } catch {
+      raw = "";
+    }
+  }
+  const px = parseFloat(raw);
+  return px > 0 ? clamp3(1 / px, MIN_SCALE, MAX_SCALE) : 1;
+}
+var inside4 = (r, x, y) => Boolean(r) && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+function zoneAt(x, y, { rootRect = null, paneRect = null, blocked: blocked3 = [] } = {}) {
+  if (!inside4(rootRect, x, y)) return "out";
+  if (inside4(paneRect, x, y)) return "pane";
+  for (const r of blocked3 || []) if (inside4(r, x, y)) return "blocked";
+  return "board";
+}
+function zoneScale(zone, zoom) {
+  if (zone === "board") return clamp3(num4(zoom, 1) || 1, MIN_SCALE, MAX_SCALE);
+  return PANE_SCALE;
+}
+function ghostContent(source = {}) {
+  const kind = ["text", "table", "figure", "highlight", "blocks"].includes(source.kind) ? source.kind : "text";
+  const text3 = String(source.text ?? "").replace(/\s+/g, " ").trim();
+  const rows = Array.isArray(source.rows) ? source.rows.slice(0, 3).map((row4) => Array.isArray(row4) ? row4.slice(0, 6).map((cell) => String(cell ?? "")) : []) : [];
+  const src = typeof source.src === "string" ? source.src : "";
+  const color = typeof source.color === "string" ? source.color : "";
+  const page = Number.isFinite(Number(source.page)) && Number(source.page) > 0 ? Number(source.page) : null;
+  return { kind, text: text3, rows, src, color, page };
+}
+function ghostOrigin(pointer, grab, size, sx, sy) {
+  return { x: pointer.x - grab.fx * size.w * sx, y: pointer.y - grab.fy * size.h * sy };
+}
+function buildGhost(doc, content) {
+  const el = (tag, cls, parent) => {
+    const node2 = doc.createElement(tag);
+    if (cls) node2.className = cls;
+    parent?.append?.(node2);
+    return node2;
+  };
+  const card2 = el("div", "pxd-item pxd-item--card pxd-ghost");
+  card2.setAttribute("aria-hidden", "true");
+  card2.setAttribute("data-kind", content.kind);
+  const body = el("div", "pxd-ghost__body", card2);
+  if (content.color) {
+    const bar = el("span", "pxd-ghost__bar", body);
+    bar.setAttribute("data-color", content.color);
+  }
+  if (content.kind === "table" && content.rows.length) {
+    const table = el("table", "pxd-ghost__table", body);
+    for (const row4 of content.rows) {
+      const tr = el("tr", "", table);
+      for (const cell of row4) el("td", "", tr).textContent = cell;
+    }
+  } else if (content.kind === "figure" && content.src) {
+    const img = el("img", "pxd-ghost__img", body);
+    img.alt = "";
+    img.src = content.src;
+  }
+  if (content.text && !(content.kind === "table" && content.rows.length)) el("div", "pxd-ghost__text", body).textContent = content.text;
+  if (content.page) el("div", "pxd-ghost__page", body).textContent = `p. ${content.page}`;
+  return card2;
+}
+function createDragGhost({
+  doc = globalThis.document,
+  root,
+  pane = null,
+  from = null,
+  pointer = { x: 0, y: 0 },
+  content = {},
+  zoom = null,
+  blocked: blocked3 = null,
+  now: now3 = () => globalThis.performance?.now?.() ?? Date.now()
+} = {}) {
+  const win = doc?.defaultView || globalThis;
+  const host = root || doc?.body;
+  const look = ghostContent(content);
+  const node2 = buildGhost(doc, look);
+  node2.style.width = `${GHOST_W}px`;
+  node2.style.transform = "translate3d(-10000px, -10000px, 0)";
+  host?.append?.(node2);
+  let origin = { x: 0, y: 0 };
+  let height = 120;
+  try {
+    node2.style.transform = "translate3d(0px, 0px, 0)";
+    const box2 = node2.getBoundingClientRect?.();
+    if (box2) origin = { x: num4(box2.left), y: num4(box2.top) };
+    height = num4(node2.offsetHeight, 0) || num4(box2?.height, 0) || 120;
+  } catch {
+  }
+  const size = { w: GHOST_W, h: height };
+  const rects = {
+    rootRect: root?.getBoundingClientRect?.() || null,
+    paneRect: pane?.getBoundingClientRect?.() || null,
+    blocked: blocked3 || chromeObstacles(root, { win })
+  };
+  if (rects.rootRect && !(rects.rootRect.right > rects.rootRect.left)) rects.rootRect = null;
+  const zoomNow = zoom != null ? num4(zoom, 1) : boardZoom(root, win);
+  const start = { x: num4(pointer?.x), y: num4(pointer?.y) };
+  const src = from && num4(from.width) > 0 && num4(from.height) > 0 ? from : { left: start.x - 8, top: start.y - 8, width: 16, height: 16 };
+  const grab = {
+    fx: clamp3((start.x - num4(src.left)) / num4(src.width, 1), 0, 1),
+    fy: clamp3((start.y - num4(src.top)) / num4(src.height, 1), 0, 1)
+  };
+  let current3 = { x: start.x, y: start.y };
+  let zone = rects.rootRect ? zoneAt(start.x, start.y, rects) : "pane";
+  let sx = clamp3(num4(src.width) / size.w, MIN_SCALE, MAX_SCALE);
+  let sy = clamp3(num4(src.height) / size.h, MIN_SCALE, MAX_SCALE);
+  let anim = { fromX: sx, fromY: sy, to: zoneScale(zone, zoomNow), at: now3(), ms: MORPH_MS };
+  let raf2 = 0;
+  let dirty = true;
+  let ended = false;
+  const timing = { frames: 0, total: 0, max: 0 };
+  let painted = { x: NaN, y: NaN, sx: NaN, sy: NaN, zone: "" };
+  const paintZone = () => {
+    node2.classList.toggle("pxd-ghost--board", zone === "board");
+    node2.classList.toggle("pxd-ghost--blocked", zone === "blocked" || zone === "out");
+  };
+  paintZone();
+  node2.style.transformOrigin = "0 0";
+  function frame(at = now3()) {
+    raf2 = 0;
+    if (ended) return false;
+    const t0 = now3();
+    const k = anim ? easeOut((at - anim.at) / anim.ms) : 1;
+    if (anim) {
+      sx = anim.fromX + (anim.to - anim.fromX) * k;
+      sy = anim.fromY + (anim.to - anim.fromY) * k;
+      if (k >= 1) anim = null;
+    }
+    const at2 = ghostOrigin(current3, grab, size, sx, sy);
+    if (dirty || at2.x !== painted.x || at2.y !== painted.y || sx !== painted.sx || sy !== painted.sy) {
+      node2.style.transform = `translate3d(${(at2.x - origin.x).toFixed(1)}px, ${(at2.y - origin.y).toFixed(1)}px, 0) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
+      if (painted.zone !== zone) paintZone();
+      painted = { x: at2.x, y: at2.y, sx, sy, zone };
+    }
+    dirty = false;
+    const spent = now3() - t0;
+    timing.frames += 1;
+    timing.total += spent;
+    timing.max = Math.max(timing.max, spent);
+    if (anim) schedule();
+    return true;
+  }
+  function schedule() {
+    if (raf2 || ended) return;
+    const req = win?.requestAnimationFrame;
+    if (typeof req !== "function") {
+      frame();
+      return;
+    }
+    raf2 = req(() => frame(now3()));
+  }
+  const stop2 = () => {
+    ended = true;
+    if (raf2) {
+      try {
+        win?.cancelAnimationFrame?.(raf2);
+      } catch {
+      }
+      raf2 = 0;
+    }
+  };
+  const fadeOut = (cls) => {
+    stop2();
+    node2.classList.add(cls);
+    const kill = () => {
+      try {
+        node2.remove();
+      } catch {
+      }
+    };
+    const later = win?.setTimeout || globalThis.setTimeout;
+    try {
+      later(kill, LAND_MS + 20);
+    } catch {
+      kill();
+    }
+  };
+  frame();
+  return {
+    element: () => node2,
+    move(x, y) {
+      if (ended) return;
+      current3 = { x: num4(x, current3.x), y: num4(y, current3.y) };
+      const next = rects.rootRect ? zoneAt(current3.x, current3.y, rects) : zone;
+      if (next !== zone) {
+        zone = next;
+        anim = { fromX: sx, fromY: sy, to: zoneScale(zone, zoomNow), at: now3(), ms: LAND_MS };
+      }
+      schedule();
+    },
+    frame,
+    zone: () => zone,
+    scale: () => ({ sx, sy }),
+    // Client point of the ghost's top-left, its size on screen, and its centre (ref-card drops centre the card).
+    dropPoint() {
+      const s = anim ? anim.to : sx;
+      const at2 = ghostOrigin(current3, grab, size, s, anim ? anim.to : sy);
+      const w = size.w * s;
+      const h = size.h * (anim ? anim.to : sy);
+      return { x: at2.x, y: at2.y, w, h, cx: at2.x + w / 2, cy: at2.y + h / 2 };
+    },
+    land() {
+      fadeOut("pxd-ghost--land");
+    },
+    cancel() {
+      fadeOut("pxd-ghost--cancel");
+    },
+    stats: () => ({ frames: timing.frames, avgMs: timing.frames ? timing.total / timing.frames : 0, maxMs: timing.max, zoom: zoomNow })
+  };
+}
+function dispatchDrop({ doc = globalThis.document, root, pointer, at, entries = [] } = {}) {
+  const win = doc?.defaultView || globalThis;
+  const target = doc?.elementFromPoint?.(num4(pointer?.x), num4(pointer?.y)) || null;
+  if (!target || root && !root.contains?.(target) || target.closest?.(".pxd-read")) return false;
+  const x = num4(at?.x, num4(pointer?.x));
+  const y = num4(at?.y, num4(pointer?.y));
+  const Transfer = win.DataTransfer;
+  const Drag = win.DragEvent;
+  if (typeof Transfer === "function" && typeof Drag === "function") {
+    const data = new Transfer();
+    for (const [type, value] of entries) data.setData(type, value);
+    try {
+      data.effectAllowed = "copy";
+    } catch {
+    }
+    const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: data };
+    target.dispatchEvent(new Drag("dragover", init));
+    target.dispatchEvent(new Drag("drop", init));
+    return true;
+  }
+  const map = new Map(entries);
+  const transfer = { types: [...map.keys()], getData: (type) => map.get(type) || "", setData() {
+  } };
+  const plain = { type: "drop", bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer, preventDefault() {
+  }, stopPropagation() {
+  } };
+  try {
+    target.dispatchEvent(plain);
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+// assets/anydoc/anydoc_wasm.js
+function toMarkdownBytes(bytes, format) {
+  let deferred3_0;
+  let deferred3_1;
+  try {
+    const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export);
+    const len0 = WASM_VECTOR_LEN;
+    wasm.toMarkdownBytes(retptr, ptr0, len0, isLikeNone(format) ? 13 : (__wbindgen_enum_Format.indexOf(format) + 1 || 13) - 1);
+    var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+    var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+    var r22 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+    var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+    var ptr2 = r0;
+    var len2 = r1;
+    if (r3) {
+      ptr2 = 0;
+      len2 = 0;
+      throw takeObject(r22);
+    }
+    deferred3_0 = ptr2;
+    deferred3_1 = len2;
+    return getStringFromWasm0(ptr2, len2);
+  } finally {
+    wasm.__wbindgen_add_to_stack_pointer(16);
+    wasm.__wbindgen_export4(deferred3_0, deferred3_1, 1);
+  }
+}
+function __wbg_get_imports() {
+  const import0 = {
+    __proto__: null,
+    __wbg_String_8564e559799eccda: function(arg0, arg1) {
+      const ret = String(getObject(arg1));
+      const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+      const len1 = WASM_VECTOR_LEN;
+      getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
+      getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+    },
+    __wbg___wbindgen_throw_344f42d3211c4765: function(arg0, arg1) {
+      throw new Error(getStringFromWasm0(arg0, arg1));
+    },
+    __wbg_from_13e323c65fc8f464: function(arg0) {
+      const ret = Array.from(getObject(arg0));
+      return addHeapObject(ret);
+    },
+    __wbg_getRandomValues_cc7f052a444bb2ce: function() {
+      return handleError(function(arg0, arg1) {
+        globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
+      }, arguments);
+    },
+    __wbg_new_32b398fb48b6d94a: function() {
+      const ret = new Array();
+      return addHeapObject(ret);
+    },
+    __wbg_new_b667d279fd5aa943: function(arg0, arg1) {
+      const ret = new Error(getStringFromWasm0(arg0, arg1));
+      return addHeapObject(ret);
+    },
+    __wbg_new_cd45aabdf6073e84: function(arg0) {
+      const ret = new Uint8Array(getObject(arg0));
+      return addHeapObject(ret);
+    },
+    __wbg_new_da52cf8fe3429cb2: function() {
+      const ret = new Object();
+      return addHeapObject(ret);
+    },
+    __wbg_push_d2ae3af0c1217ae6: function(arg0, arg1) {
+      const ret = getObject(arg0).push(getObject(arg1));
+      return ret;
+    },
+    __wbg_set_6be42768c690e380: function(arg0, arg1, arg2) {
+      getObject(arg0)[takeObject(arg1)] = takeObject(arg2);
+    },
+    __wbg_set_8535240470bf2500: function() {
+      return handleError(function(arg0, arg1, arg2) {
+        const ret = Reflect.set(getObject(arg0), getObject(arg1), getObject(arg2));
+        return ret;
+      }, arguments);
+    },
+    __wbg_set_8a16b38e4805b298: function(arg0, arg1, arg2) {
+      getObject(arg0)[arg1 >>> 0] = takeObject(arg2);
+    },
+    __wbindgen_cast_0000000000000001: function(arg0) {
+      const ret = arg0;
+      return addHeapObject(ret);
+    },
+    __wbindgen_cast_0000000000000002: function(arg0, arg1) {
+      const ret = getArrayU8FromWasm0(arg0, arg1);
+      return addHeapObject(ret);
+    },
+    __wbindgen_cast_0000000000000003: function(arg0, arg1) {
+      const ret = getStringFromWasm0(arg0, arg1);
+      return addHeapObject(ret);
+    },
+    __wbindgen_object_clone_ref: function(arg0) {
+      const ret = getObject(arg0);
+      return addHeapObject(ret);
+    },
+    __wbindgen_object_drop_ref: function(arg0) {
+      takeObject(arg0);
+    }
+  };
+  return {
+    __proto__: null,
+    "./anydoc_wasm_bg.js": import0
+  };
+}
+var __wbindgen_enum_Format = ["doc", "docx", "odt", "pdf", "ppt", "pptx", "rtf", "epub", "xlsx", "ods", "odp", "csv"];
+function addHeapObject(obj) {
+  if (heap_next === heap.length) heap.push(heap.length + 1);
+  const idx = heap_next;
+  heap_next = heap[idx];
+  heap[idx] = obj;
+  return idx;
+}
+function dropObject(idx) {
+  if (idx < 1028) return;
+  heap[idx] = heap_next;
+  heap_next = idx;
+}
+function getArrayU8FromWasm0(ptr, len) {
+  ptr = ptr >>> 0;
+  return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
+}
+var cachedDataViewMemory0 = null;
+function getDataViewMemory0() {
+  if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || cachedDataViewMemory0.buffer.detached === void 0 && cachedDataViewMemory0.buffer !== wasm.memory.buffer) {
+    cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
+  }
+  return cachedDataViewMemory0;
+}
+function getStringFromWasm0(ptr, len) {
+  return decodeText(ptr >>> 0, len);
+}
+var cachedUint8ArrayMemory0 = null;
+function getUint8ArrayMemory0() {
+  if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
+    cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
+  }
+  return cachedUint8ArrayMemory0;
+}
+function getObject(idx) {
+  return heap[idx];
+}
+function handleError(f, args) {
+  try {
+    return f.apply(this, args);
+  } catch (e2) {
+    wasm.__wbindgen_export3(addHeapObject(e2));
+  }
+}
+var heap = new Array(1024).fill(void 0);
+heap.push(void 0, null, true, false);
+var heap_next = heap.length;
+function isLikeNone(x) {
+  return x === void 0 || x === null;
+}
+function passArray8ToWasm0(arg, malloc) {
+  const ptr = malloc(arg.length * 1, 1) >>> 0;
+  getUint8ArrayMemory0().set(arg, ptr / 1);
+  WASM_VECTOR_LEN = arg.length;
+  return ptr;
+}
+function passStringToWasm0(arg, malloc, realloc) {
+  if (realloc === void 0) {
+    const buf = cachedTextEncoder.encode(arg);
+    const ptr2 = malloc(buf.length, 1) >>> 0;
+    getUint8ArrayMemory0().subarray(ptr2, ptr2 + buf.length).set(buf);
+    WASM_VECTOR_LEN = buf.length;
+    return ptr2;
+  }
+  let len = arg.length;
+  let ptr = malloc(len, 1) >>> 0;
+  const mem = getUint8ArrayMemory0();
+  let offset = 0;
+  for (; offset < len; offset++) {
+    const code = arg.charCodeAt(offset);
+    if (code > 127) break;
+    mem[ptr + offset] = code;
+  }
+  if (offset !== len) {
+    if (offset !== 0) {
+      arg = arg.slice(offset);
+    }
+    ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
+    const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
+    const ret = cachedTextEncoder.encodeInto(arg, view);
+    offset += ret.written;
+    ptr = realloc(ptr, len, offset, 1) >>> 0;
+  }
+  WASM_VECTOR_LEN = offset;
+  return ptr;
+}
+function takeObject(idx) {
+  const ret = getObject(idx);
+  dropObject(idx);
+  return ret;
+}
+var cachedTextDecoder = new TextDecoder("utf-8", { ignoreBOM: true, fatal: true });
+cachedTextDecoder.decode();
+var MAX_SAFARI_DECODE_BYTES = 2146435072;
+var numBytesDecoded = 0;
+function decodeText(ptr, len) {
+  numBytesDecoded += len;
+  if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
+    cachedTextDecoder = new TextDecoder("utf-8", { ignoreBOM: true, fatal: true });
+    cachedTextDecoder.decode();
+    numBytesDecoded = len;
+  }
+  return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
+}
+var cachedTextEncoder = new TextEncoder();
+if (!("encodeInto" in cachedTextEncoder)) {
+  cachedTextEncoder.encodeInto = function(arg, view) {
+    const buf = cachedTextEncoder.encode(arg);
+    view.set(buf);
+    return {
+      read: arg.length,
+      written: buf.length
+    };
+  };
+}
+var WASM_VECTOR_LEN = 0;
+var wasmModule;
+var wasmInstance;
+var wasm;
+function __wbg_finalize_init(instance, module) {
+  wasmInstance = instance;
+  wasm = instance.exports;
+  wasmModule = module;
+  cachedDataViewMemory0 = null;
+  cachedUint8ArrayMemory0 = null;
+  return wasm;
+}
+async function __wbg_load(module, imports) {
+  if (typeof Response === "function" && module instanceof Response) {
+    if (typeof WebAssembly.instantiateStreaming === "function") {
+      try {
+        return await WebAssembly.instantiateStreaming(module, imports);
+      } catch (e2) {
+        const validResponse = module.ok && expectedResponseType(module.type);
+        if (validResponse && module.headers.get("Content-Type") !== "application/wasm") {
+          console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e2);
+        } else {
+          throw e2;
+        }
+      }
+    }
+    const bytes = await module.arrayBuffer();
+    return await WebAssembly.instantiate(bytes, imports);
+  } else {
+    const instance = await WebAssembly.instantiate(module, imports);
+    if (instance instanceof WebAssembly.Instance) {
+      return { instance, module };
+    } else {
+      return instance;
+    }
+  }
+  function expectedResponseType(type) {
+    switch (type) {
+      case "basic":
+      case "cors":
+      case "default":
+        return true;
+    }
+    return false;
+  }
+}
+async function __wbg_init(module_or_path) {
+  if (wasm !== void 0) return wasm;
+  if (module_or_path !== void 0) {
+    if (Object.getPrototypeOf(module_or_path) === Object.prototype) {
+      ({ module_or_path } = module_or_path);
+    } else {
+      console.warn("using deprecated parameters for the initialization function; pass a single object instead");
+    }
+  }
+  if (module_or_path === void 0) {
+    module_or_path = new URL("anydoc_wasm_bg.wasm", import.meta.url);
+  }
+  const imports = __wbg_get_imports();
+  if (typeof module_or_path === "string" || typeof Request === "function" && module_or_path instanceof Request || typeof URL === "function" && module_or_path instanceof URL) {
+    module_or_path = fetch(module_or_path);
+  }
+  const { instance, module } = await __wbg_load(await module_or_path, imports);
+  return __wbg_finalize_init(instance, module);
+}
+
+// src/host/anydoc.js
+init_parse_hash();
+
+// src/host/anydoc-manifest.js
+var ANYDOC_MANIFEST = Object.freeze({
+  name: "@firecrawl/anydoc-wasm",
+  version: "0.2.4",
+  files: Object.freeze({
+    "anydoc_wasm.js": Object.freeze({
+      sha256: "4860ad4c02c523593a5dae7698e186e8d7cf75a0e0bf3c2c294373de58eaee74",
+      bytes: 14366
+    }),
+    "anydoc_wasm_bg.wasm": Object.freeze({
+      sha256: "9f37cd53b17bf4028ac5ae6a2ac4cf625e9c53be511797168780bab495de1a9e",
+      bytes: 6691779
+    })
+  })
+});
+
+// src/host/anydoc.js
+var ANYDOC_CACHE = "plexus-diagram-models";
+var ANYDOC_ORIGIN = "https://svyk.github.io/plexus-diagram";
+function anydocAssetUrl(name, origin = ANYDOC_ORIGIN) {
+  const base = String(origin || ANYDOC_ORIGIN).replace(/\/$/, "");
+  return `${base}/assets/anydoc/${name}`;
+}
+function asBytes(value) {
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  return new Uint8Array();
+}
+function createAnydocHost({
+  fetch: fetchImpl,
+  caches: cachesImpl,
+  origin = ANYDOC_ORIGIN,
+  now: now3,
+  engine
+} = {}) {
+  const fetchFn = fetchImpl || globalThis.fetch?.bind(globalThis);
+  const cachesApi = cachesImpl === void 0 ? globalThis.caches : cachesImpl;
+  const clock = typeof now3 === "function" ? now3 : () => typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+  const glue = engine?.init || __wbg_init;
+  const convertBytes = engine?.toMarkdownBytes || toMarkdownBytes;
+  let ready = null;
+  let fetchCount = 0;
+  async function openCache() {
+    if (!cachesApi || typeof cachesApi.open !== "function") return null;
+    try {
+      return await cachesApi.open(ANYDOC_CACHE);
+    } catch {
+      return null;
+    }
+  }
+  async function loadAsset(name) {
+    const spec = ANYDOC_MANIFEST.files[name];
+    if (!spec) {
+      const err = new Error("hash");
+      err.code = "hash";
+      throw err;
+    }
+    const url = anydocAssetUrl(name, origin);
+    const cache = await openCache();
+    if (cache && typeof cache.match === "function") {
+      try {
+        const hit = await cache.match(url);
+        if (hit) {
+          const buf2 = asBytes(await hit.arrayBuffer());
+          const hex2 = await sha256Hex(buf2);
+          if (hex2 === spec.sha256 && buf2.byteLength === spec.bytes) return buf2;
+        }
+      } catch {
+      }
+    }
+    if (typeof fetchFn !== "function") {
+      const err = new Error("fetch");
+      err.code = "fetch";
+      throw err;
+    }
+    fetchCount += 1;
+    let res;
+    try {
+      res = await fetchFn(url, { mode: "cors", credentials: "omit" });
+    } catch (err) {
+      if (err && typeof err === "object" && !err.code) err.code = "fetch";
+      throw err;
+    }
+    if (!res || !res.ok) {
+      const err = new Error("fetch");
+      err.code = "fetch";
+      throw err;
+    }
+    const buf = asBytes(await res.arrayBuffer());
+    const hex = await sha256Hex(buf);
+    if (hex !== spec.sha256 || buf.byteLength !== spec.bytes) {
+      const err = new Error("hash");
+      err.code = "hash";
+      throw err;
+    }
+    if (cache && typeof cache.put === "function") {
+      try {
+        const type = name.endsWith(".wasm") ? "application/wasm" : "text/javascript";
+        await cache.put(url, new Response(buf, { headers: { "content-type": type } }));
+      } catch {
+      }
+    }
+    return buf;
+  }
+  async function ensure() {
+    if (ready) return ready;
+    const pending = (async () => {
+      await loadAsset("anydoc_wasm.js");
+      const wasm2 = await loadAsset("anydoc_wasm_bg.wasm");
+      await glue({ module_or_path: wasm2 });
+    })();
+    ready = pending;
+    try {
+      await pending;
+    } catch (err) {
+      if (ready === pending) ready = null;
+      throw err;
+    }
+  }
+  return {
+    get fetchCount() {
+      return fetchCount;
+    },
+    async convert(bytes, format) {
+      await ensure();
+      const t0 = clock();
+      const view = asBytes(bytes);
+      let markdown;
+      try {
+        markdown = convertBytes(view, format);
+      } catch (err) {
+        if (err && typeof err === "object" && !err.code) err.code = "convert";
+        throw err;
+      }
+      const text3 = typeof markdown === "string" ? markdown : new TextDecoder().decode(asBytes(markdown));
+      return { markdown: text3, ms: clock() - t0, format };
+    }
+  };
+}
+
+// src/view/parse-view.js
+init_anydoc_to_parse();
 var PARSE_MIME2 = "application/x-plexus-parse";
 var BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
 var SYNC_MS = 250;
 var LOW_CONFIDENCE = 0.75;
 var BOTH_MIN_PX = 640;
 var URLS_KEY = "pxd-parse-urls";
-var HELPER_START = "tools/parse-helper/bin/plexus-parse-helper serve";
 var TEXT_TYPES = /* @__PURE__ */ new Set(["heading", "para", "list", "caption", "footnote", "code"]);
+var INDEX_TYPES = /* @__PURE__ */ new Set(["heading", "table", "figure", "formula"]);
 function reasonLabel(reason) {
   if (reason === "page-number") return "page numbers";
   if (reason === "running-header" || reason === "header") return "running header";
@@ -33918,16 +35651,20 @@ function defaultRangeChoice(pageCount) {
   return "current";
 }
 function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
+  if (phase !== "running" && engine === "anydoc") {
+    if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
+    return { text: "Alternative read" };
+  }
   if (phase === "running") {
-    const which = engine === "docling" ? "Docling" : "built-in";
+    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : "built-in";
     return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
   }
   if (helper === "not-running" || helper === "disabled") {
-    return { text: "Docling: not running", tip: `${HELPER_START}. Paste the token into Settings.` };
+    return { text: "Local helper: off", tip: "Open Engines (the gear) to set up or start the local helper." };
   }
-  if (helper === "wrong-token") return { text: "Docling: wrong token", tip: "Paste the helper token into Settings." };
-  if (helper === "models-missing") return { text: "Docling: downloading models", tip: "The helper is downloading models." };
-  if (helper === "newer-schema") return { text: "Docling: newer schema", tip: "This Plexus is older than the helper." };
+  if (helper === "wrong-token") return { text: "Local helper: wrong token", tip: "Open Engines (the gear) and pair the local helper again." };
+  if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
+  if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
   if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
@@ -34030,15 +35767,47 @@ function tableChipLabel(table) {
   const conf = typeof table.confidence === "number" ? table.confidence.toFixed(2) : "";
   return conf ? `${method} · ${conf}` : method;
 }
-function scanSpan(doc) {
+function scanPageNumbers(doc) {
   const pages = (doc?.pages || []).filter((page) => page.kind === "scan").map((page) => page.n);
   const blocks = selectBlocks(doc, null).filter((block) => block.type === "scan").map((block) => block.page);
-  const nums = [.../* @__PURE__ */ new Set([...pages, ...blocks])].sort((a, b) => a - b);
+  return [.../* @__PURE__ */ new Set([...pages, ...blocks])].sort((a, b) => a - b);
+}
+function scanSpan(doc) {
+  const nums = scanPageNumbers(doc);
   if (!nums.length) return "";
   const from = nums[0];
   const to = nums[nums.length - 1];
-  const label = from === to ? String(from) : `${from}–${to}`;
-  return `Scanned pages ${label} · Parse with Docling for OCR`;
+  const label = from === to ? `Scanned page ${from}` : `Scanned pages ${from}–${to}`;
+  return `${label} · the page is an image`;
+}
+function outlineBlocks(blocks) {
+  return (blocks || []).filter((block) => INDEX_TYPES.has(block?.type));
+}
+function sectionIds2(doc, headingId) {
+  const all = selectBlocks(doc, null);
+  const at = all.findIndex((block) => block.id === headingId);
+  if (at < 0) return [];
+  const head = all[at];
+  if (head.type !== "heading") return [head.id];
+  const level = head.level || 1;
+  const out = [head.id];
+  for (let i = at + 1; i < all.length; i += 1) {
+    const block = all[i];
+    if (block.type === "heading" && (block.level || 1) <= level) break;
+    if (block.type === "scan") continue;
+    out.push(block.id);
+  }
+  return out;
+}
+function outlineLabel(block) {
+  if (!block) return "";
+  if (block.type === "table") {
+    const size = block.rows && block.cols ? ` ${block.rows}×${block.cols}` : "";
+    return `Table${size}${block.caption ? ` · ${block.caption}` : ""}`;
+  }
+  if (block.type === "figure") return `Figure${block.text ? ` · ${block.text}` : ""}`;
+  if (block.type === "formula") return `Formula${block.latex ? ` · ${block.latex}` : ""}`;
+  return String(block.text || "");
 }
 function setHidden(node2, on) {
   if (!node2) return;
@@ -34103,7 +35872,15 @@ function createParseView({
   getContext = null,
   clock = null,
   scanAuto = false,
-  ocrSource = null
+  ocrSource = null,
+  lazyKeys = false,
+  outline = false,
+  onNeedOcr = null,
+  onScan = null,
+  onOcrPages = null,
+  ghostRoot = null,
+  ghostPane = null,
+  anydoc = null
 } = {}) {
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
@@ -34112,6 +35889,7 @@ function createParseView({
     return node2;
   };
   const now3 = () => typeof clock === "function" ? clock() : Date.now();
+  const anydocHost = anydoc || createAnydocHost();
   const root = el("div", "pxd-parse");
   root.tabIndex = -1;
   root.setAttribute("role", "region");
@@ -34133,6 +35911,14 @@ function createParseView({
   doclingBtn.textContent = "Parse with Docling";
   doclingBtn.setAttribute("data-tip", "parse.docling");
   setHidden(doclingBtn, true);
+  const altBtn = el("button", "pxd-parse__alt", enginePop);
+  altBtn.type = "button";
+  const altLabel = el("span", "pxd-parse__alt-label", altBtn);
+  altLabel.textContent = "Alternative read";
+  const altNote = el("span", "pxd-parse__alt-note", altBtn);
+  altNote.textContent = "no tables guarantee";
+  altBtn.setAttribute("aria-label", "Alternative read, no tables guarantee");
+  altBtn.setAttribute("data-guarantee", "no tables guarantee");
   const cancelBtn = el("button", "pxd-parse__cancel", enginePop);
   cancelBtn.type = "button";
   cancelBtn.textContent = "Cancel";
@@ -34179,12 +35965,12 @@ function createParseView({
   const filterBtns = {};
   for (const name of ["Text", "Tables", "Figures", "Formulas"]) {
     const key = name === "Tables" ? "table" : name === "Figures" ? "figure" : name === "Formulas" ? "formula" : "text";
-    const button = el("button", "pxd-parse__filter", filterPop);
-    button.type = "button";
-    button.textContent = name;
-    button.setAttribute("aria-pressed", "true");
-    button.setAttribute("data-filter", key);
-    filterBtns[key] = button;
+    const button2 = el("button", "pxd-parse__filter", filterPop);
+    button2.type = "button";
+    button2.textContent = name;
+    button2.setAttribute("aria-pressed", "true");
+    button2.setAttribute("data-filter", key);
+    filterBtns[key] = button2;
   }
   const searchBtn = el("button", "pxd-parse__searchbtn", bar);
   searchBtn.type = "button";
@@ -34236,10 +36022,10 @@ function createParseView({
   const tableSum = el("summary", "", tableMenu);
   tableSum.textContent = "Insert table";
   for (const [mode, label] of [["grid", "Roam Grid"], ["native", "Native"], ["flat", "Flat"]]) {
-    const button = el("button", "pxd-parse__act", tableMenu);
-    button.type = "button";
-    button.textContent = label;
-    button.setAttribute("data-mode", mode);
+    const button2 = el("button", "pxd-parse__act", tableMenu);
+    button2.type = "button";
+    button2.textContent = label;
+    button2.setAttribute("data-mode", mode);
   }
   let currentUrl = url || "";
   let currentUid2 = pdfUid || "";
@@ -34300,13 +36086,44 @@ function createParseView({
     return { w: fromDoc?.w || given?.w || 612, h: fromDoc?.h || given?.h || 792, rotation: fromDoc?.rotation || given?.rotation || 0, ...given || {} };
   }
   function shown() {
-    return visibleBlocks(parsed, { filters, query, range });
+    const blocks = visibleBlocks(parsed, { filters, query, range });
+    return outline && !String(query || "").trim() ? outlineBlocks(blocks) : blocks;
   }
+  function expand(blocks) {
+    if (!outline || !parsed) return blocks;
+    const ids = [];
+    for (const block of blocks || []) {
+      for (const id of block.type === "heading" ? sectionIds2(parsed, block.id) : [block.id]) if (!ids.includes(id)) ids.push(id);
+    }
+    return selectBlocks(parsed, ids);
+  }
+  let pageChips2 = null;
+  const chipsOn = () => pageChips2 || (pageChips2 = createPageChips({
+    doc,
+    host: readerEl || null,
+    getParsed: () => parsed,
+    pageEl: (n2) => pageEl?.(n2) || null,
+    pageOf: (n2) => pageInfo(n2),
+    isLatexReady: () => helperState === "ready",
+    run: (act, item) => {
+      runChipAction({ act, ...item }, {
+        session,
+        payload: (ids) => payload(ids.map((id) => parsed?.blocks?.[id]).filter(Boolean)),
+        copy: (ids) => {
+          if (parsed) void writeClipboard2(copyText(parsed, ids, { shift: false }).text);
+        },
+        latex: (block) => {
+          if (block?.latex) void writeClipboard2(`$$${block.latex}$$`);
+          else onToast?.("Run Docling on this page to read the formula as LaTeX");
+        }
+      });
+    }
+  }));
   function idsOf(blocks) {
     return (blocks || shown()).map((block) => block.id);
   }
   function payload(blocks) {
-    const list = blocks || shown().filter((block) => selected.includes(block.id));
+    const list = expand(blocks || shown().filter((block) => selected.includes(block.id)));
     return dragPayload({
       sha256: parsed?.sha256 || "",
       engine: parsed?.engine || "builtin",
@@ -34369,6 +36186,13 @@ function createParseView({
     }
     return node2;
   }
+  function renderOutlineRow(block, main) {
+    const label = el(block.type === "heading" ? "div" : "div", `pxd-parse__olabel pxd-parse__olabel--${block.type}`, main);
+    label.textContent = outlineLabel(block);
+    if (block.type === "heading") label.style.paddingLeft = `${Math.max(0, (Math.min(6, block.level || 1) - 1) * 12)}px`;
+    const page = el("span", "pxd-parse__opage", main);
+    page.textContent = block.page ? `p. ${block.page}` : "";
+  }
   function renderBlock(block, parent) {
     const row4 = el("article", "pxd-parse__block", parent);
     row4.tabIndex = 0;
@@ -34389,7 +36213,10 @@ function createParseView({
     check.checked = selected.includes(block.id);
     check.setAttribute("aria-label", "Select");
     const main = el("div", "pxd-parse__main", row4);
-    if (block.type === "heading") {
+    if (outline && !String(query || "").trim()) {
+      row4.classList.add("pxd-parse__orow");
+      renderOutlineRow(block, main);
+    } else if (block.type === "heading") {
       const level = Math.min(6, Math.max(1, block.level || 1));
       const heading = el(`h${level}`, "pxd-parse__h", main);
       heading.textContent = block.text || "";
@@ -34445,14 +36272,42 @@ function createParseView({
     listenBlock(handle, "pointerdown", (event) => beginPointerDrag(event, [block]));
     return row4;
   }
+  function needOcr() {
+    const pages = parsed ? scanPagesOf(parsed) : [];
+    if (typeof onNeedOcr === "function") {
+      try {
+        onNeedOcr({ pages: pages.length ? pages : scanPageNumbers(parsed), readScan: readScanNow, helperState });
+      } catch {
+      }
+      return;
+    }
+    void (async () => {
+      await refreshHelper();
+      if (helperState === "ready") await readScanNow();
+      else {
+        try {
+          onToast?.("Scanned page: start the local helper to read its text (Settings → Parse)");
+        } catch {
+        }
+      }
+    })();
+  }
   function render() {
     if (dead) return;
     clearBlockListeners();
     const blocks = shown();
     body.replaceChildren?.();
     if (parsed) {
+      chipsOn();
       try {
         onTitle?.(parsedDocTitle(parsed));
+      } catch {
+      }
+    }
+    if (parsed && typeof onScan === "function") {
+      const scanned = scanPagesOf(parsed);
+      try {
+        onScan({ pages: scanned.length ? scanned : scanPageNumbers(parsed), readScan: readScanNow, helperState, partial: phase === "running", sha256: parsed.sha256 || "" });
       } catch {
       }
     }
@@ -34470,8 +36325,17 @@ function createParseView({
       const note = el("div", "pxd-parse__empty", body);
       const scan = scanSpan(parsed);
       const filtered = Boolean(query) || Object.values(filters).some((on) => !on);
-      if (scan && !filtered) note.textContent = scan;
-      else if (!filtered && (helperState === "not-running" || helperState === "disabled")) note.textContent = `Helper not running · Start: ${HELPER_START}`;
+      if (scan && !filtered) {
+        el("span", "pxd-parse__scantext", note).textContent = scan;
+        const read2 = el("button", "pxd-parse__readtext", note);
+        read2.type = "button";
+        read2.textContent = "Read text";
+        read2.setAttribute("data-tip", "parse.read-text");
+        listenBlock(read2, "click", (event) => {
+          event.stopPropagation?.();
+          needOcr();
+        });
+      } else if (!filtered && (helperState === "not-running" || helperState === "disabled")) note.textContent = "Local helper is off · open Engines (the gear) to start it";
       else note.textContent = "Nothing matches";
     }
     let page = null;
@@ -34554,8 +36418,9 @@ function createParseView({
     }
   }
   async function copySelection(shift) {
-    const ids = selected.length ? selected : focusId ? [focusId] : [];
-    if (!ids.length || !parsed) return;
+    const picked = selected.length ? selected : focusId ? [focusId] : [];
+    if (!picked.length || !parsed) return;
+    const ids = expand(selectBlocks(parsed, picked)).map((block) => block.id);
     const result = copyText(parsed, ids, { shift });
     await writeClipboard2(result.text);
   }
@@ -34572,7 +36437,7 @@ function createParseView({
   }
   function insertSelection() {
     const blocks = shown().filter((block) => selected.includes(block.id));
-    const kind = kindOf(blocks.length ? blocks : shown().filter((block) => block.id === focusId));
+    const kind = kindOf(expand(blocks.length ? blocks : shown().filter((block) => block.id === focusId)));
     if ((kind === "figure" || kind === "formula") && callSession("insertParsedCard")) return true;
     return callSession("insertParsedBelow");
   }
@@ -34592,55 +36457,92 @@ function createParseView({
     }
     event.stopPropagation?.();
   }
+  function ghostSource(blocks) {
+    const list = expand(blocks);
+    if (list.length === 1 && list[0].type === "table") {
+      const rows = tableGrid(list[0]).slice(0, 3).map((row4) => row4.filter((slot2) => !slot2.covered).map((slot2) => slot2.cell?.text ?? ""));
+      return { kind: "table", rows, page: list[0].page };
+    }
+    const text3 = list.map((block) => block.type === "list" ? (block.items || []).map((item) => item.text).join(" ") : block.text || block.latex || "").join(" ");
+    const kind = list.length === 1 && list[0].type === "figure" ? "figure" : "blocks";
+    return { kind, text: text3, page: list[0]?.page };
+  }
   function beginPointerDrag(event, blocks) {
     if (event.button != null && event.button !== 0) return;
     const startX = Number(event.clientX) || 0;
     const startY = Number(event.clientY) || 0;
+    const rowEl = event.target?.closest?.(".pxd-parse__block") || null;
     let moved = false;
+    let ghost = null;
     const win = doc.defaultView || doc;
-    const move2 = (ev) => {
-      if (Math.abs((Number(ev.clientX) || 0) - startX) + Math.abs((Number(ev.clientY) || 0) - startY) > 4) moved = true;
+    const drop = (x, y, at) => {
+      const json = JSON.stringify(payload(blocks));
+      if (!doc.elementFromPoint) return;
+      dispatchDrop({ doc, root: ghostRoot, pointer: { x, y }, at, entries: [[PARSE_MIME2, json], ["text/plain", json]] });
     };
-    const up = (ev) => {
+    const finish = () => {
       win?.removeEventListener?.("pointermove", move2, true);
       win?.removeEventListener?.("pointerup", up, true);
-      const moveIdx = armed.findIndex((entry) => entry[2] === move2);
-      if (moveIdx >= 0) armed.splice(moveIdx, 1);
-      const upIdx = armed.findIndex((entry) => entry[2] === up);
-      if (upIdx >= 0) armed.splice(upIdx, 1);
+      win?.removeEventListener?.("keydown", key, true);
+      win?.removeEventListener?.("dragstart", native, true);
+      win?.removeEventListener?.("pointercancel", cancelled, true);
+      for (const fn of [move2, up, key, native, cancelled]) {
+        const idx = armed.findIndex((entry) => entry[2] === fn);
+        if (idx >= 0) armed.splice(idx, 1);
+      }
+    };
+    const move2 = (ev) => {
+      const x = Number(ev.clientX) || 0;
+      const y = Number(ev.clientY) || 0;
+      if (!moved && Math.abs(x - startX) + Math.abs(y - startY) > 4) {
+        moved = true;
+        if (ghostRoot) {
+          let from = null;
+          try {
+            from = rowEl?.getBoundingClientRect?.() || null;
+          } catch {
+            from = null;
+          }
+          ghost = createDragGhost({ doc, root: ghostRoot, pane: ghostPane, from, pointer: { x: startX, y: startY }, content: ghostSource(blocks) });
+        }
+      }
+      ghost?.move(x, y);
+    };
+    const native = (ev) => {
+      if (ghost) {
+        ev.preventDefault?.();
+        return;
+      }
+      finish();
+    };
+    const cancelled = () => {
+      finish();
+      ghost?.cancel();
+      ghost = null;
+    };
+    const key = (ev) => {
+      if (ev.key !== "Escape") return;
+      ev.stopPropagation?.();
+      finish();
+      ghost?.cancel();
+      ghost = null;
+    };
+    const up = (ev) => {
+      finish();
       if (!moved) return;
       const x = Number(ev.clientX) || 0;
       const y = Number(ev.clientY) || 0;
-      const hit = doc.elementFromPoint?.(x, y) || doc.body;
-      const json = JSON.stringify(payload(blocks));
-      const transfer = {
-        types: [PARSE_MIME2, "text/plain"],
-        getData: (type) => type === PARSE_MIME2 || type === "text/plain" ? json : "",
-        setData() {
-        }
-      };
-      const plain = { type: "drop", bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer, preventDefault() {
-      }, stopPropagation() {
-      } };
-      let dropped = plain;
-      try {
-        if (typeof Event === "function" && hit && !hit.listeners) {
-          const evn = new Event("drop", { bubbles: true, cancelable: true });
-          Object.defineProperty(evn, "clientX", { value: x });
-          Object.defineProperty(evn, "clientY", { value: y });
-          Object.defineProperty(evn, "dataTransfer", { value: transfer });
-          dropped = evn;
-        }
-      } catch {
-        dropped = plain;
-      }
-      try {
-        hit?.dispatchEvent?.(dropped);
-      } catch {
-      }
+      ghost?.move(x, y);
+      const at = ghost && ghost.zone() === "board" ? ghost.dropPoint() : { x, y };
+      drop(x, y, at);
+      ghost?.land();
+      ghost = null;
     };
     listen(win, "pointermove", move2, true);
     listen(win, "pointerup", up, true);
+    listen(win, "keydown", key, true);
+    listen(win, "dragstart", native, true);
+    listen(win, "pointercancel", cancelled, true);
   }
   function wordsFor(table) {
     const rec = records.find((row4) => row4.n === table.page);
@@ -34792,6 +36694,46 @@ function createParseView({
     render();
     onProgress?.({ page: progress.pageCount, pageCount: progress.pageCount, fraction: 1 });
   }
+  async function readAlternative() {
+    if (dead || phase === "running") return;
+    const previous = parsed;
+    phase = "running";
+    progress = { page: 0, pageCount: progress.pageCount || 0, engine: "anydoc" };
+    paintChip();
+    const t0 = now3();
+    try {
+      const pdf = typeof getPdf === "function" ? await getPdf() : null;
+      if (dead) return;
+      const raw = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+      const bytes = raw ? new Uint8Array(raw) : null;
+      if (!bytes) {
+        phase = "idle";
+        parsed = previous;
+        progress = { page: 0, pageCount: 0, engine: previous?.engine || "builtin" };
+        paintChip();
+        onToast?.("Could not convert this file");
+        return;
+      }
+      const converted = await anydocHost.convert(bytes, "pdf");
+      if (dead) return;
+      const sha = await sha256Hex(bytes);
+      const docResult = markdownToParse(converted.markdown, {
+        format: "pdf",
+        engine: "anydoc",
+        sha256: sha,
+        createdAt: new Date(now3()).toISOString()
+      });
+      await finishDoc(docResult, typeof converted.ms === "number" ? converted.ms : now3() - t0);
+    } catch (err) {
+      if (dead) return;
+      phase = "idle";
+      parsed = previous;
+      progress = { page: 0, pageCount: 0, engine: previous?.engine || "builtin" };
+      paintChip();
+      if (err?.code === "needsOcr") onToast?.("This scan needs OCR. The built-in parse stays.");
+      else onToast?.("Could not convert this file");
+    }
+  }
   async function parseBuiltin(explicit) {
     cancel();
     const ctrl = new AbortController();
@@ -34905,6 +36847,13 @@ function createParseView({
       });
       if (ctrl.signal.aborted) return;
       if (result?.records) records = result.records;
+      const read2 = (result?.records || []).filter((rec) => rec?.ocr && (result.pages || pages).includes(rec.n));
+      if (read2.length) {
+        try {
+          onOcrPages?.(read2, parsed.sha256);
+        } catch {
+        }
+      }
       await finishDoc(result.doc, (parsed.stats?.ms || 0) + (now3() - t0));
     } catch (error) {
       if (error?.name !== "AbortError") {
@@ -34917,6 +36866,33 @@ function createParseView({
       paintChip();
     }
     paintScan();
+  }
+  async function applyOcr(ocrPages) {
+    if (dead || !parsed || phase === "running") return false;
+    const incoming = (Array.isArray(ocrPages) ? ocrPages : []).filter((p) => p && Number.isFinite(Number(p.n)));
+    const pages = scanPagesOf(parsed).filter((n2) => incoming.some((p) => Number(p.n) === n2));
+    if (!pages.length) return false;
+    const base = parsed;
+    try {
+      const pdf = typeof getPdf === "function" ? await getPdf() : null;
+      if (dead || parsed !== base) return false;
+      const [from, to] = base.stats?.range || [1, base.pageCount || 1];
+      const recs = records.length ? records : [];
+      if (!recs.length) {
+        for (let n2 = from; n2 <= to; n2 += 1) {
+          if (pages.includes(n2)) continue;
+          recs.push(await geometryOf(n2, pdf));
+          if (dead || parsed !== base) return false;
+        }
+      }
+      const t0 = now3();
+      const merged = mergeOcrPageRecords({ base, ocrPages: incoming, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
+      records = merged.records;
+      await finishDoc(merged.doc, (base.stats?.ms || 0) + (now3() - t0));
+      return true;
+    } catch {
+      return false;
+    }
   }
   async function parseDocling() {
     if (!helper || helperState !== "ready") {
@@ -35190,6 +37166,10 @@ function createParseView({
       if (helperState === "ready") await parseDocling();
     })();
   });
+  listen(altBtn, "click", () => {
+    closeMenus();
+    void readAlternative();
+  });
   listen(rangeBtn, "click", () => {
     toggleMenu(rangePop);
   });
@@ -35253,10 +37233,10 @@ function createParseView({
     query = String(search.value || "");
     render();
   });
-  for (const [key, button] of Object.entries(filterBtns)) {
-    listen(button, "click", () => {
+  for (const [key, button2] of Object.entries(filterBtns)) {
+    listen(button2, "click", () => {
       filters[key] = !filters[key];
-      button.setAttribute("aria-pressed", filters[key] ? "true" : "false");
+      button2.setAttribute("aria-pressed", filters[key] ? "true" : "false");
       render();
     });
   }
@@ -35294,18 +37274,22 @@ function createParseView({
     const hit = await store.findByUrl(currentUrl);
     if (!hit?.sha256) return null;
     const hash = await optionsHash(BUILTIN_OPTIONS);
-    const engines = ["builtin", "docling", "mixed"];
+    const engines = ["builtin", "docling", "mixed", "anydoc"];
     for (const engine of engines) {
       const found = await store.getParse(hit.sha256, engine, hash);
       if (found) {
         parsed = found;
+        if (scanPagesOf(found).length) {
+          const read2 = await store.getParse(hit.sha256, engine, await optionsHash({ ...found.options || BUILTIN_OPTIONS, ocr: "vision" }));
+          if (read2) parsed = read2;
+        }
         rememberParsedUrl(storage, currentUrl);
         try {
           onCached?.(currentUrl);
         } catch {
         }
         render();
-        return found;
+        return parsed;
       }
     }
     return null;
@@ -35320,13 +37304,14 @@ function createParseView({
     }
     paintChip();
   }
-  armKeys();
+  if (!lazyKeys) armKeys();
   render();
   void refreshHelper();
   return {
     element: () => root,
     refreshHelper,
     readScan: readScanNow,
+    applyOcr,
     setTarget(next) {
       currentUrl = next?.url || "";
       currentUid2 = next?.pdfUid || "";
@@ -35354,6 +37339,8 @@ function createParseView({
     chipText: () => chip.textContent,
     selectedIds: () => selected.slice(),
     blockCount: () => shown().length,
+    isBusy: () => phase === "running",
+    armKeys,
     refreshHelper,
     watchPageInput(input) {
       if (!input) return;
@@ -35384,6 +37371,7 @@ function createParseView({
       }
       cropWaiting.clear();
       overlay.dispose();
+      pageChips2?.dispose();
       clearBlockListeners();
       for (const [node2, type, fn, capture] of armed) {
         if (type === "observer") {
@@ -35409,7 +37397,11 @@ function createParseView({
   };
 }
 
+// src/view/read-pane.js
+init_parse_hash();
+
 // src/host/parse-helper-client.js
+init_parse_hash();
 init_parse_schema();
 var HEALTH_TIMEOUT_MS = 1500;
 var HEALTH_CACHE_MS = 6e4;
@@ -35500,10 +37492,12 @@ async function readSSE(response, { onProgress, onPage }) {
   }
   if (buf.trim()) dispatch(buf);
 }
-function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
+var TOKEN_SETTING = "parse-helper-token";
+function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
   const fetchFn = fetchImpl;
   const clock = typeof now3 === "function" ? now3 : () => Date.now();
   let healthCache = null;
+  let probeCache = null;
   const config = () => {
     const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
     const token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
@@ -35514,10 +37508,10 @@ function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs =
     targetAddressSpace: "loopback",
     signal: signal ?? init?.signal
   });
-  async function health() {
+  async function health({ force = false } = {}) {
     const { url, token } = config();
     const at = clock();
-    if (healthCache && healthCache.url === url && healthCache.token === token && at - healthCache.at < HEALTH_CACHE_MS) {
+    if (!force && healthCache && healthCache.url === url && healthCache.token === token && at - healthCache.at < HEALTH_CACHE_MS) {
       return healthCache.value;
     }
     if (!token) {
@@ -35551,10 +37545,10 @@ function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs =
         if (body?.helper !== HELPER_NAME || major == null) value = { state: "not-running" };
         else if (major >= 2) value = { state: "newer-schema", schema: body.schema };
         else {
-          const models = body.models || {};
+          const models2 = body.models || {};
           const needed = ["layout", "tableformer", "ocr"];
-          const missing2 = needed.some((name) => models[name] !== "ready");
-          value = missing2 ? { state: "models-missing", schema: body.schema, models, version: body.version } : { state: "ready", schema: body.schema, models, version: body.version, busy: body.busy ?? 0 };
+          const missing2 = needed.some((name) => models2[name] !== "ready");
+          value = missing2 ? { state: "models-missing", schema: body.schema, models: models2, version: body.version } : { state: "ready", schema: body.schema, models: models2, version: body.version, busy: body.busy ?? 0 };
         }
       }
       healthCache = { url, token, at, value };
@@ -35565,6 +37559,111 @@ function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs =
       return value;
     } finally {
       timer.clear();
+    }
+  }
+  function invalidate() {
+    healthCache = null;
+    probeCache = null;
+  }
+  async function probe({ force = false } = {}) {
+    const { url } = config();
+    const at = clock();
+    if (!force && probeCache && probeCache.url === url && at - probeCache.at < HEALTH_CACHE_MS) return probeCache.value;
+    let value = { state: "not-installed" };
+    if (typeof fetchFn === "function") {
+      const timer = withTimeout(timeoutMs);
+      try {
+        const res = await call(`${url}/v1/health`, { method: "GET" }, timer.signal);
+        let body = null;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
+        }
+        if (res.status === 401 && body?.helper === HELPER_NAME) value = { state: "not-paired" };
+      } catch {
+      } finally {
+        timer.clear();
+      }
+    }
+    probeCache = { url, at, value };
+    return value;
+  }
+  async function models() {
+    const { url, token } = config();
+    if (!token || typeof fetchFn !== "function") return null;
+    const timer = withTimeout(timeoutMs);
+    try {
+      const res = await call(`${url}/v1/models`, { method: "GET", headers: { Authorization: `Bearer ${token}` } }, timer.signal);
+      if (res.status < 200 || res.status >= 300) return null;
+      return await res.json();
+    } catch {
+      return null;
+    } finally {
+      timer.clear();
+    }
+  }
+  async function status({ force = false } = {}) {
+    const { token } = config();
+    if (!token) return { ...await probe({ force }), paired: false };
+    const h = await health({ force });
+    if (h.state === "models-missing") {
+      const report = await models();
+      const bytes = Number(report?.bytes) || 0;
+      const done = Number(report?.done) || 0;
+      const fraction = Number.isFinite(report?.fraction) ? report.fraction : bytes ? done / bytes : 0;
+      if (report?.state === "downloading") {
+        return { ...h, state: "downloading", paired: true, progress: { bytes, done, fraction } };
+      }
+      return { ...h, paired: true, progress: { bytes, done, fraction } };
+    }
+    return { ...h, paired: true };
+  }
+  async function pair2({ signal } = {}) {
+    const { url } = config();
+    if (typeof fetchFn !== "function") return { ok: false, reason: "not-running" };
+    if (typeof setSetting !== "function") return { ok: false, reason: "no-settings" };
+    const timer = withTimeout(timeoutMs, signal);
+    try {
+      const res = await call(`${url}/v1/pair`, { method: "GET" }, timer.signal);
+      if (res.status === 404) return { ok: false, reason: "window-closed" };
+      if (res.status < 200 || res.status >= 300) return { ok: false, reason: "error", status: res.status };
+      let body = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+      if (body?.helper !== HELPER_NAME || typeof body.token !== "string" || !body.token) return { ok: false, reason: "error" };
+      await setSetting(TOKEN_SETTING, body.token);
+      invalidate();
+      return { ok: true, version: body.version };
+    } catch {
+      return { ok: false, reason: "not-running" };
+    } finally {
+      timer.clear();
+    }
+  }
+  async function downloadModels() {
+    const { url, token } = config();
+    if (!token || typeof fetchFn !== "function") return false;
+    try {
+      const res = await call(`${url}/v1/models/download`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      invalidate();
+      return res.status === 202 || res.status === 200;
+    } catch {
+      return false;
+    }
+  }
+  async function cancelModels() {
+    const { url, token } = config();
+    if (!token || typeof fetchFn !== "function") return false;
+    try {
+      const res = await call(`${url}/v1/models/download`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      invalidate();
+      return res.status === 200;
+    } catch {
+      return false;
     }
   }
   async function readJob(base, token, jobId, { onProgress, onPage, signal }) {
@@ -35676,7 +37775,881 @@ function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs =
     }
     return { ...body, sha256: sha };
   }
-  return { health, parse, cancel, reparseTable, ocr };
+  return { health, status, pair: pair2, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr };
+}
+
+// src/view/read-pane.js
+init_relchips();
+init_avoid();
+
+// src/view/engines-panel.js
+var INSTALL_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh";
+var RESTART_COMMAND = "plexus-parse-helper install-agent";
+var MANUAL_COMMAND = 'uv tool install "git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper" && plexus-parse-helper serve';
+var HELPER_MB_FALLBACK = 500;
+var DEFAULT_POLL_MS = 3e3;
+var mbText = (bytes) => `${Math.max(1, Math.round(bytes / (1024 * 1024)))} MB`;
+var pct = (fraction) => `${Math.round(Math.max(0, Math.min(1, Number(fraction) || 0)) * 100)}%`;
+async function loadEngineState({ client, device, force = true } = {}) {
+  const [helper, dev] = await Promise.all([
+    client ? client.status({ force }).catch(() => ({ state: "not-installed", paired: false })) : { state: "not-installed", paired: false },
+    (async () => device?.status ? device.status() : { state: "unavailable" })().catch(() => ({ state: "unavailable" }))
+  ]);
+  return { device: dev || { state: "unavailable" }, helper: helper || { state: "not-installed", paired: false } };
+}
+var button = (id, label, tip) => ({ id, label, tip });
+function deviceOcrRow(device) {
+  const row4 = { id: "device-ocr", name: "In-browser reading", tip: "engines.ocr" };
+  switch (device?.state) {
+    case "ready":
+      return { ...row4, dot: "ok", text: "Ready", button: null };
+    case "not-downloaded": {
+      const mb = Number(device.mb) > 0 ? Math.round(device.mb) : 30;
+      return { ...row4, dot: "off", text: `Not downloaded (${mb} MB, once)`, button: button("download-device", "Download", "engines.download-device") };
+    }
+    case "downloading":
+      return {
+        ...row4,
+        dot: "busy",
+        text: `Downloading · ${pct(device.progress)}`,
+        progress: Math.max(0, Math.min(1, Number(device.progress) || 0)),
+        button: button("cancel-device", "Cancel", "engines.cancel")
+      };
+    default:
+      return { ...row4, dot: "off", text: "Not available in this build", button: null, disabled: true };
+  }
+}
+function helperRow(helper) {
+  const row4 = { id: "helper", name: "Local helper", tip: "engines.helper" };
+  switch (helper?.state) {
+    case "ready":
+      return { ...row4, dot: "ok", text: helper.version ? `Ready · v${helper.version}` : "Ready", button: null };
+    case "not-paired":
+      return { ...row4, dot: "warn", text: "Running, not paired", button: button("pair", "Pair", "engines.pair") };
+    case "wrong-token":
+      return { ...row4, dot: "warn", text: "Token does not match", button: button("pair", "Pair again", "engines.pair") };
+    case "not-running":
+      return { ...row4, dot: "warn", text: "Not running", button: button("start", "Start", "engines.start") };
+    case "models-missing": {
+      const bytes = Number(helper.progress?.bytes) || 0;
+      const size = bytes ? mbText(bytes) : `${HELPER_MB_FALLBACK} MB`;
+      return { ...row4, dot: "warn", text: `Models not downloaded (${size})`, button: button("download", "Download", "engines.download") };
+    }
+    case "downloading": {
+      const fraction = Math.max(0, Math.min(1, Number(helper.progress?.fraction) || 0));
+      return {
+        ...row4,
+        dot: "busy",
+        text: `Downloading models · ${pct(fraction)}`,
+        progress: fraction,
+        button: button("cancel", "Cancel", "engines.cancel")
+      };
+    }
+    case "newer-schema":
+      return { ...row4, dot: "warn", text: "Newer than this Plexus", button: button("update", "Update Plexus", "engines.update") };
+    default:
+      return { ...row4, dot: "off", text: "Not installed", button: button("setup", "Set up", "engines.setup") };
+  }
+}
+function engineRows(state, { platform = "mac" } = {}) {
+  void platform;
+  return [
+    { id: "device", name: "On this device", dot: "ok", text: "Built-in parser · ready", button: null, tip: "engines.builtin" },
+    deviceOcrRow(state?.device),
+    helperRow(state?.helper),
+    { id: "cloud", name: "Cloud", dot: "off", text: "Coming soon", button: null, disabled: true, tip: "engines.cloud" }
+  ];
+}
+function helperSheet(helperState, platform = "mac") {
+  if (platform !== "mac") {
+    return {
+      title: "Set up the local helper",
+      command: MANUAL_COMMAND,
+      note: "The installer is for macOS. On another system run this in a terminal; it needs uv. Then click Pair.",
+      copyLabel: "Copy command"
+    };
+  }
+  if (helperState === "not-running") {
+    return {
+      title: "Start the local helper",
+      command: RESTART_COMMAND,
+      note: "Paste this in Terminal. It restarts the helper and keeps it starting at login. Then come back here.",
+      copyLabel: "Copy command"
+    };
+  }
+  return {
+    title: "Set up the local helper",
+    command: INSTALL_COMMAND,
+    note: 'Paste this in Terminal. It installs the helper and starts it. When it says "Back to Roam: click Pair", click Pair here.',
+    copyLabel: "Copy command"
+  };
+}
+var DOT_LABEL = { ok: "ready", warn: "needs attention", busy: "working", off: "off" };
+function renderEnginesPanel(doc, parent, deps = {}) {
+  const { client, device, setSetting, copy, toast, onUpdate } = deps;
+  const platform = deps.platform || "mac";
+  const pollMs = deps.pollMs > 0 ? deps.pollMs : DEFAULT_POLL_MS;
+  const setIv = deps.setInterval || ((fn, ms) => globalThis.setInterval(fn, ms));
+  const clearIv = deps.clearInterval || ((id) => globalThis.clearInterval(id));
+  const el = doc.createElement("div");
+  el.className = "pxd-engines pxd-chrome";
+  el.setAttribute("role", "region");
+  el.setAttribute("aria-label", "Engines");
+  const stop2 = (event) => event.stopPropagation?.();
+  const heldStatic = [];
+  const heldRows = [];
+  const heldSheet = [];
+  const bindTo = (store) => (node2, type, fn) => {
+    node2.addEventListener(type, fn);
+    store.push([node2, type, fn]);
+  };
+  const release = (store) => {
+    for (const [node2, type, fn] of store.splice(0)) node2.removeEventListener?.(type, fn);
+  };
+  for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTo(heldStatic)(el, type, stop2);
+  const title = doc.createElement("div");
+  title.className = "pxd-engines__title";
+  title.textContent = "Engines";
+  const list = doc.createElement("div");
+  list.className = "pxd-engines__rows";
+  const sheetHost = doc.createElement("div");
+  sheetHost.className = "pxd-engines__sheet-host";
+  el.append(title, list, sheetHost);
+  let state = null;
+  let sheetOpen = false;
+  let signature = "";
+  let timer = null;
+  let visible2 = true;
+  let busy = false;
+  let disposed = false;
+  const say = (text3) => {
+    try {
+      toast?.(text3);
+    } catch {
+    }
+  };
+  function paintRows() {
+    const rows = engineRows(state, { platform });
+    const sig = JSON.stringify(rows);
+    if (sig === signature) return;
+    signature = sig;
+    release(heldRows);
+    list.innerHTML = "";
+    for (const row4 of rows) {
+      const node2 = doc.createElement("div");
+      node2.className = `pxd-engines__row${row4.disabled ? " pxd-engines__row--disabled" : ""}`;
+      node2.setAttribute("data-row", row4.id);
+      node2.setAttribute("data-dot", row4.dot);
+      const dot = doc.createElement("span");
+      dot.className = `pxd-engines__dot pxd-engines__dot--${row4.dot}`;
+      dot.setAttribute("role", "img");
+      dot.setAttribute("aria-label", DOT_LABEL[row4.dot] || row4.dot);
+      const name = doc.createElement("span");
+      name.className = "pxd-engines__name";
+      name.setAttribute("data-tip", row4.tip);
+      name.textContent = row4.name;
+      const text3 = doc.createElement("span");
+      text3.className = "pxd-engines__text";
+      text3.textContent = row4.text;
+      node2.append(dot, name, text3);
+      if (row4.progress != null) {
+        const bar = doc.createElement("span");
+        bar.className = "pxd-engines__bar";
+        bar.setAttribute("role", "progressbar");
+        bar.setAttribute("aria-valuemin", "0");
+        bar.setAttribute("aria-valuemax", "100");
+        bar.setAttribute("aria-valuenow", String(Math.round(row4.progress * 100)));
+        const fill = doc.createElement("span");
+        fill.className = "pxd-engines__fill";
+        fill.style.width = pct(row4.progress);
+        bar.append(fill);
+        node2.append(bar);
+      }
+      if (row4.button) {
+        const b = doc.createElement("button");
+        b.type = "button";
+        b.setAttribute("type", "button");
+        b.className = "pxd-engines__btn";
+        b.setAttribute("data-action", row4.button.id);
+        b.setAttribute("data-tip", row4.button.tip);
+        b.textContent = row4.button.label;
+        bindTo(heldRows)(b, "click", (event) => {
+          event.stopPropagation?.();
+          void act(row4.button.id);
+        });
+        node2.append(b);
+      }
+      list.append(node2);
+    }
+    paintSheet();
+  }
+  function paintSheet() {
+    release(heldSheet);
+    sheetHost.innerHTML = "";
+    if (!sheetOpen) return;
+    const sheet = helperSheet(state?.helper?.state, platform);
+    const box2 = doc.createElement("div");
+    box2.className = "pxd-engines__sheet";
+    const head = doc.createElement("div");
+    head.className = "pxd-engines__sheet-title";
+    head.textContent = sheet.title;
+    const code = doc.createElement("code");
+    code.className = "pxd-engines__command";
+    code.textContent = sheet.command;
+    const note = doc.createElement("div");
+    note.className = "pxd-engines__note";
+    note.textContent = sheet.note;
+    const copyBtn = doc.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.setAttribute("type", "button");
+    copyBtn.className = "pxd-engines__btn";
+    copyBtn.setAttribute("data-action", "copy");
+    copyBtn.setAttribute("data-tip", "engines.copy");
+    copyBtn.textContent = sheet.copyLabel;
+    bindTo(heldSheet)(copyBtn, "click", (event) => {
+      event.stopPropagation?.();
+      if (event.isTrusted === false) return;
+      Promise.resolve(copy?.(sheet.command)).then(() => say("Command copied")).catch(() => say("Could not copy. Select the command and copy it."));
+    });
+    box2.append(head, code, note, copyBtn);
+    if (state?.helper?.state !== "ready") {
+      const pairBtn = doc.createElement("button");
+      pairBtn.type = "button";
+      pairBtn.setAttribute("type", "button");
+      pairBtn.className = "pxd-engines__btn pxd-engines__btn--primary";
+      pairBtn.setAttribute("data-action", "pair");
+      pairBtn.setAttribute("data-tip", "engines.pair");
+      pairBtn.textContent = "Pair";
+      bindTo(heldSheet)(pairBtn, "click", (event) => {
+        event.stopPropagation?.();
+        void act("pair");
+      });
+      box2.append(pairBtn);
+    }
+    sheetHost.append(box2);
+  }
+  const advanced = doc.createElement("details");
+  advanced.className = "pxd-engines__advanced";
+  const summary = doc.createElement("summary");
+  summary.textContent = "Advanced";
+  const tokenInput = doc.createElement("input");
+  tokenInput.type = "password";
+  tokenInput.setAttribute("type", "password");
+  tokenInput.className = "pxd-engines__token";
+  tokenInput.setAttribute("autocomplete", "off");
+  tokenInput.setAttribute("aria-label", "Helper token");
+  tokenInput.setAttribute("placeholder", "Token");
+  const tokenSave = doc.createElement("button");
+  tokenSave.type = "button";
+  tokenSave.setAttribute("type", "button");
+  tokenSave.className = "pxd-engines__btn";
+  tokenSave.setAttribute("data-action", "save-token");
+  tokenSave.setAttribute("data-tip", "engines.token-save");
+  tokenSave.textContent = "Save token";
+  bindTo(heldStatic)(tokenSave, "click", (event) => {
+    event.stopPropagation?.();
+    void act("save-token");
+  });
+  advanced.append(summary, tokenInput, tokenSave);
+  el.append(advanced);
+  async function act(id) {
+    if (disposed) return;
+    if (id === "setup" || id === "start") {
+      sheetOpen = !sheetOpen;
+      paintSheet();
+      return;
+    }
+    if (id === "pair") {
+      const result = await client?.pair?.();
+      if (result?.ok) say("Helper paired");
+      else if (result?.reason === "window-closed") say("Pairing window closed. Run plexus-parse-helper pair, then click Pair.");
+      else if (result?.reason === "not-running") say("The helper is not running.");
+      else say("Could not pair.");
+    } else if (id === "download") {
+      await client?.downloadModels?.();
+    } else if (id === "cancel") {
+      await client?.cancelModels?.();
+    } else if (id === "download-device") {
+      await device?.download?.();
+    } else if (id === "cancel-device") {
+      await device?.cancel?.();
+    } else if (id === "update") {
+      onUpdate?.();
+    } else if (id === "save-token") {
+      const value = String(tokenInput.value || "").trim();
+      if (!value || typeof setSetting !== "function") return;
+      await setSetting("parse-helper-token", value);
+      tokenInput.value = "";
+      client?.invalidate?.();
+      say("Token saved");
+    }
+    await refresh();
+  }
+  async function refresh() {
+    if (disposed || busy) return state;
+    busy = true;
+    try {
+      const next = await loadEngineState({ client, device, force: true });
+      if (disposed) return state;
+      state = next;
+      if (sheetOpen && state.helper.state === "ready") sheetOpen = false;
+      paintRows();
+      return state;
+    } finally {
+      busy = false;
+    }
+  }
+  function stopTimer() {
+    if (timer != null) clearIv(timer);
+    timer = null;
+  }
+  function startTimer() {
+    if (timer == null && visible2 && !disposed) timer = setIv(() => {
+      void refresh();
+    }, pollMs);
+  }
+  function setVisible(value) {
+    visible2 = Boolean(value);
+    if (visible2) {
+      el.removeAttribute("hidden");
+      startTimer();
+      void refresh();
+    } else {
+      el.setAttribute("hidden", "");
+      stopTimer();
+    }
+  }
+  function showSheet() {
+    sheetOpen = true;
+    paintSheet();
+  }
+  function dispose() {
+    disposed = true;
+    stopTimer();
+    release(heldRows);
+    release(heldSheet);
+    release(heldStatic);
+    el.remove?.();
+  }
+  parent.append(el);
+  startTimer();
+  void refresh();
+  return { el, refresh, setVisible, showSheet, dispose };
+}
+
+// src/view/parse-status.js
+var DEFAULT_MODEL_MB = 30;
+var DONE_VISIBLE_MS = 3e3;
+var BUTTON_LABEL = {
+  "read-text": "Read text",
+  "use-helper": "Use local helper",
+  "not-now": "Not now",
+  "start-helper": "Start helper",
+  "setup-helper": "Set up helper",
+  retry: "Retry",
+  cancel: "Cancel"
+};
+function secondsText(ms) {
+  const n2 = Number(ms);
+  if (!Number.isFinite(n2) || n2 < 0) return "";
+  return `${(Math.round(n2 / 100) / 10).toFixed(1)} s`;
+}
+function stripKind(input = {}) {
+  const ocr = input.ocr || {};
+  const helper = input.helper || {};
+  if (ocr.state === "failed") return "unreadable";
+  if (ocr.state === "running") return "reading";
+  if (ocr.state === "done" && ocr.source === "helper") return "helper-done";
+  if (!input.scanned || input.dismissed) return null;
+  if (helper.paired && helper.state === "not-running") return "helper-off";
+  return ocr.modelsCached ? "scan-cached" : "scan-first";
+}
+var btn = (id, primary = false) => ({ id, label: BUTTON_LABEL[id], primary });
+function stripModel(kind, input = {}) {
+  const ocr = input.ocr || {};
+  const mb = Number(ocr.modelMB) > 0 ? Math.round(Number(ocr.modelMB)) : DEFAULT_MODEL_MB;
+  switch (kind) {
+    case "reading":
+      return {
+        kind,
+        text: "Reading text on this page…",
+        tip: "parse.strip.cancel",
+        buttons: [btn("cancel")],
+        progress: Number.isFinite(ocr.progress) ? Math.max(0, Math.min(1, ocr.progress)) : null
+      };
+    case "scan-first":
+    case "scan-cached":
+      if (ocr.deviceAvailable === false) {
+        return input.helper?.state === "ready" ? { kind, text: "This page is an image. Read its text with the local helper.", tip: "parse.strip.use-helper", buttons: [btn("read-text", true), btn("not-now")] } : { kind, text: "This page is an image. Its text needs the local helper.", tip: "parse.strip.setup-helper", buttons: [btn("setup-helper", true), btn("not-now")] };
+      }
+      return kind === "scan-cached" ? {
+        kind,
+        text: "This page is an image. Read its text on this device.",
+        tip: "parse.strip.read-text",
+        buttons: [btn("read-text", true), btn("not-now")]
+      } : {
+        kind,
+        text: `This page is an image. Read its text on this device (one-time ${mb} MB download).`,
+        tip: "parse.strip.read-text",
+        buttons: [btn("read-text", true), btn("use-helper"), btn("not-now")]
+      };
+    case "helper-done": {
+      const t = secondsText(ocr.ms);
+      return {
+        kind,
+        text: t ? `Read with local helper · ${t}` : "Read with local helper",
+        tip: "engines.helper",
+        buttons: [],
+        autoHideMs: DONE_VISIBLE_MS
+      };
+    }
+    case "helper-off":
+      if (ocr.deviceAvailable === false) {
+        return { kind, text: "Local helper is off. Start it to read this page.", tip: "parse.strip.start-helper", buttons: [btn("start-helper", true), btn("not-now")] };
+      }
+      return {
+        kind,
+        text: "Local helper is off. Reading on this device instead.",
+        tip: "parse.strip.start-helper",
+        buttons: ocr.modelsCached ? [btn("start-helper", true)] : [btn("read-text", true), btn("start-helper")]
+      };
+    case "unreadable":
+      return {
+        kind,
+        text: "Could not read this page. Try the local helper or a higher zoom.",
+        tip: "parse.strip.retry",
+        buttons: [btn("setup-helper", true), btn("retry")]
+      };
+    default:
+      return null;
+  }
+}
+var TIP_FOR_ACTION = {
+  "read-text": "parse.strip.read-text",
+  "use-helper": "parse.strip.use-helper",
+  "not-now": "parse.strip.not-now",
+  "start-helper": "parse.strip.start-helper",
+  "setup-helper": "parse.strip.setup-helper",
+  retry: "parse.strip.retry",
+  cancel: "parse.strip.cancel"
+};
+function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
+  const el = doc.createElement("div");
+  el.className = "pxd-parse-status pxd-chrome";
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  const stop2 = (event) => event.stopPropagation?.();
+  const heldStatic = [];
+  const heldButtons = [];
+  const release = (store) => {
+    for (const [node2, type, fn] of store.splice(0)) node2.removeEventListener?.(type, fn);
+  };
+  for (const type of ["pointerdown", "mousedown", "dblclick"]) {
+    el.addEventListener(type, stop2);
+    heldStatic.push([el, type, stop2]);
+  }
+  let current3 = null;
+  let hideTimer = null;
+  let disposed = false;
+  let generation = 0;
+  const clearTimer = () => {
+    if (typeof hideTimer === "function") hideTimer();
+    else if (hideTimer && typeof hideTimer.cancel === "function") hideTimer.cancel();
+    hideTimer = null;
+    generation += 1;
+  };
+  const paint2 = (model) => {
+    release(heldButtons);
+    el.innerHTML = "";
+    const text3 = doc.createElement("span");
+    text3.className = "pxd-parse-status__text";
+    text3.textContent = model.text;
+    el.append(text3);
+    if (model.progress != null) {
+      const bar = doc.createElement("span");
+      bar.className = "pxd-parse-status__bar";
+      bar.setAttribute("role", "progressbar");
+      bar.setAttribute("aria-valuemin", "0");
+      bar.setAttribute("aria-valuemax", "100");
+      bar.setAttribute("aria-valuenow", String(Math.round(model.progress * 100)));
+      const fill = doc.createElement("span");
+      fill.className = "pxd-parse-status__fill";
+      fill.style.width = `${Math.round(model.progress * 100)}%`;
+      bar.append(fill);
+      el.append(bar);
+    }
+    for (const b of model.buttons) {
+      const node2 = doc.createElement("button");
+      node2.type = "button";
+      node2.setAttribute("type", "button");
+      node2.className = `pxd-parse-status__btn${b.primary ? " pxd-parse-status__btn--primary" : ""}`;
+      node2.setAttribute("data-action", b.id);
+      node2.setAttribute("data-tip", TIP_FOR_ACTION[b.id]);
+      node2.textContent = b.label;
+      const onClick = (event) => {
+        event.stopPropagation?.();
+        onAction?.(b.id);
+      };
+      node2.addEventListener("click", onClick);
+      heldButtons.push([node2, "click", onClick]);
+      el.append(node2);
+    }
+  };
+  function update(next) {
+    if (disposed) return;
+    const kind = stripKind(next);
+    const model = kind ? stripModel(kind, next) : null;
+    if (!model) {
+      current3 = null;
+      clearTimer();
+      release(heldButtons);
+      el.innerHTML = "";
+      el.setAttribute("hidden", "");
+      el.setAttribute("data-kind", "");
+      return;
+    }
+    el.removeAttribute("hidden");
+    el.setAttribute("data-kind", model.kind);
+    const same2 = current3 && current3.kind === model.kind && current3.text === model.text && current3.progress === model.progress && current3.buttons.map((b) => b.id).join() === model.buttons.map((b) => b.id).join();
+    if (!same2) paint2(model);
+    if (model.autoHideMs && (!current3 || current3.kind !== model.kind)) {
+      clearTimer();
+      if (typeof later === "function") {
+        const mine = generation;
+        hideTimer = later(() => {
+          hideTimer = null;
+          if (!disposed && mine === generation && current3?.kind === "helper-done") {
+            current3 = null;
+            release(heldButtons);
+            el.innerHTML = "";
+            el.setAttribute("hidden", "");
+            el.setAttribute("data-kind", "");
+          }
+        }, model.autoHideMs);
+      }
+    } else if (!model.autoHideMs) {
+      clearTimer();
+    }
+    current3 = model;
+  }
+  function dispose() {
+    disposed = true;
+    clearTimer();
+    release(heldButtons);
+    release(heldStatic);
+    el.remove?.();
+  }
+  parent.append(el);
+  update(input);
+  return { el, update, kind: () => current3?.kind ?? null, dispose };
+}
+
+// src/view/text-layer.js
+var WORD_CLASS = "pxd-tl-word";
+var WORD_ATTR = "data-pxd-word";
+var MARK_ATTR = "data-pxd-tl";
+var NEAR_EMPTY_CHARS = 8;
+var FONT_PX = 100;
+var FALLBACK_EM = 0.52;
+var ASCENT = 0.8;
+var num5 = (value, fallback = 0) => {
+  const n2 = Number(value);
+  return Number.isFinite(n2) ? n2 : fallback;
+};
+function ocrWords(record) {
+  if (!record || typeof record !== "object" || record.textRotation) return [];
+  const out = [];
+  if (Array.isArray(record.boxes)) {
+    for (const box2 of record.boxes) {
+      if (!Array.isArray(box2)) continue;
+      const text3 = String(box2[0] ?? "").trim();
+      const w = num5(box2[3]);
+      const h = num5(box2[4]);
+      if (text3 && w > 0 && h > 0) out.push({ text: text3, x: num5(box2[1]), y: num5(box2[2]), w, h });
+    }
+    return out;
+  }
+  if (Array.isArray(record.items)) {
+    for (const item of record.items) {
+      const text3 = String(item?.str ?? "").trim();
+      if (!text3) continue;
+      const m = Array.isArray(item.transform) ? item.transform : [0, 0, 0, 0, 0, 0];
+      const height = num5(item.height, Math.hypot(num5(m[2]), num5(m[3])));
+      const y0 = Number.isFinite(Number(item.y0)) ? Number(item.y0) : num5(m[5]) - height;
+      const y1 = Number.isFinite(Number(item.y1)) ? Number(item.y1) : num5(m[5]);
+      const h = y1 - y0 > 0 ? y1 - y0 : height;
+      const w = num5(item.width);
+      if (!(h > 0) || !(w > 0)) continue;
+      out.push({ text: text3, x: num5(m[4]), y: y0, w, h });
+    }
+    return out;
+  }
+  const words = Array.isArray(record.words) ? record.words : Array.isArray(record.lines) ? record.lines.flatMap((line) => line?.words || []) : [];
+  for (const word of words) {
+    const text3 = String(word?.text ?? "").trim();
+    if (!text3 || word.rotated) continue;
+    const size = num5(word.size);
+    const w = num5(word.x1) - num5(word.x0);
+    if (!(size > 0) || !(w > 0)) continue;
+    out.push({ text: text3, x: num5(word.x0), y: num5(word.base) - size * ASCENT, w, h: size });
+  }
+  return out;
+}
+function orderWords(words) {
+  const list = (words || []).slice().sort((a, b) => a.y + a.h / 2 - (b.y + b.h / 2) || a.x - b.x);
+  const rows = [];
+  for (const word of list) {
+    const mid = word.y + word.h / 2;
+    const row4 = rows.length ? rows[rows.length - 1] : null;
+    if (row4 && Math.abs(mid - row4.mid) <= 0.5 * Math.max(row4.h, word.h)) {
+      row4.words.push(word);
+      row4.h = Math.max(row4.h, word.h);
+    } else rows.push({ mid, h: word.h, words: [word] });
+  }
+  const ordered = [];
+  const breaks = [];
+  for (const row4 of rows) {
+    row4.words.sort((a, b) => a.x - b.x);
+    row4.words.forEach((word, i) => {
+      ordered.push(word);
+      breaks.push(i === row4.words.length - 1);
+    });
+  }
+  return { words: ordered, breaks };
+}
+function needsTextLayer(layer, { minChars = NEAR_EMPTY_CHARS } = {}) {
+  if (!layer) return false;
+  let chars = 0;
+  for (const child of layer.children || []) {
+    if (child?.hasAttribute?.(WORD_ATTR)) continue;
+    chars += String(child?.textContent ?? "").trim().length;
+    if (chars >= minChars) return false;
+  }
+  return true;
+}
+function createMeasure(doc) {
+  let ctx = null;
+  try {
+    const canvas = doc?.createElement?.("canvas");
+    const got = canvas?.getContext?.("2d");
+    if (got && typeof got.measureText === "function") {
+      got.font = `${FONT_PX}px sans-serif`;
+      ctx = got;
+    }
+  } catch {
+    ctx = null;
+  }
+  const cache = /* @__PURE__ */ new Map();
+  return (text3) => {
+    const key = String(text3 ?? "");
+    const hit = cache.get(key);
+    if (hit != null) return hit;
+    let w = 0;
+    if (ctx) {
+      try {
+        w = Number(ctx.measureText(key)?.width) || 0;
+      } catch {
+        w = 0;
+      }
+    }
+    if (!(w > 0)) w = key.length * FALLBACK_EM * FONT_PX;
+    if (cache.size < 4e3) cache.set(key, w);
+    return w;
+  };
+}
+function wordStyle(word, scale, naturalAt100) {
+  const font = word.h * scale;
+  const natural = num5(naturalAt100) * font / FONT_PX;
+  const target = word.w * scale;
+  const sx = natural > 0 ? target / natural : 1;
+  return `left:${(word.x * scale).toFixed(2)}px;top:${(word.y * scale).toFixed(2)}px;font-size:${font.toFixed(2)}px;transform:scaleX(${sx.toFixed(4)})`;
+}
+var prepCache = /* @__PURE__ */ new WeakMap();
+function prepared(record) {
+  let hit = prepCache.get(record);
+  if (!hit) {
+    const ordered = orderWords(ocrWords(record));
+    hit = { w: num5(record?.w, 612) || 612, words: ordered.words, breaks: ordered.breaks };
+    prepCache.set(record, hit);
+  }
+  return hit;
+}
+function removeWords(layer) {
+  const nodes = layer?.querySelectorAll?.(`[${WORD_ATTR}]`) || [];
+  for (const node2 of [...nodes]) {
+    try {
+      node2.remove();
+    } catch {
+    }
+  }
+  try {
+    layer?.removeAttribute?.(MARK_ATTR);
+  } catch {
+  }
+}
+function mountWords(layer, record, { doc = layer?.ownerDocument || globalThis.document, widthPx = 0, measure = null, key = "", now: now3 = () => Date.now() } = {}) {
+  const t0 = now3();
+  if (!layer || !doc) return { count: 0, ms: 0 };
+  const prep = prepared(record);
+  removeWords(layer);
+  const scale = widthPx > 0 ? widthPx / prep.w : 1;
+  const width = measure || createMeasure(doc);
+  const frag = typeof doc.createDocumentFragment === "function" ? doc.createDocumentFragment() : null;
+  const sink = frag || layer;
+  const n2 = record?.n ?? "";
+  prep.words.forEach((word, i) => {
+    const span = doc.createElement("span");
+    span.className = WORD_CLASS;
+    span.setAttribute(WORD_ATTR, String(i));
+    span.setAttribute("role", "presentation");
+    span.style.cssText = wordStyle(word, scale, width(word.text));
+    span.textContent = `${word.text} `;
+    sink.append(span);
+    if (prep.breaks[i]) {
+      const br = doc.createElement("br");
+      br.setAttribute(WORD_ATTR, "br");
+      br.setAttribute("role", "presentation");
+      sink.append(br);
+    }
+  });
+  if (frag) layer.append(frag);
+  layer.setAttribute(MARK_ATTR, key || `${n2}:${Math.round(widthPx)}`);
+  return { count: prep.words.length, ms: now3() - t0 };
+}
+function compactPage(record) {
+  const r22 = (v) => Math.round(v * 100) / 100;
+  return {
+    n: Number(record?.n),
+    w: num5(record?.w, 612) || 612,
+    h: num5(record?.h, 792) || 792,
+    boxes: ocrWords(record).map((word) => [word.text, r22(word.x), r22(word.y), r22(word.w), r22(word.h)])
+  };
+}
+var pageNumberOf2 = (pageEl) => Number(pageEl?.getAttribute?.("data-page-number"));
+function pageRecords(input) {
+  if (!input) return [];
+  if (Array.isArray(input)) return input.filter((rec) => rec && Number.isFinite(Number(rec.n)));
+  if (Array.isArray(input.pages)) return pageRecords(input.pages);
+  return Number.isFinite(Number(input.n)) ? [input] : [];
+}
+function createTextLayer({ doc = globalThis.document, readerEl = null, measure = null, now: now3 = () => globalThis.performance?.now?.() ?? Date.now() } = {}) {
+  const view = () => doc?.defaultView || globalThis;
+  const records = /* @__PURE__ */ new Map();
+  const width = measure || createMeasure(doc);
+  let observer = null;
+  let frame = 0;
+  let dead = false;
+  const stats = { mounts: 0, words: 0, lastMs: 0, maxMs: 0 };
+  const ensureObserver = () => {
+    if (observer || dead || !readerEl || !records.size) return;
+    const MO = view().MutationObserver;
+    if (typeof MO !== "function") return;
+    observer = new MO((list) => {
+      if (onlyOurs(list)) return;
+      schedule();
+    });
+    try {
+      observer.observe(readerEl, { childList: true, subtree: true, attributes: true, attributeFilter: ["style"] });
+    } catch {
+      observer = null;
+    }
+  };
+  const onlyOurs = (list) => {
+    for (const rec of list || []) {
+      if (rec.type === "attributes") {
+        if (rec.target?.classList?.contains?.("page")) return false;
+        continue;
+      }
+      if (rec.removedNodes?.length) return false;
+      for (const node2 of rec.addedNodes || []) {
+        if (node2?.nodeType !== 1 || !node2.hasAttribute?.(WORD_ATTR)) return false;
+      }
+    }
+    return true;
+  };
+  const schedule = () => {
+    if (dead || frame) return;
+    const raf2 = view().requestAnimationFrame;
+    if (typeof raf2 !== "function") {
+      refresh();
+      return;
+    }
+    frame = raf2(() => {
+      frame = 0;
+      refresh();
+    });
+  };
+  function refresh() {
+    if (dead || !readerEl || !records.size) return [];
+    const pages = readerEl.querySelectorAll?.(".page") || [];
+    const plan = [];
+    for (const pageEl of pages) {
+      const n2 = pageNumberOf2(pageEl);
+      const record = records.get(n2);
+      if (!record) continue;
+      const layer = pageEl.querySelector?.(".textLayer");
+      if (!layer) continue;
+      const widthPx = num5(pageEl.clientWidth);
+      const key = `${n2}:${Math.round(widthPx)}`;
+      const ours = layer.querySelector?.(`[${WORD_ATTR}]`);
+      if (ours && layer.getAttribute?.(MARK_ATTR) === key) continue;
+      if (!ours && !needsTextLayer(layer)) continue;
+      plan.push({ layer, record, widthPx, key });
+    }
+    const done = [];
+    for (const job of plan) {
+      const res = mountWords(job.layer, job.record, { doc, widthPx: job.widthPx, measure: width, key: job.key, now: now3 });
+      stats.mounts += 1;
+      stats.words += res.count;
+      stats.lastMs = res.ms;
+      stats.maxMs = Math.max(stats.maxMs, res.ms);
+      done.push(Number(job.key.split(":")[0]));
+    }
+    try {
+      observer?.takeRecords?.();
+    } catch {
+    }
+    return done;
+  }
+  return {
+    setPages(input) {
+      if (dead) return 0;
+      const list = pageRecords(input);
+      for (const rec of list) records.set(Number(rec.n), rec);
+      if (list.length) {
+        ensureObserver();
+        schedule();
+      }
+      return list.length;
+    },
+    hasPage: (n2) => records.has(Number(n2)),
+    pageNumbers: () => [...records.keys()].sort((a, b) => a - b),
+    clear() {
+      records.clear();
+      const layers = readerEl?.querySelectorAll?.(`[${MARK_ATTR}]`) || [];
+      for (const layer of layers) removeWords(layer);
+      try {
+        observer?.disconnect?.();
+      } catch {
+      }
+      observer = null;
+    },
+    refresh,
+    schedule,
+    stats: () => ({ ...stats }),
+    dispose() {
+      if (dead) return;
+      this.clear();
+      dead = true;
+      if (frame) {
+        try {
+          view().cancelAnimationFrame?.(frame);
+        } catch {
+        }
+        frame = 0;
+      }
+    }
+  };
 }
 
 // src/view/read-pane.js
@@ -35691,6 +38664,44 @@ var PLACE_H = 140;
 var FLASH_MS = 1600;
 var ONE_REF = /^\(\(([\w-]+)\)\)$/;
 var COLORS = ["gray", ...HIGHLIGHT_COLORS];
+var READ_MODE_KEY = "pxd-read-mode";
+var OCR_LAYER_ID = "ocr-layer";
+var BAR_SETTLE_MS = 160;
+function normalizeReadMode(value) {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (["parsed", "both", "outline", "read+outline", "read-outline"].includes(v)) return "both";
+  return "reader";
+}
+function storedReadMode(storage) {
+  let raw = null;
+  try {
+    raw = storage?.getItem?.(READ_MODE_KEY);
+  } catch {
+    raw = null;
+  }
+  if (raw == null || raw === "") return "reader";
+  const mode = normalizeReadMode(raw);
+  const fresh = mode === "both" ? "read+outline" : "read";
+  if (raw !== fresh) {
+    try {
+      storage?.setItem?.(READ_MODE_KEY, fresh);
+    } catch {
+    }
+  }
+  return mode;
+}
+function writeReadMode(storage, mode) {
+  try {
+    storage?.setItem?.(READ_MODE_KEY, normalizeReadMode(mode) === "both" ? "read+outline" : "read");
+  } catch {
+  }
+}
+function mergeOcrPages(stored, fresh) {
+  const byPage = /* @__PURE__ */ new Map();
+  for (const rec of pageRecords(stored)) byPage.set(Number(rec.n), rec);
+  for (const rec of pageRecords(fresh)) byPage.set(Number(rec.n), Array.isArray(rec.boxes) ? rec : compactPage(rec));
+  return [...byPage.values()].sort((a, b) => a.n - b.n);
+}
 function placedHighlightUid(items, refUid) {
   if (typeof refUid !== "string" || refUid === "") return "";
   const list = Array.isArray(items) ? items : [];
@@ -35764,11 +38775,11 @@ function crossGlyph(doc) {
   return svg;
 }
 function pillButton(doc, el, parent, label, text3) {
-  const button = el("button", "pxd-read__pillbtn", parent);
-  button.type = "button";
-  button.textContent = text3;
-  button.setAttribute("aria-label", label);
-  return button;
+  const button2 = el("button", "pxd-read__pillbtn", parent);
+  button2.type = "button";
+  button2.textContent = text3;
+  button2.setAttribute("aria-label", label);
+  return button2;
 }
 function readerJumpPlan({ cardUid = "", blockUid: blockUid2 = "" } = {}) {
   if (typeof cardUid === "string" && cardUid) return { action: "card", uid: cardUid };
@@ -35810,7 +38821,12 @@ function createReadPane({
   coverSrc,
   createDrawer,
   session = null,
-  settings = null
+  settings = null,
+  onNeedOcr = null,
+  setSetting = null,
+  // Injection point for an in-browser OCR source: { status(): {state, progress?, mb?}, download(), cancel(),
+  // read({ pages, url, getPdf, signal, onProgress }) -> pxd-ocr/1 page records }. None ships yet.
+  deviceOcr = null
 } = {}) {
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
@@ -35863,19 +38879,21 @@ function createReadPane({
   if (cross) closeBtn.append(cross);
   else closeBtn.textContent = "✕";
   closeBtn.setAttribute("aria-label", "Close");
+  const stripMount = el("div", "pxd-read__strip", pane);
+  const enginesMount = el("div", "pxd-read__engines", pane);
   const modes = el("div", "pxd-read__modes", pane);
   modes.setAttribute("role", "toolbar");
   modes.setAttribute("aria-label", "Reader mode");
   setHidden2(modes, true);
   const modeBtns = {};
-  for (const [id, label, tip] of [["reader", "Reader", "parse.mode.reader"], ["parsed", "Parsed", "parse.mode.parsed"], ["both", "Both", "parse.mode.both"]]) {
-    const button = el("button", "pxd-read__mode", modes);
-    button.type = "button";
-    button.textContent = label;
-    button.setAttribute("data-mode", id);
-    button.setAttribute("data-tip", tip);
-    button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
-    modeBtns[id] = button;
+  for (const [id, label, tip] of [["reader", "Read", "parse.mode.reader"], ["both", "Read + Outline", "parse.mode.both"]]) {
+    const button2 = el("button", "pxd-read__mode", modes);
+    button2.type = "button";
+    button2.textContent = label;
+    button2.setAttribute("data-mode", id);
+    button2.setAttribute("data-tip", tip);
+    button2.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
+    modeBtns[id] = button2;
   }
   const progress = el("div", "pxd-read__progress", pane);
   setHidden2(progress, true);
@@ -35896,6 +38914,23 @@ function createReadPane({
   const searchBtn = pillButton(doc, el, pill, "Search", "⌕");
   const parsedMount = el("div", "pxd-read__parsed", pane);
   const drawerMount = el("div", "pxd-read__drawer", pane);
+  const bar = el("div", "pxd-selbar", pane);
+  bar.setAttribute("role", "toolbar");
+  bar.setAttribute("aria-label", "Selection");
+  setHidden2(bar, true);
+  for (const [act, text3, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"]]) {
+    const button2 = el("button", "pxd-selbar__btn pxd-chrome", bar);
+    button2.type = "button";
+    button2.textContent = text3;
+    button2.setAttribute("data-act", act);
+    button2.setAttribute("data-tip", tip);
+  }
+  const barHandle = el("button", "pxd-selbar__handle pxd-chrome", bar);
+  barHandle.type = "button";
+  barHandle.textContent = "⠿";
+  barHandle.setAttribute("aria-label", "Drag to the board");
+  barHandle.setAttribute("data-tip", "read.sel.drag");
+  const textLayer = createTextLayer({ doc, readerEl: live });
   let colorSel = null;
   let pageFilt = null;
   let snipFilt = null;
@@ -36012,9 +39047,9 @@ function createReadPane({
     liveBlock = "";
   };
   const readerField = () => {
-    const bar = live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
+    const bar2 = live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
     const boxed = live.querySelector?.(".rm-pdf-container");
-    const pool = bar?.querySelectorAll ? [...bar.querySelectorAll("input")] : [];
+    const pool = bar2?.querySelectorAll ? [...bar2.querySelectorAll("input")] : [];
     const inputs = pool.length ? pool : [...boxed?.querySelectorAll?.("input") || []];
     const named = inputs.find((node2) => node2.classList?.contains?.("bp3-input") && /^\d+$/.test(String(node2.value || "").trim()));
     if (named) return named;
@@ -36262,8 +39297,8 @@ function createReadPane({
         node2.setAttribute("data-uid", row4.uid);
         node2.draggable = true;
         node2.setAttribute("draggable", "true");
-        const bar = el("span", "pxd-read__bar", node2);
-        bar.setAttribute("data-color", String(row4.color || ""));
+        const bar2 = el("span", "pxd-read__bar", node2);
+        bar2.setAttribute("data-color", String(row4.color || ""));
         const source = sourceByUid.get(row4.uid);
         const model = source ? highlightModel({ string: source.string, props: source.props, children: source.children }) : null;
         if (model?.image && source) {
@@ -36371,6 +39406,10 @@ function createReadPane({
     if (target?.closest?.(".rm-pdf-container")) return;
     if (isTextEntryTarget(target)) return;
     if (event.key === "Escape") {
+      if (escSeen === event) {
+        escSeen = null;
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       close({ notify: true });
@@ -36641,6 +39680,18 @@ function createReadPane({
     node2?.addEventListener?.(type, fn, true);
     pressOff.push(() => node2?.removeEventListener?.(type, fn, true));
   };
+  let ghost = null;
+  const endPointerDrag = () => {
+    dragging = false;
+    clearDragClass();
+    const g = ghost;
+    ghost = null;
+    try {
+      g?.cancel();
+    } catch {
+    }
+    disarm2();
+  };
   const endPress = () => {
     while (pressOff.length) {
       try {
@@ -36648,14 +39699,10 @@ function createReadPane({
       } catch {
       }
     }
-    const wasActive = press?.active;
+    const was = press;
     press = null;
-    if (wasActive) endPdfDrag();
-  };
-  const moveChip = (x, y) => {
-    if (!dragChip) return;
-    dragChip.style.left = `${Math.round(x + 12)}px`;
-    dragChip.style.top = `${Math.round(y + 12)}px`;
+    if (was?.row) restoreDrag(was.row, was.rowPrev);
+    if (was?.active) endPointerDrag();
   };
   let swallowOff = null;
   const swallowClick = () => {
@@ -36674,24 +39721,25 @@ function createReadPane({
       w.clearTimeout?.(timer);
     };
   };
-  const dropAt = (uid, x, y) => {
-    const w = view();
-    const target = doc?.elementFromPoint?.(x, y);
-    if (!target || !root?.contains?.(target) || target.closest?.(".pxd-read")) return false;
-    const Transfer = w.DataTransfer;
-    const Drag = w.DragEvent;
-    if (typeof Transfer !== "function" || typeof Drag !== "function") return false;
-    const data = new Transfer();
-    data.setData(CARD_MIME, `((${uid}))`);
-    data.setData("text/plain", `((${uid}))`);
-    try {
-      data.effectAllowed = "copy";
-    } catch {
+  const fullText = (uid, highlight) => {
+    const row4 = catalog.find((entry) => entry.uid === uid);
+    return String(row4 && row4.snippet || highlight?.content?.text || "");
+  };
+  const ghostContentOf = (p) => {
+    if (p.kind === "text") return { kind: "text", text: p.text, page: p.page };
+    const row4 = catalog.find((entry) => entry.uid === p.uid);
+    const color = row4 && row4.color || (typeof p.highlight?.color === "string" ? p.highlight.color : "");
+    const page = typeof row4?.page === "number" ? row4.page : null;
+    return { kind: "highlight", text: fullText(p.uid, p.highlight), color, page };
+  };
+  const dropPress = (p, x, y, alt) => {
+    const spot = ghost && ghost.zone() === "board" ? ghost.dropPoint() : null;
+    if (p.kind === "text") {
+      const json = JSON.stringify({ kind: "text", text: p.text, page: p.page, pdfUid: current3.cardUid || "", quote: Boolean(alt) });
+      return dispatchDrop({ doc, root, pointer: { x, y }, at: spot ? { x: spot.x, y: spot.y } : { x, y }, entries: [[PARSE_MIME, json], ["text/plain", p.text]] });
     }
-    const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: data };
-    target.dispatchEvent(new Drag("dragover", init));
-    target.dispatchEvent(new Drag("drop", init));
-    return true;
+    const ref = `((${p.uid}))`;
+    return dispatchDrop({ doc, root, pointer: { x, y }, at: spot ? { x: spot.cx, y: spot.cy } : { x, y }, entries: [[CARD_MIME, ref], ["text/plain", ref]] });
   };
   const onPressMove = (event) => {
     if (!press) return;
@@ -36705,28 +39753,37 @@ function createReadPane({
       if (Math.hypot(x - press.x, y - press.y) < DRAG_START_PX) return;
       press.active = true;
       dragging = true;
-      const label = chipLabel(press.uid, press.highlight);
-      paintChip(null, label.color, label.text);
-      if (dragChip) {
-        dragChip.style.pointerEvents = "none";
-        dragChip.style.zIndex = "60";
-      }
+      hideBar();
       root?.classList?.add("pxd-root--pdf-drag");
-      clearLiveSelection();
+      try {
+        ghost = createDragGhost({ doc, root, pane, from: press.from, pointer: { x: press.x, y: press.y }, content: ghostContentOf(press) });
+      } catch {
+        ghost = null;
+      }
     }
-    moveChip(x, y);
+    ghost?.move(x, y);
     event.preventDefault?.();
   };
   const onPressUp = (event) => {
     if (!press) return;
-    const { active, uid } = press;
+    const p = press;
     const x = Number(event.clientX);
     const y = Number(event.clientY);
-    if (active) {
+    if (p.active) {
       swallowClick();
-      dropChip();
-      dropAt(uid, x, y);
+      ghost?.move(x, y);
+      if (dropPress(p, x, y, event.altKey === true)) {
+        const g = ghost;
+        ghost = null;
+        try {
+          g?.land();
+        } catch {
+        }
+        if (p.kind === "text") clearLiveSelection();
+      }
+    } else if (p.kind === "text" && !p.fromBar) {
       clearLiveSelection();
+      hideBar();
     }
     endPress();
   };
@@ -36735,20 +39792,71 @@ function createReadPane({
     event.stopPropagation();
     endPress();
   };
-  const onLiveDown = (event) => {
-    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || selectionBusy()) {
-      disarm2();
-      return;
-    }
-    if (event.button !== 0 || !armedUid || !targetIsArmed(event.target)) return;
+  const startPress = (info, event) => {
     endPress();
-    press = { x: Number(event.clientX), y: Number(event.clientY), uid: armedUid, highlight: armedHighlight, active: false };
+    press = { ...info, x: Number(event.clientX), y: Number(event.clientY), active: false };
     const w = view();
     pressListen(w, "pointermove", onPressMove);
     pressListen(w, "pointerup", onPressUp);
     pressListen(w, "pointercancel", endPress);
     pressListen(w, "keydown", onPressKey);
     pressListen(w, "blur", endPress);
+  };
+  const rectOf4 = (node2) => {
+    try {
+      return node2?.getBoundingClientRect?.() || null;
+    } catch {
+      return null;
+    }
+  };
+  const selectionUnder = (x, y) => {
+    const info = selectionInReader(selectionOf(), live);
+    if (!info?.range) return null;
+    let rects = [];
+    try {
+      rects = [...info.range.getClientRects?.() || []];
+    } catch {
+      rects = [];
+    }
+    return rects.some((r) => pointIn(r, x, y)) ? info : null;
+  };
+  const onLiveDown = (event) => {
+    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || selectionBusy()) {
+      disarm2();
+      return;
+    }
+    if (event.button !== 0) return;
+    if (armedUid && targetIsArmed(event.target)) {
+      startPress({ kind: "mark", uid: armedUid, highlight: armedHighlight, from: rectOf4(armedPart) }, event);
+      return;
+    }
+    const x = Number(event.clientX);
+    const y = Number(event.clientY);
+    const hit = Number.isFinite(x) && Number.isFinite(y) ? selectionUnder(x, y) : null;
+    if (hit) {
+      startPress({ kind: "text", text: hit.text, page: hit.page, from: hit.rect }, event);
+      return;
+    }
+    hideBar();
+  };
+  const onLiveMouseDown = (event) => {
+    if (press?.kind === "text" && !press.active) event.preventDefault?.();
+  };
+  const onDrawerDown = (event) => {
+    if (event.button != null && event.button !== 0) return;
+    if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
+    const row4 = event.target?.closest?.(".pxd-read-drawer__row");
+    if (!row4 || !drawerMount.contains?.(row4)) return;
+    if (event.target?.closest?.("button, input, select, textarea, a")) return;
+    const uid = row4.getAttribute?.("data-uid") || "";
+    if (!uid) return;
+    const rowPrev = dragAttr(row4);
+    try {
+      row4.setAttribute?.("draggable", "false");
+    } catch {
+    }
+    row4.draggable = false;
+    startPress({ kind: "row", uid, highlight: null, from: rectOf4(row4), row: row4, rowPrev }, event);
   };
   const onLiveLeave = () => {
     if (!dragging) disarm2();
@@ -36783,8 +39891,8 @@ function createReadPane({
     chip.style.position = "fixed";
     chip.style.left = "-1000px";
     chip.style.top = "0";
-    const bar = el("span", "pxd-read__bar", chip);
-    if (color) bar.setAttribute("data-color", color);
+    const bar2 = el("span", "pxd-read__bar", chip);
+    if (color) bar2.setAttribute("data-color", color);
     el("span", "pxd-read__dragtext", chip).textContent = text3 || "";
     pane.append(chip);
     try {
@@ -36823,6 +39931,11 @@ function createReadPane({
     return Boolean(armedEl.contains?.(target));
   };
   const onMarkDrag = (event) => {
+    if (press?.active) {
+      event.preventDefault?.();
+      return;
+    }
+    if (press) endPress();
     if (!armedUid || !targetIsArmed(event.target)) return;
     const label = chipLabel(armedUid, armedHighlight);
     dragging = beginDrag(event, armedUid, label.color, label.text) === true;
@@ -36850,6 +39963,119 @@ function createReadPane({
       sel.removeAllRanges();
     } catch {
     }
+  };
+  let barInfo = null;
+  let barTimers = [];
+  const barOff = [];
+  const cancelBarTimers = () => {
+    for (const id of barTimers) cancelLater(id);
+    barTimers = [];
+  };
+  const disarmBarKeys = () => {
+    while (barOff.length) {
+      try {
+        barOff.pop()();
+      } catch {
+      }
+    }
+  };
+  const onBarKey = (event) => {
+    if (event.key !== "Escape" || !barInfo) return;
+    escSeen = event;
+    hideBar();
+  };
+  let escSeen = null;
+  const armBarKeys = () => {
+    if (barOff.length) return;
+    const w = view();
+    w.addEventListener?.("keydown", onBarKey, true);
+    barOff.push(() => w.removeEventListener?.("keydown", onBarKey, true));
+  };
+  function hideBar() {
+    cancelBarTimers();
+    disarmBarKeys();
+    barInfo = null;
+    setHidden2(bar, true);
+  }
+  const tipRect = () => {
+    const tip = live.querySelector?.(".PdfHighlighter__tip-container");
+    const r = rectOf4(tip);
+    return r && r.right > r.left && r.bottom > r.top ? r : null;
+  };
+  const placeBar = () => {
+    if (!openFlag || dragging) return;
+    const info = selectionInReader(selectionOf(), live);
+    if (!info || !info.rect) {
+      hideBar();
+      return;
+    }
+    barInfo = info;
+    armBarKeys();
+    setHidden2(bar, false);
+    const paneBox = rectOf4(pane);
+    const usePane = paneBox && paneBox.right > paneBox.left && paneBox.bottom > paneBox.top;
+    const viewport = usePane ? paneBox : rectOf4(root);
+    if (!viewport) return;
+    const size = { w: Number(bar.offsetWidth) || 200, h: Number(bar.offsetHeight) || 30 };
+    let obstacles = [];
+    try {
+      obstacles = chromeObstacles(root);
+    } catch {
+      obstacles = [];
+    }
+    const at = selectionBarPlacement({ selection: info.rect, tip: tipRect(), size, viewport, obstacles, place: placePopover });
+    if (at.hidden) {
+      setHidden2(bar, true);
+      return;
+    }
+    const originX = usePane ? paneBox.left : 0;
+    const originY = usePane ? paneBox.top : 0;
+    bar.style.left = `${Math.round(at.left - originX)}px`;
+    bar.style.top = `${Math.round(at.top - originY)}px`;
+  };
+  const onLiveMouseUp = () => {
+    if (dragging || press?.active) return;
+    cancelBarTimers();
+    barTimers.push(later(placeBar, 0), later(placeBar, BAR_SETTLE_MS));
+  };
+  const writeClip = async (text3) => {
+    const clip4 = doc.defaultView?.navigator?.clipboard || globalThis.navigator?.clipboard;
+    if (!clip4 || typeof clip4.writeText !== "function") throw new Error("no clipboard");
+    await clip4.writeText(text3);
+  };
+  const toast = (message) => {
+    try {
+      host?.toast?.(message);
+    } catch {
+    }
+  };
+  const onSelBarClick = (event) => {
+    const act = event.target?.closest?.("[data-act]")?.getAttribute?.("data-act");
+    if (!act || !barInfo) return;
+    event.stopPropagation?.();
+    const { text: text3, page } = barInfo;
+    if (act === "copy") {
+      void writeClip(text3).then(() => toast("Copied"), () => toast("Copy failed"));
+      return;
+    }
+    hideBar();
+    const fn = session?.insertTextCard;
+    if (typeof fn !== "function") return;
+    try {
+      void Promise.resolve(fn({ text: text3, page, pdfUid: current3.cardUid || "", quote: act === "quote" })).catch(() => {
+      });
+    } catch {
+    }
+  };
+  const onSelBarMouseDown = (event) => {
+    event.preventDefault?.();
+  };
+  const onBarHandleDown = (event) => {
+    if (event.button != null && event.button !== 0) return;
+    if (!barInfo) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    startPress({ kind: "text", text: barInfo.text, page: barInfo.page, from: barInfo.rect, fromBar: true }, event);
   };
   const clearFlash = () => {
     if (flashTimer) {
@@ -37003,7 +40229,7 @@ function createReadPane({
     pane.classList.toggle("pxd-read--tools", toolsOn || searchHold);
   };
   const totalCandidates = (input) => {
-    const bar = input?.closest?.(".rm-pdf-toolbar") || live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
+    const bar2 = input?.closest?.(".rm-pdf-toolbar") || live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
     const out = [];
     const push = (node2) => {
       if (!node2 || node2 === input) return;
@@ -37012,11 +40238,11 @@ function createReadPane({
     push(input?.nextElementSibling);
     push(input?.previousElementSibling);
     const parent = input?.parentElement;
-    if (parent && parent !== bar) {
+    if (parent && parent !== bar2) {
       push(parent.nextElementSibling);
       push(parent.previousElementSibling);
     }
-    const spans = bar?.querySelectorAll?.("span") || [];
+    const spans = bar2?.querySelectorAll?.("span") || [];
     for (const span of spans) push(span);
     return out;
   };
@@ -37043,9 +40269,9 @@ function createReadPane({
   };
   const toolbarEl = () => live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
   const toolbarButtons = () => {
-    const bar = toolbarEl();
-    if (!bar?.querySelectorAll) return [];
-    return [...bar.querySelectorAll("button")];
+    const bar2 = toolbarEl();
+    if (!bar2?.querySelectorAll) return [];
+    return [...bar2.querySelectorAll("button")];
   };
   const searchInput = () => {
     const box2 = live.querySelector?.(".rm-pdf-container");
@@ -37081,10 +40307,10 @@ function createReadPane({
   const proxyPill = (name) => {
     if (name === "zoomIn" || name === "zoomOut") userZoomed = true;
     if (name === "fit") fitDone = true;
-    const button = pillActions(toolbarButtons())[name];
-    if (button && typeof button.click === "function") {
+    const button2 = pillActions(toolbarButtons())[name];
+    if (button2 && typeof button2.click === "function") {
       try {
-        button.click();
+        button2.click();
       } catch {
       }
     }
@@ -37131,6 +40357,7 @@ function createReadPane({
     armed.push([node2, type, fn, capture]);
   };
   const onReaderScroll = () => {
+    if (barInfo) hideBar();
     const raf2 = clock().requestAnimationFrame;
     if (typeof raf2 !== "function") {
       paintPill();
@@ -37144,10 +40371,10 @@ function createReadPane({
   };
   const onBarClick = (event) => {
     if (autoZoom) return;
-    const button = event.target?.closest?.("button");
-    if (!button) return;
-    const found = pillActions([button]);
-    if (found.zoomIn === button || found.zoomOut === button) userZoomed = true;
+    const button2 = event.target?.closest?.("button");
+    if (!button2) return;
+    const found = pillActions([button2]);
+    if (found.zoomIn === button2 || found.zoomOut === button2) userZoomed = true;
   };
   const detachReaderWatch = () => {
     forget(barNode, "click", onBarClick);
@@ -37163,11 +40390,11 @@ function createReadPane({
     }
   };
   const attachReaderWatch = () => {
-    const bar = toolbarEl();
-    if (bar && bar !== barNode) {
+    const bar2 = toolbarEl();
+    if (bar2 && bar2 !== barNode) {
       forget(barNode, "click", onBarClick);
-      barNode = bar;
-      listen(bar, "click", onBarClick);
+      barNode = bar2;
+      listen(bar2, "click", onSelBarClick);
     }
     const input = readerField();
     if (input && input !== pageInputNode) {
@@ -37234,11 +40461,11 @@ function createReadPane({
     return { pageW, viewW };
   };
   const pressZoom = (name) => {
-    const button = pillActions(toolbarButtons())[name];
-    if (!button || typeof button.click !== "function") return false;
+    const button2 = pillActions(toolbarButtons())[name];
+    if (!button2 || typeof button2.click !== "function") return false;
     autoZoom = true;
     try {
-      button.click();
+      button2.click();
     } catch {
     }
     autoZoom = false;
@@ -37482,6 +40709,8 @@ function createReadPane({
     toolsOn = !toolsOn;
     toolsBtn.setAttribute("aria-pressed", toolsOn ? "true" : "false");
     paintTools();
+    if (toolsOn) openEngines();
+    else closeEngines();
   };
   const onSwitchBtn = (event) => {
     event.stopPropagation();
@@ -37508,6 +40737,12 @@ function createReadPane({
   listen(live, "pointermove", onPointerMove, { capture: true, passive: true });
   listen(live, "pointerleave", onLiveLeave);
   listen(live, "pointerdown", onLiveDown);
+  listen(live, "mousedown", onLiveMouseDown, true);
+  listen(live, "mouseup", onLiveMouseUp);
+  listen(drawerMount, "pointerdown", onDrawerDown, true);
+  listen(bar, "click", onSelBarClick);
+  listen(bar, "mousedown", onSelBarMouseDown);
+  listen(barHandle, "pointerdown", onBarHandleDown);
   listen(live, "dragstart", onMarkDrag);
   if (root) listen(root, "drop", clearDragClass);
   listen(list, "click", onListClick);
@@ -37575,12 +40810,18 @@ function createReadPane({
   let parseStore = null;
   let parseHelper = null;
   let viewMode = "reader";
+  let explicitMode = false;
   const ensureStore2 = () => {
     if (!parseStore) parseStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
     return parseStore;
   };
+  function setSettingFn(id, value) {
+    if (typeof setSetting === "function") return setSetting(id, value);
+    if (typeof settings?.set === "function") return settings.set(id, value);
+    return void 0;
+  }
   const ensureHelper = () => {
-    if (!parseHelper) parseHelper = createHelperClient({ settings, fetch: doc.defaultView?.fetch });
+    if (!parseHelper) parseHelper = createHelperClient({ settings, setSetting: setSettingFn, fetch: doc.defaultView?.fetch });
     return parseHelper;
   };
   const pdfUrl = () => pdfMacroUrl(current3.source || "") || "";
@@ -37628,17 +40869,286 @@ function createReadPane({
   function applyModeClass() {
     pane.classList.remove("pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
     const width = Number(pane.clientWidth) || Number(mountW) || 0;
-    if (viewMode === "parsed") pane.classList.add("pxd-read--parsed");
-    else if (viewMode === "both") {
+    if (viewMode === "both") {
       pane.classList.add("pxd-read--both");
       if (width > 0 && width < BOTH_MIN_PX) pane.classList.add("pxd-read--narrow");
     }
-    for (const [id, button] of Object.entries(modeBtns)) {
-      button.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
+    for (const [id, button2] of Object.entries(modeBtns)) {
+      button2.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
     }
-    setHidden2(pill, viewMode === "parsed" || pane.classList.contains("pxd-read--narrow"));
+    setHidden2(pill, pane.classList.contains("pxd-read--narrow"));
     paintPill();
   }
+  let ocrSha = "";
+  const persistOcr = async (pages, sha) => {
+    if (!sha) return;
+    const store = ensureStore2();
+    const key = imageKey(sha, OCR_LAYER_ID);
+    let stored = [];
+    try {
+      const raw = await store.getImage(key);
+      stored = typeof raw === "string" ? JSON.parse(raw) : [];
+    } catch {
+      stored = [];
+    }
+    try {
+      await store.putImage(key, JSON.stringify(mergeOcrPages(stored, pages)));
+    } catch {
+    }
+  };
+  let ocrCovered = false;
+  let ocrGot = 0;
+  const setOcrPages = (input, { sha256 = "", persist = true } = {}) => {
+    const pages = pageRecords(input);
+    const n2 = textLayer.setPages(pages);
+    if (n2) {
+      ocrCovered = true;
+      ocrGot += 1;
+      paintStrip();
+    }
+    const sha = sha256 || ocrSha;
+    if (n2 && persist && sha) void persistOcr(pages, sha);
+    return n2;
+  };
+  const loadOcrLayer = async (sha) => {
+    if (!sha) return 0;
+    ocrSha = sha;
+    try {
+      const raw = await ensureStore2().getImage(imageKey(sha, OCR_LAYER_ID));
+      if (typeof raw !== "string" || !openFlag || sha !== ocrSha) return 0;
+      const n2 = textLayer.setPages(JSON.parse(raw));
+      if (n2) {
+        ocrCovered = true;
+        paintStrip();
+      }
+      return n2;
+    } catch {
+      return 0;
+    }
+  };
+  const autoReadOn = () => {
+    try {
+      return settings?.get?.("parse-auto-read") !== false;
+    } catch {
+      return true;
+    }
+  };
+  let helperSnap = { state: "not-installed", paired: false };
+  let deviceNow = null;
+  let scanInfo = null;
+  let ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+  let runCtl = null;
+  let running = false;
+  let strip = null;
+  let panel = null;
+  const dismissedUrls = /* @__PURE__ */ new Set();
+  const autoTried = /* @__PURE__ */ new Set();
+  const stripLater = (fn, ms) => {
+    const id = setTimeout(fn, ms);
+    id?.unref?.();
+    return () => clearTimeout(id);
+  };
+  const stripInput = () => {
+    const pages = scanInfo?.pages || [];
+    return {
+      scanned: pages.length > 0 && !ocrCovered,
+      dismissed: dismissedUrls.has(pdfUrl()),
+      ocr: {
+        state: ocrRun.state,
+        source: ocrRun.source,
+        ms: ocrRun.ms,
+        progress: ocrRun.progress,
+        modelsCached: deviceNow?.state === "ready",
+        modelMB: deviceNow?.mb,
+        deviceAvailable: Boolean(deviceOcr) && deviceNow?.state !== "unavailable"
+      },
+      helper: { state: helperSnap.state, paired: helperSnap.paired }
+    };
+  };
+  function paintStrip() {
+    if (!strip && !scanInfo) return;
+    if (!strip) strip = renderParseStatus(doc, stripMount, stripInput(), { onAction: onStripAction, later: stripLater });
+    else strip.update(stripInput());
+  }
+  const readDevice = async () => {
+    if (!deviceOcr || typeof deviceOcr.status !== "function") return null;
+    try {
+      return await deviceOcr.status() || null;
+    } catch {
+      return null;
+    }
+  };
+  const refreshSnaps = async (force = true) => {
+    try {
+      const status = await ensureHelper().status({ force });
+      helperSnap = { state: status?.state || "not-installed", paired: Boolean(status?.paired) };
+    } catch {
+      helperSnap = { state: "not-installed", paired: false };
+    }
+    deviceNow = await readDevice();
+    paintStrip();
+  };
+  const deviceReady = () => deviceNow?.state === "ready" && typeof deviceOcr?.read === "function";
+  const helperIsReady = () => helperSnap.state === "ready";
+  function openEngines({ sheet = false } = {}) {
+    if (!panel) {
+      panel = renderEnginesPanel(doc, enginesMount, {
+        client: ensureHelper(),
+        ...deviceOcr ? { device: deviceOcr } : {},
+        setSetting: setSettingFn,
+        copy: (text3) => doc.defaultView?.navigator?.clipboard?.writeText?.(text3),
+        toast: (text3) => {
+          try {
+            host?.toast?.(text3);
+          } catch {
+          }
+        },
+        onUpdate: () => {
+          void refreshSnaps(false);
+        }
+      });
+    }
+    panel.setVisible(true);
+    if (sheet) panel.showSheet();
+  }
+  const closeEngines = () => {
+    try {
+      panel?.setVisible(false);
+    } catch {
+    }
+  };
+  const runRead = async (prefer = "", { fresh = true } = {}) => {
+    if (running || !scanInfo) return;
+    running = true;
+    const info = scanInfo;
+    let ctl = null;
+    try {
+      if (fresh) await refreshSnaps(true);
+      let source = "";
+      if (prefer !== "helper" && deviceReady()) source = "device";
+      else if (helperIsReady()) source = "helper";
+      if (!source) {
+        openEngines({ sheet: true });
+        return;
+      }
+      ctl = new AbortController();
+      runCtl = ctl;
+      ocrRun = { state: "running", source, ms: 0, progress: null };
+      paintStrip();
+      if (live.querySelector?.(".rm-pdf-container")) await waitReaderPdf(bgGen);
+      const t0 = Date.now();
+      const before = ocrGot;
+      ocrRun = { state: "running", source, ms: 0, progress: null };
+      paintStrip();
+      try {
+        if (source === "device") {
+          const out = await deviceOcr.read({
+            pages: info.pages,
+            url: pdfUrl(),
+            getPdf,
+            signal: ctl.signal,
+            onProgress: (fraction) => {
+              ocrRun = { ...ocrRun, progress: Number(fraction) };
+              paintStrip();
+            }
+          });
+          if (!ctl.signal.aborted) {
+            setOcrPages(out, { sha256: ocrSha });
+            try {
+              await parsedView?.applyOcr?.(pageRecords(out));
+            } catch {
+            }
+          }
+        } else {
+          try {
+            await parsedView?.refreshHelper?.();
+          } catch {
+          }
+          await info.readScan();
+        }
+        if (ctl.signal.aborted) ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+        else ocrRun = { state: ocrGot > before ? "done" : "failed", source, ms: Date.now() - t0, progress: null };
+      } catch {
+        ocrRun = ctl.signal.aborted ? { state: "idle", source: "", ms: 0, progress: null } : { state: "failed", source, ms: 0, progress: null };
+      }
+    } finally {
+      running = false;
+      if (runCtl === ctl) runCtl = null;
+      paintStrip();
+    }
+  };
+  function onStripAction(id) {
+    if (id === "read-text") void runRead();
+    else if (id === "use-helper") void runRead("helper");
+    else if (id === "retry") {
+      ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+      void runRead();
+    } else if (id === "not-now") {
+      dismissedUrls.add(pdfUrl());
+      paintStrip();
+    } else if (id === "start-helper" || id === "setup-helper") openEngines({ sheet: true });
+    else if (id === "cancel") {
+      try {
+        runCtl?.abort();
+      } catch {
+      }
+      try {
+        parsedView?.cancel?.();
+      } catch {
+      }
+      ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+      paintStrip();
+    }
+  }
+  const noteScan = (info) => {
+    if (info?.partial) return;
+    const pages = Array.isArray(info?.pages) ? info.pages : [];
+    scanInfo = pages.length ? { ...info, pages } : null;
+    if (!scanInfo) {
+      paintStrip();
+      return;
+    }
+    const sig = `${pdfUrl()}|${pages.join(",")}`;
+    const first = !autoTried.has(sig);
+    autoTried.add(sig);
+    paintStrip();
+    if (!first) return;
+    void (async () => {
+      await refreshSnaps(true);
+      if (info?.sha256 && !ocrCovered) await loadOcrLayer(info.sha256);
+      if (autoReadOn() && !ocrCovered && !dismissedUrls.has(pdfUrl()) && ocrRun.state === "idle" && (deviceReady() || helperIsReady())) {
+        await runRead("", { fresh: false });
+      }
+    })();
+  };
+  const resetOcrState = () => {
+    try {
+      runCtl?.abort();
+    } catch {
+    }
+    scanInfo = null;
+    ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+    ocrCovered = false;
+    autoTried.clear();
+    try {
+      strip?.dispose();
+    } catch {
+    }
+    strip = null;
+  };
+  const needOcr = (info) => {
+    if (typeof onNeedOcr === "function") {
+      try {
+        onNeedOcr({ ...info || {}, url: pdfUrl(), cardUid: current3.cardUid || "", setOcrPages });
+      } catch {
+      }
+      return;
+    }
+    const pages = Array.isArray(info?.pages) ? info.pages : [];
+    scanInfo = { ...info || {}, pages: pages.length ? pages : [0] };
+    dismissedUrls.delete(pdfUrl());
+    void runRead();
+  };
   const ensureParsed = () => {
     if (parsedView) return parsedView;
     parsedView = createParseView({
@@ -37664,8 +41174,9 @@ function createReadPane({
       onCached: () => revealModes(),
       onTitle: noteParsedTitle,
       onProgress: (info) => {
-        const running = info && info.fraction != null && info.fraction < 1;
-        setHidden2(progress, !running);
+        if (bgParsing && viewMode === "reader") return;
+        const running2 = info && info.fraction != null && info.fraction < 1;
+        setHidden2(progress, !running2);
         progressFill.style.width = `${Math.round((Number(info?.fraction) || 0) * 100)}%`;
       },
       adoptCreated: () => {
@@ -37675,13 +41186,16 @@ function createReadPane({
         }
       },
       getContext: () => readerContext(),
-      scanAuto: (() => {
-        try {
-          return (settings?.get?.("parse-engine-default") || "auto") === "auto";
-        } catch {
-          return false;
-        }
-      })()
+      outline: true,
+      onNeedOcr: (info) => needOcr(info),
+      onScan: (info) => noteScan(info),
+      onOcrPages: (pages, sha) => {
+        setOcrPages(pages, { sha256: sha || "" });
+      },
+      ghostRoot: root,
+      ghostPane: pane,
+      scanAuto: false,
+      lazyKeys: true
     });
     parsedMount.append(parsedView.element());
     try {
@@ -37702,16 +41216,57 @@ function createReadPane({
     setHidden2(progress, true);
     pane.classList.remove("pxd-read--modes", "pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
     setHidden2(pill, false);
-    for (const [id, button] of Object.entries(modeBtns)) {
-      button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
+    for (const [id, button2] of Object.entries(modeBtns)) {
+      button2.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
+    }
+  }
+  let bgParsing = false;
+  let bgGen = 0;
+  const waitReaderPdf = async (gen) => {
+    for (let i = 0; i < 80; i += 1) {
+      if (gen !== bgGen || !openFlag) return null;
+      const pdf = readerPdf();
+      if (pdf) return pdf;
+      await new Promise((resolve) => {
+        const id = setTimeout(resolve, 250);
+        id?.unref?.();
+      });
+    }
+    return null;
+  };
+  async function backgroundParse() {
+    const url = pdfUrl();
+    if (!url || !openFlag) return;
+    const gen = ++bgGen;
+    const view2 = ensureParsed();
+    view2.setTarget({ url, pdfUid: current3.cardUid });
+    let found = null;
+    try {
+      found = await view2.restore();
+    } catch {
+      found = null;
+    }
+    if (found || gen !== bgGen || !openFlag || url !== pdfUrl()) return;
+    if (view2.blockCount() > 0 || view2.isBusy()) return;
+    if (!await waitReaderPdf(gen)) return;
+    if (view2.blockCount() > 0 || view2.isBusy()) return;
+    bgParsing = true;
+    try {
+      await view2.parseBuiltin();
+    } catch {
+    } finally {
+      bgParsing = false;
     }
   }
   async function noteCached() {
     const url = pdfUrl();
     if (!url || !openFlag) return;
-    if (readParsedUrls(storage).has(url)) revealModes();
+    const known = readParsedUrls(storage).has(url);
+    if (known) revealModes();
+    if (known && viewMode === "reader" && !explicitMode && storedReadMode(storage) === "both") void enterParsed("both");
     try {
       const hit = await ensureStore2().findByUrl(url);
+      if (hit?.sha256 && openFlag && url === pdfUrl()) void loadOcrLayer(hit.sha256);
       if (hit?.sha256 && openFlag) revealModes();
       if (hit?.sha256 && openFlag && !realTitle(current3.title) && !parsedTitle) {
         const hash = await optionsHash(BUILTIN_OPTIONS);
@@ -37726,10 +41281,10 @@ function createReadPane({
     } catch {
     }
   }
-  async function enterParsed(which) {
+  async function enterParsed() {
     if (!openFlag) return;
     revealModes();
-    viewMode = which === "both" ? "both" : "parsed";
+    viewMode = "both";
     applyModeClass();
     try {
       drawer?.close?.();
@@ -37740,7 +41295,9 @@ function createReadPane({
       mountReader(current3.blockUid);
       armSettle();
     }
+    void refreshSnaps(true);
     const view2 = ensureParsed();
+    view2.armKeys();
     view2.setTarget({ url: pdfUrl(), pdfUid: current3.cardUid });
     try {
       view2.watchPageInput(readerField());
@@ -37763,13 +41320,14 @@ function createReadPane({
   listen(modes, "click", (event) => {
     const id = event.target?.closest?.("[data-mode]")?.getAttribute?.("data-mode");
     if (!id) return;
-    if (id === "reader") {
+    writeReadMode(storage, id);
+    if (normalizeReadMode(id) === "reader") {
       viewMode = "reader";
       revealModes();
       applyModeClass();
       return;
     }
-    void enterParsed(id);
+    void enterParsed("both");
   });
   function close(opts) {
     cancelPageWait();
@@ -37782,7 +41340,11 @@ function createReadPane({
     const notify = !opts || opts.notify !== false;
     const wasOpen = openFlag;
     if (!openFlag && !pane.isConnected) return;
+    bgGen += 1;
     dropParsed();
+    hideBar();
+    textLayer.clear();
+    ocrSha = "";
     if (wasOpen) emitSnapshot("close");
     openFlag = false;
     endSplit();
@@ -37795,6 +41357,12 @@ function createReadPane({
     toolsOn = false;
     paintTools();
     toolsBtn.setAttribute("aria-pressed", "false");
+    resetOcrState();
+    try {
+      panel?.dispose();
+    } catch {
+    }
+    panel = null;
     fitDone = false;
     userZoomed = false;
     settleNoted = false;
@@ -37818,6 +41386,12 @@ function createReadPane({
       const next = detail && typeof detail === "object" ? detail : {};
       const blockUid2 = typeof next.blockUid === "string" ? next.blockUid : "";
       if (!blockUid2 || !root) return;
+      if (blockUid2 !== current3.blockUid) {
+        textLayer.clear();
+        ocrSha = "";
+        resetOcrState();
+        if (parsedView && viewMode === "reader") dropParsed();
+      }
       if (!openFlag || blockUid2 !== current3.blockUid) {
         fitDone = false;
         userZoomed = false;
@@ -37859,9 +41433,11 @@ function createReadPane({
       armWatch(current3.title);
       paintSwitcher();
       refreshList();
+      explicitMode = next.mode != null && next.mode !== "";
       void noteCached();
-      if (next.mode === "parsed" || next.mode === "both") void enterParsed(next.mode);
-      else if (parsedView && viewMode !== "reader") void enterParsed(viewMode);
+      void backgroundParse();
+      if (explicitMode && normalizeReadMode(next.mode) === "both") void enterParsed("both");
+      else if (parsedView && viewMode !== "reader") void enterParsed("both");
     },
     close,
     dispose() {
@@ -37873,6 +41449,7 @@ function createReadPane({
         drawer?.dispose?.();
       } catch {
       }
+      textLayer.dispose();
       for (const [node2, type, fn, capture] of armed) node2.removeEventListener?.(type, fn, capture);
       armed.length = 0;
     },
@@ -37892,11 +41469,23 @@ function createReadPane({
     fitInfo: () => ({ path: fitState.path, clicks: fitState.clicks, done: fitDone, userZoomed }),
     element: () => pane,
     parse() {
-      void enterParsed(viewMode === "both" ? "both" : "parsed");
+      void enterParsed("both");
     },
     showParsed() {
-      void enterParsed("parsed");
-    }
+      void enterParsed("both");
+    },
+    showOutline() {
+      void enterParsed("both");
+    },
+    mode: () => viewMode,
+    // U2 contract for OCR sources: pxd-ocr/1 page records (or { pages }) for the open PDF.
+    setOcrPages: (pages, opts) => setOcrPages(pages, opts),
+    noteScan,
+    openEngines,
+    stripKind: () => strip?.kind() ?? null,
+    ocrRun: () => ({ ...ocrRun }),
+    textLayerStats: () => textLayer.stats(),
+    selectionBarOpen: () => Boolean(barInfo) && !bar.hasAttribute("hidden")
   };
 }
 
@@ -38681,10 +42270,10 @@ function byte(n2) {
 function alpha(n2) {
   if (n2 == null || n2 === "") return 1;
   const raw = String(n2).trim();
-  const pct = raw.endsWith("%");
-  const x = Number(pct ? raw.slice(0, -1) : raw);
+  const pct2 = raw.endsWith("%");
+  const x = Number(pct2 ? raw.slice(0, -1) : raw);
   if (!Number.isFinite(x)) return null;
-  const v = pct ? x / 100 : x;
+  const v = pct2 ? x / 100 : x;
   return Math.max(0, Math.min(1, v));
 }
 function hexByte(text3) {
@@ -39734,7 +43323,7 @@ function openRegionDeleteDialog(doc, { message = "", onDelete, onOpen, onCancel 
   card2.append(text3);
   const actions = doc.createElement("div");
   actions.className = "pxd-view-dialog__actions";
-  const button = (cls, label, run) => {
+  const button2 = (cls, label, run) => {
     const node2 = doc.createElement("button");
     node2.type = "button";
     node2.className = `pxd-btn ${cls}`;
@@ -39746,10 +43335,10 @@ function openRegionDeleteDialog(doc, { message = "", onDelete, onOpen, onCancel 
     });
     return node2;
   };
-  const cancel = button("pxd-region-delete-cancel", "Cancel", onCancel);
+  const cancel = button2("pxd-region-delete-cancel", "Cancel", onCancel);
   actions.append(
-    button("pxd-region-delete", "Delete", onDelete),
-    button("pxd-region-open-refs", "Open references", onOpen),
+    button2("pxd-region-delete", "Delete", onDelete),
+    button2("pxd-region-open-refs", "Open references", onOpen),
     cancel
   );
   card2.append(actions);
@@ -39799,7 +43388,7 @@ function blockUidFromNode(node2) {
   }
   return null;
 }
-var inside4 = (node2, ancestor) => {
+var inside5 = (node2, ancestor) => {
   let el = node2;
   while (el && el.nodeType === 1) {
     if (el === ancestor) return true;
@@ -39811,7 +43400,7 @@ function inputBlockRole(node2, rootUid) {
   const uid = blockUidFromNode(node2);
   const editor = node2?.closest?.(".pxd-item__editor") || null;
   const nest = node2?.closest?.(".rm-block-children") || null;
-  if (nest && inside4(nest, editor)) return { role: "child", uid };
+  if (nest && inside5(nest, editor)) return { role: "child", uid };
   if (uid && rootUid && uid !== rootUid) return { role: "child", uid };
   return { role: "root", uid: uid || rootUid || null };
 }
@@ -40014,28 +43603,28 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const PILL_CHAR = 6;
   const PILL_PAD = 16;
   const PILL_MIN = 40;
-  const placeBend = (rec, end, point, clamp3, zoom, side2, cardW = 0) => {
+  const placeBend = (rec, end, point, clamp4, zoom, side2, cardW = 0) => {
     const bend = bendOf(rec, end);
     const scale = screenPx(zoom);
     bend.g.setAttribute("transform", `translate(${point.x} ${point.y}) scale(${scale})`);
-    if (bend.clamp !== clamp3) {
-      bend.clamp = clamp3;
-      bend.g.setAttribute("class", `pxd-edge__bend${clamp3 ? " pxd-edge__bend--clamped" : ""}`);
-      bend.g.setAttribute("data-clamp", clamp3 || "");
-      bend.g.setAttribute("data-tip-state", clamp3 ? "clamped" : "inline");
-      bend.g.querySelector?.(".pxd-edge__bend-chevron")?.setAttribute("d", clamp3 === "bottom" ? "M-3 -1.5L0 1.5L3 -1.5" : "M-3 1.5L0 -1.5L3 1.5");
+    if (bend.clamp !== clamp4) {
+      bend.clamp = clamp4;
+      bend.g.setAttribute("class", `pxd-edge__bend${clamp4 ? " pxd-edge__bend--clamped" : ""}`);
+      bend.g.setAttribute("data-clamp", clamp4 || "");
+      bend.g.setAttribute("data-tip-state", clamp4 ? "clamped" : "inline");
+      bend.g.querySelector?.(".pxd-edge__bend-chevron")?.setAttribute("d", clamp4 === "bottom" ? "M-3 -1.5L0 1.5L3 -1.5" : "M-3 1.5L0 -1.5L3 1.5");
     }
-    const full = clamp3 ? `${clamp3 === "bottom" ? "↓" : "↑"} ${bend.words || "Block"}` : "";
+    const full = clamp4 ? `${clamp4 === "bottom" ? "↓" : "↑"} ${bend.words || "Block"}` : "";
     const cardScreen = cardW > 0 ? cardW * (Number(zoom) > 0 ? Number(zoom) : 1) : Infinity;
     const maxW = Math.max(PILL_MIN, cardScreen - PILL_PAD);
     const wantW = Math.max(PILL_MIN, full.length * PILL_CHAR + PILL_PAD);
     const w = Math.round(Math.min(wantW, maxW));
     const fit = Math.max(1, Math.floor((w - PILL_PAD) / PILL_CHAR));
     const label = full.length > fit ? `${full.slice(0, Math.max(1, fit - 1))}…` : full;
-    const key = `${clamp3 || ""}|${side2 || ""}|${label}|${w}`;
+    const key = `${clamp4 || ""}|${side2 || ""}|${label}|${w}`;
     if (bend.pillKey !== key) {
       bend.pillKey = key;
-      if (clamp3) {
+      if (clamp4) {
         const inward = side2 === "left" ? 1 : -1;
         bend.text.textContent = label;
         bend.pill.setAttribute("width", String(w));
@@ -40647,7 +44236,7 @@ function changelogEntry(markdown, version) {
 }
 
 // src/changelog-text.js
-var CHANGELOG_TEXT = "# Changelog\n\n## 3.5.0 — 2026-10-07\n\nParse a PDF into clean blocks and real tables, on the board, with merged cells, and better than Heptabase on tables.\n\n- **Parse / Parsed / Both** in the reading pane. The built-in parser needs no install and reads a 30-page paper in under a second: headings with their levels, paragraphs in two-column reading order, lists, footnotes linked to their marks, figures and formulas as page crops, and tables, ruled or borderless, with merged cells and header rows. Running headers, footers and page numbers are removed and listed, never silently dropped. Results are cached on this device; nothing is written to your graph until you insert.\n- Hover a parsed block and its region lights up on the page; click to jump there. Each table shows the grid it found over the PDF with a confidence chip, and you can drag a column boundary to fix it.\n- **Insert, send, or drag.** Insert below the PDF, send sections to the board as cards, or drag any block or table onto the board. A table becomes a table card: with Roam Grid 0.18.3+ it keeps merged cells, header rows, alignment and column widths (one Roam write, one undo); without it, a native Roam table. Make highlight turns a parsed passage into a Roam PDF highlight.\n- **Optional local helper** (`tools/parse-helper`, Docling on your Mac): formulas as LaTeX, OCR, and **Read the scan** for scanned pages — Apple Vision word boxes and the scan's own ruling lines go through the same table engine, numbers misread by OCR are repaired and re-read cell by cell.\n- Measured on the ICDAR 2013 table benchmark (67 government PDFs): built-in table structure F1 0.979 and exact-cell F1 0.932, against Docling's 0.865 and 0.795, in 2.5 s for all 67 against 5 minutes. On a 1980 CDC table scanned as an image only: structure 1.000 and cell F1 0.957, against Docling's 0.082. Small scanned type can still misread words (e.g. disease names in 6 pt print); numbers are checked against their column.\n- Roam Grid tables in cards scale with the board and get the whole card (no Roam row spacer, no break-out padding); columns are sized from the text.\n- The reading pane title falls back to the parsed title; the tool dock stays left of the pane.\n\n## 3.4.0 — 2026-10-06\n\nBoards that wear your Roam theme, edits that hold still, wider PDFs, and Roam tables on the board.\n\n- Plexus follows the theme your graph is using: the canvas, cards, text, borders and links take Roam's own colours, light or dark, and change when the theme does. Setting **Theme**: Follow Roam (default) or Plexus. Pastel sections are stronger in light mode.\n- Editing in place holds still. In page cards the bullet and fold arrow stay in the gutter and nested rows keep their indent; note, block and task editors keep the resting line height; a sticky no longer shows a blue box while you type. Links keep the same colour at rest and in edit.\n- Roam tables on the board. A card holding a `{{[[table]]}}` shows Roam's table, scrolls sideways when it is wider than the card and is never clipped. Enter or a double-click edits a cell with Roam's editor; Tab, arrows, typing, the wheel and right-click stay with the table while you work in it. New **Table** tool (B) and a **Table** item in the canvas menu add a 3×3 table in one undo. With Roam Grid installed, an enhanced table works inside the card, and **Open grid** shows it at full size.\n- PDF cards can be as wide as you like (up to 4000 px), and a large card redraws page 1 sharp instead of stretching a small cover. The pane title uses the PDF's own title, never a storage path; a zero highlight count is hidden; the format bar no longer covers the pane; a slow PDF shows its cover until the first page paints.\n\n## 3.3.0 — 2026-10-06\n\nEdit in place without the card changing, PDFs you flip through on the board, PDF dark mode, and three Heptabase looks.\n\n- Editing a note, block, task or page card no longer changes how it looks: the text stays in the same place, at the same size, with the same line breaks, at every zoom. Roam's bullet, its spacer and the reference-count slot no longer squeeze the text into a narrow column, the editor grows with its text, and the card keeps its size. Double-click a word and the cursor lands on it. With Roam Caret installed, its caret follows the board's zoom inside the card.\n- Clicking a PDF card selects it, as in Heptabase: the card becomes a small reader you flip through with the wheel, ← and →, or the `‹ 3 / 9 ›` bar. The side pane opens only from **Open**, a double-click, Enter, the card menu, or a highlight.\n- PDF pages in dark mode (setting **PDF pages in dark mode**): Dim (default) softens white pages on a dark board, Invert turns them dark, Off keeps white paper. Highlights stay readable.\n- Three Heptabase looks, all off by default: **Canvas** flat grey instead of dots, **Section fill** pastel, **Highlight cards** tinted instead of a colour bar. In dark mode they show as coloured borders.\n\n## 3.2.0 — 2026-10-06\n\nPDF round 2: covers at every zoom, page 1 without opening the PDF, pages at reading width, one open per click.\n\n- Zoomed out, a PDF card is still its page. Map and overview paint the saved cover on the card itself, as in Heptabase at 11-17 %, with no image element, title or strip at those tiers.\n- A PDF you have never opened gets a cover in the background: a quiet board (1.5 s after first paint, idle, one at a time, at most three per visit, never while you move or read) draws page 1 with Roam's own PDF engine, so nothing is opened or written. A capture that comes out blank is thrown away. Setting **Prepare PDF covers in the background** (on).\n- The reading pane fills its width: Roam's reader no longer stops short of the pane's right edge (its block row kept a separator and a reference-count slot beside the PDF). After the first page paints, the page is set to page width (through the viewer when it is reachable, otherwise by stepping Roam's own zoom buttons until the page fills the pane). Your own zoom is kept; resizing the pane refits.\n- One click on a highlight card does one thing. A plain click opens it in the reader (setting **Highlight click opens**: Reader or Sidebar). Shift-click opens Roam's sidebar. The chip's **▾** lists Open in reader, Open in sidebar and Open page in main. Nothing opens twice.\n- Selecting a PDF card never mounts Roam's reader inside the card. **Read inside the card** in the card menu is the one way to the inline reader; **Show the cover** takes it back, and opening the pane does too.\n- The fullscreen tab strip shows only from two tabs up, is 28 px tall, and reserves nothing while hidden. Tabs, their persistence and Cmd+1..9 are unchanged.\n- The reader's pages float on a soft grey bed in light mode; dark keeps the chrome colour.\n\n## 3.1.0 — 2026-10-06\n\nPDFs that read like Heptabase, page cards that hold still while you edit, and tools that do what your hand expects.\n\n- PDF cards show the page itself: white paper, no text on the face. Hover for the title, highlight count and page chips, and an **Open** pill; double-click or Enter opens it too. A thin strip on the edge marks where the highlights are; click a mark to open that page. The cover is saved on this device the first time you read the PDF (nothing is written to your graph); until page 1 has been on screen, the card shows the last page you read. Setting **PDF card cover**: first page or last page read.\n- The PDF opens in a pane beside the board with one slim header (title, other PDFs on the board, highlights, Roam's tools, close) and the pages at reading width. A floating pill drives Roam's own zoom out, zoom in, fit width and search, and shows `3 / 9`. Roam's toolbar is still there behind the tools button. The card you are reading gets an outline until you close the pane.\n- Highlights moved into a drawer at the bottom of the pane: colour and page chips, search, and Note, Place and Locate on hover. A new highlight pulses in the list and offers **Place on board** for a few seconds. Hovering a highlight card flashes its mark in the reader, and hovering a row pulses its card.\n- Highlight cards are quote cards with a colour bar and a source chip (`title · p. 3`).\n- Editing a page card keeps the card exactly as it looked: same rows, same spacing, nothing rewraps or moves, and the cursor lands where you clicked. One click on an already selected page card starts editing there.\n- Hand tool: drag a card to move it, drag empty board to pan. In Select and Connect, dragging empty board pans too; Shift-drag draws the selection box and Alt-drag the lasso. Setting **Drag on empty canvas** brings the old box-select back.\n- With Roam Caret 0.6.6 installed, its caret now shows inside cards at every zoom (Plexus tells it when the board moves).\n- The board bar, tab strip, legend and Properties are solid, and an empty tab strip no longer shows.\n- New PDF cards are 240 × 320.\n\n## 3.0.0 — 2026-10-06\n\nPlexus 3.0: the 3.x roadmap is complete. This release makes large boards open fast, makes every new surface usable from the keyboard, caps every bulk gesture at what one Roam undo can take back, and documents the data model and module contracts as built.\n\n- Large boards open fast. A board with 300 cards, 20 sections and 150 connections shows its cards in about 360 ms and is idle by about 450 ms (it was about 1.3 s, with long pauses after the first paint). Card reference and board counts now come from one indexed read instead of four searches across the whole graph, and fullscreen no longer forces a page layout in the middle of opening.\n- Keyboard: trail stops in the panel take focus; Alt+↑ and Alt+↓ move a stop and Enter walks the trail from it. The region overlay nudges with the arrow keys (Shift for 10 px), Enter confirms and Esc cancels. The status, halo, why and task popovers take focus when they open, move with the arrow keys and give focus back on Esc. Trail strips, crops, PDF chips, timeline rows and the resurface panel open with Enter. Every button has a name, and focus rings show in light and dark even when another extension hides outlines. The `?` sheet lists the new keys.\n- Undo: every bulk gesture stops at 45 changes so one Roam undo takes it back, with a toast that says how many were added: adding cards to a trail, a new trail from a selection, landmarks on a selection, and Lay out by date. README, Limits has a table of writes and undo steps per gesture.\n- Fixed: moving a trail stop down (by keyboard or by dragging) did nothing.\n- Docs: `docs/spec-plexus-3.0.md` (every block kind and prop key, what is stored where, decorated macros, the public API, interop) and `docs/api-plexus-3.0.md` (module contracts). The README follows the 3.0 order and has an integrations table. `tools/spec-keys.mjs` and `tools/doc-check.mjs` fail when code and docs drift.\n\n## 2.21.0 — 2026-10-06\n\nTrails, landmarks, a timeline, strength and dust lenses, source chips, and an Integrations section in settings.\n\n- Trails: a named path through cards with a note at each stop. Add a card to a trail from its menu; Walk trail plays it stop by stop in present mode. A trail is a block under the board's collapsed `Trails` child, so `((trail))` pasted anywhere in Roam shows as a strip of stops you can click. The panel has a Trails tab.\n- Landmarks: make a card, sticky or section a landmark and it keeps a large glyph at every zoom, including the overview, and shows on the minimap. Walk the board tours landmarks left to right, then down, or along a trail.\n- Timeline in the Info tab: the daily pages that mention any card on the board, with a count per day; click a day to open it. Lay out by date can now place cards by the day they were first or last mentioned, not only by a date attribute.\n- Strength and Dust lenses (More menu). Strength draws a connection thicker when its two ends are referenced a lot, share other boards, and were edited recently; hover a line to see why. Dust dims cards untouched for 6 months, 1 year or 2 years. Both are views: nothing is written, and turning them off puts every line and card back.\n- Source chip: a highlight dragged from an `Articles/` or `Media Captures/` page shows the page title, and the author when the page has an `Author::` line. Click the chip to open the page in the sidebar. Renaming the author updates the chip.\n- Settings has an Integrations section: Better Tasks, Task Status Tags, Roam Plexus, Compass and the colour highlighter, each shown as detected (with its version) or not installed. It updates when one of them loads or unloads. Switches turn each integration off; with \"Roam Plexus and Compass\" off, Open in Compass is hidden and drawing cards stop asking Roam Plexus for thumbnails.\n- Kanban card titles no longer show the status tag, and lane counts have a space before them.\n- Fullscreen tabs drop boards that were deleted.\n\n## 2.20.0 — 2026-10-06\n\nStatuses, journal, fullscreen tabs, touch, and a round of reliability work.\n\n- Task statuses (with Roam Task Status Tags 0.9.0 or later loaded). A task card shows its status as the same glyph Task Status Tags draws on the checkbox (Active, Waiting, In Review, Holding, Incubating, Alert, Cancelled) and as a chip. A small ring left of the checkbox opens a status chooser; Shift-click removes the status. The card menu and a multi-selection have Status ▸ (up to 45 cards at a time). Every status change is written by Task Status Tags, not by Plexus. Without it, the glyphs still show from a built-in table and the ring is not there.\n- Kanban \"Lanes: Status\": one column per status, plus No status and Done. Dropping a card on a column sets that status; dropping on Done completes it the same way the checkbox does. `[` and `]` move a focused card one column.\n- Journal tab in the panel: the day's top-level blocks with a day stepper. Drag a row onto the board for a card. Looking and stepping write nothing.\n- Fullscreen board tabs: boards you open while fullscreen collect as tabs above the board bar (up to 9). Cmd+1 to Cmd+9 switch. The tabs come back the next time you go fullscreen in this graph.\n- Touch and tablet: pinch to zoom, two fingers to pan, long-press for the menu, larger resize grips under a coarse pointer.\n- PDF highlights: a Note button on a highlight card opens its note the way Roam's own note button does (in the sidebar, focused), creating the note block only when there is none; one undo removes it. The pane's PDF switcher names a PDF without highlights by its page, and the arrow keys and Enter move through the list.\n- New drawing (Roam Plexus) is one undo step with its card.\n- Fixed: Plexus no longer replaces Roam's global `pull` function. Since 2.14.0 it answered other extensions' reads from its own cache. After updating, reload Roam once to clear the old copy's replacement.\n- Fixed: a board shown in its own linked references, or in the right sidebar, no longer goes fullscreen a second time on top of the main board (clicks and drops went to the hidden copy).\n- Developers: `node tools/live/smoke.mjs \"Readwisenotes - \"` runs a ten-step live check and cleans up only its own blocks; callback errors are counted and a callback that keeps failing is paused for a minute (Settings shows \"N errors\" when there are any); `npm run size` prints the bundle report.\n\n## 2.19.0 — 2026-10-06\n\n- Clicking into a page card no longer changes how it looks. The editor keeps the card's own text size, row spacing, indent and line wrapping. Roam's bullets, guide lines and extra scrollbar stay hidden, and the row you clicked stays where it was.\n- Drag a highlight straight out of the PDF onto the board, as in Heptabase. Hover a highlight in the reading pane (the cursor becomes a hand), then drag it onto the board: a card lands where you drop it. A highlight that is already on the board pulses instead of being added twice. A plain click on a highlight still opens Roam's highlight menu, and selecting text to make a new highlight works as before.\n- Clicking a highlight in the pane's list, or the page footer on a highlight card, scrolls the PDF to that highlight and flashes it, not just to the top of its page.\n- The PDF reader fills its part of the pane. There is no longer a second scrollbar around it, and Roam's toolbar (highlight tools, zoom, page number) stays in view.\n- The link legend (the chips that turn link types on and off) sits under the board bar, beside Properties, instead of on top of the bar's buttons.\n- While you edit a page card, hovering a row shows a faint bullet in the margin; drag it to move the block, click it for Roam's block menu.\n- A board that is open in the right sidebar while the main window is zoomed into the same board stays in the sidebar. Before, both copies went fullscreen and the sidebar copy covered the main board, so clicks and drops on the board did nothing.\n\n## 2.18.0 — 2026-10-06\n\nPDF highlights closer to Heptabase (roadmap P27), page cards you can edit in place, and two speed and freshness fixes:\n\n- Open reader on a PDF card opens a reading pane beside the board instead of inside the card. The card stays a cover. Drag the pane's edge to resize it; on a narrow board it sits below.\n- The pane lists every highlight in that PDF with its colour, page, and note. Filter by colour, page, or text. Place puts one card on the board; a highlight already on the board pulses instead of being added twice. Drag a row onto the board for a card at that spot.\n- A highlight card's footer opens the pane at that highlight's page and flashes the card. The page holds after Roam restores the last page it showed.\n- A note under a highlight (a child block) shows on its card and follows edits.\n- Clicking into a page card edits it in place. The card keeps its size and look; the row you clicked gets the cursor; Escape returns to the same view.\n- A `((ref))` card follows edits to its source, including edits made while the card was off screen or the board was closed.\n- Graph links are drawn after the board's first paint, so opening a board feels faster.\n- The colour tooltip on a highlight now says what changes: the card and the list follow the tag, the mark inside the PDF keeps the colour Roam painted.\n\n## 2.17.0 — 2026-10-06\n\nFeel instant (roadmap P26), after the claude.ai speed work:\n\n- Going back to a board you just left is instant: the last two boards stay ready (paused, nothing running) and come back as they were, fullscreen included, with no rebuild.\n- A board opens with a quick sketch of its last layout while the real board loads.\n- Hovering a board chip, a board card, a breadcrumb, or a link to a board quietly reads that board ahead of the click.\n- Cards load in small batches nearest the middle of the screen first, so a big board never freezes the page.\n- Selecting a card no longer touches every other card (the same cost on a 300-card board as on a 40-card one).\n- Faster text checks on every card (tags, regions, attributes, diagram detection).\n- Cards and page rows keep their size while their content loads, so nothing jumps.\n- Optional speed log in settings (off by default): open time, click time, pan smoothness, Plexus long tasks.\n- Developers: `npm run perf:ratchet` keeps measured counts from getting worse; a hidden `speed-flags` setting turns each speed feature off without a release.\n\n## 2.14.1 — 2026-10-06\n\n- Typing stays light while a board sits in an open right sidebar. Plexus read Roam's whole sidebar window list every 400 ms (about 6 ms each time with 140 windows); it now reads the window's own open/closed arrow instead.\n\n## 2.14.0 — 2026-10-06\n\n- PDFs, videos, tweets and other heavy embeds on a card, a page row or an outline row show a poster until you open them. Only one stays live per board.\n- A board you scroll away from, a collapsed sidebar window, or a board under a closed block stops working in the background and comes back where you left it.\n- Opening a board reads Roam about six times less (about 24 calls instead of 155 on a 39-card board), so other extensions keep their share of Roam's limit.\n- Typing in a card updates that card only. Typing on a page that is a page card updates the changed row only.\n- Typing outside a board keeps the board open instead of closing and reopening it.\n- Panning no longer measures every arrow handle on each mouse move.\n- Board chips at the top of a page are placed once per frame instead of scanning the whole page for every change.\n- A live speed check for developers: `node tools/live/perf-gate.mjs`.\n\n## 2.13.2 — 2026-10-05\n\n- A board in the right sidebar opens as the board. Outline is still in the mode bar, and the last choice is remembered on this device.\n- Outline rows render when they scroll near the window. A row that scrolls far away unmounts and keeps its height, so a PDF lower down does not stay open.\n- Clicking and panning a board stays fast in a window that has been open for days. Old copies of a board no longer keep listening after they close, and loading Plexus again cleans up an earlier copy that never unloaded. One click had been waking thousands of leftover copies.\n- A board that fails to open waits before trying again, instead of retrying every 400 ms.\n\n## 2.13.1 — 2026-10-05\n\n- An image card keeps its picture at map zoom. A collapsed or empty card still shows its title.\n- A card that cites part of an image shows that crop. A region inside the card still uses its own block.\n\n## 2.13.0 — 2026-10-05\n\n- Every diagram opens as a Plexus board by default. Nothing is saved until you change the board. Your first edit writes the board marker in the same undo step, and folds the outline when Collapse the outline is on.\n- A diagram that already has native shapes stays Roam's own. An Open as Plexus board button over it imports the shapes and arrows.\n- Settings has Every diagram is a Plexus board. Turn it off to open only diagrams you enhance or create with New whiteboard here. Turning it off gives the native diagram back to boards you have not changed.\n- Plexus: Restore native diagram now sticks, even with the setting on. Plexus: Enhance clears it.\n- Fixes from a review of 2.8 to 2.12:\n  - A page that is a card on a board no longer throws or loops when it opens. Its board chip sits under the page title.\n  - The references drawer lists top-level blocks again.\n  - Cutting or duplicating an image card keeps its regions. Deleting one asks first and shows how many regions it has.\n  - Clearing a connection's why no longer deletes a note that has children.\n  - An open PDF reader stays mounted while it is in view, and arrows meet its edge. Page chips refresh when highlight cards change.\n  - Encrypted-graph PDFs (`.enc`) show their highlights.\n  - Each image highlight reuses one regions block.\n  - Fewer reads on large boards: highlight watches are capped, block props are read only for highlights, and the Info panel counts references without pulling them all.\n  - Memory lane arrows follow the cards. Suggested lines follow a dragged card, and their menu sits at the line.\n  - Escape works on a full-screen board. Annotate is one undo step.\n  - Popovers close when the pointer leaves. Unload no longer removes Roam's own nodes.\n- The command palette stays two entries.\n\n## 2.12.1 — 2026-10-05\n\n- Double-click a connection label to edit the label and a why note. Enter saves both. The outline chip adds \"because …\". An empty why writes no child.\n- Shift+T opens a memory lane. Play fades cards that did not exist yet. A snapshot tick restores that layout and writes nothing.\n- The references button on a block card lists blocks that mention it, grouped by year.\n- The links menu can draw dotted lines for shared page references. Connect makes the connection. Link text wraps the mention.\n- Plexus Commands has Resurface here. It inserts a button that lists cards from a week, a month, or a year ago. The command palette stays two entries.\n\n## 2.12.0 — 2026-10-05\n\n- Hover the info button on a card or a connection to see when it was made, the board, the section, cards from the same day, and how often it is referenced. A block on a board shows one chip per board. Hover the chip for a map. Click the chip to open that card. Nothing here writes. The command palette stays two entries.\n\n## 2.11.4 — 2026-10-05\n\n- A PDF card shows one chip per page that has a highlight on the board. The badge is the count. A click pulses those cards. A double-click opens that page in the card reader. An arrow into a highlight shows the page at the tip. A highlight in the outline says On board when that highlight is a card. None of these write. The command palette stays two entries.\n\n## 2.11.3 — 2026-10-05\n\n- Open in reader on a highlight card opens that page in the PDF card on the same board. The mark stays in view. If that PDF card is not on the board, Roam opens the highlight and a note says to click it. The click does not write. The command palette stays two entries.\n\n## 2.11.2 — 2026-10-05\n\n- Add highlights on a PDF card places the ones you pick, as a grid or a column. One undo removes them. Dragging a highlight bullet onto the board makes one card. Dropping a date asks before adding only the highlights under that date.\n- An area highlight keeps the picture's shape. Mark region on that card stores a region under the highlight. The page mark keeps the colour Roam painted.\n- The tag lens can show one highlight colour. The command palette stays two entries.\n\n## 2.11.1 — 2026-10-05\n\n- A block ref of a PDF highlight is a card. It shows a colour bar, the passage or the area picture, and the page. Changing the colour tag updates the bar. A block that is not a highlight stays a normal ref. The command palette stays two entries.\n\n## 2.11.0 — 2026-10-05\n\n- A pdf block on the board is a card. The cover shows the file name and the highlight count. Open reader mounts Roam's own reader. Interact lets you use that reader. Escape or a board click puts the shield back. A second reader closes the first. Moving the card does not change the PDF settings. The command palette stays two entries.\n\n## 2.10.3 — 2026-10-05\n\n- With Compass loaded, a card menu can open Compass on that page. Compass can open the board that holds the card, and asks which board when there are two.\n- An image card can start an empty drawing beside it. The connection reads annotates. A note says to drop the image into the drawing, and it stays up after the drawing opens. The outline chip names the drawing. Without Roam Plexus that row stays hidden. The command palette stays two entries.\n\n## 2.10.2 — 2026-10-05\n\n- A block ref of a Roam drawing shows the drawing. Regions lists that drawing's regions, and picking one adds a reference on the board. New drawing here creates the drawing and a reference card. The drawing block is not rewritten. Without Roam Plexus the new drawing is still an ordinary drawing. The command palette stays two entries.\n\n## 2.10.1 — 2026-10-04\n\n- window.PlexusDiagram lists boards on a page, boards that show a block, and the cards and views on a board. It can open a card or a saved view, add one card, and return a small PNG of a board. Opening and the picture do not write. Adding a card writes that one block.\n- A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Open drawing uses Roam Plexus. If Roam Plexus is missing, the card is an ordinary block ref. The command palette stays two entries.\n\n## 2.9.6 — 2026-10-04\n\n- An image card shows a small region count when it has regions. The card menu lists them: Go, Copy ref, Rename, and Delete. Rename changes only the caption. Delete asks when another block still references the region, and can open those mentions. Badges off hides the count. The command palette stays two entries.\n\n## 2.9.5 — 2026-10-04\n\n- Hover an image crop for a larger preview, the picture dimmed and the region lit. Click opens that image on its board, zoomed to the region, or scrolls the outline to the image and pulses the region. Shift-click opens the board in the sidebar. An inline view draws a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. Neither click writes to the graph.\n\n## 2.9.4 — 2026-10-04\n\n- On an image block, the block menu item Plexus: Mark image region lets you drag a rectangle. Confirm stores the region under the image, copies a block ref, and toasts. Escape writes nothing. A plexus-region image button in the outline, a block ref, an embed, the sidebar, and linked references draws the crop at most 160px tall, with a 1px border and no shadow, and hides that button. A Roam Plexus region such as a rectangle is left alone. The command palette does not gain an entry.\n\n## 2.9.3 — 2026-10-04\n\n- On an image card, Mark region lets you drag a rectangle on the picture and add a short caption. Confirm stores that region under the image, copies a block ref, and toasts that it copied. The first undo removes the region. The next undo removes the empty container. The card stays put, and the image viewer does not open. The command palette stays two entries.\n\n## 2.9.2 — 2026-10-04\n\n- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views, each with a 96px outline map. Go puts the camera back and writes nothing. Delete removes the view block, and undo puts that row back. The command palette stays two entries.\n\n## 2.9.1 — 2026-10-04\n\n- A new card is placed before the Connections list, snapshots, and a region container, so those stay at the end of the block. The library card count skips a region container the same way it skips Connections. Leaving a new empty card that only holds a region container no longer deletes that card.\n\n## 2.9.0 — 2026-10-04\n\n- A region container `{{[[plexus-regions]]}}` and its `{{[[plexus-region]]}}` children stay off the board. They are not cards. A card's child badge does not count them. Image regions and saved views can be stored in that shape. A Roam Plexus region is recognized and left as theirs. Nothing is drawn yet.\n\n## 2.8.0 — 2026-10-04\n\n- Better Tasks and the Task tool start off. Settings, Integrations, has four controls: Better Tasks integration, Task tool, Task chips, and Default project for new tasks. With both switches off, the dock has no Task button, K does nothing, and the ? sheet does not list K. A Task tool you already saved stays on. Turning Better Tasks on draws the light checkbox and the chips, and asks Better Tasks for attributes once. Turning it off puts Roam's own checkbox back. Opening, panning, and clicking a board does not call Better Tasks while the integration is off.\n- A card whose text has #bg-blue or #[[bg-blue]] takes that colour on the board when the colour highlighter's variables are on the page, in light and in dark. #c:red still colours bold text inside the card, and Plexus does not paint over it. A fill you set in the picker wins; clearing that fill brings the tag colour back. With no highlighter variables, named colours use a fixed palette and the tag stays visible in the card.\n- The colour picker's gear, Write as highlighter tag, is saved on that board. In that mode a named colour writes one #[[bg-name]] into the block and clears the card's fill. One undo restores the text and the fill together. Hex, darker, and lighter still change only the fill.\n- A key pressed outside the board no longer switches the tool or adds a card, while nothing on the board is selected. A selected card still receives the board's keys.\n- A card more than one screen outside the view keeps its size and skips layout. The card you are editing stays fully drawn. A card that stays outside the view for 10 seconds drops its live Roam body and draws it again when it comes back.\n\n\n## 2.7.1 — 2026-10-04\n\n- Dropping a repeating task on Done in the Kanban view now makes the next occurrence, the same as ticking its checkbox. Before, only a real checkbox click did, because Better Tasks starts the next occurrence from its own checkbox. The task is now finished through that same checkbox, out of sight, so you get the completed date and the next task together.\n- Popovers stay clear of the board's own controls. The task chip popovers, the children peek, the Background and tag popovers, the card colour picker and the right-click menu move aside or flip instead of opening under the dock, the top bar, the rail, the minimap or the Properties panel. When there is no room, they shrink and scroll.\n- Task cards are readable when you zoom out. At the map zoom the check box is at least 20 pixels on screen, with the due date under the title (teal today, red overdue). Zoomed far out, a task is one clear box: empty, checked or crossed, in the same colours.\n- The pill that shows a scrolled-out block arrow (\"↓ the block's first words\") stays inside its card. It is cut to the card's width less 16 pixels with an ellipsis and keeps the same size on screen at any zoom.\n- A board with many tasks no longer uses up Better Tasks' limit of 100 decorated checkboxes. A task card now draws a light checkbox of its own instead of a real Roam block, so a 40-task board added 40 real checkboxes before and adds none now, and Better Tasks keeps decorating the rest of the page. Clicking the box still completes the task through Better Tasks.\n- Checked for a freeze when the bench is run back to back with a task board open: five runs and five load-and-unload cycles did not reproduce it.\n\n## 2.7.0 — 2026-10-03\n\n- Task cards. A card whose block is a Roam TODO now looks like a task: Roam's own checkbox, the title, and a row of chips under it for the due date, project, priority, repeat, status, waiting-for and GTD. Today's due date has a teal border, an overdue task a red one, a done task is dimmed and struck through, and a cancelled one is struck through. Better Tasks' own pills are hidden inside the card so the chips are not doubled. At map zoom a task shows a check box, its title and its due date; zoomed far out it is a single check box.\n- New Task tool. Press K, or pick it in the dock or the canvas menu, then click the board: a TODO card appears and opens for typing. A task left with no text disappears when you click away, like an empty card. Cmd+Z right after makes one undo step. The card menu has Make task for a plain note.\n- Change a task from its chips. Click the due date, project, priority or repeat chip and pick from a small popover (today, tomorrow, next week or any date; a project from Better Tasks' list; low, medium or high; a repeat rule). The change is made by Better Tasks itself, so the attribute blocks keep their uid and Plexus still never writes a `BT_attr` block. Cmd+Z after a chip change is Roam's undo, not the board's. Without Better Tasks the tool makes a plain TODO card and the chips are read-only.\n- Finishing a task works the way it does in Roam. Tick the checkbox on the card and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page. A toast tells you the date and offers Add to board. Dropping a card on Done in the Kanban view does the same through Better Tasks.\n- Drag a task card onto a daily-page card (or a section named for a day) and its due date becomes that day, in the same attribute block. Hold Shift to move the card without changing the date.\n- Better Tasks' attribute blocks and its Activity log no longer count as children: they are never rows, never in the outline or the peek, and never a \"▸ N\" badge. Renamed attributes are read from Better Tasks.\n- Three new settings: Task tool (show it in the dock), Task chips (full, due only or none) and Default project for new tasks.\n\n## 2.6.0 — 2026-10-03\n\n- Editing a card no longer shrinks it. Opening a card or a sticky for editing used to let it collapse toward the height of one line, and its arrows came loose. The card now keeps its size for the whole edit, the editor fills it, and the text is no longer cut to one line when you start typing. Edges stay attached.\n- Sticky notes are rebuilt to work like the RoamJS sticky notes, and they stay saved. Each one has a coloured header bar you drag, with a short title, a colour dot and a minimize button. The body is the live Roam block: click once and type, with tags, images, links and the slash menu. Drag a corner or edge to resize. Minimize folds a note to its header and remembers it. There is no close button; Delete or the menu removes a sticky and Cmd+Z brings it back.\n- Page cards open faster. A card now shows all its rows as plain text at once, then turns the rows you can see into live Roam blocks a few at a time. Rows scrolled out of view, and heavy rows such as charts, embeds and images, wait until they are on screen. A page you pulled once is reused while the card is open. A 146-row page card used to block for about 150 ms while it drew; now it paints in about 20 ms.\n- Arrows to blocks now stay on their block. When a chart or an image above the target row loads late, or a row turns live, the card re-measures its rows and the arrow follows. Each linked row shows a small dot in its own arrow's colour, so two arrows into one card stay apart, and hovering one arrow lights only its row.\n- New tooltips for the sticky header: drag, minimize or expand, and the colour dot.\n\n## 2.5.0 — 2026-10-03\n\n- The connection preview is cleaner. The target block is now a highlighted bar inside its page card, at the block's real place in the page, with its text cut to the card's width, and the arrow runs into the bar with a head like the one on the board. Nothing spills over a neighbouring card any more.\n- The preview opens where it never covers the chip or the block line it belongs to: under it, else above, else beside it, shrinking and scrolling inside when the window is small. It follows the chip while you scroll or resize and closes when the chip leaves the screen.\n- Roam's breadcrumb above a connection block (in linked references and when you zoom into the block) now opens the same preview on a plain click, because Roam's own link there only led to \"Board › Connections\". A small ▦ marks it. Shift-click, Cmd-click and Ctrl-click still do what Roam does. Unloading removes the marks and the listeners.\n- Resize grips, connection dots and arrow-end handles keep the same size on screen at every zoom, so they are easy to grab on a zoomed-out board and no longer huge when zoomed in.\n- Light mode was checked on every new surface. Fixed: the connection chip could run past the edge of its block, and its teal was too pale on white.\n\n## 2.4.0 — 2026-10-03\n\n- The Add and Info panel now opens to the left of the control rail instead of covering it. The minimap steps left of an open panel. The rail keeps one fixed width, so the version badge no longer pushes it wider.\n- An arrow that ends on a block now visibly points at it. The line continues into the page card and its head stops beside the row's text. The row keeps a mark in the arrow's color (a left rule and a light tint; in the dark theme a border only, no fill). Hover the arrow and the row lights up; hover the row and the arrow thickens and a tooltip names the other card and the label. When the row has scrolled out of view, the arrow ends in a pill at the card edge with an arrow and the block's first words; click it to scroll the row back.\n- Connections now show up where Roam draws them. Under every connection block in the outline, the sidebar or a block's linked references, a small chip reads \"A —label→ B · on Board\" and names the block when the arrow ends on one. Click the chip to see a preview: a map of the two cards with the arrow and the target row, plus Open on board and Open in sidebar. Open on board opens the page, enters a nested board if needed, and selects the connection. Nothing is written, and unloading removes every chip.\n- The card's hover toolbar no longer disappears on the way to it. It waits 400 ms after the pointer leaves the card, so you can reach it and open its color picker. Moving to a different card switches the toolbar at once with no flicker. Escape, panning and zooming hide it immediately.\n- With the Hand tool you can now resize: a press on a resize grip resizes, anything else pans, and Space-drag still pans over grips. Page cards have a wider grip band on the right and bottom edges and a larger corner that sits above the scrollbar. The grips show when you hover a card in hand mode.\n\n## 2.3.0 — 2026-10-03\n\n- Board rows in page cards. A page card for a page that holds a board shows that board as a small map with its title and item count, not a grey box. After four maps on one card, the rest are one-line chips. The row for the board you are looking at says \"this board\". Click opens the board; Shift-click opens it in the right sidebar.\n- A row that Roam cannot render inside a card, such as an empty `{{[[roam/render]]}}`, now shows its raw text, muted, instead of \"Failed to render\". This also ends the Roam console errors the old page-card row caused.\n- Hover tooltips. Every control on the board bar, the dock, the rail, the card toolbar and the Properties panel shows its name, its shortcut and a one-line description after a short hover. Keyboard focus shows it at once. The tip sits below the board bar, above the dock, left of the rail, and stays inside the board. Settings, Hover tooltips, turns them off and hands the text back to the browser. Tooltip delay is instant, 350 ms or 800 ms.\n- A tooltip no longer stays on screen after the control it described is removed.\n- Ref cards and image cards show readable titles everywhere: Table, Kanban, Graph, Timeline, Gallery and Find use the first line of the referenced block or the image's alt text, never `((uid))` or a blank. Find matches the text a ref card shows.\n- Graph view draws a line for every connection, fits all cards inside its window and no longer scrolls them out of sight.\n- The end handles of a short arrow with a label can be grabbed. The label steps aside while the arrow is selected.\n- Gallery captions show the image's alt text, or nothing. They never show raw markdown.\n- The Escape that closes Search, a menu, or Gallery, Timeline and Graph no longer also leaves fullscreen.\n- Present mode hides the board bar, dock, Properties, rail, minimap and side panel, and brings them back on exit.\n- Shift-click only extends the selection. It no longer opens the Info panel.\n- Gallery, Timeline and Graph, the board bar and the Properties pill are opaque now, so nothing shows through. A collapsed Properties pill is only as wide as its label.\n- Section titles in the zoomed-out overview may run wider than a small frame before they are cut off.\n- Gallery, Timeline and Graph are also under More, Views, and under Views in the canvas menu. The template entry is now \"Timeline template\". An empty Timeline says that a date attribute or a daily-page reference makes a card dated.\n- The thin dotted curves that run across a board between cards are graph links, drawn for every shared page reference or attribute. They are not a stray line. Links, in the board bar or the L key, switches them off or to attributes only.\n\n## 2.2.0 — 2026-10-03\n\n- Board bar and tool dock. The top bar is now the board bar: breadcrumbs, Add, Info, links, views, background, present and More. The nine tools moved into a floating dock along the bottom. Settings, Toolbar layout, brings back the 2.1 look (Classic) or hides the top bar until the pointer nears the top edge (Dock only).\n- Dock settings: position (bottom, left or top), shape (pill or strip), tool names under the icons, and button size. A board can set its own dock position from the More menu, Dock position for this board; opening a board still writes nothing.\n- The active tool slides a highlight behind it. A locked tool (double-click) shows a padlock. In dark mode the active tool is a border and a dot, so it stays visible without a fill.\n- Dock options. With Card, Sticky, Section or Shape active, the dock shows that tool's colors, the block or card look, or the shape kinds. With nothing selected, a pick styles the next item you create with that tool and is forgotten when the board closes; with cards selected, it restyles them as before. One undo reverses it.\n- The last breadcrumb carries the board's own color, and the bar's bottom edge takes the same tone.\n- Overview zoom keeps Select, Hand and Board in the dock. A board narrower than 560 px gets smaller buttons and no options. A left dock no longer sits on the Properties panel.\n- The active and locked tool styles in the top bar lost to Roam's own button rules in dark mode. They hold now.\n\n## 2.1.0 — 2026-10-03\n\n- Enter in a card adds a line to the card's block, like a node in a native Roam diagram. Settings, Cards, \"Enter in a card\" set to Child brings back the old behavior of making a child block.\n- An empty white panel with a Close button no longer covers boards.\n- Pasting one image into a card inserted it twice. It now inserts once.\n- Dragging an image onto a card that is being edited works. Dropping an image on a card adds it after the card's text instead of replacing the text.\n- Whole-page cards: a page card shows the page title as a header and the whole outline, scrolls inside the card, and edits where you click. Add page… in the canvas menu adds a page by search. Dropping a page from the left sidebar makes a page card.\n- Arrows to a single block. Drag an arrow end over a page card and the row under the pointer lights up; dropping there connects to that block with a real `((ref))`, so it shows in Roam's backlinks. Dropping on the title connects to the page. Ends follow their row as the card scrolls and clamp to the edge with a marker when the row is out of view. A selected arrow has end handles to re-aim it, and the arrow menu has Connect to the page instead.\n- Card children. A note, block or ref card shows only its own block. A ▸ N badge opens the children as an editable outline inside the card, remembered per card, and hovering the badge peeks at them. Spread children as cards makes one card per child with an arrow back.\n- Note: note and ref cards now show only their own block until the badge is opened.\n- A selected arrow's end handle could only be grabbed on the half outside the card it ends on. The whole handle now grabs.\n\n## 2.0.0 — 2026-10-03\n\n- Card editing, outline navigation, templates, the table, snapshots, and the graph tools that landed after 1.3.0.\n- Gallery, timeline, and a read-only graph of the board. A section can lay cards out by date. Connections can bend or route around cards. Present shows a section's first child as notes, plus a laser and a pen that are dropped on exit.\n- A diagram in the right sidebar stays a gap until that window is on screen. Opening the sidebar parks the boards on the page.\n- A 300-card board shows its first shells in about 1 second and finishes the rest over the following frames. Detail and overview pan hold 60 fps. Zooming across the detail threshold is about 57 to 59 fps, and that switch no longer produces a long task.\n- The same board in two Roam windows kept the same 6 cards and 4 connections across 30 moves.\n\n## 1.3.0 — 2026-10-01\n\n- Native parity on an enhanced board: plain block cards, a node hover toolbar, a right-hand control rail, a properties panel, PNG export, outline in the sidebar, boards in the sidebar, edge styles, native embeds, style import on Enhance, per-card expand, minimap drag, keyboard parity, and Edit Block.\n\n## 1.2.0 — 2026-09-29\n\nFixes from the second round of testing on 1.1.0:\n\n- **Zoomed-out cards stay inside their box.** Map view is a clean title-only tile: three-line clamp, font capped by the tile height, nothing spills below the card. Ref titles are cut at 120 characters and header text at 160. The level of detail now switches while you zoom (with hysteresis, one class toggle), not only when the gesture ends. A third tier below 20% shows section titles only.\n- **Nested board thumbnails are real thumbnails.** A padded frame with mini cards (border, fill, title), sections as tinted frames, connections, and an \"Empty board\" state, instead of one white box.\n- **Sections auto-fit.** A card moved, resized, created, or pasted past a section edge grows the section to contain it (24 px padding), live during the drag and saved as one undo step. It cascades through nested sections, never shrinks by itself, and can be turned off per section or with the `auto-fit-sections` setting.\n- **Board backgrounds.** Dots, lines, grid, and plain patterns and paper or ten palette tones, chosen per board from the Background button (stored in the board block's props) with a default in Settings.\n\nAdded:\n\n- **Right-click menus** for the board, cards, sections, text, connections, multi-selection, and the More menu.\n- **Duplicate and clipboard.** Alt+drag and Cmd+D duplicate (Alt+Shift makes `((ref))` cards); copy and paste as refs or as copies, across boards; pasted text and images become cards. Send to board, Boards tab (every board in the graph), Outline tab.\n- **Keyboard.** Tab and Shift+Tab step through the outline, F focus mode, Q quick look, P presentation, M mind map from a card's child blocks, Cmd/Ctrl+Alt+Enter fold, double-click a bottom or corner grip to fit or reset height. Arrow keys nudge the selection 1 px (Shift for 10 px); Alt+Arrow selects the nearest card in that direction (Alt+Shift adds), as in Heptabase.\n- **Layout tools.** Tidy (row, column, grid, outline order), same size, fit height, reset size, fit section, fold all, optional space-out after a move, \"Back to content\" button.\n- **Pin.** Pinned items do not move, resize, or delete.\n- **Card badges.** References, boards, and open and done TODO counts, read from Roam (never written); a `((ref))` to a board renders its thumbnail; journal cards for today and this week.\n- **Export.** Export board as SVG and Copy board as text (commands and board menu).\n- **Review fixes.** Cut and paste now moves a note, text or section (the clipboard carries a snapshot; before, the paste was a dead `((ref))`). The Open button, double-click and Enter open a whiteboard-shortcut card. Settings changes reach open boards' sessions live. A pinned section is never grown by auto-fit. Fit height can shrink a card. Fit / Reset size / Same size never leave a card outside its section. A pinned card no longer pushes other cards in space-out. Escape closes the Background popover first. Right-clicking a ref, tag, link or image inside a card keeps Roam's or the browser's menu. Tab is only taken while the board itself has focus. A tall menu scrolls inside a small board. Thumbnails title `((ref))` and image cards. The section grows live while you type in a card at its edge. Card badge queries run in idle slots and are cached for two minutes.\n- New settings: default board tone, map view threshold, auto-fit sections, space out cards, show card badges; grid accepts `grid`. API and build: see `docs/api-plexus-1.0.md` (\"1.2 additions\") and `docs/spec-plexus-1.2.md`; `src/css/*.css` is appended to the bundle.\n\nFixed after live testing in Roam Desktop:\n\n- **One Cmd+Z per operation.** Duplicate, Alt+drag, mind map, Tidy, and a drag that grows a section each took one Cmd+Z per block written; the Undo toast button undid one block. Writes of a transaction are now grouped, and Undo and Redo step over the whole group.\n- Map-view cards clamp to exactly three lines (no fourth-line sliver, no ellipsis in the middle of a tall card); section titles show an ellipsis; far zoom-out no longer paints a dot moire; colored cards read at overview zoom; whiteboard-shortcut cards keep their thumbnail at map zoom.\n- Ctrl-wheel zoom and paste use the board's current position after the Roam page scrolls (they were off by the scroll distance).\n- Pasted images are `![](url)`, not `![](![](url))`.\n- The section preview no longer snaps back while you type in a card at its edge.\n- Fit keeps content below the toolbar and left of an open panel (Outline click fits the visible area); the context bar no longer covers the toolbar or the panel; double-click on the middle of a card's bottom edge fits its height.\n- Mind map from a card that already has child cards on the board lays the rest out around them, and says when the 24-branch cap left nodes out. Add this week no longer stacks a card on an existing one. Duplicating a section says \"section\".\n- The OS dark-mode hint no longer darkens a board on a light Roam theme.\n- **Typing in a card: Enter no longer drops you out of the card.** Root cause: the card editor stopped the mouseup that Roam uses to end its block drag-select, so a new block created under the resting pointer turned the edit into a block selection. Mouseup now passes through.\n- **Undo limits.** Roam keeps only the last 50 changes, so one Cmd+Z sequence can undo an operation only if it fits. Mind maps cap at 24 branches (\"Mind map: 24 of 45 branches (cap)\") and bulk adds (large pastes, multi-drops, Add all) at 45 cards (\"Added 45 of N (Roam undo holds 50 changes)\").\n\n## 1.1.0 — 2026-09-29\n\nFrom the first round of testing on 1.0.0:\n\n- **Cards show their content.** Note and block-reference cards render the whole block (and its children) instead of a truncated first line over an empty body. A long single-line `((ref))` card is readable again.\n- **Drag blocks in from Roam.** Dragging a bullet from the outline or the right sidebar onto a board adds it as a `((ref))` card (a page becomes a `[[page]]` card). Multi-block drags stack. The source block is never moved.\n- **Typing in a card.** Enter adds lines inside the card and keeps the caret there; if Roam drops focus while it moves between blocks, the editor takes it back. The card header no longer repeats and lags behind what you type, and text items keep their heading size while editing.\n- **Nested boards (Heptabase sub-whiteboards).** New Board tool (W): click or drag to add a board card, or select cards and choose **Move into new board**. Board cards show a mini map, item count, and a name field. Double-click or Open goes into the board in place with a `Parent › Child` breadcrumb; click a crumb or press Esc to go back up. Drag a card onto a board card to move it inside (with Undo). Boards opened from their own page get crumbs for their parent boards.\n- **Collapsed board blocks.** The board block is collapsed once so Roam does not list its cards as bullets under an inline board; expand the bullet to see them. Turn it off with **Collapse board blocks in the outline**. A nested board no longer opens a second overlay from an expanded outline.\n- Import and Restore keep a nested board's marker; a board deleted while open closes cleanly (a nested one pops to its parent).\n\n## 1.0.0 — 2026-09-28\n\nRewrite. The 0.6 canvas (one 2,200-line closure) is replaced by a model / host / session / view split with 204 unit tests and a live CDP gate on Roam Desktop.\n\n- **Everything is a Roam object.** Card layout lives in each block's `:block/props` (`plexus` key), not on `[[plexus-diagram/metadata]]`. Sections are parent blocks of their cards. Connections are blocks under a collapsed **Connections** child that read `[[A]] → label → [[B]]`, so both ends get a backlink and notes live as children.\n- **Graph links.** References and attributes that already exist between cards are drawn as dashed arrows colored by relation (`causes`, `Detected by`, `mentions`). **Write to graph** turns a labelled connection into `label:: [[B]]` on the source.\n- **Heptabase features.** 10 colors for cards, sections, text, and connections; sections drawn by drag or Cmd+G around a selection, with titles above the frame; ports on every edge; curve / straight / elbow routes, direction, dash, weight; selection box, alignment guides, align / distribute; text headings; minimap; board search; Add panel with Search and Related; card editing with Roam's own editor (page cards open the whole page); zoomed-out map view with readable titles.\n- **Fast by construction.** Pan and zoom move one transform (p95 frame 4.5 ms on a 120-card board, no renders, no writes). Only on-screen cards render content; zoomed out, cards show titles only. Opening a board writes nothing; the viewport is per device.\n- **Fixed from 0.6.4:** Section tool made two frames per drag and one per click; sections did not hold cards and had no color; the connection inspector covered the connection; text typed into a new card was lost; the sync indicator went pending on pan and zoom; diagrams on normal (non-daily) pages were never discovered; `[[links]]` inside cards did not open; keyboard shortcuts were swallowed by the diagram block.\n- **Migration.** Boards enhanced with 0.6 upgrade once on first open (positions, colors, sections with their cards, connections with labels and styles). Native diagrams import on **Enhance** (positions, groups as sections, edges as connections). Diagrams you never enhance are never written.\n- Commands: Enhance this diagram, New whiteboard here, Restore native diagram, Fullscreen this diagram.\n\n## 0.6.4 — 2026-09-05\n\n- **Inspector Comment** — converts the edge label to native Roam comments (one-way → target, two-way → both) then clears the pill.\n\n## 0.6.3 — 2026-09-05\n\n- **Idle card children** — after click-away, idle cards `renderBlock` the card uid so child bullets stay visible; deep pull includes nested `:block/children`; empty placeholder only when string is blank and there are no children.\n- **Board background** — toolbar cycles Dots / Lines / Solid (`grid-style` persisted).\n\n## 0.6.2 — 2026-09-05\n\n- **Connect hit-test** — targets resolve from the painted card rects (`getBoundingClientRect`, 12px handle inflate) before `elementsFromPoint` and world-rect math, and the card hovered on the last pointermove is the fallback for a captured pointerup.\n- **Rubber-band** — the edge and temp-wire SVGs cover content ∪ viewport (2000px pad) so the dashed wire paints across a panned board.\n- **No junk cards** — a click-click that misses a card cancels the arm; only a real drag onto empty board creates a linked card.\n- **Version badge** — the toolbar stamps the package version, not Roam's `DEV` developer-extension version.\n\n## 0.6.1 — 2026-09-05\n\n- **Connect hit-test** — when Electron's `elementsFromPoint` misses cards under `.pxd-world`, resolve targets from world-space node rects (12px handle inflate). Click-click arms and drag-to-card both work.\n- **Delete cards** — Delete/Backspace on a selected card removes it from the diagram (adapter + metadata), not just edges.\n- **Scratch children** — `blankScratch` deletes scratch-host children so a new card editor never inherits the previous card's bullet tree.\n\n## 0.6.0 — 2026-09-05\n\n- **Visible arrows** — connector stroke and marker fill are resolved colors, not `var()` in SVG attributes. Marker ids are unique per canvas. Heads scale with zoom (`clamp(10 / zoom, 6, 24)`).\n- **Ports** — drag from a card handle stores `from::` / `to::` (`auto|top|right|bottom|left`). Click-click and connect-to-empty still work.\n- **Per-edge direction** — `direction::` `oneWay|twoWay|none` on `edge A->B`. Global Arrowheads is the default for new edges only.\n- **Inspector** — click a line for a floating cluster: direction, Flip (disabled if the reverse exists), Route, Label, color, Delete. Mutations `await flushLayout()`.\n- **Schema** — optional `from::` `to::` `direction::` `color::` children under the existing edge row. `[[plexus-diagram/metadata]]` only. No `:diagram/*` / `:harc/*`.\n\n## 0.5.0 — 2026-08-29\n\n- **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.\n- **In-place nested boards** — opening a nested diagram does not call `openBlock` / change the hash. The parent session stays loaded; crumbs sit on the toolbar and Esc pops one level.\n- **Section and card color** — toolbar swatches (eight Blueprint-ish ids plus default) write `color::` on nodes and sections. Dark mode uses the border as the signal.\n- **Section click-rename** — a single click on the section title starts rename; pointerdown on the label does not drag the frame.\n- **Review pack** — session swap flushes the outgoing board then cancels persist timers; unused parent pull-watches stop; Esc nest-pop only when the overlay owns the pointer; connect-to-empty rolls back a failed edge persist.\n\n## 0.4.2 — 2026-08-28\n\n- **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam's custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.\n- **Right sidebar inset** — fullscreen also ResizeObserves the right sidebar and re-places on the next two animation frames after the article class changes. When the article's right edge is within 8px of the viewport, the overlay `right` inset is 0.\n- **Library portal** — the drawer mounts on `document.body` (fixed, 320px, 14px) so it is not scaled by `.pxd-world`. Items are opaque `#f5f8fa` / `#182026`. Empty search hides `roam/js/` and `roam/css` pages.\n- **Nested crumbs** — opening a nested board pushes the parent onto a crumb stack (`Parent › Current`). Clicking a crumb opens that block (or page). Nested cards show the parsed name; unnamed boards get an inline \"Name this board…\" field.\n- **Connect to empty** — dragging a handle onto empty board creates a card at the drop point, links it, and enters edit (Heptabase pull-from-port). Handles are 14px. An existing edge is kept if you connect the same pair again.\n- **Review pack** — nested open passes parent uid explicitly; nest stack truncates on multi-level back; drop parsing no longer treats incidental 9-char tokens as block refs; connect failures do not leave dangling edges; nested name timers clear on repaint and dispose.\n\n## 0.4.1 — 2026-08-28\n\n- **Pending-changes patch** — layout persist no longer delete-all/recreates the metadata tree. Existing diagram blocks are patched in place: only changed `pos::` / `size::` / `color::` / edge / section rows are written, identical strings are skipped, and gone ids are the only deletes. Viewport persist is still the one-line `setViewport` path.\n- **Article-pane fullscreen** — fullscreen follows `.rm-article-wrapper` (below the topbar, inset with the left sidebar) instead of `sidebar.right`. ResizeObserver on the article and sidebar plus a class MutationObserver re-place the overlay when the sidebar opens or closes. Drop `[[page]]` / block uid from the sidebar onto the board to add a card.\n- **Visible sections** — sections use a 2px solid border, a light blue fill, `pointer-events: auto`, a default \"Section\" label, drag, corner resize, and double-click rename.\n- **Opaque library** — the drawer sets its own `#ffffff` / `#1c2127` background so it stays readable when mounted outside `.pxd-root`. Blank titles and `roam/js/` pages are hidden until you search.\n- **Nested overlay** — adding or opening a nested `{{[[diagram]]}}` card registers it as enhanced and opens our overlay fullscreen, not native Empty Roam Diagram. Nested cards show \"Nested diagram\" instead of the raw macro. Nested open no longer waits on the parent canvas.\n- **Connect hit-testing** — `cardFromPoint` walks `elementsFromPoint` and ignores edge-hit strokes; temp edges are `pointer-events: none`; connect-tool handles stay visible.\n\n## 0.4.0 — 2026-08-28\n\n- **Fullscreen vs breadcrumbs** — fullscreen hides `#roam-breadcrumbs-panel` / `.breadcrumbs-content` only while `body.pxd-has-fullscreen`. The overlay sits below the remaining topbar and to the right of the left sidebar (article fill, not the whole window). Resize recomputes the inset. Inline boards leave breadcrumbs alone.\n- **Scratch-host card editor** — double-click no longer `renderBlock`s the card uid (the hidden native diagram still owns it). Edit mounts on a `pxd:scratch` child of `[[plexus-diagram/metadata]]`, hydrates until MutationObserver-quiet, then a trusted mousedown/mouseup/click. Commit pulls the scratch string onto the card; empty pulls never overwrite known text.\n- **Connection notes** — labels live on the connector (`label::` under `edge A->B`), not as extra cards. Double-click the line or click the midpoint pill. `show-edge-labels` defaults on.\n- **Commands** — palette and slash keep Enhance, Restore, and Fullscreen only. Toolbar is a single nowrap row. `V` / `C` / `N` / `F` when the overlay owns the pointer.\n- **Sync silence on open** — remounting an already-enhanced diagram no longer rewrites `[[plexus-diagram/metadata]]` or `:rf-diagram` viewport props when the stored snapshot already matches.\n- **Viewport-only persist** — pan/zoom/fit writes only the `viewport::` metadata line; node/edge/section children are left intact.\n- **Dirty flags** — initial fit, fullscreen resize, and dispose no longer schedule Roam writes; persist runs only after real user gestures (pan, zoom, drag, Fit, etc.).\n\n## 0.3.2 — 2026-08-28\n\nDouble-clicking a card no longer blanks its text: `setBlockFocusAndSelection` was focusing the outline copy of the same uid (Roam then cleared the overlay mount), and a same-tick `focusout` committed an empty pull. Overlay editors now keep a text fallback until `renderBlock` hydrates, ignore focusout for 1s, and refuse to commit an empty pull over known text. Fullscreen sits below `.rm-topbar` so RoamJS breadcrumbs stay clickable and the Plexus toolbar is not hidden under it.\n\n## 0.3.1 — 2026-08-28\n\nHouse / daily-tab navigation left a `position:fixed` overlay covering the daily notes. Native Maximize unmounts on route change; our mount often survives because the diagram block is still in the outline. `hashchange` / `popstate` now exit fullscreen, drop `--zoomed`, and restore the inline height whenever the open page uid is no longer the diagram. The 250ms reconcile does not do this, so a Fullscreen click on an inline embed is not immediately undone.\n\n## 0.3.0 — 2026-08-28\n\nCanvas rewrite: the board is usable. Imported native React Flow nodes (165×83 on the live graph) are floored to real cards (min 240×140, default 280×160), and a viewport that paints any card under 140px, has zoom below 0.7, or shows no card at all is rejected and replaced by a fit once the root has a size (single card fits at zoom 1.5, centred; fitted viewport persisted once). Pan, wheel zoom, card drag and corner resize touch only CSS (`.pxd-world` transform, one card's box, the edges hanging off it) — no `innerHTML` rebuild, no Roam write per pixel; viewport/layout persist on pointer-up and wheel-end with a 150 ms debounce, serialized through one queue per session. Cards render with `renderString`; double-click swaps in the native block editor (`renderBlock`) and blur/Esc commits it back, so Roam chrome no longer paints into every card. `render()` reconciles card elements by uid, so a pull during editing never tears down the caret. Drag from a card's connect dots (or any card with the Connect tool) onto another card to link. Double-click empty board adds a card at that point; Card/Nested tool clicks still add. A hint pill explains pan/add/fullscreen on boards with ≤1 card until the first pointer down. Zoomed diagram pages open in fullscreen (`fullscreen-on-zoom`, default on; inline embeds stay inline). Grid lives outside the world and tracks pan/zoom; a live minimap replaces the empty box; toolbar buttons are grouped, high-contrast, with a zoom readout. Dark mode: card and toolbar backgrounds from `--bc-main` / `--bc-menu`, 1px visible borders, 2px `--cl-blue` ring for selection — no tinted fills. `applyPull` keeps in-memory positions, sizes, edges, sections, and viewport (a pull only refreshes content), so a debounced persist can no longer be undone by a concurrent add.\n\n## 0.2.1 — 2026-08-27\n\nFix dead board on zoomed block pages. Navigating to `#/app/<graph>/page/<uid>` destroys the overlay DOM and the MutationObserver never remounted it. A reconcile pass (hashchange/popstate + 250ms interval) now prunes detached views, finds the native canvas — via the dated `block-input-…-body-outline-MM-DD-YYYY-<uid>` suffix or the location hash when ancestors carry no `data-uid` — and remounts the overlay. The pre-paint guard uses `display: none` (React Flow nodes punch through `visibility: hidden` by re-setting `visibility: visible` on themselves) and also hides the native `.rm-diagram-title-panel` and `.react-flow` chrome. Zoomed mounts fill the article (`pxd-mount--zoomed`). Every mount is stamped `data-diagram-uid` and remounts are idempotent per uid.\n\n## 0.2.0 — 2026-08-27\n\nHeptabase-usable overlay: full-bleed board sizing from native diagram (min 560px), horizontal labeled toolbar with zoom/fit/**Fullscreen** (Esc exits; covers the window like native Maximize), empty-canvas pan and cursor-anchored wheel zoom, Roam bullet/ref-count chrome hidden on cards, searchable library drawer that toggles without covering the board, and card titles off by default.\n\n## 0.1.4 — 2026-08-27\n\nSlash/command Enhance was a no-op: typing `/enh` puts the diagram block in edit mode, which unmounts `.rm-diagram`. The command now remembers the uid and waits for the native canvas to remount before overlaying.\n\n## 0.1.3 — 2026-08-27\n\nSlash commands use the same labels as the command palette (Roam Grid pattern), so `/enh` lists **Plexus Diagram: Enhance this diagram**.\n\n## 0.1.2 — 2026-08-27\n\nMetadata writes now generate UIDs before `block.create` / `page.create`. Live roamAlphaAPI returns `undefined` from those calls, so the first enhance was dropping `schema-version::`, `enhanced::`, and node/edge lines. Nested-diagram open uses `roamAlphaAPI.ui.mainWindow.openBlock`.\n\n## 0.1.1 — 2026-08-27\n\nLive-wire fixes against roamAlphaAPI (CDP, Svy graph):\n\n- Fix native hide inversion: `.pxd-native-hidden` now sets `display: none`; pending state uses visibility\n- Use EDN string pull pattern for `data.pull`; strip keyword colons from pull results\n- Generate child block UIDs via `util.generateUID()`; default create order `\"last\"`\n- Viewport writes try `roamAlphaAPI.updateBlock` before `data.block.update`\n- Register slash/context commands via `addCommand`/`removeCommand` with live callback shapes\n- Auto-enhance and focus checks pull `[:block/string]` via `roamAlphaAPI.data.pull`\n- Find native diagram hosts via `diagramElForUid` (id suffix, data-uid, block-ref)\n- Library mounts as overlay drawer; queries `roamAlphaAPI.data.q`; filters daily pages by UID\n- Card/Section toolbar tools place items at click position; library uses viewport center\n- Default `restore-native-on-unload` to false; unload disposes sessions without deleting metadata\n\n## 0.1.0 — 2026-08-27\n\nInitial release of Plexus Diagram.\n\n- Hide native `.rm-diagram` React Flow renderer for enhanced diagrams and mount a vanilla DOM/SVG canvas overlay\n- Keep Roam diagram children as the canonical card store; persist layout on `[[plexus-diagram/metadata]]`\n- Writable viewport via native `:rf-diagram` props; import native node positions when metadata is absent\n- Heptabase-like toolbar, cards, connectors, sections, library sidebar, and fat settings panel\n- Command palette, slash command, and block context menu integration\n- GitHub Pages developer extension at https://svyk.github.io/plexus-diagram\n";
+var CHANGELOG_TEXT = "# Changelog\n\n## 3.6.0 — 2026-10-07\n\nThe PDF page is the workspace: select, copy, highlight and drag text straight off the page — scans included — plus structure chips, a smoother drag, setup without dead ends, and office files on the board.\n\n- **Text on every page, scans too.** A scanned page gets an invisible text layer from the local helper's OCR. Select across the page image, copy it, or press a colour in Roam's own highlight tip: the highlight is a real Roam block, also on scans. A read scan reopens with its text in about a second, no new read.\n- **Selection bar**: Copy · Card · Quote · drag handle, placed beside Roam's tip, never over it.\n- **Card-shaped drag.** Dragging a selection, a highlight or an outline row shows a ghost of the card that will land, and drops exactly where the ghost is.\n- **Structure chips on the page.** Hover a table: \"Table 7×7 · Roam Grid ▾\" (Native, Flat, Copy as Markdown, Card). Figures, sections, lists and formulas get their own chip. Hold Shift to see the reading order.\n- **Read / Read + Outline.** The Parsed tab became an Outline: an index of headings, tables and figures with page numbers, filters and bulk actions. Every PDF is parsed quietly when it opens (no writes, no network), so chips and the title are there in Read mode.\n- **No dead ends.** A one-line strip under the reader says what is happening and always has a button. The Engines panel (pane ⚙) shows each reading engine with one action. The local helper installs with one copied command and pairs with one click — no token to paste.\n- **Word, Excel, PowerPoint, OpenDocument, EPUB and CSV on the board** (anydoc, WebAssembly, loaded from this site only when you convert, then cached): a document becomes section cards, a deck one card per slide, a sheet a Roam Grid table.\n- Roam Grid table cards grow with the card; the reader pill hides in the outline; titles come from the parse when the PDF has none.\n\n## 3.5.0 — 2026-10-07\n\nParse a PDF into clean blocks and real tables, on the board, with merged cells, and better than Heptabase on tables.\n\n- **Parse / Parsed / Both** in the reading pane. The built-in parser needs no install and reads a 30-page paper in under a second: headings with their levels, paragraphs in two-column reading order, lists, footnotes linked to their marks, figures and formulas as page crops, and tables, ruled or borderless, with merged cells and header rows. Running headers, footers and page numbers are removed and listed, never silently dropped. Results are cached on this device; nothing is written to your graph until you insert.\n- Hover a parsed block and its region lights up on the page; click to jump there. Each table shows the grid it found over the PDF with a confidence chip, and you can drag a column boundary to fix it.\n- **Insert, send, or drag.** Insert below the PDF, send sections to the board as cards, or drag any block or table onto the board. A table becomes a table card: with Roam Grid 0.18.3+ it keeps merged cells, header rows, alignment and column widths (one Roam write, one undo); without it, a native Roam table. Make highlight turns a parsed passage into a Roam PDF highlight.\n- **Optional local helper** (`tools/parse-helper`, Docling on your Mac): formulas as LaTeX, OCR, and **Read the scan** for scanned pages — Apple Vision word boxes and the scan's own ruling lines go through the same table engine, numbers misread by OCR are repaired and re-read cell by cell.\n- Measured on the ICDAR 2013 table benchmark (67 government PDFs): built-in table structure F1 0.979 and exact-cell F1 0.932, against Docling's 0.865 and 0.795, in 2.5 s for all 67 against 5 minutes. On a 1980 CDC table scanned as an image only: structure 1.000 and cell F1 0.957, against Docling's 0.082. Small scanned type can still misread words (e.g. disease names in 6 pt print); numbers are checked against their column.\n- Roam Grid tables in cards scale with the board and get the whole card (no Roam row spacer, no break-out padding); columns are sized from the text.\n- The reading pane title falls back to the parsed title; the tool dock stays left of the pane.\n\n## 3.4.0 — 2026-10-06\n\nBoards that wear your Roam theme, edits that hold still, wider PDFs, and Roam tables on the board.\n\n- Plexus follows the theme your graph is using: the canvas, cards, text, borders and links take Roam's own colours, light or dark, and change when the theme does. Setting **Theme**: Follow Roam (default) or Plexus. Pastel sections are stronger in light mode.\n- Editing in place holds still. In page cards the bullet and fold arrow stay in the gutter and nested rows keep their indent; note, block and task editors keep the resting line height; a sticky no longer shows a blue box while you type. Links keep the same colour at rest and in edit.\n- Roam tables on the board. A card holding a `{{[[table]]}}` shows Roam's table, scrolls sideways when it is wider than the card and is never clipped. Enter or a double-click edits a cell with Roam's editor; Tab, arrows, typing, the wheel and right-click stay with the table while you work in it. New **Table** tool (B) and a **Table** item in the canvas menu add a 3×3 table in one undo. With Roam Grid installed, an enhanced table works inside the card, and **Open grid** shows it at full size.\n- PDF cards can be as wide as you like (up to 4000 px), and a large card redraws page 1 sharp instead of stretching a small cover. The pane title uses the PDF's own title, never a storage path; a zero highlight count is hidden; the format bar no longer covers the pane; a slow PDF shows its cover until the first page paints.\n\n## 3.3.0 — 2026-10-06\n\nEdit in place without the card changing, PDFs you flip through on the board, PDF dark mode, and three Heptabase looks.\n\n- Editing a note, block, task or page card no longer changes how it looks: the text stays in the same place, at the same size, with the same line breaks, at every zoom. Roam's bullet, its spacer and the reference-count slot no longer squeeze the text into a narrow column, the editor grows with its text, and the card keeps its size. Double-click a word and the cursor lands on it. With Roam Caret installed, its caret follows the board's zoom inside the card.\n- Clicking a PDF card selects it, as in Heptabase: the card becomes a small reader you flip through with the wheel, ← and →, or the `‹ 3 / 9 ›` bar. The side pane opens only from **Open**, a double-click, Enter, the card menu, or a highlight.\n- PDF pages in dark mode (setting **PDF pages in dark mode**): Dim (default) softens white pages on a dark board, Invert turns them dark, Off keeps white paper. Highlights stay readable.\n- Three Heptabase looks, all off by default: **Canvas** flat grey instead of dots, **Section fill** pastel, **Highlight cards** tinted instead of a colour bar. In dark mode they show as coloured borders.\n\n## 3.2.0 — 2026-10-06\n\nPDF round 2: covers at every zoom, page 1 without opening the PDF, pages at reading width, one open per click.\n\n- Zoomed out, a PDF card is still its page. Map and overview paint the saved cover on the card itself, as in Heptabase at 11-17 %, with no image element, title or strip at those tiers.\n- A PDF you have never opened gets a cover in the background: a quiet board (1.5 s after first paint, idle, one at a time, at most three per visit, never while you move or read) draws page 1 with Roam's own PDF engine, so nothing is opened or written. A capture that comes out blank is thrown away. Setting **Prepare PDF covers in the background** (on).\n- The reading pane fills its width: Roam's reader no longer stops short of the pane's right edge (its block row kept a separator and a reference-count slot beside the PDF). After the first page paints, the page is set to page width (through the viewer when it is reachable, otherwise by stepping Roam's own zoom buttons until the page fills the pane). Your own zoom is kept; resizing the pane refits.\n- One click on a highlight card does one thing. A plain click opens it in the reader (setting **Highlight click opens**: Reader or Sidebar). Shift-click opens Roam's sidebar. The chip's **▾** lists Open in reader, Open in sidebar and Open page in main. Nothing opens twice.\n- Selecting a PDF card never mounts Roam's reader inside the card. **Read inside the card** in the card menu is the one way to the inline reader; **Show the cover** takes it back, and opening the pane does too.\n- The fullscreen tab strip shows only from two tabs up, is 28 px tall, and reserves nothing while hidden. Tabs, their persistence and Cmd+1..9 are unchanged.\n- The reader's pages float on a soft grey bed in light mode; dark keeps the chrome colour.\n\n## 3.1.0 — 2026-10-06\n\nPDFs that read like Heptabase, page cards that hold still while you edit, and tools that do what your hand expects.\n\n- PDF cards show the page itself: white paper, no text on the face. Hover for the title, highlight count and page chips, and an **Open** pill; double-click or Enter opens it too. A thin strip on the edge marks where the highlights are; click a mark to open that page. The cover is saved on this device the first time you read the PDF (nothing is written to your graph); until page 1 has been on screen, the card shows the last page you read. Setting **PDF card cover**: first page or last page read.\n- The PDF opens in a pane beside the board with one slim header (title, other PDFs on the board, highlights, Roam's tools, close) and the pages at reading width. A floating pill drives Roam's own zoom out, zoom in, fit width and search, and shows `3 / 9`. Roam's toolbar is still there behind the tools button. The card you are reading gets an outline until you close the pane.\n- Highlights moved into a drawer at the bottom of the pane: colour and page chips, search, and Note, Place and Locate on hover. A new highlight pulses in the list and offers **Place on board** for a few seconds. Hovering a highlight card flashes its mark in the reader, and hovering a row pulses its card.\n- Highlight cards are quote cards with a colour bar and a source chip (`title · p. 3`).\n- Editing a page card keeps the card exactly as it looked: same rows, same spacing, nothing rewraps or moves, and the cursor lands where you clicked. One click on an already selected page card starts editing there.\n- Hand tool: drag a card to move it, drag empty board to pan. In Select and Connect, dragging empty board pans too; Shift-drag draws the selection box and Alt-drag the lasso. Setting **Drag on empty canvas** brings the old box-select back.\n- With Roam Caret 0.6.6 installed, its caret now shows inside cards at every zoom (Plexus tells it when the board moves).\n- The board bar, tab strip, legend and Properties are solid, and an empty tab strip no longer shows.\n- New PDF cards are 240 × 320.\n\n## 3.0.0 — 2026-10-06\n\nPlexus 3.0: the 3.x roadmap is complete. This release makes large boards open fast, makes every new surface usable from the keyboard, caps every bulk gesture at what one Roam undo can take back, and documents the data model and module contracts as built.\n\n- Large boards open fast. A board with 300 cards, 20 sections and 150 connections shows its cards in about 360 ms and is idle by about 450 ms (it was about 1.3 s, with long pauses after the first paint). Card reference and board counts now come from one indexed read instead of four searches across the whole graph, and fullscreen no longer forces a page layout in the middle of opening.\n- Keyboard: trail stops in the panel take focus; Alt+↑ and Alt+↓ move a stop and Enter walks the trail from it. The region overlay nudges with the arrow keys (Shift for 10 px), Enter confirms and Esc cancels. The status, halo, why and task popovers take focus when they open, move with the arrow keys and give focus back on Esc. Trail strips, crops, PDF chips, timeline rows and the resurface panel open with Enter. Every button has a name, and focus rings show in light and dark even when another extension hides outlines. The `?` sheet lists the new keys.\n- Undo: every bulk gesture stops at 45 changes so one Roam undo takes it back, with a toast that says how many were added: adding cards to a trail, a new trail from a selection, landmarks on a selection, and Lay out by date. README, Limits has a table of writes and undo steps per gesture.\n- Fixed: moving a trail stop down (by keyboard or by dragging) did nothing.\n- Docs: `docs/spec-plexus-3.0.md` (every block kind and prop key, what is stored where, decorated macros, the public API, interop) and `docs/api-plexus-3.0.md` (module contracts). The README follows the 3.0 order and has an integrations table. `tools/spec-keys.mjs` and `tools/doc-check.mjs` fail when code and docs drift.\n\n## 2.21.0 — 2026-10-06\n\nTrails, landmarks, a timeline, strength and dust lenses, source chips, and an Integrations section in settings.\n\n- Trails: a named path through cards with a note at each stop. Add a card to a trail from its menu; Walk trail plays it stop by stop in present mode. A trail is a block under the board's collapsed `Trails` child, so `((trail))` pasted anywhere in Roam shows as a strip of stops you can click. The panel has a Trails tab.\n- Landmarks: make a card, sticky or section a landmark and it keeps a large glyph at every zoom, including the overview, and shows on the minimap. Walk the board tours landmarks left to right, then down, or along a trail.\n- Timeline in the Info tab: the daily pages that mention any card on the board, with a count per day; click a day to open it. Lay out by date can now place cards by the day they were first or last mentioned, not only by a date attribute.\n- Strength and Dust lenses (More menu). Strength draws a connection thicker when its two ends are referenced a lot, share other boards, and were edited recently; hover a line to see why. Dust dims cards untouched for 6 months, 1 year or 2 years. Both are views: nothing is written, and turning them off puts every line and card back.\n- Source chip: a highlight dragged from an `Articles/` or `Media Captures/` page shows the page title, and the author when the page has an `Author::` line. Click the chip to open the page in the sidebar. Renaming the author updates the chip.\n- Settings has an Integrations section: Better Tasks, Task Status Tags, Roam Plexus, Compass and the colour highlighter, each shown as detected (with its version) or not installed. It updates when one of them loads or unloads. Switches turn each integration off; with \"Roam Plexus and Compass\" off, Open in Compass is hidden and drawing cards stop asking Roam Plexus for thumbnails.\n- Kanban card titles no longer show the status tag, and lane counts have a space before them.\n- Fullscreen tabs drop boards that were deleted.\n\n## 2.20.0 — 2026-10-06\n\nStatuses, journal, fullscreen tabs, touch, and a round of reliability work.\n\n- Task statuses (with Roam Task Status Tags 0.9.0 or later loaded). A task card shows its status as the same glyph Task Status Tags draws on the checkbox (Active, Waiting, In Review, Holding, Incubating, Alert, Cancelled) and as a chip. A small ring left of the checkbox opens a status chooser; Shift-click removes the status. The card menu and a multi-selection have Status ▸ (up to 45 cards at a time). Every status change is written by Task Status Tags, not by Plexus. Without it, the glyphs still show from a built-in table and the ring is not there.\n- Kanban \"Lanes: Status\": one column per status, plus No status and Done. Dropping a card on a column sets that status; dropping on Done completes it the same way the checkbox does. `[` and `]` move a focused card one column.\n- Journal tab in the panel: the day's top-level blocks with a day stepper. Drag a row onto the board for a card. Looking and stepping write nothing.\n- Fullscreen board tabs: boards you open while fullscreen collect as tabs above the board bar (up to 9). Cmd+1 to Cmd+9 switch. The tabs come back the next time you go fullscreen in this graph.\n- Touch and tablet: pinch to zoom, two fingers to pan, long-press for the menu, larger resize grips under a coarse pointer.\n- PDF highlights: a Note button on a highlight card opens its note the way Roam's own note button does (in the sidebar, focused), creating the note block only when there is none; one undo removes it. The pane's PDF switcher names a PDF without highlights by its page, and the arrow keys and Enter move through the list.\n- New drawing (Roam Plexus) is one undo step with its card.\n- Fixed: Plexus no longer replaces Roam's global `pull` function. Since 2.14.0 it answered other extensions' reads from its own cache. After updating, reload Roam once to clear the old copy's replacement.\n- Fixed: a board shown in its own linked references, or in the right sidebar, no longer goes fullscreen a second time on top of the main board (clicks and drops went to the hidden copy).\n- Developers: `node tools/live/smoke.mjs \"Readwisenotes - \"` runs a ten-step live check and cleans up only its own blocks; callback errors are counted and a callback that keeps failing is paused for a minute (Settings shows \"N errors\" when there are any); `npm run size` prints the bundle report.\n\n## 2.19.0 — 2026-10-06\n\n- Clicking into a page card no longer changes how it looks. The editor keeps the card's own text size, row spacing, indent and line wrapping. Roam's bullets, guide lines and extra scrollbar stay hidden, and the row you clicked stays where it was.\n- Drag a highlight straight out of the PDF onto the board, as in Heptabase. Hover a highlight in the reading pane (the cursor becomes a hand), then drag it onto the board: a card lands where you drop it. A highlight that is already on the board pulses instead of being added twice. A plain click on a highlight still opens Roam's highlight menu, and selecting text to make a new highlight works as before.\n- Clicking a highlight in the pane's list, or the page footer on a highlight card, scrolls the PDF to that highlight and flashes it, not just to the top of its page.\n- The PDF reader fills its part of the pane. There is no longer a second scrollbar around it, and Roam's toolbar (highlight tools, zoom, page number) stays in view.\n- The link legend (the chips that turn link types on and off) sits under the board bar, beside Properties, instead of on top of the bar's buttons.\n- While you edit a page card, hovering a row shows a faint bullet in the margin; drag it to move the block, click it for Roam's block menu.\n- A board that is open in the right sidebar while the main window is zoomed into the same board stays in the sidebar. Before, both copies went fullscreen and the sidebar copy covered the main board, so clicks and drops on the board did nothing.\n\n## 2.18.0 — 2026-10-06\n\nPDF highlights closer to Heptabase (roadmap P27), page cards you can edit in place, and two speed and freshness fixes:\n\n- Open reader on a PDF card opens a reading pane beside the board instead of inside the card. The card stays a cover. Drag the pane's edge to resize it; on a narrow board it sits below.\n- The pane lists every highlight in that PDF with its colour, page, and note. Filter by colour, page, or text. Place puts one card on the board; a highlight already on the board pulses instead of being added twice. Drag a row onto the board for a card at that spot.\n- A highlight card's footer opens the pane at that highlight's page and flashes the card. The page holds after Roam restores the last page it showed.\n- A note under a highlight (a child block) shows on its card and follows edits.\n- Clicking into a page card edits it in place. The card keeps its size and look; the row you clicked gets the cursor; Escape returns to the same view.\n- A `((ref))` card follows edits to its source, including edits made while the card was off screen or the board was closed.\n- Graph links are drawn after the board's first paint, so opening a board feels faster.\n- The colour tooltip on a highlight now says what changes: the card and the list follow the tag, the mark inside the PDF keeps the colour Roam painted.\n\n## 2.17.0 — 2026-10-06\n\nFeel instant (roadmap P26), after the claude.ai speed work:\n\n- Going back to a board you just left is instant: the last two boards stay ready (paused, nothing running) and come back as they were, fullscreen included, with no rebuild.\n- A board opens with a quick sketch of its last layout while the real board loads.\n- Hovering a board chip, a board card, a breadcrumb, or a link to a board quietly reads that board ahead of the click.\n- Cards load in small batches nearest the middle of the screen first, so a big board never freezes the page.\n- Selecting a card no longer touches every other card (the same cost on a 300-card board as on a 40-card one).\n- Faster text checks on every card (tags, regions, attributes, diagram detection).\n- Cards and page rows keep their size while their content loads, so nothing jumps.\n- Optional speed log in settings (off by default): open time, click time, pan smoothness, Plexus long tasks.\n- Developers: `npm run perf:ratchet` keeps measured counts from getting worse; a hidden `speed-flags` setting turns each speed feature off without a release.\n\n## 2.14.1 — 2026-10-06\n\n- Typing stays light while a board sits in an open right sidebar. Plexus read Roam's whole sidebar window list every 400 ms (about 6 ms each time with 140 windows); it now reads the window's own open/closed arrow instead.\n\n## 2.14.0 — 2026-10-06\n\n- PDFs, videos, tweets and other heavy embeds on a card, a page row or an outline row show a poster until you open them. Only one stays live per board.\n- A board you scroll away from, a collapsed sidebar window, or a board under a closed block stops working in the background and comes back where you left it.\n- Opening a board reads Roam about six times less (about 24 calls instead of 155 on a 39-card board), so other extensions keep their share of Roam's limit.\n- Typing in a card updates that card only. Typing on a page that is a page card updates the changed row only.\n- Typing outside a board keeps the board open instead of closing and reopening it.\n- Panning no longer measures every arrow handle on each mouse move.\n- Board chips at the top of a page are placed once per frame instead of scanning the whole page for every change.\n- A live speed check for developers: `node tools/live/perf-gate.mjs`.\n\n## 2.13.2 — 2026-10-05\n\n- A board in the right sidebar opens as the board. Outline is still in the mode bar, and the last choice is remembered on this device.\n- Outline rows render when they scroll near the window. A row that scrolls far away unmounts and keeps its height, so a PDF lower down does not stay open.\n- Clicking and panning a board stays fast in a window that has been open for days. Old copies of a board no longer keep listening after they close, and loading Plexus again cleans up an earlier copy that never unloaded. One click had been waking thousands of leftover copies.\n- A board that fails to open waits before trying again, instead of retrying every 400 ms.\n\n## 2.13.1 — 2026-10-05\n\n- An image card keeps its picture at map zoom. A collapsed or empty card still shows its title.\n- A card that cites part of an image shows that crop. A region inside the card still uses its own block.\n\n## 2.13.0 — 2026-10-05\n\n- Every diagram opens as a Plexus board by default. Nothing is saved until you change the board. Your first edit writes the board marker in the same undo step, and folds the outline when Collapse the outline is on.\n- A diagram that already has native shapes stays Roam's own. An Open as Plexus board button over it imports the shapes and arrows.\n- Settings has Every diagram is a Plexus board. Turn it off to open only diagrams you enhance or create with New whiteboard here. Turning it off gives the native diagram back to boards you have not changed.\n- Plexus: Restore native diagram now sticks, even with the setting on. Plexus: Enhance clears it.\n- Fixes from a review of 2.8 to 2.12:\n  - A page that is a card on a board no longer throws or loops when it opens. Its board chip sits under the page title.\n  - The references drawer lists top-level blocks again.\n  - Cutting or duplicating an image card keeps its regions. Deleting one asks first and shows how many regions it has.\n  - Clearing a connection's why no longer deletes a note that has children.\n  - An open PDF reader stays mounted while it is in view, and arrows meet its edge. Page chips refresh when highlight cards change.\n  - Encrypted-graph PDFs (`.enc`) show their highlights.\n  - Each image highlight reuses one regions block.\n  - Fewer reads on large boards: highlight watches are capped, block props are read only for highlights, and the Info panel counts references without pulling them all.\n  - Memory lane arrows follow the cards. Suggested lines follow a dragged card, and their menu sits at the line.\n  - Escape works on a full-screen board. Annotate is one undo step.\n  - Popovers close when the pointer leaves. Unload no longer removes Roam's own nodes.\n- The command palette stays two entries.\n\n## 2.12.1 — 2026-10-05\n\n- Double-click a connection label to edit the label and a why note. Enter saves both. The outline chip adds \"because …\". An empty why writes no child.\n- Shift+T opens a memory lane. Play fades cards that did not exist yet. A snapshot tick restores that layout and writes nothing.\n- The references button on a block card lists blocks that mention it, grouped by year.\n- The links menu can draw dotted lines for shared page references. Connect makes the connection. Link text wraps the mention.\n- Plexus Commands has Resurface here. It inserts a button that lists cards from a week, a month, or a year ago. The command palette stays two entries.\n\n## 2.12.0 — 2026-10-05\n\n- Hover the info button on a card or a connection to see when it was made, the board, the section, cards from the same day, and how often it is referenced. A block on a board shows one chip per board. Hover the chip for a map. Click the chip to open that card. Nothing here writes. The command palette stays two entries.\n\n## 2.11.4 — 2026-10-05\n\n- A PDF card shows one chip per page that has a highlight on the board. The badge is the count. A click pulses those cards. A double-click opens that page in the card reader. An arrow into a highlight shows the page at the tip. A highlight in the outline says On board when that highlight is a card. None of these write. The command palette stays two entries.\n\n## 2.11.3 — 2026-10-05\n\n- Open in reader on a highlight card opens that page in the PDF card on the same board. The mark stays in view. If that PDF card is not on the board, Roam opens the highlight and a note says to click it. The click does not write. The command palette stays two entries.\n\n## 2.11.2 — 2026-10-05\n\n- Add highlights on a PDF card places the ones you pick, as a grid or a column. One undo removes them. Dragging a highlight bullet onto the board makes one card. Dropping a date asks before adding only the highlights under that date.\n- An area highlight keeps the picture's shape. Mark region on that card stores a region under the highlight. The page mark keeps the colour Roam painted.\n- The tag lens can show one highlight colour. The command palette stays two entries.\n\n## 2.11.1 — 2026-10-05\n\n- A block ref of a PDF highlight is a card. It shows a colour bar, the passage or the area picture, and the page. Changing the colour tag updates the bar. A block that is not a highlight stays a normal ref. The command palette stays two entries.\n\n## 2.11.0 — 2026-10-05\n\n- A pdf block on the board is a card. The cover shows the file name and the highlight count. Open reader mounts Roam's own reader. Interact lets you use that reader. Escape or a board click puts the shield back. A second reader closes the first. Moving the card does not change the PDF settings. The command palette stays two entries.\n\n## 2.10.3 — 2026-10-05\n\n- With Compass loaded, a card menu can open Compass on that page. Compass can open the board that holds the card, and asks which board when there are two.\n- An image card can start an empty drawing beside it. The connection reads annotates. A note says to drop the image into the drawing, and it stays up after the drawing opens. The outline chip names the drawing. Without Roam Plexus that row stays hidden. The command palette stays two entries.\n\n## 2.10.2 — 2026-10-05\n\n- A block ref of a Roam drawing shows the drawing. Regions lists that drawing's regions, and picking one adds a reference on the board. New drawing here creates the drawing and a reference card. The drawing block is not rewritten. Without Roam Plexus the new drawing is still an ordinary drawing. The command palette stays two entries.\n\n## 2.10.1 — 2026-10-04\n\n- window.PlexusDiagram lists boards on a page, boards that show a block, and the cards and views on a board. It can open a card or a saved view, add one card, and return a small PNG of a board. Opening and the picture do not write. Adding a card writes that one block.\n- A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Open drawing uses Roam Plexus. If Roam Plexus is missing, the card is an ordinary block ref. The command palette stays two entries.\n\n## 2.9.6 — 2026-10-04\n\n- An image card shows a small region count when it has regions. The card menu lists them: Go, Copy ref, Rename, and Delete. Rename changes only the caption. Delete asks when another block still references the region, and can open those mentions. Badges off hides the count. The command palette stays two entries.\n\n## 2.9.5 — 2026-10-04\n\n- Hover an image crop for a larger preview, the picture dimmed and the region lit. Click opens that image on its board, zoomed to the region, or scrolls the outline to the image and pulses the region. Shift-click opens the board in the sidebar. An inline view draws a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. Neither click writes to the graph.\n\n## 2.9.4 — 2026-10-04\n\n- On an image block, the block menu item Plexus: Mark image region lets you drag a rectangle. Confirm stores the region under the image, copies a block ref, and toasts. Escape writes nothing. A plexus-region image button in the outline, a block ref, an embed, the sidebar, and linked references draws the crop at most 160px tall, with a 1px border and no shadow, and hides that button. A Roam Plexus region such as a rectangle is left alone. The command palette does not gain an entry.\n\n## 2.9.3 — 2026-10-04\n\n- On an image card, Mark region lets you drag a rectangle on the picture and add a short caption. Confirm stores that region under the image, copies a block ref, and toasts that it copied. The first undo removes the region. The next undo removes the empty container. The card stays put, and the image viewer does not open. The command palette stays two entries.\n\n## 2.9.2 — 2026-10-04\n\n- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views, each with a 96px outline map. Go puts the camera back and writes nothing. Delete removes the view block, and undo puts that row back. The command palette stays two entries.\n\n## 2.9.1 — 2026-10-04\n\n- A new card is placed before the Connections list, snapshots, and a region container, so those stay at the end of the block. The library card count skips a region container the same way it skips Connections. Leaving a new empty card that only holds a region container no longer deletes that card.\n\n## 2.9.0 — 2026-10-04\n\n- A region container `{{[[plexus-regions]]}}` and its `{{[[plexus-region]]}}` children stay off the board. They are not cards. A card's child badge does not count them. Image regions and saved views can be stored in that shape. A Roam Plexus region is recognized and left as theirs. Nothing is drawn yet.\n\n## 2.8.0 — 2026-10-04\n\n- Better Tasks and the Task tool start off. Settings, Integrations, has four controls: Better Tasks integration, Task tool, Task chips, and Default project for new tasks. With both switches off, the dock has no Task button, K does nothing, and the ? sheet does not list K. A Task tool you already saved stays on. Turning Better Tasks on draws the light checkbox and the chips, and asks Better Tasks for attributes once. Turning it off puts Roam's own checkbox back. Opening, panning, and clicking a board does not call Better Tasks while the integration is off.\n- A card whose text has #bg-blue or #[[bg-blue]] takes that colour on the board when the colour highlighter's variables are on the page, in light and in dark. #c:red still colours bold text inside the card, and Plexus does not paint over it. A fill you set in the picker wins; clearing that fill brings the tag colour back. With no highlighter variables, named colours use a fixed palette and the tag stays visible in the card.\n- The colour picker's gear, Write as highlighter tag, is saved on that board. In that mode a named colour writes one #[[bg-name]] into the block and clears the card's fill. One undo restores the text and the fill together. Hex, darker, and lighter still change only the fill.\n- A key pressed outside the board no longer switches the tool or adds a card, while nothing on the board is selected. A selected card still receives the board's keys.\n- A card more than one screen outside the view keeps its size and skips layout. The card you are editing stays fully drawn. A card that stays outside the view for 10 seconds drops its live Roam body and draws it again when it comes back.\n\n\n## 2.7.1 — 2026-10-04\n\n- Dropping a repeating task on Done in the Kanban view now makes the next occurrence, the same as ticking its checkbox. Before, only a real checkbox click did, because Better Tasks starts the next occurrence from its own checkbox. The task is now finished through that same checkbox, out of sight, so you get the completed date and the next task together.\n- Popovers stay clear of the board's own controls. The task chip popovers, the children peek, the Background and tag popovers, the card colour picker and the right-click menu move aside or flip instead of opening under the dock, the top bar, the rail, the minimap or the Properties panel. When there is no room, they shrink and scroll.\n- Task cards are readable when you zoom out. At the map zoom the check box is at least 20 pixels on screen, with the due date under the title (teal today, red overdue). Zoomed far out, a task is one clear box: empty, checked or crossed, in the same colours.\n- The pill that shows a scrolled-out block arrow (\"↓ the block's first words\") stays inside its card. It is cut to the card's width less 16 pixels with an ellipsis and keeps the same size on screen at any zoom.\n- A board with many tasks no longer uses up Better Tasks' limit of 100 decorated checkboxes. A task card now draws a light checkbox of its own instead of a real Roam block, so a 40-task board added 40 real checkboxes before and adds none now, and Better Tasks keeps decorating the rest of the page. Clicking the box still completes the task through Better Tasks.\n- Checked for a freeze when the bench is run back to back with a task board open: five runs and five load-and-unload cycles did not reproduce it.\n\n## 2.7.0 — 2026-10-03\n\n- Task cards. A card whose block is a Roam TODO now looks like a task: Roam's own checkbox, the title, and a row of chips under it for the due date, project, priority, repeat, status, waiting-for and GTD. Today's due date has a teal border, an overdue task a red one, a done task is dimmed and struck through, and a cancelled one is struck through. Better Tasks' own pills are hidden inside the card so the chips are not doubled. At map zoom a task shows a check box, its title and its due date; zoomed far out it is a single check box.\n- New Task tool. Press K, or pick it in the dock or the canvas menu, then click the board: a TODO card appears and opens for typing. A task left with no text disappears when you click away, like an empty card. Cmd+Z right after makes one undo step. The card menu has Make task for a plain note.\n- Change a task from its chips. Click the due date, project, priority or repeat chip and pick from a small popover (today, tomorrow, next week or any date; a project from Better Tasks' list; low, medium or high; a repeat rule). The change is made by Better Tasks itself, so the attribute blocks keep their uid and Plexus still never writes a `BT_attr` block. Cmd+Z after a chip change is Roam's undo, not the board's. Without Better Tasks the tool makes a plain TODO card and the chips are read-only.\n- Finishing a task works the way it does in Roam. Tick the checkbox on the card and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page. A toast tells you the date and offers Add to board. Dropping a card on Done in the Kanban view does the same through Better Tasks.\n- Drag a task card onto a daily-page card (or a section named for a day) and its due date becomes that day, in the same attribute block. Hold Shift to move the card without changing the date.\n- Better Tasks' attribute blocks and its Activity log no longer count as children: they are never rows, never in the outline or the peek, and never a \"▸ N\" badge. Renamed attributes are read from Better Tasks.\n- Three new settings: Task tool (show it in the dock), Task chips (full, due only or none) and Default project for new tasks.\n\n## 2.6.0 — 2026-10-03\n\n- Editing a card no longer shrinks it. Opening a card or a sticky for editing used to let it collapse toward the height of one line, and its arrows came loose. The card now keeps its size for the whole edit, the editor fills it, and the text is no longer cut to one line when you start typing. Edges stay attached.\n- Sticky notes are rebuilt to work like the RoamJS sticky notes, and they stay saved. Each one has a coloured header bar you drag, with a short title, a colour dot and a minimize button. The body is the live Roam block: click once and type, with tags, images, links and the slash menu. Drag a corner or edge to resize. Minimize folds a note to its header and remembers it. There is no close button; Delete or the menu removes a sticky and Cmd+Z brings it back.\n- Page cards open faster. A card now shows all its rows as plain text at once, then turns the rows you can see into live Roam blocks a few at a time. Rows scrolled out of view, and heavy rows such as charts, embeds and images, wait until they are on screen. A page you pulled once is reused while the card is open. A 146-row page card used to block for about 150 ms while it drew; now it paints in about 20 ms.\n- Arrows to blocks now stay on their block. When a chart or an image above the target row loads late, or a row turns live, the card re-measures its rows and the arrow follows. Each linked row shows a small dot in its own arrow's colour, so two arrows into one card stay apart, and hovering one arrow lights only its row.\n- New tooltips for the sticky header: drag, minimize or expand, and the colour dot.\n\n## 2.5.0 — 2026-10-03\n\n- The connection preview is cleaner. The target block is now a highlighted bar inside its page card, at the block's real place in the page, with its text cut to the card's width, and the arrow runs into the bar with a head like the one on the board. Nothing spills over a neighbouring card any more.\n- The preview opens where it never covers the chip or the block line it belongs to: under it, else above, else beside it, shrinking and scrolling inside when the window is small. It follows the chip while you scroll or resize and closes when the chip leaves the screen.\n- Roam's breadcrumb above a connection block (in linked references and when you zoom into the block) now opens the same preview on a plain click, because Roam's own link there only led to \"Board › Connections\". A small ▦ marks it. Shift-click, Cmd-click and Ctrl-click still do what Roam does. Unloading removes the marks and the listeners.\n- Resize grips, connection dots and arrow-end handles keep the same size on screen at every zoom, so they are easy to grab on a zoomed-out board and no longer huge when zoomed in.\n- Light mode was checked on every new surface. Fixed: the connection chip could run past the edge of its block, and its teal was too pale on white.\n\n## 2.4.0 — 2026-10-03\n\n- The Add and Info panel now opens to the left of the control rail instead of covering it. The minimap steps left of an open panel. The rail keeps one fixed width, so the version badge no longer pushes it wider.\n- An arrow that ends on a block now visibly points at it. The line continues into the page card and its head stops beside the row's text. The row keeps a mark in the arrow's color (a left rule and a light tint; in the dark theme a border only, no fill). Hover the arrow and the row lights up; hover the row and the arrow thickens and a tooltip names the other card and the label. When the row has scrolled out of view, the arrow ends in a pill at the card edge with an arrow and the block's first words; click it to scroll the row back.\n- Connections now show up where Roam draws them. Under every connection block in the outline, the sidebar or a block's linked references, a small chip reads \"A —label→ B · on Board\" and names the block when the arrow ends on one. Click the chip to see a preview: a map of the two cards with the arrow and the target row, plus Open on board and Open in sidebar. Open on board opens the page, enters a nested board if needed, and selects the connection. Nothing is written, and unloading removes every chip.\n- The card's hover toolbar no longer disappears on the way to it. It waits 400 ms after the pointer leaves the card, so you can reach it and open its color picker. Moving to a different card switches the toolbar at once with no flicker. Escape, panning and zooming hide it immediately.\n- With the Hand tool you can now resize: a press on a resize grip resizes, anything else pans, and Space-drag still pans over grips. Page cards have a wider grip band on the right and bottom edges and a larger corner that sits above the scrollbar. The grips show when you hover a card in hand mode.\n\n## 2.3.0 — 2026-10-03\n\n- Board rows in page cards. A page card for a page that holds a board shows that board as a small map with its title and item count, not a grey box. After four maps on one card, the rest are one-line chips. The row for the board you are looking at says \"this board\". Click opens the board; Shift-click opens it in the right sidebar.\n- A row that Roam cannot render inside a card, such as an empty `{{[[roam/render]]}}`, now shows its raw text, muted, instead of \"Failed to render\". This also ends the Roam console errors the old page-card row caused.\n- Hover tooltips. Every control on the board bar, the dock, the rail, the card toolbar and the Properties panel shows its name, its shortcut and a one-line description after a short hover. Keyboard focus shows it at once. The tip sits below the board bar, above the dock, left of the rail, and stays inside the board. Settings, Hover tooltips, turns them off and hands the text back to the browser. Tooltip delay is instant, 350 ms or 800 ms.\n- A tooltip no longer stays on screen after the control it described is removed.\n- Ref cards and image cards show readable titles everywhere: Table, Kanban, Graph, Timeline, Gallery and Find use the first line of the referenced block or the image's alt text, never `((uid))` or a blank. Find matches the text a ref card shows.\n- Graph view draws a line for every connection, fits all cards inside its window and no longer scrolls them out of sight.\n- The end handles of a short arrow with a label can be grabbed. The label steps aside while the arrow is selected.\n- Gallery captions show the image's alt text, or nothing. They never show raw markdown.\n- The Escape that closes Search, a menu, or Gallery, Timeline and Graph no longer also leaves fullscreen.\n- Present mode hides the board bar, dock, Properties, rail, minimap and side panel, and brings them back on exit.\n- Shift-click only extends the selection. It no longer opens the Info panel.\n- Gallery, Timeline and Graph, the board bar and the Properties pill are opaque now, so nothing shows through. A collapsed Properties pill is only as wide as its label.\n- Section titles in the zoomed-out overview may run wider than a small frame before they are cut off.\n- Gallery, Timeline and Graph are also under More, Views, and under Views in the canvas menu. The template entry is now \"Timeline template\". An empty Timeline says that a date attribute or a daily-page reference makes a card dated.\n- The thin dotted curves that run across a board between cards are graph links, drawn for every shared page reference or attribute. They are not a stray line. Links, in the board bar or the L key, switches them off or to attributes only.\n\n## 2.2.0 — 2026-10-03\n\n- Board bar and tool dock. The top bar is now the board bar: breadcrumbs, Add, Info, links, views, background, present and More. The nine tools moved into a floating dock along the bottom. Settings, Toolbar layout, brings back the 2.1 look (Classic) or hides the top bar until the pointer nears the top edge (Dock only).\n- Dock settings: position (bottom, left or top), shape (pill or strip), tool names under the icons, and button size. A board can set its own dock position from the More menu, Dock position for this board; opening a board still writes nothing.\n- The active tool slides a highlight behind it. A locked tool (double-click) shows a padlock. In dark mode the active tool is a border and a dot, so it stays visible without a fill.\n- Dock options. With Card, Sticky, Section or Shape active, the dock shows that tool's colors, the block or card look, or the shape kinds. With nothing selected, a pick styles the next item you create with that tool and is forgotten when the board closes; with cards selected, it restyles them as before. One undo reverses it.\n- The last breadcrumb carries the board's own color, and the bar's bottom edge takes the same tone.\n- Overview zoom keeps Select, Hand and Board in the dock. A board narrower than 560 px gets smaller buttons and no options. A left dock no longer sits on the Properties panel.\n- The active and locked tool styles in the top bar lost to Roam's own button rules in dark mode. They hold now.\n\n## 2.1.0 — 2026-10-03\n\n- Enter in a card adds a line to the card's block, like a node in a native Roam diagram. Settings, Cards, \"Enter in a card\" set to Child brings back the old behavior of making a child block.\n- An empty white panel with a Close button no longer covers boards.\n- Pasting one image into a card inserted it twice. It now inserts once.\n- Dragging an image onto a card that is being edited works. Dropping an image on a card adds it after the card's text instead of replacing the text.\n- Whole-page cards: a page card shows the page title as a header and the whole outline, scrolls inside the card, and edits where you click. Add page… in the canvas menu adds a page by search. Dropping a page from the left sidebar makes a page card.\n- Arrows to a single block. Drag an arrow end over a page card and the row under the pointer lights up; dropping there connects to that block with a real `((ref))`, so it shows in Roam's backlinks. Dropping on the title connects to the page. Ends follow their row as the card scrolls and clamp to the edge with a marker when the row is out of view. A selected arrow has end handles to re-aim it, and the arrow menu has Connect to the page instead.\n- Card children. A note, block or ref card shows only its own block. A ▸ N badge opens the children as an editable outline inside the card, remembered per card, and hovering the badge peeks at them. Spread children as cards makes one card per child with an arrow back.\n- Note: note and ref cards now show only their own block until the badge is opened.\n- A selected arrow's end handle could only be grabbed on the half outside the card it ends on. The whole handle now grabs.\n\n## 2.0.0 — 2026-10-03\n\n- Card editing, outline navigation, templates, the table, snapshots, and the graph tools that landed after 1.3.0.\n- Gallery, timeline, and a read-only graph of the board. A section can lay cards out by date. Connections can bend or route around cards. Present shows a section's first child as notes, plus a laser and a pen that are dropped on exit.\n- A diagram in the right sidebar stays a gap until that window is on screen. Opening the sidebar parks the boards on the page.\n- A 300-card board shows its first shells in about 1 second and finishes the rest over the following frames. Detail and overview pan hold 60 fps. Zooming across the detail threshold is about 57 to 59 fps, and that switch no longer produces a long task.\n- The same board in two Roam windows kept the same 6 cards and 4 connections across 30 moves.\n\n## 1.3.0 — 2026-10-01\n\n- Native parity on an enhanced board: plain block cards, a node hover toolbar, a right-hand control rail, a properties panel, PNG export, outline in the sidebar, boards in the sidebar, edge styles, native embeds, style import on Enhance, per-card expand, minimap drag, keyboard parity, and Edit Block.\n\n## 1.2.0 — 2026-09-29\n\nFixes from the second round of testing on 1.1.0:\n\n- **Zoomed-out cards stay inside their box.** Map view is a clean title-only tile: three-line clamp, font capped by the tile height, nothing spills below the card. Ref titles are cut at 120 characters and header text at 160. The level of detail now switches while you zoom (with hysteresis, one class toggle), not only when the gesture ends. A third tier below 20% shows section titles only.\n- **Nested board thumbnails are real thumbnails.** A padded frame with mini cards (border, fill, title), sections as tinted frames, connections, and an \"Empty board\" state, instead of one white box.\n- **Sections auto-fit.** A card moved, resized, created, or pasted past a section edge grows the section to contain it (24 px padding), live during the drag and saved as one undo step. It cascades through nested sections, never shrinks by itself, and can be turned off per section or with the `auto-fit-sections` setting.\n- **Board backgrounds.** Dots, lines, grid, and plain patterns and paper or ten palette tones, chosen per board from the Background button (stored in the board block's props) with a default in Settings.\n\nAdded:\n\n- **Right-click menus** for the board, cards, sections, text, connections, multi-selection, and the More menu.\n- **Duplicate and clipboard.** Alt+drag and Cmd+D duplicate (Alt+Shift makes `((ref))` cards); copy and paste as refs or as copies, across boards; pasted text and images become cards. Send to board, Boards tab (every board in the graph), Outline tab.\n- **Keyboard.** Tab and Shift+Tab step through the outline, F focus mode, Q quick look, P presentation, M mind map from a card's child blocks, Cmd/Ctrl+Alt+Enter fold, double-click a bottom or corner grip to fit or reset height. Arrow keys nudge the selection 1 px (Shift for 10 px); Alt+Arrow selects the nearest card in that direction (Alt+Shift adds), as in Heptabase.\n- **Layout tools.** Tidy (row, column, grid, outline order), same size, fit height, reset size, fit section, fold all, optional space-out after a move, \"Back to content\" button.\n- **Pin.** Pinned items do not move, resize, or delete.\n- **Card badges.** References, boards, and open and done TODO counts, read from Roam (never written); a `((ref))` to a board renders its thumbnail; journal cards for today and this week.\n- **Export.** Export board as SVG and Copy board as text (commands and board menu).\n- **Review fixes.** Cut and paste now moves a note, text or section (the clipboard carries a snapshot; before, the paste was a dead `((ref))`). The Open button, double-click and Enter open a whiteboard-shortcut card. Settings changes reach open boards' sessions live. A pinned section is never grown by auto-fit. Fit height can shrink a card. Fit / Reset size / Same size never leave a card outside its section. A pinned card no longer pushes other cards in space-out. Escape closes the Background popover first. Right-clicking a ref, tag, link or image inside a card keeps Roam's or the browser's menu. Tab is only taken while the board itself has focus. A tall menu scrolls inside a small board. Thumbnails title `((ref))` and image cards. The section grows live while you type in a card at its edge. Card badge queries run in idle slots and are cached for two minutes.\n- New settings: default board tone, map view threshold, auto-fit sections, space out cards, show card badges; grid accepts `grid`. API and build: see `docs/api-plexus-1.0.md` (\"1.2 additions\") and `docs/spec-plexus-1.2.md`; `src/css/*.css` is appended to the bundle.\n\nFixed after live testing in Roam Desktop:\n\n- **One Cmd+Z per operation.** Duplicate, Alt+drag, mind map, Tidy, and a drag that grows a section each took one Cmd+Z per block written; the Undo toast button undid one block. Writes of a transaction are now grouped, and Undo and Redo step over the whole group.\n- Map-view cards clamp to exactly three lines (no fourth-line sliver, no ellipsis in the middle of a tall card); section titles show an ellipsis; far zoom-out no longer paints a dot moire; colored cards read at overview zoom; whiteboard-shortcut cards keep their thumbnail at map zoom.\n- Ctrl-wheel zoom and paste use the board's current position after the Roam page scrolls (they were off by the scroll distance).\n- Pasted images are `![](url)`, not `![](![](url))`.\n- The section preview no longer snaps back while you type in a card at its edge.\n- Fit keeps content below the toolbar and left of an open panel (Outline click fits the visible area); the context bar no longer covers the toolbar or the panel; double-click on the middle of a card's bottom edge fits its height.\n- Mind map from a card that already has child cards on the board lays the rest out around them, and says when the 24-branch cap left nodes out. Add this week no longer stacks a card on an existing one. Duplicating a section says \"section\".\n- The OS dark-mode hint no longer darkens a board on a light Roam theme.\n- **Typing in a card: Enter no longer drops you out of the card.** Root cause: the card editor stopped the mouseup that Roam uses to end its block drag-select, so a new block created under the resting pointer turned the edit into a block selection. Mouseup now passes through.\n- **Undo limits.** Roam keeps only the last 50 changes, so one Cmd+Z sequence can undo an operation only if it fits. Mind maps cap at 24 branches (\"Mind map: 24 of 45 branches (cap)\") and bulk adds (large pastes, multi-drops, Add all) at 45 cards (\"Added 45 of N (Roam undo holds 50 changes)\").\n\n## 1.1.0 — 2026-09-29\n\nFrom the first round of testing on 1.0.0:\n\n- **Cards show their content.** Note and block-reference cards render the whole block (and its children) instead of a truncated first line over an empty body. A long single-line `((ref))` card is readable again.\n- **Drag blocks in from Roam.** Dragging a bullet from the outline or the right sidebar onto a board adds it as a `((ref))` card (a page becomes a `[[page]]` card). Multi-block drags stack. The source block is never moved.\n- **Typing in a card.** Enter adds lines inside the card and keeps the caret there; if Roam drops focus while it moves between blocks, the editor takes it back. The card header no longer repeats and lags behind what you type, and text items keep their heading size while editing.\n- **Nested boards (Heptabase sub-whiteboards).** New Board tool (W): click or drag to add a board card, or select cards and choose **Move into new board**. Board cards show a mini map, item count, and a name field. Double-click or Open goes into the board in place with a `Parent › Child` breadcrumb; click a crumb or press Esc to go back up. Drag a card onto a board card to move it inside (with Undo). Boards opened from their own page get crumbs for their parent boards.\n- **Collapsed board blocks.** The board block is collapsed once so Roam does not list its cards as bullets under an inline board; expand the bullet to see them. Turn it off with **Collapse board blocks in the outline**. A nested board no longer opens a second overlay from an expanded outline.\n- Import and Restore keep a nested board's marker; a board deleted while open closes cleanly (a nested one pops to its parent).\n\n## 1.0.0 — 2026-09-28\n\nRewrite. The 0.6 canvas (one 2,200-line closure) is replaced by a model / host / session / view split with 204 unit tests and a live CDP gate on Roam Desktop.\n\n- **Everything is a Roam object.** Card layout lives in each block's `:block/props` (`plexus` key), not on `[[plexus-diagram/metadata]]`. Sections are parent blocks of their cards. Connections are blocks under a collapsed **Connections** child that read `[[A]] → label → [[B]]`, so both ends get a backlink and notes live as children.\n- **Graph links.** References and attributes that already exist between cards are drawn as dashed arrows colored by relation (`causes`, `Detected by`, `mentions`). **Write to graph** turns a labelled connection into `label:: [[B]]` on the source.\n- **Heptabase features.** 10 colors for cards, sections, text, and connections; sections drawn by drag or Cmd+G around a selection, with titles above the frame; ports on every edge; curve / straight / elbow routes, direction, dash, weight; selection box, alignment guides, align / distribute; text headings; minimap; board search; Add panel with Search and Related; card editing with Roam's own editor (page cards open the whole page); zoomed-out map view with readable titles.\n- **Fast by construction.** Pan and zoom move one transform (p95 frame 4.5 ms on a 120-card board, no renders, no writes). Only on-screen cards render content; zoomed out, cards show titles only. Opening a board writes nothing; the viewport is per device.\n- **Fixed from 0.6.4:** Section tool made two frames per drag and one per click; sections did not hold cards and had no color; the connection inspector covered the connection; text typed into a new card was lost; the sync indicator went pending on pan and zoom; diagrams on normal (non-daily) pages were never discovered; `[[links]]` inside cards did not open; keyboard shortcuts were swallowed by the diagram block.\n- **Migration.** Boards enhanced with 0.6 upgrade once on first open (positions, colors, sections with their cards, connections with labels and styles). Native diagrams import on **Enhance** (positions, groups as sections, edges as connections). Diagrams you never enhance are never written.\n- Commands: Enhance this diagram, New whiteboard here, Restore native diagram, Fullscreen this diagram.\n\n## 0.6.4 — 2026-09-05\n\n- **Inspector Comment** — converts the edge label to native Roam comments (one-way → target, two-way → both) then clears the pill.\n\n## 0.6.3 — 2026-09-05\n\n- **Idle card children** — after click-away, idle cards `renderBlock` the card uid so child bullets stay visible; deep pull includes nested `:block/children`; empty placeholder only when string is blank and there are no children.\n- **Board background** — toolbar cycles Dots / Lines / Solid (`grid-style` persisted).\n\n## 0.6.2 — 2026-09-05\n\n- **Connect hit-test** — targets resolve from the painted card rects (`getBoundingClientRect`, 12px handle inflate) before `elementsFromPoint` and world-rect math, and the card hovered on the last pointermove is the fallback for a captured pointerup.\n- **Rubber-band** — the edge and temp-wire SVGs cover content ∪ viewport (2000px pad) so the dashed wire paints across a panned board.\n- **No junk cards** — a click-click that misses a card cancels the arm; only a real drag onto empty board creates a linked card.\n- **Version badge** — the toolbar stamps the package version, not Roam's `DEV` developer-extension version.\n\n## 0.6.1 — 2026-09-05\n\n- **Connect hit-test** — when Electron's `elementsFromPoint` misses cards under `.pxd-world`, resolve targets from world-space node rects (12px handle inflate). Click-click arms and drag-to-card both work.\n- **Delete cards** — Delete/Backspace on a selected card removes it from the diagram (adapter + metadata), not just edges.\n- **Scratch children** — `blankScratch` deletes scratch-host children so a new card editor never inherits the previous card's bullet tree.\n\n## 0.6.0 — 2026-09-05\n\n- **Visible arrows** — connector stroke and marker fill are resolved colors, not `var()` in SVG attributes. Marker ids are unique per canvas. Heads scale with zoom (`clamp(10 / zoom, 6, 24)`).\n- **Ports** — drag from a card handle stores `from::` / `to::` (`auto|top|right|bottom|left`). Click-click and connect-to-empty still work.\n- **Per-edge direction** — `direction::` `oneWay|twoWay|none` on `edge A->B`. Global Arrowheads is the default for new edges only.\n- **Inspector** — click a line for a floating cluster: direction, Flip (disabled if the reverse exists), Route, Label, color, Delete. Mutations `await flushLayout()`.\n- **Schema** — optional `from::` `to::` `direction::` `color::` children under the existing edge row. `[[plexus-diagram/metadata]]` only. No `:diagram/*` / `:harc/*`.\n\n## 0.5.0 — 2026-08-29\n\n- **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.\n- **In-place nested boards** — opening a nested diagram does not call `openBlock` / change the hash. The parent session stays loaded; crumbs sit on the toolbar and Esc pops one level.\n- **Section and card color** — toolbar swatches (eight Blueprint-ish ids plus default) write `color::` on nodes and sections. Dark mode uses the border as the signal.\n- **Section click-rename** — a single click on the section title starts rename; pointerdown on the label does not drag the frame.\n- **Review pack** — session swap flushes the outgoing board then cancels persist timers; unused parent pull-watches stop; Esc nest-pop only when the overlay owns the pointer; connect-to-empty rolls back a failed edge persist.\n\n## 0.4.2 — 2026-08-28\n\n- **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam's custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.\n- **Right sidebar inset** — fullscreen also ResizeObserves the right sidebar and re-places on the next two animation frames after the article class changes. When the article's right edge is within 8px of the viewport, the overlay `right` inset is 0.\n- **Library portal** — the drawer mounts on `document.body` (fixed, 320px, 14px) so it is not scaled by `.pxd-world`. Items are opaque `#f5f8fa` / `#182026`. Empty search hides `roam/js/` and `roam/css` pages.\n- **Nested crumbs** — opening a nested board pushes the parent onto a crumb stack (`Parent › Current`). Clicking a crumb opens that block (or page). Nested cards show the parsed name; unnamed boards get an inline \"Name this board…\" field.\n- **Connect to empty** — dragging a handle onto empty board creates a card at the drop point, links it, and enters edit (Heptabase pull-from-port). Handles are 14px. An existing edge is kept if you connect the same pair again.\n- **Review pack** — nested open passes parent uid explicitly; nest stack truncates on multi-level back; drop parsing no longer treats incidental 9-char tokens as block refs; connect failures do not leave dangling edges; nested name timers clear on repaint and dispose.\n\n## 0.4.1 — 2026-08-28\n\n- **Pending-changes patch** — layout persist no longer delete-all/recreates the metadata tree. Existing diagram blocks are patched in place: only changed `pos::` / `size::` / `color::` / edge / section rows are written, identical strings are skipped, and gone ids are the only deletes. Viewport persist is still the one-line `setViewport` path.\n- **Article-pane fullscreen** — fullscreen follows `.rm-article-wrapper` (below the topbar, inset with the left sidebar) instead of `sidebar.right`. ResizeObserver on the article and sidebar plus a class MutationObserver re-place the overlay when the sidebar opens or closes. Drop `[[page]]` / block uid from the sidebar onto the board to add a card.\n- **Visible sections** — sections use a 2px solid border, a light blue fill, `pointer-events: auto`, a default \"Section\" label, drag, corner resize, and double-click rename.\n- **Opaque library** — the drawer sets its own `#ffffff` / `#1c2127` background so it stays readable when mounted outside `.pxd-root`. Blank titles and `roam/js/` pages are hidden until you search.\n- **Nested overlay** — adding or opening a nested `{{[[diagram]]}}` card registers it as enhanced and opens our overlay fullscreen, not native Empty Roam Diagram. Nested cards show \"Nested diagram\" instead of the raw macro. Nested open no longer waits on the parent canvas.\n- **Connect hit-testing** — `cardFromPoint` walks `elementsFromPoint` and ignores edge-hit strokes; temp edges are `pointer-events: none`; connect-tool handles stay visible.\n\n## 0.4.0 — 2026-08-28\n\n- **Fullscreen vs breadcrumbs** — fullscreen hides `#roam-breadcrumbs-panel` / `.breadcrumbs-content` only while `body.pxd-has-fullscreen`. The overlay sits below the remaining topbar and to the right of the left sidebar (article fill, not the whole window). Resize recomputes the inset. Inline boards leave breadcrumbs alone.\n- **Scratch-host card editor** — double-click no longer `renderBlock`s the card uid (the hidden native diagram still owns it). Edit mounts on a `pxd:scratch` child of `[[plexus-diagram/metadata]]`, hydrates until MutationObserver-quiet, then a trusted mousedown/mouseup/click. Commit pulls the scratch string onto the card; empty pulls never overwrite known text.\n- **Connection notes** — labels live on the connector (`label::` under `edge A->B`), not as extra cards. Double-click the line or click the midpoint pill. `show-edge-labels` defaults on.\n- **Commands** — palette and slash keep Enhance, Restore, and Fullscreen only. Toolbar is a single nowrap row. `V` / `C` / `N` / `F` when the overlay owns the pointer.\n- **Sync silence on open** — remounting an already-enhanced diagram no longer rewrites `[[plexus-diagram/metadata]]` or `:rf-diagram` viewport props when the stored snapshot already matches.\n- **Viewport-only persist** — pan/zoom/fit writes only the `viewport::` metadata line; node/edge/section children are left intact.\n- **Dirty flags** — initial fit, fullscreen resize, and dispose no longer schedule Roam writes; persist runs only after real user gestures (pan, zoom, drag, Fit, etc.).\n\n## 0.3.2 — 2026-08-28\n\nDouble-clicking a card no longer blanks its text: `setBlockFocusAndSelection` was focusing the outline copy of the same uid (Roam then cleared the overlay mount), and a same-tick `focusout` committed an empty pull. Overlay editors now keep a text fallback until `renderBlock` hydrates, ignore focusout for 1s, and refuse to commit an empty pull over known text. Fullscreen sits below `.rm-topbar` so RoamJS breadcrumbs stay clickable and the Plexus toolbar is not hidden under it.\n\n## 0.3.1 — 2026-08-28\n\nHouse / daily-tab navigation left a `position:fixed` overlay covering the daily notes. Native Maximize unmounts on route change; our mount often survives because the diagram block is still in the outline. `hashchange` / `popstate` now exit fullscreen, drop `--zoomed`, and restore the inline height whenever the open page uid is no longer the diagram. The 250ms reconcile does not do this, so a Fullscreen click on an inline embed is not immediately undone.\n\n## 0.3.0 — 2026-08-28\n\nCanvas rewrite: the board is usable. Imported native React Flow nodes (165×83 on the live graph) are floored to real cards (min 240×140, default 280×160), and a viewport that paints any card under 140px, has zoom below 0.7, or shows no card at all is rejected and replaced by a fit once the root has a size (single card fits at zoom 1.5, centred; fitted viewport persisted once). Pan, wheel zoom, card drag and corner resize touch only CSS (`.pxd-world` transform, one card's box, the edges hanging off it) — no `innerHTML` rebuild, no Roam write per pixel; viewport/layout persist on pointer-up and wheel-end with a 150 ms debounce, serialized through one queue per session. Cards render with `renderString`; double-click swaps in the native block editor (`renderBlock`) and blur/Esc commits it back, so Roam chrome no longer paints into every card. `render()` reconciles card elements by uid, so a pull during editing never tears down the caret. Drag from a card's connect dots (or any card with the Connect tool) onto another card to link. Double-click empty board adds a card at that point; Card/Nested tool clicks still add. A hint pill explains pan/add/fullscreen on boards with ≤1 card until the first pointer down. Zoomed diagram pages open in fullscreen (`fullscreen-on-zoom`, default on; inline embeds stay inline). Grid lives outside the world and tracks pan/zoom; a live minimap replaces the empty box; toolbar buttons are grouped, high-contrast, with a zoom readout. Dark mode: card and toolbar backgrounds from `--bc-main` / `--bc-menu`, 1px visible borders, 2px `--cl-blue` ring for selection — no tinted fills. `applyPull` keeps in-memory positions, sizes, edges, sections, and viewport (a pull only refreshes content), so a debounced persist can no longer be undone by a concurrent add.\n\n## 0.2.1 — 2026-08-27\n\nFix dead board on zoomed block pages. Navigating to `#/app/<graph>/page/<uid>` destroys the overlay DOM and the MutationObserver never remounted it. A reconcile pass (hashchange/popstate + 250ms interval) now prunes detached views, finds the native canvas — via the dated `block-input-…-body-outline-MM-DD-YYYY-<uid>` suffix or the location hash when ancestors carry no `data-uid` — and remounts the overlay. The pre-paint guard uses `display: none` (React Flow nodes punch through `visibility: hidden` by re-setting `visibility: visible` on themselves) and also hides the native `.rm-diagram-title-panel` and `.react-flow` chrome. Zoomed mounts fill the article (`pxd-mount--zoomed`). Every mount is stamped `data-diagram-uid` and remounts are idempotent per uid.\n\n## 0.2.0 — 2026-08-27\n\nHeptabase-usable overlay: full-bleed board sizing from native diagram (min 560px), horizontal labeled toolbar with zoom/fit/**Fullscreen** (Esc exits; covers the window like native Maximize), empty-canvas pan and cursor-anchored wheel zoom, Roam bullet/ref-count chrome hidden on cards, searchable library drawer that toggles without covering the board, and card titles off by default.\n\n## 0.1.4 — 2026-08-27\n\nSlash/command Enhance was a no-op: typing `/enh` puts the diagram block in edit mode, which unmounts `.rm-diagram`. The command now remembers the uid and waits for the native canvas to remount before overlaying.\n\n## 0.1.3 — 2026-08-27\n\nSlash commands use the same labels as the command palette (Roam Grid pattern), so `/enh` lists **Plexus Diagram: Enhance this diagram**.\n\n## 0.1.2 — 2026-08-27\n\nMetadata writes now generate UIDs before `block.create` / `page.create`. Live roamAlphaAPI returns `undefined` from those calls, so the first enhance was dropping `schema-version::`, `enhanced::`, and node/edge lines. Nested-diagram open uses `roamAlphaAPI.ui.mainWindow.openBlock`.\n\n## 0.1.1 — 2026-08-27\n\nLive-wire fixes against roamAlphaAPI (CDP, Svy graph):\n\n- Fix native hide inversion: `.pxd-native-hidden` now sets `display: none`; pending state uses visibility\n- Use EDN string pull pattern for `data.pull`; strip keyword colons from pull results\n- Generate child block UIDs via `util.generateUID()`; default create order `\"last\"`\n- Viewport writes try `roamAlphaAPI.updateBlock` before `data.block.update`\n- Register slash/context commands via `addCommand`/`removeCommand` with live callback shapes\n- Auto-enhance and focus checks pull `[:block/string]` via `roamAlphaAPI.data.pull`\n- Find native diagram hosts via `diagramElForUid` (id suffix, data-uid, block-ref)\n- Library mounts as overlay drawer; queries `roamAlphaAPI.data.q`; filters daily pages by UID\n- Card/Section toolbar tools place items at click position; library uses viewport center\n- Default `restore-native-on-unload` to false; unload disposes sessions without deleting metadata\n\n## 0.1.0 — 2026-08-27\n\nInitial release of Plexus Diagram.\n\n- Hide native `.rm-diagram` React Flow renderer for enhanced diagrams and mount a vanilla DOM/SVG canvas overlay\n- Keep Roam diagram children as the canonical card store; persist layout on `[[plexus-diagram/metadata]]`\n- Writable viewport via native `:rf-diagram` props; import native node positions when metadata is absent\n- Heptabase-like toolbar, cards, connectors, sections, library sidebar, and fat settings panel\n- Command palette, slash command, and block context menu integration\n- GitHub Pages developer extension at https://svyk.github.io/plexus-diagram\n";
 
 // src/view/color-picker.js
 init_highlight();
@@ -40869,7 +44458,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     if (state !== void 0) node2.setAttribute("data-tip-state", state);
     return node2;
   };
-  const button = (parent, cls, label, title, onClick) => {
+  const button2 = (parent, cls, label, title, onClick) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     tip(b, tipIdForClass(cls));
@@ -40890,7 +44479,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     return b;
   };
   const iconButton = (parent, cls, icon, label, title, onClick) => {
-    const b = button(parent, `pxd-iconbtn ${cls}`, "", title || label, onClick);
+    const b = button2(parent, `pxd-iconbtn ${cls}`, "", title || label, onClick);
     b.setAttribute("aria-label", label);
     const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
     i.setAttribute("aria-hidden", "true");
@@ -40904,18 +44493,18 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   };
   const swatches = (parent, onPick, { key = "color", paper = false } = {}) => {
     const wrap = el("div", "pxd-swatches", parent);
-    const none = button(wrap, "pxd-swatch pxd-swatch--none", "", key === "tone" ? "Default" : "No color", () => onPick(null));
+    const none = button2(wrap, "pxd-swatch pxd-swatch--none", "", key === "tone" ? "Default" : "No color", () => onPick(null));
     tip(none, "swatch.none");
     none.dataset[key] = "";
     if (key !== "color") none.setAttribute(`data-${key}`, "");
     if (paper) {
-      const p = button(wrap, "pxd-swatch pxd-swatch--paper", "", "Paper", () => onPick("paper"));
+      const p = button2(wrap, "pxd-swatch pxd-swatch--paper", "", "Paper", () => onPick("paper"));
       tip(p, "swatch.paper");
       p.dataset[key] = "paper";
       p.setAttribute(`data-${key}`, "paper");
     }
     for (const c of PALETTE) {
-      const s = button(wrap, `pxd-swatch pxd-c-${c}`, "", c, () => onPick(c));
+      const s = button2(wrap, `pxd-swatch pxd-c-${c}`, "", c, () => onPick(c));
       tip(s, `swatch.${c}`);
       s.dataset[key] = c;
       s.setAttribute(`data-${key}`, c);
@@ -41052,7 +44641,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   });
   const group3 = el("div", "pxd-toolbar__group pxd-toolbar__zoom", toolbar);
   iconButton(group3, "pxd-toolbar__zoom-out", "minus", "Zoom out", "Zoom out (Cmd −)", () => on.zoomOut?.());
-  const zoomLabel = button(group3, "pxd-toolbar__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
+  const zoomLabel = button2(group3, "pxd-toolbar__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
   iconButton(group3, "pxd-toolbar__zoom-in", "plus", "Zoom in", "Zoom in (Cmd =)", () => on.zoomIn?.());
   iconButton(group3, "pxd-toolbar__fit", "zoom-to-fit", "Fit", "Fit all (Shift 1)", () => on.fit?.());
   const minimapBtn = iconButton(group3, "pxd-toolbar__minimap", "map", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
@@ -41077,7 +44666,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     el("pre", "pxd-changelog__body", logEl, entry || "No changelog entry for this version.");
     listen(logEl, "pointerdown", (event) => event.stopPropagation());
   };
-  const badge = button(toolbar, "pxd-badge", version ? `v${version}` : "", "Show changelog", toggleLog);
+  const badge = button2(toolbar, "pxd-badge", version ? `v${version}` : "", "Show changelog", toggleLog);
   const sync = el("span", "pxd-sync", toolbar);
   tip(sync, "sync", "idle");
   sync.setAttribute("aria-label", "Synced");
@@ -41086,7 +44675,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   railEl.setAttribute("role", "toolbar");
   railEl.setAttribute("aria-label", "Diagram controls");
   const railBtn = (cls, icon, title, fn) => {
-    const b = button(railEl, `pxd-rail__btn ${cls}`, "", title, fn);
+    const b = button2(railEl, `pxd-rail__btn ${cls}`, "", title, fn);
     b.setAttribute("aria-label", title);
     const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
     i.setAttribute("aria-hidden", "true");
@@ -41101,8 +44690,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const railEdit = railBtn("pxd-rail__edit", "edit", "Edit Block", () => on.editBlock?.());
   const railFull = railBtn("pxd-rail__fullscreen", "maximize", "Maximize", () => on.toggleFullscreen?.());
   const railExtra = el("div", "pxd-rail__extra", railEl);
-  const railZoom = button(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
-  const railBadge = button(railExtra, "pxd-badge pxd-rail__badge", version ? `v${version}` : "", "Show changelog", toggleLog);
+  const railZoom = button2(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
+  const railBadge = button2(railExtra, "pxd-badge pxd-rail__badge", version ? `v${version}` : "", "Show changelog", toggleLog);
   const palette = el("div", "pxd-palette pxd-dock pxd-chrome", root);
   const paletteBar = el("div", "pxd-palette__bar pxd-dock__bar", palette);
   const dockIndicator = el("span", "pxd-dock__indicator", paletteBar);
@@ -41138,14 +44727,14 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   swatches(colorOpts, (c) => on.setColor?.(c));
   const lookOpts = optionSet("pxd-dock__looks");
   for (const look of ["block", "card"]) {
-    const b = button(lookOpts, "pxd-dock__opt", cap2(look), `Show selected as ${look}`, () => on.setLook?.(look));
+    const b = button2(lookOpts, "pxd-dock__opt", cap2(look), `Show selected as ${look}`, () => on.setLook?.(look));
     b.dataset.look = look;
     b.setAttribute("data-look", look);
     tip(b, `dock.look.${look}`);
   }
   const shapeOpts = optionSet("pxd-dock__shapes");
   for (const shape of SHAPES) {
-    const b = button(shapeOpts, "pxd-dock__opt", SHAPE_LABELS[shape] || shape, `Shape: ${SHAPE_LABELS[shape] || shape}`, () => on.setShape?.(shape));
+    const b = button2(shapeOpts, "pxd-dock__opt", SHAPE_LABELS[shape] || shape, `Shape: ${SHAPE_LABELS[shape] || shape}`, () => on.setShape?.(shape));
     b.dataset.shape = shape;
     b.setAttribute("data-shape", shape);
     tip(b, `dock.shape.${shape}`);
@@ -41388,7 +44977,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const patternSeg = el("div", "pxd-seg pxd-bg__pattern", popEl);
   const patternButtons = /* @__PURE__ */ new Map();
   for (const pattern of BOARD_PATTERNS) {
-    const b = button(patternSeg, "pxd-seg__btn", PATTERN_LABELS[pattern] || pattern, PATTERN_LABELS[pattern] || pattern, () => on.setBackground?.({ bg: pattern }));
+    const b = button2(patternSeg, "pxd-seg__btn", PATTERN_LABELS[pattern] || pattern, PATTERN_LABELS[pattern] || pattern, () => on.setBackground?.({ bg: pattern }));
     b.dataset.value = pattern;
     b.setAttribute("data-value", pattern);
     tip(b, `bg.pattern.${pattern}`);
@@ -41398,8 +44987,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const toneWrap = swatches(popEl, (tone) => on.setBackground?.({ bgColor: tone }), { key: "tone", paper: true });
   toneWrap.classList.add("pxd-bg__tones");
   const popFoot = el("div", "pxd-popover__foot", popEl);
-  button(popFoot, "pxd-bg__default", "Use as default", "Use this pattern and tone for every board", () => on.useBackgroundAsDefault?.());
-  const resetBtn = button(popFoot, "pxd-bg__reset", "Reset", "Clear this board's override", () => on.setBackground?.({ bg: null, bgColor: null }));
+  button2(popFoot, "pxd-bg__default", "Use as default", "Use this pattern and tone for every board", () => on.useBackgroundAsDefault?.());
+  const resetBtn = button2(popFoot, "pxd-bg__reset", "Reset", "Clear this board's override", () => on.setBackground?.({ bg: null, bgColor: null }));
   let bgOffs = [];
   const popover = {
     el: popEl,
@@ -41442,7 +45031,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   let bgState = { pattern: null, tone: null, override: false };
   popover.setState(bgState);
   applyControls();
-  const backEl = button(root, "pxd-backtocontent pxd-chrome", "Back to content", "Fit the view back to your cards", () => on.backToContent?.());
+  const backEl = button2(root, "pxd-backtocontent pxd-chrome", "Back to content", "Fit the view back to your cards", () => on.backToContent?.());
   tip(backEl, "backtocontent");
   backEl.style.display = "none";
   for (const type of ["pointerup", "wheel", "keydown", "keyup", "contextmenu"]) listen(backEl, type, (event) => event.stopPropagation());
@@ -41463,11 +45052,11 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     ctx.dataset.kind = kind;
     ctx.setAttribute("data-kind", kind);
     const row4 = el("div", "pxd-ctx__row", ctx);
-    const btn = (cls, icon, label, title, fn) => iconButton(row4, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
+    const btn2 = (cls, icon, label, title, fn) => iconButton(row4, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
     const seg = (cls, options, current3, fn) => {
       const wrap = el("div", `pxd-seg ${cls}`, row4);
       for (const [value, label, title, icon] of options) {
-        const b = button(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}${icon ? " pxd-iconbtn" : ""}`, icon ? "" : label, title || label, () => fn(value));
+        const b = button2(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}${icon ? " pxd-iconbtn" : ""}`, icon ? "" : label, title || label, () => fn(value));
         if (icon) {
           b.setAttribute("aria-label", title || label);
           const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
@@ -41479,14 +45068,14 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       return wrap;
     };
     const opt = (name, cls, icon, label, title, fn) => {
-      if (typeof on[name] === "function") btn(cls, icon, label, title, fn);
+      if (typeof on[name] === "function") btn2(cls, icon, label, title, fn);
     };
     const optSeg = (name, cls, options, fn) => {
       if (typeof on[name] === "function") seg(cls, options, null, fn);
     };
     const pinButton = (pinned2) => opt("pin", "pxd-ctx__pin-toggle", pinned2 ? "unpin" : "pin", pinned2 ? "Unpin" : "Pin", pinned2 ? "Unpin: allow moving and resizing again" : "Pin: lock position and size", () => on.pin(!pinned2));
     const TIDY = [["grid", "Grid", "Tidy into a grid", "grid"], ["row", "Row", "Tidy into a row", "drag-handle-horizontal"], ["column", "Column", "Tidy into a column", "drag-handle-vertical"]];
-    const iconBtn = (cls, icon, label, title, fn) => btn(cls, icon, label, title, fn);
+    const iconBtn = (cls, icon, label, title, fn) => btn2(cls, icon, label, title, fn);
     switch (kind) {
       case "card":
       case "cards": {
@@ -41537,25 +45126,25 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         }
         swatches(row4, (c) => on.setColor?.(c));
         if (kind === "card") {
-          btn("pxd-ctx__edit", "edit", "Edit", "Edit (Enter)", () => on.edit?.());
-          btn("pxd-ctx__sidebar", "panel-stats", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
-          btn("pxd-ctx__collapse", model?.collapsed ? "expand-all" : "collapse-all", model?.collapsed ? "Expand" : "Collapse", "Collapse to title", () => on.collapse?.());
-          btn("pxd-ctx__related", "diagram-tree", "Related…", "Show related pages and blocks", () => on.related?.());
+          btn2("pxd-ctx__edit", "edit", "Edit", "Edit (Enter)", () => on.edit?.());
+          btn2("pxd-ctx__sidebar", "panel-stats", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
+          btn2("pxd-ctx__collapse", model?.collapsed ? "expand-all" : "collapse-all", model?.collapsed ? "Expand" : "Collapse", "Collapse to title", () => on.collapse?.());
+          btn2("pxd-ctx__related", "diagram-tree", "Related…", "Show related pages and blocks", () => on.related?.());
           pinButton(Boolean(model?.pinned));
           opt("fitHeight", "pxd-ctx__fit-height", "arrows-vertical", "Fit height", "Grow or shrink the card to its text", () => on.fitHeight());
           opt("copyRef", "pxd-ctx__copy-ref", "clipboard", "Copy ref", "Copy a block or page reference", () => on.copyRef());
           opt("duplicate", "pxd-ctx__duplicate", "duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
           opt("sendTo", "pxd-ctx__send-to", "send-to", "Send to board…", "Move into another board", () => on.sendTo());
           if (NOTE_KINDS.includes(model?.kind)) opt("expandOutline", "pxd-ctx__mindmap", "layout-hierarchy", "Mind map", "Expand the children as a mind map", () => on.expandOutline());
-          if (model?.kind === "image" || model?.kind === "highlight" && model?.highlight?.image === true) btn("pxd-ctx__mark-region", "highlight", "Mark region", "Drag a rectangle on this image", () => on.markRegion?.());
-          if (model?.kind === "highlight") btn("pxd-ctx__open-reader", "document-open", "Open in reader", "Open this highlight in the PDF reader", () => on.openInReader?.());
+          if (model?.kind === "image" || model?.kind === "highlight" && model?.highlight?.image === true) btn2("pxd-ctx__mark-region", "highlight", "Mark region", "Drag a rectangle on this image", () => on.markRegion?.());
+          if (model?.kind === "highlight") btn2("pxd-ctx__open-reader", "document-open", "Open in reader", "Open this highlight in the PDF reader", () => on.openInReader?.());
           opt("selectSameColor", "pxd-ctx__same-color", "full-circle", "Select same color", "Select every item of this color", () => on.selectSameColor());
           opt("selectConnected", "pxd-ctx__connected", "flows", "Select connected", "Select items linked to this one", () => on.selectConnected());
         } else {
           seg("pxd-ctx__align", [["left", "L", "Align left", "alignment-left"], ["center", "C", "Align centers", "alignment-horizontal-center"], ["right", "R", "Align right", "alignment-right"], ["top", "T", "Align top", "alignment-top"], ["middle", "M", "Align middles", "alignment-vertical-center"], ["bottom", "B", "Align bottom", "alignment-bottom"]], null, (v) => on.align?.(v));
           seg("pxd-ctx__distribute", [["h", "H", "Distribute horizontally", "horizontal-distribution"], ["v", "V", "Distribute vertically", "vertical-distribution"]], null, (v) => on.distribute?.(v));
-          btn("pxd-ctx__wrap", "group-objects", "Wrap in section", "Wrap in a new section (Cmd G)", () => on.wrap?.());
-          btn("pxd-ctx__wrap-board", "folder-new", "Move into new board", "Move the selection into a new nested board", () => on.wrapBoard?.());
+          btn2("pxd-ctx__wrap", "group-objects", "Wrap in section", "Wrap in a new section (Cmd G)", () => on.wrap?.());
+          btn2("pxd-ctx__wrap-board", "folder-new", "Move into new board", "Move the selection into a new nested board", () => on.wrapBoard?.());
           optSeg("tidy", "pxd-ctx__tidy", TIDY, (v) => on.tidy(v));
           optSeg("sameSize", "pxd-ctx__same-size", [["width", "W", "Same width"], ["height", "H", "Same height"], ["both", "WH", "Same width and height"]], (v) => on.sameSize(v));
           opt("fold", "pxd-ctx__fold", model?.anyCollapsed ? "expand-all" : "collapse-all", model?.anyCollapsed ? "Unfold" : "Fold", model?.anyCollapsed ? "Expand the collapsed cards" : "Collapse the cards to titles", () => on.fold(!model?.anyCollapsed));
@@ -41563,21 +45152,21 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           opt("duplicate", "pxd-ctx__duplicate", "duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
           opt("saveViewSelection", "pxd-ctx__save-view", "camera", "Save view", "Save a view of the selection", () => on.saveViewSelection());
         }
-        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
+        btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       }
       case "board":
         swatches(row4, (c) => on.setColor?.(c));
-        btn("pxd-ctx__open-board", "document-open", "Open", "Open this board (Enter)", () => on.openBoard?.());
+        btn2("pxd-ctx__open-board", "document-open", "Open", "Open this board (Enter)", () => on.openBoard?.());
         opt("openOwnPage", "pxd-ctx__own-page", "document", "Own page", "Open nested board in its own page", () => on.openOwnPage());
-        if (model?.enhanced) btn("pxd-ctx__rename-board", "edit", "Rename board", "Rename the board", () => on.renameBoard?.());
-        btn("pxd-ctx__sidebar", "panel-stats", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
-        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
+        if (model?.enhanced) btn2("pxd-ctx__rename-board", "edit", "Rename board", "Rename the board", () => on.renameBoard?.());
+        btn2("pxd-ctx__sidebar", "panel-stats", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
+        btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "section":
         swatches(row4, (c) => on.setColor?.(c));
-        btn("pxd-ctx__rename", "edit", "Rename", "Rename (Enter)", () => on.rename?.());
-        btn("pxd-ctx__contents", "multi-select", "Select contents", "Select the section's members", () => on.selectContents?.());
+        btn2("pxd-ctx__rename", "edit", "Rename", "Rename (Enter)", () => on.rename?.());
+        btn2("pxd-ctx__contents", "multi-select", "Select contents", "Select the section's members", () => on.selectContents?.());
         opt("selectAllInSection", "pxd-ctx__all-in-section", "select", "Select all in section", "Select everything inside the section", () => on.selectAllInSection());
         opt("selectSameColor", "pxd-ctx__same-color", "full-circle", "Select same color", "Select every item of this color", () => on.selectSameColor());
         opt("selectConnected", "pxd-ctx__connected", "flows", "Select connected", "Select items linked to this one", () => on.selectConnected());
@@ -41590,33 +45179,33 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         optSeg("tidy", "pxd-ctx__tidy", TIDY, (v) => on.tidy(v));
         opt("foldAll", "pxd-ctx__fold-all", "collapse-all", "Fold all", "Collapse every card in the section", () => on.foldAll(true));
         pinButton(Boolean(model?.pinned));
-        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete frame", "Delete the frame, keep the cards (Del). Shift+Del deletes contents too", () => on.delete?.());
+        btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete frame", "Delete the frame, keep the cards (Del). Shift+Del deletes contents too", () => on.delete?.());
         break;
       case "text":
         swatches(row4, (c) => on.setColor?.(c));
         seg("pxd-ctx__size", FONT_SIZES.map((s, i) => [s, ["S", "M", "L", "XL"][i], `${s}px`]), model?.fontSize || 24, (v) => on.setFontSize?.(v));
-        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
+        btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "edge":
         seg("pxd-ctx__dir", [["one", "→", "One way"], ["two", "↔", "Two way"], ["none", "—", "No arrow"]], model?.dir, (v) => on.edgeDir?.(v));
-        btn("pxd-ctx__flip", "swap-horizontal", "Flip", "Swap endpoints", () => on.flip?.());
-        if (model?.fromBlock || model?.toBlock) btn("pxd-ctx__unblock", "document", "Page", "Connect to the page instead of a block", () => on.unblock?.());
+        btn2("pxd-ctx__flip", "swap-horizontal", "Flip", "Swap endpoints", () => on.flip?.());
+        if (model?.fromBlock || model?.toBlock) btn2("pxd-ctx__unblock", "document", "Page", "Connect to the page instead of a block", () => on.unblock?.());
         seg("pxd-ctx__route", [["curve", "Curve", "Curve", "path"], ["straight", "Straight", "Straight", "flow-linear"], ["elbow", "Elbow", "Elbow", "step-chart"]], model?.route, (v) => on.route?.(v));
         seg("pxd-ctx__dash", [["solid", "Solid", "Solid", "minus"], ["dashed", "Dashed", "Dashed", "slash"], ["animated", "Animated", "Animated", "pulse"]], model?.dash, (v) => on.dash?.(v));
         seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => on.weight?.(v));
         swatches(row4, (c) => on.setColor?.(c));
-        btn("pxd-ctx__label", "tag", "Label", "Edit the label", () => on.label?.());
-        btn("pxd-ctx__notes", "annotation", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
-        btn("pxd-ctx__write", "inheritance", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
-        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
+        btn2("pxd-ctx__label", "tag", "Label", "Edit the label", () => on.label?.());
+        btn2("pxd-ctx__notes", "annotation", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
+        btn2("pxd-ctx__write", "inheritance", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
+        btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "link": {
         const list = el("div", "pxd-ctx__sources", row4);
         for (const s of model?.sources || []) {
-          const b = button(list, "pxd-ctx__source", (s.string || s.uid || "").slice(0, 60), "Open in the sidebar", () => on.openSource?.(s.uid));
+          const b = button2(list, "pxd-ctx__source", (s.string || s.uid || "").slice(0, 60), "Open in the sidebar", () => on.openSource?.(s.uid));
           b.dataset.uid = s.uid;
         }
-        btn("pxd-ctx__pin", "new-link", "Pin as connection", "Create a board connection from this link", () => on.pinLink?.());
+        btn2("pxd-ctx__pin", "new-link", "Pin as connection", "Create a board connection from this link", () => on.pinLink?.());
         break;
       }
       default:
@@ -41706,7 +45295,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       toast.replaceChildren();
       el("span", "pxd-toast__text", toast, message || "");
       if (action?.label) {
-        button(toast, "pxd-toast__action", action.label, action.label, () => {
+        button2(toast, "pxd-toast__action", action.label, action.label, () => {
           action.run?.();
           toastApi.hide();
         });
@@ -41975,12 +45564,12 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
   input.type = "text";
   input.maxLength = 80;
   input.setAttribute("aria-label", "Caption");
-  const button = doc.createElement("button");
-  button.className = "pxd-region-confirm";
-  button.type = "button";
-  button.setAttribute("aria-label", "Confirm");
-  button.textContent = "Confirm";
-  bar.append(input, button);
+  const button2 = doc.createElement("button");
+  button2.className = "pxd-region-confirm";
+  button2.type = "button";
+  button2.setAttribute("aria-label", "Confirm");
+  button2.textContent = "Confirm";
+  bar.append(input, button2);
   layer.append(draft, bar);
   root.append(layer);
   let dead = false;
@@ -42157,7 +45746,7 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
   listen(doc, "keydown", onKey);
   const win = doc.defaultView;
   if (win && win !== doc) listen(win, "keydown", onKey, true);
-  listen(button, "click", (event) => {
+  listen(button2, "click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     confirm();
@@ -42430,14 +46019,14 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     const head = doc.createElement("tr");
     for (const column of cols) {
       const th = doc.createElement("th");
-      const button = doc.createElement("button");
-      button.type = "button";
-      button.className = "pxd-btn pxd-table__sort";
-      button.setAttribute("data-col", column);
+      const button2 = doc.createElement("button");
+      button2.type = "button";
+      button2.className = "pxd-btn pxd-table__sort";
+      button2.setAttribute("data-col", column);
       const mark = sortColumn === column ? sortDir === "desc" ? " ↓" : " ↑" : "";
-      button.textContent = `${column}${mark}`;
-      button.setAttribute("aria-label", `Sort by ${column}`);
-      listen(button, "click", () => {
+      button2.textContent = `${column}${mark}`;
+      button2.setAttribute("aria-label", `Sort by ${column}`);
+      listen(button2, "click", () => {
         if (sortColumn === column) sortDir = sortDir === "asc" ? "desc" : "asc";
         else {
           sortColumn = column;
@@ -42445,7 +46034,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
         }
         paint2();
       }, paintOffs);
-      th.append(button);
+      th.append(button2);
       head.append(th);
     }
     thead.append(head);
@@ -42461,13 +46050,13 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
         const attr = (row4.attrs || []).find((item) => item.name === column);
         const pendingValue = filled.get(`${row4.uid}\0${column}`);
         if (attr?.uid) {
-          const button = doc.createElement("button");
-          button.type = "button";
-          button.className = "pxd-btn pxd-table__value";
-          button.textContent = cellText2(row4, column);
-          button.setAttribute("aria-label", `${column} for ${row4.title || row4.uid}`);
-          listen(button, "click", () => openEditor(td, attr.uid), paintOffs);
-          td.append(button);
+          const button2 = doc.createElement("button");
+          button2.type = "button";
+          button2.className = "pxd-btn pxd-table__value";
+          button2.textContent = cellText2(row4, column);
+          button2.setAttribute("aria-label", `${column} for ${row4.title || row4.uid}`);
+          listen(button2, "click", () => openEditor(td, attr.uid), paintOffs);
+          td.append(button2);
         } else if (pendingValue != null) {
           const span = doc.createElement("span");
           span.className = "pxd-table__text";
@@ -43111,7 +46700,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     parent?.append(node2);
     return node2;
   };
-  const button = (parent, cls, label, title, fn, tipId) => {
+  const button2 = (parent, cls, label, title, fn, tipId) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     if (tipId) b.setAttribute("data-tip", tipId);
@@ -43133,7 +46722,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     listen(panel, type, (event) => event.stopPropagation());
   }
   listen(panel, "keydown", (event) => event.stopPropagation());
-  const head = button(panel, "pxd-props__toggle", "Properties", "Properties", () => {
+  const head = button2(panel, "pxd-props__toggle", "Properties", "Properties", () => {
     collapsed = !collapsed;
     storage?.setItem?.(STORAGE_KEY, collapsed ? "1" : "0");
     paintCollapsed();
@@ -43154,7 +46743,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
   const choice = (parent, options, current3, fn, tip) => {
     const wrap = el("div", "pxd-seg pxd-props__choices", parent);
     for (const [value, label] of options) {
-      const b = button(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value), `props.choice.${tip}`);
+      const b = button2(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value), `props.choice.${tip}`);
       b.setAttribute("data-value", value);
     }
     return wrap;
@@ -43177,9 +46766,9 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       }
       onCommit(v);
     };
-    const dec = button(row4, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1), "props.step.dec");
+    const dec = button2(row4, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1), "props.step.dec");
     row4.insertBefore(dec, input);
-    button(row4, "pxd-props__inc", "+", "Larger", () => commit(shown + 1), "props.step.inc");
+    button2(row4, "pxd-props__inc", "+", "Larger", () => commit(shown + 1), "props.step.inc");
     listen(input, "change", () => commit(input.value));
     listen(input, "keydown", (event) => {
       event.stopPropagation();
@@ -43192,7 +46781,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
   const colorField = (parent, label, value, fn) => {
     const row4 = el("div", "pxd-props__field", parent);
     el("span", "pxd-props__label", row4, label);
-    const chip = button(row4, "pxd-props__chip", "", label, () => {
+    const chip = button2(row4, "pxd-props__chip", "", label, () => {
       const open = row4.querySelector(".pxd-picker");
       if (open) {
         open.remove();
@@ -43236,7 +46825,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }), "align");
     colorField(g, "Fill", same2 ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
     colorField(g, "Border", same2 ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
-    button(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.(), "props.reset");
+    button2(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.(), "props.reset");
   };
   const edgeGroup = (edge) => {
     const g = group("Connection", "edge");
@@ -43249,7 +46838,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     el("span", "pxd-props__label", g, "Weight");
     choice(g, [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], [1, 2, 3, 4].includes(edge.weight) ? edge.weight : 1, (v) => on.setEdge?.({ weight: v }), "weight");
     colorField(g, "Color", edge.color, (c) => on.setEdge?.({ color: c }));
-    button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.(), "props.reset");
+    button2(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.(), "props.reset");
   };
   const sectionGroup = (items, title, key, write, resetLabel, reset) => {
     const g = group(title, key);
@@ -43272,7 +46861,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     colorField(g, "Title fill", pick("titleFill"), (c) => write({ titleFill: c }));
     colorField(g, "Area fill", pick("areaFill"), (c) => write({ areaFill: c }));
     colorField(g, "Border", pick("border"), (c) => write({ border: c }));
-    button(g, "pxd-props__reset", resetLabel, resetLabel, reset, "props.reset");
+    button2(g, "pxd-props__reset", resetLabel, resetLabel, reset, "props.reset");
   };
   const defaultsGroup = (board2) => {
     const stored = board2?.defaults?.section || {};
@@ -43292,7 +46881,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     el("span", "pxd-props__label", g, "Texture");
     const pattern = BOARD_PATTERNS.includes(bg.bg) ? bg.bg : "";
     choice(g, [["", "Default"], ...BOARD_PATTERNS.map((p) => [p, PATTERN_LABELS2[p] || p])], pattern, (v) => on.setBackground?.({ bg: v || null }), "texture");
-    button(g, "pxd-props__reset", "Reset default", "Clear this board's background", () => on.setBackground?.({ bg: null, bgColor: null }), "props.reset");
+    button2(g, "pxd-props__reset", "Reset default", "Clear this board's background", () => on.setBackground?.({ bg: null, bgColor: null }), "props.reset");
   };
   let last = null;
   const refresh = (state) => {
@@ -43334,6 +46923,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
 init_info();
 init_panel();
 init_drop();
+init_anydoc_to_parse();
 
 // src/view/parse-actions.js
 init_drop();
@@ -43476,6 +47066,18 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
         return res || { ok: false, reason: "no-session" };
       }
       return { ok: false, reason: "empty" };
+    },
+    // U3. Card / Quote from a reader selection: one note card beside the PDF (fromMarkdown + props, 2 writes).
+    async insertTextCard(payload) {
+      const markdown = textCardMarkdown(payload || {});
+      if (!markdown) return { ok: false, reason: "empty" };
+      const at = Number.isFinite(payload.x) && Number.isFinite(payload.y) ? { x: payload.x, y: payload.y } : spot(payload.pdfUid, CARD_SIZE);
+      const res = await session?.insertParsedCard?.({ ...at, markdown });
+      if (res?.ok) {
+        pick(res.uid ? [res.uid] : []);
+        say(payload.quote ? "Quote card inserted" : "Card inserted");
+      }
+      return res || { ok: false, reason: "no-session" };
     },
     async insertParsedCard(payload) {
       const doc = await load(payload);
@@ -44083,6 +47685,7 @@ function buildMenu(kind, ctx = {}) {
         ...c.isPdf ? [make("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : [],
         ...c.isPdf ? [make("parse-pdf", "Parse PDF…")] : [],
         ...c.isPdf && c.hasParse ? [make("open-parsed", "Open parsed")] : [],
+        ...c.officeFile ? [make("convert-office", "Convert to cards")] : [],
         sep(),
         make("copy", "Copy", { hint: "Cmd C" }),
         make("copy-png", "Copy selection as PNG"),
@@ -44547,7 +48150,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     parent?.append(n2);
     return n2;
   };
-  const button = (parent, cls, label, fn) => {
+  const button2 = (parent, cls, label, fn) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     if (label) b.setAttribute("aria-label", label);
@@ -44654,19 +48257,19 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     titleEl = el("span", "pxd-present-hud__title", hud);
     noteEl = el("span", "pxd-present-hud__note", hud);
     countEl = el("span", "pxd-present-hud__count", hud);
-    prevBtn = button(hud, "pxd-present-hud__prev", "Prev", () => goto(index - 1));
-    nextBtn = button(hud, "pxd-present-hud__next", "Next", () => goto(index + 1));
-    button(hud, "pxd-present-hud__laser", "Laser", () => {
+    prevBtn = button2(hud, "pxd-present-hud__prev", "Prev", () => goto(index - 1));
+    nextBtn = button2(hud, "pxd-present-hud__next", "Next", () => goto(index + 1));
+    button2(hud, "pxd-present-hud__laser", "Laser", () => {
       laserOn = !laserOn;
       penOn = false;
       root?.classList.toggle("pxd-root--laser", laserOn);
     });
-    button(hud, "pxd-present-hud__pen", "Pen", () => {
+    button2(hud, "pxd-present-hud__pen", "Pen", () => {
       penOn = !penOn;
       laserOn = false;
       root?.classList.remove("pxd-root--laser");
     });
-    button(hud, "pxd-present-hud__exit", "Exit", () => stop2());
+    button2(hud, "pxd-present-hud__exit", "Exit", () => stop2());
     ink = el("div", "pxd-present-ink", root);
     const dot = el("div", "pxd-present-laser", ink);
     const onMove = (event) => {
@@ -45595,23 +49198,23 @@ function selectHighlightPage(rows, { color, page } = {}) {
   });
 }
 function pdfHighlightButton(doc, onClick) {
-  const btn = doc.createElement("button");
-  btn.type = "button";
-  btn.className = "pxd-pdf-highlights pxd-chrome";
-  btn.textContent = PDF_HIGHLIGHTS_LABEL;
-  btn.setAttribute("aria-label", PDF_HIGHLIGHTS_LABEL);
+  const btn2 = doc.createElement("button");
+  btn2.type = "button";
+  btn2.className = "pxd-pdf-highlights pxd-chrome";
+  btn2.textContent = PDF_HIGHLIGHTS_LABEL;
+  btn2.setAttribute("aria-label", PDF_HIGHLIGHTS_LABEL);
   const stop2 = (event) => {
     event.preventDefault?.();
     event.stopPropagation?.();
   };
-  btn.addEventListener("pointerdown", stop2);
-  btn.addEventListener("mousedown", stop2);
-  btn.addEventListener("dblclick", stop2);
-  btn.addEventListener("click", (event) => {
+  btn2.addEventListener("pointerdown", stop2);
+  btn2.addEventListener("mousedown", stop2);
+  btn2.addEventListener("dblclick", stop2);
+  btn2.addEventListener("click", (event) => {
     stop2(event);
     onClick?.(event);
   });
-  return btn;
+  return btn2;
 }
 function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
   let rowsState = (Array.isArray(rows) ? rows : []).map((row4) => ({ ...row4, selected: false }));
@@ -46900,6 +50503,7 @@ function buildBoardView(onFail, {
     },
     session: parseActions(),
     settings: { get: (id) => readSetting2(id) },
+    setSetting: (id, value) => typeof onSetDefaults === "function" ? onSetDefaults({ [id]: value }) : void 0,
     onPlace: (row4) => {
       const items = [...board2()?.items.values() || []];
       const card2 = board2()?.items.get(readPane?.cardUid?.() || "");
@@ -48442,17 +52046,17 @@ function buildBoardView(onFail, {
     menu2.style.top = `${(box2.bottom || 40) + 4}px`;
     menu2.style.height = "auto";
     const add = (label, run) => {
-      const button = doc.createElement("button");
-      button.type = "button";
-      button.className = "pxd-linksmenu__row";
-      button.textContent = label;
-      button.addEventListener("click", (event) => {
+      const button2 = doc.createElement("button");
+      button2.type = "button";
+      button2.className = "pxd-linksmenu__row";
+      button2.textContent = label;
+      button2.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         run();
         closeLinksMenu();
       });
-      menu2.append(button);
+      menu2.append(button2);
     };
     const reason = line.getAttribute("data-reason") || "";
     const a = line.getAttribute("data-a");
@@ -48612,17 +52216,17 @@ function buildBoardView(onFail, {
     menu2.style.top = `${(box2.bottom || 40) + 4}px`;
     menu2.style.height = "auto";
     const add = (label, run) => {
-      const button = doc.createElement("button");
-      button.type = "button";
-      button.className = "pxd-linksmenu__row";
-      button.textContent = label;
-      button.addEventListener("click", (event) => {
+      const button2 = doc.createElement("button");
+      button2.type = "button";
+      button2.className = "pxd-linksmenu__row";
+      button2.textContent = label;
+      button2.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         run();
         closeLinksMenu();
       });
-      menu2.append(button);
+      menu2.append(button2);
     };
     const setLinks = (mode) => {
       linkMode = mode;
@@ -49213,7 +52817,16 @@ function buildBoardView(onFail, {
         const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
         const task = isTaskItem(item) ? taskMeta(item.string, item.content) : null;
         const pdfUrl = item?.kind === "pdf" ? pdfMacroUrl(item?.string || "") || "" : "";
-        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        let officeText = item?.string || "";
+        if (item?.target?.kind === "block") {
+          try {
+            const blockText = host?.blockString?.(item.target.uid);
+            if (blockText) officeText = blockText;
+          } catch {
+          }
+        }
+        const officeFile = officeTargetFromText(officeText);
+        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -49283,6 +52896,34 @@ function buildBoardView(onFail, {
   };
   let contextLineFor = async () => "";
   let bindInfoHover = () => {
+  };
+  const anydocHost = createAnydocHost();
+  const showOffice = (res) => {
+    if (disposed || !res) return;
+    if (res.toast) toast(res.toast);
+    if (Array.isArray(res.uids) && res.uids.length) ctl.select(res.uids);
+    if (!res.more || !res.offer || typeof res.continue !== "function") return;
+    const next = res.continue;
+    chrome.toast.show({
+      message: res.offer,
+      action: {
+        label: res.offer,
+        run: () => {
+          void Promise.resolve(next()).then(showOffice).catch(() => toast("Could not convert this file"));
+        }
+      }
+    });
+  };
+  const runOffice = (office, world2) => {
+    if (!office) return;
+    const point = world2 || viewCenterWorld();
+    void handleOfficeDrop({
+      office,
+      convert: (bytes, format) => anydocHost.convert(bytes, format),
+      fetch: doc.defaultView?.fetch?.bind(doc.defaultView),
+      session,
+      point
+    }).then(showOffice).catch(() => toast("Could not convert this file"));
   };
   const onMenuPick = (id) => {
     const b = board2();
@@ -49679,6 +53320,11 @@ function buildBoardView(onFail, {
           ensureReadPane().parse?.();
         } catch {
         }
+        break;
+      }
+      case "convert-office": {
+        const office = menuContext("card", item?.uid).officeFile;
+        if (office) runOffice(office, world2);
         break;
       }
       case "open-parsed": {
@@ -50622,13 +54268,13 @@ function buildBoardView(onFail, {
     }
     paintLens();
     lensPop.style.display = "";
-    const btn = chrome.toolbar.lensButton;
+    const btn2 = chrome.toolbar.lensButton;
     const rootRect2 = root.getBoundingClientRect();
-    const b = btn?.getBoundingClientRect?.() || { left: rootRect2.left, top: rootRect2.top, right: rootRect2.left, bottom: rootRect2.top };
-    placeNearAnchor(lensPop, b, root, { gap: 6, skip: btn?.closest?.(".pxd-toolbar, .pxd-dock") || null });
+    const b = btn2?.getBoundingClientRect?.() || { left: rootRect2.left, top: rootRect2.top, right: rootRect2.left, bottom: rootRect2.top };
+    placeNearAnchor(lensPop, b, root, { gap: 6, skip: btn2?.closest?.(".pxd-toolbar, .pxd-dock") || null });
     const onDown = (event) => {
       if (suspended) return;
-      if (lensPop.contains(event.target) || btn?.contains?.(event.target)) return;
+      if (lensPop.contains(event.target) || btn2?.contains?.(event.target)) return;
       closeLens();
     };
     const onKey = (event) => {
@@ -51074,23 +54720,23 @@ function buildBoardView(onFail, {
     legend.hidden = false;
     legend.removeAttribute("hidden");
     for (const row4 of rows) {
-      const btn = doc.createElement("button");
-      btn.type = "button";
-      btn.className = `pxd-legend__row pxd-c-${row4.color}${row4.on ? "" : " is-off"}`;
-      btn.setAttribute("data-attr", row4.name);
-      btn.setAttribute("aria-pressed", row4.on ? "true" : "false");
-      btn.title = row4.on ? `Hide ${row4.name}` : `Show ${row4.name}`;
-      btn.setAttribute("aria-label", btn.title);
-      btn.textContent = row4.name;
-      legend.append(btn);
+      const btn2 = doc.createElement("button");
+      btn2.type = "button";
+      btn2.className = `pxd-legend__row pxd-c-${row4.color}${row4.on ? "" : " is-off"}`;
+      btn2.setAttribute("data-attr", row4.name);
+      btn2.setAttribute("aria-pressed", row4.on ? "true" : "false");
+      btn2.title = row4.on ? `Hide ${row4.name}` : `Show ${row4.name}`;
+      btn2.setAttribute("aria-label", btn2.title);
+      btn2.textContent = row4.name;
+      legend.append(btn2);
     }
   };
   listen(legend, "click", (ev) => {
-    const btn = ev.target?.closest?.(".pxd-legend__row");
-    if (!btn || disposed) return;
+    const btn2 = ev.target?.closest?.(".pxd-legend__row");
+    if (!btn2 || disposed) return;
     ev.preventDefault();
     ev.stopPropagation();
-    const name = btn.getAttribute("data-attr") || "";
+    const name = btn2.getAttribute("data-attr") || "";
     if (!name) return;
     if (hiddenAttrs.has(name)) hiddenAttrs.delete(name);
     else hiddenAttrs.add(name);
@@ -52313,9 +55959,9 @@ function buildBoardView(onFail, {
       if (item?.kind !== "pdf") continue;
       const shell = itemsR.shellOf?.(item.uid);
       if (!shell || shell.querySelector?.(".pxd-pdf-highlights")) continue;
-      const btn = pdfHighlightButton(doc, () => openHighlightPicker(item, btn));
-      btn.classList.add("pxd-hl-add");
-      shell.append(btn);
+      const btn2 = pdfHighlightButton(doc, () => openHighlightPicker(item, btn2));
+      btn2.classList.add("pxd-hl-add");
+      shell.append(btn2);
     }
   };
   const dropEffectFor = (effectAllowed) => {
@@ -52366,6 +56012,10 @@ function buildBoardView(onFail, {
     const resolveUid = (u) => host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`;
     const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "" });
     if (!list.length) return;
+    if (list.every((row4) => row4.office)) {
+      list.forEach((row4, index) => runOffice(row4.office, { x: p.x, y: p.y + index * 184 }));
+      return;
+    }
     if (list.length === 1 && list[0].parse) {
       void handleParseDrop({
         payload: list[0].parse,
@@ -52559,8 +56209,8 @@ function buildBoardView(onFail, {
     }
     const inputFocused = isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement);
     if (inputFocused) {
-      const inside5 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
-      if (!inside5 && !itemsR.isEditing()) return;
+      const inside6 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
+      if (!inside6 && !itemsR.isEditing()) return;
       if ((event.metaKey || event.ctrlKey) && !event.altKey && String(event.key).toLowerCase() === "z") return;
     } else if (!ownsKeyboard()) {
       return;
@@ -53097,8 +56747,8 @@ function buildBoardView(onFail, {
   openHalo = (subject, anchor) => {
     const sub = subject?.uid ? subject : haloSubjectNow();
     if (!sub?.uid || sub.type === "section") return;
-    const btn = root.querySelector?.(".pxd-toolbar__info");
-    const box2 = anchor || btn?.getBoundingClientRect?.() || { left: 24, top: 24, right: 56, bottom: 48 };
+    const btn2 = root.querySelector?.(".pxd-toolbar__info");
+    const box2 = anchor || btn2?.getBoundingClientRect?.() || { left: 24, top: 24, right: 56, bottom: 48 };
     void showHalo(sub, box2);
   };
   contextLineFor = async (subject) => {
@@ -53117,9 +56767,9 @@ function buildBoardView(onFail, {
     haloPop = null;
   };
   bindInfoHover = () => {
-    const btn = root.querySelector?.(".pxd-toolbar__info");
-    if (!btn || haloButtons.has(btn)) return;
-    haloButtons.add(btn);
+    const btn2 = root.querySelector?.(".pxd-toolbar__info");
+    if (!btn2 || haloButtons.has(btn2)) return;
+    haloButtons.add(btn2);
     const armHalo = () => {
       haloWait?.();
       haloWait = timers.later(() => {
@@ -53127,17 +56777,17 @@ function buildBoardView(onFail, {
         if (!disposed) openHalo();
       }, 400);
     };
-    listen(btn, "pointerenter", armHalo);
-    listen(btn, "mouseenter", armHalo);
-    listen(btn, "pointerleave", () => {
+    listen(btn2, "pointerenter", armHalo);
+    listen(btn2, "mouseenter", armHalo);
+    listen(btn2, "pointerleave", () => {
       haloWait?.();
       haloWait = null;
     });
-    listen(btn, "mouseleave", () => {
+    listen(btn2, "mouseleave", () => {
       haloWait?.();
       haloWait = null;
     });
-    listen(btn, "pointerdown", () => {
+    listen(btn2, "pointerdown", () => {
       haloWait?.();
       haloWait = null;
     });
@@ -54917,16 +58567,16 @@ function fillResurface(doc, panel, { pageTitle, rows, intervals, onOpen } = {}) 
     }
   };
   tabs.forEach((tab, index) => {
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.className = "pxd-resurface__tab";
-    button.textContent = tab.label;
-    button.setAttribute("aria-label", tab.label || "Resurface");
-    button.addEventListener("click", (event) => {
+    const button2 = doc.createElement("button");
+    button2.type = "button";
+    button2.className = "pxd-resurface__tab";
+    button2.textContent = tab.label;
+    button2.setAttribute("aria-label", tab.label || "Resurface");
+    button2.addEventListener("click", (event) => {
       event.preventDefault();
       show(tab);
     });
-    bar.append(button);
+    bar.append(button2);
     if (index === 0) show(tab);
   });
   panel.append(bar, body);
@@ -54943,15 +58593,15 @@ function createResurface({ doc, pageTitle, rows, intervals, onOpen } = {}) {
       panels.delete(entry);
     }
   };
-  const mount = (button) => {
-    if (!button || button.dataset?.pxdResurface === "1") return;
-    if (button.dataset) button.dataset.pxdResurface = "1";
+  const mount = (button2) => {
+    if (!button2 || button2.dataset?.pxdResurface === "1") return;
+    if (button2.dataset) button2.dataset.pxdResurface = "1";
     const panel = doc.createElement("div");
     panel.className = "pxd-resurface pxd-root";
     fillResurface(doc, panel, { pageTitle: pageTitle?.(), rows: rows?.() || [], intervals: intervals?.(), onOpen });
-    if (typeof button.insertAdjacentElement === "function") button.insertAdjacentElement("afterend", panel);
-    else button.parentElement?.append(panel);
-    panels.add({ button, panel });
+    if (typeof button2.insertAdjacentElement === "function") button2.insertAdjacentElement("afterend", panel);
+    else button2.parentElement?.append(panel);
+    panels.add({ button: button2, panel });
   };
   return {
     scan(node2) {
@@ -54959,7 +58609,7 @@ function createResurface({ doc, pageTitle, rows, intervals, onOpen } = {}) {
       prune();
       const root = node2?.querySelectorAll ? node2 : doc;
       const buttons = root?.querySelectorAll?.(BUTTON) || [];
-      for (const button of buttons) mount(button);
+      for (const button2 of buttons) mount(button2);
       if (!panels.size) {
         lastSig = "";
         lastList = null;
@@ -54977,14 +58627,14 @@ ${list.map((row4) => `${row4.uid}:${row4.time}`).join(",")}`;
       if (sig === lastSig) return;
       lastSig = sig;
       const spec = { pageTitle: pageTitle?.(), rows: list, intervals: intervals?.(), onOpen };
-      for (const { button, panel } of panels) {
-        if (button?.isConnected) fillResurface(doc, panel, spec);
+      for (const { button: button2, panel } of panels) {
+        if (button2?.isConnected) fillResurface(doc, panel, spec);
       }
     },
     dispose() {
-      for (const { button, panel } of panels) {
+      for (const { button: button2, panel } of panels) {
         panel.remove();
-        if (button?.dataset) delete button.dataset.pxdResurface;
+        if (button2?.dataset) delete button2.dataset.pxdResurface;
       }
       panels.clear();
       lastSig = "";
@@ -55294,12 +58944,12 @@ function cropFrame(frac, naturalW, naturalH, maxH = CROP_MAX_H) {
     top: -ry * imgH
   };
 }
-function regionUidForButton(button, blockString2) {
-  const refUid = button?.closest?.(".rm-block-ref[data-uid]")?.getAttribute?.("data-uid");
+function regionUidForButton(button2, blockString2) {
+  const refUid = button2?.closest?.(".rm-block-ref[data-uid]")?.getAttribute?.("data-uid");
   if (refUid) return refUid;
-  const card2 = button?.closest?.(".pxd-item[data-uid]");
+  const card2 = button2?.closest?.(".pxd-item[data-uid]");
   const cardUid = card2?.getAttribute?.("data-uid") || "";
-  const container = button?.closest?.(".roam-block-container[data-block-uid]");
+  const container = button2?.closest?.(".roam-block-container[data-block-uid]");
   const containerInside = Boolean(container && card2?.contains?.(container));
   if (!containerInside && cardUid && typeof blockString2 === "function") {
     let text3 = "";
@@ -55314,19 +58964,19 @@ function regionUidForButton(button, blockString2) {
   }
   return container?.getAttribute?.("data-block-uid") || "";
 }
-function hideButton(button) {
-  button.setAttribute("data-plexus-owner", "plexus-diagram");
-  button.style.display = "none";
+function hideButton(button2) {
+  button2.setAttribute("data-plexus-owner", "plexus-diagram");
+  button2.style.display = "none";
 }
-function showButton(button) {
-  if (!button) return;
-  if (button.getAttribute?.("data-plexus-owner") === "plexus-diagram") button.removeAttribute("data-plexus-owner");
-  if (button.style) button.style.display = "";
+function showButton(button2) {
+  if (!button2) return;
+  if (button2.getAttribute?.("data-plexus-owner") === "plexus-diagram") button2.removeAttribute("data-plexus-owner");
+  if (button2.style) button2.style.display = "";
 }
-function claimRegionButton(button) {
-  if (!button || button.nodeType !== 1) return false;
-  if (button.getAttribute?.("data-plexus-owner")) return false;
-  hideButton(button);
+function claimRegionButton(button2) {
+  if (!button2 || button2.nodeType !== 1) return false;
+  if (button2.getAttribute?.("data-plexus-owner")) return false;
+  hideButton(button2);
   return true;
 }
 function nextSibling(node2) {
@@ -55348,10 +58998,10 @@ function applyFrame(frame, img, frac, maxH) {
   img.style.top = `${box2.top}px`;
   return true;
 }
-function mountRegionCrop({ doc = globalThis.document, button, region, file, maxH = CROP_MAX_H, onOpen, delayMs, buildPopover, obstacles } = {}) {
+function mountRegionCrop({ doc = globalThis.document, button: button2, region, file, maxH = CROP_MAX_H, onOpen, delayMs, buildPopover, obstacles } = {}) {
   const noop = { destroy() {
   } };
-  const parent = button?.parentElement;
+  const parent = button2?.parentElement;
   if (!doc || !parent || !region) return noop;
   const span = doc.createElement("span");
   span.className = "pxd-region-crop";
@@ -55401,7 +59051,7 @@ function mountRegionCrop({ doc = globalThis.document, button, region, file, maxH
     }
   }
   const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles, label: region.caption || "Open region" });
-  parent.insertBefore(span, nextSibling(button));
+  parent.insertBefore(span, nextSibling(button2));
   let dead = false;
   return {
     el: span,
@@ -55411,14 +59061,14 @@ function mountRegionCrop({ doc = globalThis.document, button, region, file, maxH
       closePop();
       span.remove();
       if (key) dropUrl(key);
-      showButton(button);
+      showButton(button2);
     }
   };
 }
-function mountRegionView({ doc = globalThis.document, button, region, board: board2, onOpen, delayMs, buildPopover, obstacles } = {}) {
+function mountRegionView({ doc = globalThis.document, button: button2, region, board: board2, onOpen, delayMs, buildPopover, obstacles } = {}) {
   const noop = { destroy() {
   } };
-  const parent = button?.parentElement;
+  const parent = button2?.parentElement;
   if (!doc || !parent || !region) return noop;
   const span = doc.createElement("span");
   span.className = "pxd-region-view";
@@ -55437,7 +59087,7 @@ function mountRegionView({ doc = globalThis.document, button, region, board: boa
     }
   }
   const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles, label: region.caption || "Open region" });
-  parent.insertBefore(span, nextSibling(button));
+  parent.insertBefore(span, nextSibling(button2));
   let dead = false;
   return {
     el: span,
@@ -55446,7 +59096,7 @@ function mountRegionView({ doc = globalThis.document, button, region, board: boa
       dead = true;
       closePop();
       span.remove();
-      showButton(button);
+      showButton(button2);
     }
   };
 }
@@ -55456,10 +59106,10 @@ var cropHooks = (extra) => ({
   buildPopover: extra.buildPopover,
   obstacles: extra.obstacles
 });
-function openRegionCrop({ doc, button, region, loadFile, maxH = CROP_MAX_H, onOpen, delayMs, buildPopover, obstacles } = {}) {
+function openRegionCrop({ doc, button: button2, region, loadFile, maxH = CROP_MAX_H, onOpen, delayMs, buildPopover, obstacles } = {}) {
   const noop = { destroy() {
   }, pending: Promise.resolve() };
-  if (!claimRegionButton(button)) return noop;
+  if (!claimRegionButton(button2)) return noop;
   const hooks = cropHooks({ onOpen, delayMs, buildPopover, obstacles });
   let handle = null;
   let dead = false;
@@ -55467,29 +59117,29 @@ function openRegionCrop({ doc, button, region, loadFile, maxH = CROP_MAX_H, onOp
     if (dead) return;
     dead = true;
     if (handle) handle.destroy();
-    else showButton(button);
+    else showButton(button2);
   };
   const pending = Promise.resolve().then(() => typeof loadFile === "function" ? loadFile(region) : null).then((file) => {
-    if (dead || button.isConnected === false) {
-      if (!dead) showButton(button);
+    if (dead || button2.isConnected === false) {
+      if (!dead) showButton(button2);
       dead = true;
       return;
     }
-    handle = mountRegionCrop({ doc, button, region, file, maxH, ...hooks });
+    handle = mountRegionCrop({ doc, button: button2, region, file, maxH, ...hooks });
   }).catch(() => {
-    if (dead || button.isConnected === false) {
-      if (!dead) showButton(button);
+    if (dead || button2.isConnected === false) {
+      if (!dead) showButton(button2);
       dead = true;
       return;
     }
-    handle = mountRegionCrop({ doc, button, region, file: null, maxH, ...hooks });
+    handle = mountRegionCrop({ doc, button: button2, region, file: null, maxH, ...hooks });
   });
   return { destroy, pending };
 }
-function openRegionView({ doc, button, region, loadBoard, onOpen, delayMs, buildPopover, obstacles } = {}) {
+function openRegionView({ doc, button: button2, region, loadBoard, onOpen, delayMs, buildPopover, obstacles } = {}) {
   const noop = { destroy() {
   }, pending: Promise.resolve() };
-  if (!claimRegionButton(button)) return noop;
+  if (!claimRegionButton(button2)) return noop;
   const hooks = cropHooks({ onOpen, delayMs, buildPopover, obstacles });
   let handle = null;
   let dead = false;
@@ -55497,22 +59147,22 @@ function openRegionView({ doc, button, region, loadBoard, onOpen, delayMs, build
     if (dead) return;
     dead = true;
     if (handle) handle.destroy();
-    else showButton(button);
+    else showButton(button2);
   };
   const pending = Promise.resolve().then(() => typeof loadBoard === "function" ? loadBoard(region) : null).then((board2) => {
-    if (dead || button.isConnected === false) {
-      if (!dead) showButton(button);
+    if (dead || button2.isConnected === false) {
+      if (!dead) showButton(button2);
       dead = true;
       return;
     }
-    handle = mountRegionView({ doc, button, region, board: board2, ...hooks });
+    handle = mountRegionView({ doc, button: button2, region, board: board2, ...hooks });
   }).catch(() => {
-    if (dead || button.isConnected === false) {
-      if (!dead) showButton(button);
+    if (dead || button2.isConnected === false) {
+      if (!dead) showButton(button2);
       dead = true;
       return;
     }
-    handle = mountRegionView({ doc, button, region, board: null, ...hooks });
+    handle = mountRegionView({ doc, button: button2, region, board: null, ...hooks });
   });
   return { destroy, pending };
 }
@@ -55524,11 +59174,11 @@ function eachRegionButton(root, fn, cap4 = REGION_SCAN_CAP) {
     found.push(...root.querySelectorAll("button.rm-xparser-default-plexus-region"));
   }
   let seen = 0;
-  for (const button of found) {
-    if (button.getAttribute?.("data-plexus-owner")) continue;
+  for (const button2 of found) {
+    if (button2.getAttribute?.("data-plexus-owner")) continue;
     if (seen >= cap4) break;
     seen += 1;
-    fn(button);
+    fn(button2);
   }
   return seen;
 }
@@ -58373,26 +62023,26 @@ async function installPlexusDiagram({
     return board2;
   }
   function popButton(parent, text3, shiftKey, onOpen) {
-    const button = (parent.ownerDocument || doc).createElement("button");
-    button.type = "button";
-    button.textContent = text3;
-    button.addEventListener("pointerdown", (event) => event.stopPropagation?.());
-    button.addEventListener("click", (event) => {
+    const button2 = (parent.ownerDocument || doc).createElement("button");
+    button2.type = "button";
+    button2.textContent = text3;
+    button2.addEventListener("pointerdown", (event) => event.stopPropagation?.());
+    button2.addEventListener("click", (event) => {
       event.preventDefault?.();
       event.stopPropagation?.();
       onOpen?.({ shiftKey });
     });
-    parent.append(button);
-    return button;
+    parent.append(button2);
+    return button2;
   }
   function sizedInline(node2, w, h) {
     node2.style.setProperty("display", "inline-block", "important");
     node2.style.width = `${w}px`;
     node2.style.height = `${h}px`;
   }
-  function fillImagePopover(el, button, region, onOpen) {
+  function fillImagePopover(el, button2, region, onOpen) {
     const popDoc = el.ownerDocument || doc;
-    const crop = button?.parentElement?.querySelector?.(".pxd-region-crop");
+    const crop = button2?.parentElement?.querySelector?.(".pxd-region-crop");
     const img = crop?.querySelector?.("img");
     const box2 = previewImageBox(img?.naturalWidth, img?.naturalHeight);
     if (box2) {
@@ -58469,9 +62119,9 @@ async function installPlexusDiagram({
     popButton(el, "Open", false, onOpen);
     popButton(el, "Open in sidebar", true, onOpen);
   }
-  function considerRegionButton(button) {
-    if (!active() || !button || button.getAttribute?.("data-plexus-owner")) return;
-    const uid = regionUidForButton(button, (id) => {
+  function considerRegionButton(button2) {
+    if (!active() || !button2 || button2.getAttribute?.("data-plexus-owner")) return;
+    const uid = regionUidForButton(button2, (id) => {
       try {
         return host.blockString?.(id) || "";
       } catch {
@@ -58502,11 +62152,11 @@ async function installPlexusDiagram({
     };
     const buildPopover = (el) => {
       if (region.kind === "view") fillViewPopover(el, region, onOpen);
-      else fillImagePopover(el, button, region, onOpen);
+      else fillImagePopover(el, button2, region, onOpen);
     };
     const handle = region.kind === "view" ? openRegionView({
       doc,
-      button,
+      button: button2,
       region,
       onOpen,
       delayMs,
@@ -58515,7 +62165,7 @@ async function installPlexusDiagram({
       loadBoard: () => loadViewBoard(region)
     }) : openRegionCrop({
       doc,
-      button,
+      button: button2,
       region,
       onOpen,
       delayMs,
@@ -58532,9 +62182,9 @@ async function installPlexusDiagram({
     });
     const drop = () => {
       handle.destroy();
-      regionCrops.delete(button);
+      regionCrops.delete(button2);
     };
-    regionCrops.set(button, drop);
+    regionCrops.set(button2, drop);
   }
   function dropAllTrailStrips() {
     for (const drop of [...trailStrips.values()]) {
@@ -58593,8 +62243,8 @@ async function installPlexusDiagram({
       ":block/children": kids.map(mapKid)
     };
   }
-  function fillTrailStrip(button, uid) {
-    if (!button || !uid || button.getAttribute?.("data-plexus-owner")) return;
+  function fillTrailStrip(button2, uid) {
+    if (!button2 || !uid || button2.getAttribute?.("data-plexus-owner")) return;
     if ((trailMiss.get(uid) || 0) > Date.now()) return;
     const trail = parseTrailBlock(trailNodeFromPull(uid));
     if (!trail) {
@@ -58602,11 +62252,11 @@ async function installPlexusDiagram({
       return;
     }
     trailMiss.delete(uid);
-    button.setAttribute("data-plexus-owner", "trail");
-    if (button.style) button.style.display = "none";
+    button2.setAttribute("data-plexus-owner", "trail");
+    if (button2.style) button2.style.display = "none";
     const strip = doc.createElement("div");
-    if (typeof button.insertAdjacentElement === "function") button.insertAdjacentElement("afterend", strip);
-    else button.parentNode?.insertBefore?.(strip, button.nextSibling);
+    if (typeof button2.insertAdjacentElement === "function") button2.insertAdjacentElement("afterend", strip);
+    else button2.parentNode?.insertBefore?.(strip, button2.nextSibling);
     const boardUid = diagramAncestorUid(uid);
     renderTrailStrip(doc, strip, trailStrip(trail.stops, stopTitleOf, 8), {
       onStop(stop2) {
@@ -58622,11 +62272,11 @@ async function installPlexusDiagram({
         strip.remove();
       } catch {
       }
-      if (button.style) button.style.display = "";
-      button.removeAttribute?.("data-plexus-owner");
-      trailStrips.delete(button);
+      if (button2.style) button2.style.display = "";
+      button2.removeAttribute?.("data-plexus-owner");
+      trailStrips.delete(button2);
     };
-    trailStrips.set(button, drop);
+    trailStrips.set(button2, drop);
   }
   function scanTrails(node2) {
     if (!active() || !node2) return;
@@ -58639,14 +62289,14 @@ async function installPlexusDiagram({
       }
     }
     let seen = 0;
-    for (const button of found) {
-      if (button.getAttribute?.("data-plexus-owner")) continue;
+    for (const button2 of found) {
+      if (button2.getAttribute?.("data-plexus-owner")) continue;
       if (seen >= 8) break;
       seen += 1;
-      const ref = button.closest?.(".rm-block-ref[data-uid]");
-      const block = button.closest?.(".roam-block-container[data-block-uid]") || button.closest?.(BLOCK_CONTAINER_SELECTOR);
+      const ref = button2.closest?.(".rm-block-ref[data-uid]");
+      const block = button2.closest?.(".roam-block-container[data-block-uid]") || button2.closest?.(BLOCK_CONTAINER_SELECTOR);
       const id = ref?.getAttribute?.("data-uid") || block?.getAttribute?.("data-block-uid") || "";
-      if (id) fillTrailStrip(button, id);
+      if (id) fillTrailStrip(button2, id);
     }
   }
   function scanRegions(node2) {
@@ -58681,11 +62331,11 @@ async function installPlexusDiagram({
     for (const native of [...convertButtons.keys()]) {
       if (native.isConnected === false) dropConvert(native);
     }
-    for (const [button, drop] of [...regionCrops]) {
-      if (button.isConnected === false) drop();
+    for (const [button2, drop] of [...regionCrops]) {
+      if (button2.isConnected === false) drop();
     }
-    for (const [button, drop] of [...trailStrips]) {
-      if (button.isConnected === false) drop();
+    for (const [button2, drop] of [...trailStrips]) {
+      if (button2.isConnected === false) drop();
     }
     if (!active()) {
       for (const rec of [...mounts.values()]) unmount(rec);

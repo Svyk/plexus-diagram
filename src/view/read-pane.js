@@ -1913,7 +1913,7 @@ export function createReadPane({
     const file = pdfFileTitle(pdfUrl());
     // A title that is only the file name ranks below the first parsed heading.
     if (given && !(parsedTitle && file && given === file)) return given;
-    return parsedTitle || given || file || "PDF";
+    return realTitle(parsedTitle) || given || file || "PDF";
   };
   const paintTitle = () => {
     const text = shownTitle();
@@ -1922,7 +1922,7 @@ export function createReadPane({
     for (const opt of options) if (opt.value === current.cardUid) opt.textContent = text;
   };
   const noteParsedTitle = (value) => {
-    const text = typeof value === "string" ? value.trim() : "";
+    const text = cleanPdfTitle(value);
     if (text === parsedTitle) return;
     parsedTitle = text;
     if (openFlag) paintTitle();
@@ -2450,6 +2450,7 @@ export function createReadPane({
     },
     isOpen: () => openFlag && Boolean(pane.isConnected),
     cardUid: () => current.cardUid || "",
+    refreshCards() { paintSwitcher(); },
     setTitle(title) {
       current.title = typeof title === "string" && title.trim() ? title.trim() : "PDF";
       paintTitle();

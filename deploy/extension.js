@@ -4542,15 +4542,16 @@ function pdfTitlePlan(source) {
 }
 function parsedDocTitle(doc) {
   if (!doc || typeof doc !== "object") return "";
-  const given = typeof doc.title === "string" ? doc.title.trim() : "";
-  if (given && !isStorageTitle(given)) return given;
+  const given = cleanPdfTitle(doc.title);
+  if (given) return given;
   const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
   const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "heading" || (block.level || 1) !== 1) continue;
     const text3 = typeof block.text === "string" ? block.text.replace(/\s+/g, " ").trim() : "";
-    if (text3 && !isStorageTitle(text3)) return text3;
+    const real = cleanPdfTitle(text3);
+    if (real) return real;
   }
   const clean = (value) => typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
   for (const id of ids) {
@@ -42261,7 +42262,7 @@ function createReadPane({
     const given = realTitle(current3.title);
     const file = pdfFileTitle(pdfUrl());
     if (given && !(parsedTitle && file && given === file)) return given;
-    return parsedTitle || given || file || "PDF";
+    return realTitle(parsedTitle) || given || file || "PDF";
   };
   const paintTitle = () => {
     const text3 = shownTitle();
@@ -42270,7 +42271,7 @@ function createReadPane({
     for (const opt of options) if (opt.value === current3.cardUid) opt.textContent = text3;
   };
   const noteParsedTitle = (value) => {
-    const text3 = typeof value === "string" ? value.trim() : "";
+    const text3 = cleanPdfTitle(value);
     if (text3 === parsedTitle) return;
     parsedTitle = text3;
     if (openFlag) paintTitle();
@@ -42938,6 +42939,9 @@ function createReadPane({
     },
     isOpen: () => openFlag && Boolean(pane.isConnected),
     cardUid: () => current3.cardUid || "",
+    refreshCards() {
+      paintSwitcher();
+    },
     setTitle(title) {
       current3.title = typeof title === "string" && title.trim() ? title.trim() : "PDF";
       paintTitle();
@@ -54340,6 +54344,15 @@ function buildBoardView(onFail, {
       const next = typeof uid === "string" ? uid : "";
       if (next === readingCard) return;
       readingCard = next;
+      if (next && !disposed) {
+        for (const it of board2()?.items.values() || []) {
+          if (it?.kind !== "pdf") continue;
+          try {
+            pdfDisplayTitle(it);
+          } catch {
+          }
+        }
+      }
       if (!disposed) itemsR.repaintStyles();
       if (!disposed) {
         try {
@@ -54355,6 +54368,10 @@ function buildBoardView(onFail, {
       parsedTitles.set(url, title);
       try {
         itemsR?.repaintStyles?.();
+      } catch {
+      }
+      try {
+        readPane?.refreshCards?.();
       } catch {
       }
     },
@@ -54424,6 +54441,8 @@ function buildBoardView(onFail, {
     if (!body || body.startsWith("{{") || body.startsWith("((")) return "";
     return body;
   };
+  const metaQueued = /* @__PURE__ */ new Set();
+  let metaTail = Promise.resolve();
   notePdfMeta = (url) => {
     const key = typeof url === "string" ? url.trim() : "";
     if (!key) return "";
@@ -54435,8 +54454,13 @@ function buildBoardView(onFail, {
     }
     if (!pdfMeta) return parsedKnown;
     const known = cleanPdfTitle(pdfMeta.title(key)) || parsedKnown;
-    const job = known ? null : pdfMeta.want(key);
-    if (job && typeof job.then === "function") {
+    if (!known && !metaQueued.has(key)) {
+      metaQueued.add(key);
+      const meta = pdfMeta;
+      const job = metaTail.then(() => meta.want(key)).catch(() => "");
+      metaTail = job.then(() => {
+      }, () => {
+      });
       job.then((got) => {
         if (disposed || !got) return;
         try {
@@ -54444,12 +54468,12 @@ function buildBoardView(onFail, {
         } catch {
         }
         try {
-          if (readPane?.isOpen?.() !== true || typeof readPane.setTitle !== "function") return;
+          if (readPane?.isOpen?.() !== true) return;
           const card2 = board2()?.items.get(readPane.cardUid?.() || "");
-          if (card2) readPane.setTitle(pdfDisplayTitle(card2));
+          if (card2 && typeof readPane.setTitle === "function") readPane.setTitle(pdfDisplayTitle(card2));
+          readPane.refreshCards?.();
         } catch {
         }
-      }).catch(() => {
       });
     }
     return known;

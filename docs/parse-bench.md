@@ -408,3 +408,25 @@ Every CDC text mismatch against Vision was checked: about half are Vision's own 
 - PP-OCRv5 server det + rec (88 MB + 85 MB, multilingual dict) gave CDC cell 0.924 / 0.926 against 0.922 for mobile at 4–9× the time: not worth the download.
 
 Sweeps (`PXD_OCR_OPTS` JSON overrides `preparePageImage` options, `PXD_OCR_MODELS` swaps the ONNX files): `node tools/parse-bench/scan.mjs <pdf> <truth> --source ppocr-web`, `node tools/parse-bench/ocr-agree.mjs --pdf <pdf> --vision <helper ocr json> [--page n]`, `node tools/parse-bench/icdar2013-scan.mjs <dataset> --dpi 300|150`.
+
+### Round 3 (2026-10-07): filled tables, fine deskew, in-browser reading in the pane
+
+Filled tables. `fillsFromCanvas` (`src/model/ocr/rules-from-canvas.js`) finds flat regions of one grey darker than the paper on a ~0.5 pt grid: region growing from flat 3×3 seeds within ±14 grey levels, a 3-sample close (mends the anti-aliased seam between two abutting fills of one colour), a 2 pt open (cuts a same-colour table frame that joins every fill), pieces of one region on the same row band merged again (text that nearly fills a short cell cuts it under the open), then four straight edges (70 %), three square corners (a rounded bar or badge fails) and 55 % solidity. The page record carries them as `fills: [{ x0, y0, x1, y1, gray }]` (points, grey 0–1). `rulesFromCanvas(…, { fills })` drops rule fragments strictly inside a fill (the bars between white letters on a dark header). `ocrGraphics` turns fills into engine boxes (`light` at luminance ≥ 0.7), so cell tilings reach `boxGridRules` as in the text-layer path; fills that repeat at one width and mostly hold words also give their top and bottom edges as rules (full-width zebra rows have no tiling); light fill clusters that mostly hold no word (a chart's plot area cut into strips by its grid lines) are dropped. White text on a dark fill is ink too: `localMask` takes the minority class as ink when the dark class covers over 60 % of a det box.
+
+Fine deskew. `baselineSkew` (`src/model/ocr/fine-skew.js`) fits the per-word ink baselines of rows of 3+ words spanning 150 pt and takes the span-weighted median slope; a residual of 0.05–1° turns the image (rules, fills and the cell re-read use it) and moves the words with `rotateItems`, so nothing is read twice. report-scan pages go from 0.47/0.51/0.54° (det-box angle) to 0.40° on all three, the scan's real skew; the t3 wrapped row joins. On born-digital rasters it takes back det-box rotations of 0.15–0.21° that were never there (eu-020, eu-023, us-035a).
+
+Node, onnxruntime-node, PP-OCRv5 mobile, round 2 (533b48f) against this round:
+
+| Bench | Round 2 | Round 3 | Gate | Vision |
+|---|---|---|---|---|
+| CDC image-only, structure / cell F1 | 0.983 / 0.922 | 0.983 / 0.922 | cell ≥ 0.92 | 1.000 / 0.957 |
+| report-scan cell F1 t1 / t2 / t3 | 0.947 / 0.976 / 0.444 | 0.947 / 0.976 / 0.952 | 0.95 | 0.974 / 0.952 / 1.000 |
+| ICDAR 2013 at 300 dpi, adjacency / detection / cell | 0.871 / 0.932 / 0.780 | 0.876 / 0.957 / 0.787 | adjacency 0.90 | n/a |
+| ICDAR 2013 at 150 dpi, adjacency / detection / cell | 0.843 / 0.929 / 0.774 | 0.850 / 0.945 / 0.792 | 0.85 | n/a |
+| us-010 / us-011a / us-022 at 300 dpi, adjacency | 0 / 0 / 0 (no table) | 0.930 / 1.000 / 1.000 | | |
+| us-010 / us-011a / us-022 at 300 dpi, cell | 0 / 0 / 0 | 0.945 / 0.987 / 1.000 | | |
+| ICDAR 2013 born-digital (text layer), adjacency / cell | 0.979 / 0.932 | 0.979 / 0.932 | unchanged | |
+
+Per-document moves beyond 0.005 (both dpi): better on us-001, us-028 (a table now found), eu-015, eu-022, eu-024, eu-025 (150), eu-017 (150), eu-021 (150 cell 0.000 → 0.836); worse on eu-011 at 150 dpi (an extra two-column table from a chart legend, detection 1.000 → 0.667; the same page without fills reads the same), eu-018 (adjacency −0.02, cell +0.05 to +0.13), eu-021 at 300 (cell 0.016 → 0.005), us-035a (adjacency −0.01, 150 dpi cell 0.196 → 0.099: the det-box rotation of −0.19° is taken back and two 6 pt rows of the age table merge; both readings are poor). The ICDAR adjacency gate at 300 dpi (0.90) is still missed: the main classes are unchanged from round 2 (superscripts, `l`/`I`, small type).
+
+The reading pane wires this source as `deviceOcr` (`src/host/device-ocr.js`, see the README). The pane's device read merges pages into the outline without the cell re-read pass that the bench (and Read the scan with the helper) runs.

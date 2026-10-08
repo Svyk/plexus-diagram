@@ -165,10 +165,10 @@ Measured in node with onnxruntime-node and the same model files (browser speed i
 | Scanned CDC 1980 table (image only), structure F1 | 0.983 | 1.000 |
 | Scanned CDC 1980 table, cell F1 | 0.922 | 0.957 |
 | Scanned 3-page report, cell F1 per table | 0.947 / 0.976 / 0.952 | 0.974 / 0.952 / 1.000 |
-| ICDAR 2013 rasterised at 300 dpi, adjacency F1 / cell F1 | ICDAR300 | not measured |
-| ICDAR 2013 rasterised at 150 dpi, adjacency F1 / cell F1 | ICDAR150 | not measured |
+| ICDAR 2013 rasterised at 300 dpi, adjacency F1 / cell F1 | 0.876 / 0.787 | not measured |
+| ICDAR 2013 rasterised at 150 dpi, adjacency F1 / cell F1 | 0.850 / 0.792 | not measured |
 
-Expect more misread letters in small scanned labels than with the helper.
+Expect more misread letters in small scanned labels than with the helper. For comparison, the built-in parser on the same 67 files' own text layers reads 0.979 / 0.932.
 
 An insert is one Roam write per table or page range, plus the card layout. Roam Grid tables keep merged cells when Roam Grid 0.18.3 or later is installed.
 

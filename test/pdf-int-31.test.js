@@ -5,7 +5,7 @@ import test from "node:test";
 import { COVER_LS_KEY } from "../src/host/cover-store.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { DEFAULT_SIZES } from "../src/model/schema.js";
-import { createSettingsPanel, settingsDefaults } from "../src/settings.js";
+import { createSettingsPanel, noteSpeedFlags, settingsDefaults } from "../src/settings.js";
 import { mountBoardView } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -290,6 +290,7 @@ test("mount does not open IndexedDB, read the cover book, or mount a warm holder
 });
 
 test("a cover loads as a data URL and a tick carries its page", async () => {
+  noteSpeedFlags('{"budgetedMount":false}'); // card bodies mount in wall-clock chunks; a loaded machine must not change what the test sees
   const f = mountPdf({
     children: [
       card("pdfcard01", PDF, 0),
@@ -298,7 +299,9 @@ test("a cover loads as a data URL and a tick carries its page", async () => {
     prepare(stub) { seedCover(stub.localStorage); },
   });
   try {
-    f.flush();
+    // Card bodies mount in 8 ms wall-clock chunks (CHUNK_MS), so a loaded machine needs more than one flush pass.
+    // Flushing is synchronous, so the cover's async load cannot settle between passes.
+    for (let i = 0; i < 50 && !f.root.querySelector(".pxd-pdf-cover"); i += 1) f.flush();
     const cover = f.root.querySelector(".pxd-pdf-cover");
     assert.equal(cover?.getAttribute("data-cover"), "loading");
     await until(() => f.root.querySelector(".pxd-pdf-cover")?.getAttribute("data-cover") === "ready", "cover ready");
@@ -311,6 +314,7 @@ test("a cover loads as a data URL and a tick carries its page", async () => {
     assert.equal(mark?.getAttribute("data-page"), "3");
     assert.equal(mark?.style.top, "20%");
   } finally {
+    noteSpeedFlags(null);
     f.view.dispose();
     f.restore();
   }

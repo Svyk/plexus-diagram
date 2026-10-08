@@ -9291,6 +9291,43 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert {
   cursor: pointer;
 }
 
+/* The board bar stays one row left of the reader and never paints over it: it clips, the crumbs shrink,
+   and the actions that no longer fit live in the More menu (Table, Kanban, Tag lens, Focus, Present). */
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar > .pxd-crumbs {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  order: -2;
+}
+
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar > .pxd-toolbar__group:not(.pxd-crumbs) {
+  flex: 0 0 auto;
+}
+
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar > .pxd-toolbar__group:has(.pxd-toolbar__more) {
+  display: contents;
+}
+
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__more {
+  order: -1;
+  flex: 0 0 auto;
+}
+
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__table,
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__kanban,
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__bg,
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__lens,
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__focus,
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__present {
+  display: none;
+}
+
 /* ECO-3. The thumb fits the card. The 1px border is the button signal, not a shadow. */
 
 .pxd-root .pxd-region-thumb {
@@ -10938,6 +10975,19 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
 .pxd-root .pxd-item.pxd-ghost--board {
   outline: 2px dashed var(--pxd-accent);
   outline-offset: 2px;
+}
+
+/* Click-to-place at low zoom: the preview is drawn legibly, this dashed box is the real landing size. */
+.pxd-root .pxd-ghost-foot {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 59;
+  box-sizing: border-box;
+  border: 2px dashed var(--pxd-accent);
+  border-radius: 4px;
+  pointer-events: none;
+  will-change: transform;
 }
 
 .pxd-root .pxd-item.pxd-ghost--blocked {

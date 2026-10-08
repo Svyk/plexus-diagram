@@ -67,7 +67,7 @@ test("the pane header falls back to PDF only when nothing names the document", (
     root.className = "pxd-root";
     doc.body.append(root);
     const pane = createReadPane({ doc, root, storage: stub.localStorage, host: { renderBlock() {}, unmount() {} } });
-    pane.open({ blockUid: "blk", cardUid: "c", title: "", source: "{{[[pdf]]: https://example.test/a.pdf}}" });
+    pane.open({ blockUid: "blk", cardUid: "c", title: "", source: "{{[[pdf]]: https://example.test/o/imgs%2Fapp%2Fgraph%2FAbCdEfGhIjK.pdf}}" });
     const title = () => pane.element().querySelector(".pxd-read__title").textContent;
     assert.equal(title(), "PDF");
     pane.setTitle("Named");
@@ -82,11 +82,11 @@ test("the pane header falls back to PDF only when nothing names the document", (
 
 test("the pane and the board wire the parsed title to the header and the card", () => {
   const pane = read("../src/view/read-pane.js");
-  assert.match(pane, /shownTitle = \(\) => realTitle\(current\.title\) \|\| parsedTitle \|\| "PDF"/);
+  assert.match(pane, /shownTitle = \(\) => \{/);
   assert.match(pane, /onTitle: noteParsedTitle/);
   const board = read("../src/view/board-view.js");
   assert.match(board, /onParsedTitle: \(url, title\)/);
-  assert.match(board, /pdfMeta\.title\(key\) \|\| parsedKnown/);
+  assert.match(board, /cleanPdfTitle\(pdfMeta\.title\(key\)\) \|\| parsedKnown/);
 });
 
 test("the dock shrinks, loses labels and scrolls instead of running under the pane", () => {

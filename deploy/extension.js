@@ -4501,8 +4501,21 @@ function fileName(url) {
     seg = decodeURIComponent(seg);
   } catch {
   }
-  if (seg.endsWith(".pdf")) seg = seg.slice(0, -4);
+  seg = seg.split("/").filter(Boolean).pop() || "";
+  seg = seg.replace(/\.pdf$/i, "");
   return seg.trim();
+}
+function pdfFileTitle(url) {
+  const name = fileName(url);
+  return titleText(name);
+}
+function cleanPdfTitle(value) {
+  let text3 = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  text3 = text3.replace(/^(?:microsoft\s+(?:word|powerpoint|excel)\s*[-\u2013\u2014]\s*)/i, "").trim();
+  if (text3.length < 4) return "";
+  if (ROMAN_ONLY.test(text3)) return "";
+  if (/^untitled\b/i.test(text3)) return "";
+  return titleText(text3);
 }
 function isStorageTitle(value) {
   const text3 = typeof value === "string" ? value.trim() : "";
@@ -4522,7 +4535,7 @@ function titleText(value) {
 }
 function pdfTitlePlan(source) {
   const src = source && typeof source === "object" ? source : {};
-  const named = titleText(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title);
+  const named = cleanPdfTitle(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title) || cleanPdfTitle(src.parsedTitle);
   if (named) return named;
   const file = titleText(fileName(src.url));
   return file || "PDF";
@@ -4771,13 +4784,14 @@ function readPaneWidth(mountWidth, stored) {
   const width = Math.min(720, Math.max(360, Math.round(raw)));
   return { stacked: false, width };
 }
-var PDF_MACRO, PDF_READER_W, PDF_READER_H, PDF_CARD_MAX, HEAVY_MACRO, HEAVY_ONE, REF_ONLY2, EMBED_ONLY;
+var PDF_MACRO, PDF_READER_W, PDF_READER_H, PDF_CARD_MAX, ROMAN_ONLY, HEAVY_MACRO, HEAVY_ONE, REF_ONLY2, EMBED_ONLY;
 var init_pdf = __esm({
   "src/model/pdf.js"() {
     PDF_MACRO = "{{[[pdf]]:";
     PDF_READER_W = 640;
     PDF_READER_H = 820;
     PDF_CARD_MAX = 4e3;
+    ROMAN_ONLY = /^[ivxlcdm]+\.?$/i;
     HEAVY_MACRO = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/gi;
     HEAVY_ONE = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/i;
     REF_ONLY2 = /^\(\(([\w-]+)\)\)$/;
@@ -35028,6 +35042,27 @@ function parsedBoxPlan(block, page) {
   if (!pct2 || !(pct2.width > 0) || !(pct2.height > 0)) return null;
   return { id: block.id, type: block.type || "para", ...pct2 };
 }
+var COPY_ICON = 18;
+function copyIconNudges(plans, page, size = COPY_ICON) {
+  const W = Number(page?.w) > 0 ? Number(page.w) : 612;
+  const H = Number(page?.h) > 0 ? Number(page.h) : 792;
+  const step = size + 2;
+  const placed = [];
+  const out = /* @__PURE__ */ new Map();
+  for (const plan of plans || []) {
+    const x = plan.left / 100 * W;
+    const y0 = plan.top / 100 * H;
+    let dy = 0;
+    for (let guard = 0; guard < 200; guard += 1) {
+      const hit = placed.some((p) => Math.abs(p.x - x) < size && Math.abs(p.y - (y0 + dy)) < size);
+      if (!hit) break;
+      dy += step;
+    }
+    placed.push({ x, y: y0 + dy });
+    out.set(plan.id, dy);
+  }
+  return out;
+}
 function tableShape2(table) {
   const grid = table?.grid;
   let rows = Number(table?.rows) || (Array.isArray(grid?.ys) ? grid.ys.length - 1 : 0);
@@ -35205,12 +35240,29 @@ function createPageChips({
     layer.style.pointerEvents = "none";
     layer.setAttribute("aria-hidden", "false");
     const boxes = /* @__PURE__ */ new Map();
+    const entries = [];
+    let budget = boxCap - boxCount;
     for (const id of parsed?.order || []) {
-      if (boxCount >= boxCap) break;
+      if (budget <= 0) break;
       const block = parsed.blocks?.[id];
       if (!block || block.page !== n2) continue;
       const plan = parsedBoxPlan(block, info(n2));
       if (!plan) continue;
+      entries.push({ block, plan });
+      budget -= 1;
+    }
+    let pageBox = null;
+    try {
+      pageBox = el?.getBoundingClientRect?.() || null;
+    } catch {
+      pageBox = null;
+    }
+    const fallback = info(n2);
+    const nudges = copyIconNudges(entries.map((e2) => e2.plan), {
+      w: pageBox?.width > 0 ? pageBox.width : fallback?.w,
+      h: pageBox?.height > 0 ? pageBox.height : fallback?.h
+    });
+    for (const { block, plan } of entries) {
       const box2 = doc.createElement("div");
       box2.className = `pxd-parsed-box pxd-parsed-box--${plan.type}`;
       box2.setAttribute("data-block", plan.id);
@@ -35226,7 +35278,8 @@ function createPageChips({
       icon.setAttribute("aria-label", block.type === "table" ? "Copy table as Markdown" : "Copy text");
       icon.setAttribute("data-tip", "page-chip.copy");
       icon.style.left = `calc(${plan.left}% - ${BOX_PAD}px)`;
-      icon.style.top = `calc(${plan.top}% - ${BOX_PAD}px)`;
+      const nudge = nudges.get(plan.id) || 0;
+      icon.style.top = nudge ? `calc(${plan.top}% - ${BOX_PAD}px + ${nudge}px)` : `calc(${plan.top}% - ${BOX_PAD}px)`;
       icon.style.pointerEvents = "auto";
       icon.textContent = "⧉";
       layer.append(box2, icon);
@@ -35811,6 +35864,8 @@ var GHOST_W = 280;
 var MORPH_MS = 150;
 var LAND_MS = 120;
 var PANE_SCALE = 0.9;
+var PLACE_PREVIEW_MIN = 0.6;
+var PREVIEW_VIEW_FRACTION = 0.9;
 var MIN_SCALE = 0.05;
 var MAX_SCALE = 4;
 var num4 = (value, fallback = 0) => {
@@ -35902,6 +35957,8 @@ function createDragGhost({
   blocked: blocked3 = null,
   width = GHOST_W,
   grab: grabAt = null,
+  previewMin = null,
+  footprint = null,
   now: now3 = () => globalThis.performance?.now?.() ?? Date.now()
 } = {}) {
   const win = doc?.defaultView || globalThis;
@@ -35940,7 +35997,18 @@ function createDragGhost({
   let zone = rects.rootRect ? zoneAt(start.x, start.y, rects) : "pane";
   let sx = clamp3(num4(src.width) / size.w, MIN_SCALE, MAX_SCALE);
   let sy = clamp3(num4(src.height) / size.h, MIN_SCALE, MAX_SCALE);
-  let anim = { fromX: sx, fromY: sy, to: zoneScale(zone, zoomNow), at: now3(), ms: MORPH_MS };
+  const footSize = { w: clamp3(num4(footprint?.w, ghostW) || ghostW, 1, 4e3), h: clamp3(num4(footprint?.h, size.h) || size.h, 1, 4e3) };
+  const targetScale = (z) => {
+    if (z !== "board") return PANE_SCALE;
+    const zoomScale = zoneScale(z, zoomNow);
+    if (!(previewMin > 0) || zoomScale >= previewMin) return zoomScale;
+    const room = num4(rects.rootRect?.right) - num4(rects.rootRect?.left) || num4(win?.innerWidth, 0) || 0;
+    const cap4 = room > 0 ? room * PREVIEW_VIEW_FRACTION / size.w : previewMin;
+    return Math.max(zoomScale, Math.min(previewMin, cap4));
+  };
+  const footing = () => zone === "board" && targetScale("board") > zoneScale("board", zoomNow) + 1e-6;
+  let foot = null;
+  let anim = { fromX: sx, fromY: sy, to: targetScale(zone), at: now3(), ms: MORPH_MS };
   let raf2 = 0;
   let dirty = true;
   let ended = false;
@@ -35952,6 +36020,35 @@ function createDragGhost({
   };
   paintZone();
   node2.style.transformOrigin = "0 0";
+  const footRect = () => {
+    const z = zoneScale("board", zoomNow);
+    const w = footSize.w * z;
+    const h = footSize.h * z;
+    return { x: current3.x - grab.fx * w, y: current3.y - grab.fy * h, w, h };
+  };
+  function paintFoot() {
+    const on = footing();
+    if (!on) {
+      if (foot) {
+        try {
+          foot.remove();
+        } catch {
+        }
+        foot = null;
+      }
+      return;
+    }
+    if (!foot) {
+      foot = doc.createElement("div");
+      foot.className = "pxd-ghost-foot";
+      foot.setAttribute("aria-hidden", "true");
+      host?.append?.(foot);
+    }
+    const r = footRect();
+    foot.style.width = `${r.w.toFixed(1)}px`;
+    foot.style.height = `${r.h.toFixed(1)}px`;
+    foot.style.transform = `translate3d(${(r.x - origin.x).toFixed(1)}px, ${(r.y - origin.y).toFixed(1)}px, 0)`;
+  }
   function frame(at = now3()) {
     raf2 = 0;
     if (ended) return false;
@@ -35963,6 +36060,7 @@ function createDragGhost({
       if (k >= 1) anim = null;
     }
     const at2 = ghostOrigin(current3, grab, size, sx, sy);
+    paintFoot();
     if (dirty || at2.x !== painted.x || at2.y !== painted.y || sx !== painted.sx || sy !== painted.sy) {
       node2.style.transform = `translate3d(${(at2.x - origin.x).toFixed(1)}px, ${(at2.y - origin.y).toFixed(1)}px, 0) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
       if (painted.zone !== zone) paintZone();
@@ -35997,6 +36095,13 @@ function createDragGhost({
   };
   const fadeOut = (cls) => {
     stop2();
+    if (foot) {
+      try {
+        foot.remove();
+      } catch {
+      }
+      foot = null;
+    }
     node2.classList.add(cls);
     const kill = () => {
       try {
@@ -36020,8 +36125,9 @@ function createDragGhost({
       const next = rects.rootRect ? zoneAt(current3.x, current3.y, rects) : zone;
       if (next !== zone) {
         zone = next;
-        anim = { fromX: sx, fromY: sy, to: zoneScale(zone, zoomNow), at: now3(), ms: LAND_MS };
+        anim = { fromX: sx, fromY: sy, to: targetScale(zone), at: now3(), ms: LAND_MS };
       }
+      dirty = true;
       schedule();
     },
     frame,
@@ -36029,6 +36135,10 @@ function createDragGhost({
     scale: () => ({ sx, sy }),
     // Client point of the ghost's top-left, its size on screen, and its centre (ref-card drops centre the card).
     dropPoint() {
+      if (footing()) {
+        const r = footRect();
+        return { x: r.x, y: r.y, w: r.w, h: r.h, cx: r.x + r.w / 2, cy: r.y + r.h / 2 };
+      }
       const s = anim ? anim.to : sx;
       const at2 = ghostOrigin(current3, grab, size, s, anim ? anim.to : sy);
       const w = size.w * s;
@@ -36087,6 +36197,7 @@ function startPlacement({
   from = null,
   content = {},
   width = GHOST_W,
+  footprint = null,
   zoom = null,
   blocked: blocked3 = null,
   onPlace = null,
@@ -36094,7 +36205,7 @@ function startPlacement({
   now: now3
 } = {}) {
   const win = doc?.defaultView || globalThis;
-  const ghost = createDragGhost({ doc, root, pane, from, pointer, content, width, zoom, blocked: blocked3, grab: PLACE_GRAB, ...now3 ? { now: now3 } : {} });
+  const ghost = createDragGhost({ doc, root, pane, from, pointer, content, width, footprint, zoom, blocked: blocked3, grab: PLACE_GRAB, previewMin: PLACE_PREVIEW_MIN, ...now3 ? { now: now3 } : {} });
   try {
     ghost.element().classList.add("pxd-ghost--place");
   } catch {
@@ -36205,6 +36316,7 @@ init_drop();
 init_parse_to_roam_md();
 init_parse_schema();
 init_roam_table();
+init_schema();
 init_footnotes();
 var CARD_SIZE = { w: 280, h: 160 };
 function freeSpotBeside(rect, size, others = [], gap = 40) {
@@ -36235,18 +36347,19 @@ function plural(n2, one, many) {
 function placementContent(doc, ids, act, extra = null) {
   const blocks = selectBlocks(doc, ids);
   const first = blocks[0] || null;
-  if (!first) return { content: { kind: "text", text: "" }, width: CARD_SIZE.w };
+  if (!first) return { content: { kind: "text", text: "" }, width: CARD_SIZE.w, height: CARD_SIZE.h };
   if (act === "table" && first.type === "table") {
     const rows = tableGrid(first).slice(0, 8).map((row4) => row4.filter((slot2) => !slot2.covered).map((slot2) => String(slot2.cell?.text ?? "")));
     const sized = parsedTableSize(first);
-    const width = Math.max(200, Math.min(900, Number(sized?.w) || CARD_SIZE.w));
-    return { content: { kind: "table", rows, rowCap: 8, colCap: 12, page: first.page, mode: extra?.mode || "grid" }, width };
+    const width = Math.max(MIN_SIZES.card.w, Number(sized?.w) || CARD_SIZE.w);
+    const height = Math.max(MIN_SIZES.card.h, Number(sized?.h) || CARD_SIZE.h);
+    return { content: { kind: "table", rows, rowCap: 8, colCap: 12, page: first.page, mode: extra?.mode || "grid" }, width, height };
   }
   if (blocks.length === 1 && first.type === "figure") {
-    return { content: { kind: "figure", text: first.caption && doc?.blocks?.[first.caption]?.text ? doc.blocks[first.caption].text : "", page: first.page }, width: CARD_SIZE.w };
+    return { content: { kind: "figure", text: first.caption && doc?.blocks?.[first.caption]?.text ? doc.blocks[first.caption].text : "", page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
   }
   const text3 = blocks.map((b) => b.type === "list" ? (b.items || []).map((item) => item.text).join(" ") : b.text || b.latex || "").join(" ");
-  return { content: { kind: "text", text: text3, page: first.page }, width: CARD_SIZE.w };
+  return { content: { kind: "text", text: text3, page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
 }
 function createParseActions({ session, store, placeBeside, toast, select, show, upload, toWorld } = {}) {
   const say = (message) => {
@@ -37387,6 +37500,7 @@ function createParseView({
       from: item?.from || null,
       content: plan.content,
       width: plan.width,
+      footprint: { w: plan.width, h: plan.height },
       onPlace: ({ client }) => {
         placing = null;
         go({ client });
@@ -40187,6 +40301,7 @@ function createReadPane({
     button2.textContent = label;
     button2.setAttribute("data-mode", id);
     button2.setAttribute("data-tip", tip);
+    button2.setAttribute("aria-label", label);
     button2.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
     modeBtns[id] = button2;
   }
@@ -40194,6 +40309,7 @@ function createReadPane({
   showParsedBtn.type = "button";
   showParsedBtn.textContent = "Show parsed";
   showParsedBtn.setAttribute("data-tip", "parse.show-parsed");
+  showParsedBtn.setAttribute("aria-label", "Show parsed text boxes");
   showParsedBtn.setAttribute("aria-pressed", readShowParsed(storage) ? "true" : "false");
   const progress = el("div", "pxd-read__progress", pane);
   setHidden2(progress, true);
@@ -42126,8 +42242,13 @@ function createReadPane({
   };
   const pdfUrl = () => pdfMacroUrl(current3.source || "") || "";
   let parsedTitle = "";
-  const realTitle = (value) => typeof value === "string" && value.trim() && value.trim() !== "PDF" ? value.trim() : "";
-  const shownTitle = () => realTitle(current3.title) || parsedTitle || "PDF";
+  const realTitle = (value) => cleanPdfTitle(value);
+  const shownTitle = () => {
+    const given = realTitle(current3.title);
+    const file = pdfFileTitle(pdfUrl());
+    if (given && !(parsedTitle && file && given === file)) return given;
+    return parsedTitle || given || file || "PDF";
+  };
   const paintTitle = () => {
     const text3 = shownTitle();
     titleNode.textContent = text3;
@@ -51462,6 +51583,13 @@ function buildMenu(kind, ctx = {}) {
         make("add-week", "Add this week's journals"),
         sep(),
         make("background", "Background…"),
+        ...c.readOpen ? [
+          make("bar-table", "Table view"),
+          make("bar-kanban", "Kanban view"),
+          make("bar-lens", "Tag lens"),
+          make("bar-focus", "Focus mode"),
+          make("bar-present", "Present")
+        ] : [],
         viewsMenu(),
         make("dock", "Dock position for this board", {
           children: [
@@ -54129,7 +54257,7 @@ function buildBoardView(onFail, {
       return parsedKnown;
     }
     if (!pdfMeta) return parsedKnown;
-    const known = pdfMeta.title(key) || parsedKnown;
+    const known = cleanPdfTitle(pdfMeta.title(key)) || parsedKnown;
     const job = known ? null : pdfMeta.want(key);
     if (job && typeof job.then === "function") {
       job.then((got) => {
@@ -56360,7 +56488,7 @@ function buildBoardView(onFail, {
       case "canvas":
         return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting2("task-tool") === true };
       case "board-menu":
-        return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod };
+        return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -56710,6 +56838,21 @@ function buildBoardView(onFail, {
         break;
       case "background":
         chrome.popover.open();
+        break;
+      case "bar-table":
+        setTable(!tableMode);
+        break;
+      case "bar-kanban":
+        setKanban(!kanbanMode);
+        break;
+      case "bar-lens":
+        toggleLens();
+        break;
+      case "bar-focus":
+        toggleFocus();
+        break;
+      case "bar-present":
+        startPresent();
         break;
       case "dock":
         void session.setBoardBackground?.({ dock: arg === "default" ? null : arg });

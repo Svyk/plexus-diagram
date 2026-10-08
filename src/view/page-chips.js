@@ -33,6 +33,32 @@ export function parsedBoxPlan(block, page) {
   return { id: block.id, type: block.type || "para", ...pct };
 }
 
+export const COPY_ICON = 18;
+
+// Pure. Copy buttons sit at their box's top-left corner. Two boxes close together would stack the buttons,
+// so a later button moves down by one button height (plus a 2 px gap) until it clears every earlier one.
+// plans: [{ id, left, top }] in percent of the page; page: { w, h } in px. Returns Map(id -> extra dy px).
+export function copyIconNudges(plans, page, size = COPY_ICON) {
+  const W = Number(page?.w) > 0 ? Number(page.w) : 612;
+  const H = Number(page?.h) > 0 ? Number(page.h) : 792;
+  const step = size + 2;
+  const placed = [];
+  const out = new Map();
+  for (const plan of plans || []) {
+    const x = (plan.left / 100) * W;
+    const y0 = (plan.top / 100) * H;
+    let dy = 0;
+    for (let guard = 0; guard < 200; guard += 1) {
+      const hit = placed.some((p) => Math.abs(p.x - x) < size && Math.abs(p.y - (y0 + dy)) < size);
+      if (!hit) break;
+      dy += step;
+    }
+    placed.push({ x, y: y0 + dy });
+    out.set(plan.id, dy);
+  }
+  return out;
+}
+
 function tableShape(table) {
   const grid = table?.grid;
   let rows = Number(table?.rows) || (Array.isArray(grid?.ys) ? grid.ys.length - 1 : 0);
@@ -214,12 +240,25 @@ export function createPageChips({
     layer.style.pointerEvents = "none";
     layer.setAttribute("aria-hidden", "false");
     const boxes = new Map();
+    const entries = [];
+    let budget = boxCap - boxCount;
     for (const id of parsed?.order || []) {
-      if (boxCount >= boxCap) break;
+      if (budget <= 0) break;
       const block = parsed.blocks?.[id];
       if (!block || block.page !== n) continue;
       const plan = parsedBoxPlan(block, info(n));
       if (!plan) continue;
+      entries.push({ block, plan });
+      budget -= 1;
+    }
+    let pageBox = null;
+    try { pageBox = el?.getBoundingClientRect?.() || null; } catch { pageBox = null; }
+    const fallback = info(n);
+    const nudges = copyIconNudges(entries.map((e) => e.plan), {
+      w: pageBox?.width > 0 ? pageBox.width : fallback?.w,
+      h: pageBox?.height > 0 ? pageBox.height : fallback?.h,
+    });
+    for (const { block, plan } of entries) {
       const box = doc.createElement("div");
       box.className = `pxd-parsed-box pxd-parsed-box--${plan.type}`;
       box.setAttribute("data-block", plan.id);
@@ -235,7 +274,8 @@ export function createPageChips({
       icon.setAttribute("aria-label", block.type === "table" ? "Copy table as Markdown" : "Copy text");
       icon.setAttribute("data-tip", "page-chip.copy");
       icon.style.left = `calc(${plan.left}% - ${BOX_PAD}px)`;
-      icon.style.top = `calc(${plan.top}% - ${BOX_PAD}px)`;
+      const nudge = nudges.get(plan.id) || 0;
+      icon.style.top = nudge ? `calc(${plan.top}% - ${BOX_PAD}px + ${nudge}px)` : `calc(${plan.top}% - ${BOX_PAD}px)`;
       icon.style.pointerEvents = "auto";
       icon.textContent = "⧉";
       layer.append(box, icon);

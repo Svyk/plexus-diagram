@@ -5,6 +5,7 @@ import { planParseInsert, PARSE_MISSING_TOAST, textCardMarkdown } from "../model
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
 import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { parsedTableSize } from "../model/roam-table.js";
+import { MIN_SIZES } from "../model/schema.js";
 import { pageNoteBlocks } from "../model/footnotes.js";
 import { imageKey } from "../host/parse-store.js";
 import { dataUrlToBlob } from "./parse-crop.js";
@@ -42,21 +43,23 @@ function plural(n, one, many) {
 
 // Pure. What the click-to-place preview shows for a chip action, and how wide it is (board px).
 // A table previews its first rows at the inserted table's width; a figure its crop; text its words.
+// width and height are the footprint the insert will really take (the session's card clamp applied), board px.
 export function placementContent(doc, ids, act, extra = null) {
   const blocks = selectBlocks(doc, ids);
   const first = blocks[0] || null;
-  if (!first) return { content: { kind: "text", text: "" }, width: CARD_SIZE.w };
+  if (!first) return { content: { kind: "text", text: "" }, width: CARD_SIZE.w, height: CARD_SIZE.h };
   if (act === "table" && first.type === "table") {
     const rows = tableGrid(first).slice(0, 8).map((row) => row.filter((slot) => !slot.covered).map((slot) => String(slot.cell?.text ?? "")));
     const sized = parsedTableSize(first);
-    const width = Math.max(200, Math.min(900, Number(sized?.w) || CARD_SIZE.w));
-    return { content: { kind: "table", rows, rowCap: 8, colCap: 12, page: first.page, mode: extra?.mode || "grid" }, width };
+    const width = Math.max(MIN_SIZES.card.w, Number(sized?.w) || CARD_SIZE.w);
+    const height = Math.max(MIN_SIZES.card.h, Number(sized?.h) || CARD_SIZE.h);
+    return { content: { kind: "table", rows, rowCap: 8, colCap: 12, page: first.page, mode: extra?.mode || "grid" }, width, height };
   }
   if (blocks.length === 1 && first.type === "figure") {
-    return { content: { kind: "figure", text: first.caption && doc?.blocks?.[first.caption]?.text ? doc.blocks[first.caption].text : "", page: first.page }, width: CARD_SIZE.w };
+    return { content: { kind: "figure", text: first.caption && doc?.blocks?.[first.caption]?.text ? doc.blocks[first.caption].text : "", page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
   }
   const text = blocks.map((b) => (b.type === "list" ? (b.items || []).map((item) => item.text).join(" ") : b.text || b.latex || "")).join(" ");
-  return { content: { kind: "text", text, page: first.page }, width: CARD_SIZE.w };
+  return { content: { kind: "text", text, page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
 }
 
 export function createParseActions({ session, store, placeBeside, toast, select, show, upload, toWorld } = {}) {

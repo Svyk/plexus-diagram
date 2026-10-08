@@ -456,6 +456,13 @@ export function buildMenu(kind, ctx = {}) {
         make("add-week", "Add this week's journals"),
         sep(),
         make("background", "Background…"),
+        ...(c.readOpen ? [
+          make("bar-table", "Table view"),
+          make("bar-kanban", "Kanban view"),
+          make("bar-lens", "Tag lens"),
+          make("bar-focus", "Focus mode"),
+          make("bar-present", "Present"),
+        ] : []),
         viewsMenu(),
         make("dock", "Dock position for this board", {
           children: [

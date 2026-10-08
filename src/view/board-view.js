@@ -19,7 +19,7 @@ import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, noteActionPlan } from "../model/highlight.js";
-import { coverModel, embedSplit, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
+import { cleanPdfTitle, coverModel, embedSplit, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
 import { COVER_MAX_W, WARM_AFTER_MS, coverKey, coverState, densityTicks, sharpCoverPlan, warmPlan } from "../model/pdf-cover.js";
 import { PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { createCoverStore } from "../host/cover-store.js";
@@ -1704,7 +1704,7 @@ function buildBoardView(onFail, {
     const parsedKnown = parsedTitles.get(key) || "";
     try { probePdfjs(); } catch { return parsedKnown; }
     if (!pdfMeta) return parsedKnown;
-    const known = pdfMeta.title(key) || parsedKnown;
+    const known = cleanPdfTitle(pdfMeta.title(key)) || parsedKnown;
     const job = known ? null : pdfMeta.want(key);
     if (job && typeof job.then === "function") {
       job.then((got) => {
@@ -3656,7 +3656,7 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true };
-      case "board-menu": return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod };
+      case "board-menu": return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -3914,6 +3914,11 @@ function buildBoardView(onFail, {
       case "add-page": addPage(world); break;
       case "add-week": addDaily(weekDates(), world); break;
       case "background": chrome.popover.open(); break;
+      case "bar-table": setTable(!tableMode); break;
+      case "bar-kanban": setKanban(!kanbanMode); break;
+      case "bar-lens": toggleLens(); break;
+      case "bar-focus": toggleFocus(); break;
+      case "bar-present": startPresent(); break;
       case "dock": void session.setBoardBackground?.({ dock: arg === "default" ? null : arg }); break;
       case "bg-image": {
         void (async () => {

@@ -10,6 +10,9 @@ export const GHOST_W = 280;
 export const MORPH_MS = 150;
 export const LAND_MS = 120;
 export const PANE_SCALE = 0.9;
+// Click-to-place: below this board zoom the content preview is drawn larger than the footprint.
+export const PLACE_PREVIEW_MIN = 0.6;
+const PREVIEW_VIEW_FRACTION = 0.9;
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 4;
 
@@ -108,6 +111,8 @@ export function createDragGhost({
   blocked = null,
   width = GHOST_W,
   grab: grabAt = null,
+  previewMin = null,
+  footprint = null,
   now = () => globalThis.performance?.now?.() ?? Date.now(),
 } = {}) {
   const win = doc?.defaultView || globalThis;
@@ -147,7 +152,19 @@ export function createDragGhost({
   let zone = rects.rootRect ? zoneAt(start.x, start.y, rects) : "pane";
   let sx = clamp(num(src.width) / size.w, MIN_SCALE, MAX_SCALE);
   let sy = clamp(num(src.height) / size.h, MIN_SCALE, MAX_SCALE);
-  let anim = { fromX: sx, fromY: sy, to: zoneScale(zone, zoomNow), at: now(), ms: MORPH_MS };
+  const footSize = { w: clamp(num(footprint?.w, ghostW) || ghostW, 1, 4000), h: clamp(num(footprint?.h, size.h) || size.h, 1, 4000) };
+  // Content scale: the board zoom, or a legible minimum (capped to the viewport) when previewMin is set.
+  const targetScale = (z) => {
+    if (z !== "board") return PANE_SCALE;
+    const zoomScale = zoneScale(z, zoomNow);
+    if (!(previewMin > 0) || zoomScale >= previewMin) return zoomScale;
+    const room = num(rects.rootRect?.right) - num(rects.rootRect?.left) || num(win?.innerWidth, 0) || 0;
+    const cap = room > 0 ? (room * PREVIEW_VIEW_FRACTION) / size.w : previewMin;
+    return Math.max(zoomScale, Math.min(previewMin, cap));
+  };
+  const footing = () => zone === "board" && targetScale("board") > zoneScale("board", zoomNow) + 1e-6;
+  let foot = null;
+  let anim = { fromX: sx, fromY: sy, to: targetScale(zone), at: now(), ms: MORPH_MS };
   let raf = 0;
   let dirty = true;
   let ended = false;
@@ -161,6 +178,31 @@ export function createDragGhost({
   paintZone();
   node.style.transformOrigin = "0 0";
 
+  // The dashed footprint at true board scale, where the insert lands. Only drawn when the preview is larger.
+  const footRect = () => {
+    const z = zoneScale("board", zoomNow);
+    const w = footSize.w * z;
+    const h = footSize.h * z;
+    return { x: current.x - grab.fx * w, y: current.y - grab.fy * h, w, h };
+  };
+  function paintFoot() {
+    const on = footing();
+    if (!on) {
+      if (foot) { try { foot.remove(); } catch { /* gone */ } foot = null; }
+      return;
+    }
+    if (!foot) {
+      foot = doc.createElement("div");
+      foot.className = "pxd-ghost-foot";
+      foot.setAttribute("aria-hidden", "true");
+      host?.append?.(foot);
+    }
+    const r = footRect();
+    foot.style.width = `${r.w.toFixed(1)}px`;
+    foot.style.height = `${r.h.toFixed(1)}px`;
+    foot.style.transform = `translate3d(${(r.x - origin.x).toFixed(1)}px, ${(r.y - origin.y).toFixed(1)}px, 0)`;
+  }
+
   function frame(at = now()) {
     raf = 0;
     if (ended) return false;
@@ -172,6 +214,7 @@ export function createDragGhost({
       if (k >= 1) anim = null;
     }
     const at2 = ghostOrigin(current, grab, size, sx, sy);
+    paintFoot();
     if (dirty || at2.x !== painted.x || at2.y !== painted.y || sx !== painted.sx || sy !== painted.sy) {
       node.style.transform = `translate3d(${(at2.x - origin.x).toFixed(1)}px, ${(at2.y - origin.y).toFixed(1)}px, 0) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
       if (painted.zone !== zone) paintZone();
@@ -200,6 +243,7 @@ export function createDragGhost({
   };
   const fadeOut = (cls) => {
     stop();
+    if (foot) { try { foot.remove(); } catch { /* gone */ } foot = null; }
     node.classList.add(cls);
     const kill = () => { try { node.remove(); } catch { /* gone */ } };
     const later = win?.setTimeout || globalThis.setTimeout;
@@ -215,8 +259,9 @@ export function createDragGhost({
       const next = rects.rootRect ? zoneAt(current.x, current.y, rects) : zone;
       if (next !== zone) {
         zone = next;
-        anim = { fromX: sx, fromY: sy, to: zoneScale(zone, zoomNow), at: now(), ms: LAND_MS };
+        anim = { fromX: sx, fromY: sy, to: targetScale(zone), at: now(), ms: LAND_MS };
       }
+      dirty = true;
       schedule();
     },
     frame,
@@ -224,6 +269,10 @@ export function createDragGhost({
     scale: () => ({ sx, sy }),
     // Client point of the ghost's top-left, its size on screen, and its centre (ref-card drops centre the card).
     dropPoint() {
+      if (footing()) {
+        const r = footRect();
+        return { x: r.x, y: r.y, w: r.w, h: r.h, cx: r.x + r.w / 2, cy: r.y + r.h / 2 };
+      }
       const s = anim ? anim.to : sx;
       const at2 = ghostOrigin(current, grab, size, s, anim ? anim.to : sy);
       const w = size.w * s;
@@ -277,6 +326,7 @@ export function startPlacement({
   from = null,
   content = {},
   width = GHOST_W,
+  footprint = null,
   zoom = null,
   blocked = null,
   onPlace = null,
@@ -284,7 +334,7 @@ export function startPlacement({
   now,
 } = {}) {
   const win = doc?.defaultView || globalThis;
-  const ghost = createDragGhost({ doc, root, pane, from, pointer, content, width, zoom, blocked, grab: PLACE_GRAB, ...(now ? { now } : {}) });
+  const ghost = createDragGhost({ doc, root, pane, from, pointer, content, width, footprint, zoom, blocked, grab: PLACE_GRAB, previewMin: PLACE_PREVIEW_MIN, ...(now ? { now } : {}) });
   try { ghost.element().classList.add("pxd-ghost--place"); } catch { /* stub */ }
   try { root?.classList?.add?.("pxd-root--placing"); } catch { /* stub */ }
   let done = false;

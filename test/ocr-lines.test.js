@@ -94,9 +94,9 @@ test("suspicious words: odd case, digits in letters, punctuation inside letters,
 });
 
 test("a run-together pair splits only where exactly one cut gives two listed words", () => {
-  assert.deepEqual(splitJoined("Environmentalmonitoring", WORDS), ["Environmental", "monitoring"]);
-  assert.deepEqual(splitJoined("environmental", WORDS), ["environmental"]);
-  assert.deepEqual(splitJoined("1,000live", WORDS), ["1,000live"]);
+  assert.deepEqual(splitJoined("Environmentalmonitoring", WORDS, { low: true }), ["Environmental", "monitoring"]);
+  assert.deepEqual(splitJoined("environmental", WORDS, { low: true }), ["environmental"]);
+  assert.deepEqual(splitJoined("1,000live", WORDS, { low: true }), ["1,000live"]);
   assert.deepEqual(properNouns(["Kleshchev", "Kleshchev,", "BlendHouse", "BlendHouse", "Boyd"]).has("kleshchev"), true);
   assert.deepEqual(properNouns(["BlendHouse", "BlendHouse"]).has("blendhouse"), true);
   assert.deepEqual(properNouns(["Boyd"]).has("boyd"), false);
@@ -180,7 +180,7 @@ test("a re-read that drops a dictionary word gets it back when it misread it by 
 test("repairTokens takes a clean close word from another scale", () => {
   assert.deepEqual(repairTokens(["of", "reparted", "cases"], [["of", "reported", "cases"]], { lexicon: WORDS }), ["of", "reported", "cases"]);
   assert.deepEqual(repairTokens(["of", "reparted"], [["of", "xyzzyq"]], { lexicon: WORDS }), ["of", "reparted"]);
-  assert.deepEqual(fixTokens(["Environmentalmonitoring", "(EM)"], { lexicon: WORDS }), ["Environmental", "monitoring", "(EM)"]);
+  assert.deepEqual(fixTokens(["Environmentalmonitoring", "(EM)"], { lexicon: WORDS, wordConfs: [0.5, 1] }), ["Environmental", "monitoring", "(EM)"]);
 });
 
 test("line reads crop at 1x, 2x and 3x and return each read with letter confidences", async () => {

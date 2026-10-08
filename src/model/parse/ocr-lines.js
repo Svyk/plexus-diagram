@@ -10,6 +10,7 @@ import { cleanWord, correctWord, lineCase, normalizeCase, properNouns, splitJoin
 import { bucketConf } from "../ocr/words-from-ctc.js";
 
 const LOW_MEAN = 0.8;
+const LOW_CHAR = 0.9;
 const MIN_READ_CONF = 0.75;
 const AGREE_CONF = 0.9;
 // The rec model reads a crop up to ~40× its height well; longer lines go in pieces.
@@ -281,7 +282,8 @@ export function fixTokens(tokens, { lexicon = null, keep = null, confs = null, w
       letterConfs = confs.slice(from, from + m[2].length);
     }
     t = correctWord(t, { lexicon, keep, confs: letterConfs, conf: wordConfs ? wordConfs[k] : 1 });
-    return splitJoined(t, lexicon);
+    const low = letterConfs && letterConfs.length ? letterConfs.some((c) => c < LOW_CHAR) : !letterConfs && (wordConfs ? wordConfs[k] : 1) < LOW_CHAR;
+    return splitJoined(t, lexicon, { low });
   }).flat();
 }
 

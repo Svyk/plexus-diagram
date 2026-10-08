@@ -7,12 +7,19 @@ export function setTitleLexicon(words) {
   titleLexicon = words && typeof words.has === "function" ? words : null;
 }
 
-const SEG_MIN = 12;
+const SEG_MIN = 18;
 const SEG_MAX_WORDS = 12;
+const SEG_WORD_MIN = 4;
+const FUNCTION_WORDS = new Set(["of", "the", "and", "in", "to", "for", "per", "on", "at", "by", "with", "from", "or", "an", "a"]);
 
-// Split one run-together letter token ("Summaryofreportedcasesper") into dictionary words by
-// dynamic programming: fewest words, then longer words. Every piece must be a word of 2+
-// letters ("a" and "I" allowed). Returns the pieces in original case, or null.
+// Revision of the title rules. Stored page titles carry the revision they were made with; an older
+// one is read again (the first splitter cut real words such as "Supplementation").
+export const TITLE_REV = 2;
+
+// Split one run-together letter token ("Summaryofreportedcasesper") into pieces, conservatively:
+// the token has 18+ letters and is no word, there are 3+ pieces, at least one is a function word, and
+// every other piece is a dictionary word of 4+ letters. Fewest pieces, then longer ones.
+// Returns the pieces in original case, or null.
 export function segmentToken(token, lexicon) {
   const t = String(token || "");
   if (!lexicon || t.length < SEG_MIN || !/^\p{L}+$/u.test(t)) return null;
@@ -26,15 +33,16 @@ export function segmentToken(token, lexicon) {
       if (!best[j]) continue;
       const len = i - j;
       const word = lower.slice(j, i);
-      if (!(lexicon.has(word) && (len >= 2 || word === "a" || word === "i"))) continue;
+      if (!(FUNCTION_WORDS.has(word) || (len >= SEG_WORD_MIN && lexicon.has(word)))) continue;
       const cand = { count: best[j].count + 1, sq: best[j].sq + len * len, prev: j };
       const cur = best[i];
       if (!cur || cand.count < cur.count || (cand.count === cur.count && cand.sq > cur.sq)) best[i] = cand;
     }
   }
-  if (!best[n] || best[n].count < 2 || best[n].count > SEG_MAX_WORDS) return null;
+  if (!best[n] || best[n].count < 3 || best[n].count > SEG_MAX_WORDS) return null;
   const out = [];
   for (let i = n; i > 0; i = best[i].prev) out.unshift(t.slice(best[i].prev, i));
+  if (!out.some((piece) => FUNCTION_WORDS.has(piece.toLowerCase()))) return null;
   return out;
 }
 
@@ -42,11 +50,11 @@ export function segmentToken(token, lexicon) {
 export function segmentTitle(text, lexicon = titleLexicon) {
   const clean = typeof text === "string" ? text : "";
   if (!lexicon || !clean) return clean;
-  return clean.replace(/\S*\p{L}{12,}\S*/gu, (word) => {
+  return clean.replace(/\S*\p{L}{18,}\S*/gu, (word) => {
     const runs = word.match(/\p{L}+|[^\p{L}]+/gu) || [];
     let split = false;
     const parts = runs.map((run) => {
-      const pieces = /^\p{L}{12,}$/u.test(run) ? segmentToken(run, lexicon) : null;
+      const pieces = /^\p{L}{18,}$/u.test(run) ? segmentToken(run, lexicon) : null;
       if (pieces) split = true;
       return pieces ? pieces.join(" ") : run;
     });

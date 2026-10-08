@@ -1,3 +1,4 @@
+import { TITLE_REV } from "../src/model/title-cap.js";
 // Round 2 live: PDF titles at rest (cover-warm page title), the journal-banner rule for metadata and
 // page titles, and the OCR raster keeping image smoothing on.
 import assert from "node:assert/strict";
@@ -145,13 +146,17 @@ test("the cover store keeps the page title and its lines; old records read as ne
   const old = await store.get(url);
   assert.equal(old.pageTitle, null);
   assert.equal(needsPageTitle(old), true);
-  await store.put({ ...old, pageTitle: "A paper", titleLines: ["Journal 1 (2020) 2", "A paper"] });
+  await store.put({ ...old, pageTitle: "A paper", titleRev: TITLE_REV, titleLines: ["Journal 1 (2020) 2", "A paper"] });
   const got = await store.get(url);
   assert.equal(got.pageTitle, "A paper");
   assert.deepEqual(got.titleLines, ["Journal 1 (2020) 2", "A paper"]);
   assert.equal(needsPageTitle(got), false);
   await store.put({ ...got, pageTitle: "" });
   assert.equal(needsPageTitle(await store.get(url)), false, "a page with no title is not read again");
+  await store.put({ ...got, pageTitle: "Trace ability", titleRev: TITLE_REV - 1 });
+  const stale = await store.get(url);
+  assert.equal(stale.pageTitle, null, "a title from an older splitter is read again");
+  assert.equal(needsPageTitle(stale), true);
 });
 
 test("warmPlan picks a covered card that still needs its title, never one that has it", () => {

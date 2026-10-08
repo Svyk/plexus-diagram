@@ -4501,25 +4501,26 @@ function segmentToken(token, lexicon) {
       if (!best[j]) continue;
       const len = i - j;
       const word = lower3.slice(j, i);
-      if (!(lexicon.has(word) && (len >= 2 || word === "a" || word === "i"))) continue;
+      if (!(FUNCTION_WORDS.has(word) || len >= SEG_WORD_MIN && lexicon.has(word))) continue;
       const cand = { count: best[j].count + 1, sq: best[j].sq + len * len, prev: j };
       const cur = best[i];
       if (!cur || cand.count < cur.count || cand.count === cur.count && cand.sq > cur.sq) best[i] = cand;
     }
   }
-  if (!best[n2] || best[n2].count < 2 || best[n2].count > SEG_MAX_WORDS) return null;
+  if (!best[n2] || best[n2].count < 3 || best[n2].count > SEG_MAX_WORDS) return null;
   const out = [];
   for (let i = n2; i > 0; i = best[i].prev) out.unshift(t.slice(best[i].prev, i));
+  if (!out.some((piece) => FUNCTION_WORDS.has(piece.toLowerCase()))) return null;
   return out;
 }
 function segmentTitle(text3, lexicon = titleLexicon) {
   const clean = typeof text3 === "string" ? text3 : "";
   if (!lexicon || !clean) return clean;
-  return clean.replace(/\S*\p{L}{12,}\S*/gu, (word) => {
+  return clean.replace(/\S*\p{L}{18,}\S*/gu, (word) => {
     const runs = word.match(/\p{L}+|[^\p{L}]+/gu) || [];
     let split = false;
     const parts = runs.map((run) => {
-      const pieces2 = /^\p{L}{12,}$/u.test(run) ? segmentToken(run, lexicon) : null;
+      const pieces2 = /^\p{L}{18,}$/u.test(run) ? segmentToken(run, lexicon) : null;
       if (pieces2) split = true;
       return pieces2 ? pieces2.join(" ") : run;
     });
@@ -4580,13 +4581,16 @@ function isMetaBanner(metaTitle, { pageTitle = "", lines = [] } = {}) {
   }
   return false;
 }
-var TITLE_CAP, titleLexicon, SEG_MIN, SEG_MAX_WORDS, MONTHS5, JUNK_LINE_RES, CITATION_REST;
+var TITLE_CAP, titleLexicon, SEG_MIN, SEG_MAX_WORDS, SEG_WORD_MIN, FUNCTION_WORDS, TITLE_REV, MONTHS5, JUNK_LINE_RES, CITATION_REST;
 var init_title_cap = __esm({
   "src/model/title-cap.js"() {
     TITLE_CAP = 80;
     titleLexicon = null;
-    SEG_MIN = 12;
+    SEG_MIN = 18;
     SEG_MAX_WORDS = 12;
+    SEG_WORD_MIN = 4;
+    FUNCTION_WORDS = /* @__PURE__ */ new Set(["of", "the", "and", "in", "to", "for", "per", "on", "at", "by", "with", "from", "or", "an", "a"]);
+    TITLE_REV = 2;
     MONTHS5 = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
     JUNK_LINE_RES = [
       /^(?:notes?|sources?)\s*(?:[:.\-–—]|$)/i,
@@ -27161,6 +27165,9 @@ function highlightById(fiber, id) {
   return null;
 }
 
+// src/host/cover-store.js
+init_title_cap();
+
 // src/host/diagram-db.js
 var DIAGRAM_DB = "plexus-diagram";
 var DIAGRAM_DB_VERSION = 2;
@@ -27371,9 +27378,11 @@ function revive(raw) {
 var TITLE_LINES = 60;
 var TITLE_LINE_CHARS = 160;
 function titleOf(raw) {
-  const pageTitle = typeof raw?.pageTitle === "string" ? raw.pageTitle.slice(0, 300) : null;
+  const titleRev = Number.isInteger(raw?.titleRev) && raw.titleRev > 0 ? raw.titleRev : 0;
+  const fresh = titleRev >= TITLE_REV;
+  const pageTitle = typeof raw?.pageTitle === "string" && fresh ? raw.pageTitle.slice(0, 300) : null;
   const lines = Array.isArray(raw?.titleLines) ? raw.titleLines.filter((t) => typeof t === "string").slice(0, TITLE_LINES).map((t) => t.slice(0, TITLE_LINE_CHARS)) : [];
-  return { pageTitle, titleLines: lines };
+  return { pageTitle, titleRev: pageTitle === null ? 0 : titleRev, titleLines: lines };
 }
 function createCoverStore({ indexedDB, storage } = {}) {
   const factory = indexedDB || null;
@@ -34158,7 +34167,7 @@ init_title_cap();
 init_pdf();
 var SCHEMA2 = "pxd-parse/1";
 var ENGINE_VERSION = "plexus-builtin/1";
-var PARSE_REV = 4;
+var PARSE_REV = 5;
 var now2 = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
 function viewportTransform(w, h, rotation = 0) {
   switch ((rotation % 360 + 360) % 360) {
@@ -35358,6 +35367,7 @@ function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CA
 init_pdf();
 
 // src/model/ocr/lexicon.js
+init_title_cap();
 var LETTERS = /^[A-Za-z]+$/;
 var LOW_CHAR = 0.9;
 var MIN_LEN = 3;
@@ -35491,7 +35501,8 @@ function cleanWord(token, lexicon) {
   const core = String(token || "").replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "");
   return Boolean(lexicon && core.length >= MIN_LEN && LETTERS.test(core) && lexicon.has(core.toLowerCase()));
 }
-function splitJoined(token, lexicon) {
+function splitJoined(token, lexicon, { low = false } = {}) {
+  if (!low) return [token];
   const m = /^([^A-Za-z0-9]*)([A-Za-z]+)([^A-Za-z0-9]*)$/.exec(String(token || ""));
   if (!m || !lexicon || !lexicon.size) return [token];
   const [, lead, core, tail] = m;
@@ -35499,8 +35510,10 @@ function splitJoined(token, lexicon) {
   const lower3 = core.toLowerCase();
   const cuts = [];
   for (let i = 4; i <= lower3.length - 4; i++) if (lexicon.has(lower3.slice(0, i)) && lexicon.has(lower3.slice(i))) cuts.push(i);
-  if (cuts.length !== 1) return [token];
-  return [lead + core.slice(0, cuts[0]), core.slice(cuts[0]) + tail];
+  if (cuts.length === 1) return [lead + core.slice(0, cuts[0]), core.slice(cuts[0]) + tail];
+  const pieces2 = segmentToken(core, lexicon);
+  if (!pieces2) return [token];
+  return pieces2.map((piece, i) => (i === 0 ? lead : "") + piece + (i === pieces2.length - 1 ? tail : ""));
 }
 
 // src/model/ocr/words-from-ctc.js
@@ -35739,6 +35752,7 @@ function snapOcrItems(items) {
 
 // src/model/parse/ocr-lines.js
 var LOW_MEAN = 0.8;
+var LOW_CHAR2 = 0.9;
 var MIN_READ_CONF = 0.75;
 var AGREE_CONF = 0.9;
 var MAX_ASPECT = 38;
@@ -35982,7 +35996,8 @@ function fixTokens(tokens, { lexicon = null, keep = null, confs = null, wordConf
       letterConfs = confs.slice(from, from + m[2].length);
     }
     t = correctWord(t, { lexicon, keep, confs: letterConfs, conf: wordConfs ? wordConfs[k] : 1 });
-    return splitJoined(t, lexicon);
+    const low = letterConfs && letterConfs.length ? letterConfs.some((c) => c < LOW_CHAR2) : !letterConfs && (wordConfs ? wordConfs[k] : 1) < LOW_CHAR2;
+    return splitJoined(t, lexicon, { low });
   }).flat();
 }
 function editDistance2(a, b) {
@@ -44647,6 +44662,9 @@ function createReadPane({
   };
 }
 
+// src/view/pdf-warm.js
+init_title_cap();
+
 // src/view/pdf-first-page.js
 var FIRST_PAGE_TIMEOUT_MS = 8e3;
 var FIRST_PAGE_JPEG = 0.72;
@@ -44994,6 +45012,7 @@ function countPages(root) {
 function titleFields(next, prev) {
   const got = next && typeof next.pageTitle === "string";
   return {
+    titleRev: got ? TITLE_REV : typeof prev?.pageTitle === "string" ? positiveInt(prev.titleRev) ?? null : null,
     pageTitle: got ? next.pageTitle : typeof prev?.pageTitle === "string" ? prev.pageTitle : null,
     titleLines: got ? Array.isArray(next.titleLines) ? next.titleLines : [] : Array.isArray(prev?.titleLines) ? prev.titleLines : []
   };
@@ -45254,6 +45273,10 @@ function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst 
           }
           return Promise.resolve().then(() => renderFirst({ url, titleOnly: true, hash: job.card.hash })).catch(() => null).then(async (read3) => {
             if (job.gen !== generation || job.done) {
+              settle(job, null);
+              return null;
+            }
+            if (read3 && read3.busy === true) {
               settle(job, null);
               return null;
             }
@@ -56742,7 +56765,7 @@ function buildBoardView(onFail, {
       host,
       store: ensureCoverStore(),
       timers: warmTimers,
-      renderFirst: firstPage ? (spec) => firstPage.render(spec) : null
+      renderFirst: firstPage ? (spec) => spec?.titleOnly && firstPage.busy() ? { busy: true } : firstPage.render(spec) : null
     });
     return pdfWarm;
   };

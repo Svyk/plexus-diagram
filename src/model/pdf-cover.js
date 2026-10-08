@@ -133,7 +133,7 @@ export function warmPlan(input) {
     for (const card of cards) {
       if (!card || typeof card !== "object") continue;
       if (card.kind && card.kind !== "pdf") continue;
-      if (card.hasCover) continue;
+      if (card.hasCover && !card.needsTitle) continue;
       const uid = text(card.uid);
       const blockUid = text(card.blockUid);
       if (!uid || !blockUid) continue;

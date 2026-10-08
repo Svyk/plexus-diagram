@@ -47,3 +47,41 @@ export function isJunkTitleText(text) {
 export function titleWordCount(text) {
   return String(text ?? "").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 }
+
+function plainTitle(value) {
+  return String(value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+const CITATION_REST = /^[\s\d().,:;/–—-]*$/;
+
+// `text` is a banner line of `line`: the same words (when `exact`), or the same words inside a line
+// whose other text is only volume, year and page numbers (two groups or more). A journal name inside its running header
+// ("Science of the Total Environment" in "Science of the Total Environment 877 (2023) 162730").
+export function isBannerOf(text, line, { exact = true } = {}) {
+  const a = plainTitle(text);
+  const b = plainTitle(line);
+  if (!a || !b) return false;
+  if (a === b) return exact;
+  const at = b.indexOf(a);
+  if (at < 0) return false;
+  const before = b[at - 1];
+  const after = b[at + a.length];
+  if ((before && /[\p{L}\p{N}]/u.test(before)) || (after && /[\p{L}\p{N}]/u.test(after))) return false;
+  const rest = `${b.slice(0, at)} ${b.slice(at + a.length)}`;
+  // Two number groups at least (volume and year, year and page): a lone page number is a running
+  // header that repeats the real title.
+  return (rest.match(/\d+/g) || []).length >= 2 && CITATION_REST.test(rest);
+}
+
+// A metadata Title that only repeats a banner of page 1 (a journal name, a running header) when the
+// page has a title of its own. `lines`: running headers and page-1 line or block texts.
+export function isMetaBanner(metaTitle, { pageTitle = "", lines = [] } = {}) {
+  const meta = plainTitle(metaTitle);
+  const page = plainTitle(pageTitle);
+  if (!meta || !page || meta === page || page.startsWith(meta)) return false;
+  for (const line of Array.isArray(lines) ? lines : []) {
+    if (typeof line !== "string" || plainTitle(line) === page) continue;
+    if (isBannerOf(meta, line)) return true;
+  }
+  return false;
+}

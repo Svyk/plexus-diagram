@@ -173,3 +173,21 @@ test("a pane-level read becomes the outline's parse and a reopen restores it", a
     assert.equal(reads, 0, "no second read");
   } finally { r.done(); }
 });
+
+test("the automatic in-browser read runs the text-line pass with the word list and the same source", async () => {
+  const pages = OCR.pages.slice(0, 1).map((p) => ({ ...p, engine: "ppocr-web" }));
+  let lexiconAsks = 0;
+  const cellAsks = [];
+  const deviceOcr = {
+    async status() { return { state: "ready" }; },
+    async read() { return { ...OCR, pages }; },
+    async readCells({ cells }) { cellAsks.push(cells); return { cells: [] }; },
+    async lexicon() { lexiconAsks += 1; return new Set(["the"]); },
+  };
+  const r = await rig({ deviceOcr, pages: 1 });
+  try {
+    r.pane.showOutline();
+    assert.ok(await until(() => lexiconAsks > 0, 200), "the word list is asked for");
+    assert.ok(await until(() => cellAsks.some((cells) => cells.some((c) => c.line === true)), 200), "doubtful lines go back to the same source");
+  } finally { r.done(); }
+});

@@ -459,3 +459,21 @@ Node, onnxruntime-node, PP-OCRv5 mobile, 300 dpi. Before = `PXD_OCR_LINES=0` (ma
 Cost: three rec runs per doubtful line, about 160 ms a line in node (CDC: 7 lines, 1.1 s on a 6.6 s page; report-scan p1: 10 lines, 1.3 s). ICDAR re-read 530 lines in 57 of 67 documents at 300 dpi and 564 in 62 at 150 dpi; table metrics do not move because the pass never touches words inside a table.
 
 What is still wrong on CDC: `sh wn` for `shown` (a split the line read keeps), `gonarrhee` (two letters off; `gonorrhea` is in the list but the line read gave both letters at 0.9+ confidence, so the lexicon leaves it) and `venareum` (`venereum` is not in the list), the `**` footnote marks read as `"` or dropped. The title block is still a paragraph, not a heading (heading level accuracy 0/1 before and after).
+
+### Round 5 (2026-10-08): the browser's raster
+
+Live, the CDC title still read `NOTIFIABLE DISEASES — Summary of reparted 100,000 populetion, United Stares, 1971-1980 csses 2` after round 4. Cause: the bench rendered with pypdfium2, the pane renders with pdf.js, and pdf.js turns image smoothing off when an image is drawn larger than its pixels relative to the display's pixel ratio (`getImageSmoothingEnabled`: smooth only up to 1.33 × devicePixelRatio). The CDC scan is a 200 dpi image drawn at 300 dpi (1.5×): on a 1.1× window that is nearest-neighbour with uneven pixel rows; on a 2× Retina screen it is smoothed. The same PDF read differently per screen. `PXD_RENDER=pdfjs node tools/parse-bench/scan.mjs …` (pdf.js on @napi-rs/canvas, `PXD_STEADY=0` for pdf.js's own choice) reproduced the live text word for word.
+
+Fix: `steadyImageScaling` (`src/host/ocr-web.js`) decides per image draw on the OCR canvas: a whole-number upscale copies pixels, any other upscale is bilinear, a downscale is smoothed. Forcing smoothing everywhere was tried and dropped: on report-scan (150 dpi drawn 2×) it broke the two-column reading order (text 0.969 → 0.772).
+
+Second cause, same title: on the pdf.js raster the recogniser boxed `cases per` on its own, 1 pt wide and 3.8 pt below the line, so the line pass read those words inside the title line and the paragraph kept them again at its end. `textLines` now puts a short run of words (or a squeezed one, a line high) that sits in a gap of a longer line, under 0.8 of a size off its baseline and overlapping it, back into that line.
+
+| Bench (node, PP-OCRv5 mobile, 300 dpi) | pdf.js before | pdf.js after | pypdfium2 after |
+|---|---|---|---|
+| CDC title line | `NOTIFIABLE DISEASES — Summary of reparted 100,000 populetion, United Stares, 1971-1980` + `csses per` | exact | exact |
+| CDC structure / cell F1 | 0.992 / 0.918 | 0.983 / 0.932 | 0.983 / 0.922 |
+| CDC text-line word accuracy | 0.717 | 0.900 | 0.950 |
+| report-scan cell F1 t1 / t2 / t3, text | 0.895 / 1.000 / 0.356, 0.969 | unchanged | 0.947 / 0.976 / 0.952, 0.956 |
+| ICDAR 2013 at 300 dpi (pypdfium2), adjacency / detection / cell | | | 0.876 / 0.957 / 0.787, every count identical to round 4 |
+
+Live (Readwisenotes, window dpr 1.095, helper stopped, in-browser read on open): CDC title exact, cell F1 0.932, text 0.900; open → title on the card and in the pane about 27 s (built-in parse +0.9 s, OCR read with line and cell passes ~25 s). The read runs on the main thread: `new Worker()` for `assets/ocr/ocr-worker.js` on our Pages origin throws SecurityError from roamresearch.com, and `createOcrWeb` falls back to the inline engine. report-scan t3 on a pdf.js raster (0.356) against pypdfium2 (0.952) is open.

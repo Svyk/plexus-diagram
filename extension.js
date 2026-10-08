@@ -1773,7 +1773,7 @@ function parseTrails(containerNode) {
   }
   return out;
 }
-function trailStrip(stops, titleOf2, limit = 8) {
+function trailStrip(stops, titleOf3, limit = 8) {
   const list = Array.isArray(stops) ? stops : [];
   const cap4 = Number.isFinite(limit) ? Math.max(0, limit) : 8;
   const out = [];
@@ -1782,9 +1782,9 @@ function trailStrip(stops, titleOf2, limit = 8) {
     const uid = stop2?.ref || stop2?.uid || "";
     if (!uid) continue;
     let title = "";
-    if (typeof titleOf2 === "function") {
+    if (typeof titleOf3 === "function") {
       try {
-        title = titleOf2(uid) || "";
+        title = titleOf3(uid) || "";
       } catch {
         title = "";
       }
@@ -4506,7 +4506,33 @@ function isJunkTitleText(text3) {
 function titleWordCount(text3) {
   return String(text3 ?? "").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 }
-var TITLE_CAP, MONTHS5, JUNK_LINE_RES;
+function plainTitle(value) {
+  return String(value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function isBannerOf(text3, line, { exact = true } = {}) {
+  const a = plainTitle(text3);
+  const b = plainTitle(line);
+  if (!a || !b) return false;
+  if (a === b) return exact;
+  const at = b.indexOf(a);
+  if (at < 0) return false;
+  const before = b[at - 1];
+  const after = b[at + a.length];
+  if (before && /[\p{L}\p{N}]/u.test(before) || after && /[\p{L}\p{N}]/u.test(after)) return false;
+  const rest = `${b.slice(0, at)} ${b.slice(at + a.length)}`;
+  return (rest.match(/\d+/g) || []).length >= 2 && CITATION_REST.test(rest);
+}
+function isMetaBanner(metaTitle, { pageTitle = "", lines = [] } = {}) {
+  const meta = plainTitle(metaTitle);
+  const page = plainTitle(pageTitle);
+  if (!meta || !page || meta === page || page.startsWith(meta)) return false;
+  for (const line of Array.isArray(lines) ? lines : []) {
+    if (typeof line !== "string" || plainTitle(line) === page) continue;
+    if (isBannerOf(meta, line)) return true;
+  }
+  return false;
+}
+var TITLE_CAP, MONTHS5, JUNK_LINE_RES, CITATION_REST;
 var init_title_cap = __esm({
   "src/model/title-cap.js"() {
     TITLE_CAP = 80;
@@ -4528,6 +4554,7 @@ var init_title_cap = __esm({
       /^(?:available online|received|accepted|revised|keywords?|abstract|article info|a r t i c l e)\b/i,
       /^L\s*\d+\/\d+$/
     ];
+    CITATION_REST = /^[\s\d().,:;/–—-]*$/;
   }
 });
 
@@ -4599,6 +4626,20 @@ function pdfTitlePlan(source) {
   const file = titleText(fileName(src.url));
   return file || "PDF";
 }
+function parsedTitleLines(doc) {
+  if (!doc || typeof doc !== "object") return [];
+  const out = [];
+  for (const r of Array.isArray(doc.removed) ? doc.removed : []) if (r?.text && r.reason !== "page-number") out.push(String(r.text));
+  const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
+  for (const id of Array.isArray(doc.order) ? doc.order : Object.keys(blocks)) {
+    const block = blocks[id];
+    if (!block || block.page !== 1 || typeof block.text !== "string") continue;
+    const text3 = block.text.replace(/\s+/g, " ").trim();
+    if (text3) out.push(text3.slice(0, 160));
+    if (out.length >= 80) break;
+  }
+  return [...new Set(out)].slice(0, 60);
+}
 function parsedDocTitle(doc) {
   return capTitle(parsedDocTitleRaw(doc));
 }
@@ -4607,10 +4648,12 @@ function parsedDocTitleRaw(doc) {
   const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
   const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
   const norm2 = (value) => String(value ?? "").replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
-  const running = new Set((Array.isArray(doc.removed) ? doc.removed : []).filter((r) => r && r.reason !== "page-number").map((r) => norm2(r.text)));
+  const runningTexts = (Array.isArray(doc.removed) ? doc.removed : []).filter((r) => r && r.reason !== "page-number" && r.text).map((r) => String(r.text));
+  const running = new Set(runningTexts.map(norm2));
   const usable = (value) => {
     const real = cleanPdfTitle(value);
-    return real && !isJunkTitleText(real) && !running.has(norm2(real)) ? real : "";
+    if (!real || isJunkTitleText(real) || running.has(norm2(real))) return "";
+    return runningTexts.some((line) => isBannerOf(real, line, { exact: false })) ? "" : real;
   };
   const given = usable(doc.title);
   if (given) {
@@ -26651,6 +26694,7 @@ function attrLegend(links, hidden, styles) {
 // src/view/board-view.js
 init_highlight();
 init_pdf();
+init_title_cap();
 
 // src/model/pdf-cover.js
 var WARM_AFTER_MS = 1500;
@@ -26773,7 +26817,7 @@ function warmPlan(input) {
     for (const card2 of cards) {
       if (!card2 || typeof card2 !== "object") continue;
       if (card2.kind && card2.kind !== "pdf") continue;
-      if (card2.hasCover) continue;
+      if (card2.hasCover && !card2.needsTitle) continue;
       const uid = text2(card2.uid);
       const blockUid2 = text2(card2.blockUid);
       if (!uid || !blockUid2) continue;
@@ -27163,8 +27207,16 @@ function revive(raw) {
     pageCount: Number.isInteger(raw.pageCount) && raw.pageCount >= 1 ? raw.pageCount : null,
     w: Number.isInteger(raw.w) && raw.w >= 1 ? raw.w : null,
     h: Number.isInteger(raw.h) && raw.h >= 1 ? raw.h : null,
+    ...titleOf(raw),
     ts: typeof raw.ts === "number" && Number.isFinite(raw.ts) ? raw.ts : 0
   };
+}
+var TITLE_LINES = 60;
+var TITLE_LINE_CHARS = 160;
+function titleOf(raw) {
+  const pageTitle = typeof raw?.pageTitle === "string" ? raw.pageTitle.slice(0, 300) : null;
+  const lines = Array.isArray(raw?.titleLines) ? raw.titleLines.filter((t) => typeof t === "string").slice(0, TITLE_LINES).map((t) => t.slice(0, TITLE_LINE_CHARS)) : [];
+  return { pageTitle, titleLines: lines };
 }
 function createCoverStore({ indexedDB, storage } = {}) {
   const factory = indexedDB || null;
@@ -27297,6 +27349,7 @@ function createCoverStore({ indexedDB, storage } = {}) {
         pageCount: record.pageCount ?? null,
         w: record.w ?? null,
         h: record.h ?? null,
+        ...titleOf(record),
         ts: typeof record.ts === "number" ? record.ts : 0
       };
       remember2(record.url);
@@ -27354,6 +27407,7 @@ function createCoverStore({ indexedDB, storage } = {}) {
           pageCount: Number.isInteger(record.pageCount) && record.pageCount >= 1 ? record.pageCount : null,
           w: Number.isInteger(record.w) && record.w >= 1 ? record.w : null,
           h: Number.isInteger(record.h) && record.h >= 1 ? record.h : null,
+          ...titleOf(record),
           ts: typeof record.ts === "number" && Number.isFinite(record.ts) ? record.ts : 0
         };
         if (!idbDead) {
@@ -28855,7 +28909,7 @@ var THEME = {
 };
 var esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 var n1 = (n2) => Math.round(n2 * 10) / 10;
-var titleOf = (item) => {
+var titleOf2 = (item) => {
   if (item.title) return item.title;
   if (item.kind === "image") return "Image";
   return item.string || "Untitled";
@@ -28957,9 +29011,9 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
       const rx = lane2 ? 0 : 12;
       body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="${rx}" fill="${fill}" fill-opacity="${dark ? 0.6 : 1}" stroke="${line}" stroke-width="2"/>`);
       if (lane2 && item.axis !== "vertical") {
-        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + r.h / 2)}" font-size="16" font-weight="700" dominant-baseline="central" fill="${text3}">${esc(titleOf(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + r.h / 2)}" font-size="16" font-weight="700" dominant-baseline="central" fill="${text3}">${esc(titleOf2(item))}</text>`);
       } else {
-        body.push(`<text x="${n1(r.x + 4)}" y="${n1(r.y - 10)}" font-size="16" font-weight="700" fill="${text3}">${esc(titleOf(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 4)}" y="${n1(r.y - 10)}" font-size="16" font-weight="700" fill="${text3}">${esc(titleOf2(item))}</text>`);
       }
     } else if (item.type === "text") {
       const size = item.fontSize || 16;
@@ -28968,7 +29022,7 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
         const stroke = item.border ? hex(item.border)[0] : item.color ? line : theme.border;
         const ink = item.textColor ? hex(item.textColor)[2] : theme.text;
         body.push(`<path d="${shapePath(r, item.shape)}" fill="${paint2}" stroke="${stroke}" stroke-width="2"/>`);
-        body.push(`<text x="${n1(r.x + r.w / 2)}" y="${n1(r.y + r.h / 2)}" font-size="${size}" text-anchor="middle" dominant-baseline="central" fill="${ink}">${esc(titleOf(item))}</text>`);
+        body.push(`<text x="${n1(r.x + r.w / 2)}" y="${n1(r.y + r.h / 2)}" font-size="${size}" text-anchor="middle" dominant-baseline="central" fill="${ink}">${esc(titleOf2(item))}</text>`);
       } else if (item.look === "sticky") {
         const paper = item.fill ? hex(item.fill)[1] : item.color ? fill : hex("yellow")[1];
         const ink = item.textColor ? hex(item.textColor)[2] : item.color ? text3 : hex("yellow")[2];
@@ -28976,9 +29030,9 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
           defs.push(`<filter id="pxd-sticky-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#1c1917" flood-opacity="0.22"/></filter>`);
         }
         body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="2" fill="${paper}" filter="url(#pxd-sticky-shadow)"/>`);
-        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + size + 8)}" font-size="${size}" fill="${ink}">${esc(titleOf(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + size + 8)}" font-size="${size}" fill="${ink}">${esc(titleOf2(item))}</text>`);
       } else {
-        body.push(`<text x="${n1(r.x)}" y="${n1(r.y + size)}" font-size="${size}" fill="${theme.text}">${esc(titleOf(item))}</text>`);
+        body.push(`<text x="${n1(r.x)}" y="${n1(r.y + size)}" font-size="${size}" fill="${theme.text}">${esc(titleOf2(item))}</text>`);
       }
     } else {
       const clip4 = `pxd-clip-${index}`;
@@ -28990,7 +29044,7 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
         const iy = r.y + 8;
         body.push(`<image href="${esc(picture)}" x="${n1(ix)}" y="${n1(iy)}" width="${n1(Math.max(1, r.w - 16))}" height="${n1(Math.max(1, r.h - 16))}" preserveAspectRatio="xMidYMid meet"/>`);
       } else {
-        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip4})">${esc(titleOf(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip4})">${esc(titleOf2(item))}</text>`);
       }
     }
   });
@@ -29033,10 +29087,10 @@ function boardToMarkdown(board2, rects) {
       if (!item) continue;
       if (item.type === "section") {
         if (lines.length) lines.push("");
-        lines.push(`${"#".repeat(Math.min(6, item.depth + 1))} ${oneLine(titleOf(item))}`);
+        lines.push(`${"#".repeat(Math.min(6, item.depth + 1))} ${oneLine(titleOf2(item))}`);
         walk2(item.members);
       } else {
-        lines.push(`- ${oneLine(titleOf(item))}`);
+        lines.push(`- ${oneLine(titleOf2(item))}`);
         const kids = [...item.content ?? []].sort((a, b) => (a[":block/order"] ?? 0) - (b[":block/order"] ?? 0));
         content(kids, 1);
       }
@@ -29048,8 +29102,8 @@ function boardToMarkdown(board2, rects) {
     if (lines.length) lines.push("");
     lines.push("## Connections");
     for (const e2 of edges) {
-      const a = oneLine(titleOf(board2.items.get(e2.from)));
-      const b = oneLine(titleOf(board2.items.get(e2.to)));
+      const a = oneLine(titleOf2(board2.items.get(e2.from)));
+      const b = oneLine(titleOf2(board2.items.get(e2.to)));
       lines.push(e2.label ? `${a} -> ${e2.label} -> ${b}` : `${a} -> ${b}`);
     }
   }
@@ -33389,6 +33443,9 @@ function textOf(line) {
 }
 function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
   const furniture = new Set(removed.map((r) => normalizeFurniture(r.text || "")));
+  const running = removed.filter((r) => r && r.reason !== "page-number" && r.text).map((r) => r.text);
+  const pageLines = pages.flatMap((pg) => pg && !pg.ocr && pg.kind !== "scan" ? (pg.free || []).map(textOf) : []);
+  const banner = (text3) => running.some((line) => isBannerOf(text3, line, { exact: false })) || pageLines.some((line) => isBannerOf(text3, line, { exact: false }));
   for (const pg of pages) {
     if (!pg || pg.ocr || pg.kind === "scan") continue;
     const lines = (pg.free || []).map((line) => ({ line, text: textOf(line) })).filter((c) => c.text && !isJunkTitleText(c.text) && !furniture.has(normalizeFurniture(c.text))).sort((a, b) => a.line.base - b.line.base || a.line.x0 - b.line.x0);
@@ -33411,6 +33468,7 @@ function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
       const words = titleWordCount(text3);
       if (words < 3 || words > MAX_WORDS) continue;
       if (!(first.size > 1.1 * bodySize || first.bold && first.size >= bodySize - 0.3)) continue;
+      if (banner(text3)) continue;
       const cand = { text: text3, size: first.size, bold: Boolean(first.bold), y: first.base, page: pg.n };
       if (!best || cand.size > best.size + 0.5 || Math.abs(cand.size - best.size) <= 0.5 && (cand.bold && !best.bold || cand.bold === best.bold && cand.y < best.y)) best = cand;
     }
@@ -33943,7 +34001,7 @@ init_title_cap();
 init_pdf();
 var SCHEMA2 = "pxd-parse/1";
 var ENGINE_VERSION = "plexus-builtin/1";
-var PARSE_REV = 2;
+var PARSE_REV = 3;
 var now2 = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
 function viewportTransform(w, h, rotation = 0) {
   switch ((rotation % 360 + 360) % 360) {
@@ -34079,16 +34137,40 @@ function ocrGraphics(data, w, h) {
   });
   return { rules, boxes, dots, shapes: [], images: [{ x0: 0, y0: 0, x1: w, y1: h }], segments: rules.length, truncated: false };
 }
+function freeLinesOf(pg) {
+  const free = [];
+  for (const line of pg.lines || []) {
+    const ws = line.words.filter((w) => !pg.used?.has?.(w));
+    if (!ws.length) continue;
+    free.push(ws.length === line.words.length ? line : makeLine(ws));
+  }
+  return free;
+}
+var EVIDENCE_LINES = 60;
+var EVIDENCE_CHARS = 160;
+function titleEvidenceLines(pageRecords2, removed = []) {
+  const out = [];
+  for (const r of removed || []) if (r?.text && r.reason !== "page-number") out.push(String(r.text));
+  const first = (pageRecords2 || [])[0];
+  for (const line of first?.free || first?.lines || []) {
+    const text3 = line.words.map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
+    if (text3) out.push(text3);
+  }
+  return [...new Set(out.map((t) => t.slice(0, EVIDENCE_CHARS)))].slice(0, EVIDENCE_LINES);
+}
+function quickPageTitle(pageRecords2) {
+  const recs = (pageRecords2 || []).filter(Boolean);
+  if (!recs.length) return { pageTitle: "", lines: [] };
+  for (const pg of recs) pg.free = freeLinesOf(pg);
+  const furniture = findFurniture(recs.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
+  for (const pg of recs) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
+  const bodySize = bodySizeOf(recs.flatMap((pg) => pg.free)) || 10;
+  const found = findPageTitle(recs.slice(0, 2), { bodySize, removed: furniture.removed });
+  return { pageTitle: found ? capTitle(found) : "", lines: titleEvidenceLines(recs, furniture.removed) };
+}
 function assembleDocument(pageRecords2, { numPages, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {}, from = 1, to = numPages } = {}) {
   const t1 = now2();
-  for (const pg of pageRecords2) {
-    pg.free = [];
-    for (const line of pg.lines) {
-      const ws = line.words.filter((w) => !pg.used.has(w));
-      if (!ws.length) continue;
-      pg.free.push(ws.length === line.words.length ? line : makeLine(ws));
-    }
-  }
+  for (const pg of pageRecords2) pg.free = freeLinesOf(pg);
   const furniture = findFurniture(pageRecords2.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
   for (const pg of pageRecords2) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
   const allFree = pageRecords2.flatMap((pg) => pg.free);
@@ -34346,6 +34428,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
   let title = info && typeof info.Title === "string" ? cleanPdfTitle(info.Title) || null : null;
   const runningTexts = new Set(furniture.removed.filter((r) => r.reason !== "page-number").map((r) => normalizeFurniture(r.text)));
   if (title && (runningTexts.has(normalizeFurniture(title)) || isJunkTitleText(title))) title = null;
+  if (title && pageTitle && isMetaBanner(title, { pageTitle, lines: titleEvidenceLines(pageRecords2, furniture.removed) })) title = null;
   const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1) && !isJunkTitleText(h.text)) || headings.find((h) => h.level === 1 && !isJunkTitleText(h.text));
   if (!title) title = pageTitle || (h1 ? h1.text : null);
   else if (h1 && isCutPrefix(title, h1.text)) title = h1.text;
@@ -35521,13 +35604,17 @@ function wordConf(it) {
 function textLines(page, tableBoxes = []) {
   const items = page?.items || [];
   const cand = [];
+  const squeezed = [];
   items.forEach((it, i) => {
     if (!it || !it.str || !it.str.trim() || !Array.isArray(it.transform)) return;
     if (it.transform[1] || it.transform[2]) return;
     const size = itemSize(it);
     if (!(size > 0)) return;
     if (it.y0 != null && it.y1 != null && it.y1 - it.y0 > 1.6 * size) return;
-    if (it.y0 != null && it.y1 != null && it.str.length >= 3 && it.y1 - it.y0 > 2.5 * it.width) return;
+    if (it.y0 != null && it.y1 != null && it.str.length >= 3 && it.y1 - it.y0 > 2.5 * it.width) {
+      if (it.y1 - it.y0 <= 1.25 * size) squeezed.push(i);
+      return;
+    }
     if (inside4(it, tableBoxes)) return;
     cand.push(i);
   });
@@ -35556,6 +35643,7 @@ function textLines(page, tableBoxes = []) {
       }
     }
   }
+  absorbGapFragments(lines, items, squeezed);
   const out = lines.map((l) => {
     const its = l.idx.map((i) => items[i]);
     const bases = its.map((t) => t.transform[5]).sort((a, b) => a - b);
@@ -35583,6 +35671,42 @@ function textLines(page, tableBoxes = []) {
     l.bbox = l.bbox.map(r22);
   }
   return out.map(({ idx, bbox, size }) => ({ idx, bbox, size }));
+}
+function absorbGapFragments(lines, items, squeezed = []) {
+  const left = (i) => items[i].transform[4];
+  const right = (i) => items[i].transform[4] + items[i].width;
+  const mid = (i) => left(i) + items[i].width / 2;
+  const band = (i) => [items[i].y0 ?? items[i].transform[5] - 0.8 * itemSize(items[i]), items[i].y1 ?? items[i].transform[5] + 0.2 * itemSize(items[i])];
+  const span = (idx) => idx.map(band).reduce((a, b) => [Math.min(a[0], b[0]), Math.max(a[1], b[1])]);
+  const hostFor = (idx, exclude) => {
+    const base = items[idx[0]].transform[5];
+    const size = itemSize(items[idx[0]]);
+    const x0 = Math.min(...idx.map(mid));
+    const x1 = Math.max(...idx.map(mid));
+    const [fy0, fy1] = span(idx);
+    return lines.find((host) => {
+      if (host === exclude || host.idx.length < 3 || host.idx.length <= idx.length) return false;
+      if (Math.abs(base - items[host.idx[0]].transform[5]) > 0.8 * host.size || Math.abs(size - host.size) > 0.3 * host.size) return false;
+      const sorted = [...host.idx].sort((a, b) => left(a) - left(b));
+      const inGap = sorted.some((i, k) => k > 0 && right(sorted[k - 1]) <= x0 + 0.5 && left(i) >= x1 - 0.5);
+      if (!inGap) return false;
+      const [hy0, hy1] = span(host.idx);
+      return Math.min(hy1, fy1) - Math.max(hy0, fy0) > 0;
+    }) || null;
+  };
+  const gone = /* @__PURE__ */ new Set();
+  for (const frag of lines) {
+    if (frag.idx.length > 3) continue;
+    const host = hostFor(frag.idx, frag);
+    if (!host || gone.has(host)) continue;
+    host.idx = [...host.idx, ...frag.idx].sort((a, b) => left(a) - left(b));
+    gone.add(frag);
+  }
+  for (let k = lines.length - 1; k >= 0; k -= 1) if (gone.has(lines[k])) lines.splice(k, 1);
+  for (const i of squeezed) {
+    const host = hostFor([i], null);
+    if (host) host.idx = [...host.idx, i].sort((a, b) => left(a) - left(b));
+  }
 }
 function pieces(page, line) {
   const items = page.items;
@@ -38963,7 +39087,7 @@ function createParseView({
         }
       }
       try {
-        onTitle?.(parsedDocTitle(parsed));
+        onTitle?.(parsedDocTitle(parsed), parsedTitleLines(parsed));
       } catch {
       }
     }
@@ -41530,7 +41654,7 @@ function createReadPane({
   onParsedTitle,
   cards,
   placed,
-  titleOf: titleOf2,
+  titleOf: titleOf3,
   coverSrc,
   createDrawer,
   session = null,
@@ -41910,9 +42034,9 @@ function createReadPane({
     if (typeof src === "string" && src) paintHold(src);
   };
   const cardTitle = (card2) => {
-    if (typeof titleOf2 === "function") {
+    if (typeof titleOf3 === "function") {
       try {
-        const title = titleOf2(card2);
+        const title = titleOf3(card2);
         if (typeof title === "string" && title.trim()) return title.trim();
       } catch {
       }
@@ -43568,14 +43692,14 @@ function createReadPane({
     const options = switcher.querySelectorAll?.("option") || [];
     for (const opt of options) if (opt.value === current3.cardUid) opt.textContent = text3;
   };
-  const noteParsedTitle = (value) => {
+  const noteParsedTitle = (value, lines) => {
     const text3 = cleanPdfTitle(value);
     if (text3 === parsedTitle) return;
     parsedTitle = text3;
     if (openFlag) paintTitle();
     if (text3) {
       try {
-        onParsedTitle?.(pdfUrl(), text3);
+        onParsedTitle?.(pdfUrl(), text3, Array.isArray(lines) ? lines : void 0);
       } catch {
       }
     }
@@ -44057,7 +44181,7 @@ function createReadPane({
       if (hit?.sha256 && openFlag && !realTitle(current3.title) && !parsedTitle) {
         const found = await restorableByUrl(ensureStore2(), url, { plainOptions: BUILTIN_OPTIONS });
         const title = found ? parsedDocTitle(found) : "";
-        if (title && !parsedTitle && openFlag && url === pdfUrl()) noteParsedTitle(title);
+        if (title && !parsedTitle && openFlag && url === pdfUrl()) noteParsedTitle(title, parsedTitleLines(found));
       }
     } catch {
     }
@@ -44358,6 +44482,20 @@ function blobFrom(canvas, timers) {
     }
   });
 }
+async function readPageTitle(pdf, { fonts = false, first = null } = {}) {
+  try {
+    const records = [];
+    const count = Number.isInteger(pdf?.numPages) ? Math.min(2, pdf.numPages) : 1;
+    for (let n2 = 1; n2 <= count; n2 += 1) {
+      const page = n2 === 1 && first ? first : await pdf.getPage(n2);
+      records.push(parsePageGeometry(await loadPageData(page, { includeOps: fonts && n2 === 1 }), n2));
+    }
+    const found = quickPageTitle(records);
+    return { pageTitle: found.pageTitle || "", titleLines: found.lines || [] };
+  } catch {
+    return { pageTitle: "", titleLines: [] };
+  }
+}
 function createFirstPageRenderer({ doc, lib, timers, now: now3 } = {}) {
   const time = timersOf(timers);
   const clock = typeof now3 === "function" ? now3 : () => Date.now();
@@ -44402,6 +44540,18 @@ function createFirstPageRenderer({ doc, lib, timers, now: now3 } = {}) {
         count.failed += 1;
         return null;
       }
+      if (spec?.titleOnly) {
+        const read3 = await Promise.race([readPageTitle(pdf, { fonts: true }), timeout]);
+        if (timedOut || !read3) {
+          destroy();
+          count.failed += 1;
+          return null;
+        }
+        const pages = Number.isInteger(pdf.numPages) && pdf.numPages >= 1 ? pdf.numPages : null;
+        destroy();
+        count.ok += 1;
+        return { pageCount: pages, pageTitle: read3.pageTitle, titleLines: read3.titleLines };
+      }
       const page = await Promise.race([pdf.getPage(1), timeout]);
       if (timedOut || !page || typeof page.getViewport !== "function") {
         destroy();
@@ -44439,6 +44589,7 @@ function createFirstPageRenderer({ doc, lib, timers, now: now3 } = {}) {
         return null;
       }
       const pageCount = Number.isInteger(pdf.numPages) && pdf.numPages >= 1 ? pdf.numPages : null;
+      const read2 = spec?.title === false ? null : await Promise.race([readPageTitle(pdf, { first: page }), timeout]);
       destroy();
       const blob = await blobFrom(canvas, time);
       if (!blob) {
@@ -44446,7 +44597,8 @@ function createFirstPageRenderer({ doc, lib, timers, now: now3 } = {}) {
         return null;
       }
       count.ok += 1;
-      return { blob, w: box2.w, h: box2.h, pageCount };
+      const titled = read2 && !timedOut ? { pageTitle: read2.pageTitle, titleLines: read2.titleLines } : {};
+      return { blob, w: box2.w, h: box2.h, pageCount, ...titled };
     } catch {
       destroy();
       count.failed += 1;
@@ -44609,6 +44761,16 @@ function countPages(root) {
     return null;
   }
 }
+function titleFields(next, prev) {
+  const got = next && typeof next.pageTitle === "string";
+  return {
+    pageTitle: got ? next.pageTitle : typeof prev?.pageTitle === "string" ? prev.pageTitle : null,
+    titleLines: got ? Array.isArray(next.titleLines) ? next.titleLines : [] : Array.isArray(prev?.titleLines) ? prev.titleLines : []
+  };
+}
+function needsPageTitle(record) {
+  return Boolean(record) && typeof record === "object" && typeof record.pageTitle !== "string";
+}
 function hasFirst(record) {
   const value = record?.first;
   if (typeof value === "string") return value.length > 0;
@@ -44753,6 +44915,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst 
         pageCount: positiveInt(spec.pageCount) ?? positiveInt(prev.pageCount) ?? countPages(liveEl),
         w: role === "first" ? shot2.box.w : positiveInt(prev.w) ?? shot2.box.w,
         h: role === "first" ? shot2.box.h : positiveInt(prev.h) ?? shot2.box.h,
+        ...titleFields(null, prev),
         ts: nowFn()
       };
       if (!store || typeof store.put !== "function") return record;
@@ -44778,10 +44941,21 @@ function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst 
         pageCount: positiveInt(shot2.pageCount) ?? positiveInt(prev.pageCount) ?? null,
         w: positiveInt(shot2.w) ?? null,
         h: positiveInt(shot2.h) ?? null,
+        ...titleFields(shot2, prev),
         ts: nowFn()
       };
       if (!store || typeof store.put !== "function") return record;
       const saved2 = await store.put(record);
+      return saved2 || null;
+    } catch {
+      return null;
+    }
+  }
+  async function storeTitle(record, read2) {
+    try {
+      const next = { ...record, ...titleFields(read2, record), pageCount: positiveInt(record.pageCount) ?? positiveInt(read2?.pageCount) ?? null, ts: nowFn() };
+      if (!store || typeof store.put !== "function") return next;
+      const saved2 = await store.put(next);
       return saved2 || null;
     } catch {
       return null;
@@ -44844,8 +45018,20 @@ function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst 
         }
         if (hasFirst(record) && coverValid(record, job.card.hash)) {
           outcomes.set(job.uid, "ready");
-          settle(job, record);
-          return null;
+          if (!needsPageTitle(record) || typeof renderFirst !== "function" || !firstPageAllowed(url)) {
+            settle(job, record);
+            return null;
+          }
+          return Promise.resolve().then(() => renderFirst({ url, titleOnly: true, hash: job.card.hash })).catch(() => null).then(async (read3) => {
+            if (job.gen !== generation || job.done) {
+              settle(job, null);
+              return null;
+            }
+            const stored = await storeTitle(record, read3 && typeof read3.pageTitle === "string" ? read3 : { pageTitle: "", titleLines: [] });
+            finishSlot(job);
+            settle(job, stored || record);
+            return null;
+          });
         }
         const viaPdfjs = typeof renderFirst === "function" && firstPageAllowed(url) ? Promise.resolve().then(() => renderFirst({ url, maxW: COVER_MAX_W, hash: job.card.hash })).catch(() => null) : Promise.resolve(null);
         return viaPdfjs.then(async (shot2) => {
@@ -51591,6 +51777,49 @@ async function readBody(res, onBytes, signal) {
   }
   return out.buffer;
 }
+function imageScaling(sw, sh, dw, dh) {
+  const kx = Math.abs(Number(dw) / Number(sw));
+  const ky = Math.abs(Number(dh) / Number(sh));
+  if (!(kx > 0) || !(ky > 0) || !Number.isFinite(kx) || !Number.isFinite(ky)) return null;
+  if (kx <= 1.01 && ky <= 1.01) return true;
+  const whole2 = (k) => k <= 1.01 || Math.abs(k - Math.round(k)) <= 0.02;
+  return !(whole2(kx) && whole2(ky));
+}
+function steadyImageScaling(ctx) {
+  if (!ctx || typeof ctx.drawImage !== "function") return ctx;
+  const draw = ctx.drawImage;
+  try {
+    Object.defineProperty(ctx, "drawImage", {
+      configurable: true,
+      writable: true,
+      value(...args) {
+        if (args.length !== 9) return draw.apply(this, args);
+        let m = null;
+        try {
+          m = typeof this.getTransform === "function" ? this.getTransform() : null;
+        } catch {
+          m = null;
+        }
+        const sx = m ? Math.hypot(m.a, m.b) || 1 : 1;
+        const sy = m ? Math.hypot(m.c, m.d) || 1 : 1;
+        const smooth = imageScaling(args[3], args[4], args[7] * sx, args[8] * sy);
+        if (smooth == null) return draw.apply(this, args);
+        const was = this.imageSmoothingEnabled;
+        const quality = this.imageSmoothingQuality;
+        this.imageSmoothingEnabled = smooth;
+        if (smooth) this.imageSmoothingQuality = "low";
+        try {
+          return draw.apply(this, args);
+        } finally {
+          this.imageSmoothingEnabled = was;
+          if (quality !== void 0) this.imageSmoothingQuality = quality;
+        }
+      }
+    });
+  } catch {
+  }
+  return ctx;
+}
 async function renderPdfPage(pdfDoc, n2, dpi = DPI) {
   const page = await pdfDoc.getPage(n2);
   const viewport = page.getViewport({ scale: dpi / 72 });
@@ -51599,7 +51828,7 @@ async function renderPdfPage(pdfDoc, n2, dpi = DPI) {
   const canvas = typeof OffscreenCanvas === "function" ? new OffscreenCanvas(width, height) : globalThis.document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const ctx = steadyImageScaling(canvas.getContext("2d", { willReadFrequently: true }));
   await page.render({ canvasContext: ctx, viewport }).promise;
   const pixels = ctx.getImageData(0, 0, width, height).data;
   const rgb = new Uint8Array(width * height * 3);
@@ -55622,6 +55851,7 @@ function buildBoardView(onFail, {
   let itemsR = null;
   let notePdfMeta = () => "";
   const parsedTitles = /* @__PURE__ */ new Map();
+  const parsedEvidence = /* @__PURE__ */ new Map();
   let pdfDisplayTitle = (card2) => {
     const title = typeof card2?.title === "string" ? card2.title.trim() : "";
     return title && title !== "PDF" && !title.startsWith("{{") ? title : "PDF";
@@ -55877,8 +56107,9 @@ function buildBoardView(onFail, {
         }
       }
     },
-    onParsedTitle: (url, title) => {
+    onParsedTitle: (url, title, lines) => {
       if (disposed || typeof url !== "string" || !url || !title) return;
+      if (Array.isArray(lines)) parsedEvidence.set(url, { pageTitle: title, lines });
       if (parsedTitles.get(url) === title) return;
       parsedTitles.set(url, title);
       try {
@@ -55966,6 +56197,7 @@ function buildBoardView(onFail, {
       const title = found ? parsedDocTitle(found) : "";
       if (disposed || !title || parsedTitles.get(key)) return;
       parsedTitles.set(key, title);
+      parsedEvidence.set(key, { pageTitle: title, lines: parsedTitleLines(found) });
       try {
         itemsR?.repaintStyles?.();
       } catch {
@@ -55979,22 +56211,32 @@ function buildBoardView(onFail, {
   };
   const metaQueued = /* @__PURE__ */ new Set();
   let metaTail = Promise.resolve();
+  const warmTitleOf = (key) => {
+    const face = coverFaces.get(key);
+    const title = typeof face?.pageTitle === "string" ? cleanPdfTitle(face.pageTitle) : "";
+    return title ? { pageTitle: title, lines: face.titleLines || [] } : null;
+  };
   notePdfMeta = (url) => {
     const key = typeof url === "string" ? url.trim() : "";
     if (!key) return "";
-    const parsedKnown = parsedTitles.get(key) || "";
-    if (!parsedKnown) noteStoredTitle(key);
+    const parsedOnly = parsedTitles.get(key) || "";
+    if (!parsedOnly) noteStoredTitle(key);
+    const warm = parsedOnly ? null : warmTitleOf(key);
+    const parsedKnown = parsedOnly || warm?.pageTitle || "";
+    const evidence = parsedOnly ? parsedEvidence.get(key) : warm;
     try {
       probePdfjs();
     } catch {
       return parsedKnown;
     }
     if (!pdfMeta) return parsedKnown;
-    const known = cleanPdfTitle(pdfMeta.title(key)) || parsedKnown;
+    const meta = cleanPdfTitle(pdfMeta.title(key));
+    const banner = meta && parsedKnown && isMetaBanner(meta, { pageTitle: parsedKnown, lines: evidence?.lines || [] });
+    const known = (banner ? "" : meta) || parsedKnown;
     if (!known && !metaQueued.has(key)) {
       metaQueued.add(key);
-      const meta = pdfMeta;
-      const job = metaTail.then(() => meta.want(key)).catch(() => "");
+      const meta2 = pdfMeta;
+      const job = metaTail.then(() => meta2.want(key)).catch(() => "");
       metaTail = job.then(() => {
       }, () => {
       });
@@ -56137,13 +56379,18 @@ function buildBoardView(onFail, {
     }
     return "";
   };
+  const titleFace = (record) => ({
+    pageTitle: typeof record?.pageTitle === "string" ? record.pageTitle : null,
+    titleLines: Array.isArray(record?.titleLines) ? record.titleLines : []
+  });
   const emptyFace = (state, record) => ({
     state: state === "ready" ? "none" : state,
     src: "",
     w: record?.w ?? null,
     h: record?.h ?? null,
     lastPage: record?.lastPage ?? null,
-    pageCount: record?.pageCount ?? null
+    pageCount: record?.pageCount ?? null,
+    ...titleFace(record)
   });
   const srcOfCover = async (image) => {
     if (typeof image === "string") return image.startsWith("data:") ? image : "";
@@ -56169,9 +56416,15 @@ function buildBoardView(onFail, {
       } else {
         const src = await srcOfCover(image);
         if (disposed || coverGen.get(url) !== gen) return;
-        coverFaces.set(url, src ? { state: "ready", src, w: record?.w ?? null, h: record?.h ?? null, lastPage: record?.lastPage ?? null, pageCount: record?.pageCount ?? null } : emptyFace("error", record));
+        coverFaces.set(url, src ? { state: "ready", src, w: record?.w ?? null, h: record?.h ?? null, lastPage: record?.lastPage ?? null, pageCount: record?.pageCount ?? null, ...titleFace(record) } : emptyFace("error", record));
       }
       if (!disposed) itemsR.repaintStyles();
+      if (!disposed && typeof record?.pageTitle === "string" && record.pageTitle) {
+        try {
+          readPane?.refreshCards?.();
+        } catch {
+        }
+      }
       scheduleSharpCovers();
     }).catch(() => {
       if (disposed || coverGen.get(url) !== gen) return;
@@ -56232,7 +56485,7 @@ function buildBoardView(onFail, {
       break;
     }
     if (!picked) return;
-    Promise.resolve(firstPage.render({ url: picked.url, maxW: picked.maxW })).then((result) => {
+    Promise.resolve(firstPage.render({ url: picked.url, maxW: picked.maxW, title: false })).then((result) => {
       if (disposed) {
         if (result?.blob) return;
         return;
@@ -56390,6 +56643,7 @@ function buildBoardView(onFail, {
         blockUid: blockUid2,
         kind: "pdf",
         hasCover: coverFaces.get(url)?.state === "ready",
+        needsTitle: coverFaces.get(url)?.state === "ready" && typeof coverFaces.get(url)?.pageTitle !== "string" && !parsedTitles.get(url) && firstPageAllowed(url),
         url,
         ...hash ? { hash } : {}
       });

@@ -3,6 +3,8 @@
 // and the hidden-reader warm (pdf-warm.js) takes over. No graph write, no console, no document listener.
 
 import { COVER_MAX_W, isBlankCanvas, scaleBox, sharpBox } from "../model/pdf-cover.js";
+import { parsePageGeometry, quickPageTitle } from "../model/parse/index.js";
+import { loadPageData } from "./parse-engine.js";
 
 export const FIRST_PAGE_TIMEOUT_MS = 8000;
 export const FIRST_PAGE_JPEG = 0.72;
@@ -62,9 +64,27 @@ function blobFrom(canvas, timers) {
   });
 }
 
-// createFirstPageRenderer({ doc, lib, timers }) → { render({ url, maxW }) }.
-// render resolves { blob, w, h, pageCount } or null. One document at a time; a second call while one is
-// in flight resolves null. The document is destroyed on every path, including the timeout.
+// The page title from the text of pages 1-2 of an open document (quickPageTitle). Fonts are known for
+// page 1 once it is drawn (`first`: that page); `fonts` asks pdf.js for them when it was not. Never throws.
+export async function readPageTitle(pdf, { fonts = false, first = null } = {}) {
+  try {
+    const records = [];
+    const count = Number.isInteger(pdf?.numPages) ? Math.min(2, pdf.numPages) : 1;
+    for (let n = 1; n <= count; n += 1) {
+      const page = n === 1 && first ? first : await pdf.getPage(n);
+      records.push(parsePageGeometry(await loadPageData(page, { includeOps: fonts && n === 1 }), n));
+    }
+    const found = quickPageTitle(records);
+    return { pageTitle: found.pageTitle || "", titleLines: found.lines || [] };
+  } catch {
+    return { pageTitle: "", titleLines: [] };
+  }
+}
+
+// createFirstPageRenderer({ doc, lib, timers }) → { render({ url, maxW, titleOnly }) }.
+// render resolves { blob, w, h, pageCount, pageTitle, titleLines } or null; with `titleOnly` nothing is
+// drawn and it resolves { pageCount, pageTitle, titleLines }. One document at a time; a second call while
+// one is in flight resolves null. The document is destroyed on every path, including the timeout.
 export function createFirstPageRenderer({ doc, lib, timers, now } = {}) {
   const time = timersOf(timers);
   const clock = typeof now === "function" ? now : () => Date.now();
@@ -97,6 +117,14 @@ export function createFirstPageRenderer({ doc, lib, timers, now } = {}) {
       });
       pdf = await Promise.race([loaded, timeout]);
       if (timedOut || !pdf || typeof pdf.getPage !== "function") { destroy(); count.failed += 1; return null; }
+      if (spec?.titleOnly) {
+        const read = await Promise.race([readPageTitle(pdf, { fonts: true }), timeout]);
+        if (timedOut || !read) { destroy(); count.failed += 1; return null; }
+        const pages = Number.isInteger(pdf.numPages) && pdf.numPages >= 1 ? pdf.numPages : null;
+        destroy();
+        count.ok += 1;
+        return { pageCount: pages, pageTitle: read.pageTitle, titleLines: read.titleLines };
+      }
       const page = await Promise.race([pdf.getPage(1), timeout]);
       if (timedOut || !page || typeof page.getViewport !== "function") { destroy(); count.failed += 1; return null; }
       const base = page.getViewport({ scale: 1 });
@@ -116,11 +144,13 @@ export function createFirstPageRenderer({ doc, lib, timers, now } = {}) {
       await Promise.race([job && typeof job.promise?.then === "function" ? job.promise : Promise.resolve(job), timeout]);
       if (timedOut) { try { job?.cancel?.(); } catch { /* fine */ } destroy(); count.failed += 1; return null; }
       const pageCount = Number.isInteger(pdf.numPages) && pdf.numPages >= 1 ? pdf.numPages : null;
+      const read = spec?.title === false ? null : await Promise.race([readPageTitle(pdf, { first: page }), timeout]);
       destroy();
       const blob = await blobFrom(canvas, time);
       if (!blob) { count.failed += 1; return null; }
       count.ok += 1;
-      return { blob, w: box.w, h: box.h, pageCount };
+      const titled = read && !timedOut ? { pageTitle: read.pageTitle, titleLines: read.titleLines } : {};
+      return { blob, w: box.w, h: box.h, pageCount, ...titled };
     } catch {
       destroy();
       count.failed += 1;

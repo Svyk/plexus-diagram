@@ -86,6 +86,20 @@ function countPages(root) {
   }
 }
 
+// The page title read during a warm ("" when the page has none); null until one was read.
+function titleFields(next, prev) {
+  const got = next && typeof next.pageTitle === "string";
+  return {
+    pageTitle: got ? next.pageTitle : (typeof prev?.pageTitle === "string" ? prev.pageTitle : null),
+    titleLines: got ? (Array.isArray(next.titleLines) ? next.titleLines : []) : (Array.isArray(prev?.titleLines) ? prev.titleLines : []),
+  };
+}
+
+// A cached cover whose page title was never read: one title-only pass fills it.
+export function needsPageTitle(record) {
+  return Boolean(record) && typeof record === "object" && typeof record.pageTitle !== "string";
+}
+
 function hasFirst(record) {
   const value = record?.first;
   if (typeof value === "string") return value.length > 0;
@@ -233,6 +247,7 @@ export function createPdfWarm({ doc, root, host, store, timers, now, renderFirst
         pageCount: positiveInt(spec.pageCount) ?? positiveInt(prev.pageCount) ?? countPages(liveEl),
         w: role === "first" ? shot.box.w : (positiveInt(prev.w) ?? shot.box.w),
         h: role === "first" ? shot.box.h : (positiveInt(prev.h) ?? shot.box.h),
+        ...titleFields(null, prev),
         ts: nowFn(),
       };
       if (!store || typeof store.put !== "function") return record;
@@ -260,10 +275,23 @@ export function createPdfWarm({ doc, root, host, store, timers, now, renderFirst
         pageCount: positiveInt(shot.pageCount) ?? positiveInt(prev.pageCount) ?? null,
         w: positiveInt(shot.w) ?? null,
         h: positiveInt(shot.h) ?? null,
+        ...titleFields(shot, prev),
         ts: nowFn(),
       };
       if (!store || typeof store.put !== "function") return record;
       const saved = await store.put(record);
+      return saved || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // The page title alone, for a cover cached before titles were read. The image is kept as it is.
+  async function storeTitle(record, read) {
+    try {
+      const next = { ...record, ...titleFields(read, record), pageCount: positiveInt(record.pageCount) ?? positiveInt(read?.pageCount) ?? null, ts: nowFn() };
+      if (!store || typeof store.put !== "function") return next;
+      const saved = await store.put(next);
       return saved || null;
     } catch {
       return null;
@@ -323,8 +351,21 @@ export function createPdfWarm({ doc, root, host, store, timers, now, renderFirst
         // A hash mismatch is not a hit: the bytes changed.
         if (hasFirst(record) && coverValid(record, job.card.hash)) {
           outcomes.set(job.uid, "ready");
-          settle(job, record);
-          return null;
+          if (!needsPageTitle(record) || typeof renderFirst !== "function" || !firstPageAllowed(url)) {
+            settle(job, record);
+            return null;
+          }
+          return Promise.resolve()
+            .then(() => renderFirst({ url, titleOnly: true, hash: job.card.hash }))
+            .catch(() => null)
+            .then(async (read) => {
+              if (job.gen !== generation || job.done) { settle(job, null); return null; }
+              // A failed read stores "" so the same PDF is not fetched again on every board open.
+              const stored = await storeTitle(record, read && typeof read.pageTitle === "string" ? read : { pageTitle: "", titleLines: [] });
+              finishSlot(job);
+              settle(job, stored || record);
+              return null;
+            });
         }
         const viaPdfjs = typeof renderFirst === "function" && firstPageAllowed(url)
           ? Promise.resolve().then(() => renderFirst({ url, maxW: COVER_MAX_W, hash: job.card.hash })).catch(() => null)

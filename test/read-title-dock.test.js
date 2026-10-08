@@ -85,8 +85,8 @@ test("the pane and the board wire the parsed title to the header and the card", 
   assert.match(pane, /shownTitle = \(\) => \{/);
   assert.match(pane, /onTitle: noteParsedTitle/);
   const board = read("../src/view/board-view.js");
-  assert.match(board, /onParsedTitle: \(url, title\)/);
-  assert.match(board, /cleanPdfTitle\(pdfMeta\.title\(key\)\) \|\| parsedKnown/);
+  assert.match(board, /onParsedTitle: \(url, title, lines\)/);
+  assert.match(board, /const known = \(banner \? "" : meta\) \|\| parsedKnown;/);
 });
 
 test("the dock shrinks, loses labels and scrolls instead of running under the pane", () => {

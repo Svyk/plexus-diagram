@@ -2,7 +2,7 @@
 // the yield between pages. `getPage(n)` returns { items, ops, w, h, rotation, transform, fonts }.
 
 import { buildLines, dominantRotation, lineBox, makeLine, mul, round } from "./lines.js";
-import { extractGraphics } from "./rules.js";
+import { extractGraphics, luminanceOf } from "./rules.js";
 import { findLatticeTables, looksLikeChart } from "./lattice.js";
 import { baselineRows, detectStreamRuns, tableFromBand } from "./stream.js";
 import { findFigures } from "./figures.js";
@@ -124,7 +124,17 @@ export function ocrGraphics(data, w, h) {
     if (horizontal) rules.push({ axis: "h", x0: Math.min(r.x0, r.x1), x1: Math.max(r.x0, r.x1), y0: (r.y0 + r.y1) / 2, y1: (r.y0 + r.y1) / 2, thick });
     else rules.push({ axis: "v", x0: (r.x0 + r.x1) / 2, x1: (r.x0 + r.x1) / 2, y0: Math.min(r.y0, r.y1), y1: Math.max(r.y0, r.y1), thick });
   }
-  return { rules, boxes: [], dots, shapes: [], images: [{ x0: 0, y0: 0, x1: w, y1: h }], segments: rules.length, truncated: false };
+  // Filled regions found in the raster (cell and row fills) stand in for filled path boxes.
+  // A raster has no invisible per-cell boxes, only what is seen: a fill's top and bottom
+  // edges are drawn row edges, so they count as rules, and full-width zebra rows bound table
+  // rows without a tiling (a tiling of cell fills still gives the columns via boxGridRules).
+  const boxes = [];
+  for (const f of data.fills || []) {
+    boxes.push({ x0: f.x0, y0: f.y0, x1: f.x1, y1: f.y1, fill: f.gray, light: (luminanceOf(f.gray) ?? 0) >= 0.7 });
+    rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y0, y1: f.y0, thick: 0.5, fromBox: true });
+    rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y1, y1: f.y1, thick: 0.5, fromBox: true });
+  }
+  return { rules, boxes, dots, shapes: [], images: [{ x0: 0, y0: 0, x1: w, y1: h }], segments: rules.length, truncated: false };
 }
 
 export async function parsePdf({ getPage, numPages, pages, signal, onPage, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {} }) {

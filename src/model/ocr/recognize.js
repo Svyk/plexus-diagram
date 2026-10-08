@@ -4,7 +4,7 @@
 
 import { boxesFromProb, dominantAngle } from "./db-boxes.js";
 import { cropRgb, detResize, grayFromRgb, nchwNormalize, padWhite, recResize, resizeRgb, rotateRgb } from "./image.js";
-import { inkGlyph, otsuThreshold, rulesFromCanvas } from "./rules-from-canvas.js";
+import { fillsFromCanvas, inkGlyph, otsuThreshold, rulesFromCanvas } from "./rules-from-canvas.js";
 import { bucketConf, ctcDecode, ctcText, round2, snapOcrItems, wordItem, wordsFromCtc } from "./words-from-ctc.js";
 import { dashRuns, inkRows, joinNumberWords, localMask, segmentLine, sizeFromInk, snapWords } from "./word-split.js";
 import { acceptOrphanRead, blobBaseline, coverMask, dashFromShape, orphanBlobs } from "./orphans.js";
@@ -35,7 +35,7 @@ function throwIfAborted(signal) {
   if (signal?.aborted) throw aborted();
 }
 
-function pageRecord(n, items, rules, w, h, dpi, deskew) {
+function pageRecord(n, items, rules, w, h, dpi, deskew, fills = []) {
   return {
     n,
     w: round2(w),
@@ -48,6 +48,7 @@ function pageRecord(n, items, rules, w, h, dpi, deskew) {
     fonts: { ocr: { name: "ocr" } },
     items,
     rules,
+    fills,
     ops: { fnArray: [], argsArray: [] },
     engine: "ppocr-web",
   };
@@ -368,7 +369,8 @@ export async function preparePageImage({
   const ptW = pointW || w / (dpi / 72);
   const ptH = pointH || h / (dpi / 72);
   const gray = grayFromRgb(image, w, h);
-  const rules = rulesFromCanvas(gray, w, h, scaleX);
+  const fills = fillsFromCanvas(gray, w, h, scaleX);
+  const rules = rulesFromCanvas(gray, w, h, scaleX, { fills });
   const ordered = [...boxes].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
   let raw;
   if (split) {
@@ -387,7 +389,7 @@ export async function preparePageImage({
   const items = snapOcrItems(raw);
   const frame = { rgb: image, width: w, height: h, dpi };
   await polishDirty(items, frame, page, runRec, dict, signal);
-  return { record: pageRecord(page, items, rules, ptW, ptH, dpi, deskew), rgb: image, width: w, height: h, dpi };
+  return { record: pageRecord(page, items, rules, ptW, ptH, dpi, deskew, fills), rgb: image, width: w, height: h, dpi };
 }
 
 // A first read of a ruling-line fragment often comes back as "C0" or "ODA". Read that word

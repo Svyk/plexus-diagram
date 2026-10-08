@@ -320,9 +320,13 @@ export function localMask(gray, mask, pageW, pageH, box, minContrast = 60) {
     if (between > best) { best = between; thresh = t; meanDark = mB; meanLight = mF; }
   }
   if (meanLight - meanDark < minContrast) return false;
+  // Ink is the minority class: white text on a dark fill has the light pixels as ink.
+  let dark = 0;
+  for (let t = 0; t <= thresh; t++) dark += hist[t];
+  const inverted = dark > 0.6 * total;
   for (let y = y0; y < y1; y++) {
     const row = y * pageW;
-    for (let x = x0; x < x1; x++) mask[row + x] = gray[row + x] <= thresh ? 1 : 0;
+    for (let x = x0; x < x1; x++) mask[row + x] = (gray[row + x] <= thresh) !== inverted ? 1 : 0;
   }
   return true;
 }

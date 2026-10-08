@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { boxesFromProb, dominantAngle } from "../src/model/ocr/db-boxes.js";
 import { rotateRgb } from "../src/model/ocr/image.js";
 import { MODEL_FILES, SCHEMA } from "../src/model/ocr/manifest.js";
-import { inkGlyph, rulesFromCanvas } from "../src/model/ocr/rules-from-canvas.js";
+import { fillsFromCanvas, inkGlyph, rulesFromCanvas } from "../src/model/ocr/rules-from-canvas.js";
 import { ctcText, snapOcrItems, wordsFromCtc } from "../src/model/ocr/words-from-ctc.js";
 import { createOcrWeb } from "../src/host/ocr-web.js";
 
@@ -98,6 +98,51 @@ test("rulesFromCanvas finds one horizontal rule", () => {
   assert.ok(Math.abs(rules[0].x0 - 5) <= 2);
   assert.ok(Math.abs(rules[0].x1 - 55) <= 2);
   assert.equal(rules[0].y0, rules[0].y1);
+});
+
+function fillPage(width, height) {
+  const gray = new Uint8Array(width * height).fill(255);
+  const rect = (x0, y0, x1, y1, v) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) gray[y * width + x] = v; };
+  return { gray, rect };
+}
+
+test("fillsFromCanvas finds a dark header and a light zebra row with text on them", () => {
+  const width = 400;
+  const height = 300;
+  const { gray, rect } = fillPage(width, height);
+  rect(40, 40, 360, 80, 80); // header fill
+  rect(40, 80, 360, 120, 215); // touching light row, another shade
+  rect(60, 52, 70, 68, 250); // white letter on the header
+  rect(60, 92, 70, 108, 20); // dark letter on the light row
+  rect(39, 40, 40, 200, 80); // 1 px frame in the header colour joins both fills
+  rect(360, 40, 361, 200, 80);
+  const fills = fillsFromCanvas(gray, width, height, 4);
+  assert.equal(fills.length, 2, JSON.stringify(fills));
+  const [head, row] = fills;
+  assert.ok(Math.abs(head.y0 - 10) <= 1 && Math.abs(head.y1 - 20) <= 1, JSON.stringify(head));
+  assert.ok(Math.abs(head.x0 - 10) <= 1 && Math.abs(head.x1 - 90) <= 1, JSON.stringify(head));
+  assert.ok(head.gray < 0.4 && row.gray > 0.8);
+  assert.ok(Math.abs(row.y0 - 20) <= 1 && Math.abs(row.y1 - 30) <= 1, JSON.stringify(row));
+  const rules = rulesFromCanvas(gray, width, height, 4, { fills });
+  assert.ok(rules.every((r) => !(r.y0 === r.y1 && r.y0 > head.y0 + 1 && r.y0 < head.y1 - 1)), "no rules inside the header fill");
+});
+
+test("fillsFromCanvas skips text, a rounded bar and a blank page", () => {
+  const width = 400;
+  const height = 300;
+  const { gray, rect } = fillPage(width, height);
+  for (let x = 40; x < 300; x += 12) rect(x, 40, x + 6, 70, 0); // a row of bold glyphs
+  rect(40, 200, 360, 232, 40); // a bar with rounded ends
+  for (const [cx, cy] of [[40, 200], [359, 200], [40, 231], [359, 231]]) {
+    for (let dy = 0; dy < 6; dy++) for (let dx = 0; dx < 6; dx++) {
+      if (dx + dy >= 6) continue;
+      const x = cx === 40 ? cx + dx : cx - dx;
+      const y = cy === 200 ? cy + dy : cy - dy;
+      gray[y * width + x] = 255;
+    }
+  }
+  assert.deepEqual(fillsFromCanvas(gray, width, height, 4), []);
+  assert.deepEqual(fillsFromCanvas(new Uint8Array(width * height).fill(255), width, height, 4), []);
 });
 
 test("inkGlyph reads a dash and a star", () => {

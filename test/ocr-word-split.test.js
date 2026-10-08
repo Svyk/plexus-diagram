@@ -152,6 +152,17 @@ test("localMask binarises a shaded cell with its own threshold", () => {
   assert.equal(localMask(flat, new Uint8Array(w * h), w, h, { x0: 0, y0: 0, x1: 20, y1: 10 }), false);
 });
 
+test("localMask takes the light pixels as ink for white text on a dark fill", () => {
+  const w = 20;
+  const h = 10;
+  const gray = new Uint8Array(w * h).fill(60);
+  for (let y = 3; y < 7; y++) for (let x = 5; x < 9; x++) gray[y * w + x] = 250;
+  const mask = new Uint8Array(w * h);
+  assert.equal(localMask(gray, mask, w, h, { x0: 0, y0: 0, x1: 20, y1: 10 }), true);
+  assert.equal(mask[0], 0);
+  assert.equal(mask[4 * w + 6], 1);
+});
+
 test("detLimitFor scales the det map toward the target box height", () => {
   assert.equal(detLimitFor(13.5, 1600, 3300), 3200);
   assert.equal(detLimitFor(27, 1600, 3300), 1600);

@@ -59,7 +59,10 @@ import {
 import { drawingCreateSpec, drawingRefString } from "./model/drawing-card.js";
 import { appendTable, parsedTableSize, TABLE_SIZE } from "./model/roam-table.js";
 import { flatRows, toGridSpec } from "./model/parse-to-grid.js";
-import { escapeMarkdownText, toRoamMarkdown } from "./model/parse-to-roam-md.js";
+import { escapeMarkdownText, flattenLine, linkSafeText, toRoamMarkdown } from "./model/parse-to-roam-md.js";
+import {
+  FOOTNOTES_HEADER, FOOTNOTE_CAP, WRITE_BUDGET, footnoteFormat, hasFootnoteTokens, planFootnotes, plainFootnotes, prepareTable,
+} from "./model/footnotes.js";
 import { HIGHLIGHT_COLORS, rewriteHighlightTag } from "./model/highlight.js";
 import { inflate, rectsIntersect, unionRect } from "./model/geometry.js";
 import { SHAPES } from "./model/shapes.js";
@@ -1274,6 +1277,46 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return { parent, rel };
   };
 
+  // Footnotes of a parsed insert, in the Footnotes extension's format. `strings` hold the model's
+  // tokens (footnotes.js). Reads the page that holds the board, writes the header (and its rule) when
+  // missing plus one block per note, and returns { apply(string), notes } for the content that follows.
+  // Call inside runParsed so the notes share the insert's undo group. `reserve` is the writes the
+  // content itself will spend; everything stays within the 45-write budget.
+  const footnoteFormatNow = () => footnoteFormat(setting("parse-footnote-format", "extension"));
+  const settleFootnotes = async (strings, { anchor, reserve = 0, defs } = {}) => {
+    const list = strings.map((s) => String(s ?? ""));
+    const hasDefs = defs && Object.keys(defs).length > 0;
+    if (!hasDefs && !hasFootnoteTokens(list)) return null;
+    if (footnoteFormatNow() !== "extension") return plainFootnotes(list, { defs });
+    const pageUid = (anchor && host.blockPageUid?.(anchor)) || host.blockPageUid?.(uid) || "";
+    const state = pageUid ? host.footnoteState?.(pageUid, FOOTNOTES_HEADER) : null;
+    const headerWrites = state && !state.headerUid ? 2 : 0;
+    const cap = state ? Math.max(0, Math.min(FOOTNOTE_CAP, WRITE_BUDGET - reserve - headerWrites)) : 0;
+    const plan = planFootnotes(list, {
+      startAt: state ? Math.max(state.max, state.count) : 0,
+      cap,
+      defs,
+      uid: () => host.generateUid(),
+    });
+    if (plan.notes.length) {
+      let header = state.headerUid;
+      if (!header) {
+        await host.createBlock({ parentUid: pageUid, order: "last", string: "---" });
+        header = host.generateUid();
+        await host.createBlock({ parentUid: pageUid, order: "last", uid: header, string: FOOTNOTES_HEADER, viewType: "numbered" });
+      }
+      for (const note of plan.notes) {
+        await host.createBlock({ parentUid: header, order: "last", uid: note.uid, string: note.text });
+      }
+    }
+    if (plan.overflow.length) {
+      emit("toast", { message: state
+        ? `${plan.overflow.length} footnote${plan.overflow.length === 1 ? "" : "s"} kept as plain (N) lines (Roam undo holds 50 changes)`
+        : "Footnotes kept as plain (N) lines (no page to hold them)" });
+    }
+    return plan;
+  };
+
   // ---- session object ----
   const session = {
     uid,
@@ -1412,6 +1455,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       });
     },
 
+    // "extension" (default), "plain" or "off": how a parsed insert writes footnotes.
+    footnoteFormat: footnoteFormatNow,
+
     // Next sibling of the PDF block. No props. Chunks of 400 bullets, 10 chunks max.
     // A PDF that is already a board card gets a note card beside it instead: a sibling
     // under the board would show up as a stray card.
@@ -1440,11 +1486,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           y = (Number(blocker.y) || 0) + (Number(blocker.h) || 0) + gap;
         }
         const { parent, rel } = placeParsed(x, y, size.w, size.h);
-        const layout = withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, nested);
-        const plexus = serializeItemLayout(layout);
         const order = insertOrder(parent);
         return runParsed(async () => {
-          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: nested });
+          const fn = await settleFootnotes([markdown], { anchor: pdfUid, reserve: 2 });
+          const body = fn ? nestMarkdownUnderFirst(fn.apply(markdown)) : nested;
+          if (fn && bulletCount(body) === 0) return { ok: false, reason: "empty" };
+          const plexus = serializeItemLayout(withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, body));
+          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: body });
           const uid = roots[0];
           if (!uid) return { ok: false, reason: "empty" };
           await host.updateProps(uid, plexus);
@@ -1457,7 +1505,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       return runParsed(async () => {
         let order = loc.order + 1;
         const uids = [];
-        for (const chunk of plan.chunks) {
+        let chunks = plan.chunks;
+        const fn = await settleFootnotes([markdown], { anchor: pdfUid, reserve: plan.chunks.length });
+        if (fn) {
+          const again = chunkParsedMarkdown(fn.apply(markdown));
+          if (again.ok) chunks = again.chunks;
+        }
+        for (const chunk of chunks) {
           const roots = await host.fromMarkdown({ parentUid: loc.parentUid, order, markdown: chunk });
           uids.push(...roots);
           order = advanceOrder(order, roots.length);
@@ -1476,11 +1530,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const height = Number.isFinite(h) ? h : DEFAULT_SIZES.card.h;
       const size = clampSize("card", width, height);
       const { parent, rel } = placeParsed(x, y, size.w, size.h);
-      const layout = withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, nested);
-      const plexus = serializeItemLayout(layout);
       const order = insertOrder(parent);
       return runParsed(async () => {
-        const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: nested });
+        const fn = await settleFootnotes([markdown], { reserve: 2 });
+        const body = fn ? nestMarkdownUnderFirst(fn.apply(markdown)) : nested;
+        if (fn && bulletCount(body) === 0) return { ok: false, reason: "empty" };
+        const plexus = serializeItemLayout(withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, body));
+        const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: body });
         const uid = roots[0];
         if (!uid) return { ok: false, reason: "empty" };
         await host.updateProps(uid, plexus);
@@ -1491,10 +1547,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
     // auto = grid when Roam Grid can createTableFromModel, otherwise native.
     // grid falls back to native when the API is missing. flat repeats covered cells.
-    insertParsedTable({ x, y, table, mode = "auto" } = {}) {
+    // notes: the parse's footnote blocks on the table's page ([{ id, mark, text }]) for cell marks.
+    insertParsedTable({ x, y, table, mode = "auto", notes } = {}) {
       if (!board || destroyed || gone) return Promise.resolve(undefined);
       const asked = mode === "grid" || mode === "native" || mode === "flat" ? mode : "auto";
-      const rawSize = parsedTableSize(table);
+      const format = footnoteFormatNow();
+      let prep = format === "off" ? { table, notes: [] } : prepareTable(table, notes, { format });
+      if (prep.notes.length > WRITE_BUDGET - 8) prep = prepareTable(table, notes, { format: "plain" });
+      const defs = {};
+      for (const note of prep.notes) defs[note.id] = { mark: note.mark, text: linkSafeText(flattenLine(note.text)) };
+      const source = table;
+      table = prep.table;
+      const rawSize = parsedTableSize(prep.notes.length ? source : table);
       const size = clampSize("card", rawSize.w, rawSize.h);
       const { parent, rel } = placeParsed(x, y, size.w, size.h);
       const plexus = serializeItemLayout({ x: rel.x, y: rel.y, w: size.w, h: size.h });
@@ -1503,9 +1567,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       return runParsed(async () => {
         let uid = null;
         let path = asked === "flat" ? "flat" : "native";
+        const draft = asked === "flat" ? flatTableMarkdown(table) : nativeTableMarkdown(table);
+        const fn = await settleFootnotes([draft], { reserve: 6, defs });
+        const settled = (text) => (fn ? fn.apply(text) : text);
         if (tryGrid) {
           try {
             const spec = { ...toGridSpec(table), parentUid: parent, order };
+            if (fn) spec.rows = spec.rows.map((row) => row.map(settled));
             if (rawSize.widths) spec.widths = rawSize.widths;
             const info = await host.createGridTable(spec);
             if (info?.uid) { uid = info.uid; path = "grid"; }
@@ -1514,8 +1582,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           }
         }
         if (!uid) {
-          const markdown = asked === "flat" ? flatTableMarkdown(table) : nativeTableMarkdown(table);
-          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown });
+          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: settled(draft) });
           uid = roots[0] || null;
           path = asked === "flat" ? "flat" : "native";
         }
@@ -1538,8 +1605,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const uids = [];
         let orderParent = null;
         let orderCursor = null;
+        const fn = await settleFootnotes(capped.map((section) => section.markdown), { reserve: capped.length * 2 });
         for (let i = 0; i < capped.length; i += 1) {
-          const nested = nestMarkdownUnderFirst(capped[i].markdown);
+          const nested = nestMarkdownUnderFirst(fn ? fn.apply(capped[i].markdown) : capped[i].markdown);
           if (bulletCount(nested) === 0) continue;
           const py = y + i * (cardH + SECTION_GAP);
           const size = clampSize("card", cardW, cardH);

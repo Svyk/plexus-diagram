@@ -5,6 +5,7 @@ import { planParseInsert, PARSE_MISSING_TOAST, textCardMarkdown } from "../model
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
 import { selectBlocks } from "../model/parse-schema.js";
 import { parsedTableSize } from "../model/roam-table.js";
+import { pageNoteBlocks } from "../model/footnotes.js";
 import { imageKey } from "../host/parse-store.js";
 import { dataUrlToBlob } from "./parse-crop.js";
 
@@ -52,6 +53,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
     try { at = placeBeside?.(pdfUid, size); } catch { at = null; }
     return { x: Number.isFinite(at?.x) ? at.x : 0, y: Number.isFinite(at?.y) ? at.y : 0 };
   };
+  const fnFormat = () => session?.footnoteFormat?.() ?? "off";
   const load = async (payload) => {
     let doc = null;
     try { doc = await store?.getParse?.(payload?.sha256, payload?.engine, payload?.optsHash); } catch { doc = null; }
@@ -80,7 +82,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
     async insertParsedBelow(payload) {
       const doc = await load(payload);
       if (!doc) return { ok: false, reason: "missing-cache" };
-      const { markdown, blockEstimate } = toRoamMarkdown(doc, payload.ids);
+      const { markdown, blockEstimate } = toRoamMarkdown(doc, payload.ids, { footnoteFormat: fnFormat() });
       const res = await session?.insertParsedBelow?.({ pdfUid: payload.pdfUid, markdown, blockEstimate });
       if (res?.ok) {
         pick(res.uids);
@@ -97,7 +99,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       if (!table) return { ok: false, reason: "empty" };
       const sized = parsedTableSize(table);
       const at = Number.isFinite(payload.x) && Number.isFinite(payload.y) ? { x: payload.x, y: payload.y } : spot(payload.pdfUid, sized);
-      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto" });
+      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: pageNoteBlocks(doc, table) });
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);
         const merged = mergedCells(table);
@@ -113,7 +115,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       const blocks = selectBlocks(doc, payload.ids);
       if (blocks.length && blocks.every((b) => b?.type === "table")) return actions.insertParsedTable(payload);
       const withImages = await withUploadedImages(doc, payload.ids);
-      const plan = planParseInsert(withImages, { ...payload, kind: "blocks" });
+      const plan = planParseInsert(withImages, { ...payload, kind: "blocks", footnoteFormat: fnFormat() });
       if (plan.action === "sections") {
         const at = spot(payload.pdfUid, CARD_SIZE);
         const res = await session?.sendParsedToBoard?.({ ...at, sections: plan.sections });
@@ -152,7 +154,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       const doc = await load(payload);
       if (!doc) return { ok: false, reason: "missing-cache" };
       const withImages = await withUploadedImages(doc, payload.ids);
-      const { markdown } = toRoamMarkdown(withImages, payload.ids);
+      const { markdown } = toRoamMarkdown(withImages, payload.ids, { footnoteFormat: fnFormat() });
       const at = spot(payload.pdfUid, CARD_SIZE);
       const res = await session?.insertParsedCard?.({ ...at, markdown });
       if (res?.ok) {

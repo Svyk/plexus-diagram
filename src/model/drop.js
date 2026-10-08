@@ -17,6 +17,7 @@ import {
 import { sha256Hex } from "./parse-hash.js";
 import { selectBlocks } from "./parse-schema.js";
 import { escapeMarkdownText, flattenLine, linkSafeText, toRoamMarkdown } from "./parse-to-roam-md.js";
+import { pageNoteBlocks } from "./footnotes.js";
 
 export const CARD_MIME = "application/x-plexus-card";
 export const PARSE_MIME = "application/x-plexus-parse";
@@ -150,11 +151,11 @@ export function planParseInsert(doc, payload) {
       action: "sections",
       sections: sections.map((section) => ({
         title: section.title,
-        markdown: toRoamMarkdown(doc, section.ids).markdown,
+        markdown: toRoamMarkdown(doc, section.ids, { footnoteFormat: payload?.footnoteFormat }).markdown,
       })),
     };
   }
-  return { action: "card", markdown: toRoamMarkdown(doc, ids).markdown };
+  return { action: "card", markdown: toRoamMarkdown(doc, ids, { footnoteFormat: payload?.footnoteFormat }).markdown };
 }
 
 // Missing cache writes nothing and toasts PARSE_MISSING_TOAST. The session methods
@@ -180,11 +181,11 @@ export async function handleParseDrop({ payload, store, session, point, toast } 
     if (typeof toast === "function") toast(PARSE_MISSING_TOAST);
     return { ok: false, reason: "missing-cache", uids: [] };
   }
-  const plan = planParseInsert(doc, payload);
+  const plan = planParseInsert(doc, { ...payload, footnoteFormat: session?.footnoteFormat?.() });
   const x = Number.isFinite(point?.x) ? point.x : 0;
   const y = Number.isFinite(point?.y) ? point.y : 0;
   if (plan.action === "table") {
-    const res = await session?.insertParsedTable?.({ x, y, table: plan.table, mode: "auto" });
+    const res = await session?.insertParsedTable?.({ x, y, table: plan.table, mode: "auto", notes: pageNoteBlocks(doc, plan.table) });
     return { ...(res || { ok: false, reason: "empty" }), uids: res?.uid ? [res.uid] : [] };
   }
   if (plan.action === "sections") {

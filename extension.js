@@ -3648,6 +3648,258 @@ var init_parse_schema = __esm({
   }
 });
 
+// src/model/footnotes.js
+function footnoteFormat(value) {
+  return value === "plain" || value === "off" ? value : "extension";
+}
+function normalizeMark(mark) {
+  let s = String(mark ?? "").trim();
+  s = s.replace(/^[(\[]\s*/, "").replace(/\s*[)\]]$/, "").replace(/[.:]$/, "").trim();
+  let out = "";
+  for (const ch of s) out += SUP_MAP[ch] ?? ch;
+  return out;
+}
+function aliasFor(n2, uid, sup2 = true) {
+  const alias = `[(${n2})](((${uid})))`;
+  return sup2 ? `#sup^^${alias}^^` : alias;
+}
+function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = {}, sup: sup2 = true, uid } = {}) {
+  const list = Array.isArray(strings) ? strings : [strings];
+  const known = /* @__PURE__ */ new Map();
+  for (const [id, d] of Object.entries(defs || {})) known.set(id, { mark: d.mark ?? "", text: d.text ?? "" });
+  for (const s of list) {
+    for (const line of String(s ?? "").split("\n")) {
+      const m = DEF_RE.exec(line);
+      if (m) known.set(m[1], { mark: m[2], text: m[3] });
+    }
+  }
+  const order = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of list) {
+    REF_RE.lastIndex = 0;
+    let m;
+    while (m = REF_RE.exec(String(s ?? ""))) {
+      if (seen.has(m[1]) || !known.has(m[1])) continue;
+      seen.add(m[1]);
+      order.push(m[1]);
+    }
+  }
+  const make2 = typeof uid === "function" ? uid : () => `fn${Math.random().toString(36).slice(2, 11)}`;
+  const limit = Math.max(0, Math.min(FOOTNOTE_CAP, Math.floor(Number(cap4) || 0)));
+  const notes = [];
+  const overflow = [];
+  const byId = /* @__PURE__ */ new Map();
+  order.forEach((id, i) => {
+    const d = known.get(id);
+    const n2 = Math.max(0, Math.floor(startAt)) + i + 1;
+    if (i < limit) {
+      const note = { id, uid: make2(), n: n2, mark: d.mark, text: d.text };
+      notes.push(note);
+      byId.set(id, { kind: "note", note });
+    } else {
+      const item = { id, n: n2, mark: d.mark, text: d.text };
+      overflow.push(item);
+      byId.set(id, { kind: "overflow", item });
+    }
+  });
+  const apply = (input) => {
+    const out = [];
+    for (const line of String(input ?? "").split("\n")) {
+      const m = DEF_RE.exec(line);
+      if (!m) {
+        out.push(line);
+        continue;
+      }
+      const hit = byId.get(m[1]);
+      if (hit?.kind === "note") continue;
+      if (hit?.kind === "overflow") out.push(`- (${hit.item.n}) ${escapeMarkdownText(hit.item.text, { leading: false })}`);
+      else out.push(`- [${m[2]}] ${escapeMarkdownText(m[3], { leading: false })}`);
+    }
+    return out.join("\n").replace(REF_RE, (full, id, mark) => {
+      const hit = byId.get(id);
+      if (hit?.kind === "note") return aliasFor(hit.note.n, hit.note.uid, sup2);
+      if (hit?.kind === "overflow") return `(${hit.item.n})`;
+      return mark ? `[${mark}]` : "";
+    });
+  };
+  return { notes, overflow, apply };
+}
+function plainFootnotes(strings, opts = {}) {
+  return planFootnotes(strings, { ...opts, startAt: 0, cap: 0 });
+}
+function markSpans(text3) {
+  const spans = [];
+  const lead = LEAD_RE.exec(text3);
+  if (lead) spans.push({ start: lead[1].length, end: lead[0].length, raw: lead[3], bracket: true });
+  const trail = TRAIL_RE2.exec(text3);
+  if (trail) {
+    const start = trail.index + trail[1].length;
+    if (!spans.some((s) => start < s.end)) spans.push({ start, end: trail.index + trail[0].replace(/\s+$/, "").length, raw: trail[3], bracket: true, eat: trail[1].length });
+  }
+  RUN_RE.lastIndex = 0;
+  let m;
+  while (m = RUN_RE.exec(text3)) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (spans.some((s) => start < s.end && end > s.start)) continue;
+    spans.push({ start, end, raw: m[0], bracket: false });
+  }
+  return spans.sort((a, b) => a.start - b.start);
+}
+function noteRows(table) {
+  const rows = Number.isInteger(table?.rows) ? table.rows : 0;
+  const header = Number.isInteger(table?.headerRows) ? table.headerRows : 0;
+  const out = [];
+  for (let r = rows - 1; r > header; r -= 1) {
+    const cells = (table.cells || []).filter((c) => c.r === r);
+    const filled = cells.filter((c) => String(c.text ?? "").trim());
+    if (filled.length !== 1 || (filled[0].rowSpan ?? 1) !== 1) break;
+    const m = NOTE_ROW_RE.exec(String(filled[0].text).trim());
+    if (!m) break;
+    const lead = m[1];
+    if (/^\d+$/.test(lead)) break;
+    out.unshift({ r, mark: lead, text: m[2].trim() });
+  }
+  return out;
+}
+function tableCellText(cell) {
+  return String(cell?.text ?? "");
+}
+function prepareTable(table, available = [], { format = "extension" } = {}) {
+  if (format === "off" || !table || !Array.isArray(table.cells)) return { table, notes: [], used: 0 };
+  const rows = noteRows(table);
+  const byMark = /* @__PURE__ */ new Map();
+  for (const row4 of rows) {
+    const key = normalizeMark(row4.mark);
+    if (key && !byMark.has(key)) byMark.set(key, { id: `${table.id ?? "t"}:row:${row4.r}`, mark: row4.mark, text: row4.text, row: row4.r });
+  }
+  for (const note of available || []) {
+    const key = normalizeMark(note?.mark);
+    if (key && !byMark.has(key)) byMark.set(key, { id: String(note.id), mark: note.mark, text: note.text ?? "" });
+  }
+  if (!byMark.size) return { table, notes: [], used: 0 };
+  const noteRowSet = new Set(rows.map((r) => r.r));
+  const found = [];
+  const edits = /* @__PURE__ */ new Map();
+  const order = [...table.cells].map((cell, index) => ({ cell, index })).filter(({ cell }) => !noteRowSet.has(cell.r)).sort((a, b) => a.cell.r - b.cell.r || a.cell.c - b.cell.c);
+  for (const { cell, index } of order) {
+    const text3 = tableCellText(cell);
+    const spans = markSpans(text3).filter((s) => byMark.has(normalizeMark(s.raw)));
+    if (!spans.length) continue;
+    edits.set(index, spans);
+    for (const s of spans) {
+      const note = byMark.get(normalizeMark(s.raw));
+      if (!found.includes(note)) found.push(note);
+    }
+  }
+  if (!found.length) return { table, notes: [], used: 0 };
+  const numberOf = new Map(found.map((note, i) => [note, i + 1]));
+  const cells = table.cells.map((cell, index) => {
+    const spans = edits.get(index);
+    if (!spans) return cell;
+    let out = "";
+    let at = 0;
+    const text3 = tableCellText(cell);
+    for (const s of spans) {
+      const note = byMark.get(normalizeMark(s.raw));
+      out += text3.slice(at, s.start - (s.eat || 0));
+      out += format === "plain" ? `(${numberOf.get(note)})` : refToken(note.id, note.mark);
+      at = s.end;
+    }
+    out += text3.slice(at);
+    return { ...cell, text: out.trim() };
+  });
+  const used = new Set(found.filter((n2) => n2.row != null).map((n2) => n2.row));
+  let next = cells.filter((cell) => !used.has(cell.r)).map((cell) => {
+    const shift = [...used].filter((r) => r < cell.r).length;
+    return shift ? { ...cell, r: cell.r - shift } : cell;
+  });
+  let rowCount = (Number.isInteger(table.rows) ? table.rows : 0) - used.size;
+  const cols = Number.isInteger(table.cols) ? table.cols : 1;
+  if (format === "plain") {
+    found.forEach((note, i) => {
+      next = [...next, { r: rowCount + i, c: 0, rowSpan: 1, colSpan: Math.max(1, cols), text: `(${i + 1}) ${note.text}`.trim() }];
+    });
+    rowCount += found.length;
+  }
+  const prepared2 = { ...table, rows: rowCount, cells: next };
+  return { table: prepared2, notes: format === "plain" ? [] : found.map(({ id, mark, text: text3 }) => ({ id, mark, text: text3 })), used: found.length };
+}
+function pageNoteBlocks(doc, block) {
+  const out = [];
+  const page = block?.page;
+  for (const id of Array.isArray(doc?.order) ? doc.order : []) {
+    const b = doc.blocks?.[id];
+    if (b?.type !== "footnote") continue;
+    if (page != null && b.page != null && b.page !== page) continue;
+    out.push({ id: b.id ?? id, mark: b.mark ?? "", text: b.text ?? "" });
+  }
+  return out;
+}
+var FN_OPEN, FN_CLOSE, FN_DEF, FN_SEP, FOOTNOTE_FORMATS, FOOTNOTES_HEADER, FOOTNOTE_CAP, WRITE_BUDGET, SUP_MAP, SUP_CLASS, SYMBOLS, BRACKET_INNER, LEAD_RE, TRAIL_RE2, RUN_RE, refToken, defLine, hasFootnoteTokens, REF_RE, DEF_RE, NOTE_ROW_RE;
+var init_footnotes = __esm({
+  "src/model/footnotes.js"() {
+    init_parse_to_roam_md();
+    FN_OPEN = "";
+    FN_CLOSE = "";
+    FN_DEF = "";
+    FN_SEP = "";
+    FOOTNOTE_FORMATS = Object.freeze(["extension", "plain", "off"]);
+    FOOTNOTES_HEADER = "#footnotes";
+    FOOTNOTE_CAP = 40;
+    WRITE_BUDGET = 45;
+    SUP_MAP = Object.freeze({
+      "⁰": "0",
+      "¹": "1",
+      "²": "2",
+      "³": "3",
+      "⁴": "4",
+      "⁵": "5",
+      "⁶": "6",
+      "⁷": "7",
+      "⁸": "8",
+      "⁹": "9",
+      "ᵃ": "a",
+      "ᵇ": "b",
+      "ᶜ": "c",
+      "ᵈ": "d",
+      "ᵉ": "e",
+      "ᶠ": "f",
+      "ᵍ": "g",
+      "ʰ": "h",
+      "ⁱ": "i",
+      "ʲ": "j",
+      "ᵏ": "k",
+      "ˡ": "l",
+      "ᵐ": "m",
+      "ⁿ": "n",
+      "ᵒ": "o",
+      "ᵖ": "p",
+      "ʳ": "r",
+      "ˢ": "s",
+      "ᵗ": "t",
+      "ᵘ": "u",
+      "ᵛ": "v",
+      "ʷ": "w",
+      "ˣ": "x",
+      "ʸ": "y",
+      "ᶻ": "z"
+    });
+    SUP_CLASS = Object.keys(SUP_MAP).join("");
+    SYMBOLS = "*†‡§";
+    BRACKET_INNER = `(?:[${SUP_CLASS}]+|[A-Za-z0-9]{1,2}|[${SYMBOLS}]+)`;
+    LEAD_RE = new RegExp(`^(\\s*)([(\\[])\\s*(${BRACKET_INNER})\\s*([)\\]])`);
+    TRAIL_RE2 = new RegExp(`(\\s*)([(\\[])\\s*(${BRACKET_INNER})\\s*([)\\]])\\s*$`);
+    RUN_RE = new RegExp(`[${SUP_CLASS}]+|[${SYMBOLS}]+`, "g");
+    refToken = (id, mark) => `${FN_OPEN}${id}${FN_SEP}${mark ?? ""}${FN_CLOSE}`;
+    defLine = (id, mark, text3) => `- ${FN_DEF}${id}${FN_SEP}${mark ?? ""}${FN_CLOSE}${text3 ?? ""}`;
+    hasFootnoteTokens = (strings) => (Array.isArray(strings) ? strings : [strings]).some((s) => typeof s === "string" && (s.includes(FN_OPEN) || s.includes(FN_DEF)));
+    REF_RE = new RegExp(`${FN_OPEN}([^${FN_SEP}${FN_CLOSE}]*)${FN_SEP}([^${FN_CLOSE}]*)${FN_CLOSE}`, "g");
+    DEF_RE = new RegExp(`^[ \\t]*- ${FN_DEF}([^${FN_SEP}${FN_CLOSE}]*)${FN_SEP}([^${FN_CLOSE}]*)${FN_CLOSE}(.*)$`);
+    NOTE_ROW_RE = new RegExp(`^(\\(?(?:[${SUP_CLASS}]+|[${SYMBOLS}]+|[A-Za-z0-9]{1,2})[)\\].:]?)\\s+(\\S.*)$`, "s");
+  }
+});
+
 // src/model/parse-to-roam-md.js
 function flattenLine(text3) {
   return String(text3 ?? "").replace(/\r/g, ESCAPES.whitespace.cr).replace(/ /g, ESCAPES.whitespace.nbsp).replace(/\t/g, ESCAPES.whitespace.tab).replace(/\n/g, ESCAPES.whitespace.newline).replace(ESCAPES.control, "").replace(/ {2,}/g, " ").trim();
@@ -3684,23 +3936,27 @@ function prepareLine(text3, { linkSafe, leading }) {
   if (linkSafe) line = linkSafeText(line);
   return escapeMarkdownText(line, { leading });
 }
-function applyFootnoteRefs(text3, refs) {
+function applyFootnoteRefs(text3, refs, tokenFor) {
   if (!refs?.length) return text3;
   let out = text3;
   for (const ref of refs) {
     const mark = String(ref.mark ?? "");
     if (!mark) continue;
     const token = `[${mark}]`;
-    if (out.includes(token)) continue;
+    const swap = tokenFor ? tokenFor(ref) : token;
+    if (out.includes(token)) {
+      if (swap !== token) out = out.replace(token, swap);
+      continue;
+    }
     const sup2 = Object.keys(SUPERSCRIPT).find((ch) => SUPERSCRIPT[ch] === mark);
     if (sup2 && out.includes(sup2)) {
-      out = out.replace(sup2, token);
+      out = out.replace(sup2, swap);
       continue;
     }
     if (Number.isInteger(ref.at) && ref.at >= 0 && ref.at <= out.length) {
-      out = `${out.slice(0, ref.at)}${token}${out.slice(ref.at)}`;
+      out = `${out.slice(0, ref.at)}${swap}${out.slice(ref.at)}`;
     } else {
-      out += token;
+      out += swap;
     }
   }
   return out;
@@ -3729,6 +3985,8 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
   const linkSafe = options.linkSafe !== false;
   const numbered = options.numbered === true;
   const footnotes = options.footnotes === "end" ? "end" : "inline";
+  const fnFormat = options.footnoteFormat === "extension" || options.footnoteFormat === "plain" ? footnoteFormat(options.footnoteFormat) : "off";
+  const tokens = fnFormat !== "off";
   const blocks = selectBlocks(doc, idsOrRange);
   const byId = new Map(blocks.map((block) => [block.id, block]));
   const folded = /* @__PURE__ */ new Set();
@@ -3750,17 +4008,29 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
       if (!note || emittedNotes.has(note.id)) return;
       emittedNotes.add(note.id);
       const mark = note.mark ?? "";
+      if (tokens) {
+        let text3 = flattenLine(note.text ?? "");
+        if (linkSafe) text3 = linkSafeText(text3);
+        lines.push(defLine(note.id, mark, text3));
+        return;
+      }
       putUser(0, note.text ?? "", `[${mark}] `);
     };
+    const lookup2 = (id) => byId.get(id) ?? (tokens ? doc?.blocks?.[id] : null);
     const notesFor = (block) => {
       const refs = block.footnoteRefs || [];
       const notes = [];
       for (const ref of refs) {
-        const note = ref.to ? byId.get(ref.to) : null;
+        const note = ref.to ? lookup2(ref.to) : null;
         if (note?.type === "footnote") notes.push(note);
       }
       return notes;
     };
+    const tokenFor = tokens ? (ref) => {
+      const note = ref.to ? lookup2(ref.to) : null;
+      return note?.type === "footnote" ? refToken(note.id, ref.mark) : `[${ref.mark}]`;
+    } : null;
+    const pendingNotes = [];
     for (const block of blocks) {
       if (foldedHere.has(block.id)) continue;
       if (block.type === "footnote") {
@@ -3774,9 +4044,11 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
         if (prefix) putUser(0, block.text ?? "", prefix);
         else putUser(0, block.text ?? "", "**", "**");
       } else if (block.type === "para") {
-        putUser(0, applyFootnoteRefs(block.text ?? "", block.footnoteRefs));
+        putUser(0, applyFootnoteRefs(block.text ?? "", block.footnoteRefs, tokenFor));
         if (footnotes === "inline") {
           for (const note of notesFor(block)) emitNote(note);
+        } else if (tokens) {
+          pendingNotes.push(...notesFor(block));
         }
       } else if (block.type === "list") {
         for (const item of block.items || []) {
@@ -3791,7 +4063,11 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
           }
         }
       } else if (block.type === "table") {
-        emitTable(block, putUser, emitRaw, byId, foldedHere);
+        if (tokens) {
+          const prep = prepareTable(block, pageNoteBlocks(doc, block), { format: fnFormat });
+          emitTable(prep.table, putUser, emitRaw, byId, foldedHere);
+          for (const note of prep.notes) emitNote(note);
+        } else emitTable(block, putUser, emitRaw, byId, foldedHere);
       } else if (block.type === "figure") {
         emitFigure(block, putUser, byId);
       } else if (block.type === "formula") {
@@ -3814,12 +4090,14 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
       for (const block of blocks) {
         if (block.type === "footnote") emitNote(block);
       }
+      for (const note of pendingNotes) emitNote(note);
     }
     return { lines };
   };
   const drafted = render();
+  const joined = drafted.lines.join("\n");
   return {
-    markdown: drafted.lines.join("\n"),
+    markdown: fnFormat === "plain" ? plainFootnotes(joined).apply(joined) : joined,
     placeholders: [],
     blockEstimate: drafted.lines.length
   };
@@ -3877,6 +4155,7 @@ var ESCAPES, SUPERSCRIPT;
 var init_parse_to_roam_md = __esm({
   "src/model/parse-to-roam-md.js"() {
     init_parse_schema();
+    init_footnotes();
     ESCAPES = Object.freeze({
       whitespace: Object.freeze({
         cr: "",
@@ -7875,11 +8154,11 @@ function planParseInsert(doc, payload) {
       action: "sections",
       sections: sections.map((section2) => ({
         title: section2.title,
-        markdown: toRoamMarkdown(doc, section2.ids).markdown
+        markdown: toRoamMarkdown(doc, section2.ids, { footnoteFormat: payload?.footnoteFormat }).markdown
       }))
     };
   }
-  return { action: "card", markdown: toRoamMarkdown(doc, ids).markdown };
+  return { action: "card", markdown: toRoamMarkdown(doc, ids, { footnoteFormat: payload?.footnoteFormat }).markdown };
 }
 async function handleParseDrop({ payload, store, session, point, toast } = {}) {
   if (payload?.kind === "text") {
@@ -7902,11 +8181,11 @@ async function handleParseDrop({ payload, store, session, point, toast } = {}) {
     if (typeof toast === "function") toast(PARSE_MISSING_TOAST);
     return { ok: false, reason: "missing-cache", uids: [] };
   }
-  const plan = planParseInsert(doc, payload);
+  const plan = planParseInsert(doc, { ...payload, footnoteFormat: session?.footnoteFormat?.() });
   const x = Number.isFinite(point?.x) ? point.x : 0;
   const y = Number.isFinite(point?.y) ? point.y : 0;
   if (plan.action === "table") {
-    const res = await session?.insertParsedTable?.({ x, y, table: plan.table, mode: "auto" });
+    const res = await session?.insertParsedTable?.({ x, y, table: plan.table, mode: "auto", notes: pageNoteBlocks(doc, plan.table) });
     return { ...res || { ok: false, reason: "empty" }, uids: res?.uid ? [res.uid] : [] };
   }
   if (plan.action === "sections") {
@@ -8068,6 +8347,7 @@ var init_drop = __esm({
     init_parse_hash();
     init_parse_schema();
     init_parse_to_roam_md();
+    init_footnotes();
     CARD_MIME = "application/x-plexus-card";
     PARSE_MIME = "application/x-plexus-parse";
     PARSE_MISSING_TOAST = "Parse result not found; parse the PDF again";
@@ -10727,6 +11007,7 @@ var init_settings = __esm({
       parseLinkSafe: "parse-link-safe",
       parseNumbered: "parse-numbered",
       parseFootnotes: "parse-footnotes",
+      parseFootnoteFormat: "parse-footnote-format",
       // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
       speedFlags: "speed-flags"
     });
@@ -10793,7 +11074,8 @@ var init_settings = __esm({
       [SETTING_IDS.parseAutoRead]: true,
       [SETTING_IDS.parseLinkSafe]: true,
       [SETTING_IDS.parseNumbered]: false,
-      [SETTING_IDS.parseFootnotes]: "inline"
+      [SETTING_IDS.parseFootnotes]: "inline",
+      [SETTING_IDS.parseFootnoteFormat]: "extension"
     });
     BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
     MAP_ZOOMS = ["0.3", "0.45", "0.6"];
@@ -10825,7 +11107,8 @@ var init_settings = __esm({
       [SETTING_IDS.pdfDark]: ["off", "dim", "invert"],
       [SETTING_IDS.parseEngineDefault]: ["auto", "builtin", "docling"],
       [SETTING_IDS.parseOcr]: ["auto", "on", "off"],
-      [SETTING_IDS.parseFootnotes]: ["inline", "end"]
+      [SETTING_IDS.parseFootnotes]: ["inline", "end"],
+      [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
     SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount"];
@@ -10930,7 +11213,8 @@ var init_settings = __esm({
       [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
       [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
       [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
-      [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"])
+      [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"]),
+      [SETTING_IDS.parseFootnoteFormat]: () => selectRow(SETTING_IDS.parseFootnoteFormat, "PDF footnotes", "Extension writes each note under the page's #footnotes block and links it with an alias, the format of the Footnotes extension (it works without the extension). Plain keeps (N) in the text with the notes as lines. Off keeps the PDF's own marks.", ["extension", "plain", "off"])
     };
     SETTING_GROUPS = [
       ["group-cards", "Cards", "How new cards look, and the marks on them.", [
@@ -11013,7 +11297,8 @@ var init_settings = __esm({
         SETTING_IDS.parseAutoRead,
         SETTING_IDS.parseLinkSafe,
         SETTING_IDS.parseNumbered,
-        SETTING_IDS.parseFootnotes
+        SETTING_IDS.parseFootnotes,
+        SETTING_IDS.parseFootnoteFormat
       ]]
     ];
     ERROR_ROW_ID = "plexus-errors";
@@ -18184,7 +18469,9 @@ init_parse_to_roam_md();
 function isNumericCell(value) {
   let s = String(value ?? "").trim();
   if (!s) return false;
+  s = s.replace(/\uE000[^\uE001]*\uE001/g, "");
   s = s.replace(/\s*\[[A-Za-z0-9]+\]\s*$/g, "");
+  s = s.replace(/(?<=[\d%])\(\d+\)$/, "");
   s = s.replace(/[%±]/g, "");
   s = s.replace(/(\d),(?=\d)/g, "$1");
   s = s.trim();
@@ -18238,6 +18525,7 @@ function flatRows(table) {
 
 // src/session.js
 init_parse_to_roam_md();
+init_footnotes();
 init_highlight();
 init_geometry();
 init_shapes();
@@ -20232,11 +20520,12 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     generateUid() {
       return api.util.generateUID();
     },
-    async createBlock({ parentUid, order = "last", uid, string = "", props, open } = {}) {
+    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType } = {}) {
       const id = uid ?? api.util.generateUID();
       const block = { uid: id, string };
       if (props !== void 0) block.props = plainKeys(props);
       if (open !== void 0) block.open = open;
+      if (viewType) block["children-view-type"] = viewType;
       stats.writes++;
       await data.block.create({ location: { "parent-uid": parentUid, order }, block });
       noteWrite("create");
@@ -20284,6 +20573,42 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       for (const id of extra) if (typeof id === "string" && id && id !== uid) host.adoptCreated(id, { span: 0 });
       const path = info.path === "sequential" ? "sequential" : "markdown";
       return { uid, writes: undos, path };
+    },
+    // Footnotes already on a page: the top-level header block (exact text) with its note count,
+    // the highest (N) alias label anywhere on the page, and whether a "---" rule sits just above
+    // the header. null when the page cannot be read.
+    footnoteState(pageUid, header = "#footnotes") {
+      const id = String(pageUid ?? "");
+      if (!id) return null;
+      let res = null;
+      try {
+        res = rawPull("[:block/uid {:block/children ...} :block/string :block/order]", eidKey(id));
+      } catch {
+        return null;
+      }
+      if (!res || typeof res !== "object") return null;
+      const top = Array.isArray(res[":block/children"]) ? [...res[":block/children"]] : [];
+      top.sort((a, b) => (a[":block/order"] ?? 0) - (b[":block/order"] ?? 0));
+      const strOf = (b) => typeof b?.[":block/string"] === "string" ? b[":block/string"] : "";
+      const kids = (b) => Array.isArray(b?.[":block/children"]) ? b[":block/children"] : [];
+      let max = 0;
+      const re = /\[\((\d+)\)\]\(\(\([^)]*\)\)\)/g;
+      const walk2 = (b) => {
+        re.lastIndex = 0;
+        let m;
+        const text3 = strOf(b);
+        while (m = re.exec(text3)) max = Math.max(max, Number(m[1]) || 0);
+        for (const k of kids(b)) walk2(k);
+      };
+      for (const b of top) walk2(b);
+      const at = top.findIndex((b) => strOf(b).trim() === header);
+      const node2 = at >= 0 ? top[at] : null;
+      return {
+        headerUid: node2 && typeof node2[":block/uid"] === "string" ? node2[":block/uid"] : null,
+        count: node2 ? kids(node2).length : 0,
+        max,
+        hasLine: at > 0 && strOf(top[at - 1]).trim() === "---"
+      };
     },
     // { parentUid, order } for a block, or null when Roam has no integer order.
     blockLocation(uid) {
@@ -22908,6 +23233,38 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const rel = toRelative(board2, parent, { x, y }, rects);
     return { parent, rel };
   };
+  const footnoteFormatNow = () => footnoteFormat(setting("parse-footnote-format", "extension"));
+  const settleFootnotes = async (strings, { anchor, reserve = 0, defs } = {}) => {
+    const list = strings.map((s) => String(s ?? ""));
+    const hasDefs = defs && Object.keys(defs).length > 0;
+    if (!hasDefs && !hasFootnoteTokens(list)) return null;
+    if (footnoteFormatNow() !== "extension") return plainFootnotes(list, { defs });
+    const pageUid = anchor && host.blockPageUid?.(anchor) || host.blockPageUid?.(uid) || "";
+    const state = pageUid ? host.footnoteState?.(pageUid, FOOTNOTES_HEADER) : null;
+    const headerWrites = state && !state.headerUid ? 2 : 0;
+    const cap4 = state ? Math.max(0, Math.min(FOOTNOTE_CAP, WRITE_BUDGET - reserve - headerWrites)) : 0;
+    const plan = planFootnotes(list, {
+      startAt: state ? Math.max(state.max, state.count) : 0,
+      cap: cap4,
+      defs,
+      uid: () => host.generateUid()
+    });
+    if (plan.notes.length) {
+      let header = state.headerUid;
+      if (!header) {
+        await host.createBlock({ parentUid: pageUid, order: "last", string: "---" });
+        header = host.generateUid();
+        await host.createBlock({ parentUid: pageUid, order: "last", uid: header, string: FOOTNOTES_HEADER, viewType: "numbered" });
+      }
+      for (const note of plan.notes) {
+        await host.createBlock({ parentUid: header, order: "last", uid: note.uid, string: note.text });
+      }
+    }
+    if (plan.overflow.length) {
+      emit2("toast", { message: state ? `${plan.overflow.length} footnote${plan.overflow.length === 1 ? "" : "s"} kept as plain (N) lines (Roam undo holds 50 changes)` : "Footnotes kept as plain (N) lines (no page to hold them)" });
+    }
+    return plan;
+  };
   const session = {
     uid,
     host,
@@ -23051,6 +23408,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return id;
       });
     },
+    // "extension" (default), "plain" or "off": how a parsed insert writes footnotes.
+    footnoteFormat: footnoteFormatNow,
     // Next sibling of the PDF block. No props. Chunks of 400 bullets, 10 chunks max.
     // A PDF that is already a board card gets a note card beside it instead: a sibling
     // under the board would show up as a stray card.
@@ -23079,11 +23438,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           y = (Number(blocker.y) || 0) + (Number(blocker.h) || 0) + gap;
         }
         const { parent, rel } = placeParsed(x, y, size.w, size.h);
-        const layout = withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, nested);
-        const plexus = serializeItemLayout(layout);
         const order = insertOrder(parent);
         return runParsed(async () => {
-          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: nested });
+          const fn = await settleFootnotes([markdown], { anchor: pdfUid, reserve: 2 });
+          const body = fn ? nestMarkdownUnderFirst(fn.apply(markdown)) : nested;
+          if (fn && bulletCount(body) === 0) return { ok: false, reason: "empty" };
+          const plexus = serializeItemLayout(withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, body));
+          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: body });
           const uid2 = roots[0];
           if (!uid2) return { ok: false, reason: "empty" };
           await host.updateProps(uid2, plexus);
@@ -23096,7 +23457,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return runParsed(async () => {
         let order = loc.order + 1;
         const uids = [];
-        for (const chunk of plan.chunks) {
+        let chunks = plan.chunks;
+        const fn = await settleFootnotes([markdown], { anchor: pdfUid, reserve: plan.chunks.length });
+        if (fn) {
+          const again = chunkParsedMarkdown(fn.apply(markdown));
+          if (again.ok) chunks = again.chunks;
+        }
+        for (const chunk of chunks) {
           const roots = await host.fromMarkdown({ parentUid: loc.parentUid, order, markdown: chunk });
           uids.push(...roots);
           order = advanceOrder(order, roots.length);
@@ -23114,11 +23481,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const height = Number.isFinite(h) ? h : DEFAULT_SIZES.card.h;
       const size = clampSize("card", width, height);
       const { parent, rel } = placeParsed(x, y, size.w, size.h);
-      const layout = withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, nested);
-      const plexus = serializeItemLayout(layout);
       const order = insertOrder(parent);
       return runParsed(async () => {
-        const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: nested });
+        const fn = await settleFootnotes([markdown], { reserve: 2 });
+        const body = fn ? nestMarkdownUnderFirst(fn.apply(markdown)) : nested;
+        if (fn && bulletCount(body) === 0) return { ok: false, reason: "empty" };
+        const plexus = serializeItemLayout(withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, body));
+        const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: body });
         const uid2 = roots[0];
         if (!uid2) return { ok: false, reason: "empty" };
         await host.updateProps(uid2, plexus);
@@ -23128,10 +23497,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     },
     // auto = grid when Roam Grid can createTableFromModel, otherwise native.
     // grid falls back to native when the API is missing. flat repeats covered cells.
-    insertParsedTable({ x, y, table, mode = "auto" } = {}) {
+    // notes: the parse's footnote blocks on the table's page ([{ id, mark, text }]) for cell marks.
+    insertParsedTable({ x, y, table, mode = "auto", notes } = {}) {
       if (!board2 || destroyed || gone) return Promise.resolve(void 0);
       const asked = mode === "grid" || mode === "native" || mode === "flat" ? mode : "auto";
-      const rawSize = parsedTableSize(table);
+      const format = footnoteFormatNow();
+      let prep = format === "off" ? { table, notes: [] } : prepareTable(table, notes, { format });
+      if (prep.notes.length > WRITE_BUDGET - 8) prep = prepareTable(table, notes, { format: "plain" });
+      const defs = {};
+      for (const note of prep.notes) defs[note.id] = { mark: note.mark, text: linkSafeText(flattenLine(note.text)) };
+      const source = table;
+      table = prep.table;
+      const rawSize = parsedTableSize(prep.notes.length ? source : table);
       const size = clampSize("card", rawSize.w, rawSize.h);
       const { parent, rel } = placeParsed(x, y, size.w, size.h);
       const plexus = serializeItemLayout({ x: rel.x, y: rel.y, w: size.w, h: size.h });
@@ -23140,9 +23517,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return runParsed(async () => {
         let uid2 = null;
         let path = asked === "flat" ? "flat" : "native";
+        const draft = asked === "flat" ? flatTableMarkdown(table) : nativeTableMarkdown(table);
+        const fn = await settleFootnotes([draft], { reserve: 6, defs });
+        const settled = (text3) => fn ? fn.apply(text3) : text3;
         if (tryGrid) {
           try {
             const spec = { ...toGridSpec(table), parentUid: parent, order };
+            if (fn) spec.rows = spec.rows.map((row4) => row4.map(settled));
             if (rawSize.widths) spec.widths = rawSize.widths;
             const info = await host.createGridTable(spec);
             if (info?.uid) {
@@ -23154,8 +23535,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           }
         }
         if (!uid2) {
-          const markdown = asked === "flat" ? flatTableMarkdown(table) : nativeTableMarkdown(table);
-          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown });
+          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: settled(draft) });
           uid2 = roots[0] || null;
           path = asked === "flat" ? "flat" : "native";
         }
@@ -23177,8 +23557,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         const uids = [];
         let orderParent = null;
         let orderCursor = null;
+        const fn = await settleFootnotes(capped.map((section2) => section2.markdown), { reserve: capped.length * 2 });
         for (let i = 0; i < capped.length; i += 1) {
-          const nested = nestMarkdownUnderFirst(capped[i].markdown);
+          const nested = nestMarkdownUnderFirst(fn ? fn.apply(capped[i].markdown) : capped[i].markdown);
           if (bulletCount(nested) === 0) continue;
           const py = y + i * (cardH + SECTION_GAP);
           const size = clampSize("card", cardW, cardH);
@@ -46913,6 +47294,7 @@ init_drop();
 init_parse_to_roam_md();
 init_parse_schema();
 init_roam_table();
+init_footnotes();
 var CARD_SIZE = { w: 280, h: 160 };
 function freeSpotBeside(rect, size, others = [], gap = 40) {
   const r = rect && typeof rect === "object" ? rect : null;
@@ -46967,6 +47349,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     }
     return { x: Number.isFinite(at?.x) ? at.x : 0, y: Number.isFinite(at?.y) ? at.y : 0 };
   };
+  const fnFormat = () => session?.footnoteFormat?.() ?? "off";
   const load = async (payload) => {
     let doc = null;
     try {
@@ -46998,7 +47381,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     async insertParsedBelow(payload) {
       const doc = await load(payload);
       if (!doc) return { ok: false, reason: "missing-cache" };
-      const { markdown, blockEstimate } = toRoamMarkdown(doc, payload.ids);
+      const { markdown, blockEstimate } = toRoamMarkdown(doc, payload.ids, { footnoteFormat: fnFormat() });
       const res = await session?.insertParsedBelow?.({ pdfUid: payload.pdfUid, markdown, blockEstimate });
       if (res?.ok) {
         pick(res.uids);
@@ -47014,7 +47397,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       if (!table) return { ok: false, reason: "empty" };
       const sized = parsedTableSize(table);
       const at = Number.isFinite(payload.x) && Number.isFinite(payload.y) ? { x: payload.x, y: payload.y } : spot(payload.pdfUid, sized);
-      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto" });
+      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: pageNoteBlocks(doc, table) });
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);
         const merged = mergedCells(table);
@@ -47029,7 +47412,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const blocks = selectBlocks(doc, payload.ids);
       if (blocks.length && blocks.every((b) => b?.type === "table")) return actions.insertParsedTable(payload);
       const withImages = await withUploadedImages(doc, payload.ids);
-      const plan = planParseInsert(withImages, { ...payload, kind: "blocks" });
+      const plan = planParseInsert(withImages, { ...payload, kind: "blocks", footnoteFormat: fnFormat() });
       if (plan.action === "sections") {
         const at = spot(payload.pdfUid, CARD_SIZE);
         const res = await session?.sendParsedToBoard?.({ ...at, sections: plan.sections });
@@ -47066,7 +47449,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const doc = await load(payload);
       if (!doc) return { ok: false, reason: "missing-cache" };
       const withImages = await withUploadedImages(doc, payload.ids);
-      const { markdown } = toRoamMarkdown(withImages, payload.ids);
+      const { markdown } = toRoamMarkdown(withImages, payload.ids, { footnoteFormat: fnFormat() });
       const at = spot(payload.pdfUid, CARD_SIZE);
       const res = await session?.insertParsedCard?.({ ...at, markdown });
       if (res?.ok) {

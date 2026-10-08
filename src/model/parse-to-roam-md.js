@@ -10,6 +10,7 @@
 // [[…]] ((…)) {{…}} #word and a leading word:: are still wrapped in inline code.
 
 import { selectBlocks } from "./parse-schema.js";
+import { defLine, footnoteFormat, pageNoteBlocks, plainFootnotes, prepareTable, refToken } from "./footnotes.js";
 
 export const ESCAPES = Object.freeze({
   whitespace: Object.freeze({
@@ -88,23 +89,27 @@ function prepareLine(text, { linkSafe, leading }) {
   return escapeMarkdownText(line, { leading });
 }
 
-function applyFootnoteRefs(text, refs) {
+function applyFootnoteRefs(text, refs, tokenFor) {
   if (!refs?.length) return text;
   let out = text;
   for (const ref of refs) {
     const mark = String(ref.mark ?? "");
     if (!mark) continue;
     const token = `[${mark}]`;
-    if (out.includes(token)) continue;
+    const swap = tokenFor ? tokenFor(ref) : token;
+    if (out.includes(token)) {
+      if (swap !== token) out = out.replace(token, swap);
+      continue;
+    }
     const sup = Object.keys(SUPERSCRIPT).find((ch) => SUPERSCRIPT[ch] === mark);
     if (sup && out.includes(sup)) {
-      out = out.replace(sup, token);
+      out = out.replace(sup, swap);
       continue;
     }
     if (Number.isInteger(ref.at) && ref.at >= 0 && ref.at <= out.length) {
-      out = `${out.slice(0, ref.at)}${token}${out.slice(ref.at)}`;
+      out = `${out.slice(0, ref.at)}${swap}${out.slice(ref.at)}`;
     } else {
-      out += token;
+      out += swap;
     }
   }
   return out;
@@ -137,6 +142,10 @@ export function toRoamMarkdown(doc, idsOrRange, options = {}) {
   const linkSafe = options.linkSafe !== false;
   const numbered = options.numbered === true;
   const footnotes = options.footnotes === "end" ? "end" : "inline";
+  // "extension" and "plain" leave footnote tokens (see footnotes.js); the session resolves
+  // "extension" against the page, "plain" is resolved here. Anything else is the old output.
+  const fnFormat = options.footnoteFormat === "extension" || options.footnoteFormat === "plain" ? footnoteFormat(options.footnoteFormat) : "off";
+  const tokens = fnFormat !== "off";
   const blocks = selectBlocks(doc, idsOrRange);
   const byId = new Map(blocks.map((block) => [block.id, block]));
   const folded = new Set();
@@ -163,18 +172,30 @@ export function toRoamMarkdown(doc, idsOrRange, options = {}) {
       if (!note || emittedNotes.has(note.id)) return;
       emittedNotes.add(note.id);
       const mark = note.mark ?? "";
+      if (tokens) {
+        let text = flattenLine(note.text ?? "");
+        if (linkSafe) text = linkSafeText(text);
+        lines.push(defLine(note.id, mark, text));
+        return;
+      }
       putUser(0, note.text ?? "", `[${mark}] `);
     };
 
+    const lookup = (id) => byId.get(id) ?? (tokens ? doc?.blocks?.[id] : null);
     const notesFor = (block) => {
       const refs = block.footnoteRefs || [];
       const notes = [];
       for (const ref of refs) {
-        const note = ref.to ? byId.get(ref.to) : null;
+        const note = ref.to ? lookup(ref.to) : null;
         if (note?.type === "footnote") notes.push(note);
       }
       return notes;
     };
+    const tokenFor = tokens ? (ref) => {
+      const note = ref.to ? lookup(ref.to) : null;
+      return note?.type === "footnote" ? refToken(note.id, ref.mark) : `[${ref.mark}]`;
+    } : null;
+    const pendingNotes = [];
 
     for (const block of blocks) {
       if (foldedHere.has(block.id)) continue;
@@ -189,9 +210,11 @@ export function toRoamMarkdown(doc, idsOrRange, options = {}) {
         if (prefix) putUser(0, block.text ?? "", prefix);
         else putUser(0, block.text ?? "", "**", "**");
       } else if (block.type === "para") {
-        putUser(0, applyFootnoteRefs(block.text ?? "", block.footnoteRefs));
+        putUser(0, applyFootnoteRefs(block.text ?? "", block.footnoteRefs, tokenFor));
         if (footnotes === "inline") {
           for (const note of notesFor(block)) emitNote(note);
+        } else if (tokens) {
+          pendingNotes.push(...notesFor(block));
         }
       } else if (block.type === "list") {
         for (const item of block.items || []) {
@@ -206,7 +229,11 @@ export function toRoamMarkdown(doc, idsOrRange, options = {}) {
           }
         }
       } else if (block.type === "table") {
-        emitTable(block, putUser, emitRaw, byId, foldedHere);
+        if (tokens) {
+          const prep = prepareTable(block, pageNoteBlocks(doc, block), { format: fnFormat });
+          emitTable(prep.table, putUser, emitRaw, byId, foldedHere);
+          for (const note of prep.notes) emitNote(note);
+        } else emitTable(block, putUser, emitRaw, byId, foldedHere);
       } else if (block.type === "figure") {
         emitFigure(block, putUser, byId);
       } else if (block.type === "formula") {
@@ -229,13 +256,15 @@ export function toRoamMarkdown(doc, idsOrRange, options = {}) {
       for (const block of blocks) {
         if (block.type === "footnote") emitNote(block);
       }
+      for (const note of pendingNotes) emitNote(note);
     }
     return { lines };
   };
 
   const drafted = render();
+  const joined = drafted.lines.join("\n");
   return {
-    markdown: drafted.lines.join("\n"),
+    markdown: fnFormat === "plain" ? plainFootnotes(joined).apply(joined) : joined,
     placeholders: [],
     blockEstimate: drafted.lines.length,
   };

@@ -389,6 +389,7 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | PDF parse | Safe links when inserting | Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default. |
 | PDF parse | Numbered lists when inserting | On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet. |
 | PDF parse | Footnotes | Inline places each note after the paragraph that cites it. End places every note after the insert. |
+| PDF parse | PDF footnotes | Extension writes each note under the page's #footnotes block and links it with an alias, the format of the Footnotes extension (it works without the extension). Plain keeps (N) in the text with the notes as lines. Off keeps the PDF's own marks. |
 | Performance | speed-flags | Hidden. Not a panel row. A JSON object, parsed by parseSpeedFlags. |
 
 ## Privacy

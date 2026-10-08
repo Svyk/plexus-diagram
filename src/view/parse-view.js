@@ -304,6 +304,7 @@ export function createParseView({
   getContext = null,
   clock = null,
   scanAuto = false,
+  lazyKeys = false,
   outline = false,
   onNeedOcr = null,
   onScan = null,
@@ -532,7 +533,8 @@ export function createParseView({
     return selectBlocks(parsed, ids);
   }
 
-  const pageChips = createPageChips({
+  let pageChips = null;
+  const chipsOn = () => pageChips || (pageChips = createPageChips({
     doc,
     host: readerEl || null,
     getParsed: () => parsed,
@@ -550,7 +552,7 @@ export function createParseView({
         },
       });
     },
-  });
+  }));
 
   function idsOf(blocks) {
     return (blocks || shown()).map((block) => block.id);
@@ -731,10 +733,10 @@ export function createParseView({
     clearBlockListeners();
     const blocks = shown();
     body.replaceChildren?.();
-    if (parsed) { try { onTitle?.(parsedDocTitle(parsed)); } catch { /* host */ } }
+    if (parsed) { chipsOn(); try { onTitle?.(parsedDocTitle(parsed)); } catch { /* host */ } }
     if (parsed && typeof onScan === "function") {
       const scanned = scanPagesOf(parsed);
-      try { onScan({ pages: scanned.length ? scanned : scanPageNumbers(parsed), readScan: readScanNow, helperState }); } catch { /* host */ }
+      try { onScan({ pages: scanned.length ? scanned : scanPageNumbers(parsed), readScan: readScanNow, helperState, partial: phase === "running", sha256: parsed.sha256 || "" }); } catch { /* host */ }
     }
     if (!parsed) {
       body.append(empty);
@@ -1595,7 +1597,7 @@ export function createParseView({
     paintChip();
   }
 
-  armKeys();
+  if (!lazyKeys) armKeys();
   render();
   void refreshHelper();
 
@@ -1621,6 +1623,8 @@ export function createParseView({
     chipText: () => chip.textContent,
     selectedIds: () => selected.slice(),
     blockCount: () => shown().length,
+    isBusy: () => phase === "running",
+    armKeys,
     refreshHelper,
     watchPageInput(input) {
       if (!input) return;
@@ -1645,7 +1649,7 @@ export function createParseView({
       try { cropObserver?.disconnect(); } catch { /* gone */ }
       cropWaiting.clear();
       overlay.dispose();
-      pageChips.dispose();
+      pageChips?.dispose();
       clearBlockListeners();
       for (const [node, type, fn, capture] of armed) {
         if (type === "observer") { try { fn(); } catch { /* observer */ } continue; }

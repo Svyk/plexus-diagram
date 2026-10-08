@@ -35859,6 +35859,7 @@ function createParseView({
   getContext = null,
   clock = null,
   scanAuto = false,
+  lazyKeys = false,
   outline = false,
   onNeedOcr = null,
   onScan = null,
@@ -36082,7 +36083,8 @@ function createParseView({
     }
     return selectBlocks(parsed, ids);
   }
-  const pageChips2 = createPageChips({
+  let pageChips2 = null;
+  const chipsOn = () => pageChips2 || (pageChips2 = createPageChips({
     doc,
     host: readerEl || null,
     getParsed: () => parsed,
@@ -36102,7 +36104,7 @@ function createParseView({
         }
       });
     }
-  });
+  }));
   function idsOf(blocks) {
     return (blocks || shown()).map((block) => block.id);
   }
@@ -36282,6 +36284,7 @@ function createParseView({
     const blocks = shown();
     body.replaceChildren?.();
     if (parsed) {
+      chipsOn();
       try {
         onTitle?.(parsedDocTitle(parsed));
       } catch {
@@ -36290,7 +36293,7 @@ function createParseView({
     if (parsed && typeof onScan === "function") {
       const scanned = scanPagesOf(parsed);
       try {
-        onScan({ pages: scanned.length ? scanned : scanPageNumbers(parsed), readScan: readScanNow, helperState });
+        onScan({ pages: scanned.length ? scanned : scanPageNumbers(parsed), readScan: readScanNow, helperState, partial: phase === "running", sha256: parsed.sha256 || "" });
       } catch {
       }
     }
@@ -37247,7 +37250,7 @@ function createParseView({
     }
     paintChip();
   }
-  armKeys();
+  if (!lazyKeys) armKeys();
   render();
   void refreshHelper();
   return {
@@ -37281,6 +37284,8 @@ function createParseView({
     chipText: () => chip.textContent,
     selectedIds: () => selected.slice(),
     blockCount: () => shown().length,
+    isBusy: () => phase === "running",
+    armKeys,
     refreshHelper,
     watchPageInput(input) {
       if (!input) return;
@@ -37311,7 +37316,7 @@ function createParseView({
       }
       cropWaiting.clear();
       overlay.dispose();
-      pageChips2.dispose();
+      pageChips2?.dispose();
       clearBlockListeners();
       for (const [node2, type, fn, capture] of armed) {
         if (type === "observer") {
@@ -40973,6 +40978,9 @@ function createReadPane({
       }
       ctl = new AbortController();
       runCtl = ctl;
+      ocrRun = { state: "running", source, ms: 0, progress: null };
+      paintStrip();
+      if (live.querySelector?.(".rm-pdf-container")) await waitReaderPdf(bgGen);
       const t0 = Date.now();
       const before = ocrGot;
       ocrRun = { state: "running", source, ms: 0, progress: null };
@@ -40991,6 +40999,10 @@ function createReadPane({
           });
           if (!ctl.signal.aborted) setOcrPages(out, { sha256: ocrSha });
         } else {
+          try {
+            await parsedView?.refreshHelper?.();
+          } catch {
+          }
           await info.readScan();
         }
         if (ctl.signal.aborted) ocrRun = { state: "idle", source: "", ms: 0, progress: null };
@@ -41028,6 +41040,7 @@ function createReadPane({
     }
   }
   const noteScan = (info) => {
+    if (info?.partial) return;
     const pages = Array.isArray(info?.pages) ? info.pages : [];
     scanInfo = pages.length ? { ...info, pages } : null;
     if (!scanInfo) {
@@ -41041,6 +41054,7 @@ function createReadPane({
     if (!first) return;
     void (async () => {
       await refreshSnaps(true);
+      if (info?.sha256 && !ocrCovered) await loadOcrLayer(info.sha256);
       if (autoReadOn() && !ocrCovered && !dismissedUrls.has(pdfUrl()) && ocrRun.state === "idle" && (deviceReady() || helperIsReady())) {
         await runRead("", { fresh: false });
       }
@@ -41099,6 +41113,7 @@ function createReadPane({
       onCached: () => revealModes(),
       onTitle: noteParsedTitle,
       onProgress: (info) => {
+        if (bgParsing && viewMode === "reader") return;
         const running2 = info && info.fraction != null && info.fraction < 1;
         setHidden2(progress, !running2);
         progressFill.style.width = `${Math.round((Number(info?.fraction) || 0) * 100)}%`;
@@ -41118,7 +41133,8 @@ function createReadPane({
       },
       ghostRoot: root,
       ghostPane: pane,
-      scanAuto: false
+      scanAuto: false,
+      lazyKeys: true
     });
     parsedMount.append(parsedView.element());
     try {
@@ -41141,6 +41157,44 @@ function createReadPane({
     setHidden2(pill, false);
     for (const [id, button2] of Object.entries(modeBtns)) {
       button2.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
+    }
+  }
+  let bgParsing = false;
+  let bgGen = 0;
+  const waitReaderPdf = async (gen) => {
+    for (let i = 0; i < 80; i += 1) {
+      if (gen !== bgGen || !openFlag) return null;
+      const pdf = readerPdf();
+      if (pdf) return pdf;
+      await new Promise((resolve) => {
+        const id = setTimeout(resolve, 250);
+        id?.unref?.();
+      });
+    }
+    return null;
+  };
+  async function backgroundParse() {
+    const url = pdfUrl();
+    if (!url || !openFlag) return;
+    const gen = ++bgGen;
+    const view2 = ensureParsed();
+    view2.setTarget({ url, pdfUid: current3.cardUid });
+    let found = null;
+    try {
+      found = await view2.restore();
+    } catch {
+      found = null;
+    }
+    if (found || gen !== bgGen || !openFlag || url !== pdfUrl()) return;
+    if (view2.blockCount() > 0 || view2.isBusy()) return;
+    if (!await waitReaderPdf(gen)) return;
+    if (view2.blockCount() > 0 || view2.isBusy()) return;
+    bgParsing = true;
+    try {
+      await view2.parseBuiltin();
+    } catch {
+    } finally {
+      bgParsing = false;
     }
   }
   async function noteCached() {
@@ -41182,6 +41236,7 @@ function createReadPane({
     }
     void refreshSnaps(true);
     const view2 = ensureParsed();
+    view2.armKeys();
     view2.setTarget({ url: pdfUrl(), pdfUid: current3.cardUid });
     try {
       view2.watchPageInput(readerField());
@@ -41224,6 +41279,7 @@ function createReadPane({
     const notify = !opts || opts.notify !== false;
     const wasOpen = openFlag;
     if (!openFlag && !pane.isConnected) return;
+    bgGen += 1;
     dropParsed();
     hideBar();
     textLayer.clear();
@@ -41273,6 +41329,7 @@ function createReadPane({
         textLayer.clear();
         ocrSha = "";
         resetOcrState();
+        if (parsedView && viewMode === "reader") dropParsed();
       }
       if (!openFlag || blockUid2 !== current3.blockUid) {
         fitDone = false;
@@ -41317,6 +41374,7 @@ function createReadPane({
       refreshList();
       explicitMode = next.mode != null && next.mode !== "";
       void noteCached();
+      void backgroundParse();
       if (explicitMode && normalizeReadMode(next.mode) === "both") void enterParsed("both");
       else if (parsedView && viewMode !== "reader") void enterParsed("both");
     },

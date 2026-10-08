@@ -42,6 +42,7 @@ async function rig(fn, { fetchImpl, values = {}, deviceOcr = null } = {}) {
           box.className = "rm-pdf-container";
           const scroller = doc.createElement("div");
           scroller.className = "PdfHighlighter";
+          scroller["__reactFiber$t"] = { memoizedProps: { pdfDocument: { getPage() {} } } };
           box.append(scroller);
           node.append(box);
         },

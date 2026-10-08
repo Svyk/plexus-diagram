@@ -2062,6 +2062,10 @@ export function createReadPane({
       if (!source) { openEngines({ sheet: true }); return; }
       ctl = new AbortController();
       runCtl = ctl;
+      ocrRun = { state: "running", source, ms: 0, progress: null };
+      paintStrip();
+      // The OCR source needs the reader's pdf.js document for the page images and bytes.
+      if (live.querySelector?.(".rm-pdf-container")) await waitReaderPdf(bgGen);
       const t0 = Date.now();
       const before = ocrGot;
       ocrRun = { state: "running", source, ms: 0, progress: null };
@@ -2077,6 +2081,7 @@ export function createReadPane({
           });
           if (!ctl.signal.aborted) setOcrPages(out, { sha256: ocrSha });
         } else {
+          try { await parsedView?.refreshHelper?.(); } catch { /* helper */ }
           await info.readScan();
         }
         if (ctl.signal.aborted) ocrRun = { state: "idle", source: "", ms: 0, progress: null };
@@ -2105,6 +2110,7 @@ export function createReadPane({
   }
   // The parse reports its scanned pages; the strip follows, and auto-read starts once per page set.
   const noteScan = (info) => {
+    if (info?.partial) return;
     const pages = Array.isArray(info?.pages) ? info.pages : [];
     scanInfo = pages.length ? { ...info, pages } : null;
     if (!scanInfo) { paintStrip(); return; }
@@ -2115,6 +2121,7 @@ export function createReadPane({
     if (!first) return;
     void (async () => {
       await refreshSnaps(true);
+      if (info?.sha256 && !ocrCovered) await loadOcrLayer(info.sha256);
       if (autoReadOn() && !ocrCovered && !dismissedUrls.has(pdfUrl()) && ocrRun.state === "idle" && (deviceReady() || helperIsReady())) {
         await runRead("", { fresh: false });
       }
@@ -2159,6 +2166,7 @@ export function createReadPane({
       onCached: () => revealModes(),
       onTitle: noteParsedTitle,
       onProgress: (info) => {
+        if (bgParsing && viewMode === "reader") return;
         const running = info && info.fraction != null && info.fraction < 1;
         setHidden(progress, !running);
         progressFill.style.width = `${Math.round((Number(info?.fraction) || 0) * 100)}%`;
@@ -2172,6 +2180,7 @@ export function createReadPane({
       ghostRoot: root,
       ghostPane: pane,
       scanAuto: false,
+      lazyKeys: true,
     });
     parsedMount.append(parsedView.element());
     try { parsedView.watchPageInput(readerField()); } catch { /* field */ }
@@ -2189,6 +2198,34 @@ export function createReadPane({
     for (const [id, button] of Object.entries(modeBtns)) {
       button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
     }
+  }
+  // Read mode parses quietly: the cached parse, else the built-in engine on the reader's own pdf.js document
+  // (no network, no graph writes, a yield between pages). It feeds the chips, the title and the scan strip.
+  let bgParsing = false;
+  let bgGen = 0;
+  const waitReaderPdf = async (gen) => {
+    for (let i = 0; i < 80; i += 1) {
+      if (gen !== bgGen || !openFlag) return null;
+      const pdf = readerPdf();
+      if (pdf) return pdf;
+      await new Promise((resolve) => { const id = setTimeout(resolve, 250); id?.unref?.(); });
+    }
+    return null;
+  };
+  async function backgroundParse() {
+    const url = pdfUrl();
+    if (!url || !openFlag) return;
+    const gen = ++bgGen;
+    const view = ensureParsed();
+    view.setTarget({ url, pdfUid: current.cardUid });
+    let found = null;
+    try { found = await view.restore(); } catch { found = null; }
+    if (found || gen !== bgGen || !openFlag || url !== pdfUrl()) return;
+    if (view.blockCount() > 0 || view.isBusy()) return;
+    if (!(await waitReaderPdf(gen))) return;
+    if (view.blockCount() > 0 || view.isBusy()) return;
+    bgParsing = true;
+    try { await view.parseBuiltin(); } catch { /* parse */ } finally { bgParsing = false; }
   }
   async function noteCached() {
     const url = pdfUrl();
@@ -2225,6 +2262,7 @@ export function createReadPane({
     }
     void refreshSnaps(true);
     const view = ensureParsed();
+    view.armKeys();
     view.setTarget({ url: pdfUrl(), pdfUid: current.cardUid });
     try { view.watchPageInput(readerField()); } catch { /* field */ }
     let found = null;
@@ -2258,6 +2296,7 @@ export function createReadPane({
     const notify = !opts || opts.notify !== false;
     const wasOpen = openFlag;
     if (!openFlag && !pane.isConnected) return;
+    bgGen += 1;
     dropParsed();
     hideBar();
     textLayer.clear();
@@ -2299,6 +2338,7 @@ export function createReadPane({
         textLayer.clear();
         ocrSha = "";
         resetOcrState();
+        if (parsedView && viewMode === "reader") dropParsed();
       }
       if (!openFlag || blockUid !== current.blockUid) {
         fitDone = false;
@@ -2342,6 +2382,7 @@ export function createReadPane({
       refreshList();
       explicitMode = next.mode != null && next.mode !== "";
       void noteCached();
+      void backgroundParse();
       if (explicitMode && normalizeReadMode(next.mode) === "both") void enterParsed("both");
       else if (parsedView && viewMode !== "reader") void enterParsed("both");
     },

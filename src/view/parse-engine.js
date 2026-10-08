@@ -3,6 +3,7 @@
 
 import { assembleDocument, parsePageGeometry, parsePdf } from "../model/parse/index.js";
 import { applyCellOcr, cellsToReread } from "../model/parse/ocr-fix.js";
+import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lines.js";
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
 
 const GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
@@ -81,8 +82,9 @@ export function createEngine({ pdfjs = detectPdfjs() } = {}) {
 // are replaced by records built from the helper's pxd-ocr/1 pages); the document is assembled
 // again so furniture, numbering and continuations stay whole; a scanLayer page keeps whichever
 // reading of each table has the better numeric columns; then cells the repair could not read
-// are sent back for a 3x re-read. No graph access, no writes.
-export async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase } = {}) {
+// are sent back for a 3x re-read. Doubtful text lines of in-browser OCR pages are read again
+// first (rereadLines). No graph access, no writes.
+export async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n) => !from || !to || (n >= from && n <= to));
   if (!wanted.length) return { doc: base, choices: [], rereads: [], pages: [] };
@@ -90,12 +92,38 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   onPhase?.({ phase: "ocr", pages: wanted });
   const got = await helper.ocr({ bytes, sha256, pages: wanted, signal });
   throwIfAborted();
-  const merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
+  const ask = (req) => helper.ocr({ bytes, sha256, cells: req, signal });
+  let merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
+  const lined = lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
+  if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
-  const rereads = await rereadCells({ doc, ocr: (req) => helper.ocr({ bytes, sha256, cells: req, signal }), signal, onPhase });
-  doc.ocr = { ...(doc.ocr || {}), rereads: rereads.reduce((n, r) => n + r.applied.length, 0), elapsedMs: got?.elapsedMs ?? null };
-  return { doc, choices: merged.choices, rereads, pages: wanted, records: next };
+  const rereads = await rereadCells({ doc, ocr: ask, signal, onPhase });
+  doc.ocr = { ...(doc.ocr || {}), rereads: rereads.reduce((n, r) => n + r.applied.length, 0), lines: lined.applied.length, elapsedMs: got?.elapsedMs ?? null };
+  return { doc, choices: merged.choices, rereads, lines: lined.applied, pages: wanted, records: next, ocrPages: lined.pages };
+}
+
+// Second read for doubtful OCR text lines (in-browser OCR pages only), then the case and lexicon
+// fixes. `ocr(requests)` is the same cell source rereadCells uses; `lexicon` is a Set, null, or a
+// function returning one (a failed load reads without it). Returns { pages, applied } with
+// `pages` the OCR page records to merge again (unchanged when nothing applied).
+export async function rereadLines({ doc, ocrPages, ocr, lexicon = null, signal, onPhase } = {}) {
+  const pages = ocrPages || [];
+  if (!doc || !linePages(pages).length) return { pages, applied: [] };
+  const throwIfAborted = () => { if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" }); };
+  let words = null;
+  try { words = typeof lexicon === "function" ? await lexicon() : lexicon; } catch { words = null; }
+  throwIfAborted();
+  const requests = linesToReread(doc, pages, { lexicon: words });
+  if (!requests.length) return { pages, applied: [] };
+  onPhase?.({ phase: "lines", count: requests.length });
+  let results = [];
+  if (typeof ocr === "function") {
+    const answer = await ocr(requests);
+    throwIfAborted();
+    results = answer?.cells || [];
+  }
+  return applyLineReads(pages, requests, results, { lexicon: words, doc });
 }
 
 // Second read for cells the numeric repair left unreadable or empty. `ocr(requests)` answers with

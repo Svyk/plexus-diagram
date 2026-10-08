@@ -10,7 +10,8 @@ import { fileURLToPath } from "node:url";
 import { assembleDocument, parsePageGeometry } from "../../src/model/parse/index.js";
 import { applyCellOcr, cellsToReread } from "../../src/model/parse/ocr-fix.js";
 import { evaluateDoc, parseRegions, parseStructure, prf } from "./icdar2013.mjs";
-import { createPpocrSource } from "./ppocr-node.mjs";
+import { createPpocrSource, loadLexicon } from "./ppocr-node.mjs";
+import { rereadLines } from "../../src/view/parse-engine.js";
 
 function listDocs(dir) {
   return readdirSync(dir).filter((f) => f.endsWith(".pdf")).map((f) => f.slice(0, -4)).sort();
@@ -34,8 +35,16 @@ async function ocrDocument(pdfPath, dpi) {
   const pages = Array.from({ length: numPages }, (_, i) => i + 1);
   const t0 = performance.now();
   const got = await source.ocr({ pages });
-  const records = (got.pages || []).map((p) => parsePageGeometry(p, p.n));
-  const doc = assembleDocument(records, { numPages, info, options: { ocr: "ppocr-web" }, from: 1, to: numPages });
+  const assemble = (ocrPages) => assembleDocument(ocrPages.map((p) => parsePageGeometry(p, p.n)), { numPages, info, options: { ocr: "ppocr-web" }, from: 1, to: numPages });
+  let doc = assemble(got.pages || []);
+  // Text-line re-read, as readScan runs it (PXD_OCR_LINES=0 for the before column).
+  if (process.env.PXD_OCR_LINES !== "0") {
+    const lined = await rereadLines({ doc, ocrPages: got.pages || [], ocr: (req) => source.ocr({ cells: req }), lexicon: loadLexicon() });
+    if (lined.applied.length) {
+      process.stderr.write(`  re-read ${lined.applied.length} lines\n`);
+      doc = assemble(lined.pages);
+    }
+  }
   const tables = doc.order.map((id) => doc.blocks[id]).filter((b) => b && b.type === "table" && b.repairs);
   const requests = tables.flatMap((t) => cellsToReread(t, { numericCols: t.repairs.numericCols }));
   if (requests.length) {

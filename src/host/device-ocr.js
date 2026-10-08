@@ -3,13 +3,14 @@
 //   status()   -> { state: "ready"|"not-downloaded"|"downloading"|"unavailable", progress?, mb }
 //   download() -> fetches, hash-checks and caches onnxruntime-web + the PP-OCR models (explicit only)
 //   cancel()   -> stops a running download
+//   lexicon({ signal }) -> Set of words for the text-line pass, or null (never downloads models)
 //   read({ pages, url, getPdf, signal, onProgress }) -> { schema: "pxd-ocr/1", engine, pages: [page records] }
 // Constructing it and calling status() fetch nothing; status() only looks in Cache Storage.
 
-import { MODEL_FILES, ORT_FILES, SCHEMA, ENGINE } from "../model/ocr/manifest.js";
+import { LEXICON_FILE, MODEL_FILES, ORT_FILES, SCHEMA, ENGINE } from "../model/ocr/manifest.js";
 import { createOcrWeb, renderPdfPage } from "./ocr-web.js";
 
-export const DEVICE_OCR_BYTES = [...Object.values(ORT_FILES), ...Object.values(MODEL_FILES)].reduce((n, f) => n + f.bytes, 0);
+export const DEVICE_OCR_BYTES = [...Object.values(ORT_FILES), ...Object.values(MODEL_FILES), LEXICON_FILE].reduce((n, f) => n + f.bytes, 0);
 const MB = Math.round(DEVICE_OCR_BYTES / (1024 * 1024));
 
 function abortError() {
@@ -112,7 +113,20 @@ export function createDeviceOcr({ source = null, env = globalThis, dpi = 300, cr
     return { cells: got?.cells || [] };
   }
 
-  return { status, download, cancel, read, readCells, label: "In-browser reading (beta)" };
+  // Word list for the text-line pass. Like readCells it never starts the model download: without
+  // cached models it answers null. With them it loads the list (cache, else one small fetch).
+  let words = null;
+  async function lexicon({ signal = null } = {}) {
+    if (words) return words;
+    const st = await status();
+    if (st.state !== "ready") return null;
+    const src = web();
+    if (typeof src.lexicon !== "function") return null;
+    try { words = (await src.lexicon({ signal })) || null; } catch { words = null; }
+    return words;
+  }
+
+  return { status, download, cancel, read, readCells, lexicon, label: "In-browser reading (beta)" };
 }
 
 let shared = null;

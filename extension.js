@@ -179,11 +179,11 @@ function lodFonts(zoom) {
     ui: clampNum(1 / zoom, 1, 4)
   };
 }
-function nearestInDirection(rects, fromUid, dir, { candidates = null } = {}) {
+function nearestInDirection(rects, fromUid, dir, { candidates: candidates2 = null } = {}) {
   const src = rects.get(fromUid);
   if (!src) return null;
   const c = { x: src.x + src.w / 2, y: src.y + src.h / 2 };
-  const list = candidates ? [...candidates] : [...rects.keys()];
+  const list = candidates2 ? [...candidates2] : [...rects.keys()];
   let best = null;
   let bestScore = Infinity;
   let fallback = null;
@@ -2693,16 +2693,16 @@ function pointInPolygon(point, polygon) {
   for (let i = 0, j = n2 - 1; i < n2; j = i++) {
     if (onSegment(polygon[j], polygon[i], point)) return true;
   }
-  let inside6 = false;
+  let inside7 = false;
   for (let i = 0, j = n2 - 1; i < n2; j = i++) {
     const yi = polygon[i].y;
     const yj = polygon[j].y;
     const xi = polygon[i].x;
     const xj = polygon[j].x;
     const intersect = yi > point.y !== yj > point.y && point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi;
-    if (intersect) inside6 = !inside6;
+    if (intersect) inside7 = !inside7;
   }
-  return inside6;
+  return inside7;
 }
 function itemsInPolygon(board2, polygon, rects) {
   if (!board2 || !Array.isArray(polygon) || polygon.length < 3) return [];
@@ -6193,7 +6193,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
   if (!a || !b) return null;
   const bounds = boundsOf([a, b]);
   const view = { x: bounds.x - pad2, y: bounds.y - pad2, w: bounds.w + 2 * pad2, h: bounds.h + 2 * pad2 };
-  const inside6 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
+  const inside7 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
   const label = (item) => itemLabel(item, blockText) || item.title || "";
   const cards = [];
   let others = 0;
@@ -6202,7 +6202,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     if (!r) continue;
     const role = item.uid === edge.from ? "from" : item.uid === edge.to ? "to" : "other";
     if (role === "other") {
-      if (!inside6(r) || others >= maxOthers) continue;
+      if (!inside7(r) || others >= maxOthers) continue;
       others += 1;
     }
     cards.push({ uid: item.uid, type: item.type, rect: r, title: label(item), role });
@@ -7167,8 +7167,8 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
         focusEl3(back);
         return;
       }
-      const inside6 = node2.contains?.(event.target) || node2.contains?.(doc.activeElement);
-      if (!inside6) return;
+      const inside7 = node2.contains?.(event.target) || node2.contains?.(doc.activeElement);
+      if (!inside7) return;
       const tag = fieldTag(event);
       if (tag === "input" || tag === "textarea" || tag === "select") return;
       const buttons = [...node2.querySelectorAll("button")];
@@ -7280,8 +7280,8 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
     if (event.key !== "Enter" && event.key !== " " && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     const tag = String(event.target?.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea") return;
-    const inside6 = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
-    if (!inside6) return;
+    const inside7 = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
+    if (!inside7) return;
     event.preventDefault();
     event.stopPropagation();
     if (event.key === "Enter" || event.key === " ") {
@@ -19094,14 +19094,14 @@ function uidFromBlockInputId(id, isDiagramUid) {
   const value = String(id || "");
   const prefix = "block-input-";
   if (!value.startsWith(prefix) || typeof isDiagramUid !== "function") return null;
-  const candidates = [];
+  const candidates2 = [];
   for (let i = value.length - 1; i >= prefix.length; i -= 1) {
     if (value[i] !== "-") continue;
     const candidate = value.slice(i + 1);
-    if (candidate) candidates.push(candidate);
+    if (candidate) candidates2.push(candidate);
   }
-  if (typeof isDiagramUid.many === "function") return isDiagramUid.many(candidates) ?? null;
-  for (const candidate of candidates) {
+  if (typeof isDiagramUid.many === "function") return isDiagramUid.many(candidates2) ?? null;
+  for (const candidate of candidates2) {
     if (isDiagramUid(candidate)) return candidate;
   }
   return null;
@@ -19128,13 +19128,13 @@ function embedOwnerFromInputId(id, readString) {
   if (at < 0) return "";
   const tail = value.slice(at + mark.length);
   if (!tail) return "";
-  const candidates = [];
+  const candidates2 = [];
   for (let i = 0; i < tail.length; i += 1) {
-    if (i === 0 || tail[i - 1] === "-") candidates.push(tail.slice(i));
+    if (i === 0 || tail[i - 1] === "-") candidates2.push(tail.slice(i));
   }
-  candidates.sort((a, b) => b.length - a.length);
-  if (typeof readString !== "function") return candidates[candidates.length - 1] || "";
-  for (const candidate of candidates) {
+  candidates2.sort((a, b) => b.length - a.length);
+  if (typeof readString !== "function") return candidates2[candidates2.length - 1] || "";
+  for (const candidate of candidates2) {
     let string = "";
     try {
       string = String(readString(candidate) ?? "");
@@ -21460,14 +21460,14 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const nowMs2 = Date.now();
       const since = f.days ? nowMs2 - f.days * 864e5 : null;
       const cap4 = libraryCap();
-      const candidates = [];
+      const candidates2 = [];
       const seen = /* @__PURE__ */ new Set();
       const push = (row4) => {
-        if (candidates.length >= cap4) return false;
+        if (candidates2.length >= cap4) return false;
         const key = `${row4.kind}:${row4.uid || row4.title}`;
         if (seen.has(key)) return false;
         seen.add(key);
-        candidates.push(row4);
+        candidates2.push(row4);
         return true;
       };
       const timed = (name, fn) => {
@@ -21600,7 +21600,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
           ));
         }
         for (const rec of found) {
-          if (candidates.length >= cap4) break;
+          if (candidates2.length >= cap4) break;
           const uid = rec?.[0];
           const string = rec?.[1];
           const pageTitle = rec?.[2];
@@ -21662,8 +21662,8 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         }
       }
       if (f.orphan) {
-        const blockUids = candidates.filter((row4) => row4.kind === "block" && row4.uid).map((row4) => row4.uid);
-        const pageTitles = candidates.filter((row4) => row4.kind === "page" && row4.title).map((row4) => row4.title);
+        const blockUids = candidates2.filter((row4) => row4.kind === "block" && row4.uid).map((row4) => row4.uid);
+        const pageTitles = candidates2.filter((row4) => row4.kind === "page" && row4.title).map((row4) => row4.title);
         const onUid = /* @__PURE__ */ new Set();
         const onTitle = /* @__PURE__ */ new Set();
         if (blockUids.length) {
@@ -21690,13 +21690,13 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
           ));
           for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
         }
-        for (const row4 of candidates) {
+        for (const row4 of candidates2) {
           if (row4.kind === "board") row4.onBoard = true;
           else if (row4.kind === "block") row4.onBoard = onUid.has(row4.uid);
           else row4.onBoard = onTitle.has(row4.title);
         }
       }
-      const rows = narrowLibrary(candidates, f, nowMs2).slice(0, lim).map(libraryCard);
+      const rows = narrowLibrary(candidates2, f, nowMs2).slice(0, lim).map(libraryCard);
       return { rows, queries };
     },
     // Graph neighbours of a card target, ordered for the Related panel:
@@ -29846,12 +29846,12 @@ function createInteractions({ actions, settings } = {}) {
     const from = lastSelected();
     if (!b || !r || !from || !b.items.has(from)) return;
     const parent = b.items.get(from).parentUid;
-    const candidates = [];
+    const candidates2 = [];
     for (const [uid, item] of b.items) {
       if (uid !== from && !r.get(uid)) continue;
-      if (item.parentUid === parent && (uid === from || !state.selection.has(uid))) candidates.push(uid);
+      if (item.parentUid === parent && (uid === from || !state.selection.has(uid))) candidates2.push(uid);
     }
-    const next = nearestInDirection(r, from, dir, { candidates });
+    const next = nearestInDirection(r, from, dir, { candidates: candidates2 });
     if (!next) return;
     selectItems(add ? [...state.selection, next] : [next]);
   };
@@ -30417,8 +30417,8 @@ function pageIndicator(inputValue, siblingText) {
     total: Number.isInteger(totalNum) && totalNum >= 1 ? totalNum : null
   };
 }
-function pageTotalText(candidates) {
-  const list = Array.isArray(candidates) ? candidates : [];
+function pageTotalText(candidates2) {
+  const list = Array.isArray(candidates2) ? candidates2 : [];
   for (const value of list) {
     const text3 = String(value ?? "").replace(/\u00a0/g, " ").trim();
     if (!text3 || text3.length > 16) continue;
@@ -30468,8 +30468,8 @@ function pdfDocumentFromFiber(fiber) {
     seen.add(current3);
     const node2 = current3.stateNode && typeof current3.stateNode === "object" ? current3.stateNode : null;
     const props = current3.memoizedProps && typeof current3.memoizedProps === "object" ? current3.memoizedProps : null;
-    const candidates = [node2?.viewer?.pdfDocument, props?.pdfDocument, node2?.props?.pdfDocument, props?.pdf];
-    for (const candidate of candidates) if (isDoc(candidate)) return candidate;
+    const candidates2 = [node2?.viewer?.pdfDocument, props?.pdfDocument, node2?.props?.pdfDocument, props?.pdf];
+    for (const candidate of candidates2) if (isDoc(candidate)) return candidate;
     current3 = current3.return;
   }
   return null;
@@ -30652,10 +30652,10 @@ function sameBaseline(a, b) {
   return Math.abs(a.base - b.base) <= 0.3 * Math.max(a.size, b.size);
 }
 function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGap = 2 } = {}) {
-  const pieces = [];
-  for (const item of items || []) for (const p of piecesOf(item, transform, fonts)) pieces.push(p);
-  const normal = pieces.filter((p) => !p.rotated);
-  const rotated = pieces.filter((p) => p.rotated && !p.space);
+  const pieces2 = [];
+  for (const item of items || []) for (const p of piecesOf(item, transform, fonts)) pieces2.push(p);
+  const normal = pieces2.filter((p) => !p.rotated);
+  const rotated = pieces2.filter((p) => p.rotated && !p.space);
   normal.sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
   for (const p of normal) {
@@ -30734,11 +30734,11 @@ function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGa
   });
   return { lines, rotated };
 }
-function mergeWords(pieces, rowSize) {
+function mergeWords(pieces2, rowSize) {
   const words = [];
   let cur = null;
   let gapSpace = false;
-  for (const p of pieces) {
+  for (const p of pieces2) {
     if (p.space) {
       gapSpace = true;
       continue;
@@ -31311,13 +31311,13 @@ function connected(s, t, tol = 4) {
   return v.pos >= h.a - tol && v.pos <= h.b + tol && h.pos >= v.a - tol && h.pos <= v.b + tol;
 }
 function rowsBetween(words, { x0, x1, y0, y1 }) {
-  const inside6 = words.filter((w) => {
+  const inside7 = words.filter((w) => {
     const cx = (w.x0 + w.x1) / 2;
     const cy = w.base - 0.3 * w.size;
     return cx >= x0 - 2 && cx <= x1 + 2 && cy > y0 && cy < y1;
   }).sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
-  for (const w of inside6) {
+  for (const w of inside7) {
     const r = rows[rows.length - 1];
     if (r && Math.abs(r.base - w.base) <= 0.3 * Math.max(r.size, w.size)) r.words.push(w);
     else rows.push({ base: w.base, size: w.size, words: [w] });
@@ -31588,8 +31588,8 @@ function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, 
   }
   const usedBoxes = /* @__PURE__ */ new Set();
   for (const b of boxes) {
-    const inside6 = tables.some((t) => b.x0 >= t.bbox[0] - 2 && b.x1 <= t.bbox[2] + 2 && b.y0 >= t.bbox[1] - 2 && b.y1 <= t.bbox[3] + 2);
-    if (inside6) usedBoxes.add(b);
+    const inside7 = tables.some((t) => b.x0 >= t.bbox[0] - 2 && b.x1 <= t.bbox[2] + 2 && b.y0 >= t.bbox[1] - 2 && b.y1 <= t.bbox[3] + 2);
+    if (inside7) usedBoxes.add(b);
   }
   return { tables, bands, usedWords, usedRules, usedBoxes, released, segments: segs };
 }
@@ -31965,8 +31965,8 @@ function looksLikeChart(band, graphics) {
   const width = band.x1 - band.x0;
   let bars = 0;
   for (const b of graphics.boxes || []) {
-    const inside6 = b.x0 >= band.x0 - 2 && b.x1 <= band.x1 + 2 && b.y0 >= band.y0 - 2 && b.y1 <= band.y1 + 2;
-    if (!inside6 || b.light) continue;
+    const inside7 = b.x0 >= band.x0 - 2 && b.x1 <= band.x1 + 2 && b.y0 >= band.y0 - 2 && b.y1 <= band.y1 + 2;
+    if (!inside7 || b.light) continue;
     if (b.x1 - b.x0 < 0.6 * width && b.y1 - b.y0 > 4 && b.x1 - b.x0 > 4) bars++;
   }
   return bars >= 4;
@@ -32260,9 +32260,9 @@ function refineColumns(rowsIn, cols) {
   const out = [];
   const seps = [];
   for (const col of cols) {
-    const pieces = splitColumn(rowsIn, col, size);
-    out.push(...pieces.cols);
-    seps.push(...pieces.seps);
+    const pieces2 = splitColumn(rowsIn, col, size);
+    out.push(...pieces2.cols);
+    seps.push(...pieces2.seps);
   }
   return { cols: out, seps };
 }
@@ -32322,9 +32322,9 @@ function splitColumn(rowsIn, col, size) {
   const edges = [col.x0, ...seps.map((g) => (g.x0 + g.x1) / 2), col.x1];
   const cols = [];
   for (let k = 0; k + 1 < edges.length; k++) {
-    const inside6 = rows.flat().filter((w) => (w.x0 + w.x1) / 2 >= edges[k] && (w.x0 + w.x1) / 2 < edges[k + 1]);
-    if (!inside6.length) continue;
-    cols.push({ x0: Math.max(edges[k], Math.min(...inside6.map((w) => w.x0))), x1: Math.min(edges[k + 1], Math.max(...inside6.map((w) => w.x1))) });
+    const inside7 = rows.flat().filter((w) => (w.x0 + w.x1) / 2 >= edges[k] && (w.x0 + w.x1) / 2 < edges[k + 1]);
+    if (!inside7.length) continue;
+    cols.push({ x0: Math.max(edges[k], Math.min(...inside7.map((w) => w.x0))), x1: Math.min(edges[k + 1], Math.max(...inside7.map((w) => w.x1))) });
   }
   return { cols: cols.length >= 2 ? cols : [col], seps: cols.length >= 2 ? seps : [] };
 }
@@ -32767,12 +32767,12 @@ function coveredAt(cellMap, r, c, span) {
   return false;
 }
 function tableFromBand(band, words) {
-  const inside6 = words.filter((w) => {
+  const inside7 = words.filter((w) => {
     const cx = (w.x0 + w.x1) / 2;
     const cy = w.base - 0.3 * w.size;
     return cx >= band.x0 - 4 && cx <= band.x1 + 4 && cy >= band.y0 - 1 && cy <= band.y1 + 1;
   });
-  if (!inside6.length) return null;
+  if (!inside7.length) return null;
   const fullYs = band.ys.filter((b) => b.full).map((b) => b.y);
   const partial = band.ys.filter((b) => !b.full);
   const rowsIn = [];
@@ -32780,7 +32780,7 @@ function tableFromBand(band, words) {
   let headerBands = 0;
   const edges = [band.y0 - 1, ...fullYs.filter((y) => y > band.y0 + 1 && y < band.y1 - 1), band.y1 + 1];
   for (let i = 0; i + 1 < edges.length; i++) {
-    const ws = inside6.filter((w) => {
+    const ws = inside7.filter((w) => {
       const cy = w.base - 0.3 * w.size;
       return cy >= edges[i] && cy < edges[i + 1];
     });
@@ -32836,7 +32836,7 @@ function tableFromBand(band, words) {
   mergeWrappedLabelRows(rowsIn, headerRowsHint);
   const table = buildTable(rowsIn, { bands: band, headerRowsHint });
   if (!table) return null;
-  table.usedWords = inside6;
+  table.usedWords = inside7;
   return table;
 }
 function hasSubRows(words, band) {
@@ -33164,10 +33164,10 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
         if (used.has(wd)) continue;
         const cx = (wd.x0 + wd.x1) / 2;
         const cy = (wd.y0 + wd.y1) / 2;
-        const inside6 = cx >= fig.x0 && cx <= fig.x1 && cy >= fig.y0 && cy <= fig.y1;
+        const inside7 = cx >= fig.x0 && cx <= fig.x1 && cy >= fig.y0 && cy <= fig.y1;
         const margin = 12;
         const near = wd.size <= 0.85 * bodySize && cx >= fig.x0 - margin && cx <= fig.x1 + margin && cy >= fig.y0 - margin && cy <= fig.y1 + margin;
-        if (!inside6 && !near) continue;
+        if (!inside7 && !near) continue;
         used.add(wd);
         fig.x0 = Math.min(fig.x0, wd.x0);
         fig.x1 = Math.max(fig.x1, wd.x1);
@@ -33214,11 +33214,11 @@ function normalizeFurniture(text3) {
 function findFurniture(pages, { band = 0.08 } = {}) {
   const n2 = pages.length;
   const need2 = Math.max(2, Math.min(3, n2), Math.ceil(n2 * 0.5));
-  const candidates = /* @__PURE__ */ new Map();
+  const candidates2 = /* @__PURE__ */ new Map();
   const cand = (line, page, where) => {
     const key = `${where}|${normalizeFurniture(line.text)}`;
-    if (!candidates.has(key)) candidates.set(key, []);
-    candidates.get(key).push({ page, line, y: line.base });
+    if (!candidates2.has(key)) candidates2.set(key, []);
+    candidates2.get(key).push({ page, line, y: line.base });
   };
   const alone = /* @__PURE__ */ new Set();
   for (const pg of pages) {
@@ -33232,7 +33232,7 @@ function findFurniture(pages, { band = 0.08 } = {}) {
   }
   const removed = [];
   const marks = /* @__PURE__ */ new Set();
-  for (const [key, list] of candidates) {
+  for (const [key, list] of candidates2) {
     const pagesSeen = new Set(list.map((e2) => e2.page));
     const recurring = pagesSeen.size >= need2 && n2 >= 2;
     for (const e2 of list) {
@@ -34993,6 +34993,754 @@ function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CA
 // src/view/parse-view.js
 init_pdf();
 
+// src/model/ocr/lexicon.js
+var LETTERS = /^[A-Za-z]+$/;
+var LOW_CHAR = 0.9;
+var MIN_LEN = 3;
+var SWAPS = {
+  a: ["e", "o", "s", "c"],
+  e: ["a", "o", "c", "m"],
+  o: ["a", "e", "c"],
+  c: ["e", "o", "a"],
+  i: ["l", "j"],
+  l: ["i", "t"],
+  t: ["l", "f"],
+  f: ["t"],
+  j: ["i"],
+  n: ["m", "h", "u"],
+  m: ["n", "e"],
+  h: ["b", "n"],
+  b: ["h"],
+  u: ["n", "v"],
+  v: ["u"],
+  s: ["a"]
+};
+var MULTI = [["rn", "m"], ["m", "rn"], ["cl", "d"], ["d", "cl"], ["ri", "n"], ["vv", "w"]];
+function parseLexicon(text3) {
+  const set = /* @__PURE__ */ new Set();
+  for (const line of String(text3 || "").split(/\r?\n/)) {
+    const w = line.trim().toLowerCase();
+    if (w) set.add(w);
+  }
+  return set;
+}
+function oddCase(word) {
+  if (!LETTERS.test(word) || word.length < 2) return false;
+  if (word === word.toUpperCase() || word === word.toLowerCase()) return false;
+  if (word[0] === word[0].toUpperCase() && word.slice(1) === word.slice(1).toLowerCase()) return false;
+  if (/^(?:[A-Z][a-z]+){2,}$/.test(word)) return false;
+  return true;
+}
+function lineCase(words) {
+  let upper = 0;
+  let other = 0;
+  for (const w of words) {
+    const letters = String(w).replace(/[^A-Za-z]/g, "");
+    if (letters.length < 2) continue;
+    if (letters === letters.toUpperCase()) upper++;
+    else other++;
+  }
+  return upper > other ? "upper" : "mixed";
+}
+function normalizeCase(word, dominant = "mixed") {
+  if (!oddCase(word)) return word;
+  const ups = word.replace(/[^A-Z]/g, "").length;
+  if (dominant === "upper" || ups >= 0.6 * word.length) return word.toUpperCase();
+  if (word[0] === word[0].toUpperCase()) return word[0] + word.slice(1).toLowerCase();
+  return word.toLowerCase();
+}
+function applyCasing(model, word) {
+  if (model === model.toUpperCase() && model.length > 1) return word.toUpperCase();
+  if (model[0] === model[0].toUpperCase()) return word[0].toUpperCase() + word.slice(1);
+  return word;
+}
+function candidates(lower3, low, maxSwaps) {
+  const out = /* @__PURE__ */ new Set();
+  const positions = [];
+  for (let i = 0; i < lower3.length; i++) if (low[i] && SWAPS[lower3[i]]) positions.push(i);
+  const swapAt = (s, i) => (SWAPS[s[i]] || []).map((ch) => s.slice(0, i) + ch + s.slice(i + 1));
+  for (const i of positions) {
+    for (const one of swapAt(lower3, i)) {
+      out.add(one);
+      if (maxSwaps < 2) continue;
+      for (const j of positions) if (j > i) for (const two of swapAt(one, j)) out.add(two);
+    }
+  }
+  for (const [from, to] of MULTI) {
+    let at = lower3.indexOf(from);
+    while (at >= 0) {
+      let touches = false;
+      for (let k = at; k < at + from.length; k++) if (low[k]) touches = true;
+      if (touches) out.add(lower3.slice(0, at) + to + lower3.slice(at + from.length));
+      at = lower3.indexOf(from, at + 1);
+    }
+  }
+  out.delete(lower3);
+  return out;
+}
+function correctWord(token, { lexicon, confs = null, conf = 1, keep = null } = {}) {
+  if (!lexicon || !lexicon.size) return token;
+  const m = /^([^A-Za-z0-9]*)([A-Za-z]+)([^A-Za-z0-9]*)$/.exec(token);
+  if (!m) return token;
+  const [, lead, core, tail] = m;
+  if (core.length < MIN_LEN) return token;
+  const lower3 = core.toLowerCase();
+  if (lexicon.has(lower3)) return token;
+  if (keep && keep.has(lower3)) return token;
+  let low;
+  let maxSwaps;
+  if (confs && confs.length === core.length) {
+    low = confs.map((c) => c < LOW_CHAR);
+    maxSwaps = 2;
+  } else {
+    if (conf >= LOW_CHAR) return token;
+    low = new Array(core.length).fill(true);
+    maxSwaps = 1;
+  }
+  if (!low.some(Boolean)) return token;
+  const hits = [...candidates(lower3, low, maxSwaps)].filter((w) => lexicon.has(w));
+  if (hits.length !== 1) return token;
+  return lead + applyCasing(core, hits[0]) + tail;
+}
+function suspiciousWord(token, { lexicon = null, keep = null } = {}) {
+  const t = String(token || "");
+  const marked = /^\d{1,2}[A-Za-z]{3,}[^A-Za-z0-9]*$/.test(t) || /^[^A-Za-z0-9]*[A-Za-z]{3,}\d{1,2}(?:,\d{1,2})*[^A-Za-z0-9]*$/.test(t);
+  if (/[A-Za-z]/.test(t) && /\d/.test(t) && !marked) return true;
+  const core = (marked ? t.replace(/\d/g, "") : t).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "");
+  if (/[A-Za-z][^A-Za-z0-9\-'’.&/]+[A-Za-z]/.test(core)) return true;
+  if (oddCase(core)) return true;
+  if (!lexicon || !lexicon.size || !LETTERS.test(core) || core.length < MIN_LEN) return false;
+  const lower3 = core.toLowerCase();
+  return !lexicon.has(lower3) && !(keep && keep.has(lower3));
+}
+function properNouns(words) {
+  const count = /* @__PURE__ */ new Map();
+  for (const w of words) {
+    const core = String(w).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "");
+    if (core.length < MIN_LEN || !/^(?:[A-Z][a-z]+)+$/.test(core)) continue;
+    const k = core.toLowerCase();
+    count.set(k, (count.get(k) || 0) + 1);
+  }
+  return new Set([...count].filter(([, n2]) => n2 >= 2).map(([k]) => k));
+}
+function cleanWord(token, lexicon) {
+  const core = String(token || "").replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "");
+  return Boolean(lexicon && core.length >= MIN_LEN && LETTERS.test(core) && lexicon.has(core.toLowerCase()));
+}
+function splitJoined(token, lexicon) {
+  const m = /^([^A-Za-z0-9]*)([A-Za-z]+)([^A-Za-z0-9]*)$/.exec(String(token || ""));
+  if (!m || !lexicon || !lexicon.size) return [token];
+  const [, lead, core, tail] = m;
+  if (core.length < 10 || !/^[A-Z]?[a-z]+$/.test(core) || lexicon.has(core.toLowerCase())) return [token];
+  const lower3 = core.toLowerCase();
+  const cuts = [];
+  for (let i = 4; i <= lower3.length - 4; i++) if (lexicon.has(lower3.slice(0, i)) && lexicon.has(lower3.slice(i))) cuts.push(i);
+  if (cuts.length !== 1) return [token];
+  return [lead + core.slice(0, cuts[0]), core.slice(cuts[0]) + tail];
+}
+
+// src/model/ocr/words-from-ctc.js
+var SPACE = /* @__PURE__ */ new Set([" ", "　", " "]);
+function round22(n2) {
+  return Math.round(n2 * 100) / 100;
+}
+function round3(n2) {
+  return Math.round(n2 * 1e3) / 1e3;
+}
+function softmaxAt(logits, row4, classes, index) {
+  let max = -Infinity;
+  for (let c = 0; c < classes; c++) max = Math.max(max, logits[row4 + c]);
+  let sum = 0;
+  for (let c = 0; c < classes; c++) sum += Math.exp(logits[row4 + c] - max);
+  return Math.exp(logits[row4 + index] - max) / sum;
+}
+function confidenceAt(logits, row4, classes, index) {
+  let sum = 0;
+  let min = Infinity;
+  let max = -Infinity;
+  for (let c = 0; c < classes; c++) {
+    const v = logits[row4 + c];
+    sum += v;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  if (min >= -1e-4 && max <= 1.001 && sum > 0.95 && sum < 1.05) return Math.max(0, logits[row4 + index]);
+  return softmaxAt(logits, row4, classes, index);
+}
+function ctcDecode(logits, time, classes, dict) {
+  const chars = [];
+  let prev = -1;
+  for (let t = 0; t < time; t++) {
+    const row4 = t * classes;
+    let best = 0;
+    let bestV = -Infinity;
+    for (let c = 0; c < classes; c++) {
+      const v = logits[row4 + c];
+      if (v > bestV) {
+        bestV = v;
+        best = c;
+      }
+    }
+    if (best !== 0 && best !== prev) {
+      const ch = best <= dict.length ? dict[best - 1] : best === dict.length + 1 ? " " : null;
+      if (ch) chars.push({ ch, t, conf: confidenceAt(logits, row4, classes, best) });
+    }
+    prev = best;
+  }
+  return chars;
+}
+function bucketConf(mean) {
+  if (mean >= 0.8) return 1;
+  if (mean >= 0.5) return 0.5;
+  return 0.3;
+}
+function softenPhrase(text3) {
+  return String(text3 || "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/,(\S)/g, ", $1").replace(/;(\S)/g, "; $1").replace(/(\S)\(/g, "$1 (").replace(/\)([A-Za-z])/g, ") $1");
+}
+function wordItem(text3, x0, x1, box2, conf) {
+  const width = Math.max(0.4, x1 - x0);
+  const size = Math.max(0.5, box2.y1 - box2.y0);
+  const base = box2.y1 - 0.2 * size;
+  const sized = round22(size);
+  return {
+    str: text3,
+    transform: [sized, 0, 0, sized, round22(x0), round22(base)],
+    width: round22(width),
+    height: sized,
+    y0: round22(base - 0.8 * sized),
+    y1: round22(base + 0.22 * sized),
+    fontName: "ocr",
+    conf: bucketConf(conf),
+    mean: round3(conf)
+  };
+}
+function ctcText({ logits, time, classes, dict }) {
+  const chars = ctcDecode(logits, time, classes, dict);
+  if (!chars.length) return { text: "", conf: 0 };
+  let raw = "";
+  let conf = 0;
+  let n2 = 0;
+  for (const ch of chars) {
+    if (SPACE.has(ch.ch)) raw += " ";
+    else {
+      raw += ch.ch;
+      conf += ch.conf;
+      n2++;
+    }
+  }
+  raw = raw.replace(/\s+/g, " ").trim();
+  const text3 = /[A-Za-z]/.test(raw) ? softenPhrase(raw) : raw;
+  return { text: text3, conf: n2 ? Math.round(conf / n2 * 1e3) / 1e3 : 0 };
+}
+function wordsFromCtc({ logits, time, classes, dict, box: box2 }) {
+  const chars = ctcDecode(logits, time, classes, dict);
+  if (!chars.length || !box2) return [];
+  const span = Math.max(0.4, box2.x1 - box2.x0);
+  const groups = [];
+  let cur = [];
+  const flush = () => {
+    if (cur.length) groups.push(cur);
+    cur = [];
+  };
+  for (const ch of chars) {
+    if (SPACE.has(ch.ch)) flush();
+    else cur.push(ch);
+  }
+  flush();
+  if (!groups.length) return [];
+  if (groups.length === 1 && !chars.some((ch) => SPACE.has(ch.ch))) {
+    const text3 = groups[0].map((ch) => ch.ch).join("");
+    const parts = softenPhrase(text3).split(/\s+/).filter(Boolean);
+    if (parts.length <= 1) {
+      const conf2 = groups[0].reduce((s, ch) => s + ch.conf, 0) / groups[0].length;
+      return text3 ? [wordItem(text3, box2.x0, box2.x1, box2, conf2)] : [];
+    }
+    const total = parts.reduce((s, p) => s + p.length, 0);
+    let x = box2.x0;
+    const conf = groups[0].reduce((s, ch) => s + ch.conf, 0) / groups[0].length;
+    return parts.map((part) => {
+      const w = span * (part.length / total);
+      const item = wordItem(part, x, x + w, box2, conf);
+      x += w;
+      return item;
+    });
+  }
+  return groups.map((group) => {
+    const text3 = group.map((ch) => ch.ch).join("");
+    const t0 = group[0].t;
+    const t1 = group[group.length - 1].t + 1;
+    const x0 = box2.x0 + t0 / time * span;
+    const x1 = box2.x0 + t1 / time * span;
+    const conf = group.reduce((s, ch) => s + ch.conf, 0) / group.length;
+    return wordItem(text3, x0, x1, box2, conf);
+  }).filter((item) => item.str);
+}
+var TALL_RE = /[A-Z0-9bdfhklt]/;
+var DESC_RE = /[gjpqy,;()[\]{}|/_@]/;
+var NUMBERISH_RE = /^[\d.,()%+\-–—OoDQBSslIZG|]+$/;
+var ECHO_RE = /^(?:c+|y[aeinm]{0,6}|ge|gae)$/i;
+function withoutEchoes(items) {
+  const kept = [];
+  for (const item of items) {
+    const mean = item.mean;
+    delete item.mean;
+    if (ECHO_RE.test(item.str) && !(mean >= 0.92)) continue;
+    kept.push(item);
+  }
+  return kept;
+}
+function bodySizeOf2(items) {
+  const wordy = items.filter((item) => item.str.length >= 3 || /\d/.test(item.str));
+  const source = wordy.length >= 4 ? wordy : items;
+  const plain2 = source.filter((item) => TALL_RE.test(item.str) && !DESC_RE.test(item.str));
+  const pool = (plain2.length ? plain2 : source).map((item) => item.transform[0]).sort((a, b) => a - b);
+  const median4 = pool[pool.length >> 1] || items[0].transform[0];
+  let body = median4;
+  const sorted = items.map((item) => item.transform[5]).sort((a, b) => a - b);
+  const bases = [];
+  for (const base of sorted) {
+    if (!bases.length || base - bases[bases.length - 1] > 0.35 * median4) bases.push(base);
+  }
+  const gaps = [];
+  for (let i = 1; i < bases.length; i++) {
+    const gap = bases[i] - bases[i - 1];
+    if (gap > 0.4 * median4 && gap < 2.5 * median4) gaps.push(gap);
+  }
+  if (gaps.length >= 4) {
+    gaps.sort((a, b) => a - b);
+    const pitch = gaps[gaps.length >> 1];
+    if (pitch < 0.7 * median4) body = pitch / 0.95;
+  }
+  return { body, median: median4 };
+}
+function baselineRows2(sorted) {
+  const rows = [];
+  let row4 = null;
+  for (const item of sorted) {
+    const base = item.transform[5];
+    const size = item.transform[0] || 1;
+    if (row4 && base - row4.last <= 0.3 * size && base - row4.first <= 0.45 * size) {
+      row4.items.push(item);
+      row4.last = base;
+      continue;
+    }
+    row4 = { first: base, last: base, items: [item] };
+    rows.push(row4);
+  }
+  return rows.map((r) => r.items);
+}
+function rowBaseline(row4) {
+  const pairs = row4.map((item) => [item.transform[5], Math.max(0.1, item.width || 0)]).sort((a, b) => a[0] - b[0]);
+  const total = pairs.reduce((s, p) => s + p[1], 0);
+  let acc = 0;
+  for (const [base, w] of pairs) {
+    acc += w;
+    if (acc >= total / 2) return base;
+  }
+  return pairs[pairs.length - 1][0];
+}
+function snapOcrItems(items) {
+  if (!items.length) return [];
+  items = withoutEchoes(items);
+  if (!items.length) return [];
+  const { body, median: median4 } = bodySizeOf2(items);
+  const kept = [];
+  for (const item of items) {
+    const size = item.transform[0];
+    if (size < 0.45 * median4 && !(item.conf >= 1 && NUMBERISH_RE.test(item.str))) continue;
+    if (size >= 0.45 * median4 && size <= 1.5 * median4 && body > 0) {
+      const base = item.transform[5];
+      const sized = round22(body);
+      item.transform[0] = sized;
+      item.transform[3] = sized;
+      item.height = sized;
+      item.y0 = round22(base - 0.8 * sized);
+      item.y1 = round22(base + 0.22 * sized);
+    }
+    kept.push(item);
+  }
+  kept.sort((a, b) => a.transform[5] - b.transform[5] || a.transform[4] - b.transform[4]);
+  for (const row4 of baselineRows2(kept)) {
+    const anchor = rowBaseline(row4);
+    for (const item of row4) {
+      const shift = anchor - item.transform[5];
+      item.transform[5] = round22(anchor);
+      item.y0 = round22(item.y0 + shift);
+      item.y1 = round22(item.y1 + shift);
+    }
+  }
+  kept.sort((a, b) => a.transform[5] - b.transform[5] || a.transform[4] - b.transform[4]);
+  return kept;
+}
+
+// src/model/parse/ocr-lines.js
+var LOW_MEAN = 0.8;
+var MIN_READ_CONF = 0.75;
+var AGREE_CONF = 0.9;
+var MAX_ASPECT = 38;
+var PAD_PT = 1.5;
+function r22(n2) {
+  return Math.round(n2 * 100) / 100;
+}
+function itemSize(it) {
+  return Math.abs(it.transform?.[0] || it.height || 0);
+}
+function inside4(it, boxes) {
+  const size = itemSize(it);
+  const cx = it.transform[4] + (it.width || 0) / 2;
+  const cy = it.transform[5] - 0.35 * size;
+  return boxes.some((b) => cx >= b[0] - 1 && cx <= b[2] + 1 && cy >= b[1] - 1 && cy <= b[3] + 1);
+}
+function wordConf(it) {
+  return it.mean ?? it.conf ?? 1;
+}
+function textLines(page, tableBoxes = []) {
+  const items = page?.items || [];
+  const cand = [];
+  items.forEach((it, i) => {
+    if (!it || !it.str || !it.str.trim() || !Array.isArray(it.transform)) return;
+    if (it.transform[1] || it.transform[2]) return;
+    const size = itemSize(it);
+    if (!(size > 0)) return;
+    if (it.y0 != null && it.y1 != null && it.y1 - it.y0 > 1.6 * size) return;
+    if (it.y0 != null && it.y1 != null && it.str.length >= 3 && it.y1 - it.y0 > 2.5 * it.width) return;
+    if (inside4(it, tableBoxes)) return;
+    cand.push(i);
+  });
+  cand.sort((a, b) => items[a].transform[5] - items[b].transform[5] || items[a].transform[4] - items[b].transform[4]);
+  const rows = [];
+  for (const i of cand) {
+    const it = items[i];
+    const size = itemSize(it);
+    const row4 = rows.find((r) => Math.abs(r.base - it.transform[5]) <= 0.5 * Math.min(size, r.size) && Math.abs(size - r.size) <= 0.3 * Math.max(size, r.size));
+    if (row4) row4.idx.push(i);
+    else rows.push({ base: it.transform[5], size, idx: [i] });
+  }
+  const lines = [];
+  for (const row4 of rows) {
+    row4.idx.sort((a, b) => items[a].transform[4] - items[b].transform[4]);
+    let cur = null;
+    for (const i of row4.idx) {
+      const it = items[i];
+      const x0 = it.transform[4];
+      if (cur && x0 - cur.x1 <= 2.5 * row4.size) {
+        cur.idx.push(i);
+        cur.x1 = Math.max(cur.x1, x0 + it.width);
+      } else {
+        cur = { idx: [i], x1: x0 + it.width, size: row4.size };
+        lines.push(cur);
+      }
+    }
+  }
+  const out = lines.map((l) => {
+    const its = l.idx.map((i) => items[i]);
+    const bases = its.map((t) => t.transform[5]).sort((a, b) => a - b);
+    const bbox = [
+      Math.min(...its.map((t) => t.transform[4])),
+      Math.min(...its.map((t) => t.y0 ?? t.transform[5] - 0.8 * itemSize(t))),
+      Math.max(...its.map((t) => t.transform[4] + t.width)),
+      Math.max(...its.map((t) => t.y1 ?? t.transform[5] + 0.2 * itemSize(t)))
+    ];
+    return { idx: l.idx, bbox, size: l.size, base: bases[bases.length >> 1] };
+  });
+  for (const l of out) {
+    let [x0, y0, x1, y1] = l.bbox;
+    for (const m of out) {
+      if (m === l || m.bbox[2] <= x0 || m.bbox[0] >= x1) continue;
+      if (m.base > l.base) y1 = Math.min(y1, m.base - 0.72 * m.size);
+      else if (m.base < l.base) y0 = Math.max(y0, m.base + 0.22 * m.size);
+    }
+    for (const t of tableBoxes) {
+      if (t[2] <= x0 || t[0] >= x1) continue;
+      if (t[3] <= l.base) y0 = Math.max(y0, t[3]);
+      else if (t[1] >= l.base) y1 = Math.min(y1, t[1]);
+    }
+    if (y1 - y0 >= 0.6 * l.size) l.bbox = [x0, y0, x1, y1];
+    l.bbox = l.bbox.map(r22);
+  }
+  return out.map(({ idx, bbox, size }) => ({ idx, bbox, size }));
+}
+function pieces(page, line) {
+  const items = page.items;
+  const h = line.bbox[3] - line.bbox[1] + 2 * PAD_PT;
+  const maxW = MAX_ASPECT * h;
+  if (line.bbox[2] - line.bbox[0] + 2 * PAD_PT <= maxW) return [line];
+  const out = [];
+  let cur = [];
+  let x0 = 0;
+  for (const i of line.idx) {
+    const it = items[i];
+    if (cur.length && it.transform[4] + it.width - x0 + 2 * PAD_PT > maxW) {
+      out.push(cur);
+      cur = [];
+    }
+    if (!cur.length) x0 = it.transform[4];
+    cur.push(i);
+  }
+  if (cur.length) out.push(cur);
+  return out.map((idx) => {
+    const its = idx.map((i) => items[i]);
+    return {
+      idx,
+      size: line.size,
+      bbox: [
+        Math.min(...its.map((t) => t.transform[4])),
+        line.bbox[1],
+        Math.max(...its.map((t) => t.transform[4] + t.width)),
+        line.bbox[3]
+      ].map(r22)
+    };
+  });
+}
+function tableBoxesOf(doc, n2) {
+  return Object.values(doc?.blocks || {}).filter((b) => b && b.type === "table" && b.page === n2 && Array.isArray(b.bbox)).map((b) => b.bbox);
+}
+function allWords(pages, doc) {
+  const words = [];
+  for (const p of pages) {
+    const boxes = tableBoxesOf(doc, p.n);
+    for (const line of textLines(p, boxes)) for (const i of line.idx) words.push(p.items[i].str);
+  }
+  return words;
+}
+var NON_LETTER = /^[^A-Za-z]+$/;
+var MARK = /[^\x20-\x7e]/g;
+function coreOf(t) {
+  return String(t).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "").toLowerCase();
+}
+function lineScore(tokens, oldTokens, opts) {
+  let n2 = tokens.reduce((k, w) => k + (suspiciousWord(w, opts) ? 1 : 0), 0);
+  for (const t of oldTokens) if (NON_LETTER.test(t) && !tokens.some((w) => w === t || t.length >= 2 && w.includes(t))) n2++;
+  const marks = (list) => list.join(" ").match(MARK) || [];
+  const have = marks(tokens);
+  for (const m of marks(oldTokens)) {
+    const at = have.indexOf(m);
+    if (at < 0) n2++;
+    else have.splice(at, 1);
+  }
+  const cores = tokens.map(coreOf);
+  const pairs = new Set(cores.slice(1).map((k, i) => /^[a-z]+$/.test(cores[i]) && /^[a-z]+$/.test(k) ? cores[i] + k : "").filter(Boolean));
+  for (const t of oldTokens) {
+    const c = coreOf(t);
+    if (c.length < 3 || !/^[a-z]+$/.test(c) || pairs.has(c)) continue;
+    const reach = Math.max(1, Math.floor(c.length / 3));
+    if (!cores.some((k) => k === c || Math.abs(k.length - c.length) <= reach && editDistance2(k, c) <= reach)) n2++;
+  }
+  return n2;
+}
+function restoreClean(tokens, oldTokens, opts) {
+  if (!opts.lexicon) return tokens;
+  const pair2 = alignTokens(tokens, oldTokens);
+  return tokens.map((tok, i) => {
+    const j = pair2[i];
+    if (j < 0) return tok;
+    const was = oldTokens[j];
+    if (was === tok || !cleanWord(was, opts.lexicon)) return tok;
+    const d = editDistance2(coreOf(tok), coreOf(was));
+    if (d === 1 || suspiciousWord(tok, opts) && d <= Math.max(2, Math.floor(coreOf(was).length / 3))) return was;
+    return tok;
+  });
+}
+function linePages(ocrPages) {
+  return (ocrPages || []).filter((p) => p && p.engine === "ppocr-web" && Array.isArray(p.items));
+}
+function linesToReread(doc, ocrPages, { lexicon = null } = {}) {
+  const pages = linePages(ocrPages);
+  const keep = properNouns(allWords(pages, doc));
+  const out = [];
+  for (const p of pages) {
+    const boxes = tableBoxesOf(doc, p.n);
+    for (const line of textLines(p, boxes)) {
+      const words = line.idx.map((i) => p.items[i]);
+      if (!words.some((w) => /[A-Za-z]{2}/.test(w.str))) continue;
+      const doubtful = words.some((w) => /[A-Za-z]/.test(w.str) && wordConf(w) < LOW_MEAN || suspiciousWord(w.str, { lexicon, keep }));
+      if (!doubtful) continue;
+      for (const piece of pieces(p, line)) {
+        out.push({ page: p.n, bbox: piece.bbox, line: true, key: `${p.n}:${piece.idx.join(",")}` });
+      }
+    }
+  }
+  return out;
+}
+function fixTokens(tokens, { lexicon = null, keep = null, confs = null, wordConfs = null } = {}) {
+  const dominant = lineCase(tokens);
+  let at = 0;
+  return tokens.map((tok, k) => {
+    const start = at;
+    at += tok.length + 1;
+    const cased = normalizeCase(tok.replace(/^([^A-Za-z]*)([A-Za-z]+)([^A-Za-z]*)$/, "$2"), dominant);
+    let t = tok.replace(/^([^A-Za-z]*)([A-Za-z]+)([^A-Za-z]*)$/, (_, a, _b, c) => a + cased + c);
+    const m = /^([^A-Za-z0-9]*)([A-Za-z]+)([^A-Za-z0-9]*)$/.exec(t);
+    let letterConfs = null;
+    if (m && confs) {
+      const from = start + m[1].length;
+      letterConfs = confs.slice(from, from + m[2].length);
+    }
+    t = correctWord(t, { lexicon, keep, confs: letterConfs, conf: wordConfs ? wordConfs[k] : 1 });
+    return splitJoined(t, lexicon);
+  }).flat();
+}
+function editDistance2(a, b) {
+  const prev = new Array(b.length + 1).fill(0).map((_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const up = prev[j];
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = up;
+    }
+  }
+  return prev[b.length];
+}
+function alignTokens(a, b) {
+  const n2 = a.length;
+  const m = b.length;
+  const cost = Array.from({ length: n2 + 1 }, (_, i2) => Array.from({ length: m + 1 }, (_2, j2) => i2 === 0 ? j2 : j2 === 0 ? i2 : 0));
+  for (let i2 = 1; i2 <= n2; i2++) {
+    for (let j2 = 1; j2 <= m; j2++) {
+      cost[i2][j2] = Math.min(cost[i2 - 1][j2] + 1, cost[i2][j2 - 1] + 1, cost[i2 - 1][j2 - 1] + (a[i2 - 1] === b[j2 - 1] ? 0 : 1));
+    }
+  }
+  const pair2 = new Array(n2).fill(-1);
+  let i = n2;
+  let j = m;
+  while (i > 0 && j > 0) {
+    if (cost[i][j] === cost[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)) {
+      pair2[i - 1] = j - 1;
+      i--;
+      j--;
+    } else if (cost[i][j] === cost[i - 1][j] + 1) i--;
+    else j--;
+  }
+  return pair2;
+}
+function repairTokens(tokens, others, opts = {}) {
+  const out = tokens.slice();
+  for (const other of others || []) {
+    if (!other || other === tokens) continue;
+    const pair2 = alignTokens(out, other);
+    out.forEach((tok, i) => {
+      const j = pair2[i];
+      if (j < 0 || other[j] === tok || !suspiciousWord(tok, opts) || suspiciousWord(other[j], opts)) return;
+      const a = tok.toLowerCase();
+      const b = other[j].toLowerCase();
+      if (/[A-Za-z]/.test(b) && editDistance2(a, b) <= Math.min(2, Math.floor(a.length / 3))) out[i] = other[j];
+    });
+  }
+  return out;
+}
+function dashGlyphs(tokens, old) {
+  const dashes = old.filter((it) => /^[-–—]$/.test(it.str));
+  if (!dashes.length) return tokens;
+  let k = 0;
+  return tokens.map((t) => {
+    if (!/^[-–—]$/.test(t) || k >= dashes.length) return t;
+    const it = dashes[k++];
+    const size = itemSize(it);
+    if (!(size > 0)) return t;
+    if (it.width >= 0.77 * size) return "—";
+    if (it.width >= 0.4 * size) return "–";
+    return t;
+  });
+}
+function lineItems(old, tokens, confs) {
+  const tokConf = [];
+  let at = 0;
+  for (const tok of tokens) {
+    const slice = confs ? confs.slice(at, at + tok.length) : [];
+    tokConf.push(slice.length ? slice.reduce((s, c) => s + c, 0) / slice.length : 1);
+    at += tok.length + 1;
+  }
+  if (tokens.length === old.length) {
+    const bases = old.map((t) => t.transform[5]).sort((a, b) => a - b);
+    const base = bases[bases.length >> 1];
+    return old.map((it, k) => {
+      const dy = base - it.transform[5];
+      const moved = dy ? { transform: [...it.transform.slice(0, 5), base], ...it.y0 != null ? { y0: r22(it.y0 + dy), y1: r22(it.y1 + dy) } : {} } : {};
+      return { ...it, ...moved, str: tokens[k], conf: bucketConf(tokConf[k]) };
+    });
+  }
+  const x0 = Math.min(...old.map((t) => t.transform[4]));
+  const x1 = Math.max(...old.map((t) => t.transform[4] + t.width));
+  const first = old[0];
+  const total = tokens.reduce((n2, t) => n2 + t.length, 0) + Math.max(0, tokens.length - 1);
+  const unit = (x1 - x0) / Math.max(1, total);
+  let x = x0;
+  return tokens.map((tok, k) => {
+    const w = tok.length * unit;
+    const item = {
+      ...first,
+      str: tok,
+      transform: [first.transform[0], 0, 0, first.transform[3], r22(x), first.transform[5]],
+      width: r22(w),
+      conf: bucketConf(tokConf[k])
+    };
+    x += w + unit;
+    return item;
+  });
+}
+function applyLineReads(ocrPages, requests, results, { lexicon = null, doc = null } = {}) {
+  const pages = (ocrPages || []).slice();
+  const applied = [];
+  const keep = properNouns(allWords(linePages(pages), doc));
+  const edits = /* @__PURE__ */ new Map();
+  (requests || []).forEach((req, k) => {
+    const res = results?.[k];
+    const [pn, list] = String(req.key || "").split(":");
+    const idx = (list || "").split(",").filter(Boolean).map(Number);
+    const pi = pages.findIndex((p) => p && String(p.n) === pn && p.engine === "ppocr-web");
+    if (pi < 0 || !idx.length) return;
+    const page = pages[pi];
+    const old = idx.map((i) => page.items[i]).filter(Boolean);
+    if (old.length !== idx.length) return;
+    const oldTokens = old.map((it) => it.str);
+    const oldFixed = fixTokens(oldTokens, { lexicon, keep, wordConfs: old.map(wordConf) });
+    const oldConf = old.reduce((s, it) => s + wordConf(it) * it.str.length, 0) / Math.max(1, old.reduce((s, it) => s + it.str.length, 0));
+    let best = { tokens: oldFixed, score: lineScore(oldFixed, oldTokens, { lexicon, keep }), conf: oldConf, confs: null };
+    const reads = Array.isArray(res?.reads) && res.reads.length ? res.reads : res ? [res] : [];
+    const seen = reads.map((read2) => String(read2?.text || "").trim());
+    for (const read2 of reads) {
+      const text3 = String(read2?.text || "").trim();
+      if (!text3 || (read2.conf ?? 0) < MIN_READ_CONF) continue;
+      const tokens = text3.split(" ").filter(Boolean);
+      if (Math.abs(tokens.length - old.length) > Math.max(2, Math.round(0.25 * old.length))) continue;
+      const fixed = restoreClean(fixTokens(tokens, { lexicon, keep, confs: read2.confs || null }), oldFixed, { lexicon, keep });
+      const score = lineScore(fixed, oldTokens, { lexicon, keep });
+      const agreed = best.confs === null && score === best.score && read2.conf >= AGREE_CONF && seen.filter((t) => t === text3).length >= 2;
+      if (score < best.score || agreed || score === best.score && read2.conf > best.conf) best = { tokens: fixed, score, conf: read2.conf, confs: read2.confs || [] };
+    }
+    const cands = reads.map((read2) => {
+      const text3 = String(read2?.text || "").trim();
+      if (!text3 || (read2.conf ?? 0) < MIN_READ_CONF) return null;
+      return fixTokens(text3.split(" ").filter(Boolean), { lexicon, keep, confs: read2.confs || null });
+    }).filter(Boolean);
+    let repaired = repairTokens(best.tokens, cands, { lexicon, keep });
+    if (best.confs !== null) repaired = restoreClean(repaired, oldFixed, { lexicon, keep });
+    const next = dashGlyphs(repaired, old);
+    const nextConfs = best.confs && best.confs.length ? best.confs : null;
+    if (next.join(" ") === oldTokens.join(" ")) return;
+    if (!edits.has(pi)) edits.set(pi, []);
+    edits.get(pi).push({ idx, items: lineItems(old, next, nextConfs && next.join(" ").length === nextConfs.length ? nextConfs : null) });
+    applied.push({ page: page.n, from: oldTokens.join(" "), to: next.join(" ") });
+  });
+  for (const [pi, list] of edits) {
+    const page = pages[pi];
+    const drop = new Set(list.flatMap((e2) => e2.idx));
+    const items = [];
+    page.items.forEach((it, i) => {
+      if (!drop.has(i)) {
+        items.push(it);
+        return;
+      }
+      const edit = list.find((e2) => e2.idx[0] === i);
+      if (edit) items.push(...edit.items);
+    });
+    pages[pi] = { ...page, items };
+  }
+  return { pages, applied };
+}
+
 // src/view/parse-engine.js
 var GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
 function detectPdfjs(win = typeof window !== "undefined" ? window : null) {
@@ -35033,7 +35781,7 @@ async function loadPageData(page, { includeOps = true } = {}) {
     fonts
   };
 }
-async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase } = {}) {
+async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n2) => !from || !to || n2 >= from && n2 <= to);
   if (!wanted.length) return { doc: base, choices: [], rereads: [], pages: [] };
@@ -35043,12 +35791,39 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   onPhase?.({ phase: "ocr", pages: wanted });
   const got = await helper.ocr({ bytes, sha256, pages: wanted, signal });
   throwIfAborted3();
-  const merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
+  const ask = (req) => helper.ocr({ bytes, sha256, cells: req, signal });
+  let merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
+  const lined = lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
+  if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
-  const rereads = await rereadCells({ doc, ocr: (req) => helper.ocr({ bytes, sha256, cells: req, signal }), signal, onPhase });
-  doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), elapsedMs: got?.elapsedMs ?? null };
-  return { doc, choices: merged.choices, rereads, pages: wanted, records: next };
+  const rereads = await rereadCells({ doc, ocr: ask, signal, onPhase });
+  doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), lines: lined.applied.length, elapsedMs: got?.elapsedMs ?? null };
+  return { doc, choices: merged.choices, rereads, lines: lined.applied, pages: wanted, records: next, ocrPages: lined.pages };
+}
+async function rereadLines({ doc, ocrPages, ocr, lexicon = null, signal, onPhase } = {}) {
+  const pages = ocrPages || [];
+  if (!doc || !linePages(pages).length) return { pages, applied: [] };
+  const throwIfAborted3 = () => {
+    if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" });
+  };
+  let words = null;
+  try {
+    words = typeof lexicon === "function" ? await lexicon() : lexicon;
+  } catch {
+    words = null;
+  }
+  throwIfAborted3();
+  const requests = linesToReread(doc, pages, { lexicon: words });
+  if (!requests.length) return { pages, applied: [] };
+  onPhase?.({ phase: "lines", count: requests.length });
+  let results = [];
+  if (typeof ocr === "function") {
+    const answer = await ocr(requests);
+    throwIfAborted3();
+    results = answer?.cells || [];
+  }
+  return applyLineReads(pages, requests, results, { lexicon: words, doc });
 }
 async function rereadCells({ doc, ocr, signal, onPhase } = {}) {
   const throwIfAborted3 = () => {
@@ -36246,11 +37021,11 @@ function boardZoom(root, win = root?.ownerDocument?.defaultView || globalThis) {
   const px = parseFloat(raw);
   return px > 0 ? clamp3(1 / px, MIN_SCALE, MAX_SCALE) : 1;
 }
-var inside4 = (r, x, y) => Boolean(r) && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+var inside5 = (r, x, y) => Boolean(r) && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 function zoneAt(x, y, { rootRect = null, paneRect = null, blocked: blocked3 = [] } = {}) {
-  if (!inside4(rootRect, x, y)) return "out";
-  if (inside4(paneRect, x, y)) return "pane";
-  for (const r of blocked3 || []) if (inside4(r, x, y)) return "blocked";
+  if (!inside5(rootRect, x, y)) return "out";
+  if (inside5(paneRect, x, y)) return "pane";
+  for (const r of blocked3 || []) if (inside5(r, x, y)) return "blocked";
   return "board";
 }
 function zoneScale(zone, zoom) {
@@ -36882,14 +37657,14 @@ function toMarkdownBytes(bytes, format) {
     wasm.toMarkdownBytes(retptr, ptr0, len0, isLikeNone(format) ? 13 : (__wbindgen_enum_Format.indexOf(format) + 1 || 13) - 1);
     var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
     var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-    var r22 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+    var r23 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
     var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
     var ptr2 = r0;
     var len2 = r1;
     if (r3) {
       ptr2 = 0;
       len2 = 0;
-      throw takeObject(r22);
+      throw takeObject(r23);
     }
     deferred3_0 = ptr2;
     deferred3_1 = len2;
@@ -38620,7 +39395,7 @@ function createParseView({
     }
     paintScan();
   }
-  async function applyOcr(ocrPages, { readCells = null, signal = null, onPhase = null } = {}) {
+  async function applyOcr(ocrPages, { readCells = null, signal = null, onPhase = null, lexicon = null } = {}) {
     if (dead || !parsed || phase === "running") return false;
     const incoming = (Array.isArray(ocrPages) ? ocrPages : []).filter((p) => p && Number.isFinite(Number(p.n)));
     const pages = scanPagesOf(parsed).filter((n2) => incoming.some((p) => Number(p.n) === n2));
@@ -38639,7 +39414,25 @@ function createParseView({
         }
       }
       const t0 = now3();
-      const merged = mergeOcrPageRecords({ base, ocrPages: incoming, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
+      let merged = mergeOcrPageRecords({ base, ocrPages: incoming, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
+      if (typeof readCells === "function") {
+        try {
+          const lined = await rereadLines({ doc: merged.doc, ocrPages: incoming, ocr: readCells, lexicon, signal, onPhase });
+          if (lined.applied.length && !dead && parsed === base) {
+            merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
+            merged.doc.ocr = { ...merged.doc.ocr || {}, lines: lined.applied.length };
+            const read2 = merged.records.filter((rec) => rec?.ocr && pages.includes(rec.n));
+            if (read2.length) {
+              try {
+                onOcrPages?.(read2, base.sha256);
+              } catch {
+              }
+            }
+          }
+        } catch {
+        }
+      }
+      if (dead || parsed !== base) return false;
       records = merged.records;
       if (typeof readCells === "function") {
         try {
@@ -40273,12 +41066,12 @@ function mountWords(layer, record, { doc = layer?.ownerDocument || globalThis.do
   return { count: prep.words.length, ms: now3() - t0 };
 }
 function compactPage(record) {
-  const r22 = (v) => Math.round(v * 100) / 100;
+  const r23 = (v) => Math.round(v * 100) / 100;
   return {
     n: Number(record?.n),
     w: num5(record?.w, 612) || 612,
     h: num5(record?.h, 792) || 792,
-    boxes: ocrWords(record).map((word) => [word.text, r22(word.x), r22(word.y), r22(word.w), r22(word.h)])
+    boxes: ocrWords(record).map((word) => [word.text, r23(word.x), r23(word.y), r23(word.w), r23(word.h)])
   };
 }
 var pageNumberOf2 = (pageEl) => Number(pageEl?.getAttribute?.("data-page-number"));
@@ -42861,6 +43654,7 @@ function createReadPane({
             try {
               await parsedView?.applyOcr?.(pageRecords(out), {
                 readCells: (cells) => deviceOcr.readCells({ cells, url: pdfUrl(), getPdf, signal: ctl.signal }),
+                lexicon: typeof deviceOcr.lexicon === "function" ? () => deviceOcr.lexicon({ signal: ctl.signal }) : null,
                 signal: ctl.signal,
                 onPhase: () => {
                   ocrRun = { ...ocrRun, phase: "cells", progress: null };
@@ -45203,7 +45997,7 @@ function blockUidFromNode(node2) {
   }
   return null;
 }
-var inside5 = (node2, ancestor) => {
+var inside6 = (node2, ancestor) => {
   let el = node2;
   while (el && el.nodeType === 1) {
     if (el === ancestor) return true;
@@ -45215,7 +46009,7 @@ function inputBlockRole(node2, rootUid) {
   const uid = blockUidFromNode(node2);
   const editor = node2?.closest?.(".pxd-item__editor") || null;
   const nest = node2?.closest?.(".rm-block-children") || null;
-  if (nest && inside5(nest, editor)) return { role: "child", uid };
+  if (nest && inside6(nest, editor)) return { role: "child", uid };
   if (uid && rootUid && uid !== rootUid) return { role: "child", uid };
   return { role: "root", uid: uid || rootUid || null };
 }
@@ -48049,9 +48843,9 @@ var DONE_COLUMN = "Done";
 var HIGHLIGHT_FIELD = "Highlight colour";
 var STATUS_FIELD = "Lanes: Status";
 var NO_STATUS = "No status";
-var MARK = /\{\{\[\[(TODO|DONE)\]\]\}\}/;
+var MARK2 = /\{\{\[\[(TODO|DONE)\]\]\}\}/;
 function todoState(string) {
-  const hit = MARK.exec(String(string || ""));
+  const hit = MARK2.exec(String(string || ""));
   if (!hit) return "";
   return hit[1] === "DONE" ? DONE_COLUMN : TODO_FIELD;
 }
@@ -48130,7 +48924,7 @@ function kanbanColumns(rows, field) {
 function withMarker(string, column) {
   const mark = column === DONE_COLUMN ? "{{[[DONE]]}}" : "{{[[TODO]]}}";
   const current3 = String(string || "");
-  if (MARK.test(current3)) return current3.replace(MARK, mark);
+  if (MARK2.test(current3)) return current3.replace(MARK2, mark);
   return current3.trim() ? `${mark} ${current3}` : mark;
 }
 function planKanbanMove({ field, column, row: row4 } = {}) {
@@ -48850,6 +49644,11 @@ var MODEL_FILES = {
     url: "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/paddle/PP-OCRv5/rec/en_PP-OCRv5_rec_mobile/ppocrv5_en_dict.txt"
   }
 };
+var LEXICON_FILE = {
+  file: "en-words.txt.gz",
+  sha256: "b754012207b309972024fbe5778525f8d39ffb3dd9c615244f943aa5676b7f60",
+  bytes: 115131
+};
 function dictLines(text3) {
   return String(text3 || "").replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.length > 0);
 }
@@ -49275,7 +50074,7 @@ function morph1d(mask, width, height, length, horizontal, dilate) {
 function open1d(mask, width, height, length, horizontal) {
   return morph1d(morph1d(mask, width, height, length, horizontal, false), width, height, length, horizontal, true);
 }
-function round22(n2) {
+function round23(n2) {
   return Math.round(n2 * 100) / 100;
 }
 function rulesFromCanvas(gray, width, height, scale, { minLenPt = 18, fills = [] } = {}) {
@@ -49302,19 +50101,19 @@ function rulesFromCanvas(gray, width, height, scale, { minLenPt = 18, fills = []
       if (length < minLen || thick > maxThick) continue;
       if (horizontal) {
         out.push({
-          x0: round22(c.x0 / scale),
-          y0: round22((c.y0 + bh / 2) / scale),
-          x1: round22((c.x1 + 1) / scale),
-          y1: round22((c.y0 + bh / 2) / scale),
-          thick: round22(bh / scale)
+          x0: round23(c.x0 / scale),
+          y0: round23((c.y0 + bh / 2) / scale),
+          x1: round23((c.x1 + 1) / scale),
+          y1: round23((c.y0 + bh / 2) / scale),
+          thick: round23(bh / scale)
         });
       } else {
         out.push({
-          x0: round22((c.x0 + bw / 2) / scale),
-          y0: round22(c.y0 / scale),
-          x1: round22((c.x0 + bw / 2) / scale),
-          y1: round22((c.y1 + 1) / scale),
-          thick: round22(bw / scale)
+          x0: round23((c.x0 + bw / 2) / scale),
+          y0: round23(c.y0 / scale),
+          x1: round23((c.x0 + bw / 2) / scale),
+          y1: round23((c.y1 + 1) / scale),
+          thick: round23(bw / scale)
         });
       }
     }
@@ -49476,10 +50275,10 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
         const gx0 = part.x0 + x0 - k;
         const gy0 = part.y0 + y0 - k;
         out.push({
-          x0: round22(gx0 * step / scale),
-          y0: round22(gy0 * step / scale),
-          x1: round22((gx0 + bw) * step / scale),
-          y1: round22((gy0 + bh) * step / scale),
+          x0: round23(gx0 * step / scale),
+          y0: round23(gy0 * step / scale),
+          x1: round23((gx0 + bw) * step / scale),
+          y1: round23((gy0 + bh) * step / scale),
           gray: Math.round(sum / n2 / 255 * 1e3) / 1e3
         });
       }
@@ -49538,240 +50337,6 @@ function flatParts(mask, w, h) {
     parts.push({ x0, y0, x1, y1, area: tail, mask: own });
   }
   return parts;
-}
-
-// src/model/ocr/words-from-ctc.js
-var SPACE = /* @__PURE__ */ new Set([" ", "　", " "]);
-function round23(n2) {
-  return Math.round(n2 * 100) / 100;
-}
-function round3(n2) {
-  return Math.round(n2 * 1e3) / 1e3;
-}
-function softmaxAt(logits, row4, classes, index) {
-  let max = -Infinity;
-  for (let c = 0; c < classes; c++) max = Math.max(max, logits[row4 + c]);
-  let sum = 0;
-  for (let c = 0; c < classes; c++) sum += Math.exp(logits[row4 + c] - max);
-  return Math.exp(logits[row4 + index] - max) / sum;
-}
-function confidenceAt(logits, row4, classes, index) {
-  let sum = 0;
-  let min = Infinity;
-  let max = -Infinity;
-  for (let c = 0; c < classes; c++) {
-    const v = logits[row4 + c];
-    sum += v;
-    if (v < min) min = v;
-    if (v > max) max = v;
-  }
-  if (min >= -1e-4 && max <= 1.001 && sum > 0.95 && sum < 1.05) return Math.max(0, logits[row4 + index]);
-  return softmaxAt(logits, row4, classes, index);
-}
-function ctcDecode(logits, time, classes, dict) {
-  const chars = [];
-  let prev = -1;
-  for (let t = 0; t < time; t++) {
-    const row4 = t * classes;
-    let best = 0;
-    let bestV = -Infinity;
-    for (let c = 0; c < classes; c++) {
-      const v = logits[row4 + c];
-      if (v > bestV) {
-        bestV = v;
-        best = c;
-      }
-    }
-    if (best !== 0 && best !== prev) {
-      const ch = best <= dict.length ? dict[best - 1] : best === dict.length + 1 ? " " : null;
-      if (ch) chars.push({ ch, t, conf: confidenceAt(logits, row4, classes, best) });
-    }
-    prev = best;
-  }
-  return chars;
-}
-function bucketConf(mean) {
-  if (mean >= 0.8) return 1;
-  if (mean >= 0.5) return 0.5;
-  return 0.3;
-}
-function softenPhrase(text3) {
-  return String(text3 || "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/,(\S)/g, ", $1").replace(/;(\S)/g, "; $1").replace(/(\S)\(/g, "$1 (").replace(/\)([A-Za-z])/g, ") $1");
-}
-function wordItem(text3, x0, x1, box2, conf) {
-  const width = Math.max(0.4, x1 - x0);
-  const size = Math.max(0.5, box2.y1 - box2.y0);
-  const base = box2.y1 - 0.2 * size;
-  const sized = round23(size);
-  return {
-    str: text3,
-    transform: [sized, 0, 0, sized, round23(x0), round23(base)],
-    width: round23(width),
-    height: sized,
-    y0: round23(base - 0.8 * sized),
-    y1: round23(base + 0.22 * sized),
-    fontName: "ocr",
-    conf: bucketConf(conf),
-    mean: round3(conf)
-  };
-}
-function ctcText({ logits, time, classes, dict }) {
-  const chars = ctcDecode(logits, time, classes, dict);
-  if (!chars.length) return { text: "", conf: 0 };
-  let raw = "";
-  let conf = 0;
-  let n2 = 0;
-  for (const ch of chars) {
-    if (SPACE.has(ch.ch)) raw += " ";
-    else {
-      raw += ch.ch;
-      conf += ch.conf;
-      n2++;
-    }
-  }
-  raw = raw.replace(/\s+/g, " ").trim();
-  const text3 = /[A-Za-z]/.test(raw) ? softenPhrase(raw) : raw;
-  return { text: text3, conf: n2 ? Math.round(conf / n2 * 1e3) / 1e3 : 0 };
-}
-function wordsFromCtc({ logits, time, classes, dict, box: box2 }) {
-  const chars = ctcDecode(logits, time, classes, dict);
-  if (!chars.length || !box2) return [];
-  const span = Math.max(0.4, box2.x1 - box2.x0);
-  const groups = [];
-  let cur = [];
-  const flush = () => {
-    if (cur.length) groups.push(cur);
-    cur = [];
-  };
-  for (const ch of chars) {
-    if (SPACE.has(ch.ch)) flush();
-    else cur.push(ch);
-  }
-  flush();
-  if (!groups.length) return [];
-  if (groups.length === 1 && !chars.some((ch) => SPACE.has(ch.ch))) {
-    const text3 = groups[0].map((ch) => ch.ch).join("");
-    const parts = softenPhrase(text3).split(/\s+/).filter(Boolean);
-    if (parts.length <= 1) {
-      const conf2 = groups[0].reduce((s, ch) => s + ch.conf, 0) / groups[0].length;
-      return text3 ? [wordItem(text3, box2.x0, box2.x1, box2, conf2)] : [];
-    }
-    const total = parts.reduce((s, p) => s + p.length, 0);
-    let x = box2.x0;
-    const conf = groups[0].reduce((s, ch) => s + ch.conf, 0) / groups[0].length;
-    return parts.map((part) => {
-      const w = span * (part.length / total);
-      const item = wordItem(part, x, x + w, box2, conf);
-      x += w;
-      return item;
-    });
-  }
-  return groups.map((group) => {
-    const text3 = group.map((ch) => ch.ch).join("");
-    const t0 = group[0].t;
-    const t1 = group[group.length - 1].t + 1;
-    const x0 = box2.x0 + t0 / time * span;
-    const x1 = box2.x0 + t1 / time * span;
-    const conf = group.reduce((s, ch) => s + ch.conf, 0) / group.length;
-    return wordItem(text3, x0, x1, box2, conf);
-  }).filter((item) => item.str);
-}
-var TALL_RE = /[A-Z0-9bdfhklt]/;
-var DESC_RE = /[gjpqy,;()[\]{}|/_@]/;
-var NUMBERISH_RE = /^[\d.,()%+\-–—OoDQBSslIZG|]+$/;
-var ECHO_RE = /^(?:c+|y[aeinm]{0,6}|ge|gae)$/i;
-function withoutEchoes(items) {
-  const kept = [];
-  for (const item of items) {
-    const mean = item.mean;
-    delete item.mean;
-    if (ECHO_RE.test(item.str) && !(mean >= 0.92)) continue;
-    kept.push(item);
-  }
-  return kept;
-}
-function bodySizeOf2(items) {
-  const wordy = items.filter((item) => item.str.length >= 3 || /\d/.test(item.str));
-  const source = wordy.length >= 4 ? wordy : items;
-  const plain2 = source.filter((item) => TALL_RE.test(item.str) && !DESC_RE.test(item.str));
-  const pool = (plain2.length ? plain2 : source).map((item) => item.transform[0]).sort((a, b) => a - b);
-  const median4 = pool[pool.length >> 1] || items[0].transform[0];
-  let body = median4;
-  const sorted = items.map((item) => item.transform[5]).sort((a, b) => a - b);
-  const bases = [];
-  for (const base of sorted) {
-    if (!bases.length || base - bases[bases.length - 1] > 0.35 * median4) bases.push(base);
-  }
-  const gaps = [];
-  for (let i = 1; i < bases.length; i++) {
-    const gap = bases[i] - bases[i - 1];
-    if (gap > 0.4 * median4 && gap < 2.5 * median4) gaps.push(gap);
-  }
-  if (gaps.length >= 4) {
-    gaps.sort((a, b) => a - b);
-    const pitch = gaps[gaps.length >> 1];
-    if (pitch < 0.7 * median4) body = pitch / 0.95;
-  }
-  return { body, median: median4 };
-}
-function baselineRows2(sorted) {
-  const rows = [];
-  let row4 = null;
-  for (const item of sorted) {
-    const base = item.transform[5];
-    const size = item.transform[0] || 1;
-    if (row4 && base - row4.last <= 0.3 * size && base - row4.first <= 0.45 * size) {
-      row4.items.push(item);
-      row4.last = base;
-      continue;
-    }
-    row4 = { first: base, last: base, items: [item] };
-    rows.push(row4);
-  }
-  return rows.map((r) => r.items);
-}
-function rowBaseline(row4) {
-  const pairs = row4.map((item) => [item.transform[5], Math.max(0.1, item.width || 0)]).sort((a, b) => a[0] - b[0]);
-  const total = pairs.reduce((s, p) => s + p[1], 0);
-  let acc = 0;
-  for (const [base, w] of pairs) {
-    acc += w;
-    if (acc >= total / 2) return base;
-  }
-  return pairs[pairs.length - 1][0];
-}
-function snapOcrItems(items) {
-  if (!items.length) return [];
-  items = withoutEchoes(items);
-  if (!items.length) return [];
-  const { body, median: median4 } = bodySizeOf2(items);
-  const kept = [];
-  for (const item of items) {
-    const size = item.transform[0];
-    if (size < 0.45 * median4 && !(item.conf >= 1 && NUMBERISH_RE.test(item.str))) continue;
-    if (size >= 0.45 * median4 && size <= 1.5 * median4 && body > 0) {
-      const base = item.transform[5];
-      const sized = round23(body);
-      item.transform[0] = sized;
-      item.transform[3] = sized;
-      item.height = sized;
-      item.y0 = round23(base - 0.8 * sized);
-      item.y1 = round23(base + 0.22 * sized);
-    }
-    kept.push(item);
-  }
-  kept.sort((a, b) => a.transform[5] - b.transform[5] || a.transform[4] - b.transform[4]);
-  for (const row4 of baselineRows2(kept)) {
-    const anchor = rowBaseline(row4);
-    for (const item of row4) {
-      const shift = anchor - item.transform[5];
-      item.transform[5] = round23(anchor);
-      item.y0 = round23(item.y0 + shift);
-      item.y1 = round23(item.y1 + shift);
-    }
-  }
-  kept.sort((a, b) => a.transform[5] - b.transform[5] || a.transform[4] - b.transform[4]);
-  return kept;
 }
 
 // src/model/ocr/word-split.js
@@ -50214,17 +50779,17 @@ function rotateItems(items, degrees, w, h, scaleX, scaleY) {
   const sin = Math.sin(rad);
   const cx = (w - 1) / 2;
   const cy = (h - 1) / 2;
-  const r22 = (n2) => Math.round(n2 * 100) / 100;
+  const r23 = (n2) => Math.round(n2 * 100) / 100;
   for (const it of items) {
     const dx = it.transform[4] * scaleX - cx;
     const dy = it.transform[5] * scaleY - cy;
     const x = (cx + dx * cos + dy * sin) / scaleX;
     const base = (cy - dx * sin + dy * cos) / scaleY;
     const shift = base - it.transform[5];
-    it.transform[4] = r22(x);
-    it.transform[5] = r22(base);
-    if (Number.isFinite(it.y0)) it.y0 = r22(it.y0 + shift);
-    if (Number.isFinite(it.y1)) it.y1 = r22(it.y1 + shift);
+    it.transform[4] = r23(x);
+    it.transform[5] = r23(base);
+    if (Number.isFinite(it.y0)) it.y0 = r23(it.y0 + shift);
+    if (Number.isFinite(it.y1)) it.y1 = r23(it.y1 + shift);
   }
   return items;
 }
@@ -50244,6 +50809,7 @@ var LONG_WORD = /^[A-Za-z][A-Za-z,.'()\-]{4,}$/;
 var CELL_PAD_PT = 1.5;
 var CELL_TIGHT_PT = 0.5;
 var CELL_SCALE = 3;
+var LINE_SCALES = [1, 2, 3];
 function aborted() {
   const error = new Error("ocr aborted");
   error.name = "AbortError";
@@ -50255,13 +50821,13 @@ function throwIfAborted(signal) {
 function pageRecord(n2, items, rules, w, h, dpi, deskew, fills = []) {
   return {
     n: n2,
-    w: round23(w),
-    h: round23(h),
+    w: round22(w),
+    h: round22(h),
     rotation: 0,
     transform: [1, 0, 0, 1, 0, 0],
     scan: true,
     dpi,
-    deskew: round23(deskew),
+    deskew: round22(deskew),
     fonts: { ocr: { name: "ocr" } },
     items,
     rules,
@@ -50640,8 +51206,51 @@ async function polishDirty(items, frame, page, runRec, dict, signal) {
     item.conf = bucketConf(read2.cells[i].conf || 0);
   });
 }
+async function readLine(prep, cell, runRec, dict, signal) {
+  const scale = prep.dpi / 72;
+  const [x0, y0, x1, y1] = cell.bbox;
+  const crop = cropRgb(prep.rgb, prep.width, prep.height, (x0 - CELL_PAD_PT) * scale, y0 * scale, (x1 + CELL_PAD_PT) * scale, y1 * scale);
+  let best = { page: cell.page, bbox: cell.bbox, text: "", conf: 0, confs: [], scale: 0, reads: [] };
+  if (crop.w < 2 || crop.h < 2) return best;
+  const reads = [];
+  for (const k of LINE_SCALES) {
+    throwIfAborted(signal);
+    const scaled = k === 1 ? crop : resizeRgb(crop.rgb, crop.w, crop.h, crop.w * k, crop.h * k);
+    const padded = padWhite(scaled.rgb, scaled.w, scaled.h, Math.max(3, Math.round(8 * k / CELL_SCALE)));
+    const resized = recResize(padded.rgb, padded.w, padded.h, REC_H);
+    const out = await runRec(nchwNormalize(resized.rgb, resized.w, resized.h), [1, 3, resized.h, resized.w]);
+    const contentT = Math.max(1, Math.min(out.time, Math.round(out.time * (resized.contentW || resized.w) / resized.w)));
+    const chars = ctcDecode(out.logits.subarray(0, contentT * out.classes), contentT, out.classes, dict);
+    let text3 = "";
+    const confs = [];
+    let sum = 0;
+    let n2 = 0;
+    for (const ch of chars) {
+      if (SPACE_CH.has(ch.ch)) {
+        if (text3 && !text3.endsWith(" ")) {
+          text3 += " ";
+          confs.push(1);
+        }
+        continue;
+      }
+      text3 += ch.ch;
+      confs.push(Math.round(ch.conf * 100) / 100);
+      sum += ch.conf;
+      n2++;
+    }
+    if (text3.endsWith(" ")) {
+      text3 = text3.slice(0, -1);
+      confs.pop();
+    }
+    const conf = n2 ? Math.round(sum / n2 * 1e3) / 1e3 : 0;
+    reads.push({ text: text3, conf, confs, scale: k });
+    if (conf > best.conf) best = { page: cell.page, bbox: cell.bbox, text: text3, conf, confs, scale: k };
+  }
+  return { ...best, reads };
+}
 async function readCell(prep, cell, runRec, dict, signal) {
   throwIfAborted(signal);
+  if (cell.line) return readLine(prep, cell, runRec, dict, signal);
   const scale = prep.dpi / 72;
   const [x0, y0, x1, y1] = cell.bbox;
   const crop = cropRgb(prep.rgb, prep.width, prep.height, (x0 - CELL_PAD_PT) * scale, (y0 - CELL_PAD_PT) * scale, (x1 + CELL_PAD_PT) * scale, (y1 + CELL_PAD_PT) * scale);
@@ -50873,7 +51482,22 @@ function createOcrWeb({
       done += spec.bytes;
       onProgress?.(done, total);
     }
+    try {
+      await lexicon({ signal });
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+    }
     return { bytes: total };
+  }
+  let lexiconSet = null;
+  async function lexicon({ signal = null } = {}) {
+    if (lexiconSet) return lexiconSet;
+    const buf = await loadVerified(joinUrl(assetBase, `assets/ocr/${LEXICON_FILE.file}`), LEXICON_FILE, signal);
+    if (typeof DecompressionStream !== "function") return null;
+    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+    const text3 = await new Response(stream).text();
+    lexiconSet = parseLexicon(text3);
+    return lexiconSet;
   }
   function localEngine(runDet, runRec, dict) {
     return {
@@ -51063,6 +51687,7 @@ function createOcrWeb({
     ocr,
     cached,
     prefetch,
+    lexicon,
     forget,
     schema: SCHEMA3,
     engine: ENGINE,
@@ -51071,7 +51696,7 @@ function createOcrWeb({
 }
 
 // src/host/device-ocr.js
-var DEVICE_OCR_BYTES = [...Object.values(ORT_FILES), ...Object.values(MODEL_FILES)].reduce((n2, f) => n2 + f.bytes, 0);
+var DEVICE_OCR_BYTES = [...Object.values(ORT_FILES), ...Object.values(MODEL_FILES), LEXICON_FILE].reduce((n2, f) => n2 + f.bytes, 0);
 var MB = Math.round(DEVICE_OCR_BYTES / (1024 * 1024));
 function abortError2() {
   const error = new Error("ocr aborted");
@@ -51173,7 +51798,21 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
     const got = await web().ocr({ cells, signal });
     return { cells: got?.cells || [] };
   }
-  return { status, download, cancel, read: read2, readCells, label: "In-browser reading (beta)" };
+  let words = null;
+  async function lexicon({ signal = null } = {}) {
+    if (words) return words;
+    const st = await status();
+    if (st.state !== "ready") return null;
+    const src = web();
+    if (typeof src.lexicon !== "function") return null;
+    try {
+      words = await src.lexicon({ signal }) || null;
+    } catch {
+      words = null;
+    }
+    return words;
+  }
+  return { status, download, cancel, read: read2, readCells, lexicon, label: "In-browser reading (beta)" };
 }
 var shared = null;
 function sharedDeviceOcr() {
@@ -56074,7 +56713,7 @@ function buildBoardView(onFail, {
     if (disposed || gesturing || !board2()) return;
     const view2 = visibleWorldRect(vp, size, 0);
     const r = rects();
-    const candidates = [];
+    const candidates2 = [];
     for (const card2 of board2().items.values()) {
       if (card2.type !== "card" || card2.kind !== "block") continue;
       const rect = r.get(card2.uid);
@@ -56086,9 +56725,9 @@ function buildBoardView(onFail, {
         refString = "";
       }
       if (classifyString(refString).kind !== "board") continue;
-      candidates.push(card2.uid);
+      candidates2.push(card2.uid);
     }
-    const batch = thumbnailBudget(candidates);
+    const batch = thumbnailBudget(candidates2);
     if (batch.length) itemsR.expireContent?.(batch);
   };
   const paintTimer = () => {
@@ -60578,8 +61217,8 @@ function buildBoardView(onFail, {
     }
     const inputFocused = isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement);
     if (inputFocused) {
-      const inside6 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
-      if (!inside6 && !itemsR.isEditing()) return;
+      const inside7 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
+      if (!inside7 && !itemsR.isEditing()) return;
       if ((event.metaKey || event.ctrlKey) && !event.altKey && String(event.key).toLowerCase() === "z") return;
     } else if (!ownsKeyboard()) {
       return;
@@ -64883,13 +65522,13 @@ async function installPlexusDiagram({
   }
   const isDiagramUid = (candidate) => isDiagramString(host.blockString?.(candidate));
   const inputUids = /* @__PURE__ */ new Map();
-  isDiagramUid.many = (candidates) => {
-    const key = candidates[candidates.length - 1] || "";
+  isDiagramUid.many = (candidates2) => {
+    const key = candidates2[candidates2.length - 1] || "";
     const known = inputUids.get(key);
     if (known !== void 0) return known && isDiagramUid(known) ? known : null;
-    const strings = host.blockStrings?.(candidates);
-    if (!strings) return candidates.find((candidate) => isDiagramUid(candidate)) ?? null;
-    const uid = candidates.find((candidate) => strings.get(candidate) != null) || "";
+    const strings = host.blockStrings?.(candidates2);
+    if (!strings) return candidates2.find((candidate) => isDiagramUid(candidate)) ?? null;
+    const uid = candidates2.find((candidate) => strings.get(candidate) != null) || "";
     if (inputUids.size > 5e3) inputUids.clear();
     inputUids.set(key, uid);
     return uid && isDiagramString(strings.get(uid)) ? uid : null;

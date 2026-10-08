@@ -3,11 +3,13 @@
 // Not imported by the extension or by test/*.test.js (CI installs with --ignore-scripts).
 
 import { readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { MODEL_FILES, SCHEMA, dictLines } from "../../src/model/ocr/manifest.js";
+import { LEXICON_FILE, MODEL_FILES, SCHEMA, dictLines } from "../../src/model/ocr/manifest.js";
+import { parseLexicon } from "../../src/model/ocr/lexicon.js";
 import { preparePageImage, recognizeCells } from "../../src/model/ocr/recognize.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -52,6 +54,11 @@ export async function runRec(data, dims) {
   const out = await recSession.run({ x: new ort.Tensor("float32", data, dims) });
   const tensor = out.fetch_name_0;
   return { logits: tensor.data, batch: tensor.dims[0], time: tensor.dims[1], classes: tensor.dims[2] };
+}
+
+// The shipped word list (assets/ocr), as the browser gets it after the SHA check.
+export function loadLexicon() {
+  return parseLexicon(gunzipSync(readFileSync(join(modelDir, LEXICON_FILE.file))).toString("utf8"));
 }
 
 export function renderPdfPage(pdfPath, n, dpi) {

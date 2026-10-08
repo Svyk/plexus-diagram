@@ -1390,6 +1390,7 @@ var LONG_WORD = /^[A-Za-z][A-Za-z,.'()\-]{4,}$/;
 var CELL_PAD_PT = 1.5;
 var CELL_TIGHT_PT = 0.5;
 var CELL_SCALE = 3;
+var LINE_SCALES = [1, 2, 3];
 function aborted() {
   const error = new Error("ocr aborted");
   error.name = "AbortError";
@@ -1786,8 +1787,51 @@ async function polishDirty(items, frame, page, runRec, dict2, signal) {
     item.conf = bucketConf(read.cells[i].conf || 0);
   });
 }
+async function readLine(prep, cell, runRec, dict2, signal) {
+  const scale = prep.dpi / 72;
+  const [x0, y0, x1, y1] = cell.bbox;
+  const crop = cropRgb(prep.rgb, prep.width, prep.height, (x0 - CELL_PAD_PT) * scale, y0 * scale, (x1 + CELL_PAD_PT) * scale, y1 * scale);
+  let best = { page: cell.page, bbox: cell.bbox, text: "", conf: 0, confs: [], scale: 0, reads: [] };
+  if (crop.w < 2 || crop.h < 2) return best;
+  const reads = [];
+  for (const k of LINE_SCALES) {
+    throwIfAborted(signal);
+    const scaled = k === 1 ? crop : resizeRgb(crop.rgb, crop.w, crop.h, crop.w * k, crop.h * k);
+    const padded = padWhite(scaled.rgb, scaled.w, scaled.h, Math.max(3, Math.round(8 * k / CELL_SCALE)));
+    const resized = recResize(padded.rgb, padded.w, padded.h, REC_H);
+    const out = await runRec(nchwNormalize(resized.rgb, resized.w, resized.h), [1, 3, resized.h, resized.w]);
+    const contentT = Math.max(1, Math.min(out.time, Math.round(out.time * (resized.contentW || resized.w) / resized.w)));
+    const chars = ctcDecode(out.logits.subarray(0, contentT * out.classes), contentT, out.classes, dict2);
+    let text = "";
+    const confs = [];
+    let sum = 0;
+    let n = 0;
+    for (const ch of chars) {
+      if (SPACE_CH.has(ch.ch)) {
+        if (text && !text.endsWith(" ")) {
+          text += " ";
+          confs.push(1);
+        }
+        continue;
+      }
+      text += ch.ch;
+      confs.push(Math.round(ch.conf * 100) / 100);
+      sum += ch.conf;
+      n++;
+    }
+    if (text.endsWith(" ")) {
+      text = text.slice(0, -1);
+      confs.pop();
+    }
+    const conf = n ? Math.round(sum / n * 1e3) / 1e3 : 0;
+    reads.push({ text, conf, confs, scale: k });
+    if (conf > best.conf) best = { page: cell.page, bbox: cell.bbox, text, conf, confs, scale: k };
+  }
+  return { ...best, reads };
+}
 async function readCell(prep, cell, runRec, dict2, signal) {
   throwIfAborted(signal);
+  if (cell.line) return readLine(prep, cell, runRec, dict2, signal);
   const scale = prep.dpi / 72;
   const [x0, y0, x1, y1] = cell.bbox;
   const crop = cropRgb(prep.rgb, prep.width, prep.height, (x0 - CELL_PAD_PT) * scale, (y0 - CELL_PAD_PT) * scale, (x1 + CELL_PAD_PT) * scale, (y1 + CELL_PAD_PT) * scale);

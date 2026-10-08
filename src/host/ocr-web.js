@@ -3,8 +3,9 @@
 
 import { preparePageImage, recognizeCells } from "../model/ocr/recognize.js";
 import {
-  CACHE_NAME, ENGINE, MODEL_FILES, ORT_BASE, ORT_FILES, PAGES_ORIGIN, SCHEMA, dictLines, joinUrl,
+  CACHE_NAME, ENGINE, LEXICON_FILE, MODEL_FILES, ORT_BASE, ORT_FILES, PAGES_ORIGIN, SCHEMA, dictLines, joinUrl,
 } from "../model/ocr/manifest.js";
+import { parseLexicon } from "../model/ocr/lexicon.js";
 import { createOrtRunners } from "./ocr-ort.js";
 
 const GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
@@ -186,7 +187,22 @@ export function createOcrWeb({
       done += spec.bytes;
       onProgress?.(done, total);
     }
+    try { await lexicon({ signal }); } catch (error) { if (error?.name === "AbortError") throw error; }
     return { bytes: total };
+  }
+
+  // The word list for the text-line pass, as a Set. Cache Storage first, else our Pages origin;
+  // SHA-checked like the models. Callers decide when a fetch is allowed (device-ocr only asks
+  // once the models are cached). A failure resolves null and is retried on the next call.
+  let lexiconSet = null;
+  async function lexicon({ signal = null } = {}) {
+    if (lexiconSet) return lexiconSet;
+    const buf = await loadVerified(joinUrl(assetBase, `assets/ocr/${LEXICON_FILE.file}`), LEXICON_FILE, signal);
+    if (typeof DecompressionStream !== "function") return null;
+    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+    const text = await new Response(stream).text();
+    lexiconSet = parseLexicon(text);
+    return lexiconSet;
   }
 
   function localEngine(runDet, runRec, dict) {
@@ -358,6 +374,7 @@ export function createOcrWeb({
     ocr,
     cached,
     prefetch,
+    lexicon,
     forget,
     schema: SCHEMA,
     engine: ENGINE,

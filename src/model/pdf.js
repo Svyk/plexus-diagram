@@ -1,6 +1,6 @@
 // PDF-1 cover plan. The reader is Roam's. No fetch and no :pdf write.
 
-import { capTitle, isCutPrefix } from "./title-cap.js";
+import { capTitle, isCutPrefix, isJunkTitleText, titleWordCount } from "./title-cap.js";
 
 const PDF_MACRO = "{{[[pdf]]:";
 
@@ -100,16 +100,25 @@ function parsedDocTitleRaw(doc) {
   if (!doc || typeof doc !== "object") return "";
   const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
   const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
-  const given = cleanPdfTitle(doc.title);
+  const norm = (value) => String(value ?? "").replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
+  const running = new Set((Array.isArray(doc.removed) ? doc.removed : []).filter((r) => r && r.reason !== "page-number").map((r) => norm(r.text)));
+  const usable = (value) => {
+    const real = cleanPdfTitle(value);
+    return real && !isJunkTitleText(real) && !running.has(norm(real)) ? real : "";
+  };
+  const given = usable(doc.title);
   if (given) {
     const first = ids.map((id) => blocks[id]).find((b) => b?.type === "heading" && (b.level || 1) === 1);
     if (!isCutPrefix(given, first?.text)) return given;
   }
+  // The parse reads the biggest non-furniture type on page 1; old stored parses lack it.
+  const fromPage = usable(doc.pageTitle);
+  if (fromPage) return fromPage;
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "heading" || (block.level || 1) !== 1) continue;
     const text = typeof block.text === "string" ? block.text.replace(/\s+/g, " ").trim() : "";
-    const real = cleanPdfTitle(text);
+    const real = usable(text);
     if (real) return real;
   }
   const clean = (value) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "");
@@ -123,7 +132,7 @@ function parsedDocTitleRaw(doc) {
     const block = blocks[id];
     if (block?.type !== "para" || (block.page || 1) !== 1) continue;
     const text = clean(block.text);
-    if (text && text.length <= 160 && !/^scan\b/i.test(text) && !isStorageTitle(text)) return text;
+    if (text && text.length <= 160 && !/^scan\b/i.test(text) && !isStorageTitle(text) && !isJunkTitleText(text) && !running.has(norm(text)) && titleWordCount(text) >= 3) return text;
   }
   return "";
 }

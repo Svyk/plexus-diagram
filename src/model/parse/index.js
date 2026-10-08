@@ -6,14 +6,16 @@ import { extractGraphics, luminanceOf } from "./rules.js";
 import { findLatticeTables, looksLikeChart } from "./lattice.js";
 import { baselineRows, detectStreamRuns, tableFromBand } from "./stream.js";
 import { findFigures } from "./figures.js";
-import { findFurniture } from "./furniture.js";
+import { findFurniture, normalizeFurniture } from "./furniture.js";
+import { findPageTitle } from "./title.js";
 import { applyNumbering, bodySizeOf, CAPTION_RE, headingClasses, headingLevel, refineBodyHeadingLevels } from "./headings.js";
 import { detectLists } from "./lists.js";
 import { detectFormulas } from "./formulas.js";
-import { FOOTNOTE_MARK_RE, groupParagraphs, joinLines, spansOf } from "./blocks.js";
+import { FOOTNOTE_MARK_RE, groupParagraphs, inlineUnlinkedRefs, joinLines, spansOf } from "./blocks.js";
 import { boxOfUnits, crossesGutter, detectColumns, orderUnits, splitAtGutters } from "./xycut.js";
 import { repairOcrTable } from "./ocr-fix.js";
-import { capTitle, isCutPrefix } from "../title-cap.js";
+import { capTitle, isCutPrefix, isJunkTitleText } from "../title-cap.js";
+import { cleanPdfTitle } from "../pdf.js";
 
 export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
@@ -209,6 +211,8 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     if (onFirst.length) classes = classes.filter((k) => k <= onFirst[0]);
   }
 
+  // Read before the page loop cuts lines at column gutters.
+  const pageTitle = findPageTitle(pageRecords.slice(0, 2), { bodySize, removed: furniture.removed });
   const blocks = {};
   const order = [];
   const counters = {};
@@ -427,10 +431,15 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     const pick = after[0] || same[same.length - 1];
     if (pick) entry.ref.to = pick.id;
   }
-  // Title: metadata first, then the first level-1 heading on the first parsed page.
-  let title = info && typeof info.Title === "string" && info.Title.trim() ? info.Title.trim() : null;
-  const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1)) || headings.find((h) => h.level === 1);
-  if (!title || (h1 && isCutPrefix(title, h1.text))) title = h1 ? h1.text : title;
+  for (const id of order) if (blocks[id]?.footnoteRefs) inlineUnlinkedRefs(blocks[id]);
+  // Title: the PDF's own Title unless it is a running header or cut off; else the biggest type on
+  // page 1 (or 2) that is not furniture; else the first level-1 heading.
+  let title = info && typeof info.Title === "string" ? cleanPdfTitle(info.Title) || null : null;
+  const runningTexts = new Set(furniture.removed.filter((r) => r.reason !== "page-number").map((r) => normalizeFurniture(r.text)));
+  if (title && (runningTexts.has(normalizeFurniture(title)) || isJunkTitleText(title))) title = null;
+  const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1) && !isJunkTitleText(h.text)) || headings.find((h) => h.level === 1 && !isJunkTitleText(h.text));
+  if (!title) title = pageTitle || (h1 ? h1.text : null);
+  else if (h1 && isCutPrefix(title, h1.text)) title = h1.text;
   if (title) title = capTitle(title);
   const pagesOut = [];
   for (const p of perPage) pagesOut.push({ n: p.n, w: p.w, h: p.h, rotation: p.rotation, textRotation: p.textRotation, scanLayer: p.scanLayer, ocr: p.ocr, kind: p.kind, parsed: true, columns: p.columns });
@@ -443,6 +452,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     createdAt: new Date().toISOString(),
     pageCount: numPages,
     title,
+    pageTitle: pageTitle ? capTitle(pageTitle) : null,
     pages: pagesOut,
     order,
     blocks,

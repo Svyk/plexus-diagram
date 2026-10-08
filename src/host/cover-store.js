@@ -4,6 +4,7 @@
 // missing, throws, or rejects. get() never writes.
 // Every method returns a promise and resolves null on failure. No graph write.
 
+import { TITLE_REV } from "../model/title-cap.js";
 import { coverKey } from "../model/pdf-cover.js";
 import { DIAGRAM_DB, DIAGRAM_DB_VERSION, STORE_COVERS, openDiagramDb } from "./diagram-db.js";
 
@@ -147,10 +148,13 @@ const TITLE_LINES = 60;
 const TITLE_LINE_CHARS = 160;
 
 // The page title read during a warm and the page-1 lines behind it (null: never read).
+// A title made by an older splitter (titleRev below TITLE_REV) reads as never read: it is read again.
 function titleOf(raw) {
-  const pageTitle = typeof raw?.pageTitle === "string" ? raw.pageTitle.slice(0, 300) : null;
+  const titleRev = Number.isInteger(raw?.titleRev) && raw.titleRev > 0 ? raw.titleRev : 0;
+  const fresh = titleRev >= TITLE_REV;
+  const pageTitle = typeof raw?.pageTitle === "string" && fresh ? raw.pageTitle.slice(0, 300) : null;
   const lines = Array.isArray(raw?.titleLines) ? raw.titleLines.filter((t) => typeof t === "string").slice(0, TITLE_LINES).map((t) => t.slice(0, TITLE_LINE_CHARS)) : [];
-  return { pageTitle, titleLines: lines };
+  return { pageTitle, titleRev: pageTitle === null ? 0 : titleRev, titleLines: lines };
 }
 
 export function createCoverStore({ indexedDB, storage } = {}) {

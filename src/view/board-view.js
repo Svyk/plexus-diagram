@@ -1853,7 +1853,7 @@ function buildBoardView(onFail, {
       host,
       store: ensureCoverStore(),
       timers: warmTimers,
-      renderFirst: firstPage ? (spec) => firstPage.render(spec) : null,
+      renderFirst: firstPage ? (spec) => (spec?.titleOnly && firstPage.busy() ? { busy: true } : firstPage.render(spec)) : null,
     });
     return pdfWarm;
   };

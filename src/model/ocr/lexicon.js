@@ -2,6 +2,8 @@
 // differs only in letters the recogniser confuses at low confidence. Pure; the word list comes in
 // as a Set (src/host/ocr-web.js loads it, SHA-checked, from assets/ocr).
 
+import { segmentToken } from "../title-cap.js";
+
 const LETTERS = /^[A-Za-z]+$/;
 const LOW_CHAR = 0.9;
 const MIN_LEN = 3;
@@ -162,9 +164,11 @@ export function cleanWord(token, lexicon) {
   return Boolean(lexicon && core.length >= MIN_LEN && LETTERS.test(core) && lexicon.has(core.toLowerCase()));
 }
 
-// Two words the page pass ran together ("Environmentalmonitoring"): split only where both halves
-// (4+ letters each) are in the list and exactly one split works. Returns one or two tokens.
-export function splitJoined(token, lexicon) {
+// Two words the page pass ran together ("Environmentalmonitoring"): split only when the read was
+// doubtful (`low`) and the token is no word, and only where both halves (4+ letters each) are in the
+// list and exactly one split works, or the conservative title rule holds. Returns the tokens.
+export function splitJoined(token, lexicon, { low = false } = {}) {
+  if (!low) return [token];
   const m = /^([^A-Za-z0-9]*)([A-Za-z]+)([^A-Za-z0-9]*)$/.exec(String(token || ""));
   if (!m || !lexicon || !lexicon.size) return [token];
   const [, lead, core, tail] = m;
@@ -172,6 +176,8 @@ export function splitJoined(token, lexicon) {
   const lower = core.toLowerCase();
   const cuts = [];
   for (let i = 4; i <= lower.length - 4; i++) if (lexicon.has(lower.slice(0, i)) && lexicon.has(lower.slice(i))) cuts.push(i);
-  if (cuts.length !== 1) return [token];
-  return [lead + core.slice(0, cuts[0]), core.slice(cuts[0]) + tail];
+  if (cuts.length === 1) return [lead + core.slice(0, cuts[0]), core.slice(cuts[0]) + tail];
+  const pieces = segmentToken(core, lexicon);
+  if (!pieces) return [token];
+  return pieces.map((piece, i) => (i === 0 ? lead : "") + piece + (i === pieces.length - 1 ? tail : ""));
 }

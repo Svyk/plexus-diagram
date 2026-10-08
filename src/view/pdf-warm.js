@@ -6,6 +6,7 @@
 // The holder stays visibility:hidden so pdf.js can measure it. It is never taken out of layout.
 
 import { COVER_MAX_W, WARM_MAX, coverKey, coverValid, scaleBox, isBlankCanvas } from "../model/pdf-cover.js";
+import { TITLE_REV } from "../model/title-cap.js";
 import { firstPageAllowed } from "./pdf-first-page.js";
 
 export const WARM_TIMEOUT_MS = 8000;
@@ -90,6 +91,7 @@ function countPages(root) {
 function titleFields(next, prev) {
   const got = next && typeof next.pageTitle === "string";
   return {
+    titleRev: got ? TITLE_REV : (typeof prev?.pageTitle === "string" ? positiveInt(prev.titleRev) ?? null : null),
     pageTitle: got ? next.pageTitle : (typeof prev?.pageTitle === "string" ? prev.pageTitle : null),
     titleLines: got ? (Array.isArray(next.titleLines) ? next.titleLines : []) : (Array.isArray(prev?.titleLines) ? prev.titleLines : []),
   };
@@ -360,6 +362,8 @@ export function createPdfWarm({ doc, root, host, store, timers, now, renderFirst
             .catch(() => null)
             .then(async (read) => {
               if (job.gen !== generation || job.done) { settle(job, null); return null; }
+              // A busy renderer is not an answer: store nothing, the title is asked for again later.
+              if (read && read.busy === true) { settle(job, null); return null; }
               // A failed read stores "" so the same PDF is not fetched again on every board open.
               const stored = await storeTitle(record, read && typeof read.pageTitle === "string" ? read : { pageTitle: "", titleLines: [] });
               finishSlot(job);

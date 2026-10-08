@@ -1,4 +1,5 @@
 import { build as esbuild } from "esbuild";
+import { createHash } from "node:crypto";
 import { copyFile, cp, mkdir, readFile, readdir, rm, watch, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -111,18 +112,60 @@ export async function syncChangelogText(rootDirectory = defaultRoot) {
   if (prev !== out) await writeFile(path, out, "utf8");
 }
 
+// The OCR worker is fetched from Pages and started from a blob URL, so the extension carries its
+// SHA-256. The worker bundle does not import this file, so the hash is not circular.
+export async function bundleOcrWorker(rootDirectory = defaultRoot) {
+  const result = await esbuild({
+    absWorkingDir: resolve(rootDirectory),
+    entryPoints: ["src/host/ocr-web-worker.js"],
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "browser",
+    target: ["es2020"],
+    outfile: "ocr-worker.js",
+    minify: false,
+    legalComments: "none",
+    logLevel: "silent",
+    plugins: [rejectRemoteImports],
+  });
+  const output = result.outputFiles.find((file) => file.path.endsWith("ocr-worker.js"));
+  if (!output) throw new Error("esbuild did not emit ocr-worker.js");
+  return output.text;
+}
+
+export function ocrWorkerAssetSource(text) {
+  const bytes = Buffer.from(text, "utf8");
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  return `// Generated from src/host/ocr-web-worker.js. build.mjs rewrites this file.\nexport const OCR_WORKER = ${JSON.stringify({ file: "ocr-worker.js", sha256, bytes: bytes.length })};\n`;
+}
+
+const OCR_WORKER_ASSET = "src/model/ocr/worker-asset.js";
+
+export async function syncOcrWorkerAsset(rootDirectory = defaultRoot) {
+  const text = await bundleOcrWorker(rootDirectory);
+  const out = ocrWorkerAssetSource(text);
+  const path = resolve(rootDirectory, OCR_WORKER_ASSET);
+  let prev = "";
+  try { prev = await readFile(path, "utf8"); } catch { /* first build */ }
+  if (prev !== out) await writeFile(path, out, "utf8");
+  return text;
+}
+
 export async function renderArtifacts(rootDirectory = defaultRoot, options = {}) {
   await syncChangelogText(rootDirectory);
+  const ocrWorker = await syncOcrWorkerAsset(rootDirectory);
   const packageMetadata = JSON.parse(await readFile(resolve(rootDirectory, "package.json"), "utf8"));
   const banner = artifactBanner(packageMetadata.version);
   return {
     javascript: await bundleEntry({ rootDirectory, banner, metafilePath: options.metafilePath }),
     css: await readCss(rootDirectory),
+    ocrWorker,
   };
 }
 
 export async function build(rootDirectory = defaultRoot, options = {}) {
-  const { javascript, css } = await renderArtifacts(rootDirectory, options);
+  const { javascript, css, ocrWorker } = await renderArtifacts(rootDirectory, options);
   const deployDir = resolve(rootDirectory, "deploy");
   await Promise.all([
     writeFile(resolve(rootDirectory, "extension.js"), javascript, "utf8"),
@@ -140,7 +183,7 @@ export async function build(rootDirectory = defaultRoot, options = {}) {
     writeFile(resolve(deployDir, ".nojekyll"), "", "utf8"),
   ]);
   await copyAnydocAssets(rootDirectory, deployDir);
-  await publishOcrAssets(rootDirectory, deployDir);
+  await publishOcrAssets(rootDirectory, deployDir, ocrWorker);
   process.stdout.write(`Built extension.js, extension.css, and ${deployDir}\n`);
 }
 
@@ -163,7 +206,7 @@ async function copyAnydocAssets(rootDirectory, deployDir) {
 
 // Models live in assets/ so a rebuild can wipe deploy/ and copy them back. The worker bundle
 // is emitted beside them; Pages serves deploy/ at the site root, so the URL is assets/ocr/….
-async function publishOcrAssets(rootDirectory, deployDir) {
+async function publishOcrAssets(rootDirectory, deployDir, ocrWorker) {
   const assets = resolve(rootDirectory, "assets");
   try {
     await cp(assets, resolve(deployDir, "assets"), { recursive: true });
@@ -172,19 +215,7 @@ async function publishOcrAssets(rootDirectory, deployDir) {
   }
   const outfile = resolve(deployDir, "assets/ocr/ocr-worker.js");
   await mkdir(dirname(outfile), { recursive: true });
-  await esbuild({
-    absWorkingDir: resolve(rootDirectory),
-    entryPoints: ["src/host/ocr-web-worker.js"],
-    bundle: true,
-    format: "esm",
-    platform: "browser",
-    target: ["es2020"],
-    outfile,
-    minify: false,
-    legalComments: "none",
-    logLevel: "silent",
-    plugins: [rejectRemoteImports],
-  });
+  await writeFile(outfile, ocrWorker, "utf8");
 }
 
 export async function verifyGeneratedArtifacts(rootDirectory = defaultRoot) {
@@ -199,6 +230,7 @@ export async function verifyGeneratedArtifacts(rootDirectory = defaultRoot) {
     ["deploy/LICENSE", await readFile(resolve(rootDirectory, "LICENSE"), "utf8")],
     ["deploy/helper/install.sh", await readFile(resolve(rootDirectory, HELPER_INSTALLER), "utf8")],
     ["deploy/.nojekyll", ""],
+    ["deploy/assets/ocr/ocr-worker.js", expected.ocrWorker],
   ];
   const drift = [];
   for (const [filename, expectedContent] of comparisons) {

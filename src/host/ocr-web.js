@@ -6,6 +6,7 @@ import {
   CACHE_NAME, ENGINE, LEXICON_FILE, MODEL_FILES, ORT_BASE, ORT_FILES, PAGES_ORIGIN, SCHEMA, dictLines, joinUrl,
 } from "../model/ocr/manifest.js";
 import { parseLexicon } from "../model/ocr/lexicon.js";
+import { OCR_WORKER } from "../model/ocr/worker-asset.js";
 import { createOrtRunners } from "./ocr-ort.js";
 
 const GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
@@ -36,8 +37,18 @@ async function sha256Hex(cryptoImpl, buffer) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function blobUrl(buffer, type) {
-  return URL.createObjectURL(new Blob([buffer], { type }));
+// Hands the event loop back between model runs. Used only when OCR has to run on the page's own
+// thread, so Roam can paint and take input between tiles. A timer, not scheduler.yield(): yield()
+// continuations run ahead of other tasks, and live they starved Roam's timers for 20 s.
+export function yieldToPage() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+export function yieldingRunners({ runDet, runRec }, pause = yieldToPage) {
+  return {
+    async runDet(data, dims) { await pause(); return runDet(data, dims); },
+    async runRec(data, dims) { await pause(); return runRec(data, dims); },
+  };
 }
 
 // Response body with byte progress when the body streams; arrayBuffer() otherwise.
@@ -145,8 +156,16 @@ export function createOcrWeb({
   pdfjs = null,
   workerUrl = null,
   useWorker = true,
+  Worker: WorkerImpl = globalThis.Worker,
+  createObjectURL = (blob) => URL.createObjectURL(blob),
+  pause = yieldToPage,
+  importModule = (url) => import(url),
+  files = null,
   dpi = DPI,
 } = {}) {
+  const ortFiles = files?.ort || ORT_FILES;
+  const modelFiles = files?.models || MODEL_FILES;
+  const workerFile = files?.worker || OCR_WORKER;
   let state = "cold";
   const fetched = [];
   const prepared = new Map();
@@ -196,8 +215,8 @@ export function createOcrWeb({
   // Every asset ocr() needs: [{ spec, urls }] (a model may come from its fallback URL).
   function assetList() {
     return [
-      ...Object.values(ORT_FILES).map((spec) => ({ spec, model: false, urls: [joinUrl(ortBase, spec.file)] })),
-      ...Object.values(MODEL_FILES).map((spec) => ({ spec, model: true, urls: [joinUrl(assetBase, `assets/ocr/${spec.file}`), ...(spec.url ? [spec.url] : [])] })),
+      ...Object.values(ortFiles).map((spec) => ({ spec, model: false, urls: [joinUrl(ortBase, spec.file)] })),
+      ...Object.values(modelFiles).map((spec) => ({ spec, model: true, urls: [joinUrl(assetBase, `assets/ocr/${spec.file}`), ...(spec.url ? [spec.url] : [])] })),
     ];
   }
 
@@ -230,6 +249,10 @@ export function createOcrWeb({
       onProgress?.(done, total);
     }
     try { await lexicon({ signal }); } catch (error) { if (error?.name === "AbortError") throw error; }
+    if (useWorker && !workerUrl) {
+      try { await loadVerified(joinUrl(assetBase, `assets/ocr/${workerFile.file}`), workerFile, signal); }
+      catch (error) { if (error?.name === "AbortError") throw error; }
+    }
     return { bytes: total };
   }
 
@@ -292,22 +315,29 @@ export function createOcrWeb({
     return renderPdfPage(doc, n, dpi);
   }
 
+  // The worker script, as a URL this page may start. A Pages URL is cross-origin on
+  // roamresearch.com (Worker throws SecurityError), so the SHA-checked bundle runs from a blob URL.
+  async function workerScriptUrl(signal) {
+    if (workerUrl) return workerUrl;
+    const text = await loadVerified(joinUrl(assetBase, `assets/ocr/${workerFile.file}`), workerFile, signal);
+    return createObjectURL(new Blob([text], { type: "text/javascript" }));
+  }
+
   async function bootWorker(signal) {
-    const ortMjs = await loadVerified(joinUrl(ortBase, ORT_FILES.mjs.file), ORT_FILES.mjs, signal);
-    const wasmMjs = await loadVerified(joinUrl(ortBase, ORT_FILES.wasmMjs.file), ORT_FILES.wasmMjs, signal);
-    const wasm = await loadVerified(joinUrl(ortBase, ORT_FILES.wasm.file), ORT_FILES.wasm, signal);
-    const det = await loadModel(MODEL_FILES.det, signal);
-    const rec = await loadModel(MODEL_FILES.rec, signal);
-    const dictBuf = await loadModel(MODEL_FILES.dict, signal);
+    const ortMjs = await loadVerified(joinUrl(ortBase, ortFiles.mjs.file), ortFiles.mjs, signal);
+    const wasmMjs = await loadVerified(joinUrl(ortBase, ortFiles.wasmMjs.file), ortFiles.wasmMjs, signal);
+    const wasm = await loadVerified(joinUrl(ortBase, ortFiles.wasm.file), ortFiles.wasm, signal);
+    const det = await loadModel(modelFiles.det, signal);
+    const rec = await loadModel(modelFiles.rec, signal);
+    const dictBuf = await loadModel(modelFiles.dict, signal);
     const dictText = new TextDecoder().decode(dictBuf);
+    const scriptUrl = await workerScriptUrl(signal);
     const urls = {
-      ortUrl: blobUrl(ortMjs, "text/javascript"),
-      wasmMjsUrl: blobUrl(wasmMjs, "text/javascript"),
-      wasmUrl: blobUrl(wasm, "application/wasm"),
+      ortUrl: createObjectURL(new Blob([ortMjs], { type: "text/javascript" })),
+      wasmMjsUrl: createObjectURL(new Blob([wasmMjs], { type: "text/javascript" })),
+      wasmUrl: createObjectURL(new Blob([wasm], { type: "application/wasm" })),
     };
-    const scriptUrl = workerUrl || joinUrl(assetBase, "assets/ocr/ocr-worker.js");
-    fetched.push(scriptUrl);
-    const worker = new Worker(scriptUrl, { type: "module" });
+    const worker = new WorkerImpl(scriptUrl, { type: "module" });
     const pending = new Map();
     let seq = 0;
     const records = new Map();
@@ -320,20 +350,44 @@ export function createOcrWeb({
       const waiter = pending.get(msg.id);
       if (!waiter) return;
       pending.delete(msg.id);
-      if (msg.type === "error") waiter.reject(Object.assign(new Error(msg.message), { name: msg.message === "ocr aborted" ? "AbortError" : "Error" }));
+      if (msg.type === "error") waiter.reject(msg.message === "ocr aborted" ? abortError() : new Error(msg.message));
       else waiter.resolve(msg);
     };
-    worker.onerror = (ev) => rejectAll(new Error(ev?.message || "ocr worker failed"));
-    function call(msg, transfers) {
+    let dead = null;
+    let api = null;
+    // A worker that died answers every later call with its error, and the next ocr() boots again.
+    worker.onerror = (ev) => {
+      dead = new Error(ev?.message || "ocr worker failed");
+      rejectAll(dead);
+      if (api && engine === api) engine = null;
+    };
+    // An abort answers the caller at once and stops the worker's current job; the worker
+    // starts the next message with a fresh signal.
+    function call(msg, transfers, signal) {
+      if (signal?.aborted) return Promise.reject(abortError());
+      if (dead) return Promise.reject(dead);
       const id = ++seq;
       return new Promise((resolve, reject) => {
-        pending.set(id, { resolve, reject });
+        const onAbort = () => {
+          if (!pending.has(id)) return;
+          pending.delete(id);
+          try { worker.postMessage({ type: "abort" }); } catch { /* gone */ }
+          reject(abortError());
+        };
+        const done = (fn) => (value) => { signal?.removeEventListener?.("abort", onAbort); fn(value); };
+        pending.set(id, { resolve: done(resolve), reject: done(reject) });
+        signal?.addEventListener?.("abort", onAbort, { once: true });
         try { worker.postMessage({ ...msg, id }, transfers || []); }
-        catch (error) { pending.delete(id); reject(error); }
+        catch (error) { pending.delete(id); signal?.removeEventListener?.("abort", onAbort); reject(error); }
       });
     }
-    await call({ type: "init", ...urls, det, rec, dictText }, [det, rec]);
-    return {
+    try {
+      await call({ type: "init", ...urls, det, rec, dictText }, [det, rec], signal);
+    } catch (error) {
+      try { worker.terminate?.(); } catch { /* gone */ }
+      throw error;
+    }
+    api = {
       stop() { try { worker.postMessage({ type: "abort" }); } catch { /* gone */ } },
       forget() {
         records.clear();
@@ -347,17 +401,18 @@ export function createOcrWeb({
         const msg = await call({
           type: "page", n, width: rendered.width, height: rendered.height, dpi: rendered.dpi,
           pointW: rendered.pointW, pointH: rendered.pointH, rgb,
-        }, [rgb.buffer]);
+        }, [rgb.buffer], signal);
         records.set(n, msg.record);
         return msg.record;
       },
       async cells(list, bytes, signal) {
         const need = [...new Set(list.map((c) => c.page))];
         for (const n of need) if (!records.has(n)) await this.page(n, bytes, signal);
-        const msg = await call({ type: "cells", cells: list });
+        const msg = await call({ type: "cells", cells: list }, undefined, signal);
         return msg.cells;
       },
     };
+    return api;
   }
 
   async function ensure(signal) {
@@ -369,7 +424,7 @@ export function createOcrWeb({
       return engine;
     }
     state = "loading";
-    if (useWorker && typeof Worker === "function") {
+    if (useWorker && typeof WorkerImpl === "function") {
       try {
         engine = await bootWorker(signal);
         state = "ready";
@@ -379,21 +434,22 @@ export function createOcrWeb({
         engine = null;
       }
     }
-    const ortMjs = await loadVerified(joinUrl(ortBase, ORT_FILES.mjs.file), ORT_FILES.mjs, signal);
-    const wasmMjs = await loadVerified(joinUrl(ortBase, ORT_FILES.wasmMjs.file), ORT_FILES.wasmMjs, signal);
-    const wasm = await loadVerified(joinUrl(ortBase, ORT_FILES.wasm.file), ORT_FILES.wasm, signal);
-    const det = await loadModel(MODEL_FILES.det, signal);
-    const rec = await loadModel(MODEL_FILES.rec, signal);
-    const dictBuf = await loadModel(MODEL_FILES.dict, signal);
-    const ort = await import(blobUrl(ortMjs, "text/javascript"));
+    const ortMjs = await loadVerified(joinUrl(ortBase, ortFiles.mjs.file), ortFiles.mjs, signal);
+    const wasmMjs = await loadVerified(joinUrl(ortBase, ortFiles.wasmMjs.file), ortFiles.wasmMjs, signal);
+    const wasm = await loadVerified(joinUrl(ortBase, ortFiles.wasm.file), ortFiles.wasm, signal);
+    const det = await loadModel(modelFiles.det, signal);
+    const rec = await loadModel(modelFiles.rec, signal);
+    const dictBuf = await loadModel(modelFiles.dict, signal);
+    const ort = await importModule(createObjectURL(new Blob([ortMjs], { type: "text/javascript" })));
     if (ort.env?.wasm) {
       ort.env.wasm.wasmPaths = {
-        mjs: blobUrl(wasmMjs, "text/javascript"),
-        wasm: blobUrl(wasm, "application/wasm"),
+        mjs: createObjectURL(new Blob([wasmMjs], { type: "text/javascript" })),
+        wasm: createObjectURL(new Blob([wasm], { type: "application/wasm" })),
       };
       if (typeof crossOriginIsolated === "undefined" || !crossOriginIsolated) ort.env.wasm.numThreads = 1;
     }
-    const runners = await createOrtRunners(ort, det, rec);
+    // Main thread: only when no worker could start. Yield before every model run.
+    const runners = yieldingRunners(await createOrtRunners(ort, det, rec), pause);
     engine = localEngine(runners.runDet, runners.runRec, dictLines(new TextDecoder().decode(dictBuf)));
     state = "ready";
     return engine;

@@ -477,3 +477,16 @@ Second cause, same title: on the pdf.js raster the recogniser boxed `cases per` 
 | ICDAR 2013 at 300 dpi (pypdfium2), adjacency / detection / cell | | | 0.876 / 0.957 / 0.787, every count identical to round 4 |
 
 Live (Readwisenotes, window dpr 1.095, helper stopped, in-browser read on open): CDC title exact, cell F1 0.932, text 0.900; open → title on the card and in the pane about 27 s (built-in parse +0.9 s, OCR read with line and cell passes ~25 s). The read runs on the main thread: `new Worker()` for `assets/ocr/ocr-worker.js` on our Pages origin throws SecurityError from roamresearch.com, and `createOcrWeb` falls back to the inline engine. report-scan t3 on a pdf.js raster (0.356) against pypdfium2 (0.952) is open.
+
+### In-browser OCR off the main thread (fix/ocr-worker)
+
+Cause: `new Worker("https://svyk.github.io/plexus-diagram/assets/ocr/ocr-worker.js")` throws SecurityError on roamresearch.com (a worker script must be same-origin), so `createOcrWeb` ran the whole read on Roam's main thread. Fix: `createOcrWeb` fetches the worker bundle from our Pages origin like the models (Cache Storage `plexus-diagram-models`, SHA-256 and size checked against `OCR_WORKER` in `src/model/ocr/worker-asset.js`, which `build.mjs` generates from the same bundle it writes to `deploy/assets/ocr/ocr-worker.js`) and starts it as a module worker from a blob URL. ORT, its wasm glue, and the wasm go in as blob URLs; the models are transferred. An AbortSignal rejects the pending call at once and posts `abort`; the worker starts its next job with a fresh signal. `prefetch()` takes the worker bundle along; `cached()` still asks only for the models. Only if the blob worker also fails (constructor throws, or `error` before `ready`) does OCR run on the page, with a `setTimeout(0)` before every det and rec run. `scheduler.yield()` was tried there and dropped: its continuations run ahead of other tasks, so Roam's timers and message tasks waited 20 s (and the longtask observer did not report it).
+
+| Live, CDC fresh read (Readwisenotes, helper stopped, models cached) | before (main thread) | after (blob worker) | fallback (blob worker forced to fail) |
+|---|---|---|---|
+| read start → title | 24.9 s | 24.7 s | 25.7 s |
+| longest main-thread task during the read | 23 415 ms | 269 ms (not OCR: another extension's mutation handler as the text layer lands) | 1 662 ms (one wasm model run) |
+| total blocked (long-task time over 50 ms) | 24.5 s | 1.2 s (the whole run, including opening the pane) | 19.8 s |
+| longest gap between frames / 100 ms timer drift | 23.4 s / 23.8 s | 269 ms / 298 ms | 1.7 s / 2.5 s |
+
+OCR words (`ocr-layer`) and both stored parses are identical before and after; the title is exact.

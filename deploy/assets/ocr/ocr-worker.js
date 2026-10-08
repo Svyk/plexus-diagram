@@ -1942,7 +1942,7 @@ self.onmessage = (ev) => {
     pages.clear();
     return;
   }
-  if (msg.type === "init") controller = new AbortController();
+  if (msg.type === "init" || controller.signal.aborted) controller = new AbortController();
   const run = msg.type === "init" ? onInit(msg) : msg.type === "page" ? onPage(msg) : msg.type === "cells" ? onCells(msg) : null;
   if (run) run.catch((error) => fail(msg.id, error));
 };

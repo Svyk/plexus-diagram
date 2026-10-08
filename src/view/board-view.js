@@ -21,6 +21,7 @@ import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-style
 import { HIGHLIGHT_COLORS, noteActionPlan } from "../model/highlight.js";
 import { cleanPdfTitle, coverModel, embedSplit, parsedDocTitle, parsedTitleLines, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
 import { isMetaBanner } from "../model/title-cap.js";
+import { createSharpStore } from "./sharp-store.js";
 import { COVER_MAX_W, WARM_AFTER_MS, coverKey, coverState, densityTicks, sharpCoverPlan, warmPlan } from "../model/pdf-cover.js";
 import { PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { createCoverStore } from "../host/cover-store.js";
@@ -1897,7 +1898,8 @@ function buildBoardView(onFail, {
     }
     return ticks.map((tick, i) => (pages[i] != null ? { ...tick, page: pages[i] } : tick));
   };
-  const sharpFaces = new Map();
+  const sharpStore = createSharpStore({ revoke: (src) => globalThis.URL?.revokeObjectURL?.(src), later: (fn, ms) => timers.later(fn, ms) });
+  const sharpFaces = { get: (url) => sharpStore.get(url) };
   let sharpTimer = null;
   const sharpOf = (url, face) => {
     const sharp = sharpFaces.get(url);
@@ -1999,11 +2001,6 @@ function buildBoardView(onFail, {
     if (sharp?.src) return { state: "ready", src: sharp.src, w: sharp.w, h: sharp.h ?? null };
     return { state: "loading" };
   };
-  const revokeSharp = (src) => {
-    if (typeof src === "string" && src.startsWith("blob:")) {
-      try { globalThis.URL?.revokeObjectURL?.(src); } catch { /* gone */ }
-    }
-  };
   const refreshSharpCovers = () => {
     sharpTimer = null;
     if (disposed || gesturing) return;
@@ -2031,39 +2028,32 @@ function buildBoardView(onFail, {
       break;
     }
     if (!picked) return;
+    const token = sharpStore.begin(picked.url);
     Promise.resolve(firstPage.render({ url: picked.url, maxW: picked.maxW, title: false })).then((result) => {
-      if (disposed) {
-        if (result?.blob) return;
-        return;
-      }
+      if (disposed) return;
+      if (!sharpStore.current(picked.url, token)) return;
       if (!result?.blob || typeof globalThis.URL?.createObjectURL !== "function") {
-        const prev = sharpFaces.get(picked.url);
-        sharpFaces.set(picked.url, { src: prev?.src || "", w: picked.maxW, h: prev?.h || 0, failed: true });
+        sharpStore.fail(picked.url, token, picked.maxW);
         scheduleSharpCovers();
         return;
       }
       let src = "";
       try { src = globalThis.URL.createObjectURL(result.blob); } catch { src = ""; }
       if (!src) {
-        sharpFaces.set(picked.url, { src: "", w: picked.maxW, failed: true });
+        sharpStore.fail(picked.url, token, picked.maxW);
         scheduleSharpCovers();
         return;
       }
-      if (disposed) { revokeSharp(src); return; }
-      const prev = sharpFaces.get(picked.url);
-      if (prev?.src && prev.src !== src) revokeSharp(prev.src);
       // Record the size we asked for. A render that comes back smaller must not
       // be queued again, or each new blob rebuilds the card and drops the flipper.
       const drawn = Number(result.w) > 0 ? Number(result.w) : 0;
-      sharpFaces.set(picked.url, { src, w: Math.max(drawn, picked.maxW), h: result.h || 0, failed: false });
+      if (!sharpStore.commit(picked.url, token, { src, w: Math.max(drawn, picked.maxW), h: result.h || 0, failed: false })) return;
       try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
       try { syncPdfFlip?.(); } catch { /* flip follows the new paper */ }
       scheduleSharpCovers();
     }).catch(() => {
       if (disposed) return;
-      const prev = sharpFaces.get(picked.url);
-      sharpFaces.set(picked.url, { src: prev?.src || "", w: picked.maxW, h: prev?.h || 0, failed: true });
-      scheduleSharpCovers();
+      if (sharpStore.fail(picked.url, token, picked.maxW)) scheduleSharpCovers();
     });
   };
   const scheduleSharpCovers = () => {
@@ -7615,8 +7605,7 @@ function buildBoardView(onFail, {
       step(() => clip.dispose());
       step(() => { try { pdfWarm?.cancelAll?.(); } catch { /* warm */ } });
       step(() => {
-        for (const face of sharpFaces.values()) revokeSharp(face?.src);
-        sharpFaces.clear();
+        sharpStore.dispose();
         sharpTimer?.();
         sharpTimer = null;
       });

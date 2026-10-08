@@ -296,7 +296,7 @@ test("Enter, Space, and double-click on a selected card ask for the pane; the pi
   }
 });
 
-test("a blob cover url is revoked on unmount and a data url is not", () => {
+test("a card never revokes a cover url: the board owns blob lifetime, and a data url is untouched", () => {
   const revoked = [];
   const orig = globalThis.URL.revokeObjectURL;
   globalThis.URL.revokeObjectURL = (url) => {
@@ -310,7 +310,7 @@ test("a blob cover url is revoked on unmount and a data url is not", () => {
   try {
     assert.equal(ctx.cover().querySelector("img").getAttribute("src"), blob);
     ctx.restore();
-    assert.deepEqual(revoked, [blob]);
+    assert.deepEqual(revoked, []);
   } finally {
     globalThis.URL.revokeObjectURL = orig;
   }

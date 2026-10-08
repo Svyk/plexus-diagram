@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 3;
+export const PARSE_REV = 4;
 
 const now = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
 

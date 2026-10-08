@@ -60,6 +60,20 @@ test("CDC scan keeps the first OCR heading behavior (no page title from scans)",
   assert.equal(doc.pageTitle, null);
 });
 
+test("CDC text-layer sheet: the heading above the table is the title, never the Note line", async () => {
+  const doc = await parseFile(join(FIX, "cdc1980-p25.pdf"));
+  const title = parsedDocTitle(doc);
+  assert.ok(title.startsWith("NOTIFIABLE DISEASES"), title);
+  assert.ok(!/^Note/i.test(title));
+});
+
+test("note, source and footnote lines are never titles", () => {
+  for (const t of ["Note: Rates less than 0.01 after rounding are shown as 0.00.", "Notes: see text", "Source: CDC 1980", "*Not previously notifiable nationally.", "† Per 1,000 live births.", "Rates less than 0.01 after rounding"]) assert.ok(isJunkTitleText(t), t);
+  for (const t of ["Notes on the Biology of Listeria", "Sources of Contamination in Powder Lines"]) assert.ok(!isJunkTitleText(t), t);
+  const doc = { order: ["b1", "b2"], blocks: { b1: { id: "b1", type: "table", page: 1 }, b2: { id: "b2", type: "para", page: 1, text: "Note: Rates less than 0.01 after rounding are shown as 0.00." } } };
+  assert.equal(parsedDocTitle(doc), "");
+});
+
 test("title junk filter: dates, pages, volume lines, URLs, DOIs, banners", () => {
   for (const t of ["22.12.2005", "Page 3 of 10", "March 2024", "Vol. 12 No. 3", "https://doi.org/10.1016/x", "journal homepage: www.x.com", "Contents lists available at ScienceDirect", "Science of the Total Environment 912 (2024) 169204", "L 338/1"]) assert.ok(isJunkTitleText(t), t);
   for (const t of ["Environmental Monitoring of a Dry-Blend Powder Line", "COMMISSION REGULATION (EC) No 2073/2005"]) assert.ok(!isJunkTitleText(t), t);

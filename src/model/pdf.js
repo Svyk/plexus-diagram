@@ -140,6 +140,15 @@ function parsedDocTitleRaw(doc) {
     if (real) return real;
   }
   const clean = (value) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "");
+  // A heading on page 1 above the first table is the page's own title (a data sheet whose title
+  // is set in small type has no level-1 heading and no pageTitle).
+  for (const id of ids) {
+    const block = blocks[id];
+    if (block?.type === "table") break;
+    if (block?.type !== "heading" || (block.page || 1) !== 1) continue;
+    const real = usable(clean(block.text));
+    if (real && titleWordCount(real) >= 3) return real;
+  }
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "table" || !block.caption) continue;

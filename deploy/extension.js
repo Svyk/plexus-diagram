@@ -4538,6 +4538,9 @@ var init_title_cap = __esm({
     TITLE_CAP = 80;
     MONTHS5 = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
     JUNK_LINE_RES = [
+      /^(?:notes?|sources?)\s*(?:[:.\-–—]|$)/i,
+      /^[*†‡§¶•]/,
+      /^rates?\s+less\s+than\b/i,
       /^\W*\d{1,4}\W*$/,
       /^page\s+\d+(\s+of\s+\d+)?$/i,
       /^\d{1,4}\s*\/\s*\d{1,4}$/,
@@ -4670,6 +4673,13 @@ function parsedDocTitleRaw(doc) {
     if (real) return real;
   }
   const clean = (value) => typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  for (const id of ids) {
+    const block = blocks[id];
+    if (block?.type === "table") break;
+    if (block?.type !== "heading" || (block.page || 1) !== 1) continue;
+    const real = usable(clean(block.text));
+    if (real && titleWordCount(real) >= 3) return real;
+  }
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "table" || !block.caption) continue;
@@ -12563,13 +12573,6 @@ function paintPdfGlyph(doc, parent, px) {
   parent?.append?.(span);
   return span;
 }
-function releaseBlob(url) {
-  if (typeof url !== "string" || !url.startsWith("blob:")) return;
-  try {
-    globalThis.URL?.revokeObjectURL?.(url);
-  } catch {
-  }
-}
 function createItemRenderer({
   doc = globalThis.document,
   host,
@@ -15063,7 +15066,6 @@ function createItemRenderer({
         img.setAttribute("decoding", "async");
         img.setAttribute("loading", "lazy");
         img.setAttribute("src", src);
-        if (src.startsWith("blob:")) rec.pdfBlob = src;
       } else if (state === "loading") {
         const skel = el("div", "pxd-pdf-skel", paper);
         skel.setAttribute("aria-hidden", "true");
@@ -15186,9 +15188,6 @@ function createItemRenderer({
     rec.pdfCoverOff = () => {
       rec.el.removeEventListener("keydown", onKey);
       rec.el.removeEventListener("dblclick", onDbl);
-      const blob = rec.pdfBlob;
-      rec.pdfBlob = "";
-      releaseBlob(blob);
       rec.pdfCoverOff = null;
     };
   };
@@ -26736,6 +26735,72 @@ init_highlight();
 init_pdf();
 init_title_cap();
 
+// src/view/sharp-store.js
+var REVOKE_DELAY_MS = 4e3;
+function createSharpStore({ revoke, later, delay = REVOKE_DELAY_MS } = {}) {
+  const faces = /* @__PURE__ */ new Map();
+  const gens = /* @__PURE__ */ new Map();
+  const pending = /* @__PURE__ */ new Set();
+  const free = (src) => {
+    if (typeof src !== "string" || !src.startsWith("blob:")) return;
+    try {
+      revoke?.(src);
+    } catch {
+    }
+  };
+  const retire = (src) => {
+    if (typeof src !== "string" || !src.startsWith("blob:")) return;
+    if (typeof later !== "function") return;
+    const entry = { off: null };
+    entry.off = later(() => {
+      pending.delete(entry);
+      free(src);
+    }, delay);
+    pending.add(entry);
+  };
+  return {
+    get: (url) => faces.get(url),
+    values: () => faces.values(),
+    begin(url) {
+      const next = (gens.get(url) || 0) + 1;
+      gens.set(url, next);
+      return next;
+    },
+    current: (url, token) => gens.get(url) === token,
+    // A stale token frees its own URL at once (nothing painted it). The newest result replaces the
+    // face, and the face it replaces is revoked only after the delay.
+    commit(url, token, face) {
+      if (gens.get(url) !== token) {
+        free(face?.src);
+        return false;
+      }
+      const prev = faces.get(url);
+      faces.set(url, face);
+      if (prev?.src && prev.src !== face?.src) retire(prev.src);
+      return true;
+    },
+    // A failed redraw keeps the last good URL; the stored data-URL cover shows when there is none.
+    fail(url, token, size) {
+      if (gens.get(url) !== token) return false;
+      const prev = faces.get(url);
+      faces.set(url, { src: prev?.src || "", w: size, h: prev?.h || 0, failed: true });
+      return true;
+    },
+    dispose() {
+      for (const face of faces.values()) free(face?.src);
+      faces.clear();
+      gens.clear();
+      for (const entry of pending) {
+        try {
+          entry.off?.();
+        } catch {
+        }
+      }
+      pending.clear();
+    }
+  };
+}
+
 // src/model/pdf-cover.js
 var WARM_AFTER_MS = 1500;
 var WARM_MAX = 8;
@@ -34041,7 +34106,7 @@ init_title_cap();
 init_pdf();
 var SCHEMA2 = "pxd-parse/1";
 var ENGINE_VERSION = "plexus-builtin/1";
-var PARSE_REV = 3;
+var PARSE_REV = 4;
 var now2 = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
 function viewportTransform(w, h, rotation = 0) {
   switch ((rotation % 360 + 360) % 360) {
@@ -56520,7 +56585,8 @@ function buildBoardView(onFail, {
     }
     return ticks.map((tick, i) => pages[i] != null ? { ...tick, page: pages[i] } : tick);
   };
-  const sharpFaces = /* @__PURE__ */ new Map();
+  const sharpStore = createSharpStore({ revoke: (src) => globalThis.URL?.revokeObjectURL?.(src), later: (fn, ms) => timers.later(fn, ms) });
+  const sharpFaces = { get: (url) => sharpStore.get(url) };
   let sharpTimer = null;
   const sharpOf = (url, face) => {
     const sharp = sharpFaces.get(url);
@@ -56627,14 +56693,6 @@ function buildBoardView(onFail, {
     if (sharp?.src) return { state: "ready", src: sharp.src, w: sharp.w, h: sharp.h ?? null };
     return { state: "loading" };
   };
-  const revokeSharp = (src) => {
-    if (typeof src === "string" && src.startsWith("blob:")) {
-      try {
-        globalThis.URL?.revokeObjectURL?.(src);
-      } catch {
-      }
-    }
-  };
   const refreshSharpCovers = () => {
     sharpTimer = null;
     if (disposed || gesturing) return;
@@ -56666,14 +56724,12 @@ function buildBoardView(onFail, {
       break;
     }
     if (!picked) return;
+    const token = sharpStore.begin(picked.url);
     Promise.resolve(firstPage.render({ url: picked.url, maxW: picked.maxW, title: false })).then((result) => {
-      if (disposed) {
-        if (result?.blob) return;
-        return;
-      }
+      if (disposed) return;
+      if (!sharpStore.current(picked.url, token)) return;
       if (!result?.blob || typeof globalThis.URL?.createObjectURL !== "function") {
-        const prev2 = sharpFaces.get(picked.url);
-        sharpFaces.set(picked.url, { src: prev2?.src || "", w: picked.maxW, h: prev2?.h || 0, failed: true });
+        sharpStore.fail(picked.url, token, picked.maxW);
         scheduleSharpCovers();
         return;
       }
@@ -56684,18 +56740,12 @@ function buildBoardView(onFail, {
         src = "";
       }
       if (!src) {
-        sharpFaces.set(picked.url, { src: "", w: picked.maxW, failed: true });
+        sharpStore.fail(picked.url, token, picked.maxW);
         scheduleSharpCovers();
         return;
       }
-      if (disposed) {
-        revokeSharp(src);
-        return;
-      }
-      const prev = sharpFaces.get(picked.url);
-      if (prev?.src && prev.src !== src) revokeSharp(prev.src);
       const drawn = Number(result.w) > 0 ? Number(result.w) : 0;
-      sharpFaces.set(picked.url, { src, w: Math.max(drawn, picked.maxW), h: result.h || 0, failed: false });
+      if (!sharpStore.commit(picked.url, token, { src, w: Math.max(drawn, picked.maxW), h: result.h || 0, failed: false })) return;
       try {
         itemsR?.repaintStyles?.();
       } catch {
@@ -56707,9 +56757,7 @@ function buildBoardView(onFail, {
       scheduleSharpCovers();
     }).catch(() => {
       if (disposed) return;
-      const prev = sharpFaces.get(picked.url);
-      sharpFaces.set(picked.url, { src: prev?.src || "", w: picked.maxW, h: prev?.h || 0, failed: true });
-      scheduleSharpCovers();
+      if (sharpStore.fail(picked.url, token, picked.maxW)) scheduleSharpCovers();
     });
   };
   const scheduleSharpCovers = () => {
@@ -63386,8 +63434,7 @@ function buildBoardView(onFail, {
         }
       });
       step(() => {
-        for (const face of sharpFaces.values()) revokeSharp(face?.src);
-        sharpFaces.clear();
+        sharpStore.dispose();
         sharpTimer?.();
         sharpTimer = null;
       });

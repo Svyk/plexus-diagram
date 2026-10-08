@@ -37047,9 +37047,17 @@ function createPageChips({
     const id = icon.getAttribute("data-block");
     const block = getParsed?.()?.blocks?.[id];
     if (!block) return;
+    let result;
     try {
-      copy?.(block);
+      result = copy?.(block);
     } catch {
+    }
+    if (result && typeof result.then === "function") {
+      void result.then((ok) => {
+        if (ok !== false) markCopied(icon);
+      }, () => {
+      });
+      return;
     }
     markCopied(icon);
   };
@@ -39149,11 +39157,12 @@ function createParseView({
     storage,
     copy: (block) => {
       if (!parsed || !block) return;
-      void writeClipboard2(toMarkdown(parsed, [block.id])).then(() => {
+      return copyBlock(block).then((ok) => {
         try {
-          onToast?.("Copied");
+          onToast?.(ok ? "Copied" : "Could not copy");
         } catch {
         }
+        return ok;
       });
     },
     run: (act, item) => {
@@ -39161,7 +39170,18 @@ function createParseView({
         session,
         payload: (ids) => payload(ids.map((id) => parsed?.blocks?.[id]).filter(Boolean)),
         copy: (ids) => {
-          if (parsed) void writeClipboard2(copyText(parsed, ids, { shift: false }).text);
+          if (!parsed) return;
+          const only = ids.length === 1 ? parsed.blocks?.[ids[0]] : null;
+          if (only && isImageCopy(only)) {
+            void copyBlock(only).then((ok) => {
+              if (!ok) try {
+                onToast?.("Could not copy");
+              } catch {
+              }
+            });
+            return;
+          }
+          void writeClipboard2(copyText(parsed, ids, { shift: false }).text);
         },
         latex: (block) => {
           if (block?.latex) void writeClipboard2(`$$${block.latex}$$`);
@@ -39522,10 +39542,72 @@ function createParseView({
     } catch {
     }
   }
+  function isImageCopy(block) {
+    return block?.type === "figure" || block?.type === "formula" && !block.latex;
+  }
+  function captionText(block) {
+    if (typeof block.caption === "string" && block.caption && !parsed?.blocks?.[block.caption]) return block.caption;
+    for (const other of Object.values(parsed?.blocks || {})) {
+      if (other?.type === "caption" && other.for === block.id && other.text) return other.text;
+    }
+    return `${block.type === "formula" ? "Formula" : "Figure"} (p. ${block.page})`;
+  }
+  async function writeTextOnly(text3) {
+    if (typeof writeText === "function") {
+      await writeText(text3);
+      return;
+    }
+    const clip4 = doc.defaultView?.navigator?.clipboard;
+    if (!clip4?.writeText) throw new Error("no clipboard");
+    await clip4.writeText(text3);
+  }
+  async function copyBlock(block) {
+    try {
+      if (!isImageCopy(block)) {
+        await writeTextOnly(toMarkdown(parsed, [block.id]));
+        return true;
+      }
+      const caption = captionText(block);
+      let src = "";
+      const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
+      if (key && store?.getImage) {
+        try {
+          src = imageSrc2(await store.getImage(key));
+        } catch {
+        }
+      }
+      if (!src) src = await cropAt2x(block);
+      const win = doc.defaultView || globalThis;
+      const Item = win.ClipboardItem || globalThis.ClipboardItem;
+      const clip4 = win.navigator?.clipboard;
+      const BlobCtor = win.Blob || globalThis.Blob;
+      const blob = src ? dataUrlToBlob2(src, BlobCtor) : null;
+      if (blob && typeof Item === "function" && typeof clip4?.write === "function") {
+        try {
+          await clip4.write([new Item({ "image/png": blob, "text/plain": new BlobCtor([caption], { type: "text/plain" }) })]);
+          return true;
+        } catch {
+        }
+      }
+      await writeTextOnly(caption);
+      return true;
+    } catch {
+      return false;
+    }
+  }
   async function copySelection(shift) {
     const picked = selected.length ? selected : focusId ? [focusId] : [];
     if (!picked.length || !parsed) return;
     const ids = expand(selectBlocks(parsed, picked)).map((block) => block.id);
+    const only = ids.length === 1 ? parsed.blocks?.[ids[0]] : null;
+    if (only && isImageCopy(only)) {
+      const ok = await copyBlock(only);
+      try {
+        onToast?.(ok ? "Copied" : "Could not copy");
+      } catch {
+      }
+      return;
+    }
     const result = copyText(parsed, ids, { shift });
     await writeClipboard2(result.text);
   }

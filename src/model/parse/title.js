@@ -1,0 +1,45 @@
+// Parse step: the paper's title from the page text, not from a running header. Pure.
+import { isJunkTitleText, titleWordCount } from "../title-cap.js";
+import { normalizeFurniture } from "./furniture.js";
+
+const MAX_LINES = 6;
+const MAX_WORDS = 45;
+
+function textOf(line) {
+  return line.words.filter((w) => !w.sup && !w.sub).map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
+}
+
+// Stack consecutive candidate lines of one size and weight into one title block. Returns the
+// block with the biggest type, bold before regular at one size, then the one higher on the page.
+export function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
+  const furniture = new Set(removed.map((r) => normalizeFurniture(r.text || "")));
+  for (const pg of pages) {
+    if (!pg || pg.ocr || pg.kind === "scan") continue;
+    const lines = (pg.free || []).map((line) => ({ line, text: textOf(line) }))
+      .filter((c) => c.text && !isJunkTitleText(c.text) && !furniture.has(normalizeFurniture(c.text)))
+      .sort((a, b) => a.line.base - b.line.base || a.line.x0 - b.line.x0);
+    const blocks = [];
+    let cur = null;
+    for (const c of lines) {
+      const { line } = c;
+      const prev = cur && cur.items[cur.items.length - 1].line;
+      const near = prev && line.base - prev.base <= 2.2 * line.size && line.base > prev.base + 0.5 * line.size
+        && Math.abs(line.size - prev.size) <= 0.5 && Boolean(line.bold) === Boolean(prev.bold)
+        && line.x0 < prev.x1 && line.x1 > prev.x0 && cur.items.length < MAX_LINES;
+      if (near) cur.items.push(c);
+      else { cur = { items: [c] }; blocks.push(cur); }
+    }
+    let best = null;
+    for (const b of blocks) {
+      const first = b.items[0].line;
+      const text = b.items.map((c) => c.text).join(" ").replace(/\s+/g, " ").trim();
+      const words = titleWordCount(text);
+      if (words < 3 || words > MAX_WORDS) continue;
+      if (!(first.size > 1.1 * bodySize || (first.bold && first.size >= bodySize - 0.3))) continue;
+      const cand = { text, size: first.size, bold: Boolean(first.bold), y: first.base, page: pg.n };
+      if (!best || cand.size > best.size + 0.5 || (Math.abs(cand.size - best.size) <= 0.5 && ((cand.bold && !best.bold) || (cand.bold === best.bold && cand.y < best.y)))) best = cand;
+    }
+    if (best) return best.text;
+  }
+  return "";
+}

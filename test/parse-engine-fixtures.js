@@ -15,10 +15,10 @@ async function pdfjs() {
   return import("pdfjs-dist/legacy/build/pdf.mjs");
 }
 
-export async function parseFile(path, { pages } = {}) {
+export async function parseFile(path, { pages, info: infoOverride } = {}) {
   const { getDocument } = await pdfjs();
   const doc = await getDocument({ data: new Uint8Array(readFileSync(path)), useSystemFonts: true, disableFontFace: true, verbosity: 0 }).promise;
-  const info = (await doc.getMetadata()).info;
+  const info = infoOverride ?? (await doc.getMetadata()).info;
   const adapterMs = [];
   const parsed = await parsePdf({
     numPages: doc.numPages, pages, info,

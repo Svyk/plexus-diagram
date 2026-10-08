@@ -92,27 +92,34 @@ function prepareLine(text, { linkSafe, leading }) {
 function applyFootnoteRefs(text, refs, tokenFor) {
   if (!refs?.length) return text;
   let out = text;
+  const inText = [];
+  const placed = [];
   for (const ref of refs) {
     const mark = String(ref.mark ?? "");
     if (!mark) continue;
     const token = `[${mark}]`;
     const swap = tokenFor ? tokenFor(ref) : token;
-    if (out.includes(token)) {
-      if (swap !== token) out = out.replace(token, swap);
-      continue;
-    }
-    const sup = Object.keys(SUPERSCRIPT).find((ch) => SUPERSCRIPT[ch] === mark);
-    if (sup && out.includes(sup)) {
-      out = out.replace(sup, swap);
-      continue;
-    }
-    if (Number.isInteger(ref.at) && ref.at >= 0 && ref.at <= out.length) {
-      out = `${out.slice(0, ref.at)}${swap}${out.slice(ref.at)}`;
-    } else {
-      out += swap;
+    if (text.includes(token)) inText.push({ from: token, swap });
+    else {
+      const sup = Object.keys(SUPERSCRIPT).find((ch) => SUPERSCRIPT[ch] === mark);
+      if (sup && text.includes(sup)) inText.push({ from: sup, swap });
+      else placed.push({ ref, swap });
     }
   }
-  return out;
+  // `at` is an offset into the original text: insert from the end so an earlier insert never
+  // shifts a later one, and never inside a word.
+  const word = /[\p{L}\p{N}]/u;
+  let tail = "";
+  for (const { ref, swap } of [...placed].sort((a, b) => (Number.isInteger(b.ref.at) ? b.ref.at : -1) - (Number.isInteger(a.ref.at) ? a.ref.at : -1))) {
+    if (!(Number.isInteger(ref.at) && ref.at >= 0 && ref.at <= text.length)) { tail += swap; continue; }
+    let at = ref.at;
+    while (at < out.length && at > 0 && word.test(out[at - 1]) && word.test(out[at]) && at < ref.at + 40) at += 1;
+    out = `${out.slice(0, at)}${swap}${out.slice(at)}`;
+  }
+  for (const { from, swap } of inText) {
+    if (swap !== from) out = out.replace(from, swap);
+  }
+  return out + tail;
 }
 
 function bullet(depth, text) {

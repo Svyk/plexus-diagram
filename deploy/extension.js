@@ -3943,27 +3943,35 @@ function prepareLine(text3, { linkSafe, leading }) {
 function applyFootnoteRefs(text3, refs, tokenFor) {
   if (!refs?.length) return text3;
   let out = text3;
+  const inText = [];
+  const placed = [];
   for (const ref of refs) {
     const mark = String(ref.mark ?? "");
     if (!mark) continue;
     const token = `[${mark}]`;
     const swap = tokenFor ? tokenFor(ref) : token;
-    if (out.includes(token)) {
-      if (swap !== token) out = out.replace(token, swap);
-      continue;
-    }
-    const sup2 = Object.keys(SUPERSCRIPT).find((ch) => SUPERSCRIPT[ch] === mark);
-    if (sup2 && out.includes(sup2)) {
-      out = out.replace(sup2, swap);
-      continue;
-    }
-    if (Number.isInteger(ref.at) && ref.at >= 0 && ref.at <= out.length) {
-      out = `${out.slice(0, ref.at)}${swap}${out.slice(ref.at)}`;
-    } else {
-      out += swap;
+    if (text3.includes(token)) inText.push({ from: token, swap });
+    else {
+      const sup2 = Object.keys(SUPERSCRIPT).find((ch) => SUPERSCRIPT[ch] === mark);
+      if (sup2 && text3.includes(sup2)) inText.push({ from: sup2, swap });
+      else placed.push({ ref, swap });
     }
   }
-  return out;
+  const word = /[\p{L}\p{N}]/u;
+  let tail = "";
+  for (const { ref, swap } of [...placed].sort((a, b) => (Number.isInteger(b.ref.at) ? b.ref.at : -1) - (Number.isInteger(a.ref.at) ? a.ref.at : -1))) {
+    if (!(Number.isInteger(ref.at) && ref.at >= 0 && ref.at <= text3.length)) {
+      tail += swap;
+      continue;
+    }
+    let at = ref.at;
+    while (at < out.length && at > 0 && word.test(out[at - 1]) && word.test(out[at]) && at < ref.at + 40) at += 1;
+    out = `${out.slice(0, at)}${swap}${out.slice(at)}`;
+  }
+  for (const { from, swap } of inText) {
+    if (swap !== from) out = out.replace(from, swap);
+  }
+  return out + tail;
 }
 function bullet(depth, text3) {
   return `${"  ".repeat(depth)}- ${text3 ?? ""}`;
@@ -4490,10 +4498,36 @@ function isCutPrefix(title, heading) {
   const h = typeof heading === "string" ? heading.replace(/\s+/g, " ").trim() : "";
   return t.length > 0 && h.length > t.length && h.toLowerCase().startsWith(t.toLowerCase()) && /\S/.test(h[t.length]);
 }
-var TITLE_CAP;
+function isJunkTitleText(text3) {
+  const t = typeof text3 === "string" ? text3.replace(/\s+/g, " ").trim() : "";
+  if (!t) return true;
+  return JUNK_LINE_RES.some((re) => re.test(t));
+}
+function titleWordCount(text3) {
+  return String(text3 ?? "").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+}
+var TITLE_CAP, MONTHS5, JUNK_LINE_RES;
 var init_title_cap = __esm({
   "src/model/title-cap.js"() {
     TITLE_CAP = 80;
+    MONTHS5 = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+    JUNK_LINE_RES = [
+      /^\W*\d{1,4}\W*$/,
+      /^page\s+\d+(\s+of\s+\d+)?$/i,
+      /^\d{1,4}\s*\/\s*\d{1,4}$/,
+      /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/,
+      /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/,
+      new RegExp(`^(?:\\d{1,2}\\s+)?(?:${MONTHS5})\\.?\\s+(?:\\d{1,2},?\\s+)?\\d{4}$`, "i"),
+      /\bcontents lists? available at\b/i,
+      /\bjournal homepage\b/i,
+      /\b(?:https?:\/\/|www\.)\S+/i,
+      /\b[\w-]+\.(?:com|org|edu|gov|net|eu)\b/i,
+      /\bdoi\b\s*[:.]?|\b10\.\d{4,9}\//i,
+      /\bvol(?:ume)?\.?\s*\d+|\bissue\s+\d+|\bno\.\s*\d+\s*[,(]|\(\d{4}\)\s*\d{2,}/i,
+      /^(?:©|copyright\b)|\ball rights reserved\b/i,
+      /^(?:available online|received|accepted|revised|keywords?|abstract|article info|a r t i c l e)\b/i,
+      /^L\s*\d+\/\d+$/
+    ];
   }
 });
 
@@ -4572,16 +4606,24 @@ function parsedDocTitleRaw(doc) {
   if (!doc || typeof doc !== "object") return "";
   const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
   const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
-  const given = cleanPdfTitle(doc.title);
+  const norm2 = (value) => String(value ?? "").replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
+  const running = new Set((Array.isArray(doc.removed) ? doc.removed : []).filter((r) => r && r.reason !== "page-number").map((r) => norm2(r.text)));
+  const usable = (value) => {
+    const real = cleanPdfTitle(value);
+    return real && !isJunkTitleText(real) && !running.has(norm2(real)) ? real : "";
+  };
+  const given = usable(doc.title);
   if (given) {
     const first = ids.map((id) => blocks[id]).find((b) => b?.type === "heading" && (b.level || 1) === 1);
     if (!isCutPrefix(given, first?.text)) return given;
   }
+  const fromPage = usable(doc.pageTitle);
+  if (fromPage) return fromPage;
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "heading" || (block.level || 1) !== 1) continue;
     const text3 = typeof block.text === "string" ? block.text.replace(/\s+/g, " ").trim() : "";
-    const real = cleanPdfTitle(text3);
+    const real = usable(text3);
     if (real) return real;
   }
   const clean = (value) => typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
@@ -4595,7 +4637,7 @@ function parsedDocTitleRaw(doc) {
     const block = blocks[id];
     if (block?.type !== "para" || (block.page || 1) !== 1) continue;
     const text3 = clean(block.text);
-    if (text3 && text3.length <= 160 && !/^scan\b/i.test(text3) && !isStorageTitle(text3)) return text3;
+    if (text3 && text3.length <= 160 && !/^scan\b/i.test(text3) && !isStorageTitle(text3) && !isJunkTitleText(text3) && !running.has(norm2(text3)) && titleWordCount(text3) >= 3) return text3;
   }
   return "";
 }
@@ -6166,7 +6208,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     cards.push({ uid: item.uid, type: item.type, rect: r, title: label(item), role });
   }
   const font = previewFont(view.w);
-  const textOf = (uid) => {
+  const textOf2 = (uid) => {
     try {
       const t = blockText?.(uid);
       return typeof t === "string" && t ? t : "block";
@@ -6185,7 +6227,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     }
     const rect = itemUid === edge.from ? a : b;
     const box2 = rowBarRect(rect, frac, font);
-    return { ...box2, frac: clamp012(frac), text: textOf(blockUid2), label: clip2(textOf(blockUid2), box2.maxChars) };
+    return { ...box2, frac: clamp012(frac), text: textOf2(blockUid2), label: clip2(textOf2(blockUid2), box2.maxChars) };
   };
   const fromBar = routed.from === edge.from ? barFor(edge.from, edge.fromBlock) : null;
   const toBar = routed.to === edge.to ? barFor(edge.to, edge.toBlock) : null;
@@ -6219,8 +6261,8 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     toCard: edge.to,
     toInner: toEnd?.inner || null,
     fromInner: fromEnd?.inner || null,
-    toBlockText: edge.toBlock ? textOf(edge.toBlock) : "",
-    fromBlockText: edge.fromBlock ? textOf(edge.fromBlock) : ""
+    toBlockText: edge.toBlock ? textOf2(edge.toBlock) : "",
+    fromBlockText: edge.fromBlock ? textOf2(edge.fromBlock) : ""
   };
 }
 function createConnectionCache({ host } = {}) {
@@ -6663,7 +6705,7 @@ function parseRoamDay(title) {
   const day = Number(m[2]);
   const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
   if (m[3] !== suffix || day < 1 || day > 31) return null;
-  const month = MONTHS7.indexOf(m[1]);
+  const month = MONTHS8.indexOf(m[1]);
   if (month < 0) return null;
   return { y: Number(m[4]), m: month + 1, d: day };
 }
@@ -6744,7 +6786,7 @@ function taskMeta(string, content, today = /* @__PURE__ */ new Date(), names = l
   }
   return meta;
 }
-var ACTIVITY_LOG, lower, DEFAULT_LABELS, DEFAULT_IDS, liveNames, namesSig, taskNamesSig, TASK_RE, taskState, isTaskString, isBareTask, MONTHS7, DAILY_RE3, SHORT_MONTHS, iso, isoDay, PRIORITY_GLYPH, STATUS_TAG;
+var ACTIVITY_LOG, lower, DEFAULT_LABELS, DEFAULT_IDS, liveNames, namesSig, taskNamesSig, TASK_RE, taskState, isTaskString, isBareTask, MONTHS8, DAILY_RE3, SHORT_MONTHS, iso, isoDay, PRIORITY_GLYPH, STATUS_TAG;
 var init_tasks = __esm({
   "src/model/tasks.js"() {
     init_schema();
@@ -6774,8 +6816,8 @@ var init_tasks = __esm({
     taskState = (string) => TASK_RE.exec(String(string ?? ""))?.[1] ?? "";
     isTaskString = (string) => TASK_RE.test(String(string ?? ""));
     isBareTask = (string) => isTaskString(string) && !String(string).replace(TASK_RE, "").replace(/#\[\[task-status\/[^\]]*\]\]/g, "").trim();
-    MONTHS7 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    DAILY_RE3 = new RegExp(`^(${MONTHS7.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+    MONTHS8 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    DAILY_RE3 = new RegExp(`^(${MONTHS8.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
     SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     isoDay = iso;
@@ -27319,7 +27361,7 @@ function highlightLensTag(color) {
 
 // src/model/halo.js
 var DAY_MS2 = 864e5;
-var MONTHS5 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+var MONTHS6 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 var HALO_PULL_LIGHT = "[:create/time :edit/time {:create/user [:user/display-name]}]";
 var HALO_REF_CAP = 200;
 var HALO_REFS_SPAN_QUERY = "[:find (count ?r) (min ?t) (max ?t) :in $ ?u :where [?e :block/uid ?u] [?r :block/refs ?e] [?r :create/time ?t]]";
@@ -27375,7 +27417,7 @@ function formatMade(ms) {
   const n2 = finite3(ms);
   if (n2 == null) return "";
   const date = new Date(n2);
-  return `${MONTHS5[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
+  return `${MONTHS6[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
 }
 function headerText({ created, board: board2, section: section2, userName } = {}) {
   const when = formatMade(created);
@@ -28355,8 +28397,8 @@ function mountMemoryLane({
 // src/model/suggest.js
 var SUGGEST_CAP = 60;
 var SUGGEST_LIMIT = 300;
-var MONTHS6 = "January|February|March|April|May|June|July|August|September|October|November|December";
-var DAILY_RE2 = new RegExp(`^(${MONTHS6}) \\d{1,2}(?:st|nd|rd|th), \\d{4}$`);
+var MONTHS7 = "January|February|March|April|May|June|July|August|September|October|November|December";
+var DAILY_RE2 = new RegExp(`^(${MONTHS7}) \\d{1,2}(?:st|nd|rd|th), \\d{4}$`);
 var escapeReg = (text3) => String(text3).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function isDailyTitle2(title) {
   return DAILY_RE2.test(String(title ?? "").trim());
@@ -33214,26 +33256,112 @@ function r2(v) {
   return Math.round(v * 100) / 100;
 }
 
+// src/model/parse/title.js
+init_title_cap();
+var MAX_LINES = 6;
+var MAX_WORDS = 45;
+function textOf(line) {
+  return line.words.filter((w) => !w.sup && !w.sub).map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
+}
+function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
+  const furniture = new Set(removed.map((r) => normalizeFurniture(r.text || "")));
+  for (const pg of pages) {
+    if (!pg || pg.ocr || pg.kind === "scan") continue;
+    const lines = (pg.free || []).map((line) => ({ line, text: textOf(line) })).filter((c) => c.text && !isJunkTitleText(c.text) && !furniture.has(normalizeFurniture(c.text))).sort((a, b) => a.line.base - b.line.base || a.line.x0 - b.line.x0);
+    const blocks = [];
+    let cur = null;
+    for (const c of lines) {
+      const { line } = c;
+      const prev = cur && cur.items[cur.items.length - 1].line;
+      const near = prev && line.base - prev.base <= 2.2 * line.size && line.base > prev.base + 0.5 * line.size && Math.abs(line.size - prev.size) <= 0.5 && Boolean(line.bold) === Boolean(prev.bold) && line.x0 < prev.x1 && line.x1 > prev.x0 && cur.items.length < MAX_LINES;
+      if (near) cur.items.push(c);
+      else {
+        cur = { items: [c] };
+        blocks.push(cur);
+      }
+    }
+    let best = null;
+    for (const b of blocks) {
+      const first = b.items[0].line;
+      const text3 = b.items.map((c) => c.text).join(" ").replace(/\s+/g, " ").trim();
+      const words = titleWordCount(text3);
+      if (words < 3 || words > MAX_WORDS) continue;
+      if (!(first.size > 1.1 * bodySize || first.bold && first.size >= bodySize - 0.3)) continue;
+      const cand = { text: text3, size: first.size, bold: Boolean(first.bold), y: first.base, page: pg.n };
+      if (!best || cand.size > best.size + 0.5 || Math.abs(cand.size - best.size) <= 0.5 && (cand.bold && !best.bold || cand.bold === best.bold && cand.y < best.y)) best = cand;
+    }
+    if (best) return best.text;
+  }
+  return "";
+}
+
 // src/model/parse/blocks.js
 var FOOTNOTE_MARK_RE = /^(\d{1,3}|[a-z]|[*†‡§¶])$/;
 var SUPERS2 = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
 function superscriptDigits(text3) {
   return text3.split("").map((ch) => SUPERS2[ch] ?? ch).join("");
 }
+var COMMA_SUPER = "˒";
+var UNIT_BEFORE_RE = /(?:^|[\s(\/])(?:[kcdmnµu]?m|in|ft|yd|mi)$/i;
+var EXPONENT_BASE_RE = /(?:^|[\s×x·(])10$/;
+var MARK_RUN_RE = /^\d{1,3}(?:[,\u2013-]\d{1,3})+$/;
+function isUnitScript(text3, mark) {
+  if (/^[23]$/.test(mark) && UNIT_BEFORE_RE.test(text3)) return true;
+  return /^\d{1,2}$/.test(mark) && EXPONENT_BASE_RE.test(text3);
+}
+function superscriptRun(text3) {
+  return superscriptDigits(text3).replace(/,/g, COMMA_SUPER);
+}
 function lineTextWithRefs(line, { collectRefs = true } = {}) {
   let text3 = "";
   const refs = [];
-  for (const w of line.words) {
-    if (w.sup && collectRefs && FOOTNOTE_MARK_RE.test(w.text) && text3.length) {
-      refs.push({ mark: w.text, at: text3.length });
+  let lead = [];
+  let prev = null;
+  const words = line.words;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w.sup && collectRefs && FOOTNOTE_MARK_RE.test(w.text) && text3.length && !isUnitScript(text3, w.text)) {
+      const next = words[i + 1];
+      const apart = prev && next && !next.sup && !next.sub && Number.isFinite(w.x0) && Number.isFinite(prev.x1) && w.x0 - prev.x1 > 0.3 * Math.min(prev.size || 10, 10) && !/^[,.;:)\]]/.test(next.text);
+      if (apart) lead.push(w.text);
+      else refs.push({ mark: w.text, at: text3.length });
+      prev = w;
       continue;
     }
-    const piece = w.sup && /^\d+$/.test(w.text) ? superscriptDigits(w.text) : w.text;
-    if ((w.sup || w.sub) && text3 && !text3.endsWith(" ")) text3 += piece;
-    else if (text3 && /^[,.;:)\]]/.test(piece)) text3 += piece;
-    else text3 += (text3 ? " " : "") + piece;
+    const script = w.sup && (/^\d+$/.test(w.text) || MARK_RUN_RE.test(w.text));
+    const piece = script ? superscriptRun(w.text) : w.text;
+    let glue = "";
+    if ((w.sup || w.sub) && text3 && !text3.endsWith(" ")) glue = "";
+    else if (text3 && /^[,.;:)\]]/.test(piece)) glue = "";
+    else glue = text3 ? " " : "";
+    text3 += glue;
+    if (lead.length && !w.sup && !w.sub) {
+      for (const mark of lead) refs.push({ mark, at: text3.length });
+      lead = [];
+    }
+    text3 += piece;
+    prev = w;
   }
   return { text: text3, refs };
+}
+function inlineUnlinkedRefs(block) {
+  const refs = block.footnoteRefs;
+  if (!refs || !refs.length || typeof block.text !== "string") return;
+  const keep = refs.filter((r) => r.to);
+  const drop = refs.filter((r) => !r.to);
+  if (!drop.length) return;
+  let text3 = block.text;
+  const shifts = [];
+  for (const r of [...drop].sort((a, b) => b.at - a.at)) {
+    const piece = /^\d+$/.test(r.mark) ? superscriptDigits(r.mark) : r.mark;
+    const at = Math.min(Math.max(r.at, 0), text3.length);
+    text3 = text3.slice(0, at) + piece + text3.slice(at);
+    shifts.push({ at, n: piece.length });
+  }
+  for (const r of keep) for (const sh of shifts) if (sh.at <= r.at) r.at += sh.n;
+  block.text = text3;
+  if (keep.length) block.footnoteRefs = keep;
+  else delete block.footnoteRefs;
 }
 function joinLines(lines, { collectRefs = true, keepHyphenSet = null } = {}) {
   let text3 = "";
@@ -33688,6 +33816,7 @@ function fitsColumn(number, column) {
 
 // src/model/parse/index.js
 init_title_cap();
+init_pdf();
 var SCHEMA2 = "pxd-parse/1";
 var ENGINE_VERSION = "plexus-builtin/1";
 var now2 = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
@@ -33846,6 +33975,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     const onFirst = classes.filter((k) => firstPage.free.some((l) => Math.round(l.size * 2) / 2 === k && l.chars >= 3));
     if (onFirst.length) classes = classes.filter((k) => k <= onFirst[0]);
   }
+  const pageTitle = findPageTitle(pageRecords2.slice(0, 2), { bodySize, removed: furniture.removed });
   const blocks = {};
   const order = [];
   const counters = {};
@@ -34087,9 +34217,13 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     const pick = after[0] || same2[same2.length - 1];
     if (pick) entry.ref.to = pick.id;
   }
-  let title = info && typeof info.Title === "string" && info.Title.trim() ? info.Title.trim() : null;
-  const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1)) || headings.find((h) => h.level === 1);
-  if (!title || h1 && isCutPrefix(title, h1.text)) title = h1 ? h1.text : title;
+  for (const id of order) if (blocks[id]?.footnoteRefs) inlineUnlinkedRefs(blocks[id]);
+  let title = info && typeof info.Title === "string" ? cleanPdfTitle(info.Title) || null : null;
+  const runningTexts = new Set(furniture.removed.filter((r) => r.reason !== "page-number").map((r) => normalizeFurniture(r.text)));
+  if (title && (runningTexts.has(normalizeFurniture(title)) || isJunkTitleText(title))) title = null;
+  const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1) && !isJunkTitleText(h.text)) || headings.find((h) => h.level === 1 && !isJunkTitleText(h.text));
+  if (!title) title = pageTitle || (h1 ? h1.text : null);
+  else if (h1 && isCutPrefix(title, h1.text)) title = h1.text;
   if (title) title = capTitle(title);
   const pagesOut = [];
   for (const p of perPage) pagesOut.push({ n: p.n, w: p.w, h: p.h, rotation: p.rotation, textRotation: p.textRotation, scanLayer: p.scanLayer, ocr: p.ocr, kind: p.kind, parsed: true, columns: p.columns });
@@ -34102,6 +34236,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
     pageCount: numPages,
     title,
+    pageTitle: pageTitle ? capTitle(pageTitle) : null,
     pages: pagesOut,
     order,
     blocks,

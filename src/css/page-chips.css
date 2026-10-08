@@ -1,0 +1,81 @@
+.page > .pxd-page-outline {
+  box-sizing: border-box;
+  border: 1.5px solid var(--pxd-accent);
+  border-radius: 3px;
+  background: transparent;
+  pointer-events: none;
+}
+
+.page > .pxd-page-chip {
+  display: flex;
+  align-items: stretch;
+  transform: translateX(-100%);
+  z-index: 4;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--pxd-fg, inherit);
+  background: var(--pxd-surface);
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.page > .pxd-page-chip button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 1px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.page > .pxd-page-chip .pxd-page-chip__more {
+  padding: 1px 6px;
+  border-left: 1px solid var(--pxd-border-strong);
+}
+
+.page > .pxd-page-chip button:hover,
+.page > .pxd-page-chip button:focus-visible {
+  outline: 1px solid var(--pxd-accent);
+  outline-offset: -1px;
+}
+
+.page > .pxd-page-chip .pxd-page-chip__menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 2px;
+  min-width: 100%;
+  background: var(--pxd-surface);
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 4px;
+}
+
+.page > .pxd-page-chip .pxd-page-chip__menu[hidden] {
+  display: none;
+}
+
+.page > .pxd-page-chip .pxd-page-chip__item {
+  text-align: left;
+}
+
+.page > .pxd-page-dot {
+  box-sizing: border-box;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--pxd-accent);
+  border-radius: 8px;
+  background: var(--pxd-surface);
+  color: var(--pxd-fg, inherit);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  opacity: 0.75;
+  pointer-events: none;
+  z-index: 4;
+}

@@ -202,6 +202,12 @@ export const TIP_TEXT = {
   "edge.row": e("Linked block", "An arrow on the board ends on this block."),
 
   // ---- PDF parse (settings descriptions, and the flat-merge chip)
+  "page-chip.table": e("Table", "Insert this table as a Roam Grid with its merged cells. Open the arrow for native, flat, Markdown or a card."),
+  "page-chip.more": e("More ways", "Other ways to insert this block."),
+  "page-chip.figure": e("Figure", "Send this figure to the board as a card."),
+  "page-chip.formula": e("Formula", "Send this formula to the board as a card."),
+  "page-chip.heading": e("Section", "Send this heading and the text up to the next heading to the board as a card."),
+  "page-chip.list": e("List", "Insert this list below the PDF."),
   "parse.helper-url": e("Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
   "parse.helper-token": e("Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address."),
   "parse.engine": e("Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper."),

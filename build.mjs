@@ -1,5 +1,5 @@
 import { build as esbuild } from "esbuild";
-import { copyFile, mkdir, readFile, readdir, rm, watch, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, readdir, rm, watch, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -123,7 +123,34 @@ export async function build(rootDirectory = defaultRoot, options = {}) {
     )),
     writeFile(resolve(deployDir, ".nojekyll"), "", "utf8"),
   ]);
+  await publishOcrAssets(rootDirectory, deployDir);
   process.stdout.write(`Built extension.js, extension.css, and ${deployDir}\n`);
+}
+
+// Models live in assets/ so a rebuild can wipe deploy/ and copy them back. The worker bundle
+// is emitted beside them; Pages serves deploy/ at the site root, so the URL is assets/ocr/….
+async function publishOcrAssets(rootDirectory, deployDir) {
+  const assets = resolve(rootDirectory, "assets");
+  try {
+    await cp(assets, resolve(deployDir, "assets"), { recursive: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  const outfile = resolve(deployDir, "assets/ocr/ocr-worker.js");
+  await mkdir(dirname(outfile), { recursive: true });
+  await esbuild({
+    absWorkingDir: resolve(rootDirectory),
+    entryPoints: ["src/host/ocr-web-worker.js"],
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    target: ["es2020"],
+    outfile,
+    minify: false,
+    legalComments: "none",
+    logLevel: "silent",
+    plugins: [rejectRemoteImports],
+  });
 }
 
 export async function verifyGeneratedArtifacts(rootDirectory = defaultRoot) {

@@ -378,3 +378,9 @@ numericCols}`, `ocrSource` (`fresh` | `layer`), `ocrCompare`; cells carry `conf`
 `readScan` in `src/view/parse-engine.js`, `createHelperClient().ocr({bytes, sha256, pages |
 cells})`, the view's "Read the scan" button (auto with engine `auto` and a ready helper),
 and `tools/parse-score.mjs diff` (every wrong cell).
+
+## In-browser OCR
+
+`createOcrWeb` returns `pxd-ocr/1` (`engine: "ppocr-web"`). Fetch starts at `ocr()`, not at load. The parse view accepts `ocrSource`. No Settings row. Models are Apache-2.0 PP-OCRv5 mobile det plus English rec (RapidOCR v3.9.2). SHA-256 is in `src/model/ocr/manifest.js`. onnxruntime-web 1.30.0 loads from jsDelivr into Cache Storage `plexus-diagram-models`. WebGPU, then wasm. The build copies `assets/` to `deploy/assets/`.
+
+Node bench, same models. CDC image-only: structure 0.930, cell 0.425, 49×11 against truth 51×11, 11.96 s. report-scan, 13.84 s: cell 0.400, 0.927, 0.489. Both cell gates missed. Vision is 0.957 and 0.975. `ocr-table.png`: rules 3/3 within 2 pt; words 9/30. Live check not run. ICDAR 2013, 67 docs, 238 pages: 300 dpi adjacency 0.508, detection 0.866, cell 0.399 (1480 s); 150 dpi adjacency 0.434, detection 0.813, cell 0.359 (1115 s). Both adjacency gates missed (0.90 at 300 dpi, 0.85 at 150 dpi).

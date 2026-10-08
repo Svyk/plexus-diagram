@@ -24763,6 +24763,7 @@ var package_default = {
   },
   devDependencies: {
     esbuild: "0.28.1",
+    "onnxruntime-node": "^1.22.0",
     "pdfjs-dist": "5.4.149"
   },
   license: "MIT"
@@ -34101,7 +34102,8 @@ function createParseView({
   adoptCreated = null,
   getContext = null,
   clock = null,
-  scanAuto = false
+  scanAuto = false,
+  ocrSource = null
 } = {}) {
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
@@ -34841,16 +34843,25 @@ function createParseView({
     await finishDoc(finalDoc, now3() - t0);
     if (scanAuto && scanPagesOf(finalDoc).length) {
       await refreshHelper();
-      if (helperState === "ready") await readScanNow();
+      const engine = ocrEngine();
+      if (engine && (engine === ocrSource || helperState === "ready")) await readScanNow();
     }
+  }
+  function ocrEngine() {
+    if (ocrSource && typeof ocrSource.ocr === "function") return ocrSource;
+    if (helper && typeof helper.ocr === "function") return helper;
+    return null;
   }
   function paintScan() {
     const pages = parsed ? scanPagesOf(parsed) : [];
-    scanBtn.hidden = !(pages.length && helperState === "ready" && phase !== "running" && typeof helper?.ocr === "function");
+    const engine = ocrEngine();
+    const ready = Boolean(engine && (engine === ocrSource || helperState === "ready"));
+    scanBtn.hidden = !(pages.length && ready && phase !== "running");
     if (!scanBtn.hidden) scanBtn.textContent = pages.length === 1 ? `Read the scan (p. ${pages[0]})` : `Read the scan (${pages.length} pages)`;
   }
   async function readScanNow() {
-    if (!parsed || !helper || typeof helper.ocr !== "function" || helperState !== "ready") return;
+    const engine = ocrEngine();
+    if (!parsed || !engine || engine !== ocrSource && helperState !== "ready") return;
     const pages = scanPagesOf(parsed);
     if (!pages.length) return;
     cancel();
@@ -34876,7 +34887,7 @@ function createParseView({
       }
       const t0 = now3();
       const result = await readScan({
-        helper,
+        helper: engine,
         bytes,
         sha256: parsed.sha256,
         base: parsed,

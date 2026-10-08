@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.7.0 — 2026-10-08
+
+Parsed text you can see and copy, scans read without installing anything, arrows to table cells, PDF footnotes that work in Roam, and typing that never drops a key.
+
+- **Parsed text shows on the page.** Every block the parser found gets a soft gray box with a copy button (tables copy as Markdown). Boxes now fit sideways tables exactly (the old outline was drawn in the wrong frame on rotated pages). "Show parsed" in the reader's mode bar turns them off.
+- **Read scans with nothing installed (beta).** Without the local helper, Read text reads a scanned page in the browser: 39 MB of models downloaded once from this site and cached, then about 20 s for a dense table page. Shaded table rows and slightly tilted scans are handled; doubtful cells are re-read up close. On a 1980 CDC table scan: cell F1 0.922 (the helper: 0.957). The helper stays first when it runs. A read scan reopens with its boxes, table chips and title.
+- **Click to place.** Insert from a chip (Roam Grid, Native, Flat, Card, Figure, Section) now attaches a preview to the pointer; click the board to place it, Esc to cancel. "Insert beside PDF" keeps the old behaviour. The preview stays readable when the board is zoomed far out, with a dashed outline showing the real size.
+- **Arrows to a table cell.** Point an arrow at one cell of a Roam table or a Roam Grid table, the way arrows already point at a block: the cell lights up while you connect, the end follows the cell through scroll and zoom, and clamps with a marker when the cell leaves view.
+- **PDF footnotes in the Footnotes extension's format.** Marks like ¹, ** or (3) become `#sup^^[(N)](((note)))^^` aliases with the notes under the page's `#footnotes` block, numbered after the ones already there — in paragraphs and in table cells (Roam Grid and native). Setting "PDF footnotes": Footnotes extension / plain / off.
+- **Roam Grid import.** With Roam Grid 0.18.5, "Roam Grid: Import from a PDF on this page…" turns a PDF table (born-digital or scanned) into a grid, through `PlexusDiagram.tablesFromPdf`.
+- **Fixes:** keys typed right after making a card are kept and land in order (they were lost for up to a second); the right-click menu opens at the pointer; the board never scrolls under the reader; the board bar and the card toolbar stay one row in a narrow board (extra tools move to "…"); folded cards are header-high and a folded table says "Table · N rows"; PDF titles skip junk metadata ("I", "Untitled") and fill the PDF switcher as they are found; copy buttons never stack.
+
 ## 3.6.0 — 2026-10-07
 
 The PDF page is the workspace: select, copy, highlight and drag text straight off the page — scans included — plus structure chips, a smoother drag, setup without dead ends, and office files on the board.

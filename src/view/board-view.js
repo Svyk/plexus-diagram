@@ -1628,6 +1628,12 @@ function buildBoardView(onFail, {
       const next = typeof uid === "string" ? uid : "";
       if (next === readingCard) return;
       readingCard = next;
+      if (next && !disposed) {
+        for (const it of board()?.items.values() || []) {
+          if (it?.kind !== "pdf") continue;
+          try { pdfDisplayTitle(it); } catch { /* title */ }
+        }
+      }
       if (!disposed) itemsR.repaintStyles();
       if (!disposed) { try { chrome.ctx.reposition(); chrome.toolbar.scheduleDock?.(); } catch { /* chrome */ } }
     },
@@ -1636,6 +1642,7 @@ function buildBoardView(onFail, {
       if (parsedTitles.get(url) === title) return;
       parsedTitles.set(url, title);
       try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
+      try { readPane?.refreshCards?.(); } catch { /* switcher */ }
     },
     onHover: (uid, on) => {
       if (!on || typeof uid !== "string" || !uid) return;
@@ -1705,6 +1712,8 @@ function buildBoardView(onFail, {
     if (!body || body.startsWith("{{") || body.startsWith("((")) return "";
     return body;
   };
+  const metaQueued = new Set();
+  let metaTail = Promise.resolve();
   notePdfMeta = (url) => {
     const key = typeof url === "string" ? url.trim() : "";
     if (!key) return "";
@@ -1712,17 +1721,21 @@ function buildBoardView(onFail, {
     try { probePdfjs(); } catch { return parsedKnown; }
     if (!pdfMeta) return parsedKnown;
     const known = cleanPdfTitle(pdfMeta.title(key)) || parsedKnown;
-    const job = known ? null : pdfMeta.want(key);
-    if (job && typeof job.then === "function") {
+    if (!known && !metaQueued.has(key)) {
+      metaQueued.add(key);
+      const meta = pdfMeta;
+      const job = metaTail.then(() => meta.want(key)).catch(() => "");
+      metaTail = job.then(() => {}, () => {});
       job.then((got) => {
         if (disposed || !got) return;
         try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
         try {
-          if (readPane?.isOpen?.() !== true || typeof readPane.setTitle !== "function") return;
+          if (readPane?.isOpen?.() !== true) return;
           const card = board()?.items.get(readPane.cardUid?.() || "");
-          if (card) readPane.setTitle(pdfDisplayTitle(card));
+          if (card && typeof readPane.setTitle === "function") readPane.setTitle(pdfDisplayTitle(card));
+          readPane.refreshCards?.();
         } catch { /* title */ }
-      }).catch(() => {});
+      });
     }
     return known;
   };

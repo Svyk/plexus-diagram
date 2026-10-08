@@ -92,15 +92,16 @@ export function pdfTitlePlan(source) {
 // table caption, else a short first paragraph on page 1. Never a storage path.
 export function parsedDocTitle(doc) {
   if (!doc || typeof doc !== "object") return "";
-  const given = typeof doc.title === "string" ? doc.title.trim() : "";
-  if (given && !isStorageTitle(given)) return given;
+  const given = cleanPdfTitle(doc.title);
+  if (given) return given;
   const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
   const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "heading" || (block.level || 1) !== 1) continue;
     const text = typeof block.text === "string" ? block.text.replace(/\s+/g, " ").trim() : "";
-    if (text && !isStorageTitle(text)) return text;
+    const real = cleanPdfTitle(text);
+    if (real) return real;
   }
   const clean = (value) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "");
   for (const id of ids) {

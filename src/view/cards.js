@@ -649,11 +649,6 @@ function paintPdfGlyph(doc, parent, px) {
   return span;
 }
 
-function releaseBlob(url) {
-  if (typeof url !== "string" || !url.startsWith("blob:")) return;
-  try { globalThis.URL?.revokeObjectURL?.(url); } catch { /* already gone */ }
-}
-
 export function createItemRenderer({
   doc = globalThis.document,
   host,
@@ -2973,7 +2968,6 @@ export function createItemRenderer({
         img.setAttribute("decoding", "async");
         img.setAttribute("loading", "lazy");
         img.setAttribute("src", src);
-        if (src.startsWith("blob:")) rec.pdfBlob = src;
       } else if (state === "loading") {
         const skel = el("div", "pxd-pdf-skel", paper);
         skel.setAttribute("aria-hidden", "true");
@@ -3080,9 +3074,6 @@ export function createItemRenderer({
     rec.pdfCoverOff = () => {
       rec.el.removeEventListener("keydown", onKey);
       rec.el.removeEventListener("dblclick", onDbl);
-      const blob = rec.pdfBlob;
-      rec.pdfBlob = "";
-      releaseBlob(blob);
       rec.pdfCoverOff = null;
     };
   };

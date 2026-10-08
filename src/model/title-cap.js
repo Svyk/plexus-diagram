@@ -19,6 +19,9 @@ export function isCutPrefix(title, heading) {
 
 const MONTHS = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
 const JUNK_LINE_RES = [
+  /^(?:notes?|sources?)\s*(?:[:.\-–—]|$)/i,
+  /^[*†‡§¶•]/,
+  /^rates?\s+less\s+than\b/i,
   /^\W*\d{1,4}\W*$/,
   /^page\s+\d+(\s+of\s+\d+)?$/i,
   /^\d{1,4}\s*\/\s*\d{1,4}$/,

@@ -13,6 +13,7 @@ import { parsedDocTitle } from "../model/pdf.js";
 import { loadPageData, readScan } from "./parse-engine.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { createParseOverlay } from "./parse-overlay.js";
+import { createPageChips, runChipAction } from "./page-chips.js";
 import { cropRect, createCropQueue } from "./parse-crop.js";
 import { makeHighlight } from "./make-highlight.js";
 import { isTextEntryTarget } from "./cards.js";
@@ -457,6 +458,26 @@ export function createParseView({
   function shown() {
     return visibleBlocks(parsed, { filters, query, range });
   }
+
+  const pageChips = createPageChips({
+    doc,
+    host: readerEl || null,
+    getParsed: () => parsed,
+    pageEl: (n) => pageEl?.(n) || null,
+    pageOf: (n) => pageInfo(n),
+    isLatexReady: () => helperState === "ready",
+    run: (act, item) => {
+      runChipAction({ act, ...item }, {
+        session,
+        payload: (ids) => payload(ids.map((id) => parsed?.blocks?.[id]).filter(Boolean)),
+        copy: (ids) => { if (parsed) void writeClipboard(copyText(parsed, ids, { shift: false }).text); },
+        latex: (block) => {
+          if (block?.latex) void writeClipboard(`$$${block.latex}$$`);
+          else onToast?.("Run Docling on this page to read the formula as LaTeX");
+        },
+      });
+    },
+  });
 
   function idsOf(blocks) {
     return (blocks || shown()).map((block) => block.id);
@@ -1431,6 +1452,7 @@ export function createParseView({
       try { cropObserver?.disconnect(); } catch { /* gone */ }
       cropWaiting.clear();
       overlay.dispose();
+      pageChips.dispose();
       clearBlockListeners();
       for (const [node, type, fn, capture] of armed) {
         if (type === "observer") { try { fn(); } catch { /* observer */ } continue; }

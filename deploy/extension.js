@@ -5305,6 +5305,12 @@ var init_tooltip_text = __esm({
       "relpop.sidebar": e("Open in sidebar", "Open the board in the right sidebar."),
       "edge.row": e("Linked block", "An arrow on the board ends on this block."),
       // ---- PDF parse (settings descriptions, and the flat-merge chip)
+      "page-chip.table": e("Table", "Insert this table as a Roam Grid with its merged cells. Open the arrow for native, flat, Markdown or a card."),
+      "page-chip.more": e("More ways", "Other ways to insert this block."),
+      "page-chip.figure": e("Figure", "Send this figure to the board as a card."),
+      "page-chip.formula": e("Formula", "Send this formula to the board as a card."),
+      "page-chip.heading": e("Section", "Send this heading and the text up to the next heading to the board as a card."),
+      "page-chip.list": e("List", "Insert this list below the PDF."),
       "parse.helper-url": e("Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
       "parse.helper-token": e("Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address."),
       "parse.engine": e("Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper."),
@@ -33675,6 +33681,343 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
   };
 }
 
+// src/view/page-chips.js
+var HIDE_MS = 220;
+var DOT_CAP = 400;
+var CHIP_TYPES = Object.freeze(["table", "figure", "heading", "list", "formula"]);
+function tableShape2(table) {
+  const grid = table?.grid;
+  let rows = Number(table?.rows) || (Array.isArray(grid?.ys) ? grid.ys.length - 1 : 0);
+  let cols = Number(table?.cols) || (Array.isArray(grid?.xs) ? grid.xs.length - 1 : 0);
+  if (!(rows > 0) || !(cols > 0)) {
+    for (const cell of table?.cells || []) {
+      rows = Math.max(rows, (Number(cell.row) || 0) + (Number(cell.rowSpan) || 1));
+      cols = Math.max(cols, (Number(cell.col) || 0) + (Number(cell.colSpan) || 1));
+    }
+  }
+  return { rows: Math.max(0, rows), cols: Math.max(0, cols) };
+}
+function sectionIds(doc, headingId) {
+  const order = Array.isArray(doc?.order) ? doc.order : [];
+  const at = order.indexOf(headingId);
+  if (at < 0) return [];
+  const ids = [headingId];
+  for (let i = at + 1; i < order.length; i += 1) {
+    if (doc.blocks?.[order[i]]?.type === "heading") break;
+    ids.push(order[i]);
+  }
+  return ids;
+}
+function chipPlan(block, doc, { latexReady = false } = {}) {
+  if (!block || !CHIP_TYPES.includes(block.type)) return null;
+  const ids = [block.id];
+  if (block.type === "table") {
+    const { rows, cols } = tableShape2(block);
+    const size = rows && cols ? ` ${rows}×${cols}` : "";
+    return {
+      type: "table",
+      label: `Table${size} · Roam Grid`,
+      primary: { act: "table", ids, extra: { mode: "grid", kind: "table" } },
+      menu: [
+        { label: "Native", act: "table", ids, extra: { mode: "native", kind: "table" } },
+        { label: "Flat", act: "table", ids, extra: { mode: "flat", kind: "table" } },
+        { label: "Copy as Markdown", act: "copy", ids },
+        { label: "Card", act: "card", ids }
+      ]
+    };
+  }
+  if (block.type === "figure") {
+    return { type: "figure", label: "Figure · Card", primary: { act: "card", ids }, menu: [] };
+  }
+  if (block.type === "formula") {
+    return {
+      type: "formula",
+      label: "Card",
+      primary: { act: "card", ids },
+      menu: latexReady ? [{ label: "LaTeX", act: "latex", ids }] : []
+    };
+  }
+  if (block.type === "heading") {
+    return { type: "heading", label: "Insert section", primary: { act: "board", ids: sectionIds(doc, block.id) }, menu: [] };
+  }
+  return { type: "list", label: "Insert list", primary: { act: "below", ids }, menu: [] };
+}
+function createPageChips({
+  doc,
+  host = null,
+  getParsed,
+  pageEl,
+  pageOf: pageOf3,
+  run,
+  isLatexReady = null,
+  getSelection = null
+} = {}) {
+  const win = () => doc?.defaultView || null;
+  const bound = [];
+  let outline = null;
+  let chipNode = null;
+  let dots = [];
+  let hideTimer = null;
+  let current3 = null;
+  let disposed = false;
+  const on = (node2, type, fn, capture = false) => {
+    if (!node2 || typeof node2.addEventListener !== "function") return;
+    node2.addEventListener(type, fn, capture);
+    bound.push([node2, type, fn, capture]);
+  };
+  const off = (entry) => {
+    try {
+      entry[0].removeEventListener(entry[1], entry[2], entry[3]);
+    } catch {
+    }
+  };
+  const drop = (node2) => {
+    try {
+      node2?.remove?.();
+    } catch {
+    }
+  };
+  const stopTimer = () => {
+    if (hideTimer == null) return;
+    (win()?.clearTimeout || clearTimeout)(hideTimer);
+    hideTimer = null;
+  };
+  const selecting = () => {
+    try {
+      const sel = typeof getSelection === "function" ? getSelection() : doc?.getSelection?.() || win()?.getSelection?.();
+      return Boolean(sel && !sel.isCollapsed && String(sel).length > 0);
+    } catch {
+      return false;
+    }
+  };
+  const pageNumberOf2 = (target2, parsed) => {
+    const hit = target2?.closest?.(".page");
+    if (!hit) return 0;
+    const n2 = Number(hit.getAttribute?.("data-page-number"));
+    if (Number.isFinite(n2) && n2 > 0) return n2;
+    for (const page of parsed?.pages || []) if (pageEl?.(page.n) === hit) return page.n;
+    return 0;
+  };
+  const pageBlocks = (parsed, n2) => {
+    const out = [];
+    for (const id of parsed?.order || []) {
+      const block = parsed.blocks?.[id];
+      if (block && block.page === n2 && CHIP_TYPES.includes(block.type)) out.push(block);
+    }
+    return out;
+  };
+  const info = (n2) => pageOf3?.(n2) || {};
+  const hide = () => {
+    stopTimer();
+    current3 = null;
+    drop(outline);
+    drop(chipNode);
+    outline = null;
+    chipNode = null;
+  };
+  const later = (fn, ms) => (win()?.setTimeout || setTimeout)(fn, ms);
+  const button = (cls, text3, tip) => {
+    const node2 = doc.createElement("button");
+    node2.type = "button";
+    node2.className = cls;
+    node2.textContent = text3;
+    if (tip) node2.setAttribute("data-tip", tip);
+    return node2;
+  };
+  const fire2 = (item, block) => {
+    hideAll();
+    try {
+      run?.(item.act, { ids: item.ids, extra: item.extra || null, block });
+    } catch {
+    }
+  };
+  const show = (block, el, parsed) => {
+    const plan = chipPlan(block, parsed, { latexReady: Boolean(isLatexReady?.()) });
+    const rect = bboxToPageRect(block.bbox, info(block.page), el);
+    if (!plan || !rect) return;
+    hide();
+    current3 = block.id;
+    outline = doc.createElement("div");
+    outline.className = "pxd-page-outline";
+    outline.style.position = "absolute";
+    outline.style.left = `${rect.left}px`;
+    outline.style.top = `${rect.top}px`;
+    outline.style.width = `${Math.max(0, rect.width)}px`;
+    outline.style.height = `${Math.max(0, rect.height)}px`;
+    outline.style.pointerEvents = "none";
+    el.append(outline);
+    chipNode = doc.createElement("div");
+    chipNode.className = `pxd-page-chip pxd-page-chip--${plan.type}`;
+    chipNode.setAttribute("data-block", block.id);
+    chipNode.style.position = "absolute";
+    chipNode.style.left = `${rect.left + rect.width}px`;
+    chipNode.style.top = `${Math.max(0, rect.top)}px`;
+    chipNode.style.pointerEvents = "auto";
+    const main = button("pxd-page-chip__main", plan.label, `page-chip.${plan.type}`);
+    chipNode.append(main);
+    const node2 = chipNode;
+    const swallow = (event) => {
+      event.stopPropagation?.();
+    };
+    on(node2, "pointerdown", swallow);
+    on(node2, "mousedown", swallow);
+    on(main, "click", (event) => {
+      event.stopPropagation?.();
+      fire2(plan.primary, block);
+    });
+    if (plan.menu.length) {
+      const caret = button("pxd-page-chip__more", "▾", "page-chip.more");
+      caret.setAttribute("aria-haspopup", "menu");
+      const menu = doc.createElement("div");
+      menu.className = "pxd-page-chip__menu";
+      menu.setAttribute("role", "menu");
+      menu.hidden = true;
+      for (const item of plan.menu) {
+        const entry = button("pxd-page-chip__item", item.label);
+        entry.setAttribute("role", "menuitem");
+        entry.setAttribute("data-act", item.act);
+        if (item.extra?.mode) entry.setAttribute("data-mode", item.extra.mode);
+        on(entry, "click", (event) => {
+          event.stopPropagation?.();
+          fire2(item, block);
+        });
+        menu.append(entry);
+      }
+      on(caret, "click", (event) => {
+        event.stopPropagation?.();
+        menu.hidden = !menu.hidden;
+        caret.setAttribute("aria-expanded", menu.hidden ? "false" : "true");
+      });
+      chipNode.append(caret);
+      chipNode.append(menu);
+    }
+    el.append(chipNode);
+    const mine = bound.splice(bound.findIndex((entry) => entry[0] === node2));
+    chipNode.__release = () => mine.forEach(off);
+  };
+  const release = () => {
+    chipNode?.__release?.();
+  };
+  const hideAll = () => {
+    release();
+    hide();
+  };
+  const onMove = (event) => {
+    if (disposed) return;
+    const parsed = getParsed?.();
+    if (!parsed) return;
+    if (chipNode && chipNode.contains?.(event.target)) {
+      stopTimer();
+      return;
+    }
+    if (selecting()) {
+      if (current3) hideAll();
+      return;
+    }
+    const n2 = pageNumberOf2(event.target, parsed);
+    const el = n2 ? pageEl?.(n2) : null;
+    let hit = null;
+    if (el) {
+      const box2 = el.getBoundingClientRect();
+      const x = (Number(event.clientX) || 0) - box2.left;
+      const y = (Number(event.clientY) || 0) - box2.top;
+      let best = Infinity;
+      for (const block of pageBlocks(parsed, n2)) {
+        const r = bboxToPageRect(block.bbox, info(n2), el);
+        if (!r || x < r.left || x > r.left + r.width || y < r.top || y > r.top + r.height) continue;
+        const area = r.width * r.height;
+        if (area < best) {
+          best = area;
+          hit = block;
+        }
+      }
+    }
+    if (!hit) {
+      if (current3 && hideTimer == null) hideTimer = later(hideAll, HIDE_MS);
+      return;
+    }
+    stopTimer();
+    if (hit.id === current3) return;
+    release();
+    show(hit, el, parsed);
+  };
+  const clearDots = () => {
+    for (const node2 of dots) drop(node2);
+    dots = [];
+  };
+  const showDots = () => {
+    const parsed = getParsed?.();
+    if (!parsed || dots.length) return;
+    const order = parsed.order || [];
+    let count = 0;
+    for (let i = 0; i < order.length && count < DOT_CAP; i += 1) {
+      const block = parsed.blocks?.[order[i]];
+      if (!block) continue;
+      const el = pageEl?.(block.page);
+      if (!el) continue;
+      const rect = bboxToPageRect(block.bbox, info(block.page), el);
+      if (!rect) continue;
+      const dot = doc.createElement("div");
+      dot.className = "pxd-page-dot";
+      dot.textContent = String(i + 1);
+      dot.style.position = "absolute";
+      dot.style.left = `${rect.left}px`;
+      dot.style.top = `${rect.top}px`;
+      dot.style.pointerEvents = "none";
+      el.append(dot);
+      dots.push(dot);
+      count += 1;
+    }
+  };
+  const onKeyDown = (event) => {
+    if (event.key === "Shift" && !selecting()) showDots();
+  };
+  const onKeyUp = (event) => {
+    if (event.key === "Shift") clearDots();
+  };
+  const onSelection = () => {
+    if (selecting()) hideAll();
+  };
+  const onLeave = () => {
+    if (current3 && hideTimer == null) hideTimer = later(hideAll, HIDE_MS);
+  };
+  const target = host || doc;
+  on(target, "pointermove", onMove, true);
+  on(target, "pointerleave", onLeave, true);
+  on(doc, "selectionchange", onSelection);
+  on(win(), "keydown", onKeyDown, true);
+  on(win(), "keyup", onKeyUp, true);
+  on(win(), "blur", clearDots);
+  return {
+    hover: onMove,
+    hide: hideAll,
+    current: () => current3,
+    dispose() {
+      disposed = true;
+      hideAll();
+      clearDots();
+      while (bound.length) off(bound.pop());
+    }
+  };
+}
+function runChipAction({ act, ids, extra, block }, { session, payload, copy, latex } = {}) {
+  const blocks = ids || [];
+  if (act === "copy") {
+    copy?.(blocks);
+    return true;
+  }
+  if (act === "latex") {
+    latex?.(block);
+    return true;
+  }
+  const name = act === "table" ? "insertParsedTable" : act === "card" ? "insertParsedCard" : act === "board" ? "sendParsedToBoard" : act === "below" ? "insertParsedBelow" : null;
+  const fn = name ? session?.[name] : null;
+  if (typeof fn !== "function") return false;
+  const body = payload(blocks);
+  fn(extra ? { ...body, ...extra } : body);
+  return true;
+}
+
 // src/view/parse-crop.js
 function cropRect(bbox, pageW, pageH, viewportW, viewportH) {
   if (!Array.isArray(bbox) || bbox.length < 4) return null;
@@ -34300,6 +34643,27 @@ function createParseView({
   function shown() {
     return visibleBlocks(parsed, { filters, query, range });
   }
+  const pageChips2 = createPageChips({
+    doc,
+    host: readerEl || null,
+    getParsed: () => parsed,
+    pageEl: (n2) => pageEl?.(n2) || null,
+    pageOf: (n2) => pageInfo(n2),
+    isLatexReady: () => helperState === "ready",
+    run: (act, item) => {
+      runChipAction({ act, ...item }, {
+        session,
+        payload: (ids) => payload(ids.map((id) => parsed?.blocks?.[id]).filter(Boolean)),
+        copy: (ids) => {
+          if (parsed) void writeClipboard2(copyText(parsed, ids, { shift: false }).text);
+        },
+        latex: (block) => {
+          if (block?.latex) void writeClipboard2(`$$${block.latex}$$`);
+          else onToast?.("Run Docling on this page to read the formula as LaTeX");
+        }
+      });
+    }
+  });
   function idsOf(blocks) {
     return (blocks || shown()).map((block) => block.id);
   }
@@ -35373,6 +35737,7 @@ function createParseView({
       }
       cropWaiting.clear();
       overlay.dispose();
+      pageChips2.dispose();
       clearBlockListeners();
       for (const [node2, type, fn, capture] of armed) {
         if (type === "observer") {

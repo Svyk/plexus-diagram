@@ -6140,6 +6140,12 @@ function buildBoardView(onFail, {
     const node = event.target?.closest?.(".pxd-item--card");
     showHover(node?.getAttribute?.("data-uid") || node?.dataset?.uid || null);
   });
+  // The root is a clipped box, never a scroller: focus, scrollIntoView and Roam's reader can still move it, which slides the pane header under Roam's top bar.
+  const pinScroll = (node) => () => {
+    if (node && (node.scrollTop || node.scrollLeft)) { node.scrollTop = 0; node.scrollLeft = 0; }
+  };
+  listen(root, "scroll", pinScroll(root));
+  if (mountEl) listen(mountEl, "scroll", () => { if (isFullscreen) pinScroll(mountEl)(); });
   listen(root, "pointerenter", () => { pointerInside = true; pointerBoard = root; });
   listen(root, "pointerleave", () => { tablePointer = null; pointerInside = false; if (pointerBoard === root) pointerBoard = null; });
   const closeHighlightDialog = () => {

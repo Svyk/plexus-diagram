@@ -60,3 +60,29 @@
 .pxd-root .pxd-ctx::after {
   top: 100%;
 }
+
+/* The bar is one row. Tools that do not fit move behind the "…" button into this menu. */
+.pxd-root .pxd-ctx .pxd-ctx__more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  max-height: 240px;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 4px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg);
+  box-shadow: var(--pxd-shadow);
+}
+
+.pxd-root .pxd-ctx .pxd-ctx__more-item {
+  justify-content: flex-start;
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+}

@@ -1321,6 +1321,229 @@ var init_query = __esm({
   }
 });
 
+// src/model/roam-table.js
+function clampInt(n2, lo, hi) {
+  const v = Math.round(Number(n2));
+  if (!Number.isFinite(v)) return lo;
+  return Math.min(hi, Math.max(lo, v));
+}
+function tableShape(table) {
+  let cols = Number.isInteger(table?.cols) ? table.cols : 0;
+  let rows = Number.isInteger(table?.rows) ? table.rows : 0;
+  if (!rows && Array.isArray(table?.rows)) rows = table.rows.length;
+  if (!cols && Array.isArray(table?.rows) && Array.isArray(table.rows[0])) cols = table.rows[0].length;
+  if (Array.isArray(table?.cells)) {
+    for (const cell of table.cells) {
+      const r = (Number.isInteger(cell?.r) ? cell.r : 0) + (cell?.rowSpan ?? 1);
+      const c = (Number.isInteger(cell?.c) ? cell.c : 0) + (cell?.colSpan ?? 1);
+      if (!Number.isInteger(table?.rows)) rows = Math.max(rows, r);
+      if (!Number.isInteger(table?.cols)) cols = Math.max(cols, c);
+    }
+  }
+  return { cols: Math.max(0, cols), rows: Math.max(0, rows) };
+}
+function fitWidths(raw, floors) {
+  const lo = raw.map((_, i) => clampInt(floors?.[i] ?? COL_MIN, COL_MIN, COL_MAX));
+  let ws = raw.map((n2, i) => Math.max(lo[i], clampInt(n2, COL_MIN, COL_MAX)));
+  const sumOf = () => ws.reduce((a, b) => a + b, 0);
+  let sum = sumOf();
+  if (sum > WIDTH_CAP && ws.length) {
+    const scale = WIDTH_CAP / sum;
+    ws = ws.map((n2, i) => Math.max(lo[i], clampInt(n2 * scale, COL_MIN, COL_MAX)));
+    sum = sumOf();
+    let guard = 0;
+    while (sum > WIDTH_CAP && guard < ws.length * (COL_MAX - COL_MIN + 1)) {
+      guard += 1;
+      let i = -1;
+      for (let k = 0; k < ws.length; k += 1) if (ws[k] > lo[k] && (i < 0 || ws[k] - lo[k] > ws[i] - lo[i])) i = k;
+      if (i < 0) break;
+      const cut = Math.min(ws[i] - lo[i], sum - WIDTH_CAP);
+      ws[i] -= cut;
+      sum -= cut;
+    }
+  }
+  const map = {};
+  for (let i = 0; i < ws.length; i += 1) map[String(i)] = ws[i];
+  return { map, sum };
+}
+function widthsFromXs(xs2, cols) {
+  if (!Array.isArray(xs2) || xs2.length < 2) return null;
+  const bounds = [];
+  for (const n2 of xs2) {
+    const v = Number(n2);
+    if (!Number.isFinite(v)) return null;
+    if (bounds.length && v < bounds[bounds.length - 1]) return null;
+    bounds.push(v);
+  }
+  const count = cols > 0 ? Math.min(cols, bounds.length - 1) : bounds.length - 1;
+  if (count < 1) return null;
+  const raw = [];
+  for (let i = 0; i < count; i += 1) raw.push((bounds[i + 1] - bounds[i]) * PX_PER_PT);
+  return raw;
+}
+function widthsFromText(table, cols) {
+  const count = Math.max(1, cols || 1);
+  const longest = Array.from({ length: count }, () => 0);
+  for (const cell of table?.cells || []) {
+    const c = Number.isInteger(cell?.c) ? cell.c : 0;
+    if (c < 0 || c >= count) continue;
+    const span = Math.max(1, Number(cell?.colSpan) || 1);
+    const share = Math.ceil(String(cell?.text ?? "").length / span);
+    for (let i = 0; i < span && c + i < count; i += 1) {
+      longest[c + i] = Math.max(longest[c + i], share);
+    }
+  }
+  return longest.map((n2) => n2 * CHAR_PX + CELL_PAD);
+}
+function textFloors(table, cols) {
+  const count = Math.max(1, cols || 1);
+  const word = Array.from({ length: count }, () => 0);
+  const head = Array.from({ length: count }, () => 0);
+  const headerRows = Number.isInteger(table?.headerRows) ? table.headerRows : 0;
+  for (const cell of table?.cells || []) {
+    const c = Number.isInteger(cell?.c) ? cell.c : 0;
+    if (c < 0 || c >= count) continue;
+    const span = Math.max(1, Number(cell?.colSpan) || 1);
+    const text3 = String(cell?.text ?? "").trim();
+    const longest = text3.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 0);
+    const isHead = cell?.header === true || Number.isInteger(cell?.r) && cell.r < headerRows;
+    for (let i = 0; i < span && c + i < count; i += 1) {
+      word[c + i] = Math.max(word[c + i], Math.ceil(longest / span));
+      if (isHead && span === 1) head[c + i] = Math.max(head[c + i], Math.min(22, text3.length));
+    }
+  }
+  return word.map((n2, i) => ({ word: n2, head: head[i] }));
+}
+function cardHeight(rows) {
+  return Math.min(HEIGHT_CAP, COL_HEADER + Math.max(1, rows || 1) * ROW_PX + HEIGHT_CHROME);
+}
+function isRoamTableString(value) {
+  return TABLE_RE.test(String(value ?? "").trim());
+}
+function parsedTableSize(table) {
+  const shape = tableShape(table);
+  const rawGrid = widthsFromXs(table?.grid?.xs ?? table?.xs, shape.cols);
+  const raw = rawGrid || widthsFromText(table, shape.cols);
+  const est = textFloors(table, raw.length);
+  const floors = est.map((e2) => e2.word ? e2.word * WORD_PX + WORD_PAD : 0);
+  const wanted = raw.map((n2, i) => Math.max(n2, floors[i], est[i].head ? est[i].head * WORD_PX + WORD_PAD : 0));
+  const fitted = fitWidths(wanted, floors);
+  const fromGrid = rawGrid ? fitted : null;
+  const chrome = fromGrid ? ROW_HEADER + GRID_PAD : NATIVE_PAD;
+  const w = fitted.sum > WIDTH_CAP ? WIDTH_CAP : Math.min(WIDTH_CAP + chrome, fitted.sum + chrome);
+  return {
+    w,
+    h: cardHeight(shape.rows),
+    widths: fromGrid ? fromGrid.map : null
+  };
+}
+function appendTable(t, { parent, plexus, order } = {}) {
+  const root = t.create({
+    parent,
+    string: TABLE_ROOT,
+    plexus,
+    ...order !== void 0 ? { order } : {}
+  });
+  for (let r = 0; r < TABLE_ROWS; r += 1) {
+    let cell = t.create({ parent: root, string: "", order: r });
+    for (let c = 1; c < TABLE_COLS; c += 1) cell = t.create({ parent: cell, string: "", order: 0 });
+  }
+  return root;
+}
+function hostOf(node2) {
+  return node2?.closest?.(TABLE_HOST_SELECTOR) || null;
+}
+function tablePointerTarget(node2) {
+  return hostOf(node2);
+}
+function isFieldNode(node2) {
+  if (!node2 || node2.nodeType === 9) return false;
+  const tag = String(node2.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  if (node2.isContentEditable) return true;
+  const ce = node2.getAttribute?.("contenteditable");
+  return ce === "" || ce === "true";
+}
+function inside(boardRoot, node2) {
+  if (!node2) return false;
+  if (!boardRoot?.contains) return true;
+  return Boolean(boardRoot.contains(node2));
+}
+function ownerUid(node2) {
+  const uid = String(node2?.getAttribute?.("data-rg-owner") || "");
+  return /^[\w-]+$/.test(uid) ? uid : "";
+}
+function portalForBoard(node2, boardRoot) {
+  const portal = node2?.closest?.(PORTAL_SELECTOR);
+  if (!portal) return null;
+  if (inside(boardRoot, portal)) return portal;
+  const uid = ownerUid(portal);
+  if (!uid || typeof boardRoot?.querySelector !== "function") return null;
+  const match = boardRoot.querySelector(`[data-roam-grid-uid="${uid}"], [data-pxd-table="${uid}"]`);
+  return match ? portal : null;
+}
+function ownershipOf({ target, active, pointerTarget, boardRoot, sourceText } = {}) {
+  const focusHost = hostOf(active);
+  if (focusHost && inside(boardRoot, focusHost)) {
+    return { verified: true, reason: "focus", host: focusHost, sourceText };
+  }
+  const portal = portalForBoard(active, boardRoot) || portalForBoard(target, boardRoot);
+  if (portal) return { verified: true, reason: "portal", host: portal, sourceText };
+  const pointerHost = hostOf(pointerTarget || target);
+  const pointerInside = Boolean(pointerHost && inside(boardRoot, pointerHost));
+  const outsideField = isFieldNode(active) && !(pointerHost && pointerHost.contains?.(active));
+  if (pointerInside && !outsideField) {
+    return { verified: true, reason: "pointer", host: pointerHost, sourceText };
+  }
+  return { verified: false, sourceText };
+}
+function keyGate(event, ownership) {
+  const sourceText = ownership?.sourceText;
+  if (!ownership?.verified) return { yield: false, sourceText };
+  return {
+    yield: true,
+    reason: event?.key === "Escape" ? "escape" : "owned",
+    sourceText
+  };
+}
+var TABLE_ROOT, TABLE_ROWS, TABLE_COLS, TABLE_SIZE, TABLE_WRITES, COL_MIN, COL_MAX, PX_PER_PT, WIDTH_CAP, ROW_HEADER, GRID_PAD, NATIVE_PAD, COL_HEADER, ROW_PX, HEIGHT_CAP, HEIGHT_CHROME, CHAR_PX, CELL_PAD, WORD_PX, WORD_PAD, TABLE_RE, TABLE_HOST_SELECTOR, PORTAL_SELECTOR;
+var init_roam_table = __esm({
+  "src/model/roam-table.js"() {
+    TABLE_ROOT = "{{[[table]]}}";
+    TABLE_ROWS = 3;
+    TABLE_COLS = 3;
+    TABLE_SIZE = { w: 480, h: 260 };
+    TABLE_WRITES = 1 + TABLE_ROWS * TABLE_COLS;
+    COL_MIN = 56;
+    COL_MAX = 640;
+    PX_PER_PT = 1.4;
+    WIDTH_CAP = 1200;
+    ROW_HEADER = 42;
+    GRID_PAD = 16;
+    NATIVE_PAD = 16;
+    COL_HEADER = 28;
+    ROW_PX = 32;
+    HEIGHT_CAP = 800;
+    HEIGHT_CHROME = 8;
+    CHAR_PX = 7;
+    CELL_PAD = 16;
+    WORD_PX = 8.2;
+    WORD_PAD = 24;
+    TABLE_RE = /^\{\{\s*(?:\[\[table\]\]|table)\s*\}\}$/i;
+    TABLE_HOST_SELECTOR = [
+      ".pxd-roam-table",
+      ".pxd-table-overlay",
+      "[data-roam-grid-uid]",
+      ".rg-root",
+      ".rg-portal",
+      "[data-rg-owner]",
+      ".rg-editor",
+      ".rg-lightbox"
+    ].join(", ");
+    PORTAL_SELECTOR = ".rg-portal, .rg-editor, .rg-lightbox, [data-rg-owner], .pxd-table-overlay";
+  }
+});
+
 // src/model/region-card.js
 function accepted(targetString, api) {
   if (api == null || typeof api.apiVersion !== "number" || api.apiVersion < 6) return null;
@@ -2009,6 +2232,7 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
       if (kind === "page") title = cls.title;
       else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
       else if (isQueryString(cstring)) title = "Query";
+      else if (isRoamTableString(cstring)) title = kids.length ? `Table · ${kids.length} ${kids.length === 1 ? "row" : "rows"}` : "Table";
       else title = firstLine(cstring);
       let regionDrawing;
       let highlight;
@@ -2202,7 +2426,7 @@ function displayRects(board2, stored) {
   for (const [uid, r] of base) {
     if (!r || anchorUid(board2, uid) !== uid) continue;
     const item = board2.items.get(uid);
-    const next = item?.type === "section" && item.collapsed ? { x: r.x, y: r.y, w: r.w, h: COLLAPSED_SECTION_H } : item?.type === "text" && item.look === "sticky" && item.min ? { x: r.x, y: r.y, w: r.w, h: STICKY_HEADER_H } : { x: r.x, y: r.y, w: r.w, h: r.h };
+    const next = item?.type === "section" && item.collapsed ? { x: r.x, y: r.y, w: r.w, h: COLLAPSED_SECTION_H } : item?.type === "card" && item.collapsed ? { x: r.x, y: r.y, w: r.w, h: Math.min(r.h, COLLAPSED_CARD_H) } : item?.type === "text" && item.look === "sticky" && item.min ? { x: r.x, y: r.y, w: r.w, h: STICKY_HEADER_H } : { x: r.x, y: r.y, w: r.w, h: r.h };
     if (item?.type === "text" && item.shape) next.shape = item.shape;
     out.set(uid, next);
   }
@@ -2619,12 +2843,13 @@ function diffBoards(prev, next) {
   }
   return { structural, dirty };
 }
-var AUTO_GAP, AUTO_OFFSET, AUTO_ROWS, TITLE_BAND, BORDER_BAND, isNum2, HIGHLIGHT_HINT, COLLAPSED_SECTION_H, STICKY_HEADER_H, clamp, PREVIEW_MIN, PREVIEW_TITLE;
+var AUTO_GAP, AUTO_OFFSET, AUTO_ROWS, TITLE_BAND, BORDER_BAND, isNum2, HIGHLIGHT_HINT, COLLAPSED_SECTION_H, COLLAPSED_CARD_H, STICKY_HEADER_H, clamp, PREVIEW_MIN, PREVIEW_TITLE;
 var init_board = __esm({
   "src/model/board.js"() {
     init_geometry();
     init_schema();
     init_query();
+    init_roam_table();
     init_region_card();
     init_drawing_card();
     init_regions();
@@ -2640,6 +2865,7 @@ var init_board = __esm({
     isNum2 = (v) => typeof v === "number" && Number.isFinite(v);
     HIGHLIGHT_HINT = /#h\/|!\[/;
     COLLAPSED_SECTION_H = 8;
+    COLLAPSED_CARD_H = 32;
     STICKY_HEADER_H = 28;
     clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
     PREVIEW_MIN = { w: DEFAULT_SIZES.card.w * 2, h: DEFAULT_SIZES.card.h * 2 };
@@ -3217,229 +3443,6 @@ var init_timeline = __esm({
     TIMELINE_DAY_CAP = 365;
     DAILY_TITLE_PATTERN = "^(January|February|March|April|May|June|July|August|September|October|November|December) \\d{1,2}(?:st|nd|rd|th), \\d{4}$";
     TIMELINE_QUERY = "[:find ?card ?ref ?title ?page ?time :in $ [?card ...] ?pat :where [?c :block/uid ?card] [?b :block/refs ?c] [?b :block/uid ?ref] [?b :block/page ?pg] [?pg :node/title ?title] [?pg :block/uid ?page] [(get-else $ ?b :create/time 0) ?time] [(re-pattern ?pat) ?re] [(re-find ?re ?title)]]";
-  }
-});
-
-// src/model/roam-table.js
-function clampInt(n2, lo, hi) {
-  const v = Math.round(Number(n2));
-  if (!Number.isFinite(v)) return lo;
-  return Math.min(hi, Math.max(lo, v));
-}
-function tableShape(table) {
-  let cols = Number.isInteger(table?.cols) ? table.cols : 0;
-  let rows = Number.isInteger(table?.rows) ? table.rows : 0;
-  if (!rows && Array.isArray(table?.rows)) rows = table.rows.length;
-  if (!cols && Array.isArray(table?.rows) && Array.isArray(table.rows[0])) cols = table.rows[0].length;
-  if (Array.isArray(table?.cells)) {
-    for (const cell of table.cells) {
-      const r = (Number.isInteger(cell?.r) ? cell.r : 0) + (cell?.rowSpan ?? 1);
-      const c = (Number.isInteger(cell?.c) ? cell.c : 0) + (cell?.colSpan ?? 1);
-      if (!Number.isInteger(table?.rows)) rows = Math.max(rows, r);
-      if (!Number.isInteger(table?.cols)) cols = Math.max(cols, c);
-    }
-  }
-  return { cols: Math.max(0, cols), rows: Math.max(0, rows) };
-}
-function fitWidths(raw, floors) {
-  const lo = raw.map((_, i) => clampInt(floors?.[i] ?? COL_MIN, COL_MIN, COL_MAX));
-  let ws = raw.map((n2, i) => Math.max(lo[i], clampInt(n2, COL_MIN, COL_MAX)));
-  const sumOf = () => ws.reduce((a, b) => a + b, 0);
-  let sum = sumOf();
-  if (sum > WIDTH_CAP && ws.length) {
-    const scale = WIDTH_CAP / sum;
-    ws = ws.map((n2, i) => Math.max(lo[i], clampInt(n2 * scale, COL_MIN, COL_MAX)));
-    sum = sumOf();
-    let guard = 0;
-    while (sum > WIDTH_CAP && guard < ws.length * (COL_MAX - COL_MIN + 1)) {
-      guard += 1;
-      let i = -1;
-      for (let k = 0; k < ws.length; k += 1) if (ws[k] > lo[k] && (i < 0 || ws[k] - lo[k] > ws[i] - lo[i])) i = k;
-      if (i < 0) break;
-      const cut = Math.min(ws[i] - lo[i], sum - WIDTH_CAP);
-      ws[i] -= cut;
-      sum -= cut;
-    }
-  }
-  const map = {};
-  for (let i = 0; i < ws.length; i += 1) map[String(i)] = ws[i];
-  return { map, sum };
-}
-function widthsFromXs(xs2, cols) {
-  if (!Array.isArray(xs2) || xs2.length < 2) return null;
-  const bounds = [];
-  for (const n2 of xs2) {
-    const v = Number(n2);
-    if (!Number.isFinite(v)) return null;
-    if (bounds.length && v < bounds[bounds.length - 1]) return null;
-    bounds.push(v);
-  }
-  const count = cols > 0 ? Math.min(cols, bounds.length - 1) : bounds.length - 1;
-  if (count < 1) return null;
-  const raw = [];
-  for (let i = 0; i < count; i += 1) raw.push((bounds[i + 1] - bounds[i]) * PX_PER_PT);
-  return raw;
-}
-function widthsFromText(table, cols) {
-  const count = Math.max(1, cols || 1);
-  const longest = Array.from({ length: count }, () => 0);
-  for (const cell of table?.cells || []) {
-    const c = Number.isInteger(cell?.c) ? cell.c : 0;
-    if (c < 0 || c >= count) continue;
-    const span = Math.max(1, Number(cell?.colSpan) || 1);
-    const share = Math.ceil(String(cell?.text ?? "").length / span);
-    for (let i = 0; i < span && c + i < count; i += 1) {
-      longest[c + i] = Math.max(longest[c + i], share);
-    }
-  }
-  return longest.map((n2) => n2 * CHAR_PX + CELL_PAD);
-}
-function textFloors(table, cols) {
-  const count = Math.max(1, cols || 1);
-  const word = Array.from({ length: count }, () => 0);
-  const head = Array.from({ length: count }, () => 0);
-  const headerRows = Number.isInteger(table?.headerRows) ? table.headerRows : 0;
-  for (const cell of table?.cells || []) {
-    const c = Number.isInteger(cell?.c) ? cell.c : 0;
-    if (c < 0 || c >= count) continue;
-    const span = Math.max(1, Number(cell?.colSpan) || 1);
-    const text3 = String(cell?.text ?? "").trim();
-    const longest = text3.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 0);
-    const isHead = cell?.header === true || Number.isInteger(cell?.r) && cell.r < headerRows;
-    for (let i = 0; i < span && c + i < count; i += 1) {
-      word[c + i] = Math.max(word[c + i], Math.ceil(longest / span));
-      if (isHead && span === 1) head[c + i] = Math.max(head[c + i], Math.min(22, text3.length));
-    }
-  }
-  return word.map((n2, i) => ({ word: n2, head: head[i] }));
-}
-function cardHeight(rows) {
-  return Math.min(HEIGHT_CAP, COL_HEADER + Math.max(1, rows || 1) * ROW_PX + HEIGHT_CHROME);
-}
-function isRoamTableString(value) {
-  return TABLE_RE.test(String(value ?? "").trim());
-}
-function parsedTableSize(table) {
-  const shape = tableShape(table);
-  const rawGrid = widthsFromXs(table?.grid?.xs ?? table?.xs, shape.cols);
-  const raw = rawGrid || widthsFromText(table, shape.cols);
-  const est = textFloors(table, raw.length);
-  const floors = est.map((e2) => e2.word ? e2.word * WORD_PX + WORD_PAD : 0);
-  const wanted = raw.map((n2, i) => Math.max(n2, floors[i], est[i].head ? est[i].head * WORD_PX + WORD_PAD : 0));
-  const fitted = fitWidths(wanted, floors);
-  const fromGrid = rawGrid ? fitted : null;
-  const chrome = fromGrid ? ROW_HEADER + GRID_PAD : NATIVE_PAD;
-  const w = fitted.sum > WIDTH_CAP ? WIDTH_CAP : Math.min(WIDTH_CAP + chrome, fitted.sum + chrome);
-  return {
-    w,
-    h: cardHeight(shape.rows),
-    widths: fromGrid ? fromGrid.map : null
-  };
-}
-function appendTable(t, { parent, plexus, order } = {}) {
-  const root = t.create({
-    parent,
-    string: TABLE_ROOT,
-    plexus,
-    ...order !== void 0 ? { order } : {}
-  });
-  for (let r = 0; r < TABLE_ROWS; r += 1) {
-    let cell = t.create({ parent: root, string: "", order: r });
-    for (let c = 1; c < TABLE_COLS; c += 1) cell = t.create({ parent: cell, string: "", order: 0 });
-  }
-  return root;
-}
-function hostOf(node2) {
-  return node2?.closest?.(TABLE_HOST_SELECTOR) || null;
-}
-function tablePointerTarget(node2) {
-  return hostOf(node2);
-}
-function isFieldNode(node2) {
-  if (!node2 || node2.nodeType === 9) return false;
-  const tag = String(node2.tagName || "").toLowerCase();
-  if (tag === "input" || tag === "textarea" || tag === "select") return true;
-  if (node2.isContentEditable) return true;
-  const ce = node2.getAttribute?.("contenteditable");
-  return ce === "" || ce === "true";
-}
-function inside(boardRoot, node2) {
-  if (!node2) return false;
-  if (!boardRoot?.contains) return true;
-  return Boolean(boardRoot.contains(node2));
-}
-function ownerUid(node2) {
-  const uid = String(node2?.getAttribute?.("data-rg-owner") || "");
-  return /^[\w-]+$/.test(uid) ? uid : "";
-}
-function portalForBoard(node2, boardRoot) {
-  const portal = node2?.closest?.(PORTAL_SELECTOR);
-  if (!portal) return null;
-  if (inside(boardRoot, portal)) return portal;
-  const uid = ownerUid(portal);
-  if (!uid || typeof boardRoot?.querySelector !== "function") return null;
-  const match = boardRoot.querySelector(`[data-roam-grid-uid="${uid}"], [data-pxd-table="${uid}"]`);
-  return match ? portal : null;
-}
-function ownershipOf({ target, active, pointerTarget, boardRoot, sourceText } = {}) {
-  const focusHost = hostOf(active);
-  if (focusHost && inside(boardRoot, focusHost)) {
-    return { verified: true, reason: "focus", host: focusHost, sourceText };
-  }
-  const portal = portalForBoard(active, boardRoot) || portalForBoard(target, boardRoot);
-  if (portal) return { verified: true, reason: "portal", host: portal, sourceText };
-  const pointerHost = hostOf(pointerTarget || target);
-  const pointerInside = Boolean(pointerHost && inside(boardRoot, pointerHost));
-  const outsideField = isFieldNode(active) && !(pointerHost && pointerHost.contains?.(active));
-  if (pointerInside && !outsideField) {
-    return { verified: true, reason: "pointer", host: pointerHost, sourceText };
-  }
-  return { verified: false, sourceText };
-}
-function keyGate(event, ownership) {
-  const sourceText = ownership?.sourceText;
-  if (!ownership?.verified) return { yield: false, sourceText };
-  return {
-    yield: true,
-    reason: event?.key === "Escape" ? "escape" : "owned",
-    sourceText
-  };
-}
-var TABLE_ROOT, TABLE_ROWS, TABLE_COLS, TABLE_SIZE, TABLE_WRITES, COL_MIN, COL_MAX, PX_PER_PT, WIDTH_CAP, ROW_HEADER, GRID_PAD, NATIVE_PAD, COL_HEADER, ROW_PX, HEIGHT_CAP, HEIGHT_CHROME, CHAR_PX, CELL_PAD, WORD_PX, WORD_PAD, TABLE_RE, TABLE_HOST_SELECTOR, PORTAL_SELECTOR;
-var init_roam_table = __esm({
-  "src/model/roam-table.js"() {
-    TABLE_ROOT = "{{[[table]]}}";
-    TABLE_ROWS = 3;
-    TABLE_COLS = 3;
-    TABLE_SIZE = { w: 480, h: 260 };
-    TABLE_WRITES = 1 + TABLE_ROWS * TABLE_COLS;
-    COL_MIN = 56;
-    COL_MAX = 640;
-    PX_PER_PT = 1.4;
-    WIDTH_CAP = 1200;
-    ROW_HEADER = 42;
-    GRID_PAD = 16;
-    NATIVE_PAD = 16;
-    COL_HEADER = 28;
-    ROW_PX = 32;
-    HEIGHT_CAP = 800;
-    HEIGHT_CHROME = 8;
-    CHAR_PX = 7;
-    CELL_PAD = 16;
-    WORD_PX = 8.2;
-    WORD_PAD = 24;
-    TABLE_RE = /^\{\{\s*(?:\[\[table\]\]|table)\s*\}\}$/i;
-    TABLE_HOST_SELECTOR = [
-      ".pxd-roam-table",
-      ".pxd-table-overlay",
-      "[data-roam-grid-uid]",
-      ".rg-root",
-      ".rg-portal",
-      "[data-rg-owner]",
-      ".rg-editor",
-      ".rg-lightbox"
-    ].join(", ");
-    PORTAL_SELECTOR = ".rg-portal, .rg-editor, .rg-lightbox, [data-rg-owner], .pxd-table-overlay";
   }
 });
 
@@ -46786,6 +46789,72 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     flip("pxd-ctx__collapse-section", Boolean(model?.collapsed));
     flip("pxd-ctx__auto-fit", Boolean(model?.autofit));
   };
+  const CTX_MORE_W = 28;
+  const CTX_BAR_PAD = 14;
+  const closeCtxMore = () => {
+    for (const m of ctx.querySelectorAll(".pxd-ctx__more-menu")) m.remove();
+    ctx.querySelector(".pxd-ctx__more")?.setAttribute("aria-expanded", "false");
+  };
+  const openCtxMore = (hidden) => {
+    closeCtxMore();
+    const menu = el("div", "pxd-ctx__more-menu", ctx);
+    for (const node2 of hidden) {
+      const buttons = node2.tagName === "BUTTON" ? [node2] : [...node2.querySelectorAll("button")];
+      for (const src of buttons) {
+        const label = src.getAttribute("aria-label") || src.getAttribute("title") || src.textContent || "";
+        const item = button2(menu, "pxd-ctx__more-item", label, label, () => {
+          closeCtxMore();
+          src.click();
+        });
+        if (src.classList.contains("pxd-btn--danger")) item.classList.add("pxd-btn--danger");
+      }
+    }
+    ctx.querySelector(".pxd-ctx__more")?.setAttribute("aria-expanded", "true");
+  };
+  const fitCtxRow = (limit) => {
+    const row4 = ctx.querySelector(".pxd-ctx__row");
+    if (!row4) return;
+    const more = row4.querySelector(".pxd-ctx__more");
+    const kids = [...row4.children].filter((k) => k !== more);
+    const widths = kids.map((k) => k.getAttribute("data-ctx-overflow") ? Number(k.getAttribute("data-ctx-w")) || 0 : k.offsetWidth || 0);
+    if (!widths.some((w) => w > 0)) return;
+    const avail = limit - CTX_BAR_PAD;
+    const total = widths.reduce((sum, w) => sum + w, 0) + 4 * (kids.length - 1);
+    let keep = kids.length;
+    if (total > avail) {
+      let used = CTX_MORE_W;
+      keep = 0;
+      while (keep < kids.length - 1 && used + 4 + widths[keep] <= avail) {
+        used += 4 + widths[keep];
+        keep++;
+      }
+    }
+    const now3 = kids.findIndex((k) => k.getAttribute("data-ctx-overflow"));
+    if ((now3 < 0 ? kids.length : now3) === keep) return;
+    closeCtxMore();
+    more?.remove();
+    kids.forEach((k, idx) => {
+      if (idx < keep) {
+        if (k.getAttribute("data-ctx-overflow")) {
+          k.style.display = "";
+          k.removeAttribute("data-ctx-overflow");
+          k.removeAttribute("data-ctx-w");
+        }
+        return;
+      }
+      k.style.display = "none";
+      k.setAttribute("data-ctx-overflow", "1");
+      k.setAttribute("data-ctx-w", String(widths[idx]));
+    });
+    if (keep >= kids.length) return;
+    const hidden = kids.slice(keep);
+    const btn2 = iconButton(row4, "pxd-ctx__btn pxd-ctx__more", "more", "More tools", "More tools", () => {
+      if (ctx.querySelector(".pxd-ctx__more-menu")) closeCtxMore();
+      else openCtxMore(hidden);
+    });
+    btn2.setAttribute("aria-haspopup", "menu");
+    btn2.setAttribute("aria-expanded", "false");
+  };
   const positionCtx = () => {
     if (ctx.style.display === "none" || !ctxAnchor) return;
     const a = ctxAnchor();
@@ -46814,6 +46883,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     if (readBox?.width) stops.push(readBox.left - (rootRect.left || 0));
     const room = stops.length ? Math.min(W, ...stops) : W;
     ctx.style.maxWidth = stops.length && room > 2 * CTX_MARGIN ? `${Math.round(room - 2 * CTX_MARGIN)}px` : "";
+    fitCtxRow(stops.length ? room - 2 * CTX_MARGIN : W - railClear - 2 * CTX_MARGIN);
     const barW = ctx.offsetWidth || 320;
     const barH = ctx.offsetHeight || 36;
     const rightLimit = stops.length ? room : Math.max(barW + CTX_MARGIN, W - railClear);
@@ -59864,6 +59934,16 @@ function buildBoardView(onFail, {
     }
     const node2 = event.target?.closest?.(".pxd-item--card");
     showHover(node2?.getAttribute?.("data-uid") || node2?.dataset?.uid || null);
+  });
+  const pinScroll = (node2) => () => {
+    if (node2 && (node2.scrollTop || node2.scrollLeft)) {
+      node2.scrollTop = 0;
+      node2.scrollLeft = 0;
+    }
+  };
+  listen(root, "scroll", pinScroll(root));
+  if (mountEl) listen(mountEl, "scroll", () => {
+    if (isFullscreen) pinScroll(mountEl)();
   });
   listen(root, "pointerenter", () => {
     pointerInside = true;

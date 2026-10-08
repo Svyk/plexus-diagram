@@ -45,6 +45,7 @@
   height: 560px;
   box-sizing: border-box;
   overflow: hidden;
+  overflow: clip;
   background: var(--pxd-surface);
   color: var(--pxd-text);
   border: 1px solid var(--pxd-border);
@@ -1198,7 +1199,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-ctx__row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   row-gap: 4px;
   align-items: center;
   gap: 4px;
@@ -4463,6 +4464,32 @@ body.roam-body.dark .pxd-convert.pxd-convert--chip {
 
 .pxd-root .pxd-ctx::after {
   top: 100%;
+}
+
+/* The bar is one row. Tools that do not fit move behind the "…" button into this menu. */
+.pxd-root .pxd-ctx .pxd-ctx__more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  max-height: 240px;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 4px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg);
+  box-shadow: var(--pxd-shadow);
+}
+
+.pxd-root .pxd-ctx .pxd-ctx__more-item {
+  justify-content: flex-start;
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
 }
 
 /* ECO-4. The thumb fits the card. The 1px border is the button signal, not a shadow. */

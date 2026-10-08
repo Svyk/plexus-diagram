@@ -595,3 +595,54 @@ test("UI-4: dark hosts keep border identity and the paper chip matches dark pape
   const guard = chrome.find((r) => r.media && r.selectors.includes(":root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-bg__tones .pxd-swatch--paper"));
   assert.match(guard.body, /background:\s*#191919/);
 });
+
+const CTX_ON = () => ({ delete: () => {}, copyRef: () => {}, duplicate: () => {}, sendTo: () => {}, fitHeight: () => {} });
+const sized = (f, widthOf) => {
+  const row = q(f.root, ".pxd-ctx__row");
+  for (const k of row.children) if (!classes(k).includes("pxd-ctx__more")) k._rect = { left: 0, top: 0, width: widthOf, height: 28, right: widthOf, bottom: 28, x: 0, y: 0 };
+  return row;
+};
+const showSized = (f, x) => {
+  f.chrome.ctx.show("card", { kind: "block" }, () => ({ kind: "card", rect: { x, y: 100, w: 100, h: 50 } }));
+  const row = sized(f, 28);
+  f.chrome.ctx.reposition();
+  return row;
+};
+
+test("ctx bar on a wide board keeps every tool in the row", (t) => {
+  const f = setup(CTX_ON());
+  t.after(f.restore);
+  const row = showSized(f, 100);
+  assert.ok([...row.children].length > 4);
+  assert.equal(q(f.root, ".pxd-ctx__more"), null);
+  assert.equal([...row.children].filter((k) => k.style.display === "none").length, 0);
+});
+
+test("ctx bar on a narrow board stays one row: the tools that do not fit sit behind a ... menu", (t) => {
+  const stub = createDomStub({ width: 150, height: 600 });
+  const restore = stub.install();
+  t.after(restore);
+  const root = stub.document.createElement("div");
+  root.className = "pxd-root";
+  stub.document.body.append(root);
+  const chrome = createChrome({ doc: stub.document, root, version: "1.2.0", settings: {}, timers, on: CTX_ON() });
+  const f = { root, chrome };
+  const row = showSized(f, 20);
+  const kids = [...row.children];
+  const more = q(root, ".pxd-ctx__more");
+  assert.ok(more, "overflow button present");
+  assert.equal(kids[kids.length - 1], more);
+  const hidden = kids.filter((k) => k.style.display === "none");
+  assert.ok(hidden.length > 0);
+  const visible = kids.filter((k) => k.style.display !== "none" && k !== more);
+  assert.ok(visible.length > 0);
+  assert.ok(visible.length * 32 + 28 + 14 <= 150 - 16, "kept tools plus the button fit");
+  chrome.ctx.reposition();
+  assert.equal(root.querySelectorAll(".pxd-ctx__more").length, 1, "a repeat pass changes nothing");
+  more.click();
+  const menu = q(root, ".pxd-ctx__more-menu");
+  assert.ok(menu);
+  assert.ok(menu.querySelectorAll(".pxd-ctx__more-item").length >= hidden.length);
+  menu.querySelectorAll(".pxd-ctx__more-item")[0].click();
+  assert.equal(q(root, ".pxd-ctx__more-menu"), null, "choosing an entry closes the menu");
+});

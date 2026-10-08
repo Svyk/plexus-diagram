@@ -89,9 +89,11 @@ test("readPaneWidth clamps to 360–720 and stacks under 720", () => {
   assert.equal(readPaneKey("notes"), "plexus-diagram:read:notes");
   assert.deepEqual(readPaneWidth(800, null), { stacked: false, width: 360 });
   assert.deepEqual(readPaneWidth(1000, null), { stacked: false, width: 420 });
-  assert.deepEqual(readPaneWidth(800, 500), { stacked: false, width: 500 });
+  assert.deepEqual(readPaneWidth(800, 500), { stacked: false, width: 440 }, "the board keeps 360 px");
+  assert.deepEqual(readPaneWidth(1200, 500), { stacked: false, width: 500 });
   assert.deepEqual(readPaneWidth(800, 100), { stacked: false, width: 360 });
-  assert.deepEqual(readPaneWidth(800, 900), { stacked: false, width: 720 });
+  assert.deepEqual(readPaneWidth(800, 900), { stacked: false, width: 440 });
+  assert.deepEqual(readPaneWidth(1400, 900), { stacked: false, width: 720 });
   assert.deepEqual(readPaneWidth(0, null), { stacked: false, width: 360 });
   assert.deepEqual(readPaneWidth(600, 500), { stacked: true, width: 600 });
 });

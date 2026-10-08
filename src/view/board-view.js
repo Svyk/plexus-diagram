@@ -109,6 +109,7 @@ import { findShortcut } from "./shortcuts.js";
 import { applyStatusPicks, buildMenu } from "./menu-model.js";
 import { statusApi, statusPalette } from "../model/status-tags.js";
 import { createQuickLook } from "./quicklook.js";
+import { boardCramped, freeBoardArea, pdfDockLift } from "../model/card-face.js";
 import { createPresenter } from "./present.js";
 import { createClipboardIO, dragHasImages, filesFromDataTransfer, writeClipboard } from "./clipboard-io.js";
 import { applyFullscreenChrome, watchRouteExit } from "./fullscreen.js";
@@ -399,7 +400,7 @@ export function pdfEscapeAction({ live, fullscreen } = {}) {
 // Top-level blocks have the page as parent and no string, so the parent string defaults to "".
 export const CONTEXTS_QUERY = "[:find ?u ?s ?pt ?t ?ps :in $ ?uid :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/uid ?u] [?b :block/string ?s] [?b :create/time ?t] [?b :block/page ?pg] [?pg :node/title ?pt] [?b :block/parents ?p] [?p :block/children ?b] [(get-else $ ?p :block/string \"\") ?ps]]";
 
-export const PDF_HIGHLIGHTS_LABEL = "Add highlights…";
+export const PDF_HIGHLIGHTS_LABEL = "Add highlights";
 
 const DATE_BLOCK = /^\[\[([^\[\]]+)\]\]$/;
 const BLOCK_REF = /^\(\(([^()\s]+)\)\)$/;
@@ -508,12 +509,33 @@ export function selectHighlightPage(rows, { color, page } = {}) {
   });
 }
 
-export function pdfHighlightButton(doc, onClick) {
+const HL_GLYPH = "M5.5 9.5L10.5 2.5l3 2.2-5 7zM5.5 9.5l-.9 2.7 3.9-.5M2 14.5h7";
+
+// The header icon: a highlighter glyph, the highlight count when there is one, and the "Add highlights" tooltip.
+export function pdfHighlightButton(doc, onClick, count = 0) {
   const btn = doc.createElement("button");
   btn.type = "button";
   btn.className = "pxd-pdf-highlights pxd-chrome";
-  btn.textContent = PDF_HIGHLIGHTS_LABEL;
   btn.setAttribute("aria-label", PDF_HIGHLIGHTS_LABEL);
+  btn.setAttribute("data-tip", "pdf.highlights");
+  if (typeof doc.createElementNS === "function") {
+    const svg = doc.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("class", "pxd-pdf-highlights__glyph");
+    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.setAttribute("aria-hidden", "true");
+    const path = doc.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", HL_GLYPH);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "1.4");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.append(path);
+    btn.append(svg);
+  }
+  const num = doc.createElement("span");
+  num.className = "pxd-pdf-highlights__count";
+  btn.append(num);
+  setHighlightCount(btn, count);
   const stop = (event) => {
     event.preventDefault?.();
     event.stopPropagation?.();
@@ -526,6 +548,20 @@ export function pdfHighlightButton(doc, onClick) {
     onClick?.(event);
   });
   return btn;
+}
+
+// The count shows only above zero. Returns the text it painted.
+export function setHighlightCount(btn, count) {
+  const n = Number(count);
+  const text = Number.isFinite(n) && n > 0 ? String(Math.floor(n)) : "";
+  const num = btn?.querySelector?.(".pxd-pdf-highlights__count");
+  if (num && num.textContent !== text) num.textContent = text;
+  if (num) {
+    if (text) num.removeAttribute?.("hidden");
+    else num.setAttribute?.("hidden", "");
+  }
+  btn?.setAttribute?.("data-count", text || "0");
+  return text;
 }
 
 export function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
@@ -1436,12 +1472,22 @@ function buildBoardView(onFail, {
   const coverFaces = new Map();
   const coverGen = new Map();
   const flashedMarks = [];
+  // Below 420 × 280 screen px of board (a stacked reader under a narrow board) the minimap would sit on the cards.
+  const syncCramped = () => {
+    let box = null;
+    let bar = null;
+    try { box = viewport.getBoundingClientRect?.(); } catch { box = null; }
+    try { bar = root.querySelector?.(".pxd-toolbar")?.getBoundingClientRect?.() || null; } catch { bar = null; }
+    const want = boardCramped(freeBoardArea(box, bar));
+    if (root.classList.contains("pxd-root--cramped") !== want) root.classList.toggle("pxd-root--cramped", want);
+  };
   const measure = () => {
     const r = root.getBoundingClientRect();
     rootRect = { left: r.left || 0, top: r.top || 0, width: r.width || 0, height: r.height || 0 };
     size = { width: rootRect.width, height: rootRect.height };
     root.classList.toggle("pxd-root--narrow", size.width > 0 && size.width < 560);
     readPane?.layout?.(size.width);
+    syncCramped();
   };
 
   // ------------------------------------------------------------ layers
@@ -1515,10 +1561,15 @@ function buildBoardView(onFail, {
     pdfMetaTitle: (url) => notePdfMeta(url),
     readingUid: () => readingCard,
     onPdfOpenRequest: (uid) => { try { itemsR.openPdf?.(uid); } catch { /* host */ } },
+    // Parse opens the reader on the card's page (page 1 unless the card was flipped), so the outline starts at
+    // the top instead of at the last page Roam remembered. A reader already on this card keeps its page.
     onPdfParse: (uid) => {
-      try { itemsR.openPdf?.(uid); } catch { /* host */ }
+      const already = readPane?.isOpen?.() === true && readPane?.cardUid?.() === uid;
+      if (already) { try { itemsR.openPdf?.(uid); } catch { /* host */ } }
+      else { try { void itemsR.openPdfAt?.(uid, pdfFlip?.pageOf?.(uid) || 1); } catch { /* host */ } }
       try { ensureReadPane().parse?.(); } catch { /* pane */ }
     },
+    pdfCardPage: (uid) => pdfFlip?.pageOf?.(uid) || 1,
     onHighlightHover: (uid, on) => { try { flashPaneMarks(uid, on); } catch { /* pane */ } },
     onReadPane: (detail) => {
       if (!detail?.open) {
@@ -1545,10 +1596,13 @@ function buildBoardView(onFail, {
         measure();
         const r = rects().get(cardUid);
         if (!r) return;
-        // centerOn uses the whole root; the board area now ends where the pane begins.
-        const area = root.querySelector?.(".pxd-viewport")?.getBoundingClientRect?.();
-        const w = Number(area?.width) || size.width;
-        moveViewport({ x: w / 2 - (r.x + r.w / 2) * vp.zoom, y: size.height / 2 - (r.y + r.h / 2) * vp.zoom, zoom: vp.zoom });
+        // centerOn uses the whole root; the board area now ends where the pane begins. The viewport is still
+        // sliding to its new edge here, so the width comes from the pane's own box (offsets ignore its slide-in).
+        const paneEl = readPane?.element?.();
+        const beside = !root.classList.contains("pxd-root--read-stack") && paneEl?.offsetLeft > 0;
+        const w = beside ? paneEl.offsetLeft : (Number(root.querySelector?.(".pxd-viewport")?.getBoundingClientRect?.()?.width) || size.width);
+        const y = size.height / 2 - (r.y + r.h / 2) * vp.zoom;
+        moveViewport({ x: w / 2 - (r.x + r.w / 2) * vp.zoom, y, zoom: vp.zoom });
       });
     },
   });
@@ -1634,7 +1688,7 @@ function buildBoardView(onFail, {
           try { pdfDisplayTitle(it); } catch { /* title */ }
         }
       }
-      if (!disposed) itemsR.repaintStyles();
+      if (!disposed) itemsR.repaintStyles({ highlighter: false });
       if (!disposed) { try { chrome.ctx.reposition(); chrome.toolbar.scheduleDock?.(); } catch { /* chrome */ } }
     },
     onParsedTitle: (url, title) => {
@@ -4427,6 +4481,55 @@ function buildBoardView(onFail, {
       hovered: hoverItem?.kind === "pdf" && !hoverItem.collapsed ? pdfHoverUid : "",
       lod: tier,
     });
+    scheduleLift();
+  };
+  // The tool dock floats over the bottom of the board. When it sits on a hovered or selected PDF card, the card's
+  // bottom controls (Open / Parse, page bar, badges) rise above it: --pxd-pdf-lift in world px on that card.
+  let liftedUids = new Set();
+  let liftHoverUid = "";
+  // Measured in the next frame: a pane opening or a selection change must not force a layout synchronously.
+  let liftFrame = null;
+  const scheduleLift = () => {
+    if (liftFrame || disposed) return;
+    liftFrame = timers.frame(() => { liftFrame = null; liftPdfControls(); });
+  };
+  const liftPdfControls = () => {
+    if (disposed || gesturing) return;
+    const want = new Map();
+    const obstacles = [];
+    if (tier === "detail") {
+      for (const sel of [".pxd-dock", ".pxd-ctx", ".pxd-minimap"]) {
+        const node = root.querySelector?.(sel);
+        if (!node || node.style?.display === "none") continue;
+        let r = null;
+        try { r = node.getBoundingClientRect?.() || null; } catch { r = null; }
+        if (r?.width && r?.height) obstacles.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+      }
+    }
+    let clipBottom = Infinity;
+    try { clipBottom = Number(viewport.getBoundingClientRect?.()?.bottom) || Infinity; } catch { clipBottom = Infinity; }
+    if (tier === "detail") {
+      const z = Number(vp.zoom) || 1;
+      const ids = new Set([liftHoverUid, selection.items[selection.items.length - 1]].filter(Boolean));
+      for (const uid of ids) {
+        const item = board()?.items.get(uid);
+        const r = item?.kind === "pdf" ? rects().get(uid) : null;
+        if (!r) continue;
+        const lift = pdfDockLift({
+          left: rootRect.left + vp.x + r.x * z,
+          top: rootRect.top + vp.y + r.y * z,
+          w: r.w * z,
+          h: r.h * z,
+        }, obstacles, z, { clipBottom });
+        if (lift > 0) want.set(uid, lift);
+      }
+    }
+    for (const uid of liftedUids) {
+      if (want.has(uid)) continue;
+      itemsR.shellOf?.(uid)?.style?.removeProperty?.("--pxd-pdf-lift");
+    }
+    for (const [uid, lift] of want) itemsR.shellOf?.(uid)?.style?.setProperty?.("--pxd-pdf-lift", `${lift}px`);
+    liftedUids = new Set(want.keys());
   };
   const pdfChipsFor = (item) => chipsForPdf(item, board()?.items, {
     source: pdfSourceOfItem,
@@ -4530,6 +4633,7 @@ function buildBoardView(onFail, {
     crumbs: crumbList,
     on: {
       chromeRebuilt: () => { tooltipCheck(); bindInfoHover(); },
+      ctxPlaced: () => { if (liftedUids.size || liftHoverUid || selection.items.length) scheduleLift(); },
       openBoard: () => { const it = singleItem(); if (it) void openBoard(it.uid); },
       openOwnPage: () => openOwnPage(singleItem()),
       renameBoard: () => { const it = singleItem(); if (it) itemsR.renameBoard(it.uid); },
@@ -5038,6 +5142,8 @@ function buildBoardView(onFail, {
     timers,
     on: {
       getRefCount: (item) => badgeCache.get(badgeKeyOf(item))?.stats?.refs,
+      titleOf: (item) => pdfDisplayTitle(item),
+      pdfOf: (item) => ({ url: pdfUrlOf(item.uid), page: pdfFlip?.pageOf?.(item.uid) || 1 }),
     },
   });
   const presenter = createPresenter({
@@ -6149,6 +6255,9 @@ function buildBoardView(onFail, {
   listen(root, "pointermove", (event) => {
     tablePointer = inRoamTable(event.target) ? event.target : null;
     lastPointer = { x: event.clientX || 0, y: event.clientY || 0 };
+    const pdfNode = event.target?.closest?.(".pxd-item--pdf");
+    const pdfUnder = pdfNode?.getAttribute?.("data-uid") || "";
+    if (pdfUnder !== liftHoverUid) { liftHoverUid = pdfUnder; scheduleLift(); }
     if (event.target?.closest?.(".pxd-chrome")) {
       // The bar, its bridge and its popovers count as the card: hovering them keeps the toolbar.
       if (hoverPending && event.target.closest(".pxd-ctx")) cancelHoverGrace();
@@ -6229,15 +6338,22 @@ function buildBoardView(onFail, {
     }
   };
   // Header text is replaced when the card body mounts, so the button stays on the card.
-  const ensurePdfHighlightButtons = () => {
+  // `changed` is the set of item uids this sync touched (null: all). The highlight count is a graph read, so a
+  // button that is already there is refreshed only when its card changed.
+  const ensurePdfHighlightButtons = (changed = null) => {
     if (disposed) return;
     const b = board();
     if (!b) return;
     for (const item of b.items.values()) {
       if (item?.kind !== "pdf") continue;
       const shell = itemsR.shellOf?.(item.uid);
-      if (!shell || shell.querySelector?.(".pxd-pdf-highlights")) continue;
-      const btn = pdfHighlightButton(doc, () => openHighlightPicker(item, btn));
+      if (!shell) continue;
+      const have = shell.querySelector?.(".pxd-pdf-highlights");
+      if (have && changed && !changed.has(item.uid)) continue;
+      let count = 0;
+      try { count = Number(host?.pdfCover?.(pdfSourceOf(item))?.count) || 0; } catch { count = 0; }
+      if (have) { setHighlightCount(have, count); continue; }
+      const btn = pdfHighlightButton(doc, () => openHighlightPicker(item, btn), count);
       btn.classList.add("pxd-hl-add");
       shell.append(btn);
     }
@@ -6694,6 +6810,23 @@ function buildBoardView(onFail, {
       }));
       ro.observe(root);
       observers.push(ro);
+      // The board area shrinks and grows with the reader (beside or stacked). The minimap and the context bar's
+      // overflow follow it, including after the pane closes.
+      // The viewport edge slides for ~180 ms when the pane opens or closes; measure once it has settled
+      // instead of forcing a layout on every frame of the slide while the reader loads.
+      let areaWait = null;
+      const area = trackObserver(new RO(() => {
+        if (disposed || suspended) return;
+        areaWait?.();
+        areaWait = timers.later(() => {
+          areaWait = null;
+          if (disposed || suspended) return;
+          syncCramped();
+          chrome.ctx.reposition();
+        }, 240);
+      }));
+      area.observe(viewport);
+      observers.push(area);
     } catch { /* stub */ }
   }
   const MO = globalThis.MutationObserver;
@@ -6740,7 +6873,7 @@ function buildBoardView(onFail, {
         view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null,
       });
       if (laneMarks || lanePreviewLayout) applyLaneMarks();
-      ensurePdfHighlightButtons();
+      ensurePdfHighlightButtons(dirty.all || dirty.structural ? null : dirty.items);
       syncEmptyHint(emptyHint, b);
       itemsChanged = true;
       syncTrailPaint(b);
@@ -6804,12 +6937,14 @@ function buildBoardView(onFail, {
       edgesR.setSelection({ edge: selection.edge, link: selection.link });
       if (suggestMode !== "off" && selection.items.join("|") !== suggestSelKey) refreshSuggest();
       if (!gesturing && !itemsR.isEditing()) showCtx(); else chrome.ctx.hide();
+      scheduleLift();
       syncProps();
       if (lensTag && dirty.structural) rebuildLens();
       if (focusOn || lensTag) applyFocus();
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
+    if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLift();
     if (itemsChanged || dirty.minimap || (dirty.viewport && !gesturing)) {
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });

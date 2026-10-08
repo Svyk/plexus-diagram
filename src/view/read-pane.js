@@ -285,6 +285,15 @@ export function createReadPane({
   showParsedBtn.setAttribute("data-tip", "parse.show-parsed");
   showParsedBtn.setAttribute("aria-label", "Show parsed text boxes");
   showParsedBtn.setAttribute("aria-pressed", readShowParsed(storage) ? "true" : "false");
+  // A narrow pane cannot hold the page and the outline side by side. It shows the page (with its parsed boxes)
+  // and keeps the outline one click away on this tab.
+  const outlineTabBtn = el("button", "pxd-read__mode pxd-read__outlinetab", modes);
+  outlineTabBtn.type = "button";
+  outlineTabBtn.textContent = "Outline";
+  outlineTabBtn.setAttribute("data-tip", "parse.outline-tab");
+  outlineTabBtn.setAttribute("aria-label", "Show the outline");
+  outlineTabBtn.setAttribute("aria-pressed", "false");
+  setHidden(outlineTabBtn, true);
   const progress = el("div", "pxd-read__progress", pane);
   setHidden(progress, true);
   const progressFill = el("div", "pxd-read__progressfill", progress);
@@ -1117,10 +1126,12 @@ export function createReadPane({
   };
   const clearDragClass = () => { root?.classList?.remove("pxd-root--pdf-drag"); };
   const endPdfDrag = () => {
+    const was = dragging;
     dragging = false;
     clearDragClass();
     dropChip();
-    clearLiveSelection();
+    // Reading the selection costs a layout; only a drag that ran has one to clear.
+    if (was) clearLiveSelection();
     disarm();
   };
   const paintChip = (data, color, text) => {
@@ -1889,6 +1900,7 @@ export function createReadPane({
   let parseStore = null;
   let parseHelper = null;
   let viewMode = "reader";
+  let narrowTab = "page";
   let explicitMode = false;
   const ensureStore = () => {
     if (!parseStore) parseStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
@@ -1946,12 +1958,17 @@ export function createReadPane({
     pane.classList.add("pxd-read--modes");
   };
   function applyModeClass() {
-    pane.classList.remove("pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
+    pane.classList.remove("pxd-read--parsed", "pxd-read--both", "pxd-read--narrow", "pxd-read--both-page");
     const width = Number(pane.clientWidth) || Number(mountW) || 0;
-    if (viewMode === "both") {
+    const narrow = viewMode === "both" && width > 0 && width < BOTH_MIN_PX;
+    if (narrow && narrowTab === "page") {
+      pane.classList.add("pxd-read--both-page");
+    } else if (viewMode === "both") {
       pane.classList.add("pxd-read--both");
-      if (width > 0 && width < BOTH_MIN_PX) pane.classList.add("pxd-read--narrow");
+      if (narrow) pane.classList.add("pxd-read--narrow");
     }
+    setHidden(outlineTabBtn, !narrow);
+    outlineTabBtn.setAttribute("aria-pressed", narrow && narrowTab === "outline" ? "true" : "false");
     for (const [id, button] of Object.entries(modeBtns)) {
       button.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
     }
@@ -2230,6 +2247,7 @@ export function createReadPane({
     try { parsedView.watchPageInput(readerField()); } catch { /* field */ }
     return parsedView;
   };
+  const pageNowOf = () => Number(String(readerField()?.value || "").trim()) || 1;
   function dropParsed() {
     try { parsedView?.dispose?.(); } catch { /* gone */ }
     parsedView = null;
@@ -2237,7 +2255,9 @@ export function createReadPane({
     viewMode = "reader";
     setHidden(modes, true);
     setHidden(progress, true);
-    pane.classList.remove("pxd-read--modes", "pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
+    pane.classList.remove("pxd-read--modes", "pxd-read--parsed", "pxd-read--both", "pxd-read--narrow", "pxd-read--both-page");
+    setHidden(outlineTabBtn, true);
+    narrowTab = "page";
     setHidden(pill, false);
     for (const [id, button] of Object.entries(modeBtns)) {
       button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
@@ -2308,6 +2328,8 @@ export function createReadPane({
     let found = null;
     try { found = await view.restore(); } catch { found = null; }
     if (!openFlag) return;
+    // The outline opens at the top, or at the first block of the page the reader is on (never at the end).
+    try { view.scrollToPage?.(pageNowOf()); } catch { /* view */ }
     if (!found && view.blockCount() === 0) {
       try { await view.parseBuiltin(); } catch { /* parse */ }
     }
@@ -2317,6 +2339,16 @@ export function createReadPane({
     const next = showParsedBtn.getAttribute("aria-pressed") !== "true";
     const on = parsedView ? parsedView.setShowParsed(next) : (writeShowParsed(storage, next), next);
     showParsedBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+  listen(outlineTabBtn, "click", (event) => {
+    event.stopPropagation?.();
+    narrowTab = narrowTab === "outline" ? "page" : "outline";
+    applyModeClass();
+    if (narrowTab === "outline" && !live.querySelector?.(".rm-pdf-container")) {
+      settleNoted = false;
+      mountReader(current.blockUid);
+      armSettle();
+    }
   });
   listen(modes, "click", (event) => {
     const id = event.target?.closest?.("[data-mode]")?.getAttribute?.("data-mode");
@@ -2366,10 +2398,11 @@ export function createReadPane({
     userZoomed = false;
     settleNoted = false;
     clearLive();
-    emitReading("");
     root?.classList?.remove("pxd-root--read", "pxd-root--read-stack");
     try { root?.style?.removeProperty?.("--pxd-read-w"); } catch { /* stub */ }
     pane.remove();
+    // After the pane is gone, so the board's context bar refits to the full width.
+    emitReading("");
     if (notify) {
       try { onClose?.(); } catch { /* host */ }
     }

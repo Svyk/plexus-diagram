@@ -207,41 +207,96 @@ body.bt-theme-dark .pxd-root .pxd-pdf-hover,
   margin: 0;
 }
 
-.pxd-root .pxd-pdf-pill {
+/* Open and Parse: solid pills, bottom centre over a soft scrim, sized in screen pixels (--pxd-screen-px is
+   1 / zoom) so they read the same at any zoom and never wrap. Dark theme: dark fill, white text. Light: inverse. */
+.pxd-root .pxd-pdf-pills {
   position: absolute;
-  left: 50%;
-  top: 50%;
+  left: 0;
+  right: 0;
+  bottom: var(--pxd-pdf-lift, 0px);
   z-index: 3;
-  height: 28px;
-  margin: 0;
-  padding: 0 14px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: var(--pxd-accent);
-  color: #ffffff;
-  font: inherit;
-  font-size: 13px;
-  line-height: 26px;
-  cursor: pointer;
-  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: calc(8px * var(--pxd-screen-px, 1));
+  box-sizing: border-box;
+  padding: calc(36px * var(--pxd-screen-px, 1)) calc(8px * var(--pxd-screen-px, 1)) calc(12px * var(--pxd-screen-px, 1));
+  border-radius: 0 0 var(--pxd-pdf-radius, 6px) var(--pxd-pdf-radius, 6px);
+  background: linear-gradient(to top, rgba(15, 23, 42, 0.30), rgba(15, 23, 42, 0));
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--pxd-pdf-fade, 80ms) var(--pxd-pdf-ease, ease) 0ms;
 }
 
+.pxd-root .pxd-pdf-cover:has(> .pxd-pdf-hover:not([hidden])) > .pxd-pdf-pills {
+  bottom: calc(var(--pxd-pdf-strip-h, 28px) + var(--pxd-pdf-lift, 0px));
+}
+
+.pxd-root .pxd-pdf-cover:has(.pxd-pdf-bar) > .pxd-pdf-pills {
+  bottom: calc(30px + var(--pxd-pdf-lift, 0px));
+  border-radius: 0;
+}
+
+.pxd-root .pxd-item:hover .pxd-pdf-pills,
+.pxd-root .pxd-item:focus-within .pxd-pdf-pills {
+  opacity: 1;
+  transition-delay: var(--pxd-pdf-hover-delay, 120ms);
+}
+
+.pxd-root .pxd-pdf-pill {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  height: calc(28px * var(--pxd-screen-px, 1));
+  min-width: calc(64px * var(--pxd-screen-px, 1));
+  margin: 0;
+  padding: 0 calc(14px * var(--pxd-screen-px, 1));
+  border: calc(1px * var(--pxd-screen-px, 1)) solid rgba(15, 23, 42, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #111827;
+  box-shadow: 0 calc(1px * var(--pxd-screen-px, 1)) calc(4px * var(--pxd-screen-px, 1)) rgba(15, 23, 42, 0.22);
+  font: inherit;
+  font-size: calc(13px * var(--pxd-screen-px, 1));
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: none;
+}
+
 .pxd-root .pxd-item:hover .pxd-pdf-pill,
 .pxd-root .pxd-item:focus-within .pxd-pdf-pill {
-  opacity: 1;
   pointer-events: auto;
-  transition-delay: var(--pxd-pdf-hover-delay, 120ms);
+}
+
+.pxd-root .pxd-pdf-pill:hover {
+  background: #ffffff;
+}
+
+.pxd-root .pxd-pdf-pill:focus-visible {
+  outline: calc(2px * var(--pxd-screen-px, 1)) solid var(--pxd-accent) !important;
+  outline-offset: calc(2px * var(--pxd-screen-px, 1));
+}
+
+.bp3-dark .pxd-root .pxd-pdf-pills,
+body.bt-theme-dark .pxd-root .pxd-pdf-pills,
+.pxd-root.pxd-root--dark .pxd-pdf-pills {
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0));
 }
 
 .bp3-dark .pxd-root .pxd-pdf-pill,
 body.bt-theme-dark .pxd-root .pxd-pdf-pill,
 .pxd-root.pxd-root--dark .pxd-pdf-pill {
-  background: transparent;
-  color: var(--pxd-accent);
-  border-color: var(--pxd-border-strong);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(17, 24, 39, 0.88);
+  color: #ffffff;
+  box-shadow: 0 calc(1px * var(--pxd-screen-px, 1)) calc(4px * var(--pxd-screen-px, 1)) rgba(0, 0, 0, 0.4);
+}
+
+.bp3-dark .pxd-root .pxd-pdf-pill:hover,
+body.bt-theme-dark .pxd-root .pxd-pdf-pill:hover,
+.pxd-root.pxd-root--dark .pxd-pdf-pill:hover {
+  background: rgba(31, 41, 55, 0.96);
 }
 
 .pxd-root .pxd-pdf-density {
@@ -300,7 +355,8 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill,
 }
 
 .pxd-root.pxd-lod-overview .pxd-pdf-hover,
-.pxd-root.pxd-lod-overview .pxd-pdf-pill,
+.pxd-root.pxd-lod-overview .pxd-pdf-pills,
+.pxd-root.pxd-lod-map .pxd-pdf-pills,
 .pxd-root.pxd-lod-overview .pxd-pdf-title--face,
 .pxd-root.pxd-lod-overview .pxd-pdf-density {
   display: none;
@@ -358,7 +414,7 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill,
   position: absolute;
   left: 8px;
   right: 8px;
-  bottom: 6px;
+  bottom: calc(6px + var(--pxd-pdf-lift, 0px));
   z-index: 4;
   display: flex;
   align-items: center;
@@ -388,6 +444,19 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill,
   cursor: pointer;
 }
 
+.pxd-root .pxd-pdf-bar__step[hidden] {
+  display: none;
+}
+
+/* The selected card's page bar owns the bottom edge; the badges sit just above it, never under it. */
+.pxd-root .pxd-item.pxd-item--pdf > .pxd-item__badges {
+  bottom: calc(4px + var(--pxd-pdf-lift, 0px));
+}
+
+.pxd-root .pxd-item:has(.pxd-pdf-bar) > .pxd-item__badges {
+  bottom: calc(34px + var(--pxd-pdf-lift, 0px));
+}
+
 .pxd-root .pxd-pdf-bar__pages {
   min-width: 3.5em;
   text-align: center;
@@ -406,7 +475,10 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill,
 body.bt-theme-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-flip canvas,
 .pxd-root.pxd-root--dark.pxd-pdf-dark--off .pxd-pdf-img,
 .bp3-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-img,
-body.bt-theme-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-img {
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-img,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--off .pxd-ql__canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--off .pxd-ql__canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--off .pxd-ql__canvas {
   filter: none;
 }
 
@@ -415,7 +487,10 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-img {
 body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-flip canvas,
 .pxd-root.pxd-root--dark.pxd-pdf-dark--dim .pxd-pdf-img,
 .bp3-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-img,
-body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-img {
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-img,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--dim .pxd-ql__canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--dim .pxd-ql__canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-ql__canvas {
   filter: brightness(.82) contrast(1.05);
 }
 
@@ -424,7 +499,10 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-img {
 body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-flip canvas,
 .pxd-root.pxd-root--dark.pxd-pdf-dark--invert .pxd-pdf-img,
 .bp3-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-img,
-body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-img {
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-img,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--invert .pxd-ql__canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--invert .pxd-ql__canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-ql__canvas {
   filter: invert(.9) hue-rotate(180deg);
 }
 

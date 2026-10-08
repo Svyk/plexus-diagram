@@ -39,13 +39,13 @@ test("no reader control exposes a raw key as its label", () => {
     pane.open({ blockUid: "blk", cardUid: "c", title: "Paper", source: "{{[[pdf]]: https://example.test/a.pdf}}" });
     const raw = /^[a-z]+(\.[a-z-]+)+$/;
     const modes = pane.element().querySelectorAll(".pxd-read__mode");
-    assert.equal(modes.length, 3);
+    assert.equal(modes.length, 4);
     for (const node of modes) {
       const label = node.getAttribute("aria-label");
       assert.ok(label && !raw.test(label), `aria-label ${label}`);
       assert.ok(node.textContent && !raw.test(node.textContent));
     }
-    assert.deepEqual(modes.map((n) => n.getAttribute("aria-label")), ["Read", "Read + Outline", "Show parsed text boxes"]);
+    assert.deepEqual(modes.map((n) => n.getAttribute("aria-label")), ["Read", "Read + Outline", "Show parsed text boxes", "Show the outline"]);
     for (const node of pane.element().querySelectorAll("[aria-label]")) {
       assert.equal(raw.test(node.getAttribute("aria-label")), false, node.getAttribute("aria-label"));
     }

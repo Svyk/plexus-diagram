@@ -68,11 +68,75 @@
   font-size: 11px;
 }
 
-.pxd-root .pxd-hl-add {
+/* The PDF header's Add highlights icon. Sized in screen pixels (--pxd-screen-px is 1 / zoom), centred on the
+   32 px header, right of the title. The title keeps the rest of the row and ellipsizes only when it runs into it. */
+.pxd-root .pxd-pdf-highlights.pxd-hl-add {
   position: absolute;
-  top: 4px;
-  right: 8px;
+  top: calc(16px - 11px * var(--pxd-screen-px, 1));
+  right: calc(6px * var(--pxd-screen-px, 1));
   z-index: 4;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(3px * var(--pxd-screen-px, 1));
+  height: calc(22px * var(--pxd-screen-px, 1));
+  min-width: calc(22px * var(--pxd-screen-px, 1));
+  margin: 0;
+  padding: 0 calc(4px * var(--pxd-screen-px, 1));
+  border: calc(1px * var(--pxd-screen-px, 1)) solid transparent;
+  border-radius: calc(6px * var(--pxd-screen-px, 1));
+  background: transparent;
+  color: var(--pxd-muted);
+  font: inherit;
+  font-size: calc(11px * var(--pxd-screen-px, 1));
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.pxd-root .pxd-item:hover > .pxd-pdf-highlights.pxd-hl-add,
+.pxd-root .pxd-item.pxd-item--selected > .pxd-pdf-highlights.pxd-hl-add,
+.pxd-root .pxd-pdf-highlights.pxd-hl-add:focus-visible {
+  opacity: 1;
+}
+
+.pxd-root .pxd-pdf-highlights.pxd-hl-add:hover,
+.pxd-root .pxd-pdf-highlights.pxd-hl-add:focus-visible {
+  border-color: var(--pxd-border-strong);
+  color: var(--pxd-text);
+}
+
+.pxd-root .pxd-pdf-highlights.pxd-hl-add .pxd-pdf-highlights__glyph {
+  display: block;
+  flex: 0 0 auto;
+  width: calc(14px * var(--pxd-screen-px, 1));
+  height: calc(14px * var(--pxd-screen-px, 1));
+}
+
+.pxd-root .pxd-pdf-highlights.pxd-hl-add .pxd-pdf-highlights__count[hidden] {
+  display: none;
+}
+
+.pxd-root .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header {
+  padding-right: calc(12px + 26px * var(--pxd-screen-px, 1));
+}
+
+.pxd-root .pxd-item.pxd-item--pdf:has(> .pxd-hl-add:not([data-count="0"])) > .pxd-item__header {
+  padding-right: calc(12px + 44px * var(--pxd-screen-px, 1));
+}
+
+.pxd-root.pxd-lod-map .pxd-pdf-highlights.pxd-hl-add,
+.pxd-root.pxd-lod-overview .pxd-pdf-highlights.pxd-hl-add {
+  display: none;
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header,
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header {
+  padding-right: 12px;
 }
 
 /* TSK-6 tag chip: a small colour square and the tag name. The square keeps a border so it reads in dark mode. */

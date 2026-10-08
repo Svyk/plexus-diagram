@@ -167,6 +167,84 @@
   font-size: 13px;
 }
 
+/* Quick Look on a PDF card: the page drawn to the width, a themed page pill at the bottom, no sideways scroll. */
+.pxd-root .pxd-quicklook.pxd-quicklook--pdf {
+  width: min(720px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  padding-bottom: 12px;
+}
+
+.pxd-root .pxd-quicklook.pxd-quicklook--pdf .pxd-ql__body,
+.pxd-root .pxd-quicklook.pxd-quicklook--pdf-roam .pxd-ql__body {
+  overflow-x: hidden;
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__pdf {
+  width: 100%;
+  min-height: 120px;
+  overflow: hidden auto;
+  border-radius: var(--pxd-pdf-radius, 6px);
+  background: var(--pxd-pdf-paper, #ffffff);
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__canvas {
+  display: block;
+  max-width: 100%;
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__pill {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 6px;
+  border: 1px solid var(--pxd-read-pill-line, transparent);
+  border-radius: 999px;
+  background: var(--pxd-read-pill-bg, rgba(31, 41, 55, .92));
+  color: var(--pxd-read-pill-fg, #ffffff);
+  box-shadow: var(--pxd-read-pill-shadow, none);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  transform: translateX(-50%);
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__step {
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+  line-height: 26px;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__pages {
+  min-width: 4em;
+  text-align: center;
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__pill--single .pxd-ql__step {
+  display: none;
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__pill--single {
+  padding: 0 10px;
+}
+
 .pxd-root .pxd-present-hud {
   position: absolute;
   left: 50%;

@@ -490,7 +490,7 @@ test("Read + Outline shows the strip and dispose drops its listeners", async () 
     });
     pane.open({ blockUid: "blk", cardUid: "card", title: "Paper", source: "{{[[pdf]]: https://example.test/a.pdf}}" });
     assert.equal(pane.element().querySelector(".pxd-read__modes").hasAttribute("hidden"), true);
-    assert.deepEqual(pane.element().querySelectorAll(".pxd-read__mode").map((b) => b.textContent), ["Read", "Read + Outline", "Show parsed"]);
+    assert.deepEqual(pane.element().querySelectorAll(".pxd-read__mode").map((b) => b.textContent), ["Read", "Read + Outline", "Show parsed", "Outline"]);
     assert.equal(pane.element().querySelector('[data-mode="parsed"]'), null);
     pane.element().querySelector('[data-mode="both"]').click();
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -501,6 +501,15 @@ test("Read + Outline shows the strip and dispose drops its listeners", async () 
     assert.equal(pane.element().querySelector(".pxd-read__pill").hasAttribute("hidden"), false);
     pane.element()._rect = { left: 0, top: 0, width: 360, height: 600, right: 360, bottom: 600, x: 0, y: 0 };
     pane.layout(360);
+    // Narrow: the page first (plain reader layout, pill shown), the outline one click away.
+    const tab = pane.element().querySelector(".pxd-read__outlinetab");
+    assert.equal(tab.hasAttribute("hidden"), false);
+    assert.equal(pane.element().classList.contains("pxd-read--both-page"), true);
+    assert.equal(pane.element().classList.contains("pxd-read--narrow"), false);
+    assert.equal(pane.element().querySelector(".pxd-read__pill").hasAttribute("hidden"), false);
+    tab.click();
+    assert.equal(tab.getAttribute("aria-pressed"), "true");
+    assert.equal(pane.element().classList.contains("pxd-read--both-page"), false);
     assert.equal(pane.element().classList.contains("pxd-read--narrow"), true);
     assert.equal(pane.element().querySelector(".pxd-read__pill").hasAttribute("hidden"), true);
     assert.ok(pane.element().querySelector(".pxd-read__pageprev"));

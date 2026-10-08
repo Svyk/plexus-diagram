@@ -140,7 +140,29 @@
 }
 
 .pxd-read .pxd-read__switchbtn {
-  flex: 0 0 auto;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pxd-muted, inherit);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pxd-read .pxd-read__switchbtn:hover,
+.pxd-read .pxd-read__switchbtn:focus-visible {
+  border-color: var(--pxd-border-strong, var(--pxd-border));
+  color: var(--pxd-text, inherit);
 }
 
 .pxd-read .pxd-read__highlights,
@@ -469,6 +491,11 @@
   bottom: calc(46% + 12px);
 }
 
+/* A board area under 420 × 280 px (a stacked reader under a narrow board) has no room for the minimap. */
+.pxd-root.pxd-root--cramped .pxd-minimap {
+  display: none !important;
+}
+
 /* The header title truncates; the close button keeps its one line. */
 .pxd-read .pxd-read__head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pxd-read .pxd-read__title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -767,12 +794,44 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert {
   box-shadow: none;
 }
 
-/* U6. Outline rows: one line per heading, table, figure and formula, with its page. */
+/* U6. Outline rows: one line per heading, table, figure and formula, with its page. The drag handle, the
+   checkbox and the text share that one line. */
+.pxd-read .pxd-parse__block.pxd-parse__orow {
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 1px 0;
+}
+
+.pxd-read .pxd-parse__orow .pxd-parse__gutter {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  width: auto;
+  gap: 2px;
+}
+
+.pxd-read .pxd-parse__orow .pxd-parse__handle {
+  width: 14px;
+  height: 20px;
+  line-height: 20px;
+}
+
 .pxd-read .pxd-parse__orow .pxd-parse__main {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   min-width: 0;
+  line-height: 20px;
+}
+
+/* Narrow Read + Outline: the page tab is the plain reader layout; the Outline tab sits at the end of the mode bar. */
+.pxd-read .pxd-read__outlinetab[hidden] {
+  display: none;
+}
+
+.pxd-read .pxd-read__outlinetab {
+  margin-left: auto;
 }
 
 .pxd-read .pxd-parse__olabel {

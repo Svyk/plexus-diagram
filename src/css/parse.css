@@ -575,17 +575,4 @@ body.bt-theme-dark .pxd-parse .pxd-parse__block--on,
   100% { opacity: 1; }
 }
 
-.pxd-root .pxd-pdf-pills {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  z-index: 3;
-  display: flex;
-  gap: 8px;
-  transform: translate(-50%, -50%);
-}
 
-.pxd-root .pxd-pdf-pills .pxd-pdf-pill {
-  position: static;
-  transform: none;
-}

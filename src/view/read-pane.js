@@ -2079,7 +2079,10 @@ export function createReadPane({
             signal: ctl.signal,
             onProgress: (fraction) => { ocrRun = { ...ocrRun, progress: Number(fraction) }; paintStrip(); },
           });
-          if (!ctl.signal.aborted) setOcrPages(out, { sha256: ocrSha });
+          if (!ctl.signal.aborted) {
+            setOcrPages(out, { sha256: ocrSha });
+            try { await parsedView?.applyOcr?.(pageRecords(out)); } catch { /* view */ }
+          }
         } else {
           try { await parsedView?.refreshHelper?.(); } catch { /* helper */ }
           await info.readScan();

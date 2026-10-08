@@ -10,7 +10,7 @@ import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { toCSV, toMarkdown } from "../model/parse-to-text.js";
 import { imageKey } from "../host/parse-store.js";
 import { parsedDocTitle } from "../model/pdf.js";
-import { loadPageData, readScan } from "./parse-engine.js";
+import { loadPageData, mergeOcrPageRecords, readScan } from "./parse-engine.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { createParseOverlay } from "./parse-overlay.js";
 import { createPageChips, runChipAction } from "./page-chips.js";
@@ -1241,6 +1241,35 @@ export function createParseView({
     paintScan();
   }
 
+  // OCR pages from the pane (on-device read): the same merge readScan does, without a helper.
+  async function applyOcr(ocrPages) {
+    if (dead || !parsed || phase === "running") return false;
+    const incoming = (Array.isArray(ocrPages) ? ocrPages : []).filter((p) => p && Number.isFinite(Number(p.n)));
+    const pages = scanPagesOf(parsed).filter((n) => incoming.some((p) => Number(p.n) === n));
+    if (!pages.length) return false;
+    const base = parsed;
+    try {
+      const pdf = typeof getPdf === "function" ? await getPdf() : null;
+      if (dead || parsed !== base) return false;
+      const [from, to] = base.stats?.range || [1, base.pageCount || 1];
+      const recs = records.length ? records : [];
+      if (!recs.length) {
+        for (let n = from; n <= to; n += 1) {
+          if (pages.includes(n)) continue;
+          recs.push(await geometryOf(n, pdf));
+          if (dead || parsed !== base) return false;
+        }
+      }
+      const t0 = now();
+      const merged = mergeOcrPageRecords({ base, ocrPages: incoming, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
+      records = merged.records;
+      await finishDoc(merged.doc, (base.stats?.ms || 0) + (now() - t0));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function parseDocling() {
     if (!helper || helperState !== "ready") {
       helperState = helperState || "not-running";
@@ -1577,10 +1606,14 @@ export function createParseView({
       const found = await store.getParse(hit.sha256, engine, hash);
       if (found) {
         parsed = found;
+        if (scanPagesOf(found).length) {
+          const read = await store.getParse(hit.sha256, engine, await optionsHash({ ...(found.options || BUILTIN_OPTIONS), ocr: "vision" }));
+          if (read) parsed = read;
+        }
         rememberParsedUrl(storage, currentUrl);
         try { onCached?.(currentUrl); } catch { /* host */ }
         render();
-        return found;
+        return parsed;
       }
     }
     return null;
@@ -1605,6 +1638,7 @@ export function createParseView({
     element: () => root,
     refreshHelper,
     readScan: readScanNow,
+    applyOcr,
     setTarget(next) {
       currentUrl = next?.url || "";
       currentUid = next?.pdfUid || "";

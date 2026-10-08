@@ -42,7 +42,7 @@ function scanPdf(pages = 2) {
   };
 }
 
-async function rig({ deviceOcr = null, autoRead = true, fetches } = {}) {
+async function rig({ deviceOcr = null, autoRead = true, fetches, pages = 2 } = {}) {
   const stub = createDomStub();
   const restore = stub.install();
   stub.window.fetch = (...args) => { fetches?.push(args); return Promise.reject(new Error("offline")); };
@@ -50,7 +50,7 @@ async function rig({ deviceOcr = null, autoRead = true, fetches } = {}) {
   const root = doc.createElement("div");
   root.className = "pxd-root";
   doc.body.append(root);
-  const pdf = scanPdf();
+  const pdf = scanPdf(pages);
   const pane = createReadPane({
     doc,
     root,
@@ -146,5 +146,30 @@ test("cached OCR words mount on the next open with no read", async () => {
     assert.ok(await until(() => { r.stub.flushFrames(); return layer.querySelectorAll(".pxd-tl-word").length > 0; }));
     assert.equal(layer.querySelectorAll(".pxd-tl-word").length, ocrWords(OCR.pages[0]).length);
     assert.equal(reads, 0, "mounted from the device cache");
+  } finally { r.done(); }
+});
+
+test("a pane-level read becomes the outline's parse and a reopen restores it", async () => {
+  let reads = 0;
+  const deviceOcr = { async status() { return { state: "ready" }; }, async read() { reads += 1; return OCR; } };
+  const r = await rig({ deviceOcr, pages: 1 });
+  try {
+    r.pane.showOutline();
+    assert.ok(await until(() => r.root.querySelector(".pxd-parse__scantext") || r.root.querySelector(".pxd-parse__readtext") || reads === 1));
+    assert.ok(await until(() => reads === 1), "one automatic read");
+    const hasTable = () => [...r.root.querySelectorAll(".pxd-parse__orow")].some((row) => /Table \d+×\d+/.test(row.textContent));
+    assert.ok(await until(hasTable), "the read table reaches the outline");
+    assert.equal(r.root.querySelector(".pxd-parse__scantext"), null, "no scan note");
+    assert.equal(r.root.querySelector(".pxd-parse__readtext"), null, "no Read text button");
+    assert.equal(r.root.querySelector(".pxd-parse__scan").hidden, true, "no Read the scan button");
+    await wait(40);
+    r.pane.close({ notify: false });
+    reads = 0;
+    r.pane.open({ blockUid: "blk", cardUid: "card", title: "Scan", source: "{{[[pdf]]: https://example.test/scan.pdf}}" });
+    r.pane.showOutline();
+    assert.ok(await until(hasTable), "reopen restores the merged parse");
+    assert.equal(r.root.querySelector(".pxd-parse__scantext"), null);
+    assert.equal(r.root.querySelector(".pxd-parse__readtext"), null);
+    assert.equal(reads, 0, "no second read");
   } finally { r.done(); }
 });

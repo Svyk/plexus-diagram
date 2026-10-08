@@ -34043,15 +34043,9 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   onPhase?.({ phase: "ocr", pages: wanted });
   const got = await helper.ocr({ bytes, sha256, pages: wanted, signal });
   throwIfAborted();
-  const byPage = new Map((got?.pages || []).map((p) => [p.n, p]));
-  const next = records.map((rec) => byPage.has(rec.n) ? parsePageGeometry(byPage.get(rec.n), rec.n) : rec);
-  for (const n2 of wanted) if (byPage.has(n2) && !records.some((r) => r.n === n2)) next.push(parsePageGeometry(byPage.get(n2), n2));
-  next.sort((a, b) => a.n - b.n);
-  const lo = from ?? next[0]?.n ?? 1;
-  const hi = to ?? next[next.length - 1]?.n ?? numPages;
-  const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...base?.options || {}, ...options, ocr: "vision" }, from: lo, to: hi });
-  const merged = mergeOcrDocument(base, fresh, { pages: wanted });
+  const merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
   const doc = merged.doc;
+  const next = merged.records;
   const tables = doc.order.map((id) => doc.blocks[id]).filter((b) => b && b.type === "table" && b.repairs && b.ocrSource !== "layer");
   const requests = tables.flatMap((t) => cellsToReread(t, { numericCols: t.repairs.numericCols }));
   let rereads = [];
@@ -34067,6 +34061,18 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   }
   doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), elapsedMs: got?.elapsedMs ?? null };
   return { doc, choices: merged.choices, rereads, pages: wanted, records: next };
+}
+function mergeOcrPageRecords({ base, ocrPages, records, pages, numPages, info = null, options = {}, from, to, sha256 } = {}) {
+  const wanted = pages && pages.length ? pages : scanPagesOf(base);
+  const byPage = new Map((ocrPages || []).map((p) => [p.n, p]));
+  const next = (records || []).map((rec) => byPage.has(rec.n) ? parsePageGeometry(byPage.get(rec.n), rec.n) : rec);
+  for (const n2 of wanted) if (byPage.has(n2) && !next.some((r) => r.n === n2)) next.push(parsePageGeometry(byPage.get(n2), n2));
+  next.sort((a, b) => a.n - b.n);
+  const lo = from ?? next[0]?.n ?? 1;
+  const hi = to ?? next[next.length - 1]?.n ?? numPages;
+  const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...base?.options || {}, ...options, ocr: "vision" }, from: lo, to: hi });
+  const merged = mergeOcrDocument(base, fresh, { pages: wanted });
+  return { doc: merged.doc, choices: merged.choices, records: next };
 }
 
 // src/view/parse-overlay.js
@@ -36844,6 +36850,33 @@ function createParseView({
     }
     paintScan();
   }
+  async function applyOcr(ocrPages) {
+    if (dead || !parsed || phase === "running") return false;
+    const incoming = (Array.isArray(ocrPages) ? ocrPages : []).filter((p) => p && Number.isFinite(Number(p.n)));
+    const pages = scanPagesOf(parsed).filter((n2) => incoming.some((p) => Number(p.n) === n2));
+    if (!pages.length) return false;
+    const base = parsed;
+    try {
+      const pdf = typeof getPdf === "function" ? await getPdf() : null;
+      if (dead || parsed !== base) return false;
+      const [from, to] = base.stats?.range || [1, base.pageCount || 1];
+      const recs = records.length ? records : [];
+      if (!recs.length) {
+        for (let n2 = from; n2 <= to; n2 += 1) {
+          if (pages.includes(n2)) continue;
+          recs.push(await geometryOf(n2, pdf));
+          if (dead || parsed !== base) return false;
+        }
+      }
+      const t0 = now3();
+      const merged = mergeOcrPageRecords({ base, ocrPages: incoming, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
+      records = merged.records;
+      await finishDoc(merged.doc, (base.stats?.ms || 0) + (now3() - t0));
+      return true;
+    } catch {
+      return false;
+    }
+  }
   async function parseDocling() {
     if (!helper || helperState !== "ready") {
       helperState = helperState || "not-running";
@@ -37229,13 +37262,17 @@ function createParseView({
       const found = await store.getParse(hit.sha256, engine, hash);
       if (found) {
         parsed = found;
+        if (scanPagesOf(found).length) {
+          const read2 = await store.getParse(hit.sha256, engine, await optionsHash({ ...found.options || BUILTIN_OPTIONS, ocr: "vision" }));
+          if (read2) parsed = read2;
+        }
         rememberParsedUrl(storage, currentUrl);
         try {
           onCached?.(currentUrl);
         } catch {
         }
         render();
-        return found;
+        return parsed;
       }
     }
     return null;
@@ -37257,6 +37294,7 @@ function createParseView({
     element: () => root,
     refreshHelper,
     readScan: readScanNow,
+    applyOcr,
     setTarget(next) {
       currentUrl = next?.url || "";
       currentUid2 = next?.pdfUid || "";
@@ -40997,7 +41035,13 @@ function createReadPane({
               paintStrip();
             }
           });
-          if (!ctl.signal.aborted) setOcrPages(out, { sha256: ocrSha });
+          if (!ctl.signal.aborted) {
+            setOcrPages(out, { sha256: ocrSha });
+            try {
+              await parsedView?.applyOcr?.(pageRecords(out));
+            } catch {
+            }
+          }
         } else {
           try {
             await parsedView?.refreshHelper?.();

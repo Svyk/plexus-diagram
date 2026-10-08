@@ -6,6 +6,7 @@
 import { chromeObstacles, placeNearAnchor, pointAnchor } from "./avoid.js";
 
 const MARGIN = 4;
+const HOP = 120;
 const ROW_HEIGHT = 28;
 const MENU_WIDTH = 200;
 const STOP_EVENTS = ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu", "keydown"];
@@ -250,25 +251,49 @@ export function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       const rows = list.filter((item) => !item.separator).length;
       const w = menuEl.offsetWidth || MENU_WIDTH;
       let h = menuEl.offsetHeight || rows * ROW_HEIGHT;
-      const W = rootRect.width || 0;
-      const H = rootRect.height || 0;
+      // The board can be taller or wider than the window (a page card, a scrolled Roam page): the menu stays inside
+      // the part of the board that is on screen.
+      const innerW = Number(doc.defaultView?.innerWidth) || 0;
+      const innerH = Number(doc.defaultView?.innerHeight) || 0;
+      const rl = rootRect.left || 0;
+      const rt = rootRect.top || 0;
+      const vl = Math.max(rl, 0);
+      const vt = Math.max(rt, 0);
+      const vr = rootRect.width ? (innerW ? Math.min(rootRect.right, innerW) : rootRect.right) : 0;
+      const vb = rootRect.height ? (innerH ? Math.min(rootRect.bottom, innerH) : rootRect.bottom) : 0;
+      const W = vr > vl ? vr - vl : 0;
+      const H = vb > vt ? vb - vt : 0;
       // Taller than the board: cap the height and scroll (the root clips overflow, so the bottom rows were unreachable).
       if (H && h > H - 2 * MARGIN) {
         h = Math.max(ROW_HEIGHT * 3, H - 2 * MARGIN);
         menuEl.classList.add("pxd-menu--scroll");
         menuEl.style.maxHeight = `${Math.round(h)}px`;
       }
-      let left = x - (rootRect.left || 0);
-      let top = y - (rootRect.top || 0);
-      if (W) left = Math.max(MARGIN, Math.min(left, W - w - MARGIN));
-      if (H) top = Math.max(MARGIN, Math.min(top, H - h - MARGIN));
+      // At the pointer; flipped to the left / above when it does not fit, then clamped.
+      let vpLeft = x;
+      let vpTop = y;
+      if (W && vpLeft + w > vr - MARGIN && x - w >= vl + MARGIN) vpLeft = x - w;
+      if (H && vpTop + h > vb - MARGIN && y - h >= vt + MARGIN) vpTop = y - h;
+      if (W) vpLeft = Math.max(vl + MARGIN, Math.min(vpLeft, vr - w - MARGIN));
+      if (H) vpTop = Math.max(vt + MARGIN, Math.min(vpTop, vb - h - MARGIN));
+      const left = vpLeft - rl;
+      const top = vpTop - rt;
       menuEl.style.left = `${Math.round(left)}px`;
       menuEl.style.top = `${Math.round(top)}px`;
-      // RE-2: a menu that would sit under the dock, board bar, rail, minimap or a panel moves clear of them.
-      const spot = { left: (rootRect.left || 0) + left, top: (rootRect.top || 0) + top };
-      const box = { left: spot.left, top: spot.top, right: spot.left + w, bottom: spot.top + h };
+      // RE-2: a menu that would sit under the dock, board bar, rail, minimap or a panel moves clear of them, but only
+      // by a short hop. A far jump (the old behaviour for a tall menu) loses the pointer, so then it stays and the
+      // menu simply draws over the chrome.
+      const box = { left: vpLeft, top: vpTop, right: vpLeft + w, bottom: vpTop + h };
       if (chromeObstacles(root, { win }).some((o) => box.left < o.right && box.right > o.left && box.top < o.bottom && box.bottom > o.top)) {
         placeNearAnchor(menuEl, pointAnchor(x, y), root, { gap: 0 });
+        const nl = Number.parseFloat(menuEl.style.left) + rl;
+        const nt = Number.parseFloat(menuEl.style.top) + rt;
+        if (!(Math.abs(nl - vpLeft) <= HOP && Math.abs(nt - vpTop) <= HOP) || menuEl.style.maxHeight && !menuEl.classList.contains("pxd-menu--scroll")) {
+          menuEl.style.left = `${Math.round(left)}px`;
+          menuEl.style.top = `${Math.round(top)}px`;
+          menuEl.style.maxHeight = menuEl.classList.contains("pxd-menu--scroll") ? `${Math.round(h)}px` : "";
+          menuEl.style.overflowY = "";
+        }
       }
       return true;
     },

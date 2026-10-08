@@ -4621,6 +4621,19 @@ export function createItemRenderer({
     return input || editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea") || null;
   };
 
+  const NOTE_INPUT_MS = 400;
+  const noteInput = (editor) => editor.querySelector?.("textarea") || null;
+  const waitNoteInput = async (editor, uid) => {
+    const start = now();
+    let input = noteInput(editor);
+    while (!input && now() - start < NOTE_INPUT_MS) {
+      await new Promise((resolve) => { frameLater(resolve); });
+      if (disposed || editing?.uid !== uid) return null;
+      input = noteInput(editor);
+    }
+    return input;
+  };
+
   // A selected page card enters edit on pointerup. The board root calls preventDefault on pointerdown,
   // so a click listener never sees the gesture. The caret is stored while the rest rows still exist.
   const pageHitIgnored = (target) => Boolean(target?.closest?.(".pxd-row__fold, .pxd-row__more, .pxd-grip, .pxd-port"));
@@ -4821,6 +4834,8 @@ export function createItemRenderer({
       }, EDIT_FADE_MS);
     }
     let input = null;
+    let early = null;
+    let kept = false;
     let placedScroll = null;
     if (pageEdit) {
       input = await waitPageInput(editor, caretRow, uid);
@@ -4844,6 +4859,20 @@ export function createItemRenderer({
         }
       }
     } else {
+      // FIX-CARD-1: the editor takes focus on the first frame its input exists. The old order waited for Roam's
+      // hydrate-quiet window (250 ms or more) before the first focus, so a new card showed a caret but keys typed
+      // in that gap went nowhere or landed after Roam swapped the input. The quiet wait still runs, and focus is only
+      // taken again if Roam replaced the input meanwhile.
+      early = await waitNoteInput(editor, uid);
+      if (disposed || editing?.uid !== uid) return false;
+      if (early) {
+        scaleCardEditor(editor, zoomCache);
+        focusRoamInput(early);
+        if (caretOff != null && typeof early.setSelectionRange === "function") {
+          try { early.setSelectionRange(caretOff, caretOff); } catch { /* range */ }
+        }
+        editing.ready = true;
+      }
       await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
       if (disposed || editing?.uid !== uid) return false;
       if (rowOffset !== null) {
@@ -4856,9 +4885,14 @@ export function createItemRenderer({
         }
       }
       if (!input) input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
+      // Roam kept the input that is already focused: leave focus, caret and the user's typing alone.
+      if (early && editor.contains?.(doc.activeElement) && (input === early || input?.contains?.(early) || early.contains?.(input) || input?.contains?.(doc.activeElement))) {
+        kept = true;
+        input = null;
+      }
     }
     const placeNoteCaret = () => {
-      if (pageEdit || caretOff == null) return;
+      if (pageEdit || caretOff == null || kept) return;
       const nodes = [input, editor.querySelector?.("textarea"), editor.querySelector?.(".rm-block__input")];
       for (const node of nodes) {
         if (typeof node?.setSelectionRange !== "function") continue;

@@ -322,7 +322,7 @@ test("a cached parse restores from the memory store and the first page paints be
   try {
     const store = createParseStore({});
     const hash = await optionsHash(BUILTIN_OPTIONS);
-    const docParsed = { ...sample(), sha256: "abc", engine: "builtin", optsHash: hash, options: { ...BUILTIN_OPTIONS } };
+    const docParsed = { ...sample(), sha256: "abc", engine: "builtin", parseRev: 99, optsHash: hash, options: { ...BUILTIN_OPTIONS } };
     await store.putParse(docParsed);
     await store.indexUrl("https://example.test/a.pdf", { sha256: "abc", pageCount: 2 });
     rememberParsedUrl(stub.localStorage, "https://example.test/a.pdf");

@@ -33819,6 +33819,7 @@ init_title_cap();
 init_pdf();
 var SCHEMA2 = "pxd-parse/1";
 var ENGINE_VERSION = "plexus-builtin/1";
+var PARSE_REV = 2;
 var now2 = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
 function viewportTransform(w, h, rotation = 0) {
   switch ((rotation % 360 + 360) % 360) {
@@ -34232,6 +34233,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     sha256,
     engine: "builtin",
     engineVersion,
+    parseRev: PARSE_REV,
     options: { ocr: "none", formula: false, tables: "builtin", ...options },
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
     pageCount: numPages,
@@ -34656,6 +34658,14 @@ var META_KEY = "meta:lru";
 function parseKey(sha256, engine, optsHash) {
   return `${sha256}|${engine}|${optsHash}`;
 }
+function ocrRead(doc) {
+  const mode = doc?.options?.ocr;
+  return mode && mode !== "none" || Boolean(doc?.ocr?.pages?.length) || (doc?.pages || []).some((p) => p.ocr);
+}
+function isStaleParse(doc) {
+  if (!doc || doc.engine !== "builtin" || ocrRead(doc)) return false;
+  return !(Number(doc.parseRev) >= PARSE_REV);
+}
 async function restorableParse(store, sha, { engines, plainHash, readHashOf = null } = {}) {
   if (!store || !sha) return null;
   let listed = [];
@@ -34664,15 +34674,18 @@ async function restorableParse(store, sha, { engines, plainHash, readHashOf = nu
   } catch {
     listed = [];
   }
+  listed = listed.filter((row4) => !isStaleParse(row4.doc));
   for (const engine of engines) {
     const mine = listed.filter((row4) => row4.engine === engine);
     const read2 = mine.filter((row4) => row4.doc?.options?.ocr === "vision" && !scanPagesOf(row4.doc).length).pop();
     if (read2) return read2.doc;
-    const plain2 = await store.getParse(sha, engine, plainHash) || mine.pop()?.doc || null;
+    let plain2 = await store.getParse(sha, engine, plainHash);
+    if (isStaleParse(plain2)) plain2 = null;
+    plain2 = plain2 || mine.pop()?.doc || null;
     if (!plain2) continue;
     if (scanPagesOf(plain2).length && readHashOf) {
       const alt = await store.getParse(sha, engine, await readHashOf(plain2));
-      if (alt) return alt;
+      if (alt && !isStaleParse(alt)) return alt;
     }
     return plain2;
   }
@@ -34873,6 +34886,16 @@ function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CA
         while (meta.docs.length > docCap) {
           const oldest = meta.docs.shift();
           if (oldest) await backend.delete(STORE_PARSE, oldest);
+        }
+        if (stored.engine === "builtin" && !isStaleParse(stored)) {
+          const prefix = `${stored.sha256}|builtin|`;
+          for (const old of (await backend.keys(STORE_PARSE)).filter((k) => typeof k === "string" && k.startsWith(prefix) && k !== key)) {
+            const rec = await backend.get(STORE_PARSE, old);
+            if (rec?.doc && isStaleParse(rec.doc)) {
+              await backend.delete(STORE_PARSE, old);
+              meta.docs = meta.docs.filter((k) => k !== old);
+            }
+          }
         }
         await saveMeta(meta);
         return stored;

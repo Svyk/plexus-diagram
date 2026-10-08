@@ -19,6 +19,9 @@ import { cleanPdfTitle } from "../pdf.js";
 
 export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
+// Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
+// parses with an older (or no) parseRev are re-parsed instead of restored.
+export const PARSE_REV = 2;
 
 const now = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
 
@@ -448,6 +451,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     sha256,
     engine: "builtin",
     engineVersion,
+    parseRev: PARSE_REV,
     options: { ocr: "none", formula: false, tables: "builtin", ...options },
     createdAt: new Date().toISOString(),
     pageCount: numPages,

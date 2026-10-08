@@ -4649,10 +4649,23 @@ export function createItemRenderer({
 
   const NOTE_INPUT_MS = 400;
   const noteInput = (editor) => editor.querySelector?.("textarea") || null;
-  const waitNoteInput = async (editor, uid) => {
+  const noteView = (editor, row) => {
+    const list = editor.querySelectorAll?.(".rm-block__input") || [];
+    if (!row) return list[0] || null;
+    for (const node of list) {
+      if (String(node.id || node.getAttribute?.("id") || "").endsWith(`-${row}`)) return node;
+    }
+    return null;
+  };
+  const waitNoteInput = async (editor, uid, row = "") => {
     const start = now();
     let input = noteInput(editor);
+    let clicked = false;
     while (!input && now() - start < NOTE_INPUT_MS) {
+      // FIX-TYPE-1: renderBlock first mounts Roam's view div. Roam swaps in the textarea only on a click,
+      // so click it as soon as it exists instead of waiting out NOTE_INPUT_MS and the hydrate window.
+      const view = clicked ? null : noteView(editor, row);
+      if (view) { clicked = true; focusRoamInput(view); }
       await new Promise((resolve) => { frameLater(resolve); });
       if (disposed || editing?.uid !== uid) return null;
       input = noteInput(editor);
@@ -4889,7 +4902,7 @@ export function createItemRenderer({
       // hydrate-quiet window (250 ms or more) before the first focus, so a new card showed a caret but keys typed
       // in that gap went nowhere or landed after Roam swapped the input. The quiet wait still runs, and focus is only
       // taken again if Roam replaced the input meanwhile.
-      early = await waitNoteInput(editor, uid);
+      early = await waitNoteInput(editor, uid, row);
       if (disposed || editing?.uid !== uid) return false;
       if (early) {
         scaleCardEditor(editor, zoomCache);

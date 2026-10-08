@@ -103,6 +103,7 @@ import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { createParseActions, freeSpotBeside } from "./parse-actions.js";
 import { createMenu } from "./menu.js";
 import { createShortcutSheet } from "./shortcut-sheet.js";
+import { createTypeAhead } from "./type-ahead.js";
 import { createTooltip } from "./tooltip.js";
 import { findShortcut } from "./shortcuts.js";
 import { applyStatusPicks, buildMenu } from "./menu-model.js";
@@ -925,6 +926,12 @@ function buildBoardView(onFail, {
 
   // ------------------------------------------------------------ DOM
   const root = el("div", "pxd-root", mountEl);
+  // FIX-TYPE-1: keys typed before a new card's textarea is live are kept and replayed into it.
+  const typeAhead = createTypeAhead({
+    doc,
+    later: (fn, ms) => timers.later(fn, ms),
+    isTarget: (node) => String(node?.tagName || "").toLowerCase() === "textarea" && Boolean(root.contains?.(node) && node.closest?.(".pxd-item")),
+  });
   root.tabIndex = 0;
   root.setAttribute("tabindex", "0");
   root.setAttribute("role", "region");
@@ -5144,7 +5151,10 @@ function buildBoardView(onFail, {
     // Editing at map zoom is unreadable: bring the card to a working zoom first.
     if (tier !== "detail") { fitSelection([uid]); applyLod(); }
     const ok = await itemsR.enterEdit(uid, opts);
-    if (ok) chrome.ctx.hide();
+    if (ok) {
+      chrome.ctx.hide();
+      typeAhead.flush(doc.activeElement);
+    } else typeAhead.cancel();
     return ok;
   };
   // Cards/text created by a gesture and left empty are removed on edit exit (no junk cards).
@@ -5529,7 +5539,7 @@ function buildBoardView(onFail, {
     updateEdge: (uid, patch) => session.updateEdge?.(uid, patch),
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
-    createCard: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y, ...(pendingFor("card") || {}) })).then((uid) => { if (uid) freshItems.add(uid); return uid; }),
+    createCard: (p) => { typeAhead.arm(); return Promise.resolve(session.createCard?.({ x: p.x, y: p.y, ...(pendingFor("card") || {}) })).then((uid) => { if (uid) freshItems.add(uid); else typeAhead.cancel(); return uid; }); },
     createTable: (p) => Promise.resolve(session.createTable?.({ x: p.x, y: p.y, w: p.w, h: p.h })).then((uid) => { if (uid) freshItems.add(uid); return uid; }),
     // A task card is a plain TODO block. Plexus writes the marker only; attributes come from Better Tasks.
     rescheduleTasks: (uids, day) => {
@@ -5543,8 +5553,9 @@ function buildBoardView(onFail, {
         chrome.toast.show({ message: bad ? `Better Tasks could not set the due date: ${bad.reason}` : `Due ${day.title}` });
       });
     },
-    createTask: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y, string: "{{[[TODO]]}} " })).then((uid) => { if (uid) { freshItems.add(uid); freshTasks.add(uid); } return uid; }),
+    createTask: (p) => { typeAhead.arm(); return Promise.resolve(session.createCard?.({ x: p.x, y: p.y, string: "{{[[TODO]]}} " })).then((uid) => { if (uid) { freshItems.add(uid); freshTasks.add(uid); } else typeAhead.cancel(); return uid; }); },
     createText: (p) => {
+      typeAhead.arm();
       const spec = { x: p.x, y: p.y };
       if (p.look) spec.look = p.look;
       if (typeof p.w === "number") spec.w = p.w;
@@ -5556,7 +5567,7 @@ function buildBoardView(onFail, {
       const shaped = pendingFor("shape");
       if (p.shape && shaped?.shape) spec.shape = shaped.shape;
       // A sticky persists even when it is left empty; only plain text is swept when it ends blank.
-      return Promise.resolve(session.createText?.(spec)).then((uid) => { if (uid && p.look !== "sticky") freshItems.add(uid); return uid; });
+      return Promise.resolve(session.createText?.(spec)).then((uid) => { if (uid && p.look !== "sticky") freshItems.add(uid); if (!uid) typeAhead.cancel(); return uid; });
     },
     createSection: (p) => session.createSection?.({ rect: p.rect, ...(pendingFor("section")?.color ? { color: pendingFor("section").color } : {}) }),
     createBoard: (p) => session.createBoard?.({ rect: p.rect }),
@@ -6318,6 +6329,7 @@ function buildBoardView(onFail, {
   let outsideQuiet = null;
   let swallowEnterUp = false;
   const onKeyDown = (event) => {
+    if (typeAhead.take(event)) return;
     // True when this Escape is the reader's, and the side effect has already run. Native fullscreen
     // returns true without preventDefault so the browser can leave fullscreen and the card stays up.
     const consumePdfEscape = () => {
@@ -6514,6 +6526,7 @@ function buildBoardView(onFail, {
     if (handled) { event.preventDefault(); event.stopPropagation(); }
   };
   const onKeyUp = (event) => {
+    if (typeAhead.takeUp(event)) return;
     if (swallowEnterUp && event.key === "Enter") {
       swallowEnterUp = false;
       event.stopPropagation();
@@ -6530,6 +6543,13 @@ function buildBoardView(onFail, {
   // before a bubble listener on window. onKeyDown returns early for any text input outside the board.
   listen(win, "keydown", onKeyDown, true);
   listen(win, "keyup", onKeyUp, true);
+  listen(win, "beforeinput", typeAhead.takeInput, true);
+  listen(win, "textInput", typeAhead.takeText, true);
+  // The new card's textarea took focus: replay the kept keys on the next frame, once Roam has bound it.
+  listen(win, "focusin", (event) => {
+    if (!typeAhead.isArmed() || !root.contains?.(event.target)) return;
+    timers.frame(() => { if (!disposed && doc.activeElement === event.target) typeAhead.flush(event.target); });
+  }, true);
 
   // ------------------------------------------------------------ clipboard
   const clip = createClipboardIO({

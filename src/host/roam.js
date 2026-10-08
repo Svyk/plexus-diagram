@@ -1358,11 +1358,12 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     generateUid() { return api.util.generateUID(); },
 
-    async createBlock({ parentUid, order = "last", uid, string = "", props, open } = {}) {
+    async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType } = {}) {
       const id = uid ?? api.util.generateUID();
       const block = { uid: id, string };
       if (props !== undefined) block.props = plainKeys(props);
       if (open !== undefined) block.open = open;
+      if (viewType) block["children-view-type"] = viewType;
       stats.writes++;
       await data.block.create({ location: { "parent-uid": parentUid, order }, block });
       noteWrite("create");
@@ -1411,6 +1412,39 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       for (const id of extra) if (typeof id === "string" && id && id !== uid) host.adoptCreated(id, { span: 0 });
       const path = info.path === "sequential" ? "sequential" : "markdown";
       return { uid, writes: undos, path };
+    },
+
+    // Footnotes already on a page: the top-level header block (exact text) with its note count,
+    // the highest (N) alias label anywhere on the page, and whether a "---" rule sits just above
+    // the header. null when the page cannot be read.
+    footnoteState(pageUid, header = "#footnotes") {
+      const id = String(pageUid ?? "");
+      if (!id) return null;
+      let res = null;
+      try { res = rawPull("[:block/uid {:block/children ...} :block/string :block/order]", eidKey(id)); } catch { return null; }
+      if (!res || typeof res !== "object") return null;
+      const top = Array.isArray(res[":block/children"]) ? [...res[":block/children"]] : [];
+      top.sort((a, b) => (a[":block/order"] ?? 0) - (b[":block/order"] ?? 0));
+      const strOf = (b) => (typeof b?.[":block/string"] === "string" ? b[":block/string"] : "");
+      const kids = (b) => (Array.isArray(b?.[":block/children"]) ? b[":block/children"] : []);
+      let max = 0;
+      const re = /\[\((\d+)\)\]\(\(\([^)]*\)\)\)/g;
+      const walk = (b) => {
+        re.lastIndex = 0;
+        let m;
+        const text = strOf(b);
+        while ((m = re.exec(text))) max = Math.max(max, Number(m[1]) || 0);
+        for (const k of kids(b)) walk(k);
+      };
+      for (const b of top) walk(b);
+      const at = top.findIndex((b) => strOf(b).trim() === header);
+      const node = at >= 0 ? top[at] : null;
+      return {
+        headerUid: node && typeof node[":block/uid"] === "string" ? node[":block/uid"] : null,
+        count: node ? kids(node).length : 0,
+        max,
+        hasLine: at > 0 && strOf(top[at - 1]).trim() === "---",
+      };
     },
 
     // { parentUid, order } for a block, or null when Roam has no integer order.

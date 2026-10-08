@@ -8,7 +8,9 @@ import { flattenLine, linkSafeText } from "./parse-to-roam-md.js";
 export function isNumericCell(value) {
   let s = String(value ?? "").trim();
   if (!s) return false;
+  s = s.replace(/\uE000[^\uE001]*\uE001/g, "");
   s = s.replace(/\s*\[[A-Za-z0-9]+\]\s*$/g, "");
+  s = s.replace(/(?<=[\d%])\(\d+\)$/, "");
   s = s.replace(/[%±]/g, "");
   s = s.replace(/(\d),(?=\d)/g, "$1");
   s = s.trim();

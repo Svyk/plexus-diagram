@@ -67,6 +67,7 @@ export const SETTING_IDS = Object.freeze({
   parseLinkSafe: "parse-link-safe",
   parseNumbered: "parse-numbered",
   parseFootnotes: "parse-footnotes",
+  parseFootnoteFormat: "parse-footnote-format",
   // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
   speedFlags: "speed-flags",
 });
@@ -135,6 +136,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.parseLinkSafe]: true,
   [SETTING_IDS.parseNumbered]: false,
   [SETTING_IDS.parseFootnotes]: "inline",
+  [SETTING_IDS.parseFootnoteFormat]: "extension",
 });
 
 const BOARD_TONES = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
@@ -169,6 +171,7 @@ const ENUMS = Object.freeze({
   [SETTING_IDS.parseEngineDefault]: ["auto", "builtin", "docling"],
   [SETTING_IDS.parseOcr]: ["auto", "on", "off"],
   [SETTING_IDS.parseFootnotes]: ["inline", "end"],
+  [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"],
 });
 
 const NUMBERS = new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
@@ -512,6 +515,7 @@ const SETTING_ROWS = {
   [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
   [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
   [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"]),
+  [SETTING_IDS.parseFootnoteFormat]: () => selectRow(SETTING_IDS.parseFootnoteFormat, "PDF footnotes", "Extension writes each note under the page's #footnotes block and links it with an alias, the format of the Footnotes extension (it works without the extension). Plain keeps (N) in the text with the notes as lines. Off keeps the PDF's own marks.", ["extension", "plain", "off"]),
 };
 
 const SETTING_GROUPS = [
@@ -546,7 +550,7 @@ const SETTING_GROUPS = [
   ]],
   ["group-parse", "PDF parse", "A local helper for harder PDFs, and how parsed text is inserted.", [
     SETTING_IDS.parseHelperUrl, SETTING_IDS.parseHelperToken, SETTING_IDS.parseEngineDefault, SETTING_IDS.parseFormula,
-    SETTING_IDS.parseOcr, SETTING_IDS.parseAutoRead, SETTING_IDS.parseLinkSafe, SETTING_IDS.parseNumbered, SETTING_IDS.parseFootnotes,
+    SETTING_IDS.parseOcr, SETTING_IDS.parseAutoRead, SETTING_IDS.parseLinkSafe, SETTING_IDS.parseNumbered, SETTING_IDS.parseFootnotes, SETTING_IDS.parseFootnoteFormat,
   ]],
 ];
 

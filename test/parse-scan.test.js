@@ -120,6 +120,13 @@ test("visualRows keeps OCR rows apart by baseline and lets a wrapped line join t
   assert.equal(wrapped.length, 1);
   // Without the centred cell the two stacked words are two rows.
   assert.equal(visualRows([w("Z1-", 0, 10, 10), w("014", 0, 22, 10)]).length, 2);
+  // The centred cell arrives first and sits past 0.7 em (half a pitch plus baseline noise): it
+  // still joins because the wrapped second line stacks under the first at twice its gap.
+  const late = visualRows([w("Z2-", 0, 10, 10), w("Filler", 40, 10, 10), w("Painted", 80, 17.4, 10), w("031", 0, 24.8, 10), w("motor", 40, 24.8, 10)]);
+  assert.deepEqual(late.map((r) => r.words.length), [5]);
+  // Evenly pitched rows with every column filled stay three rows.
+  const dense = visualRows([w("a", 0, 10, 10), w("b", 40, 10, 10), w("c", 0, 17.4, 10), w("d", 40, 17.4, 10), w("e", 0, 24.8, 10), w("f", 40, 24.8, 10)]);
+  assert.equal(dense.length, 3);
   // Born-digital words (no conf) are unchanged: overlap alone decides.
   const digital = visualRows([{ text: "a", x0: 0, x1: 10, base: 10, size: 6, y0: 5, y1: 11 }, { text: "b", x0: 0, x1: 10, base: 12, size: 6, y0: 7, y1: 13 }]);
   assert.equal(digital.length, 1);

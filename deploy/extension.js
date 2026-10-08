@@ -26802,7 +26802,7 @@ function createSharpStore({ revoke, later, delay = REVOKE_DELAY_MS } = {}) {
   const retire = (src) => {
     if (typeof src !== "string" || !src.startsWith("blob:")) return;
     if (typeof later !== "function") return;
-    const entry = { off: null };
+    const entry = { off: null, src };
     entry.off = later(() => {
       pending.delete(entry);
       free(src);
@@ -26846,6 +26846,7 @@ function createSharpStore({ revoke, later, delay = REVOKE_DELAY_MS } = {}) {
           entry.off?.();
         } catch {
         }
+        free(entry.src);
       }
       pending.clear();
     }
@@ -36875,7 +36876,6 @@ function createPageChips({
       icon.style.left = `calc(${plan.left}% - ${BOX_PAD}px)`;
       const nudge = nudges.get(plan.id) || 0;
       icon.style.top = nudge ? `calc(${plan.top}% - ${BOX_PAD}px + ${nudge}px)` : `calc(${plan.top}% - ${BOX_PAD}px)`;
-      icon.style.pointerEvents = "none";
       icon.textContent = "⧉";
       layer.append(box2, icon);
       boxes.set(plan.id, box2);
@@ -47996,6 +47996,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   };
   const DOCK_PAD = 14;
   const DOCK_GAP = 4;
+  const DOCK_VERT_RESERVE = 120;
   let dockMore = null;
   let dockMenu = null;
   let dockFitKey = "";
@@ -48005,10 +48006,11 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     dockMore?.setAttribute("aria-expanded", "false");
   };
   const fitDock = () => {
-    const avail = px(palette.clientWidth) || px(palette.offsetWidth);
+    const vertical = root.classList.contains("pxd-root--dock-left") || root.classList.contains("pxd-root--dock-right");
+    const avail = vertical ? Math.max(0, px(root.clientHeight) - DOCK_VERT_RESERVE) : px(palette.clientWidth) || px(palette.offsetWidth);
     if (!(avail > 0) || palette.style.display === "none") return;
     const tools = [...paletteButtons].filter(([, b]) => b.style.display !== "none");
-    const key = `${avail}|${activeTool}|${tools.length}|${root.classList.contains("pxd-root--dock-labels")}|${root.classList.contains("pxd-root--dense")}`;
+    const key = `${vertical}|${avail}|${activeTool}|${tools.length}|${root.classList.contains("pxd-root--dock-labels")}|${root.classList.contains("pxd-root--dense")}`;
     if (key === dockFitKey) return;
     dockFitKey = key;
     closeDockMenu();
@@ -48016,9 +48018,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     for (const [, b] of paletteButtons) b.classList.remove("pxd-dock__btn--overflow");
     dockMore?.remove();
     dockMore = null;
-    const btnW = tools.map(([, b]) => px(b.offsetWidth) || 36);
+    const size = (node2) => px(vertical ? node2.offsetHeight : node2.offsetWidth);
+    const btnW = tools.map(([, b]) => size(b) || 36);
     const natural = btnW.reduce((sum, n2) => sum + n2, 0) + DOCK_GAP * Math.max(0, tools.length - 1) + DOCK_PAD;
-    const full = natural + (px(dockOptions.offsetWidth) ? px(dockOptions.offsetWidth) + DOCK_GAP : 0) + paletteBar.querySelectorAll(".pxd-dock__sep").length * (1 + DOCK_GAP);
+    const full = natural + (size(dockOptions) ? size(dockOptions) + DOCK_GAP : 0) + paletteBar.querySelectorAll(".pxd-dock__sep").length * (1 + DOCK_GAP);
     if (!tools.length || full <= avail) return;
     palette.classList.add("pxd-palette--tight");
     const keepAt = tools.findIndex(([id]) => id === activeTool);
@@ -48638,7 +48641,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       else left = Math.max(left, propsRight + CTX_MARGIN);
     }
     const dockEl = palette.style.display !== "none" ? palette : null;
-    const db = dockEl?.getBoundingClientRect?.();
+    const db = dockEl ? paletteBar.getBoundingClientRect?.() || null : null;
     if (db?.width && db?.height) {
       const dock = { left: db.left - (rootRect.left || 0), top: db.top - (rootRect.top || 0), right: db.right - (rootRect.left || 0), bottom: db.bottom - (rootRect.top || 0) };
       const placed = avoidDock({ left, top, w: barW, h: barH }, { card: a.rect, dock, gap, topLimit, margin: CTX_MARGIN });
@@ -48650,7 +48653,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       if (!b?.width || !b?.height) return null;
       return { left: b.left - (rootRect.left || 0), top: b.top - (rootRect.top || 0), right: b.right - (rootRect.left || 0), bottom: b.bottom - (rootRect.top || 0) };
     };
-    const blocks = [asRoot(minimap), asRoot(railEl), dockEl ? asRoot(dockEl) : null].filter(Boolean);
+    const blocks = [asRoot(minimap), asRoot(railEl), dockEl ? asRoot(paletteBar) : null].filter(Boolean);
     if (blocks.length) {
       const placed = avoidObstacles({ left, top, w: barW, h: barH }, blocks, { topLimit, margin: CTX_MARGIN, bounds: { right: rightLimit, bottom: H } });
       left = placed.left;
@@ -53820,9 +53823,10 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
   };
   const engine = () => {
     if (pdfLib && typeof pdfLib.getDocument === "function") return pdfLib;
-    return detectPdfjs2(win)?.lib || null;
+    const found = detectPdfjs2(win);
+    return found?.workerReady ? found.lib : null;
   };
-  const fillPdf = (body, item) => {
+  const fillPdf = (body, item, onFail) => {
     let spec = null;
     try {
       spec = on.pdfOf?.(item) || null;
@@ -53923,10 +53927,11 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
         event.stopPropagation?.();
       }
     };
-    doc.addEventListener("keydown", onKey, true);
+    const keyTarget = win || doc;
+    keyTarget.addEventListener("keydown", onKey, true);
     pdfOff = () => {
       live = false;
-      doc.removeEventListener("keydown", onKey, true);
+      keyTarget.removeEventListener("keydown", onKey, true);
       try {
         render?.cancel?.();
       } catch {
@@ -53950,14 +53955,27 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
       } catch {
         task = null;
       }
-      if (!task) return;
       let got = null;
-      try {
-        got = await (task.promise || task);
-      } catch {
-        got = null;
+      if (task) {
+        try {
+          got = await (task.promise || task);
+        } catch {
+          got = null;
+        }
       }
-      if (!live || !got) return;
+      if (!live) return;
+      if (!got) {
+        try {
+          pdfOff?.();
+        } catch {
+        }
+        pdfOff = null;
+        stage.remove();
+        pill.remove();
+        node2?.classList.remove("pxd-quicklook--pdf");
+        onFail?.();
+        return;
+      }
       pdf = got;
       total = Number(got.numPages) || 1;
       page = startPage(spec?.page, total);
@@ -53968,7 +53986,12 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     return true;
   };
   const fill = (body, item) => {
-    if (item.kind === "pdf" && fillPdf(body, item)) return;
+    if (item.kind === "pdf" && fillPdf(body, item, () => {
+      if (node2 && current3 === item) fillRoam(body, item);
+    })) return;
+    fillRoam(body, item);
+  };
+  const fillRoam = (body, item) => {
     if (item.kind === "pdf") node2.classList.add("pxd-quicklook--pdf-roam");
     const blocksInto = (result) => {
       if (!node2 || !body.parentElement) return;
@@ -56570,6 +56593,17 @@ function buildBoardView(onFail, {
       });
     }
   });
+  const rawRepaintStyles = itemsR.repaintStyles.bind(itemsR);
+  itemsR.repaintStyles = (...args) => {
+    const out = rawRepaintStyles(...args);
+    if (!disposed) {
+      try {
+        refreshPdfHighlightCounts();
+      } catch {
+      }
+    }
+    return out;
+  };
   repaintItemStyles = () => {
     if (!disposed) itemsR.repaintStyles();
   };
@@ -56952,6 +56986,19 @@ function buildBoardView(onFail, {
     coverGen.set(key, (coverGen.get(key) || 0) + 1);
     if (!disposed) itemsR.repaintStyles();
   };
+  const refreshCoverTitle = (url, record) => {
+    const face = coverFaces.get(url);
+    if (disposed || !face || face.state !== "ready" || !record) return false;
+    coverFaces.set(url, { ...face, ...titleFace(record) });
+    itemsR.repaintStyles();
+    if (typeof record.pageTitle === "string" && record.pageTitle) {
+      try {
+        readPane?.refreshCards?.();
+      } catch {
+      }
+    }
+    return true;
+  };
   const forgetCovers = () => {
     const keys = /* @__PURE__ */ new Set([...coverFaces.keys(), ...coverGen.keys()]);
     coverFaces.clear();
@@ -57024,6 +57071,8 @@ function buildBoardView(onFail, {
       return "";
     }
   };
+  const titleTries = /* @__PURE__ */ new Map();
+  const TITLE_TRIES_MAX = 2;
   const considerCoverWarm = () => {
     if (disposed || suspended || !coverWarmOn() || !coverPaintAt) return;
     const since = Date.now() - coverPaintAt;
@@ -57032,6 +57081,10 @@ function buildBoardView(onFail, {
       return;
     }
     if (gesturing) return;
+    try {
+      probePdfjs();
+    } catch {
+    }
     const cards = [];
     const visible2 = /* @__PURE__ */ new Set();
     const view2 = size.width ? visibleWorldRect(vp, size, 0) : null;
@@ -57049,7 +57102,7 @@ function buildBoardView(onFail, {
         blockUid: blockUid2,
         kind: "pdf",
         hasCover: coverFaces.get(url)?.state === "ready",
-        needsTitle: coverFaces.get(url)?.state === "ready" && typeof coverFaces.get(url)?.pageTitle !== "string" && !parsedTitles.get(url) && firstPageAllowed(url),
+        needsTitle: coverFaces.get(url)?.state === "ready" && typeof coverFaces.get(url)?.pageTitle !== "string" && !parsedTitles.get(url) && Boolean(firstPage) && firstPageAllowed(url) && (titleTries.get(url) || 0) < TITLE_TRIES_MAX,
         url,
         ...hash ? { hash } : {}
       });
@@ -57099,7 +57152,9 @@ function buildBoardView(onFail, {
       Promise.resolve(job).then((record) => {
         if (disposed) return;
         const face = coverFaces.get(card2.url);
-        if (record || face?.state !== "ready") dropCover(card2.url);
+        if (card2.needsTitle) titleTries.set(card2.url, (titleTries.get(card2.url) || 0) + 1);
+        if (record && face?.state === "ready" && card2.hasCover) refreshCoverTitle(card2.url, record);
+        else if (record || face?.state !== "ready") dropCover(card2.url);
         next();
       }).catch(() => next());
     };
@@ -59932,12 +59987,37 @@ function buildBoardView(onFail, {
       liftPdfControls();
     });
   };
+  const LIFT_IDLE_MS = 120;
+  let liftIdle = null;
+  let liftBurst = false;
+  const scheduleLiftIdle = () => {
+    if (disposed) return;
+    liftBurst = true;
+    if (liftIdle) {
+      liftIdle();
+      liftIdle = null;
+    }
+    liftIdle = timers.later(() => {
+      liftIdle = null;
+      liftBurst = false;
+      scheduleLift();
+    }, LIFT_IDLE_MS);
+  };
   const liftPdfControls = () => {
     if (disposed || gesturing) return;
     const want = /* @__PURE__ */ new Map();
-    const obstacles = [];
+    const pdfCandidates = [];
     if (tier === "detail") {
-      for (const sel of [".pxd-dock", ".pxd-ctx", ".pxd-minimap"]) {
+      const ids = new Set([liftHoverUid, selection.items[selection.items.length - 1]].filter(Boolean));
+      for (const uid of ids) {
+        const item = board2()?.items.get(uid);
+        const r = item?.kind === "pdf" ? rects().get(uid) : null;
+        if (r) pdfCandidates.push([uid, r]);
+      }
+    }
+    const obstacles = [];
+    if (pdfCandidates.length) {
+      for (const sel of [".pxd-dock__bar", ".pxd-ctx", ".pxd-minimap"]) {
         const node2 = root.querySelector?.(sel);
         if (!node2 || node2.style?.display === "none") continue;
         let r = null;
@@ -59948,20 +60028,14 @@ function buildBoardView(onFail, {
         }
         if (r?.width && r?.height) obstacles.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
       }
-    }
-    let clipBottom = Infinity;
-    try {
-      clipBottom = Number(viewport.getBoundingClientRect?.()?.bottom) || Infinity;
-    } catch {
-      clipBottom = Infinity;
-    }
-    if (tier === "detail") {
+      let clipBottom = Infinity;
+      try {
+        clipBottom = Number(viewport.getBoundingClientRect?.()?.bottom) || Infinity;
+      } catch {
+        clipBottom = Infinity;
+      }
       const z = Number(vp.zoom) || 1;
-      const ids = new Set([liftHoverUid, selection.items[selection.items.length - 1]].filter(Boolean));
-      for (const uid of ids) {
-        const item = board2()?.items.get(uid);
-        const r = item?.kind === "pdf" ? rects().get(uid) : null;
-        if (!r) continue;
+      for (const [uid, r] of pdfCandidates) {
         const lift = pdfDockLift({
           left: rootRect.left + vp.x + r.x * z,
           top: rootRect.top + vp.y + r.y * z,
@@ -60107,7 +60181,7 @@ function buildBoardView(onFail, {
         bindInfoHover();
       },
       ctxPlaced: () => {
-        if (liftedUids.size || liftHoverUid || selection.items.length) scheduleLift();
+        if (liftedUids.size || liftHoverUid || selection.items.length) (liftBurst ? scheduleLiftIdle : scheduleLift)();
       },
       openBoard: () => {
         const it = singleItem();
@@ -62148,6 +62222,22 @@ function buildBoardView(onFail, {
       placeNearAnchor(node2, anchor.getBoundingClientRect(), root, { gap: 6 });
     }
   };
+  const refreshPdfHighlightCounts = () => {
+    const b = board2();
+    if (!b) return;
+    for (const item of b.items.values()) {
+      if (item?.kind !== "pdf") continue;
+      const have = itemsR.shellOf?.(item.uid)?.querySelector?.(".pxd-pdf-highlights");
+      if (!have) continue;
+      let count = 0;
+      try {
+        count = Number(host?.pdfCover?.(pdfSourceOf(item))?.count) || 0;
+      } catch {
+        count = 0;
+      }
+      setHighlightCount(have, count);
+    }
+  };
   const ensurePdfHighlightButtons = (changed2 = null) => {
     if (disposed) return;
     const b = board2();
@@ -62798,6 +62888,7 @@ function buildBoardView(onFail, {
       if (tooltip.isVisible()) tooltip.hide();
       if (!gesturing) propsPanel.place();
     }
+    if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) liftBurst = true;
     if (dirty.selection || itemsChanged) {
       itemsR.setSelection(selection.items);
       syncPdfFlip();
@@ -62812,7 +62903,7 @@ function buildBoardView(onFail, {
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
-    if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLift();
+    if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
     if (itemsChanged || dirty.minimap || dirty.viewport && !gesturing) {
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });

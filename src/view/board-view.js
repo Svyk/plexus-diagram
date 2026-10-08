@@ -1729,6 +1729,13 @@ function buildBoardView(onFail, {
       }).catch(() => {});
     },
   }));
+  // The header highlight count follows the same signal as the cover-face count: every card repaint re-reads it.
+  const rawRepaintStyles = itemsR.repaintStyles.bind(itemsR);
+  itemsR.repaintStyles = (...args) => {
+    const out = rawRepaintStyles(...args);
+    if (!disposed) { try { refreshPdfHighlightCounts(); } catch { /* count */ } }
+    return out;
+  };
   repaintItemStyles = () => { if (!disposed) itemsR.repaintStyles(); };
 
   // PDF covers. Nothing here runs at mount: the renderer asks coverImageFor on first paint,
@@ -2072,6 +2079,18 @@ function buildBoardView(onFail, {
     coverGen.set(key, (coverGen.get(key) || 0) + 1);
     if (!disposed) itemsR.repaintStyles();
   };
+  // A title-only pass leaves the images alone: merge the new title into the ready face so the cover stays
+  // painted (dropCover would show the skeleton until the store read finishes).
+  const refreshCoverTitle = (url, record) => {
+    const face = coverFaces.get(url);
+    if (disposed || !face || face.state !== "ready" || !record) return false;
+    coverFaces.set(url, { ...face, ...titleFace(record) });
+    itemsR.repaintStyles();
+    if (typeof record.pageTitle === "string" && record.pageTitle) {
+      try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+    }
+    return true;
+  };
   const forgetCovers = () => {
     const keys = new Set([...coverFaces.keys(), ...coverGen.keys()]);
     coverFaces.clear();
@@ -2126,11 +2145,14 @@ function buildBoardView(onFail, {
       return typeof cover?.hash === "string" ? cover.hash.trim() : "";
     } catch { return ""; }
   };
+  const titleTries = new Map();
+  const TITLE_TRIES_MAX = 2;
   const considerCoverWarm = () => {
     if (disposed || suspended || !coverWarmOn() || !coverPaintAt) return;
     const since = Date.now() - coverPaintAt;
     if (since < WARM_AFTER_MS) { armCoverWarm(); return; }
     if (gesturing) return;
+    try { probePdfjs(); } catch { /* no renderer */ }
     const cards = [];
     const visible = new Set();
     const view = size.width ? visibleWorldRect(vp, size, 0) : null;
@@ -2149,7 +2171,8 @@ function buildBoardView(onFail, {
         kind: "pdf",
         hasCover: coverFaces.get(url)?.state === "ready",
         needsTitle: coverFaces.get(url)?.state === "ready" && typeof coverFaces.get(url)?.pageTitle !== "string"
-          && !parsedTitles.get(url) && firstPageAllowed(url),
+          && !parsedTitles.get(url) && Boolean(firstPage) && firstPageAllowed(url)
+          && (titleTries.get(url) || 0) < TITLE_TRIES_MAX,
         url,
         ...(hash ? { hash } : {}),
       });
@@ -2189,7 +2212,9 @@ function buildBoardView(onFail, {
       Promise.resolve(job).then((record) => {
         if (disposed) return;
         const face = coverFaces.get(card.url);
-        if (record || face?.state !== "ready") dropCover(card.url);
+        if (card.needsTitle) titleTries.set(card.url, (titleTries.get(card.url) || 0) + 1);
+        if (record && face?.state === "ready" && card.hasCover) refreshCoverTitle(card.url, record);
+        else if (record || face?.state !== "ready") dropCover(card.url);
         next();
       }).catch(() => next());
     };
@@ -4511,28 +4536,42 @@ function buildBoardView(onFail, {
     if (liftFrame || disposed) return;
     liftFrame = timers.frame(() => { liftFrame = null; liftPdfControls(); });
   };
+  // Wheel pan/zoom never sets `gesturing`: measure once the wheel has been idle for LIFT_IDLE_MS instead of every frame.
+  const LIFT_IDLE_MS = 120;
+  let liftIdle = null;
+  let liftBurst = false;
+  const scheduleLiftIdle = () => {
+    if (disposed) return;
+    liftBurst = true;
+    if (liftIdle) { liftIdle(); liftIdle = null; }
+    liftIdle = timers.later(() => { liftIdle = null; liftBurst = false; scheduleLift(); }, LIFT_IDLE_MS);
+  };
   const liftPdfControls = () => {
     if (disposed || gesturing) return;
     const want = new Map();
-    const obstacles = [];
+    // Only a hovered or selected PDF card has controls to lift: read no layout at all without one.
+    const pdfCandidates = [];
     if (tier === "detail") {
-      for (const sel of [".pxd-dock", ".pxd-ctx", ".pxd-minimap"]) {
+      const ids = new Set([liftHoverUid, selection.items[selection.items.length - 1]].filter(Boolean));
+      for (const uid of ids) {
+        const item = board()?.items.get(uid);
+        const r = item?.kind === "pdf" ? rects().get(uid) : null;
+        if (r) pdfCandidates.push([uid, r]);
+      }
+    }
+    const obstacles = [];
+    if (pdfCandidates.length) {
+      for (const sel of [".pxd-dock__bar", ".pxd-ctx", ".pxd-minimap"]) {
         const node = root.querySelector?.(sel);
         if (!node || node.style?.display === "none") continue;
         let r = null;
         try { r = node.getBoundingClientRect?.() || null; } catch { r = null; }
         if (r?.width && r?.height) obstacles.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
       }
-    }
-    let clipBottom = Infinity;
-    try { clipBottom = Number(viewport.getBoundingClientRect?.()?.bottom) || Infinity; } catch { clipBottom = Infinity; }
-    if (tier === "detail") {
+      let clipBottom = Infinity;
+      try { clipBottom = Number(viewport.getBoundingClientRect?.()?.bottom) || Infinity; } catch { clipBottom = Infinity; }
       const z = Number(vp.zoom) || 1;
-      const ids = new Set([liftHoverUid, selection.items[selection.items.length - 1]].filter(Boolean));
-      for (const uid of ids) {
-        const item = board()?.items.get(uid);
-        const r = item?.kind === "pdf" ? rects().get(uid) : null;
-        if (!r) continue;
+      for (const [uid, r] of pdfCandidates) {
         const lift = pdfDockLift({
           left: rootRect.left + vp.x + r.x * z,
           top: rootRect.top + vp.y + r.y * z,
@@ -4651,7 +4690,7 @@ function buildBoardView(onFail, {
     crumbs: crumbList,
     on: {
       chromeRebuilt: () => { tooltipCheck(); bindInfoHover(); },
-      ctxPlaced: () => { if (liftedUids.size || liftHoverUid || selection.items.length) scheduleLift(); },
+      ctxPlaced: () => { if (liftedUids.size || liftHoverUid || selection.items.length) (liftBurst ? scheduleLiftIdle : scheduleLift)(); },
       openBoard: () => { const it = singleItem(); if (it) void openBoard(it.uid); },
       openOwnPage: () => openOwnPage(singleItem()),
       renameBoard: () => { const it = singleItem(); if (it) itemsR.renameBoard(it.uid); },
@@ -6358,6 +6397,18 @@ function buildBoardView(onFail, {
   // Header text is replaced when the card body mounts, so the button stays on the card.
   // `changed` is the set of item uids this sync touched (null: all). The highlight count is a graph read, so a
   // button that is already there is refreshed only when its card changed.
+  const refreshPdfHighlightCounts = () => {
+    const b = board();
+    if (!b) return;
+    for (const item of b.items.values()) {
+      if (item?.kind !== "pdf") continue;
+      const have = itemsR.shellOf?.(item.uid)?.querySelector?.(".pxd-pdf-highlights");
+      if (!have) continue;
+      let count = 0;
+      try { count = Number(host?.pdfCover?.(pdfSourceOf(item))?.count) || 0; } catch { count = 0; }
+      setHighlightCount(have, count);
+    }
+  };
   const ensurePdfHighlightButtons = (changed = null) => {
     if (disposed) return;
     const b = board();
@@ -6961,6 +7012,7 @@ function buildBoardView(onFail, {
       // does not change, and that read was the long task on a 300-card board.
       if (!gesturing) propsPanel.place();
     }
+    if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) liftBurst = true;
     if (dirty.selection || itemsChanged) {
       itemsR.setSelection(selection.items);
       syncPdfFlip();
@@ -6974,7 +7026,7 @@ function buildBoardView(onFail, {
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
-    if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLift();
+    if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
     if (itemsChanged || dirty.minimap || (dirty.viewport && !gesturing)) {
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });

@@ -121,3 +121,48 @@ test("the context bar placed next to the minimap and the rail steps clear of bot
     }
   } finally { f.chrome.dispose(); f.restore(); }
 });
+
+function verticalRig(height) {
+  const f = dockRig(50);
+  f.root.className = "pxd-root pxd-root--docked pxd-root--dock-left";
+  f.root._rect = { left: 0, top: 0, width: 600, height, right: 600, bottom: height, x: 0, y: 0 };
+  f.palette._rect = { left: 8, top: 0, width: 50, height: 490, right: 58, bottom: 490 };
+  return f;
+}
+
+test("a left dock compares heights with the board height: a tall board keeps every tool, no … button", () => {
+  const f = verticalRig(900);
+  try {
+    f.chrome.toolbar.layoutDock();
+    assert.equal(f.root.querySelector(".pxd-dock__more"), null, "50 px wide must not trigger the overflow");
+    assert.equal(f.root.querySelectorAll(".pxd-dock__btn--overflow").length, 0);
+    assert.ok(!f.palette.classList.contains("pxd-palette--tight"));
+  } finally { f.chrome.dispose(); f.restore(); }
+});
+
+test("a left dock on a short board still overflows by height", () => {
+  const f = verticalRig(330);
+  try {
+    f.chrome.toolbar.layoutDock();
+    assert.ok(f.root.querySelector(".pxd-dock__more"), "… button");
+    assert.ok(f.root.querySelectorAll(".pxd-dock__btn--overflow").length > 0);
+  } finally { f.chrome.dispose(); f.restore(); }
+});
+
+test("the context bar avoids the dock pill, not the full-width dock row", () => {
+  const f = dockRig(400);
+  try {
+    const { root } = f;
+    root._rect = { left: 0, top: 0, width: 400, height: 500, right: 400, bottom: 500, x: 0, y: 0 };
+    f.palette._rect = { left: 8, top: 440, width: 384, height: 50, right: 392, bottom: 490, x: 8, y: 440 };
+    const pill = root.querySelector(".pxd-dock__bar");
+    pill._rect = { left: 330, top: 444, width: 60, height: 42, right: 390, bottom: 486, x: 330, y: 444 };
+    const ctx = root.querySelector(".pxd-ctx");
+    ctx._rect = { left: 0, top: 0, width: 100, height: 36, right: 100, bottom: 36, x: 0, y: 0 };
+    f.chrome.ctx.show("card", {}, () => ({ kind: "card", rect: { x: 20, y: 30, w: 120, h: 400 } }));
+    const left = Number.parseFloat(ctx.style.left);
+    const top = Number.parseFloat(ctx.style.top);
+    assert.ok(left + 100 <= pill._rect.left || top + 36 <= pill._rect.top || top >= pill._rect.bottom, "clear of the pill");
+    assert.ok(top >= 430, "free to sit in the dock row band, away from the pill (the full-width row used to push it above the card)");
+  } finally { f.chrome.dispose(); f.restore(); }
+});

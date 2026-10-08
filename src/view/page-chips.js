@@ -350,7 +350,6 @@ export function createPageChips({
       icon.style.left = `calc(${plan.left}% - ${BOX_PAD}px)`;
       const nudge = nudges.get(plan.id) || 0;
       icon.style.top = nudge ? `calc(${plan.top}% - ${BOX_PAD}px + ${nudge}px)` : `calc(${plan.top}% - ${BOX_PAD}px)`;
-      icon.style.pointerEvents = "none";
       icon.textContent = "⧉";
       layer.append(box, icon);
       boxes.set(plan.id, box);

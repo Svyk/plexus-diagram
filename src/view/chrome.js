@@ -370,6 +370,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   // trailing tools move behind a "…" button that opens them as a menu (the active tool stays in the row).
   const DOCK_PAD = 14;
   const DOCK_GAP = 4;
+  const DOCK_VERT_RESERVE = 120;
   let dockMore = null;
   let dockMenu = null;
   let dockFitKey = "";
@@ -379,10 +380,14 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     dockMore?.setAttribute("aria-expanded", "false");
   };
   const fitDock = () => {
-    const avail = px(palette.clientWidth) || px(palette.offsetWidth);
+    // A left/right dock is a column: tools stack, so measure heights against the board height.
+    const vertical = root.classList.contains("pxd-root--dock-left") || root.classList.contains("pxd-root--dock-right");
+    const avail = vertical
+      ? Math.max(0, px(root.clientHeight) - DOCK_VERT_RESERVE)
+      : px(palette.clientWidth) || px(palette.offsetWidth);
     if (!(avail > 0) || palette.style.display === "none") return;
     const tools = [...paletteButtons].filter(([, b]) => b.style.display !== "none");
-    const key = `${avail}|${activeTool}|${tools.length}|${root.classList.contains("pxd-root--dock-labels")}|${root.classList.contains("pxd-root--dense")}`;
+    const key = `${vertical}|${avail}|${activeTool}|${tools.length}|${root.classList.contains("pxd-root--dock-labels")}|${root.classList.contains("pxd-root--dense")}`;
     if (key === dockFitKey) return;
     dockFitKey = key;
     closeDockMenu();
@@ -390,9 +395,10 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     for (const [, b] of paletteButtons) b.classList.remove("pxd-dock__btn--overflow");
     dockMore?.remove();
     dockMore = null;
-    const btnW = tools.map(([, b]) => px(b.offsetWidth) || 36);
+    const size = (node) => px(vertical ? node.offsetHeight : node.offsetWidth);
+    const btnW = tools.map(([, b]) => size(b) || 36);
     const natural = btnW.reduce((sum, n) => sum + n, 0) + DOCK_GAP * Math.max(0, tools.length - 1) + DOCK_PAD;
-    const full = natural + (px(dockOptions.offsetWidth) ? px(dockOptions.offsetWidth) + DOCK_GAP : 0)
+    const full = natural + (size(dockOptions) ? size(dockOptions) + DOCK_GAP : 0)
       + paletteBar.querySelectorAll(".pxd-dock__sep").length * (1 + DOCK_GAP);
     if (!tools.length || full <= avail) return;
     palette.classList.add("pxd-palette--tight");
@@ -981,7 +987,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     }
     // The tool dock is never covered: above the card, or clear above the dock.
     const dockEl = palette.style.display !== "none" ? palette : null;
-    const db = dockEl?.getBoundingClientRect?.();
+    const db = dockEl ? (paletteBar.getBoundingClientRect?.() || null) : null;
     if (db?.width && db?.height) {
       const dock = { left: db.left - (rootRect.left || 0), top: db.top - (rootRect.top || 0), right: db.right - (rootRect.left || 0), bottom: db.bottom - (rootRect.top || 0) };
       const placed = avoidDock({ left, top, w: barW, h: barH }, { card: a.rect, dock, gap, topLimit, margin: CTX_MARGIN });
@@ -994,7 +1000,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       if (!b?.width || !b?.height) return null;
       return { left: b.left - (rootRect.left || 0), top: b.top - (rootRect.top || 0), right: b.right - (rootRect.left || 0), bottom: b.bottom - (rootRect.top || 0) };
     };
-    const blocks = [asRoot(minimap), asRoot(railEl), dockEl ? asRoot(dockEl) : null].filter(Boolean);
+    const blocks = [asRoot(minimap), asRoot(railEl), dockEl ? asRoot(paletteBar) : null].filter(Boolean);
     if (blocks.length) {
       const placed = avoidObstacles({ left, top, w: barW, h: barH }, blocks, { topLimit, margin: CTX_MARGIN, bounds: { right: rightLimit, bottom: H } });
       left = placed.left;

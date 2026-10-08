@@ -114,7 +114,7 @@ const SHA = "b4d2".padEnd(64, "0");
 const URL = "https://example.test/scan.pdf?alt=media&token=t";
 
 const scanOnly = () => ({
-  schema: "pxd-parse/1", sha256: SHA, engine: "builtin", title: "", pageCount: 1,
+  schema: "pxd-parse/1", sha256: SHA, engine: "builtin", parseRev: 99, title: "", pageCount: 1,
   options: { ...BUILTIN_OPTIONS }, pages: [{ n: 1, w: 600, h: 400, scanLayer: true }],
   order: ["s1"], blocks: { s1: { id: "s1", type: "scan", page: 1, bbox: [0, 0, 600, 400] } },
 });

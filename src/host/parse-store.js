@@ -6,6 +6,7 @@
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { openDiagramDb, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX } from "./diagram-db.js";
 import { optionsHash } from "../model/parse-hash.js";
+import { PARSE_REV } from "../model/parse/index.js";
 
 export const PARSE_DOC_CAP = 50;
 export const PARSE_IMAGE_CAP = 200 * 1024 * 1024;
@@ -15,21 +16,36 @@ export function parseKey(sha256, engine, optsHash) {
   return `${sha256}|${engine}|${optsHash}`;
 }
 
+function ocrRead(doc) {
+  const mode = doc?.options?.ocr;
+  return (mode && mode !== "none") || Boolean(doc?.ocr?.pages?.length) || (doc?.pages || []).some((p) => p.ocr);
+}
+
+// A built-in, non-OCR doc from an older engine revision: treated as absent so it is parsed again.
+// OCR-read docs are kept (re-reading costs OCR); helper docs are not ours to judge.
+export function isStaleParse(doc) {
+  if (!doc || doc.engine !== "builtin" || ocrRead(doc)) return false;
+  return !(Number(doc.parseRev) >= PARSE_REV);
+}
+
 // The parse to restore for a PDF. Per engine (in order): the newest OCR-read parse (no scanned page
 // left unread) wins over the scan-only one saved before the read; otherwise the plain options hash.
 export async function restorableParse(store, sha, { engines, plainHash, readHashOf = null } = {}) {
   if (!store || !sha) return null;
   let listed = [];
   try { listed = typeof store.listParses === "function" ? await store.listParses(sha) : []; } catch { listed = []; }
+  listed = listed.filter((row) => !isStaleParse(row.doc));
   for (const engine of engines) {
     const mine = listed.filter((row) => row.engine === engine);
     const read = mine.filter((row) => row.doc?.options?.ocr === "vision" && !scanPagesOf(row.doc).length).pop();
     if (read) return read.doc;
-    const plain = (await store.getParse(sha, engine, plainHash)) || mine.pop()?.doc || null;
+    let plain = await store.getParse(sha, engine, plainHash);
+    if (isStaleParse(plain)) plain = null;
+    plain = plain || mine.pop()?.doc || null;
     if (!plain) continue;
     if (scanPagesOf(plain).length && readHashOf) {
       const alt = await store.getParse(sha, engine, await readHashOf(plain));
-      if (alt) return alt;
+      if (alt && !isStaleParse(alt)) return alt;
     }
     return plain;
   }
@@ -249,6 +265,16 @@ export function createParseStore({ indexedDB: factory, now, docCap = PARSE_DOC_C
         while (meta.docs.length > docCap) {
           const oldest = meta.docs.shift();
           if (oldest) await backend.delete(STORE_PARSE, oldest);
+        }
+        if (stored.engine === "builtin" && !isStaleParse(stored)) {
+          const prefix = `${stored.sha256}|builtin|`;
+          for (const old of (await backend.keys(STORE_PARSE)).filter((k) => typeof k === "string" && k.startsWith(prefix) && k !== key)) {
+            const rec = await backend.get(STORE_PARSE, old);
+            if (rec?.doc && isStaleParse(rec.doc)) {
+              await backend.delete(STORE_PARSE, old);
+              meta.docs = meta.docs.filter((k) => k !== old);
+            }
+          }
         }
         await saveMeta(meta);
         return stored;

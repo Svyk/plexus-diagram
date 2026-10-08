@@ -804,6 +804,61 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     flip("pxd-ctx__auto-fit", Boolean(model?.autofit));
   };
 
+  // The bar is one row. Tools that do not fit the visible board width move behind a "…" button that opens them as a menu.
+  const CTX_MORE_W = 28;
+  const CTX_BAR_PAD = 14;
+  const closeCtxMore = () => {
+    for (const m of ctx.querySelectorAll(".pxd-ctx__more-menu")) m.remove();
+    ctx.querySelector(".pxd-ctx__more")?.setAttribute("aria-expanded", "false");
+  };
+  const openCtxMore = (hidden) => {
+    closeCtxMore();
+    const menu = el("div", "pxd-ctx__more-menu", ctx);
+    for (const node of hidden) {
+      const buttons = node.tagName === "BUTTON" ? [node] : [...node.querySelectorAll("button")];
+      for (const src of buttons) {
+        const label = src.getAttribute("aria-label") || src.getAttribute("title") || src.textContent || "";
+        const item = button(menu, "pxd-ctx__more-item", label, label, () => { closeCtxMore(); src.click(); });
+        if (src.classList.contains("pxd-btn--danger")) item.classList.add("pxd-btn--danger");
+      }
+    }
+    ctx.querySelector(".pxd-ctx__more")?.setAttribute("aria-expanded", "true");
+  };
+  const fitCtxRow = (limit) => {
+    const row = ctx.querySelector(".pxd-ctx__row");
+    if (!row) return;
+    const more = row.querySelector(".pxd-ctx__more");
+    const kids = [...row.children].filter((k) => k !== more);
+    // Hidden tools keep the width they had, so a repeat pass changes nothing when the fit is the same.
+    const widths = kids.map((k) => (k.getAttribute("data-ctx-overflow") ? Number(k.getAttribute("data-ctx-w")) || 0 : k.offsetWidth || 0));
+    if (!widths.some((w) => w > 0)) return;
+    const avail = limit - CTX_BAR_PAD;
+    const total = widths.reduce((sum, w) => sum + w, 0) + 4 * (kids.length - 1);
+    let keep = kids.length;
+    if (total > avail) {
+      let used = CTX_MORE_W;
+      keep = 0;
+      while (keep < kids.length - 1 && used + 4 + widths[keep] <= avail) { used += 4 + widths[keep]; keep++; }
+    }
+    const now = kids.findIndex((k) => k.getAttribute("data-ctx-overflow"));
+    if ((now < 0 ? kids.length : now) === keep) return;
+    closeCtxMore();
+    more?.remove();
+    kids.forEach((k, idx) => {
+      if (idx < keep) { if (k.getAttribute("data-ctx-overflow")) { k.style.display = ""; k.removeAttribute("data-ctx-overflow"); k.removeAttribute("data-ctx-w"); } return; }
+      k.style.display = "none";
+      k.setAttribute("data-ctx-overflow", "1");
+      k.setAttribute("data-ctx-w", String(widths[idx]));
+    });
+    if (keep >= kids.length) return;
+    const hidden = kids.slice(keep);
+    const btn = iconButton(row, "pxd-ctx__btn pxd-ctx__more", "more", "More tools", "More tools", () => {
+      if (ctx.querySelector(".pxd-ctx__more-menu")) closeCtxMore(); else openCtxMore(hidden);
+    });
+    btn.setAttribute("aria-haspopup", "menu");
+    btn.setAttribute("aria-expanded", "false");
+  };
+
   const positionCtx = () => {
     if (ctx.style.display === "none" || !ctxAnchor) return;
     const a = ctxAnchor();
@@ -833,6 +888,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const room = stops.length ? Math.min(W, ...stops) : W;
     // A bar wider than the space left of the panel or the reader wraps into more rows instead of covering them.
     ctx.style.maxWidth = stops.length && room > 2 * CTX_MARGIN ? `${Math.round(room - 2 * CTX_MARGIN)}px` : "";
+    fitCtxRow(stops.length ? room - 2 * CTX_MARGIN : W - railClear - 2 * CTX_MARGIN);
     const barW = ctx.offsetWidth || 320;
     const barH = ctx.offsetHeight || 36;
     const rightLimit = stops.length ? room : Math.max(barW + CTX_MARGIN, W - railClear);

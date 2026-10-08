@@ -2701,3 +2701,24 @@ test("PO-5: the grips, ports and end handles size themselves from --pxd-inv-zoom
     assert.match(css, rule);
   }
 });
+
+test("the board root never scrolls: a scroll event puts it back to 0, inner scrollers are untouched", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const { root } = f;
+    const inner = root.querySelector(".pxd-viewport");
+    root.scrollTop = 48;
+    root.scrollLeft = 6;
+    inner.scrollTop = 30;
+    f.stub.dispatch(root, "scroll");
+    assert.equal(root.scrollTop, 0);
+    assert.equal(root.scrollLeft, 0);
+    f.stub.dispatch(inner, "scroll");
+    assert.equal(inner.scrollTop, 30, "an inner scroller keeps its own position");
+    assert.match(readFileSync(new URL("../src/extension.css", import.meta.url), "utf8"), /overflow: hidden;\s*overflow: clip;/);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});

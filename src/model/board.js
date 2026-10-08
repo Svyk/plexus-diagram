@@ -17,6 +17,7 @@ import {
   semanticRef,
 } from "./schema.js";
 import { isQueryString } from "./query.js";
+import { isRoamTableString } from "./roam-table.js";
 import { regionRefModel } from "./region-card.js";
 import { drawingRefModel, isDrawingString } from "./drawing-card.js";
 import { isContainerString, parseRegion } from "./regions.js";
@@ -189,6 +190,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
       if (kind === "page") title = cls.title;
       else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
       else if (isQueryString(cstring)) title = "Query";
+      else if (isRoamTableString(cstring)) title = kids.length ? `Table \u00b7 ${kids.length} ${kids.length === 1 ? "row" : "rows"}` : "Table";
       else title = firstLine(cstring);
       let regionDrawing;
       let highlight;
@@ -348,6 +350,9 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
 // Visual height of a collapsed section. Stored :plexus h is left alone.
 export const COLLAPSED_SECTION_H = 8;
 
+// A folded card paints as its header bar only. Stored :plexus h is left alone.
+export const COLLAPSED_CARD_H = 32;
+
 // EK-2: a minimized sticky paints as its header bar only. Stored :plexus h is left alone.
 export const STICKY_HEADER_H = 28;
 
@@ -394,6 +399,8 @@ export function displayRects(board, stored) {
     const item = board.items.get(uid);
     const next = item?.type === "section" && item.collapsed
       ? { x: r.x, y: r.y, w: r.w, h: COLLAPSED_SECTION_H }
+      : item?.type === "card" && item.collapsed
+        ? { x: r.x, y: r.y, w: r.w, h: Math.min(r.h, COLLAPSED_CARD_H) }
       : item?.type === "text" && item.look === "sticky" && item.min
         ? { x: r.x, y: r.y, w: r.w, h: STICKY_HEADER_H }
         : { x: r.x, y: r.y, w: r.w, h: r.h };

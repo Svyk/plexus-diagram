@@ -45,6 +45,7 @@
   height: 560px;
   box-sizing: border-box;
   overflow: hidden;
+  overflow: clip;
   background: var(--pxd-surface);
   color: var(--pxd-text);
   border: 1px solid var(--pxd-border);
@@ -1198,7 +1199,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-ctx__row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   row-gap: 4px;
   align-items: center;
   gap: 4px;

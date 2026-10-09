@@ -60,9 +60,9 @@ test("chipPlan: one plan per block type, none for others", () => {
   assert.equal(label("l1"), "Insert list");
   assert.equal(label("m1"), "Card");
   assert.equal(chipPlan(doc.blocks.p1, doc), null);
-  assert.deepEqual(chipPlan(doc.blocks.t1, doc).menu.map((m) => m.label), ["Native", "Flat", "Copy as Markdown", "Card", "Insert beside PDF"]);
-  assert.deepEqual(chipPlan(doc.blocks.m1, doc).menu.map((m) => m.label), ["Insert beside PDF"]);
-  assert.deepEqual(chipPlan(doc.blocks.m1, doc, { latexReady: true }).menu.map((m) => m.label), ["LaTeX", "Insert beside PDF"]);
+  assert.deepEqual(chipPlan(doc.blocks.t1, doc).menu.map((m) => m.label), ["Native", "Flat", "Copy as Markdown", "Card", "Insert beside PDF", "With source", "Copy ref to source"]);
+  assert.deepEqual(chipPlan(doc.blocks.m1, doc).menu.map((m) => m.label), ["Insert beside PDF", "With source", "Copy ref to source"]);
+  assert.deepEqual(chipPlan(doc.blocks.m1, doc, { latexReady: true }).menu.map((m) => m.label), ["LaTeX", "Insert beside PDF", "With source", "Copy ref to source"]);
 });
 
 test("sectionIds: heading to the next heading", () => {

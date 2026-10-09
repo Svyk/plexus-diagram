@@ -24,6 +24,9 @@ import { closeOpenWhyPopovers } from "./view/why-pop.js";
 import { createCardCache } from "./model/card-cache.js";
 import { imageSrc } from "./model/export.js";
 import { parseRegion } from "./model/regions.js";
+import { boardsFromRefs, PIN_BOARDS_QUERY, pinOpenPlan, pinPdfUrl, pxdPinTarget } from "./model/pdf-pin.js";
+import { pdfMacroUrl } from "./model/pdf.js";
+import { mountPdfPin } from "./view/pdf-pin-view.js";
 import { classifyString, firstLine, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
 import { parseTrailBlock, renderTrailStrip, trailStrip } from "./model/trails.js";
 import { eachRegionButton, openRegionCrop, openRegionView, regionUidForButton, resetCropUrls } from "./view/region-crop.js";
@@ -457,6 +460,8 @@ export async function installPlexusDiagram({
     return { title, section, svg };
   }
   const regionCrops = new Map(); // region button -> its destroy
+  const pinPdfDocs = new Map();
+  let pendingPin = null;
   const showStash = createShowStash();
   let showWhere = "main";
   const viewBoards = new Map();
@@ -474,6 +479,8 @@ export async function installPlexusDiagram({
     toastOff = () => {};
     for (const drop of [...regionCrops.values()]) drop();
     regionCrops.clear();
+    pinPdfDocs.clear();
+    pendingPin = null;
     resetCropUrls();
   });
 
@@ -2304,6 +2311,69 @@ export async function installPlexusDiagram({
     popButton(el, "Open in sidebar", true, onOpen);
   }
 
+  function rememberPin(hash) {
+    const target = pxdPinTarget(String(hash || ""));
+    if (!target?.pinUid) return;
+    pendingPin = { pinUid: target.pinUid, until: Date.now() + 8000 };
+  }
+  function tryPendingPin() {
+    const pending = pendingPin;
+    if (!pending) return;
+    if (Date.now() > pending.until) { pendingPin = null; return; }
+    let text = "";
+    try { text = host.blockString?.(pending.pinUid) || ""; } catch { text = ""; }
+    if (!text) return;
+    const region = parseRegion(text);
+    if (!region) { pendingPin = null; return; }
+    region.uid = pending.pinUid;
+    const plan = pinOpenPlan(region);
+    if (!plan) { pendingPin = null; return; }
+    for (const rec of mounts.values()) {
+      let opened = false;
+      try { opened = rec.view?.openPin?.(plan) === true; } catch { opened = false; }
+      if (opened) { pendingPin = null; return; }
+    }
+  }
+  async function loadPinCrop({ url, page, frac }) {
+    const safe = pinPdfUrl(url);
+    if (!safe || !Array.isArray(frac) || frac.length < 4) return "";
+    const lib = (doc?.defaultView || globalThis).pdfjsLib;
+    if (!lib || typeof lib.getDocument !== "function") return "";
+    let pdf = pinPdfDocs.get(safe);
+    if (!pdf) {
+      const task = lib.getDocument({ url: safe });
+      pdf = task?.promise ? await task.promise : await task;
+      if (!pdf || typeof pdf.getPage !== "function") return "";
+      pinPdfDocs.set(safe, pdf);
+    }
+    const pdfPage = await pdf.getPage(Number(page));
+    if (!pdfPage || typeof pdfPage.getViewport !== "function") return "";
+    const viewport = pdfPage.getViewport({ scale: 2 });
+    const vw = Number(viewport?.width) || 0;
+    const vh = Number(viewport?.height) || 0;
+    if (!(vw > 0) || !(vh > 0)) return "";
+    const left = frac[0] * vw;
+    const top = frac[1] * vh;
+    const width = Math.max(1, frac[2] * vw);
+    const height = Math.max(1, frac[3] * vh);
+    const canvas = doc.createElement("canvas");
+    canvas.width = Math.ceil(width);
+    canvas.height = Math.ceil(height);
+    const ctx = canvas.getContext?.("2d");
+    if (!ctx || typeof pdfPage.render !== "function") return "";
+    const task = pdfPage.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -left, -top] });
+    if (task?.promise) await task.promise;
+    return typeof canvas.toDataURL === "function" ? canvas.toDataURL("image/png") || "" : "";
+  }
+  function openPinOnBoard(plan) {
+    if (!plan) return false;
+    for (const rec of mounts.values()) {
+      let opened = false;
+      try { opened = rec.view?.openPin?.(plan) === true; } catch { opened = false; }
+      if (opened) return true;
+    }
+    return false;
+  }
   function considerRegionButton(button) {
     if (!active() || !button || button.getAttribute?.("data-plexus-owner")) return;
     const uid = regionUidForButton(button, (id) => {
@@ -2314,6 +2384,46 @@ export async function installPlexusDiagram({
     try { text = host.blockString?.(uid) || ""; } catch { return; }
     const region = parseRegion(text);
     if (!region || region.owner !== "plexus-diagram" || region.supported !== true) return;
+    if (region.kind === "pdf") {
+      if (settings[SETTING_IDS.regionsInline] === false) return;
+      region.uid = uid;
+      let pdfText = "";
+      try { pdfText = host.blockString?.(region.drawingUid) || ""; } catch { pdfText = ""; }
+      const handle = mountPdfPin({
+        doc,
+        button,
+        region: { ...region, url: pinPdfUrl(pdfMacroUrl(pdfText)) },
+        loadCrop: loadPinCrop,
+        surrounding: "",
+        boardsOf: async (pinUid) => {
+          if (!pinUid || typeof host.q !== "function") return [];
+          let rows = [];
+          try { rows = host.q(PIN_BOARDS_QUERY, pinUid) || []; } catch { rows = []; }
+          return boardsFromRefs(rows).map((row) => ({ ...row, title: firstLine(row.string) || row.uid }));
+        },
+        writeText: (value) => {
+          const clip = doc?.defaultView?.navigator?.clipboard;
+          if (typeof clip?.writeText === "function") return clip.writeText(value);
+          return undefined;
+        },
+        onOpen: ({ mode, region: pin, board }) => {
+          const plan = pinOpenPlan(pin);
+          if (mode === "sidebar") {
+            try { host.openInSidebar?.(plan?.pdfUid || pin?.drawingUid); } catch { /* host */ }
+            return;
+          }
+          if (mode === "board" && board?.uid) {
+            const page = host.blockPageUid?.(board.uid);
+            if (page) { try { host.openPage?.(page); } catch { /* host */ } }
+            return;
+          }
+          if (plan) openPinOnBoard(plan);
+        },
+        root: doc.body,
+      });
+      if (handle.el) regionCrops.set(button, () => { handle.destroy(); regionCrops.delete(button); });
+      return;
+    }
     if (region.kind !== "img" && region.kind !== "view") return;
     // Off leaves Roam's button and skips the crop. View maps stay.
     if (region.kind !== "view" && settings[SETTING_IDS.regionsInline] === false) return;
@@ -2511,10 +2621,12 @@ export async function installPlexusDiagram({
       return;
     }
     if (!doc) return;
+    tryPendingPin();
     for (const diagram of doc.querySelectorAll(".rm-diagram")) consider(diagram);
   }
 
   function onHash(event) {
+    rememberPin(hashFromUrl(event?.newURL) || event?.newURL || "");
     const target = pxdTarget(hashFromUrl(event?.newURL));
     if (target?.cardUid && showStash.peek(target.cardUid)) applyShowAll();
     onNavigate();
@@ -3339,6 +3451,7 @@ export async function installPlexusDiagram({
   // Registered last so it runs first on dispose: nothing may mount while teardown is in flight.
   lifecycle.add(() => { stopped = true; viewportWatch?.disconnect(); });
   syncSpeedLog();
+  rememberPin(win.location?.hash || doc?.location?.hash || "");
   reconcile();
 }
 

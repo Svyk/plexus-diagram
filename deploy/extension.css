@@ -6473,6 +6473,66 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   outline: none;
 }
 
+.page > .pxd-parsed-layer > .pxd-parsed-copy-more {
+  position: absolute;
+  box-sizing: border-box;
+  width: 14px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--pxd-muted, #6b7280);
+  background: var(--pxd-surface);
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.page > .pxd-parsed-layer > .pxd-parsed-copy-more.pxd-parsed-copy--show,
+.page > .pxd-parsed-layer > .pxd-parsed-copy-more:focus-visible {
+  opacity: 0.85;
+  pointer-events: auto;
+}
+
+.page > .pxd-parsed-layer > .pxd-parsed-copy.pxd-parsed-copy--fail {
+  opacity: 1;
+  color: var(--pxd-muted, #6b7280);
+  border-color: var(--pxd-border, #d1d5db);
+}
+
+.pxd-copy-menu {
+  z-index: 40;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--pxd-surface, #fff);
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.pxd-copy-menu__item {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 4px 8px;
+  text-align: left;
+  color: var(--pxd-fg, inherit);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.bp3-dark .pxd-copy-menu,
+.pxd-root--dark .pxd-copy-menu {
+  background: var(--pxd-surface, #111);
+  border-color: #fff;
+  box-shadow: none;
+}
+
 /* Click-to-place: the preview is solid and the board shows where it lands. */
 .pxd-root .pxd-item.pxd-ghost.pxd-ghost--place {
   opacity: 1;
@@ -7958,6 +8018,118 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-paper {
 .pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header,
 .pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header {
   visibility: hidden;
+}
+
+/* PDF pin in the outline. Border carries the shape. No tinted fill, no shadow. */
+
+.pxd-pdf-pin {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+  margin: 2px 0;
+  padding: 4px;
+  vertical-align: top;
+  background: transparent;
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 4px;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.pxd-pdf-pin__frame {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  overflow: hidden;
+  background: transparent;
+  border: 1px solid var(--pxd-border, #d1d5db);
+  box-shadow: none;
+}
+
+.pxd-pdf-pin__img {
+  position: absolute;
+  max-width: none;
+}
+
+.pxd-pdf-pin__quote,
+.pxd-pin-pop__quote,
+.pxd-pin-pop__around {
+  margin: 0;
+  color: var(--pxd-fg, inherit);
+  font: inherit;
+}
+
+.pxd-pdf-pin__page {
+  color: var(--pxd-muted, #6b7280);
+  font-size: 12px;
+}
+
+.pxd-pin-pop {
+  position: fixed;
+  z-index: 40;
+  width: min(320px, calc(100vw - 24px));
+  padding: 8px;
+  background: var(--pxd-surface, #fff);
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.pxd-pin-pop__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.pxd-pin-pop__act,
+.pxd-pin-pop__board {
+  margin: 0;
+  padding: 2px 6px;
+  color: var(--pxd-fg, inherit);
+  background: transparent;
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.pxd-pin-pop__boards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.pxd-read__pin-flash {
+  position: absolute;
+  box-sizing: border-box;
+  background: transparent;
+  border: 2px solid var(--pxd-accent, #2563eb);
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.bp3-dark .pxd-pdf-pin,
+.bp3-dark .pxd-pdf-pin__frame,
+.bp3-dark .pxd-pin-pop,
+.pxd-root--dark .pxd-pdf-pin,
+.pxd-root--dark .pxd-pdf-pin__frame,
+.pxd-root--dark .pxd-pin-pop {
+  background: transparent;
+  border-color: #fff;
+  box-shadow: none;
+}
+
+.bp3-dark .pxd-pin-pop,
+.pxd-root--dark .pxd-pin-pop {
+  background: var(--pxd-surface, #111);
+}
+
+.bp3-dark .pxd-read__pin-flash,
+.pxd-root--dark .pxd-read__pin-flash {
+  border-color: #fff;
+  background: transparent;
 }
 
 /* NP-4. Properties panel, custom style keys, cross texture, animated dashes.

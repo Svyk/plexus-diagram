@@ -14,6 +14,7 @@ Companion to `docs/api-plexus-2.0.md`. One section per module: exports, inputs, 
 | `status-tags.js` | `src/model/status-tags.js` |
 | `detect.js` | `src/model/detect.js` |
 | source chip | `src/model/source-chip.js` |
+| PDF pin | `src/model/pdf-pin.js`. The outline pin is `src/view/pdf-pin-view.js` |
 | timeline | `src/model/timeline.js` and `src/view/timeline.js` |
 | landmarks | `src/model/landmarks.js` |
 | journal | `src/model/journal.js` |
@@ -26,7 +27,7 @@ None of these modules write `:diagram/*` or `BT_attr*`. Open, pan, zoom, and sel
 
 ## src/model/regions.js
 
-Image regions and saved views share the Roam Plexus macro. `img` and `view` are the kinds this extension supports. The other kinds parse so a shared ref is recognised, and `supported` stays false.
+Image regions, saved views, and PDF source pins share the Roam Plexus macro. `img`, `view`, and `pdf` are the kinds this extension supports. The other kinds parse so a shared ref is recognised, and `supported` stays false.
 
 | Export | Contract |
 |---|---|
@@ -35,8 +36,8 @@ Image regions and saved views share the Roam Plexus macro. `img` and `view` are 
 | `isContainerString(s)` | In: any value. Out: true only when a string trims to `CONTAINER_STRING`. Fail: non-strings are false. |
 | `normalizeFrac(f)` | In: `[rx, ry, rw, rh]`, or `{rx, ry, rw, rh}`, or `{x, y, w, h}`. Out: four numbers in 0..1, rounded to 4 decimals, or null. Fail: a short list, a non-finite number, or a width or height of 0 or less is null. Values outside 0..1 are clamped. |
 | `normalizeView(v)` | In: a four-number world rect. Out: one decimal place, or null. Fail: not a four-array, a non-finite number, or a width or height of 0 or less is null. Not clamped. |
-| `parseRegion(blockString)` | In: a block string. Out: null when the value is not a string, lacks `plexus-region`, or the head does not match. Otherwise `{kind, drawingUid, caption, extra, supported, owner}` plus the kind's fields. Fail: a bad token, a missing field, or an unknown kind returns the object with `supported: false` and `error`. `img` needs `d` and `f`. `view` needs `d` and `v`. `ids` on a view is at most 24. Roam Plexus kinds (`area`, `rect`, `group`, `frame`, `cframe`, `poly`, `imgrect`, `imgpoly`) set `owner` to `roam-plexus` and stay unsupported. A bad `pad` is outside 0..200. |
-| `serializeRegion(region)` | In: a region object. Out: `{{[[plexus-region]]: k=… d=…}}` plus a single-spaced caption. Fail: throws `TypeError` (`serializeRegion: …`) for a missing region, an unknown kind, a bad id, a bad rect, too many ids, a bad pad, or a bad extra token. |
+| `parseRegion(blockString)` | In: a block string. Out: null when the value is not a string, lacks `plexus-region`, or the head does not match. Otherwise `{kind, drawingUid, caption, extra, supported, owner}` plus the kind's fields. Fail: a bad token, a missing field, or an unknown kind returns the object with `supported: false` and `error`. `img` needs `d` and `f`. `view` needs `d` and `v`. `pdf` needs `d`, `pg` (a positive integer), and `f`. A missing `pg`, a `pg` below 1, or a bad `f` returns `supported: false`. `ids` on a view is at most 24. Roam Plexus kinds (`area`, `rect`, `group`, `frame`, `cframe`, `poly`, `imgrect`, `imgpoly`) set `owner` to `roam-plexus` and stay unsupported. A bad `pad` is outside 0..200. |
+| `serializeRegion(region)` | In: a region object. Out: `{{[[plexus-region]]: k=… d=…}}` plus a single-spaced caption. `k=pdf` emits `pg` then `f`. Fail: throws `TypeError` (`serializeRegion: …`) for a missing region, an unknown kind, a bad id, a bad rect, a bad `pg`, too many ids, a bad pad, or a bad extra token. |
 | `fracRectOf(region)` | Out: `{rx, ry, rw, rh}` from `region.f`, or null when `f` is not four numbers. |
 | `viewRectOf(region)` | Out: `{x, y, w, h}` from `region.v`, or null when `v` is not four numbers. |
 | `isStructuralString(s)` | Out: true for the container string, or when `parseRegion` returns an object (including an unsupported region). Fail: other values are false. |
@@ -333,3 +334,51 @@ Additions since the 2.0 contract. These are methods and a field on the object `c
 | `blockExists(uid)` | In: a block uid. Out: false for a non-string or an empty uid. Otherwise one fresh `[:block/uid]` pull, not the board cache. True when that pull returns a block. False when the pull returns nothing. Fail: a pull that throws returns true, so a failed read is not treated as a missing block. No write. |
 | `lastAction` | Field `stats.lastAction`, absent until a `group` closes with at least one write or an adopted create. Then `{label, writes}`. `label` is the string passed to `group`, or the write kinds in that chunk joined with `+`. `writes` is the chunk's write count. A nested `group` call does not close the outer group. Groups still hold at most 45 writes. This field is not itself a write. |
 | `cardStats(targets, opts)` | In: `{kind, uid or title}` targets and `{boardUid}`. Out: a Map. Keys are `uid:<uid>` or `page:<title>`. Values are `{refs, boards, open, done}`. A fresh cache hit returns copies and does not pull. Otherwise one `data.pull_many` of `STATS_PULL` for the resolved entity ids. Fail: a throw from `pull_many`, or a result the host cannot use, falls back to four collection-bound Datalog queries (refs, boards, open TODOs, done TODOs). A missing `pull_many` uses `data.pull` once per entity. A throw from that pull uses the same four queries. Neither pull function uses the four queries. An empty target list, or targets that do not resolve, returns the zeroed Map and does not pull. No write. |
+
+## src/model/pdf-pin.js
+
+A `k=pdf` pin is a region under the PDF block. This module plans the string, the dedupe, the clipboard payload, and the write count. It does not touch the graph. Nothing is fetched when the module loads.
+
+| Export | Contract |
+|---|---|
+| `PIN_IOU` | 0.9. Two pins on the same page at or above this overlap are the same pin. |
+| `CAPTION_CAP` | 300. Text and figure captions are cut here. |
+| `WITH_SOURCE_KEY` | `plexus-diagram:with-source`. Values are `"1"` and `"0"`. Default is off. Not a settings row. |
+| `CARD_JSON_MIME` | `application/x-plexus-card+json`. |
+| `PIN_BOARDS_QUERY` | Datalog that finds boards whose card cites the pin through `:block/refs`. |
+| `COPY_MENU` | Frozen list. Ids `copy`, `plain`, `card`, `source`, `crop`, `link`. Labels Copy, Copy as plain text, Copy as card, Copy with source, Copy crop as image, Copy link. Shortcuts ⌘C, ⇧⌘C, ⌥⌘C, ⌥⇧⌘C, then two blanks. |
+| `pageFracFromBbox(bbox, page)` | Out: four fractions in 0..1 from `viewportBox`, or null. Rotation and `page.userSpace` use that same frame. Fail: no box, or a viewport side that is not greater than 0, is null. |
+| `pinCaption(block, doc)` | Text uses `block.text` or `block.latex`, squashed, cut at `CAPTION_CAP`. A table is `Table N · rows×cols, p. P`. `N` is the 1-based index of `type === "table"` in `doc.order`. A figure or formula uses a caption block id, a caption whose `for` is the block, or the caption string. Fail: a missing block is `""`. |
+| `rectIou(a, b)` | Out: intersection over union of two fraction rects (arrays or `{x,y,w,h}` / `{rx,ry,rw,rh}`). Fail: a bad rect, or no overlap, is 0. |
+| `findDuplicatePin(regions, spec, min)` | Out: the first `k=pdf` region with a uid, the same `pg`, and `rectIou` at least `min` (`PIN_IOU` when omitted). Fail: a bad page, a missing frac, or no uid, is null. |
+| `pinSpecFromBlock(block, doc, pdfUid)` | Out: `{pdfUid, page, frac, caption}` or null. `page` is the block's 1-based page. Fail: a blank pdf uid, a page below 1, or no frac, is null. |
+| `sourceAttrString(uid)` | Out: `Source:: ((uid))`. Fail: a uid outside `[\w-]{1,32}` is `""`. |
+| `sourcePinOf(children)` | Out: `{uid, string}` for the first child whose string is exactly `Source:: ((uid))`. Reads `string` or `:block/string`. Fail: none is null. |
+| `gestureSource(stored, altKey)` | Out: `stored` when Option is up. The opposite when Option is down. `"1"` and `1` count as on. One call flips once. |
+| `readWithSource(storage)` | Out: true only when `getItem` returns `"1"`. Fail: a throw, or no storage, is false. |
+| `writeWithSource(storage, on)` | Out: the boolean written. Stores `"1"` or `"0"`. Fail: a throw still returns the boolean. |
+| `cardJsonPayload(opts)` | Out: `{markdown, size:{w,h}, kind, source?}`. Size defaults to 280 by 160. `source` is set only for a uid. |
+| `parseCardJson(raw)` | Out: a `cardJsonPayload` when `markdown` is a non-blank string. Fail: bad JSON, a non-object, or a blank markdown, is null. |
+| `pasteCardPlan(data, point)` | Out: `{x, y, w, h, markdown, sourceUid}` at `point`, or 0, 0. Fail: no markdown is null. |
+| `pinDeepLink(opts)` | Out: `#/app/<graph>/page/<pageUid>?pxd-pin=<pinUid>`. Fail: a blank graph, or a uid that fails the uid test, is `""`. |
+| `pxdPinTarget(hash)` | Out: `{pinUid, pageUid, graph}` from `?pxd-pin=`. Fail: no query, or a bad uid, is null. `?pxd=` is not this key. |
+| `pinClickMode(event)` | Out: `sidebar` when Shift is down, else `main` when Meta or Ctrl is down, else `popover`. Shift wins. |
+| `pinOpenPlan(region)` | Out: `{pdfUid, page, frac, pinUid}` for a supported `k=pdf` region. Fail: anything else is null. |
+| `pinnedToast(page)` | Out: `Pinned p. N` for a page at least 1. Otherwise `Pinned`. |
+| `fracStyle(frac)` | Out: `{left, top, width, height}` as percents. Fail: a short list, or a non-finite number, is null. |
+| `surroundingParagraph(doc, block)` | Out: the previous and next text on the same page, with the block, joined by spaces. Fail: no neighbour text is `""`. |
+| `boardsFromRefs(rows)` | Out: `{uid, string}` for parents whose string matches `{{diagram` or `{{[[diagram]]`. Accepts tuples or objects. Repeats are dropped. Fail: a non-diagram row is skipped. |
+| `pinPdfUrl(url)` | Out: the trimmed URL. Fail: a blank URL, or a URL whose path ends in `.enc` (before `?` or `#`), is `""`. `getDocument` is not called. |
+| `pinWriteSteps(opts)` | Out: `{steps, writes, oneTransaction: true}`. `writes` is `steps.length`. With `props` false, card + table + container + pin + attr is 5. `props` true adds one step per card and per table. A reused pin skips container and pin. |
+| `planPinWrites(spec)` | Out: `{uid, reused, creates, containerUid}`. A duplicate returns `reused: true` and no creates. Otherwise a container create (when `containerUid` is blank) then a pin create. The pin string is `serializeRegion`. Fail: a bad spec throws `TypeError`. |
+| `commitPinWrites(io, spec)` | Out: `{uid, writes, reused, containerUid, steps, outside: 0}`. `io.createBlock` runs each create. A reused pin writes 0 and does not call `createBlock`. `io.generateUid` fills a missing pin uid. |
+
+## src/view/pdf-pin-view.js
+
+The outline pin. Hover stays Roam's. A click opens the popover. The crop loads only after the pin intersects the viewport, and never for a `.enc` URL.
+
+| Export | Contract |
+|---|---|
+| `buildPinChip(doc, spec, onOpen)` | Out: `button.pxd-chip.pxd-chip--source` with `data-pin`. Click calls `onOpen(pinUid, event)` and stops the event. Fail: no uid, or a doc that cannot `createElement`, is null. |
+| `openPinPopover(opts)` | Out: `{el, close}`. The dialog shows the crop or `p. N`, the quote, the surrounding paragraph when present, and buttons Open in reader, Sidebar, Boards, Copy ref. Boards lists titles, or `No boards`. Copy ref passes `((uid))`. Fail: no doc or no region returns `{el: null}`. |
+| `mountPdfPin(opts)` | Out: `{el, loads, destroy}`. Hides Roam's region button and paints the quote plus `p. N`. `loadCrop` runs once, only after `IntersectionObserver` reports an intersection, and only when `pinPdfUrl` keeps the URL. A click with no Shift or Meta opens the popover. Shift calls `onOpen` with `sidebar`. Meta or Ctrl calls it with `main`. `destroy` removes the pin and shows the button. Fail: a region that is not `k=pdf`, or a button `claimRegionButton` rejects, returns a noop and does not call `loadCrop`. No observer means no crop. |

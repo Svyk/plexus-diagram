@@ -287,7 +287,7 @@ export function createDragGhost({
 
 // Hands the board one synthetic drop. The target is read once, under the pointer; the drop point is the
 // ghost's top-left so the card lands where the ghost was. `entries` is [[mime, value], …].
-export function dispatchDrop({ doc = globalThis.document, root, pointer, at, entries = [] } = {}) {
+export function dispatchDrop({ doc = globalThis.document, root, pointer, at, entries = [], altKey = false } = {}) {
   const win = doc?.defaultView || globalThis;
   const target = doc?.elementFromPoint?.(num(pointer?.x), num(pointer?.y)) || null;
   if (!target || (root && !root.contains?.(target)) || target.closest?.(".pxd-read")) return false;
@@ -299,14 +299,14 @@ export function dispatchDrop({ doc = globalThis.document, root, pointer, at, ent
     const data = new Transfer();
     for (const [type, value] of entries) data.setData(type, value);
     try { data.effectAllowed = "copy"; } catch { /* read only */ }
-    const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: data };
+    const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, altKey: Boolean(altKey), dataTransfer: data };
     target.dispatchEvent(new Drag("dragover", init));
     target.dispatchEvent(new Drag("drop", init));
     return true;
   }
   const map = new Map(entries);
   const transfer = { types: [...map.keys()], getData: (type) => map.get(type) || "", setData() {} };
-  const plain = { type: "drop", bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer, preventDefault() {}, stopPropagation() {} };
+  const plain = { type: "drop", bubbles: true, cancelable: true, clientX: x, clientY: y, altKey: Boolean(altKey), dataTransfer: transfer, preventDefault() {}, stopPropagation() {} };
   try { target.dispatchEvent(plain); } catch { return false; }
   return true;
 }

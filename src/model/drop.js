@@ -15,6 +15,7 @@ import {
   planFromParse,
 } from "./anydoc-to-parse.js";
 import { sha256Hex } from "./parse-hash.js";
+import { pinSpecFromBlock } from "./pdf-pin.js";
 import { selectBlocks } from "./parse-schema.js";
 import { escapeMarkdownText, flattenLine, linkSafeText, toRoamMarkdown } from "./parse-to-roam-md.js";
 import { pageNoteBlocks } from "./footnotes.js";
@@ -158,6 +159,13 @@ export function planParseInsert(doc, payload) {
   return { action: "card", markdown: toRoamMarkdown(doc, ids, { footnoteFormat: payload?.footnoteFormat }).markdown };
 }
 
+function pinForDrop(doc, payload) {
+  if (!payload?.withSource || !doc) return null;
+  const first = selectBlocks(doc, payload.ids)[0];
+  if (!first) return null;
+  return pinSpecFromBlock(first, doc, payload.pdfBlockUid || payload.pdfUid);
+}
+
 // Missing cache writes nothing and toasts PARSE_MISSING_TOAST. The session methods
 // own the write budget. Returns { ok, uids, ... } for the board to select.
 export async function handleParseDrop({ payload, store, session, point, toast } = {}) {
@@ -184,16 +192,18 @@ export async function handleParseDrop({ payload, store, session, point, toast } 
   const plan = planParseInsert(doc, { ...payload, footnoteFormat: session?.footnoteFormat?.() });
   const x = Number.isFinite(point?.x) ? point.x : 0;
   const y = Number.isFinite(point?.y) ? point.y : 0;
+  const pin = pinForDrop(doc, payload);
+  const cited = pin ? { pin } : {};
   if (plan.action === "table") {
-    const res = await session?.insertParsedTable?.({ x, y, table: plan.table, mode: "auto", notes: pageNoteBlocks(doc, plan.table) });
+    const res = await session?.insertParsedTable?.({ x, y, table: plan.table, mode: "auto", notes: pageNoteBlocks(doc, plan.table), ...cited });
     return { ...(res || { ok: false, reason: "empty" }), uids: res?.uid ? [res.uid] : [] };
   }
   if (plan.action === "sections") {
-    const res = await session?.sendParsedToBoard?.({ x, y, sections: plan.sections });
+    const res = await session?.sendParsedToBoard?.({ x, y, sections: plan.sections, ...cited });
     return { ...(res || { ok: false, reason: "empty" }), uids: Array.isArray(res?.uids) ? res.uids : [] };
   }
   if (plan.action === "card") {
-    const res = await session?.insertParsedCard?.({ x, y, markdown: plan.markdown });
+    const res = await session?.insertParsedCard?.({ x, y, markdown: plan.markdown, ...cited });
     return { ...(res || { ok: false, reason: "empty" }), uids: res?.uid ? [res.uid] : [] };
   }
   return { ok: false, reason: "empty", uids: [] };

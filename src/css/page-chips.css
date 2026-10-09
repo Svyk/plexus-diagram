@@ -154,6 +154,66 @@
   outline: none;
 }
 
+.page > .pxd-parsed-layer > .pxd-parsed-copy-more {
+  position: absolute;
+  box-sizing: border-box;
+  width: 14px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--pxd-muted, #6b7280);
+  background: var(--pxd-surface);
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.page > .pxd-parsed-layer > .pxd-parsed-copy-more.pxd-parsed-copy--show,
+.page > .pxd-parsed-layer > .pxd-parsed-copy-more:focus-visible {
+  opacity: 0.85;
+  pointer-events: auto;
+}
+
+.page > .pxd-parsed-layer > .pxd-parsed-copy.pxd-parsed-copy--fail {
+  opacity: 1;
+  color: var(--pxd-muted, #6b7280);
+  border-color: var(--pxd-border, #d1d5db);
+}
+
+.pxd-copy-menu {
+  z-index: 40;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--pxd-surface, #fff);
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.pxd-copy-menu__item {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 4px 8px;
+  text-align: left;
+  color: var(--pxd-fg, inherit);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.bp3-dark .pxd-copy-menu,
+.pxd-root--dark .pxd-copy-menu {
+  background: var(--pxd-surface, #111);
+  border-color: #fff;
+  box-shadow: none;
+}
+
 /* Click-to-place: the preview is solid and the board shows where it lands. */
 .pxd-root .pxd-item.pxd-ghost.pxd-ghost--place {
   opacity: 1;

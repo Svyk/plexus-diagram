@@ -1,5 +1,6 @@
 import { namespaceParent } from "./model/namespace.js";
-import { isContainerString } from "./model/regions.js";
+import { isContainerString, parseRegion } from "./model/regions.js";
+import { planPinWrites, sourceAttrString } from "./model/pdf-pin.js";
 import { backgroundImage, calendarLayout, cardTemplatePlan, zoomThreshold } from "./model/section6.js";
 import { dateSource } from "./model/timeline.js";
 import {
@@ -1264,7 +1265,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     try {
       const res = await grouped(fn);
       if (!res || res.ok === false) return res;
-      return { ...res, writes: host.stats.lastAction?.writes ?? 0 };
+      const writes = Number.isInteger(res.writes) ? res.writes : (host.stats.lastAction?.writes ?? 0);
+      return { ...res, writes };
     } catch (err) {
       handleFailure(err);
       return { ok: false, reason: "write-failed" };
@@ -1316,6 +1318,59 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     }
     return plan;
   };
+
+  // Reads the PDF block's region children. One group: the caller is already inside runParsed.
+  async function writePdfPin(spec) {
+    if (!spec?.pdfUid || !Array.isArray(spec.frac)) return { uid: "", reused: false };
+    let kids = [];
+    try {
+      const raw = host.pullTree?.(spec.pdfUid, 2, 200);
+      const list = raw && typeof raw.then === "function" ? await raw : raw;
+      if (Array.isArray(list)) kids = list;
+    } catch { kids = []; }
+    const container = kids.find((kid) => isContainerString(kid?.string));
+    const regions = [];
+    for (const child of container?.children || []) {
+      const region = parseRegion(child?.string || "");
+      if (!region) continue;
+      if (child?.uid) region.uid = child.uid;
+      regions.push(region);
+    }
+    const plan = planPinWrites({
+      ...spec,
+      regions,
+      containerUid: container?.uid || "",
+      pinUid: host.generateUid(),
+    });
+    if (plan.reused) return { uid: plan.uid, reused: true };
+    let containerUid = container?.uid || "";
+    let pinUid = plan.uid;
+    for (const step of plan.creates) {
+      const parentUid = step.role === "pin" && !step.parentUid ? containerUid : step.parentUid;
+      if (!parentUid) return { uid: "", reused: false };
+      const made = await host.createBlock({
+        parentUid,
+        order: "last",
+        uid: step.uid || undefined,
+        string: step.string,
+        open: step.open,
+        props: step.props,
+      });
+      const id = typeof made === "string" ? made : made?.uid || step.uid || "";
+      if (step.role === "container") containerUid = id;
+      if (step.role === "pin") pinUid = id || pinUid;
+    }
+    return { uid: pinUid, reused: false };
+  }
+  async function citePin(parentUid, pin) {
+    if (!parentUid || !pin) return "";
+    const made = await writePdfPin(pin);
+    if (!made.uid) return "";
+    const string = sourceAttrString(made.uid);
+    if (!string) return made.uid;
+    await host.createBlock({ parentUid, order: "last", string });
+    return made.uid;
+  }
 
   // ---- session object ----
   const session = {
@@ -1461,7 +1516,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     // Next sibling of the PDF block. No props. Chunks of 400 bullets, 10 chunks max.
     // A PDF that is already a board card gets a note card beside it instead: a sibling
     // under the board would show up as a stray card.
-    insertParsedBelow({ pdfUid, markdown, blockEstimate } = {}) {
+    insertParsedBelow({ pdfUid, markdown, blockEstimate, pin } = {}) {
       if (destroyed || gone) return Promise.resolve(undefined);
       const plan = chunkParsedMarkdown(markdown, blockEstimate);
       if (!plan.ok) {
@@ -1496,6 +1551,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           const uid = roots[0];
           if (!uid) return { ok: false, reason: "empty" };
           await host.updateProps(uid, plexus);
+          if (pin) await citePin(uid, pin);
           repull();
           return { ok: true, uid, uids: [uid], path: "card" };
         });
@@ -1516,13 +1572,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           uids.push(...roots);
           order = advanceOrder(order, roots.length);
         }
+        if (pin && uids[0]) await citePin(uids[0], pin);
         repull();
         return { ok: true, uids };
       });
     },
 
     // One note card. Children stay in the block tree; kids stays off unless the layout says so.
-    insertParsedCard({ x, y, w, h, markdown } = {}) {
+    insertParsedCard({ x, y, w, h, markdown, pin, sourceUid } = {}) {
       if (!board || destroyed || gone) return Promise.resolve(undefined);
       const nested = nestMarkdownUnderFirst(markdown);
       if (!String(nested).trim() || bulletCount(nested) === 0) return Promise.resolve({ ok: false, reason: "empty" });
@@ -1540,6 +1597,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const uid = roots[0];
         if (!uid) return { ok: false, reason: "empty" };
         await host.updateProps(uid, plexus);
+        if (pin) await citePin(uid, pin);
+        else if (sourceUid && sourceAttrString(sourceUid)) await host.createBlock({ parentUid: uid, order: "last", string: sourceAttrString(sourceUid) });
         repull();
         return { ok: true, uid };
       });
@@ -1548,7 +1607,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     // auto = grid when Roam Grid can createTableFromModel, otherwise native.
     // grid falls back to native when the API is missing. flat repeats covered cells.
     // notes: the parse's footnote blocks on the table's page ([{ id, mark, text }]) for cell marks.
-    insertParsedTable({ x, y, table, mode = "auto", notes } = {}) {
+    insertParsedTable({ x, y, table, mode = "auto", notes, pin } = {}) {
       if (!board || destroyed || gone) return Promise.resolve(undefined);
       const asked = mode === "grid" || mode === "native" || mode === "flat" ? mode : "auto";
       const format = footnoteFormatNow();
@@ -1588,13 +1647,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         }
         if (!uid) return { ok: false, reason: "empty" };
         await host.updateProps(uid, plexus);
+        if (pin) await citePin(uid, pin);
         repull();
         return { ok: true, uid, path, w: size.w, h: size.h };
       });
     },
 
     // One card per section, stacked down from the drop point. Cap keeps one undo step.
-    sendParsedToBoard({ x, y, sections } = {}) {
+    sendParsedToBoard({ x, y, sections, pin } = {}) {
       if (!board || destroyed || gone) return Promise.resolve(undefined);
       const list = Array.isArray(sections) ? sections.filter((section) => section && String(section.markdown ?? "").trim()) : [];
       if (!list.length) return Promise.resolve({ ok: true, uids: [], writes: 0 });
@@ -1629,8 +1689,20 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           orderCursor = advanceOrder(order, roots.length);
           orderParent = parent;
         }
+        if (pin && uids[0]) await citePin(uids[0], pin);
         repull();
         return { ok: true, uids };
+      });
+    },
+
+    // Copy with source. The pin (and its container, when missing) is the whole undo step.
+    ensurePdfPin(spec) {
+      if (destroyed || gone) return Promise.resolve({ ok: false, reason: "gone" });
+      return runParsed(async () => {
+        const before = Number(host.stats?.writes) || 0;
+        const made = await writePdfPin(spec);
+        const writes = Math.max(0, (Number(host.stats?.writes) || 0) - before);
+        return { ok: Boolean(made.uid), uid: made.uid || "", reused: Boolean(made.reused), writes };
       });
     },
 

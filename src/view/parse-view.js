@@ -3,7 +3,16 @@
 // edits write nothing to the graph. Insert actions call session.insertParsed*
 // when that other unit is present.
 
+import { graphFromDeepLink } from "../model/deeplink.js";
 import { optionsHash, sha256Hex } from "../model/parse-hash.js";
+import {
+  CARD_JSON_MIME,
+  cardJsonPayload,
+  pinDeepLink,
+  pinSpecFromBlock,
+  pinnedToast,
+  sourceAttrString,
+} from "../model/pdf-pin.js";
 import { assembleDocument, parsePageGeometry } from "../model/parse/index.js";
 import { resplitColumns } from "../model/parse/resplit.js";
 import { selectBlocks, tableGrid } from "../model/parse-schema.js";
@@ -137,8 +146,10 @@ export function copyText(doc, ids, { shift = false } = {}) {
   return { format: "md", text: toMarkdown(doc, ids) };
 }
 
-export function dragPayload({ sha256 = "", engine = "builtin", optsHash = "", ids = [], pdfUid = "", kind = "blocks" } = {}) {
-  return { sha256, engine, optsHash, ids: ids.slice(), pdfUid, kind };
+export function dragPayload({ sha256 = "", engine = "builtin", optsHash = "", ids = [], pdfUid = "", pdfBlockUid = "", kind = "blocks" } = {}) {
+  const body = { sha256, engine, optsHash, ids: ids.slice(), pdfUid, kind };
+  if (pdfBlockUid) body.pdfBlockUid = pdfBlockUid;
+  return body;
 }
 
 export function syncDecision({ locked = false, wheeling = false, now = 0, last = null, throttle = SYNC_MS } = {}) {
@@ -303,6 +314,7 @@ export function createParseView({
   host = null,
   storage = null,
   pdfUid = "",
+  pdfBlockUid = null,
   url = "",
   getPdf = null,
   loadGeometry = null,
@@ -552,6 +564,94 @@ export function createParseView({
   }
 
   let pageChips = null;
+  function pdfBlockUidNow() {
+    let id = "";
+    try { id = typeof pdfBlockUid === "function" ? pdfBlockUid() : pdfBlockUid; } catch { id = ""; }
+    return typeof id === "string" && id ? id : currentUid;
+  }
+  function pinForBlock(block) {
+    return block && parsed ? pinSpecFromBlock(block, parsed, pdfBlockUidNow()) : null;
+  }
+  function plainOf(block) {
+    const shifted = copyText(parsed, [block.id], { shift: true });
+    if (shifted.format === "csv") return shifted.text;
+    return String(shifted.text || "")
+      .replace(/\[\^[^\]]*\]/g, "")
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/\$\$/g, "")
+      .trim();
+  }
+  async function writeTyped(parts) {
+    const win = doc.defaultView || globalThis;
+    const Item = win.ClipboardItem || globalThis.ClipboardItem;
+    const clip = win.navigator?.clipboard;
+    const BlobCtor = win.Blob || globalThis.Blob;
+    if (typeof Item === "function" && typeof clip?.write === "function" && typeof BlobCtor === "function") {
+      const bag = {};
+      for (const [type, value] of Object.entries(parts)) {
+        if (value == null) continue;
+        bag[type] = typeof BlobCtor === "function" && value instanceof BlobCtor
+          ? value
+          : new BlobCtor([typeof value === "string" ? value : JSON.stringify(value)], { type });
+      }
+      if (Object.keys(bag).length) {
+        await clip.write([new Item(bag)]);
+        return true;
+      }
+    }
+    const text = parts["text/plain"];
+    if (typeof text !== "string") return false;
+    await writeTextOnly(text);
+    return true;
+  }
+  async function ensurePin(block) {
+    const spec = pinForBlock(block);
+    if (!spec || typeof session?.ensurePdfPin !== "function") return "";
+    const made = await session.ensurePdfPin(spec);
+    return made?.uid || "";
+  }
+  async function handleCopyMenu(id, block) {
+    if (!parsed || !block) return false;
+    try {
+      if (id === "copy") return copyBlock(block);
+      if (id === "plain") {
+        await writeTextOnly(plainOf(block));
+        return true;
+      }
+      if (id === "card" || id === "source") {
+        const markdown = isImageCopy(block) ? captionText(block) : toMarkdown(parsed, [block.id]);
+        let source = "";
+        if (id === "source") {
+          source = await ensurePin(block);
+          if (!source) return false;
+          try { onToast?.(pinnedToast(block.page)); } catch { /* host */ }
+        }
+        const json = cardJsonPayload({ markdown, size: { w: 280, h: 160 }, kind: block.type || "card", source });
+        const text = source ? `${markdown}\n${sourceAttrString(source)}` : markdown;
+        return writeTyped({ "text/plain": text, [CARD_JSON_MIME]: JSON.stringify(json) });
+      }
+      if (id === "crop") {
+        const src = await cropAt2x(block);
+        const blob = src ? dataUrlToBlob(src) : null;
+        if (!blob) return false;
+        return writeTyped({ "image/png": blob });
+      }
+      if (id === "link") {
+        const uid = await ensurePin(block);
+        if (!uid) return false;
+        const pageUid = host?.blockPageUid?.(pdfBlockUidNow()) || "";
+        const graph = graphFromDeepLink(doc.defaultView?.location?.hash || globalThis.location?.hash || "");
+        const link = pinDeepLink({ graph, pageUid, pinUid: uid });
+        if (!link) return false;
+        await writeTextOnly(link);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
   const chipsOn = () => pageChips || (pageChips = createPageChips({
     doc,
     host: readerEl || null,
@@ -564,7 +664,19 @@ export function createParseView({
       if (!parsed || !block) return;
       return copyBlock(block).then((ok) => { try { onToast?.(ok ? "Copied" : "Could not copy"); } catch { /* host */ } return ok; });
     },
+    copyMenu: (id, block) => handleCopyMenu(id, block),
     run: (act, item) => {
+      if (act === "pin-ref") {
+        const block = item?.block || parsed?.blocks?.[item?.ids?.[0]];
+        void ensurePin(block).then(async (uid) => {
+          if (!uid) { try { onToast?.("Could not copy"); } catch { /* host */ } return; }
+          try {
+            await writeTextOnly(`((${uid}))`);
+            onToast?.("Copied");
+          } catch { try { onToast?.("Could not copy"); } catch { /* host */ } }
+        });
+        return;
+      }
       const go = (extra = {}) => runChipAction({ act, ...item, ...extra }, {
         session,
         payload: (ids) => payload(ids.map((id) => parsed?.blocks?.[id]).filter(Boolean)),
@@ -628,6 +740,7 @@ export function createParseView({
       optsHash: parsed?.optsHash || "",
       ids: list.map((block) => block.id),
       pdfUid: currentUid,
+      pdfBlockUid: pdfBlockUidNow(),
       kind: kindOf(list),
     });
   }
@@ -1008,10 +1121,10 @@ export function createParseView({
     let moved = false;
     let ghost = null;
     const win = doc.defaultView || doc;
-    const drop = (x, y, at) => {
+    const drop = (x, y, at, altKey = false) => {
       const json = JSON.stringify(payload(blocks));
       if (!doc.elementFromPoint) return;
-      dispatchDrop({ doc, root: ghostRoot, pointer: { x, y }, at, entries: [[PARSE_MIME, json], ["text/plain", json]] });
+      dispatchDrop({ doc, root: ghostRoot, pointer: { x, y }, at, altKey: Boolean(altKey), entries: [[PARSE_MIME, json], ["text/plain", json]] });
     };
     const finish = () => {
       win?.removeEventListener?.("pointermove", move, true);
@@ -1062,7 +1175,7 @@ export function createParseView({
       const y = Number(ev.clientY) || 0;
       ghost?.move(x, y);
       const at = ghost && ghost.zone() === "board" ? ghost.dropPoint() : { x, y };
-      drop(x, y, at);
+      drop(x, y, at, ev.altKey);
       ghost?.land();
       ghost = null;
     };

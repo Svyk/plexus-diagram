@@ -20,6 +20,8 @@ import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, noteActionPlan } from "../model/highlight.js";
 import { cleanPdfTitle, coverModel, embedSplit, parsedDocTitle, parsedTitleLines, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
+import { gestureSource, pasteCardPlan, pinOpenPlan, readWithSource } from "../model/pdf-pin.js";
+import { parseRegion } from "../model/regions.js";
 import { isMetaBanner } from "../model/title-cap.js";
 import { createSharpStore } from "./sharp-store.js";
 import { COVER_MAX_W, WARM_AFTER_MS, coverKey, coverState, densityTicks, sharpCoverPlan, warmPlan } from "../model/pdf-cover.js";
@@ -1509,6 +1511,7 @@ function buildBoardView(onFail, {
     () => root.remove(),
   );
   let itemsR = null;
+  let openPinFromChip = () => false;
   let notePdfMeta = () => "";
   const parsedTitles = new Map();
   // Page-1 lines behind a parsed title, for the metadata banner check (url → { pageTitle, lines }).
@@ -1576,6 +1579,7 @@ function buildBoardView(onFail, {
     },
     pdfCardPage: (uid) => pdfFlip?.pageOf?.(uid) || 1,
     onHighlightHover: (uid, on) => { try { flashPaneMarks(uid, on); } catch { /* pane */ } },
+    onPinOpen: (pinUid, event) => openPinFromChip(pinUid, event),
     onReadPane: (detail) => {
       if (!detail?.open) {
         readPane?.close?.({ notify: false });
@@ -1618,6 +1622,43 @@ function buildBoardView(onFail, {
     readPane = makeReadPane();
     try { readPane?.layout?.(size.width); } catch { /* first layout on the next resize */ }
     return readPane;
+  };
+  function openPin(detail) {
+    const plan = detail && typeof detail === "object" ? detail : null;
+    const pdfUid = plan?.pdfUid || "";
+    const b = board();
+    if (disposed || !b || !pdfUid) return false;
+    let item = null;
+    for (const it of b.items.values()) {
+      if (!it || it.kind !== "pdf") continue;
+      const blockUid = it.target?.kind === "block" ? it.target.uid : it.uid;
+      if (it.uid === pdfUid || blockUid === pdfUid || it.target?.uid === pdfUid) { item = it; break; }
+    }
+    if (!item) return false;
+    const blockUid = item.target?.kind === "block" ? item.target.uid : item.uid;
+    ensureReadPane().open?.({
+      cardUid: item.uid,
+      blockUid,
+      page: plan.page,
+      frac: plan.frac,
+      source: item.string || "",
+      title: pdfDisplayTitle(item),
+    });
+    return true;
+  }
+  openPinFromChip = (pinUid, event) => {
+    let text = "";
+    try { text = host?.blockString?.(pinUid) || ""; } catch { text = ""; }
+    const region = parseRegion(text);
+    if (!region) return false;
+    region.uid = pinUid;
+    const plan = pinOpenPlan(region);
+    if (!plan) return false;
+    if (event?.shiftKey) {
+      try { host?.openInSidebar?.(plan.pdfUid); } catch { /* host */ }
+      return true;
+    }
+    return openPin(plan);
   };
   let parseActionsObj = null;
   const revealParsed = (uids) => {
@@ -6551,8 +6592,9 @@ function buildBoardView(onFail, {
       return;
     }
     if (list.length === 1 && list[0].parse) {
+      const payload = { ...list[0].parse, withSource: gestureSource(readWithSource(storage), Boolean(event.altKey)) };
       void handleParseDrop({
-        payload: list[0].parse,
+        payload,
         store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
         session,
         point: p,
@@ -6875,6 +6917,18 @@ function buildBoardView(onFail, {
       pastePlexus: (data, opts) => pastePlexus(data, opts),
       pasteText: (entries) => pasteEntries(entries),
       pasteImages: (files) => { void pasteImages(files); },
+      pasteCardJson: (data) => {
+        const plan = pasteCardPlan(data, pastePoint());
+        if (!plan) return;
+        Promise.resolve(session.insertParsedCard?.({
+          x: plan.x,
+          y: plan.y,
+          w: plan.w,
+          h: plan.h,
+          markdown: plan.markdown,
+          ...(plan.sourceUid ? { sourceUid: plan.sourceUid } : {}),
+        })).then(afterCreate("Pasted")).catch(() => {});
+      },
       editorPaste,
     },
   });
@@ -7667,6 +7721,7 @@ function buildBoardView(onFail, {
       const world = at || { x: 80, y: 80 };
       return session.createDrawing?.({ x: world.x - d.w / 2, y: world.y - d.h / 2 });
     },
+    openPin,
     async copyOutline() {
       const b = board();
       if (!b) return "";

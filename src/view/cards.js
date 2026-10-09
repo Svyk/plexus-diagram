@@ -32,6 +32,8 @@ import { paintPdfChipStrip } from "./pdf-chip-strip.js";
 import { guardCallback } from "../guard.js";
 import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
 import { authorBlockUid, buildSourceChip, chipWithAuthor, sourceChipFor, sourceChipKey } from "../model/source-chip.js";
+import { sourcePinOf } from "../model/pdf-pin.js";
+import { buildPinChip } from "./pdf-pin-view.js";
 import { isRoamTableString } from "../model/roam-table.js";
 import { mountRoamTable } from "./table-card.js";
 import { findCell, forgetTableCells, measureCell, revealCell, watchTable } from "./table-cells.js";
@@ -683,6 +685,7 @@ export function createItemRenderer({
   onHighlightHover = null,
   onHighlightMenu = null,
   readingUid = null,
+  onPinOpen = null,
   settings: speedSettings = null,
   interopOn = null,
 } = {}) {
@@ -765,6 +768,15 @@ export function createItemRenderer({
     pageKids.set(pageUid, kids);
     return kids;
   };
+  const paintPinChip = (body, children) => {
+    if (!body || body.querySelector?.(".pxd-chip--source")) return;
+    const pin = sourcePinOf(children);
+    if (!pin) return;
+    const node = buildPinChip(doc, { pinUid: pin.uid }, (uid, event) => {
+      try { onPinOpen?.(uid, event); } catch { /* host */ }
+    });
+    if (node) body.append(node);
+  };
   const sourceChipOf = (item) => {
     if (item?.kind !== "block") return null;
     const ref = item.target?.uid;
@@ -805,6 +817,8 @@ export function createItemRenderer({
       if (sig) key += `\u0001${sig}`;
     }
     if ((item?.kind === "drawing-ref" || item?.kind === "region-ref") && !interopAllowed()) key += "\u0001interop-off";
+    const pin = sourcePinOf(item?.content);
+    if (pin) key += `\u0001pin:${pin.uid}`;
     return key;
   };
   const shells = new Map(); // uid → rec
@@ -3675,6 +3689,8 @@ export function createItemRenderer({
         mountTableHost(body, ref, budget);
         rec.kidCount = 0;
         rec.kidRows = 0;
+        const kids = host?.pullTree?.(ref, 1, 40);
+        if (Array.isArray(kids)) paintPinChip(body, kids);
       } else {
         rec.blockStringNode = null;
         if (typeof refString === "string" && refString.trim()) {
@@ -3708,6 +3724,7 @@ export function createItemRenderer({
               }
             }
           }
+          paintPinChip(body, blocks);
         };
         if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {});
         else apply(tree, true);
@@ -3721,6 +3738,7 @@ export function createItemRenderer({
       armLayoutWatch(rec);
       rec.kidCount = 0;
       rec.kidRows = 0;
+      paintPinChip(body, item.content);
     } else {
       if (item.string?.trim()) budget.roots.push(taskBlockOn(item) ? mountTaskLine(body, item) : renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
       rec.kidCount = visibleKids(item.content).length;
@@ -3729,6 +3747,7 @@ export function createItemRenderer({
       if (!item.string?.trim() && !(item.content || []).length) {
         el("div", "pxd-item__placeholder", body).textContent = "Empty card";
       }
+      paintPinChip(body, item.content);
     }
     rec.roots = budget.roots;
     rec.contentKey = contentKeyFor(item, rec.stickyLive);

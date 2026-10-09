@@ -4,6 +4,7 @@
 // "Show parsed" adds a persistent soft box per parsed block with a copy icon at its left edge;
 // boxes are pointer-events none, only the icons take clicks (one delegated listener).
 
+import { gestureSource, readWithSource, writeWithSource, COPY_MENU } from "../model/pdf-pin.js";
 import { bboxToPagePercent, bboxToPageRect } from "./parse-overlay.js";
 
 const HIDE_MS = 220;
@@ -17,6 +18,12 @@ export const SHOW_PARSED_KEY = "pxd-show-parsed";
 export const BESIDE_LABEL = "Insert beside PDF";
 // Chip acts that put something on the board: they place by click unless extra.beside is set.
 export const PLACE_ACTS = Object.freeze(["table", "card", "board"]);
+const SOURCE_MENU = Object.freeze([
+  { label: "With source", act: "with-source", check: true },
+  { label: "Copy ref to source", act: "pin-ref" },
+]);
+const withSourceMenu = (menu) => [...(menu || []), ...SOURCE_MENU];
+const LONG_PRESS_MS = 500;
 
 // On unless this device turned it off.
 export function readShowParsed(storage) {
@@ -169,31 +176,31 @@ export function chipPlan(block, doc, { latexReady = false } = {}) {
       type: "table",
       label: `Table${size} · Roam Grid`,
       primary: { act: "table", ids, extra: { mode: "grid", kind: "table" } },
-      menu: [
+      menu: withSourceMenu([
         { label: "Native", act: "table", ids, extra: { mode: "native", kind: "table" } },
         { label: "Flat", act: "table", ids, extra: { mode: "flat", kind: "table" } },
         { label: "Copy as Markdown", act: "copy", ids },
         { label: "Card", act: "card", ids },
         { label: BESIDE_LABEL, act: "table", ids, extra: { mode: "grid", kind: "table", beside: true } },
-      ],
+      ]),
     };
   }
   if (block.type === "figure") {
-    return { type: "figure", label: "Figure · Card", primary: { act: "card", ids }, menu: [{ label: BESIDE_LABEL, act: "card", ids, extra: { beside: true } }] };
+    return { type: "figure", label: "Figure · Card", primary: { act: "card", ids }, menu: withSourceMenu([{ label: BESIDE_LABEL, act: "card", ids, extra: { beside: true } }]) };
   }
   if (block.type === "formula") {
     return {
       type: "formula",
       label: "Card",
       primary: { act: "card", ids },
-      menu: [...(latexReady ? [{ label: "LaTeX", act: "latex", ids }] : []), { label: BESIDE_LABEL, act: "card", ids, extra: { beside: true } }],
+      menu: withSourceMenu([...(latexReady ? [{ label: "LaTeX", act: "latex", ids }] : []), { label: BESIDE_LABEL, act: "card", ids, extra: { beside: true } }]),
     };
   }
   if (block.type === "heading") {
     const section = sectionIds(doc, block.id);
-    return { type: "heading", label: "Insert section", primary: { act: "board", ids: section }, menu: [{ label: BESIDE_LABEL, act: "board", ids: section, extra: { beside: true } }] };
+    return { type: "heading", label: "Insert section", primary: { act: "board", ids: section }, menu: withSourceMenu([{ label: BESIDE_LABEL, act: "board", ids: section, extra: { beside: true } }]) };
   }
-  return { type: "list", label: "Insert list", primary: { act: "below", ids }, menu: [] };
+  return { type: "list", label: "Insert list", primary: { act: "below", ids }, menu: withSourceMenu([]) };
 }
 
 export function createPageChips({
@@ -206,6 +213,7 @@ export function createPageChips({
   isLatexReady = null,
   getSelection = null,
   copy = null,
+  copyMenu = null,
   storage = null,
   boxCap = 4000,
 } = {}) {
@@ -296,8 +304,9 @@ export function createPageChips({
       if (page && r) from = { left: page.left + r.left, top: page.top + r.top, width: r.width, height: r.height };
     } catch { from = null; }
     const pointer = { x: Number(event?.clientX) || 0, y: Number(event?.clientY) || 0 };
+    const withSource = gestureSource(readWithSource(storage), Boolean(event?.altKey));
     hideAll();
-    try { run?.(item.act, { ids: item.ids, extra: item.extra || null, block, pointer, from }); } catch { /* host */ }
+    try { run?.(item.act, { ids: item.ids, extra: item.extra || null, block, pointer, from, withSource }); } catch { /* host */ }
   };
 
   const hot = (id, on) => {
@@ -309,16 +318,70 @@ export function createPageChips({
 
   // The copy button of the box under the pointer is the only one drawn; the rest stay clear of the page.
   let copyShown = null;
+  let copyMenuEl = null;
+  let skipClick = false;
+  let pressTimer = null;
+  let pressStart = null;
   const showCopy = (id) => {
     if (id === copyShown) return;
     for (const entry of layers.values()) {
-      if (copyShown) entry.icons.get(copyShown)?.classList.remove("pxd-parsed-copy--show");
-      if (id) entry.icons.get(id)?.classList.add("pxd-parsed-copy--show");
+      if (copyShown) {
+        entry.icons.get(copyShown)?.classList.remove("pxd-parsed-copy--show");
+        entry.mores?.get(copyShown)?.classList.remove("pxd-parsed-copy--show");
+      }
+      if (id) {
+        entry.icons.get(id)?.classList.add("pxd-parsed-copy--show");
+        entry.mores?.get(id)?.classList.add("pxd-parsed-copy--show");
+      }
     }
     copyShown = id;
   };
+  const closeCopyMenu = () => {
+    try { copyMenuEl?.remove(); } catch { /* gone */ }
+    copyMenuEl = null;
+  };
+  const blockFromId = (id) => getParsed?.()?.blocks?.[id] || null;
+  const finishCopy = (icon, ok) => { if (ok === false) markFail(icon); else markCopied(icon); };
+  const runCopyMenu = (id, block, icon) => {
+    let result;
+    try { result = copyMenu?.(id, block); } catch { finishCopy(icon, false); return; }
+    if (result && typeof result.then === "function") {
+      void result.then((ok) => finishCopy(icon, ok), () => finishCopy(icon, false));
+      return;
+    }
+    finishCopy(icon, result === false ? false : true);
+  };
+  const openCopyMenu = (block, anchor) => {
+    closeCopyMenu();
+    if (!block) return;
+    const menu = doc.createElement("div");
+    menu.className = "pxd-copy-menu";
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("data-block", block.id);
+    for (const item of COPY_MENU) {
+      const entry = button("pxd-copy-menu__item", item.keys ? `${item.label}  ${item.keys}` : item.label);
+      entry.setAttribute("role", "menuitem");
+      entry.setAttribute("data-copy", item.id);
+      on(entry, "click", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        closeCopyMenu();
+        const icon = anchor?.closest?.(".pxd-parsed-copy") || anchor;
+        runCopyMenu(item.id, block, icon);
+      });
+      menu.append(entry);
+    }
+    const rect = anchor?.getBoundingClientRect?.();
+    menu.style.position = "fixed";
+    menu.style.left = `${rect?.left || 0}px`;
+    menu.style.top = `${(rect?.bottom || 0) + 4}px`;
+    (doc.body || doc.documentElement)?.append?.(menu);
+    copyMenuEl = menu;
+  };
   const updateCopy = (event, parsed) => {
     if (!showParsed || layers.size === 0) { showCopy(null); return; }
+    const held = event.target?.closest?.(".pxd-parsed-copy, .pxd-parsed-copy-more, .pxd-copy-menu");
+    if (held) return;
     const n = pageNumberOf(event.target, parsed);
     const entry = n ? layers.get(n) : null;
     const el = entry?.el;
@@ -336,6 +399,7 @@ export function createPageChips({
     layer.setAttribute("aria-hidden", "false");
     const boxes = new Map();
     const icons = new Map();
+    const mores = new Map();
     const entries = [];
     let budget = boxCap - boxCount;
     for (const id of parsed?.order || []) {
@@ -380,9 +444,21 @@ export function createPageChips({
         : `calc(${plan.left}% - ${BOX_PAD}px - ${COPY_GAP + COPY_ICON}px)`;
       icon.style.top = `calc(${plan.top}% - ${BOX_PAD}px + ${nudge - 1}px)`;
       icon.textContent = "⧉";
-      layer.append(box, icon);
+      const more = doc.createElement("button");
+      more.type = "button";
+      more.className = "pxd-parsed-copy-more";
+      more.setAttribute("data-block", plan.id);
+      more.setAttribute("aria-label", "More copy options");
+      more.setAttribute("aria-haspopup", "menu");
+      more.textContent = "▾";
+      more.style.left = spot.inside
+        ? `calc(${plan.left}% - ${BOX_PAD}px + ${COPY_INSIDE + COPY_ICON}px)`
+        : `calc(${plan.left}% - ${BOX_PAD}px - ${COPY_GAP}px)`;
+      more.style.top = icon.style.top;
+      layer.append(box, icon, more);
       boxes.set(plan.id, box);
       icons.set(plan.id, icon);
+      mores.set(plan.id, more);
       rects.push({ id: plan.id, left: plan.left, top: plan.top, width: plan.width, height: plan.height, dy: nudge });
       boxCount += 1;
     }
@@ -394,7 +470,7 @@ export function createPageChips({
       observer = new MO(() => queueSync());
       try { observer.observe(el, { childList: true }); } catch { observer = null; }
     }
-    return { layer, boxes, icons, rects, observer, el };
+    return { layer, boxes, icons, mores, rects, observer, el };
   };
 
   const dropLayers = () => {
@@ -473,6 +549,19 @@ export function createPageChips({
       icon.classList.remove("pxd-parsed-copy--copied");
     }, COPIED_MS);
   };
+  const markFail = (icon) => {
+    if (!icon?.setAttribute) return;
+    if (!icon.__label) icon.__label = icon.getAttribute("aria-label");
+    icon.setAttribute("aria-label", "Could not copy");
+    icon.classList.add("pxd-parsed-copy--fail");
+    icon.classList.remove("pxd-parsed-copy--copied");
+    if (icon.__copiedTimer != null) (win()?.clearTimeout || clearTimeout)(icon.__copiedTimer);
+    icon.__copiedTimer = later(() => {
+      icon.__copiedTimer = null;
+      icon.setAttribute("aria-label", icon.__label);
+      icon.classList.remove("pxd-parsed-copy--fail");
+    }, COPIED_MS);
+  };
   const onIconDown = (event) => { if (onIcon(event)) event.preventDefault?.(); };
   const onIconClick = (event) => {
     const icon = onIcon(event);
@@ -483,11 +572,62 @@ export function createPageChips({
     if (!block) return;
     let result;
     try { result = copy?.(block); } catch { /* host */ }
+    if (skipClick) { skipClick = false; return; }
     if (result && typeof result.then === "function") {
-      void result.then((ok) => { if (ok !== false) markCopied(icon); }, () => {});
+      void result.then((ok) => finishCopy(icon, ok), () => finishCopy(icon, false));
       return;
     }
-    markCopied(icon);
+    finishCopy(icon, result === false ? false : true);
+  };
+  const onMoreClick = (event) => {
+    const more = event.target?.closest?.(".pxd-parsed-copy-more");
+    if (!more) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    openCopyMenu(blockFromId(more.getAttribute("data-block")), more);
+  };
+  const onCopyContext = (event) => {
+    const node = event.target?.closest?.(".pxd-parsed-copy, .pxd-parsed-copy-more");
+    if (!node) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    openCopyMenu(blockFromId(node.getAttribute("data-block")), node);
+  };
+  const clearPress = () => {
+    if (pressTimer != null) (win()?.clearTimeout || clearTimeout)(pressTimer);
+    pressTimer = null;
+    pressStart = null;
+  };
+  const onCopyDown = (event) => {
+    const icon = event.target?.closest?.(".pxd-parsed-copy");
+    if (!icon || event.button != null && event.button !== 0) return;
+    pressStart = { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0, icon };
+    pressTimer = later(() => {
+      pressTimer = null;
+      skipClick = true;
+      openCopyMenu(blockFromId(icon.getAttribute("data-block")), icon);
+    }, LONG_PRESS_MS);
+  };
+  const onCopyMove = (event) => {
+    if (!pressStart) return;
+    const dx = Math.abs((Number(event.clientX) || 0) - pressStart.x);
+    const dy = Math.abs((Number(event.clientY) || 0) - pressStart.y);
+    if (dx + dy > 4) clearPress();
+  };
+  const onCopyUp = () => { if (pressTimer != null) clearPress(); };
+  const onCopyKey = (event) => {
+    if (!copyShown && !copyMenuEl) return;
+    const tag = String(event.target?.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || event.target?.isContentEditable) return;
+    if (!(event.metaKey || event.ctrlKey) || String(event.key || "").toLowerCase() !== "c") return;
+    const id = event.altKey && event.shiftKey ? "source" : event.altKey ? "card" : event.shiftKey ? "plain" : "copy";
+    const use = blockFromId(copyShown) || blockFromId(copyMenuEl?.getAttribute?.("data-block"));
+    if (!use) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    let icon = null;
+    for (const entry of layers.values()) icon = entry.icons.get(use.id) || icon;
+    runCopyMenu(id, use, icon);
   };
 
   const show = (block, el, parsed) => {
@@ -531,11 +671,21 @@ export function createPageChips({
       menu.hidden = true;
       for (const item of plan.menu) {
         const entry = button("pxd-page-chip__item", item.label);
-        entry.setAttribute("role", "menuitem");
+        entry.setAttribute("role", item.check ? "menuitemcheckbox" : "menuitem");
         entry.setAttribute("data-act", item.act);
+        if (item.check) entry.setAttribute("aria-checked", readWithSource(storage) ? "true" : "false");
         if (item.extra?.mode) entry.setAttribute("data-mode", item.extra.mode);
         if (item.extra?.beside) entry.setAttribute("data-beside", "true");
-        on(entry, "click", (event) => { event.stopPropagation?.(); fire(item, block, event, el); });
+        on(entry, "click", (event) => {
+          event.stopPropagation?.();
+          event.preventDefault?.();
+          if (item.check) {
+            const next = writeWithSource(storage, !readWithSource(storage));
+            entry.setAttribute("aria-checked", next ? "true" : "false");
+            return;
+          }
+          fire(item, block, event, el);
+        });
         menu.append(entry);
       }
       on(caret, "click", (event) => {
@@ -645,6 +795,12 @@ export function createPageChips({
   on(target, "pointerdown", onIconDown, true);
   on(target, "mousedown", onIconDown, true);
   on(target, "click", onIconClick, true);
+  on(target, "click", onMoreClick, true);
+  on(target, "contextmenu", onCopyContext, true);
+  on(target, "pointerdown", onCopyDown, true);
+  on(target, "pointermove", onCopyMove, true);
+  on(target, "pointerup", onCopyUp, true);
+  on(win(), "keydown", onCopyKey, true);
   on(target, "scroll", queueSync, true);
   if (showParsed) queueSync();
 
@@ -672,6 +828,8 @@ export function createPageChips({
     boxCount: () => boxCount,
     dispose() {
       disposed = true;
+      closeCopyMenu();
+      clearPress();
       hideAll();
       clearDots();
       dropLayers();
@@ -683,8 +841,9 @@ export function createPageChips({
 
 // Maps a chip action onto the session/actions object. Returns false when nothing was called.
 // client: the placed ghost's top-left in client px (click-to-place); the insert lands there.
-export function runChipAction({ act, ids, extra, block, client }, { session, payload, copy, latex } = {}) {
+export function runChipAction({ act, ids, extra, block, client, withSource }, { session, payload, copy, latex } = {}) {
   const blocks = ids || [];
+  if (act === "with-source" || act === "pin-ref") return false;
   if (act === "copy") { copy?.(blocks); return true; }
   if (act === "latex") { latex?.(block); return true; }
   const name = act === "table" ? "insertParsedTable"
@@ -694,7 +853,8 @@ export function runChipAction({ act, ids, extra, block, client }, { session, pay
   const fn = name ? session?.[name] : null;
   if (typeof fn !== "function") return false;
   const body = payload(blocks);
-  const merged = extra ? { ...body, ...extra } : body;
+  const merged = extra ? { ...body, ...extra } : { ...body };
+  if (withSource) merged.withSource = true;
   fn(client && Number.isFinite(client.x) && Number.isFinite(client.y) ? { ...merged, client: { x: client.x, y: client.y } } : merged);
   return true;
 }

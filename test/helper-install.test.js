@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { access, chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -120,13 +120,26 @@ test("a verified release installs the rust helper, a second run is safe, and uni
     assert.match(plist, /RunAtLoad/);
     const again = run(dir, [], { env });
     assert.equal(again.status, 0, again.stderr + again.stdout);
+    const beforeUnload = await readFile(dir.log, "utf8");
+    assert.match(beforeUnload, /bootout/);
     const removed = run(dir, ["--uninstall"], { env });
     assert.equal(removed.status, 0, removed.stderr + removed.stdout);
+    assert.match(removed.stdout, /left running/);
     assert.match(removed.stdout, /Removed/);
+    assert.equal(await readFile(dir.log, "utf8"), beforeUnload);
     await assert.rejects(access(path.join(dir.agents, "com.plexus.parse-helper.plist")));
     await assert.rejects(access(installed));
-    const log = await readFile(dir.log, "utf8");
-    assert.match(log, /bootout/);
+
+    const loginAgents = path.join(dir.home, "Library", "LaunchAgents");
+    await mkdir(loginAgents, { recursive: true });
+    await writeFile(dir.log, "");
+    const login = run(dir, [], { env: { ...env, PLEXUS_LAUNCH_AGENTS_DIR: loginAgents } });
+    assert.equal(login.status, 0, login.stderr + login.stdout);
+    await writeFile(dir.log, "");
+    const loginRemoved = run(dir, ["--uninstall"], { env: { ...env, PLEXUS_LAUNCH_AGENTS_DIR: loginAgents } });
+    assert.equal(loginRemoved.status, 0, loginRemoved.stderr + loginRemoved.stdout);
+    assert.match(await readFile(dir.log, "utf8"), /bootout/);
+    await assert.rejects(access(path.join(loginAgents, "com.plexus.parse-helper.plist")));
   } finally {
     await rm(dir.root, { recursive: true, force: true });
   }
@@ -151,7 +164,12 @@ test("a taken port is refused unless --replace, and a bad checksum installs noth
 
     const replaced = run(dir, ["--replace"], { env });
     assert.equal(replaced.status, 0, replaced.stderr + replaced.stdout);
-    assert.match(await readFile(dir.log, "utf8"), /bootout/);
+    const replacedLog = await readFile(dir.log, "utf8");
+    assert.match(replacedLog, /bootout/);
+    const unloaded = run(dir, ["--uninstall"], { env });
+    assert.equal(unloaded.status, 0, unloaded.stderr + unloaded.stdout);
+    assert.match(unloaded.stdout, /left running/);
+    assert.equal(await readFile(dir.log, "utf8"), replacedLog);
 
     const fresh = await layout();
     try {

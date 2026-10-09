@@ -202,9 +202,17 @@ EOF
 
 start_agent() {
   uid=$(id -u)
-  bootout_agent
+  # Bootout is by label, so it stops whatever is logged in under com.plexus.parse-helper,
+  # including a helper on another port. Only a reinstall of this binary, or --replace, may do that.
+  if [ "$REPLACING" = 1 ]; then
+    bootout_agent
+  fi
   if ! "$LAUNCHCTL" bootstrap "gui/${uid}" "$PLIST"; then
-    "$LAUNCHCTL" kickstart -k "gui/${uid}/${LABEL}"
+    if [ "$REPLACING" = 1 ]; then
+      "$LAUNCHCTL" kickstart -k "gui/${uid}/${LABEL}" || fail "could not start ${LABEL}. See ${LOG}"
+    else
+      fail "LaunchAgent ${LABEL} is already loaded. Nothing was stopped. Re-run with --replace to switch the login helper. To try a copy without touching it, set PLEXUS_LAUNCHCTL to a stub and PLEXUS_LAUNCH_AGENTS_DIR to a temporary directory."
+    fi
   fi
 }
 
@@ -216,8 +224,12 @@ install_rust() {
   command -v curl >/dev/null 2>&1 || fail "curl is required"
   command -v tar >/dev/null 2>&1 || fail "tar is required"
   command -v shasum >/dev/null 2>&1 || fail "shasum is required"
+  REPLACING=0
+  if plist_is_ours || [ "$REPLACE" = 1 ]; then
+    REPLACING=1
+  fi
   if port_open; then
-    if plist_is_ours || [ "$REPLACE" = 1 ]; then
+    if [ "$REPLACING" = 1 ]; then
       say "Replacing the helper on ${URL}..."
       bootout_agent
     else
@@ -262,16 +274,23 @@ install_rust() {
 
 uninstall_helper() {
   say "Removing the local helper..."
-  bootout_agent
+  # A temporary agents directory is a side-by-side check. Bootout would stop the
+  # logged-in helper even when its plist lives somewhere else, and uv would
+  # remove the Python tool from the real home.
+  if [ "$AGENTS" = "$HOME/Library/LaunchAgents" ]; then
+    bootout_agent
+    if command -v uv >/dev/null 2>&1; then
+      uv tool uninstall plexus-parse-helper >/dev/null 2>&1 || true
+    fi
+  else
+    say "The login helper was left running. Removed only the plist under ${AGENTS}."
+  fi
   if [ -f "$PLIST" ]; then
     rm -f "$PLIST"
   fi
   if [ -d "$BIN_DIR" ]; then
     rm -f "${BIN_DIR}/plexus-parse-helper-rs" "${BIN_DIR}/libpdfium.dylib"
     rmdir "$BIN_DIR" 2>/dev/null || true
-  fi
-  if command -v uv >/dev/null 2>&1; then
-    uv tool uninstall plexus-parse-helper >/dev/null 2>&1 || true
   fi
   say "Removed. The token file, if you had one, was left in place."
 }

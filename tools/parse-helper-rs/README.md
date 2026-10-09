@@ -100,17 +100,18 @@ Tag `helper-rs-v*` (for example `helper-rs-v0.1.0`). That tag, and a manual run 
 
 The release job writes `SHA256SUMS` (sha256sum, two spaces, the file name) and uploads the three files to that GitHub release. A manual run uploads only when its `tag` input is an existing `helper-rs-v*` tag (`gh release create --verify-tag` does not create a tag).
 
-Install on a Mac, without touching a helper already on 48765:
+Check the install on a Mac without touching a helper already on 48765. `launchctl bootout` is by label, so a real `launchctl` and the real LaunchAgents directory would stop that helper. Point both at a stub and a temporary directory, and use another port:
 
 ```sh
 PLEXUS_HELPER_PREFIX=/tmp/plexus-parse-helper \
 PLEXUS_HELPER_PORT=48767 \
 PLEXUS_LAUNCH_AGENTS_DIR=/tmp/plexus-parse-helper-agents \
+PLEXUS_LAUNCHCTL=/usr/bin/true \
 PLEXUS_HELPER_LOG=/tmp/plexus-parse-helper.log \
 sh tools/parse-helper/install.sh
 ```
 
-The script downloads the archive for `uname -m` from `github.com/Svyk/plexus-diagram` releases, checks `SHA256SUMS`, copies the binary and `libpdfium.dylib` into the prefix `bin` directory, writes LaunchAgent `com.plexus.parse-helper` with `--port` and `--pdfium`, and opens pairing. curl does not set Gatekeeper quarantine. A browser download needs `xattr -d com.apple.quarantine` on the binary (the installer clears the attribute when it is present).
+`/usr/bin/true` stands in for `launchctl`, so nothing is loaded or stopped. The script downloads the archive for `uname -m` from `github.com/Svyk/plexus-diagram` releases, checks `SHA256SUMS`, and copies the binary and `libpdfium.dylib` into the prefix `bin` directory. The plist it writes is `com.plexus.parse-helper` with `--port` and `--pdfium`, under the temporary agents directory. Pairing then runs the binary directly. If the label is already loaded and this is not `--replace`, a real `launchctl` refuses and leaves the logged-in helper running. `--uninstall` bootouts only when the agents directory is `~/Library/LaunchAgents`. curl does not set Gatekeeper quarantine. A browser download needs `xattr -d com.apple.quarantine` on the binary (the installer clears the attribute when it is present).
 
 ## Recommendation
 

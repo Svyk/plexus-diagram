@@ -88,6 +88,7 @@ function run(dir, args, extra = {}) {
     PLEXUS_HELPER_SKIP_WAIT: "1",
     PLEXUS_HELPER_RELEASE_DIR: dir.release,
     PLEXUS_HELPER_ARCH: machineArch(),
+    PLEXUS_HELPER_OS: "Darwin",
     ...extra.env,
   };
   return spawnSync("sh", [script.pathname, ...args], { env, encoding: "utf8" });

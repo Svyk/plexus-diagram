@@ -457,6 +457,21 @@ function numsNear(fig, lines, bodySize) {
   return out;
 }
 
+// One caption under both boxes, and that caption names a single figure.
+function sharedCaptionBelow(a, b, lines) {
+  const bottom = Math.max(a.y1, b.y1);
+  for (const line of lines) {
+    if (!lineIsCaption(line.text)) continue;
+    if (line.y0 < bottom - 4 || line.y0 > bottom + 48) continue;
+    const oxA = Math.min(line.x1, a.x1) - Math.max(line.x0, a.x0);
+    const oxB = Math.min(line.x1, b.x1) - Math.max(line.x0, b.x0);
+    if (oxA <= 8 || oxB <= 8) continue;
+    const nums = new Set([...String(line.text).matchAll(/fig(?:ure)?\.?\s*(\d+)/gi)].map((m) => m[1]));
+    if (nums.size === 1) return true;
+  }
+  return false;
+}
+
 function captionBetween(a, b, lines) {
   const top = a.y1 <= b.y0 ? a : b.y1 <= a.y0 ? b : null;
   if (!top) return false;
@@ -530,7 +545,9 @@ function canUnion(a, b, lines, bodySize, pageW, pageH) {
   const na = numsNear(a, lines, bodySize);
   const nb = numsNear(b, lines, bodySize);
   // Different numbers block the union even when a close pair also sees its neighbour's number.
-  if (na.size && nb.size && !(na.size === nb.size && [...na].every((n) => nb.has(n)))) return false;
+  // A single caption under both (Figure 5's two plots) still joins them.
+  const differentNums = na.size && nb.size && !(na.size === nb.size && [...na].every((n) => nb.has(n)));
+  if (differentNums && !(sameRow && sharedCaptionBelow(a, b, lines))) return false;
   if (bodyInGap(a, b, lines, bodySize)) return false;
   const area = (Math.max(a.x1, b.x1) - Math.min(a.x0, b.x0)) * (Math.max(a.y1, b.y1) - Math.min(a.y0, b.y0));
   if (!a.pageImage && !b.pageImage && area >= 0.68 * pageW * pageH) return false;

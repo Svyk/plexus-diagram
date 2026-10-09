@@ -121,6 +121,38 @@ test("a short legend beside the art joins the box and a body line does not", () 
   assert.equal(body.some((w) => used.has(w)), false);
 });
 
+test("two plots under one caption are one figure; two captions stay two figures", () => {
+  const plots = [
+    { x0: 136, y0: 311, x1: 300, y1: 450 },
+    { x0: 312, y0: 311, x1: 483, y1: 450 },
+  ];
+  const above = [
+    word("Figure", 108, 220, 150, 232, 10), word("3:", 154, 220, 174, 232, 10), word("Transfer", 180, 220, 230, 232, 10),
+    word("Figure", 330, 220, 372, 232, 10), word("4:", 376, 220, 396, 232, 10), word("Linear", 400, 220, 440, 232, 10),
+  ];
+  let x = 108;
+  const cap5 = "Figure 5: Performance versus pre-training compute".split(" ").map((t) => {
+    const w = word(t, x, 470, x + t.length * 5.2, 482, 10);
+    x += t.length * 5.2 + 3.5;
+    return w;
+  });
+  const one = findFigures({ graphics: { images: plots, shapes: [], boxes: [], rules: [] }, words: [...above, ...cap5], bodySize: 10, pageW: W, pageH: H });
+  assert.equal(one.figures.length, 1, "Figure 5's two plots share one caption");
+  assert.ok(one.figures[0].bbox[0] <= 140 && one.figures[0].bbox[2] >= 480);
+  const side = [
+    { x0: 120, y0: 80, x1: 290, y1: 200 },
+    { x0: 310, y0: 84, x1: 490, y1: 200 },
+  ];
+  let sx = 108;
+  const cap34 = "Figure 3: Transfer to ImageNet. While Figure 4: Linear few-shot evaluation".split(" ").map((t) => {
+    const w = word(t, sx, 214, sx + t.length * 4.6, 226, 10);
+    sx += t.length * 4.6 + 3;
+    return w;
+  });
+  const two = findFigures({ graphics: { images: side, shapes: [], boxes: [], rules: [] }, words: cap34, bodySize: 10, pageW: W, pageH: H });
+  assert.equal(two.figures.length, 2, "Figure 3 and Figure 4 keep their own boxes");
+});
+
 test("a shared axis title under two charts does not pull one box across the other", () => {
   const images = [
     { x0: 120, y0: 300, x1: 300, y1: 440 },

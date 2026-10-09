@@ -133,6 +133,39 @@ function sameBaseline(a, b) {
   return Math.abs(a.base - b.base) <= 0.3 * Math.max(a.size, b.size);
 }
 
+// Big initials and the smaller capitals of the same word share a baseline (ratio about 0.8).
+// pdf.js emits them as two size classes, so a word like "TRANSFORMERS" or "16X16" is split
+// across two rows. They are one line. A second line half a line below is not this case.
+function mergeSmallCapRows(rows) {
+  const dead = new Set();
+  const changes = (a, b) => {
+    const mark = [];
+    for (const p of a.pieces) if (!p.space) mark.push({ x: p.x0, k: 0 });
+    for (const p of b.pieces) if (!p.space) mark.push({ x: p.x0, k: 1 });
+    mark.sort((p, q) => p.x - q.x);
+    let n = 0;
+    for (let i = 1; i < mark.length; i++) if (mark[i].k !== mark[i - 1].k) n++;
+    return n;
+  };
+  const initialTouches = (big, small) => big.pieces.some((p) => !p.space && /^[A-Za-z]{1,3}$/.test(p.text || "")
+    && small.pieces.some((q) => !q.space && (Math.abs(q.x0 - p.x1) <= 2.5 || Math.abs(q.x1 - p.x0) <= 2.5)));
+  for (const a of rows) {
+    if (dead.has(a)) continue;
+    for (const b of rows) {
+      if (a === b || dead.has(b) || dead.has(a)) continue;
+      const big = a.size >= b.size ? a : b;
+      const small = big === a ? b : a;
+      const ratio = small.size / big.size;
+      if (ratio < 0.7 || ratio > 0.86) continue;
+      if (Math.abs(small.base - big.base) > 1) continue;
+      if (changes(big, small) < 2 && !initialTouches(big, small)) continue;
+      big.pieces.push(...small.pieces);
+      dead.add(small);
+    }
+  }
+  return rows.filter((r) => !dead.has(r));
+}
+
 // Group pieces into baseline rows, split rows at wide gaps, merge glyph runs into words.
 export function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGap = 2 } = {}) {
   const pieces = [];
@@ -156,6 +189,9 @@ export function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, 
     row.pieces.push(p);
     if (!p.space && p.size > row.size) row.size = p.size;
   }
+  const sized = mergeSmallCapRows(rows);
+  rows.length = 0;
+  rows.push(...sized);
   // Pass 2: small pieces whose baseline is shifted attach to the row they sit beside (super/subscripts).
   const main = [];
   const small = [];
@@ -176,6 +212,8 @@ export function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, 
       if (h === r || h.size * SUP_MAX_RATIO < r.size || r.chars > 24) continue;
       const shift = (h.base - r.base) / h.size;
       if (Math.abs(shift) > 0.7) continue;
+      // A slightly smaller line half a line below is the next line, not a subscript.
+      if (Math.abs(shift) >= 0.45 && r.size > 0.65 * h.size) continue;
       const near = r.x0 >= h.x0 - h.size && r.x0 <= h.x1 + h.size;
       if (!near) continue;
       if (!host || Math.abs(h.base - r.base) < Math.abs(host.base - r.base)) host = h;

@@ -64,7 +64,7 @@ test("the rule: 18+ letters, 3+ pieces, a function word, other pieces 4+ letters
 
 test("revisions moved", () => {
   assert.equal(PARSE_REV, 9);
-  assert.equal(TITLE_REV, 2);
+  assert.equal(TITLE_REV, 3);
 });
 
 test("OCR line pass keeps correct words and still splits a low-confidence run-together pair", () => {

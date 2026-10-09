@@ -7,7 +7,8 @@ import { FIX, parseFile } from "./parse-engine-fixtures.js";
 import { findPageTitle, titleFromBand } from "../src/model/parse/title.js";
 import { inlineUnlinkedRefs, lineTextWithRefs } from "../src/model/parse/blocks.js";
 import { parsedDocTitle } from "../src/model/pdf.js";
-import { isJunkTitleText } from "../src/model/title-cap.js";
+import { isGibberishTitle, isJunkTitleText } from "../src/model/title-cap.js";
+import { buildLines } from "../src/model/parse/lines.js";
 import { toRoamMarkdown } from "../src/model/parse-to-roam-md.js";
 import { planFootnotes } from "../src/model/footnotes.js";
 
@@ -72,6 +73,57 @@ test("note, source and footnote lines are never titles", () => {
   for (const t of ["Notes on the Biology of Listeria", "Sources of Contamination in Powder Lines"]) assert.ok(!isJunkTitleText(t), t);
   const doc = { order: ["b1", "b2"], blocks: { b1: { id: "b1", type: "table", page: 1 }, b2: { id: "b2", type: "para", page: 1, text: "Note: Rates less than 0.01 after rounding are shown as 0.00." } } };
   assert.equal(parsedDocTitle(doc), "");
+});
+
+test("small-caps initials join the smaller capitals on the same baseline", () => {
+  const item = (str, x, y, size, width) => ({ str, transform: [size, 0, 0, size, x, y], width, height: size, fontName: "f1", hasEOL: false });
+  const { lines } = buildLines([
+    item("AN", 10, 90, 17, 22),
+    item("IMAGE", 36, 90, 17, 48),
+    item("IS", 88, 90, 13.8, 16),
+    item("WORTH", 108, 90, 17, 52),
+    item("T", 10, 112, 17, 10),
+    item("RANSFORMERS", 21, 112, 13.8, 100),
+    item("FOR", 130, 112, 13.8, 28),
+    item("I", 166, 112, 17, 8),
+    item("MAGE", 175, 112, 13.8, 36),
+    item("R", 220, 112, 17, 12),
+    item("ECOGNITION", 233, 112, 13.8, 70),
+    item("AT", 308, 112, 13.8, 16),
+    item("S", 330, 112, 17, 10),
+    item("CALE", 341, 112, 13.8, 36),
+  ], { fonts: {} });
+  const texts = lines.map((l) => l.text);
+  assert.ok(texts.some((t) => t.startsWith("AN IMAGE IS WORTH")), texts.join(" | "));
+  assert.ok(texts.some((t) => t.includes("TRANSFORMERS FOR IMAGE RECOGNITION AT SCALE")), texts.join(" | "));
+  assert.equal(texts.some((t) => t === "T" || t === "I R S" || t === "I" || /^RANSFORMERS/.test(t)), false, texts.join(" | "));
+});
+
+test("a barcode band is not a title; the next line is", () => {
+  assert.equal(isGibberishTitle("TOMMAND DULOOMULUI LI TI OTTHON"), true);
+  assert.equal(isGibberishTitle("COHERENT LADAR USING INTRA-PIXEL QUADRATURE DETECTION"), false);
+  assert.equal(isGibberishTitle("AN IMAGE IS WORTH 16X16 WORDS: TRANSFORMERS FOR IMAGE RECOGNITION AT SCALE"), false);
+  assert.equal(isJunkTitleText("(12) United States Patent"), true);
+  assert.equal(isJunkTitleText("(21) Appl. No.: 14/643,719"), true);
+  assert.equal(isJunkTitleText("(52) U.S. Cl."), true);
+  assert.equal(isJunkTitleText("(52 ) U .S . CI."), true);
+  assert.equal(isJunkTitleText("CPC ............ GO2B 27/58"), true);
+  assert.equal(isJunkTitleText("Filed under the sun today"), false);
+  assert.equal(isJunkTitleText("US00000010000000B220180619"), true);
+  const line = (text, size, base, x0 = 40, x1 = 400) => ({
+    text, size, base, x0, x1, bold: false,
+    words: text.split(" ").map((t, i) => ({ text: t, x0: x0 + i * 40, x1: x0 + i * 40 + 30, base, size, sup: false, sub: false })),
+  });
+  const title = findPageTitle([{
+    n: 1,
+    free: [
+      line("TOMMAND DULOOMULUI LI TI OTTHON", 28, 40),
+      line("(12) United States Patent", 18, 80),
+      line("(54) COHERENT LADAR USING INTRA-PIXEL", 15, 120, 70, 280),
+      line("QUADRATURE DETECTION", 13.4, 132, 100, 260),
+    ],
+  }], { bodySize: 11 });
+  assert.equal(title, "COHERENT LADAR USING INTRA-PIXEL QUADRATURE DETECTION");
 });
 
 test("title junk filter: dates, pages, volume lines, URLs, DOIs, banners", () => {

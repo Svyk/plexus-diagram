@@ -51,7 +51,7 @@ function internalGutters(lines, pageW, minLines) {
       if (short && prev && next && next.x0 - prev.x1 >= minGap && next.x0 - prev.x1 <= maxGap && w.x0 - prev.x1 < 12 && next.x0 - w.x1 < 12) continue;
       kept.push(w);
     }
-    let best = null;
+    const cands = [];
     for (let i = 1; i < kept.length; i++) {
       const gap = kept[i].x0 - kept[i - 1].x1;
       if (gap < minGap || gap > maxGap) continue;
@@ -60,9 +60,13 @@ function internalGutters(lines, pageW, minLines) {
       const leftChars = kept.slice(0, i).reduce((n, w) => n + String(w.text || "").length, 0);
       const rightChars = kept.slice(i).reduce((n, w) => n + String(w.text || "").length, 0);
       if (leftChars < 8 || rightChars < 8) continue;
-      if (!best || gap > best.gap) best = { gap, mid, x0: kept[i - 1].x1, x1: kept[i].x0 };
+      cands.push({ gap, mid, x0: kept[i - 1].x1, x1: kept[i].x0 });
     }
-    if (best) hits.push(best);
+    if (!cands.length) continue;
+    cands.sort((a, b) => b.gap - a.gap);
+    // A row of similar holes is a table (us-034's design-effect columns), not one joined pair.
+    if (cands.length > 1 && cands[1].gap >= 0.75 * cands[0].gap) continue;
+    hits.push(cands[0]);
   }
   hits.sort((a, b) => a.mid - b.mid);
   const clusters = [];

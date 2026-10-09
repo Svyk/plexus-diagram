@@ -14,7 +14,7 @@ import { detectFormulas } from "./formulas.js";
 import { FOOTNOTE_MARK_RE, groupParagraphs, inlineUnlinkedRefs, joinLines, spansOf } from "./blocks.js";
 import { boxOfUnits, crossesGutter, detectColumns, orderUnits, ruleCuts, splitAtGutters } from "./xycut.js";
 import { repairOcrTable } from "./ocr-fix.js";
-import { capTitle, isCutPrefix, isJunkTitleText, isMetaBanner } from "../title-cap.js";
+import { capTitle, isCutPrefix, isGibberishTitle, isJunkTitleText, isMetaBanner } from "../title-cap.js";
 import { cleanPdfTitle } from "../pdf.js";
 
 export const SCHEMA = "pxd-parse/1";
@@ -526,9 +526,10 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
   // page 1 (or 2) that is not furniture; else the first level-1 heading.
   let title = info && typeof info.Title === "string" ? cleanPdfTitle(info.Title) || null : null;
   const runningTexts = new Set(furniture.removed.filter((r) => r.reason !== "page-number").map((r) => normalizeFurniture(r.text)));
-  if (title && (runningTexts.has(normalizeFurniture(title)) || isJunkTitleText(title))) title = null;
+  if (title && (runningTexts.has(normalizeFurniture(title)) || isJunkTitleText(title) || isGibberishTitle(title))) title = null;
   if (title && pageTitle && isMetaBanner(title, { pageTitle, lines: titleEvidenceLines(pageRecords, furniture.removed) })) title = null;
-  const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1) && !isJunkTitleText(h.text)) || headings.find((h) => h.level === 1 && !isJunkTitleText(h.text));
+  const titleHeading = (h) => h && h.type === "heading" && !isJunkTitleText(h.text) && !isGibberishTitle(h.text);
+  const h1 = headings.find((h) => titleHeading(h) && h.level === 1 && h.page === (firstPage ? firstPage.n : 1)) || headings.find((h) => titleHeading(h) && h.level === 1);
   if (!title) title = pageTitle || (h1 ? h1.text : null);
   else if (h1 && isCutPrefix(title, h1.text)) title = h1.text;
   if (title) title = capTitle(title);

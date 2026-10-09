@@ -470,7 +470,8 @@ test("the pin popover quotes the caption and loads a crop only after it is on sc
     assert.equal(loads.length, 0);
     assert.equal(handle.loads(), 0);
     assert.equal(button.style.display, "none");
-    assert.equal(handle.el.querySelector(".pxd-pdf-pin__quote").textContent, "Osmotic water flow");
+    assert.equal(handle.el.querySelector(".pxd-pdf-pin__quote"), null);
+    assert.equal(handle.el.textContent.includes("Osmotic water flow"), false);
     assert.equal(handle.el.querySelector(".pxd-pdf-pin__page").textContent, "p. 6");
     handle.el.dispatchEvent({ type: "mouseenter" });
     assert.equal(doc.querySelector(".pxd-pin-pop"), null);

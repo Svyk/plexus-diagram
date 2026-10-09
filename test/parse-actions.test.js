@@ -115,7 +115,25 @@ test("insertParsedCard uploads a cached figure crop at insert time", async () =>
   assert.equal(uploaded.length, 1);
   assert.equal(uploaded[0].name, "figure-p4.png");
   assert.equal(uploaded[0].type, "image/png");
-  assert.match(calls[0][1].markdown, /!\[A figure\]\(https:\/\/x\/f\.png\)/);
+  assert.match(calls[0][1].markdown, /!\[Figure \(p\. 4\)\]\(https:\/\/x\/f\.png\)/);
+});
+
+test("insertParsedCard uses the linked caption as the image alt, not the caption block id", async () => {
+  const doc = makeDoc();
+  doc.blocks.c10 = {
+    id: "c10", type: "caption", for: "f1", page: 4,
+    text: "Growth of spores.] The next sentence stays off the card.",
+  };
+  doc.blocks.f1 = { ...doc.blocks.f1, caption: "c10", text: "c10" };
+  doc.order = [...doc.order, "c10"];
+  const { actions, calls, images } = setup({
+    doc,
+    upload: async () => "https://x/f.png",
+  });
+  images.set(imageKey("s", "f1"), PNG);
+  const res = await actions.insertParsedCard({ ...base, ids: ["f1"], kind: "figure" });
+  assert.equal(res.ok, true);
+  assert.equal(calls[0][1].markdown, "- ![Growth of spores.](https://x/f.png)");
 });
 
 test("figure upload failure or missing crop falls back to caption text", async () => {

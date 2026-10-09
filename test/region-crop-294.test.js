@@ -154,7 +154,9 @@ test("REG-4: a file crop uses the frame, and a missing file says image unavailab
     near(parseFloat(frame.style.height), 160);
     near(parseFloat(img.style.left), -256);
     near(parseFloat(img.style.top), -192);
-    assert.equal(handle.el.querySelector(".pxd-region-crop__caption").textContent, "hamstring");
+    assert.equal(handle.el.querySelector(".pxd-region-crop__caption"), null);
+    assert.equal(handle.el.textContent.includes("hamstring"), false);
+    assert.equal(handle.el.querySelector(".pxd-region-crop__img").alt, "");
     handle.destroy();
     again.destroy();
     assert.equal(button.style.display, "");
@@ -168,7 +170,8 @@ test("REG-4: a file crop uses the frame, and a missing file says image unavailab
     stub.document.body.append(empty);
     const missing = mountRegionCrop({ doc: stub.document, button: empty, region, file: null, maxH: 160 });
     assert.equal(missing.el.querySelector(".pxd-region-crop__missing").textContent, "image unavailable");
-    assert.equal(missing.el.querySelector(".pxd-region-crop__caption").textContent, "hamstring");
+    assert.equal(missing.el.querySelector(".pxd-region-crop__caption"), null);
+    assert.equal(missing.el.textContent.includes("hamstring"), false);
     missing.destroy();
   } finally {
     resetCropUrls();

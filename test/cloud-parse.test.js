@@ -970,6 +970,127 @@ test("hybrid figures keep a local match, add a miss, and drop a layout figure on
   assert.equal(bestLocalDoc([{ engine: "builtin", doc: plain, at: 1 }]), plain);
 });
 
+function figurePage(kind, extra = {}) {
+  return { n: 1, w: 600, h: 800, parsed: true, kind, ...extra };
+}
+
+test("a page that ran figure detection keeps local figures and a borrowed caption", () => {
+  const cloud = {
+    schema: "pxd-parse/1", engine: "cloud", pageCount: 2,
+    pages: [{ n: 1, w: 600, h: 800, parsed: true }, { n: 2, w: 600, h: 800, parsed: true }],
+    order: ["p1", "f1", "c1", "f2", "c2", "t1", "f3"],
+    blocks: {
+      p1: { id: "p1", type: "para", page: 1, bbox: [10, 400, 200, 420], text: "Body stays", confidence: 0.9, engine: "cloud" },
+      f1: { id: "f1", type: "figure", page: 1, bbox: [10, 10, 200, 180], caption: "c1", image: { kind: "crop", source: "llamaparse" }, confidence: 0.9, engine: "cloud" },
+      c1: { id: "c1", type: "caption", page: 1, bbox: [10, 180, 200, 200], text: "Fig. 1 from LlamaParse", for: "f1", confidence: 0.9, engine: "cloud" },
+      f2: { id: "f2", type: "figure", page: 1, bbox: [300, 20, 520, 200], caption: "c2", image: { kind: "crop", source: "llamaparse" }, confidence: 0.9, engine: "cloud" },
+      c2: { id: "c2", type: "caption", page: 1, bbox: [300, 200, 520, 220], text: "Not a figure", for: "f2", confidence: 0.9, engine: "cloud" },
+      t1: { id: "t1", type: "table", page: 1, bbox: [40, 500, 400, 700], rows: 1, cols: 1, cells: [{ r: 0, c: 0, rowSpan: 1, colSpan: 1, text: "a" }], confidence: 0.9, engine: "cloud" },
+      f3: { id: "f3", type: "figure", page: 2, bbox: [30, 30, 180, 180], caption: null, image: { kind: "crop", source: "llamaparse" }, confidence: 0.9, engine: "cloud" },
+    },
+  };
+  const local = {
+    schema: "pxd-parse/1", engine: "builtin", pageCount: 2,
+    pages: [figurePage("text"), { n: 2, w: 600, h: 800, parsed: true, kind: "scan" }],
+    order: ["f9", "f8", "c8"],
+    blocks: {
+      f9: { id: "f9", type: "figure", page: 1, bbox: [12, 12, 198, 178], caption: null, image: { kind: "crop", source: "drawing" }, confidence: 0.9, engine: "builtin" },
+      f8: { id: "f8", type: "figure", page: 1, bbox: [20, 240, 140, 360], caption: "c8", image: { kind: "crop", source: "drawing" }, confidence: 0.9, engine: "builtin" },
+      c8: { id: "c8", type: "caption", page: 1, bbox: [20, 360, 160, 380], text: "Fig. 3 missed", for: "f8", confidence: 0.9, engine: "builtin" },
+    },
+  };
+  const merged = mergeCloudFigures(cloud, local);
+  assert.equal(validateParse(merged).ok, true);
+  const figures = merged.order.map((id) => merged.blocks[id]).filter((block) => block.type === "figure");
+  assert.deepEqual(figures.map((block) => block.source).sort(), ["hybrid", "llamaparse", "local"]);
+  const hybrid = figures.find((block) => block.source === "hybrid");
+  assert.deepEqual(hybrid.bbox, [12, 12, 198, 178]);
+  assert.equal(merged.blocks[hybrid.caption].text, "Fig. 1 from LlamaParse");
+  const added = figures.find((block) => block.source === "local");
+  assert.equal(merged.blocks[added.caption].text, "Fig. 3 missed");
+  assert.equal(figures.some((block) => block.page === 1 && block.source === "llamaparse"), false);
+  assert.equal(merged.blocks.c2, undefined);
+  assert.equal(merged.blocks.p1.text, "Body stays");
+  assert.equal(merged.blocks.t1.type, "table");
+  assert.equal(figures.find((block) => block.page === 2).source, "llamaparse");
+
+  const ocrLocal = {
+    ...local,
+    pages: [figurePage("scan", { ocr: true }), { n: 2, w: 600, h: 800, parsed: true, kind: "scan" }],
+    ocr: { pages: [1], choices: [] },
+  };
+  const ocrMerged = mergeCloudFigures(cloud, ocrLocal);
+  const ocrFigs = ocrMerged.order.map((id) => ocrMerged.blocks[id]).filter((block) => block.type === "figure");
+  assert.equal(ocrFigs.some((block) => block.id === "f2"), false);
+  assert.equal(ocrFigs.find((block) => block.page === 2).id, "f3");
+
+  const listedOnly = {
+    ...local,
+    pages: [figurePage("scan"), { n: 2, w: 600, h: 800, parsed: true, kind: "scan" }],
+    ocr: { pages: [1] },
+  };
+  assert.equal(mergeCloudFigures(cloud, listedOnly).blocks.f2, undefined);
+
+  const otherPage = {
+    schema: "pxd-parse/1", engine: "builtin",
+    pages: [{ n: 2, w: 600, h: 800, parsed: true, kind: "scan" }],
+    order: [],
+    blocks: {},
+    ocr: { pages: [1] },
+  };
+  const kept = mergeCloudFigures(cloud, otherPage);
+  assert.equal(kept.blocks.f3.source, "llamaparse");
+  assert.equal(kept.blocks.f2.type, "figure");
+
+  const stamped = {
+    ...local,
+    pages: [figurePage("scan", { ocr: true })],
+    order: local.order,
+    ocr: { pages: [] },
+  };
+  assert.equal(mergeCloudFigures(cloud, stamped).blocks.f2, undefined);
+
+  const mixed = { ...local, pages: [figurePage("mixed"), local.pages[1]], ocr: undefined };
+  assert.equal(mergeCloudFigures(cloud, mixed).blocks.f2, undefined);
+
+  const emptyLocal = {
+    schema: "pxd-parse/1", engine: "builtin",
+    pages: [figurePage("text")],
+    order: [],
+    blocks: {},
+  };
+  const cleared = mergeCloudFigures(cloud, emptyLocal);
+  const clearedFigs = cleared.order.map((id) => cleared.blocks[id]).filter((block) => block?.type === "figure");
+  assert.deepEqual(clearedFigs.map((block) => block.page), [2]);
+  assert.equal(cleared.blocks.p1.text, "Body stays");
+  assert.equal(cleared.blocks.t1.cells[0].text, "a");
+});
+
+test("a scan page of a plain built-in parse keeps LlamaParse figures except a layout image on a table", () => {
+  const cloud = {
+    schema: "pxd-parse/1", engine: "cloud", pageCount: 1,
+    pages: [{ n: 1, w: 600, h: 800, parsed: true }],
+    order: ["f1", "f2", "t1"],
+    blocks: {
+      f1: { id: "f1", type: "figure", page: 1, bbox: [10, 10, 180, 180], caption: null, image: { kind: "crop", source: "llamaparse" }, confidence: 0.9, engine: "cloud" },
+      f2: { id: "f2", type: "figure", page: 1, bbox: [300, 300, 500, 500], caption: null, image: { kind: "crop", source: "llamaparse", layout: true }, confidence: 0.9, engine: "cloud" },
+      t1: { id: "t1", type: "table", page: 1, bbox: [300, 300, 500, 500], rows: 1, cols: 1, cells: [{ r: 0, c: 0, rowSpan: 1, colSpan: 1, text: "a" }], confidence: 0.9, engine: "cloud" },
+    },
+  };
+  const local = {
+    schema: "pxd-parse/1", engine: "builtin",
+    pages: [figurePage("scan")],
+    order: [],
+    blocks: {},
+  };
+  const merged = mergeCloudFigures(cloud, local);
+  assert.equal(validateParse(merged).ok, true);
+  const figures = merged.order.map((id) => merged.blocks[id]).filter((block) => block.type === "figure");
+  assert.equal(figures.length, 1);
+  assert.equal(figures[0].id, "f1");
+  assert.equal(figures[0].source, "llamaparse");
+});
+
 test("a cloud read with no title keeps the title the PDF already has", async () => {
   assert.equal(nextParsedTitle("Notifiable diseases summary", ""), "Notifiable diseases summary");
   assert.equal(nextParsedTitle("Notifiable diseases summary", "A better cloud title"), "A better cloud title");

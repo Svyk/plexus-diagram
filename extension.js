@@ -40520,6 +40520,20 @@ function matchFigures(cloudFigs, localFigs) {
   }
   return { pairs, used };
 }
+function pageByN(doc, n2) {
+  for (const page of doc?.pages || []) if (page?.n === n2) return page;
+  return null;
+}
+function figureDetectionRan(localDoc, pageN) {
+  const page = pageByN(localDoc, pageN);
+  if (localDoc?.ocr && (ocrPageListed(localDoc, pageN) || page?.ocr)) return true;
+  const kind = page?.kind;
+  return kind === "text" || kind === "mixed";
+}
+function ocrPageListed(doc, n2) {
+  const pages = doc?.ocr?.pages;
+  return Array.isArray(pages) && pages.includes(n2);
+}
 function isOcrRead(doc) {
   if (!doc) return false;
   const mode = doc.options?.ocr;
@@ -40644,6 +40658,12 @@ function mergeCloudFigures(cloudDoc, localDoc) {
       }
     }
     if (added.length) order = insertOnPage(order, blocks, cloudPage, added);
+    if (figureDetectionRan(localDoc, localPage)) {
+      for (const cloud of cloudFigs) {
+        if (pairs.has(cloud)) continue;
+        order = dropFigure(blocks, order, cloud.id);
+      }
+    }
   }
   for (const id of order) {
     const fig = blocks[id];

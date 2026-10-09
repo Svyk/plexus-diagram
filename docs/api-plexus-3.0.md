@@ -367,6 +367,8 @@ A pin is a `plexus-pin` block (kind `pdf`) under `{{[[plexus-pins]]}}` on the PD
 | `pinClickMode(event)` | Out: `sidebar` when Shift is down, else `main` when Meta or Ctrl is down, else `popover`. Shift wins. |
 | `pinOpenPlan(region)` | Out: `{pdfUid, page, frac, pinUid}` for a supported kind `pdf` region (either macro). Fail: anything else is null. |
 | `pinnedToast(page)` | Out: `Pinned p. N` for a page at least 1. Otherwise `Pinned`. |
+| `pinOpenFallback({opened, plan, pageUid, now})` | Out: `{openPage, pending: {pinUid, until}}` when no mounted board opened the pin and the PDF's page uid is known; `until` is `now + PIN_PENDING_MS`. Fail: null when opened, or no pin uid or page. |
+| `PIN_PENDING_MS` | 8000. How long a pin opened from an outline waits for a board on the PDF's page to mount. |
 | `fracStyle(frac)` | Out: `{left, top, width, height}` as percents. Fail: a short list, or a non-finite number, is null. |
 | `surroundingParagraph(doc, block)` | Out: the previous and next text on the same page, with the block, joined by spaces. Fail: no neighbour text is `""`. |
 | `boardsFromRefs(rows)` | Out: `{uid, string}` for parents whose string matches `{{diagram` or `{{[[diagram]]`. Accepts tuples or objects. Repeats are dropped. Fail: a non-diagram row is skipped. |

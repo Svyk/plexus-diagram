@@ -24,7 +24,7 @@ import { closeOpenWhyPopovers } from "./view/why-pop.js";
 import { createCardCache } from "./model/card-cache.js";
 import { imageSrc } from "./model/export.js";
 import { parseRegion } from "./model/regions.js";
-import { boardsFromRefs, PIN_BOARDS_QUERY, pinOpenPlan, pinPdfUrl, pxdPinTarget } from "./model/pdf-pin.js";
+import { boardsFromRefs, PIN_BOARDS_QUERY, pinOpenFallback, pinOpenPlan, pinPdfUrl, pxdPinTarget } from "./model/pdf-pin.js";
 import { pdfMacroUrl } from "./model/pdf.js";
 import { mountPdfPin } from "./view/pdf-pin-view.js";
 import { classifyString, firstLine, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
@@ -2417,7 +2417,14 @@ export async function installPlexusDiagram({
             if (page) { try { host.openPage?.(page); } catch { /* host */ } }
             return;
           }
-          if (plan) openPinOnBoard(plan);
+          if (!plan) return;
+          let pageUid = "";
+          const opened = openPinOnBoard(plan);
+          if (!opened) { try { pageUid = host.blockPageUid?.(plan.pdfUid) || ""; } catch { pageUid = ""; } }
+          const fallback = pinOpenFallback({ opened, plan, pageUid, now: Date.now() });
+          if (!fallback) return;
+          pendingPin = fallback.pending;
+          try { host.openPage?.(fallback.openPage); } catch { /* host */ }
         },
         root: doc.body,
       });

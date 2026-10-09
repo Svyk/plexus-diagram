@@ -86,15 +86,16 @@ test("parseCloud refuses to fetch until confirmed", async () => {
 
 test("the confirm text names LlamaParse, the pages, the estimate, and the 48 hour cache", () => {
   const est = estimateCloudCost({ pages: 2, tier: "agentic" });
-  assert.equal(est.credits, 26);
+  assert.equal(est.credits, 20);
   assert.equal(est.tierCredits, 10);
-  assert.equal(est.layoutCredits, 3);
+  assert.equal(est.layoutCredits, 0);
+  assert.equal(est.usd, 0.025);
   const text = cloudConfirmMessage({ pages: 2, tier: "agentic", region: "eu" });
   assert.match(text, /LlamaParse \(EU, Agentic\)/);
   assert.match(text, /2 pages/);
-  assert.match(text, /26 credits: 10 per page plus 3 for layout/);
-  assert.match(text, /free in v2/i);
-  assert.match(text, /last 48 hours/);
+  assert.match(text, /20 credits, 10 per page/);
+  assert.doesNotMatch(text, /layout/i);
+  assert.match(text, /48 h/);
   assert.match(text, /leaves this device/);
   assert.match(cloudConfirmMessage({ pages: 0, tier: "fast", region: "us" }), /page count unknown/);
 });
@@ -343,6 +344,8 @@ test("Read with LlamaParse does not fetch or read PDF bytes before confirm", asy
   writeCloudPrefs(storage, { key: "test-cloud-key", relay: "https://relay.example", tier: "agentic", region: "us" });
   const log = [];
   let dataReads = 0;
+  let confirms = 0;
+  stub.window.confirm = () => { confirms += 1; return true; };
   try {
     const view = createParseView({
       doc: stub.document,
@@ -351,16 +354,23 @@ test("Read with LlamaParse does not fetch or read PDF bytes before confirm", asy
         numPages: 3,
         getData: async () => { dataReads += 1; log.push("bytes"); return new Uint8Array([1, 2, 3]); },
       }),
-      confirmCloud: (message) => { log.push(["confirm", message]); return false; },
       fetch: () => { log.push("fetch"); throw new Error("fetch"); },
     });
+    stub.document.body.append(view.element());
     view.element().querySelector(".pxd-parse__cloud").click();
-    await until(() => log.length > 0);
+    await until(() => view.element().querySelector(".pxd-cloud-confirm"));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.equal(log.length, 1);
-    assert.equal(log[0][0], "confirm");
-    assert.match(log[0][1], /LlamaParse/);
-    assert.match(log[0][1], /3 pages/);
+    const sheet = view.element().querySelector(".pxd-cloud-confirm");
+    assert.equal(sheet.querySelector("img"), null);
+    assert.equal(sheet.querySelector("[data-cloud-provider]").textContent, "LlamaParse");
+    assert.match(sheet.querySelector("[data-cloud-pages]").textContent, /3 pages/);
+    assert.equal(log.length, 0);
+    assert.equal(dataReads, 0);
+    assert.equal(confirms, 0);
+    sheet.querySelector("[data-cloud-cancel]").click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(view.element().querySelector(".pxd-cloud-confirm"), null);
+    assert.equal(log.length, 0);
     assert.equal(dataReads, 0);
   } finally {
     restore();
@@ -378,14 +388,16 @@ test("after confirm, the view fetches, and a declined confirm never does", async
       doc: stub.document,
       storage,
       getPdf: async () => ({ numPages: 1, getData: async () => new Uint8Array([4]) }),
-      confirmCloud: () => { log.push("confirm"); return true; },
       fetch: async () => { log.push("fetch"); return jsonRes(401, { detail: "bad key" }); },
       onToast: (message) => log.push(message),
     });
+    stub.document.body.append(view.element());
     view.element().querySelector(".pxd-parse__cloud").click();
+    await until(() => view.element().querySelector(".pxd-cloud-confirm"));
+    assert.equal(log.length, 0);
+    view.element().querySelector("[data-cloud-send]").click();
     await until(() => log.includes("fetch"));
-    assert.equal(log[0], "confirm");
-    assert.equal(log[1], "fetch");
+    assert.equal(log[0], "fetch");
     assert.match(log.at(-1), /rejected the key/);
   } finally {
     restore();
@@ -634,7 +646,6 @@ test("Read with Mistral OCR confirms before fetch and does not store the key on 
         numPages: 2,
         getData: async () => { log.push("bytes"); return new Uint8Array([9]); },
       }),
-      confirmCloud: (message) => { log.push(["confirm", message]); return false; },
       fetch: () => { log.push("fetch"); throw new Error("fetch"); },
       session: { insertParsed: () => { graph.push("write"); } },
     });
@@ -642,12 +653,16 @@ test("Read with Mistral OCR confirms before fetch and does not store the key on 
     const llamaAt = menu.indexOf("Read with LlamaParse");
     const mistralAt = menu.indexOf("Read with Mistral OCR");
     assert.ok(llamaAt >= 0 && mistralAt > llamaAt);
+    stub.document.body.append(view.element());
     view.element().querySelector(".pxd-parse__mistral").click();
-    await until(() => log.length > 0);
+    await until(() => view.element().querySelector(".pxd-cloud-confirm"));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.equal(log.length, 1);
-    assert.match(log[0][1], /Mistral OCR/);
-    assert.match(log[0][1], /2 pages/);
+    const sheet = view.element().querySelector(".pxd-cloud-confirm");
+    assert.equal(sheet.querySelector("[data-cloud-provider]").textContent, "Mistral OCR");
+    assert.match(sheet.querySelector("[data-cloud-pages]").textContent, /2 pages/);
+    assert.match(sheet.textContent, /\$4 \/ 1,000 pages, model card checked 2026-10-09/);
+    assert.match(sheet.textContent, /leaves this device/);
+    assert.equal(log.length, 0);
     assert.equal(graph.length, 0);
     assert.equal(readMistralKey(storage), "test-mistral-key");
   } finally {

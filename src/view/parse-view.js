@@ -32,14 +32,15 @@ import { placementContent } from "./parse-actions.js";
 import { createAnydocHost } from "../host/anydoc.js";
 import { markdownToParse } from "../model/anydoc-to-parse.js";
 import {
-  cloudConfirmMessage,
-  mistralConfirmMessage,
+  cloudUsageCredits,
   parseCloud,
   parseMistral,
   readCloudPrefs,
   readMistralKey,
   resolveCloudTransport,
+  writeCloudPrefs,
 } from "../host/cloud-parse.js";
+import { openCloudConfirm } from "./cloud-confirm.js";
 import { llamaparseToParse, mistralToParse } from "../model/cloud-to-parse.js";
 import { ASYNC_CLIPBOARD_TYPES, copyViaEvent } from "./clipboard-io.js";
 
@@ -102,7 +103,7 @@ function cloudLabel(provider) {
   return provider === "mistral" ? "Mistral OCR" : "LlamaParse";
 }
 
-export function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
+export function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "", credits = null } = {}) {
   if (phase !== "running" && engine === "anydoc") {
     if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
     return { text: "Alternative read" };
@@ -118,7 +119,14 @@ export function engineChip({ phase = "idle", engine = "builtin", provider = "", 
   if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
   if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
   if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
-  if (engine === "cloud" && ms != null) return { text: `${cloudLabel(provider)} · ${formatSeconds(ms)}` };
+  if (engine === "cloud" && ms != null) {
+    const text = `${cloudLabel(provider)} · ${formatSeconds(ms)}`;
+    const n = Number(credits);
+    if (provider !== "mistral" && Number.isFinite(n) && n >= 0) {
+      return { text, tip: `${text} · ${n} ${n === 1 ? "credit" : "credits"}` };
+    }
+    return { text };
+  }
   if (engine === "cloud") return { text: cloudLabel(provider) };
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
@@ -360,7 +368,6 @@ export function createParseView({
   ghostPane = null,
   anydoc = null,
   fetch: fetchImpl = null,
-  confirmCloud = null,
 } = {}) {
   const el = (tag, cls, parent) => {
     const node = doc.createElement(tag);
@@ -804,6 +811,7 @@ export function createParseView({
       page: progress.page,
       pageCount: progress.pageCount,
       helper: phase === "running" ? "" : helperState,
+      credits: phase === "running" ? null : parsed?.stats?.credits,
     });
     chip.textContent = state.text;
     chip.title = state.tip || "";
@@ -1655,6 +1663,28 @@ export function createParseView({
     paintChip();
   }
 
+  let cloudConfirm = null;
+  function closeCloudConfirm() {
+    const handle = cloudConfirm;
+    cloudConfirm = null;
+    try { handle?.close?.(); } catch { /* gone */ }
+  }
+  function askCloud(spec) {
+    closeCloudConfirm();
+    const handle = openCloudConfirm({
+      doc,
+      anchor: root,
+      ...spec,
+      onTier(next) {
+        try { writeCloudPrefs(storage, { tier: next }); } catch { /* storage */ }
+      },
+    });
+    cloudConfirm = handle;
+    return handle.promise.finally(() => {
+      if (cloudConfirm === handle) cloudConfirm = null;
+    });
+  }
+
   function cloudToast(error, provider) {
     if (error?.code === "cancelled" || error?.code === "confirm") return;
     const name = provider === "mistral" ? "Mistral OCR" : "LlamaParse";
@@ -1690,11 +1720,15 @@ export function createParseView({
       try { pdf = await getPdf(); } catch { pdf = null; }
       pages = Number(pdf?.numPages) || 0;
     }
-    const message = cloudConfirmMessage({ pages, tier: prefs.tier, region: prefs.region });
-    const ask = confirmCloud || doc.defaultView?.confirm?.bind?.(doc.defaultView);
-    let ok = false;
-    try { ok = ask?.(message) === true; } catch { ok = false; }
-    if (!ok) return;
+    const currentPage = Math.max(1, Math.floor(Number(pageNow?.()) || 1));
+    const answer = await askCloud({
+      provider: "llamaparse",
+      region: prefs.region,
+      tier: prefs.tier,
+      pageCount: pages,
+      currentPage,
+    });
+    if (dead || !answer?.ok) return;
     const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
     cancel();
     const ctrl = new AbortController();
@@ -1713,7 +1747,8 @@ export function createParseView({
         bytes,
         apiKey: prefs.key,
         region: prefs.region,
-        tier: prefs.tier,
+        tier: answer.tier || prefs.tier,
+        pages: answer.pages || undefined,
         confirmed: true,
         signal: ctrl.signal,
         onProgress: (info) => {
@@ -1723,7 +1758,9 @@ export function createParseView({
         },
       });
       const sha = parsed?.sha256 || await sha256Hex(bytes);
-      const docResult = llamaparseToParse(result.provider, { sha256: sha, tier: prefs.tier, region: prefs.region });
+      const docResult = llamaparseToParse(result.provider, { sha256: sha, tier: answer.tier || prefs.tier, region: prefs.region });
+      const credits = cloudUsageCredits(result.provider);
+      if (credits != null) docResult.stats = { ...(docResult.stats || {}), credits };
       if (ctrl.signal.aborted) return;
       await finishDoc(docResult, now() - started);
     } catch (error) {
@@ -1745,11 +1782,13 @@ export function createParseView({
       try { pdf = await getPdf(); } catch { pdf = null; }
       pages = Number(pdf?.numPages) || 0;
     }
-    const message = mistralConfirmMessage({ pages });
-    const ask = confirmCloud || doc.defaultView?.confirm?.bind?.(doc.defaultView);
-    let ok = false;
-    try { ok = ask?.(message) === true; } catch { ok = false; }
-    if (!ok) return;
+    const currentPage = Math.max(1, Math.floor(Number(pageNow?.()) || 1));
+    const answer = await askCloud({
+      provider: "mistral",
+      pageCount: pages,
+      currentPage,
+    });
+    if (dead || !answer?.ok) return;
     const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
     cancel();
     const ctrl = new AbortController();
@@ -1766,6 +1805,7 @@ export function createParseView({
         fetch: fetchFn,
         bytes,
         apiKey: key,
+        pages: answer.pages || undefined,
         confirmed: true,
         signal: ctrl.signal,
       });
@@ -1816,6 +1856,7 @@ export function createParseView({
   }
 
   function onKey(event) {
+    if (root.querySelector?.(".pxd-cloud-confirm")) return;
     const owned = parseOwnsKey(event, root, pointerTarget);
     const command = keyCommand(event, { textEntry: isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement), owned });
     if (!command) return;
@@ -2183,6 +2224,7 @@ export function createParseView({
     },
     dispose() {
       dead = true;
+      closeCloudConfirm();
       cancel();
       try { cropObserver?.disconnect(); } catch { /* gone */ }
       cropWaiting.clear();

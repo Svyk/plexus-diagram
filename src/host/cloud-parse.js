@@ -4,7 +4,12 @@
 // here writes the graph, and importing this module fetches nothing.
 
 export const CREDIT_USD = 1.25 / 1000;
-export const LAYOUT_CREDITS = 3;
+// Measured 2026-10-09: Agentic billed 10 credits per page (62 pages). Layout was not billed.
+export const LAYOUT_CREDITS = 0;
+export const CLOUD_CACHE_NOTE = "Free if parsed with the same options in the last 48 h";
+export const CLOUD_LEAVES_NOTE = "The PDF leaves this device";
+export const MISTRAL_DISABLED_MESSAGE = "Mistral OCR is not enabled for this key's workspace yet (0 requests per minute). Turn on billing for that workspace in console.mistral.ai.";
+export const MISTRAL_RATE_MESSAGE = "rate limit, try again in a minute";
 export const TIER_CREDITS = Object.freeze({
   fast: 1,
   cost_effective: 3,
@@ -85,36 +90,101 @@ export function writeCloudPrefs(storage, prefs = {}) {
   return { ...next };
 }
 
-export function estimateCloudCost({ pages, tier, layout = true } = {}) {
+export function estimateCloudCost({ pages, tier } = {}) {
   const count = Math.max(0, Math.floor(Number(pages) || 0));
   const perTier = TIER_CREDITS[tier] ?? TIER_CREDITS[DEFAULT_TIER];
-  const extra = layout ? LAYOUT_CREDITS : 0;
-  const creditsPerPage = perTier + extra;
-  const credits = count * creditsPerPage;
+  const credits = count * perTier;
   return {
     pages: count,
     tier: TIER_CREDITS[tier] ? tier : DEFAULT_TIER,
     tierCredits: perTier,
-    layoutCredits: extra,
-    creditsPerPage,
+    layoutCredits: LAYOUT_CREDITS,
+    creditsPerPage: perTier,
     credits,
     usd: credits * CREDIT_USD,
-    cacheNote: "free if parsed in the last 48 h",
+    cacheNote: CLOUD_CACHE_NOTE,
   };
 }
 
-function money(usd) {
+export function formatUsd(usd) {
   const n = Number(usd) || 0;
-  if (n >= 0.01) return `$${n.toFixed(2)}`;
-  return `$${n.toFixed(4)}`;
+  if (n >= 1) return `$${n.toFixed(2)}`;
+  const text = n.toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
+  return text === "0" ? "$0.00" : `$${text}`;
 }
 
 export function cloudConfirmMessage({ pages, tier, region } = {}) {
-  const est = estimateCloudCost({ pages, tier, layout: true });
+  const est = estimateCloudCost({ pages, tier });
   const where = region === "eu" ? "EU" : "US";
   const label = TIER_LABELS[est.tier] || est.tier;
   const pageText = est.pages ? `${est.pages} page${est.pages === 1 ? "" : "s"}` : "page count unknown";
-  return `Send this PDF to LlamaParse (${where}, ${label})? ${pageText}, about ${money(est.usd)} (${est.credits} credits: ${est.tierCredits} per page plus ${est.layoutCredits} for layout). The pricing FAQ says layout is free in v2; this estimate includes it. Free if this file was parsed with the same options in the last 48 hours. The PDF leaves this device.`;
+  const creditText = est.pages
+    ? `${est.credits} credits, ${est.tierCredits} per page, about ${formatUsd(est.usd)}`
+    : "cost unknown until the page count is known";
+  return `Send this PDF to LlamaParse (${where}, ${label})? ${pageText}, ${creditText}. ${CLOUD_CACHE_NOTE}. ${CLOUD_LEAVES_NOTE}.`;
+}
+
+// This page when the PDF is longer than 10 pages. The whole file otherwise, including an unknown count.
+export function defaultCloudScope(pageCount) {
+  const n = Number(pageCount);
+  return Number.isFinite(n) && n > 10 ? "current" : "all";
+}
+
+export function tierChoiceLabel(tier) {
+  const credits = TIER_CREDITS[tier];
+  const name = TIER_LABELS[tier] || String(tier || "");
+  if (!credits) return name;
+  const word = credits === 1 ? "credit" : "credits";
+  return `${name} · ${credits} ${word} · ${formatUsd(credits * CREDIT_USD)} / page`;
+}
+
+// Real LlamaParse `usage` after expand=usage. Null when the job did not report credits.
+export function cloudUsageCredits(provider) {
+  const usage = provider?.usage || provider?.job?.usage || {};
+  const credits = Number(usage.credits ?? usage.total_credits ?? usage.credit_usage);
+  if (!Number.isFinite(credits) || credits < 0) return null;
+  return credits;
+}
+
+export function cloudSheetModel({
+  provider = "llamaparse",
+  region = "us",
+  tier = DEFAULT_TIER,
+  pageCount = 0,
+  currentPage = 1,
+  scope = null,
+} = {}) {
+  const llama = provider !== "mistral";
+  const total = Math.max(0, Math.floor(Number(pageCount) || 0));
+  const page = Math.max(1, Math.floor(Number(currentPage) || 1));
+  const chosen = scope === "current" || scope === "all" ? scope : defaultCloudScope(total);
+  const billed = chosen === "current" ? 1 : total;
+  const safeTier = Object.prototype.hasOwnProperty.call(TIER_CREDITS, tier) ? tier : DEFAULT_TIER;
+  const est = llama ? estimateCloudCost({ pages: billed, tier: safeTier }) : estimateMistralCost({ pages: billed });
+  const pageWord = (n) => (n === 1 ? "1 page" : `${n} pages`);
+  let estimate = "Page count unknown";
+  if (billed) {
+    estimate = llama
+      ? `${pageWord(billed)}, ${est.credits} ${est.credits === 1 ? "credit" : "credits"}, about ${formatUsd(est.usd)}`
+      : `${pageWord(billed)}, about ${formatUsd(est.usd)} ($4 / 1,000 pages, model card checked ${MISTRAL_PRICE_CHECKED})`;
+  }
+  return {
+    provider: llama ? "llamaparse" : "mistral",
+    title: llama ? "LlamaParse" : "Mistral OCR",
+    region: llama ? (region === "eu" ? "EU" : "US") : "",
+    tier: llama ? safeTier : "",
+    tiers: llama ? Object.keys(TIER_CREDITS).map((id) => ({ id, label: tierChoiceLabel(id), selected: id === safeTier })) : [],
+    scope: chosen,
+    currentPage: page,
+    pageCount: total,
+    pageLabel: total ? pageWord(total) : "Page count unknown",
+    thisPage: "This page only",
+    allPages: total ? `All ${pageWord(total)}` : "All pages",
+    estimate,
+    cache: llama ? CLOUD_CACHE_NOTE : "",
+    leaves: CLOUD_LEAVES_NOTE,
+    pages: chosen === "current" ? String(page) : "",
+  };
 }
 
 function httpsUrl(value) {
@@ -173,7 +243,46 @@ export function estimateMistralCost({ pages } = {}) {
 export function mistralConfirmMessage({ pages } = {}) {
   const est = estimateMistralCost({ pages });
   const pageText = est.pages ? `${est.pages} page${est.pages === 1 ? "" : "s"}` : "page count unknown";
-  return `Send this PDF to Mistral OCR? ${pageText}, about ${money(est.usd)} ($4 / 1,000 pages, model card checked ${est.checked}). Tables are weaker than LlamaParse. The PDF leaves this device.`;
+  const cost = est.pages ? `about ${formatUsd(est.usd)} ` : "";
+  return `Send this PDF to Mistral OCR? ${pageText}, ${cost}($4 / 1,000 pages, model card checked ${est.checked}). Tables are weaker than LlamaParse. ${CLOUD_LEAVES_NOTE}.`;
+}
+
+function headerValue(response, name) {
+  const headers = response?.headers;
+  if (!headers) return null;
+  const lower = String(name).toLowerCase();
+  if (typeof headers.get === "function") {
+    try {
+      const value = headers.get(name) ?? headers.get(lower);
+      if (value != null && String(value).trim() !== "") return String(value).trim();
+    } catch { /* CORS can hide the header */ }
+  }
+  const direct = headers[lower] ?? headers[name];
+  if (direct != null && String(direct).trim() !== "") return String(direct).trim();
+  return null;
+}
+
+function zeroLimitHint(body, depth = 0) {
+  if (body == null || depth > 4) return false;
+  if (typeof body === "string") {
+    return /0\s*requests?\s*(per|\/)\s*minute/i.test(body)
+      || /limit(?:\s+\w+){0,4}\s*(?:is|of|:|=)\s*0\b/i.test(body);
+  }
+  if (typeof body !== "object") return false;
+  for (const [key, value] of Object.entries(body)) {
+    if (/limit/i.test(key) && String(value).trim() !== "" && Number(value) === 0) return true;
+    if (zeroLimitHint(value, depth + 1)) return true;
+  }
+  return false;
+}
+
+// Header wins when the browser can see it. CORS often hides it; then code 1300 plus a 0-limit hint.
+export function mistral429Message(response, body) {
+  const limit = headerValue(response, "x-ratelimit-limit-req-minute");
+  if (limit != null) return Number(limit) === 0 ? MISTRAL_DISABLED_MESSAGE : MISTRAL_RATE_MESSAGE;
+  const code = body?.code ?? body?.error?.code;
+  if (String(code ?? "") === "1300" && zeroLimitHint(body)) return MISTRAL_DISABLED_MESSAGE;
+  return MISTRAL_RATE_MESSAGE;
 }
 
 export function pageSpec(value) {
@@ -231,19 +340,25 @@ async function readSSE(response, onEvent) {
   if (buf.trim()) dispatch(buf);
 }
 
-function statusError(status, body, name = "LlamaParse") {
+function statusError(status, body, name = "LlamaParse", response = null) {
   if (status === 401) return fail("unauthorized", `${name} rejected the key`, 401);
   if (status === 402) return fail("credits", `${name} is out of credits`, 402);
-  if (status === 429) return fail("rate", `${name} rate limit`, 429);
+  if (status === 429) {
+    const message = String(name).startsWith("Mistral") ? mistral429Message(response, body) : `${name} rate limit`;
+    return fail("rate", message, 429);
+  }
   const message = body?.detail || body?.error || body?.message || `${name} ${status}`;
   return fail("provider", String(message), status);
 }
 
-async function helperParse({ fetch, transport, bytes, apiKey, region, tier, signal, onProgress }) {
+async function helperParse({ fetch, transport, bytes, apiKey, region, tier, pages, signal, onProgress }) {
+  const options = { region, tier, version: "latest" };
+  const spec = pageSpec(pages);
+  if (spec) options.pages = spec;
   const headers = {
     Authorization: `Bearer ${transport.token}`,
     "X-Pxd-Cloud-Key": apiKey,
-    "X-Pxd-Options": JSON.stringify({ region, tier, version: "latest" }),
+    "X-Pxd-Options": JSON.stringify(options),
     "Content-Type": "application/pdf",
   };
   let jobId = "";
@@ -276,17 +391,21 @@ async function helperParse({ fetch, transport, bytes, apiKey, region, tier, sign
     throw statusError(response.status, body);
   }
   let provider = null;
-  await readSSE(response, (event, payload) => {
-    if (event === "started") jobId = payload?.job || jobId;
-    else if (event === "progress") {
-      if (payload?.job) jobId = payload.job;
-      onProgress?.(payload);
-    } else if (event === "result") provider = payload;
-    else if (event === "error") {
-      const error = fail(payload?.code || "provider", payload?.message || "cloud parse failed", payload?.status);
-      throw error;
-    }
-  });
+  try {
+    await readSSE(response, (event, payload) => {
+      if (event === "started") jobId = payload?.job || jobId;
+      else if (event === "progress") {
+        if (payload?.job) jobId = payload.job;
+        onProgress?.(payload);
+      } else if (event === "result") provider = payload;
+      else if (event === "error") {
+        throw fail(payload?.code || "provider", payload?.message || "cloud parse failed", payload?.status);
+      }
+    });
+  } catch (error) {
+    if (signal?.aborted) throw fail("cancelled", "cancelled", 499);
+    throw error;
+  }
   if (!provider) throw fail("bad-response", "cloud parse returned no result");
   return provider;
 }
@@ -384,17 +503,22 @@ export async function parseCloud({
   if (!key) throw fail("no-key", "Add a LlamaParse key in Engines. It stays on this device.");
   if (!Object.prototype.hasOwnProperty.call(TIER_CREDITS, tier)) throw fail("bad-tier", "bad tier");
   const where = region === "eu" ? "eu" : "us";
-  if (transport.kind === "helper") {
-    const provider = await helperParse({
-      fetch: fetchFn, transport, bytes, apiKey: key, region: where, tier, signal, onProgress,
-    });
-    return { provider, transport: "helper" };
-  }
-  if (transport.kind === "relay") {
-    const provider = await relayParse({
-      fetch: fetchFn, transport, bytes, apiKey: key, region: where, tier, pages, signal, onProgress, sleep, now, timeoutMs,
-    });
-    return { provider, transport: "relay" };
+  try {
+    if (transport.kind === "helper") {
+      const provider = await helperParse({
+        fetch: fetchFn, transport, bytes, apiKey: key, region: where, tier, pages, signal, onProgress,
+      });
+      return { provider, transport: "helper" };
+    }
+    if (transport.kind === "relay") {
+      const provider = await relayParse({
+        fetch: fetchFn, transport, bytes, apiKey: key, region: where, tier, pages, signal, onProgress, sleep, now, timeoutMs,
+      });
+      return { provider, transport: "relay" };
+    }
+  } catch (error) {
+    if (signal?.aborted) throw error?.code === "cancelled" ? error : fail("cancelled", "cancelled", 499);
+    throw error;
   }
   throw fail("transport", "unknown cloud transport");
 }
@@ -478,7 +602,7 @@ export async function parseMistral({
       signal: ctrl.signal,
     });
     const body = await response.json().catch(() => null);
-    if (response.status < 200 || response.status >= 300) throw statusError(response.status, body, "Mistral OCR");
+    if (response.status < 200 || response.status >= 300) throw statusError(response.status, body, "Mistral OCR", response);
     if (!body || !Array.isArray(body.pages)) throw fail("bad-response", "Mistral OCR returned no pages");
     return { provider: body, transport: "direct" };
   } catch (error) {

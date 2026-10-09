@@ -1256,6 +1256,13 @@ export function createItemRenderer({
     return node;
   };
 
+  const dropRegionPlace = (rec) => {
+    const w = rec?.regionPlace;
+    if (!w) return;
+    rec.regionPlace = null;
+    try { w.cancel?.(); } catch { /* already off */ }
+    try { w.off?.(); } catch { /* already off */ }
+  };
   const unmountRoots = (rec) => {
     try { rec.regionNode?.pxdUnmount?.(); } catch { /* already revoked */ }
     rec.regionNode = null;
@@ -1276,6 +1283,7 @@ export function createItemRenderer({
     rec.rowState = null;
     stopRowSched(rec);
     dropLayoutWatch(rec);
+    dropRegionPlace(rec);
     rec.scrollOff?.();
     rec.scrollOff = null;
     try { rec.pdfCoverOff?.(); } catch { /* already off */ }
@@ -2636,6 +2644,97 @@ export function createItemRenderer({
     node.style.width = `${f.rw * 100}%`;
     node.style.height = `${f.rh * 100}%`;
   };
+  const regionLayerSig = (layer) => [
+    layer?.style?.left || "",
+    layer?.style?.top || "",
+    layer?.style?.width || "",
+    layer?.style?.height || "",
+    layer?.style?.visibility || "",
+    layer?.getAttribute?.("data-pxd-wait") || "",
+  ].join("|");
+  const imageDecoded = (img) => (Number(img?.naturalWidth) || 0) > 0 && (Number(img?.naturalHeight) || 0) > 0;
+  // An image that has not decoded must not cover the media host. Wait, collapsed, until load.
+  const placeRegionLayer = (layer, hostEl, img) => {
+    if (!layer || !hostEl) return;
+    if (img && !imageDecoded(img)) {
+      layer.setAttribute("data-pxd-wait", "1");
+      layer.style.visibility = "hidden";
+      layer.style.inset = "auto";
+      layer.style.left = "0";
+      layer.style.top = "0";
+      layer.style.width = "0";
+      layer.style.height = "0";
+      return;
+    }
+    layer.removeAttribute?.("data-pxd-wait");
+    layer.style.visibility = "";
+    const painted = img ? paintedRectOfElement(img, { zoom: zoomCache || 1 }) : null;
+    const hostBox = hostEl.getBoundingClientRect?.();
+    const apart = painted && hostBox?.width > 0 && hostBox?.height > 0
+      && (Math.abs(painted.left - hostBox.left) > 0.5 || Math.abs(painted.top - hostBox.top) > 0.5
+        || Math.abs(painted.width - hostBox.width) > 0.5 || Math.abs(painted.height - hostBox.height) > 0.5);
+    if (apart) {
+      layer.style.inset = "auto";
+      layer.style.left = `${((painted.left - hostBox.left) / hostBox.width) * 100}%`;
+      layer.style.top = `${((painted.top - hostBox.top) / hostBox.height) * 100}%`;
+      layer.style.width = `${(painted.width / hostBox.width) * 100}%`;
+      layer.style.height = `${(painted.height / hostBox.height) * 100}%`;
+      return;
+    }
+    layer.style.inset = "";
+    layer.style.left = "";
+    layer.style.top = "";
+    layer.style.width = "";
+    layer.style.height = "";
+  };
+  const armRegionPlace = (rec, hostEl, img, layer) => {
+    if (rec.regionPlace && rec.regionPlace.img === img && rec.regionPlace.host === hostEl && rec.regionPlace.layer === layer) return;
+    dropRegionPlace(rec);
+    const w = { img, host: hostEl, layer, queued: false, cancel: null, off: null };
+    const offs = [];
+    const placeNow = () => {
+      if (disposed || layer.isConnected === false || rec.regionPlace !== w) return;
+      const before = regionLayerSig(layer);
+      placeRegionLayer(layer, hostEl, img);
+      if (regionLayerSig(layer) !== before) onPageLayout?.(rec.uid);
+    };
+    const queue = () => {
+      if (w.queued || disposed || rec.regionPlace !== w) return;
+      w.queued = true;
+      w.cancel = frameLater(() => {
+        w.queued = false;
+        w.cancel = null;
+        placeNow();
+      });
+    };
+    if (img && (!imageDecoded(img) || img.complete === false)) {
+      const onLoad = () => placeNow();
+      img.addEventListener?.("load", onLoad);
+      offs.push(() => img.removeEventListener?.("load", onLoad));
+    }
+    const RO = doc.defaultView?.ResizeObserver || globalThis.ResizeObserver;
+    if (typeof RO === "function") {
+      try {
+        const ro = new RO(() => queue());
+        if (img) ro.observe(img);
+        if (hostEl && hostEl !== img) ro.observe(hostEl);
+        offs.push(() => { try { ro.disconnect(); } catch { /* already off */ } });
+      } catch { /* no observer */ }
+    }
+    w.off = () => { for (const fn of offs) { try { fn(); } catch { /* already off */ } } };
+    rec.regionPlace = w;
+  };
+  const refreshRegionLayers = () => {
+    for (const rec of shells.values()) {
+      const layer = rec.body?.querySelector?.(".pxd-region-hits");
+      if (!layer?.parentElement) continue;
+      const hostEl = layer.parentElement;
+      const img = hostEl.matches?.("img") ? hostEl : hostEl.querySelector?.("img");
+      const before = regionLayerSig(layer);
+      placeRegionLayer(layer, hostEl, img);
+      if (regionLayerSig(layer) !== before) onPageLayout?.(rec.uid);
+    }
+  };
   // Outlines for image regions and corner marks for PDF pins. Page cards do not get either.
   const syncEndpointHits = (rec, nodes) => {
     if (!rec?.body || rec.pageHolder) return;
@@ -2653,30 +2752,17 @@ export function createItemRenderer({
       if (child.classList?.contains("pxd-region-hits")) { layer = child; break; }
     }
     if (!regions.length && !pins.length) {
+      dropRegionPlace(rec);
       layer?.remove();
       return;
     }
     if (!layer) layer = el("div", "pxd-region-hits", hostEl);
     else if (layer.parentElement !== hostEl) hostEl.append(layer);
     const img = hostEl.matches?.("img") ? hostEl : hostEl.querySelector?.("img");
-    const painted = img ? paintedRectOfElement(img, { zoom: zoomCache || 1 }) : null;
-    const hostBox = hostEl.getBoundingClientRect?.();
-    const fits = painted && hostBox?.width > 0 && hostBox?.height > 0
-      && (Math.abs(painted.left - hostBox.left) > 0.5 || Math.abs(painted.top - hostBox.top) > 0.5
-        || Math.abs(painted.width - hostBox.width) > 0.5 || Math.abs(painted.height - hostBox.height) > 0.5);
-    if (fits) {
-      layer.style.inset = "auto";
-      layer.style.left = `${((painted.left - hostBox.left) / hostBox.width) * 100}%`;
-      layer.style.top = `${((painted.top - hostBox.top) / hostBox.height) * 100}%`;
-      layer.style.width = `${(painted.width / hostBox.width) * 100}%`;
-      layer.style.height = `${(painted.height / hostBox.height) * 100}%`;
-    } else {
-      layer.style.inset = "";
-      layer.style.left = "";
-      layer.style.top = "";
-      layer.style.width = "";
-      layer.style.height = "";
-    }
+    const beforePlace = regionLayerSig(layer);
+    placeRegionLayer(layer, hostEl, img);
+    if (regionLayerSig(layer) !== beforePlace) onPageLayout?.(rec.uid);
+    armRegionPlace(rec, hostEl, img, layer);
     layer.replaceChildren();
     const areaOf = (region) => {
       const f = fracParts(region.frac);
@@ -2753,14 +2839,16 @@ export function createItemRenderer({
     const mb = media?.getBoundingClientRect?.() || card;
     const w = mb.width || 1;
     const h = mb.height || 1;
+    const frac = {
+      rx: (r.left - mb.left) / w,
+      ry: (r.top - mb.top) / h,
+      rw: (r.width || 0) / w,
+      rh: (r.height || 0) / h,
+    };
     return {
       region: true,
-      frac: {
-        rx: (r.left - mb.left) / w,
-        ry: (r.top - mb.top) / h,
-        rw: (r.width || 0) / w,
-        rh: (r.height || 0) / h,
-      },
+      frac,
+      poly: polyOfMark(mark, frac),
       image: {
         x: (mb.left - card.left) / z,
         y: (mb.top - card.top) / z,
@@ -2768,6 +2856,21 @@ export function createItemRenderer({
         h: mb.height / z,
       },
     };
+  };
+  // Polygon vertices are 0–100 inside the hit (the bbox). Store them as fractions of the same box as `frac`.
+  const polyOfMark = (mark, frac) => {
+    if (!frac || !(frac.rw > 0) || !(frac.rh > 0)) return null;
+    const raw = mark.querySelector?.("polygon")?.getAttribute?.("points") || "";
+    if (!raw.trim()) return null;
+    const pts = [];
+    for (const pair of raw.trim().split(/\s+/)) {
+      const bits = pair.split(",");
+      const px = Number(bits[0]);
+      const py = Number(bits[1]);
+      if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+      pts.push({ x: frac.rx + (px / 100) * frac.rw, y: frac.ry + (py / 100) * frac.rh });
+    }
+    return pts.length >= 3 ? pts : null;
   };
   const measureRow = (uid, rowUid) => {
     const rec = shells.get(uid);
@@ -2826,6 +2929,14 @@ export function createItemRenderer({
   const setRegionOn = (uid, rowUid, on) => {
     const mark = markOf(shells.get(uid), rowUid);
     mark?.classList?.toggle("pxd-region-hit--on", Boolean(on));
+  };
+  const setRegionExt = (regionUid, on) => {
+    if (!regionUid) return;
+    for (const rec of shells.values()) {
+      const mark = markOf(rec, regionUid);
+      if (!mark) continue;
+      mark.classList.toggle("pxd-region-hit--ext", Boolean(on));
+    }
   };
   const setRowHot = (uid, rowUid, on) => {
     const mark = markOf(shells.get(uid), rowUid);
@@ -4328,7 +4439,10 @@ export function createItemRenderer({
     const next = Number(zoom);
     const prevZoom = zoomCache;
     zoomCache = next > 0 && Number.isFinite(next) ? next : 1;
-    if (zoomCache !== prevZoom) closePeek();
+    if (zoomCache !== prevZoom) {
+      closePeek();
+      refreshRegionLayers();
+    }
     if (editing?.editor) scaleCardEditor(editing.editor, zoomCache);
     if (zoomCache !== prevZoom) for (const rec of shells.values()) if (rec.stickyLive && rec.editor && rec.editor !== editing?.editor) applyEditorCounterScale(rec.editor, zoomCache);
   };
@@ -5501,6 +5615,7 @@ export function createItemRenderer({
     markRows,
     setRowHot,
     setRegionOn,
+    setRegionExt,
     revealRow,
     // The colour-highlighter probe reads the body's computed style, a forced style recalc of the whole page.
     // A reading-card change (pane open/close) does not change the highlighter, so it skips that probe.

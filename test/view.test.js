@@ -3,6 +3,7 @@ import { noteSpeedFlags } from "../src/settings.js";
 import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
+import { imageRegionString } from "../src/model/image-region.js";
 import { freshCardIsBlank, mountBoardView, pageRenameNeedsConfirm, sidebarMountKind, toggleTodoAt } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -735,6 +736,92 @@ test("dispose removes a why popover that was appended to document.body", async (
     assert.equal(stub.document.querySelector(".pxd-why"), null);
     assert.equal(stub.pxdNodes().filter((n) => n !== mountEl).length, 0);
     assert.equal(stub.listenerCount(), 0);
+  } finally {
+    try { f.view.dispose(); } catch { /* already disposed */ }
+    f.restore();
+  }
+});
+
+test("Backspace in the empty why-pop label deletes the arrow", async () => {
+  const f = mountFixture();
+  const { stub, view, session } = f;
+  try {
+    await f.flush();
+    const label = view.root.querySelector(".pxd-label");
+    stub.dispatch(label, "dblclick", { target: label });
+    const input = stub.document.querySelector(".pxd-why__label");
+    assert.equal(stub.document.activeElement, input);
+    assert.equal(input.value, "causes");
+    stub.dispatch(input, "keydown", { key: "Backspace" });
+    assert.equal(session.mutations.some((row) => row[0] === "deleteEdges"), false);
+    input.value = "";
+    stub.dispatch(input, "keydown", { key: "Backspace" });
+    const deleted = session.mutations.filter((row) => row[0] === "deleteEdges");
+    assert.deepEqual(deleted[0][1], ["edgeFFFF6"]);
+    assert.equal(stub.document.querySelector(".pxd-why"), null);
+
+    session.mutations.length = 0;
+    stub.dispatch(label, "dblclick", { target: label });
+    const again = stub.document.querySelector(".pxd-why__label");
+    again.value = "";
+    const wrap = stub.document.createElement("div");
+    wrap.className = "cs-sel";
+    again.parentElement.insertBefore(wrap, again);
+    wrap.append(again);
+    stub.dispatch(wrap, "keydown", { key: "Backspace" });
+    assert.deepEqual(session.mutations.filter((row) => row[0] === "deleteEdges")[0][1], ["edgeFFFF6"]);
+    assert.equal(stub.document.querySelector(".pxd-why"), null);
+  } finally {
+    try { f.view.dispose(); } catch { /* already disposed */ }
+    f.restore();
+  }
+});
+
+test("hovering a region block outside the board highlights that outline", async () => {
+  const region = imageRegionString("imgAAAAA1", { rx: 0.2, ry: 0.2, rw: 0.3, rh: 0.3 }, "Spot");
+  const f = mountFixture({
+    extraChildren: [{
+      ":block/uid": "imgAAAAA1",
+      ":block/string": "![](http://img/a.png)",
+      ":block/order": 8,
+      ":block/props": { ":plexus": { ":x": 520, ":y": 0, ":w": 180, ":h": 120 } },
+      ":block/children": [{
+        ":block/uid": "regsAAAA1",
+        ":block/string": "{{[[plexus-regions]]}}",
+        ":block/order": 0,
+        ":block/props": { ":plexus": { ":type": "regions" } },
+        ":block/children": [{
+          ":block/uid": "regAAAAA1",
+          ":block/string": region,
+          ":block/order": 0,
+          ":block/props": {},
+          ":block/children": [],
+        }],
+      }],
+    }],
+  });
+  try {
+    for (let i = 0; i < 8; i += 1) await f.flush();
+    const hit = f.view.root.querySelector("[data-pxd-region=regAAAAA1]");
+    assert.ok(hit, "the region outline is on the card");
+    const block = f.stub.document.createElement("div");
+    block.className = "roam-block";
+    block.id = "block-input-main-regAAAAA1";
+    f.stub.document.body.append(block);
+    f.stub.dispatch(block, "pointerover", { target: block });
+    assert.equal(hit.classList.contains("pxd-region-hit--ext"), true);
+    const away = f.stub.document.createElement("div");
+    f.stub.document.body.append(away);
+    f.stub.dispatch(block, "pointerout", { target: block, relatedTarget: away });
+    assert.equal(hit.classList.contains("pxd-region-hit--ext"), false);
+    const chip = f.stub.document.createElement("div");
+    chip.className = "pxd-relchip pxd-relchip--end";
+    chip.setAttribute("data-end", "regAAAAA1");
+    f.stub.document.body.append(chip);
+    f.stub.dispatch(chip, "pointerover", { target: chip });
+    assert.equal(hit.classList.contains("pxd-region-hit--ext"), true);
+    f.stub.dispatch(hit, "pointerover", { target: hit });
+    assert.equal(hit.classList.contains("pxd-region-hit--ext"), false, "hovering the outline on the card stays the quiet stroke");
   } finally {
     try { f.view.dispose(); } catch { /* already disposed */ }
     f.restore();

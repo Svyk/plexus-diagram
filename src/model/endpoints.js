@@ -3,7 +3,7 @@
 // This file does not import the PDF module. The two ref patterns are copied so the
 // graph of imports stays one way.
 
-import { blockAnchor, blockInner } from "./geometry.js";
+import { INNER_NOTCH, blockAnchor, blockInner } from "./geometry.js";
 import { fracFromDrag, imageRegionFrac, polyPairs, simplifyPoly } from "./image-region.js";
 import { isContainerString, parseRegion } from "./regions.js";
 import { classifyString } from "./schema.js";
@@ -185,6 +185,101 @@ export function regionEdgePoint(imageRect, frac, other) {
     point = { x: cx, y: side === "bottom" ? rect.y + rect.h : rect.y };
   }
   return { point, side, rect };
+}
+
+function closestOnPoly(points, other) {
+  let best = null;
+  let bestD = Infinity;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((other.x - a.x) * dx + (other.y - a.y) * dy) / len2));
+    const p = { x: a.x + dx * t, y: a.y + dy * t };
+    const d = (p.x - other.x) ** 2 + (p.y - other.y) ** 2;
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best;
+}
+
+const INWARD = {
+  left: [1, 0],
+  right: [-1, 0],
+  top: [0, 1],
+  bottom: [0, -1],
+};
+
+// The committed arrow enters the card on the side facing `other` and stops on the region.
+// `point` is the card-border entry, lined up with the region center. `inner` runs from a notch
+// inside the card to the region edge: the bbox side facing `other`, or the nearest point on
+// `poly`. Poly vertices are fractions of `image`, the same space as `frac`.
+export function regionInnerEnd({ card, image, frac, poly, other } = {}) {
+  const box = asBox(card);
+  const picture = asBox(image);
+  const region = regionBox(picture, frac);
+  if (!box || !region) return null;
+  const rcx = region.x + region.w / 2;
+  const rcy = region.y + region.h / 2;
+  const ox = Number.isFinite(other?.x) ? other.x : region.x - 1;
+  const oy = Number.isFinite(other?.y) ? other.y : rcy;
+  const dx = ox - (box.x + box.w / 2);
+  const dy = oy - (box.y + box.h / 2);
+  let side;
+  let point;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    side = dx >= 0 ? "right" : "left";
+    const y = Math.min(box.y + box.h, Math.max(box.y, rcy));
+    point = { x: side === "right" ? box.x + box.w : box.x, y };
+  } else {
+    side = dy >= 0 ? "bottom" : "top";
+    const x = Math.min(box.x + box.w, Math.max(box.x, rcx));
+    point = { x, y: side === "bottom" ? box.y + box.h : box.y };
+  }
+  const step = INWARD[side];
+  const from = { x: point.x + step[0] * INNER_NOTCH, y: point.y + step[1] * INNER_NOTCH };
+  let tip = null;
+  if (picture && Array.isArray(poly) && poly.length >= 3) {
+    const world = [];
+    for (const p of poly) {
+      const x = picture.x + Number(p?.x) * picture.w;
+      const y = picture.y + Number(p?.y) * picture.h;
+      if (Number.isFinite(x) && Number.isFinite(y)) world.push({ x, y });
+    }
+    if (world.length >= 3) tip = closestOnPoly(world, { x: ox, y: oy });
+  }
+  if (!tip) tip = regionEdgePoint(picture, frac, { x: ox, y: oy })?.point || null;
+  if (!tip) return null;
+  return {
+    point,
+    side,
+    region: true,
+    inner: { from, tip, angle: Math.atan2(tip.y - from.y, tip.x - from.x) },
+  };
+}
+
+// A region block hovered outside the board: a relation chip, or the block in the Roam outline.
+// A node inside a board root is not this hover. The card's own outline stays the quiet stroke.
+export function regionUidFromHover(node, known) {
+  if (!node || typeof node.closest !== "function" || typeof known?.has !== "function") return null;
+  if (node.closest(".pxd-root")) return null;
+  const chip = node.closest(".pxd-relchip--end, .pxd-relchip");
+  if (chip) {
+    const end = chip.getAttribute?.("data-end");
+    if (end && known.has(end)) return end;
+  }
+  const block = node.closest(".roam-block, .rm-block-ref, .roam-block-container");
+  if (!block) return null;
+  const direct = block.getAttribute?.("data-uid");
+  if (direct && known.has(direct)) return direct;
+  const id = block.id || block.getAttribute?.("id") || "";
+  const parts = String(id).split("-");
+  for (let k = 1; k <= Math.min(4, parts.length); k += 1) {
+    const candidate = parts.slice(-k).join("-");
+    if (candidate && known.has(candidate)) return candidate;
+  }
+  return null;
 }
 
 // An edge may be an endpoint only when its own `to` is not an edge. One level.

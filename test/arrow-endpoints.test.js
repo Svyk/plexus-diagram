@@ -21,6 +21,7 @@ import {
   clampToBox,
   regionDropPlan,
   regionEdgePoint,
+  regionInnerEnd,
   wireStart,
 } from "../src/model/endpoints.js";
 import { blockInner } from "../src/model/geometry.js";
@@ -325,9 +326,20 @@ test("the drawn arrow meets the region edge and the other arrow's midpoint", () 
     }]]));
     layer.render({ board, rects, zoom: 1 });
     const box = regionBox({ x: 300, y: 0, w: 200, h: 160 }, frac);
-    const end = layer.geometryOf("eReg001").end;
-    assert.ok(pointInside(end, box), `drawn end ${JSON.stringify(end)}`);
-    assert.equal(layer.geometryOf("eReg001").toInner, null, "a region has no inner notch");
+    const geo = layer.geometryOf("eReg001");
+    assert.equal(geo.end.x, 300, "the main path stops on the card edge");
+    assert.equal(geo.end.y, 80);
+    assert.ok(geo.toInner, "the overlay segment enters the card");
+    assert.equal(geo.toInner.from.x, 304);
+    assert.equal(geo.toInner.tip.x, box.x);
+    assert.equal(geo.toInner.tip.y, 80);
+    assert.ok(pointInside(geo.toInner.tip, box), `tip ${JSON.stringify(geo.toInner.tip)}`);
+    const edgeG = svg.querySelector('[data-uid="eReg001"]');
+    assert.equal(edgeG.querySelector(".pxd-edge__head").getAttribute("display"), "none");
+    const inner = [...over.querySelectorAll(".pxd-inner")].find((node) => node.getAttribute("data-edge") === "eReg001" && node.getAttribute("data-end") === "to");
+    assert.ok(inner);
+    assert.match(inner.querySelector(".pxd-inner__line").getAttribute("d"), /M304 80L350 80/);
+    assert.equal(inner.querySelector(".pxd-inner__head").getAttribute("display"), null);
     assert.deepEqual(layer.geometryOf("eDep001").end, layer.geometryOf("eBase01").mid);
     const cell = { x: 10, y: 40, w: 80, h: 20 };
     const fromPoint = wireStart(rects.get("c1"), {
@@ -337,6 +349,26 @@ test("the drawn arrow meets the region edge and the other arrow's midpoint", () 
     layer.setTempWire({ from: "c1", fromSide: "right", fromPoint, point: { x: 300, y: 40 } }, rects, 1);
     assert.ok(over.querySelector(".pxd-wire"));
   } finally { restore(); }
+});
+
+test("a region arrow enters the card side facing the other end and stops on the polygon", () => {
+  const card = { x: 300, y: 0, w: 200, h: 160 };
+  const image = { x: 300, y: 0, w: 200, h: 160 };
+  const other = { x: 50, y: 0 };
+  const frac = { rx: 0.5, ry: 0.2, rw: 0.4, rh: 0.6 };
+  const poly = [{ x: 0.5, y: 0.2 }, { x: 0.9, y: 0.2 }, { x: 0.9, y: 0.8 }];
+  const hit = regionInnerEnd({ card, image, frac, poly, other });
+  assert.equal(hit.side, "left");
+  assert.equal(hit.point.x, 300);
+  assert.equal(hit.inner.from.x, 304);
+  assert.equal(hit.inner.tip.x, 400);
+  assert.equal(hit.inner.tip.y, 32);
+  const bbox = regionEdgePoint(image, frac, other);
+  assert.equal(bbox.point.y, 80);
+  assert.notEqual(hit.inner.tip.y, bbox.point.y);
+  const fromRight = regionInnerEnd({ card, image, frac, other: { x: 800, y: 80 } });
+  assert.equal(fromRight.point.x, 500);
+  assert.equal(fromRight.inner.from.x, 496);
 });
 
 // ------------------------------------------------------------------ gestures

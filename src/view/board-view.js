@@ -71,7 +71,7 @@ import {
 import { captionForView, selectionViewRect } from "../model/view-save.js";
 import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parsePastedText } from "../model/clipboard.js";
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
-import { createInteractions, emptyLabelShouldDeleteEdge } from "./interactions.js";
+import { createInteractions, emptyLabelShouldDeleteEdge, whyLabelField } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
@@ -132,7 +132,7 @@ import {
 } from "../model/section6.js";
 import { mountLater, mountPrintSheet } from "./later-views.js";
 import { cellElementOf, cellUidOf, isTableCard } from "./table-cells.js";
-import { endpointUnderPointer, focusEnds, imageSourceOf, pickSmallestRegion, regionDropPlan, wireStart } from "../model/endpoints.js";
+import { endpointUnderPointer, focusEnds, imageSourceOf, pickSmallestRegion, regionDropPlan, regionUidFromHover, wireStart } from "../model/endpoints.js";
 import { imageRegionFrac, paintedRectOfElement } from "../model/image-region.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -2796,6 +2796,30 @@ function buildBoardView(onFail, {
     if (!row || row.contains?.(event.relatedTarget)) return;
     for (const uid of String(row.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) { edgesR.setHover(uid, false); hoverRows(uid, false); }
   });
+  let extRegion = null;
+  const regionUidsOnBoard = () => {
+    const set = new Set();
+    for (const node of root.querySelectorAll?.("[data-pxd-region]") || []) {
+      const id = node.getAttribute?.("data-pxd-region");
+      if (id) set.add(id);
+    }
+    return set;
+  };
+  const paintExt = (uid) => {
+    if (uid === extRegion) return;
+    if (extRegion) itemsR.setRegionExt?.(extRegion, false);
+    extRegion = uid || null;
+    if (extRegion) itemsR.setRegionExt?.(extRegion, true);
+  };
+  listen(doc, "pointerover", (event) => {
+    paintExt(regionUidFromHover(event.target, regionUidsOnBoard()));
+  }, true);
+  listen(doc, "pointerout", (event) => {
+    if (!extRegion) return;
+    const next = regionUidFromHover(event.relatedTarget, regionUidsOnBoard());
+    if (next === extRegion) return;
+    paintExt(next);
+  }, true);
   function scheduleAnchors() {
     if (disposed || anchorFrame) return;
     anchorFrame = true;
@@ -6948,7 +6972,28 @@ function buildBoardView(onFail, {
     };
     if (event.target?.closest?.(".pxd-read")) return;
     // The arrow label lives on document.body. It is outside the board, but it is not a Roam edit.
-    if (event.target?.closest?.(".pxd-why")) return;
+    // Delete and Backspace in the empty label delete the arrow. A Caret .cs-sel wrapper still counts.
+    const inWhy = Boolean(event.target?.closest?.(".pxd-why") || doc.activeElement?.closest?.(".pxd-why"));
+    if (inWhy) {
+      const whyField = whyLabelField(event.target, doc.activeElement);
+      if (emptyLabelShouldDeleteEdge({
+        key: event.key,
+        meta: event.metaKey,
+        ctrl: event.ctrlKey,
+        alt: event.altKey,
+        shift: event.shiftKey,
+        edgeSelected: Boolean(selection.edge),
+        inLabel: Boolean(whyField),
+        empty: String(whyField?.value ?? whyField?.textContent ?? "").trim() === "",
+      })) {
+        event.preventDefault();
+        event.stopPropagation();
+        whyPop?.close();
+        whyPop = null;
+        ctl.deleteSelection(false);
+      }
+      return;
+    }
     // A keystroke outside the board is a Roam transaction. Drop live card renders first,
     // before any board lookup, and put them back shortly after typing stops.
     if (isTextEntryTarget(event.target) && !root.contains?.(event.target)) {
@@ -7036,8 +7081,7 @@ function buildBoardView(onFail, {
       return;
     }
     const inputFocused = isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement);
-    const labelNode = [event.target, doc.activeElement].find((node) => node?.classList?.contains?.("pxd-why__label") || node?.closest?.(".pxd-label--editing"));
-    const labelField = labelNode?.classList?.contains?.("pxd-why__label") ? labelNode : labelNode?.closest?.(".pxd-label--editing");
+    const labelField = whyLabelField(event.target, doc.activeElement);
     if (emptyLabelShouldDeleteEdge({
       key: event.key,
       meta: event.metaKey,
@@ -7050,6 +7094,8 @@ function buildBoardView(onFail, {
     })) {
       event.preventDefault();
       event.stopPropagation();
+      whyPop?.close();
+      whyPop = null;
       ctl.deleteSelection(false);
       return;
     }

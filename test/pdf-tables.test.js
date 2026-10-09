@@ -108,6 +108,31 @@ test("scanned PDF with a ready helper reads the scan and returns tables", async 
   assert.equal(out.from, "ocr");
 });
 
+test("an OCR-only helper reads scans and a Docling-less missing state does not", async () => {
+  const r = await rig("report-scan.pdf");
+  const calls = [];
+  const ocrOnly = {
+    async health() { return { state: "ready", ocr: true, docling: false, engines: ["ocr"] }; },
+    async ocr(req) { calls.push(req); return req.pages ? { pages: OCR.pages.filter((p) => req.pages.includes(p.n)) } : { cells: [] }; },
+  };
+  const out = await r.make({ helper: ocrOnly }).tablesFromPdf({ url: "s" });
+  assert.equal(out.ocr.source, "helper");
+  assert.ok(calls.length >= 1);
+  const quiet = {
+    async health() { return { state: "models-missing", ocr: false, docling: false }; },
+    async ocr() { throw new Error("must not run"); },
+  };
+  const skipped = await r.make({ helper: quiet }).tablesFromPdf({ url: "s2" });
+  assert.equal(skipped.ocr.source, null);
+  assert.equal(skipped.ocr.state, "models-missing");
+  const whileDownloading = {
+    async health() { return { state: "models-missing", ocr: true, docling: false, engines: ["docling", "ocr"] }; },
+    async ocr(req) { return req.pages ? { pages: OCR.pages.filter((p) => req.pages.includes(p.n)) } : { cells: [] }; },
+  };
+  const during = await r.make({ helper: whileDownloading }).tablesFromPdf({ url: "s3" });
+  assert.equal(during.ocr.source, "helper");
+});
+
 test("an injected OCR source wins over the helper and scan: off skips OCR", async () => {
   const r = await rig("report-scan.pdf");
   const helper = { async health() { return { state: "ready" }; }, async ocr() { throw new Error("helper must not be used"); } };

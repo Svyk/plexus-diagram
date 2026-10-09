@@ -19,6 +19,7 @@ import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { toCSV, toMarkdown } from "../model/parse-to-text.js";
 import { imageKey, restorableByUrl } from "../host/parse-store.js";
 import { parsedDocTitle, parsedTitleLines } from "../model/pdf.js";
+import { helperCanDocling, helperCanOcr } from "../host/parse-helper-client.js";
 import { loadPageData, mergeOcrPageRecords, readScan, rereadCells, rereadLines } from "./parse-engine.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { createParseOverlay } from "./parse-overlay.js";
@@ -514,6 +515,14 @@ export function createParseView({
   let abort = null;
   let jobId = "";
   let helperState = "";
+  let helperOcr = false;
+  let helperDocling = false;
+
+  function takeHealth(health) {
+    helperState = health?.state || "not-running";
+    helperOcr = helperCanOcr(health);
+    helperDocling = helperCanDocling(health);
+  }
   let phase = "idle";
   let dead = false;
   let progress = { page: 0, pageCount: 0, engine: "builtin" };
@@ -665,7 +674,7 @@ export function createParseView({
     getParsed: () => parsed,
     pageEl: (n) => pageEl?.(n) || null,
     pageOf: (n) => pageInfo(n),
-    isLatexReady: () => helperState === "ready",
+    isLatexReady: () => helperDocling,
     storage,
     copy: (block) => {
       if (!parsed || !block) return;
@@ -779,7 +788,7 @@ export function createParseView({
     chip.setAttribute("data-tip", tipId);
     const running = phase === "running";
     setHidden(cancelBtn, !running);
-    setHidden(doclingBtn, helperState !== "ready");
+    setHidden(doclingBtn, !helperDocling);
     setHidden(track, !running);
     const denom = Number(progress.pageCount) || 0;
     const frac = running && denom ? Math.max(0, Math.min(1, Number(progress.page) / denom)) : 0;
@@ -911,7 +920,7 @@ export function createParseView({
     }
     void (async () => {
       await refreshHelper();
-      if (helperState === "ready") await readScanNow();
+      if (helperOcr) await readScanNow();
       else { try { onToast?.("Scanned page: start the local helper to read its text (Settings → Parse)"); } catch { /* host */ } }
     })();
   }
@@ -1461,7 +1470,7 @@ export function createParseView({
     if (scanAuto && scanPagesOf(finalDoc).length) {
       await refreshHelper();
       const engine = ocrEngine();
-      if (engine && (engine === ocrSource || helperState === "ready")) await readScanNow();
+      if (engine && (engine === ocrSource || helperOcr)) await readScanNow();
     }
   }
 
@@ -1475,7 +1484,7 @@ export function createParseView({
   function paintScan() {
     const pages = parsed ? scanPagesOf(parsed) : [];
     const engine = ocrEngine();
-    const ready = Boolean(engine && (engine === ocrSource || helperState === "ready"));
+    const ready = Boolean(engine && (engine === ocrSource || helperOcr));
     scanBtn.hidden = !(pages.length && ready && phase !== "running");
     if (!scanBtn.hidden) scanBtn.textContent = pages.length === 1 ? `Read the scan (p. ${pages[0]})` : `Read the scan (${pages.length} pages)`;
   }
@@ -1484,7 +1493,7 @@ export function createParseView({
   // merged into the document (a scanLayer page keeps the better table reading). No writes.
   async function readScanNow() {
     const engine = ocrEngine();
-    if (!parsed || !engine || (engine !== ocrSource && helperState !== "ready")) return;
+    if (!parsed || !engine || (engine !== ocrSource && !helperOcr)) return;
     const pages = scanPagesOf(parsed);
     if (!pages.length) return;
     cancel();
@@ -1582,7 +1591,7 @@ export function createParseView({
   }
 
   async function parseDocling() {
-    if (!helper || helperState !== "ready") {
+    if (!helper || !helperDocling) {
       helperState = helperState || "not-running";
       paintChip();
       return;
@@ -1618,7 +1627,7 @@ export function createParseView({
   }
 
   async function reparseTable(table) {
-    if (!helper || typeof helper.reparseTable !== "function") {
+    if (!helper || !helperDocling || typeof helper.reparseTable !== "function") {
       helperState = helperState || "not-running";
       paintChip();
       render();
@@ -1822,7 +1831,7 @@ export function createParseView({
     closeMenus();
     void (async () => {
       await refreshHelper();
-      if (helperState === "ready") await parseDocling();
+      if (helperDocling) await parseDocling();
     })();
   });
   listen(altBtn, "click", () => { closeMenus(); void readAlternative(); });
@@ -1922,12 +1931,14 @@ export function createParseView({
   async function refreshHelper() {
     if (!helper || typeof helper.health !== "function") return;
     try {
-      const health = await helper.health();
-      helperState = health?.state || "not-running";
+      takeHealth(await helper.health());
     } catch {
       helperState = "not-running";
+      helperOcr = false;
+      helperDocling = false;
     }
     paintChip();
+    paintScan();
   }
 
   if (!lazyKeys) armKeys();

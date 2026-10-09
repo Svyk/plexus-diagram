@@ -23,5 +23,6 @@ test("Pages serves the installer, byte for byte the source next to the helper", 
   const served = await readFile(new URL("../deploy/helper/install.sh", import.meta.url), "utf8");
   assert.equal(served, source);
   assert.match(served, /^#!\/bin\/sh/);
-  assert.match(served, /Back to Roam: click Pair\./);
+  assert.match(served, /plexus-parse-helper-rs" pair/);
+  assert.doesNotMatch(served, /say "Back to Roam: click Pair\."/);
 });

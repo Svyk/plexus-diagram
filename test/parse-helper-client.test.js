@@ -91,6 +91,47 @@ test("health distinguishes not-running, wrong-token, ready, models-missing, and 
   const newer = client(() => ({ status: 200, json: async () => ({ ...readyBody, schema: "pxd-parse/2" }) }));
   assert.equal((await newer.api.health()).state, "newer-schema");
 
+  const full = client(() => ({
+    status: 200,
+    json: async () => ({
+      ...readyBody,
+      engines: ["docling", "ocr"],
+      models: { layout: "ready", tableformer: "ready", ocr: "ready" },
+    }),
+  }));
+  const fullHealth = await full.api.health();
+  assert.equal(fullHealth.state, "ready");
+  assert.equal(fullHealth.ocr, true);
+  assert.equal(fullHealth.docling, true);
+  assert.equal(fullHealth.busy, 0);
+
+  const ocrOnly = client(() => ({
+    status: 200,
+    json: async () => ({
+      ...readyBody,
+      version: "0.1.0-rs",
+      engines: ["ocr"],
+      models: { layout: "missing", tableformer: "missing", ocr: "ready" },
+    }),
+  }));
+  const scanHealth = await ocrOnly.api.health();
+  assert.equal(scanHealth.state, "ready");
+  assert.equal(scanHealth.ocr, true);
+  assert.equal(scanHealth.docling, false);
+
+  const pythonPartial = client(() => ({
+    status: 200,
+    json: async () => ({
+      ...readyBody,
+      engines: ["docling", "ocr"],
+      models: { layout: "missing", tableformer: "missing", ocr: "ready" },
+    }),
+  }));
+  const partial = await pythonPartial.api.health();
+  assert.equal(partial.state, "models-missing");
+  assert.equal(partial.ocr, true);
+  assert.equal(partial.docling, false);
+
   let aborted = false;
   const slow = client((url, init) => new Promise((resolve, reject) => {
     init.signal.addEventListener("abort", () => {

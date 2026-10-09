@@ -1,0 +1,92 @@
+name: helper-rs
+
+on:
+  push:
+    tags:
+      - "helper-rs-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing helper-rs-v* tag to attach the binaries to"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: macos ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+            pdfium: arm64
+            target: aarch64-apple-darwin
+          - arch: x86_64
+            runner: macos-15-intel
+            pdfium: x64
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install the Rust target
+        run: rustup target add ${{ matrix.target }}
+      - name: Fetch libpdfium
+        working-directory: tools/parse-helper-rs
+        run: ./fetch-pdfium.sh ${{ matrix.pdfium }}
+      - name: Build
+        working-directory: tools/parse-helper-rs
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package
+        run: |
+          set -eu
+          stage=$(mktemp -d)
+          bin="tools/parse-helper-rs/target/${{ matrix.target }}/release/plexus-parse-helper-rs"
+          cp "$bin" "$stage/plexus-parse-helper-rs"
+          cp tools/parse-helper-rs/vendor/libpdfium.dylib "$stage/libpdfium.dylib"
+          codesign --force --sign - "$stage/plexus-parse-helper-rs" "$stage/libpdfium.dylib"
+          asset="plexus-parse-helper-rs-macos-${{ matrix.arch }}.tar.gz"
+          tar -czf "$asset" -C "$stage" plexus-parse-helper-rs libpdfium.dylib
+      - name: Upload the archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: helper-rs-${{ matrix.arch }}
+          path: plexus-parse-helper-rs-macos-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish the GitHub release
+    needs: build
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the archives
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Write SHA256SUMS and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${{ github.ref_name }}"
+          fi
+          case "$tag" in
+            helper-rs-v*) ;;
+            *) echo "refusing to publish tag: $tag" >&2; exit 1 ;;
+          esac
+          cd dist
+          sha256sum -- *.tar.gz > SHA256SUMS
+          cd ..
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --verify-tag --title "$tag" --notes "macOS binaries for the light parse helper (Apple Vision OCR). Each archive contains plexus-parse-helper-rs and libpdfium.dylib. Check SHA256SUMS before installing."
+          gh release upload "$tag" dist/*.tar.gz dist/SHA256SUMS --clobber

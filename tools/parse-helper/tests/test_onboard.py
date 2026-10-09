@@ -236,8 +236,9 @@ def test_installer_script_text():
     assert text.startswith("#!/bin/sh")
     assert os.access(INSTALL, os.X_OK)
     assert subprocess.run(["sh", "-n", str(INSTALL)]).returncode == 0
-    order = [text.index(s) for s in ("astral.sh/uv/install.sh", "uv tool install --force", "install-agent", '"$HELPER" pair', "Back to Roam: click Pair.")]
+    order = [text.index(s) for s in ("astral.sh/uv/install.sh", "uv tool install --force", "install-agent", '"$HELPER" pair')]
     assert order == sorted(order)
+    assert 'say "Back to Roam: click Pair."' not in text
     assert "command -v uv" in text
     assert "subdirectory=tools/parse-helper" in text
     assert "Svyk/plexus-diagram" in text

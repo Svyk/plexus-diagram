@@ -7,6 +7,7 @@ import { assembleDocument, parsePageGeometry } from "../model/parse/index.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { toGridModelSpec } from "../model/parse-to-grid.js";
 import { restorableParse } from "./parse-store.js";
+import { helperCanOcr } from "./parse-helper-client.js";
 import { detectPdfjs, loadPageData, readScan } from "../view/parse-engine.js";
 
 export const PDF_TABLES_CAPABILITIES = Object.freeze(["tablesFromPdf", "tablesFromPdf.cache", "tablesFromPdf.scan.helper", "tablesFromPdf.scan.source"]);
@@ -101,7 +102,10 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
   async function ocrState(source) {
     if (source) return { source: source === helper ? "helper" : "injected", state: "ready" };
     if (helper && typeof helper.health === "function") {
-      try { return { source: null, state: (await helper.health())?.state || "not-running" }; } catch { /* below */ }
+      try {
+        const health = await helper.health();
+        return { source: null, state: health?.state || "not-running", ocr: health?.ocr, docling: health?.docling };
+      } catch { /* below */ }
     }
     return { source: null, state: "none" };
   }
@@ -133,7 +137,7 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
       if (!source && helper && typeof helper.ocr === "function") {
         const health = await ocrState(null);
         ocr = health;
-        if (health.state === "ready") source = helper;
+        if (helperCanOcr(health)) source = helper;
       }
       if (source && typeof source.ocr === "function") {
         ocr = { source: source === helper ? "helper" : "injected", state: "ready" };

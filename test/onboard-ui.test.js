@@ -5,6 +5,7 @@ import test from "node:test";
 
 import { STRIP_ACTIONS, renderParseStatus, stripKind, stripModel } from "../src/view/parse-status.js";
 import {
+  DOCLING_COMMAND,
   INSTALL_COMMAND,
   RESTART_COMMAND,
   engineRows,
@@ -225,6 +226,37 @@ test("device and cloud rows: built-in ready, in-browser reading by state, cloud 
     assert.ok(TIP_TEXT[r.tip], r.tip);
     if (r.button) assert.ok(TIP_TEXT[r.button.tip], r.button.tip);
   }
+});
+
+test("an OCR-only helper is ready for scans and explains the Docling add-on", async () => {
+  const helper = {
+    state: "ready",
+    paired: true,
+    version: "0.1.0-rs",
+    ocr: true,
+    docling: false,
+    engines: ["ocr"],
+  };
+  const row = engineRows({ device: { state: "ready" }, helper }).find((r) => r.id === "helper");
+  assert.equal(row.dot, "ok");
+  assert.equal(row.text, "Ready for scans · v0.1.0-rs");
+  assert.equal(row.button, null);
+  assert.match(row.note, /Docling is an optional add-on/);
+  assert.equal(row.command, DOCLING_COMMAND);
+  assert.match(DOCLING_COMMAND, /--docling/);
+
+  const full = engineRows({ device: { state: "ready" }, helper: { state: "ready", version: "0.1.0", ocr: true, docling: true } }).find((r) => r.id === "helper");
+  assert.equal(full.text, "Ready · v0.1.0");
+  assert.equal(full.note, undefined);
+  assert.equal(full.button, null);
+
+  const { panel } = mount({ client: fakeClient(helper) });
+  await tick();
+  const painted = panel.el.querySelector('[data-row="helper"]');
+  assert.match(painted.querySelector(".pxd-engines__note").textContent, /optional add-on/);
+  assert.equal(painted.querySelector(".pxd-engines__command").textContent, DOCLING_COMMAND);
+  assert.equal(painted.querySelector("button"), null);
+  panel.dispose();
 });
 
 test("the setup sheet gives the right command per state and platform", () => {

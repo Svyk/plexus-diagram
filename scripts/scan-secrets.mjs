@@ -3,7 +3,7 @@ import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const ignoredDirectories = new Set([".git", "node_modules", "coverage"]);
+const ignoredDirectories = new Set([".git", "node_modules", "coverage", "target"]);
 
 export const SECRET_RULES = Object.freeze([
   { id: "private-key", pattern: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/g },

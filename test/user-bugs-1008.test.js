@@ -137,7 +137,12 @@ async function mountZoomed() {
     stub.flushIdle();
     stub.flushFrames();
   };
-  await flush();
+  // Card paint is time-sliced per frame; a slow CI machine can need several frames before every card is mounted.
+  for (let i = 0; i < 40; i += 1) {
+    await flush();
+    const r = view.root;
+    if (r.querySelector("[data-uid=table0001] .rg-cell") && r.querySelector("[data-uid=sticky001] textarea") && r.querySelector("[data-uid=noteCCCC3]")) break;
+  }
   return { stub, restore, session, view, flush };
 }
 

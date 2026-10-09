@@ -213,6 +213,17 @@ export function pinOpenPlan(region) {
   return { pdfUid, page, frac: region.f.slice(), pinUid: String(region.uid || "") };
 }
 
+export const PIN_PENDING_MS = 8000;
+
+// "Open in reader" from an outline where no mounted board shows the PDF. The PDF's page is opened
+// and the pin is kept pending, so the board that mounts there opens the reader at the pin.
+export function pinOpenFallback({ opened = false, plan = null, pageUid = "", now = 0 } = {}) {
+  if (opened || !plan?.pinUid) return null;
+  const page = String(pageUid || "").trim();
+  if (!UID_RE.test(page)) return null;
+  return { openPage: page, pending: { pinUid: plan.pinUid, until: Number(now) + PIN_PENDING_MS } };
+}
+
 export function pinnedToast(page) {
   const n = Number(page);
   return Number.isInteger(n) && n >= 1 ? `Pinned p. ${n}` : "Pinned";

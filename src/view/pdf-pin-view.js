@@ -6,6 +6,8 @@ import { CROP_MAX_H, claimRegionButton, cropFrame } from "./region-crop.js";
 import { pinClickMode, pinPdfUrl, sourceAttrString } from "../model/pdf-pin.js";
 
 const POP_MAX = 280;
+// loadCrop hands back the pin region already cut from the page, so the frame shows the whole image.
+const WHOLE = Object.freeze([0, 0, 1, 1]);
 
 function showButton(button) {
   if (!button) return;
@@ -77,7 +79,7 @@ export function openPinPopover({
   const frame = doc.createElement("div");
   frame.className = "pxd-pdf-pin__frame pxd-pdf-pin__frame--pop";
   pop.append(frame);
-  if (crop) paintCrop(doc, frame, crop, region.f, POP_MAX);
+  if (crop) paintCrop(doc, frame, crop, WHOLE, POP_MAX);
   else {
     const page = doc.createElement("div");
     page.className = "pxd-pdf-pin__page";
@@ -188,7 +190,7 @@ export function mountPdfPin({
     loads += 1;
     Promise.resolve(loadCrop({ url, page: region.pg, frac: region.f })).then((src) => {
       if (!src || span.isConnected === false) return;
-      paintCrop(doc, frame, src, region.f, CROP_MAX_H);
+      paintCrop(doc, frame, src, WHOLE, CROP_MAX_H);
     }).catch(() => {});
   };
   const IO = doc.defaultView?.IntersectionObserver || globalThis.IntersectionObserver;

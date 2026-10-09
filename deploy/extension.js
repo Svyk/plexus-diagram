@@ -2212,6 +2212,36 @@ function endpointKindOf(blockString2) {
   if (region.kind === "pdf") return "pin";
   return null;
 }
+function endpointDisplayText(blockString2) {
+  const text3 = String(blockString2 ?? "");
+  const region = parseRegion(text3);
+  if (!region) return text3;
+  if (region.caption) return region.caption;
+  return region.kind === "pdf" && Number.isInteger(Number(region.pg)) ? `p. ${region.pg}` : "Region";
+}
+function endpointHitsOf(nodes) {
+  const regions = [];
+  const pins = [];
+  for (const node2 of nodes || []) {
+    const string = node2?.[":block/string"] ?? node2?.string ?? "";
+    if (!isContainerString(string)) continue;
+    for (const kid of node2?.[":block/children"] ?? node2?.children ?? []) {
+      const text3 = kid?.[":block/string"] ?? kid?.string ?? "";
+      const id = kid?.[":block/uid"] ?? kid?.uid;
+      const kind = endpointKindOf(text3);
+      if (!id || !kind) continue;
+      const f = parseRegion(text3)?.f;
+      (kind === "region" ? regions : pins).push({ uid: id, frac: f });
+    }
+  }
+  return { regions, pins };
+}
+function endpointHitsKey(nodes) {
+  const { regions, pins } = endpointHitsOf(nodes);
+  if (!regions.length && !pins.length) return "";
+  const one = (h) => `${h.uid}=${Array.isArray(h.frac) ? h.frac.join(",") : ""}`;
+  return `r:${regions.map(one).join(";")}|p:${pins.map(one).join(";")}`;
+}
 function imageSourceOf(item, read2) {
   if (!item) return { ok: false, reason: "missing" };
   if (item.kind === "image") return { ok: true, uid: item.uid, viaRef: false };
@@ -2657,7 +2687,9 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         ...layout.landmark ? { landmark: true, glyph: layout.glyph || "", size: layout.size === "S" || layout.size === "L" ? layout.size : "M" } : {},
         enhanced: kind === "board" && (cplexus?.v === 2 || typeof autoBoard === "function" && autoBoard(cuid, cplexus, kids) === true),
         members: [],
-        content: type === "section" ? [] : kids
+        content: type === "section" ? [] : kids,
+        // Regions and pins sit in content, which can change in place. This string is fixed at build, so the diff sees them.
+        ...kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(kids) } : {}
       };
       items.set(cuid, item);
       preorder.push(cuid);
@@ -3148,6 +3180,9 @@ function edgesTouching(board2, uidSet) {
   for (const u of uidSet) for (const d of descendantsOf(board2, u)) full.add(d);
   const out = /* @__PURE__ */ new Set();
   for (const e2 of board2.edges.values()) if (full.has(e2.from) || full.has(e2.to)) out.add(e2.uid);
+  if (out.size) {
+    for (const e2 of board2.edges.values()) if (!out.has(e2.uid) && (out.has(e2.from) || out.has(e2.to))) out.add(e2.uid);
+  }
   return out;
 }
 function findEdge(board2, from, to) {
@@ -8747,6 +8782,12 @@ function pinOpenPlan(region) {
   if (!pdfUid || !Number.isInteger(page) || page < 1 || !Array.isArray(region.f)) return null;
   return { pdfUid, page, frac: region.f.slice(), pinUid: String(region.uid || "") };
 }
+function pinOpenFallback({ opened = false, plan = null, pageUid = "", now: now3 = 0 } = {}) {
+  if (opened || !plan?.pinUid) return null;
+  const page = String(pageUid || "").trim();
+  if (!UID_RE4.test(page)) return null;
+  return { openPage: page, pending: { pinUid: plan.pinUid, until: Number(now3) + PIN_PENDING_MS } };
+}
 function pinnedToast(page) {
   const n2 = Number(page);
   return Number.isInteger(n2) && n2 >= 1 ? `Pinned p. ${n2}` : "Pinned";
@@ -8813,7 +8854,7 @@ function planPinWrites(spec) {
   creates.push({ role: "pin", parentUid: containerUid, uid: pinUid, string });
   return { uid: pinUid, reused: false, creates, containerUid: spec?.containerUid || "" };
 }
-var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash;
+var PIN_IOU, CAPTION_CAP, WITH_SOURCE_KEY, CARD_JSON_MIME, PIN_BOARDS_QUERY, UID_RE4, SOURCE_RE, DIAGRAM_RE, COPY_MENU, squash, PIN_PENDING_MS;
 var init_pdf_pin = __esm({
   "src/model/pdf-pin.js"() {
     init_deeplink();
@@ -8836,6 +8877,7 @@ var init_pdf_pin = __esm({
       { id: "link", label: "Copy link", keys: "" }
     ]);
     squash = (text3) => String(text3 ?? "").replace(/\s+/g, " ").trim();
+    PIN_PENDING_MS = 8e3;
   }
 });
 
@@ -11759,7 +11801,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
   const textOf2 = (uid) => {
     try {
       const t = blockText?.(uid);
-      return typeof t === "string" && t ? t : "block";
+      return typeof t === "string" && t ? endpointDisplayText(t) : "block";
     } catch {
       return "block";
     }
@@ -12311,7 +12353,7 @@ var init_relchips = __esm({
     };
     endName = (name, blockText) => {
       const base = clip3(name, NAME_MAX) || "card";
-      const block = clip3(blockText, BLOCK_MAX);
+      const block = clip3(endpointDisplayText(blockText), BLOCK_MAX);
       return block ? `${base} ▸ “${block}”` : base;
     };
     ROW_PAD = 10;
@@ -17962,7 +18004,7 @@ function openPinPopover({
   const frame = doc.createElement("div");
   frame.className = "pxd-pdf-pin__frame pxd-pdf-pin__frame--pop";
   pop.append(frame);
-  if (crop) paintCrop(doc, frame, crop, region.f, POP_MAX);
+  if (crop) paintCrop(doc, frame, crop, WHOLE, POP_MAX);
   else {
     const page = doc.createElement("div");
     page.className = "pxd-pdf-pin__page";
@@ -18093,7 +18135,7 @@ function mountPdfPin({
     loads += 1;
     Promise.resolve(loadCrop({ url, page: region.pg, frac: region.f })).then((src) => {
       if (!src || span.isConnected === false) return;
-      paintCrop(doc, frame, src, region.f, CROP_MAX_H);
+      paintCrop(doc, frame, src, WHOLE, CROP_MAX_H);
     }).catch(() => {
     });
   };
@@ -18165,13 +18207,14 @@ function mountPdfPin({
     }
   };
 }
-var POP_MAX;
+var POP_MAX, WHOLE;
 var init_pdf_pin_view = __esm({
   "src/view/pdf-pin-view.js"() {
     init_avoid();
     init_region_crop();
     init_pdf_pin();
     POP_MAX = 280;
+    WHOLE = Object.freeze([0, 0, 1, 1]);
   }
 });
 
@@ -19264,6 +19307,7 @@ function createItemRenderer({
     if ((item?.kind === "drawing-ref" || item?.kind === "region-ref") && !interopAllowed()) key += "interop-off";
     const pin2 = sourcePinOf(item?.content);
     if (pin2) key += `pin:${pin2.uid}`;
+    if (item?.hitsKey) key += `hits:${item.hitsKey}`;
     return key;
   };
   const shells = /* @__PURE__ */ new Map();
@@ -21194,23 +21238,7 @@ function createItemRenderer({
   };
   const syncEndpointHits = (rec, nodes) => {
     if (!rec?.body || rec.pageHolder) return;
-    const regions = [];
-    const pins = [];
-    for (const node2 of nodes || []) {
-      const string = node2?.[":block/string"] ?? node2?.string ?? "";
-      if (!isContainerString(string)) continue;
-      const kids = node2?.[":block/children"] ?? node2?.children ?? [];
-      for (const kid of kids) {
-        const text3 = kid?.[":block/string"] ?? kid?.string ?? "";
-        const kind = endpointKindOf(text3);
-        const id = kid?.[":block/uid"] ?? kid?.uid;
-        if (!id || !kind) continue;
-        const parsed = parseRegion(text3);
-        if (kind === "region") regions.push({ uid: id, frac: parsed?.f });
-        else pins.push({ uid: id, frac: parsed?.f });
-      }
-      break;
-    }
+    const { regions, pins } = endpointHitsOf(nodes);
     const readMode = Boolean(rec.el?.classList?.contains("pxd-pdf-live"));
     let hostEl = rec.body.querySelector?.(".pxd-item__media") || null;
     if (!hostEl && readMode) {
@@ -72059,7 +72087,23 @@ async function installPlexusDiagram({
             }
             return;
           }
-          if (plan) openPinOnBoard(plan);
+          if (!plan) return;
+          let pageUid = "";
+          const opened = openPinOnBoard(plan);
+          if (!opened) {
+            try {
+              pageUid = host.blockPageUid?.(plan.pdfUid) || "";
+            } catch {
+              pageUid = "";
+            }
+          }
+          const fallback = pinOpenFallback({ opened, plan, pageUid, now: Date.now() });
+          if (!fallback) return;
+          pendingPin = fallback.pending;
+          try {
+            host.openPage?.(fallback.openPage);
+          } catch {
+          }
         },
         root: doc.body
       });

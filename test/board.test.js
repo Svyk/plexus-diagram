@@ -694,3 +694,48 @@ test("sidebarOutlineUids lists roots then the Connections block", () => {
   assert.deepEqual(sidebarOutlineUids(build()), ["c1", "c2", "c3", "s1", "t1", "h1", "nb", "ex"]);
   assert.deepEqual(sidebarOutlineUids(null), []);
 });
+
+test("diffBoards marks an image card dirty when a region is written under it, and leaves a plain child edit alone", () => {
+  // Live 2026-10-08: a region made by Connect showed no outline until the board remounted.
+  const make = (regionKids, noteKid = "a note") => {
+    const f = fixture();
+    f[":block/children"].push(blk("img1", 8, "![fig](https://x/fig.png)", { x: 0, y: 900, w: 300, h: 200 }, {
+      ":block/children": [
+        blk("rc1", 0, "{{[[plexus-regions]]}}", { type: "regions" }, { ":block/children": regionKids }),
+        blk("nk1", 1, noteKid),
+      ],
+    }));
+    return buildBoard(f);
+  };
+  const r1 = blk("reg1", 0, "{{[[plexus-region]]: k=img d=img1 f=0.1,0.2,0.3,0.4}} Region 1");
+  const r2 = blk("reg2", 1, "{{[[plexus-region]]: k=img d=img1 f=0.5,0.5,0.2,0.2}} Region 2");
+  const prev = make([r1]);
+  assert.equal(prev.items.get("img1").kind, "image");
+  const grown = diffBoards(prev, make([r1, r2]));
+  assert.equal(grown.structural, false);
+  assert.deepEqual([...grown.dirty], ["img1"]);
+  const note = diffBoards(prev, make([r1], "edited note"));
+  assert.equal(note.dirty.has("img1"), false);
+});
+
+test("diffBoards sees a region pushed into the same container array in place (the session's optimistic write)", () => {
+  const f = fixture();
+  const container = blk("rc1", 0, "{{[[plexus-regions]]}}", { type: "regions" }, { ":block/children": [] });
+  f[":block/children"].push(blk("img1", 8, "![fig](https://x/fig.png)", { x: 0, y: 900 }, { ":block/children": [container] }));
+  const prev = buildBoard(f);
+  container[":block/children"].push(blk("reg1", 0, "{{[[plexus-region]]: k=img d=img1 f=0.1,0.2,0.3,0.4}} Region 1"));
+  const next = buildBoard(f);
+  assert.equal(prev.items.get("img1").hitsKey, "");
+  assert.notEqual(next.items.get("img1").hitsKey, "");
+  assert.deepEqual([...diffBoards(prev, next).dirty], ["img1"]);
+});
+
+test("edgesTouching includes an arrow that ends on the label of a touched arrow", () => {
+  // Live 2026-10-08: moving a card moved the label, but the arrow on that label stayed behind.
+  const f = fixture();
+  f[":block/children"][7][":block/children"].push(blk("e4", 4, "((t1)) → ((e1))", { type: "edge", from: "t1", to: "e1" }));
+  const b = buildBoard(f);
+  assert.ok(b.edges.has("e4"));
+  assert.deepEqual([...edgesTouching(b, new Set(["c1"]))].sort(), ["e1", "e2", "e4"]);
+  assert.deepEqual([...edgesTouching(b, new Set(["nb"]))], []);
+});

@@ -29,6 +29,8 @@ import {
   pinSpecFromBlock,
   pinWriteSteps,
   pinnedToast,
+  pinOpenFallback,
+  PIN_PENDING_MS,
   planPinWrites,
   pxdPinTarget,
   readWithSource,
@@ -537,4 +539,64 @@ test("loading the pin modules does not call pdf.js", () => {
   assert.ok(pdfAt > 0 && pdfAt < imgAt);
   assert.match(feature.slice(pdfAt, imgAt), /regionsInline\] === false/);
   assert.equal(pinPdfUrl(""), "");
+});
+
+test("a pin crop that is already cut to the region fills its frame instead of being cropped twice", async () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  const previous = globalThis.IntersectionObserver;
+  class FakeIO {
+    constructor(cb) { this.cb = cb; FakeIO.last = this; }
+    observe() {}
+    disconnect() {}
+  }
+  globalThis.IntersectionObserver = FakeIO;
+  try {
+    const doc = globalThis.document;
+    // Live 2026-10-08: a heading pin (f width 0.1533, height 0.0103) drew a 28 x 0.18 px frame.
+    const region = { ...parseRegion("{{[[plexus-pin]]: d=pdfblock1 pg=6 f=0.5142,0.4425,0.1533,0.0103}} 4.2. Food data"), uid: "pinuid02", url: "https://x/a.pdf" };
+    const host = doc.createElement("div");
+    const button = doc.createElement("button");
+    host.append(button);
+    doc.body.append(host);
+    const handle = mountPdfPin({ doc, button, region, root: doc.body, loadCrop: () => "data:image/png;base64,bb" });
+    FakeIO.last.cb([{ isIntersecting: true }]);
+    await Promise.resolve();
+    await Promise.resolve();
+    const img = handle.el.querySelector(".pxd-pdf-pin__img");
+    assert.ok(img);
+    Object.defineProperty(img, "naturalWidth", { value: 183, configurable: true });
+    Object.defineProperty(img, "naturalHeight", { value: 17, configurable: true });
+    img.dispatchEvent({ type: "load" });
+    const frame = handle.el.querySelector(".pxd-pdf-pin__frame");
+    assert.equal(frame.style.width, "183px");
+    assert.equal(frame.style.height, "17px");
+    assert.equal(img.style.left, "0px");
+    assert.equal(img.style.top, "0px");
+
+    const pop = openPinPopover({ doc, region, crop: "data:image/png;base64,bb", boards: [] });
+    const popImg = pop.el.querySelector(".pxd-pdf-pin__img");
+    Object.defineProperty(popImg, "naturalWidth", { value: 183, configurable: true });
+    Object.defineProperty(popImg, "naturalHeight", { value: 17, configurable: true });
+    popImg.dispatchEvent({ type: "load" });
+    assert.equal(pop.el.querySelector(".pxd-pdf-pin__frame").style.width, "183px");
+    pop.close();
+    handle.destroy();
+  } finally {
+    globalThis.IntersectionObserver = previous;
+    restore();
+  }
+});
+
+test("Open in reader with no board showing the PDF opens the PDF's page and keeps the pin pending", () => {
+  const plan = { pdfUid: "pxdLab02", page: 6, frac: [0.1, 0.2, 0.3, 0.4], pinUid: "RwvGJt4T7" };
+  // Live 2026-10-08: from a zoomed pins container the button did nothing.
+  assert.deepEqual(pinOpenFallback({ opened: false, plan, pageUid: "pxdParseLab", now: 1000 }), {
+    openPage: "pxdParseLab",
+    pending: { pinUid: "RwvGJt4T7", until: 1000 + PIN_PENDING_MS },
+  });
+  assert.equal(pinOpenFallback({ opened: true, plan, pageUid: "pxdParseLab", now: 1 }), null);
+  assert.equal(pinOpenFallback({ opened: false, plan, pageUid: "", now: 1 }), null);
+  assert.equal(pinOpenFallback({ opened: false, plan: { ...plan, pinUid: "" }, pageUid: "pxdParseLab", now: 1 }), null);
+  assert.equal(pinOpenFallback({ opened: false, plan: null, pageUid: "pxdParseLab", now: 1 }), null);
 });

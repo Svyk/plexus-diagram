@@ -290,3 +290,10 @@ test("a jump that does not disturb the zoom writes no scale", () => {
     f.restore();
   }
 });
+
+test("pin popover buttons out-rank Blueprint's .bp3-dark button colour", () => {
+  const css = read("../src/css/pdf-pin.css");
+  // Live 2026-10-08: `.bp3-dark button { color: var(--dark-bg) }` (0,1,1) beat `.pxd-pin-pop__act` (0,1,0).
+  assert.match(css, /\.pxd-pin-pop \.pxd-pin-pop__act,\s*\.pxd-pin-pop \.pxd-pin-pop__board \{[^}]*color: var\(--pxd-fg, inherit\);/);
+  assert.doesNotMatch(css, /(^|\n)\.pxd-pin-pop__act,\s*\n\.pxd-pin-pop__board \{/);
+});

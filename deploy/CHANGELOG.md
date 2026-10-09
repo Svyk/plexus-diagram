@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.9.0 — 2026-10-08
+
+Link back to the PDF, copy the way you mean it, and point arrows at anything: a cell, a row, a region of an image, a PDF pin, or another arrow.
+
+- **Source pins.** Turn on "With source" in a chip's ▾ menu (or hold ⌥ for one drag or click) and the card gets a pin to the exact spot in the PDF: a `{{[[plexus-pin]]}}` block under the PDF that shows the page crop wherever Roam renders it, plus `Source:: ((pin))` on the card. Click a pin for a larger crop, the surrounding paragraph, Open in reader (jumps and flashes the spot), Sidebar and the boards that cite it. One ⌘Z removes the whole gesture.
+- **Copy menu.** The copy button beside a parsed box now opens a menu (▾, right-click or long-press): Copy, Copy as plain text (⇧⌘C), Copy as card (⌥⌘C, pastes onto a board as a real card), Copy with source (⌥⇧⌘C, writes the pin), Copy crop as image, Copy link (opens the reader at the pin). Figures copy as an image with their caption.
+- **Arrows to anything.** Start an arrow on a Roam Grid or table cell (Connect) or a page-card row (⌥-drag). Point at part of an image: hold ⌥ when you release over it and drag a box, or ⌥-drag on the picture to start from a new region — a plain drop on an image still points at the card. Arrows can end on a PDF pin or on another arrow's label. Each end is a real block, so the connection reads `((cell)) → label → ((region))` in Roam, and the block shows a "⇢ N on <board>" chip elsewhere in Roam that opens the board centred on that arrow.
+- **Figures from complex PDFs.** Multi-panel figures become one figure with their caption; patent drawing sheets are found; a text page is never one giant figure; boxes stay on the page and inside their column; contents lines are not captions. Dragging a figure makes an image card sized to the crop, with the caption as alt text.
+- **Fixes:** cards move when dragged at high zoom (including table and grid cards); arrows start from grid-table cards; the arrow label editor is one field and no longer makes table cards flicker; paragraph copy works and says so when it cannot; the reader keeps your zoom when it jumps and fits the width again on current Roam.
+- **Docs:** a "Which engine" table compares the built-in parser, in-browser reading, the local helper and the coming cloud engine.
+
 ## 3.8.0 — 2026-10-08
 
 PDFs on the board feel finished: clean cards with real titles, a proper Quick Look, a reader that opens where you expect, and scanned pages read in the browser without freezing Roam.

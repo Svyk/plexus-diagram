@@ -94,6 +94,8 @@ function mount() {
 test("removed furniture, chips, copy, and scan copy are pure", () => {
   assert.equal(removedSummary(sample().removed), "Removed: running header (3) · page numbers (3)");
   assert.equal(engineChip({ ms: 400 }).text, "Built-in · 0.4 s");
+  assert.equal(engineChip({ ms: 42000, read: "high" }).text, "High accuracy · 42 s");
+  assert.equal(engineChip({ ms: 42000, read: "high" }).tip, "PaddleOCR-VL + PP-DocLayoutV2");
   assert.equal(engineChip({ engine: "docling", ms: 24000 }).text, "Docling · 24 s");
   assert.equal(engineChip({ helper: "not-running" }).text, "Local helper: off");
   assert.match(engineChip({ helper: "not-running" }).tip, /Engines/);

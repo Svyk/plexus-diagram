@@ -96,7 +96,9 @@ def test_bare_otsl_parses_without_a_wrapper():
     assert tables[0]["cells"][3]["text"] == "0.98"
 
 
-def test_tables_route_returns_the_recorded_runner(tmp_path):
+def test_tables_route_returns_the_recorded_runner(tmp_path, monkeypatch):
+    # Layout on this machine must not turn a tables-only runner into a high-accuracy engine.
+    monkeypatch.setattr("plexus_parse_helper.server.layout_available", lambda: False)
     seen = {}
 
     def runner(path, regions):

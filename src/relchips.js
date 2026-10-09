@@ -3,7 +3,7 @@
 // Zero writes. One cached set of connection-block uids, checked only for the nodes a mutation batch added.
 
 import { boundsOf, buildBoard, routedEdge, worldRects } from "./model/board.js";
-import { edgeMayTarget, endpointChipText, endpointIndex } from "./model/endpoints.js";
+import { edgeMayTarget, endpointChipText, endpointDisplayText, endpointIndex } from "./model/endpoints.js";
 import { blockInner, edgePath } from "./model/geometry.js";
 import { parseRegion } from "./model/regions.js";
 import { assignDeepLink } from "./model/deeplink.js";
@@ -42,7 +42,7 @@ const clip = (text, max) => {
 };
 const endName = (name, blockText) => {
   const base = clip(name, NAME_MAX) || "card";
-  const block = clip(blockText, BLOCK_MAX);
+  const block = clip(endpointDisplayText(blockText), BLOCK_MAX);
   return block ? `${base} ▸ “${block}”` : base;
 };
 
@@ -342,7 +342,7 @@ export function previewModel(board, edgeUid, { pad = 48, maxOthers = 24, blockTe
   }
   if (stubCard) cards.push(stubCard);
   const font = previewFont(view.w);
-  const textOf = (uid) => { try { const t = blockText?.(uid); return typeof t === "string" && t ? t : "block"; } catch { return "block"; } };
+  const textOf = (uid) => { try { const t = blockText?.(uid); return typeof t === "string" && t ? endpointDisplayText(t) : "block"; } catch { return "block"; } };
   const barFor = (itemUid, blockUid) => {
     const item = board.items.get(itemUid);
     if (!blockUid || !item || item.type === "section" || routed.from === routed.to) return null;

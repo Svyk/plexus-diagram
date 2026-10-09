@@ -729,3 +729,13 @@ test("diffBoards sees a region pushed into the same container array in place (th
   assert.notEqual(next.items.get("img1").hitsKey, "");
   assert.deepEqual([...diffBoards(prev, next).dirty], ["img1"]);
 });
+
+test("edgesTouching includes an arrow that ends on the label of a touched arrow", () => {
+  // Live 2026-10-08: moving a card moved the label, but the arrow on that label stayed behind.
+  const f = fixture();
+  f[":block/children"][7][":block/children"].push(blk("e4", 4, "((t1)) → ((e1))", { type: "edge", from: "t1", to: "e1" }));
+  const b = buildBoard(f);
+  assert.ok(b.edges.has("e4"));
+  assert.deepEqual([...edgesTouching(b, new Set(["c1"]))].sort(), ["e1", "e2", "e4"]);
+  assert.deepEqual([...edgesTouching(b, new Set(["nb"]))], []);
+});

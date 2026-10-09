@@ -848,6 +848,8 @@ export function edgesTouching(board, uidSet) {
   for (const u of uidSet) for (const d of descendantsOf(board, u)) full.add(d);
   const out = new Set();
   for (const e of board.edges.values()) if (full.has(e.from) || full.has(e.to)) out.add(e.uid);
+  // An arrow can end on another arrow's label. When that arrow redraws, so does the one on it.
+  if (out.size) for (const e of board.edges.values()) if (!out.has(e.uid) && (out.has(e.from) || out.has(e.to))) out.add(e.uid);
   return out;
 }
 

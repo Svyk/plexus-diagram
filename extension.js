@@ -2212,6 +2212,13 @@ function endpointKindOf(blockString2) {
   if (region.kind === "pdf") return "pin";
   return null;
 }
+function endpointDisplayText(blockString2) {
+  const text3 = String(blockString2 ?? "");
+  const region = parseRegion(text3);
+  if (!region) return text3;
+  if (region.caption) return region.caption;
+  return region.kind === "pdf" && Number.isInteger(Number(region.pg)) ? `p. ${region.pg}` : "Region";
+}
 function endpointHitsOf(nodes) {
   const regions = [];
   const pins = [];
@@ -3173,6 +3180,9 @@ function edgesTouching(board2, uidSet) {
   for (const u of uidSet) for (const d of descendantsOf(board2, u)) full.add(d);
   const out = /* @__PURE__ */ new Set();
   for (const e2 of board2.edges.values()) if (full.has(e2.from) || full.has(e2.to)) out.add(e2.uid);
+  if (out.size) {
+    for (const e2 of board2.edges.values()) if (!out.has(e2.uid) && (out.has(e2.from) || out.has(e2.to))) out.add(e2.uid);
+  }
   return out;
 }
 function findEdge(board2, from, to) {
@@ -11791,7 +11801,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
   const textOf2 = (uid) => {
     try {
       const t = blockText?.(uid);
-      return typeof t === "string" && t ? t : "block";
+      return typeof t === "string" && t ? endpointDisplayText(t) : "block";
     } catch {
       return "block";
     }
@@ -12343,7 +12353,7 @@ var init_relchips = __esm({
     };
     endName = (name, blockText) => {
       const base = clip3(name, NAME_MAX) || "card";
-      const block = clip3(blockText, BLOCK_MAX);
+      const block = clip3(endpointDisplayText(blockText), BLOCK_MAX);
       return block ? `${base} ▸ “${block}”` : base;
     };
     ROW_PAD = 10;

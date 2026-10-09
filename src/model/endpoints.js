@@ -66,6 +66,15 @@ export function endpointKindOf(blockString) {
   return null;
 }
 
+// What to call a block end in chips and previews. A region or pin shows its caption, never the macro.
+export function endpointDisplayText(blockString) {
+  const text = String(blockString ?? "");
+  const region = parseRegion(text);
+  if (!region) return text;
+  if (region.caption) return region.caption;
+  return region.kind === "pdf" && Number.isInteger(Number(region.pg)) ? `p. ${region.pg}` : "Region";
+}
+
 // Region outlines and pin marks for a card, read from every plexus-regions / plexus-pins container
 // among its children (a PDF can carry an old regions container and a new pins container).
 export function endpointHitsOf(nodes) {

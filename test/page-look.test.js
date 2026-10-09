@@ -441,6 +441,10 @@ test("copy buttons hide at rest and show only for the hovered box; one delegated
     h.stub.dispatch(h.page, "pointermove", { clientX: 10 + 60, clientY: 20 + 190 });
     assert.deepEqual(shown(), [], "empty page space hides it");
     h.stub.dispatch(h.page, "pointermove", { clientX: 10 + 60, clientY: 20 + 45 });
+    // Live 2026-10-08: moving from the text onto the button fired a captured child pointerleave and hid the button.
+    const t1Icon = icons.find((n) => n.getAttribute("data-block") === "t1");
+    h.stub.dispatch(h.page, "pointerleave", { relatedTarget: t1Icon });
+    assert.deepEqual(shown(), ["t1"], "a child leave onto the button keeps it");
     h.stub.dispatch(h.page, "pointerleave", {});
     assert.deepEqual(shown(), [], "leaving hides it");
     const css = readFileSync(new URL("../src/css/page-chips.css", import.meta.url), "utf8");

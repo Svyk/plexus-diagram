@@ -30,6 +30,7 @@ import { createDragGhost, dispatchDrop, startPlacement } from "./drag-ghost.js";
 import { placementContent } from "./parse-actions.js";
 import { createAnydocHost } from "../host/anydoc.js";
 import { markdownToParse } from "../model/anydoc-to-parse.js";
+import { ASYNC_CLIPBOARD_TYPES, copyViaEvent } from "./clipboard-io.js";
 
 export const PARSE_MIME = "application/x-plexus-parse";
 export const BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
@@ -583,6 +584,9 @@ export function createParseView({
       .trim();
   }
   async function writeTyped(parts) {
+    const custom = Object.keys(parts).some((type) => !ASYNC_CLIPBOARD_TYPES.has(type) && typeof parts[type] === "string");
+    if (custom && copyViaEvent(doc, parts)) return true;
+    if (custom) parts = Object.fromEntries(Object.entries(parts).filter(([type]) => ASYNC_CLIPBOARD_TYPES.has(type)));
     const win = doc.defaultView || globalThis;
     const Item = win.ClipboardItem || globalThis.ClipboardItem;
     const clip = win.navigator?.clipboard;

@@ -41,6 +41,35 @@ export function dragHasImages(dt) {
   return false;
 }
 
+// Chromium's async clipboard rejects custom types such as application/x-plexus-card+json. A copy event can carry
+// them. parts: { mime: string }. Returns true only when the copy ran and the handler set the data.
+export const ASYNC_CLIPBOARD_TYPES = new Set(["text/plain", "text/html", "image/png"]);
+
+export function copyViaEvent(doc, parts) {
+  if (!doc || typeof doc.execCommand !== "function" || typeof doc.addEventListener !== "function") return false;
+  const entries = Object.entries(parts || {}).filter(([, v]) => typeof v === "string");
+  if (!entries.length) return false;
+  let set = false;
+  const onCopy = (event) => {
+    const data = event.clipboardData;
+    if (!data?.setData) return;
+    for (const [type, value] of entries) {
+      try { data.setData(type, value); set = true; } catch { /* type refused */ }
+    }
+    if (set) {
+      event.preventDefault?.();
+      // A board's own copy handler would add its selected cards to the same clipboard.
+      event.stopImmediatePropagation?.();
+    }
+  };
+  const target = typeof doc.defaultView?.addEventListener === "function" ? doc.defaultView : doc;
+  target.addEventListener("copy", onCopy, true);
+  let ran = false;
+  try { ran = Boolean(doc.execCommand("copy")); } catch { ran = false; }
+  target.removeEventListener("copy", onCopy, true);
+  return ran && set;
+}
+
 export async function writeClipboard({ text = "", mime = null, data = null } = {}) {
   const nav = globalThis.navigator;
   try {

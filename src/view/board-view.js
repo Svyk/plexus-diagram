@@ -780,6 +780,15 @@ function createLocalViewportStore({ storage, graph, timers }) {
   };
 }
 
+// The Roam host has no toast, so the reader's "Copied" / "Could not copy" / "Pinned p. N" went nowhere.
+// Methods still resolve on the host through the prototype.
+export function readPaneHost(host, toast) {
+  if (!host || typeof host.toast === "function") return host;
+  const wrapped = Object.create(host);
+  wrapped.toast = (message) => toast(message);
+  return wrapped;
+}
+
 function buildBoardView(onFail, {
   host,
   session,
@@ -1707,7 +1716,7 @@ function buildBoardView(onFail, {
   const makeReadPane = () => (createReadPane({
     doc,
     root,
-    host,
+    host: readPaneHost(host, (message) => toast(message)),
     deviceOcr: sharedDeviceOcr(),
     onNote: (row) => { void openHighlightNote(row?.uid); },
     graph,

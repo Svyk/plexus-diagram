@@ -41141,7 +41141,7 @@ function classifyModels(body) {
   } else {
     state = "models-missing";
   }
-  return { state, engines, ocr, docling, models };
+  return { state, engines, ocr, docling, vlmTables: engines.includes("vlm-tables"), models };
 }
 function helperCanOcr(health) {
   if (!health) return false;
@@ -41219,6 +41219,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
   const clock = typeof now3 === "function" ? now3 : () => Date.now();
   let healthCache = null;
   let probeCache = null;
+  let vlmOn = false;
   const config = () => {
     const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
     const token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
@@ -41236,11 +41237,13 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
       return healthCache.value;
     }
     if (!token) {
+      vlmOn = false;
       const value = { state: "not-running", reason: "disabled" };
       healthCache = { url, token, at, value };
       return value;
     }
     if (typeof fetchFn !== "function") {
+      vlmOn = false;
       const value = { state: "not-running" };
       healthCache = { url, token, at, value };
       return value;
@@ -41253,9 +41256,13 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
       }, timer.signal);
       let value;
       const httpOk = res.status >= 200 && res.status < 300;
-      if (res.status === 401) value = { state: "wrong-token" };
-      else if (!httpOk) value = { state: "not-running" };
-      else {
+      if (res.status === 401) {
+        vlmOn = false;
+        value = { state: "wrong-token" };
+      } else if (!httpOk) {
+        vlmOn = false;
+        value = { state: "not-running" };
+      } else {
         let body = null;
         try {
           body = await res.json();
@@ -41263,10 +41270,15 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
           body = null;
         }
         const major = schemaMajor(body?.schema);
-        if (body?.helper !== HELPER_NAME || major == null) value = { state: "not-running" };
-        else if (major >= 2) value = { state: "newer-schema", schema: body.schema };
-        else {
+        if (body?.helper !== HELPER_NAME || major == null) {
+          vlmOn = false;
+          value = { state: "not-running" };
+        } else if (major >= 2) {
+          vlmOn = false;
+          value = { state: "newer-schema", schema: body.schema };
+        } else {
           const flags = classifyModels(body);
+          vlmOn = flags.vlmTables === true;
           value = {
             state: flags.state,
             schema: body.schema,
@@ -41274,7 +41286,8 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
             version: body.version,
             engines: flags.engines,
             ocr: flags.ocr,
-            docling: flags.docling
+            docling: flags.docling,
+            vlmTables: flags.vlmTables
           };
           if (flags.state === "ready") value.busy = body.busy ?? 0;
         }
@@ -41282,6 +41295,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
       healthCache = { url, token, at, value };
       return value;
     } catch {
+      vlmOn = false;
       const value = { state: "not-running" };
       healthCache = { url, token, at, value };
       return value;
@@ -41503,11 +41517,56 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
     }
     return { ...body, sha256: sha };
   }
+  async function tables({ bytes, sha256, pages, tables: regions, signal } = {}) {
+    const { url, token } = config();
+    const sha = sha256 || await sha256Hex(bytes);
+    const options = {};
+    if (pages && pages.length) options.pages = pages;
+    if (regions && regions.length) options.tables = regions.map((t) => ({ page: t.page, bbox: t.bbox }));
+    const res = await call(`${url}/v1/tables`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/pdf",
+        "X-Pxd-Options": JSON.stringify(options)
+      },
+      body: bytes
+    }, signal);
+    let body = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+    if (res.status < 200 || res.status >= 300) {
+      const error = new Error(body?.error || `tables ${res.status}`);
+      error.status = res.status;
+      throw error;
+    }
+    return { ...body, sha256: sha };
+  }
   function endpoint() {
     const { url, token } = config();
     return { url, token };
   }
-  return { health, status, pair: pair2, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr, endpoint };
+  return {
+    health,
+    status,
+    pair: pair2,
+    models,
+    downloadModels,
+    cancelModels,
+    invalidate,
+    parse,
+    cancel,
+    reparseTable,
+    ocr,
+    tables,
+    endpoint,
+    get vlmTables() {
+      return vlmOn;
+    }
+  };
 }
 
 // src/view/parse-engine.js
@@ -42622,6 +42681,141 @@ function voteOcrBodies(visionPages, otherPages, lexicon) {
   });
 }
 
+// src/model/parse/vlm-tables.js
+function normCell2(text3) {
+  return String(text3 || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function setJaccard(a, b) {
+  const A = new Set((a?.cells || []).map((c) => normCell2(c.text)).filter(Boolean));
+  const B = new Set((b?.cells || []).map((c) => normCell2(c.text)).filter(Boolean));
+  if (!A.size && !B.size) return 1;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  return inter / (A.size + B.size - inter);
+}
+function tokenJaccard(a, b) {
+  const tokens = (table) => {
+    const out = /* @__PURE__ */ new Set();
+    for (const piece of (table?.cells || []).map((c) => normCell2(c.text)).join(" ").split(/[^a-z0-9%.,-]+/)) {
+      if (piece) out.add(piece);
+    }
+    return out;
+  };
+  const A = tokens(a);
+  const B = tokens(b);
+  if (!A.size && !B.size) return 1;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  return inter / (A.size + B.size - inter);
+}
+function iou4(a, b) {
+  if (!a || !b) return 0;
+  const ix = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+  const iy = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  if (ix <= 0 || iy <= 0) return 0;
+  const inter = ix * iy;
+  const union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter;
+  return union > 0 ? inter / union : 0;
+}
+function tableRegions(doc, pages) {
+  const want = pages && pages.length ? new Set(pages) : null;
+  const out = [];
+  for (const id of doc?.order || []) {
+    const block = doc.blocks?.[id];
+    if (!block || block.type !== "table" || !block.bbox) continue;
+    if (want && !want.has(block.page)) continue;
+    const bbox = Array.isArray(block.bbox) ? block.bbox : [block.bbox.x0, block.bbox.y0, block.bbox.x1, block.bbox.y1];
+    if (bbox.length < 4 || bbox.some((n2) => !Number.isFinite(n2))) continue;
+    out.push({ page: block.page, bbox });
+  }
+  return out;
+}
+function headerRowsOf(cells, rows) {
+  let n2 = 0;
+  for (let r = 0; r < rows; r++) {
+    const row4 = (cells || []).filter((c) => c.r === r);
+    if (!row4.length || !row4.every((c) => c.header)) break;
+    n2++;
+  }
+  return n2;
+}
+function tableFromVlm(structure, { id = "vlm", method = "vlm" } = {}) {
+  const cells = (structure.cells || []).map((cell) => ({
+    r: cell.r,
+    c: cell.c,
+    rowSpan: cell.rowSpan || 1,
+    colSpan: cell.colSpan || 1,
+    text: cell.text || "",
+    header: Boolean(cell.header)
+  }));
+  const rows = structure.rows || cells.reduce((m, c) => Math.max(m, c.r + (c.rowSpan || 1)), 0);
+  const cols = structure.cols || cells.reduce((m, c) => Math.max(m, c.c + (c.colSpan || 1)), 0);
+  return {
+    id,
+    type: "table",
+    page: structure.page,
+    bbox: structure.bbox,
+    rows,
+    cols,
+    headerRows: structure.headerRows ?? headerRowsOf(cells, rows),
+    headerCols: 0,
+    cells,
+    method,
+    confidence: structure.confidence ?? 0.7,
+    engine: "builtin"
+  };
+}
+function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15 } = {}) {
+  if (!doc || !structures?.length) return { doc, applied: [] };
+  const blocks = { ...doc.blocks };
+  const order = [...doc.order || []];
+  const applied = [];
+  const used = /* @__PURE__ */ new Set();
+  let seq = 0;
+  for (const structure of structures) {
+    if (!structure?.cells?.length || !structure.bbox) continue;
+    const built = tableFromVlm(structure, { id: `vlm${seq++}`, method });
+    let host = null;
+    let best = 0.15;
+    for (const id of order) {
+      const block = blocks[id];
+      if (!block || block.type !== "table" || block.page !== structure.page || used.has(id)) continue;
+      const overlap = iou4(block.bbox, built.bbox);
+      if (overlap > best) {
+        best = overlap;
+        host = block;
+      }
+    }
+    const same2 = host && (setJaccard(host, built) >= minJaccard || tokenJaccard(host, built) >= minJaccard);
+    if (host && !same2) continue;
+    if (host) {
+      used.add(host.id);
+      blocks[host.id] = {
+        ...host,
+        bbox: built.bbox,
+        rows: built.rows,
+        cols: built.cols,
+        headerRows: built.headerRows,
+        cells: built.cells,
+        method,
+        confidence: built.confidence,
+        grid: void 0,
+        repairs: void 0
+      };
+      applied.push({ id: host.id, page: structure.page, rows: built.rows, cols: built.cols });
+    } else {
+      const id = built.id;
+      while (blocks[id]) built.id = `${id}b`;
+      blocks[built.id] = built;
+      const at = order.findIndex((oid) => blocks[oid]?.page > structure.page);
+      if (at < 0) order.push(built.id);
+      else order.splice(at, 0, built.id);
+      applied.push({ id: built.id, page: structure.page, rows: built.rows, cols: built.cols, inserted: true });
+    }
+  }
+  return { doc: { ...doc, blocks, order }, applied };
+}
+
 // src/view/parse-engine.js
 var GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
 function detectPdfjs(win = typeof window !== "undefined" ? window : null) {
@@ -42697,8 +42891,25 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
+  let vlmApplied = [];
+  if (helper.vlmTables === true && typeof helper.tables === "function") {
+    const regions = tableRegions(doc, wanted);
+    if (regions.length) {
+      try {
+        onPhase?.({ phase: "vlm", count: regions.length });
+        const read2 = await helper.tables({ bytes, sha256, pages: wanted, tables: regions, signal });
+        throwIfAborted3();
+        const applied = applyVlmTables(doc, read2?.tables || [], { method: read2?.model || "vlm" });
+        vlmApplied = applied.applied;
+        if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });
+      } catch (err) {
+        if (err?.name === "AbortError") throw err;
+        doc.ocr = { ...doc.ocr || {}, vlmError: err?.message || String(err) };
+      }
+    }
+  }
   const rereads = await rereadCells({ doc, ocr: ask, signal, onPhase });
-  doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), lines: lined.applied.length, elapsedMs: got?.elapsedMs ?? null };
+  doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), lines: lined.applied.length, vlm: vlmApplied.length, elapsedMs: got?.elapsedMs ?? null };
   return { doc, choices: merged.choices, rereads, lines: lined.applied, pages: wanted, records: next, ocrPages: lined.pages };
 }
 async function rereadLines({ doc, ocrPages, ocr, lexicon = null, signal, onPhase } = {}) {
@@ -59641,7 +59852,7 @@ function labelComponents(mask, width, height) {
 }
 
 // src/model/ocr/db-boxes.js
-function iou4(a, b) {
+function iou5(a, b) {
   const x0 = Math.max(a.x0, b.x0);
   const y0 = Math.max(a.y0, b.y0);
   const x1 = Math.min(a.x1, b.x1);
@@ -59700,7 +59911,7 @@ function boxesFromProb(prob, mapW, mapH, srcW, srcH, opts = {}) {
   const kept = [];
   for (const box2 of raw) {
     if (kept.length >= maxBoxes) break;
-    if (kept.some((other) => iou4(other, box2) > 0.5)) continue;
+    if (kept.some((other) => iou5(other, box2) > 0.5)) continue;
     kept.push(box2);
   }
   return kept;

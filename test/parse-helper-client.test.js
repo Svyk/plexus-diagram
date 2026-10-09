@@ -252,3 +252,28 @@ test("cancel deletes the job and a scoped re-parse merges without a cache HEAD",
   assert.equal(result.merged.blocks.p1.text, "keep");
   assert.deepEqual(result.merged.order, ["d1", "p1"]);
 });
+
+test("health with vlm-tables sets the flag and tables() posts the boxes", async () => {
+  const recorded = { model: "PaddleOCR-VL-0.9B", tables: [{ page: 2, bbox: [1, 2, 3, 4], rows: 1, cols: 1, cells: [] }] };
+  const { api, calls } = client((url, init) => {
+    if (url.endsWith("/v1/health")) {
+      return { status: 200, json: async () => ({ ...readyBody, engines: ["docling", "ocr", "cloud", "vlm-tables"] }) };
+    }
+    if (url.endsWith("/v1/tables")) return { status: 200, json: async () => recorded };
+    return { status: 500, json: async () => ({}) };
+  });
+  const health = await api.health();
+  assert.equal(health.vlmTables, true);
+  assert.equal(api.vlmTables, true);
+  const out = await api.tables({
+    bytes: new Uint8Array([9]),
+    sha256: "abc",
+    pages: [2],
+    tables: [{ page: 2, bbox: [1, 2, 3, 4] }],
+  });
+  assert.equal(out.model, "PaddleOCR-VL-0.9B");
+  const posted = calls.find((call) => call.url.endsWith("/v1/tables"));
+  assert.equal(posted.method, "POST");
+  assert.deepEqual(JSON.parse(posted.headers["X-Pxd-Options"]).tables, [{ page: 2, bbox: [1, 2, 3, 4] }]);
+  assert.equal(posted.headers.Authorization, "Bearer secret");
+});

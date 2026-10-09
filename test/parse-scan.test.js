@@ -1,6 +1,7 @@
 // Scanned tables: OCR page records through the engine, the numeric post-correction, the
 // fresh-vs-layer merge, the cell re-read, the helper client's ocr() call, and the view hook.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { assembleDocument, ocrGraphics, parsePageGeometry } from "../src/model/parse/index.js";
@@ -499,6 +500,79 @@ test("readScan: OCR the scan pages, re-assemble, re-read cells, keep other pages
   assert.equal(out.doc.ocr.rereads, 1);
   assert.equal(out.doc.options.ocr, "vision");
   assert.equal(out.doc.schema, "pxd-parse/1");
+});
+
+test("readScan takes a recorded VLM table when the helper advertises vlm-tables", async () => {
+  const recorded = JSON.parse(readFileSync(new URL("./fixtures/vlm-tables.json", import.meta.url), "utf8"));
+  const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 300, h: 120, rotation: 0, fonts: {} }, 2);
+  scanRec.kind = "scan";
+  const base = assembleDocument([scanRec], { numPages: 2, from: 2, to: 2 });
+  let asked = null;
+  const helper = {
+    vlmTables: true,
+    async ocr({ pages, cells }) {
+      if (pages) return { schema: "pxd-ocr/1", pageCount: 2, pages: [ocrPage({ n: 2, misread: false })], elapsedMs: 1 };
+      return { cells: [] };
+    },
+    async tables({ tables }) {
+      asked = tables;
+      const table = structuredClone(recorded.tables[0]);
+      table.page = tables[0].page;
+      table.bbox = tables[0].bbox;
+      return { model: recorded.model, tables: [table] };
+    },
+  };
+  const phases = [];
+  const out = await readScan({
+    helper, bytes: new Uint8Array([1]), sha256: "s", base, records: [scanRec],
+    numPages: 2, from: 2, to: 2, lines: false, onPhase: (p) => phases.push(p.phase),
+  });
+  assert.ok(asked && asked.length >= 1);
+  assert.ok(phases.includes("vlm"));
+  const t = tableOf(out.doc);
+  assert.equal(t.method, "PaddleOCR-VL-0.9B");
+  assert.ok(t.cells.some((c) => c.text === "VLM-MARK"));
+  assert.equal(out.doc.ocr.vlm, 1);
+});
+
+test("readScan keeps the rule table when the VLM text does not match, and does not call tables without the flag", async () => {
+  const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 300, h: 120, rotation: 0, fonts: {} }, 2);
+  scanRec.kind = "scan";
+  const base = assembleDocument([scanRec], { numPages: 2, from: 2, to: 2 });
+  const ocr = async ({ pages, cells }) => {
+    if (pages) return { schema: "pxd-ocr/1", pageCount: 2, pages: [ocrPage({ n: 2, misread: false })], elapsedMs: 1 };
+    return { cells: (cells || []).map((c) => ({ ...c, text: "", conf: 1, glyph: null })) };
+  };
+  let calls = 0;
+  const rejected = await readScan({
+    helper: {
+      vlmTables: true,
+      ocr,
+      async tables({ tables }) {
+        calls += 1;
+        return {
+          model: "PaddleOCR-VL-0.9B",
+          tables: [{
+            page: tables[0].page,
+            bbox: tables[0].bbox,
+            rows: 1,
+            cols: 1,
+            cells: [{ r: 0, c: 0, rowSpan: 1, colSpan: 1, text: "qqqqqq", header: false }],
+          }],
+        };
+      },
+    },
+    bytes: new Uint8Array([1]), sha256: "s", base, records: [scanRec], numPages: 2, from: 2, to: 2, lines: false,
+  });
+  assert.equal(calls, 1);
+  assert.notEqual(tableOf(rejected.doc).method, "PaddleOCR-VL-0.9B");
+  assert.equal(rejected.doc.ocr.vlm, 0);
+  let blew = false;
+  await readScan({
+    helper: { ocr, tables() { blew = true; throw new Error("must not call"); } },
+    bytes: new Uint8Array([1]), sha256: "s", base, records: [scanRec], numPages: 2, from: 2, to: 2, lines: false,
+  });
+  assert.equal(blew, false);
 });
 
 test("readScan with nothing to read returns the base untouched", async () => {

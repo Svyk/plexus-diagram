@@ -155,7 +155,7 @@ export function regionUidForButton(button, blockString) {
     try { text = blockString(cardUid) || ""; } catch { text = ""; }
     const hop = /^\(\(([A-Za-z0-9_-]+)\)\)$/.exec(String(text).trim());
     if (hop) return hop[1];
-    if (/\{\{\s*(?:\[\[)?plexus-region(?:\]\])?\s*:/.test(text)) return cardUid;
+    if (/\{\{\s*(?:\[\[)?plexus-(?:region|pin)(?:\]\])?\s*:/.test(text)) return cardUid;
   }
   return container?.getAttribute?.("data-block-uid") || "";
 }
@@ -374,12 +374,14 @@ export function openRegionView({ doc, button, region, loadBoard, onOpen, delayMs
   return { destroy, pending };
 }
 
+const REGION_BUTTONS = "button.rm-xparser-default-plexus-region, button.rm-xparser-default-plexus-pin";
+
 export function eachRegionButton(root, fn, cap = REGION_SCAN_CAP) {
   if (!root || (root.nodeType !== 1 && root.nodeType !== 9) || typeof fn !== "function") return 0;
   const found = [];
-  if (root.matches?.("button.rm-xparser-default-plexus-region")) found.push(root);
+  if (root.matches?.(REGION_BUTTONS)) found.push(root);
   if (typeof root.querySelectorAll === "function") {
-    found.push(...root.querySelectorAll("button.rm-xparser-default-plexus-region"));
+    found.push(...root.querySelectorAll(REGION_BUTTONS));
   }
   let seen = 0;
   for (const button of found) {

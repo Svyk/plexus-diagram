@@ -1,5 +1,5 @@
 import { namespaceParent } from "./model/namespace.js";
-import { isContainerString, parseRegion } from "./model/regions.js";
+import { isContainerString, parseRegion, PIN_CONTAINER_STRING } from "./model/regions.js";
 import { planPinWrites, sourceAttrString } from "./model/pdf-pin.js";
 import { backgroundImage, calendarLayout, cardTemplatePlan, zoomThreshold } from "./model/section6.js";
 import { dateSource } from "./model/timeline.js";
@@ -1328,13 +1328,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const list = raw && typeof raw.then === "function" ? await raw : raw;
       if (Array.isArray(list)) kids = list;
     } catch { kids = []; }
-    const container = kids.find((kid) => isContainerString(kid?.string));
+    // Dedupe reads every container (old pins sit under plexus-regions); new pins go under plexus-pins.
+    const boxes = kids.filter((kid) => isContainerString(kid?.string));
+    const container = boxes.find((kid) => String(kid?.string || "").trim() === PIN_CONTAINER_STRING) || null;
     const regions = [];
-    for (const child of container?.children || []) {
-      const region = parseRegion(child?.string || "");
-      if (!region) continue;
-      if (child?.uid) region.uid = child.uid;
-      regions.push(region);
+    for (const box of boxes) {
+      for (const child of box?.children || []) {
+        const region = parseRegion(child?.string || "");
+        if (!region) continue;
+        if (child?.uid) region.uid = child.uid;
+        regions.push(region);
+      }
     }
     const plan = planPinWrites({
       ...spec,

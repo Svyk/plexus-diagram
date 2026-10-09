@@ -71,13 +71,14 @@ export function placementContent(doc, ids, act, extra = null) {
   return { content: { kind: "text", text, page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
 }
 
-export function createParseActions({ session, store, placeBeside, toast, select, show, upload, toWorld } = {}) {
+export function createParseActions({ session, store, placeBeside, toast, select, show, focus, upload, toWorld } = {}) {
   const say = (message) => { try { if (typeof toast === "function") toast(message); } catch { /* host */ } };
   const pick = (uids) => {
     const list = (Array.isArray(uids) ? uids : []).filter((id) => typeof id === "string" && id);
     if (!list.length) return;
     try { select?.(list); } catch { /* host */ }
     try { show?.(list); } catch { /* host */ }
+    try { focus?.(); } catch { /* host */ }
   };
   const spot = (pdfUid, size) => {
     let at = null;

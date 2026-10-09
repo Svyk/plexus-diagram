@@ -317,6 +317,31 @@ test("sync stays quiet while the reader is wheeled, then jumps", () => {
   }
 });
 
+test("a programmatic outline scroll does not send the reader back (late scroll events stay quiet)", () => {
+  const { doc, restore } = mount();
+  let now = 0;
+  const jumps = [];
+  try {
+    const view = createParseView({
+      doc,
+      clock: () => now,
+      jumpPage(page) { jumps.push(page); },
+    });
+    view.showDoc(sample());
+    view.scrollToPage(2);
+    // The browser fires the scroll event after scrollToPage returned; the outline must not move the reader.
+    now = 100;
+    view.scrollBody();
+    assert.deepEqual(jumps, []);
+    now = 1000;
+    view.scrollBody();
+    assert.equal(jumps.length, 1);
+    view.dispose();
+  } finally {
+    restore();
+  }
+});
+
 test("a cached parse restores from the memory store and the first page paints before the next", async () => {
   const { stub, doc, restore } = mount();
   try {

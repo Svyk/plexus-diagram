@@ -1,4 +1,4 @@
-// In-place k=pdf pin. Hover stays Roam's. A click opens the popover. The crop
+// In-place plexus-pin (kind pdf). Hover stays Roam's. A click opens the popover. The crop
 // loads only after the pin intersects the viewport, and never for a .enc URL.
 
 import { placeNearAnchor } from "./avoid.js";

@@ -27,17 +27,19 @@ None of these modules write `:diagram/*` or `BT_attr*`. Open, pan, zoom, and sel
 
 ## src/model/regions.js
 
-Image regions, saved views, and PDF source pins share the Roam Plexus macro. `img`, `view`, and `pdf` are the kinds this extension supports. The other kinds parse so a shared ref is recognised, and `supported` stays false.
+Image regions and saved views share the Roam Plexus macro. PDF source pins have their own `plexus-pin` macro (kind `pdf`); the older `plexus-region` `k=pdf` form still parses. `img`, `view`, and `pdf` are the kinds this extension supports. The other kinds parse so a shared ref is recognised, and `supported` stays false.
 
 | Export | Contract |
 |---|---|
 | `CONTAINER_STRING` | `{{[[plexus-regions]]}}` |
 | `REGION_COMPONENT` | `plexus-region` |
-| `isContainerString(s)` | In: any value. Out: true only when a string trims to `CONTAINER_STRING`. Fail: non-strings are false. |
+| `PIN_COMPONENT` | `plexus-pin`. The macro of a PDF source pin. Roam Plexus does not claim it. |
+| `PIN_CONTAINER_STRING` | `{{[[plexus-pins]]}}`. The container new pins are written under (a collapsed child of the PDF block). |
+| `isContainerString(s)` | In: any value. Out: true only when a string trims to `CONTAINER_STRING` or `PIN_CONTAINER_STRING`. Fail: non-strings are false. |
 | `normalizeFrac(f)` | In: `[rx, ry, rw, rh]`, or `{rx, ry, rw, rh}`, or `{x, y, w, h}`. Out: four numbers in 0..1, rounded to 4 decimals, or null. Fail: a short list, a non-finite number, or a width or height of 0 or less is null. Values outside 0..1 are clamped. |
 | `normalizeView(v)` | In: a four-number world rect. Out: one decimal place, or null. Fail: not a four-array, a non-finite number, or a width or height of 0 or less is null. Not clamped. |
-| `parseRegion(blockString)` | In: a block string. Out: null when the value is not a string, lacks `plexus-region`, or the head does not match. Otherwise `{kind, drawingUid, caption, extra, supported, owner}` plus the kind's fields. Fail: a bad token, a missing field, or an unknown kind returns the object with `supported: false` and `error`. `img` needs `d` and `f`. `view` needs `d` and `v`. `pdf` needs `d`, `pg` (a positive integer), and `f`. A missing `pg`, a `pg` below 1, or a bad `f` returns `supported: false`. `ids` on a view is at most 24. Roam Plexus kinds (`area`, `rect`, `group`, `frame`, `cframe`, `poly`, `imgrect`, `imgpoly`) set `owner` to `roam-plexus` and stay unsupported. A bad `pad` is outside 0..200. |
-| `serializeRegion(region)` | In: a region object. Out: `{{[[plexus-region]]: k=… d=…}}` plus a single-spaced caption. `k=pdf` emits `pg` then `f`. Fail: throws `TypeError` (`serializeRegion: …`) for a missing region, an unknown kind, a bad id, a bad rect, a bad `pg`, too many ids, a bad pad, or a bad extra token. |
+| `parseRegion(blockString)` | In: a block string. Out: null when the value is not a string, lacks `plexus-region` and `plexus-pin`, or the head does not match. Otherwise `{kind, drawingUid, caption, extra, supported, owner}` plus the kind's fields. A `plexus-pin` head is kind `pdf` with no `k=` needed and adds `macro: "plexus-pin"`; a `k=` other than `pdf` there is `supported: false`. Fail: a bad token, a missing field, or an unknown kind returns the object with `supported: false` and `error`. `img` needs `d` and `f`. `view` needs `d` and `v`. `pdf` needs `d`, `pg` (a positive integer), and `f`. A missing `pg`, a `pg` below 1, or a bad `f` returns `supported: false`. `ids` on a view is at most 24. Roam Plexus kinds (`area`, `rect`, `group`, `frame`, `cframe`, `poly`, `imgrect`, `imgpoly`) set `owner` to `roam-plexus` and stay unsupported. A bad `pad` is outside 0..200. |
+| `serializeRegion(region)` | In: a region object. Out: `{{[[plexus-region]]: k=… d=…}}` plus a single-spaced caption. Kind `pdf` emits `{{[[plexus-pin]]: d=… pg=… f=…}}` (no `k=`), so rewriting an old `k=pdf` pin moves it to the new macro. Fail: throws `TypeError` (`serializeRegion: …`) for a missing region, an unknown kind, a bad id, a bad rect, a bad `pg`, too many ids, a bad pad, or a bad extra token. |
 | `fracRectOf(region)` | Out: `{rx, ry, rw, rh}` from `region.f`, or null when `f` is not four numbers. |
 | `viewRectOf(region)` | Out: `{x, y, w, h}` from `region.v`, or null when `v` is not four numbers. |
 | `isStructuralString(s)` | Out: true for the container string, or when `parseRegion` returns an object (including an unsupported region). Fail: other values are false. |
@@ -337,7 +339,7 @@ Additions since the 2.0 contract. These are methods and a field on the object `c
 
 ## src/model/pdf-pin.js
 
-A `k=pdf` pin is a region under the PDF block. This module plans the string, the dedupe, the clipboard payload, and the write count. It does not touch the graph. Nothing is fetched when the module loads.
+A pin is a `plexus-pin` block (kind `pdf`) under `{{[[plexus-pins]]}}` on the PDF block. This module plans the string, the dedupe, the clipboard payload, and the write count. It does not touch the graph. Nothing is fetched when the module loads.
 
 | Export | Contract |
 |---|---|
@@ -350,7 +352,7 @@ A `k=pdf` pin is a region under the PDF block. This module plans the string, the
 | `pageFracFromBbox(bbox, page)` | Out: four fractions in 0..1 from `viewportBox`, or null. Rotation and `page.userSpace` use that same frame. Fail: no box, or a viewport side that is not greater than 0, is null. |
 | `pinCaption(block, doc)` | Text uses `block.text` or `block.latex`, squashed, cut at `CAPTION_CAP`. A table is `Table N · rows×cols, p. P`. `N` is the 1-based index of `type === "table"` in `doc.order`. A figure or formula uses a caption block id, a caption whose `for` is the block, or the caption string. Fail: a missing block is `""`. |
 | `rectIou(a, b)` | Out: intersection over union of two fraction rects (arrays or `{x,y,w,h}` / `{rx,ry,rw,rh}`). Fail: a bad rect, or no overlap, is 0. |
-| `findDuplicatePin(regions, spec, min)` | Out: the first `k=pdf` region with a uid, the same `pg`, and `rectIou` at least `min` (`PIN_IOU` when omitted). Fail: a bad page, a missing frac, or no uid, is null. |
+| `findDuplicatePin(regions, spec, min)` | Out: the first kind `pdf` region with a uid, the same `pg`, and `rectIou` at least `min` (`PIN_IOU` when omitted). Fail: a bad page, a missing frac, or no uid, is null. |
 | `pinSpecFromBlock(block, doc, pdfUid)` | Out: `{pdfUid, page, frac, caption}` or null. `page` is the block's 1-based page. Fail: a blank pdf uid, a page below 1, or no frac, is null. |
 | `sourceAttrString(uid)` | Out: `Source:: ((uid))`. Fail: a uid outside `[\w-]{1,32}` is `""`. |
 | `sourcePinOf(children)` | Out: `{uid, string}` for the first child whose string is exactly `Source:: ((uid))`. Reads `string` or `:block/string`. Fail: none is null. |
@@ -363,7 +365,7 @@ A `k=pdf` pin is a region under the PDF block. This module plans the string, the
 | `pinDeepLink(opts)` | Out: `#/app/<graph>/page/<pageUid>?pxd-pin=<pinUid>`. Fail: a blank graph, or a uid that fails the uid test, is `""`. |
 | `pxdPinTarget(hash)` | Out: `{pinUid, pageUid, graph}` from `?pxd-pin=`. Fail: no query, or a bad uid, is null. `?pxd=` is not this key. |
 | `pinClickMode(event)` | Out: `sidebar` when Shift is down, else `main` when Meta or Ctrl is down, else `popover`. Shift wins. |
-| `pinOpenPlan(region)` | Out: `{pdfUid, page, frac, pinUid}` for a supported `k=pdf` region. Fail: anything else is null. |
+| `pinOpenPlan(region)` | Out: `{pdfUid, page, frac, pinUid}` for a supported kind `pdf` region (either macro). Fail: anything else is null. |
 | `pinnedToast(page)` | Out: `Pinned p. N` for a page at least 1. Otherwise `Pinned`. |
 | `fracStyle(frac)` | Out: `{left, top, width, height}` as percents. Fail: a short list, or a non-finite number, is null. |
 | `surroundingParagraph(doc, block)` | Out: the previous and next text on the same page, with the block, joined by spaces. Fail: no neighbour text is `""`. |

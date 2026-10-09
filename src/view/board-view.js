@@ -1698,6 +1698,15 @@ function buildBoardView(onFail, {
     const c = screenToWorld(vp, { x: size.width / 2, y: size.height / 2 });
     return { x: c.x - (sz?.w || 0) / 2, y: c.y - (sz?.h || 0) / 2 };
   };
+  // A reader → board insert leaves focus in the reader, whose keys belong to Roam, so ⌘Z undid only the
+  // last write (the Source:: child). The board root takes focus, without scrolling, so ⌘Z undoes the gesture.
+  const focusBoardAfterInsert = () => {
+    if (disposed) return;
+    if (itemsR?.isEditing?.()) return;
+    const active = doc.activeElement;
+    if (active && active !== doc.body && !active.closest?.(".pxd-read") && !root.contains?.(active) && isTextEntryTarget(active)) return;
+    try { root.focus({ preventScroll: true }); } catch { /* stub */ }
+  };
   const parseActions = () => {
     if (!parseActionsObj) {
       parseActionsObj = createParseActions({
@@ -1708,6 +1717,7 @@ function buildBoardView(onFail, {
         toast: (message) => toast(message),
         select: (uids) => { if (!disposed) ctl.select(uids); },
         show: (uids) => { if (!disposed) revealParsed(uids); },
+        focus: () => focusBoardAfterInsert(),
         upload: (file) => host.uploadFile?.(file),
       });
     }
@@ -6669,6 +6679,7 @@ function buildBoardView(onFail, {
         if (Array.isArray(res?.uids) && res.uids.length) {
           ctl.select(res.uids);
           revealParsed(res.uids);
+          focusBoardAfterInsert();
         }
       }).catch(() => {});
       return;
@@ -6694,11 +6705,15 @@ function buildBoardView(onFail, {
     });
     if (!planned) return;
     if (droppedDrawingUids(planned.map((x) => x.string), (id) => host?.blockString?.(id)).length) toast(DRAWING_DROP_TOAST);
+    const fromReader = Boolean(doc.activeElement?.closest?.(".pxd-read"));
     const made = session.addRefCards?.(planned);
     const same = planned.length === list.length && planned.every((row, i) => row.string === list[i].string);
     const offer = same ? dropNamespace(list.map((x) => x.string)) : null;
     Promise.resolve(made).then((uids) => {
-      if (Array.isArray(uids) && uids.length) ctl.select(uids);
+      if (Array.isArray(uids) && uids.length) {
+        ctl.select(uids);
+        if (fromReader) focusBoardAfterInsert();
+      }
       if (!offer || !Array.isArray(uids) || disposed) return;
       const mine = offer.indexes.map((i) => uids[i]).filter(Boolean);
       if (!mine.length) return;

@@ -48,7 +48,8 @@ import { createFakeRoam } from "./fixtures/fake-roam.js";
 
 afterEach(() => resetSessions());
 
-const PIN_STRING = "{{[[plexus-region]]: k=pdf d=pdfblock1 pg=6 f=0.12,0.41,0.76,0.09}} Osmotic water flow";
+const PIN_STRING = "{{[[plexus-pin]]: d=pdfblock1 pg=6 f=0.12,0.41,0.76,0.09}} Osmotic water flow";
+const LEGACY_PIN = "{{[[plexus-region]]: k=pdf d=pdfblock1 pg=6 f=0.12,0.41,0.76,0.09}} Osmotic water flow";
 const FRAC = [0.12, 0.41, 0.76, 0.09];
 
 function memoryStorage() {
@@ -77,7 +78,7 @@ function sampleDoc() {
   };
 }
 
-test("k=pdf round-trips pg then f, and a bad pin is unsupported", () => {
+test("a pin writes plexus-pin with pg then f, the old k=pdf form still reads, and a bad pin is unsupported", () => {
   const raw = serializeRegion({ kind: "pdf", drawingUid: "pdfblock1", pg: 6, f: FRAC, caption: "Osmotic water flow" });
   assert.equal(raw, PIN_STRING);
   const region = parseRegion(raw);
@@ -93,6 +94,21 @@ test("k=pdf round-trips pg then f, and a bad pin is unsupported", () => {
   assert.equal(parseRegion("{{[[plexus-region]]: k=pdf d=pdfblock1 f=0.1,0.2,0.3,0.4}} quote").supported, false);
   assert.equal(parseRegion("{{[[plexus-region]]: k=pdf d=pdfblock1 pg=0 f=0.1,0.2,0.3,0.4}} quote").supported, false);
   assert.equal(parseRegion("{{[[plexus-region]]: k=pdf d=pdfblock1 pg=6 f=0,0,0,0}} quote").supported, false);
+  assert.equal(parseRegion("{{[[plexus-pin]]: d=pdfblock1 f=0.1,0.2,0.3,0.4}} quote").supported, false);
+  assert.equal(parseRegion("{{[[plexus-pin]]: k=img d=pdfblock1 pg=2 f=0.1,0.2,0.3,0.4}} quote").supported, false);
+  assert.equal(parseRegion("{{[[plexus-pin]]: k=pdf d=pdfblock1 pg=6 f=0.12,0.41,0.76,0.09}} Osmotic water flow").supported, true);
+  const legacy = parseRegion(LEGACY_PIN);
+  assert.equal(legacy.kind, "pdf");
+  assert.equal(legacy.supported, true);
+  assert.equal(legacy.pg, 6);
+  assert.deepEqual(legacy.f, FRAC);
+  assert.equal(legacy.macro, undefined);
+  assert.equal(region.macro, "plexus-pin");
+  assert.equal(serializeRegion(legacy), PIN_STRING);
+  assert.equal(isStructuralString(LEGACY_PIN), true);
+  assert.equal(pinOpenPlan({ ...legacy, uid: "old1" }).pinUid, "old1");
+  assert.equal(raw.includes("plexus-region]"), false);
+  assert.equal(raw.includes("k="), false);
   const img = "{{[[plexus-region]]: k=img d=draw1 f=0.1,0.2,0.3,0.4}} cap";
   assert.equal(serializeRegion(parseRegion(img)), img);
 });
@@ -161,7 +177,8 @@ test("commitPinWrites creates the container and pin once, then reuses them", () 
   assert.equal(first.reused, false);
   assert.deepEqual(first.steps, ["container", "pin"]);
   assert.equal(first.outside, 0);
-  assert.equal(made[0].string.includes("plexus-regions"), true);
+  assert.equal(made[0].string, "{{[[plexus-pins]]}}");
+  assert.equal(made[1].string.startsWith("{{[[plexus-pin]]: d=pdf1 pg=6 "), true);
   assert.equal(made[0].open, false);
   assert.deepEqual(made[0].props, { plexus: { type: "regions" } });
   const region = parseRegion(made[1].string);
@@ -196,7 +213,7 @@ function setup() {
 const pin = { pdfUid: "pdf1", page: 6, frac: [0.1, 0.2, 0.3, 0.1], caption: "Osmotic water flow" };
 
 function containerOf(fake) {
-  const uid = fake.children("pdf1").find((id) => String(fake.block(id).string).includes("plexus-regions"));
+  const uid = fake.children("pdf1").find((id) => String(fake.block(id).string) === "{{[[plexus-pins]]}}");
   return uid ? fake.block(uid) : null;
 }
 
@@ -256,6 +273,40 @@ test("pasting a card that already names a pin writes only the Source attribute",
   assert.equal(res.writes, 3);
   assert.equal(sourcePinOf([{ string: fake.block(fake.children(res.uid)[0]).string }]).uid, made.uid);
   assert.equal(fake.children(containerOf(fake).uid).length, 1);
+});
+
+test("an old k=pdf pin under plexus-regions still dedupes, and a new pin goes under plexus-pins", async () => {
+  const fake = createFakeRoam();
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  fake.seedBoard({ uid: "b1", props: { plexus: { v: 2 } }, children: [] });
+  fake.seedPage({
+    uid: "page1",
+    title: "Lab",
+    children: [{
+      uid: "pdf1",
+      string: "{{[[pdf]]: http://x/y.pdf}}",
+      children: [{
+        uid: "oldbox",
+        string: "{{[[plexus-regions]]}}",
+        open: false,
+        children: [{ uid: "oldpin", string: "{{[[plexus-region]]: k=pdf d=pdf1 pg=6 f=0.1,0.2,0.3,0.1}} Osmotic water flow" }],
+      }],
+    }],
+  });
+  const session = acquireSession("b1", { host, linkDelay: 0 });
+  const same = await session.ensurePdfPin(pin);
+  assert.equal(same.reused, true);
+  assert.equal(same.uid, "oldpin");
+  assert.equal(same.writes, 0);
+  const fresh = await session.ensurePdfPin({ ...pin, page: 7, frac: [0.5, 0.5, 0.2, 0.1], caption: "Later" });
+  assert.equal(fresh.reused, false);
+  assert.equal(fresh.writes, 2);
+  const box = containerOf(fake);
+  assert.ok(box);
+  assert.notEqual(box.uid, "oldbox");
+  assert.equal(fake.children("oldbox").length, 1);
+  assert.deepEqual(fake.children(box.uid), [fresh.uid]);
+  assert.equal(fake.block(fresh.uid).string, "{{[[plexus-pin]]: d=pdf1 pg=7 f=0.5,0.5,0.2,0.1}} Later");
 });
 
 test("clipboard card JSON and the pin link keep their own MIME and query key", () => {

@@ -543,7 +543,9 @@ var init_geometry = __esm({
 
 // src/model/regions.js
 function isContainerString(s) {
-  return typeof s === "string" && s.trim() === CONTAINER_STRING;
+  if (typeof s !== "string") return false;
+  const text3 = s.trim();
+  return text3 === CONTAINER_STRING || text3 === PIN_CONTAINER_STRING;
 }
 function normalizeFrac(f) {
   let v;
@@ -590,14 +592,15 @@ function parseIds(raw, cap4) {
 }
 function parseRegion(blockString2) {
   if (typeof blockString2 !== "string") return null;
-  if (blockString2.indexOf(REGION_COMPONENT) === -1) return null;
+  if (blockString2.indexOf(REGION_COMPONENT) === -1 && blockString2.indexOf(PIN_COMPONENT) === -1) return null;
   const m = HEAD_RE.exec(blockString2);
   if (!m) return null;
-  const caption = (m[2] ?? "").trim();
+  const isPin = m[1] === PIN_COMPONENT;
+  const caption = (m[3] ?? "").trim();
   const args = /* @__PURE__ */ new Map();
   const extra = [];
   const bad = [];
-  for (const tok of m[1].split(/\s+/)) {
+  for (const tok of m[2].split(/\s+/)) {
     if (!tok) continue;
     const eq = tok.indexOf("=");
     if (eq <= 0) {
@@ -609,10 +612,12 @@ function parseRegion(blockString2) {
     if (KNOWN_KEYS.has(key) && !args.has(key)) args.set(key, value);
     else extra.push([key, value]);
   }
-  const kind = args.get("k") ?? "";
+  const kind = isPin ? "pdf" : args.get("k") ?? "";
   const drawingUid = args.get("d") ?? "";
   const region = { kind, drawingUid, caption, extra, supported: false, owner: "unknown" };
+  if (isPin) region.macro = PIN_COMPONENT;
   if (bad.length) return fail(region, `bad token ${bad[0]}`);
+  if (isPin && args.has("k") && args.get("k") !== "pdf") return fail(region, "bad k");
   if (!kind) return fail(region, "missing k");
   if (OURS.has(kind)) {
     region.owner = "plexus-diagram";
@@ -741,7 +746,7 @@ function serializeRegion(region) {
   const { kind, drawingUid } = region;
   need(OURS.has(kind) || ROAM_PLEXUS_KINDS.has(kind), `unknown kind ${kind}`);
   need(isId(drawingUid), "bad drawingUid");
-  const tokens = [`k=${kind}`, `d=${drawingUid}`];
+  const tokens = kind === "pdf" ? [`d=${drawingUid}`] : [`k=${kind}`, `d=${drawingUid}`];
   if (kind === "pdf") {
     need(Number.isInteger(region.pg) && region.pg >= 1, "bad pg");
     const f = normalizeFrac(region.f);
@@ -801,7 +806,8 @@ function serializeRegion(region) {
     tokens.push(`${pair2[0]}=${pair2[1]}`);
   }
   const caption = String(region.caption ?? "").replace(/\s+/g, " ").trim();
-  return `{{[[${REGION_COMPONENT}]]: ${tokens.join(" ")}}}${caption ? ` ${caption}` : ""}`;
+  const component = kind === "pdf" ? PIN_COMPONENT : REGION_COMPONENT;
+  return `{{[[${component}]]: ${tokens.join(" ")}}}${caption ? ` ${caption}` : ""}`;
 }
 function isStructuralString(s) {
   return isContainerString(s) || parseRegion(s) != null;
@@ -819,13 +825,15 @@ function regionsOf(owner) {
   }
   return out;
 }
-var CONTAINER_STRING, REGION_COMPONENT, ID_RE, HEAD_RE, KNOWN_KEYS, ROAM_PLEXUS_KINDS, OURS, DEFAULT_PAD, MAX_IDS, clamp01, round4, round1, isId;
+var CONTAINER_STRING, REGION_COMPONENT, PIN_COMPONENT, PIN_CONTAINER_STRING, ID_RE, HEAD_RE, KNOWN_KEYS, ROAM_PLEXUS_KINDS, OURS, DEFAULT_PAD, MAX_IDS, clamp01, round4, round1, isId;
 var init_regions = __esm({
   "src/model/regions.js"() {
     CONTAINER_STRING = "{{[[plexus-regions]]}}";
     REGION_COMPONENT = "plexus-region";
+    PIN_COMPONENT = "plexus-pin";
+    PIN_CONTAINER_STRING = "{{[[plexus-pins]]}}";
     ID_RE = /^[A-Za-z0-9_-]+$/;
-    HEAD_RE = /^\s*\{\{\[\[plexus-region\]\]:\s*([^}]*)\}\}(?: ([\s\S]*))?$/;
+    HEAD_RE = /^\s*\{\{\[\[(plexus-region|plexus-pin)\]\]:\s*([^}]*)\}\}(?: ([\s\S]*))?$/;
     KNOWN_KEYS = /* @__PURE__ */ new Set(["k", "d", "ids", "pad", "el", "f", "g", "fr", "p", "i", "v", "pg"]);
     ROAM_PLEXUS_KINDS = /* @__PURE__ */ new Set(["area", "rect", "group", "frame", "cframe", "poly", "imgrect", "imgpoly"]);
     OURS = /* @__PURE__ */ new Set(["img", "view", "pdf"]);
@@ -8357,7 +8365,7 @@ function planPinWrites(spec) {
     creates.push({
       role: "container",
       parentUid: spec.pdfUid,
-      string: CONTAINER_STRING,
+      string: PIN_CONTAINER_STRING,
       open: false,
       props: { plexus: { type: "regions" } }
     });
@@ -17049,7 +17057,7 @@ function regionUidForButton(button2, blockString2) {
     }
     const hop = /^\(\(([A-Za-z0-9_-]+)\)\)$/.exec(String(text3).trim());
     if (hop) return hop[1];
-    if (/\{\{\s*(?:\[\[)?plexus-region(?:\]\])?\s*:/.test(text3)) return cardUid;
+    if (/\{\{\s*(?:\[\[)?plexus-(?:region|pin)(?:\]\])?\s*:/.test(text3)) return cardUid;
   }
   return container?.getAttribute?.("data-block-uid") || "";
 }
@@ -17252,9 +17260,9 @@ function openRegionView({ doc, button: button2, region, loadBoard, onOpen, delay
 function eachRegionButton(root, fn, cap4 = REGION_SCAN_CAP) {
   if (!root || root.nodeType !== 1 && root.nodeType !== 9 || typeof fn !== "function") return 0;
   const found = [];
-  if (root.matches?.("button.rm-xparser-default-plexus-region")) found.push(root);
+  if (root.matches?.(REGION_BUTTONS)) found.push(root);
   if (typeof root.querySelectorAll === "function") {
-    found.push(...root.querySelectorAll("button.rm-xparser-default-plexus-region"));
+    found.push(...root.querySelectorAll(REGION_BUTTONS));
   }
   let seen = 0;
   for (const button2 of found) {
@@ -17265,7 +17273,7 @@ function eachRegionButton(root, fn, cap4 = REGION_SCAN_CAP) {
   }
   return seen;
 }
-var REGION_SCAN_CAP, CROP_MAX_H, URL_CAP, STOP_TYPES2, liveHover, urls, cropHooks;
+var REGION_SCAN_CAP, CROP_MAX_H, URL_CAP, STOP_TYPES2, liveHover, urls, cropHooks, REGION_BUTTONS;
 var init_region_crop = __esm({
   "src/view/region-crop.js"() {
     init_minimap_svg();
@@ -17282,6 +17290,7 @@ var init_region_crop = __esm({
       buildPopover: extra.buildPopover,
       obstacles: extra.obstacles
     });
+    REGION_BUTTONS = "button.rm-xparser-default-plexus-region, button.rm-xparser-default-plexus-pin";
   }
 });
 
@@ -29793,13 +29802,16 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     } catch {
       kids = [];
     }
-    const container = kids.find((kid) => isContainerString(kid?.string));
+    const boxes = kids.filter((kid) => isContainerString(kid?.string));
+    const container = boxes.find((kid) => String(kid?.string || "").trim() === PIN_CONTAINER_STRING) || null;
     const regions = [];
-    for (const child of container?.children || []) {
-      const region = parseRegion(child?.string || "");
-      if (!region) continue;
-      if (child?.uid) region.uid = child.uid;
-      regions.push(region);
+    for (const box2 of boxes) {
+      for (const child of box2?.children || []) {
+        const region = parseRegion(child?.string || "");
+        if (!region) continue;
+        if (child?.uid) region.uid = child.uid;
+        regions.push(region);
+      }
     }
     const plan = planPinWrites({
       ...spec,
@@ -40040,7 +40052,7 @@ function placementContent(doc, ids, act, extra = null) {
   const text3 = blocks.map((b) => b.type === "list" ? (b.items || []).map((item) => item.text).join(" ") : b.text || b.latex || "").join(" ");
   return { content: { kind: "text", text: text3, page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
 }
-function createParseActions({ session, store, placeBeside, toast, select, show, upload, toWorld } = {}) {
+function createParseActions({ session, store, placeBeside, toast, select, show, focus, upload, toWorld } = {}) {
   const say = (message) => {
     try {
       if (typeof toast === "function") toast(message);
@@ -40056,6 +40068,10 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     }
     try {
       show?.(list);
+    } catch {
+    }
+    try {
+      focus?.();
     } catch {
     }
   };
@@ -41249,6 +41265,7 @@ function createParseView({
   let wheelingUntil = 0;
   let lastJump = null;
   let echo = false;
+  let echoUntil = 0;
   let pageWatch = null;
   let abort = null;
   let jobId = "";
@@ -42586,7 +42603,7 @@ ${sourceAttrString(source)}` : markdown;
     return best;
   }
   function onBodyScroll() {
-    if (echo) return;
+    if (echo || now3() < echoUntil) return;
     const decision = syncDecision({
       locked,
       wheeling: now3() < wheelingUntil,
@@ -42885,6 +42902,7 @@ ${sourceAttrString(source)}` : markdown;
     scrollToPage(page) {
       const n2 = Number(page) || 1;
       echo = true;
+      echoUntil = now3() + SYNC_MS;
       const node2 = n2 > 1 ? body.querySelector?.(`[data-page="${n2}"]`) : null;
       body.scrollTop = node2 ? outlineScrollTop(node2, body) : 0;
       echo = false;
@@ -42906,6 +42924,7 @@ ${sourceAttrString(source)}` : markdown;
         if (!page || page === lastPage) return;
         lastPage = page;
         echo = true;
+        echoUntil = now3() + SYNC_MS;
         const node2 = page > 1 ? body.querySelector?.(`[data-page="${page}"]`) : null;
         body.scrollTop = node2 ? outlineScrollTop(node2, body) : 0;
         echo = false;
@@ -44659,6 +44678,7 @@ function createReadPane({
       cancelLater(pageWait);
       pageWait = null;
     }
+    pageTarget = 0;
   };
   let holdImg = null;
   let holdWait = null;
@@ -44707,16 +44727,44 @@ function createReadPane({
     };
     holdWait = later(tick, 150);
   };
-  const jumpPageWhenReady = (page, after) => {
+  const readerScale = () => {
+    const viewer = viewerFromFiber(fiberOf(live.querySelector?.(".PdfHighlighter")));
+    if (!viewer) return null;
+    const value = viewer.currentScaleValue;
+    const scale = Number(viewer.currentScale);
+    return { viewer, value: value == null ? "" : String(value), scale: Number.isFinite(scale) ? scale : 0 };
+  };
+  const restoreScale = (kept) => {
+    if (!kept || !kept.value && !(kept.scale > 0)) return false;
+    const now3 = readerScale();
+    if (!now3) return false;
+    if (now3.value === kept.value && Math.abs(now3.scale - kept.scale) < 5e-3) return false;
+    const named = /^(page-width|page-fit|page-actual|auto)$/.test(kept.value);
+    autoZoom = true;
+    try {
+      if (named) now3.viewer.currentScaleValue = kept.value;
+      else if (kept.scale > 0) now3.viewer.currentScale = kept.scale;
+      else now3.viewer.currentScaleValue = kept.value;
+    } catch {
+    }
+    autoZoom = false;
+    return true;
+  };
+  let pageTarget = 0;
+  const jumpPageWhenReady = (page, after, kept = null) => {
     cancelPageWait();
     const gen = pageGen + 1;
     pageGen = gen;
+    pageTarget = 0;
     if (typeof page !== "number" || page < 1) return;
+    pageTarget = page;
     const started = Date.now();
     let settled = 0;
     const finish = () => {
       if (gen !== pageGen) return;
       pageGen += 1;
+      pageTarget = 0;
+      if (openFlag) restoreScale(kept);
       try {
         after?.();
       } catch {
@@ -44746,8 +44794,8 @@ function createReadPane({
     tick();
   };
   const mountReader = (blockUid2) => {
-    if (!blockUid2) return;
-    if (liveBlock === blockUid2 && live.querySelector?.(".rm-pdf-container")) return;
+    if (!blockUid2) return false;
+    if (liveBlock === blockUid2 && live.querySelector?.(".rm-pdf-container")) return false;
     clearLive();
     liveBlock = blockUid2;
     try {
@@ -44765,6 +44813,7 @@ function createReadPane({
       src = "";
     }
     if (typeof src === "string" && src) paintHold(src);
+    return true;
   };
   const cardTitle = (card2) => {
     if (typeof titleOf3 === "function") {
@@ -46976,7 +47025,7 @@ function createReadPane({
     }
     if (!openFlag) return;
     try {
-      view2.scrollToPage?.(pageNowOf());
+      view2.scrollToPage?.(pageTarget || pageNowOf());
     } catch {
     }
     if (!found && view2.blockCount() === 0) {
@@ -47071,6 +47120,7 @@ function createReadPane({
       const next = detail && typeof detail === "object" ? detail : {};
       const blockUid2 = typeof next.blockUid === "string" ? next.blockUid : "";
       if (!blockUid2 || !root) return;
+      const kept = openFlag && blockUid2 === current3.blockUid && liveBlock === blockUid2 && fitDone ? readerScale() : null;
       if (blockUid2 !== current3.blockUid) {
         textLayer.clear();
         ocrSha = "";
@@ -47108,17 +47158,23 @@ function createReadPane({
       ensureMotion();
       applyBox();
       if (fresh) startEnter();
-      mountReader(blockUid2);
+      const jumping = typeof next.page === "number";
+      if (jumping && viewMode === "both" && narrowTab === "outline") {
+        narrowTab = "page";
+        applyModeClass();
+      }
+      const remounted = mountReader(blockUid2);
+      if (remounted && !(kept && jumping)) fitDone = false;
       attachReaderWatch();
       armSettle();
       armFit();
       const wanted = highlightUidOf(next);
       const frac = Array.isArray(next.frac) ? next.frac : null;
-      if (typeof next.page === "number") {
+      if (jumping) {
         jumpPageWhenReady(next.page, () => {
           if (wanted) locateHighlight(wanted);
           else if (frac) flashFrac(frac);
-        });
+        }, kept);
       } else if (wanted) locateHighlight(wanted);
       armWatch(current3.title);
       paintSwitcher();
@@ -58966,6 +59022,16 @@ function buildBoardView(onFail, {
     const c = screenToWorld(vp, { x: size.width / 2, y: size.height / 2 });
     return { x: c.x - (sz?.w || 0) / 2, y: c.y - (sz?.h || 0) / 2 };
   };
+  const focusBoardAfterInsert = () => {
+    if (disposed) return;
+    if (itemsR?.isEditing?.()) return;
+    const active = doc.activeElement;
+    if (active && active !== doc.body && !active.closest?.(".pxd-read") && !root.contains?.(active) && isTextEntryTarget(active)) return;
+    try {
+      root.focus({ preventScroll: true });
+    } catch {
+    }
+  };
   const parseActions = () => {
     if (!parseActionsObj) {
       parseActionsObj = createParseActions({
@@ -58983,6 +59049,7 @@ function buildBoardView(onFail, {
         show: (uids) => {
           if (!disposed) revealParsed(uids);
         },
+        focus: () => focusBoardAfterInsert(),
         upload: (file) => host.uploadFile?.(file)
       });
     }
@@ -64943,6 +65010,7 @@ function buildBoardView(onFail, {
         if (Array.isArray(res?.uids) && res.uids.length) {
           ctl.select(res.uids);
           revealParsed(res.uids);
+          focusBoardAfterInsert();
         }
       }).catch(() => {
       });
@@ -64972,11 +65040,15 @@ function buildBoardView(onFail, {
     });
     if (!planned) return;
     if (droppedDrawingUids(planned.map((x) => x.string), (id) => host?.blockString?.(id)).length) toast(DRAWING_DROP_TOAST);
+    const fromReader = Boolean(doc.activeElement?.closest?.(".pxd-read"));
     const made = session.addRefCards?.(planned);
     const same2 = planned.length === list.length && planned.every((row4, i) => row4.string === list[i].string);
     const offer = same2 ? dropNamespace(list.map((x) => x.string)) : null;
     Promise.resolve(made).then((uids) => {
-      if (Array.isArray(uids) && uids.length) ctl.select(uids);
+      if (Array.isArray(uids) && uids.length) {
+        ctl.select(uids);
+        if (fromReader) focusBoardAfterInsert();
+      }
       if (!offer || !Array.isArray(uids) || disposed) return;
       const mine = offer.indexes.map((i) => uids[i]).filter(Boolean);
       if (!mine.length) return;

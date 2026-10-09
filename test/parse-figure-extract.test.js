@@ -234,3 +234,53 @@ test("a contents run is not a caption, and a figure line next to art is", () => 
   assert.equal(ofType(contents, "figure").length, 0);
   assert.equal(ofType(contents, "caption").some((b) => /^fig/i.test(b.text)), false);
 });
+
+function wideLine(text, x0, x1, y, size = 10) {
+  return word(text, x0, y, x1, y + size, size);
+}
+
+test("label growth stays in the figure's column and leaves the header and the other column's equation number", () => {
+  const left = Array.from({ length: 6 }, (_, i) => wideLine("left column body text of this page", 40, 280, 420 + i * 14));
+  const right = Array.from({ length: 6 }, (_, i) => wideLine("right column body text of this page", 300, 560, 420 + i * 14));
+  const images = [{ x0: 306, y0: 40, x1: 500, y1: 280 }];
+  const eq = word("(14)", 250, 160, 278, 172, 10);
+  const header = word("Science 877 (2023) 162730", 400, 22, 540, 32, 6);
+  const legend = word("ReLU", 508, 100, 536, 110, 8);
+  const { figures, used } = findFigures({
+    graphics: { images, shapes: [], boxes: [], rules: [] },
+    words: [...left, ...right, eq, header, legend],
+    bodySize: 10,
+    pageW: W,
+    pageH: H,
+  });
+  assert.equal(figures.length, 1);
+  const box = figures[0].bbox;
+  assert.ok(box[0] >= 300, `left edge ${box[0]} stays in the right column`);
+  assert.ok(box[0] > eq.x1, "equation number stays out");
+  assert.ok(box[1] >= 40, `top ${box[1]} does not take the running header`);
+  assert.ok(box[2] >= 536, "same-column legend joins the crop");
+  assert.equal(used.has(eq), false);
+  assert.equal(used.has(header), false);
+  assert.equal(used.has(legend), true);
+});
+
+test("an equation number in the figure's own column does not join the crop", () => {
+  const left = Array.from({ length: 6 }, (_, i) => wideLine("left column body text of this page", 40, 250, 620 + i * 14));
+  const right = Array.from({ length: 6 }, (_, i) => wideLine("right column body text of this page", 310, 560, 620 + i * 14));
+  const images = [{ x0: 40, y0: 200, x1: 200, y1: 380 }];
+  const eq = word("(14)", 206, 280, 228, 292, 10);
+  const axis = word("kg", 70, 384, 86, 394, 8);
+  const { figures, used } = findFigures({
+    graphics: { images, shapes: [], boxes: [], rules: [] },
+    words: [...left, ...right, eq, axis],
+    bodySize: 10,
+    pageW: W,
+    pageH: H,
+  });
+  assert.equal(figures.length, 1);
+  const box = figures[0].bbox;
+  assert.ok(box[2] < eq.x0, `right edge ${box[2]} stops before the equation number`);
+  assert.ok(box[3] >= 394, "axis label under the art still joins");
+  assert.equal(used.has(eq), false);
+  assert.equal(used.has(axis), true);
+});

@@ -5975,6 +5975,202 @@ var init_stream = __esm({
   }
 });
 
+// src/model/parse/furniture.js
+function normalizeFurniture(text3) {
+  return text3.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
+  const n2 = pages.length;
+  const need2 = Math.max(2, Math.min(3, n2), Math.ceil(n2 * 0.5));
+  const candidates2 = /* @__PURE__ */ new Map();
+  const cand = (line, page, where) => {
+    const key = `${where}|${normalizeFurniture(line.text)}`;
+    if (!candidates2.has(key)) candidates2.set(key, []);
+    candidates2.get(key).push({ page, line, y: line.base });
+  };
+  const alone = /* @__PURE__ */ new Set();
+  for (const pg of pages) {
+    for (const line of pg.lines) {
+      const mid = (line.y0 + line.y1) / 2;
+      if (mid <= pg.h * band) cand(line, pg.n, "top");
+      else if (mid >= pg.h * (1 - band)) cand(line, pg.n, "bottom");
+      else continue;
+      if (!pg.lines.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * Math.max(o.size, line.size))) alone.add(line);
+    }
+  }
+  const removed = [];
+  const marks = /* @__PURE__ */ new Set();
+  for (const [key, list] of candidates2) {
+    const pagesSeen = new Set(list.map((e2) => e2.page));
+    const recurring = pagesSeen.size >= need2 && n2 >= 2;
+    for (const e2 of list) {
+      const text3 = e2.line.text.trim();
+      const pageNum = PAGE_NUM_RE.test(text3) && alone.has(e2.line);
+      let ok = pageNum;
+      if (recurring) {
+        const ys2 = list.filter((o) => o.page !== e2.page).map((o) => o.y);
+        ok = ok || ys2.some((y) => Math.abs(y - e2.y) <= 3) || ys2.length === 0;
+      }
+      if (!ok) continue;
+      const where = key.startsWith("top") ? "running-header" : "running-footer";
+      marks.add(e2.line);
+      removed.push({ page: e2.page, bbox: [r2(e2.line.x0), r2(e2.line.y0), r2(e2.line.x1), r2(e2.line.y1)], text: text3, reason: pageNum && !recurring ? "page-number" : where });
+    }
+  }
+  removed.sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1]);
+  return { removed, isFurniture: (line) => marks.has(line) };
+}
+function r2(v) {
+  return Math.round(v * 100) / 100;
+}
+var PAGE_NUM_RE, FURNITURE_BAND;
+var init_furniture = __esm({
+  "src/model/parse/furniture.js"() {
+    PAGE_NUM_RE = /^(\d+|page\s+\d+(\s+of\s+\d+)?|[-–]\s*\d+\s*[-–]|\d+\s*\/\s*\d+)$/i;
+    FURNITURE_BAND = 0.08;
+  }
+});
+
+// src/model/parse/xycut.js
+function detectColumns(lines, { pageW, minLines = 4 } = {}) {
+  const clusters = [];
+  for (const l of lines) {
+    if (l.chars < 8) continue;
+    let c = clusters.find((k) => Math.abs(k.x - l.x0) <= 3);
+    if (!c) {
+      c = { x: l.x0, lines: [] };
+      clusters.push(c);
+    }
+    c.lines.push(l);
+  }
+  const wideEnough = (c) => c.lines.filter((l) => l.x1 - l.x0 >= 0.25 * (pageW || 612)).length >= 3;
+  const dominant = clusters.filter((c) => c.lines.length >= minLines && wideEnough(c)).sort((a, b) => a.x - b.x);
+  const gutters = [];
+  for (let i = 1; i < dominant.length; i++) {
+    const right = dominant[i];
+    const leftX = dominant[i - 1].x;
+    if (right.x - leftX < 0.2 * (pageW || 612)) continue;
+    const beside = (l) => right.lines.some((r) => Math.abs(r.base - l.base) <= 2.5 * Math.max(l.size, r.size));
+    const leftLines = lines.filter((l) => l.x0 >= leftX - 3 && l.x0 < right.x - 10 && l.x1 <= right.x + 1);
+    const besideEnds = leftLines.filter(beside).map((l) => l.x1);
+    const leftEnds = besideEnds.length >= 3 ? besideEnds : leftLines.map((l) => l.x1);
+    if (leftEnds.length < 3) continue;
+    const g0 = Math.max(...leftEnds);
+    const g1 = right.x;
+    if (g1 - g0 >= 6) gutters.push({ x0: g0, x1: g1 });
+  }
+  return gutters;
+}
+function splitAtGutters(lines, gutters, makeLine2) {
+  if (!gutters.length) return lines;
+  const out = [];
+  for (const line of lines) {
+    let parts = [line];
+    for (const g of gutters) {
+      const next = [];
+      for (const part of parts) {
+        if (!crossesGutter(part, g) || part.words.length < 2) {
+          next.push(part);
+          continue;
+        }
+        const left = part.words.filter((w) => (w.x0 + w.x1) / 2 < (g.x0 + g.x1) / 2);
+        const right = part.words.filter((w) => (w.x0 + w.x1) / 2 >= (g.x0 + g.x1) / 2);
+        const leftEnd = left.length ? Math.max(...left.map((w) => w.x1)) : -Infinity;
+        const rightStart = right.length ? Math.min(...right.map((w) => w.x0)) : Infinity;
+        if (left.length && right.length && rightStart - leftEnd >= 0.6 * (g.x1 - g.x0)) next.push(makeLine2(left), makeLine2(right));
+        else next.push(part);
+      }
+      parts = next;
+    }
+    out.push(...parts);
+  }
+  return out;
+}
+function crossesGutter(unit, g) {
+  return unit.x0 < g.x0 - 1 && unit.x1 > g.x1 + 1;
+}
+function ruleCuts(rules, gutters, units) {
+  if (!gutters.length || !units.length) return [];
+  const minX = Math.min(...units.map((u) => u.x0));
+  const maxX = Math.max(...units.map((u) => u.x1));
+  const framed = (r) => units.some((u) => r.x0 >= u.x0 - 2 && r.x1 <= u.x1 + 2 && r.y0 > u.y0 + 1 && r.y0 < u.y1 - 1);
+  const hs = (rules || []).filter((r) => r.axis === "h" && !framed(r)).sort((a, b) => a.y0 - b.y0);
+  const rows = [];
+  for (const r of hs) {
+    const row4 = rows.find((w) => Math.abs(w.y - r.y0) <= 2);
+    if (row4) row4.rules.push(r);
+    else rows.push({ y: r.y0, rules: [r] });
+  }
+  const cuts = [];
+  for (const row4 of rows) {
+    const spans = gutters.some((g) => {
+      const left = row4.rules.some((r) => r.x0 < g.x0 - 1 && Math.min(r.x1, g.x0) - Math.max(r.x0, minX) >= 0.5 * (g.x0 - minX));
+      const right = row4.rules.some((r) => r.x1 > g.x1 + 1 && Math.min(r.x1, maxX) - Math.max(r.x0, g.x1) >= 0.5 * (maxX - g.x1));
+      return left && right;
+    });
+    if (spans) cuts.push(row4.y);
+  }
+  return cuts;
+}
+function orderUnits(units, { gutters = [], cuts = [], lineHeight = 0 } = {}) {
+  const active = gutters.filter((g) => units.some((u) => u.x1 <= g.x0 + 1) && units.some((u) => u.x0 >= g.x1 - 1));
+  if (!active.length) return { order: byPosition(units), columns: 1 };
+  const sorted = [...units].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const wide = (u) => active.some((g) => crossesGutter(u, g));
+  const out = [];
+  let slice = [];
+  const flush = () => {
+    if (!slice.length) return;
+    const cols = splitColumns(slice, active);
+    for (const col of cols) out.push(...byPosition(col));
+    slice = [];
+  };
+  const headingRow = () => lineHeight > 0 && splitColumns(slice, active).every((c) => c.length === 1 && c[0].y1 - c[0].y0 <= 2 * lineHeight);
+  const pending = [...cuts].sort((a, b) => a - b);
+  for (const u of sorted) {
+    while (pending.length && pending[0] <= u.y0 + 1) {
+      pending.shift();
+      if (!headingRow()) flush();
+    }
+    if (wide(u)) {
+      flush();
+      out.push(u);
+    } else slice.push(u);
+  }
+  flush();
+  return { order: out, columns: active.length + 1 };
+}
+function splitColumns(units, gutters) {
+  const cols = gutters.map(() => []);
+  cols.push([]);
+  for (const u of units) {
+    const mid = (u.x0 + u.x1) / 2;
+    let idx = gutters.findIndex((g) => mid < (g.x0 + g.x1) / 2);
+    if (idx < 0) idx = gutters.length;
+    cols[idx].push(u);
+  }
+  return cols.filter((c) => c.length);
+}
+function byPosition(units) {
+  return [...units].sort((a, b) => {
+    const dy = a.y0 - b.y0;
+    if (Math.abs(dy) <= 2) return a.x0 - b.x0;
+    return dy;
+  });
+}
+function boxOfUnits(units) {
+  return {
+    x0: Math.min(...units.map((u) => u.x0)),
+    y0: Math.min(...units.map((u) => u.y0)),
+    x1: Math.max(...units.map((u) => u.x1)),
+    y1: Math.max(...units.map((u) => u.y1))
+  };
+}
+var init_xycut = __esm({
+  "src/model/parse/xycut.js"() {
+  }
+});
+
 // src/model/parse/figures.js
 function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxes = /* @__PURE__ */ new Set(), words = [], bodySize = 10, pageW = 612, pageH = 792, ruleSegments = [], pageTextChars = null }) {
   const prims = [];
@@ -6006,6 +6202,7 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
     prims.push({ ...clipped, kind: "rule", n: 1 });
   }
   const lines = wordLines(words);
+  const gutters = detectColumns(columnLines(words), { pageW });
   const textChars = pageTextChars == null ? words.reduce((n2, w) => n2 + (w.text || "").length, 0) : pageTextChars;
   const clusters = clusterBoxes(prims, 6);
   const figures = [];
@@ -6026,9 +6223,9 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
       pageImage: cl.items.some((p) => p.pageImage)
     });
   }
-  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW);
+  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters);
   unionPanels(figures, lines, bodySize, pageW, pageH);
-  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW);
+  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters);
   const kept = [];
   for (const fig of figures) {
     const box2 = clipBox(fig, pageW, pageH);
@@ -6158,6 +6355,105 @@ function wordLines(words) {
   for (const l of lines) l.text = l.words.map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
   return lines;
 }
+function columnLines(words) {
+  const sorted = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
+  const lines = [];
+  for (const w of sorted) {
+    const y = w.base ?? w.y1 ?? 0;
+    const size = w.size || 10;
+    const y0 = w.y0 ?? y - size;
+    const y1 = w.y1 ?? y;
+    const last = lines[lines.length - 1];
+    const gap = last ? w.x0 - last.x1 : 0;
+    const split = last && (Math.abs(last.base - y) > 0.45 * Math.max(last.size, size) || gap > Math.max(8, 1.25 * size) || last.x0 - w.x1 > 4);
+    if (last && !split) {
+      last.words.push(w);
+      last.x0 = Math.min(last.x0, w.x0);
+      last.x1 = Math.max(last.x1, w.x1);
+      last.y0 = Math.min(last.y0, y0);
+      last.y1 = Math.max(last.y1, y1);
+    } else {
+      lines.push({ base: y, size, words: [w], x0: w.x0, x1: w.x1, y0, y1 });
+    }
+  }
+  for (const l of lines) {
+    l.text = l.words.map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
+    l.chars = l.text.replace(/\s+/g, "").length;
+  }
+  return lines;
+}
+function wordBox(w) {
+  const y1 = w.y1 ?? w.base ?? 0;
+  const y0 = w.y0 ?? y1 - (w.size || 10);
+  return { x0: w.x0, y0, x1: w.x1, y1 };
+}
+function outsideDist(cx, cy, box2) {
+  const dx = cx < box2.x0 ? box2.x0 - cx : cx > box2.x1 ? cx - box2.x1 : 0;
+  const dy = cy < box2.y0 ? box2.y0 - cy : cy > box2.y1 ? cy - box2.y1 : 0;
+  return Math.hypot(dx, dy);
+}
+function columnSpan(art, gutters, pageW) {
+  if (!gutters.length) return { x0: 0, x1: pageW };
+  const cols = [];
+  let x = 0;
+  for (const g of gutters) {
+    cols.push({ x0: x, x1: g.x0 });
+    x = g.x1;
+  }
+  cols.push({ x0: x, x1: pageW });
+  const hit = cols.filter((c) => art.x1 > c.x0 + 2 && art.x0 < c.x1 - 2);
+  if (hit.length) return { x0: hit[0].x0, x1: hit[hit.length - 1].x1 };
+  const cx = (art.x0 + art.x1) / 2;
+  let best = cols[0];
+  let bestD = Infinity;
+  for (const c of cols) {
+    const d = cx < c.x0 ? c.x0 - cx : cx > c.x1 ? cx - c.x1 : 0;
+    if (d < bestD) {
+      best = c;
+      bestD = d;
+    }
+  }
+  return best;
+}
+function wordInColumn(w, col, gutters) {
+  if (!gutters.length) return true;
+  const box2 = wordBox(w);
+  const cx = (box2.x0 + box2.x1) / 2;
+  if (cx < col.x0 - 1 || cx > col.x1 + 1) return false;
+  for (const g of gutters) {
+    if (col.x0 < g.x0 - 1 && col.x1 > g.x1 + 1) continue;
+    if (col.x1 <= g.x0 + 1 && box2.x1 > g.x1 + 1) return false;
+    if (col.x0 >= g.x1 - 1 && box2.x0 < g.x0 - 1) return false;
+  }
+  return true;
+}
+function inMarginBand(y, pageH) {
+  const h = pageH || 792;
+  return y <= h * FURNITURE_BAND || y >= h * (1 - FURNITURE_BAND);
+}
+function lineIsFlow(line, bodySize) {
+  return wordCount2(line.text) >= 8 && (line.size || bodySize) > 0.85 * bodySize;
+}
+function isEqNumber(text3) {
+  return EQ_NUMBER_RE.test(String(text3 || "").trim());
+}
+function allowGrowWord(w, line, ctx) {
+  if (isEqNumber(w.text) || isEqNumber(line.text)) return false;
+  if (!wordInColumn(w, ctx.col, ctx.gutters)) return false;
+  const box2 = wordBox(w);
+  const cx = (box2.x0 + box2.x1) / 2;
+  const cy = (box2.y0 + box2.y1) / 2;
+  const da = outsideDist(cx, cy, ctx.art);
+  if (da > 0 && inMarginBand(cy, ctx.pageH)) return false;
+  if (da > 0 && lineIsFlow(line, ctx.bodySize)) return false;
+  if (da > 0) {
+    for (const other of ctx.bodyLines) {
+      if (other === line) continue;
+      if (outsideDist(cx, cy, other) <= da) return false;
+    }
+  }
+  return true;
+}
 function lineIsCaption(text3) {
   const t = String(text3 || "").trim();
   if (CAPTION_RE.test(t) || /^fig(?:ure)?\.?\s*$/i.test(t)) return true;
@@ -6181,8 +6477,17 @@ function takeWord(fig, w, art, maxOut, used) {
   fig.y1 = ny1;
   return true;
 }
-function growLabels(fig, lines, used, bodySize, pageW) {
+function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters) {
   const art = { x0: fig.x0, y0: fig.y0, x1: fig.x1, y1: fig.y1 };
+  const ctx = {
+    art,
+    col: columnSpan(art, gutters, pageW),
+    gutters,
+    bodyLines: lines.filter((line) => lineIsFlow(line, bodySize)),
+    pageH,
+    bodySize
+  };
+  const allow = (w, line) => allowGrowWord(w, line, ctx);
   const maxOut = 64;
   let changed2 = true;
   let guard = 0;
@@ -6194,6 +6499,7 @@ function growLabels(fig, lines, used, bodySize, pageW) {
         for (const w of line.words) {
           if (used.has(w) || !(w.size <= 0.85 * bodySize)) continue;
           if (/^fig(?:ure)?\.?$/i.test(String(w.text || "").trim())) continue;
+          if (!allow(w, line)) continue;
           const cx2 = (w.x0 + w.x1) / 2;
           const cy = (w.y0 + w.y1) / 2;
           if (cx2 < art.x0 - 12 || cx2 > art.x1 + 12 || cy < art.y0 - 12 || cy > art.y1 + 12) continue;
@@ -6202,7 +6508,7 @@ function growLabels(fig, lines, used, bodySize, pageW) {
       }
       if (line.words.every((w) => /^[a-d]$/i.test(String(w.text || "").trim()))) {
         for (const w of line.words) {
-          if (used.has(w)) continue;
+          if (used.has(w) || !allow(w, line)) continue;
           const gapX2 = w.x1 < fig.x0 ? fig.x0 - w.x1 : w.x0 > fig.x1 ? w.x0 - fig.x1 : 0;
           const gapY2 = w.y1 < fig.y0 ? fig.y0 - w.y1 : w.y0 > fig.y1 ? w.y0 - fig.y1 : 0;
           if (gapX2 <= 18 && gapY2 <= 18 && takeWord(fig, w, art, maxOut, used)) changed2 = true;
@@ -6223,7 +6529,7 @@ function growLabels(fig, lines, used, bodySize, pageW) {
       const edge = gapX === 0 && gapY > 0 && gapY <= 2 * bodySize && nWords <= 3 && (line.size <= 0.85 * bodySize || panel);
       if (!inside7 && !beside && !edge && !(panel && gapX <= 18 && gapY <= 18)) continue;
       if (beside && (nWords > 6 || line.size > bodySize * 1.05)) continue;
-      let span = line.words.filter((w) => !used.has(w));
+      let span = line.words.filter((w) => !used.has(w) && allow(w, line));
       if (gapX === 0 && (line.x1 > art.x1 + 18 || line.x0 < art.x0 - 18)) {
         span = span.filter((w) => {
           const wx = (w.x0 + w.x1) / 2;
@@ -6370,64 +6676,12 @@ var init_figures = __esm({
   "src/model/parse/figures.js"() {
     init_lines();
     init_headings();
+    init_formulas();
+    init_furniture();
+    init_xycut();
     IMAGE_MIN = 12;
     H_GAP = 56;
     V_GAP = 42;
-  }
-});
-
-// src/model/parse/furniture.js
-function normalizeFurniture(text3) {
-  return text3.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
-}
-function findFurniture(pages, { band = 0.08 } = {}) {
-  const n2 = pages.length;
-  const need2 = Math.max(2, Math.min(3, n2), Math.ceil(n2 * 0.5));
-  const candidates2 = /* @__PURE__ */ new Map();
-  const cand = (line, page, where) => {
-    const key = `${where}|${normalizeFurniture(line.text)}`;
-    if (!candidates2.has(key)) candidates2.set(key, []);
-    candidates2.get(key).push({ page, line, y: line.base });
-  };
-  const alone = /* @__PURE__ */ new Set();
-  for (const pg of pages) {
-    for (const line of pg.lines) {
-      const mid = (line.y0 + line.y1) / 2;
-      if (mid <= pg.h * band) cand(line, pg.n, "top");
-      else if (mid >= pg.h * (1 - band)) cand(line, pg.n, "bottom");
-      else continue;
-      if (!pg.lines.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * Math.max(o.size, line.size))) alone.add(line);
-    }
-  }
-  const removed = [];
-  const marks = /* @__PURE__ */ new Set();
-  for (const [key, list] of candidates2) {
-    const pagesSeen = new Set(list.map((e2) => e2.page));
-    const recurring = pagesSeen.size >= need2 && n2 >= 2;
-    for (const e2 of list) {
-      const text3 = e2.line.text.trim();
-      const pageNum = PAGE_NUM_RE.test(text3) && alone.has(e2.line);
-      let ok = pageNum;
-      if (recurring) {
-        const ys2 = list.filter((o) => o.page !== e2.page).map((o) => o.y);
-        ok = ok || ys2.some((y) => Math.abs(y - e2.y) <= 3) || ys2.length === 0;
-      }
-      if (!ok) continue;
-      const where = key.startsWith("top") ? "running-header" : "running-footer";
-      marks.add(e2.line);
-      removed.push({ page: e2.page, bbox: [r2(e2.line.x0), r2(e2.line.y0), r2(e2.line.x1), r2(e2.line.y1)], text: text3, reason: pageNum && !recurring ? "page-number" : where });
-    }
-  }
-  removed.sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1]);
-  return { removed, isFurniture: (line) => marks.has(line) };
-}
-function r2(v) {
-  return Math.round(v * 100) / 100;
-}
-var PAGE_NUM_RE;
-var init_furniture = __esm({
-  "src/model/parse/furniture.js"() {
-    PAGE_NUM_RE = /^(\d+|page\s+\d+(\s+of\s+\d+)?|[-–]\s*\d+\s*[-–]|\d+\s*\/\s*\d+)$/i;
   }
 });
 
@@ -6766,146 +7020,6 @@ var init_blocks = __esm({
     UNIT_BEFORE_RE = /(?:^|[\s(\/])(?:[kcdmnµu]?m|in|ft|yd|mi)$/i;
     EXPONENT_BASE_RE = /(?:^|[\s×x·(])10$/;
     MARK_RUN_RE = /^\d{1,3}(?:[,\u2013-]\d{1,3})+$/;
-  }
-});
-
-// src/model/parse/xycut.js
-function detectColumns(lines, { pageW, minLines = 4 } = {}) {
-  const clusters = [];
-  for (const l of lines) {
-    if (l.chars < 8) continue;
-    let c = clusters.find((k) => Math.abs(k.x - l.x0) <= 3);
-    if (!c) {
-      c = { x: l.x0, lines: [] };
-      clusters.push(c);
-    }
-    c.lines.push(l);
-  }
-  const wideEnough = (c) => c.lines.filter((l) => l.x1 - l.x0 >= 0.25 * (pageW || 612)).length >= 3;
-  const dominant = clusters.filter((c) => c.lines.length >= minLines && wideEnough(c)).sort((a, b) => a.x - b.x);
-  const gutters = [];
-  for (let i = 1; i < dominant.length; i++) {
-    const right = dominant[i];
-    const leftX = dominant[i - 1].x;
-    if (right.x - leftX < 0.2 * (pageW || 612)) continue;
-    const beside = (l) => right.lines.some((r) => Math.abs(r.base - l.base) <= 2.5 * Math.max(l.size, r.size));
-    const leftLines = lines.filter((l) => l.x0 >= leftX - 3 && l.x0 < right.x - 10 && l.x1 <= right.x + 1);
-    const besideEnds = leftLines.filter(beside).map((l) => l.x1);
-    const leftEnds = besideEnds.length >= 3 ? besideEnds : leftLines.map((l) => l.x1);
-    if (leftEnds.length < 3) continue;
-    const g0 = Math.max(...leftEnds);
-    const g1 = right.x;
-    if (g1 - g0 >= 6) gutters.push({ x0: g0, x1: g1 });
-  }
-  return gutters;
-}
-function splitAtGutters(lines, gutters, makeLine2) {
-  if (!gutters.length) return lines;
-  const out = [];
-  for (const line of lines) {
-    let parts = [line];
-    for (const g of gutters) {
-      const next = [];
-      for (const part of parts) {
-        if (!crossesGutter(part, g) || part.words.length < 2) {
-          next.push(part);
-          continue;
-        }
-        const left = part.words.filter((w) => (w.x0 + w.x1) / 2 < (g.x0 + g.x1) / 2);
-        const right = part.words.filter((w) => (w.x0 + w.x1) / 2 >= (g.x0 + g.x1) / 2);
-        const leftEnd = left.length ? Math.max(...left.map((w) => w.x1)) : -Infinity;
-        const rightStart = right.length ? Math.min(...right.map((w) => w.x0)) : Infinity;
-        if (left.length && right.length && rightStart - leftEnd >= 0.6 * (g.x1 - g.x0)) next.push(makeLine2(left), makeLine2(right));
-        else next.push(part);
-      }
-      parts = next;
-    }
-    out.push(...parts);
-  }
-  return out;
-}
-function crossesGutter(unit, g) {
-  return unit.x0 < g.x0 - 1 && unit.x1 > g.x1 + 1;
-}
-function ruleCuts(rules, gutters, units) {
-  if (!gutters.length || !units.length) return [];
-  const minX = Math.min(...units.map((u) => u.x0));
-  const maxX = Math.max(...units.map((u) => u.x1));
-  const framed = (r) => units.some((u) => r.x0 >= u.x0 - 2 && r.x1 <= u.x1 + 2 && r.y0 > u.y0 + 1 && r.y0 < u.y1 - 1);
-  const hs = (rules || []).filter((r) => r.axis === "h" && !framed(r)).sort((a, b) => a.y0 - b.y0);
-  const rows = [];
-  for (const r of hs) {
-    const row4 = rows.find((w) => Math.abs(w.y - r.y0) <= 2);
-    if (row4) row4.rules.push(r);
-    else rows.push({ y: r.y0, rules: [r] });
-  }
-  const cuts = [];
-  for (const row4 of rows) {
-    const spans = gutters.some((g) => {
-      const left = row4.rules.some((r) => r.x0 < g.x0 - 1 && Math.min(r.x1, g.x0) - Math.max(r.x0, minX) >= 0.5 * (g.x0 - minX));
-      const right = row4.rules.some((r) => r.x1 > g.x1 + 1 && Math.min(r.x1, maxX) - Math.max(r.x0, g.x1) >= 0.5 * (maxX - g.x1));
-      return left && right;
-    });
-    if (spans) cuts.push(row4.y);
-  }
-  return cuts;
-}
-function orderUnits(units, { gutters = [], cuts = [], lineHeight = 0 } = {}) {
-  const active = gutters.filter((g) => units.some((u) => u.x1 <= g.x0 + 1) && units.some((u) => u.x0 >= g.x1 - 1));
-  if (!active.length) return { order: byPosition(units), columns: 1 };
-  const sorted = [...units].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
-  const wide = (u) => active.some((g) => crossesGutter(u, g));
-  const out = [];
-  let slice = [];
-  const flush = () => {
-    if (!slice.length) return;
-    const cols = splitColumns(slice, active);
-    for (const col of cols) out.push(...byPosition(col));
-    slice = [];
-  };
-  const headingRow = () => lineHeight > 0 && splitColumns(slice, active).every((c) => c.length === 1 && c[0].y1 - c[0].y0 <= 2 * lineHeight);
-  const pending = [...cuts].sort((a, b) => a - b);
-  for (const u of sorted) {
-    while (pending.length && pending[0] <= u.y0 + 1) {
-      pending.shift();
-      if (!headingRow()) flush();
-    }
-    if (wide(u)) {
-      flush();
-      out.push(u);
-    } else slice.push(u);
-  }
-  flush();
-  return { order: out, columns: active.length + 1 };
-}
-function splitColumns(units, gutters) {
-  const cols = gutters.map(() => []);
-  cols.push([]);
-  for (const u of units) {
-    const mid = (u.x0 + u.x1) / 2;
-    let idx = gutters.findIndex((g) => mid < (g.x0 + g.x1) / 2);
-    if (idx < 0) idx = gutters.length;
-    cols[idx].push(u);
-  }
-  return cols.filter((c) => c.length);
-}
-function byPosition(units) {
-  return [...units].sort((a, b) => {
-    const dy = a.y0 - b.y0;
-    if (Math.abs(dy) <= 2) return a.x0 - b.x0;
-    return dy;
-  });
-}
-function boxOfUnits(units) {
-  return {
-    x0: Math.min(...units.map((u) => u.x0)),
-    y0: Math.min(...units.map((u) => u.y0)),
-    x1: Math.max(...units.map((u) => u.x1)),
-    y1: Math.max(...units.map((u) => u.y1))
-  };
-}
-var init_xycut = __esm({
-  "src/model/parse/xycut.js"() {
   }
 });
 
@@ -8153,7 +8267,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 7;
+    PARSE_REV = 8;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     EVIDENCE_LINES = 60;

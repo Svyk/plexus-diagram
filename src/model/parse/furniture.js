@@ -2,12 +2,15 @@
 
 const PAGE_NUM_RE = /^(\d+|page\s+\d+(\s+of\s+\d+)?|[-–]\s*\d+\s*[-–]|\d+\s*\/\s*\d+)$/i;
 
+// Top and bottom fraction of the page where running headers and footers sit.
+export const FURNITURE_BAND = 0.08;
+
 export function normalizeFurniture(text) {
   return text.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 // pages: [{ n, h, lines }] ; returns { removed: [{page, bbox, text, reason}], isFurniture(line, n) }
-export function findFurniture(pages, { band = 0.08 } = {}) {
+export function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
   const n = pages.length;
   const need = Math.max(2, Math.min(3, n), Math.ceil(n * 0.5));
   const candidates = new Map(); // key -> [{page, line, y}]

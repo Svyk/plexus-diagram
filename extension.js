@@ -11207,6 +11207,10 @@ var init_tooltip_text = __esm({
       "ctx.same-size.width": e("Same width", "Give the selected cards the width of the first one."),
       "ctx.same-size.height": e("Same height", "Give the selected cards the height of the first one."),
       "ctx.same-size.both": e("Same size", "Give the selected cards the width and height of the first one."),
+      "ctx.style": e("Style", "Choose the line pattern and how the arrow is drawn."),
+      "ctx.width": e("Width", "Choose how thick the arrow is drawn."),
+      "ctx.edge-color": e("Color", "Choose a color for this arrow."),
+      "ctx.edge-more": e("More", "Flip the arrow, connect it to the page, open its notes, or write it to the graph."),
       "ctx.dir.one": e("One way", "An arrowhead at the end only."),
       "ctx.dir.two": e("Two way", "An arrowhead at both ends."),
       "ctx.dir.none": e("No arrow", "A plain line with no arrowheads."),
@@ -11330,7 +11334,7 @@ var init_tooltip_text = __esm({
     }
     for (const n2 of [1, 2, 3, 4]) TIP_TEXT[`ctx.weight.${n2}`] = e(`Weight ${n2}`, `Draw the connection ${n2} px thick.`);
     BLOCKS = /^pxd-(toolbar|rail|ctx|bg)__([a-z0-9-]+)$/;
-    SKIP = /* @__PURE__ */ new Set(["btn", "row", "group", "tools", "picker", "sources", "extra", "pattern", "tones"]);
+    SKIP = /* @__PURE__ */ new Set(["btn", "row", "group", "tools", "picker", "sources", "extra", "pattern", "tones", "pop-btn", "more-item", "more-label", "dot"]);
   }
 });
 
@@ -13165,34 +13169,64 @@ function avoidObstacles(bar, obstacles, { topLimit = 0, margin = 8, bounds = {} 
   }
   return clear(cur) ? cur : bar;
 }
-function avoidSoft(bar, soft, hard, { alts = [], topLimit = 0, margin = 8, bounds = {}, reach = 240 } = {}) {
-  const valid = (o) => o && o.right > o.left && o.bottom > o.top;
-  const cards = (soft || []).filter(valid);
-  if (!bar || !cards.length) return bar;
-  const walls = (hard || []).filter(valid);
+function placeBarClear(bar, { anchor, soft = [], hard = [], gap = 12, margin = 8, bounds = {} } = {}) {
+  if (!bar || !anchor) return bar ? { ...bar, where: "fallback" } : null;
   const box2 = (b) => ({ left: b.left, top: b.top, right: b.left + b.w, bottom: b.top + b.h });
+  const valid = (o) => o && o.right > o.left && o.bottom > o.top;
+  const softList = (soft || []).filter(valid);
+  const hardList = (hard || []).filter(valid);
   const hits = (b, list) => list.some((o) => overlaps(box2(b), o));
-  if (!hits(bar, cards)) return bar;
-  const fits = (b) => b.left >= margin && b.top >= topLimit && (bounds.right == null || b.left + b.w <= bounds.right) && (bounds.bottom == null || b.top + b.h <= bounds.bottom);
-  const spots = [];
-  for (const a of [bar, ...alts || []]) {
-    const at = { ...bar, ...a };
-    spots.push(at);
-    for (const o of cards) {
-      if (!overlaps(box2(at), o)) continue;
-      spots.push(
-        { ...at, left: o.left - margin - at.w },
-        { ...at, left: o.right + margin },
-        { ...at, top: o.top - margin - at.h },
-        { ...at, top: o.bottom + margin }
-      );
+  const lo = bounds.left ?? margin;
+  const hi = bounds.top ?? margin;
+  const right = bounds.right;
+  const bottom = bounds.bottom;
+  const fits = (b) => (right == null || b.left + b.w <= right + 0.5) && (bottom == null || b.top + b.h <= bottom + 0.5);
+  const slide = (b, loose) => {
+    let left = b.left;
+    let top = b.top;
+    const maxLeft = right == null ? left : right - b.w;
+    const maxTop = bottom == null ? top : bottom - b.h;
+    if (!loose && (maxLeft < lo - 0.5 || maxTop < hi - 0.5)) return null;
+    left = Math.max(lo, Math.min(left, Math.max(lo, maxLeft)));
+    top = Math.max(hi, Math.min(top, Math.max(hi, maxTop)));
+    return { ...b, left, top };
+  };
+  const clear = (b) => {
+    const c = slide(b, false);
+    if (!c || !fits(c) || hits(c, softList) || hits(c, hardList)) return null;
+    return c;
+  };
+  const midX = anchor.x + anchor.w / 2;
+  const midY = anchor.y + anchor.h / 2;
+  const at = (left, top, where) => ({ left, top, w: bar.w, h: bar.h, where });
+  const primary = [
+    at(midX - bar.w / 2, anchor.y - gap - bar.h, "above"),
+    at(midX - bar.w / 2, anchor.y + anchor.h + gap, "below"),
+    at(anchor.x - gap - bar.w, midY - bar.h / 2, "beside"),
+    at(anchor.x + anchor.w + gap, midY - bar.h / 2, "beside")
+  ];
+  for (const c of primary) {
+    const hit = clear(c);
+    if (hit) return hit;
+  }
+  for (const o of softList) {
+    const extra = [
+      at(o.left - margin - bar.w, midY - bar.h / 2, "beside"),
+      at(o.right + margin, midY - bar.h / 2, "beside"),
+      at(midX - bar.w / 2, o.top - margin - bar.h, "above"),
+      at(midX - bar.w / 2, o.bottom + margin, "below")
+    ];
+    for (const c of extra) {
+      const hit = clear(c);
+      if (hit) return hit;
     }
   }
-  const far = (b) => Math.hypot(b.left - bar.left, b.top - bar.top);
-  const ok = spots.filter((b) => far(b) <= reach && fits(b) && !hits(b, walls) && !hits(b, cards));
-  if (!ok.length) return bar;
-  ok.sort((p, q) => far(p) - far(q));
-  return ok[0];
+  for (const c of primary) {
+    const k = slide(c, true);
+    if (k && fits(k) && !hits(k, hardList)) return { ...k, where: "fallback" };
+  }
+  const parked = slide(primary[0], true);
+  return parked || { ...primary[0], where: "fallback" };
 }
 function dockOverflow(widths, avail, { gap = 4, pad: pad2 = 14, more = 32, keep = -1 } = {}) {
   const w = (widths || []).map((n2) => Math.max(0, Number(n2) || 0));
@@ -13250,12 +13284,13 @@ function pdfDockLift(card2, obstacles, zoom = 1, { clipBottom = Infinity } = {})
   if (edge < floor) return 0;
   return Math.round((bottom - edge) / z);
 }
-var MINIMAP_MIN_W, MINIMAP_MIN_H, overlaps;
+var MINIMAP_MIN_W, MINIMAP_MIN_H, overlaps, EDGE_BAR_MAX;
 var init_card_face = __esm({
   "src/model/card-face.js"() {
     MINIMAP_MIN_W = 420;
     MINIMAP_MIN_H = 280;
     overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    EDGE_BAR_MAX = 360;
   }
 });
 
@@ -52165,15 +52200,51 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   ctx.style.display = "none";
   stopAll(ctx);
   let ctxAnchor = null;
+  let ctxPopOff = [];
+  const closeEdgePops = () => {
+    ctxPopOff.splice(0).forEach((off) => off());
+    for (const p of ctx.querySelectorAll(".pxd-ctx__pop")) p.remove();
+    for (const b of ctx.querySelectorAll(".pxd-ctx__pop-btn")) {
+      b.setAttribute("aria-expanded", "false");
+      b.classList.remove("pxd-btn--active");
+    }
+  };
+  const openEdgePop = (btn2, fill) => {
+    const wasOpen = btn2.getAttribute("aria-expanded") === "true";
+    closeEdgePops();
+    if (wasOpen) return;
+    const pop = el("div", "pxd-ctx__pop", ctx);
+    fill(pop);
+    btn2.setAttribute("aria-expanded", "true");
+    btn2.classList.add("pxd-btn--active");
+    placeNearAnchor(pop, btn2.getBoundingClientRect(), root, { gap: 4, origin: ctx });
+    const onDown = (event) => {
+      if (pop.contains(event.target) || btn2.contains(event.target)) return;
+      closeEdgePops();
+    };
+    const onKey = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      closeEdgePops();
+    };
+    doc.addEventListener("pointerdown", onDown, true);
+    doc.addEventListener("keydown", onKey, true);
+    ctxPopOff = [
+      () => doc.removeEventListener("pointerdown", onDown, true),
+      () => doc.removeEventListener("keydown", onKey, true)
+    ];
+  };
   const buildCtx = (kind, model) => {
+    closeEdgePops();
     ctx.replaceChildren();
     on.chromeRebuilt?.();
     ctx.dataset.kind = kind;
     ctx.setAttribute("data-kind", kind);
     const row4 = el("div", "pxd-ctx__row", ctx);
     const btn2 = (cls, icon, label, title, fn) => iconButton(row4, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
-    const seg = (cls, options, current3, fn) => {
-      const wrap = el("div", `pxd-seg ${cls}`, row4);
+    const seg = (cls, options, current3, fn, parent = row4) => {
+      const wrap = el("div", `pxd-seg ${cls}`, parent);
       for (const [value, label, title, icon] of options) {
         const b = button2(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}${icon ? " pxd-iconbtn" : ""}`, icon ? "" : label, title || label, () => fn(value));
         if (icon) {
@@ -52305,19 +52376,60 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         seg("pxd-ctx__size", FONT_SIZES.map((s, i) => [s, ["S", "M", "L", "XL"][i], `${s}px`]), model?.fontSize || 24, (v) => on.setFontSize?.(v));
         btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
-      case "edge":
+      case "edge": {
         seg("pxd-ctx__dir", [["one", "→", "One way"], ["two", "↔", "Two way"], ["none", "—", "No arrow"]], model?.dir, (v) => on.edgeDir?.(v));
-        btn2("pxd-ctx__flip", "swap-horizontal", "Flip", "Swap endpoints", () => on.flip?.());
-        if (model?.fromBlock || model?.toBlock) btn2("pxd-ctx__unblock", "document", "Page", "Connect to the page instead of a block", () => on.unblock?.());
-        seg("pxd-ctx__route", [["curve", "Curve", "Curve", "path"], ["straight", "Straight", "Straight", "flow-linear"], ["elbow", "Elbow", "Elbow", "step-chart"]], model?.route, (v) => on.route?.(v));
-        seg("pxd-ctx__dash", [["solid", "Solid", "Solid", "minus"], ["dashed", "Dashed", "Dashed", "slash"], ["animated", "Animated", "Animated", "pulse"]], model?.dash, (v) => on.dash?.(v));
-        seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => on.weight?.(v));
-        swatches(row4, (c) => on.setColor?.(c));
+        const popBtn = (cls, icon, label, title, fill) => {
+          const b = iconBtn(`pxd-ctx__pop-btn ${cls}`, icon, label, title, () => openEdgePop(b, fill));
+          b.setAttribute("aria-haspopup", "menu");
+          b.setAttribute("aria-expanded", "false");
+          return b;
+        };
+        popBtn("pxd-ctx__style", "style", "Style", "Line and route", (pop) => {
+          seg("pxd-ctx__dash", [["solid", "Solid", "Solid", "minus"], ["dashed", "Dashed", "Dashed", "slash"], ["animated", "Animated", "Animated", "pulse"]], model?.dash, (v) => {
+            closeEdgePops();
+            on.dash?.(v);
+          }, pop);
+          seg("pxd-ctx__route", [["curve", "Curve", "Curve", "path"], ["straight", "Straight", "Straight", "flow-linear"], ["elbow", "Elbow", "Elbow", "step-chart"]], model?.route, (v) => {
+            closeEdgePops();
+            on.route?.(v);
+          }, pop);
+        });
+        popBtn("pxd-ctx__width", "minus", "Width", "Line width", (pop) => {
+          seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => {
+            closeEdgePops();
+            on.weight?.(v);
+          }, pop);
+        });
+        const colorBtn = button2(row4, "pxd-iconbtn pxd-ctx__btn pxd-ctx__pop-btn pxd-ctx__color", "", "Color", () => openEdgePop(colorBtn, (pop) => {
+          swatches(pop, (c) => {
+            closeEdgePops();
+            on.setColor?.(c);
+          });
+        }));
+        colorBtn.setAttribute("aria-haspopup", "menu");
+        colorBtn.setAttribute("aria-expanded", "false");
+        tip(colorBtn, "ctx.edge-color");
+        const named = typeof model?.color === "string" && PALETTE.includes(model.color);
+        el("span", `pxd-ctx__dot${named ? ` pxd-c-${model.color}` : " pxd-ctx__dot--none"}`, colorBtn);
         btn2("pxd-ctx__label", "tag", "Label", "Edit the label", () => on.label?.());
-        btn2("pxd-ctx__notes", "annotation", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
-        btn2("pxd-ctx__write", "inheritance", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
         btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
+        popBtn("pxd-ctx__edge-more", "more", "More", "More arrow actions", (pop) => {
+          const item = (cls, icon, label, title, fn) => {
+            const b = button2(pop, `pxd-ctx__more-item ${cls}`, "", title, () => {
+              closeEdgePops();
+              fn();
+            });
+            const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+            i.setAttribute("aria-hidden", "true");
+            el("span", "pxd-ctx__more-label", b, label);
+          };
+          item("pxd-ctx__flip", "swap-horizontal", "Flip", "Swap endpoints", () => on.flip?.());
+          if (model?.fromBlock || model?.toBlock) item("pxd-ctx__unblock", "document", "Page", "Connect to the page instead of a block", () => on.unblock?.());
+          item("pxd-ctx__notes", "annotation", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
+          item("pxd-ctx__write", "inheritance", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
+        });
         break;
+      }
       case "link": {
         const list = el("div", "pxd-ctx__sources", row4);
         for (const s of model?.sources || []) {
@@ -52448,8 +52560,11 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     if (readEdge?.right != null) stops.push(readEdge.right);
     const room = stops.length ? Math.min(W, ...stops) : W;
     const H = readEdge?.bottom != null ? Math.min(Hroot, readEdge.bottom) : Hroot;
-    ctx.style.maxWidth = stops.length && room > 2 * CTX_MARGIN ? `${Math.round(room - 2 * CTX_MARGIN)}px` : "";
-    fitCtxRow(stops.length ? room - 2 * CTX_MARGIN : W - railClear - 2 * CTX_MARGIN);
+    const edgeBar = ctx.dataset.kind === "edge";
+    const panelCap = stops.length && room > 2 * CTX_MARGIN ? room - 2 * CTX_MARGIN : null;
+    const cap4 = edgeBar ? Math.min(EDGE_BAR_MAX, panelCap ?? EDGE_BAR_MAX) : panelCap;
+    ctx.style.maxWidth = cap4 == null ? "" : `${Math.round(cap4)}px`;
+    fitCtxRow(cap4 == null ? W - railClear - 2 * CTX_MARGIN : cap4);
     const barW = ctx.offsetWidth || 320;
     const barH = ctx.offsetHeight || 36;
     const rightLimit = stops.length ? room : Math.max(barW + CTX_MARGIN, W - railClear);
@@ -52479,15 +52594,23 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       return { left: b.left - (rootRect.left || 0), top: b.top - (rootRect.top || 0), right: b.right - (rootRect.left || 0), bottom: b.bottom - (rootRect.top || 0) };
     };
     const blocks = [asRoot(minimap), asRoot(railEl), dockEl ? asRoot(paletteBar) : null].filter(Boolean);
-    if (blocks.length) {
+    if (a.kind !== "edge" && blocks.length) {
       const placed = avoidObstacles({ left, top, w: barW, h: barH }, blocks, { topLimit, margin: CTX_MARGIN, bounds: { right: rightLimit, bottom: H } });
       left = placed.left;
       top = placed.top;
     }
-    if (a.kind === "edge" && a.cards?.length) {
-      const soft = [...a.cards.map((c) => ({ left: c.x - PORT_REACH.x, top: c.y - PORT_REACH.y, right: c.x + c.w + PORT_REACH.x, bottom: c.y + c.h + PORT_REACH.y }))];
-      const below = { left, top: a.rect.y + a.rect.h + gap };
-      const placed = avoidSoft({ left, top, w: barW, h: barH }, soft, blocks, { alts: [below], topLimit, margin: CTX_MARGIN, bounds: { right: rightLimit, bottom: H - CTX_MARGIN } });
+    const cardBox = (c) => c && c.w > 0 && c.h > 0 ? { left: c.x - PORT_REACH.x, top: c.y - PORT_REACH.y, right: c.x + c.w + PORT_REACH.x, bottom: c.y + c.h + PORT_REACH.y } : null;
+    const labelBox = (r) => r && r.w > 0 && r.h > 0 ? { left: r.x - 4, top: r.y - 4, right: r.x + r.w + 4, bottom: r.y + r.h + 4 } : null;
+    const soft = [...(a.cards || []).map(cardBox), labelBox(a.label)].filter(Boolean);
+    const covers2 = (l, t, o) => l < o.right && o.left < l + barW && t < o.bottom && o.top < t + barH;
+    if (a.kind === "edge" || soft.some((o) => covers2(left, top, o))) {
+      const hard = [...blocks];
+      if (tb.height) hard.push({ left: tb.left - (rootRect.left || 0), top: tb.top - (rootRect.top || 0), right: tb.right - (rootRect.left || 0), bottom: tb.bottom - (rootRect.top || 0) });
+      if (propsBox?.height) hard.push({ left: propsBox.left - (rootRect.left || 0), top: propsBox.top - (rootRect.top || 0), right: propsRight, bottom: propsBot });
+      const placed = placeBarClear(
+        { w: barW, h: barH },
+        { anchor: a.rect, soft, hard, gap, margin: CTX_MARGIN, bounds: { left: CTX_MARGIN, top: topLimit, right: rightLimit - CTX_MARGIN, bottom: H - CTX_MARGIN } }
+      );
       left = placed.left;
       top = placed.top;
     }
@@ -52505,6 +52628,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       positionCtx();
     },
     hide() {
+      closeEdgePops();
       ctx.style.display = "none";
       ctxAnchor = null;
       ctx.replaceChildren();
@@ -52684,6 +52808,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     draw
   };
   const dispose = () => {
+    closeEdgePops();
     toastTimer?.();
     mmFrame?.();
     dockFrame?.();
@@ -61784,13 +61909,14 @@ function buildBoardView(onFail, {
     return { x, y, w: Math.max(...xs2) - x, h: Math.max(...ys2) - y };
   };
   const CARDS_NEAR_PX = 160;
-  const cardsNear = (rect) => {
+  const cardsNear = (rect, skip = null) => {
     const b = board2();
     if (!b || !rect) return [];
     const r = paintRects();
     const out = [];
     for (const it of b.items.values()) {
       if (it.type === "section") continue;
+      if (skip?.has(it.uid)) continue;
       const wr = r.get(it.uid);
       if (!wr) continue;
       const sr = toScreenRect(wr);
@@ -61808,10 +61934,21 @@ function buildBoardView(onFail, {
       const edge = b.edges.get(selection.edge);
       const geo = edgesR.geometryOf(selection.edge);
       if (!edge || !geo) return null;
-      const lr = edge.label ? edgesR.labelRect(selection.edge) : null;
-      const extra = lr && lr.width ? [{ x: lr.left - rootRect.left, y: lr.top - rootRect.top, w: lr.width, h: lr.height }] : [];
-      const rect = pathScreenRect(geo, extra);
-      return { kind: "edge", rect, cards: cardsNear(rect) };
+      const mid = geo.mid || { x: (geo.start.x + geo.end.x) / 2, y: (geo.start.y + geo.end.y) / 2 };
+      const p = worldToScreen(vp, mid);
+      const rect2 = { x: p.x, y: p.y, w: 1, h: 1 };
+      const endOf = (uid) => {
+        const wr = paintRects().get(uid);
+        return wr ? toScreenRect(wr) : null;
+      };
+      const ends = [endOf(edge.from), endOf(edge.to)].filter(Boolean);
+      const near = cardsNear(rect2, new Set([edge.from, edge.to].filter(Boolean)));
+      let label = null;
+      if (edge.label) {
+        const lr = edgesR.labelRect(selection.edge);
+        if (lr?.width && lr?.height) label = { x: lr.left - rootRect.left, y: lr.top - rootRect.top, w: lr.width, h: lr.height };
+      }
+      return { kind: "edge", rect: rect2, cards: [...ends, ...near], label };
     }
     if (selection.link) {
       const geo = edgesR.linkGeometryOf(selection.link);
@@ -61820,7 +61957,9 @@ function buildBoardView(onFail, {
     }
     const r = paintRects();
     const bounds = boundsOf(selection.items.map((u) => r.get(u)).filter(Boolean));
-    return bounds ? { kind: "items", rect: toScreenRect(bounds) } : null;
+    if (!bounds) return null;
+    const rect = toScreenRect(bounds);
+    return { kind: "items", rect, cards: cardsNear(rect, new Set(selection.items)) };
   };
   const refCountOf = (item) => {
     if (!item || item.type !== "card") return 0;
@@ -66090,7 +66229,9 @@ function buildBoardView(onFail, {
     hoverUid = it.uid;
     const anchor = () => {
       const r = rects().get(it.uid);
-      return r ? { kind: "items", rect: toScreenRect(r) } : null;
+      if (!r) return null;
+      const rect = toScreenRect(r);
+      return { kind: "items", rect, cards: cardsNear(rect, /* @__PURE__ */ new Set([it.uid])) };
     };
     chrome.ctx.show(it.kind === "board" ? "board" : "card", cardModel(it), anchor);
   };

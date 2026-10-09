@@ -62,6 +62,52 @@
   top: 100%;
 }
 
+/* The arrow bar stays one short row. Style, width and color open from here, clear of the dock and the board bar. */
+.pxd-root .pxd-ctx[data-kind="edge"] {
+  max-width: 360px;
+}
+
+.pxd-root .pxd-ctx .pxd-ctx__pop {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 280px;
+  padding: 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg);
+  box-shadow: var(--pxd-shadow);
+}
+
+.pxd-root .pxd-ctx .pxd-ctx__pop .pxd-swatches {
+  flex-wrap: wrap;
+  max-width: 248px;
+}
+
+.pxd-root .pxd-ctx .pxd-ctx__pop .pxd-ctx__more-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.pxd-root .pxd-ctx .pxd-ctx__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--pxd-line, var(--pxd-border-strong));
+  background: var(--pxd-line, transparent);
+}
+
+.pxd-root .pxd-ctx .pxd-ctx__dot--none {
+  background: transparent;
+  border-style: dashed;
+}
+
 /* The bar is one row. Tools that do not fit move behind the "…" button into this menu. */
 .pxd-root .pxd-ctx .pxd-ctx__more-menu {
   position: absolute;

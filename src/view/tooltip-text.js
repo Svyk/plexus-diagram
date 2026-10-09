@@ -150,6 +150,10 @@ export const TIP_TEXT = {
   "ctx.same-size.width": e("Same width", "Give the selected cards the width of the first one."),
   "ctx.same-size.height": e("Same height", "Give the selected cards the height of the first one."),
   "ctx.same-size.both": e("Same size", "Give the selected cards the width and height of the first one."),
+  "ctx.style": e("Style", "Choose the line pattern and how the arrow is drawn."),
+  "ctx.width": e("Width", "Choose how thick the arrow is drawn."),
+  "ctx.edge-color": e("Color", "Choose a color for this arrow."),
+  "ctx.edge-more": e("More", "Flip the arrow, connect it to the page, open its notes, or write it to the graph."),
   "ctx.dir.one": e("One way", "An arrowhead at the end only."),
   "ctx.dir.two": e("Two way", "An arrowhead at both ends."),
   "ctx.dir.none": e("No arrow", "A plain line with no arrowheads."),
@@ -286,7 +290,7 @@ export function tipEntry(id, state) {
 
 // Class-derived id for a chrome button: the LAST `pxd-toolbar__x` / `pxd-rail__x` / `pxd-ctx__x` / `pxd-bg__x` token.
 const BLOCKS = /^pxd-(toolbar|rail|ctx|bg)__([a-z0-9-]+)$/;
-const SKIP = new Set(["btn", "row", "group", "tools", "picker", "sources", "extra", "pattern", "tones"]);
+const SKIP = new Set(["btn", "row", "group", "tools", "picker", "sources", "extra", "pattern", "tones", "pop-btn", "more-item", "more-label", "dot"]);
 export function tipIdForClass(cls) {
   let found = null;
   for (const token of String(cls || "").split(/\s+/)) {

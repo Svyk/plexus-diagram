@@ -2672,23 +2672,23 @@ function regionInnerEnd({ card: card2, image, frac, poly, other } = {}) {
     inner: { from, tip, angle: Math.atan2(tip.y - from.y, tip.x - from.x) }
   };
 }
-function regionUidFromHover(node2, known) {
-  if (!node2 || typeof node2.closest !== "function" || typeof known?.has !== "function") return null;
+function regionUidFromHover(node2, known2) {
+  if (!node2 || typeof node2.closest !== "function" || typeof known2?.has !== "function") return null;
   if (node2.closest(".pxd-root")) return null;
   const chip = node2.closest(".pxd-relchip--end, .pxd-relchip");
   if (chip) {
     const end = chip.getAttribute?.("data-end");
-    if (end && known.has(end)) return end;
+    if (end && known2.has(end)) return end;
   }
   const block = node2.closest(".roam-block, .rm-block-ref, .roam-block-container");
   if (!block) return null;
   const direct = block.getAttribute?.("data-uid");
-  if (direct && known.has(direct)) return direct;
+  if (direct && known2.has(direct)) return direct;
   const id = block.id || block.getAttribute?.("id") || "";
   const parts = String(id).split("-");
   for (let k = 1; k <= Math.min(4, parts.length); k += 1) {
     const candidate = parts.slice(-k).join("-");
-    if (candidate && known.has(candidate)) return candidate;
+    if (candidate && known2.has(candidate)) return candidate;
   }
   return null;
 }
@@ -2991,11 +2991,11 @@ function bagFromRef(ref) {
     children: Array.isArray(ref?.[":block/children"]) ? ref[":block/children"] : []
   };
 }
-function highlightCandidate(text3, refUid, known) {
+function highlightCandidate(text3, refUid, known2) {
   if (typeof text3 === "string" && HIGHLIGHT_HINT.test(text3)) return true;
-  if (typeof known !== "function") return false;
+  if (typeof known2 !== "function") return false;
   try {
-    return known(refUid) === true;
+    return known2(refUid) === true;
   } catch {
     return false;
   }
@@ -6732,6 +6732,14 @@ var init_stream = __esm({
 });
 
 // src/model/parse/furniture.js
+function isScanBanner(text3) {
+  const t = String(text3 || "").replace(/[•·∙⋅]/g, " ").replace(/\s+/g, " ").trim();
+  if (t.length < 8 || t.length > 90) return false;
+  const numbered = /\bno\s*\.?\s*\d/i.test(t) || /\b\d{2,4}\b/.test(t);
+  if (/\ba\s*\.?\s*c\s*\.?\s*a\b/i.test(t) && /\bno\s*\.?\s*\d/i.test(t)) return true;
+  if (/\bt[oe]chnical\s+not[eo]\b/i.test(t) && numbered) return true;
+  return false;
+}
 function normalizeFurniture(text3) {
   return text3.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
 }
@@ -6773,17 +6781,42 @@ function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
       removed.push({ page: e2.page, bbox: [r2(e2.line.x0), r2(e2.line.y0), r2(e2.line.x1), r2(e2.line.y1)], text: text3, reason: pageNum && !recurring ? "page-number" : where });
     }
   }
+  for (const pg of pages) {
+    const banners = pg.lines.filter((line) => !marks.has(line) && inTop(line, pg, SCAN_BAND) && isScanBanner(line.text));
+    for (const line of banners) {
+      marks.add(line);
+      removed.push({ page: pg.n, bbox: lineBox(line), text: line.text.trim(), reason: "scan-banner" });
+    }
+    if (!banners.length) continue;
+    for (const line of pg.lines) {
+      if (marks.has(line) || !inTop(line, pg, SCAN_BAND)) continue;
+      if (!PAGE_NUM_RE.test(String(line.text || "").trim())) continue;
+      const size = line.size || 10;
+      const others = pg.lines.filter((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * Math.max(o.size || size, size));
+      if (others.length && !others.every((o) => marks.has(o))) continue;
+      marks.add(line);
+      removed.push({ page: pg.n, bbox: lineBox(line), text: line.text.trim(), reason: "page-number" });
+    }
+  }
   removed.sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1]);
   return { removed, isFurniture: (line) => marks.has(line) };
+}
+function inTop(line, page, band) {
+  const mid = ((line.y0 || 0) + (line.y1 || 0)) / 2;
+  return page.h > 0 && mid >= 0 && mid <= page.h * band;
+}
+function lineBox(line) {
+  return [r2(line.x0), r2(line.y0), r2(line.x1), r2(line.y1)];
 }
 function r2(v) {
   return Math.round(v * 100) / 100;
 }
-var PAGE_NUM_RE, FURNITURE_BAND;
+var PAGE_NUM_RE, FURNITURE_BAND, SCAN_BAND;
 var init_furniture = __esm({
   "src/model/parse/furniture.js"() {
     PAGE_NUM_RE = /^(\d+|page\s+\d+(\s+of\s+\d+)?|[-–]\s*\d+\s*[-–]|\d+\s*\/\s*\d+)$/i;
     FURNITURE_BAND = 0.08;
+    SCAN_BAND = 0.12;
   }
 });
 
@@ -9747,6 +9780,8 @@ function mergeContinuations(order, blocks) {
     if (/[.?!:"”)\]]$/.test(a.text) || !/^[a-z]/.test(b.text)) continue;
     const ab = a.bbox;
     const bb = b.bbox;
+    const size = a.spans?.[0]?.size || b.spans?.[0]?.size || 10;
+    if (a.page === b.page && ab && bb && bb[1] - ab[3] > 1.4 * size) continue;
     if (ab && bb && bb[0] > ab[2] - 8 && bb[1] + 8 < ab[3]) continue;
     if (Math.abs(a.spans?.[0]?.size - b.spans?.[0]?.size) > 0.6) continue;
     const hyphen = a.text.endsWith("-");
@@ -9783,7 +9818,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 13;
+    PARSE_REV = 14;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     EVIDENCE_LINES = 60;
@@ -11301,12 +11336,12 @@ function aliasFor(n2, uid, sup2 = true) {
 }
 function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = {}, sup: sup2 = true, uid } = {}) {
   const list = Array.isArray(strings) ? strings : [strings];
-  const known = /* @__PURE__ */ new Map();
-  for (const [id, d] of Object.entries(defs || {})) known.set(id, { mark: d.mark ?? "", text: d.text ?? "" });
+  const known2 = /* @__PURE__ */ new Map();
+  for (const [id, d] of Object.entries(defs || {})) known2.set(id, { mark: d.mark ?? "", text: d.text ?? "" });
   for (const s of list) {
     for (const line of String(s ?? "").split("\n")) {
       const m = DEF_RE.exec(line);
-      if (m) known.set(m[1], { mark: m[2], text: m[3] });
+      if (m) known2.set(m[1], { mark: m[2], text: m[3] });
     }
   }
   const order = [];
@@ -11315,7 +11350,7 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
     REF_RE2.lastIndex = 0;
     let m;
     while (m = REF_RE2.exec(String(s ?? ""))) {
-      if (seen.has(m[1]) || !known.has(m[1])) continue;
+      if (seen.has(m[1]) || !known2.has(m[1])) continue;
       seen.add(m[1]);
       order.push(m[1]);
     }
@@ -11326,7 +11361,7 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
   const overflow = [];
   const byId2 = /* @__PURE__ */ new Map();
   order.forEach((id, i) => {
-    const d = known.get(id);
+    const d = known2.get(id);
     const n2 = Math.max(0, Math.floor(startAt)) + i + 1;
     if (i < limit) {
       const note = { id, uid: make2(), n: n2, mark: d.mark, text: d.text };
@@ -14223,14 +14258,14 @@ function normalize(raw) {
   if (!name) return null;
   const glyphRaw = String(raw?.glyph || "").trim();
   const glyph = !glyphRaw || glyphRaw === "custom" ? "diamond" : glyphRaw;
-  const known = FALLBACK2.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
+  const known2 = FALLBACK2.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
   return {
-    key: raw?.key ? String(raw.key) : known?.key || statusKey(name).toUpperCase().replace(/-/g, "_"),
+    key: raw?.key ? String(raw.key) : known2?.key || statusKey(name).toUpperCase().replace(/-/g, "_"),
     name,
     tag: raw?.tag ? String(raw.tag) : `task-status/${name}`,
-    glyph: glyph === "diamond" && known ? known.glyph : glyph,
-    light: raw?.light ? side(raw.light) : known ? { ...known.light } : { ...NEUTRAL.light },
-    dark: raw?.dark ? side(raw.dark) : known ? { ...known.dark } : { ...NEUTRAL.dark }
+    glyph: glyph === "diamond" && known2 ? known2.glyph : glyph,
+    light: raw?.light ? side(raw.light) : known2 ? { ...known2.light } : { ...NEUTRAL.light },
+    dark: raw?.dark ? side(raw.dark) : known2 ? { ...known2.dark } : { ...NEUTRAL.dark }
   };
 }
 function statusPalette(api) {
@@ -18050,9 +18085,9 @@ function panFps(deltas) {
     const n2 = Number(value);
     if (Number.isFinite(n2) && n2 > 0) finite7.push(n2);
   }
-  const median6 = percentile(finite7, 0.5);
-  if (!(median6 > 0)) return null;
-  return 1e3 / median6;
+  const median7 = percentile(finite7, 0.5);
+  if (!(median7 > 0)) return null;
+  return 1e3 / median7;
 }
 function numText(value) {
   if (!Number.isFinite(value)) return "—";
@@ -26359,9 +26394,9 @@ function colorsPresent(rows) {
   for (const row4 of listOf2(rows)) {
     if (typeof row4?.color === "string" && row4.color) have.add(row4.color);
   }
-  const known = COLOR_ORDER.filter((name) => have.has(name));
+  const known2 = COLOR_ORDER.filter((name) => have.has(name));
   const rest = [...have].filter((name) => !COLOR_ORDER.includes(name)).sort();
-  return known.concat(rest);
+  return known2.concat(rest);
 }
 function pagesPresent(rows) {
   const pages = /* @__PURE__ */ new Set();
@@ -31475,9 +31510,9 @@ function writeItemString(item, string) {
   item.string = string;
   item.title = item.type === "section" ? firstLine(string) : isQueryString(string) ? "Query" : firstLine(string);
 }
-function unknownKeys(plexus, known) {
+function unknownKeys(plexus, known2) {
   const out = {};
-  for (const [k, v] of Object.entries(plexus ?? {})) if (!known.includes(k)) out[k] = v;
+  for (const [k, v] of Object.entries(plexus ?? {})) if (!known2.includes(k)) out[k] = v;
   return out;
 }
 function createSession(uid, { host, settings = null, virtual = false, raf: raf2, now: now3 = Date.now, idle, linkDelay = 1500, graceMs = 800 } = {}) {
@@ -32175,8 +32210,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const item = board2.items.get(id);
     const base = rawPlexus(id);
     const merged = { ...base, type: item?.type ?? base.type, ...patch };
-    const known = serializeItemLayout(merged);
-    return { ...unknownKeys(base, ITEM_KEYS), ...known };
+    const known2 = serializeItemLayout(merged);
+    return { ...unknownKeys(base, ITEM_KEYS), ...known2 };
   }
   function edgePlexus(id, patch) {
     const base = rawPlexus(id);
@@ -41301,24 +41336,24 @@ function bodySizeOf2(items) {
   const source = wordy.length >= 4 ? wordy : items;
   const plain2 = source.filter((item) => TALL_RE.test(item.str) && !DESC_RE.test(item.str));
   const pool = (plain2.length ? plain2 : source).map((item) => item.transform[0]).sort((a, b) => a - b);
-  const median6 = pool[pool.length >> 1] || items[0].transform[0];
-  let body = median6;
+  const median7 = pool[pool.length >> 1] || items[0].transform[0];
+  let body = median7;
   const sorted = items.map((item) => item.transform[5]).sort((a, b) => a - b);
   const bases = [];
   for (const base of sorted) {
-    if (!bases.length || base - bases[bases.length - 1] > 0.35 * median6) bases.push(base);
+    if (!bases.length || base - bases[bases.length - 1] > 0.35 * median7) bases.push(base);
   }
   const gaps = [];
   for (let i = 1; i < bases.length; i++) {
     const gap = bases[i] - bases[i - 1];
-    if (gap > 0.4 * median6 && gap < 2.5 * median6) gaps.push(gap);
+    if (gap > 0.4 * median7 && gap < 2.5 * median7) gaps.push(gap);
   }
   if (gaps.length >= 4) {
     gaps.sort((a, b) => a - b);
     const pitch = gaps[gaps.length >> 1];
-    if (pitch < 0.7 * median6) body = pitch / 0.95;
+    if (pitch < 0.7 * median7) body = pitch / 0.95;
   }
-  return { body, median: median6 };
+  return { body, median: median7 };
 }
 function baselineRows2(sorted) {
   const rows = [];
@@ -41350,12 +41385,12 @@ function snapOcrItems(items) {
   if (!items.length) return [];
   items = withoutEchoes(items);
   if (!items.length) return [];
-  const { body, median: median6 } = bodySizeOf2(items);
+  const { body, median: median7 } = bodySizeOf2(items);
   const kept = [];
   for (const item of items) {
     const size = item.transform[0];
-    if (size < 0.45 * median6 && !(item.conf >= 1 && NUMBERISH_RE.test(item.str))) continue;
-    if (size >= 0.45 * median6 && size <= 1.5 * median6 && body > 0) {
+    if (size < 0.45 * median7 && !(item.conf >= 1 && NUMBERISH_RE.test(item.str))) continue;
+    if (size >= 0.45 * median7 && size <= 1.5 * median7 && body > 0) {
       const base = item.transform[5];
       const sized = round22(body);
       item.transform[0] = sized;
@@ -41791,6 +41826,319 @@ function applyLineReads(ocrPages, requests, results, { lexicon = null, doc = nul
   return { pages, applied };
 }
 
+// src/model/parse/ocr-vote.js
+var WORD_RE = /[A-Za-z][A-Za-z'-]*/g;
+var IOU_MIN2 = 0.25;
+var INSERT_CAP = 16;
+function wordCore(text3) {
+  const parts = String(text3 || "").match(WORD_RE);
+  if (!parts || !parts.length) return "";
+  return parts.reduce((best, part) => part.length > best.length ? part : best, "");
+}
+function letterCore(text3) {
+  return wordCore(text3).replace(/[-']+$/g, "");
+}
+function digitHeavy(text3) {
+  const raw = String(text3 || "");
+  let digits = 0;
+  let alnum = 0;
+  for (const ch of raw) {
+    if (ch >= "0" && ch <= "9") {
+      digits += 1;
+      alnum += 1;
+    } else if (ch >= "A" && ch <= "Z" || ch >= "a" && ch <= "z") alnum += 1;
+  }
+  return alnum > 0 && digits * 2 >= alnum;
+}
+function boxOf5(item) {
+  const t = item?.transform || [];
+  const x = Number(t[4]) || 0;
+  const w = Number(item?.width) || 0;
+  const y0 = Number(item?.y0);
+  const y1 = Number(item?.y1);
+  if (Number.isFinite(y0) && Number.isFinite(y1)) return [x, y0, x + w, y1];
+  const base = Number(t[5]) || 0;
+  const size = Math.abs(Number(t[0]) || 0);
+  return [x, base - 0.8 * size, x + w, base + 0.22 * size];
+}
+function iou3(a, b) {
+  const ix = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
+  const iy = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  const inter = ix * iy;
+  if (inter <= 0) return 0;
+  const area = Math.max(0, a[2] - a[0]) * Math.max(0, a[3] - a[1]) + Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]) - inter;
+  return area > 0 ? inter / area : 0;
+}
+function horizRatio(a, b) {
+  const overlap = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
+  const width = Math.min(Math.max(0, a[2] - a[0]), Math.max(0, b[2] - b[0]));
+  return width > 0 ? overlap / width : 0;
+}
+function editDistance3(a, b) {
+  const s = String(a || "");
+  const t = String(b || "");
+  const m = s.length;
+  const n2 = t.length;
+  const row4 = Array.from({ length: m + 1 }, (_, i) => i);
+  for (let j = 1; j <= n2; j += 1) {
+    let prev = row4[0];
+    row4[0] = j;
+    for (let i = 1; i <= m; i += 1) {
+      const cur = row4[i];
+      row4[i] = s[i - 1] === t[j - 1] ? prev : 1 + Math.min(prev, row4[i], row4[i - 1]);
+      prev = cur;
+    }
+  }
+  return row4[m];
+}
+function known(lexicon, word) {
+  return Boolean(word) && lexicon instanceof Set && lexicon.has(word);
+}
+function applyCase(sample, word) {
+  const letters = String(sample || "").replace(/[^A-Za-z]/g, "");
+  if (letters.length > 1 && letters === letters.toUpperCase()) return word.toUpperCase();
+  if (sample && sample[0] === sample[0].toUpperCase()) return word[0].toUpperCase() + word.slice(1);
+  return word;
+}
+function replaceCore(raw, core, next) {
+  const re = new RegExp(core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  return String(raw).replace(re, (found) => applyCase(found, next));
+}
+function ruledRegions(rules, pageW = 612, pageH = 792) {
+  const horiz = [];
+  const vert = [];
+  for (const rule of rules || []) {
+    const x0 = Math.min(rule.x0, rule.x1);
+    const x1 = Math.max(rule.x0, rule.x1);
+    const y0 = Math.min(rule.y0, rule.y1);
+    const y1 = Math.max(rule.y0, rule.y1);
+    if (y1 - y0 <= 1.5 && x1 - x0 >= 36) horiz.push({ x0, x1, y: (y0 + y1) / 2 });
+    else if (x1 - x0 <= 1.5 && y1 - y0 >= 36) vert.push({ y0, y1, x: (x0 + x1) / 2 });
+  }
+  const regions = [];
+  const pageArea = Math.max(1, pageW * pageH);
+  for (let i = 0; i < horiz.length; i += 1) {
+    for (let j = i + 1; j < horiz.length; j += 1) {
+      const top = Math.min(horiz[i].y, horiz[j].y);
+      const bot = Math.max(horiz[i].y, horiz[j].y);
+      if (bot - top < 20) continue;
+      const x0 = Math.max(horiz[i].x0, horiz[j].x0);
+      const x1 = Math.min(horiz[i].x1, horiz[j].x1);
+      if (x1 - x0 < 40) continue;
+      if ((x1 - x0) * (bot - top) > 0.65 * pageArea) continue;
+      let verts = 0;
+      for (const v of vert) {
+        if (v.x < x0 - 4 || v.x > x1 + 4) continue;
+        const span = Math.min(v.y1, bot) - Math.max(v.y0, top);
+        if (span >= 0.6 * (bot - top)) verts += 1;
+      }
+      if (verts >= 2) regions.push([x0, top, x1, bot]);
+    }
+  }
+  return regions;
+}
+function inRuledRegion(box2, regions) {
+  const cx = (box2[0] + box2[2]) / 2;
+  const cy = (box2[1] + box2[3]) / 2;
+  return regions.some((r) => cx >= r[0] && cx <= r[2] && cy >= r[1] && cy <= r[3]);
+}
+function betterCount(n2, bestN, word, best, knownWord) {
+  if (!best || n2 > bestN) return true;
+  if (n2 < bestN) return false;
+  if (knownWord !== best.known) return knownWord;
+  return word < best.word;
+}
+function preferSpellings(items, lexicon, { rules = null, pageW = 612, pageH = 792, regions = null } = {}) {
+  if (!(lexicon instanceof Set) || !items?.length) return items || [];
+  const rects = regions || (rules ? ruledRegions(rules, pageW, pageH) : []);
+  const cores = items.map((item) => wordCore(item?.str || "").toLowerCase());
+  const counts = /* @__PURE__ */ new Map();
+  cores.forEach((core, index) => {
+    if (core.length < 4) return;
+    if (rects.length && inRuledRegion(boxOf5(items[index]), rects)) return;
+    counts.set(core, (counts.get(core) || 0) + 1);
+  });
+  return items.map((item, index) => {
+    const core = cores[index];
+    if (!item || core.length < 4 || known(lexicon, core)) return item;
+    if (rects.length && inRuledRegion(boxOf5(item), rects)) return item;
+    const mine = counts.get(core) || 0;
+    let best = null;
+    let bestN = 0;
+    for (const [word, n2] of counts) {
+      if (word === core || Math.abs(word.length - core.length) > 1) continue;
+      if (editDistance3(core, word) !== 1) continue;
+      const inLex = known(lexicon, word);
+      const ok = inLex && n2 >= 2 && n2 >= mine * 2 || !inLex && n2 >= 3 && n2 >= mine * 3;
+      if (!ok) continue;
+      if (betterCount(n2, bestN, word, best, inLex)) {
+        best = { word, known: inLex };
+        bestN = n2;
+      }
+    }
+    if (!best) return item;
+    const str2 = replaceCore(item.str, core, best.word);
+    return str2 === item.str ? item : { ...item, str: str2 };
+  });
+}
+function chooseReading(vision, other, lexicon) {
+  const v = vision?.str ?? "";
+  const o = other?.str ?? "";
+  if (!o) return v;
+  if (v.replace(/\s+/g, "").toLowerCase() === o.replace(/\s+/g, "").toLowerCase()) return v;
+  if (digitHeavy(v)) return v;
+  if (digitHeavy(o)) return o;
+  const vc = letterCore(v);
+  const oc = letterCore(o);
+  if (!oc) return v;
+  if (!vc) return o;
+  const vl = known(lexicon, vc.toLowerCase());
+  const ol = known(lexicon, oc.toLowerCase());
+  const d = editDistance3(vc.toLowerCase(), oc.toLowerCase());
+  if (ol && !vl) return o;
+  if (vl && !ol) return v;
+  if (d === 0) {
+    const hyphen = (text3) => /[A-Za-z]-$/.test(String(text3).trim());
+    if (hyphen(o) && !hyphen(v)) return o;
+    return v;
+  }
+  if (d <= 2) return o;
+  if (!vl && !ol && d <= 4) return o;
+  return v;
+}
+function lineClusters(items) {
+  const entries = items.map((item, index) => ({ item, index, box: boxOf5(item) }));
+  entries.sort((a, b) => a.box[3] - b.box[3] || a.box[0] - b.box[0]);
+  const lines = [];
+  for (const entry of entries) {
+    const size = Math.max(6, entry.box[3] - entry.box[1]);
+    const line = lines.find((row4) => Math.abs(row4.base - entry.box[3]) <= 0.45 * size);
+    if (line) {
+      line.items.push(entry);
+      line.base = line.items.reduce((sum, row4) => sum + row4.box[3], 0) / line.items.length;
+    } else lines.push({ base: entry.box[3], items: [entry] });
+  }
+  return lines;
+}
+function centersClose(a, b) {
+  const size = Math.max(6, Math.min(Math.max(1, a[3] - a[1]), Math.max(1, b[3] - b[1])));
+  return Math.abs((a[1] + a[3]) / 2 - (b[1] + b[3]) / 2) <= 0.55 * size && horizRatio(a, b) >= 0.55;
+}
+function sameSpelling(a, b) {
+  const left = letterCore(a).toLowerCase();
+  const right = letterCore(b).toLowerCase();
+  return Boolean(left) && left.length >= 4 && (left === right || editDistance3(left, right) <= 1);
+}
+function median6(values) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[sorted.length >> 1];
+}
+function snapOnto(item, line) {
+  const hosts = line.items.map((entry) => entry.item).filter((it) => it?.transform);
+  if (!hosts.length) return { ...item, fontName: item.fontName || "ocr" };
+  const size = median6(hosts.map((it) => Math.abs(Number(it.transform[0]) || it.height || 10)));
+  const base = median6(hosts.map((it) => Number(it.transform[5]) || 0));
+  const sample = hosts[hosts.length >> 1];
+  const sampleBase = Number(sample.transform[5]) || base;
+  const y0 = Number.isFinite(Number(sample.y0)) ? base + (Number(sample.y0) - sampleBase) : base - 0.8 * size;
+  const y1 = Number.isFinite(Number(sample.y1)) ? base + (Number(sample.y1) - sampleBase) : base + 0.22 * size;
+  const x = Number(item.transform?.[4]) || 0;
+  return {
+    ...item,
+    fontName: item.fontName || "ocr",
+    height: Math.max(1, Math.abs(y1 - y0)),
+    y0,
+    y1,
+    transform: [size, 0, 0, size, x, base]
+  };
+}
+function voteItems(visionItems, otherItems, lexicon, regions) {
+  const pairs = [];
+  const vBoxes = visionItems.map(boxOf5);
+  const oBoxes = otherItems.map(boxOf5);
+  for (let i = 0; i < visionItems.length; i += 1) {
+    for (let j = 0; j < otherItems.length; j += 1) {
+      const score = iou3(vBoxes[i], oBoxes[j]);
+      if (score >= IOU_MIN2) pairs.push([score, i, j]);
+    }
+  }
+  pairs.sort((a, b) => b[0] - a[0] || a[1] - b[1] || a[2] - b[2]);
+  const usedV = /* @__PURE__ */ new Set();
+  const usedO = /* @__PURE__ */ new Set();
+  const match = /* @__PURE__ */ new Map();
+  for (const [, i, j] of pairs) {
+    if (usedV.has(i) || usedO.has(j)) continue;
+    usedV.add(i);
+    usedO.add(j);
+    match.set(i, j);
+  }
+  for (let i = 0; i < visionItems.length; i += 1) {
+    if (usedV.has(i)) continue;
+    let best = -1;
+    let bestScore = 0;
+    for (let j = 0; j < otherItems.length; j += 1) {
+      if (usedO.has(j) || !centersClose(vBoxes[i], oBoxes[j])) continue;
+      if (!sameSpelling(visionItems[i]?.str, otherItems[j]?.str)) continue;
+      const score = horizRatio(vBoxes[i], oBoxes[j]);
+      if (score > bestScore) {
+        best = j;
+        bestScore = score;
+      }
+    }
+    if (best < 0) continue;
+    usedV.add(i);
+    usedO.add(best);
+    match.set(i, best);
+  }
+  const next = visionItems.map((item, i) => {
+    if (regions.length && inRuledRegion(vBoxes[i], regions)) return item;
+    const j = match.get(i);
+    if (j == null) return item;
+    const str2 = chooseReading(item, otherItems[j], lexicon);
+    return str2 === item.str ? item : { ...item, str: str2 };
+  });
+  const lines = lineClusters(visionItems);
+  const added = [];
+  otherItems.forEach((item, j) => {
+    if (usedO.has(j) || added.length >= INSERT_CAP) return;
+    if (digitHeavy(item?.str)) return;
+    const core = wordCore(item?.str || "").toLowerCase();
+    if (core.length < 4 || !known(lexicon, core)) return;
+    const box2 = oBoxes[j];
+    if (regions.length && inRuledRegion(box2, regions)) return;
+    const line = lines.find((row4) => {
+      const top = Math.min(...row4.items.map((entry) => entry.box[1]));
+      const bot = Math.max(...row4.items.map((entry) => entry.box[3]));
+      const size = Math.max(6, bot - top);
+      return box2[3] >= top - 0.3 * size && box2[1] <= bot + 0.3 * size;
+    });
+    if (!line || line.items.length < 2) return;
+    if (line.items.some((entry) => horizRatio(box2, entry.box) > 0.3)) return;
+    const gap = 0.35 * Math.max(6, box2[3] - box2[1]);
+    const crowded = line.items.some((entry) => {
+      const host = entry.box;
+      const space = box2[0] >= host[2] ? box2[0] - host[2] : host[0] >= box2[2] ? host[0] - box2[2] : 0;
+      return space < gap;
+    });
+    if (crowded) return;
+    added.push(snapOnto(item, line));
+  });
+  added.sort((a, b) => boxOf5(a)[1] - boxOf5(b)[1] || boxOf5(a)[0] - boxOf5(b)[0]);
+  return preferSpellings([...next, ...added], lexicon, { regions });
+}
+function voteOcrBodies(visionPages, otherPages, lexicon) {
+  const words = lexicon instanceof Set ? lexicon : null;
+  const byN = new Map((otherPages || []).map((page) => [page.n, page]));
+  return (visionPages || []).map((page) => {
+    if (!page || page.engine === "ppocr-web") return page;
+    const other = byN.get(page.n);
+    const regions = ruledRegions(page.rules, page.w, page.h);
+    const items = voteItems(page.items || [], other?.items || [], words, regions);
+    return { ...page, items };
+  });
+}
+
 // src/view/parse-engine.js
 var GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
 function detectPdfjs(win = typeof window !== "undefined" ? window : null) {
@@ -41831,7 +42179,7 @@ async function loadPageData(page, { includeOps = true } = {}) {
     fonts
   };
 }
-async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true } = {}) {
+async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true, alt = null } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n2) => !from || !to || n2 >= from && n2 <= to);
   if (!wanted.length) return { doc: base, choices: [], rereads: [], pages: [] };
@@ -41839,8 +42187,27 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" });
   };
   onPhase?.({ phase: "ocr", pages: wanted });
-  const got = await helper.ocr({ bytes, sha256, pages: wanted, signal });
+  const gotRaw = await helper.ocr({ bytes, sha256, pages: wanted, signal });
   throwIfAborted3();
+  let got = gotRaw;
+  if (alt && typeof alt.ocr === "function" && gotRaw?.pages) {
+    let words = null;
+    try {
+      words = typeof lexicon === "function" ? await lexicon({ signal }) : lexicon;
+    } catch {
+      words = null;
+    }
+    throwIfAborted3();
+    let otherPages = [];
+    try {
+      const other = await alt.ocr({ pages: wanted, bytes, sha256, signal });
+      otherPages = other?.pages || [];
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+    }
+    throwIfAborted3();
+    got = { ...gotRaw, pages: voteOcrBodies(gotRaw.pages, otherPages, words instanceof Set ? words : null) };
+  }
   const ask = (req) => helper.ocr({ bytes, sha256, cells: req, signal });
   let merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
   const lined = lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
@@ -46115,6 +46482,7 @@ function createParseView({
   clock = null,
   scanAuto = false,
   ocrSource = null,
+  ocrAlt = null,
   lazyKeys = false,
   outline = false,
   onNeedOcr = null,
@@ -47405,6 +47773,7 @@ ${sourceAttrString(source)}` : markdown;
         }
       }
       const t0 = now3();
+      const extra = typeof ocrAlt === "function" ? ocrAlt() : ocrAlt;
       const result = await readScan({
         helper: engine,
         bytes,
@@ -47416,6 +47785,8 @@ ${sourceAttrString(source)}` : markdown;
         from,
         to,
         signal: ctrl.signal,
+        alt: extra && typeof extra.ocr === "function" ? extra : null,
+        lexicon: extra?.lexicon || null,
         onPhase: (info) => {
           progress = { page: info?.phase === "cells" ? pages.length : 0, pageCount: pages.length, engine: "builtin" };
           paintChip();
@@ -51924,6 +52295,13 @@ function createReadPane({
       doc,
       store: ensureStore2(),
       helper: ensureHelper(),
+      ocrAlt: () => {
+        if (!deviceReady() || typeof deviceOcr?.read !== "function") return null;
+        return {
+          ocr: (req) => deviceOcr.read({ pages: req?.pages, url: pdfUrl(), getPdf, signal: req?.signal }),
+          lexicon: typeof deviceOcr.lexicon === "function" ? (req) => deviceOcr.lexicon({ signal: req?.signal }) : null
+        };
+      },
       session,
       host,
       storage,
@@ -52034,9 +52412,9 @@ function createReadPane({
   async function noteCached() {
     const url = pdfUrl();
     if (!url || !openFlag) return;
-    const known = readParsedUrls(storage).has(url);
-    if (known) revealModes();
-    if (known && viewMode === "reader" && !explicitMode && storedReadMode(storage) === "both") void enterParsed("both");
+    const known2 = readParsedUrls(storage).has(url);
+    if (known2) revealModes();
+    if (known2 && viewMode === "reader" && !explicitMode && storedReadMode(storage) === "both") void enterParsed("both");
     try {
       const hit = await ensureStore2().findByUrl(url);
       if (hit?.sha256 && openFlag && url === pdfUrl()) void loadOcrLayer(hit.sha256);
@@ -52668,7 +53046,7 @@ function hasFirst(record) {
   if (typeof value === "string") return value.length > 0;
   return Boolean(value) && typeof value === "object" && typeof value.size === "number" && value.size > 0;
 }
-function boxOf5(node2) {
+function boxOf6(node2) {
   try {
     return typeof node2.getBoundingClientRect === "function" ? node2.getBoundingClientRect() : null;
   } catch {
@@ -52686,7 +53064,7 @@ function viewportOf(doc) {
   return null;
 }
 function readerInView(node2, doc) {
-  const rect = boxOf5(node2);
+  const rect = boxOf6(node2);
   const view = viewportOf(doc);
   if (!rect || !view) return true;
   const width = Number(rect.width);
@@ -58451,7 +58829,7 @@ function labelComponents(mask, width, height) {
 }
 
 // src/model/ocr/db-boxes.js
-function iou3(a, b) {
+function iou4(a, b) {
   const x0 = Math.max(a.x0, b.x0);
   const y0 = Math.max(a.y0, b.y0);
   const x1 = Math.min(a.x1, b.x1);
@@ -58510,7 +58888,7 @@ function boxesFromProb(prob, mapW, mapH, srcW, srcH, opts = {}) {
   const kept = [];
   for (const box2 of raw) {
     if (kept.length >= maxBoxes) break;
-    if (kept.some((other) => iou3(other, box2) > 0.5)) continue;
+    if (kept.some((other) => iou4(other, box2) > 0.5)) continue;
     kept.push(box2);
   }
   return kept;
@@ -64709,8 +65087,8 @@ function buildBoardView(onFail, {
     if (!pdfMeta) return parsedKnown;
     const meta = cleanPdfTitle(pdfMeta.title(key));
     const banner = meta && parsedKnown && isMetaBanner(meta, { pageTitle: parsedKnown, lines: evidence?.lines || [] });
-    const known = (banner ? "" : meta) || parsedKnown;
-    if (!known && !metaQueued.has(key)) {
+    const known2 = (banner ? "" : meta) || parsedKnown;
+    if (!known2 && !metaQueued.has(key)) {
       metaQueued.add(key);
       const meta2 = pdfMeta;
       const job = metaTail.then(() => meta2.want(key)).catch(() => "");
@@ -64732,7 +65110,7 @@ function buildBoardView(onFail, {
         }
       });
     }
-    return known;
+    return known2;
   };
   pdfDisplayTitle = (card2, source) => {
     const src = typeof source === "string" && source ? source : pdfSourceOfItem(card2);
@@ -74803,8 +75181,8 @@ async function installPlexusDiagram({
   const inputUids = /* @__PURE__ */ new Map();
   isDiagramUid.many = (candidates2) => {
     const key = candidates2[candidates2.length - 1] || "";
-    const known = inputUids.get(key);
-    if (known !== void 0) return known && isDiagramUid(known) ? known : null;
+    const known2 = inputUids.get(key);
+    if (known2 !== void 0) return known2 && isDiagramUid(known2) ? known2 : null;
     const strings = host.blockStrings?.(candidates2);
     if (!strings) return candidates2.find((candidate) => isDiagramUid(candidate)) ?? null;
     const uid = candidates2.find((candidate) => strings.get(candidate) != null) || "";

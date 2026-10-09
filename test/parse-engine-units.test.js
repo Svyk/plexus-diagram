@@ -8,7 +8,7 @@ import { findLatticeTables, cellTextOf, isNumericText } from "../src/model/parse
 import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand, phraseTable, tickGrid } from "../src/model/parse/stream.js";
 import { resplitColumns } from "../src/model/parse/resplit.js";
 import { findFigures, clusterBoxes } from "../src/model/parse/figures.js";
-import { findFurniture, normalizeFurniture } from "../src/model/parse/furniture.js";
+import { findFurniture, isScanBanner, normalizeFurniture } from "../src/model/parse/furniture.js";
 import { bodySizeOf, headingClasses, headingLevel, applyNumbering, numberedDepth } from "../src/model/parse/headings.js";
 import { detectLists, markerOf } from "../src/model/parse/lists.js";
 import { detectFormulas } from "../src/model/parse/formulas.js";
@@ -449,6 +449,17 @@ test("findFurniture removes recurring header/footer lines and bare page numbers"
   const single = findFurniture([{ n: 1, h: 792, lines: [line("7", 780), line("Unique header", 20)] }]);
   assert.equal(single.removed.length, 1);
   assert.equal(single.removed[0].reason, "page-number");
+  assert.equal(isScanBanner("1•A.C.A. Tochnical Noto No. 426"), true);
+  assert.equal(isScanBanner("Unique header"), false);
+  const h = 785;
+  const banner = { text: "1•A.C.A. Tochnical Noto No. 426", base: 75.4, y0: 66, y1: 78, x0: 80, x1: 400, size: 12 };
+  const num = { text: "8", base: 75.4, y0: 66, y1: 78, x0: 40, x1: 52, size: 12 };
+  const body = { text: "compressed within the supercharger", base: 113, y0: 102, y1: 116, x0: 70, x1: 500, size: 12 };
+  const scan = findFurniture([{ n: 10, h, lines: [num, banner, body] }]);
+  assert.equal(scan.isFurniture(banner), true);
+  assert.equal(scan.isFurniture(num), true);
+  assert.equal(scan.isFurniture(body), false);
+  assert.ok(scan.removed.some((r) => r.reason === "scan-banner"));
 });
 
 test("heading levels come from size classes, bold-at-body lines and numbering depth", () => {
@@ -568,6 +579,14 @@ test("mergeContinuations joins a paragraph split by a column or page break", () 
   mergeContinuations(colOrder, cols);
   assert.deepEqual(colOrder, ["L", "R"]);
   assert.equal(cols.L.text, "nating a distant target");
+  const header = {
+    h: { id: "h", type: "para", page: 4, text: "1•A.C.A. Tochnical Noto No. 426", spans: [{ size: 12 }], bbox: [70, 60, 400, 80] },
+    b: { id: "b", type: "para", page: 4, text: "compressed within the supercharger", spans: [{ size: 12 }], bbox: [70, 110, 500, 140] },
+  };
+  const headerOrder = ["h", "b"];
+  mergeContinuations(headerOrder, header);
+  assert.deepEqual(headerOrder, ["h", "b"]);
+  assert.equal(header.h.text, "1•A.C.A. Tochnical Noto No. 426");
 });
 
 test("viewportTransform matches pdf.js for the four rotations", () => {

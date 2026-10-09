@@ -190,3 +190,40 @@ def test_ocr_endpoint_auth_cache_and_cells(tmp_path):
     assert client.post("/v1/ocr", content=b"", headers=auth).status_code == 400
     health = client.get("/v1/health", headers={"Authorization": f"Bearer {TOKEN}"}).json()
     assert health["engines"] == ["docling", "ocr", "cloud"]
+
+
+def _spell_item(text, x, y):
+    return {"str": text, "transform": [10, 0, 0, 10, x, y], "width": 48, "y0": y - 8, "y1": y + 2}
+
+
+def test_prefer_spellings_matches_the_page_consensus_and_skips_ruled_cells():
+    words = {"pressure", "form", "from"}
+    items = [
+        _spell_item("prossure", 40, 200),
+        _spell_item("pressure", 100, 200),
+        _spell_item("pressure", 180, 200),
+        _spell_item("form", 260, 200),
+        _spell_item("from", 320, 200),
+        _spell_item("from", 380, 200),
+    ]
+    out = ocr.prefer_spellings(items, words)
+    assert [i["str"] for i in out] == ["pressure", "pressure", "pressure", "form", "from", "from"]
+    assert [i["str"] for i in ocr.prefer_spellings(out, words)] == ["pressure", "pressure", "pressure", "form", "from", "from"]
+    rules = [
+        {"x0": 20, "y0": 30, "x1": 200, "y1": 30},
+        {"x0": 20, "y0": 80, "x1": 200, "y1": 80},
+        {"x0": 20, "y0": 30, "x1": 20, "y1": 80},
+        {"x0": 200, "y0": 30, "x1": 200, "y1": 80},
+    ]
+    body = [
+        _spell_item("suporcharger", 40, 200),
+        _spell_item("supercharger", 140, 200),
+        _spell_item("supercharger", 240, 200),
+        _spell_item("supercharger", 340, 200),
+        _spell_item("suporcharger", 80, 50),
+    ]
+    spelled = ocr.prefer_spellings(body, {"pressure"}, rules, 612, 792)
+    assert spelled[0]["str"] == "supercharger"
+    assert spelled[4]["str"] == "suporcharger"
+    assert "pressure" in ocr.lexicon()
+    assert "prossure" not in ocr.lexicon()

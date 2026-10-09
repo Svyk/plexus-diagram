@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 axum = { version = "0.8", features = ["json"] }
+flate2 = "1.1.10"
 futures-core = "0.3"
 hex = "0.4"
 image = { version = "0.25", default-features = false, features = ["png"] }

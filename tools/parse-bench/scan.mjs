@@ -57,7 +57,7 @@ export function readHelperToken(explicit) {
   return readFileSync(join(homedir(), "Library/Application Support/plexus-parse-helper/token"), "utf8").trim();
 }
 
-export function cliHelper({ pdfPath, log = () => {} }) {
+export function cliHelper({ pdfPath, log = () => {}, bin = HELPER } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "pxd-scan-"));
   return {
     async ocr({ pages, cells } = {}) {
@@ -69,7 +69,7 @@ export function cliHelper({ pdfPath, log = () => {} }) {
         args.push("--cells", req);
       } else if (pages && pages.length) args.push("--pages", pages.join(","));
       const t0 = performance.now();
-      execFileSync(HELPER, args, { stdio: ["ignore", "ignore", "inherit"] });
+      execFileSync(bin, args, { stdio: ["ignore", "ignore", "inherit"] });
       log(`helper ${cells ? `cells(${cells.length})` : `pages(${pages.join(",")})`} ${(performance.now() - t0).toFixed(0)} ms`);
       const body = JSON.parse(readFileSync(out, "utf8"));
       if (cells) body.cells = body.cells.map((c, i) => ({ ...cells[i], ...c }));

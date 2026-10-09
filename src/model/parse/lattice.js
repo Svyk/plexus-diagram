@@ -665,16 +665,29 @@ function tokensSplitColumns(words, xs, ys, r0, r1, c0, c1) {
 }
 
 // A ruled grid whose cells are tick marks (".2", "—", "10") is a graph, not a table.
-// A real table has a heading or a cell of several words.
+// Graph paper puts a tick on many rulings, so the interior is mostly empty rather than
+// blank only on the outer frame. A dense numeric table (Smithsonian: a header of
+// "0 1 2 3 …", a numeric stub, every cell filled) has the same short tokens and must stay a table.
 export function chartGrid(table) {
   if (!table || table.rows < 8 || table.cols < 4) return false;
   const texts = (table.cells || []).map((c) => ({ c: c.c, r: c.r, text: String(c.text || "").trim() })).filter((c) => c.text);
   if (texts.length < 8) return false;
+  const rows = table.rows;
+  const cols = table.cols;
+  const onAxis = (k) => k.r === 0 || k.r === rows - 1 || k.c === 0 || k.c === cols - 1;
+  const interiorSlots = (rows - 2) * (cols - 2);
+  if (interiorSlots <= 0) return false;
+  // A tick sits on a ruling. The lattice cuts every line, so a number on an inner
+  // gridline is an interior cell: the propeller pages fill 0.25–0.35 of the interior
+  // and only a quarter to a half of the labels sit on the outer frame. A data table
+  // fills that interior (Redwood 0.78, a Smithsonian numeric grid 1).
+  const interiorFilled = texts.filter((k) => !onAxis(k)).length;
+  if (interiorFilled / interiorSlots >= 0.45) return false;
   // A tick is a short token or a number. Glued ticks ("1 — —") and one crossed caption stay ticks
   // as long as they are not a column of words.
   const tick = (s) => s.length <= 4 || /^[-–—−.·\d\s]+$/.test(s);
   if (texts.filter((c) => tick(c.text)).length / texts.length < 0.75) return false;
-  for (let col = 0; col < table.cols; col++) {
+  for (let col = 0; col < cols; col++) {
     const inCol = texts.filter((k) => k.c === col);
     const words = inCol.filter((k) => /[A-Za-z]{4,}/.test(k.text));
     if (words.length >= 3 && words.length >= 0.4 * Math.max(1, inCol.length)) return false;

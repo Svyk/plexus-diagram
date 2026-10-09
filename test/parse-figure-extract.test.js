@@ -161,16 +161,27 @@ test("tick labels on a chart grid are a figure, not a table", () => {
   for (let y = 120; y <= 560; y += 40) rules.push([70, y, 540, y]);
   for (let x = 100; x <= 500; x += 80) rules.push([x, 120, x, 560]);
   const items = [];
-  for (let i = 0; i < 10; i++) {
-    const y = 140 + i * 40;
-    items.push(...row(y, [["0.2", 90], ["0.4", 180], [".6", 270], ["0.8", 360], ["1", 450]], 8));
-  }
+  for (const y of [140, 500]) items.push(...row(y, [["0.2", 90], ["0.4", 180], [".6", 270], ["0.8", 360], ["1", 450]], 8));
+  for (let i = 1; i < 9; i++) items.push(...row(140 + i * 40, [["0.2", 90]], 8));
   const parsed = page(items, { rules });
   assert.equal(parsed.tables.length, 0);
   assert.equal(parsed.figures.length, 1);
   const box = parsed.figures[0].bbox;
   assert.ok(box[2] - box[0] > 300, "the figure spans the grid, not one axis");
   assert.ok(box[3] - box[1] > 300);
+});
+
+test("a dense numeric grid stays a table", () => {
+  const rules = [];
+  for (let y = 120; y <= 560; y += 40) rules.push([70, y, 540, y]);
+  for (let x = 100; x <= 500; x += 80) rules.push([x, 120, x, 560]);
+  const items = [];
+  for (let i = 0; i < 10; i++) {
+    const y = 140 + i * 40;
+    items.push(...row(y, [["0.2", 90], ["0.4", 180], [".6", 270], ["0.8", 360], ["1", 450]], 8));
+  }
+  const parsed = page(items, { rules });
+  assert.ok(parsed.tables.length >= 1);
 });
 
 test("tiled images with no text are a scan, and a labelled page image is a drawing", () => {

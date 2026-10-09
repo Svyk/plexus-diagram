@@ -264,7 +264,9 @@ test("health with vlm-tables sets the flag and tables() posts the boxes", async 
   });
   const health = await api.health();
   assert.equal(health.vlmTables, true);
+  assert.equal(health.vlmHigh, false);
   assert.equal(api.vlmTables, true);
+  assert.equal(api.vlmHigh, false);
   const out = await api.tables({
     bytes: new Uint8Array([9]),
     sha256: "abc",
@@ -276,4 +278,42 @@ test("health with vlm-tables sets the flag and tables() posts the boxes", async 
   assert.equal(posted.method, "POST");
   assert.deepEqual(JSON.parse(posted.headers["X-Pxd-Options"]).tables, [{ page: 2, bbox: [1, 2, 3, 4] }]);
   assert.equal(posted.headers.Authorization, "Bearer secret");
+});
+
+test("health with all three vlm engines sets vlmHigh and vlm() posts /v1/vlm", async () => {
+  const recorded = {
+    model: "PaddleOCR-VL-0.9B",
+    layoutModel: "PP-DocLayoutV2",
+    tables: [],
+    lines: [],
+    figures: [],
+    layout: [],
+  };
+  const { api, calls } = client((url, init) => {
+    if (url.endsWith("/v1/health")) {
+      return { status: 200, json: async () => ({ ...readyBody, engines: ["docling", "ocr", "cloud", "vlm-tables", "vlm-layout", "vlm-text"] }) };
+    }
+    if (url.endsWith("/v1/vlm")) return { status: 200, json: async () => recorded };
+    return { status: 500, json: async () => ({}) };
+  });
+  const health = await api.health();
+  assert.equal(health.vlmHigh, true);
+  assert.equal(health.vlmLayout, true);
+  assert.equal(health.vlmText, true);
+  assert.equal(api.vlmHigh, true);
+  const out = await api.vlm({
+    bytes: new Uint8Array([9]),
+    sha256: "abc",
+    pages: [2],
+    tables: [{ page: 2, bbox: [1, 2, 3, 4] }],
+    text: true,
+  });
+  assert.equal(out.layoutModel, "PP-DocLayoutV2");
+  const posted = calls.find((call) => call.url.endsWith("/v1/vlm"));
+  assert.equal(posted.method, "POST");
+  assert.deepEqual(JSON.parse(posted.headers["X-Pxd-Options"]), {
+    text: true,
+    pages: [2],
+    tables: [{ page: 2, bbox: [1, 2, 3, 4] }],
+  });
 });

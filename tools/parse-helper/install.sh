@@ -5,6 +5,8 @@
 #   curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh
 # Docling add-on (Python, about 1.1 GB), and every install on another system:
 #   curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh -s -- --docling
+# High accuracy on top of that (PaddleOCR-VL-0.9B and PP-DocLayoutV2, first read):
+#   curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh -s -- --docling --vlm
 # Remove the LaunchAgent and the installed files:
 #   curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh -s -- --uninstall
 # Switch a Mac that already has something on port 48765:
@@ -87,7 +89,13 @@ install_docling() {
   fi
 
   say "Installing the Docling helper (first time takes a few minutes)..."
-  uv tool install --force "$SPEC" || fail "uv tool install failed"
+  if [ "$VLM" = 1 ]; then
+    say "High accuracy also installs mlx-vlm and onnxruntime."
+    say "The first read downloads PaddleOCR-VL-0.9B (about 1.8 GB) and PP-DocLayoutV2 (about 204 MB). Both are Apache-2.0."
+    uv tool install --force --with mlx-vlm --with onnxruntime "$SPEC" || fail "uv tool install failed"
+  else
+    uv tool install --force "$SPEC" || fail "uv tool install failed"
+  fi
   command -v "$HELPER" >/dev/null 2>&1 || fail "$HELPER is not on PATH after install. Run: uv tool update-shell"
 
   say "Starting it at login..."
@@ -294,13 +302,15 @@ uninstall_helper() {
 }
 
 MODE=rust
+VLM=0
 for arg in "$@"; do
   case "$arg" in
     --docling) MODE=docling ;;
+    --vlm) VLM=1; MODE=docling ;;
     --uninstall) MODE=uninstall ;;
     --replace) REPLACE=1 ;;
     --help|-h)
-      say "usage: install.sh [--docling] [--replace] [--uninstall]"
+      say "usage: install.sh [--docling] [--vlm] [--replace] [--uninstall]"
       exit 0
       ;;
     *) fail "unknown option: ${arg}" ;;

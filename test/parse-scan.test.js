@@ -11,6 +11,7 @@ import {
 } from "../src/model/parse/ocr-fix.js";
 import { chooseTable, mergeOcrDocument, scanPagesOf } from "../src/model/parse/ocr-merge.js";
 import { createHelperClient } from "../src/host/parse-helper-client.js";
+import { alignVlmText, hintLayoutFigures } from "../src/model/parse/vlm-tables.js";
 import { readScan } from "../src/view/parse-engine.js";
 import { buildLines } from "../src/model/parse/lines.js";
 import { visualRows } from "../src/model/parse/stream.js";
@@ -535,6 +536,85 @@ test("readScan takes a recorded VLM table when the helper advertises vlm-tables"
   assert.equal(out.doc.ocr.vlm, 1);
 });
 
+test("readScan high accuracy calls vlm, trusts a dissimilar table, and does not insert a figure hint", async () => {
+  const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 300, h: 120, rotation: 0, fonts: {} }, 2);
+  scanRec.kind = "scan";
+  const base = assembleDocument([scanRec], { numPages: 2, from: 2, to: 2 });
+  let tablesCalled = false;
+  let vlmArgs = null;
+  const helper = {
+    vlmTables: true,
+    vlmHigh: true,
+    async ocr({ pages }) {
+      if (pages) return { schema: "pxd-ocr/1", pageCount: 2, pages: [ocrPage({ n: 2, misread: false })], elapsedMs: 1 };
+      return { cells: [] };
+    },
+    tables() { tablesCalled = true; throw new Error("must not call tables"); },
+    async vlm(req) {
+      vlmArgs = req;
+      const region = req.tables[0];
+      return {
+        model: "PaddleOCR-VL-0.9B",
+        tables: [{
+          page: region.page,
+          bbox: region.bbox,
+          rows: 1,
+          cols: 1,
+          cells: [{ r: 0, c: 0, rowSpan: 1, colSpan: 1, text: "qqqqqq", header: false }],
+        }],
+        figures: [
+          { page: 2, bbox: [12, 12, 40, 40], label: "image", score: 0.8 },
+          { page: 2, bbox: [50, 12, 80, 40], label: "chart", score: 0.7 },
+        ],
+        lines: [{ page: 2, bbox: [0, 0, 200, 20], text: "not used" }],
+      };
+    },
+  };
+  const out = await readScan({
+    helper, bytes: new Uint8Array([1]), sha256: "s", base, records: [scanRec],
+    numPages: 2, from: 2, to: 2, lines: false, options: { vlmText: false },
+  });
+  assert.equal(tablesCalled, false);
+  assert.equal(vlmArgs.text, false);
+  assert.ok(vlmArgs.tables.length >= 1);
+  const t = tableOf(out.doc);
+  assert.equal(t.method, "PaddleOCR-VL-0.9B");
+  assert.equal(t.cells[0].text, "qqqqqq");
+  assert.equal(out.doc.ocr.mode, "high");
+  assert.equal(out.doc.ocr.vlmLines, 0);
+  assert.equal(out.doc.ocr.vlmFigures, 0);
+  const hinted = out.doc.order.map((id) => out.doc.blocks[id]).filter((b) => b && b.method === "vlm-layout");
+  assert.equal(hinted.length, 0);
+});
+
+test("hintLayoutFigures adds one box on an empty page and skips a page that has a figure", () => {
+  const empty = { order: ["p"], blocks: { p: { id: "p", type: "para", page: 2, bbox: [0, 0, 10, 10], text: "x" } } };
+  const added = hintLayoutFigures(empty, [
+    { page: 2, bbox: [12, 12, 40, 40], label: "image", score: 0.8 },
+    { page: 2, bbox: [50, 12, 80, 40], label: "chart", score: 0.7 },
+  ]);
+  assert.equal(added.applied.length, 1);
+  assert.equal(added.doc.blocks[added.applied[0].id].method, "vlm-layout");
+  const again = hintLayoutFigures(added.doc, [{ page: 2, bbox: [1, 1, 8, 8], label: "image", score: 0.9 }]);
+  assert.equal(again.applied.length, 0);
+});
+
+test("alignVlmText rewrites Vision lines inside a region and leaves the boxes", () => {
+  const doc = {
+    order: ["p", "q"],
+    blocks: {
+      p: { id: "p", type: "para", page: 1, bbox: [0, 0, 40, 10], text: "old left" },
+      q: { id: "q", type: "para", page: 1, bbox: [40, 0, 80, 10], text: "old right" },
+    },
+  };
+  const out = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 80, 12], text: "new left new right words" }]);
+  assert.deepEqual(out.doc.blocks.p.bbox, doc.blocks.p.bbox);
+  assert.notEqual(out.doc.blocks.p.text, "old left");
+  assert.equal(out.applied.length, 2);
+  const skipped = alignVlmText(doc, [{ page: 1, bbox: [200, 200, 220, 210], text: "elsewhere" }]);
+  assert.equal(skipped.applied.length, 0);
+});
+
 test("readScan keeps the rule table when the VLM text does not match, and does not call tables without the flag", async () => {
   const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 300, h: 120, rotation: 0, fonts: {} }, 2);
   scanRec.kind = "scan";
@@ -600,6 +680,11 @@ test("parse view shows Read the scan only for scan pages with a ready helper", a
   view.showDoc(parsed);
   assert.equal(btn.hidden, false, "shown for a scan page with a ready helper");
   assert.equal(btn.textContent, "Read the scan (p. 2)");
+  const highHelper = { ...helper, vlmHigh: true };
+  const high = createParseView({ doc: docEl, helper: highHelper });
+  await high.refreshHelper();
+  high.showDoc(parsed);
+  assert.equal(high.element().querySelector(".pxd-parse__scan").textContent, "High accuracy (p. 2)");
   view.showDoc({ ...parsed, pages: parsed.pages.map((p) => ({ ...p, ocr: true })) });
   assert.equal(btn.hidden, true, "hidden once read");
   const noHelper = createParseView({ doc: docEl, helper: null });

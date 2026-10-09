@@ -209,6 +209,14 @@ test("--docling and a non-macOS install keep the Python path", async () => {
     const linux = run(dir, [], { path: `${dir.bin}:/usr/bin:/bin`, env: { ...env, PLEXUS_HELPER_OS: "Linux" } });
     assert.equal(linux.status, 0, linux.stderr + linux.stdout);
     assert.match(await readFile(dir.log, "utf8"), /uv tool install --force/g);
+
+    await writeFile(dir.log, "");
+    const vlm = run(dir, ["--docling", "--vlm"], { path: `${dir.bin}:/usr/bin:/bin`, env });
+    assert.equal(vlm.status, 0, vlm.stderr + vlm.stdout);
+    assert.match(vlm.stdout, /1\.8 GB/);
+    assert.match(vlm.stdout, /204 MB/);
+    assert.match(vlm.stdout, /Apache-2\.0/);
+    assert.match(await readFile(dir.log, "utf8"), /uv tool install --force --with mlx-vlm --with onnxruntime/);
   } finally {
     await rm(dir.root, { recursive: true, force: true });
   }

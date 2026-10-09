@@ -21,10 +21,15 @@ from plexus_parse_helper.table_text import tables_from_text
 HF_REPO = "PaddlePaddle/PaddleOCR-VL"
 MODEL_LABEL = "PaddleOCR-VL-0.9B"
 TABLE_PROMPT = "Table Recognition:"
+OCR_PROMPT = "OCR:"
 SCALE = 200 / 72
-PAD = 6.0
+PAD = 8.0
+# A section title often sits one line above the ruled grid. The box from a
+# layout model stops on the rules, so the crop grows upward by this much.
+TOP_PAD = 36.0
 MAX_REGIONS = 40
-MAX_TOKENS = 2048
+MAX_TOKENS = 4096
+TEXT_TOKENS = 512
 
 _lock = threading.Lock()
 _loaded: tuple | None = None
@@ -132,10 +137,30 @@ class _RepeatStop:
         n = len(self.recent)
         if n >= 12 and len(set(self.recent[-12:])) == 1:
             return True
-        for period in range(8, min(96, n // 2) + 1):
-            if self.recent[-period:] == self.recent[-2 * period:-period]:
+        # Two copies of a header ("Rate of flow" three times across one row, or
+        # the left half of a page repeated on the right) are the table, not a
+        # loop. Stop only when the same span that contains a row break has been
+        # emitted three times.
+        for period in range(8, min(96, n // 3) + 1):
+            span = self.recent[-period:]
+            if span != self.recent[-2 * period:-period] or span != self.recent[-3 * period:-2 * period]:
+                continue
+            if _span_has_break(self.tokenizer, span):
                 return True
         return False
+
+
+def _span_has_break(tokenizer, span) -> bool:
+    decode = getattr(tokenizer, "decode", None)
+    if decode is None:
+        return False
+    try:
+        text = decode(list(span), skip_special_tokens=False)
+    except TypeError:
+        text = decode(list(span))
+    except Exception:
+        return False
+    return "<nl>" in text or "\n" in text
 
 
 def _extra_eos(tokenizer) -> list[int]:
@@ -151,35 +176,50 @@ def _extra_eos(tokenizer) -> list[int]:
     return ids
 
 
-def _crop(page, bbox) -> Image.Image:
-    pw, ph = page.get_size()
+def crop_pixels(bbox, pw, ph, width, height, pad=PAD, top_pad=TOP_PAD):
+    """PDF-point box, origin top-left, onto a rendered bitmap of `width`×`height`.
+
+    Document boxes (the built-in parser, LlamaParse, this layout model) all use
+    that corner. An earlier crop flipped them as if y grew upward, so the model
+    read the wrong band of the page.
+    """
     x0, y0, x1, y1 = (float(v) for v in bbox)
     if x1 < x0:
         x0, x1 = x1, x0
     if y1 < y0:
         y0, y1 = y1, y0
-    # Built-in table boxes are PDF points, origin bottom-left. The bitmap is top-left.
-    down = [x0, ph - y1, x1, ph - y0]
-    x0 = max(0.0, down[0] - PAD)
-    y0 = max(0.0, down[1] - PAD)
-    x1 = min(pw, down[2] + PAD)
-    y1 = min(ph, down[3] + PAD)
-    bitmap = page.render(scale=SCALE).to_pil().convert("RGB")
+    x0 = max(0.0, x0 - pad)
+    y0 = max(0.0, y0 - top_pad)
+    x1 = min(float(pw), x1 + pad)
+    y1 = min(float(ph), y1 + pad)
+    sx = width / float(pw) if pw else 1.0
+    sy = height / float(ph) if ph else 1.0
     box = (
-        max(0, int(round(x0 * SCALE))),
-        max(0, int(round(y0 * SCALE))),
-        min(bitmap.width, int(round(x1 * SCALE))),
-        min(bitmap.height, int(round(y1 * SCALE))),
+        max(0, int(round(x0 * sx))),
+        max(0, int(round(y0 * sy))),
+        min(int(width), int(round(x1 * sx))),
+        min(int(height), int(round(y1 * sy))),
     )
+    return box
+
+
+def _crop(page, bbox, bitmap=None) -> Image.Image:
+    pw, ph = page.get_size()
+    if bitmap is None:
+        bitmap = page.render(scale=SCALE).to_pil().convert("RGB")
+    box = crop_pixels(bbox, pw, ph, bitmap.width, bitmap.height)
     if box[2] <= box[0] or box[3] <= box[1]:
         raise ValueError("table box is empty")
     return bitmap.crop(box)
 
 
-def _generate(image: Image.Image) -> str:
+def _generate(image: Image.Image, instruction: str = TABLE_PROMPT, max_tokens: int = MAX_TOKENS) -> str:
     from mlx_vlm import generate
 
-    model, processor, prompt, mx = _get_model()
+    from mlx_vlm.prompt_utils import apply_chat_template
+
+    model, processor, _cached, mx = _get_model()
+    prompt = apply_chat_template(processor, model.config, instruction, num_images=1)
     tok = processor.tokenizer if hasattr(processor, "tokenizer") else processor
     # generate() resets the criteria. Installing it again keeps the loop stop
     # if a previous call replaced the object.
@@ -188,12 +228,12 @@ def _generate(image: Image.Image) -> str:
         tok.stopping_criteria = _RepeatStop(eos, tok)
     if hasattr(mx, "reset_peak_memory"):
         mx.reset_peak_memory()
-    out = generate(model, processor, prompt, image=image, max_tokens=MAX_TOKENS, temperature=0.0, verbose=False)
+    out = generate(model, processor, prompt, image=image, max_tokens=max_tokens, temperature=0.0, verbose=False)
     return out.text or ""
 
 
 def read_tables(pdf_path: str, regions: list) -> dict:
-    """One crop per region. Regions are `{page, bbox}` with bbox in PDF points, y up."""
+    """One crop per region. Regions are `{page, bbox}` in PDF points, origin top-left."""
     if len(regions) > MAX_REGIONS:
         raise ValueError(f"tables cap is {MAX_REGIONS}")
     tables = []

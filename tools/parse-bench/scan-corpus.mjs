@@ -3,13 +3,14 @@
 //   node tools/parse-bench/scan-corpus.mjs [--engines builtin,web-ocr,helper,helper-rs,helper-vlm] [--helper python|rust] [--only name] [--json out.json] [--dump dir]
 // --dump writes <dir>/<engine>/<page id>.pxd.json when that file is not already there.
 // helper-vlm reads the helper OCR cache (it does not call the helper CLI or port 48765)
-// and POSTs table boxes to PXD_VLM_URL (default http://127.0.0.1:48766).
+// and POSTs the page to PXD_VLM_URL /v1/vlm (default http://127.0.0.1:48766).
+// PXD_VLM_TEXT=1 also replaces Vision line text with the VLM OCR reading.
 //
 // builtin    — parseFile/assemble on the PDF as shipped (embedded text layer, or a scan block).
 // web-ocr    — that parse plus readScan --source ppocr-web (what a user without the helper gets).
 // helper     — that parse plus readScan through the Vision CLI (Python, or Rust with --helper rust).
 // helper-rs  — the same vote, with the Rust Vision CLI as the box source.
-// helper-vlm — the helper OCR cache plus POST /v1/tables on PXD_VLM_URL.
+// helper-vlm — the helper OCR cache plus POST /v1/vlm (layout + PaddleOCR-VL) on PXD_VLM_URL.
 //
 // PDFs and the full truth set live outside the repo (see docs/parse-bench.md). Default root
 // is /tmp/wo/pxd14/scans, override with PXD_SCAN_DIR. OCR responses are cached under
@@ -126,6 +127,20 @@ function vlmHelper() {
       if (res.status < 200 || res.status >= 300) throw new Error(body?.error || `tables ${res.status}`);
       return body;
     },
+    async vlm({ bytes, pages, tables, text }) {
+      const res = await fetch(`${url}/v1/vlm`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/pdf",
+          "X-Pxd-Options": JSON.stringify({ pages, tables, text: text === true }),
+        },
+        body: bytes,
+      });
+      const body = await res.json().catch(() => null);
+      if (res.status < 200 || res.status >= 300) throw new Error(body?.error || `vlm ${res.status}`);
+      return body;
+    },
   };
 }
 
@@ -133,11 +148,20 @@ async function helperFor(engine, pdfPath, cacheDir, helperFlag) {
   if (engine === "builtin") return null;
   if (engine === "helper-vlm") {
     const raw = vlmHelper();
+    const sha = sha256File(pdfPath);
+    const log = (m) => process.stderr.write(`${m}\n`);
     // Same stamp as the helper engine so the Vision page cache is reused.
-    const wrapped = cacheWrap(raw, cacheDir, `helper:${ocrKey("helper")}:${sha256File(pdfPath)}`);
-    wrapped.tables = (req) => raw.tables(req);
-    wrapped.vlmTables = true;
-    return wrapped;
+    // The PP-OCR vote is the same one the helper engine uses, so page text stays
+    // at that CER. High accuracy replaces tables; it does not replace the reading.
+    const wrapped = cacheWrap(raw, cacheDir, `helper:${ocrKey("helper")}:${sha}`);
+    const altRaw = (await import("./ppocr-node.mjs")).createPpocrSource({ pdfPath, dpi: 300, log });
+    const alt = cacheWrap(altRaw, cacheDir, `web-ocr:${ocrKey("web-ocr")}:${sha}`);
+    const voted = votingHelper({ vision: wrapped, alt, lexicon: await lexicon() });
+    voted.tables = (req) => raw.tables(req);
+    voted.vlm = (req) => raw.vlm(req);
+    voted.vlmTables = true;
+    voted.vlmHigh = true;
+    return voted;
   }
   const sha = sha256File(pdfPath);
   const log = (m) => process.stderr.write(`${m}\n`);
@@ -166,6 +190,7 @@ async function runEngine(pdfPath, page, engine, cacheDir, helperFlag) {
   const lines = process.env.PXD_OCR_LINES !== "0";
   const result = await readScan({
     helper, bytes, base, records, pages: wanted, numPages, info, from, to, lexicon: lineLexicon, lines,
+    options: { vlmText: process.env.PXD_VLM_TEXT === "1" },
     onPhase: (p) => process.stderr.write(`phase ${JSON.stringify(p)}\n`),
   });
   return { ...result, ms: performance.now() - t0, builtinMs };

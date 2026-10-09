@@ -27647,8 +27647,8 @@ function subtree(node2, sizeOf, levelGap, sibGap) {
     return o;
   });
   const childrenExtent = cursor - sibGap;
-  const centerOf4 = (i) => offs[i] + kids[i].s.nodeB + kids[i].size.bb / 2;
-  const parentB = (centerOf4(0) + centerOf4(kids.length - 1)) / 2 - bb / 2;
+  const centerOf5 = (i) => offs[i] + kids[i].s.nodeB + kids[i].size.bb / 2;
+  const parentB = (centerOf5(0) + centerOf5(kids.length - 1)) / 2 - bb / 2;
   const min = Math.min(0, parentB);
   const max = Math.max(childrenExtent, parentB + bb);
   const places = [{ uid: node2.uid, d: 0, b: parentB - min }];
@@ -34364,8 +34364,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       ledger.clear();
     }
   };
-  function makeBoard(t, rect, title, exclude, centerOf4 = rect) {
-    const parent = containerAt(board2, { x: centerOf4.x + centerOf4.w / 2, y: centerOf4.y + centerOf4.h / 2 }, { rects, exclude });
+  function makeBoard(t, rect, title, exclude, centerOf5 = rect) {
+    const parent = containerAt(board2, { x: centerOf5.x + centerOf5.w / 2, y: centerOf5.y + centerOf5.h / 2 }, { rects, exclude });
     const rel = toRelative(board2, parent, { x: rect.x, y: rect.y }, rects);
     return t.create({
       parent,
@@ -41141,7 +41141,20 @@ function classifyModels(body) {
   } else {
     state = "models-missing";
   }
-  return { state, engines, ocr, docling, vlmTables: engines.includes("vlm-tables"), models };
+  const vlmTables = engines.includes("vlm-tables");
+  const vlmLayout = engines.includes("vlm-layout");
+  const vlmText = engines.includes("vlm-text");
+  return {
+    state,
+    engines,
+    ocr,
+    docling,
+    vlmTables,
+    vlmLayout,
+    vlmText,
+    vlmHigh: vlmTables && vlmLayout && vlmText,
+    models
+  };
 }
 function helperCanOcr(health) {
   if (!health) return false;
@@ -41220,6 +41233,11 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
   let healthCache = null;
   let probeCache = null;
   let vlmOn = false;
+  let vlmHighOn = false;
+  const setVlm = (tables2, high) => {
+    vlmOn = tables2 === true;
+    vlmHighOn = high === true;
+  };
   const config = () => {
     const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
     const token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
@@ -41237,13 +41255,13 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
       return healthCache.value;
     }
     if (!token) {
-      vlmOn = false;
+      setVlm(false, false);
       const value = { state: "not-running", reason: "disabled" };
       healthCache = { url, token, at, value };
       return value;
     }
     if (typeof fetchFn !== "function") {
-      vlmOn = false;
+      setVlm(false, false);
       const value = { state: "not-running" };
       healthCache = { url, token, at, value };
       return value;
@@ -41257,10 +41275,10 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
       let value;
       const httpOk = res.status >= 200 && res.status < 300;
       if (res.status === 401) {
-        vlmOn = false;
+        setVlm(false, false);
         value = { state: "wrong-token" };
       } else if (!httpOk) {
-        vlmOn = false;
+        setVlm(false, false);
         value = { state: "not-running" };
       } else {
         let body = null;
@@ -41271,14 +41289,14 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
         }
         const major = schemaMajor(body?.schema);
         if (body?.helper !== HELPER_NAME || major == null) {
-          vlmOn = false;
+          setVlm(false, false);
           value = { state: "not-running" };
         } else if (major >= 2) {
-          vlmOn = false;
+          setVlm(false, false);
           value = { state: "newer-schema", schema: body.schema };
         } else {
           const flags = classifyModels(body);
-          vlmOn = flags.vlmTables === true;
+          setVlm(flags.vlmTables === true, flags.vlmHigh === true);
           value = {
             state: flags.state,
             schema: body.schema,
@@ -41287,7 +41305,10 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
             engines: flags.engines,
             ocr: flags.ocr,
             docling: flags.docling,
-            vlmTables: flags.vlmTables
+            vlmTables: flags.vlmTables,
+            vlmLayout: flags.vlmLayout,
+            vlmText: flags.vlmText,
+            vlmHigh: flags.vlmHigh
           };
           if (flags.state === "ready") value.busy = body.busy ?? 0;
         }
@@ -41295,7 +41316,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
       healthCache = { url, token, at, value };
       return value;
     } catch {
-      vlmOn = false;
+      setVlm(false, false);
       const value = { state: "not-running" };
       healthCache = { url, token, at, value };
       return value;
@@ -41545,6 +41566,34 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
     }
     return { ...body, sha256: sha };
   }
+  async function vlm({ bytes, sha256, pages, tables: regions, text: text3 = false, signal } = {}) {
+    const { url, token } = config();
+    const sha = sha256 || await sha256Hex(bytes);
+    const options = { text: text3 === true };
+    if (pages && pages.length) options.pages = pages;
+    if (regions && regions.length) options.tables = regions.map((t) => ({ page: t.page, bbox: t.bbox }));
+    const res = await call(`${url}/v1/vlm`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/pdf",
+        "X-Pxd-Options": JSON.stringify(options)
+      },
+      body: bytes
+    }, signal);
+    let body = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+    if (res.status < 200 || res.status >= 300) {
+      const error = new Error(body?.error || `vlm ${res.status}`);
+      error.status = res.status;
+      throw error;
+    }
+    return { ...body, sha256: sha };
+  }
   function endpoint() {
     const { url, token } = config();
     return { url, token };
@@ -41562,9 +41611,13 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
     reparseTable,
     ocr,
     tables,
+    vlm,
     endpoint,
     get vlmTables() {
       return vlmOn;
+    },
+    get vlmHigh() {
+      return vlmHighOn;
     }
   };
 }
@@ -42765,7 +42818,7 @@ function tableFromVlm(structure, { id = "vlm", method = "vlm" } = {}) {
     engine: "builtin"
   };
 }
-function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15 } = {}) {
+function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, trust = false } = {}) {
   if (!doc || !structures?.length) return { doc, applied: [] };
   const blocks = { ...doc.blocks };
   const order = [...doc.order || []];
@@ -42787,7 +42840,18 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15 } =
       }
     }
     const same2 = host && (setJaccard(host, built) >= minJaccard || tokenJaccard(host, built) >= minJaccard);
-    if (host && !same2) continue;
+    if (host && !same2 && !trust) continue;
+    if (trust) {
+      for (const id of [...order]) {
+        const block = blocks[id];
+        if (!block || block.type !== "table" || block.page !== structure.page) continue;
+        if (iou4(block.bbox, built.bbox) < 0.1) continue;
+        delete blocks[id];
+        const at = order.indexOf(id);
+        if (at >= 0) order.splice(at, 1);
+      }
+      host = null;
+    }
     if (host) {
       used.add(host.id);
       blocks[host.id] = {
@@ -42814,6 +42878,59 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15 } =
     }
   }
   return { doc: { ...doc, blocks, order }, applied };
+}
+function centerOf4(bbox) {
+  if (!bbox || bbox.length < 4) return null;
+  return [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2];
+}
+function splitByWidth(text3, widths) {
+  const words = String(text3 || "").split(/\s+/).filter(Boolean);
+  if (!widths.length) return [];
+  if (!words.length) return widths.map(() => "");
+  if (widths.length === 1) return [words.join(" ")];
+  const total = widths.reduce((sum, w) => sum + w, 0) || 1;
+  const counts = widths.map((w) => Math.max(1, Math.round(words.length * w / total)));
+  let drift = words.length - counts.reduce((sum, n2) => sum + n2, 0);
+  counts[counts.length - 1] = Math.max(0, counts[counts.length - 1] + drift);
+  const out = [];
+  let at = 0;
+  for (const n2 of counts) {
+    out.push(words.slice(at, at + n2).join(" "));
+    at += n2;
+  }
+  if (at < words.length) {
+    const rest = words.slice(at).join(" ");
+    out[out.length - 1] = [out[out.length - 1], rest].filter(Boolean).join(" ");
+  }
+  return out;
+}
+function alignVlmText(doc, regions) {
+  if (!doc || !regions?.length) return { doc, applied: [] };
+  const blocks = { ...doc.blocks };
+  const applied = [];
+  const kinds = /* @__PURE__ */ new Set(["para", "heading", "caption", "footnote"]);
+  for (const region of regions) {
+    if (!region?.text || !region.bbox) continue;
+    const inside7 = [];
+    for (const id of doc.order || []) {
+      const block = blocks[id];
+      if (!block || block.page !== region.page || !kinds.has(block.type) || !block.bbox) continue;
+      const c = centerOf4(block.bbox);
+      if (!c) continue;
+      if (c[0] < region.bbox[0] || c[0] > region.bbox[2] || c[1] < region.bbox[1] || c[1] > region.bbox[3]) continue;
+      inside7.push(block);
+    }
+    if (!inside7.length) continue;
+    inside7.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
+    const parts = splitByWidth(region.text, inside7.map((b) => Math.max(1, b.bbox[2] - b.bbox[0])));
+    inside7.forEach((block, i) => {
+      const text3 = parts[i] || "";
+      if (!text3 || text3 === block.text) return;
+      blocks[block.id] = { ...block, text: text3 };
+      applied.push(block.id);
+    });
+  }
+  return { doc: { ...doc, blocks }, applied };
 }
 
 // src/view/parse-engine.js
@@ -42892,24 +43009,47 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   const doc = merged.doc;
   const next = merged.records;
   let vlmApplied = [];
-  if (helper.vlmTables === true && typeof helper.tables === "function") {
+  let vlmFigures = [];
+  let vlmLines = [];
+  const high = helper.vlmHigh === true && typeof helper.vlm === "function";
+  if (high || helper.vlmTables === true && typeof helper.tables === "function") {
     const regions = tableRegions(doc, wanted);
-    if (regions.length) {
-      try {
+    try {
+      if (high) {
+        onPhase?.({ phase: "vlm", count: regions.length, mode: "high" });
+        const read2 = await helper.vlm({
+          bytes,
+          sha256,
+          pages: wanted,
+          tables: regions,
+          text: options.vlmText === true,
+          signal
+        });
+        throwIfAborted3();
+        const applied = applyVlmTables(doc, read2?.tables || [], { method: read2?.model || "vlm", trust: true });
+        vlmApplied = applied.applied;
+        if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });
+        if (options.vlmText === true) {
+          const linedText = alignVlmText(doc, read2?.lines || []);
+          vlmLines = linedText.applied;
+          if (linedText.applied.length) Object.assign(doc, { blocks: linedText.doc.blocks });
+        }
+        doc.ocr = { ...doc.ocr || {}, mode: "high" };
+      } else if (regions.length) {
         onPhase?.({ phase: "vlm", count: regions.length });
         const read2 = await helper.tables({ bytes, sha256, pages: wanted, tables: regions, signal });
         throwIfAborted3();
         const applied = applyVlmTables(doc, read2?.tables || [], { method: read2?.model || "vlm" });
         vlmApplied = applied.applied;
         if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });
-      } catch (err) {
-        if (err?.name === "AbortError") throw err;
-        doc.ocr = { ...doc.ocr || {}, vlmError: err?.message || String(err) };
       }
+    } catch (err) {
+      if (err?.name === "AbortError") throw err;
+      doc.ocr = { ...doc.ocr || {}, vlmError: err?.message || String(err) };
     }
   }
   const rereads = await rereadCells({ doc, ocr: ask, signal, onPhase });
-  doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), lines: lined.applied.length, vlm: vlmApplied.length, elapsedMs: got?.elapsedMs ?? null };
+  doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), lines: lined.applied.length, vlm: vlmApplied.length, vlmFigures: vlmFigures.length, vlmLines: vlmLines.length, elapsedMs: got?.elapsedMs ?? null };
   return { doc, choices: merged.choices, rereads, lines: lined.applied, pages: wanted, records: next, ocrPages: lined.pages };
 }
 async function rereadLines({ doc, ocrPages, ocr, lexicon = null, signal, onPhase } = {}) {
@@ -48759,7 +48899,10 @@ ${sourceAttrString(source)}` : markdown;
     const engine = ocrEngine();
     const ready = Boolean(engine && (engine === ocrSource || helperOcr));
     scanBtn.hidden = !(pages.length && ready && phase !== "running");
-    if (!scanBtn.hidden) scanBtn.textContent = pages.length === 1 ? `Read the scan (p. ${pages[0]})` : `Read the scan (${pages.length} pages)`;
+    if (!scanBtn.hidden) {
+      const name = helper && helper.vlmHigh === true ? "High accuracy" : "Read the scan";
+      scanBtn.textContent = pages.length === 1 ? `${name} (p. ${pages[0]})` : `${name} (${pages.length} pages)`;
+    }
   }
   async function readScanNow() {
     const engine = ocrEngine();

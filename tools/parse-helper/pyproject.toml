@@ -16,6 +16,9 @@ dependencies = [
   "pyobjc-framework-Vision; sys_platform == 'darwin'",
 ]
 
+[project.optional-dependencies]
+vlm = ["mlx-vlm", "onnxruntime"]
+
 [project.scripts]
 plexus-parse-helper = "plexus_parse_helper.__main__:main"
 

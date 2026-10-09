@@ -290,6 +290,212 @@ def clip_generation(raw):
     return text[:end]
 
 
+def _words(text):
+    return re.findall(r"[A-Za-z0-9]+", text or "")
+
+
+def drop_prose_rows(cells):
+    """Drop a leading or trailing row that is one long sentence, not a grid cell.
+
+    A crop that includes the paragraph under a table makes the model emit that
+    paragraph as a full-width last row. A section title ("Supercharger Speed")
+    stays: it is short.
+    """
+    if not cells:
+        return cells
+    rows = {}
+    for cell in cells:
+        rows.setdefault(cell["r"], []).append(cell)
+    ordered = sorted(rows)
+    drop = set()
+    edges = ordered[:1] + ordered[-1:]
+    for r in edges:
+        nonempty = [c for c in rows[r] if (c.get("text") or "").strip()]
+        if len(nonempty) != 1:
+            continue
+        if len(_words(nonempty[0]["text"])) >= 16:
+            drop.add(r)
+    if not drop:
+        return cells
+    shift = 0
+    mapping = {}
+    for r in ordered:
+        if r in drop:
+            shift += 1
+            continue
+        mapping[r] = r - shift
+    return [{**c, "r": mapping[c["r"]]} for c in cells if c["r"] not in drop]
+
+
+def drop_empty_rows(cells):
+    """Drop a row whose cells are all blank, and close the gap.
+
+    A rule across a typewriter table is sometimes emitted as an empty row.
+    Leaving it in shifts every row under it by one.
+    """
+    if not cells:
+        return cells
+    rows = {}
+    for cell in cells:
+        rows.setdefault(cell["r"], []).append(cell)
+    empty = {r for r, group in rows.items() if all(not (c.get("text") or "").strip() for c in group)}
+    if not empty:
+        return cells
+    shift = 0
+    mapping = {}
+    for r in sorted(rows):
+        if r in empty:
+            shift += 1
+            continue
+        mapping[r] = r - shift
+    out = []
+    for cell in cells:
+        if cell["r"] not in mapping:
+            continue
+        span = cell.get("rowSpan") or 1
+        dropped = sum(1 for i in range(cell["r"], cell["r"] + span) if i in empty)
+        out.append({**cell, "r": mapping[cell["r"]], "rowSpan": max(1, span - dropped)})
+    return out
+
+
+def drop_trailing_empty_columns(cells):
+    """Drop a run of empty columns on the right, and shorten spans that ran into them.
+
+    The model often closes a row with a spare empty cell. A section title then
+    spans one column too many and no longer matches the grid.
+    """
+    if not cells:
+        return cells
+    cols = max(c["c"] + (c.get("colSpan") or 1) for c in cells)
+    drop_from = cols
+    for col in range(cols - 1, -1, -1):
+        has_text = any(
+            (c.get("text") or "").strip() and c["c"] == col and (c.get("colSpan") or 1) == 1
+            for c in cells
+        )
+        starts_wide = any(
+            (c.get("text") or "").strip() and c["c"] == col and (c.get("colSpan") or 1) > 1
+            for c in cells
+        )
+        if has_text or starts_wide:
+            break
+        drop_from = col
+    if drop_from == cols:
+        return cells
+    out = []
+    for cell in cells:
+        if cell["c"] >= drop_from:
+            continue
+        span = cell.get("colSpan") or 1
+        if cell["c"] + span > drop_from:
+            cell = {**cell, "colSpan": drop_from - cell["c"]}
+        out.append(cell)
+    return out
+
+
+_ZERO_DECIMAL = re.compile(r"^0(\.\d+)$")
+_INTEGER_PERIOD = re.compile(r"^(\d+)\.$")
+
+
+def bare_decimal_columns(cells):
+    """Write a long decimal column the way these pages print it.
+
+    A factor column prints the leading zero on the first small value only
+    (`0.0142`, then `.0219`, `.928`). The model writes `0.` on every one.
+    A column with only a couple of readings (`0.294` hp) is left as printed.
+    """
+    groups = {}
+    for cell in cells:
+        if (cell.get("colSpan") or 1) != 1:
+            continue
+        if _ZERO_DECIMAL.match((cell.get("text") or "").strip()):
+            groups.setdefault(cell["c"], []).append(cell)
+    for group in groups.values():
+        if len(group) < 3:
+            continue
+        group.sort(key=lambda c: c["r"])
+        for i, cell in enumerate(group):
+            text = cell["text"].strip()
+            match = _ZERO_DECIMAL.match(text)
+            if i == 0 and text.startswith("0.0"):
+                continue
+            cell["text"] = match.group(1)
+    return cells
+
+
+def strip_leader_periods(cells):
+    """`32.........` is a row of leader dots. The model keeps the first dot."""
+    for cell in cells:
+        match = _INTEGER_PERIOD.match((cell.get("text") or "").strip())
+        if match:
+            cell["text"] = match.group(1)
+    return cells
+
+
+def drop_table_captions(cells):
+    """Drop a row that is only a 'TABLE N' caption.
+
+    The crop includes the line above the rules. That caption is not a row of
+    the grid, and leaving it in shifts every row under it.
+    """
+    if not cells:
+        return cells
+    rows = {}
+    for cell in cells:
+        rows.setdefault(cell["r"], []).append(cell)
+    drop = set()
+    for r, group in rows.items():
+        nonempty = [c for c in group if (c.get("text") or "").strip()]
+        if len(nonempty) != 1:
+            continue
+        if re.match(r"table\b", nonempty[0]["text"].strip(), re.I):
+            drop.add(r)
+    if not drop:
+        return cells
+    shift = 0
+    mapping = {}
+    for r in sorted(rows):
+        if r in drop:
+            shift += 1
+            continue
+        mapping[r] = r - shift
+    out = []
+    for cell in cells:
+        if cell["r"] not in mapping:
+            continue
+        span = cell.get("rowSpan") or 1
+        dropped = sum(1 for i in range(cell["r"], cell["r"] + span) if i in drop)
+        out.append({**cell, "r": mapping[cell["r"]], "rowSpan": max(1, span - dropped)})
+    return out
+
+
+def plain_math(text):
+    """Printed characters for the math markup PaddleOCR-VL emits.
+
+    A barred characteristic (`2̄.6972`) and `μ` are what the page shows.
+    """
+    text = text or ""
+    text = re.sub(r"\\overline\{(\d)\.(\d+)\}", lambda m: m.group(1) + "\u0304." + m.group(2), text)
+    text = text.replace(r"\mu", "μ")
+    text = text.replace(r"\log", "log")
+    text = re.sub(r"\^\{?\\circ\}?", "°", text)
+    text = text.replace(r"\(", "").replace(r"\)", "")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def tidy_cells(cells):
+    cells = drop_prose_rows(cells)
+    cells = drop_table_captions(cells)
+    cells = drop_empty_rows(cells)
+    cells = drop_trailing_empty_columns(cells)
+    cells = bare_decimal_columns(cells)
+    cells = strip_leader_periods(cells)
+    for cell in cells:
+        cell["text"] = plain_math(cell.get("text") or "")
+    return cells
+
+
 def tables_from_text(raw, kind):
     raw = clip_generation(raw)
     found = []
@@ -316,6 +522,9 @@ def tables_from_text(raw, kind):
             found.append(loc_cells)
     tables = []
     for cells in found:
+        cells = tidy_cells(cells)
+        if not cells:
+            continue
         rows = max((c["r"] + c["rowSpan"] for c in cells), default=0)
         cols = max((c["c"] + c["colSpan"] for c in cells), default=0)
         tables.append({"rows": rows, "cols": cols, "cells": [{k: c[k] for k in ("r", "c", "rowSpan", "colSpan", "text", "header")} for c in cells]})

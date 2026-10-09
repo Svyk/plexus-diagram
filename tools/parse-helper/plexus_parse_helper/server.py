@@ -22,6 +22,8 @@ from plexus_parse_helper.models import model_report, start_download, stop_downlo
 from plexus_parse_helper.ocr import ocr_cells, ocr_options_hash, ocr_pdf
 from plexus_parse_helper.pair import close_window, window_open
 from plexus_parse_helper.schema import normalize_options, options_hash, sha256_bytes
+from plexus_parse_helper.vlm_layout import layout_available
+from plexus_parse_helper.vlm_read import read_pages
 from plexus_parse_helper.vlm_tables import read_tables, vlm_tables_available
 
 MAX_BODY = 200 * 1024 * 1024
@@ -185,7 +187,7 @@ class JobBook:
         return 204
 
 
-def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobManager | None = None, cache: ParseCache | None = None, ocr_runner=None, cell_runner=None, pair_file=None, cloud_runner=None, table_runner=None) -> FastAPI:
+def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobManager | None = None, cache: ParseCache | None = None, ocr_runner=None, cell_runner=None, pair_file=None, cloud_runner=None, table_runner=None, vlm_runner=None) -> FastAPI:
     allow = set(allow_origins or ["https://roamresearch.com"])
     manager = jobs or JobManager()
     store = cache or ParseCache()
@@ -201,13 +203,21 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
     table_lock = threading.Lock()
     pair_lock = threading.Lock()
     run_tables = table_runner or read_tables
+    run_vlm = vlm_runner or read_pages
 
     def engine_names():
         names = ["docling", "ocr", "cloud"]
-        # Present only when a runner was injected or mlx-vlm is installed. The default
-        # test environment has neither, so health stays docling/ocr/cloud.
-        if table_runner is not None or vlm_tables_available():
+        # Each name is present only when that piece is installed. A test injects a
+        # runner instead of importing mlx-vlm or onnxruntime. vlm-tables is the
+        # table reader. vlm-layout and vlm-text are the high-accuracy page read
+        # (layout boxes, then the same model with the OCR prompt).
+        tables = table_runner is not None or vlm_runner is not None or vlm_tables_available()
+        high = vlm_runner is not None or (vlm_tables_available() and layout_available())
+        if tables:
             names.append("vlm-tables")
+        if high:
+            names.append("vlm-layout")
+            names.append("vlm-text")
         return names
     cloud_jobs: dict[str, threading.Event] = {}
     cloud_lock = threading.Lock()
@@ -424,6 +434,52 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
             Path(name).unlink(missing_ok=True)
         if not isinstance(out, dict):
             return JSONResponse({"error": "tables runner returned no object"}, status_code=500)
+        return out
+
+    @app.post("/v1/vlm")
+    async def post_vlm(request: Request):
+        """PDF body. X-Pxd-Options {pages, tables, text}.
+
+        `tables` are caller boxes in PDF points, origin top-left, used on a page
+        the layout model does not mark as a table. `text` true also reads each
+        text region with the OCR prompt. Figure boxes in the response are hints.
+        """
+        if not authed(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if "vlm-layout" not in engine_names():
+            return JSONResponse({"error": "vlm-layout is not installed"}, status_code=404)
+        length = request.headers.get("content-length")
+        if length and int(length) > MAX_BODY:
+            return JSONResponse({"error": "too large"}, status_code=413)
+        data = await request.body()
+        if len(data) > MAX_BODY:
+            return JSONResponse({"error": "too large"}, status_code=413)
+        if not data:
+            return JSONResponse({"error": "empty body"}, status_code=400)
+        raw = request.headers.get("x-pxd-options") or "{}"
+        try:
+            options = json.loads(raw)
+        except json.JSONDecodeError:
+            return JSONResponse({"error": "bad X-Pxd-Options"}, status_code=400)
+        if not isinstance(options, dict):
+            return JSONResponse({"error": "bad X-Pxd-Options"}, status_code=400)
+        fd, name = tempfile.mkstemp(suffix=".pdf", prefix="pxd-vlm-")
+        try:
+            os.write(fd, data)
+            os.close(fd)
+            fd = None
+            with table_lock:
+                out = run_vlm(name, options)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": f"vlm failed: {exc}"}, status_code=500)
+        finally:
+            if fd is not None:
+                os.close(fd)
+            Path(name).unlink(missing_ok=True)
+        if not isinstance(out, dict):
+            return JSONResponse({"error": "vlm runner returned no object"}, status_code=500)
         return out
 
     @app.get("/v1/jobs/{job_id}/events")

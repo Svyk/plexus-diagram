@@ -106,6 +106,7 @@ fn sliding_window(padded: &[u8], k: usize, dilate: bool) -> Vec<u8> {
 }
 
 fn pad_line(line: &[u8], k: usize) -> Vec<u8> {
+    // (k - 1) / 2. OpenCV's even-kernel default is k / 2, one pixel to the right.
     let ax = (k - 1) / 2;
     let right = k - 1 - ax;
     let mut padded = Vec::with_capacity(ax + line.len() + right);
@@ -430,39 +431,230 @@ fn round_dp(x: f64, dp: i32) -> f64 {
     (x * m).round() / m
 }
 
-pub fn deskew_angle(img: &GrayImage) -> f64 {
-    let gray = Gray::from_image(img);
-    let ink = ink_mask(&gray);
-    let w = ink.w;
-    let h = ink.h;
+// OpenCV `findContours(RETR_EXTERNAL, CHAIN_APPROX_SIMPLE)` neighbor order
+// (east, then clockwise with y growing downward). `fitLine` on those corners
+// matches the covariance of the same points; the filled-pixel axis does not.
+const CONTOUR_DELTAS: [(i32, i32); 8] = [
+    (1, 0),
+    (1, -1),
+    (0, -1),
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+    (0, 1),
+    (1, 1),
+];
+
+fn contour_points(mask: &Gray) -> Vec<Vec<(i32, i32)>> {
+    let w = mask.w;
+    let h = mask.h;
     if w == 0 || h == 0 {
-        return 0.0;
+        return Vec::new();
     }
-    let kernels = [(40.max(w / 30), w / 8), (15.max(w / 120), w / 20)];
-    let second = 15.max(w / 120);
-    let mut angles: Vec<(f64, f64)> = Vec::new();
-    for (kernel_w, min_w) in kernels {
-        let bars = if kernel_w == second {
-            morph_close(&ink, kernel_w, 1)
-        } else {
-            morph_open(&ink, kernel_w, 1)
-        };
-        let tall_limit = 40.max(h / 25);
-        for comp in components(&bars) {
-            let cw = comp.cw();
-            let ch = comp.ch();
-            if cw < min_w || ch > tall_limit {
-                continue;
-            }
-            let angle = comp.angle();
-            if angle.abs() <= 6.0 {
-                angles.push((angle, cw as f64));
+    let pw = w + 2;
+    let ph = h + 2;
+    let mut img = vec![0i16; pw * ph];
+    for y in 0..h {
+        for x in 0..w {
+            if mask.data[y * w + x] != 0 {
+                img[(y + 1) * pw + (x + 1)] = 1;
             }
         }
-        if angles.len() >= 3 {
+    }
+    let mut out = Vec::new();
+    let width = pw - 1;
+    let height = ph - 1;
+    let mut y = 1i32;
+    let mut lnbd = (0i32, 1i32);
+    while y < height as i32 {
+        let mut x = 1i32;
+        let mut prev: i16 = 0;
+        while x < width as i32 {
+            let p = img[y as usize * pw + x as usize];
+            if p == prev {
+                prev = p;
+                x += 1;
+                continue;
+            }
+            let mut is_hole = false;
+            if !(prev == 0 && p == 1) {
+                if p != 0 || prev < 1 {
+                    prev = p;
+                    if prev & -2 != 0 {
+                        lnbd = (x, y);
+                    }
+                    x += 1;
+                    continue;
+                }
+                is_hole = true;
+            }
+            let lnbd_v = img[lnbd.1 as usize * pw + lnbd.0 as usize];
+            if is_hole || lnbd_v > 0 {
+                prev = p;
+                if prev & -2 != 0 {
+                    lnbd = (x, y);
+                }
+                x += 1;
+                continue;
+            }
+            let pts = fetch_simple_contour(&mut img, pw, x, y);
+            out.push(pts.into_iter().map(|(px, py)| (px - 1, py - 1)).collect());
+            lnbd = (x, y);
+            x += 1;
+            prev = img[y as usize * pw + (x as usize - 1)];
+        }
+        lnbd = (0, y + 1);
+        y += 1;
+    }
+    out
+}
+
+fn fetch_simple_contour(img: &mut [i16], pw: usize, x0: i32, y0: i32) -> Vec<(i32, i32)> {
+    let pix = |img: &[i16], px: i32, py: i32| -> i16 {
+        if px < 0 || py < 0 {
+            return 0;
+        }
+        let (px, py) = (px as usize, py as usize);
+        if py * pw + px >= img.len() || px >= pw {
+            return 0;
+        }
+        img[py * pw + px]
+    };
+    let mut s_end = 4i32;
+    let mut s = s_end;
+    let i1;
+    loop {
+        s = (s - 1) & 7;
+        let (dx, dy) = CONTOUR_DELTAS[s as usize];
+        let nx = x0 + dx;
+        let ny = y0 + dy;
+        if pix(img, nx, ny) != 0 || s == s_end {
+            i1 = (nx, ny);
             break;
         }
     }
+    if s == s_end {
+        img[y0 as usize * pw + x0 as usize] = 2 | -128;
+        return vec![(x0, y0)];
+    }
+    let mut i3 = (x0, y0);
+    let mut prev_s = s ^ 4;
+    let mut pt = (x0, y0);
+    let mut points = Vec::new();
+    loop {
+        s_end = s;
+        s = s.min(15);
+        let mut i4 = i3;
+        while s < 15 {
+            s += 1;
+            let (dx, dy) = CONTOUR_DELTAS[(s & 7) as usize];
+            let nx = i3.0 + dx;
+            let ny = i3.1 + dy;
+            if pix(img, nx, ny) != 0 {
+                i4 = (nx, ny);
+                break;
+            }
+        }
+        s &= 7;
+        let idx = i3.1 as usize * pw + i3.0 as usize;
+        if ((s - 1) as u32) < (s_end as u32) {
+            img[idx] = 2 | -128;
+        } else if img[idx] == 1 {
+            img[idx] = 2;
+        }
+        if s != prev_s {
+            points.push(pt);
+            prev_s = s;
+        }
+        let (dx, dy) = CONTOUR_DELTAS[s as usize];
+        pt = (pt.0 + dx, pt.1 + dy);
+        if i4 == (x0, y0) && i3 == i1 {
+            break;
+        }
+        i3 = i4;
+        s = (s + 4) & 7;
+    }
+    points
+}
+
+fn moment_angle(pts: &[(i32, i32)]) -> f64 {
+    let n = pts.len() as f64;
+    if n < 2.0 {
+        return 0.0;
+    }
+    let mut sx = 0.0;
+    let mut sy = 0.0;
+    let mut sxx = 0.0;
+    let mut syy = 0.0;
+    let mut sxy = 0.0;
+    for &(x, y) in pts {
+        let xf = x as f64;
+        let yf = y as f64;
+        sx += xf;
+        sy += yf;
+        sxx += xf * xf;
+        syy += yf * yf;
+        sxy += xf * yf;
+    }
+    let cxx = sxx - sx * sx / n;
+    let cyy = syy - sy * sy / n;
+    let cxy = sxy - sx * sy / n;
+    let mut deg = 0.5 * (2.0 * cxy).atan2(cxx - cyy).to_degrees();
+    if deg > 90.0 {
+        deg -= 180.0;
+    }
+    if deg < -90.0 {
+        deg += 180.0;
+    }
+    deg
+}
+
+fn contour_line_angles(bars: &Gray, min_w: usize, tall_limit: usize) -> Vec<(f64, f64)> {
+    let mut angles = Vec::new();
+    for pts in contour_points(bars) {
+        if pts.is_empty() {
+            continue;
+        }
+        let mut minx = pts[0].0;
+        let mut maxx = pts[0].0;
+        let mut miny = pts[0].1;
+        let mut maxy = pts[0].1;
+        for &(x, y) in &pts {
+            minx = minx.min(x);
+            maxx = maxx.max(x);
+            miny = miny.min(y);
+            maxy = maxy.max(y);
+        }
+        let cw = (maxx - minx + 1) as usize;
+        let ch = (maxy - miny + 1) as usize;
+        if cw < min_w || ch > tall_limit {
+            continue;
+        }
+        let angle = moment_angle(&pts);
+        if angle.abs() <= 6.0 {
+            angles.push((angle, cw as f64));
+        }
+    }
+    angles
+}
+
+fn moment_line_angles(bars: &Gray, min_w: usize, tall_limit: usize) -> Vec<(f64, f64)> {
+    let mut angles = Vec::new();
+    for comp in components(bars) {
+        let cw = comp.cw();
+        let ch = comp.ch();
+        if cw < min_w || ch > tall_limit {
+            continue;
+        }
+        let angle = comp.angle();
+        if angle.abs() <= 6.0 {
+            angles.push((angle, cw as f64));
+        }
+    }
+    angles
+}
+
+fn weighted_median_angle(mut angles: Vec<(f64, f64)>) -> f64 {
     if angles.is_empty() {
         return 0.0;
     }
@@ -477,20 +669,226 @@ pub fn deskew_angle(img: &GrayImage) -> f64 {
             break;
         }
     }
-    if median.abs() < 0.05 {
-        0.0
-    } else {
-        round_dp(-median, 3)
+    if median.abs() < 0.05 { 0.0 } else { round_dp(-median, 3) }
+}
+
+fn collect_line_angles(img: &GrayImage, moments: bool) -> Vec<(f64, f64)> {
+    let gray = Gray::from_image(img);
+    let ink = ink_mask(&gray);
+    let w = ink.w;
+    let h = ink.h;
+    if w == 0 || h == 0 {
+        return Vec::new();
     }
+    let kernels = [(40.max(w / 30), w / 8), (15.max(w / 120), w / 20)];
+    let second = 15.max(w / 120);
+    let mut angles = Vec::new();
+    for (kernel_w, min_w) in kernels {
+        let bars = if kernel_w == second { morph_close(&ink, kernel_w, 1) } else { morph_open(&ink, kernel_w, 1) };
+        let tall_limit = 40.max(h / 25);
+        if moments {
+            angles.extend(moment_line_angles(&bars, min_w, tall_limit));
+        } else {
+            angles.extend(contour_line_angles(&bars, min_w, tall_limit));
+        }
+        if angles.len() >= 3 {
+            break;
+        }
+    }
+    angles
+}
+
+pub fn deskew_angle(img: &GrayImage) -> f64 {
+    // A skew of a few tenths of a degree is a table-rule problem: the filled-pixel
+    // axis (the previous helper) keeps those rules apart. A larger skew is a reading
+    // problem: the contour fit matches the Python helper's angle, which is what
+    // turns "esting" back into "resting".
+    let contour = weighted_median_angle(collect_line_angles(img, false));
+    // A contour angle of 0 means the text lines are already straight. The filled-pixel
+    // axis can still report a tenth of a degree and rotate a straight page, which is
+    // what scrambled the pitching-chart reading. Use that axis only to correct a
+    // contour angle that is real but small (the case that keeps table rules apart).
+    if contour == 0.0 || contour.abs() >= 0.2 {
+        return contour;
+    }
+    weighted_median_angle(collect_line_angles(img, true))
 }
 
 pub fn deskew(img: &GrayImage, angle: f64) -> GrayImage {
     if angle.abs() < 0.05 {
         return img.clone();
     }
-    // imageproc is clockwise-positive. OpenCV's getRotationMatrix2D is counter-clockwise,
-    // and ocr.deskew passes `-angle` to it, so the clockwise angle is `angle` itself.
+    // imageproc bicubic (Catmull-Rom) keeps a one-pixel gap in a ruling line. OpenCV's
+    // fixed-point cubic, which matches `ocr.deskew` byte for byte, closes that gap and
+    // welds table rules into page-long bars. The contour angle above is what matches
+    // the Python helper's reading; the resampler is what keeps the cells.
+    // imageproc is clockwise-positive. OpenCV's getRotationMatrix2D is counter-clockwise
+    // and ocr.deskew passes `-angle`, so the clockwise angle is `angle` itself.
     rotate_about_center(img, angle.to_radians() as f32, Interpolation::Bicubic, Luma([255]))
+}
+
+#[cfg(test)]
+fn cubic_coeffs(x: f32) -> [f32; 4] {
+    // OpenCV interpolateCubic, A = -0.75.
+    const A: f32 = -0.75;
+    let p0 = ((A * (x + 1.0) - 5.0 * A) * (x + 1.0) + 8.0 * A) * (x + 1.0) - 4.0 * A;
+    let p1 = ((A + 2.0) * x - (A + 3.0)) * x * x + 1.0;
+    let one = 1.0 - x;
+    let p2 = ((A + 2.0) * one - (A + 3.0)) * one * one + 1.0;
+    let p3 = 1.0 - p0 - p1 - p2;
+    [p0, p1, p2, p3]
+}
+
+/// OpenCV `BicubicTab_i`: INTER_TAB_SIZE=32, coefficients scaled by 2^15 and
+/// corrected so each 4×4 sums to 32768.
+#[cfg(test)]
+fn cubic_weights() -> &'static [[i16; 16]; 1024] {
+    use std::sync::OnceLock;
+    static TAB: OnceLock<[[i16; 16]; 1024]> = OnceLock::new();
+    TAB.get_or_init(|| {
+        const TABSZ: usize = 32;
+        const K: usize = 4;
+        let mut tab1 = [0f32; TABSZ * K];
+        for i in 0..TABSZ {
+            let coeffs = cubic_coeffs(i as f32 / TABSZ as f32);
+            tab1[i * K..i * K + K].copy_from_slice(&coeffs);
+        }
+        let mut out = [[0i16; 16]; 1024];
+        for i in 0..TABSZ {
+            for j in 0..TABSZ {
+                let mut itab = [0i16; 16];
+                let mut isum: i32 = 0;
+                for k1 in 0..K {
+                    let vy = tab1[i * K + k1];
+                    for k2 in 0..K {
+                        let v = vy * tab1[j * K + k2] * 32768.0;
+                        let s = v.round_ties_even() as i32;
+                        let s = s.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+                        itab[k1 * K + k2] = s;
+                        isum += s as i32;
+                    }
+                }
+                if isum != 32768 {
+                    let diff = isum - 32768;
+                    let mut mk1 = 2usize;
+                    let mut mk2 = 2usize;
+                    let mut max_k1 = 2usize;
+                    let mut max_k2 = 2usize;
+                    for k1 in 2..4 {
+                        for k2 in 2..4 {
+                            if itab[k1 * K + k2] < itab[mk1 * K + mk2] {
+                                mk1 = k1;
+                                mk2 = k2;
+                            } else if itab[k1 * K + k2] > itab[max_k1 * K + max_k2] {
+                                max_k1 = k1;
+                                max_k2 = k2;
+                            }
+                        }
+                    }
+                    if diff < 0 {
+                        let idx = max_k1 * K + max_k2;
+                        itab[idx] = (itab[idx] as i32 - diff) as i16;
+                    } else {
+                        let idx = mk1 * K + mk2;
+                        itab[idx] = (itab[idx] as i32 - diff) as i16;
+                    }
+                }
+                out[i * TABSZ + j] = itab;
+            }
+        }
+        out
+    })
+}
+
+#[cfg(test)]
+fn cv_round(v: f64) -> i32 {
+    v.round_ties_even() as i32
+}
+
+#[cfg(test)]
+fn saturate_remap(sum: i32) -> u8 {
+    // FixedPtCast<int, uchar, 15>: (sum + 2^14) >> 15.
+    ((sum + 16384) >> 15).clamp(0, 255) as u8
+}
+
+#[cfg(test)]
+fn warp_rotate_cubic(img: &GrayImage, opencv_degrees: f64) -> GrayImage {
+    let w = img.width() as i32;
+    let h = img.height() as i32;
+    let cx = w as f64 / 2.0;
+    let cy = h as f64 / 2.0;
+    let theta = opencv_degrees.to_radians();
+    let alpha = theta.cos();
+    let beta = theta.sin();
+    // Sample map equals getRotationMatrix2D(center, degrees) after warpAffine inverts
+    // getRotationMatrix2D(center, -degrees). OpenCV keeps this matrix in double and
+    // quantizes coordinates with AB_BITS=10, INTER_BITS=5.
+    let m = [
+        alpha,
+        beta,
+        (1.0 - alpha) * cx - beta * cy,
+        -beta,
+        alpha,
+        beta * cx + (1.0 - alpha) * cy,
+    ];
+    const AB_SCALE: f64 = 1024.0;
+    const SHIFT: i32 = 5;
+    const INTER_BITS: i32 = 5;
+    const ROUND_DELTA: i32 = 16;
+    let weights = cubic_weights();
+    let src = img.as_raw();
+    let wu = w as usize;
+    let mut dst = vec![255u8; wu * h as usize];
+    let mut adelta = vec![0i32; wu];
+    let mut bdelta = vec![0i32; wu];
+    for x in 0..w {
+        adelta[x as usize] = cv_round(m[0] * x as f64 * AB_SCALE);
+        bdelta[x as usize] = cv_round(m[3] * x as f64 * AB_SCALE);
+    }
+    for y in 0..h {
+        let x0 = cv_round((m[1] * y as f64 + m[2]) * AB_SCALE) + ROUND_DELTA;
+        let y0 = cv_round((m[4] * y as f64 + m[5]) * AB_SCALE) + ROUND_DELTA;
+        for x in 0..w {
+            let xf = (x0 + adelta[x as usize]) >> SHIFT;
+            let yf = (y0 + bdelta[x as usize]) >> SHIFT;
+            let sx = (xf >> INTER_BITS) - 1;
+            let sy = (yf >> INTER_BITS) - 1;
+            let wts = &weights[((yf & 31) * 32 + (xf & 31)) as usize];
+            let pix = if (0..w - 3).contains(&sx) && (0..h - 3).contains(&sy) {
+                let mut sum = 0i32;
+                for ky in 0..4 {
+                    let row = (sy as usize + ky) * wu + sx as usize;
+                    let base = ky * 4;
+                    sum += src[row] as i32 * wts[base] as i32
+                        + src[row + 1] as i32 * wts[base + 1] as i32
+                        + src[row + 2] as i32 * wts[base + 2] as i32
+                        + src[row + 3] as i32 * wts[base + 3] as i32;
+                }
+                saturate_remap(sum)
+            } else if sx >= w || sx + 4 <= 0 || sy >= h || sy + 4 <= 0 {
+                255
+            } else {
+                let mut sum = 255i32 * 32768;
+                for ky in 0..4 {
+                    let yy = sy + ky as i32;
+                    if yy < 0 || yy >= h {
+                        continue;
+                    }
+                    let row = yy as usize * wu;
+                    for kx in 0..4 {
+                        let xx = sx + kx as i32;
+                        if xx < 0 || xx >= w {
+                            continue;
+                        }
+                        sum += (src[row + xx as usize] as i32 - 255) * wts[ky * 4 + kx] as i32;
+                    }
+                }
+                saturate_remap(sum)
+            };
+            dst[y as usize * wu + x as usize] = pix;
+        }
+    }
+    GrayImage::from_raw(img.width(), img.height(), dst).expect("gray buffer")
 }
 
 pub fn rules_from_image(img: &GrayImage, scale: f64) -> Vec<Rule> {
@@ -586,6 +984,7 @@ pub fn ink_glyph(img: &GrayImage) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::Luma;
 
     fn paint() -> GrayImage {
         let mut img = GrayImage::from_pixel(600, 400, Luma([255]));
@@ -610,6 +1009,59 @@ mod tests {
             }
         }
         img
+    }
+
+    #[test]
+    fn simple_contour_matches_opencv_corners() {
+        let mut mask = Gray::filled(70, 24, 0);
+        for i in 0..50 {
+            let y = 6 + i / 18;
+            for dy in 0..3 {
+                mask.data[(y + dy) * 70 + (8 + i)] = 255;
+            }
+        }
+        let contours = contour_points(&mask);
+        assert_eq!(contours.len(), 1, "{contours:?}");
+        assert_eq!(
+            contours[0],
+            vec![
+                (8, 6),
+                (8, 8),
+                (25, 8),
+                (26, 9),
+                (43, 9),
+                (44, 10),
+                (57, 10),
+                (57, 8),
+                (44, 8),
+                (43, 7),
+                (26, 7),
+                (25, 6),
+            ]
+        );
+        let angle = moment_angle(&contours[0]);
+        assert!((angle - 2.555).abs() < 0.01, "{angle}");
+    }
+
+    #[test]
+    fn cubic_rotation_matches_opencv_warp() {
+        let mut img = GrayImage::from_pixel(24, 18, Luma([255]));
+        for y in 8..11 {
+            for x in 2..22 {
+                img.put_pixel(x, y, Luma([0]));
+            }
+        }
+        for y in 2..16 {
+            for x in 11..13 {
+                img.put_pixel(x, y, Luma([40]));
+            }
+        }
+        let out = warp_rotate_cubic(&img, -1.5);
+        let row = |y: u32| -> Vec<u8> { (0..24).map(|x| out.get_pixel(x, y).0[0]).collect() };
+        assert_eq!(row(8), vec![255, 250, 53, 58, 50, 42, 34, 27, 20, 13, 13, 41, 39, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255]);
+        assert_eq!(row(9), vec![255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255]);
+        assert_eq!(row(2), vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 222, 21, 75, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]);
+        assert_eq!(row(15), vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 65, 19, 227, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]);
     }
 
     #[test]

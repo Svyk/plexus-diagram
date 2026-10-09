@@ -8,7 +8,7 @@ import test from "node:test";
 
 import { cloudSpend, parseCloudRunArgs, runCloudBench } from "../tools/parse-bench/cloud-run.mjs";
 import { corpusIdFromCloud, hybridOutName, mergeCloudDir, parseHybridArgs } from "../tools/parse-bench/cloud-hybrid.mjs";
-import { dumpTarget } from "../tools/parse-bench/scan-corpus.mjs";
+import { dumpTarget, helperBuildStamp } from "../tools/parse-bench/scan-corpus.mjs";
 
 function jsonRes(status, body) {
   return { status, json: async () => body };
@@ -115,6 +115,16 @@ test("cloud-run calls LlamaParse on its own host and reports usage credits", asy
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("helper OCR cache stamp follows the helper build", () => {
+  const py = helperBuildStamp();
+  const rs = helperBuildStamp("tools/parse-helper-rs/target/release/plexus-parse-helper-rs");
+  const missing = helperBuildStamp("tools/parse-helper-rs/target/release/no-such-binary");
+  assert.equal(py.length, 16);
+  assert.equal(missing, "missing");
+  assert.notEqual(py, missing);
+  if (rs !== "missing") assert.notEqual(rs, py);
 });
 
 test("cloud-hybrid merges a cloud pxd with a dumped local pxd and does not refetch", async () => {

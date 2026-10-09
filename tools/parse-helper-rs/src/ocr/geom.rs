@@ -204,6 +204,33 @@ fn box_iou(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> f64 {
     if area > 0.0 { inter / area } else { 0.0 }
 }
 
+fn dense_runs(ink: &[i32], limit: f64) -> Vec<(usize, usize)> {
+    let mut runs = Vec::new();
+    let mut start = None;
+    for (i, &on) in ink.iter().enumerate() {
+        let dense = on as f64 >= limit;
+        if dense && start.is_none() {
+            start = Some(i);
+        } else if !dense && start.is_some() {
+            runs.push((start.unwrap(), i - 1));
+            start = None;
+        }
+    }
+    if let Some(start) = start {
+        runs.push((start, ink.len() - 1));
+    }
+    runs.retain(|(a, b)| b - a >= 2);
+    runs
+}
+
+fn nearest_run(runs: &[(usize, usize)], centre: f64) -> Option<(usize, usize)> {
+    runs.iter().copied().min_by(|a, b| {
+        let da = ((a.0 + a.1) as f64 / 2.0 - centre).abs();
+        let db = ((b.0 + b.1) as f64 / 2.0 - centre).abs();
+        da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+    })
+}
+
 fn refine_by_ink(cands: &mut [Cand], image: &GrayImage, scale: f64) {
     let pad = 2.0;
     let w = image.width() as f64;
@@ -229,33 +256,13 @@ fn refine_by_ink(cands: &mut [Cand], image: &GrayImage, scale: f64) {
         if peak < 2 {
             continue;
         }
-        let limit = 2.max((0.25 * peak as f64) as i32);
-        let mut runs = Vec::new();
-        let mut start = None;
-        for (i, &on) in ink.iter().enumerate() {
-            if on >= limit && start.is_none() {
-                start = Some(i);
-            } else if on < limit && start.is_some() {
-                runs.push((start.unwrap(), i - 1));
-                start = None;
-            }
-        }
-        if let Some(start) = start {
-            runs.push((start, ink.len() - 1));
-        }
-        runs.retain(|(a, b)| b - a >= 2);
-        if runs.is_empty() {
-            continue;
-        }
+        // `max(2, 0.25 * peak)` stays fractional, as in ocr.py. Truncating the quarter
+        // treats a row of 2 ink pixels as body on a short word and the baseline joins
+        // the next line.
         let centre = (y1 - y0) as f64 / 2.0;
-        let (top, bottom) = runs
-            .into_iter()
-            .min_by(|a, b| {
-                let da = ((a.0 + a.1) as f64 / 2.0 - centre).abs();
-                let db = ((b.0 + b.1) as f64 / 2.0 - centre).abs();
-                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .unwrap();
+        let Some((top, bottom)) = nearest_run(&dense_runs(&ink, (0.25 * peak as f64).max(2.0)), centre) else {
+            continue;
+        };
         c.base = (y0 + bottom + 1) as f64 / scale;
         let row0 = top.saturating_sub(2);
         let row1 = (bottom + 3).min(rows);
@@ -379,6 +386,9 @@ pub fn observations_to_items(
         plain.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let body = plain[plain.len() / 2];
         for c in &mut kept {
+            // Snap only up to 1.5× body. A wider gate (the Python helper uses 1.85× for
+            // words with no ascender) pulls table rows onto one size and the row pitch
+            // collapses. Headings and the taller line of a tight table stay distinct.
             if 0.45 * body <= c.size && c.size <= 1.5 * body {
                 c.size = body;
             }
@@ -581,6 +591,27 @@ mod tests {
     }
 
     #[test]
+    fn words_above_1_5_body_keep_their_size() {
+        fn obs(word: &str, x: f64, height: f64) -> (Tile, Vec<Observation>) {
+            (
+                (0, 0, 400, 200),
+                vec![Observation {
+                    text: word.into(),
+                    conf: 0.9,
+                    bbox: (0.0, 0.0, 0.1, 0.1),
+                    words: vec![(word.into(), (x / 400.0, 0.5, 0.05, height / 200.0))],
+                }],
+            )
+        }
+        // scale 1: "AA" height 9.5 is size 10. "is" height 12.75 is 17, past 1.5×, so it stays.
+        let items = observations_to_items(&[obs("AA", 10.0, 9.5), obs("is", 80.0, 12.75)], 1.0, (400, 200), None);
+        let aa = items.iter().find(|i| i.text == "AA").unwrap();
+        let is_ = items.iter().find(|i| i.text == "is").unwrap();
+        assert!((aa.transform[0] - 10.0).abs() < 0.05, "{aa:?}");
+        assert!(is_.transform[0] > aa.transform[0] * 1.5, "a word past 1.5× body stays large: {}", is_.transform[0]);
+    }
+
+    #[test]
     fn line_metrics_clusters_snap_and_merge() {
         let (size, base) = line_metrics("1980", 10.0, 15.0);
         assert!((size - 5.0 / 0.95).abs() < 1e-9);
@@ -635,6 +666,59 @@ mod tests {
         let last = tiles.last().unwrap();
         assert_eq!((last.2, last.3), (1000, 600));
         assert!(tiles[1].0 < tiles[0].2);
+    }
+
+    fn word_box(y0: f64, y1: f64) -> Cand {
+        Cand {
+            text: "of".into(),
+            x0: 2.0,
+            y0,
+            x1: 14.0,
+            y1,
+            size: 8.0,
+            base: 0.0,
+            conf: 1.0,
+            margin: 1.0,
+        }
+    }
+
+    #[test]
+    fn ink_baseline_ignores_a_row_below_a_quarter_of_the_peak() {
+        // Peak 10, so a quarter is 2.5. A following row of 2 pixels is not body
+        // (base stays 7). Counting it would drop the baseline onto that row (base 8).
+        let mut img = image::GrayImage::from_pixel(16, 12, image::Luma([255]));
+        for y in 4..7 {
+            for x in 2..12 {
+                img.put_pixel(x, y, image::Luma([0]));
+            }
+        }
+        img.put_pixel(2, 7, image::Luma([0]));
+        img.put_pixel(3, 7, image::Luma([0]));
+        let mut cands = vec![word_box(2.0, 10.0)];
+        refine_by_ink(&mut cands, &img, 1.0);
+        assert_eq!(cands[0].base, 7.0);
+    }
+
+    #[test]
+    fn ink_baseline_does_not_bridge_into_the_next_line() {
+        // The same 2-pixel row, with a second line whose bottom is more than 8px
+        // below, is the next line. The baseline stays on the upper line (base 9).
+        let mut img = image::GrayImage::from_pixel(16, 19, image::Luma([255]));
+        for y in 6..9 {
+            for x in 2..12 {
+                img.put_pixel(x, y, image::Luma([0]));
+            }
+        }
+        img.put_pixel(2, 9, image::Luma([0]));
+        img.put_pixel(3, 9, image::Luma([0]));
+        for y in 10..18 {
+            for x in 2..12 {
+                img.put_pixel(x, y, image::Luma([0]));
+            }
+        }
+        let mut cands = vec![word_box(2.0, 17.0)];
+        refine_by_ink(&mut cands, &img, 1.0);
+        assert_eq!(cands[0].base, 9.0);
     }
 
     #[test]

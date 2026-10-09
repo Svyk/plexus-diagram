@@ -1,0 +1,31 @@
+{
+ "id": "naca-diesel-viscosity-1929-p12",
+ "source": "naca-diesel-viscosity-1929.pdf page 12",
+ "class": [
+  "hand-drawn-figure",
+  "fold-out"
+ ],
+ "quality": [
+  "typewritten",
+  "grid-paper"
+ ],
+ "tables": [],
+ "figures": [
+  {
+   "bbox": [
+    0.06,
+    0.24,
+    0.86,
+    0.88
+   ],
+   "caption": "Fig. 2"
+  }
+ ],
+ "lines": [
+  "N.A.C.A. Diesel engine fuel oil",
+  "Plot showing the original observations",
+  "at three temperatures",
+  "Fig. 2"
+ ],
+ "textComplete": false
+}

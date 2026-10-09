@@ -3,9 +3,9 @@
 
 import { buildLines, dominantRotation, lineBox, makeLine, mul, round } from "./lines.js";
 import { extractGraphics, luminanceOf } from "./rules.js";
-import { findLatticeTables, looksLikeChart } from "./lattice.js";
+import { chartGrid, findLatticeTables, looksLikeChart } from "./lattice.js";
 import { baselineRows, detectStreamRuns, tableFromBand } from "./stream.js";
-import { demoteFalseCaptions, drawingSheetPage, findFigures, peelFigLabels, rasterScanPage, sheetRegions, splitSharedCaptions } from "./figures.js";
+import { demoteFalseCaptions, drawingSheetPage, findFigures, imageCover, peelFigLabels, rasterScanPage, sheetRegions, splitSharedCaptions } from "./figures.js";
 import { findFurniture, normalizeFurniture } from "./furniture.js";
 import { findPageTitle } from "./title.js";
 import { applyNumbering, bodySizeOf, CAPTION_RE, headingClasses, headingLevel, refineBodyHeadingLevels } from "./headings.js";
@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 9;
+export const PARSE_REV = 10;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -86,11 +86,13 @@ export function parsePageGeometry(data, n) {
   const textChars = words.reduce((n, wd) => n + (wd.text || "").length, 0);
   // Tiled scans (many images, no text, no vectors) are the same kind of page as one big image.
   const scanRaster = rasterScanPage({ images: graphics.images, shapes: graphics.shapes, words, pageW: w, pageH: h });
-  const bigImage = scanRaster || graphics.images.some((im) => imageArea(im) >= 0.5 * pageArea);
+  // A fold-out plotted as horizontal strips (each the full width, none the page) is one scan.
+  const strips = stripTiles(graphics.images, w, h, textChars);
+  const bigImage = scanRaster || strips.length > 0 || graphics.images.some((im) => imageArea(im) >= 0.5 * pageArea);
   // A page-sized image under a text layer is a scan with OCR text: the text is parsed as on
   // any page and the image is the background, not a figure. A drawing sheet keeps that image
   // as the figure (decided after tables) and still reports scanLayer so OCR routing is unchanged.
-  const scanLayer = words.length > 0 && graphics.images.some((im) => imageArea(im) >= 0.85 * pageArea);
+  const scanLayer = words.length > 0 && (strips.length > 0 || graphics.images.some((im) => imageArea(im) >= 0.85 * pageArea));
   const kind = words.length === 0 && bigImage ? "scan" : bigImage ? "mixed" : "text";
   const pageBody = bodySizeOf(lines) || 10;
   const used = new Set();
@@ -104,7 +106,7 @@ export function parsePageGeometry(data, n) {
     if (looksLikeChart(band, graphics)) continue;
     const free = words.filter((w) => !used.has(w));
     const t = tableFromBand(band, free);
-    if (!t || isTitledBox(t)) continue;
+    if (!t || isTitledBox(t) || chartGrid(t)) continue;
     t.page = n;
     for (const w of t.usedWords) used.add(w);
     delete t.usedWords;
@@ -114,7 +116,8 @@ export function parsePageGeometry(data, n) {
   const drawing = drawingSheetPage({ images: graphics.images, lines, tables, shapes: graphics.shapes, pageW: w, pageH: h, textChars });
   if (drawing) lines = peelFigLabels(lines);
   const figWords = lines.flatMap((l) => l.words);
-  const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => imageArea(im) < 0.85 * pageArea) } : graphics;
+  const stripSet = new Set(strips);
+  const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => !stripSet.has(im) && imageArea(im) < 0.85 * pageArea) } : graphics;
   const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars });
   for (const wd of figs.used) used.add(wd);
   let figures = figs.figures.map((f) => ({ ...f, page: n }));
@@ -141,6 +144,19 @@ export function parsePageGeometry(data, n) {
 
 // An OCR page record (helper /v1/ocr): precomputed `rules` segments stand in for the pdf.js
 // operator list, and the page is one background image.
+// A fold-out drawn as horizontal image strips: each one spans the page and is only a band of it.
+function stripTiles(images, pageW, pageH, textChars) {
+  // A text page painted in bands (a journal PDF) is not a fold-out. Fold-outs carry a short caption.
+  if (textChars >= 400) return [];
+  const strips = (images || []).filter((im) => {
+    const width = im.x1 - im.x0;
+    const height = im.y1 - im.y0;
+    return width >= 0.8 * pageW && height >= 8 && height <= 0.28 * pageH;
+  });
+  if (strips.length < 4 || imageCover(strips, pageW, pageH) < 0.75) return [];
+  return strips;
+}
+
 export function ocrGraphics(data, w, h) {
   const rules = [];
   const dots = [];

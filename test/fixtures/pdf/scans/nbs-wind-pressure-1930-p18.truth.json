@@ -1,0 +1,33 @@
+{
+ "id": "nbs-wind-pressure-1930-p18",
+ "source": "nbs-wind-pressure-1930.pdf page 18",
+ "class": [
+  "hand-drawn-figure",
+  "low-dpi"
+ ],
+ "quality": [
+  "typeset",
+  "hand-inked",
+  "low-dpi"
+ ],
+ "tables": [],
+ "figures": [
+  {
+   "bbox": [
+    0.16,
+    0.18,
+    0.84,
+    0.74
+   ],
+   "caption": "Figure 5.\u2014Distribution of pressure on 8-inch cylinder at sections 9, 10, 11, and 12"
+  }
+ ],
+ "lines": [
+  "3. RESULTS",
+  "The pressure distribution for the four air speeds are given in part in the polar diagrams of Figures 3 to 8, inclusive. The distributions of average force per unit projected area along the length are given in Figures 9 and 10 and the average force per unit projected area for the whole cylinder in Figure 11. The quantities plotted are absolute coefficients, the values of which do not depend on the system of units, provided a self-consistent system is used throughout.",
+  "Figure 5.\u2014Distribution of pressure on 8-inch cylinder at sections 9, 10, 11, and 12",
+  "For explanation, see Figure 3",
+  "The coefficients are defined as follows:"
+ ],
+ "textComplete": false
+}

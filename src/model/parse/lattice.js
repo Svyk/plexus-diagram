@@ -309,6 +309,8 @@ export function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW
     if (grid && grid.coverage >= 0.4 && grid.rows >= 2 && grid.cols >= 2) {
       const table = assembleTable(grid, comp, boxes, words, ysAll, usedWords);
       if (table) {
+        // Tick marks in a graph's grid are not cells. Leave the rules for the figure pass.
+        if (chartGrid(table)) continue;
         released.push(...(table.released || []));
         delete table.released;
         tables.push(table);
@@ -685,6 +687,26 @@ function tokensSplitColumns(words, xs, ys, r0, r1, c0, c1) {
     if (cols.size >= 2) split++;
   }
   return split >= Math.ceil(rows.length * 0.5);
+}
+
+// A ruled grid whose cells are tick marks (".2", "—", "10") is a graph, not a table.
+// A real table has a heading or a cell of several words.
+export function chartGrid(table) {
+  if (!table || table.rows < 8 || table.cols < 4) return false;
+  const texts = (table.cells || []).map((c) => ({ c: c.c, r: c.r, text: String(c.text || "").trim() })).filter((c) => c.text);
+  if (texts.length < 8) return false;
+  // A tick is a short token or a number. Glued ticks ("1 — —") and one crossed caption stay ticks
+  // as long as they are not a column of words.
+  const tick = (s) => s.length <= 4 || /^[-–—−.·\d\s]+$/.test(s);
+  if (texts.filter((c) => tick(c.text)).length / texts.length < 0.75) return false;
+  for (let col = 0; col < table.cols; col++) {
+    const inCol = texts.filter((k) => k.c === col);
+    const words = inCol.filter((k) => /[A-Za-z]{4,}/.test(k.text));
+    if (words.length >= 3 && words.length >= 0.4 * Math.max(1, inCol.length)) return false;
+  }
+  const header = texts.filter((k) => k.r === 0 && /[A-Za-z]{4,}/.test(k.text));
+  if (header.length >= 2) return false;
+  return true;
 }
 
 // Bars of a chart: several filled boxes inside the band that span well under its width. Row

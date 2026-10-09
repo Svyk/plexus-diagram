@@ -1,0 +1,340 @@
+{
+ "id": "naca-supercharger-1932-p15",
+ "source": "naca-supercharger-1932.pdf page 15",
+ "class": [
+  "typewritten-table"
+ ],
+ "quality": [
+  "typewritten",
+  "unruled"
+ ],
+ "tables": [
+  {
+   "caption": "TABLE II HORSEPOWER REQUIRED BY EACH SUPERCHARGER TO DELIVER ONE POUND OF AIR PER SECOND",
+   "rows": 12,
+   "cols": 4,
+   "headerRows": 0,
+   "cells": [
+    {
+     "r": 0,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 4,
+     "text": "Supercharger Speed - 1,000 r.p.m.",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Pressure difference, in. of Hg",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "15",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "N.A.C.A. Roots supercharger, hp",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.294",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "42.6",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "64.5",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Powerplus supercharger, hp",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.84",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "49.6",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "90.6",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 4,
+     "text": "Supercharger Speed - 2,000 r.p.m.",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Pressure difference, in. of Hg",
+     "header": true
+    },
+    {
+     "r": 5,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": true
+    },
+    {
+     "r": 5,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12",
+     "header": true
+    },
+    {
+     "r": 5,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "15",
+     "header": true
+    },
+    {
+     "r": 6,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "N.A.C.A. Roots supercharger, hp",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.954",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "39.7",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "57.1",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Powerplus supercharger, hp",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.57",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "39.55",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "59.8",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 4,
+     "text": "Supercharger Speed - 2,500 r.p.m.",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Pressure difference, in. of Hg",
+     "header": true
+    },
+    {
+     "r": 9,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": true
+    },
+    {
+     "r": 9,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12",
+     "header": true
+    },
+    {
+     "r": 9,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "15",
+     "header": true
+    },
+    {
+     "r": 10,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "N.A.C.A. Roots supercharger, hp",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.342",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "39.5",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "57.6",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Powerplus supercharger, hp",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9.00",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "39.3",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "56.7",
+     "header": false
+    }
+   ]
+  }
+ ],
+ "figures": [],
+ "lines": [
+  "TABLE II",
+  "HORSEPOWER REQUIRED BY EACH SUPERCHARGER TO DELIVER ONE POUND OF AIR PER SECOND",
+  "A study of Table II shows that below 12 inches of mercury pressure difference the results are more favorable"
+ ],
+ "textComplete": false
+}

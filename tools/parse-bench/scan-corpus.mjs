@@ -73,6 +73,14 @@ function ocrKey(engine) {
   return parts.join("-");
 }
 
+// The OCR cache must change when the helper binary (or the Python OCR module) changes.
+// A parse-only edit still reuses the previous read; a rebuilt helper does not.
+export function helperBuildStamp(bin) {
+  const path = bin || join(repo, "tools/parse-helper/plexus_parse_helper/ocr.py");
+  if (!existsSync(path)) return "missing";
+  return sha256File(path).slice(0, 16);
+}
+
 const RUST_BIN = join(repo, "tools/parse-helper-rs/target/release/plexus-parse-helper-rs");
 let lexiconSet = null;
 async function lexicon() {
@@ -107,7 +115,7 @@ async function helperFor(engine, pdfPath, cacheDir, helperFlag) {
     ? cliHelper({ pdfPath, bin, log })
     : (await import("./ppocr-node.mjs")).createPpocrSource({ pdfPath, dpi: 300, log });
   const stampName = bin ? "helper-rs" : engine;
-  const cached = cacheWrap(raw, cacheDir, `${stampName}:${ocrKey(stampName)}:${sha}`);
+  const cached = cacheWrap(raw, cacheDir, `${stampName}:${helperBuildStamp(bin)}:${ocrKey(stampName)}:${sha}`);
   if (!vision) return cached;
   const altRaw = (await import("./ppocr-node.mjs")).createPpocrSource({ pdfPath, dpi: 300, log });
   const alt = cacheWrap(altRaw, cacheDir, `web-ocr:${ocrKey("web-ocr")}:${sha}`);

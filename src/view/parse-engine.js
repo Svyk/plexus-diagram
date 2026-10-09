@@ -5,6 +5,7 @@ import { assembleDocument, parsePageGeometry, parsePdf } from "../model/parse/in
 import { applyCellOcr, cellsToReread } from "../model/parse/ocr-fix.js";
 import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lines.js";
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
+import { voteOcrBodies } from "../model/parse/ocr-vote.js";
 
 const GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
 
@@ -84,14 +85,29 @@ export function createEngine({ pdfjs = detectPdfjs() } = {}) {
 // reading of each table has the better numeric columns; then cells the repair could not read
 // are sent back for a 3x re-read. Doubtful text lines of in-browser OCR pages are read again
 // first (rereadLines). No graph access, no writes.
-export async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true } = {}) {
+export async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true, alt = null } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n) => !from || !to || (n >= from && n <= to));
   if (!wanted.length) return { doc: base, choices: [], rereads: [], pages: [] };
   const throwIfAborted = () => { if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" }); };
   onPhase?.({ phase: "ocr", pages: wanted });
-  const got = await helper.ocr({ bytes, sha256, pages: wanted, signal });
+  const gotRaw = await helper.ocr({ bytes, sha256, pages: wanted, signal });
   throwIfAborted();
+  let got = gotRaw;
+  if (alt && typeof alt.ocr === "function" && gotRaw?.pages) {
+    let words = null;
+    try { words = typeof lexicon === "function" ? await lexicon({ signal }) : lexicon; } catch { words = null; }
+    throwIfAborted();
+    let otherPages = [];
+    try {
+      const other = await alt.ocr({ pages: wanted, bytes, sha256, signal });
+      otherPages = other?.pages || [];
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+    }
+    throwIfAborted();
+    got = { ...gotRaw, pages: voteOcrBodies(gotRaw.pages, otherPages, words instanceof Set ? words : null) };
+  }
   const ask = (req) => helper.ocr({ bytes, sha256, cells: req, signal });
   let merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
   const lined = lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };

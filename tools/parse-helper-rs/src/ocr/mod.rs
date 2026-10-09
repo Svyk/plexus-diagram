@@ -3,6 +3,7 @@
 mod geom;
 mod imageops;
 mod run;
+mod spell;
 mod vision;
 
 pub use run::{ocr_cells, ocr_pdf};

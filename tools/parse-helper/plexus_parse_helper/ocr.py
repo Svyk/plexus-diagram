@@ -19,6 +19,7 @@ import io
 import math
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 DPI = 300
 TILE_COLS = 3
@@ -606,6 +607,134 @@ def page_record(n: int, items: list[dict], rules: list[dict], w: float, h: float
 # ---------------------------------------------------------------- page and cell OCR
 
 
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]*")
+_LEXICON = None
+
+
+def lexicon() -> set[str]:
+    """SCOWL list used by prefer_spellings. Empty when the asset is not beside the repo."""
+    global _LEXICON
+    if _LEXICON is not None:
+        return _LEXICON
+    path = Path(__file__).resolve().parents[3] / "assets" / "ocr" / "en-words.txt.gz"
+    words: set[str] = set()
+    if path.is_file():
+        import gzip
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
+            for line in fh:
+                word = line.strip().lower()
+                if word:
+                    words.add(word)
+    _LEXICON = words
+    return _LEXICON
+
+
+def _core(text: str) -> str:
+    parts = _WORD_RE.findall(text or "")
+    return max(parts, key=len) if parts else ""
+
+
+def _edit_distance(a: str, b: str) -> int:
+    if abs(len(a) - len(b)) > 4:
+        return abs(len(a) - len(b))
+    prev = list(range(len(a) + 1))
+    for j, cb in enumerate(b, 1):
+        cur = [j]
+        for i, ca in enumerate(a, 1):
+            cur.append(prev[i - 1] if ca == cb else 1 + min(prev[i - 1], prev[i], cur[-1]))
+        prev = cur
+    return prev[-1]
+
+
+def _apply_case(sample: str, word: str) -> str:
+    letters = re.sub(r"[^A-Za-z]", "", sample or "")
+    if len(letters) > 1 and letters == letters.upper():
+        return word.upper()
+    if sample and sample[0].isupper():
+        return word[0].upper() + word[1:]
+    return word
+
+
+def _ruled_regions(rules: list[dict], page_w: float, page_h: float) -> list[tuple]:
+    horiz, vert = [], []
+    for rule in rules or []:
+        x0, x1 = sorted((rule["x0"], rule["x1"]))
+        y0, y1 = sorted((rule["y0"], rule["y1"]))
+        if y1 - y0 <= 1.5 and x1 - x0 >= 36:
+            horiz.append((x0, x1, (y0 + y1) / 2))
+        elif x1 - x0 <= 1.5 and y1 - y0 >= 36:
+            vert.append((y0, y1, (x0 + x1) / 2))
+    regions = []
+    page_area = max(1.0, page_w * page_h)
+    for i, a in enumerate(horiz):
+        for b in horiz[i + 1:]:
+            top, bot = sorted((a[2], b[2]))
+            if bot - top < 20:
+                continue
+            x0, x1 = max(a[0], b[0]), min(a[1], b[1])
+            if x1 - x0 < 40 or (x1 - x0) * (bot - top) > 0.65 * page_area:
+                continue
+            verts = 0
+            for y0, y1, x in vert:
+                if x < x0 - 4 or x > x1 + 4:
+                    continue
+                if min(y1, bot) - max(y0, top) >= 0.6 * (bot - top):
+                    verts += 1
+            if verts >= 2:
+                regions.append((x0, top, x1, bot))
+    return regions
+
+
+def _in_region(item: dict, regions: list[tuple]) -> bool:
+    if not regions:
+        return False
+    box = _item_box(item)
+    cx = (box["x0"] + box["x1"]) / 2
+    cy = (box["y0"] + box["y1"]) / 2
+    return any(x0 <= cx <= x1 and y0 <= cy <= y1 for x0, y0, x1, y1 in regions)
+
+
+def prefer_spellings(items: list[dict], words: set[str], rules: list[dict] | None = None, page_w: float = 612, page_h: float = 792) -> list[dict]:
+    """Same page-consensus rule as src/model/parse/ocr-vote.js preferSpellings.
+
+    A one-edit neighbour replaces a non-lexicon core when the neighbour is a lexicon
+    word seen at least twice (and at least twice as often), or an unknown word seen
+    at least three times. Words inside a ruled table are left as Vision read them.
+    """
+    if not words or not items:
+        return items
+    regions = _ruled_regions(rules or [], page_w, page_h)
+    cores = [_core(it.get("str", "")).lower() for it in items]
+    counts: dict[str, int] = {}
+    for item, core in zip(items, cores):
+        if len(core) >= 4 and not _in_region(item, regions):
+            counts[core] = counts.get(core, 0) + 1
+    out = []
+    for item, core in zip(items, cores):
+        if len(core) < 4 or core in words or _in_region(item, regions):
+            out.append(item)
+            continue
+        mine = counts.get(core, 0)
+        best = None
+        best_n = 0
+        for word, n in counts.items():
+            if word == core or abs(len(word) - len(core)) > 1 or _edit_distance(core, word) != 1:
+                continue
+            known = word in words
+            if not ((known and n >= 2 and n >= mine * 2) or (not known and n >= 3 and n >= mine * 3)):
+                continue
+            if best is None or n > best_n or (n == best_n and known != best[1] and known) or (n == best_n and known == best[1] and word < best[0]):
+                best = (word, known)
+                best_n = n
+        if best is None:
+            out.append(item)
+            continue
+        nxt = dict(item)
+        nxt["str"] = re.sub(re.escape(core), lambda m, w=best[0]: _apply_case(m.group(0), w), item["str"], count=1, flags=re.I)
+        out.append(nxt if nxt["str"] != item["str"] else item)
+    return out
+
+
 def ocr_page(pdf_path: str, n: int, *, dpi: int = DPI, recognize=vision_observations, correct_text: bool = True) -> dict:
     import numpy as np
 
@@ -619,6 +748,7 @@ def ocr_page(pdf_path: str, n: int, *, dpi: int = DPI, recognize=vision_observat
     if correct_text and recognize is vision_observations:
         corrected = ocr_tiles(img, lambda im: vision_observations(im, language_correction=True))
         items = merge_corrected(items, observations_to_items(corrected, scale, (img.width, img.height), image=img))
+    items = prefer_spellings(items, lexicon(), rules, w_pt, h_pt)
     gray = np.asarray(img.convert("L") if getattr(img, "mode", "L") != "L" else img)
     return page_record(n, items, rules, w_pt, h_pt, dpi=dpi, deskew_deg=angle, ink=ink_boxes(gray, scale, items))
 

@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 14;
+export const PARSE_REV = 15;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -916,8 +916,11 @@ export function mergeContinuations(order, blocks) {
     if (!a || !b || a.type !== "para" || b.type !== "para") continue;
     if (/[.?!:"”)\]]$/.test(a.text) || !/^[a-z]/.test(b.text)) continue;
     // The next column starts to the right and above the end of this one. That is not a continuation.
+    // A same-page gap of more than a line (a running header above the body) is not one either.
     const ab = a.bbox;
     const bb = b.bbox;
+    const size = a.spans?.[0]?.size || b.spans?.[0]?.size || 10;
+    if (a.page === b.page && ab && bb && bb[1] - ab[3] > 1.4 * size) continue;
     if (ab && bb && bb[0] > ab[2] - 8 && bb[1] + 8 < ab[3]) continue;
     if (Math.abs(a.spans?.[0]?.size - b.spans?.[0]?.size) > 0.6) continue;
     const hyphen = a.text.endsWith("-");

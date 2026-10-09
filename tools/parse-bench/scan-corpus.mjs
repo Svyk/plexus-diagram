@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // Scanned technical PDFs, 1900–1950. One command, one scoreboard.
-//   node tools/parse-bench/scan-corpus.mjs [--engines builtin,web-ocr,helper] [--only name] [--json out.json] [--dump dir]
+//   node tools/parse-bench/scan-corpus.mjs [--engines builtin,web-ocr,helper,helper-rs] [--helper python|rust] [--only name] [--json out.json] [--dump dir]
 // --dump writes <dir>/<engine>/<page id>.pxd.json when that file is not already there.
 //
-// builtin  — parseFile/assemble on the PDF as shipped (embedded text layer, or a scan block).
-// web-ocr  — that parse plus readScan --source ppocr-web (what a user without the helper gets).
-// helper   — that parse plus readScan through the local Vision helper CLI.
+// builtin   — parseFile/assemble on the PDF as shipped (embedded text layer, or a scan block).
+// web-ocr   — that parse plus readScan --source ppocr-web (what a user without the helper gets).
+// helper    — that parse plus readScan through the Vision CLI (Python, or Rust with --helper rust).
+// helper-rs — the same vote, with the Rust Vision CLI as the box source.
 //
 // PDFs and the full truth set live outside the repo (see docs/parse-bench.md). Default root
 // is /tmp/wo/pxd14/scans, override with PXD_SCAN_DIR. OCR responses are cached under
@@ -21,6 +22,7 @@ import { assembleDocument } from "../../src/model/parse/index.js";
 import { scanPagesOf } from "../../src/model/parse/ocr-merge.js";
 import { readScan } from "../../src/view/parse-engine.js";
 import { builtinRecords, cliHelper } from "./scan.mjs";
+import { votingHelper } from "../../src/model/parse/ocr-vote.js";
 import { fmt, micro, scorePage } from "./scan-score.mjs";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -37,6 +39,7 @@ function takeArgs(argv) {
   };
   return {
     engines: (flag("--engines") || "builtin,web-ocr,helper").split(",").map((s) => s.trim()).filter(Boolean),
+    helper: flag("--helper") || "python",
     only: flag("--only"),
     json: flag("--json"),
     dump: flag("--dump"),
@@ -66,8 +69,15 @@ function ocrKey(engine) {
     sha256File(join(repo, "src/host/ocr-web.js")).slice(0, 16),
     sha256File(join(repo, "tools/parse-bench/ppocr-node.mjs")).slice(0, 16),
   ];
-  if (engine === "helper") parts.push("vision-cli");
+  if (engine === "helper" || engine === "helper-rs") parts.push("vision-cli");
   return parts.join("-");
+}
+
+const RUST_BIN = join(repo, "tools/parse-helper-rs/target/release/plexus-parse-helper-rs");
+let lexiconSet = null;
+async function lexicon() {
+  if (!lexiconSet) lexiconSet = (await import("./ppocr-node.mjs")).loadLexicon();
+  return lexiconSet;
 }
 
 function cacheWrap(helper, cacheDir, stamp) {
@@ -87,26 +97,35 @@ function cacheWrap(helper, cacheDir, stamp) {
   };
 }
 
-async function helperFor(engine, pdfPath, cacheDir) {
+async function helperFor(engine, pdfPath, cacheDir, helperFlag) {
   if (engine === "builtin") return null;
-  const raw = engine === "helper"
-    ? cliHelper({ pdfPath, log: (m) => process.stderr.write(`${m}\n`) })
-    : (await import("./ppocr-node.mjs")).createPpocrSource({ pdfPath, dpi: 300, log: (m) => process.stderr.write(`${m}\n`) });
-  return cacheWrap(raw, cacheDir, `${engine}:${ocrKey(engine)}:${sha256File(pdfPath)}`);
+  const sha = sha256File(pdfPath);
+  const log = (m) => process.stderr.write(`${m}\n`);
+  const vision = engine === "helper" || engine === "helper-rs";
+  const bin = engine === "helper-rs" || (engine === "helper" && helperFlag === "rust") ? RUST_BIN : undefined;
+  const raw = vision
+    ? cliHelper({ pdfPath, bin, log })
+    : (await import("./ppocr-node.mjs")).createPpocrSource({ pdfPath, dpi: 300, log });
+  const stampName = bin ? "helper-rs" : engine;
+  const cached = cacheWrap(raw, cacheDir, `${stampName}:${ocrKey(stampName)}:${sha}`);
+  if (!vision) return cached;
+  const altRaw = (await import("./ppocr-node.mjs")).createPpocrSource({ pdfPath, dpi: 300, log });
+  const alt = cacheWrap(altRaw, cacheDir, `web-ocr:${ocrKey("web-ocr")}:${sha}`);
+  return votingHelper({ vision: cached, alt, lexicon: await lexicon() });
 }
 
-async function runEngine(pdfPath, page, engine, cacheDir) {
+async function runEngine(pdfPath, page, engine, cacheDir, helperFlag) {
   const t0 = performance.now();
   const { records, info, numPages, from, to, bytes } = await builtinRecords(pdfPath, { pages: [page, page] });
   const base = assembleDocument(records, { numPages, info, from, to });
   const builtinMs = performance.now() - t0;
   if (engine === "builtin") return { doc: base, ms: builtinMs, builtinMs };
-  const helper = await helperFor(engine, pdfPath, cacheDir);
+  const helper = await helperFor(engine, pdfPath, cacheDir, helperFlag);
   const wanted = scanPagesOf(base);
-  const lexicon = engine === "web-ocr" ? (await import("./ppocr-node.mjs")).loadLexicon() : null;
+  const lineLexicon = engine === "web-ocr" ? await lexicon() : null;
   const lines = process.env.PXD_OCR_LINES !== "0";
   const result = await readScan({
-    helper, bytes, base, records, pages: wanted, numPages, info, from, to, lexicon, lines,
+    helper, bytes, base, records, pages: wanted, numPages, info, from, to, lexicon: lineLexicon, lines,
     onPhase: (p) => process.stderr.write(`phase ${JSON.stringify(p)}\n`),
   });
   return { ...result, ms: performance.now() - t0, builtinMs };
@@ -199,7 +218,7 @@ async function main(argv) {
     const truth = JSON.parse(readFileSync(truthPath, "utf8"));
     for (const engine of args.engines) {
       process.stderr.write(`\n== ${page.id} ${engine}\n`);
-      const result = await runEngine(pdf, page.page, engine, cacheDir);
+      const result = await runEngine(pdf, page.page, engine, cacheDir, args.helper);
       const scored = scorePage(result.doc, truth);
       scored.id = page.id;
       scored.engine = engine;

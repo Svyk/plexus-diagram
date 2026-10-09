@@ -5,7 +5,7 @@ mod imageops;
 mod run;
 mod vision;
 
-pub use run::{ocr_cells, ocr_pdf};
+pub use run::{ocr_cells, ocr_pdf, page_gray};
 
 use std::path::Path;
 

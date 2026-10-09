@@ -344,6 +344,8 @@ test("helper client ocr(): one POST /v1/ocr with the PDF bytes and X-Pxd-Options
   assert.equal(got.sha256, "abc");
   const cells = await client.ocr({ bytes, sha256: "abc", cells: [{ page: 1, bbox: [1, 2, 3, 4], id: "t1", r: 2, c: 3 }] });
   assert.deepEqual(JSON.parse(calls[1].init.headers["X-Pxd-Options"]), { cells: [{ page: 1, bbox: [1, 2, 3, 4] }] });
+  await client.ocr({ bytes, sha256: "abc", pages: [1], tables: [{ page: 1, bbox: [10, 20, 30, 40] }] });
+  assert.deepEqual(JSON.parse(calls[2].init.headers["X-Pxd-Options"]), { pages: [1], tables: [{ page: 1, bbox: [10, 20, 30, 40] }] });
   assert.equal(cells.cells[0].r, 2, "caller ids ride back beside the answer");
   assert.equal(cells.cells[0].text, "0.01");
   const failing = createHelperClient({ fetch: async () => ({ status: 500, async json() { return { error: "ocr failed: boom" }; } }), settings: { "parse-helper-token": "tok" } });
@@ -383,6 +385,49 @@ test("readScan: OCR the scan pages, re-assemble, re-read cells, keep other pages
   assert.equal(out.doc.ocr.rereads, 1);
   assert.equal(out.doc.options.ocr, "vision");
   assert.equal(out.doc.schema, "pxd-parse/1");
+});
+
+test("readScan requests structure for the assembled table when the helper names a model", async () => {
+  const textRec = parsePageGeometry({ items: [{ str: "Plain page", transform: [10, 0, 0, 10, 20, 700], width: 50, height: 10, fontName: "f1" }], ops: { fnArray: [], argsArray: [] }, w: 612, h: 792, rotation: 0, fonts: {} }, 1);
+  const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 300, h: 120, rotation: 0, fonts: {} }, 2);
+  scanRec.kind = "scan";
+  const base = assembleDocument([textRec, scanRec], { numPages: 2, from: 1, to: 2 });
+  const calls = [];
+  const page = ocrPage({ n: 2 });
+  const helper = {
+    async ocr({ pages, cells, tables }) {
+      calls.push({ pages: pages || null, cells: cells ? cells.length : 0, tables: tables || null });
+      if (tables) {
+        return {
+          schema: "pxd-ocr/1",
+          structureModel: "slanet-plus",
+          pages: [page],
+          tables: [{
+            page: 2,
+            bbox: tables[0].bbox,
+            rows: 1,
+            cols: 2,
+            headerRows: 0,
+            cells: [
+              { r: 0, c: 0, rowSpan: 1, colSpan: 1, bbox: [18, 24, 70, 36], header: false },
+              { r: 0, c: 1, rowSpan: 1, colSpan: 1, bbox: [110, 24, 150, 36], header: false },
+            ],
+          }],
+        };
+      }
+      if (pages) return { schema: "pxd-ocr/1", structureModel: "slanet-plus", pageCount: 2, pages: [page], elapsedMs: 7 };
+      return { cells: [] };
+    },
+  };
+  const phases = [];
+  const out = await readScan({ helper, bytes: new Uint8Array(4), sha256: "s", base, records: [textRec, scanRec], numPages: 2, from: 1, to: 2, onPhase: (p) => phases.push(p.phase) });
+  assert.ok(phases.includes("structure"));
+  const structureCall = calls.find((c) => c.tables);
+  assert.ok(structureCall.tables.length >= 1);
+  assert.equal(structureCall.tables[0].page, 2);
+  assert.equal(out.doc.ocr.structureModel, "slanet-plus");
+  const table = tableOf(out.doc);
+  assert.equal(table.page, 2);
 });
 
 test("readScan with nothing to read returns the base untouched", async () => {

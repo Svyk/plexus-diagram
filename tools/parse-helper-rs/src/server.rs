@@ -185,7 +185,7 @@ async fn health(State(state): State<Arc<App>>, headers: HeaderMap) -> Response {
         "version": HELPER_VERSION,
         "schema": SCHEMA_ID,
         "engines": ["ocr", "cloud"],
-        "models": {"layout": "missing", "tableformer": "missing", "ocr": "ready"},
+        "models": {"layout": "missing", "tableformer": "missing", "ocr": "ready", "structure": "slanet-plus"},
         "busy": state.busy.load(Ordering::Relaxed),
         "warm": false,
     }))
@@ -399,6 +399,10 @@ async fn post_ocr(State(state): State<Arc<App>>, headers: HeaderMap, body: Bytes
     };
     let pages = options.get("pages").filter(|v| !v.is_null()).cloned();
     let cells = options.get("cells").cloned();
+    let table_regions = match options.get("tables") {
+        Some(Value::Array(items)) if !items.is_empty() => Some(items.clone()),
+        _ => None,
+    };
     let sha = sha256_hex(&body);
     let ohash = ocr_options_hash(pages.as_ref());
     let cell_list = match &cells {
@@ -406,28 +410,43 @@ async fn post_ocr(State(state): State<Arc<App>>, headers: HeaderMap, body: Bytes
         _ => None,
     };
     let cells_request = cell_list.is_some();
-    if !cells_request {
-        if let Some(mut hit) = state.cache.get(&sha, &ohash) {
-            if let Some(obj) = hit.as_object_mut() {
-                obj.insert("cached".into(), Value::Bool(true));
-            }
-            return Json(hit).into_response();
+    // Page-only requests keep the Python hash. Structure regions are applied after
+    // the cache hit so a second call does not run Vision again.
+    let cached = if cells_request { None } else { state.cache.get(&sha, &ohash) };
+    let was_cached = cached.is_some();
+    if let Some(regions) = &table_regions {
+        if regions.len() > 48 {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "tables cap is 48"})),
+            )
+                .into_response();
         }
     }
+    let structure_download = if table_regions.is_some() && !cells_request {
+        crate::structure::ensure_model().await.err()
+    } else {
+        None
+    };
     let pdfium_path = state.pdfium_path.clone();
     let state_bg = state.clone();
     let started = std::time::Instant::now();
-    let joined = tokio::task::spawn_blocking(move || {
-        let _guard = state_bg
-            .ocr_lock
-            .lock()
-            .unwrap_or_else(|err| err.into_inner());
-        state_bg.busy.fetch_add(1, Ordering::Relaxed);
-        let result = run_ocr_blocking(&pdfium_path, &body, pages.as_ref(), cell_list.as_deref());
-        state_bg.busy.fetch_sub(1, Ordering::Relaxed);
-        result
-    })
-    .await;
+    let ocr_bytes = body.clone();
+    let joined = if cached.is_some() {
+        Ok(Ok(cached.clone().unwrap()))
+    } else {
+        tokio::task::spawn_blocking(move || {
+            let _guard = state_bg
+                .ocr_lock
+                .lock()
+                .unwrap_or_else(|err| err.into_inner());
+            state_bg.busy.fetch_add(1, Ordering::Relaxed);
+            let result = run_ocr_blocking(&pdfium_path, &ocr_bytes, pages.as_ref(), cell_list.as_deref());
+            state_bg.busy.fetch_sub(1, Ordering::Relaxed);
+            result
+        })
+        .await
+    };
     let result = match joined {
         Ok(result) => result,
         Err(err) => {
@@ -467,12 +486,100 @@ async fn post_ocr(State(state): State<Arc<App>>, headers: HeaderMap, body: Bytes
             "elapsedMs".into(),
             json!(started.elapsed().as_millis() as u64),
         );
-        obj.insert("cached".into(), Value::Bool(false));
+        obj.insert("cached".into(), Value::Bool(was_cached));
+        obj.remove("tables");
+        obj.remove("structureModel");
+        obj.remove("structureError");
     }
-    if !cells_request {
+    if !cells_request && !was_cached {
         let _ = state.cache.put(&sha, &ohash, &doc);
     }
+    if !cells_request {
+        if let Some(obj) = doc.as_object_mut() {
+            obj.insert("structureModel".into(), json!(crate::structure::MODEL_NAME));
+        }
+    }
+    if let Some(regions) = table_regions {
+        if !cells_request {
+            if let Some(err) = structure_download {
+                if let Some(obj) = doc.as_object_mut() {
+                    obj.insert("structureError".into(), json!(err));
+                }
+            } else {
+                let pdfium_path = state.pdfium_path.clone();
+                let bytes = body.clone();
+                let angles = doc.clone();
+                let joined = tokio::task::spawn_blocking(move || {
+                    run_structure_blocking(&pdfium_path, &bytes, &angles, &regions)
+                })
+                .await;
+                match joined {
+                    Ok(Ok(tables)) => {
+                        if let Some(obj) = doc.as_object_mut() {
+                            obj.insert("tables".into(), Value::Array(tables));
+                        }
+                    }
+                    Ok(Err(err)) => {
+                        if let Some(obj) = doc.as_object_mut() {
+                            obj.insert("structureError".into(), json!(err));
+                        }
+                    }
+                    Err(err) => {
+                        if let Some(obj) = doc.as_object_mut() {
+                            obj.insert("structureError".into(), json!(format!("structure failed: {err}")));
+                        }
+                    }
+                }
+            }
+        }
+    }
     Json(doc).into_response()
+}
+
+fn run_structure_blocking(
+    pdfium_path: &std::path::Path,
+    bytes: &[u8],
+    doc: &Value,
+    regions: &[Value],
+) -> Result<Vec<Value>, String> {
+    let mut tmp = std::env::temp_dir();
+    tmp.push(format!(
+        "pxd-structure-{}-{}.pdf",
+        std::process::id(),
+        sha256_hex(bytes).split_at(8).0
+    ));
+    std::fs::write(&tmp, bytes).map_err(|err| err.to_string())?;
+    let _remove = TmpFile(tmp.clone());
+    let pdfium = pdf::bind(pdfium_path)?;
+    let mut by_page: std::collections::BTreeMap<i64, Vec<Value>> = std::collections::BTreeMap::new();
+    for region in regions {
+        let page = region.get("page").and_then(Value::as_i64).unwrap_or(0);
+        if page < 1 {
+            continue;
+        }
+        by_page.entry(page).or_default().push(region.clone());
+    }
+    let mut tables = Vec::new();
+    for (page, page_regions) in by_page {
+        let angle = doc
+            .get("pages")
+            .and_then(Value::as_array)
+            .and_then(|pages| {
+                pages.iter().find(|p| p.get("n").and_then(Value::as_i64) == Some(page))
+            })
+            .and_then(|p| p.get("deskew"))
+            .and_then(Value::as_f64);
+        let image = crate::ocr::page_gray(&pdfium, &tmp, page as i32, angle)?;
+        tables.extend(crate::structure::tables_on_page(&image, page, &page_regions)?);
+    }
+    Ok(tables)
+}
+
+struct TmpFile(std::path::PathBuf);
+impl Drop for TmpFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 fn run_ocr_blocking(

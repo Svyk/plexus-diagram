@@ -2044,13 +2044,13 @@ function highlightModel(input) {
   if (!record) return null;
   const block = typeof src.string === "string" ? src.string : "";
   const rawType = typeof record.type === "string" ? record.type : "";
-  const area = rawType === "area" || block.includes("![");
+  const area2 = rawType === "area" || block.includes("![");
   const stored = contentTextOf(record);
   const page = pageNumberOf(record);
   return {
-    type: area ? "area" : rawType || "text",
-    text: area || stored === "" ? stripHighlightTokens(block) : stored,
-    image: area,
+    type: area2 ? "area" : rawType || "text",
+    text: area2 || stored === "" ? stripHighlightTokens(block) : stored,
+    image: area2,
     natural: naturalSize(src.props),
     page,
     color: highlightColor(block),
@@ -2553,8 +2553,8 @@ function pickSmallestRegion(marks) {
   for (const mark of marks || []) {
     const uid = mark?.uid;
     if (!uid) continue;
-    const area = Number(mark.area);
-    const size = Number.isFinite(area) && area > 0 ? area : Number.POSITIVE_INFINITY;
+    const area2 = Number(mark.area);
+    const size = Number.isFinite(area2) && area2 > 0 ? area2 : Number.POSITIVE_INFINITY;
     if (!best || size < best.area) best = { uid, area: size };
   }
   return best?.uid || null;
@@ -4582,14 +4582,14 @@ function withoutEchoDigits(words) {
     if (w.conf == null || w.conf > 0.3 || !/^\d$/.test(w.text)) return true;
     const a = wordBox(w);
     if (!a) return true;
-    const area = Math.max(0.01, (a[2] - a[0]) * (a[3] - a[1]));
+    const area2 = Math.max(0.01, (a[2] - a[0]) * (a[3] - a[1]));
     return !words.some((o) => {
       if (o === w || o.conf != null && o.conf <= w.conf) return false;
       const b = wordBox(o);
       if (!b) return false;
       const ox = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
       const oy = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
-      return ox > 0 && oy > 0 && ox * oy >= 0.25 * area;
+      return ox > 0 && oy > 0 && ox * oy >= 0.25 * area2;
     });
   });
 }
@@ -4699,8 +4699,8 @@ function tabularBetween(words, box2) {
 }
 function boxGridRules(boxes) {
   const big = (boxes || []).filter((b) => b.x1 - b.x0 >= 8 && b.y1 - b.y0 >= 4 && !((luminanceOf(b.fill) ?? 0) >= 0.97));
-  const area = (b) => (b.x1 - b.x0) * (b.y1 - b.y0);
-  const outer = big.filter((b) => !big.some((o) => o !== b && o.x0 <= b.x0 + 0.5 && o.x1 >= b.x1 - 0.5 && o.y0 <= b.y0 + 0.5 && o.y1 >= b.y1 - 0.5 && area(o) > area(b) + 1));
+  const area2 = (b) => (b.x1 - b.x0) * (b.y1 - b.y0);
+  const outer = big.filter((b) => !big.some((o) => o !== b && o.x0 <= b.x0 + 0.5 && o.x1 >= b.x1 - 0.5 && o.y0 <= b.y0 + 0.5 && o.y1 >= b.y1 - 0.5 && area2(o) > area2(b) + 1));
   const clusters = outer.map((b) => ({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, items: [b] }));
   const heights = outer.map((b) => b.y1 - b.y0).sort((a, b) => a - b);
   const rowH = heights.length ? heights[heights.length >> 1] : 0;
@@ -4734,8 +4734,8 @@ function boxGridRules(boxes) {
     const xs2 = uniqPositions(cl.items.flatMap((b) => [b.x0, b.x1]), 3);
     const ys2 = uniqPositions(cl.items.flatMap((b) => [b.y0, b.y1]), 3);
     if (xs2.length < 3 || ys2.length < 3) continue;
-    const covered = cl.items.reduce((n2, b) => n2 + area(b), 0);
-    if (covered < 0.45 * area(cl)) continue;
+    const covered = cl.items.reduce((n2, b) => n2 + area2(b), 0);
+    if (covered < 0.45 * area2(cl)) continue;
     let overlap = 0;
     for (let i = 0; i < cl.items.length; i++) for (let j = i + 1; j < cl.items.length; j++) {
       const a = cl.items[i];
@@ -5761,12 +5761,12 @@ function assignToken(t, cols) {
     const mid = (t.x0 + t.x1) / 2;
     let first = strong[0].i;
     let last = strong[strong.length - 1].i;
-    const centre = (a, b) => (cols[a].x0 + cols[b].x1) / 2;
-    let best2 = Math.abs(centre(first, last) - mid);
+    const centre2 = (a, b) => (cols[a].x0 + cols[b].x1) / 2;
+    let best2 = Math.abs(centre2(first, last) - mid);
     const lo = hits[0].i;
     const hi = hits[hits.length - 1].i;
     for (const [a, b] of [[lo, last], [first, hi], [lo, hi]]) {
-      const d = Math.abs(centre(a, b) - mid);
+      const d = Math.abs(centre2(a, b) - mid);
       if (d + 0.5 < best2) {
         best2 = d;
         first = a;
@@ -7012,8 +7012,8 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
     fig.y0 = box2.y0;
     fig.x1 = box2.x1;
     fig.y1 = box2.y1;
-    const area = (fig.x1 - fig.x0) * (fig.y1 - fig.y0);
-    if (!fig.pageImage && !fig.fromPlate && area >= 0.7 * pageW * pageH && textChars >= 180) continue;
+    const area2 = (fig.x1 - fig.x0) * (fig.y1 - fig.y0);
+    if (!fig.pageImage && !fig.fromPlate && area2 >= 0.7 * pageW * pageH && textChars >= 180) continue;
     fig.bbox = [round(fig.x0), round(fig.y0), round(fig.x1), round(fig.y1)];
     delete fig.pageImage;
     kept.push(fig);
@@ -7458,8 +7458,8 @@ function canUnion(a, b, lines, bodySize, pageW, pageH) {
   const differentNums = na.size && nb.size && !(na.size === nb.size && [...na].every((n2) => nb.has(n2)));
   if (differentNums && !(sameRow && sharedCaptionBelow(a, b, lines))) return false;
   if (bodyInGap(a, b, lines, bodySize)) return false;
-  const area = (Math.max(a.x1, b.x1) - Math.min(a.x0, b.x0)) * (Math.max(a.y1, b.y1) - Math.min(a.y0, b.y0));
-  if (!a.pageImage && !b.pageImage && area >= 0.68 * pageW * pageH) return false;
+  const area2 = (Math.max(a.x1, b.x1) - Math.min(a.x0, b.x0)) * (Math.max(a.y1, b.y1) - Math.min(a.y0, b.y0));
+  if (!a.pageImage && !b.pageImage && area2 >= 0.68 * pageW * pageH) return false;
   return true;
 }
 function figLabelCount(lines) {
@@ -7693,12 +7693,12 @@ function hullOf(items) {
   };
 }
 function insideFrac(inner, outer) {
-  const area = boxArea(inner);
-  if (area <= 0) return 0;
+  const area2 = boxArea(inner);
+  if (area2 <= 0) return 0;
   const ox = Math.min(inner.x1, outer.x1) - Math.max(inner.x0, outer.x0);
   const oy = Math.min(inner.y1, outer.y1) - Math.max(inner.y0, outer.y0);
   if (ox <= 0 || oy <= 0) return 0;
-  return ox * oy / area;
+  return ox * oy / area2;
 }
 function proseLine(line) {
   const words = String(line.text || "").trim().split(/\s+/).filter(Boolean);
@@ -7807,14 +7807,14 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
     if (!hull) continue;
     const w = hull.x1 - hull.x0;
     const h = hull.y1 - hull.y0;
-    const area = w * h;
-    if (w < 48 || h < 32 || area < 0.025 * pageArea || area > 0.92 * pageArea) continue;
+    const area2 = w * h;
+    if (w < 48 || h < 32 || area2 < 0.025 * pageArea || area2 > 0.92 * pageArea) continue;
     const drawings = figures.filter((f) => f.kind !== "image");
     const inside7 = drawings.filter((f) => insideFrac(f, hull) >= 0.5);
     const insideArea = inside7.reduce((n2, f) => n2 + boxArea(f), 0);
     const mine = caps.filter((c) => c.key === key);
     const cap4 = mine.filter((c) => c.y0 >= hull.y1 - 8).sort((a, b) => a.y0 - b.y0)[0] || mine.filter((c) => c.y1 <= hull.y0 + 8).sort((a, b) => b.y1 - a.y1)[0] || mine[0] || null;
-    if (inside7.length && insideArea >= 0.55 * area) {
+    if (inside7.length && insideArea >= 0.55 * area2) {
       for (const f of inside7) {
         f.x0 = Math.min(f.x0, hull.x0);
         f.y0 = Math.min(f.y0, hull.y0);
@@ -9129,12 +9129,12 @@ function absorbFigureTables(tables, figures) {
   }
 }
 function insideFrac2(inner, outer) {
-  const area = boxArea2(inner);
-  if (!(area > 0)) return 0;
+  const area2 = boxArea2(inner);
+  if (!(area2 > 0)) return 0;
   const ox = Math.min(inner[2], outer[2]) - Math.max(inner[0], outer[0]);
   const oy = Math.min(inner[3], outer[3]) - Math.max(inner[1], outer[1]);
   if (ox <= 0 || oy <= 0) return 0;
-  return ox * oy / area;
+  return ox * oy / area2;
 }
 function wordCountText(text3) {
   return String(text3 || "").trim().split(/\s+/).filter(Boolean).length;
@@ -14621,9 +14621,9 @@ function flipArrowsShown(total) {
   const raw = Number(total);
   return Number.isFinite(raw) && raw > 1;
 }
-function boardCramped(area) {
-  const w = Number(area?.width);
-  const h = Number(area?.height);
+function boardCramped(area2) {
+  const w = Number(area2?.width);
+  const h = Number(area2?.height);
   if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return false;
   return w < MINIMAP_MIN_W || h < MINIMAP_MIN_H;
 }
@@ -21625,12 +21625,12 @@ function createItemRenderer({
     const node2 = rec.el;
     if (item.type === "section") {
       const d = item.sectionDefaults || {};
-      const area = item.areaFill ?? d.areaFill;
+      const area2 = item.areaFill ?? d.areaFill;
       const border = item.border ?? d.border;
       const titleSize = item.titleSize ?? d.titleSize;
       const titleColor = item.titleColor ?? d.titleColor;
       const titleFill = item.titleFill ?? d.titleFill;
-      setVar(node2, "--pxd-fill", cssColor(area, "fill"));
+      setVar(node2, "--pxd-fill", cssColor(area2, "fill"));
       setVar(node2, "--pxd-line", cssColor(border, "line") || hexColor(item.color) || "");
       if (rec.title) {
         rec.title.style.fontSize = titleSize ? `${titleSize}px` : "";
@@ -34879,10 +34879,10 @@ function captionForView(sections, point, fallbackTitle) {
     const rect = section2?.rect;
     if (!rect || !point) continue;
     if (point.x < rect.x || point.y < rect.y || point.x > rect.x + rect.w || point.y > rect.y + rect.h) continue;
-    const area = rect.w * rect.h;
-    if (area < bestArea) {
+    const area2 = rect.w * rect.h;
+    if (area2 < bestArea) {
       best = section2;
-      bestArea = area;
+      bestArea = area2;
     }
   }
   if (best?.title) return best.title;
@@ -40855,12 +40855,13 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
     const merged = base ? mergeScoped(base, doc, { page, bbox }) : null;
     return { doc, merged, cached: false, sha256: sha, job: job.job };
   }
-  async function ocr({ bytes, sha256, pages, cells, signal } = {}) {
+  async function ocr({ bytes, sha256, pages, cells, tables, signal } = {}) {
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
     const options = {};
     if (pages && pages.length) options.pages = pages;
     if (cells && cells.length) options.cells = cells.map((c) => ({ page: c.page, bbox: c.bbox }));
+    if (tables && tables.length) options.tables = tables.map((t) => ({ page: t.page, bbox: t.bbox }));
     const res = await call(`${url}/v1/ocr`, {
       method: "POST",
       headers: {
@@ -41692,6 +41693,204 @@ function applyLineReads(ocrPages, requests, results, { lexicon = null, doc = nul
   return { pages, applied };
 }
 
+// src/model/parse/table-structure.js
+function wordsFromOcrPage(page) {
+  const out = [];
+  for (const it of page?.items || []) {
+    const text3 = it.str || "";
+    if (!text3.trim()) continue;
+    const size = Number(it.height) || Math.abs(Number(it.transform?.[0]) || 0) || 6;
+    const x0 = Number(it.transform?.[4]);
+    const width = Number(it.width) || 0;
+    if (!Number.isFinite(x0)) continue;
+    const y0 = Number(it.y0);
+    const y1 = Number(it.y1);
+    const base = Number(it.transform?.[5]);
+    out.push({
+      text: text3,
+      x0,
+      x1: x0 + width,
+      y0: Number.isFinite(y0) ? y0 : base - 0.8 * size,
+      y1: Number.isFinite(y1) ? y1 : base + 0.22 * size,
+      base: Number.isFinite(base) ? base : y1,
+      size,
+      conf: it.conf
+    });
+  }
+  return out;
+}
+function centre(word) {
+  return { x: (word.x0 + word.x1) / 2, y: (word.y0 + word.y1) / 2 };
+}
+function area(box2) {
+  return Math.max(0, box2[2] - box2[0]) * Math.max(0, box2[3] - box2[1]);
+}
+function contains2(box2, x, y) {
+  return box2 && box2.length >= 4 && x >= box2[0] && x <= box2[2] && y >= box2[1] && y <= box2[3];
+}
+function cellText2(words) {
+  const sorted = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const lines = [];
+  for (const word of sorted) {
+    const last = lines[lines.length - 1];
+    const limit = 0.45 * Math.max(word.size || 6, last?.size || 0, 4);
+    if (last && Math.abs(word.base - last.base) <= limit) last.words.push(word);
+    else lines.push({ base: word.base, size: word.size || 6, words: [word] });
+  }
+  return lines.map((line) => line.words.sort((a, b) => a.x0 - b.x0).map((w) => w.text).join(" ")).join(" ").replace(/\s+/g, " ").trim();
+}
+function fillStructureCells(cells, words) {
+  const buckets2 = (cells || []).map(() => []);
+  for (const word of words || []) {
+    const { x, y } = centre(word);
+    let best = -1;
+    let bestArea = Infinity;
+    for (let i = 0; i < cells.length; i++) {
+      const box2 = cells[i].bbox;
+      if (!contains2(box2, x, y)) continue;
+      const a = area(box2);
+      if (a < bestArea) {
+        bestArea = a;
+        best = i;
+      }
+    }
+    if (best >= 0) buckets2[best].push(word);
+  }
+  return (cells || []).map((cell, i) => {
+    const spanR = cell.rowSpan || 1;
+    const spanC = cell.colSpan || 1;
+    const text3 = cellText2(buckets2[i]);
+    const used = buckets2[i];
+    return {
+      r: cell.r,
+      c: cell.c,
+      rowSpan: spanR,
+      colSpan: spanC,
+      text: text3,
+      bbox: cell.bbox,
+      header: Boolean(cell.header),
+      conf: used.length ? Math.min(...used.map((w) => w.conf ?? 1)) : 0,
+      wbase: used.length ? used.reduce((s, w) => s + w.base, 0) / used.length : void 0,
+      wsize: used.length ? Math.max(...used.map((w) => w.size || 0)) : void 0,
+      wbox: used.length ? [Math.min(...used.map((w) => w.x0)), Math.min(...used.map((w) => w.y0)), Math.max(...used.map((w) => w.x1)), Math.max(...used.map((w) => w.y1))] : void 0
+    };
+  });
+}
+function headerRowCount(cells, rows) {
+  let n2 = 0;
+  for (let r = 0; r < rows; r++) {
+    const row4 = cells.filter((c) => c.r === r);
+    if (!row4.length || !row4.every((c) => c.header)) break;
+    n2++;
+  }
+  return n2;
+}
+function tableFromStructure(structure, words, { id = "ts", method = "structure" } = {}) {
+  const cells = fillStructureCells(structure.cells || [], words);
+  const rows = structure.rows || cells.reduce((m, c) => Math.max(m, c.r + (c.rowSpan || 1)), 0);
+  const cols = structure.cols || cells.reduce((m, c) => Math.max(m, c.c + (c.colSpan || 1)), 0);
+  const boxes = cells.map((c) => c.bbox).filter((b) => b && b.length >= 4);
+  const bbox = structure.bbox || (boxes.length ? [Math.min(...boxes.map((b) => b[0])), Math.min(...boxes.map((b) => b[1])), Math.max(...boxes.map((b) => b[2])), Math.max(...boxes.map((b) => b[3]))] : [0, 0, 0, 0]);
+  return {
+    id,
+    type: "table",
+    page: structure.page,
+    bbox,
+    rows,
+    cols,
+    headerRows: structure.headerRows ?? headerRowCount(cells, rows),
+    headerCols: 0,
+    cells,
+    method,
+    confidence: structure.confidence ?? 0.75,
+    engine: "builtin"
+  };
+}
+function normCell2(text3) {
+  return String(text3 || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function textJaccard(a, b) {
+  const A = new Set((a?.cells || []).map((c) => normCell2(c.text)).filter(Boolean));
+  const B = new Set((b?.cells || []).map((c) => normCell2(c.text)).filter(Boolean));
+  if (!A.size && !B.size) return 1;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  return inter / (A.size + B.size - inter);
+}
+function tableRegions(doc, pages) {
+  const want = pages && pages.length ? new Set(pages) : null;
+  const out = [];
+  for (const id of doc?.order || []) {
+    const block = doc.blocks?.[id];
+    if (!block || block.type !== "table" || !block.bbox) continue;
+    if (want && !want.has(block.page)) continue;
+    const bbox = Array.isArray(block.bbox) ? block.bbox : [block.bbox.x0, block.bbox.y0, block.bbox.x1, block.bbox.y1];
+    if (bbox.length < 4 || bbox.some((n2) => !Number.isFinite(n2))) continue;
+    out.push({ page: block.page, bbox });
+  }
+  return out;
+}
+function iou3(a, b) {
+  if (!a || !b) return 0;
+  const ix = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+  const iy = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  if (ix <= 0 || iy <= 0) return 0;
+  const inter = ix * iy;
+  const union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter;
+  return union > 0 ? inter / union : 0;
+}
+function applyStructureTables(doc, structures, wordsByPage, { method = "structure", minTextJaccard = 0.15 } = {}) {
+  if (!doc || !structures?.length) return { doc, applied: [] };
+  const blocks = { ...doc.blocks };
+  const order = [...doc.order || []];
+  const applied = [];
+  const used = /* @__PURE__ */ new Set();
+  let seq = 0;
+  for (const structure of structures) {
+    if (!structure?.cells?.length) continue;
+    const words = wordsByPage.get(structure.page) || [];
+    const built = tableFromStructure(structure, words, { id: `struct${seq++}`, method });
+    let host = null;
+    let best = 0.15;
+    for (const id of order) {
+      const block = blocks[id];
+      if (!block || block.type !== "table" || block.page !== structure.page || used.has(id)) continue;
+      const overlap = iou3(block.bbox, built.bbox);
+      if (overlap > best) {
+        best = overlap;
+        host = block;
+      }
+    }
+    if (host) {
+      if (textJaccard(host, built) < minTextJaccard) continue;
+      used.add(host.id);
+      blocks[host.id] = {
+        ...host,
+        bbox: built.bbox,
+        rows: built.rows,
+        cols: built.cols,
+        headerRows: built.headerRows,
+        cells: built.cells,
+        method,
+        confidence: built.confidence,
+        grid: void 0,
+        repairs: void 0,
+        ocrSource: host.ocrSource || "fresh"
+      };
+      applied.push({ id: host.id, page: structure.page, rows: built.rows, cols: built.cols });
+    } else {
+      const id = built.id;
+      while (blocks[id]) built.id = `${id}b`;
+      blocks[built.id] = { ...built, ocrSource: "fresh" };
+      const at = order.findIndex((oid) => blocks[oid]?.page > structure.page);
+      if (at < 0) order.push(built.id);
+      else order.splice(at, 0, built.id);
+      applied.push({ id: built.id, page: structure.page, rows: built.rows, cols: built.cols, inserted: true });
+    }
+  }
+  return { doc: { ...doc, blocks, order }, applied };
+}
+
 // src/view/parse-engine.js
 var GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
 function detectPdfjs(win = typeof window !== "undefined" ? window : null) {
@@ -41748,8 +41947,25 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
+  let structure = [];
+  if (got?.structureModel) {
+    const regions = tableRegions(doc, wanted);
+    if (regions.length) {
+      try {
+        onPhase?.({ phase: "structure", count: regions.length, model: got.structureModel });
+        const structured = await helper.ocr({ bytes, sha256, pages: wanted, tables: regions, signal });
+        throwIfAborted3();
+        const words = new Map((structured?.pages || lined.pages || []).map((p) => [p.n, wordsFromOcrPage(p)]));
+        const applied = applyStructureTables(doc, structured?.tables || [], words, { method: structured?.structureModel || got.structureModel });
+        structure = applied.applied;
+        if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });
+      } catch (err) {
+        if (err?.name === "AbortError") throw err;
+      }
+    }
+  }
   const rereads = await rereadCells({ doc, ocr: ask, signal, onPhase });
-  doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), lines: lined.applied.length, elapsedMs: got?.elapsedMs ?? null };
+  doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), lines: lined.applied.length, structure: structure.length, structureModel: got?.structureModel || null, elapsedMs: got?.elapsedMs ?? null };
   return { doc, choices: merged.choices, rereads, lines: lined.applied, pages: wanted, records: next, ocrPages: lined.pages };
 }
 async function rereadLines({ doc, ocrPages, ocr, lexicon = null, signal, onPhase } = {}) {
@@ -41898,9 +42114,9 @@ function copyHoverId(entries, x, y, page, size = COPY_ICON) {
     const right = left + e2.width / 100 * W + 2 * BOX_PAD;
     const bottom = top + e2.height / 100 * H + 2 * BOX_PAD;
     if (x < left || x > right || y < top || y > bottom) continue;
-    const area = (right - left) * (bottom - top);
-    if (area < bestArea) {
-      bestArea = area;
+    const area2 = (right - left) * (bottom - top);
+    if (area2 < bestArea) {
+      bestArea = area2;
       best = e2.id;
     }
   }
@@ -42581,9 +42797,9 @@ function createPageChips({
       for (const block of pageBlocks(parsed, n2)) {
         const r = bboxToPageRect(block.bbox, info(n2), el);
         if (!r || x < r.left || x > r.left + r.width || y < r.top || y > r.top + r.height) continue;
-        const area = r.width * r.height;
-        if (area < best) {
-          best = area;
+        const area2 = r.width * r.height;
+        if (area2 < best) {
+          best = area2;
           hit = block;
         }
       }
@@ -45324,12 +45540,12 @@ async function writeClipboard({ text: text3 = "", mime = null, data = null } = {
   }
   const doc = globalThis.document;
   if (!doc?.body) return false;
-  const area = doc.createElement("textarea");
-  area.value = String(text3);
-  area.setAttribute("readonly", "");
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  doc.body.append(area);
+  const area2 = doc.createElement("textarea");
+  area2.value = String(text3);
+  area2.setAttribute("readonly", "");
+  area2.style.position = "fixed";
+  area2.style.opacity = "0";
+  doc.body.append(area2);
   const onCopy = (event) => {
     if (mime && data != null) {
       try {
@@ -45341,14 +45557,14 @@ async function writeClipboard({ text: text3 = "", mime = null, data = null } = {
   doc.addEventListener("copy", onCopy, true);
   let ok = false;
   try {
-    area.focus?.();
-    area.select?.();
+    area2.focus?.();
+    area2.select?.();
     ok = Boolean(doc.execCommand?.("copy"));
   } catch {
     ok = false;
   }
   doc.removeEventListener("copy", onCopy, true);
-  area.remove();
+  area2.remove();
   return ok;
 }
 function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTextEntry, on = {}, now: now3 = () => Date.now() } = {}) {
@@ -56730,7 +56946,7 @@ function tableColumns(rows) {
   }
   return FIXED.concat(names);
 }
-function cellText2(row4, column) {
+function cellText3(row4, column) {
   if (!row4) return "";
   if (column === "Title") return String(row4.title ?? "");
   if (column === "Section") return String(row4.section ?? "");
@@ -56743,7 +56959,7 @@ function filterRows3(rows, text3) {
   const needle = String(text3 ?? "").trim().toLowerCase();
   if (!needle) return (rows || []).slice();
   const cols = tableColumns(rows);
-  return (rows || []).filter((row4) => cols.some((column) => cellText2(row4, column).toLowerCase().includes(needle)));
+  return (rows || []).filter((row4) => cols.some((column) => cellText3(row4, column).toLowerCase().includes(needle)));
 }
 function sortRows3(rows, column, dir = "asc") {
   const sign = dir === "desc" ? -1 : 1;
@@ -56754,7 +56970,7 @@ function sortRows3(rows, column, dir = "asc") {
       const bv = Number(b.edited) || 0;
       return (av - bv) * sign;
     }
-    return cellText2(a, column).localeCompare(cellText2(b, column)) * sign;
+    return cellText3(a, column).localeCompare(cellText3(b, column)) * sign;
   });
   return list;
 }
@@ -56985,7 +57201,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
           const button2 = doc.createElement("button");
           button2.type = "button";
           button2.className = "pxd-btn pxd-table__value";
-          button2.textContent = cellText2(row4, column);
+          button2.textContent = cellText3(row4, column);
           button2.setAttribute("aria-label", `${column} for ${row4.title || row4.uid}`);
           listen(button2, "click", () => openEditor(td, attr.uid), paintOffs);
           td.append(button2);
@@ -57012,7 +57228,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
         } else {
           const span = doc.createElement("span");
           span.className = "pxd-table__text";
-          span.textContent = column === "Edited" ? editedLabel(row4.edited) : cellText2(row4, column);
+          span.textContent = column === "Edited" ? editedLabel(row4.edited) : cellText3(row4, column);
           td.append(span);
         }
         tr.append(td);
@@ -57997,7 +58213,7 @@ function labelComponents(mask, width, height) {
 }
 
 // src/model/ocr/db-boxes.js
-function iou3(a, b) {
+function iou4(a, b) {
   const x0 = Math.max(a.x0, b.x0);
   const y0 = Math.max(a.y0, b.y0);
   const x1 = Math.min(a.x1, b.x1);
@@ -58056,7 +58272,7 @@ function boxesFromProb(prob, mapW, mapH, srcW, srcH, opts = {}) {
   const kept = [];
   for (const box2 of raw) {
     if (kept.length >= maxBoxes) break;
-    if (kept.some((other) => iou3(other, box2) > 0.5)) continue;
+    if (kept.some((other) => iou4(other, box2) > 0.5)) continue;
     kept.push(box2);
   }
   return kept;
@@ -58445,8 +58661,8 @@ function inkGlyph(gray, width, height) {
     marks.push({ bw: bw2, bh: bh2, area: c.area });
   }
   if (marks.length !== 1) return null;
-  const { bw, bh, area } = marks[0];
-  if (bw >= 3 * bh && bw >= 8 && bh <= 0.3 * height && area >= 0.6 * bw * bh) return "—";
+  const { bw, bh, area: area2 } = marks[0];
+  if (bw >= 3 * bh && bw >= 8 && bh <= 0.3 * height && area2 >= 0.6 * bw * bh) return "—";
   if (bw / Math.max(1, bh) >= 0.6 && bw / Math.max(1, bh) <= 1.6 && bw <= 0.5 * height && bh <= 0.5 * height && bw >= 5) return "*";
   return null;
 }
@@ -68072,8 +68288,8 @@ function buildBoardView(onFail, {
       },
       markRegion: () => {
         const it = singleItem() || barCard();
-        const area = it?.kind === "highlight" && it.highlight?.image === true;
-        if (!it || it.kind !== "image" && !area) return;
+        const area2 = it?.kind === "highlight" && it.highlight?.image === true;
+        if (!it || it.kind !== "image" && !area2) return;
         const card2 = root.querySelector(`[data-uid="${it.uid}"]`);
         const img = card2?.querySelector?.("img.rm-inline-img");
         if (!img) {
@@ -68082,7 +68298,7 @@ function buildBoardView(onFail, {
         }
         regionMark?.destroy?.();
         const cardUid = it.uid;
-        const parentUid = area ? it.target?.uid : cardUid;
+        const parentUid = area2 ? it.target?.uid : cardUid;
         if (!parentUid) {
           toast("The image is not ready");
           return;
@@ -68099,7 +68315,7 @@ function buildBoardView(onFail, {
               });
             } catch {
             }
-            if (area) session.addHighlightRegion(parentUid, frac, caption, uid);
+            if (area2) session.addHighlightRegion(parentUid, frac, caption, uid);
             else session.addImageRegion(cardUid, frac, caption, uid);
             toast("Region made, ref copied");
             regionMark = null;
@@ -69370,9 +69586,9 @@ function buildBoardView(onFail, {
         if (!mark || !card2.contains(mark)) continue;
         const id = mark.getAttribute?.("data-pxd-region") || "";
         if (!id || marks.some((row4) => row4.uid === id)) continue;
-        const area = Number(mark.getAttribute?.("data-pxd-area"));
+        const area2 = Number(mark.getAttribute?.("data-pxd-area"));
         const r = mark.getBoundingClientRect?.();
-        marks.push({ uid: id, area: Number.isFinite(area) && area > 0 ? area : (r?.width || 0) * (r?.height || 0) });
+        marks.push({ uid: id, area: Number.isFinite(area2) && area2 > 0 ? area2 : (r?.width || 0) * (r?.height || 0) });
       }
       const regionUid = pickSmallestRegion(marks);
       if (!card2) return null;
@@ -70749,7 +70965,7 @@ function buildBoardView(onFail, {
       ro.observe(root);
       observers.push(ro);
       let areaWait = null;
-      const area = trackObserver(new RO(() => {
+      const area2 = trackObserver(new RO(() => {
         if (disposed || suspended) return;
         areaWait?.();
         areaWait = timers.later(() => {
@@ -70760,8 +70976,8 @@ function buildBoardView(onFail, {
           chrome.toolbar.scheduleDock?.();
         }, 240);
       }));
-      area.observe(viewport);
-      observers.push(area);
+      area2.observe(viewport);
+      observers.push(area2);
     } catch {
     }
   }
@@ -72563,8 +72779,8 @@ function createCardChips({
       event.stopPropagation();
       return;
     }
-    const area = event.target?.closest?.("textarea");
-    const box2 = area?.closest?.(".roam-block-container");
+    const area2 = event.target?.closest?.("textarea");
+    const box2 = area2?.closest?.(".roam-block-container");
     if (!box2) return;
     for (const child of [...box2.children || []]) {
       if (child.classList?.contains("pxd-cardchip") || child.classList?.contains("pxd-cardchip-more")) {
@@ -72673,8 +72889,8 @@ function createCardChips({
     if (!uid || !cache?.hasTarget?.(uid)) return;
     if (blocked2(container, memo)) return;
     if (container.querySelector?.(".rm-block-highlight-view, .pxd-boardchip")) return;
-    const area = container.querySelector?.("textarea");
-    if (area && area === doc.activeElement) {
+    const area2 = container.querySelector?.("textarea");
+    if (area2 && area2 === doc.activeElement) {
       for (const child of [...container.children || []]) {
         if (child.classList?.contains("pxd-cardchip") || child.classList?.contains("pxd-cardchip-more")) {
           chips.delete(child);

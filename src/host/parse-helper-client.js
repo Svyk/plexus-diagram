@@ -413,12 +413,13 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
 
   // Scanned pages: POST /v1/ocr with the PDF bytes. `pages` → pxd-ocr/1 page records
   // (cached by the helper); `cells` → re-read of single cells, never cached. One call.
-  async function ocr({ bytes, sha256, pages, cells, signal } = {}) {
+  async function ocr({ bytes, sha256, pages, cells, tables, signal } = {}) {
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
     const options = {};
     if (pages && pages.length) options.pages = pages;
     if (cells && cells.length) options.cells = cells.map((c) => ({ page: c.page, bbox: c.bbox }));
+    if (tables && tables.length) options.tables = tables.map((t) => ({ page: t.page, bbox: t.bbox }));
     const res = await call(`${url}/v1/ocr`, {
       method: "POST",
       headers: {

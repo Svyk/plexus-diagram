@@ -5,6 +5,7 @@ import { assembleDocument, parsePageGeometry, parsePdf } from "../model/parse/in
 import { applyCellOcr, cellsToReread } from "../model/parse/ocr-fix.js";
 import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lines.js";
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
+import { applyStructureTables, tableRegions, wordsFromOcrPage } from "../model/parse/table-structure.js";
 
 const GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
 
@@ -98,8 +99,25 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
+  let structure = [];
+  if (got?.structureModel) {
+    const regions = tableRegions(doc, wanted);
+    if (regions.length) {
+      try {
+        onPhase?.({ phase: "structure", count: regions.length, model: got.structureModel });
+        const structured = await helper.ocr({ bytes, sha256, pages: wanted, tables: regions, signal });
+        throwIfAborted();
+        const words = new Map((structured?.pages || lined.pages || []).map((p) => [p.n, wordsFromOcrPage(p)]));
+        const applied = applyStructureTables(doc, structured?.tables || [], words, { method: structured?.structureModel || got.structureModel });
+        structure = applied.applied;
+        if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });
+      } catch (err) {
+        if (err?.name === "AbortError") throw err;
+      }
+    }
+  }
   const rereads = await rereadCells({ doc, ocr: ask, signal, onPhase });
-  doc.ocr = { ...(doc.ocr || {}), rereads: rereads.reduce((n, r) => n + r.applied.length, 0), lines: lined.applied.length, elapsedMs: got?.elapsedMs ?? null };
+  doc.ocr = { ...(doc.ocr || {}), rereads: rereads.reduce((n, r) => n + r.applied.length, 0), lines: lined.applied.length, structure: structure.length, structureModel: got?.structureModel || null, elapsedMs: got?.elapsedMs ?? null };
   return { doc, choices: merged.choices, rereads, lines: lined.applied, pages: wanted, records: next, ocrPages: lined.pages };
 }
 

@@ -11,6 +11,7 @@ mod ocr;
 mod pair;
 mod pdf;
 mod server;
+mod structure;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

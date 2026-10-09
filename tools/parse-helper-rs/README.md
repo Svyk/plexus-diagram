@@ -15,7 +15,7 @@ From `tools/parse-helper-rs`, on macOS:
 cargo build --release
 ```
 
-`./fetch-pdfium.sh arm64` or `./fetch-pdfium.sh x64` picks the library. With no argument it follows `uname -m`. It downloads bblanchon/pdfium-binaries chromium/8086 (`pdfium-mac-arm64.tgz` or `pdfium-mac-x64.tgz`) and extracts `vendor/libpdfium.dylib` (about 7.0 MB, BSD). The release binary is 8.2 MB (it was 5.1 MB before the LlamaParse client; reqwest and rustls added 3.1 MB). Together with libpdfium that is about 15 MB, plus nothing else. The Python helper's uv tool on this machine is 1.1 GB.
+`./fetch-pdfium.sh arm64` or `./fetch-pdfium.sh x64` picks the library. With no argument it follows `uname -m`. It downloads bblanchon/pdfium-binaries chromium/8086 (`pdfium-mac-arm64.tgz` or `pdfium-mac-x64.tgz`) and extracts `vendor/libpdfium.dylib` (about 7.0 MB, BSD). The arm64 release binary is 33 MB. ONNX Runtime is linked statically (`libonnxruntime.a` is 77 MB; `otool -L` shows no ORT dylib). Together with libpdfium that is about 40 MB, plus the 7.4 MB SLANet-plus file, which is downloaded on the first structure request and is not in the archive. The Python helper's uv tool on this machine is 1.1 GB.
 
 ## Run
 
@@ -40,10 +40,10 @@ node tools/parse-bench/scan.mjs scan.pdf truth.json --helper-url http://127.0.0.
 
 - Helper name `plexus-parse-helper`, schema `pxd-parse/1`. Version is `0.1.0-rs`.
 - Unauthed `GET /v1/health` is 401 `{"helper":"plexus-parse-helper","auth":"required"}`.
-- Authed health: `engines` is `["ocr", "cloud"]`. `models.layout` and `models.tableformer` are `"missing"`, `models.ocr` is `"ready"`, `warm` is false.
+- Authed health: `engines` is `["ocr", "cloud"]`. `models.layout` and `models.tableformer` are `"missing"`, `models.ocr` is `"ready"`, `models.structure` is `"slanet-plus"`, `warm` is false.
 - Origin is checked before the body. Allowed origin defaults to `https://roamresearch.com`. CORS mirrors the Python helper, including `Access-Control-Allow-Private-Network: true`. OPTIONS is 204. `Access-Control-Allow-Headers` is `Authorization, Content-Type, X-Pxd-Options, X-Pxd-Cloud-Key`.
 - `GET /v1/pair` returns the token once while the window is open and the Origin is allowed. Otherwise 404.
-- `POST /v1/ocr` takes the PDF (200 MB cap) and `X-Pxd-Options` `{pages, cells}`. Page response is `pxd-ocr/1`: `pageCount`, `pages` (word `items`, `rules`, `deskew`, `dpi`), `sha256`, `elapsedMs`, `cached`. Cell response is `{cells:[{page,bbox,text,conf,glyph}]}` and is never cached.
+- `POST /v1/ocr` takes the PDF (200 MB cap) and `X-Pxd-Options` `{pages, cells, tables}`. Page response is `pxd-ocr/1`: `pageCount`, `pages` (word `items`, `rules`, `deskew`, `dpi`), `sha256`, `elapsedMs`, `cached`, and `structureModel` (`"slanet-plus"`). Cell response is `{cells:[{page,bbox,text,conf,glyph}]}` and is never cached. `tables` is `[{page, bbox}]` (at most 48), the crops to run through SLANet-plus. The response then also has `tables: [{page, bbox, rows, cols, headerRows, cells: [{r, c, rowSpan, colSpan, bbox, header}]}]`. The page OCR cache key ignores `tables`, so a second call with regions reuses the Vision result and only runs the model. The ONNX file (7.4 MB, Apache-2.0, SHA-256 `d57a942a…4514b`) is downloaded on that first structure request into `~/Library/Caches/plexus-parse-helper-rs/models/slanet-plus.onnx` and is not in git.
 - Options hashes match the Python helper (see `src/hashutil.rs` tests).
 
 ## Cloud (`POST /v1/cloud/parse`)
@@ -65,7 +65,7 @@ Upstream is `https://api.cloud.llamaindex.ai` or `https://api.cloud.eu.llamainde
 
 - `/v1/jobs`, `/v1/jobs/{id}`, and `/v1/jobs/{id}/events` return 501 `{"error":"layout model is not wired; this helper serves /v1/ocr only","code":"no-docling"}`. Cloud parse has its own SSE stream on `/v1/cloud/parse`.
 - `POST /v1/models/download` returns the same 501.
-- No TableFormer, no formula model, no Docling layout.
+- No TableFormer, no formula model, no Docling layout. Table structure is SLANet-plus on `/v1/ocr`, not `/v1/jobs`.
 
 `swift/docrec.swift` is a probe of macOS 26 `RecognizeDocumentsRequest`, not a server dependency:
 
@@ -82,7 +82,7 @@ Uncached `/v1/ocr` or the equivalent in-process `ocr_pdf`. Cell F1 is `scan.mjs`
 
 | | Python helper | Rust helper |
 | --- | --- | --- |
-| Install | 1.1 GB (uv tool) | 15.2 MB (8.2 MB binary + 7.0 MB libpdfium) |
+| Install | 1.1 GB (uv tool) | 40 MB (33 MB binary + 7.0 MB libpdfium); SLANet-plus adds 7.4 MB on first structure request |
 | Cold start to first `/v1/health` 401 | 0.42 s, 74 MB RSS | 0.43 s, 27 MB RSS |
 | CDC image-only, 1 page | 11.19 s, 651 words, 34 rules | 10.87 s, 651 words, 34 rules, 212 MB RSS after |
 | report-scan, 3 pages | 7.92 s (2.64 s/page) | 7.73 s (2.58 s/page), 280 MB RSS after |
@@ -130,4 +130,4 @@ sh tools/parse-helper/install.sh
 
 ## Recommendation
 
-This is the helper the extension launches for scans on macOS. It matches the Python helper's OCR quality and its seconds per page, in about 15 MB instead of 1.1 GB. `/v1/jobs` stays on the Python add-on until TableFormer is actually replaced. A second Vision process does not make OCR faster.
+This is the helper the extension launches for scans on macOS. It matches the Python helper's OCR quality and its seconds per page, in about 40 MB instead of 1.1 GB. `/v1/jobs` stays on the Python add-on. Table structure on `/v1/ocr` is SLANet-plus, not TableFormer. A second Vision process does not make OCR faster.

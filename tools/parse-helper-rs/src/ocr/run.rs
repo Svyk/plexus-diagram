@@ -79,6 +79,15 @@ pub fn ocr_pdf(pdfium: &Pdfium, path: &Path, pages: Option<&Value>, mut on_page:
     }))
 }
 
+/// The deskewed page raster structure recognition crops. `angle` is the page record's
+/// `deskew` (the angle already applied for the word boxes). `None` measures it again.
+pub fn page_gray(pdfium: &Pdfium, path: &Path, page: i32, angle: Option<f64>) -> Result<GrayImage, String> {
+    let doc = pdf::open(pdfium, path)?;
+    let rendered = pdf::render_open(&doc, page, DPI)?;
+    let angle = angle.unwrap_or_else(|| deskew_angle(&rendered.image));
+    Ok(deskew(&rendered.image, angle))
+}
+
 pub fn ocr_cells(pdfium: &Pdfium, path: &Path, cells: &[Value]) -> Result<Value, String> {
     if cells.len() > 400 {
         return Err("cells cap is 400".into());

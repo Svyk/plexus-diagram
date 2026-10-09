@@ -20,6 +20,8 @@ objc2 = "0.6"
 objc2-core-foundation = { version = "0.3", features = ["CFCGTypes"] }
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSData", "NSDictionary", "NSError", "NSString"] }
 objc2-vision = { version = "0.3", features = ["VNGeometry", "VNObservation", "VNRecognizeTextRequest", "VNRequest", "VNRequestHandler", "VNTypes", "objc2-core-foundation"] }
+ndarray = "0.17"
+ort = "2.0.0-rc.13"
 pdfium-render = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
 serde = { version = "1", features = ["derive"] }

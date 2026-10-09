@@ -62,7 +62,7 @@ function classifyModels(body) {
   } else {
     state = "models-missing";
   }
-  return { state, engines, ocr, docling, models };
+  return { state, engines, ocr, docling, vlmTables: engines.includes("vlm-tables"), models };
 }
 
 // Scan reading. A health object that does not say `ocr` (older callers, tests) is ready for
@@ -146,6 +146,7 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
   const clock = typeof now === "function" ? now : () => Date.now();
   let healthCache = null;
   let probeCache = null;
+  let vlmOn = false;
 
   const config = () => {
     const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
@@ -166,11 +167,13 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
       return healthCache.value;
     }
     if (!token) {
+      vlmOn = false;
       const value = { state: "not-running", reason: "disabled" };
       healthCache = { url, token, at, value };
       return value;
     }
     if (typeof fetchFn !== "function") {
+      vlmOn = false;
       const value = { state: "not-running" };
       healthCache = { url, token, at, value };
       return value;
@@ -183,16 +186,17 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
       }, timer.signal);
       let value;
       const httpOk = res.status >= 200 && res.status < 300;
-      if (res.status === 401) value = { state: "wrong-token" };
-      else if (!httpOk) value = { state: "not-running" };
+      if (res.status === 401) { vlmOn = false; value = { state: "wrong-token" }; }
+      else if (!httpOk) { vlmOn = false; value = { state: "not-running" }; }
       else {
         let body = null;
         try { body = await res.json(); } catch { body = null; }
         const major = schemaMajor(body?.schema);
-        if (body?.helper !== HELPER_NAME || major == null) value = { state: "not-running" };
-        else if (major >= 2) value = { state: "newer-schema", schema: body.schema };
+        if (body?.helper !== HELPER_NAME || major == null) { vlmOn = false; value = { state: "not-running" }; }
+        else if (major >= 2) { vlmOn = false; value = { state: "newer-schema", schema: body.schema }; }
         else {
           const flags = classifyModels(body);
+          vlmOn = flags.vlmTables === true;
           value = {
             state: flags.state,
             schema: body.schema,
@@ -201,6 +205,7 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
             engines: flags.engines,
             ocr: flags.ocr,
             docling: flags.docling,
+            vlmTables: flags.vlmTables,
           };
           if (flags.state === "ready") value.busy = body.busy ?? 0;
         }
@@ -208,6 +213,7 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
       healthCache = { url, token, at, value };
       return value;
     } catch {
+      vlmOn = false;
       const value = { state: "not-running" };
       healthCache = { url, token, at, value };
       return value;
@@ -442,10 +448,40 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
     return { ...body, sha256: sha };
   }
 
+  // Table crops for a helper that advertises vlm-tables. Same PDF body as ocr().
+  // `tables` is [{page, bbox}] in PDF points, origin bottom-left.
+  async function tables({ bytes, sha256, pages, tables: regions, signal } = {}) {
+    const { url, token } = config();
+    const sha = sha256 || await sha256Hex(bytes);
+    const options = {};
+    if (pages && pages.length) options.pages = pages;
+    if (regions && regions.length) options.tables = regions.map((t) => ({ page: t.page, bbox: t.bbox }));
+    const res = await call(`${url}/v1/tables`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/pdf",
+        "X-Pxd-Options": JSON.stringify(options),
+      },
+      body: bytes,
+    }, signal);
+    let body = null;
+    try { body = await res.json(); } catch { body = null; }
+    if (res.status < 200 || res.status >= 300) {
+      const error = new Error(body?.error || `tables ${res.status}`);
+      error.status = res.status;
+      throw error;
+    }
+    return { ...body, sha256: sha };
+  }
+
   function endpoint() {
     const { url, token } = config();
     return { url, token };
   }
 
-  return { health, status, pair, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr, endpoint };
+  return {
+    health, status, pair, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr, tables, endpoint,
+    get vlmTables() { return vlmOn; },
+  };
 }

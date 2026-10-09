@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // Scanned technical PDFs, 1900–1950. One command, one scoreboard.
-//   node tools/parse-bench/scan-corpus.mjs [--engines builtin,web-ocr,helper] [--only name] [--json out.json]
+//   node tools/parse-bench/scan-corpus.mjs [--engines builtin,web-ocr,helper,helper-vlm] [--only name] [--json out.json]
+// helper-vlm reads the helper OCR cache (it does not call the helper CLI or port 48765)
+// and POSTs table boxes to PXD_VLM_URL (default http://127.0.0.1:48766).
 //
 // builtin  — parseFile/assemble on the PDF as shipped (embedded text layer, or a scan block).
 // web-ocr  — that parse plus readScan --source ppocr-web (what a user without the helper gets).
 // helper   — that parse plus readScan through the local Vision helper CLI.
+// helper-vlm — the helper OCR cache plus POST /v1/tables on PXD_VLM_URL.
 //
 // PDFs and the full truth set live outside the repo (see docs/parse-bench.md). Default root
 // is /tmp/wo/pxd14/scans, override with PXD_SCAN_DIR. OCR responses are cached under
@@ -59,7 +62,7 @@ function ocrKey(engine) {
     sha256File(join(repo, "src/host/ocr-web.js")).slice(0, 16),
     sha256File(join(repo, "tools/parse-bench/ppocr-node.mjs")).slice(0, 16),
   ];
-  if (engine === "helper") parts.push("vision-cli");
+  if (engine === "helper" || engine === "helper-vlm") parts.push("vision-cli");
   return parts.join("-");
 }
 
@@ -80,8 +83,45 @@ function cacheWrap(helper, cacheDir, stamp) {
   };
 }
 
+function vlmHelper() {
+  const url = (process.env.PXD_VLM_URL || "http://127.0.0.1:48766").replace(/\/$/, "");
+  const token = process.env.PXD_VLM_TOKEN || "pxd-vlm";
+  return {
+    async ocr(req) {
+      // Page reads must come from the helper cache. A cell re-read that was never
+      // cached returns empty text, which the repair ignores, instead of calling a helper.
+      if (req?.cells?.length) {
+        return { cells: req.cells.map((c) => ({ page: c.page, bbox: c.bbox, text: "", conf: 0, glyph: null })) };
+      }
+      throw new Error("helper-vlm OCR page cache miss; refusing to call a helper");
+    },
+    async tables({ bytes, pages, tables }) {
+      const res = await fetch(`${url}/v1/tables`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/pdf",
+          "X-Pxd-Options": JSON.stringify({ pages, tables }),
+        },
+        body: bytes,
+      });
+      const body = await res.json().catch(() => null);
+      if (res.status < 200 || res.status >= 300) throw new Error(body?.error || `tables ${res.status}`);
+      return body;
+    },
+  };
+}
+
 async function helperFor(engine, pdfPath, cacheDir) {
   if (engine === "builtin") return null;
+  if (engine === "helper-vlm") {
+    const raw = vlmHelper();
+    // Same stamp as the helper engine so the Vision page cache is reused.
+    const wrapped = cacheWrap(raw, cacheDir, `helper:${ocrKey("helper")}:${sha256File(pdfPath)}`);
+    wrapped.tables = (req) => raw.tables(req);
+    wrapped.vlmTables = true;
+    return wrapped;
+  }
   const raw = engine === "helper"
     ? cliHelper({ pdfPath, log: (m) => process.stderr.write(`${m}\n`) })
     : (await import("./ppocr-node.mjs")).createPpocrSource({ pdfPath, dpi: 300, log: (m) => process.stderr.write(`${m}\n`) });

@@ -22,6 +22,7 @@ from plexus_parse_helper.models import model_report, start_download, stop_downlo
 from plexus_parse_helper.ocr import ocr_cells, ocr_options_hash, ocr_pdf
 from plexus_parse_helper.pair import close_window, window_open
 from plexus_parse_helper.schema import normalize_options, options_hash, sha256_bytes
+from plexus_parse_helper.vlm_tables import read_tables, vlm_tables_available
 
 MAX_BODY = 200 * 1024 * 1024
 _ALLOW_HEADERS = "Authorization, Content-Type, X-Pxd-Options, X-Pxd-Cloud-Key"
@@ -184,7 +185,7 @@ class JobBook:
         return 204
 
 
-def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobManager | None = None, cache: ParseCache | None = None, ocr_runner=None, cell_runner=None, pair_file=None, cloud_runner=None) -> FastAPI:
+def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobManager | None = None, cache: ParseCache | None = None, ocr_runner=None, cell_runner=None, pair_file=None, cloud_runner=None, table_runner=None) -> FastAPI:
     allow = set(allow_origins or ["https://roamresearch.com"])
     manager = jobs or JobManager()
     store = cache or ParseCache()
@@ -197,7 +198,17 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
     run_cells = cell_runner or ocr_cells
     run_cloud = cloud_runner or run_llamaparse
     ocr_lock = threading.Lock()
+    table_lock = threading.Lock()
     pair_lock = threading.Lock()
+    run_tables = table_runner or read_tables
+
+    def engine_names():
+        names = ["docling", "ocr", "cloud"]
+        # Present only when a runner was injected or mlx-vlm is installed. The default
+        # test environment has neither, so health stays docling/ocr/cloud.
+        if table_runner is not None or vlm_tables_available():
+            names.append("vlm-tables")
+        return names
     cloud_jobs: dict[str, threading.Event] = {}
     cloud_lock = threading.Lock()
 
@@ -213,7 +224,7 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
             "helper": HELPER_NAME,
             "version": HELPER_VERSION,
             "schema": SCHEMA_ID,
-            "engines": ["docling", "ocr", "cloud"],
+            "engines": engine_names(),
             "models": report["health"],
             "busy": manager.busy,
             "warm": bool(manager.warm),
@@ -369,6 +380,50 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
             Path(name).unlink(missing_ok=True)
         if not cells:
             store.put(sha, ohash, out)
+        return out
+
+    @app.post("/v1/tables")
+    async def post_tables(request: Request):
+        """PDF body. X-Pxd-Options {pages, tables:[{page, bbox}]}. bbox is PDF points,
+        origin bottom-left, the same boxes the built-in parser stores on a table.
+        One model crop per box. The model downloads the first time this runs."""
+        if not authed(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if "vlm-tables" not in engine_names():
+            return JSONResponse({"error": "vlm-tables is not installed"}, status_code=404)
+        length = request.headers.get("content-length")
+        if length and int(length) > MAX_BODY:
+            return JSONResponse({"error": "too large"}, status_code=413)
+        data = await request.body()
+        if len(data) > MAX_BODY:
+            return JSONResponse({"error": "too large"}, status_code=413)
+        if not data:
+            return JSONResponse({"error": "empty body"}, status_code=400)
+        raw = request.headers.get("x-pxd-options") or "{}"
+        try:
+            options = json.loads(raw)
+        except json.JSONDecodeError:
+            return JSONResponse({"error": "bad X-Pxd-Options"}, status_code=400)
+        regions = options.get("tables") or []
+        if not isinstance(regions, list):
+            return JSONResponse({"error": "tables must be a list"}, status_code=400)
+        fd, name = tempfile.mkstemp(suffix=".pdf", prefix="pxd-vlm-")
+        try:
+            os.write(fd, data)
+            os.close(fd)
+            fd = None
+            with table_lock:
+                out = run_tables(name, regions)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": f"tables failed: {exc}"}, status_code=500)
+        finally:
+            if fd is not None:
+                os.close(fd)
+            Path(name).unlink(missing_ok=True)
+        if not isinstance(out, dict):
+            return JSONResponse({"error": "tables runner returned no object"}, status_code=500)
         return out
 
     @app.get("/v1/jobs/{job_id}/events")

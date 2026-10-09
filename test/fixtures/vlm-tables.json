@@ -1,0 +1,28 @@
+{
+  "model": "PaddleOCR-VL-0.9B",
+  "tables": [
+    {
+      "page": 2,
+      "bbox": [0, 0, 1, 1],
+      "rows": 7,
+      "cols": 4,
+      "cells": [
+        { "r": 0, "c": 0, "rowSpan": 1, "colSpan": 1, "text": "Disease", "header": true },
+        { "r": 0, "c": 1, "rowSpan": 1, "colSpan": 1, "text": "1980", "header": true },
+        { "r": 0, "c": 2, "rowSpan": 1, "colSpan": 1, "text": "1979", "header": true },
+        { "r": 0, "c": 3, "rowSpan": 1, "colSpan": 1, "text": "1977", "header": true },
+        { "r": 1, "c": 0, "rowSpan": 1, "colSpan": 1, "text": "Amebiasis", "header": false },
+        { "r": 1, "c": 1, "rowSpan": 1, "colSpan": 1, "text": "VLM-MARK", "header": false },
+        { "r": 1, "c": 2, "rowSpan": 1, "colSpan": 1, "text": "1.90", "header": false },
+        { "r": 2, "c": 0, "rowSpan": 1, "colSpan": 1, "text": "Anthrax", "header": false },
+        { "r": 2, "c": 1, "rowSpan": 1, "colSpan": 1, "text": "0.00", "header": false },
+        { "r": 3, "c": 0, "rowSpan": 1, "colSpan": 1, "text": "Infant", "header": false },
+        { "r": 4, "c": 0, "rowSpan": 1, "colSpan": 1, "text": "Chancroid", "header": false },
+        { "r": 5, "c": 0, "rowSpan": 1, "colSpan": 1, "text": "Cholera", "header": false },
+        { "r": 6, "c": 0, "rowSpan": 1, "colSpan": 1, "text": "Mumps", "header": false },
+        { "r": 6, "c": 1, "rowSpan": 1, "colSpan": 1, "text": "3.86", "header": false },
+        { "r": 6, "c": 2, "rowSpan": 1, "colSpan": 1, "text": "6.55", "header": false }
+      ]
+    }
+  ]
+}

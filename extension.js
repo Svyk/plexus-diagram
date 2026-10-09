@@ -4370,6 +4370,7 @@ function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, 
     if (grid && grid.coverage >= 0.4 && grid.rows >= 2 && grid.cols >= 2) {
       const table = assembleTable(grid, comp, boxes, words, ysAll, usedWords);
       if (table) {
+        if (chartGrid(table)) continue;
         released.push(...table.released || []);
         delete table.released;
         tables.push(table);
@@ -4788,6 +4789,21 @@ function tokensSplitColumns(words, xs2, ys2, r0, r1, c0, c1) {
     if (cols.size >= 2) split++;
   }
   return split >= Math.ceil(rows.length * 0.5);
+}
+function chartGrid(table) {
+  if (!table || table.rows < 8 || table.cols < 4) return false;
+  const texts = (table.cells || []).map((c) => ({ c: c.c, r: c.r, text: String(c.text || "").trim() })).filter((c) => c.text);
+  if (texts.length < 8) return false;
+  const tick = (s) => s.length <= 4 || /^[-–—−.·\d\s]+$/.test(s);
+  if (texts.filter((c) => tick(c.text)).length / texts.length < 0.75) return false;
+  for (let col = 0; col < table.cols; col++) {
+    const inCol = texts.filter((k) => k.c === col);
+    const words = inCol.filter((k) => /[A-Za-z]{4,}/.test(k.text));
+    if (words.length >= 3 && words.length >= 0.4 * Math.max(1, inCol.length)) return false;
+  }
+  const header = texts.filter((k) => k.r === 0 && /[A-Za-z]{4,}/.test(k.text));
+  if (header.length >= 2) return false;
+  return true;
 }
 function looksLikeChart(band, graphics) {
   const width = band.x1 - band.x0;
@@ -7762,8 +7778,9 @@ function parsePageGeometry(data, n2) {
   const imageArea = (im) => (im.x1 - im.x0) * (im.y1 - im.y0);
   const textChars = words.reduce((n3, wd) => n3 + (wd.text || "").length, 0);
   const scanRaster = rasterScanPage({ images: graphics.images, shapes: graphics.shapes, words, pageW: w, pageH: h });
-  const bigImage = scanRaster || graphics.images.some((im) => imageArea(im) >= 0.5 * pageArea);
-  const scanLayer = words.length > 0 && graphics.images.some((im) => imageArea(im) >= 0.85 * pageArea);
+  const strips = stripTiles(graphics.images, w, h, textChars);
+  const bigImage = scanRaster || strips.length > 0 || graphics.images.some((im) => imageArea(im) >= 0.5 * pageArea);
+  const scanLayer = words.length > 0 && (strips.length > 0 || graphics.images.some((im) => imageArea(im) >= 0.85 * pageArea));
   const kind = words.length === 0 && bigImage ? "scan" : bigImage ? "mixed" : "text";
   const pageBody = bodySizeOf(lines) || 10;
   const used = /* @__PURE__ */ new Set();
@@ -7781,7 +7798,7 @@ function parsePageGeometry(data, n2) {
     if (looksLikeChart(band, graphics)) continue;
     const free = words.filter((w2) => !used.has(w2));
     const t = tableFromBand(band, free);
-    if (!t || isTitledBox(t)) continue;
+    if (!t || isTitledBox(t) || chartGrid(t)) continue;
     t.page = n2;
     for (const w2 of t.usedWords) used.add(w2);
     delete t.usedWords;
@@ -7789,7 +7806,8 @@ function parsePageGeometry(data, n2) {
     tables.push(t);
   }
   const drawing = drawingSheetPage({ images: graphics.images, lines, tables, pageW: w, pageH: h, textChars });
-  const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => imageArea(im) < 0.85 * pageArea) } : graphics;
+  const stripSet = new Set(strips);
+  const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => !stripSet.has(im) && imageArea(im) < 0.85 * pageArea) } : graphics;
   const figs = kind === "scan" ? { figures: [], used: /* @__PURE__ */ new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: words.filter((w2) => !used.has(w2)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars });
   for (const w2 of figs.used) used.add(w2);
   const figures = figs.figures.map((f) => ({ ...f, page: n2 }));
@@ -7800,6 +7818,16 @@ function parsePageGeometry(data, n2) {
     for (const w2 of words) if (used.has(w2) && !figs.used.has(w2) && w2.x0 >= t.bbox[0] - 2 && w2.x1 <= t.bbox[2] + 2 && w2.base >= t.bbox[1] && w2.base <= t.bbox[3] + 2) used.delete(w2);
   }
   return { n: n2, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, words, graphics, tables, figures, used, ms: round(now() - t0) };
+}
+function stripTiles(images, pageW, pageH, textChars) {
+  if (textChars >= 400) return [];
+  const strips = (images || []).filter((im) => {
+    const width = im.x1 - im.x0;
+    const height = im.y1 - im.y0;
+    return width >= 0.8 * pageW && height >= 8 && height <= 0.28 * pageH;
+  });
+  if (strips.length < 4 || imageCover(strips, pageW, pageH) < 0.75) return [];
+  return strips;
 }
 function ocrGraphics(data, w, h) {
   const rules = [];
@@ -8318,7 +8346,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 8;
+    PARSE_REV = 9;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     EVIDENCE_LINES = 60;

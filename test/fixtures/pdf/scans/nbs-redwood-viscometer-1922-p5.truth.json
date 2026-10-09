@@ -1,0 +1,620 @@
+{
+ "id": "nbs-redwood-viscometer-1922-p5",
+ "source": "nbs-redwood-viscometer-1922.pdf page 5",
+ "class": [
+  "typeset-table",
+  "hand-ruled-table"
+ ],
+ "quality": [
+  "typeset",
+  "ruled"
+ ],
+ "tables": [
+  {
+   "caption": "TABLE 1.\u2014Dimensions of Redwood Viscometer",
+   "rows": 13,
+   "cols": 6,
+   "headerRows": 3,
+   "cells": [
+    {
+     "r": 0,
+     "c": 0,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "Name of dimension",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 2,
+     "text": "Higgins",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 3,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "Meissner No. 1263",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 2,
+     "text": "Bureau of Standards",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Normal",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Tolerance",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "No. 1004",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "No. 1025",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "cm",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "cm\u00b1",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "cm",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "cm",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "cm",
+     "header": true
+    },
+    {
+     "r": 3,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Diameter of outlet tube d",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.15",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.003",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.158",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "c 0.1654",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.1583",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Length of outlet tube, l",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.00",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".01",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.023",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".9853",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".9639",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Height of gage point above bottom of outlet tube, h1",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9.25",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "d .64",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9.615",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "8.861",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9.400",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Diameter of container, D",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.68",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".02",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.658",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.589",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.695",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Average head (calculated) h",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "e 7.67",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "8.059",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.211",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.838",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Diameter of stem of oil-cup thermometer",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".63",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Diameter of bulb of oil-cup thermometer",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".80",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "External diameter of agate, upper end f",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.27",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".10",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "External diameter of agate, lower end f",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.15",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".10",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Height of base of container g",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".80",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".05",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".852",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    }
+   ]
+  }
+ ],
+ "figures": [],
+ "lines": [
+  "TABLE 1.\u2014Dimensions of Redwood Viscometer",
+  "3. DIMENSIONS"
+ ],
+ "textComplete": false
+}

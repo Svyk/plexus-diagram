@@ -510,3 +510,38 @@ Node, onnxruntime-node, PP-OCRv5 mobile, 300 dpi, main (56abf84) against this ro
 | ICDAR 2013 at 150 dpi, adjacency / detection / cell | | | 0.850 / 0.945 / 0.792 | 0.850 / 0.945 / 0.792 |
 
 ICDAR runs through pypdfium2 (`icdar2013-scan.mjs`); every per-document score is identical before and after at both dpi. What t3 still gets wrong on the pdf.js raster: `Z1-014` reads `21-014` (one cell), the same misread as on pypdfium2. t1 on the pdf.js raster (0.895 vs 0.947) is a separate open item: `c`→`*` and `2`→empty in a re-read, and a stray `1` joins `Absent in 25 g` and `5`.
+
+## Scanned technical PDFs, 1900–1950
+
+Forty pages from sixteen public-domain scans (NACA technical notes, Bureau of Standards circulars, a USDA bulletin, Smithsonian Physical Tables, a 1919 drawing manual, and US patent 600,014). The PDFs are not in git. The manifest is `tools/parse-bench/scan-corpus.json`: each file has `url`, `year`, `licence`, and `sha256`. Fetch into a directory of this shape (the default root is `/tmp/wo/pxd14/scans`, override with `PXD_SCAN_DIR`):
+
+```
+pdfs/<file>          # the sha256 in the manifest
+truth/<id>.json      # one file per pages[] entry; not committed, except the six fixtures below
+```
+
+```
+node tools/parse-bench/scan-corpus.mjs
+node tools/parse-bench/scan-corpus.mjs --engines web-ocr --only naca-supercharger-1932-p15
+node tools/parse-bench/scan-corpus.mjs --json /tmp/scan-corpus.json
+```
+
+`builtin` is the shipped parse of the PDF as it stands (embedded text, or a scan block). `web-ocr` is that parse plus `readScan` with `--source ppocr-web` (in-browser OCR, what a user without the helper gets). `helper` is `readScan` through the local Vision CLI. OCR answers are cached under `<root>/cache`, keyed by the OCR sources, so a parse-only change re-scores without reading the page again.
+
+A truth file is `{ id, source, class, quality, tables?, figures?, lines?, textComplete? }`. A table cell is `{ r, c, rowSpan, colSpan, text, header, unsure? }`. A figure is `{ bbox, caption }` with `bbox` page-normalised, origin top-left. `unsure: true` drops that cell from both sides. Figure hit is IoU ≥ 0.5. A caption links when token Jaccard ≥ 0.5, or the shorter caption's tokens all sit inside the longer one (`Fig.2` and `Fig. 2` are the same pair). Character error is scored only when `textComplete` is true. These pages transcribe captions and a few checked lines, not every axis tick, so character error is not on this board.
+
+Six pages, 326 KB of PDF, are committed under `test/fixtures/pdf/scans/` with their truth so CI parses them. The fold-out (`naca-diesel-viscosity-1929-p12`) must come back `scanLayer` with no figure: the art is horizontal image strips, not a page-sized drawing.
+
+Round 1, 2026-10-09, forty pages. Caption recall in the before column is recomputed with the same `Fig.2` matcher as the after column (the first print was 0.115 web-ocr and 0.231 helper). First-run seconds per page, before the cache: builtin 0.05, web-ocr 7.69, helper 4.89.
+
+| Engine | Cell F1 before | after | Structure F1 before | after | Figure F1 before | after | Caption recall before | after |
+|---|---|---|---|---|---|---|---|---|
+| builtin | 0.005 | 0.004 | 0.128 | 0.121 | 0.207 | 0.074 | 0.038 | 0.038 |
+| web-ocr | 0.075 | **0.170** | 0.121 | **0.275** | 0.367 | **0.490** | 0.154 | **0.346** |
+| helper | 0.048 | 0.048 | 0.057 | 0.057 | 0.612 | 0.612 | 0.308 | 0.385 |
+
+The built-in figure drop is the fold-out. A full-page box had IoU 0.51 against the plot, which counted as a hit and was not the drawing. Strips are now the scan background (`stripTiles` in `src/model/parse/index.js`, only when the page has under 400 characters of text, so a journal PDF painted in bands stays a text page). web-ocr and the helper then read the page: diesel p12 figure F1 goes from a miss on web-ocr to 1.
+
+The other parse change is `chartGrid` in `src/model/parse/lattice.js`. A ruled grid whose cells are tick marks was a table, its rules were consumed, and the figure was the leftover axis. Those rules now stay with the figure. A column of words, or two header words, keeps the table. Propeller p10 and p11 go from figure F1 0 to 1 on web-ocr, and the false 22×12 tick table is gone.
+
+ICDAR 2013 text layer, same command as the table above this section, every document unchanged: EU detection F1 0.993, adjacency 0.996; US adjacency 0.974, cell F1 0.928. `scan.mjs` on the CDC page is unchanged (text layer structure 0.968 / cell 0.779; Vision fresh 0.983 / 0.952). report-scan through Vision is unchanged (cell F1 0.974 / 0.952 / 1.000). `PARSE_REV` is 9.

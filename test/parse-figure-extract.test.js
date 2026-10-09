@@ -141,6 +141,38 @@ test("a shared axis title under two charts does not pull one box across the othe
   assert.ok(right.bbox[2] >= 470, "right crop includes the rest of the title");
 });
 
+test("a fold-out of horizontal strips is a scan layer, not one page-sized figure", () => {
+  const strips = [];
+  for (let i = 0; i < 8; i++) strips.push([0, i * 96, W, i * 96 + 90]);
+  const labelled = page([
+    ...row(40, [["Fig.", 80], ["2", 120]]),
+    ...row(700, [["viscosity", 80], ["versus", 160], ["temperature", 240]]),
+  ], { images: strips });
+  assert.equal(labelled.scanLayer, true);
+  assert.equal(labelled.kind, "mixed");
+  assert.equal(labelled.figures.length, 0);
+  const blank = page([], { images: strips });
+  assert.equal(blank.kind, "scan");
+  assert.equal(blank.figures.length, 0);
+});
+
+test("tick labels on a chart grid are a figure, not a table", () => {
+  const rules = [];
+  for (let y = 120; y <= 560; y += 40) rules.push([70, y, 540, y]);
+  for (let x = 100; x <= 500; x += 80) rules.push([x, 120, x, 560]);
+  const items = [];
+  for (let i = 0; i < 10; i++) {
+    const y = 140 + i * 40;
+    items.push(...row(y, [["0.2", 90], ["0.4", 180], [".6", 270], ["0.8", 360], ["1", 450]], 8));
+  }
+  const parsed = page(items, { rules });
+  assert.equal(parsed.tables.length, 0);
+  assert.equal(parsed.figures.length, 1);
+  const box = parsed.figures[0].bbox;
+  assert.ok(box[2] - box[0] > 300, "the figure spans the grid, not one axis");
+  assert.ok(box[3] - box[1] > 300);
+});
+
 test("tiled images with no text are a scan, and a labelled page image is a drawing", () => {
   const tiles = [
     [0, 0, 310, 400],

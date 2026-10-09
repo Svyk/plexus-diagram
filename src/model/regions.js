@@ -4,9 +4,12 @@
 
 export const CONTAINER_STRING = "{{[[plexus-regions]]}}";
 export const REGION_COMPONENT = "plexus-region";
+// PDF pins use their own macro so Roam Plexus, which owns plexus-region, never claims them.
+export const PIN_COMPONENT = "plexus-pin";
+export const PIN_CONTAINER_STRING = "{{[[plexus-pins]]}}";
 
 const ID_RE = /^[A-Za-z0-9_-]+$/;
-const HEAD_RE = /^\s*\{\{\[\[plexus-region\]\]:\s*([^}]*)\}\}(?: ([\s\S]*))?$/;
+const HEAD_RE = /^\s*\{\{\[\[(plexus-region|plexus-pin)\]\]:\s*([^}]*)\}\}(?: ([\s\S]*))?$/;
 const KNOWN_KEYS = new Set(["k", "d", "ids", "pad", "el", "f", "g", "fr", "p", "i", "v", "pg"]);
 const ROAM_PLEXUS_KINDS = new Set(["area", "rect", "group", "frame", "cframe", "poly", "imgrect", "imgpoly"]);
 const OURS = new Set(["img", "view", "pdf"]);
@@ -19,7 +22,9 @@ const round1 = (n) => Math.round(n * 10) / 10;
 const isId = (value) => typeof value === "string" && ID_RE.test(value);
 
 export function isContainerString(s) {
-  return typeof s === "string" && s.trim() === CONTAINER_STRING;
+  if (typeof s !== "string") return false;
+  const text = s.trim();
+  return text === CONTAINER_STRING || text === PIN_CONTAINER_STRING;
 }
 
 export function normalizeFrac(f) {
@@ -76,14 +81,15 @@ function parseIds(raw, cap) {
 export function parseRegion(blockString) {
   if (typeof blockString !== "string") return null;
   // The head token is the only match. Notes skip the expression.
-  if (blockString.indexOf(REGION_COMPONENT) === -1) return null;
+  if (blockString.indexOf(REGION_COMPONENT) === -1 && blockString.indexOf(PIN_COMPONENT) === -1) return null;
   const m = HEAD_RE.exec(blockString);
   if (!m) return null;
-  const caption = (m[2] ?? "").trim();
+  const isPin = m[1] === PIN_COMPONENT;
+  const caption = (m[3] ?? "").trim();
   const args = new Map();
   const extra = [];
   const bad = [];
-  for (const tok of m[1].split(/\s+/)) {
+  for (const tok of m[2].split(/\s+/)) {
     if (!tok) continue;
     const eq = tok.indexOf("=");
     if (eq <= 0) { bad.push(tok); continue; }
@@ -92,10 +98,12 @@ export function parseRegion(blockString) {
     if (KNOWN_KEYS.has(key) && !args.has(key)) args.set(key, value);
     else extra.push([key, value]);
   }
-  const kind = args.get("k") ?? "";
+  const kind = isPin ? "pdf" : (args.get("k") ?? "");
   const drawingUid = args.get("d") ?? "";
   const region = { kind, drawingUid, caption, extra, supported: false, owner: "unknown" };
+  if (isPin) region.macro = PIN_COMPONENT;
   if (bad.length) return fail(region, `bad token ${bad[0]}`);
+  if (isPin && args.has("k") && args.get("k") !== "pdf") return fail(region, "bad k");
   if (!kind) return fail(region, "missing k");
 
   if (OURS.has(kind)) {
@@ -230,7 +238,7 @@ export function serializeRegion(region) {
   const { kind, drawingUid } = region;
   need(OURS.has(kind) || ROAM_PLEXUS_KINDS.has(kind), `unknown kind ${kind}`);
   need(isId(drawingUid), "bad drawingUid");
-  const tokens = [`k=${kind}`, `d=${drawingUid}`];
+  const tokens = kind === "pdf" ? [`d=${drawingUid}`] : [`k=${kind}`, `d=${drawingUid}`];
   if (kind === "pdf") {
     need(Number.isInteger(region.pg) && region.pg >= 1, "bad pg");
     const f = normalizeFrac(region.f);
@@ -290,7 +298,8 @@ export function serializeRegion(region) {
     tokens.push(`${pair[0]}=${pair[1]}`);
   }
   const caption = String(region.caption ?? "").replace(/\s+/g, " ").trim();
-  return `{{[[${REGION_COMPONENT}]]: ${tokens.join(" ")}}}${caption ? ` ${caption}` : ""}`;
+  const component = kind === "pdf" ? PIN_COMPONENT : REGION_COMPONENT;
+  return `{{[[${component}]]: ${tokens.join(" ")}}}${caption ? ` ${caption}` : ""}`;
 }
 
 export function fracRectOf(region) {

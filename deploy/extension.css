@@ -8132,6 +8132,25 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-paper {
   background: transparent;
 }
 
+/* Pin containers are structure. In Roam's outline the macro button is a quiet label. */
+button.rm-xparser-default-plexus-pins {
+  min-height: 0;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: inherit;
+  opacity: 0.45;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+/* The reading pane and page cards drop the container rows. The block stays in the graph. */
+.pxd-read .roam-block-container:has(> .rm-block-main button:is(.rm-xparser-default-plexus-pins, .rm-xparser-default-plexus-regions)),
+.pxd-root .pxd-item--page .pxd-page-edit .roam-block-container:has(> .rm-block-main button:is(.rm-xparser-default-plexus-pins, .rm-xparser-default-plexus-regions)) {
+  display: none !important;
+}
+
 /* NP-4. Properties panel, custom style keys, cross texture, animated dashes.
    Every rule is scoped under .pxd-root. A missing style key sets no variable, so 1.2 boards stay as they are. */
 

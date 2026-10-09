@@ -35,8 +35,8 @@ Palette names are `gray` `red` `orange` `yellow` `green` `teal` `blue` `indigo` 
 | Trail | Child whose `type` is `trail`, or whose string is `{{[[plexus-trail]]}}` | `type` `trail`. The name is the string after the macro |
 | Stop | `((uid))` child of a trail | No plexus. The note is that stop's first child |
 | Landmark | `landmark` `true` on a card, text item, or section | `glyph` and `size` only while that flag is set |
-| Regions container | String `{{[[plexus-regions]]}}` and `type` `regions` | Not a card |
-| Region | `{{[[plexus-region]]: ...}}` | No plexus on the region block. Caption is the text after `}}` |
+| Regions container | String `{{[[plexus-regions]]}}` or `{{[[plexus-pins]]}}`, and `type` `regions` | Not a card |
+| Region | `{{[[plexus-region]]: ...}}` or a PDF pin `{{[[plexus-pin]]: ...}}` | No plexus on the region block. Caption is the text after `}}` |
 | View | Region with `k=view` | Same block. `v` in the macro is the world rect, not schema `v` |
 | Snapshots | Child whose `type` is `snapshots` | Not a card |
 | Snapshot | Child whose `type` is `snapshot` | `json` string. Title is the block string |
@@ -118,6 +118,7 @@ Region strings match Roam Plexus. The container is `{{[[plexus-regions]]}}`.
 |---|---|---|
 | `k=img` | `d` image uid, `f` four fractions `rx,ry,rw,rh` | Caption |
 | `k=view` | `d` board uid, `v` four numbers `x,y,w,h`, optional `ids` up to 24 | Caption |
+| `{{[[plexus-pin]]: …}}` | `d` PDF block uid, `pg` page (1-based), `f` four fractions. No `k=`. Under `{{[[plexus-pins]]}}`. The old `{{[[plexus-region]]: k=pdf …}}` form still reads | Quote |
 
 Roam Plexus kinds `area` `rect` `group` `frame` `cframe` `poly` `imgrect` `imgpoly` parse and stay unsupported here. Rename rewrites the caption only. Delete deletes the block.
 
@@ -152,8 +153,9 @@ Plexus decorates these. The button class is Roam's component button. The mount c
 | `{{[[plexus-trail]]}}` | Hides the button and inserts a stop strip | `button.rm-xparser-default-plexus-trail`, strip `.pxd-trail-strip`, `data-plexus-owner="trail"` |
 | `{{[[plexus-resurface]]}}` | Panel of cards from a week, a month, or a year ago | `button.rm-xparser-default-plexus-resurface`, `data-pxd-resurface="1"` |
 | `{{[[plexus-region]]}}` | Crop or view map in place of the button | `button.rm-xparser-default-plexus-region`, `.pxd-region-crop`, `.pxd-region-view`, `data-plexus-owner="plexus-diagram"` |
+| `{{[[plexus-pin]]}}` | PDF source pin quote and crop in place of the button | `button.rm-xparser-default-plexus-pin`, `.pxd-pdf-pin`, `data-plexus-owner="plexus-diagram"` |
 
-`{{[[plexus-regions]]}}` is the container string. It is not given a button. `{{[[TODO]]}}` and `{{[[DONE]]}}` are task markers, not decorated components. `{{[[embed]]}}` is how Roam nests a copy. Plexus does not claim it.
+`{{[[plexus-regions]]}}` and `{{[[plexus-pins]]}}` are container strings. They are not given a button; Plexus hides their rows in the reading pane and in page cards. `{{[[TODO]]}}` and `{{[[DONE]]}}` are task markers, not decorated components. `{{[[embed]]}}` is how Roam nests a copy. Plexus does not claim it.
 
 ## 4. Surfaces
 

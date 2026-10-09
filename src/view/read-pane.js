@@ -465,7 +465,7 @@ export function createReadPane({
     if (id == null) return;
     (clock().clearTimeout || globalThis.clearTimeout)(id);
   };
-  const cancelPageWait = () => { if (pageWait) { cancelLater(pageWait); pageWait = null; } };
+  const cancelPageWait = () => { if (pageWait) { cancelLater(pageWait); pageWait = null; } pageTarget = 0; };
   let holdImg = null;
   let holdWait = null;
   let holdGen = 0;
@@ -504,16 +504,46 @@ export function createReadPane({
     };
     holdWait = later(tick, 150);
   };
-  const jumpPageWhenReady = (page, after) => {
+  // The zoom the reader shows now: pdf.js' scale value ("page-width", or a number as a string) and its scale.
+  const readerScale = () => {
+    const viewer = viewerFromFiber(fiberOf(live.querySelector?.(".PdfHighlighter")));
+    if (!viewer) return null;
+    const value = viewer.currentScaleValue;
+    const scale = Number(viewer.currentScale);
+    return { viewer, value: value == null ? "" : String(value), scale: Number.isFinite(scale) ? scale : 0 };
+  };
+  // A jump, or a remount on the same PDF, must not change the zoom (live: a Source chip jump left 33 %).
+  const restoreScale = (kept) => {
+    if (!kept || (!kept.value && !(kept.scale > 0))) return false;
+    const now = readerScale();
+    if (!now) return false;
+    if (now.value === kept.value && Math.abs(now.scale - kept.scale) < 0.005) return false;
+    const named = /^(page-width|page-fit|page-actual|auto)$/.test(kept.value);
+    autoZoom = true;
+    try {
+      if (named) now.viewer.currentScaleValue = kept.value;
+      else if (kept.scale > 0) now.viewer.currentScale = kept.scale;
+      else now.viewer.currentScaleValue = kept.value;
+    } catch { /* viewer */ }
+    autoZoom = false;
+    return true;
+  };
+  // The page a pending jump is heading to. The outline follows it, not the page the reader shows before the jump.
+  let pageTarget = 0;
+  const jumpPageWhenReady = (page, after, kept = null) => {
     cancelPageWait();
     const gen = pageGen + 1;
     pageGen = gen;
+    pageTarget = 0;
     if (typeof page !== "number" || page < 1) return;
+    pageTarget = page;
     const started = Date.now();
     let settled = 0;
     const finish = () => {
       if (gen !== pageGen) return;
       pageGen += 1;
+      pageTarget = 0;
+      if (openFlag) restoreScale(kept);
       try { after?.(); } catch { /* locate */ }
     };
     const tick = () => {
@@ -537,8 +567,8 @@ export function createReadPane({
     tick();
   };
   const mountReader = (blockUid) => {
-    if (!blockUid) return;
-    if (liveBlock === blockUid && live.querySelector?.(".rm-pdf-container")) return;
+    if (!blockUid) return false;
+    if (liveBlock === blockUid && live.querySelector?.(".rm-pdf-container")) return false;
     clearLive();
     liveBlock = blockUid;
     try { host?.renderBlock?.(live, blockUid); } catch { /* host */ }
@@ -546,6 +576,7 @@ export function createReadPane({
     let src = "";
     try { src = typeof coverSrc === "function" ? coverSrc(current) : ""; } catch { src = ""; }
     if (typeof src === "string" && src) paintHold(src);
+    return true;
   };
   const cardTitle = (card) => {
     if (typeof titleOf === "function") {
@@ -2352,7 +2383,7 @@ export function createReadPane({
     try { found = await view.restore(); } catch { found = null; }
     if (!openFlag) return;
     // The outline opens at the top, or at the first block of the page the reader is on (never at the end).
-    try { view.scrollToPage?.(pageNowOf()); } catch { /* view */ }
+    try { view.scrollToPage?.(pageTarget || pageNowOf()); } catch { /* view */ }
     if (!found && view.blockCount() === 0) {
       try { await view.parseBuiltin(); } catch { /* parse */ }
     }
@@ -2436,6 +2467,8 @@ export function createReadPane({
       const next = detail && typeof detail === "object" ? detail : {};
       const blockUid = typeof next.blockUid === "string" ? next.blockUid : "";
       if (!blockUid || !root) return;
+      // Same PDF already showing: keep its zoom through the jump (and through a remount).
+      const kept = openFlag && blockUid === current.blockUid && liveBlock === blockUid && fitDone ? readerScale() : null;
       if (blockUid !== current.blockUid) {
         textLayer.clear();
         ocrSha = "";
@@ -2472,17 +2505,25 @@ export function createReadPane({
       ensureMotion();
       applyBox();
       if (fresh) startEnter();
-      mountReader(blockUid);
+      const jumping = typeof next.page === "number";
+      // Read + Outline in a narrow pane: a jump shows the page tab, or the reader is not there to move.
+      if (jumping && viewMode === "both" && narrowTab === "outline") {
+        narrowTab = "page";
+        applyModeClass();
+      }
+      const remounted = mountReader(blockUid);
+      // A remount with nothing to restore fits again; one with a kept zoom gets it back after the jump.
+      if (remounted && !(kept && jumping)) fitDone = false;
       attachReaderWatch();
       armSettle();
       armFit();
       const wanted = highlightUidOf(next);
       const frac = Array.isArray(next.frac) ? next.frac : null;
-      if (typeof next.page === "number") {
+      if (jumping) {
         jumpPageWhenReady(next.page, () => {
           if (wanted) locateHighlight(wanted);
           else if (frac) flashFrac(frac);
-        });
+        }, kept);
       }
       else if (wanted) locateHighlight(wanted);
       armWatch(current.title);

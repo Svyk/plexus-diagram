@@ -1,8 +1,8 @@
-// PDF source pins. A pin is a k=pdf region under the PDF block. This module plans
+// PDF source pins. A pin is a plexus-pin block (kind "pdf") under the PDF block. This module plans
 // strings, dedupe, clipboard payloads, and write counts. It does not touch the graph.
 
 import { graphFromDeepLink, pageUidFromHash } from "./deeplink.js";
-import { CONTAINER_STRING, normalizeFrac, serializeRegion } from "./regions.js";
+import { normalizeFrac, PIN_CONTAINER_STRING, serializeRegion } from "./regions.js";
 import { viewportBox } from "../view/parse-overlay.js";
 
 export const PIN_IOU = 0.9;
@@ -329,7 +329,7 @@ export function planPinWrites(spec) {
     creates.push({
       role: "container",
       parentUid: spec.pdfUid,
-      string: CONTAINER_STRING,
+      string: PIN_CONTAINER_STRING,
       open: false,
       props: { plexus: { type: "regions" } },
     });

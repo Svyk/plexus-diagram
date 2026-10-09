@@ -109,3 +109,22 @@
   border-color: #fff;
   background: transparent;
 }
+
+/* Pin containers are structure. In Roam's outline the macro button is a quiet label. */
+button.rm-xparser-default-plexus-pins {
+  min-height: 0;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: inherit;
+  opacity: 0.45;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+/* The reading pane and page cards drop the container rows. The block stays in the graph. */
+.pxd-read .roam-block-container:has(> .rm-block-main button:is(.rm-xparser-default-plexus-pins, .rm-xparser-default-plexus-regions)),
+.pxd-root .pxd-item--page .pxd-page-edit .roam-block-container:has(> .rm-block-main button:is(.rm-xparser-default-plexus-pins, .rm-xparser-default-plexus-regions)) {
+  display: none !important;
+}

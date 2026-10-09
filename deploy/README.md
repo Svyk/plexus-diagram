@@ -102,6 +102,9 @@ An image region and a saved view are blocks under `{{[[plexus-regions]]}}`. That
 |---|---|
 | Image region | `{{[[plexus-region]]: k=img d=<image uid> f=<rx>,<ry>,<rw>,<rh>}} caption` |
 | Saved view | `{{[[plexus-region]]: k=view d=<board uid> v=<x>,<y>,<w>,<h>}} caption` |
+| PDF source pin | `{{[[plexus-pin]]: d=<pdf block uid> pg=<page> f=<rx>,<ry>,<rw>,<rh>}} quote` |
+
+A PDF source pin has its own macro, so Roam Plexus (which owns `plexus-region`) never claims it. Pins sit under `{{[[plexus-pins]]}}`, a collapsed child of the PDF block. Plexus hides that row in the reading pane and in page cards. Older pins written as `{{[[plexus-region]]: k=pdf …}}` under `{{[[plexus-regions]]}}` still read and dedupe; new pins always use `plexus-pin`.
 
 `f` is the crop as fractions of the picture. `v` is the camera. `ids=` can name up to 24 cards. Roam Plexus 0.33.0 reserves these two kinds.
 

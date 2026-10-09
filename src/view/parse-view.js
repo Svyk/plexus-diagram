@@ -507,6 +507,9 @@ export function createParseView({
   let wheelingUntil = 0;
   let lastJump = null;
   let echo = false;
+  // A programmatic scroll fires its scroll event later, after echo is false again. Until this time the
+  // outline does not drive the reader (it sent a Source-chip jump back to the old page in Read + Outline).
+  let echoUntil = 0;
   let pageWatch = null;
   let abort = null;
   let jobId = "";
@@ -1716,7 +1719,7 @@ export function createParseView({
   }
 
   function onBodyScroll() {
-    if (echo) return;
+    if (echo || now() < echoUntil) return;
     const decision = syncDecision({
       locked,
       wheeling: now() < wheelingUntil,
@@ -1965,6 +1968,7 @@ export function createParseView({
     scrollToPage(page) {
       const n = Number(page) || 1;
       echo = true;
+      echoUntil = now() + SYNC_MS;
       const node = n > 1 ? body.querySelector?.(`[data-page="${n}"]`) : null;
       body.scrollTop = node ? outlineScrollTop(node, body) : 0;
       echo = false;
@@ -1985,6 +1989,7 @@ export function createParseView({
         if (!page || page === lastPage) return;
         lastPage = page;
         echo = true;
+        echoUntil = now() + SYNC_MS;
         const node = page > 1 ? body.querySelector?.(`[data-page="${page}"]`) : null;
         body.scrollTop = node ? outlineScrollTop(node, body) : 0;
         echo = false;

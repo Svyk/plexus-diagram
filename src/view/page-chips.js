@@ -1,8 +1,9 @@
 // Structure chips on the reader page. Hovering a parsed block outlines it and shows a chip at its
 // top-right that runs one of the existing parse actions. Hover, outline and dots write nothing;
 // only a chip click calls `run`. Pointer events are on the chip alone. No setPointerCapture.
-// "Show parsed" adds a persistent soft box per parsed block with a copy icon at its left edge;
-// boxes are pointer-events none, only the icons take clicks (one delegated listener).
+// "Show parsed" adds a persistent soft box per parsed block with a copy icon at its left edge.
+// Paragraph boxes are pointer-events none; only their icons take clicks (one delegated listener).
+// A figure or formula box takes the pointer when a drag callback is passed, so the crop can be dragged.
 
 import { gestureSource, readWithSource, writeWithSource, COPY_MENU } from "../model/pdf-pin.js";
 import { bboxToPagePercent, bboxToPageRect } from "./parse-overlay.js";
@@ -65,7 +66,10 @@ export function skipParsedBox(block, plan, page) {
   if (h < MIN_BOX_H && w < MIN_BOX_W) return true;
   if ((block?.type === "figure" || block?.type === "image") && (h < MIN_IMAGE || w < MIN_IMAGE)) return true;
   const text = typeof block?.text === "string" ? block.text.trim() : "";
-  if (block?.type !== "table" && text && MARK_TEXT.test(text)) return true;
+  // A short caption ("c5", "1") is the figure's label, not a footnote mark. Hiding the box
+  // leaves the PDF text layer under the pointer, so a drag inserts the caption instead of the crop.
+  const pictorial = block?.type === "figure" || block?.type === "formula" || block?.type === "image";
+  if (!pictorial && block?.type !== "table" && text && MARK_TEXT.test(text)) return true;
   return false;
 }
 
@@ -214,6 +218,7 @@ export function createPageChips({
   getSelection = null,
   copy = null,
   copyMenu = null,
+  drag = null,
   storage = null,
   boxCap = 4000,
 } = {}) {
@@ -430,7 +435,9 @@ export function createPageChips({
       box.style.top = `calc(${plan.top}% - ${BOX_PAD}px)`;
       box.style.width = `calc(${plan.width}% + ${2 * BOX_PAD}px)`;
       box.style.height = `calc(${plan.height}% + ${2 * BOX_PAD}px)`;
-      box.style.pointerEvents = "none";
+      const draggable = typeof drag === "function" && (plan.type === "figure" || plan.type === "formula");
+      if (draggable) box.classList.add("pxd-parsed-box--drag");
+      box.style.pointerEvents = draggable ? "auto" : "none";
       const icon = doc.createElement("button");
       icon.type = "button";
       icon.className = "pxd-parsed-copy";
@@ -563,6 +570,18 @@ export function createPageChips({
     }, COPIED_MS);
   };
   const onIconDown = (event) => { if (onIcon(event)) event.preventDefault?.(); };
+  const onBoxDown = (event) => {
+    if (typeof drag !== "function") return;
+    if (event.button != null && event.button !== 0) return;
+    if (event.target?.closest?.(".pxd-parsed-copy")) return;
+    const box = event.target?.closest?.(".pxd-parsed-box--drag");
+    if (!box) return;
+    const block = getParsed?.()?.blocks?.[box.getAttribute("data-block")];
+    if (!block) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    drag(block, event);
+  };
   const onIconClick = (event) => {
     const icon = onIcon(event);
     if (!icon) return;
@@ -794,6 +813,7 @@ export function createPageChips({
   on(win(), "blur", clearDots);
   on(target, "pointerdown", onIconDown, true);
   on(target, "mousedown", onIconDown, true);
+  if (typeof drag === "function") on(target, "pointerdown", onBoxDown, true);
   on(target, "click", onIconClick, true);
   on(target, "click", onMoreClick, true);
   on(target, "contextmenu", onCopyContext, true);

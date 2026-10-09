@@ -124,7 +124,8 @@ export function createParseActions({ session, store, placeBeside, toast, select,
     async insertParsedBelow(payload) {
       const doc = await load(payload);
       if (!doc) return { ok: false, reason: "missing-cache" };
-      const { markdown, blockEstimate } = toRoamMarkdown(doc, payload.ids, { footnoteFormat: fnFormat() });
+      const withImages = await withUploadedImages(doc, payload.ids);
+      const { markdown, blockEstimate } = toRoamMarkdown(withImages, payload.ids, { footnoteFormat: fnFormat() });
       const pin = pinFor(doc, payload);
       const res = await session?.insertParsedBelow?.({ pdfUid: payload.pdfUid, markdown, blockEstimate, ...(pin ? { pin } : {}) });
       if (res?.ok) {

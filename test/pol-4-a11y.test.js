@@ -173,21 +173,16 @@ test("status, halo, why, and task popovers take focus, move with arrows, and Esc
     root.append(whyOpener);
     whyOpener.focus();
     const cancelled = [];
-    const saved = [];
     const why = openWhyPopover({
       doc: stub.document,
       label: "causes",
       why: "seal",
-      onSave: (next) => saved.push(next),
       onCancel: () => cancelled.push(1),
     });
     const label = why.el.querySelector(".pxd-why__label");
-    const note = why.el.querySelector(".pxd-why__note");
+    assert.equal(why.el.querySelectorAll("input, textarea").length, 1);
+    assert.equal(why.el.querySelector(".pxd-why__note"), null);
     assert.equal(stub.document.activeElement, label);
-    stub.dispatch(label, "keydown", { key: "ArrowDown" });
-    assert.equal(stub.document.activeElement, note);
-    stub.dispatch(note, "keydown", { key: "Enter", shiftKey: true });
-    assert.deepEqual(saved, []);
     stub.dispatch(why.el, "keydown", { key: "Escape" });
     assert.deepEqual(cancelled, [1]);
     assert.equal(stub.document.activeElement, whyOpener);

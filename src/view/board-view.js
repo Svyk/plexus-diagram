@@ -1699,7 +1699,7 @@ function buildBoardView(onFail, {
         toast: (message) => toast(message),
         select: (uids) => { if (!disposed) ctl.select(uids); },
         show: (uids) => { if (!disposed) revealParsed(uids); },
-        upload: (file) => host.uploadFile(file),
+        upload: (file) => host.uploadFile?.(file),
       });
     }
     return parseActionsObj;
@@ -6260,9 +6260,10 @@ function buildBoardView(onFail, {
     const hostNode = tablePointerTarget(node);
     return Boolean(hostNode && root.contains(hostNode));
   };
-  listen(root, "pointerdown", (event) => {
+  let onBoardPointerDown;
+  listen(root, "pointerdown", onBoardPointerDown = (event) => {
     if (leavesBoardPointer(event.target)) return;
-    if (inRoamTable(event.target)) { tablePointer = event.target; return; }
+    if (inRoamTable(event.target) && !event.__pxdGrab) { tablePointer = event.target; return; }
     // Interact is on: this click belongs to the reader. preventDefault or stopPropagation would block page nav.
     if (pdfClickShield(event.target)) return;
     else if (root.querySelector?.(".pxd-pdf-live")) itemsR.endPdfInteract();
@@ -6297,6 +6298,60 @@ function buildBoardView(onFail, {
     try { if (!editingUid && ev.target.kind !== "label") root.focus({ preventScroll: true }); } catch { /* stub */ }
     armLongPress(event);
   });
+  // Capture runs before a grid cell or a live sticky body can stop the bubble. A move past the
+  // threshold hands the original press to the board; a click that stays put is left to the cell.
+  const GRAB_SKIP = ".pxd-port, .pxd-grip, .pxd-chrome, .rg-col-resize, .rg-row-resize, .pxd-roam-table__open, .pxd-table-overlay, .pxd-refs";
+  let grab = null;
+  const grabOffs = [];
+  const clearGrab = () => {
+    while (grabOffs.length) {
+      try { grabOffs.pop()(); } catch { /* already off */ }
+    }
+    grab = null;
+  };
+  const fieldTarget = (node) => {
+    const tag = String(node?.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+    if (node?.isContentEditable) return true;
+    const ce = node?.getAttribute?.("contenteditable");
+    return ce === "" || ce === "true";
+  };
+  const onGrabMove = (event) => {
+    if (!grab) return;
+    if (grab.id != null && event.pointerId != null && event.pointerId !== grab.id) return;
+    const dx = (Number(event.clientX) || 0) - grab.x;
+    const dy = (Number(event.clientY) || 0) - grab.y;
+    if (Math.hypot(dx, dy) < 4) return;
+    if (ctl.isGesturing()) { clearGrab(); return; }
+    const down = grab.down;
+    clearGrab();
+    down.__pxdGrab = true;
+    onBoardPointerDown(down);
+    onDocMove(event);
+  };
+  const onGrabEnd = (event) => {
+    if (!grab) return;
+    if (grab.id != null && event.pointerId != null && event.pointerId !== grab.id) return;
+    clearGrab();
+  };
+  listen(root, "pointerdown", (event) => {
+    if ((event.button ?? 0) !== 0) return;
+    if (leavesBoardPointer(event.target)) return;
+    const item = event.target?.closest?.(".pxd-item");
+    if (!item || !root.contains(item)) return;
+    const uid = item.getAttribute?.("data-uid") || item.dataset?.uid;
+    if (!uid || itemsR.editingUid?.() === uid) return;
+    if (event.target?.closest?.(GRAB_SKIP)) return;
+    if (nativeClickKind(event.target)) return;
+    const stickyBody = Boolean(item.classList?.contains("pxd-item--sticky") && event.target?.closest?.(".pxd-item__body"));
+    if (!stickyBody && fieldTarget(event.target)) return;
+    if (!stickyBody && !inRoamTable(event.target) && !event.target?.closest?.(".pxd-item__body, .pxd-item__header")) return;
+    if (grab) clearGrab();
+    grab = { id: event.pointerId, x: Number(event.clientX) || 0, y: Number(event.clientY) || 0, down: event };
+    grabOffs.push(listen(doc, "pointermove", onGrabMove, true));
+    grabOffs.push(listen(doc, "pointerup", onGrabEnd, true));
+    grabOffs.push(listen(doc, "pointercancel", onGrabEnd, true));
+  }, true);
   // The mouseup that ends a drag must not reach a [[link]] the pointer happens to be over (it moved with the card).
   listen(doc, "mouseup", (event) => {
     if (!swallowMouseUp) return;
@@ -6599,6 +6654,7 @@ function buildBoardView(onFail, {
         session,
         point: p,
         toast: (message) => toast(message),
+        upload: (file) => host.uploadFile?.(file),
       }).then((res) => {
         if (disposed) return;
         if (Array.isArray(res?.uids) && res.uids.length) {
@@ -6688,6 +6744,8 @@ function buildBoardView(onFail, {
       return false;
     };
     if (event.target?.closest?.(".pxd-read")) return;
+    // The arrow label lives on document.body. It is outside the board, but it is not a Roam edit.
+    if (event.target?.closest?.(".pxd-why")) return;
     // A keystroke outside the board is a Roam transaction. Drop live card renders first,
     // before any board lookup, and put them back shortly after typing stops.
     if (isTextEntryTarget(event.target) && !root.contains?.(event.target)) {

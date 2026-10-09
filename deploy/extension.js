@@ -13080,6 +13080,11 @@ function planParseInsert(doc, payload) {
     if (!table) return { action: "empty" };
     return { action: "table", table };
   }
+  if (kind === "figure" || kind === "formula") {
+    const hit = blocks.find((block) => block?.type === kind);
+    if (!hit) return { action: "empty" };
+    return { action: "card", markdown: toRoamMarkdown(doc, [hit.id], { footnoteFormat: payload?.footnoteFormat }).markdown };
+  }
   if (kind !== "blocks" || !blocks.length) return { action: "empty" };
   const sections = [];
   let current3 = null;
@@ -13109,7 +13114,53 @@ function pinForDrop(doc, payload) {
   if (!first) return null;
   return pinSpecFromBlock(first, doc, payload.pdfBlockUid || payload.pdfUid);
 }
-async function handleParseDrop({ payload, store, session, point, toast } = {}) {
+function dataUrlToBlob2(url) {
+  const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(String(url || ""));
+  if (!m || typeof Blob !== "function") return null;
+  const type = m[1] || "image/png";
+  let bytes;
+  if (m[2]) {
+    let bin = "";
+    try {
+      bin = globalThis.atob(m[3]);
+    } catch {
+      return null;
+    }
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  } else {
+    try {
+      bytes = new TextEncoder().encode(decodeURIComponent(m[3]));
+    } catch {
+      return null;
+    }
+  }
+  return new Blob([bytes], { type });
+}
+function imageKey(sha256, blockId) {
+  return `${sha256}/${blockId}`;
+}
+async function withDropImages(doc, payload, store, upload) {
+  if (!doc || typeof upload !== "function") return doc;
+  const ids = Array.isArray(payload?.ids) ? payload.ids : [];
+  const blocks = selectBlocks(doc, ids).filter((block) => (block?.type === "figure" || block?.type === "formula") && !(block.image?.url || block.url));
+  if (!blocks.length) return doc;
+  const next = { ...doc, blocks: { ...doc.blocks } };
+  for (const block of blocks) {
+    try {
+      const src = await store?.getImage?.(imageKey(doc.sha256, block.id));
+      const blob = typeof src === "string" ? dataUrlToBlob2(src) : null;
+      if (!blob) continue;
+      const name = `figure-p${block.page ?? 0}.png`;
+      const file = typeof File === "function" ? new File([blob], name, { type: blob.type || "image/png" }) : blob;
+      const url = await upload(file);
+      if (typeof url === "string" && url) next.blocks[block.id] = { ...block, image: { ...block.image || {}, url } };
+    } catch {
+    }
+  }
+  return next;
+}
+async function handleParseDrop({ payload, store, session, point, toast, upload } = {}) {
   if (payload?.kind === "text") {
     const markdown = textCardMarkdown(payload);
     if (!markdown) return { ok: false, reason: "empty", uids: [] };
@@ -13130,7 +13181,8 @@ async function handleParseDrop({ payload, store, session, point, toast } = {}) {
     if (typeof toast === "function") toast(PARSE_MISSING_TOAST);
     return { ok: false, reason: "missing-cache", uids: [] };
   }
-  const plan = planParseInsert(doc, { ...payload, footnoteFormat: session?.footnoteFormat?.() });
+  const ready = await withDropImages(doc, payload, store, upload);
+  const plan = planParseInsert(ready, { ...payload, footnoteFormat: session?.footnoteFormat?.() });
   const x = Number.isFinite(point?.x) ? point.x : 0;
   const y = Number.isFinite(point?.y) ? point.y : 0;
   const pin2 = pinForDrop(doc, payload);
@@ -33935,10 +33987,11 @@ function openWhyPopover({
   whyField.className = "pxd-why__note";
   whyField.value = why;
   whyField.setAttribute("aria-label", "Why");
+  const showWhy = focus === "why";
   const hint = doc.createElement("div");
   hint.className = "pxd-why__hint";
-  hint.textContent = "Enter saves. Shift+Enter adds a line.";
-  pop.append(labelField, whyField, hint);
+  hint.textContent = showWhy ? "Enter saves. Shift+Enter adds a line." : "Enter saves.";
+  pop.append(showWhy ? whyField : labelField, hint);
   openPops.add(pop);
   const offs = [];
   const on = (el, type, fn) => {
@@ -33973,12 +34026,12 @@ function openWhyPopover({
       focusEl2(opener);
       return;
     }
-    if (event.key === "ArrowDown" && event.target === labelField) {
+    if (event.key === "ArrowDown" && event.target === labelField && whyField.isConnected === true) {
       event.preventDefault();
       focusEl2(whyField);
       return;
     }
-    if (event.key === "ArrowUp" && event.target === whyField) {
+    if (event.key === "ArrowUp" && event.target === whyField && labelField.isConnected === true) {
       let start = 0;
       try {
         start = whyField.selectionStart;
@@ -36757,7 +36810,7 @@ async function restorableByUrl(store, url, { plainOptions, engines = RESTORE_ENG
     readHashOf: (plain2) => optionsHash({ ...plain2.options || plainOptions, ocr: "vision" })
   });
 }
-function imageKey(sha256, blockId) {
+function imageKey2(sha256, blockId) {
   return `${sha256}/${blockId}`;
 }
 function requestResult2(req) {
@@ -38018,7 +38071,8 @@ function skipParsedBox(block, plan, page) {
   if (h < MIN_BOX_H && w < MIN_BOX_W) return true;
   if ((block?.type === "figure" || block?.type === "image") && (h < MIN_IMAGE || w < MIN_IMAGE)) return true;
   const text3 = typeof block?.text === "string" ? block.text.trim() : "";
-  if (block?.type !== "table" && text3 && MARK_TEXT.test(text3)) return true;
+  const pictorial = block?.type === "figure" || block?.type === "formula" || block?.type === "image";
+  if (!pictorial && block?.type !== "table" && text3 && MARK_TEXT.test(text3)) return true;
   return false;
 }
 function copyIconSpot(entry, page, dy = 0, size = COPY_ICON) {
@@ -38150,6 +38204,7 @@ function createPageChips({
   getSelection = null,
   copy = null,
   copyMenu = null,
+  drag = null,
   storage = null,
   boxCap = 4e3
 } = {}) {
@@ -38387,7 +38442,9 @@ function createPageChips({
       box2.style.top = `calc(${plan.top}% - ${BOX_PAD}px)`;
       box2.style.width = `calc(${plan.width}% + ${2 * BOX_PAD}px)`;
       box2.style.height = `calc(${plan.height}% + ${2 * BOX_PAD}px)`;
-      box2.style.pointerEvents = "none";
+      const draggable = typeof drag === "function" && (plan.type === "figure" || plan.type === "formula");
+      if (draggable) box2.classList.add("pxd-parsed-box--drag");
+      box2.style.pointerEvents = draggable ? "auto" : "none";
       const icon = doc.createElement("button");
       icon.type = "button";
       icon.className = "pxd-parsed-copy";
@@ -38524,6 +38581,18 @@ function createPageChips({
   };
   const onIconDown = (event) => {
     if (onIcon(event)) event.preventDefault?.();
+  };
+  const onBoxDown = (event) => {
+    if (typeof drag !== "function") return;
+    if (event.button != null && event.button !== 0) return;
+    if (event.target?.closest?.(".pxd-parsed-copy")) return;
+    const box2 = event.target?.closest?.(".pxd-parsed-box--drag");
+    if (!box2) return;
+    const block = getParsed?.()?.blocks?.[box2.getAttribute("data-block")];
+    if (!block) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    drag(block, event);
   };
   const onIconClick = (event) => {
     const icon = onIcon(event);
@@ -38786,6 +38855,7 @@ function createPageChips({
   on(win(), "blur", clearDots);
   on(target, "pointerdown", onIconDown, true);
   on(target, "mousedown", onIconDown, true);
+  if (typeof drag === "function") on(target, "pointerdown", onBoxDown, true);
   on(target, "click", onIconClick, true);
   on(target, "click", onMoreClick, true);
   on(target, "contextmenu", onCopyContext, true);
@@ -38896,7 +38966,7 @@ function createCropQueue(limit = 2) {
     }
   };
 }
-function dataUrlToBlob2(url, BlobCtor = globalThis.Blob) {
+function dataUrlToBlob3(url, BlobCtor = globalThis.Blob) {
   const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(String(url || ""));
   if (!m) return null;
   const type = m[1] || "image/png";
@@ -39686,8 +39756,8 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     const next = { ...doc, blocks: { ...doc.blocks } };
     for (const block of blocks) {
       try {
-        const src = await store?.getImage?.(imageKey(doc.sha256, block.id));
-        const blob = typeof src === "string" ? dataUrlToBlob2(src) : src;
+        const src = await store?.getImage?.(imageKey2(doc.sha256, block.id));
+        const blob = typeof src === "string" ? dataUrlToBlob3(src) : src;
         if (!blob) continue;
         const file = new File([blob], `figure-p${block.page ?? 0}.png`, { type: "image/png" });
         const url = await upload(file);
@@ -39701,7 +39771,8 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     async insertParsedBelow(payload) {
       const doc = await load(payload);
       if (!doc) return { ok: false, reason: "missing-cache" };
-      const { markdown, blockEstimate } = toRoamMarkdown(doc, payload.ids, { footnoteFormat: fnFormat() });
+      const withImages = await withUploadedImages(doc, payload.ids);
+      const { markdown, blockEstimate } = toRoamMarkdown(withImages, payload.ids, { footnoteFormat: fnFormat() });
       const pin2 = pinFor(doc, payload);
       const res = await session?.insertParsedBelow?.({ pdfUid: payload.pdfUid, markdown, blockEstimate, ...pin2 ? { pin: pin2 } : {} });
       if (res?.ok) {
@@ -40786,7 +40857,7 @@ ${sourceAttrString(source)}` : markdown;
       }
       if (id === "crop") {
         const src = await cropAt2x(block);
-        const blob = src ? dataUrlToBlob2(src) : null;
+        const blob = src ? dataUrlToBlob3(src) : null;
         if (!blob) return false;
         return writeTyped({ "image/png": blob });
       }
@@ -40824,6 +40895,7 @@ ${sourceAttrString(source)}` : markdown;
       });
     },
     copyMenu: (id, block) => handleCopyMenu(id, block),
+    drag: (block, event) => beginPointerDrag(event, [block]),
     run: (act, item) => {
       if (act === "pin-ref") {
         const block = item?.block || parsed?.blocks?.[item?.ids?.[0]];
@@ -40869,11 +40941,21 @@ ${sourceAttrString(source)}` : markdown;
           else onToast?.("Run Docling on this page to read the formula as LaTeX");
         }
       });
-      if (!PLACE_ACTS.includes(act) || item?.extra?.beside || !ghostRoot || !parsed) {
-        go();
+      const start = () => {
+        if (!PLACE_ACTS.includes(act) || item?.extra?.beside || !ghostRoot || !parsed) {
+          go();
+          return;
+        }
+        void beginPlacement(act, item, go);
+      };
+      const figs = (item?.ids || []).map((id) => parsed?.blocks?.[id]).filter((block) => block && (block.type === "figure" || block.type === "formula"));
+      if (!figs.length) {
+        start();
         return;
       }
-      void beginPlacement(act, item, go);
+      void warmFigures(figs).then(() => {
+        if (!dead) start();
+      });
     }
   }));
   let placing = null;
@@ -40889,7 +40971,7 @@ ${sourceAttrString(source)}` : markdown;
     if (plan.content.kind === "figure" && first && store?.getImage) {
       try {
         const src = await Promise.race([
-          store.getImage(imageKey(parsed.sha256, first.id)),
+          store.getImage(imageKey2(parsed.sha256, first.id)),
           new Promise((resolve) => {
             const id = setTimeout(() => resolve(null), 120);
             id?.unref?.();
@@ -41215,13 +41297,13 @@ ${sourceAttrString(source)}` : markdown;
     void info;
   }
   async function writeClipboard2(text3) {
-    if (typeof writeText === "function") {
-      await writeText(text3);
-      return;
-    }
     try {
-      await doc.defaultView?.navigator?.clipboard?.writeText?.(text3);
+      await writeTextOnly(text3);
     } catch {
+      try {
+        onToast?.("Could not copy");
+      } catch {
+      }
     }
   }
   function isImageCopy(block) {
@@ -41236,11 +41318,24 @@ ${sourceAttrString(source)}` : markdown;
   }
   async function writeTextOnly(text3) {
     if (typeof writeText === "function") {
-      await writeText(text3);
-      return;
+      try {
+        await writeText(text3);
+        return;
+      } catch {
+      }
     }
-    const clip4 = doc.defaultView?.navigator?.clipboard;
-    if (!clip4?.writeText) throw new Error("no clipboard");
+    const win = doc.defaultView || globalThis;
+    const clip4 = win.navigator?.clipboard;
+    const Item = win.ClipboardItem || globalThis.ClipboardItem;
+    const BlobCtor = win.Blob || globalThis.Blob;
+    if (typeof clip4?.write === "function" && typeof Item === "function" && typeof BlobCtor === "function") {
+      try {
+        await clip4.write([new Item({ "text/plain": new BlobCtor([text3], { type: "text/plain" }) })]);
+        return;
+      } catch {
+      }
+    }
+    if (typeof clip4?.writeText !== "function") throw new Error("no clipboard");
     await clip4.writeText(text3);
   }
   async function copyBlock(block) {
@@ -41251,7 +41346,7 @@ ${sourceAttrString(source)}` : markdown;
       }
       const caption = captionText(block);
       let src = "";
-      const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
+      const key = parsed?.sha256 ? imageKey2(parsed.sha256, block.id) : "";
       if (key && store?.getImage) {
         try {
           src = imageSrc2(await store.getImage(key));
@@ -41263,7 +41358,7 @@ ${sourceAttrString(source)}` : markdown;
       const Item = win.ClipboardItem || globalThis.ClipboardItem;
       const clip4 = win.navigator?.clipboard;
       const BlobCtor = win.Blob || globalThis.Blob;
-      const blob = src ? dataUrlToBlob2(src, BlobCtor) : null;
+      const blob = src ? dataUrlToBlob3(src, BlobCtor) : null;
       if (blob && typeof Item === "function" && typeof clip4?.write === "function") {
         try {
           await clip4.write([new Item({ "image/png": blob, "text/plain": new BlobCtor([caption], { type: "text/plain" }) })]);
@@ -41403,9 +41498,17 @@ ${sourceAttrString(source)}` : markdown;
       const y = Number(ev.clientY) || 0;
       ghost?.move(x, y);
       const at = ghost && ghost.zone() === "board" ? ghost.dropPoint() : { x, y };
-      drop(x, y, at, ev.altKey);
-      ghost?.land();
-      ghost = null;
+      const figs = expand(blocks).filter((block) => block?.type === "figure" || block?.type === "formula");
+      const land = () => {
+        drop(x, y, at, ev.altKey);
+        ghost?.land();
+        ghost = null;
+      };
+      if (!figs.length) {
+        land();
+        return;
+      }
+      void warmFigures(figs).then(land);
     };
     listen(win, "pointermove", move2, true);
     listen(win, "pointerup", up, true);
@@ -41434,6 +41537,33 @@ ${sourceAttrString(source)}` : markdown;
   function imageSrc2(cached) {
     if (typeof cached === "string" && cached) return cached;
     return "";
+  }
+  async function warmFigures(blocks) {
+    for (const block of blocks || []) {
+      if (!block || block.type !== "figure" && block.type !== "formula") continue;
+      const key = parsed?.sha256 ? imageKey2(parsed.sha256, block.id) : "";
+      if (!key || typeof store?.putImage !== "function") continue;
+      let src = "";
+      if (typeof store.getImage === "function") {
+        try {
+          src = imageSrc2(await store.getImage(key));
+        } catch {
+          src = "";
+        }
+      }
+      if (!src) {
+        try {
+          src = await cropAt2x(block);
+        } catch {
+          src = "";
+        }
+      }
+      if (!src) continue;
+      try {
+        await store.putImage(key, src);
+      } catch {
+      }
+    }
   }
   async function cropAt2x(block) {
     const box2 = block?.bbox;
@@ -41498,7 +41628,7 @@ ${sourceAttrString(source)}` : markdown;
     return Promise.resolve();
   }
   async function paintCropNow(block, img) {
-    const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
+    const key = parsed?.sha256 ? imageKey2(parsed.sha256, block.id) : "";
     if (key && store?.getImage) {
       try {
         const cached = await store.getImage(key);
@@ -45854,7 +45984,7 @@ function createReadPane({
   const persistOcr = async (pages, sha) => {
     if (!sha) return;
     const store = ensureStore2();
-    const key = imageKey(sha, OCR_LAYER_ID);
+    const key = imageKey2(sha, OCR_LAYER_ID);
     let stored = [];
     try {
       const raw = await store.getImage(key);
@@ -45885,7 +46015,7 @@ function createReadPane({
     if (!sha) return 0;
     ocrSha = sha;
     try {
-      const raw = await ensureStore2().getImage(imageKey(sha, OCR_LAYER_ID));
+      const raw = await ensureStore2().getImage(imageKey2(sha, OCR_LAYER_ID));
       if (typeof raw !== "string" || !openFlag || sha !== ocrSha) return 0;
       const n2 = textLayer.setPages(JSON.parse(raw));
       if (n2) {
@@ -58461,7 +58591,7 @@ function buildBoardView(onFail, {
         show: (uids) => {
           if (!disposed) revealParsed(uids);
         },
-        upload: (file) => host.uploadFile(file)
+        upload: (file) => host.uploadFile?.(file)
       });
     }
     return parseActionsObj;
@@ -63948,9 +64078,10 @@ function buildBoardView(onFail, {
     const hostNode = tablePointerTarget(node2);
     return Boolean(hostNode && root.contains(hostNode));
   };
-  listen(root, "pointerdown", (event) => {
+  let onBoardPointerDown;
+  listen(root, "pointerdown", onBoardPointerDown = (event) => {
     if (leavesBoardPointer(event.target)) return;
-    if (inRoamTable(event.target)) {
+    if (inRoamTable(event.target) && !event.__pxdGrab) {
       tablePointer = event.target;
       return;
     }
@@ -63986,6 +64117,64 @@ function buildBoardView(onFail, {
     }
     armLongPress(event);
   });
+  const GRAB_SKIP = ".pxd-port, .pxd-grip, .pxd-chrome, .rg-col-resize, .rg-row-resize, .pxd-roam-table__open, .pxd-table-overlay, .pxd-refs";
+  let grab = null;
+  const grabOffs = [];
+  const clearGrab = () => {
+    while (grabOffs.length) {
+      try {
+        grabOffs.pop()();
+      } catch {
+      }
+    }
+    grab = null;
+  };
+  const fieldTarget = (node2) => {
+    const tag = String(node2?.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+    if (node2?.isContentEditable) return true;
+    const ce = node2?.getAttribute?.("contenteditable");
+    return ce === "" || ce === "true";
+  };
+  const onGrabMove = (event) => {
+    if (!grab) return;
+    if (grab.id != null && event.pointerId != null && event.pointerId !== grab.id) return;
+    const dx = (Number(event.clientX) || 0) - grab.x;
+    const dy = (Number(event.clientY) || 0) - grab.y;
+    if (Math.hypot(dx, dy) < 4) return;
+    if (ctl.isGesturing()) {
+      clearGrab();
+      return;
+    }
+    const down2 = grab.down;
+    clearGrab();
+    down2.__pxdGrab = true;
+    onBoardPointerDown(down2);
+    onDocMove(event);
+  };
+  const onGrabEnd = (event) => {
+    if (!grab) return;
+    if (grab.id != null && event.pointerId != null && event.pointerId !== grab.id) return;
+    clearGrab();
+  };
+  listen(root, "pointerdown", (event) => {
+    if ((event.button ?? 0) !== 0) return;
+    if (leavesBoardPointer(event.target)) return;
+    const item = event.target?.closest?.(".pxd-item");
+    if (!item || !root.contains(item)) return;
+    const uid = item.getAttribute?.("data-uid") || item.dataset?.uid;
+    if (!uid || itemsR.editingUid?.() === uid) return;
+    if (event.target?.closest?.(GRAB_SKIP)) return;
+    if (nativeClickKind(event.target)) return;
+    const stickyBody = Boolean(item.classList?.contains("pxd-item--sticky") && event.target?.closest?.(".pxd-item__body"));
+    if (!stickyBody && fieldTarget(event.target)) return;
+    if (!stickyBody && !inRoamTable(event.target) && !event.target?.closest?.(".pxd-item__body, .pxd-item__header")) return;
+    if (grab) clearGrab();
+    grab = { id: event.pointerId, x: Number(event.clientX) || 0, y: Number(event.clientY) || 0, down: event };
+    grabOffs.push(listen(doc, "pointermove", onGrabMove, true));
+    grabOffs.push(listen(doc, "pointerup", onGrabEnd, true));
+    grabOffs.push(listen(doc, "pointercancel", onGrabEnd, true));
+  }, true);
   listen(doc, "mouseup", (event) => {
     if (!swallowMouseUp) return;
     swallowMouseUp = false;
@@ -64355,7 +64544,8 @@ function buildBoardView(onFail, {
         store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
         session,
         point: p,
-        toast: (message) => toast(message)
+        toast: (message) => toast(message),
+        upload: (file) => host.uploadFile?.(file)
       }).then((res) => {
         if (disposed) return;
         if (Array.isArray(res?.uids) && res.uids.length) {
@@ -64449,6 +64639,7 @@ function buildBoardView(onFail, {
       return false;
     };
     if (event.target?.closest?.(".pxd-read")) return;
+    if (event.target?.closest?.(".pxd-why")) return;
     if (isTextEntryTarget(event.target) && !root.contains?.(event.target)) {
       itemsR.quiet(true);
       if (outsideQuiet) outsideQuiet();
@@ -71325,6 +71516,7 @@ async function installPlexusDiagram({
     quietTimer = setTimeout(endQuiet, 700);
   };
   const quietOutside = (target) => {
+    if (target?.closest?.(".pxd-why")) return;
     if (!isTextEntryTarget(target)) return;
     let asked = false;
     for (const rec of mounts.values()) {

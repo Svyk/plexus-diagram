@@ -3374,6 +3374,7 @@ export async function installPlexusDiagram({
     quietTimer = setTimeout(endQuiet, 700);
   };
   const quietOutside = (target) => {
+    if (target?.closest?.(".pxd-why")) return;
     if (!isTextEntryTarget(target)) return;
     let asked = false;
     for (const rec of mounts.values()) {

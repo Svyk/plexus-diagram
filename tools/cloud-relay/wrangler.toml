@@ -1,0 +1,6 @@
+name = "plexus-cloud-relay"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# Not deployed from this repo. `npm run relay:deploy` runs wrangler deploy
+# against the account you already logged into. There is no account, route, or secret here.

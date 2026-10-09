@@ -7733,13 +7733,13 @@ function textOf(line) {
   return line.words.filter((w) => !w.sup && !w.sub).map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
 }
 function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
-  const furniture = new Set(removed.map((r) => normalizeFurniture(r.text || "")));
+  const furniture2 = new Set(removed.map((r) => normalizeFurniture(r.text || "")));
   const running = removed.filter((r) => r && r.reason !== "page-number" && r.text).map((r) => r.text);
   const pageLines = pages.flatMap((pg) => pg && !pg.ocr && pg.kind !== "scan" ? (pg.free || []).map(textOf) : []);
   const banner = (text3) => running.some((line) => isBannerOf(text3, line, { exact: false })) || pageLines.some((line) => isBannerOf(text3, line, { exact: false }));
   for (const pg of pages) {
     if (!pg || pg.ocr || pg.kind === "scan") continue;
-    const lines = (pg.free || []).map((line) => ({ line, text: textOf(line) })).filter((c) => c.text && !isJunkTitleText(c.text) && !isGibberishTitle(c.text) && !furniture.has(normalizeFurniture(c.text))).sort((a, b) => a.line.base - b.line.base || a.line.x0 - b.line.x0);
+    const lines = (pg.free || []).map((line) => ({ line, text: textOf(line) })).filter((c) => c.text && !isJunkTitleText(c.text) && !isGibberishTitle(c.text) && !furniture2.has(normalizeFurniture(c.text))).sort((a, b) => a.line.base - b.line.base || a.line.x0 - b.line.x0);
     const blocks = [];
     let cur = null;
     for (const c of lines) {
@@ -8779,17 +8779,17 @@ function quickPageTitle(pageRecords2) {
   const recs = (pageRecords2 || []).filter(Boolean);
   if (!recs.length) return { pageTitle: "", lines: [] };
   for (const pg of recs) pg.free = freeLinesOf(pg);
-  const furniture = findFurniture(recs.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
-  for (const pg of recs) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
+  const furniture2 = findFurniture(recs.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
+  for (const pg of recs) pg.free = pg.free.filter((l) => !furniture2.isFurniture(l));
   const bodySize = bodySizeOf(recs.flatMap((pg) => pg.free)) || 10;
-  const found = findPageTitle(recs.slice(0, 2), { bodySize, removed: furniture.removed });
-  return { pageTitle: found ? capTitle(found) : "", lines: titleEvidenceLines(recs, furniture.removed) };
+  const found = findPageTitle(recs.slice(0, 2), { bodySize, removed: furniture2.removed });
+  return { pageTitle: found ? capTitle(found) : "", lines: titleEvidenceLines(recs, furniture2.removed) };
 }
 function assembleDocument(pageRecords2, { numPages, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {}, from = 1, to = numPages } = {}) {
   const t1 = now();
   for (const pg of pageRecords2) pg.free = freeLinesOf(pg);
-  const furniture = findFurniture(pageRecords2.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
-  for (const pg of pageRecords2) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
+  const furniture2 = findFurniture(pageRecords2.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
+  for (const pg of pageRecords2) pg.free = pg.free.filter((l) => !furniture2.isFurniture(l));
   const allFree = pageRecords2.flatMap((pg) => pg.free);
   const bodySize = bodySizeOf(allFree) || 10;
   const bodyFont = dominantFont(allFree);
@@ -8799,7 +8799,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     const onFirst = classes.filter((k) => firstPage.free.some((l) => Math.round(l.size * 2) / 2 === k && l.chars >= 3));
     if (onFirst.length) classes = classes.filter((k) => k <= onFirst[0]);
   }
-  const pageTitle = findPageTitle(pageRecords2.slice(0, 2), { bodySize, removed: furniture.removed });
+  const pageTitle = findPageTitle(pageRecords2.slice(0, 2), { bodySize, removed: furniture2.removed });
   const blocks = {};
   const order = [];
   const counters = {};
@@ -9070,9 +9070,9 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
   }
   for (const id of order) if (blocks[id]?.footnoteRefs) inlineUnlinkedRefs(blocks[id]);
   let title = info && typeof info.Title === "string" ? cleanPdfTitle(info.Title) || null : null;
-  const runningTexts = new Set(furniture.removed.filter((r) => r.reason !== "page-number").map((r) => normalizeFurniture(r.text)));
+  const runningTexts = new Set(furniture2.removed.filter((r) => r.reason !== "page-number").map((r) => normalizeFurniture(r.text)));
   if (title && (runningTexts.has(normalizeFurniture(title)) || isJunkTitleText(title) || isGibberishTitle(title))) title = null;
-  if (title && pageTitle && isMetaBanner(title, { pageTitle, lines: titleEvidenceLines(pageRecords2, furniture.removed) })) title = null;
+  if (title && pageTitle && isMetaBanner(title, { pageTitle, lines: titleEvidenceLines(pageRecords2, furniture2.removed) })) title = null;
   const titleHeading = (h) => h && h.type === "heading" && !isJunkTitleText(h.text) && !isGibberishTitle(h.text);
   const h1 = headings.find((h) => titleHeading(h) && h.level === 1 && h.page === (firstPage ? firstPage.n : 1)) || headings.find((h) => titleHeading(h) && h.level === 1);
   if (!title) title = pageTitle || (h1 ? h1.text : null);
@@ -9094,7 +9094,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     pages: pagesOut,
     order,
     blocks,
-    removed: furniture.removed,
+    removed: furniture2.removed,
     stats: { ms: 0, perPage: perPage.map((p) => p.ms), assembleMs: round(now() - t1), bodySize, headingSizes: classes, range: [from, to] }
   };
 }
@@ -10498,6 +10498,77 @@ function samePage(block, page) {
   if (page == null) return true;
   return block?.page === page;
 }
+function validateParse(doc) {
+  const errors = [];
+  if (!doc || typeof doc !== "object") {
+    return { ok: false, errors: ["schema"] };
+  }
+  if (doc.schema !== SCHEMA2) errors.push("schema");
+  if (doc.engine != null && !ENGINES.has(doc.engine)) errors.push("engine");
+  const blocks = doc.blocks;
+  if (!blocks || typeof blocks !== "object" || Array.isArray(blocks)) {
+    errors.push("blocks");
+  }
+  const order = doc.order;
+  if (!Array.isArray(order)) {
+    errors.push("order");
+  } else if (blocks && typeof blocks === "object") {
+    const seen = /* @__PURE__ */ new Set();
+    for (const id of order) {
+      if (seen.has(id)) errors.push(`order-duplicate:${id}`);
+      seen.add(id);
+      if (!Object.prototype.hasOwnProperty.call(blocks, id)) errors.push(`order-missing:${id}`);
+    }
+  }
+  if (blocks && typeof blocks === "object" && !Array.isArray(blocks)) {
+    for (const [key, block] of Object.entries(blocks)) {
+      if (!block || typeof block !== "object") {
+        errors.push(`block-type:${key}`);
+        continue;
+      }
+      if (block.id != null && block.id !== key) errors.push(`block-id:${key}`);
+      if (!TYPE_SET.has(block.type)) errors.push(`block-type:${key}`);
+      if (block.confidence != null) {
+        const c = block.confidence;
+        if (typeof c !== "number" || c < 0 || c > 1) errors.push(`confidence:${key}`);
+      }
+      if (block.type === "table") validateTable(key, block, errors);
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+function validateTable(id, table, errors) {
+  const rows = table.rows;
+  const cols = table.cols;
+  if (!Number.isInteger(rows) || rows < 1 || !Number.isInteger(cols) || cols < 1) {
+    errors.push(`cell-range:${id}`);
+    return;
+  }
+  const grid = Array.from({ length: rows }, () => Array(cols).fill(null));
+  const cells = Array.isArray(table.cells) ? table.cells : [];
+  for (const cell of cells) {
+    const r = cell?.r;
+    const c = cell?.c;
+    const rs = cell?.rowSpan ?? 1;
+    const cs = cell?.colSpan ?? 1;
+    const inRange = Number.isInteger(r) && Number.isInteger(c) && Number.isInteger(rs) && Number.isInteger(cs) && r >= 0 && c >= 0 && rs >= 1 && cs >= 1 && r + rs <= rows && c + cs <= cols;
+    if (!inRange) {
+      errors.push(`cell-range:${id}:${r}:${c}`);
+      continue;
+    }
+    for (let dr = 0; dr < rs; dr += 1) {
+      for (let dc = 0; dc < cs; dc += 1) {
+        const rr = r + dr;
+        const cc = c + dc;
+        if (grid[rr][cc]) {
+          errors.push(`cell-overlap:${id}:${rr}:${cc}`);
+        } else {
+          grid[rr][cc] = true;
+        }
+      }
+    }
+  }
+}
 function blocksInRange(doc, fromPage, toPage) {
   const from = Math.min(fromPage, toPage);
   const to = Math.max(fromPage, toPage);
@@ -10647,7 +10718,7 @@ function mergeScoped(baseDoc, scopedPageResult, bbox) {
     blocks
   };
 }
-var SCHEMA2, IOU_MIN, BLOCK_TYPES, TYPE_SET;
+var SCHEMA2, IOU_MIN, BLOCK_TYPES, TYPE_SET, ENGINES;
 var init_parse_schema = __esm({
   "src/model/parse-schema.js"() {
     SCHEMA2 = "pxd-parse/1";
@@ -10665,6 +10736,7 @@ var init_parse_schema = __esm({
       "scan"
     ]);
     TYPE_SET = new Set(BLOCK_TYPES);
+    ENGINES = /* @__PURE__ */ new Set(["builtin", "docling", "mixed", "anydoc", "cloud"]);
   }
 });
 
@@ -10708,18 +10780,18 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
   const limit = Math.max(0, Math.min(FOOTNOTE_CAP, Math.floor(Number(cap4) || 0)));
   const notes = [];
   const overflow = [];
-  const byId = /* @__PURE__ */ new Map();
+  const byId2 = /* @__PURE__ */ new Map();
   order.forEach((id, i) => {
     const d = known.get(id);
     const n2 = Math.max(0, Math.floor(startAt)) + i + 1;
     if (i < limit) {
       const note = { id, uid: make2(), n: n2, mark: d.mark, text: d.text };
       notes.push(note);
-      byId.set(id, { kind: "note", note });
+      byId2.set(id, { kind: "note", note });
     } else {
       const item = { id, n: n2, mark: d.mark, text: d.text };
       overflow.push(item);
-      byId.set(id, { kind: "overflow", item });
+      byId2.set(id, { kind: "overflow", item });
     }
   });
   const apply = (input) => {
@@ -10730,13 +10802,13 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
         out.push(line);
         continue;
       }
-      const hit = byId.get(m[1]);
+      const hit = byId2.get(m[1]);
       if (hit?.kind === "note") continue;
       if (hit?.kind === "overflow") out.push(`- (${hit.item.n}) ${escapeMarkdownText(hit.item.text, { leading: false })}`);
       else out.push(`- [${m[2]}] ${escapeMarkdownText(m[3], { leading: false })}`);
     }
     return out.join("\n").replace(REF_RE2, (full, id, mark) => {
-      const hit = byId.get(id);
+      const hit = byId2.get(id);
       if (hit?.kind === "note") return aliasFor(hit.note.n, hit.note.uid, sup2);
       if (hit?.kind === "overflow") return `(${hit.item.n})`;
       return mark ? `[${mark}]` : "";
@@ -11016,10 +11088,10 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
   const fnFormat = options.footnoteFormat === "extension" || options.footnoteFormat === "plain" ? footnoteFormat(options.footnoteFormat) : "off";
   const tokens = fnFormat !== "off";
   const blocks = selectBlocks(doc, idsOrRange);
-  const byId = new Map(blocks.map((block) => [block.id, block]));
+  const byId2 = new Map(blocks.map((block) => [block.id, block]));
   const folded = /* @__PURE__ */ new Set();
   for (const block of blocks) {
-    if (block.type === "caption" && block.for && byId.has(block.for)) folded.add(block.id);
+    if (block.type === "caption" && block.for && byId2.has(block.for)) folded.add(block.id);
   }
   const render = () => {
     const lines = [];
@@ -11044,7 +11116,7 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
       }
       putUser(0, note.text ?? "", `[${mark}] `);
     };
-    const lookup2 = (id) => byId.get(id) ?? (tokens ? doc?.blocks?.[id] : null);
+    const lookup2 = (id) => byId2.get(id) ?? (tokens ? doc?.blocks?.[id] : null);
     const notesFor = (block) => {
       const refs = block.footnoteRefs || [];
       const notes = [];
@@ -11093,17 +11165,17 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
       } else if (block.type === "table") {
         if (tokens) {
           const prep = prepareTable(block, pageNoteBlocks(doc, block), { format: fnFormat });
-          emitTable(prep.table, putUser, emitRaw, byId, foldedHere, doc);
+          emitTable(prep.table, putUser, emitRaw, byId2, foldedHere, doc);
           for (const note of prep.notes) emitNote(note);
-        } else emitTable(block, putUser, emitRaw, byId, foldedHere, doc);
+        } else emitTable(block, putUser, emitRaw, byId2, foldedHere, doc);
       } else if (block.type === "figure") {
-        emitFigure(block, putUser, emitRaw, byId, doc, linkSafe);
+        emitFigure(block, putUser, emitRaw, byId2, doc, linkSafe);
       } else if (block.type === "formula") {
         if (block.latex) {
           const number = block.number ? ` ${block.number}` : "";
           putUser(0, block.latex, "$$", `$$${number}`);
         } else {
-          emitFigure(block, putUser, emitRaw, byId, doc, linkSafe);
+          emitFigure(block, putUser, emitRaw, byId2, doc, linkSafe);
         }
       } else if (block.type === "caption") {
         putUser(0, block.text ?? "");
@@ -11133,14 +11205,14 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
 function looksLikeBlockId(value) {
   return /^[a-z]+\d+$/.test(value);
 }
-function captionFor(block, byId, doc) {
+function captionFor(block, byId2, doc) {
   const id = typeof block?.caption === "string" ? block.caption : "";
   if (id) {
-    const linked = doc?.blocks && doc.blocks[id] || byId.get(id);
+    const linked = doc?.blocks && doc.blocks[id] || byId2.get(id);
     if (linked && typeof linked === "object") return linked.text ?? "";
     if (!looksLikeBlockId(id)) return id;
   }
-  for (const other of byId.values()) {
+  for (const other of byId2.values()) {
     if (other?.type === "caption" && other.for === block.id) return other.text ?? "";
   }
   const all = doc?.blocks;
@@ -11179,21 +11251,21 @@ function figureImageAlt(text3, block) {
   const page = block?.page;
   return page != null && page !== "" ? `${label} (p. ${page})` : label;
 }
-function emitFigure(block, putUser, emitRaw, byId, doc, linkSafe) {
+function emitFigure(block, putUser, emitRaw, byId2, doc, linkSafe) {
   const url = block.image?.url || block.url || "";
   const kind = block.type === "formula" ? "formula" : "figure";
   const page = block.page != null ? `, p. ${block.page}` : "";
   if (url) {
-    let alt = prepareLine(figureImageAlt(captionFor(block, byId, doc), block), { linkSafe, leading: false }).replace(/\]/g, "");
+    let alt = prepareLine(figureImageAlt(captionFor(block, byId2, doc), block), { linkSafe, leading: false }).replace(/\]/g, "");
     if (!alt.trim()) alt = figureImageAlt("", block);
     emitRaw(0, `![${alt}](${url})`);
     return;
   }
-  const caption = captionFor(block, byId, doc) || block.text || "";
+  const caption = captionFor(block, byId2, doc) || block.text || "";
   if (caption) putUser(0, caption, "", ` (${kind}${page})`);
   else putUser(0, `${block.type === "formula" ? "Formula" : "Figure"} (${kind}${page})`);
 }
-function emitTable(block, putUser, emitRaw, byId, folded, doc) {
+function emitTable(block, putUser, emitRaw, byId2, folded, doc) {
   emitRaw(0, "{{[[table]]}}");
   const rows = Number.isInteger(block.rows) ? block.rows : 0;
   const cols = Number.isInteger(block.cols) ? block.cols : 0;
@@ -11217,9 +11289,9 @@ function emitTable(block, putUser, emitRaw, byId, folded, doc) {
       putUser(1 + c, text3);
     }
   }
-  const caption = captionFor(block, byId, doc);
+  const caption = captionFor(block, byId2, doc);
   if (caption) {
-    if (typeof block.caption === "string" && byId.has(block.caption)) folded.add(block.caption);
+    if (typeof block.caption === "string" && byId2.has(block.caption)) folded.add(block.caption);
     putUser(1, caption);
   }
 }
@@ -12289,6 +12361,8 @@ var init_tooltip_text = __esm({
       "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),
       "parse.chip": e("Parse engine", "Built-in runs on this machine. Docling uses the local helper."),
       "parse.docling": e("Parse with Docling", "Send this PDF to the local helper. Nothing is sent until you press this."),
+      "parse.cloud": e("Read with LlamaParse", "Send this PDF to LlamaParse after you confirm the page count and the estimated cost. Nothing is sent until you confirm. LlamaParse is the main cloud read."),
+      "parse.mistral": e("Read with Mistral OCR", "Send this PDF to Mistral OCR after you confirm the page count and the estimated cost. No install. The browser calls Mistral directly. Tables are weaker than LlamaParse."),
       "parse.docling-off": e("Local helper: off", "Open Engines (the gear) to set up or start the local helper."),
       "parse.docling-token": e("Local helper: wrong token", "Open Engines (the gear) and pair the local helper again."),
       "parse.docling-models": e("Local helper: downloading models", "The helper is downloading models. Parsing waits until they are ready."),
@@ -12302,7 +12376,8 @@ var init_tooltip_text = __esm({
       "engines.builtin": e("On this device", "The built-in parser. It runs in Roam and needs nothing installed."),
       "engines.ocr": e("In-browser reading (beta)", "Reads the words on scanned pages inside Roam. The models download once, after you ask. Less accurate than the local helper, which is used instead when it is ready."),
       "engines.helper": e("Local helper", "Apple Vision for scans. The light helper is about 15 MB on a Mac. Docling, for layout, formulas and tables, is an optional add-on. It listens only on 127.0.0.1."),
-      "engines.cloud": e("Cloud", "Reading through a service with your own key. Not available yet."),
+      "engines.cloud": e("Cloud", "LlamaParse is the main read: your key, then a helper with the cloud engine, your relay, or the hosted relay. Mistral OCR is the no-install read: cheaper, and its tables are weaker. Both keys stay on this device. Nothing is sent until you confirm the cost."),
+      "engines.cloud-setup": e("Set up", "Save a LlamaParse key and, if you want it, a Mistral OCR key. Both stay on this device."),
       "engines.pair": e("Pair", "Fetch the helper's token. Works for 90 seconds after the installer or plexus-parse-helper pair."),
       "engines.setup": e("Set up", "Show the one command that installs the local helper."),
       "engines.start": e("Start", "Show how to start the local helper."),
@@ -12495,13 +12570,13 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
       if (info) target.title = info.key ? `${info.name} (${[].concat(info.key).join(" ")}). ${info.desc}` : `${info.name}. ${info.desc}`;
       return;
     }
-    const wait = current3 ? 0 : delay();
-    if (wait <= 0) {
+    const wait2 = current3 ? 0 : delay();
+    if (wait2 <= 0) {
       show(target);
       return;
     }
-    const cancel = timers?.later ? timers.later(() => show(target), wait) : (() => {
-      const t = setTimeout(() => show(target), wait);
+    const cancel = timers?.later ? timers.later(() => show(target), wait2) : (() => {
+      const t = setTimeout(() => show(target), wait2);
       return () => clearTimeout(t);
     })();
     pending = { target, cancel };
@@ -14743,7 +14818,7 @@ function parseTable(lines, index) {
     table: { type: "table", rows, cols, headerRows: 1, cells }
   };
 }
-function parseBlocks(markdown) {
+function parseMarkdownBlocks(markdown) {
   const lines = String(markdown ?? "").replace(/\r\n/g, "\n").split("\n");
   const blocks = [];
   let i = 0;
@@ -14849,7 +14924,7 @@ function markdownToParse(markdown, {
 } = {}) {
   const blocks = {};
   const order = [];
-  parseBlocks(markdown).forEach((block, index) => {
+  parseMarkdownBlocks(markdown).forEach((block, index) => {
     const id = `b${index + 1}`;
     blocks[id] = { ...block, id };
     order.push(id);
@@ -18596,12 +18671,12 @@ function openHoverPopover({ doc, win, anchor, delayMs, build, obstacles, timers 
     on(document, "scroll", again, true);
     on(view, "resize", again);
   };
-  const wait = Math.max(0, Number(delayMs) || 0);
-  if (typeof timers?.later === "function") cancelTimer = timers.later(show, wait);
+  const wait2 = Math.max(0, Number(delayMs) || 0);
+  if (typeof timers?.later === "function") cancelTimer = timers.later(show, wait2);
   else {
     const set = view?.setTimeout?.bind(view) || globalThis.setTimeout.bind(globalThis);
     const clear = view?.clearTimeout?.bind(view) || globalThis.clearTimeout.bind(globalThis);
-    const id = set(show, wait);
+    const id = set(show, wait2);
     cancelTimer = () => clear(id);
   }
   return { close, el };
@@ -29560,12 +29635,12 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
             return false;
           }
         } else return false;
-        const byId = /* @__PURE__ */ new Map();
+        const byId2 = /* @__PURE__ */ new Map();
         nodes.forEach((node2, i) => {
           const id = refEid(node2);
-          byId.set(id != null ? id : eids[i], node2);
+          byId2.set(id != null ? id : eids[i], node2);
         });
-        for (const [eid, keyList] of byEid) applyPulled(byId.get(eid), keyList);
+        for (const [eid, keyList] of byEid) applyPulled(byId2.get(eid), keyList);
         return true;
       };
       if (!fromPull()) fromQueries();
@@ -34646,7 +34721,8 @@ var package_default = {
     check: "npm run build && npm run scan:secrets && node --check extension.js && npm test && npm run verify:generated",
     "bench:hot": "node --predictable --test --test-concurrency=1 test/fast-7-hot-paths.test.js",
     "size:gate": "node scripts/size-gate.mjs",
-    "parse:score": "node tools/parse-score.mjs"
+    "parse:score": "node tools/parse-score.mjs",
+    "relay:deploy": "sh tools/cloud-relay/deploy.sh"
   },
   engines: {
     node: ">=20"
@@ -37158,14 +37234,14 @@ var POLL_MS = 40;
 var GRACE_MS = 400;
 function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win = doc?.defaultView || globalThis } = {}) {
   const busy = /* @__PURE__ */ new Map();
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const wait2 = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const until = async (probe, limit) => {
     const end = Date.now() + limit;
     for (; ; ) {
       const hit = probe();
       if (hit) return hit;
       if (Date.now() >= end) return null;
-      await wait(POLL_MS);
+      await wait2(POLL_MS);
     }
   };
   const fire2 = (target, type) => {
@@ -37204,7 +37280,7 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
       input.click();
       const done = await until(() => taskState(host.blockString?.(uid)) === "DONE", DONE_MS);
       if (!done) return { ok: false, reason: "the block did not turn DONE" };
-      await wait(GRACE_MS);
+      await wait2(GRACE_MS);
       return { ok: true };
     } finally {
       cleanup();
@@ -39464,19 +39540,19 @@ function footnoteText(text3, refs) {
 }
 function toMarkdown(doc, idsOrRange) {
   const blocks = selectBlocks(doc, idsOrRange);
-  const byId = new Map(blocks.map((block) => [block.id, block]));
+  const byId2 = new Map(blocks.map((block) => [block.id, block]));
   const lines = [];
   const notes = [];
   const seenNotes = /* @__PURE__ */ new Set();
   const skip = /* @__PURE__ */ new Set();
   for (const block of blocks) {
-    if (block.type === "caption" && block.for && byId.has(block.for)) skip.add(block.id);
+    if (block.type === "caption" && block.for && byId2.has(block.for)) skip.add(block.id);
   }
   const captionOf = (block) => {
     for (const other of blocks) {
       if (other.type === "caption" && other.for === block.id) return other.text || "";
     }
-    if (typeof block.caption === "string" && !byId.has(block.caption)) return block.caption;
+    if (typeof block.caption === "string" && !byId2.has(block.caption)) return block.caption;
     return "";
   };
   for (const block of blocks) {
@@ -39522,7 +39598,7 @@ ${block.text ?? ""}
       lines.push(`Scanned page ${block.page} (no text)`);
     }
     for (const ref of block.footnoteRefs || []) {
-      const note = ref.to ? byId.get(ref.to) : null;
+      const note = ref.to ? byId2.get(ref.to) : null;
       if (note && !seenNotes.has(note.id)) {
         seenNotes.add(note.id);
         notes.push(`[^${note.mark}]: ${note.text ?? ""}`);
@@ -39632,6 +39708,10 @@ async function restorableParse(store, sha, { engines, plainHash, readHashOf = nu
     listed = [];
   }
   listed = listed.filter((row4) => !isStaleParse(row4.doc));
+  if (engines?.includes?.("cloud")) {
+    const paid = listed.filter((row4) => row4.engine === "cloud").pop();
+    if (paid) return paid.doc;
+  }
   for (const engine of engines) {
     const mine = listed.filter((row4) => row4.engine === engine);
     const read2 = mine.filter((row4) => row4.doc?.options?.ocr === "vision" && !scanPagesOf(row4.doc).length).pop();
@@ -39648,7 +39728,7 @@ async function restorableParse(store, sha, { engines, plainHash, readHashOf = nu
   }
   return null;
 }
-var RESTORE_ENGINES = Object.freeze(["builtin", "docling", "mixed", "anydoc"]);
+var RESTORE_ENGINES = Object.freeze(["builtin", "docling", "mixed", "anydoc", "cloud"]);
 async function restorableByUrl(store, url, { plainOptions, engines = RESTORE_ENGINES } = {}) {
   if (!store || !url) return null;
   const hit = await store.findByUrl(url);
@@ -40361,7 +40441,11 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
     }
     return { ...body, sha256: sha };
   }
-  return { health, status, pair: pair2, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr };
+  function endpoint() {
+    const { url, token } = config();
+    return { url, token };
+  }
+  return { health, status, pair: pair2, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr, endpoint };
 }
 
 // src/view/parse-engine.js
@@ -43567,6 +43651,1155 @@ function createAnydocHost({
 // src/view/parse-view.js
 init_anydoc_to_parse();
 
+// src/host/cloud-parse.js
+var CREDIT_USD = 1.25 / 1e3;
+var LAYOUT_CREDITS = 3;
+var TIER_CREDITS = Object.freeze({
+  fast: 1,
+  cost_effective: 3,
+  agentic: 10,
+  agentic_plus: 45
+});
+var TIER_LABELS = Object.freeze({
+  fast: "Fast",
+  cost_effective: "Cost-effective",
+  agentic: "Agentic",
+  agentic_plus: "Agentic Plus"
+});
+var DEFAULT_TIER = "agentic";
+var DEFAULT_TIMEOUT_MS = 24e4;
+var DEFAULT_RELAY_URL = "";
+var MISTRAL_MODEL = "mistral-ocr-latest";
+var MISTRAL_URL = "https://api.mistral.ai/v1/ocr";
+var MISTRAL_USD_PER_PAGE = 4 / 1e3;
+var MISTRAL_PRICE_CHECKED = "2026-10-09";
+var MISTRAL_MAX_BYTES = 50 * 1024 * 1024;
+var CLOUD_STORAGE = Object.freeze({
+  key: "pxd-cloud-key",
+  region: "pxd-cloud-region",
+  tier: "pxd-cloud-tier",
+  relay: "pxd-cloud-relay",
+  mistralKey: "pxd-cloud-mistral-key"
+});
+var HELPER_PATH = "/v1/cloud/parse";
+function fail2(code, message, status) {
+  const error = new Error(message);
+  error.code = code;
+  if (status != null) error.status = status;
+  return error;
+}
+function storageGet(storage, id) {
+  try {
+    const value = storage?.getItem?.(id);
+    return value == null ? "" : String(value);
+  } catch {
+    return "";
+  }
+}
+function readCloudPrefs(storage) {
+  const region = storageGet(storage, CLOUD_STORAGE.region) === "eu" ? "eu" : "us";
+  const tierRaw = storageGet(storage, CLOUD_STORAGE.tier);
+  const tier = Object.prototype.hasOwnProperty.call(TIER_CREDITS, tierRaw) ? tierRaw : DEFAULT_TIER;
+  return {
+    key: storageGet(storage, CLOUD_STORAGE.key).trim(),
+    region,
+    tier,
+    relay: storageGet(storage, CLOUD_STORAGE.relay).trim()
+  };
+}
+function writeCloudPrefs(storage, prefs = {}) {
+  const prev = readCloudPrefs(storage);
+  const next = {
+    key: prefs.key == null ? prev.key : String(prefs.key).trim(),
+    region: prefs.region == null ? prev.region : prefs.region === "eu" ? "eu" : "us",
+    tier: prefs.tier == null ? prev.tier : Object.prototype.hasOwnProperty.call(TIER_CREDITS, prefs.tier) ? prefs.tier : DEFAULT_TIER,
+    relay: prefs.relay == null ? prev.relay : String(prefs.relay).trim()
+  };
+  storage.setItem(CLOUD_STORAGE.key, next.key);
+  storage.setItem(CLOUD_STORAGE.region, next.region);
+  storage.setItem(CLOUD_STORAGE.tier, next.tier);
+  storage.setItem(CLOUD_STORAGE.relay, next.relay);
+  return { ...next };
+}
+function estimateCloudCost({ pages, tier, layout = true } = {}) {
+  const count = Math.max(0, Math.floor(Number(pages) || 0));
+  const perTier = TIER_CREDITS[tier] ?? TIER_CREDITS[DEFAULT_TIER];
+  const extra = layout ? LAYOUT_CREDITS : 0;
+  const creditsPerPage = perTier + extra;
+  const credits = count * creditsPerPage;
+  return {
+    pages: count,
+    tier: TIER_CREDITS[tier] ? tier : DEFAULT_TIER,
+    tierCredits: perTier,
+    layoutCredits: extra,
+    creditsPerPage,
+    credits,
+    usd: credits * CREDIT_USD,
+    cacheNote: "free if parsed in the last 48 h"
+  };
+}
+function money(usd) {
+  const n2 = Number(usd) || 0;
+  if (n2 >= 0.01) return `$${n2.toFixed(2)}`;
+  return `$${n2.toFixed(4)}`;
+}
+function cloudConfirmMessage({ pages, tier, region } = {}) {
+  const est = estimateCloudCost({ pages, tier, layout: true });
+  const where = region === "eu" ? "EU" : "US";
+  const label = TIER_LABELS[est.tier] || est.tier;
+  const pageText = est.pages ? `${est.pages} page${est.pages === 1 ? "" : "s"}` : "page count unknown";
+  return `Send this PDF to LlamaParse (${where}, ${label})? ${pageText}, about ${money(est.usd)} (${est.credits} credits: ${est.tierCredits} per page plus ${est.layoutCredits} for layout). The pricing FAQ says layout is free in v2; this estimate includes it. Free if this file was parsed with the same options in the last 48 hours. The PDF leaves this device.`;
+}
+function httpsUrl(value) {
+  const url = String(value || "").trim().replace(/\/$/, "");
+  return /^https:\/\//i.test(url) ? url : "";
+}
+function llamaRoute(prefs, helper, defaultRelay = DEFAULT_RELAY_URL) {
+  const engines = helper?.engines;
+  const paired = helper?.state === "ready" && (!Array.isArray(engines) || engines.includes("cloud"));
+  if (paired) return "helper";
+  if (httpsUrl(prefs?.relay)) return "your relay";
+  if (httpsUrl(defaultRelay)) return "hosted relay";
+  return "";
+}
+function resolveCloudTransport({ helper, relayUrl, defaultRelay = DEFAULT_RELAY_URL } = {}) {
+  const url = String(helper?.url || "").replace(/\/$/, "");
+  const token = String(helper?.token || "").trim();
+  const engines = helper?.engines;
+  const cloudEngine = !Array.isArray(engines) || engines.includes("cloud");
+  if (helper?.state === "ready" && url && token && cloudEngine) return { kind: "helper", url, token };
+  const user = httpsUrl(relayUrl);
+  if (user) return { kind: "relay", url: user, source: "user" };
+  const hosted = httpsUrl(defaultRelay);
+  if (hosted) return { kind: "relay", url: hosted, source: "default" };
+  return {
+    kind: "none",
+    reason: "Pair a local helper that includes the cloud engine, or set a relay URL in Engines. The hosted relay URL is empty until it is deployed. Roam cannot call LlamaParse directly."
+  };
+}
+function readMistralKey(storage) {
+  return storageGet(storage, CLOUD_STORAGE.mistralKey).trim();
+}
+function writeMistralKey(storage, key) {
+  const next = key == null ? readMistralKey(storage) : String(key).trim();
+  storage.setItem(CLOUD_STORAGE.mistralKey, next);
+  return next;
+}
+function estimateMistralCost({ pages } = {}) {
+  const count = Math.max(0, Math.floor(Number(pages) || 0));
+  return {
+    pages: count,
+    usd: count * MISTRAL_USD_PER_PAGE,
+    perThousand: 4,
+    checked: MISTRAL_PRICE_CHECKED
+  };
+}
+function mistralConfirmMessage({ pages } = {}) {
+  const est = estimateMistralCost({ pages });
+  const pageText = est.pages ? `${est.pages} page${est.pages === 1 ? "" : "s"}` : "page count unknown";
+  return `Send this PDF to Mistral OCR? ${pageText}, about ${money(est.usd)} ($4 / 1,000 pages, model card checked ${est.checked}). Tables are weaker than LlamaParse. The PDF leaves this device.`;
+}
+function pageSpec(value) {
+  if (value == null || value === "") return "";
+  if (Array.isArray(value)) {
+    return value.map((n2) => Number(n2)).filter((n2) => Number.isInteger(n2) && n2 >= 1).join(",");
+  }
+  return String(value).trim();
+}
+function wait(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(fail2("cancelled", "cancelled", 499));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener?.("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(fail2("cancelled", "cancelled", 499));
+    };
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
+}
+async function readSSE2(response, onEvent) {
+  const reader = response.body?.getReader?.();
+  if (!reader) throw fail2("bad-response", "no progress stream");
+  const decoder = new TextDecoder();
+  let buf = "";
+  const dispatch = (frame) => {
+    let event = "message";
+    const data = [];
+    for (const line of frame.split("\n")) {
+      if (!line || line.startsWith(":")) continue;
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    if (!data.length) return;
+    const payload = JSON.parse(data.join("\n"));
+    onEvent(event, payload);
+  };
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    buf = buf.replace(/\r\n/g, "\n");
+    const frames = buf.split("\n\n");
+    buf = frames.pop() ?? "";
+    for (const frame of frames) dispatch(frame);
+  }
+  if (buf.trim()) dispatch(buf);
+}
+function statusError(status, body, name = "LlamaParse") {
+  if (status === 401) return fail2("unauthorized", `${name} rejected the key`, 401);
+  if (status === 402) return fail2("credits", `${name} is out of credits`, 402);
+  if (status === 429) return fail2("rate", `${name} rate limit`, 429);
+  const message = body?.detail || body?.error || body?.message || `${name} ${status}`;
+  return fail2("provider", String(message), status);
+}
+async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, signal, onProgress }) {
+  const headers = {
+    Authorization: `Bearer ${transport.token}`,
+    "X-Pxd-Cloud-Key": apiKey,
+    "X-Pxd-Options": JSON.stringify({ region, tier, version: "latest" }),
+    "Content-Type": "application/pdf"
+  };
+  let jobId = "";
+  const onAbort = () => {
+    if (!jobId) return;
+    Promise.resolve(fetch2(`${transport.url}${HELPER_PATH}/${encodeURIComponent(jobId)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${transport.token}` },
+      targetAddressSpace: "loopback"
+    })).catch(() => {
+    });
+  };
+  signal?.addEventListener?.("abort", onAbort, { once: true });
+  let response;
+  try {
+    response = await fetch2(`${transport.url}${HELPER_PATH}`, {
+      method: "POST",
+      headers,
+      body: bytes,
+      targetAddressSpace: "loopback",
+      signal
+    });
+  } catch (error) {
+    if (signal?.aborted) throw fail2("cancelled", "cancelled", 499);
+    throw error;
+  }
+  if (response.status === 401) throw fail2("unauthorized", "local helper rejected its token", 401);
+  if (response.status < 200 || response.status >= 300) {
+    let body = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    throw statusError(response.status, body);
+  }
+  let provider = null;
+  await readSSE2(response, (event, payload) => {
+    if (event === "started") jobId = payload?.job || jobId;
+    else if (event === "progress") {
+      if (payload?.job) jobId = payload.job;
+      onProgress?.(payload);
+    } else if (event === "result") provider = payload;
+    else if (event === "error") {
+      const error = fail2(payload?.code || "provider", payload?.message || "cloud parse failed", payload?.status);
+      throw error;
+    }
+  });
+  if (!provider) throw fail2("bad-response", "cloud parse returned no result");
+  return provider;
+}
+async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, pages, signal, onProgress, sleep, now: now3, timeoutMs }) {
+  const headers = { Authorization: `Bearer ${apiKey}` };
+  if (!transport.direct) headers["X-Pxd-Region"] = region === "eu" ? "eu" : "us";
+  const clock = now3;
+  const pause = sleep;
+  const deadline = clock() + timeoutMs;
+  const form = new FormData();
+  const blob = bytes instanceof Blob ? bytes : new Blob([bytes], { type: "application/pdf" });
+  form.append("purpose", "parse");
+  form.append("file", blob, "document.pdf");
+  const uploaded = await fetch2(`${transport.url}/api/v1/beta/files`, {
+    method: "POST",
+    headers,
+    body: form,
+    signal
+  });
+  const uploadBody = await uploaded.json().catch(() => null);
+  if (uploaded.status < 200 || uploaded.status >= 300) throw statusError(uploaded.status, uploadBody);
+  const fileId = uploadBody?.id;
+  if (!fileId) throw fail2("bad-response", "upload did not return a file id");
+  const spec = pageSpec(pages);
+  const payload = {
+    file_id: fileId,
+    tier,
+    version: "latest",
+    output_options: { granular_bboxes: ["cell"] }
+  };
+  if (spec) payload.page_ranges = { target_pages: spec };
+  const started = await fetch2(`${transport.url}/api/v2/parse`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal
+  });
+  const startBody = await started.json().catch(() => null);
+  if (started.status < 200 || started.status >= 300) throw statusError(started.status, startBody);
+  const jobId = startBody?.id || startBody?.job?.id;
+  if (!jobId) throw fail2("bad-response", "parse did not return a job id");
+  const cancelRemote = () => {
+    Promise.resolve(fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}/cancel`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: "{}"
+    })).catch(() => {
+    });
+  };
+  signal?.addEventListener?.("abort", cancelRemote, { once: true });
+  let delay = 1e3;
+  let status = startBody?.status || startBody?.job?.status || "PENDING";
+  while (status !== "COMPLETED" && status !== "FAILED" && status !== "CANCELLED") {
+    if (signal?.aborted) throw fail2("cancelled", "cancelled", 499);
+    if (clock() >= deadline) throw fail2("timeout", "LlamaParse timed out", 504);
+    await pause(delay, signal);
+    delay = Math.min(delay * 2, 8e3);
+    if (clock() >= deadline) throw fail2("timeout", "LlamaParse timed out", 504);
+    const polled = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}`, { headers, signal });
+    const body = await polled.json().catch(() => null);
+    if (polled.status < 200 || polled.status >= 300) throw statusError(polled.status, body);
+    status = body?.job?.status || body?.status || "";
+    onProgress?.({ status, job: jobId });
+  }
+  if (status === "CANCELLED") throw fail2("cancelled", "cancelled", 499);
+  if (status !== "COMPLETED") throw fail2("failed", "LlamaParse failed the job", 502);
+  const done = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}?expand=items&expand=markdown&expand=usage`, {
+    headers,
+    signal
+  });
+  const provider = await done.json().catch(() => null);
+  if (done.status < 200 || done.status >= 300) throw statusError(done.status, provider);
+  return provider;
+}
+async function parseCloud({
+  fetch: fetchFn,
+  transport,
+  bytes,
+  apiKey,
+  region = "us",
+  tier = DEFAULT_TIER,
+  pages,
+  confirmed = false,
+  signal,
+  onProgress,
+  sleep = wait,
+  now: now3 = () => Date.now(),
+  timeoutMs = DEFAULT_TIMEOUT_MS
+} = {}) {
+  if (confirmed !== true) throw fail2("confirm", "confirm required");
+  if (typeof fetchFn !== "function") throw fail2("no-fetch", "no fetch");
+  if (!transport || transport.kind === "none") throw fail2("transport", transport?.reason || resolveCloudTransport().reason);
+  const key = String(apiKey || "").trim();
+  if (!key) throw fail2("no-key", "Add a LlamaParse key in Engines. It stays on this device.");
+  if (!Object.prototype.hasOwnProperty.call(TIER_CREDITS, tier)) throw fail2("bad-tier", "bad tier");
+  const where = region === "eu" ? "eu" : "us";
+  if (transport.kind === "helper") {
+    const provider = await helperParse({
+      fetch: fetchFn,
+      transport,
+      bytes,
+      apiKey: key,
+      region: where,
+      tier,
+      signal,
+      onProgress
+    });
+    return { provider, transport: "helper" };
+  }
+  if (transport.kind === "relay") {
+    const provider = await relayParse({
+      fetch: fetchFn,
+      transport,
+      bytes,
+      apiKey: key,
+      region: where,
+      tier,
+      pages,
+      signal,
+      onProgress,
+      sleep,
+      now: now3,
+      timeoutMs
+    });
+    return { provider, transport: "relay" };
+  }
+  throw fail2("transport", "unknown cloud transport");
+}
+function bytesToBase64(bytes) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+  let binary = "";
+  const step = 32768;
+  for (let i = 0; i < data.length; i += step) {
+    binary += String.fromCharCode(...data.subarray(i, i + step));
+  }
+  return btoa(binary);
+}
+function mistralPageIndexes(value) {
+  const spec = pageSpec(value);
+  if (!spec) return void 0;
+  const out = [];
+  for (const part of spec.split(",")) {
+    const range = /^(\d+)\s*-\s*(\d+)$/.exec(part.trim());
+    if (range) {
+      const from = Math.min(Number(range[1]), Number(range[2]));
+      const to = Math.max(Number(range[1]), Number(range[2]));
+      for (let n2 = from; n2 <= to; n2 += 1) out.push(n2 - 1);
+    } else {
+      const n2 = Number(part);
+      if (Number.isInteger(n2) && n2 >= 1) out.push(n2 - 1);
+    }
+  }
+  return out.length ? out : void 0;
+}
+async function parseMistral({
+  fetch: fetchFn,
+  bytes,
+  apiKey,
+  pages,
+  confirmed = false,
+  signal,
+  timeoutMs = DEFAULT_TIMEOUT_MS
+} = {}) {
+  if (confirmed !== true) throw fail2("confirm", "confirm required");
+  if (typeof fetchFn !== "function") throw fail2("no-fetch", "no fetch");
+  const key = String(apiKey || "").trim();
+  if (!key) throw fail2("no-key", "Add a Mistral OCR key in Engines. It stays on this device.");
+  const size = bytes?.byteLength ?? bytes?.length ?? 0;
+  if (size > MISTRAL_MAX_BYTES) {
+    throw fail2("too-large", "This PDF is over 50 MB. Mistral OCR's documented request limit is about 50 MB. Split it and try again.");
+  }
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const onAbort = () => ctrl.abort();
+  if (signal?.aborted) throw fail2("cancelled", "cancelled", 499);
+  signal?.addEventListener?.("abort", onAbort, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort();
+  }, timeoutMs);
+  const indexes = mistralPageIndexes(pages);
+  const payload = {
+    model: MISTRAL_MODEL,
+    document: {
+      type: "document_url",
+      document_url: `data:application/pdf;base64,${bytesToBase64(bytes)}`
+    },
+    table_format: "html",
+    extract_header: true,
+    extract_footer: true,
+    include_blocks: true,
+    include_image_base64: false
+  };
+  if (indexes) payload.pages = indexes;
+  try {
+    const response = await fetchFn(MISTRAL_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal
+    });
+    const body = await response.json().catch(() => null);
+    if (response.status < 200 || response.status >= 300) throw statusError(response.status, body, "Mistral OCR");
+    if (!body || !Array.isArray(body.pages)) throw fail2("bad-response", "Mistral OCR returned no pages");
+    return { provider: body, transport: "direct" };
+  } catch (error) {
+    if (error?.code) throw error;
+    if (signal?.aborted) throw fail2("cancelled", "cancelled", 499);
+    if (timedOut || ctrl.signal.aborted) throw fail2("timeout", "Mistral OCR timed out", 504);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener?.("abort", onAbort);
+  }
+}
+
+// src/model/cloud-to-parse.js
+init_anydoc_to_parse();
+init_parse_schema();
+var ENGINE = "cloud";
+function round5(n2) {
+  return Math.round(Number(n2) * 100) / 100;
+}
+function oneBox(box2) {
+  if (!box2 || typeof box2 !== "object" || Array.isArray(box2)) return null;
+  const x = Number(box2.x);
+  const y = Number(box2.y);
+  const w = Number(box2.w);
+  const h = Number(box2.h);
+  if (![x, y, w, h].every((n2) => Number.isFinite(n2))) return null;
+  return [x, y, x + Math.max(0, w), y + Math.max(0, h)];
+}
+function llamaBox(value) {
+  const list = Array.isArray(value) ? value : value ? [value] : [];
+  const boxes = list.map(oneBox).filter(Boolean);
+  if (!boxes.length) return null;
+  let [x0, y0, x1, y1] = boxes[0];
+  let confidence = null;
+  for (const box2 of boxes) {
+    x0 = Math.min(x0, box2[0]);
+    y0 = Math.min(y0, box2[1]);
+    x1 = Math.max(x1, box2[2]);
+    y1 = Math.max(y1, box2[3]);
+  }
+  for (const raw of list) {
+    const c = Number(raw?.confidence);
+    if (Number.isFinite(c)) confidence = confidence == null ? c : Math.min(confidence, c);
+  }
+  return {
+    bbox: [round5(x0), round5(y0), round5(x1), round5(y1)],
+    confidence: confidence == null ? null : Math.max(0, Math.min(1, confidence))
+  };
+}
+function stripTags(value) {
+  return String(value ?? "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+}
+function plainItem(item) {
+  if (!item || typeof item !== "object") return "";
+  if (typeof item.value === "string" && item.value.trim()) return item.value.replace(/\s+/g, " ").trim();
+  if (typeof item.text === "string" && item.text.trim()) return item.text.replace(/\s+/g, " ").trim();
+  if (typeof item.md === "string") {
+    return item.md.replace(/^#{1,6}\s+/, "").replace(/\s+/g, " ").trim();
+  }
+  return "";
+}
+function cellsFromHtml(html) {
+  const source = String(html || "");
+  if (!/<table\b/i.test(source)) return null;
+  const rows = [];
+  const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch;
+  while (rowMatch = rowRe.exec(source)) {
+    const cells = [];
+    const cellRe = /<(td|th)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+    let cellMatch;
+    while (cellMatch = cellRe.exec(rowMatch[1])) {
+      const attrs = cellMatch[2] || "";
+      const colSpan = Math.max(1, Number(/colspan\s*=\s*["']?(\d+)/i.exec(attrs)?.[1] || 1));
+      const rowSpan = Math.max(1, Number(/rowspan\s*=\s*["']?(\d+)/i.exec(attrs)?.[1] || 1));
+      cells.push({
+        header: cellMatch[1].toLowerCase() === "th",
+        colSpan,
+        rowSpan,
+        text: stripTags(cellMatch[3])
+      });
+    }
+    if (cells.length) rows.push(cells);
+  }
+  if (!rows.length) return null;
+  const occupied = [];
+  const placed = [];
+  let cols = 0;
+  const taken = (r, c) => occupied[r]?.[c];
+  const mark = (r, c) => {
+    if (!occupied[r]) occupied[r] = [];
+    occupied[r][c] = true;
+  };
+  rows.forEach((row4, r) => {
+    let c = 0;
+    for (const cell of row4) {
+      while (taken(r, c)) c += 1;
+      placed.push({ r, c, rowSpan: cell.rowSpan, colSpan: cell.colSpan, text: cell.text, header: cell.header });
+      for (let dr = 0; dr < cell.rowSpan; dr += 1) {
+        for (let dc = 0; dc < cell.colSpan; dc += 1) mark(r + dr, c + dc);
+      }
+      cols = Math.max(cols, c + cell.colSpan);
+      c += cell.colSpan;
+    }
+  });
+  const headerRows = rows[0]?.every((cell) => cell.header) ? 1 : 0;
+  return { rows: rows.length, cols, headerRows, cells: placed };
+}
+function cellsFromRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const width = rows.reduce((max, row4) => Math.max(max, Array.isArray(row4) ? row4.length : 0), 0);
+  if (!width) return null;
+  const cells = [];
+  rows.forEach((row4, r) => {
+    const values = Array.isArray(row4) ? row4 : [];
+    for (let c = 0; c < width; c += 1) {
+      const value = values[c];
+      cells.push({
+        r,
+        c,
+        rowSpan: 1,
+        colSpan: 1,
+        text: value == null ? "" : String(value),
+        header: false
+      });
+    }
+  });
+  return { rows: rows.length, cols: width, headerRows: 0, cells };
+}
+function applyGrounding(table, grounding) {
+  const matrix = grounding?.rows;
+  if (!Array.isArray(matrix)) return;
+  for (const cell of table.cells) {
+    const slot2 = matrix[cell.r]?.[cell.c];
+    const box2 = llamaBox(slot2?.bbox);
+    if (box2) cell.bbox = box2.bbox;
+  }
+}
+function flattenList(items, level, out) {
+  for (const item of items || []) {
+    if (!item || typeof item !== "object") continue;
+    if (item.type === "list") flattenList(item.items, level + 1, out);
+    else out.push({ text: plainItem(item), level, marker: "" });
+  }
+}
+function groundedTables(pageNumber, pages) {
+  const page = (pages || []).find((entry) => entry && entry.page_number === pageNumber && entry.success !== false);
+  return (page?.items || []).filter((item) => item?.type === "table");
+}
+function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region = "us" } = {}) {
+  const pagesIn = provider?.items?.pages || [];
+  const grounded = provider?.grounded_pages || [];
+  const blocks = {};
+  const order = [];
+  const removed = [];
+  const pages = [];
+  let n2 = 0;
+  const nextId = (prefix) => {
+    n2 += 1;
+    return `${prefix}${n2}`;
+  };
+  let title = null;
+  const push = (block) => {
+    blocks[block.id] = block;
+    order.push(block.id);
+    return block;
+  };
+  const walk2 = (item, pageNumber, fallback) => {
+    if (!item || typeof item !== "object") return;
+    const type = item.type;
+    if (type === "header" || type === "footer") {
+      const box3 = llamaBox(item.bbox);
+      removed.push({
+        reason: type === "header" ? "running-header" : "running-footer",
+        page: pageNumber,
+        text: plainItem(item) || (item.items || []).map(plainItem).filter(Boolean).join(" "),
+        bbox: box3?.bbox || null
+      });
+      return;
+    }
+    const box2 = llamaBox(item.bbox) || (fallback ? { bbox: fallback, confidence: null } : null);
+    const confidence = box2?.confidence == null ? 0.9 : box2.confidence;
+    const bbox = box2?.bbox || [0, 0, 0, 0];
+    if (type === "heading") {
+      const level = Math.min(6, Math.max(1, Math.floor(Number(item.level) || 1)));
+      const text4 = plainItem(item);
+      const block = push({
+        id: nextId("h"),
+        type: "heading",
+        level,
+        text: text4,
+        page: pageNumber,
+        bbox,
+        confidence,
+        engine: ENGINE
+      });
+      if (!title && level === 1 && pageNumber === 1 && text4) title = text4;
+      return block;
+    }
+    if (type === "list") {
+      const items = [];
+      flattenList(item.items, 0, items);
+      return push({
+        id: nextId("l"),
+        type: "list",
+        ordered: Boolean(item.ordered),
+        items,
+        text: items.map((entry) => entry.text).filter(Boolean).join(" "),
+        page: pageNumber,
+        bbox,
+        confidence,
+        engine: ENGINE
+      });
+    }
+    if (type === "table") {
+      const parsed = cellsFromHtml(item.html) || cellsFromRows(item.rows);
+      if (!parsed) return null;
+      const id = nextId("t");
+      const block = {
+        id,
+        type: "table",
+        page: pageNumber,
+        bbox,
+        rows: parsed.rows,
+        cols: parsed.cols,
+        headerRows: parsed.headerRows,
+        headerCols: 0,
+        cells: parsed.cells,
+        caption: null,
+        method: "llamaparse",
+        confidence,
+        engine: ENGINE
+      };
+      push(block);
+      return block;
+    }
+    if (type === "image") {
+      const id = nextId("f");
+      const captionText = typeof item.caption === "string" ? item.caption.replace(/\s+/g, " ").trim() : "";
+      let captionId = null;
+      const block = push({
+        id,
+        type: "figure",
+        page: pageNumber,
+        bbox,
+        caption: null,
+        image: { kind: "crop", source: "llamaparse" },
+        confidence,
+        engine: ENGINE
+      });
+      if (captionText) {
+        captionId = nextId("c");
+        push({
+          id: captionId,
+          type: "caption",
+          page: pageNumber,
+          bbox,
+          text: captionText,
+          for: id,
+          confidence,
+          engine: ENGINE
+        });
+        block.caption = captionId;
+      }
+      return block;
+    }
+    if (type === "code") {
+      return push({
+        id: nextId("k"),
+        type: "code",
+        text: typeof item.value === "string" ? item.value : plainItem(item),
+        page: pageNumber,
+        bbox,
+        confidence,
+        engine: ENGINE
+      });
+    }
+    const text3 = plainItem(item);
+    if (!text3 && type !== "text" && type !== "link") return null;
+    return push({
+      id: nextId("p"),
+      type: "para",
+      text: text3,
+      page: pageNumber,
+      bbox,
+      confidence,
+      engine: ENGINE
+    });
+  };
+  for (const page of pagesIn) {
+    const pageNumber = Number(page?.page_number);
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) continue;
+    const width = Number(page.page_width);
+    const height = Number(page.page_height);
+    const ok = page.success !== false;
+    pages.push({
+      n: pageNumber,
+      w: Number.isFinite(width) ? round5(width) : null,
+      h: Number.isFinite(height) ? round5(height) : null,
+      parsed: ok
+    });
+    if (!ok || !Array.isArray(page.items)) continue;
+    const tables = [];
+    for (const item of page.items) {
+      const block = walk2(item, pageNumber);
+      if (block?.type === "table") tables.push(block);
+    }
+    const groundedRows = groundedTables(pageNumber, grounded);
+    tables.forEach((block, index) => applyGrounding(block, groundedRows[index]?.grounding));
+  }
+  const doc = {
+    schema: SCHEMA2,
+    sha256,
+    engine: ENGINE,
+    engineVersion: `llamaparse/${tier}`,
+    options: {
+      provider: "llamaparse",
+      tier,
+      region: region === "eu" ? "eu" : "us",
+      ocr: "none",
+      formula: false,
+      tables: "llamaparse"
+    },
+    createdAt: null,
+    pageCount: pages.length,
+    title,
+    pages,
+    order,
+    blocks,
+    removed,
+    stats: { ms: 0, perPage: [] }
+  };
+  const check = validateParse(doc);
+  if (!check.ok) {
+    const error = new Error(`cloud parse schema: ${check.errors.join(",")}`);
+    error.code = "schema";
+    error.errors = check.errors;
+    throw error;
+  }
+  return doc;
+}
+var MISTRAL_KIND = Object.freeze({
+  title: "heading",
+  text: "para",
+  list: "list",
+  table: "table",
+  image: "figure",
+  equation: "formula",
+  code: "code",
+  references: "para",
+  aside_text: "para",
+  signature: "para",
+  caption: "caption"
+});
+function cornerBox(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const x0 = Number(raw.top_left_x);
+  const y0 = Number(raw.top_left_y);
+  const x1 = Number(raw.bottom_right_x);
+  const y1 = Number(raw.bottom_right_y);
+  if (![x0, y0, x1, y1].every((n2) => Number.isFinite(n2))) return null;
+  return [round5(Math.min(x0, x1)), round5(Math.min(y0, y1)), round5(Math.max(x0, x1)), round5(Math.max(y0, y1))];
+}
+function blockConfidence(raw) {
+  const score = Number(raw?.confidence_scores?.average_content_confidence_score);
+  if (!Number.isFinite(score)) return null;
+  return Math.max(0, Math.min(1, score));
+}
+function imageLine(line) {
+  const match = /^\s*!\[[^\]]*\]\(([^)\s]+)\)\s*$/.exec(line || "");
+  return match ? { id: match[1] } : null;
+}
+function tablePlaceholder(line) {
+  const match = /^\s*\[(tbl-[^\]\s]+)\]\(\1\)\s*$/.exec(line || "");
+  return match ? { id: match[1] } : null;
+}
+function plainLine(line) {
+  const text3 = String(line || "");
+  if (!text3.trim()) return false;
+  if (imageLine(text3) || tablePlaceholder(text3)) return false;
+  if (/^(#{1,6})\s+/.test(text3) || /^(\s*)([-*+]|\d+\.)\s+\S/.test(text3)) return false;
+  if (/<table\b/i.test(text3) || text3.includes("|")) return false;
+  return true;
+}
+function neighborBelow(lines, index) {
+  let i = index + 1;
+  while (i < lines.length && !lines[i].trim()) i += 1;
+  return plainLine(lines[i]) ? i : -1;
+}
+function captionAbove(lines, index) {
+  let i = index - 1;
+  while (i >= 0 && !lines[i].trim()) i -= 1;
+  if (i < 0 || !plainLine(lines[i])) return -1;
+  return /^(figure|fig\.|caption|table)\b/i.test(lines[i].trim()) ? i : -1;
+}
+function byId(list, id) {
+  const want = String(id || "");
+  return (list || []).find((entry) => entry && (entry.id === want || entry.id === want.split("/").pop()));
+}
+function tableFromContent(content) {
+  const source = String(content || "");
+  if (!source.trim()) return null;
+  const html = cellsFromHtml(source);
+  if (html) return html;
+  const table = parseMarkdownBlocks(source).find((block) => block.type === "table");
+  if (!table) return null;
+  return { rows: table.rows, cols: table.cols, headerRows: table.headerRows, cells: table.cells };
+}
+function splitHtml(text3) {
+  const parts = [];
+  const re = /<table\b[\s\S]*?<\/table>/gi;
+  let last = 0;
+  let match;
+  while (match = re.exec(text3)) {
+    if (match.index > last) parts.push({ kind: "md", text: text3.slice(last, match.index) });
+    parts.push({ kind: "html", html: match[0] });
+    last = match.index + match[0].length;
+  }
+  if (last < text3.length) parts.push({ kind: "md", text: text3.slice(last) });
+  if (!parts.length) parts.push({ kind: "md", text: text3 });
+  return parts;
+}
+function markdownNodes(text3) {
+  const nodes = [];
+  for (const part of splitHtml(text3)) {
+    if (part.kind === "html") {
+      const parsed = cellsFromHtml(part.html);
+      if (parsed) nodes.push({ type: "table", ...parsed });
+      continue;
+    }
+    for (const block of parseMarkdownBlocks(part.text)) nodes.push(block);
+  }
+  return nodes;
+}
+function pageNodes(page) {
+  const lines = String(page?.markdown ?? "").replace(/\r\n/g, "\n").split("\n");
+  const consumed = /* @__PURE__ */ new Set();
+  const captions = /* @__PURE__ */ new Map();
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!imageLine(lines[i])) continue;
+    const below = neighborBelow(lines, i);
+    const above = below < 0 ? captionAbove(lines, i) : -1;
+    const at = below >= 0 ? below : above;
+    if (at >= 0) {
+      consumed.add(at);
+      captions.set(i, lines[at].replace(/\s+/g, " ").trim());
+    }
+  }
+  const nodes = [];
+  let buf = [];
+  const flush = () => {
+    const text3 = buf.join("\n");
+    buf = [];
+    if (text3.trim()) nodes.push(...markdownNodes(text3));
+  };
+  for (let i = 0; i < lines.length; i += 1) {
+    if (consumed.has(i)) continue;
+    const image = imageLine(lines[i]);
+    if (image) {
+      flush();
+      const found = byId(page?.images, image.id);
+      nodes.push({ type: "figure", bbox: cornerBox(found), caption: captions.get(i) || "" });
+      continue;
+    }
+    const placeholder = tablePlaceholder(lines[i]);
+    if (placeholder) {
+      flush();
+      const entry = byId(page?.tables, placeholder.id);
+      const parsed = tableFromContent(entry?.content || entry?.html || entry?.markdown || "");
+      if (parsed) nodes.push({ type: "table", ...parsed });
+      continue;
+    }
+    buf.push(lines[i]);
+  }
+  flush();
+  const queues = /* @__PURE__ */ new Map();
+  for (const block of page?.blocks || []) {
+    const kind = MISTRAL_KIND[block?.type];
+    if (!kind) continue;
+    if (!queues.has(kind)) queues.set(kind, []);
+    queues.get(kind).push(block);
+  }
+  for (const node2 of nodes) {
+    const src = queues.get(node2.type)?.shift();
+    if (!src) continue;
+    if (!node2.bbox) node2.bbox = cornerBox(src);
+    const score = blockConfidence(src);
+    if (score != null) node2.confidence = score;
+  }
+  return nodes;
+}
+function pageIndexBase(pages) {
+  return (pages || []).some((page) => Number(page?.index) === 0) ? 0 : 1;
+}
+function furniture(page, blocks) {
+  const fromBlocks = (type) => (blocks || []).filter((block) => block?.type === type).map((block) => String(block.content || "").replace(/\s+/g, " ").trim()).filter(Boolean).join(" ");
+  const header = String(page?.header || "").replace(/\s+/g, " ").trim() || fromBlocks("header");
+  const footer = String(page?.footer || "").replace(/\s+/g, " ").trim() || fromBlocks("footer");
+  return { header, footer };
+}
+function mistralToParse(provider, { sha256 = null } = {}) {
+  const pagesIn = Array.isArray(provider?.pages) ? provider.pages : [];
+  const zeroBased = pageIndexBase(pagesIn) === 0;
+  const blocks = {};
+  const order = [];
+  const removed = [];
+  const pages = [];
+  let n2 = 0;
+  const nextId = (prefix) => {
+    n2 += 1;
+    return `${prefix}${n2}`;
+  };
+  let title = null;
+  const model = typeof provider?.model === "string" && provider.model ? provider.model : "mistral-ocr-latest";
+  const push = (block) => {
+    blocks[block.id] = block;
+    order.push(block.id);
+    return block;
+  };
+  pagesIn.forEach((page, position) => {
+    const index = Number(page?.index);
+    const pageNumber = Number.isInteger(index) && index >= 0 ? zeroBased ? index + 1 : index : position + 1;
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) return;
+    const width = Number(page?.dimensions?.width);
+    const height = Number(page?.dimensions?.height);
+    pages.push({
+      n: pageNumber,
+      w: Number.isFinite(width) ? round5(width) : null,
+      h: Number.isFinite(height) ? round5(height) : null,
+      parsed: page?.error == null
+    });
+    if (page?.error != null) return;
+    const side2 = furniture(page, page?.blocks);
+    if (side2.header) removed.push({ reason: "running-header", page: pageNumber, text: side2.header, bbox: null });
+    if (side2.footer) removed.push({ reason: "running-footer", page: pageNumber, text: side2.footer, bbox: null });
+    for (const node2 of pageNodes(page)) {
+      const confidence = node2.confidence == null ? 0.9 : node2.confidence;
+      const bbox = node2.bbox || [0, 0, 0, 0];
+      if (node2.type === "heading") {
+        const level = Math.min(6, Math.max(1, Math.floor(Number(node2.level) || 1)));
+        const text4 = String(node2.text || "").replace(/\s+/g, " ").trim();
+        push({ id: nextId("h"), type: "heading", level, text: text4, page: pageNumber, bbox, confidence, engine: ENGINE });
+        if (!title && level === 1 && pageNumber === 1 && text4) title = text4;
+        continue;
+      }
+      if (node2.type === "list") {
+        const items = (node2.items || []).map((item) => ({
+          text: String(item?.text || "").replace(/\s+/g, " ").trim(),
+          level: Math.max(0, Math.floor(Number(item?.level) || 0)),
+          marker: String(item?.marker || "")
+        }));
+        push({
+          id: nextId("l"),
+          type: "list",
+          ordered: Boolean(node2.ordered),
+          items,
+          text: items.map((item) => item.text).filter(Boolean).join(" "),
+          page: pageNumber,
+          bbox,
+          confidence,
+          engine: ENGINE
+        });
+        continue;
+      }
+      if (node2.type === "table" && node2.rows && node2.cols) {
+        push({
+          id: nextId("t"),
+          type: "table",
+          page: pageNumber,
+          bbox,
+          rows: node2.rows,
+          cols: node2.cols,
+          headerRows: node2.headerRows || 0,
+          headerCols: 0,
+          cells: node2.cells || [],
+          caption: null,
+          method: "mistral",
+          confidence,
+          engine: ENGINE
+        });
+        continue;
+      }
+      if (node2.type === "figure") {
+        const id = nextId("f");
+        const block = push({
+          id,
+          type: "figure",
+          page: pageNumber,
+          bbox,
+          caption: null,
+          image: { kind: "crop", source: "mistral" },
+          confidence,
+          engine: ENGINE
+        });
+        const captionText = String(node2.caption || "").replace(/\s+/g, " ").trim();
+        if (captionText) {
+          const captionId = nextId("c");
+          push({
+            id: captionId,
+            type: "caption",
+            page: pageNumber,
+            bbox,
+            text: captionText,
+            for: id,
+            confidence,
+            engine: ENGINE
+          });
+          block.caption = captionId;
+        }
+        continue;
+      }
+      if (node2.type === "code") {
+        push({
+          id: nextId("k"),
+          type: "code",
+          text: typeof node2.text === "string" ? node2.text : "",
+          page: pageNumber,
+          bbox,
+          confidence,
+          engine: ENGINE
+        });
+        continue;
+      }
+      if (node2.type === "formula") {
+        const latex = String(node2.latex || node2.text || "").trim();
+        if (!latex) continue;
+        push({
+          id: nextId("q"),
+          type: "formula",
+          latex,
+          text: latex,
+          page: pageNumber,
+          bbox,
+          confidence,
+          engine: ENGINE
+        });
+        continue;
+      }
+      const text3 = String(node2.text || "").replace(/\s+/g, " ").trim();
+      if (!text3) continue;
+      push({
+        id: nextId("p"),
+        type: "para",
+        text: text3,
+        page: pageNumber,
+        bbox,
+        confidence,
+        engine: ENGINE
+      });
+    }
+  });
+  const doc = {
+    schema: SCHEMA2,
+    sha256,
+    engine: ENGINE,
+    engineVersion: model,
+    options: {
+      provider: "mistral",
+      model,
+      ocr: "none",
+      formula: false,
+      tables: "mistral"
+    },
+    createdAt: null,
+    pageCount: pages.length,
+    title,
+    pages,
+    order,
+    blocks,
+    removed,
+    stats: { ms: 0, perPage: [] }
+  };
+  const check = validateParse(doc);
+  if (!check.ok) {
+    const error = new Error(`mistral parse schema: ${check.errors.join(",")}`);
+    error.code = "schema";
+    error.errors = check.errors;
+    throw error;
+  }
+  return doc;
+}
+
 // src/view/clipboard-io.js
 var CLONE_WINDOW_MS = 400;
 var MAX_IMAGES = 10;
@@ -43783,13 +45016,16 @@ function defaultRangeChoice(pageCount) {
   if (!Number.isFinite(n2) || n2 <= 0 || n2 <= 60) return "all";
   return "current";
 }
-function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
+function cloudLabel(provider) {
+  return provider === "mistral" ? "Mistral OCR" : "LlamaParse";
+}
+function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
   if (phase !== "running" && engine === "anydoc") {
     if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
     return { text: "Alternative read" };
   }
   if (phase === "running") {
-    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : "built-in";
+    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : engine === "cloud" ? cloudLabel(provider) : "built-in";
     return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
   }
   if (helper === "not-running" || helper === "disabled") {
@@ -43799,6 +45035,8 @@ function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, p
   if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
   if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
   if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
+  if (engine === "cloud" && ms != null) return { text: `${cloudLabel(provider)} · ${formatSeconds(ms)}` };
+  if (engine === "cloud") return { text: cloudLabel(provider) };
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
 }
@@ -44016,7 +45254,9 @@ function createParseView({
   onOcrPages = null,
   ghostRoot = null,
   ghostPane = null,
-  anydoc = null
+  anydoc = null,
+  fetch: fetchImpl = null,
+  confirmCloud = null
 } = {}) {
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
@@ -44047,6 +45287,14 @@ function createParseView({
   doclingBtn.textContent = "Parse with Docling";
   doclingBtn.setAttribute("data-tip", "parse.docling");
   setHidden(doclingBtn, true);
+  const cloudBtn = el("button", "pxd-parse__cloud", enginePop);
+  cloudBtn.type = "button";
+  cloudBtn.textContent = "Read with LlamaParse";
+  cloudBtn.setAttribute("data-tip", "parse.cloud");
+  const mistralBtn = el("button", "pxd-parse__mistral", enginePop);
+  mistralBtn.type = "button";
+  mistralBtn.textContent = "Read with Mistral OCR";
+  mistralBtn.setAttribute("data-tip", "parse.mistral");
   const altBtn = el("button", "pxd-parse__alt", enginePop);
   altBtn.type = "button";
   const altLabel = el("span", "pxd-parse__alt-label", altBtn);
@@ -44184,12 +45432,14 @@ function createParseView({
   let abort = null;
   let jobId = "";
   let helperState = "";
+  let helperEngines;
   let helperOcr = false;
   let helperDocling = false;
   function takeHealth(health) {
     helperState = health?.state || "not-running";
     helperOcr = helperCanOcr(health);
     helperDocling = helperCanDocling(health);
+    helperEngines = health?.engines;
   }
   let phase = "idle";
   let dead = false;
@@ -44478,6 +45728,7 @@ ${sourceAttrString(source)}` : markdown;
     const state = engineChip({
       phase,
       engine: progress.engine || parsed?.engine || "builtin",
+      provider: progress.provider || parsed?.options?.provider || "",
       ms: phase === "running" ? null : parsed?.stats?.ms,
       page: progress.page,
       pageCount: progress.pageCount,
@@ -45412,6 +46663,150 @@ ${sourceAttrString(source)}` : markdown;
     else phase = "idle";
     paintChip();
   }
+  function cloudToast(error, provider) {
+    if (error?.code === "cancelled" || error?.code === "confirm") return;
+    const name = provider === "mistral" ? "Mistral OCR" : "LlamaParse";
+    const text3 = error?.status === 402 ? `${name} is out of credits.` : error?.status === 401 ? `${name} rejected the key.` : error?.code === "timeout" ? `${name} timed out.` : error?.message || `${name} did not finish.`;
+    try {
+      onToast?.(text3);
+    } catch {
+    }
+  }
+  async function parseLlama() {
+    const prefs = readCloudPrefs(storage);
+    if (!prefs.key) {
+      try {
+        onToast?.("Add a LlamaParse key in Engines. It stays on this device.");
+      } catch {
+      }
+      return;
+    }
+    await refreshHelper();
+    const endpoint = helper?.endpoint?.() || {};
+    const transport = resolveCloudTransport({
+      helper: helperState === "ready" ? { state: "ready", url: endpoint.url, token: endpoint.token, engines: helperEngines } : null,
+      relayUrl: prefs.relay
+    });
+    if (transport.kind === "none") {
+      try {
+        onToast?.(transport.reason);
+      } catch {
+      }
+      return;
+    }
+    let pages = Number(parsed?.pageCount) || 0;
+    let pdf = null;
+    if (!pages && typeof getPdf === "function") {
+      try {
+        pdf = await getPdf();
+      } catch {
+        pdf = null;
+      }
+      pages = Number(pdf?.numPages) || 0;
+    }
+    const message = cloudConfirmMessage({ pages, tier: prefs.tier, region: prefs.region });
+    const ask = confirmCloud || doc.defaultView?.confirm?.bind?.(doc.defaultView);
+    let ok = false;
+    try {
+      ok = ask?.(message) === true;
+    } catch {
+      ok = false;
+    }
+    if (!ok) return;
+    const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
+    cancel();
+    const ctrl = new AbortController();
+    abort = ctrl;
+    phase = "running";
+    progress = { page: 0, pageCount: pages, engine: "cloud", provider: "llamaparse" };
+    paintChip();
+    const started = now3();
+    try {
+      if (!pdf && typeof getPdf === "function") pdf = await getPdf();
+      const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+      if (!bytes) throw Object.assign(new Error("This PDF is not loaded yet."), { code: "no-pdf" });
+      const result = await parseCloud({
+        fetch: fetchFn,
+        transport,
+        bytes,
+        apiKey: prefs.key,
+        region: prefs.region,
+        tier: prefs.tier,
+        confirmed: true,
+        signal: ctrl.signal,
+        onProgress: (info) => {
+          progress = { page: info?.page || progress.page, pageCount: pages || progress.pageCount, engine: "cloud", provider: "llamaparse" };
+          paintChip();
+          onProgress?.(progress);
+        }
+      });
+      const sha = parsed?.sha256 || await sha256Hex(bytes);
+      const docResult = llamaparseToParse(result.provider, { sha256: sha, tier: prefs.tier, region: prefs.region });
+      if (ctrl.signal.aborted) return;
+      await finishDoc(docResult, now3() - started);
+    } catch (error) {
+      if (phase === "running") phase = "idle";
+      cloudToast(error, "llamaparse");
+      paintChip();
+    }
+  }
+  async function parseMistralNow() {
+    const key = readMistralKey(storage);
+    if (!key) {
+      try {
+        onToast?.("Add a Mistral OCR key in Engines. It stays on this device.");
+      } catch {
+      }
+      return;
+    }
+    let pages = Number(parsed?.pageCount) || 0;
+    let pdf = null;
+    if (!pages && typeof getPdf === "function") {
+      try {
+        pdf = await getPdf();
+      } catch {
+        pdf = null;
+      }
+      pages = Number(pdf?.numPages) || 0;
+    }
+    const message = mistralConfirmMessage({ pages });
+    const ask = confirmCloud || doc.defaultView?.confirm?.bind?.(doc.defaultView);
+    let ok = false;
+    try {
+      ok = ask?.(message) === true;
+    } catch {
+      ok = false;
+    }
+    if (!ok) return;
+    const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
+    cancel();
+    const ctrl = new AbortController();
+    abort = ctrl;
+    phase = "running";
+    progress = { page: 0, pageCount: pages, engine: "cloud", provider: "mistral" };
+    paintChip();
+    const started = now3();
+    try {
+      if (!pdf && typeof getPdf === "function") pdf = await getPdf();
+      const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+      if (!bytes) throw Object.assign(new Error("This PDF is not loaded yet."), { code: "no-pdf" });
+      const result = await parseMistral({
+        fetch: fetchFn,
+        bytes,
+        apiKey: key,
+        confirmed: true,
+        signal: ctrl.signal
+      });
+      const sha = parsed?.sha256 || await sha256Hex(bytes);
+      const docResult = mistralToParse(result.provider, { sha256: sha });
+      if (ctrl.signal.aborted) return;
+      await finishDoc(docResult, now3() - started);
+    } catch (error) {
+      if (phase === "running") phase = "idle";
+      cloudToast(error, "mistral");
+      paintChip();
+    }
+  }
   async function reparseTable(table) {
     if (!helper || !helperDocling || typeof helper.reparseTable !== "function") {
       helperState = helperState || "not-running";
@@ -45648,6 +47043,14 @@ ${sourceAttrString(source)}` : markdown;
       await refreshHelper();
       if (helperDocling) await parseDocling();
     })();
+  });
+  listen(cloudBtn, "click", () => {
+    closeMenus();
+    void parseLlama();
+  });
+  listen(mistralBtn, "click", () => {
+    closeMenus();
+    void parseMistralNow();
   });
   listen(altBtn, "click", () => {
     closeMenus();
@@ -45994,13 +47397,27 @@ function helperRow(helper) {
       return { ...row4, dot: "off", text: "Not installed", button: button("setup", "Set up", "engines.setup") };
   }
 }
+var MISTRAL_TRADE = "Mistral OCR: no install, cheaper, weaker tables.";
+function cloudRow(prefs, helper) {
+  const row4 = { id: "cloud", name: "Cloud", tip: "engines.cloud" };
+  const key = Boolean(String(prefs?.key || "").trim());
+  const mistral = Boolean(String(prefs?.mistralKey || "").trim());
+  const trade = mistral ? "Mistral OCR: key saved, no install, cheaper, weaker tables." : MISTRAL_TRADE;
+  const route = llamaRoute(prefs, helper);
+  const edit = button("cloud-setup", route && key ? "Edit" : "Set up", "engines.cloud-setup");
+  if (!key) return { ...row4, dot: "warn", text: `Needs a LlamaParse key. ${trade}`, button: edit };
+  if (!route) return { ...row4, dot: "warn", text: `LlamaParse needs the helper or a relay. ${trade}`, button: edit };
+  const region = prefs?.region === "eu" ? "EU" : "US";
+  const tier = TIER_LABELS[prefs?.tier] || TIER_LABELS.agentic;
+  return { ...row4, dot: "ok", text: `LlamaParse · ${tier} · ${region} · ${route}. ${trade}`, button: edit };
+}
 function engineRows(state, { platform = "mac" } = {}) {
   void platform;
   return [
     { id: "device", name: "On this device", dot: "ok", text: "Built-in parser · ready", button: null, tip: "engines.builtin" },
     deviceOcrRow(state?.device),
     helperRow(state?.helper),
-    { id: "cloud", name: "Cloud", dot: "off", text: "Coming soon", button: null, disabled: true, tip: "engines.cloud" }
+    cloudRow(state?.cloud, state?.helper)
   ];
 }
 function helperSheet(helperState, platform = "mac") {
@@ -46028,8 +47445,18 @@ function helperSheet(helperState, platform = "mac") {
   };
 }
 var DOT_LABEL = { ok: "ready", warn: "needs attention", busy: "working", off: "off" };
+function memoryStorage() {
+  const bag = /* @__PURE__ */ new Map();
+  return {
+    getItem: (id) => bag.has(id) ? bag.get(id) : null,
+    setItem: (id, value) => {
+      bag.set(id, String(value));
+    }
+  };
+}
 function renderEnginesPanel(doc, parent, deps = {}) {
   const { client, device, setSetting, copy, toast, onUpdate } = deps;
+  const storage = deps.storage || memoryStorage();
   const platform = deps.platform || "mac";
   const pollMs = deps.pollMs > 0 ? deps.pollMs : DEFAULT_POLL_MS;
   const setIv = deps.setInterval || ((fn, ms) => globalThis.setInterval(fn, ms));
@@ -46059,7 +47486,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
   sheetHost.className = "pxd-engines__sheet-host";
   el.append(title, list, sheetHost);
   let state = null;
-  let sheetOpen = false;
+  let sheetKind = null;
   let signature = "";
   let timer = null;
   let visible2 = true;
@@ -46141,10 +47568,114 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     }
     paintSheet();
   }
-  function paintSheet() {
+  function field(tag, attrs) {
+    const node2 = doc.createElement(tag);
+    node2.className = "pxd-engines__token";
+    for (const [key, value] of Object.entries(attrs)) node2.setAttribute(key, value);
+    return node2;
+  }
+  function cloudRouteSentence(prefs) {
+    const route = llamaRoute(prefs, state?.helper);
+    if (route === "helper") return "LlamaParse will use the paired helper.";
+    if (route === "your relay") return "LlamaParse will use your relay URL.";
+    if (route === "hosted relay") return "LlamaParse will use the hosted relay.";
+    return "LlamaParse has no route yet. Pair a helper with the cloud engine, or set a relay URL.";
+  }
+  function paintCloudSheet() {
+    const prefs = readCloudPrefs(storage);
+    const existing = sheetHost.querySelector?.("[data-cloud-route]");
+    if (existing) {
+      existing.textContent = cloudRouteSentence(prefs);
+      return;
+    }
     release(heldSheet);
     sheetHost.innerHTML = "";
-    if (!sheetOpen) return;
+    const box2 = doc.createElement("div");
+    box2.className = "pxd-engines__sheet";
+    box2.setAttribute("data-cloud-sheet", "");
+    const head = doc.createElement("div");
+    head.className = "pxd-engines__sheet-title";
+    head.textContent = "Cloud";
+    const routeLine = doc.createElement("div");
+    routeLine.className = "pxd-engines__note";
+    routeLine.setAttribute("data-cloud-route", "");
+    routeLine.textContent = cloudRouteSentence(prefs);
+    const note = doc.createElement("div");
+    note.className = "pxd-engines__note";
+    note.textContent = `LlamaParse is the main read. Mistral OCR needs no install, costs $4 / 1,000 pages (checked ${MISTRAL_PRICE_CHECKED}), and its tables are weaker. Keys stay in this browser. They are not written to the graph. Nothing is sent until you confirm the cost on a PDF.`;
+    const keyInput = field("input", { type: "password", autocomplete: "off", "aria-label": "LlamaParse API key", placeholder: prefs.key ? "Key saved" : "API key", "data-cloud-key": "" });
+    const region = field("select", { "aria-label": "Region", "data-cloud-region": "" });
+    for (const [value, label] of [["us", "US"], ["eu", "EU"]]) {
+      const option = doc.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      if (value === prefs.region) option.setAttribute("selected", "");
+      region.append(option);
+    }
+    region.value = prefs.region;
+    const tier = field("select", { "aria-label": "Tier", "data-cloud-tier": "" });
+    for (const value of Object.keys(TIER_CREDITS)) {
+      const option = doc.createElement("option");
+      option.value = value;
+      option.textContent = TIER_LABELS[value];
+      if (value === prefs.tier) option.setAttribute("selected", "");
+      tier.append(option);
+    }
+    tier.value = prefs.tier;
+    const relay = field("input", { type: "url", autocomplete: "off", "aria-label": "Relay URL", placeholder: "Relay URL (optional)", "data-cloud-relay": "" });
+    relay.value = prefs.relay || "";
+    const mistralHead = doc.createElement("div");
+    mistralHead.className = "pxd-engines__sheet-title";
+    mistralHead.textContent = "Mistral OCR";
+    const mistralKey = readMistralKey(storage);
+    const mistralInput = field("input", {
+      type: "password",
+      autocomplete: "off",
+      "aria-label": "Mistral OCR API key",
+      placeholder: mistralKey ? "Key saved" : "Mistral API key",
+      "data-mistral-key": ""
+    });
+    const save = doc.createElement("button");
+    save.type = "button";
+    save.setAttribute("type", "button");
+    save.className = "pxd-engines__btn pxd-engines__btn--primary";
+    save.setAttribute("data-action", "cloud-save");
+    save.textContent = "Save on this device";
+    bindTo(heldSheet)(save, "click", (event) => {
+      event.stopPropagation?.();
+      void act("cloud-save");
+    });
+    const clear = doc.createElement("button");
+    clear.type = "button";
+    clear.setAttribute("type", "button");
+    clear.className = "pxd-engines__btn";
+    clear.setAttribute("data-action", "cloud-clear");
+    clear.textContent = "Remove LlamaParse key";
+    bindTo(heldSheet)(clear, "click", (event) => {
+      event.stopPropagation?.();
+      void act("cloud-clear");
+    });
+    const clearMistral = doc.createElement("button");
+    clearMistral.type = "button";
+    clearMistral.setAttribute("type", "button");
+    clearMistral.className = "pxd-engines__btn";
+    clearMistral.setAttribute("data-action", "mistral-clear");
+    clearMistral.textContent = "Remove Mistral key";
+    bindTo(heldSheet)(clearMistral, "click", (event) => {
+      event.stopPropagation?.();
+      void act("mistral-clear");
+    });
+    box2.append(head, routeLine, note, keyInput, region, tier, relay, mistralHead, mistralInput, save, clear, clearMistral);
+    sheetHost.append(box2);
+  }
+  function paintSheet() {
+    if (sheetKind === "cloud") {
+      paintCloudSheet();
+      return;
+    }
+    release(heldSheet);
+    sheetHost.innerHTML = "";
+    if (sheetKind !== "helper") return;
     const sheet = helperSheet(state?.helper?.state, platform);
     const box2 = doc.createElement("div");
     box2.className = "pxd-engines__sheet";
@@ -46213,11 +47744,41 @@ function renderEnginesPanel(doc, parent, deps = {}) {
   async function act(id) {
     if (disposed) return;
     if (id === "setup" || id === "start") {
-      sheetOpen = !sheetOpen;
+      sheetKind = sheetKind === "helper" ? null : "helper";
       paintSheet();
       return;
     }
-    if (id === "pair") {
+    if (id === "cloud-setup") {
+      sheetKind = sheetKind === "cloud" ? null : "cloud";
+      if (sheetKind !== "cloud") {
+        release(heldSheet);
+        sheetHost.innerHTML = "";
+      }
+      paintSheet();
+      return;
+    }
+    if (id === "cloud-save") {
+      const typed = String(el.querySelector("[data-cloud-key]")?.value || "");
+      const mistralTyped = String(el.querySelector("[data-mistral-key]")?.value || "");
+      writeCloudPrefs(storage, {
+        key: typed.trim() ? typed : null,
+        region: el.querySelector("[data-cloud-region]")?.value,
+        tier: el.querySelector("[data-cloud-tier]")?.value,
+        relay: el.querySelector("[data-cloud-relay]")?.value ?? ""
+      });
+      writeMistralKey(storage, mistralTyped.trim() ? mistralTyped : null);
+      say("Saved on this device");
+    } else if (id === "cloud-clear") {
+      writeCloudPrefs(storage, { key: "" });
+      const input = el.querySelector("[data-cloud-key]");
+      if (input) input.value = "";
+      say("LlamaParse key removed from this device");
+    } else if (id === "mistral-clear") {
+      writeMistralKey(storage, "");
+      const input = el.querySelector("[data-mistral-key]");
+      if (input) input.value = "";
+      say("Mistral key removed from this device");
+    } else if (id === "pair") {
       const result = await client?.pair?.();
       if (result?.ok) say("Helper paired");
       else if (result?.reason === "window-closed") say("Pairing window closed. Run plexus-parse-helper pair, then click Pair.");
@@ -46249,8 +47810,10 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     try {
       const next = await loadEngineState({ client, device, force: true });
       if (disposed) return state;
-      state = next;
-      if (sheetOpen && state.helper.state === "ready") sheetOpen = false;
+      const cloud = readCloudPrefs(storage);
+      cloud.mistralKey = readMistralKey(storage);
+      state = { ...next, cloud };
+      if (sheetKind === "helper" && state.helper.state === "ready") sheetKind = null;
       paintRows();
       return state;
     } finally {
@@ -46278,7 +47841,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     }
   }
   function showSheet() {
-    sheetOpen = true;
+    sheetKind = "helper";
     paintSheet();
   }
   function dispose() {
@@ -48733,7 +50296,7 @@ function createReadPane({
       prev = action;
       fitState.clicks += 1;
       const started = Date.now();
-      const wait = () => {
+      const wait2 = () => {
         fitTimer = null;
         if (gen !== fitGen || !openFlag) return;
         const n2 = fitGeom();
@@ -48741,10 +50304,10 @@ function createReadPane({
           step();
           return;
         }
-        if (Date.now() - started < 1500) fitTimer = later(wait, 100);
+        if (Date.now() - started < 1500) fitTimer = later(wait2, 100);
         else fitDone = true;
       };
-      fitTimer = later(wait, 100);
+      fitTimer = later(wait2, 100);
     };
     step();
   };
@@ -49251,6 +50814,7 @@ function createReadPane({
       panel = renderEnginesPanel(doc, enginesMount, {
         client: ensureHelper(),
         ...deviceOcr ? { device: deviceOcr } : {},
+        storage,
         setSetting: setSettingFn,
         copy: (text3) => doc.defaultView?.navigator?.clipboard?.writeText?.(text3),
         toast: (text3) => {
@@ -50139,7 +51703,7 @@ function disarm(timers, id) {
   } catch {
   }
 }
-function pageNodes(root) {
+function pageNodes2(root) {
   try {
     const nodes = root?.querySelectorAll?.(".page");
     if (!nodes || typeof nodes.length !== "number") return [];
@@ -50151,7 +51715,7 @@ function pageNodes(root) {
 function paintedCanvas(root, page) {
   try {
     const want = String(page);
-    const nodes = pageNodes(root);
+    const nodes = pageNodes2(root);
     for (let i = 0; i < nodes.length; i += 1) {
       const node2 = nodes[i];
       const attr = node2?.getAttribute?.("data-page-number");
@@ -50166,7 +51730,7 @@ function paintedCanvas(root, page) {
 }
 function countPages(root) {
   try {
-    const nodes = pageNodes(root);
+    const nodes = pageNodes2(root);
     let max = 0;
     for (let i = 0; i < nodes.length; i += 1) {
       const n2 = positiveInt(nodes[i]?.getAttribute?.("data-page-number"));
@@ -50550,7 +52114,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst 
       settle(job, null);
       return null;
     }
-    job.killId = arm3(time, () => fail3(job, "error"), WARM_TIMEOUT_MS);
+    job.killId = arm3(time, () => fail4(job, "error"), WARM_TIMEOUT_MS);
     const look = () => {
       if (job.done || job.gen !== generation) return;
       const canvas = paintedCanvas(mountEl, 1);
@@ -50586,7 +52150,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst 
     look();
     return null;
   }
-  function fail3(job, status) {
+  function fail4(job, status) {
     if (job.done) return;
     teardown(job);
     outcomes.set(job.uid, status);
@@ -55851,7 +57415,7 @@ init_anydoc_to_parse();
 // src/model/ocr/manifest.js
 var CACHE_NAME = "plexus-diagram-models";
 var SCHEMA3 = "pxd-ocr/1";
-var ENGINE = "ppocr-web";
+var ENGINE2 = "ppocr-web";
 var PAGES_ORIGIN = "https://svyk.github.io/plexus-diagram/";
 var ORT_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
 var ORT_FILES = {
@@ -58046,7 +59610,7 @@ function createOcrWeb({
     return engine;
   }
   async function health() {
-    return { state, schema: SCHEMA3, engine: ENGINE };
+    return { state, schema: SCHEMA3, engine: ENGINE2 };
   }
   async function ocr({ bytes, sha256 = null, pages, cells, signal, band = 0 } = {}) {
     const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -58062,7 +59626,7 @@ function createOcrWeb({
       body = { pageCount: out.length, pages: out };
     }
     const elapsedMs = Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - t0);
-    return { schema: SCHEMA3, engine: ENGINE, sha256, elapsedMs, ...body };
+    return { schema: SCHEMA3, engine: ENGINE2, sha256, elapsedMs, ...body };
   }
   function forget() {
     prepared2.clear();
@@ -58077,7 +59641,7 @@ function createOcrWeb({
     cachedLexicon,
     forget,
     schema: SCHEMA3,
-    engine: ENGINE,
+    engine: ENGINE2,
     fetches: () => fetched.slice()
   };
 }
@@ -58177,7 +59741,7 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
       onProgress?.((i + 1) / list.length);
     }
     ready = true;
-    return { schema: SCHEMA3, engine: ENGINE, pages: out };
+    return { schema: SCHEMA3, engine: ENGINE2, pages: out };
   }
   async function readBandTitle({ getPdf = null, signal = null, fraction = 0.18 } = {}) {
     if (signal?.aborted) return "";
@@ -62673,9 +64237,9 @@ function buildBoardView(onFail, {
       const titles = cards.filter((c) => c.needsTitle).length;
       warmWhy = `no plan: ${cards.length} cards, ${visible2.size} visible, ${cards.filter((c) => c.hasCover).length} covered, ${titles} need a title, ${pending} pending, retry ${idleRetries}`;
       if ((pending || titles) && !gesturing && idleRetries < IDLE_RETRY_MAX) {
-        const wait = IDLE_RETRY_MS * 2 ** idleRetries;
+        const wait2 = IDLE_RETRY_MS * 2 ** idleRetries;
         idleRetries += 1;
-        armCoverWarmLater(wait);
+        armCoverWarmLater(wait2);
       }
       return;
     }
@@ -62761,11 +64325,11 @@ function buildBoardView(onFail, {
       coverWarmWait = null;
     }
     if (disposed || suspended || !coverWarmOn() || !coverPaintAt) return;
-    const wait = Math.max(0, WARM_AFTER_MS - (Date.now() - coverPaintAt));
+    const wait2 = Math.max(0, WARM_AFTER_MS - (Date.now() - coverPaintAt));
     coverWarmWait = timers.later(() => {
       coverWarmWait = null;
       considerCoverWarm();
-    }, wait);
+    }, wait2);
   };
   const takeCoverSnapshot = (liveEl, info) => {
     const spec = info && typeof info === "object" ? info : {};
@@ -70966,8 +72530,8 @@ init_parse_hash();
 init_parse();
 var PDF_TABLES_CAPABILITIES = Object.freeze(["tablesFromPdf", "tablesFromPdf.cache", "tablesFromPdf.scan.helper", "tablesFromPdf.scan.source"]);
 var OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
-var ENGINES = ["builtin", "docling", "mixed", "anydoc"];
-function fail2(code, message) {
+var ENGINES2 = ["builtin", "docling", "mixed", "anydoc"];
+function fail3(code, message) {
   return Object.assign(new Error(message), { code });
 }
 function pageSet(pages, total) {
@@ -71013,7 +72577,7 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
     if (!hit?.sha256) return null;
     const hash = await optionsHash(OPTIONS);
     const doc = await restorableParse(store, hit.sha256, {
-      engines: ENGINES,
+      engines: ENGINES2,
       plainHash: hash,
       readHashOf: (plain2) => optionsHash({ ...plain2.options || OPTIONS, ocr: "vision" })
     });
@@ -71022,13 +72586,13 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
   }
   async function builtin(url, wanted, signal) {
     const pdfjsLib = lib();
-    if (!pdfjsLib) throw fail2("no-pdfjs", "pdf.js is not available");
-    if (typeof fetchBytes !== "function") throw fail2("no-fetch", "no way to read the PDF bytes");
+    if (!pdfjsLib) throw fail3("no-pdfjs", "pdf.js is not available");
+    if (typeof fetchBytes !== "function") throw fail3("no-fetch", "no way to read the PDF bytes");
     let bytes;
     try {
       bytes = await fetchBytes(url);
     } catch (error) {
-      throw fail2("fetch-failed", `Could not read the PDF: ${error?.message || error}`);
+      throw fail3("fetch-failed", `Could not read the PDF: ${error?.message || error}`);
     }
     const sha = await sha256(bytes);
     const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes).slice() }).promise;
@@ -71067,7 +72631,7 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
     return { source: null, state: "none" };
   }
   async function tablesFromPdf({ url, pages, scan = "auto", ocrSource: injected = null, signal } = {}) {
-    if (!url || typeof url !== "string") throw fail2("bad-url", "url is required");
+    if (!url || typeof url !== "string") throw fail3("bad-url", "url is required");
     let wanted = pageSet(pages, 0);
     let hit = await cached(url);
     if (hit && !covers(hit.doc, wanted)) hit = null;
@@ -73715,8 +75279,8 @@ async function installPlexusDiagram({
   function noteMountFail(uid, error) {
     const prev = mountFail.get(uid);
     const n2 = (prev?.n || 0) + 1;
-    const wait = n2 <= MOUNT_BACKOFF_MS.length ? MOUNT_BACKOFF_MS[n2 - 1] : Infinity;
-    mountFail.set(uid, { n: n2, until: wait === Infinity ? Infinity : Date.now() + wait });
+    const wait2 = n2 <= MOUNT_BACKOFF_MS.length ? MOUNT_BACKOFF_MS[n2 - 1] : Infinity;
+    mountFail.set(uid, { n: n2, until: wait2 === Infinity ? Infinity : Date.now() + wait2 });
     if (!prev) console.warn("[plexus-diagram] Mount failed; native diagram restored", uid, error);
   }
   function mountCooling(uid) {
@@ -73892,7 +75456,7 @@ async function installPlexusDiagram({
     } catch {
     }
     let tries = 0;
-    const wait = () => {
+    const wait2 = () => {
       if (stopped) return;
       if (openPageUid() === pageUid) {
         landed(8);
@@ -73900,9 +75464,9 @@ async function installPlexusDiagram({
       }
       tries += 1;
       if (tries >= 8) return;
-      lifecycle.timeout(wait, 150);
+      lifecycle.timeout(wait2, 150);
     };
-    lifecycle.timeout(wait, 150);
+    lifecycle.timeout(wait2, 150);
   }
   function openImageTarget(region, regionUid, shiftKey) {
     let hit = null;

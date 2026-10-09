@@ -189,4 +189,4 @@ def test_ocr_endpoint_auth_cache_and_cells(tmp_path):
     assert bad.status_code == 400
     assert client.post("/v1/ocr", content=b"", headers=auth).status_code == 400
     health = client.get("/v1/health", headers={"Authorization": f"Bearer {TOKEN}"}).json()
-    assert health["engines"] == ["docling", "ocr"]
+    assert health["engines"] == ["docling", "ocr", "cloud"]

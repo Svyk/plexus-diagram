@@ -162,7 +162,7 @@ function parseTable(lines, index) {
   };
 }
 
-function parseBlocks(markdown) {
+export function parseMarkdownBlocks(markdown) {
   const lines = String(markdown ?? "").replace(/\r\n/g, "\n").split("\n");
   const blocks = [];
   let i = 0;
@@ -263,7 +263,7 @@ export function markdownToParse(markdown, {
 } = {}) {
   const blocks = {};
   const order = [];
-  parseBlocks(markdown).forEach((block, index) => {
+  parseMarkdownBlocks(markdown).forEach((block, index) => {
     const id = `b${index + 1}`;
     blocks[id] = { ...block, id };
     order.push(id);

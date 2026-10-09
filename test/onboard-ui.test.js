@@ -205,7 +205,7 @@ test("helper row: every state has its text, and every non-ready state exactly on
   }
 });
 
-test("device and cloud rows: built-in ready, in-browser reading by state, cloud disabled", () => {
+test("device and cloud rows: built-in ready, in-browser reading by state, cloud needs a key", () => {
   const ids = (device) => engineRows({ device, helper: { state: "ready" } }).map((r) => r.id);
   assert.deepEqual(ids({ state: "ready" }), ["device", "device-ocr", "helper", "cloud"]);
   const row = (device) => engineRows({ device, helper: { state: "ready" } }).find((r) => r.id === "device-ocr");
@@ -219,9 +219,9 @@ test("device and cloud rows: built-in ready, in-browser reading by state, cloud 
   const all = engineRows({ device: { state: "ready" }, helper: { state: "ready" } });
   assert.equal(all.find((r) => r.id === "device").button, null);
   const cloud = all.find((r) => r.id === "cloud");
-  assert.equal(cloud.disabled, true);
-  assert.equal(cloud.button, null);
-  assert.equal(cloud.text, "Coming soon");
+  assert.equal(cloud.disabled, undefined);
+  assert.equal(cloud.button.id, "cloud-setup");
+  assert.equal(cloud.text, "Needs a LlamaParse key. Mistral OCR: no install, cheaper, weaker tables.");
   for (const r of engineRows({ device: { state: "not-downloaded" }, helper: { state: "not-installed" } })) {
     assert.ok(TIP_TEXT[r.tip], r.tip);
     if (r.button) assert.ok(TIP_TEXT[r.button.tip], r.button.tip);

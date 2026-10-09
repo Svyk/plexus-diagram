@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import tempfile
 import threading
 import time
@@ -15,6 +16,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from plexus_parse_helper import HELPER_NAME, HELPER_VERSION, SCHEMA_ID
 from plexus_parse_helper.auth import token_matches
 from plexus_parse_helper.cache import ParseCache
+from plexus_parse_helper.cloud import TIERS, CloudCancelled, CloudError, run_llamaparse
 from plexus_parse_helper.jobs import JobCancelled, JobManager, expand_pages
 from plexus_parse_helper.models import model_report, start_download, stop_download
 from plexus_parse_helper.ocr import ocr_cells, ocr_options_hash, ocr_pdf
@@ -22,7 +24,7 @@ from plexus_parse_helper.pair import close_window, window_open
 from plexus_parse_helper.schema import normalize_options, options_hash, sha256_bytes
 
 MAX_BODY = 200 * 1024 * 1024
-_ALLOW_HEADERS = "Authorization, Content-Type, X-Pxd-Options"
+_ALLOW_HEADERS = "Authorization, Content-Type, X-Pxd-Options, X-Pxd-Cloud-Key"
 _ALLOW_METHODS = "GET, POST, DELETE, HEAD, OPTIONS"
 
 
@@ -182,7 +184,7 @@ class JobBook:
         return 204
 
 
-def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobManager | None = None, cache: ParseCache | None = None, ocr_runner=None, cell_runner=None, pair_file=None) -> FastAPI:
+def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobManager | None = None, cache: ParseCache | None = None, ocr_runner=None, cell_runner=None, pair_file=None, cloud_runner=None) -> FastAPI:
     allow = set(allow_origins or ["https://roamresearch.com"])
     manager = jobs or JobManager()
     store = cache or ParseCache()
@@ -193,8 +195,11 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
     app.state.manager = manager
     run_ocr = ocr_runner or ocr_pdf
     run_cells = cell_runner or ocr_cells
+    run_cloud = cloud_runner or run_llamaparse
     ocr_lock = threading.Lock()
     pair_lock = threading.Lock()
+    cloud_jobs: dict[str, threading.Event] = {}
+    cloud_lock = threading.Lock()
 
     def authed(request: Request) -> bool:
         return token_matches(request.headers.get("authorization"), token)
@@ -208,7 +213,7 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
             "helper": HELPER_NAME,
             "version": HELPER_VERSION,
             "schema": SCHEMA_ID,
-            "engines": ["docling", "ocr"],
+            "engines": ["docling", "ocr", "cloud"],
             "models": report["health"],
             "busy": manager.busy,
             "warm": bool(manager.warm),
@@ -403,6 +408,86 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
         if job.error:
             body["error"] = job.error
         return body
+
+    @app.post("/v1/cloud/parse")
+    async def post_cloud(request: Request):
+        """PDF body. Helper bearer plus X-Pxd-Cloud-Key. SSE: started, progress, result | error.
+        The provider key is not written to the cache and is not copied into the events."""
+        if not authed(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        api_key = (request.headers.get("x-pxd-cloud-key") or "").strip()
+        if not api_key:
+            return JSONResponse({"error": "missing cloud key"}, status_code=400)
+        raw = request.headers.get("x-pxd-options") or "{}"
+        try:
+            options = json.loads(raw)
+        except json.JSONDecodeError:
+            return JSONResponse({"error": "bad X-Pxd-Options"}, status_code=400)
+        region = options.get("region") or "us"
+        tier = options.get("tier") or "agentic"
+        if region not in {"us", "eu"}:
+            return JSONResponse({"error": "region must be us or eu"}, status_code=400)
+        if tier not in TIERS:
+            return JSONResponse({"error": "bad tier"}, status_code=400)
+        length = request.headers.get("content-length")
+        if length and int(length) > MAX_BODY:
+            return JSONResponse({"error": "too large"}, status_code=413)
+        data = await request.body()
+        if len(data) > MAX_BODY:
+            return JSONResponse({"error": "too large"}, status_code=413)
+        if not data:
+            return JSONResponse({"error": "empty body"}, status_code=400)
+        job_id = "c_" + sha256_bytes(data)[:8]
+        cancel = threading.Event()
+        with cloud_lock:
+            if job_id in cloud_jobs:
+                job_id = f"{job_id}_{len(cloud_jobs)}"
+            cloud_jobs[job_id] = cancel
+        events: queue.Queue = queue.Queue()
+
+        def on_event(event, payload):
+            events.put((event, payload))
+
+        def work():
+            try:
+                result = run_cloud(data, api_key=api_key, region=region, tier=tier, on_event=on_event, cancel=cancel)
+                events.put(("result", result))
+            except CloudCancelled:
+                events.put(("error", {"code": "cancelled", "message": "cancelled", "status": 499}))
+            except CloudError as exc:
+                events.put(("error", {"code": exc.code, "message": str(exc), "status": exc.status}))
+            except Exception as exc:
+                events.put(("error", {"code": "cloud", "message": str(exc), "status": 500}))
+            finally:
+                events.put(None)
+                with cloud_lock:
+                    cloud_jobs.pop(job_id, None)
+
+        threading.Thread(target=work, daemon=True).start()
+
+        def stream():
+            yield f"event: started\ndata: {json.dumps({'job': job_id})}\n\n"
+            while True:
+                item = events.get()
+                if item is None:
+                    return
+                event, payload = item
+                yield f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+                if event in {"result", "error"}:
+                    return
+
+        return StreamingResponse(stream(), media_type="text/event-stream")
+
+    @app.delete("/v1/cloud/parse/{job_id}")
+    def delete_cloud(job_id: str, request: Request):
+        if not authed(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        with cloud_lock:
+            cancel = cloud_jobs.get(job_id)
+        if cancel is None:
+            return JSONResponse({"error": "missing"}, status_code=404)
+        cancel.set()
+        return Response(status_code=204)
 
     @app.delete("/v1/jobs/{job_id}")
     def delete_job(job_id: str, request: Request):

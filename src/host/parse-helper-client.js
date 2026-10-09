@@ -442,5 +442,10 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
     return { ...body, sha256: sha };
   }
 
-  return { health, status, pair, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr };
+  function endpoint() {
+    const { url, token } = config();
+    return { url, token };
+  }
+
+  return { health, status, pair, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr, endpoint };
 }

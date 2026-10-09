@@ -189,21 +189,21 @@ Label words in small scanned type can still be misread, so check a scanned table
 
 ### Which engine
 
-Four ways to read a PDF. The first three stay on this device. Cloud is not available yet. Every number here is from the tables above or from `docs/parse-bench.md`.
+Four ways to read a PDF. The first three stay on this device. Cloud sends the PDF to LlamaParse after you confirm the cost. Bench numbers are from the tables above or from `docs/parse-bench.md`. Cloud prices are LlamaParse's published credits, $1.25 per 1,000. This path is not live-tested yet.
 
 | Engine | What it reads | Install | Speed | Stays on this device? | Accuracy | Best for | When to use |
 |---|---|---|---|---|---|---|---|
 | Built-in parser | Born-digital text, headings, lists, and ruled or borderless tables. Figures and formulas come back as crops. A page with no text layer stays a scan. | None. pdf.js, inside Roam. | About 10 ms a page on ICDAR 2013 (median 9.1 ms US, 10.1 ms EU). | Yes. The file is not sent. | ICDAR 2013, 67 government PDFs: table structure F1 0.979, cell F1 0.932. | A PDF that already has text. | You can select the text. |
 | In-browser reading (beta) | Scans. PP-OCRv5 reads the page in a Web Worker, then the same table engine runs. Doubtful text lines are read again and checked against a word list. Not a formula reader. | Download in Engines. onnxruntime-web and the PP-OCRv5 mobile models, about 39 MB once, hash-checked and cached in this browser. Nothing is fetched when a board or the reader opens. | About 25 s for a dense scanned page in the browser (the CDC 1980 page, live). | Yes. The page stays in the browser. The download is the models, not the PDF. | CDC 1980 scan: structure F1 0.983. Cell F1 0.922 on the bench raster, 0.932 on the browser's own raster and live. | A scan, with nothing to install. | The local helper is not ready. |
 | Local helper | Scans, through Apple Vision word boxes and the same table engine. Formulas as LaTeX, through Docling, when formula enrichment is on. | One command, then Pair. In Engines, press Set up, paste the command in Terminal, and press Pair. The program is `tools/parse-helper`. It starts at login. The Mac installer is one paste. | 14.3 s for the CDC 1980 scan. Formula enrichment is the slow part (one 15-page paper took 180 s). | Yes. It listens on this Mac only. | CDC 1980 scan, Apple Vision: structure F1 1.000, cell F1 0.957. Docling on the same scan is weaker (cell F1 0.082). Docling on the 67 ICDAR files: structure F1 0.865, cell F1 0.795. | A scan you care about, or a formula. | You can install it, or you want LaTeX. |
-| Cloud | Coming soon. | Nothing to install. | No measurements. | Not available. Nothing is sent. | No measurements. | Not yet. | Not yet. |
+| Cloud (LlamaParse) | Headings, paragraphs, lists, tables with cells and spans, and figures with a box and a caption. Per-cell boxes when the local helper downloads the result sidecar. A relay parse still has the table box and the spans. | A LlamaParse key saved in Engines on this device, and either the paired local helper or a relay you host (`deploy/cloud-relay`). Roam cannot call LlamaParse itself. | Not measured. Not live-tested yet. | No. After you confirm, the PDF is sent to LlamaParse (US or EU). The key stays in this browser. It is not written to the graph. | Not measured. Not live-tested yet. | A rough scan, a real table, or a figure. | You accept the cost and that the file leaves the device. The default tier is Agentic. |
 
 Which one should I use?
 
 - The PDF has real text, and you can select it. Use the built-in parser.
 - It is a scan, and you do not want to install anything. Use in-browser reading.
 - It is a scan you care about, or you want a formula as LaTeX. Use the local helper.
-- Cloud is coming soon. There is nothing to turn on, and there are no numbers for it.
+- It is a rough scan, a table the built-in parse missed, or a figure you want boxed. Use Cloud (LlamaParse). Not live-tested yet. Save a key in Engines (this device only), pair the helper or set a relay, then confirm. The confirm names LlamaParse, the page count, and the estimate: pages × (tier credits + 3 layout credits) × $1.25/1000. Per 1,000 pages the tier is Fast $1.25, Cost-effective $3.75, Agentic $12.50, Agentic Plus $56.25, and the layout line in that estimate is another $3.75. LlamaParse's pricing FAQ says layout is free in v2; the dialog includes it so the estimate cannot come in low. The same file with the same options is free if it was parsed in the last 48 hours.
 
 ## Office files and ebooks
 

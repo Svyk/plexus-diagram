@@ -1,0 +1,6 @@
+name = "plexus-cloud-relay"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# Not deployed. Whoever hosts this runs `wrangler deploy` themselves.
+# There is no account, route, or secret in this file.

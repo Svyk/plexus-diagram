@@ -2125,6 +2125,7 @@ export function createReadPane({
       panel = renderEnginesPanel(doc, enginesMount, {
         client: ensureHelper(),
         ...(deviceOcr ? { device: deviceOcr } : {}),
+        storage,
         setSetting: setSettingFn,
         copy: (text) => doc.defaultView?.navigator?.clipboard?.writeText?.(text),
         toast: (text) => { try { host?.toast?.(text); } catch { /* host */ } },

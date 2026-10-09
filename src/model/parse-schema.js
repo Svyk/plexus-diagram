@@ -9,7 +9,7 @@ export const BLOCK_TYPES = Object.freeze([
 ]);
 
 const TYPE_SET = new Set(BLOCK_TYPES);
-const ENGINES = new Set(["builtin", "docling", "mixed", "anydoc"]);
+const ENGINES = new Set(["builtin", "docling", "mixed", "anydoc", "cloud"]);
 
 function boxOf(value) {
   if (!Array.isArray(value) || value.length < 4) return null;

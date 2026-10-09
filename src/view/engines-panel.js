@@ -16,7 +16,9 @@
 //   setInterval?, clearInterval?, pollMs? (3000), platform? ("mac" | other)
 // }
 // Nothing is fetched until the panel is rendered. It re-checks the helper on open and every
-// pollMs while visible.
+// pollMs while visible. The cloud key is localStorage on this device, never a Roam setting.
+
+import { readCloudPrefs, writeCloudPrefs, TIER_LABELS, TIER_CREDITS } from "../host/cloud-parse.js";
 
 export const INSTALL_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh";
 export const RESTART_COMMAND = "plexus-parse-helper install-agent";
@@ -87,13 +89,30 @@ function helperRow(helper) {
   }
 }
 
+export function cloudRow(prefs, helper) {
+  const row = { id: "cloud", name: "Cloud", tip: "engines.cloud" };
+  const key = Boolean(prefs?.key);
+  const region = prefs?.region === "eu" ? "EU" : "US";
+  const tier = TIER_LABELS[prefs?.tier] || TIER_LABELS.agentic;
+  const paired = helper?.state === "ready";
+  const relay = /^https:\/\//i.test(String(prefs?.relay || "").trim());
+  if (!key) {
+    return { ...row, dot: "warn", text: "Needs a LlamaParse key", button: button("cloud-setup", "Set up", "engines.cloud-setup") };
+  }
+  if (!paired && !relay) {
+    return { ...row, dot: "warn", text: "Needs the helper or a relay", button: button("cloud-setup", "Set up", "engines.cloud-setup") };
+  }
+  const via = paired ? "helper" : "relay";
+  return { ...row, dot: "ok", text: `LlamaParse · ${tier} · ${region} · ${via}`, button: null };
+}
+
 export function engineRows(state, { platform = "mac" } = {}) {
   void platform;
   return [
     { id: "device", name: "On this device", dot: "ok", text: "Built-in parser · ready", button: null, tip: "engines.builtin" },
     deviceOcrRow(state?.device),
     helperRow(state?.helper),
-    { id: "cloud", name: "Cloud", dot: "off", text: "Coming soon", button: null, disabled: true, tip: "engines.cloud" },
+    cloudRow(state?.cloud, state?.helper),
   ];
 }
 
@@ -124,8 +143,17 @@ export function helperSheet(helperState, platform = "mac") {
 
 const DOT_LABEL = { ok: "ready", warn: "needs attention", busy: "working", off: "off" };
 
+function memoryStorage() {
+  const bag = new Map();
+  return {
+    getItem: (id) => (bag.has(id) ? bag.get(id) : null),
+    setItem: (id, value) => { bag.set(id, String(value)); },
+  };
+}
+
 export function renderEnginesPanel(doc, parent, deps = {}) {
   const { client, device, setSetting, copy, toast, onUpdate } = deps;
+  const storage = deps.storage || memoryStorage();
   const platform = deps.platform || "mac";
   const pollMs = deps.pollMs > 0 ? deps.pollMs : DEFAULT_POLL_MS;
   const setIv = deps.setInterval || ((fn, ms) => globalThis.setInterval(fn, ms));
@@ -154,7 +182,7 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
   el.append(title, list, sheetHost);
 
   let state = null;
-  let sheetOpen = false;
+  let sheetKind = null;
   let signature = "";
   let timer = null;
   let visible = true;
@@ -219,10 +247,80 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
     paintSheet();
   }
 
-  function paintSheet() {
+  function field(tag, attrs) {
+    const node = doc.createElement(tag);
+    node.className = "pxd-engines__token";
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+    return node;
+  }
+
+  function paintCloudSheet() {
+    if (sheetHost.querySelector?.("[data-cloud-sheet]")) return;
     release(heldSheet);
     sheetHost.innerHTML = "";
-    if (!sheetOpen) return;
+    const prefs = readCloudPrefs(storage);
+    const box = doc.createElement("div");
+    box.className = "pxd-engines__sheet";
+    box.setAttribute("data-cloud-sheet", "");
+    const head = doc.createElement("div");
+    head.className = "pxd-engines__sheet-title";
+    head.textContent = "LlamaParse";
+    const note = doc.createElement("div");
+    note.className = "pxd-engines__note";
+    note.textContent = "The key stays in this browser. It is not written to the graph. Nothing is sent until you confirm the cost on a PDF.";
+    const keyInput = field("input", { type: "password", autocomplete: "off", "aria-label": "LlamaParse API key", placeholder: prefs.key ? "Key saved" : "API key", "data-cloud-key": "" });
+    const region = field("select", { "aria-label": "Region", "data-cloud-region": "" });
+    for (const [value, label] of [["us", "US"], ["eu", "EU"]]) {
+      const option = doc.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      if (value === prefs.region) option.setAttribute("selected", "");
+      region.append(option);
+    }
+    region.value = prefs.region;
+    const tier = field("select", { "aria-label": "Tier", "data-cloud-tier": "" });
+    for (const value of Object.keys(TIER_CREDITS)) {
+      const option = doc.createElement("option");
+      option.value = value;
+      option.textContent = TIER_LABELS[value];
+      if (value === prefs.tier) option.setAttribute("selected", "");
+      tier.append(option);
+    }
+    tier.value = prefs.tier;
+    const relay = field("input", { type: "url", autocomplete: "off", "aria-label": "Relay URL", placeholder: "Relay URL (optional)", "data-cloud-relay": "" });
+    relay.value = prefs.relay || "";
+    const save = doc.createElement("button");
+    save.type = "button";
+    save.setAttribute("type", "button");
+    save.className = "pxd-engines__btn pxd-engines__btn--primary";
+    save.setAttribute("data-action", "cloud-save");
+    save.textContent = "Save on this device";
+    bindTo(heldSheet)(save, "click", (event) => {
+      event.stopPropagation?.();
+      void act("cloud-save");
+    });
+    const clear = doc.createElement("button");
+    clear.type = "button";
+    clear.setAttribute("type", "button");
+    clear.className = "pxd-engines__btn";
+    clear.setAttribute("data-action", "cloud-clear");
+    clear.textContent = "Remove key";
+    bindTo(heldSheet)(clear, "click", (event) => {
+      event.stopPropagation?.();
+      void act("cloud-clear");
+    });
+    box.append(head, note, keyInput, region, tier, relay, save, clear);
+    sheetHost.append(box);
+  }
+
+  function paintSheet() {
+    if (sheetKind === "cloud") {
+      paintCloudSheet();
+      return;
+    }
+    release(heldSheet);
+    sheetHost.innerHTML = "";
+    if (sheetKind !== "helper") return;
     const sheet = helperSheet(state?.helper?.state, platform);
     const box = doc.createElement("div");
     box.className = "pxd-engines__sheet";
@@ -295,11 +393,34 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
   async function act(id) {
     if (disposed) return;
     if (id === "setup" || id === "start") {
-      sheetOpen = !sheetOpen;
+      sheetKind = sheetKind === "helper" ? null : "helper";
       paintSheet();
       return;
     }
-    if (id === "pair") {
+    if (id === "cloud-setup") {
+      sheetKind = sheetKind === "cloud" ? null : "cloud";
+      if (sheetKind !== "cloud") {
+        release(heldSheet);
+        sheetHost.innerHTML = "";
+      }
+      paintSheet();
+      return;
+    }
+    if (id === "cloud-save") {
+      const typed = String(el.querySelector("[data-cloud-key]")?.value || "");
+      writeCloudPrefs(storage, {
+        key: typed.trim() ? typed : null,
+        region: el.querySelector("[data-cloud-region]")?.value,
+        tier: el.querySelector("[data-cloud-tier]")?.value,
+        relay: el.querySelector("[data-cloud-relay]")?.value ?? "",
+      });
+      say("Saved on this device");
+    } else if (id === "cloud-clear") {
+      writeCloudPrefs(storage, { key: "" });
+      const input = el.querySelector("[data-cloud-key]");
+      if (input) input.value = "";
+      say("Key removed from this device");
+    } else if (id === "pair") {
       const result = await client?.pair?.();
       if (result?.ok) say("Helper paired");
       else if (result?.reason === "window-closed") say("Pairing window closed. Run plexus-parse-helper pair, then click Pair.");
@@ -332,8 +453,8 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
     try {
       const next = await loadEngineState({ client, device, force: true });
       if (disposed) return state;
-      state = next;
-      if (sheetOpen && state.helper.state === "ready") sheetOpen = false;
+      state = { ...next, cloud: readCloudPrefs(storage) };
+      if (sheetKind === "helper" && state.helper.state === "ready") sheetKind = null;
       paintRows();
       return state;
     } finally {
@@ -363,7 +484,7 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
   }
 
   function showSheet() {
-    sheetOpen = true;
+    sheetKind = "helper";
     paintSheet();
   }
 

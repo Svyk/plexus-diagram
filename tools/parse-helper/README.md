@@ -38,7 +38,7 @@ All routes except a rejected `Origin` require `Authorization: Bearer <token>`. H
 
 | Method | Path | Result |
 |---|---|---|
-| GET | `/v1/health` | `{helper, version:"0.1.0", schema:"pxd-parse/1", engines:["docling","ocr"], models, busy, warm}` |
+| GET | `/v1/health` | `{helper, version:"0.1.0", schema:"pxd-parse/1", engines:["docling","ocr","cloud"], models, busy, warm}` |
 | GET | `/v1/pair` | no bearer. `200` `{token, helper, version}` once while the pairing window is open and `Origin` is allowed; else `404` |
 | GET | `/v1/models` | `{state:"ready"\|"missing"\|"downloading", items:[{name, state, bytes, done}], bytes, done, fraction}`. `bytes`/`done` on a missing model are the expected size and what is on disk now (partial files count), so the Engines row shows a progress bar |
 | POST | `/v1/models/download` | `202` starts `docling-tools models download` |
@@ -49,10 +49,12 @@ All routes except a rejected `Origin` require `Authorization: Bearer <token>`. H
 | GET | `/v1/jobs/{id}/events` | SSE `progress`, `page`, `done`, `error` |
 | GET | `/v1/jobs/{id}` | the document when `done`, else `{state}` |
 | DELETE | `/v1/jobs/{id}` | `204` cancels a running job (kills and respawns the worker). `404` otherwise |
+| POST | `/v1/cloud/parse` | body is the PDF. `Authorization` is the helper token. `X-Pxd-Cloud-Key` is the LlamaParse key (not stored, not copied into the SSE). `X-Pxd-Options` is `{region, tier, version}`. SSE `started` `{job}`, then `progress`, then `result` (provider JSON) or `error` `{code, message, status}` |
+| DELETE | `/v1/cloud/parse/{id}` | `204` cancels that cloud job. `404` if it is unknown |
 
 A second `POST /v1/jobs` while one job is running is `409` `{"running":"j_…"}`. `pages` in the 202 body is the PDF page count.
 
-`OPTIONS` for an allowed origin answers `204` with `Access-Control-Allow-Origin` (the request origin), `Vary: Origin`, `Access-Control-Allow-Headers: Authorization, Content-Type, X-Pxd-Options`, `Access-Control-Allow-Methods: GET, POST, DELETE, HEAD, OPTIONS`, and `Access-Control-Allow-Private-Network: true`. The allowlist is `https://roamresearch.com` plus `--allow-origin`. Any other `Origin` is `403` before the body is read.
+`OPTIONS` for an allowed origin answers `204` with `Access-Control-Allow-Origin` (the request origin), `Vary: Origin`, `Access-Control-Allow-Headers: Authorization, Content-Type, X-Pxd-Options, X-Pxd-Cloud-Key`, `Access-Control-Allow-Methods: GET, POST, DELETE, HEAD, OPTIONS`, and `Access-Control-Allow-Private-Network: true`. The allowlist is `https://roamresearch.com` plus `--allow-origin`. Any other `Origin` is `403` before the body is read.
 
 SSE events:
 

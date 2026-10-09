@@ -184,6 +184,8 @@ export async function build(rootDirectory = defaultRoot, options = {}) {
   ]);
   await copyAnydocAssets(rootDirectory, deployDir);
   await publishOcrAssets(rootDirectory, deployDir, ocrWorker);
+  // Source lives outside deploy/ because this function deletes deploy/ first.
+  await cp(resolve(rootDirectory, "tools", "cloud-relay"), resolve(deployDir, "cloud-relay"), { recursive: true });
   process.stdout.write(`Built extension.js, extension.css, and ${deployDir}\n`);
 }
 

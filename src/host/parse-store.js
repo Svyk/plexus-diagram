@@ -35,6 +35,11 @@ export async function restorableParse(store, sha, { engines, plainHash, readHash
   let listed = [];
   try { listed = typeof store.listParses === "function" ? await store.listParses(sha) : []; } catch { listed = []; }
   listed = listed.filter((row) => !isStaleParse(row.doc));
+  // A stored cloud parse is the one the user paid for. It wins when this list includes it.
+  if (engines?.includes?.("cloud")) {
+    const paid = listed.filter((row) => row.engine === "cloud").pop();
+    if (paid) return paid.doc;
+  }
   for (const engine of engines) {
     const mine = listed.filter((row) => row.engine === engine);
     const read = mine.filter((row) => row.doc?.options?.ocr === "vision" && !scanPagesOf(row.doc).length).pop();
@@ -52,7 +57,7 @@ export async function restorableParse(store, sha, { engines, plainHash, readHash
   return null;
 }
 
-export const RESTORE_ENGINES = Object.freeze(["builtin", "docling", "mixed", "anydoc"]);
+export const RESTORE_ENGINES = Object.freeze(["builtin", "docling", "mixed", "anydoc", "cloud"]);
 
 // restorableParse for a PDF url: the url index gives the sha, `plainOptions` the options of the plain parse.
 export async function restorableByUrl(store, url, { plainOptions, engines = RESTORE_ENGINES } = {}) {

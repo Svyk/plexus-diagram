@@ -1,0 +1,66 @@
+{
+  "_synthetic": true,
+  "job": { "id": "job-synthetic", "status": "COMPLETED" },
+  "items": {
+    "pages": [
+      {
+        "page_number": 1,
+        "page_width": 612,
+        "page_height": 792,
+        "success": true,
+        "items": [
+          { "type": "header", "value": "Journal of Trials", "bbox": { "x": 72, "y": 20, "w": 200, "h": 12 } },
+          { "type": "heading", "level": 1, "value": "Trial results", "bbox": { "x": 72, "y": 72, "w": 300, "h": 24 } },
+          { "type": "text", "value": "Patients were randomized.", "bbox": { "x": 72, "y": 110, "w": 400, "h": 14 } },
+          {
+            "type": "list",
+            "ordered": false,
+            "bbox": { "x": 72, "y": 140, "w": 300, "h": 40 },
+            "items": [
+              { "type": "text", "value": "Arm A" },
+              { "type": "list", "items": [{ "type": "text", "value": "10 mg" }] }
+            ]
+          },
+          {
+            "type": "table",
+            "bbox": { "x": 72, "y": 200, "w": 240, "h": 60 },
+            "html": "<table><tr><th colspan=\"2\">Arm</th></tr><tr><td>10 mg</td><td rowspan=\"2\">12</td></tr><tr><td>20 mg</td></tr></table>"
+          },
+          {
+            "type": "image",
+            "bbox": { "x": 72, "y": 300, "w": 200, "h": 120 },
+            "caption": "Figure 1. Kaplan-Meier."
+          }
+        ]
+      },
+      {
+        "page_number": 2,
+        "page_width": 612,
+        "page_height": 792,
+        "success": false,
+        "items": [{ "type": "text", "value": "This page failed." }]
+      }
+    ]
+  },
+  "grounded_pages": [
+    {
+      "page_number": 1,
+      "success": true,
+      "items": [
+        {
+          "type": "table",
+          "grounding": {
+            "rows": [
+              [{ "bbox": { "x": 72, "y": 200, "w": 240, "h": 16 } }],
+              [
+                { "bbox": { "x": 72, "y": 216, "w": 80, "h": 16 } },
+                { "bbox": { "x": 152, "y": 216, "w": 80, "h": 32 } }
+              ],
+              [{ "bbox": { "x": 72, "y": 232, "w": 80, "h": 16 } }]
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

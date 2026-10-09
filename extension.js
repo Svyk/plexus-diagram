@@ -9505,6 +9505,77 @@ function samePage(block, page) {
   if (page == null) return true;
   return block?.page === page;
 }
+function validateParse(doc) {
+  const errors = [];
+  if (!doc || typeof doc !== "object") {
+    return { ok: false, errors: ["schema"] };
+  }
+  if (doc.schema !== SCHEMA2) errors.push("schema");
+  if (doc.engine != null && !ENGINES.has(doc.engine)) errors.push("engine");
+  const blocks = doc.blocks;
+  if (!blocks || typeof blocks !== "object" || Array.isArray(blocks)) {
+    errors.push("blocks");
+  }
+  const order = doc.order;
+  if (!Array.isArray(order)) {
+    errors.push("order");
+  } else if (blocks && typeof blocks === "object") {
+    const seen = /* @__PURE__ */ new Set();
+    for (const id of order) {
+      if (seen.has(id)) errors.push(`order-duplicate:${id}`);
+      seen.add(id);
+      if (!Object.prototype.hasOwnProperty.call(blocks, id)) errors.push(`order-missing:${id}`);
+    }
+  }
+  if (blocks && typeof blocks === "object" && !Array.isArray(blocks)) {
+    for (const [key, block] of Object.entries(blocks)) {
+      if (!block || typeof block !== "object") {
+        errors.push(`block-type:${key}`);
+        continue;
+      }
+      if (block.id != null && block.id !== key) errors.push(`block-id:${key}`);
+      if (!TYPE_SET.has(block.type)) errors.push(`block-type:${key}`);
+      if (block.confidence != null) {
+        const c = block.confidence;
+        if (typeof c !== "number" || c < 0 || c > 1) errors.push(`confidence:${key}`);
+      }
+      if (block.type === "table") validateTable(key, block, errors);
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+function validateTable(id, table, errors) {
+  const rows = table.rows;
+  const cols = table.cols;
+  if (!Number.isInteger(rows) || rows < 1 || !Number.isInteger(cols) || cols < 1) {
+    errors.push(`cell-range:${id}`);
+    return;
+  }
+  const grid = Array.from({ length: rows }, () => Array(cols).fill(null));
+  const cells = Array.isArray(table.cells) ? table.cells : [];
+  for (const cell of cells) {
+    const r = cell?.r;
+    const c = cell?.c;
+    const rs = cell?.rowSpan ?? 1;
+    const cs = cell?.colSpan ?? 1;
+    const inRange = Number.isInteger(r) && Number.isInteger(c) && Number.isInteger(rs) && Number.isInteger(cs) && r >= 0 && c >= 0 && rs >= 1 && cs >= 1 && r + rs <= rows && c + cs <= cols;
+    if (!inRange) {
+      errors.push(`cell-range:${id}:${r}:${c}`);
+      continue;
+    }
+    for (let dr = 0; dr < rs; dr += 1) {
+      for (let dc = 0; dc < cs; dc += 1) {
+        const rr = r + dr;
+        const cc = c + dc;
+        if (grid[rr][cc]) {
+          errors.push(`cell-overlap:${id}:${rr}:${cc}`);
+        } else {
+          grid[rr][cc] = true;
+        }
+      }
+    }
+  }
+}
 function blocksInRange(doc, fromPage, toPage) {
   const from = Math.min(fromPage, toPage);
   const to = Math.max(fromPage, toPage);
@@ -9654,7 +9725,7 @@ function mergeScoped(baseDoc, scopedPageResult, bbox) {
     blocks
   };
 }
-var SCHEMA2, IOU_MIN, BLOCK_TYPES, TYPE_SET;
+var SCHEMA2, IOU_MIN, BLOCK_TYPES, TYPE_SET, ENGINES;
 var init_parse_schema = __esm({
   "src/model/parse-schema.js"() {
     SCHEMA2 = "pxd-parse/1";
@@ -9672,6 +9743,7 @@ var init_parse_schema = __esm({
       "scan"
     ]);
     TYPE_SET = new Set(BLOCK_TYPES);
+    ENGINES = /* @__PURE__ */ new Set(["builtin", "docling", "mixed", "anydoc", "cloud"]);
   }
 });
 
@@ -11292,6 +11364,7 @@ var init_tooltip_text = __esm({
       "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),
       "parse.chip": e("Parse engine", "Built-in runs on this machine. Docling uses the local helper."),
       "parse.docling": e("Parse with Docling", "Send this PDF to the local helper. Nothing is sent until you press this."),
+      "parse.cloud": e("Read with LlamaParse", "Send this PDF to LlamaParse after you confirm the page count and the estimated cost. Nothing is sent until you confirm."),
       "parse.docling-off": e("Local helper: off", "Open Engines (the gear) to set up or start the local helper."),
       "parse.docling-token": e("Local helper: wrong token", "Open Engines (the gear) and pair the local helper again."),
       "parse.docling-models": e("Local helper: downloading models", "The helper is downloading models. Parsing waits until they are ready."),
@@ -11305,7 +11378,8 @@ var init_tooltip_text = __esm({
       "engines.builtin": e("On this device", "The built-in parser. It runs in Roam and needs nothing installed."),
       "engines.ocr": e("In-browser reading (beta)", "Reads the words on scanned pages inside Roam. The models download once, after you ask. Less accurate than the local helper, which is used instead when it is ready."),
       "engines.helper": e("Local helper", "Docling for layout, formulas and tables, and Apple Vision for scans. It runs on this Mac and listens only on 127.0.0.1."),
-      "engines.cloud": e("Cloud", "Reading through a service with your own key. Not available yet."),
+      "engines.cloud": e("Cloud", "LlamaParse, with your own key, kept on this device. The PDF is sent only after you confirm the cost. Roam cannot call LlamaParse itself: pair the local helper, or set a relay URL."),
+      "engines.cloud-setup": e("Set up", "Save a LlamaParse key on this device, pick US or EU, and choose a tier."),
       "engines.pair": e("Pair", "Fetch the helper's token. Works for 90 seconds after the installer or plexus-parse-helper pair."),
       "engines.setup": e("Set up", "Show the one command that installs the local helper."),
       "engines.start": e("Start", "Show how to start the local helper."),
@@ -11498,13 +11572,13 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
       if (info) target.title = info.key ? `${info.name} (${[].concat(info.key).join(" ")}). ${info.desc}` : `${info.name}. ${info.desc}`;
       return;
     }
-    const wait = current3 ? 0 : delay();
-    if (wait <= 0) {
+    const wait2 = current3 ? 0 : delay();
+    if (wait2 <= 0) {
       show(target);
       return;
     }
-    const cancel = timers?.later ? timers.later(() => show(target), wait) : (() => {
-      const t = setTimeout(() => show(target), wait);
+    const cancel = timers?.later ? timers.later(() => show(target), wait2) : (() => {
+      const t = setTimeout(() => show(target), wait2);
       return () => clearTimeout(t);
     })();
     pending = { target, cancel };
@@ -17621,12 +17695,12 @@ function openHoverPopover({ doc, win, anchor, delayMs, build, obstacles, timers 
     on(document, "scroll", again, true);
     on(view, "resize", again);
   };
-  const wait = Math.max(0, Number(delayMs) || 0);
-  if (typeof timers?.later === "function") cancelTimer = timers.later(show, wait);
+  const wait2 = Math.max(0, Number(delayMs) || 0);
+  if (typeof timers?.later === "function") cancelTimer = timers.later(show, wait2);
   else {
     const set = view?.setTimeout?.bind(view) || globalThis.setTimeout.bind(globalThis);
     const clear = view?.clearTimeout?.bind(view) || globalThis.clearTimeout.bind(globalThis);
-    const id = set(show, wait);
+    const id = set(show, wait2);
     cancelTimer = () => clear(id);
   }
   return { close, el };
@@ -35880,14 +35954,14 @@ var POLL_MS = 40;
 var GRACE_MS = 400;
 function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win = doc?.defaultView || globalThis } = {}) {
   const busy = /* @__PURE__ */ new Map();
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const wait2 = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const until = async (probe, limit) => {
     const end = Date.now() + limit;
     for (; ; ) {
       const hit = probe();
       if (hit) return hit;
       if (Date.now() >= end) return null;
-      await wait(POLL_MS);
+      await wait2(POLL_MS);
     }
   };
   const fire2 = (target, type) => {
@@ -35926,7 +36000,7 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
       input.click();
       const done = await until(() => taskState(host.blockString?.(uid)) === "DONE", DONE_MS);
       if (!done) return { ok: false, reason: "the block did not turn DONE" };
-      await wait(GRACE_MS);
+      await wait2(GRACE_MS);
       return { ok: true };
     } finally {
       cleanup();
@@ -38262,6 +38336,10 @@ async function restorableParse(store, sha, { engines, plainHash, readHashOf = nu
     listed = [];
   }
   listed = listed.filter((row4) => !isStaleParse(row4.doc));
+  if (engines?.includes?.("cloud")) {
+    const paid = listed.filter((row4) => row4.engine === "cloud").pop();
+    if (paid) return paid.doc;
+  }
   for (const engine of engines) {
     const mine = listed.filter((row4) => row4.engine === engine);
     const read2 = mine.filter((row4) => row4.doc?.options?.ocr === "vision" && !scanPagesOf(row4.doc).length).pop();
@@ -38278,7 +38356,7 @@ async function restorableParse(store, sha, { engines, plainHash, readHashOf = nu
   }
   return null;
 }
-var RESTORE_ENGINES = Object.freeze(["builtin", "docling", "mixed", "anydoc"]);
+var RESTORE_ENGINES = Object.freeze(["builtin", "docling", "mixed", "anydoc", "cloud"]);
 async function restorableByUrl(store, url, { plainOptions, engines = RESTORE_ENGINES } = {}) {
   if (!store || !url) return null;
   const hit = await store.findByUrl(url);
@@ -41783,6 +41861,669 @@ function createAnydocHost({
 // src/view/parse-view.js
 init_anydoc_to_parse();
 
+// src/host/cloud-parse.js
+var CREDIT_USD = 1.25 / 1e3;
+var LAYOUT_CREDITS = 3;
+var TIER_CREDITS = Object.freeze({
+  fast: 1,
+  cost_effective: 3,
+  agentic: 10,
+  agentic_plus: 45
+});
+var TIER_LABELS = Object.freeze({
+  fast: "Fast",
+  cost_effective: "Cost-effective",
+  agentic: "Agentic",
+  agentic_plus: "Agentic Plus"
+});
+var DEFAULT_TIER = "agentic";
+var DEFAULT_TIMEOUT_MS = 24e4;
+var CLOUD_STORAGE = Object.freeze({
+  key: "pxd-cloud-key",
+  region: "pxd-cloud-region",
+  tier: "pxd-cloud-tier",
+  relay: "pxd-cloud-relay"
+});
+var HELPER_PATH = "/v1/cloud/parse";
+function fail2(code, message, status) {
+  const error = new Error(message);
+  error.code = code;
+  if (status != null) error.status = status;
+  return error;
+}
+function storageGet(storage, id) {
+  try {
+    const value = storage?.getItem?.(id);
+    return value == null ? "" : String(value);
+  } catch {
+    return "";
+  }
+}
+function readCloudPrefs(storage) {
+  const region = storageGet(storage, CLOUD_STORAGE.region) === "eu" ? "eu" : "us";
+  const tierRaw = storageGet(storage, CLOUD_STORAGE.tier);
+  const tier = Object.prototype.hasOwnProperty.call(TIER_CREDITS, tierRaw) ? tierRaw : DEFAULT_TIER;
+  return {
+    key: storageGet(storage, CLOUD_STORAGE.key).trim(),
+    region,
+    tier,
+    relay: storageGet(storage, CLOUD_STORAGE.relay).trim()
+  };
+}
+function writeCloudPrefs(storage, prefs = {}) {
+  const prev = readCloudPrefs(storage);
+  const next = {
+    key: prefs.key == null ? prev.key : String(prefs.key).trim(),
+    region: prefs.region == null ? prev.region : prefs.region === "eu" ? "eu" : "us",
+    tier: prefs.tier == null ? prev.tier : Object.prototype.hasOwnProperty.call(TIER_CREDITS, prefs.tier) ? prefs.tier : DEFAULT_TIER,
+    relay: prefs.relay == null ? prev.relay : String(prefs.relay).trim()
+  };
+  storage.setItem(CLOUD_STORAGE.key, next.key);
+  storage.setItem(CLOUD_STORAGE.region, next.region);
+  storage.setItem(CLOUD_STORAGE.tier, next.tier);
+  storage.setItem(CLOUD_STORAGE.relay, next.relay);
+  return { ...next };
+}
+function estimateCloudCost({ pages, tier, layout = true } = {}) {
+  const count = Math.max(0, Math.floor(Number(pages) || 0));
+  const perTier = TIER_CREDITS[tier] ?? TIER_CREDITS[DEFAULT_TIER];
+  const extra = layout ? LAYOUT_CREDITS : 0;
+  const creditsPerPage = perTier + extra;
+  const credits = count * creditsPerPage;
+  return {
+    pages: count,
+    tier: TIER_CREDITS[tier] ? tier : DEFAULT_TIER,
+    tierCredits: perTier,
+    layoutCredits: extra,
+    creditsPerPage,
+    credits,
+    usd: credits * CREDIT_USD,
+    cacheNote: "free if parsed in the last 48 h"
+  };
+}
+function money(usd) {
+  const n2 = Number(usd) || 0;
+  if (n2 >= 0.01) return `$${n2.toFixed(2)}`;
+  return `$${n2.toFixed(4)}`;
+}
+function cloudConfirmMessage({ pages, tier, region } = {}) {
+  const est = estimateCloudCost({ pages, tier, layout: true });
+  const where = region === "eu" ? "EU" : "US";
+  const label = TIER_LABELS[est.tier] || est.tier;
+  const pageText = est.pages ? `${est.pages} page${est.pages === 1 ? "" : "s"}` : "page count unknown";
+  return `Send this PDF to LlamaParse (${where}, ${label})? ${pageText}, about ${money(est.usd)} (${est.credits} credits: ${est.tierCredits} per page plus ${est.layoutCredits} for layout). The pricing FAQ says layout is free in v2; this estimate includes it. Free if this file was parsed with the same options in the last 48 hours. The PDF leaves this device.`;
+}
+function resolveCloudTransport({ helper, relayUrl } = {}) {
+  const url = String(helper?.url || "").replace(/\/$/, "");
+  const token = String(helper?.token || "").trim();
+  if (helper?.state === "ready" && url && token) return { kind: "helper", url, token };
+  const relay = String(relayUrl || "").trim().replace(/\/$/, "");
+  if (/^https:\/\//i.test(relay)) return { kind: "relay", url: relay };
+  return {
+    kind: "none",
+    reason: "Pair the local helper, or set a cloud relay URL in Engines. Roam cannot call LlamaParse directly."
+  };
+}
+function wait(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(fail2("cancelled", "cancelled", 499));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener?.("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(fail2("cancelled", "cancelled", 499));
+    };
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
+}
+async function readSSE(response, onEvent) {
+  const reader = response.body?.getReader?.();
+  if (!reader) throw fail2("bad-response", "no progress stream");
+  const decoder = new TextDecoder();
+  let buf = "";
+  const dispatch = (frame) => {
+    let event = "message";
+    const data = [];
+    for (const line of frame.split("\n")) {
+      if (!line || line.startsWith(":")) continue;
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    if (!data.length) return;
+    const payload = JSON.parse(data.join("\n"));
+    onEvent(event, payload);
+  };
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    buf = buf.replace(/\r\n/g, "\n");
+    const frames = buf.split("\n\n");
+    buf = frames.pop() ?? "";
+    for (const frame of frames) dispatch(frame);
+  }
+  if (buf.trim()) dispatch(buf);
+}
+function statusError(status, body) {
+  if (status === 401) return fail2("unauthorized", "LlamaParse rejected the key", 401);
+  if (status === 402) return fail2("credits", "LlamaParse is out of credits", 402);
+  if (status === 429) return fail2("rate", "LlamaParse rate limit", 429);
+  const message = body?.detail || body?.error || body?.message || `LlamaParse ${status}`;
+  return fail2("provider", String(message), status);
+}
+async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, signal, onProgress }) {
+  const headers = {
+    Authorization: `Bearer ${transport.token}`,
+    "X-Pxd-Cloud-Key": apiKey,
+    "X-Pxd-Options": JSON.stringify({ region, tier, version: "latest" }),
+    "Content-Type": "application/pdf"
+  };
+  let jobId = "";
+  const onAbort = () => {
+    if (!jobId) return;
+    Promise.resolve(fetch2(`${transport.url}${HELPER_PATH}/${encodeURIComponent(jobId)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${transport.token}` },
+      targetAddressSpace: "loopback"
+    })).catch(() => {
+    });
+  };
+  signal?.addEventListener?.("abort", onAbort, { once: true });
+  let response;
+  try {
+    response = await fetch2(`${transport.url}${HELPER_PATH}`, {
+      method: "POST",
+      headers,
+      body: bytes,
+      targetAddressSpace: "loopback",
+      signal
+    });
+  } catch (error) {
+    if (signal?.aborted) throw fail2("cancelled", "cancelled", 499);
+    throw error;
+  }
+  if (response.status === 401) throw fail2("unauthorized", "local helper rejected its token", 401);
+  if (response.status < 200 || response.status >= 300) {
+    let body = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    throw statusError(response.status, body);
+  }
+  let provider = null;
+  await readSSE(response, (event, payload) => {
+    if (event === "started") jobId = payload?.job || jobId;
+    else if (event === "progress") {
+      if (payload?.job) jobId = payload.job;
+      onProgress?.(payload);
+    } else if (event === "result") provider = payload;
+    else if (event === "error") {
+      const error = fail2(payload?.code || "provider", payload?.message || "cloud parse failed", payload?.status);
+      throw error;
+    }
+  });
+  if (!provider) throw fail2("bad-response", "cloud parse returned no result");
+  return provider;
+}
+async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, signal, onProgress, sleep, now: now3, timeoutMs }) {
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "X-Pxd-Region": region === "eu" ? "eu" : "us"
+  };
+  const clock = now3;
+  const pause = sleep;
+  const deadline = clock() + timeoutMs;
+  const form = new FormData();
+  const blob = bytes instanceof Blob ? bytes : new Blob([bytes], { type: "application/pdf" });
+  form.append("purpose", "parse");
+  form.append("file", blob, "document.pdf");
+  const uploaded = await fetch2(`${transport.url}/api/v1/beta/files`, {
+    method: "POST",
+    headers,
+    body: form,
+    signal
+  });
+  const uploadBody = await uploaded.json().catch(() => null);
+  if (uploaded.status < 200 || uploaded.status >= 300) throw statusError(uploaded.status, uploadBody);
+  const fileId = uploadBody?.id;
+  if (!fileId) throw fail2("bad-response", "upload did not return a file id");
+  const started = await fetch2(`${transport.url}/api/v2/parse`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      file_id: fileId,
+      tier,
+      version: "latest",
+      output_options: { granular_bboxes: ["cell"] }
+    }),
+    signal
+  });
+  const startBody = await started.json().catch(() => null);
+  if (started.status < 200 || started.status >= 300) throw statusError(started.status, startBody);
+  const jobId = startBody?.id || startBody?.job?.id;
+  if (!jobId) throw fail2("bad-response", "parse did not return a job id");
+  const cancelRemote = () => {
+    Promise.resolve(fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}/cancel`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: "{}"
+    })).catch(() => {
+    });
+  };
+  signal?.addEventListener?.("abort", cancelRemote, { once: true });
+  let delay = 1e3;
+  let status = startBody?.status || startBody?.job?.status || "PENDING";
+  while (status !== "COMPLETED" && status !== "FAILED" && status !== "CANCELLED") {
+    if (signal?.aborted) throw fail2("cancelled", "cancelled", 499);
+    if (clock() >= deadline) throw fail2("timeout", "LlamaParse timed out", 504);
+    await pause(delay, signal);
+    delay = Math.min(delay * 2, 8e3);
+    if (clock() >= deadline) throw fail2("timeout", "LlamaParse timed out", 504);
+    const polled = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}`, { headers, signal });
+    const body = await polled.json().catch(() => null);
+    if (polled.status < 200 || polled.status >= 300) throw statusError(polled.status, body);
+    status = body?.job?.status || body?.status || "";
+    onProgress?.({ status, job: jobId });
+  }
+  if (status === "CANCELLED") throw fail2("cancelled", "cancelled", 499);
+  if (status !== "COMPLETED") throw fail2("failed", "LlamaParse failed the job", 502);
+  const done = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}?expand=items&expand=markdown&expand=usage`, {
+    headers,
+    signal
+  });
+  const provider = await done.json().catch(() => null);
+  if (done.status < 200 || done.status >= 300) throw statusError(done.status, provider);
+  return provider;
+}
+async function parseCloud({
+  fetch: fetchFn,
+  transport,
+  bytes,
+  apiKey,
+  region = "us",
+  tier = DEFAULT_TIER,
+  confirmed = false,
+  signal,
+  onProgress,
+  sleep = wait,
+  now: now3 = () => Date.now(),
+  timeoutMs = DEFAULT_TIMEOUT_MS
+} = {}) {
+  if (confirmed !== true) throw fail2("confirm", "confirm required");
+  if (typeof fetchFn !== "function") throw fail2("no-fetch", "no fetch");
+  if (!transport || transport.kind === "none") throw fail2("transport", transport?.reason || resolveCloudTransport().reason);
+  const key = String(apiKey || "").trim();
+  if (!key) throw fail2("no-key", "Add a LlamaParse key in Engines. It stays on this device.");
+  if (!Object.prototype.hasOwnProperty.call(TIER_CREDITS, tier)) throw fail2("bad-tier", "bad tier");
+  const where = region === "eu" ? "eu" : "us";
+  if (transport.kind === "helper") {
+    const provider = await helperParse({
+      fetch: fetchFn,
+      transport,
+      bytes,
+      apiKey: key,
+      region: where,
+      tier,
+      signal,
+      onProgress
+    });
+    return { provider, transport: "helper" };
+  }
+  if (transport.kind === "relay") {
+    const provider = await relayParse({
+      fetch: fetchFn,
+      transport,
+      bytes,
+      apiKey: key,
+      region: where,
+      tier,
+      signal,
+      onProgress,
+      sleep,
+      now: now3,
+      timeoutMs
+    });
+    return { provider, transport: "relay" };
+  }
+  throw fail2("transport", "unknown cloud transport");
+}
+
+// src/model/cloud-to-parse.js
+init_parse_schema();
+var ENGINE = "cloud";
+function round5(n2) {
+  return Math.round(Number(n2) * 100) / 100;
+}
+function oneBox(box2) {
+  if (!box2 || typeof box2 !== "object" || Array.isArray(box2)) return null;
+  const x = Number(box2.x);
+  const y = Number(box2.y);
+  const w = Number(box2.w);
+  const h = Number(box2.h);
+  if (![x, y, w, h].every((n2) => Number.isFinite(n2))) return null;
+  return [x, y, x + Math.max(0, w), y + Math.max(0, h)];
+}
+function llamaBox(value) {
+  const list = Array.isArray(value) ? value : value ? [value] : [];
+  const boxes = list.map(oneBox).filter(Boolean);
+  if (!boxes.length) return null;
+  let [x0, y0, x1, y1] = boxes[0];
+  let confidence = null;
+  for (const box2 of boxes) {
+    x0 = Math.min(x0, box2[0]);
+    y0 = Math.min(y0, box2[1]);
+    x1 = Math.max(x1, box2[2]);
+    y1 = Math.max(y1, box2[3]);
+  }
+  for (const raw of list) {
+    const c = Number(raw?.confidence);
+    if (Number.isFinite(c)) confidence = confidence == null ? c : Math.min(confidence, c);
+  }
+  return {
+    bbox: [round5(x0), round5(y0), round5(x1), round5(y1)],
+    confidence: confidence == null ? null : Math.max(0, Math.min(1, confidence))
+  };
+}
+function stripTags(value) {
+  return String(value ?? "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+}
+function plainItem(item) {
+  if (!item || typeof item !== "object") return "";
+  if (typeof item.value === "string" && item.value.trim()) return item.value.replace(/\s+/g, " ").trim();
+  if (typeof item.text === "string" && item.text.trim()) return item.text.replace(/\s+/g, " ").trim();
+  if (typeof item.md === "string") {
+    return item.md.replace(/^#{1,6}\s+/, "").replace(/\s+/g, " ").trim();
+  }
+  return "";
+}
+function cellsFromHtml(html) {
+  const source = String(html || "");
+  if (!/<table\b/i.test(source)) return null;
+  const rows = [];
+  const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch;
+  while (rowMatch = rowRe.exec(source)) {
+    const cells = [];
+    const cellRe = /<(td|th)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+    let cellMatch;
+    while (cellMatch = cellRe.exec(rowMatch[1])) {
+      const attrs = cellMatch[2] || "";
+      const colSpan = Math.max(1, Number(/colspan\s*=\s*["']?(\d+)/i.exec(attrs)?.[1] || 1));
+      const rowSpan = Math.max(1, Number(/rowspan\s*=\s*["']?(\d+)/i.exec(attrs)?.[1] || 1));
+      cells.push({
+        header: cellMatch[1].toLowerCase() === "th",
+        colSpan,
+        rowSpan,
+        text: stripTags(cellMatch[3])
+      });
+    }
+    if (cells.length) rows.push(cells);
+  }
+  if (!rows.length) return null;
+  const occupied = [];
+  const placed = [];
+  let cols = 0;
+  const taken = (r, c) => occupied[r]?.[c];
+  const mark = (r, c) => {
+    if (!occupied[r]) occupied[r] = [];
+    occupied[r][c] = true;
+  };
+  rows.forEach((row4, r) => {
+    let c = 0;
+    for (const cell of row4) {
+      while (taken(r, c)) c += 1;
+      placed.push({ r, c, rowSpan: cell.rowSpan, colSpan: cell.colSpan, text: cell.text, header: cell.header });
+      for (let dr = 0; dr < cell.rowSpan; dr += 1) {
+        for (let dc = 0; dc < cell.colSpan; dc += 1) mark(r + dr, c + dc);
+      }
+      cols = Math.max(cols, c + cell.colSpan);
+      c += cell.colSpan;
+    }
+  });
+  const headerRows = rows[0]?.every((cell) => cell.header) ? 1 : 0;
+  return { rows: rows.length, cols, headerRows, cells: placed };
+}
+function cellsFromRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const width = rows.reduce((max, row4) => Math.max(max, Array.isArray(row4) ? row4.length : 0), 0);
+  if (!width) return null;
+  const cells = [];
+  rows.forEach((row4, r) => {
+    const values = Array.isArray(row4) ? row4 : [];
+    for (let c = 0; c < width; c += 1) {
+      const value = values[c];
+      cells.push({
+        r,
+        c,
+        rowSpan: 1,
+        colSpan: 1,
+        text: value == null ? "" : String(value),
+        header: false
+      });
+    }
+  });
+  return { rows: rows.length, cols: width, headerRows: 0, cells };
+}
+function applyGrounding(table, grounding) {
+  const matrix = grounding?.rows;
+  if (!Array.isArray(matrix)) return;
+  for (const cell of table.cells) {
+    const slot2 = matrix[cell.r]?.[cell.c];
+    const box2 = llamaBox(slot2?.bbox);
+    if (box2) cell.bbox = box2.bbox;
+  }
+}
+function flattenList(items, level, out) {
+  for (const item of items || []) {
+    if (!item || typeof item !== "object") continue;
+    if (item.type === "list") flattenList(item.items, level + 1, out);
+    else out.push({ text: plainItem(item), level, marker: "" });
+  }
+}
+function groundedTables(pageNumber, pages) {
+  const page = (pages || []).find((entry) => entry && entry.page_number === pageNumber && entry.success !== false);
+  return (page?.items || []).filter((item) => item?.type === "table");
+}
+function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region = "us" } = {}) {
+  const pagesIn = provider?.items?.pages || [];
+  const grounded = provider?.grounded_pages || [];
+  const blocks = {};
+  const order = [];
+  const removed = [];
+  const pages = [];
+  let n2 = 0;
+  const nextId = (prefix) => {
+    n2 += 1;
+    return `${prefix}${n2}`;
+  };
+  let title = null;
+  const push = (block) => {
+    blocks[block.id] = block;
+    order.push(block.id);
+    return block;
+  };
+  const walk2 = (item, pageNumber, fallback) => {
+    if (!item || typeof item !== "object") return;
+    const type = item.type;
+    if (type === "header" || type === "footer") {
+      const box3 = llamaBox(item.bbox);
+      removed.push({
+        reason: type === "header" ? "running-header" : "running-footer",
+        page: pageNumber,
+        text: plainItem(item) || (item.items || []).map(plainItem).filter(Boolean).join(" "),
+        bbox: box3?.bbox || null
+      });
+      return;
+    }
+    const box2 = llamaBox(item.bbox) || (fallback ? { bbox: fallback, confidence: null } : null);
+    const confidence = box2?.confidence == null ? 0.9 : box2.confidence;
+    const bbox = box2?.bbox || [0, 0, 0, 0];
+    if (type === "heading") {
+      const level = Math.min(6, Math.max(1, Math.floor(Number(item.level) || 1)));
+      const text4 = plainItem(item);
+      const block = push({
+        id: nextId("h"),
+        type: "heading",
+        level,
+        text: text4,
+        page: pageNumber,
+        bbox,
+        confidence,
+        engine: ENGINE
+      });
+      if (!title && level === 1 && pageNumber === 1 && text4) title = text4;
+      return block;
+    }
+    if (type === "list") {
+      const items = [];
+      flattenList(item.items, 0, items);
+      return push({
+        id: nextId("l"),
+        type: "list",
+        ordered: Boolean(item.ordered),
+        items,
+        text: items.map((entry) => entry.text).filter(Boolean).join(" "),
+        page: pageNumber,
+        bbox,
+        confidence,
+        engine: ENGINE
+      });
+    }
+    if (type === "table") {
+      const parsed = cellsFromHtml(item.html) || cellsFromRows(item.rows);
+      if (!parsed) return null;
+      const id = nextId("t");
+      const block = {
+        id,
+        type: "table",
+        page: pageNumber,
+        bbox,
+        rows: parsed.rows,
+        cols: parsed.cols,
+        headerRows: parsed.headerRows,
+        headerCols: 0,
+        cells: parsed.cells,
+        caption: null,
+        method: "llamaparse",
+        confidence,
+        engine: ENGINE
+      };
+      push(block);
+      return block;
+    }
+    if (type === "image") {
+      const id = nextId("f");
+      const captionText = typeof item.caption === "string" ? item.caption.replace(/\s+/g, " ").trim() : "";
+      let captionId = null;
+      const block = push({
+        id,
+        type: "figure",
+        page: pageNumber,
+        bbox,
+        caption: null,
+        image: { kind: "crop", source: "llamaparse" },
+        confidence,
+        engine: ENGINE
+      });
+      if (captionText) {
+        captionId = nextId("c");
+        push({
+          id: captionId,
+          type: "caption",
+          page: pageNumber,
+          bbox,
+          text: captionText,
+          for: id,
+          confidence,
+          engine: ENGINE
+        });
+        block.caption = captionId;
+      }
+      return block;
+    }
+    if (type === "code") {
+      return push({
+        id: nextId("k"),
+        type: "code",
+        text: typeof item.value === "string" ? item.value : plainItem(item),
+        page: pageNumber,
+        bbox,
+        confidence,
+        engine: ENGINE
+      });
+    }
+    const text3 = plainItem(item);
+    if (!text3 && type !== "text" && type !== "link") return null;
+    return push({
+      id: nextId("p"),
+      type: "para",
+      text: text3,
+      page: pageNumber,
+      bbox,
+      confidence,
+      engine: ENGINE
+    });
+  };
+  for (const page of pagesIn) {
+    const pageNumber = Number(page?.page_number);
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) continue;
+    const width = Number(page.page_width);
+    const height = Number(page.page_height);
+    const ok = page.success !== false;
+    pages.push({
+      n: pageNumber,
+      w: Number.isFinite(width) ? round5(width) : null,
+      h: Number.isFinite(height) ? round5(height) : null,
+      parsed: ok
+    });
+    if (!ok || !Array.isArray(page.items)) continue;
+    const tables = [];
+    for (const item of page.items) {
+      const block = walk2(item, pageNumber);
+      if (block?.type === "table") tables.push(block);
+    }
+    const groundedRows = groundedTables(pageNumber, grounded);
+    tables.forEach((block, index) => applyGrounding(block, groundedRows[index]?.grounding));
+  }
+  const doc = {
+    schema: SCHEMA2,
+    sha256,
+    engine: ENGINE,
+    engineVersion: `llamaparse/${tier}`,
+    options: {
+      provider: "llamaparse",
+      tier,
+      region: region === "eu" ? "eu" : "us",
+      ocr: "none",
+      formula: false,
+      tables: "llamaparse"
+    },
+    createdAt: null,
+    pageCount: pages.length,
+    title,
+    pages,
+    order,
+    blocks,
+    removed,
+    stats: { ms: 0, perPage: [] }
+  };
+  const check = validateParse(doc);
+  if (!check.ok) {
+    const error = new Error(`cloud parse schema: ${check.errors.join(",")}`);
+    error.code = "schema";
+    error.errors = check.errors;
+    throw error;
+  }
+  return doc;
+}
+
 // src/view/clipboard-io.js
 var CLONE_WINDOW_MS = 400;
 var MAX_IMAGES = 10;
@@ -42001,7 +42742,7 @@ function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, p
     return { text: "Alternative read" };
   }
   if (phase === "running") {
-    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : "built-in";
+    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : engine === "cloud" ? "LlamaParse" : "built-in";
     return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
   }
   if (helper === "not-running" || helper === "disabled") {
@@ -42011,6 +42752,8 @@ function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, p
   if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
   if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
   if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
+  if (engine === "cloud" && ms != null) return { text: `LlamaParse · ${formatSeconds(ms)}` };
+  if (engine === "cloud") return { text: "LlamaParse" };
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
 }
@@ -42228,7 +42971,9 @@ function createParseView({
   onOcrPages = null,
   ghostRoot = null,
   ghostPane = null,
-  anydoc = null
+  anydoc = null,
+  fetch: fetchImpl = null,
+  confirmCloud = null
 } = {}) {
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
@@ -42259,6 +43004,10 @@ function createParseView({
   doclingBtn.textContent = "Parse with Docling";
   doclingBtn.setAttribute("data-tip", "parse.docling");
   setHidden(doclingBtn, true);
+  const cloudBtn = el("button", "pxd-parse__cloud", enginePop);
+  cloudBtn.type = "button";
+  cloudBtn.textContent = "Read with LlamaParse";
+  cloudBtn.setAttribute("data-tip", "parse.cloud");
   const altBtn = el("button", "pxd-parse__alt", enginePop);
   altBtn.type = "button";
   const altLabel = el("span", "pxd-parse__alt-label", altBtn);
@@ -43617,6 +44366,92 @@ ${sourceAttrString(source)}` : markdown;
     else phase = "idle";
     paintChip();
   }
+  function cloudToast(error) {
+    if (error?.code === "cancelled" || error?.code === "confirm") return;
+    const text3 = error?.status === 402 ? "LlamaParse is out of credits." : error?.status === 401 ? "LlamaParse rejected the key." : error?.code === "timeout" ? "LlamaParse timed out." : error?.message || "LlamaParse did not finish.";
+    try {
+      onToast?.(text3);
+    } catch {
+    }
+  }
+  async function parseLlama() {
+    const prefs = readCloudPrefs(storage);
+    if (!prefs.key) {
+      try {
+        onToast?.("Add a LlamaParse key in Engines. It stays on this device.");
+      } catch {
+      }
+      return;
+    }
+    await refreshHelper();
+    const endpoint = helper?.endpoint?.() || {};
+    const transport = resolveCloudTransport({
+      helper: helperState === "ready" ? { state: "ready", url: endpoint.url, token: endpoint.token } : null,
+      relayUrl: prefs.relay
+    });
+    if (transport.kind === "none") {
+      try {
+        onToast?.(transport.reason);
+      } catch {
+      }
+      return;
+    }
+    let pages = Number(parsed?.pageCount) || 0;
+    let pdf = null;
+    if (!pages && typeof getPdf === "function") {
+      try {
+        pdf = await getPdf();
+      } catch {
+        pdf = null;
+      }
+      pages = Number(pdf?.numPages) || 0;
+    }
+    const message = cloudConfirmMessage({ pages, tier: prefs.tier, region: prefs.region });
+    const ask = confirmCloud || doc.defaultView?.confirm?.bind?.(doc.defaultView);
+    let ok = false;
+    try {
+      ok = ask?.(message) === true;
+    } catch {
+      ok = false;
+    }
+    if (!ok) return;
+    const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
+    cancel();
+    const ctrl = new AbortController();
+    abort = ctrl;
+    phase = "running";
+    progress = { page: 0, pageCount: pages, engine: "cloud" };
+    paintChip();
+    const started = now3();
+    try {
+      if (!pdf && typeof getPdf === "function") pdf = await getPdf();
+      const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+      if (!bytes) throw Object.assign(new Error("This PDF is not loaded yet."), { code: "no-pdf" });
+      const result = await parseCloud({
+        fetch: fetchFn,
+        transport,
+        bytes,
+        apiKey: prefs.key,
+        region: prefs.region,
+        tier: prefs.tier,
+        confirmed: true,
+        signal: ctrl.signal,
+        onProgress: (info) => {
+          progress = { page: info?.page || progress.page, pageCount: pages || progress.pageCount, engine: "cloud" };
+          paintChip();
+          onProgress?.(progress);
+        }
+      });
+      const sha = parsed?.sha256 || await sha256Hex(bytes);
+      const docResult = llamaparseToParse(result.provider, { sha256: sha, tier: prefs.tier, region: prefs.region });
+      if (ctrl.signal.aborted) return;
+      await finishDoc(docResult, now3() - started);
+    } catch (error) {
+      if (phase === "running") phase = "idle";
+      cloudToast(error);
+      paintChip();
+    }
+  }
   async function reparseTable(table) {
     if (!helper || typeof helper.reparseTable !== "function") {
       helperState = helperState || "not-running";
@@ -43853,6 +44688,10 @@ ${sourceAttrString(source)}` : markdown;
       await refreshHelper();
       if (helperState === "ready") await parseDocling();
     })();
+  });
+  listen(cloudBtn, "click", () => {
+    closeMenus();
+    void parseLlama();
   });
   listen(altBtn, "click", () => {
     closeMenus();
@@ -44163,7 +45002,7 @@ function withTimeout(ms, parent) {
     }
   };
 }
-async function readSSE(response, { onProgress, onPage }) {
+async function readSSE2(response, { onProgress, onPage }) {
   const reader = response.body?.getReader?.();
   if (!reader) return;
   const decoder = new TextDecoder();
@@ -44387,7 +45226,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
       method: "GET",
       headers
     }, signal);
-    await readSSE(events, { onProgress, onPage });
+    await readSSE2(events, { onProgress, onPage });
     const finalRes = await call(`${base}/v1/jobs/${encodeURIComponent(jobId)}`, {
       method: "GET",
       headers
@@ -44490,7 +45329,11 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
     }
     return { ...body, sha256: sha };
   }
-  return { health, status, pair: pair2, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr };
+  function endpoint() {
+    const { url, token } = config();
+    return { url, token };
+  }
+  return { health, status, pair: pair2, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr, endpoint };
 }
 
 // src/view/read-pane.js
@@ -44566,13 +45409,29 @@ function helperRow(helper) {
       return { ...row4, dot: "off", text: "Not installed", button: button("setup", "Set up", "engines.setup") };
   }
 }
+function cloudRow(prefs, helper) {
+  const row4 = { id: "cloud", name: "Cloud", tip: "engines.cloud" };
+  const key = Boolean(prefs?.key);
+  const region = prefs?.region === "eu" ? "EU" : "US";
+  const tier = TIER_LABELS[prefs?.tier] || TIER_LABELS.agentic;
+  const paired = helper?.state === "ready";
+  const relay = /^https:\/\//i.test(String(prefs?.relay || "").trim());
+  if (!key) {
+    return { ...row4, dot: "warn", text: "Needs a LlamaParse key", button: button("cloud-setup", "Set up", "engines.cloud-setup") };
+  }
+  if (!paired && !relay) {
+    return { ...row4, dot: "warn", text: "Needs the helper or a relay", button: button("cloud-setup", "Set up", "engines.cloud-setup") };
+  }
+  const via = paired ? "helper" : "relay";
+  return { ...row4, dot: "ok", text: `LlamaParse · ${tier} · ${region} · ${via}`, button: null };
+}
 function engineRows(state, { platform = "mac" } = {}) {
   void platform;
   return [
     { id: "device", name: "On this device", dot: "ok", text: "Built-in parser · ready", button: null, tip: "engines.builtin" },
     deviceOcrRow(state?.device),
     helperRow(state?.helper),
-    { id: "cloud", name: "Cloud", dot: "off", text: "Coming soon", button: null, disabled: true, tip: "engines.cloud" }
+    cloudRow(state?.cloud, state?.helper)
   ];
 }
 function helperSheet(helperState, platform = "mac") {
@@ -44600,8 +45459,18 @@ function helperSheet(helperState, platform = "mac") {
   };
 }
 var DOT_LABEL = { ok: "ready", warn: "needs attention", busy: "working", off: "off" };
+function memoryStorage() {
+  const bag = /* @__PURE__ */ new Map();
+  return {
+    getItem: (id) => bag.has(id) ? bag.get(id) : null,
+    setItem: (id, value) => {
+      bag.set(id, String(value));
+    }
+  };
+}
 function renderEnginesPanel(doc, parent, deps = {}) {
   const { client, device, setSetting, copy, toast, onUpdate } = deps;
+  const storage = deps.storage || memoryStorage();
   const platform = deps.platform || "mac";
   const pollMs = deps.pollMs > 0 ? deps.pollMs : DEFAULT_POLL_MS;
   const setIv = deps.setInterval || ((fn, ms) => globalThis.setInterval(fn, ms));
@@ -44631,7 +45500,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
   sheetHost.className = "pxd-engines__sheet-host";
   el.append(title, list, sheetHost);
   let state = null;
-  let sheetOpen = false;
+  let sheetKind = null;
   let signature = "";
   let timer = null;
   let visible2 = true;
@@ -44698,10 +45567,78 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     }
     paintSheet();
   }
-  function paintSheet() {
+  function field(tag, attrs) {
+    const node2 = doc.createElement(tag);
+    node2.className = "pxd-engines__token";
+    for (const [key, value] of Object.entries(attrs)) node2.setAttribute(key, value);
+    return node2;
+  }
+  function paintCloudSheet() {
+    if (sheetHost.querySelector?.("[data-cloud-sheet]")) return;
     release(heldSheet);
     sheetHost.innerHTML = "";
-    if (!sheetOpen) return;
+    const prefs = readCloudPrefs(storage);
+    const box2 = doc.createElement("div");
+    box2.className = "pxd-engines__sheet";
+    box2.setAttribute("data-cloud-sheet", "");
+    const head = doc.createElement("div");
+    head.className = "pxd-engines__sheet-title";
+    head.textContent = "LlamaParse";
+    const note = doc.createElement("div");
+    note.className = "pxd-engines__note";
+    note.textContent = "The key stays in this browser. It is not written to the graph. Nothing is sent until you confirm the cost on a PDF.";
+    const keyInput = field("input", { type: "password", autocomplete: "off", "aria-label": "LlamaParse API key", placeholder: prefs.key ? "Key saved" : "API key", "data-cloud-key": "" });
+    const region = field("select", { "aria-label": "Region", "data-cloud-region": "" });
+    for (const [value, label] of [["us", "US"], ["eu", "EU"]]) {
+      const option = doc.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      if (value === prefs.region) option.setAttribute("selected", "");
+      region.append(option);
+    }
+    region.value = prefs.region;
+    const tier = field("select", { "aria-label": "Tier", "data-cloud-tier": "" });
+    for (const value of Object.keys(TIER_CREDITS)) {
+      const option = doc.createElement("option");
+      option.value = value;
+      option.textContent = TIER_LABELS[value];
+      if (value === prefs.tier) option.setAttribute("selected", "");
+      tier.append(option);
+    }
+    tier.value = prefs.tier;
+    const relay = field("input", { type: "url", autocomplete: "off", "aria-label": "Relay URL", placeholder: "Relay URL (optional)", "data-cloud-relay": "" });
+    relay.value = prefs.relay || "";
+    const save = doc.createElement("button");
+    save.type = "button";
+    save.setAttribute("type", "button");
+    save.className = "pxd-engines__btn pxd-engines__btn--primary";
+    save.setAttribute("data-action", "cloud-save");
+    save.textContent = "Save on this device";
+    bindTo(heldSheet)(save, "click", (event) => {
+      event.stopPropagation?.();
+      void act("cloud-save");
+    });
+    const clear = doc.createElement("button");
+    clear.type = "button";
+    clear.setAttribute("type", "button");
+    clear.className = "pxd-engines__btn";
+    clear.setAttribute("data-action", "cloud-clear");
+    clear.textContent = "Remove key";
+    bindTo(heldSheet)(clear, "click", (event) => {
+      event.stopPropagation?.();
+      void act("cloud-clear");
+    });
+    box2.append(head, note, keyInput, region, tier, relay, save, clear);
+    sheetHost.append(box2);
+  }
+  function paintSheet() {
+    if (sheetKind === "cloud") {
+      paintCloudSheet();
+      return;
+    }
+    release(heldSheet);
+    sheetHost.innerHTML = "";
+    if (sheetKind !== "helper") return;
     const sheet = helperSheet(state?.helper?.state, platform);
     const box2 = doc.createElement("div");
     box2.className = "pxd-engines__sheet";
@@ -44770,11 +45707,34 @@ function renderEnginesPanel(doc, parent, deps = {}) {
   async function act(id) {
     if (disposed) return;
     if (id === "setup" || id === "start") {
-      sheetOpen = !sheetOpen;
+      sheetKind = sheetKind === "helper" ? null : "helper";
       paintSheet();
       return;
     }
-    if (id === "pair") {
+    if (id === "cloud-setup") {
+      sheetKind = sheetKind === "cloud" ? null : "cloud";
+      if (sheetKind !== "cloud") {
+        release(heldSheet);
+        sheetHost.innerHTML = "";
+      }
+      paintSheet();
+      return;
+    }
+    if (id === "cloud-save") {
+      const typed = String(el.querySelector("[data-cloud-key]")?.value || "");
+      writeCloudPrefs(storage, {
+        key: typed.trim() ? typed : null,
+        region: el.querySelector("[data-cloud-region]")?.value,
+        tier: el.querySelector("[data-cloud-tier]")?.value,
+        relay: el.querySelector("[data-cloud-relay]")?.value ?? ""
+      });
+      say("Saved on this device");
+    } else if (id === "cloud-clear") {
+      writeCloudPrefs(storage, { key: "" });
+      const input = el.querySelector("[data-cloud-key]");
+      if (input) input.value = "";
+      say("Key removed from this device");
+    } else if (id === "pair") {
       const result = await client?.pair?.();
       if (result?.ok) say("Helper paired");
       else if (result?.reason === "window-closed") say("Pairing window closed. Run plexus-parse-helper pair, then click Pair.");
@@ -44806,8 +45766,8 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     try {
       const next = await loadEngineState({ client, device, force: true });
       if (disposed) return state;
-      state = next;
-      if (sheetOpen && state.helper.state === "ready") sheetOpen = false;
+      state = { ...next, cloud: readCloudPrefs(storage) };
+      if (sheetKind === "helper" && state.helper.state === "ready") sheetKind = null;
       paintRows();
       return state;
     } finally {
@@ -44835,7 +45795,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     }
   }
   function showSheet() {
-    sheetOpen = true;
+    sheetKind = "helper";
     paintSheet();
   }
   function dispose() {
@@ -47285,7 +48245,7 @@ function createReadPane({
       prev = action;
       fitState.clicks += 1;
       const started = Date.now();
-      const wait = () => {
+      const wait2 = () => {
         fitTimer = null;
         if (gen !== fitGen || !openFlag) return;
         const n2 = fitGeom();
@@ -47293,10 +48253,10 @@ function createReadPane({
           step();
           return;
         }
-        if (Date.now() - started < 1500) fitTimer = later(wait, 100);
+        if (Date.now() - started < 1500) fitTimer = later(wait2, 100);
         else fitDone = true;
       };
-      fitTimer = later(wait, 100);
+      fitTimer = later(wait2, 100);
     };
     step();
   };
@@ -47793,6 +48753,7 @@ function createReadPane({
       panel = renderEnginesPanel(doc, enginesMount, {
         client: ensureHelper(),
         ...deviceOcr ? { device: deviceOcr } : {},
+        storage,
         setSetting: setSettingFn,
         copy: (text3) => doc.defaultView?.navigator?.clipboard?.writeText?.(text3),
         toast: (text3) => {
@@ -49085,7 +50046,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst 
       settle(job, null);
       return null;
     }
-    job.killId = arm3(time, () => fail3(job, "error"), WARM_TIMEOUT_MS);
+    job.killId = arm3(time, () => fail4(job, "error"), WARM_TIMEOUT_MS);
     const look = () => {
       if (job.done || job.gen !== generation) return;
       const canvas = paintedCanvas(mountEl, 1);
@@ -49121,7 +50082,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst 
     look();
     return null;
   }
-  function fail3(job, status) {
+  function fail4(job, status) {
     if (job.done) return;
     teardown(job);
     outcomes.set(job.uid, status);
@@ -54157,7 +55118,7 @@ init_anydoc_to_parse();
 // src/model/ocr/manifest.js
 var CACHE_NAME = "plexus-diagram-models";
 var SCHEMA3 = "pxd-ocr/1";
-var ENGINE = "ppocr-web";
+var ENGINE2 = "ppocr-web";
 var PAGES_ORIGIN = "https://svyk.github.io/plexus-diagram/";
 var ORT_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
 var ORT_FILES = {
@@ -56335,7 +57296,7 @@ function createOcrWeb({
     return engine;
   }
   async function health() {
-    return { state, schema: SCHEMA3, engine: ENGINE };
+    return { state, schema: SCHEMA3, engine: ENGINE2 };
   }
   async function ocr({ bytes, sha256 = null, pages, cells, signal } = {}) {
     const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -56351,7 +57312,7 @@ function createOcrWeb({
       body = { pageCount: out.length, pages: out };
     }
     const elapsedMs = Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - t0);
-    return { schema: SCHEMA3, engine: ENGINE, sha256, elapsedMs, ...body };
+    return { schema: SCHEMA3, engine: ENGINE2, sha256, elapsedMs, ...body };
   }
   function forget() {
     prepared2.clear();
@@ -56366,7 +57327,7 @@ function createOcrWeb({
     cachedLexicon,
     forget,
     schema: SCHEMA3,
-    engine: ENGINE,
+    engine: ENGINE2,
     fetches: () => fetched.slice()
   };
 }
@@ -56464,7 +57425,7 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
       onProgress?.((i + 1) / list.length);
     }
     ready = true;
-    return { schema: SCHEMA3, engine: ENGINE, pages: out };
+    return { schema: SCHEMA3, engine: ENGINE2, pages: out };
   }
   async function readCells({ cells = [], url = "", getPdf = null, signal = null } = {}) {
     if (signal?.aborted) throw abortError2();
@@ -60935,9 +61896,9 @@ function buildBoardView(onFail, {
       const titles = cards.filter((c) => c.needsTitle).length;
       warmWhy = `no plan: ${cards.length} cards, ${visible2.size} visible, ${cards.filter((c) => c.hasCover).length} covered, ${titles} need a title, ${pending} pending, retry ${idleRetries}`;
       if ((pending || titles) && !gesturing && idleRetries < IDLE_RETRY_MAX) {
-        const wait = IDLE_RETRY_MS * 2 ** idleRetries;
+        const wait2 = IDLE_RETRY_MS * 2 ** idleRetries;
         idleRetries += 1;
-        armCoverWarmLater(wait);
+        armCoverWarmLater(wait2);
       }
       return;
     }
@@ -61023,11 +61984,11 @@ function buildBoardView(onFail, {
       coverWarmWait = null;
     }
     if (disposed || suspended || !coverWarmOn() || !coverPaintAt) return;
-    const wait = Math.max(0, WARM_AFTER_MS - (Date.now() - coverPaintAt));
+    const wait2 = Math.max(0, WARM_AFTER_MS - (Date.now() - coverPaintAt));
     coverWarmWait = timers.later(() => {
       coverWarmWait = null;
       considerCoverWarm();
-    }, wait);
+    }, wait2);
   };
   const takeCoverSnapshot = (liveEl, info) => {
     const spec = info && typeof info === "object" ? info : {};
@@ -69073,8 +70034,8 @@ init_parse_hash();
 init_parse();
 var PDF_TABLES_CAPABILITIES = Object.freeze(["tablesFromPdf", "tablesFromPdf.cache", "tablesFromPdf.scan.helper", "tablesFromPdf.scan.source"]);
 var OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
-var ENGINES = ["builtin", "docling", "mixed", "anydoc"];
-function fail2(code, message) {
+var ENGINES2 = ["builtin", "docling", "mixed", "anydoc"];
+function fail3(code, message) {
   return Object.assign(new Error(message), { code });
 }
 function pageSet(pages, total) {
@@ -69120,7 +70081,7 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
     if (!hit?.sha256) return null;
     const hash = await optionsHash(OPTIONS);
     const doc = await restorableParse(store, hit.sha256, {
-      engines: ENGINES,
+      engines: ENGINES2,
       plainHash: hash,
       readHashOf: (plain2) => optionsHash({ ...plain2.options || OPTIONS, ocr: "vision" })
     });
@@ -69129,13 +70090,13 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
   }
   async function builtin(url, wanted, signal) {
     const pdfjsLib = lib();
-    if (!pdfjsLib) throw fail2("no-pdfjs", "pdf.js is not available");
-    if (typeof fetchBytes !== "function") throw fail2("no-fetch", "no way to read the PDF bytes");
+    if (!pdfjsLib) throw fail3("no-pdfjs", "pdf.js is not available");
+    if (typeof fetchBytes !== "function") throw fail3("no-fetch", "no way to read the PDF bytes");
     let bytes;
     try {
       bytes = await fetchBytes(url);
     } catch (error) {
-      throw fail2("fetch-failed", `Could not read the PDF: ${error?.message || error}`);
+      throw fail3("fetch-failed", `Could not read the PDF: ${error?.message || error}`);
     }
     const sha = await sha256(bytes);
     const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes).slice() }).promise;
@@ -69173,7 +70134,7 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
     return { source: null, state: "none" };
   }
   async function tablesFromPdf({ url, pages, scan = "auto", ocrSource: injected = null, signal } = {}) {
-    if (!url || typeof url !== "string") throw fail2("bad-url", "url is required");
+    if (!url || typeof url !== "string") throw fail3("bad-url", "url is required");
     let wanted = pageSet(pages, 0);
     let hit = await cached(url);
     if (hit && !covers(hit.doc, wanted)) hit = null;
@@ -71821,8 +72782,8 @@ async function installPlexusDiagram({
   function noteMountFail(uid, error) {
     const prev = mountFail.get(uid);
     const n2 = (prev?.n || 0) + 1;
-    const wait = n2 <= MOUNT_BACKOFF_MS.length ? MOUNT_BACKOFF_MS[n2 - 1] : Infinity;
-    mountFail.set(uid, { n: n2, until: wait === Infinity ? Infinity : Date.now() + wait });
+    const wait2 = n2 <= MOUNT_BACKOFF_MS.length ? MOUNT_BACKOFF_MS[n2 - 1] : Infinity;
+    mountFail.set(uid, { n: n2, until: wait2 === Infinity ? Infinity : Date.now() + wait2 });
     if (!prev) console.warn("[plexus-diagram] Mount failed; native diagram restored", uid, error);
   }
   function mountCooling(uid) {
@@ -71996,7 +72957,7 @@ async function installPlexusDiagram({
     } catch {
     }
     let tries = 0;
-    const wait = () => {
+    const wait2 = () => {
       if (stopped) return;
       if (openPageUid() === pageUid) {
         landed(8);
@@ -72004,9 +72965,9 @@ async function installPlexusDiagram({
       }
       tries += 1;
       if (tries >= 8) return;
-      lifecycle.timeout(wait, 150);
+      lifecycle.timeout(wait2, 150);
     };
-    lifecycle.timeout(wait, 150);
+    lifecycle.timeout(wait2, 150);
   }
   function openImageTarget(region, regionUid, shiftKey) {
     let hit = null;

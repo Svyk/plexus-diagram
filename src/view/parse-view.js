@@ -30,6 +30,13 @@ import { createDragGhost, dispatchDrop, startPlacement } from "./drag-ghost.js";
 import { placementContent } from "./parse-actions.js";
 import { createAnydocHost } from "../host/anydoc.js";
 import { markdownToParse } from "../model/anydoc-to-parse.js";
+import {
+  cloudConfirmMessage,
+  parseCloud,
+  readCloudPrefs,
+  resolveCloudTransport,
+} from "../host/cloud-parse.js";
+import { llamaparseToParse } from "../model/cloud-to-parse.js";
 import { ASYNC_CLIPBOARD_TYPES, copyViaEvent } from "./clipboard-io.js";
 
 export const PARSE_MIME = "application/x-plexus-parse";
@@ -93,7 +100,7 @@ export function engineChip({ phase = "idle", engine = "builtin", ms = null, page
     return { text: "Alternative read" };
   }
   if (phase === "running") {
-    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : "built-in";
+    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : engine === "cloud" ? "LlamaParse" : "built-in";
     return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
   }
   if (helper === "not-running" || helper === "disabled") {
@@ -103,6 +110,8 @@ export function engineChip({ phase = "idle", engine = "builtin", ms = null, page
   if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
   if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
   if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
+  if (engine === "cloud" && ms != null) return { text: `LlamaParse · ${formatSeconds(ms)}` };
+  if (engine === "cloud") return { text: "LlamaParse" };
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
 }
@@ -342,6 +351,8 @@ export function createParseView({
   ghostRoot = null,
   ghostPane = null,
   anydoc = null,
+  fetch: fetchImpl = null,
+  confirmCloud = null,
 } = {}) {
   const el = (tag, cls, parent) => {
     const node = doc.createElement(tag);
@@ -372,6 +383,10 @@ export function createParseView({
   doclingBtn.textContent = "Parse with Docling";
   doclingBtn.setAttribute("data-tip", "parse.docling");
   setHidden(doclingBtn, true);
+  const cloudBtn = el("button", "pxd-parse__cloud", enginePop);
+  cloudBtn.type = "button";
+  cloudBtn.textContent = "Read with LlamaParse";
+  cloudBtn.setAttribute("data-tip", "parse.cloud");
   const altBtn = el("button", "pxd-parse__alt", enginePop);
   altBtn.type = "button";
   const altLabel = el("span", "pxd-parse__alt-label", altBtn);
@@ -1617,6 +1632,83 @@ export function createParseView({
     paintChip();
   }
 
+  function cloudToast(error) {
+    if (error?.code === "cancelled" || error?.code === "confirm") return;
+    const text = error?.status === 402
+      ? "LlamaParse is out of credits."
+      : error?.status === 401
+        ? "LlamaParse rejected the key."
+        : error?.code === "timeout"
+          ? "LlamaParse timed out."
+          : error?.message || "LlamaParse did not finish.";
+    try { onToast?.(text); } catch { /* toast */ }
+  }
+
+  async function parseLlama() {
+    const prefs = readCloudPrefs(storage);
+    if (!prefs.key) {
+      try { onToast?.("Add a LlamaParse key in Engines. It stays on this device."); } catch { /* toast */ }
+      return;
+    }
+    await refreshHelper();
+    const endpoint = helper?.endpoint?.() || {};
+    const transport = resolveCloudTransport({
+      helper: helperState === "ready" ? { state: "ready", url: endpoint.url, token: endpoint.token } : null,
+      relayUrl: prefs.relay,
+    });
+    if (transport.kind === "none") {
+      try { onToast?.(transport.reason); } catch { /* toast */ }
+      return;
+    }
+    let pages = Number(parsed?.pageCount) || 0;
+    let pdf = null;
+    if (!pages && typeof getPdf === "function") {
+      try { pdf = await getPdf(); } catch { pdf = null; }
+      pages = Number(pdf?.numPages) || 0;
+    }
+    const message = cloudConfirmMessage({ pages, tier: prefs.tier, region: prefs.region });
+    const ask = confirmCloud || doc.defaultView?.confirm?.bind?.(doc.defaultView);
+    let ok = false;
+    try { ok = ask?.(message) === true; } catch { ok = false; }
+    if (!ok) return;
+    const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
+    cancel();
+    const ctrl = new AbortController();
+    abort = ctrl;
+    phase = "running";
+    progress = { page: 0, pageCount: pages, engine: "cloud" };
+    paintChip();
+    const started = now();
+    try {
+      if (!pdf && typeof getPdf === "function") pdf = await getPdf();
+      const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+      if (!bytes) throw Object.assign(new Error("This PDF is not loaded yet."), { code: "no-pdf" });
+      const result = await parseCloud({
+        fetch: fetchFn,
+        transport,
+        bytes,
+        apiKey: prefs.key,
+        region: prefs.region,
+        tier: prefs.tier,
+        confirmed: true,
+        signal: ctrl.signal,
+        onProgress: (info) => {
+          progress = { page: info?.page || progress.page, pageCount: pages || progress.pageCount, engine: "cloud" };
+          paintChip();
+          onProgress?.(progress);
+        },
+      });
+      const sha = parsed?.sha256 || await sha256Hex(bytes);
+      const docResult = llamaparseToParse(result.provider, { sha256: sha, tier: prefs.tier, region: prefs.region });
+      if (ctrl.signal.aborted) return;
+      await finishDoc(docResult, now() - started);
+    } catch (error) {
+      if (phase === "running") phase = "idle";
+      cloudToast(error);
+      paintChip();
+    }
+  }
+
   async function reparseTable(table) {
     if (!helper || typeof helper.reparseTable !== "function") {
       helperState = helperState || "not-running";
@@ -1824,6 +1916,10 @@ export function createParseView({
       await refreshHelper();
       if (helperState === "ready") await parseDocling();
     })();
+  });
+  listen(cloudBtn, "click", () => {
+    closeMenus();
+    void parseLlama();
   });
   listen(altBtn, "click", () => { closeMenus(); void readAlternative(); });
   listen(rangeBtn, "click", () => { toggleMenu(rangePop); });

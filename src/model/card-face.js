@@ -102,6 +102,83 @@ export function avoidObstacles(bar, obstacles, { topLimit = 0, margin = 8, bound
   return clear(cur) ? cur : bar;
 }
 
+// The compact arrow bar's border-box cap. Inline controls stay under this; the rest open from popovers.
+export const EDGE_BAR_MAX = 360;
+
+// Border box of that bar: padding and border, the direction segment, and `icons` 28 px buttons, with the row gap.
+export function edgeToolbarWidth({ icons = 6, dirButtons = 3 } = {}) {
+  const pad = 14;
+  const gap = 4;
+  const dir = dirButtons * 26 + 2;
+  const n = Math.max(0, icons);
+  return pad + dir + n * 28 + gap * (dirButtons > 0 ? n : Math.max(0, n - 1));
+}
+
+// Where a context bar goes so it misses `soft` (an arrow's end cards and its label, or a card sitting on the
+// preferred spot) and `hard` (board bar, dock, minimap, rail, reader). Tries above the anchor, below, then beside.
+// `anchor` is { x, y, w, h }; `bar` is { w, h }; `bounds` is { left, top, right, bottom } in the same space, `right`
+// and `bottom` the far edges the bar must stay inside. Returns { left, top, w, h, where }.
+export function placeBarClear(bar, { anchor, soft = [], hard = [], gap = 12, margin = 8, bounds = {} } = {}) {
+  if (!bar || !anchor) return bar ? { ...bar, where: "fallback" } : null;
+  const box = (b) => ({ left: b.left, top: b.top, right: b.left + b.w, bottom: b.top + b.h });
+  const valid = (o) => o && o.right > o.left && o.bottom > o.top;
+  const softList = (soft || []).filter(valid);
+  const hardList = (hard || []).filter(valid);
+  const hits = (b, list) => list.some((o) => overlaps(box(b), o));
+  const lo = bounds.left ?? margin;
+  const hi = bounds.top ?? margin;
+  const right = bounds.right;
+  const bottom = bounds.bottom;
+  const fits = (b) => (right == null || b.left + b.w <= right + 0.5) && (bottom == null || b.top + b.h <= bottom + 0.5);
+  const slide = (b, loose) => {
+    let left = b.left;
+    let top = b.top;
+    const maxLeft = right == null ? left : right - b.w;
+    const maxTop = bottom == null ? top : bottom - b.h;
+    if (!loose && (maxLeft < lo - 0.5 || maxTop < hi - 0.5)) return null;
+    left = Math.max(lo, Math.min(left, Math.max(lo, maxLeft)));
+    top = Math.max(hi, Math.min(top, Math.max(hi, maxTop)));
+    return { ...b, left, top };
+  };
+  const clear = (b) => {
+    const c = slide(b, false);
+    if (!c || !fits(c) || hits(c, softList) || hits(c, hardList)) return null;
+    return c;
+  };
+  const midX = anchor.x + anchor.w / 2;
+  const midY = anchor.y + anchor.h / 2;
+  const at = (left, top, where) => ({ left, top, w: bar.w, h: bar.h, where });
+  const primary = [
+    at(midX - bar.w / 2, anchor.y - gap - bar.h, "above"),
+    at(midX - bar.w / 2, anchor.y + anchor.h + gap, "below"),
+    at(anchor.x - gap - bar.w, midY - bar.h / 2, "beside"),
+    at(anchor.x + anchor.w + gap, midY - bar.h / 2, "beside"),
+  ];
+  for (const c of primary) {
+    const hit = clear(c);
+    if (hit) return hit;
+  }
+  // Primary spots all land on an end. Step outside each obstacle: beside it first, then above and below it.
+  for (const o of softList) {
+    const extra = [
+      at(o.left - margin - bar.w, midY - bar.h / 2, "beside"),
+      at(o.right + margin, midY - bar.h / 2, "beside"),
+      at(midX - bar.w / 2, o.top - margin - bar.h, "above"),
+      at(midX - bar.w / 2, o.bottom + margin, "below"),
+    ];
+    for (const c of extra) {
+      const hit = clear(c);
+      if (hit) return hit;
+    }
+  }
+  for (const c of primary) {
+    const k = slide(c, true);
+    if (k && fits(k) && !hits(k, hardList)) return { ...k, where: "fallback" };
+  }
+  const parked = slide(primary[0], true);
+  return parked || { ...primary[0], where: "fallback" };
+}
+
 // A softer pass for the arrow bar: when it lands on a card (cards are given with their connect ports and the bar's
 // hover bridges already added), try the spots in `alts` and beside each card it covers, nearest first, at most
 // `reach` px away. Hard obstacles and the bounds still win. When no spot is free the bar stays where it was.

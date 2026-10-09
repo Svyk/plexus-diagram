@@ -7,7 +7,7 @@ import { changelogEntry } from "../model/changelog.js";
 import { CHANGELOG_TEXT } from "../changelog-text.js";
 import { buildColorPicker } from "./color-picker.js";
 import { placeNearAnchor } from "./avoid.js";
-import { avoidDock, avoidObstacles, avoidSoft, dockOverflow, readerLimit } from "../model/card-face.js";
+import { EDGE_BAR_MAX, avoidDock, avoidObstacles, dockOverflow, placeBarClear, readerLimit } from "../model/card-face.js";
 import { tipIdForClass } from "./tooltip-text.js";
 
 const CTX_GAP = 12;
@@ -702,16 +702,53 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   ctx.style.display = "none";
   stopAll(ctx);
   let ctxAnchor = null; // () => { rect, kind }
+  let ctxPopOff = [];
+  const closeEdgePops = () => {
+    ctxPopOff.splice(0).forEach((off) => off());
+    for (const p of ctx.querySelectorAll(".pxd-ctx__pop")) p.remove();
+    for (const b of ctx.querySelectorAll(".pxd-ctx__pop-btn")) {
+      b.setAttribute("aria-expanded", "false");
+      b.classList.remove("pxd-btn--active");
+    }
+  };
+  // One popover at a time, placed like the color picker: clear of the dock, board bar, rail and panels.
+  const openEdgePop = (btn, fill) => {
+    const wasOpen = btn.getAttribute("aria-expanded") === "true";
+    closeEdgePops();
+    if (wasOpen) return;
+    const pop = el("div", "pxd-ctx__pop", ctx);
+    fill(pop);
+    btn.setAttribute("aria-expanded", "true");
+    btn.classList.add("pxd-btn--active");
+    placeNearAnchor(pop, btn.getBoundingClientRect(), root, { gap: 4, origin: ctx });
+    const onDown = (event) => {
+      if (pop.contains(event.target) || btn.contains(event.target)) return;
+      closeEdgePops();
+    };
+    const onKey = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      closeEdgePops();
+    };
+    doc.addEventListener("pointerdown", onDown, true);
+    doc.addEventListener("keydown", onKey, true);
+    ctxPopOff = [
+      () => doc.removeEventListener("pointerdown", onDown, true),
+      () => doc.removeEventListener("keydown", onKey, true),
+    ];
+  };
 
   const buildCtx = (kind, model) => {
+    closeEdgePops();
     ctx.replaceChildren();
     on.chromeRebuilt?.();
     ctx.dataset.kind = kind;
     ctx.setAttribute("data-kind", kind);
     const row = el("div", "pxd-ctx__row", ctx);
     const btn = (cls, icon, label, title, fn) => iconButton(row, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
-    const seg = (cls, options, current, fn) => {
-      const wrap = el("div", `pxd-seg ${cls}`, row);
+    const seg = (cls, options, current, fn, parent = row) => {
+      const wrap = el("div", `pxd-seg ${cls}`, parent);
       for (const [value, label, title, icon] of options) {
         const b = button(wrap, `pxd-seg__btn${value === current ? " pxd-seg__btn--on" : ""}${icon ? " pxd-iconbtn" : ""}`, icon ? "" : label, title || label, () => fn(value));
         if (icon) {
@@ -830,19 +867,46 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
         seg("pxd-ctx__size", FONT_SIZES.map((s, i) => [s, ["S", "M", "L", "XL"][i], `${s}px`]), model?.fontSize || 24, (v) => on.setFontSize?.(v));
         btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
-      case "edge":
+      case "edge": {
+        // Direction, label, color, delete stay on the row. Style, width and the palette open from one button each.
         seg("pxd-ctx__dir", [["one", "→", "One way"], ["two", "↔", "Two way"], ["none", "—", "No arrow"]], model?.dir, (v) => on.edgeDir?.(v));
-        btn("pxd-ctx__flip", "swap-horizontal", "Flip", "Swap endpoints", () => on.flip?.());
-        if (model?.fromBlock || model?.toBlock) btn("pxd-ctx__unblock", "document", "Page", "Connect to the page instead of a block", () => on.unblock?.());
-        seg("pxd-ctx__route", [["curve", "Curve", "Curve", "path"], ["straight", "Straight", "Straight", "flow-linear"], ["elbow", "Elbow", "Elbow", "step-chart"]], model?.route, (v) => on.route?.(v));
-        seg("pxd-ctx__dash", [["solid", "Solid", "Solid", "minus"], ["dashed", "Dashed", "Dashed", "slash"], ["animated", "Animated", "Animated", "pulse"]], model?.dash, (v) => on.dash?.(v));
-        seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => on.weight?.(v));
-        swatches(row, (c) => on.setColor?.(c));
+        const popBtn = (cls, icon, label, title, fill) => {
+          const b = iconBtn(`pxd-ctx__pop-btn ${cls}`, icon, label, title, () => openEdgePop(b, fill));
+          b.setAttribute("aria-haspopup", "menu");
+          b.setAttribute("aria-expanded", "false");
+          return b;
+        };
+        popBtn("pxd-ctx__style", "style", "Style", "Line and route", (pop) => {
+          seg("pxd-ctx__dash", [["solid", "Solid", "Solid", "minus"], ["dashed", "Dashed", "Dashed", "slash"], ["animated", "Animated", "Animated", "pulse"]], model?.dash, (v) => { closeEdgePops(); on.dash?.(v); }, pop);
+          seg("pxd-ctx__route", [["curve", "Curve", "Curve", "path"], ["straight", "Straight", "Straight", "flow-linear"], ["elbow", "Elbow", "Elbow", "step-chart"]], model?.route, (v) => { closeEdgePops(); on.route?.(v); }, pop);
+        });
+        popBtn("pxd-ctx__width", "minus", "Width", "Line width", (pop) => {
+          seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => { closeEdgePops(); on.weight?.(v); }, pop);
+        });
+        const colorBtn = button(row, "pxd-iconbtn pxd-ctx__btn pxd-ctx__pop-btn pxd-ctx__color", "", "Color", () => openEdgePop(colorBtn, (pop) => {
+          swatches(pop, (c) => { closeEdgePops(); on.setColor?.(c); });
+        }));
+        colorBtn.setAttribute("aria-haspopup", "menu");
+        colorBtn.setAttribute("aria-expanded", "false");
+        tip(colorBtn, "ctx.edge-color");
+        const named = typeof model?.color === "string" && PALETTE.includes(model.color);
+        el("span", `pxd-ctx__dot${named ? ` pxd-c-${model.color}` : " pxd-ctx__dot--none"}`, colorBtn);
         btn("pxd-ctx__label", "tag", "Label", "Edit the label", () => on.label?.());
-        btn("pxd-ctx__notes", "annotation", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
-        btn("pxd-ctx__write", "inheritance", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
         btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
+        popBtn("pxd-ctx__edge-more", "more", "More", "More arrow actions", (pop) => {
+          const item = (cls, icon, label, title, fn) => {
+            const b = button(pop, `pxd-ctx__more-item ${cls}`, "", title, () => { closeEdgePops(); fn(); });
+            const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+            i.setAttribute("aria-hidden", "true");
+            el("span", "pxd-ctx__more-label", b, label);
+          };
+          item("pxd-ctx__flip", "swap-horizontal", "Flip", "Swap endpoints", () => on.flip?.());
+          if (model?.fromBlock || model?.toBlock) item("pxd-ctx__unblock", "document", "Page", "Connect to the page instead of a block", () => on.unblock?.());
+          item("pxd-ctx__notes", "annotation", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
+          item("pxd-ctx__write", "inheritance", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
+        });
         break;
+      }
       case "link": {
         const list = el("div", "pxd-ctx__sources", row);
         for (const s of model?.sources || []) {
@@ -971,8 +1035,12 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const room = stops.length ? Math.min(W, ...stops) : W;
     const H = readEdge?.bottom != null ? Math.min(Hroot, readEdge.bottom) : Hroot;
     // A bar wider than the space left of the panel or the reader wraps into more rows instead of covering them.
-    ctx.style.maxWidth = stops.length && room > 2 * CTX_MARGIN ? `${Math.round(room - 2 * CTX_MARGIN)}px` : "";
-    fitCtxRow(stops.length ? room - 2 * CTX_MARGIN : W - railClear - 2 * CTX_MARGIN);
+    // The arrow bar is also capped, so the row of popover buttons stays short on a wide board.
+    const edgeBar = ctx.dataset.kind === "edge";
+    const panelCap = stops.length && room > 2 * CTX_MARGIN ? room - 2 * CTX_MARGIN : null;
+    const cap = edgeBar ? Math.min(EDGE_BAR_MAX, panelCap ?? EDGE_BAR_MAX) : panelCap;
+    ctx.style.maxWidth = cap == null ? "" : `${Math.round(cap)}px`;
+    fitCtxRow(cap == null ? W - railClear - 2 * CTX_MARGIN : cap);
     const barW = ctx.offsetWidth || 320;
     const barH = ctx.offsetHeight || 36;
     const rightLimit = stops.length ? room : Math.max(barW + CTX_MARGIN, W - railClear);
@@ -1006,16 +1074,29 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       return { left: b.left - (rootRect.left || 0), top: b.top - (rootRect.top || 0), right: b.right - (rootRect.left || 0), bottom: b.bottom - (rootRect.top || 0) };
     };
     const blocks = [asRoot(minimap), asRoot(railEl), dockEl ? asRoot(paletteBar) : null].filter(Boolean);
-    if (blocks.length) {
+    if (a.kind !== "edge" && blocks.length) {
       const placed = avoidObstacles({ left, top, w: barW, h: barH }, blocks, { topLimit, margin: CTX_MARGIN, bounds: { right: rightLimit, bottom: H } });
       left = placed.left;
       top = placed.top;
     }
-    // The arrow bar steps off nearby cards and their ports when there is a free spot close to the arrow.
-    if (a.kind === "edge" && a.cards?.length) {
-      const soft = [...a.cards.map((c) => ({ left: c.x - PORT_REACH.x, top: c.y - PORT_REACH.y, right: c.x + c.w + PORT_REACH.x, bottom: c.y + c.h + PORT_REACH.y }))];
-      const below = { left, top: a.rect.y + a.rect.h + gap };
-      const placed = avoidSoft({ left, top, w: barW, h: barH }, soft, blocks, { alts: [below], topLimit, margin: CTX_MARGIN, bounds: { right: rightLimit, bottom: H - CTX_MARGIN } });
+    // Arrow: above the midpoint, then below, then beside, missing both end cards and the label.
+    // A card bar uses the same search only when its usual spot already covers another card.
+    const cardBox = (c) => (c && c.w > 0 && c.h > 0
+      ? { left: c.x - PORT_REACH.x, top: c.y - PORT_REACH.y, right: c.x + c.w + PORT_REACH.x, bottom: c.y + c.h + PORT_REACH.y }
+      : null);
+    const labelBox = (r) => (r && r.w > 0 && r.h > 0
+      ? { left: r.x - 4, top: r.y - 4, right: r.x + r.w + 4, bottom: r.y + r.h + 4 }
+      : null);
+    const soft = [...(a.cards || []).map(cardBox), labelBox(a.label)].filter(Boolean);
+    const covers = (l, t, o) => l < o.right && o.left < l + barW && t < o.bottom && o.top < t + barH;
+    if (a.kind === "edge" || soft.some((o) => covers(left, top, o))) {
+      const hard = [...blocks];
+      if (tb.height) hard.push({ left: tb.left - (rootRect.left || 0), top: tb.top - (rootRect.top || 0), right: tb.right - (rootRect.left || 0), bottom: tb.bottom - (rootRect.top || 0) });
+      if (propsBox?.height) hard.push({ left: propsBox.left - (rootRect.left || 0), top: propsBox.top - (rootRect.top || 0), right: propsRight, bottom: propsBot });
+      const placed = placeBarClear(
+        { w: barW, h: barH },
+        { anchor: a.rect, soft, hard, gap, margin: CTX_MARGIN, bounds: { left: CTX_MARGIN, top: topLimit, right: rightLimit - CTX_MARGIN, bottom: H - CTX_MARGIN } },
+      );
       left = placed.left;
       top = placed.top;
     }
@@ -1033,7 +1114,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       ctx.style.display = "";
       positionCtx();
     },
-    hide() { ctx.style.display = "none"; ctxAnchor = null; ctx.replaceChildren(); on.chromeRebuilt?.(); },
+    hide() { closeEdgePops(); ctx.style.display = "none"; ctxAnchor = null; ctx.replaceChildren(); on.chromeRebuilt?.(); },
     reposition: positionCtx,
     isOpen: () => ctx.style.display !== "none",
   };
@@ -1175,6 +1256,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   };
 
   const dispose = () => {
+    closeEdgePops();
     toastTimer?.();
     mmFrame?.();
     dockFrame?.();

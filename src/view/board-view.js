@@ -3060,13 +3060,14 @@ function buildBoardView(onFail, {
   };
   // Cards (screen rects) around an arrow's bar spot, so the bar can step off them and their ports.
   const CARDS_NEAR_PX = 160;
-  const cardsNear = (rect) => {
+  const cardsNear = (rect, skip = null) => {
     const b = board();
     if (!b || !rect) return [];
     const r = paintRects();
     const out = [];
     for (const it of b.items.values()) {
       if (it.type === "section") continue;
+      if (skip?.has(it.uid)) continue;
       const wr = r.get(it.uid);
       if (!wr) continue;
       const sr = toScreenRect(wr);
@@ -3084,11 +3085,22 @@ function buildBoardView(onFail, {
       const edge = b.edges.get(selection.edge);
       const geo = edgesR.geometryOf(selection.edge);
       if (!edge || !geo) return null;
-      // Anchor on the whole connection (path + label) so the bar clears the line, not just its midpoint.
-      const lr = edge.label ? edgesR.labelRect(selection.edge) : null;
-      const extra = lr && lr.width ? [{ x: lr.left - rootRect.left, y: lr.top - rootRect.top, w: lr.width, h: lr.height }] : [];
-      const rect = pathScreenRect(geo, extra);
-      return { kind: "edge", rect, cards: cardsNear(rect) };
+      // The bar anchors on the midpoint. End cards and the label are obstacles it must miss.
+      const mid = geo.mid || { x: (geo.start.x + geo.end.x) / 2, y: (geo.start.y + geo.end.y) / 2 };
+      const p = worldToScreen(vp, mid);
+      const rect = { x: p.x, y: p.y, w: 1, h: 1 };
+      const endOf = (uid) => {
+        const wr = paintRects().get(uid);
+        return wr ? toScreenRect(wr) : null;
+      };
+      const ends = [endOf(edge.from), endOf(edge.to)].filter(Boolean);
+      const near = cardsNear(rect, new Set([edge.from, edge.to].filter(Boolean)));
+      let label = null;
+      if (edge.label) {
+        const lr = edgesR.labelRect(selection.edge);
+        if (lr?.width && lr?.height) label = { x: lr.left - rootRect.left, y: lr.top - rootRect.top, w: lr.width, h: lr.height };
+      }
+      return { kind: "edge", rect, cards: [...ends, ...near], label };
     }
     if (selection.link) {
       const geo = edgesR.linkGeometryOf(selection.link);
@@ -3097,7 +3109,9 @@ function buildBoardView(onFail, {
     }
     const r = paintRects();
     const bounds = boundsOf(selection.items.map((u) => r.get(u)).filter(Boolean));
-    return bounds ? { kind: "items", rect: toScreenRect(bounds) } : null;
+    if (!bounds) return null;
+    const rect = toScreenRect(bounds);
+    return { kind: "items", rect, cards: cardsNear(rect, new Set(selection.items)) };
   };
   const refCountOf = (item) => {
     if (!item || item.type !== "card") return 0;
@@ -6601,7 +6615,9 @@ function buildBoardView(onFail, {
     hoverUid = it.uid;
     const anchor = () => {
       const r = rects().get(it.uid);
-      return r ? { kind: "items", rect: toScreenRect(r) } : null;
+      if (!r) return null;
+      const rect = toScreenRect(r);
+      return { kind: "items", rect, cards: cardsNear(rect, new Set([it.uid])) };
     };
     chrome.ctx.show(it.kind === "board" ? "board" : "card", cardModel(it), anchor);
   };

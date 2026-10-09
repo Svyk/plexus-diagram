@@ -28,7 +28,7 @@ Paste this in Roam → Settings → Plexus Diagram → Parse helper token
 curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh -s -- --docling
 ```
 
-On a Mac the same script with no arguments installs the light Rust helper (`tools/parse-helper-rs`). `--docling`, and any install on another system, keeps this Python path: `uv` when it is missing, `uv tool install --force "git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper"`, `install-agent`, a wait until the helper answers, the pairing window, and "Back to Roam: click Pair.". The source is `tools/parse-helper/install.sh`; `npm run build` copies it to `deploy/helper/install.sh`.
+On a Mac the same script with no arguments installs the light Rust helper (`tools/parse-helper-rs`). `--docling`, and any install on another system, keeps this Python path: `uv` when it is missing, `uv tool install --force "git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper"`, `install-agent`, a wait until the helper answers, the pairing window, and "Back to Roam: click Pair.". `--docling --vlm` installs the same helper with `mlx-vlm` and `onnxruntime`. The first high-accuracy read then downloads PaddleOCR-VL-0.9B (about 1.8 GB) and PP-DocLayoutV2 (about 204 MB). Both weights are Apache-2.0. The source is `tools/parse-helper/install.sh`; `npm run build` copies it to `deploy/helper/install.sh`.
 
 `plexus-parse-helper pair` opens a 90 s window (a `0600` file `pair-until` beside the token). While it is open, `GET /v1/pair` from an allowed `Origin` returns `{token, helper, version}` once and closes the window. Outside the window, without an `Origin`, or from any other `Origin`, the route is `404` (a disallowed `Origin` is `403`, as everywhere). The Roam **Pair** button calls it and stores the token, so nothing is copied by hand. Pasting the token in Settings still works.
 
@@ -38,7 +38,7 @@ All routes except a rejected `Origin` require `Authorization: Bearer <token>`. H
 
 | Method | Path | Result |
 |---|---|---|
-| GET | `/v1/health` | `{helper, version:"0.1.0", schema:"pxd-parse/1", engines:["docling","ocr","cloud"], models, busy, warm}` |
+| GET | `/v1/health` | `{helper, version:"0.1.0", schema:"pxd-parse/1", engines:["docling","ocr","cloud"], models, busy, warm}`. `engines` also lists `vlm-tables` when mlx-vlm is installed, and `vlm-layout` plus `vlm-text` when onnxruntime is installed as well |
 | GET | `/v1/pair` | no bearer. `200` `{token, helper, version}` once while the pairing window is open and `Origin` is allowed; else `404` |
 | GET | `/v1/models` | `{state:"ready"\|"missing"\|"downloading", items:[{name, state, bytes, done}], bytes, done, fraction}`. `bytes`/`done` on a missing model are the expected size and what is on disk now (partial files count), so the Engines row shows a progress bar |
 | POST | `/v1/models/download` | `202` starts `docling-tools models download` |
@@ -46,6 +46,8 @@ All routes except a rejected `Origin` require `Authorization: Bearer <token>`. H
 | HEAD, GET | `/v1/cache/{sha256}?opts={optsHash}` | cached document, or 404 |
 | POST | `/v1/jobs` | body is the PDF (max 200 MB). `X-Pxd-Options` is JSON. `202` `{job, sha256, pages, cached}` |
 | POST | `/v1/ocr` | body is the PDF. `X-Pxd-Options` `{pages}` → `200` `{schema:"pxd-ocr/1", pageCount, pages:[…], sha256, elapsedMs, cached}` (Vision word boxes + OpenCV rules for scanned pages, cached by sha256 + pages, 50 pages per call). `{cells:[{page, bbox}]}` → `{cells:[{page, bbox, text, conf, glyph}]}`, a 3× re-read of single cells, never cached (400 cells per call). Synchronous; one OCR runs at a time. |
+| POST | `/v1/tables` | body is the PDF. `X-Pxd-Options` `{pages, tables:[{page, bbox}]}`. Each `bbox` is PDF points, origin top-left. `200` `{model:"PaddleOCR-VL-0.9B", tables:[{page, bbox, rows, cols, cells}]}`. `404` `{"error":"vlm-tables is not installed"}` when mlx-vlm is absent. One table read at a time. |
+| POST | `/v1/vlm` | body is the PDF. `X-Pxd-Options` `{pages, tables, text}`. `tables` are the caller's boxes, used on a page the layout model does not mark as a table. `text` true also reads text regions. `200` `{model, layoutModel:"PP-DocLayoutV2", tables, lines:[{page, bbox, text}], figures:[{page, bbox, label, score}], layout:[{page, label, score, bbox}]}`. `404` `{"error":"vlm-layout is not installed"}` when high accuracy is absent. |
 | GET | `/v1/jobs/{id}/events` | SSE `progress`, `page`, `done`, `error` |
 | GET | `/v1/jobs/{id}` | the document when `done`, else `{state}` |
 | DELETE | `/v1/jobs/{id}` | `204` cancels a running job (kills and respawns the worker). `404` otherwise |

@@ -1525,7 +1525,10 @@ export function createParseView({
     const engine = ocrEngine();
     const ready = Boolean(engine && (engine === ocrSource || helperOcr));
     scanBtn.hidden = !(pages.length && ready && phase !== "running");
-    if (!scanBtn.hidden) scanBtn.textContent = pages.length === 1 ? `Read the scan (p. ${pages[0]})` : `Read the scan (${pages.length} pages)`;
+    if (!scanBtn.hidden) {
+      const name = helper && helper.vlmHigh === true ? "High accuracy" : "Read the scan";
+      scanBtn.textContent = pages.length === 1 ? `${name} (p. ${pages[0]})` : `${name} (${pages.length} pages)`;
+    }
   }
 
   // Read the scan: helper OCR for the scan pages of the current parse, engine on the result,

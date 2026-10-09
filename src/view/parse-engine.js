@@ -6,7 +6,7 @@ import { applyCellOcr, cellsToReread } from "../model/parse/ocr-fix.js";
 import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lines.js";
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
 import { voteOcrBodies } from "../model/parse/ocr-vote.js";
-import { applyVlmTables, tableRegions } from "../model/parse/vlm-tables.js";
+import { alignVlmText, applyVlmTables, tableRegions } from "../model/parse/vlm-tables.js";
 
 const GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
 
@@ -116,26 +116,47 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   const doc = merged.doc;
   const next = merged.records;
   let vlmApplied = [];
-  // Only a helper that advertised vlm-tables. A mock that implements ocr() alone
-  // must not be asked for tables. A failed reading leaves the rule-assembly tables.
-  if (helper.vlmTables === true && typeof helper.tables === "function") {
+  let vlmFigures = [];
+  let vlmLines = [];
+  // High accuracy: layout boxes, then PaddleOCR-VL. A helper that only advertised
+  // vlm-tables still re-reads the rule boxes. A mock that implements ocr() alone
+  // must not be asked. A failed reading leaves the rule-assembly tables.
+  const high = helper.vlmHigh === true && typeof helper.vlm === "function";
+  if (high || (helper.vlmTables === true && typeof helper.tables === "function")) {
     const regions = tableRegions(doc, wanted);
-    if (regions.length) {
-      try {
+    try {
+      if (high) {
+        onPhase?.({ phase: "vlm", count: regions.length, mode: "high" });
+        const read = await helper.vlm({
+          bytes, sha256, pages: wanted, tables: regions, text: options.vlmText === true, signal,
+        });
+        throwIfAborted();
+        const applied = applyVlmTables(doc, read?.tables || [], { method: read?.model || "vlm", trust: true });
+        vlmApplied = applied.applied;
+        if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });
+        if (options.vlmText === true) {
+          const linedText = alignVlmText(doc, read?.lines || []);
+          vlmLines = linedText.applied;
+          if (linedText.applied.length) Object.assign(doc, { blocks: linedText.doc.blocks });
+        }
+        // Layout figure boxes are not inserted. A hint on a page the detector
+        // left empty missed the drawing and lowered figure F1 from 0.920 to 0.902.
+        doc.ocr = { ...(doc.ocr || {}), mode: "high" };
+      } else if (regions.length) {
         onPhase?.({ phase: "vlm", count: regions.length });
         const read = await helper.tables({ bytes, sha256, pages: wanted, tables: regions, signal });
         throwIfAborted();
         const applied = applyVlmTables(doc, read?.tables || [], { method: read?.model || "vlm" });
         vlmApplied = applied.applied;
         if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });
-      } catch (err) {
-        if (err?.name === "AbortError") throw err;
-        doc.ocr = { ...(doc.ocr || {}), vlmError: err?.message || String(err) };
       }
+    } catch (err) {
+      if (err?.name === "AbortError") throw err;
+      doc.ocr = { ...(doc.ocr || {}), vlmError: err?.message || String(err) };
     }
   }
   const rereads = await rereadCells({ doc, ocr: ask, signal, onPhase });
-  doc.ocr = { ...(doc.ocr || {}), rereads: rereads.reduce((n, r) => n + r.applied.length, 0), lines: lined.applied.length, vlm: vlmApplied.length, elapsedMs: got?.elapsedMs ?? null };
+  doc.ocr = { ...(doc.ocr || {}), rereads: rereads.reduce((n, r) => n + r.applied.length, 0), lines: lined.applied.length, vlm: vlmApplied.length, vlmFigures: vlmFigures.length, vlmLines: vlmLines.length, elapsedMs: got?.elapsedMs ?? null };
   return { doc, choices: merged.choices, rereads, lines: lined.applied, pages: wanted, records: next, ocrPages: lined.pages };
 }
 

@@ -62,7 +62,14 @@ function classifyModels(body) {
   } else {
     state = "models-missing";
   }
-  return { state, engines, ocr, docling, vlmTables: engines.includes("vlm-tables"), models };
+  const vlmTables = engines.includes("vlm-tables");
+  const vlmLayout = engines.includes("vlm-layout");
+  const vlmText = engines.includes("vlm-text");
+  return {
+    state, engines, ocr, docling, vlmTables, vlmLayout, vlmText,
+    vlmHigh: vlmTables && vlmLayout && vlmText,
+    models,
+  };
 }
 
 // Scan reading. A health object that does not say `ocr` (older callers, tests) is ready for
@@ -147,6 +154,8 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
   let healthCache = null;
   let probeCache = null;
   let vlmOn = false;
+  let vlmHighOn = false;
+  const setVlm = (tables, high) => { vlmOn = tables === true; vlmHighOn = high === true; };
 
   const config = () => {
     const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
@@ -167,13 +176,13 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
       return healthCache.value;
     }
     if (!token) {
-      vlmOn = false;
+      setVlm(false, false);
       const value = { state: "not-running", reason: "disabled" };
       healthCache = { url, token, at, value };
       return value;
     }
     if (typeof fetchFn !== "function") {
-      vlmOn = false;
+      setVlm(false, false);
       const value = { state: "not-running" };
       healthCache = { url, token, at, value };
       return value;
@@ -186,17 +195,17 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
       }, timer.signal);
       let value;
       const httpOk = res.status >= 200 && res.status < 300;
-      if (res.status === 401) { vlmOn = false; value = { state: "wrong-token" }; }
-      else if (!httpOk) { vlmOn = false; value = { state: "not-running" }; }
+      if (res.status === 401) { setVlm(false, false); value = { state: "wrong-token" }; }
+      else if (!httpOk) { setVlm(false, false); value = { state: "not-running" }; }
       else {
         let body = null;
         try { body = await res.json(); } catch { body = null; }
         const major = schemaMajor(body?.schema);
-        if (body?.helper !== HELPER_NAME || major == null) { vlmOn = false; value = { state: "not-running" }; }
-        else if (major >= 2) { vlmOn = false; value = { state: "newer-schema", schema: body.schema }; }
+        if (body?.helper !== HELPER_NAME || major == null) { setVlm(false, false); value = { state: "not-running" }; }
+        else if (major >= 2) { setVlm(false, false); value = { state: "newer-schema", schema: body.schema }; }
         else {
           const flags = classifyModels(body);
-          vlmOn = flags.vlmTables === true;
+          setVlm(flags.vlmTables === true, flags.vlmHigh === true);
           value = {
             state: flags.state,
             schema: body.schema,
@@ -206,6 +215,9 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
             ocr: flags.ocr,
             docling: flags.docling,
             vlmTables: flags.vlmTables,
+            vlmLayout: flags.vlmLayout,
+            vlmText: flags.vlmText,
+            vlmHigh: flags.vlmHigh,
           };
           if (flags.state === "ready") value.busy = body.busy ?? 0;
         }
@@ -213,7 +225,7 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
       healthCache = { url, token, at, value };
       return value;
     } catch {
-      vlmOn = false;
+      setVlm(false, false);
       const value = { state: "not-running" };
       healthCache = { url, token, at, value };
       return value;
@@ -449,7 +461,7 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
   }
 
   // Table crops for a helper that advertises vlm-tables. Same PDF body as ocr().
-  // `tables` is [{page, bbox}] in PDF points, origin bottom-left.
+  // `tables` is [{page, bbox}] in PDF points, origin top-left.
   async function tables({ bytes, sha256, pages, tables: regions, signal } = {}) {
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
@@ -475,13 +487,41 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
     return { ...body, sha256: sha };
   }
 
+  // High-accuracy read. Layout boxes, table readings, optional OCR lines, figure hints.
+  // `tables` are the caller's boxes, used where the layout model finds no table.
+  async function vlm({ bytes, sha256, pages, tables: regions, text = false, signal } = {}) {
+    const { url, token } = config();
+    const sha = sha256 || await sha256Hex(bytes);
+    const options = { text: text === true };
+    if (pages && pages.length) options.pages = pages;
+    if (regions && regions.length) options.tables = regions.map((t) => ({ page: t.page, bbox: t.bbox }));
+    const res = await call(`${url}/v1/vlm`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/pdf",
+        "X-Pxd-Options": JSON.stringify(options),
+      },
+      body: bytes,
+    }, signal);
+    let body = null;
+    try { body = await res.json(); } catch { body = null; }
+    if (res.status < 200 || res.status >= 300) {
+      const error = new Error(body?.error || `vlm ${res.status}`);
+      error.status = res.status;
+      throw error;
+    }
+    return { ...body, sha256: sha };
+  }
+
   function endpoint() {
     const { url, token } = config();
     return { url, token };
   }
 
   return {
-    health, status, pair, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr, tables, endpoint,
+    health, status, pair, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr, tables, vlm, endpoint,
     get vlmTables() { return vlmOn; },
+    get vlmHigh() { return vlmHighOn; },
   };
 }

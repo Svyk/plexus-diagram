@@ -518,7 +518,74 @@ def _item_box(item: dict) -> dict:
     return {"x0": x, "x1": x + item["width"], "y0": item.get("y0", base - 0.5 * size), "y1": item.get("y1", base + 0.05 * size)}
 
 
-def page_record(n: int, items: list[dict], rules: list[dict], w: float, h: float, *, dpi: int = DPI, deskew_deg: float = 0.0) -> dict:
+def ink_boxes(gray, scale: float, words: list | None = None) -> list[dict]:
+    """Connected ink that is not a straight rule, in points. Same contract as
+    `inkBoxesFromCanvas`: about one pixel per point, word boxes punched out,
+    a 3-sample close, at most 400 boxes."""
+    import cv2
+    import numpy as np
+
+    if gray is None or not scale or scale <= 0:
+        return []
+    height, width = gray.shape[:2]
+    if width < 8 or height < 8:
+        return []
+    step = max(1, int(round(scale)))
+    sw, sh = width // step, height // step
+    if sw < 8 or sh < 8:
+        return []
+    small = np.ascontiguousarray(gray[: sh * step : step, : sw * step : step])
+    mask = _ink(small)
+    pt = step / scale
+    for word in words or []:
+        if "transform" in word:
+            x0 = float(word["transform"][4])
+            x1 = x0 + float(word.get("width") or 0)
+            y0 = float(word.get("y0", 0))
+            y1 = float(word.get("y1", y0))
+        else:
+            x0, y0, x1, y1 = (float(word[k]) for k in ("x0", "y0", "x1", "y1"))
+        ww, hh = x1 - x0, y1 - y0
+        if ww <= 0 or hh <= 0 or ww > 80 or hh > 36:
+            continue
+        a = max(0, int(np.floor((x0 - 0.6) / pt)))
+        b = min(sw - 1, int(np.ceil((x1 + 0.6) / pt)))
+        c = max(0, int(np.floor((y0 - 0.4) / pt)))
+        d = min(sh - 1, int(np.ceil((y1 + 0.4) / pt)))
+        if a > b or c > d:
+            continue
+        mask[c : d + 1, a : b + 1] = 0
+    horiz = np.ones((1, 3), np.uint8)
+    vert = np.ones((3, 1), np.uint8)
+    closed = cv2.dilate(mask, horiz)
+    closed = cv2.dilate(closed, vert)
+    closed = cv2.erode(closed, horiz)
+    closed = cv2.erode(closed, vert)
+    count, _, stats, _ = cv2.connectedComponentsWithStats(closed, connectivity=8)
+    page_area = sw * sh
+    out = []
+    for i in range(1, count):
+        x, y, bw, bh, area = (int(stats[i, k]) for k in range(5))
+        if area < 12:
+            continue
+        if max(bw, bh) < 8 and area < 24:
+            continue
+        if bw * bh >= 0.85 * page_area:
+            continue
+        bw_pt, bh_pt = bw * pt, bh * pt
+        if bw_pt * bh_pt < 48 and max(bw_pt, bh_pt) < 16:
+            continue
+        out.append({
+            "x0": round(x * pt, 2),
+            "y0": round(y * pt, 2),
+            "x1": round((x + bw) * pt, 2),
+            "y1": round((y + bh) * pt, 2),
+        })
+    out.sort(key=lambda b: (b["x1"] - b["x0"]) * (b["y1"] - b["y0"]), reverse=True)
+    return out[:400]
+
+
+def page_record(n: int, items: list[dict], rules: list[dict], w: float, h: float, *, dpi: int = DPI, deskew_deg: float = 0.0, ink: list | None = None) -> dict:
     return {
         "n": n,
         "w": round(w, 2),
@@ -531,6 +598,7 @@ def page_record(n: int, items: list[dict], rules: list[dict], w: float, h: float
         "fonts": {"ocr": {"name": "ocr"}},
         "items": items,
         "rules": rules,
+        "ink": ink or [],
         "ops": {"fnArray": [], "argsArray": []},
     }
 
@@ -551,7 +619,8 @@ def ocr_page(pdf_path: str, n: int, *, dpi: int = DPI, recognize=vision_observat
     if correct_text and recognize is vision_observations:
         corrected = ocr_tiles(img, lambda im: vision_observations(im, language_correction=True))
         items = merge_corrected(items, observations_to_items(corrected, scale, (img.width, img.height), image=img))
-    return page_record(n, items, rules, w_pt, h_pt, dpi=dpi, deskew_deg=angle)
+    gray = np.asarray(img.convert("L") if getattr(img, "mode", "L") != "L" else img)
+    return page_record(n, items, rules, w_pt, h_pt, dpi=dpi, deskew_deg=angle, ink=ink_boxes(gray, scale, items))
 
 
 def ocr_pdf(pdf_path: str, pages=None, *, dpi: int = DPI, recognize=vision_observations, on_page=None) -> dict:

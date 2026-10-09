@@ -11,7 +11,7 @@ use super::geom::{
     merge_corrected, observations_to_items, page_record, tile_grid, Observation, PageRecord, Tile, CELL_PAD_PT,
     CELL_SCALE, DPI, MAX_PAGES, TILE_COLS, TILE_FULL, TILE_MAX_DEPTH, TILE_OVERLAP_PX, TILE_ROWS,
 };
-use super::imageops::{deskew, deskew_angle, ink_glyph, rules_from_image};
+use super::imageops::{deskew, deskew_angle, ink_boxes, ink_glyph, rules_from_image};
 use super::vision;
 use crate::pdf;
 
@@ -160,7 +160,15 @@ fn ocr_rendered(img: &GrayImage, w_pt: f64, h_pt: f64, n: i32) -> Result<PageRec
     let corrected = ocr_tiles(&img, &mut |tile| vision::recognize(tile, true), 0, None)?;
     let corrected_items = observations_to_items(&corrected, scale, (img.width(), img.height()), Some(&img));
     items = merge_corrected(items, corrected_items);
-    Ok(page_record(n, items, rules, w_pt, h_pt, DPI, angle))
+    let words: Vec<(f64, f64, f64, f64)> = items
+        .iter()
+        .map(|it| {
+            let x0 = it.transform[4];
+            (x0, it.y0, x0 + it.width, it.y1)
+        })
+        .collect();
+    let ink = ink_boxes(&img, scale, &words);
+    Ok(page_record(n, items, rules, w_pt, h_pt, DPI, angle, ink))
 }
 
 fn ocr_tiles(

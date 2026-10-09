@@ -50,6 +50,8 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
     inkBoxes.push({ ...clipped, kind: "ink", n: 1 });
   }
   // Rules not consumed by a lattice table (chart axes, grid lines) count toward drawings.
+  // A plate page still clusters them: a patent sheet has no "Fig." line, and a chart's
+  // axes are the drawing. coverPlates then groups those strokes under a figure caption.
   for (const seg of ruleSegments) {
     if (usedRules.has(seg) || seg.fromBox) continue;
     const box = seg.axis === "h" ? { x0: seg.a, x1: seg.b, y0: seg.pos, y1: seg.pos } : { x0: seg.pos, x1: seg.pos, y0: seg.a, y1: seg.b };
@@ -110,6 +112,11 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
     // A cluster that covers the page on a text page is not a figure. A single
     // page image (a drawing sheet) is decided by the caller and kept.
     if (!fig.pageImage && !fig.fromPlate && area >= 0.7 * pageW * pageH && textChars >= 180) continue;
+    // A rule cluster on a text page, with no figure caption, is a table the lattice
+    // missed (USDA p10, 2500 characters). A patent sheet is short (p1 is under 300)
+    // and keeps the drawing. A chart whose caption was accepted is fromPlate.
+    if (plates && !fig.fromPlate && !fig.pageImage && textChars >= 400) continue;
+    if (plates && !fig.fromPlate && !fig.pageImage && lines.some((line) => proseLine(line) && line.y1 > fig.y0 + 1 && line.y0 < fig.y1 - 1 && Math.min(line.x1, fig.x1) - Math.max(line.x0, fig.x0) > 0.5 * (line.x1 - line.x0))) continue;
     fig.bbox = [round(fig.x0), round(fig.y0), round(fig.x1), round(fig.y1)];
     delete fig.pageImage;
     kept.push(fig);
@@ -366,6 +373,9 @@ export function normalizeFigSpelling(text) {
   t = t.replace(/\b([A-Za-z]{2,})\s*,\s*(?=\d)/g, "$1. ");
   // A plate number whose digit came back as a letter: "Fig. l" / "Fig. I."
   t = t.replace(/\b((?:fig(?:ure)?|plates?)\.?\s+)[lI|](?=\s|$|[.:])/gi, "$11");
+  // "FIG. 11" on a plate comes back as two capitals. Only the figure number, and only
+  // uppercase II (the crop of the gas-burners plate is "FIG. 11", not a roman two). III stays III.
+  t = t.replace(/\b((?:fig(?:ure)?|plates?)\.?\s+)(II)(?=\s|$|[.:—–-])/gi, (full, pre, num) => (num === "II" ? `${pre}11` : full));
   return t;
 }
 
@@ -854,21 +864,39 @@ function proseLine(line) {
   return words.filter((w) => /[A-Za-z]{3,}/.test(w)).length >= 4;
 }
 
+// A steel "plate 14 inches" is not Plate 14. "Figure 1 is a side elevation" and
+// "Figure 2 herewith." point at a drawing; they are not the caption under it.
+function plateLabelText(text, key) {
+  if (key == null) return false;
+  const t = normalizeFigSpelling(text).replace(/\s+/g, " ").trim();
+  if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return false;
+  const words = t.split(" ");
+  if (key === "" && words.length > 2) return false;
+  const rest = t.replace(/^(?:fig(?:ure)?s?|plates?)\.?\s*\d+[A-Za-z]?[.:]?\s*/i, "");
+  if (/^(?:is|are|was|were|shows|show|comprises|has|have)\b/i.test(rest)) return false;
+  if (/^(?:herewith|above|below|following|opposite)[.]?$/i.test(rest)) return false;
+  return true;
+}
+
 // Caption lines that name one figure. A "Figs. 5 & 6" range is not one of them.
 function plateCaptions(lines, pageH) {
   const out = [];
   for (const line of lines) {
     const text = normalizeFigSpelling(line.text);
+    let keyed = text;
     let key = figCaptionKey(text);
     if (key == null) {
       // "Note No. 315 Fig. 3" — the plate number sits at the end of a short header.
-      // A body sentence that mentions a figure is not a plate caption.
+      // A body sentence that mentions a figure is not a plate caption, even in the top band
+      // ("1918, is shown in Figure 1.").
       const words = text.split(/\s+/);
       const at = words.findIndex((w) => /^fig/i.test(w));
       const header = line.y1 <= 0.18 * pageH;
-      if (header && at > 0 && words.length <= 12) key = figCaptionKey(words.slice(at).join(" "));
+      const before = at > 0 ? words.slice(0, at).join(" ") : "";
+      const label = header && at > 0 && at >= words.length - 3 && words.length <= 8 && !/\b(is|are|was|were|shown|see)\b/i.test(before);
+      if (label) { keyed = words.slice(at).join(" "); key = figCaptionKey(keyed); }
     }
-    if (key == null) continue;
+    if (!plateLabelText(keyed, key)) continue;
     out.push({ ...line, key, text });
   }
   // A header that lost its digit ("Fig.") must not split the plate that still
@@ -936,6 +964,74 @@ function extendTowardCaption(fig, cap, lines, bodySize, pageH) {
 // Short rule fragments and raster ink spread over one plate become one figure.
 // Two captions with different numbers stay two figures (a propeller page's
 // Fig. 5 and Fig. 6). Fragments that already fill their plate are left as they are.
+// Two drawings on one plate (ice p19): cut the ink on each caption baseline and
+// hull each band on its own. A thin stroke that crosses the cut is a frame, not a bridge.
+function splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH) {
+  const ordered = [];
+  const seen = new Set();
+  for (const c of [...caps].filter((c) => c.key !== "").sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)) {
+    if (seen.has(c.key)) continue;
+    seen.add(c.key);
+    ordered.push(c);
+  }
+  if (ordered.length < 2) return false;
+  const cuts = ordered.map((c) => c.y0);
+  const groups = new Map(ordered.map((c) => [c.key, []]));
+  for (const prim of ink) {
+    for (let i = 0; i < ordered.length; i++) {
+      const top = i === 0 ? 0 : cuts[i - 1];
+      const bot = cuts[i];
+      const y0 = Math.max(prim.y0, top);
+      const y1 = Math.min(prim.y1, bot + 1);
+      if (y1 - y0 < 2) continue;
+      const pw = prim.x1 - prim.x0;
+      const bandH = Math.max(1, bot - top);
+      if (pw < 16 && y1 - y0 > 0.55 * bandH) continue;
+      groups.get(ordered[i].key).push({ ...prim, y0, y1 });
+    }
+  }
+  const pageArea = pageW * pageH;
+  const made = [];
+  for (const [key, items] of groups) {
+    if (items.length < 4) continue;
+    const hull = hullOf(items);
+    if (!hull) continue;
+    const w = hull.x1 - hull.x0;
+    const h = hull.y1 - hull.y0;
+    const area = w * h;
+    if (w < 48 || h < 32 || area < 0.02 * pageArea || area > 0.7 * pageArea) continue;
+    const cap = ordered.find((c) => c.key === key) || null;
+    const plate = { ...hull, kind: "drawing", count: items.length, pageImage: false, fromPlate: true };
+    extendTowardCaption(plate, cap, lines, bodySize, pageH);
+    if ((plate.y1 - plate.y0) * (plate.x1 - plate.x0) > 0.7 * pageArea) continue;
+    made.push(plate);
+  }
+  if (made.length < 2) return false;
+  for (let i = figures.length - 1; i >= 0; i--) {
+    const f = figures[i];
+    if (f.kind === "image") continue;
+    if (made.some((p) => insideFrac(f, p) >= 0.35 || insideFrac(p, f) >= 0.35)) figures.splice(i, 1);
+  }
+  figures.push(...made);
+  return true;
+}
+
+function dropCoveredDrawings(figures) {
+  for (let i = figures.length - 1; i >= 0; i--) {
+    const f = figures[i];
+    if (f.fromPlate) continue;
+    if (figures.some((o) => o !== f && o.fromPlate && (insideFrac(f, o) >= 0.5 || insideFrac(o, f) >= 0.75))) figures.splice(i, 1);
+  }
+  for (let i = 0; i < figures.length; i++) {
+    for (let j = figures.length - 1; j > i; j--) {
+      const a = figures[i];
+      const b = figures[j];
+      if (!a.fromPlate || !b.fromPlate) continue;
+      if (insideFrac(a, b) >= 0.8 && insideFrac(b, a) >= 0.8) figures.splice(j, 1);
+    }
+  }
+}
+
 function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = []) {
   let ink = [...prims.filter((p) => p.kind === "rule" || p.kind === "shape"), ...inkBoxes];
   const inkOnly = ink.filter((p) => p.kind === "ink");
@@ -950,6 +1046,12 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
   const caps = plateCaptions(lines, pageH);
   // Ink with no figure line is a table rule or a speck, not a plate.
   if (!caps.length) return;
+  // Band cuts need raster ink. Rule fragments alone hull too tight (accelerometer
+  // helper Fig. 2) and the nearest-caption path is the one that matched before.
+  if (inkOnly.length && splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH)) {
+    dropCoveredDrawings(figures);
+    return;
+  }
   const groups = new Map();
   for (const prim of ink) {
     let key = "plate";
@@ -999,6 +1101,7 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
     extendTowardCaption(plate, cap, lines, bodySize, pageH);
     figures.push(plate);
   }
+  dropCoveredDrawings(figures);
 }
 
 export function clusterBoxes(items, gap) {

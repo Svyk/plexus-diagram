@@ -7102,6 +7102,8 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
     fig.y1 = box2.y1;
     const area = (fig.x1 - fig.x0) * (fig.y1 - fig.y0);
     if (!fig.pageImage && !fig.fromPlate && area >= 0.7 * pageW * pageH && textChars >= 180) continue;
+    if (plates && !fig.fromPlate && !fig.pageImage && textChars >= 400) continue;
+    if (plates && !fig.fromPlate && !fig.pageImage && lines.some((line) => proseLine(line) && line.y1 > fig.y0 + 1 && line.y0 < fig.y1 - 1 && Math.min(line.x1, fig.x1) - Math.max(line.x0, fig.x0) > 0.5 * (line.x1 - line.x0))) continue;
     fig.bbox = [round(fig.x0), round(fig.y0), round(fig.x1), round(fig.y1)];
     delete fig.pageImage;
     kept.push(fig);
@@ -7330,6 +7332,7 @@ function normalizeFigSpelling(text3) {
   t = t.replace(/\bfigu[nr]e\b/gi, (m) => m[0] === "f" ? "figure" : "Figure");
   t = t.replace(/\b([A-Za-z]{2,})\s*,\s*(?=\d)/g, "$1. ");
   t = t.replace(/\b((?:fig(?:ure)?|plates?)\.?\s+)[lI|](?=\s|$|[.:])/gi, "$11");
+  t = t.replace(/\b((?:fig(?:ure)?|plates?)\.?\s+)(II)(?=\s|$|[.:—–-])/gi, (full, pre, num6) => num6 === "II" ? `${pre}11` : full);
   return t;
 }
 function figCaptionKey(text3) {
@@ -7793,18 +7796,35 @@ function proseLine(line) {
   if (words.length < 8) return false;
   return words.filter((w) => /[A-Za-z]{3,}/.test(w)).length >= 4;
 }
+function plateLabelText(text3, key) {
+  if (key == null) return false;
+  const t = normalizeFigSpelling(text3).replace(/\s+/g, " ").trim();
+  if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return false;
+  const words = t.split(" ");
+  if (key === "" && words.length > 2) return false;
+  const rest = t.replace(/^(?:fig(?:ure)?s?|plates?)\.?\s*\d+[A-Za-z]?[.:]?\s*/i, "");
+  if (/^(?:is|are|was|were|shows|show|comprises|has|have)\b/i.test(rest)) return false;
+  if (/^(?:herewith|above|below|following|opposite)[.]?$/i.test(rest)) return false;
+  return true;
+}
 function plateCaptions(lines, pageH) {
   const out = [];
   for (const line of lines) {
     const text3 = normalizeFigSpelling(line.text);
+    let keyed = text3;
     let key = figCaptionKey(text3);
     if (key == null) {
       const words = text3.split(/\s+/);
       const at = words.findIndex((w) => /^fig/i.test(w));
       const header = line.y1 <= 0.18 * pageH;
-      if (header && at > 0 && words.length <= 12) key = figCaptionKey(words.slice(at).join(" "));
+      const before = at > 0 ? words.slice(0, at).join(" ") : "";
+      const label = header && at > 0 && at >= words.length - 3 && words.length <= 8 && !/\b(is|are|was|were|shown|see)\b/i.test(before);
+      if (label) {
+        keyed = words.slice(at).join(" ");
+        key = figCaptionKey(keyed);
+      }
     }
-    if (key == null) continue;
+    if (!plateLabelText(keyed, key)) continue;
     out.push({ ...line, key, text: text3 });
   }
   const numbered = out.filter((c) => c.key !== "");
@@ -7860,6 +7880,70 @@ function extendTowardCaption(fig, cap4, lines, bodySize, pageH) {
     fig.x1 = Math.max(fig.x1, cap4.x1);
   }
 }
+function splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH) {
+  const ordered = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const c of [...caps].filter((c2) => c2.key !== "").sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)) {
+    if (seen.has(c.key)) continue;
+    seen.add(c.key);
+    ordered.push(c);
+  }
+  if (ordered.length < 2) return false;
+  const cuts = ordered.map((c) => c.y0);
+  const groups = new Map(ordered.map((c) => [c.key, []]));
+  for (const prim of ink) {
+    for (let i = 0; i < ordered.length; i++) {
+      const top = i === 0 ? 0 : cuts[i - 1];
+      const bot = cuts[i];
+      const y0 = Math.max(prim.y0, top);
+      const y1 = Math.min(prim.y1, bot + 1);
+      if (y1 - y0 < 2) continue;
+      const pw = prim.x1 - prim.x0;
+      const bandH = Math.max(1, bot - top);
+      if (pw < 16 && y1 - y0 > 0.55 * bandH) continue;
+      groups.get(ordered[i].key).push({ ...prim, y0, y1 });
+    }
+  }
+  const pageArea = pageW * pageH;
+  const made = [];
+  for (const [key, items] of groups) {
+    if (items.length < 4) continue;
+    const hull = hullOf(items);
+    if (!hull) continue;
+    const w = hull.x1 - hull.x0;
+    const h = hull.y1 - hull.y0;
+    const area = w * h;
+    if (w < 48 || h < 32 || area < 0.02 * pageArea || area > 0.7 * pageArea) continue;
+    const cap4 = ordered.find((c) => c.key === key) || null;
+    const plate = { ...hull, kind: "drawing", count: items.length, pageImage: false, fromPlate: true };
+    extendTowardCaption(plate, cap4, lines, bodySize, pageH);
+    if ((plate.y1 - plate.y0) * (plate.x1 - plate.x0) > 0.7 * pageArea) continue;
+    made.push(plate);
+  }
+  if (made.length < 2) return false;
+  for (let i = figures.length - 1; i >= 0; i--) {
+    const f = figures[i];
+    if (f.kind === "image") continue;
+    if (made.some((p) => insideFrac(f, p) >= 0.35 || insideFrac(p, f) >= 0.35)) figures.splice(i, 1);
+  }
+  figures.push(...made);
+  return true;
+}
+function dropCoveredDrawings(figures) {
+  for (let i = figures.length - 1; i >= 0; i--) {
+    const f = figures[i];
+    if (f.fromPlate) continue;
+    if (figures.some((o) => o !== f && o.fromPlate && (insideFrac(f, o) >= 0.5 || insideFrac(o, f) >= 0.75))) figures.splice(i, 1);
+  }
+  for (let i = 0; i < figures.length; i++) {
+    for (let j = figures.length - 1; j > i; j--) {
+      const a = figures[i];
+      const b = figures[j];
+      if (!a.fromPlate || !b.fromPlate) continue;
+      if (insideFrac(a, b) >= 0.8 && insideFrac(b, a) >= 0.8) figures.splice(j, 1);
+    }
+  }
+}
 function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = []) {
   let ink = [...prims.filter((p) => p.kind === "rule" || p.kind === "shape"), ...inkBoxes];
   const inkOnly = ink.filter((p) => p.kind === "ink");
@@ -7873,6 +7957,10 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
   if (ink.length < 4) return;
   const caps = plateCaptions(lines, pageH);
   if (!caps.length) return;
+  if (inkOnly.length && splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH)) {
+    dropCoveredDrawings(figures);
+    return;
+  }
   const groups = /* @__PURE__ */ new Map();
   for (const prim of ink) {
     let key = "plate";
@@ -7921,6 +8009,7 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
     extendTowardCaption(plate, cap4, lines, bodySize, pageH);
     figures.push(plate);
   }
+  dropCoveredDrawings(figures);
 }
 function clusterBoxes(items, gap) {
   const clusters = items.map((p) => ({ x0: p.x0, y0: p.y0, x1: p.x1, y1: p.y1, items: [p] }));
@@ -9238,10 +9327,80 @@ function insideFrac2(inner, outer) {
 function wordCountText(text3) {
   return String(text3 || "").trim().split(/\s+/).filter(Boolean).length;
 }
+function figLabelOnly(text3) {
+  const t = normalizeFigSpelling(text3).replace(/\s+/g, " ").trim();
+  return /^(?:fig(?:ure)?|plates?)\.?\s*\d+[A-Za-z]?[.:]?$/i.test(t);
+}
+function hasFigWord(text3) {
+  return /\b(?:fig(?:ure)?s?|plates?)\b/i.test(String(text3 || ""));
+}
+function splitOcrCaptionGroup(group) {
+  if (!group.length || !isCaptionText(group[0].text)) return [group];
+  let keep = group.length;
+  if (figLabelOnly(group[0].text)) keep = 1;
+  else {
+    const at = group.findIndex((l) => /\bordin/i.test(String(l.text || "")));
+    if (at >= 0 && at + 1 < group.length) keep = at + 1;
+  }
+  if (keep >= group.length) return [group];
+  return [group.slice(0, keep), group.slice(keep)];
+}
+function attachDroppedFigDigit(blocks) {
+  const drop = /* @__PURE__ */ new Set();
+  for (const b of blocks) {
+    if (drop.has(b) || b.type !== "caption") continue;
+    if (!/^(?:fig(?:ure)?|plates?)\.?$/i.test(normalizeFigSpelling(b.text))) continue;
+    let next = null;
+    for (const n2 of blocks) {
+      if (n2 === b || drop.has(n2) || n2.type !== "para" && n2.type !== "caption" && n2.type !== "heading") continue;
+      if (!/^\d/.test(String(n2.text || "").trim())) continue;
+      if (n2.bbox.x0 < b.bbox.x1 - 4 || n2.bbox.x0 - b.bbox.x1 > 36) continue;
+      const overlap = Math.min(n2.bbox.y1, b.bbox.y1) - Math.max(n2.bbox.y0, b.bbox.y0);
+      const nh = n2.bbox.y1 - n2.bbox.y0;
+      if (!(nh > 0) || overlap < 0.35 * nh) continue;
+      if (!next || n2.bbox.x0 < next.bbox.x0) next = n2;
+    }
+    if (!next) continue;
+    b.text = normalizeFigSpelling(`${b.text} ${next.text}`.replace(/\s+/g, " ").trim());
+    b.bbox = {
+      x0: Math.min(b.bbox.x0, next.bbox.x0),
+      y0: Math.min(b.bbox.y0, next.bbox.y0),
+      x1: Math.max(b.bbox.x1, next.bbox.x1),
+      y1: Math.max(b.bbox.y1, next.bbox.y1)
+    };
+    b.lines = [...b.lines || [], ...next.lines || []];
+    drop.add(next);
+  }
+  if (!drop.size) return;
+  for (let i = blocks.length - 1; i >= 0; i--) if (drop.has(blocks[i])) blocks.splice(i, 1);
+}
+function liftOrdinateNote(blocks) {
+  const drop = /* @__PURE__ */ new Set();
+  const extra = [];
+  for (const b of blocks) {
+    if (b.type !== "caption" || !b.lines?.length) continue;
+    const head = b.lines[0];
+    const side2 = blocks.find((n2) => n2 !== b && !drop.has(n2) && n2.lines?.length && Math.abs((n2.lines[0].base ?? n2.bbox.y1) - (head.base ?? head.y1)) <= 4 && n2.bbox.x0 >= (head.x1 ?? b.bbox.x0) - 6 && n2.bbox.x0 - (head.x1 ?? b.bbox.x1) < 160 && /\bordin/i.test(n2.text || ""));
+    if (!side2) continue;
+    const rest = b.lines.slice(1);
+    const joined = joinLines([head, ...side2.lines]);
+    b.text = normalizeFigSpelling(joined.text);
+    b.lines = [head, ...side2.lines];
+    b.bbox = boxOfUnits(b.lines);
+    drop.add(side2);
+    if (rest.length) extra.push({ type: "para", lines: rest, text: joinLines(rest).text, footnoteRefs: [], bbox: boxOfUnits(rest) });
+  }
+  if (drop.size) {
+    for (let i = blocks.length - 1; i >= 0; i--) if (drop.has(blocks[i])) blocks.splice(i, 1);
+  }
+  blocks.push(...extra);
+}
 function joinCaptionTails(blocks, bodySize) {
   const drop = /* @__PURE__ */ new Set();
   for (const b of blocks) {
     if (drop.has(b) || b.type !== "caption" || figCaptionKey(b.text) == null && !/^fig/i.test(normalizeFigSpelling(b.text || ""))) continue;
+    if (figLabelOnly(b.text)) continue;
+    let plain2 = 0;
     let guard = 0;
     while (guard++ < 3) {
       let next = null;
@@ -9254,6 +9413,10 @@ function joinCaptionTails(blocks, bodySize) {
       }
       if (!next) break;
       if (figCaptionKey(next.text) != null || /^table\b/i.test(next.text) || wordCountText(next.text) > 24) break;
+      const figWord = hasFigWord(next.text);
+      if (/\bordin/i.test(b.text) && !figWord) break;
+      if (!figWord && plain2 >= 1) break;
+      if (!figWord && /[.?!]["”']?$/.test(String(b.text || "").trim()) && /^[A-Z]/.test(String(next.text || "").trim())) break;
       b.text = `${b.text} ${next.text}`.replace(/\s+/g, " ").trim();
       b.bbox = {
         x0: Math.min(b.bbox.x0, next.bbox.x0),
@@ -9263,6 +9426,7 @@ function joinCaptionTails(blocks, bodySize) {
       };
       b.lines = [...b.lines || [], ...next.lines || []];
       drop.add(next);
+      if (!figWord) plain2++;
     }
   }
   if (!drop.size) return;
@@ -9488,6 +9652,25 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       };
       const captionish = (l) => isCaptionText(l.text);
       while (i < lines.length) {
+        let emitTextGroup = function(group) {
+          const joined = joinLines(group);
+          const first = group[0].words[0];
+          const isCaption = isCaptionText(joined.text);
+          const startsWithMark = first && first.sup && FOOTNOTE_MARK_RE.test(first.text) && group[0].size <= 0.9 * bodySize;
+          const lowOnPage = group[0].y0 >= 0.75 * pg.h;
+          const lastBase = group[group.length - 1].base;
+          const lastInColumn = !seq.some((l) => l.base > lastBase + 1 && l.size >= bodySize - 0.5);
+          if (startsWithMark && (lowOnPage || lastInColumn)) {
+            const mark = first.text;
+            const rest = { ...group[0], words: group[0].words.slice(1) };
+            rest.text = rest.words.map((w) => w.text).join(" ");
+            const text3 = joinLines([rest, ...group.slice(1)], { collectRefs: false }).text;
+            textBlocks.push({ type: "footnote", lines: group, mark, text: text3, bbox: boxOfUnits(group) });
+            return;
+          }
+          const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(joined.text) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
+          textBlocks.push(block);
+        };
         const line = lines[i];
         const level = levelAt(i);
         if (level && !captionish(line)) {
@@ -9505,23 +9688,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
         while (j < lines.length && !levelAt(j)) j++;
         const chunk = lines.slice(i, j);
         for (const group of groupParagraphs(chunk, { bodySize })) {
-          const joined = joinLines(group);
-          const first = group[0].words[0];
-          const isCaption = isCaptionText(joined.text);
-          const startsWithMark = first && first.sup && FOOTNOTE_MARK_RE.test(first.text) && group[0].size <= 0.9 * bodySize;
-          const lowOnPage = group[0].y0 >= 0.75 * pg.h;
-          const lastBase = group[group.length - 1].base;
-          const lastInColumn = !seq.some((l) => l.base > lastBase + 1 && l.size >= bodySize - 0.5);
-          if (startsWithMark && (lowOnPage || lastInColumn)) {
-            const mark = first.text;
-            const rest = { ...group[0], words: group[0].words.slice(1) };
-            rest.text = rest.words.map((w) => w.text).join(" ");
-            const text3 = joinLines([rest, ...group.slice(1)], { collectRefs: false }).text;
-            textBlocks.push({ type: "footnote", lines: group, mark, text: text3, bbox: boxOfUnits(group) });
-            continue;
-          }
-          const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(joined.text) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
-          textBlocks.push(block);
+          const pieces2 = pg.ocr ? splitOcrCaptionGroup(group) : [group];
+          for (const part of pieces2) emitTextGroup(part);
         }
         i = j;
       }
@@ -9532,7 +9700,11 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       coverChartTables(pageTables, pageFigures, pg.h);
       absorbFigureTables(pageTables, pageFigures);
     }
-    if (pg.ocr) joinCaptionTails(textBlocks, bodySize);
+    if (pg.ocr) {
+      attachDroppedFigDigit(textBlocks);
+      liftOrdinateNote(textBlocks);
+      joinCaptionTails(textBlocks, bodySize);
+    }
     const captionFor2 = linkCaptions(textBlocks, [...pageTables, ...pageFigures], bodySize, pg.h, { scan: Boolean(pg.ocr) });
     const unitOf = (b, id) => ({ id, x0: b.bbox.x0 ?? b.bbox[0], y0: b.bbox.y0 ?? b.bbox[1], x1: b.bbox.x1 ?? b.bbox[2], y1: b.bbox.y1 ?? b.bbox[3] });
     const captionIds = /* @__PURE__ */ new Map();
@@ -9783,7 +9955,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 13;
+    PARSE_REV = 14;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     EVIDENCE_LINES = 60;

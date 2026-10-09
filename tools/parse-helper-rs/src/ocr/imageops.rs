@@ -180,6 +180,105 @@ fn morph_close(src: &Gray, kw: usize, kh: usize) -> Gray {
     morph(&morph(src, kw, kh, true), kw, kh, false)
 }
 
+/// Connected ink that is not a straight rule: curves, sketches, a gage outline.
+/// Same contract as `inkBoxesFromCanvas`: downsample to about one pixel per point,
+/// punch word boxes, a 3-sample close, at most 400 boxes in points.
+#[derive(Clone, Debug, Serialize)]
+pub struct InkBox {
+    pub x0: f64,
+    pub y0: f64,
+    pub x1: f64,
+    pub y1: f64,
+}
+
+fn round2(n: f64) -> f64 {
+    (n * 100.0).round() / 100.0
+}
+
+pub fn ink_boxes(img: &GrayImage, scale: f64, words: &[(f64, f64, f64, f64)]) -> Vec<InkBox> {
+    let width = img.width() as usize;
+    let height = img.height() as usize;
+    if width < 8 || height < 8 || !(scale > 0.0) {
+        return Vec::new();
+    }
+    let step = scale.round().max(1.0) as usize;
+    let sw = width / step;
+    let sh = height / step;
+    if sw < 8 || sh < 8 {
+        return Vec::new();
+    }
+    let raw = img.as_raw();
+    let mut g = Gray::filled(sw, sh, 255);
+    for y in 0..sh {
+        let src = y * step * width;
+        for x in 0..sw {
+            g.data[y * sw + x] = raw[src + x * step];
+        }
+    }
+    let mut mask = ink_mask(&g);
+    let pt = step as f64 / scale;
+    for &(x0, y0, x1, y1) in words {
+        let ww = x1 - x0;
+        let hh = y1 - y0;
+        if ww <= 0.0 || hh <= 0.0 || ww > 80.0 || hh > 36.0 {
+            continue;
+        }
+        let a = ((x0 - 0.6) / pt).floor().max(0.0) as isize;
+        let b = ((x1 + 0.6) / pt).ceil() as isize;
+        let c = ((y0 - 0.4) / pt).floor().max(0.0) as isize;
+        let d = ((y1 + 0.4) / pt).ceil() as isize;
+        let a = a.clamp(0, sw as isize - 1) as usize;
+        let b = b.clamp(0, sw as isize - 1) as usize;
+        let c = c.clamp(0, sh as isize - 1) as usize;
+        let d = d.clamp(0, sh as isize - 1) as usize;
+        if a > b || c > d {
+            continue;
+        }
+        for y in c..=d {
+            for x in a..=b {
+                mask.data[y * sw + x] = 0;
+            }
+        }
+    }
+    let mut closed = morph(&mask, 3, 1, true);
+    closed = morph(&closed, 1, 3, true);
+    closed = morph(&closed, 3, 1, false);
+    closed = morph(&closed, 1, 3, false);
+    let page_area = (sw * sh) as f64;
+    let mut out = Vec::new();
+    for comp in components(&closed) {
+        let bw = comp.cw();
+        let bh = comp.ch();
+        if comp.area < 12 {
+            continue;
+        }
+        if bw.max(bh) < 8 && comp.area < 24 {
+            continue;
+        }
+        if (bw * bh) as f64 >= 0.85 * page_area {
+            continue;
+        }
+        let bw_pt = bw as f64 * pt;
+        let bh_pt = bh as f64 * pt;
+        if bw_pt * bh_pt < 48.0 && bw_pt.max(bh_pt) < 16.0 {
+            continue;
+        }
+        out.push(InkBox {
+            x0: round2(comp.minx as f64 * pt),
+            y0: round2(comp.miny as f64 * pt),
+            x1: round2((comp.maxx + 1) as f64 * pt),
+            y1: round2((comp.maxy + 1) as f64 * pt),
+        });
+    }
+    out.sort_by(|a, b| {
+        let aa = (a.x1 - a.x0) * (a.y1 - a.y0);
+        let bb = (b.x1 - b.x0) * (b.y1 - b.y0);
+        bb.partial_cmp(&aa).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    out.truncate(400);
+    out
+}
+
 struct Comp {
     minx: usize,
     miny: usize,
@@ -566,5 +665,58 @@ mod tests {
             x += 12;
         }
         assert_eq!(ink_glyph(&dots), None);
+    }
+
+    #[test]
+    fn ink_boxes_match_the_canvas_contract() {
+        let scale = 4.0;
+        let mut img = GrayImage::from_pixel(400, 400, Luma([255]));
+        for y in 80..280 {
+            for x in 80..280 {
+                img.put_pixel(x, y, Luma([0]));
+            }
+        }
+        let boxes = ink_boxes(&img, scale, &[]);
+        assert_eq!(boxes.len(), 1, "{boxes:?}");
+        assert!(boxes[0].x0 < 25.0 && boxes[0].y0 < 25.0, "{boxes:?}");
+        assert!(boxes[0].x1 > 65.0 && boxes[0].y1 > 65.0, "{boxes:?}");
+        let mut mark = GrayImage::from_pixel(200, 200, Luma([255]));
+        for y in 80..100 {
+            for x in 40..100 {
+                mark.put_pixel(x, y, Luma([0]));
+            }
+        }
+        assert_eq!(ink_boxes(&mark, 1.0, &[]).len(), 1);
+        let punched = ink_boxes(&mark, 1.0, &[(36.0, 76.0, 104.0, 104.0)]);
+        assert!(punched.is_empty(), "a word over the mark is not a drawing: {punched:?}");
+
+        let mut specks = GrayImage::from_pixel(800, 800, Luma([255]));
+        for row in 0..45 {
+            for col in 0..45 {
+                let x0 = 8 + col * 16;
+                let y0 = 8 + row * 16;
+                for dy in 0..8 {
+                    for dx in 0..8 {
+                        specks.put_pixel(x0 + dx, y0 + dy, Luma([0]));
+                    }
+                }
+            }
+        }
+        assert_eq!(ink_boxes(&specks, 1.0, &[]).len(), 400);
+
+        let mut page = GrayImage::from_pixel(2550, 3300, Luma([255]));
+        for y in 400..1600 {
+            for x in 300..1800 {
+                if (x + y) % 3 == 0 {
+                    page.put_pixel(x, y, Luma([0]));
+                }
+            }
+        }
+        let started = std::time::Instant::now();
+        let drawn = ink_boxes(&page, 300.0 / 72.0, &[(40.0, 40.0, 80.0, 52.0)]);
+        let ms = started.elapsed().as_secs_f64() * 1000.0;
+        assert!(!drawn.is_empty());
+        assert!(ms < 2000.0, "ink_boxes on a letter page took {ms:.1} ms");
+        eprintln!("ink_boxes letter page {ms:.1} ms, {} boxes", drawn.len());
     }
 }

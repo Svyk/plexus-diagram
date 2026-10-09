@@ -144,6 +144,7 @@ def test_page_record_shape_and_options_hash():
     rec = ocr.page_record(3, [], [], 612.0, 792.0, deskew_deg=0.4)
     assert rec["n"] == 3 and rec["scan"] is True and rec["transform"] == [1, 0, 0, 1, 0, 0]
     assert rec["w"] == 612.0 and rec["h"] == 792.0 and rec["deskew"] == 0.4
+    assert rec["ink"] == []
     assert ocr.ocr_options_hash(None) != ocr.ocr_options_hash([1])
     assert ocr.ocr_options_hash([1, [3, 5]]) == ocr.ocr_options_hash([1, [3, 5]])
 
@@ -190,3 +191,23 @@ def test_ocr_endpoint_auth_cache_and_cells(tmp_path):
     assert client.post("/v1/ocr", content=b"", headers=auth).status_code == 400
     health = client.get("/v1/health", headers={"Authorization": f"Bearer {TOKEN}"}).json()
     assert health["engines"] == ["docling", "ocr", "cloud"]
+
+
+def test_ink_boxes_blob_word_punch_and_cap():
+    gray = np.full((400, 400), 255, np.uint8)
+    gray[80:280, 80:280] = 0
+    boxes = ocr.ink_boxes(gray, 4.0, [])
+    assert len(boxes) == 1
+    assert boxes[0]["x0"] < 25 and boxes[0]["y0"] < 25
+    assert boxes[0]["x1"] > 65 and boxes[0]["y1"] > 65
+    mark = np.full((200, 200), 255, np.uint8)
+    mark[80:100, 40:100] = 0
+    assert len(ocr.ink_boxes(mark, 1.0, [])) == 1
+    punched = ocr.ink_boxes(mark, 1.0, [{"x0": 36, "y0": 76, "x1": 104, "y1": 104}])
+    assert punched == []
+    specks = np.full((800, 800), 255, np.uint8)
+    for row in range(45):
+        for col in range(45):
+            x0, y0 = 8 + col * 16, 8 + row * 16
+            specks[y0 : y0 + 8, x0 : x0 + 8] = 0
+    assert len(ocr.ink_boxes(specks, 1.0, [])) == 400

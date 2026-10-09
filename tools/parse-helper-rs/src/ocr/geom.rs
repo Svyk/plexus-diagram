@@ -3,7 +3,7 @@
 use image::GrayImage;
 use serde::Serialize;
 
-use super::imageops::Rule;
+use super::imageops::{InkBox, Rule};
 
 pub const DPI: i32 = 300;
 pub const TILE_COLS: i32 = 3;
@@ -68,6 +68,7 @@ pub struct PageRecord {
     pub fonts: Fonts,
     pub items: Vec<WordItem>,
     pub rules: Vec<Rule>,
+    pub ink: Vec<InkBox>,
     pub ops: Ops,
 }
 
@@ -493,7 +494,7 @@ fn merge_split_words(mut raw: Vec<WordItem>, boxes: &[((f64, f64, f64, f64), Wor
     out
 }
 
-pub fn page_record(n: i32, items: Vec<WordItem>, rules: Vec<Rule>, w: f64, h: f64, dpi: i32, deskew_deg: f64) -> PageRecord {
+pub fn page_record(n: i32, items: Vec<WordItem>, rules: Vec<Rule>, w: f64, h: f64, dpi: i32, deskew_deg: f64, ink: Vec<InkBox>) -> PageRecord {
     PageRecord {
         n,
         w: round_dp(w, 2),
@@ -506,6 +507,7 @@ pub fn page_record(n: i32, items: Vec<WordItem>, rules: Vec<Rule>, w: f64, h: f6
         fonts: Fonts { ocr: FontName { name: "ocr" } },
         items,
         rules,
+        ink,
         ops: Ops { fn_array: Vec::new(), args_array: Vec::new() },
     }
 }
@@ -637,12 +639,13 @@ mod tests {
 
     #[test]
     fn page_record_shape() {
-        let rec = page_record(3, Vec::new(), Vec::new(), 612.0, 792.0, DPI, 0.4);
+        let rec = page_record(3, Vec::new(), Vec::new(), 612.0, 792.0, DPI, 0.4, Vec::new());
         assert_eq!(rec.n, 3);
         assert!(rec.scan);
         assert_eq!(rec.transform, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
         assert_eq!(rec.w, 612.0);
         assert_eq!(rec.h, 792.0);
         assert_eq!(rec.deskew, 0.4);
+        assert!(rec.ink.is_empty());
     }
 }

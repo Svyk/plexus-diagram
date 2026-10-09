@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 13;
+export const PARSE_REV = 14;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -271,12 +271,98 @@ function wordCountText(text) {
   return String(text || "").trim().split(/\s+/).filter(Boolean).length;
 }
 
+// "Fig. 1" with nothing after the number. The next line is the body, not the caption.
+function figLabelOnly(text) {
+  const t = normalizeFigSpelling(text).replace(/\s+/g, " ").trim();
+  return /^(?:fig(?:ure)?|plates?)\.?\s*\d+[A-Za-z]?[.:]?$/i.test(t);
+}
+
+function hasFigWord(text) {
+  return /\b(?:fig(?:ure)?s?|plates?)\b/i.test(String(text || ""));
+}
+
+// A label-only first line, or the line that carries the ordinate note, ends the caption.
+// The lines after it stay a paragraph (helper "Fig. 1" then "now dropping…", and
+// "maximum orainate." under a split ordinate line).
+function splitOcrCaptionGroup(group) {
+  if (!group.length || !isCaptionText(group[0].text)) return [group];
+  let keep = group.length;
+  if (figLabelOnly(group[0].text)) keep = 1;
+  else {
+    const at = group.findIndex((l) => /\bordin/i.test(String(l.text || "")));
+    if (at >= 0 && at + 1 < group.length) keep = at + 1;
+  }
+  if (keep >= group.length) return [group];
+  return [group.slice(0, keep), group.slice(keep)];
+}
+
+// "Fig." on its own and "2. Showing…" one baseline lower: the digit is the next
+// block, overlapping the tall Fig glyph, so a below-only join never sees it.
+function attachDroppedFigDigit(blocks) {
+  const drop = new Set();
+  for (const b of blocks) {
+    if (drop.has(b) || b.type !== "caption") continue;
+    if (!/^(?:fig(?:ure)?|plates?)\.?$/i.test(normalizeFigSpelling(b.text))) continue;
+    let next = null;
+    for (const n of blocks) {
+      if (n === b || drop.has(n) || (n.type !== "para" && n.type !== "caption" && n.type !== "heading")) continue;
+      if (!/^\d/.test(String(n.text || "").trim())) continue;
+      if (n.bbox.x0 < b.bbox.x1 - 4 || n.bbox.x0 - b.bbox.x1 > 36) continue;
+      const overlap = Math.min(n.bbox.y1, b.bbox.y1) - Math.max(n.bbox.y0, b.bbox.y0);
+      const nh = n.bbox.y1 - n.bbox.y0;
+      if (!(nh > 0) || overlap < 0.35 * nh) continue;
+      if (!next || n.bbox.x0 < next.bbox.x0) next = n;
+    }
+    if (!next) continue;
+    b.text = normalizeFigSpelling(`${b.text} ${next.text}`.replace(/\s+/g, " ").trim());
+    b.bbox = {
+      x0: Math.min(b.bbox.x0, next.bbox.x0), y0: Math.min(b.bbox.y0, next.bbox.y0),
+      x1: Math.max(b.bbox.x1, next.bbox.x1), y1: Math.max(b.bbox.y1, next.bbox.y1),
+    };
+    b.lines = [...(b.lines || []), ...(next.lines || [])];
+    drop.add(next);
+  }
+  if (!drop.size) return;
+  for (let i = blocks.length - 1; i >= 0; i--) if (drop.has(blocks[i])) blocks.splice(i, 1);
+}
+
+// The helper breaks "Ordinates in terms of" onto the caption baseline, to the right
+// of "Fig.5 Navy", and the next line ("maximum orainate.") joins the stub. Put the
+// ordinate note back on the caption and leave that next line out.
+function liftOrdinateNote(blocks) {
+  const drop = new Set();
+  const extra = [];
+  for (const b of blocks) {
+    if (b.type !== "caption" || !b.lines?.length) continue;
+    const head = b.lines[0];
+    const side = blocks.find((n) => n !== b && !drop.has(n) && n.lines?.length
+      && Math.abs((n.lines[0].base ?? n.bbox.y1) - (head.base ?? head.y1)) <= 4
+      && n.bbox.x0 >= (head.x1 ?? b.bbox.x0) - 6
+      && n.bbox.x0 - (head.x1 ?? b.bbox.x1) < 160
+      && /\bordin/i.test(n.text || ""));
+    if (!side) continue;
+    const rest = b.lines.slice(1);
+    const joined = joinLines([head, ...side.lines]);
+    b.text = normalizeFigSpelling(joined.text);
+    b.lines = [head, ...side.lines];
+    b.bbox = boxOfUnits(b.lines);
+    drop.add(side);
+    if (rest.length) extra.push({ type: "para", lines: rest, text: joinLines(rest).text, footnoteRefs: [], bbox: boxOfUnits(rest) });
+  }
+  if (drop.size) for (let i = blocks.length - 1; i >= 0; i--) if (drop.has(blocks[i])) blocks.splice(i, 1);
+  blocks.push(...extra);
+}
+
 // OCR breaks a caption into the next paragraph ("Fig. 3" then "Sketches of ice formation…").
 // A born-digital caption is already one paragraph; joining the next body line drops it from the reading order.
+// A label ("Fig. 1") does not take the next paragraph. One continuation line is enough when
+// that line has no figure word. The ordinate note ends the join.
 function joinCaptionTails(blocks, bodySize) {
   const drop = new Set();
   for (const b of blocks) {
     if (drop.has(b) || b.type !== "caption" || figCaptionKey(b.text) == null && !/^fig/i.test(normalizeFigSpelling(b.text || ""))) continue;
+    if (figLabelOnly(b.text)) continue;
+    let plain = 0;
     let guard = 0;
     while (guard++ < 3) {
       let next = null;
@@ -289,6 +375,10 @@ function joinCaptionTails(blocks, bodySize) {
       }
       if (!next) break;
       if (figCaptionKey(next.text) != null || /^table\b/i.test(next.text) || wordCountText(next.text) > 24) break;
+      const figWord = hasFigWord(next.text);
+      if (/\bordin/i.test(b.text) && !figWord) break;
+      if (!figWord && plain >= 1) break;
+      if (!figWord && /[.?!]["”']?$/.test(String(b.text || "").trim()) && /^[A-Z]/.test(String(next.text || "").trim())) break;
       b.text = `${b.text} ${next.text}`.replace(/\s+/g, " ").trim();
       b.bbox = {
         x0: Math.min(b.bbox.x0, next.bbox.x0), y0: Math.min(b.bbox.y0, next.bbox.y0),
@@ -296,6 +386,7 @@ function joinCaptionTails(blocks, bodySize) {
       };
       b.lines = [...(b.lines || []), ...(next.lines || [])];
       drop.add(next);
+      if (!figWord) plain++;
     }
   }
   if (!drop.size) return;
@@ -574,6 +665,10 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
         while (j < lines.length && !levelAt(j)) j++;
         const chunk = lines.slice(i, j);
         for (const group of groupParagraphs(chunk, { bodySize })) {
+          const pieces = pg.ocr ? splitOcrCaptionGroup(group) : [group];
+          for (const part of pieces) emitTextGroup(part);
+        }
+        function emitTextGroup(group) {
           const joined = joinLines(group);
           const first = group[0].words[0];
           const isCaption = isCaptionText(joined.text);
@@ -587,7 +682,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
             rest.text = rest.words.map((w) => w.text).join(" ");
             const text = joinLines([rest, ...group.slice(1)], { collectRefs: false }).text;
             textBlocks.push({ type: "footnote", lines: group, mark, text, bbox: boxOfUnits(group) });
-            continue;
+            return;
           }
           const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(joined.text) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
           textBlocks.push(block);
@@ -601,7 +696,11 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       coverChartTables(pageTables, pageFigures, pg.h);
       absorbFigureTables(pageTables, pageFigures);
     }
-    if (pg.ocr) joinCaptionTails(textBlocks, bodySize);
+    if (pg.ocr) {
+      attachDroppedFigDigit(textBlocks);
+      liftOrdinateNote(textBlocks);
+      joinCaptionTails(textBlocks, bodySize);
+    }
     // The closer caption wins. A Fig. line just outside the rules still attaches,
     // and on a scan a short plate number in the top band can reach the drawing under it.
     const captionFor = linkCaptions(textBlocks, [...pageTables, ...pageFigures], bodySize, pg.h, { scan: Boolean(pg.ocr) });

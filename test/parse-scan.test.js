@@ -65,6 +65,29 @@ function cell(t, r, c) {
 
 // ---------------------------------------------------------------- engine on OCR records
 
+test("ocrGraphics copies helper ink onto the page graphics", () => {
+  const ink = [
+    { x0: 60, y0: 80, x1: 180, y1: 200 },
+    { x0: 200, y0: 90, x1: 320, y1: 210 },
+    { x0: 70, y0: 220, x1: 190, y1: 340 },
+    { x0: 210, y0: 230, x1: 330, y1: 350 },
+  ];
+  const g = ocrGraphics({ rules: [], items: [word("Fig.", 70, 400), word("5", 100, 400)], ink }, 400, 500);
+  assert.deepEqual(g.ink, ink);
+  const page = parsePageGeometry({
+    n: 1, w: 400, h: 500, rotation: 0, transform: [1, 0, 0, 1, 0, 0], scan: true, dpi: 300, deskew: 0,
+    fonts: { ocr: { name: "ocr" } },
+    items: [word("Fig.", 70, 400), word("5", 96, 400), word("plate", 120, 400)],
+    rules: [], ink, ops: { fnArray: [], argsArray: [] },
+  }, 1);
+  const d = assembleDocument([page], { numPages: 1 });
+  const figs = d.order.map((id) => d.blocks[id]).filter((b) => b.type === "figure");
+  assert.equal(figs.length, 1);
+  assert.ok(figs[0].bbox[2] >= 320, "the plate hulls the helper ink");
+  const cap = d.blocks[figs[0].caption];
+  assert.match(cap.text, /Fig\. 5/);
+});
+
 test("ocrGraphics turns helper rules into engine rules and one page image", () => {
   const g = ocrGraphics({ rules: [{ x0: 1, y0: 5, x1: 90, y1: 5.4, thick: 0.4 }, { x0: 40, y0: 2, x1: 40.2, y1: 70 }], items: [word("..", 50, 20), word("1.5", 60, 20)] }, 100, 80);
   assert.equal(g.rules[0].axis, "h");

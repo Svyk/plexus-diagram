@@ -83,7 +83,7 @@ export function frameBoxToViewport(bbox, page) {
 }
 
 // Viewport box and size for a stored bbox (frame-aware) or a user-space box (page.userSpace).
-function viewportBox(bbox, page) {
+export function viewportBox(bbox, page) {
   if (page?.userSpace) {
     const box = userBoxToViewport(bbox, page);
     if (!box) return null;

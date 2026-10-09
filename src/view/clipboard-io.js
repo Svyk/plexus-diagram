@@ -123,6 +123,7 @@ export function createClipboardIO({ doc = globalThis.document, root, ownsKeyboar
     if (!parsed) return;
     event.preventDefault();
     if (parsed.kind === "plexus") on.pastePlexus?.(parsed.data, { clone: now() - lastCloneKey <= CLONE_WINDOW_MS });
+    else if (parsed.kind === "card-json") on.pasteCardJson?.(parsed.data);
     else if (parsed.kind === "images") on.pasteImages?.(parsed.files);
     else on.pasteText?.(parsed.entries);
   }, true);

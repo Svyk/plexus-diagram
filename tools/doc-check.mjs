@@ -24,6 +24,8 @@ export const MODULE_FILES = [
   "src/model/status-tags.js",
   "src/model/detect.js",
   "src/model/source-chip.js",
+  "src/model/pdf-pin.js",
+  "src/view/pdf-pin-view.js",
   "src/model/timeline.js",
   "src/view/timeline.js",
   "src/model/landmarks.js",

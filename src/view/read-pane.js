@@ -6,6 +6,7 @@ import { CARD_MIME, PARSE_MIME } from "../model/drop.js";
 import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
 import { cleanPdfTitle, coverModel, parsedDocTitle, parsedTitleLines, pdfFileTitle, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
+import { fracStyle } from "../model/pdf-pin.js";
 import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { fitDecision, fitWidthStep, fitsWidth, pageIndicator, pageTotalText, pdfDocumentFromFiber, pillActions, viewerFromFiber } from "../model/read-pane-model.js";
 import { isTextEntryTarget } from "./cards.js";
@@ -1293,6 +1294,10 @@ export function createReadPane({
   const clearFlash = () => {
     if (flashTimer) { cancelLater(flashTimer); flashTimer = null; }
     for (const part of flashed) {
+      if (part?.classList?.contains?.("pxd-read__pin-flash")) {
+        try { part.remove(); } catch { /* gone */ }
+        continue;
+      }
       part.classList?.remove("pxd-read__mark-flash");
       try { part.style?.removeProperty?.("--pxd-mark-flash"); } catch { /* stub */ }
     }
@@ -1303,6 +1308,22 @@ export function createReadPane({
     if (COLORS.includes(name)) return `var(--pxd-${name}-line, var(--pxd-yellow-line, #ca8a04))`;
     if (/^#[0-9a-fA-F]{3,8}$/.test(name)) return name;
     return "var(--pxd-yellow-line, #ca8a04)";
+  };
+  const flashFrac = (frac) => {
+    const style = fracStyle(frac);
+    const page = live.querySelector?.(".rm-pdf-container .page") || live.querySelector?.(".page");
+    if (!style || !page) return;
+    clearFlash();
+    const mark = doc.createElement("div");
+    mark.className = "pxd-read__pin-flash";
+    mark.style.left = style.left;
+    mark.style.top = style.top;
+    mark.style.width = style.width;
+    mark.style.height = style.height;
+    const hostPage = page.querySelector?.(".canvasWrapper") || page;
+    hostPage.append(mark);
+    flashed = [mark];
+    flashTimer = later(() => { flashTimer = null; clearFlash(); }, FLASH_MS);
   };
   const flashParts = (parts, color) => {
     clearFlash();
@@ -2218,6 +2239,7 @@ export function createReadPane({
       host,
       storage,
       pdfUid: current.cardUid,
+      pdfBlockUid: () => current.blockUid || current.cardUid,
       url: pdfUrl(),
       getPdf,
       jumpPage,
@@ -2455,7 +2477,13 @@ export function createReadPane({
       armSettle();
       armFit();
       const wanted = highlightUidOf(next);
-      if (typeof next.page === "number") jumpPageWhenReady(next.page, wanted ? () => locateHighlight(wanted) : null);
+      const frac = Array.isArray(next.frac) ? next.frac : null;
+      if (typeof next.page === "number") {
+        jumpPageWhenReady(next.page, () => {
+          if (wanted) locateHighlight(wanted);
+          else if (frac) flashFrac(frac);
+        });
+      }
       else if (wanted) locateHighlight(wanted);
       armWatch(current.title);
       paintSwitcher();

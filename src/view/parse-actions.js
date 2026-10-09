@@ -2,6 +2,7 @@
 // { sha256, engine, optsHash, ids, pdfUid, kind }; the session wants converted content.
 
 import { planParseInsert, PARSE_MISSING_TOAST, textCardMarkdown } from "../model/drop.js";
+import { pinSpecFromBlock } from "../model/pdf-pin.js";
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
 import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { parsedTableSize } from "../model/roam-table.js";
@@ -39,6 +40,14 @@ function mergedCells(table) {
 
 function plural(n, one, many) {
   return `${n} ${n === 1 ? one : many}`;
+}
+
+// The first selected block. A section chip's ids start at the heading.
+function pinFor(doc, payload) {
+  if (!payload?.withSource || !doc) return null;
+  const first = selectBlocks(doc, payload.ids)[0];
+  if (!first) return null;
+  return pinSpecFromBlock(first, doc, payload.pdfBlockUid || payload.pdfUid);
 }
 
 // Pure. What the click-to-place preview shows for a chip action, and how wide it is (board px).
@@ -116,7 +125,8 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       const doc = await load(payload);
       if (!doc) return { ok: false, reason: "missing-cache" };
       const { markdown, blockEstimate } = toRoamMarkdown(doc, payload.ids, { footnoteFormat: fnFormat() });
-      const res = await session?.insertParsedBelow?.({ pdfUid: payload.pdfUid, markdown, blockEstimate });
+      const pin = pinFor(doc, payload);
+      const res = await session?.insertParsedBelow?.({ pdfUid: payload.pdfUid, markdown, blockEstimate, ...(pin ? { pin } : {}) });
       if (res?.ok) {
         pick(res.uids);
         const where = res.path === "card" ? "beside the PDF" : "below the PDF";
@@ -132,7 +142,8 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       if (!table) return { ok: false, reason: "empty" };
       const sized = parsedTableSize(table);
       const at = where(payload, sized);
-      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: pageNoteBlocks(doc, table) });
+      const pin = pinFor(doc, payload);
+      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: pageNoteBlocks(doc, table), ...(pin ? { pin } : {}) });
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);
         const merged = mergedCells(table);
@@ -149,9 +160,10 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       if (blocks.length && blocks.every((b) => b?.type === "table")) return actions.insertParsedTable(payload);
       const withImages = await withUploadedImages(doc, payload.ids);
       const plan = planParseInsert(withImages, { ...payload, kind: "blocks", footnoteFormat: fnFormat() });
+      const pin = pinFor(doc, payload);
       if (plan.action === "sections") {
         const at = where(payload, CARD_SIZE);
-        const res = await session?.sendParsedToBoard?.({ ...at, sections: plan.sections });
+        const res = await session?.sendParsedToBoard?.({ ...at, sections: plan.sections, ...(pin ? { pin } : {}) });
         if (res?.ok) {
           pick(res.uids);
           say(`Sent ${plural(plan.sections.length, "card", "cards")} to the board`);
@@ -160,7 +172,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       }
       if (plan.action === "card") {
         const at = where(payload, CARD_SIZE);
-        const res = await session?.insertParsedCard?.({ ...at, markdown: plan.markdown });
+        const res = await session?.insertParsedCard?.({ ...at, markdown: plan.markdown, ...(pin ? { pin } : {}) });
         if (res?.ok) {
           pick(res.uid ? [res.uid] : []);
           say("Sent 1 card to the board");
@@ -189,7 +201,8 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       const withImages = await withUploadedImages(doc, payload.ids);
       const { markdown } = toRoamMarkdown(withImages, payload.ids, { footnoteFormat: fnFormat() });
       const at = where(payload, CARD_SIZE);
-      const res = await session?.insertParsedCard?.({ ...at, markdown });
+      const pin = pinFor(withImages, payload);
+      const res = await session?.insertParsedCard?.({ ...at, markdown, ...(pin ? { pin } : {}) });
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);
         say("Card inserted");

@@ -1,6 +1,7 @@
 // Pure clipboard planning: what a copy puts on the clipboard and how a paste or a subtree clone is turned
 // into Roam creates. No DOM, no Roam calls; the host executes the returned plans.
 import { boundsOf, topLevelOf } from "./board.js";
+import { CARD_JSON_MIME, parseCardJson } from "./pdf-pin.js";
 import { PLEXUS_KEY, edgeString, plainKeys, semanticRef, serializeEdge } from "./schema.js";
 
 export const PLEXUS_MIME = "application/x-plexus-cards";
@@ -56,8 +57,10 @@ export function parseClipboard(data) {
     try {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.v === 1 && Array.isArray(parsed.items)) return { kind: "plexus", data: parsed };
-    } catch { /* fall through to images and text */ }
+    } catch { /* fall through to the card payload, images, and text */ }
   }
+  const card = parseCardJson(get(CARD_JSON_MIME));
+  if (card) return { kind: "card-json", data: card };
   const files = [...(data?.files ?? [])].filter((f) => typeof f?.type === "string" && f.type.startsWith("image/"));
   if (files.length) return { kind: "images", files };
   const entries = parsePastedText(get("text/plain"));

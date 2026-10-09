@@ -1,5 +1,5 @@
 // REG-1. Region and view blocks use the same macro as Roam Plexus.
-// This file does not import that repo. img and view are the kinds we support.
+// This file does not import that repo. img, view, and pdf are the kinds we support.
 // Their kinds parse so a shared ((uid)) is recognised, and they stay unsupported here.
 
 export const CONTAINER_STRING = "{{[[plexus-regions]]}}";
@@ -7,9 +7,9 @@ export const REGION_COMPONENT = "plexus-region";
 
 const ID_RE = /^[A-Za-z0-9_-]+$/;
 const HEAD_RE = /^\s*\{\{\[\[plexus-region\]\]:\s*([^}]*)\}\}(?: ([\s\S]*))?$/;
-const KNOWN_KEYS = new Set(["k", "d", "ids", "pad", "el", "f", "g", "fr", "p", "i", "v"]);
+const KNOWN_KEYS = new Set(["k", "d", "ids", "pad", "el", "f", "g", "fr", "p", "i", "v", "pg"]);
 const ROAM_PLEXUS_KINDS = new Set(["area", "rect", "group", "frame", "cframe", "poly", "imgrect", "imgpoly"]);
-const OURS = new Set(["img", "view"]);
+const OURS = new Set(["img", "view", "pdf"]);
 const DEFAULT_PAD = 10;
 const MAX_IDS = 24;
 
@@ -102,7 +102,18 @@ export function parseRegion(blockString) {
     region.owner = "plexus-diagram";
     if (!drawingUid) return fail(region, "missing d");
     if (!isId(drawingUid)) return fail(region, "bad d");
-    if (kind === "img") {
+    if (kind === "pdf") {
+      if (!args.has("pg")) return fail(region, "missing pg");
+      const rawPg = args.get("pg");
+      if (!/^\d+$/.test(rawPg) || Number(rawPg) < 1) return fail(region, "bad pg");
+      region.pg = Number(rawPg);
+      if (!args.has("f")) return fail(region, "missing f");
+      const parts = args.get("f").split(",");
+      if (parts.length !== 4 || parts.some((x) => x.trim() === "")) return fail(region, "bad f");
+      const f = normalizeFrac(parts.map(Number));
+      if (!f) return fail(region, "bad f");
+      region.f = f;
+    } else if (kind === "img") {
       if (!args.has("f")) return fail(region, "missing f");
       const parts = args.get("f").split(",");
       if (parts.length !== 4 || parts.some((x) => x.trim() === "")) return fail(region, "bad f");
@@ -220,7 +231,12 @@ export function serializeRegion(region) {
   need(OURS.has(kind) || ROAM_PLEXUS_KINDS.has(kind), `unknown kind ${kind}`);
   need(isId(drawingUid), "bad drawingUid");
   const tokens = [`k=${kind}`, `d=${drawingUid}`];
-  if (kind === "img") {
+  if (kind === "pdf") {
+    need(Number.isInteger(region.pg) && region.pg >= 1, "bad pg");
+    const f = normalizeFrac(region.f);
+    need(f, "bad f");
+    tokens.push(`pg=${region.pg}`, `f=${f.join(",")}`);
+  } else if (kind === "img") {
     const f = normalizeFrac(region.f);
     need(f, "bad f");
     tokens.push(`f=${f.join(",")}`);

@@ -465,7 +465,7 @@ test("the engine chip names LlamaParse", () => {
 });
 
 test("LlamaParse route is helper, then the saved relay, then the hosted default", () => {
-  assert.equal(DEFAULT_RELAY_URL, "");
+  assert.equal(DEFAULT_RELAY_URL, "https://plexus-cloud-relay.svyk.workers.dev");
   assert.equal(llamaRoute({ key: "test-cloud-key" }, { state: "ready", engines: ["docling", "ocr", "cloud"] }), "helper");
   assert.equal(llamaRoute({ key: "test-cloud-key", relay: "https://mine.example" }, { state: "ready", engines: ["ocr"] }), "your relay");
   assert.equal(resolveCloudTransport({

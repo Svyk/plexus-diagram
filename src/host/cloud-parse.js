@@ -21,7 +21,7 @@ export const DEFAULT_TIER = "agentic";
 export const DEFAULT_TIMEOUT_MS = 240_000;
 
 // Empty until `npm run relay:deploy`. The orchestrator pastes the workers.dev URL here.
-export const DEFAULT_RELAY_URL = "";
+export const DEFAULT_RELAY_URL = "https://plexus-cloud-relay.svyk.workers.dev";
 
 export const MISTRAL_MODEL = "mistral-ocr-latest";
 export const MISTRAL_URL = "https://api.mistral.ai/v1/ocr";

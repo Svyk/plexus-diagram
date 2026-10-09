@@ -43805,7 +43805,7 @@ var TIER_LABELS = Object.freeze({
 });
 var DEFAULT_TIER = "agentic";
 var DEFAULT_TIMEOUT_MS = 24e4;
-var DEFAULT_RELAY_URL = "";
+var DEFAULT_RELAY_URL = "https://plexus-cloud-relay.svyk.workers.dev";
 var MISTRAL_MODEL = "mistral-ocr-latest";
 var MISTRAL_URL = "https://api.mistral.ai/v1/ocr";
 var MISTRAL_USD_PER_PAGE = 4 / 1e3;

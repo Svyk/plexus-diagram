@@ -16,6 +16,7 @@ pub const EU: &str = "https://api.cloud.eu.llamaindex.ai";
 pub const TIERS: &[&str] = &["fast", "cost_effective", "agentic", "agentic_plus"];
 pub const SIDECAR_CAP: usize = 8 * 1024 * 1024;
 pub const DEFAULT_TIMEOUT_S: f64 = 240.0;
+pub const EXPAND: &str = "expand=items&expand=markdown&expand=usage&expand=images_content_metadata";
 
 const BOUNDARY: &str = "pxdCloud7f3a9c";
 const JSON_CAP: usize = 32 * 1024 * 1024;
@@ -216,6 +217,52 @@ pub struct ParseRequest<'a> {
     pub tier: &'a str,
     pub timeout_s: f64,
     pub base_override: Option<&'a str>,
+    /// `X-Pxd-Options` `pages`, already a LlamaParse `target_pages` string. Empty parses the whole file.
+    pub pages: Option<&'a str>,
+}
+
+/// `pages` from `X-Pxd-Options` → `page_ranges.target_pages`. Empty means the whole PDF.
+pub fn target_pages(value: Option<&Value>) -> Option<String> {
+    let value = value?;
+    match value {
+        Value::String(text) => {
+            let text = text.trim();
+            if text.is_empty() {
+                None
+            } else {
+                Some(text.to_string())
+            }
+        }
+        Value::Number(n) => {
+            let n = n.as_u64()?;
+            if n >= 1 {
+                Some(n.to_string())
+            } else {
+                None
+            }
+        }
+        Value::Array(items) => {
+            let mut parts = Vec::new();
+            for item in items {
+                if let Some(n) = item.as_u64() {
+                    if n >= 1 {
+                        parts.push(n.to_string());
+                    }
+                } else if let Some(text) = item.as_str() {
+                    let text = text.trim();
+                    if !text.is_empty() {
+                        parts.push(text.to_string());
+                    }
+                }
+            }
+            if parts.is_empty() {
+                None
+            } else {
+                Some(parts.join(","))
+            }
+        }
+        _ => None,
+    }
 }
 
 pub fn base_url(region: &str) -> Result<&'static str, CloudError> {
@@ -325,13 +372,19 @@ where
     if cancel.is_set() {
         return Err(CloudError::cancelled());
     }
-    let start_body = serde_json::to_vec(&json!({
+    let mut payload = json!({
         "file_id": file_id,
         "tier": req.tier,
         "version": "latest",
-        "output_options": {"granular_bboxes": ["cell"]},
-    }))
-    .map_err(|_| CloudError::network())?;
+        "output_options": {
+            "granular_bboxes": ["cell"],
+            "images_to_save": ["layout"],
+        },
+    });
+    if let Some(pages) = req.pages.map(str::trim).filter(|text| !text.is_empty()) {
+        payload["page_ranges"] = json!({ "target_pages": pages });
+    }
+    let start_body = serde_json::to_vec(&payload).map_err(|_| CloudError::network())?;
     let created = call_json(
         client,
         "POST",
@@ -394,7 +447,7 @@ where
     let mut result = call_json(
         client,
         "GET",
-        &format!("{base}/api/v2/parse/{job_id}?expand=items&expand=markdown&expand=usage"),
+        &format!("{base}/api/v2/parse/{job_id}?{EXPAND}"),
         &[("Authorization", auth.as_str())],
         None,
         remaining(&mut now)?,
@@ -839,6 +892,7 @@ mod tests {
         mock: &Mock,
         region: &str,
         tier: &str,
+        pages: Option<&str>,
         cancel: &Cancel,
         timeout_s: f64,
         now: impl FnMut() -> f64,
@@ -856,6 +910,7 @@ mod tests {
                 tier,
                 timeout_s,
                 base_override: Some(&mock.base),
+                pages,
             },
             cancel,
             move |event, payload| seen.lock().unwrap().push((event.to_string(), payload)),
@@ -929,6 +984,7 @@ mod tests {
             &mock,
             "eu",
             "agentic",
+            None,
             &cancel,
             DEFAULT_TIMEOUT_S,
             || 0.0,
@@ -957,6 +1013,8 @@ mod tests {
         assert_eq!(sent["tier"], "agentic");
         assert_eq!(sent["version"], "latest");
         assert_eq!(sent["output_options"]["granular_bboxes"], json!(["cell"]));
+        assert_eq!(sent["output_options"]["images_to_save"], json!(["layout"]));
+        assert!(sent.get("page_ranges").is_none());
         assert_eq!(sent["file_id"], "file1");
         let upload = calls
             .iter()
@@ -968,10 +1026,51 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains("boundary=pxdCloud7f3a9c"));
-        assert!(calls
-            .iter()
-            .any(|call| call.path_and_query.contains("expand=items")
-                && call.path_and_query.contains("expand=markdown")));
+        assert!(calls.iter().any(|call| {
+            call.path_and_query.contains("expand=items")
+                && call.path_and_query.contains("expand=markdown")
+                && call.path_and_query.contains("expand=usage")
+                && call.path_and_query.contains("expand=images_content_metadata")
+        }));
+    }
+
+    #[test]
+    fn target_pages_keeps_a_string_and_joins_a_list() {
+        assert_eq!(target_pages(None), None);
+        assert_eq!(target_pages(Some(&json!(""))), None);
+        assert_eq!(target_pages(Some(&json!("4"))), Some("4".into()));
+        assert_eq!(target_pages(Some(&json!("10,11"))), Some("10,11".into()));
+        assert_eq!(target_pages(Some(&json!(4))), Some("4".into()));
+        assert_eq!(
+            target_pages(Some(&json!([10, 11]))),
+            Some("10,11".into())
+        );
+        assert_eq!(target_pages(Some(&json!([]))), None);
+    }
+
+    #[tokio::test]
+    async fn this_page_only_sends_target_pages_and_does_not_omit_them() {
+        let mock = spawn_mock(Script::Immediate).await;
+        let (result, _) = run_against(
+            &mock,
+            "us",
+            "agentic",
+            Some("10,11"),
+            &Cancel::new(),
+            DEFAULT_TIMEOUT_S,
+            || 0.0,
+            instant_sleep,
+        )
+        .await;
+        assert!(result.is_ok());
+        let start = mock
+            .calls()
+            .into_iter()
+            .find(|call| call.method == "POST" && call.path_and_query == "/api/v2/parse")
+            .unwrap();
+        let sent: Value = serde_json::from_slice(&start.body).unwrap();
+        assert_eq!(sent["page_ranges"]["target_pages"], "10,11");
+        assert_eq!(sent["output_options"]["images_to_save"], json!(["layout"]));
     }
 
     #[tokio::test]
@@ -981,6 +1080,7 @@ mod tests {
             &denied,
             "us",
             "fast",
+            None,
             &Cancel::new(),
             DEFAULT_TIMEOUT_S,
             || 0.0,
@@ -997,6 +1097,7 @@ mod tests {
             &credits,
             "us",
             "fast",
+            None,
             &Cancel::new(),
             DEFAULT_TIMEOUT_S,
             || 0.0,
@@ -1018,6 +1119,7 @@ mod tests {
             &mock,
             "us",
             "agentic",
+            None,
             &cancel,
             DEFAULT_TIMEOUT_S,
             || 0.0,
@@ -1056,6 +1158,7 @@ mod tests {
             &mock,
             "us",
             "agentic",
+            None,
             &Cancel::new(),
             10.0,
             move || now_ticks.load(Ordering::Relaxed) as f64,
@@ -1081,6 +1184,7 @@ mod tests {
             &huge,
             "us",
             "fast",
+            None,
             &Cancel::new(),
             DEFAULT_TIMEOUT_S,
             || 0.0,
@@ -1096,6 +1200,7 @@ mod tests {
             &messy,
             "us",
             "fast",
+            None,
             &Cancel::new(),
             DEFAULT_TIMEOUT_S,
             || 0.0,
@@ -1112,6 +1217,7 @@ mod tests {
             &foreign,
             "us",
             "fast",
+            None,
             &Cancel::new(),
             DEFAULT_TIMEOUT_S,
             || 0.0,
@@ -1346,6 +1452,7 @@ mod tests {
             &mock,
             "eu",
             "cost_effective",
+            None,
             &Cancel::new(),
             DEFAULT_TIMEOUT_S,
             || 0.0,

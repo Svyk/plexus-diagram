@@ -7511,10 +7511,12 @@ body.bt-theme-dark .pxd-parse .pxd-parse__block--on,
   100% { opacity: 1; }
 }
 
-/* Cloud confirm. Anchored to the outline. Selection is a border, including in dark mode. No tinted fill. */
+/* Cloud confirm. Anchored to the outline, above it. --pxd-chrome-bg is 4% clear, so the
+   card token sits under it and the outline title cannot show through. Selection is a
+   border, including in dark mode. No tinted fill. */
 .pxd-parse .pxd-cloud-confirm {
   position: absolute;
-  z-index: 6;
+  z-index: 8;
   top: 36px;
   left: 8px;
   right: 8px;
@@ -7527,7 +7529,8 @@ body.bt-theme-dark .pxd-parse .pxd-parse__block--on,
   padding: 12px;
   border: 1px solid var(--pxd-border-strong);
   border-radius: 10px;
-  background: var(--pxd-chrome-bg);
+  background-color: var(--pxd-card, #fff);
+  background-image: linear-gradient(var(--pxd-chrome-bg), var(--pxd-chrome-bg));
   color: var(--pxd-text);
   box-shadow: var(--pxd-shadow);
 }
@@ -7567,13 +7570,28 @@ body.bt-theme-dark .pxd-parse .pxd-parse__block--on,
   cursor: pointer;
 }
 
+.pxd-parse .pxd-cloud-confirm__choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pxd-parse .pxd-cloud-confirm__check {
+  flex: 0 0 1em;
+  color: var(--pxd-link, var(--pxd-blue-line, #2563eb));
+}
+
+.pxd-parse .pxd-cloud-confirm__check[hidden] {
+  display: none;
+}
+
 .pxd-parse .pxd-cloud-confirm button:focus {
   outline: 2px solid var(--pxd-accent);
   outline-offset: 1px;
 }
 
 .pxd-parse .pxd-cloud-confirm__choice--on {
-  border-color: var(--pxd-border-strong);
+  border-color: var(--pxd-link, var(--pxd-blue-line, #2563eb));
   background: transparent;
 }
 

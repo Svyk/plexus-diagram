@@ -92,6 +92,8 @@ test("cloud-run calls LlamaParse on its own host and reports usage credits", asy
         if (init.method === "POST" && href.endsWith("/api/v2/parse")) {
           const body = JSON.parse(init.body);
           assert.equal(body.page_ranges.target_pages, "1,3");
+          assert.deepEqual(body.output_options.images_to_save, ["layout"]);
+          assert.deepEqual(body.output_options.granular_bboxes, ["cell"]);
           return jsonRes(200, { id: "job1", status: "COMPLETED" });
         }
         return jsonRes(200, {

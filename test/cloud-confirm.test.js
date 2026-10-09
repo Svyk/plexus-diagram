@@ -98,6 +98,9 @@ test("the confirm sheet is in the outline, traps focus, and does not keep a key 
     assert.equal(sheet.querySelector("[data-cloud-cache]").textContent, CLOUD_CACHE_NOTE);
     assert.equal(sheet.querySelector("[data-cloud-leaves]").textContent, CLOUD_LEAVES_NOTE);
     assert.equal(sheet.querySelector('[data-tier="agentic"]').getAttribute("aria-checked"), "true");
+    assert.equal(sheet.querySelector('[data-tier="agentic"]').querySelector("[data-cloud-check]").hasAttribute("hidden"), false);
+    assert.equal(sheet.querySelector('[data-tier="fast"]').querySelector("[data-cloud-check]").getAttribute("hidden"), "");
+    assert.equal(sheet.querySelector('[data-tier="agentic"]').querySelector("[data-cloud-check]").textContent, "✓");
     assert.match(sheet.querySelector('[data-tier="fast"]').textContent, /1 credit/);
     assert.match(sheet.querySelector('[data-tier="fast"]').textContent, /\$0\.00125/);
     assert.match(sheet.querySelector('[data-tier="agentic"]').textContent, /10 credits/);
@@ -429,10 +432,75 @@ test("a Mistral 429 with a 0 per minute limit says billing is off", async () => 
   }
 });
 
+test("arrow keys move the selected tier and page scope, and one page hides the scope", async () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  const storage = memory();
+  storage.setItem("pxd-cloud-key", "test-cloud-key");
+  storage.setItem("pxd-cloud-tier", "agentic");
+  try {
+    const view = createParseView({
+      doc: stub.document,
+      storage,
+      pageNow: () => 2,
+      getPdf: async () => ({ numPages: 4, getData: async () => new Uint8Array([1]) }),
+      fetch: async () => jsonRes(401, { detail: "stop" }),
+    });
+    stub.document.body.append(view.element());
+    view.element().querySelector(".pxd-parse__cloud").click();
+    await until(() => view.element().querySelector(".pxd-cloud-confirm"));
+    const sheet = view.element().querySelector(".pxd-cloud-confirm");
+    const send = sheet.querySelector("[data-cloud-send]");
+    const down = send.dispatchEvent({ type: "keydown", key: "ArrowDown" });
+    assert.equal(down.defaultPrevented, true);
+    assert.equal(sheet.querySelector('[data-tier="agentic_plus"]').getAttribute("aria-checked"), "true");
+    assert.equal(sheet.querySelector('[data-tier="agentic"]').getAttribute("aria-checked"), "false");
+    assert.equal(storage.getItem("pxd-cloud-tier"), "agentic_plus");
+    assert.equal(stub.document.activeElement, sheet.querySelector('[data-tier="agentic_plus"]'));
+    sheet.querySelector('[data-tier="agentic_plus"]').dispatchEvent({ type: "keydown", key: "ArrowUp" });
+    assert.equal(sheet.querySelector('[data-tier="agentic"]').getAttribute("aria-checked"), "true");
+    const current = sheet.querySelector('[data-scope="current"]');
+    current.click();
+    assert.equal(current.getAttribute("aria-checked"), "true");
+    current.dispatchEvent({ type: "keydown", key: "ArrowDown" });
+    assert.equal(sheet.querySelector('[data-scope="all"]').getAttribute("aria-checked"), "true");
+    assert.equal(current.getAttribute("aria-checked"), "false");
+    assert.equal(sheet.querySelector('[data-scope="all"]').querySelector("[data-cloud-check]").hasAttribute("hidden"), false);
+    view.dispose();
+  } finally {
+    restore();
+  }
+
+  const one = createDomStub();
+  const restoreOne = one.install();
+  try {
+    const view = createParseView({
+      doc: one.document,
+      storage,
+      pageNow: () => 1,
+      getPdf: async () => ({ numPages: 1, getData: async () => new Uint8Array([1]) }),
+      fetch: async () => jsonRes(401, { detail: "stop" }),
+    });
+    one.document.body.append(view.element());
+    view.element().querySelector(".pxd-parse__cloud").click();
+    await until(() => view.element().querySelector(".pxd-cloud-confirm"));
+    const sheet = view.element().querySelector(".pxd-cloud-confirm");
+    assert.equal(sheet.querySelector("[data-scope]"), null);
+    assert.equal(sheet.querySelector(".pxd-cloud-confirm__scopes"), null);
+    assert.match(sheet.querySelector("[data-cloud-pages]").textContent, /^1 page$/);
+    assert.equal(sheet.textContent.includes("This page only"), false);
+    assert.equal(sheet.textContent.includes("All 1 page"), false);
+  } finally {
+    restoreOne();
+  }
+});
+
 test("the confirm sheet selection is a border, not a fill", async () => {
   const css = await readFile(new URL("../src/css/parse.css", import.meta.url), "utf8");
-  assert.match(css, /\.pxd-cloud-confirm__choice--on \{[^}]*border-color: var\(--pxd-border-strong\)/);
+  assert.match(css, /\.pxd-cloud-confirm__choice--on \{[^}]*border-color: var\(--pxd-link, var\(--pxd-blue-line, #2563eb\)\)/);
   assert.match(css, /\.pxd-cloud-confirm__choice--on \{[^}]*background: transparent/);
+  assert.match(css, /background-color: var\(--pxd-card, #fff\)/);
+  assert.match(css, /background-image: linear-gradient\(var\(--pxd-chrome-bg\), var\(--pxd-chrome-bg\)\)/);
   assert.match(css, /var\(--pxd-chrome-bg\)/);
   assert.equal(CLOUD_LEAVES_NOTE, "The PDF leaves this device");
 });

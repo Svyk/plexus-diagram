@@ -72,7 +72,14 @@ export function openCloudConfirm({
     button.className = "pxd-cloud-confirm__choice";
     button.setAttribute("role", "radio");
     button.setAttribute("data-tier", row.id);
-    button.textContent = row.label;
+    const mark = doc.createElement("span");
+    mark.className = "pxd-cloud-confirm__check";
+    mark.setAttribute("data-cloud-check", "");
+    mark.setAttribute("aria-hidden", "true");
+    mark.textContent = "✓";
+    const label = doc.createElement("span");
+    label.textContent = row.label;
+    button.append(mark, label);
     button.addEventListener("click", (event) => {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -97,23 +104,33 @@ export function openCloudConfirm({
   scopes.setAttribute("role", "radiogroup");
   scopes.setAttribute("aria-label", "Pages");
   const scopeButtons = [];
-  for (const [id, label] of [["current", initial.thisPage], ["all", initial.allPages]]) {
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.className = "pxd-cloud-confirm__choice";
-    button.setAttribute("role", "radio");
-    button.setAttribute("data-scope", id);
-    button.textContent = label;
-    button.addEventListener("click", (event) => {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      chosenScope = id;
-      paint();
-    });
-    scopeButtons.push(button);
-    scopes.append(button);
+  const showScope = initial.pageCount > 1;
+  if (showScope) {
+    for (const [id, label] of [["current", initial.thisPage], ["all", initial.allPages]]) {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.className = "pxd-cloud-confirm__choice";
+      button.setAttribute("role", "radio");
+      button.setAttribute("data-scope", id);
+      const mark = doc.createElement("span");
+      mark.className = "pxd-cloud-confirm__check";
+      mark.setAttribute("data-cloud-check", "");
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = "✓";
+      const text = doc.createElement("span");
+      text.textContent = label;
+      button.append(mark, text);
+      button.addEventListener("click", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        chosenScope = id;
+        paint();
+      });
+      scopeButtons.push(button);
+      scopes.append(button);
+    }
+    sheet.append(scopes);
   }
-  sheet.append(scopes);
 
   const estimate = doc.createElement("p");
   estimate.className = "pxd-cloud-confirm__estimate";
@@ -158,16 +175,38 @@ export function openCloudConfirm({
   function paint() {
     const model = modelNow();
     estimate.textContent = model.estimate;
-    for (const button of tierButtons) {
-      const on = button.getAttribute("data-tier") === model.tier;
+    const mark = (button, on) => {
       button.classList.toggle("pxd-cloud-confirm__choice--on", on);
       button.setAttribute("aria-checked", on ? "true" : "false");
+      const check = button.querySelector?.("[data-cloud-check]");
+      if (!check) return;
+      if (on) check.removeAttribute?.("hidden");
+      else check.setAttribute?.("hidden", "");
+    };
+    for (const button of tierButtons) mark(button, button.getAttribute("data-tier") === model.tier);
+    for (const button of scopeButtons) mark(button, button.getAttribute("data-scope") === model.scope);
+  }
+
+  function choiceButtons(node) {
+    if (tierButtons.includes(node)) return tierButtons;
+    if (scopeButtons.includes(node)) return scopeButtons;
+    return null;
+  }
+
+  function moveChoice(backward, from) {
+    const origin = choiceButtons(from) ? from : doc.activeElement;
+    let buttons = choiceButtons(origin);
+    let index = buttons ? buttons.indexOf(origin) : -1;
+    if (!buttons) {
+      buttons = tierButtons.length ? tierButtons : scopeButtons;
+      if (!buttons.length) return false;
+      index = buttons.findIndex((button) => button.getAttribute("aria-checked") === "true");
     }
-    for (const button of scopeButtons) {
-      const on = button.getAttribute("data-scope") === model.scope;
-      button.classList.toggle("pxd-cloud-confirm__choice--on", on);
-      button.setAttribute("aria-checked", on ? "true" : "false");
-    }
+    if (index < 0) index = 0;
+    const next = buttons[(index + (backward ? -1 : 1) + buttons.length) % buttons.length];
+    if (next && next !== origin) next.click?.();
+    focusEl(next);
+    return true;
   }
 
   function answer() {
@@ -198,6 +237,9 @@ export function openCloudConfirm({
     } else if (event.key === "Tab") {
       event.preventDefault?.();
       cycle(Boolean(event.shiftKey));
+    } else if (event.key === "ArrowDown" || event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      event.preventDefault?.();
+      moveChoice(event.key === "ArrowUp" || event.key === "ArrowLeft", event.target);
     }
   }
 

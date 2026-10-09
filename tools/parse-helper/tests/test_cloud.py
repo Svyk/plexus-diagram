@@ -42,6 +42,8 @@ def _ok_script(region_host):
             sent = json.loads(body)
             assert sent["tier"] == "agentic"
             assert sent["output_options"]["granular_bboxes"] == ["cell"]
+            assert sent["output_options"]["images_to_save"] == ["layout"]
+            assert "page_ranges" not in sent
             return 200, b'{"id":"job1","status":"PENDING"}'
         if method == "GET" and url.endswith("/job1"):
             polls["n"] += 1
@@ -75,6 +77,49 @@ def test_run_llamaparse_uploads_polls_and_attaches_the_sidecar_without_the_key()
     blob = json.dumps(events)
     assert KEY not in blob
     assert any(call["url"].startswith("https://api.cloud.eu.llamaindex.ai") for call in calls)
+    expand = next(call["url"] for call in calls if "expand=items" in call["url"])
+    assert "expand=markdown" in expand
+    assert "expand=usage" in expand
+    assert "expand=images_content_metadata" in expand
+
+
+def test_pages_are_target_pages_and_the_whole_file_omits_them():
+    def script(method, url, headers, body, calls):
+        if url.endswith("/files"):
+            return 200, b'{"id":"file1"}'
+        if method == "POST" and url.endswith("/parse"):
+            sent = json.loads(body)
+            assert sent["page_ranges"]["target_pages"] == "4"
+            assert sent["output_options"]["images_to_save"] == ["layout"]
+            return 200, b'{"id":"job1","status":"COMPLETED"}'
+        if "expand=items" in url:
+            return 200, b'{"items":{"pages":[]}}'
+        return 200, b'{"status":"COMPLETED"}'
+
+    http, _calls = _http(script)
+    run_llamaparse(
+        PDF, api_key=KEY, region="us", tier="agentic", pages="4",
+        on_event=lambda *_a: None, cancel=threading.Event(), http=http,
+        sleep=lambda _d: None, clock=lambda: 0,
+    )
+
+    def whole(method, url, headers, body, calls):
+        if url.endswith("/files"):
+            return 200, b'{"id":"file1"}'
+        if method == "POST" and url.endswith("/parse"):
+            sent = json.loads(body)
+            assert "page_ranges" not in sent
+            return 200, b'{"id":"job1","status":"COMPLETED"}'
+        if "expand=items" in url:
+            return 200, b'{"items":{"pages":[]}}'
+        return 200, b'{"status":"COMPLETED"}'
+
+    http, _calls = _http(whole)
+    run_llamaparse(
+        PDF, api_key=KEY, region="us", tier="agentic", pages="",
+        on_event=lambda *_a: None, cancel=threading.Event(), http=http,
+        sleep=lambda _d: None, clock=lambda: 0,
+    )
 
 
 def test_provider_401_and_402_keep_their_codes():
@@ -156,8 +201,8 @@ def _app(tmp_path: Path, runner):
 def test_cloud_route_auth_key_and_sse_omit_the_provider_key(tmp_path):
     seen = {}
 
-    def runner(pdf, *, api_key, region, tier, on_event, cancel):
-        seen.update(pdf=pdf, api_key=api_key, region=region, tier=tier)
+    def runner(pdf, *, api_key, region, tier, on_event, cancel, pages=None):
+        seen.update(pdf=pdf, api_key=api_key, region=region, tier=tier, pages=pages)
         on_event("progress", {"status": "RUNNING"})
         return {"items": {"pages": []}, "marker": "ok"}
 
@@ -173,7 +218,7 @@ def test_cloud_route_auth_key_and_sse_omit_the_provider_key(tmp_path):
     headers = {
         "Authorization": f"Bearer {TOKEN}",
         "X-Pxd-Cloud-Key": KEY,
-        "X-Pxd-Options": '{"region":"eu","tier":"agentic"}',
+        "X-Pxd-Options": '{"region":"eu","tier":"agentic","pages":"4"}',
     }
     response = client.post("/v1/cloud/parse", headers=headers, content=PDF)
     assert response.status_code == 200
@@ -185,6 +230,7 @@ def test_cloud_route_auth_key_and_sse_omit_the_provider_key(tmp_path):
     assert seen["pdf"] == PDF
     assert seen["region"] == "eu"
     assert seen["tier"] == "agentic"
+    assert seen["pages"] == "4"
     job = "c_" + hashlib.sha256(PDF).hexdigest()[:8]
     assert f'"job": "{job}"' in body or f'"job":"{job}"' in body
 
@@ -193,7 +239,7 @@ def test_delete_cloud_sets_the_cancel_event(tmp_path):
     started = threading.Event()
     saw = {}
 
-    def runner(pdf, *, api_key, region, tier, on_event, cancel):
+    def runner(pdf, *, api_key, region, tier, on_event, cancel, pages=None):
         on_event("progress", {"status": "RUNNING"})
         started.set()
         cancel.wait(3)

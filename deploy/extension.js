@@ -44099,6 +44099,7 @@ init_anydoc_to_parse();
 // src/host/cloud-parse.js
 var CREDIT_USD = 1.25 / 1e3;
 var LAYOUT_CREDITS = 0;
+var LLAMA_EXPAND = "expand=items&expand=markdown&expand=usage&expand=images_content_metadata";
 var CLOUD_CACHE_NOTE = "Free if parsed with the same options in the last 48 h";
 var CLOUD_LEAVES_NOTE = "The PDF leaves this device";
 var MISTRAL_DISABLED_MESSAGE = "Mistral OCR is not enabled for this key's workspace yet (0 requests per minute). Turn on billing for that workspace in console.mistral.ai.";
@@ -44449,7 +44450,7 @@ async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, ti
   if (!provider) throw fail2("bad-response", "cloud parse returned no result");
   return provider;
 }
-async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, pages, signal, onProgress, sleep, now: now3, timeoutMs }) {
+async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, pages, layout = true, signal, onProgress, sleep, now: now3, timeoutMs }) {
   const headers = { Authorization: `Bearer ${apiKey}` };
   if (!transport.direct) headers["X-Pxd-Region"] = region === "eu" ? "eu" : "us";
   const clock = now3;
@@ -44470,11 +44471,13 @@ async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tie
   const fileId = uploadBody?.id;
   if (!fileId) throw fail2("bad-response", "upload did not return a file id");
   const spec = pageSpec(pages);
+  const output = { granular_bboxes: ["cell"] };
+  if (layout !== false) output.images_to_save = ["layout"];
   const payload = {
     file_id: fileId,
     tier,
     version: "latest",
-    output_options: { granular_bboxes: ["cell"] }
+    output_options: output
   };
   if (spec) payload.page_ranges = { target_pages: spec };
   const started = await fetch2(`${transport.url}/api/v2/parse`, {
@@ -44512,7 +44515,7 @@ async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tie
   }
   if (status === "CANCELLED") throw fail2("cancelled", "cancelled", 499);
   if (status !== "COMPLETED") throw fail2("failed", "LlamaParse failed the job", 502);
-  const done = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}?expand=items&expand=markdown&expand=usage`, {
+  const done = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}?${LLAMA_EXPAND}`, {
     headers,
     signal
   });
@@ -44528,6 +44531,7 @@ async function parseCloud({
   region = "us",
   tier = DEFAULT_TIER,
   pages,
+  layout = true,
   confirmed = false,
   signal,
   onProgress,
@@ -44566,6 +44570,7 @@ async function parseCloud({
         region: where,
         tier,
         pages,
+        layout,
         signal,
         onProgress,
         sleep,
@@ -44742,7 +44747,14 @@ function openCloudConfirm({
     button2.className = "pxd-cloud-confirm__choice";
     button2.setAttribute("role", "radio");
     button2.setAttribute("data-tier", row4.id);
-    button2.textContent = row4.label;
+    const mark = doc.createElement("span");
+    mark.className = "pxd-cloud-confirm__check";
+    mark.setAttribute("data-cloud-check", "");
+    mark.setAttribute("aria-hidden", "true");
+    mark.textContent = "✓";
+    const label = doc.createElement("span");
+    label.textContent = row4.label;
+    button2.append(mark, label);
     button2.addEventListener("click", (event) => {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -44768,23 +44780,33 @@ function openCloudConfirm({
   scopes.setAttribute("role", "radiogroup");
   scopes.setAttribute("aria-label", "Pages");
   const scopeButtons = [];
-  for (const [id, label] of [["current", initial.thisPage], ["all", initial.allPages]]) {
-    const button2 = doc.createElement("button");
-    button2.type = "button";
-    button2.className = "pxd-cloud-confirm__choice";
-    button2.setAttribute("role", "radio");
-    button2.setAttribute("data-scope", id);
-    button2.textContent = label;
-    button2.addEventListener("click", (event) => {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      chosenScope = id;
-      paint2();
-    });
-    scopeButtons.push(button2);
-    scopes.append(button2);
+  const showScope = initial.pageCount > 1;
+  if (showScope) {
+    for (const [id, label] of [["current", initial.thisPage], ["all", initial.allPages]]) {
+      const button2 = doc.createElement("button");
+      button2.type = "button";
+      button2.className = "pxd-cloud-confirm__choice";
+      button2.setAttribute("role", "radio");
+      button2.setAttribute("data-scope", id);
+      const mark = doc.createElement("span");
+      mark.className = "pxd-cloud-confirm__check";
+      mark.setAttribute("data-cloud-check", "");
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = "✓";
+      const text3 = doc.createElement("span");
+      text3.textContent = label;
+      button2.append(mark, text3);
+      button2.addEventListener("click", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        chosenScope = id;
+        paint2();
+      });
+      scopeButtons.push(button2);
+      scopes.append(button2);
+    }
+    sheet.append(scopes);
   }
-  sheet.append(scopes);
   const estimate = doc.createElement("p");
   estimate.className = "pxd-cloud-confirm__estimate";
   estimate.setAttribute("data-cloud-estimate", "");
@@ -44825,16 +44847,36 @@ function openCloudConfirm({
   function paint2() {
     const model = modelNow();
     estimate.textContent = model.estimate;
-    for (const button2 of tierButtons) {
-      const on = button2.getAttribute("data-tier") === model.tier;
+    const mark = (button2, on) => {
       button2.classList.toggle("pxd-cloud-confirm__choice--on", on);
       button2.setAttribute("aria-checked", on ? "true" : "false");
+      const check = button2.querySelector?.("[data-cloud-check]");
+      if (!check) return;
+      if (on) check.removeAttribute?.("hidden");
+      else check.setAttribute?.("hidden", "");
+    };
+    for (const button2 of tierButtons) mark(button2, button2.getAttribute("data-tier") === model.tier);
+    for (const button2 of scopeButtons) mark(button2, button2.getAttribute("data-scope") === model.scope);
+  }
+  function choiceButtons(node2) {
+    if (tierButtons.includes(node2)) return tierButtons;
+    if (scopeButtons.includes(node2)) return scopeButtons;
+    return null;
+  }
+  function moveChoice(backward, from) {
+    const origin = choiceButtons(from) ? from : doc.activeElement;
+    let buttons = choiceButtons(origin);
+    let index = buttons ? buttons.indexOf(origin) : -1;
+    if (!buttons) {
+      buttons = tierButtons.length ? tierButtons : scopeButtons;
+      if (!buttons.length) return false;
+      index = buttons.findIndex((button2) => button2.getAttribute("aria-checked") === "true");
     }
-    for (const button2 of scopeButtons) {
-      const on = button2.getAttribute("data-scope") === model.scope;
-      button2.classList.toggle("pxd-cloud-confirm__choice--on", on);
-      button2.setAttribute("aria-checked", on ? "true" : "false");
-    }
+    if (index < 0) index = 0;
+    const next = buttons[(index + (backward ? -1 : 1) + buttons.length) % buttons.length];
+    if (next && next !== origin) next.click?.();
+    focusEl4(next);
+    return true;
   }
   function answer() {
     const model = modelNow();
@@ -44862,6 +44904,9 @@ function openCloudConfirm({
     } else if (event.key === "Tab") {
       event.preventDefault?.();
       cycle(Boolean(event.shiftKey));
+    } else if (event.key === "ArrowDown" || event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      event.preventDefault?.();
+      moveChoice(event.key === "ArrowUp" || event.key === "ArrowLeft", event.target);
     }
   }
   function finish(value) {
@@ -44986,7 +45031,52 @@ function cellsFromHtml(html) {
     }
   });
   const headerRows = rows[0]?.every((cell) => cell.header) ? 1 : 0;
-  return { rows: rows.length, cols, headerRows, cells: placed };
+  return fitCells({ rows: rows.length, cols, headerRows, cells: placed });
+}
+function fitCells(parsed) {
+  if (!parsed) return null;
+  let rows = parsed.rows;
+  let cols = parsed.cols;
+  if (!Number.isInteger(rows) || rows < 0 || !Number.isInteger(cols) || cols < 0) return null;
+  const incoming = [];
+  for (const cell of parsed.cells || []) {
+    const r = cell?.r;
+    const c = cell?.c;
+    let rowSpan = cell?.rowSpan ?? 1;
+    let colSpan = cell?.colSpan ?? 1;
+    if (!Number.isInteger(r) || !Number.isInteger(c) || r < 0 || c < 0) continue;
+    if (!Number.isInteger(rowSpan) || rowSpan < 1) rowSpan = 1;
+    if (!Number.isInteger(colSpan) || colSpan < 1) colSpan = 1;
+    rows = Math.max(rows, r + 1);
+    cols = Math.max(cols, c + 1);
+    incoming.push({ ...cell, r, c, rowSpan, colSpan });
+  }
+  if (!rows || !cols || !incoming.length) return null;
+  const grid = Array.from({ length: rows }, () => Array(cols).fill(false));
+  const hits = (r, c, rowSpan, colSpan) => {
+    for (let dr = 0; dr < rowSpan; dr += 1) {
+      for (let dc = 0; dc < colSpan; dc += 1) {
+        if (grid[r + dr][c + dc]) return true;
+      }
+    }
+    return false;
+  };
+  const cells = [];
+  for (const cell of incoming) {
+    let rowSpan = Math.min(cell.rowSpan, rows - cell.r);
+    let colSpan = Math.min(cell.colSpan, cols - cell.c);
+    while ((rowSpan > 1 || colSpan > 1) && hits(cell.r, cell.c, rowSpan, colSpan)) {
+      if (rowSpan > 1) rowSpan -= 1;
+      else colSpan -= 1;
+    }
+    if (rowSpan < 1 || colSpan < 1 || hits(cell.r, cell.c, rowSpan, colSpan)) continue;
+    for (let dr = 0; dr < rowSpan; dr += 1) {
+      for (let dc = 0; dc < colSpan; dc += 1) grid[cell.r + dr][cell.c + dc] = true;
+    }
+    cells.push({ ...cell, rowSpan, colSpan });
+  }
+  if (!cells.length) return null;
+  return { ...parsed, rows, cols, cells };
 }
 function cellsFromRows(rows) {
   if (!Array.isArray(rows) || !rows.length) return null;
@@ -45007,7 +45097,7 @@ function cellsFromRows(rows) {
       });
     }
   });
-  return { rows: rows.length, cols: width, headerRows: 0, cells };
+  return fitCells({ rows: rows.length, cols: width, headerRows: 0, cells });
 }
 function applyGrounding(table, grounding) {
   const matrix = grounding?.rows;
@@ -45029,6 +45119,99 @@ function groundedTables(pageNumber, pages) {
   const page = (pages || []).find((entry) => entry && entry.page_number === pageNumber && entry.success !== false);
   return (page?.items || []).filter((item) => item?.type === "table");
 }
+var FIG_RE = /^(?:fig(?:ure)?)\.?\s*\d+\b/i;
+function boxLabel(item) {
+  const list = Array.isArray(item?.bbox) ? item.bbox : item?.bbox && typeof item.bbox === "object" ? [item.bbox] : [];
+  for (const raw of list) {
+    if (raw && typeof raw.label === "string" && raw.label.trim()) return raw.label.trim().toLowerCase();
+  }
+  return "";
+}
+function isCaptionItem(item) {
+  if (!item || typeof item !== "object") return false;
+  if (item.type === "header" || item.type === "footer") return false;
+  const label = boxLabel(item);
+  if (label === "header" || label === "footer") return false;
+  if (label === "caption") return true;
+  return FIG_RE.test(plainItem(item));
+}
+function layoutImagesOf(provider) {
+  const images = provider?.images_content_metadata?.images;
+  if (!Array.isArray(images)) return [];
+  return images.filter((image) => {
+    if (!image || typeof image !== "object") return false;
+    if (image.category != null && image.category !== "layout") return false;
+    return Boolean(llamaBox(image.bbox));
+  });
+}
+function pageNumbersOf(pages) {
+  return (pages || []).map((page) => Number(page?.page_number)).filter((n2) => Number.isInteger(n2) && n2 >= 1);
+}
+function layoutImagePage(filename, pageNumbers) {
+  const nums = (pageNumbers || []).map(Number).filter((n3) => Number.isInteger(n3) && n3 >= 1);
+  if (!nums.length) return null;
+  const match = /(?:^|[^\d])page_(\d+)(?=[^\d]|$)/i.exec(String(filename || ""));
+  const n2 = match ? Number(match[1]) : null;
+  if (n2 == null) return nums.length === 1 ? nums[0] : null;
+  const absolute = nums.includes(n2);
+  const relative = n2 >= 1 && n2 <= nums.length;
+  if (absolute && !relative) return n2;
+  if (relative && !absolute) return nums[n2 - 1];
+  if (absolute && relative) return n2;
+  return nums.length === 1 ? nums[0] : null;
+}
+function verticalGap(fig, cand) {
+  const slack = 12;
+  const below = cand[1] - fig[3];
+  const above = fig[1] - cand[3];
+  const belowOk = below >= -slack;
+  const aboveOk = above >= -slack;
+  if (belowOk && (!aboveOk || below <= above)) return { dir: "below", gap: Math.max(0, below) };
+  if (aboveOk) return { dir: "above", gap: Math.max(0, above) };
+  return null;
+}
+function assignCaptions(images, items) {
+  const pairs = /* @__PURE__ */ new Map();
+  const used = /* @__PURE__ */ new Set();
+  const sorted = images.slice().sort((a, b) => (llamaBox(a.bbox)?.bbox[1] || 0) - (llamaBox(b.bbox)?.bbox[1] || 0));
+  for (const image of sorted) {
+    const fig = llamaBox(image.bbox)?.bbox;
+    if (!fig) continue;
+    let best = null;
+    let bestScore = Infinity;
+    for (const item of items) {
+      if (used.has(item)) continue;
+      const cand = llamaBox(item.bbox)?.bbox;
+      if (!cand) continue;
+      const gap = verticalGap(fig, cand);
+      if (!gap) continue;
+      const overlapX2 = cand[2] > fig[0] && cand[0] < fig[2];
+      const score = gap.gap + (gap.dir === "below" ? 0 : 0.5) + (overlapX2 ? 0 : 400);
+      if (score < bestScore) {
+        bestScore = score;
+        best = item;
+      }
+    }
+    if (best) {
+      used.add(best);
+      pairs.set(best, image);
+    }
+  }
+  return pairs;
+}
+function emptyBox(box2) {
+  return !box2 || box2[2] - box2[0] <= 0 || box2[3] - box2[1] <= 0;
+}
+function chartTable(item, block, images) {
+  if (!images.length) return false;
+  if (!emptyBox(block.bbox)) {
+    for (const image of images) {
+      const other = llamaBox(image.bbox)?.bbox;
+      if (other && iou(block.bbox, other) >= 0.15) return true;
+    }
+  }
+  return Boolean(item?.parse_concerns) && /chart/i.test(JSON.stringify(item.parse_concerns));
+}
 function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region = "us" } = {}) {
   const pagesIn = provider?.items?.pages || [];
   const grounded = provider?.grounded_pages || [];
@@ -45042,6 +45225,9 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
     return `${prefix}${n2}`;
   };
   let title = null;
+  const layoutImages = layoutImagesOf(provider);
+  const pageNums = pageNumbersOf(pagesIn);
+  let pageLayout = [];
   const push = (block) => {
     blocks[block.id] = block;
     order.push(block.id);
@@ -45117,6 +45303,11 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
       return block;
     }
     if (type === "image") {
+      const covered = pageLayout.some((image) => {
+        const other = llamaBox(image.bbox)?.bbox;
+        return other && iou(bbox, other) >= 0.5;
+      });
+      if (covered) return null;
       const id = nextId("f");
       const captionText = typeof item.caption === "string" ? item.caption.replace(/\s+/g, " ").trim() : "";
       let captionId = null;
@@ -45182,13 +45373,57 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
       parsed: ok
     });
     if (!ok || !Array.isArray(page.items)) continue;
+    pageLayout = layoutImages.filter((image) => layoutImagePage(image.filename, pageNums) === pageNumber);
+    const assigned = assignCaptions(pageLayout, page.items.filter(isCaptionItem));
+    const paired = new Set(assigned.values());
+    const emitLayout = (image, captionItem) => {
+      const box2 = llamaBox(image?.bbox);
+      if (!box2) return;
+      const id = nextId("f");
+      const block = push({
+        id,
+        type: "figure",
+        page: pageNumber,
+        bbox: box2.bbox,
+        caption: null,
+        image: { kind: "crop", source: "llamaparse" },
+        confidence: box2.confidence == null ? 0.9 : box2.confidence,
+        engine: ENGINE
+      });
+      const text3 = captionItem ? plainItem(captionItem) : "";
+      if (!text3) return;
+      const capBox = llamaBox(captionItem.bbox);
+      const captionId = nextId("c");
+      push({
+        id: captionId,
+        type: "caption",
+        page: pageNumber,
+        bbox: capBox?.bbox || box2.bbox,
+        text: text3,
+        for: id,
+        confidence: capBox?.confidence == null ? block.confidence : capBox.confidence,
+        engine: ENGINE
+      });
+      block.caption = captionId;
+    };
     const tables = [];
     for (const item of page.items) {
+      const image = assigned.get(item);
+      if (image) {
+        emitLayout(image, item);
+        continue;
+      }
       const block = walk2(item, pageNumber);
-      if (block?.type === "table") tables.push(block);
+      if (block?.type === "table") tables.push({ block, item });
+    }
+    for (const image of pageLayout) {
+      if (!paired.has(image)) emitLayout(image, null);
     }
     const groundedRows = groundedTables(pageNumber, grounded);
-    tables.forEach((block, index) => applyGrounding(block, groundedRows[index]?.grounding));
+    tables.forEach(({ block }, index) => applyGrounding(block, groundedRows[index]?.grounding));
+    for (const { block, item } of tables) {
+      if (chartTable(item, block, pageLayout)) block.fromChart = true;
+    }
   }
   const doc = {
     schema: SCHEMA2,

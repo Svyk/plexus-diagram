@@ -4,8 +4,11 @@
 // here writes the graph, and importing this module fetches nothing.
 
 export const CREDIT_USD = 1.25 / 1000;
-// Measured 2026-10-09: Agentic billed 10 credits per page (62 pages). Layout was not billed.
+// Measured 2026-10-09 without images_to_save: Agentic billed 10 credits per page.
+// This client now also asks for layout images. Whether that changes the credit
+// count was not remeasured.
 export const LAYOUT_CREDITS = 0;
+export const LLAMA_EXPAND = "expand=items&expand=markdown&expand=usage&expand=images_content_metadata";
 export const CLOUD_CACHE_NOTE = "Free if parsed with the same options in the last 48 h";
 export const CLOUD_LEAVES_NOTE = "The PDF leaves this device";
 export const MISTRAL_DISABLED_MESSAGE = "Mistral OCR is not enabled for this key's workspace yet (0 requests per minute). Turn on billing for that workspace in console.mistral.ai.";
@@ -410,7 +413,7 @@ async function helperParse({ fetch, transport, bytes, apiKey, region, tier, page
   return provider;
 }
 
-async function relayParse({ fetch, transport, bytes, apiKey, region, tier, pages, signal, onProgress, sleep, now, timeoutMs }) {
+async function relayParse({ fetch, transport, bytes, apiKey, region, tier, pages, layout = true, signal, onProgress, sleep, now, timeoutMs }) {
   const headers = { Authorization: `Bearer ${apiKey}` };
   if (!transport.direct) headers["X-Pxd-Region"] = region === "eu" ? "eu" : "us";
   const clock = now;
@@ -431,11 +434,13 @@ async function relayParse({ fetch, transport, bytes, apiKey, region, tier, pages
   const fileId = uploadBody?.id;
   if (!fileId) throw fail("bad-response", "upload did not return a file id");
   const spec = pageSpec(pages);
+  const output = { granular_bboxes: ["cell"] };
+  if (layout !== false) output.images_to_save = ["layout"];
   const payload = {
     file_id: fileId,
     tier,
     version: "latest",
-    output_options: { granular_bboxes: ["cell"] },
+    output_options: output,
   };
   if (spec) payload.page_ranges = { target_pages: spec };
   const started = await fetch(`${transport.url}/api/v2/parse`, {
@@ -472,7 +477,7 @@ async function relayParse({ fetch, transport, bytes, apiKey, region, tier, pages
   }
   if (status === "CANCELLED") throw fail("cancelled", "cancelled", 499);
   if (status !== "COMPLETED") throw fail("failed", "LlamaParse failed the job", 502);
-  const done = await fetch(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}?expand=items&expand=markdown&expand=usage`, {
+  const done = await fetch(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}?${LLAMA_EXPAND}`, {
     headers,
     signal,
   });
@@ -489,6 +494,7 @@ export async function parseCloud({
   region = "us",
   tier = DEFAULT_TIER,
   pages,
+  layout = true,
   confirmed = false,
   signal,
   onProgress,
@@ -512,7 +518,7 @@ export async function parseCloud({
     }
     if (transport.kind === "relay") {
       const provider = await relayParse({
-        fetch: fetchFn, transport, bytes, apiKey: key, region: where, tier, pages, signal, onProgress, sleep, now, timeoutMs,
+        fetch: fetchFn, transport, bytes, apiKey: key, region: where, tier, pages, layout, signal, onProgress, sleep, now, timeoutMs,
       });
       return { provider, transport: "relay" };
     }

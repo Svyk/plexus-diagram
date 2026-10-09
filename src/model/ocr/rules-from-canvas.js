@@ -125,6 +125,62 @@ export function rulesFromCanvas(gray, width, height, scale, { minLenPt = 18, fil
   return fills.length ? out.filter((r) => !fills.some((f) => insideFill(r, f))) : out;
 }
 
+// Connected ink that is not a straight rule: curves, sketches, a gage outline.
+// Downsampled to about one pixel per point. Word boxes are punched out so body
+// text does not become part of the drawing. Returns boxes in points.
+export function inkBoxesFromCanvas(gray, width, height, scale, { words = [] } = {}) {
+  if (!gray || width < 8 || height < 8 || !(scale > 0)) return [];
+  const step = Math.max(1, Math.round(scale));
+  const sw = Math.floor(width / step);
+  const sh = Math.floor(height / step);
+  if (sw < 8 || sh < 8) return [];
+  const g = new Uint8Array(sw * sh);
+  for (let y = 0; y < sh; y++) {
+    const src = y * step * width;
+    const row = y * sw;
+    for (let x = 0; x < sw; x++) g[row + x] = gray[src + x * step];
+  }
+  const mask = inkMask(g, sw, sh);
+  const pt = step / scale;
+  for (const w of words) {
+    const x0 = w.transform ? w.transform[4] : w.x0;
+    const ww = w.width ?? ((w.x1 ?? 0) - (w.x0 ?? 0));
+    const y0 = w.y0;
+    const y1 = w.y1;
+    if (!(ww > 0) || !(y1 > y0) || ww > 80 || y1 - y0 > 36) continue;
+    const a = Math.max(0, Math.floor((x0 - 0.6) / pt));
+    const b = Math.min(sw - 1, Math.ceil((x0 + ww + 0.6) / pt));
+    const c = Math.max(0, Math.floor((y0 - 0.4) / pt));
+    const d = Math.min(sh - 1, Math.ceil((y1 + 0.4) / pt));
+    for (let y = c; y <= d; y++) mask.fill(0, y * sw + a, y * sw + b + 1);
+  }
+  let closed = morph1d(mask, sw, sh, 3, true, true);
+  closed = morph1d(closed, sw, sh, 3, false, true);
+  closed = morph1d(closed, sw, sh, 3, true, false);
+  closed = morph1d(closed, sw, sh, 3, false, false);
+  const pageArea = sw * sh;
+  const out = [];
+  for (const comp of labelComponents(closed, sw, sh)) {
+    const bw = comp.x1 - comp.x0 + 1;
+    const bh = comp.y1 - comp.y0 + 1;
+    if (comp.area < 12) continue;
+    if (Math.max(bw, bh) < 8 && comp.area < 24) continue;
+    if (bw * bh >= 0.85 * pageArea) continue;
+    const bwPt = bw * pt;
+    const bhPt = bh * pt;
+    // A margin speck must not pull the drawing's hull across the page.
+    if (bwPt * bhPt < 48 && Math.max(bwPt, bhPt) < 16) continue;
+    out.push({
+      x0: round2(comp.x0 * pt),
+      y0: round2(comp.y0 * pt),
+      x1: round2((comp.x1 + 1) * pt),
+      y1: round2((comp.y1 + 1) * pt),
+    });
+  }
+  out.sort((a, b) => (b.x1 - b.x0) * (b.y1 - b.y0) - (a.x1 - a.x0) * (a.y1 - a.y0));
+  return out.slice(0, 400);
+}
+
 // A rule strictly inside a fill across its axis and within it along its axis. Real borders
 // split a fill (they are another shade), so they sit on fill edges, never strictly inside.
 function insideFill(r, f, m = 1) {

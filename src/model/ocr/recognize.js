@@ -4,7 +4,7 @@
 
 import { boxesFromProb, dominantAngle } from "./db-boxes.js";
 import { cropRgb, detResize, grayFromRgb, nchwNormalize, padWhite, recResize, resizeRgb, rotateRgb } from "./image.js";
-import { fillsFromCanvas, inkGlyph, otsuThreshold, rulesFromCanvas } from "./rules-from-canvas.js";
+import { fillsFromCanvas, inkBoxesFromCanvas, inkGlyph, otsuThreshold, rulesFromCanvas } from "./rules-from-canvas.js";
 import { bucketConf, ctcDecode, ctcText, round2, snapOcrItems, wordItem, wordsFromCtc } from "./words-from-ctc.js";
 import { dashRuns, inkRows, joinNumberWords, localMask, segmentLine, sizeFromInk, snapWords } from "./word-split.js";
 import { acceptOrphanRead, blobBaseline, coverMask, dashFromShape, orphanBlobs } from "./orphans.js";
@@ -37,7 +37,7 @@ function throwIfAborted(signal) {
   if (signal?.aborted) throw aborted();
 }
 
-function pageRecord(n, items, rules, w, h, dpi, deskew, fills = []) {
+function pageRecord(n, items, rules, w, h, dpi, deskew, fills = [], ink = []) {
   return {
     n,
     w: round2(w),
@@ -51,6 +51,7 @@ function pageRecord(n, items, rules, w, h, dpi, deskew, fills = []) {
     items,
     rules,
     fills,
+    ink,
     ops: { fnArray: [], argsArray: [] },
     engine: "ppocr-web",
   };
@@ -404,7 +405,8 @@ export async function preparePageImage({
   const items = snapOcrItems(raw);
   const frame = { rgb: image, width: w, height: h, dpi };
   await polishDirty(items, frame, page, runRec, dict, signal);
-  return { record: pageRecord(page, items, rules, ptW, ptH, dpi, deskew, fills), rgb: image, width: w, height: h, dpi };
+  const ink = inkBoxesFromCanvas(gray, w, h, scaleX, { words: items });
+  return { record: pageRecord(page, items, rules, ptW, ptH, dpi, deskew, fills, ink), rgb: image, width: w, height: h, dpi };
 }
 
 // A first read of a ruling-line fragment often comes back as "C0" or "ODA". Read that word

@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 
 import { OP } from "../src/model/parse/rules.js";
 import { assembleDocument, parsePageGeometry } from "../src/model/parse/index.js";
-import { demoteFalseCaptions, drawingSheetPage, findFigures, rasterScanPage } from "../src/model/parse/figures.js";
+import { demoteFalseCaptions, drawingSheetPage, figCaptionKey, findFigures, normalizeFigSpelling, rasterScanPage } from "../src/model/parse/figures.js";
+import { absorbFigureTables, figureLabels } from "../src/model/parse/index.js";
 
 const H = 792;
 const W = 612;
@@ -400,4 +401,124 @@ test("a drawing sheet keeps each FIG label as a caption, including a reversed 2.
   assert.ok(caps.some((t) => /^FIG\.?\s*2A/.test(t)), `FIG.2A caption: ${caps.join(" | ")}`);
   assert.ok(caps.some((t) => /^FIG\.?\s*3/.test(t)), `reversed FIG caption: ${caps.join(" | ")}`);
   assert.equal(ofType(d, "figure").length, 2);
+});
+
+test("OCR spellings of a figure line are captions", () => {
+  assert.equal(normalizeFigSpelling("F1g. 2"), "Fig. 2");
+  assert.equal(normalizeFigSpelling("FIG,2"), "FIG. 2");
+  assert.equal(figCaptionKey("Fig.2 The chart"), "2");
+  assert.equal(figCaptionKey("Figs. 5 & 6"), null);
+  assert.equal(figCaptionKey("Figure 5.—Distribution of pressure on 8-inch cylinder at sections 9, 10, 11, and 12"), "5");
+  assert.equal(figCaptionKey("FiGune 5.--Distribution"), "5");
+  assert.equal(normalizeFigSpelling("Fig. l. Showing the springs"), "Fig. 1. Showing the springs");
+  const spelled = doc([page([
+    item("F1g. 2 Chart of the sample", 80, H - 318),
+  ], { images: [[80, 120, 400, 300]] })]);
+  const cap = ofType(spelled, "caption");
+  const fig = ofType(spelled, "figure");
+  assert.equal(cap.length, 1);
+  assert.equal(cap[0].for, fig[0].id);
+  const comma = doc([page([
+    item("FIG,2 Chart of the sample", 80, H - 318),
+  ], { images: [[80, 120, 400, 300]] })]);
+  assert.equal(ofType(comma, "caption")[0].for, ofType(comma, "figure")[0].id);
+});
+
+test("a Fig. line just outside the rules links, and a closer caption is not stolen", () => {
+  const beside = doc([page([
+    item("Fig. 4", 410, H - 220),
+    item("notes", 80, H - 400),
+  ], { images: [[80, 140, 400, 340]] })]);
+  const cap = ofType(beside, "caption");
+  assert.equal(cap.length, 1, `caption: ${cap.map((c) => c.text).join(" | ")}`);
+  assert.equal(cap[0].text, "Fig. 4");
+  assert.equal(cap[0].for, ofType(beside, "figure")[0].id);
+  const pair = doc([page([
+    item("Fig. 1", 80, H - 40),
+    item("Fig. 1 The springs and the axes.", 80, H - 248),
+    item("Fig. 2 The mirrors.", 80, H - 518),
+  ], { images: [[70, 90, 400, 230], [70, 280, 420, 500]] })]);
+  const caps = ofType(pair, "caption");
+  const figs = ofType(pair, "figure");
+  assert.equal(figs.length, 2);
+  const top = figs.find((f) => f.bbox[1] < 250);
+  const bot = figs.find((f) => f.bbox[1] >= 250);
+  const linked = new Map(caps.filter((c) => c.for).map((c) => [c.for, c.text]));
+  assert.match(linked.get(top.id) || "", /springs/);
+  assert.match(linked.get(bot.id) || "", /mirrors/);
+});
+
+test("sparse ink on one plate is one figure, and two captions stay apart", () => {
+  const top = Array.from({ length: 8 }, (_, i) => ({ x0: 60 + (i % 4) * 70, y0: 80 + Math.floor(i / 4) * 50, x1: 100 + (i % 4) * 70, y1: 120 + Math.floor(i / 4) * 50 }));
+  const bot = Array.from({ length: 8 }, (_, i) => ({ x0: 60 + (i % 4) * 70, y0: 430 + Math.floor(i / 4) * 50, x1: 100 + (i % 4) * 70, y1: 470 + Math.floor(i / 4) * 50 }));
+  const cap = (text, x, y) => text.split(" ").map((t, i) => word(t, x + i * 36, y, x + i * 36 + 32, y + 12, 10));
+  const one = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [...top, ...bot] },
+    words: cap("Fig. 3 Sketches of ice", 70, 560),
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(one.figures.length, 1);
+  assert.ok(one.figures[0].bbox[1] <= 80, "the plate reaches the upper sketches");
+  assert.ok(one.figures[0].bbox[3] >= 470, "the plate reaches the lower sketches");
+  assert.ok(one.figures[0].bbox[3] >= 560, "the plate reaches its caption");
+  assert.ok(one.figures[0].bbox[3] < H - 8, "the plate stops at the caption");
+  const two = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [...top, ...bot] },
+    words: [...cap("Fig. 5 upper chart", 70, 250), ...cap("Fig. 6 lower chart", 70, 560)],
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(two.figures.length, 2, "two captioned charts stay two");
+  const upper = two.figures.find((f) => f.bbox[1] < 200);
+  const lower = two.figures.find((f) => f.bbox[1] >= 200);
+  assert.ok(upper.bbox[3] < lower.bbox[1] + 4, "the plates do not swallow each other");
+  assert.ok(upper.bbox[3] < 430, "Fig. 5 stops before the lower chart");
+  const bare = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [...top, ...bot] },
+    words: [...cap("Fig.", 400, 40), ...cap("Fig. 3 Sketches of ice", 70, 560)],
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(bare.figures.length, 1, "a header that lost its digit does not split the plate");
+  const mention = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [...top, ...bot] },
+    words: cap("see Fig. 3 on the next page of this note", 70, 400),
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(mention.figures.length, 0, "a body mention of a figure is not a plate");
+  const header = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [...top, ...bot] },
+    words: cap("Note No. 315 Fig. 3", 70, 36),
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(header.figures.length, 1, "a short header that ends in Fig. 3 is the plate caption");
+});
+
+test("a plate absorbs the tick table inside it and leaves a table of names", () => {
+  const plate = { fromPlate: true, bbox: [40, 80, 500, 640] };
+  const ticks = { type: "table", bbox: [80, 200, 460, 520], rows: 10, cols: 6, cells: Array.from({ length: 12 }, (_, i) => ({ text: i % 2 ? "0.2" : "—" })) };
+  const names = {
+    type: "table", bbox: [80, 120, 400, 400], rows: 8, cols: 4,
+    cells: ["Disease", "Amebiasis", "Anthrax", "Cholera", "Mumps", "Smallpox", "Measles", "Typhoid", "1980", "2.38"].map((text) => ({ text })),
+  };
+  const tables = [ticks];
+  absorbFigureTables(tables, [plate]);
+  assert.equal(tables.length, 0, "ticks inside the plate are the drawing");
+  const kept = [names];
+  absorbFigureTables(kept, [plate]);
+  assert.equal(kept.length, 1, "a name table that fills the plate stays");
+  const ruled = {
+    type: "table", bbox: [80, 160, 460, 560], rows: 14, cols: 5,
+    cells: [
+      ...Array.from({ length: 6 }, () => ({ text: "Diameter of outlet tube d" })),
+      ...Array.from({ length: 10 }, (_, i) => ({ text: i % 2 ? "0.1654" : "8.059" })),
+    ],
+  };
+  const ruledTables = [ruled];
+  absorbFigureTables(ruledTables, [plate]);
+  assert.equal(ruledTables.length, 1, "a ruled table of labels and numbers stays");
+  const labels = {
+    bbox: [80, 300, 500, 420], rows: 4, cols: 3,
+    cells: Array.from({ length: 12 }, (_, i) => ({ r: Math.floor(i / 3), c: i % 3, text: i % 3 ? "Formation" : "on round wire" })),
+  };
+  assert.equal(figureLabels(labels, [{ fromPlate: true, bbox: [40, 80, 560, 640] }]), true);
+  assert.equal(figureLabels(labels, [{ bbox: [40, 80, 560, 640] }]), false);
 });

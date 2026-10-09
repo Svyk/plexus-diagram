@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { boxesFromProb, dominantAngle } from "../src/model/ocr/db-boxes.js";
 import { rotateRgb } from "../src/model/ocr/image.js";
 import { MODEL_FILES, SCHEMA } from "../src/model/ocr/manifest.js";
-import { fillsFromCanvas, inkGlyph, rulesFromCanvas } from "../src/model/ocr/rules-from-canvas.js";
+import { fillsFromCanvas, inkBoxesFromCanvas, inkGlyph, rulesFromCanvas } from "../src/model/ocr/rules-from-canvas.js";
 import { ctcText, snapOcrItems, wordsFromCtc } from "../src/model/ocr/words-from-ctc.js";
 import { createOcrWeb, cropTopBand } from "../src/host/ocr-web.js";
 
@@ -120,6 +120,25 @@ function fillPage(width, height) {
   const rect = (x0, y0, x1, y1, v) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) gray[y * width + x] = v; };
   return { gray, rect };
 }
+
+test("inkBoxesFromCanvas keeps a curve and punches out a word", () => {
+  const width = 400;
+  const height = 240;
+  const scale = 4;
+  const { gray, rect } = fillPage(width, height);
+  for (let i = 0; i < 80; i++) rect(40 + i * 3, 40 + Math.round(12 * Math.sin(i / 8)), 46 + i * 3, 52 + Math.round(12 * Math.sin(i / 8)), 0);
+  rect(300, 40, 360, 70, 0);
+  const t0 = performance.now();
+  const boxes = inkBoxesFromCanvas(gray, width, height, scale, {
+    words: [{ transform: [10, 0, 0, 10, 300 / scale, 0], width: 60 / scale, y0: 40 / scale, y1: 70 / scale }],
+  });
+  const ms = performance.now() - t0;
+  assert.ok(ms < 100, `ink pass ${ms.toFixed(1)} ms`);
+  assert.ok(boxes.length >= 1, JSON.stringify(boxes));
+  assert.ok(boxes.every((b) => b.x0 > 5), `word ink was punched: ${JSON.stringify(boxes)}`);
+  const curve = boxes.find((b) => b.x1 - b.x0 > 30);
+  assert.ok(curve, `curve box: ${JSON.stringify(boxes)}`);
+});
 
 test("fillsFromCanvas finds a dark header and a light zebra row with text on them", () => {
   const width = 400;

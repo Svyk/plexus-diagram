@@ -18,7 +18,7 @@ const REVERSED_FIG_RE = /^\d+[A-Za-z]?\s*\.?\s*fig(?:ure)?\.?$/i;
 const CAPTION_SPLIT_GAP = 8;
 const ANCHOR_SEP = 48;
 
-export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new Set(), words = [], bodySize = 10, pageW = 612, pageH = 792, ruleSegments = [], pageTextChars = null }) {
+export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new Set(), words = [], bodySize = 10, pageW = 612, pageH = 792, ruleSegments = [], pageTextChars = null, plates = false }) {
   const prims = [];
   for (const img of graphics.images || []) {
     if (img.x1 - img.x0 < IMAGE_MIN || img.y1 - img.y0 < IMAGE_MIN) continue;
@@ -39,6 +39,15 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
     const clipped = clipBox(b, pageW, pageH);
     if (!clipped) continue;
     prims.push({ ...clipped, kind: "box", n: 1 });
+  }
+  // Raster ink is not clustered with rules. A table's strokes would become a false
+  // figure. coverPlates groups the ink, and only when a figure line is on the page.
+  const inkBoxes = [];
+  for (const b of graphics.ink || []) {
+    const clipped = clipBox(b, pageW, pageH);
+    if (!clipped) continue;
+    if ((clipped.x1 - clipped.x0) * (clipped.y1 - clipped.y0) >= 0.9 * pageW * pageH) continue;
+    inkBoxes.push({ ...clipped, kind: "ink", n: 1 });
   }
   // Rules not consumed by a lattice table (chart axes, grid lines) count toward drawings.
   for (const seg of ruleSegments) {
@@ -78,6 +87,20 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
   for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWords);
   unionPanels(figures, lines, bodySize, pageW, pageH);
   for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWords);
+  if (plates) {
+    coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes);
+    // Labels grow the plate. Words already inside stay free so a real table on the same page can still form.
+    for (const fig of figures) {
+      if (!fig.fromPlate) continue;
+      growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWords);
+      for (const line of lines) {
+        if (line.y1 < fig.y0 - 1 || line.y0 > fig.y1 + 1) continue;
+        const overlap = Math.min(line.x1, fig.x1) - Math.max(line.x0, fig.x0);
+        if (overlap < 0.5 * (line.x1 - line.x0)) continue;
+        for (const w of line.words) if (w.x0 >= fig.x0 - 1 && w.x1 <= fig.x1 + 1) used.delete(w);
+      }
+    }
+  }
   const kept = [];
   for (const fig of figures) {
     const box = clipBox(fig, pageW, pageH);
@@ -86,7 +109,7 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
     const area = (fig.x1 - fig.x0) * (fig.y1 - fig.y0);
     // A cluster that covers the page on a text page is not a figure. A single
     // page image (a drawing sheet) is decided by the caller and kept.
-    if (!fig.pageImage && area >= 0.7 * pageW * pageH && textChars >= 180) continue;
+    if (!fig.pageImage && !fig.fromPlate && area >= 0.7 * pageW * pageH && textChars >= 180) continue;
     fig.bbox = [round(fig.x0), round(fig.y0), round(fig.x1), round(fig.y1)];
     delete fig.pageImage;
     kept.push(fig);
@@ -136,9 +159,9 @@ export function demoteFalseCaptions(blocks, bodySize, figures = []) {
     return gap <= 3 * bodySize;
   });
   for (const b of blocks) {
-    if (b.type === "caption" && /^fig/i.test(b.text || "") && (/\.{4,}|…{2,}|·{4,}/.test(b.text))) b.type = "para";
+    if (b.type === "caption" && /^fig/i.test(normalizeFigSpelling(b.text || "")) && (/\.{4,}|…{2,}|·{4,}/.test(b.text))) b.type = "para";
   }
-  const caps = blocks.filter((b) => b.type === "caption" && /^fig/i.test(b.text || ""));
+  const caps = blocks.filter((b) => b.type === "caption" && /^fig/i.test(normalizeFigSpelling(b.text || "")));
   caps.sort((a, b) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0);
   let run = [];
   const flush = () => {
@@ -335,9 +358,34 @@ function allowGrowWord(w, line, ctx) {
   return true;
 }
 
+// OCR on a plate often writes "F1g. 2", "FIG,2", or "Fig.2". The caption regex sees "Fig. 2".
+export function normalizeFigSpelling(text) {
+  let t = String(text || "").replace(/\s+/g, " ").trim();
+  t = t.replace(/\bF[1l|]g/g, "Fig").replace(/\bf[1l|]g/g, "fig");
+  t = t.replace(/\bfigu[nr]e\b/gi, (m) => (m[0] === "f" ? "figure" : "Figure"));
+  t = t.replace(/\b([A-Za-z]{2,})\s*,\s*(?=\d)/g, "$1. ");
+  // A plate number whose digit came back as a letter: "Fig. l" / "Fig. I."
+  t = t.replace(/\b((?:fig(?:ure)?|plates?)\.?\s+)[lI|](?=\s|$|[.:])/gi, "$11");
+  return t;
+}
+
+// The number that belongs to the figure word, not a later "8-inch" or a section
+// list. A range ("Figs. 5 & 6") is not a splitter. A bare "Fig." has no number.
+export function figCaptionKey(text) {
+  const t = normalizeFigSpelling(text);
+  const rev = /^(\d+)\s*\.?\s*(?:fig(?:ure)?|plates?)\.?$/i.exec(t);
+  if (rev) return rev[1];
+  const m = /^((?:fig(?:ure)?s?|plates?)\.?)\s*(\d+[A-Za-z]?)?/i.exec(t);
+  if (!m) return null;
+  if (!m[2]) return "";
+  const rest = t.slice(m[0].length);
+  if (/^figs|^plates/i.test(m[1]) && /^[\s.,:&-]*(?:and\s+)?\d+/i.test(rest)) return null;
+  return m[2].replace(/[A-Za-z]$/, "");
+}
+
 function lineIsCaption(text) {
-  const t = String(text || "").trim();
-  if (CAPTION_RE.test(t) || /^fig(?:ure)?\.?\s*$/i.test(t) || REVERSED_FIG_RE.test(t)) return true;
+  const t = normalizeFigSpelling(text);
+  if (CAPTION_RE.test(t) || figCaptionKey(t) != null || /^fig(?:ure)?\.?\s*$/i.test(t) || REVERSED_FIG_RE.test(t)) return true;
   // "Figure" followed by a missing glyph or a bare number, with no other words.
   return /^fig(?:ure)?\.?\s+(\d+[A-Za-z]?[:.]?|[^\p{L}\p{N}]{1,4})$/iu.test(t);
 }
@@ -772,6 +820,185 @@ export function splitSharedCaptions(lines) {
     while (i + 1 < lines.length && consumed.has(lines[i + 1])) i++;
   }
   return { lines: out, gutters };
+}
+
+function boxArea(b) {
+  const w = (b.x1 ?? b.bbox?.[2]) - (b.x0 ?? b.bbox?.[0]);
+  const h = (b.y1 ?? b.bbox?.[3]) - (b.y0 ?? b.bbox?.[1]);
+  return Math.max(0, w) * Math.max(0, h);
+}
+
+function hullOf(items) {
+  if (!items.length) return null;
+  return {
+    x0: Math.min(...items.map((p) => p.x0)),
+    y0: Math.min(...items.map((p) => p.y0)),
+    x1: Math.max(...items.map((p) => p.x1)),
+    y1: Math.max(...items.map((p) => p.y1)),
+  };
+}
+
+// Share of `inner` that sits inside `outer`. Boxes are {x0,y0,x1,y1}.
+function insideFrac(inner, outer) {
+  const area = boxArea(inner);
+  if (area <= 0) return 0;
+  const ox = Math.min(inner.x1, outer.x1) - Math.max(inner.x0, outer.x0);
+  const oy = Math.min(inner.y1, outer.y1) - Math.max(inner.y0, outer.y0);
+  if (ox <= 0 || oy <= 0) return 0;
+  return (ox * oy) / area;
+}
+
+function proseLine(line) {
+  const words = String(line.text || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length < 8) return false;
+  return words.filter((w) => /[A-Za-z]{3,}/.test(w)).length >= 4;
+}
+
+// Caption lines that name one figure. A "Figs. 5 & 6" range is not one of them.
+function plateCaptions(lines, pageH) {
+  const out = [];
+  for (const line of lines) {
+    const text = normalizeFigSpelling(line.text);
+    let key = figCaptionKey(text);
+    if (key == null) {
+      // "Note No. 315 Fig. 3" — the plate number sits at the end of a short header.
+      // A body sentence that mentions a figure is not a plate caption.
+      const words = text.split(/\s+/);
+      const at = words.findIndex((w) => /^fig/i.test(w));
+      const header = line.y1 <= 0.18 * pageH;
+      if (header && at > 0 && words.length <= 12) key = figCaptionKey(words.slice(at).join(" "));
+    }
+    if (key == null) continue;
+    out.push({ ...line, key, text });
+  }
+  // A header that lost its digit ("Fig.") must not split the plate that still
+  // has "Fig. 3" under the drawing.
+  const numbered = out.filter((c) => c.key !== "");
+  return numbered.length ? numbered : out;
+}
+
+// A fragment belongs to the caption under it. A caption above costs extra, so a
+// chart between Fig. 5 and Fig. 6 stays with Fig. 6.
+function nearestPlateCaption(prim, caps) {
+  const cy = (prim.y0 + prim.y1) / 2;
+  const cx = (prim.x0 + prim.x1) / 2;
+  // The caption under the ink wins. A caption above is only the fallback,
+  // so the chart between Fig. 5 and Fig. 6 stays with Fig. 6.
+  const below = caps.filter((c) => c.y0 >= cy - 4);
+  const pool = below.length ? below : caps;
+  let best = null;
+  let bestD = Infinity;
+  for (const cap of pool) {
+    const gapY = cap.y0 >= cy - 4 ? Math.max(0, cap.y0 - cy) : Math.max(0, cy - cap.y1);
+    const xGap = cx < cap.x0 ? cap.x0 - cx : cx > cap.x1 ? cx - cap.x1 : 0;
+    const dist = gapY + xGap * 0.25;
+    if (dist < bestD) { bestD = dist; best = cap; }
+  }
+  return best;
+}
+
+function proseBetween(fig, cap, lines) {
+  const top = Math.min(fig.y1, cap.y0);
+  const bot = Math.max(fig.y1, cap.y0);
+  if (bot - top < 4) return false;
+  for (const line of lines) {
+    if (!proseLine(line)) continue;
+    const cy = (line.y0 + line.y1) / 2;
+    if (cy <= top || cy >= bot) continue;
+    const ox = Math.min(line.x1, Math.max(fig.x1, cap.x1)) - Math.max(line.x0, Math.min(fig.x0, cap.x0));
+    if (ox > 12) return true;
+  }
+  return false;
+}
+
+// Pull the box toward its caption when only the chart's labels sit in the gap
+// (an ordinate row, not a paragraph). Stop short of the caption line.
+function extendTowardCaption(fig, cap, lines, bodySize, pageH) {
+  if (!cap) return;
+  if (cap.y1 <= fig.y0 + 2) {
+    const gap = fig.y0 - cap.y1;
+    if (gap > 2 && gap <= Math.max(3 * bodySize, 36) && !proseBetween(fig, cap, lines)) fig.y0 = cap.y1 + 2;
+    return;
+  }
+  const gap = cap.y0 - fig.y1;
+  const limit = Math.max(8 * bodySize, 0.2 * pageH);
+  if (gap <= 2 || gap > limit || proseBetween(fig, cap, lines)) return;
+  fig.y1 = Math.max(fig.y1, cap.y1);
+  const fw = fig.x1 - fig.x0;
+  const cw = cap.x1 - cap.x0;
+  const ox = Math.min(fig.x1, cap.x1) - Math.max(fig.x0, cap.x0);
+  if (fw > 0 && cw <= 1.5 * fw && ox > 0) {
+    fig.x0 = Math.min(fig.x0, cap.x0);
+    fig.x1 = Math.max(fig.x1, cap.x1);
+  }
+}
+
+// Short rule fragments and raster ink spread over one plate become one figure.
+// Two captions with different numbers stay two figures (a propeller page's
+// Fig. 5 and Fig. 6). Fragments that already fill their plate are left as they are.
+function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = []) {
+  let ink = [...prims.filter((p) => p.kind === "rule" || p.kind === "shape"), ...inkBoxes];
+  const inkOnly = ink.filter((p) => p.kind === "ink");
+  if (inkOnly.length) {
+    const drawn = hullOf(inkOnly);
+    const padX = Math.max(36, 0.06 * pageW);
+    const padY = Math.max(18, 0.04 * pageH);
+    const near = ink.filter((p) => p.kind === "ink" || (p.x1 >= drawn.x0 - padX && p.x0 <= drawn.x1 + padX && p.y1 >= drawn.y0 - padY && p.y0 <= drawn.y1 + padY));
+    if (near.length >= 4) ink = near;
+  }
+  if (ink.length < 4) return;
+  const caps = plateCaptions(lines, pageH);
+  // Ink with no figure line is a table rule or a speck, not a plate.
+  if (!caps.length) return;
+  const groups = new Map();
+  for (const prim of ink) {
+    let key = "plate";
+    if (caps.length) {
+      const keys = new Set(caps.map((c) => c.key));
+      if (keys.size <= 1) key = [...keys][0];
+      else {
+        const near = nearestPlateCaption(prim, caps);
+        if (!near) continue;
+        key = near.key;
+      }
+    }
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(prim);
+  }
+  const pageArea = pageW * pageH;
+  for (const [key, items] of groups) {
+    if (items.length < 6 && !items.some((p) => p.kind === "ink")) continue;
+    const hull = hullOf(items);
+    if (!hull) continue;
+    const w = hull.x1 - hull.x0;
+    const h = hull.y1 - hull.y0;
+    const area = w * h;
+    if (w < 48 || h < 32 || area < 0.025 * pageArea || area > 0.92 * pageArea) continue;
+    const drawings = figures.filter((f) => f.kind !== "image");
+    const inside = drawings.filter((f) => insideFrac(f, hull) >= 0.5);
+    const insideArea = inside.reduce((n, f) => n + boxArea(f), 0);
+    const mine = caps.filter((c) => c.key === key);
+    const cap = mine.filter((c) => c.y0 >= hull.y1 - 8).sort((a, b) => a.y0 - b.y0)[0]
+      || mine.filter((c) => c.y1 <= hull.y0 + 8).sort((a, b) => b.y1 - a.y1)[0]
+      || mine[0]
+      || null;
+    if (inside.length && insideArea >= 0.55 * area) {
+      for (const f of inside) {
+        f.x0 = Math.min(f.x0, hull.x0); f.y0 = Math.min(f.y0, hull.y0);
+        f.x1 = Math.max(f.x1, hull.x1); f.y1 = Math.max(f.y1, hull.y1);
+        f.fromPlate = true;
+        extendTowardCaption(f, cap, lines, bodySize, pageH);
+      }
+      continue;
+    }
+    for (const f of inside) {
+      const at = figures.indexOf(f);
+      if (at >= 0) figures.splice(at, 1);
+    }
+    const plate = { ...hull, kind: "drawing", count: items.length, pageImage: false, fromPlate: true };
+    extendTowardCaption(plate, cap, lines, bodySize, pageH);
+    figures.push(plate);
+  }
 }
 
 export function clusterBoxes(items, gap) {

@@ -23,6 +23,7 @@ import { createResurface } from "./view/resurface-panel.js";
 import { closeOpenWhyPopovers } from "./view/why-pop.js";
 import { createCardCache } from "./model/card-cache.js";
 import { imageSrc } from "./model/export.js";
+import { imageRegionFrac, polygonClipPath } from "./model/image-region.js";
 import { parseRegion } from "./model/regions.js";
 import { boardsFromRefs, PIN_BOARDS_QUERY, pinOpenFallback, pinOpenPlan, pinPdfUrl, pxdPinTarget } from "./model/pdf-pin.js";
 import { pdfMacroUrl } from "./model/pdf.js";
@@ -2030,14 +2031,19 @@ export async function installPlexusDiagram({
     let text = "";
     try { text = host.blockString?.(entry.uid) || ""; } catch { return; }
     const region = parseRegion(text);
-    if (!region || region.owner !== "plexus-diagram" || region.supported !== true) return;
-    if (region.kind === "img") {
+    const imageKind = region && !region.error && (
+      (region.owner === "plexus-diagram" && region.supported === true && region.kind === "img")
+      || region.kind === "imgpoly" || region.kind === "imgrect"
+    );
+    if (!imageKind && (region?.owner !== "plexus-diagram" || region?.supported !== true)) return;
+    if (region.kind === "img" || region.kind === "imgpoly" || region.kind === "imgrect") {
       let hit = null;
       try { hit = host.showOnBoard?.(region.drawingUid) || null; } catch { hit = null; }
       if (!hit?.boardUid || !hit.cardUid) return;
       if (hit.boardUid !== currentUid(rec) && hit.boardUid !== rec.uid) return;
       rec.shown = entry;
-      try { rec.view.applyShow?.({ kind: "img", f: region.f, cardUid: hit.cardUid }); } catch { /* view gone */ }
+      const shown = imageRegionFrac(region);
+      try { rec.view.applyShow?.({ kind: "img", f: shown ? [shown.rx, shown.ry, shown.rw, shown.rh] : region.f, p: region.p, cardUid: hit.cardUid }); } catch { /* view gone */ }
       return;
     }
     if (region.kind !== "view") return;
@@ -2175,7 +2181,8 @@ export async function installPlexusDiagram({
       deepLinkTo(target.pageUid, regionUid);
       return;
     }
-    openOutlineImage(target.pageUid, region.drawingUid, region.f);
+    const shown = imageRegionFrac(region);
+    openOutlineImage(target.pageUid, region.drawingUid, shown ? [shown.rx, shown.ry, shown.rw, shown.rh] : region.f);
   }
 
   function openViewTarget(region, regionUid, shiftKey) {
@@ -2251,9 +2258,12 @@ export async function installPlexusDiagram({
         pic.style.top = "0";
         pic.style.width = `${box.w}px`;
         pic.style.height = `${box.h}px`;
+        const clip = region.p ? polygonClipPath(region.p) : "";
+        if (clip) pic.style.clipPath = clip;
         preview.append(pic);
       }
-      const hole = holeRect(box, region.f);
+      const shown = imageRegionFrac(region);
+      const hole = holeRect(box, shown ? [shown.rx, shown.ry, shown.rw, shown.rh] : region.f);
       if (hole) {
         const veil = (x, y, w, h) => {
           if (!(w > 0) || !(h > 0)) return;
@@ -2383,7 +2393,9 @@ export async function installPlexusDiagram({
     let text = "";
     try { text = host.blockString?.(uid) || ""; } catch { return; }
     const region = parseRegion(text);
-    if (!region || region.owner !== "plexus-diagram" || region.supported !== true) return;
+    const ours = Boolean(region && region.owner === "plexus-diagram" && region.supported === true && !region.error);
+    const plexusImage = Boolean(region && !region.error && (region.kind === "imgpoly" || region.kind === "imgrect"));
+    if (!ours && !plexusImage) return;
     if (region.kind === "pdf") {
       if (settings[SETTING_IDS.regionsInline] === false) return;
       region.uid = uid;
@@ -2431,7 +2443,9 @@ export async function installPlexusDiagram({
       if (handle.el) regionCrops.set(button, () => { handle.destroy(); regionCrops.delete(button); });
       return;
     }
-    if (region.kind !== "img" && region.kind !== "view") return;
+    if (region.kind !== "img" && region.kind !== "imgpoly" && region.kind !== "imgrect" && region.kind !== "view") return;
+    const box = imageRegionFrac(region);
+    if (box && !region.f) region.f = [box.rx, box.ry, box.rw, box.rh];
     // Off leaves Roam's button and skips the crop. View maps stay.
     if (region.kind !== "view" && settings[SETTING_IDS.regionsInline] === false) return;
     const delayMs = tooltipDelay(settings[SETTING_IDS.tooltipDelay]);

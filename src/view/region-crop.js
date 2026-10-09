@@ -1,6 +1,7 @@
 // REG-4. One crop beside a region button. The button stays in the DOM so unload can show it again.
 // REG-5 / REG-7. The same span opens on click and shows one hover popover.
 
+import { polygonClipInBox } from "../model/image-region.js";
 import { drawViewMap, viewMapModel } from "./minimap-svg.js";
 import { openHoverPopover } from "./region-open.js";
 
@@ -187,7 +188,7 @@ function nextSibling(node) {
   return at >= 0 ? list[at + 1] || null : null;
 }
 
-function applyFrame(frame, img, frac, maxH) {
+function applyFrame(frame, img, frac, maxH, points) {
   const box = cropFrame(frac, img.naturalWidth, img.naturalHeight, maxH);
   if (!box) return false;
   frame.style.width = `${box.frameW}px`;
@@ -196,6 +197,8 @@ function applyFrame(frame, img, frac, maxH) {
   img.style.height = `${box.imgH}px`;
   img.style.left = `${box.left}px`;
   img.style.top = `${box.top}px`;
+  const clip = polygonClipInBox(fracParts(frac), points);
+  if (clip) frame.style.clipPath = clip;
   return true;
 }
 
@@ -239,7 +242,7 @@ export function mountRegionCrop({ doc = globalThis.document, button, region, fil
       const cacheKey = key || `crop-${span.id || Math.random()}`;
       key = cacheKey;
       img.src = takeUrl(cacheKey, file);
-      const paint = () => applyFrame(frame, img, region.f, maxH);
+      const paint = () => applyFrame(frame, img, region.f || region.frac, maxH, region.p);
       if (img.complete && img.naturalWidth) paint();
       else img.addEventListener("load", paint, { once: true });
       img.addEventListener("error", () => { dropUrl(key); key = ""; showMissing(); }, { once: true });

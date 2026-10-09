@@ -1090,6 +1090,19 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   vector-effect: non-scaling-stroke;
 }
 
+.pxd-region-pen {
+  fill: transparent;
+  stroke: var(--pxd-border-strong, #1f2937);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+
+.pxd-root--dark .pxd-region-pen,
+.bp3-dark .pxd-region-pen,
+.rm-dark-theme .pxd-region-pen {
+  stroke: var(--pxd-border-strong, #fff);
+}
+
 /* ------------------------------------------------------------------ chrome */
 
 .pxd-chrome {

@@ -132,7 +132,13 @@ export function createClipboardIO({ doc = globalThis.document, root, ownsKeyboar
   };
 
   listen(doc, "copy", (event) => { if (active(event)) copy(event); }, true);
-  listen(doc, "cut", (event) => { if (active(event) && copy(event, true)) on.cutDone?.(); }, true);
+  listen(doc, "cut", (event) => {
+    if (on.emptyEdgeLabel?.(event)) {
+      if (copy(event, true)) on.cutDone?.();
+      return;
+    }
+    if (active(event) && copy(event, true)) on.cutDone?.();
+  }, true);
   listen(win, "keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key).toLowerCase() === "v") lastCloneKey = now();
   }, true);

@@ -536,7 +536,7 @@ test("loading the pin modules does not call pdf.js", () => {
   assert.ok(at > 0);
   assert.equal(feature.slice(0, at).includes("getDocument"), false);
   const pdfAt = feature.indexOf('if (region.kind === "pdf")');
-  const imgAt = feature.indexOf('if (region.kind !== "img" && region.kind !== "view")');
+  const imgAt = feature.indexOf('if (region.kind !== "img" && region.kind !== "imgpoly" && region.kind !== "imgrect" && region.kind !== "view")');
   assert.ok(pdfAt > 0 && pdfAt < imgAt);
   assert.match(feature.slice(pdfAt, imgAt), /regionsInline\] === false/);
   assert.equal(pinPdfUrl(""), "");

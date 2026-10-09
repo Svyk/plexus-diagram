@@ -1090,6 +1090,19 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   vector-effect: non-scaling-stroke;
 }
 
+.pxd-region-pen {
+  fill: transparent;
+  stroke: var(--pxd-border-strong, #1f2937);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+
+.pxd-root--dark .pxd-region-pen,
+.bp3-dark .pxd-region-pen,
+.rm-dark-theme .pxd-region-pen {
+  stroke: var(--pxd-border-strong, #fff);
+}
+
 /* ------------------------------------------------------------------ chrome */
 
 .pxd-chrome {
@@ -10051,6 +10064,24 @@ body.roam-body.dark .pxd-root.pxd-region-pop button,
   pointer-events: auto;
 }
 
+.pxd-region-hit {
+  opacity: 0;
+}
+
+.pxd-item:hover .pxd-region-hit,
+.pxd-item--selected .pxd-region-hit,
+.pxd-region-hit--hot,
+.pxd-region-hit--flash,
+.pxd-region-hit--on {
+  opacity: 1;
+}
+
+.pxd-region-hit--poly {
+  border: none;
+  color: var(--pxd-border-strong, #1f2937);
+  background: transparent;
+}
+
 .pxd-region-hit--hot,
 .pxd-region-hit--flash {
   border-color: var(--pxd-accent, hsl(175 85% 24%));
@@ -10103,10 +10134,26 @@ body.roam-body.dark .pxd-root.pxd-region-pop button,
 }
 
 .pxd-root .pxd-region-caption,
-.pxd-root .pxd-region-confirm {
+.pxd-root .pxd-region-confirm,
+.pxd-root .pxd-region-mode {
   box-sizing: border-box;
   border: 1px solid var(--pxd-border, #d0d7de);
   color: var(--pxd-text, inherit);
+  background: transparent;
+}
+
+.pxd-root .pxd-region-modes {
+  display: flex;
+  gap: 4px;
+}
+
+.pxd-root .pxd-region-mode[aria-pressed="true"] {
+  border-color: var(--pxd-border-strong, #1f2937);
+  background: transparent;
+}
+
+.pxd-root .pxd-region-pen {
+  color: var(--pxd-border-strong, #1f2937);
   background: transparent;
 }
 

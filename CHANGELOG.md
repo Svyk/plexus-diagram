@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.10.0 — 2026-10-09
+
+Draw a region freehand, delete an arrow cleanly, read PDFs with LlamaParse, and read old scans far better on your own Mac.
+
+- **Image regions.** Regions sit exactly on the picture, even on a tall card with empty space below the image, and stay there after a redraw, resize or zoom. Draw around a part of an image with the pen (press P while marking, or pick Pen): the outline follows your hand and is saved in the freehand format Roam Plexus also reads. An arrow to a region enters the picture and stops on the region's edge, and hovering or selecting that arrow outlines its region in blue.
+- **Deleting an arrow cleans up.** Deleting an arrow (Delete, Backspace in its empty label, the toolbar trash, the right-click menu or Cut) also deletes the region it made, when nothing else uses that region. One ⌘Z brings both back.
+- **Arrow toolbar.** The toolbar for a selected arrow is about 290 px wide instead of 800: direction, colour, label and delete stay on the bar; style, width and the rest open from small menus. It sits clear of both cards the arrow connects.
+- **LlamaParse (cloud).** Read with LlamaParse sends a PDF to LlamaParse with your own key, after a confirm that shows the tier, the page count and the cost (Agentic is 10 credits, about $0.0125, a page; re-reading within 48 hours is free). Without a local helper it goes through a relay that stores nothing. Plexus keeps LlamaParse's tables and text and uses its own figure boxes where it has read the page, which scored better than LlamaParse alone in our tests. Mistral OCR is there as a second, no-install choice.
+- **Local helper.** The default helper is now a 15 MB program (was 1.1 GB) that reads scans with Apple Vision as well as the old one did. Docling stays available as an add-on (`install.sh --docling`). A beta High accuracy read (`install.sh --docling --vlm`, about 2 GB of models) adds a layout model and PaddleOCR-VL for tables.
+- **Old scans.** Typewritten and hand-ruled tables, hand-drawn plates and their captions, two-column pages, small-caps titles, patent drawing sheets and faded typewriting all read much better: on our set of 1900–1950 technical scans, figures found went from 0.49 to 0.98 and text errors from 6% to about 2%.
+- **Fixes:** the High accuracy read never replaces a table with a worse one; sideways margin titles are not headings; titles never fall back to "PDF" after a cloud read.
+
 ## 3.9.0 — 2026-10-08
 
 Link back to the PDF, copy the way you mean it, and point arrows at anything: a cell, a row, a region of an image, a PDF pin, or another arrow.

@@ -10,6 +10,8 @@
 import { LEXICON_FILE, MODEL_FILES, ORT_FILES, SCHEMA, ENGINE } from "../model/ocr/manifest.js";
 import { createOcrWeb, renderPdfPage } from "./ocr-web.js";
 import { setTitleLexicon } from "../model/title-cap.js";
+import { buildLines } from "../model/parse/lines.js";
+import { titleFromBand } from "../model/parse/title.js";
 
 export const DEVICE_OCR_BYTES = [...Object.values(ORT_FILES), ...Object.values(MODEL_FILES), LEXICON_FILE].reduce((n, f) => n + f.bytes, 0);
 const MB = Math.round(DEVICE_OCR_BYTES / (1024 * 1024));
@@ -102,6 +104,25 @@ export function createDeviceOcr({ source = null, env = globalThis, dpi = 300, cr
     return { schema: SCHEMA, engine: ENGINE, pages: out };
   }
 
+  // Top band of page 1, only when the models are already cached and the PDF is already open.
+  // Never downloads models and never fetches the file. "" when either is missing.
+  async function readBandTitle({ getPdf = null, signal = null, fraction = 0.18 } = {}) {
+    if (signal?.aborted) return "";
+    const st = await status();
+    if (st.state !== "ready") return "";
+    let pdf = null;
+    try { pdf = typeof getPdf === "function" ? await getPdf() : null; } catch { return ""; }
+    if (!pdf || typeof pdf.getPage !== "function") return "";
+    currentPdf = pdf;
+    let got = null;
+    try { got = await web().ocr({ pages: [1], signal, band: fraction }); }
+    catch (error) { if (error?.name === "AbortError") throw error; return ""; }
+    const page = (got?.pages || [])[0];
+    if (!page?.items?.length) return "";
+    const { lines } = buildLines(page.items, { transform: page.transform || [1, 0, 0, 1, 0, 0], fonts: page.fonts || {} });
+    return titleFromBand(lines) || "";
+  }
+
   // Doubtful-cell re-read at higher zoom on the same source. Never downloads: without cached
   // models it answers nothing, so an automatic read cannot start a fetch.
   async function readCells({ cells = [], url = "", getPdf = null, signal = null } = {}) {
@@ -142,7 +163,7 @@ export function createDeviceOcr({ source = null, env = globalThis, dpi = 300, cr
     return warmJob;
   }
 
-  return { status, download, cancel, read, readCells, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
+  return { status, download, cancel, read, readCells, readBandTitle, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
 }
 
 let shared = null;

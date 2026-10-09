@@ -4,7 +4,7 @@ import test from "node:test";
 import { join } from "node:path";
 
 import { FIX, parseFile } from "./parse-engine-fixtures.js";
-import { findPageTitle } from "../src/model/parse/title.js";
+import { findPageTitle, titleFromBand } from "../src/model/parse/title.js";
 import { inlineUnlinkedRefs, lineTextWithRefs } from "../src/model/parse/blocks.js";
 import { parsedDocTitle } from "../src/model/pdf.js";
 import { isJunkTitleText } from "../src/model/title-cap.js";
@@ -86,6 +86,10 @@ test("findPageTitle: biggest type wins, ties go to bold then higher, needs 3 wor
   assert.equal(findPageTitle([{ n: 1, free: [ban, big, short] }], { bodySize: 10 }), "A Long Paper Title");
   assert.equal(findPageTitle([{ n: 1, free: [short] }, { n: 2, free: [ban, big] }], { bodySize: 10 }), "A Long Paper Title");
   assert.equal(findPageTitle([{ n: 1, free: [big], ocr: true }], { bodySize: 10 }), "");
+  const band = { ...lineOf([word("A", 40, 18), word("Mathematical", 70, 18), word("Theory", 160, 18)]), size: 18, base: 40, x0: 40, x1: 240, bold: false };
+  assert.equal(titleFromBand([band]), "A Mathematical Theory");
+  assert.equal(titleFromBand([]), "");
+  assert.equal(titleFromBand([{ ...lineOf([word("only", 40, 10), word("two", 70, 10)]), size: 10, base: 40, x0: 40, x1: 100 }]), "");
 });
 
 test("report.pdf: author line marks sit between the right words as plain superscripts", async () => {

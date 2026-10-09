@@ -14,6 +14,40 @@ function fakeEnv({ fetches = [], stored = new Set() } = {}) {
   };
 }
 
+test("readBandTitle reads the open page only when models are cached, and never fetches", async () => {
+  const fetches = [];
+  const pdf = { getPage: async () => ({}) };
+  const cold = createDeviceOcr({
+    env: fakeEnv({ fetches }),
+    source: { cached: async () => false, ocr: async () => { throw new Error("should not ocr"); } },
+  });
+  assert.equal(await cold.readBandTitle({ getPdf: async () => pdf, url: "https://x.test/shannon_1948.pdf" }), "");
+  const calls = [];
+  const ready = createDeviceOcr({
+    env: fakeEnv({ fetches }),
+    source: {
+      cached: async () => true,
+      ocr: async (opts) => {
+        calls.push(opts);
+        return {
+          pages: [{
+            transform: [1, 0, 0, 1, 0, 0],
+            fonts: {},
+            items: [{ str: "A Mathematical Theory", transform: [18, 0, 0, 18, 40, 40], width: 220, height: 18, fontName: "ocr" }],
+          }],
+        };
+      },
+    },
+  });
+  assert.equal(await ready.readBandTitle({ getPdf: async () => pdf }), "A Mathematical Theory");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].band, 0.18);
+  assert.deepEqual(calls[0].pages, [1]);
+  assert.equal(await ready.readBandTitle({ getPdf: async () => null }), "");
+  assert.equal(calls.length, 1);
+  assert.deepEqual(fetches, []);
+});
+
 test("constructing the device source and asking its status fetch nothing", async () => {
   const fetches = [];
   const env = fakeEnv({ fetches });

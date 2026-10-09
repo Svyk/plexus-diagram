@@ -50,3 +50,10 @@ export function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
   }
   return "";
 }
+
+// Lines from a top-band read of a scan, as an ordinary page (not flagged ocr), so the same
+// title rule applies. bodySize stays the print body (about 10 pt) when the band is mostly the title.
+export function titleFromBand(lines, { bodySize = 10 } = {}) {
+  if (!lines?.length) return "";
+  return findPageTitle([{ n: 1, free: lines }], { bodySize }) || "";
+}

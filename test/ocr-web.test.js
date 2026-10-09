@@ -8,7 +8,7 @@ import { rotateRgb } from "../src/model/ocr/image.js";
 import { MODEL_FILES, SCHEMA } from "../src/model/ocr/manifest.js";
 import { fillsFromCanvas, inkGlyph, rulesFromCanvas } from "../src/model/ocr/rules-from-canvas.js";
 import { ctcText, snapOcrItems, wordsFromCtc } from "../src/model/ocr/words-from-ctc.js";
-import { createOcrWeb } from "../src/host/ocr-web.js";
+import { createOcrWeb, cropTopBand } from "../src/host/ocr-web.js";
 
 function logitsFor(classesByFrame, classes) {
   const time = classesByFrame.length;
@@ -16,6 +16,21 @@ function logitsFor(classesByFrame, classes) {
   classesByFrame.forEach((cls, t) => { logits[t * classes + cls] = 8; });
   return { logits, time, classes };
 }
+
+test("cropTopBand keeps the top fraction of a page render", () => {
+  const rgb = new Uint8Array(100 * 50 * 3);
+  rgb[0] = 7;
+  const cut = cropTopBand({ rgb, width: 100, height: 50, pointW: 200, pointH: 100, dpi: 300 }, 0.2);
+  assert.equal(cut.width, 100);
+  assert.equal(cut.height, 10);
+  assert.equal(cut.pointH, 20);
+  assert.equal(cut.pointW, 200);
+  assert.equal(cut.rgb.length, 100 * 10 * 3);
+  assert.equal(cut.rgb[0], 7);
+  const same = { rgb, width: 100, height: 50 };
+  assert.equal(cropTopBand(same, 0), same);
+  assert.equal(cropTopBand(same, 1), same);
+});
 
 test("ctc words split on a real space and on a comma the dict cannot emit", () => {
   const spaced = logitsFor([1, 3, 2], 4);

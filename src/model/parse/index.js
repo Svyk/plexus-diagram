@@ -5,7 +5,7 @@ import { buildLines, dominantRotation, lineBox, makeLine, mul, round } from "./l
 import { extractGraphics, luminanceOf } from "./rules.js";
 import { findLatticeTables, looksLikeChart } from "./lattice.js";
 import { baselineRows, detectStreamRuns, tableFromBand } from "./stream.js";
-import { demoteFalseCaptions, drawingSheetPage, findFigures, rasterScanPage } from "./figures.js";
+import { demoteFalseCaptions, drawingSheetPage, findFigures, peelFigLabels, rasterScanPage, sheetRegions, splitSharedCaptions } from "./figures.js";
 import { findFurniture, normalizeFurniture } from "./furniture.js";
 import { findPageTitle } from "./title.js";
 import { applyNumbering, bodySizeOf, CAPTION_RE, headingClasses, headingLevel, refineBodyHeadingLevels } from "./headings.js";
@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 8;
+export const PARSE_REV = 9;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -31,7 +31,7 @@ const now = () => (typeof performance !== "undefined" && performance.now ? perfo
 // A caption line may carry a missing-glyph number ("Figure" plus a private-use char).
 function isCaptionText(text) {
   const raw = String(text || "").replace(/[^\p{L}\p{N}.: ]/gu, " ").replace(/\s+/g, " ").trim();
-  return CAPTION_RE.test(raw) || /^fig(?:ure)?\.?\s*$/i.test(raw);
+  return CAPTION_RE.test(raw) || /^fig(?:ure)?\.?\s*$/i.test(raw) || /^\d+[A-Za-z]?\s*\.?\s*fig(?:ure)?\.?$/i.test(raw);
 }
 
 function yieldTick() {
@@ -111,11 +111,24 @@ export function parsePageGeometry(data, n) {
     for (const s of band.segs) usedRules.add(s);
     tables.push(t);
   }
-  const drawing = drawingSheetPage({ images: graphics.images, lines, tables, pageW: w, pageH: h, textChars });
+  const drawing = drawingSheetPage({ images: graphics.images, lines, tables, shapes: graphics.shapes, pageW: w, pageH: h, textChars });
+  if (drawing) lines = peelFigLabels(lines);
+  const figWords = lines.flatMap((l) => l.words);
   const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => imageArea(im) < 0.85 * pageArea) } : graphics;
-  const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: words.filter((w) => !used.has(w)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars });
-  for (const w of figs.used) used.add(w);
-  const figures = figs.figures.map((f) => ({ ...f, page: n }));
+  const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars });
+  for (const wd of figs.used) used.add(wd);
+  let figures = figs.figures.map((f) => ({ ...f, page: n }));
+  if (drawing) {
+    const regions = sheetRegions(lines, w, h);
+    if (regions.length) {
+      figures = regions.map((r) => ({
+        bbox: [round(r.x0), round(r.y0), round(r.x1), round(r.y1)],
+        kind: "image",
+        count: 1,
+        page: n,
+      }));
+    }
+  }
   // Rule bands beside a chart that only hold its labels go back to the text pass.
   for (let i = tables.length - 1; i >= 0; i--) {
     const t = tables[i];
@@ -123,7 +136,7 @@ export function parsePageGeometry(data, n) {
     tables.splice(i, 1);
     for (const w of words) if (used.has(w) && !figs.used.has(w) && w.x0 >= t.bbox[0] - 2 && w.x1 <= t.bbox[2] + 2 && w.base >= t.bbox[1] && w.base <= t.bbox[3] + 2) used.delete(w);
   }
-  return { n, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, words, graphics, tables, figures, used, ms: round(now() - t0) };
+  return { n, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, words: figWords, graphics, tables, figures, used, ms: round(now() - t0) };
 }
 
 // An OCR page record (helper /v1/ocr): precomputed `rules` segments stand in for the pdf.js
@@ -278,10 +291,27 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       units.push({ id, x0: 0, y0: 0, x1: pg.w, y1: pg.h });
     }
     const dots = pg.graphics.dots;
-    let gutters = detectColumns(pg.free, { pageW: pg.w });
+    const shared = splitSharedCaptions(pg.free);
+    pg.free = shared.lines;
+    const keepGutter = (list) => {
+      const out = [...list];
+      for (const g of shared.gutters) {
+        if (!out.some((o) => g.x0 <= o.x1 + 8 && o.x0 <= g.x1 + 8)) out.push(g);
+      }
+      return out.sort((a, b) => a.x0 - b.x0);
+    };
+    let gutters = keepGutter(detectColumns(pg.free, { pageW: pg.w }));
     if (gutters.length) {
+      const remembered = gutters.filter((g) => pg.free.some((l) => l.x0 < g.x0 - 1 && l.x1 > g.x1 + 1));
       pg.free = splitAtGutters(pg.free, gutters, makeLine);
-      gutters = detectColumns(pg.free, { pageW: pg.w });
+      const again = keepGutter(detectColumns(pg.free, { pageW: pg.w }));
+      gutters = again;
+      for (const g of remembered) {
+        const left = pg.free.some((l) => l.x1 <= g.x0 + 4);
+        const right = pg.free.some((l) => l.x0 >= g.x1 - 4);
+        if (left && right && !gutters.some((o) => g.x0 <= o.x1 + 8 && o.x0 <= g.x1 + 8)) gutters.push(g);
+      }
+      gutters.sort((a, b) => a.x0 - b.x0);
     }
     // Column sequences: wide lines (crossing a gutter) form their own sequence.
     const seqs = gutters.map(() => []);
@@ -639,6 +669,10 @@ export function mergeContinuations(order, blocks) {
     const b = blocks[order[i + 1]];
     if (!a || !b || a.type !== "para" || b.type !== "para") continue;
     if (/[.?!:"”)\]]$/.test(a.text) || !/^[a-z]/.test(b.text)) continue;
+    // The next column starts to the right and above the end of this one. That is not a continuation.
+    const ab = a.bbox;
+    const bb = b.bbox;
+    if (ab && bb && bb[0] > ab[2] - 8 && bb[1] + 8 < ab[3]) continue;
     if (Math.abs(a.spans?.[0]?.size - b.spans?.[0]?.size) > 0.6) continue;
     const hyphen = a.text.endsWith("-");
     const offset = a.text.length + (hyphen ? 0 : 1);

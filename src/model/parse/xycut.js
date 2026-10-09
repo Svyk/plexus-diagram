@@ -28,7 +28,76 @@ export function detectColumns(lines, { pageW, minLines = 4 } = {}) {
     const g1 = right.x;
     if (g1 - g0 >= 6) gutters.push({ x0: g0, x1: g1 });
   }
+  return mergeGutters([...gutters, ...internalGutters(lines, pageW || 612, minLines)]);
+}
+
+// A joined two-column baseline hides both left edges. The widest internal word gap, repeated
+// down the page in the middle of the measure, is that gutter. A one- or two-character token
+// sitting in the hole (a line number) is not a column.
+function internalGutters(lines, pageW, minLines) {
+  const hits = [];
+  for (const l of lines) {
+    const words = l.words;
+    if (!words || words.length < 4 || (l.chars != null && l.chars < 8)) continue;
+    const size = l.size || 10;
+    const minGap = Math.max(12, 1.15 * size);
+    const maxGap = 3.2 * size;
+    const kept = [];
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      const prev = kept[kept.length - 1];
+      const next = words[i + 1];
+      const short = /^\d{1,3}$/.test(String(w.text || "").trim()) && w.x1 - w.x0 <= 8;
+      if (short && prev && next && next.x0 - prev.x1 >= minGap && next.x0 - prev.x1 <= maxGap && w.x0 - prev.x1 < 12 && next.x0 - w.x1 < 12) continue;
+      kept.push(w);
+    }
+    let best = null;
+    for (let i = 1; i < kept.length; i++) {
+      const gap = kept[i].x0 - kept[i - 1].x1;
+      if (gap < minGap || gap > maxGap) continue;
+      const mid = (kept[i - 1].x1 + kept[i].x0) / 2;
+      if (mid < 0.28 * pageW || mid > 0.72 * pageW) continue;
+      const leftChars = kept.slice(0, i).reduce((n, w) => n + String(w.text || "").length, 0);
+      const rightChars = kept.slice(i).reduce((n, w) => n + String(w.text || "").length, 0);
+      if (leftChars < 8 || rightChars < 8) continue;
+      if (!best || gap > best.gap) best = { gap, mid, x0: kept[i - 1].x1, x1: kept[i].x0 };
+    }
+    if (best) hits.push(best);
+  }
+  hits.sort((a, b) => a.mid - b.mid);
+  const clusters = [];
+  for (const h of hits) {
+    const c = clusters.find((k) => Math.abs(k.mid - h.mid) <= 14);
+    if (c) { c.hits.push(h); c.mid = c.hits.reduce((s, x) => s + x.mid, 0) / c.hits.length; }
+    else clusters.push({ mid: h.mid, hits: [h] });
+  }
+  const gutters = [];
+  for (const c of clusters) {
+    if (c.hits.length < minLines) continue;
+    const x0 = median(c.hits.map((h) => h.x0));
+    const x1 = median(c.hits.map((h) => h.x1));
+    if (x1 - x0 >= 6) gutters.push({ x0, x1 });
+  }
   return gutters;
+}
+
+function median(values) {
+  const s = [...values].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+function mergeGutters(list) {
+  const sorted = [...list].sort((a, b) => a.x0 - b.x0 || a.x1 - b.x1);
+  const out = [];
+  for (const g of sorted) {
+    const last = out[out.length - 1];
+    if (last && g.x0 <= last.x1 + 8) {
+      last.x0 = Math.min(last.x0, g.x0);
+      last.x1 = Math.max(last.x1, g.x1);
+    } else out.push({ x0: g.x0, x1: g.x1 });
+  }
+  return out;
 }
 
 // Lines whose words straddle a gutter at a word gap are two lines (one per column).
@@ -41,12 +110,22 @@ export function splitAtGutters(lines, gutters, makeLine) {
       const next = [];
       for (const part of parts) {
         if (!crossesGutter(part, g) || part.words.length < 2) { next.push(part); continue; }
-        const left = part.words.filter((w) => (w.x0 + w.x1) / 2 < (g.x0 + g.x1) / 2);
-        const right = part.words.filter((w) => (w.x0 + w.x1) / 2 >= (g.x0 + g.x1) / 2);
-        const leftEnd = left.length ? Math.max(...left.map((w) => w.x1)) : -Infinity;
-        const rightStart = right.length ? Math.min(...right.map((w) => w.x0)) : Infinity;
-        if (left.length && right.length && rightStart - leftEnd >= 0.6 * (g.x1 - g.x0)) next.push(makeLine(left), makeLine(right));
-        else next.push(part);
+        const mid = (g.x0 + g.x1) / 2;
+        const inHole = (w) => {
+          const cx = (w.x0 + w.x1) / 2;
+          return cx > g.x0 && cx < g.x1 && /^\d{1,3}$/.test(String(w.text || "").trim()) && w.x1 - w.x0 <= 8;
+        };
+        const left = part.words.filter((w) => !inHole(w) && (w.x0 + w.x1) / 2 < mid);
+        const right = part.words.filter((w) => !inHole(w) && (w.x0 + w.x1) / 2 >= mid);
+        if (!left.length || !right.length) { next.push(part); continue; }
+        const leftEnd = Math.max(...left.map((w) => w.x1));
+        const rightStart = Math.min(...right.map((w) => w.x0));
+        if (rightStart - leftEnd < 0.6 * (g.x1 - g.x0)) { next.push(part); continue; }
+        const hole = part.words.filter(inHole);
+        for (const w of hole) ((w.x0 + w.x1) / 2 < mid ? left : right).push(w);
+        left.sort((a, b) => a.x0 - b.x0);
+        right.sort((a, b) => a.x0 - b.x0);
+        next.push(makeLine(left), makeLine(right));
       }
       parts = next;
     }

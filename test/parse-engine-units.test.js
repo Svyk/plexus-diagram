@@ -195,6 +195,13 @@ test("cellTextOf joins wrapped lines, keeps hyphenated code joins and glues scri
   assert.equal(cellTextOf([w("Z1-", 10, 100), w("014", 10, 111)]), "Z1-014");
   assert.equal(cellTextOf([w("Weekly after wet", 10, 100), w("clean", 10, 111)]), "Weekly after wet clean");
   assert.equal(cellTextOf([w("10", 10, 100), w("19", 20, 97, { sup: true })]), "10¹⁹");
+  const host = w("25", 70, 100, { conf: 1, boxY: [92, 102] });
+  host.x0 = 70; host.x1 = 90;
+  const echo = w("1", 76, 100, { conf: 0.3, boxY: [93, 108] });
+  echo.x0 = 76; echo.x1 = 80;
+  assert.equal(cellTextOf([w("Absent", 10, 100), w("in", 48, 100), host, echo]), "Absent in 25");
+  const clear = { ...echo, x0: 120, x1: 124 };
+  assert.equal(cellTextOf([w("Absent", 10, 100), w("in", 48, 100), host, clear]), "Absent in 25 1", "a digit clear of the word stays");
   assert.equal(isNumericText("1,000"), true);
   assert.equal(isNumericText("Absent in 10 g"), false);
 });
@@ -437,6 +444,14 @@ test("mergeContinuations joins a paragraph split by a column or page break", () 
   assert.equal(blocks.b1.text, "A post dry-out step, added in May.");
   assert.equal(blocks.b1.footnoteRefs[0].at, 10);
   assert.equal(blocks.b1.parts.length, 2);
+  const cols = {
+    L: { id: "L", type: "para", page: 1, text: "nating a distant target", spans: [{ size: 10 }], bbox: [78, 80, 290, 700] },
+    R: { id: "R", type: "para", page: 1, text: "detector arrays every pixel", spans: [{ size: 10 }], bbox: [312, 80, 520, 120] },
+  };
+  const colOrder = ["L", "R"];
+  mergeContinuations(colOrder, cols);
+  assert.deepEqual(colOrder, ["L", "R"]);
+  assert.equal(cols.L.text, "nating a distant target");
 });
 
 test("viewportTransform matches pdf.js for the four rotations", () => {

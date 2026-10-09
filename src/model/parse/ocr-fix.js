@@ -39,6 +39,9 @@ export function decimalStyle(values) {
 export function repairNumber(text, { decimal = ".", leadingZero = true } = {}) {
   let s = String(text || "").trim();
   if (!s) return s;
+  // A bar on both sides of a digit, or a trailing bar after one, is a cell rule the
+  // nearest-neighbour upscale glued on ("|2|", "5|"). A leading bar still stands for 1 ("|0").
+  s = s.replace(/^\|+(\d[\d.,]*)\|+$/, "$1").replace(/(\d)\|+$/, "$1");
   // Stray spaces inside a number ("28. 90", "1 .16").
   s = s.replace(/(\d)\s*([.,])\s*(\d)/g, "$1$2$3").replace(/(\d)\s+(\d)/g, "$1$2");
   // The column's decimal mark: "1,5" in a period column is 1.5 (a thousands comma has three digits).
@@ -242,13 +245,34 @@ export function cellsToReread(table, { numericCols = [] } = {}) {
 
 // Crop box for an empty cell: the column's x-range and the text band of its row (the grid row
 // is a full pitch and would take the neighbour's ascenders along).
+function median(xs) {
+  const s = [...xs].sort((a, b) => a - b);
+  return s[s.length >> 1];
+}
+
 function rowBox(table, cell) {
   const row = table.cells.filter((k) => k.r === cell.r && k.wbase != null);
   if (!row.length || !cell.bbox) return null;
   const bases = row.map((k) => k.wbase).sort((a, b) => a - b);
   const base = bases[bases.length >> 1];
   const size = Math.max(...row.map((k) => k.wsize || 0)) || (cell.bbox[3] - cell.bbox[1]);
-  return [cell.bbox[0] + 1, base - 0.65 * size, cell.bbox[2] - 1, base + 0.12 * size];
+  // The x-height band, so a full grid row does not take the neighbour's ascenders.
+  let y0 = base - 0.65 * size;
+  let y1 = base + 0.12 * size;
+  const ink = row.map((k) => k.wbox).filter((b) => b && b[3] > b[1]);
+  if (ink.length) {
+    const top = median(ink.map((b) => b[1]));
+    const bot = median(ink.map((b) => b[3]));
+    // That band clips a digit on a nearest-neighbour upscale: the crop reads "||".
+    if (top < y0 - 0.4 || bot > y1 + 0.4) {
+      y0 = top - 1.2;
+      y1 = bot + 1.2;
+    }
+  }
+  y0 = Math.max(y0, cell.bbox[1] + 0.3);
+  y1 = Math.min(y1, cell.bbox[3] - 0.3);
+  if (!(y1 > y0 + 1)) return null;
+  return [cell.bbox[0] + 1, y0, cell.bbox[2] - 1, y1];
 }
 
 // Apply helper re-reads. A number is accepted when it parses (after mapping) and the column is
@@ -266,11 +290,16 @@ export function applyCellOcr(table, results) {
     let to = null;
     // A number comes from Vision's reading; a dash or star only from the helper's ink check
     // (`glyph`), since a run of leader dots reads as "-".
+    const empty = !cell.text || !cell.text.trim();
     if (text && !/\s/.test(text) && !isPlaceholder(text)) {
       const number = repairNumber(text, { decimal, leadingZero });
       if (number != null && fitsColumn(number, column)) to = number;
     }
-    if (to == null && res.glyph && isPlaceholder(res.glyph) && (!cell.text || !cell.text.trim())) to = res.glyph;
+    // A confident single letter ("c", or "|c" when the cell rule is in the crop) beats the
+    // ink-star: on a nearest-neighbour upscale the letter is one small blob.
+    const letter = text.replace(/^\|+/, "").replace(/\|+$/, "");
+    if (to == null && empty && /^[A-Za-z]$/.test(letter) && (res.conf ?? 0) >= 0.8) to = letter;
+    if (to == null && res.glyph && isPlaceholder(res.glyph) && empty) to = res.glyph;
     if (to == null && /^(?:n\/?a|nn)$/i.test(text) && (!cell.text || !cell.text.trim())) to = text;
     if (to == null || to === cell.text) continue;
     applied.push({ r: cell.r, c: cell.c, from: cell.text, to });

@@ -164,9 +164,18 @@ test("tiled images with no text are a scan, and a labelled page image is a drawi
     ...row(700, [["Sheet", 40], ["5", 80], ["of", 100], ["6", 120]]),
   ], { images: [[-2, 0, W + 2, H]] });
   assert.equal(sheet.scanLayer, true);
-  assert.equal(sheet.figures.length, 1);
-  const box = sheet.figures[0].bbox;
-  assert.ok(box[0] >= 0 && box[1] >= 0 && box[2] <= W && box[3] <= H);
+  assert.equal(sheet.figures.length, 2, "separated FIG labels are two figures");
+  for (const fig of sheet.figures) {
+    const box = fig.bbox;
+    assert.ok(box[0] >= 0 && box[1] >= 0 && box[2] <= W && box[3] <= H);
+  }
+  assert.ok(sheet.figures[0].bbox[2] <= sheet.figures[1].bbox[0] + 0.1);
+  const close = page([
+    ...row(80, [["FIG.", 40], ["2A", 70]]),
+    ...row(100, [["FIG.", 40], ["2B", 70]]),
+    ...row(700, [["Sheet", 40], ["1", 80], ["of", 100], ["2", 120]]),
+  ], { images: [[0, 0, W, H]] });
+  assert.equal(close.figures.length, 1, "FIG labels closer than the split stay one sheet");
   const tabled = page([
     ...row(40, [["Disease", 60], ["1980", 200], ["1979", 260]]),
     ...row(54, [["Amebiasis", 60], ["2.38", 200], ["1.90", 260]]),
@@ -283,4 +292,48 @@ test("an equation number in the figure's own column does not join the crop", () 
   assert.ok(box[3] >= 394, "axis label under the art still joins");
   assert.equal(used.has(eq), false);
   assert.equal(used.has(axis), true);
+});
+
+test("side-by-side figure captions on one baseline split onto the figure above each", () => {
+  const left = "Figure 3: Transfer to ImageNet. While";
+  const right = "Figure 4: Linear few-shot evaluation on Ima-";
+  const pageRec = page([
+    item(left, 108, H - 226, 10, "f1", 186),
+    item(right, 308, H - 226, 10, "f1", 180),
+    item("large ViT models perform worse than BiT", 108, H - 240, 10, "f1", 186),
+    item("geNet versus pre-training size.", 308, H - 240, 10, "f1", 170),
+    item("The models in this experiment share one full line of body text.", 108, H - 280, 10, "f1", 396),
+  ], { images: [[120, 80, 290, 210], [320, 80, 490, 210]] });
+  const d = doc([pageRec]);
+  const caps = ofType(d, "caption");
+  const figs = ofType(d, "figure");
+  assert.equal(figs.length, 2);
+  const fig3 = caps.find((c) => c.text.startsWith("Figure 3"));
+  const fig4 = caps.find((c) => c.text.startsWith("Figure 4"));
+  assert.ok(fig3, `left caption: ${caps.map((c) => c.text).join(" | ")}`);
+  assert.ok(fig4, `right caption: ${caps.map((c) => c.text).join(" | ")}`);
+  assert.equal(/Figure 4/.test(fig3.text), false);
+  assert.equal(/Figure 3/.test(fig4.text), false);
+  assert.match(fig3.text, /large ViT/);
+  assert.match(fig4.text, /ImageNet/);
+  assert.equal(d.blocks[fig3.for]?.type, "figure");
+  assert.equal(d.blocks[fig4.for]?.type, "figure");
+  assert.ok(d.blocks[fig3.for].bbox[2] < d.blocks[fig4.for].bbox[0]);
+  const body = ofType(d, "para").map((b) => b.text).join(" ");
+  assert.match(body, /share one full line/);
+});
+
+test("a drawing sheet keeps each FIG label as a caption, including a reversed 2.FIG", () => {
+  const sheet = page([
+    ...row(80, [["FIG.", 40], ["2A", 80]]),
+    item("3", 471, H - 200, 10, "f1", 8),
+    item(".", 475, H - 200, 10, "f1", 4),
+    item("FIG", 478, H - 200, 10, "f1", 22),
+    ...row(700, [["Sheet", 200], ["5", 240], ["of", 260], ["6", 280]]),
+  ], { images: [[0, 0, W, H]] });
+  const d = doc([sheet]);
+  const caps = ofType(d, "caption").map((c) => c.text);
+  assert.ok(caps.some((t) => /^FIG\.?\s*2A/.test(t)), `FIG.2A caption: ${caps.join(" | ")}`);
+  assert.ok(caps.some((t) => /^FIG\.?\s*3/.test(t)), `reversed FIG caption: ${caps.join(" | ")}`);
+  assert.equal(ofType(d, "figure").length, 2);
 });

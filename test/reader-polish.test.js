@@ -68,6 +68,8 @@ test("cleanPdfTitle drops junk metadata and keeps real titles", () => {
 test("title rule: real metadata, then the first parsed heading, then the file name, then PDF", () => {
   const url = "https://firebasestorage.example/v0/b/x/o/imgs%2Fapp%2FReadwisenotes%2FEU%20regulation%202073.pdf?alt=media";
   assert.equal(pdfFileTitle(url), "EU regulation 2073");
+  assert.equal(pdfFileTitle("https://firebasestorage.example/o/imgs%2Fapp%2Fg%2Fshannon_1948.pdf"), "shannon 1948");
+  assert.equal(pdfTitlePlan({ url: "https://firebasestorage.example/o/imgs%2Fapp%2Fg%2Fshannon_1948.pdf" }), "shannon 1948");
   assert.equal(pdfFileTitle("https://firebasestorage.example/o/imgs%2Fapp%2Fg%2FAbCdEfGhIjK.pdf"), "");
   assert.equal(pdfTitlePlan({ metadataTitle: "I", parsedTitle: "Microbiological criteria", url }), "Microbiological criteria");
   assert.equal(pdfTitlePlan({ metadataTitle: "I", url }), "EU regulation 2073");

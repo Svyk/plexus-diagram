@@ -2,7 +2,7 @@
 // A multi-panel figure is one box (the union). Page-sized art is kept only when the page
 // is a drawing, not a text page. Every stored box is clipped to the page.
 
-import { round } from "./lines.js";
+import { makeLine, round } from "./lines.js";
 import { CAPTION_RE } from "./headings.js";
 import { EQ_NUMBER_RE } from "./formulas.js";
 import { FURNITURE_BAND } from "./furniture.js";
@@ -11,6 +11,12 @@ import { detectColumns } from "./xycut.js";
 const IMAGE_MIN = 12;
 const H_GAP = 56;
 const V_GAP = 42;
+const FIG_TOKEN = /^fig(?:ure)?\.?$/i;
+const FIG_NUM = /^\d+[A-Za-z]?[.:]?$/;
+const FIG_GLUED = /^fig(?:ure)?\.?\d+[A-Za-z]?$/i;
+const REVERSED_FIG_RE = /^\d+[A-Za-z]?\s*\.?\s*fig(?:ure)?\.?$/i;
+const CAPTION_SPLIT_GAP = 8;
+const ANCHOR_SEP = 48;
 
 export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new Set(), words = [], bodySize = 10, pageW = 612, pageH = 792, ruleSegments = [], pageTextChars = null }) {
   const prims = [];
@@ -43,6 +49,12 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
     prims.push({ ...clipped, kind: "rule", n: 1 });
   }
   const lines = wordLines(words);
+  const labelWords = new Set();
+  for (const line of lines) {
+    for (const i of labelStarts(line.words)) {
+      for (const w of line.words.slice(i, labelSpan(line.words, i))) labelWords.add(w);
+    }
+  }
   // Column lines break at a gutter. The label lines above stay joined so a legend
   // on the same baseline as a short note is still one line.
   const gutters = detectColumns(columnLines(words), { pageW });
@@ -63,9 +75,9 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
       pageImage: cl.items.some((p) => p.pageImage),
     });
   }
-  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters);
+  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWords);
   unionPanels(figures, lines, bodySize, pageW, pageH);
-  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters);
+  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWords);
   const kept = [];
   for (const fig of figures) {
     const box = clipBox(fig, pageW, pageH);
@@ -90,19 +102,25 @@ export function rasterScanPage({ images, shapes, words, pageW, pageH }) {
 
 // A page-sized image is the drawing when the only text is scattered labels.
 // Aligned body lines, a dense table, or a long text page keep the image as background.
-export function drawingSheetPage({ images, lines, tables, pageW, pageH, textChars }) {
+export function drawingSheetPage({ images, lines, tables, shapes, pageW, pageH, textChars }) {
   const pageArea = pageW * pageH;
   const pageImage = (images || []).some((im) => (im.x1 - im.x0) * (im.y1 - im.y0) >= 0.75 * pageArea);
-  if (!pageImage || textChars < 12 || textChars >= 900) return false;
+  const vectorArt = (shapes || []).reduce((n, s) => n + (s.segs || 1), 0) >= 8;
   const textLines = (lines || []).filter((l) => (l.text || "").trim());
-  if (textLines.length >= 16) return false;
-  if (textLines.filter((l) => wordCount(l.text) >= 8).length >= 3) return false;
-  if (alignedLineCount(textLines) >= 4) return false;
+  const bodyish = textLines.filter((l) => wordCount(l.text) >= 8).length;
   const dense = (tables || []).some((t) => {
     if (!t.cells || t.rows < 3 || t.cols < 2) return false;
     const filled = t.cells.filter((c) => c.text).length;
     return filled >= 0.5 * Math.max(1, t.cells.length);
   });
+  // A patent sheet is many short part labels over one page image (or vector art), plus
+  // "Sheet N of M" and at least one FIG. label. Body prose still wins.
+  const marked = textLines.some((l) => /sheet\s+\d+\s+of\s+\d+/i.test(l.text || "")) && figLabelCount(textLines) >= 1;
+  if ((pageImage || vectorArt) && marked && textChars < 1200 && bodyish < 3 && !dense) return true;
+  if (!pageImage || textChars < 12 || textChars >= 900) return false;
+  if (textLines.length >= 16) return false;
+  if (bodyish >= 3) return false;
+  if (alignedLineCount(textLines) >= 4) return false;
   return !dense;
 }
 
@@ -319,7 +337,7 @@ function allowGrowWord(w, line, ctx) {
 
 function lineIsCaption(text) {
   const t = String(text || "").trim();
-  if (CAPTION_RE.test(t) || /^fig(?:ure)?\.?\s*$/i.test(t)) return true;
+  if (CAPTION_RE.test(t) || /^fig(?:ure)?\.?\s*$/i.test(t) || REVERSED_FIG_RE.test(t)) return true;
   // "Figure" followed by a missing glyph or a bare number, with no other words.
   return /^fig(?:ure)?\.?\s+(\d+[A-Za-z]?[:.]?|[^\p{L}\p{N}]{1,4})$/iu.test(t);
 }
@@ -342,7 +360,7 @@ function takeWord(fig, w, art, maxOut, used) {
   return true;
 }
 
-function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters) {
+function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWords = new Set()) {
   const art = { x0: fig.x0, y0: fig.y0, x1: fig.x1, y1: fig.y1 };
   const ctx = {
     art,
@@ -363,7 +381,7 @@ function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters) {
       // Small axis labels within 12 pt, one word at a time, including a row of month names.
       if (!lineIsCaption(line.text)) {
         for (const w of line.words) {
-          if (used.has(w) || !(w.size <= 0.85 * bodySize)) continue;
+          if (used.has(w) || labelWords.has(w) || !(w.size <= 0.85 * bodySize)) continue;
           if (/^fig(?:ure)?\.?$/i.test(String(w.text || "").trim())) continue;
           if (!allow(w, line)) continue;
           const cx = (w.x0 + w.x1) / 2;
@@ -398,7 +416,7 @@ function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters) {
       if (!inside && !beside && !edge && !(panel && gapX <= 18 && gapY <= 18)) continue;
       if (beside && (nWords > 6 || line.size > bodySize * 1.05)) continue;
       // A label under two panels is one line. A beside legend is not: it does not overlap the art.
-      let span = line.words.filter((w) => !used.has(w) && allow(w, line));
+      let span = line.words.filter((w) => !used.has(w) && !labelWords.has(w) && allow(w, line));
       if (gapX === 0 && (line.x1 > art.x1 + 18 || line.x0 < art.x0 - 18)) {
         span = span.filter((w) => {
           const wx = (w.x0 + w.x1) / 2;
@@ -517,6 +535,226 @@ function canUnion(a, b, lines, bodySize, pageW, pageH) {
   const area = (Math.max(a.x1, b.x1) - Math.min(a.x0, b.x0)) * (Math.max(a.y1, b.y1) - Math.min(a.y0, b.y0));
   if (!a.pageImage && !b.pageImage && area >= 0.68 * pageW * pageH) return false;
   return true;
+}
+
+function figLabelCount(lines) {
+  let n = 0;
+  for (const l of lines) {
+    const t = l.text || "";
+    if (/fig(?:ure)?\.?\s*\d+[a-z]?/i.test(t) || REVERSED_FIG_RE.test(t.trim()) || FIG_GLUED.test(t.trim())) n++;
+  }
+  return n;
+}
+
+// Indexes where a figure label starts. A number drawn on top of "FIG" (pdf.js order "2.FIG")
+// counts as the same label, starting at the number.
+export function labelStarts(words) {
+  const at = [];
+  for (let i = 0; i < (words || []).length; i++) {
+    const t = String(words[i].text || "").trim();
+    if (FIG_GLUED.test(t) || /^fig(?:ure)?\.?\s*\d+/i.test(t)) { at.push(i); continue; }
+    if (!FIG_TOKEN.test(t)) continue;
+    let j = i + 1;
+    if (words[j] && /^[.:]$/.test(String(words[j].text || "").trim())) j++;
+    const next = words[j];
+    if (next && FIG_NUM.test(String(next.text || "").trim()) && next.x0 - words[i].x1 < 24) {
+      at.push(i);
+      continue;
+    }
+    let k = i - 1;
+    if (words[k] && /^[.:]$/.test(String(words[k].text || "").trim())) k--;
+    if (k >= 0 && FIG_NUM.test(String(words[k].text || "").trim()) && words[i].x0 - words[k].x1 < 8) at.push(k);
+  }
+  return [...new Set(at)].sort((a, b) => a - b);
+}
+
+function labelSpan(words, i) {
+  let j = i;
+  while (j + 1 < words.length) {
+    const n = words[j + 1];
+    const t = String(n.text || "").trim();
+    if (n.x0 - words[j].x1 > 24) break;
+    if (!(FIG_TOKEN.test(t) || FIG_NUM.test(t) || /^[.:]$/.test(t) || FIG_GLUED.test(t))) break;
+    j++;
+  }
+  return j + 1;
+}
+
+// "2 . FIG" drawn in one spot becomes "FIG. 2", so the caption regex can see it.
+function orderedLabelWords(group) {
+  const fig = group.find((w) => FIG_TOKEN.test(String(w.text || "").trim()));
+  const num = group.find((w) => FIG_NUM.test(String(w.text || "").trim()));
+  const dots = group.filter((w) => /^[.:]$/.test(String(w.text || "").trim()));
+  if (!fig || !num || !(num.x0 <= fig.x0 + 2 && fig.x0 - num.x1 < 8)) return group;
+  const figWord = { ...fig, text: String(fig.text || "").replace(/\.?$/, ".") };
+  return [figWord, { ...num }];
+}
+
+// On a drawing sheet, lift each FIG. label onto its own line and fix reversed labels.
+function normalizeFigWord(w) {
+  const m = /^(\d+[A-Za-z]?)\.?fig(?:ure)?\.?$/i.exec(String(w.text || "").trim());
+  if (!m) return w;
+  return { ...w, text: `FIG. ${m[1]}` };
+}
+
+export function peelFigLabels(lines) {
+  const out = [];
+  for (const line of lines || []) {
+    const words = (line.words || []).map(normalizeFigWord);
+    const starts = labelStarts(words);
+    if (!starts.length) { out.push(line); continue; }
+    const pieces = [];
+    let cursor = 0;
+    for (const s of starts) {
+      const end = Math.max(labelSpan(words, s), s + 1);
+      if (s > cursor) pieces.push(words.slice(cursor, s));
+      pieces.push(orderedLabelWords(words.slice(s, end)));
+      cursor = Math.max(cursor, end);
+    }
+    if (cursor < words.length) pieces.push(words.slice(cursor));
+    const rewritten = words.some((w, i) => w !== line.words[i]);
+    const same = !rewritten && pieces.length === 1 && pieces[0].length === words.length && pieces[0].every((w, i) => w === words[i]);
+    if (same) { out.push(line); continue; }
+    for (const p of pieces) if (p.length) out.push(makeLine(p));
+  }
+  return out;
+}
+
+function figAnchors(lines) {
+  const anchors = [];
+  for (const line of lines || []) {
+    const words = line.words || [];
+    for (const i of labelStarts(words)) {
+      const group = words.slice(i, labelSpan(words, i));
+      if (!group.length) continue;
+      const x = group.reduce((s, w) => s + (w.x0 + w.x1) / 2, 0) / group.length;
+      const y = group.reduce((s, w) => s + (w.y0 != null && w.y1 != null ? (w.y0 + w.y1) / 2 : (w.base || 0)), 0) / group.length;
+      anchors.push({ x, y });
+    }
+  }
+  return anchors;
+}
+
+function splitAnchors(anchors, box) {
+  if (anchors.length <= 1) return [{ x0: box.x0, y0: box.y0, x1: box.x1, y1: box.y1 }];
+  const dx = Math.max(...anchors.map((a) => a.x)) - Math.min(...anchors.map((a) => a.x));
+  const dy = Math.max(...anchors.map((a) => a.y)) - Math.min(...anchors.map((a) => a.y));
+  const vertical = dx >= dy;
+  const sorted = [...anchors].sort((a, b) => (vertical ? a.x - b.x : a.y - b.y));
+  let best = 1;
+  let gap = -1;
+  for (let i = 1; i < sorted.length; i++) {
+    const g = vertical ? sorted[i].x - sorted[i - 1].x : sorted[i].y - sorted[i - 1].y;
+    if (g > gap) { gap = g; best = i; }
+  }
+  if (gap < ANCHOR_SEP) return [{ x0: box.x0, y0: box.y0, x1: box.x1, y1: box.y1 }];
+  // A FIG label sits on the inner edge of its drawing. The midpoint of the two labels
+  // then cuts the next drawing. Stop a short way past the first label.
+  const mid = vertical
+    ? Math.min(sorted[best - 1].x + 36, sorted[best].x - 24)
+    : Math.min(sorted[best - 1].y + 36, sorted[best].y - 24);
+  if (vertical) {
+    return [
+      ...splitAnchors(sorted.slice(0, best), { ...box, x1: mid }),
+      ...splitAnchors(sorted.slice(best), { ...box, x0: mid }),
+    ];
+  }
+  return [
+    ...splitAnchors(sorted.slice(0, best), { ...box, y1: mid }),
+    ...splitAnchors(sorted.slice(best), { ...box, y0: mid }),
+  ];
+}
+
+// One rectangle per separated FIG. anchor, or the whole page when they sit together.
+export function sheetRegions(lines, pageW, pageH) {
+  const box = { x0: 0, y0: 0, x1: pageW, y1: pageH };
+  const anchors = figAnchors(lines);
+  if (anchors.length < 2) return [box];
+  return splitAnchors(anchors, box);
+}
+
+function splitWordLine(line, indexes) {
+  const cuts = [0, ...indexes, line.words.length];
+  const parts = [];
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const words = line.words.slice(cuts[i], cuts[i + 1]);
+    if (words.length) parts.push(makeLine(words));
+  }
+  return parts;
+}
+
+function gapIndexAt(line, x) {
+  const words = line.words || [];
+  for (let i = 1; i < words.length; i++) {
+    const gap0 = words[i - 1].x1;
+    const gap1 = words[i].x0;
+    if (gap1 - gap0 >= CAPTION_SPLIT_GAP && gap0 - 6 <= x && gap1 + 6 >= x) return i;
+  }
+  return -1;
+}
+
+function orderCaptionBand(band) {
+  const cols = new Map();
+  for (const line of band) {
+    const k = line.capCol || 0;
+    if (!cols.has(k)) cols.set(k, []);
+    cols.get(k).push(line);
+  }
+  const out = [];
+  for (const k of [...cols.keys()].sort((a, b) => a - b)) {
+    const col = cols.get(k).sort((a, b) => a.base - b.base || a.x0 - b.x0);
+    for (const line of col) {
+      delete line.capBand;
+      delete line.capCol;
+      out.push(line);
+    }
+  }
+  return out;
+}
+
+// Two figure captions that share one baseline ("Figure 3: … Figure 4: …") are one line when
+// the column gap is under two ems. Split at the later label, and split the following lines
+// at that same x, then read each column top to bottom so the hyphen join stays inside it.
+export function splitSharedCaptions(lines) {
+  if (!lines?.length) return { lines: lines || [], gutters: [] };
+  const out = [];
+  const gutters = [];
+  let bandId = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const starts = labelStarts(line.words || []);
+    const splits = [];
+    for (let c = 1; c < starts.length; c++) {
+      const idx = starts[c];
+      const prev = line.words[idx - 1];
+      const cur = line.words[idx];
+      if (prev && cur && cur.x0 - prev.x1 >= CAPTION_SPLIT_GAP) splits.push(idx);
+    }
+    if (!splits.length) { out.push(line); continue; }
+    bandId += 1;
+    const parts = splitWordLine(line, splits);
+    if (parts.length >= 2 && parts[1].x0 - parts[0].x1 >= 6) gutters.push({ x0: parts[0].x1, x1: parts[1].x0 });
+    parts.forEach((p, col) => { p.capBand = bandId; p.capCol = col; });
+    const splitX = parts[1]?.x0;
+    const consumed = new Set();
+    const band = [...parts];
+    if (splitX != null) {
+      for (let d = 1; d < 6 && i + d < lines.length; d++) {
+        const next = lines[i + d];
+        if (next.base - line.base > 3 * (next.size || line.size || 10)) break;
+        if (labelStarts(next.words || []).length >= 2) break;
+        const at = gapIndexAt(next, splitX);
+        if (at < 0) break;
+        const segs = splitWordLine(next, [at]);
+        segs.forEach((p, col) => { p.capBand = bandId; p.capCol = col; });
+        band.push(...segs);
+        consumed.add(next);
+      }
+    }
+    out.push(...orderCaptionBand(band));
+    while (i + 1 < lines.length && consumed.has(lines[i + 1])) i++;
+  }
+  return { lines: out, gutters };
 }
 
 export function clusterBoxes(items, gap) {

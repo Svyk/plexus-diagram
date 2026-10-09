@@ -28,6 +28,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   let wire = null;
   let marquee = null;
   let lasso = null;
+  let regionPen = null;
   const guideEls = [];
   const ghostEls = [];
   let focusSet = null;
@@ -682,6 +683,17 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     lasso.setAttribute("points", points.map((p) => `${p.x},${p.y}`).join(" "));
   };
 
+  const setRegionPen = (points) => {
+    if (!points || points.length < 2) {
+      regionPen?.remove();
+      regionPen = null;
+      return;
+    }
+    if (!regionPen) regionPen = mk("polyline", "pxd-region-pen", overlaySvg);
+    regionPen.setAttribute("fill", "transparent");
+    regionPen.setAttribute("points", points.map((p) => `${p.x},${p.y}`).join(" "));
+  };
+
   // Alt+drag duplicate preview: dashed world-space rects in the overlay svg. null/[] clears.
   const setGhosts = (list) => {
     const rects = list || [];
@@ -805,6 +817,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     setGuides([]);
     setMarquee(null);
     setLasso(null);
+    setRegionPen(null);
     setGhosts(null);
     focusSet = null;
     searchEdges = null;
@@ -821,6 +834,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     setGuides,
     setMarquee,
     setLasso,
+    setRegionPen,
     setGhosts,
     setFocus,
     setSearch,

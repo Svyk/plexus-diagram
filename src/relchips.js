@@ -5,6 +5,7 @@
 import { boundsOf, buildBoard, routedEdge, worldRects } from "./model/board.js";
 import { edgeMayTarget, endpointChipText, endpointDisplayText, endpointIndex } from "./model/endpoints.js";
 import { blockInner, edgePath } from "./model/geometry.js";
+import { imageRegionFrac, polygonClipInBox } from "./model/image-region.js";
 import { parseRegion } from "./model/regions.js";
 import { assignDeepLink } from "./model/deeplink.js";
 import { PALETTE, attrNameOf, hexColor, itemLabel, parseBoardTitle } from "./model/schema.js";
@@ -259,7 +260,7 @@ const rowEnd = (item, other, bar) => {
 
 // The cropped mini-map: the two connected cards, their neighbours that fall inside the crop, and the arrow.
 // Everything is in board world units; `viewBox` is the crop.
-export function mountLazyCrop(doc, frame, { src, frac, win } = {}) {
+export function mountLazyCrop(doc, frame, { src, frac, points, win } = {}) {
   const f = frac || {};
   const rw = Number(f.rw) > 0 ? Number(f.rw) : 1;
   const rh = Number(f.rh) > 0 ? Number(f.rh) : 1;
@@ -273,6 +274,8 @@ export function mountLazyCrop(doc, frame, { src, frac, win } = {}) {
   img.style.left = `${-(Number(f.rx) || 0) / rw * 100}%`;
   img.style.top = `${-(Number(f.ry) || 0) / rh * 100}%`;
   frame.append(img);
+  const clip = polygonClipInBox(f, points);
+  if (clip) frame.style.clipPath = clip;
   const show = () => { if (src) img.setAttribute("src", src); };
   const IO = win?.IntersectionObserver || globalThis.IntersectionObserver;
   let watched = false;
@@ -508,14 +511,16 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
       let text = "";
       try { text = blockText(endpointUid) || ""; } catch { text = ""; }
       const region = parseRegion(text);
-      if (region?.kind === "img" && Array.isArray(region.f)) {
+      const cropFrac = imageRegionFrac(region);
+      if (cropFrac && (region.kind === "img" || region.kind === "imgpoly" || region.kind === "imgrect") && !region.error) {
         let drawing = "";
         try { drawing = blockText(region.drawingUid) || ""; } catch { drawing = ""; }
         const src = /!\[[^\]]*\]\(([^)]+)\)/.exec(drawing)?.[1] || "";
         const frame = mk("div", "pxd-relpop__crop", el);
         mountLazyCrop(doc, frame, {
           src,
-          frac: { rx: region.f[0], ry: region.f[1], rw: region.f[2], rh: region.f[3] },
+          frac: cropFrac,
+          points: region.kind === "imgpoly" ? region.p : null,
           win,
         });
       }

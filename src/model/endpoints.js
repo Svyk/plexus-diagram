@@ -4,7 +4,7 @@
 // graph of imports stays one way.
 
 import { blockAnchor, blockInner } from "./geometry.js";
-import { fracFromDrag } from "./image-region.js";
+import { fracFromDrag, imageRegionFrac, polyPairs, simplifyPoly } from "./image-region.js";
 import { isContainerString, parseRegion } from "./regions.js";
 import { classifyString } from "./schema.js";
 
@@ -58,11 +58,17 @@ export function refsIn(string) {
 }
 
 // "region" for an image region, "pin" for a PDF pin, otherwise null.
+// imgpoly and imgrect stay unsupported (Roam Plexus owns the macro) but they are
+// still region endpoints: an arrow can end on them and a delete can cascade to them.
 export function endpointKindOf(blockString) {
   const region = parseRegion(blockString);
-  if (!region?.supported) return null;
-  if (region.kind === "img") return "region";
-  if (region.kind === "pdf") return "pin";
+  if (!region || region.error) return null;
+  if (region.supported) {
+    if (region.kind === "img") return "region";
+    if (region.kind === "pdf") return "pin";
+    return null;
+  }
+  if (region.kind === "imgpoly" || region.kind === "imgrect") return "region";
   return null;
 }
 
@@ -88,8 +94,13 @@ export function endpointHitsOf(nodes) {
       const id = kid?.[":block/uid"] ?? kid?.uid;
       const kind = endpointKindOf(text);
       if (!id || !kind) continue;
-      const f = parseRegion(text)?.f;
-      (kind === "region" ? regions : pins).push({ uid: id, frac: f });
+      const parsed = parseRegion(text);
+      const poly = kind === "region" ? polyPairs(parsed?.p) : null;
+      const box = imageRegionFrac(parsed);
+      const frac = box ? [box.rx, box.ry, box.rw, box.rh] : parsed?.f;
+      const hit = { uid: id, frac };
+      if (poly) hit.poly = poly;
+      (kind === "region" ? regions : pins).push(hit);
     }
   }
   return { regions, pins };
@@ -99,8 +110,25 @@ export function endpointHitsOf(nodes) {
 export function endpointHitsKey(nodes) {
   const { regions, pins } = endpointHitsOf(nodes);
   if (!regions.length && !pins.length) return "";
-  const one = (h) => `${h.uid}=${Array.isArray(h.frac) ? h.frac.join(",") : ""}`;
+  const one = (h) => {
+    const frac = Array.isArray(h.frac) ? h.frac.join(",") : "";
+    const poly = h.poly ? h.poly.map((p) => `${p.x},${p.y}`).join(" ") : "";
+    return `${h.uid}=${frac}:${poly}`;
+  };
   return `r:${regions.map(one).join(";")}|p:${pins.map(one).join(";")}`;
+}
+
+// The outline under the pointer when several overlap. Smallest area wins.
+export function pickSmallestRegion(marks) {
+  let best = null;
+  for (const mark of marks || []) {
+    const uid = mark?.uid;
+    if (!uid) continue;
+    const area = Number(mark.area);
+    const size = Number.isFinite(area) && area > 0 ? area : Number.POSITIVE_INFINITY;
+    if (!best || size < best.area) best = { uid, area: size };
+  }
+  return best?.uid || null;
 }
 
 // The image block a region is parented under. A card that is the image uses its own uid.
@@ -235,6 +263,40 @@ export function clampToBox(point, rect) {
 export function regionBoxFrac(imageRect, a, b) {
   if (!a || !b) return null;
   return marqueeFrac(imageRect, [clampToBox(a, imageRect), clampToBox(b, imageRect)]);
+}
+
+// A freehand stroke in the same space as imageRect. The stored points are fractions
+// of that rect. The bbox has to clear the same minimum as a box, or the stroke is not a region.
+export function regionPolyFrac(imageRect, worldPoints) {
+  const box = asBox(imageRect);
+  if (!box || box.w <= 0 || box.h <= 0) return null;
+  const raw = [];
+  for (const p of worldPoints || []) {
+    const held = clampToBox(p, box);
+    if (!held) continue;
+    raw.push({ x: (held.x - box.x) / box.w, y: (held.y - box.y) / box.h });
+  }
+  const poly = simplifyPoly(raw);
+  if (!poly) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of poly) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  const needW = Math.max(MIN_MARQUEE, box.w * 0.02) / box.w;
+  const needH = Math.max(MIN_MARQUEE, box.h * 0.02) / box.h;
+  if (maxX - minX < needW || maxY - minY < needH) return null;
+  const frac = fracFromDrag(
+    { x: 0, y: 0, width: 1, height: 1 },
+    minX, minY, maxX, maxY,
+  );
+  if (!frac) return null;
+  return { frac, poly };
 }
 
 export function regionCaption(label, existingCount) {

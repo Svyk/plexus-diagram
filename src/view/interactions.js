@@ -36,7 +36,8 @@ import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES, STICKY_SIZE } from "../mo
 import { clampPdfCard } from "../model/pdf.js";
 import { TABLE_SIZE, isRoamTableString } from "../model/roam-table.js";
 import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
-import { clampToBox, edgeMayTarget, pointInside, regionBoxFrac } from "../model/endpoints.js";
+import { clampToBox, edgeMayTarget, pointInside, regionBoxFrac, regionPolyFrac } from "../model/endpoints.js";
+import { regionDrawMode, setRegionDrawMode } from "../model/image-region.js";
 import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
 import { fingerPair, pinchViewport } from "../model/touch.js";
 import { SHORTCUTS, findShortcut } from "./shortcuts.js";
@@ -55,10 +56,23 @@ export const TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row) => row.letter
 export const TOOLS = ["select", "hand", "card", "task", "text", "sticky", "shape", "section", "board", "table", "connect"];
 const SHAPE_PLACE = { w: 160, h: 100 };
 export const DRAG_THRESHOLD_PX = 4;
-export const REGION_HINT = "⌥ to mark a region";
-export const REGION_BOX_HINT = "Drag a box on the image · Esc cancels";
+export const REGION_HINT = "⌥ to mark a region · P switches pen";
+export const REGION_BOX_HINT = "Drag a box on the image · P switches to pen · Esc cancels";
+export const REGION_PEN_HINT = "Draw around the region · P switches to box · Esc cancels";
+
+// Delete / Backspace in an empty arrow label deletes the arrow. A label with text still edits.
+export function emptyLabelShouldDeleteEdge({ key, meta, ctrl, alt, shift, edgeSelected, inLabel, empty } = {}) {
+  if (!edgeSelected || !inLabel || !empty) return false;
+  if (meta || ctrl || alt || shift) return false;
+  return key === "Delete" || key === "Backspace";
+}
 export const SNAP_PX = 6;
 const STICKY_TOOLS = new Set(["select", "hand"]);
+
+function boxRegion(imageRect, a, b) {
+  const frac = regionBoxFrac(imageRect, a, b);
+  return frac ? { frac, poly: null } : null;
+}
 
 function normRect(a, b) {
   const x = Math.min(a.x, b.x);
@@ -79,6 +93,7 @@ export function createInteractions({ actions, settings } = {}) {
     locked: false,
     selection: new Set(),
     edge: null,
+    region: null,
     link: null,
     gesture: null,
     space: false,
@@ -94,30 +109,60 @@ export function createInteractions({ actions, settings } = {}) {
   const zoom = () => vp().zoom || 1;
 
   const emitSelection = () => {
-    call("onSelection", { items: [...state.selection], edge: state.edge, link: state.link });
+    call("onSelection", { items: [...state.selection], edge: state.edge, link: state.link, region: state.region || null });
   };
   const selectItems = (uids) => {
     state.selection = new Set(uids);
     state.edge = null;
     state.link = null;
+    state.region = null;
     emitSelection();
   };
   const selectEdge = (uid) => {
     state.selection = new Set();
     state.edge = uid;
     state.link = null;
+    state.region = null;
     emitSelection();
   };
   const selectLink = (key) => {
     state.selection = new Set();
     state.edge = null;
     state.link = key;
+    state.region = null;
+    emitSelection();
+  };
+  const selectRegion = (card, uid) => {
+    state.selection = new Set(card ? [card] : []);
+    state.edge = null;
+    state.link = null;
+    state.region = card && uid ? { card, uid } : null;
     emitSelection();
   };
   const clearSelection = () => {
-    if (!state.selection.size && !state.edge && !state.link) return false;
+    if (!state.selection.size && !state.edge && !state.link && !state.region) return false;
     selectItems([]);
     return true;
+  };
+  const regionMode = () => {
+    const custom = call("regionDrawMode");
+    if (custom === "pen" || custom === "box") return custom;
+    return regionDrawMode();
+  };
+  const regionHint = () => (regionMode() === "pen" ? REGION_PEN_HINT : REGION_BOX_HINT);
+  const regionDrawing = () => state.gesture?.kind === "region-start" || state.gesture?.kind === "region-end";
+  const toggleRegionDraw = () => {
+    const next = setRegionDrawMode(regionMode() === "pen" ? "box" : "pen");
+    call("setRegionDrawMode", next);
+    const g = state.gesture;
+    if (g && regionDrawing()) {
+      g.points = null;
+      g.moved = false;
+      call("showRegionPen", null);
+      call("showMarquee", null);
+      call("connectHint", next === "pen" ? REGION_PEN_HINT : REGION_BOX_HINT, g.hintAt || null);
+    }
+    return next;
   };
 
   const setTool = (tool, lock = false) => {
@@ -166,6 +211,7 @@ export function createInteractions({ actions, settings } = {}) {
     state.gesture = null;
     call("showMarquee", null);
     call("showLasso", null);
+    call("showRegionPen", null);
     call("showGuides", []);
     call("showTempWire", null);
     call("connectHint", null);
@@ -334,6 +380,11 @@ export function createInteractions({ actions, settings } = {}) {
           beginConnect(t.uid, nearestSide(r.get(t.uid), ev.world), ev.world, t.row);
           return;
         }
+        if (state.tool === "select" && t.region && t.row && !ev.alt) {
+          if ((ev.detail || 0) >= 2) call("editRegionCaption", { card: t.uid, region: t.row });
+          else selectRegion(t.uid, t.row);
+          return;
+        }
         if (state.tool !== "select" && state.tool !== "hand") break; // creation tools treat items as empty space
         let deferred = false;
         const dup = Boolean(ev.alt);
@@ -417,8 +468,19 @@ export function createInteractions({ actions, settings } = {}) {
       if (g.kind === "region-end" && g.phase !== "box") return;
       const from = g.kind === "region-start" ? g.start : g.boxStart;
       const to = clampToBox(ev.world, g.imageRect);
+      g.hintAt = ev.screen;
+      if (regionMode() === "pen") {
+        if (!g.points) g.points = [from];
+        const last = g.points[g.points.length - 1];
+        if (!last || Math.hypot(to.x - last.x, to.y - last.y) >= 1) g.points.push(to);
+        if (g.points.length > 2) g.moved = true;
+        call("showRegionPen", g.points);
+        call("showMarquee", null);
+        return;
+      }
       if (!g.moved && Math.hypot(to.x - from.x, to.y - from.y) * zoom() >= DRAG_THRESHOLD_PX) g.moved = true;
       call("showMarquee", normRect(from, to), "region");
+      call("showRegionPen", null);
       return;
     }
     if (g.kind === "connect") {
@@ -697,9 +759,13 @@ export function createInteractions({ actions, settings } = {}) {
         return;
       }
       case "region-start": {
-        const frac = g.moved ? regionBoxFrac(g.imageRect, g.start, ev.world) : null;
+        const made = g.moved
+          ? (regionMode() === "pen"
+            ? regionPolyFrac(g.imageRect, g.points || [])
+            : boxRegion(g.imageRect, g.start, ev.world))
+          : null;
         end();
-        const regionUid = frac ? call("addRegionOn", { uid: g.uid, frac }) : null;
+        const regionUid = made ? call("addRegionOn", { uid: g.uid, frac: made.frac, poly: made.poly }) : null;
         if (!regionUid) return;
         // The arrow now follows the pointer from the new region; the next click ends it.
         beginConnect(g.uid, nearestSide(r.get(g.uid), ev.world), ev.world, regionUid, { sticky: true, moved: true });
@@ -708,18 +774,21 @@ export function createInteractions({ actions, settings } = {}) {
       case "region-end": {
         // A release with no press of ours: the press landed on chrome, which kept it. That cancels.
         if (g.phase !== "box") { onPointerCancel(); return; }
-        const frac = regionBoxFrac(g.imageRect, g.boxStart, ev.world);
-        if (!frac) {
-          // Too small to be a box: keep the end pinned and wait for a real one.
+        const made = regionMode() === "pen"
+          ? regionPolyFrac(g.imageRect, g.points || [])
+          : boxRegion(g.imageRect, g.boxStart, ev.world);
+        if (!made) {
+          // Too small to be a region: keep the end pinned and wait for a real one.
           g.phase = "wait";
+          g.points = null;
           call("showMarquee", null);
-          call("connectHint", REGION_BOX_HINT, ev.screen);
+          call("showRegionPen", null);
+          call("connectHint", regionHint(), ev.screen);
           return;
         }
         end();
-        Promise.resolve(call("addRegionEndpoint", g.fromBlock ? {
-          from: g.from, to: g.to, frac, fromSide: g.fromSide, toSide: g.toSide, fromBlock: g.fromBlock,
-        } : { from: g.from, to: g.to, frac, fromSide: g.fromSide, toSide: g.toSide }))
+        const spec = { from: g.from, to: g.to, frac: made.frac, poly: made.poly, fromSide: g.fromSide, toSide: g.toSide };
+        Promise.resolve(call("addRegionEndpoint", g.fromBlock ? { ...spec, fromBlock: g.fromBlock } : spec))
           .then((uid) => { if (uid) selectEdge(uid); }).catch(() => {});
         afterToolUse();
         return;
@@ -745,7 +814,7 @@ export function createInteractions({ actions, settings } = {}) {
             to: drop.to, toSide: nearestSide(hr?.get(drop.to), pin), imageRect: drop.imageRect, pin,
           };
           call("clearBlockTarget");
-          call("connectHint", REGION_BOX_HINT, ev.screen);
+          call("connectHint", regionHint(), ev.screen);
           const spec = { from: g.from, fromSide: g.fromSide, point: pin };
           if (fromBlock) spec.fromBlock = fromBlock;
           call("showTempWire", spec);
@@ -812,6 +881,11 @@ export function createInteractions({ actions, settings } = {}) {
     if (t.kind === "chrome") return;
     cancelOpen();
     const b = board();
+    if (t.kind === "item" && t.uid && t.region && t.row) {
+      selectRegion(t.uid, t.row);
+      call("editRegionCaption", { card: t.uid, region: t.row });
+      return;
+    }
     if (t.kind === "item" && t.uid) {
       const item = b?.items.get(t.uid);
       if (!item) return;
@@ -901,6 +975,13 @@ export function createInteractions({ actions, settings } = {}) {
   };
 
   const deleteSelection = (withContents) => {
+    if (state.region?.uid) {
+      const uid = state.region.uid;
+      selectItems([]);
+      call("deleteRegion", uid);
+      call("toast", { message: "Region deleted", action: { label: "Undo", run: () => call("undo") } });
+      return true;
+    }
     if (state.edge) {
       const uid = state.edge;
       selectItems([]);
@@ -1063,6 +1144,10 @@ export function createInteractions({ actions, settings } = {}) {
   const onKeyDown = (ev) => {
     const key = ev.key || "";
     const mod = Boolean(ev.meta || ev.ctrl);
+    if (!ev.inputFocused && (key === "p" || key === "P") && !mod && !ev.alt && !ev.shift && regionDrawing()) {
+      toggleRegionDraw();
+      return true;
+    }
     if (ev.inputFocused) {
       // Roam editor / input owns the keyboard. Only Esc leaves edit mode, and only when
       // Roam's autocomplete is closed.
@@ -1112,8 +1197,9 @@ export function createInteractions({ actions, settings } = {}) {
     select: selectItems,
     selectEdge,
     selectLink,
+    selectRegion,
     clearSelection,
-    getSelection: () => ({ items: [...state.selection], edge: state.edge, link: state.link }),
+    getSelection: () => ({ items: [...state.selection], edge: state.edge, link: state.link, region: state.region || null }),
     deleteSelection,
     escape,
     isGesturing: () => Boolean(state.gesture),

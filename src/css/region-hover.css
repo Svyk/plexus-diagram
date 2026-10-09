@@ -70,6 +70,24 @@ body.roam-body.dark .pxd-root.pxd-region-pop button,
   pointer-events: auto;
 }
 
+.pxd-region-hit {
+  opacity: 0;
+}
+
+.pxd-item:hover .pxd-region-hit,
+.pxd-item--selected .pxd-region-hit,
+.pxd-region-hit--hot,
+.pxd-region-hit--flash,
+.pxd-region-hit--on {
+  opacity: 1;
+}
+
+.pxd-region-hit--poly {
+  border: none;
+  color: var(--pxd-border-strong, #1f2937);
+  background: transparent;
+}
+
 .pxd-region-hit--hot,
 .pxd-region-hit--flash {
   border-color: var(--pxd-accent, hsl(175 85% 24%));

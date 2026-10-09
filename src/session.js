@@ -1,6 +1,7 @@
 import { namespaceParent } from "./model/namespace.js";
 import { CONTAINER_STRING, isContainerString, parseRegion, PIN_CONTAINER_STRING } from "./model/regions.js";
-import { imageRegionString } from "./model/image-region.js";
+import { imagePolyString, imageRegionString } from "./model/image-region.js";
+import { renameRegionCaption } from "./model/region-menu.js";
 import { edgeMayTarget, endpointKindOf, imageSourceOf, regionCaption } from "./model/endpoints.js";
 import { planPinWrites, sourceAttrString } from "./model/pdf-pin.js";
 import { backgroundImage, calendarLayout, cardTemplatePlan, zoomThreshold } from "./model/section6.js";
@@ -1063,7 +1064,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
   // The region block under the card's source image (a ((ref)) card writes under the referenced image).
   // Returns its uid, or null after a toast when the card is not an image or the image is read-only.
-  function writeImageRegion(t, item, frac, label, regionUid) {
+  function writeImageRegion(t, item, frac, label, regionUid, poly) {
     const read = (id) => {
       try { return host.blockString?.(id); } catch { return null; }
     };
@@ -1081,7 +1082,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       }
     }
     const found = regionsContainerOf(item, source);
-    const string = imageRegionString(source.uid, frac, regionCaption(label, found.count));
+    const caption = regionCaption(label, found.count);
+    const string = Array.isArray(poly) && poly.length >= 3
+      ? imagePolyString(source.uid, poly, caption)
+      : imageRegionString(source.uid, frac, caption);
     if (!string) return null;
     const parent = found.container || t.create({
       parent: source.uid,
@@ -1091,6 +1095,107 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       open: false,
     });
     return t.create({ parent, uid: regionUid, order: "last", string });
+  }
+
+  const REGION_REF_QUERY = "[:find ?ref :in $ ?u :where [?b :block/uid ?u] [?r :block/refs ?b] [?r :block/uid ?ref]]";
+
+  function readBlock(id) {
+    try { return host.blockString?.(id) || ""; } catch { return ""; }
+  }
+
+  // An image region we wrote (k=img) or a Roam Plexus image region (k=imgpoly / k=imgrect).
+  // A pin is not one of these.
+  function imageRegionBlock(id) {
+    const region = parseRegion(readBlock(id));
+    if (!region || region.error || !region.drawingUid) return null;
+    if (region.kind === "img" && region.supported) return region;
+    if (region.kind === "imgpoly" || region.kind === "imgrect") return region;
+    return null;
+  }
+
+  // A child with any text keeps the region. A failed read keeps it too.
+  function regionHasNotes(id) {
+    let kids = null;
+    try { kids = host.pullTree?.(id, 1, 40); } catch { return true; }
+    if (!Array.isArray(kids)) return true;
+    return kids.some((kid) => String(kid?.string ?? "").trim() !== "");
+  }
+
+  // null means the query failed: the caller keeps the region. Edge uids in `ignore` do not count.
+  function foreignRefs(id, ignore) {
+    if (typeof host.q !== "function") return null;
+    let rows = null;
+    try { rows = host.q(REGION_REF_QUERY, id); } catch { return null; }
+    if (!Array.isArray(rows)) return null;
+    const out = [];
+    for (const row of rows) {
+      const ref = Array.isArray(row) ? row[0] : row;
+      if (typeof ref !== "string" || !ref || ref === id || ignore.has(ref)) continue;
+      out.push(ref);
+    }
+    return out;
+  }
+
+  function containerHolding(regionUid, drawingUid) {
+    let nodes = [];
+    try { nodes = host.pullTree?.(drawingUid, 2, 80) || []; } catch { nodes = []; }
+    if (!Array.isArray(nodes)) return null;
+    for (const node of nodes) {
+      if (!isContainerString(node?.string)) continue;
+      const kids = node.children || [];
+      if (kids.some((kid) => kid?.uid === regionUid)) return { uid: node.uid, kids };
+    }
+    return null;
+  }
+
+  // Deletes the edges, then each image-region endpoint nothing else still uses.
+  // `force` deletes those regions even when another block references them (the user deleted the region).
+  function removeEdges(t, uids, { force } = {}) {
+    const drop = new Set();
+    for (const id of uids || []) if (board.edges.has(id)) drop.add(id);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const edge of board.edges.values()) {
+        if (drop.has(edge.uid)) continue;
+        if (drop.has(edge.from) || drop.has(edge.to)) { drop.add(edge.uid); grew = true; }
+      }
+    }
+    const forced = force instanceof Set ? force : new Set();
+    const candidates = new Set(forced);
+    for (const id of drop) {
+      const edge = board.edges.get(id);
+      if (edge?.fromBlock) candidates.add(edge.fromBlock);
+      if (edge?.toBlock) candidates.add(edge.toBlock);
+    }
+    const used = new Set();
+    for (const edge of board.edges.values()) {
+      if (drop.has(edge.uid)) continue;
+      if (edge.fromBlock) used.add(edge.fromBlock);
+      if (edge.toBlock) used.add(edge.toBlock);
+    }
+    const doomed = new Set();
+    for (const regionUid of candidates) {
+      if (!imageRegionBlock(regionUid)) continue;
+      if (!forced.has(regionUid) && used.has(regionUid)) continue;
+      if (!forced.has(regionUid)) {
+        if (regionHasNotes(regionUid)) continue;
+        const refs = foreignRefs(regionUid, drop);
+        if (refs === null || refs.length) continue;
+      }
+      doomed.add(regionUid);
+    }
+    const containers = new Set();
+    for (const regionUid of doomed) {
+      const region = imageRegionBlock(regionUid);
+      const home = region ? containerHolding(regionUid, region.drawingUid) : null;
+      if (!home?.uid) continue;
+      const leftover = (home.kids || []).filter((kid) => kid?.uid && !doomed.has(kid.uid));
+      if (!leftover.length) containers.add(home.uid);
+    }
+    for (const id of drop) t.del(id);
+    for (const id of doomed) t.del(id);
+    for (const id of containers) t.del(id);
   }
 
   function ensureTrails(t) {
@@ -2739,27 +2844,38 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     },
 
     deleteEdges(uids) {
+      return txn((t) => { removeEdges(t, uids); });
+    },
+
+    // The outline's own Delete: the region and every arrow that ends on it, one undo.
+    deleteRegion(regionUid) {
       return txn((t) => {
-        const drop = new Set();
-        for (const id of uids || []) if (board.edges.has(id)) drop.add(id);
-        let grew = true;
-        while (grew) {
-          grew = false;
-          for (const edge of board.edges.values()) {
-            if (drop.has(edge.uid)) continue;
-            if (drop.has(edge.from) || drop.has(edge.to)) { drop.add(edge.uid); grew = true; }
-          }
+        const id = String(regionUid || "");
+        if (!imageRegionBlock(id)) return;
+        const edges = [];
+        for (const edge of board.edges.values()) {
+          if (edge.fromBlock === id || edge.toBlock === id) edges.push(edge.uid);
         }
-        for (const id of drop) t.del(id);
+        removeEdges(t, edges, { force: new Set([id]) });
+      });
+    },
+
+    setRegionCaption(uid, caption) {
+      return txn((t) => {
+        let current = "";
+        try { current = host.blockString?.(uid) || ""; } catch { return; }
+        const next = renameRegionCaption(current, caption);
+        if (!next || next === current) return;
+        t.string(uid, next);
       });
     },
 
     // Region outline plus the arrow, one undo. The region lives under the source image,
     // which may be a block the card only references. A page the user cannot write is refused.
-    addRegionEndpoint({ from, to, frac, fromBlock, fromSide, toSide, label = "" } = {}) {
+    addRegionEndpoint({ from, to, frac, fromBlock, fromSide, toSide, label = "", poly } = {}) {
       return txn((t) => {
         if (!from || !to || from === to || !board.items.has(from) || !board.items.has(to)) return null;
-        const regionUid = writeImageRegion(t, board.items.get(to), frac, label);
+        const regionUid = writeImageRegion(t, board.items.get(to), frac, label, undefined, poly);
         if (!regionUid) return null;
         const container = ensureContainer(t);
         return t.create({
@@ -2772,10 +2888,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     },
 
     // A region alone, under the card's source image, with a known uid so an arrow can start from it at once.
-    addRegionOn({ on, frac, uid, label = "" } = {}) {
+    addRegionOn({ on, frac, uid, label = "", poly } = {}) {
       return txn((t) => {
         if (!on || !board.items.has(on)) return null;
-        return writeImageRegion(t, board.items.get(on), frac, label, uid);
+        return writeImageRegion(t, board.items.get(on), frac, label, uid, poly);
       });
     },
 

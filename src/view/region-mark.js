@@ -1,6 +1,7 @@
 // REG-2. Drag a rectangle on one image. Confirm reports the fraction; the caller writes.
 
 import { fracFromDrag } from "../model/image-region.js";
+import { paintedRectOfElement, polyBBox, regionDrawMode, setRegionDrawMode, simplifyPoly } from "../model/image-region.js";
 
 const inBar = (node, bar) => Boolean(bar?.contains?.(node));
 
@@ -25,6 +26,20 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
   draft.className = "pxd-region-draft";
   const bar = doc.createElement("div");
   bar.className = "pxd-region-bar";
+  const modes = doc.createElement("div");
+  modes.className = "pxd-region-modes";
+  const modeButton = (name, label) => {
+    const node = doc.createElement("button");
+    node.type = "button";
+    node.className = "pxd-region-mode";
+    node.dataset.mode = name;
+    node.textContent = label;
+    node.setAttribute("aria-label", label);
+    return node;
+  };
+  const boxButton = modeButton("box", "Box");
+  const penButton = modeButton("pen", "Pen");
+  modes.append(boxButton, penButton);
   const input = doc.createElement("input");
   input.className = "pxd-region-caption";
   input.type = "text";
@@ -35,23 +50,41 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
   button.type = "button";
   button.setAttribute("aria-label", "Confirm");
   button.textContent = "Confirm";
-  bar.append(input, button);
-  layer.append(draft, bar);
+  bar.append(modes, input, button);
+  const svg = doc.createElementNS?.("http://www.w3.org/2000/svg", "svg") || doc.createElement("svg");
+  svg.className = "pxd-region-pen";
+  svg.setAttribute("fill", "none");
+  const pen = doc.createElementNS?.("http://www.w3.org/2000/svg", "polyline") || doc.createElement("polyline");
+  pen.setAttribute("fill", "none");
+  svg.append(pen);
+  layer.append(draft, svg, bar);
   root.append(layer);
 
   let dead = false;
   let dragging = false;
-  // The drag is kept as fractions of the image, so a scroll, pan or zoom before Confirm cannot shift it.
+  let mode = regionDrawMode();
+  // The drag is kept as fractions of the painted image, so a scroll, pan or zoom before Confirm cannot shift it.
   let x0 = null;
   let y0 = null;
   let x1 = null;
   let y1 = null;
+  let stroke = [];
   const offs = [];
 
   const imgBox = () => {
+    const painted = paintedRectOfElement(img, { zoom: 1 });
+    if (painted && painted.width > 0 && painted.height > 0) {
+      return { left: painted.left, top: painted.top, w: painted.width, h: painted.height };
+    }
     let box = null;
     try { box = img.getBoundingClientRect(); } catch { box = null; }
     return { left: axis(box, "left", "x"), top: axis(box, "top", "y"), w: axis(box, "width", "w"), h: axis(box, "height", "h") };
+  };
+  const paintModes = () => {
+    boxButton.setAttribute("aria-pressed", mode === "box" ? "true" : "false");
+    penButton.setAttribute("aria-pressed", mode === "pen" ? "true" : "false");
+    draft.style.display = mode === "pen" ? "none" : "";
+    svg.style.display = mode === "pen" ? "" : "none";
   };
   const fx = (clientX, box) => (box.w > 0 ? (clientX - box.left) / box.w : 0);
   const fy = (clientY, box) => (box.h > 0 ? (clientY - box.top) / box.h : 0);
@@ -80,8 +113,34 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
     draft.style.top = `${top}px`;
     draft.style.width = `${Math.abs(bx - ax)}px`;
     draft.style.height = `${Math.abs(by - ay)}px`;
-    bar.style.left = `${left}px`;
-    bar.style.top = `${top + Math.abs(by - ay) + 4}px`;
+    const rootW = axis(rootBox, "width", "w") || 1;
+    const rootH = axis(rootBox, "height", "h") || 1;
+    svg.style.position = "absolute";
+    svg.style.left = "0";
+    svg.style.top = "0";
+    svg.style.width = "100%";
+    svg.style.height = "100%";
+    svg.style.overflow = "visible";
+    svg.style.pointerEvents = "none";
+    svg.setAttribute("viewBox", `0 0 ${rootW} ${rootH}`);
+    pen.setAttribute("points", stroke.map((p) => {
+      const x = (imgLeft - rootLeft) + p.x * box.w;
+      const y = (imgTop - rootTop) + p.y * box.h;
+      return `${x},${y}`;
+    }).join(" "));
+    pen.setAttribute("stroke", "currentColor");
+    pen.setAttribute("stroke-width", "1.5");
+    pen.setAttribute("fill", "none");
+    const penBox = polyBBox(stroke);
+    if (mode === "pen" && penBox) {
+      const penLeft = (imgLeft - rootLeft) + penBox.rx * box.w;
+      const penTop = (imgTop - rootTop) + penBox.ry * box.h;
+      bar.style.left = `${penLeft}px`;
+      bar.style.top = `${penTop + penBox.rh * box.h + 4}px`;
+    } else {
+      bar.style.left = `${left}px`;
+      bar.style.top = `${top + Math.abs(by - ay) + 4}px`;
+    }
   };
 
   const destroy = () => {
@@ -95,13 +154,21 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
   const confirm = () => {
     if (dead) return;
     const box = imgBox();
+    const caption = String(input.value ?? "");
+    if (mode === "pen") {
+      const poly = simplifyPoly(stroke);
+      const frac = polyBBox(poly);
+      if (!poly || !frac) return;
+      try { onConfirm?.({ frac, caption, poly }); }
+      finally { destroy(); }
+      return;
+    }
     const client = (f, origin, size) => (f == null ? null : origin + f * size);
     const frac = fracFromDrag(
       { left: box.left, top: box.top, width: box.w, height: box.h },
       client(x0, box.left, box.w), client(y0, box.top, box.h), client(x1, box.left, box.w), client(y1, box.top, box.h),
     );
     if (!frac) return;
-    const caption = String(input.value ?? "");
     try { onConfirm?.({ frac, caption }); }
     finally { destroy(); }
   };
@@ -119,8 +186,15 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
     if (event.button != null && event.button !== 0) return;
     dragging = true;
     const box = imgBox();
-    x0 = fx(event.clientX, box);
-    y0 = fy(event.clientY, box);
+    const x = Math.min(1, Math.max(0, fx(event.clientX, box)));
+    const y = Math.min(1, Math.max(0, fy(event.clientY, box)));
+    if (mode === "pen") {
+      stroke = [{ x, y }];
+      place();
+      return;
+    }
+    x0 = x;
+    y0 = y;
     x1 = x0;
     y1 = y0;
     place();
@@ -132,8 +206,23 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
     event.preventDefault();
   };
 
+  const pointOf = (event) => {
+    const box = imgBox();
+    return {
+      x: Math.min(1, Math.max(0, fx(event.clientX, box))),
+      y: Math.min(1, Math.max(0, fy(event.clientY, box))),
+    };
+  };
+
   const onMove = (event) => {
     if (!dragging) return;
+    if (mode === "pen") {
+      const next = pointOf(event);
+      const last = stroke[stroke.length - 1];
+      if (!last || Math.hypot(next.x - last.x, next.y - last.y) >= 0.002) stroke.push(next);
+      place();
+      return;
+    }
     const box = imgBox();
     x1 = fx(event.clientX, box);
     y1 = fy(event.clientY, box);
@@ -143,10 +232,16 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
   const onUp = (event) => {
     if (!dragging) return;
     dragging = false;
-    const box = imgBox();
-    x1 = fx(event.clientX, box);
-    y1 = fy(event.clientY, box);
-    place();
+    if (mode === "pen") {
+      stroke.push(pointOf(event));
+      stroke = simplifyPoly(stroke) || stroke;
+      place();
+    } else {
+      const box = imgBox();
+      x1 = fx(event.clientX, box);
+      y1 = fy(event.clientY, box);
+      place();
+    }
     try { input.focus(); } catch { /* stub */ }
   };
 
@@ -191,6 +286,15 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
       event.stopPropagation?.();
       return;
     }
+    if ((event.key === "p" || event.key === "P") && !typing(event) && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      mode = setRegionDrawMode(mode === "pen" ? "box" : "pen");
+      stroke = [];
+      paintModes();
+      place();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -216,6 +320,17 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
     event.stopPropagation();
     confirm();
   });
+  const pickMode = (next) => (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    mode = setRegionDrawMode(next);
+    stroke = [];
+    paintModes();
+    place();
+  };
+  listen(boxButton, "click", pickMode("box"));
+  listen(penButton, "click", pickMode("pen"));
+  paintModes();
   place();
   return { destroy };
 }

@@ -24,6 +24,7 @@ import { applyEditorCounterScale } from "./editor-scale.js";
 import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen, unmountDue } from "./offscreen.js";
 import { isStructuralString, parseRegion } from "../model/regions.js";
 import { endpointHitsOf } from "../model/endpoints.js";
+import { paintedRectOfElement, polygonClipInBox } from "../model/image-region.js";
 import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 import { renderRegionCard, thumbRequest } from "./region-card.js";
@@ -2657,11 +2658,54 @@ export function createItemRenderer({
     }
     if (!layer) layer = el("div", "pxd-region-hits", hostEl);
     else if (layer.parentElement !== hostEl) hostEl.append(layer);
+    const img = hostEl.matches?.("img") ? hostEl : hostEl.querySelector?.("img");
+    const painted = img ? paintedRectOfElement(img, { zoom: zoomCache || 1 }) : null;
+    const hostBox = hostEl.getBoundingClientRect?.();
+    const fits = painted && hostBox?.width > 0 && hostBox?.height > 0
+      && (Math.abs(painted.left - hostBox.left) > 0.5 || Math.abs(painted.top - hostBox.top) > 0.5
+        || Math.abs(painted.width - hostBox.width) > 0.5 || Math.abs(painted.height - hostBox.height) > 0.5);
+    if (fits) {
+      layer.style.inset = "auto";
+      layer.style.left = `${((painted.left - hostBox.left) / hostBox.width) * 100}%`;
+      layer.style.top = `${((painted.top - hostBox.top) / hostBox.height) * 100}%`;
+      layer.style.width = `${(painted.width / hostBox.width) * 100}%`;
+      layer.style.height = `${(painted.height / hostBox.height) * 100}%`;
+    } else {
+      layer.style.inset = "";
+      layer.style.left = "";
+      layer.style.top = "";
+      layer.style.width = "";
+      layer.style.height = "";
+    }
     layer.replaceChildren();
-    for (const region of regions) {
+    const areaOf = (region) => {
+      const f = fracParts(region.frac);
+      return f ? f.rw * f.rh : 1;
+    };
+    const ordered = regions.slice().sort((a, b) => areaOf(b) - areaOf(a));
+    for (const region of ordered) {
       const hit = el("div", "pxd-region-hit", layer);
       hit.setAttribute("data-pxd-region", region.uid);
+      const f = fracParts(region.frac);
+      if (f) hit.setAttribute("data-pxd-area", String(f.rw * f.rh));
       placeFrac(hit, region.frac);
+      if (region.poly?.length >= 3 && f) {
+        hit.classList.add("pxd-region-hit--poly");
+        const clip = polygonClipInBox(f, region.poly);
+        if (clip) hit.style.clipPath = clip;
+        const svg = doc.createElementNS?.("http://www.w3.org/2000/svg", "svg") || doc.createElement("svg");
+        svg.setAttribute("viewBox", "0 0 100 100");
+        svg.setAttribute("preserveAspectRatio", "none");
+        svg.style.cssText = "position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none";
+        const shape = doc.createElementNS?.("http://www.w3.org/2000/svg", "polygon") || doc.createElement("polygon");
+        shape.setAttribute("points", region.poly.map((p) => `${((p.x - f.rx) / f.rw) * 100},${((p.y - f.ry) / f.rh) * 100}`).join(" "));
+        shape.setAttribute("fill", "transparent");
+        shape.setAttribute("stroke", "currentColor");
+        shape.setAttribute("stroke-width", "1.5");
+        shape.setAttribute("vector-effect", "non-scaling-stroke");
+        svg.append(shape);
+        hit.append(svg);
+      }
     }
     pins.forEach((pin, i) => {
       const hit = el("div", "pxd-pin-hit", layer);
@@ -2778,6 +2822,10 @@ export function createItemRenderer({
       markedRows.delete(row);
       unmarkRow(row);
     }
+  };
+  const setRegionOn = (uid, rowUid, on) => {
+    const mark = markOf(shells.get(uid), rowUid);
+    mark?.classList?.toggle("pxd-region-hit--on", Boolean(on));
   };
   const setRowHot = (uid, rowUid, on) => {
     const mark = markOf(shells.get(uid), rowUid);
@@ -5452,6 +5500,7 @@ export function createItemRenderer({
     setLayoutWatch,
     markRows,
     setRowHot,
+    setRegionOn,
     revealRow,
     // The colour-highlighter probe reads the body's computed style, a forced style recalc of the whole page.
     // A reading-card change (pane open/close) does not change the highlighter, so it skips that probe.

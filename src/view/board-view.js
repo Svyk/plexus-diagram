@@ -71,7 +71,7 @@ import {
 import { captionForView, selectionViewRect } from "../model/view-save.js";
 import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parsePastedText } from "../model/clipboard.js";
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
-import { createInteractions } from "./interactions.js";
+import { createInteractions, emptyLabelShouldDeleteEdge } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
@@ -132,7 +132,8 @@ import {
 } from "../model/section6.js";
 import { mountLater, mountPrintSheet } from "./later-views.js";
 import { cellElementOf, cellUidOf, isTableCard } from "./table-cells.js";
-import { endpointUnderPointer, focusEnds, imageSourceOf, regionDropPlan, wireStart } from "../model/endpoints.js";
+import { endpointUnderPointer, focusEnds, imageSourceOf, pickSmallestRegion, regionDropPlan, wireStart } from "../model/endpoints.js";
+import { imageRegionFrac, paintedRectOfElement } from "../model/image-region.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -2771,6 +2772,19 @@ function buildBoardView(onFail, {
     if (e.fromBlock) itemsR.setRowHot(e.from, e.fromBlock, on);
     if (e.toBlock) itemsR.setRowHot(e.to, e.toBlock, on);
   };
+  let regionOn = [];
+  const syncRegionMarks = () => {
+    for (const prev of regionOn) itemsR.setRegionOn?.(prev.card, prev.uid, false);
+    regionOn = [];
+    const add = (card, uid) => {
+      if (!card || !uid) return;
+      itemsR.setRegionOn?.(card, uid, true);
+      regionOn.push({ card, uid });
+    };
+    const e = selection.edge ? board()?.edges.get(selection.edge) : null;
+    if (e) { add(e.from, e.fromBlock); add(e.to, e.toBlock); }
+    if (selection.region) add(selection.region.card, selection.region.uid);
+  };
   listen(root, "pointerover", (event) => {
     if (event.buttons) return;
     const row = event.target?.closest?.(".pxd-row--linked, [data-pxd-edges]");
@@ -4125,9 +4139,11 @@ function buildBoardView(onFail, {
           const raw = host?.q?.("[:find (count ?b) :in $ ?u :where [?r :block/uid ?u] [?b :block/refs ?r]]", arg);
           count = regionRefCount(raw);
         } catch { count = null; }
-        const copy = regionDeleteCopy(count);
+        const edgeRefs = [...(board()?.edges.values() || [])].filter((edge) => edge.fromBlock === arg || edge.toBlock === arg).length;
+        const others = count == null ? null : Math.max(0, count - edgeRefs);
+        const copy = regionDeleteCopy(others);
         if (copy == null) break;
-        const remove = () => { if (typeof host?.deleteBlock === "function") void host.deleteBlock(arg); };
+        const remove = () => { void session.deleteRegion?.(arg); };
         if (!copy) { remove(); break; }
         closeRegionDelete();
         regionDelete = openRegionDeleteDialog(doc, {
@@ -5784,9 +5800,10 @@ function buildBoardView(onFail, {
     fitAll,
     fitSelection,
     onSelection: (sel) => {
-      selection = { items: sel.items || [], edge: sel.edge || null, link: sel.link || null };
+      selection = { items: sel.items || [], edge: sel.edge || null, link: sel.link || null, region: sel.region || null };
       dirty.selection = true;
       panel.setSelection(singleItem());
+      syncRegionMarks();
       schedule();
     },
     onTool: (tool, locked) => {
@@ -5837,6 +5854,7 @@ function buildBoardView(onFail, {
     },
     showMarquee: (rect, kind) => edgesR.setMarquee(rect, kind),
     showLasso: (points) => edgesR.setLasso(points),
+    showRegionPen: (points) => edgesR.setRegionPen?.(points),
     showGuides: (guides) => edgesR.setGuides(guides),
     previewMove: (uids, dx, dy) => {
       const b = board();
@@ -5991,6 +6009,19 @@ function buildBoardView(onFail, {
       });
     },
     deleteEdges: (uids) => session.deleteEdges?.(uids),
+    deleteRegion: (uid) => session.deleteRegion?.(uid),
+    editRegionCaption: ({ region } = {}) => {
+      if (!region) return;
+      let current = "";
+      try { current = host?.blockString?.(region) || ""; } catch { current = ""; }
+      const parsed = parseRegion(current);
+      askView({
+        caption: parsed?.caption || "",
+        showCopy: false,
+        dialogLabel: "Region caption",
+        onSave: ({ caption }) => { void session.setRegionCaption?.(region, caption); },
+      });
+    },
     addEdge: (spec) => Promise.resolve(session.addEdge?.(spec)).then((uid) => {
       if (uid && setting("why-prompt", false) === true) openWhy(uid, "why");
       return uid;
@@ -6003,16 +6034,25 @@ function buildBoardView(onFail, {
     regionDrop: ({ from, client } = {}) => {
       if (!client || typeof doc.elementsFromPoint !== "function") return null;
       let card = null;
-      let regionUid = null;
+      const marks = [];
       for (const node of doc.elementsFromPoint(client.x, client.y) || []) {
         const itemEl = node.closest?.(".pxd-item");
         if (!itemEl) continue;
-        if (itemEl.closest?.(".pxd-root") !== root) return null;
-        card = itemEl;
-        const mark = node.closest?.("[data-pxd-region]");
-        if (mark && itemEl.contains(mark)) regionUid = mark.getAttribute?.("data-pxd-region") || null;
-        break;
+        if (itemEl.closest?.(".pxd-root") !== root) {
+          if (!card) return null;
+          break;
+        }
+        if (!card) card = itemEl;
+        if (itemEl !== card) break;
+        const mark = node.matches?.("[data-pxd-region]") ? node : node.closest?.("[data-pxd-region]");
+        if (!mark || !card.contains(mark)) continue;
+        const id = mark.getAttribute?.("data-pxd-region") || "";
+        if (!id || marks.some((row) => row.uid === id)) continue;
+        const area = Number(mark.getAttribute?.("data-pxd-area"));
+        const r = mark.getBoundingClientRect?.();
+        marks.push({ uid: id, area: Number.isFinite(area) && area > 0 ? area : (r?.width || 0) * (r?.height || 0) });
       }
+      const regionUid = pickSmallestRegion(marks);
       if (!card) return null;
       const uid = card.getAttribute?.("data-uid") || card.dataset?.uid;
       if (!uid || uid === from) return null;
@@ -6022,19 +6062,21 @@ function buildBoardView(onFail, {
       const source = item.kind === "image" ? { ok: true } : imageSourceOf(item, read);
       if (!source.ok && !regionUid) return null;
       const media = card.querySelector?.(".pxd-item__media") || card.querySelector?.(".pxd-pdf-cover") || card.querySelector?.("img") || card;
-      const box = media.getBoundingClientRect?.();
+      const img = media.matches?.("img") ? media : media.querySelector?.("img");
+      const zoom = vp?.zoom || 1;
+      const painted = img ? paintedRectOfElement(img, { zoom }) : null;
+      const box = painted || media.getBoundingClientRect?.();
       if (!box || !(box.width > 0) || !(box.height > 0)) return regionDropPlan({ from, imageUid: uid, regionUid });
       const rootBox = root.getBoundingClientRect?.() || { left: 0, top: 0 };
       const origin = screenToWorld(vp, { x: (box.left || 0) - (rootBox.left || 0), y: (box.top || 0) - (rootBox.top || 0) });
-      const zoom = vp?.zoom || 1;
       const imageRect = { x: origin.x, y: origin.y, w: box.width / zoom, h: box.height / zoom };
       return regionDropPlan({ from, imageUid: uid, regionUid, imageRect });
     },
     // Option box on an image under Connect: the region is written now and the arrow starts from it.
-    addRegionOn: ({ uid, frac } = {}) => {
+    addRegionOn: ({ uid, frac, poly } = {}) => {
       const regionUid = host?.generateUid?.();
       if (!uid || !regionUid || typeof session.addRegionOn !== "function") return null;
-      Promise.resolve(session.addRegionOn({ on: uid, frac, uid: regionUid })).then((made) => {
+      Promise.resolve(session.addRegionOn({ on: uid, frac, uid: regionUid, poly })).then((made) => {
         // Refused (read-only source): the arrow from that region cannot be written either.
         if (!made && ctl.gestureKind() === "connect") ctl.cancel();
       }).catch(() => {});
@@ -6174,9 +6216,15 @@ function buildBoardView(onFail, {
     const item = t.closest(".pxd-item");
     if (item) {
       const hit = { kind: "item", uid: item.dataset?.uid || item.getAttribute?.("data-uid"), part: t.closest(".pxd-item__header") ? "header" : "body" };
-      const mark = t.closest("[data-pxd-region], [data-pxd-pin]");
-      if (mark && item.contains(mark)) {
-        hit.row = mark.getAttribute?.("data-pxd-region") || mark.getAttribute?.("data-pxd-pin") || "";
+      const regionMark = t.closest("[data-pxd-region]");
+      if (regionMark && item.contains(regionMark)) {
+        hit.row = regionMark.getAttribute?.("data-pxd-region") || "";
+        hit.region = true;
+        return hit;
+      }
+      const pinMark = t.closest("[data-pxd-pin]");
+      if (pinMark && item.contains(pinMark)) {
+        hit.row = pinMark.getAttribute?.("data-pxd-pin") || "";
         return hit;
       }
       // PG-3: the page-card row under the pointer (not for a link, checkbox or image inside it).
@@ -7004,6 +7052,24 @@ function buildBoardView(onFail, {
       return;
     }
     const inputFocused = isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement);
+    const labelNode = [event.target, doc.activeElement].find((node) => node?.classList?.contains?.("pxd-why__label") || node?.closest?.(".pxd-label--editing"));
+    const labelField = labelNode?.classList?.contains?.("pxd-why__label") ? labelNode : labelNode?.closest?.(".pxd-label--editing");
+    if (emptyLabelShouldDeleteEdge({
+      key: event.key,
+      meta: event.metaKey,
+      ctrl: event.ctrlKey,
+      alt: event.altKey,
+      shift: event.shiftKey,
+      edgeSelected: Boolean(selection.edge),
+      inLabel: Boolean(labelField),
+      empty: String(labelField?.value ?? labelField?.textContent ?? "").trim() === "",
+    })) {
+      event.preventDefault();
+      event.stopPropagation();
+      ctl.deleteSelection(false);
+      return;
+    }
+    if ((event.key === "p" || event.key === "P") && !event.metaKey && !event.ctrlKey && !event.altKey && root.querySelector?.(".pxd-region-layer")) return;
     if (inputFocused) {
       const inside = root.contains?.(event.target) || root.contains?.(doc.activeElement);
       if (!inside && !itemsR.isEditing()) return;
@@ -7124,8 +7190,26 @@ function buildBoardView(onFail, {
     ownsKeyboard,
     isTextEntry: isTextEntryTarget,
     on: {
+      emptyEdgeLabel: (event) => {
+        if (!selection.edge) return false;
+        const node = event?.target?.classList?.contains?.("pxd-why__label") || event?.target?.closest?.(".pxd-label--editing")
+          ? (event.target.classList?.contains?.("pxd-why__label") ? event.target : event.target.closest?.(".pxd-label--editing"))
+          : (doc.activeElement?.classList?.contains?.("pxd-why__label")
+            ? doc.activeElement
+            : doc.activeElement?.closest?.(".pxd-label--editing"));
+        if (!node) return false;
+        return String(node.value ?? node.textContent ?? "").trim() === "";
+      },
       getPayload: ({ cut = false } = {}) => {
         const b = board();
+        if (selection.edge && !selection.items?.length) {
+          const edge = b?.edges.get(selection.edge);
+          if (!edge) return null;
+          const text = edge.string || `((${selection.edge}))`;
+          const payload = { text, mime: JSON.stringify({ kind: "edge", uid: selection.edge, string: text }) };
+          lastPayload = payload;
+          return payload;
+        }
         if (!b || !selection.items.length) return null;
         const payload = copyPayload(b, selection.items, rects());
         if (!payload.text) return null;
@@ -7140,6 +7224,10 @@ function buildBoardView(onFail, {
         return payload;
       },
       cutDone: () => {
+        if (selection.edge && !selection.items?.length) {
+          ctl.deleteSelection(false);
+          return;
+        }
         cutting = true;
         try { ctl.deleteSelection(true); } finally { cutting = false; }
       },
@@ -7597,7 +7685,7 @@ function buildBoardView(onFail, {
   const pulseFraction = (img, frac) => {
     const ms = motionProfile(currentMotion()).pulseMs;
     if (!(ms > 0) || !img) return;
-    const imgBox = img.getBoundingClientRect?.();
+    const imgBox = paintedRectOfElement(img, { zoom: vp?.zoom || 1 }) || img.getBoundingClientRect?.();
     const rootBox = root.getBoundingClientRect?.() || { left: 0, top: 0 };
     if (!imgBox || !(imgBox.width > 0) || !(imgBox.height > 0)) return;
     const f = fracParts(frac);
@@ -7833,7 +7921,7 @@ function buildBoardView(onFail, {
           const shell = itemsR.shellOf(region.cardUid);
           const img = shell?.querySelector?.("img");
           const shellBox = shell?.getBoundingClientRect?.();
-          const imgBox = img?.getBoundingClientRect?.();
+          const imgBox = (img && paintedRectOfElement(img, { zoom: vp?.zoom || 1 })) || img?.getBoundingClientRect?.();
           const ready = card && shellBox && imgBox
             && shellBox.width > 0 && shellBox.height > 0
             && imgBox.width > 0 && imgBox.height > 0;
@@ -7855,8 +7943,9 @@ function buildBoardView(onFail, {
             w: (imgBox.width / shellBox.width) * card.w,
             h: (imgBox.height / shellBox.height) * card.h,
           };
-          setViewport(regionCamera({ imageRect, frac: region.f, size: viewSize() }));
-          timers.frame(() => { if (!disposed) pulseFraction(img, region.f); });
+          const shown = imageRegionFrac(region) || (Array.isArray(region.f) ? { rx: region.f[0], ry: region.f[1], rw: region.f[2], rh: region.f[3] } : null);
+          setViewport(regionCamera({ imageRect, frac: shown || region.f, size: viewSize() }));
+          timers.frame(() => { if (!disposed) pulseFraction(img, shown || region.f); });
         };
         place(20);
         return;

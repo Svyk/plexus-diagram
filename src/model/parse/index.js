@@ -5,7 +5,7 @@ import { buildLines, dominantRotation, lineBox, makeLine, mul, round } from "./l
 import { extractGraphics, luminanceOf } from "./rules.js";
 import { chartGrid, findLatticeTables, looksLikeChart } from "./lattice.js";
 import { baselineRows, detectStreamRuns, tableFromBand } from "./stream.js";
-import { demoteFalseCaptions, drawingSheetPage, findFigures, imageCover, peelFigLabels, rasterScanPage, sheetRegions, splitSharedCaptions } from "./figures.js";
+import { demoteFalseCaptions, drawingSheetPage, figCaptionKey, findFigures, imageCover, normalizeFigSpelling, peelFigLabels, rasterScanPage, sheetRegions, splitSharedCaptions } from "./figures.js";
 import { findFurniture, normalizeFurniture } from "./furniture.js";
 import { findPageTitle } from "./title.js";
 import { applyNumbering, bodySizeOf, CAPTION_RE, headingClasses, headingLevel, refineBodyHeadingLevels } from "./headings.js";
@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 11;
+export const PARSE_REV = 12;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -30,8 +30,8 @@ const now = () => (typeof performance !== "undefined" && performance.now ? perfo
 
 // A caption line may carry a missing-glyph number ("Figure" plus a private-use char).
 function isCaptionText(text) {
-  const raw = String(text || "").replace(/[^\p{L}\p{N}.: ]/gu, " ").replace(/\s+/g, " ").trim();
-  return CAPTION_RE.test(raw) || /^fig(?:ure)?\.?\s*$/i.test(raw) || /^\d+[A-Za-z]?\s*\.?\s*fig(?:ure)?\.?$/i.test(raw);
+  const raw = normalizeFigSpelling(String(text || "").replace(/[^\p{L}\p{N}.: ]/gu, " ").replace(/\s+/g, " ").trim());
+  return CAPTION_RE.test(raw) || figCaptionKey(raw) != null || /^fig(?:ure)?\.?\s*$/i.test(raw) || /^\d+[A-Za-z]?\s*\.?\s*fig(?:ure)?\.?$/i.test(raw);
 }
 
 function yieldTick() {
@@ -118,10 +118,15 @@ export function parsePageGeometry(data, n) {
   const figWords = lines.flatMap((l) => l.words);
   const stripSet = new Set(strips);
   const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => !stripSet.has(im) && imageArea(im) < 0.85 * pageArea) } : graphics;
-  const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars });
+  const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars, plates: ocr });
   for (const wd of figs.used) used.add(wd);
   let figures = figs.figures.map((f) => ({ ...f, page: n }));
-  if (drawing) {
+  // A plate found from the ink already covers the drawing. The full-page sheet
+  // split is for a patent page, not for that plate.
+  const plated = ocr && figures.some((f) => f.fromPlate && boxArea(f.bbox || f) >= 0.08 * pageArea && boxArea(f.bbox || f) <= 0.9 * pageArea);
+  // The page image is the scan background once a plate already covers the drawing.
+  if (plated) figures = figures.filter((f) => f.fromPlate || boxArea(f.bbox || f) < 0.75 * pageArea);
+  if (drawing && !plated) {
     const regions = sheetRegions(lines, w, h);
     if (regions.length) {
       figures = regions.map((r) => ({
@@ -132,6 +137,7 @@ export function parsePageGeometry(data, n) {
       }));
     }
   }
+  if (ocr) absorbFigureTables(tables, figures);
   // Rule bands beside a chart that only hold its labels go back to the text pass.
   for (let i = tables.length - 1; i >= 0; i--) {
     const t = tables[i];
@@ -208,7 +214,138 @@ export function ocrGraphics(data, w, h) {
     rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y0, y1: f.y0, thick: 0.5, fromBox: true });
     rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y1, y1: f.y1, thick: 0.5, fromBox: true });
   });
-  return { rules, boxes, dots, shapes: [], images: [{ x0: 0, y0: 0, x1: w, y1: h }], segments: rules.length, truncated: false };
+  const ink = [];
+  for (const b of data.ink || []) {
+    if (!b || !(b.x1 > b.x0) || !(b.y1 > b.y0)) continue;
+    ink.push({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 });
+  }
+  return { rules, boxes, dots, shapes: [], images: [{ x0: 0, y0: 0, x1: w, y1: h }], ink, segments: rules.length, truncated: false };
+}
+
+function boxArea(b) {
+  if (!b) return 0;
+  const x0 = b.x0 ?? b[0]; const y0 = b.y0 ?? b[1]; const x1 = b.x1 ?? b[2]; const y1 = b.y1 ?? b[3];
+  return Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
+}
+
+// A prose or tick table sitting on a chart (above the rules, still the drawing)
+// is pulled into the figure so it can be absorbed. A data table is left alone.
+function coverChartTables(tables, figures, pageH) {
+  for (const f of figures) {
+    if (!f.bbox || f.kind === "image") continue;
+    for (const t of tables) {
+      if (!t.bbox || dataTable(t)) continue;
+      const gap = f.bbox[1] - t.bbox[3];
+      if (gap < -2 || gap > Math.max(0.2 * pageH, 80)) continue;
+      const tw = t.bbox[2] - t.bbox[0];
+      const ox = Math.min(f.bbox[2], t.bbox[2]) - Math.max(f.bbox[0], t.bbox[0]);
+      if (!(tw > 0) || ox / tw < 0.6) continue;
+      f.bbox[1] = Math.min(f.bbox[1], t.bbox[1]);
+    }
+  }
+}
+
+// A table that sits inside a figure (axis ticks, a prose title read as cells) is part of
+// the drawing. A data table stays a table even when the plate is much larger than it.
+export function absorbFigureTables(tables, figures) {
+  for (let i = tables.length - 1; i >= 0; i--) {
+    const t = tables[i];
+    if (!t.bbox) continue;
+    const host = figures.find((f) => f.bbox && insideFrac(t.bbox, f.bbox) >= 0.75 && boxArea(f.bbox) > 1.35 * boxArea(t.bbox));
+    if (!host) continue;
+    if (dataTable(t)) continue;
+    tables.splice(i, 1);
+  }
+}
+
+function insideFrac(inner, outer) {
+  const area = boxArea(inner);
+  if (!(area > 0)) return 0;
+  const ox = Math.min(inner[2], outer[2]) - Math.max(inner[0], outer[0]);
+  const oy = Math.min(inner[3], outer[3]) - Math.max(inner[1], outer[1]);
+  if (ox <= 0 || oy <= 0) return 0;
+  return (ox * oy) / area;
+}
+
+function wordCountText(text) {
+  return String(text || "").trim().split(/\s+/).filter(Boolean).length;
+}
+
+// OCR breaks a caption into the next paragraph ("Fig. 3" then "Sketches of ice formation…").
+// A born-digital caption is already one paragraph; joining the next body line drops it from the reading order.
+function joinCaptionTails(blocks, bodySize) {
+  const drop = new Set();
+  for (const b of blocks) {
+    if (drop.has(b) || b.type !== "caption" || figCaptionKey(b.text) == null && !/^fig/i.test(normalizeFigSpelling(b.text || ""))) continue;
+    let guard = 0;
+    while (guard++ < 3) {
+      let next = null;
+      for (const n of blocks) {
+        if (n === b || drop.has(n) || n.type !== "para") continue;
+        if (n.bbox.y0 < b.bbox.y1 - 2 || n.bbox.y0 - b.bbox.y1 > 1.8 * bodySize) continue;
+        const ox = Math.min(n.bbox.x1, b.bbox.x1) - Math.max(n.bbox.x0, b.bbox.x0);
+        if (ox <= 8) continue;
+        if (!next || n.bbox.y0 < next.bbox.y0) next = n;
+      }
+      if (!next) break;
+      if (figCaptionKey(next.text) != null || /^table\b/i.test(next.text) || wordCountText(next.text) > 24) break;
+      b.text = `${b.text} ${next.text}`.replace(/\s+/g, " ").trim();
+      b.bbox = {
+        x0: Math.min(b.bbox.x0, next.bbox.x0), y0: Math.min(b.bbox.y0, next.bbox.y0),
+        x1: Math.max(b.bbox.x1, next.bbox.x1), y1: Math.max(b.bbox.y1, next.bbox.y1),
+      };
+      b.lines = [...(b.lines || []), ...(next.lines || [])];
+      drop.add(next);
+    }
+  }
+  if (!drop.size) return;
+  for (let i = blocks.length - 1; i >= 0; i--) if (drop.has(blocks[i])) blocks.splice(i, 1);
+}
+
+// Closest pair wins, so a caption is not taken by a figure it only barely reaches.
+function linkCaptions(blocks, targets, bodySize, pageH, { scan = false } = {}) {
+  const captionFor = new Map();
+  const caps = blocks.filter((b) => b.type === "caption");
+  const pairs = [];
+  for (const cb of caps) {
+    const wantsTable = /^table/i.test(normalizeFigSpelling(cb.text));
+    const shortHead = scan && !wantsTable && cb.bbox.y1 <= 0.14 * pageH && wordCountText(cb.text) <= 6;
+    for (const target of targets) {
+      const tb = target.bbox;
+      if (!tb || !cb.bbox) continue;
+      const isTable = target.type === "table";
+      if (wantsTable !== isTable) continue;
+      const ox = Math.min(tb[2], cb.bbox.x1) - Math.max(tb[0], cb.bbox.x0);
+      const xGap = cb.bbox.x1 < tb[0] ? tb[0] - cb.bbox.x1 : cb.bbox.x0 > tb[2] ? cb.bbox.x0 - tb[2] : 0;
+      const yGap = cb.bbox.y1 <= tb[1] ? tb[1] - cb.bbox.y1 : cb.bbox.y0 >= tb[3] ? cb.bbox.y0 - tb[3] : 0;
+      const yLimit = wantsTable ? 3 * bodySize : shortHead ? Math.max(3 * bodySize, 0.16 * pageH) : Math.max(3 * bodySize, 36);
+      const xLimit = Math.max(3 * bodySize, 36);
+      if (yGap > yLimit) continue;
+      if (ox <= 0 && xGap > xLimit) continue;
+      pairs.push({ cb, target, gap: yGap + (ox > 0 ? 0 : xGap) });
+    }
+  }
+  pairs.sort((a, b) => a.gap - b.gap);
+  const used = new Set();
+  for (const p of pairs) {
+    if (used.has(p.cb) || captionFor.has(p.target)) continue;
+    used.add(p.cb);
+    captionFor.set(p.target, p.cb);
+  }
+  for (const cb of caps) if (!used.has(cb)) cb.type = "para";
+  return captionFor;
+}
+
+function dataTable(t) {
+  const texts = (t.cells || []).map((c) => String(c.text || "").trim()).filter(Boolean);
+  const phrases = texts.filter((s) => s.split(/\s+/).length >= 5).length;
+  const wordy = texts.filter((s) => /[A-Za-z]{4,}/.test(s)).length;
+  const short = texts.filter((s) => s.split(/\s+/).length <= 3).length;
+  // A ruled table of labels and numbers (Redwood) has a few long cells and many short ones.
+  // Axis ticks are short tokens only, so they stay eligible to be absorbed.
+  if (phrases >= 2 && wordy >= 4 && short >= 8 && t.rows >= 8 && t.cols >= 4) return true;
+  if (phrases >= 2) return false;
+  return t.rows >= 4 && t.cols >= 2 && wordy >= 4 && phrases === 0 && texts.length >= 8;
 }
 
 export async function parsePdf({ getPage, numPages, pages, signal, onPage, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {} }) {
@@ -452,7 +589,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
             textBlocks.push({ type: "footnote", lines: group, mark, text, bbox: boxOfUnits(group) });
             continue;
           }
-          const block = { type: isCaption ? "caption" : "para", lines: group, text: joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
+          const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(joined.text) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
           textBlocks.push(block);
         }
         i = j;
@@ -460,27 +597,14 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     }
     stitchTables(pageTables, textBlocks, bodySize);
     demoteFalseCaptions(textBlocks, bodySize, pageFigures);
-    // Captions attach to the nearest table or figure that overlaps horizontally.
-    const captionFor = new Map();
-    for (const cb of textBlocks) {
-      if (cb.type !== "caption") continue;
-      let best = null;
-      for (const target of [...pageTables, ...pageFigures]) {
-        const tb = target.bbox;
-        const ox = Math.min(tb[2], cb.bbox.x1) - Math.max(tb[0], cb.bbox.x0);
-        if (ox <= 0) continue;
-        const gap = cb.bbox.y1 <= tb[1] ? tb[1] - cb.bbox.y1 : cb.bbox.y0 >= tb[3] ? cb.bbox.y0 - tb[3] : 0;
-        const wantsTable = /^table/i.test(cb.text);
-        // Figure captions sit a little further below a tall panel grid than a table caption does.
-        const limit = wantsTable ? 3 * bodySize : Math.max(3 * bodySize, 36);
-        if (gap > limit) continue;
-        const isTable = target.type === "table";
-        if (wantsTable !== isTable) continue;
-        if (!best || gap < best.gap) best = { target, gap };
-      }
-      if (best && !captionFor.has(best.target)) captionFor.set(best.target, cb);
-      else if (!best) cb.type = "para";
+    if (pg.ocr) {
+      coverChartTables(pageTables, pageFigures, pg.h);
+      absorbFigureTables(pageTables, pageFigures);
     }
+    if (pg.ocr) joinCaptionTails(textBlocks, bodySize);
+    // The closer caption wins. A Fig. line just outside the rules still attaches,
+    // and on a scan a short plate number in the top band can reach the drawing under it.
+    const captionFor = linkCaptions(textBlocks, [...pageTables, ...pageFigures], bodySize, pg.h, { scan: Boolean(pg.ocr) });
     // Materialise blocks with ids.
     const unitOf = (b, id) => ({ id, x0: b.bbox.x0 ?? b.bbox[0], y0: b.bbox.y0 ?? b.bbox[1], x1: b.bbox.x1 ?? b.bbox[2], y1: b.bbox.y1 ?? b.bbox[3] });
     const captionIds = new Map();
@@ -601,6 +725,12 @@ export function annotateOcrCells(table, words) {
 // Labels around a chart (legend entries, slice percentages) line up loosely: a sparse stream
 // table touching a drawing is the drawing's text, not a table.
 export function figureLabels(t, figures) {
+  const texts = (t.cells || []).map((c) => String(c.text || "").trim()).filter(Boolean);
+  const numeric = texts.filter((s) => /\d/.test(s)).length;
+  // Sketch labels read as a small grid inside the plate ("Formation on end of wire")
+  // are the drawing. A numbered table, or a table that is not inside a plate, stays.
+  const insidePlate = figures.some((f) => f.fromPlate && f.bbox && t.bbox && insideFrac(t.bbox, f.bbox) >= 0.75);
+  if (insidePlate && t.rows <= 6 && texts.length && numeric / texts.length < 0.2) return true;
   const filled = t.cells.filter((k) => k.text).length;
   const singles = Array.from({ length: t.rows }, (_, r) => t.cells.filter((k) => k.r === r && k.text).length === 1).filter(Boolean).length;
   if (filled >= 0.6 * t.cells.length && singles < 0.5 * t.rows) return false;

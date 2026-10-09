@@ -112,7 +112,7 @@ export function createPpocrSource({ pdfPath, dpi = 300, log = () => {}, options 
     const prep = await preparePageImage({
       ...rendered, dpi, page: n, runDet, runRec, dict, signal, ...options,
     });
-    log(`ppocr-web p${n} ${(performance.now() - t0).toFixed(0)} ms  items ${prep.record.items.length}  rules ${prep.record.rules.length}  deskew ${prep.record.deskew}`);
+    log(`ppocr-web p${n} ${(performance.now() - t0).toFixed(0)} ms  items ${prep.record.items.length}  rules ${prep.record.rules.length}  ink ${(prep.record.ink || []).length}  deskew ${prep.record.deskew}`);
     prepared.set(n, prep);
     return prep;
   }

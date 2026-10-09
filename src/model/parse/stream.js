@@ -711,7 +711,7 @@ export function proseRow(row, tokens, columnWidth = Infinity) {
 
 // Free mode: runs of aligned multi-token rows inside one column. Returns tables, and the
 // candidates that read as display equations ("formula") or numbered code listings ("code").
-export function detectStreamRuns(lines, { dots = [], column = null, rules = [] } = {}) {
+export function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeGaps = true } = {}) {
   const out = [];
   const rows = baselineRows(lines);
   const colBox = column || (lines.length ? { x0: Math.min(...lines.map((l) => l.x0)), x1: Math.max(...lines.map((l) => l.x1)) } : null);
@@ -741,9 +741,12 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [] }
         continue;
       }
       if (lastBase != null && row.base - lastBase > 2.2 * row.size) {
+        // A page whose rules already made a table does not bridge: the gap would join a
+        // stacked rate or a row the lattice had already split. Unruled pages still do.
         // Monospaced tables are often double-spaced (about 2.5 em). Keep the row when its
         // numbers sit on the run's columns, or when it is a section banner whose next line
         // repeats the column heads. A wider gap still ends the table.
+        if (!bridgeGaps) break;
         const gap = row.base - lastBase;
         const header = headerOf(run);
         const next = rows[j + 1];

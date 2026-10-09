@@ -412,6 +412,9 @@ test("leader dots stay with the label and out of the cell text", () => {
   assert.equal(t.cols, 4);
   assert.equal(cellAt(t, 1, 0).text, "0.99");
   assert.equal(cellTextOf(buildLines(row(100, [["..", 60]]), { transform: [1, 0, 0, -1, 0, H], fonts: FONTS }).lines[0].words), "..", "a two-dot placeholder is data");
+  const label = (text, x) => ({ text, x0: x, x1: x + text.length * 5, base: 10, size: 10, y0: 2, y1: 12, font: "ocr", conf: 1 });
+  assert.equal(cellTextOf([label("Diameter", 0), label("of", 55), label("outlet", 75), label("tube", 115), label("d..", 145)]), "Diameter of outlet tube d");
+  assert.equal(cellTextOf([label("c", 0), label("0.1654", 16)]), "c 0.1654");
 });
 
 test("boxes consumed by a tiling are not figure primitives, other boxes still are", () => {

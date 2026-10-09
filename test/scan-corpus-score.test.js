@@ -25,6 +25,25 @@ test("unsure cells drop out of both sides", () => {
   assert.equal(c.predN, 1);
 });
 
+test("cellSim and cellF1@0.9 sit beside exact cell counts", () => {
+  const truth = { cells: [
+    { r: 0, c: 0, text: "Diameter of outlet tube d" },
+    { r: 0, c: 1, text: "8.059" },
+    { r: 1, c: 0, text: "e 7.67" },
+    { r: 1, c: 1, text: "other" },
+  ] };
+  const pred = { cells: [
+    { r: 0, c: 0, rowSpan: 1, colSpan: 1, text: "Diameter of outlet tube d.." },
+    { r: 0, c: 1, rowSpan: 1, colSpan: 1, text: "8. 059" },
+    { r: 1, c: 0, rowSpan: 1, colSpan: 1, text: "e7.67" },
+    { r: 1, c: 1, rowSpan: 1, colSpan: 1, text: "xxxx" },
+  ] };
+  const c = tableCounts(pred, truth);
+  assert.equal(c.cellTp, 2, "a spaced decimal and a footnote letter match; trailing leaders do not");
+  assert.equal(c.cellSoftTp, 3, "the leader label is within 0.9 edit similarity");
+  assert.ok(c.cellSimSum / c.structureTp > 0.7);
+});
+
 test("a figure hits at IoU 0.5 and a short caption links inside a longer one", () => {
   assert.ok(boxIou([0, 0, 0.5, 0.5], [0, 0, 0.5, 0.5]) === 1);
   assert.ok(boxIou([0, 0, 0.2, 0.2], [0.8, 0.8, 1, 1]) === 0);

@@ -101,6 +101,79 @@ test("full-width zebra fills bound a table on an OCR page", () => {
   assert.equal(rec.tables[0].cols, 3);
 });
 
+test("an inflated OCR word on a body baseline stays in that line", () => {
+  // Vision sizes a short lowercase word from the line box (about 1.7× body). It still
+  // belongs in the line; a born-digital size step on the same baseline does not.
+  const body = { size: 13 };
+  const items = [
+    word("around", 91, 485, { ...body, width: 42 }),
+    word("the", 142, 485, { ...body, width: 22 }),
+    word("stem", 171, 485, { ...body, width: 28 }),
+    word("is", 208, 485, { size: 22, width: 12 }),
+    word("kept", 229, 485, { ...body, width: 28 }),
+    word("as", 264, 485, { size: 20, width: 14 }),
+    word("small", 287, 485, { ...body, width: 36 }),
+  ];
+  const { lines } = buildLines(items);
+  assert.equal(lines.length, 1);
+  assert.deepEqual(lines[0].words.map((w) => w.text), ["around", "the", "stem", "is", "kept", "as", "small"]);
+  assert.ok(lines[0].size < 16, "the line keeps the body size");
+  const digital = buildLines([
+    { str: "body", transform: [13, 0, 0, 13, 91, 485], width: 40, height: 13, fontName: "f1" },
+    { str: "TITLE", transform: [20, 0, 0, 20, 140, 485], width: 50, height: 20, fontName: "f1" },
+  ]);
+  assert.equal(digital.lines.length, 2);
+});
+
+test("a short OCR word whose baseline jitters stays in the gap it belongs to", () => {
+  const body = { size: 13 };
+  const items = [
+    word("and", 90, 672, { ...body, width: 24 }),
+    word("the", 118, 672, { ...body, width: 22 }),
+    word("oil", 149, 667.4, { ...body, width: 18 }),
+    word("remains", 178, 672, { ...body, width: 50 }),
+    word("below", 90, 696, { ...body, width: 40 }),
+  ];
+  const { lines } = buildLines(items);
+  assert.equal(lines.length, 2);
+  assert.deepEqual(lines[0].words.map((w) => w.text), ["and", "the", "oil", "remains"]);
+  assert.equal(lines[1].text, "below");
+});
+
+test("OCR halves of one line join when their baselines differ by a third of an em", () => {
+  const body = { size: 15 };
+  const items = [
+    word("ment", 89, 285.4, { ...body, width: 40 }),
+    word("through", 135, 285.4, { ...body, width: 70 }),
+    word("known", 210, 285.4, { ...body, width: 50 }),
+    word("angles", 265, 285.4, { ...body, width: 40 }),
+    word("less", 310, 280.8, { ...body, width: 36 }),
+    word("than", 350, 280.8, { ...body, width: 36 }),
+    word("90", 390, 280.8, { ...body, width: 20 }),
+    word("degrees", 415, 280.8, { ...body, width: 60 }),
+    word("value", 90, 309.1, { ...body, width: 40 }),
+    word("of", 135, 309.1, { ...body, width: 16 }),
+    word("g.", 156, 309.1, { ...body, width: 16 }),
+  ];
+  const { lines } = buildLines(items);
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0].text, "ment through known angles less than 90 degrees");
+  assert.equal(lines[1].text, "value of g.");
+});
+
+test("OCR halves split by a hole stay in left-to-right order", () => {
+  const body = { size: 12 };
+  const items = [
+    word("within", 88, 215, { ...body, width: 50 }),
+    word("the", 142, 215, { ...body, width: 20 }),
+    word("the", 273, 213.2, { ...body, width: 24 }),
+    word("discharged", 300, 213.2, { ...body, width: 80 }),
+    word("air", 384, 213.2, { ...body, width: 24 }),
+  ];
+  const { lines } = buildLines(items);
+  assert.deepEqual(lines.map((l) => l.text), ["within the", "the discharged air"]);
+});
+
 test("OCR words keep their confidence and never glue to a neighbour", () => {
   const { lines } = buildLines([word("Anth", 20, 30, { conf: 0.7 }), word("rax", 33.5, 30, { conf: 0.9 })]);
   assert.equal(lines.length, 1);
@@ -279,9 +352,29 @@ test("cellsToReread lists unrepaired and empty numeric cells with a crop box; ap
       { r: 0, c: 1, colSpan: 1, rowSpan: 1, text: "", bbox: [30, 88, 50, 112] },
     ],
   };
-  const crop = cellsToReread(ink, { numericCols: [1] })[0].bbox;
+  const crops = cellsToReread(ink, { numericCols: [1] });
+  const crop = crops[0].bbox;
   assert.ok(crop[1] < 93, `crop top ${crop[1]} covers the row ink`);
   assert.ok(crop[3] > 102, `crop bottom ${crop[3]} covers the row ink`);
+  // A wrapped row's ink box is taller than the digit. The x-height band is asked second,
+  // and a number already accepted is not replaced by the other crop.
+  const wrapped = {
+    id: "t3", page: 3, headerRows: 1, cols: 2, rows: 2,
+    cells: [
+      { r: 1, c: 0, colSpan: 1, rowSpan: 1, text: "Z1-014", wbase: 153.6, wsize: 9.4, wbox: [60, 134.8, 75, 155.7], bbox: [50, 131, 90, 158] },
+      { r: 1, c: 1, colSpan: 1, rowSpan: 1, text: "", wbase: 145.2, wsize: 9.4, bbox: [92, 131, 132, 158] },
+      { r: 0, c: 1, colSpan: 1, rowSpan: 1, text: "2", header: true },
+    ],
+  };
+  const asks = cellsToReread(wrapped, { numericCols: [1] });
+  assert.equal(asks.length, 2);
+  assert.ok(asks[0].bbox[3] - asks[0].bbox[1] > asks[1].bbox[3] - asks[1].bbox[1], "wide crop first, x-height band second");
+  const kept = applyCellOcr(wrapped, [
+    { r: 1, c: 1, text: "1", conf: 1, glyph: null },
+    { r: 1, c: 1, text: "", conf: 0, glyph: null },
+  ]);
+  assert.deepEqual(kept, [{ r: 1, c: 1, from: "", to: "1" }]);
+  assert.equal(wrapped.cells.find((k) => k.r === 1 && k.c === 1).text, "1");
 });
 
 // ---------------------------------------------------------------- merge

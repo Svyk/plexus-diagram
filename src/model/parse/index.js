@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 11;
+export const PARSE_REV = 12;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -370,7 +370,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     for (const seq of sequences) {
       let lines = seq;
       // Stream tables, and aligned runs that are really equations or code listings.
-      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq), rules: pg.graphics.rules })) {
+      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq), rules: pg.graphics.rules, bridgeGaps: pg.tables.length === 0 })) {
         const drop = new Set(t.lines);
         lines = lines.filter((l) => !drop.has(l));
         if (t.type === "formula") {

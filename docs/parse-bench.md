@@ -573,3 +573,17 @@ web-ocr on supercharger p15 (Table II, no rules, three speed sections) goes from
 The six `textComplete` pages are typewritten NACA prose. web-ocr CER 0.031 / WER 0.139. Helper CER 0.241 / WER 1.272. Built-in, which reads the text layer, is CER 0.118 / WER 0.724.
 
 ICDAR 2013 text layer is unchanged (EU detection 0.993, adjacency 0.996, cell 0.942; US adjacency 0.974, cell 0.928). The raster bench (`icdar2013-scan.mjs`, PP-OCR, 300 dpi, 67 documents, 1625 s) is detection F1 0.951, adjacency 0.876, cell F1 0.788 (EU 0.920 / 0.822 / 0.665, US 0.981 / 0.893 / 0.832). CDC text layer is 0.968 / 0.779. CDC Vision fresh is 0.983 / 0.952 (image-only 1.000 / 0.957). report-scan Vision is 0.974 / 0.952 / 1.000. `PARSE_REV` is 10.
+
+Round 3, 2026-10-09, same 62 pages. The before column is the round 2 parser scored on this set. `cell@0.9` is cell F1 when a matched cell counts at normalised edit similarity ≥ 0.9. `cellSim` is the mean of that similarity over cells that share a position. Exact cell F1 is still exact after `normText`. Two scorer fixes, both exact: a space inside a decimal (`8. 059` and `8.059`) and a single letter before a number (`e 7.67` and `e7.67`). Trailing leader dots are not folded into exact F1.
+
+| Engine | Cell F1 | cell@0.9 | cellSim | Structure F1 | Figure F1 | Caption recall | CER | WER |
+|---|---|---|---|---|---|---|---|---|
+| builtin | 0.023 → 0.022 | 0.022 | 0.321 | 0.441 → 0.440 | 0.074 → 0.074 | 0.038 → 0.038 | 0.118 → 0.118 | 0.724 → 0.724 |
+| web-ocr | 0.092 → **0.109** | 0.114 | 0.404 | 0.400 → **0.534** | 0.471 → 0.471 | 0.346 → 0.346 | 0.031 → 0.031 | 0.139 → 0.137 |
+| helper | 0.113 → **0.124** | 0.128 | 0.457 | 0.591 → **0.632** | 0.588 → 0.577 | 0.385 → 0.385 | 0.241 → **0.060** | 1.272 → **0.282** |
+
+`cell@0.9` and `cellSim` are new; they have no before column. On the six full-text pages, helper CER/WER went from 0.241 / 1.272 to 0.060 / 0.282. web-ocr on those pages stayed 0.031 / 0.137.
+
+Vision's box for a short lowercase word is the line box. Sized as an x-height it lands near 1.7× the body size, so `buildLines` kept it off the line and reading order followed the tall box. The same line's right half often sits about a third of an em higher, so it was read before the left half. OCR words on one baseline now join across that size step and that jitter. A row that then splits at a hole shares one baseline, so the pieces stay left to right. An unsplit line keeps its own baseline. Born-digital lines are unchanged. The helper also snaps a word with no ascender up to 1.85× body size onto the body size. Redwood labels lose a trailing leader (`d..`) in `cellTextOf` when the words are OCR; a placeholder of only dots stays, and `c 0.1654` stays. A page that already has a ruled table does not bridge a stream gap.
+
+ICDAR 2013 text layer matches main on every document (us-009 is pred 1, fp 0). CDC text layer is 0.968 / 0.779. CDC Vision fresh is 0.991 / 0.964. report-scan Vision is 0.974 / 0.976 / 1.000. Helper figure F1 drops 0.588 → 0.577 because supercharger p21 gains a second figure on the running header. `PARSE_REV` is 12.

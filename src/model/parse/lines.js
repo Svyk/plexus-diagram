@@ -129,10 +129,6 @@ export function letterSpaced(str) {
   return single >= 0.6 * parts.length;
 }
 
-function sameBaseline(a, b) {
-  return Math.abs(a.base - b.base) <= 0.3 * Math.max(a.size, b.size);
-}
-
 // Big initials and the smaller capitals of the same word share a baseline (ratio about 0.8).
 // pdf.js emits them as two size classes, so a word like "TRANSFORMERS" or "16X16" is split
 // across two rows. They are one line. A second line half a line below is not this case.
@@ -166,6 +162,94 @@ function mergeSmallCapRows(rows) {
   return rows.filter((r) => !dead.has(r));
 }
 
+// Vision's box for a short or lowercase word is often the whole line box. Sized as an
+// x-height (height / 0.75) it lands at 1.5–1.8× the body size, so the row pass keeps it
+// off the line it belongs to and reading order follows the tall box instead of the baseline.
+// A real heading is its own line, not one tall word in a gap of a longer body row.
+function mergeInflatedOcrRows(rows) {
+  const dead = new Set();
+  const ink = (r) => r.pieces.filter((p) => !p.space);
+  const textOf = (r) => ink(r).map((p) => p.text || "").join("");
+  const isOcr = (r) => ink(r).some((p) => p.font === "ocr");
+  const span = (r) => {
+    const pieces = ink(r);
+    return [Math.min(...pieces.map((p) => p.x0)), Math.max(...pieces.map((p) => p.x1))];
+  };
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const extra of rows) {
+      if (dead.has(extra) || !isOcr(extra)) continue;
+      const extraText = textOf(extra);
+      if (!extraText || extraText.length > 18) continue;
+      let host = null;
+      let hostGap = Infinity;
+      for (const h of rows) {
+        if (h === extra || dead.has(h) || !isOcr(h)) continue;
+        if (extra.size <= h.size * 1.15 || extra.size > h.size * 1.9) continue;
+        if (Math.abs(extra.base - h.base) > 0.22 * h.size) continue;
+        if (textOf(h).length < extraText.length) continue;
+        const [h0, h1] = span(h);
+        const [e0, e1] = span(extra);
+        const gap = e0 > h1 ? e0 - h1 : h0 > e1 ? h0 - e1 : 0;
+        if (gap > 1.15 * h.size || gap >= hostGap) continue;
+        host = h;
+        hostGap = gap;
+      }
+      if (!host) continue;
+      for (const p of extra.pieces) {
+        if (!p.space && p.size > host.size * 1.15) p.size = host.size;
+        host.pieces.push(p);
+      }
+      dead.add(extra);
+      changed = true;
+    }
+  }
+  return rows.filter((r) => !dead.has(r));
+}
+
+// A short OCR word whose baseline jitters by a fraction of an em, and whose box sits in a
+// gap of the longer row, is the missing word of that line (Vision's ink baseline moved).
+// A real next row overlaps the words above it; a column gap is wider than a word space.
+function mergeJitteredOcrRows(rows) {
+  const dead = new Set();
+  const ink = (r) => r.pieces.filter((p) => !p.space);
+  const isOcr = (r) => ink(r).some((p) => p.font === "ocr");
+  const overlaps = (a, b) => a.x0 < b.x1 - 0.5 && b.x0 < a.x1 - 0.5;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const extra of rows) {
+      if (dead.has(extra) || !isOcr(extra)) continue;
+      const extraInk = ink(extra);
+      if (!extraInk.length || extraInk.length > 4) continue;
+      let host = null;
+      for (const h of rows) {
+        if (h === extra || dead.has(h) || !isOcr(h)) continue;
+        if (Math.abs(h.size - extra.size) > 0.2 * Math.max(h.size, extra.size)) continue;
+        const shift = Math.abs(h.base - extra.base);
+        if (shift <= 0.22 * h.size || shift > 0.5 * h.size) continue;
+        const hostInk = ink(h);
+        if (hostInk.length <= extraInk.length) continue;
+        if (!extraInk.every((p) => hostInk.every((q) => !overlaps(p, q)))) continue;
+        const h0 = Math.min(...hostInk.map((p) => p.x0));
+        const h1 = Math.max(...hostInk.map((p) => p.x1));
+        const e0 = Math.min(...extraInk.map((p) => p.x0));
+        const e1 = Math.max(...extraInk.map((p) => p.x1));
+        const gap = e0 > h1 ? e0 - h1 : h0 > e1 ? h0 - e1 : 0;
+        if (gap > 1.15 * h.size) continue;
+        host = h;
+        break;
+      }
+      if (!host) continue;
+      host.pieces.push(...extra.pieces);
+      dead.add(extra);
+      changed = true;
+    }
+  }
+  return rows.filter((r) => !dead.has(r));
+}
+
 // Group pieces into baseline rows, split rows at wide gaps, merge glyph runs into words.
 export function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGap = 2 } = {}) {
   const pieces = [];
@@ -180,7 +264,13 @@ export function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, 
     let row = null;
     for (let i = rows.length - 1; i >= 0 && rows[i].base >= p.base - 2 * p.size; i--) {
       const r = rows[i];
-      if (sameBaseline(r, p) && Math.abs(r.size - p.size) <= 0.15 * Math.max(r.size, p.size)) { row = r; break; }
+      // OCR baselines jitter by about a third of an em across one typewritten line, so the
+      // right half would otherwise sort above the left. A word that overlaps the row is the
+      // next line, not the other half, and keeps the tighter tolerance.
+      const overlaps = p.text && r.pieces.some((q) => !q.space && p.x0 < q.x1 - 0.8 && q.x0 < p.x1 - 0.8);
+      const wide = p.font === "ocr" && r.pieces.some((q) => q.font === "ocr") && !overlaps;
+      const tol = wide ? 0.48 : 0.3;
+      if (Math.abs(r.base - p.base) <= tol * Math.max(r.size, p.size) && Math.abs(r.size - p.size) <= 0.15 * Math.max(r.size, p.size)) { row = r; break; }
     }
     if (!row) {
       row = { base: p.base, size: p.size, pieces: [] };
@@ -189,7 +279,7 @@ export function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, 
     row.pieces.push(p);
     if (!p.space && p.size > row.size) row.size = p.size;
   }
-  const sized = mergeSmallCapRows(rows);
+  const sized = mergeJitteredOcrRows(mergeInflatedOcrRows(mergeSmallCapRows(rows)));
   rows.length = 0;
   rows.push(...sized);
   // Pass 2: small pieces whose baseline is shifted attach to the row they sit beside (super/subscripts).
@@ -235,19 +325,27 @@ export function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, 
     r.pieces.sort((a, b) => a.x0 - b.x0);
     const words = mergeWords(r.pieces, r.size);
     // Split a baseline row into fragments at wide gaps (column gutters, table columns).
+    const frags = [];
     let frag = [];
     for (let i = 0; i < words.length; i++) {
       const w = words[i];
       if (frag.length) {
         const prev = frag[frag.length - 1];
         if (w.x0 - prev.x1 > splitGap * Math.min(prev.size, w.size)) {
-          lines.push(makeLine(frag));
+          frags.push(makeLine(frag));
           frag = [];
         }
       }
       frag.push(w);
     }
-    if (frag.length) lines.push(makeLine(frag));
+    if (frag.length) frags.push(makeLine(frag));
+    // A typewritten line split by a hole would otherwise be read right-half first, because
+    // that half sits a couple of points higher. Share the row baseline across the pieces.
+    // An unsplit line keeps its own baseline, so a caption does not swallow the next paragraph.
+    if (frags.length > 1 && r.pieces.some((p) => p.font === "ocr")) {
+      for (const line of frags) line.base = r.base;
+    }
+    lines.push(...frags);
   }
   lines.sort((a, b) => a.base - b.base || a.x0 - b.x0);
   lines.forEach((l, i) => { l.i = i; });

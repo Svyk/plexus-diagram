@@ -217,7 +217,15 @@ function summarise(rows, engines) {
   for (const engine of engines) {
     const mine = rows.filter((r) => r.engine === engine);
     const cell = micro(mine, (r) => r.tableCounts && { tp: r.tableCounts.cellTp, predN: r.tableCounts.predN, truthN: r.tableCounts.truthN });
+    const cellAt09 = micro(mine, (r) => r.tableCounts && { tp: r.tableCounts.cellSoftTp || 0, predN: r.tableCounts.predN, truthN: r.tableCounts.truthN });
     const structure = micro(mine, (r) => r.tableCounts && { tp: r.tableCounts.structureTp, predN: r.tableCounts.predN, truthN: r.tableCounts.truthN });
+    let simSum = 0;
+    let simN = 0;
+    for (const r of mine) {
+      if (!r.tableCounts) continue;
+      simSum += r.tableCounts.cellSimSum || 0;
+      simN += r.tableCounts.structureTp || 0;
+    }
     const figures = micro(mine, (r) => r.figureCounts && { tp: r.figureCounts.hits, predN: r.figureCounts.predN, truthN: r.figureCounts.truthN });
     const captions = micro(mine, (r) => r.figureCounts && { tp: r.figureCounts.linked, predN: r.figureCounts.truthN, truthN: r.figureCounts.truthN });
     let charDist = 0; let charN = 0; let wordDist = 0; let wordN = 0; let matched = 0; let tauSum = 0; let tauN = 0; let seconds = 0; let n = 0;
@@ -236,7 +244,7 @@ function summarise(rows, engines) {
     const worst = [...mine].sort((a, b) => rank(a) - rank(b)).slice(0, 10);
     byEngine[engine] = {
       pages: n,
-      cell, structure, figures,
+      cell, cellAt09, cellSim: simN ? Math.round((simSum / simN) * 1000) / 1000 : null, structure, figures,
       captionRecall: captions.recall,
       cer: charN ? Math.round((charDist / charN) * 1000) / 1000 : null,
       wer: wordN ? Math.round((wordDist / wordN) * 1000) / 1000 : null,
@@ -262,10 +270,10 @@ function rank(row) {
 function render(board) {
   const engines = Object.keys(board);
   let out = "Scanned technical PDFs, 1900–1950\n\n";
-  out += line(["engine", "pages", "cellF1", "structF1", "figF1", "capR", "CER", "WER", "textAcc", "tau", "s/page"]) + "\n";
+  out += line(["engine", "pages", "cellF1", "cell@0.9", "cellSim", "structF1", "figF1", "capR", "CER", "WER", "textAcc", "tau", "s/page"]) + "\n";
   for (const engine of engines) {
     const b = board[engine];
-    out += line([engine, b.pages, fmt(b.cell.f1), fmt(b.structure.f1), fmt(b.figures.f1), fmt(b.captionRecall), fmt(b.cer), fmt(b.wer), fmt(b.textAccuracy), fmt(b.tau), b.secPerPage ?? "—"]) + "\n";
+    out += line([engine, b.pages, fmt(b.cell.f1), fmt(b.cellAt09.f1), fmt(b.cellSim), fmt(b.structure.f1), fmt(b.figures.f1), fmt(b.captionRecall), fmt(b.cer), fmt(b.wer), fmt(b.textAccuracy), fmt(b.tau), b.secPerPage ?? "—"]) + "\n";
   }
   out += "\nPer class (cell F1 / figure F1)\n";
   const classes = [...new Set(engines.flatMap((e) => Object.keys(board[e].byClass)))].sort();

@@ -52,7 +52,12 @@ export function cellTextOf(words) {
     if (text.endsWith("-") && /^[A-Za-z0-9]/.test(t)) text += t;
     else text += ` ${t}`;
   }
-  return text.replace(/\s+/g, " ").trim();
+  text = text.replace(/\s+/g, " ").trim();
+  // OCR labels run into the leader ("d..", "h1.."). A born-digital leader is part of the
+  // text the ICDAR set scores. A cell of only dots is a placeholder, and "c 0.1654" has none.
+  const ocr = (words || []).some((w) => w && (w.font === "ocr" || w.conf != null));
+  if (!ocr || /^[.·…]+$/u.test(text)) return text;
+  return text.replace(/(?:\s*[.·…]){2,}$/u, "").trim();
 }
 
 const SUPERS = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };

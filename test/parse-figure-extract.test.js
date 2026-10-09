@@ -422,6 +422,10 @@ test("OCR spellings of a figure line are captions", () => {
   assert.equal(figCaptionKey("Figure 5.—Distribution of pressure on 8-inch cylinder at sections 9, 10, 11, and 12"), "5");
   assert.equal(figCaptionKey("FiGune 5.--Distribution"), "5");
   assert.equal(normalizeFigSpelling("Fig. l. Showing the springs"), "Fig. 1. Showing the springs");
+  assert.equal(normalizeFigSpelling("FiG. II.—Graphs of pressure"), "FiG. 11.—Graphs of pressure");
+  assert.equal(normalizeFigSpelling("FIG. III. Something"), "FIG. III. Something");
+  assert.equal(normalizeFigSpelling("fig. ii. lower"), "fig. ii. lower");
+  assert.equal(figCaptionKey("FiG. II.—Graphs of pressure"), "11");
   const spelled = doc([page([
     item("F1g. 2 Chart of the sample", 80, H - 318),
   ], { images: [[80, 120, 400, 300]] })]);
@@ -532,4 +536,133 @@ test("a plate absorbs the tick table inside it and leaves a table of names", () 
   };
   assert.equal(figureLabels(labels, [{ fromPlate: true, bbox: [40, 80, 560, 640] }]), true);
   assert.equal(figureLabels(labels, [{ bbox: [40, 80, 560, 640] }]), false);
+});
+
+test("a stroke that crosses both caption baselines does not join the two drawings", () => {
+  const top = Array.from({ length: 8 }, (_, i) => ({ x0: 60 + (i % 4) * 70, y0: 80 + Math.floor(i / 4) * 50, x1: 100 + (i % 4) * 70, y1: 120 + Math.floor(i / 4) * 50 }));
+  const bot = Array.from({ length: 8 }, (_, i) => ({ x0: 60 + (i % 4) * 70, y0: 430 + Math.floor(i / 4) * 50, x1: 100 + (i % 4) * 70, y1: 470 + Math.floor(i / 4) * 50 }));
+  const cap = (text, x, y) => text.split(" ").map((t, i) => word(t, x + i * 36, y, x + i * 36 + 32, y + 12, 10));
+  const bridged = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [...top, ...bot, { x0: 300, y0: 40, x1: 308, y1: 640 }] },
+    words: [...cap("Fig. 5 upper chart", 70, 250), ...cap("Fig. 6 lower chart", 70, 560)],
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(bridged.figures.length, 2);
+  const upper = bridged.figures.find((f) => f.bbox[1] < 200);
+  const lower = bridged.figures.find((f) => f.bbox[1] >= 200);
+  assert.ok(upper && lower);
+  assert.ok(upper.bbox[3] < 430, "Fig. 5 stops before the lower drawing");
+  assert.ok(lower.bbox[1] > 250, "Fig. 6 starts under its own caption cut");
+});
+
+test("table rules are not a figure when the only figure word is a sentence", () => {
+  const segs = [
+    ...[400, 430, 460, 490, 520].map((y) => ({ axis: "h", a: 40, b: 360, pos: y })),
+    ...[40, 200, 360].map((x) => ({ axis: "v", a: 400, b: 520, pos: x })),
+  ];
+  const words = "1918, is shown in Figure 1.".split(" ").map((t, i) => word(t, 40 + i * 42, 36, 78 + i * 42, 48, 10));
+  const prose = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [] },
+    ruleSegments: segs, words, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(prose.figures.length, 1, "the grid still clusters; the sentence is not a caption");
+  assert.ok(prose.figures[0].bbox[1] > 300, "the sentence does not pull the box up the page");
+  const clustered = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [] },
+    ruleSegments: segs, words: [], bodySize: 10, pageW: W, pageH: H, plates: false,
+  });
+  assert.equal(clustered.figures.length, 1, "the same strokes still cluster when the page is not a plate");
+  const line = (text, y) => text.split(" ").map((t, i) => word(t, 40 + i * 36, y, 72 + i * 36, y + 12, 10));
+  const noPlate = (words) => findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [] },
+    ruleSegments: segs, words, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(noPlate(line("plate 14 inches square and 38 inch thick", 400)).figures.length, 0, "a steel plate's size is not Plate 14");
+  const sentence = noPlate(line("Figure 1 is a side elevation of the mandrel", 200));
+  assert.ok(sentence.figures.every((f) => f.bbox[1] > 300), "a sentence is not the caption under a drawing");
+  assert.ok(noPlate(line("Figure 2 herewith.", 300)).figures.every((f) => f.bbox[1] > 300));
+  assert.ok(noPlate(line("Fig. 7 shows a record taken in the air", 280)).figures.every((f) => f.bbox[1] > 300));
+  const body = [];
+  for (let row = 0; row < 12; row++) body.push(...line("the yield of the south plat was higher than the north plat", 40 + row * 16));
+  assert.equal(noPlate([...body, ...line("1918, is shown in Figure 1.", 36)]).figures.length, 0, "a text page does not keep an uncaptioned rule grid");
+  const kept = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [] },
+    ruleSegments: segs, words: line("Fig. 7 Record of the flight", 540),
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(kept.figures.length, 1, "a caption under the strokes still makes the plate");
+});
+
+function ocrItem(str, x, y, size = 10, width = str.length * size * 0.5) {
+  return { str, transform: [size, 0, 0, size, x, y], width, height: size, y0: y - size * 0.8, y1: y + size * 0.2, fontName: "ocr", conf: 1 };
+}
+
+function plateInk(y0, y1) {
+  const ink = [];
+  for (let i = 0; i < 8; i++) {
+    const x = 70 + (i % 4) * 80;
+    const y = y0 + Math.floor(i / 4) * ((y1 - y0) / 2);
+    ink.push({ x0: x, y0: y, x1: x + 60, y1: y + Math.min(50, (y1 - y0) / 2 - 4) });
+  }
+  return ink;
+}
+
+function scanDoc(items, ink = []) {
+  const body = [];
+  const sentence = "The instrument records the motion of the springs during the run today".split(" ");
+  for (let i = 0; i < 6; i++) sentence.forEach((t, k) => body.push(ocrItem(t, 72 + k * 36, 80 + i * 16)));
+  const page = parsePageGeometry({
+    n: 1, w: W, h: H, rotation: 0, transform: [1, 0, 0, 1, 0, 0], scan: true, dpi: 300, deskew: 0,
+    fonts: { ocr: { name: "ocr" } }, items: [...body, ...items], rules: [], ink, ops: { fnArray: [], argsArray: [] },
+  }, 1);
+  return assembleDocument([page], { numPages: 1 });
+}
+
+function captionText(d) {
+  return d.order.map((id) => d.blocks[id]).filter((b) => b.type === "caption").map((b) => b.text);
+}
+
+test("a dropped figure digit on the next header stays on the caption", () => {
+  const rest = "Showing the means for transferring the motion".split(" ");
+  const d = scanDoc([
+    ocrItem("Fig.", 116, 620, 16, 25),
+    ocrItem("2.", 153, 612, 10, 16),
+    ...rest.map((t, i) => ocrItem(t, 176 + i * 42, 612, 10, 38)),
+  ], plateInk(430, 650));
+  const caps = captionText(d);
+  assert.ok(caps.some((t) => /^Fig\. 2\. Showing the means/.test(t)), caps.join(" | "));
+});
+
+test("a label-only caption does not swallow the next paragraph", () => {
+  const d = scanDoc([
+    ocrItem("Fig.", 95, 541, 10, 22),
+    ocrItem("1", 120, 541, 10, 8),
+    ocrItem("now", 105, 556, 10, 24),
+    ocrItem("dropping", 132, 556, 10, 56),
+    ocrItem("the", 192, 556, 10, 22),
+    ocrItem("wire", 218, 556, 10, 28),
+    ocrItem("gages", 250, 556, 10, 36),
+    ocrItem("altogether", 290, 556, 10, 64),
+  ], plateInk(160, 520));
+  const caps = captionText(d);
+  assert.ok(caps.some((t) => t === "Fig. 1"), caps.join(" | "));
+  assert.ok(caps.every((t) => !/dropping/.test(t)), caps.join(" | "));
+});
+
+test("a split ordinate note returns to the caption and the next line stays out", () => {
+  const d = scanDoc([
+    ocrItem("F1g.5", 84, 281, 10, 36),
+    ocrItem("Navy", 124, 281, 10, 36),
+    ocrItem("section", 249, 281, 10, 48),
+    ocrItem("curve.", 302, 281, 10, 42),
+    ocrItem("Ordinates", 348, 281, 10, 64),
+    ocrItem("in", 416, 281, 10, 12),
+    ocrItem("terms", 432, 281, 10, 36),
+    ocrItem("of", 472, 281, 10, 14),
+    ocrItem("maximum", 140, 296, 10, 56),
+    ocrItem("orainate.", 200, 296, 10, 58),
+  ], plateInk(100, 260));
+  const caps = captionText(d);
+  assert.ok(caps.some((t) => /Ordinates in terms of/.test(t)), caps.join(" | "));
+  assert.ok(caps.every((t) => !/orainate/.test(t)), caps.join(" | "));
 });

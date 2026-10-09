@@ -15,8 +15,13 @@ export function tokenizeLine(line) {
   const threshold = Math.max(1.8 * charW, 0.6 * line.size);
   const tokens = [];
   let cur = null;
+  const dots = (s) => /^[.·…]+$/.test(s);
   for (const w of line.words) {
-    if (cur && w.x0 - cur.x1 < threshold) { cur.words.push(w); cur.x1 = Math.max(cur.x1, w.x1); }
+    const prev = cur && cur.words[cur.words.length - 1];
+    // A footnote letter sits in the value ("c 0.1654"), and a run of leader dots is one token.
+    const glueLetter = cur && cur.words.length === 1 && /^[a-z]$/.test(cur.words[0].text) && isNumericText(w.text) && w.x0 - cur.x1 < 1.2 * (line.size || 10);
+    const glueDots = prev && dots(prev.text) && dots(w.text);
+    if (cur && (w.x0 - cur.x1 < threshold || glueLetter || glueDots)) { cur.words.push(w); cur.x1 = Math.max(cur.x1, w.x1); }
     else { cur = { x0: w.x0, x1: w.x1, words: [w] }; tokens.push(cur); }
   }
   for (const t of tokens) t.text = t.words.map((w) => w.text).join(" ");
@@ -28,7 +33,8 @@ export function projectColumns(rows) {
   const counts = rows.map((r) => r.length).sort((a, b) => a - b);
   const q = counts[Math.min(counts.length - 1, Math.floor(counts.length * 0.6))] || 0;
   const full = rows.filter((r) => r.length >= q && r.length >= 2);
-  const ivs = full.flat().map((t) => [t.x0, t.x1]).sort((a, b) => a[0] - b[0]);
+  // Leader dots between a name and its values are not a column.
+  const ivs = full.flat().filter((t) => !/^[.·…\s]+$/.test(t.text)).map((t) => [t.x0, t.x1]).sort((a, b) => a[0] - b[0]);
   const cols = [];
   for (const [a, b] of ivs) {
     const last = cols[cols.length - 1];
@@ -723,7 +729,42 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [] }
       const row = rows[j];
       const tokens = tokensOf(row);
       if (markerOf(row.lines[0], dots) || CAPTION_RE.test(row.text)) break;
-      if (lastBase != null && row.base - lastBase > 2.2 * row.size) break;
+      // A rule drawn as a dash ("-" or "-----") is not a row and does not end the table.
+      const ruleText = row.text.replace(/\s+/g, "");
+      // A drawn rule (a dash, or four or more leader marks) is not a row. A bullet or a
+      // star is a placeholder cell and stays. A stray ";" from a broken leader is not a cell.
+      if (/^[-–—−_=.·•]{4,}$/.test(ruleText) || /^[-–—−]$/.test(ruleText) || ruleText === ";") {
+        ruleLines.push(...row.lines);
+        if (run.length && !headerRowsHint && run.length <= 3 && ruleText.length >= 4) headerRowsHint = run.length;
+        lastBase = row.base;
+        j++;
+        continue;
+      }
+      if (lastBase != null && row.base - lastBase > 2.2 * row.size) {
+        // Monospaced tables are often double-spaced (about 2.5 em). Keep the row when its
+        // numbers sit on the run's columns, or when it is a section banner whose next line
+        // repeats the column heads. A wider gap still ends the table.
+        const gap = row.base - lastBase;
+        const header = headerOf(run);
+        const next = rows[j + 1];
+        const nextTokens = next ? tokensOf(next) : null;
+        const head = repeatsHeader(tokens, header) ? tokens : (nextTokens || tokens);
+        const numericNext = nextTokens && nextTokens.filter((t) => isNumericText(t.text)).length >= 2;
+        const numericHere = tokens.filter((t) => isNumericText(t.text)).length >= 2;
+        const yearHeader = tokens.filter((t) => /^(1[89]|20)\d{2}$/.test(String(t.text).replace(/[^\d]/g, ""))).length >= 2;
+        const near = next && next.base - row.base <= 2.8 * row.size;
+        const bannerOnly = run.length > 0 && run.length <= 2 && run.every((r) => r.tokens.length < 3);
+        // The same centred title again is a second table, not a new section.
+        const title = normCell(row.text);
+        const repeatedTitle = tokens.length < 3 && title.length >= 6 && run.some((r) => r.tokens.length < 3 && normCell(r.row.text) === title);
+        const keep = !repeatedTitle && gap <= 3.4 * row.size && (
+          (tokens.length >= 2 && alignsWithRun(run, tokens, row.size))
+          || (near && repeatsHeader(head, header))
+          || (near && tokens.length < 3 && numericNext && bannerOnly && !(nextTokens && nextTokens.filter((t) => /^(1[89]|20)\d{2}$/.test(String(t.text).replace(/[^\d]/g, ""))).length >= 2))
+          || (numericHere && bannerOnly && !yearHeader)
+        );
+        if (!keep) break;
+      }
       // A rule drawn as text ("-----") separates header from body; it is not a row.
       if (run.length && TEXT_RULE_RE.test(row.text.replace(/\s+/g, ""))) {
         ruleLines.push(...row.lines);
@@ -733,11 +774,31 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [] }
         continue;
       }
       if (tokens.length < 2) {
+        // A section line double-spaced above the first numeric header opens the table.
+        if (!run.length && row.words.length <= 8) {
+          const nxt = rows[j + 1];
+          const nt = nxt ? tokensOf(nxt) : [];
+          const nextYears = nt.filter((t) => /^(1[89]|20)\d{2}$/.test(String(t.text).replace(/[^\d]/g, ""))).length;
+          if (nextYears < 2 && nxt && nxt.base - row.base <= 3.4 * row.size && nt.filter((t) => isNumericText(t.text)).length >= 2) {
+            run.push({ row, tokens });
+            lastBase = row.base;
+            j++;
+            continue;
+          }
+        }
         const peek = (k) => (rows[k] ? { row: rows[k], tokens: tokensOf(rows[k]) } : null);
         const single = singleTokenRow(row, tokens, run, peek(j + 1), colBox, lead, peek(j + 2));
         if (single === "attach") { lastBase = row.base; j++; continue; }
         if (single === "lead") { lead = { row, tokens }; lastBase = row.base; j++; continue; }
         if (single === "row") { run.push({ row, tokens }); lastBase = row.base; j++; continue; }
+        // A section title on its own line, then the same column heads again, is one table.
+        const nxt = rows[j + 1];
+        if (nxt && nxt.base - row.base <= 2.6 * row.size && repeatsHeader(tokensOf(nxt), headerOf(run))) {
+          run.push({ row, tokens });
+          lastBase = row.base;
+          j++;
+          continue;
+        }
         break;
       }
       if (proseRow(row, tokens, colW)) break;
@@ -765,7 +826,7 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [] }
       if (code) { out.push(code); i = j; continue; }
       const rowsIn = run.map((r) => ({ y0: r.row.y0, y1: r.row.y1, tokens: r.tokens }));
       const table = buildTable(rowsIn, { headerRowsHint, rules });
-      if (table && !looksLikeProse(run) && !sparseAxis(table)) {
+      if (table && !looksLikeProse(run) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table)) {
         table.usedWords = run.flatMap((r) => r.row.words);
         table.lines = [...run.flatMap((r) => r.row.lines), ...ruleLines];
         out.push(table);
@@ -896,6 +957,79 @@ function sparseAxis(table) {
   if (table.rows > 3) return false;
   const filled = table.cells.filter((c) => c.text).length;
   return filled < 0.6 * table.cells.length;
+}
+
+// Chart ticks read as a short table: a few short numbers, each spanning the grid, so the
+// cell list looks full while most of the row/column slots are empty.
+export function tickGrid(table) {
+  if (!table || table.rows > 4 || table.cols < 4) return false;
+  const slots = table.rows * table.cols;
+  const filled = (table.cells || []).filter((c) => String(c.text || "").trim());
+  if (filled.length < 4 || filled.length / slots >= 0.5) return false;
+  const tick = (s) => /^\d{1,3}$/.test(s);
+  return filled.filter((c) => tick(c.text.trim())).length / filled.length >= 0.75;
+}
+
+function normCell(s) {
+  return String(s || "").replace(/[^\w.]/g, "").toLowerCase();
+}
+
+function valueTokens(tokens) {
+  return (tokens || []).slice(1).map((t) => normCell(t.text)).filter((s) => s && s.length <= 12);
+}
+
+// The first row of short column heads ("0", "12", "15"), not a section banner.
+function headerOf(run) {
+  const multi = run.filter((r) => valueTokens(r.tokens).length >= 2);
+  return multi.length ? multi[0].tokens : null;
+}
+
+// The same heads again: the value cells agree, so a new section is not a new table.
+function repeatsHeader(tokens, header) {
+  if (!header || !tokens) return false;
+  const a = valueTokens(header);
+  const b = valueTokens(tokens);
+  if (a.length < 2 || b.length < 2) return false;
+  let same = 0;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) if (a[i] === b[i]) same++;
+  if (same >= 2 && same / n >= 0.6) return true;
+  // A label that split ("in." "of Hg" "0" "12" "15") still ends with the heads.
+  const tail = b.slice(-a.length);
+  return tail.length === a.length && tail.every((s, i) => s === a[i]);
+}
+
+// Number columns of a monospaced table: token starts land on an earlier row's starts.
+function alignsWithRun(run, tokens, size) {
+  if (!tokens || tokens.length < 2) return false;
+  const prev = [];
+  for (const r of run) for (const t of r.tokens.slice(1)) prev.push(t.x0);
+  if (prev.length < 2) return false;
+  const tol = Math.max(4, 0.6 * size);
+  let hit = 0;
+  for (const t of tokens.slice(1)) if (prev.some((x) => Math.abs(x - t.x0) <= tol)) hit++;
+  return hit >= 2;
+}
+
+// A paragraph read as a table: most filled cells are phrases of five or more words.
+export function phraseTable(table) {
+  const filled = (table.cells || []).filter((c) => String(c.text || "").trim());
+  if (filled.length < 4) return false;
+  const words = (s) => String(s).trim().split(/\s+/).filter(Boolean);
+  const phrases = filled.filter((c) => words(c.text).length >= 5).length;
+  if (phrases / filled.length > 0.5) return true;
+  // The same sentence split one word to a cell: the row joins into a phrase, and almost
+  // no cell is a number. A numeric table keeps its values.
+  const numeric = filled.filter((c) => isNumericText(c.text)).length;
+  if (numeric / filled.length >= 0.2) return false;
+  const byRow = new Map();
+  for (const c of filled) {
+    if (!byRow.has(c.r)) byRow.set(c.r, []);
+    byRow.get(c.r).push(c.text);
+  }
+  let long = 0;
+  for (const ts of byRow.values()) if (words(ts.join(" ")).length >= 8) long++;
+  return byRow.size >= 3 && long / byRow.size > 0.5;
 }
 
 // Justified prose splits into tokens at random x; tables keep short cells with wide gaps.

@@ -5,7 +5,7 @@ import test from "node:test";
 import { buildLines, mul, applyPoint, normalizeText, fontFlags, makeLine } from "../src/model/parse/lines.js";
 import { decodePathData, extractGraphics, luminanceOf, snapRules, OP } from "../src/model/parse/rules.js";
 import { findLatticeTables, cellTextOf, isNumericText } from "../src/model/parse/lattice.js";
-import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand } from "../src/model/parse/stream.js";
+import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand, phraseTable, tickGrid } from "../src/model/parse/stream.js";
 import { resplitColumns } from "../src/model/parse/resplit.js";
 import { findFigures, clusterBoxes } from "../src/model/parse/figures.js";
 import { findFurniture, normalizeFurniture } from "../src/model/parse/furniture.js";
@@ -232,6 +232,106 @@ test("detectStreamRuns finds a borderless numeric table with a bold header and r
   assert.equal(t.cells.find((c) => c.r === 2 && c.c === 1).align, "right");
   assert.equal(t.cells.find((c) => c.r === 0 && c.c === 0).header, true);
   assert.equal(t.method, "stream");
+});
+
+test("detectStreamRuns keeps a double-spaced numeric table and a repeated column head in one run", () => {
+  const head = (base) => row([["Pressure", 50], ["0", 250], ["12", 310], ["15", 370]], base, 10);
+  const data = (label, a, b, c, base) => row([[label, 50], [a, 250], [b, 310], [c, 370]], base, 10);
+  const lines = [
+    row([["Speed 1,000 r.p.m.", 140]], 80, 10),
+    head(105),
+    data("Roots", "0.3", "42.6", "64.5", 130),
+    data("Powerplus", "3.8", "49.6", "90.6", 155),
+    row([["----", 50]], 170, 10),
+    row([["Speed 2,000 r.p.m.", 140]], 195, 10),
+    head(220),
+    data("Roots", "0.9", "39.7", "57.1", 245),
+    data("Powerplus", "6.6", "39.6", "59.8", 270),
+  ];
+  const tables = detectStreamRuns(lines);
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].cols, 4);
+  assert.ok(tables[0].rows >= 8);
+  assert.equal(tables[0].cells.some((c) => c.text.includes("2,000")), true);
+  assert.equal(tables[0].cells.some((c) => c.text === "----"), false);
+});
+
+test("detectStreamRuns skips a stray semicolon from a broken leader", () => {
+  const data = (label, a, base) => row([[label, 50], [a, 250], ["1.2", 310]], base, 10);
+  const lines = [
+    row([["Name", 50], ["A", 250], ["B", 310]], 100, 10),
+    data("one", "1.10", 125),
+    row([[";", 180]], 145, 10),
+    data("two", "1.15", 170),
+    data("three", "1.20", 195),
+  ];
+  const tables = detectStreamRuns(lines);
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].cells.some((c) => c.text === ";"), false);
+  assert.equal(tables[0].cells.some((c) => c.text.includes("1.10")), true);
+  assert.equal(tables[0].cells.some((c) => c.text.includes("1.20")), true);
+});
+
+test("tickGrid drops a chart axis whose numbers span an otherwise empty grid", () => {
+  const span = (c, text, rowSpan) => ({ r: 0, c, rowSpan, colSpan: 1, text });
+  const ticks = { rows: 3, cols: 7, cells: [span(0, "1", 2), span(1, "2", 3), span(2, "3", 3), span(3, "9", 2), span(4, "10", 3), span(5, "11", 3), span(6, "12", 3), { r: 2, c: 0, rowSpan: 1, colSpan: 1, text: "F1g. 3" }] };
+  assert.equal(tickGrid(ticks), true);
+  const dense = { rows: 3, cols: 4, cells: [] };
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) dense.cells.push({ r, c, text: String(r * 4 + c) });
+  assert.equal(tickGrid(dense), false);
+});
+
+test("detectStreamRuns skips a one-dash rule and keeps the rows around it", () => {
+  const head = row([["Name", 50], ["A", 200], ["B", 260]], 100, 10);
+  const data = (name, a, base) => row([[name, 50], [a, 200], ["1.1", 260]], base, 10);
+  const lines = [
+    head,
+    data("one", "2.0", 112),
+    row([["-", 80]], 124, 10),
+    data("two", "3.0", 136),
+    data("three", "4.0", 148),
+  ];
+  const tables = detectStreamRuns(lines);
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].cells.some((c) => c.text === "-"), false);
+  assert.equal(tables[0].cells.some((c) => c.text === "three"), true);
+  assert.equal(tables[0].cells.some((c) => c.text === "one"), true);
+});
+
+test("detectStreamRuns leaves a title above a year header out of the table", () => {
+  const lines = [
+    row([["NOTIFIABLE DISEASES", 50]], 70, 10),
+    row([["Disease", 50], ["1980", 160], ["1979", 220], ["1978", 280]], 100, 10),
+    row([["Amebiasis", 50], ["2.38", 160], ["1.90", 220], ["1.84", 280]], 112, 10),
+    row([["Anthrax", 50], ["0.00", 160], ["0.00", 220], ["0.00", 280]], 124, 10),
+  ];
+  const tables = detectStreamRuns(lines);
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].cells.some((c) => /NOTIFIABLE/.test(c.text)), false);
+  assert.equal(tables[0].cells.find((c) => c.r === 0 && c.c === 0).text, "Disease");
+});
+
+test("detectStreamRuns rejects a paragraph laid out as long phrase cells", () => {
+  const line = (base) => row([["at equal speeds of the", 50], ["required power stays nearly constant", 300]], base, 10);
+  const tables = detectStreamRuns([line(100), line(125), line(150), line(175)]);
+  assert.equal(tables.length, 0);
+  assert.equal(phraseTable({ cells: [
+    { r: 0, c: 0, text: "Roots" }, { r: 0, c: 1, text: "0.294" }, { r: 0, c: 2, text: "42.6" },
+    { r: 1, c: 0, text: "Powerplus" }, { r: 1, c: 1, text: "3.84" }, { r: 1, c: 2, text: "49.6" },
+  ] }), false);
+});
+
+test("tokenizeLine keeps a footnote letter with its number and leader dots as one token", () => {
+  const note = row([["c", 200], ["0.1654", 216]], 100, 10);
+  assert.equal(tokenizeLine(note).some((t) => t.text === "c 0.1654"), true);
+  const dots = row([["....", 120], ["....", 160], ["....", 200]], 120, 10);
+  const tok = tokenizeLine(dots);
+  assert.equal(tok.length, 1);
+  assert.match(tok[0].text, /^[.\s]+$/);
+  const name = { x0: 40, x1: 80, text: "Water" };
+  const lead = { x0: 100, x1: 170, text: "........" };
+  const val = { x0: 200, x1: 230, text: "0.12" };
+  assert.equal(projectColumns([[name, lead, val], [name, lead, val]]).length, 2);
 });
 
 test("detectStreamRuns rejects justified prose and numbered lists", () => {

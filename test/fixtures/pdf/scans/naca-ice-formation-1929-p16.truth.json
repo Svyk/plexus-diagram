@@ -1,0 +1,33 @@
+{
+ "id": "naca-ice-formation-1929-p16",
+ "source": "naca-ice-formation-1929.pdf page 16",
+ "class": [
+  "hand-drawn-figure"
+ ],
+ "quality": [
+  "typewritten",
+  "hand-inked"
+ ],
+ "tables": [],
+ "figures": [
+  {
+   "bbox": [
+    0.08,
+    0.1,
+    0.92,
+    0.9
+   ],
+   "caption": "Fig. 2 Sketches of ice formation on wings and wires."
+  }
+ ],
+ "lines": [
+  "Fig. 2",
+  "Formation of ice on leading edge of wing.",
+  "Ice on streamline wire. (Very slow to form if at all.)",
+  "Ice on round wire.",
+  "Ice on end of rounded batten.",
+  "Ice on positive pitot head, showing opening partially closed and ice forming inside tube.",
+  "Fig. 2 Sketches of ice formation on wings and wires. (From notes and sketches made on numerous flights.)"
+ ],
+ "textComplete": false
+}

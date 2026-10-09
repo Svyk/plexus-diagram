@@ -1,0 +1,962 @@
+{
+ "built": "2026-10-09",
+ "note": "Public-domain scans. PDFs are not in git. Fetch each url into pdfs/<file> and check sha256. Figure captions are scored as captions; axis ticks and body text were not transcribed in full, so character error is not scored on those pages.",
+ "pdfs": [
+  {
+   "file": "naca-accelerometer-1922.pdf",
+   "title": "The NACA three component accelerometer",
+   "year": 1922,
+   "url": "https://archive.org/download/nasa_techdoc_19930080884/19930080884.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "61267f1603c78c0bb9385c5439ff4bfe1719390c2e78f8b0da19d26e4148e1a5",
+   "bytes": 330122,
+   "notes": "NACA Technical Note"
+  },
+  {
+   "file": "naca-diesel-viscosity-1929.pdf",
+   "title": "Viscosity of diesel engine fuel oil under pressure",
+   "year": 1929,
+   "url": "https://archive.org/download/nasa_techdoc_19930081144/19930081144.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "9884b6d8e1a23d9a84a4d535936346bfa5ace5feedd551e6bd901457388c5d58",
+   "bytes": 483930,
+   "notes": "NACA; figure pages are image strips (fold-out)"
+  },
+  {
+   "file": "naca-ice-formation-1929.pdf",
+   "title": "The formation of ice upon airplanes in flight",
+   "year": 1929,
+   "url": "https://archive.org/download/nasa_techdoc_19930081134/19930081134.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "718904e67a2579566efba680d948dd42d564552dbbb7ab9e0d52f1aad9ecc87a",
+   "bytes": 850597,
+   "notes": "NACA Technical Note 313"
+  },
+  {
+   "file": "naca-pitching-charts-1933.pdf",
+   "title": "Charts for determining the pitching moment of tapered wings with sweepback and twist",
+   "year": 1933,
+   "url": "https://archive.org/download/nasa_techdoc_19930081390/19930081390.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "3a406bf1d94b009cfdd54c2e12ad599e59ef9d11e0221697f0856b5a966504bd",
+   "bytes": 924283,
+   "notes": "NACA Technical Note 483"
+  },
+  {
+   "file": "naca-propeller-1926.pdf",
+   "title": "Navy propeller section characteristics as used in propeller design",
+   "year": 1926,
+   "url": "https://archive.org/download/nasa_techdoc_19930081052/19930081052.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "15be7484a9e6e1b381708a009d2a04ce23683c0c7bf9f1e712dffd9ef0411e84",
+   "bytes": 497232,
+   "notes": "NACA Technical Note 244; page 11 baseline skew about 0.6 deg"
+  },
+  {
+   "file": "naca-supercharger-1932.pdf",
+   "title": "Comparative performance of a Powerplus vane-type supercharger and an N.A.C.A. Roots-type supercharger",
+   "year": 1932,
+   "url": "https://archive.org/download/nasa_techdoc_19930081240/19930081240.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "66b86a95db617c4bd21ad53883677338a3194db92e4b56df6366d8a07b60d71d",
+   "bytes": 1730466,
+   "notes": "NACA Technical Note 426"
+  },
+  {
+   "file": "nbs-c31-copper-wire-1912.pdf",
+   "title": "Circular of the Bureau of Standards no. 31: copper wire tables",
+   "year": 1912,
+   "url": "https://archive.org/download/circularofbureau31unse/circularofbureau31unse.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "bd34b860a196fa76574891d4f3870882ccce08a2c8d6b30116eb3c76e2f406ef",
+   "bytes": 6817402,
+   "notes": "Page image about 167 dpi plus a 500 dpi sibling"
+  },
+  {
+   "file": "nbs-formulae-inductance-1922.pdf",
+   "title": "Formulae and tables for calculation of inductance of coils of polygonal form",
+   "year": 1922,
+   "url": "https://archive.org/download/formulaetablesfo18737unse/formulaetablesfo18737unse.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "134174815c818daf5e9058ba71b822da31dbfe66a3973004d37fded0d471f3e6",
+   "bytes": 1690319,
+   "notes": "Bureau of Standards scientific paper"
+  },
+  {
+   "file": "nbs-gas-burners-1921.pdf",
+   "title": "Design of atmospheric gas burners",
+   "year": 1921,
+   "url": "https://archive.org/download/designofatmosp1921193berr/designofatmosp1921193berr.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "69ae35b3f7438e6b86a5caa282db0edfb38e3a902845822da4d7dd358d7da1dc",
+   "bytes": 6567396,
+   "notes": "Technologic paper; graphs on grid paper"
+  },
+  {
+   "file": "nbs-inductance-tables-1921.pdf",
+   "title": "Tables for the calculation of the inductance of circular coils of rectangular cross section",
+   "year": 1921,
+   "url": "https://archive.org/download/tablesforcalcula18451grov/tablesforcalcula18451grov.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "2e2e77c602e4c20cd1dd7e00248cd0048a04fb23d7554555874642143fdf5f9b",
+   "bytes": 2434157,
+   "notes": "Bureau of Standards"
+  },
+  {
+   "file": "nbs-redwood-viscometer-1922.pdf",
+   "title": "The Redwood viscometer",
+   "year": 1922,
+   "url": "https://archive.org/download/redwoodviscome1922210hers/redwoodviscome1922210hers.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "bf8e39878440c01bbaa40046fcf22bf997f7d0bfe0813197562104bee152efe2",
+   "bytes": 1928651,
+   "notes": "Technologic paper; ruled tables and charts"
+  },
+  {
+   "file": "nbs-wind-pressure-1930.pdf",
+   "title": "Wind pressure on circular cylinders and chimneys",
+   "year": 1930,
+   "url": "https://archive.org/download/windpressureonci53653dryd/windpressureonci53653dryd.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "9d3c88b56135bd361b90e85a90a1500b9504ba1d8898746c0258d5c00b2a8fd3",
+   "bytes": 4334526,
+   "notes": "Journal page about 5 by 8.4 in; embedded images 167 dpi and 500 dpi"
+  },
+  {
+   "file": "patent-drawings-fulmer-1919.pdf",
+   "title": "How to make patent drawings",
+   "year": 1919,
+   "url": "https://archive.org/download/howtomakepatentd00fulmrich/howtomakepatentd00fulmrich.pdf",
+   "licence": "Public domain (US publication 1919, copyright expired)",
+   "sha256": "0d73637312b7fa0755b9ec33b3b6d7ea8f09fe3efbd5abe57ebc33353eb20cba",
+   "bytes": 3299827,
+   "notes": "Fulmer; yellowed paper"
+  },
+  {
+   "file": "patent-us600014-1898.pdf",
+   "title": "Metal-drawing machine, US patent 600,014",
+   "year": 1898,
+   "url": "https://archive.org/download/UnitedStatesPatent600014/USP600014.pdf",
+   "licence": "US patent, public domain",
+   "sha256": "2390cbb5d5634041691d45d8c8161feefb440a94075e9f9244bed83bfd448a51",
+   "bytes": 180536,
+   "notes": "Image-only; drawing sheet plus two-column specification"
+  },
+  {
+   "file": "smithsonian-physical-tables-1921.pdf",
+   "title": "Smithsonian Physical Tables",
+   "year": 1921,
+   "url": "https://archive.org/download/SmithsonianPhysicalTables/SmithsonianPhysicalTables.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "9321c1afb834b1905111b84f927d249cc80cabe5badaaccb3add71514b376701",
+   "bytes": 8122191,
+   "notes": "Typeset tables; page 13 contents is mildly skewed"
+  },
+  {
+   "file": "usda-electroculture-1926.pdf",
+   "title": "Electroculture",
+   "year": 1926,
+   "url": "https://archive.org/download/electroculture1379brig/electroculture1379brig.pdf",
+   "licence": "US government work, public domain",
+   "sha256": "0045f3b1eac5ddd6d22b14e28a3d716679f038a9e2d81ec53efce575237fa796",
+   "bytes": 6175710,
+   "notes": "USDA Department Bulletin 1379"
+  }
+ ],
+ "pages": [
+  {
+   "id": "naca-diesel-viscosity-1929-p12",
+   "file": "naca-diesel-viscosity-1929.pdf",
+   "page": 12,
+   "class": [
+    "hand-drawn-figure",
+    "fold-out"
+   ],
+   "quality": [
+    "typewritten",
+    "grid-paper"
+   ]
+  },
+  {
+   "id": "naca-diesel-viscosity-1929-p13",
+   "file": "naca-diesel-viscosity-1929.pdf",
+   "page": 13,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typewritten",
+    "grid-paper"
+   ]
+  },
+  {
+   "id": "naca-diesel-viscosity-1929-p14",
+   "file": "naca-diesel-viscosity-1929.pdf",
+   "page": 14,
+   "class": [
+    "hand-drawn-figure",
+    "fold-out"
+   ],
+   "quality": [
+    "typewritten",
+    "grid-paper"
+   ]
+  },
+  {
+   "id": "naca-propeller-1926-p10",
+   "file": "naca-propeller-1926.pdf",
+   "page": 10,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typewritten",
+    "grid-paper"
+   ]
+  },
+  {
+   "id": "naca-propeller-1926-p11",
+   "file": "naca-propeller-1926.pdf",
+   "page": 11,
+   "class": [
+    "hand-drawn-figure",
+    "skew"
+   ],
+   "quality": [
+    "typewritten",
+    "grid-paper",
+    "skew"
+   ]
+  },
+  {
+   "id": "naca-propeller-1926-p12",
+   "file": "naca-propeller-1926.pdf",
+   "page": 12,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typewritten",
+    "grid-paper"
+   ]
+  },
+  {
+   "id": "naca-propeller-1926-p13",
+   "file": "naca-propeller-1926.pdf",
+   "page": 13,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typewritten",
+    "grid-paper"
+   ]
+  },
+  {
+   "id": "naca-accelerometer-1922-p8",
+   "file": "naca-accelerometer-1922.pdf",
+   "page": 8,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typewritten",
+    "hand-inked"
+   ]
+  },
+  {
+   "id": "naca-ice-formation-1929-p16",
+   "file": "naca-ice-formation-1929.pdf",
+   "page": 16,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typewritten",
+    "hand-inked"
+   ]
+  },
+  {
+   "id": "naca-ice-formation-1929-p17",
+   "file": "naca-ice-formation-1929.pdf",
+   "page": 17,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typewritten",
+    "hand-inked"
+   ]
+  },
+  {
+   "id": "naca-ice-formation-1929-p19",
+   "file": "naca-ice-formation-1929.pdf",
+   "page": 19,
+   "class": [
+    "hand-drawn-figure",
+    "photograph"
+   ],
+   "quality": [
+    "halftone",
+    "low-contrast"
+   ]
+  },
+  {
+   "id": "naca-supercharger-1932-p21",
+   "file": "naca-supercharger-1932.pdf",
+   "page": 21,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typewritten",
+    "hand-inked"
+   ]
+  },
+  {
+   "id": "naca-supercharger-1932-p23",
+   "file": "naca-supercharger-1932.pdf",
+   "page": 23,
+   "class": [
+    "hand-drawn-figure",
+    "photograph"
+   ],
+   "quality": [
+    "halftone"
+   ]
+  },
+  {
+   "id": "nbs-wind-pressure-1930-p16",
+   "file": "nbs-wind-pressure-1930.pdf",
+   "page": 16,
+   "class": [
+    "hand-drawn-figure",
+    "low-dpi"
+   ],
+   "quality": [
+    "typeset",
+    "hand-inked",
+    "low-dpi"
+   ]
+  },
+  {
+   "id": "nbs-wind-pressure-1930-p18",
+   "file": "nbs-wind-pressure-1930.pdf",
+   "page": 18,
+   "class": [
+    "hand-drawn-figure",
+    "low-dpi"
+   ],
+   "quality": [
+    "typeset",
+    "hand-inked",
+    "low-dpi"
+   ]
+  },
+  {
+   "id": "nbs-gas-burners-1921-p21",
+   "file": "nbs-gas-burners-1921.pdf",
+   "page": 21,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typeset",
+    "grid-paper"
+   ]
+  },
+  {
+   "id": "nbs-gas-burners-1921-p27",
+   "file": "nbs-gas-burners-1921.pdf",
+   "page": 27,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typeset",
+    "grid-paper"
+   ]
+  },
+  {
+   "id": "nbs-redwood-viscometer-1922-p10",
+   "file": "nbs-redwood-viscometer-1922.pdf",
+   "page": 10,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typeset",
+    "grid-paper"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p7",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 7,
+   "class": [
+    "photograph"
+   ],
+   "quality": [
+    "halftone",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "nbs-c31-copper-wire-1912-p20",
+   "file": "nbs-c31-copper-wire-1912.pdf",
+   "page": 20,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typeset"
+   ]
+  },
+  {
+   "id": "nbs-inductance-tables-1921-p13",
+   "file": "nbs-inductance-tables-1921.pdf",
+   "page": 13,
+   "class": [
+    "hand-drawn-figure"
+   ],
+   "quality": [
+    "typeset"
+   ]
+  },
+  {
+   "id": "patent-us600014-1898-p1",
+   "file": "patent-us600014-1898.pdf",
+   "page": 1,
+   "class": [
+    "patent-drawing",
+    "hand-drawn-figure",
+    "handwriting"
+   ],
+   "quality": [
+    "image-only",
+    "hand-inked",
+    "handwriting"
+   ]
+  },
+  {
+   "id": "naca-supercharger-1932-p15",
+   "file": "naca-supercharger-1932.pdf",
+   "page": 15,
+   "class": [
+    "typewritten-table"
+   ],
+   "quality": [
+    "typewritten",
+    "unruled"
+   ]
+  },
+  {
+   "id": "nbs-redwood-viscometer-1922-p5",
+   "file": "nbs-redwood-viscometer-1922.pdf",
+   "page": 5,
+   "class": [
+    "typeset-table",
+    "hand-ruled-table"
+   ],
+   "quality": [
+    "typeset",
+    "ruled"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p10",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 10,
+   "class": [
+    "typeset-table"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "naca-accelerometer-1922-p3",
+   "file": "naca-accelerometer-1922.pdf",
+   "page": 3,
+   "class": [
+    "text"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "naca-ice-formation-1929-p3",
+   "file": "naca-ice-formation-1929.pdf",
+   "page": 3,
+   "class": [
+    "text"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "naca-pitching-charts-1933-p5",
+   "file": "naca-pitching-charts-1933.pdf",
+   "page": 5,
+   "class": [
+    "text",
+    "two-column"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "nbs-wind-pressure-1930-p12",
+   "file": "nbs-wind-pressure-1930.pdf",
+   "page": 12,
+   "class": [
+    "text",
+    "two-column",
+    "low-dpi"
+   ],
+   "quality": [
+    "typeset",
+    "low-dpi"
+   ]
+  },
+  {
+   "id": "nbs-wind-pressure-1930-p14",
+   "file": "nbs-wind-pressure-1930.pdf",
+   "page": 14,
+   "class": [
+    "text",
+    "two-column",
+    "low-dpi"
+   ],
+   "quality": [
+    "typeset",
+    "low-dpi"
+   ]
+  },
+  {
+   "id": "nbs-redwood-viscometer-1922-p7",
+   "file": "nbs-redwood-viscometer-1922.pdf",
+   "page": 7,
+   "class": [
+    "text"
+   ],
+   "quality": [
+    "typeset"
+   ]
+  },
+  {
+   "id": "nbs-formulae-inductance-1922-p23",
+   "file": "nbs-formulae-inductance-1922.pdf",
+   "page": 23,
+   "class": [
+    "text"
+   ],
+   "quality": [
+    "typeset"
+   ]
+  },
+  {
+   "id": "smithsonian-physical-tables-1921-p13",
+   "file": "smithsonian-physical-tables-1921.pdf",
+   "page": 13,
+   "class": [
+    "text",
+    "skew"
+   ],
+   "quality": [
+    "typeset",
+    "skew"
+   ]
+  },
+  {
+   "id": "nbs-c31-copper-wire-1912-p7",
+   "file": "nbs-c31-copper-wire-1912.pdf",
+   "page": 7,
+   "class": [
+    "text"
+   ],
+   "quality": [
+    "typeset",
+    "dot-leaders"
+   ]
+  },
+  {
+   "id": "patent-drawings-fulmer-1919-p28",
+   "file": "patent-drawings-fulmer-1919.pdf",
+   "page": 28,
+   "class": [
+    "text"
+   ],
+   "quality": [
+    "typeset",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "patent-drawings-fulmer-1919-p40",
+   "file": "patent-drawings-fulmer-1919.pdf",
+   "page": 40,
+   "class": [
+    "text"
+   ],
+   "quality": [
+    "typeset",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "patent-us600014-1898-p2",
+   "file": "patent-us600014-1898.pdf",
+   "page": 2,
+   "class": [
+    "text",
+    "two-column"
+   ],
+   "quality": [
+    "image-only",
+    "two-column",
+    "typeset"
+   ]
+  },
+  {
+   "id": "patent-us600014-1898-p3",
+   "file": "patent-us600014-1898.pdf",
+   "page": 3,
+   "class": [
+    "text",
+    "two-column"
+   ],
+   "quality": [
+    "image-only",
+    "two-column",
+    "typeset"
+   ]
+  },
+  {
+   "id": "patent-us600014-1898-p4",
+   "file": "patent-us600014-1898.pdf",
+   "page": 4,
+   "class": [
+    "text",
+    "two-column"
+   ],
+   "quality": [
+    "image-only",
+    "two-column",
+    "typeset"
+   ]
+  },
+  {
+   "id": "patent-us600014-1898-p5",
+   "file": "patent-us600014-1898.pdf",
+   "page": 5,
+   "class": [
+    "text",
+    "two-column"
+   ],
+   "quality": [
+    "image-only",
+    "two-column",
+    "typeset"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p8",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 8,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p9",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 9,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p12",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 12,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p13",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 13,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p14",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 14,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p15",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 15,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "naca-diesel-viscosity-1929-p7",
+   "file": "naca-diesel-viscosity-1929.pdf",
+   "page": 7,
+   "class": [
+    "typewritten-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typewritten",
+    "ruled"
+   ]
+  },
+  {
+   "id": "naca-diesel-viscosity-1929-p9",
+   "file": "naca-diesel-viscosity-1929.pdf",
+   "page": 9,
+   "class": [
+    "typewritten-table",
+    "continued",
+    "spanning-header"
+   ],
+   "quality": [
+    "typewritten",
+    "ruled"
+   ]
+  },
+  {
+   "id": "naca-diesel-viscosity-1929-p6",
+   "file": "naca-diesel-viscosity-1929.pdf",
+   "page": 6,
+   "class": [
+    "typewritten-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typewritten",
+    "ruled"
+   ]
+  },
+  {
+   "id": "nbs-redwood-viscometer-1922-p21",
+   "file": "nbs-redwood-viscometer-1922.pdf",
+   "page": 21,
+   "class": [
+    "typeset-table",
+    "leaders"
+   ],
+   "quality": [
+    "typeset",
+    "ruled"
+   ]
+  },
+  {
+   "id": "nbs-redwood-viscometer-1922-p22",
+   "file": "nbs-redwood-viscometer-1922.pdf",
+   "page": 22,
+   "class": [
+    "typeset-table",
+    "leaders"
+   ],
+   "quality": [
+    "typeset",
+    "ruled"
+   ]
+  },
+  {
+   "id": "nbs-gas-burners-1921-p22",
+   "file": "nbs-gas-burners-1921.pdf",
+   "page": 22,
+   "class": [
+    "typeset-table",
+    "spanning-header",
+    "leaders"
+   ],
+   "quality": [
+    "typeset",
+    "ruled"
+   ]
+  },
+  {
+   "id": "nbs-wind-pressure-1930-p10",
+   "file": "nbs-wind-pressure-1930.pdf",
+   "page": 10,
+   "class": [
+    "typeset-table"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "low-dpi"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p5",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 5,
+   "class": [
+    "typeset-table",
+    "spanning-header",
+    "dense-numeric"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p11",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 11,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p16",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 16,
+   "class": [
+    "typeset-table",
+    "spanning-header",
+    "dense-numeric"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "naca-accelerometer-1922-p4",
+   "file": "naca-accelerometer-1922.pdf",
+   "page": 4,
+   "class": [
+    "text",
+    "typewritten"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "naca-accelerometer-1922-p5",
+   "file": "naca-accelerometer-1922.pdf",
+   "page": 5,
+   "class": [
+    "text",
+    "typewritten"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "naca-accelerometer-1922-p6",
+   "file": "naca-accelerometer-1922.pdf",
+   "page": 6,
+   "class": [
+    "text",
+    "typewritten"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "naca-ice-formation-1929-p4",
+   "file": "naca-ice-formation-1929.pdf",
+   "page": 4,
+   "class": [
+    "text",
+    "typewritten"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "naca-supercharger-1932-p10",
+   "file": "naca-supercharger-1932.pdf",
+   "page": 10,
+   "class": [
+    "text",
+    "typewritten"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "naca-pitching-charts-1933-p6",
+   "file": "naca-pitching-charts-1933.pdf",
+   "page": 6,
+   "class": [
+    "text",
+    "typewritten"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  }
+ ]
+}

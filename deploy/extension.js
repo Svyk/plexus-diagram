@@ -4862,6 +4862,7 @@ function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, 
     if (grid && grid.coverage >= 0.4 && grid.rows >= 2 && grid.cols >= 2) {
       const table = assembleTable(grid, comp, boxes, words, ysAll, usedWords);
       if (table) {
+        if (chartGrid(table)) continue;
         released.push(...table.released || []);
         delete table.released;
         tables.push(table);
@@ -5281,6 +5282,28 @@ function tokensSplitColumns(words, xs2, ys2, r0, r1, c0, c1) {
   }
   return split >= Math.ceil(rows.length * 0.5);
 }
+function chartGrid(table) {
+  if (!table || table.rows < 8 || table.cols < 4) return false;
+  const texts = (table.cells || []).map((c) => ({ c: c.c, r: c.r, text: String(c.text || "").trim() })).filter((c) => c.text);
+  if (texts.length < 8) return false;
+  const rows = table.rows;
+  const cols = table.cols;
+  const onAxis = (k) => k.r === 0 || k.r === rows - 1 || k.c === 0 || k.c === cols - 1;
+  const interiorSlots = (rows - 2) * (cols - 2);
+  if (interiorSlots <= 0) return false;
+  const interiorFilled = texts.filter((k) => !onAxis(k)).length;
+  if (interiorFilled / interiorSlots >= 0.45) return false;
+  const tick = (s) => s.length <= 4 || /^[-–—−.·\d\s]+$/.test(s);
+  if (texts.filter((c) => tick(c.text)).length / texts.length < 0.75) return false;
+  for (let col = 0; col < cols; col++) {
+    const inCol = texts.filter((k) => k.c === col);
+    const words = inCol.filter((k) => /[A-Za-z]{4,}/.test(k.text));
+    if (words.length >= 3 && words.length >= 0.4 * Math.max(1, inCol.length)) return false;
+  }
+  const header = texts.filter((k) => k.r === 0 && /[A-Za-z]{4,}/.test(k.text));
+  if (header.length >= 2) return false;
+  return true;
+}
 function looksLikeChart(band, graphics) {
   const width = band.x1 - band.x0;
   let bars = 0;
@@ -5592,8 +5615,12 @@ function tokenizeLine(line) {
   const threshold = Math.max(1.8 * charW, 0.6 * line.size);
   const tokens = [];
   let cur = null;
+  const dots = (s) => /^[.·…]+$/.test(s);
   for (const w of line.words) {
-    if (cur && w.x0 - cur.x1 < threshold) {
+    const prev = cur && cur.words[cur.words.length - 1];
+    const glueLetter = cur && cur.words.length === 1 && /^[a-z]$/.test(cur.words[0].text) && isNumericText(w.text) && w.x0 - cur.x1 < 1.2 * (line.size || 10);
+    const glueDots = prev && dots(prev.text) && dots(w.text);
+    if (cur && (w.x0 - cur.x1 < threshold || glueLetter || glueDots)) {
       cur.words.push(w);
       cur.x1 = Math.max(cur.x1, w.x1);
     } else {
@@ -5608,7 +5635,7 @@ function projectColumns(rows) {
   const counts = rows.map((r) => r.length).sort((a, b) => a - b);
   const q = counts[Math.min(counts.length - 1, Math.floor(counts.length * 0.6))] || 0;
   const full = rows.filter((r) => r.length >= q && r.length >= 2);
-  const ivs = full.flat().map((t) => [t.x0, t.x1]).sort((a, b) => a[0] - b[0]);
+  const ivs = full.flat().filter((t) => !/^[.·…\s]+$/.test(t.text)).map((t) => [t.x0, t.x1]).sort((a, b) => a[0] - b[0]);
   const cols = [];
   for (const [a, b] of ivs) {
     const last = cols[cols.length - 1];
@@ -6325,7 +6352,30 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [] } = {}) 
       const row4 = rows[j];
       const tokens = tokensOf2(row4);
       if (markerOf(row4.lines[0], dots) || CAPTION_RE.test(row4.text)) break;
-      if (lastBase != null && row4.base - lastBase > 2.2 * row4.size) break;
+      const ruleText = row4.text.replace(/\s+/g, "");
+      if (/^[-–—−_=.·•]{4,}$/.test(ruleText) || /^[-–—−]$/.test(ruleText) || ruleText === ";") {
+        ruleLines.push(...row4.lines);
+        if (run.length && !headerRowsHint && run.length <= 3 && ruleText.length >= 4) headerRowsHint = run.length;
+        lastBase = row4.base;
+        j++;
+        continue;
+      }
+      if (lastBase != null && row4.base - lastBase > 2.2 * row4.size) {
+        const gap = row4.base - lastBase;
+        const header = headerOf(run);
+        const next = rows[j + 1];
+        const nextTokens = next ? tokensOf2(next) : null;
+        const head = repeatsHeader(tokens, header) ? tokens : nextTokens || tokens;
+        const numericNext = nextTokens && nextTokens.filter((t) => isNumericText(t.text)).length >= 2;
+        const numericHere = tokens.filter((t) => isNumericText(t.text)).length >= 2;
+        const yearHeader = tokens.filter((t) => /^(1[89]|20)\d{2}$/.test(String(t.text).replace(/[^\d]/g, ""))).length >= 2;
+        const near = next && next.base - row4.base <= 2.8 * row4.size;
+        const bannerOnly = run.length > 0 && run.length <= 2 && run.every((r) => r.tokens.length < 3);
+        const title = normCell(row4.text);
+        const repeatedTitle = tokens.length < 3 && title.length >= 6 && run.some((r) => r.tokens.length < 3 && normCell(r.row.text) === title);
+        const keep = !repeatedTitle && gap <= 3.4 * row4.size && (tokens.length >= 2 && alignsWithRun(run, tokens, row4.size) || near && repeatsHeader(head, header) || near && tokens.length < 3 && numericNext && bannerOnly && !(nextTokens && nextTokens.filter((t) => /^(1[89]|20)\d{2}$/.test(String(t.text).replace(/[^\d]/g, ""))).length >= 2) || numericHere && bannerOnly && !yearHeader);
+        if (!keep) break;
+      }
       if (run.length && TEXT_RULE_RE.test(row4.text.replace(/\s+/g, ""))) {
         ruleLines.push(...row4.lines);
         if (!headerRowsHint && run.length <= 3) headerRowsHint = run.length;
@@ -6334,6 +6384,17 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [] } = {}) 
         continue;
       }
       if (tokens.length < 2) {
+        if (!run.length && row4.words.length <= 8) {
+          const nxt2 = rows[j + 1];
+          const nt = nxt2 ? tokensOf2(nxt2) : [];
+          const nextYears = nt.filter((t) => /^(1[89]|20)\d{2}$/.test(String(t.text).replace(/[^\d]/g, ""))).length;
+          if (nextYears < 2 && nxt2 && nxt2.base - row4.base <= 3.4 * row4.size && nt.filter((t) => isNumericText(t.text)).length >= 2) {
+            run.push({ row: row4, tokens });
+            lastBase = row4.base;
+            j++;
+            continue;
+          }
+        }
         const peek = (k) => rows[k] ? { row: rows[k], tokens: tokensOf2(rows[k]) } : null;
         const single = singleTokenRow(row4, tokens, run, peek(j + 1), colBox, lead, peek(j + 2));
         if (single === "attach") {
@@ -6348,6 +6409,13 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [] } = {}) 
           continue;
         }
         if (single === "row") {
+          run.push({ row: row4, tokens });
+          lastBase = row4.base;
+          j++;
+          continue;
+        }
+        const nxt = rows[j + 1];
+        if (nxt && nxt.base - row4.base <= 2.6 * row4.size && repeatsHeader(tokensOf2(nxt), headerOf(run))) {
           run.push({ row: row4, tokens });
           lastBase = row4.base;
           j++;
@@ -6390,7 +6458,7 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [] } = {}) 
       }
       const rowsIn = run.map((r) => ({ y0: r.row.y0, y1: r.row.y1, tokens: r.tokens }));
       const table = buildTable(rowsIn, { headerRowsHint, rules });
-      if (table && !looksLikeProse(run) && !sparseAxis(table)) {
+      if (table && !looksLikeProse(run) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table)) {
         table.usedWords = run.flatMap((r) => r.row.words);
         table.lines = [...run.flatMap((r) => r.row.lines), ...ruleLines];
         out.push(table);
@@ -6495,6 +6563,63 @@ function sparseAxis(table) {
   if (table.rows > 3) return false;
   const filled = table.cells.filter((c) => c.text).length;
   return filled < 0.6 * table.cells.length;
+}
+function tickGrid(table) {
+  if (!table || table.rows > 4 || table.cols < 4) return false;
+  const slots = table.rows * table.cols;
+  const filled = (table.cells || []).filter((c) => String(c.text || "").trim());
+  if (filled.length < 4 || filled.length / slots >= 0.5) return false;
+  const tick = (s) => /^\d{1,3}$/.test(s);
+  return filled.filter((c) => tick(c.text.trim())).length / filled.length >= 0.75;
+}
+function normCell(s) {
+  return String(s || "").replace(/[^\w.]/g, "").toLowerCase();
+}
+function valueTokens(tokens) {
+  return (tokens || []).slice(1).map((t) => normCell(t.text)).filter((s) => s && s.length <= 12);
+}
+function headerOf(run) {
+  const multi = run.filter((r) => valueTokens(r.tokens).length >= 2);
+  return multi.length ? multi[0].tokens : null;
+}
+function repeatsHeader(tokens, header) {
+  if (!header || !tokens) return false;
+  const a = valueTokens(header);
+  const b = valueTokens(tokens);
+  if (a.length < 2 || b.length < 2) return false;
+  let same2 = 0;
+  const n2 = Math.min(a.length, b.length);
+  for (let i = 0; i < n2; i++) if (a[i] === b[i]) same2++;
+  if (same2 >= 2 && same2 / n2 >= 0.6) return true;
+  const tail = b.slice(-a.length);
+  return tail.length === a.length && tail.every((s, i) => s === a[i]);
+}
+function alignsWithRun(run, tokens, size) {
+  if (!tokens || tokens.length < 2) return false;
+  const prev = [];
+  for (const r of run) for (const t of r.tokens.slice(1)) prev.push(t.x0);
+  if (prev.length < 2) return false;
+  const tol = Math.max(4, 0.6 * size);
+  let hit = 0;
+  for (const t of tokens.slice(1)) if (prev.some((x) => Math.abs(x - t.x0) <= tol)) hit++;
+  return hit >= 2;
+}
+function phraseTable(table) {
+  const filled = (table.cells || []).filter((c) => String(c.text || "").trim());
+  if (filled.length < 4) return false;
+  const words = (s) => String(s).trim().split(/\s+/).filter(Boolean);
+  const phrases = filled.filter((c) => words(c.text).length >= 5).length;
+  if (phrases / filled.length > 0.5) return true;
+  const numeric = filled.filter((c) => isNumericText(c.text)).length;
+  if (numeric / filled.length >= 0.2) return false;
+  const byRow = /* @__PURE__ */ new Map();
+  for (const c of filled) {
+    if (!byRow.has(c.r)) byRow.set(c.r, []);
+    byRow.get(c.r).push(c.text);
+  }
+  let long = 0;
+  for (const ts of byRow.values()) if (words(ts.join(" ")).length >= 8) long++;
+  return byRow.size >= 3 && long / byRow.size > 0.5;
 }
 function looksLikeProse(run) {
   let wordy = 0;
@@ -8649,8 +8774,9 @@ function parsePageGeometry(data, n2) {
   const imageArea = (im) => (im.x1 - im.x0) * (im.y1 - im.y0);
   const textChars = words.reduce((n3, wd) => n3 + (wd.text || "").length, 0);
   const scanRaster = rasterScanPage({ images: graphics.images, shapes: graphics.shapes, words, pageW: w, pageH: h });
-  const bigImage = scanRaster || graphics.images.some((im) => imageArea(im) >= 0.5 * pageArea);
-  const scanLayer = words.length > 0 && graphics.images.some((im) => imageArea(im) >= 0.85 * pageArea);
+  const strips = stripTiles(graphics.images, w, h, textChars);
+  const bigImage = scanRaster || strips.length > 0 || graphics.images.some((im) => imageArea(im) >= 0.5 * pageArea);
+  const scanLayer = words.length > 0 && (strips.length > 0 || graphics.images.some((im) => imageArea(im) >= 0.85 * pageArea));
   const kind = words.length === 0 && bigImage ? "scan" : bigImage ? "mixed" : "text";
   const pageBody = bodySizeOf(lines) || 10;
   const used = /* @__PURE__ */ new Set();
@@ -8668,7 +8794,7 @@ function parsePageGeometry(data, n2) {
     if (looksLikeChart(band, graphics)) continue;
     const free = words.filter((w2) => !used.has(w2));
     const t = tableFromBand(band, free);
-    if (!t || isTitledBox(t)) continue;
+    if (!t || isTitledBox(t) || chartGrid(t)) continue;
     t.page = n2;
     for (const w2 of t.usedWords) used.add(w2);
     delete t.usedWords;
@@ -8678,7 +8804,8 @@ function parsePageGeometry(data, n2) {
   const drawing = drawingSheetPage({ images: graphics.images, lines, tables, shapes: graphics.shapes, pageW: w, pageH: h, textChars });
   if (drawing) lines = peelFigLabels(lines);
   const figWords = lines.flatMap((l) => l.words);
-  const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => imageArea(im) < 0.85 * pageArea) } : graphics;
+  const stripSet = new Set(strips);
+  const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => !stripSet.has(im) && imageArea(im) < 0.85 * pageArea) } : graphics;
   const figs = kind === "scan" ? { figures: [], used: /* @__PURE__ */ new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars });
   for (const wd of figs.used) used.add(wd);
   let figures = figs.figures.map((f) => ({ ...f, page: n2 }));
@@ -8700,6 +8827,16 @@ function parsePageGeometry(data, n2) {
     for (const w2 of words) if (used.has(w2) && !figs.used.has(w2) && w2.x0 >= t.bbox[0] - 2 && w2.x1 <= t.bbox[2] + 2 && w2.base >= t.bbox[1] && w2.base <= t.bbox[3] + 2) used.delete(w2);
   }
   return { n: n2, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, words: figWords, graphics, tables, figures, used, ms: round(now() - t0) };
+}
+function stripTiles(images, pageW, pageH, textChars) {
+  if (textChars >= 400) return [];
+  const strips = (images || []).filter((im) => {
+    const width = im.x1 - im.x0;
+    const height = im.y1 - im.y0;
+    return width >= 0.8 * pageW && height >= 8 && height <= 0.28 * pageH;
+  });
+  if (strips.length < 4 || imageCover(strips, pageW, pageH) < 0.75) return [];
+  return strips;
 }
 function ocrGraphics(data, w, h) {
   const rules = [];
@@ -9239,7 +9376,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 9;
+    PARSE_REV = 11;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     EVIDENCE_LINES = 60;

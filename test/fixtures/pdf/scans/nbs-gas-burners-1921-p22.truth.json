@@ -1,0 +1,612 @@
+{
+ "id": "nbs-gas-burners-1921-p22",
+ "source": "nbs-gas-burners-1921.pdf page 22",
+ "class": [
+  "typeset-table",
+  "spanning-header",
+  "leaders"
+ ],
+ "quality": [
+  "typeset",
+  "ruled"
+ ],
+ "tables": [
+  {
+   "caption": "TABLE 1.—Rate of Flow and Discharge Coefficient of Channel Orifices. (See Fig. 7)",
+   "rows": 11,
+   "cols": 7,
+   "headerRows": 3,
+   "cells": [
+    {
+     "r": 0,
+     "c": 0,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "Length of channel",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 2,
+     "text": "At 2-inch pressure",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 2,
+     "text": "At 4-inch pressure",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 2,
+     "text": "At 6-inch pressure",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Rate of flow",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Discharge coefficient (K)",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Rate of flow",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Discharge coefficient (K)",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Rate of flow",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Discharge coefficient (K)",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Inch",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Foot³/hour",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Foot³/hour",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Foot³/hour",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": true
+    },
+    {
+     "r": 3,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "63.6",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.705",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "89.5",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.703",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "109.6",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.703",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".04",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "68.5",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".760",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "95.1",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".747",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "115.6",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".741",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".08",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "71.3",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".792",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "108.6",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".853",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "138.1",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".886",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".10",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "77.1",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".855",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "114.9",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".903",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "140.6",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".902",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".125",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "81.6",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".906",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "114.6",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".901",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "139.2",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".893",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".25",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "79.2",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".879",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "111.4",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".875",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "136.4",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".875",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".50",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "78.2",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".868",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "110.0",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".865",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "135.0",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".865",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.00",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "75.0",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".832",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "105.7",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".831",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "129.7",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".832",
+     "header": false
+    }
+   ]
+  }
+ ],
+ "figures": [],
+ "lines": [
+  "TABLE 1.—Rate of Flow and Discharge Coefficient of Channel Orifices. (See Fig. 7)"
+ ],
+ "textComplete": false
+}

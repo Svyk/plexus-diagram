@@ -1,0 +1,38 @@
+{
+ "id": "naca-accelerometer-1922-p8",
+ "source": "naca-accelerometer-1922.pdf page 8",
+ "class": [
+  "hand-drawn-figure"
+ ],
+ "quality": [
+  "typewritten",
+  "hand-inked"
+ ],
+ "tables": [],
+ "figures": [
+  {
+   "bbox": [
+    0.16,
+    0.15,
+    0.84,
+    0.33
+   ],
+   "caption": "Fig. 1. Showing the arrangement of the springs and the axes of the instrument."
+  },
+  {
+   "bbox": [
+    0.1,
+    0.4,
+    0.88,
+    0.8
+   ],
+   "caption": "Fig. 2. Showing the means for transferring the motion of the springs to the three mirrors."
+  }
+ ],
+ "lines": [
+  "Fig. 1. Showing the arrangement of the springs and the axes of the instrument.",
+  "Fig. 2. Showing the means for transferring the motion of the springs to the three mirrors. The dash pots are omitted.",
+  "Figs. 1-2."
+ ],
+ "textComplete": false
+}

@@ -220,7 +220,7 @@ test("device and cloud rows: built-in ready, in-browser reading by state, cloud 
   const cloud = all.find((r) => r.id === "cloud");
   assert.equal(cloud.disabled, undefined);
   assert.equal(cloud.button.id, "cloud-setup");
-  assert.equal(cloud.text, "Needs a LlamaParse key");
+  assert.equal(cloud.text, "Needs a LlamaParse key. Mistral OCR: no install, cheaper, weaker tables.");
   for (const r of engineRows({ device: { state: "not-downloaded" }, helper: { state: "not-installed" } })) {
     assert.ok(TIP_TEXT[r.tip], r.tip);
     if (r.button) assert.ok(TIP_TEXT[r.button.tip], r.button.tip);

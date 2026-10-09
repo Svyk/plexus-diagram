@@ -1,6 +1,7 @@
 // P-ONBOARD. The Engines panel: what can read a PDF here, and the one step to get each ready.
 // Opened from the status strip and from the reading pane's gear. A row that is not ready has
-// exactly one button; a row with no button is ready or not available yet.
+// exactly one button; a row with no button is ready or not available yet. The Cloud row keeps
+// Set up or Edit, because that sheet holds the LlamaParse key and the Mistral key.
 //
 // Contract (the orchestrator wires it in; this module imports nothing from Roam):
 //   loadEngineState({ client, device, force }) -> { device, helper }
@@ -18,7 +19,16 @@
 // Nothing is fetched until the panel is rendered. It re-checks the helper on open and every
 // pollMs while visible. The cloud key is localStorage on this device, never a Roam setting.
 
-import { readCloudPrefs, writeCloudPrefs, TIER_LABELS, TIER_CREDITS } from "../host/cloud-parse.js";
+import {
+  llamaRoute,
+  readCloudPrefs,
+  readMistralKey,
+  writeCloudPrefs,
+  writeMistralKey,
+  TIER_LABELS,
+  TIER_CREDITS,
+  MISTRAL_PRICE_CHECKED,
+} from "../host/cloud-parse.js";
 
 export const INSTALL_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh";
 export const RESTART_COMMAND = "plexus-parse-helper install-agent";
@@ -89,21 +99,20 @@ function helperRow(helper) {
   }
 }
 
+const MISTRAL_TRADE = "Mistral OCR: no install, cheaper, weaker tables.";
+
 export function cloudRow(prefs, helper) {
   const row = { id: "cloud", name: "Cloud", tip: "engines.cloud" };
-  const key = Boolean(prefs?.key);
+  const key = Boolean(String(prefs?.key || "").trim());
+  const mistral = Boolean(String(prefs?.mistralKey || "").trim());
+  const trade = mistral ? "Mistral OCR: key saved, no install, cheaper, weaker tables." : MISTRAL_TRADE;
+  const route = llamaRoute(prefs, helper);
+  const edit = button("cloud-setup", route && key ? "Edit" : "Set up", "engines.cloud-setup");
+  if (!key) return { ...row, dot: "warn", text: `Needs a LlamaParse key. ${trade}`, button: edit };
+  if (!route) return { ...row, dot: "warn", text: `LlamaParse needs the helper or a relay. ${trade}`, button: edit };
   const region = prefs?.region === "eu" ? "EU" : "US";
   const tier = TIER_LABELS[prefs?.tier] || TIER_LABELS.agentic;
-  const paired = helper?.state === "ready";
-  const relay = /^https:\/\//i.test(String(prefs?.relay || "").trim());
-  if (!key) {
-    return { ...row, dot: "warn", text: "Needs a LlamaParse key", button: button("cloud-setup", "Set up", "engines.cloud-setup") };
-  }
-  if (!paired && !relay) {
-    return { ...row, dot: "warn", text: "Needs the helper or a relay", button: button("cloud-setup", "Set up", "engines.cloud-setup") };
-  }
-  const via = paired ? "helper" : "relay";
-  return { ...row, dot: "ok", text: `LlamaParse · ${tier} · ${region} · ${via}`, button: null };
+  return { ...row, dot: "ok", text: `LlamaParse · ${tier} · ${region} · ${route}. ${trade}`, button: edit };
 }
 
 export function engineRows(state, { platform = "mac" } = {}) {
@@ -254,20 +263,36 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
     return node;
   }
 
+  function cloudRouteSentence(prefs) {
+    const route = llamaRoute(prefs, state?.helper);
+    if (route === "helper") return "LlamaParse will use the paired helper.";
+    if (route === "your relay") return "LlamaParse will use your relay URL.";
+    if (route === "hosted relay") return "LlamaParse will use the hosted relay.";
+    return "LlamaParse has no route yet. Pair a helper with the cloud engine, or set a relay URL.";
+  }
+
   function paintCloudSheet() {
-    if (sheetHost.querySelector?.("[data-cloud-sheet]")) return;
+    const prefs = readCloudPrefs(storage);
+    const existing = sheetHost.querySelector?.("[data-cloud-route]");
+    if (existing) {
+      existing.textContent = cloudRouteSentence(prefs);
+      return;
+    }
     release(heldSheet);
     sheetHost.innerHTML = "";
-    const prefs = readCloudPrefs(storage);
     const box = doc.createElement("div");
     box.className = "pxd-engines__sheet";
     box.setAttribute("data-cloud-sheet", "");
     const head = doc.createElement("div");
     head.className = "pxd-engines__sheet-title";
-    head.textContent = "LlamaParse";
+    head.textContent = "Cloud";
+    const routeLine = doc.createElement("div");
+    routeLine.className = "pxd-engines__note";
+    routeLine.setAttribute("data-cloud-route", "");
+    routeLine.textContent = cloudRouteSentence(prefs);
     const note = doc.createElement("div");
     note.className = "pxd-engines__note";
-    note.textContent = "The key stays in this browser. It is not written to the graph. Nothing is sent until you confirm the cost on a PDF.";
+    note.textContent = `LlamaParse is the main read. Mistral OCR needs no install, costs $4 / 1,000 pages (checked ${MISTRAL_PRICE_CHECKED}), and its tables are weaker. Keys stay in this browser. They are not written to the graph. Nothing is sent until you confirm the cost on a PDF.`;
     const keyInput = field("input", { type: "password", autocomplete: "off", "aria-label": "LlamaParse API key", placeholder: prefs.key ? "Key saved" : "API key", "data-cloud-key": "" });
     const region = field("select", { "aria-label": "Region", "data-cloud-region": "" });
     for (const [value, label] of [["us", "US"], ["eu", "EU"]]) {
@@ -289,6 +314,17 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
     tier.value = prefs.tier;
     const relay = field("input", { type: "url", autocomplete: "off", "aria-label": "Relay URL", placeholder: "Relay URL (optional)", "data-cloud-relay": "" });
     relay.value = prefs.relay || "";
+    const mistralHead = doc.createElement("div");
+    mistralHead.className = "pxd-engines__sheet-title";
+    mistralHead.textContent = "Mistral OCR";
+    const mistralKey = readMistralKey(storage);
+    const mistralInput = field("input", {
+      type: "password",
+      autocomplete: "off",
+      "aria-label": "Mistral OCR API key",
+      placeholder: mistralKey ? "Key saved" : "Mistral API key",
+      "data-mistral-key": "",
+    });
     const save = doc.createElement("button");
     save.type = "button";
     save.setAttribute("type", "button");
@@ -304,12 +340,22 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
     clear.setAttribute("type", "button");
     clear.className = "pxd-engines__btn";
     clear.setAttribute("data-action", "cloud-clear");
-    clear.textContent = "Remove key";
+    clear.textContent = "Remove LlamaParse key";
     bindTo(heldSheet)(clear, "click", (event) => {
       event.stopPropagation?.();
       void act("cloud-clear");
     });
-    box.append(head, note, keyInput, region, tier, relay, save, clear);
+    const clearMistral = doc.createElement("button");
+    clearMistral.type = "button";
+    clearMistral.setAttribute("type", "button");
+    clearMistral.className = "pxd-engines__btn";
+    clearMistral.setAttribute("data-action", "mistral-clear");
+    clearMistral.textContent = "Remove Mistral key";
+    bindTo(heldSheet)(clearMistral, "click", (event) => {
+      event.stopPropagation?.();
+      void act("mistral-clear");
+    });
+    box.append(head, routeLine, note, keyInput, region, tier, relay, mistralHead, mistralInput, save, clear, clearMistral);
     sheetHost.append(box);
   }
 
@@ -408,18 +454,25 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
     }
     if (id === "cloud-save") {
       const typed = String(el.querySelector("[data-cloud-key]")?.value || "");
+      const mistralTyped = String(el.querySelector("[data-mistral-key]")?.value || "");
       writeCloudPrefs(storage, {
         key: typed.trim() ? typed : null,
         region: el.querySelector("[data-cloud-region]")?.value,
         tier: el.querySelector("[data-cloud-tier]")?.value,
         relay: el.querySelector("[data-cloud-relay]")?.value ?? "",
       });
+      writeMistralKey(storage, mistralTyped.trim() ? mistralTyped : null);
       say("Saved on this device");
     } else if (id === "cloud-clear") {
       writeCloudPrefs(storage, { key: "" });
       const input = el.querySelector("[data-cloud-key]");
       if (input) input.value = "";
-      say("Key removed from this device");
+      say("LlamaParse key removed from this device");
+    } else if (id === "mistral-clear") {
+      writeMistralKey(storage, "");
+      const input = el.querySelector("[data-mistral-key]");
+      if (input) input.value = "";
+      say("Mistral key removed from this device");
     } else if (id === "pair") {
       const result = await client?.pair?.();
       if (result?.ok) say("Helper paired");
@@ -453,7 +506,9 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
     try {
       const next = await loadEngineState({ client, device, force: true });
       if (disposed) return state;
-      state = { ...next, cloud: readCloudPrefs(storage) };
+      const cloud = readCloudPrefs(storage);
+      cloud.mistralKey = readMistralKey(storage);
+      state = { ...next, cloud };
       if (sheetKind === "helper" && state.helper.state === "ready") sheetKind = null;
       paintRows();
       return state;

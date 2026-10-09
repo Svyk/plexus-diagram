@@ -1,5 +1,6 @@
-// Forwards only LlamaParse file upload, parse, result, and cancel.
-// Stores nothing. The caller's Authorization header is passed through and not logged.
+// Forwards only LlamaParse upload, start, poll, expanded result, and cancel.
+// Stores nothing. Does not log headers or bodies. The caller's Authorization
+// is copied through unchanged. Cookies are not forwarded and not set.
 // Region is us or eu. Any other upstream host is refused.
 
 const HOSTS = {
@@ -8,6 +9,11 @@ const HOSTS = {
 };
 
 const ORIGINS = new Set(["https://roamresearch.com", "app://roam"]);
+
+// Workers Free account plan, not the Workers plan. Over this, Cloudflare
+// answers 413 before the worker runs. We refuse first so the body is not fetched.
+// https://developers.cloudflare.com/workers/platform/limits/ (page updated 2026-10-08)
+export const MAX_BODY_BYTES = 100 * 1024 * 1024;
 
 function allowed(method, path) {
   if (method === "POST" && (path === "/api/v1/beta/files" || path === "/api/v2/parse")) return true;
@@ -34,6 +40,33 @@ function json(status, body, extra) {
   });
 }
 
+export async function readLimitedBody(request, max = MAX_BODY_BYTES) {
+  if (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") {
+    return { body: undefined };
+  }
+  const rawLength = request.headers.get("content-length");
+  if (rawLength != null && rawLength !== "") {
+    const declared = Number(rawLength);
+    if (Number.isFinite(declared) && declared > max) return { status: 413 };
+    return { body: request.body };
+  }
+  if (request.body == null) return { body: undefined };
+  const reader = request.body.getReader();
+  const chunks = [];
+  let seen = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    seen += value?.byteLength || 0;
+    if (seen > max) {
+      try { await reader.cancel(); } catch { /* closed */ }
+      return { status: 413 };
+    }
+    chunks.push(value);
+  }
+  return { body: new Blob(chunks) };
+}
+
 export default {
   async fetch(request) {
     const origin = request.headers.get("Origin") || "";
@@ -45,6 +78,8 @@ export default {
     if (!allowed(request.method, url.pathname)) return json(404, { error: "not a parse route" }, allow);
     const region = (request.headers.get("X-Pxd-Region") || "").toLowerCase() === "eu" ? "eu" : "us";
     const upstream = HOSTS[region];
+    const limited = await readLimitedBody(request);
+    if (limited.status === 413) return json(413, { error: "body too large", maxBytes: MAX_BODY_BYTES }, allow);
 
     const headers = new Headers();
     const auth = request.headers.get("Authorization");
@@ -54,7 +89,7 @@ export default {
     const res = await fetch(upstream + url.pathname + url.search, {
       method: request.method,
       headers,
-      body: request.method === "GET" ? undefined : request.body,
+      body: limited.body,
       redirect: "manual",
     });
     const out = new Headers();

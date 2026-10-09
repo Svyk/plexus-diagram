@@ -20,11 +20,23 @@ export const TIER_LABELS = Object.freeze({
 export const DEFAULT_TIER = "agentic";
 export const DEFAULT_TIMEOUT_MS = 240_000;
 
+// Empty until `npm run relay:deploy`. The orchestrator pastes the workers.dev URL here.
+export const DEFAULT_RELAY_URL = "";
+
+export const MISTRAL_MODEL = "mistral-ocr-latest";
+export const MISTRAL_URL = "https://api.mistral.ai/v1/ocr";
+export const MISTRAL_USD_PER_PAGE = 4 / 1000;
+// Model card https://docs.mistral.ai/models/mistral-ocr-latest , read 2026-10-09.
+export const MISTRAL_PRICE_CHECKED = "2026-10-09";
+// Cookbook limit for one OCR request. The upload API allows more; this path does not use it.
+export const MISTRAL_MAX_BYTES = 50 * 1024 * 1024;
+
 export const CLOUD_STORAGE = Object.freeze({
   key: "pxd-cloud-key",
   region: "pxd-cloud-region",
   tier: "pxd-cloud-tier",
   relay: "pxd-cloud-relay",
+  mistralKey: "pxd-cloud-mistral-key",
 });
 
 const HELPER_PATH = "/v1/cloud/parse";
@@ -105,16 +117,71 @@ export function cloudConfirmMessage({ pages, tier, region } = {}) {
   return `Send this PDF to LlamaParse (${where}, ${label})? ${pageText}, about ${money(est.usd)} (${est.credits} credits: ${est.tierCredits} per page plus ${est.layoutCredits} for layout). The pricing FAQ says layout is free in v2; this estimate includes it. Free if this file was parsed with the same options in the last 48 hours. The PDF leaves this device.`;
 }
 
-export function resolveCloudTransport({ helper, relayUrl } = {}) {
+function httpsUrl(value) {
+  const url = String(value || "").trim().replace(/\/$/, "");
+  return /^https:\/\//i.test(url) ? url : "";
+}
+
+// Panel label for the LlamaParse route. A ready helper counts only when it lists `cloud`,
+// or when it does not list engines at all.
+export function llamaRoute(prefs, helper, defaultRelay = DEFAULT_RELAY_URL) {
+  const engines = helper?.engines;
+  const paired = helper?.state === "ready" && (!Array.isArray(engines) || engines.includes("cloud"));
+  if (paired) return "helper";
+  if (httpsUrl(prefs?.relay)) return "your relay";
+  if (httpsUrl(defaultRelay)) return "hosted relay";
+  return "";
+}
+
+export function resolveCloudTransport({ helper, relayUrl, defaultRelay = DEFAULT_RELAY_URL } = {}) {
   const url = String(helper?.url || "").replace(/\/$/, "");
   const token = String(helper?.token || "").trim();
-  if (helper?.state === "ready" && url && token) return { kind: "helper", url, token };
-  const relay = String(relayUrl || "").trim().replace(/\/$/, "");
-  if (/^https:\/\//i.test(relay)) return { kind: "relay", url: relay };
+  const engines = helper?.engines;
+  const cloudEngine = !Array.isArray(engines) || engines.includes("cloud");
+  if (helper?.state === "ready" && url && token && cloudEngine) return { kind: "helper", url, token };
+  const user = httpsUrl(relayUrl);
+  if (user) return { kind: "relay", url: user, source: "user" };
+  const hosted = httpsUrl(defaultRelay);
+  if (hosted) return { kind: "relay", url: hosted, source: "default" };
   return {
     kind: "none",
-    reason: "Pair the local helper, or set a cloud relay URL in Engines. Roam cannot call LlamaParse directly.",
+    reason: "Pair a local helper that includes the cloud engine, or set a relay URL in Engines. The hosted relay URL is empty until it is deployed. Roam cannot call LlamaParse directly.",
   };
+}
+
+export function readMistralKey(storage) {
+  return storageGet(storage, CLOUD_STORAGE.mistralKey).trim();
+}
+
+// `null` keeps the stored key. A string, including "", replaces it.
+export function writeMistralKey(storage, key) {
+  const next = key == null ? readMistralKey(storage) : String(key).trim();
+  storage.setItem(CLOUD_STORAGE.mistralKey, next);
+  return next;
+}
+
+export function estimateMistralCost({ pages } = {}) {
+  const count = Math.max(0, Math.floor(Number(pages) || 0));
+  return {
+    pages: count,
+    usd: count * MISTRAL_USD_PER_PAGE,
+    perThousand: 4,
+    checked: MISTRAL_PRICE_CHECKED,
+  };
+}
+
+export function mistralConfirmMessage({ pages } = {}) {
+  const est = estimateMistralCost({ pages });
+  const pageText = est.pages ? `${est.pages} page${est.pages === 1 ? "" : "s"}` : "page count unknown";
+  return `Send this PDF to Mistral OCR? ${pageText}, about ${money(est.usd)} ($4 / 1,000 pages, model card checked ${est.checked}). Tables are weaker than LlamaParse. The PDF leaves this device.`;
+}
+
+export function pageSpec(value) {
+  if (value == null || value === "") return "";
+  if (Array.isArray(value)) {
+    return value.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 1).join(",");
+  }
+  return String(value).trim();
 }
 
 function wait(ms, signal) {
@@ -164,11 +231,11 @@ async function readSSE(response, onEvent) {
   if (buf.trim()) dispatch(buf);
 }
 
-function statusError(status, body) {
-  if (status === 401) return fail("unauthorized", "LlamaParse rejected the key", 401);
-  if (status === 402) return fail("credits", "LlamaParse is out of credits", 402);
-  if (status === 429) return fail("rate", "LlamaParse rate limit", 429);
-  const message = body?.detail || body?.error || body?.message || `LlamaParse ${status}`;
+function statusError(status, body, name = "LlamaParse") {
+  if (status === 401) return fail("unauthorized", `${name} rejected the key`, 401);
+  if (status === 402) return fail("credits", `${name} is out of credits`, 402);
+  if (status === 429) return fail("rate", `${name} rate limit`, 429);
+  const message = body?.detail || body?.error || body?.message || `${name} ${status}`;
   return fail("provider", String(message), status);
 }
 
@@ -224,11 +291,9 @@ async function helperParse({ fetch, transport, bytes, apiKey, region, tier, sign
   return provider;
 }
 
-async function relayParse({ fetch, transport, bytes, apiKey, region, tier, signal, onProgress, sleep, now, timeoutMs }) {
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    "X-Pxd-Region": region === "eu" ? "eu" : "us",
-  };
+async function relayParse({ fetch, transport, bytes, apiKey, region, tier, pages, signal, onProgress, sleep, now, timeoutMs }) {
+  const headers = { Authorization: `Bearer ${apiKey}` };
+  if (!transport.direct) headers["X-Pxd-Region"] = region === "eu" ? "eu" : "us";
   const clock = now;
   const pause = sleep;
   const deadline = clock() + timeoutMs;
@@ -246,15 +311,18 @@ async function relayParse({ fetch, transport, bytes, apiKey, region, tier, signa
   if (uploaded.status < 200 || uploaded.status >= 300) throw statusError(uploaded.status, uploadBody);
   const fileId = uploadBody?.id;
   if (!fileId) throw fail("bad-response", "upload did not return a file id");
+  const spec = pageSpec(pages);
+  const payload = {
+    file_id: fileId,
+    tier,
+    version: "latest",
+    output_options: { granular_bboxes: ["cell"] },
+  };
+  if (spec) payload.page_ranges = { target_pages: spec };
   const started = await fetch(`${transport.url}/api/v2/parse`, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      file_id: fileId,
-      tier,
-      version: "latest",
-      output_options: { granular_bboxes: ["cell"] },
-    }),
+    body: JSON.stringify(payload),
     signal,
   });
   const startBody = await started.json().catch(() => null);
@@ -301,6 +369,7 @@ export async function parseCloud({
   apiKey,
   region = "us",
   tier = DEFAULT_TIER,
+  pages,
   confirmed = false,
   signal,
   onProgress,
@@ -323,9 +392,102 @@ export async function parseCloud({
   }
   if (transport.kind === "relay") {
     const provider = await relayParse({
-      fetch: fetchFn, transport, bytes, apiKey: key, region: where, tier, signal, onProgress, sleep, now, timeoutMs,
+      fetch: fetchFn, transport, bytes, apiKey: key, region: where, tier, pages, signal, onProgress, sleep, now, timeoutMs,
     });
     return { provider, transport: "relay" };
   }
   throw fail("transport", "unknown cloud transport");
+}
+
+export function bytesToBase64(bytes) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+  let binary = "";
+  const step = 0x8000;
+  for (let i = 0; i < data.length; i += step) {
+    binary += String.fromCharCode(...data.subarray(i, i + step));
+  }
+  return btoa(binary);
+}
+
+function mistralPageIndexes(value) {
+  const spec = pageSpec(value);
+  if (!spec) return undefined;
+  const out = [];
+  for (const part of spec.split(",")) {
+    const range = /^(\d+)\s*-\s*(\d+)$/.exec(part.trim());
+    if (range) {
+      const from = Math.min(Number(range[1]), Number(range[2]));
+      const to = Math.max(Number(range[1]), Number(range[2]));
+      for (let n = from; n <= to; n += 1) out.push(n - 1);
+    } else {
+      const n = Number(part);
+      if (Number.isInteger(n) && n >= 1) out.push(n - 1);
+    }
+  }
+  return out.length ? out : undefined;
+}
+
+export async function parseMistral({
+  fetch: fetchFn,
+  bytes,
+  apiKey,
+  pages,
+  confirmed = false,
+  signal,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+} = {}) {
+  if (confirmed !== true) throw fail("confirm", "confirm required");
+  if (typeof fetchFn !== "function") throw fail("no-fetch", "no fetch");
+  const key = String(apiKey || "").trim();
+  if (!key) throw fail("no-key", "Add a Mistral OCR key in Engines. It stays on this device.");
+  const size = bytes?.byteLength ?? bytes?.length ?? 0;
+  if (size > MISTRAL_MAX_BYTES) {
+    throw fail("too-large", "This PDF is over 50 MB. Mistral OCR's documented request limit is about 50 MB. Split it and try again.");
+  }
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const onAbort = () => ctrl.abort();
+  if (signal?.aborted) throw fail("cancelled", "cancelled", 499);
+  signal?.addEventListener?.("abort", onAbort, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort();
+  }, timeoutMs);
+  const indexes = mistralPageIndexes(pages);
+  const payload = {
+    model: MISTRAL_MODEL,
+    document: {
+      type: "document_url",
+      document_url: `data:application/pdf;base64,${bytesToBase64(bytes)}`,
+    },
+    table_format: "html",
+    extract_header: true,
+    extract_footer: true,
+    include_blocks: true,
+    include_image_base64: false,
+  };
+  if (indexes) payload.pages = indexes;
+  try {
+    const response = await fetchFn(MISTRAL_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    });
+    const body = await response.json().catch(() => null);
+    if (response.status < 200 || response.status >= 300) throw statusError(response.status, body, "Mistral OCR");
+    if (!body || !Array.isArray(body.pages)) throw fail("bad-response", "Mistral OCR returned no pages");
+    return { provider: body, transport: "direct" };
+  } catch (error) {
+    if (error?.code) throw error;
+    if (signal?.aborted) throw fail("cancelled", "cancelled", 499);
+    if (timedOut || ctrl.signal.aborted) throw fail("timeout", "Mistral OCR timed out", 504);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener?.("abort", onAbort);
+  }
 }

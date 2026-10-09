@@ -151,11 +151,12 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
         else if (major >= 2) value = { state: "newer-schema", schema: body.schema };
         else {
           const models = body.models || {};
+          const engines = Array.isArray(body.engines) ? body.engines.slice() : undefined;
           const needed = ["layout", "tableformer", "ocr"];
           const missing = needed.some((name) => models[name] !== "ready");
           value = missing
-            ? { state: "models-missing", schema: body.schema, models, version: body.version }
-            : { state: "ready", schema: body.schema, models, version: body.version, busy: body.busy ?? 0 };
+            ? { state: "models-missing", schema: body.schema, models, version: body.version, engines }
+            : { state: "ready", schema: body.schema, models, version: body.version, busy: body.busy ?? 0, engines };
         }
       }
       healthCache = { url, token, at, value };

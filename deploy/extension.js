@@ -6873,13 +6873,13 @@ function textOf(line) {
   return line.words.filter((w) => !w.sup && !w.sub).map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
 }
 function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
-  const furniture = new Set(removed.map((r) => normalizeFurniture(r.text || "")));
+  const furniture2 = new Set(removed.map((r) => normalizeFurniture(r.text || "")));
   const running = removed.filter((r) => r && r.reason !== "page-number" && r.text).map((r) => r.text);
   const pageLines = pages.flatMap((pg) => pg && !pg.ocr && pg.kind !== "scan" ? (pg.free || []).map(textOf) : []);
   const banner = (text3) => running.some((line) => isBannerOf(text3, line, { exact: false })) || pageLines.some((line) => isBannerOf(text3, line, { exact: false }));
   for (const pg of pages) {
     if (!pg || pg.ocr || pg.kind === "scan") continue;
-    const lines = (pg.free || []).map((line) => ({ line, text: textOf(line) })).filter((c) => c.text && !isJunkTitleText(c.text) && !furniture.has(normalizeFurniture(c.text))).sort((a, b) => a.line.base - b.line.base || a.line.x0 - b.line.x0);
+    const lines = (pg.free || []).map((line) => ({ line, text: textOf(line) })).filter((c) => c.text && !isJunkTitleText(c.text) && !furniture2.has(normalizeFurniture(c.text))).sort((a, b) => a.line.base - b.line.base || a.line.x0 - b.line.x0);
     const blocks = [];
     let cur = null;
     for (const c of lines) {
@@ -7879,17 +7879,17 @@ function quickPageTitle(pageRecords2) {
   const recs = (pageRecords2 || []).filter(Boolean);
   if (!recs.length) return { pageTitle: "", lines: [] };
   for (const pg of recs) pg.free = freeLinesOf(pg);
-  const furniture = findFurniture(recs.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
-  for (const pg of recs) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
+  const furniture2 = findFurniture(recs.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
+  for (const pg of recs) pg.free = pg.free.filter((l) => !furniture2.isFurniture(l));
   const bodySize = bodySizeOf(recs.flatMap((pg) => pg.free)) || 10;
-  const found = findPageTitle(recs.slice(0, 2), { bodySize, removed: furniture.removed });
-  return { pageTitle: found ? capTitle(found) : "", lines: titleEvidenceLines(recs, furniture.removed) };
+  const found = findPageTitle(recs.slice(0, 2), { bodySize, removed: furniture2.removed });
+  return { pageTitle: found ? capTitle(found) : "", lines: titleEvidenceLines(recs, furniture2.removed) };
 }
 function assembleDocument(pageRecords2, { numPages, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {}, from = 1, to = numPages } = {}) {
   const t1 = now();
   for (const pg of pageRecords2) pg.free = freeLinesOf(pg);
-  const furniture = findFurniture(pageRecords2.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
-  for (const pg of pageRecords2) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
+  const furniture2 = findFurniture(pageRecords2.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
+  for (const pg of pageRecords2) pg.free = pg.free.filter((l) => !furniture2.isFurniture(l));
   const allFree = pageRecords2.flatMap((pg) => pg.free);
   const bodySize = bodySizeOf(allFree) || 10;
   const bodyFont = dominantFont(allFree);
@@ -7899,7 +7899,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     const onFirst = classes.filter((k) => firstPage.free.some((l) => Math.round(l.size * 2) / 2 === k && l.chars >= 3));
     if (onFirst.length) classes = classes.filter((k) => k <= onFirst[0]);
   }
-  const pageTitle = findPageTitle(pageRecords2.slice(0, 2), { bodySize, removed: furniture.removed });
+  const pageTitle = findPageTitle(pageRecords2.slice(0, 2), { bodySize, removed: furniture2.removed });
   const blocks = {};
   const order = [];
   const counters = {};
@@ -8153,9 +8153,9 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
   }
   for (const id of order) if (blocks[id]?.footnoteRefs) inlineUnlinkedRefs(blocks[id]);
   let title = info && typeof info.Title === "string" ? cleanPdfTitle(info.Title) || null : null;
-  const runningTexts = new Set(furniture.removed.filter((r) => r.reason !== "page-number").map((r) => normalizeFurniture(r.text)));
+  const runningTexts = new Set(furniture2.removed.filter((r) => r.reason !== "page-number").map((r) => normalizeFurniture(r.text)));
   if (title && (runningTexts.has(normalizeFurniture(title)) || isJunkTitleText(title))) title = null;
-  if (title && pageTitle && isMetaBanner(title, { pageTitle, lines: titleEvidenceLines(pageRecords2, furniture.removed) })) title = null;
+  if (title && pageTitle && isMetaBanner(title, { pageTitle, lines: titleEvidenceLines(pageRecords2, furniture2.removed) })) title = null;
   const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1) && !isJunkTitleText(h.text)) || headings.find((h) => h.level === 1 && !isJunkTitleText(h.text));
   if (!title) title = pageTitle || (h1 ? h1.text : null);
   else if (h1 && isCutPrefix(title, h1.text)) title = h1.text;
@@ -8176,7 +8176,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     pages: pagesOut,
     order,
     blocks,
-    removed: furniture.removed,
+    removed: furniture2.removed,
     stats: { ms: 0, perPage: perPage.map((p) => p.ms), assembleMs: round(now() - t1), bodySize, headingSizes: classes, range: [from, to] }
   };
 }
@@ -9787,18 +9787,18 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
   const limit = Math.max(0, Math.min(FOOTNOTE_CAP, Math.floor(Number(cap4) || 0)));
   const notes = [];
   const overflow = [];
-  const byId = /* @__PURE__ */ new Map();
+  const byId2 = /* @__PURE__ */ new Map();
   order.forEach((id, i) => {
     const d = known.get(id);
     const n2 = Math.max(0, Math.floor(startAt)) + i + 1;
     if (i < limit) {
       const note = { id, uid: make2(), n: n2, mark: d.mark, text: d.text };
       notes.push(note);
-      byId.set(id, { kind: "note", note });
+      byId2.set(id, { kind: "note", note });
     } else {
       const item = { id, n: n2, mark: d.mark, text: d.text };
       overflow.push(item);
-      byId.set(id, { kind: "overflow", item });
+      byId2.set(id, { kind: "overflow", item });
     }
   });
   const apply = (input) => {
@@ -9809,13 +9809,13 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
         out.push(line);
         continue;
       }
-      const hit = byId.get(m[1]);
+      const hit = byId2.get(m[1]);
       if (hit?.kind === "note") continue;
       if (hit?.kind === "overflow") out.push(`- (${hit.item.n}) ${escapeMarkdownText(hit.item.text, { leading: false })}`);
       else out.push(`- [${m[2]}] ${escapeMarkdownText(m[3], { leading: false })}`);
     }
     return out.join("\n").replace(REF_RE2, (full, id, mark) => {
-      const hit = byId.get(id);
+      const hit = byId2.get(id);
       if (hit?.kind === "note") return aliasFor(hit.note.n, hit.note.uid, sup2);
       if (hit?.kind === "overflow") return `(${hit.item.n})`;
       return mark ? `[${mark}]` : "";
@@ -10095,10 +10095,10 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
   const fnFormat = options.footnoteFormat === "extension" || options.footnoteFormat === "plain" ? footnoteFormat(options.footnoteFormat) : "off";
   const tokens = fnFormat !== "off";
   const blocks = selectBlocks(doc, idsOrRange);
-  const byId = new Map(blocks.map((block) => [block.id, block]));
+  const byId2 = new Map(blocks.map((block) => [block.id, block]));
   const folded = /* @__PURE__ */ new Set();
   for (const block of blocks) {
-    if (block.type === "caption" && block.for && byId.has(block.for)) folded.add(block.id);
+    if (block.type === "caption" && block.for && byId2.has(block.for)) folded.add(block.id);
   }
   const render = () => {
     const lines = [];
@@ -10123,7 +10123,7 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
       }
       putUser(0, note.text ?? "", `[${mark}] `);
     };
-    const lookup2 = (id) => byId.get(id) ?? (tokens ? doc?.blocks?.[id] : null);
+    const lookup2 = (id) => byId2.get(id) ?? (tokens ? doc?.blocks?.[id] : null);
     const notesFor = (block) => {
       const refs = block.footnoteRefs || [];
       const notes = [];
@@ -10172,17 +10172,17 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
       } else if (block.type === "table") {
         if (tokens) {
           const prep = prepareTable(block, pageNoteBlocks(doc, block), { format: fnFormat });
-          emitTable(prep.table, putUser, emitRaw, byId, foldedHere, doc);
+          emitTable(prep.table, putUser, emitRaw, byId2, foldedHere, doc);
           for (const note of prep.notes) emitNote(note);
-        } else emitTable(block, putUser, emitRaw, byId, foldedHere, doc);
+        } else emitTable(block, putUser, emitRaw, byId2, foldedHere, doc);
       } else if (block.type === "figure") {
-        emitFigure(block, putUser, emitRaw, byId, doc, linkSafe);
+        emitFigure(block, putUser, emitRaw, byId2, doc, linkSafe);
       } else if (block.type === "formula") {
         if (block.latex) {
           const number = block.number ? ` ${block.number}` : "";
           putUser(0, block.latex, "$$", `$$${number}`);
         } else {
-          emitFigure(block, putUser, emitRaw, byId, doc, linkSafe);
+          emitFigure(block, putUser, emitRaw, byId2, doc, linkSafe);
         }
       } else if (block.type === "caption") {
         putUser(0, block.text ?? "");
@@ -10212,14 +10212,14 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
 function looksLikeBlockId(value) {
   return /^[a-z]+\d+$/.test(value);
 }
-function captionFor(block, byId, doc) {
+function captionFor(block, byId2, doc) {
   const id = typeof block?.caption === "string" ? block.caption : "";
   if (id) {
-    const linked = doc?.blocks && doc.blocks[id] || byId.get(id);
+    const linked = doc?.blocks && doc.blocks[id] || byId2.get(id);
     if (linked && typeof linked === "object") return linked.text ?? "";
     if (!looksLikeBlockId(id)) return id;
   }
-  for (const other of byId.values()) {
+  for (const other of byId2.values()) {
     if (other?.type === "caption" && other.for === block.id) return other.text ?? "";
   }
   const all = doc?.blocks;
@@ -10258,21 +10258,21 @@ function figureImageAlt(text3, block) {
   const page = block?.page;
   return page != null && page !== "" ? `${label} (p. ${page})` : label;
 }
-function emitFigure(block, putUser, emitRaw, byId, doc, linkSafe) {
+function emitFigure(block, putUser, emitRaw, byId2, doc, linkSafe) {
   const url = block.image?.url || block.url || "";
   const kind = block.type === "formula" ? "formula" : "figure";
   const page = block.page != null ? `, p. ${block.page}` : "";
   if (url) {
-    let alt = prepareLine(figureImageAlt(captionFor(block, byId, doc), block), { linkSafe, leading: false }).replace(/\]/g, "");
+    let alt = prepareLine(figureImageAlt(captionFor(block, byId2, doc), block), { linkSafe, leading: false }).replace(/\]/g, "");
     if (!alt.trim()) alt = figureImageAlt("", block);
     emitRaw(0, `![${alt}](${url})`);
     return;
   }
-  const caption = captionFor(block, byId, doc) || block.text || "";
+  const caption = captionFor(block, byId2, doc) || block.text || "";
   if (caption) putUser(0, caption, "", ` (${kind}${page})`);
   else putUser(0, `${block.type === "formula" ? "Formula" : "Figure"} (${kind}${page})`);
 }
-function emitTable(block, putUser, emitRaw, byId, folded, doc) {
+function emitTable(block, putUser, emitRaw, byId2, folded, doc) {
   emitRaw(0, "{{[[table]]}}");
   const rows = Number.isInteger(block.rows) ? block.rows : 0;
   const cols = Number.isInteger(block.cols) ? block.cols : 0;
@@ -10296,9 +10296,9 @@ function emitTable(block, putUser, emitRaw, byId, folded, doc) {
       putUser(1 + c, text3);
     }
   }
-  const caption = captionFor(block, byId, doc);
+  const caption = captionFor(block, byId2, doc);
   if (caption) {
-    if (typeof block.caption === "string" && byId.has(block.caption)) folded.add(block.caption);
+    if (typeof block.caption === "string" && byId2.has(block.caption)) folded.add(block.caption);
     putUser(1, caption);
   }
 }
@@ -11364,7 +11364,8 @@ var init_tooltip_text = __esm({
       "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),
       "parse.chip": e("Parse engine", "Built-in runs on this machine. Docling uses the local helper."),
       "parse.docling": e("Parse with Docling", "Send this PDF to the local helper. Nothing is sent until you press this."),
-      "parse.cloud": e("Read with LlamaParse", "Send this PDF to LlamaParse after you confirm the page count and the estimated cost. Nothing is sent until you confirm."),
+      "parse.cloud": e("Read with LlamaParse", "Send this PDF to LlamaParse after you confirm the page count and the estimated cost. Nothing is sent until you confirm. LlamaParse is the main cloud read."),
+      "parse.mistral": e("Read with Mistral OCR", "Send this PDF to Mistral OCR after you confirm the page count and the estimated cost. No install. The browser calls Mistral directly. Tables are weaker than LlamaParse."),
       "parse.docling-off": e("Local helper: off", "Open Engines (the gear) to set up or start the local helper."),
       "parse.docling-token": e("Local helper: wrong token", "Open Engines (the gear) and pair the local helper again."),
       "parse.docling-models": e("Local helper: downloading models", "The helper is downloading models. Parsing waits until they are ready."),
@@ -11378,8 +11379,8 @@ var init_tooltip_text = __esm({
       "engines.builtin": e("On this device", "The built-in parser. It runs in Roam and needs nothing installed."),
       "engines.ocr": e("In-browser reading (beta)", "Reads the words on scanned pages inside Roam. The models download once, after you ask. Less accurate than the local helper, which is used instead when it is ready."),
       "engines.helper": e("Local helper", "Docling for layout, formulas and tables, and Apple Vision for scans. It runs on this Mac and listens only on 127.0.0.1."),
-      "engines.cloud": e("Cloud", "LlamaParse, with your own key, kept on this device. The PDF is sent only after you confirm the cost. Roam cannot call LlamaParse itself: pair the local helper, or set a relay URL."),
-      "engines.cloud-setup": e("Set up", "Save a LlamaParse key on this device, pick US or EU, and choose a tier."),
+      "engines.cloud": e("Cloud", "LlamaParse is the main read: your key, then a helper with the cloud engine, your relay, or the hosted relay. Mistral OCR is the no-install read: cheaper, and its tables are weaker. Both keys stay on this device. Nothing is sent until you confirm the cost."),
+      "engines.cloud-setup": e("Set up", "Save a LlamaParse key and, if you want it, a Mistral OCR key. Both stay on this device."),
       "engines.pair": e("Pair", "Fetch the helper's token. Works for 90 seconds after the installer or plexus-parse-helper pair."),
       "engines.setup": e("Set up", "Show the one command that installs the local helper."),
       "engines.start": e("Start", "Show how to start the local helper."),
@@ -13784,7 +13785,7 @@ function parseTable(lines, index) {
     table: { type: "table", rows, cols, headerRows: 1, cells }
   };
 }
-function parseBlocks(markdown) {
+function parseMarkdownBlocks(markdown) {
   const lines = String(markdown ?? "").replace(/\r\n/g, "\n").split("\n");
   const blocks = [];
   let i = 0;
@@ -13890,7 +13891,7 @@ function markdownToParse(markdown, {
 } = {}) {
   const blocks = {};
   const order = [];
-  parseBlocks(markdown).forEach((block, index) => {
+  parseMarkdownBlocks(markdown).forEach((block, index) => {
     const id = `b${index + 1}`;
     blocks[id] = { ...block, id };
     order.push(id);
@@ -28476,12 +28477,12 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
             return false;
           }
         } else return false;
-        const byId = /* @__PURE__ */ new Map();
+        const byId2 = /* @__PURE__ */ new Map();
         nodes.forEach((node2, i) => {
           const id = refEid(node2);
-          byId.set(id != null ? id : eids[i], node2);
+          byId2.set(id != null ? id : eids[i], node2);
         });
-        for (const [eid, keyList] of byEid) applyPulled(byId.get(eid), keyList);
+        for (const [eid, keyList] of byEid) applyPulled(byId2.get(eid), keyList);
         return true;
       };
       if (!fromPull()) fromQueries();
@@ -33442,7 +33443,8 @@ var package_default = {
     check: "npm run build && npm run scan:secrets && node --check extension.js && npm test && npm run verify:generated",
     "bench:hot": "node --predictable --test --test-concurrency=1 test/fast-7-hot-paths.test.js",
     "size:gate": "node scripts/size-gate.mjs",
-    "parse:score": "node tools/parse-score.mjs"
+    "parse:score": "node tools/parse-score.mjs",
+    "relay:deploy": "sh tools/cloud-relay/deploy.sh"
   },
   engines: {
     node: ">=20"
@@ -38168,19 +38170,19 @@ function footnoteText(text3, refs) {
 }
 function toMarkdown(doc, idsOrRange) {
   const blocks = selectBlocks(doc, idsOrRange);
-  const byId = new Map(blocks.map((block) => [block.id, block]));
+  const byId2 = new Map(blocks.map((block) => [block.id, block]));
   const lines = [];
   const notes = [];
   const seenNotes = /* @__PURE__ */ new Set();
   const skip = /* @__PURE__ */ new Set();
   for (const block of blocks) {
-    if (block.type === "caption" && block.for && byId.has(block.for)) skip.add(block.id);
+    if (block.type === "caption" && block.for && byId2.has(block.for)) skip.add(block.id);
   }
   const captionOf = (block) => {
     for (const other of blocks) {
       if (other.type === "caption" && other.for === block.id) return other.text || "";
     }
-    if (typeof block.caption === "string" && !byId.has(block.caption)) return block.caption;
+    if (typeof block.caption === "string" && !byId2.has(block.caption)) return block.caption;
     return "";
   };
   for (const block of blocks) {
@@ -38226,7 +38228,7 @@ ${block.text ?? ""}
       lines.push(`Scanned page ${block.page} (no text)`);
     }
     for (const ref of block.footnoteRefs || []) {
-      const note = ref.to ? byId.get(ref.to) : null;
+      const note = ref.to ? byId2.get(ref.to) : null;
       if (note && !seenNotes.has(note.id)) {
         seenNotes.add(note.id);
         notes.push(`[^${note.mark}]: ${note.text ?? ""}`);
@@ -41878,11 +41880,18 @@ var TIER_LABELS = Object.freeze({
 });
 var DEFAULT_TIER = "agentic";
 var DEFAULT_TIMEOUT_MS = 24e4;
+var DEFAULT_RELAY_URL = "";
+var MISTRAL_MODEL = "mistral-ocr-latest";
+var MISTRAL_URL = "https://api.mistral.ai/v1/ocr";
+var MISTRAL_USD_PER_PAGE = 4 / 1e3;
+var MISTRAL_PRICE_CHECKED = "2026-10-09";
+var MISTRAL_MAX_BYTES = 50 * 1024 * 1024;
 var CLOUD_STORAGE = Object.freeze({
   key: "pxd-cloud-key",
   region: "pxd-cloud-region",
   tier: "pxd-cloud-tier",
-  relay: "pxd-cloud-relay"
+  relay: "pxd-cloud-relay",
+  mistralKey: "pxd-cloud-mistral-key"
 });
 var HELPER_PATH = "/v1/cloud/parse";
 function fail2(code, message, status) {
@@ -41953,16 +41962,61 @@ function cloudConfirmMessage({ pages, tier, region } = {}) {
   const pageText = est.pages ? `${est.pages} page${est.pages === 1 ? "" : "s"}` : "page count unknown";
   return `Send this PDF to LlamaParse (${where}, ${label})? ${pageText}, about ${money(est.usd)} (${est.credits} credits: ${est.tierCredits} per page plus ${est.layoutCredits} for layout). The pricing FAQ says layout is free in v2; this estimate includes it. Free if this file was parsed with the same options in the last 48 hours. The PDF leaves this device.`;
 }
-function resolveCloudTransport({ helper, relayUrl } = {}) {
+function httpsUrl(value) {
+  const url = String(value || "").trim().replace(/\/$/, "");
+  return /^https:\/\//i.test(url) ? url : "";
+}
+function llamaRoute(prefs, helper, defaultRelay = DEFAULT_RELAY_URL) {
+  const engines = helper?.engines;
+  const paired = helper?.state === "ready" && (!Array.isArray(engines) || engines.includes("cloud"));
+  if (paired) return "helper";
+  if (httpsUrl(prefs?.relay)) return "your relay";
+  if (httpsUrl(defaultRelay)) return "hosted relay";
+  return "";
+}
+function resolveCloudTransport({ helper, relayUrl, defaultRelay = DEFAULT_RELAY_URL } = {}) {
   const url = String(helper?.url || "").replace(/\/$/, "");
   const token = String(helper?.token || "").trim();
-  if (helper?.state === "ready" && url && token) return { kind: "helper", url, token };
-  const relay = String(relayUrl || "").trim().replace(/\/$/, "");
-  if (/^https:\/\//i.test(relay)) return { kind: "relay", url: relay };
+  const engines = helper?.engines;
+  const cloudEngine = !Array.isArray(engines) || engines.includes("cloud");
+  if (helper?.state === "ready" && url && token && cloudEngine) return { kind: "helper", url, token };
+  const user = httpsUrl(relayUrl);
+  if (user) return { kind: "relay", url: user, source: "user" };
+  const hosted = httpsUrl(defaultRelay);
+  if (hosted) return { kind: "relay", url: hosted, source: "default" };
   return {
     kind: "none",
-    reason: "Pair the local helper, or set a cloud relay URL in Engines. Roam cannot call LlamaParse directly."
+    reason: "Pair a local helper that includes the cloud engine, or set a relay URL in Engines. The hosted relay URL is empty until it is deployed. Roam cannot call LlamaParse directly."
   };
+}
+function readMistralKey(storage) {
+  return storageGet(storage, CLOUD_STORAGE.mistralKey).trim();
+}
+function writeMistralKey(storage, key) {
+  const next = key == null ? readMistralKey(storage) : String(key).trim();
+  storage.setItem(CLOUD_STORAGE.mistralKey, next);
+  return next;
+}
+function estimateMistralCost({ pages } = {}) {
+  const count = Math.max(0, Math.floor(Number(pages) || 0));
+  return {
+    pages: count,
+    usd: count * MISTRAL_USD_PER_PAGE,
+    perThousand: 4,
+    checked: MISTRAL_PRICE_CHECKED
+  };
+}
+function mistralConfirmMessage({ pages } = {}) {
+  const est = estimateMistralCost({ pages });
+  const pageText = est.pages ? `${est.pages} page${est.pages === 1 ? "" : "s"}` : "page count unknown";
+  return `Send this PDF to Mistral OCR? ${pageText}, about ${money(est.usd)} ($4 / 1,000 pages, model card checked ${est.checked}). Tables are weaker than LlamaParse. The PDF leaves this device.`;
+}
+function pageSpec(value) {
+  if (value == null || value === "") return "";
+  if (Array.isArray(value)) {
+    return value.map((n2) => Number(n2)).filter((n2) => Number.isInteger(n2) && n2 >= 1).join(",");
+  }
+  return String(value).trim();
 }
 function wait(ms, signal) {
   return new Promise((resolve, reject) => {
@@ -42009,11 +42063,11 @@ async function readSSE(response, onEvent) {
   }
   if (buf.trim()) dispatch(buf);
 }
-function statusError(status, body) {
-  if (status === 401) return fail2("unauthorized", "LlamaParse rejected the key", 401);
-  if (status === 402) return fail2("credits", "LlamaParse is out of credits", 402);
-  if (status === 429) return fail2("rate", "LlamaParse rate limit", 429);
-  const message = body?.detail || body?.error || body?.message || `LlamaParse ${status}`;
+function statusError(status, body, name = "LlamaParse") {
+  if (status === 401) return fail2("unauthorized", `${name} rejected the key`, 401);
+  if (status === 402) return fail2("credits", `${name} is out of credits`, 402);
+  if (status === 429) return fail2("rate", `${name} rate limit`, 429);
+  const message = body?.detail || body?.error || body?.message || `${name} ${status}`;
   return fail2("provider", String(message), status);
 }
 async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, signal, onProgress }) {
@@ -42072,11 +42126,9 @@ async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, ti
   if (!provider) throw fail2("bad-response", "cloud parse returned no result");
   return provider;
 }
-async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, signal, onProgress, sleep, now: now3, timeoutMs }) {
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    "X-Pxd-Region": region === "eu" ? "eu" : "us"
-  };
+async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, pages, signal, onProgress, sleep, now: now3, timeoutMs }) {
+  const headers = { Authorization: `Bearer ${apiKey}` };
+  if (!transport.direct) headers["X-Pxd-Region"] = region === "eu" ? "eu" : "us";
   const clock = now3;
   const pause = sleep;
   const deadline = clock() + timeoutMs;
@@ -42094,15 +42146,18 @@ async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tie
   if (uploaded.status < 200 || uploaded.status >= 300) throw statusError(uploaded.status, uploadBody);
   const fileId = uploadBody?.id;
   if (!fileId) throw fail2("bad-response", "upload did not return a file id");
+  const spec = pageSpec(pages);
+  const payload = {
+    file_id: fileId,
+    tier,
+    version: "latest",
+    output_options: { granular_bboxes: ["cell"] }
+  };
+  if (spec) payload.page_ranges = { target_pages: spec };
   const started = await fetch2(`${transport.url}/api/v2/parse`, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      file_id: fileId,
-      tier,
-      version: "latest",
-      output_options: { granular_bboxes: ["cell"] }
-    }),
+    body: JSON.stringify(payload),
     signal
   });
   const startBody = await started.json().catch(() => null);
@@ -42149,6 +42204,7 @@ async function parseCloud({
   apiKey,
   region = "us",
   tier = DEFAULT_TIER,
+  pages,
   confirmed = false,
   signal,
   onProgress,
@@ -42184,6 +42240,7 @@ async function parseCloud({
       apiKey: key,
       region: where,
       tier,
+      pages,
       signal,
       onProgress,
       sleep,
@@ -42194,8 +42251,99 @@ async function parseCloud({
   }
   throw fail2("transport", "unknown cloud transport");
 }
+function bytesToBase64(bytes) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+  let binary = "";
+  const step = 32768;
+  for (let i = 0; i < data.length; i += step) {
+    binary += String.fromCharCode(...data.subarray(i, i + step));
+  }
+  return btoa(binary);
+}
+function mistralPageIndexes(value) {
+  const spec = pageSpec(value);
+  if (!spec) return void 0;
+  const out = [];
+  for (const part of spec.split(",")) {
+    const range = /^(\d+)\s*-\s*(\d+)$/.exec(part.trim());
+    if (range) {
+      const from = Math.min(Number(range[1]), Number(range[2]));
+      const to = Math.max(Number(range[1]), Number(range[2]));
+      for (let n2 = from; n2 <= to; n2 += 1) out.push(n2 - 1);
+    } else {
+      const n2 = Number(part);
+      if (Number.isInteger(n2) && n2 >= 1) out.push(n2 - 1);
+    }
+  }
+  return out.length ? out : void 0;
+}
+async function parseMistral({
+  fetch: fetchFn,
+  bytes,
+  apiKey,
+  pages,
+  confirmed = false,
+  signal,
+  timeoutMs = DEFAULT_TIMEOUT_MS
+} = {}) {
+  if (confirmed !== true) throw fail2("confirm", "confirm required");
+  if (typeof fetchFn !== "function") throw fail2("no-fetch", "no fetch");
+  const key = String(apiKey || "").trim();
+  if (!key) throw fail2("no-key", "Add a Mistral OCR key in Engines. It stays on this device.");
+  const size = bytes?.byteLength ?? bytes?.length ?? 0;
+  if (size > MISTRAL_MAX_BYTES) {
+    throw fail2("too-large", "This PDF is over 50 MB. Mistral OCR's documented request limit is about 50 MB. Split it and try again.");
+  }
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const onAbort = () => ctrl.abort();
+  if (signal?.aborted) throw fail2("cancelled", "cancelled", 499);
+  signal?.addEventListener?.("abort", onAbort, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort();
+  }, timeoutMs);
+  const indexes = mistralPageIndexes(pages);
+  const payload = {
+    model: MISTRAL_MODEL,
+    document: {
+      type: "document_url",
+      document_url: `data:application/pdf;base64,${bytesToBase64(bytes)}`
+    },
+    table_format: "html",
+    extract_header: true,
+    extract_footer: true,
+    include_blocks: true,
+    include_image_base64: false
+  };
+  if (indexes) payload.pages = indexes;
+  try {
+    const response = await fetchFn(MISTRAL_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal
+    });
+    const body = await response.json().catch(() => null);
+    if (response.status < 200 || response.status >= 300) throw statusError(response.status, body, "Mistral OCR");
+    if (!body || !Array.isArray(body.pages)) throw fail2("bad-response", "Mistral OCR returned no pages");
+    return { provider: body, transport: "direct" };
+  } catch (error) {
+    if (error?.code) throw error;
+    if (signal?.aborted) throw fail2("cancelled", "cancelled", 499);
+    if (timedOut || ctrl.signal.aborted) throw fail2("timeout", "Mistral OCR timed out", 504);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener?.("abort", onAbort);
+  }
+}
 
 // src/model/cloud-to-parse.js
+init_anydoc_to_parse();
 init_parse_schema();
 var ENGINE = "cloud";
 function round5(n2) {
@@ -42523,6 +42671,346 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
   }
   return doc;
 }
+var MISTRAL_KIND = Object.freeze({
+  title: "heading",
+  text: "para",
+  list: "list",
+  table: "table",
+  image: "figure",
+  equation: "formula",
+  code: "code",
+  references: "para",
+  aside_text: "para",
+  signature: "para",
+  caption: "caption"
+});
+function cornerBox(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const x0 = Number(raw.top_left_x);
+  const y0 = Number(raw.top_left_y);
+  const x1 = Number(raw.bottom_right_x);
+  const y1 = Number(raw.bottom_right_y);
+  if (![x0, y0, x1, y1].every((n2) => Number.isFinite(n2))) return null;
+  return [round5(Math.min(x0, x1)), round5(Math.min(y0, y1)), round5(Math.max(x0, x1)), round5(Math.max(y0, y1))];
+}
+function blockConfidence(raw) {
+  const score = Number(raw?.confidence_scores?.average_content_confidence_score);
+  if (!Number.isFinite(score)) return null;
+  return Math.max(0, Math.min(1, score));
+}
+function imageLine(line) {
+  const match = /^\s*!\[[^\]]*\]\(([^)\s]+)\)\s*$/.exec(line || "");
+  return match ? { id: match[1] } : null;
+}
+function tablePlaceholder(line) {
+  const match = /^\s*\[(tbl-[^\]\s]+)\]\(\1\)\s*$/.exec(line || "");
+  return match ? { id: match[1] } : null;
+}
+function plainLine(line) {
+  const text3 = String(line || "");
+  if (!text3.trim()) return false;
+  if (imageLine(text3) || tablePlaceholder(text3)) return false;
+  if (/^(#{1,6})\s+/.test(text3) || /^(\s*)([-*+]|\d+\.)\s+\S/.test(text3)) return false;
+  if (/<table\b/i.test(text3) || text3.includes("|")) return false;
+  return true;
+}
+function neighborBelow(lines, index) {
+  let i = index + 1;
+  while (i < lines.length && !lines[i].trim()) i += 1;
+  return plainLine(lines[i]) ? i : -1;
+}
+function captionAbove(lines, index) {
+  let i = index - 1;
+  while (i >= 0 && !lines[i].trim()) i -= 1;
+  if (i < 0 || !plainLine(lines[i])) return -1;
+  return /^(figure|fig\.|caption|table)\b/i.test(lines[i].trim()) ? i : -1;
+}
+function byId(list, id) {
+  const want = String(id || "");
+  return (list || []).find((entry) => entry && (entry.id === want || entry.id === want.split("/").pop()));
+}
+function tableFromContent(content) {
+  const source = String(content || "");
+  if (!source.trim()) return null;
+  const html = cellsFromHtml(source);
+  if (html) return html;
+  const table = parseMarkdownBlocks(source).find((block) => block.type === "table");
+  if (!table) return null;
+  return { rows: table.rows, cols: table.cols, headerRows: table.headerRows, cells: table.cells };
+}
+function splitHtml(text3) {
+  const parts = [];
+  const re = /<table\b[\s\S]*?<\/table>/gi;
+  let last = 0;
+  let match;
+  while (match = re.exec(text3)) {
+    if (match.index > last) parts.push({ kind: "md", text: text3.slice(last, match.index) });
+    parts.push({ kind: "html", html: match[0] });
+    last = match.index + match[0].length;
+  }
+  if (last < text3.length) parts.push({ kind: "md", text: text3.slice(last) });
+  if (!parts.length) parts.push({ kind: "md", text: text3 });
+  return parts;
+}
+function markdownNodes(text3) {
+  const nodes = [];
+  for (const part of splitHtml(text3)) {
+    if (part.kind === "html") {
+      const parsed = cellsFromHtml(part.html);
+      if (parsed) nodes.push({ type: "table", ...parsed });
+      continue;
+    }
+    for (const block of parseMarkdownBlocks(part.text)) nodes.push(block);
+  }
+  return nodes;
+}
+function pageNodes(page) {
+  const lines = String(page?.markdown ?? "").replace(/\r\n/g, "\n").split("\n");
+  const consumed = /* @__PURE__ */ new Set();
+  const captions = /* @__PURE__ */ new Map();
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!imageLine(lines[i])) continue;
+    const below = neighborBelow(lines, i);
+    const above = below < 0 ? captionAbove(lines, i) : -1;
+    const at = below >= 0 ? below : above;
+    if (at >= 0) {
+      consumed.add(at);
+      captions.set(i, lines[at].replace(/\s+/g, " ").trim());
+    }
+  }
+  const nodes = [];
+  let buf = [];
+  const flush = () => {
+    const text3 = buf.join("\n");
+    buf = [];
+    if (text3.trim()) nodes.push(...markdownNodes(text3));
+  };
+  for (let i = 0; i < lines.length; i += 1) {
+    if (consumed.has(i)) continue;
+    const image = imageLine(lines[i]);
+    if (image) {
+      flush();
+      const found = byId(page?.images, image.id);
+      nodes.push({ type: "figure", bbox: cornerBox(found), caption: captions.get(i) || "" });
+      continue;
+    }
+    const placeholder = tablePlaceholder(lines[i]);
+    if (placeholder) {
+      flush();
+      const entry = byId(page?.tables, placeholder.id);
+      const parsed = tableFromContent(entry?.content || entry?.html || entry?.markdown || "");
+      if (parsed) nodes.push({ type: "table", ...parsed });
+      continue;
+    }
+    buf.push(lines[i]);
+  }
+  flush();
+  const queues = /* @__PURE__ */ new Map();
+  for (const block of page?.blocks || []) {
+    const kind = MISTRAL_KIND[block?.type];
+    if (!kind) continue;
+    if (!queues.has(kind)) queues.set(kind, []);
+    queues.get(kind).push(block);
+  }
+  for (const node2 of nodes) {
+    const src = queues.get(node2.type)?.shift();
+    if (!src) continue;
+    if (!node2.bbox) node2.bbox = cornerBox(src);
+    const score = blockConfidence(src);
+    if (score != null) node2.confidence = score;
+  }
+  return nodes;
+}
+function pageIndexBase(pages) {
+  return (pages || []).some((page) => Number(page?.index) === 0) ? 0 : 1;
+}
+function furniture(page, blocks) {
+  const fromBlocks = (type) => (blocks || []).filter((block) => block?.type === type).map((block) => String(block.content || "").replace(/\s+/g, " ").trim()).filter(Boolean).join(" ");
+  const header = String(page?.header || "").replace(/\s+/g, " ").trim() || fromBlocks("header");
+  const footer = String(page?.footer || "").replace(/\s+/g, " ").trim() || fromBlocks("footer");
+  return { header, footer };
+}
+function mistralToParse(provider, { sha256 = null } = {}) {
+  const pagesIn = Array.isArray(provider?.pages) ? provider.pages : [];
+  const zeroBased = pageIndexBase(pagesIn) === 0;
+  const blocks = {};
+  const order = [];
+  const removed = [];
+  const pages = [];
+  let n2 = 0;
+  const nextId = (prefix) => {
+    n2 += 1;
+    return `${prefix}${n2}`;
+  };
+  let title = null;
+  const model = typeof provider?.model === "string" && provider.model ? provider.model : "mistral-ocr-latest";
+  const push = (block) => {
+    blocks[block.id] = block;
+    order.push(block.id);
+    return block;
+  };
+  pagesIn.forEach((page, position) => {
+    const index = Number(page?.index);
+    const pageNumber = Number.isInteger(index) && index >= 0 ? zeroBased ? index + 1 : index : position + 1;
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) return;
+    const width = Number(page?.dimensions?.width);
+    const height = Number(page?.dimensions?.height);
+    pages.push({
+      n: pageNumber,
+      w: Number.isFinite(width) ? round5(width) : null,
+      h: Number.isFinite(height) ? round5(height) : null,
+      parsed: page?.error == null
+    });
+    if (page?.error != null) return;
+    const side2 = furniture(page, page?.blocks);
+    if (side2.header) removed.push({ reason: "running-header", page: pageNumber, text: side2.header, bbox: null });
+    if (side2.footer) removed.push({ reason: "running-footer", page: pageNumber, text: side2.footer, bbox: null });
+    for (const node2 of pageNodes(page)) {
+      const confidence = node2.confidence == null ? 0.9 : node2.confidence;
+      const bbox = node2.bbox || [0, 0, 0, 0];
+      if (node2.type === "heading") {
+        const level = Math.min(6, Math.max(1, Math.floor(Number(node2.level) || 1)));
+        const text4 = String(node2.text || "").replace(/\s+/g, " ").trim();
+        push({ id: nextId("h"), type: "heading", level, text: text4, page: pageNumber, bbox, confidence, engine: ENGINE });
+        if (!title && level === 1 && pageNumber === 1 && text4) title = text4;
+        continue;
+      }
+      if (node2.type === "list") {
+        const items = (node2.items || []).map((item) => ({
+          text: String(item?.text || "").replace(/\s+/g, " ").trim(),
+          level: Math.max(0, Math.floor(Number(item?.level) || 0)),
+          marker: String(item?.marker || "")
+        }));
+        push({
+          id: nextId("l"),
+          type: "list",
+          ordered: Boolean(node2.ordered),
+          items,
+          text: items.map((item) => item.text).filter(Boolean).join(" "),
+          page: pageNumber,
+          bbox,
+          confidence,
+          engine: ENGINE
+        });
+        continue;
+      }
+      if (node2.type === "table" && node2.rows && node2.cols) {
+        push({
+          id: nextId("t"),
+          type: "table",
+          page: pageNumber,
+          bbox,
+          rows: node2.rows,
+          cols: node2.cols,
+          headerRows: node2.headerRows || 0,
+          headerCols: 0,
+          cells: node2.cells || [],
+          caption: null,
+          method: "mistral",
+          confidence,
+          engine: ENGINE
+        });
+        continue;
+      }
+      if (node2.type === "figure") {
+        const id = nextId("f");
+        const block = push({
+          id,
+          type: "figure",
+          page: pageNumber,
+          bbox,
+          caption: null,
+          image: { kind: "crop", source: "mistral" },
+          confidence,
+          engine: ENGINE
+        });
+        const captionText = String(node2.caption || "").replace(/\s+/g, " ").trim();
+        if (captionText) {
+          const captionId = nextId("c");
+          push({
+            id: captionId,
+            type: "caption",
+            page: pageNumber,
+            bbox,
+            text: captionText,
+            for: id,
+            confidence,
+            engine: ENGINE
+          });
+          block.caption = captionId;
+        }
+        continue;
+      }
+      if (node2.type === "code") {
+        push({
+          id: nextId("k"),
+          type: "code",
+          text: typeof node2.text === "string" ? node2.text : "",
+          page: pageNumber,
+          bbox,
+          confidence,
+          engine: ENGINE
+        });
+        continue;
+      }
+      if (node2.type === "formula") {
+        const latex = String(node2.latex || node2.text || "").trim();
+        if (!latex) continue;
+        push({
+          id: nextId("q"),
+          type: "formula",
+          latex,
+          text: latex,
+          page: pageNumber,
+          bbox,
+          confidence,
+          engine: ENGINE
+        });
+        continue;
+      }
+      const text3 = String(node2.text || "").replace(/\s+/g, " ").trim();
+      if (!text3) continue;
+      push({
+        id: nextId("p"),
+        type: "para",
+        text: text3,
+        page: pageNumber,
+        bbox,
+        confidence,
+        engine: ENGINE
+      });
+    }
+  });
+  const doc = {
+    schema: SCHEMA2,
+    sha256,
+    engine: ENGINE,
+    engineVersion: model,
+    options: {
+      provider: "mistral",
+      model,
+      ocr: "none",
+      formula: false,
+      tables: "mistral"
+    },
+    createdAt: null,
+    pageCount: pages.length,
+    title,
+    pages,
+    order,
+    blocks,
+    removed,
+    stats: { ms: 0, perPage: [] }
+  };
+  const check = validateParse(doc);
+  if (!check.ok) {
+    const error = new Error(`mistral parse schema: ${check.errors.join(",")}`);
+    error.code = "schema";
+    error.errors = check.errors;
+    throw error;
+  }
+  return doc;
+}
 
 // src/view/clipboard-io.js
 var CLONE_WINDOW_MS = 400;
@@ -42736,13 +43224,16 @@ function defaultRangeChoice(pageCount) {
   if (!Number.isFinite(n2) || n2 <= 0 || n2 <= 60) return "all";
   return "current";
 }
-function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
+function cloudLabel(provider) {
+  return provider === "mistral" ? "Mistral OCR" : "LlamaParse";
+}
+function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
   if (phase !== "running" && engine === "anydoc") {
     if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
     return { text: "Alternative read" };
   }
   if (phase === "running") {
-    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : engine === "cloud" ? "LlamaParse" : "built-in";
+    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : engine === "cloud" ? cloudLabel(provider) : "built-in";
     return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
   }
   if (helper === "not-running" || helper === "disabled") {
@@ -42752,8 +43243,8 @@ function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, p
   if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
   if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
   if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
-  if (engine === "cloud" && ms != null) return { text: `LlamaParse · ${formatSeconds(ms)}` };
-  if (engine === "cloud") return { text: "LlamaParse" };
+  if (engine === "cloud" && ms != null) return { text: `${cloudLabel(provider)} · ${formatSeconds(ms)}` };
+  if (engine === "cloud") return { text: cloudLabel(provider) };
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
 }
@@ -43008,6 +43499,10 @@ function createParseView({
   cloudBtn.type = "button";
   cloudBtn.textContent = "Read with LlamaParse";
   cloudBtn.setAttribute("data-tip", "parse.cloud");
+  const mistralBtn = el("button", "pxd-parse__mistral", enginePop);
+  mistralBtn.type = "button";
+  mistralBtn.textContent = "Read with Mistral OCR";
+  mistralBtn.setAttribute("data-tip", "parse.mistral");
   const altBtn = el("button", "pxd-parse__alt", enginePop);
   altBtn.type = "button";
   const altLabel = el("span", "pxd-parse__alt-label", altBtn);
@@ -43145,6 +43640,7 @@ function createParseView({
   let abort = null;
   let jobId = "";
   let helperState = "";
+  let helperEngines;
   let phase = "idle";
   let dead = false;
   let progress = { page: 0, pageCount: 0, engine: "builtin" };
@@ -43432,6 +43928,7 @@ ${sourceAttrString(source)}` : markdown;
     const state = engineChip({
       phase,
       engine: progress.engine || parsed?.engine || "builtin",
+      provider: progress.provider || parsed?.options?.provider || "",
       ms: phase === "running" ? null : parsed?.stats?.ms,
       page: progress.page,
       pageCount: progress.pageCount,
@@ -44366,9 +44863,10 @@ ${sourceAttrString(source)}` : markdown;
     else phase = "idle";
     paintChip();
   }
-  function cloudToast(error) {
+  function cloudToast(error, provider) {
     if (error?.code === "cancelled" || error?.code === "confirm") return;
-    const text3 = error?.status === 402 ? "LlamaParse is out of credits." : error?.status === 401 ? "LlamaParse rejected the key." : error?.code === "timeout" ? "LlamaParse timed out." : error?.message || "LlamaParse did not finish.";
+    const name = provider === "mistral" ? "Mistral OCR" : "LlamaParse";
+    const text3 = error?.status === 402 ? `${name} is out of credits.` : error?.status === 401 ? `${name} rejected the key.` : error?.code === "timeout" ? `${name} timed out.` : error?.message || `${name} did not finish.`;
     try {
       onToast?.(text3);
     } catch {
@@ -44386,7 +44884,7 @@ ${sourceAttrString(source)}` : markdown;
     await refreshHelper();
     const endpoint = helper?.endpoint?.() || {};
     const transport = resolveCloudTransport({
-      helper: helperState === "ready" ? { state: "ready", url: endpoint.url, token: endpoint.token } : null,
+      helper: helperState === "ready" ? { state: "ready", url: endpoint.url, token: endpoint.token, engines: helperEngines } : null,
       relayUrl: prefs.relay
     });
     if (transport.kind === "none") {
@@ -44420,7 +44918,7 @@ ${sourceAttrString(source)}` : markdown;
     const ctrl = new AbortController();
     abort = ctrl;
     phase = "running";
-    progress = { page: 0, pageCount: pages, engine: "cloud" };
+    progress = { page: 0, pageCount: pages, engine: "cloud", provider: "llamaparse" };
     paintChip();
     const started = now3();
     try {
@@ -44437,7 +44935,7 @@ ${sourceAttrString(source)}` : markdown;
         confirmed: true,
         signal: ctrl.signal,
         onProgress: (info) => {
-          progress = { page: info?.page || progress.page, pageCount: pages || progress.pageCount, engine: "cloud" };
+          progress = { page: info?.page || progress.page, pageCount: pages || progress.pageCount, engine: "cloud", provider: "llamaparse" };
           paintChip();
           onProgress?.(progress);
         }
@@ -44448,7 +44946,64 @@ ${sourceAttrString(source)}` : markdown;
       await finishDoc(docResult, now3() - started);
     } catch (error) {
       if (phase === "running") phase = "idle";
-      cloudToast(error);
+      cloudToast(error, "llamaparse");
+      paintChip();
+    }
+  }
+  async function parseMistralNow() {
+    const key = readMistralKey(storage);
+    if (!key) {
+      try {
+        onToast?.("Add a Mistral OCR key in Engines. It stays on this device.");
+      } catch {
+      }
+      return;
+    }
+    let pages = Number(parsed?.pageCount) || 0;
+    let pdf = null;
+    if (!pages && typeof getPdf === "function") {
+      try {
+        pdf = await getPdf();
+      } catch {
+        pdf = null;
+      }
+      pages = Number(pdf?.numPages) || 0;
+    }
+    const message = mistralConfirmMessage({ pages });
+    const ask = confirmCloud || doc.defaultView?.confirm?.bind?.(doc.defaultView);
+    let ok = false;
+    try {
+      ok = ask?.(message) === true;
+    } catch {
+      ok = false;
+    }
+    if (!ok) return;
+    const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
+    cancel();
+    const ctrl = new AbortController();
+    abort = ctrl;
+    phase = "running";
+    progress = { page: 0, pageCount: pages, engine: "cloud", provider: "mistral" };
+    paintChip();
+    const started = now3();
+    try {
+      if (!pdf && typeof getPdf === "function") pdf = await getPdf();
+      const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+      if (!bytes) throw Object.assign(new Error("This PDF is not loaded yet."), { code: "no-pdf" });
+      const result = await parseMistral({
+        fetch: fetchFn,
+        bytes,
+        apiKey: key,
+        confirmed: true,
+        signal: ctrl.signal
+      });
+      const sha = parsed?.sha256 || await sha256Hex(bytes);
+      const docResult = mistralToParse(result.provider, { sha256: sha });
+      if (ctrl.signal.aborted) return;
+      await finishDoc(docResult, now3() - started);
+    } catch (error) {
+      if (phase === "running") phase = "idle";
+      cloudToast(error, "mistral");
       paintChip();
     }
   }
@@ -44693,6 +45248,10 @@ ${sourceAttrString(source)}` : markdown;
     closeMenus();
     void parseLlama();
   });
+  listen(mistralBtn, "click", () => {
+    closeMenus();
+    void parseMistralNow();
+  });
   listen(altBtn, "click", () => {
     closeMenus();
     void readAlternative();
@@ -44814,6 +45373,7 @@ ${sourceAttrString(source)}` : markdown;
     try {
       const health = await helper.health();
       helperState = health?.state || "not-running";
+      helperEngines = health?.engines;
     } catch {
       helperState = "not-running";
     }
@@ -45100,9 +45660,10 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
         else if (major >= 2) value = { state: "newer-schema", schema: body.schema };
         else {
           const models2 = body.models || {};
+          const engines = Array.isArray(body.engines) ? body.engines.slice() : void 0;
           const needed = ["layout", "tableformer", "ocr"];
           const missing2 = needed.some((name) => models2[name] !== "ready");
-          value = missing2 ? { state: "models-missing", schema: body.schema, models: models2, version: body.version } : { state: "ready", schema: body.schema, models: models2, version: body.version, busy: body.busy ?? 0 };
+          value = missing2 ? { state: "models-missing", schema: body.schema, models: models2, version: body.version, engines } : { state: "ready", schema: body.schema, models: models2, version: body.version, busy: body.busy ?? 0, engines };
         }
       }
       healthCache = { url, token, at, value };
@@ -45409,21 +45970,19 @@ function helperRow(helper) {
       return { ...row4, dot: "off", text: "Not installed", button: button("setup", "Set up", "engines.setup") };
   }
 }
+var MISTRAL_TRADE = "Mistral OCR: no install, cheaper, weaker tables.";
 function cloudRow(prefs, helper) {
   const row4 = { id: "cloud", name: "Cloud", tip: "engines.cloud" };
-  const key = Boolean(prefs?.key);
+  const key = Boolean(String(prefs?.key || "").trim());
+  const mistral = Boolean(String(prefs?.mistralKey || "").trim());
+  const trade = mistral ? "Mistral OCR: key saved, no install, cheaper, weaker tables." : MISTRAL_TRADE;
+  const route = llamaRoute(prefs, helper);
+  const edit = button("cloud-setup", route && key ? "Edit" : "Set up", "engines.cloud-setup");
+  if (!key) return { ...row4, dot: "warn", text: `Needs a LlamaParse key. ${trade}`, button: edit };
+  if (!route) return { ...row4, dot: "warn", text: `LlamaParse needs the helper or a relay. ${trade}`, button: edit };
   const region = prefs?.region === "eu" ? "EU" : "US";
   const tier = TIER_LABELS[prefs?.tier] || TIER_LABELS.agentic;
-  const paired = helper?.state === "ready";
-  const relay = /^https:\/\//i.test(String(prefs?.relay || "").trim());
-  if (!key) {
-    return { ...row4, dot: "warn", text: "Needs a LlamaParse key", button: button("cloud-setup", "Set up", "engines.cloud-setup") };
-  }
-  if (!paired && !relay) {
-    return { ...row4, dot: "warn", text: "Needs the helper or a relay", button: button("cloud-setup", "Set up", "engines.cloud-setup") };
-  }
-  const via = paired ? "helper" : "relay";
-  return { ...row4, dot: "ok", text: `LlamaParse · ${tier} · ${region} · ${via}`, button: null };
+  return { ...row4, dot: "ok", text: `LlamaParse · ${tier} · ${region} · ${route}. ${trade}`, button: edit };
 }
 function engineRows(state, { platform = "mac" } = {}) {
   void platform;
@@ -45573,20 +46132,35 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     for (const [key, value] of Object.entries(attrs)) node2.setAttribute(key, value);
     return node2;
   }
+  function cloudRouteSentence(prefs) {
+    const route = llamaRoute(prefs, state?.helper);
+    if (route === "helper") return "LlamaParse will use the paired helper.";
+    if (route === "your relay") return "LlamaParse will use your relay URL.";
+    if (route === "hosted relay") return "LlamaParse will use the hosted relay.";
+    return "LlamaParse has no route yet. Pair a helper with the cloud engine, or set a relay URL.";
+  }
   function paintCloudSheet() {
-    if (sheetHost.querySelector?.("[data-cloud-sheet]")) return;
+    const prefs = readCloudPrefs(storage);
+    const existing = sheetHost.querySelector?.("[data-cloud-route]");
+    if (existing) {
+      existing.textContent = cloudRouteSentence(prefs);
+      return;
+    }
     release(heldSheet);
     sheetHost.innerHTML = "";
-    const prefs = readCloudPrefs(storage);
     const box2 = doc.createElement("div");
     box2.className = "pxd-engines__sheet";
     box2.setAttribute("data-cloud-sheet", "");
     const head = doc.createElement("div");
     head.className = "pxd-engines__sheet-title";
-    head.textContent = "LlamaParse";
+    head.textContent = "Cloud";
+    const routeLine = doc.createElement("div");
+    routeLine.className = "pxd-engines__note";
+    routeLine.setAttribute("data-cloud-route", "");
+    routeLine.textContent = cloudRouteSentence(prefs);
     const note = doc.createElement("div");
     note.className = "pxd-engines__note";
-    note.textContent = "The key stays in this browser. It is not written to the graph. Nothing is sent until you confirm the cost on a PDF.";
+    note.textContent = `LlamaParse is the main read. Mistral OCR needs no install, costs $4 / 1,000 pages (checked ${MISTRAL_PRICE_CHECKED}), and its tables are weaker. Keys stay in this browser. They are not written to the graph. Nothing is sent until you confirm the cost on a PDF.`;
     const keyInput = field("input", { type: "password", autocomplete: "off", "aria-label": "LlamaParse API key", placeholder: prefs.key ? "Key saved" : "API key", "data-cloud-key": "" });
     const region = field("select", { "aria-label": "Region", "data-cloud-region": "" });
     for (const [value, label] of [["us", "US"], ["eu", "EU"]]) {
@@ -45608,6 +46182,17 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     tier.value = prefs.tier;
     const relay = field("input", { type: "url", autocomplete: "off", "aria-label": "Relay URL", placeholder: "Relay URL (optional)", "data-cloud-relay": "" });
     relay.value = prefs.relay || "";
+    const mistralHead = doc.createElement("div");
+    mistralHead.className = "pxd-engines__sheet-title";
+    mistralHead.textContent = "Mistral OCR";
+    const mistralKey = readMistralKey(storage);
+    const mistralInput = field("input", {
+      type: "password",
+      autocomplete: "off",
+      "aria-label": "Mistral OCR API key",
+      placeholder: mistralKey ? "Key saved" : "Mistral API key",
+      "data-mistral-key": ""
+    });
     const save = doc.createElement("button");
     save.type = "button";
     save.setAttribute("type", "button");
@@ -45623,12 +46208,22 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     clear.setAttribute("type", "button");
     clear.className = "pxd-engines__btn";
     clear.setAttribute("data-action", "cloud-clear");
-    clear.textContent = "Remove key";
+    clear.textContent = "Remove LlamaParse key";
     bindTo(heldSheet)(clear, "click", (event) => {
       event.stopPropagation?.();
       void act("cloud-clear");
     });
-    box2.append(head, note, keyInput, region, tier, relay, save, clear);
+    const clearMistral = doc.createElement("button");
+    clearMistral.type = "button";
+    clearMistral.setAttribute("type", "button");
+    clearMistral.className = "pxd-engines__btn";
+    clearMistral.setAttribute("data-action", "mistral-clear");
+    clearMistral.textContent = "Remove Mistral key";
+    bindTo(heldSheet)(clearMistral, "click", (event) => {
+      event.stopPropagation?.();
+      void act("mistral-clear");
+    });
+    box2.append(head, routeLine, note, keyInput, region, tier, relay, mistralHead, mistralInput, save, clear, clearMistral);
     sheetHost.append(box2);
   }
   function paintSheet() {
@@ -45722,18 +46317,25 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     }
     if (id === "cloud-save") {
       const typed = String(el.querySelector("[data-cloud-key]")?.value || "");
+      const mistralTyped = String(el.querySelector("[data-mistral-key]")?.value || "");
       writeCloudPrefs(storage, {
         key: typed.trim() ? typed : null,
         region: el.querySelector("[data-cloud-region]")?.value,
         tier: el.querySelector("[data-cloud-tier]")?.value,
         relay: el.querySelector("[data-cloud-relay]")?.value ?? ""
       });
+      writeMistralKey(storage, mistralTyped.trim() ? mistralTyped : null);
       say("Saved on this device");
     } else if (id === "cloud-clear") {
       writeCloudPrefs(storage, { key: "" });
       const input = el.querySelector("[data-cloud-key]");
       if (input) input.value = "";
-      say("Key removed from this device");
+      say("LlamaParse key removed from this device");
+    } else if (id === "mistral-clear") {
+      writeMistralKey(storage, "");
+      const input = el.querySelector("[data-mistral-key]");
+      if (input) input.value = "";
+      say("Mistral key removed from this device");
     } else if (id === "pair") {
       const result = await client?.pair?.();
       if (result?.ok) say("Helper paired");
@@ -45766,7 +46368,9 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     try {
       const next = await loadEngineState({ client, device, force: true });
       if (disposed) return state;
-      state = { ...next, cloud: readCloudPrefs(storage) };
+      const cloud = readCloudPrefs(storage);
+      cloud.mistralKey = readMistralKey(storage);
+      state = { ...next, cloud };
       if (sheetKind === "helper" && state.helper.state === "ready") sheetKind = null;
       paintRows();
       return state;
@@ -49635,7 +50239,7 @@ function disarm(timers, id) {
   } catch {
   }
 }
-function pageNodes(root) {
+function pageNodes2(root) {
   try {
     const nodes = root?.querySelectorAll?.(".page");
     if (!nodes || typeof nodes.length !== "number") return [];
@@ -49647,7 +50251,7 @@ function pageNodes(root) {
 function paintedCanvas(root, page) {
   try {
     const want = String(page);
-    const nodes = pageNodes(root);
+    const nodes = pageNodes2(root);
     for (let i = 0; i < nodes.length; i += 1) {
       const node2 = nodes[i];
       const attr = node2?.getAttribute?.("data-page-number");
@@ -49662,7 +50266,7 @@ function paintedCanvas(root, page) {
 }
 function countPages(root) {
   try {
-    const nodes = pageNodes(root);
+    const nodes = pageNodes2(root);
     let max = 0;
     for (let i = 0; i < nodes.length; i += 1) {
       const n2 = positiveInt(nodes[i]?.getAttribute?.("data-page-number"));

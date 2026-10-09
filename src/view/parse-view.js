@@ -32,11 +32,14 @@ import { createAnydocHost } from "../host/anydoc.js";
 import { markdownToParse } from "../model/anydoc-to-parse.js";
 import {
   cloudConfirmMessage,
+  mistralConfirmMessage,
   parseCloud,
+  parseMistral,
   readCloudPrefs,
+  readMistralKey,
   resolveCloudTransport,
 } from "../host/cloud-parse.js";
-import { llamaparseToParse } from "../model/cloud-to-parse.js";
+import { llamaparseToParse, mistralToParse } from "../model/cloud-to-parse.js";
 import { ASYNC_CLIPBOARD_TYPES, copyViaEvent } from "./clipboard-io.js";
 
 export const PARSE_MIME = "application/x-plexus-parse";
@@ -94,13 +97,17 @@ export function defaultRangeChoice(pageCount) {
   return "current";
 }
 
-export function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
+function cloudLabel(provider) {
+  return provider === "mistral" ? "Mistral OCR" : "LlamaParse";
+}
+
+export function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
   if (phase !== "running" && engine === "anydoc") {
     if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
     return { text: "Alternative read" };
   }
   if (phase === "running") {
-    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : engine === "cloud" ? "LlamaParse" : "built-in";
+    const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : engine === "cloud" ? cloudLabel(provider) : "built-in";
     return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
   }
   if (helper === "not-running" || helper === "disabled") {
@@ -110,8 +117,8 @@ export function engineChip({ phase = "idle", engine = "builtin", ms = null, page
   if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
   if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
   if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
-  if (engine === "cloud" && ms != null) return { text: `LlamaParse · ${formatSeconds(ms)}` };
-  if (engine === "cloud") return { text: "LlamaParse" };
+  if (engine === "cloud" && ms != null) return { text: `${cloudLabel(provider)} · ${formatSeconds(ms)}` };
+  if (engine === "cloud") return { text: cloudLabel(provider) };
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
 }
@@ -387,6 +394,10 @@ export function createParseView({
   cloudBtn.type = "button";
   cloudBtn.textContent = "Read with LlamaParse";
   cloudBtn.setAttribute("data-tip", "parse.cloud");
+  const mistralBtn = el("button", "pxd-parse__mistral", enginePop);
+  mistralBtn.type = "button";
+  mistralBtn.textContent = "Read with Mistral OCR";
+  mistralBtn.setAttribute("data-tip", "parse.mistral");
   const altBtn = el("button", "pxd-parse__alt", enginePop);
   altBtn.type = "button";
   const altLabel = el("span", "pxd-parse__alt-label", altBtn);
@@ -529,6 +540,7 @@ export function createParseView({
   let abort = null;
   let jobId = "";
   let helperState = "";
+  let helperEngines;
   let phase = "idle";
   let dead = false;
   let progress = { page: 0, pageCount: 0, engine: "builtin" };
@@ -777,6 +789,7 @@ export function createParseView({
     const state = engineChip({
       phase,
       engine: progress.engine || parsed?.engine || "builtin",
+      provider: progress.provider || parsed?.options?.provider || "",
       ms: phase === "running" ? null : parsed?.stats?.ms,
       page: progress.page,
       pageCount: progress.pageCount,
@@ -1632,15 +1645,16 @@ export function createParseView({
     paintChip();
   }
 
-  function cloudToast(error) {
+  function cloudToast(error, provider) {
     if (error?.code === "cancelled" || error?.code === "confirm") return;
+    const name = provider === "mistral" ? "Mistral OCR" : "LlamaParse";
     const text = error?.status === 402
-      ? "LlamaParse is out of credits."
+      ? `${name} is out of credits.`
       : error?.status === 401
-        ? "LlamaParse rejected the key."
+        ? `${name} rejected the key.`
         : error?.code === "timeout"
-          ? "LlamaParse timed out."
-          : error?.message || "LlamaParse did not finish.";
+          ? `${name} timed out.`
+          : error?.message || `${name} did not finish.`;
     try { onToast?.(text); } catch { /* toast */ }
   }
 
@@ -1653,7 +1667,7 @@ export function createParseView({
     await refreshHelper();
     const endpoint = helper?.endpoint?.() || {};
     const transport = resolveCloudTransport({
-      helper: helperState === "ready" ? { state: "ready", url: endpoint.url, token: endpoint.token } : null,
+      helper: helperState === "ready" ? { state: "ready", url: endpoint.url, token: endpoint.token, engines: helperEngines } : null,
       relayUrl: prefs.relay,
     });
     if (transport.kind === "none") {
@@ -1676,7 +1690,7 @@ export function createParseView({
     const ctrl = new AbortController();
     abort = ctrl;
     phase = "running";
-    progress = { page: 0, pageCount: pages, engine: "cloud" };
+    progress = { page: 0, pageCount: pages, engine: "cloud", provider: "llamaparse" };
     paintChip();
     const started = now();
     try {
@@ -1693,7 +1707,7 @@ export function createParseView({
         confirmed: true,
         signal: ctrl.signal,
         onProgress: (info) => {
-          progress = { page: info?.page || progress.page, pageCount: pages || progress.pageCount, engine: "cloud" };
+          progress = { page: info?.page || progress.page, pageCount: pages || progress.pageCount, engine: "cloud", provider: "llamaparse" };
           paintChip();
           onProgress?.(progress);
         },
@@ -1704,7 +1718,54 @@ export function createParseView({
       await finishDoc(docResult, now() - started);
     } catch (error) {
       if (phase === "running") phase = "idle";
-      cloudToast(error);
+      cloudToast(error, "llamaparse");
+      paintChip();
+    }
+  }
+
+  async function parseMistralNow() {
+    const key = readMistralKey(storage);
+    if (!key) {
+      try { onToast?.("Add a Mistral OCR key in Engines. It stays on this device."); } catch { /* toast */ }
+      return;
+    }
+    let pages = Number(parsed?.pageCount) || 0;
+    let pdf = null;
+    if (!pages && typeof getPdf === "function") {
+      try { pdf = await getPdf(); } catch { pdf = null; }
+      pages = Number(pdf?.numPages) || 0;
+    }
+    const message = mistralConfirmMessage({ pages });
+    const ask = confirmCloud || doc.defaultView?.confirm?.bind?.(doc.defaultView);
+    let ok = false;
+    try { ok = ask?.(message) === true; } catch { ok = false; }
+    if (!ok) return;
+    const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
+    cancel();
+    const ctrl = new AbortController();
+    abort = ctrl;
+    phase = "running";
+    progress = { page: 0, pageCount: pages, engine: "cloud", provider: "mistral" };
+    paintChip();
+    const started = now();
+    try {
+      if (!pdf && typeof getPdf === "function") pdf = await getPdf();
+      const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+      if (!bytes) throw Object.assign(new Error("This PDF is not loaded yet."), { code: "no-pdf" });
+      const result = await parseMistral({
+        fetch: fetchFn,
+        bytes,
+        apiKey: key,
+        confirmed: true,
+        signal: ctrl.signal,
+      });
+      const sha = parsed?.sha256 || await sha256Hex(bytes);
+      const docResult = mistralToParse(result.provider, { sha256: sha });
+      if (ctrl.signal.aborted) return;
+      await finishDoc(docResult, now() - started);
+    } catch (error) {
+      if (phase === "running") phase = "idle";
+      cloudToast(error, "mistral");
       paintChip();
     }
   }
@@ -1921,6 +1982,10 @@ export function createParseView({
     closeMenus();
     void parseLlama();
   });
+  listen(mistralBtn, "click", () => {
+    closeMenus();
+    void parseMistralNow();
+  });
   listen(altBtn, "click", () => { closeMenus(); void readAlternative(); });
   listen(rangeBtn, "click", () => { toggleMenu(rangePop); });
   listen(filterBtn, "click", () => { toggleMenu(filterPop); });
@@ -2020,6 +2085,7 @@ export function createParseView({
     try {
       const health = await helper.health();
       helperState = health?.state || "not-running";
+      helperEngines = health?.engines;
     } catch {
       helperState = "not-running";
     }

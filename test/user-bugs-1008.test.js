@@ -315,7 +315,34 @@ test("a figure drag inserts the crop, and a short caption still gets a box", asy
     },
   });
   assert.equal(res.ok, true);
-  assert.match(markdowns[0], /!\[c5\]\(https:\/\/x\/f\.png\)/);
+  assert.match(markdowns[0], /!\[Figure \(p\. 6\)\]\(https:\/\/x\/f\.png\)/);
+  assert.equal(markdowns[0].includes("c5"), false);
+  const captioned = {
+    ...figureDoc,
+    order: ["f1", "c10"],
+    blocks: {
+      f1: { id: "f1", type: "figure", page: 6, caption: "c10", text: "c10", bbox: [0, 0, 40, 40] },
+      c10: { id: "c10", type: "caption", for: "f1", page: 6, text: "Osmotic flow rises. Later text stays off." },
+    },
+  };
+  const captionedMd = [];
+  const captionedRes = await handleParseDrop({
+    payload: { sha256: "sha", engine: "builtin", optsHash: "opt", kind: "figure", ids: ["f1"] },
+    store: {
+      async getParse() { return captioned; },
+      async getImage(key) { return key.endsWith("/f1") ? "data:image/png;base64,iVBORw0KGgo=" : ""; },
+    },
+    session: {
+      async insertParsedCard({ markdown }) {
+        captionedMd.push(markdown);
+        return { ok: true, uid: "figcard2" };
+      },
+    },
+    point: { x: 1, y: 2 },
+    upload: async () => "https://x/f.png",
+  });
+  assert.equal(captionedRes.ok, true);
+  assert.equal(captionedMd[0], "- ![Osmotic flow rises.](https://x/f.png)");
   // Live 2026-10-08: a square figure landed in a 280x160 card and its bottom half was cut off.
   assert.deepEqual(sizes[0], { w: 280, h: 280 });
   assert.deepEqual(figureCardSize({ bbox: [0, 0, 254, 127] }), { w: 280, h: 153 });

@@ -181,6 +181,47 @@ test("a code block body cannot break its fence, and placeholders stay empty", ()
   assert.equal(out.blockEstimate, 1);
 });
 
+test("a figure image uses the linked caption, not the caption block id", () => {
+  const doc = {
+    schema: SCHEMA,
+    order: ["f1", "c10"],
+    blocks: {
+      f1: { id: "f1", type: "figure", page: 6, caption: "c10", text: "c10", image: { url: "https://x/f.png" } },
+      c10: { id: "c10", type: "caption", for: "f1", page: 6, text: "Fig. 3. Osmotic flow rises. The rest stays off." },
+    },
+  };
+  const alone = toRoamMarkdown(doc, ["f1"]);
+  assert.equal(alone.markdown, "- ![Fig. 3. Osmotic flow rises.](https://x/f.png)");
+  assert.equal(alone.markdown.includes("c10"), false);
+  const both = toRoamMarkdown(doc, ["f1", "c10"]);
+  assert.equal(both.markdown, "- ![Fig. 3. Osmotic flow rises.](https://x/f.png)");
+  assert.equal(both.blockEstimate, 1);
+});
+
+test("a figure image alt is the first sentence, at most 80 characters, with no closing bracket", () => {
+  const long = `${"A".repeat(90)} keeps going. Tail.`;
+  const doc = {
+    schema: SCHEMA,
+    order: ["f1", "c1", "e1"],
+    blocks: {
+      f1: { id: "f1", type: "figure", page: 2, caption: "See a]b and [[Page]] today. Next line.", image: { url: "https://x/f.png" } },
+      c1: { id: "c1", type: "figure", page: 3, caption: "c9", text: "c9", image: { url: "https://x/g.png" } },
+      e1: { id: "e1", type: "formula", page: 2, image: { url: "https://x/e.png" } },
+      c9: { id: "c9", type: "caption", for: "c1", text: long },
+    },
+  };
+  const bracket = toRoamMarkdown(doc, ["f1"]);
+  assert.equal(bracket.markdown, "- ![See ab and `[[Page` today.](https://x/f.png)");
+  const bracketAlt = /!\[(.*)\]\(https:\/\/x\/f\.png\)/.exec(bracket.markdown)[1];
+  assert.equal(bracketAlt.includes("]"), false);
+  const capped = toRoamMarkdown(doc, ["c1"]);
+  const alt = /!\[(.*)\]\(https:\/\/x\/g\.png\)/.exec(capped.markdown)[1];
+  assert.equal(alt.length <= 80, true, alt);
+  assert.equal(alt, "A".repeat(80));
+  assert.equal(capped.markdown.includes("Tail"), false);
+  assert.equal(toRoamMarkdown(doc, ["e1"]).markdown, "- ![Formula (p. 2)](https://x/e.png)");
+});
+
 test("linkSafe false leaves page links alone", () => {
   const raw = toRoamMarkdown({
     schema: SCHEMA,

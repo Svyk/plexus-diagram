@@ -234,7 +234,9 @@ test("REG-4: install claims the ref button before the file returns, and unload r
     const crops = dom.document.querySelectorAll(".pxd-region-crop");
     assert.equal(crops.length, 2);
     for (const crop of crops) {
-      assert.equal(crop.querySelector(".pxd-region-crop__caption").textContent, "hamstring");
+      assert.equal(crop.querySelector(".pxd-region-crop__caption"), null);
+      assert.equal(crop.textContent.includes("hamstring"), false);
+      assert.ok(crop.querySelector(".pxd-region-crop__frame"));
     }
     const img = crops[0].querySelector(".pxd-region-crop__img");
     img.naturalWidth = 1600;
@@ -258,7 +260,7 @@ test("REG-4: install claims the ref button before the file returns, and unload r
   }
 });
 
-test("REG-4: a failed file shows the caption and image unavailable", async () => {
+test("REG-4: a failed file shows image unavailable and does not repeat the caption", async () => {
   const dom = createDomStub();
   const restore = dom.install();
   const button = dom.document.createElement("button");
@@ -279,7 +281,8 @@ test("REG-4: a failed file shows the caption and image unavailable", async () =>
     lifecycle = installed.lifecycle;
     await tick();
     const crop = dom.document.querySelector(".pxd-region-crop");
-    assert.equal(crop.querySelector(".pxd-region-crop__caption").textContent, "hamstring");
+    assert.equal(crop.querySelector(".pxd-region-crop__caption"), null);
+    assert.equal(crop.textContent.includes("hamstring"), false);
     assert.equal(crop.querySelector(".pxd-region-crop__missing").textContent, "image unavailable");
     assert.equal(button.style.display, "none");
     await lifecycle.dispose();

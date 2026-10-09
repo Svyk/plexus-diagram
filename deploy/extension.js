@@ -10084,17 +10084,17 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
       } else if (block.type === "table") {
         if (tokens) {
           const prep = prepareTable(block, pageNoteBlocks(doc, block), { format: fnFormat });
-          emitTable(prep.table, putUser, emitRaw, byId, foldedHere);
+          emitTable(prep.table, putUser, emitRaw, byId, foldedHere, doc);
           for (const note of prep.notes) emitNote(note);
-        } else emitTable(block, putUser, emitRaw, byId, foldedHere);
+        } else emitTable(block, putUser, emitRaw, byId, foldedHere, doc);
       } else if (block.type === "figure") {
-        emitFigure(block, putUser, byId);
+        emitFigure(block, putUser, emitRaw, byId, doc, linkSafe);
       } else if (block.type === "formula") {
         if (block.latex) {
           const number = block.number ? ` ${block.number}` : "";
           putUser(0, block.latex, "$$", `$$${number}`);
         } else {
-          emitFigure(block, putUser, byId);
+          emitFigure(block, putUser, emitRaw, byId, doc, linkSafe);
         }
       } else if (block.type === "caption") {
         putUser(0, block.text ?? "");
@@ -10121,26 +10121,70 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
     blockEstimate: drafted.lines.length
   };
 }
-function captionFor(block, byId) {
-  if (block.caption && typeof block.caption === "string" && !byId.has(block.caption)) return block.caption;
+function looksLikeBlockId(value) {
+  return /^[a-z]+\d+$/.test(value);
+}
+function captionFor(block, byId, doc) {
+  const id = typeof block?.caption === "string" ? block.caption : "";
+  if (id) {
+    const linked = doc?.blocks && doc.blocks[id] || byId.get(id);
+    if (linked && typeof linked === "object") return linked.text ?? "";
+    if (!looksLikeBlockId(id)) return id;
+  }
   for (const other of byId.values()) {
-    if (other.type === "caption" && other.for === block.id) return other.text ?? "";
+    if (other?.type === "caption" && other.for === block.id) return other.text ?? "";
+  }
+  const all = doc?.blocks;
+  if (all) {
+    for (const other of Object.values(all)) {
+      if (other?.type === "caption" && other.for === block.id) return other.text ?? "";
+    }
   }
   return "";
 }
-function emitFigure(block, putUser, byId) {
-  const caption = captionFor(block, byId) || block.text || "";
+function figureImageAlt(text3, block) {
+  const flat2 = flattenLine(text3);
+  let sentence = "";
+  if (flat2) {
+    let end = flat2.length;
+    for (let i = 0; i < flat2.length; i += 1) {
+      const ch = flat2[i];
+      if (ch !== "." && ch !== "!" && ch !== "?") continue;
+      let j = i + 1;
+      while (j < flat2.length && /[\]\)"'”’]/.test(flat2[j])) j += 1;
+      const next = flat2[j];
+      if (next != null && next !== " ") continue;
+      if (ch === ".") {
+        const token = /([A-Za-z0-9]+)$/.exec(flat2.slice(0, i));
+        const word = token ? token[1] : "";
+        if (word && (word.length <= 3 || /^\d+$/.test(word))) continue;
+      }
+      end = i + 1;
+      break;
+    }
+    sentence = flat2.slice(0, end).trim();
+    if (sentence.length > 80) sentence = sentence.slice(0, 80).trim();
+  }
+  if (sentence) return sentence;
+  const label = block?.type === "formula" ? "Formula" : "Figure";
+  const page = block?.page;
+  return page != null && page !== "" ? `${label} (p. ${page})` : label;
+}
+function emitFigure(block, putUser, emitRaw, byId, doc, linkSafe) {
   const url = block.image?.url || block.url || "";
   const kind = block.type === "formula" ? "formula" : "figure";
   const page = block.page != null ? `, p. ${block.page}` : "";
   if (url) {
-    putUser(0, caption, "![", `](${url})`);
+    let alt = prepareLine(figureImageAlt(captionFor(block, byId, doc), block), { linkSafe, leading: false }).replace(/\]/g, "");
+    if (!alt.trim()) alt = figureImageAlt("", block);
+    emitRaw(0, `![${alt}](${url})`);
     return;
   }
+  const caption = captionFor(block, byId, doc) || block.text || "";
   if (caption) putUser(0, caption, "", ` (${kind}${page})`);
   else putUser(0, `${block.type === "formula" ? "Formula" : "Figure"} (${kind}${page})`);
 }
-function emitTable(block, putUser, emitRaw, byId, folded) {
+function emitTable(block, putUser, emitRaw, byId, folded, doc) {
   emitRaw(0, "{{[[table]]}}");
   const rows = Number.isInteger(block.rows) ? block.rows : 0;
   const cols = Number.isInteger(block.cols) ? block.cols : 0;
@@ -10164,7 +10208,7 @@ function emitTable(block, putUser, emitRaw, byId, folded) {
       putUser(1 + c, text3);
     }
   }
-  const caption = captionFor(block, byId);
+  const caption = captionFor(block, byId, doc);
   if (caption) {
     if (typeof block.caption === "string" && byId.has(block.caption)) folded.add(block.caption);
     putUser(1, caption);
@@ -17747,15 +17791,12 @@ function mountRegionCrop({ doc = globalThis.document, button: button2, region, f
   span.style.setProperty("display", "inline-flex", "important");
   span.style.setProperty("max-width", "none", "important");
   span.style.setProperty("vertical-align", "top", "important");
-  const caption = doc.createElement("span");
-  caption.className = "pxd-region-crop__caption";
-  caption.textContent = region.caption || "";
   let key = "";
   const showMissing = () => {
     const miss = doc.createElement("span");
     miss.className = "pxd-region-crop__missing";
     miss.textContent = "image unavailable";
-    span.replaceChildren(caption, miss);
+    span.replaceChildren(miss);
   };
   if (!file) showMissing();
   else {
@@ -17768,10 +17809,10 @@ function mountRegionCrop({ doc = globalThis.document, button: button2, region, f
     frame.style.setProperty("box-sizing", "border-box", "important");
     const img = doc.createElement("img");
     img.className = "pxd-region-crop__img";
-    img.alt = region.caption || "";
+    img.alt = "";
     img.draggable = false;
     frame.append(img);
-    span.append(frame, caption);
+    span.append(frame);
     try {
       key = region.drawingUid || "";
       const cacheKey = key || `crop-${span.id || Math.random()}`;
@@ -18117,13 +18158,10 @@ function mountPdfPin({
   span.setAttribute("data-pin", region.uid || "");
   const frame = doc.createElement("span");
   frame.className = "pxd-pdf-pin__frame";
-  const quote = doc.createElement("span");
-  quote.className = "pxd-pdf-pin__quote";
-  quote.textContent = region.caption || "";
   const page = doc.createElement("span");
   page.className = "pxd-pdf-pin__page";
   page.textContent = `p. ${region.pg}`;
-  span.append(frame, quote, page);
+  span.append(frame, page);
   if (button2.nextSibling) parent.insertBefore(span, button2.nextSibling);
   else parent.append(span);
   let loads = 0;

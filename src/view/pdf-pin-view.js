@@ -172,13 +172,11 @@ export function mountPdfPin({
   span.setAttribute("data-pin", region.uid || "");
   const frame = doc.createElement("span");
   frame.className = "pxd-pdf-pin__frame";
-  const quote = doc.createElement("span");
-  quote.className = "pxd-pdf-pin__quote";
-  quote.textContent = region.caption || "";
   const page = doc.createElement("span");
   page.className = "pxd-pdf-pin__page";
   page.textContent = `p. ${region.pg}`;
-  span.append(frame, quote, page);
+  // The quote stays as the block's own text after the macro. The chip is the crop and the page.
+  span.append(frame, page);
   if (button.nextSibling) parent.insertBefore(span, button.nextSibling);
   else parent.append(span);
   let loads = 0;

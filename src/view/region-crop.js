@@ -209,16 +209,14 @@ export function mountRegionCrop({ doc = globalThis.document, button, region, fil
   span.style.setProperty("display", "inline-flex", "important");
   span.style.setProperty("max-width", "none", "important");
   span.style.setProperty("vertical-align", "top", "important");
-  const caption = doc.createElement("span");
-  caption.className = "pxd-region-crop__caption";
-  caption.textContent = region.caption || "";
 
   let key = "";
   const showMissing = () => {
     const miss = doc.createElement("span");
     miss.className = "pxd-region-crop__missing";
     miss.textContent = "image unavailable";
-    span.replaceChildren(caption, miss);
+    // The caption stays as the block's own text. The chip is only the crop, or this miss.
+    span.replaceChildren(miss);
   };
 
   if (!file) showMissing();
@@ -232,10 +230,10 @@ export function mountRegionCrop({ doc = globalThis.document, button, region, fil
     frame.style.setProperty("box-sizing", "border-box", "important");
     const img = doc.createElement("img");
     img.className = "pxd-region-crop__img";
-    img.alt = region.caption || "";
+    img.alt = "";
     img.draggable = false;
     frame.append(img);
-    span.append(frame, caption);
+    span.append(frame);
     try {
       key = region.drawingUid || "";
       const cacheKey = key || `crop-${span.id || Math.random()}`;

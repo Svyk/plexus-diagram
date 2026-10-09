@@ -24,6 +24,17 @@ use crate::server::{router, App, HELPER_NAME};
 
 const DEFAULT_PORT: u16 = 48766;
 
+/// Apple Vision is the only OCR engine in this binary. Other systems get the Python helper.
+pub fn unsupported_platform_message(os: &str) -> Option<&'static str> {
+    if os == "macos" {
+        None
+    } else {
+        Some(
+            "plexus-parse-helper-rs reads scans with Apple Vision and only runs on macOS. On this system install the Python helper: uv tool install \"git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper\" && plexus-parse-helper serve",
+        )
+    }
+}
+
 fn main() {
     let code = match run(std::env::args().skip(1).collect()) {
         Ok(code) => code,
@@ -36,6 +47,9 @@ fn main() {
 }
 
 fn run(args: Vec<String>) -> Result<i32, String> {
+    if let Some(message) = unsupported_platform_message(std::env::consts::OS) {
+        return Err(message.to_string());
+    }
     let cmd = args.first().map(String::as_str).unwrap_or("help");
     match cmd {
         "serve" => serve(&args[1..]),
@@ -192,6 +206,22 @@ fn flag_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 
 fn flag_path(args: &[String], name: &str) -> Option<PathBuf> {
     flag_value(args, name).map(PathBuf::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unsupported_platform_message;
+
+    #[test]
+    fn vision_helper_refuses_non_apple_platforms() {
+        assert!(unsupported_platform_message("macos").is_none());
+        for os in ["linux", "windows", "freebsd"] {
+            let message = unsupported_platform_message(os).unwrap();
+            assert!(message.contains("Apple Vision"), "{os}: {message}");
+            assert!(message.contains("only runs on macOS"), "{os}: {message}");
+            assert!(message.contains("Python helper"), "{os}: {message}");
+        }
+    }
 }
 
 fn flags(args: &[String], name: &str) -> Vec<String> {

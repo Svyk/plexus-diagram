@@ -1,23 +1,25 @@
 # plexus-parse-helper-rs
 
-Spike: the local parse helper's OCR path in Rust. It speaks the same HTTP contract as `tools/parse-helper` for `/v1/health`, `/v1/pair`, and `/v1/ocr` (Apple Vision, pdfium, the same 300 dpi tiling). It does not run Docling or TableFormer. `/v1/jobs` returns 501.
+The default local parse helper on macOS. It speaks the same HTTP contract as `tools/parse-helper` for `/v1/health`, `/v1/pair`, and `/v1/ocr` (Apple Vision, pdfium, the same 300 dpi tiling). It does not run Docling or TableFormer. `/v1/jobs` returns 501. The Python helper stays available as the Docling add-on (`install.sh --docling`).
+
+On any system that is not macOS the binary exits immediately and names the Python install. Apple Vision is the only OCR engine here.
 
 Not part of the npm bundle. `target/` and the downloaded `libpdfium` dylib are gitignored.
 
 ## Build
 
-From `tools/parse-helper-rs`, on macOS arm64:
+From `tools/parse-helper-rs`, on macOS:
 
 ```sh
 ./fetch-pdfium.sh
 cargo build --release
 ```
 
-`fetch-pdfium.sh` downloads bblanchon/pdfium-binaries chromium/8086 `pdfium-mac-arm64.tgz` and extracts `vendor/libpdfium.dylib` (about 7.0 MB, BSD). The release binary is about 5.1 MB. Together that is the install: about 12 MB, plus nothing else. The Python helper's uv tool on this machine is 1.1 GB.
+`./fetch-pdfium.sh arm64` or `./fetch-pdfium.sh x64` picks the library. With no argument it follows `uname -m`. It downloads bblanchon/pdfium-binaries chromium/8086 (`pdfium-mac-arm64.tgz` or `pdfium-mac-x64.tgz`) and extracts `vendor/libpdfium.dylib` (about 7.0 MB, BSD). The release binary is about 5.1 MB. Together that is the install: about 12 MB, plus nothing else. The Python helper's uv tool on this machine is 1.1 GB.
 
 ## Run
 
-Default port is **48766**, so it can sit next to the Python helper on 48765. It binds `127.0.0.1` only.
+Default port is **48766**, so a development copy can sit next to a helper already on 48765. The installer runs it on **48765**. It binds `127.0.0.1` only.
 
 ```sh
 ./target/release/plexus-parse-helper-rs serve --port 48766
@@ -89,6 +91,27 @@ Vision dominates the page time. The Rust port is not faster. The Python figure i
 
 Docling's Heron layout model is on disk as `model.safetensors` (164 MB, Apache-2.0, `RTDetrV2ForObjectDetection`). There is no ONNX file in that snapshot, and the `ort` crate loads ONNX, not safetensors. TableFormer accurate (203 MB) and fast (139 MB) are safetensors inside `docling-models` (CDLA-Permissive-2.0). No ONNX export was produced, and no layout model was added to this crate: a layout box is not a cell, and the document API above, which does return cells, lost to assembly on these pages.
 
+## Release
+
+Tag `helper-rs-v*` (for example `helper-rs-v0.1.0`). That tag, and a manual run of `.github/workflows/helper-rs.yml`, builds `plexus-parse-helper-rs` on `macos-14` (arm64) and `macos-15-intel` (x86_64). Each job runs `fetch-pdfium.sh` for its architecture, `cargo build --release --locked`, ad-hoc `codesign`s the binary and `libpdfium.dylib`, and packs them as:
+
+- `plexus-parse-helper-rs-macos-arm64.tar.gz`
+- `plexus-parse-helper-rs-macos-x86_64.tar.gz`
+
+The release job writes `SHA256SUMS` (sha256sum, two spaces, the file name) and uploads the three files to that GitHub release. A manual run uploads only when its `tag` input is an existing `helper-rs-v*` tag (`gh release create --verify-tag` does not create a tag).
+
+Install on a Mac, without touching a helper already on 48765:
+
+```sh
+PLEXUS_HELPER_PREFIX=/tmp/plexus-parse-helper \
+PLEXUS_HELPER_PORT=48767 \
+PLEXUS_LAUNCH_AGENTS_DIR=/tmp/plexus-parse-helper-agents \
+PLEXUS_HELPER_LOG=/tmp/plexus-parse-helper.log \
+sh tools/parse-helper/install.sh
+```
+
+The script downloads the archive for `uname -m` from `github.com/Svyk/plexus-diagram` releases, checks `SHA256SUMS`, copies the binary and `libpdfium.dylib` into the prefix `bin` directory, writes LaunchAgent `com.plexus.parse-helper` with `--port` and `--pdfium`, and opens pairing. curl does not set Gatekeeper quarantine. A browser download needs `xattr -d com.apple.quarantine` on the binary (the installer clears the attribute when it is present).
+
 ## Recommendation
 
-Keep the Python helper as the one the extension launches. This port matches its OCR quality and its seconds per page, and it is much smaller, but a second Vision process does not make OCR faster and `/v1/jobs` still has to be Python until TableFormer is actually replaced.
+This is the helper the extension launches for scans on macOS. It matches the Python helper's OCR quality and its seconds per page, in about 12 MB instead of 1.1 GB. `/v1/jobs` stays on the Python add-on until TableFormer is actually replaced. A second Vision process does not make OCR faster.

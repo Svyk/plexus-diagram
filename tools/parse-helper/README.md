@@ -25,10 +25,10 @@ Paste this in Roam → Settings → Plexus Diagram → Parse helper token
 ## Install and pair
 
 ```sh
-curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh
+curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh -s -- --docling
 ```
 
-`install.sh` installs `uv` when it is missing, runs `uv tool install --force "git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper"`, runs `install-agent`, waits for the helper to answer, opens the pairing window and prints "Back to Roam: click Pair.". The source is `tools/parse-helper/install.sh`; `npm run build` copies it to `deploy/helper/install.sh`.
+On a Mac the same script with no arguments installs the light Rust helper (`tools/parse-helper-rs`). `--docling`, and any install on another system, keeps this Python path: `uv` when it is missing, `uv tool install --force "git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper"`, `install-agent`, a wait until the helper answers, the pairing window, and "Back to Roam: click Pair.". The source is `tools/parse-helper/install.sh`; `npm run build` copies it to `deploy/helper/install.sh`.
 
 `plexus-parse-helper pair` opens a 90 s window (a `0600` file `pair-until` beside the token). While it is open, `GET /v1/pair` from an allowed `Origin` returns `{token, helper, version}` once and closes the window. Outside the window, without an `Origin`, or from any other `Origin`, the route is `404` (a disallowed `Origin` is `403`, as everywhere). The Roam **Pair** button calls it and stores the token, so nothing is copied by hand. Pasting the token in Settings still works.
 

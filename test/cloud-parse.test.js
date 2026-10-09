@@ -317,8 +317,10 @@ test("the cloud row asks for a key, then a transport, then shows ready", () => {
   assert.equal(missing.text, "Needs a LlamaParse key. Mistral OCR: no install, cheaper, weaker tables.");
   assert.equal(missing.button.id, "cloud-setup");
   assert.equal(missing.disabled, undefined);
-  const blocked = cloudRow({ key: "test-cloud-key", tier: "agentic", region: "us", relay: "" }, { state: "not-paired" });
-  assert.equal(blocked.text, "LlamaParse needs the helper or a relay. Mistral OCR: no install, cheaper, weaker tables.");
+  // With no helper and no relay of its own, LlamaParse goes through the hosted relay.
+  const hosted = cloudRow({ key: "test-cloud-key", tier: "agentic", region: "us", relay: "" }, { state: "not-paired" });
+  assert.equal(hosted.text, "LlamaParse · Agentic · US · hosted relay. Mistral OCR: no install, cheaper, weaker tables.");
+  assert.equal(llamaRoute({ key: "test-cloud-key", relay: "" }, { state: "not-paired" }, ""), "");
   const viaHelper = cloudRow({ key: "test-cloud-key", tier: "agentic", region: "us" }, { state: "ready" });
   assert.equal(viaHelper.text, "LlamaParse · Agentic · US · helper. Mistral OCR: no install, cheaper, weaker tables.");
   assert.equal(viaHelper.dot, "ok");

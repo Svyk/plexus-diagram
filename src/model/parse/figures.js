@@ -4,6 +4,9 @@
 
 import { round } from "./lines.js";
 import { CAPTION_RE } from "./headings.js";
+import { EQ_NUMBER_RE } from "./formulas.js";
+import { FURNITURE_BAND } from "./furniture.js";
+import { detectColumns } from "./xycut.js";
 
 const IMAGE_MIN = 12;
 const H_GAP = 56;
@@ -40,6 +43,9 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
     prims.push({ ...clipped, kind: "rule", n: 1 });
   }
   const lines = wordLines(words);
+  // Column lines break at a gutter. The label lines above stay joined so a legend
+  // on the same baseline as a short note is still one line.
+  const gutters = detectColumns(columnLines(words), { pageW });
   const textChars = pageTextChars == null ? words.reduce((n, w) => n + (w.text || "").length, 0) : pageTextChars;
   const clusters = clusterBoxes(prims, 6);
   const figures = [];
@@ -57,9 +63,9 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
       pageImage: cl.items.some((p) => p.pageImage),
     });
   }
-  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW);
+  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters);
   unionPanels(figures, lines, bodySize, pageW, pageH);
-  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW);
+  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters);
   const kept = [];
   for (const fig of figures) {
     const box = clipBox(fig, pageW, pageH);
@@ -200,6 +206,117 @@ function wordLines(words) {
   return lines;
 }
 
+// Lines for column detection. A gap wider than a word space is a new line, so a
+// two-column baseline does not become one line that hides the gutter.
+function columnLines(words) {
+  const sorted = [...words].filter((w) => w && w.text).sort((a, b) => (a.base ?? a.y1 ?? 0) - (b.base ?? b.y1 ?? 0) || a.x0 - b.x0);
+  const lines = [];
+  for (const w of sorted) {
+    const y = w.base ?? w.y1 ?? 0;
+    const size = w.size || 10;
+    const y0 = w.y0 ?? y - size;
+    const y1 = w.y1 ?? y;
+    const last = lines[lines.length - 1];
+    const gap = last ? w.x0 - last.x1 : 0;
+    const split = last && (Math.abs(last.base - y) > 0.45 * Math.max(last.size, size) || gap > Math.max(8, 1.25 * size) || last.x0 - w.x1 > 4);
+    if (last && !split) {
+      last.words.push(w);
+      last.x0 = Math.min(last.x0, w.x0);
+      last.x1 = Math.max(last.x1, w.x1);
+      last.y0 = Math.min(last.y0, y0);
+      last.y1 = Math.max(last.y1, y1);
+    } else {
+      lines.push({ base: y, size, words: [w], x0: w.x0, x1: w.x1, y0, y1 });
+    }
+  }
+  for (const l of lines) {
+    l.text = l.words.map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
+    l.chars = l.text.replace(/\s+/g, "").length;
+  }
+  return lines;
+}
+
+function wordBox(w) {
+  const y1 = w.y1 ?? w.base ?? 0;
+  const y0 = w.y0 ?? y1 - (w.size || 10);
+  return { x0: w.x0, y0, x1: w.x1, y1 };
+}
+
+function outsideDist(cx, cy, box) {
+  const dx = cx < box.x0 ? box.x0 - cx : cx > box.x1 ? cx - box.x1 : 0;
+  const dy = cy < box.y0 ? box.y0 - cy : cy > box.y1 ? cy - box.y1 : 0;
+  return Math.hypot(dx, dy);
+}
+
+// The art's column, or every column the art already crosses. Growth stays inside it.
+function columnSpan(art, gutters, pageW) {
+  if (!gutters.length) return { x0: 0, x1: pageW };
+  const cols = [];
+  let x = 0;
+  for (const g of gutters) {
+    cols.push({ x0: x, x1: g.x0 });
+    x = g.x1;
+  }
+  cols.push({ x0: x, x1: pageW });
+  const hit = cols.filter((c) => art.x1 > c.x0 + 2 && art.x0 < c.x1 - 2);
+  if (hit.length) return { x0: hit[0].x0, x1: hit[hit.length - 1].x1 };
+  const cx = (art.x0 + art.x1) / 2;
+  let best = cols[0];
+  let bestD = Infinity;
+  for (const c of cols) {
+    const d = cx < c.x0 ? c.x0 - cx : cx > c.x1 ? cx - c.x1 : 0;
+    if (d < bestD) { best = c; bestD = d; }
+  }
+  return best;
+}
+
+function wordInColumn(w, col, gutters) {
+  if (!gutters.length) return true;
+  const box = wordBox(w);
+  const cx = (box.x0 + box.x1) / 2;
+  if (cx < col.x0 - 1 || cx > col.x1 + 1) return false;
+  for (const g of gutters) {
+    if (col.x0 < g.x0 - 1 && col.x1 > g.x1 + 1) continue;
+    if (col.x1 <= g.x0 + 1 && box.x1 > g.x1 + 1) return false;
+    if (col.x0 >= g.x1 - 1 && box.x0 < g.x0 - 1) return false;
+  }
+  return true;
+}
+
+function inMarginBand(y, pageH) {
+  const h = pageH || 792;
+  return y <= h * FURNITURE_BAND || y >= h * (1 - FURNITURE_BAND);
+}
+
+// A paragraph line. A row of small axis labels is not one.
+function lineIsFlow(line, bodySize) {
+  return wordCount(line.text) >= 8 && (line.size || bodySize) > 0.85 * bodySize;
+}
+
+function isEqNumber(text) {
+  return EQ_NUMBER_RE.test(String(text || "").trim());
+}
+
+// Grow only over text that sits in the art's column, outside the running-header
+// band, and closer to the art than to a body line. Equation numbers never join.
+function allowGrowWord(w, line, ctx) {
+  if (isEqNumber(w.text) || isEqNumber(line.text)) return false;
+  if (!wordInColumn(w, ctx.col, ctx.gutters)) return false;
+  const box = wordBox(w);
+  const cx = (box.x0 + box.x1) / 2;
+  const cy = (box.y0 + box.y1) / 2;
+  const da = outsideDist(cx, cy, ctx.art);
+  if (da > 0 && inMarginBand(cy, ctx.pageH)) return false;
+  if (da > 0 && lineIsFlow(line, ctx.bodySize)) return false;
+  if (da > 0) {
+    for (const other of ctx.bodyLines) {
+      if (other === line) continue;
+      if (outsideDist(cx, cy, other) <= da) return false;
+    }
+  }
+  return true;
+}
+
 function lineIsCaption(text) {
   const t = String(text || "").trim();
   if (CAPTION_RE.test(t) || /^fig(?:ure)?\.?\s*$/i.test(t)) return true;
@@ -225,8 +342,17 @@ function takeWord(fig, w, art, maxOut, used) {
   return true;
 }
 
-function growLabels(fig, lines, used, bodySize, pageW) {
+function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters) {
   const art = { x0: fig.x0, y0: fig.y0, x1: fig.x1, y1: fig.y1 };
+  const ctx = {
+    art,
+    col: columnSpan(art, gutters, pageW),
+    gutters,
+    bodyLines: lines.filter((line) => lineIsFlow(line, bodySize)),
+    pageH,
+    bodySize,
+  };
+  const allow = (w, line) => allowGrowWord(w, line, ctx);
   const maxOut = 64;
   let changed = true;
   let guard = 0;
@@ -239,6 +365,7 @@ function growLabels(fig, lines, used, bodySize, pageW) {
         for (const w of line.words) {
           if (used.has(w) || !(w.size <= 0.85 * bodySize)) continue;
           if (/^fig(?:ure)?\.?$/i.test(String(w.text || "").trim())) continue;
+          if (!allow(w, line)) continue;
           const cx = (w.x0 + w.x1) / 2;
           const cy = (w.y0 + w.y1) / 2;
           if (cx < art.x0 - 12 || cx > art.x1 + 12 || cy < art.y0 - 12 || cy > art.y1 + 12) continue;
@@ -248,7 +375,7 @@ function growLabels(fig, lines, used, bodySize, pageW) {
       // Panel letters share a baseline across the row. Take each letter that sits on this panel.
       if (line.words.every((w) => /^[a-d]$/i.test(String(w.text || "").trim()))) {
         for (const w of line.words) {
-          if (used.has(w)) continue;
+          if (used.has(w) || !allow(w, line)) continue;
           const gapX = w.x1 < fig.x0 ? fig.x0 - w.x1 : w.x0 > fig.x1 ? w.x0 - fig.x1 : 0;
           const gapY = w.y1 < fig.y0 ? fig.y0 - w.y1 : w.y0 > fig.y1 ? w.y0 - fig.y1 : 0;
           if (gapX <= 18 && gapY <= 18 && takeWord(fig, w, art, maxOut, used)) changed = true;
@@ -271,7 +398,7 @@ function growLabels(fig, lines, used, bodySize, pageW) {
       if (!inside && !beside && !edge && !(panel && gapX <= 18 && gapY <= 18)) continue;
       if (beside && (nWords > 6 || line.size > bodySize * 1.05)) continue;
       // A label under two panels is one line. A beside legend is not: it does not overlap the art.
-      let span = line.words.filter((w) => !used.has(w));
+      let span = line.words.filter((w) => !used.has(w) && allow(w, line));
       if (gapX === 0 && (line.x1 > art.x1 + 18 || line.x0 < art.x0 - 18)) {
         span = span.filter((w) => {
           const wx = (w.x0 + w.x1) / 2;

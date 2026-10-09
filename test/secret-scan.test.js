@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -24,6 +24,11 @@ test("secret scanner finds credentials and permits documented synthetic false po
     assert.equal(allowed.findings.length, 0);
     assert.equal(allowed.allowances.length, 1);
     assert.equal(allowed.allowances[0].reason, "synthetic test fixture only");
+
+    await mkdir(resolve(root, "target"));
+    await writeFile(resolve(root, "target", "dep.txt"), `${synthetic}\n`, "utf8");
+    const skipped = await scanSecrets(root);
+    assert.equal(skipped.findings.length, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

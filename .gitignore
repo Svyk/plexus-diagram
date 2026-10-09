@@ -12,3 +12,8 @@ coverage/
 .live/
 .grok/
 reviews/
+
+# Rust helper spike: build output and the downloaded libpdfium (not part of the npm bundle).
+tools/parse-helper-rs/target/
+tools/parse-helper-rs/vendor/*.dylib
+tools/parse-helper-rs/vendor/*.tgz

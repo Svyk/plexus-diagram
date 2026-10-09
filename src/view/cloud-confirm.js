@@ -137,6 +137,11 @@ export function openCloudConfirm({
   estimate.setAttribute("data-cloud-estimate", "");
   sheet.append(estimate);
 
+  const pace = doc.createElement("p");
+  pace.className = "pxd-cloud-confirm__note";
+  pace.setAttribute("data-cloud-pace", "");
+  sheet.append(pace);
+
   if (initial.cache) {
     const cache = doc.createElement("p");
     cache.className = "pxd-cloud-confirm__note";
@@ -175,6 +180,9 @@ export function openCloudConfirm({
   function paint() {
     const model = modelNow();
     estimate.textContent = model.estimate;
+    pace.textContent = model.pace || "";
+    if (model.pace) pace.removeAttribute?.("hidden");
+    else pace.setAttribute?.("hidden", "");
     const mark = (button, on) => {
       button.classList.toggle("pxd-cloud-confirm__choice--on", on);
       button.setAttribute("aria-checked", on ? "true" : "false");

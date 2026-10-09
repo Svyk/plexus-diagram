@@ -1,6 +1,7 @@
 // LlamaParse v2 JSON (expand=items,markdown,usage,images_content_metadata,
-// optional grounded_pages) → pxd-parse/1. A layout image becomes a figure.
-// Synthetic fixtures are fine. No DOM, no fetch, no graph writes.
+// optional grounded_pages) → pxd-parse/1. A layout image is a figure only when
+// its filename kind is a picture (chart, image, figure, picture, diagram).
+// A table image never is. Synthetic fixtures are fine. No DOM, no fetch, no graph writes.
 
 import { parseMarkdownBlocks } from "./anydoc-to-parse.js";
 import { SCHEMA, iou, validateParse } from "./parse-schema.js";
@@ -207,7 +208,14 @@ function groundedTables(pageNumber, pages) {
   return (page?.items || []).filter((item) => item?.type === "table");
 }
 
-const FIG_RE = /^(?:fig(?:ure)?)\.?\s*\d+\b/i;
+const CAPTION_LINE = /^(?:fig(?:ure)?|table)\.?\s*\d+\b/i;
+const FIGURE_KINDS = new Set(["chart", "image", "figure", "picture", "diagram"]);
+
+// `page_N_<kind>_K` in a layout filename. "" when the name has no kind.
+export function layoutImageKind(filename) {
+  const match = /page_\d+_([a-z]+)_\d+/i.exec(String(filename || ""));
+  return match ? match[1].toLowerCase() : "";
+}
 
 function boxLabel(item) {
   const list = Array.isArray(item?.bbox) ? item.bbox : (item?.bbox && typeof item.bbox === "object" ? [item.bbox] : []);
@@ -219,11 +227,12 @@ function boxLabel(item) {
 
 function isCaptionItem(item) {
   if (!item || typeof item !== "object") return false;
-  if (item.type === "header" || item.type === "footer") return false;
+  // A heading stays a heading even when LlamaParse labels its box "caption".
+  if (item.type === "header" || item.type === "footer" || item.type === "heading") return false;
   const label = boxLabel(item);
   if (label === "header" || label === "footer") return false;
   if (label === "caption") return true;
-  return FIG_RE.test(plainItem(item));
+  return CAPTION_LINE.test(plainItem(item));
 }
 
 function layoutImagesOf(provider) {
@@ -307,14 +316,71 @@ function emptyBox(box) {
 }
 
 function chartTable(item, block, images) {
-  if (!images.length) return false;
-  if (!emptyBox(block.bbox)) {
-    for (const image of images) {
+  const charts = (images || []).filter((image) => layoutImageKind(image?.filename) !== "table");
+  if (charts.length && !emptyBox(block.bbox)) {
+    for (const image of charts) {
       const other = llamaBox(image.bbox)?.bbox;
       if (other && iou(block.bbox, other) >= 0.15) return true;
     }
   }
   return Boolean(item?.parse_concerns) && /chart/i.test(JSON.stringify(item.parse_concerns));
+}
+
+// A layout box covers a table when most of the box sits on it, or the two boxes match.
+function layoutOnTable(box, tableBox) {
+  if (!box || !tableBox || emptyBox(box) || emptyBox(tableBox)) return false;
+  if (iou(box, tableBox) >= 0.5) return true;
+  const area = (box[2] - box[0]) * (box[3] - box[1]);
+  if (!(area > 0)) return false;
+  const ix = Math.max(0, Math.min(box[2], tableBox[2]) - Math.max(box[0], tableBox[0]));
+  const iy = Math.max(0, Math.min(box[3], tableBox[3]) - Math.max(box[1], tableBox[1]));
+  return (ix * iy) / area >= 0.5;
+}
+
+// Table layout images are not figures. A table with no box takes the image box.
+function assignTableBoxes(tables, images) {
+  const spare = [];
+  for (const image of images) {
+    const box = llamaBox(image.bbox)?.bbox;
+    if (!box) continue;
+    const hit = tables.find(({ block }) => !emptyBox(block.bbox) && iou(block.bbox, box) >= 0.15);
+    if (hit) continue;
+    spare.push(image);
+  }
+  const need = tables.filter(({ block }) => emptyBox(block.bbox));
+  spare.sort((a, b) => (llamaBox(a.bbox)?.bbox[1] || 0) - (llamaBox(b.bbox)?.bbox[1] || 0));
+  for (let i = 0; i < spare.length && i < need.length; i += 1) {
+    const box = llamaBox(spare[i].bbox);
+    if (box) need[i].block.bbox = box.bbox;
+  }
+}
+
+// The heading immediately above a table, when it sits on that table, is also the table's title.
+function applyHeadingTitles(blocks, order, pageNumber) {
+  const ids = order.filter((id) => blocks[id]?.page === pageNumber);
+  for (let i = 0; i < ids.length; i += 1) {
+    const table = blocks[ids[i]];
+    if (table?.type !== "table" || table.title) continue;
+    let heading = null;
+    for (let j = i - 1; j >= 0; j -= 1) {
+      const prev = blocks[ids[j]];
+      if (!prev) continue;
+      if (prev.type === "heading") { heading = prev; break; }
+      if (prev.type === "caption") continue;
+      break;
+    }
+    const text = String(heading?.text || "").replace(/\s+/g, " ").trim();
+    if (!text || !headingSitsOn(heading?.bbox, table.bbox)) continue;
+    table.title = text;
+  }
+}
+
+function headingSitsOn(heading, table) {
+  if (!heading || !table || emptyBox(heading) || emptyBox(table)) return false;
+  const gap = table[1] - heading[3];
+  if (gap < -8 || gap > 40) return false;
+  const overlap = Math.min(heading[2], table[2]) - Math.max(heading[0], table[0]);
+  return overlap > 8;
 }
 
 export function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region = "us" } = {}) {
@@ -474,8 +540,18 @@ export function llamaparseToParse(provider, { sha256 = null, tier = "agentic", r
       parsed: ok,
     });
     if (!ok || !Array.isArray(page.items)) continue;
-    pageLayout = layoutImages.filter((image) => layoutImagePage(image.filename, pageNums) === pageNumber);
-    const assigned = assignCaptions(pageLayout, page.items.filter(isCaptionItem));
+    const onPage = layoutImages.filter((image) => layoutImagePage(image.filename, pageNums) === pageNumber);
+    const tableImages = [];
+    const figureImages = [];
+    const unknownImages = [];
+    for (const image of onPage) {
+      const kind = layoutImageKind(image.filename);
+      if (kind === "table") tableImages.push(image);
+      else if (FIGURE_KINDS.has(kind)) figureImages.push(image);
+      else unknownImages.push(image);
+    }
+    pageLayout = figureImages;
+    const assigned = assignCaptions(figureImages, page.items.filter(isCaptionItem));
     const paired = new Set(assigned.values());
     const emitLayout = (image, captionItem) => {
       const box = llamaBox(image?.bbox);
@@ -487,7 +563,7 @@ export function llamaparseToParse(provider, { sha256 = null, tier = "agentic", r
         page: pageNumber,
         bbox: box.bbox,
         caption: null,
-        image: { kind: "crop", source: "llamaparse" },
+        image: { kind: "crop", source: "llamaparse", layout: true },
         confidence: box.confidence == null ? 0.9 : box.confidence,
         engine: ENGINE,
       });
@@ -517,14 +593,23 @@ export function llamaparseToParse(provider, { sha256 = null, tier = "agentic", r
       const block = walk(item, pageNumber);
       if (block?.type === "table") tables.push({ block, item });
     }
-    for (const image of pageLayout) {
+    for (const image of figureImages) {
       if (!paired.has(image)) emitLayout(image, null);
     }
+    assignTableBoxes(tables, tableImages);
+    const unknownFigures = unknownImages.filter((image) => {
+      const box = llamaBox(image.bbox)?.bbox;
+      if (!box) return false;
+      return !tables.some(({ block }) => layoutOnTable(box, block.bbox));
+    });
+    for (const image of unknownFigures) emitLayout(image, null);
     const groundedRows = groundedTables(pageNumber, grounded);
     tables.forEach(({ block }, index) => applyGrounding(block, groundedRows[index]?.grounding));
+    const chartImages = figureImages.concat(unknownFigures);
     for (const { block, item } of tables) {
-      if (chartTable(item, block, pageLayout)) block.fromChart = true;
+      if (chartTable(item, block, chartImages)) block.fromChart = true;
     }
+    applyHeadingTitles(blocks, order, pageNumber);
   }
 
   const doc = {

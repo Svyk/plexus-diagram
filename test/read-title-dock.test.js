@@ -84,8 +84,10 @@ test("the pane and the board wire the parsed title to the header and the card", 
   const pane = read("../src/view/read-pane.js");
   assert.match(pane, /shownTitle = \(\) => \{/);
   assert.match(pane, /onTitle: noteParsedTitle/);
+  assert.match(pane, /nextParsedTitle\(parsedTitle, value\)/);
   const board = read("../src/view/board-view.js");
   assert.match(board, /onParsedTitle: \(url, title, lines\)/);
+  assert.match(board, /restorableTitle\(titleStore, key, BUILTIN_OPTIONS\)/);
   assert.match(board, /const known = \(banner \? "" : meta\) \|\| parsedKnown;/);
 });
 

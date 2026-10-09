@@ -18,7 +18,7 @@ import { resplitColumns } from "../model/parse/resplit.js";
 import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { toCSV, toMarkdown } from "../model/parse-to-text.js";
 import { imageKey, restorableByUrl } from "../host/parse-store.js";
-import { parsedDocTitle, parsedTitleLines } from "../model/pdf.js";
+import { parsedDocTitle, parsedTitleLines, withKeptTitle } from "../model/pdf.js";
 import { helperCanDocling, helperCanOcr } from "../host/parse-helper-client.js";
 import { loadPageData, mergeOcrPageRecords, readScan, rereadCells, rereadLines } from "./parse-engine.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
@@ -42,6 +42,7 @@ import {
 } from "../host/cloud-parse.js";
 import { openCloudConfirm } from "./cloud-confirm.js";
 import { llamaparseToParse, mistralToParse } from "../model/cloud-to-parse.js";
+import { localParseForCloud, mergeCloudFigures } from "../model/cloud-merge.js";
 import { ASYNC_CLIPBOARD_TYPES, copyViaEvent } from "./clipboard-io.js";
 
 export const PARSE_MIME = "application/x-plexus-parse";
@@ -1566,6 +1567,9 @@ export function createParseView({
       });
       if (ctrl.signal.aborted) return;
       if (result?.records) records = result.records;
+      if (result?.doc) {
+        result.doc.ocr = { ...(result.doc.ocr || {}), source: engine === ocrSource ? "browser" : "helper" };
+      }
       const read = (result?.records || []).filter((rec) => rec?.ocr && (result.pages || pages).includes(rec.n));
       if (read.length) { try { onOcrPages?.(read, parsed.sha256); } catch { /* host */ } }
       await finishDoc(result.doc, (parsed.stats?.ms || 0) + (now() - t0));
@@ -1614,6 +1618,7 @@ export function createParseView({
       }
       if (dead || parsed !== base) return false;
       records = merged.records;
+      merged.doc.ocr = { ...(merged.doc.ocr || {}), source: "browser" };
       if (typeof readCells === "function") {
         try {
           const rereads = await rereadCells({ doc: merged.doc, ocr: readCells, signal, onPhase });
@@ -1758,7 +1763,10 @@ export function createParseView({
         },
       });
       const sha = parsed?.sha256 || await sha256Hex(bytes);
-      const docResult = llamaparseToParse(result.provider, { sha256: sha, tier: answer.tier || prefs.tier, region: prefs.region });
+      const local = await localParseForCloud(store, sha, parsed?.engine === "cloud" ? null : parsed);
+      let docResult = llamaparseToParse(result.provider, { sha256: sha, tier: answer.tier || prefs.tier, region: prefs.region });
+      docResult = mergeCloudFigures(docResult, local);
+      docResult = withKeptTitle(docResult, local);
       const credits = cloudUsageCredits(result.provider);
       if (credits != null) docResult.stats = { ...(docResult.stats || {}), credits };
       if (ctrl.signal.aborted) return;
@@ -1810,7 +1818,8 @@ export function createParseView({
         signal: ctrl.signal,
       });
       const sha = parsed?.sha256 || await sha256Hex(bytes);
-      const docResult = mistralToParse(result.provider, { sha256: sha });
+      const local = await localParseForCloud(store, sha, parsed?.engine === "cloud" ? null : parsed);
+      const docResult = withKeptTitle(mistralToParse(result.provider, { sha256: sha }), local);
       if (ctrl.signal.aborted) return;
       await finishDoc(docResult, now() - started);
     } catch (error) {

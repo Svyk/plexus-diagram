@@ -5,7 +5,7 @@
 import { CARD_MIME, PARSE_MIME } from "../model/drop.js";
 import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
-import { cleanPdfTitle, coverModel, parsedDocTitle, parsedTitleLines, pdfFileTitle, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
+import { cleanPdfTitle, coverModel, nextParsedTitle, pdfFileTitle, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
 import { fracStyle } from "../model/pdf-pin.js";
 import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { fitDecision, fitWidthStep, fitsWidth, pageIndicator, pageTotalText, pdfDocumentFromFiber, pillActions, viewerFromFiber } from "../model/read-pane-model.js";
@@ -14,7 +14,7 @@ import { applyMotionClasses } from "./motion.js";
 import { BOTH_MIN_PX, BUILTIN_OPTIONS, createParseView, readParsedUrls } from "./parse-view.js";
 import { createParseStore } from "../host/parse-store.js";
 import { createHelperClient, helperCanOcr } from "../host/parse-helper-client.js";
-import { imageKey, restorableByUrl } from "../host/parse-store.js";
+import { imageKey, restorableTitle } from "../host/parse-store.js";
 import { placePopover } from "../relchips.js";
 import { chromeObstacles } from "./avoid.js";
 import { createDragGhost, dispatchDrop } from "./drag-ghost.js";
@@ -1985,7 +1985,7 @@ export function createReadPane({
     for (const opt of options) if (opt.value === current.cardUid) opt.textContent = text;
   };
   const noteParsedTitle = (value, lines) => {
-    const text = cleanPdfTitle(value);
+    const text = nextParsedTitle(parsedTitle, value);
     if (text === parsedTitle) return;
     parsedTitle = text;
     if (openFlag) paintTitle();
@@ -2373,10 +2373,10 @@ export function createReadPane({
       if (hit?.sha256 && openFlag && url === pdfUrl()) void loadOcrLayer(hit.sha256);
       if (hit?.sha256 && openFlag) revealModes();
       if (hit?.sha256 && openFlag && !realTitle(current.title) && !parsedTitle) {
-        const found = await restorableByUrl(ensureStore(), url, { plainOptions: BUILTIN_OPTIONS });
-        const title = found ? parsedDocTitle(found) : "";
+        const found = await restorableTitle(ensureStore(), url, BUILTIN_OPTIONS);
+        const title = found.title;
         // The restore may have named the document while this lookup ran; never blank it.
-        if (title && !parsedTitle && openFlag && url === pdfUrl()) noteParsedTitle(title, parsedTitleLines(found));
+        if (title && !parsedTitle && openFlag && url === pdfUrl()) noteParsedTitle(title, found.lines);
       }
     } catch { /* store */ }
   }

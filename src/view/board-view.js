@@ -19,7 +19,7 @@ import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, noteActionPlan } from "../model/highlight.js";
-import { cleanPdfTitle, coverModel, embedSplit, parsedDocTitle, parsedTitleLines, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
+import { cleanPdfTitle, coverModel, embedSplit, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
 import { gestureSource, pasteCardPlan, pinOpenPlan, readWithSource } from "../model/pdf-pin.js";
 import { parseRegion } from "../model/regions.js";
 import { isMetaBanner } from "../model/title-cap.js";
@@ -102,7 +102,7 @@ import { createPanel, parseDropPayload } from "./panel.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
-import { createParseStore, restorableByUrl } from "../host/parse-store.js";
+import { createParseStore, restorableTitle } from "../host/parse-store.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { scheduleTitleLexiconWarm } from "./title-lexicon-warm.js";
 import { createParseActions, freeSpotBeside } from "./parse-actions.js";
@@ -1850,11 +1850,11 @@ function buildBoardView(onFail, {
     if (storedQueued.has(key)) return;
     storedQueued.add(key);
     if (!titleStore) titleStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
-    restorableByUrl(titleStore, key, { plainOptions: BUILTIN_OPTIONS }).then((found) => {
-      const title = found ? parsedDocTitle(found) : "";
+    restorableTitle(titleStore, key, BUILTIN_OPTIONS).then((found) => {
+      const title = found?.title || "";
       if (disposed || !title || parsedTitles.get(key)) return;
       parsedTitles.set(key, title);
-      parsedEvidence.set(key, { pageTitle: title, lines: parsedTitleLines(found) });
+      parsedEvidence.set(key, { pageTitle: title, lines: found.lines || [] });
       try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
       try { readPane?.refreshCards?.(); } catch { /* switcher */ }
     }).catch(() => {});

@@ -112,6 +112,23 @@ export function parsedDocTitle(doc) {
   return capTitle(parsedDocTitleRaw(doc));
 }
 
+// A later parse with no usable title must not wipe the title already on screen.
+export function nextParsedTitle(current, incoming) {
+  const next = cleanPdfTitle(incoming);
+  if (next) return next;
+  return cleanPdfTitle(current) || "";
+}
+
+// A cloud document with no usable title keeps the local parse's title on the document,
+// so the reader, the card, and the switcher do not fall back to "PDF".
+export function withKeptTitle(cloudDoc, localDoc) {
+  if (!cloudDoc || cloudDoc.engine !== "cloud") return cloudDoc;
+  if (parsedDocTitle(cloudDoc)) return cloudDoc;
+  const title = parsedDocTitle(localDoc);
+  if (!title) return cloudDoc;
+  return { ...cloudDoc, title };
+}
+
 function parsedDocTitleRaw(doc) {
   if (!doc || typeof doc !== "object") return "";
   const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};

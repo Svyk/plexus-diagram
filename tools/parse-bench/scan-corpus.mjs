@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Scanned technical PDFs, 1900–1950. One command, one scoreboard.
-//   node tools/parse-bench/scan-corpus.mjs [--engines builtin,web-ocr,helper] [--only name] [--json out.json]
+//   node tools/parse-bench/scan-corpus.mjs [--engines builtin,web-ocr,helper] [--only name] [--json out.json] [--dump dir]
+// --dump writes <dir>/<engine>/<page id>.pxd.json when that file is not already there.
 //
 // builtin  — parseFile/assemble on the PDF as shipped (embedded text layer, or a scan block).
 // web-ocr  — that parse plus readScan --source ppocr-web (what a user without the helper gets).
@@ -38,7 +39,13 @@ function takeArgs(argv) {
     engines: (flag("--engines") || "builtin,web-ocr,helper").split(",").map((s) => s.trim()).filter(Boolean),
     only: flag("--only"),
     json: flag("--json"),
+    dump: flag("--dump"),
   };
+}
+
+// One pxd document per page: <dir>/<engine>/<page id>.pxd.json. Existing files are left in place.
+export function dumpTarget(dir, engine, id) {
+  return join(dir, engine, `${id}.pxd.json`);
 }
 
 function sha256File(path) {
@@ -200,6 +207,13 @@ async function main(argv) {
       scored.seconds = Math.round(result.ms) / 1000;
       rows.push(scored);
       evidence(root, page.id, engine, pdf, page.page, truth, scored, result.doc);
+      if (args.dump) {
+        const dumped = dumpTarget(args.dump, engine, page.id);
+        if (!existsSync(dumped)) {
+          mkdirSync(dirname(dumped), { recursive: true });
+          writeFileSync(dumped, JSON.stringify(result.doc));
+        }
+      }
       const cell = scored.tables ? fmt(scored.tables.f1) : "—";
       const fig = scored.figures ? fmt(scored.figures.f1) : "—";
       process.stderr.write(`  cell ${cell}  fig ${fig}  ${scored.seconds}s\n`);

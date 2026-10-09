@@ -1,7 +1,7 @@
 #!/bin/sh
 # Plexus Diagram local helper.
 #
-# macOS, default: the light Rust helper (Apple Vision OCR, about 12 MB).
+# macOS, default: the light Rust helper (Apple Vision OCR, about 15 MB).
 #   curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh
 # Docling add-on (Python, about 1.1 GB), and every install on another system:
 #   curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh -s -- --docling
@@ -96,7 +96,6 @@ install_docling() {
   say "Waiting for the helper..."
   wait_for_health
   "$HELPER" pair
-  say "Back to Roam: click Pair."
 }
 
 arch_name() {
@@ -269,7 +268,6 @@ install_rust() {
   say "Waiting for the helper..."
   wait_for_health
   "${BIN_DIR}/plexus-parse-helper-rs" pair --token-file "${PREFIX}/token" --pair-file "${PREFIX}/pair-until"
-  say "Back to Roam: click Pair."
 }
 
 uninstall_helper() {

@@ -1,6 +1,6 @@
 # plexus-parse-helper-rs
 
-The default local parse helper on macOS. It speaks the same HTTP contract as `tools/parse-helper` for `/v1/health`, `/v1/pair`, and `/v1/ocr` (Apple Vision, pdfium, the same 300 dpi tiling). It does not run Docling or TableFormer. `/v1/jobs` returns 501. The Python helper stays available as the Docling add-on (`install.sh --docling`).
+The default local parse helper on macOS. It speaks the same HTTP contract as `tools/parse-helper` for `/v1/health`, `/v1/pair`, `/v1/ocr` (Apple Vision, pdfium, the same 300 dpi tiling), and `/v1/cloud/parse` (LlamaParse). It does not run Docling or TableFormer. `/v1/jobs` returns 501. The Python helper stays available as the Docling add-on (`install.sh --docling`).
 
 On any system that is not macOS the binary exits immediately and names the Python install. Apple Vision is the only OCR engine here.
 
@@ -15,7 +15,7 @@ From `tools/parse-helper-rs`, on macOS:
 cargo build --release
 ```
 
-`./fetch-pdfium.sh arm64` or `./fetch-pdfium.sh x64` picks the library. With no argument it follows `uname -m`. It downloads bblanchon/pdfium-binaries chromium/8086 (`pdfium-mac-arm64.tgz` or `pdfium-mac-x64.tgz`) and extracts `vendor/libpdfium.dylib` (about 7.0 MB, BSD). The release binary is about 5.1 MB. Together that is the install: about 12 MB, plus nothing else. The Python helper's uv tool on this machine is 1.1 GB.
+`./fetch-pdfium.sh arm64` or `./fetch-pdfium.sh x64` picks the library. With no argument it follows `uname -m`. It downloads bblanchon/pdfium-binaries chromium/8086 (`pdfium-mac-arm64.tgz` or `pdfium-mac-x64.tgz`) and extracts `vendor/libpdfium.dylib` (about 7.0 MB, BSD). The release binary is 8.2 MB (it was 5.1 MB before the LlamaParse client; reqwest and rustls added 3.1 MB). Together with libpdfium that is about 15 MB, plus nothing else. The Python helper's uv tool on this machine is 1.1 GB.
 
 ## Run
 
@@ -40,15 +40,30 @@ node tools/parse-bench/scan.mjs scan.pdf truth.json --helper-url http://127.0.0.
 
 - Helper name `plexus-parse-helper`, schema `pxd-parse/1`. Version is `0.1.0-rs`.
 - Unauthed `GET /v1/health` is 401 `{"helper":"plexus-parse-helper","auth":"required"}`.
-- Authed health: `engines` is `["ocr"]` only. `models.layout` and `models.tableformer` are `"missing"`, `models.ocr` is `"ready"`, `warm` is false.
-- Origin is checked before the body. Allowed origin defaults to `https://roamresearch.com`. CORS mirrors the Python helper, including `Access-Control-Allow-Private-Network: true`. OPTIONS is 204.
+- Authed health: `engines` is `["ocr", "cloud"]`. `models.layout` and `models.tableformer` are `"missing"`, `models.ocr` is `"ready"`, `warm` is false.
+- Origin is checked before the body. Allowed origin defaults to `https://roamresearch.com`. CORS mirrors the Python helper, including `Access-Control-Allow-Private-Network: true`. OPTIONS is 204. `Access-Control-Allow-Headers` is `Authorization, Content-Type, X-Pxd-Options, X-Pxd-Cloud-Key`.
 - `GET /v1/pair` returns the token once while the window is open and the Origin is allowed. Otherwise 404.
 - `POST /v1/ocr` takes the PDF (200 MB cap) and `X-Pxd-Options` `{pages, cells}`. Page response is `pxd-ocr/1`: `pageCount`, `pages` (word `items`, `rules`, `deskew`, `dpi`), `sha256`, `elapsedMs`, `cached`. Cell response is `{cells:[{page,bbox,text,conf,glyph}]}` and is never cached.
 - Options hashes match the Python helper (see `src/hashutil.rs` tests).
 
+## Cloud (`POST /v1/cloud/parse`)
+
+The extension cannot call LlamaParse (CORS). It posts the PDF here. The helper bearer is `Authorization`. The LlamaParse key is `X-Pxd-Cloud-Key` for that request only: it is not stored, logged, or copied into an event. `X-Pxd-Options` is `{region, tier, version}`. `region` is `us` (default) or `eu`. `tier` is `fast`, `cost_effective`, `agentic` (default), or `agentic_plus`. `version` is accepted and ignored; the upstream body always sends `"version":"latest"`, same as the Python helper.
+
+The response is `text/event-stream`:
+
+- `started` `{"job":"c_" + sha256(pdf)[:8]}`. A second job for the same bytes while the first is still running uses `c_<8hex>_<n>`.
+- `progress` `{"status":"uploading"}`, then `{"status":"starting"}`, then `{"status","job"}` where `job` is the upstream LlamaParse id.
+- `result` the provider JSON, plus `grounded_pages` when the cell sidecar is fetched.
+- `error` `{"code","message","status"}`. Provider 401 is `unauthorized`, 402 is `credits`, the 240 s deadline is `504` / `timeout`. The HTTP status of the POST stays 200; the error is an event. A missing helper bearer is HTTP 401 `{"error":"unauthorized"}` and is not an event.
+
+`DELETE /v1/cloud/parse/{job_id}` is 204 or 404. It accepts the helper id from `started` and the upstream id from `progress`, because the extension's SSE reader replaces the helper id with that upstream id before it cancels. The helper then POSTs `{base}/api/v2/parse/{upstream}/cancel`.
+
+Upstream is `https://api.cloud.llamaindex.ai` or `https://api.cloud.eu.llamaindex.ai`: upload `POST /api/v1/beta/files` (multipart, purpose `parse`), start `POST /api/v2/parse` with `output_options.granular_bboxes = ["cell"]`, poll with backoff 1 s, 2 s, 4 s, 8 s, then `GET` the same job with `expand=items&expand=markdown&expand=usage`. The sidecar URL must be `https://` (8 MB cap, no Authorization header). The HTTP client is reqwest on rustls, with no OpenSSL and no system proxy.
+
 ## What it does not do
 
-- `/v1/jobs`, `/v1/jobs/{id}`, and the SSE stream return 501 `{"error":"layout model is not wired; this helper serves /v1/ocr only","code":"no-docling"}`.
+- `/v1/jobs`, `/v1/jobs/{id}`, and `/v1/jobs/{id}/events` return 501 `{"error":"layout model is not wired; this helper serves /v1/ocr only","code":"no-docling"}`. Cloud parse has its own SSE stream on `/v1/cloud/parse`.
 - `POST /v1/models/download` returns the same 501.
 - No TableFormer, no formula model, no Docling layout.
 
@@ -67,7 +82,7 @@ Uncached `/v1/ocr` or the equivalent in-process `ocr_pdf`. Cell F1 is `scan.mjs`
 
 | | Python helper | Rust helper |
 | --- | --- | --- |
-| Install | 1.1 GB (uv tool) | 12.1 MB (5.1 MB binary + 7.0 MB libpdfium) |
+| Install | 1.1 GB (uv tool) | 15.2 MB (8.2 MB binary + 7.0 MB libpdfium) |
 | Cold start to first `/v1/health` 401 | 0.42 s, 74 MB RSS | 0.43 s, 27 MB RSS |
 | CDC image-only, 1 page | 11.19 s, 651 words, 34 rules | 10.87 s, 651 words, 34 rules, 212 MB RSS after |
 | report-scan, 3 pages | 7.92 s (2.64 s/page) | 7.73 s (2.58 s/page), 280 MB RSS after |
@@ -115,4 +130,4 @@ sh tools/parse-helper/install.sh
 
 ## Recommendation
 
-This is the helper the extension launches for scans on macOS. It matches the Python helper's OCR quality and its seconds per page, in about 12 MB instead of 1.1 GB. `/v1/jobs` stays on the Python add-on until TableFormer is actually replaced. A second Vision process does not make OCR faster.
+This is the helper the extension launches for scans on macOS. It matches the Python helper's OCR quality and its seconds per page, in about 15 MB instead of 1.1 GB. `/v1/jobs` stays on the Python add-on until TableFormer is actually replaced. A second Vision process does not make OCR faster.

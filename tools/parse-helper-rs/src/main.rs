@@ -5,6 +5,7 @@
 
 mod auth;
 mod cache;
+mod cloud;
 mod hashutil;
 mod ocr;
 mod pair;
@@ -12,8 +13,7 @@ mod pdf;
 mod server;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicU32;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use serde_json::Value;
 
@@ -69,7 +69,9 @@ fn run(args: Vec<String>) -> Result<i32, String> {
             let rest = &args[1..];
             let token_path = flag_path(rest, "--token-file").unwrap_or_else(default_token_file);
             let pair_path = flag_path(rest, "--pair-file").unwrap_or_else(default_pair_file);
-            let seconds = flag_value(rest, "--seconds").and_then(|s| s.parse().ok()).unwrap_or(PAIR_SECONDS);
+            let seconds = flag_value(rest, "--seconds")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(PAIR_SECONDS);
             let _ = load_or_create_token(&token_path).map_err(|err| err.to_string())?;
             open_window(&pair_path, seconds).map_err(|err| err.to_string())?;
             println!("Pairing is open for {seconds} s.");
@@ -80,7 +82,11 @@ fn run(args: Vec<String>) -> Result<i32, String> {
             eprintln!(
                 "usage:\n  plexus-parse-helper-rs serve [--port {DEFAULT_PORT}] [--allow-origin URL] [--token-file PATH] [--pdfium PATH]\n  plexus-parse-helper-rs ocr FILE.pdf [--pages 1,3,5-9] [--cells CELLS.json] [--json OUT]\n  plexus-parse-helper-rs token\n  plexus-parse-helper-rs pair [--seconds 90]"
             );
-            Ok(if cmd == "help" || cmd == "--help" { 0 } else { 2 })
+            Ok(if cmd == "help" || cmd == "--help" {
+                0
+            } else {
+                2
+            })
         }
     }
 }
@@ -90,7 +96,10 @@ fn serve(args: &[String]) -> Result<i32, String> {
     if host != "127.0.0.1" && host != "localhost" {
         return Err("refusing to bind anything but 127.0.0.1".into());
     }
-    let port: u16 = flag_value(args, "--port").unwrap_or("48766").parse().map_err(|_| "bad --port".to_string())?;
+    let port: u16 = flag_value(args, "--port")
+        .unwrap_or("48766")
+        .parse()
+        .map_err(|_| "bad --port".to_string())?;
     let token_path = flag_path(args, "--token-file").unwrap_or_else(default_token_file);
     let (token, created) = load_or_create_token(&token_path).map_err(|err| err.to_string())?;
     if created {
@@ -109,20 +118,22 @@ fn serve(args: &[String]) -> Result<i32, String> {
         ));
     }
     let cache_root = flag_path(args, "--cache-dir").unwrap_or_else(default_cache_root);
-    let state = Arc::new(App {
+    let state = Arc::new(App::new(
         token,
         allow,
-        pair_path: flag_path(args, "--pair-file").unwrap_or_else(default_pair_file),
-        cache: ParseCache::new(cache_root, 5 * 1024 * 1024 * 1024),
+        flag_path(args, "--pair-file").unwrap_or_else(default_pair_file),
+        ParseCache::new(cache_root, 5 * 1024 * 1024 * 1024),
         pdfium_path,
-        ocr_lock: Mutex::new(()),
-        busy: AtomicU32::new(0),
-        pair_lock: Mutex::new(()),
-    });
+    )?);
     let app = router(state);
-    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|err| err.to_string())?;
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| err.to_string())?;
     runtime.block_on(async move {
-        let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await.map_err(|err| err.to_string())?;
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+            .await
+            .map_err(|err| err.to_string())?;
         eprintln!("{HELPER_NAME} {port} (ocr only, no docling)");
         axum::serve(listener, app)
             .with_graceful_shutdown(async {
@@ -135,7 +146,10 @@ fn serve(args: &[String]) -> Result<i32, String> {
 }
 
 fn ocr_cmd(args: &[String]) -> Result<i32, String> {
-    let pdf = args.iter().find(|a| !a.starts_with("--")).ok_or_else(|| "usage: ocr FILE.pdf".to_string())?;
+    let pdf = args
+        .iter()
+        .find(|a| !a.starts_with("--"))
+        .ok_or_else(|| "usage: ocr FILE.pdf".to_string())?;
     let pages = flag_value(args, "--pages").map(parse_pages).transpose()?;
     let cells_path = flag_value(args, "--cells");
     let json_path = flag_value(args, "--json");
@@ -146,7 +160,9 @@ fn ocr_cmd(args: &[String]) -> Result<i32, String> {
         let cells: Vec<Value> = serde_json::from_str(&text).map_err(|err| err.to_string())?;
         ocr::run_cells(&pdfium, Path::new(pdf), &cells)?
     } else {
-        ocr::run_pdf(&pdfium, Path::new(pdf), pages.as_ref(), |n, of| eprintln!("page {n}/{of}"))?
+        ocr::run_pdf(&pdfium, Path::new(pdf), pages.as_ref(), |n, of| {
+            eprintln!("page {n}/{of}")
+        })?
     };
     if let Some(path) = json_path {
         if let Some(parent) = Path::new(path).parent() {
@@ -154,13 +170,25 @@ fn ocr_cmd(args: &[String]) -> Result<i32, String> {
                 std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
             }
         }
-        std::fs::write(path, serde_json::to_string(&value).map_err(|err| err.to_string())?).map_err(|err| err.to_string())?;
+        std::fs::write(
+            path,
+            serde_json::to_string(&value).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| err.to_string())?;
     }
     if cells_path.is_some() {
-        let n = value.get("cells").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+        let n = value
+            .get("cells")
+            .and_then(|v| v.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
         println!("{{\"cells\":{n}}}");
     } else {
-        let pages = value.get("pages").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        let pages = value
+            .get("pages")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         let summary: Vec<Value> = pages
             .iter()
             .map(|page| {
@@ -172,7 +200,10 @@ fn ocr_cmd(args: &[String]) -> Result<i32, String> {
                 })
             })
             .collect();
-        println!("{}", serde_json::to_string(&serde_json::json!({"pages": summary})).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string(&serde_json::json!({"pages": summary})).unwrap()
+        );
     }
     Ok(0)
 }
@@ -197,11 +228,17 @@ fn parse_pages(text: &str) -> Result<Value, String> {
 }
 
 fn default_pdfium() -> PathBuf {
-    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/vendor/libpdfium.dylib"))
+    PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/vendor/libpdfium.dylib"
+    ))
 }
 
 fn flag_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
-    args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(String::as_str)
+    args.iter()
+        .position(|a| a == name)
+        .and_then(|i| args.get(i + 1))
+        .map(String::as_str)
 }
 
 fn flag_path(args: &[String], name: &str) -> Option<PathBuf> {

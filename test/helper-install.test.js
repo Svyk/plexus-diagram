@@ -10,6 +10,10 @@ import test from "node:test";
 
 const script = new URL("../tools/parse-helper/install.sh", import.meta.url);
 
+function countPair(text) {
+  return text.split("Back to Roam: click Pair.").length - 1;
+}
+
 function machineArch() {
   switch (process.arch) {
     case "arm64": return "arm64";
@@ -106,7 +110,7 @@ test("a verified release installs the rust helper, a second run is safe, and uni
     const env = { PLEXUS_HELPER_PORT: "48767", PLEXUS_HELPER_URL: "http://127.0.0.1:48767" };
     const first = run(dir, [], { env });
     assert.equal(first.status, 0, first.stderr + first.stdout);
-    assert.match(first.stdout, /Back to Roam: click Pair\./);
+    assert.equal(countPair(first.stdout), 1);
     const installed = path.join(dir.prefix, "bin", "plexus-parse-helper-rs");
     const dylib = path.join(dir.prefix, "bin", "libpdfium.dylib");
     assert.equal(await readFile(installed, "utf8").then((text) => text.includes("pair")), true);
@@ -197,7 +201,7 @@ test("--docling and a non-macOS install keep the Python path", async () => {
     };
     const docling = run(dir, ["--docling"], { path: `${dir.bin}:/usr/bin:/bin`, env });
     assert.equal(docling.status, 0, docling.stderr + docling.stdout);
-    assert.match(docling.stdout, /Back to Roam: click Pair\./);
+    assert.equal(countPair(docling.stdout), 1);
     const log = await readFile(dir.log, "utf8");
     assert.match(log, /uv tool install --force/);
     await assert.rejects(access(path.join(dir.prefix, "bin", "plexus-parse-helper-rs")));

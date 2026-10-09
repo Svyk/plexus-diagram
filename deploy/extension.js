@@ -3833,6 +3833,34 @@ function letterSpaced(str2) {
 function sameBaseline(a, b) {
   return Math.abs(a.base - b.base) <= 0.3 * Math.max(a.size, b.size);
 }
+function mergeSmallCapRows(rows) {
+  const dead = /* @__PURE__ */ new Set();
+  const changes = (a, b) => {
+    const mark = [];
+    for (const p of a.pieces) if (!p.space) mark.push({ x: p.x0, k: 0 });
+    for (const p of b.pieces) if (!p.space) mark.push({ x: p.x0, k: 1 });
+    mark.sort((p, q) => p.x - q.x);
+    let n2 = 0;
+    for (let i = 1; i < mark.length; i++) if (mark[i].k !== mark[i - 1].k) n2++;
+    return n2;
+  };
+  const initialTouches = (big, small) => big.pieces.some((p) => !p.space && /^[A-Za-z]{1,3}$/.test(p.text || "") && small.pieces.some((q) => !q.space && (Math.abs(q.x0 - p.x1) <= 2.5 || Math.abs(q.x1 - p.x0) <= 2.5)));
+  for (const a of rows) {
+    if (dead.has(a)) continue;
+    for (const b of rows) {
+      if (a === b || dead.has(b) || dead.has(a)) continue;
+      const big = a.size >= b.size ? a : b;
+      const small = big === a ? b : a;
+      const ratio = small.size / big.size;
+      if (ratio < 0.7 || ratio > 0.86) continue;
+      if (Math.abs(small.base - big.base) > 1) continue;
+      if (changes(big, small) < 2 && !initialTouches(big, small)) continue;
+      big.pieces.push(...small.pieces);
+      dead.add(small);
+    }
+  }
+  return rows.filter((r) => !dead.has(r));
+}
 function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGap = 2 } = {}) {
   const pieces2 = [];
   for (const item of items || []) for (const p of piecesOf(item, transform, fonts)) pieces2.push(p);
@@ -3856,6 +3884,9 @@ function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGa
     row4.pieces.push(p);
     if (!p.space && p.size > row4.size) row4.size = p.size;
   }
+  const sized = mergeSmallCapRows(rows);
+  rows.length = 0;
+  rows.push(...sized);
   const main = [];
   const small = [];
   for (const r of rows) {
@@ -3875,6 +3906,7 @@ function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGa
       if (h === r || h.size * SUP_MAX_RATIO < r.size || r.chars > 24) continue;
       const shift = (h.base - r.base) / h.size;
       if (Math.abs(shift) > 0.7) continue;
+      if (Math.abs(shift) >= 0.45 && r.size > 0.65 * h.size) continue;
       const near = r.x0 >= h.x0 - h.size && r.x0 <= h.x1 + h.size;
       if (!near) continue;
       if (!host || Math.abs(h.base - r.base) < Math.abs(host.base - r.base)) host = h;
@@ -4452,8 +4484,29 @@ var init_rules = __esm({
 function isNumericText(text3) {
   return NUMERIC_RE.test(text3.trim()) && /\d/.test(text3);
 }
+function wordBox(w) {
+  if (w.boxY) return [w.x0, w.boxY[0], w.x1, w.boxY[1]];
+  if (w.y0 != null && w.y1 != null) return [w.x0, w.y0, w.x1, w.y1];
+  return null;
+}
+function withoutEchoDigits(words) {
+  return words.filter((w) => {
+    if (w.conf == null || w.conf > 0.3 || !/^\d$/.test(w.text)) return true;
+    const a = wordBox(w);
+    if (!a) return true;
+    const area = Math.max(0.01, (a[2] - a[0]) * (a[3] - a[1]));
+    return !words.some((o) => {
+      if (o === w || o.conf != null && o.conf <= w.conf) return false;
+      const b = wordBox(o);
+      if (!b) return false;
+      const ox = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+      const oy = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+      return ox > 0 && oy > 0 && ox * oy >= 0.25 * area;
+    });
+  });
+}
 function cellTextOf(words) {
-  const lines = relineWords(words.filter((w) => !LEADER_RE.test(w.text)));
+  const lines = relineWords(withoutEchoDigits(words).filter((w) => !LEADER_RE.test(w.text)));
   if (!lines.length) return "";
   let text3 = "";
   for (const line of lines) {
@@ -6461,7 +6514,75 @@ function detectColumns(lines, { pageW, minLines = 4 } = {}) {
     const g1 = right.x;
     if (g1 - g0 >= 6) gutters.push({ x0: g0, x1: g1 });
   }
+  return mergeGutters([...gutters, ...internalGutters(lines, pageW || 612, minLines)]);
+}
+function internalGutters(lines, pageW, minLines) {
+  const hits = [];
+  for (const l of lines) {
+    const words = l.words;
+    if (!words || words.length < 4 || l.chars != null && l.chars < 8) continue;
+    const size = l.size || 10;
+    const minGap = Math.max(12, 1.15 * size);
+    const maxGap = 3.2 * size;
+    const kept = [];
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      const prev = kept[kept.length - 1];
+      const next = words[i + 1];
+      const short = /^\d{1,3}$/.test(String(w.text || "").trim()) && w.x1 - w.x0 <= 8;
+      if (short && prev && next && next.x0 - prev.x1 >= minGap && next.x0 - prev.x1 <= maxGap && w.x0 - prev.x1 < 12 && next.x0 - w.x1 < 12) continue;
+      kept.push(w);
+    }
+    const cands = [];
+    for (let i = 1; i < kept.length; i++) {
+      const gap = kept[i].x0 - kept[i - 1].x1;
+      if (gap < minGap || gap > maxGap) continue;
+      const mid = (kept[i - 1].x1 + kept[i].x0) / 2;
+      if (mid < 0.28 * pageW || mid > 0.72 * pageW) continue;
+      const leftChars = kept.slice(0, i).reduce((n2, w) => n2 + String(w.text || "").length, 0);
+      const rightChars = kept.slice(i).reduce((n2, w) => n2 + String(w.text || "").length, 0);
+      if (leftChars < 8 || rightChars < 8) continue;
+      cands.push({ gap, mid, x0: kept[i - 1].x1, x1: kept[i].x0 });
+    }
+    if (!cands.length) continue;
+    cands.sort((a, b) => b.gap - a.gap);
+    if (cands.length > 1 && cands[1].gap >= 0.75 * cands[0].gap) continue;
+    hits.push(cands[0]);
+  }
+  hits.sort((a, b) => a.mid - b.mid);
+  const clusters = [];
+  for (const h of hits) {
+    const c = clusters.find((k) => Math.abs(k.mid - h.mid) <= 14);
+    if (c) {
+      c.hits.push(h);
+      c.mid = c.hits.reduce((s, x) => s + x.mid, 0) / c.hits.length;
+    } else clusters.push({ mid: h.mid, hits: [h] });
+  }
+  const gutters = [];
+  for (const c of clusters) {
+    if (c.hits.length < minLines) continue;
+    const x0 = median3(c.hits.map((h) => h.x0));
+    const x1 = median3(c.hits.map((h) => h.x1));
+    if (x1 - x0 >= 6) gutters.push({ x0, x1 });
+  }
   return gutters;
+}
+function median3(values) {
+  const s = [...values].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+function mergeGutters(list) {
+  const sorted = [...list].sort((a, b) => a.x0 - b.x0 || a.x1 - b.x1);
+  const out = [];
+  for (const g of sorted) {
+    const last = out[out.length - 1];
+    if (last && g.x0 <= last.x1 + 8) {
+      last.x0 = Math.min(last.x0, g.x0);
+      last.x1 = Math.max(last.x1, g.x1);
+    } else out.push({ x0: g.x0, x1: g.x1 });
+  }
+  return out;
 }
 function splitAtGutters(lines, gutters, makeLine2) {
   if (!gutters.length) return lines;
@@ -6475,12 +6596,28 @@ function splitAtGutters(lines, gutters, makeLine2) {
           next.push(part);
           continue;
         }
-        const left = part.words.filter((w) => (w.x0 + w.x1) / 2 < (g.x0 + g.x1) / 2);
-        const right = part.words.filter((w) => (w.x0 + w.x1) / 2 >= (g.x0 + g.x1) / 2);
-        const leftEnd = left.length ? Math.max(...left.map((w) => w.x1)) : -Infinity;
-        const rightStart = right.length ? Math.min(...right.map((w) => w.x0)) : Infinity;
-        if (left.length && right.length && rightStart - leftEnd >= 0.6 * (g.x1 - g.x0)) next.push(makeLine2(left), makeLine2(right));
-        else next.push(part);
+        const mid = (g.x0 + g.x1) / 2;
+        const inHole = (w) => {
+          const cx = (w.x0 + w.x1) / 2;
+          return cx > g.x0 && cx < g.x1 && /^\d{1,3}$/.test(String(w.text || "").trim()) && w.x1 - w.x0 <= 8;
+        };
+        const left = part.words.filter((w) => !inHole(w) && (w.x0 + w.x1) / 2 < mid);
+        const right = part.words.filter((w) => !inHole(w) && (w.x0 + w.x1) / 2 >= mid);
+        if (!left.length || !right.length) {
+          next.push(part);
+          continue;
+        }
+        const leftEnd = Math.max(...left.map((w) => w.x1));
+        const rightStart = Math.min(...right.map((w) => w.x0));
+        if (rightStart - leftEnd < 0.6 * (g.x1 - g.x0)) {
+          next.push(part);
+          continue;
+        }
+        const hole = part.words.filter(inHole);
+        for (const w of hole) ((w.x0 + w.x1) / 2 < mid ? left : right).push(w);
+        left.sort((a, b) => a.x0 - b.x0);
+        right.sort((a, b) => a.x0 - b.x0);
+        next.push(makeLine2(left), makeLine2(right));
       }
       parts = next;
     }
@@ -6604,6 +6741,12 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
     prims.push({ ...clipped, kind: "rule", n: 1 });
   }
   const lines = wordLines(words);
+  const labelWords = /* @__PURE__ */ new Set();
+  for (const line of lines) {
+    for (const i of labelStarts(line.words)) {
+      for (const w of line.words.slice(i, labelSpan(line.words, i))) labelWords.add(w);
+    }
+  }
   const gutters = detectColumns(columnLines(words), { pageW });
   const textChars = pageTextChars == null ? words.reduce((n2, w) => n2 + (w.text || "").length, 0) : pageTextChars;
   const clusters = clusterBoxes(prims, 6);
@@ -6625,9 +6768,9 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
       pageImage: cl.items.some((p) => p.pageImage)
     });
   }
-  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters);
+  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWords);
   unionPanels(figures, lines, bodySize, pageW, pageH);
-  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters);
+  for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWords);
   const kept = [];
   for (const fig of figures) {
     const box2 = clipBox(fig, pageW, pageH);
@@ -6648,19 +6791,23 @@ function rasterScanPage({ images, shapes, words, pageW, pageH }) {
   const segs = (shapes || []).reduce((n2, s) => n2 + (s.segs || 1), 0);
   return (words || []).length === 0 && imageCover(images, pageW, pageH) >= 0.65 && segs < 15;
 }
-function drawingSheetPage({ images, lines, tables, pageW, pageH, textChars }) {
+function drawingSheetPage({ images, lines, tables, shapes, pageW, pageH, textChars }) {
   const pageArea = pageW * pageH;
   const pageImage = (images || []).some((im) => (im.x1 - im.x0) * (im.y1 - im.y0) >= 0.75 * pageArea);
-  if (!pageImage || textChars < 12 || textChars >= 900) return false;
+  const vectorArt = (shapes || []).reduce((n2, s) => n2 + (s.segs || 1), 0) >= 8;
   const textLines2 = (lines || []).filter((l) => (l.text || "").trim());
-  if (textLines2.length >= 16) return false;
-  if (textLines2.filter((l) => wordCount2(l.text) >= 8).length >= 3) return false;
-  if (alignedLineCount(textLines2) >= 4) return false;
+  const bodyish = textLines2.filter((l) => wordCount2(l.text) >= 8).length;
   const dense = (tables || []).some((t) => {
     if (!t.cells || t.rows < 3 || t.cols < 2) return false;
     const filled = t.cells.filter((c) => c.text).length;
     return filled >= 0.5 * Math.max(1, t.cells.length);
   });
+  const marked = textLines2.some((l) => /sheet\s+\d+\s+of\s+\d+/i.test(l.text || "")) && figLabelCount(textLines2) >= 1;
+  if ((pageImage || vectorArt) && marked && textChars < 1200 && bodyish < 3 && !dense) return true;
+  if (!pageImage || textChars < 12 || textChars >= 900) return false;
+  if (textLines2.length >= 16) return false;
+  if (bodyish >= 3) return false;
+  if (alignedLineCount(textLines2) >= 4) return false;
   return !dense;
 }
 function demoteFalseCaptions(blocks, bodySize, figures = []) {
@@ -6784,7 +6931,7 @@ function columnLines(words) {
   }
   return lines;
 }
-function wordBox(w) {
+function wordBox2(w) {
   const y1 = w.y1 ?? w.base ?? 0;
   const y0 = w.y0 ?? y1 - (w.size || 10);
   return { x0: w.x0, y0, x1: w.x1, y1 };
@@ -6819,7 +6966,7 @@ function columnSpan(art, gutters, pageW) {
 }
 function wordInColumn(w, col, gutters) {
   if (!gutters.length) return true;
-  const box2 = wordBox(w);
+  const box2 = wordBox2(w);
   const cx = (box2.x0 + box2.x1) / 2;
   if (cx < col.x0 - 1 || cx > col.x1 + 1) return false;
   for (const g of gutters) {
@@ -6842,7 +6989,7 @@ function isEqNumber(text3) {
 function allowGrowWord(w, line, ctx) {
   if (isEqNumber(w.text) || isEqNumber(line.text)) return false;
   if (!wordInColumn(w, ctx.col, ctx.gutters)) return false;
-  const box2 = wordBox(w);
+  const box2 = wordBox2(w);
   const cx = (box2.x0 + box2.x1) / 2;
   const cy = (box2.y0 + box2.y1) / 2;
   const da = outsideDist(cx, cy, ctx.art);
@@ -6858,7 +7005,7 @@ function allowGrowWord(w, line, ctx) {
 }
 function lineIsCaption(text3) {
   const t = String(text3 || "").trim();
-  if (CAPTION_RE.test(t) || /^fig(?:ure)?\.?\s*$/i.test(t)) return true;
+  if (CAPTION_RE.test(t) || /^fig(?:ure)?\.?\s*$/i.test(t) || REVERSED_FIG_RE.test(t)) return true;
   return /^fig(?:ure)?\.?\s+(\d+[A-Za-z]?[:.]?|[^\p{L}\p{N}]{1,4})$/iu.test(t);
 }
 function lineIsBody(line) {
@@ -6879,7 +7026,7 @@ function takeWord(fig, w, art, maxOut, used) {
   fig.y1 = ny1;
   return true;
 }
-function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters) {
+function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWords = /* @__PURE__ */ new Set()) {
   const art = { x0: fig.x0, y0: fig.y0, x1: fig.x1, y1: fig.y1 };
   const ctx = {
     art,
@@ -6899,7 +7046,7 @@ function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters) {
       if (line.words.every((w) => used.has(w))) continue;
       if (!lineIsCaption(line.text)) {
         for (const w of line.words) {
-          if (used.has(w) || !(w.size <= 0.85 * bodySize)) continue;
+          if (used.has(w) || labelWords.has(w) || !(w.size <= 0.85 * bodySize)) continue;
           if (/^fig(?:ure)?\.?$/i.test(String(w.text || "").trim())) continue;
           if (!allow(w, line)) continue;
           const cx2 = (w.x0 + w.x1) / 2;
@@ -6931,7 +7078,7 @@ function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters) {
       const edge = gapX === 0 && gapY > 0 && gapY <= 2 * bodySize && nWords <= 3 && (line.size <= 0.85 * bodySize || panel);
       if (!inside7 && !beside && !edge && !(panel && gapX <= 18 && gapY <= 18)) continue;
       if (beside && (nWords > 6 || line.size > bodySize * 1.05)) continue;
-      let span = line.words.filter((w) => !used.has(w) && allow(w, line));
+      let span = line.words.filter((w) => !used.has(w) && !labelWords.has(w) && allow(w, line));
       if (gapX === 0 && (line.x1 > art.x1 + 18 || line.x0 < art.x0 - 18)) {
         span = span.filter((w) => {
           const wx = (w.x0 + w.x1) / 2;
@@ -6972,6 +7119,19 @@ function numsNear(fig, lines, bodySize) {
     }
   }
   return out;
+}
+function sharedCaptionBelow(a, b, lines) {
+  const bottom = Math.max(a.y1, b.y1);
+  for (const line of lines) {
+    if (!lineIsCaption(line.text)) continue;
+    if (line.y0 < bottom - 4 || line.y0 > bottom + 48) continue;
+    const oxA = Math.min(line.x1, a.x1) - Math.max(line.x0, a.x0);
+    const oxB = Math.min(line.x1, b.x1) - Math.max(line.x0, b.x0);
+    if (oxA <= 8 || oxB <= 8) continue;
+    const nums = new Set([...String(line.text).matchAll(/fig(?:ure)?\.?\s*(\d+)/gi)].map((m) => m[1]));
+    if (nums.size === 1) return true;
+  }
+  return false;
 }
 function captionBetween(a, b, lines) {
   const top = a.y1 <= b.y0 ? a : b.y1 <= a.y0 ? b : null;
@@ -7043,11 +7203,228 @@ function canUnion(a, b, lines, bodySize, pageW, pageH) {
   if (sameCol && captionBetween(a, b, lines)) return false;
   const na = numsNear(a, lines, bodySize);
   const nb = numsNear(b, lines, bodySize);
-  if (na.size && nb.size && !(na.size === nb.size && [...na].every((n2) => nb.has(n2)))) return false;
+  const differentNums = na.size && nb.size && !(na.size === nb.size && [...na].every((n2) => nb.has(n2)));
+  if (differentNums && !(sameRow && sharedCaptionBelow(a, b, lines))) return false;
   if (bodyInGap(a, b, lines, bodySize)) return false;
   const area = (Math.max(a.x1, b.x1) - Math.min(a.x0, b.x0)) * (Math.max(a.y1, b.y1) - Math.min(a.y0, b.y0));
   if (!a.pageImage && !b.pageImage && area >= 0.68 * pageW * pageH) return false;
   return true;
+}
+function figLabelCount(lines) {
+  let n2 = 0;
+  for (const l of lines) {
+    const t = l.text || "";
+    if (/fig(?:ure)?\.?\s*\d+[a-z]?/i.test(t) || REVERSED_FIG_RE.test(t.trim()) || FIG_GLUED.test(t.trim())) n2++;
+  }
+  return n2;
+}
+function labelStarts(words) {
+  const at = [];
+  for (let i = 0; i < (words || []).length; i++) {
+    const t = String(words[i].text || "").trim();
+    if (FIG_GLUED.test(t) || /^fig(?:ure)?\.?\s*\d+/i.test(t)) {
+      at.push(i);
+      continue;
+    }
+    if (!FIG_TOKEN.test(t)) continue;
+    let j = i + 1;
+    if (words[j] && /^[.:]$/.test(String(words[j].text || "").trim())) j++;
+    const next = words[j];
+    if (next && FIG_NUM.test(String(next.text || "").trim()) && next.x0 - words[i].x1 < 24) {
+      at.push(i);
+      continue;
+    }
+    let k = i - 1;
+    if (words[k] && /^[.:]$/.test(String(words[k].text || "").trim())) k--;
+    if (k >= 0 && FIG_NUM.test(String(words[k].text || "").trim()) && words[i].x0 - words[k].x1 < 8) at.push(k);
+  }
+  return [...new Set(at)].sort((a, b) => a - b);
+}
+function labelSpan(words, i) {
+  let j = i;
+  while (j + 1 < words.length) {
+    const n2 = words[j + 1];
+    const t = String(n2.text || "").trim();
+    if (n2.x0 - words[j].x1 > 24) break;
+    if (!(FIG_TOKEN.test(t) || FIG_NUM.test(t) || /^[.:]$/.test(t) || FIG_GLUED.test(t))) break;
+    j++;
+  }
+  return j + 1;
+}
+function orderedLabelWords(group) {
+  const fig = group.find((w) => FIG_TOKEN.test(String(w.text || "").trim()));
+  const num6 = group.find((w) => FIG_NUM.test(String(w.text || "").trim()));
+  const dots = group.filter((w) => /^[.:]$/.test(String(w.text || "").trim()));
+  if (!fig || !num6 || !(num6.x0 <= fig.x0 + 2 && fig.x0 - num6.x1 < 8)) return group;
+  const figWord = { ...fig, text: String(fig.text || "").replace(/\.?$/, ".") };
+  return [figWord, { ...num6 }];
+}
+function normalizeFigWord(w) {
+  const m = /^(\d+[A-Za-z]?)\.?fig(?:ure)?\.?$/i.exec(String(w.text || "").trim());
+  if (!m) return w;
+  return { ...w, text: `FIG. ${m[1]}` };
+}
+function peelFigLabels(lines) {
+  const out = [];
+  for (const line of lines || []) {
+    const words = (line.words || []).map(normalizeFigWord);
+    const starts = labelStarts(words);
+    if (!starts.length) {
+      out.push(line);
+      continue;
+    }
+    const pieces2 = [];
+    let cursor = 0;
+    for (const s of starts) {
+      const end = Math.max(labelSpan(words, s), s + 1);
+      if (s > cursor) pieces2.push(words.slice(cursor, s));
+      pieces2.push(orderedLabelWords(words.slice(s, end)));
+      cursor = Math.max(cursor, end);
+    }
+    if (cursor < words.length) pieces2.push(words.slice(cursor));
+    const rewritten = words.some((w, i) => w !== line.words[i]);
+    const same2 = !rewritten && pieces2.length === 1 && pieces2[0].length === words.length && pieces2[0].every((w, i) => w === words[i]);
+    if (same2) {
+      out.push(line);
+      continue;
+    }
+    for (const p of pieces2) if (p.length) out.push(makeLine(p));
+  }
+  return out;
+}
+function figAnchors(lines) {
+  const anchors = [];
+  for (const line of lines || []) {
+    const words = line.words || [];
+    for (const i of labelStarts(words)) {
+      const group = words.slice(i, labelSpan(words, i));
+      if (!group.length) continue;
+      const x = group.reduce((s, w) => s + (w.x0 + w.x1) / 2, 0) / group.length;
+      const y = group.reduce((s, w) => s + (w.y0 != null && w.y1 != null ? (w.y0 + w.y1) / 2 : w.base || 0), 0) / group.length;
+      anchors.push({ x, y });
+    }
+  }
+  return anchors;
+}
+function splitAnchors(anchors, box2) {
+  if (anchors.length <= 1) return [{ x0: box2.x0, y0: box2.y0, x1: box2.x1, y1: box2.y1 }];
+  const dx = Math.max(...anchors.map((a) => a.x)) - Math.min(...anchors.map((a) => a.x));
+  const dy = Math.max(...anchors.map((a) => a.y)) - Math.min(...anchors.map((a) => a.y));
+  const vertical = dx >= dy;
+  const sorted = [...anchors].sort((a, b) => vertical ? a.x - b.x : a.y - b.y);
+  let best = 1;
+  let gap = -1;
+  for (let i = 1; i < sorted.length; i++) {
+    const g = vertical ? sorted[i].x - sorted[i - 1].x : sorted[i].y - sorted[i - 1].y;
+    if (g > gap) {
+      gap = g;
+      best = i;
+    }
+  }
+  if (gap < ANCHOR_SEP) return [{ x0: box2.x0, y0: box2.y0, x1: box2.x1, y1: box2.y1 }];
+  const mid = vertical ? Math.min(sorted[best - 1].x + 36, sorted[best].x - 24) : Math.min(sorted[best - 1].y + 36, sorted[best].y - 24);
+  if (vertical) {
+    return [
+      ...splitAnchors(sorted.slice(0, best), { ...box2, x1: mid }),
+      ...splitAnchors(sorted.slice(best), { ...box2, x0: mid })
+    ];
+  }
+  return [
+    ...splitAnchors(sorted.slice(0, best), { ...box2, y1: mid }),
+    ...splitAnchors(sorted.slice(best), { ...box2, y0: mid })
+  ];
+}
+function sheetRegions(lines, pageW, pageH) {
+  const box2 = { x0: 0, y0: 0, x1: pageW, y1: pageH };
+  const anchors = figAnchors(lines);
+  if (anchors.length < 2) return [box2];
+  return splitAnchors(anchors, box2);
+}
+function splitWordLine(line, indexes) {
+  const cuts = [0, ...indexes, line.words.length];
+  const parts = [];
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const words = line.words.slice(cuts[i], cuts[i + 1]);
+    if (words.length) parts.push(makeLine(words));
+  }
+  return parts;
+}
+function gapIndexAt(line, x) {
+  const words = line.words || [];
+  for (let i = 1; i < words.length; i++) {
+    const gap0 = words[i - 1].x1;
+    const gap1 = words[i].x0;
+    if (gap1 - gap0 >= CAPTION_SPLIT_GAP && gap0 - 6 <= x && gap1 + 6 >= x) return i;
+  }
+  return -1;
+}
+function orderCaptionBand(band) {
+  const cols = /* @__PURE__ */ new Map();
+  for (const line of band) {
+    const k = line.capCol || 0;
+    if (!cols.has(k)) cols.set(k, []);
+    cols.get(k).push(line);
+  }
+  const out = [];
+  for (const k of [...cols.keys()].sort((a, b) => a - b)) {
+    const col = cols.get(k).sort((a, b) => a.base - b.base || a.x0 - b.x0);
+    for (const line of col) {
+      delete line.capBand;
+      delete line.capCol;
+      out.push(line);
+    }
+  }
+  return out;
+}
+function splitSharedCaptions(lines) {
+  if (!lines?.length) return { lines: lines || [], gutters: [] };
+  const out = [];
+  const gutters = [];
+  let bandId = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const starts = labelStarts(line.words || []);
+    const splits = [];
+    for (let c = 1; c < starts.length; c++) {
+      const idx = starts[c];
+      const prev = line.words[idx - 1];
+      const cur = line.words[idx];
+      if (prev && cur && cur.x0 - prev.x1 >= CAPTION_SPLIT_GAP) splits.push(idx);
+    }
+    if (!splits.length) {
+      out.push(line);
+      continue;
+    }
+    bandId += 1;
+    const parts = splitWordLine(line, splits);
+    if (parts.length >= 2 && parts[1].x0 - parts[0].x1 >= 6) gutters.push({ x0: parts[0].x1, x1: parts[1].x0 });
+    parts.forEach((p, col) => {
+      p.capBand = bandId;
+      p.capCol = col;
+    });
+    const splitX = parts[1]?.x0;
+    const consumed = /* @__PURE__ */ new Set();
+    const band = [...parts];
+    if (splitX != null) {
+      for (let d = 1; d < 6 && i + d < lines.length; d++) {
+        const next = lines[i + d];
+        if (next.base - line.base > 3 * (next.size || line.size || 10)) break;
+        if (labelStarts(next.words || []).length >= 2) break;
+        const at = gapIndexAt(next, splitX);
+        if (at < 0) break;
+        const segs = splitWordLine(next, [at]);
+        segs.forEach((p, col) => {
+          p.capBand = bandId;
+          p.capCol = col;
+        });
+        band.push(...segs);
+        consumed.add(next);
+      }
+    }
+    out.push(...orderCaptionBand(band));
+    while (i + 1 < lines.length && consumed.has(lines[i + 1])) i++;
+  }
+  return { lines: out, gutters };
 }
 function clusterBoxes(items, gap) {
   const clusters = items.map((p) => ({ x0: p.x0, y0: p.y0, x1: p.x1, y1: p.y1, items: [p] }));
@@ -7073,7 +7450,7 @@ function clusterBoxes(items, gap) {
   }
   return clusters;
 }
-var IMAGE_MIN, H_GAP, V_GAP;
+var IMAGE_MIN, H_GAP, V_GAP, FIG_TOKEN, FIG_NUM, FIG_GLUED, REVERSED_FIG_RE, CAPTION_SPLIT_GAP, ANCHOR_SEP;
 var init_figures = __esm({
   "src/model/parse/figures.js"() {
     init_lines();
@@ -7084,6 +7461,12 @@ var init_figures = __esm({
     IMAGE_MIN = 12;
     H_GAP = 56;
     V_GAP = 42;
+    FIG_TOKEN = /^fig(?:ure)?\.?$/i;
+    FIG_NUM = /^\d+[A-Za-z]?[.:]?$/;
+    FIG_GLUED = /^fig(?:ure)?\.?\d+[A-Za-z]?$/i;
+    REVERSED_FIG_RE = /^\d+[A-Za-z]?\s*\.?\s*fig(?:ure)?\.?$/i;
+    CAPTION_SPLIT_GAP = 8;
+    ANCHOR_SEP = 48;
   }
 });
 
@@ -7150,10 +7533,42 @@ function isCutPrefix(title, heading) {
   const h = typeof heading === "string" ? heading.replace(/\s+/g, " ").trim() : "";
   return t.length > 0 && h.length > t.length && h.toLowerCase().startsWith(t.toLowerCase()) && /\S/.test(h[t.length]);
 }
+function implausibleWord(word) {
+  const t = String(word || "").toLowerCase();
+  if (t.length < 5) return false;
+  const vowels = (t.match(/[aeiou]/g) || []).length;
+  const ratio = vowels / t.length;
+  if (ratio < 0.2 || ratio > 0.75) return true;
+  if (/[^aeiouy]{4,}/.test(t)) return true;
+  if (/(.)\1\1/.test(t)) return true;
+  if (/tth/.test(t)) return true;
+  if (t.length >= 8 && ratio > 0.55 && /([aeiou])\1/.test(t)) return true;
+  return false;
+}
+function isGibberishTitle(text3) {
+  const raw = typeof text3 === "string" ? text3 : "";
+  const judged = [];
+  for (const tok of raw.split(/\s+/)) {
+    if (!tok) continue;
+    const word = tok.replace(/[^A-Za-z]/g, "");
+    const digits = (tok.match(/\d/g) || []).length;
+    if (digits >= 4 && word.length <= digits) {
+      judged.push(true);
+      continue;
+    }
+    if (word.length < 5) continue;
+    judged.push(implausibleWord(word));
+  }
+  if (judged.length < 2) return false;
+  return judged.filter(Boolean).length / judged.length > 0.5;
+}
 function isJunkTitleText(text3) {
   const t = typeof text3 === "string" ? text3.replace(/\s+/g, " ").trim() : "";
   if (!t) return true;
-  return JUNK_LINE_RES.some((re) => re.test(t));
+  if (JUNK_LINE_RES.some((re) => re.test(t))) return true;
+  const digits = (t.match(/\d/g) || []).length;
+  const letters = (t.match(/\p{L}/gu) || []).length;
+  return digits >= 6 && digits > letters * 2;
 }
 function titleWordCount(text3) {
   return String(text3 ?? "").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
@@ -7193,7 +7608,7 @@ var init_title_cap = __esm({
     SEG_MAX_WORDS = 12;
     SEG_WORD_MIN = 4;
     FUNCTION_WORDS = /* @__PURE__ */ new Set(["of", "the", "and", "in", "to", "for", "per", "on", "at", "by", "with", "from", "or", "an", "a"]);
-    TITLE_REV = 2;
+    TITLE_REV = 3;
     MONTHS2 = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
     JUNK_LINE_RES = [
       /^(?:notes?|sources?)\s*(?:[:.\-–—]|$)/i,
@@ -7213,7 +7628,13 @@ var init_title_cap = __esm({
       /\bvol(?:ume)?\.?\s*\d+|\bissue\s+\d+|\bno\.\s*\d+\s*[,(]|\(\d{4}\)\s*\d{2,}/i,
       /^(?:©|copyright\b)|\ball rights reserved\b/i,
       /^(?:available online|received|accepted|revised|keywords?|abstract|article info|a r t i c l e)\b/i,
-      /^L\s*\d+\/\d+$/
+      /^L\s*\d+\/\d+$/,
+      /^(?:\(\s*\d+\s*\)\s*)?united states patent\b/i,
+      /^(?:\(\s*\d+\s*\)\s*)?(?:patent\s+no\.?|date\s+of\s+patent)\b/i,
+      /^(?:\(\s*\d+\s*\)\s*)?references cited\b/i,
+      /^(?:\(\s*\d+\s*\)\s*)(?:appl\.?\s*no\.?|filed|inventor|applicant|assignee)\b/i,
+      /^(?:\(\s*\d+\s*\)\s*)(?:u\s*\.?\s*s\s*\.?\s*c[li]\.?|int\s*\.?\s*cl\.?)\b/i,
+      /^cpc\s+\.{3,}/i
     ];
     CITATION_REST = /^[\s\d().,:;/–—-]*$/;
   }
@@ -7230,13 +7651,14 @@ function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
   const banner = (text3) => running.some((line) => isBannerOf(text3, line, { exact: false })) || pageLines.some((line) => isBannerOf(text3, line, { exact: false }));
   for (const pg of pages) {
     if (!pg || pg.ocr || pg.kind === "scan") continue;
-    const lines = (pg.free || []).map((line) => ({ line, text: textOf(line) })).filter((c) => c.text && !isJunkTitleText(c.text) && !furniture.has(normalizeFurniture(c.text))).sort((a, b) => a.line.base - b.line.base || a.line.x0 - b.line.x0);
+    const lines = (pg.free || []).map((line) => ({ line, text: textOf(line) })).filter((c) => c.text && !isJunkTitleText(c.text) && !isGibberishTitle(c.text) && !furniture.has(normalizeFurniture(c.text))).sort((a, b) => a.line.base - b.line.base || a.line.x0 - b.line.x0);
     const blocks = [];
     let cur = null;
     for (const c of lines) {
       const { line } = c;
       const prev = cur && cur.items[cur.items.length - 1].line;
-      const near = prev && line.base - prev.base <= 2.2 * line.size && line.base > prev.base + 0.5 * line.size && Math.abs(line.size - prev.size) <= 0.5 && Boolean(line.bold) === Boolean(prev.bold) && line.x0 < prev.x1 && line.x1 > prev.x0 && cur.items.length < MAX_LINES;
+      const sizeOk = prev && (Math.abs(line.size - prev.size) <= 0.5 || line.size <= prev.size && line.size >= 0.8 * prev.size && line.base - prev.base <= 0.95 * prev.size);
+      const near = prev && sizeOk && line.base - prev.base <= 2.2 * line.size && line.base > prev.base + 0.5 * line.size && Boolean(line.bold) === Boolean(prev.bold) && line.x0 < prev.x1 && line.x1 > prev.x0 && cur.items.length < MAX_LINES;
       if (near) cur.items.push(c);
       else {
         cur = { items: [c] };
@@ -7246,9 +7668,9 @@ function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
     let best = null;
     for (const b of blocks) {
       const first = b.items[0].line;
-      const text3 = b.items.map((c) => c.text).join(" ").replace(/\s+/g, " ").trim();
+      const text3 = b.items.map((c) => c.text).join(" ").replace(/^\(\s*\d+\s*\)\s*/, "").replace(/\s+/g, " ").trim();
       const words = titleWordCount(text3);
-      if (words < 3 || words > MAX_WORDS) continue;
+      if (words < 3 || words > MAX_WORDS || isJunkTitleText(text3) || isGibberishTitle(text3)) continue;
       if (!(first.size > 1.1 * bodySize || first.bold && first.size >= bodySize - 0.3)) continue;
       if (banner(text3)) continue;
       const cand = { text: text3, size: first.size, bold: Boolean(first.bold), y: first.base, page: pg.n };
@@ -7257,6 +7679,10 @@ function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
     if (best) return best.text;
   }
   return "";
+}
+function titleFromBand(lines, { bodySize = 10 } = {}) {
+  if (!lines?.length) return "";
+  return findPageTitle([{ n: 1, free: lines }], { bodySize }) || "";
 }
 var MAX_LINES, MAX_WORDS;
 var init_title = __esm({
@@ -7373,7 +7799,7 @@ function groupParagraphs(lines, { bodySize = 10 } = {}) {
   let cur = [];
   const gaps = [];
   for (let i = 1; i < lines.length; i++) gaps.push(lines[i].base - lines[i - 1].base);
-  const normalGap = median3(gaps.filter((g) => g > 0 && g < 3 * bodySize)) || bodySize * 1.3;
+  const normalGap = median4(gaps.filter((g) => g > 0 && g < 3 * bodySize)) || bodySize * 1.3;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const prev = cur[cur.length - 1];
@@ -7407,7 +7833,7 @@ function groupParagraphs(lines, { bodySize = 10 } = {}) {
   if (cur.length) groups.push(cur);
   return groups;
 }
-function median3(values) {
+function median4(values) {
   if (!values.length) return void 0;
   const s = [...values].sort((a, b) => a - b);
   const m = s.length >> 1;
@@ -7446,6 +7872,7 @@ function decimalStyle(values) {
 function repairNumber(text3, { decimal = ".", leadingZero = true } = {}) {
   let s = String(text3 || "").trim();
   if (!s) return s;
+  s = s.replace(/^\|+(\d[\d.,]*)\|+$/, "$1").replace(/(\d)\|+$/, "$1");
   s = s.replace(/(\d)\s*([.,])\s*(\d)/g, "$1$2$3").replace(/(\d)\s+(\d)/g, "$1$2");
   const toStyle = (v) => decimal === "." ? v.replace(/^(\d+),(\d{1,2})$/, "$1.$2") : decimal === "," ? v.replace(/^(\d+)\.(\d{1,2})$/, "$1,$2") : v;
   const lead = (v) => leadingZero ? v.replace(/^([.,])(\d)/, "0$1$2") : v;
@@ -7632,13 +8059,31 @@ function cellsToReread(table, { numericCols = [] } = {}) {
   }
   return out;
 }
+function median5(xs2) {
+  const s = [...xs2].sort((a, b) => a - b);
+  return s[s.length >> 1];
+}
 function rowBox(table, cell) {
   const row4 = table.cells.filter((k) => k.r === cell.r && k.wbase != null);
   if (!row4.length || !cell.bbox) return null;
   const bases = row4.map((k) => k.wbase).sort((a, b) => a - b);
   const base = bases[bases.length >> 1];
   const size = Math.max(...row4.map((k) => k.wsize || 0)) || cell.bbox[3] - cell.bbox[1];
-  return [cell.bbox[0] + 1, base - 0.65 * size, cell.bbox[2] - 1, base + 0.12 * size];
+  let y0 = base - 0.65 * size;
+  let y1 = base + 0.12 * size;
+  const ink = row4.map((k) => k.wbox).filter((b) => b && b[3] > b[1]);
+  if (ink.length) {
+    const top = median5(ink.map((b) => b[1]));
+    const bot = median5(ink.map((b) => b[3]));
+    if (top < y0 - 0.4 || bot > y1 + 0.4) {
+      y0 = top - 1.2;
+      y1 = bot + 1.2;
+    }
+  }
+  y0 = Math.max(y0, cell.bbox[1] + 0.3);
+  y1 = Math.min(y1, cell.bbox[3] - 0.3);
+  if (!(y1 > y0 + 1)) return null;
+  return [cell.bbox[0] + 1, y0, cell.bbox[2] - 1, y1];
 }
 function applyCellOcr(table, results) {
   const applied = [];
@@ -7651,11 +8096,14 @@ function applyCellOcr(table, results) {
     const decimal = decimalStyle(column) || ".";
     const leadingZero = !column.some((v) => /^[.,]\d/.test(v));
     let to = null;
+    const empty = !cell.text || !cell.text.trim();
     if (text3 && !/\s/.test(text3) && !isPlaceholder(text3)) {
       const number = repairNumber(text3, { decimal, leadingZero });
       if (number != null && fitsColumn(number, column)) to = number;
     }
-    if (to == null && res.glyph && isPlaceholder(res.glyph) && (!cell.text || !cell.text.trim())) to = res.glyph;
+    const letter2 = text3.replace(/^\|+/, "").replace(/\|+$/, "");
+    if (to == null && empty && /^[A-Za-z]$/.test(letter2) && (res.conf ?? 0) >= 0.8) to = letter2;
+    if (to == null && res.glyph && isPlaceholder(res.glyph) && empty) to = res.glyph;
     if (to == null && /^(?:n\/?a|nn)$/i.test(text3) && (!cell.text || !cell.text.trim())) to = text3;
     if (to == null || to === cell.text) continue;
     applied.push({ r: cell.r, c: cell.c, from: cell.text, to });
@@ -7728,8 +8176,8 @@ function fileName(url) {
   } catch {
   }
   seg = seg.split("/").filter(Boolean).pop() || "";
-  seg = seg.replace(/\.pdf$/i, "");
-  return seg.trim();
+  seg = seg.replace(/\.pdf$/i, "").replace(/_+/g, " ").replace(/\s+/g, " ").trim();
+  return seg;
 }
 function pdfFileTitle(url) {
   const name = fileName(url);
@@ -8068,7 +8516,7 @@ var init_pdf = __esm({
 // src/model/parse/index.js
 function isCaptionText(text3) {
   const raw = String(text3 || "").replace(/[^\p{L}\p{N}.: ]/gu, " ").replace(/\s+/g, " ").trim();
-  return CAPTION_RE.test(raw) || /^fig(?:ure)?\.?\s*$/i.test(raw);
+  return CAPTION_RE.test(raw) || /^fig(?:ure)?\.?\s*$/i.test(raw) || /^\d+[A-Za-z]?\s*\.?\s*fig(?:ure)?\.?$/i.test(raw);
 }
 function viewportTransform(w, h, rotation = 0) {
   switch ((rotation % 360 + 360) % 360) {
@@ -8139,18 +8587,31 @@ function parsePageGeometry(data, n2) {
     for (const s of band.segs) usedRules.add(s);
     tables.push(t);
   }
-  const drawing = drawingSheetPage({ images: graphics.images, lines, tables, pageW: w, pageH: h, textChars });
+  const drawing = drawingSheetPage({ images: graphics.images, lines, tables, shapes: graphics.shapes, pageW: w, pageH: h, textChars });
+  if (drawing) lines = peelFigLabels(lines);
+  const figWords = lines.flatMap((l) => l.words);
   const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => imageArea(im) < 0.85 * pageArea) } : graphics;
-  const figs = kind === "scan" ? { figures: [], used: /* @__PURE__ */ new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: words.filter((w2) => !used.has(w2)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars });
-  for (const w2 of figs.used) used.add(w2);
-  const figures = figs.figures.map((f) => ({ ...f, page: n2 }));
+  const figs = kind === "scan" ? { figures: [], used: /* @__PURE__ */ new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars });
+  for (const wd of figs.used) used.add(wd);
+  let figures = figs.figures.map((f) => ({ ...f, page: n2 }));
+  if (drawing) {
+    const regions = sheetRegions(lines, w, h);
+    if (regions.length) {
+      figures = regions.map((r) => ({
+        bbox: [round(r.x0), round(r.y0), round(r.x1), round(r.y1)],
+        kind: "image",
+        count: 1,
+        page: n2
+      }));
+    }
+  }
   for (let i = tables.length - 1; i >= 0; i--) {
     const t = tables[i];
     if (t.method !== "stream" || !figureLabels(t, figures)) continue;
     tables.splice(i, 1);
     for (const w2 of words) if (used.has(w2) && !figs.used.has(w2) && w2.x0 >= t.bbox[0] - 2 && w2.x1 <= t.bbox[2] + 2 && w2.base >= t.bbox[1] && w2.base <= t.bbox[3] + 2) used.delete(w2);
   }
-  return { n: n2, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, words, graphics, tables, figures, used, ms: round(now() - t0) };
+  return { n: n2, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, words: figWords, graphics, tables, figures, used, ms: round(now() - t0) };
 }
 function ocrGraphics(data, w, h) {
   const rules = [];
@@ -8270,10 +8731,27 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       units.push({ id, x0: 0, y0: 0, x1: pg.w, y1: pg.h });
     }
     const dots = pg.graphics.dots;
-    let gutters = detectColumns(pg.free, { pageW: pg.w });
+    const shared2 = splitSharedCaptions(pg.free);
+    pg.free = shared2.lines;
+    const keepGutter = (list) => {
+      const out = [...list];
+      for (const g of shared2.gutters) {
+        if (!out.some((o) => g.x0 <= o.x1 + 8 && o.x0 <= g.x1 + 8)) out.push(g);
+      }
+      return out.sort((a, b) => a.x0 - b.x0);
+    };
+    let gutters = keepGutter(detectColumns(pg.free, { pageW: pg.w }));
     if (gutters.length) {
+      const remembered = gutters.filter((g) => pg.free.some((l) => l.x0 < g.x0 - 1 && l.x1 > g.x1 + 1));
       pg.free = splitAtGutters(pg.free, gutters, makeLine);
-      gutters = detectColumns(pg.free, { pageW: pg.w });
+      const again = keepGutter(detectColumns(pg.free, { pageW: pg.w }));
+      gutters = again;
+      for (const g of remembered) {
+        const left = pg.free.some((l) => l.x1 <= g.x0 + 4);
+        const right = pg.free.some((l) => l.x0 >= g.x1 - 4);
+        if (left && right && !gutters.some((o) => g.x0 <= o.x1 + 8 && o.x0 <= g.x1 + 8)) gutters.push(g);
+      }
+      gutters.sort((a, b) => a.x0 - b.x0);
     }
     const seqs = gutters.map(() => []);
     seqs.push([]);
@@ -8295,8 +8773,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       const line = byY[k];
       let wide = rowWide.has(line) || gutters.some((g) => crossesGutter(line, g));
       if (!wide && lastWide && line.base - lastWide.base <= 1.7 * line.size && Math.abs(line.x0 - lastWide.x0) <= 1.5 * line.size && Math.abs(line.size - lastWide.size) <= 0.6) {
-        const shared2 = byY.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * line.size);
-        if (!shared2) wide = true;
+        const shared3 = byY.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * line.size);
+        if (!shared3) wide = true;
       }
       if (wide) {
         wideSeq.push(line);
@@ -8505,9 +8983,10 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
   for (const id of order) if (blocks[id]?.footnoteRefs) inlineUnlinkedRefs(blocks[id]);
   let title = info && typeof info.Title === "string" ? cleanPdfTitle(info.Title) || null : null;
   const runningTexts = new Set(furniture.removed.filter((r) => r.reason !== "page-number").map((r) => normalizeFurniture(r.text)));
-  if (title && (runningTexts.has(normalizeFurniture(title)) || isJunkTitleText(title))) title = null;
+  if (title && (runningTexts.has(normalizeFurniture(title)) || isJunkTitleText(title) || isGibberishTitle(title))) title = null;
   if (title && pageTitle && isMetaBanner(title, { pageTitle, lines: titleEvidenceLines(pageRecords2, furniture.removed) })) title = null;
-  const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1) && !isJunkTitleText(h.text)) || headings.find((h) => h.level === 1 && !isJunkTitleText(h.text));
+  const titleHeading = (h) => h && h.type === "heading" && !isJunkTitleText(h.text) && !isGibberishTitle(h.text);
+  const h1 = headings.find((h) => titleHeading(h) && h.level === 1 && h.page === (firstPage ? firstPage.n : 1)) || headings.find((h) => titleHeading(h) && h.level === 1);
   if (!title) title = pageTitle || (h1 ? h1.text : null);
   else if (h1 && isCutPrefix(title, h1.text)) title = h1.text;
   if (title) title = capTitle(title);
@@ -8634,6 +9113,9 @@ function mergeContinuations(order, blocks) {
     const b = blocks[order[i + 1]];
     if (!a || !b || a.type !== "para" || b.type !== "para") continue;
     if (/[.?!:"”)\]]$/.test(a.text) || !/^[a-z]/.test(b.text)) continue;
+    const ab = a.bbox;
+    const bb = b.bbox;
+    if (ab && bb && bb[0] > ab[2] - 8 && bb[1] + 8 < ab[3]) continue;
     if (Math.abs(a.spans?.[0]?.size - b.spans?.[0]?.size) > 0.6) continue;
     const hyphen = a.text.endsWith("-");
     const offset = a.text.length + (hyphen ? 0 : 1);
@@ -8669,7 +9151,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 8;
+    PARSE_REV = 9;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     EVIDENCE_LINES = 60;
@@ -16861,9 +17343,9 @@ function panFps(deltas) {
     const n2 = Number(value);
     if (Number.isFinite(n2) && n2 > 0) finite7.push(n2);
   }
-  const median4 = percentile(finite7, 0.5);
-  if (!(median4 > 0)) return null;
-  return 1e3 / median4;
+  const median6 = percentile(finite7, 0.5);
+  if (!(median6 > 0)) return null;
+  return 1e3 / median6;
 }
 function numText(value) {
   if (!Number.isFinite(value)) return "—";
@@ -39537,24 +40019,24 @@ function bodySizeOf2(items) {
   const source = wordy.length >= 4 ? wordy : items;
   const plain2 = source.filter((item) => TALL_RE.test(item.str) && !DESC_RE.test(item.str));
   const pool = (plain2.length ? plain2 : source).map((item) => item.transform[0]).sort((a, b) => a - b);
-  const median4 = pool[pool.length >> 1] || items[0].transform[0];
-  let body = median4;
+  const median6 = pool[pool.length >> 1] || items[0].transform[0];
+  let body = median6;
   const sorted = items.map((item) => item.transform[5]).sort((a, b) => a - b);
   const bases = [];
   for (const base of sorted) {
-    if (!bases.length || base - bases[bases.length - 1] > 0.35 * median4) bases.push(base);
+    if (!bases.length || base - bases[bases.length - 1] > 0.35 * median6) bases.push(base);
   }
   const gaps = [];
   for (let i = 1; i < bases.length; i++) {
     const gap = bases[i] - bases[i - 1];
-    if (gap > 0.4 * median4 && gap < 2.5 * median4) gaps.push(gap);
+    if (gap > 0.4 * median6 && gap < 2.5 * median6) gaps.push(gap);
   }
   if (gaps.length >= 4) {
     gaps.sort((a, b) => a - b);
     const pitch = gaps[gaps.length >> 1];
-    if (pitch < 0.7 * median4) body = pitch / 0.95;
+    if (pitch < 0.7 * median6) body = pitch / 0.95;
   }
-  return { body, median: median4 };
+  return { body, median: median6 };
 }
 function baselineRows2(sorted) {
   const rows = [];
@@ -39586,12 +40068,12 @@ function snapOcrItems(items) {
   if (!items.length) return [];
   items = withoutEchoes(items);
   if (!items.length) return [];
-  const { body, median: median4 } = bodySizeOf2(items);
+  const { body, median: median6 } = bodySizeOf2(items);
   const kept = [];
   for (const item of items) {
     const size = item.transform[0];
-    if (size < 0.45 * median4 && !(item.conf >= 1 && NUMBERISH_RE.test(item.str))) continue;
-    if (size >= 0.45 * median4 && size <= 1.5 * median4 && body > 0) {
+    if (size < 0.45 * median6 && !(item.conf >= 1 && NUMBERISH_RE.test(item.str))) continue;
+    if (size >= 0.45 * median6 && size <= 1.5 * median6 && body > 0) {
       const base = item.transform[5];
       const sized = round22(body);
       item.transform[0] = sized;
@@ -48606,6 +49088,13 @@ function createReadPane({
     autoTried.add(sig);
     paintStrip();
     if (!first) return;
+    if (typeof deviceOcr?.readBandTitle === "function") {
+      const url = pdfUrl();
+      void deviceOcr.readBandTitle({ getPdf }).then((band) => {
+        if (band && pdfUrl() === url) noteParsedTitle(band);
+      }).catch(() => {
+      });
+    }
     void (async () => {
       await refreshSnaps(true);
       if (info?.sha256 && !ocrCovered) await loadOcrLayer(info.sha256);
@@ -56805,6 +57294,23 @@ function imageScaling(sw, sh, dw, dh) {
   const whole2 = (k) => k <= 1.01 || Math.abs(k - Math.round(k)) <= 0.02;
   return !(whole2(kx) && whole2(ky));
 }
+function cropTopBand(rendered, fraction) {
+  const frac = Number(fraction);
+  if (!(frac > 0) || frac >= 1 || !rendered?.rgb) return rendered;
+  const height = rendered.height || 0;
+  const width = rendered.width || 0;
+  const cutH = Math.max(1, Math.min(height, Math.round(height * frac)));
+  if (!height || cutH >= height) return rendered;
+  const cut = cropRgb(rendered.rgb, width, height, 0, 0, width, cutH);
+  const scale = cut.h / height;
+  return {
+    ...rendered,
+    rgb: cut.rgb,
+    width: cut.w,
+    height: cut.h,
+    pointH: rendered.pointH != null ? rendered.pointH * scale : rendered.pointH
+  };
+}
 function steadyImageScaling(ctx) {
   if (!ctx || typeof ctx.drawImage !== "function") return ctx;
   const draw = ctx.drawImage;
@@ -57012,9 +57518,9 @@ function createOcrWeb({
   }
   function localEngine(runDet, runRec, dict) {
     return {
-      async page(n2, bytes, signal) {
-        if (prepared2.has(n2)) return prepared2.get(n2).record;
-        const rendered = await renderOne(bytes, n2, signal);
+      async page(n2, bytes, signal, band = 0) {
+        if (!(band > 0) && prepared2.has(n2)) return prepared2.get(n2).record;
+        const rendered = cropTopBand(await renderOne(bytes, n2, signal), band);
         const prep = await preparePageImage({
           ...rendered,
           dpi: rendered.dpi || dpi,
@@ -57024,7 +57530,7 @@ function createOcrWeb({
           dict,
           signal
         });
-        prepared2.set(n2, prep);
+        if (!(band > 0)) prepared2.set(n2, prep);
         return prep.record;
       },
       async cells(list, bytes, signal) {
@@ -57138,10 +57644,10 @@ function createOcrWeb({
         } catch {
         }
       },
-      async page(n2, bytes, signal2) {
+      async page(n2, bytes, signal2, band = 0) {
         throwIfAborted2(signal2);
-        if (records.has(n2)) return records.get(n2);
-        const rendered = await renderOne(bytes, n2, signal2);
+        if (!(band > 0) && records.has(n2)) return records.get(n2);
+        const rendered = cropTopBand(await renderOne(bytes, n2, signal2), band);
         const rgb = rendered.rgb;
         const msg = await call({
           type: "page",
@@ -57153,7 +57659,7 @@ function createOcrWeb({
           pointH: rendered.pointH,
           rgb
         }, [rgb.buffer], signal2);
-        records.set(n2, msg.record);
+        if (!(band > 0)) records.set(n2, msg.record);
         return msg.record;
       },
       async cells(list, bytes, signal2) {
@@ -57209,7 +57715,7 @@ function createOcrWeb({
   async function health() {
     return { state, schema: SCHEMA3, engine: ENGINE };
   }
-  async function ocr({ bytes, sha256 = null, pages, cells, signal } = {}) {
+  async function ocr({ bytes, sha256 = null, pages, cells, signal, band = 0 } = {}) {
     const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
     throwIfAborted2(signal);
     const ready = await ensure(signal);
@@ -57219,7 +57725,7 @@ function createOcrWeb({
     } else {
       const wanted = pages?.length ? pages : [1];
       const out = [];
-      for (const n2 of wanted) out.push(await ready.page(n2, bytes, signal));
+      for (const n2 of wanted) out.push(await ready.page(n2, bytes, signal, band));
       body = { pageCount: out.length, pages: out };
     }
     const elapsedMs = Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - t0);
@@ -57245,6 +57751,8 @@ function createOcrWeb({
 
 // src/host/device-ocr.js
 init_title_cap();
+init_lines();
+init_title();
 var DEVICE_OCR_BYTES = [...Object.values(ORT_FILES), ...Object.values(MODEL_FILES), LEXICON_FILE].reduce((n2, f) => n2 + f.bytes, 0);
 var MB = Math.round(DEVICE_OCR_BYTES / (1024 * 1024));
 function abortError2() {
@@ -57338,6 +57846,30 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
     ready = true;
     return { schema: SCHEMA3, engine: ENGINE, pages: out };
   }
+  async function readBandTitle({ getPdf = null, signal = null, fraction = 0.18 } = {}) {
+    if (signal?.aborted) return "";
+    const st = await status();
+    if (st.state !== "ready") return "";
+    let pdf = null;
+    try {
+      pdf = typeof getPdf === "function" ? await getPdf() : null;
+    } catch {
+      return "";
+    }
+    if (!pdf || typeof pdf.getPage !== "function") return "";
+    currentPdf = pdf;
+    let got = null;
+    try {
+      got = await web().ocr({ pages: [1], signal, band: fraction });
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      return "";
+    }
+    const page = (got?.pages || [])[0];
+    if (!page?.items?.length) return "";
+    const { lines } = buildLines(page.items, { transform: page.transform || [1, 0, 0, 1, 0, 0], fonts: page.fonts || {} });
+    return titleFromBand(lines) || "";
+  }
   async function readCells({ cells = [], url = "", getPdf = null, signal = null } = {}) {
     if (signal?.aborted) throw abortError2();
     if (!cells.length) return { cells: [] };
@@ -57376,7 +57908,7 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
     }
     return warmJob;
   }
-  return { status, download, cancel, read: read2, readCells, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
+  return { status, download, cancel, read: read2, readCells, readBandTitle, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
 }
 var shared = null;
 function sharedDeviceOcr() {

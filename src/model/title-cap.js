@@ -14,7 +14,7 @@ const FUNCTION_WORDS = new Set(["of", "the", "and", "in", "to", "for", "per", "o
 
 // Revision of the title rules. Stored page titles carry the revision they were made with; an older
 // one is read again (the first splitter cut real words such as "Supplementation").
-export const TITLE_REV = 2;
+export const TITLE_REV = 3;
 
 // Split one run-together letter token ("Summaryofreportedcasesper") into pieces, conservatively:
 // the token has 18+ letters and is no word, there are 3+ pieces, at least one is a function word, and
@@ -106,14 +106,57 @@ const JUNK_LINE_RES = [
   /^(?:©|copyright\b)|\ball rights reserved\b/i,
   /^(?:available online|received|accepted|revised|keywords?|abstract|article info|a r t i c l e)\b/i,
   /^L\s*\d+\/\d+$/,
+  /^(?:\(\s*\d+\s*\)\s*)?united states patent\b/i,
+  /^(?:\(\s*\d+\s*\)\s*)?(?:patent\s+no\.?|date\s+of\s+patent)\b/i,
+  /^(?:\(\s*\d+\s*\)\s*)?references cited\b/i,
+  /^(?:\(\s*\d+\s*\)\s*)(?:appl\.?\s*no\.?|filed|inventor|applicant|assignee)\b/i,
+  /^(?:\(\s*\d+\s*\)\s*)(?:u\s*\.?\s*s\s*\.?\s*c[li]\.?|int\s*\.?\s*cl\.?)\b/i,
+  /^cpc\s+\.{3,}/i,
 ];
+
+// A token no English word looks like: almost no vowels, a long consonant run, a tripled
+// letter, "tth", or a long vowel-heavy token with a doubled vowel ("duloomului").
+// Short tokens are not judged.
+function implausibleWord(word) {
+  const t = String(word || "").toLowerCase();
+  if (t.length < 5) return false;
+  const vowels = (t.match(/[aeiou]/g) || []).length;
+  const ratio = vowels / t.length;
+  if (ratio < 0.2 || ratio > 0.75) return true;
+  if (/[^aeiouy]{4,}/.test(t)) return true;
+  if (/(.)\1\1/.test(t)) return true;
+  if (/tth/.test(t)) return true;
+  // A long token that is mostly vowels and has a doubled vowel ("duloomului").
+  if (t.length >= 8 && ratio > 0.55 && /([aeiou])\1/.test(t)) return true;
+  return false;
+}
+
+// A title line whose longer tokens are mostly not words (a barcode band read as text).
+// Short tokens are ignored. One odd token in a real title is not enough.
+export function isGibberishTitle(text) {
+  const raw = typeof text === "string" ? text : "";
+  const judged = [];
+  for (const tok of raw.split(/\s+/)) {
+    if (!tok) continue;
+    const word = tok.replace(/[^A-Za-z]/g, "");
+    const digits = (tok.match(/\d/g) || []).length;
+    if (digits >= 4 && word.length <= digits) { judged.push(true); continue; }
+    if (word.length < 5) continue;
+    judged.push(implausibleWord(word));
+  }
+  if (judged.length < 2) return false;
+  return judged.filter(Boolean).length / judged.length > 0.5;
+}
 
 // A line that is page furniture or journal chrome, never a paper title: dates, page numbers,
 // volume/issue lines, URLs, DOIs, "Contents lists available at", "journal homepage".
 export function isJunkTitleText(text) {
   const t = typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "";
   if (!t) return true;
-  return JUNK_LINE_RES.some((re) => re.test(t));
+  if (JUNK_LINE_RES.some((re) => re.test(t))) return true;
+  const digits = (t.match(/\d/g) || []).length;
+  const letters = (t.match(/\p{L}/gu) || []).length;
+  return digits >= 6 && digits > letters * 2;
 }
 
 export function titleWordCount(text) {

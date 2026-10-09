@@ -117,6 +117,38 @@ test("orderUnits reads bands between rule cuts, and keeps a column-heading row w
   assert.deepEqual(orderUnits(units, { gutters }).order.map((x) => x.id), ["HL", "INFO", "KW", "GA", "ABS", "TEXT"]);
 });
 
+test("repeated equal gaps in a numeric grid are not a two-column gutter", () => {
+  // us-034's design-effect table: one number per column, the same hole repeated across the row.
+  const rows = [];
+  for (let r = 0; r < 8; r++) {
+    const words = [];
+    let x = 72;
+    for (const t of ["0.90", "80", "88", "96", "104", "112", "120", "128"]) {
+      const w = Math.max(14, t.length * 6);
+      words.push({ text: t, x0: x, x1: x + w, base: 200 + r * 14, size: 12, mathChars: 0, mathFontChars: 0 });
+      x += w + 21.6;
+    }
+    rows.push(makeLine(words));
+  }
+  assert.equal(detectColumns(rows, { pageW: 612 }).length, 0);
+});
+
+test("a joined two-column line splits at the repeated internal gap, line number included", () => {
+  const items = [];
+  for (let i = 0; i < 6; i++) {
+    const top = 120 + i * 14;
+    items.push(item("nating a distant target 103. The laser", 78, top, 10, 200));
+    items.push(item("5", 286, top, 8, 4));
+    items.push(item("detector arrays every pixel should be", 294, top, 10, 200));
+  }
+  const d = assembleDocument([parsePageGeometry({ items, ops: ops([], []), w: 612, h: H, fonts: FONTS }, 1)], { numPages: 1 });
+  const texts = d.order.map((id) => d.blocks[id].text || "");
+  assert.ok(texts.some((t) => t.includes("nating")), texts.join(" || "));
+  assert.ok(texts.some((t) => t.includes("detector")), texts.join(" || "));
+  assert.equal(texts.some((t) => t.includes("nating") && t.includes("detector")), false, texts.join(" || "));
+  assert.equal(d.pages[0].columns, 2);
+});
+
 test("groupParagraphs: a hanging footnote mark does not split the note from its next line", () => {
   const w = (text, x0, x1, base, sup = false) => ({ text, x0, x1, base, size: 6.5, sup, mathChars: 0, mathFontChars: 0 });
   const first = makeLine([w("**", 39, 45.6, 681, true), w("Correspondence to: Z. Geng, Beijing, China.", 49.5, 413, 684)]);

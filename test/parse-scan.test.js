@@ -167,7 +167,7 @@ test("an OCR page record parses as a scan layer page with one table, engine ocr+
 test("repairNumber maps the common confusions and leaves real numbers and text alone", () => {
   const cases = [
     ["0.D3", "0.03"], ["D.OD", "0.00"], ["12.B4", "12.84"], ["7.7B", "7.78"], ["1.1Б", "1.16"], ["0.BD", "0.80"],
-    ["l.5", "1.5"], ["I2", "12"], ["|0", "10"], ["Z.5", "2.5"], ["G.1", "6.1"], ["S.5", "5.5"],
+    ["l.5", "1.5"], ["I2", "12"], ["|0", "10"], ["5|", "5"], ["|2|", "2"], ["Z.5", "2.5"], ["G.1", "6.1"], ["S.5", "5.5"],
     ["28. 90", "28.90"], ["1 .16", "1.16"], ["28.90", "28.90"], ["1,004", "1,004"], ["—", "—"],
   ];
   for (const [from, to] of cases) assert.equal(repairNumber(from), to, from);
@@ -266,9 +266,22 @@ test("cellsToReread lists unrepaired and empty numeric cells with a crop box; ap
   // A dash from Vision's text is not trusted; the glyph is. A leader run is rejected.
   const t2 = { id: "t2", cols: 3, rows: 2, headerRows: 1, cells: [{ r: 1, c: 0, colSpan: 1, rowSpan: 1, text: "x" }, { r: 1, c: 1, colSpan: 1, rowSpan: 1, text: "" }, { r: 1, c: 2, colSpan: 1, rowSpan: 1, text: "" }] };
   assert.deepEqual(applyCellOcr(t2, [{ r: 1, c: 1, text: "-", conf: 1, glyph: null }, { r: 1, c: 2, text: "....", conf: 1, glyph: "*" }]), [{ r: 1, c: 2, from: "", to: "*" }]);
+  const t3 = { id: "t3", cols: 2, rows: 1, headerRows: 0, cells: [{ r: 0, c: 0, colSpan: 1, rowSpan: 1, text: "" }, { r: 0, c: 1, colSpan: 1, rowSpan: 1, text: "" }] };
+  assert.deepEqual(applyCellOcr(t3, [{ r: 0, c: 0, text: "|c", conf: 0.855, glyph: "*" }]), [{ r: 0, c: 0, from: "", to: "c" }]);
+  assert.equal(t3.cells[1].text, "", "a low-confidence letter still loses to the glyph when it is not sent");
   assert.equal(fitsColumn("1.5", ["0.03", "0.10", "12.84"]), false, "decimal count must match the column");
   assert.equal(fitsColumn("1.50", ["0.03", "0.10", "12.84"]), true);
   assert.equal(fitsColumn("1000.50", ["0.03", "0.10", "12.84"]), false, "too many integer digits");
+  const ink = {
+    headerRows: 0, cols: 2, rows: 1,
+    cells: [
+      { r: 0, c: 0, colSpan: 1, rowSpan: 1, text: "5", wbase: 100, wsize: 8, wbox: [10, 93, 20, 102], bbox: [0, 88, 30, 112] },
+      { r: 0, c: 1, colSpan: 1, rowSpan: 1, text: "", bbox: [30, 88, 50, 112] },
+    ],
+  };
+  const crop = cellsToReread(ink, { numericCols: [1] })[0].bbox;
+  assert.ok(crop[1] < 93, `crop top ${crop[1]} covers the row ink`);
+  assert.ok(crop[3] > 102, `crop bottom ${crop[3]} covers the row ink`);
 });
 
 // ---------------------------------------------------------------- merge

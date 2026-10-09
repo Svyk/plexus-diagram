@@ -12,8 +12,33 @@ export function isNumericText(text) {
 // Words of one cell -> text; wrapped lines ending in "-" join without a space.
 export const LEADER_RE = /^[.·…]{4,}$/;
 
+function wordBox(w) {
+  if (w.boxY) return [w.x0, w.boxY[0], w.x1, w.boxY[1]];
+  if (w.y0 != null && w.y1 != null) return [w.x0, w.y0, w.x1, w.y1];
+  return null;
+}
+
+// A low-confidence single digit sitting on a surer word is a second boxing of that word
+// (a nearest-neighbour speck read as "1" inside "25").
+function withoutEchoDigits(words) {
+  return words.filter((w) => {
+    if (w.conf == null || w.conf > 0.3 || !/^\d$/.test(w.text)) return true;
+    const a = wordBox(w);
+    if (!a) return true;
+    const area = Math.max(0.01, (a[2] - a[0]) * (a[3] - a[1]));
+    return !words.some((o) => {
+      if (o === w || (o.conf != null && o.conf <= w.conf)) return false;
+      const b = wordBox(o);
+      if (!b) return false;
+      const ox = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+      const oy = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+      return ox > 0 && oy > 0 && ox * oy >= 0.25 * area;
+    });
+  });
+}
+
 export function cellTextOf(words) {
-  const lines = relineWords(words.filter((w) => !LEADER_RE.test(w.text)));
+  const lines = relineWords(withoutEchoDigits(words).filter((w) => !LEADER_RE.test(w.text)));
   if (!lines.length) return "";
   let text = "";
   for (const line of lines) {

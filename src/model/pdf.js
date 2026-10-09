@@ -38,8 +38,8 @@ function fileName(url) {
   try { seg = decodeURIComponent(seg); } catch { /* keep the raw segment */ }
   // Firebase keeps the whole storage path in one segment (imgs%2Fapp%2Fgraph%2Fname.pdf): the name is its tail.
   seg = seg.split("/").filter(Boolean).pop() || "";
-  seg = seg.replace(/\.pdf$/i, "");
-  return seg.trim();
+  seg = seg.replace(/\.pdf$/i, "").replace(/_+/g, " ").replace(/\s+/g, " ").trim();
+  return seg;
 }
 
 // The decoded file name of a PDF url, without prefix or extension. "" when it is only a storage id.

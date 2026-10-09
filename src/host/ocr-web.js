@@ -2,6 +2,7 @@
 // ocr() verifies onnxruntime-web and the ONNX weights, then reads pages.
 
 import { preparePageImage, recognizeCells } from "../model/ocr/recognize.js";
+import { cropRgb } from "../model/ocr/image.js";
 import {
   CACHE_NAME, ENGINE, LEXICON_FILE, MODEL_FILES, ORT_BASE, ORT_FILES, PAGES_ORIGIN, SCHEMA, dictLines, joinUrl,
 } from "../model/ocr/manifest.js";
@@ -86,6 +87,26 @@ export function imageScaling(sw, sh, dw, dh) {
   if (kx <= 1.01 && ky <= 1.01) return true;
   const whole = (k) => k <= 1.01 || Math.abs(k - Math.round(k)) <= 0.02;
   return !(whole(kx) && whole(ky));
+}
+
+// The top fraction of a rendered page, in the same point space. A title read uses this
+// instead of the whole page. fraction outside (0, 1) leaves the render alone.
+export function cropTopBand(rendered, fraction) {
+  const frac = Number(fraction);
+  if (!(frac > 0) || frac >= 1 || !rendered?.rgb) return rendered;
+  const height = rendered.height || 0;
+  const width = rendered.width || 0;
+  const cutH = Math.max(1, Math.min(height, Math.round(height * frac)));
+  if (!height || cutH >= height) return rendered;
+  const cut = cropRgb(rendered.rgb, width, height, 0, 0, width, cutH);
+  const scale = cut.h / height;
+  return {
+    ...rendered,
+    rgb: cut.rgb,
+    width: cut.w,
+    height: cut.h,
+    pointH: rendered.pointH != null ? rendered.pointH * scale : rendered.pointH,
+  };
 }
 
 export function steadyImageScaling(ctx) {
@@ -287,13 +308,13 @@ export function createOcrWeb({
 
   function localEngine(runDet, runRec, dict) {
     return {
-      async page(n, bytes, signal) {
-        if (prepared.has(n)) return prepared.get(n).record;
-        const rendered = await renderOne(bytes, n, signal);
+      async page(n, bytes, signal, band = 0) {
+        if (!(band > 0) && prepared.has(n)) return prepared.get(n).record;
+        const rendered = cropTopBand(await renderOne(bytes, n, signal), band);
         const prep = await preparePageImage({
           ...rendered, dpi: rendered.dpi || dpi, page: n, runDet, runRec, dict, signal,
         });
-        prepared.set(n, prep);
+        if (!(band > 0)) prepared.set(n, prep);
         return prep.record;
       },
       async cells(list, bytes, signal) {
@@ -393,16 +414,16 @@ export function createOcrWeb({
         records.clear();
         try { worker.postMessage({ type: "forget" }); } catch { /* gone */ }
       },
-      async page(n, bytes, signal) {
+      async page(n, bytes, signal, band = 0) {
         throwIfAborted(signal);
-        if (records.has(n)) return records.get(n);
-        const rendered = await renderOne(bytes, n, signal);
+        if (!(band > 0) && records.has(n)) return records.get(n);
+        const rendered = cropTopBand(await renderOne(bytes, n, signal), band);
         const rgb = rendered.rgb;
         const msg = await call({
           type: "page", n, width: rendered.width, height: rendered.height, dpi: rendered.dpi,
           pointW: rendered.pointW, pointH: rendered.pointH, rgb,
         }, [rgb.buffer], signal);
-        records.set(n, msg.record);
+        if (!(band > 0)) records.set(n, msg.record);
         return msg.record;
       },
       async cells(list, bytes, signal) {
@@ -459,7 +480,7 @@ export function createOcrWeb({
     return { state, schema: SCHEMA, engine: ENGINE };
   }
 
-  async function ocr({ bytes, sha256 = null, pages, cells, signal } = {}) {
+  async function ocr({ bytes, sha256 = null, pages, cells, signal, band = 0 } = {}) {
     const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
     throwIfAborted(signal);
     const ready = await ensure(signal);
@@ -469,7 +490,7 @@ export function createOcrWeb({
     } else {
       const wanted = pages?.length ? pages : [1];
       const out = [];
-      for (const n of wanted) out.push(await ready.page(n, bytes, signal));
+      for (const n of wanted) out.push(await ready.page(n, bytes, signal, band));
       body = { pageCount: out.length, pages: out };
     }
     const elapsedMs = Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - t0);

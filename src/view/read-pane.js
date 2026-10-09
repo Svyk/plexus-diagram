@@ -2233,6 +2233,12 @@ export function createReadPane({
     autoTried.add(sig);
     paintStrip();
     if (!first) return;
+    if (typeof deviceOcr?.readBandTitle === "function") {
+      const url = pdfUrl();
+      void deviceOcr.readBandTitle({ getPdf }).then((band) => {
+        if (band && pdfUrl() === url) noteParsedTitle(band);
+      }).catch(() => {});
+    }
     void (async () => {
       await refreshSnaps(true);
       if (info?.sha256 && !ocrCovered) await loadOcrLayer(info.sha256);

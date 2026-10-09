@@ -4,6 +4,8 @@
 // the same API runs on an in-memory fallback. No graph writes.
 
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
+import { bestLocalDoc } from "../model/cloud-merge.js";
+import { parsedDocTitle, parsedTitleLines } from "../model/pdf.js";
 import { openDiagramDb, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX } from "./diagram-db.js";
 import { optionsHash } from "../model/parse-hash.js";
 import { PARSE_REV } from "../model/parse/index.js";
@@ -69,6 +71,26 @@ export async function restorableByUrl(store, url, { plainOptions, engines = REST
     plainHash: await optionsHash(plainOptions),
     readHashOf: (plain) => optionsHash({ ...(plain.options || plainOptions), ocr: "vision" }),
   });
+}
+
+// The document to show, plus a title that does not degrade when the cloud read has none.
+// `linesDoc` is the document the title came from (for the banner check).
+export async function restorableTitle(store, url, plainOptions) {
+  const found = await restorableByUrl(store, url, { plainOptions });
+  if (!found) return { doc: null, title: "", lines: [] };
+  let title = parsedDocTitle(found);
+  let linesDoc = found;
+  if (!title && found.engine === "cloud" && found.sha256 && typeof store.listParses === "function") {
+    let listed = [];
+    try { listed = await store.listParses(found.sha256); } catch { listed = []; }
+    const local = bestLocalDoc(listed);
+    const localTitle = parsedDocTitle(local);
+    if (localTitle) {
+      title = localTitle;
+      linesDoc = local;
+    }
+  }
+  return { doc: found, title, lines: parsedTitleLines(linesDoc) };
 }
 
 export function imageKey(sha256, blockId) {

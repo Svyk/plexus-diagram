@@ -8827,6 +8827,18 @@ function parsedTitleLines(doc) {
 function parsedDocTitle(doc) {
   return capTitle(parsedDocTitleRaw(doc));
 }
+function nextParsedTitle(current3, incoming) {
+  const next = cleanPdfTitle(incoming);
+  if (next) return next;
+  return cleanPdfTitle(current3) || "";
+}
+function withKeptTitle(cloudDoc, localDoc) {
+  if (!cloudDoc || cloudDoc.engine !== "cloud") return cloudDoc;
+  if (parsedDocTitle(cloudDoc)) return cloudDoc;
+  const title = parsedDocTitle(localDoc);
+  if (!title) return cloudDoc;
+  return { ...cloudDoc, title };
+}
 function parsedDocTitleRaw(doc) {
   if (!doc || typeof doc !== "object") return "";
   const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
@@ -40398,7 +40410,265 @@ function scanPagesOf(doc) {
   return (doc?.pages || []).filter((p) => !p.ocr && (p.kind === "scan" || p.scanLayer)).map((p) => p.n);
 }
 
+// src/model/cloud-merge.js
+init_parse_schema();
+var IOU_MATCH = 0.5;
+function emptyBox(box2) {
+  return !box2 || box2.length < 4 || box2[2] - box2[0] <= 0 || box2[3] - box2[1] <= 0;
+}
+function onTable(box2, tableBox) {
+  if (emptyBox(box2) || emptyBox(tableBox)) return false;
+  if (iou(box2, tableBox) >= IOU_MATCH) return true;
+  const area = (box2[2] - box2[0]) * (box2[3] - box2[1]);
+  if (!(area > 0)) return false;
+  const ix = Math.max(0, Math.min(box2[2], tableBox[2]) - Math.max(box2[0], tableBox[0]));
+  const iy = Math.max(0, Math.min(box2[3], tableBox[3]) - Math.max(box2[1], tableBox[1]));
+  return ix * iy / area >= 0.5;
+}
+function pagesOf(doc) {
+  const set = /* @__PURE__ */ new Set();
+  for (const page of doc?.pages || []) if (Number.isInteger(page?.n)) set.add(page.n);
+  for (const block of Object.values(doc?.blocks || {})) {
+    if (Number.isInteger(block?.page)) set.add(block.page);
+  }
+  return [...set];
+}
+function blocksOf(doc, page, type) {
+  const out = [];
+  const blocks = doc?.blocks || {};
+  for (const id of doc?.order || []) {
+    const block = blocks[id];
+    if (block?.type === type && block.page === page) out.push(block);
+  }
+  return out;
+}
+function pagePairs(cloud, local) {
+  const cloudPages = pagesOf(cloud);
+  const localPages = new Set(pagesOf(local));
+  const pairs = [];
+  for (const n2 of cloudPages) if (localPages.has(n2)) pairs.push([n2, n2]);
+  if (!pairs.length && cloudPages.length === 1 && localPages.size === 1) {
+    pairs.push([cloudPages[0], [...localPages][0]]);
+  }
+  return pairs;
+}
+function captionBlock(doc, figure) {
+  const id = figure?.caption;
+  const block = id && doc?.blocks ? doc.blocks[id] : null;
+  return block?.type === "caption" ? block : null;
+}
+function captionText(block) {
+  return String(block?.text || "").replace(/\s+/g, " ").trim();
+}
+function clampConf(value, fallback) {
+  const n2 = Number(value);
+  if (!Number.isFinite(n2)) return fallback;
+  return Math.max(0, Math.min(1, n2));
+}
+function idFactory(blocks) {
+  const used = new Set(Object.keys(blocks));
+  return (prefix) => {
+    let n2 = 1;
+    while (used.has(`${prefix}${n2}`)) n2 += 1;
+    const id = `${prefix}${n2}`;
+    used.add(id);
+    return id;
+  };
+}
+function insertAfter(order, id, extra) {
+  const at = order.indexOf(id);
+  if (at < 0) return order.concat(extra);
+  return order.slice(0, at + 1).concat(extra, order.slice(at + 1));
+}
+function insertOnPage(order, blocks, page, extra) {
+  let at = -1;
+  for (let i = 0; i < order.length; i += 1) {
+    if (blocks[order[i]]?.page === page) at = i;
+  }
+  if (at < 0) return order.concat(extra);
+  return order.slice(0, at + 1).concat(extra, order.slice(at + 1));
+}
+function dropFigure(blocks, order, id) {
+  const fig = blocks[id];
+  if (!fig) return order;
+  const capId = fig.caption;
+  delete blocks[id];
+  let next = order.filter((item) => item !== id);
+  if (capId && blocks[capId]?.for === id && !Object.values(blocks).some((block) => block && block.caption === capId)) {
+    delete blocks[capId];
+    next = next.filter((item) => item !== capId);
+  }
+  return next;
+}
+function matchFigures(cloudFigs, localFigs) {
+  const pairs = /* @__PURE__ */ new Map();
+  const used = /* @__PURE__ */ new Set();
+  const open = new Set(cloudFigs);
+  for (; ; ) {
+    let best = null;
+    for (const cloud of open) {
+      for (const local of localFigs) {
+        if (used.has(local)) continue;
+        const score = iou(cloud.bbox, local.bbox);
+        if (score >= IOU_MATCH && (!best || score > best.score)) best = { cloud, local, score };
+      }
+    }
+    if (!best) break;
+    pairs.set(best.cloud, best.local);
+    open.delete(best.cloud);
+    used.add(best.local);
+  }
+  return { pairs, used };
+}
+function isOcrRead(doc) {
+  if (!doc) return false;
+  const mode = doc.options?.ocr;
+  if (mode && mode !== "none") return true;
+  if (doc.ocr?.pages?.length) return true;
+  if (doc.ocr?.source) return true;
+  return (doc.pages || []).some((page) => page?.ocr);
+}
+function localTier(row4) {
+  const doc = row4?.doc;
+  if (!doc) return -1;
+  const engine = row4.engine || doc.engine;
+  if (engine === "cloud" || doc.engine === "cloud") return -1;
+  if (doc.ocr?.source === "helper") return 3;
+  if (isOcrRead(doc)) return 2;
+  if (engine === "builtin") return 1;
+  return -1;
+}
+function bestLocalDoc(rows) {
+  let best = null;
+  let tier = -1;
+  let at = -Infinity;
+  for (const row4 of rows || []) {
+    const rank = localTier(row4);
+    if (rank < 0) continue;
+    const when = Number(row4.at);
+    const stamp2 = Number.isFinite(when) ? when : 0;
+    if (rank > tier || rank === tier && stamp2 >= at) {
+      best = row4.doc;
+      tier = rank;
+      at = stamp2;
+    }
+  }
+  return best;
+}
+async function localParseForCloud(store, sha, current3) {
+  let rows = [];
+  try {
+    if (sha && typeof store?.listParses === "function") rows = await store.listParses(sha) || [];
+  } catch {
+    rows = [];
+  }
+  if (current3 && current3.engine !== "cloud") {
+    rows = rows.concat([{ engine: current3.engine || "builtin", doc: current3, at: Number.MAX_SAFE_INTEGER }]);
+  }
+  return bestLocalDoc(rows);
+}
+function mergeCloudFigures(cloudDoc, localDoc) {
+  if (!cloudDoc || typeof cloudDoc !== "object") return cloudDoc;
+  if (!localDoc || typeof localDoc !== "object" || !localDoc.blocks && !localDoc.order) return cloudDoc;
+  const blocks = {};
+  for (const [id, block] of Object.entries(cloudDoc.blocks || {})) {
+    blocks[id] = block?.image ? { ...block, image: { ...block.image } } : { ...block };
+  }
+  let order = [...cloudDoc.order || []];
+  const nextId = idFactory(blocks);
+  for (const [cloudPage, localPage] of pagePairs(cloudDoc, localDoc)) {
+    const cloudFigs = order.map((id) => blocks[id]).filter((block) => block?.type === "figure" && block.page === cloudPage);
+    const localFigs = blocksOf(localDoc, localPage, "figure").filter((block) => !emptyBox(block.bbox));
+    const { pairs, used } = matchFigures(cloudFigs, localFigs);
+    for (const [cloud, local] of pairs) {
+      cloud.bbox = local.bbox.slice();
+      cloud.source = "hybrid";
+      const localCap = captionBlock(localDoc, local);
+      const text3 = captionText(localCap);
+      if (!text3) continue;
+      if (cloud.caption && blocks[cloud.caption]) {
+        blocks[cloud.caption] = {
+          ...blocks[cloud.caption],
+          text: text3,
+          bbox: localCap.bbox || blocks[cloud.caption].bbox
+        };
+      } else {
+        const id = nextId("c");
+        blocks[id] = {
+          id,
+          type: "caption",
+          page: cloud.page,
+          bbox: localCap.bbox || cloud.bbox,
+          text: text3,
+          for: cloud.id,
+          confidence: clampConf(localCap.confidence, cloud.confidence ?? 0.9),
+          engine: "cloud"
+        };
+        cloud.caption = id;
+        order = insertAfter(order, cloud.id, [id]);
+      }
+    }
+    const added = [];
+    for (const local of localFigs) {
+      if (used.has(local)) continue;
+      const id = nextId("f");
+      const localCap = captionBlock(localDoc, local);
+      const text3 = captionText(localCap);
+      const figure = {
+        id,
+        type: "figure",
+        page: cloudPage,
+        bbox: local.bbox.slice(),
+        caption: null,
+        image: local.image ? { ...local.image } : { kind: "crop", source: "local" },
+        confidence: clampConf(local.confidence, 0.9),
+        engine: "cloud",
+        source: "local"
+      };
+      blocks[id] = figure;
+      added.push(id);
+      if (text3) {
+        const capId = nextId("c");
+        blocks[capId] = {
+          id: capId,
+          type: "caption",
+          page: cloudPage,
+          bbox: localCap.bbox || figure.bbox,
+          text: text3,
+          for: id,
+          confidence: clampConf(localCap.confidence, figure.confidence),
+          engine: "cloud"
+        };
+        figure.caption = capId;
+        added.push(capId);
+      }
+    }
+    if (added.length) order = insertOnPage(order, blocks, cloudPage, added);
+  }
+  for (const id of order) {
+    const fig = blocks[id];
+    if (fig?.type === "figure" && !fig.source) fig.source = "llamaparse";
+  }
+  const tables = Object.values(blocks).filter((block) => block?.type === "table");
+  for (const id of [...order]) {
+    const fig = blocks[id];
+    if (fig?.type !== "figure" || fig.source !== "llamaparse" || !fig.image?.layout) continue;
+    if (!tables.some((table) => table.page === fig.page && onTable(fig.bbox, table.bbox))) continue;
+    order = dropFigure(blocks, order, id);
+  }
+  const doc = { ...cloudDoc, blocks, order };
+  const check = validateParse(doc);
+  if (!check.ok) {
+    const error = new Error(`cloud merge schema: ${check.errors.join(",")}`);
+    error.code = "schema";
+    error.errors = check.errors;
+    throw error;
+  }
+  return doc;
+}
+
 // src/host/parse-store.js
+init_pdf();
 init_parse_hash();
 init_parse();
 var PARSE_DOC_CAP = 50;
@@ -40454,6 +40724,27 @@ async function restorableByUrl(store, url, { plainOptions, engines = RESTORE_ENG
     plainHash: await optionsHash(plainOptions),
     readHashOf: (plain2) => optionsHash({ ...plain2.options || plainOptions, ocr: "vision" })
   });
+}
+async function restorableTitle(store, url, plainOptions) {
+  const found = await restorableByUrl(store, url, { plainOptions });
+  if (!found) return { doc: null, title: "", lines: [] };
+  let title = parsedDocTitle(found);
+  let linesDoc = found;
+  if (!title && found.engine === "cloud" && found.sha256 && typeof store.listParses === "function") {
+    let listed = [];
+    try {
+      listed = await store.listParses(found.sha256);
+    } catch {
+      listed = [];
+    }
+    const local = bestLocalDoc(listed);
+    const localTitle = parsedDocTitle(local);
+    if (localTitle) {
+      title = localTitle;
+      linesDoc = local;
+    }
+  }
+  return { doc: found, title, lines: parsedTitleLines(linesDoc) };
 }
 function imageKey2(sha256, blockId) {
   return `${sha256}/${blockId}`;
@@ -44373,6 +44664,7 @@ var LAYOUT_CREDITS = 0;
 var LLAMA_EXPAND = "expand=items&expand=markdown&expand=usage&expand=images_content_metadata";
 var CLOUD_CACHE_NOTE = "Free if parsed with the same options in the last 48 h";
 var CLOUD_LEAVES_NOTE = "The PDF leaves this device";
+var CLOUD_PACE_NOTE = "about 20–30 s per page";
 var MISTRAL_DISABLED_MESSAGE = "Mistral OCR is not enabled for this key's workspace yet (0 requests per minute). Turn on billing for that workspace in console.mistral.ai.";
 var MISTRAL_RATE_MESSAGE = "rate limit, try again in a minute";
 var TIER_CREDITS = Object.freeze({
@@ -44513,6 +44805,7 @@ function cloudSheetModel({
     thisPage: "This page only",
     allPages: total ? `All ${pageWord(total)}` : "All pages",
     estimate,
+    pace: llama ? CLOUD_PACE_NOTE : "",
     cache: llama ? CLOUD_CACHE_NOTE : "",
     leaves: CLOUD_LEAVES_NOTE,
     pages: chosen === "current" ? String(page) : ""
@@ -45082,6 +45375,10 @@ function openCloudConfirm({
   estimate.className = "pxd-cloud-confirm__estimate";
   estimate.setAttribute("data-cloud-estimate", "");
   sheet.append(estimate);
+  const pace = doc.createElement("p");
+  pace.className = "pxd-cloud-confirm__note";
+  pace.setAttribute("data-cloud-pace", "");
+  sheet.append(pace);
   if (initial.cache) {
     const cache = doc.createElement("p");
     cache.className = "pxd-cloud-confirm__note";
@@ -45118,6 +45415,9 @@ function openCloudConfirm({
   function paint2() {
     const model = modelNow();
     estimate.textContent = model.estimate;
+    pace.textContent = model.pace || "";
+    if (model.pace) pace.removeAttribute?.("hidden");
+    else pace.setAttribute?.("hidden", "");
     const mark = (button2, on) => {
       button2.classList.toggle("pxd-cloud-confirm__choice--on", on);
       button2.setAttribute("aria-checked", on ? "true" : "false");
@@ -45390,7 +45690,12 @@ function groundedTables(pageNumber, pages) {
   const page = (pages || []).find((entry) => entry && entry.page_number === pageNumber && entry.success !== false);
   return (page?.items || []).filter((item) => item?.type === "table");
 }
-var FIG_RE = /^(?:fig(?:ure)?)\.?\s*\d+\b/i;
+var CAPTION_LINE = /^(?:fig(?:ure)?|table)\.?\s*\d+\b/i;
+var FIGURE_KINDS = /* @__PURE__ */ new Set(["chart", "image", "figure", "picture", "diagram"]);
+function layoutImageKind(filename) {
+  const match = /page_\d+_([a-z]+)_\d+/i.exec(String(filename || ""));
+  return match ? match[1].toLowerCase() : "";
+}
 function boxLabel(item) {
   const list = Array.isArray(item?.bbox) ? item.bbox : item?.bbox && typeof item.bbox === "object" ? [item.bbox] : [];
   for (const raw of list) {
@@ -45400,11 +45705,11 @@ function boxLabel(item) {
 }
 function isCaptionItem(item) {
   if (!item || typeof item !== "object") return false;
-  if (item.type === "header" || item.type === "footer") return false;
+  if (item.type === "header" || item.type === "footer" || item.type === "heading") return false;
   const label = boxLabel(item);
   if (label === "header" || label === "footer") return false;
   if (label === "caption") return true;
-  return FIG_RE.test(plainItem(item));
+  return CAPTION_LINE.test(plainItem(item));
 }
 function layoutImagesOf(provider) {
   const images = provider?.images_content_metadata?.images;
@@ -45470,18 +45775,71 @@ function assignCaptions(images, items) {
   }
   return pairs;
 }
-function emptyBox(box2) {
+function emptyBox2(box2) {
   return !box2 || box2[2] - box2[0] <= 0 || box2[3] - box2[1] <= 0;
 }
 function chartTable(item, block, images) {
-  if (!images.length) return false;
-  if (!emptyBox(block.bbox)) {
-    for (const image of images) {
+  const charts = (images || []).filter((image) => layoutImageKind(image?.filename) !== "table");
+  if (charts.length && !emptyBox2(block.bbox)) {
+    for (const image of charts) {
       const other = llamaBox(image.bbox)?.bbox;
       if (other && iou(block.bbox, other) >= 0.15) return true;
     }
   }
   return Boolean(item?.parse_concerns) && /chart/i.test(JSON.stringify(item.parse_concerns));
+}
+function layoutOnTable(box2, tableBox) {
+  if (!box2 || !tableBox || emptyBox2(box2) || emptyBox2(tableBox)) return false;
+  if (iou(box2, tableBox) >= 0.5) return true;
+  const area = (box2[2] - box2[0]) * (box2[3] - box2[1]);
+  if (!(area > 0)) return false;
+  const ix = Math.max(0, Math.min(box2[2], tableBox[2]) - Math.max(box2[0], tableBox[0]));
+  const iy = Math.max(0, Math.min(box2[3], tableBox[3]) - Math.max(box2[1], tableBox[1]));
+  return ix * iy / area >= 0.5;
+}
+function assignTableBoxes(tables, images) {
+  const spare = [];
+  for (const image of images) {
+    const box2 = llamaBox(image.bbox)?.bbox;
+    if (!box2) continue;
+    const hit = tables.find(({ block }) => !emptyBox2(block.bbox) && iou(block.bbox, box2) >= 0.15);
+    if (hit) continue;
+    spare.push(image);
+  }
+  const need2 = tables.filter(({ block }) => emptyBox2(block.bbox));
+  spare.sort((a, b) => (llamaBox(a.bbox)?.bbox[1] || 0) - (llamaBox(b.bbox)?.bbox[1] || 0));
+  for (let i = 0; i < spare.length && i < need2.length; i += 1) {
+    const box2 = llamaBox(spare[i].bbox);
+    if (box2) need2[i].block.bbox = box2.bbox;
+  }
+}
+function applyHeadingTitles(blocks, order, pageNumber) {
+  const ids = order.filter((id) => blocks[id]?.page === pageNumber);
+  for (let i = 0; i < ids.length; i += 1) {
+    const table = blocks[ids[i]];
+    if (table?.type !== "table" || table.title) continue;
+    let heading = null;
+    for (let j = i - 1; j >= 0; j -= 1) {
+      const prev = blocks[ids[j]];
+      if (!prev) continue;
+      if (prev.type === "heading") {
+        heading = prev;
+        break;
+      }
+      if (prev.type === "caption") continue;
+      break;
+    }
+    const text3 = String(heading?.text || "").replace(/\s+/g, " ").trim();
+    if (!text3 || !headingSitsOn(heading?.bbox, table.bbox)) continue;
+    table.title = text3;
+  }
+}
+function headingSitsOn(heading, table) {
+  if (!heading || !table || emptyBox2(heading) || emptyBox2(table)) return false;
+  const gap = table[1] - heading[3];
+  if (gap < -8 || gap > 40) return false;
+  const overlap = Math.min(heading[2], table[2]) - Math.max(heading[0], table[0]);
+  return overlap > 8;
 }
 function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region = "us" } = {}) {
   const pagesIn = provider?.items?.pages || [];
@@ -45580,7 +45938,7 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
       });
       if (covered) return null;
       const id = nextId("f");
-      const captionText = typeof item.caption === "string" ? item.caption.replace(/\s+/g, " ").trim() : "";
+      const captionText2 = typeof item.caption === "string" ? item.caption.replace(/\s+/g, " ").trim() : "";
       let captionId = null;
       const block = push({
         id,
@@ -45592,14 +45950,14 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
         confidence,
         engine: ENGINE
       });
-      if (captionText) {
+      if (captionText2) {
         captionId = nextId("c");
         push({
           id: captionId,
           type: "caption",
           page: pageNumber,
           bbox,
-          text: captionText,
+          text: captionText2,
           for: id,
           confidence,
           engine: ENGINE
@@ -45644,8 +46002,18 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
       parsed: ok
     });
     if (!ok || !Array.isArray(page.items)) continue;
-    pageLayout = layoutImages.filter((image) => layoutImagePage(image.filename, pageNums) === pageNumber);
-    const assigned = assignCaptions(pageLayout, page.items.filter(isCaptionItem));
+    const onPage = layoutImages.filter((image) => layoutImagePage(image.filename, pageNums) === pageNumber);
+    const tableImages = [];
+    const figureImages = [];
+    const unknownImages = [];
+    for (const image of onPage) {
+      const kind = layoutImageKind(image.filename);
+      if (kind === "table") tableImages.push(image);
+      else if (FIGURE_KINDS.has(kind)) figureImages.push(image);
+      else unknownImages.push(image);
+    }
+    pageLayout = figureImages;
+    const assigned = assignCaptions(figureImages, page.items.filter(isCaptionItem));
     const paired = new Set(assigned.values());
     const emitLayout = (image, captionItem) => {
       const box2 = llamaBox(image?.bbox);
@@ -45657,7 +46025,7 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
         page: pageNumber,
         bbox: box2.bbox,
         caption: null,
-        image: { kind: "crop", source: "llamaparse" },
+        image: { kind: "crop", source: "llamaparse", layout: true },
         confidence: box2.confidence == null ? 0.9 : box2.confidence,
         engine: ENGINE
       });
@@ -45687,14 +46055,23 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
       const block = walk2(item, pageNumber);
       if (block?.type === "table") tables.push({ block, item });
     }
-    for (const image of pageLayout) {
+    for (const image of figureImages) {
       if (!paired.has(image)) emitLayout(image, null);
     }
+    assignTableBoxes(tables, tableImages);
+    const unknownFigures = unknownImages.filter((image) => {
+      const box2 = llamaBox(image.bbox)?.bbox;
+      if (!box2) return false;
+      return !tables.some(({ block }) => layoutOnTable(box2, block.bbox));
+    });
+    for (const image of unknownFigures) emitLayout(image, null);
     const groundedRows = groundedTables(pageNumber, grounded);
     tables.forEach(({ block }, index) => applyGrounding(block, groundedRows[index]?.grounding));
+    const chartImages = figureImages.concat(unknownFigures);
     for (const { block, item } of tables) {
-      if (chartTable(item, block, pageLayout)) block.fromChart = true;
+      if (chartTable(item, block, chartImages)) block.fromChart = true;
     }
+    applyHeadingTitles(blocks, order, pageNumber);
   }
   const doc = {
     schema: SCHEMA2,
@@ -45980,15 +46357,15 @@ function mistralToParse(provider, { sha256 = null } = {}) {
           confidence,
           engine: ENGINE
         });
-        const captionText = String(node2.caption || "").replace(/\s+/g, " ").trim();
-        if (captionText) {
+        const captionText2 = String(node2.caption || "").replace(/\s+/g, " ").trim();
+        if (captionText2) {
           const captionId = nextId("c");
           push({
             id: captionId,
             type: "caption",
             page: pageNumber,
             bbox,
-            text: captionText,
+            text: captionText2,
             for: id,
             confidence,
             engine: ENGINE
@@ -46823,7 +47200,7 @@ function createParseView({
         return true;
       }
       if (id === "card" || id === "source") {
-        const markdown = isImageCopy(block) ? captionText(block) : toMarkdown(parsed, [block.id]);
+        const markdown = isImageCopy(block) ? captionText2(block) : toMarkdown(parsed, [block.id]);
         let source = "";
         if (id === "source") {
           source = await ensurePin(block);
@@ -47294,7 +47671,7 @@ ${sourceAttrString(source)}` : markdown;
   function isImageCopy(block) {
     return block?.type === "figure" || block?.type === "formula" && !block.latex;
   }
-  function captionText(block) {
+  function captionText2(block) {
     if (typeof block.caption === "string" && block.caption && !parsed?.blocks?.[block.caption]) return block.caption;
     for (const other of Object.values(parsed?.blocks || {})) {
       if (other?.type === "caption" && other.for === block.id && other.text) return other.text;
@@ -47329,7 +47706,7 @@ ${sourceAttrString(source)}` : markdown;
         await writeTextOnly(toMarkdown(parsed, [block.id]));
         return true;
       }
-      const caption = captionText(block);
+      const caption = captionText2(block);
       let src = "";
       const key = parsed?.sha256 ? imageKey2(parsed.sha256, block.id) : "";
       if (key && store?.getImage) {
@@ -47831,6 +48208,9 @@ ${sourceAttrString(source)}` : markdown;
       });
       if (ctrl.signal.aborted) return;
       if (result?.records) records = result.records;
+      if (result?.doc) {
+        result.doc.ocr = { ...result.doc.ocr || {}, source: engine === ocrSource ? "browser" : "helper" };
+      }
       const read2 = (result?.records || []).filter((rec) => rec?.ocr && (result.pages || pages).includes(rec.n));
       if (read2.length) {
         try {
@@ -47890,6 +48270,7 @@ ${sourceAttrString(source)}` : markdown;
       }
       if (dead || parsed !== base) return false;
       records = merged.records;
+      merged.doc.ocr = { ...merged.doc.ocr || {}, source: "browser" };
       if (typeof readCells === "function") {
         try {
           const rereads = await rereadCells({ doc: merged.doc, ocr: readCells, signal, onPhase });
@@ -48044,7 +48425,10 @@ ${sourceAttrString(source)}` : markdown;
         }
       });
       const sha = parsed?.sha256 || await sha256Hex(bytes);
-      const docResult = llamaparseToParse(result.provider, { sha256: sha, tier: answer.tier || prefs.tier, region: prefs.region });
+      const local = await localParseForCloud(store, sha, parsed?.engine === "cloud" ? null : parsed);
+      let docResult = llamaparseToParse(result.provider, { sha256: sha, tier: answer.tier || prefs.tier, region: prefs.region });
+      docResult = mergeCloudFigures(docResult, local);
+      docResult = withKeptTitle(docResult, local);
       const credits = cloudUsageCredits(result.provider);
       if (credits != null) docResult.stats = { ...docResult.stats || {}, credits };
       if (ctrl.signal.aborted) return;
@@ -48102,7 +48486,8 @@ ${sourceAttrString(source)}` : markdown;
         signal: ctrl.signal
       });
       const sha = parsed?.sha256 || await sha256Hex(bytes);
-      const docResult = mistralToParse(result.provider, { sha256: sha });
+      const local = await localParseForCloud(store, sha, parsed?.engine === "cloud" ? null : parsed);
+      const docResult = withKeptTitle(mistralToParse(result.provider, { sha256: sha }), local);
       if (ctrl.signal.aborted) return;
       await finishDoc(docResult, now3() - started);
     } catch (error) {
@@ -51944,7 +52329,7 @@ function createReadPane({
     for (const opt of options) if (opt.value === current3.cardUid) opt.textContent = text3;
   };
   const noteParsedTitle = (value, lines) => {
-    const text3 = cleanPdfTitle(value);
+    const text3 = nextParsedTitle(parsedTitle, value);
     if (text3 === parsedTitle) return;
     parsedTitle = text3;
     if (openFlag) paintTitle();
@@ -52449,9 +52834,9 @@ function createReadPane({
       if (hit?.sha256 && openFlag && url === pdfUrl()) void loadOcrLayer(hit.sha256);
       if (hit?.sha256 && openFlag) revealModes();
       if (hit?.sha256 && openFlag && !realTitle(current3.title) && !parsedTitle) {
-        const found = await restorableByUrl(ensureStore2(), url, { plainOptions: BUILTIN_OPTIONS });
-        const title = found ? parsedDocTitle(found) : "";
-        if (title && !parsedTitle && openFlag && url === pdfUrl()) noteParsedTitle(title, parsedTitleLines(found));
+        const found = await restorableTitle(ensureStore2(), url, BUILTIN_OPTIONS);
+        const title = found.title;
+        if (title && !parsedTitle && openFlag && url === pdfUrl()) noteParsedTitle(title, found.lines);
       }
     } catch {
     }
@@ -65077,11 +65462,11 @@ function buildBoardView(onFail, {
     if (storedQueued.has(key)) return;
     storedQueued.add(key);
     if (!titleStore) titleStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
-    restorableByUrl(titleStore, key, { plainOptions: BUILTIN_OPTIONS }).then((found) => {
-      const title = found ? parsedDocTitle(found) : "";
+    restorableTitle(titleStore, key, BUILTIN_OPTIONS).then((found) => {
+      const title = found?.title || "";
       if (disposed || !title || parsedTitles.get(key)) return;
       parsedTitles.set(key, title);
-      parsedEvidence.set(key, { pageTitle: title, lines: parsedTitleLines(found) });
+      parsedEvidence.set(key, { pageTitle: title, lines: found.lines || [] });
       try {
         itemsR?.repaintStyles?.();
       } catch {

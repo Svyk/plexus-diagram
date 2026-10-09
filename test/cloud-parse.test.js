@@ -19,8 +19,10 @@ import {
   writeCloudPrefs,
   writeMistralKey,
 } from "../src/host/cloud-parse.js";
-import { createParseStore, restorableByUrl } from "../src/host/parse-store.js";
-import { layoutImagePage, llamaparseToParse, mistralToParse } from "../src/model/cloud-to-parse.js";
+import { createParseStore, restorableByUrl, restorableTitle } from "../src/host/parse-store.js";
+import { layoutImageKind, layoutImagePage, llamaparseToParse, mistralToParse } from "../src/model/cloud-to-parse.js";
+import { bestLocalDoc, mergeCloudFigures } from "../src/model/cloud-merge.js";
+import { nextParsedTitle, parsedDocTitle, withKeptTitle } from "../src/model/pdf.js";
 import { PARSE_REV } from "../src/model/parse/index.js";
 import { validateParse } from "../src/model/parse-schema.js";
 import { cloudRow, renderEnginesPanel } from "../src/view/engines-panel.js";
@@ -516,6 +518,9 @@ test("a layout image becomes a figure, and a chart table keeps its cells", () =>
   assert.equal(table.rows, 2);
   assert.equal(table.cells[0].text, "Angle");
   assert.equal(blocks.some((block) => block.type === "para" && block.text === "Fig. 2"), true);
+  assert.equal(blocks.some((block) => block.type === "heading" && block.text === "Inside the chart"), true);
+  assert.equal(caption.text === "Inside the chart", false);
+  assert.equal(figure.image.layout, true);
   assert.equal(JSON.stringify(doc).includes("presigned"), false);
 });
 
@@ -847,4 +852,150 @@ test("a synthetic Mistral response becomes pxd-parse/1", () => {
   });
   assert.equal(zero.pages[0].n, 1);
   assert.equal(zero.blocks[zero.order[0]].text, "Hello");
+});
+
+test("a table layout image is not a figure, and the heading above it stays the title", () => {
+  assert.equal(layoutImageKind("page_1_table_1_v2.jpg"), "table");
+  assert.equal(layoutImageKind("page_1_chart_1_v2.jpg"), "chart");
+  assert.equal(layoutImageKind("page_1_screenshot_1.jpg"), "screenshot");
+  const heading = "NOTIFIABLE DISEASES — Summary of reported cases per 100,000 population, United States, 1971-1980";
+  const provider = {
+    items: {
+      pages: [{
+        page_number: 1,
+        page_width: 597.1,
+        page_height: 404.9,
+        success: true,
+        items: [
+          { type: "heading", level: 2, value: heading, bbox: [{ x: 186.89, y: 9.72, w: 304.52, h: 6.7, label: "caption" }] },
+          {
+            type: "table",
+            html: "<table><tr><th>Disease</th><th>1980</th></tr><tr><td>Cholera</td><td>0</td></tr></table>",
+            bbox: [{ x: 102.1, y: 17.41, w: 466.94, h: 317.44, label: "table" }],
+          },
+        ],
+      }],
+    },
+    images_content_metadata: {
+      images: [{ filename: "page_1_table_1_v2.jpg", category: "layout", bbox: { x: 102, y: 17, w: 467, h: 317 } }],
+    },
+  };
+  const doc = llamaparseToParse(provider, { tier: "agentic" });
+  assert.equal(validateParse(doc).ok, true);
+  const blocks = doc.order.map((id) => doc.blocks[id]);
+  assert.deepEqual(blocks.map((block) => block.type), ["heading", "table"]);
+  assert.equal(blocks[0].text, heading);
+  assert.equal(blocks[1].title, heading);
+  assert.equal(blocks[1].fromChart, undefined);
+  assert.deepEqual(blocks[1].bbox, [102.1, 17.41, 569.04, 334.85]);
+  assert.match(parsedDocTitle(doc), /^NOTIFIABLE DISEASES/);
+  const bare = llamaparseToParse({
+    items: { pages: [{ page_number: 1, page_width: 600, page_height: 400, success: true, items: [
+      { type: "table", html: "<table><tr><td>a</td><td>b</td></tr></table>" },
+    ] }] },
+    images_content_metadata: { images: [{ filename: "page_1_table_1_v2.jpg", category: "layout", bbox: { x: 40, y: 50, w: 400, h: 200 } }] },
+  });
+  const bareTable = bare.order.map((id) => bare.blocks[id]).find((block) => block.type === "table");
+  assert.deepEqual(bareTable.bbox, [40, 50, 440, 250]);
+  assert.equal(bare.order.some((id) => bare.blocks[id].type === "figure"), false);
+});
+
+test("an unknown layout image is a figure only when no table covers it", () => {
+  const provider = {
+    items: { pages: [{
+      page_number: 1, page_width: 600, page_height: 800, success: true,
+      items: [
+        { type: "table", html: "<table><tr><td>a</td></tr></table>", bbox: [{ x: 40, y: 40, w: 200, h: 200, label: "table" }] },
+        { type: "text", value: "Table 2. Rates by year", bbox: [{ x: 40, y: 250, w: 180, h: 16 }] },
+      ],
+    }] },
+    images_content_metadata: { images: [
+      { filename: "page_1_screenshot_1_v2.jpg", category: "layout", bbox: { x: 40, y: 40, w: 200, h: 200 } },
+      { filename: "page_1_mark_1_v2.jpg", category: "layout", bbox: { x: 360, y: 500, w: 160, h: 140 } },
+    ] },
+  };
+  const doc = llamaparseToParse(provider);
+  const blocks = doc.order.map((id) => doc.blocks[id]);
+  const figures = blocks.filter((block) => block.type === "figure");
+  assert.equal(figures.length, 1);
+  assert.deepEqual(figures[0].bbox, [360, 500, 520, 640]);
+  assert.equal(blocks.some((block) => block.type === "caption" && block.text.startsWith("Table 2")), false);
+});
+
+test("hybrid figures keep a local match, add a miss, and drop a layout figure on a table", () => {
+  const cloud = {
+    schema: "pxd-parse/1", engine: "cloud", pageCount: 1,
+    pages: [{ n: 1, w: 600, h: 800, parsed: true }],
+    order: ["f1", "c1", "f2", "t1"],
+    blocks: {
+      f1: { id: "f1", type: "figure", page: 1, bbox: [10, 10, 200, 200], caption: "c1", image: { kind: "crop", source: "llamaparse", layout: true }, confidence: 0.9, engine: "cloud" },
+      c1: { id: "c1", type: "caption", page: 1, bbox: [10, 200, 200, 220], text: "Fig. 1 short", for: "f1", confidence: 0.9, engine: "cloud" },
+      f2: { id: "f2", type: "figure", page: 1, bbox: [300, 300, 500, 500], caption: null, image: { kind: "crop", source: "llamaparse", layout: true }, confidence: 0.9, engine: "cloud" },
+      t1: { id: "t1", type: "table", page: 1, bbox: [300, 300, 500, 500], rows: 1, cols: 1, cells: [{ r: 0, c: 0, rowSpan: 1, colSpan: 1, text: "a" }], confidence: 0.9, engine: "cloud" },
+    },
+  };
+  const local = {
+    schema: "pxd-parse/1", engine: "builtin", pageCount: 1,
+    pages: [{ n: 1, w: 600, h: 800, parsed: true }],
+    order: ["f9", "c9", "f8", "c8"],
+    blocks: {
+      f9: { id: "f9", type: "figure", page: 1, bbox: [12, 12, 198, 198], caption: "c9", image: { kind: "crop", source: "drawing" }, confidence: 0.9, engine: "builtin" },
+      c9: { id: "c9", type: "caption", page: 1, bbox: [12, 202, 190, 230], text: "Fig. 1 The local caption is longer", for: "f9", confidence: 0.9, engine: "builtin" },
+      f8: { id: "f8", type: "figure", page: 1, bbox: [20, 600, 120, 760], caption: "c8", image: { kind: "crop", source: "drawing" }, confidence: 0.9, engine: "builtin" },
+      c8: { id: "c8", type: "caption", page: 1, bbox: [20, 762, 140, 780], text: "Fig. 3 missed", for: "f8", confidence: 0.9, engine: "builtin" },
+    },
+  };
+  assert.equal(mergeCloudFigures(cloud, null), cloud);
+  const merged = mergeCloudFigures(cloud, local);
+  assert.equal(validateParse(merged).ok, true);
+  const figures = merged.order.map((id) => merged.blocks[id]).filter((block) => block.type === "figure");
+  assert.equal(figures.length, 2);
+  const hybrid = figures.find((block) => block.source === "hybrid");
+  const added = figures.find((block) => block.source === "local");
+  assert.deepEqual(hybrid.bbox, [12, 12, 198, 198]);
+  assert.equal(merged.blocks[hybrid.caption].text, "Fig. 1 The local caption is longer");
+  assert.equal(added.page, 1);
+  assert.deepEqual(added.bbox, [20, 600, 120, 760]);
+  assert.equal(merged.blocks[added.caption].text, "Fig. 3 missed");
+  assert.equal(figures.some((block) => block.id === "f2"), false);
+  const plain = { engine: "builtin", options: { ocr: "none" }, pages: [{ n: 1 }] };
+  const browser = { engine: "builtin", options: { ocr: "vision" }, ocr: { source: "browser" }, pages: [{ n: 1, ocr: true }] };
+  const helper = { engine: "builtin", options: { ocr: "vision" }, ocr: { source: "helper", pages: [1] }, pages: [{ n: 1, ocr: true }] };
+  assert.equal(bestLocalDoc([
+    { engine: "builtin", doc: plain, at: 5 },
+    { engine: "builtin", doc: browser, at: 4 },
+    { engine: "builtin", doc: helper, at: 1 },
+    { engine: "cloud", doc: { engine: "cloud", title: "Paid" }, at: 9 },
+  ]), helper);
+  assert.equal(bestLocalDoc([{ engine: "builtin", doc: plain, at: 1 }]), plain);
+});
+
+test("a cloud read with no title keeps the title the PDF already has", async () => {
+  assert.equal(nextParsedTitle("Notifiable diseases summary", ""), "Notifiable diseases summary");
+  assert.equal(nextParsedTitle("Notifiable diseases summary", "A better cloud title"), "A better cloud title");
+  assert.equal(nextParsedTitle("", ""), "");
+  const local = {
+    schema: "pxd-parse/1", engine: "builtin",
+    order: ["h1"],
+    blocks: { h1: { id: "h1", type: "heading", level: 1, page: 1, text: "Notifiable diseases summary" } },
+  };
+  const cloud = { schema: "pxd-parse/1", engine: "cloud", title: null, order: [], blocks: {} };
+  assert.equal(withKeptTitle(cloud, local).title, "Notifiable diseases summary");
+  assert.equal(withKeptTitle({ ...cloud, title: "Cloud title from the read" }, local).title, "Cloud title from the read");
+  const store = createParseStore({ now: () => 1 });
+  const plain = { ocr: "none", formula: false, tables: "builtin" };
+  await store.indexUrl("scan.pdf", { sha256: "sha2", pageCount: 1 });
+  await store.putParse({
+    schema: "pxd-parse/1", sha256: "sha2", engine: "builtin", parseRev: PARSE_REV,
+    options: plain, pages: [{ n: 1 }], order: ["h1"],
+    blocks: { h1: { id: "h1", type: "heading", level: 1, page: 1, text: "Notifiable diseases summary" } },
+  });
+  await store.putParse({
+    schema: "pxd-parse/1", sha256: "sha2", engine: "cloud", title: null,
+    options: { provider: "llamaparse", tier: "agentic", region: "us", ocr: "none", formula: false, tables: "llamaparse" },
+    pages: [{ n: 1 }], blocks: {}, order: [],
+  });
+  const found = await restorableTitle(store, "scan.pdf", plain);
+  assert.equal(found.doc.engine, "cloud");
+  assert.equal(found.title, "Notifiable diseases summary");
 });

@@ -11,6 +11,9 @@ export const LAYOUT_CREDITS = 0;
 export const LLAMA_EXPAND = "expand=items&expand=markdown&expand=usage&expand=images_content_metadata";
 export const CLOUD_CACHE_NOTE = "Free if parsed with the same options in the last 48 h";
 export const CLOUD_LEAVES_NOTE = "The PDF leaves this device";
+// Measured 2026-10-09, uncached Agentic: about 19 s a page without layout images, about 27 s with.
+// Layout images stay on. A cache hit is faster; that is not known before the request is sent.
+export const CLOUD_PACE_NOTE = "about 20–30 s per page";
 export const MISTRAL_DISABLED_MESSAGE = "Mistral OCR is not enabled for this key's workspace yet (0 requests per minute). Turn on billing for that workspace in console.mistral.ai.";
 export const MISTRAL_RATE_MESSAGE = "rate limit, try again in a minute";
 export const TIER_CREDITS = Object.freeze({
@@ -184,6 +187,7 @@ export function cloudSheetModel({
     thisPage: "This page only",
     allPages: total ? `All ${pageWord(total)}` : "All pages",
     estimate,
+    pace: llama ? CLOUD_PACE_NOTE : "",
     cache: llama ? CLOUD_CACHE_NOTE : "",
     leaves: CLOUD_LEAVES_NOTE,
     pages: chosen === "current" ? String(page) : "",

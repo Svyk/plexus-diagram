@@ -7,6 +7,8 @@ import path from "node:path";
 import test from "node:test";
 
 import { cloudSpend, parseCloudRunArgs, runCloudBench } from "../tools/parse-bench/cloud-run.mjs";
+import { corpusIdFromCloud, hybridOutName, mergeCloudDir, parseHybridArgs } from "../tools/parse-bench/cloud-hybrid.mjs";
+import { dumpTarget } from "../tools/parse-bench/scan-corpus.mjs";
 
 function jsonRes(status, body) {
   return { status, json: async () => body };
@@ -110,6 +112,51 @@ test("cloud-run calls LlamaParse on its own host and reports usage credits", asy
     assert.deepEqual(parseCloudRunArgs(["--provider", "mistral", "--pdf", "a.pdf", "--pages", "2", "--out", "o"]), {
       provider: "mistral", pdf: "a.pdf", pages: "2", outDir: "o",
     });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("cloud-hybrid merges a cloud pxd with a dumped local pxd and does not refetch", async () => {
+  assert.equal(corpusIdFromCloud("naca-accelerometer-1922.pdf.p3.llamaparse.pxd.json"), "naca-accelerometer-1922-p3");
+  assert.equal(hybridOutName("naca-accelerometer-1922.pdf.p3.llamaparse.pxd.json"), "naca-accelerometer-1922.pdf.p3.hybrid.pxd.json");
+  assert.equal(dumpTarget("/tmp/local-pxd", "web-ocr", "naca-accelerometer-1922-p3"), "/tmp/local-pxd/web-ocr/naca-accelerometer-1922-p3.pxd.json");
+  assert.deepEqual(parseHybridArgs(["--cloud-dir", "c", "--hybrid", "h", "--out", "o"]), {
+    cloud: "", local: "", cloudDir: "c", hybrid: "h", out: "o",
+  });
+  const dir = await mkdtemp(path.join(tmpdir(), "pxd-hybrid-"));
+  const cloudDir = path.join(dir, "cloud");
+  const localDir = path.join(dir, "web-ocr");
+  const outDir = path.join(dir, "hybrid");
+  const cloud = {
+    schema: "pxd-parse/1", engine: "cloud", pageCount: 1,
+    pages: [{ n: 3, w: 600, h: 800, parsed: true }],
+    order: ["f1"],
+    blocks: { f1: { id: "f1", type: "figure", page: 3, bbox: [10, 10, 100, 100], caption: null, image: { kind: "crop", source: "llamaparse", layout: true }, confidence: 0.9, engine: "cloud" } },
+  };
+  const local = {
+    schema: "pxd-parse/1", engine: "builtin", pageCount: 1,
+    pages: [{ n: 3, w: 600, h: 800, parsed: true, ocr: true }],
+    order: ["f9", "c9"],
+    blocks: {
+      f9: { id: "f9", type: "figure", page: 3, bbox: [12, 12, 98, 98], caption: "c9", image: { kind: "crop", source: "drawing" }, confidence: 0.9, engine: "builtin" },
+      c9: { id: "c9", type: "caption", page: 3, bbox: [12, 100, 98, 120], text: "Fig. 1 Local plate", for: "f9", confidence: 0.9, engine: "builtin" },
+    },
+  };
+  try {
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(cloudDir, { recursive: true });
+    await mkdir(localDir, { recursive: true });
+    await writeFile(path.join(cloudDir, "naca-accelerometer-1922.pdf.p3.llamaparse.pxd.json"), JSON.stringify(cloud));
+    await writeFile(path.join(localDir, "naca-accelerometer-1922-p3.pxd.json"), JSON.stringify(local));
+    const result = await mergeCloudDir({ cloudDir, hybridDir: localDir, outDir });
+    assert.equal(result.missing.length, 0);
+    assert.equal(result.written.length, 1);
+    const merged = JSON.parse(await readFile(result.written[0], "utf8"));
+    const figure = merged.blocks[merged.order.find((id) => merged.blocks[id].type === "figure")];
+    assert.equal(figure.source, "hybrid");
+    assert.deepEqual(figure.bbox, [12, 12, 98, 98]);
+    assert.equal(merged.blocks[figure.caption].text, "Fig. 1 Local plate");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

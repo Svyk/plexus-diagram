@@ -164,6 +164,8 @@ test("Enter sends, a tier is remembered, and this page reaches LlamaParse target
     assert.equal(sheet.querySelector('[data-scope="current"]').getAttribute("aria-checked"), "true");
     assert.match(sheet.querySelector("[data-cloud-pages]").textContent, /12 pages/);
     assert.match(sheet.querySelector("[data-cloud-estimate]").textContent, /1 page, 10 credits, about \$0\.0125/);
+    assert.equal(sheet.querySelector("[data-cloud-pace]").textContent, "about 20–30 s per page");
+    assert.equal(sheet.querySelector("[data-cloud-pace]").hasAttribute("hidden"), false);
     assert.equal(calls.length, 0);
     sheet.querySelector('[data-tier="cost_effective"]').click();
     assert.equal(storage.getItem("pxd-cloud-tier"), "cost_effective");
@@ -245,6 +247,8 @@ test("All pages omits target_pages, and Mistral sends a 0-based page", async () 
     await until(() => view.element().querySelector("[data-cloud-send]"));
     assert.equal(view.element().querySelector('[data-scope="current"]').getAttribute("aria-checked"), "true");
     assert.equal(view.element().querySelector("[data-tier]"), null);
+    assert.equal(view.element().querySelector("[data-cloud-pace]").hasAttribute("hidden"), true);
+    assert.equal(view.element().querySelector("[data-cloud-pace]").textContent, "");
     view.element().querySelector("[data-cloud-send]").click();
     await until(() => calls.length > 0);
     assert.deepEqual(calls[0].pages, [3]);

@@ -181,3 +181,12 @@ body.bt-theme-dark .pxd-relcrumb.pxd-relcrumb,
 body.roam-body.dark .pxd-relcrumb.pxd-relcrumb {
   --pxd-rc-accent: hsl(175 60% 55%);
 }
+
+.pxd-relpop__crop {
+  position: relative;
+  width: 160px;
+  height: 100px;
+  overflow: hidden;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  background: transparent;
+}

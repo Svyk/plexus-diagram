@@ -22,7 +22,8 @@ import { openStatusChooser } from "./task-popover.js";
 import { nudgeEditorMenus, registerEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
 import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen, unmountDue } from "./offscreen.js";
-import { isStructuralString, parseRegion } from "../model/regions.js";
+import { isContainerString, isStructuralString, parseRegion } from "../model/regions.js";
+import { endpointKindOf } from "../model/endpoints.js";
 import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 import { renderRegionCard, thumbRequest } from "./region-card.js";
@@ -2617,8 +2618,132 @@ export function createItemRenderer({
   // BA-3: where a page card row sits, relative to the card top, in world px (screen px / zoom). Null when the card
   // has no rendered outline to measure (not mounted, editing, map tier): the edge then keeps its plain side point.
   const round1 = (n) => Math.round(n * 10) / 10;
+  const fracParts = (frac) => {
+    if (!frac) return null;
+    const v = Array.isArray(frac) ? frac : [frac.rx, frac.ry, frac.rw, frac.rh];
+    if (v.length !== 4 || v.some((n) => !Number.isFinite(Number(n)))) return null;
+    const [rx, ry, rw, rh] = v.map(Number);
+    if (rw <= 0 || rh <= 0) return null;
+    return { rx, ry, rw, rh };
+  };
+  const placeFrac = (node, frac) => {
+    const f = fracParts(frac);
+    if (!f) return;
+    node.style.left = `${f.rx * 100}%`;
+    node.style.top = `${f.ry * 100}%`;
+    node.style.width = `${f.rw * 100}%`;
+    node.style.height = `${f.rh * 100}%`;
+  };
+  // Outlines for image regions and corner marks for PDF pins. Page cards do not get either.
+  const syncEndpointHits = (rec, nodes) => {
+    if (!rec?.body || rec.pageHolder) return;
+    const regions = [];
+    const pins = [];
+    for (const node of nodes || []) {
+      const string = node?.[":block/string"] ?? node?.string ?? "";
+      if (!isContainerString(string)) continue;
+      const kids = node?.[":block/children"] ?? node?.children ?? [];
+      for (const kid of kids) {
+        const text = kid?.[":block/string"] ?? kid?.string ?? "";
+        const kind = endpointKindOf(text);
+        const id = kid?.[":block/uid"] ?? kid?.uid;
+        if (!id || !kind) continue;
+        const parsed = parseRegion(text);
+        if (kind === "region") regions.push({ uid: id, frac: parsed?.f });
+        else pins.push({ uid: id, frac: parsed?.f });
+      }
+      break;
+    }
+    const readMode = Boolean(rec.el?.classList?.contains("pxd-pdf-live"));
+    let hostEl = rec.body.querySelector?.(".pxd-item__media") || null;
+    if (!hostEl && readMode) {
+      const page = rec.pdfReader?.querySelector?.("img, canvas");
+      hostEl = page?.parentElement || rec.pdfReader || rec.body;
+    } else if (!hostEl) {
+      hostEl = rec.body.querySelector?.(".pxd-pdf-cover") || rec.body;
+    }
+    let layer = null;
+    for (const child of hostEl.children || []) {
+      if (child.classList?.contains("pxd-region-hits")) { layer = child; break; }
+    }
+    if (!regions.length && !pins.length) {
+      layer?.remove();
+      return;
+    }
+    if (!layer) layer = el("div", "pxd-region-hits", hostEl);
+    else if (layer.parentElement !== hostEl) hostEl.append(layer);
+    layer.replaceChildren();
+    for (const region of regions) {
+      const hit = el("div", "pxd-region-hit", layer);
+      hit.setAttribute("data-pxd-region", region.uid);
+      placeFrac(hit, region.frac);
+    }
+    pins.forEach((pin, i) => {
+      const hit = el("div", "pxd-pin-hit", layer);
+      hit.setAttribute("data-pxd-pin", pin.uid);
+      if (readMode && fracParts(pin.frac)) placeFrac(hit, pin.frac);
+      else {
+        hit.style.width = "10px";
+        hit.style.height = "10px";
+        hit.style.right = `${6 + i * 14}px`;
+        hit.style.top = "6px";
+        hit.style.left = "auto";
+      }
+    });
+  };
+  const markOf = (rec, rowUid) => {
+    const root = rec?.el;
+    if (!root?.querySelectorAll || !rowUid) return null;
+    for (const node of root.querySelectorAll("[data-pxd-region], [data-pxd-pin]")) {
+      if (node.getAttribute("data-pxd-region") === rowUid || node.getAttribute("data-pxd-pin") === rowUid) return node;
+    }
+    return null;
+  };
+  const measureMarked = (rec, mark) => {
+    const pin = Boolean(mark.getAttribute?.("data-pxd-pin"));
+    const live = Boolean(rec.el?.classList?.contains("pxd-pdf-live"));
+    if (pin && !live) return { pin: true, face: true };
+    const z = zoomCache || 1;
+    const card = rec.el.getBoundingClientRect();
+    const r = mark.getBoundingClientRect();
+    if (pin && live && r.width > 16 && r.height > 16) {
+      return {
+        region: true,
+        pin: true,
+        frac: { rx: 0, ry: 0, rw: 1, rh: 1 },
+        image: {
+          x: (r.left - card.left) / z,
+          y: (r.top - card.top) / z,
+          w: r.width / z,
+          h: r.height / z,
+        },
+      };
+    }
+    if (pin) return { pin: true, face: true };
+    const media = rec.el.querySelector?.(".pxd-item__media") || rec.body;
+    const mb = media?.getBoundingClientRect?.() || card;
+    const w = mb.width || 1;
+    const h = mb.height || 1;
+    return {
+      region: true,
+      frac: {
+        rx: (r.left - mb.left) / w,
+        ry: (r.top - mb.top) / h,
+        rw: (r.width || 0) / w,
+        rh: (r.height || 0) / h,
+      },
+      image: {
+        x: (mb.left - card.left) / z,
+        y: (mb.top - card.top) / z,
+        w: mb.width / z,
+        h: mb.height / z,
+      },
+    };
+  };
   const measureRow = (uid, rowUid) => {
     const rec = shells.get(uid);
+    const marked = rec ? markOf(rec, rowUid) : null;
+    if (marked) return measureMarked(rec, marked);
     const table = rec && !rec.pageHolder && editing?.uid !== uid ? tableHostOf(rec) : null;
     if (table) return measureCell({ card: rec.el, host: table, body: rec.body, uid: rowUid, zoom: zoomCache || 1, pullTree: host?.pullTree });
     const holder = rec?.pageHolder;
@@ -2670,6 +2795,11 @@ export function createItemRenderer({
     }
   };
   const setRowHot = (uid, rowUid, on) => {
+    const mark = markOf(shells.get(uid), rowUid);
+    if (mark) {
+      mark.classList.toggle("pxd-region-hit--hot", Boolean(on));
+      return;
+    }
     const row = rowOf(uid, rowUid);
     row?.classList?.toggle("pxd-row--hot", Boolean(on));
     if (row && !row.hasAttribute?.("data-pxd-row")) { if (on) row.setAttribute("data-pxd-hot", ""); else row.removeAttribute("data-pxd-hot"); }
@@ -2677,6 +2807,13 @@ export function createItemRenderer({
   // Scrolls the body so the row is centered and flashes it. False when the row is not on screen to scroll to.
   const revealRow = (uid, rowUid) => {
     const rec = shells.get(uid);
+    const mark = markOf(rec, rowUid);
+    if (mark) {
+      mark.classList.add("pxd-region-hit--flash");
+      try { mark.scrollIntoView?.({ block: "nearest", inline: "nearest" }); } catch { /* stub */ }
+      later(() => mark.classList.remove("pxd-region-hit--flash"), 600);
+      return true;
+    }
     const row = rowOf(uid, rowUid);
     if (!rec?.body || !row) return false;
     if (!rec.pageHolder) {
@@ -3611,6 +3748,7 @@ export function createItemRenderer({
       budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__text", item.uid));
     } else if (item.kind === "image") {
       budget.roots.push(renderRoot(el("div", "pxd-item__media", body), item.string, "pxd-rs", item.uid));
+      syncEndpointHits(rec, item.content);
     } else if (item.kind === "board") {
       mountBoardBody(body, item);
     } else if (item.kind === "page") {
@@ -3652,6 +3790,7 @@ export function createItemRenderer({
       if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = String(cover.title || "PDF").slice(0, HEADER_TEXT_MAX);
       if (inlineUid === item.uid || (!onReadPane && (pdfReaderBox(item.uid) || speedOf().posters === false))) budget.roots.push(paintPdfReader(rec, item));
       else paintPdfCover(rec, item, cover);
+      syncEndpointHits(rec, item.content);
     } else if (item.kind === "highlight" && item.highlight) {
       paintHighlight(rec, item, budget);
       armHighlightWatch(rec, item);
@@ -3693,18 +3832,21 @@ export function createItemRenderer({
         if (Array.isArray(kids)) paintPinChip(body, kids);
       } else {
         rec.blockStringNode = null;
+        const imageRef = typeof refString === "string" && classifyString(refString).kind === "image";
         if (typeof refString === "string" && refString.trim()) {
-          const node = renderRoot(body, refString, "pxd-rs pxd-item__string", ref);
+          const parent = imageRef ? el("div", "pxd-item__media", body) : body;
+          const node = renderRoot(parent, refString, imageRef ? "pxd-rs" : "pxd-rs pxd-item__string", ref);
           rec.blockStringNode = node;
           budget.roots.push(node);
         }
-        const tree = host?.pullTree?.(ref, item.kids ? CONTENT_DEPTH : 1, 200);
+        const tree = host?.pullTree?.(ref, item.kids || imageRef ? CONTENT_DEPTH : 1, 200);
         const apply = (blocks, sync = false) => {
           if (disposed || !body.isConnected || (!sync && rec.contentKey !== contentKeyFor(item))) return;
           startRows();
           if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
           rec.kidCount = visibleKids(blocks).length;
           rec.kidRows = kidRowsOf(blocks);
+          if (imageRef) syncEndpointHits(rec, blocks);
           if (item.kids) {
             const b = { n: 0, roots: [] };
             renderBlocks(body, blocks || [], 1, b);

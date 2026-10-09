@@ -36,6 +36,7 @@ import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES, STICKY_SIZE } from "../mo
 import { clampPdfCard } from "../model/pdf.js";
 import { TABLE_SIZE, isRoamTableString } from "../model/roam-table.js";
 import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
+import { edgeMayTarget } from "../model/endpoints.js";
 import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
 import { fingerPair, pinchViewport } from "../model/touch.js";
 import { SHORTCUTS, findShortcut } from "./shortcuts.js";
@@ -201,7 +202,12 @@ export function createInteractions({ actions, settings } = {}) {
   // Returns the descriptor for the card the hit test chose, or null.
   const blockTargetFor = (ev, uid) => {
     const item = uid ? board()?.items.get(uid) : null;
-    if (!item || (item.kind !== "page" && !isRoamTableString(item.string))) { call("clearBlockTarget"); return null; }
+    if (!item) { call("clearBlockTarget"); return null; }
+    const text = String(item.string ?? "").trim();
+    const refCard = /^\(\(([\w-]+)\)\)$/.test(text) || /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i.test(text);
+    const marked = item.kind === "page" || item.kind === "image" || item.kind === "pdf" || item.kind === "block"
+      || refCard || isRoamTableString(item.string);
+    if (!marked) { call("clearBlockTarget"); return null; }
     const bt = call("blockTarget", ev.client || null);
     return bt && bt.uid === uid ? bt : null;
   };
@@ -213,9 +219,12 @@ export function createInteractions({ actions, settings } = {}) {
     return null;
   };
 
-  const beginConnect = (uid, side, world) => {
-    begin({ kind: "connect", from: uid, fromSide: side, start: world });
-    call("showTempWire", { from: uid, fromSide: side, point: world });
+  const beginConnect = (uid, side, world, fromBlock) => {
+    const trail = world ? [{ x: world.x, y: world.y }] : [];
+    begin({ kind: "connect", from: uid, fromSide: side, start: world, fromBlock: fromBlock || undefined, trail });
+    const spec = { from: uid, fromSide: side, point: world };
+    if (fromBlock) spec.fromBlock = fromBlock;
+    call("showTempWire", spec);
   };
 
   // ------------------------------------------------------------------ pointer
@@ -293,7 +302,12 @@ export function createInteractions({ actions, settings } = {}) {
       case "section-border": {
         if (!t.uid || !b?.items.has(t.uid)) return;
         if (state.tool === "connect") {
-          beginConnect(t.uid, nearestSide(r.get(t.uid), ev.world), ev.world);
+          beginConnect(t.uid, nearestSide(r.get(t.uid), ev.world), ev.world, t.row || undefined);
+          return;
+        }
+        // Option-drag from a cell or a row starts an arrow. Option-drag on the card body still duplicates.
+        if (state.tool === "select" && ev.alt && t.row) {
+          beginConnect(t.uid, nearestSide(r.get(t.uid), ev.world), ev.world, t.row);
           return;
         }
         if (state.tool !== "select" && state.tool !== "hand") break; // creation tools treat items as empty space
@@ -378,7 +392,13 @@ export function createInteractions({ actions, settings } = {}) {
     if (g.kind === "connect") {
       const b = board();
       const r = hitRects();
-      call("showTempWire", { from: g.from, fromSide: g.fromSide, point: ev.world });
+      if (ev.world && Array.isArray(g.trail)) {
+        g.trail.push({ x: ev.world.x, y: ev.world.y });
+        if (g.trail.length > 40) g.trail.splice(0, g.trail.length - 40);
+      }
+      const spec = { from: g.from, fromSide: g.fromSide, point: ev.world };
+      if (g.fromBlock) spec.fromBlock = g.fromBlock;
+      call("showTempWire", spec);
       const hit = b && r ? hitTest(b, ev.world, r, { sectionInterior: true }) : null;
       const hover = hit && hit.uid !== g.from ? hit.uid : null;
       if (hover !== state.hover) { state.hover = hover; call("onHover", hover); }
@@ -615,10 +635,20 @@ export function createInteractions({ actions, settings } = {}) {
         break;
       case "edge-end": {
         const hr = hitRects();
-        const hit = b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
+        const dom = ev.target || {};
+        const aimed = (dom.kind === "label" || dom.kind === "edge") && dom.uid && dom.uid !== g.edge ? b?.edges.get(dom.uid) : null;
+        const aimedOk = Boolean(aimed && edgeMayTarget(aimed, b.edges));
+        const hit = !aimedOk && b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
         const bt = hit && hit.uid !== g.other ? blockTargetFor(ev, hit.uid) : null;
         end();
         const edge = b?.edges.get(g.edge);
+        if (g.moved && edge && aimedOk) {
+          const key = g.end === "from" ? "from" : "to";
+          const blockKey = g.end === "from" ? "fromBlock" : "toBlock";
+          call("updateEdge", g.edge, { [key]: aimed.uid, [blockKey]: undefined });
+          afterToolUse();
+          return;
+        }
         if (g.moved && edge && hit && hit.uid !== g.other) {
           const key = g.end === "from" ? "from" : "to";
           const blockKey = g.end === "from" ? "fromBlock" : "toBlock";
@@ -639,18 +669,50 @@ export function createInteractions({ actions, settings } = {}) {
       case "connect": {
         const hr = hitRects();
         const hit = b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
-        const bt = hit && hit.uid !== g.from ? blockTargetFor(ev, hit.uid) : null;
+        const dom = ev.target || {};
+        const aimed = (dom.kind === "label" || dom.kind === "edge") && dom.uid && dom.uid !== g.from ? b?.edges.get(dom.uid) : null;
+        const aimedOk = Boolean(aimed && edgeMayTarget(aimed, b.edges));
+        const bt = !aimedOk && hit && hit.uid !== g.from ? blockTargetFor(ev, hit.uid) : null;
+        const drop = !aimedOk && !bt?.row
+          ? call("regionDrop", { from: g.from, client: ev.client, trail: g.trail || [], fromBlock: g.fromBlock })
+          : null;
+        const fromBlock = g.fromBlock || undefined;
+        const withFrom = (payload) => (fromBlock ? { ...payload, fromBlock } : payload);
         end();
-        if (hit && hit.uid === g.from) {
+        if (aimedOk) {
+          const existing = sameEdge(b, g.from, aimed.uid, fromBlock, undefined);
+          if (existing) selectEdge(existing.uid);
+          else {
+            Promise.resolve(call("addEdge", withFrom({ from: g.from, to: aimed.uid, fromSide: g.fromSide, toSide: "auto" })))
+              .then((uid) => { if (uid) selectEdge(uid); }).catch(() => {});
+          }
+          afterToolUse();
+          return;
+        }
+        if (drop?.create && drop.to && drop.to !== g.from) {
+          Promise.resolve(call("addRegionEndpoint", withFrom({
+            from: g.from,
+            to: drop.to,
+            frac: drop.frac,
+            fromSide: g.fromSide,
+            toSide: nearestSide(hr.get(drop.to), ev.world),
+          }))).then((uid) => { if (uid) selectEdge(uid); }).catch(() => {});
+          afterToolUse();
+          return;
+        }
+        const toUid = drop?.reuse ? drop.to : hit?.uid;
+        const toBlock = drop?.reuse ? drop.toBlock : (bt?.row || undefined);
+        if (toUid && toUid === g.from) {
           selectItems([g.from]);
-        } else if (hit) {
-          const toBlock = bt?.row || undefined;
-          const existing = sameEdge(b, g.from, hit.uid, undefined, toBlock);
+        } else if (toUid) {
+          const existing = sameEdge(b, g.from, toUid, fromBlock, toBlock);
           if (existing) {
             selectEdge(existing.uid);
           } else {
-            const toSide = nearestSide(hr.get(hit.uid), ev.world);
-            Promise.resolve(call("addEdge", { from: g.from, to: hit.uid, fromSide: g.fromSide, toSide, ...(toBlock ? { toBlock } : {}) }))
+            const toSide = nearestSide(hr.get(toUid), ev.world);
+            const payload = withFrom({ from: g.from, to: toUid, fromSide: g.fromSide, toSide });
+            if (toBlock) payload.toBlock = toBlock;
+            Promise.resolve(call("addEdge", payload))
               .then((uid) => { if (uid) selectEdge(uid); }).catch(() => {});
           }
         } else if (g.moved) {
@@ -658,7 +720,7 @@ export function createInteractions({ actions, settings } = {}) {
           const at = { x: ev.world.x, y: ev.world.y - d.h / 2 };
           Promise.resolve(call("createCard", at)).then(async (uid) => {
             if (!uid) return;
-            await call("addEdge", { from: g.from, to: uid, fromSide: g.fromSide, toSide: "auto" });
+            await call("addEdge", withFrom({ from: g.from, to: uid, fromSide: g.fromSide, toSide: "auto" }));
             selectItems([uid]);
             call("enterEdit", uid);
           }).catch(() => {});

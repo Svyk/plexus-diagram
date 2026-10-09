@@ -2109,6 +2109,313 @@ var init_why = __esm({
   }
 });
 
+// src/model/image-region.js
+function finite(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+function boxOf(rect) {
+  if (!rect || typeof rect !== "object") return null;
+  const x = finite(rect.x ?? rect.left);
+  const y = finite(rect.y ?? rect.top);
+  const width = finite(rect.width);
+  const height = finite(rect.height);
+  if (x === null || y === null || width === null || height === null) return null;
+  if (width <= 0 || height <= 0) return null;
+  return { x, y, width, height };
+}
+function clamp(n2, lo, hi) {
+  return Math.min(hi, Math.max(lo, n2));
+}
+function fracFromDrag(rect, x0, y0, x1, y1) {
+  const box2 = boxOf(rect);
+  if (!box2) return null;
+  const pts = [x0, y0, x1, y1].map(finite);
+  if (pts.some((n2) => n2 === null)) return null;
+  const right = box2.x + box2.width;
+  const bottom = box2.y + box2.height;
+  const ax = clamp(pts[0], box2.x, right);
+  const ay = clamp(pts[1], box2.y, bottom);
+  const bx = clamp(pts[2], box2.x, right);
+  const by = clamp(pts[3], box2.y, bottom);
+  const f = normalizeFrac([
+    (Math.min(ax, bx) - box2.x) / box2.width,
+    (Math.min(ay, by) - box2.y) / box2.height,
+    Math.abs(bx - ax) / box2.width,
+    Math.abs(by - ay) / box2.height
+  ]);
+  if (!f) return null;
+  return { rx: f[0], ry: f[1], rw: f[2], rh: f[3] };
+}
+function imageRegionString(cardUid, frac, caption) {
+  try {
+    return serializeRegion({
+      kind: "img",
+      drawingUid: cardUid,
+      f: [frac.rx, frac.ry, frac.rw, frac.rh],
+      caption
+    });
+  } catch {
+    return null;
+  }
+}
+var init_image_region = __esm({
+  "src/model/image-region.js"() {
+    init_regions();
+  }
+});
+
+// src/model/endpoints.js
+function clip(text3, max) {
+  const t = String(text3 ?? "").replace(/\s+/g, " ").trim();
+  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+}
+function asBox(rect) {
+  if (!rect || typeof rect !== "object") return null;
+  const x = finite2(rect.x ?? rect.left);
+  const y = finite2(rect.y ?? rect.top);
+  const w = finite2(rect.w ?? rect.width);
+  const h = finite2(rect.h ?? rect.height);
+  if (x === null || y === null || w === null || h === null || w <= 0 || h <= 0) return null;
+  return { x, y, w, h };
+}
+function asFrac(frac) {
+  if (!frac) return null;
+  const v = Array.isArray(frac) ? frac : [frac.rx, frac.ry, frac.rw, frac.rh];
+  if (v.length !== 4 || v.some((n2) => !Number.isFinite(Number(n2)))) return null;
+  const [rx, ry, rw, rh] = v.map(Number);
+  if (rw <= 0 || rh <= 0) return null;
+  return { rx, ry, rw, rh };
+}
+function hasEdge(edges, uid) {
+  if (!uid || !edges) return false;
+  return typeof edges.has === "function" ? edges.has(uid) : Boolean(edges[uid]);
+}
+function refsIn(string) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const text3 = String(string ?? "");
+  REF_RE.lastIndex = 0;
+  let m = REF_RE.exec(text3);
+  while (m) {
+    if (!seen.has(m[1])) {
+      seen.add(m[1]);
+      out.push(m[1]);
+    }
+    m = REF_RE.exec(text3);
+  }
+  return out;
+}
+function endpointKindOf(blockString2) {
+  const region = parseRegion(blockString2);
+  if (!region?.supported) return null;
+  if (region.kind === "img") return "region";
+  if (region.kind === "pdf") return "pin";
+  return null;
+}
+function imageSourceOf(item, read2) {
+  if (!item) return { ok: false, reason: "missing" };
+  if (item.kind === "image") return { ok: true, uid: item.uid, viaRef: false };
+  const text3 = String(item.string ?? "").trim();
+  const ref = REF_ONLY2.exec(text3) || EMBED_ONLY.exec(text3);
+  if (!ref) return { ok: false, reason: "not-image" };
+  let source = null;
+  try {
+    source = typeof read2 === "function" ? read2(ref[1]) : null;
+  } catch {
+    source = null;
+  }
+  if (typeof source !== "string") return { ok: false, reason: "unread" };
+  if (classifyString(source).kind !== "image") return { ok: false, reason: "not-image" };
+  return { ok: true, uid: ref[1], viaRef: true };
+}
+function regionBox(imageRect, frac) {
+  const box2 = asBox(imageRect);
+  const f = asFrac(frac);
+  if (!box2 || !f) return null;
+  return {
+    x: box2.x + f.rx * box2.w,
+    y: box2.y + f.ry * box2.h,
+    w: f.rw * box2.w,
+    h: f.rh * box2.h
+  };
+}
+function regionEdgePoint(imageRect, frac, other) {
+  const rect = regionBox(imageRect, frac);
+  if (!rect) return null;
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  const dx = (Number.isFinite(other?.x) ? other.x : cx + 1) - cx;
+  const dy = (Number.isFinite(other?.y) ? other.y : cy) - cy;
+  let side2;
+  let point;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    side2 = dx >= 0 ? "right" : "left";
+    point = { x: side2 === "right" ? rect.x + rect.w : rect.x, y: cy };
+  } else {
+    side2 = dy >= 0 ? "bottom" : "top";
+    point = { x: cx, y: side2 === "bottom" ? rect.y + rect.h : rect.y };
+  }
+  return { point, side: side2, rect };
+}
+function edgeMayTarget(edge, edges) {
+  if (!edge) return false;
+  return !hasEdge(edges, edge.to);
+}
+function focusEnds(board2, edge) {
+  if (!board2 || !edge) return [];
+  const out = [];
+  const add = (id) => {
+    if (id && board2.items?.has?.(id) && !out.includes(id)) out.push(id);
+  };
+  const take = (id) => {
+    if (!id) return;
+    if (board2.items?.has?.(id)) {
+      add(id);
+      return;
+    }
+    const other = board2.edges?.get?.(id);
+    if (!other || !edgeMayTarget(other, board2.edges)) return;
+    add(other.from);
+    add(other.to);
+  };
+  take(edge.from);
+  take(edge.to);
+  return out;
+}
+function marqueeFrac(imageRect, points) {
+  const box2 = asBox(imageRect);
+  if (!box2 || !points?.length) return null;
+  const inside7 = [];
+  for (const p of points) {
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    if (p.x < box2.x || p.y < box2.y || p.x > box2.x + box2.w || p.y > box2.y + box2.h) continue;
+    inside7.push(p);
+  }
+  if (inside7.length < 2) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of inside7) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  const needW = Math.max(MIN_MARQUEE, box2.w * 0.02);
+  const needH = Math.max(MIN_MARQUEE, box2.h * 0.02);
+  if (maxX - minX < needW || maxY - minY < needH) return null;
+  return fracFromDrag({ x: box2.x, y: box2.y, width: box2.w, height: box2.h }, minX, minY, maxX, maxY);
+}
+function regionDropPlan({ from, imageUid, regionUid, imageRect, points } = {}) {
+  if (regionUid && imageUid && imageUid !== from) return { reuse: true, to: imageUid, toBlock: regionUid };
+  if (!imageUid || imageUid === from) return null;
+  const frac = marqueeFrac(imageRect, points);
+  if (!frac) return null;
+  return { create: true, to: imageUid, frac };
+}
+function regionCaption(label, existingCount) {
+  const text3 = String(label ?? "").trim();
+  if (text3) return text3;
+  const n2 = Number.isFinite(existingCount) ? existingCount : 0;
+  return `Region ${n2 + 1}`;
+}
+function endpointChipText({ count, boardTitle: boardTitle3 } = {}) {
+  const n2 = Math.max(0, Math.trunc(Number(count) || 0));
+  const board2 = clip(boardTitle3, 32) || "board";
+  return `⇢ ${n2} on ${board2}`;
+}
+function endpointIndex(rows) {
+  const byBoard = /* @__PURE__ */ new Map();
+  for (const row4 of rows || []) {
+    const edgeUid = row4?.[0];
+    const boardUid = row4?.[1];
+    if (!edgeUid || !boardUid) continue;
+    if (!byBoard.has(boardUid)) byBoard.set(boardUid, { title: row4[3] || "Untitled board", edges: [] });
+    byBoard.get(boardUid).edges.push({ edgeUid, string: row4[2] || "" });
+  }
+  const hits = /* @__PURE__ */ new Map();
+  for (const [boardUid, info] of byBoard) {
+    const counts = /* @__PURE__ */ new Map();
+    for (const edge of info.edges) {
+      for (const ref of refsIn(edge.string)) {
+        if (ref === edge.edgeUid) continue;
+        if (!counts.has(ref)) counts.set(ref, []);
+        counts.get(ref).push(edge.edgeUid);
+      }
+    }
+    for (const [blockUid2, edgeUids] of counts) {
+      const entry = {
+        count: edgeUids.length,
+        boardUid,
+        boardTitle: info.title,
+        edgeUid: edgeUids[0],
+        edges: edgeUids
+      };
+      const prev = hits.get(blockUid2);
+      if (!prev || entry.count > prev.count) hits.set(blockUid2, entry);
+    }
+  }
+  return hits;
+}
+function wireStart(rect, measure, point) {
+  const box2 = asBox(rect);
+  if (!box2 || !measure || measure.face) return null;
+  if (measure.region && measure.image) {
+    const hit = regionEdgePoint(
+      { x: box2.x + measure.image.x, y: box2.y + measure.image.y, w: measure.image.w, h: measure.image.h },
+      measure.frac,
+      point
+    );
+    return hit?.point || null;
+  }
+  if (measure.rowTop == null && measure.rowLeft == null && !measure.cell) return null;
+  const an = blockAnchor({ rect: box2, rowTop: measure.rowTop, rowHeight: measure.rowHeight, bodyTop: measure.bodyTop, bodyBottom: measure.bodyBottom, other: point });
+  if (measure.cell && measure.rowLeft != null && !an.clamped) {
+    const inner = blockInner({
+      rect: box2,
+      side: an.side,
+      point: an.point,
+      rowLeft: measure.rowLeft,
+      rowRight: measure.rowRight,
+      cell: true
+    });
+    if (inner?.tip) return inner.tip;
+  }
+  return an.point;
+}
+function endpointUnderPointer(node2, cellOf) {
+  if (!node2 || typeof node2.closest !== "function") return null;
+  const region = node2.closest("[data-pxd-region]");
+  if (region) return region.getAttribute?.("data-pxd-region") || null;
+  const pin2 = node2.closest("[data-pxd-pin]");
+  if (pin2) return pin2.getAttribute?.("data-pxd-pin") || null;
+  const row4 = node2.closest("[data-pxd-row]");
+  if (row4) return row4.getAttribute?.("data-pxd-row") || row4.dataset?.pxdRow || null;
+  if (typeof cellOf === "function") {
+    try {
+      const cell = cellOf(node2);
+      if (cell) return cell;
+    } catch {
+    }
+  }
+  return null;
+}
+var REF_ONLY2, EMBED_ONLY, REF_RE, MIN_MARQUEE, finite2;
+var init_endpoints = __esm({
+  "src/model/endpoints.js"() {
+    init_geometry();
+    init_image_region();
+    init_regions();
+    init_schema();
+    REF_ONLY2 = /^\(\(([\w-]+)\)\)$/;
+    EMBED_ONLY = /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i;
+    REF_RE = /\(\(([\w-]{1,36})\)\)/g;
+    MIN_MARQUEE = 8;
+    finite2 = (n2) => typeof n2 === "number" && Number.isFinite(n2) ? n2 : null;
+  }
+});
+
 // src/model/board.js
 function viewsOf(boardKids, regionsUid) {
   const container = regionsUid ? boardKids.find((child) => child[":block/uid"] === regionsUid) : boardKids.find((child) => isContainerString(child[":block/string"] ?? ""));
@@ -2389,6 +2696,23 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         valid: Boolean(a && b)
       });
     }
+    for (const edge of edges.values()) {
+      const a = items.get(edge.from);
+      const b = items.get(edge.to);
+      const aEdge = !a ? edges.get(edge.from) : null;
+      const bEdge = !b ? edges.get(edge.to) : null;
+      const aOk = Boolean(a) || aEdge && edgeMayTarget(aEdge, edges);
+      const bOk = Boolean(b) || bEdge && edgeMayTarget(bEdge, edges);
+      const oneEdge = Boolean(aEdge) !== Boolean(bEdge);
+      edge.valid = Boolean(a && b) || oneEdge && aOk && bOk;
+      if (aEdge && !edgeMayTarget(aEdge, edges) || bEdge && !edgeMayTarget(bEdge, edges)) {
+        edge.valid = false;
+        edge.level = "blocked";
+      }
+      const srcRef = edge.fromBlock ? `((${edge.fromBlock}))` : a ? semanticRef(a) : aEdge ? `((${edge.from}))` : "";
+      const dstRef = edge.toBlock ? `((${edge.toBlock}))` : b ? semanticRef(b) : bEdge ? `((${edge.to}))` : "";
+      edge.label = parseEdgeLabel(edge.string, srcRef, dstRef);
+    }
   }
   return {
     uid,
@@ -2583,7 +2907,7 @@ function boardPreview(item, { max = 60, aspect = null, pad: pad2 = 0.12 } = {}) 
   const cy = bounds.y + bounds.h / 2;
   w += 2 * p;
   h += 2 * p;
-  const target = isNum2(aspect) && aspect > 0 ? aspect : clamp(w / h, 0.25, 4);
+  const target = isNum2(aspect) && aspect > 0 ? aspect : clamp2(w / h, 0.25, 4);
   if (w / h < target) w = h * target;
   else h = w / target;
   const fx = cx - w / 2;
@@ -2868,7 +3192,7 @@ function diffBoards(prev, next) {
   }
   return { structural, dirty };
 }
-var AUTO_GAP, AUTO_OFFSET, AUTO_ROWS, TITLE_BAND, BORDER_BAND, isNum2, HIGHLIGHT_HINT, COLLAPSED_SECTION_H, COLLAPSED_CARD_H, STICKY_HEADER_H, clamp, PREVIEW_MIN, PREVIEW_TITLE;
+var AUTO_GAP, AUTO_OFFSET, AUTO_ROWS, TITLE_BAND, BORDER_BAND, isNum2, HIGHLIGHT_HINT, COLLAPSED_SECTION_H, COLLAPSED_CARD_H, STICKY_HEADER_H, clamp2, PREVIEW_MIN, PREVIEW_TITLE;
 var init_board = __esm({
   "src/model/board.js"() {
     init_geometry();
@@ -2882,6 +3206,7 @@ var init_board = __esm({
     init_trails();
     init_highlight();
     init_why();
+    init_endpoints();
     AUTO_GAP = 40;
     AUTO_OFFSET = 48;
     AUTO_ROWS = 4;
@@ -2892,7 +3217,7 @@ var init_board = __esm({
     COLLAPSED_SECTION_H = 8;
     COLLAPSED_CARD_H = 32;
     STICKY_HEADER_H = 28;
-    clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    clamp2 = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
     PREVIEW_MIN = { w: DEFAULT_SIZES.card.w * 2, h: DEFAULT_SIZES.card.h * 2 };
     PREVIEW_TITLE = 40;
   }
@@ -3395,7 +3720,7 @@ function extractGraphics(ops, { transform = [1, 0, 0, 1, 0, 0], maxSegments = 5e
       if (sp.length < 2) continue;
       const points = sp.map((p) => [...applyPoint(ctm, p[0], p[1]), p[2]]);
       const hasCurve = points.some((p) => p[2]);
-      const bbox = boxOf(points);
+      const bbox = boxOf2(points);
       out.segments += Math.max(1, points.length - 1);
       if (out.segments > maxSegments) {
         out.truncated = true;
@@ -3586,9 +3911,9 @@ function strokeWidth(lineWidth, ctm) {
 }
 function unitBox(ctm) {
   const pts = [applyPoint(ctm, 0, 0), applyPoint(ctm, 1, 0), applyPoint(ctm, 1, 1), applyPoint(ctm, 0, 1)];
-  return boxOf(pts);
+  return boxOf2(pts);
 }
-function boxOf(points) {
+function boxOf2(points) {
   let x0 = Infinity;
   let y0 = Infinity;
   let x1 = -Infinity;
@@ -7088,9 +7413,9 @@ function heavyEmbed(string, opts) {
 }
 function heavyRefUid(string) {
   const text3 = String(string ?? "").trim();
-  const block = REF_ONLY2.exec(text3);
+  const block = REF_ONLY3.exec(text3);
   if (block) return block[1];
-  const embed = EMBED_ONLY.exec(text3);
+  const embed = EMBED_ONLY2.exec(text3);
   if (embed) return embed[1];
   return "";
 }
@@ -7208,7 +7533,7 @@ function readPaneWidth(mountWidth, stored) {
   const width = Math.min(720, room, Math.max(360, Math.round(raw)));
   return { stacked: false, width };
 }
-var PDF_MACRO, PDF_READER_W, PDF_READER_H, PDF_CARD_MAX, ROMAN_ONLY, HEAVY_MACRO, HEAVY_ONE, REF_ONLY2, EMBED_ONLY;
+var PDF_MACRO, PDF_READER_W, PDF_READER_H, PDF_CARD_MAX, ROMAN_ONLY, HEAVY_MACRO, HEAVY_ONE, REF_ONLY3, EMBED_ONLY2;
 var init_pdf = __esm({
   "src/model/pdf.js"() {
     init_title_cap();
@@ -7219,8 +7544,8 @@ var init_pdf = __esm({
     ROMAN_ONLY = /^[ivxlcdm]+\.?$/i;
     HEAVY_MACRO = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/gi;
     HEAVY_ONE = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/i;
-    REF_ONLY2 = /^\(\(([\w-]+)\)\)$/;
-    EMBED_ONLY = /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i;
+    REF_ONLY3 = /^\(\(([\w-]+)\)\)$/;
+    EMBED_ONLY2 = /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i;
   }
 });
 
@@ -7845,7 +8170,7 @@ function num2(value, fallback = 0) {
   const n2 = Number(value);
   return Number.isFinite(n2) ? n2 : fallback;
 }
-function boxOf2(bbox) {
+function boxOf3(bbox) {
   if (!Array.isArray(bbox) || bbox.length < 4) return null;
   const x0 = num2(bbox[0]);
   const y0 = num2(bbox[1]);
@@ -7859,7 +8184,7 @@ function viewportSize(w, h, rotation) {
   return { w, h };
 }
 function userBoxToViewport(bbox, page) {
-  const box2 = boxOf2(bbox);
+  const box2 = boxOf3(bbox);
   if (!box2) return null;
   const w = num2(page?.w, 1) || 1;
   const h = num2(page?.h, 1) || 1;
@@ -7876,7 +8201,7 @@ function userBoxToViewport(bbox, page) {
   return [Math.min(...xs2), Math.min(...ys2), Math.max(...xs2), Math.max(...ys2)];
 }
 function frameBoxToViewport(bbox, page) {
-  const box2 = boxOf2(bbox);
+  const box2 = boxOf3(bbox);
   if (!box2) return null;
   const fw = num2(page?.w, 1) || 1;
   const fh = num2(page?.h, 1) || 1;
@@ -8974,15 +9299,15 @@ var init_timeline = __esm({
 });
 
 // src/model/parse-schema.js
-function boxOf3(value) {
+function boxOf4(value) {
   if (!Array.isArray(value) || value.length < 4) return null;
   const [x0, y0, x1, y1] = value;
   if (![x0, y0, x1, y1].every((n2) => typeof n2 === "number" && Number.isFinite(n2))) return null;
   return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
 }
 function iou(a, b) {
-  const A = boxOf3(a);
-  const B = boxOf3(b);
+  const A = boxOf4(a);
+  const B = boxOf4(b);
   if (!A || !B) return 0;
   const ix0 = Math.max(A[0], B[0]);
   const iy0 = Math.max(A[1], B[1]);
@@ -8996,10 +9321,10 @@ function iou(a, b) {
   return inter / union;
 }
 function targetOf(bbox) {
-  if (Array.isArray(bbox)) return { page: null, bbox: boxOf3(bbox) };
+  if (Array.isArray(bbox)) return { page: null, bbox: boxOf4(bbox) };
   if (bbox && typeof bbox === "object") {
     const page = Number.isInteger(bbox.page) ? bbox.page : null;
-    const box2 = Array.isArray(bbox.bbox) ? boxOf3(bbox.bbox) : boxOf3(bbox);
+    const box2 = Array.isArray(bbox.bbox) ? boxOf4(bbox.bbox) : boxOf4(bbox);
     return { page, bbox: box2 };
   }
   return { page: null, bbox: null };
@@ -9206,9 +9531,9 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
   const order = [];
   const seen = /* @__PURE__ */ new Set();
   for (const s of list) {
-    REF_RE.lastIndex = 0;
+    REF_RE2.lastIndex = 0;
     let m;
-    while (m = REF_RE.exec(String(s ?? ""))) {
+    while (m = REF_RE2.exec(String(s ?? ""))) {
       if (seen.has(m[1]) || !known.has(m[1])) continue;
       seen.add(m[1]);
       order.push(m[1]);
@@ -9245,7 +9570,7 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
       if (hit?.kind === "overflow") out.push(`- (${hit.item.n}) ${escapeMarkdownText(hit.item.text, { leading: false })}`);
       else out.push(`- [${m[2]}] ${escapeMarkdownText(m[3], { leading: false })}`);
     }
-    return out.join("\n").replace(REF_RE, (full, id, mark) => {
+    return out.join("\n").replace(REF_RE2, (full, id, mark) => {
       const hit = byId.get(id);
       if (hit?.kind === "note") return aliasFor(hit.note.n, hit.note.uid, sup2);
       if (hit?.kind === "overflow") return `(${hit.item.n})`;
@@ -9366,7 +9691,7 @@ function pageNoteBlocks(doc, block) {
   }
   return out;
 }
-var FN_OPEN, FN_CLOSE, FN_DEF, FN_SEP, FOOTNOTE_FORMATS, FOOTNOTES_HEADER, FOOTNOTE_CAP, WRITE_BUDGET, SUP_MAP, SUP_CLASS, SYMBOLS, BRACKET_INNER, LEAD_RE, TRAIL_RE2, RUN_RE, refToken, defLine, hasFootnoteTokens, REF_RE, DEF_RE, NOTE_ROW_RE;
+var FN_OPEN, FN_CLOSE, FN_DEF, FN_SEP, FOOTNOTE_FORMATS, FOOTNOTES_HEADER, FOOTNOTE_CAP, WRITE_BUDGET, SUP_MAP, SUP_CLASS, SYMBOLS, BRACKET_INNER, LEAD_RE, TRAIL_RE2, RUN_RE, refToken, defLine, hasFootnoteTokens, REF_RE2, DEF_RE, NOTE_ROW_RE;
 var init_footnotes = __esm({
   "src/model/footnotes.js"() {
     init_parse_to_roam_md();
@@ -9424,7 +9749,7 @@ var init_footnotes = __esm({
     refToken = (id, mark) => `${FN_OPEN}${id}${FN_SEP}${mark ?? ""}${FN_CLOSE}`;
     defLine = (id, mark, text3) => `- ${FN_DEF}${id}${FN_SEP}${mark ?? ""}${FN_CLOSE}${text3 ?? ""}`;
     hasFootnoteTokens = (strings) => (Array.isArray(strings) ? strings : [strings]).some((s) => typeof s === "string" && (s.includes(FN_OPEN) || s.includes(FN_DEF)));
-    REF_RE = new RegExp(`${FN_OPEN}([^${FN_SEP}${FN_CLOSE}]*)${FN_SEP}([^${FN_CLOSE}]*)${FN_CLOSE}`, "g");
+    REF_RE2 = new RegExp(`${FN_OPEN}([^${FN_SEP}${FN_CLOSE}]*)${FN_SEP}([^${FN_CLOSE}]*)${FN_CLOSE}`, "g");
     DEF_RE = new RegExp(`^[ \\t]*- ${FN_DEF}([^${FN_SEP}${FN_CLOSE}]*)${FN_SEP}([^${FN_CLOSE}]*)${FN_CLOSE}(.*)$`);
     NOTE_ROW_RE = new RegExp(`^(\\(?(?:[${SUP_CLASS}]+|[${SYMBOLS}]+|[A-Za-z0-9]{1,2})[)\\].:]?)\\s+(\\S.*)$`, "s");
   }
@@ -10457,7 +10782,7 @@ function drawPreview(doc, parent, model) {
     svgEl(doc, "rect", { x: r.x, y: r.y, width: r.w, height: r.h, rx: 8 }, g);
     if (card2.title && card2.type !== "section") {
       const t = svgEl(doc, "text", { x: r.x + 10, y: r.y + font + 6, "font-size": font }, g);
-      t.textContent = clip(card2.title, Math.max(8, Math.floor((r.w - 20) / (font * 0.55))));
+      t.textContent = clip2(card2.title, Math.max(8, Math.floor((r.w - 20) / (font * 0.55))));
     }
     rects.set(card2.uid, r);
   }
@@ -10489,7 +10814,7 @@ function drawPreview(doc, parent, model) {
   svg.append(line);
   return svg;
 }
-var NS, VIEW_MAX_W, VIEW_MAX_H, CARD_CAP, clip, previewFont;
+var NS, VIEW_MAX_W, VIEW_MAX_H, CARD_CAP, clip2, previewFont;
 var init_minimap_svg = __esm({
   "src/view/minimap-svg.js"() {
     init_board();
@@ -10499,7 +10824,7 @@ var init_minimap_svg = __esm({
     VIEW_MAX_W = 240;
     VIEW_MAX_H = 140;
     CARD_CAP = 40;
-    clip = (text3, max) => {
+    clip2 = (text3, max) => {
       const t = String(text3 ?? "").replace(/\s+/g, " ").trim();
       return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
     };
@@ -11041,8 +11366,8 @@ function uidFromElementId(id, uids) {
   return null;
 }
 function chipText({ from, to, label, boardTitle: boardTitle3, fromBlockText, toBlockText, why } = {}) {
-  const arrow2 = label ? `—${clip2(label, 32)}→` : "→";
-  const board2 = clip2(boardTitle3, 32);
+  const arrow2 = label ? `—${clip3(label, 32)}→` : "→";
+  const board2 = clip3(boardTitle3, 32);
   return `↗ ${endName(from, fromBlockText)} ${arrow2} ${endName(to, toBlockText)}${board2 ? ` · on ${board2}` : ""}${becauseClause(why)}`;
 }
 function relationOf(board2, edgeUid, { blockText } = {}) {
@@ -11228,14 +11553,76 @@ function rowFraction(blocks, uid) {
   const i = rows.indexOf(uid);
   return i < 0 || !rows.length ? null : (i + 0.5) / rows.length;
 }
+function mountLazyCrop(doc, frame, { src, frac, win } = {}) {
+  const f = frac || {};
+  const rw = Number(f.rw) > 0 ? Number(f.rw) : 1;
+  const rh = Number(f.rh) > 0 ? Number(f.rh) : 1;
+  const img = doc.createElement("img");
+  img.className = "pxd-relpop__crop-img";
+  img.alt = "";
+  img.style.position = "absolute";
+  img.style.maxWidth = "none";
+  img.style.width = `${100 / rw}%`;
+  img.style.height = `${100 / rh}%`;
+  img.style.left = `${-(Number(f.rx) || 0) / rw * 100}%`;
+  img.style.top = `${-(Number(f.ry) || 0) / rh * 100}%`;
+  frame.append(img);
+  const show = () => {
+    if (src) img.setAttribute("src", src);
+  };
+  const IO = win?.IntersectionObserver || globalThis.IntersectionObserver;
+  let watched = false;
+  if (typeof IO === "function") {
+    try {
+      const io = new IO((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          show();
+          io.disconnect();
+        }
+      });
+      io.observe(frame);
+      watched = true;
+    } catch {
+      watched = false;
+    }
+  }
+  if (!watched) return { show, img };
+  return { show, img };
+}
 function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockText, rowFrac } = {}) {
   const edge = board2?.edges?.get(edgeUid);
   if (!edge) return null;
   const rects = worldRects(board2);
-  const routed = routedEdge(board2, edge, rects);
-  if (!routed) return null;
-  const a = rects.get(edge.from);
-  const b = rects.get(edge.to);
+  let routed = routedEdge(board2, edge, rects);
+  let a = rects.get(edge.from);
+  let b = rects.get(edge.to);
+  let stubCard = null;
+  if (!routed || !a || !b) {
+    const fromEdge = a ? null : board2.edges.get(edge.from);
+    const toEdge = b ? null : board2.edges.get(edge.to);
+    const one = Boolean(fromEdge) !== Boolean(toEdge);
+    const target = fromEdge || toEdge;
+    if (!one || !target || !edgeMayTarget(target, board2.edges)) return null;
+    const ta = rects.get(target.from);
+    const tb = rects.get(target.to);
+    if (!ta || !tb) return null;
+    const mid = {
+      x: (ta.x + ta.w / 2 + tb.x + tb.w / 2) / 2,
+      y: (ta.y + ta.h / 2 + tb.y + tb.h / 2) / 2
+    };
+    const stub = { x: mid.x - 4, y: mid.y - 4, w: 8, h: 8 };
+    if (fromEdge) {
+      a = stub;
+      b = rects.get(edge.to);
+      stubCard = { uid: edge.from, type: "card", rect: stub, title: "arrow", role: "from" };
+    } else {
+      b = stub;
+      a = rects.get(edge.from);
+      stubCard = { uid: edge.to, type: "card", rect: stub, title: "arrow", role: "to" };
+    }
+    if (!a || !b) return null;
+    routed = { from: edge.from, to: edge.to, a, b };
+  }
   if (!a || !b) return null;
   const bounds = boundsOf([a, b]);
   const view = { x: bounds.x - pad2, y: bounds.y - pad2, w: bounds.w + 2 * pad2, h: bounds.h + 2 * pad2 };
@@ -11253,6 +11640,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     }
     cards.push({ uid: item.uid, type: item.type, rect: r, title: label(item), role });
   }
+  if (stubCard) cards.push(stubCard);
   const font = previewFont(view.w);
   const textOf2 = (uid) => {
     try {
@@ -11273,7 +11661,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     }
     const rect = itemUid === edge.from ? a : b;
     const box2 = rowBarRect(rect, frac, font);
-    return { ...box2, frac: clamp012(frac), text: textOf2(blockUid2), label: clip2(textOf2(blockUid2), box2.maxChars) };
+    return { ...box2, frac: clamp012(frac), text: textOf2(blockUid2), label: clip3(textOf2(blockUid2), box2.maxChars) };
   };
   const fromBar = routed.from === edge.from ? barFor(edge.from, edge.fromBlock) : null;
   const toBar = routed.to === edge.to ? barFor(edge.to, edge.toBlock) : null;
@@ -11313,31 +11701,54 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
 }
 function createConnectionCache({ host } = {}) {
   const boardOf = /* @__PURE__ */ new Map();
+  const ends = /* @__PURE__ */ new Map();
   let loaded = false;
   return {
     load() {
-      let rows = [];
-      try {
-        rows = host?.listConnectionBlocks?.() || [];
-      } catch {
-        rows = [];
+      boardOf.clear();
+      ends.clear();
+      if (typeof host?.listConnectionRefs === "function") {
+        let rows = [];
+        try {
+          rows = host.listConnectionRefs() || [];
+        } catch {
+          rows = [];
+        }
+        for (const row4 of rows) if (row4?.[0] && row4?.[1]) boardOf.set(row4[0], row4[1]);
+        for (const [uid, info] of endpointIndex(rows)) ends.set(uid, info);
+      } else {
+        let rows = [];
+        try {
+          rows = host?.listConnectionBlocks?.() || [];
+        } catch {
+          rows = [];
+        }
+        for (const [edgeUid, boardUid] of rows) if (edgeUid && boardUid) boardOf.set(edgeUid, boardUid);
       }
-      for (const [edgeUid, boardUid] of rows) if (edgeUid && boardUid) boardOf.set(edgeUid, boardUid);
       loaded = true;
       return boardOf.size;
     },
     // A mounted board's session saw the connection set change: replace that board's entries.
-    setBoard(boardUid, edgeUids) {
+    setBoard(boardUid, edgeUids, board2) {
       for (const [e2, b] of [...boardOf]) if (b === boardUid) boardOf.delete(e2);
       for (const e2 of edgeUids || []) boardOf.set(e2, boardUid);
+      for (const [uid, info] of [...ends]) if (info.boardUid === boardUid) ends.delete(uid);
+      if (board2?.edges) {
+        const rows = [];
+        for (const edge of board2.edges.values()) rows.push([edge.uid, boardUid, edge.string || "", board2.title || "Untitled board"]);
+        for (const [uid, info] of endpointIndex(rows)) ends.set(uid, info);
+      }
     },
     has: (uid) => boardOf.has(uid),
     boardOf: (uid) => boardOf.get(uid) ?? null,
     uids: () => boardOf,
+    endpointOf: (uid) => ends.get(uid) || null,
+    endpointUids: () => new Set(ends.keys()),
     size: () => boardOf.size,
     isLoaded: () => loaded,
     clear() {
       boardOf.clear();
+      ends.clear();
       loaded = false;
     }
   };
@@ -11418,7 +11829,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       }
     });
   };
-  const openPop = (chip, edgeUid, avoid) => {
+  const openPop = (chip, edgeUid, avoid, endpointUid) => {
     closePop();
     const boardUid = cache.boardOf(edgeUid);
     const board2 = boardUid ? modelOf(boardUid) : null;
@@ -11437,9 +11848,35 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     };
     const head = mk("div", "pxd-relpop__head", el);
     mk("div", "pxd-relpop__title", head, rel ? chipText({ ...rel }).replace(/^↗ /, "") : "This connection is no longer on a board");
+    if (endpointUid) {
+      let text3 = "";
+      try {
+        text3 = blockText(endpointUid) || "";
+      } catch {
+        text3 = "";
+      }
+      const region = parseRegion(text3);
+      if (region?.kind === "img" && Array.isArray(region.f)) {
+        let drawing = "";
+        try {
+          drawing = blockText(region.drawingUid) || "";
+        } catch {
+          drawing = "";
+        }
+        const src = /!\[[^\]]*\]\(([^)]+)\)/.exec(drawing)?.[1] || "";
+        const frame = mk("div", "pxd-relpop__crop", el);
+        mountLazyCrop(doc, frame, {
+          src,
+          frac: { rx: region.f[0], ry: region.f[1], rw: region.f[2], rh: region.f[3] },
+          win
+        });
+      }
+      const caption = rel?.label || region?.caption || "";
+      if (caption) mk("div", "pxd-relpop__note", el, caption);
+    }
     if (model) drawPreview(doc, el, model);
     else mk("div", "pxd-relpop__empty", el, "The connected cards could not be found on the board.");
-    if (rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip2(rel.toBlockText, 60)}”`);
+    if (!endpointUid && rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip3(rel.toBlockText, 60)}”`);
     const row4 = mk("div", "pxd-relpop__actions", el);
     const button2 = (tip, text3, fn) => {
       const b = mk("button", "pxd-btn pxd-relpop__btn", row4, text3);
@@ -11451,7 +11888,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       });
       return b;
     };
-    button2("relpop.board", "Open on board", () => {
+    button2("relpop.board", endpointUid ? "Open board" : "Open on board", () => {
       closePop();
       if (boardUid) openOnBoard(boardUid, edgeUid);
     });
@@ -11568,6 +12005,45 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     });
     return chip;
   };
+  const buildEndpointChip = (blockUid2) => {
+    const info = cache.endpointOf(blockUid2);
+    if (!info) return null;
+    const chip = doc.createElement("div");
+    chip.className = `${CHIP_CLASS} pxd-relchip--end`;
+    chip.setAttribute("role", "button");
+    chip.setAttribute("tabindex", "0");
+    chip.setAttribute("data-end", blockUid2);
+    chip.setAttribute("data-edge", info.edgeUid);
+    chip.textContent = endpointChipText({ count: info.count, boardTitle: info.boardTitle });
+    for (const type of ["pointerdown", "mousedown", "mouseup", "dblclick"]) chip.addEventListener(type, stop3);
+    const open = (event) => {
+      stop3(event);
+      event.preventDefault?.();
+      openPop(chip, info.edgeUid, chip.parentElement?.querySelector?.(".rm-block-main"), blockUid2);
+    };
+    chip.addEventListener("click", open);
+    chip.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") open(event);
+    });
+    return chip;
+  };
+  const attachEndpoint = (input, blockUid2) => {
+    const container = input.closest?.(".roam-block-container") || input.parentElement;
+    if (!container || container.closest?.(".pxd-root")) return;
+    for (const child of container.children || []) {
+      if (child.classList?.contains(CHIP_CLASS) && (child.getAttribute("data-edge") || child.getAttribute("data-end"))) return;
+    }
+    const chip = buildEndpointChip(blockUid2);
+    if (!chip) return;
+    let kids = null;
+    for (const child of container.children || []) if (child.classList?.contains("rm-block-children")) {
+      kids = child;
+      break;
+    }
+    if (kids) container.insertBefore(chip, kids);
+    else container.append(chip);
+    chips.add(chip);
+  };
   const crumbs = /* @__PURE__ */ new WeakSet();
   const crumbOffs = [];
   const crumbGlyphs = /* @__PURE__ */ new Set();
@@ -11649,7 +12125,15 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     }
     for (const input of found.slice(0, SCAN_CAP)) {
       const uid = uidFromElementId(input.id, cache.uids());
-      if (uid) attach2(input, uid);
+      if (uid) {
+        attach2(input, uid);
+        continue;
+      }
+      if (input.closest?.(".pxd-root")) continue;
+      const ends = cache.endpointUids?.();
+      if (!ends?.size) continue;
+      const endUid = uidFromElementId(input.id, ends);
+      if (endUid) attachEndpoint(input, endUid);
     }
     if (node2.classList?.contains("rm-zoom")) crumbFor(node2);
     else if (typeof node2.querySelectorAll === "function") {
@@ -11668,7 +12152,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
   };
   const noteBoard = (board2) => {
     if (!board2?.uid) return;
-    cache.setBoard(board2.uid, [...board2.edges?.keys?.() || []]);
+    cache.setBoard(board2.uid, [...board2.edges?.keys?.() || []], board2);
     models.delete(board2.uid);
   };
   const dispose = () => {
@@ -11684,11 +12168,13 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
   };
   return { start, scan, noteBoard, dispose, openPop, closePop, cache, chipCount: () => chips.size, crumbCount: () => crumbGlyphs.size, isOpen: () => Boolean(pop) };
 }
-var CHIP_CLASS, POP_CLASS, CRUMB_CLASS, CRUMB_TIP, SCAN_CAP, NAME_MAX, BLOCK_MAX, MODEL_TTL_MS, BLOCK_SELECTOR, isInput, clip2, endName, ROW_PAD, clamp012, POP_GAP, rectsHit, rowEnd;
+var CHIP_CLASS, POP_CLASS, CRUMB_CLASS, CRUMB_TIP, SCAN_CAP, NAME_MAX, BLOCK_MAX, MODEL_TTL_MS, BLOCK_SELECTOR, isInput, clip3, endName, ROW_PAD, clamp012, POP_GAP, rectsHit, rowEnd;
 var init_relchips = __esm({
   "src/relchips.js"() {
     init_board();
+    init_endpoints();
     init_geometry();
+    init_regions();
     init_deeplink();
     init_schema();
     init_why();
@@ -11705,13 +12191,13 @@ var init_relchips = __esm({
     MODEL_TTL_MS = 5e3;
     BLOCK_SELECTOR = ".roam-block";
     isInput = (el) => String(el?.id || "").startsWith("block-input-");
-    clip2 = (text3, max) => {
+    clip3 = (text3, max) => {
       const t = String(text3 ?? "").replace(/\s+/g, " ").trim();
       return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
     };
     endName = (name, blockText) => {
-      const base = clip2(name, NAME_MAX) || "card";
-      const block = clip2(blockText, BLOCK_MAX);
+      const base = clip3(name, NAME_MAX) || "card";
+      const block = clip3(blockText, BLOCK_MAX);
       return block ? `${base} ▸ “${block}”` : base;
     };
     ROW_PAD = 10;
@@ -12503,8 +12989,8 @@ function pdfDockLift(card2, obstacles, zoom = 1, { clipBottom = Infinity } = {})
   if (!(w > 0) || !(h > 0)) return 0;
   const bottom = top + h;
   const floor = top + Math.min(h * 0.35, 96);
-  const clip4 = Number(clipBottom);
-  let edge = Number.isFinite(clip4) && clip4 < bottom ? clip4 - 6 : bottom;
+  const clip5 = Number(clipBottom);
+  let edge = Number.isFinite(clip5) && clip5 < bottom ? clip5 - 6 : bottom;
   for (let pass = 0; pass < list.length; pass += 1) {
     let moved = false;
     for (const r of list) {
@@ -15720,12 +16206,12 @@ function clickInsideRoot(entry) {
   return Boolean(node2.closest(".pxd-root"));
 }
 function panFps(deltas) {
-  const finite6 = [];
+  const finite7 = [];
   for (const value of deltas || []) {
     const n2 = Number(value);
-    if (Number.isFinite(n2) && n2 > 0) finite6.push(n2);
+    if (Number.isFinite(n2) && n2 > 0) finite7.push(n2);
   }
-  const median4 = percentile(finite6, 0.5);
+  const median4 = percentile(finite7, 0.5);
   if (!(median4 > 0)) return null;
   return 1e3 / median4;
 }
@@ -17795,21 +18281,21 @@ function findCell(host, uid, { pullTree } = {}) {
   return null;
 }
 function visibleClip(cell, host, body) {
-  let clip4 = rectOf4(body);
+  let clip5 = rectOf4(body);
   const cut = (node2) => {
     const r = rectOf4(node2);
     if (!r) return;
-    if (!clip4) {
-      clip4 = r;
+    if (!clip5) {
+      clip5 = r;
       return;
     }
-    clip4 = { top: Math.max(clip4.top, r.top), bottom: Math.min(clip4.bottom, r.bottom), left: Math.max(clip4.left, r.left), right: Math.min(clip4.right, r.right) };
+    clip5 = { top: Math.max(clip5.top, r.top), bottom: Math.min(clip5.bottom, r.bottom), left: Math.max(clip5.left, r.left), right: Math.min(clip5.right, r.right) };
   };
   cut(host);
   for (let n2 = cell?.parentElement; n2 && n2 !== host && n2 !== body; n2 = n2.parentElement) {
     if (n2.scrollHeight > n2.clientHeight || n2.scrollWidth > n2.clientWidth) cut(n2);
   }
-  return clip4;
+  return clip5;
 }
 function measureCell({ card: card2, host, body, uid, zoom = 1, pullTree } = {}) {
   const cardRect = rectOf4(card2);
@@ -17820,20 +18306,20 @@ function measureCell({ card: card2, host, body, uid, zoom = 1, pullTree } = {}) 
   const cell = findCell(host, uid, { pullTree });
   const r = cell ? rectOf4(cell) : null;
   if (!r || !r.width && !r.height) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
-  const clip4 = visibleClip(cell, host, body);
+  const clip5 = visibleClip(cell, host, body);
   const rowHeight = round16(r.height / z);
   let rowTop = round16((r.top - cardRect.top) / z);
-  if (clip4) {
+  if (clip5) {
     const cx = (r.left + r.right) / 2;
-    if (cx < clip4.left || cx > clip4.right) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
+    if (cx < clip5.left || cx > clip5.right) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
     else {
       const cy = (r.top + r.bottom) / 2;
-      if (cy < clip4.top) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
-      else if (cy > clip4.bottom) rowTop = round16(out.bodyBottom + 1);
+      if (cy < clip5.top) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
+      else if (cy > clip5.bottom) rowTop = round16(out.bodyBottom + 1);
     }
   }
-  const left = clip4 ? Math.max(r.left, clip4.left) : r.left;
-  const right = clip4 ? Math.min(r.right, clip4.right) : r.right;
+  const left = clip5 ? Math.max(r.left, clip5.left) : r.left;
+  const right = clip5 ? Math.min(r.right, clip5.right) : r.right;
   return { ...out, rowTop, rowHeight, rowLeft: round16((left - cardRect.left) / z), rowRight: round16((right - cardRect.left) / z), rendered: true, cell: true };
 }
 function revealCell(cell, body) {
@@ -20576,8 +21062,134 @@ function createItemRenderer({
     return b.roots;
   };
   const round17 = (n2) => Math.round(n2 * 10) / 10;
+  const fracParts3 = (frac) => {
+    if (!frac) return null;
+    const v = Array.isArray(frac) ? frac : [frac.rx, frac.ry, frac.rw, frac.rh];
+    if (v.length !== 4 || v.some((n2) => !Number.isFinite(Number(n2)))) return null;
+    const [rx, ry, rw, rh] = v.map(Number);
+    if (rw <= 0 || rh <= 0) return null;
+    return { rx, ry, rw, rh };
+  };
+  const placeFrac = (node2, frac) => {
+    const f = fracParts3(frac);
+    if (!f) return;
+    node2.style.left = `${f.rx * 100}%`;
+    node2.style.top = `${f.ry * 100}%`;
+    node2.style.width = `${f.rw * 100}%`;
+    node2.style.height = `${f.rh * 100}%`;
+  };
+  const syncEndpointHits = (rec, nodes) => {
+    if (!rec?.body || rec.pageHolder) return;
+    const regions = [];
+    const pins = [];
+    for (const node2 of nodes || []) {
+      const string = node2?.[":block/string"] ?? node2?.string ?? "";
+      if (!isContainerString(string)) continue;
+      const kids = node2?.[":block/children"] ?? node2?.children ?? [];
+      for (const kid of kids) {
+        const text3 = kid?.[":block/string"] ?? kid?.string ?? "";
+        const kind = endpointKindOf(text3);
+        const id = kid?.[":block/uid"] ?? kid?.uid;
+        if (!id || !kind) continue;
+        const parsed = parseRegion(text3);
+        if (kind === "region") regions.push({ uid: id, frac: parsed?.f });
+        else pins.push({ uid: id, frac: parsed?.f });
+      }
+      break;
+    }
+    const readMode = Boolean(rec.el?.classList?.contains("pxd-pdf-live"));
+    let hostEl = rec.body.querySelector?.(".pxd-item__media") || null;
+    if (!hostEl && readMode) {
+      const page = rec.pdfReader?.querySelector?.("img, canvas");
+      hostEl = page?.parentElement || rec.pdfReader || rec.body;
+    } else if (!hostEl) {
+      hostEl = rec.body.querySelector?.(".pxd-pdf-cover") || rec.body;
+    }
+    let layer = null;
+    for (const child of hostEl.children || []) {
+      if (child.classList?.contains("pxd-region-hits")) {
+        layer = child;
+        break;
+      }
+    }
+    if (!regions.length && !pins.length) {
+      layer?.remove();
+      return;
+    }
+    if (!layer) layer = el("div", "pxd-region-hits", hostEl);
+    else if (layer.parentElement !== hostEl) hostEl.append(layer);
+    layer.replaceChildren();
+    for (const region of regions) {
+      const hit = el("div", "pxd-region-hit", layer);
+      hit.setAttribute("data-pxd-region", region.uid);
+      placeFrac(hit, region.frac);
+    }
+    pins.forEach((pin2, i) => {
+      const hit = el("div", "pxd-pin-hit", layer);
+      hit.setAttribute("data-pxd-pin", pin2.uid);
+      if (readMode && fracParts3(pin2.frac)) placeFrac(hit, pin2.frac);
+      else {
+        hit.style.width = "10px";
+        hit.style.height = "10px";
+        hit.style.right = `${6 + i * 14}px`;
+        hit.style.top = "6px";
+        hit.style.left = "auto";
+      }
+    });
+  };
+  const markOf = (rec, rowUid) => {
+    const root = rec?.el;
+    if (!root?.querySelectorAll || !rowUid) return null;
+    for (const node2 of root.querySelectorAll("[data-pxd-region], [data-pxd-pin]")) {
+      if (node2.getAttribute("data-pxd-region") === rowUid || node2.getAttribute("data-pxd-pin") === rowUid) return node2;
+    }
+    return null;
+  };
+  const measureMarked = (rec, mark) => {
+    const pin2 = Boolean(mark.getAttribute?.("data-pxd-pin"));
+    const live = Boolean(rec.el?.classList?.contains("pxd-pdf-live"));
+    if (pin2 && !live) return { pin: true, face: true };
+    const z = zoomCache || 1;
+    const card2 = rec.el.getBoundingClientRect();
+    const r = mark.getBoundingClientRect();
+    if (pin2 && live && r.width > 16 && r.height > 16) {
+      return {
+        region: true,
+        pin: true,
+        frac: { rx: 0, ry: 0, rw: 1, rh: 1 },
+        image: {
+          x: (r.left - card2.left) / z,
+          y: (r.top - card2.top) / z,
+          w: r.width / z,
+          h: r.height / z
+        }
+      };
+    }
+    if (pin2) return { pin: true, face: true };
+    const media = rec.el.querySelector?.(".pxd-item__media") || rec.body;
+    const mb = media?.getBoundingClientRect?.() || card2;
+    const w = mb.width || 1;
+    const h = mb.height || 1;
+    return {
+      region: true,
+      frac: {
+        rx: (r.left - mb.left) / w,
+        ry: (r.top - mb.top) / h,
+        rw: (r.width || 0) / w,
+        rh: (r.height || 0) / h
+      },
+      image: {
+        x: (mb.left - card2.left) / z,
+        y: (mb.top - card2.top) / z,
+        w: mb.width / z,
+        h: mb.height / z
+      }
+    };
+  };
   const measureRow = (uid, rowUid) => {
     const rec = shells.get(uid);
+    const marked = rec ? markOf(rec, rowUid) : null;
+    if (marked) return measureMarked(rec, marked);
     const table = rec && !rec.pageHolder && editing?.uid !== uid ? tableHostOf(rec) : null;
     if (table) return measureCell({ card: rec.el, host: table, body: rec.body, uid: rowUid, zoom: zoomCache || 1, pullTree: host?.pullTree });
     const holder = rec?.pageHolder;
@@ -20628,6 +21240,11 @@ function createItemRenderer({
     }
   };
   const setRowHot = (uid, rowUid, on) => {
+    const mark = markOf(shells.get(uid), rowUid);
+    if (mark) {
+      mark.classList.toggle("pxd-region-hit--hot", Boolean(on));
+      return;
+    }
     const row4 = rowOf(uid, rowUid);
     row4?.classList?.toggle("pxd-row--hot", Boolean(on));
     if (row4 && !row4.hasAttribute?.("data-pxd-row")) {
@@ -20637,6 +21254,16 @@ function createItemRenderer({
   };
   const revealRow = (uid, rowUid) => {
     const rec = shells.get(uid);
+    const mark = markOf(rec, rowUid);
+    if (mark) {
+      mark.classList.add("pxd-region-hit--flash");
+      try {
+        mark.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      } catch {
+      }
+      later(() => mark.classList.remove("pxd-region-hit--flash"), 600);
+      return true;
+    }
     const row4 = rowOf(uid, rowUid);
     if (!rec?.body || !row4) return false;
     if (!rec.pageHolder) {
@@ -21680,6 +22307,7 @@ function createItemRenderer({
       budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__text", item.uid));
     } else if (item.kind === "image") {
       budget.roots.push(renderRoot(el("div", "pxd-item__media", body), item.string, "pxd-rs", item.uid));
+      syncEndpointHits(rec, item.content);
     } else if (item.kind === "board") {
       mountBoardBody(body, item);
     } else if (item.kind === "page") {
@@ -21721,6 +22349,7 @@ function createItemRenderer({
       if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = String(cover.title || "PDF").slice(0, HEADER_TEXT_MAX);
       if (inlineUid === item.uid || !onReadPane && (pdfReaderBox(item.uid) || speedOf().posters === false)) budget.roots.push(paintPdfReader(rec, item));
       else paintPdfCover(rec, item, cover);
+      syncEndpointHits(rec, item.content);
     } else if (item.kind === "highlight" && item.highlight) {
       paintHighlight(rec, item, budget);
       armHighlightWatch(rec, item);
@@ -21761,18 +22390,21 @@ function createItemRenderer({
         if (Array.isArray(kids)) paintPinChip(body, kids);
       } else {
         rec.blockStringNode = null;
+        const imageRef = typeof refString === "string" && classifyString(refString).kind === "image";
         if (typeof refString === "string" && refString.trim()) {
-          const node2 = renderRoot(body, refString, "pxd-rs pxd-item__string", ref);
+          const parent = imageRef ? el("div", "pxd-item__media", body) : body;
+          const node2 = renderRoot(parent, refString, imageRef ? "pxd-rs" : "pxd-rs pxd-item__string", ref);
           rec.blockStringNode = node2;
           budget.roots.push(node2);
         }
-        const tree = host?.pullTree?.(ref, item.kids ? CONTENT_DEPTH : 1, 200);
+        const tree = host?.pullTree?.(ref, item.kids || imageRef ? CONTENT_DEPTH : 1, 200);
         const apply = (blocks, sync2 = false) => {
           if (disposed || !body.isConnected || !sync2 && rec.contentKey !== contentKeyFor(item)) return;
           startRows();
           if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
           rec.kidCount = visibleKids(blocks).length;
           rec.kidRows = kidRowsOf(blocks);
+          if (imageRef) syncEndpointHits(rec, blocks);
           if (item.kids) {
             const b = { n: 0, roots: [] };
             renderBlocks(body, blocks || [], 1, b);
@@ -23614,6 +24246,7 @@ var init_cards = __esm({
     init_editor_scale();
     init_offscreen();
     init_regions();
+    init_endpoints();
     init_region_card();
     init_region_menu();
     init_region_card2();
@@ -24954,6 +25587,8 @@ function dropNamespace(strings) {
 
 // src/session.js
 init_regions();
+init_image_region();
+init_endpoints();
 init_pdf_pin();
 init_section6();
 init_timeline();
@@ -27395,6 +28030,21 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       ) || [];
       return rows.slice(0, limit).map(([edgeUid, boardUid]) => [edgeUid, boardUid]);
     },
+    // The same connection blocks, plus the edge string and the board title, so an endpoint chip
+    // can name the block the arrow lands on without a second query.
+    listConnectionRefs({ limit = 5e3 } = {}) {
+      const rows = host.q(
+        `[:find ?eu ?bu ?es ?bs :in $ ?pat :where [?c :block/string "Connections"] [?b :block/children ?c] [?b :block/string ?bs]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?bs)] [?b :block/uid ?bu] [?c :block/children ?e] [?e :block/uid ?eu] [?e :block/string ?es]]`,
+        DIAGRAM_RE2
+      ) || [];
+      return rows.slice(0, limit).map(([edgeUid, boardUid, edgeString2, boardString2]) => [
+        edgeUid,
+        boardUid,
+        typeof edgeString2 === "string" ? edgeString2 : "",
+        parseBoardTitle(boardString2) || "Untitled board"
+      ]);
+    },
     // Card footer stats. One reverse-attribute pull for the resolved targets.
     // The four collection-bound queries run only when that pull throws or is unusable.
     cardStats(targets, { boardUid } = {}) {
@@ -28195,7 +28845,7 @@ function parseData(raw) {
   }
   return raw && typeof raw === "object" ? plainKeys(raw) : {};
 }
-var finite = (v) => typeof v === "number" && Number.isFinite(v) ? v : void 0;
+var finite3 = (v) => typeof v === "number" && Number.isFinite(v) ? v : void 0;
 var asMap = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
 var NATIVE_STYLE = {
   block: {
@@ -28321,16 +28971,16 @@ function readNative(host, boardUid) {
     const key = blockUid2 ?? `n${id}`;
     keyById.set(id, key);
     const data = parseData(n2[":diagram.node/data"]);
-    const abs = data.positionAbsolute && finite(data.positionAbsolute.x) !== void 0 ? data.positionAbsolute : null;
+    const abs = data.positionAbsolute && finite3(data.positionAbsolute.x) !== void 0 ? data.positionAbsolute : null;
     const pos = abs ?? data.position ?? {};
     const type = data.type === "group" ? "group" : "node";
     return {
       key,
       blockUid: blockUid2,
-      x: finite(pos.x) ?? 0,
-      y: finite(pos.y) ?? 0,
-      w: finite(data.width) ?? finite(data.measured?.width),
-      h: finite(data.height) ?? finite(data.measured?.height),
+      x: finite3(pos.x) ?? 0,
+      y: finite3(pos.y) ?? 0,
+      w: finite3(data.width) ?? finite3(data.measured?.width),
+      h: finite3(data.height) ?? finite3(data.measured?.height),
       absolute: Boolean(abs),
       parentId: n2[":diagram.node/parent-node"]?.[":db/id"],
       type,
@@ -28868,6 +29518,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   let editingUid = null;
   let rects = /* @__PURE__ */ new Map();
   let emitted = null;
+  let dropQueued = false;
   let rix = null;
   const highlightWatches = /* @__PURE__ */ new Map();
   const propsCache = /* @__PURE__ */ new Map();
@@ -28998,10 +29649,36 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const node2 = rawNode(id);
     if (node2) node2[STR] = string;
   };
+  function queueDependentDrops(prev, next) {
+    if (dropQueued || !prev?.edges || !next?.edges) return;
+    const gone2 = [];
+    for (const id of prev.edges.keys()) if (!next.edges.has(id)) gone2.push(id);
+    if (!gone2.length) return;
+    const victims = [];
+    for (const edge of next.edges.values()) {
+      if (gone2.includes(edge.from) || gone2.includes(edge.to)) victims.push(edge.uid);
+    }
+    if (!victims.length) return;
+    dropQueued = true;
+    const lost = new Set(gone2);
+    queueMicrotask(() => {
+      dropQueued = false;
+      if (destroyed || !board2) return;
+      const still = victims.filter((id) => {
+        const edge = board2.edges.get(id);
+        return edge && (lost.has(edge.from) || lost.has(edge.to));
+      });
+      if (!still.length) return;
+      txn((t) => {
+        for (const id of still) if (board2.edges.has(id)) t.del(id);
+      });
+    });
+  }
   const publish = () => {
     rebuild();
     if (!board2) return null;
-    const diff = diffBoards(emitted, board2);
+    const prev = emitted;
+    const diff = diffBoards(prev, board2);
     emitted = board2;
     if (diff.structural || diff.dirty.size) emit2("change", diff);
     recomputeLinks(false);
@@ -29010,6 +29687,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       linkRefs = nextRefs;
       refreshLinks();
     }
+    queueDependentDrops(prev, board2);
     return diff;
   };
   let gone = false;
@@ -29536,6 +30214,28 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   }
   function edgeStringFor(from, to, dir, label, srcBlock, dstBlock) {
     return edgeString({ srcRef: refOf2(from), dstRef: refOf2(to), dir, label, srcBlock, dstBlock });
+  }
+  function regionsContainerOf(item, source) {
+    let nodes = [];
+    try {
+      nodes = host.pullTree?.(source.uid, 2, 200) || [];
+    } catch {
+      nodes = [];
+    }
+    if (!nodes.length && source.uid === item?.uid) nodes = item.content || [];
+    let container = null;
+    let count = 0;
+    for (const node2 of nodes || []) {
+      const string = node2?.[":block/string"] ?? node2?.string ?? "";
+      if (!isContainerString(string)) continue;
+      container = node2[":block/uid"] ?? node2.uid ?? null;
+      const kids = node2?.[":block/children"] ?? node2?.children ?? [];
+      for (const kid of kids) {
+        if (endpointKindOf(kid?.[":block/string"] ?? kid?.string ?? "") === "region") count += 1;
+      }
+      break;
+    }
+    return { container, count };
   }
   function applyFit(t, touched, { skip } = {}) {
     if (!flag("auto-fit-sections", true)) return;
@@ -30905,7 +31605,16 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     },
     addEdge({ from, to, fromSide, toSide, label = "", dir = "one", fromBlock, toBlock } = {}) {
       return txn((t) => {
-        if (!from || !to || from === to || !board2.items.has(from) || !board2.items.has(to)) return null;
+        if (!from || !to || from === to) return null;
+        const fromItem = board2.items.has(from);
+        const toItem = board2.items.has(to);
+        const fromEdge = !fromItem ? board2.edges.get(from) : null;
+        const toEdge = !toItem ? board2.edges.get(to) : null;
+        if (fromEdge && toEdge) return null;
+        if (!fromItem && !(fromEdge && edgeMayTarget(fromEdge, board2.edges))) return null;
+        if (!toItem && !(toEdge && edgeMayTarget(toEdge, board2.edges))) return null;
+        if (fromEdge) fromBlock = void 0;
+        if (toEdge) toBlock = void 0;
         const props = serializeEdge({ from, to, dir, fromSide, toSide, fromBlock, toBlock });
         const existing = [...board2.edges.values()].find((e2) => e2.from === from && e2.to === to && (e2.fromBlock ?? "") === (props.fromBlock ?? "") && (e2.toBlock ?? "") === (props.toBlock ?? ""));
         if (existing && existing.dir === dir) return existing.uid;
@@ -31034,12 +31743,22 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         const edge = board2.edges.get(id);
         if (!edge) return;
         const { label, ...rest } = patch;
+        const nextFrom = rest.from ?? edge.from;
+        const nextTo = rest.to ?? edge.to;
+        if (rest.from !== void 0 || rest.to !== void 0) {
+          if (!nextFrom || !nextTo || nextFrom === nextTo || nextFrom === id || nextTo === id) return;
+          const fromEdge = board2.items.has(nextFrom) ? null : board2.edges.get(nextFrom);
+          const toEdge = board2.items.has(nextTo) ? null : board2.edges.get(nextTo);
+          if (fromEdge && toEdge) return;
+          if (fromEdge && !edgeMayTarget(fromEdge, board2.edges)) return;
+          if (toEdge && !edgeMayTarget(toEdge, board2.edges)) return;
+          if (!board2.items.has(nextFrom) && !fromEdge) return;
+          if (!board2.items.has(nextTo) && !toEdge) return;
+        }
         const next = edgePlexus(id, rest);
         t.props(id, next);
         const dir = rest.dir ?? edge.dir;
         const nextLabel = label ?? edge.label;
-        const nextFrom = rest.from ?? edge.from;
-        const nextTo = rest.to ?? edge.to;
         const merged = normalizeEdge(next);
         const blocksChanged = (merged.fromBlock ?? "") !== (edge.fromBlock ?? "") || (merged.toBlock ?? "") !== (edge.toBlock ?? "");
         if (rest.dir !== void 0 && rest.dir !== edge.dir || label !== void 0 && label !== edge.label || blocksChanged || nextFrom !== edge.from || nextTo !== edge.to) {
@@ -31057,7 +31776,71 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     },
     deleteEdges(uids) {
       return txn((t) => {
-        for (const id of uids) if (board2.edges.has(id)) t.del(id);
+        const drop = /* @__PURE__ */ new Set();
+        for (const id of uids || []) if (board2.edges.has(id)) drop.add(id);
+        let grew = true;
+        while (grew) {
+          grew = false;
+          for (const edge of board2.edges.values()) {
+            if (drop.has(edge.uid)) continue;
+            if (drop.has(edge.from) || drop.has(edge.to)) {
+              drop.add(edge.uid);
+              grew = true;
+            }
+          }
+        }
+        for (const id of drop) t.del(id);
+      });
+    },
+    // Region outline plus the arrow, one undo. The region lives under the source image,
+    // which may be a block the card only references. A page the user cannot write is refused.
+    addRegionEndpoint({ from, to, frac, fromBlock, fromSide, toSide, label = "" } = {}) {
+      return txn((t) => {
+        if (!from || !to || from === to || !board2.items.has(from) || !board2.items.has(to)) return null;
+        const item = board2.items.get(to);
+        const read2 = (id) => {
+          try {
+            return host.blockString?.(id);
+          } catch {
+            return null;
+          }
+        };
+        const source = imageSourceOf(item, read2);
+        if (!source.ok) {
+          emit2("toast", { message: source.reason === "unread" ? "That image is on a page you can't edit." : "That card is not an image." });
+          return null;
+        }
+        if (source.viaRef && typeof host.canEdit === "function") {
+          let writable = true;
+          try {
+            writable = host.canEdit(source.uid) !== false;
+          } catch {
+            writable = false;
+          }
+          if (!writable) {
+            emit2("toast", { message: "That image is on a page you can't edit." });
+            return null;
+          }
+        }
+        const found = regionsContainerOf(item, source);
+        const caption = regionCaption(label, found.count);
+        const string = imageRegionString(source.uid, frac, caption);
+        if (!string) return null;
+        const parent = found.container || t.create({
+          parent: source.uid,
+          order: "last",
+          string: CONTAINER_STRING,
+          plexus: { type: "regions" },
+          open: false
+        });
+        const regionUid = t.create({ parent, order: "last", string });
+        const container = ensureContainer(t);
+        return t.create({
+          parent: container,
+          order: "last",
+          string: edgeStringFor(from, to, "one", label, fromBlock, regionUid),
+          plexus: serializeEdge({ from, to, dir: "one", fromSide, toSide, fromBlock, toBlock: regionUid })
+        });
       });
     },
     pinLink(link) {
@@ -32025,58 +32808,8 @@ extendSession((session, api) => {
   });
 });
 
-// src/model/image-region.js
-init_regions();
-function finite2(value) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-function boxOf4(rect) {
-  if (!rect || typeof rect !== "object") return null;
-  const x = finite2(rect.x ?? rect.left);
-  const y = finite2(rect.y ?? rect.top);
-  const width = finite2(rect.width);
-  const height = finite2(rect.height);
-  if (x === null || y === null || width === null || height === null) return null;
-  if (width <= 0 || height <= 0) return null;
-  return { x, y, width, height };
-}
-function clamp2(n2, lo, hi) {
-  return Math.min(hi, Math.max(lo, n2));
-}
-function fracFromDrag(rect, x0, y0, x1, y1) {
-  const box2 = boxOf4(rect);
-  if (!box2) return null;
-  const pts = [x0, y0, x1, y1].map(finite2);
-  if (pts.some((n2) => n2 === null)) return null;
-  const right = box2.x + box2.width;
-  const bottom = box2.y + box2.height;
-  const ax = clamp2(pts[0], box2.x, right);
-  const ay = clamp2(pts[1], box2.y, bottom);
-  const bx = clamp2(pts[2], box2.x, right);
-  const by = clamp2(pts[3], box2.y, bottom);
-  const f = normalizeFrac([
-    (Math.min(ax, bx) - box2.x) / box2.width,
-    (Math.min(ay, by) - box2.y) / box2.height,
-    Math.abs(bx - ax) / box2.width,
-    Math.abs(by - ay) / box2.height
-  ]);
-  if (!f) return null;
-  return { rx: f[0], ry: f[1], rw: f[2], rh: f[3] };
-}
-function imageRegionString(cardUid, frac, caption) {
-  try {
-    return serializeRegion({
-      kind: "img",
-      drawingUid: cardUid,
-      f: [frac.rx, frac.ry, frac.rw, frac.rh],
-      caption
-    });
-  } catch {
-    return null;
-  }
-}
-
 // src/views.js
+init_image_region();
 init_regions();
 
 // src/model/view-save.js
@@ -33663,7 +34396,7 @@ function haloRefs(q, uid, cap4 = HALO_REF_CAP) {
   } catch {
     return none;
   }
-  const total = finite3(span?.[0]) ?? 0;
+  const total = finite4(span?.[0]) ?? 0;
   if (total <= 0) return none;
   let rows = [];
   try {
@@ -33673,18 +34406,18 @@ function haloRefs(q, uid, cap4 = HALO_REF_CAP) {
   }
   const stamps = [];
   for (const row4 of rows) {
-    const stamp2 = finite3(Array.isArray(row4) ? row4[1] : null);
+    const stamp2 = finite4(Array.isArray(row4) ? row4[1] : null);
     if (stamp2 != null) stamps.push(stamp2);
   }
   stamps.sort((a, b) => b - a);
   const times = stamps.slice(0, Math.max(0, cap4));
-  const lo = finite3(span?.[1]);
-  const hi = finite3(span?.[2]);
+  const lo = finite4(span?.[1]);
+  const hi = finite4(span?.[2]);
   if (lo != null) times.push(lo);
   if (hi != null) times.push(hi);
   return { total, times };
 }
-function finite3(value) {
+function finite4(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 function ordinal(day) {
@@ -33702,7 +34435,7 @@ function ordinal(day) {
   }
 }
 function formatMade(ms) {
-  const n2 = finite3(ms);
+  const n2 = finite4(ms);
   if (n2 == null) return "";
   const date = new Date(n2);
   return `${MONTHS6[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
@@ -33720,12 +34453,12 @@ function headerText({ created, board: board2, section: section2, userName } = {}
 function company(rows, uid) {
   const list = Array.isArray(rows) ? rows : [];
   const self = list.find((row4) => row4 && row4.uid === uid);
-  const created = finite3(self?.created);
+  const created = finite4(self?.created);
   if (!self || created == null) return [];
   const out = [];
   for (const row4 of list) {
     if (!row4 || row4.uid === uid) continue;
-    const stamp2 = finite3(row4.created);
+    const stamp2 = finite4(row4.created);
     if (stamp2 == null || Math.abs(stamp2 - created) > DAY_MS2) continue;
     out.push(row4.uid);
     if (out.length >= 6) break;
@@ -33736,7 +34469,7 @@ function buckets(times) {
   const counts = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   const list = [];
   for (const value of times || []) {
-    const n2 = finite3(value);
+    const n2 = finite4(value);
     if (n2 != null) list.push(n2);
   }
   if (!list.length) return counts;
@@ -33758,7 +34491,7 @@ function buckets(times) {
 function refsLine(times, total) {
   const list = [];
   for (const value of times || []) {
-    const n2 = finite3(value);
+    const n2 = finite4(value);
     if (n2 != null) list.push(n2);
   }
   if (!list.length) return "Referenced 0 times";
@@ -33779,12 +34512,12 @@ function readHaloPull(pulled) {
   const refs = Array.isArray(raw) ? raw : raw ? [raw] : [];
   const refTimes = [];
   for (const ref of refs) {
-    const stamp2 = finite3(ref?.[":create/time"]);
+    const stamp2 = finite4(ref?.[":create/time"]);
     if (stamp2 != null) refTimes.push(stamp2);
   }
   return {
-    created: finite3(pulled?.[":create/time"]),
-    edited: finite3(pulled?.[":edit/time"]),
+    created: finite4(pulled?.[":create/time"]),
+    edited: finite4(pulled?.[":edit/time"]),
     userName: name,
     refTimes
   };
@@ -33904,19 +34637,19 @@ function openHaloPopover({
   const refs = doc.createElement("div");
   refs.className = "pxd-halo__refs";
   const times = model.refTimes || [];
-  const finite6 = times.filter((value) => Number.isFinite(Number(value))).map(Number);
-  if (!finite6.length) {
-    refs.textContent = refsLine(finite6, model.refTotal);
+  const finite7 = times.filter((value) => Number.isFinite(Number(value))).map(Number);
+  if (!finite7.length) {
+    refs.textContent = refsLine(finite7, model.refTotal);
   } else {
-    const shown = Number.isFinite(model.refTotal) && model.refTotal >= finite6.length ? model.refTotal : finite6.length;
+    const shown = Number.isFinite(model.refTotal) && model.refTotal >= finite7.length ? model.refTotal : finite7.length;
     const noun = shown === 1 ? "time" : "times";
     refs.append(`Referenced ${shown} ${noun}, first `);
-    refs.append(dateNode(doc, Math.min(...finite6), { pageExists, renderString, mounts }));
+    refs.append(dateNode(doc, Math.min(...finite7), { pageExists, renderString, mounts }));
     refs.append(", last ");
-    refs.append(dateNode(doc, Math.max(...finite6), { pageExists, renderString, mounts }));
+    refs.append(dateNode(doc, Math.max(...finite7), { pageExists, renderString, mounts }));
   }
   pop.append(refs);
-  const counts = buckets(finite6);
+  const counts = buckets(finite7);
   const spark = sparkline(doc, counts);
   spark.setAttribute("data-sum", String(counts.reduce((sum, n3) => sum + n3, 0)));
   pop.append(spark);
@@ -34442,20 +35175,20 @@ function leavesBoardPointer(target) {
 var CONTEXT_CAP = 200;
 var CONTEXT_CHUNK = 25;
 var CONTEXT_FILTER_AT = 20;
-var clip3 = (text3, max) => {
+var clip4 = (text3, max) => {
   const body = String(text3 ?? "").replace(/\s+/g, " ").trim();
   if (body.length <= max) return body;
   return `${body.slice(0, max - 1).trimEnd()}…`;
 };
 function breadcrumb(page, parent) {
-  const a = clip3(page, 42);
-  const b = clip3(parent, 42);
+  const a = clip4(page, 42);
+  const b = clip4(parent, 42);
   if (!a) return b || "Untitled";
   if (!b || b === a) return a;
   return `${a} › ${b}`;
 }
 function snippetOf2(text3, max = 200) {
-  return clip3(text3, max);
+  return clip4(text3, max);
 }
 function filterRows(rows, query) {
   const q = String(query ?? "").trim().toLowerCase();
@@ -35146,8 +35879,8 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
         body.push(`<text x="${n1(r.x)}" y="${n1(r.y + size)}" font-size="${size}" fill="${theme.text}">${esc(titleOf2(item))}</text>`);
       }
     } else {
-      const clip4 = `pxd-clip-${index}`;
-      defs.push(`<clipPath id="${clip4}"><rect x="${n1(r.x + 10)}" y="${n1(r.y)}" width="${n1(Math.max(1, r.w - 20))}" height="${n1(r.h)}"/></clipPath>`);
+      const clip5 = `pxd-clip-${index}`;
+      defs.push(`<clipPath id="${clip5}"><rect x="${n1(r.x + 10)}" y="${n1(r.y)}" width="${n1(Math.max(1, r.w - 20))}" height="${n1(r.h)}"/></clipPath>`);
       body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="8" fill="${theme.card}" stroke="${item.color ? line : theme.border}" stroke-width="${item.color ? 2 : 1}"/>`);
       const picture = imageHrefOf(item, imageHrefs);
       if (picture) {
@@ -35155,7 +35888,7 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
         const iy = r.y + 8;
         body.push(`<image href="${esc(picture)}" x="${n1(ix)}" y="${n1(iy)}" width="${n1(Math.max(1, r.w - 16))}" height="${n1(Math.max(1, r.h - 16))}" preserveAspectRatio="xMidYMid meet"/>`);
       } else {
-        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip4})">${esc(titleOf2(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip5})">${esc(titleOf2(item))}</text>`);
       }
     }
   });
@@ -35227,6 +35960,7 @@ init_schema();
 init_pdf();
 init_roam_table();
 init_board();
+init_endpoints();
 init_geometry();
 
 // src/model/touch.js
@@ -35500,7 +36234,14 @@ function createInteractions({ actions, settings } = {}) {
   const isEditing = () => Boolean(call("isEditing"));
   const blockTargetFor = (ev, uid) => {
     const item = uid ? board2()?.items.get(uid) : null;
-    if (!item || item.kind !== "page" && !isRoamTableString(item.string)) {
+    if (!item) {
+      call("clearBlockTarget");
+      return null;
+    }
+    const text3 = String(item.string ?? "").trim();
+    const refCard = /^\(\(([\w-]+)\)\)$/.test(text3) || /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i.test(text3);
+    const marked = item.kind === "page" || item.kind === "image" || item.kind === "pdf" || item.kind === "block" || refCard || isRoamTableString(item.string);
+    if (!marked) {
       call("clearBlockTarget");
       return null;
     }
@@ -35513,9 +36254,12 @@ function createInteractions({ actions, settings } = {}) {
     }
     return null;
   };
-  const beginConnect = (uid, side2, world) => {
-    begin({ kind: "connect", from: uid, fromSide: side2, start: world });
-    call("showTempWire", { from: uid, fromSide: side2, point: world });
+  const beginConnect = (uid, side2, world, fromBlock) => {
+    const trail = world ? [{ x: world.x, y: world.y }] : [];
+    begin({ kind: "connect", from: uid, fromSide: side2, start: world, fromBlock: fromBlock || void 0, trail });
+    const spec = { from: uid, fromSide: side2, point: world };
+    if (fromBlock) spec.fromBlock = fromBlock;
+    call("showTempWire", spec);
   };
   let openTimer = null;
   const cancelOpen = () => {
@@ -35594,7 +36338,11 @@ function createInteractions({ actions, settings } = {}) {
       case "section-border": {
         if (!t.uid || !b?.items.has(t.uid)) return;
         if (state.tool === "connect") {
-          beginConnect(t.uid, nearestSide(r.get(t.uid), ev.world), ev.world);
+          beginConnect(t.uid, nearestSide(r.get(t.uid), ev.world), ev.world, t.row || void 0);
+          return;
+        }
+        if (state.tool === "select" && ev.alt && t.row) {
+          beginConnect(t.uid, nearestSide(r.get(t.uid), ev.world), ev.world, t.row);
           return;
         }
         if (state.tool !== "select" && state.tool !== "hand") break;
@@ -35671,7 +36419,13 @@ function createInteractions({ actions, settings } = {}) {
     if (g.kind === "connect") {
       const b = board2();
       const r = hitRects();
-      call("showTempWire", { from: g.from, fromSide: g.fromSide, point: ev.world });
+      if (ev.world && Array.isArray(g.trail)) {
+        g.trail.push({ x: ev.world.x, y: ev.world.y });
+        if (g.trail.length > 40) g.trail.splice(0, g.trail.length - 40);
+      }
+      const spec = { from: g.from, fromSide: g.fromSide, point: ev.world };
+      if (g.fromBlock) spec.fromBlock = g.fromBlock;
+      call("showTempWire", spec);
       const hit = b && r ? hitTest(b, ev.world, r, { sectionInterior: true }) : null;
       const hover = hit && hit.uid !== g.from ? hit.uid : null;
       if (hover !== state.hover) {
@@ -35922,10 +36676,20 @@ function createInteractions({ actions, settings } = {}) {
         break;
       case "edge-end": {
         const hr = hitRects();
-        const hit = b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
+        const dom = ev.target || {};
+        const aimed = (dom.kind === "label" || dom.kind === "edge") && dom.uid && dom.uid !== g.edge ? b?.edges.get(dom.uid) : null;
+        const aimedOk = Boolean(aimed && edgeMayTarget(aimed, b.edges));
+        const hit = !aimedOk && b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
         const bt = hit && hit.uid !== g.other ? blockTargetFor(ev, hit.uid) : null;
         end();
         const edge = b?.edges.get(g.edge);
+        if (g.moved && edge && aimedOk) {
+          const key = g.end === "from" ? "from" : "to";
+          const blockKey = g.end === "from" ? "fromBlock" : "toBlock";
+          call("updateEdge", g.edge, { [key]: aimed.uid, [blockKey]: void 0 });
+          afterToolUse();
+          return;
+        }
         if (g.moved && edge && hit && hit.uid !== g.other) {
           const key = g.end === "from" ? "from" : "to";
           const blockKey = g.end === "from" ? "fromBlock" : "toBlock";
@@ -35949,18 +36713,53 @@ function createInteractions({ actions, settings } = {}) {
       case "connect": {
         const hr = hitRects();
         const hit = b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
-        const bt = hit && hit.uid !== g.from ? blockTargetFor(ev, hit.uid) : null;
+        const dom = ev.target || {};
+        const aimed = (dom.kind === "label" || dom.kind === "edge") && dom.uid && dom.uid !== g.from ? b?.edges.get(dom.uid) : null;
+        const aimedOk = Boolean(aimed && edgeMayTarget(aimed, b.edges));
+        const bt = !aimedOk && hit && hit.uid !== g.from ? blockTargetFor(ev, hit.uid) : null;
+        const drop = !aimedOk && !bt?.row ? call("regionDrop", { from: g.from, client: ev.client, trail: g.trail || [], fromBlock: g.fromBlock }) : null;
+        const fromBlock = g.fromBlock || void 0;
+        const withFrom = (payload) => fromBlock ? { ...payload, fromBlock } : payload;
         end();
-        if (hit && hit.uid === g.from) {
+        if (aimedOk) {
+          const existing = sameEdge(b, g.from, aimed.uid, fromBlock, void 0);
+          if (existing) selectEdge(existing.uid);
+          else {
+            Promise.resolve(call("addEdge", withFrom({ from: g.from, to: aimed.uid, fromSide: g.fromSide, toSide: "auto" }))).then((uid) => {
+              if (uid) selectEdge(uid);
+            }).catch(() => {
+            });
+          }
+          afterToolUse();
+          return;
+        }
+        if (drop?.create && drop.to && drop.to !== g.from) {
+          Promise.resolve(call("addRegionEndpoint", withFrom({
+            from: g.from,
+            to: drop.to,
+            frac: drop.frac,
+            fromSide: g.fromSide,
+            toSide: nearestSide(hr.get(drop.to), ev.world)
+          }))).then((uid) => {
+            if (uid) selectEdge(uid);
+          }).catch(() => {
+          });
+          afterToolUse();
+          return;
+        }
+        const toUid = drop?.reuse ? drop.to : hit?.uid;
+        const toBlock = drop?.reuse ? drop.toBlock : bt?.row || void 0;
+        if (toUid && toUid === g.from) {
           selectItems([g.from]);
-        } else if (hit) {
-          const toBlock = bt?.row || void 0;
-          const existing = sameEdge(b, g.from, hit.uid, void 0, toBlock);
+        } else if (toUid) {
+          const existing = sameEdge(b, g.from, toUid, fromBlock, toBlock);
           if (existing) {
             selectEdge(existing.uid);
           } else {
-            const toSide = nearestSide(hr.get(hit.uid), ev.world);
-            Promise.resolve(call("addEdge", { from: g.from, to: hit.uid, fromSide: g.fromSide, toSide, ...toBlock ? { toBlock } : {} })).then((uid) => {
+            const toSide = nearestSide(hr.get(toUid), ev.world);
+            const payload = withFrom({ from: g.from, to: toUid, fromSide: g.fromSide, toSide });
+            if (toBlock) payload.toBlock = toBlock;
+            Promise.resolve(call("addEdge", payload)).then((uid) => {
               if (uid) selectEdge(uid);
             }).catch(() => {
             });
@@ -35970,7 +36769,7 @@ function createInteractions({ actions, settings } = {}) {
           const at = { x: ev.world.x, y: ev.world.y - d.h / 2 };
           Promise.resolve(call("createCard", at)).then(async (uid) => {
             if (!uid) return;
-            await call("addEdge", { from: g.from, to: uid, fromSide: g.fromSide, toSide: "auto" });
+            await call("addEdge", withFrom({ from: g.from, to: uid, fromSide: g.fromSide, toSide: "auto" }));
             selectItems([uid]);
             call("enterEdit", uid);
           }).catch(() => {
@@ -41345,16 +42144,16 @@ function createParseView({
     if (custom) parts = Object.fromEntries(Object.entries(parts).filter(([type]) => ASYNC_CLIPBOARD_TYPES.has(type)));
     const win = doc.defaultView || globalThis;
     const Item = win.ClipboardItem || globalThis.ClipboardItem;
-    const clip4 = win.navigator?.clipboard;
+    const clip5 = win.navigator?.clipboard;
     const BlobCtor = win.Blob || globalThis.Blob;
-    if (typeof Item === "function" && typeof clip4?.write === "function" && typeof BlobCtor === "function") {
+    if (typeof Item === "function" && typeof clip5?.write === "function" && typeof BlobCtor === "function") {
       const bag = {};
       for (const [type, value] of Object.entries(parts)) {
         if (value == null) continue;
         bag[type] = typeof BlobCtor === "function" && value instanceof BlobCtor ? value : new BlobCtor([typeof value === "string" ? value : JSON.stringify(value)], { type });
       }
       if (Object.keys(bag).length) {
-        await clip4.write([new Item(bag)]);
+        await clip5.write([new Item(bag)]);
         return true;
       }
     }
@@ -41863,18 +42662,18 @@ ${sourceAttrString(source)}` : markdown;
       }
     }
     const win = doc.defaultView || globalThis;
-    const clip4 = win.navigator?.clipboard;
+    const clip5 = win.navigator?.clipboard;
     const Item = win.ClipboardItem || globalThis.ClipboardItem;
     const BlobCtor = win.Blob || globalThis.Blob;
-    if (typeof clip4?.write === "function" && typeof Item === "function" && typeof BlobCtor === "function") {
+    if (typeof clip5?.write === "function" && typeof Item === "function" && typeof BlobCtor === "function") {
       try {
-        await clip4.write([new Item({ "text/plain": new BlobCtor([text3], { type: "text/plain" }) })]);
+        await clip5.write([new Item({ "text/plain": new BlobCtor([text3], { type: "text/plain" }) })]);
         return;
       } catch {
       }
     }
-    if (typeof clip4?.writeText !== "function") throw new Error("no clipboard");
-    await clip4.writeText(text3);
+    if (typeof clip5?.writeText !== "function") throw new Error("no clipboard");
+    await clip5.writeText(text3);
   }
   async function copyBlock(block) {
     try {
@@ -41894,12 +42693,12 @@ ${sourceAttrString(source)}` : markdown;
       if (!src) src = await cropAt2x(block);
       const win = doc.defaultView || globalThis;
       const Item = win.ClipboardItem || globalThis.ClipboardItem;
-      const clip4 = win.navigator?.clipboard;
+      const clip5 = win.navigator?.clipboard;
       const BlobCtor = win.Blob || globalThis.Blob;
       const blob = src ? dataUrlToBlob3(src, BlobCtor) : null;
-      if (blob && typeof Item === "function" && typeof clip4?.write === "function") {
+      if (blob && typeof Item === "function" && typeof clip5?.write === "function") {
         try {
-          await clip4.write([new Item({ "image/png": blob, "text/plain": new BlobCtor([caption], { type: "text/plain" }) })]);
+          await clip5.write([new Item({ "image/png": blob, "text/plain": new BlobCtor([caption], { type: "text/plain" }) })]);
           return true;
         } catch {
         }
@@ -45673,9 +46472,9 @@ function createReadPane({
     barTimers.push(later(placeBar, 0), later(placeBar, BAR_SETTLE_MS));
   };
   const writeClip = async (text3) => {
-    const clip4 = doc.defaultView?.navigator?.clipboard || globalThis.navigator?.clipboard;
-    if (!clip4 || typeof clip4.writeText !== "function") throw new Error("no clipboard");
-    await clip4.writeText(text3);
+    const clip5 = doc.defaultView?.navigator?.clipboard || globalThis.navigator?.clipboard;
+    if (!clip5 || typeof clip5.writeText !== "function") throw new Error("no clipboard");
+    await clip5.writeText(text3);
   };
   const toast = (message) => {
     try {
@@ -49287,6 +50086,7 @@ function editorKeyAction({
 
 // src/view/edges.js
 init_board();
+init_endpoints();
 init_geometry();
 init_section6();
 init_schema();
@@ -49360,7 +50160,79 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     }
     return 0;
   };
-  const geometryFor = (board2, edge, rects) => {
+  const endOn = (spec, rect, other) => {
+    if (!spec || !rect || spec.face) return null;
+    if (spec.region && spec.image) {
+      const hit = regionEdgePoint(
+        { x: rect.x + spec.image.x, y: rect.y + spec.image.y, w: spec.image.w, h: spec.image.h },
+        spec.frac,
+        center(other)
+      );
+      return hit ? { point: hit.point, side: hit.side, region: true } : null;
+    }
+    const an = blockAnchor({ rect, rowTop: spec.rowTop, rowHeight: spec.rowHeight, bodyTop: spec.bodyTop, bodyBottom: spec.bodyBottom, other: center(other) });
+    return {
+      point: an.point,
+      side: an.side,
+      clamp: an.clamped,
+      inner: !an.clamped ? { rect, side: an.side, point: an.point, rowLeft: spec.rowLeft, rowRight: spec.rowRight, cell: spec.cell === true } : null
+    };
+  };
+  const geometryFor = (board2, edge, rects, depth = 0) => {
+    if (!board2 || !edge || depth > 1) return null;
+    const fromItem = board2.items.get(edge.from);
+    const toItem = board2.items.get(edge.to);
+    const fromEdge = !fromItem ? board2.edges.get(edge.from) : null;
+    const toEdge = !toItem ? board2.edges.get(edge.to) : null;
+    if (fromEdge || toEdge) {
+      if (fromEdge && toEdge) return null;
+      if (fromEdge && !edgeMayTarget(fromEdge, board2.edges) || toEdge && !edgeMayTarget(toEdge, board2.edges)) return null;
+      const targetGeo = geometryFor(board2, fromEdge || toEdge, rects, depth + 1);
+      if (!targetGeo?.mid) return null;
+      const stub = { x: targetGeo.mid.x, y: targetGeo.mid.y, w: 0, h: 0 };
+      const itemUid = fromEdge ? edge.to : edge.from;
+      const itemRect = rects.get(anchorUid(board2, itemUid));
+      if (!itemRect) return null;
+      const a = fromEdge ? stub : itemRect;
+      const b = toEdge ? stub : itemRect;
+      let fromSide2 = edge.fromSide;
+      let toSide2 = edge.toSide;
+      let fromPoint2 = fromEdge ? { x: stub.x, y: stub.y } : void 0;
+      let toPoint2 = toEdge ? { x: stub.x, y: stub.y } : void 0;
+      let fromClamp2 = null;
+      let toClamp2 = null;
+      let fromInnerSpec2 = null;
+      let toInnerSpec2 = null;
+      const m2 = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
+      if (m2?.from && edge.fromBlock && !fromEdge) {
+        const hit = endOn(m2.from, a, b);
+        if (hit) {
+          fromPoint2 = hit.point;
+          fromSide2 = hit.side;
+          fromClamp2 = hit.clamp ?? null;
+          if (!hit.region) fromInnerSpec2 = hit.inner || null;
+        }
+      }
+      if (m2?.to && edge.toBlock && !toEdge) {
+        const hit = endOn(m2.to, b, a);
+        if (hit) {
+          toPoint2 = hit.point;
+          toSide2 = hit.side;
+          toClamp2 = hit.clamp ?? null;
+          if (!hit.region) toInnerSpec2 = hit.inner || null;
+        }
+      }
+      const geo2 = edgePath({ a, b, fromSide: fromSide2, toSide: toSide2, route: edge.route, offset: pairOffset2(board2, edge), fromPoint: fromPoint2, toPoint: toPoint2 });
+      geo2.fromClamp = fromClamp2;
+      geo2.toClamp = toClamp2;
+      geo2.fromW = a.w;
+      geo2.toW = b.w;
+      geo2.fromBlockAnchored = Boolean(fromPoint2) && !fromEdge && !m2?.from?.region;
+      geo2.toBlockAnchored = Boolean(toPoint2) && !toEdge && !m2?.to?.region;
+      geo2.fromInner = fromInnerSpec2 ? blockInner(fromInnerSpec2) : null;
+      geo2.toInner = toInnerSpec2 ? blockInner(toInnerSpec2) : null;
+      return geo2;
+    }
     const routed = routedEdge(board2, edge, rects);
     if (!routed) return null;
     let via = edge.via;
@@ -49384,18 +50256,22 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     const m = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
     if (m) {
       if (m.from && edge.fromBlock && routed.from === edge.from) {
-        const an = blockAnchor({ rect: routed.a, ...m.from, other: center(routed.b) });
-        fromPoint = an.point;
-        fromSide = an.side;
-        fromClamp = an.clamped;
-        if (!an.clamped) fromInnerSpec = { rect: routed.a, side: an.side, point: an.point, rowLeft: m.from.rowLeft, rowRight: m.from.rowRight, cell: m.from.cell === true };
+        const hit = endOn(m.from, routed.a, routed.b);
+        if (hit) {
+          fromPoint = hit.point;
+          fromSide = hit.side;
+          fromClamp = hit.clamp ?? null;
+          if (!hit.region) fromInnerSpec = hit.inner || null;
+        }
       }
       if (m.to && edge.toBlock && routed.to === edge.to) {
-        const an = blockAnchor({ rect: routed.b, ...m.to, other: center(routed.a) });
-        toPoint = an.point;
-        toSide = an.side;
-        toClamp = an.clamped;
-        if (!an.clamped) toInnerSpec = { rect: routed.b, side: an.side, point: an.point, rowLeft: m.to.rowLeft, rowRight: m.to.rowRight, cell: m.to.cell === true };
+        const hit = endOn(m.to, routed.b, routed.a);
+        if (hit) {
+          toPoint = hit.point;
+          toSide = hit.side;
+          toClamp = hit.clamp ?? null;
+          if (!hit.region) toInnerSpec = hit.inner || null;
+        }
       }
     }
     const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset2(board2, edge), via, fromPoint, toPoint });
@@ -49404,8 +50280,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       geo.toClamp = toClamp;
       geo.fromW = routed.a.w;
       geo.toW = routed.b.w;
-      geo.fromBlockAnchored = Boolean(fromPoint);
-      geo.toBlockAnchored = Boolean(toPoint);
+      geo.fromBlockAnchored = Boolean(fromPoint) && !m.from?.region;
+      geo.toBlockAnchored = Boolean(toPoint) && !m.to?.region;
       geo.fromInner = fromInnerSpec ? blockInner(fromInnerSpec) : null;
       geo.toInner = toInnerSpec ? blockInner(toInnerSpec) : null;
     }
@@ -49860,10 +50736,12 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (!wire) {
       wire = { line: mk("path", "pxd-wire", overlaySvg), head: mk("path", "pxd-wire__head", overlaySvg) };
     }
-    const a = rects.get(spec.from);
-    if (!a) return;
+    const a0 = rects.get(spec.from);
+    const fromPoint = spec.fromPoint;
+    if (!a0 && !fromPoint) return;
+    const a = a0 || { x: fromPoint.x, y: fromPoint.y, w: 0, h: 0 };
     const b = { x: spec.point.x, y: spec.point.y, w: 0, h: 0 };
-    const geo = edgePath({ a, b, fromSide: spec.fromSide || "auto", toSide: "auto", route: "curve" });
+    const geo = edgePath({ a, b, fromSide: spec.fromSide || "auto", toSide: "auto", route: "curve", fromPoint: fromPoint || void 0 });
     wire.line.setAttribute("d", geo.d);
     wire.head.setAttribute("d", arrowHeadPath(geo.end, geo.endAngle, arrowSize(zoom, 1)));
   };
@@ -51483,7 +52361,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
 
 // src/view/region-hover-geom.js
 init_geometry();
-function finite4(n2) {
+function finite5(n2) {
   return typeof n2 === "number" && Number.isFinite(n2);
 }
 function fracParts2(frac) {
@@ -51495,7 +52373,7 @@ function viewParts(v) {
   return v || {};
 }
 function previewImageBox(w, h, max = 480) {
-  if (![w, h, max].every((n2) => finite4(n2) && n2 > 0)) return null;
+  if (![w, h, max].every((n2) => finite5(n2) && n2 > 0)) return null;
   const scale = Math.min(1, max / w, max / h);
   return { w: w * scale, h: h * scale, scale };
 }
@@ -51507,7 +52385,7 @@ function holeRect(box2, frac) {
   const ry = Number(parts.ry);
   const rw = Number(parts.rw);
   const rh = Number(parts.rh);
-  if (![bw, bh, rx, ry, rw, rh].every(finite4)) return null;
+  if (![bw, bh, rx, ry, rw, rh].every(finite5)) return null;
   if (!(bw > 0) || !(bh > 0)) return null;
   return { x: rx * bw, y: ry * bh, w: rw * bw, h: rh * bh };
 }
@@ -51526,7 +52404,7 @@ function regionCamera({ imageRect, frac, size } = {}) {
   const ih = Number(imageRect?.h ?? imageRect?.height);
   const vw = Number(size?.width);
   const vh = Number(size?.height);
-  if (![rx, ry, rw, rh, ix, iy, iw, ih, vw, vh].every(finite4)) return null;
+  if (![rx, ry, rw, rh, ix, iy, iw, ih, vw, vh].every(finite5)) return null;
   if (!(iw > 0) || !(ih > 0) || !(rw > 0) || !(rh > 0) || !(vw > 0) || !(vh > 0)) return null;
   const worldW = rw * iw;
   const worldH = rh * ih;
@@ -51543,7 +52421,7 @@ function setCameraFromView(v, size) {
   const h = Number(view.h);
   const vw = Number(size?.width);
   const vh = Number(size?.height);
-  if (![x, y, w, h, vw, vh].every(finite4)) return null;
+  if (![x, y, w, h, vw, vh].every(finite5)) return null;
   if (!(w > 0) || !(h > 0) || !(vw > 0) || !(vh > 0)) return null;
   return viewportFromWorldRect({ x, y, w, h }, { width: vw, height: vh });
 }
@@ -51552,6 +52430,7 @@ function cameraRectOf(vp, size) {
 }
 
 // src/view/region-mark.js
+init_image_region();
 var inBar = (node2, bar) => Boolean(bar?.contains?.(node2));
 var axis = (rect, primary, fallback) => {
   const n2 = rect?.[primary];
@@ -57269,6 +58148,7 @@ function mountPrintSheet(doc, board2) {
 
 // src/view/board-view.js
 init_table_cells();
+init_endpoints();
 var SVG_NS4 = "http://www.w3.org/2000/svg";
 var pointerBoard = null;
 function sidebarMountKind(nativeEl) {
@@ -64091,7 +64971,23 @@ function buildBoardView(onFail, {
     fitHeight: (uid) => fitHeight(uid),
     fitSection: (uid) => session.fitSection?.(uid),
     resetSize: (uids) => session.resetSize?.(uids),
-    showTempWire: (spec) => edgesR.setTempWire(spec, rects(), vp.zoom),
+    showTempWire: (spec) => {
+      if (!spec) {
+        edgesR.setTempWire(null, rects(), vp.zoom);
+        return;
+      }
+      const boxes = rects();
+      const box2 = boxes.get(spec.from);
+      let fromPoint;
+      if (spec.fromBlock && box2) {
+        try {
+          fromPoint = wireStart(box2, itemsR.measureRow(spec.from, spec.fromBlock), spec.point) || void 0;
+        } catch {
+          fromPoint = void 0;
+        }
+      }
+      edgesR.setTempWire(fromPoint ? { ...spec, fromPoint } : spec, boxes, vp.zoom);
+    },
     blockTarget: (pt) => blockTargetAt(pt),
     clearBlockTarget: () => clearBlockTarget(),
     revealBlockEnd: (edgeUid, end) => revealBlockEnd(edgeUid, end),
@@ -64201,6 +65097,47 @@ function buildBoardView(onFail, {
       if (uid && setting("why-prompt", false) === true) openWhy(uid, "why");
       return uid;
     }),
+    addRegionEndpoint: (spec) => Promise.resolve(session.addRegionEndpoint?.(spec)).then((uid) => {
+      if (uid && setting("why-prompt", false) === true) openWhy(uid, "why");
+      return uid;
+    }),
+    // A fat drag on an image writes a region. A release on an outline reuses it. A thin drag connects to the card.
+    regionDrop: ({ from, client, trail } = {}) => {
+      if (!client || typeof doc.elementsFromPoint !== "function") return null;
+      let card2 = null;
+      let regionUid = null;
+      for (const node2 of doc.elementsFromPoint(client.x, client.y) || []) {
+        const itemEl = node2.closest?.(".pxd-item");
+        if (!itemEl) continue;
+        if (itemEl.closest?.(".pxd-root") !== root) return null;
+        card2 = itemEl;
+        const mark = node2.closest?.("[data-pxd-region]");
+        if (mark && itemEl.contains(mark)) regionUid = mark.getAttribute?.("data-pxd-region") || null;
+        break;
+      }
+      if (!card2) return null;
+      const uid = card2.getAttribute?.("data-uid") || card2.dataset?.uid;
+      if (!uid || uid === from) return null;
+      const item = board2()?.items.get(uid);
+      if (!item) return null;
+      const read2 = (id) => {
+        try {
+          return host?.blockString?.(id);
+        } catch {
+          return null;
+        }
+      };
+      const source = item.kind === "image" ? { ok: true } : imageSourceOf(item, read2);
+      if (!source.ok && !regionUid) return null;
+      const media = card2.querySelector?.(".pxd-item__media") || card2.querySelector?.(".pxd-pdf-cover") || card2.querySelector?.("img") || card2;
+      const box2 = media.getBoundingClientRect?.();
+      if (!box2 || !(box2.width > 0) || !(box2.height > 0)) return regionUid ? regionDropPlan({ from, imageUid: uid, regionUid }) : null;
+      const rootBox = root.getBoundingClientRect?.() || { left: 0, top: 0 };
+      const origin = screenToWorld(vp, { x: (box2.left || 0) - (rootBox.left || 0), y: (box2.top || 0) - (rootBox.top || 0) });
+      const zoom = vp?.zoom || 1;
+      const imageRect = { x: origin.x, y: origin.y, w: box2.width / zoom, h: box2.height / zoom };
+      return regionDropPlan({ from, imageUid: uid, regionUid, imageRect, points: trail || [] });
+    },
     undo: () => session.undo?.(),
     redo: () => session.redo?.(),
     enterEdit: (uid, opts) => enterEdit(uid, opts),
@@ -64264,6 +65201,15 @@ function buildBoardView(onFail, {
         targetEl?.classList.add(targetCls);
         return { uid, row: cell, header: false, cell: Boolean(cell) };
       }
+      const mark = node2.closest?.("[data-pxd-region], [data-pxd-pin]");
+      if (mark && card2.contains(mark)) {
+        const region = mark.getAttribute?.("data-pxd-region") || null;
+        const pin2 = mark.getAttribute?.("data-pxd-pin") || null;
+        targetEl = mark;
+        targetCls = "pxd-region-hit--hot";
+        targetEl.classList.add(targetCls);
+        return { uid, row: region || pin2, header: false, region: Boolean(region) };
+      }
       if (!card2.classList.contains("pxd-item--page")) return null;
       const row4 = node2.closest?.("[data-pxd-row]");
       const header = row4 ? null : node2.closest?.(".pxd-item__header");
@@ -64320,8 +65266,18 @@ function buildBoardView(onFail, {
     const item = t.closest(".pxd-item");
     if (item) {
       const hit = { kind: "item", uid: item.dataset?.uid || item.getAttribute?.("data-uid"), part: t.closest(".pxd-item__header") ? "header" : "body" };
-      const row4 = nativeClickKind(t) ? null : t.closest("[data-pxd-row]");
+      const mark = t.closest("[data-pxd-region], [data-pxd-pin]");
+      if (mark && item.contains(mark)) {
+        hit.row = mark.getAttribute?.("data-pxd-region") || mark.getAttribute?.("data-pxd-pin") || "";
+        return hit;
+      }
+      const native = nativeClickKind(t);
+      const row4 = native ? null : t.closest("[data-pxd-row]");
       if (row4) hit.row = row4.getAttribute?.("data-pxd-row") || row4.dataset?.pxdRow || "";
+      else if (!native && isTableCard(item)) {
+        const cell = cellUidOf(t, { pullTree: host?.pullTree });
+        if (cell) hit.row = cell;
+      }
       return hit;
     }
     return { kind: "empty" };
@@ -64624,6 +65580,18 @@ function buildBoardView(onFail, {
     const uid = item.getAttribute?.("data-uid") || item.dataset?.uid;
     if (!uid || itemsR.editingUid?.() === uid) return;
     if (event.target?.closest?.(GRAB_SKIP)) return;
+    if (ctl.getTool() === "connect") {
+      const endUid = endpointUnderPointer(event.target, (node2) => {
+        const card2 = node2?.closest?.(".pxd-item");
+        if (!card2 || !isTableCard(card2)) return null;
+        return cellUidOf(node2, { pullTree: host?.pullTree });
+      });
+      if (endUid) {
+        event.__pxdGrab = true;
+        onBoardPointerDown(event);
+        return;
+      }
+    }
     if (nativeClickKind(event.target)) return;
     const stickyBody = Boolean(item.classList?.contains("pxd-item--sticky") && event.target?.closest?.(".pxd-item__body"));
     if (!stickyBody && fieldTarget(event.target)) return;
@@ -65302,7 +66270,7 @@ function buildBoardView(onFail, {
       if (!disposed && doc.activeElement === event.target) typeAhead.flush(event.target);
     });
   }, true);
-  const clip4 = createClipboardIO({
+  const clip5 = createClipboardIO({
     doc,
     root,
     ownsKeyboard,
@@ -65354,7 +66322,7 @@ function buildBoardView(onFail, {
       editorPaste
     }
   });
-  onFail.unshift(() => clip4.dispose());
+  onFail.unshift(() => clip5.dispose());
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
     if (disposed || suspended) return;
     const b = board2();
@@ -65892,12 +66860,27 @@ function buildBoardView(onFail, {
     if (target.pageUid && pageUid && target.pageUid !== pageUid) return false;
     if (edge && !b.items.has(target.cardUid)) {
       ctl.selectEdge(edge.uid);
-      fitSelection([edge.from, edge.to]);
-      for (const uid of [edge.from, edge.to]) {
+      const ends = focusEnds(b, edge);
+      fitSelection(ends.length ? ends : [edge.from, edge.to]);
+      for (const uid of ends.length ? ends : [edge.from, edge.to]) {
         if (itemsR.shellOf(uid)) pulseItem(uid);
         else timers.frame(() => {
           if (!disposed) pulseItem(uid);
         });
+      }
+      const revealEnd = (card2, block) => {
+        if (!card2 || !block) return;
+        itemsR.revealRow(card2, block);
+      };
+      revealEnd(b.items.has(edge.from) ? edge.from : null, edge.fromBlock);
+      revealEnd(b.items.has(edge.to) ? edge.to : null, edge.toBlock);
+      for (const end of [edge.from, edge.to]) {
+        if (b.items.has(end)) continue;
+        const inner = b.edges.get(end);
+        if (!inner) continue;
+        const card2 = b.items.has(inner.from) ? inner.from : b.items.has(inner.to) ? inner.to : null;
+        const block = b.items.has(inner.from) ? inner.fromBlock : inner.toBlock;
+        revealEnd(card2, block);
       }
       return true;
     }
@@ -66414,7 +67397,7 @@ function buildBoardView(onFail, {
       step(() => menu.dispose());
       step(() => quicklook.dispose());
       step(() => presenter.dispose());
-      step(() => clip4.dispose());
+      step(() => clip5.dispose());
       step(() => {
         try {
           pdfWarm?.cancelAll?.();
@@ -66497,15 +67480,15 @@ var SVG_NS5 = "http://www.w3.org/2000/svg";
 function sketchKey(graph, uid) {
   return `plexus-diagram:sketch:${graph}:${uid}`;
 }
-function finite5(n2) {
+function finite6(n2) {
   return typeof n2 === "number" && Number.isFinite(n2);
 }
 function isSketchViewport(vp) {
-  return Boolean(vp) && finite5(vp.x) && finite5(vp.y) && finite5(vp.zoom) && vp.zoom > 0;
+  return Boolean(vp) && finite6(vp.x) && finite6(vp.y) && finite6(vp.zoom) && vp.zoom > 0;
 }
 function cleanItem(item) {
   if (!item || typeof item.uid !== "string" || !item.uid) return null;
-  if (!finite5(item.x) || !finite5(item.y) || !finite5(item.w) || !finite5(item.h)) return null;
+  if (!finite6(item.x) || !finite6(item.y) || !finite6(item.w) || !finite6(item.h)) return null;
   return {
     uid: item.uid,
     x: item.x,
@@ -70939,8 +71922,8 @@ async function installPlexusDiagram({
           return boardsFromRefs(rows).map((row4) => ({ ...row4, title: firstLine(row4.string) || row4.uid }));
         },
         writeText: (value) => {
-          const clip4 = doc?.defaultView?.navigator?.clipboard;
-          if (typeof clip4?.writeText === "function") return clip4.writeText(value);
+          const clip5 = doc?.defaultView?.navigator?.clipboard;
+          if (typeof clip5?.writeText === "function") return clip5.writeText(value);
           return void 0;
         },
         onOpen: ({ mode, region: pin2, board: board2 }) => {

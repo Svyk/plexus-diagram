@@ -3,7 +3,9 @@
 // Zero writes. One cached set of connection-block uids, checked only for the nodes a mutation batch added.
 
 import { boundsOf, buildBoard, routedEdge, worldRects } from "./model/board.js";
+import { edgeMayTarget, endpointChipText, endpointIndex } from "./model/endpoints.js";
 import { blockInner, edgePath } from "./model/geometry.js";
+import { parseRegion } from "./model/regions.js";
 import { assignDeepLink } from "./model/deeplink.js";
 import { PALETTE, attrNameOf, hexColor, itemLabel, parseBoardTitle } from "./model/schema.js";
 import { becauseClause } from "./model/why.js";
@@ -257,14 +259,70 @@ const rowEnd = (item, other, bar) => {
 
 // The cropped mini-map: the two connected cards, their neighbours that fall inside the crop, and the arrow.
 // Everything is in board world units; `viewBox` is the crop.
+export function mountLazyCrop(doc, frame, { src, frac, win } = {}) {
+  const f = frac || {};
+  const rw = Number(f.rw) > 0 ? Number(f.rw) : 1;
+  const rh = Number(f.rh) > 0 ? Number(f.rh) : 1;
+  const img = doc.createElement("img");
+  img.className = "pxd-relpop__crop-img";
+  img.alt = "";
+  img.style.position = "absolute";
+  img.style.maxWidth = "none";
+  img.style.width = `${100 / rw}%`;
+  img.style.height = `${100 / rh}%`;
+  img.style.left = `${-(Number(f.rx) || 0) / rw * 100}%`;
+  img.style.top = `${-(Number(f.ry) || 0) / rh * 100}%`;
+  frame.append(img);
+  const show = () => { if (src) img.setAttribute("src", src); };
+  const IO = win?.IntersectionObserver || globalThis.IntersectionObserver;
+  let watched = false;
+  if (typeof IO === "function") {
+    try {
+      const io = new IO((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) { show(); io.disconnect(); }
+      });
+      io.observe(frame);
+      watched = true;
+    } catch { watched = false; }
+  }
+  if (!watched) return { show, img };
+  return { show, img };
+}
+
 export function previewModel(board, edgeUid, { pad = 48, maxOthers = 24, blockText, rowFrac } = {}) {
   const edge = board?.edges?.get(edgeUid);
   if (!edge) return null;
   const rects = worldRects(board);
-  const routed = routedEdge(board, edge, rects);
-  if (!routed) return null;
-  const a = rects.get(edge.from);
-  const b = rects.get(edge.to);
+  let routed = routedEdge(board, edge, rects);
+  let a = rects.get(edge.from);
+  let b = rects.get(edge.to);
+  let stubCard = null;
+  if (!routed || !a || !b) {
+    const fromEdge = a ? null : board.edges.get(edge.from);
+    const toEdge = b ? null : board.edges.get(edge.to);
+    const one = Boolean(fromEdge) !== Boolean(toEdge);
+    const target = fromEdge || toEdge;
+    if (!one || !target || !edgeMayTarget(target, board.edges)) return null;
+    const ta = rects.get(target.from);
+    const tb = rects.get(target.to);
+    if (!ta || !tb) return null;
+    const mid = {
+      x: (ta.x + ta.w / 2 + tb.x + tb.w / 2) / 2,
+      y: (ta.y + ta.h / 2 + tb.y + tb.h / 2) / 2,
+    };
+    const stub = { x: mid.x - 4, y: mid.y - 4, w: 8, h: 8 };
+    if (fromEdge) {
+      a = stub;
+      b = rects.get(edge.to);
+      stubCard = { uid: edge.from, type: "card", rect: stub, title: "arrow", role: "from" };
+    } else {
+      b = stub;
+      a = rects.get(edge.from);
+      stubCard = { uid: edge.to, type: "card", rect: stub, title: "arrow", role: "to" };
+    }
+    if (!a || !b) return null;
+    routed = { from: edge.from, to: edge.to, a, b };
+  }
   if (!a || !b) return null;
   const bounds = boundsOf([a, b]);
   const view = { x: bounds.x - pad, y: bounds.y - pad, w: bounds.w + 2 * pad, h: bounds.h + 2 * pad };
@@ -282,6 +340,7 @@ export function previewModel(board, edgeUid, { pad = 48, maxOthers = 24, blockTe
     }
     cards.push({ uid: item.uid, type: item.type, rect: r, title: label(item), role });
   }
+  if (stubCard) cards.push(stubCard);
   const font = previewFont(view.w);
   const textOf = (uid) => { try { const t = blockText?.(uid); return typeof t === "string" && t ? t : "block"; } catch { return "block"; } };
   const barFor = (itemUid, blockUid) => {
@@ -334,26 +393,44 @@ export function previewModel(board, edgeUid, { pad = 48, maxOthers = 24, blockTe
 
 export function createConnectionCache({ host } = {}) {
   const boardOf = new Map(); // edge uid → board uid
+  const ends = new Map(); // block uid → endpoint chip info
   let loaded = false;
   return {
     load() {
-      let rows = [];
-      try { rows = host?.listConnectionBlocks?.() || []; } catch { rows = []; }
-      for (const [edgeUid, boardUid] of rows) if (edgeUid && boardUid) boardOf.set(edgeUid, boardUid);
+      boardOf.clear();
+      ends.clear();
+      if (typeof host?.listConnectionRefs === "function") {
+        let rows = [];
+        try { rows = host.listConnectionRefs() || []; } catch { rows = []; }
+        for (const row of rows) if (row?.[0] && row?.[1]) boardOf.set(row[0], row[1]);
+        for (const [uid, info] of endpointIndex(rows)) ends.set(uid, info);
+      } else {
+        let rows = [];
+        try { rows = host?.listConnectionBlocks?.() || []; } catch { rows = []; }
+        for (const [edgeUid, boardUid] of rows) if (edgeUid && boardUid) boardOf.set(edgeUid, boardUid);
+      }
       loaded = true;
       return boardOf.size;
     },
     // A mounted board's session saw the connection set change: replace that board's entries.
-    setBoard(boardUid, edgeUids) {
+    setBoard(boardUid, edgeUids, board) {
       for (const [e, b] of [...boardOf]) if (b === boardUid) boardOf.delete(e);
       for (const e of edgeUids || []) boardOf.set(e, boardUid);
+      for (const [uid, info] of [...ends]) if (info.boardUid === boardUid) ends.delete(uid);
+      if (board?.edges) {
+        const rows = [];
+        for (const edge of board.edges.values()) rows.push([edge.uid, boardUid, edge.string || "", board.title || "Untitled board"]);
+        for (const [uid, info] of endpointIndex(rows)) ends.set(uid, info);
+      }
     },
     has: (uid) => boardOf.has(uid),
     boardOf: (uid) => boardOf.get(uid) ?? null,
     uids: () => boardOf,
+    endpointOf: (uid) => ends.get(uid) || null,
+    endpointUids: () => new Set(ends.keys()),
     size: () => boardOf.size,
     isLoaded: () => loaded,
-    clear() { boardOf.clear(); loaded = false; },
+    clear() { boardOf.clear(); ends.clear(); loaded = false; },
   };
 }
 
@@ -408,7 +485,7 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
     }, () => { try { win.dispatchEvent?.(new Event("hashchange")); } catch { /* already there */ } });
   };
 
-  const openPop = (chip, edgeUid, avoid) => {
+  const openPop = (chip, edgeUid, avoid, endpointUid) => {
     closePop();
     const boardUid = cache.boardOf(edgeUid);
     const board = boardUid ? modelOf(boardUid) : null;
@@ -427,9 +504,27 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
     };
     const head = mk("div", "pxd-relpop__head", el);
     mk("div", "pxd-relpop__title", head, rel ? chipText({ ...rel }).replace(/^↗ /, "") : "This connection is no longer on a board");
+    if (endpointUid) {
+      let text = "";
+      try { text = blockText(endpointUid) || ""; } catch { text = ""; }
+      const region = parseRegion(text);
+      if (region?.kind === "img" && Array.isArray(region.f)) {
+        let drawing = "";
+        try { drawing = blockText(region.drawingUid) || ""; } catch { drawing = ""; }
+        const src = /!\[[^\]]*\]\(([^)]+)\)/.exec(drawing)?.[1] || "";
+        const frame = mk("div", "pxd-relpop__crop", el);
+        mountLazyCrop(doc, frame, {
+          src,
+          frac: { rx: region.f[0], ry: region.f[1], rw: region.f[2], rh: region.f[3] },
+          win,
+        });
+      }
+      const caption = rel?.label || region?.caption || "";
+      if (caption) mk("div", "pxd-relpop__note", el, caption);
+    }
     if (model) drawPreview(doc, el, model);
     else mk("div", "pxd-relpop__empty", el, "The connected cards could not be found on the board.");
-    if (rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip(rel.toBlockText, 60)}”`);
+    if (!endpointUid && rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip(rel.toBlockText, 60)}”`);
     const row = mk("div", "pxd-relpop__actions", el);
     const button = (tip, text, fn) => {
       const b = mk("button", "pxd-btn pxd-relpop__btn", row, text);
@@ -438,7 +533,7 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
       b.addEventListener("click", (event) => { stop(event); fn(); });
       return b;
     };
-    button("relpop.board", "Open on board", () => { closePop(); if (boardUid) openOnBoard(boardUid, edgeUid); });
+    button("relpop.board", endpointUid ? "Open board" : "Open on board", () => { closePop(); if (boardUid) openOnBoard(boardUid, edgeUid); });
     button("relpop.sidebar", "Open in sidebar", () => { closePop(); if (boardUid) { try { void host?.openInSidebar?.(boardUid, "block"); } catch { /* host unavailable */ } } });
     doc.body.append(el);
     const scrollParent = (node) => {
@@ -515,6 +610,43 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
     return chip;
   };
 
+  const buildEndpointChip = (blockUid) => {
+    const info = cache.endpointOf(blockUid);
+    if (!info) return null;
+    const chip = doc.createElement("div");
+    chip.className = `${CHIP_CLASS} pxd-relchip--end`;
+    chip.setAttribute("role", "button");
+    chip.setAttribute("tabindex", "0");
+    chip.setAttribute("data-end", blockUid);
+    chip.setAttribute("data-edge", info.edgeUid);
+    chip.textContent = endpointChipText({ count: info.count, boardTitle: info.boardTitle });
+    for (const type of ["pointerdown", "mousedown", "mouseup", "dblclick"]) chip.addEventListener(type, stop);
+    const open = (event) => {
+      stop(event);
+      event.preventDefault?.();
+      openPop(chip, info.edgeUid, chip.parentElement?.querySelector?.(".rm-block-main"), blockUid);
+    };
+    chip.addEventListener("click", open);
+    chip.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") open(event);
+    });
+    return chip;
+  };
+
+  const attachEndpoint = (input, blockUid) => {
+    const container = input.closest?.(".roam-block-container") || input.parentElement;
+    if (!container || container.closest?.(".pxd-root")) return;
+    for (const child of container.children || []) {
+      if (child.classList?.contains(CHIP_CLASS) && (child.getAttribute("data-edge") || child.getAttribute("data-end"))) return;
+    }
+    const chip = buildEndpointChip(blockUid);
+    if (!chip) return;
+    let kids = null;
+    for (const child of container.children || []) if (child.classList?.contains("rm-block-children")) { kids = child; break; }
+    if (kids) container.insertBefore(chip, kids); else container.append(chip);
+    chips.add(chip);
+  };
+
   // ---- PO-4: the breadcrumb Roam draws above a connection block (linked references, zoomed outline). Its own
   // navigation leads to "Board > Connections"; a plain click opens the preview instead, Shift / Cmd / Ctrl / Alt keep
   // Roam's behavior. Listeners sit on the breadcrumb items only and go away with the layer.
@@ -589,7 +721,12 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
     }
     for (const input of found.slice(0, SCAN_CAP)) {
       const uid = uidFromElementId(input.id, cache.uids());
-      if (uid) attach(input, uid);
+      if (uid) { attach(input, uid); continue; }
+      if (input.closest?.(".pxd-root")) continue;
+      const ends = cache.endpointUids?.();
+      if (!ends?.size) continue;
+      const endUid = uidFromElementId(input.id, ends);
+      if (endUid) attachEndpoint(input, endUid);
     }
     // A breadcrumb that arrives after its block.
     if (node.classList?.contains("rm-zoom")) crumbFor(node);
@@ -608,7 +745,7 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
 
   const noteBoard = (board) => {
     if (!board?.uid) return;
-    cache.setBoard(board.uid, [...(board.edges?.keys?.() || [])]);
+    cache.setBoard(board.uid, [...(board.edges?.keys?.() || [])], board);
     models.delete(board.uid);
   };
 

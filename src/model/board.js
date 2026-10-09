@@ -25,7 +25,7 @@ import { listFromNodes } from "./snapshots.js";
 import { parseTrails } from "./trails.js";
 import { highlightModel } from "./highlight.js";
 import { readWhy } from "./why.js";
-import { edgeMayTarget } from "./endpoints.js";
+import { edgeMayTarget, endpointHitsKey } from "./endpoints.js";
 
 const AUTO_GAP = 40;
 const AUTO_OFFSET = 48;
@@ -277,6 +277,8 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         enhanced: kind === "board" && (cplexus?.v === 2 || (typeof autoBoard === "function" && autoBoard(cuid, cplexus, kids) === true)),
         members: [],
         content: type === "section" ? [] : kids,
+        // Regions and pins sit in content, which can change in place. This string is fixed at build, so the diff sees them.
+        ...(kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(kids) } : {}),
       };
       items.set(cuid, item);
       preorder.push(cuid);

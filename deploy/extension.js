@@ -2212,6 +2212,29 @@ function endpointKindOf(blockString2) {
   if (region.kind === "pdf") return "pin";
   return null;
 }
+function endpointHitsOf(nodes) {
+  const regions = [];
+  const pins = [];
+  for (const node2 of nodes || []) {
+    const string = node2?.[":block/string"] ?? node2?.string ?? "";
+    if (!isContainerString(string)) continue;
+    for (const kid of node2?.[":block/children"] ?? node2?.children ?? []) {
+      const text3 = kid?.[":block/string"] ?? kid?.string ?? "";
+      const id = kid?.[":block/uid"] ?? kid?.uid;
+      const kind = endpointKindOf(text3);
+      if (!id || !kind) continue;
+      const f = parseRegion(text3)?.f;
+      (kind === "region" ? regions : pins).push({ uid: id, frac: f });
+    }
+  }
+  return { regions, pins };
+}
+function endpointHitsKey(nodes) {
+  const { regions, pins } = endpointHitsOf(nodes);
+  if (!regions.length && !pins.length) return "";
+  const one = (h) => `${h.uid}=${Array.isArray(h.frac) ? h.frac.join(",") : ""}`;
+  return `r:${regions.map(one).join(";")}|p:${pins.map(one).join(";")}`;
+}
 function imageSourceOf(item, read2) {
   if (!item) return { ok: false, reason: "missing" };
   if (item.kind === "image") return { ok: true, uid: item.uid, viaRef: false };
@@ -2657,7 +2680,9 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         ...layout.landmark ? { landmark: true, glyph: layout.glyph || "", size: layout.size === "S" || layout.size === "L" ? layout.size : "M" } : {},
         enhanced: kind === "board" && (cplexus?.v === 2 || typeof autoBoard === "function" && autoBoard(cuid, cplexus, kids) === true),
         members: [],
-        content: type === "section" ? [] : kids
+        content: type === "section" ? [] : kids,
+        // Regions and pins sit in content, which can change in place. This string is fixed at build, so the diff sees them.
+        ...kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(kids) } : {}
       };
       items.set(cuid, item);
       preorder.push(cuid);
@@ -19272,6 +19297,7 @@ function createItemRenderer({
     if ((item?.kind === "drawing-ref" || item?.kind === "region-ref") && !interopAllowed()) key += "interop-off";
     const pin2 = sourcePinOf(item?.content);
     if (pin2) key += `pin:${pin2.uid}`;
+    if (item?.hitsKey) key += `hits:${item.hitsKey}`;
     return key;
   };
   const shells = /* @__PURE__ */ new Map();
@@ -21202,23 +21228,7 @@ function createItemRenderer({
   };
   const syncEndpointHits = (rec, nodes) => {
     if (!rec?.body || rec.pageHolder) return;
-    const regions = [];
-    const pins = [];
-    for (const node2 of nodes || []) {
-      const string = node2?.[":block/string"] ?? node2?.string ?? "";
-      if (!isContainerString(string)) continue;
-      const kids = node2?.[":block/children"] ?? node2?.children ?? [];
-      for (const kid of kids) {
-        const text3 = kid?.[":block/string"] ?? kid?.string ?? "";
-        const kind = endpointKindOf(text3);
-        const id = kid?.[":block/uid"] ?? kid?.uid;
-        if (!id || !kind) continue;
-        const parsed = parseRegion(text3);
-        if (kind === "region") regions.push({ uid: id, frac: parsed?.f });
-        else pins.push({ uid: id, frac: parsed?.f });
-      }
-      break;
-    }
+    const { regions, pins } = endpointHitsOf(nodes);
     const readMode = Boolean(rec.el?.classList?.contains("pxd-pdf-live"));
     let hostEl = rec.body.querySelector?.(".pxd-item__media") || null;
     if (!hostEl && readMode) {

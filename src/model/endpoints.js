@@ -5,7 +5,7 @@
 
 import { blockAnchor, blockInner } from "./geometry.js";
 import { fracFromDrag } from "./image-region.js";
-import { parseRegion } from "./regions.js";
+import { isContainerString, parseRegion } from "./regions.js";
 import { classifyString } from "./schema.js";
 
 const REF_ONLY = /^\(\(([\w-]+)\)\)$/;
@@ -64,6 +64,34 @@ export function endpointKindOf(blockString) {
   if (region.kind === "img") return "region";
   if (region.kind === "pdf") return "pin";
   return null;
+}
+
+// Region outlines and pin marks for a card, read from every plexus-regions / plexus-pins container
+// among its children (a PDF can carry an old regions container and a new pins container).
+export function endpointHitsOf(nodes) {
+  const regions = [];
+  const pins = [];
+  for (const node of nodes || []) {
+    const string = node?.[":block/string"] ?? node?.string ?? "";
+    if (!isContainerString(string)) continue;
+    for (const kid of node?.[":block/children"] ?? node?.children ?? []) {
+      const text = kid?.[":block/string"] ?? kid?.string ?? "";
+      const id = kid?.[":block/uid"] ?? kid?.uid;
+      const kind = endpointKindOf(text);
+      if (!id || !kind) continue;
+      const f = parseRegion(text)?.f;
+      (kind === "region" ? regions : pins).push({ uid: id, frac: f });
+    }
+  }
+  return { regions, pins };
+}
+
+// Part of a card's content key, so a new or reshaped region or pin repaints the outlines.
+export function endpointHitsKey(nodes) {
+  const { regions, pins } = endpointHitsOf(nodes);
+  if (!regions.length && !pins.length) return "";
+  const one = (h) => `${h.uid}=${Array.isArray(h.frac) ? h.frac.join(",") : ""}`;
+  return `r:${regions.map(one).join(";")}|p:${pins.map(one).join(";")}`;
 }
 
 // The image block a region is parented under. A card that is the image uses its own uid.

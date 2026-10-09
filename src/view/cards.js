@@ -22,8 +22,8 @@ import { openStatusChooser } from "./task-popover.js";
 import { nudgeEditorMenus, registerEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
 import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen, unmountDue } from "./offscreen.js";
-import { isContainerString, isStructuralString, parseRegion } from "../model/regions.js";
-import { endpointKindOf } from "../model/endpoints.js";
+import { isStructuralString, parseRegion } from "../model/regions.js";
+import { endpointHitsOf } from "../model/endpoints.js";
 import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 import { renderRegionCard, thumbRequest } from "./region-card.js";
@@ -820,6 +820,7 @@ export function createItemRenderer({
     if ((item?.kind === "drawing-ref" || item?.kind === "region-ref") && !interopAllowed()) key += "\u0001interop-off";
     const pin = sourcePinOf(item?.content);
     if (pin) key += `\u0001pin:${pin.uid}`;
+    if (item?.hitsKey) key += `\u0001hits:${item.hitsKey}`;
     return key;
   };
   const shells = new Map(); // uid → rec
@@ -2637,23 +2638,7 @@ export function createItemRenderer({
   // Outlines for image regions and corner marks for PDF pins. Page cards do not get either.
   const syncEndpointHits = (rec, nodes) => {
     if (!rec?.body || rec.pageHolder) return;
-    const regions = [];
-    const pins = [];
-    for (const node of nodes || []) {
-      const string = node?.[":block/string"] ?? node?.string ?? "";
-      if (!isContainerString(string)) continue;
-      const kids = node?.[":block/children"] ?? node?.children ?? [];
-      for (const kid of kids) {
-        const text = kid?.[":block/string"] ?? kid?.string ?? "";
-        const kind = endpointKindOf(text);
-        const id = kid?.[":block/uid"] ?? kid?.uid;
-        if (!id || !kind) continue;
-        const parsed = parseRegion(text);
-        if (kind === "region") regions.push({ uid: id, frac: parsed?.f });
-        else pins.push({ uid: id, frac: parsed?.f });
-      }
-      break;
-    }
+    const { regions, pins } = endpointHitsOf(nodes);
     const readMode = Boolean(rec.el?.classList?.contains("pxd-pdf-live"));
     let hostEl = rec.body.querySelector?.(".pxd-item__media") || null;
     if (!hostEl && readMode) {

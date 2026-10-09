@@ -13464,6 +13464,15 @@ function dataUrlToBlob2(url) {
   }
   return new Blob([bytes], { type });
 }
+function figureCardSize(block) {
+  const b = block?.bbox;
+  if (!Array.isArray(b) || b.length < 4) return null;
+  const bw = Number(b[2]) - Number(b[0]);
+  const bh = Number(b[3]) - Number(b[1]);
+  if (!(bw > 0) || !(bh > 0)) return null;
+  const inner = FIGURE_CARD_W - FIGURE_CARD_PAD;
+  return { w: FIGURE_CARD_W, h: Math.round(inner * (bh / bw) + FIGURE_CARD_PAD) };
+}
 function imageKey(sha256, blockId) {
   return `${sha256}/${blockId}`;
 }
@@ -13523,7 +13532,10 @@ async function handleParseDrop({ payload, store, session, point, toast, upload }
     return { ...res || { ok: false, reason: "empty" }, uids: Array.isArray(res?.uids) ? res.uids : [] };
   }
   if (plan.action === "card") {
-    const res = await session?.insertParsedCard?.({ x, y, markdown: plan.markdown, ...cited });
+    const kind = payload?.kind;
+    const figure = kind === "figure" || kind === "formula" ? selectBlocks(ready, payload?.ids).find((block) => block?.type === kind && (block.image?.url || block.url)) : null;
+    const size = figure ? figureCardSize(figure) : null;
+    const res = await session?.insertParsedCard?.({ x, y, markdown: plan.markdown, ...size || {}, ...cited });
     return { ...res || { ok: false, reason: "empty" }, uids: res?.uid ? [res.uid] : [] };
   }
   return { ok: false, reason: "empty", uids: [] };
@@ -13670,7 +13682,7 @@ async function handleOfficeDrop({ office, convert, fetch: fetchImpl, session, po
     return { ok: false, reason: code || "convert", toast: "Could not convert this file", uids: [] };
   }
 }
-var CARD_MIME, PARSE_MIME, PARSE_MISSING_TOAST, TEXT_CARD_MAX, MAX_DROP, URL_LINE, APP_URL;
+var CARD_MIME, PARSE_MIME, PARSE_MISSING_TOAST, TEXT_CARD_MAX, MAX_DROP, URL_LINE, APP_URL, FIGURE_CARD_W, FIGURE_CARD_PAD;
 var init_drop = __esm({
   "src/model/drop.js"() {
     init_anydoc_to_parse();
@@ -13686,6 +13698,8 @@ var init_drop = __esm({
     MAX_DROP = 50;
     URL_LINE = /^(?:https?|roam):\/\//i;
     APP_URL = /#\/app\/([^/?#]+)(?:\/page\/([\w-]+))?/;
+    FIGURE_CARD_W = 280;
+    FIGURE_CARD_PAD = 26;
   }
 });
 
@@ -39169,7 +39183,9 @@ function createPageChips({
   const onSelection = () => {
     if (selecting()) hideAll();
   };
-  const onLeave = () => {
+  const onLeave = (event) => {
+    const to = event?.relatedTarget;
+    if (to && (target === doc ? to !== doc.documentElement : target.contains?.(to))) return;
     showCopy(null);
     if (current3 && hideTimer == null) hideTimer = later(hideAll, HIDE_MS);
   };
@@ -40179,6 +40195,12 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
         say("Card inserted");
       }
       return res || { ok: false, reason: "no-session" };
+    },
+    // The reader gets these actions as its session. Copy with source, Copy link and Copy ref to source write a pin
+    // through it; without this pass-through they silently did nothing (live 2026-10-08).
+    ensurePdfPin(spec) {
+      if (typeof session?.ensurePdfPin !== "function") return Promise.resolve({ ok: false, reason: "no-session" });
+      return session.ensurePdfPin(spec);
     }
   };
   return actions;
@@ -40618,6 +40640,175 @@ function createAnydocHost({
 
 // src/view/parse-view.js
 init_anydoc_to_parse();
+
+// src/view/clipboard-io.js
+var CLONE_WINDOW_MS = 400;
+var MAX_IMAGES = 10;
+var defaultTextEntry = (node2) => {
+  if (!node2 || node2.nodeType !== 1) return false;
+  const tag = String(node2.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  return node2.isContentEditable === true || node2.getAttribute?.("contenteditable") === "true" || node2.getAttribute?.("contenteditable") === "";
+};
+function filesFromDataTransfer(dt) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const add = (f) => {
+    if (!f || typeof f.type !== "string" || !f.type.startsWith("image/") || seen.has(f) || out.length >= MAX_IMAGES) return;
+    seen.add(f);
+    out.push(f);
+  };
+  for (const f of dt?.files ?? []) add(f);
+  if (out.length) return out;
+  for (const item of dt?.items ?? []) {
+    if (item?.kind === "file") {
+      try {
+        add(item.getAsFile?.());
+      } catch {
+      }
+    }
+  }
+  return out;
+}
+function dragHasImages(dt) {
+  if (filesFromDataTransfer(dt).length) return true;
+  for (const item of dt?.items ?? []) {
+    if (item?.kind === "file" && String(item.type || "").startsWith("image/")) return true;
+  }
+  return false;
+}
+var ASYNC_CLIPBOARD_TYPES = /* @__PURE__ */ new Set(["text/plain", "text/html", "image/png"]);
+function copyViaEvent(doc, parts) {
+  if (!doc || typeof doc.execCommand !== "function" || typeof doc.addEventListener !== "function") return false;
+  const entries = Object.entries(parts || {}).filter(([, v]) => typeof v === "string");
+  if (!entries.length) return false;
+  let set = false;
+  const onCopy = (event) => {
+    const data = event.clipboardData;
+    if (!data?.setData) return;
+    for (const [type, value] of entries) {
+      try {
+        data.setData(type, value);
+        set = true;
+      } catch {
+      }
+    }
+    if (set) {
+      event.preventDefault?.();
+      event.stopImmediatePropagation?.();
+    }
+  };
+  const target = typeof doc.defaultView?.addEventListener === "function" ? doc.defaultView : doc;
+  target.addEventListener("copy", onCopy, true);
+  let ran = false;
+  try {
+    ran = Boolean(doc.execCommand("copy"));
+  } catch {
+    ran = false;
+  }
+  target.removeEventListener("copy", onCopy, true);
+  return ran && set;
+}
+async function writeClipboard({ text: text3 = "", mime = null, data = null } = {}) {
+  const nav = globalThis.navigator;
+  try {
+    if (nav?.clipboard?.writeText) {
+      await nav.clipboard.writeText(String(text3));
+      return true;
+    }
+  } catch {
+  }
+  const doc = globalThis.document;
+  if (!doc?.body) return false;
+  const area = doc.createElement("textarea");
+  area.value = String(text3);
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  doc.body.append(area);
+  const onCopy = (event) => {
+    if (mime && data != null) {
+      try {
+        event.clipboardData?.setData(mime, typeof data === "string" ? data : JSON.stringify(data));
+      } catch {
+      }
+    }
+  };
+  doc.addEventListener("copy", onCopy, true);
+  let ok = false;
+  try {
+    area.focus?.();
+    area.select?.();
+    ok = Boolean(doc.execCommand?.("copy"));
+  } catch {
+    ok = false;
+  }
+  doc.removeEventListener("copy", onCopy, true);
+  area.remove();
+  return ok;
+}
+function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTextEntry, on = {}, now: now3 = () => Date.now() } = {}) {
+  const offs = [];
+  const win = doc.defaultView ?? globalThis.window;
+  let lastCloneKey = -Infinity;
+  const listen = (target, type, fn, opts) => {
+    if (!target?.addEventListener) return;
+    target.addEventListener(type, fn, opts);
+    offs.push(() => target.removeEventListener(type, fn, opts));
+  };
+  const textNode = (node2) => Boolean(isTextEntry?.(node2)) || defaultTextEntry(node2);
+  const inText = (event) => textNode(event.target) || textNode(doc.activeElement);
+  const editorNode = (event) => {
+    const node2 = event.target?.nodeType === 1 ? event.target : null;
+    const hit = textNode(node2) ? node2 : textNode(doc.activeElement) ? doc.activeElement : null;
+    if (!hit || typeof hit.closest !== "function") return null;
+    const editor = hit.closest(".pxd-item__editor");
+    if (!editor) return null;
+    if (root && typeof root.contains === "function" && !root.contains(editor)) return null;
+    return hit;
+  };
+  const active = (event) => Boolean(ownsKeyboard?.()) && !inText(event);
+  const copy = (event, cut = false) => {
+    const payload = on.getPayload?.({ cut });
+    if (!payload || !event.clipboardData) return false;
+    event.clipboardData.setData(PLEXUS_MIME, payload.mime);
+    event.clipboardData.setData("text/plain", payload.text);
+    event.preventDefault();
+    return true;
+  };
+  listen(doc, "copy", (event) => {
+    if (active(event)) copy(event);
+  }, true);
+  listen(doc, "cut", (event) => {
+    if (active(event) && copy(event, true)) on.cutDone?.();
+  }, true);
+  listen(win, "keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key).toLowerCase() === "v") lastCloneKey = now3();
+  }, true);
+  listen(win, "paste", (event) => {
+    if (!editorNode(event)) return;
+    if (on.editorPaste?.(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
+  listen(doc, "paste", (event) => {
+    if (editorNode(event)) return;
+    if (!active(event)) return;
+    const parsed = parseClipboard(event.clipboardData);
+    if (!parsed) return;
+    event.preventDefault();
+    if (parsed.kind === "plexus") on.pastePlexus?.(parsed.data, { clone: now3() - lastCloneKey <= CLONE_WINDOW_MS });
+    else if (parsed.kind === "card-json") on.pasteCardJson?.(parsed.data);
+    else if (parsed.kind === "images") on.pasteImages?.(parsed.files);
+    else on.pasteText?.(parsed.entries);
+  }, true);
+  return { dispose() {
+    offs.splice(0).forEach((off) => off());
+  } };
+}
+
+// src/view/parse-view.js
 var PARSE_MIME2 = "application/x-plexus-parse";
 var BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
 var SYNC_MS = 250;
@@ -41132,6 +41323,9 @@ function createParseView({
     return String(shifted.text || "").replace(/\[\^[^\]]*\]/g, "").replace(/^#{1,6}\s+/gm, "").replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\$\$/g, "").trim();
   }
   async function writeTyped(parts) {
+    const custom = Object.keys(parts).some((type) => !ASYNC_CLIPBOARD_TYPES.has(type) && typeof parts[type] === "string");
+    if (custom && copyViaEvent(doc, parts)) return true;
+    if (custom) parts = Object.fromEntries(Object.entries(parts).filter(([type]) => ASYNC_CLIPBOARD_TYPES.has(type)));
     const win = doc.defaultView || globalThis;
     const Item = win.ClipboardItem || globalThis.ClipboardItem;
     const clip4 = win.navigator?.clipboard;
@@ -56691,141 +56885,6 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
   };
 }
 
-// src/view/clipboard-io.js
-var CLONE_WINDOW_MS = 400;
-var MAX_IMAGES = 10;
-var defaultTextEntry = (node2) => {
-  if (!node2 || node2.nodeType !== 1) return false;
-  const tag = String(node2.tagName || "").toLowerCase();
-  if (tag === "input" || tag === "textarea" || tag === "select") return true;
-  return node2.isContentEditable === true || node2.getAttribute?.("contenteditable") === "true" || node2.getAttribute?.("contenteditable") === "";
-};
-function filesFromDataTransfer(dt) {
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  const add = (f) => {
-    if (!f || typeof f.type !== "string" || !f.type.startsWith("image/") || seen.has(f) || out.length >= MAX_IMAGES) return;
-    seen.add(f);
-    out.push(f);
-  };
-  for (const f of dt?.files ?? []) add(f);
-  if (out.length) return out;
-  for (const item of dt?.items ?? []) {
-    if (item?.kind === "file") {
-      try {
-        add(item.getAsFile?.());
-      } catch {
-      }
-    }
-  }
-  return out;
-}
-function dragHasImages(dt) {
-  if (filesFromDataTransfer(dt).length) return true;
-  for (const item of dt?.items ?? []) {
-    if (item?.kind === "file" && String(item.type || "").startsWith("image/")) return true;
-  }
-  return false;
-}
-async function writeClipboard({ text: text3 = "", mime = null, data = null } = {}) {
-  const nav = globalThis.navigator;
-  try {
-    if (nav?.clipboard?.writeText) {
-      await nav.clipboard.writeText(String(text3));
-      return true;
-    }
-  } catch {
-  }
-  const doc = globalThis.document;
-  if (!doc?.body) return false;
-  const area = doc.createElement("textarea");
-  area.value = String(text3);
-  area.setAttribute("readonly", "");
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  doc.body.append(area);
-  const onCopy = (event) => {
-    if (mime && data != null) {
-      try {
-        event.clipboardData?.setData(mime, typeof data === "string" ? data : JSON.stringify(data));
-      } catch {
-      }
-    }
-  };
-  doc.addEventListener("copy", onCopy, true);
-  let ok = false;
-  try {
-    area.focus?.();
-    area.select?.();
-    ok = Boolean(doc.execCommand?.("copy"));
-  } catch {
-    ok = false;
-  }
-  doc.removeEventListener("copy", onCopy, true);
-  area.remove();
-  return ok;
-}
-function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTextEntry, on = {}, now: now3 = () => Date.now() } = {}) {
-  const offs = [];
-  const win = doc.defaultView ?? globalThis.window;
-  let lastCloneKey = -Infinity;
-  const listen = (target, type, fn, opts) => {
-    if (!target?.addEventListener) return;
-    target.addEventListener(type, fn, opts);
-    offs.push(() => target.removeEventListener(type, fn, opts));
-  };
-  const textNode = (node2) => Boolean(isTextEntry?.(node2)) || defaultTextEntry(node2);
-  const inText = (event) => textNode(event.target) || textNode(doc.activeElement);
-  const editorNode = (event) => {
-    const node2 = event.target?.nodeType === 1 ? event.target : null;
-    const hit = textNode(node2) ? node2 : textNode(doc.activeElement) ? doc.activeElement : null;
-    if (!hit || typeof hit.closest !== "function") return null;
-    const editor = hit.closest(".pxd-item__editor");
-    if (!editor) return null;
-    if (root && typeof root.contains === "function" && !root.contains(editor)) return null;
-    return hit;
-  };
-  const active = (event) => Boolean(ownsKeyboard?.()) && !inText(event);
-  const copy = (event, cut = false) => {
-    const payload = on.getPayload?.({ cut });
-    if (!payload || !event.clipboardData) return false;
-    event.clipboardData.setData(PLEXUS_MIME, payload.mime);
-    event.clipboardData.setData("text/plain", payload.text);
-    event.preventDefault();
-    return true;
-  };
-  listen(doc, "copy", (event) => {
-    if (active(event)) copy(event);
-  }, true);
-  listen(doc, "cut", (event) => {
-    if (active(event) && copy(event, true)) on.cutDone?.();
-  }, true);
-  listen(win, "keydown", (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key).toLowerCase() === "v") lastCloneKey = now3();
-  }, true);
-  listen(win, "paste", (event) => {
-    if (!editorNode(event)) return;
-    if (on.editorPaste?.(event)) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  }, true);
-  listen(doc, "paste", (event) => {
-    if (editorNode(event)) return;
-    if (!active(event)) return;
-    const parsed = parseClipboard(event.clipboardData);
-    if (!parsed) return;
-    event.preventDefault();
-    if (parsed.kind === "plexus") on.pastePlexus?.(parsed.data, { clone: now3() - lastCloneKey <= CLONE_WINDOW_MS });
-    else if (parsed.kind === "card-json") on.pasteCardJson?.(parsed.data);
-    else if (parsed.kind === "images") on.pasteImages?.(parsed.files);
-    else on.pasteText?.(parsed.entries);
-  }, true);
-  return { dispose() {
-    offs.splice(0).forEach((off) => off());
-  } };
-}
-
 // src/view/fullscreen.js
 var SIDEBAR_SELECTORS = [".roam-sidebar-container", ".rm-left-sidebar", "#roam-sidebar-container"];
 var RIGHT_SIDEBAR_SELECTORS = ["#right-sidebar", ".rm-right-sidebar", '[class*="right-sidebar"]'];
@@ -57829,6 +57888,12 @@ function createLocalViewportStore({ storage, graph, timers }) {
       pending.clear();
     }
   };
+}
+function readPaneHost(host, toast) {
+  if (!host || typeof host.toast === "function") return host;
+  const wrapped = Object.create(host);
+  wrapped.toast = (message) => toast(message);
+  return wrapped;
 }
 function buildBoardView(onFail, {
   host,
@@ -58926,7 +58991,7 @@ function buildBoardView(onFail, {
   const makeReadPane = () => createReadPane({
     doc,
     root,
-    host,
+    host: readPaneHost(host, (message) => toast(message)),
     deviceOcr: sharedDeviceOcr(),
     onNote: (row4) => {
       void openHighlightNote(row4?.uid);

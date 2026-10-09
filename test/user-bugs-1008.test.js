@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
-import { handleParseDrop, planParseInsert } from "../src/model/drop.js";
-import { mountBoardView } from "../src/view/board-view.js";
+import { figureCardSize, handleParseDrop, planParseInsert } from "../src/model/drop.js";
+import { mountBoardView, readPaneHost } from "../src/view/board-view.js";
 import { createPageChips, skipParsedBox } from "../src/view/page-chips.js";
+import { createParseActions } from "../src/view/parse-actions.js";
+import { copyViaEvent } from "../src/view/clipboard-io.js";
 import { createParseView } from "../src/view/parse-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -292,6 +294,7 @@ test("a figure drag inserts the crop, and a short caption still gets a box", asy
   };
   assert.equal(planParseInsert(figureDoc, { kind: "figure", ids: ["f1"] }).action, "card");
   const markdowns = [];
+  const sizes = [];
   const res = await handleParseDrop({
     payload: { sha256: "sha", engine: "builtin", optsHash: "opt", kind: "figure", ids: ["f1"] },
     store: {
@@ -299,8 +302,9 @@ test("a figure drag inserts the crop, and a short caption still gets a box", asy
       async getImage(key) { return key.endsWith("/f1") ? "data:image/png;base64,iVBORw0KGgo=" : ""; },
     },
     session: {
-      async insertParsedCard({ markdown }) {
+      async insertParsedCard({ markdown, w, h }) {
         markdowns.push(markdown);
+        sizes.push({ w, h });
         return { ok: true, uid: "figcard1" };
       },
     },
@@ -312,6 +316,10 @@ test("a figure drag inserts the crop, and a short caption still gets a box", asy
   });
   assert.equal(res.ok, true);
   assert.match(markdowns[0], /!\[c5\]\(https:\/\/x\/f\.png\)/);
+  // Live 2026-10-08: a square figure landed in a 280x160 card and its bottom half was cut off.
+  assert.deepEqual(sizes[0], { w: 280, h: 280 });
+  assert.deepEqual(figureCardSize({ bbox: [0, 0, 254, 127] }), { w: 280, h: 153 });
+  assert.equal(figureCardSize({ bbox: [0, 0, 0, 10] }), null);
 });
 
 test("paragraph copy writes text/plain and toasts Could not copy on failure", async () => {
@@ -379,4 +387,51 @@ test("paragraph copy writes text/plain and toasts Could not copy on failure", as
     async writeText() { throw new Error("writeText denied"); },
   });
   assert.deepEqual(failed, ["Could not copy"]);
+});
+
+test("the reader's toasts reach the board toast (Roam host has no toast)", () => {
+  const said = [];
+  const host = { renderBlock: () => "rendered", graph: "g" };
+  const wrapped = readPaneHost(host, (m) => said.push(m));
+  wrapped.toast("Could not copy");
+  assert.deepEqual(said, ["Could not copy"]);
+  assert.equal(wrapped.renderBlock(), "rendered");
+  assert.equal(wrapped.graph, "g");
+  assert.equal("toast" in host, false, "the shared host is not mutated");
+  const own = { toast() {} };
+  assert.equal(readPaneHost(own, () => {}), own);
+  assert.equal(readPaneHost(null, () => {}), null);
+});
+
+test("the reader's actions pass pins through to the board session", async () => {
+  const specs = [];
+  const actions = createParseActions({ session: { async ensurePdfPin(spec) { specs.push(spec); return { ok: true, uid: "pin1" }; } }, store: null });
+  const made = await actions.ensurePdfPin({ pdfUid: "pdf", page: 6 });
+  assert.deepEqual(made, { ok: true, uid: "pin1" });
+  assert.deepEqual(specs, [{ pdfUid: "pdf", page: 6 }]);
+  const none = await createParseActions({ session: {}, store: null }).ensurePdfPin({});
+  assert.equal(none.ok, false);
+});
+
+test("Copy as card carries the card JSON through a copy event (async clipboard refuses the type)", () => {
+  const set = {};
+  let listener = null;
+  let stopped = false;
+  const doc = {
+    addEventListener: (type, fn) => { if (type === "copy") listener = fn; },
+    removeEventListener: () => { listener = null; },
+    execCommand: (cmd) => {
+      if (cmd !== "copy" || !listener) return false;
+      const ev = { clipboardData: { setData: (t, v) => { set[t] = v; } }, preventDefault() {}, stopImmediatePropagation() { ev.stopped = true; } };
+      listener(ev);
+      stopped = ev.stopped === true;
+      return true;
+    },
+  };
+  assert.equal(copyViaEvent(doc, { "text/plain": "md", "application/x-plexus-card+json": "{\"markdown\":\"md\"}" }), true);
+  assert.deepEqual(Object.keys(set).sort(), ["application/x-plexus-card+json", "text/plain"]);
+  assert.equal(listener, null, "the copy listener is removed");
+  assert.equal(stopped, true, "the board's copy handler does not add its selection");
+  assert.equal(copyViaEvent({ ...doc, execCommand: () => false }, { "text/plain": "md" }), false);
+  assert.equal(copyViaEvent(null, { "text/plain": "md" }), false);
 });

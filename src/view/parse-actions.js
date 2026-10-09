@@ -210,6 +210,13 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       }
       return res || { ok: false, reason: "no-session" };
     },
+
+    // The reader gets these actions as its session. Copy with source, Copy link and Copy ref to source write a pin
+    // through it; without this pass-through they silently did nothing (live 2026-10-08).
+    ensurePdfPin(spec) {
+      if (typeof session?.ensurePdfPin !== "function") return Promise.resolve({ ok: false, reason: "no-session" });
+      return session.ensurePdfPin(spec);
+    },
   };
   return actions;
 }

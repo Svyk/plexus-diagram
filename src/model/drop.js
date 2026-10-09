@@ -187,6 +187,21 @@ function dataUrlToBlob(url) {
   return new Blob([bytes], { type });
 }
 
+// The card padding around a block image (measured live: a 280-wide card shows a 254-wide image).
+const FIGURE_CARD_W = 280;
+const FIGURE_CARD_PAD = 26;
+
+// Size a figure card to its crop so the image is not cut off at the default card height.
+export function figureCardSize(block) {
+  const b = block?.bbox;
+  if (!Array.isArray(b) || b.length < 4) return null;
+  const bw = Number(b[2]) - Number(b[0]);
+  const bh = Number(b[3]) - Number(b[1]);
+  if (!(bw > 0) || !(bh > 0)) return null;
+  const inner = FIGURE_CARD_W - FIGURE_CARD_PAD;
+  return { w: FIGURE_CARD_W, h: Math.round(inner * (bh / bw) + FIGURE_CARD_PAD) };
+}
+
 function imageKey(sha256, blockId) {
   return `${sha256}/${blockId}`;
 }
@@ -251,7 +266,12 @@ export async function handleParseDrop({ payload, store, session, point, toast, u
     return { ...(res || { ok: false, reason: "empty" }), uids: Array.isArray(res?.uids) ? res.uids : [] };
   }
   if (plan.action === "card") {
-    const res = await session?.insertParsedCard?.({ x, y, markdown: plan.markdown, ...cited });
+    const kind = payload?.kind;
+    const figure = kind === "figure" || kind === "formula"
+      ? selectBlocks(ready, payload?.ids).find((block) => block?.type === kind && (block.image?.url || block.url))
+      : null;
+    const size = figure ? figureCardSize(figure) : null;
+    const res = await session?.insertParsedCard?.({ x, y, markdown: plan.markdown, ...(size || {}), ...cited });
     return { ...(res || { ok: false, reason: "empty" }), uids: res?.uid ? [res.uid] : [] };
   }
   return { ok: false, reason: "empty", uids: [] };

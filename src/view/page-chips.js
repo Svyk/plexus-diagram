@@ -802,7 +802,13 @@ export function createPageChips({
   const onKeyDown = (event) => { if (event.key === "Shift" && !selecting()) showDots(); };
   const onKeyUp = (event) => { if (event.key === "Shift") clearDots(); };
   const onSelection = () => { if (selecting()) hideAll(); };
-  const onLeave = () => { showCopy(null); if (current && hideTimer == null) hideTimer = later(hideAll, HIDE_MS); };
+  // Capture also sees pointerleave from every child (text span -> copy button). Only leaving the host counts.
+  const onLeave = (event) => {
+    const to = event?.relatedTarget;
+    if (to && (target === doc ? to !== doc.documentElement : target.contains?.(to))) return;
+    showCopy(null);
+    if (current && hideTimer == null) hideTimer = later(hideAll, HIDE_MS);
+  };
 
   const target = host || doc;
   on(target, "pointermove", onMove, true);

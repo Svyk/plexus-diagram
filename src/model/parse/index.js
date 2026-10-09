@@ -5,7 +5,7 @@ import { buildLines, dominantRotation, lineBox, makeLine, mul, round } from "./l
 import { extractGraphics, luminanceOf } from "./rules.js";
 import { findLatticeTables, looksLikeChart } from "./lattice.js";
 import { baselineRows, detectStreamRuns, tableFromBand } from "./stream.js";
-import { findFigures } from "./figures.js";
+import { demoteFalseCaptions, drawingSheetPage, findFigures, rasterScanPage } from "./figures.js";
 import { findFurniture, normalizeFurniture } from "./furniture.js";
 import { findPageTitle } from "./title.js";
 import { applyNumbering, bodySizeOf, CAPTION_RE, headingClasses, headingLevel, refineBodyHeadingLevels } from "./headings.js";
@@ -21,12 +21,18 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 6;
+export const PARSE_REV = 7;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
 
 const now = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
+
+// A caption line may carry a missing-glyph number ("Figure" plus a private-use char).
+function isCaptionText(text) {
+  const raw = String(text || "").replace(/[^\p{L}\p{N}.: ]/gu, " ").replace(/\s+/g, " ").trim();
+  return CAPTION_RE.test(raw) || /^fig(?:ure)?\.?\s*$/i.test(raw);
+}
 
 function yieldTick() {
   return new Promise((resolve) => (typeof setTimeout === "function" ? setTimeout(resolve, 0) : resolve()));
@@ -77,9 +83,13 @@ export function parsePageGeometry(data, n) {
   const words = lines.flatMap((l) => l.words);
   const pageArea = w * h;
   const imageArea = (im) => (im.x1 - im.x0) * (im.y1 - im.y0);
-  const bigImage = graphics.images.some((im) => imageArea(im) >= 0.5 * pageArea);
+  const textChars = words.reduce((n, wd) => n + (wd.text || "").length, 0);
+  // Tiled scans (many images, no text, no vectors) are the same kind of page as one big image.
+  const scanRaster = rasterScanPage({ images: graphics.images, shapes: graphics.shapes, words, pageW: w, pageH: h });
+  const bigImage = scanRaster || graphics.images.some((im) => imageArea(im) >= 0.5 * pageArea);
   // A page-sized image under a text layer is a scan with OCR text: the text is parsed as on
-  // any page and the image is the background, not a figure.
+  // any page and the image is the background, not a figure. A drawing sheet keeps that image
+  // as the figure (decided after tables) and still reports scanLayer so OCR routing is unchanged.
   const scanLayer = words.length > 0 && graphics.images.some((im) => imageArea(im) >= 0.85 * pageArea);
   const kind = words.length === 0 && bigImage ? "scan" : bigImage ? "mixed" : "text";
   const pageBody = bodySizeOf(lines) || 10;
@@ -101,8 +111,9 @@ export function parsePageGeometry(data, n) {
     for (const s of band.segs) usedRules.add(s);
     tables.push(t);
   }
-  const figGraphics = scanLayer ? { ...graphics, images: graphics.images.filter((im) => imageArea(im) < 0.85 * pageArea) } : graphics;
-  const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: words.filter((w) => !used.has(w)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments });
+  const drawing = drawingSheetPage({ images: graphics.images, lines, tables, pageW: w, pageH: h, textChars });
+  const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => imageArea(im) < 0.85 * pageArea) } : graphics;
+  const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: words.filter((w) => !used.has(w)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars });
   for (const w of figs.used) used.add(w);
   const figures = figs.figures.map((f) => ({ ...f, page: n }));
   // Rule bands beside a chart that only hold its labels go back to the text pass.
@@ -364,10 +375,11 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
         const isolated = !prev || line.base - prev.base > 1.5 * Math.max(line.size, prev.size) || prev.x1 - prev.x0 < 0.6 * (line.x1 - line.x0);
         return headingLevel(line, { bodySize, classes, nextIsBody, isolated });
       };
+      const captionish = (l) => isCaptionText(l.text);
       while (i < lines.length) {
         const line = lines[i];
         const level = levelAt(i);
-        if (level) {
+        if (level && !captionish(line)) {
           const hl = [line];
           let j = i + 1;
           while (j < lines.length && headingLevel(lines[j], { bodySize, classes, nextIsBody: true }) === level && lines[j].base - lines[j - 1].base <= 1.5 * line.size && Math.abs(lines[j].size - line.size) <= 0.6) { hl.push(lines[j]); j++; }
@@ -381,7 +393,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
         for (const group of groupParagraphs(chunk, { bodySize })) {
           const joined = joinLines(group);
           const first = group[0].words[0];
-          const isCaption = CAPTION_RE.test(joined.text);
+          const isCaption = isCaptionText(joined.text);
           const startsWithMark = first && first.sup && FOOTNOTE_MARK_RE.test(first.text) && group[0].size <= 0.9 * bodySize;
           const lowOnPage = group[0].y0 >= 0.75 * pg.h;
           const lastBase = group[group.length - 1].base;
@@ -401,6 +413,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       }
     }
     stitchTables(pageTables, textBlocks, bodySize);
+    demoteFalseCaptions(textBlocks, bodySize, pageFigures);
     // Captions attach to the nearest table or figure that overlaps horizontally.
     const captionFor = new Map();
     for (const cb of textBlocks) {
@@ -411,8 +424,10 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
         const ox = Math.min(tb[2], cb.bbox.x1) - Math.max(tb[0], cb.bbox.x0);
         if (ox <= 0) continue;
         const gap = cb.bbox.y1 <= tb[1] ? tb[1] - cb.bbox.y1 : cb.bbox.y0 >= tb[3] ? cb.bbox.y0 - tb[3] : 0;
-        if (gap > 3 * bodySize) continue;
         const wantsTable = /^table/i.test(cb.text);
+        // Figure captions sit a little further below a tall panel grid than a table caption does.
+        const limit = wantsTable ? 3 * bodySize : Math.max(3 * bodySize, 36);
+        if (gap > limit) continue;
         const isTable = target.type === "table";
         if (wantsTable !== isTable) continue;
         if (!best || gap < best.gap) best = { target, gap };

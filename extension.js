@@ -2269,6 +2269,12 @@ function regionBox(imageRect, frac) {
     h: f.rh * box2.h
   };
 }
+function pointInside(point, rect) {
+  const box2 = asBox(rect);
+  if (!box2 || !point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
+  const slop = 1e-6;
+  return point.x >= box2.x - slop && point.x <= box2.x + box2.w + slop && point.y >= box2.y - slop && point.y <= box2.y + box2.h + slop;
+}
 function regionEdgePoint(imageRect, frac, other) {
   const rect = regionBox(imageRect, frac);
   if (!rect) return null;
@@ -2337,12 +2343,22 @@ function marqueeFrac(imageRect, points) {
   if (maxX - minX < needW || maxY - minY < needH) return null;
   return fracFromDrag({ x: box2.x, y: box2.y, width: box2.w, height: box2.h }, minX, minY, maxX, maxY);
 }
-function regionDropPlan({ from, imageUid, regionUid, imageRect, points } = {}) {
-  if (regionUid && imageUid && imageUid !== from) return { reuse: true, to: imageUid, toBlock: regionUid };
+function regionDropPlan({ from, imageUid, regionUid, imageRect } = {}) {
   if (!imageUid || imageUid === from) return null;
-  const frac = marqueeFrac(imageRect, points);
-  if (!frac) return null;
-  return { create: true, to: imageUid, frac };
+  if (regionUid) return { reuse: true, to: imageUid, toBlock: regionUid };
+  return { image: true, to: imageUid, imageRect: asBox(imageRect) };
+}
+function clampToBox(point, rect) {
+  const box2 = asBox(rect);
+  if (!box2 || !point) return point;
+  return {
+    x: Math.min(box2.x + box2.w, Math.max(box2.x, point.x)),
+    y: Math.min(box2.y + box2.h, Math.max(box2.y, point.y))
+  };
+}
+function regionBoxFrac(imageRect, a, b) {
+  if (!a || !b) return null;
+  return marqueeFrac(imageRect, [clampToBox(a, imageRect), clampToBox(b, imageRect)]);
 }
 function regionCaption(label, existingCount) {
   const text3 = String(label ?? "").trim();
@@ -11106,7 +11122,7 @@ var init_tooltip_text = __esm({
       "tool.section": e("Section", "Drag a colored frame. Cards dropped inside become its members.", "G", LOCK),
       "tool.board": e("Board", "Click to make a nested board you can open in place.", "W", LOCK),
       "tool.table": e("Table", "Click the board to make a Roam table. Cells edit in Roam.", "B", LOCK),
-      "tool.connect": e("Connect", "Drag from one card to another to draw an arrow, which is saved as a Roam block. Drag empty space to pan; Shift-drag to select.", "C", LOCK),
+      "tool.connect": e("Connect", "Drag from one card to another to draw an arrow, which is saved as a Roam block. Over an image, hold ⌥ as you release to box a region as the end; ⌥-drag on a picture starts from a new region. Drag empty space to pan; Shift-drag to select.", "C", LOCK),
       "dock.more": e("More tools", "The rest of the tools, when the board is too narrow to show them all."),
       "dock.look.block": e("Block look", "Show new cards, or the selected one, as a plain Roam block."),
       "dock.look.card": e("Card look", "Show new cards, or the selected one, with a title row."),
@@ -13148,6 +13164,35 @@ function avoidObstacles(bar, obstacles, { topLimit = 0, margin = 8, bounds = {} 
     cur = part;
   }
   return clear(cur) ? cur : bar;
+}
+function avoidSoft(bar, soft, hard, { alts = [], topLimit = 0, margin = 8, bounds = {}, reach = 240 } = {}) {
+  const valid = (o) => o && o.right > o.left && o.bottom > o.top;
+  const cards = (soft || []).filter(valid);
+  if (!bar || !cards.length) return bar;
+  const walls = (hard || []).filter(valid);
+  const box2 = (b) => ({ left: b.left, top: b.top, right: b.left + b.w, bottom: b.top + b.h });
+  const hits = (b, list) => list.some((o) => overlaps(box2(b), o));
+  if (!hits(bar, cards)) return bar;
+  const fits = (b) => b.left >= margin && b.top >= topLimit && (bounds.right == null || b.left + b.w <= bounds.right) && (bounds.bottom == null || b.top + b.h <= bounds.bottom);
+  const spots = [];
+  for (const a of [bar, ...alts || []]) {
+    const at = { ...bar, ...a };
+    spots.push(at);
+    for (const o of cards) {
+      if (!overlaps(box2(at), o)) continue;
+      spots.push(
+        { ...at, left: o.left - margin - at.w },
+        { ...at, left: o.right + margin },
+        { ...at, top: o.top - margin - at.h },
+        { ...at, top: o.bottom + margin }
+      );
+    }
+  }
+  const far = (b) => Math.hypot(b.left - bar.left, b.top - bar.top);
+  const ok = spots.filter((b) => far(b) <= reach && fits(b) && !hits(b, walls) && !hits(b, cards));
+  if (!ok.length) return bar;
+  ok.sort((p, q) => far(p) - far(q));
+  return ok[0];
 }
 function dockOverflow(widths, avail, { gap = 4, pad: pad2 = 14, more = 32, keep = -1 } = {}) {
   const w = (widths || []).map((n2) => Math.max(0, Number(n2) || 0));
@@ -30379,6 +30424,43 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (existing) return existing[UID];
     return t.create({ parent: uid, order: "last", string: "Connections", plexus: { type: "edges" }, open: false });
   }
+  function writeImageRegion(t, item, frac, label, regionUid) {
+    const read2 = (id) => {
+      try {
+        return host.blockString?.(id);
+      } catch {
+        return null;
+      }
+    };
+    const source = imageSourceOf(item, read2);
+    if (!source.ok) {
+      emit2("toast", { message: source.reason === "unread" ? "That image is on a page you can't edit." : "That card is not an image." });
+      return null;
+    }
+    if (source.viaRef && typeof host.canEdit === "function") {
+      let writable = true;
+      try {
+        writable = host.canEdit(source.uid) !== false;
+      } catch {
+        writable = false;
+      }
+      if (!writable) {
+        emit2("toast", { message: "That image is on a page you can't edit." });
+        return null;
+      }
+    }
+    const found = regionsContainerOf(item, source);
+    const string = imageRegionString(source.uid, frac, regionCaption(label, found.count));
+    if (!string) return null;
+    const parent = found.container || t.create({
+      parent: source.uid,
+      order: "last",
+      string: CONTAINER_STRING,
+      plexus: { type: "regions" },
+      open: false
+    });
+    return t.create({ parent, uid: regionUid, order: "last", string });
+  }
   function ensureTrails(t) {
     if (board2.trailsUid) return board2.trailsUid;
     const existing = kidsOf(raw).find((k) => readPlexus(k[PROPS])?.type === "trails");
@@ -31977,43 +32059,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     addRegionEndpoint({ from, to, frac, fromBlock, fromSide, toSide, label = "" } = {}) {
       return txn((t) => {
         if (!from || !to || from === to || !board2.items.has(from) || !board2.items.has(to)) return null;
-        const item = board2.items.get(to);
-        const read2 = (id) => {
-          try {
-            return host.blockString?.(id);
-          } catch {
-            return null;
-          }
-        };
-        const source = imageSourceOf(item, read2);
-        if (!source.ok) {
-          emit2("toast", { message: source.reason === "unread" ? "That image is on a page you can't edit." : "That card is not an image." });
-          return null;
-        }
-        if (source.viaRef && typeof host.canEdit === "function") {
-          let writable = true;
-          try {
-            writable = host.canEdit(source.uid) !== false;
-          } catch {
-            writable = false;
-          }
-          if (!writable) {
-            emit2("toast", { message: "That image is on a page you can't edit." });
-            return null;
-          }
-        }
-        const found = regionsContainerOf(item, source);
-        const caption = regionCaption(label, found.count);
-        const string = imageRegionString(source.uid, frac, caption);
-        if (!string) return null;
-        const parent = found.container || t.create({
-          parent: source.uid,
-          order: "last",
-          string: CONTAINER_STRING,
-          plexus: { type: "regions" },
-          open: false
-        });
-        const regionUid = t.create({ parent, order: "last", string });
+        const regionUid = writeImageRegion(t, board2.items.get(to), frac, label);
+        if (!regionUid) return null;
         const container = ensureContainer(t);
         return t.create({
           parent: container,
@@ -32021,6 +32068,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           string: edgeStringFor(from, to, "one", label, fromBlock, regionUid),
           plexus: serializeEdge({ from, to, dir: "one", fromSide, toSide, fromBlock, toBlock: regionUid })
         });
+      });
+    },
+    // A region alone, under the card's source image, with a known uid so an arrow can start from it at once.
+    addRegionOn({ on, frac, uid: uid2, label = "" } = {}) {
+      return txn((t) => {
+        if (!on || !board2.items.has(on)) return null;
+        return writeImageRegion(t, board2.items.get(on), frac, label, uid2);
       });
     },
     pinLink(link) {
@@ -36283,6 +36337,8 @@ var TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row4) => row4.letter).map((
 var TOOLS = ["select", "hand", "card", "task", "text", "sticky", "shape", "section", "board", "table", "connect"];
 var SHAPE_PLACE = { w: 160, h: 100 };
 var DRAG_THRESHOLD_PX = 4;
+var REGION_HINT = "⌥ to mark a region";
+var REGION_BOX_HINT = "Drag a box on the image · Esc cancels";
 var SNAP_PX = 6;
 var STICKY_TOOLS = /* @__PURE__ */ new Set(["select", "hand"]);
 function normRect(a, b) {
@@ -36384,6 +36440,7 @@ function createInteractions({ actions, settings } = {}) {
     call("showLasso", null);
     call("showGuides", []);
     call("showTempWire", null);
+    call("connectHint", null);
     call("onHover", null);
     call("clearBlockTarget");
     call("showGhosts", null);
@@ -36434,9 +36491,8 @@ function createInteractions({ actions, settings } = {}) {
     }
     return null;
   };
-  const beginConnect = (uid, side2, world, fromBlock) => {
-    const trail = world ? [{ x: world.x, y: world.y }] : [];
-    begin({ kind: "connect", from: uid, fromSide: side2, start: world, fromBlock: fromBlock || void 0, trail });
+  const beginConnect = (uid, side2, world, fromBlock, extra) => {
+    begin({ kind: "connect", from: uid, fromSide: side2, start: world, fromBlock: fromBlock || void 0, ...extra });
     const spec = { from: uid, fromSide: side2, point: world };
     if (fromBlock) spec.fromBlock = fromBlock;
     call("showTempWire", spec);
@@ -36449,8 +36505,31 @@ function createInteractions({ actions, settings } = {}) {
     }
   };
   const OPEN_DELAY_MS = 300;
+  const continuePress = (ev, t) => {
+    const g = state.gesture;
+    if (t.kind === "chrome" || (ev.button ?? 0) !== 0) {
+      onPointerCancel();
+      return;
+    }
+    if (g.kind === "connect") {
+      g.pressed = true;
+      return;
+    }
+    if (!ev.world || !pointInside(ev.world, g.imageRect)) {
+      onPointerCancel();
+      return;
+    }
+    g.phase = "box";
+    g.boxStart = clampToBox(ev.world, g.imageRect);
+    call("connectHint", null);
+  };
   const onPointerDown = (ev) => {
     const t = ev.target || { kind: "empty" };
+    const g0 = state.gesture;
+    if (g0 && (g0.kind === "connect" && g0.sticky || g0.kind === "region-end" && g0.phase === "wait")) {
+      continuePress(ev, t);
+      return;
+    }
     if (t.kind === "chrome") return;
     cancelOpen();
     if ((ev.button ?? 0) === 0) noteFinger(ev);
@@ -36518,6 +36597,11 @@ function createInteractions({ actions, settings } = {}) {
       case "section-border": {
         if (!t.uid || !b?.items.has(t.uid)) return;
         if (state.tool === "connect") {
+          const pic = ev.alt && !t.row ? call("regionDrop", { from: null, client: ev.client }) : null;
+          if (pic?.image && pic.to === t.uid && pic.imageRect && pointInside(ev.world, pic.imageRect)) {
+            begin({ kind: "region-start", uid: t.uid, imageRect: pic.imageRect, start: clampToBox(ev.world, pic.imageRect) });
+            return;
+          }
           beginConnect(t.uid, nearestSide(r.get(t.uid), ev.world), ev.world, t.row || void 0);
           return;
         }
@@ -36596,13 +36680,17 @@ function createInteractions({ actions, settings } = {}) {
     }
     const g = state.gesture;
     if (!g) return;
+    if (g.kind === "region-start" || g.kind === "region-end") {
+      if (g.kind === "region-end" && g.phase !== "box") return;
+      const from = g.kind === "region-start" ? g.start : g.boxStart;
+      const to = clampToBox(ev.world, g.imageRect);
+      if (!g.moved && Math.hypot(to.x - from.x, to.y - from.y) * zoom() >= DRAG_THRESHOLD_PX) g.moved = true;
+      call("showMarquee", normRect(from, to), "region");
+      return;
+    }
     if (g.kind === "connect") {
       const b = board2();
       const r = hitRects();
-      if (ev.world && Array.isArray(g.trail)) {
-        g.trail.push({ x: ev.world.x, y: ev.world.y });
-        if (g.trail.length > 40) g.trail.splice(0, g.trail.length - 40);
-      }
       const spec = { from: g.from, fromSide: g.fromSide, point: ev.world };
       if (g.fromBlock) spec.fromBlock = g.fromBlock;
       call("showTempWire", spec);
@@ -36613,7 +36701,9 @@ function createInteractions({ actions, settings } = {}) {
         call("onHover", hover);
       }
       if (!g.moved && Math.hypot(ev.world.x - g.start.x, ev.world.y - g.start.y) * zoom() >= DRAG_THRESHOLD_PX) g.moved = true;
-      blockTargetFor(ev, hover);
+      const bt = blockTargetFor(ev, hover);
+      const over = hover && !bt?.row ? call("regionDrop", { from: g.from, client: ev.client }) : null;
+      call("connectHint", over?.image ? REGION_HINT : null, ev.screen);
       return;
     }
     if (g.kind === "edge-end") {
@@ -36890,16 +36980,76 @@ function createInteractions({ actions, settings } = {}) {
         afterToolUse();
         return;
       }
+      case "region-start": {
+        const frac = g.moved ? regionBoxFrac(g.imageRect, g.start, ev.world) : null;
+        end();
+        const regionUid = frac ? call("addRegionOn", { uid: g.uid, frac }) : null;
+        if (!regionUid) return;
+        beginConnect(g.uid, nearestSide(r.get(g.uid), ev.world), ev.world, regionUid, { sticky: true, moved: true });
+        return;
+      }
+      case "region-end": {
+        if (g.phase !== "box") {
+          onPointerCancel();
+          return;
+        }
+        const frac = regionBoxFrac(g.imageRect, g.boxStart, ev.world);
+        if (!frac) {
+          g.phase = "wait";
+          call("showMarquee", null);
+          call("connectHint", REGION_BOX_HINT, ev.screen);
+          return;
+        }
+        end();
+        Promise.resolve(call("addRegionEndpoint", g.fromBlock ? {
+          from: g.from,
+          to: g.to,
+          frac,
+          fromSide: g.fromSide,
+          toSide: g.toSide,
+          fromBlock: g.fromBlock
+        } : { from: g.from, to: g.to, frac, fromSide: g.fromSide, toSide: g.toSide })).then((uid) => {
+          if (uid) selectEdge(uid);
+        }).catch(() => {
+        });
+        afterToolUse();
+        return;
+      }
       case "connect": {
+        if (g.sticky && !g.pressed) {
+          onPointerCancel();
+          return;
+        }
         const hr = hitRects();
         const hit = b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
         const dom = ev.target || {};
         const aimed = (dom.kind === "label" || dom.kind === "edge") && dom.uid && dom.uid !== g.from ? b?.edges.get(dom.uid) : null;
         const aimedOk = Boolean(aimed && edgeMayTarget(aimed, b.edges));
         const bt = !aimedOk && hit && hit.uid !== g.from ? blockTargetFor(ev, hit.uid) : null;
-        const drop = !aimedOk && !bt?.row ? call("regionDrop", { from: g.from, client: ev.client, trail: g.trail || [], fromBlock: g.fromBlock }) : null;
+        const drop = !aimedOk && !bt?.row ? call("regionDrop", { from: g.from, client: ev.client }) : null;
         const fromBlock = g.fromBlock || void 0;
         const withFrom = (payload) => fromBlock ? { ...payload, fromBlock } : payload;
+        if (drop?.image && ev.alt && drop.imageRect && ev.world) {
+          const pin2 = { x: ev.world.x, y: ev.world.y };
+          state.gesture = {
+            kind: "region-end",
+            phase: "wait",
+            moved: true,
+            from: g.from,
+            fromSide: g.fromSide,
+            fromBlock,
+            to: drop.to,
+            toSide: nearestSide(hr?.get(drop.to), pin2),
+            imageRect: drop.imageRect,
+            pin: pin2
+          };
+          call("clearBlockTarget");
+          call("connectHint", REGION_BOX_HINT, ev.screen);
+          const spec = { from: g.from, fromSide: g.fromSide, point: pin2 };
+          if (fromBlock) spec.fromBlock = fromBlock;
+          call("showTempWire", spec);
+          return;
+        }
         end();
         if (aimedOk) {
           const existing = sameEdge(b, g.from, aimed.uid, fromBlock, void 0);
@@ -36910,20 +37060,6 @@ function createInteractions({ actions, settings } = {}) {
             }).catch(() => {
             });
           }
-          afterToolUse();
-          return;
-        }
-        if (drop?.create && drop.to && drop.to !== g.from) {
-          Promise.resolve(call("addRegionEndpoint", withFrom({
-            from: g.from,
-            to: drop.to,
-            frac: drop.frac,
-            fromSide: g.fromSide,
-            toSide: nearestSide(hr.get(drop.to), ev.world)
-          }))).then((uid) => {
-            if (uid) selectEdge(uid);
-          }).catch(() => {
-          });
           afterToolUse();
           return;
         }
@@ -37718,13 +37854,24 @@ var FIT_GUTTER = 24;
 var FIT_MAX_CLICKS = 8;
 var FIT_STEP_RATIO = 1.25;
 function viewerFromFiber(fiber) {
+  const isViewer = (v) => Boolean(v) && typeof v === "object" && "currentScaleValue" in v;
   let current3 = fiber;
   const seen = /* @__PURE__ */ new Set();
   for (let depth = 0; depth < 40 && current3 && typeof current3 === "object" && !seen.has(current3); depth += 1) {
     seen.add(current3);
     const node2 = current3.stateNode;
     const viewer = node2 && typeof node2 === "object" ? node2.viewer : null;
-    if (viewer && typeof viewer === "object" && "currentScaleValue" in viewer) return viewer;
+    if (isViewer(viewer)) return viewer;
+    const value = current3.memoizedProps?.value;
+    if (value && typeof value === "object" && typeof value.getViewer === "function") {
+      let got = null;
+      try {
+        got = value.getViewer();
+      } catch {
+        got = null;
+      }
+      if (isViewer(got)) return got;
+    }
     current3 = current3.return;
   }
   return null;
@@ -50943,7 +51090,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       return;
     }
     if (!marquee) marquee = mk("rect", "pxd-marquee", overlaySvg);
-    setClass(marquee, `pxd-marquee${kind === "section" ? " pxd-marquee--section" : ""}`);
+    setClass(marquee, `pxd-marquee${kind === "section" ? " pxd-marquee--section" : kind === "region" ? " pxd-marquee--region" : ""}`);
     marquee.setAttribute("x", String(rect.x));
     marquee.setAttribute("y", String(rect.y));
     marquee.setAttribute("width", String(rect.w));
@@ -51311,6 +51458,8 @@ init_avoid();
 init_card_face();
 init_tooltip_text();
 var CTX_GAP = 12;
+var CTX_PORT_CLEAR = 12;
+var PORT_REACH = { x: 14, y: 20 };
 var CTX_EDGE_CLEARANCE = 28;
 var CTX_MARGIN = 8;
 var TOAST_MS = 6e3;
@@ -52281,7 +52430,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const rootRect = root.getBoundingClientRect();
     const W = rootRect.width || 0;
     const Hroot = rootRect.height || 0;
-    const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP;
+    const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP + CTX_PORT_CLEAR;
     const tb = toolbar.getBoundingClientRect();
     const propsEl = root.querySelector?.(".pxd-props");
     const propsBox = propsEl ? propsEl.getBoundingClientRect() : null;
@@ -52332,6 +52481,13 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const blocks = [asRoot(minimap), asRoot(railEl), dockEl ? asRoot(paletteBar) : null].filter(Boolean);
     if (blocks.length) {
       const placed = avoidObstacles({ left, top, w: barW, h: barH }, blocks, { topLimit, margin: CTX_MARGIN, bounds: { right: rightLimit, bottom: H } });
+      left = placed.left;
+      top = placed.top;
+    }
+    if (a.kind === "edge" && a.cards?.length) {
+      const soft = [...a.cards.map((c) => ({ left: c.x - PORT_REACH.x, top: c.y - PORT_REACH.y, right: c.x + c.w + PORT_REACH.x, bottom: c.y + c.h + PORT_REACH.y }))];
+      const below = { left, top: a.rect.y + a.rect.h + gap };
+      const placed = avoidSoft({ left, top, w: barW, h: barH }, soft, blocks, { alts: [below], topLimit, margin: CTX_MARGIN, bounds: { right: rightLimit, bottom: H - CTX_MARGIN } });
       left = placed.left;
       top = placed.top;
     }
@@ -61627,6 +61783,24 @@ function buildBoardView(onFail, {
     const y = Math.min(...ys2);
     return { x, y, w: Math.max(...xs2) - x, h: Math.max(...ys2) - y };
   };
+  const CARDS_NEAR_PX = 160;
+  const cardsNear = (rect) => {
+    const b = board2();
+    if (!b || !rect) return [];
+    const r = paintRects();
+    const out = [];
+    for (const it of b.items.values()) {
+      if (it.type === "section") continue;
+      const wr = r.get(it.uid);
+      if (!wr) continue;
+      const sr = toScreenRect(wr);
+      if (sr.x > rect.x + rect.w + CARDS_NEAR_PX || sr.x + sr.w < rect.x - CARDS_NEAR_PX) continue;
+      if (sr.y > rect.y + rect.h + CARDS_NEAR_PX || sr.y + sr.h < rect.y - CARDS_NEAR_PX) continue;
+      out.push(sr);
+      if (out.length >= 60) break;
+    }
+    return out;
+  };
   const ctxAnchor = () => {
     const b = board2();
     if (!b) return null;
@@ -61636,7 +61810,8 @@ function buildBoardView(onFail, {
       if (!edge || !geo) return null;
       const lr = edge.label ? edgesR.labelRect(selection.edge) : null;
       const extra = lr && lr.width ? [{ x: lr.left - rootRect.left, y: lr.top - rootRect.top, w: lr.width, h: lr.height }] : [];
-      return { kind: "edge", rect: pathScreenRect(geo, extra) };
+      const rect = pathScreenRect(geo, extra);
+      return { kind: "edge", rect, cards: cardsNear(rect) };
     }
     if (selection.link) {
       const geo = edgesR.linkGeometryOf(selection.link);
@@ -64978,6 +65153,25 @@ function buildBoardView(onFail, {
     grown = next;
   };
   const shortcutSheet = createShortcutSheet({ doc, root, settings: settingsProxy });
+  let connectHintEl = null;
+  const showConnectHint = (text3, screen) => {
+    if (!text3) {
+      connectHintEl?.remove?.();
+      connectHintEl = null;
+      return;
+    }
+    if (!connectHintEl) {
+      connectHintEl = doc.createElement("div");
+      connectHintEl.className = "pxd-connect-hint";
+      connectHintEl.setAttribute("role", "status");
+      root.append(connectHintEl);
+    }
+    if (connectHintEl.textContent !== text3) connectHintEl.textContent = text3;
+    if (screen) {
+      connectHintEl.style.left = `${Math.round(screen.x + 14)}px`;
+      connectHintEl.style.top = `${Math.round(screen.y + 18)}px`;
+    }
+  };
   const actions = {
     board: board2,
     rects,
@@ -65281,8 +65475,8 @@ function buildBoardView(onFail, {
       if (uid && setting("why-prompt", false) === true) openWhy(uid, "why");
       return uid;
     }),
-    // A fat drag on an image writes a region. A release on an outline reuses it. A thin drag connects to the card.
-    regionDrop: ({ from, client, trail } = {}) => {
+    // What is under a Connect release: a region outline (reuse) or an image card (image, with its picture rect).
+    regionDrop: ({ from, client } = {}) => {
       if (!client || typeof doc.elementsFromPoint !== "function") return null;
       let card2 = null;
       let regionUid = null;
@@ -65311,13 +65505,24 @@ function buildBoardView(onFail, {
       if (!source.ok && !regionUid) return null;
       const media = card2.querySelector?.(".pxd-item__media") || card2.querySelector?.(".pxd-pdf-cover") || card2.querySelector?.("img") || card2;
       const box2 = media.getBoundingClientRect?.();
-      if (!box2 || !(box2.width > 0) || !(box2.height > 0)) return regionUid ? regionDropPlan({ from, imageUid: uid, regionUid }) : null;
+      if (!box2 || !(box2.width > 0) || !(box2.height > 0)) return regionDropPlan({ from, imageUid: uid, regionUid });
       const rootBox = root.getBoundingClientRect?.() || { left: 0, top: 0 };
       const origin = screenToWorld(vp, { x: (box2.left || 0) - (rootBox.left || 0), y: (box2.top || 0) - (rootBox.top || 0) });
       const zoom = vp?.zoom || 1;
       const imageRect = { x: origin.x, y: origin.y, w: box2.width / zoom, h: box2.height / zoom };
-      return regionDropPlan({ from, imageUid: uid, regionUid, imageRect, points: trail || [] });
+      return regionDropPlan({ from, imageUid: uid, regionUid, imageRect });
     },
+    // Option box on an image under Connect: the region is written now and the arrow starts from it.
+    addRegionOn: ({ uid, frac } = {}) => {
+      const regionUid = host?.generateUid?.();
+      if (!uid || !regionUid || typeof session.addRegionOn !== "function") return null;
+      Promise.resolve(session.addRegionOn({ on: uid, frac, uid: regionUid })).then((made) => {
+        if (!made && ctl.gestureKind() === "connect") ctl.cancel();
+      }).catch(() => {
+      });
+      return regionUid;
+    },
+    connectHint: (text3, screen) => showConnectHint(text3, screen),
     undo: () => session.undo?.(),
     redo: () => session.redo?.(),
     enterEdit: (uid, opts) => enterEdit(uid, opts),
@@ -65463,7 +65668,7 @@ function buildBoardView(onFail, {
     return { kind: "empty" };
   };
   const END_GESTURE = /* @__PURE__ */ new Set(["edge-end", "connect"]);
-  const NO_END_GESTURE = /* @__PURE__ */ new Set(["pan", "marquee", "move", "lasso", "resize", "place", "section-draw", "board-draw"]);
+  const NO_END_GESTURE = /* @__PURE__ */ new Set(["pan", "marquee", "move", "lasso", "resize", "place", "section-draw", "board-draw", "region-end", "region-start"]);
   const edgeEndWanted = (type, event) => {
     const kind = ctl.gestureKind();
     if (NO_END_GESTURE.has(kind)) return false;
@@ -65590,7 +65795,7 @@ function buildBoardView(onFail, {
     ctl.handle(normalize2(event, "pointerup"));
     if (panning && flag("speed-log", false)) perfLog?.endPan?.();
     if (nativeClickKind(event.target) === "ref" && !suppressClick) openRefFromClick(event);
-    releaseCapture();
+    if (!ctl.isGesturing()) releaseCapture();
   };
   const onDocCancel = (event) => {
     endPress(event);
@@ -65803,7 +66008,7 @@ function buildBoardView(onFail, {
     event.preventDefault();
   });
   listen(root, "click", (event) => {
-    if (suppressClick) {
+    if (suppressClick || ctl.isGesturing()) {
       event.stopPropagation();
       event.preventDefault();
       return;

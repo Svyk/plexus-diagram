@@ -36,7 +36,7 @@ import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES, STICKY_SIZE } from "../mo
 import { clampPdfCard } from "../model/pdf.js";
 import { TABLE_SIZE, isRoamTableString } from "../model/roam-table.js";
 import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
-import { edgeMayTarget } from "../model/endpoints.js";
+import { clampToBox, edgeMayTarget, pointInside, regionBoxFrac } from "../model/endpoints.js";
 import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
 import { fingerPair, pinchViewport } from "../model/touch.js";
 import { SHORTCUTS, findShortcut } from "./shortcuts.js";
@@ -55,6 +55,8 @@ export const TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row) => row.letter
 export const TOOLS = ["select", "hand", "card", "task", "text", "sticky", "shape", "section", "board", "table", "connect"];
 const SHAPE_PLACE = { w: 160, h: 100 };
 export const DRAG_THRESHOLD_PX = 4;
+export const REGION_HINT = "⌥ to mark a region";
+export const REGION_BOX_HINT = "Drag a box on the image · Esc cancels";
 export const SNAP_PX = 6;
 const STICKY_TOOLS = new Set(["select", "hand"]);
 
@@ -166,6 +168,7 @@ export function createInteractions({ actions, settings } = {}) {
     call("showLasso", null);
     call("showGuides", []);
     call("showTempWire", null);
+    call("connectHint", null);
     call("onHover", null);
     call("clearBlockTarget");
     call("showGhosts", null);
@@ -219,9 +222,8 @@ export function createInteractions({ actions, settings } = {}) {
     return null;
   };
 
-  const beginConnect = (uid, side, world, fromBlock) => {
-    const trail = world ? [{ x: world.x, y: world.y }] : [];
-    begin({ kind: "connect", from: uid, fromSide: side, start: world, fromBlock: fromBlock || undefined, trail });
+  const beginConnect = (uid, side, world, fromBlock, extra) => {
+    begin({ kind: "connect", from: uid, fromSide: side, start: world, fromBlock: fromBlock || undefined, ...extra });
     const spec = { from: uid, fromSide: side, point: world };
     if (fromBlock) spec.fromBlock = fromBlock;
     call("showTempWire", spec);
@@ -233,8 +235,25 @@ export function createInteractions({ actions, settings } = {}) {
   const cancelOpen = () => { if (openTimer) { clearTimeout(openTimer); openTimer = null; } };
   const OPEN_DELAY_MS = 300;
 
+  // The press that continues a gesture whose button is already up: the box after an Option release on an
+  // image, or the click that ends an arrow started from a new region. A press on chrome cancels it.
+  const continuePress = (ev, t) => {
+    const g = state.gesture;
+    if (t.kind === "chrome" || (ev.button ?? 0) !== 0) { onPointerCancel(); return; }
+    if (g.kind === "connect") { g.pressed = true; return; }
+    if (!ev.world || !pointInside(ev.world, g.imageRect)) { onPointerCancel(); return; }
+    g.phase = "box";
+    g.boxStart = clampToBox(ev.world, g.imageRect);
+    call("connectHint", null);
+  };
+
   const onPointerDown = (ev) => {
     const t = ev.target || { kind: "empty" };
+    const g0 = state.gesture;
+    if (g0 && ((g0.kind === "connect" && g0.sticky) || (g0.kind === "region-end" && g0.phase === "wait"))) {
+      continuePress(ev, t);
+      return;
+    }
     if (t.kind === "chrome") return;
     cancelOpen();
     if ((ev.button ?? 0) === 0) noteFinger(ev);
@@ -302,6 +321,11 @@ export function createInteractions({ actions, settings } = {}) {
       case "section-border": {
         if (!t.uid || !b?.items.has(t.uid)) return;
         if (state.tool === "connect") {
+          const pic = ev.alt && !t.row ? call("regionDrop", { from: null, client: ev.client }) : null;
+          if (pic?.image && pic.to === t.uid && pic.imageRect && pointInside(ev.world, pic.imageRect)) {
+            begin({ kind: "region-start", uid: t.uid, imageRect: pic.imageRect, start: clampToBox(ev.world, pic.imageRect) });
+            return;
+          }
           beginConnect(t.uid, nearestSide(r.get(t.uid), ev.world), ev.world, t.row || undefined);
           return;
         }
@@ -389,13 +413,17 @@ export function createInteractions({ actions, settings } = {}) {
     }
     const g = state.gesture;
     if (!g) return;
+    if (g.kind === "region-start" || g.kind === "region-end") {
+      if (g.kind === "region-end" && g.phase !== "box") return;
+      const from = g.kind === "region-start" ? g.start : g.boxStart;
+      const to = clampToBox(ev.world, g.imageRect);
+      if (!g.moved && Math.hypot(to.x - from.x, to.y - from.y) * zoom() >= DRAG_THRESHOLD_PX) g.moved = true;
+      call("showMarquee", normRect(from, to), "region");
+      return;
+    }
     if (g.kind === "connect") {
       const b = board();
       const r = hitRects();
-      if (ev.world && Array.isArray(g.trail)) {
-        g.trail.push({ x: ev.world.x, y: ev.world.y });
-        if (g.trail.length > 40) g.trail.splice(0, g.trail.length - 40);
-      }
       const spec = { from: g.from, fromSide: g.fromSide, point: ev.world };
       if (g.fromBlock) spec.fromBlock = g.fromBlock;
       call("showTempWire", spec);
@@ -403,7 +431,9 @@ export function createInteractions({ actions, settings } = {}) {
       const hover = hit && hit.uid !== g.from ? hit.uid : null;
       if (hover !== state.hover) { state.hover = hover; call("onHover", hover); }
       if (!g.moved && Math.hypot(ev.world.x - g.start.x, ev.world.y - g.start.y) * zoom() >= DRAG_THRESHOLD_PX) g.moved = true;
-      blockTargetFor(ev, hover);
+      const bt = blockTargetFor(ev, hover);
+      const over = hover && !bt?.row ? call("regionDrop", { from: g.from, client: ev.client }) : null;
+      call("connectHint", over?.image ? REGION_HINT : null, ev.screen);
       return;
     }
     if (g.kind === "edge-end") {
@@ -666,7 +696,36 @@ export function createInteractions({ actions, settings } = {}) {
         afterToolUse();
         return;
       }
+      case "region-start": {
+        const frac = g.moved ? regionBoxFrac(g.imageRect, g.start, ev.world) : null;
+        end();
+        const regionUid = frac ? call("addRegionOn", { uid: g.uid, frac }) : null;
+        if (!regionUid) return;
+        // The arrow now follows the pointer from the new region; the next click ends it.
+        beginConnect(g.uid, nearestSide(r.get(g.uid), ev.world), ev.world, regionUid, { sticky: true, moved: true });
+        return;
+      }
+      case "region-end": {
+        // A release with no press of ours: the press landed on chrome, which kept it. That cancels.
+        if (g.phase !== "box") { onPointerCancel(); return; }
+        const frac = regionBoxFrac(g.imageRect, g.boxStart, ev.world);
+        if (!frac) {
+          // Too small to be a box: keep the end pinned and wait for a real one.
+          g.phase = "wait";
+          call("showMarquee", null);
+          call("connectHint", REGION_BOX_HINT, ev.screen);
+          return;
+        }
+        end();
+        Promise.resolve(call("addRegionEndpoint", g.fromBlock ? {
+          from: g.from, to: g.to, frac, fromSide: g.fromSide, toSide: g.toSide, fromBlock: g.fromBlock,
+        } : { from: g.from, to: g.to, frac, fromSide: g.fromSide, toSide: g.toSide }))
+          .then((uid) => { if (uid) selectEdge(uid); }).catch(() => {});
+        afterToolUse();
+        return;
+      }
       case "connect": {
+        if (g.sticky && !g.pressed) { onPointerCancel(); return; }
         const hr = hitRects();
         const hit = b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
         const dom = ev.target || {};
@@ -674,10 +733,24 @@ export function createInteractions({ actions, settings } = {}) {
         const aimedOk = Boolean(aimed && edgeMayTarget(aimed, b.edges));
         const bt = !aimedOk && hit && hit.uid !== g.from ? blockTargetFor(ev, hit.uid) : null;
         const drop = !aimedOk && !bt?.row
-          ? call("regionDrop", { from: g.from, client: ev.client, trail: g.trail || [], fromBlock: g.fromBlock })
+          ? call("regionDrop", { from: g.from, client: ev.client })
           : null;
         const fromBlock = g.fromBlock || undefined;
         const withFrom = (payload) => (fromBlock ? { ...payload, fromBlock } : payload);
+        if (drop?.image && ev.alt && drop.imageRect && ev.world) {
+          // Option on release: the end stays pinned here and the next drag on the picture boxes the region.
+          const pin = { x: ev.world.x, y: ev.world.y };
+          state.gesture = {
+            kind: "region-end", phase: "wait", moved: true, from: g.from, fromSide: g.fromSide, fromBlock,
+            to: drop.to, toSide: nearestSide(hr?.get(drop.to), pin), imageRect: drop.imageRect, pin,
+          };
+          call("clearBlockTarget");
+          call("connectHint", REGION_BOX_HINT, ev.screen);
+          const spec = { from: g.from, fromSide: g.fromSide, point: pin };
+          if (fromBlock) spec.fromBlock = fromBlock;
+          call("showTempWire", spec);
+          return;
+        }
         end();
         if (aimedOk) {
           const existing = sameEdge(b, g.from, aimed.uid, fromBlock, undefined);
@@ -686,17 +759,6 @@ export function createInteractions({ actions, settings } = {}) {
             Promise.resolve(call("addEdge", withFrom({ from: g.from, to: aimed.uid, fromSide: g.fromSide, toSide: "auto" })))
               .then((uid) => { if (uid) selectEdge(uid); }).catch(() => {});
           }
-          afterToolUse();
-          return;
-        }
-        if (drop?.create && drop.to && drop.to !== g.from) {
-          Promise.resolve(call("addRegionEndpoint", withFrom({
-            from: g.from,
-            to: drop.to,
-            frac: drop.frac,
-            fromSide: g.fromSide,
-            toSide: nearestSide(hr.get(drop.to), ev.world),
-          }))).then((uid) => { if (uid) selectEdge(uid); }).catch(() => {});
           afterToolUse();
           return;
         }

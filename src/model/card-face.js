@@ -102,6 +102,41 @@ export function avoidObstacles(bar, obstacles, { topLimit = 0, margin = 8, bound
   return clear(cur) ? cur : bar;
 }
 
+// A softer pass for the arrow bar: when it lands on a card (cards are given with their connect ports and the bar's
+// hover bridges already added), try the spots in `alts` and beside each card it covers, nearest first, at most
+// `reach` px away. Hard obstacles and the bounds still win. When no spot is free the bar stays where it was.
+export function avoidSoft(bar, soft, hard, { alts = [], topLimit = 0, margin = 8, bounds = {}, reach = 240 } = {}) {
+  const valid = (o) => o && o.right > o.left && o.bottom > o.top;
+  const cards = (soft || []).filter(valid);
+  if (!bar || !cards.length) return bar;
+  const walls = (hard || []).filter(valid);
+  const box = (b) => ({ left: b.left, top: b.top, right: b.left + b.w, bottom: b.top + b.h });
+  const hits = (b, list) => list.some((o) => overlaps(box(b), o));
+  if (!hits(bar, cards)) return bar;
+  const fits = (b) => b.left >= margin && b.top >= topLimit
+    && (bounds.right == null || b.left + b.w <= bounds.right)
+    && (bounds.bottom == null || b.top + b.h <= bounds.bottom);
+  const spots = [];
+  for (const a of [bar, ...(alts || [])]) {
+    const at = { ...bar, ...a };
+    spots.push(at);
+    for (const o of cards) {
+      if (!overlaps(box(at), o)) continue;
+      spots.push(
+        { ...at, left: o.left - margin - at.w },
+        { ...at, left: o.right + margin },
+        { ...at, top: o.top - margin - at.h },
+        { ...at, top: o.bottom + margin },
+      );
+    }
+  }
+  const far = (b) => Math.hypot(b.left - bar.left, b.top - bar.top);
+  const ok = spots.filter((b) => far(b) <= reach && fits(b) && !hits(b, walls) && !hits(b, cards));
+  if (!ok.length) return bar;
+  ok.sort((p, q) => far(p) - far(q));
+  return ok[0];
+}
+
 // Which dock tools stay in the row. `widths` are the tools' widths in order, `avail` the room the row has, `gap` the
 // space between tools, `pad` the bar's padding and border, `more` the width of the "…" button, `keep` an index that
 // never moves behind it (the active tool). Returns the indices that go behind "…", trailing tools first.

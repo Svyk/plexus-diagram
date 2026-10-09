@@ -665,7 +665,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       return;
     }
     if (!marquee) marquee = mk("rect", "pxd-marquee", overlaySvg);
-    setClass(marquee, `pxd-marquee${kind === "section" ? " pxd-marquee--section" : ""}`);
+    setClass(marquee, `pxd-marquee${kind === "section" ? " pxd-marquee--section" : kind === "region" ? " pxd-marquee--region" : ""}`);
     marquee.setAttribute("x", String(rect.x));
     marquee.setAttribute("y", String(rect.y));
     marquee.setAttribute("width", String(rect.w));

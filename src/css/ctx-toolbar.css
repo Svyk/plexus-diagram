@@ -42,14 +42,15 @@
   box-shadow: var(--pxd-shadow);
 }
 
-/* RF-4: an invisible bridge over the gap between a card and its hover toolbar, so the pointer can cross it. */
+/* RF-4: an invisible bridge over most of the gap between a card and its hover toolbar, so the pointer can cross it.
+   It stops short of the card's top port (the gap is CTX_GAP + CTX_PORT_CLEAR in chrome.js). */
 .pxd-root .pxd-ctx::before,
 .pxd-root .pxd-ctx::after {
   content: "";
   position: absolute;
   left: -8px;
   right: -8px;
-  height: 20px;
+  height: 14px;
   background: transparent;
 }
 

@@ -213,12 +213,28 @@ export function marqueeFrac(imageRect, points) {
 
 // Reuse wins when the pointer is on an outline. A real marquee on another image creates.
 // A thin trail, or a release on the card the drag started from, creates nothing.
-export function regionDropPlan({ from, imageUid, regionUid, imageRect, points } = {}) {
-  if (regionUid && imageUid && imageUid !== from) return { reuse: true, to: imageUid, toBlock: regionUid };
+// What a Connect release over an image card means. An outline under the pointer is that region.
+// Otherwise it is the card; a new region is only made by an Option box (regionBoxFrac).
+export function regionDropPlan({ from, imageUid, regionUid, imageRect } = {}) {
   if (!imageUid || imageUid === from) return null;
-  const frac = marqueeFrac(imageRect, points);
-  if (!frac) return null;
-  return { create: true, to: imageUid, frac };
+  if (regionUid) return { reuse: true, to: imageUid, toBlock: regionUid };
+  return { image: true, to: imageUid, imageRect: asBox(imageRect) };
+}
+
+// A point held inside the picture, so a box dragged past its edge stops at the edge.
+export function clampToBox(point, rect) {
+  const box = asBox(rect);
+  if (!box || !point) return point;
+  return {
+    x: Math.min(box.x + box.w, Math.max(box.x, point.x)),
+    y: Math.min(box.y + box.h, Math.max(box.y, point.y)),
+  };
+}
+
+// Image fractions of the box from a to b (both clamped to the picture), or null when it is too small.
+export function regionBoxFrac(imageRect, a, b) {
+  if (!a || !b) return null;
+  return marqueeFrac(imageRect, [clampToBox(a, imageRect), clampToBox(b, imageRect)]);
 }
 
 export function regionCaption(label, existingCount) {

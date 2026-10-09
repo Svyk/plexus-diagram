@@ -44,7 +44,7 @@ An enhanced board keeps Roam's diagram controls and adds to them (the 1.3 native
 | Open | Click a `[[link]]` in a card to go there (Shift-click: sidebar). Context bar: Open in sidebar |
 | Move / resize | Drag a card (from anywhere, links included); drag the right edge, bottom edge, or corner. Alignment guides snap to neighbours. The Hand tool moves cards and resizes too: drag a card to move it, a grip to resize, empty board to pan (Space-drag always pans). Page cards have a wide grip band and a corner above the scrollbar. Grips, connection dots and arrow-end handles keep the same size on screen at every zoom |
 | Section | G, then drag (or click for a default size). Cmd+G wraps the selection. Drop cards in and out of sections. A section grows to contain a card moved or resized past its edge (24 px padding, cascading through nested sections); Fit to contents shrinks it, and Auto-fit in the menu turns it off for one section |
-| Connect | Drag from a card's port (the dots on its edges) to another card or section. Drop on empty board to create a new linked card. C turns the whole card into a handle |
+| Connect | Drag from a card's port (the dots on its edges) to another card or section. Drop on empty board to create a new linked card. C turns the whole card into a handle. A release over an image ends on the image card, or on a region when you release over its outline. Hold ⌥ while releasing over an image to mark a new region as the end: the end stays at the pointer, drag a box on the picture, and the region and the arrow are written together (Esc cancels, nothing written). With the Connect tool, ⌥-drag on a picture boxes a new region and the arrow then starts from it; click where it should end. A hint "⌥ to mark a region" shows while the arrow is over an image |
 | Text | T for a free heading on the board (16/24/32/48) |
 | Sticky notes | S, then click the board. A sticky is a real Roam block in a coloured note: drag the header bar to move it, click once in the note to type (tags, images, links, refs and the slash menu all work), drag a corner or edge to resize. The header has a colour dot (pick one of ten) and a minimize toggle that folds the note to its header; the choice is saved with the note. Stickies persist: there is no close button, and an empty sticky stays. Delete (or the menu) removes one, and Cmd+Z brings it back |
 | Nested board | W, then click or drag; or select cards → **Move into new board**. Double-click a board card to go inside; the breadcrumb (`Parent › Child`) and Esc take you back up. Drag a card onto a board card to move it in |
@@ -339,6 +339,7 @@ Each row is the most writes one gesture makes, measured by `test/pol-2-writes.te
 | Gesture | Writes (max) | Roam undo steps |
 | --- | --- | --- |
 | Mark region | 2 (≤ 3) | 2, or 1 if the container exists |
+| ⌥ box region as an arrow end | 3, or 4 on a board with no Connections yet | 1 |
 | Save view | 2 (≤ 2) | 1 |
 | Add trail stop | 1, or 2 with a note | 1 |
 | Add selection to trail | 45 (≤ 45) | 1 |

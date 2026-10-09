@@ -3918,9 +3918,6 @@ function letterSpaced(str2) {
   const single = parts.filter((p) => p.length === 1).length;
   return single >= 0.6 * parts.length;
 }
-function sameBaseline(a, b) {
-  return Math.abs(a.base - b.base) <= 0.3 * Math.max(a.size, b.size);
-}
 function mergeSmallCapRows(rows) {
   const dead = /* @__PURE__ */ new Set();
   const changes = (a, b) => {
@@ -3949,6 +3946,85 @@ function mergeSmallCapRows(rows) {
   }
   return rows.filter((r) => !dead.has(r));
 }
+function mergeInflatedOcrRows(rows) {
+  const dead = /* @__PURE__ */ new Set();
+  const ink = (r) => r.pieces.filter((p) => !p.space);
+  const textOf2 = (r) => ink(r).map((p) => p.text || "").join("");
+  const isOcr = (r) => ink(r).some((p) => p.font === "ocr");
+  const span = (r) => {
+    const pieces2 = ink(r);
+    return [Math.min(...pieces2.map((p) => p.x0)), Math.max(...pieces2.map((p) => p.x1))];
+  };
+  let changed2 = true;
+  while (changed2) {
+    changed2 = false;
+    for (const extra of rows) {
+      if (dead.has(extra) || !isOcr(extra)) continue;
+      const extraText = textOf2(extra);
+      if (!extraText || extraText.length > 18) continue;
+      let host = null;
+      let hostGap = Infinity;
+      for (const h of rows) {
+        if (h === extra || dead.has(h) || !isOcr(h)) continue;
+        if (extra.size <= h.size * 1.15 || extra.size > h.size * 1.9) continue;
+        if (Math.abs(extra.base - h.base) > 0.22 * h.size) continue;
+        if (textOf2(h).length < extraText.length) continue;
+        const [h0, h1] = span(h);
+        const [e0, e1] = span(extra);
+        const gap = e0 > h1 ? e0 - h1 : h0 > e1 ? h0 - e1 : 0;
+        if (gap > 1.15 * h.size || gap >= hostGap) continue;
+        host = h;
+        hostGap = gap;
+      }
+      if (!host) continue;
+      for (const p of extra.pieces) {
+        if (!p.space && p.size > host.size * 1.15) p.size = host.size;
+        host.pieces.push(p);
+      }
+      dead.add(extra);
+      changed2 = true;
+    }
+  }
+  return rows.filter((r) => !dead.has(r));
+}
+function mergeJitteredOcrRows(rows) {
+  const dead = /* @__PURE__ */ new Set();
+  const ink = (r) => r.pieces.filter((p) => !p.space);
+  const isOcr = (r) => ink(r).some((p) => p.font === "ocr");
+  const overlaps2 = (a, b) => a.x0 < b.x1 - 0.5 && b.x0 < a.x1 - 0.5;
+  let changed2 = true;
+  while (changed2) {
+    changed2 = false;
+    for (const extra of rows) {
+      if (dead.has(extra) || !isOcr(extra)) continue;
+      const extraInk = ink(extra);
+      if (!extraInk.length || extraInk.length > 4) continue;
+      let host = null;
+      for (const h of rows) {
+        if (h === extra || dead.has(h) || !isOcr(h)) continue;
+        if (Math.abs(h.size - extra.size) > 0.2 * Math.max(h.size, extra.size)) continue;
+        const shift = Math.abs(h.base - extra.base);
+        if (shift <= 0.22 * h.size || shift > 0.5 * h.size) continue;
+        const hostInk = ink(h);
+        if (hostInk.length <= extraInk.length) continue;
+        if (!extraInk.every((p) => hostInk.every((q) => !overlaps2(p, q)))) continue;
+        const h0 = Math.min(...hostInk.map((p) => p.x0));
+        const h1 = Math.max(...hostInk.map((p) => p.x1));
+        const e0 = Math.min(...extraInk.map((p) => p.x0));
+        const e1 = Math.max(...extraInk.map((p) => p.x1));
+        const gap = e0 > h1 ? e0 - h1 : h0 > e1 ? h0 - e1 : 0;
+        if (gap > 1.15 * h.size) continue;
+        host = h;
+        break;
+      }
+      if (!host) continue;
+      host.pieces.push(...extra.pieces);
+      dead.add(extra);
+      changed2 = true;
+    }
+  }
+  return rows.filter((r) => !dead.has(r));
+}
 function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGap = 2 } = {}) {
   const pieces2 = [];
   for (const item of items || []) for (const p of piecesOf(item, transform, fonts)) pieces2.push(p);
@@ -3960,7 +4036,10 @@ function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGa
     let row4 = null;
     for (let i = rows.length - 1; i >= 0 && rows[i].base >= p.base - 2 * p.size; i--) {
       const r = rows[i];
-      if (sameBaseline(r, p) && Math.abs(r.size - p.size) <= 0.15 * Math.max(r.size, p.size)) {
+      const overlaps2 = p.text && r.pieces.some((q) => !q.space && p.x0 < q.x1 - 0.8 && q.x0 < p.x1 - 0.8);
+      const wide = p.font === "ocr" && r.pieces.some((q) => q.font === "ocr") && !overlaps2;
+      const tol = wide ? 0.48 : 0.3;
+      if (Math.abs(r.base - p.base) <= tol * Math.max(r.size, p.size) && Math.abs(r.size - p.size) <= 0.15 * Math.max(r.size, p.size)) {
         row4 = r;
         break;
       }
@@ -3972,7 +4051,7 @@ function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGa
     row4.pieces.push(p);
     if (!p.space && p.size > row4.size) row4.size = p.size;
   }
-  const sized = mergeSmallCapRows(rows);
+  const sized = mergeJitteredOcrRows(mergeInflatedOcrRows(mergeSmallCapRows(rows)));
   rows.length = 0;
   rows.push(...sized);
   const main = [];
@@ -4016,19 +4095,24 @@ function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGa
   for (const r of kept) {
     r.pieces.sort((a, b) => a.x0 - b.x0);
     const words = mergeWords(r.pieces, r.size);
+    const frags = [];
     let frag = [];
     for (let i = 0; i < words.length; i++) {
       const w = words[i];
       if (frag.length) {
         const prev = frag[frag.length - 1];
         if (w.x0 - prev.x1 > splitGap * Math.min(prev.size, w.size)) {
-          lines.push(makeLine(frag));
+          frags.push(makeLine(frag));
           frag = [];
         }
       }
       frag.push(w);
     }
-    if (frag.length) lines.push(makeLine(frag));
+    if (frag.length) frags.push(makeLine(frag));
+    if (frags.length > 1 && r.pieces.some((p) => p.font === "ocr")) {
+      for (const line of frags) line.base = r.base;
+    }
+    lines.push(...frags);
   }
   lines.sort((a, b) => a.base - b.base || a.x0 - b.x0);
   lines.forEach((l, i) => {
@@ -4611,7 +4695,10 @@ function cellTextOf(words) {
     if (text3.endsWith("-") && /^[A-Za-z0-9]/.test(t)) text3 += t;
     else text3 += ` ${t}`;
   }
-  return text3.replace(/\s+/g, " ").trim();
+  text3 = text3.replace(/\s+/g, " ").trim();
+  const ocr = (words || []).some((w) => w && (w.font === "ocr" || w.conf != null));
+  if (!ocr || /^[.·…]+$/u.test(text3)) return text3;
+  return text3.replace(/(?:\s*[.·…]){2,}$/u, "").trim();
 }
 function sup(t) {
   return t.split("").map((c) => SUPERS[c] ?? c).join("");
@@ -6334,7 +6421,7 @@ function proseRow(row4, tokens, columnWidth = Infinity) {
   const short = tokens.filter((t) => t.words.length <= 2 || isNumericText(t.text)).length;
   return tokens.length === 1 || tokens.length < n2 / 2 && short === 0;
 }
-function detectStreamRuns(lines, { dots = [], column = null, rules = [] } = {}) {
+function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeGaps = true } = {}) {
   const out = [];
   const rows = baselineRows(lines);
   const colBox = column || (lines.length ? { x0: Math.min(...lines.map((l) => l.x0)), x1: Math.max(...lines.map((l) => l.x1)) } : null);
@@ -6361,6 +6448,7 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [] } = {}) 
         continue;
       }
       if (lastBase != null && row4.base - lastBase > 2.2 * row4.size) {
+        if (!bridgeGaps) break;
         const gap = row4.base - lastBase;
         const header = headerOf(run);
         const next = rows[j + 1];
@@ -8461,9 +8549,8 @@ function cellsToReread(table, { numericCols = [] } = {}) {
     const empty = !cell.text || !cell.text.trim();
     const low = (cell.conf ?? 1) <= LOW_CONF && !isNumericText(cell.text);
     if (!empty && !low) continue;
-    const box2 = cell.wbox && !empty ? cell.wbox : rowBox(table, cell);
-    if (!box2) continue;
-    out.push({ page: table.page, bbox: box2, id: table.id, r: cell.r, c: cell.c, empty });
+    const boxes = !empty && cell.wbox ? [cell.wbox] : cropBoxes(table, cell, empty);
+    for (const box2 of boxes) out.push({ page: table.page, bbox: box2, id: table.id, r: cell.r, c: cell.c, empty });
   }
   return out;
 }
@@ -8471,14 +8558,22 @@ function median5(xs2) {
   const s = [...xs2].sort((a, b) => a - b);
   return s[s.length >> 1];
 }
-function rowBox(table, cell) {
+function clipBand(cell, y0, y1) {
+  y0 = Math.max(y0, cell.bbox[1] + 0.3);
+  y1 = Math.min(y1, cell.bbox[3] - 0.3);
+  if (!(y1 > y0 + 1)) return null;
+  return [cell.bbox[0] + 1, y0, cell.bbox[2] - 1, y1];
+}
+function cropBoxes(table, cell, empty) {
   const row4 = table.cells.filter((k) => k.r === cell.r && k.wbase != null);
-  if (!row4.length || !cell.bbox) return null;
+  if (!row4.length || !cell.bbox) return [];
   const bases = row4.map((k) => k.wbase).sort((a, b) => a - b);
   const base = bases[bases.length >> 1];
   const size = Math.max(...row4.map((k) => k.wsize || 0)) || cell.bbox[3] - cell.bbox[1];
-  let y0 = base - 0.65 * size;
-  let y1 = base + 0.12 * size;
+  const band0 = base - 0.65 * size;
+  const band1 = base + 0.12 * size;
+  let y0 = band0;
+  let y1 = band1;
   const ink = row4.map((k) => k.wbox).filter((b) => b && b[3] > b[1]);
   if (ink.length) {
     const top = median5(ink.map((b) => b[1]));
@@ -8488,10 +8583,13 @@ function rowBox(table, cell) {
       y1 = bot + 1.2;
     }
   }
-  y0 = Math.max(y0, cell.bbox[1] + 0.3);
-  y1 = Math.min(y1, cell.bbox[3] - 0.3);
-  if (!(y1 > y0 + 1)) return null;
-  return [cell.bbox[0] + 1, y0, cell.bbox[2] - 1, y1];
+  const wide = clipBand(cell, y0, y1);
+  const tight = clipBand(cell, band0, band1);
+  const boxes = [];
+  if (wide) boxes.push(wide);
+  if (empty && tight && (!wide || Math.abs(tight[1] - wide[1]) + Math.abs(tight[3] - wide[3]) > 1)) boxes.push(tight);
+  else if (!wide && tight) boxes.push(tight);
+  return boxes;
 }
 function applyCellOcr(table, results) {
   const applied = [];
@@ -8501,6 +8599,7 @@ function applyCellOcr(table, results) {
     if (!cell) continue;
     let text3 = String(res.text || "").trim().replace(/^[.·•\s]+(?=\S)/, "").replace(/(?<=\S)[.·•\s]+$/, (m) => /\d$/.test(m) ? m : "");
     const column = bodyCellsOfColumn(table, cell.c).filter((k) => k !== cell && isNumericText(k.text)).map((k) => k.text);
+    if (cell.reread && isNumericText(cell.text) && fitsColumn(cell.text, column)) continue;
     const decimal = decimalStyle(column) || ".";
     const leadingZero = !column.some((v) => /^[.,]\d/.test(v));
     let to = null;
@@ -9335,7 +9434,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     const textBlocks = [];
     for (const seq of sequences) {
       let lines = seq;
-      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq), rules: pg.graphics.rules })) {
+      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq), rules: pg.graphics.rules, bridgeGaps: pg.tables.length === 0 })) {
         const drop = new Set(t.lines);
         lines = lines.filter((l) => !drop.has(l));
         if (t.type === "formula") {
@@ -9684,7 +9783,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 12;
+    PARSE_REV = 13;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     EVIDENCE_LINES = 60;

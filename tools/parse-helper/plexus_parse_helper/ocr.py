@@ -398,7 +398,11 @@ def observations_to_items(tiled, scale: float, image_size: tuple[int, int], imag
         sizes = sorted(plain or [c["size"] for c in kept])
         body = sizes[len(sizes) // 2]
         for c in kept:
-            if 0.45 * body <= c["size"] <= 1.5 * body:
+            # A word with no ascender is sized as height/0.75. Vision's box is the line
+            # box, not the x-height, so "is" / "as" land near 1.7× body and just past the
+            # 1.5 snap. They are body text; a capital heading above 1.5× stays a heading.
+            limit = 1.85 * body if not _TALL_RE.search(c["str"]) else 1.5 * body
+            if 0.45 * body <= c["size"] <= limit + 1e-3:
                 c["size"] = body
         # Specks Vision reads as text (a smudge "SAA" a quarter of the body size) are noise.
         kept = [c for c in kept if c["size"] >= 0.45 * body or c["conf"] >= 1.0 and _NUMBERISH_RE.match(c["str"])]

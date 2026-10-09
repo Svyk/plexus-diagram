@@ -40,13 +40,28 @@ export function tableCounts(pred, truth) {
   const truthByKey = new Map(truthCells.map((c) => [cellKey(c), c]));
   let structureTp = 0;
   let cellTp = 0;
+  let cellSoftTp = 0;
+  let cellSimSum = 0;
   for (const c of predCells) {
     const t = truthByKey.get(cellKey(c));
     if (!t) continue;
     structureTp++;
+    const sim = cellSimilarity(t.text, c.text);
+    cellSimSum += sim;
+    if (sim >= 0.9) cellSoftTp++;
     if (normText(t.text) === normText(c.text)) cellTp++;
   }
-  return { structureTp, cellTp, predN: predCells.length, truthN: truthCells.length, score: scored };
+  return { structureTp, cellTp, cellSoftTp, cellSimSum, predN: predCells.length, truthN: truthCells.length, score: scored };
+}
+
+// 1 when the normalised strings match, else 1 minus the edit distance over the longer one.
+export function cellSimilarity(a, b) {
+  const x = normText(a);
+  const y = normText(b);
+  if (x === y) return 1;
+  const n = Math.max(x.length, y.length);
+  if (!n) return 1;
+  return 1 - levenshtein(x, y) / n;
 }
 
 export function boxIou(a, b) {
@@ -196,11 +211,13 @@ export function scorePage(doc, truth) {
     if (!truth.tables.length) {
       const extras = predTables(doc);
       const predN = extras.reduce((n, t) => n + (t.cells ? t.cells.length : 0), 0);
-      out.tables = { ...prfFrom(0, predN, 0), structure: prfFrom(0, predN, 0), extras: extras.length, misses: [] };
-      out.tableCounts = { structureTp: 0, cellTp: 0, predN, truthN: 0 };
+      out.tables = { ...prfFrom(0, predN, 0), structure: prfFrom(0, predN, 0), cellAt09: prfFrom(0, predN, 0), cellSim: null, extras: extras.length, misses: [] };
+      out.tableCounts = { structureTp: 0, cellTp: 0, cellSoftTp: 0, cellSimSum: 0, predN, truthN: 0 };
     } else {
       let structureTp = 0;
       let cellTp = 0;
+      let cellSoftTp = 0;
+      let cellSimSum = 0;
       let predN = 0;
       let truthN = 0;
       const misses = [];
@@ -224,6 +241,8 @@ export function scorePage(doc, truth) {
         const counts = tableCounts(pred, t);
         structureTp += counts.structureTp;
         cellTp += counts.cellTp;
+        cellSoftTp += counts.cellSoftTp;
+        cellSimSum += counts.cellSimSum;
         predN += counts.predN;
         truthN += counts.truthN;
         per.push({ caption: t.caption || "", id: pred ? pred.id : null, rows: pred ? pred.rows : 0, cols: pred ? pred.cols : 0, ...counts.score });
@@ -233,11 +252,13 @@ export function scorePage(doc, truth) {
       out.tables = {
         ...prfFrom(cellTp, predN, truthN),
         structure: prfFrom(structureTp, predN, truthN),
+        cellAt09: prfFrom(cellSoftTp, predN, truthN),
+        cellSim: structureTp ? Math.round((cellSimSum / structureTp) * 1000) / 1000 : null,
         extras: preds.filter((p) => !used.has(p.id)).length,
         per,
         misses: misses.slice(0, 40),
       };
-      out.tableCounts = { structureTp, cellTp, predN, truthN };
+      out.tableCounts = { structureTp, cellTp, cellSoftTp, cellSimSum, predN, truthN };
     }
   }
   if (Array.isArray(truth.figures)) {

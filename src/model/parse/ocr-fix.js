@@ -236,9 +236,8 @@ export function cellsToReread(table, { numericCols = [] } = {}) {
     const empty = !cell.text || !cell.text.trim();
     const low = (cell.conf ?? 1) <= LOW_CONF && !isNumericText(cell.text);
     if (!empty && !low) continue;
-    const box = cell.wbox && !empty ? cell.wbox : rowBox(table, cell);
-    if (!box) continue;
-    out.push({ page: table.page, bbox: box, id: table.id, r: cell.r, c: cell.c, empty });
+    const boxes = !empty && cell.wbox ? [cell.wbox] : cropBoxes(table, cell, empty);
+    for (const box of boxes) out.push({ page: table.page, bbox: box, id: table.id, r: cell.r, c: cell.c, empty });
   }
   return out;
 }
@@ -250,29 +249,42 @@ function median(xs) {
   return s[s.length >> 1];
 }
 
-function rowBox(table, cell) {
+function clipBand(cell, y0, y1) {
+  y0 = Math.max(y0, cell.bbox[1] + 0.3);
+  y1 = Math.min(y1, cell.bbox[3] - 0.3);
+  if (!(y1 > y0 + 1)) return null;
+  return [cell.bbox[0] + 1, y0, cell.bbox[2] - 1, y1];
+}
+
+// Crop boxes for one cell. The wide box covers the row's ink (a clipped digit reads as "||").
+// An empty cell also gets the x-height band: a thin "1" centred on a wrapped row is missed
+// in the tall crop and read in the band. The wide box is first.
+function cropBoxes(table, cell, empty) {
   const row = table.cells.filter((k) => k.r === cell.r && k.wbase != null);
-  if (!row.length || !cell.bbox) return null;
+  if (!row.length || !cell.bbox) return [];
   const bases = row.map((k) => k.wbase).sort((a, b) => a - b);
   const base = bases[bases.length >> 1];
   const size = Math.max(...row.map((k) => k.wsize || 0)) || (cell.bbox[3] - cell.bbox[1]);
-  // The x-height band, so a full grid row does not take the neighbour's ascenders.
-  let y0 = base - 0.65 * size;
-  let y1 = base + 0.12 * size;
+  const band0 = base - 0.65 * size;
+  const band1 = base + 0.12 * size;
+  let y0 = band0;
+  let y1 = band1;
   const ink = row.map((k) => k.wbox).filter((b) => b && b[3] > b[1]);
   if (ink.length) {
     const top = median(ink.map((b) => b[1]));
     const bot = median(ink.map((b) => b[3]));
-    // That band clips a digit on a nearest-neighbour upscale: the crop reads "||".
     if (top < y0 - 0.4 || bot > y1 + 0.4) {
       y0 = top - 1.2;
       y1 = bot + 1.2;
     }
   }
-  y0 = Math.max(y0, cell.bbox[1] + 0.3);
-  y1 = Math.min(y1, cell.bbox[3] - 0.3);
-  if (!(y1 > y0 + 1)) return null;
-  return [cell.bbox[0] + 1, y0, cell.bbox[2] - 1, y1];
+  const wide = clipBand(cell, y0, y1);
+  const tight = clipBand(cell, band0, band1);
+  const boxes = [];
+  if (wide) boxes.push(wide);
+  if (empty && tight && (!wide || Math.abs(tight[1] - wide[1]) + Math.abs(tight[3] - wide[3]) > 1)) boxes.push(tight);
+  else if (!wide && tight) boxes.push(tight);
+  return boxes;
 }
 
 // Apply helper re-reads. A number is accepted when it parses (after mapping) and the column is
@@ -285,6 +297,8 @@ export function applyCellOcr(table, results) {
     if (!cell) continue;
     let text = String(res.text || "").trim().replace(/^[.·•\s]+(?=\S)/, "").replace(/(?<=\S)[.·•\s]+$/, (m) => (/\d$/.test(m) ? m : ""));
     const column = bodyCellsOfColumn(table, cell.c).filter((k) => k !== cell && isNumericText(k.text)).map((k) => k.text);
+    // A second crop of the same cell must not replace a number the first crop already accepted.
+    if (cell.reread && isNumericText(cell.text) && fitsColumn(cell.text, column)) continue;
     const decimal = decimalStyle(column) || ".";
     const leadingZero = !column.some((v) => /^[.,]\d/.test(v));
     let to = null;

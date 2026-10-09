@@ -7,9 +7,12 @@ export function normText(text) {
     .replace(/[‐-―−]/g, "-")
     .replace(/\s+/g, " ")
     .replace(/\s*([,.;:)])/g, "$1")
+    .replace(/(\d)\s+([.,])\s*(\d)/g, "$1$2$3")
+    .replace(/(\d)([.,])\s+(\d)/g, "$1$2$3")
     .replace(/[¹²³⁰⁴-⁹†‡*]+$/g, "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/\b([a-z])\s+(?=\d)/g, "$1");
 }
 
 export function tokens(text) {

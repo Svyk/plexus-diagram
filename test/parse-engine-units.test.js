@@ -234,6 +234,22 @@ test("detectStreamRuns finds a borderless numeric table with a bold header and r
   assert.equal(t.method, "stream");
 });
 
+test("detectStreamRuns does not bridge a stacked rate when the page already has a ruled table", () => {
+  // us-009: the indirect-rate lines sit under a ruled table. Two of them are single-spaced;
+  // the fringe rate is a wider gap. Bridging that gap made a second table (an ICDAR false positive).
+  const line = (words, base, size = 8) => {
+    const ws = words.map(([text, x0, x1]) => ({ text, x0, x1, base, size, y0: base - 7, y1: base + 1, bold: false, mathChars: 0, boldChars: 0, italicChars: 0, mathFontChars: 0 }));
+    return { words: ws, text: ws.map((w) => w.text).join(" "), x0: ws[0].x0, x1: Math.max(...ws.map((w) => w.x1)), y0: base - 7, y1: base + 1, base, size, chars: ws.reduce((n, w) => n + w.text.length, 0), bold: false, mathShare: 0 };
+  };
+  const lines = [
+    line([["Indirect Rate (c)/(d)", 72, 147], ["870,038", 217, 246]], 442),
+    line([["1,839,050", 210, 246], ["47.31%", 277, 305]], 454),
+    line([["Fringe Benefit Rate (b)/(a)", 72, 169], ["352,000", 210, 239], ["26.79%", 278, 305]], 476),
+  ];
+  assert.equal(detectStreamRuns(lines, { bridgeGaps: false }).length, 0);
+  assert.equal(detectStreamRuns(lines).length, 1, "the same lines still join when no ruled table claimed the page");
+});
+
 test("detectStreamRuns keeps a double-spaced numeric table and a repeated column head in one run", () => {
   const head = (base) => row([["Pressure", 50], ["0", 250], ["12", 310], ["15", 370]], base, 10);
   const data = (label, a, b, c, base) => row([[label, 50], [a, 250], [b, 310], [c, 370]], base, 10);

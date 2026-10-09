@@ -664,6 +664,299 @@
     "two-column",
     "typeset"
    ]
+  },
+  {
+   "id": "usda-electroculture-1926-p8",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 8,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p9",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 9,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p12",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 12,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p13",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 13,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p14",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 14,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p15",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 15,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "naca-diesel-viscosity-1929-p7",
+   "file": "naca-diesel-viscosity-1929.pdf",
+   "page": 7,
+   "class": [
+    "typewritten-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typewritten",
+    "ruled"
+   ]
+  },
+  {
+   "id": "naca-diesel-viscosity-1929-p9",
+   "file": "naca-diesel-viscosity-1929.pdf",
+   "page": 9,
+   "class": [
+    "typewritten-table",
+    "continued",
+    "spanning-header"
+   ],
+   "quality": [
+    "typewritten",
+    "ruled"
+   ]
+  },
+  {
+   "id": "naca-diesel-viscosity-1929-p6",
+   "file": "naca-diesel-viscosity-1929.pdf",
+   "page": 6,
+   "class": [
+    "typewritten-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typewritten",
+    "ruled"
+   ]
+  },
+  {
+   "id": "nbs-redwood-viscometer-1922-p21",
+   "file": "nbs-redwood-viscometer-1922.pdf",
+   "page": 21,
+   "class": [
+    "typeset-table",
+    "leaders"
+   ],
+   "quality": [
+    "typeset",
+    "ruled"
+   ]
+  },
+  {
+   "id": "nbs-redwood-viscometer-1922-p22",
+   "file": "nbs-redwood-viscometer-1922.pdf",
+   "page": 22,
+   "class": [
+    "typeset-table",
+    "leaders"
+   ],
+   "quality": [
+    "typeset",
+    "ruled"
+   ]
+  },
+  {
+   "id": "nbs-gas-burners-1921-p22",
+   "file": "nbs-gas-burners-1921.pdf",
+   "page": 22,
+   "class": [
+    "typeset-table",
+    "spanning-header",
+    "leaders"
+   ],
+   "quality": [
+    "typeset",
+    "ruled"
+   ]
+  },
+  {
+   "id": "nbs-wind-pressure-1930-p10",
+   "file": "nbs-wind-pressure-1930.pdf",
+   "page": 10,
+   "class": [
+    "typeset-table"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "low-dpi"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p5",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 5,
+   "class": [
+    "typeset-table",
+    "spanning-header",
+    "dense-numeric"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p11",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 11,
+   "class": [
+    "typeset-table",
+    "spanning-header"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "usda-electroculture-1926-p16",
+   "file": "usda-electroculture-1926.pdf",
+   "page": 16,
+   "class": [
+    "typeset-table",
+    "spanning-header",
+    "dense-numeric"
+   ],
+   "quality": [
+    "typeset",
+    "ruled",
+    "yellowed"
+   ]
+  },
+  {
+   "id": "naca-accelerometer-1922-p4",
+   "file": "naca-accelerometer-1922.pdf",
+   "page": 4,
+   "class": [
+    "text",
+    "typewritten"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "naca-accelerometer-1922-p5",
+   "file": "naca-accelerometer-1922.pdf",
+   "page": 5,
+   "class": [
+    "text",
+    "typewritten"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "naca-accelerometer-1922-p6",
+   "file": "naca-accelerometer-1922.pdf",
+   "page": 6,
+   "class": [
+    "text",
+    "typewritten"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "naca-ice-formation-1929-p4",
+   "file": "naca-ice-formation-1929.pdf",
+   "page": 4,
+   "class": [
+    "text",
+    "typewritten"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "naca-supercharger-1932-p10",
+   "file": "naca-supercharger-1932.pdf",
+   "page": 10,
+   "class": [
+    "text",
+    "typewritten"
+   ],
+   "quality": [
+    "typewritten"
+   ]
+  },
+  {
+   "id": "naca-pitching-charts-1933-p6",
+   "file": "naca-pitching-charts-1933.pdf",
+   "page": 6,
+   "class": [
+    "text",
+    "typewritten"
+   ],
+   "quality": [
+    "typewritten"
+   ]
   }
  ]
 }

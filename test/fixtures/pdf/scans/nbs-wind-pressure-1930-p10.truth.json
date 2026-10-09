@@ -1,0 +1,443 @@
+{
+ "id": "nbs-wind-pressure-1930-p10",
+ "source": "nbs-wind-pressure-1930.pdf page 10",
+ "class": [
+  "typeset-table"
+ ],
+ "quality": [
+  "typeset",
+  "ruled",
+  "low-dpi"
+ ],
+ "tables": [
+  {
+   "caption": "TABLE 2.—Velocity pressures at several wind speeds",
+   "rows": 13,
+   "cols": 4,
+   "headerRows": 1,
+   "cells": [
+    {
+     "r": 0,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "True wind speed (miles per hour)",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Velocity pressure (lbs./ft.²)",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "True wind speed (miles per hour)",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Velocity pressure (lbs./ft.²)",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.064",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "65",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10.81",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".256",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "70",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12.53",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "15",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": ".575",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "75",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "14.39",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "20",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.023",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "80",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "16.37",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "25",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.600",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "85",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "18.48",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "30",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.302",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "90",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "20.72",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "35",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.133",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "95",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "23.08",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "40",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.092",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "100",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "25.58",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "45",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5.179",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "105",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "28.20",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "50",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.394",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "110",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "30.95",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "55",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.737",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "115",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "33.83",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "60",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9.208",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "120",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "36.83",
+     "header": false
+    }
+   ]
+  }
+ ],
+ "figures": [],
+ "lines": [
+  "TABLE 2.—Velocity pressures at several wind speeds"
+ ],
+ "textComplete": false
+}

@@ -1,0 +1,843 @@
+{
+ "id": "naca-diesel-viscosity-1929-p6",
+ "source": "naca-diesel-viscosity-1929.pdf page 6",
+ "class": [
+  "typewritten-table",
+  "spanning-header"
+ ],
+ "quality": [
+  "typewritten",
+  "ruled"
+ ],
+ "tables": [
+  {
+   "caption": "TABLE I. Original Time Observations",
+   "rows": 12,
+   "cols": 9,
+   "headerRows": 2,
+   "cells": [
+    {
+     "r": 0,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 3,
+     "text": "Temp. 22.6°C",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 3,
+     "text": "Temp. 50°C",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 3,
+     "text": "Temp. 100°C",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Test No.",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Press. lb./sq.in.",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "To sec.",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Test No.",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Press. lb./sq.in.",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "To sec.",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Test No.",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Press. lb./sq.in.",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "To sec.",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.13",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "11",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.60",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "20",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.60",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12000",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "20.5",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3000",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5.17",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "21",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3000",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.00",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.27",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "13",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6000",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5.57",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "22",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6000",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.17",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12000",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "20.7",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "14",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9000",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.87",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "23",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9000",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.70",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.50",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "15",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12000",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "8.20",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "24",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12000",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.87",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3000",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "8.13",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "16",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9000",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.57",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "25",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9000",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.47",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6000",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "11.0",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "17",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6000",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.10",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "26",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6000",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.20",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "8",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9000",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "15.5",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "18",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3000",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5.20",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "27",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3000",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.00",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12000",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "21.3",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "19",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.60",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "28",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.67",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.60",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "",
+     "header": false
+    }
+   ]
+  }
+ ],
+ "figures": [],
+ "lines": [
+  "TABLE I. Original Time Observations"
+ ],
+ "textComplete": false
+}

@@ -1,0 +1,317 @@
+{
+ "id": "usda-electroculture-1926-p12",
+ "source": "usda-electroculture-1926.pdf page 12",
+ "class": [
+  "typeset-table",
+  "spanning-header"
+ ],
+ "quality": [
+  "typeset",
+  "ruled",
+  "yellowed"
+ ],
+ "tables": [
+  {
+   "caption": "TABLE 9.—Yields of winter wheat on plats following electrocultural treatment (positive charge), section B, Arlington Experiment Farm, in 1912",
+   "rows": 4,
+   "cols": 7,
+   "headerRows": 2,
+   "cells": [
+    {
+     "r": 0,
+     "c": 0,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "Plat",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 3,
+     "text": "Yields (pounds)",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 3,
+     "text": "Ratio of treated to control",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Shock",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Shock",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Grain",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Grain",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Straw",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Straw",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Treated",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3,465",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1,154",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2,311",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 4,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "1.05",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 5,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "1.04",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 6,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "1.06",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Control",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3,300",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1,114",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2,186",
+     "header": false
+    }
+   ]
+  },
+  {
+   "caption": "TABLE 10.—Yields of winter wheat on plats following electrocultural treatment (positive charge), section B, Arlington Experiment Farm, in 1913",
+   "rows": 4,
+   "cols": 5,
+   "headerRows": 2,
+   "cells": [
+    {
+     "r": 0,
+     "c": 0,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "Plat",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 2,
+     "text": "Yields (pounds)",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 2,
+     "text": "Ratio of treated to control",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Shock",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Shock",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Grain",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Grain",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Treated",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3,254",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "808",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 3,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "1.04",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 4,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "1.03",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Control",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3,139",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "782",
+     "header": false
+    }
+   ]
+  }
+ ],
+ "figures": [],
+ "lines": [
+  "TABLE 9.—Yields of winter wheat on plats following electrocultural treatment (positive charge), section B, Arlington Experiment Farm, in 1912",
+  "TABLE 10.—Yields of winter wheat on plats following electrocultural treatment (positive charge), section B, Arlington Experiment Farm, in 1913"
+ ],
+ "textComplete": false
+}

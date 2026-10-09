@@ -7124,6 +7124,7 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 
 .pxd-read .pxd-parse,
 .pxd-parse {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -7508,6 +7509,86 @@ body.bt-theme-dark .pxd-parse .pxd-parse__block--on,
   0% { opacity: 1; }
   50% { opacity: 0.15; }
   100% { opacity: 1; }
+}
+
+/* Cloud confirm. Anchored to the outline. Selection is a border, including in dark mode. No tinted fill. */
+.pxd-parse .pxd-cloud-confirm {
+  position: absolute;
+  z-index: 6;
+  top: 36px;
+  left: 8px;
+  right: 8px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100% - 44px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 10px;
+  background: var(--pxd-chrome-bg);
+  color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+}
+
+.pxd-parse .pxd-cloud-confirm__title {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.pxd-parse .pxd-cloud-confirm__region,
+.pxd-parse .pxd-cloud-confirm__pages,
+.pxd-parse .pxd-cloud-confirm__estimate,
+.pxd-parse .pxd-cloud-confirm__note {
+  margin: 0;
+}
+
+.pxd-parse .pxd-cloud-confirm__note {
+  color: var(--pxd-muted);
+  font-size: 12px;
+}
+
+.pxd-parse .pxd-cloud-confirm__tiers,
+.pxd-parse .pxd-cloud-confirm__scopes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pxd-parse .pxd-cloud-confirm button {
+  font: inherit;
+  color: var(--pxd-text);
+  background: transparent;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pxd-parse .pxd-cloud-confirm button:focus {
+  outline: 2px solid var(--pxd-accent);
+  outline-offset: 1px;
+}
+
+.pxd-parse .pxd-cloud-confirm__choice--on {
+  border-color: var(--pxd-border-strong);
+  background: transparent;
+}
+
+.pxd-parse .pxd-cloud-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pxd-parse .pxd-cloud-confirm__actions button {
+  text-align: center;
+}
+
+.pxd-parse .pxd-cloud-confirm__send {
+  border-color: var(--pxd-accent);
 }
 
 

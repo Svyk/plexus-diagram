@@ -12806,8 +12806,8 @@ var init_tooltip_text = __esm({
       "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),
       "parse.chip": e("Parse engine", "Built-in runs on this machine. Docling uses the local helper."),
       "parse.docling": e("Parse with Docling", "Send this PDF to the local helper. Nothing is sent until you press this."),
-      "parse.cloud": e("Read with LlamaParse", "Send this PDF to LlamaParse after you confirm the page count and the estimated cost. Nothing is sent until you confirm. LlamaParse is the main cloud read."),
-      "parse.mistral": e("Read with Mistral OCR", "Send this PDF to Mistral OCR after you confirm the page count and the estimated cost. No install. The browser calls Mistral directly. Tables are weaker than LlamaParse."),
+      "parse.cloud": e("Read with LlamaParse", "Opens a confirm in the outline. Nothing is sent until you press Send. LlamaParse is the main cloud read."),
+      "parse.mistral": e("Read with Mistral OCR", "Opens a confirm in the outline. Nothing is sent until you press Send. No install. The browser calls Mistral directly. Tables are weaker than LlamaParse."),
       "parse.docling-off": e("Local helper: off", "Open Engines (the gear) to set up or start the local helper."),
       "parse.docling-token": e("Local helper: wrong token", "Open Engines (the gear) and pair the local helper again."),
       "parse.docling-models": e("Local helper: downloading models", "The helper is downloading models. Parsing waits until they are ready."),
@@ -44098,7 +44098,11 @@ init_anydoc_to_parse();
 
 // src/host/cloud-parse.js
 var CREDIT_USD = 1.25 / 1e3;
-var LAYOUT_CREDITS = 3;
+var LAYOUT_CREDITS = 0;
+var CLOUD_CACHE_NOTE = "Free if parsed with the same options in the last 48 h";
+var CLOUD_LEAVES_NOTE = "The PDF leaves this device";
+var MISTRAL_DISABLED_MESSAGE = "Mistral OCR is not enabled for this key's workspace yet (0 requests per minute). Turn on billing for that workspace in console.mistral.ai.";
+var MISTRAL_RATE_MESSAGE = "rate limit, try again in a minute";
 var TIER_CREDITS = Object.freeze({
   fast: 1,
   cost_effective: 3,
@@ -44166,34 +44170,81 @@ function writeCloudPrefs(storage, prefs = {}) {
   storage.setItem(CLOUD_STORAGE.relay, next.relay);
   return { ...next };
 }
-function estimateCloudCost({ pages, tier, layout = true } = {}) {
+function estimateCloudCost({ pages, tier } = {}) {
   const count = Math.max(0, Math.floor(Number(pages) || 0));
   const perTier = TIER_CREDITS[tier] ?? TIER_CREDITS[DEFAULT_TIER];
-  const extra = layout ? LAYOUT_CREDITS : 0;
-  const creditsPerPage = perTier + extra;
-  const credits = count * creditsPerPage;
+  const credits = count * perTier;
   return {
     pages: count,
     tier: TIER_CREDITS[tier] ? tier : DEFAULT_TIER,
     tierCredits: perTier,
-    layoutCredits: extra,
-    creditsPerPage,
+    layoutCredits: LAYOUT_CREDITS,
+    creditsPerPage: perTier,
     credits,
     usd: credits * CREDIT_USD,
-    cacheNote: "free if parsed in the last 48 h"
+    cacheNote: CLOUD_CACHE_NOTE
   };
 }
-function money(usd) {
+function formatUsd(usd) {
   const n2 = Number(usd) || 0;
-  if (n2 >= 0.01) return `$${n2.toFixed(2)}`;
-  return `$${n2.toFixed(4)}`;
+  if (n2 >= 1) return `$${n2.toFixed(2)}`;
+  const text3 = n2.toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
+  return text3 === "0" ? "$0.00" : `$${text3}`;
 }
-function cloudConfirmMessage({ pages, tier, region } = {}) {
-  const est = estimateCloudCost({ pages, tier, layout: true });
-  const where = region === "eu" ? "EU" : "US";
-  const label = TIER_LABELS[est.tier] || est.tier;
-  const pageText = est.pages ? `${est.pages} page${est.pages === 1 ? "" : "s"}` : "page count unknown";
-  return `Send this PDF to LlamaParse (${where}, ${label})? ${pageText}, about ${money(est.usd)} (${est.credits} credits: ${est.tierCredits} per page plus ${est.layoutCredits} for layout). The pricing FAQ says layout is free in v2; this estimate includes it. Free if this file was parsed with the same options in the last 48 hours. The PDF leaves this device.`;
+function defaultCloudScope(pageCount) {
+  const n2 = Number(pageCount);
+  return Number.isFinite(n2) && n2 > 10 ? "current" : "all";
+}
+function tierChoiceLabel(tier) {
+  const credits = TIER_CREDITS[tier];
+  const name = TIER_LABELS[tier] || String(tier || "");
+  if (!credits) return name;
+  const word = credits === 1 ? "credit" : "credits";
+  return `${name} · ${credits} ${word} · ${formatUsd(credits * CREDIT_USD)} / page`;
+}
+function cloudUsageCredits(provider) {
+  const usage = provider?.usage || provider?.job?.usage || {};
+  const credits = Number(usage.credits ?? usage.total_credits ?? usage.credit_usage);
+  if (!Number.isFinite(credits) || credits < 0) return null;
+  return credits;
+}
+function cloudSheetModel({
+  provider = "llamaparse",
+  region = "us",
+  tier = DEFAULT_TIER,
+  pageCount = 0,
+  currentPage = 1,
+  scope = null
+} = {}) {
+  const llama = provider !== "mistral";
+  const total = Math.max(0, Math.floor(Number(pageCount) || 0));
+  const page = Math.max(1, Math.floor(Number(currentPage) || 1));
+  const chosen = scope === "current" || scope === "all" ? scope : defaultCloudScope(total);
+  const billed = chosen === "current" ? 1 : total;
+  const safeTier = Object.prototype.hasOwnProperty.call(TIER_CREDITS, tier) ? tier : DEFAULT_TIER;
+  const est = llama ? estimateCloudCost({ pages: billed, tier: safeTier }) : estimateMistralCost({ pages: billed });
+  const pageWord = (n2) => n2 === 1 ? "1 page" : `${n2} pages`;
+  let estimate = "Page count unknown";
+  if (billed) {
+    estimate = llama ? `${pageWord(billed)}, ${est.credits} ${est.credits === 1 ? "credit" : "credits"}, about ${formatUsd(est.usd)}` : `${pageWord(billed)}, about ${formatUsd(est.usd)} ($4 / 1,000 pages, model card checked ${MISTRAL_PRICE_CHECKED})`;
+  }
+  return {
+    provider: llama ? "llamaparse" : "mistral",
+    title: llama ? "LlamaParse" : "Mistral OCR",
+    region: llama ? region === "eu" ? "EU" : "US" : "",
+    tier: llama ? safeTier : "",
+    tiers: llama ? Object.keys(TIER_CREDITS).map((id) => ({ id, label: tierChoiceLabel(id), selected: id === safeTier })) : [],
+    scope: chosen,
+    currentPage: page,
+    pageCount: total,
+    pageLabel: total ? pageWord(total) : "Page count unknown",
+    thisPage: "This page only",
+    allPages: total ? `All ${pageWord(total)}` : "All pages",
+    estimate,
+    cache: llama ? CLOUD_CACHE_NOTE : "",
+    leaves: CLOUD_LEAVES_NOTE,
+    pages: chosen === "current" ? String(page) : ""
+  };
 }
 function httpsUrl(value) {
   const url = String(value || "").trim().replace(/\/$/, "");
@@ -44239,10 +44290,39 @@ function estimateMistralCost({ pages } = {}) {
     checked: MISTRAL_PRICE_CHECKED
   };
 }
-function mistralConfirmMessage({ pages } = {}) {
-  const est = estimateMistralCost({ pages });
-  const pageText = est.pages ? `${est.pages} page${est.pages === 1 ? "" : "s"}` : "page count unknown";
-  return `Send this PDF to Mistral OCR? ${pageText}, about ${money(est.usd)} ($4 / 1,000 pages, model card checked ${est.checked}). Tables are weaker than LlamaParse. The PDF leaves this device.`;
+function headerValue(response, name) {
+  const headers = response?.headers;
+  if (!headers) return null;
+  const lower3 = String(name).toLowerCase();
+  if (typeof headers.get === "function") {
+    try {
+      const value = headers.get(name) ?? headers.get(lower3);
+      if (value != null && String(value).trim() !== "") return String(value).trim();
+    } catch {
+    }
+  }
+  const direct = headers[lower3] ?? headers[name];
+  if (direct != null && String(direct).trim() !== "") return String(direct).trim();
+  return null;
+}
+function zeroLimitHint(body, depth = 0) {
+  if (body == null || depth > 4) return false;
+  if (typeof body === "string") {
+    return /0\s*requests?\s*(per|\/)\s*minute/i.test(body) || /limit(?:\s+\w+){0,4}\s*(?:is|of|:|=)\s*0\b/i.test(body);
+  }
+  if (typeof body !== "object") return false;
+  for (const [key, value] of Object.entries(body)) {
+    if (/limit/i.test(key) && String(value).trim() !== "" && Number(value) === 0) return true;
+    if (zeroLimitHint(value, depth + 1)) return true;
+  }
+  return false;
+}
+function mistral429Message(response, body) {
+  const limit = headerValue(response, "x-ratelimit-limit-req-minute");
+  if (limit != null) return Number(limit) === 0 ? MISTRAL_DISABLED_MESSAGE : MISTRAL_RATE_MESSAGE;
+  const code = body?.code ?? body?.error?.code;
+  if (String(code ?? "") === "1300" && zeroLimitHint(body)) return MISTRAL_DISABLED_MESSAGE;
+  return MISTRAL_RATE_MESSAGE;
 }
 function pageSpec(value) {
   if (value == null || value === "") return "";
@@ -44296,18 +44376,24 @@ async function readSSE2(response, onEvent) {
   }
   if (buf.trim()) dispatch(buf);
 }
-function statusError(status, body, name = "LlamaParse") {
+function statusError(status, body, name = "LlamaParse", response = null) {
   if (status === 401) return fail2("unauthorized", `${name} rejected the key`, 401);
   if (status === 402) return fail2("credits", `${name} is out of credits`, 402);
-  if (status === 429) return fail2("rate", `${name} rate limit`, 429);
+  if (status === 429) {
+    const message2 = String(name).startsWith("Mistral") ? mistral429Message(response, body) : `${name} rate limit`;
+    return fail2("rate", message2, 429);
+  }
   const message = body?.detail || body?.error || body?.message || `${name} ${status}`;
   return fail2("provider", String(message), status);
 }
-async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, signal, onProgress }) {
+async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, tier, pages, signal, onProgress }) {
+  const options = { region, tier, version: "latest" };
+  const spec = pageSpec(pages);
+  if (spec) options.pages = spec;
   const headers = {
     Authorization: `Bearer ${transport.token}`,
     "X-Pxd-Cloud-Key": apiKey,
-    "X-Pxd-Options": JSON.stringify({ region, tier, version: "latest" }),
+    "X-Pxd-Options": JSON.stringify(options),
     "Content-Type": "application/pdf"
   };
   let jobId = "";
@@ -44345,17 +44431,21 @@ async function helperParse({ fetch: fetch2, transport, bytes, apiKey, region, ti
     throw statusError(response.status, body);
   }
   let provider = null;
-  await readSSE2(response, (event, payload) => {
-    if (event === "started") jobId = payload?.job || jobId;
-    else if (event === "progress") {
-      if (payload?.job) jobId = payload.job;
-      onProgress?.(payload);
-    } else if (event === "result") provider = payload;
-    else if (event === "error") {
-      const error = fail2(payload?.code || "provider", payload?.message || "cloud parse failed", payload?.status);
-      throw error;
-    }
-  });
+  try {
+    await readSSE2(response, (event, payload) => {
+      if (event === "started") jobId = payload?.job || jobId;
+      else if (event === "progress") {
+        if (payload?.job) jobId = payload.job;
+        onProgress?.(payload);
+      } else if (event === "result") provider = payload;
+      else if (event === "error") {
+        throw fail2(payload?.code || "provider", payload?.message || "cloud parse failed", payload?.status);
+      }
+    });
+  } catch (error) {
+    if (signal?.aborted) throw fail2("cancelled", "cancelled", 499);
+    throw error;
+  }
   if (!provider) throw fail2("bad-response", "cloud parse returned no result");
   return provider;
 }
@@ -44452,35 +44542,41 @@ async function parseCloud({
   if (!key) throw fail2("no-key", "Add a LlamaParse key in Engines. It stays on this device.");
   if (!Object.prototype.hasOwnProperty.call(TIER_CREDITS, tier)) throw fail2("bad-tier", "bad tier");
   const where = region === "eu" ? "eu" : "us";
-  if (transport.kind === "helper") {
-    const provider = await helperParse({
-      fetch: fetchFn,
-      transport,
-      bytes,
-      apiKey: key,
-      region: where,
-      tier,
-      signal,
-      onProgress
-    });
-    return { provider, transport: "helper" };
-  }
-  if (transport.kind === "relay") {
-    const provider = await relayParse({
-      fetch: fetchFn,
-      transport,
-      bytes,
-      apiKey: key,
-      region: where,
-      tier,
-      pages,
-      signal,
-      onProgress,
-      sleep,
-      now: now3,
-      timeoutMs
-    });
-    return { provider, transport: "relay" };
+  try {
+    if (transport.kind === "helper") {
+      const provider = await helperParse({
+        fetch: fetchFn,
+        transport,
+        bytes,
+        apiKey: key,
+        region: where,
+        tier,
+        pages,
+        signal,
+        onProgress
+      });
+      return { provider, transport: "helper" };
+    }
+    if (transport.kind === "relay") {
+      const provider = await relayParse({
+        fetch: fetchFn,
+        transport,
+        bytes,
+        apiKey: key,
+        region: where,
+        tier,
+        pages,
+        signal,
+        onProgress,
+        sleep,
+        now: now3,
+        timeoutMs
+      });
+      return { provider, transport: "relay" };
+    }
+  } catch (error) {
+    if (signal?.aborted) throw error?.code === "cancelled" ? error : fail2("cancelled", "cancelled", 499);
+    throw error;
   }
   throw fail2("transport", "unknown cloud transport");
 }
@@ -44561,7 +44657,7 @@ async function parseMistral({
       signal: ctrl.signal
     });
     const body = await response.json().catch(() => null);
-    if (response.status < 200 || response.status >= 300) throw statusError(response.status, body, "Mistral OCR");
+    if (response.status < 200 || response.status >= 300) throw statusError(response.status, body, "Mistral OCR", response);
     if (!body || !Array.isArray(body.pages)) throw fail2("bad-response", "Mistral OCR returned no pages");
     return { provider: body, transport: "direct" };
   } catch (error) {
@@ -44573,6 +44669,227 @@ async function parseMistral({
     clearTimeout(timer);
     signal?.removeEventListener?.("abort", onAbort);
   }
+}
+
+// src/view/cloud-confirm.js
+function focusables(root) {
+  const nodes = root.querySelectorAll?.("button, [href], input, select, textarea") || [];
+  return [...nodes].filter((node2) => node2.getAttribute?.("disabled") == null && node2.getAttribute?.("tabindex") !== "-1");
+}
+function focusEl4(node2) {
+  try {
+    node2?.focus?.();
+  } catch {
+  }
+}
+function openCloudConfirm({
+  doc = globalThis.document,
+  anchor = null,
+  onTier = null,
+  provider = "llamaparse",
+  region = "us",
+  tier = "agentic",
+  pageCount = 0,
+  currentPage = 1,
+  scope = null
+} = {}) {
+  let chosenTier = tier;
+  let chosenScope = scope;
+  let done = false;
+  let resolvePromise = () => {
+  };
+  const promise = new Promise((resolve) => {
+    resolvePromise = resolve;
+  });
+  const modelNow = () => cloudSheetModel({
+    provider,
+    region,
+    tier: chosenTier,
+    pageCount,
+    currentPage,
+    scope: chosenScope
+  });
+  const initial = modelNow();
+  const sheet = doc.createElement("div");
+  sheet.className = "pxd-cloud-confirm pxd-chrome";
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-modal", "true");
+  sheet.setAttribute("aria-label", `Send this PDF to ${initial.title}`);
+  const stop3 = (event) => event.stopPropagation?.();
+  sheet.addEventListener("pointerdown", stop3);
+  sheet.addEventListener("mousedown", stop3);
+  sheet.addEventListener("click", stop3);
+  const title = doc.createElement("div");
+  title.className = "pxd-cloud-confirm__title";
+  title.setAttribute("data-cloud-provider", initial.provider);
+  title.textContent = initial.title;
+  sheet.append(title);
+  if (initial.region) {
+    const where = doc.createElement("p");
+    where.className = "pxd-cloud-confirm__region";
+    where.setAttribute("data-cloud-region", initial.region);
+    where.textContent = `Region · ${initial.region}`;
+    sheet.append(where);
+  }
+  const tiers = doc.createElement("div");
+  tiers.className = "pxd-cloud-confirm__tiers";
+  tiers.setAttribute("role", "radiogroup");
+  tiers.setAttribute("aria-label", "Tier");
+  const tierButtons = [];
+  for (const row4 of initial.tiers) {
+    const button2 = doc.createElement("button");
+    button2.type = "button";
+    button2.className = "pxd-cloud-confirm__choice";
+    button2.setAttribute("role", "radio");
+    button2.setAttribute("data-tier", row4.id);
+    button2.textContent = row4.label;
+    button2.addEventListener("click", (event) => {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      if (chosenTier === row4.id) return;
+      chosenTier = row4.id;
+      paint2();
+      try {
+        onTier?.(row4.id);
+      } catch {
+      }
+    });
+    tierButtons.push(button2);
+    tiers.append(button2);
+  }
+  if (tierButtons.length) sheet.append(tiers);
+  const pages = doc.createElement("p");
+  pages.className = "pxd-cloud-confirm__pages";
+  pages.setAttribute("data-cloud-pages", "");
+  pages.textContent = initial.pageLabel;
+  sheet.append(pages);
+  const scopes = doc.createElement("div");
+  scopes.className = "pxd-cloud-confirm__scopes";
+  scopes.setAttribute("role", "radiogroup");
+  scopes.setAttribute("aria-label", "Pages");
+  const scopeButtons = [];
+  for (const [id, label] of [["current", initial.thisPage], ["all", initial.allPages]]) {
+    const button2 = doc.createElement("button");
+    button2.type = "button";
+    button2.className = "pxd-cloud-confirm__choice";
+    button2.setAttribute("role", "radio");
+    button2.setAttribute("data-scope", id);
+    button2.textContent = label;
+    button2.addEventListener("click", (event) => {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      chosenScope = id;
+      paint2();
+    });
+    scopeButtons.push(button2);
+    scopes.append(button2);
+  }
+  sheet.append(scopes);
+  const estimate = doc.createElement("p");
+  estimate.className = "pxd-cloud-confirm__estimate";
+  estimate.setAttribute("data-cloud-estimate", "");
+  sheet.append(estimate);
+  if (initial.cache) {
+    const cache = doc.createElement("p");
+    cache.className = "pxd-cloud-confirm__note";
+    cache.setAttribute("data-cloud-cache", "");
+    cache.textContent = initial.cache;
+    sheet.append(cache);
+  }
+  const leaves = doc.createElement("p");
+  leaves.className = "pxd-cloud-confirm__note";
+  leaves.setAttribute("data-cloud-leaves", "");
+  leaves.textContent = initial.leaves;
+  sheet.append(leaves);
+  const actions = doc.createElement("div");
+  actions.className = "pxd-cloud-confirm__actions";
+  const cancel = doc.createElement("button");
+  cancel.type = "button";
+  cancel.className = "pxd-cloud-confirm__cancel";
+  cancel.setAttribute("data-cloud-cancel", "");
+  cancel.textContent = "Cancel";
+  const send = doc.createElement("button");
+  send.type = "button";
+  send.className = "pxd-cloud-confirm__send";
+  send.setAttribute("data-cloud-send", "");
+  send.textContent = "Send";
+  const press = (event, run) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    run();
+  };
+  cancel.addEventListener("click", (event) => press(event, () => finish({ ok: false })));
+  send.addEventListener("click", (event) => press(event, () => finish(answer())));
+  actions.append(cancel, send);
+  sheet.append(actions);
+  function paint2() {
+    const model = modelNow();
+    estimate.textContent = model.estimate;
+    for (const button2 of tierButtons) {
+      const on = button2.getAttribute("data-tier") === model.tier;
+      button2.classList.toggle("pxd-cloud-confirm__choice--on", on);
+      button2.setAttribute("aria-checked", on ? "true" : "false");
+    }
+    for (const button2 of scopeButtons) {
+      const on = button2.getAttribute("data-scope") === model.scope;
+      button2.classList.toggle("pxd-cloud-confirm__choice--on", on);
+      button2.setAttribute("aria-checked", on ? "true" : "false");
+    }
+  }
+  function answer() {
+    const model = modelNow();
+    return { ok: true, tier: model.tier, scope: model.scope, pages: model.pages };
+  }
+  function cycle(backward) {
+    const list = focusables(sheet);
+    if (!list.length) return;
+    let index = list.indexOf(doc.activeElement);
+    if (index < 0) index = backward ? 0 : -1;
+    const next = list[(index + (backward ? -1 : 1) + list.length) % list.length];
+    focusEl4(next);
+  }
+  const win = doc.defaultView;
+  function onKey(event) {
+    if (done) return;
+    event.stopPropagation?.();
+    event.stopImmediatePropagation?.();
+    if (event.key === "Escape") {
+      event.preventDefault?.();
+      finish({ ok: false });
+    } else if (event.key === "Enter") {
+      event.preventDefault?.();
+      finish(answer());
+    } else if (event.key === "Tab") {
+      event.preventDefault?.();
+      cycle(Boolean(event.shiftKey));
+    }
+  }
+  function finish(value) {
+    if (done) return;
+    done = true;
+    try {
+      win?.removeEventListener?.("keydown", onKey, true);
+    } catch {
+    }
+    try {
+      sheet.removeEventListener?.("keydown", onKey);
+    } catch {
+    }
+    try {
+      sheet.remove();
+    } catch {
+    }
+    resolvePromise(value);
+  }
+  paint2();
+  (anchor || doc.body)?.append?.(sheet);
+  try {
+    win?.addEventListener?.("keydown", onKey, true);
+  } catch {
+  }
+  sheet.addEventListener("keydown", onKey);
+  focusEl4(send);
+  return { promise, close: () => finish({ ok: false }), el: sheet };
 }
 
 // src/model/cloud-to-parse.js
@@ -45464,7 +45781,7 @@ function defaultRangeChoice(pageCount) {
 function cloudLabel(provider) {
   return provider === "mistral" ? "Mistral OCR" : "LlamaParse";
 }
-function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
+function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "", credits = null } = {}) {
   if (phase !== "running" && engine === "anydoc") {
     if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
     return { text: "Alternative read" };
@@ -45480,7 +45797,14 @@ function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = nu
   if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
   if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
   if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
-  if (engine === "cloud" && ms != null) return { text: `${cloudLabel(provider)} · ${formatSeconds(ms)}` };
+  if (engine === "cloud" && ms != null) {
+    const text3 = `${cloudLabel(provider)} · ${formatSeconds(ms)}`;
+    const n2 = Number(credits);
+    if (provider !== "mistral" && Number.isFinite(n2) && n2 >= 0) {
+      return { text: text3, tip: `${text3} · ${n2} ${n2 === 1 ? "credit" : "credits"}` };
+    }
+    return { text: text3 };
+  }
   if (engine === "cloud") return { text: cloudLabel(provider) };
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
@@ -45700,8 +46024,7 @@ function createParseView({
   ghostRoot = null,
   ghostPane = null,
   anydoc = null,
-  fetch: fetchImpl = null,
-  confirmCloud = null
+  fetch: fetchImpl = null
 } = {}) {
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
@@ -46177,7 +46500,8 @@ ${sourceAttrString(source)}` : markdown;
       ms: phase === "running" ? null : parsed?.stats?.ms,
       page: progress.page,
       pageCount: progress.pageCount,
-      helper: phase === "running" ? "" : helperState
+      helper: phase === "running" ? "" : helperState,
+      credits: phase === "running" ? null : parsed?.stats?.credits
     });
     chip.textContent = state.text;
     chip.title = state.tip || "";
@@ -47108,6 +47432,33 @@ ${sourceAttrString(source)}` : markdown;
     else phase = "idle";
     paintChip();
   }
+  let cloudConfirm = null;
+  function closeCloudConfirm() {
+    const handle = cloudConfirm;
+    cloudConfirm = null;
+    try {
+      handle?.close?.();
+    } catch {
+    }
+  }
+  function askCloud(spec) {
+    closeCloudConfirm();
+    const handle = openCloudConfirm({
+      doc,
+      anchor: root,
+      ...spec,
+      onTier(next) {
+        try {
+          writeCloudPrefs(storage, { tier: next });
+        } catch {
+        }
+      }
+    });
+    cloudConfirm = handle;
+    return handle.promise.finally(() => {
+      if (cloudConfirm === handle) cloudConfirm = null;
+    });
+  }
   function cloudToast(error, provider) {
     if (error?.code === "cancelled" || error?.code === "confirm") return;
     const name = provider === "mistral" ? "Mistral OCR" : "LlamaParse";
@@ -47149,15 +47500,15 @@ ${sourceAttrString(source)}` : markdown;
       }
       pages = Number(pdf?.numPages) || 0;
     }
-    const message = cloudConfirmMessage({ pages, tier: prefs.tier, region: prefs.region });
-    const ask = confirmCloud || doc.defaultView?.confirm?.bind?.(doc.defaultView);
-    let ok = false;
-    try {
-      ok = ask?.(message) === true;
-    } catch {
-      ok = false;
-    }
-    if (!ok) return;
+    const currentPage = Math.max(1, Math.floor(Number(pageNow?.()) || 1));
+    const answer = await askCloud({
+      provider: "llamaparse",
+      region: prefs.region,
+      tier: prefs.tier,
+      pageCount: pages,
+      currentPage
+    });
+    if (dead || !answer?.ok) return;
     const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
     cancel();
     const ctrl = new AbortController();
@@ -47176,7 +47527,8 @@ ${sourceAttrString(source)}` : markdown;
         bytes,
         apiKey: prefs.key,
         region: prefs.region,
-        tier: prefs.tier,
+        tier: answer.tier || prefs.tier,
+        pages: answer.pages || void 0,
         confirmed: true,
         signal: ctrl.signal,
         onProgress: (info) => {
@@ -47186,7 +47538,9 @@ ${sourceAttrString(source)}` : markdown;
         }
       });
       const sha = parsed?.sha256 || await sha256Hex(bytes);
-      const docResult = llamaparseToParse(result.provider, { sha256: sha, tier: prefs.tier, region: prefs.region });
+      const docResult = llamaparseToParse(result.provider, { sha256: sha, tier: answer.tier || prefs.tier, region: prefs.region });
+      const credits = cloudUsageCredits(result.provider);
+      if (credits != null) docResult.stats = { ...docResult.stats || {}, credits };
       if (ctrl.signal.aborted) return;
       await finishDoc(docResult, now3() - started);
     } catch (error) {
@@ -47214,15 +47568,13 @@ ${sourceAttrString(source)}` : markdown;
       }
       pages = Number(pdf?.numPages) || 0;
     }
-    const message = mistralConfirmMessage({ pages });
-    const ask = confirmCloud || doc.defaultView?.confirm?.bind?.(doc.defaultView);
-    let ok = false;
-    try {
-      ok = ask?.(message) === true;
-    } catch {
-      ok = false;
-    }
-    if (!ok) return;
+    const currentPage = Math.max(1, Math.floor(Number(pageNow?.()) || 1));
+    const answer = await askCloud({
+      provider: "mistral",
+      pageCount: pages,
+      currentPage
+    });
+    if (dead || !answer?.ok) return;
     const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
     cancel();
     const ctrl = new AbortController();
@@ -47239,6 +47591,7 @@ ${sourceAttrString(source)}` : markdown;
         fetch: fetchFn,
         bytes,
         apiKey: key,
+        pages: answer.pages || void 0,
         confirmed: true,
         signal: ctrl.signal
       });
@@ -47290,6 +47643,7 @@ ${sourceAttrString(source)}` : markdown;
     paintChip();
   }
   function onKey(event) {
+    if (root.querySelector?.(".pxd-cloud-confirm")) return;
     const owned = parseOwnsKey(event, root, pointerTarget);
     const command = keyCommand(event, { textEntry: isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement), owned });
     if (!command) return;
@@ -47722,6 +48076,7 @@ ${sourceAttrString(source)}` : markdown;
     },
     dispose() {
       dead = true;
+      closeCloudConfirm();
       cancel();
       try {
         cropObserver?.disconnect();
@@ -53641,7 +53996,7 @@ function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, host
 }
 
 // src/view/view-dialog.js
-function focusEl4(el) {
+function focusEl5(el) {
   if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
   try {
     el.focus({ preventScroll: true });
@@ -53730,7 +54085,7 @@ function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel = "", 
       event.stopPropagation();
       const back = opener;
       cancelDialog();
-      focusEl4(back);
+      focusEl5(back);
       return;
     }
     if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -60643,7 +60998,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
 }
 
 // src/view/shortcut-sheet.js
-function focusEl5(el) {
+function focusEl6(el) {
   if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
   try {
     el.focus({ preventScroll: true });
@@ -60722,7 +61077,7 @@ function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHOR
       event.preventDefault();
       const back = opener;
       close();
-      focusEl5(back);
+      focusEl6(back);
     });
     root.append(sheet);
     try {

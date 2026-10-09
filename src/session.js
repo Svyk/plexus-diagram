@@ -1,5 +1,7 @@
 import { namespaceParent } from "./model/namespace.js";
-import { isContainerString, parseRegion } from "./model/regions.js";
+import { CONTAINER_STRING, isContainerString, parseRegion } from "./model/regions.js";
+import { imageRegionString } from "./model/image-region.js";
+import { edgeMayTarget, endpointKindOf, imageSourceOf, regionCaption } from "./model/endpoints.js";
 import { planPinWrites, sourceAttrString } from "./model/pdf-pin.js";
 import { backgroundImage, calendarLayout, cardTemplatePlan, zoomThreshold } from "./model/section6.js";
 import { dateSource } from "./model/timeline.js";
@@ -390,6 +392,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   let editingUid = null;
   let rects = new Map();
   let emitted = null;
+  let dropQueued = false;
   let rix = null;
 
   const highlightWatches = new Map();
@@ -518,10 +521,40 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     if (node) node[STR] = string;
   };
 
+  // An edge that was on the board and then vanished takes the edges that used it as an
+  // end with it. The first open has nothing to compare, so a dangling arrow stays put
+  // until a later reconcile sees the target disappear. Ordinary missing cards are not edges.
+  function queueDependentDrops(prev, next) {
+    if (dropQueued || !prev?.edges || !next?.edges) return;
+    const gone = [];
+    for (const id of prev.edges.keys()) if (!next.edges.has(id)) gone.push(id);
+    if (!gone.length) return;
+    const victims = [];
+    for (const edge of next.edges.values()) {
+      if (gone.includes(edge.from) || gone.includes(edge.to)) victims.push(edge.uid);
+    }
+    if (!victims.length) return;
+    dropQueued = true;
+    const lost = new Set(gone);
+    queueMicrotask(() => {
+      dropQueued = false;
+      if (destroyed || !board) return;
+      const still = victims.filter((id) => {
+        const edge = board.edges.get(id);
+        return edge && (lost.has(edge.from) || lost.has(edge.to));
+      });
+      if (!still.length) return;
+      txn((t) => {
+        for (const id of still) if (board.edges.has(id)) t.del(id);
+      });
+    });
+  }
+
   const publish = () => {
     rebuild();
     if (!board) return null;
-    const diff = diffBoards(emitted, board);
+    const prev = emitted;
+    const diff = diffBoards(prev, board);
     emitted = board;
     if (diff.structural || diff.dirty.size) emit("change", diff);
     recomputeLinks(false);
@@ -530,6 +563,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       linkRefs = nextRefs;
       refreshLinks();
     }
+    queueDependentDrops(prev, board);
     return diff;
   };
 
@@ -1045,6 +1079,26 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
   function edgeStringFor(from, to, dir, label, srcBlock, dstBlock) {
     return edgeString({ srcRef: refOf(from), dstRef: refOf(to), dir, label, srcBlock, dstBlock });
+  }
+
+  // The {{[[plexus-regions]]}} child of the source image, plus how many image regions it already holds.
+  function regionsContainerOf(item, source) {
+    let nodes = [];
+    try { nodes = host.pullTree?.(source.uid, 2, 200) || []; } catch { nodes = []; }
+    if (!nodes.length && source.uid === item?.uid) nodes = item.content || [];
+    let container = null;
+    let count = 0;
+    for (const node of nodes || []) {
+      const string = node?.[":block/string"] ?? node?.string ?? "";
+      if (!isContainerString(string)) continue;
+      container = node[":block/uid"] ?? node.uid ?? null;
+      const kids = node?.[":block/children"] ?? node?.children ?? [];
+      for (const kid of kids) {
+        if (endpointKindOf(kid?.[":block/string"] ?? kid?.string ?? "") === "region") count += 1;
+      }
+      break;
+    }
+    return { container, count };
   }
 
   // ---- auto-fit ----
@@ -2470,7 +2524,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
     addEdge({ from, to, fromSide, toSide, label = "", dir = "one", fromBlock, toBlock } = {}) {
       return txn((t) => {
-        if (!from || !to || from === to || !board.items.has(from) || !board.items.has(to)) return null;
+        if (!from || !to || from === to) return null;
+        const fromItem = board.items.has(from);
+        const toItem = board.items.has(to);
+        const fromEdge = !fromItem ? board.edges.get(from) : null;
+        const toEdge = !toItem ? board.edges.get(to) : null;
+        // One end may be an edge whose own target is a card. Both ends as edges is a second level.
+        if (fromEdge && toEdge) return null;
+        if (!fromItem && !(fromEdge && edgeMayTarget(fromEdge, board.edges))) return null;
+        if (!toItem && !(toEdge && edgeMayTarget(toEdge, board.edges))) return null;
+        if (fromEdge) fromBlock = undefined;
+        if (toEdge) toBlock = undefined;
         const props = serializeEdge({ from, to, dir, fromSide, toSide, fromBlock, toBlock });
         const existing = [...board.edges.values()].find((e) => e.from === from && e.to === to && (e.fromBlock ?? "") === (props.fromBlock ?? "") && (e.toBlock ?? "") === (props.toBlock ?? ""));
         if (existing && existing.dir === dir) return existing.uid;
@@ -2604,12 +2668,23 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const edge = board.edges.get(id);
         if (!edge) return;
         const { label, ...rest } = patch;
+        const nextFrom = rest.from ?? edge.from;
+        const nextTo = rest.to ?? edge.to;
+        // A label edit on an arrow whose card is already missing still saves. Retargeting does not.
+        if (rest.from !== undefined || rest.to !== undefined) {
+          if (!nextFrom || !nextTo || nextFrom === nextTo || nextFrom === id || nextTo === id) return;
+          const fromEdge = board.items.has(nextFrom) ? null : board.edges.get(nextFrom);
+          const toEdge = board.items.has(nextTo) ? null : board.edges.get(nextTo);
+          if (fromEdge && toEdge) return;
+          if (fromEdge && !edgeMayTarget(fromEdge, board.edges)) return;
+          if (toEdge && !edgeMayTarget(toEdge, board.edges)) return;
+          if (!board.items.has(nextFrom) && !fromEdge) return;
+          if (!board.items.has(nextTo) && !toEdge) return;
+        }
         const next = edgePlexus(id, rest);
         t.props(id, next);
         const dir = rest.dir ?? edge.dir;
         const nextLabel = label ?? edge.label;
-        const nextFrom = rest.from ?? edge.from;
-        const nextTo = rest.to ?? edge.to;
         const merged = normalizeEdge(next);
         const blocksChanged = (merged.fromBlock ?? "") !== (edge.fromBlock ?? "") || (merged.toBlock ?? "") !== (edge.toBlock ?? "");
         if (rest.dir !== undefined && rest.dir !== edge.dir || label !== undefined && label !== edge.label || blocksChanged || nextFrom !== edge.from || nextTo !== edge.to) {
@@ -2629,7 +2704,61 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
     deleteEdges(uids) {
       return txn((t) => {
-        for (const id of uids) if (board.edges.has(id)) t.del(id);
+        const drop = new Set();
+        for (const id of uids || []) if (board.edges.has(id)) drop.add(id);
+        let grew = true;
+        while (grew) {
+          grew = false;
+          for (const edge of board.edges.values()) {
+            if (drop.has(edge.uid)) continue;
+            if (drop.has(edge.from) || drop.has(edge.to)) { drop.add(edge.uid); grew = true; }
+          }
+        }
+        for (const id of drop) t.del(id);
+      });
+    },
+
+    // Region outline plus the arrow, one undo. The region lives under the source image,
+    // which may be a block the card only references. A page the user cannot write is refused.
+    addRegionEndpoint({ from, to, frac, fromBlock, fromSide, toSide, label = "" } = {}) {
+      return txn((t) => {
+        if (!from || !to || from === to || !board.items.has(from) || !board.items.has(to)) return null;
+        const item = board.items.get(to);
+        const read = (id) => {
+          try { return host.blockString?.(id); } catch { return null; }
+        };
+        const source = imageSourceOf(item, read);
+        if (!source.ok) {
+          emit("toast", { message: source.reason === "unread" ? "That image is on a page you can't edit." : "That card is not an image." });
+          return null;
+        }
+        if (source.viaRef && typeof host.canEdit === "function") {
+          let writable = true;
+          try { writable = host.canEdit(source.uid) !== false; } catch { writable = false; }
+          if (!writable) {
+            emit("toast", { message: "That image is on a page you can't edit." });
+            return null;
+          }
+        }
+        const found = regionsContainerOf(item, source);
+        const caption = regionCaption(label, found.count);
+        const string = imageRegionString(source.uid, frac, caption);
+        if (!string) return null;
+        const parent = found.container || t.create({
+          parent: source.uid,
+          order: "last",
+          string: CONTAINER_STRING,
+          plexus: { type: "regions" },
+          open: false,
+        });
+        const regionUid = t.create({ parent, order: "last", string });
+        const container = ensureContainer(t);
+        return t.create({
+          parent: container,
+          order: "last",
+          string: edgeStringFor(from, to, "one", label, fromBlock, regionUid),
+          plexus: serializeEdge({ from, to, dir: "one", fromSide, toSide, fromBlock, toBlock: regionUid }),
+        });
       });
     },
 

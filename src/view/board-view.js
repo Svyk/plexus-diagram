@@ -132,6 +132,7 @@ import {
 } from "../model/section6.js";
 import { mountLater, mountPrintSheet } from "./later-views.js";
 import { cellElementOf, cellUidOf, isTableCard } from "./table-cells.js";
+import { endpointUnderPointer, focusEnds, imageSourceOf, regionDropPlan, wireStart } from "../model/endpoints.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -5840,7 +5841,16 @@ function buildBoardView(onFail, {
     fitHeight: (uid) => fitHeight(uid),
     fitSection: (uid) => session.fitSection?.(uid),
     resetSize: (uids) => session.resetSize?.(uids),
-    showTempWire: (spec) => edgesR.setTempWire(spec, rects(), vp.zoom),
+    showTempWire: (spec) => {
+      if (!spec) { edgesR.setTempWire(null, rects(), vp.zoom); return; }
+      const boxes = rects();
+      const box = boxes.get(spec.from);
+      let fromPoint;
+      if (spec.fromBlock && box) {
+        try { fromPoint = wireStart(box, itemsR.measureRow(spec.from, spec.fromBlock), spec.point) || undefined; } catch { fromPoint = undefined; }
+      }
+      edgesR.setTempWire(fromPoint ? { ...spec, fromPoint } : spec, boxes, vp.zoom);
+    },
     blockTarget: (pt) => blockTargetAt(pt),
     clearBlockTarget: () => clearBlockTarget(),
     revealBlockEnd: (edgeUid, end) => revealBlockEnd(edgeUid, end),
@@ -5911,6 +5921,41 @@ function buildBoardView(onFail, {
       if (uid && setting("why-prompt", false) === true) openWhy(uid, "why");
       return uid;
     }),
+    addRegionEndpoint: (spec) => Promise.resolve(session.addRegionEndpoint?.(spec)).then((uid) => {
+      if (uid && setting("why-prompt", false) === true) openWhy(uid, "why");
+      return uid;
+    }),
+    // A fat drag on an image writes a region. A release on an outline reuses it. A thin drag connects to the card.
+    regionDrop: ({ from, client, trail } = {}) => {
+      if (!client || typeof doc.elementsFromPoint !== "function") return null;
+      let card = null;
+      let regionUid = null;
+      for (const node of doc.elementsFromPoint(client.x, client.y) || []) {
+        const itemEl = node.closest?.(".pxd-item");
+        if (!itemEl) continue;
+        if (itemEl.closest?.(".pxd-root") !== root) return null;
+        card = itemEl;
+        const mark = node.closest?.("[data-pxd-region]");
+        if (mark && itemEl.contains(mark)) regionUid = mark.getAttribute?.("data-pxd-region") || null;
+        break;
+      }
+      if (!card) return null;
+      const uid = card.getAttribute?.("data-uid") || card.dataset?.uid;
+      if (!uid || uid === from) return null;
+      const item = board()?.items.get(uid);
+      if (!item) return null;
+      const read = (id) => { try { return host?.blockString?.(id); } catch { return null; } };
+      const source = item.kind === "image" ? { ok: true } : imageSourceOf(item, read);
+      if (!source.ok && !regionUid) return null;
+      const media = card.querySelector?.(".pxd-item__media") || card.querySelector?.(".pxd-pdf-cover") || card.querySelector?.("img") || card;
+      const box = media.getBoundingClientRect?.();
+      if (!box || !(box.width > 0) || !(box.height > 0)) return regionUid ? regionDropPlan({ from, imageUid: uid, regionUid }) : null;
+      const rootBox = root.getBoundingClientRect?.() || { left: 0, top: 0 };
+      const origin = screenToWorld(vp, { x: (box.left || 0) - (rootBox.left || 0), y: (box.top || 0) - (rootBox.top || 0) });
+      const zoom = vp?.zoom || 1;
+      const imageRect = { x: origin.x, y: origin.y, w: box.width / zoom, h: box.height / zoom };
+      return regionDropPlan({ from, imageUid: uid, regionUid, imageRect, points: trail || [] });
+    },
     undo: () => session.undo?.(),
     redo: () => session.redo?.(),
     enterEdit: (uid, opts) => enterEdit(uid, opts),
@@ -5975,6 +6020,15 @@ function buildBoardView(onFail, {
         targetEl?.classList.add(targetCls);
         return { uid, row: cell, header: false, cell: Boolean(cell) };
       }
+      const mark = node.closest?.("[data-pxd-region], [data-pxd-pin]");
+      if (mark && card.contains(mark)) {
+        const region = mark.getAttribute?.("data-pxd-region") || null;
+        const pin = mark.getAttribute?.("data-pxd-pin") || null;
+        targetEl = mark;
+        targetCls = "pxd-region-hit--hot";
+        targetEl.classList.add(targetCls);
+        return { uid, row: region || pin, header: false, region: Boolean(region) };
+      }
       if (!card.classList.contains("pxd-item--page")) return null;
       const row = node.closest?.("[data-pxd-row]");
       const header = row ? null : node.closest?.(".pxd-item__header");
@@ -6035,9 +6089,19 @@ function buildBoardView(onFail, {
     const item = t.closest(".pxd-item");
     if (item) {
       const hit = { kind: "item", uid: item.dataset?.uid || item.getAttribute?.("data-uid"), part: t.closest(".pxd-item__header") ? "header" : "body" };
+      const mark = t.closest("[data-pxd-region], [data-pxd-pin]");
+      if (mark && item.contains(mark)) {
+        hit.row = mark.getAttribute?.("data-pxd-region") || mark.getAttribute?.("data-pxd-pin") || "";
+        return hit;
+      }
       // PG-3: the page-card row under the pointer (not for a link, checkbox or image inside it).
-      const row = nativeClickKind(t) ? null : t.closest("[data-pxd-row]");
+      const native = nativeClickKind(t);
+      const row = native ? null : t.closest("[data-pxd-row]");
       if (row) hit.row = row.getAttribute?.("data-pxd-row") || row.dataset?.pxdRow || "";
+      else if (!native && isTableCard(item)) {
+        const cell = cellUidOf(t, { pullTree: host?.pullTree });
+        if (cell) hit.row = cell;
+      }
       return hit;
     }
     return { kind: "empty" };
@@ -6342,6 +6406,19 @@ function buildBoardView(onFail, {
     const uid = item.getAttribute?.("data-uid") || item.dataset?.uid;
     if (!uid || itemsR.editingUid?.() === uid) return;
     if (event.target?.closest?.(GRAB_SKIP)) return;
+    // Connect from a cell, row, region, or pin starts immediately. A card move still waits for 4px.
+    if (ctl.getTool() === "connect") {
+      const endUid = endpointUnderPointer(event.target, (node) => {
+        const card = node?.closest?.(".pxd-item");
+        if (!card || !isTableCard(card)) return null;
+        return cellUidOf(node, { pullTree: host?.pullTree });
+      });
+      if (endUid) {
+        event.__pxdGrab = true;
+        onBoardPointerDown(event);
+        return;
+      }
+    }
     if (nativeClickKind(event.target)) return;
     const stickyBody = Boolean(item.classList?.contains("pxd-item--sticky") && event.target?.closest?.(".pxd-item__body"));
     if (!stickyBody && fieldTarget(event.target)) return;
@@ -7455,10 +7532,25 @@ function buildBoardView(onFail, {
     // RF-3: a connection block's uid lands on the connection: select it, frame both cards, pulse them.
     if (edge && !b.items.has(target.cardUid)) {
       ctl.selectEdge(edge.uid);
-      fitSelection([edge.from, edge.to]);
-      for (const uid of [edge.from, edge.to]) {
+      const ends = focusEnds(b, edge);
+      fitSelection(ends.length ? ends : [edge.from, edge.to]);
+      for (const uid of (ends.length ? ends : [edge.from, edge.to])) {
         if (itemsR.shellOf(uid)) pulseItem(uid);
         else timers.frame(() => { if (!disposed) pulseItem(uid); });
+      }
+      const revealEnd = (card, block) => {
+        if (!card || !block) return;
+        itemsR.revealRow(card, block);
+      };
+      revealEnd(b.items.has(edge.from) ? edge.from : null, edge.fromBlock);
+      revealEnd(b.items.has(edge.to) ? edge.to : null, edge.toBlock);
+      for (const end of [edge.from, edge.to]) {
+        if (b.items.has(end)) continue;
+        const inner = b.edges.get(end);
+        if (!inner) continue;
+        const card = b.items.has(inner.from) ? inner.from : (b.items.has(inner.to) ? inner.to : null);
+        const block = b.items.has(inner.from) ? inner.fromBlock : inner.toBlock;
+        revealEnd(card, block);
       }
       return true;
     }

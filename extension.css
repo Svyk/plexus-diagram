@@ -9991,6 +9991,38 @@ body.roam-body.dark .pxd-root.pxd-region-pop button,
   color: var(--pxd-text, #e6edf3);
 }
 
+.pxd-item__media { position: relative; }
+
+.pxd-region-hits {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.pxd-region-hit,
+.pxd-pin-hit {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--pxd-border-strong, #1f2937);
+  background: transparent;
+  pointer-events: auto;
+}
+
+.pxd-region-hit--hot,
+.pxd-region-hit--flash {
+  border-color: var(--pxd-accent, hsl(175 85% 24%));
+}
+
+.pxd-root--dark .pxd-region-hit,
+.pxd-root--dark .pxd-pin-hit,
+.bp3-dark .pxd-region-hit,
+.bp3-dark .pxd-pin-hit,
+.rm-dark-theme .pxd-region-hit,
+.rm-dark-theme .pxd-pin-hit {
+  border-color: var(--pxd-border-strong, #fff);
+}
+
 /* REG-2. The draft is a stroke. Dark adds a 1px halo. No fill. */
 
 .pxd-root .pxd-region-layer {
@@ -10276,6 +10308,15 @@ body.bt-theme-dark .pxd-relcrumb.pxd-relcrumb,
 .rm-dark-theme .pxd-relcrumb.pxd-relcrumb,
 body.roam-body.dark .pxd-relcrumb.pxd-relcrumb {
   --pxd-rc-accent: hsl(175 60% 55%);
+}
+
+.pxd-relpop__crop {
+  position: relative;
+  width: 160px;
+  height: 100px;
+  overflow: hidden;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  background: transparent;
 }
 
 /* MEM-4. Resurface panel. The Roam button stays when this panel leaves. */

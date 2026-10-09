@@ -1697,6 +1697,22 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return rows.slice(0, limit).map(([edgeUid, boardUid]) => [edgeUid, boardUid]);
     },
 
+    // The same connection blocks, plus the edge string and the board title, so an endpoint chip
+    // can name the block the arrow lands on without a second query.
+    listConnectionRefs({ limit = 5000 } = {}) {
+      const rows = host.q(
+        `[:find ?eu ?bu ?es ?bs :in $ ?pat :where [?c :block/string "Connections"] [?b :block/children ?c] [?b :block/string ?bs]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?bs)] [?b :block/uid ?bu] [?c :block/children ?e] [?e :block/uid ?eu] [?e :block/string ?es]]`,
+        DIAGRAM_RE,
+      ) || [];
+      return rows.slice(0, limit).map(([edgeUid, boardUid, edgeString, boardString]) => [
+        edgeUid,
+        boardUid,
+        typeof edgeString === "string" ? edgeString : "",
+        parseBoardTitle(boardString) || "Untitled board",
+      ]);
+    },
+
     // Card footer stats. One reverse-attribute pull for the resolved targets.
     // The four collection-bound queries run only when that pull throws or is unusable.
     cardStats(targets, { boardUid } = {}) {

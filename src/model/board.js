@@ -25,6 +25,7 @@ import { listFromNodes } from "./snapshots.js";
 import { parseTrails } from "./trails.js";
 import { highlightModel } from "./highlight.js";
 import { readWhy } from "./why.js";
+import { edgeMayTarget } from "./endpoints.js";
 
 const AUTO_GAP = 40;
 const AUTO_OFFSET = 48;
@@ -316,6 +317,25 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         whyKids: why ? (sortedChildren(e).find((c) => c[":block/uid"] === why.uid)?.[":block/children"] || []).length : 0,
         valid: Boolean(a && b),
       });
+    }
+    // A second pass: `to` or `from` may be an edge uid. One level, and the other end
+    // is a card. A missing card stays invalid and stays in the map.
+    for (const edge of edges.values()) {
+      const a = items.get(edge.from);
+      const b = items.get(edge.to);
+      const aEdge = !a ? edges.get(edge.from) : null;
+      const bEdge = !b ? edges.get(edge.to) : null;
+      const aOk = Boolean(a) || (aEdge && edgeMayTarget(aEdge, edges));
+      const bOk = Boolean(b) || (bEdge && edgeMayTarget(bEdge, edges));
+      const oneEdge = Boolean(aEdge) !== Boolean(bEdge);
+      edge.valid = Boolean(a && b) || (oneEdge && aOk && bOk);
+      if ((aEdge && !edgeMayTarget(aEdge, edges)) || (bEdge && !edgeMayTarget(bEdge, edges))) {
+        edge.valid = false;
+        edge.level = "blocked";
+      }
+      const srcRef = edge.fromBlock ? `((${edge.fromBlock}))` : a ? semanticRef(a) : aEdge ? `((${edge.from}))` : "";
+      const dstRef = edge.toBlock ? `((${edge.toBlock}))` : b ? semanticRef(b) : bEdge ? `((${edge.to}))` : "";
+      edge.label = parseEdgeLabel(edge.string, srcRef, dstRef);
     }
   }
 

@@ -1,0 +1,20 @@
+/* One line beside the pointer while a Connect drag is over an image. The border is the signal. */
+
+.pxd-connect-hint {
+  position: absolute;
+  z-index: 30;
+  padding: 2px 6px;
+  border: 1px solid var(--pxd-border-strong, #8b98a5);
+  border-radius: 4px;
+  background: var(--pxd-surface, #fff);
+  color: var(--pxd-text, #1f2937);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pxd-marquee--region {
+  fill: transparent;
+  stroke-dasharray: 4 3;
+}

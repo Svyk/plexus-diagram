@@ -1061,6 +1061,38 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return t.create({ parent: uid, order: "last", string: "Connections", plexus: { type: "edges" }, open: false });
   }
 
+  // The region block under the card's source image (a ((ref)) card writes under the referenced image).
+  // Returns its uid, or null after a toast when the card is not an image or the image is read-only.
+  function writeImageRegion(t, item, frac, label, regionUid) {
+    const read = (id) => {
+      try { return host.blockString?.(id); } catch { return null; }
+    };
+    const source = imageSourceOf(item, read);
+    if (!source.ok) {
+      emit("toast", { message: source.reason === "unread" ? "That image is on a page you can't edit." : "That card is not an image." });
+      return null;
+    }
+    if (source.viaRef && typeof host.canEdit === "function") {
+      let writable = true;
+      try { writable = host.canEdit(source.uid) !== false; } catch { writable = false; }
+      if (!writable) {
+        emit("toast", { message: "That image is on a page you can't edit." });
+        return null;
+      }
+    }
+    const found = regionsContainerOf(item, source);
+    const string = imageRegionString(source.uid, frac, regionCaption(label, found.count));
+    if (!string) return null;
+    const parent = found.container || t.create({
+      parent: source.uid,
+      order: "last",
+      string: CONTAINER_STRING,
+      plexus: { type: "regions" },
+      open: false,
+    });
+    return t.create({ parent, uid: regionUid, order: "last", string });
+  }
+
   function ensureTrails(t) {
     if (board.trailsUid) return board.trailsUid;
     const existing = kidsOf(raw).find((k) => readPlexus(k[PROPS])?.type === "trails");
@@ -2727,35 +2759,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     addRegionEndpoint({ from, to, frac, fromBlock, fromSide, toSide, label = "" } = {}) {
       return txn((t) => {
         if (!from || !to || from === to || !board.items.has(from) || !board.items.has(to)) return null;
-        const item = board.items.get(to);
-        const read = (id) => {
-          try { return host.blockString?.(id); } catch { return null; }
-        };
-        const source = imageSourceOf(item, read);
-        if (!source.ok) {
-          emit("toast", { message: source.reason === "unread" ? "That image is on a page you can't edit." : "That card is not an image." });
-          return null;
-        }
-        if (source.viaRef && typeof host.canEdit === "function") {
-          let writable = true;
-          try { writable = host.canEdit(source.uid) !== false; } catch { writable = false; }
-          if (!writable) {
-            emit("toast", { message: "That image is on a page you can't edit." });
-            return null;
-          }
-        }
-        const found = regionsContainerOf(item, source);
-        const caption = regionCaption(label, found.count);
-        const string = imageRegionString(source.uid, frac, caption);
-        if (!string) return null;
-        const parent = found.container || t.create({
-          parent: source.uid,
-          order: "last",
-          string: CONTAINER_STRING,
-          plexus: { type: "regions" },
-          open: false,
-        });
-        const regionUid = t.create({ parent, order: "last", string });
+        const regionUid = writeImageRegion(t, board.items.get(to), frac, label);
+        if (!regionUid) return null;
         const container = ensureContainer(t);
         return t.create({
           parent: container,
@@ -2763,6 +2768,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           string: edgeStringFor(from, to, "one", label, fromBlock, regionUid),
           plexus: serializeEdge({ from, to, dir: "one", fromSide, toSide, fromBlock, toBlock: regionUid }),
         });
+      });
+    },
+
+    // A region alone, under the card's source image, with a known uid so an arrow can start from it at once.
+    addRegionOn({ on, frac, uid, label = "" } = {}) {
+      return txn((t) => {
+        if (!on || !board.items.has(on)) return null;
+        return writeImageRegion(t, board.items.get(on), frac, label, uid);
       });
     },
 

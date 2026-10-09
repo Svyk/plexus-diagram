@@ -7,10 +7,15 @@ import { changelogEntry } from "../model/changelog.js";
 import { CHANGELOG_TEXT } from "../changelog-text.js";
 import { buildColorPicker } from "./color-picker.js";
 import { placeNearAnchor } from "./avoid.js";
-import { avoidDock, avoidObstacles, dockOverflow, readerLimit } from "../model/card-face.js";
+import { avoidDock, avoidObstacles, avoidSoft, dockOverflow, readerLimit } from "../model/card-face.js";
 import { tipIdForClass } from "./tooltip-text.js";
 
 const CTX_GAP = 12;
+// A card's connect port reaches 6 px past its edge and the bar's hover bridge 14 px past the bar, so a bar above a
+// card leaves this much more room: pressing the top port never lands on the bar.
+const CTX_PORT_CLEAR = 12;
+// What a card covers for the arrow bar: its ports (6 px) and the bar's bridges (14 px above and below, 8 px aside).
+const PORT_REACH = { x: 14, y: 20 };
 const CTX_EDGE_CLEARANCE = 28;
 const CTX_MARGIN = 8;
 const TOAST_MS = 6000;
@@ -942,7 +947,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const rootRect = root.getBoundingClientRect();
     const W = rootRect.width || 0;
     const Hroot = rootRect.height || 0;
-    const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP;
+    const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP + CTX_PORT_CLEAR;
     // The bar never covers the toolbar (two rows tall) or an open side panel: it flips below / stays left of them.
     const tb = toolbar.getBoundingClientRect();
     const propsEl = root.querySelector?.(".pxd-props");
@@ -1003,6 +1008,14 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const blocks = [asRoot(minimap), asRoot(railEl), dockEl ? asRoot(paletteBar) : null].filter(Boolean);
     if (blocks.length) {
       const placed = avoidObstacles({ left, top, w: barW, h: barH }, blocks, { topLimit, margin: CTX_MARGIN, bounds: { right: rightLimit, bottom: H } });
+      left = placed.left;
+      top = placed.top;
+    }
+    // The arrow bar steps off nearby cards and their ports when there is a free spot close to the arrow.
+    if (a.kind === "edge" && a.cards?.length) {
+      const soft = [...a.cards.map((c) => ({ left: c.x - PORT_REACH.x, top: c.y - PORT_REACH.y, right: c.x + c.w + PORT_REACH.x, bottom: c.y + c.h + PORT_REACH.y }))];
+      const below = { left, top: a.rect.y + a.rect.h + gap };
+      const placed = avoidSoft({ left, top, w: barW, h: barH }, soft, blocks, { alts: [below], topLimit, margin: CTX_MARGIN, bounds: { right: rightLimit, bottom: H - CTX_MARGIN } });
       left = placed.left;
       top = placed.top;
     }
@@ -1174,4 +1187,4 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, changelog: { isOpen: () => Boolean(logEl), close: closeLog }, backToContent, badge, sync, dispose };
 }
 
-export { LINK_MODES, CTX_GAP, CTX_EDGE_CLEARANCE };
+export { LINK_MODES, CTX_GAP, CTX_EDGE_CLEARANCE, CTX_PORT_CLEAR };

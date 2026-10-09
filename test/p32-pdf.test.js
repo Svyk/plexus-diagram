@@ -321,6 +321,19 @@ test("P32-3: viewerFromFiber walks up to the instance that owns a pdf.js viewer"
   assert.equal(viewerFromFiber(loop), null);
 });
 
+test("viewerFromFiber reads getViewer() on the highlighter context (function-component Roam build)", () => {
+  const viewer = { currentScaleValue: "0.75", currentScale: 0.75 };
+  // Live shape 2026-10-08: .PdfHighlighter div → Provider { value: { getViewer, scrollToHighlight, … } } → X_ { pdfScaleValue }.
+  const leaf = { stateNode: {}, memoizedProps: { className: "PdfHighlighter" }, return: {
+    stateNode: null, memoizedProps: { value: { getViewer: () => viewer, scrollToHighlight() {} } }, return: {
+      stateNode: null, memoizedProps: { pdfScaleValue: 0.75 }, return: null } } };
+  assert.equal(viewerFromFiber(leaf), viewer);
+  const empty = { stateNode: null, memoizedProps: { value: { getViewer: () => null } }, return: null };
+  assert.equal(viewerFromFiber(empty), null, "a viewer that is not mounted yet");
+  const throws = { stateNode: null, memoizedProps: { value: { getViewer: () => { throw new Error("x"); } } }, return: null };
+  assert.equal(viewerFromFiber(throws), null);
+});
+
 test("pdfDocumentFromFiber finds the document on the viewer, on props two levels up, and nowhere else", () => {
   const doc = { getPage() {}, numPages: 3 };
   const viaViewer = { stateNode: null, return: { stateNode: { viewer: { currentScaleValue: "auto", pdfDocument: doc } }, return: null } };

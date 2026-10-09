@@ -17,6 +17,8 @@ import {
   marqueeFrac,
   pointInside,
   regionBox,
+  regionBoxFrac,
+  clampToBox,
   regionDropPlan,
   regionEdgePoint,
   wireStart,
@@ -24,7 +26,7 @@ import {
 import { blockInner } from "../src/model/geometry.js";
 import { imageRegionString } from "../src/model/image-region.js";
 import { createEdgeLayer } from "../src/view/edges.js";
-import { createInteractions } from "../src/view/interactions.js";
+import { createInteractions, REGION_BOX_HINT, REGION_HINT } from "../src/view/interactions.js";
 import { createItemRenderer } from "../src/view/cards.js";
 import { createConnectionCache, createRelChips, mountLazyCrop, previewModel, SCAN_CAP } from "../src/relchips.js";
 
@@ -93,11 +95,16 @@ test("marqueeFrac ignores a point or a thin stroke and reuses an outline under t
   const made = marqueeFrac(image, [{ x: 20, y: 20 }, { x: 80, y: 90 }]);
   assert.ok(made && made.rw > 0 && made.rh > 0);
   assert.deepEqual(regionDropPlan({ from: "c1", imageUid: "img1", regionUid: "reg1" }), { reuse: true, to: "img1", toBlock: "reg1" });
-  assert.equal(regionDropPlan({ from: "img1", imageUid: "img1", points: [{ x: 20, y: 20 }, { x: 80, y: 90 }], imageRect: image }), null);
-  assert.equal(regionDropPlan({ from: "c1", imageUid: "img1", imageRect: image, points: [{ x: 20, y: 20 }] }), null);
-  const create = regionDropPlan({ from: "c1", imageUid: "img1", imageRect: image, points: [{ x: 20, y: 20 }, { x: 80, y: 90 }] });
-  assert.equal(create.create, true);
-  assert.equal(create.to, "img1");
+  assert.equal(regionDropPlan({ from: "img1", imageUid: "img1", imageRect: image }), null);
+  const plain = regionDropPlan({ from: "c1", imageUid: "img1", imageRect: image });
+  assert.equal(plain.create, undefined, "a release on an image never makes a region by itself");
+  assert.equal(plain.image, true);
+  assert.equal(plain.to, "img1");
+  assert.deepEqual(plain.imageRect, image);
+  assert.equal(regionBoxFrac(image, { x: 20, y: 20 }, { x: 24, y: 22 }), null, "a click is not a box");
+  const boxed = regionBoxFrac(image, { x: 100, y: 80 }, { x: 900, y: 900 });
+  assert.deepEqual(boxed, marqueeFrac(image, [{ x: 100, y: 80 }, { x: 200, y: 160 }]), "a box past the edge stops at the edge");
+  assert.deepEqual(clampToBox({ x: -5, y: 500 }, image), { x: 0, y: 160 });
 });
 
 test("endpointUnderPointer reads a region, a pin, a row, then a cell", () => {
@@ -358,7 +365,10 @@ function gestureHarness() {
       clearBlockTarget: rec("clearBlockTarget"),
       addEdge: (p) => { calls.push(["addEdge", p]); return "newEdge01"; },
       addRegionEndpoint: (p) => { calls.push(["addRegionEndpoint", p]); return "newReg01"; },
-      regionDrop: (p) => { calls.push(["regionDrop", p]); return state.drop; },
+      regionDrop: (p) => { calls.push(["regionDrop", p]); return typeof state.drop === "function" ? state.drop(p) : state.drop; },
+      addRegionOn: (p) => { calls.push(["addRegionOn", p]); return state.regionOn === undefined ? "regNew01" : state.regionOn; },
+      connectHint: rec("connectHint"),
+      showMarquee: rec("showMarquee"),
       duplicateItems: rec("duplicateItems"),
       createCard: rec("createCard"),
     },
@@ -411,29 +421,183 @@ test("Connect from a cell sets fromBlock, and Option-drag does that only for a r
   assert.equal(same.named("addEdge").length, 0, "releasing on the same card creates no arrow");
 });
 
-test("a marquee on an image writes a region, and an outline is reused", async () => {
+const IMG = { x: 400, y: 500, w: 200, h: 160 };
+const inImg = (p) => p.client.x >= IMG.x && p.client.x <= IMG.x + IMG.w && p.client.y >= IMG.y && p.client.y <= IMG.y + IMG.h;
+const overImage = (p) => (inImg(p) && p.from !== "img00001" ? { image: true, to: "img00001", imageRect: IMG } : null);
+
+test("an angled Connect drag through an image ends on the card and never makes a region", async () => {
   const h = gestureHarness();
   h.ctl.setTool("connect");
-  h.state.drop = { create: true, to: "img00001", frac };
+  h.state.drop = overImage;
   h.ctl.handle(h.ev("pointerdown", { x: 20, y: 40 }, { target: { kind: "item", uid: "noteA001" } }));
-  h.ctl.handle(h.ev("pointermove", { x: 450, y: 560 }));
-  h.ctl.handle(h.ev("pointerup", { x: 480, y: 600 }));
+  h.ctl.handle(h.ev("pointermove", { x: 420, y: 520 }));
+  h.ctl.handle(h.ev("pointermove", { x: 470, y: 560 }));
+  h.ctl.handle(h.ev("pointermove", { x: 560, y: 640 }));
+  h.ctl.handle(h.ev("pointerup", { x: 560, y: 640 }));
   await tick();
-  assert.equal(h.named("addRegionEndpoint").length, 1);
-  assert.equal(h.named("addEdge").length, 0);
-  assert.deepEqual(h.named("addRegionEndpoint")[0][1].frac, frac);
-  assert.equal(h.named("addRegionEndpoint")[0][1].to, "img00001");
+  assert.equal(h.named("addRegionEndpoint").length, 0);
+  assert.equal(h.named("addRegionOn").length, 0);
+  assert.equal(h.named("addEdge").length, 1);
+  assert.equal(h.named("addEdge")[0][1].to, "img00001");
+  assert.equal(h.named("addEdge")[0][1].toBlock, undefined);
+  const hints = h.named("connectHint").map((c) => c[1]);
+  assert.ok(hints.includes(REGION_HINT), "the hint shows over the image");
+  assert.equal(hints[hints.length - 1], null, "the hint clears when the arrow ends");
+});
 
+test("a release on a region outline ends on that region", async () => {
   const reuse = gestureHarness();
   reuse.ctl.setTool("connect");
   reuse.state.drop = { reuse: true, to: "img00001", toBlock: "reg00001" };
   reuse.ctl.handle(reuse.ev("pointerdown", { x: 20, y: 40 }, { target: { kind: "item", uid: "noteA001" } }));
   reuse.ctl.handle(reuse.ev("pointermove", { x: 450, y: 560 }));
-  reuse.ctl.handle(reuse.ev("pointerup", { x: 480, y: 600 }));
+  reuse.ctl.handle(reuse.ev("pointerup", { x: 480, y: 600 }, { alt: true }));
   await tick();
   assert.equal(reuse.named("addEdge")[0][1].toBlock, "reg00001");
   assert.equal(reuse.named("addRegionEndpoint").length, 0);
+});
 
+test("Option on release pins the end, then a box on the picture writes the region and the arrow", async () => {
+  const h = gestureHarness();
+  h.ctl.setTool("connect");
+  h.state.drop = overImage;
+  h.ctl.handle(h.ev("pointerdown", { x: 20, y: 40 }, { target: { kind: "item", uid: "noteA001" } }));
+  h.ctl.handle(h.ev("pointermove", { x: 450, y: 540 }, { alt: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 450, y: 540 }, { alt: true, buttons: 0 }));
+  await tick();
+  assert.equal(h.named("addEdge").length + h.named("addRegionEndpoint").length, 0, "nothing is written on the release");
+  assert.equal(h.ctl.gestureKind(), "region-end");
+  const pinned = h.named("showTempWire").at(-1)[1];
+  assert.deepEqual(pinned.point, { x: 450, y: 540 }, "the end stays at the pointer");
+  assert.equal(h.named("connectHint").at(-1)[1], REGION_BOX_HINT);
+  // A hover move does not draw a box.
+  h.ctl.handle(h.ev("pointermove", { x: 500, y: 600 }, { buttons: 0 }));
+  assert.equal(h.named("showMarquee").filter((c) => c[1]).length, 0);
+  h.ctl.handle(h.ev("pointerdown", { x: 450, y: 540 }, { target: { kind: "item", uid: "img00001" } }));
+  h.ctl.handle(h.ev("pointermove", { x: 520, y: 600 }));
+  h.ctl.handle(h.ev("pointermove", { x: 700, y: 900 }));
+  const box = h.named("showMarquee").filter((c) => c[1]).at(-1);
+  assert.deepEqual(box[1], { x: 450, y: 540, w: 150, h: 120 }, "the box stops at the picture edge");
+  assert.equal(box[2], "region");
+  h.ctl.handle(h.ev("pointerup", { x: 700, y: 900 }));
+  await tick();
+  const writes = h.named("addRegionEndpoint");
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0][1].from, "noteA001");
+  assert.equal(writes[0][1].to, "img00001");
+  assert.deepEqual(writes[0][1].frac, regionBoxFrac(IMG, { x: 450, y: 540 }, { x: 600, y: 660 }));
+  assert.equal(h.named("addEdge").length, 0);
+  assert.equal(h.ctl.gestureKind(), null);
+});
+
+test("Option end: a click is not a box, a press off the picture cancels, and Esc cancels", async () => {
+  const start = (h) => {
+    h.ctl.setTool("connect");
+    h.state.drop = overImage;
+    h.ctl.handle(h.ev("pointerdown", { x: 20, y: 40 }, { target: { kind: "item", uid: "noteA001" } }));
+    h.ctl.handle(h.ev("pointermove", { x: 450, y: 540 }, { alt: true }));
+    h.ctl.handle(h.ev("pointerup", { x: 450, y: 540 }, { alt: true }));
+  };
+  const click = gestureHarness();
+  start(click);
+  click.ctl.handle(click.ev("pointerdown", { x: 460, y: 550 }, { target: { kind: "item", uid: "img00001" } }));
+  click.ctl.handle(click.ev("pointerup", { x: 461, y: 551 }));
+  assert.equal(click.ctl.gestureKind(), "region-end", "still waiting for a box");
+  assert.equal(click.named("addRegionEndpoint").length, 0);
+
+  const lostEnd = gestureHarness();
+  start(lostEnd);
+  lostEnd.ctl.handle(lostEnd.ev("pointerup", { x: 300, y: 760 }, { target: { kind: "chrome" } }));
+  assert.equal(lostEnd.ctl.gestureKind(), null, "a release after a press on chrome cancels the pinned end");
+
+  const off = gestureHarness();
+  start(off);
+  off.ctl.handle(off.ev("pointerdown", { x: 100, y: 300 }));
+  assert.equal(off.ctl.gestureKind(), null);
+  off.ctl.handle(off.ev("pointerup", { x: 100, y: 300 }));
+  await tick();
+  assert.equal(off.named("addRegionEndpoint").length + off.named("addEdge").length + off.named("createCard").length, 0);
+
+  const esc = gestureHarness();
+  start(esc);
+  esc.ctl.handle(esc.ev("pointerdown", { x: 450, y: 540 }, { target: { kind: "item", uid: "img00001" } }));
+  esc.ctl.handle(esc.ev("pointermove", { x: 520, y: 600 }));
+  assert.equal(esc.ctl.escape(), true);
+  assert.equal(esc.ctl.gestureKind(), null);
+  esc.ctl.handle(esc.ev("pointerup", { x: 520, y: 600 }));
+  await tick();
+  assert.equal(esc.named("addRegionEndpoint").length + esc.named("addEdge").length, 0, "Esc writes nothing");
+  assert.equal(esc.named("showMarquee").at(-1)[1], null);
+  assert.equal(esc.named("connectHint").at(-1)[1], null);
+});
+
+test("Option-drag on a picture with Connect makes a region and the arrow starts from it", async () => {
+  const h = gestureHarness();
+  h.ctl.setTool("connect");
+  h.state.drop = (p) => (inImg(p) ? { image: true, to: "img00001", imageRect: IMG } : null);
+  h.ctl.handle(h.ev("pointerdown", { x: 420, y: 520 }, { alt: true, target: { kind: "item", uid: "img00001" } }));
+  assert.equal(h.ctl.gestureKind(), "region-start");
+  h.ctl.handle(h.ev("pointermove", { x: 480, y: 580 }, { alt: true }));
+  assert.equal(h.named("showMarquee").at(-1)[2], "region");
+  h.ctl.handle(h.ev("pointerup", { x: 500, y: 600 }, { alt: true }));
+  assert.equal(h.named("addRegionOn").length, 1);
+  assert.equal(h.named("addRegionOn")[0][1].uid, "img00001");
+  assert.deepEqual(h.named("addRegionOn")[0][1].frac, regionBoxFrac(IMG, { x: 420, y: 520 }, { x: 500, y: 600 }));
+  assert.equal(h.ctl.gestureKind(), "connect", "the arrow follows the pointer from the region");
+  assert.equal(h.named("showTempWire").at(-1)[1].fromBlock, "regNew01");
+  h.ctl.handle(h.ev("pointermove", { x: 100, y: 50 }, { buttons: 0 }));
+  h.ctl.handle(h.ev("pointerdown", { x: 100, y: 50 }, { target: { kind: "item", uid: "noteA001" } }));
+  h.ctl.handle(h.ev("pointerup", { x: 100, y: 50 }, { target: { kind: "item", uid: "noteA001" } }));
+  await tick();
+  const add = h.named("addEdge");
+  assert.equal(add.length, 1);
+  assert.equal(add[0][1].from, "img00001");
+  assert.equal(add[0][1].fromBlock, "regNew01");
+  assert.equal(add[0][1].to, "noteA001");
+
+  // A press the board never saw (the dock kept it) ends with a bare release: that cancels the arrow.
+  const lost = gestureHarness();
+  lost.ctl.setTool("connect");
+  lost.state.drop = (p) => (inImg(p) ? { image: true, to: "img00001", imageRect: IMG } : null);
+  lost.ctl.handle(lost.ev("pointerdown", { x: 420, y: 520 }, { alt: true, target: { kind: "item", uid: "img00001" } }));
+  lost.ctl.handle(lost.ev("pointermove", { x: 480, y: 580 }, { alt: true }));
+  lost.ctl.handle(lost.ev("pointerup", { x: 480, y: 580 }, { alt: true }));
+  assert.equal(lost.ctl.gestureKind(), "connect");
+  lost.ctl.handle(lost.ev("pointerup", { x: 300, y: 760 }, { target: { kind: "chrome" } }));
+  await tick();
+  assert.equal(lost.ctl.gestureKind(), null);
+  assert.equal(lost.named("addEdge").length + lost.named("createCard").length, 0);
+
+  const tiny = gestureHarness();
+  tiny.ctl.setTool("connect");
+  tiny.state.drop = (p) => (inImg(p) ? { image: true, to: "img00001", imageRect: IMG } : null);
+  tiny.ctl.handle(tiny.ev("pointerdown", { x: 420, y: 520 }, { alt: true, target: { kind: "item", uid: "img00001" } }));
+  tiny.ctl.handle(tiny.ev("pointerup", { x: 421, y: 521 }, { alt: true }));
+  assert.equal(tiny.named("addRegionOn").length, 0);
+  assert.equal(tiny.ctl.gestureKind(), null);
+
+  const plain = gestureHarness();
+  plain.ctl.setTool("connect");
+  plain.state.drop = (p) => (inImg(p) ? { image: true, to: "img00001", imageRect: IMG } : null);
+  plain.ctl.handle(plain.ev("pointerdown", { x: 420, y: 520 }, { target: { kind: "item", uid: "img00001" } }));
+  assert.equal(plain.ctl.gestureKind(), "connect", "without Option the picture is an ordinary connect start");
+});
+
+test("addRegionOn writes the region under the image with the given uid", async () => {
+  const { fake, session } = await sessionFor([card("img1", "![](http://img/a.png)", 0)]);
+  const made = await session.addRegionOn({ on: "img1", frac, uid: "regGiven1" });
+  await fake.flush();
+  assert.equal(made, "regGiven1");
+  assert.equal(creates(fake).length, 2, "container and region");
+  assert.ok(fake.block("regGiven1").string.includes("k=img d=img1"));
+  fake.clearLog();
+  await session.addRegionOn({ on: "img1", frac, uid: "regGiven2" });
+  await fake.flush();
+  assert.equal(creates(fake).length, 1, "the container is reused");
+  assert.equal(await session.addRegionOn({ on: "missing", frac, uid: "x" }), null);
+});
+
+test("a click on an aimed arrow label ends on that arrow", async () => {
   const aimed = gestureHarness();
   aimed.ctl.setTool("connect");
   const base = aimed.board.edges;

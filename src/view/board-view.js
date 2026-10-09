@@ -3058,6 +3058,25 @@ function buildBoardView(onFail, {
     const y = Math.min(...ys);
     return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
   };
+  // Cards (screen rects) around an arrow's bar spot, so the bar can step off them and their ports.
+  const CARDS_NEAR_PX = 160;
+  const cardsNear = (rect) => {
+    const b = board();
+    if (!b || !rect) return [];
+    const r = paintRects();
+    const out = [];
+    for (const it of b.items.values()) {
+      if (it.type === "section") continue;
+      const wr = r.get(it.uid);
+      if (!wr) continue;
+      const sr = toScreenRect(wr);
+      if (sr.x > rect.x + rect.w + CARDS_NEAR_PX || sr.x + sr.w < rect.x - CARDS_NEAR_PX) continue;
+      if (sr.y > rect.y + rect.h + CARDS_NEAR_PX || sr.y + sr.h < rect.y - CARDS_NEAR_PX) continue;
+      out.push(sr);
+      if (out.length >= 60) break;
+    }
+    return out;
+  };
   const ctxAnchor = () => {
     const b = board();
     if (!b) return null;
@@ -3068,7 +3087,8 @@ function buildBoardView(onFail, {
       // Anchor on the whole connection (path + label) so the bar clears the line, not just its midpoint.
       const lr = edge.label ? edgesR.labelRect(selection.edge) : null;
       const extra = lr && lr.width ? [{ x: lr.left - rootRect.left, y: lr.top - rootRect.top, w: lr.width, h: lr.height }] : [];
-      return { kind: "edge", rect: pathScreenRect(geo, extra) };
+      const rect = pathScreenRect(geo, extra);
+      return { kind: "edge", rect, cards: cardsNear(rect) };
     }
     if (selection.link) {
       const geo = edgesR.linkGeometryOf(selection.link);
@@ -5718,6 +5738,27 @@ function buildBoardView(onFail, {
 
   // ------------------------------------------------------------ controller
   const shortcutSheet = createShortcutSheet({ doc, root, settings: settingsProxy });
+  // One line beside the pointer while a Connect drag is over an image ("⌥ to mark a region").
+  let connectHintEl = null;
+  const showConnectHint = (text, screen) => {
+    if (!text) {
+      connectHintEl?.remove?.();
+      connectHintEl = null;
+      return;
+    }
+    if (!connectHintEl) {
+      connectHintEl = doc.createElement("div");
+      connectHintEl.className = "pxd-connect-hint";
+      connectHintEl.setAttribute("role", "status");
+      root.append(connectHintEl);
+    }
+    if (connectHintEl.textContent !== text) connectHintEl.textContent = text;
+    if (screen) {
+      connectHintEl.style.left = `${Math.round(screen.x + 14)}px`;
+      connectHintEl.style.top = `${Math.round(screen.y + 18)}px`;
+    }
+  };
+
   const actions = {
     board,
     rects,
@@ -5944,8 +5985,8 @@ function buildBoardView(onFail, {
       if (uid && setting("why-prompt", false) === true) openWhy(uid, "why");
       return uid;
     }),
-    // A fat drag on an image writes a region. A release on an outline reuses it. A thin drag connects to the card.
-    regionDrop: ({ from, client, trail } = {}) => {
+    // What is under a Connect release: a region outline (reuse) or an image card (image, with its picture rect).
+    regionDrop: ({ from, client } = {}) => {
       if (!client || typeof doc.elementsFromPoint !== "function") return null;
       let card = null;
       let regionUid = null;
@@ -5968,13 +6009,24 @@ function buildBoardView(onFail, {
       if (!source.ok && !regionUid) return null;
       const media = card.querySelector?.(".pxd-item__media") || card.querySelector?.(".pxd-pdf-cover") || card.querySelector?.("img") || card;
       const box = media.getBoundingClientRect?.();
-      if (!box || !(box.width > 0) || !(box.height > 0)) return regionUid ? regionDropPlan({ from, imageUid: uid, regionUid }) : null;
+      if (!box || !(box.width > 0) || !(box.height > 0)) return regionDropPlan({ from, imageUid: uid, regionUid });
       const rootBox = root.getBoundingClientRect?.() || { left: 0, top: 0 };
       const origin = screenToWorld(vp, { x: (box.left || 0) - (rootBox.left || 0), y: (box.top || 0) - (rootBox.top || 0) });
       const zoom = vp?.zoom || 1;
       const imageRect = { x: origin.x, y: origin.y, w: box.width / zoom, h: box.height / zoom };
-      return regionDropPlan({ from, imageUid: uid, regionUid, imageRect, points: trail || [] });
+      return regionDropPlan({ from, imageUid: uid, regionUid, imageRect });
     },
+    // Option box on an image under Connect: the region is written now and the arrow starts from it.
+    addRegionOn: ({ uid, frac } = {}) => {
+      const regionUid = host?.generateUid?.();
+      if (!uid || !regionUid || typeof session.addRegionOn !== "function") return null;
+      Promise.resolve(session.addRegionOn({ on: uid, frac, uid: regionUid })).then((made) => {
+        // Refused (read-only source): the arrow from that region cannot be written either.
+        if (!made && ctl.gestureKind() === "connect") ctl.cancel();
+      }).catch(() => {});
+      return regionUid;
+    },
+    connectHint: (text, screen) => showConnectHint(text, screen),
     undo: () => session.undo?.(),
     redo: () => session.redo?.(),
     enterEdit: (uid, opts) => enterEdit(uid, opts),
@@ -6128,7 +6180,7 @@ function buildBoardView(onFail, {
   // Pan, marquee and card drag never use a handle. Only an edge-end drag, a connect, or a press that
   // might start one looks at handle centres, and it uses the world points stored at render.
   const END_GESTURE = new Set(["edge-end", "connect"]);
-  const NO_END_GESTURE = new Set(["pan", "marquee", "move", "lasso", "resize", "place", "section-draw", "board-draw"]);
+  const NO_END_GESTURE = new Set(["pan", "marquee", "move", "lasso", "resize", "place", "section-draw", "board-draw", "region-end", "region-start"]);
   const edgeEndWanted = (type, event) => {
     const kind = ctl.gestureKind();
     if (NO_END_GESTURE.has(kind)) return false;
@@ -6258,7 +6310,8 @@ function buildBoardView(onFail, {
     // preventDefault on pointerdown suppresses the click, so a stationary ref opens here.
     // A drag sets suppressClick before this line and must not navigate.
     if (nativeClickKind(event.target) === "ref" && !suppressClick) openRefFromClick(event);
-    releaseCapture();
+    // A gesture that outlives the release (an Option box on an image) keeps following the pointer.
+    if (!ctl.isGesturing()) releaseCapture();
   };
   const onDocCancel = (event) => {
     endPress(event);
@@ -6473,7 +6526,8 @@ function buildBoardView(onFail, {
   // Capture phase only cancels the click that ends a drag. Shielding Roam's block-edit handlers happens in
   // the bubble phase, after renderString's own React roots inside cards have handled [[link]] clicks.
   listen(root, "click", (event) => {
-    if (suppressClick) { event.stopPropagation(); event.preventDefault(); return; }
+    // A gesture still running after its release (Option box on an image) also owns the click.
+    if (suppressClick || ctl.isGesturing()) { event.stopPropagation(); event.preventDefault(); return; }
     if (inRoamTable(event.target)) return;
     // Roam's page-ref handlers stop click propagation inside the card's React root, so links are routed here,
     // in the capture phase, before the target sees the click.

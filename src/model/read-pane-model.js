@@ -114,16 +114,24 @@ export const FIT_GUTTER = 24;
 export const FIT_MAX_CLICKS = 8;
 export const FIT_STEP_RATIO = 1.25;
 
-// Walk a fiber up to the class instance that owns the pdf.js PDFViewer (react-pdf-highlighter keeps it
-// on `this.viewer`). The viewer is recognised by its currentScaleValue property; nothing else is touched.
+// Walk a fiber up to the pdf.js PDFViewer. Older react-pdf-highlighter builds keep it on the class instance
+// (`this.viewer`); the function-component build (Roam, 2026-10) hands out `getViewer()` on the highlighter's
+// context value. The viewer is recognised by its currentScaleValue property; nothing else is touched.
 export function viewerFromFiber(fiber) {
+  const isViewer = (v) => Boolean(v) && typeof v === "object" && "currentScaleValue" in v;
   let current = fiber;
   const seen = new Set();
   for (let depth = 0; depth < 40 && current && typeof current === "object" && !seen.has(current); depth += 1) {
     seen.add(current);
     const node = current.stateNode;
     const viewer = node && typeof node === "object" ? node.viewer : null;
-    if (viewer && typeof viewer === "object" && "currentScaleValue" in viewer) return viewer;
+    if (isViewer(viewer)) return viewer;
+    const value = current.memoizedProps?.value;
+    if (value && typeof value === "object" && typeof value.getViewer === "function") {
+      let got = null;
+      try { got = value.getViewer(); } catch { got = null; }
+      if (isViewer(got)) return got;
+    }
     current = current.return;
   }
   return null;

@@ -6,6 +6,7 @@ import { applyCellOcr, cellsToReread } from "../model/parse/ocr-fix.js";
 import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lines.js";
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
 import { voteOcrBodies } from "../model/parse/ocr-vote.js";
+import { evidenceFromRecords } from "../model/parse/vlm-arbitrate.js";
 import { alignVlmText, applyVlmTables, tableRegions } from "../model/parse/vlm-tables.js";
 
 const GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
@@ -131,7 +132,11 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
           bytes, sha256, pages: wanted, tables: regions, text: options.vlmText === true, signal,
         });
         throwIfAborted();
-        const applied = applyVlmTables(doc, read?.tables || [], { method: read?.model || "vlm", trust: true });
+        const applied = applyVlmTables(doc, read?.tables || [], {
+          method: read?.model || "vlm",
+          arbitrate: true,
+          evidence: evidenceFromRecords(next),
+        });
         vlmApplied = applied.applied;
         if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });
         if (options.vlmText === true) {

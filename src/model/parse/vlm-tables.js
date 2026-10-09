@@ -1,6 +1,10 @@
+import { chooseTableReading } from "./vlm-arbitrate.js";
+
 // Replace a rule-assembly table with a local VLM reading of the same box.
-// The helper returns cells that already contain text. Rule assembly stays when the
-// reading does not look like the same table.
+// The helper returns cells that already contain text. The high-accuracy path
+// arbitrates (`arbitrate: true`) and keeps whichever reading the page evidence
+// supports. Without that, rule assembly stays when the reading does not look
+// like the same table.
 //
 // applyStructureTables (the TableFormer path) accepts a replacement only when the
 // set of full cell strings has Jaccard ≥ 0.15. A VLM often fixes a word the rules
@@ -45,6 +49,17 @@ function iou(a, b) {
   const inter = ix * iy;
   const union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter;
   return union > 0 ? inter / union : 0;
+}
+
+// A small rule fragment sitting inside the chosen grid is the same table.
+// IoU stays low because the fragment is much smaller than the grid.
+function mostlyInside(inner, outer) {
+  if (!inner || !outer) return false;
+  const area = Math.max(0, inner[2] - inner[0]) * Math.max(0, inner[3] - inner[1]);
+  if (area <= 0) return false;
+  const w = Math.max(0, Math.min(inner[2], outer[2]) - Math.max(inner[0], outer[0]));
+  const h = Math.max(0, Math.min(inner[3], outer[3]) - Math.max(inner[1], outer[1]));
+  return (w * h) / area >= 0.7;
 }
 
 export function tableRegions(doc, pages) {
@@ -100,10 +115,9 @@ function tableFromVlm(structure, { id = "vlm", method = "vlm" } = {}) {
 
 // `minJaccard` applies to both the full-string set and the token set. Either one
 // is enough to replace. A region with no overlapping rule table is inserted.
-// `trust` replaces every overlapping rule table and inserts the reading. The
-// high-accuracy path uses it: the crop is the layout box, so a low overlap
-// with the rule text means the rules were wrong, not the reading.
-export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, trust = false } = {}) {
+// `trust` replaces every overlapping rule table. `arbitrate` keeps the better of
+// the rule table and the reading, using `evidence` (page words and rules).
+export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, trust = false, arbitrate = false, evidence = null } = {}) {
   if (!doc || !structures?.length) return { doc, applied: [] };
   const blocks = { ...doc.blocks };
   const order = [...(doc.order || [])];
@@ -121,10 +135,51 @@ export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0
       const overlap = iou(block.bbox, built.bbox);
       if (overlap > best) { best = overlap; host = block; }
     }
+    if (!host) {
+      let area = 0;
+      for (const id of order) {
+        const block = blocks[id];
+        if (!block || block.type !== "table" || block.page !== structure.page || used.has(id)) continue;
+        if (!mostlyInside(block.bbox, built.bbox)) continue;
+        const box = block.bbox;
+        const next = Math.max(0, box[2] - box[0]) * Math.max(0, box[3] - box[1]);
+        if (next > area) { area = next; host = block; }
+      }
+    }
     // Full-string set Jaccard is what TableFormer uses. Token Jaccard is also
     // accepted: on this corpus that raised cell F1 from 0.140 to 0.155 and
     // left structure F1 at 0.606 versus 0.610.
     const same = host && (setJaccard(host, built) >= minJaccard || tokenJaccard(host, built) >= minJaccard);
+    if (arbitrate && host) {
+      const page = (evidence || []).find((item) => item.page === structure.page) || { words: [], rules: [] };
+      const decision = chooseTableReading(host, built, page);
+      if (decision.choice === "rule") continue;
+      const chosen = decision.table;
+      for (const id of [...order]) {
+        const block = blocks[id];
+        if (!block || block.type !== "table" || block.page !== structure.page || block.id === host.id) continue;
+        const box = chosen.bbox || built.bbox;
+        if (iou(block.bbox, box) < 0.3 && !mostlyInside(block.bbox, box)) continue;
+        delete blocks[id];
+        const at = order.indexOf(id);
+        if (at >= 0) order.splice(at, 1);
+      }
+      used.add(host.id);
+      blocks[host.id] = {
+        ...host,
+        bbox: chosen.bbox || built.bbox,
+        rows: chosen.rows,
+        cols: chosen.cols,
+        headerRows: chosen.headerRows,
+        cells: chosen.cells,
+        method,
+        confidence: built.confidence,
+        grid: undefined,
+        repairs: undefined,
+      };
+      applied.push({ id: host.id, page: structure.page, rows: chosen.rows, cols: chosen.cols, choice: decision.choice });
+      continue;
+    }
     if (host && !same && !trust) continue;
     if (trust) {
       for (const id of [...order]) {

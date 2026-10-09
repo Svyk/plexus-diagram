@@ -95,3 +95,62 @@ function lineBox(line) {
 }
 
 function r2(v) { return Math.round(v * 100) / 100; }
+
+// A 90° word stored as an upright OCR item: the helper puts the tall box's height
+// in the font size and the short side in the width. A horizontal word of four
+// letters is wider than its em. Body-size squeezed words stay under this size.
+export function isVerticalOcrWord(word) {
+  const text = String(word?.text || "").replace(/\s+/g, "");
+  if (text.length < 4) return false;
+  const width = (word.x1 ?? 0) - (word.x0 ?? 0);
+  const size = Number(word.size) || 0;
+  if (size < 14 || !(width > 0)) return false;
+  return width < 0.55 * size;
+}
+
+function inMargin(x, y, w, h, band) {
+  if (!(w > 0) || !(h > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+  return x <= w * band || x >= w * (1 - band) || y <= h * band || y >= h * (1 - band);
+}
+
+function quarterTurn(angle) {
+  const a = Math.abs(Number(angle) || 0);
+  return Math.abs(a - Math.PI / 2) < 0.2 || Math.abs(a - (3 * Math.PI) / 2) < 0.2;
+}
+
+// Pull 90° margin text out of the line list. OCR often emits the sideways running
+// title ("NOTIFIABLE" / "DISEASES") as a huge upright word; a text layer emits it
+// with a quarter-turn matrix. Either one is furniture, not a heading or a title.
+// `band` is the same edge fraction as running headers. Returns the kept lines and
+// `{text, bbox}` rows (page is filled in by the assembler).
+export function dropMarginRotated(lines, rotated, { w = 0, h = 0, band = FURNITURE_BAND } = {}) {
+  const kept = [];
+  const removed = [];
+  for (const line of lines || []) {
+    const words = line?.words || [];
+    const vertical = words.length > 0 && words.every((word) => isVerticalOcrWord(word));
+    const mx = ((line?.x0 ?? 0) + (line?.x1 ?? 0)) / 2;
+    const my = line?.base ?? ((line?.y0 ?? 0) + (line?.y1 ?? 0)) / 2;
+    if (vertical && inMargin(mx, my, w, h, band)) {
+      const text = String(line.text || "").replace(/\s+/g, " ").trim();
+      if (text) removed.push({ text, bbox: [r2(line.x0), r2(line.y0), r2(line.x1), r2(line.y1)] });
+      continue;
+    }
+    kept.push(line);
+  }
+  for (const piece of rotated || []) {
+    if (!quarterTurn(piece?.angle)) continue;
+    const text = String(piece.text || "").replace(/\s+/g, " ").trim();
+    if (text.length < 4) continue;
+    if (!inMargin(piece.x0, piece.base, w, h, band)) continue;
+    const advance = Math.abs((piece.x1 ?? piece.x0) - piece.x0);
+    const size = piece.size || 8;
+    const top = Math.max(0, Math.min(piece.base, piece.base - advance));
+    const bot = Math.min(h || Infinity, Math.max(piece.base, piece.base - advance));
+    removed.push({
+      text,
+      bbox: [r2(piece.x0), r2(top), r2(Math.min(w || piece.x0 + size, piece.x0 + size)), r2(bot)],
+    });
+  }
+  return { lines: kept, removed };
+}

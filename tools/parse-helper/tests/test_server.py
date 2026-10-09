@@ -41,7 +41,10 @@ def _app(tmp_path, runner):
     return create_app(token=TOKEN, jobs=jobs, cache=cache)
 
 
-def test_health_cors_and_forbidden_origin(tmp_path):
+def test_health_cors_and_forbidden_origin(tmp_path, monkeypatch):
+    # Optional VLM packages add engines. This test is about auth and CORS.
+    monkeypatch.setattr("plexus_parse_helper.server.vlm_tables_available", lambda: False)
+    monkeypatch.setattr("plexus_parse_helper.server.layout_available", lambda: False)
     app = _app(tmp_path, runner=lambda *a: {})
     client = TestClient(app)
     bare = client.get("/v1/health")

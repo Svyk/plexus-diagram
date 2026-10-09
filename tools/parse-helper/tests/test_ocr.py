@@ -155,7 +155,9 @@ def _app(tmp_path, ocr_runner, cell_runner=None):
     return create_app(token=TOKEN, jobs=jobs, cache=cache, ocr_runner=ocr_runner, cell_runner=cell_runner)
 
 
-def test_ocr_endpoint_auth_cache_and_cells(tmp_path):
+def test_ocr_endpoint_auth_cache_and_cells(tmp_path, monkeypatch):
+    monkeypatch.setattr("plexus_parse_helper.server.vlm_tables_available", lambda: False)
+    monkeypatch.setattr("plexus_parse_helper.server.layout_available", lambda: False)
     calls = []
 
     def fake_ocr(path, pages):

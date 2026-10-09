@@ -536,7 +536,7 @@ test("readScan takes a recorded VLM table when the helper advertises vlm-tables"
   assert.equal(out.doc.ocr.vlm, 1);
 });
 
-test("readScan high accuracy calls vlm, trusts a dissimilar table, and does not insert a figure hint", async () => {
+test("readScan high accuracy calls vlm, keeps the rule table when the reading drops its rows, and does not insert a figure hint", async () => {
   const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 300, h: 120, rotation: 0, fonts: {} }, 2);
   scanRec.kind = "scan";
   const base = assembleDocument([scanRec], { numPages: 2, from: 2, to: 2 });
@@ -578,9 +578,11 @@ test("readScan high accuracy calls vlm, trusts a dissimilar table, and does not 
   assert.equal(vlmArgs.text, false);
   assert.ok(vlmArgs.tables.length >= 1);
   const t = tableOf(out.doc);
-  assert.equal(t.method, "PaddleOCR-VL-0.9B");
-  assert.equal(t.cells[0].text, "qqqqqq");
+  assert.notEqual(t.method, "PaddleOCR-VL-0.9B");
+  assert.notEqual(t.cells[0].text, "qqqqqq");
+  assert.ok(t.rows > 1, "the rule grid stays");
   assert.equal(out.doc.ocr.mode, "high");
+  assert.equal(out.doc.ocr.vlm, 0);
   assert.equal(out.doc.ocr.vlmLines, 0);
   assert.equal(out.doc.ocr.vlmFigures, 0);
   const hinted = out.doc.order.map((id) => out.doc.blocks[id]).filter((b) => b && b.method === "vlm-layout");

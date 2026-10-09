@@ -6,7 +6,7 @@ import { extractGraphics, luminanceOf } from "./rules.js";
 import { chartGrid, findLatticeTables, looksLikeChart } from "./lattice.js";
 import { baselineRows, detectStreamRuns, tableFromBand } from "./stream.js";
 import { demoteFalseCaptions, drawingSheetPage, figCaptionKey, findFigures, imageCover, normalizeFigSpelling, peelFigLabels, rasterScanPage, sheetRegions, splitSharedCaptions } from "./figures.js";
-import { findFurniture, normalizeFurniture } from "./furniture.js";
+import { dropMarginRotated, findFurniture, normalizeFurniture } from "./furniture.js";
 import { findPageTitle } from "./title.js";
 import { applyNumbering, bodySizeOf, CAPTION_RE, headingClasses, headingLevel, refineBodyHeadingLevels } from "./headings.js";
 import { detectLists } from "./lists.js";
@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 15;
+export const PARSE_REV = 16;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -79,6 +79,12 @@ export function parsePageGeometry(data, n) {
     data = { ...data, items: (data.items || []).filter((it) => !/^[.·•]+$/.test(it.str || "")) };
     ({ lines, rotated } = buildLines(data.items, { transform, fonts: data.fonts || {} }));
   }
+  // Sideways running titles in the margin are furniture. Drop them before tables
+  // and headings see the lines. A page whose text is itself sideways was already
+  // re-read in that frame above, so its body lines are upright and stay.
+  const margin = dropMarginRotated(lines, rotated, { w, h });
+  lines = margin.lines;
+  const marginRotated = margin.removed;
   const graphics = ocr ? ocrGraphics(data, w, h) : extractGraphics(data.ops, { transform });
   const words = lines.flatMap((l) => l.words);
   const pageArea = w * h;
@@ -145,7 +151,7 @@ export function parsePageGeometry(data, n) {
     tables.splice(i, 1);
     for (const w of words) if (used.has(w) && !figs.used.has(w) && w.x0 >= t.bbox[0] - 2 && w.x1 <= t.bbox[2] + 2 && w.base >= t.bbox[1] && w.base <= t.bbox[3] + 2) used.delete(w);
   }
-  return { n, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, words: figWords, graphics, tables, figures, used, ms: round(now() - t0) };
+  return { n, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, marginRotated, words: figWords, graphics, tables, figures, used, ms: round(now() - t0) };
 }
 
 // An OCR page record (helper /v1/ocr): precomputed `rules` segments stand in for the pdf.js
@@ -504,6 +510,13 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
   for (const pg of pageRecords) pg.free = freeLinesOf(pg);
   const furniture = findFurniture(pageRecords.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
   for (const pg of pageRecords) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
+  for (const pg of pageRecords) {
+    for (const item of pg.marginRotated || []) {
+      if (!item?.text) continue;
+      furniture.removed.push({ page: pg.n, bbox: item.bbox, text: item.text, reason: "rotated-margin" });
+    }
+  }
+  furniture.removed.sort((a, b) => a.page - b.page || (a.bbox?.[1] ?? 0) - (b.bbox?.[1] ?? 0));
   const allFree = pageRecords.flatMap((pg) => pg.free);
   const bodySize = bodySizeOf(allFree) || 10;
   const bodyFont = dominantFont(allFree);

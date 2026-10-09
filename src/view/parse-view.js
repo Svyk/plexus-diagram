@@ -104,7 +104,7 @@ function cloudLabel(provider) {
   return provider === "mistral" ? "Mistral OCR" : "LlamaParse";
 }
 
-export function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "", credits = null } = {}) {
+export function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "", credits = null, read = "" } = {}) {
   if (phase !== "running" && engine === "anydoc") {
     if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
     return { text: "Alternative read" };
@@ -129,6 +129,10 @@ export function engineChip({ phase = "idle", engine = "builtin", provider = "", 
     return { text };
   }
   if (engine === "cloud") return { text: cloudLabel(provider) };
+  if (read === "high") {
+    const text = ms != null ? `High accuracy · ${formatSeconds(ms)}` : "High accuracy";
+    return { text, tip: "PaddleOCR-VL + PP-DocLayoutV2" };
+  }
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
 }
@@ -814,6 +818,7 @@ export function createParseView({
       pageCount: progress.pageCount,
       helper: phase === "running" ? "" : helperState,
       credits: phase === "running" ? null : parsed?.stats?.credits,
+      read: phase === "running" ? "" : (parsed?.ocr?.mode === "high" ? "high" : ""),
     });
     chip.textContent = state.text;
     chip.title = state.tip || "";

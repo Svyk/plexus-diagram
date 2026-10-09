@@ -746,68 +746,68 @@ function serializeRegion(region) {
   const { kind, drawingUid } = region;
   need(OURS.has(kind) || ROAM_PLEXUS_KINDS.has(kind), `unknown kind ${kind}`);
   need(isId(drawingUid), "bad drawingUid");
-  const tokens = kind === "pdf" ? [`d=${drawingUid}`] : [`k=${kind}`, `d=${drawingUid}`];
+  const tokens2 = kind === "pdf" ? [`d=${drawingUid}`] : [`k=${kind}`, `d=${drawingUid}`];
   if (kind === "pdf") {
     need(Number.isInteger(region.pg) && region.pg >= 1, "bad pg");
     const f = normalizeFrac(region.f);
     need(f, "bad f");
-    tokens.push(`pg=${region.pg}`, `f=${f.join(",")}`);
+    tokens2.push(`pg=${region.pg}`, `f=${f.join(",")}`);
   } else if (kind === "img") {
     const f = normalizeFrac(region.f);
     need(f, "bad f");
-    tokens.push(`f=${f.join(",")}`);
+    tokens2.push(`f=${f.join(",")}`);
   } else if (kind === "view") {
     const v = normalizeView(region.v);
     need(v, "bad v");
-    tokens.push(`v=${v.join(",")}`);
+    tokens2.push(`v=${v.join(",")}`);
     if (region.ids) {
       need(Array.isArray(region.ids) && region.ids.length > 0 && region.ids.length <= MAX_IDS && region.ids.every(isId), "bad ids");
-      tokens.push(`ids=${region.ids.join(",")}`);
+      tokens2.push(`ids=${region.ids.join(",")}`);
     }
   } else if (kind === "area") {
     need(Array.isArray(region.ids) && region.ids.length > 0 && region.ids.every(isId), "bad ids");
     const pad2 = region.pad ?? DEFAULT_PAD;
     need(Number.isInteger(pad2) && pad2 >= 0 && pad2 <= 200, "bad pad");
-    tokens.push(`ids=${region.ids.join(",")}`, `pad=${pad2}`);
+    tokens2.push(`ids=${region.ids.join(",")}`, `pad=${pad2}`);
   } else if (kind === "rect") {
     need(isId(region.el), "bad el");
     const f = normalizeFrac(region.f);
     need(f, "bad f");
-    tokens.push(`el=${region.el}`, `f=${f.join(",")}`);
+    tokens2.push(`el=${region.el}`, `f=${f.join(",")}`);
   } else if (kind === "group" || kind === "frame" || kind === "cframe") {
     const isGroup = kind === "group";
     const id = isGroup ? region.groupId ?? region.g : region.frameId ?? region.fr;
     need(isId(id), isGroup ? "bad groupId" : "bad frameId");
-    tokens.push(`${isGroup ? "g" : "fr"}=${id}`);
+    tokens2.push(`${isGroup ? "g" : "fr"}=${id}`);
     if (kind !== "cframe") {
       const pad2 = region.pad ?? DEFAULT_PAD;
       need(Number.isInteger(pad2) && pad2 >= 0 && pad2 <= 200, "bad pad");
-      tokens.push(`pad=${pad2}`);
+      tokens2.push(`pad=${pad2}`);
     }
   } else if (kind === "poly" || kind === "imgrect" || kind === "imgpoly") {
     if (kind === "poly") {
       need(isId(region.el), "bad el");
-      tokens.push(`el=${region.el}`);
+      tokens2.push(`el=${region.el}`);
     } else {
       need(Number.isInteger(region.i) && region.i >= 0, "bad i");
-      tokens.push(`i=${region.i}`);
+      tokens2.push(`i=${region.i}`);
     }
     if (kind === "imgrect") {
       const f = normalizeFrac(region.f);
       need(f, "bad f");
-      tokens.push(`f=${f.join(",")}`);
+      tokens2.push(`f=${f.join(",")}`);
     } else {
       need(Array.isArray(region.p) && region.p.length >= 6 && region.p.length % 2 === 0, "bad p");
-      tokens.push(`p=${region.p.join(",")}`);
+      tokens2.push(`p=${region.p.join(",")}`);
     }
   }
   for (const pair2 of region.extra ?? []) {
     need(Array.isArray(pair2) && typeof pair2[0] === "string" && /^[^\s=}]+$/.test(pair2[0]) && /^[^\s}]*$/.test(String(pair2[1])), "bad extra token");
-    tokens.push(`${pair2[0]}=${pair2[1]}`);
+    tokens2.push(`${pair2[0]}=${pair2[1]}`);
   }
   const caption = String(region.caption ?? "").replace(/\s+/g, " ").trim();
   const component = kind === "pdf" ? PIN_COMPONENT : REGION_COMPONENT;
-  return `{{[[${component}]]: ${tokens.join(" ")}}}${caption ? ` ${caption}` : ""}`;
+  return `{{[[${component}]]: ${tokens2.join(" ")}}}${caption ? ` ${caption}` : ""}`;
 }
 function isStructuralString(s) {
   return isContainerString(s) || parseRegion(s) != null;
@@ -2208,7 +2208,7 @@ function edgeBox(edge) {
     l: Number(src.l) || 0
   };
 }
-function paintedContentRect(rect, natural, { fit = "fill", position = "50% 50%", zoom = 1, padding, border } = {}) {
+function paintedContentRect(rect, natural, { fit: fit2 = "fill", position = "50% 50%", zoom = 1, padding, border } = {}) {
   const box2 = boxOf(rect);
   if (!box2) return null;
   const z = Number(zoom) > 0 ? Number(zoom) : 1;
@@ -2223,7 +2223,7 @@ function paintedContentRect(rect, natural, { fit = "fill", position = "50% 50%",
   const nw = Number(natural?.width) || Number(natural?.naturalWidth) || 0;
   const nh = Number(natural?.height) || Number(natural?.naturalHeight) || 0;
   if (!(nw > 0) || !(nh > 0)) return content;
-  const mode = String(fit || "fill").trim().toLowerCase();
+  const mode = String(fit2 || "fill").trim().toLowerCase();
   const pos = parseObjectPosition(position);
   const place2 = (usedW, usedH) => ({
     left: left + (width - usedW) * pos.x,
@@ -2276,13 +2276,13 @@ function paintedRectOfElement(el, { zoom = 1 } = {}) {
     style = null;
   }
   const inline = el.style || {};
-  const fit = cssPick(style, inline, "objectFit", "object-fit") || "fill";
+  const fit2 = cssPick(style, inline, "objectFit", "object-fit") || "fill";
   const position = cssPick(style, inline, "objectPosition", "object-position") || "50% 50%";
   return paintedContentRect(
     { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
     { width: el.naturalWidth, height: el.naturalHeight },
     {
-      fit,
+      fit: fit2,
       position,
       zoom,
       padding: {
@@ -2720,18 +2720,18 @@ function focusEnds(board2, edge) {
 function marqueeFrac(imageRect, points) {
   const box2 = asBox(imageRect);
   if (!box2 || !points?.length) return null;
-  const inside7 = [];
+  const inside8 = [];
   for (const p of points) {
     if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
     if (p.x < box2.x || p.y < box2.y || p.x > box2.x + box2.w || p.y > box2.y + box2.h) continue;
-    inside7.push(p);
+    inside8.push(p);
   }
-  if (inside7.length < 2) return null;
+  if (inside8.length < 2) return null;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const p of inside7) {
+  for (const p of inside8) {
     minX = Math.min(minX, p.x);
     minY = Math.min(minY, p.y);
     maxX = Math.max(maxX, p.x);
@@ -3528,16 +3528,16 @@ function pointInPolygon(point, polygon) {
   for (let i = 0, j = n2 - 1; i < n2; j = i++) {
     if (onSegment(polygon[j], polygon[i], point)) return true;
   }
-  let inside7 = false;
+  let inside8 = false;
   for (let i = 0, j = n2 - 1; i < n2; j = i++) {
     const yi = polygon[i].y;
     const yj = polygon[j].y;
     const xi = polygon[i].x;
     const xj = polygon[j].x;
     const intersect = yi > point.y !== yj > point.y && point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi;
-    if (intersect) inside7 = !inside7;
+    if (intersect) inside8 = !inside8;
   }
-  return inside7;
+  return inside8;
 }
 function itemsInPolygon(board2, polygon, rects) {
   if (!board2 || !Array.isArray(polygon) || polygon.length < 3) return [];
@@ -4074,8 +4074,8 @@ function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGa
       const shift = (h.base - r.base) / h.size;
       if (Math.abs(shift) > 0.7) continue;
       if (Math.abs(shift) >= 0.45 && r.size > 0.65 * h.size) continue;
-      const near = r.x0 >= h.x0 - h.size && r.x0 <= h.x1 + h.size;
-      if (!near) continue;
+      const near2 = r.x0 >= h.x0 - h.size && r.x0 <= h.x1 + h.size;
+      if (!near2) continue;
       if (!host || Math.abs(h.base - r.base) < Math.abs(host.base - r.base)) host = h;
     }
     if (host) {
@@ -4720,13 +4720,13 @@ function connected(s, t, tol = 4) {
   return v.pos >= h.a - tol && v.pos <= h.b + tol && h.pos >= v.a - tol && h.pos <= v.b + tol;
 }
 function rowsBetween(words, { x0, x1, y0, y1 }) {
-  const inside7 = words.filter((w) => {
+  const inside8 = words.filter((w) => {
     const cx = (w.x0 + w.x1) / 2;
     const cy = w.base - 0.3 * w.size;
     return cx >= x0 - 2 && cx <= x1 + 2 && cy > y0 && cy < y1;
   }).sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
-  for (const w of inside7) {
+  for (const w of inside8) {
     const r = rows[rows.length - 1];
     if (r && Math.abs(r.base - w.base) <= 0.3 * Math.max(r.size, w.size)) r.words.push(w);
     else rows.push({ base: w.base, size: w.size, words: [w] });
@@ -4738,13 +4738,13 @@ function rowsBetween(words, { x0, x1, y0, y1 }) {
     const chars = Math.max(1, r.words.reduce((n2, w) => n2 + w.text.length, 0));
     const charW = r.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0) / chars || 0.5 * r.size;
     const threshold = Math.max(1.8 * charW, 0.6 * r.size);
-    let tokens = 0;
+    let tokens2 = 0;
     let last = null;
     for (const w of r.words) {
-      if (!last || w.x0 - last.x1 >= threshold) tokens++;
+      if (!last || w.x0 - last.x1 >= threshold) tokens2++;
       last = w;
     }
-    r.tokens = tokens;
+    r.tokens = tokens2;
     r.text = r.words.map((w) => w.text).join(" ");
   }
   return rows;
@@ -4997,8 +4997,8 @@ function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, 
   }
   const usedBoxes = /* @__PURE__ */ new Set();
   for (const b of boxes) {
-    const inside7 = tables.some((t) => b.x0 >= t.bbox[0] - 2 && b.x1 <= t.bbox[2] + 2 && b.y0 >= t.bbox[1] - 2 && b.y1 <= t.bbox[3] + 2);
-    if (inside7) usedBoxes.add(b);
+    const inside8 = tables.some((t) => b.x0 >= t.bbox[0] - 2 && b.x1 <= t.bbox[2] + 2 && b.y0 >= t.bbox[1] - 2 && b.y1 <= t.bbox[3] + 2);
+    if (inside8) usedBoxes.add(b);
   }
   return { tables, bands, usedWords, usedRules, usedBoxes, released, segments: segs };
 }
@@ -5343,19 +5343,19 @@ function tokensSplitColumns(words, xs2, ys2, r0, r1, c0, c1) {
     const chars = Math.max(1, row4.words.reduce((n2, w) => n2 + w.text.length, 0));
     const charW = row4.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0) / chars || 0.5 * row4.size;
     const threshold = Math.max(1.8 * charW, 0.6 * row4.size);
-    const tokens = [];
+    const tokens2 = [];
     let cur = null;
     for (const w of row4.words) {
       if (cur && w.x0 - cur.x1 < threshold) {
         cur.x1 = Math.max(cur.x1, w.x1);
       } else {
         cur = { x0: w.x0, x1: w.x1 };
-        tokens.push(cur);
+        tokens2.push(cur);
       }
     }
-    if (tokens.length < 2) return false;
+    if (tokens2.length < 2) return false;
     const cols = /* @__PURE__ */ new Set();
-    for (const t of tokens) {
+    for (const t of tokens2) {
       if (inner.some((x) => t.x0 < x - 1 && t.x1 > x + 1)) return false;
       const mid = (t.x0 + t.x1) / 2;
       let c = c0;
@@ -5395,8 +5395,8 @@ function looksLikeChart(band, graphics) {
   const width = band.x1 - band.x0;
   let bars = 0;
   for (const b of graphics.boxes || []) {
-    const inside7 = b.x0 >= band.x0 - 2 && b.x1 <= band.x1 + 2 && b.y0 >= band.y0 - 2 && b.y1 <= band.y1 + 2;
-    if (!inside7 || b.light) continue;
+    const inside8 = b.x0 >= band.x0 - 2 && b.x1 <= band.x1 + 2 && b.y0 >= band.y0 - 2 && b.y1 <= band.y1 + 2;
+    if (!inside8 || b.light) continue;
     if (b.x1 - b.x0 < 0.6 * width && b.y1 - b.y0 > 4 && b.x1 - b.x0 > 4) bars++;
   }
   return bars >= 4;
@@ -5700,7 +5700,7 @@ function tokenizeLine(line) {
   const inkW = line.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0);
   const charW = inkW / chars || 0.5 * line.size;
   const threshold = Math.max(1.8 * charW, 0.6 * line.size);
-  const tokens = [];
+  const tokens2 = [];
   let cur = null;
   const dots = (s) => /^[.·…]+$/.test(s);
   for (const w of line.words) {
@@ -5712,11 +5712,11 @@ function tokenizeLine(line) {
       cur.x1 = Math.max(cur.x1, w.x1);
     } else {
       cur = { x0: w.x0, x1: w.x1, words: [w] };
-      tokens.push(cur);
+      tokens2.push(cur);
     }
   }
-  for (const t of tokens) t.text = t.words.map((w) => w.text).join(" ");
-  return tokens;
+  for (const t of tokens2) t.text = t.words.map((w) => w.text).join(" ");
+  return tokens2;
 }
 function projectColumns(rows) {
   const counts = rows.map((r) => r.length).sort((a, b) => a - b);
@@ -5799,16 +5799,16 @@ function splitColumn(rowsIn, col, size) {
   const edges = [col.x0, ...seps.map((g) => (g.x0 + g.x1) / 2), col.x1];
   const cols = [];
   for (let k = 0; k + 1 < edges.length; k++) {
-    const inside7 = rows.flat().filter((w) => (w.x0 + w.x1) / 2 >= edges[k] && (w.x0 + w.x1) / 2 < edges[k + 1]);
-    if (!inside7.length) continue;
-    cols.push({ x0: Math.max(edges[k], Math.min(...inside7.map((w) => w.x0))), x1: Math.min(edges[k + 1], Math.max(...inside7.map((w) => w.x1))) });
+    const inside8 = rows.flat().filter((w) => (w.x0 + w.x1) / 2 >= edges[k] && (w.x0 + w.x1) / 2 < edges[k + 1]);
+    if (!inside8.length) continue;
+    cols.push({ x0: Math.max(edges[k], Math.min(...inside8.map((w) => w.x0))), x1: Math.min(edges[k + 1], Math.max(...inside8.map((w) => w.x1))) });
   }
   return { cols: cols.length >= 2 ? cols : [col], seps: cols.length >= 2 ? seps : [] };
 }
-function splitTokensAt(tokens, seps) {
-  if (!seps.length) return tokens;
+function splitTokensAt(tokens2, seps) {
+  if (!seps.length) return tokens2;
   const out = [];
-  for (const t of tokens) {
+  for (const t of tokens2) {
     let parts = [t.words];
     for (const g of seps) {
       if (g.x0 <= t.x0 || g.x1 >= t.x1) continue;
@@ -5956,16 +5956,16 @@ function rowTokens(row4) {
     if (!byLine.has(k)) byLine.set(k, []);
     byLine.get(k).push(w);
   }
-  const tokens = [];
+  const tokens2 = [];
   for (const ws of byLine.values()) {
     ws.sort((a, b) => a.x0 - b.x0);
     const line = { words: ws, x0: ws[0].x0, x1: Math.max(...ws.map((w) => w.x1)), size: ws[0].size };
-    tokens.push(...tokenizeLine(line));
+    tokens2.push(...tokenizeLine(line));
   }
   for (const sw of scripts) {
     let best = null;
     let dist = Infinity;
-    for (const t of tokens) {
+    for (const t of tokens2) {
       const d = sw.x0 >= t.x0 && sw.x0 <= t.x1 ? 0 : Math.min(Math.abs(sw.x0 - t.x1), Math.abs(sw.x1 - t.x0));
       if (d < dist) {
         dist = d;
@@ -5977,10 +5977,10 @@ function rowTokens(row4) {
       best.words.sort((a, b) => a.x0 - b.x0 || a.base - b.base);
       best.x1 = Math.max(best.x1, sw.x1);
       best.x0 = Math.min(best.x0, sw.x0);
-    } else tokens.push({ x0: sw.x0, x1: sw.x1, words: [sw], text: sw.text });
+    } else tokens2.push({ x0: sw.x0, x1: sw.x1, words: [sw], text: sw.text });
   }
-  for (const t of tokens) t.text = t.words.map((w) => w.text).join(" ");
-  return tokens.sort((a, b) => a.x0 - b.x0);
+  for (const t of tokens2) t.text = t.words.map((w) => w.text).join(" ");
+  return tokens2.sort((a, b) => a.x0 - b.x0);
 }
 function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, rules = [] }) {
   const coarse = projectColumns(rowsIn.map((r) => r.tokens));
@@ -6260,12 +6260,12 @@ function coveredAt(cellMap, r, c, span) {
   return false;
 }
 function tableFromBand(band, words) {
-  const inside7 = words.filter((w) => {
+  const inside8 = words.filter((w) => {
     const cx = (w.x0 + w.x1) / 2;
     const cy = w.base - 0.3 * w.size;
     return cx >= band.x0 - 4 && cx <= band.x1 + 4 && cy >= band.y0 - 1 && cy <= band.y1 + 1;
   });
-  if (!inside7.length) return null;
+  if (!inside8.length) return null;
   const fullYs = band.ys.filter((b) => b.full).map((b) => b.y);
   const partial = band.ys.filter((b) => !b.full);
   const rowsIn = [];
@@ -6273,7 +6273,7 @@ function tableFromBand(band, words) {
   let headerBands = 0;
   const edges = [band.y0 - 1, ...fullYs.filter((y) => y > band.y0 + 1 && y < band.y1 - 1), band.y1 + 1];
   for (let i = 0; i + 1 < edges.length; i++) {
-    const ws = inside7.filter((w) => {
+    const ws = inside8.filter((w) => {
       const cy = w.base - 0.3 * w.size;
       return cy >= edges[i] && cy < edges[i + 1];
     });
@@ -6329,7 +6329,7 @@ function tableFromBand(band, words) {
   mergeWrappedLabelRows(rowsIn, headerRowsHint);
   const table = buildTable(rowsIn, { bands: band, headerRowsHint });
   if (!table) return null;
-  table.usedWords = inside7;
+  table.usedWords = inside8;
   return table;
 }
 function hasSubRows(words, band) {
@@ -6411,15 +6411,15 @@ function baselineRows(lines) {
   }
   return rows;
 }
-function proseRow(row4, tokens, columnWidth = Infinity) {
+function proseRow(row4, tokens2, columnWidth = Infinity) {
   const words = row4.words;
   const n2 = words.length;
   if (n2 < 6) return false;
   const chars = words.reduce((k, w) => k + w.text.length, 0);
   if (chars / n2 < 3.5) return false;
   if (Number.isFinite(columnWidth) && row4.x1 - row4.x0 < 0.6 * columnWidth) return false;
-  const short = tokens.filter((t) => t.words.length <= 2 || isNumericText(t.text)).length;
-  return tokens.length === 1 || tokens.length < n2 / 2 && short === 0;
+  const short = tokens2.filter((t) => t.words.length <= 2 || isNumericText(t.text)).length;
+  return tokens2.length === 1 || tokens2.length < n2 / 2 && short === 0;
 }
 function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeGaps = true } = {}) {
   const out = [];
@@ -6437,7 +6437,7 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
     let j = i;
     while (j < rows.length) {
       const row4 = rows[j];
-      const tokens = tokensOf2(row4);
+      const tokens2 = tokensOf2(row4);
       if (markerOf(row4.lines[0], dots) || CAPTION_RE.test(row4.text)) break;
       const ruleText = row4.text.replace(/\s+/g, "");
       if (/^[-–—−_=.·•]{4,}$/.test(ruleText) || /^[-–—−]$/.test(ruleText) || ruleText === ";") {
@@ -6453,15 +6453,15 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
         const header = headerOf(run);
         const next = rows[j + 1];
         const nextTokens = next ? tokensOf2(next) : null;
-        const head = repeatsHeader(tokens, header) ? tokens : nextTokens || tokens;
+        const head = repeatsHeader(tokens2, header) ? tokens2 : nextTokens || tokens2;
         const numericNext = nextTokens && nextTokens.filter((t) => isNumericText(t.text)).length >= 2;
-        const numericHere = tokens.filter((t) => isNumericText(t.text)).length >= 2;
-        const yearHeader = tokens.filter((t) => /^(1[89]|20)\d{2}$/.test(String(t.text).replace(/[^\d]/g, ""))).length >= 2;
-        const near = next && next.base - row4.base <= 2.8 * row4.size;
+        const numericHere = tokens2.filter((t) => isNumericText(t.text)).length >= 2;
+        const yearHeader = tokens2.filter((t) => /^(1[89]|20)\d{2}$/.test(String(t.text).replace(/[^\d]/g, ""))).length >= 2;
+        const near2 = next && next.base - row4.base <= 2.8 * row4.size;
         const bannerOnly = run.length > 0 && run.length <= 2 && run.every((r) => r.tokens.length < 3);
         const title = normCell(row4.text);
-        const repeatedTitle = tokens.length < 3 && title.length >= 6 && run.some((r) => r.tokens.length < 3 && normCell(r.row.text) === title);
-        const keep = !repeatedTitle && gap <= 3.4 * row4.size && (tokens.length >= 2 && alignsWithRun(run, tokens, row4.size) || near && repeatsHeader(head, header) || near && tokens.length < 3 && numericNext && bannerOnly && !(nextTokens && nextTokens.filter((t) => /^(1[89]|20)\d{2}$/.test(String(t.text).replace(/[^\d]/g, ""))).length >= 2) || numericHere && bannerOnly && !yearHeader);
+        const repeatedTitle = tokens2.length < 3 && title.length >= 6 && run.some((r) => r.tokens.length < 3 && normCell(r.row.text) === title);
+        const keep = !repeatedTitle && gap <= 3.4 * row4.size && (tokens2.length >= 2 && alignsWithRun(run, tokens2, row4.size) || near2 && repeatsHeader(head, header) || near2 && tokens2.length < 3 && numericNext && bannerOnly && !(nextTokens && nextTokens.filter((t) => /^(1[89]|20)\d{2}$/.test(String(t.text).replace(/[^\d]/g, ""))).length >= 2) || numericHere && bannerOnly && !yearHeader);
         if (!keep) break;
       }
       if (run.length && TEXT_RULE_RE.test(row4.text.replace(/\s+/g, ""))) {
@@ -6471,56 +6471,56 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
         j++;
         continue;
       }
-      if (tokens.length < 2) {
+      if (tokens2.length < 2) {
         if (!run.length && row4.words.length <= 8) {
           const nxt2 = rows[j + 1];
           const nt = nxt2 ? tokensOf2(nxt2) : [];
           const nextYears = nt.filter((t) => /^(1[89]|20)\d{2}$/.test(String(t.text).replace(/[^\d]/g, ""))).length;
           if (nextYears < 2 && nxt2 && nxt2.base - row4.base <= 3.4 * row4.size && nt.filter((t) => isNumericText(t.text)).length >= 2) {
-            run.push({ row: row4, tokens });
+            run.push({ row: row4, tokens: tokens2 });
             lastBase = row4.base;
             j++;
             continue;
           }
         }
         const peek = (k) => rows[k] ? { row: rows[k], tokens: tokensOf2(rows[k]) } : null;
-        const single = singleTokenRow(row4, tokens, run, peek(j + 1), colBox, lead, peek(j + 2));
+        const single = singleTokenRow(row4, tokens2, run, peek(j + 1), colBox, lead, peek(j + 2));
         if (single === "attach") {
           lastBase = row4.base;
           j++;
           continue;
         }
         if (single === "lead") {
-          lead = { row: row4, tokens };
+          lead = { row: row4, tokens: tokens2 };
           lastBase = row4.base;
           j++;
           continue;
         }
         if (single === "row") {
-          run.push({ row: row4, tokens });
+          run.push({ row: row4, tokens: tokens2 });
           lastBase = row4.base;
           j++;
           continue;
         }
         const nxt = rows[j + 1];
         if (nxt && nxt.base - row4.base <= 2.6 * row4.size && repeatsHeader(tokensOf2(nxt), headerOf(run))) {
-          run.push({ row: row4, tokens });
+          run.push({ row: row4, tokens: tokens2 });
           lastBase = row4.base;
           j++;
           continue;
         }
         break;
       }
-      if (proseRow(row4, tokens, colW)) break;
+      if (proseRow(row4, tokens2, colW)) break;
       if (lead) {
-        const merged = mergeRows(lead, { row: row4, tokens });
+        const merged = mergeRows(lead, { row: row4, tokens: tokens2 });
         run.push(merged);
         lead = null;
         lastBase = row4.base;
         j++;
         continue;
       }
-      run.push({ row: row4, tokens });
+      run.push({ row: row4, tokens: tokens2 });
       lastBase = row4.base;
       j++;
     }
@@ -6558,24 +6558,24 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
   }
   return out;
 }
-function singleTokenRow(row4, tokens, run, next, colBox, lead, next2 = null) {
-  if (tokens.length !== 1 || row4.words.length > 8 || lead) return null;
-  const tok = tokens[0];
-  const near = (a, b) => Math.abs(a.base - b.base) <= 1.6 * Math.max(a.size, b.size);
+function singleTokenRow(row4, tokens2, run, next, colBox, lead, next2 = null) {
+  if (tokens2.length !== 1 || row4.words.length > 8 || lead) return null;
+  const tok = tokens2[0];
+  const near2 = (a, b) => Math.abs(a.base - b.base) <= 1.6 * Math.max(a.size, b.size);
   const overlapping = (toks) => toks.find((t) => t.x0 < tok.x1 + 1 && t.x1 > tok.x0 - 1);
   const prev = run[run.length - 1];
-  if (prev && near(row4, prev.row) && row4.words.length === 1 && /^[^A-Za-z0-9]{1,2}$|^[a-z0-9]$/.test(tok.text) && !overlapping(prev.tokens)) {
+  if (prev && near2(row4, prev.row) && row4.words.length === 1 && /^[^A-Za-z0-9]{1,2}$|^[a-z0-9]$/.test(tok.text) && !overlapping(prev.tokens)) {
     prev.tokens.push({ ...tok });
     prev.tokens.sort((a, b) => a.x0 - b.x0);
     prev.row.words.push(...tok.words);
     prev.row.lines.push(...row4.lines);
     return "attach";
   }
-  if (prev && near(row4, prev.row)) {
+  if (prev && near2(row4, prev.row)) {
     const host = overlapping(prev.tokens);
     let continuation = /^[a-z(\-–]/.test(tok.text) || host && tok.x0 - host.x0 >= 0.5 * row4.size;
     const prevHeader = prev.row.words.every((w) => w.bold) || run.length === 1 && prev.tokens.slice(1).every((t) => !isNumericText(t.text));
-    if (!continuation && host && !prevHeader && row4.words.length <= 3 && next && near(row4, next.row) && next.tokens[0].x0 - tok.x0 < 0.5 * row4.size) continuation = true;
+    if (!continuation && host && !prevHeader && row4.words.length <= 3 && next && near2(row4, next.row) && next.tokens[0].x0 - tok.x0 < 0.5 * row4.size) continuation = true;
     if (host && prev.tokens.length >= 2 && continuation && /[A-Za-z]/.test(tok.text)) {
       host.words.push(...tok.words);
       host.x0 = Math.min(host.x0, tok.x0);
@@ -6587,8 +6587,8 @@ function singleTokenRow(row4, tokens, run, next, colBox, lead, next2 = null) {
       return "attach";
     }
   }
-  if (!next || !near(row4, next.row)) return null;
-  const after = next.tokens.length >= 2 ? next : next2 && next2.tokens.length >= 2 && near(next.row, next2.row) ? next2 : null;
+  if (!next || !near2(row4, next.row)) return null;
+  const after = next.tokens.length >= 2 ? next : next2 && next2.tokens.length >= 2 && near2(next.row, next2.row) ? next2 : null;
   if (!after) return null;
   const leftEdge = colBox ? colBox.x0 : Math.min(...(prev ? prev.tokens : after.tokens).map((t) => t.x0));
   const atLeft = tok.x0 - leftEdge <= 1.5 * row4.size;
@@ -6663,17 +6663,17 @@ function tickGrid(table) {
 function normCell(s) {
   return String(s || "").replace(/[^\w.]/g, "").toLowerCase();
 }
-function valueTokens(tokens) {
-  return (tokens || []).slice(1).map((t) => normCell(t.text)).filter((s) => s && s.length <= 12);
+function valueTokens(tokens2) {
+  return (tokens2 || []).slice(1).map((t) => normCell(t.text)).filter((s) => s && s.length <= 12);
 }
 function headerOf(run) {
   const multi = run.filter((r) => valueTokens(r.tokens).length >= 2);
   return multi.length ? multi[0].tokens : null;
 }
-function repeatsHeader(tokens, header) {
-  if (!header || !tokens) return false;
+function repeatsHeader(tokens2, header) {
+  if (!header || !tokens2) return false;
   const a = valueTokens(header);
-  const b = valueTokens(tokens);
+  const b = valueTokens(tokens2);
   if (a.length < 2 || b.length < 2) return false;
   let same2 = 0;
   const n2 = Math.min(a.length, b.length);
@@ -6682,14 +6682,14 @@ function repeatsHeader(tokens, header) {
   const tail = b.slice(-a.length);
   return tail.length === a.length && tail.every((s, i) => s === a[i]);
 }
-function alignsWithRun(run, tokens, size) {
-  if (!tokens || tokens.length < 2) return false;
+function alignsWithRun(run, tokens2, size) {
+  if (!tokens2 || tokens2.length < 2) return false;
   const prev = [];
   for (const r of run) for (const t of r.tokens.slice(1)) prev.push(t.x0);
   if (prev.length < 2) return false;
   const tol = Math.max(4, 0.6 * size);
   let hit = 0;
-  for (const t of tokens.slice(1)) if (prev.some((x) => Math.abs(x - t.x0) <= tol)) hit++;
+  for (const t of tokens2.slice(1)) if (prev.some((x) => Math.abs(x - t.x0) <= tol)) hit++;
   return hit >= 2;
 }
 function phraseTable(table) {
@@ -6810,6 +6810,53 @@ function lineBox(line) {
 }
 function r2(v) {
   return Math.round(v * 100) / 100;
+}
+function isVerticalOcrWord(word) {
+  const text3 = String(word?.text || "").replace(/\s+/g, "");
+  if (text3.length < 4) return false;
+  const width = (word.x1 ?? 0) - (word.x0 ?? 0);
+  const size = Number(word.size) || 0;
+  if (size < 14 || !(width > 0)) return false;
+  return width < 0.55 * size;
+}
+function inMargin(x, y, w, h, band) {
+  if (!(w > 0) || !(h > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+  return x <= w * band || x >= w * (1 - band) || y <= h * band || y >= h * (1 - band);
+}
+function quarterTurn(angle) {
+  const a = Math.abs(Number(angle) || 0);
+  return Math.abs(a - Math.PI / 2) < 0.2 || Math.abs(a - 3 * Math.PI / 2) < 0.2;
+}
+function dropMarginRotated(lines, rotated, { w = 0, h = 0, band = FURNITURE_BAND } = {}) {
+  const kept = [];
+  const removed = [];
+  for (const line of lines || []) {
+    const words = line?.words || [];
+    const vertical = words.length > 0 && words.every((word) => isVerticalOcrWord(word));
+    const mx = ((line?.x0 ?? 0) + (line?.x1 ?? 0)) / 2;
+    const my = line?.base ?? ((line?.y0 ?? 0) + (line?.y1 ?? 0)) / 2;
+    if (vertical && inMargin(mx, my, w, h, band)) {
+      const text3 = String(line.text || "").replace(/\s+/g, " ").trim();
+      if (text3) removed.push({ text: text3, bbox: [r2(line.x0), r2(line.y0), r2(line.x1), r2(line.y1)] });
+      continue;
+    }
+    kept.push(line);
+  }
+  for (const piece of rotated || []) {
+    if (!quarterTurn(piece?.angle)) continue;
+    const text3 = String(piece.text || "").replace(/\s+/g, " ").trim();
+    if (text3.length < 4) continue;
+    if (!inMargin(piece.x0, piece.base, w, h, band)) continue;
+    const advance = Math.abs((piece.x1 ?? piece.x0) - piece.x0);
+    const size = piece.size || 8;
+    const top = Math.max(0, Math.min(piece.base, piece.base - advance));
+    const bot = Math.min(h || Infinity, Math.max(piece.base, piece.base - advance));
+    removed.push({
+      text: text3,
+      bbox: [r2(piece.x0), r2(top), r2(Math.min(w || piece.x0 + size, piece.x0 + size)), r2(bot)]
+    });
+  }
+  return { lines: kept, removed };
 }
 var PAGE_NUM_RE, FURNITURE_BAND, SCAN_BAND;
 var init_furniture = __esm({
@@ -7445,14 +7492,14 @@ function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWord
       const panel = nWords === 1 && /^[a-d]$/i.test(line.text.trim());
       const gapX = line.x1 < fig.x0 ? fig.x0 - line.x1 : line.x0 > fig.x1 ? line.x0 - fig.x1 : 0;
       const gapY = line.y1 < fig.y0 ? fig.y0 - line.y1 : line.y0 > fig.y1 ? line.y0 - fig.y1 : 0;
-      const inside7 = gapX === 0 && gapY === 0;
+      const inside8 = gapX === 0 && gapY === 0;
       const yOverlap = Math.min(line.y1, fig.y1) - Math.max(line.y0, fig.y0);
       const beside = gapX > 0 && gapX <= 42 && yOverlap >= 0.4 * Math.max(1, line.y1 - line.y0);
       const rightMargin = line.x0 > pageW - 72 && art.x1 < pageW - 36;
       const leftMargin = line.x1 < 72 && art.x0 > 36;
-      if (!inside7 && (rightMargin || leftMargin)) continue;
+      if (!inside8 && (rightMargin || leftMargin)) continue;
       const edge = gapX === 0 && gapY > 0 && gapY <= 2 * bodySize && nWords <= 3 && (line.size <= 0.85 * bodySize || panel);
-      if (!inside7 && !beside && !edge && !(panel && gapX <= 18 && gapY <= 18)) continue;
+      if (!inside8 && !beside && !edge && !(panel && gapX <= 18 && gapY <= 18)) continue;
       if (beside && (nWords > 6 || line.size > bodySize * 1.05)) continue;
       let span = line.words.filter((w) => !used.has(w) && !labelWords.has(w) && allow(w, line));
       if (gapX === 0 && (line.x1 > art.x1 + 18 || line.x0 < art.x0 - 18)) {
@@ -7984,8 +8031,8 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
     const drawn = hullOf(inkOnly);
     const padX = Math.max(36, 0.06 * pageW);
     const padY = Math.max(18, 0.04 * pageH);
-    const near = ink.filter((p) => p.kind === "ink" || p.x1 >= drawn.x0 - padX && p.x0 <= drawn.x1 + padX && p.y1 >= drawn.y0 - padY && p.y0 <= drawn.y1 + padY);
-    if (near.length >= 4) ink = near;
+    const near2 = ink.filter((p) => p.kind === "ink" || p.x1 >= drawn.x0 - padX && p.x0 <= drawn.x1 + padX && p.y1 >= drawn.y0 - padY && p.y0 <= drawn.y1 + padY);
+    if (near2.length >= 4) ink = near2;
   }
   if (ink.length < 4) return;
   const caps = plateCaptions(lines, pageH);
@@ -8001,9 +8048,9 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
       const keys = new Set(caps.map((c) => c.key));
       if (keys.size <= 1) key = [...keys][0];
       else {
-        const near = nearestPlateCaption(prim, caps);
-        if (!near) continue;
-        key = near.key;
+        const near2 = nearestPlateCaption(prim, caps);
+        if (!near2) continue;
+        key = near2.key;
       }
     }
     if (!groups.has(key)) groups.set(key, []);
@@ -8019,12 +8066,12 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
     const area = w * h;
     if (w < 48 || h < 32 || area < 0.025 * pageArea || area > 0.92 * pageArea) continue;
     const drawings = figures.filter((f) => f.kind !== "image");
-    const inside7 = drawings.filter((f) => insideFrac(f, hull) >= 0.5);
-    const insideArea = inside7.reduce((n2, f) => n2 + boxArea(f), 0);
+    const inside8 = drawings.filter((f) => insideFrac(f, hull) >= 0.5);
+    const insideArea = inside8.reduce((n2, f) => n2 + boxArea(f), 0);
     const mine = caps.filter((c) => c.key === key);
     const cap4 = mine.filter((c) => c.y0 >= hull.y1 - 8).sort((a, b) => a.y0 - b.y0)[0] || mine.filter((c) => c.y1 <= hull.y0 + 8).sort((a, b) => b.y1 - a.y1)[0] || mine[0] || null;
-    if (inside7.length && insideArea >= 0.55 * area) {
-      for (const f of inside7) {
+    if (inside8.length && insideArea >= 0.55 * area) {
+      for (const f of inside8) {
         f.x0 = Math.min(f.x0, hull.x0);
         f.y0 = Math.min(f.y0, hull.y0);
         f.x1 = Math.max(f.x1, hull.x1);
@@ -8034,7 +8081,7 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
       }
       continue;
     }
-    for (const f of inside7) {
+    for (const f of inside8) {
       const at = figures.indexOf(f);
       if (at >= 0) figures.splice(at, 1);
     }
@@ -8276,8 +8323,8 @@ function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
       const { line } = c;
       const prev = cur && cur.items[cur.items.length - 1].line;
       const sizeOk = prev && (Math.abs(line.size - prev.size) <= 0.5 || line.size <= prev.size && line.size >= 0.8 * prev.size && line.base - prev.base <= 0.95 * prev.size);
-      const near = prev && sizeOk && line.base - prev.base <= 2.2 * line.size && line.base > prev.base + 0.5 * line.size && Boolean(line.bold) === Boolean(prev.bold) && line.x0 < prev.x1 && line.x1 > prev.x0 && cur.items.length < MAX_LINES;
-      if (near) cur.items.push(c);
+      const near2 = prev && sizeOk && line.base - prev.base <= 2.2 * line.size && line.base > prev.base + 0.5 * line.size && Boolean(line.bold) === Boolean(prev.bold) && line.x0 < prev.x1 && line.x1 > prev.x0 && cur.items.length < MAX_LINES;
+      if (near2) cur.items.push(c);
       else {
         cur = { items: [c] };
         blocks.push(cur);
@@ -9196,6 +9243,9 @@ function parsePageGeometry(data, n2) {
     data = { ...data, items: (data.items || []).filter((it) => !/^[.·•]+$/.test(it.str || "")) };
     ({ lines, rotated } = buildLines(data.items, { transform, fonts: data.fonts || {} }));
   }
+  const margin = dropMarginRotated(lines, rotated, { w, h });
+  lines = margin.lines;
+  const marginRotated = margin.removed;
   const graphics = ocr ? ocrGraphics(data, w, h) : extractGraphics(data.ops, { transform });
   const words = lines.flatMap((l) => l.words);
   const pageArea = w * h;
@@ -9257,7 +9307,7 @@ function parsePageGeometry(data, n2) {
     tables.splice(i, 1);
     for (const w2 of words) if (used.has(w2) && !figs.used.has(w2) && w2.x0 >= t.bbox[0] - 2 && w2.x1 <= t.bbox[2] + 2 && w2.base >= t.bbox[1] && w2.base <= t.bbox[3] + 2) used.delete(w2);
   }
-  return { n: n2, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, words: figWords, graphics, tables, figures, used, ms: round(now() - t0) };
+  return { n: n2, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, marginRotated, words: figWords, graphics, tables, figures, used, ms: round(now() - t0) };
 }
 function stripTiles(images, pageW, pageH, textChars) {
   if (textChars >= 400) return [];
@@ -9552,6 +9602,13 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
   for (const pg of pageRecords2) pg.free = freeLinesOf(pg);
   const furniture2 = findFurniture(pageRecords2.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
   for (const pg of pageRecords2) pg.free = pg.free.filter((l) => !furniture2.isFurniture(l));
+  for (const pg of pageRecords2) {
+    for (const item of pg.marginRotated || []) {
+      if (!item?.text) continue;
+      furniture2.removed.push({ page: pg.n, bbox: item.bbox, text: item.text, reason: "rotated-margin" });
+    }
+  }
+  furniture2.removed.sort((a, b) => a.page - b.page || (a.bbox?.[1] ?? 0) - (b.bbox?.[1] ?? 0));
   const allFree = pageRecords2.flatMap((pg) => pg.free);
   const bodySize = bodySizeOf(allFree) || 10;
   const bodyFont = dominantFont(allFree);
@@ -10002,7 +10059,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 15;
+    PARSE_REV = 16;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     EVIDENCE_LINES = 60;
@@ -11849,7 +11906,7 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
   const numbered = options.numbered === true;
   const footnotes = options.footnotes === "end" ? "end" : "inline";
   const fnFormat = options.footnoteFormat === "extension" || options.footnoteFormat === "plain" ? footnoteFormat(options.footnoteFormat) : "off";
-  const tokens = fnFormat !== "off";
+  const tokens2 = fnFormat !== "off";
   const blocks = selectBlocks(doc, idsOrRange);
   const byId2 = new Map(blocks.map((block) => [block.id, block]));
   const folded = /* @__PURE__ */ new Set();
@@ -11871,7 +11928,7 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
       if (!note || emittedNotes.has(note.id)) return;
       emittedNotes.add(note.id);
       const mark = note.mark ?? "";
-      if (tokens) {
+      if (tokens2) {
         let text3 = flattenLine(note.text ?? "");
         if (linkSafe) text3 = linkSafeText(text3);
         lines.push(defLine(note.id, mark, text3));
@@ -11879,7 +11936,7 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
       }
       putUser(0, note.text ?? "", `[${mark}] `);
     };
-    const lookup2 = (id) => byId2.get(id) ?? (tokens ? doc?.blocks?.[id] : null);
+    const lookup2 = (id) => byId2.get(id) ?? (tokens2 ? doc?.blocks?.[id] : null);
     const notesFor = (block) => {
       const refs = block.footnoteRefs || [];
       const notes = [];
@@ -11889,7 +11946,7 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
       }
       return notes;
     };
-    const tokenFor = tokens ? (ref) => {
+    const tokenFor = tokens2 ? (ref) => {
       const note = ref.to ? lookup2(ref.to) : null;
       return note?.type === "footnote" ? refToken(note.id, ref.mark) : `[${ref.mark}]`;
     } : null;
@@ -11910,7 +11967,7 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
         putUser(0, applyFootnoteRefs(block.text ?? "", block.footnoteRefs, tokenFor));
         if (footnotes === "inline") {
           for (const note of notesFor(block)) emitNote(note);
-        } else if (tokens) {
+        } else if (tokens2) {
           pendingNotes.push(...notesFor(block));
         }
       } else if (block.type === "list") {
@@ -11926,7 +11983,7 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
           }
         }
       } else if (block.type === "table") {
-        if (tokens) {
+        if (tokens2) {
           const prep = prepareTable(block, pageNoteBlocks(doc, block), { format: fnFormat });
           emitTable(prep.table, putUser, emitRaw, byId2, foldedHere, doc);
           for (const note of prep.notes) emitNote(note);
@@ -13679,7 +13736,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
   if (!a || !b) return null;
   const bounds = boundsOf([a, b]);
   const view = { x: bounds.x - pad2, y: bounds.y - pad2, w: bounds.w + 2 * pad2, h: bounds.h + 2 * pad2 };
-  const inside7 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
+  const inside8 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
   const label = (item) => itemLabel(item, blockText) || item.title || "";
   const cards = [];
   let others = 0;
@@ -13688,7 +13745,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     if (!r) continue;
     const role = item.uid === edge.from ? "from" : item.uid === edge.to ? "to" : "other";
     if (role === "other") {
-      if (!inside7(r) || others >= maxOthers) continue;
+      if (!inside8(r) || others >= maxOthers) continue;
       others += 1;
     }
     cards.push({ uid: item.uid, type: item.type, rect: r, title: label(item), role });
@@ -14755,8 +14812,8 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
         focusEl3(back);
         return;
       }
-      const inside7 = node2.contains?.(event.target) || node2.contains?.(doc.activeElement);
-      if (!inside7) return;
+      const inside8 = node2.contains?.(event.target) || node2.contains?.(doc.activeElement);
+      if (!inside8) return;
       const tag = fieldTag(event);
       if (tag === "input" || tag === "textarea" || tag === "select") return;
       const buttons = [...node2.querySelectorAll("button")];
@@ -14868,8 +14925,8 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
     if (event.key !== "Enter" && event.key !== " " && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     const tag = String(event.target?.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea") return;
-    const inside7 = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
-    if (!inside7) return;
+    const inside8 = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
+    if (!inside8) return;
     event.preventDefault();
     event.stopPropagation();
     if (event.key === "Enter" || event.key === " ") {
@@ -15217,22 +15274,22 @@ function createRowScheduler({ idle, now: now3 = () => Date.now(), budgetMs = 8, 
   };
   return {
     // Registers a row. `wanted` starts false when the caller watches visibility, true when it cannot.
-    add(id, { heavy = false, wanted = false, near = null } = {}) {
+    add(id, { heavy = false, wanted = false, near: near2 = null } = {}) {
       if (rows.has(id)) return;
-      rows.set(id, { id, heavy: Boolean(heavy), wanted: Boolean(wanted), done: false, near, seq: seq++ });
+      rows.set(id, { id, heavy: Boolean(heavy), wanted: Boolean(wanted), done: false, near: near2, seq: seq++ });
       if (wanted) schedule();
     },
     // Card bodies update distance as the camera moves. A finished row stays finished until reopen.
-    place(id, { heavy = false, near = null, wanted = true } = {}) {
+    place(id, { heavy = false, near: near2 = null, wanted = true } = {}) {
       let row4 = rows.get(id);
       if (!row4) {
-        row4 = { id, heavy: Boolean(heavy), wanted: false, done: false, near, seq: seq++ };
+        row4 = { id, heavy: Boolean(heavy), wanted: false, done: false, near: near2, seq: seq++ };
         rows.set(id, row4);
       } else if (row4.done) {
         return;
       } else {
         row4.heavy = Boolean(heavy);
-        if (near != null) row4.near = near;
+        if (near2 != null) row4.near = near2;
       }
       row4.wanted = Boolean(wanted);
       if (wanted) schedule();
@@ -15927,9 +15984,9 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   if (own) return [{ string: own }];
   const officeFiles = officeFilesFrom(dataTransfer);
   if (officeFiles.length) return officeFiles.map((office) => ({ office }));
-  const tokens = (text3) => text3.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
-  let uids = tokens(take("roam/block-uid-list-only-parents"));
-  if (!uids.length) uids = tokens(take("roam/block-uid-list"));
+  const tokens2 = (text3) => text3.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
+  let uids = tokens2(take("roam/block-uid-list-only-parents"));
+  if (!uids.length) uids = tokens2(take("roam/block-uid-list"));
   if (!uids.length) {
     for (const type of ["roam/roam-uri-list", "text/uri-list", "text/plain"]) {
       for (const raw of take(type).split(/\r?\n/)) {
@@ -20137,12 +20194,12 @@ function mountRoamTable(doc, parent, { uid, renderBlock, portalParent, unmount }
   open.setAttribute("aria-label", "Open grid");
   open.textContent = "Open grid";
   bar.append(open);
-  const fit = doc.createElement("div");
-  fit.className = "pxd-roam-table__fit";
+  const fit2 = doc.createElement("div");
+  fit2.className = "pxd-roam-table__fit";
   const live = doc.createElement("div");
   live.className = "pxd-rs__live";
-  fit.append(live);
-  host.append(bar, fit);
+  fit2.append(live);
+  host.append(bar, fit2);
   parent?.append?.(host);
   const rec = { host, grid: false, overlay: null };
   drawBlock(renderBlock, live, uid);
@@ -25061,14 +25118,14 @@ function createItemRenderer({
       const item = lastBoard.items.get(uid);
       if (!rec || !item) continue;
       const heavy = cardHeavy(item, rec);
-      const near = centreDist(uid, visibleRect);
+      const near2 = centreDist(uid, visibleRect);
       if (contentSched.isDone(uid)) {
         if (mounted.has(uid)) continue;
         if (dirtyKnown && !dirty.has(uid)) continue;
-        contentSched.reopen(uid, { heavy, near, wanted: true });
+        contentSched.reopen(uid, { heavy, near: near2, wanted: true });
         continue;
       }
-      contentSched.place(uid, { heavy, near, wanted: true });
+      contentSched.place(uid, { heavy, near: near2, wanted: true });
     }
     if (!paused && contentSched.pending() > 0) armFrames();
     if ([...mounted.keys()].some((u) => !next.has(u))) scheduleUnmounts();
@@ -28775,21 +28832,21 @@ function patternNeeds(pattern) {
   const text3 = String(pattern ?? "");
   const hit = patternMemo.get(text3);
   if (hit) return hit;
-  const tokens = text3.match(/\.\.\.|[[\]{}]|:[^\s[\]{}]+|[^\s[\]{}]+/g) || [];
+  const tokens2 = text3.match(/\.\.\.|[[\]{}]|:[^\s[\]{}]+|[^\s[\]{}]+/g) || [];
   let i = 0;
   const vector = () => {
     const out = [];
-    if (tokens[i] !== "[") return out;
+    if (tokens2[i] !== "[") return out;
     i += 1;
-    while (i < tokens.length && tokens[i] !== "]") {
-      const t = tokens[i];
+    while (i < tokens2.length && tokens2[i] !== "]") {
+      const t = tokens2[i];
       if (t === "{") {
         i += 1;
-        while (i < tokens.length && tokens[i] !== "}") {
-          const key = tokens[i];
+        while (i < tokens2.length && tokens2[i] !== "}") {
+          const key = tokens2[i];
           i += 1;
           let sub = null;
-          if (tokens[i] === "[") sub = vector();
+          if (tokens2[i] === "[") sub = vector();
           else i += 1;
           out.push({ key, sub });
         }
@@ -40001,18 +40058,18 @@ var PLAIN = /* @__PURE__ */ new Set(["bp3-button", "bp3-minimal", "bp3-small", "
 function blocked(button2) {
   if (!button2 || typeof button2 !== "object") return true;
   if (button2.classList?.contains?.("rm-pdf-color-button")) return true;
-  const tokens = tokensOf(button2);
-  if (tokens.some((name) => BLOCKED_ICONS.has(name))) return true;
+  const tokens2 = tokensOf(button2);
+  if (tokens2.some((name) => BLOCKED_ICONS.has(name))) return true;
   const aria = button2.getAttribute?.("aria-label") || "";
   const title = button2.getAttribute?.("title") || "";
-  const named = tokens.some((name) => name.startsWith("bp3-icon-") || name && !PLAIN.has(name) && !name.startsWith("bp3-"));
+  const named = tokens2.some((name) => name.startsWith("bp3-icon-") || name && !PLAIN.has(name) && !name.startsWith("bp3-"));
   if (!named && !aria && !title) return true;
   return false;
 }
 function matches(button2, spec) {
   if (!spec || typeof spec !== "object") return false;
-  const tokens = tokensOf(button2);
-  if (spec.icon && tokens.includes(spec.icon)) return true;
+  const tokens2 = tokensOf(button2);
+  if (spec.icon && tokens2.includes(spec.icon)) return true;
   const label = typeof spec.label === "string" ? spec.label : "";
   if (!label) return false;
   const aria = button2.getAttribute?.("aria-label") || "";
@@ -42187,17 +42244,17 @@ var MARK = /[^\x20-\x7e]/g;
 function coreOf(t) {
   return String(t).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "").toLowerCase();
 }
-function lineScore(tokens, oldTokens, opts) {
-  let n2 = tokens.reduce((k, w) => k + (suspiciousWord(w, opts) ? 1 : 0), 0);
-  for (const t of oldTokens) if (NON_LETTER.test(t) && !tokens.some((w) => w === t || t.length >= 2 && w.includes(t))) n2++;
+function lineScore(tokens2, oldTokens, opts) {
+  let n2 = tokens2.reduce((k, w) => k + (suspiciousWord(w, opts) ? 1 : 0), 0);
+  for (const t of oldTokens) if (NON_LETTER.test(t) && !tokens2.some((w) => w === t || t.length >= 2 && w.includes(t))) n2++;
   const marks = (list) => list.join(" ").match(MARK) || [];
-  const have = marks(tokens);
+  const have = marks(tokens2);
   for (const m of marks(oldTokens)) {
     const at = have.indexOf(m);
     if (at < 0) n2++;
     else have.splice(at, 1);
   }
-  const cores = tokens.map(coreOf);
+  const cores = tokens2.map(coreOf);
   const pairs = new Set(cores.slice(1).map((k, i) => /^[a-z]+$/.test(cores[i]) && /^[a-z]+$/.test(k) ? cores[i] + k : "").filter(Boolean));
   for (const t of oldTokens) {
     const c = coreOf(t);
@@ -42207,10 +42264,10 @@ function lineScore(tokens, oldTokens, opts) {
   }
   return n2;
 }
-function restoreClean(tokens, oldTokens, opts) {
-  if (!opts.lexicon) return tokens;
-  const pair2 = alignTokens(tokens, oldTokens);
-  return tokens.map((tok, i) => {
+function restoreClean(tokens2, oldTokens, opts) {
+  if (!opts.lexicon) return tokens2;
+  const pair2 = alignTokens(tokens2, oldTokens);
+  return tokens2.map((tok, i) => {
     const j = pair2[i];
     if (j < 0) return tok;
     const was = oldTokens[j];
@@ -42241,10 +42298,10 @@ function linesToReread(doc, ocrPages, { lexicon = null } = {}) {
   }
   return out;
 }
-function fixTokens(tokens, { lexicon = null, keep = null, confs = null, wordConfs = null } = {}) {
-  const dominant = lineCase(tokens);
+function fixTokens(tokens2, { lexicon = null, keep = null, confs = null, wordConfs = null } = {}) {
+  const dominant = lineCase(tokens2);
   let at = 0;
-  return tokens.map((tok, k) => {
+  return tokens2.map((tok, k) => {
     const start = at;
     at += tok.length + 1;
     const cased = normalizeCase(tok.replace(/^([^A-Za-z]*)([A-Za-z]+)([^A-Za-z]*)$/, "$2"), dominant);
@@ -42295,10 +42352,10 @@ function alignTokens(a, b) {
   }
   return pair2;
 }
-function repairTokens(tokens, others, opts = {}) {
-  const out = tokens.slice();
+function repairTokens(tokens2, others, opts = {}) {
+  const out = tokens2.slice();
   for (const other of others || []) {
-    if (!other || other === tokens) continue;
+    if (!other || other === tokens2) continue;
     const pair2 = alignTokens(out, other);
     out.forEach((tok, i) => {
       const j = pair2[i];
@@ -42310,11 +42367,11 @@ function repairTokens(tokens, others, opts = {}) {
   }
   return out;
 }
-function dashGlyphs(tokens, old) {
+function dashGlyphs(tokens2, old) {
   const dashes = old.filter((it) => /^[-–—]$/.test(it.str));
-  if (!dashes.length) return tokens;
+  if (!dashes.length) return tokens2;
   let k = 0;
-  return tokens.map((t) => {
+  return tokens2.map((t) => {
     if (!/^[-–—]$/.test(t) || k >= dashes.length) return t;
     const it = dashes[k++];
     const size = itemSize(it);
@@ -42324,30 +42381,30 @@ function dashGlyphs(tokens, old) {
     return t;
   });
 }
-function lineItems(old, tokens, confs) {
+function lineItems(old, tokens2, confs) {
   const tokConf = [];
   let at = 0;
-  for (const tok of tokens) {
+  for (const tok of tokens2) {
     const slice = confs ? confs.slice(at, at + tok.length) : [];
     tokConf.push(slice.length ? slice.reduce((s, c) => s + c, 0) / slice.length : 1);
     at += tok.length + 1;
   }
-  if (tokens.length === old.length) {
+  if (tokens2.length === old.length) {
     const bases = old.map((t) => t.transform[5]).sort((a, b) => a - b);
     const base = bases[bases.length >> 1];
     return old.map((it, k) => {
       const dy = base - it.transform[5];
       const moved = dy ? { transform: [...it.transform.slice(0, 5), base], ...it.y0 != null ? { y0: r22(it.y0 + dy), y1: r22(it.y1 + dy) } : {} } : {};
-      return { ...it, ...moved, str: tokens[k], conf: bucketConf(tokConf[k]) };
+      return { ...it, ...moved, str: tokens2[k], conf: bucketConf(tokConf[k]) };
     });
   }
   const x0 = Math.min(...old.map((t) => t.transform[4]));
   const x1 = Math.max(...old.map((t) => t.transform[4] + t.width));
   const first = old[0];
-  const total = tokens.reduce((n2, t) => n2 + t.length, 0) + Math.max(0, tokens.length - 1);
+  const total = tokens2.reduce((n2, t) => n2 + t.length, 0) + Math.max(0, tokens2.length - 1);
   const unit = (x1 - x0) / Math.max(1, total);
   let x = x0;
-  return tokens.map((tok, k) => {
+  return tokens2.map((tok, k) => {
     const w = tok.length * unit;
     const item = {
       ...first,
@@ -42383,9 +42440,9 @@ function applyLineReads(ocrPages, requests, results, { lexicon = null, doc = nul
     for (const read2 of reads) {
       const text3 = String(read2?.text || "").trim();
       if (!text3 || (read2.conf ?? 0) < MIN_READ_CONF) continue;
-      const tokens = text3.split(" ").filter(Boolean);
-      if (Math.abs(tokens.length - old.length) > Math.max(2, Math.round(0.25 * old.length))) continue;
-      const fixed = restoreClean(fixTokens(tokens, { lexicon, keep, confs: read2.confs || null }), oldFixed, { lexicon, keep });
+      const tokens2 = text3.split(" ").filter(Boolean);
+      if (Math.abs(tokens2.length - old.length) > Math.max(2, Math.round(0.25 * old.length))) continue;
+      const fixed = restoreClean(fixTokens(tokens2, { lexicon, keep, confs: read2.confs || null }), oldFixed, { lexicon, keep });
       const score = lineScore(fixed, oldTokens, { lexicon, keep });
       const agreed = best.confs === null && score === best.score && read2.conf >= AGREE_CONF && seen.filter((t) => t === text3).length >= 2;
       if (score < best.score || agreed || score === best.score && read2.conf > best.conf) best = { tokens: fixed, score, conf: read2.conf, confs: read2.confs || [] };
@@ -42734,6 +42791,444 @@ function voteOcrBodies(visionPages, otherPages, lexicon) {
   });
 }
 
+// src/model/parse/vlm-arbitrate.js
+init_ocr_fix();
+var CLEAR = 0.06;
+function tokens(text3) {
+  return String(text3 || "").toLowerCase().replace(/[–—]/g, "-").split(/[^a-z0-9.-]+/).map((part) => part.replace(/^[.-]+|[.-]+$/g, "")).filter((part) => part.length > 0);
+}
+function near(a, b) {
+  if (a === b) return true;
+  if (a.length < 4 || b.length < 4 || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    edits += 1;
+    if (edits > 1) return false;
+    if (a.length === b.length) {
+      i += 1;
+      j += 1;
+    } else if (a.length > b.length) i += 1;
+    else j += 1;
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+function bagHas(bag, key) {
+  for (const token of bag) if (near(key, token)) return true;
+  return false;
+}
+function rowKeys(words) {
+  const all = [];
+  for (const word of words || []) all.push(...tokens(word.text));
+  const alpha2 = all.filter((token) => /[a-z]/.test(token) && token.length >= 3);
+  if (alpha2.length) return alpha2;
+  return all.filter((token) => /\d/.test(token));
+}
+function baselineRows3(words) {
+  const sorted = [...words || []].sort((a, b) => (a.base ?? 0) - (b.base ?? 0) || (a.x0 ?? 0) - (b.x0 ?? 0));
+  const rows = [];
+  for (const word of sorted) {
+    const size = word.size || 8;
+    let host = null;
+    for (let i = rows.length - 1; i >= 0 && rows[i].base >= (word.base ?? 0) - 2 * size; i -= 1) {
+      const row4 = rows[i];
+      if (Math.abs(row4.base - (word.base ?? 0)) <= 0.45 * Math.max(size, row4.size)) {
+        host = row4;
+        break;
+      }
+    }
+    if (host) {
+      host.words.push(word);
+      host.size = Math.max(host.size, size);
+    } else rows.push({ base: word.base ?? 0, size, words: [word] });
+  }
+  return rows;
+}
+function unionBox(a, b) {
+  if (!a || a.length < 4) return b || null;
+  if (!b || b.length < 4) return a;
+  return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])];
+}
+function inside5(word, box2) {
+  if (!box2) return false;
+  const cx = ((word.x0 ?? 0) + (word.x1 ?? 0)) / 2;
+  const cy = word.base != null ? word.base - 0.25 * (word.size || 8) : ((word.y0 ?? 0) + (word.y1 ?? 0)) / 2;
+  return cx >= box2[0] - 3 && cx <= box2[2] + 3 && cy >= box2[1] - 3 && cy <= box2[3] + 3;
+}
+function ruleCount(rules, box2, axis2) {
+  if (!box2) return 0;
+  const span = axis2 === "h" ? box2[2] - box2[0] : box2[3] - box2[1];
+  const minLen = 0.55 * span;
+  const coords = [];
+  for (const rule of rules || []) {
+    if (rule.axis !== axis2) continue;
+    if (axis2 === "h") {
+      const y = ((rule.y0 ?? 0) + (rule.y1 ?? 0)) / 2;
+      if (y < box2[1] - 2 || y > box2[3] + 2) continue;
+      const overlap = Math.min(rule.x1 ?? 0, box2[2]) - Math.max(rule.x0 ?? 0, box2[0]);
+      if (overlap < minLen) continue;
+      coords.push(y);
+    } else {
+      const x = ((rule.x0 ?? 0) + (rule.x1 ?? 0)) / 2;
+      if (x < box2[0] - 2 || x > box2[2] + 2) continue;
+      const overlap = Math.min(rule.y1 ?? 0, box2[3]) - Math.max(rule.y0 ?? 0, box2[1]);
+      if (overlap < minLen) continue;
+      coords.push(x);
+    }
+  }
+  coords.sort((a, b) => a - b);
+  const uniq = [];
+  for (const coord of coords) if (!uniq.length || coord - uniq[uniq.length - 1] > 2) uniq.push(coord);
+  return uniq.length;
+}
+function bodyTarget(rows) {
+  let numeric = 0;
+  let words = 0;
+  for (const row4 of rows || []) {
+    const all = [];
+    for (const word of row4.words || []) all.push(...tokens(word.text));
+    if (!all.length) continue;
+    let nums = 0;
+    let alpha2 = 0;
+    for (const key of all) {
+      if (/\d/.test(key)) nums += 1;
+      else if (/[a-z]/.test(key)) alpha2 += 1;
+    }
+    if (nums > 0 && nums > alpha2) numeric += 1;
+    else if (alpha2 && nums === 0) words += 1;
+  }
+  if (numeric < 4) return null;
+  return numeric + (words ? 1 : 0);
+}
+function ruledTarget(textCount, lineCount) {
+  if (lineCount < 3 || textCount < 2) return textCount;
+  const closed = lineCount - 1;
+  const open = lineCount;
+  const pick = Math.abs(closed - textCount) <= Math.abs(open - textCount) ? closed : open;
+  if (Math.abs(pick - textCount) / textCount <= 0.2) return pick;
+  return textCount;
+}
+function fit(actual, target) {
+  if (!target) return actual ? 0 : 1;
+  return 1 - Math.min(1, Math.abs(actual - target) / target);
+}
+function cellBag(table) {
+  const bag = [];
+  for (const cell of table?.cells || []) bag.push(...tokens(cell.text));
+  return bag;
+}
+function distinctiveOwners(rows) {
+  const hits = /* @__PURE__ */ new Map();
+  rows.forEach((row4, index) => {
+    for (const key of rowKeys(row4.words)) {
+      const cur = hits.get(key);
+      if (cur === void 0) hits.set(key, index);
+      else if (cur !== index) hits.set(key, -1);
+    }
+  });
+  const owner = /* @__PURE__ */ new Map();
+  for (const [key, index] of hits) if (index >= 0) owner.set(key, index);
+  return owner;
+}
+function ownersOf(text3, owner) {
+  const found = /* @__PURE__ */ new Set();
+  for (const key of tokens(text3)) {
+    if (owner.has(key)) {
+      found.add(owner.get(key));
+      continue;
+    }
+    for (const [cand, index] of owner) {
+      if (near(key, cand)) {
+        found.add(index);
+        break;
+      }
+    }
+  }
+  return found;
+}
+function rowKind(row4) {
+  const keys = rowKeys(row4?.words);
+  let alpha2 = 0;
+  let numeric = 0;
+  for (const key of keys) {
+    if (/[a-z]/.test(key)) alpha2 += 1;
+    else if (/\d/.test(key)) numeric += 1;
+  }
+  if (numeric && !alpha2) return "num";
+  if (alpha2 && !numeric) return "word";
+  return "mix";
+}
+function cellCovers(hit, rows, cell) {
+  if (hit.size <= 1) return true;
+  const span = cell?.rowSpan || 1;
+  if (span > 1 && hit.size <= span + 1) return true;
+  const indexes = [...hit].sort((a, b) => a - b);
+  for (let i = 1; i < indexes.length; i += 1) if (indexes[i] - indexes[i - 1] > 1) return false;
+  const kinds = indexes.map((index) => rowKind(rows[index]));
+  if (kinds.includes("word") && kinds.includes("num")) return false;
+  if (kinds.filter((kind) => kind === "num").length >= 2) return false;
+  return indexes.length <= 3;
+}
+function cleanCoverage(table, rows, owner) {
+  const cells = table?.cells || [];
+  let covered = 0;
+  let counted = 0;
+  for (let index = 0; index < rows.length; index += 1) {
+    const keys = rowKeys(rows[index].words);
+    if (!keys.length) continue;
+    counted += 1;
+    const bag = [];
+    for (const cell of cells) {
+      const hit = ownersOf(cell.text, owner);
+      if (!hit.has(index) || !cellCovers(hit, rows, cell)) continue;
+      bag.push(...tokens(cell.text));
+    }
+    let got = 0;
+    for (const key of keys) if (bagHas(bag, key)) got += 1;
+    if (got / keys.length >= 0.5) covered += 1;
+  }
+  return { covered, counted };
+}
+function plainNumber(text3) {
+  let s = String(text3 || "").trim();
+  s = s.replace(/\\overline\{([^}]*)\}/g, "$1");
+  s = s.replace(/\\\(|\\\)|\\[a-z]+/g, "");
+  s = s.replace(/[{}]/g, "").trim();
+  return /^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(s);
+}
+function plainPhrase(text3) {
+  return /^[A-Za-z][A-Za-z .,'’()/-]{0,80}$/.test(String(text3 || "").trim());
+}
+function filledShare(table) {
+  const header = table?.headerRows || 0;
+  const rows = table?.rows || 0;
+  const cols = table?.cols || 0;
+  if (!rows || !cols) return 1;
+  let n2 = 0;
+  let empty = 0;
+  for (let r = header; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      n2 += 1;
+      const covering = (table.cells || []).find((cell) => {
+        const rs = cell.rowSpan || 1;
+        const cs = cell.colSpan || 1;
+        return cell.r <= r && r < cell.r + rs && cell.c <= c && c < cell.c + cs;
+      });
+      if (!covering || !String(covering.text || "").trim()) empty += 1;
+    }
+  }
+  return n2 ? 1 - empty / n2 : 1;
+}
+function tidyShare(table) {
+  const header = table?.headerRows || 0;
+  let n2 = 0;
+  let ok = 0;
+  for (const cell of table?.cells || []) {
+    if ((cell.colSpan || 1) > 1) continue;
+    if (header && cell.r < header) continue;
+    const raw = String(cell.text || "").trim();
+    if (!raw) continue;
+    n2 += 1;
+    if (plainNumber(raw) || isPlaceholder(raw) || plainPhrase(raw)) ok += 1;
+  }
+  return n2 ? ok / n2 : 1;
+}
+function singleValues(table) {
+  let n2 = 0;
+  let packed = 0;
+  for (const cell of table?.cells || []) {
+    if ((cell.colSpan || 1) > 1) continue;
+    if (cell.header || cell.r < (table.headerRows || 0)) continue;
+    const nums = tokens(cell.text).filter((token) => /\d/.test(token) && token.replace(/\D/g, "").length >= 2);
+    if (!nums.length) continue;
+    n2 += 1;
+    if (nums.length >= 2) packed += 1;
+  }
+  return n2 ? 1 - packed / n2 : 1;
+}
+function headerRowsOf(cells, rows) {
+  let n2 = 0;
+  for (let r = 0; r < rows; r += 1) {
+    const row4 = (cells || []).filter((cell) => cell.r === r);
+    if (!row4.length || !row4.every((cell) => cell.header)) break;
+    n2 += 1;
+  }
+  return n2;
+}
+function numericConsistency(table) {
+  const validity = tableNumericValidity(table);
+  if (validity.total >= 4) return validity.share;
+  const header = table.headerRows || 0;
+  let sum = 0;
+  let n2 = 0;
+  for (let c = 0; c < (table.cols || 0); c += 1) {
+    const body = (table.cells || []).filter((cell) => cell.c === c && (cell.colSpan || 1) === 1 && cell.r >= header && String(cell.text || "").trim());
+    if (body.length < 3) continue;
+    const numeric = body.filter((cell) => numericLike(cell.text) || isPlaceholder(cell.text)).length / body.length;
+    sum += Math.max(numeric, 1 - numeric);
+    n2 += 1;
+  }
+  return n2 ? sum / n2 : 0.7;
+}
+function headerScore(table, rows) {
+  const marked = headerRowsOf(table.cells, table.rows || 0);
+  let n2 = table.headerRows || marked;
+  if (!n2 && (table.cells || []).some((cell) => cell.r === 0 && String(cell.text || "").trim())) n2 = 1;
+  const headerCells = (table.cells || []).filter((cell) => n2 ? cell.r < n2 : cell.header);
+  const headerText2 = headerCells.map((cell) => cell.text).join(" ");
+  if (!n2 && !headerCells.length) return 0.65;
+  if (!String(headerText2).trim()) return 0.15;
+  const keys = rows.slice(0, Math.max(1, n2)).flatMap((row4) => rowKeys(row4.words));
+  if (!keys.length) return 0.65;
+  const bag = tokens(headerText2);
+  let hit = 0;
+  for (const key of keys) if (bagHas(bag, key)) hit += 1;
+  return hit / keys.length;
+}
+function evidenceFromRecords(records) {
+  return (records || []).filter(Boolean).map((rec) => ({
+    page: rec.n,
+    words: (rec.words || []).map((word) => ({
+      text: word.text,
+      x0: word.x0,
+      x1: word.x1,
+      y0: word.y0,
+      y1: word.y1,
+      base: word.base,
+      size: word.size
+    })),
+    rules: (rec.graphics?.rules || []).map((rule) => ({
+      axis: rule.axis,
+      x0: rule.x0,
+      x1: rule.x1,
+      y0: rule.y0,
+      y1: rule.y1
+    }))
+  }));
+}
+function evidenceIn(page, box2) {
+  const words = (page?.words || []).filter((word) => inside5(word, box2));
+  return { words, rows: baselineRows3(words), rules: page?.rules || [], box: box2 };
+}
+function scoreTable(table, evidence) {
+  const rows = evidence?.rows || [];
+  const owner = distinctiveOwners(rows);
+  const clean = cleanCoverage(table, rows, owner);
+  const bag = cellBag(table);
+  let bagCovered = 0;
+  for (const row4 of rows) {
+    const keys = rowKeys(row4.words);
+    if (!keys.length) continue;
+    let hit = 0;
+    for (const key of keys) if (bagHas(bag, key)) hit += 1;
+    if (hit / keys.length >= 0.5) bagCovered += 1;
+  }
+  const counted = clean.counted;
+  const covered = Math.min(clean.covered, bagCovered);
+  const textRows = counted || rows.length;
+  const rowTarget = ruledTarget(textRows, ruleCount(evidence?.rules, evidence?.box, "h"));
+  const body = bodyTarget(rows);
+  const vLines = ruleCount(evidence?.rules, evidence?.box, "v");
+  const colsTarget = vLines >= 3 ? vLines - 1 : null;
+  const rowCov = counted ? covered / counted : 0.5;
+  const rowFit = fit(table?.rows || 0, rowTarget || textRows);
+  const colFit = colsTarget ? fit(table?.cols || 0, colsTarget) : 1;
+  const numeric = numericConsistency(table || { cells: [], cols: 0, rows: 0, headerRows: 0 });
+  const header = headerScore(table || { cells: [], rows: 0 }, rows);
+  const single = singleValues(table || { cells: [] });
+  const tidy = tidyShare(table || { cells: [] });
+  const filled = filledShare(table || { cells: [], rows: 0, cols: 0 });
+  const total = 0.28 * rowCov + 0.16 * rowFit + 0.08 * colFit + 0.12 * numeric + 0.08 * header + 0.14 * single + 0.14 * tidy;
+  return { total, rowCov, rowFit, colFit, numeric, header, single, tidy, filled, textRows, rowTarget, body, colsTarget };
+}
+function mergeReading(rule, vlm) {
+  if (!rule?.cells?.length || !vlm?.cells?.length) return null;
+  if (!(vlm.rows > 0) || !(rule.rows > 0) || vlm.rows >= rule.rows * 0.85) return null;
+  if (Math.abs((vlm.cols || 0) - (rule.cols || 0)) > 1) return null;
+  const headerN = vlm.headerRows || headerRowsOf(vlm.cells, vlm.rows);
+  if (headerN < 1) return null;
+  const ruleHeader = rule.headerRows || 0;
+  const headers = vlm.cells.filter((cell) => cell.r < headerN).map((cell) => ({ ...cell }));
+  const body = rule.cells.filter((cell) => cell.r >= ruleHeader).map((cell) => ({
+    ...cell,
+    r: cell.r - ruleHeader + headerN,
+    header: false
+  }));
+  if (body.length < 2) return null;
+  return {
+    ...rule,
+    bbox: unionBox(rule.bbox, vlm.bbox) || rule.bbox,
+    rows: headerN + (rule.rows - ruleHeader),
+    cols: rule.cols,
+    headerRows: headerN,
+    cells: [...headers, ...body]
+  };
+}
+function closerToBody(candidate, ruleRow) {
+  const body = candidate?.score?.body;
+  if (!(body > 0)) return false;
+  const rows = candidate.table?.rows || 0;
+  const ruleRows = ruleRow.table?.rows || 0;
+  return Math.abs(rows - body) < Math.abs(ruleRows - body);
+}
+function sameGridBetter(candidate, ruleRow) {
+  const next = candidate?.score;
+  const rule = ruleRow?.score;
+  if (!next || !rule) return false;
+  if (next.rowCov < 0.8 || rule.rowCov < 0.8) return false;
+  if (closerToBody(candidate, ruleRow) && next.rowCov + 0.08 >= rule.rowCov && next.tidy + 0.05 >= rule.tidy) return true;
+  const rows = candidate.table?.rows || 0;
+  const ruleRows = ruleRow.table?.rows || 0;
+  if (!(ruleRows > 0) || rows < ruleRows * 0.9 || rows > ruleRows * 1.15) return false;
+  if (next.tidy - rule.tidy >= 0.15) return true;
+  if (next.filled - rule.filled >= 0.08 && next.tidy + 0.05 >= rule.tidy) return true;
+  return false;
+}
+function clearsRule(best, ruleRow) {
+  if (best.score.total - ruleRow.score.total >= CLEAR) return true;
+  if (sameGridBetter(best, ruleRow)) return true;
+  const rows = best.table?.rows || 0;
+  const ruleRows = ruleRow.table?.rows || 0;
+  if (Math.max(best.score.rowCov, ruleRow.score.rowCov) < 0.45 && best.score.rowFit - ruleRow.score.rowFit >= 0.12 && rows >= ruleRows) return true;
+  if (Math.max(best.score.rowCov, ruleRow.score.rowCov) < 0.45 && best.score.tidy - ruleRow.score.tidy >= 0.25 && best.score.total >= ruleRow.score.total) return true;
+  return false;
+}
+function chooseTableReading(rule, vlm, page = {}) {
+  const box2 = unionBox(rule?.bbox, vlm?.bbox);
+  const evidence = evidenceIn(page, box2);
+  if (evidence.rows.length < 2 && rule) {
+    return { choice: "rule", table: rule, scores: { rule: null, vlm: null, merge: null } };
+  }
+  const ranked = [];
+  if (rule) ranked.push({ choice: "rule", table: rule, score: scoreTable(rule, evidence) });
+  if (vlm) ranked.push({ choice: "vlm", table: vlm, score: scoreTable(vlm, evidence) });
+  const merged = mergeReading(rule, vlm);
+  if (merged) ranked.push({ choice: "merge", table: merged, score: scoreTable(merged, evidence) });
+  ranked.sort((a, b) => b.score.total - a.score.total || (a.choice === "rule" ? -1 : 1));
+  let best = ranked[0] || { choice: "rule", table: rule, score: null };
+  const ruleRow = ranked.find((row4) => row4.choice === "rule");
+  if (ruleRow && best.choice !== "rule" && !clearsRule(best, ruleRow)) best = ruleRow;
+  if (ruleRow && best.choice === "rule") {
+    const alt = ranked.find((row4) => row4.choice !== "rule" && sameGridBetter(row4, ruleRow));
+    if (alt) best = alt;
+  }
+  return {
+    choice: best.choice,
+    table: best.table,
+    scores: {
+      rule: ruleRow?.score || null,
+      vlm: ranked.find((row4) => row4.choice === "vlm")?.score || null,
+      merge: ranked.find((row4) => row4.choice === "merge")?.score || null
+    }
+  };
+}
+
 // src/model/parse/vlm-tables.js
 function normCell2(text3) {
   return String(text3 || "").replace(/\s+/g, " ").trim().toLowerCase();
@@ -42747,15 +43242,15 @@ function setJaccard(a, b) {
   return inter / (A.size + B.size - inter);
 }
 function tokenJaccard(a, b) {
-  const tokens = (table) => {
+  const tokens2 = (table) => {
     const out = /* @__PURE__ */ new Set();
     for (const piece of (table?.cells || []).map((c) => normCell2(c.text)).join(" ").split(/[^a-z0-9%.,-]+/)) {
       if (piece) out.add(piece);
     }
     return out;
   };
-  const A = tokens(a);
-  const B = tokens(b);
+  const A = tokens2(a);
+  const B = tokens2(b);
   if (!A.size && !B.size) return 1;
   let inter = 0;
   for (const t of A) if (B.has(t)) inter++;
@@ -42770,6 +43265,14 @@ function iou4(a, b) {
   const union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter;
   return union > 0 ? inter / union : 0;
 }
+function mostlyInside(inner, outer) {
+  if (!inner || !outer) return false;
+  const area = Math.max(0, inner[2] - inner[0]) * Math.max(0, inner[3] - inner[1]);
+  if (area <= 0) return false;
+  const w = Math.max(0, Math.min(inner[2], outer[2]) - Math.max(inner[0], outer[0]));
+  const h = Math.max(0, Math.min(inner[3], outer[3]) - Math.max(inner[1], outer[1]));
+  return w * h / area >= 0.7;
+}
 function tableRegions(doc, pages) {
   const want = pages && pages.length ? new Set(pages) : null;
   const out = [];
@@ -42783,7 +43286,7 @@ function tableRegions(doc, pages) {
   }
   return out;
 }
-function headerRowsOf(cells, rows) {
+function headerRowsOf2(cells, rows) {
   let n2 = 0;
   for (let r = 0; r < rows; r++) {
     const row4 = (cells || []).filter((c) => c.r === r);
@@ -42810,7 +43313,7 @@ function tableFromVlm(structure, { id = "vlm", method = "vlm" } = {}) {
     bbox: structure.bbox,
     rows,
     cols,
-    headerRows: structure.headerRows ?? headerRowsOf(cells, rows),
+    headerRows: structure.headerRows ?? headerRowsOf2(cells, rows),
     headerCols: 0,
     cells,
     method,
@@ -42818,7 +43321,7 @@ function tableFromVlm(structure, { id = "vlm", method = "vlm" } = {}) {
     engine: "builtin"
   };
 }
-function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, trust = false } = {}) {
+function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, trust = false, arbitrate = false, evidence = null } = {}) {
   if (!doc || !structures?.length) return { doc, applied: [] };
   const blocks = { ...doc.blocks };
   const order = [...doc.order || []];
@@ -42839,7 +43342,51 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
         host = block;
       }
     }
+    if (!host) {
+      let area = 0;
+      for (const id of order) {
+        const block = blocks[id];
+        if (!block || block.type !== "table" || block.page !== structure.page || used.has(id)) continue;
+        if (!mostlyInside(block.bbox, built.bbox)) continue;
+        const box2 = block.bbox;
+        const next = Math.max(0, box2[2] - box2[0]) * Math.max(0, box2[3] - box2[1]);
+        if (next > area) {
+          area = next;
+          host = block;
+        }
+      }
+    }
     const same2 = host && (setJaccard(host, built) >= minJaccard || tokenJaccard(host, built) >= minJaccard);
+    if (arbitrate && host) {
+      const page = (evidence || []).find((item) => item.page === structure.page) || { words: [], rules: [] };
+      const decision = chooseTableReading(host, built, page);
+      if (decision.choice === "rule") continue;
+      const chosen = decision.table;
+      for (const id of [...order]) {
+        const block = blocks[id];
+        if (!block || block.type !== "table" || block.page !== structure.page || block.id === host.id) continue;
+        const box2 = chosen.bbox || built.bbox;
+        if (iou4(block.bbox, box2) < 0.3 && !mostlyInside(block.bbox, box2)) continue;
+        delete blocks[id];
+        const at = order.indexOf(id);
+        if (at >= 0) order.splice(at, 1);
+      }
+      used.add(host.id);
+      blocks[host.id] = {
+        ...host,
+        bbox: chosen.bbox || built.bbox,
+        rows: chosen.rows,
+        cols: chosen.cols,
+        headerRows: chosen.headerRows,
+        cells: chosen.cells,
+        method,
+        confidence: built.confidence,
+        grid: void 0,
+        repairs: void 0
+      };
+      applied.push({ id: host.id, page: structure.page, rows: chosen.rows, cols: chosen.cols, choice: decision.choice });
+      continue;
+    }
     if (host && !same2 && !trust) continue;
     if (trust) {
       for (const id of [...order]) {
@@ -42911,19 +43458,19 @@ function alignVlmText(doc, regions) {
   const kinds = /* @__PURE__ */ new Set(["para", "heading", "caption", "footnote"]);
   for (const region of regions) {
     if (!region?.text || !region.bbox) continue;
-    const inside7 = [];
+    const inside8 = [];
     for (const id of doc.order || []) {
       const block = blocks[id];
       if (!block || block.page !== region.page || !kinds.has(block.type) || !block.bbox) continue;
       const c = centerOf4(block.bbox);
       if (!c) continue;
       if (c[0] < region.bbox[0] || c[0] > region.bbox[2] || c[1] < region.bbox[1] || c[1] > region.bbox[3]) continue;
-      inside7.push(block);
+      inside8.push(block);
     }
-    if (!inside7.length) continue;
-    inside7.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
-    const parts = splitByWidth(region.text, inside7.map((b) => Math.max(1, b.bbox[2] - b.bbox[0])));
-    inside7.forEach((block, i) => {
+    if (!inside8.length) continue;
+    inside8.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
+    const parts = splitByWidth(region.text, inside8.map((b) => Math.max(1, b.bbox[2] - b.bbox[0])));
+    inside8.forEach((block, i) => {
       const text3 = parts[i] || "";
       if (!text3 || text3 === block.text) return;
       blocks[block.id] = { ...block, text: text3 };
@@ -43026,7 +43573,11 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
           signal
         });
         throwIfAborted3();
-        const applied = applyVlmTables(doc, read2?.tables || [], { method: read2?.model || "vlm", trust: true });
+        const applied = applyVlmTables(doc, read2?.tables || [], {
+          method: read2?.model || "vlm",
+          arbitrate: true,
+          evidence: evidenceFromRecords(next)
+        });
         vlmApplied = applied.applied;
         if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });
         if (options.vlmText === true) {
@@ -43173,8 +43724,8 @@ function copyIconSpot(entry, page, dy = 0, size = COPY_ICON) {
   const left = entry.left / 100 * W - BOX_PAD;
   const top = entry.top / 100 * H - BOX_PAD;
   const gutter = left - COPY_GAP - size;
-  const inside7 = gutter < 0;
-  return { x: inside7 ? left + COPY_INSIDE : gutter, y: top + (dy || 0) - 1, size, inside: inside7 };
+  const inside8 = gutter < 0;
+  return { x: inside8 ? left + COPY_INSIDE : gutter, y: top + (dy || 0) - 1, size, inside: inside8 };
 }
 function chipClearLeft(chipLeft, chip, spot) {
   if (!spot) return chipLeft;
@@ -44314,11 +44865,11 @@ function boardZoom(root, win = root?.ownerDocument?.defaultView || globalThis) {
   const px = parseFloat(raw);
   return px > 0 ? clamp3(1 / px, MIN_SCALE, MAX_SCALE) : 1;
 }
-var inside5 = (r, x, y) => Boolean(r) && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+var inside6 = (r, x, y) => Boolean(r) && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 function zoneAt(x, y, { rootRect = null, paneRect = null, blocked: blocked3 = [] } = {}) {
-  if (!inside5(rootRect, x, y)) return "out";
-  if (inside5(paneRect, x, y)) return "pane";
-  for (const r of blocked3 || []) if (inside5(r, x, y)) return "blocked";
+  if (!inside6(rootRect, x, y)) return "out";
+  if (inside6(paneRect, x, y)) return "pane";
+  for (const r of blocked3 || []) if (inside6(r, x, y)) return "blocked";
   return "board";
 }
 function zoneScale(zone, zoom) {
@@ -47402,7 +47953,7 @@ function defaultRangeChoice(pageCount) {
 function cloudLabel(provider) {
   return provider === "mistral" ? "Mistral OCR" : "LlamaParse";
 }
-function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "", credits = null } = {}) {
+function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "", credits = null, read: read2 = "" } = {}) {
   if (phase !== "running" && engine === "anydoc") {
     if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
     return { text: "Alternative read" };
@@ -47427,6 +47978,10 @@ function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = nu
     return { text: text3 };
   }
   if (engine === "cloud") return { text: cloudLabel(provider) };
+  if (read2 === "high") {
+    const text3 = ms != null ? `High accuracy · ${formatSeconds(ms)}` : "High accuracy";
+    return { text: text3, tip: "PaddleOCR-VL + PP-DocLayoutV2" };
+  }
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
 }
@@ -48123,7 +48678,8 @@ ${sourceAttrString(source)}` : markdown;
       page: progress.page,
       pageCount: progress.pageCount,
       helper: phase === "running" ? "" : helperState,
-      credits: phase === "running" ? null : parsed?.stats?.credits
+      credits: phase === "running" ? null : parsed?.stats?.credits,
+      read: phase === "running" ? "" : parsed?.ocr?.mode === "high" ? "high" : ""
     });
     chip.textContent = state.text;
     chip.title = state.tip || "";
@@ -55396,10 +55952,10 @@ function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, host
     const bw = Number(base?.width) || 0;
     const bh = Number(base?.height) || 0;
     if (bw < 1 || bh < 1) return;
-    const fit = Math.min(px.cssW / bw, px.cssH / bh);
+    const fit2 = Math.min(px.cssW / bw, px.cssH / bh);
     let view = null;
     try {
-      view = proxy.getViewport({ scale: fit * px.dpr });
+      view = proxy.getViewport({ scale: fit2 * px.dpr });
     } catch {
       return;
     }
@@ -55839,7 +56395,7 @@ function blockUidFromNode(node2) {
   }
   return null;
 }
-var inside6 = (node2, ancestor) => {
+var inside7 = (node2, ancestor) => {
   let el = node2;
   while (el && el.nodeType === 1) {
     if (el === ancestor) return true;
@@ -55851,7 +56407,7 @@ function inputBlockRole(node2, rootUid) {
   const uid = blockUidFromNode(node2);
   const editor = node2?.closest?.(".pxd-item__editor") || null;
   const nest = node2?.closest?.(".rm-block-children") || null;
-  if (nest && inside6(nest, editor)) return { role: "child", uid };
+  if (nest && inside7(nest, editor)) return { role: "child", uid };
   if (uid && rootUid && uid !== rootUid) return { role: "child", uid };
   return { role: "root", uid: uid || rootUid || null };
 }
@@ -56157,8 +56713,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     const maxW = Math.max(PILL_MIN, cardScreen - PILL_PAD);
     const wantW = Math.max(PILL_MIN, full.length * PILL_CHAR + PILL_PAD);
     const w = Math.round(Math.min(wantW, maxW));
-    const fit = Math.max(1, Math.floor((w - PILL_PAD) / PILL_CHAR));
-    const label = full.length > fit ? `${full.slice(0, Math.max(1, fit - 1))}…` : full;
+    const fit2 = Math.max(1, Math.floor((w - PILL_PAD) / PILL_CHAR));
+    const label = full.length > fit2 ? `${full.slice(0, Math.max(1, fit2 - 1))}…` : full;
     const key = `${clamp4 || ""}|${side2 || ""}|${label}|${w}`;
     if (bend.pillKey !== key) {
       bend.pillKey = key;
@@ -57411,12 +57967,12 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   };
   const onRootMove = (event) => {
     const r = root.getBoundingClientRect();
-    const near = event.clientY - (r.top || 0) <= REVEAL_PX || Boolean(toolbar.contains?.(event.target));
-    if (near === barNear) {
-      if (!near && !toolbar.classList.contains("pxd-toolbar--hidden")) paintBar();
+    const near2 = event.clientY - (r.top || 0) <= REVEAL_PX || Boolean(toolbar.contains?.(event.target));
+    if (near2 === barNear) {
+      if (!near2 && !toolbar.classList.contains("pxd-toolbar--hidden")) paintBar();
       return;
     }
-    barNear = near;
+    barNear = near2;
     paintBar();
   };
   const onRootLeave = () => {
@@ -65387,11 +65943,11 @@ function buildBoardView(onFail, {
     if (i >= 0) observers.splice(i, 1);
   };
   const disconnectOutline = () => {
-    const near = outlineNear;
+    const near2 = outlineNear;
     const far = outlineFar;
     outlineNear = null;
     outlineFar = null;
-    forgetObserver(near);
+    forgetObserver(near2);
     forgetObserver(far);
   };
   const rowHeight = (row4) => {
@@ -67655,13 +68211,13 @@ function buildBoardView(onFail, {
         return wr ? toScreenRect(wr) : null;
       };
       const ends = [endOf(edge.from), endOf(edge.to)].filter(Boolean);
-      const near = cardsNear(rect2, new Set([edge.from, edge.to].filter(Boolean)));
+      const near2 = cardsNear(rect2, new Set([edge.from, edge.to].filter(Boolean)));
       let label = null;
       if (edge.label) {
         const lr = edgesR.labelRect(selection.edge);
         if (lr?.width && lr?.height) label = { x: lr.left - rootRect.left, y: lr.top - rootRect.top, w: lr.width, h: lr.height };
       }
-      return { kind: "edge", rect: rect2, cards: [...ends, ...near], label };
+      return { kind: "edge", rect: rect2, cards: [...ends, ...near2], label };
     }
     if (selection.link) {
       const geo = edgesR.linkGeometryOf(selection.link);
@@ -71583,8 +72139,8 @@ function buildBoardView(onFail, {
     const world2 = screenToWorld(vp, screen);
     let target = targetOf2(event.target);
     if (edgeEndWanted(type, event)) {
-      const near = edgeEndNearWorld(handleCenters(), world2, 10, vp.zoom || 1);
-      if (near) target = near;
+      const near2 = edgeEndNearWorld(handleCenters(), world2, 10, vp.zoom || 1);
+      if (near2) target = near2;
     }
     return {
       type,
@@ -72484,8 +73040,8 @@ function buildBoardView(onFail, {
     }
     if ((event.key === "p" || event.key === "P") && !event.metaKey && !event.ctrlKey && !event.altKey && root.querySelector?.(".pxd-region-layer")) return;
     if (inputFocused) {
-      const inside7 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
-      if (!inside7 && !itemsR.isEditing()) return;
+      const inside8 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
+      if (!inside8 && !itemsR.isEditing()) return;
       if ((event.metaKey || event.ctrlKey) && !event.altKey && String(event.key).toLowerCase() === "z") return;
     } else if (!ownsKeyboard()) {
       return;
@@ -73857,26 +74413,26 @@ function packSketch(sketch) {
     const clean = cleanEdge(edge);
     if (clean) edges.push(clean);
   }
-  const fit = (next) => {
+  const fit2 = (next) => {
     const text4 = JSON.stringify(next);
     return text4.length <= SKETCH_MAX_BYTES ? text4 : null;
   };
   let payload = { items, edges };
-  let text3 = fit(payload);
+  let text3 = fit2(payload);
   if (text3) return text3;
   payload = { items, edges: [] };
-  text3 = fit(payload);
+  text3 = fit2(payload);
   if (text3) return text3;
   payload = {
     items: items.map((item) => ({ ...item, title: item.title.slice(0, 40) })),
     edges: []
   };
-  text3 = fit(payload);
+  text3 = fit2(payload);
   if (text3) return text3;
   let kept = payload.items;
   while (kept.length) {
     kept = kept.slice(0, kept.length - 1);
-    text3 = fit({ items: kept, edges: [] });
+    text3 = fit2({ items: kept, edges: [] });
     if (text3) return text3;
   }
   return null;
@@ -79068,14 +79624,14 @@ async function installPlexusDiagram({
       if (rect) cards.push(rect);
     }
     const bounds = boardBounds(cards.length ? cards : [...rects.values()]);
-    const fit = fitThumbSize(bounds.w, bounds.h, maxWidth);
-    if (!fit) return Promise.resolve(null);
-    const svg = minimapSvg(doc, { v: bounds, items: cards, size: fit.width });
-    svg.setAttribute("width", String(fit.width));
-    svg.setAttribute("height", String(fit.height));
+    const fit2 = fitThumbSize(bounds.w, bounds.h, maxWidth);
+    if (!fit2) return Promise.resolve(null);
+    const svg = minimapSvg(doc, { v: bounds, items: cards, size: fit2.width });
+    svg.setAttribute("width", String(fit2.width));
+    svg.setAttribute("height", String(fit2.height));
     const stroke = borderStroke();
     for (const node2 of svg.querySelectorAll?.("[stroke]") || []) node2.setAttribute("stroke", stroke);
-    return rasterBoard(svg, fit.width, fit.height);
+    return rasterBoard(svg, fit2.width, fit2.height);
   }
   function mountSize(rec) {
     const root = rec?.view?.root || rec?.mountEl;

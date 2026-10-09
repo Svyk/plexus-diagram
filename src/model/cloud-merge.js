@@ -2,10 +2,17 @@
 // `mergeCloudFigures` is the function the extension and tools/parse-bench/cloud-hybrid.mjs share.
 //
 // Figure `source` after a merge:
-//   "llamaparse" — kept from LlamaParse, no local match
+//   "llamaparse" — kept from LlamaParse on a page the local read did not cover
+//                  with figure detection, and no local match
 //   "hybrid"     — IoU ≥ 0.5 with a local figure; the box is the local box;
-//                  the caption is the local caption when that caption is non-empty
+//                  the caption is the local caption when that caption is non-empty,
+//                  otherwise the LlamaParse caption
 //   "local"      — a local figure LlamaParse missed
+// On a page where figure detection ran, the figures are the local ones only.
+// A LlamaParse figure with no local match is dropped there. Detection ran when
+// the page was OCR'd (`doc.ocr` and the page is in `doc.ocr.pages` or `page.ocr`),
+// or the page is a born-digital built-in page (`kind` "text" or "mixed"). A scan
+// page of a plain built-in parse did not run it, so its LlamaParse figures stay.
 // A layout figure (`image.layout`) that still says "llamaparse" and overlaps a table is dropped.
 // No local document: the cloud document is returned unchanged.
 
@@ -131,6 +138,26 @@ function matchFigures(cloudFigs, localFigs) {
     used.add(best.local);
   }
   return { pairs, used };
+}
+
+function pageByN(doc, n) {
+  for (const page of doc?.pages || []) if (page?.n === n) return page;
+  return null;
+}
+
+// Figure detection ran for this local page. An OCR read covers a page listed in
+// `doc.ocr.pages` or stamped `page.ocr`. A built-in parse also detects figures
+// on born-digital text and mixed pages. A scan page of a plain built-in parse does not.
+function figureDetectionRan(localDoc, pageN) {
+  const page = pageByN(localDoc, pageN);
+  if (localDoc?.ocr && (ocrPageListed(localDoc, pageN) || page?.ocr)) return true;
+  const kind = page?.kind;
+  return kind === "text" || kind === "mixed";
+}
+
+function ocrPageListed(doc, n) {
+  const pages = doc?.ocr?.pages;
+  return Array.isArray(pages) && pages.includes(n);
 }
 
 function isOcrRead(doc) {
@@ -262,6 +289,12 @@ export function mergeCloudFigures(cloudDoc, localDoc) {
       }
     }
     if (added.length) order = insertOnPage(order, blocks, cloudPage, added);
+    if (figureDetectionRan(localDoc, localPage)) {
+      for (const cloud of cloudFigs) {
+        if (pairs.has(cloud)) continue;
+        order = dropFigure(blocks, order, cloud.id);
+      }
+    }
   }
 
   for (const id of order) {

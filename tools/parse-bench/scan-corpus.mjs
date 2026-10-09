@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Scanned technical PDFs, 1900–1950. One command, one scoreboard.
-//   node tools/parse-bench/scan-corpus.mjs [--engines builtin,web-ocr,helper,helper-rs,helper-vlm] [--helper python|rust] [--only name] [--json out.json] [--dump dir]
+//   node tools/parse-bench/scan-corpus.mjs [--engines builtin,web-ocr,helper,helper-rs,helper-vlm] [--helper python|rust] [--only name] [--manifest page-list.json] [--fold-quotes] [--json out.json] [--dump dir]
+// --manifest reads another page list in the same shape as scan-corpus.json.
+// --fold-quotes folds typographic quotes to ASCII before scoring, on the truth and the prediction.
 // --dump writes <dir>/<engine>/<page id>.pxd.json when that file is not already there.
 // helper-vlm reads the helper OCR cache (it does not call the helper CLI or port 48765)
 // and POSTs the page to PXD_VLM_URL /v1/vlm (default http://127.0.0.1:48766).
@@ -45,6 +47,8 @@ function takeArgs(argv) {
     engines: (flag("--engines") || "builtin,web-ocr,helper").split(",").map((s) => s.trim()).filter(Boolean),
     helper: flag("--helper") || "python",
     only: flag("--only"),
+    manifest: flag("--manifest"),
+    foldQuotes: argv.includes("--fold-quotes"),
     json: flag("--json"),
     dump: flag("--dump"),
   };
@@ -204,6 +208,35 @@ async function runEngine(pdfPath, page, engine, cacheDir, helperFlag) {
   return { ...result, ms: performance.now() - t0, builtinMs };
 }
 
+const QUOTE_FOLD = [
+  [/[“”„‟]/g, '"'],
+  [/[‘’‚‛]/g, "'"],
+];
+
+function foldString(s) {
+  return QUOTE_FOLD.reduce((out, [re, to]) => out.replace(re, to), s);
+}
+
+// Deep-copies the truth and the predicted doc, then folds typographic quotes in every
+// string field named `text`. Truth `lines` arrays of strings are folded too.
+export function foldQuotes(doc, truth) {
+  const walk = (node, linesToo) => {
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, linesToo);
+    } else if (node && typeof node === "object") {
+      for (const key of Object.keys(node)) {
+        const v = node[key];
+        if (key === "text" && typeof v === "string") node[key] = foldString(v);
+        else if (linesToo && key === "lines" && Array.isArray(v)) {
+          node[key] = v.map((x) => (typeof x === "string" ? foldString(x) : x));
+        } else walk(v, linesToo);
+      }
+    }
+    return node;
+  };
+  return [walk(structuredClone(doc), false), walk(structuredClone(truth), true)];
+}
+
 function classesOf(truth) {
   const c = truth.class;
   return Array.isArray(c) ? c : c ? [c] : ["unclassified"];
@@ -275,7 +308,7 @@ function line(cells) {
 async function main(argv) {
   const args = takeArgs(argv);
   const root = process.env.PXD_SCAN_DIR || DEFAULT_ROOT;
-  const manifestPath = join(repo, "tools/parse-bench/scan-corpus.json");
+  const manifestPath = args.manifest || join(repo, "tools/parse-bench/scan-corpus.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   const pages = manifest.pages.filter((p) => !args.only || p.id.includes(args.only));
   if (!pages.length) { process.stderr.write("no pages\n"); process.exitCode = 2; return; }
@@ -292,7 +325,8 @@ async function main(argv) {
     for (const engine of args.engines) {
       process.stderr.write(`\n== ${page.id} ${engine}\n`);
       const result = await runEngine(pdf, page.page, engine, cacheDir, args.helper);
-      const scored = scorePage(result.doc, truth);
+      const [scoreDoc, scoreTruth] = args.foldQuotes ? foldQuotes(result.doc, truth) : [result.doc, truth];
+      const scored = scorePage(scoreDoc, scoreTruth);
       scored.id = page.id;
       scored.engine = engine;
       scored.class = classesOf(truth);

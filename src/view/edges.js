@@ -4,7 +4,7 @@
 // recomputed during a drag.
 
 import { anchorUid, routedEdge } from "../model/board.js";
-import { edgeMayTarget, regionEdgePoint } from "../model/endpoints.js";
+import { edgeMayTarget, regionInnerEnd } from "../model/endpoints.js";
 import { arrowHeadPath, arrowSize, blockAnchor, blockInner, center, edgePath, screenPx, sidePoint } from "../model/geometry.js";
 import { routeAround } from "../model/section6.js";
 import { PALETTE, hexColor } from "../model/schema.js";
@@ -59,16 +59,17 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     return 0;
   };
 
-  // A measured end. A region lands on the region edge (no inner notch). A folded pin stays on the card face.
+  // A measured end. A region enters the card and stops on the region edge. A folded pin stays on the card face.
   const endOn = (spec, rect, other) => {
     if (!spec || !rect || spec.face) return null;
     if (spec.region && spec.image) {
-      const hit = regionEdgePoint(
-        { x: rect.x + spec.image.x, y: rect.y + spec.image.y, w: spec.image.w, h: spec.image.h },
-        spec.frac,
-        center(other),
-      );
-      return hit ? { point: hit.point, side: hit.side, region: true } : null;
+      return regionInnerEnd({
+        card: rect,
+        image: { x: rect.x + spec.image.x, y: rect.y + spec.image.y, w: spec.image.w, h: spec.image.h },
+        frac: spec.frac,
+        poly: spec.poly,
+        other: center(other),
+      });
     }
     const an = blockAnchor({ rect, rowTop: spec.rowTop, rowHeight: spec.rowHeight, bodyTop: spec.bodyTop, bodyBottom: spec.bodyBottom, other: center(other) });
     return {
@@ -103,6 +104,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       let toClamp = null;
       let fromInnerSpec = null;
       let toInnerSpec = null;
+      let fromReady = null;
+      let toReady = null;
       const m = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
       if (m?.from && edge.fromBlock && !fromEdge) {
         const hit = endOn(m.from, a, b);
@@ -110,7 +113,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
           fromPoint = hit.point;
           fromSide = hit.side;
           fromClamp = hit.clamp ?? null;
-          if (!hit.region) fromInnerSpec = hit.inner || null;
+          if (hit.region) fromReady = hit.inner || null;
+          else fromInnerSpec = hit.inner || null;
         }
       }
       if (m?.to && edge.toBlock && !toEdge) {
@@ -119,7 +123,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
           toPoint = hit.point;
           toSide = hit.side;
           toClamp = hit.clamp ?? null;
-          if (!hit.region) toInnerSpec = hit.inner || null;
+          if (hit.region) toReady = hit.inner || null;
+          else toInnerSpec = hit.inner || null;
         }
       }
       const geo = edgePath({ a, b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), fromPoint, toPoint });
@@ -129,8 +134,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       geo.toW = b.w;
       geo.fromBlockAnchored = Boolean(fromPoint) && !fromEdge && !m?.from?.region;
       geo.toBlockAnchored = Boolean(toPoint) && !toEdge && !m?.to?.region;
-      geo.fromInner = fromInnerSpec ? blockInner(fromInnerSpec) : null;
-      geo.toInner = toInnerSpec ? blockInner(toInnerSpec) : null;
+      geo.fromInner = fromReady || (fromInnerSpec ? blockInner(fromInnerSpec) : null);
+      geo.toInner = toReady || (toInnerSpec ? blockInner(toInnerSpec) : null);
       return geo;
     }
     const routed = routedEdge(board, edge, rects);
@@ -153,6 +158,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     let toClamp = null;
     let fromInnerSpec = null;
     let toInnerSpec = null;
+    let fromReady = null;
+    let toReady = null;
     const m = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
     if (m) {
       if (m.from && edge.fromBlock && routed.from === edge.from) {
@@ -161,7 +168,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
           fromPoint = hit.point;
           fromSide = hit.side;
           fromClamp = hit.clamp ?? null;
-          if (!hit.region) fromInnerSpec = hit.inner || null;
+          if (hit.region) fromReady = hit.inner || null;
+          else fromInnerSpec = hit.inner || null;
         }
       }
       if (m.to && edge.toBlock && routed.to === edge.to) {
@@ -170,12 +178,13 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
           toPoint = hit.point;
           toSide = hit.side;
           toClamp = hit.clamp ?? null;
-          if (!hit.region) toInnerSpec = hit.inner || null;
+          if (hit.region) toReady = hit.inner || null;
+          else toInnerSpec = hit.inner || null;
         }
       }
     }
     const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), via, fromPoint, toPoint });
-    if (m) { geo.fromClamp = fromClamp; geo.toClamp = toClamp; geo.fromW = routed.a.w; geo.toW = routed.b.w; geo.fromBlockAnchored = Boolean(fromPoint) && !m.from?.region; geo.toBlockAnchored = Boolean(toPoint) && !m.to?.region; geo.fromInner = fromInnerSpec ? blockInner(fromInnerSpec) : null; geo.toInner = toInnerSpec ? blockInner(toInnerSpec) : null; }
+    if (m) { geo.fromClamp = fromClamp; geo.toClamp = toClamp; geo.fromW = routed.a.w; geo.toW = routed.b.w; geo.fromBlockAnchored = Boolean(fromPoint) && !m.from?.region; geo.toBlockAnchored = Boolean(toPoint) && !m.to?.region; geo.fromInner = fromReady || (fromInnerSpec ? blockInner(fromInnerSpec) : null); geo.toInner = toReady || (toInnerSpec ? blockInner(toInnerSpec) : null); }
     return geo;
   };
 

@@ -66,6 +66,29 @@ export function emptyLabelShouldDeleteEdge({ key, meta, ctrl, alt, shift, edgeSe
   if (meta || ctrl || alt || shift) return false;
   return key === "Delete" || key === "Backspace";
 }
+
+// The label field, including when Roam Caret's .cs-sel wrapper is the key target.
+// The why note is not the label. Null when the node is not an arrow label.
+export function whyLabelField(target, active) {
+  const fieldOf = (node) => {
+    if (!node || typeof node.closest !== "function") return null;
+    if (node.classList?.contains?.("pxd-why__note") || node.closest?.(".pxd-why__note")) return null;
+    if (node.classList?.contains?.("pxd-why__label")) return node;
+    const editing = node.classList?.contains?.("pxd-label--editing") ? node : node.closest?.(".pxd-label--editing");
+    if (editing) return editing;
+    const pop = node.closest(".pxd-why");
+    if (!pop) return null;
+    const labeled = pop.querySelector?.(".pxd-why__label");
+    if (labeled) return labeled;
+    const wrap = node.closest?.(".cs-sel") || pop.querySelector?.(".cs-sel");
+    if (!wrap || wrap === pop) return null;
+    const inner = wrap.querySelector?.("input, textarea");
+    if (inner?.classList?.contains?.("pxd-why__note")) return null;
+    return inner || wrap;
+  };
+  if (target?.closest?.(".pxd-why__note")) return null;
+  return fieldOf(target) || (active && active !== target ? fieldOf(active) : null);
+}
 export const SNAP_PX = 6;
 const STICKY_TOOLS = new Set(["select", "hand"]);
 

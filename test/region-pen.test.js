@@ -9,7 +9,7 @@ import { createDomStub } from "./fixtures/dom-stub.js";
 import { createHost } from "../src/host/roam.js";
 import { acquireSession, resetSessions } from "../src/session.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
-import { endpointHitsOf, endpointKindOf, pickSmallestRegion, regionPolyFrac } from "../src/model/endpoints.js";
+import { endpointHitsOf, endpointKindOf, pickSmallestRegion, regionPolyFrac, regionUidFromHover } from "../src/model/endpoints.js";
 import {
   fracFromDrag,
   imagePolyString,
@@ -27,7 +27,8 @@ import { cropFrame } from "../src/view/region-crop.js";
 import { mountRegionCrop, resetCropUrls } from "../src/view/region-crop.js";
 import { mountRegionMark } from "../src/view/region-mark.js";
 import { createInteractions, REGION_BOX_HINT, REGION_PEN_HINT } from "../src/view/interactions.js";
-import { emptyLabelShouldDeleteEdge } from "../src/view/interactions.js";
+import { emptyLabelShouldDeleteEdge, whyLabelField } from "../src/view/interactions.js";
+import { openWhyPopover } from "../src/view/why-pop.js";
 import { createItemRenderer } from "../src/view/cards.js";
 import { createChrome } from "../src/view/chrome.js";
 import { createClipboardIO } from "../src/view/clipboard-io.js";
@@ -742,6 +743,19 @@ test("outlines sit on the painted picture, smallest on top, and a polygon is a s
     assert.equal(hits[0].classList.contains("pxd-region-hit--poly"), false);
     r.setRegionOn("imgA", "regSmall", true);
     assert.equal(hits[2].classList.contains("pxd-region-hit--on"), true);
+    shell._rect = box(0, 0, 200, 400);
+    const media = shell.querySelector(".pxd-item__media");
+    media._rect = box(0, 0, 200, 400);
+    pen._rect = box(60, 30, 80, 40);
+    const measured = r.measureRow("imgA", "regPen");
+    assert.ok(measured.poly?.length >= 3);
+    near(measured.poly[0].x, 0.3, 0.02);
+    near(measured.poly[0].y, 0.075, 0.02);
+    r.setRegionExt("regPen", true);
+    assert.equal(pen.classList.contains("pxd-region-hit--ext"), true);
+    r.setRowHot("imgA", "regPen", true);
+    assert.equal(pen.classList.contains("pxd-region-hit--hot"), true);
+    assert.equal(hits[0].classList.contains("pxd-region-hit--hot"), false);
     const topLayer = r.shellOf("imgTop").querySelector(".pxd-region-hits");
     assert.equal(topLayer.style.top, "0%");
     assert.equal(topLayer.style.height, "25%");
@@ -757,8 +771,183 @@ test("region outlines stay hidden until the card or the arrow shows them", async
   assert.match(css, /\.pxd-region-hit\s*\{[^}]*opacity:\s*0/);
   assert.match(css, /\.pxd-item:hover \.pxd-region-hit[\s\S]*\.pxd-region-hit--on\s*\{[^}]*opacity:\s*1/);
   assert.match(css, /\.pxd-region-hit--poly\s*\{[^}]*background:\s*transparent/);
+  assert.match(css, /\.pxd-region-hit--hot,\s*\.pxd-region-hit--on,\s*\.pxd-region-hit--ext\s*\{[^}]*border-width:\s*2px/);
+  assert.match(css, /\.pxd-region-hit--hot,\s*\.pxd-region-hit--on,\s*\.pxd-region-hit--ext\s*\{[^}]*outline:\s*1px solid #fff/);
+  assert.match(css, /\.pxd-region-hit--hot,\s*\.pxd-region-hit--on,\s*\.pxd-region-hit--ext\s*\{[^}]*background:\s*transparent/);
+  assert.match(css, /\.pxd-region-hit--poly\.pxd-region-hit--on,[\s\S]*?\{[^}]*background:\s*transparent/);
+  assert.doesNotMatch(css, /accent-soft/);
   const ext = await readFile(new URL("../src/extension.css", import.meta.url), "utf8");
   assert.match(ext, /\.pxd-region-pen\s*\{[^}]*fill:\s*transparent/);
+});
+
+test("an unloaded image does not stretch the region layer across the host", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = stub.document;
+    let decoded = false;
+    const host = {
+      renderString(node, string) {
+        node.textContent = string;
+        if (!String(string).startsWith("![]")) return;
+        const img = doc.createElement("img");
+        img.className = "rm-inline-img";
+        img.complete = decoded;
+        img.naturalWidth = decoded ? 800 : 0;
+        img.naturalHeight = decoded ? 400 : 0;
+        img.style.objectFit = "contain";
+        img.style.objectPosition = "top";
+        const media = node.parentElement?.parentElement;
+        const hostBox = box(0, 0, 200, 400);
+        if (media) media._rect = hostBox;
+        img._rect = decoded ? box(0, 0, 200, 100) : hostBox;
+        node.append(img);
+      },
+      renderBlock() {},
+      unmount() {},
+      renderPage() {},
+      blockString: () => null,
+      pullTree: () => [],
+      pageOutline: () => ({ exists: true, blocks: [] }),
+      watchPage: () => () => {},
+      pageUid: () => null,
+    };
+    const itemsLayer = doc.createElement("div");
+    doc.body.append(itemsLayer);
+    const idle = [];
+    let layouts = 0;
+    const r = createItemRenderer({
+      doc, host, session: {}, itemsLayer, sectionsLayer: doc.createElement("div"),
+      timers: { idle(fn) { idle.push(fn); return () => {}; }, later() { return () => {}; } },
+      onPageLayout: () => { layouts += 1; },
+    });
+    const paint = (src) => {
+      const board = buildBoard(raw("b1", "{{[[diagram]]:B}}", plx({ v: 2 }), [
+        raw("imgWait", src, plx({ x: 0, y: 0, w: 200, h: 400 }), [
+          raw("boxW", "{{[[plexus-regions]]}}", plx({ type: "regions" }), [
+            raw("regW", imageRegionString("imgWait", frac, "Wait"), {}),
+          ]),
+        ]),
+      ]));
+      r.sync({ board, rects: worldRects(board), dirty: null, structural: true });
+      r.setLod("detail", 1);
+      r.scheduleContent({ visibleRect: { x: -9999, y: -9999, w: 20000, h: 20000 }, zoom: 1, tier: "detail" });
+      while (idle.length) idle.shift()({ timeRemaining: () => 1000, didTimeout: false });
+    };
+    paint("![](http://img/wait.png)");
+    const shell = r.shellOf("imgWait");
+    const layer = shell.querySelector(".pxd-region-hits");
+    assert.equal(layer.getAttribute("data-pxd-wait"), "1");
+    assert.equal(layer.style.visibility, "hidden");
+    assert.equal(layer.style.width, "0");
+    assert.equal(layer.style.height, "0");
+    const img = shell.querySelector("img");
+    const beforeLoad = layouts;
+    img.naturalWidth = 800;
+    img.naturalHeight = 400;
+    img.complete = true;
+    img._rect = box(0, 0, 200, 100);
+    stub.dispatch(img, "load");
+    assert.ok(layouts > beforeLoad, "loading the picture asks the arrows to remeasure");
+    assert.equal(layer.getAttribute("data-pxd-wait"), null);
+    assert.equal(layer.style.visibility, "");
+    assert.equal(layer.style.top, "0%");
+    assert.equal(layer.style.height, "25%");
+    assert.equal(layer.style.width, "100%");
+    const media = shell.querySelector(".pxd-item__media");
+    media._rect = box(0, 0, 400, 400);
+    img._rect = box(100, 0, 200, 100);
+    const beforeResize = layouts;
+    for (const obs of stub.observers) if (obs.active) obs.cb([]);
+    stub.flushFrames();
+    assert.ok(layouts > beforeResize, "resizing the picture asks the arrows to remeasure");
+    assert.equal(layer.style.left, "25%");
+    assert.equal(layer.style.top, "0%");
+    assert.equal(layer.style.width, "50%");
+    assert.equal(layer.style.height, "25%");
+    decoded = true;
+    paint("![](http://img/wait.png?v=2)");
+    const again = r.shellOf("imgWait").querySelector(".pxd-region-hits");
+    assert.equal(again.getAttribute("data-pxd-wait"), null);
+    assert.equal(again.style.top, "0%");
+    assert.equal(again.style.height, "25%");
+    const zoomImg = r.shellOf("imgWait").querySelector("img");
+    const zoomMedia = r.shellOf("imgWait").querySelector(".pxd-item__media");
+    zoomImg.style.objectFit = "none";
+    zoomImg.style.objectPosition = "50% 50%";
+    zoomImg.naturalWidth = 100;
+    zoomImg.naturalHeight = 50;
+    zoomImg._rect = box(0, 0, 200, 400);
+    zoomMedia._rect = box(0, 0, 200, 400);
+    r.setZoom(2);
+    assert.equal(again.style.top, "37.5%");
+    assert.equal(again.style.height, "25%");
+    assert.equal(again.style.width, "100%");
+    r.setZoom(1);
+    assert.equal(again.style.left, "25%");
+    assert.equal(again.style.top, "43.75%");
+    assert.equal(again.style.width, "50%");
+    assert.equal(again.style.height, "12.5%");
+    r.dispose();
+  } finally { restore(); }
+});
+
+test("the why-pop label is the delete target, including a Caret wrapper", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const opened = openWhyPopover({
+      doc: stub.document,
+      anchor: { left: 8, top: 8, right: 40, bottom: 24 },
+      label: "",
+      focus: "label",
+    });
+    const input = stub.document.querySelector(".pxd-why__label");
+    assert.equal(stub.document.activeElement, input);
+    assert.equal(whyLabelField(input, input), input);
+    const wrap = stub.document.createElement("div");
+    wrap.className = "cs-sel";
+    input.parentElement.insertBefore(wrap, input);
+    wrap.append(input);
+    assert.equal(whyLabelField(wrap, input), input);
+    const note = stub.document.createElement("textarea");
+    note.className = "pxd-why__note";
+    opened.el.append(note);
+    assert.equal(whyLabelField(note, note), null);
+    opened.close();
+  } finally { restore(); }
+});
+
+test("hovering a region block outside the board names that region", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = stub.document;
+    const known = new Set(["reg00001"]);
+    const board = doc.createElement("div");
+    board.className = "pxd-root";
+    const hit = doc.createElement("div");
+    hit.className = "pxd-region-hit";
+    hit.setAttribute("data-pxd-region", "reg00001");
+    board.append(hit);
+    doc.body.append(board);
+    assert.equal(regionUidFromHover(hit, known), null);
+    const block = doc.createElement("div");
+    block.className = "roam-block";
+    block.id = "block-input-main-reg00001";
+    doc.body.append(block);
+    assert.equal(regionUidFromHover(block, known), "reg00001");
+    const chip = doc.createElement("div");
+    chip.className = "pxd-relchip pxd-relchip--end";
+    chip.setAttribute("data-end", "reg00001");
+    doc.body.append(chip);
+    assert.equal(regionUidFromHover(chip, known), "reg00001");
+    const ref = doc.createElement("span");
+    ref.className = "rm-block-ref";
+    ref.setAttribute("data-uid", "reg00001");
+    doc.body.append(ref);
+    assert.equal(regionUidFromHover(ref, known), "reg00001");
+  } finally { restore(); }
 });
 
 test("the mark overlay's pen follows the painted picture, and a box confirm stays a rectangle", () => {

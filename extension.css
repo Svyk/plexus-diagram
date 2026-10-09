@@ -10128,9 +10128,38 @@ body.roam-body.dark .pxd-root.pxd-region-pop button,
   background: transparent;
 }
 
-.pxd-region-hit--hot,
 .pxd-region-hit--flash {
   border-color: var(--pxd-accent, hsl(175 85% 24%));
+}
+
+/* The region an arrow is using: link colour, 2px, and a 1px light halo. No fill. */
+.pxd-region-hit--hot,
+.pxd-region-hit--on,
+.pxd-region-hit--ext {
+  opacity: 1;
+  border-width: 2px;
+  border-color: var(--pxd-link, var(--pxd-blue-line, #2563eb));
+  outline: 1px solid #fff;
+  outline-offset: 0;
+  background: transparent;
+  color: var(--pxd-link, var(--pxd-blue-line, #2563eb));
+}
+
+.pxd-region-hit--poly.pxd-region-hit--hot,
+.pxd-region-hit--poly.pxd-region-hit--on,
+.pxd-region-hit--poly.pxd-region-hit--ext {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--pxd-link, var(--pxd-blue-line, #2563eb));
+  filter: drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff);
+}
+
+.pxd-region-hit--hot polygon,
+.pxd-region-hit--on polygon,
+.pxd-region-hit--ext polygon {
+  stroke: currentColor;
+  stroke-width: 2px;
 }
 
 .pxd-root--dark .pxd-region-hit,
@@ -10140,6 +10169,19 @@ body.roam-body.dark .pxd-root.pxd-region-pop button,
 .rm-dark-theme .pxd-region-hit,
 .rm-dark-theme .pxd-pin-hit {
   border-color: var(--pxd-border-strong, #fff);
+}
+
+.pxd-root--dark .pxd-region-hit--hot,
+.pxd-root--dark .pxd-region-hit--on,
+.pxd-root--dark .pxd-region-hit--ext,
+.bp3-dark .pxd-region-hit--hot,
+.bp3-dark .pxd-region-hit--on,
+.bp3-dark .pxd-region-hit--ext,
+.rm-dark-theme .pxd-region-hit--hot,
+.rm-dark-theme .pxd-region-hit--on,
+.rm-dark-theme .pxd-region-hit--ext {
+  border-color: var(--pxd-link, var(--pxd-blue-line, #2563eb));
+  background: transparent;
 }
 
 /* REG-2. The draft is a stroke. Dark adds a 1px halo. No fill. */

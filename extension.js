@@ -2610,6 +2610,88 @@ function regionEdgePoint(imageRect, frac, other) {
   }
   return { point, side: side2, rect };
 }
+function closestOnPoly(points, other) {
+  let best = null;
+  let bestD = Infinity;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((other.x - a.x) * dx + (other.y - a.y) * dy) / len2));
+    const p = { x: a.x + dx * t, y: a.y + dy * t };
+    const d = (p.x - other.x) ** 2 + (p.y - other.y) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = p;
+    }
+  }
+  return best;
+}
+function regionInnerEnd({ card: card2, image, frac, poly, other } = {}) {
+  const box2 = asBox(card2);
+  const picture = asBox(image);
+  const region = regionBox(picture, frac);
+  if (!box2 || !region) return null;
+  const rcx = region.x + region.w / 2;
+  const rcy = region.y + region.h / 2;
+  const ox = Number.isFinite(other?.x) ? other.x : region.x - 1;
+  const oy = Number.isFinite(other?.y) ? other.y : rcy;
+  const dx = ox - (box2.x + box2.w / 2);
+  const dy = oy - (box2.y + box2.h / 2);
+  let side2;
+  let point;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    side2 = dx >= 0 ? "right" : "left";
+    const y = Math.min(box2.y + box2.h, Math.max(box2.y, rcy));
+    point = { x: side2 === "right" ? box2.x + box2.w : box2.x, y };
+  } else {
+    side2 = dy >= 0 ? "bottom" : "top";
+    const x = Math.min(box2.x + box2.w, Math.max(box2.x, rcx));
+    point = { x, y: side2 === "bottom" ? box2.y + box2.h : box2.y };
+  }
+  const step = INWARD[side2];
+  const from = { x: point.x + step[0] * INNER_NOTCH, y: point.y + step[1] * INNER_NOTCH };
+  let tip = null;
+  if (picture && Array.isArray(poly) && poly.length >= 3) {
+    const world = [];
+    for (const p of poly) {
+      const x = picture.x + Number(p?.x) * picture.w;
+      const y = picture.y + Number(p?.y) * picture.h;
+      if (Number.isFinite(x) && Number.isFinite(y)) world.push({ x, y });
+    }
+    if (world.length >= 3) tip = closestOnPoly(world, { x: ox, y: oy });
+  }
+  if (!tip) tip = regionEdgePoint(picture, frac, { x: ox, y: oy })?.point || null;
+  if (!tip) return null;
+  return {
+    point,
+    side: side2,
+    region: true,
+    inner: { from, tip, angle: Math.atan2(tip.y - from.y, tip.x - from.x) }
+  };
+}
+function regionUidFromHover(node2, known) {
+  if (!node2 || typeof node2.closest !== "function" || typeof known?.has !== "function") return null;
+  if (node2.closest(".pxd-root")) return null;
+  const chip = node2.closest(".pxd-relchip--end, .pxd-relchip");
+  if (chip) {
+    const end = chip.getAttribute?.("data-end");
+    if (end && known.has(end)) return end;
+  }
+  const block = node2.closest(".roam-block, .rm-block-ref, .roam-block-container");
+  if (!block) return null;
+  const direct = block.getAttribute?.("data-uid");
+  if (direct && known.has(direct)) return direct;
+  const id = block.id || block.getAttribute?.("id") || "";
+  const parts = String(id).split("-");
+  for (let k = 1; k <= Math.min(4, parts.length); k += 1) {
+    const candidate = parts.slice(-k).join("-");
+    if (candidate && known.has(candidate)) return candidate;
+  }
+  return null;
+}
 function edgeMayTarget(edge, edges) {
   if (!edge) return false;
   return !hasEdge(edges, edge.to);
@@ -2798,7 +2880,7 @@ function endpointUnderPointer(node2, cellOf) {
   }
   return null;
 }
-var REF_ONLY2, EMBED_ONLY, REF_RE, MIN_MARQUEE, finite2;
+var REF_ONLY2, EMBED_ONLY, REF_RE, MIN_MARQUEE, finite2, INWARD;
 var init_endpoints = __esm({
   "src/model/endpoints.js"() {
     init_geometry();
@@ -2810,6 +2892,12 @@ var init_endpoints = __esm({
     REF_RE = /\(\(([\w-]{1,36})\)\)/g;
     MIN_MARQUEE = 8;
     finite2 = (n2) => typeof n2 === "number" && Number.isFinite(n2) ? n2 : null;
+    INWARD = {
+      left: [1, 0],
+      right: [-1, 0],
+      top: [0, 1],
+      bottom: [0, -1]
+    };
   }
 });
 
@@ -20752,6 +20840,19 @@ function createItemRenderer({
     }
     return node2;
   };
+  const dropRegionPlace = (rec) => {
+    const w = rec?.regionPlace;
+    if (!w) return;
+    rec.regionPlace = null;
+    try {
+      w.cancel?.();
+    } catch {
+    }
+    try {
+      w.off?.();
+    } catch {
+    }
+  };
   const unmountRoots = (rec) => {
     try {
       rec.regionNode?.pxdUnmount?.();
@@ -20790,6 +20891,7 @@ function createItemRenderer({
     rec.rowState = null;
     stopRowSched(rec);
     dropLayoutWatch(rec);
+    dropRegionPlace(rec);
     rec.scrollOff?.();
     rec.scrollOff = null;
     try {
@@ -22209,6 +22311,107 @@ function createItemRenderer({
     node2.style.width = `${f.rw * 100}%`;
     node2.style.height = `${f.rh * 100}%`;
   };
+  const regionLayerSig = (layer) => [
+    layer?.style?.left || "",
+    layer?.style?.top || "",
+    layer?.style?.width || "",
+    layer?.style?.height || "",
+    layer?.style?.visibility || "",
+    layer?.getAttribute?.("data-pxd-wait") || ""
+  ].join("|");
+  const imageDecoded = (img) => (Number(img?.naturalWidth) || 0) > 0 && (Number(img?.naturalHeight) || 0) > 0;
+  const placeRegionLayer = (layer, hostEl, img) => {
+    if (!layer || !hostEl) return;
+    if (img && !imageDecoded(img)) {
+      layer.setAttribute("data-pxd-wait", "1");
+      layer.style.visibility = "hidden";
+      layer.style.inset = "auto";
+      layer.style.left = "0";
+      layer.style.top = "0";
+      layer.style.width = "0";
+      layer.style.height = "0";
+      return;
+    }
+    layer.removeAttribute?.("data-pxd-wait");
+    layer.style.visibility = "";
+    const painted = img ? paintedRectOfElement(img, { zoom: zoomCache || 1 }) : null;
+    const hostBox = hostEl.getBoundingClientRect?.();
+    const apart = painted && hostBox?.width > 0 && hostBox?.height > 0 && (Math.abs(painted.left - hostBox.left) > 0.5 || Math.abs(painted.top - hostBox.top) > 0.5 || Math.abs(painted.width - hostBox.width) > 0.5 || Math.abs(painted.height - hostBox.height) > 0.5);
+    if (apart) {
+      layer.style.inset = "auto";
+      layer.style.left = `${(painted.left - hostBox.left) / hostBox.width * 100}%`;
+      layer.style.top = `${(painted.top - hostBox.top) / hostBox.height * 100}%`;
+      layer.style.width = `${painted.width / hostBox.width * 100}%`;
+      layer.style.height = `${painted.height / hostBox.height * 100}%`;
+      return;
+    }
+    layer.style.inset = "";
+    layer.style.left = "";
+    layer.style.top = "";
+    layer.style.width = "";
+    layer.style.height = "";
+  };
+  const armRegionPlace = (rec, hostEl, img, layer) => {
+    if (rec.regionPlace && rec.regionPlace.img === img && rec.regionPlace.host === hostEl && rec.regionPlace.layer === layer) return;
+    dropRegionPlace(rec);
+    const w = { img, host: hostEl, layer, queued: false, cancel: null, off: null };
+    const offs = [];
+    const placeNow = () => {
+      if (disposed || layer.isConnected === false || rec.regionPlace !== w) return;
+      const before = regionLayerSig(layer);
+      placeRegionLayer(layer, hostEl, img);
+      if (regionLayerSig(layer) !== before) onPageLayout?.(rec.uid);
+    };
+    const queue = () => {
+      if (w.queued || disposed || rec.regionPlace !== w) return;
+      w.queued = true;
+      w.cancel = frameLater(() => {
+        w.queued = false;
+        w.cancel = null;
+        placeNow();
+      });
+    };
+    if (img && (!imageDecoded(img) || img.complete === false)) {
+      const onLoad = () => placeNow();
+      img.addEventListener?.("load", onLoad);
+      offs.push(() => img.removeEventListener?.("load", onLoad));
+    }
+    const RO = doc.defaultView?.ResizeObserver || globalThis.ResizeObserver;
+    if (typeof RO === "function") {
+      try {
+        const ro = new RO(() => queue());
+        if (img) ro.observe(img);
+        if (hostEl && hostEl !== img) ro.observe(hostEl);
+        offs.push(() => {
+          try {
+            ro.disconnect();
+          } catch {
+          }
+        });
+      } catch {
+      }
+    }
+    w.off = () => {
+      for (const fn of offs) {
+        try {
+          fn();
+        } catch {
+        }
+      }
+    };
+    rec.regionPlace = w;
+  };
+  const refreshRegionLayers = () => {
+    for (const rec of shells.values()) {
+      const layer = rec.body?.querySelector?.(".pxd-region-hits");
+      if (!layer?.parentElement) continue;
+      const hostEl = layer.parentElement;
+      const img = hostEl.matches?.("img") ? hostEl : hostEl.querySelector?.("img");
+      const before = regionLayerSig(layer);
+      placeRegionLayer(layer, hostEl, img);
+      if (regionLayerSig(layer) !== before) onPageLayout?.(rec.uid);
+    }
+  };
   const syncEndpointHits = (rec, nodes) => {
     if (!rec?.body || rec.pageHolder) return;
     const { regions, pins } = endpointHitsOf(nodes);
@@ -22228,28 +22431,17 @@ function createItemRenderer({
       }
     }
     if (!regions.length && !pins.length) {
+      dropRegionPlace(rec);
       layer?.remove();
       return;
     }
     if (!layer) layer = el("div", "pxd-region-hits", hostEl);
     else if (layer.parentElement !== hostEl) hostEl.append(layer);
     const img = hostEl.matches?.("img") ? hostEl : hostEl.querySelector?.("img");
-    const painted = img ? paintedRectOfElement(img, { zoom: zoomCache || 1 }) : null;
-    const hostBox = hostEl.getBoundingClientRect?.();
-    const fits = painted && hostBox?.width > 0 && hostBox?.height > 0 && (Math.abs(painted.left - hostBox.left) > 0.5 || Math.abs(painted.top - hostBox.top) > 0.5 || Math.abs(painted.width - hostBox.width) > 0.5 || Math.abs(painted.height - hostBox.height) > 0.5);
-    if (fits) {
-      layer.style.inset = "auto";
-      layer.style.left = `${(painted.left - hostBox.left) / hostBox.width * 100}%`;
-      layer.style.top = `${(painted.top - hostBox.top) / hostBox.height * 100}%`;
-      layer.style.width = `${painted.width / hostBox.width * 100}%`;
-      layer.style.height = `${painted.height / hostBox.height * 100}%`;
-    } else {
-      layer.style.inset = "";
-      layer.style.left = "";
-      layer.style.top = "";
-      layer.style.width = "";
-      layer.style.height = "";
-    }
+    const beforePlace = regionLayerSig(layer);
+    placeRegionLayer(layer, hostEl, img);
+    if (regionLayerSig(layer) !== beforePlace) onPageLayout?.(rec.uid);
+    armRegionPlace(rec, hostEl, img, layer);
     layer.replaceChildren();
     const areaOf = (region) => {
       const f = fracParts3(region.frac);
@@ -22326,14 +22518,16 @@ function createItemRenderer({
     const mb = media?.getBoundingClientRect?.() || card2;
     const w = mb.width || 1;
     const h = mb.height || 1;
+    const frac = {
+      rx: (r.left - mb.left) / w,
+      ry: (r.top - mb.top) / h,
+      rw: (r.width || 0) / w,
+      rh: (r.height || 0) / h
+    };
     return {
       region: true,
-      frac: {
-        rx: (r.left - mb.left) / w,
-        ry: (r.top - mb.top) / h,
-        rw: (r.width || 0) / w,
-        rh: (r.height || 0) / h
-      },
+      frac,
+      poly: polyOfMark(mark, frac),
       image: {
         x: (mb.left - card2.left) / z,
         y: (mb.top - card2.top) / z,
@@ -22341,6 +22535,20 @@ function createItemRenderer({
         h: mb.height / z
       }
     };
+  };
+  const polyOfMark = (mark, frac) => {
+    if (!frac || !(frac.rw > 0) || !(frac.rh > 0)) return null;
+    const raw = mark.querySelector?.("polygon")?.getAttribute?.("points") || "";
+    if (!raw.trim()) return null;
+    const pts = [];
+    for (const pair2 of raw.trim().split(/\s+/)) {
+      const bits = pair2.split(",");
+      const px = Number(bits[0]);
+      const py = Number(bits[1]);
+      if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+      pts.push({ x: frac.rx + px / 100 * frac.rw, y: frac.ry + py / 100 * frac.rh });
+    }
+    return pts.length >= 3 ? pts : null;
   };
   const measureRow = (uid, rowUid) => {
     const rec = shells.get(uid);
@@ -22398,6 +22606,14 @@ function createItemRenderer({
   const setRegionOn = (uid, rowUid, on) => {
     const mark = markOf(shells.get(uid), rowUid);
     mark?.classList?.toggle("pxd-region-hit--on", Boolean(on));
+  };
+  const setRegionExt = (regionUid, on) => {
+    if (!regionUid) return;
+    for (const rec of shells.values()) {
+      const mark = markOf(rec, regionUid);
+      if (!mark) continue;
+      mark.classList.toggle("pxd-region-hit--ext", Boolean(on));
+    }
   };
   const setRowHot = (uid, rowUid, on) => {
     const mark = markOf(shells.get(uid), rowUid);
@@ -24054,7 +24270,10 @@ function createItemRenderer({
     const next = Number(zoom);
     const prevZoom = zoomCache;
     zoomCache = next > 0 && Number.isFinite(next) ? next : 1;
-    if (zoomCache !== prevZoom) closePeek();
+    if (zoomCache !== prevZoom) {
+      closePeek();
+      refreshRegionLayers();
+    }
     if (editing?.editor) scaleCardEditor(editing.editor, zoomCache);
     if (zoomCache !== prevZoom) {
       for (const rec of shells.values()) if (rec.stickyLive && rec.editor && rec.editor !== editing?.editor) applyEditorCounterScale(rec.editor, zoomCache);
@@ -25329,6 +25548,7 @@ function createItemRenderer({
     markRows,
     setRowHot,
     setRegionOn,
+    setRegionExt,
     revealRow,
     // The colour-highlighter probe reads the body's computed style, a forced style recalc of the whole page.
     // A reading-card change (pane open/close) does not change the highlighter, so it skips that probe.
@@ -37403,6 +37623,26 @@ function emptyLabelShouldDeleteEdge({ key, meta, ctrl, alt, shift, edgeSelected,
   if (!edgeSelected || !inLabel || !empty) return false;
   if (meta || ctrl || alt || shift) return false;
   return key === "Delete" || key === "Backspace";
+}
+function whyLabelField(target, active) {
+  const fieldOf = (node2) => {
+    if (!node2 || typeof node2.closest !== "function") return null;
+    if (node2.classList?.contains?.("pxd-why__note") || node2.closest?.(".pxd-why__note")) return null;
+    if (node2.classList?.contains?.("pxd-why__label")) return node2;
+    const editing = node2.classList?.contains?.("pxd-label--editing") ? node2 : node2.closest?.(".pxd-label--editing");
+    if (editing) return editing;
+    const pop = node2.closest(".pxd-why");
+    if (!pop) return null;
+    const labeled = pop.querySelector?.(".pxd-why__label");
+    if (labeled) return labeled;
+    const wrap = node2.closest?.(".cs-sel") || pop.querySelector?.(".cs-sel");
+    if (!wrap || wrap === pop) return null;
+    const inner = wrap.querySelector?.("input, textarea");
+    if (inner?.classList?.contains?.("pxd-why__note")) return null;
+    return inner || wrap;
+  };
+  if (target?.closest?.(".pxd-why__note")) return null;
+  return fieldOf(target) || (active && active !== target ? fieldOf(active) : null);
 }
 var SNAP_PX = 6;
 var STICKY_TOOLS = /* @__PURE__ */ new Set(["select", "hand"]);
@@ -51632,12 +51872,13 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const endOn = (spec, rect, other) => {
     if (!spec || !rect || spec.face) return null;
     if (spec.region && spec.image) {
-      const hit = regionEdgePoint(
-        { x: rect.x + spec.image.x, y: rect.y + spec.image.y, w: spec.image.w, h: spec.image.h },
-        spec.frac,
-        center(other)
-      );
-      return hit ? { point: hit.point, side: hit.side, region: true } : null;
+      return regionInnerEnd({
+        card: rect,
+        image: { x: rect.x + spec.image.x, y: rect.y + spec.image.y, w: spec.image.w, h: spec.image.h },
+        frac: spec.frac,
+        poly: spec.poly,
+        other: center(other)
+      });
     }
     const an = blockAnchor({ rect, rowTop: spec.rowTop, rowHeight: spec.rowHeight, bodyTop: spec.bodyTop, bodyBottom: spec.bodyBottom, other: center(other) });
     return {
@@ -51672,6 +51913,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       let toClamp2 = null;
       let fromInnerSpec2 = null;
       let toInnerSpec2 = null;
+      let fromReady2 = null;
+      let toReady2 = null;
       const m2 = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
       if (m2?.from && edge.fromBlock && !fromEdge) {
         const hit = endOn(m2.from, a, b);
@@ -51679,7 +51922,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           fromPoint2 = hit.point;
           fromSide2 = hit.side;
           fromClamp2 = hit.clamp ?? null;
-          if (!hit.region) fromInnerSpec2 = hit.inner || null;
+          if (hit.region) fromReady2 = hit.inner || null;
+          else fromInnerSpec2 = hit.inner || null;
         }
       }
       if (m2?.to && edge.toBlock && !toEdge) {
@@ -51688,7 +51932,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           toPoint2 = hit.point;
           toSide2 = hit.side;
           toClamp2 = hit.clamp ?? null;
-          if (!hit.region) toInnerSpec2 = hit.inner || null;
+          if (hit.region) toReady2 = hit.inner || null;
+          else toInnerSpec2 = hit.inner || null;
         }
       }
       const geo2 = edgePath({ a, b, fromSide: fromSide2, toSide: toSide2, route: edge.route, offset: pairOffset2(board2, edge), fromPoint: fromPoint2, toPoint: toPoint2 });
@@ -51698,8 +51943,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       geo2.toW = b.w;
       geo2.fromBlockAnchored = Boolean(fromPoint2) && !fromEdge && !m2?.from?.region;
       geo2.toBlockAnchored = Boolean(toPoint2) && !toEdge && !m2?.to?.region;
-      geo2.fromInner = fromInnerSpec2 ? blockInner(fromInnerSpec2) : null;
-      geo2.toInner = toInnerSpec2 ? blockInner(toInnerSpec2) : null;
+      geo2.fromInner = fromReady2 || (fromInnerSpec2 ? blockInner(fromInnerSpec2) : null);
+      geo2.toInner = toReady2 || (toInnerSpec2 ? blockInner(toInnerSpec2) : null);
       return geo2;
     }
     const routed = routedEdge(board2, edge, rects);
@@ -51722,6 +51967,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     let toClamp = null;
     let fromInnerSpec = null;
     let toInnerSpec = null;
+    let fromReady = null;
+    let toReady = null;
     const m = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
     if (m) {
       if (m.from && edge.fromBlock && routed.from === edge.from) {
@@ -51730,7 +51977,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           fromPoint = hit.point;
           fromSide = hit.side;
           fromClamp = hit.clamp ?? null;
-          if (!hit.region) fromInnerSpec = hit.inner || null;
+          if (hit.region) fromReady = hit.inner || null;
+          else fromInnerSpec = hit.inner || null;
         }
       }
       if (m.to && edge.toBlock && routed.to === edge.to) {
@@ -51739,7 +51987,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
           toPoint = hit.point;
           toSide = hit.side;
           toClamp = hit.clamp ?? null;
-          if (!hit.region) toInnerSpec = hit.inner || null;
+          if (hit.region) toReady = hit.inner || null;
+          else toInnerSpec = hit.inner || null;
         }
       }
     }
@@ -51751,8 +52000,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       geo.toW = routed.b.w;
       geo.fromBlockAnchored = Boolean(fromPoint) && !m.from?.region;
       geo.toBlockAnchored = Boolean(toPoint) && !m.to?.region;
-      geo.fromInner = fromInnerSpec ? blockInner(fromInnerSpec) : null;
-      geo.toInner = toInnerSpec ? blockInner(toInnerSpec) : null;
+      geo.fromInner = fromReady || (fromInnerSpec ? blockInner(fromInnerSpec) : null);
+      geo.toInner = toReady || (toInnerSpec ? blockInner(toInnerSpec) : null);
     }
     return geo;
   };
@@ -62910,6 +63159,30 @@ function buildBoardView(onFail, {
       hoverRows(uid, false);
     }
   });
+  let extRegion = null;
+  const regionUidsOnBoard = () => {
+    const set = /* @__PURE__ */ new Set();
+    for (const node2 of root.querySelectorAll?.("[data-pxd-region]") || []) {
+      const id = node2.getAttribute?.("data-pxd-region");
+      if (id) set.add(id);
+    }
+    return set;
+  };
+  const paintExt = (uid) => {
+    if (uid === extRegion) return;
+    if (extRegion) itemsR.setRegionExt?.(extRegion, false);
+    extRegion = uid || null;
+    if (extRegion) itemsR.setRegionExt?.(extRegion, true);
+  };
+  listen(doc, "pointerover", (event) => {
+    paintExt(regionUidFromHover(event.target, regionUidsOnBoard()));
+  }, true);
+  listen(doc, "pointerout", (event) => {
+    if (!extRegion) return;
+    const next = regionUidFromHover(event.relatedTarget, regionUidsOnBoard());
+    if (next === extRegion) return;
+    paintExt(next);
+  }, true);
   function scheduleAnchors() {
     if (disposed || anchorFrame) return;
     anchorFrame = true;
@@ -67933,7 +68206,27 @@ function buildBoardView(onFail, {
       return false;
     };
     if (event.target?.closest?.(".pxd-read")) return;
-    if (event.target?.closest?.(".pxd-why")) return;
+    const inWhy = Boolean(event.target?.closest?.(".pxd-why") || doc.activeElement?.closest?.(".pxd-why"));
+    if (inWhy) {
+      const whyField = whyLabelField(event.target, doc.activeElement);
+      if (emptyLabelShouldDeleteEdge({
+        key: event.key,
+        meta: event.metaKey,
+        ctrl: event.ctrlKey,
+        alt: event.altKey,
+        shift: event.shiftKey,
+        edgeSelected: Boolean(selection.edge),
+        inLabel: Boolean(whyField),
+        empty: String(whyField?.value ?? whyField?.textContent ?? "").trim() === ""
+      })) {
+        event.preventDefault();
+        event.stopPropagation();
+        whyPop?.close();
+        whyPop = null;
+        ctl.deleteSelection(false);
+      }
+      return;
+    }
     if (isTextEntryTarget(event.target) && !root.contains?.(event.target)) {
       itemsR.quiet(true);
       if (outsideQuiet) outsideQuiet();
@@ -68027,8 +68320,7 @@ function buildBoardView(onFail, {
       return;
     }
     const inputFocused = isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement);
-    const labelNode = [event.target, doc.activeElement].find((node2) => node2?.classList?.contains?.("pxd-why__label") || node2?.closest?.(".pxd-label--editing"));
-    const labelField = labelNode?.classList?.contains?.("pxd-why__label") ? labelNode : labelNode?.closest?.(".pxd-label--editing");
+    const labelField = whyLabelField(event.target, doc.activeElement);
     if (emptyLabelShouldDeleteEdge({
       key: event.key,
       meta: event.metaKey,
@@ -68041,6 +68333,8 @@ function buildBoardView(onFail, {
     })) {
       event.preventDefault();
       event.stopPropagation();
+      whyPop?.close();
+      whyPop = null;
       ctl.deleteSelection(false);
       return;
     }

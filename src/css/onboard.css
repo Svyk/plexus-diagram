@@ -167,6 +167,14 @@
   user-select: all;
 }
 
+.pxd-engines .pxd-engines__addon {
+  flex: 1 0 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
 .pxd-engines .pxd-engines__note {
   color: var(--pxd-muted, #5f6b7c);
 }

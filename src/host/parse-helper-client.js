@@ -38,6 +38,48 @@ function schemaMajor(schema) {
   return match ? Number(match[1]) : null;
 }
 
+// Readiness is per capability. `ocr` is scan reading (Read the scan, cell re-reads, the OCR
+// text layer). `docling` is layout + TableFormer (`/v1/jobs`, Parse with Docling). A body with
+// no `engines` array keeps the old rule: `state` is ready only when layout, tableformer and ocr
+// are all ready. An OCR-only helper (`engines` includes "ocr", `models.ocr` is "ready", and it
+// does not advertise "docling") is ready for scans while Docling stays off.
+function classifyModels(body) {
+  const models = body?.models || {};
+  const engines = Array.isArray(body?.engines) ? body.engines : [];
+  const listed = engines.length > 0;
+  const docling = models.layout === "ready" && models.tableformer === "ready";
+  const ocr = listed
+    ? engines.includes("ocr") && models.ocr === "ready"
+    : docling && models.ocr === "ready";
+  let state;
+  if (!listed) {
+    const missing = ["layout", "tableformer", "ocr"].some((name) => models[name] !== "ready");
+    state = missing ? "models-missing" : "ready";
+  } else if (engines.includes("docling") && !docling) {
+    state = "models-missing";
+  } else if (ocr || docling) {
+    state = "ready";
+  } else {
+    state = "models-missing";
+  }
+  return { state, engines, ocr, docling, models };
+}
+
+// Scan reading. A health object that does not say `ocr` (older callers, tests) is ready for
+// scans when `state` is "ready".
+export function helperCanOcr(health) {
+  if (!health) return false;
+  if (typeof health.ocr === "boolean") return health.ocr;
+  return health.state === "ready";
+}
+
+// Layout and TableFormer. Same fallback as helperCanOcr when the helper does not say.
+export function helperCanDocling(health) {
+  if (!health) return false;
+  if (typeof health.docling === "boolean") return health.docling;
+  return health.state === "ready";
+}
+
 function withTimeout(ms, parent) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
@@ -150,12 +192,17 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
         if (body?.helper !== HELPER_NAME || major == null) value = { state: "not-running" };
         else if (major >= 2) value = { state: "newer-schema", schema: body.schema };
         else {
-          const models = body.models || {};
-          const needed = ["layout", "tableformer", "ocr"];
-          const missing = needed.some((name) => models[name] !== "ready");
-          value = missing
-            ? { state: "models-missing", schema: body.schema, models, version: body.version }
-            : { state: "ready", schema: body.schema, models, version: body.version, busy: body.busy ?? 0 };
+          const flags = classifyModels(body);
+          value = {
+            state: flags.state,
+            schema: body.schema,
+            models: flags.models,
+            version: body.version,
+            engines: flags.engines,
+            ocr: flags.ocr,
+            docling: flags.docling,
+          };
+          if (flags.state === "ready") value.busy = body.busy ?? 0;
         }
       }
       healthCache = { url, token, at, value };
@@ -212,8 +259,9 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
   }
 
   // The Engines panel row state. One of: not-installed, not-paired, not-running, wrong-token,
-  // newer-schema, models-missing, downloading, ready. `force` skips the 60 s cache (pane open,
-  // panel visible). `paired` is true when a token is stored.
+  // newer-schema, models-missing, downloading, ready. `ocr` and `docling` travel with it when
+  // health classified them. `force` skips the 60 s cache (pane open, panel visible). `paired`
+  // is true when a token is stored.
   async function status({ force = false } = {}) {
     const { token } = config();
     if (!token) return { ...(await probe({ force })), paired: false };

@@ -19,7 +19,8 @@
 // pollMs while visible.
 
 export const INSTALL_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh";
-export const RESTART_COMMAND = "plexus-parse-helper install-agent";
+export const DOCLING_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh -s -- --docling";
+export const RESTART_COMMAND = 'launchctl kickstart -k "gui/$(id -u)/com.plexus.parse-helper"';
 export const MANUAL_COMMAND = 'uv tool install "git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper" && plexus-parse-helper serve';
 
 const HELPER_MB_FALLBACK = 500;
@@ -60,8 +61,18 @@ function deviceOcrRow(device) {
 function helperRow(helper) {
   const row = { id: "helper", name: "Local helper", tip: "engines.helper" };
   switch (helper?.state) {
-    case "ready":
-      return { ...row, dot: "ok", text: helper.version ? `Ready · v${helper.version}` : "Ready", button: null };
+    case "ready": {
+      const scansOnly = helper.ocr === true && helper.docling === false;
+      const text = scansOnly
+        ? (helper.version ? `Ready for scans · v${helper.version}` : "Ready for scans")
+        : (helper.version ? `Ready · v${helper.version}` : "Ready");
+      const out = { ...row, dot: "ok", text, button: null };
+      if (scansOnly) {
+        out.note = "Docling is an optional add-on for layout, formulas and tables. The light helper already reads scans.";
+        out.command = DOCLING_COMMAND;
+      }
+      return out;
+    }
     case "not-paired":
       return { ...row, dot: "warn", text: "Running, not paired", button: button("pair", "Pair", "engines.pair") };
     case "wrong-token":
@@ -110,7 +121,7 @@ export function helperSheet(helperState, platform = "mac") {
     return {
       title: "Start the local helper",
       command: RESTART_COMMAND,
-      note: "Paste this in Terminal. It restarts the helper and keeps it starting at login. Then come back here.",
+      note: "Paste this in Terminal. It starts the helper again. Then come back here.",
       copyLabel: "Copy command",
     };
   }
@@ -199,6 +210,21 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
         fill.style.width = pct(row.progress);
         bar.append(fill);
         node.append(bar);
+      }
+      if (row.note) {
+        const addon = doc.createElement("div");
+        addon.className = "pxd-engines__addon";
+        const note = doc.createElement("div");
+        note.className = "pxd-engines__note";
+        note.textContent = row.note;
+        addon.append(note);
+        if (row.command) {
+          const code = doc.createElement("code");
+          code.className = "pxd-engines__command";
+          code.textContent = row.command;
+          addon.append(code);
+        }
+        node.append(addon);
       }
       if (row.button) {
         const b = doc.createElement("button");

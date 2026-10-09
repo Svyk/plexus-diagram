@@ -31,6 +31,12 @@ const BUTTON_LABEL = {
   cancel: "Cancel",
 };
 
+function helperReadsScans(helper) {
+  if (!helper) return false;
+  if (typeof helper.ocr === "boolean") return helper.ocr;
+  return helper.state === "ready";
+}
+
 function secondsText(ms) {
   const n = Number(ms);
   if (!Number.isFinite(n) || n < 0) return "";
@@ -66,7 +72,7 @@ export function stripModel(kind, input = {}) {
     case "scan-first":
     case "scan-cached":
       if (ocr.deviceAvailable === false) {
-        return input.helper?.state === "ready"
+        return helperReadsScans(input.helper)
           ? { kind, text: "This page is an image. Read its text with the local helper.", tip: "parse.strip.use-helper", buttons: [btn("read-text", true), btn("not-now")] }
           : { kind, text: "This page is an image. Its text needs the local helper.", tip: "parse.strip.setup-helper", buttons: [btn("setup-helper", true), btn("not-now")] };
       }

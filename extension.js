@@ -11304,7 +11304,7 @@ var init_tooltip_text = __esm({
       "parse.strip.cancel": e("Cancel", "Stop reading this page."),
       "engines.builtin": e("On this device", "The built-in parser. It runs in Roam and needs nothing installed."),
       "engines.ocr": e("In-browser reading (beta)", "Reads the words on scanned pages inside Roam. The models download once, after you ask. Less accurate than the local helper, which is used instead when it is ready."),
-      "engines.helper": e("Local helper", "Docling for layout, formulas and tables, and Apple Vision for scans. It runs on this Mac and listens only on 127.0.0.1."),
+      "engines.helper": e("Local helper", "Apple Vision for scans. The light helper is about 12 MB on a Mac. Docling, for layout, formulas and tables, is an optional add-on. It listens only on 127.0.0.1."),
       "engines.cloud": e("Cloud", "Reading through a service with your own key. Not available yet."),
       "engines.pair": e("Pair", "Fetch the helper's token. Works for 90 seconds after the installer or plexus-parse-helper pair."),
       "engines.setup": e("Set up", "Show the one command that installs the local helper."),
@@ -38580,6 +38580,420 @@ function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CA
 // src/view/parse-view.js
 init_pdf();
 
+// src/host/parse-helper-client.js
+init_parse_hash();
+init_parse_schema();
+var HEALTH_TIMEOUT_MS = 1500;
+var HEALTH_CACHE_MS = 6e4;
+var HELPER_NAME = "plexus-parse-helper";
+function readSetting(settings, id, fallback) {
+  try {
+    if (typeof settings === "function") {
+      const all = settings();
+      if (all && typeof all.get === "function") {
+        const value = all.get(id);
+        return value == null || value === "" ? fallback : value;
+      }
+      if (all && typeof all === "object") return all[id] == null || all[id] === "" ? fallback : all[id];
+      return fallback;
+    }
+    if (settings && typeof settings.get === "function") {
+      const value = settings.get(id);
+      return value == null || value === "" ? fallback : value;
+    }
+    if (settings && typeof settings === "object") {
+      return settings[id] == null || settings[id] === "" ? fallback : settings[id];
+    }
+  } catch {
+  }
+  return fallback;
+}
+function schemaMajor(schema) {
+  const match = /\/(\d+)/.exec(String(schema || ""));
+  return match ? Number(match[1]) : null;
+}
+function classifyModels(body) {
+  const models = body?.models || {};
+  const engines = Array.isArray(body?.engines) ? body.engines : [];
+  const listed = engines.length > 0;
+  const docling = models.layout === "ready" && models.tableformer === "ready";
+  const ocr = listed ? engines.includes("ocr") && models.ocr === "ready" : docling && models.ocr === "ready";
+  let state;
+  if (!listed) {
+    const missing2 = ["layout", "tableformer", "ocr"].some((name) => models[name] !== "ready");
+    state = missing2 ? "models-missing" : "ready";
+  } else if (engines.includes("docling") && !docling) {
+    state = "models-missing";
+  } else if (ocr || docling) {
+    state = "ready";
+  } else {
+    state = "models-missing";
+  }
+  return { state, engines, ocr, docling, models };
+}
+function helperCanOcr(health) {
+  if (!health) return false;
+  if (typeof health.ocr === "boolean") return health.ocr;
+  return health.state === "ready";
+}
+function helperCanDocling(health) {
+  if (!health) return false;
+  if (typeof health.docling === "boolean") return health.docling;
+  return health.state === "ready";
+}
+function withTimeout(ms, parent) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  const onAbort = () => ctrl.abort();
+  if (parent) {
+    if (parent.aborted) ctrl.abort();
+    else parent.addEventListener("abort", onAbort, { once: true });
+  }
+  return {
+    signal: ctrl.signal,
+    clear() {
+      clearTimeout(timer);
+      parent?.removeEventListener?.("abort", onAbort);
+    }
+  };
+}
+async function readSSE(response, { onProgress, onPage }) {
+  const reader = response.body?.getReader?.();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buf = "";
+  const dispatch = (frame) => {
+    let event = "message";
+    const data = [];
+    for (const line of frame.split("\n")) {
+      if (!line || line.startsWith(":")) continue;
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    if (!data.length) return null;
+    const payload = JSON.parse(data.join("\n"));
+    if (event === "progress") onProgress?.(payload);
+    else if (event === "page") onPage?.(payload);
+    else if (event === "error") {
+      const error = new Error(payload.message || "parse error");
+      error.code = payload.code;
+      error.page = payload.page;
+      throw error;
+    }
+    return event;
+  };
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    buf = buf.replace(/\r\n/g, "\n");
+    const frames = buf.split("\n\n");
+    buf = frames.pop() ?? "";
+    for (const frame of frames) {
+      if (dispatch(frame) === "done") {
+        try {
+          await reader.cancel();
+        } catch {
+        }
+        return;
+      }
+    }
+  }
+  if (buf.trim()) dispatch(buf);
+}
+var TOKEN_SETTING = "parse-helper-token";
+function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
+  const fetchFn = fetchImpl;
+  const clock = typeof now3 === "function" ? now3 : () => Date.now();
+  let healthCache = null;
+  let probeCache = null;
+  const config = () => {
+    const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
+    const token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
+    return { url, token };
+  };
+  const call = (url, init, signal) => fetchFn(url, {
+    ...init,
+    targetAddressSpace: "loopback",
+    signal: signal ?? init?.signal
+  });
+  async function health({ force = false } = {}) {
+    const { url, token } = config();
+    const at = clock();
+    if (!force && healthCache && healthCache.url === url && healthCache.token === token && at - healthCache.at < HEALTH_CACHE_MS) {
+      return healthCache.value;
+    }
+    if (!token) {
+      const value = { state: "not-running", reason: "disabled" };
+      healthCache = { url, token, at, value };
+      return value;
+    }
+    if (typeof fetchFn !== "function") {
+      const value = { state: "not-running" };
+      healthCache = { url, token, at, value };
+      return value;
+    }
+    const timer = withTimeout(timeoutMs);
+    try {
+      const res = await call(`${url}/v1/health`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` }
+      }, timer.signal);
+      let value;
+      const httpOk = res.status >= 200 && res.status < 300;
+      if (res.status === 401) value = { state: "wrong-token" };
+      else if (!httpOk) value = { state: "not-running" };
+      else {
+        let body = null;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
+        }
+        const major = schemaMajor(body?.schema);
+        if (body?.helper !== HELPER_NAME || major == null) value = { state: "not-running" };
+        else if (major >= 2) value = { state: "newer-schema", schema: body.schema };
+        else {
+          const flags = classifyModels(body);
+          value = {
+            state: flags.state,
+            schema: body.schema,
+            models: flags.models,
+            version: body.version,
+            engines: flags.engines,
+            ocr: flags.ocr,
+            docling: flags.docling
+          };
+          if (flags.state === "ready") value.busy = body.busy ?? 0;
+        }
+      }
+      healthCache = { url, token, at, value };
+      return value;
+    } catch {
+      const value = { state: "not-running" };
+      healthCache = { url, token, at, value };
+      return value;
+    } finally {
+      timer.clear();
+    }
+  }
+  function invalidate() {
+    healthCache = null;
+    probeCache = null;
+  }
+  async function probe({ force = false } = {}) {
+    const { url } = config();
+    const at = clock();
+    if (!force && probeCache && probeCache.url === url && at - probeCache.at < HEALTH_CACHE_MS) return probeCache.value;
+    let value = { state: "not-installed" };
+    if (typeof fetchFn === "function") {
+      const timer = withTimeout(timeoutMs);
+      try {
+        const res = await call(`${url}/v1/health`, { method: "GET" }, timer.signal);
+        let body = null;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
+        }
+        if (res.status === 401 && body?.helper === HELPER_NAME) value = { state: "not-paired" };
+      } catch {
+      } finally {
+        timer.clear();
+      }
+    }
+    probeCache = { url, at, value };
+    return value;
+  }
+  async function models() {
+    const { url, token } = config();
+    if (!token || typeof fetchFn !== "function") return null;
+    const timer = withTimeout(timeoutMs);
+    try {
+      const res = await call(`${url}/v1/models`, { method: "GET", headers: { Authorization: `Bearer ${token}` } }, timer.signal);
+      if (res.status < 200 || res.status >= 300) return null;
+      return await res.json();
+    } catch {
+      return null;
+    } finally {
+      timer.clear();
+    }
+  }
+  async function status({ force = false } = {}) {
+    const { token } = config();
+    if (!token) return { ...await probe({ force }), paired: false };
+    const h = await health({ force });
+    if (h.state === "models-missing") {
+      const report = await models();
+      const bytes = Number(report?.bytes) || 0;
+      const done = Number(report?.done) || 0;
+      const fraction = Number.isFinite(report?.fraction) ? report.fraction : bytes ? done / bytes : 0;
+      if (report?.state === "downloading") {
+        return { ...h, state: "downloading", paired: true, progress: { bytes, done, fraction } };
+      }
+      return { ...h, paired: true, progress: { bytes, done, fraction } };
+    }
+    return { ...h, paired: true };
+  }
+  async function pair2({ signal } = {}) {
+    const { url } = config();
+    if (typeof fetchFn !== "function") return { ok: false, reason: "not-running" };
+    if (typeof setSetting !== "function") return { ok: false, reason: "no-settings" };
+    const timer = withTimeout(timeoutMs, signal);
+    try {
+      const res = await call(`${url}/v1/pair`, { method: "GET" }, timer.signal);
+      if (res.status === 404) return { ok: false, reason: "window-closed" };
+      if (res.status < 200 || res.status >= 300) return { ok: false, reason: "error", status: res.status };
+      let body = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+      if (body?.helper !== HELPER_NAME || typeof body.token !== "string" || !body.token) return { ok: false, reason: "error" };
+      await setSetting(TOKEN_SETTING, body.token);
+      invalidate();
+      return { ok: true, version: body.version };
+    } catch {
+      return { ok: false, reason: "not-running" };
+    } finally {
+      timer.clear();
+    }
+  }
+  async function downloadModels() {
+    const { url, token } = config();
+    if (!token || typeof fetchFn !== "function") return false;
+    try {
+      const res = await call(`${url}/v1/models/download`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      invalidate();
+      return res.status === 202 || res.status === 200;
+    } catch {
+      return false;
+    }
+  }
+  async function cancelModels() {
+    const { url, token } = config();
+    if (!token || typeof fetchFn !== "function") return false;
+    try {
+      const res = await call(`${url}/v1/models/download`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      invalidate();
+      return res.status === 200;
+    } catch {
+      return false;
+    }
+  }
+  async function readJob(base, token, jobId, { onProgress, onPage, signal }) {
+    const headers = { Authorization: `Bearer ${token}` };
+    const events = await call(`${base}/v1/jobs/${encodeURIComponent(jobId)}/events`, {
+      method: "GET",
+      headers
+    }, signal);
+    await readSSE(events, { onProgress, onPage });
+    const finalRes = await call(`${base}/v1/jobs/${encodeURIComponent(jobId)}`, {
+      method: "GET",
+      headers
+    }, signal);
+    const doc = await finalRes.json();
+    return doc;
+  }
+  async function parse({ bytes, sha256, options, onProgress, onPage, signal } = {}) {
+    const { url, token } = config();
+    const sha = sha256 || await sha256Hex(bytes);
+    const optsHash = await optionsHash(options || {});
+    const headers = { Authorization: `Bearer ${token}` };
+    const cacheUrl = `${url}/v1/cache/${encodeURIComponent(sha)}?opts=${encodeURIComponent(optsHash)}`;
+    const head = await call(cacheUrl, { method: "HEAD", headers }, signal);
+    if (head.status === 200) {
+      const got = await call(cacheUrl, { method: "GET", headers }, signal);
+      return { doc: await got.json(), cached: true, sha256: sha, optsHash, job: null };
+    }
+    const posted = await call(`${url}/v1/jobs`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/pdf",
+        "X-Pxd-Options": JSON.stringify(options || {})
+      },
+      body: bytes
+    }, signal);
+    const job = await posted.json();
+    if (posted.status === 409) {
+      const error = new Error("helper busy");
+      error.status = 409;
+      error.running = job?.running;
+      throw error;
+    }
+    const doc = await readJob(url, token, job.job, { onProgress, onPage, signal });
+    return { doc, cached: false, sha256: sha, optsHash, job: job.job };
+  }
+  async function cancel(jobId) {
+    const { url, token } = config();
+    const res = await call(`${url}/v1/jobs/${encodeURIComponent(jobId)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return res.status === 204 || res.status === 200;
+  }
+  async function reparseTable({ bytes, sha256, page, bbox, base, onProgress, onPage, signal } = {}) {
+    const { url, token } = config();
+    const sha = sha256 || await sha256Hex(bytes);
+    const ocr2 = readSetting(settings, "parse-ocr", "auto");
+    const formula = readSetting(settings, "parse-formula", false) === true;
+    const options = {
+      pages: [page],
+      ocr: ocr2,
+      formula,
+      tables: "accurate",
+      scope: { page, bbox }
+    };
+    const posted = await call(`${url}/v1/jobs`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/pdf",
+        "X-Pxd-Options": JSON.stringify(options)
+      },
+      body: bytes
+    }, signal);
+    const job = await posted.json();
+    const doc = await readJob(url, token, job.job, { onProgress, onPage, signal });
+    const merged = base ? mergeScoped(base, doc, { page, bbox }) : null;
+    return { doc, merged, cached: false, sha256: sha, job: job.job };
+  }
+  async function ocr({ bytes, sha256, pages, cells, signal } = {}) {
+    const { url, token } = config();
+    const sha = sha256 || await sha256Hex(bytes);
+    const options = {};
+    if (pages && pages.length) options.pages = pages;
+    if (cells && cells.length) options.cells = cells.map((c) => ({ page: c.page, bbox: c.bbox }));
+    const res = await call(`${url}/v1/ocr`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/pdf",
+        "X-Pxd-Options": JSON.stringify(options)
+      },
+      body: bytes
+    }, signal);
+    let body = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+    if (res.status < 200 || res.status >= 300) {
+      const error = new Error(body?.error || `ocr ${res.status}`);
+      error.status = res.status;
+      throw error;
+    }
+    if (cells && cells.length && Array.isArray(body?.cells)) {
+      body.cells = body.cells.map((c, i) => ({ ...cells[i], ...c }));
+    }
+    return { ...body, sha256: sha };
+  }
+  return { health, status, pair: pair2, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr };
+}
+
 // src/view/parse-engine.js
 init_parse();
 init_ocr_fix();
@@ -42396,6 +42810,13 @@ function createParseView({
   let abort = null;
   let jobId = "";
   let helperState = "";
+  let helperOcr = false;
+  let helperDocling = false;
+  function takeHealth(health) {
+    helperState = health?.state || "not-running";
+    helperOcr = helperCanOcr(health);
+    helperDocling = helperCanDocling(health);
+  }
   let phase = "idle";
   let dead = false;
   let progress = { page: 0, pageCount: 0, engine: "builtin" };
@@ -42546,7 +42967,7 @@ ${sourceAttrString(source)}` : markdown;
     getParsed: () => parsed,
     pageEl: (n2) => pageEl?.(n2) || null,
     pageOf: (n2) => pageInfo(n2),
-    isLatexReady: () => helperState === "ready",
+    isLatexReady: () => helperDocling,
     storage,
     copy: (block) => {
       if (!parsed || !block) return;
@@ -42696,7 +43117,7 @@ ${sourceAttrString(source)}` : markdown;
     chip.setAttribute("data-tip", tipId);
     const running = phase === "running";
     setHidden(cancelBtn, !running);
-    setHidden(doclingBtn, helperState !== "ready");
+    setHidden(doclingBtn, !helperDocling);
     setHidden(track, !running);
     const denom = Number(progress.pageCount) || 0;
     const frac = running && denom ? Math.max(0, Math.min(1, Number(progress.page) / denom)) : 0;
@@ -42829,7 +43250,7 @@ ${sourceAttrString(source)}` : markdown;
     }
     void (async () => {
       await refreshHelper();
-      if (helperState === "ready") await readScanNow();
+      if (helperOcr) await readScanNow();
       else {
         try {
           onToast?.("Scanned page: start the local helper to read its text (Settings → Parse)");
@@ -43449,7 +43870,7 @@ ${sourceAttrString(source)}` : markdown;
     if (scanAuto && scanPagesOf(finalDoc).length) {
       await refreshHelper();
       const engine = ocrEngine();
-      if (engine && (engine === ocrSource || helperState === "ready")) await readScanNow();
+      if (engine && (engine === ocrSource || helperOcr)) await readScanNow();
     }
   }
   function ocrEngine() {
@@ -43460,13 +43881,13 @@ ${sourceAttrString(source)}` : markdown;
   function paintScan() {
     const pages = parsed ? scanPagesOf(parsed) : [];
     const engine = ocrEngine();
-    const ready = Boolean(engine && (engine === ocrSource || helperState === "ready"));
+    const ready = Boolean(engine && (engine === ocrSource || helperOcr));
     scanBtn.hidden = !(pages.length && ready && phase !== "running");
     if (!scanBtn.hidden) scanBtn.textContent = pages.length === 1 ? `Read the scan (p. ${pages[0]})` : `Read the scan (${pages.length} pages)`;
   }
   async function readScanNow() {
     const engine = ocrEngine();
-    if (!parsed || !engine || engine !== ocrSource && helperState !== "ready") return;
+    if (!parsed || !engine || engine !== ocrSource && !helperOcr) return;
     const pages = scanPagesOf(parsed);
     if (!pages.length) return;
     cancel();
@@ -43583,7 +44004,7 @@ ${sourceAttrString(source)}` : markdown;
     }
   }
   async function parseDocling() {
-    if (!helper || helperState !== "ready") {
+    if (!helper || !helperDocling) {
       helperState = helperState || "not-running";
       paintChip();
       return;
@@ -43618,7 +44039,7 @@ ${sourceAttrString(source)}` : markdown;
     paintChip();
   }
   async function reparseTable(table) {
-    if (!helper || typeof helper.reparseTable !== "function") {
+    if (!helper || !helperDocling || typeof helper.reparseTable !== "function") {
       helperState = helperState || "not-running";
       paintChip();
       render();
@@ -43851,7 +44272,7 @@ ${sourceAttrString(source)}` : markdown;
     closeMenus();
     void (async () => {
       await refreshHelper();
-      if (helperState === "ready") await parseDocling();
+      if (helperDocling) await parseDocling();
     })();
   });
   listen(altBtn, "click", () => {
@@ -43973,12 +44394,14 @@ ${sourceAttrString(source)}` : markdown;
   async function refreshHelper() {
     if (!helper || typeof helper.health !== "function") return;
     try {
-      const health = await helper.health();
-      helperState = health?.state || "not-running";
+      takeHealth(await helper.health());
     } catch {
       helperState = "not-running";
+      helperOcr = false;
+      helperDocling = false;
     }
     paintChip();
+    paintScan();
   }
   if (!lazyKeys) armKeys();
   render();
@@ -44115,391 +44538,14 @@ ${sourceAttrString(source)}` : markdown;
   };
 }
 
-// src/host/parse-helper-client.js
-init_parse_hash();
-init_parse_schema();
-var HEALTH_TIMEOUT_MS = 1500;
-var HEALTH_CACHE_MS = 6e4;
-var HELPER_NAME = "plexus-parse-helper";
-function readSetting(settings, id, fallback) {
-  try {
-    if (typeof settings === "function") {
-      const all = settings();
-      if (all && typeof all.get === "function") {
-        const value = all.get(id);
-        return value == null || value === "" ? fallback : value;
-      }
-      if (all && typeof all === "object") return all[id] == null || all[id] === "" ? fallback : all[id];
-      return fallback;
-    }
-    if (settings && typeof settings.get === "function") {
-      const value = settings.get(id);
-      return value == null || value === "" ? fallback : value;
-    }
-    if (settings && typeof settings === "object") {
-      return settings[id] == null || settings[id] === "" ? fallback : settings[id];
-    }
-  } catch {
-  }
-  return fallback;
-}
-function schemaMajor(schema) {
-  const match = /\/(\d+)/.exec(String(schema || ""));
-  return match ? Number(match[1]) : null;
-}
-function withTimeout(ms, parent) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  const onAbort = () => ctrl.abort();
-  if (parent) {
-    if (parent.aborted) ctrl.abort();
-    else parent.addEventListener("abort", onAbort, { once: true });
-  }
-  return {
-    signal: ctrl.signal,
-    clear() {
-      clearTimeout(timer);
-      parent?.removeEventListener?.("abort", onAbort);
-    }
-  };
-}
-async function readSSE(response, { onProgress, onPage }) {
-  const reader = response.body?.getReader?.();
-  if (!reader) return;
-  const decoder = new TextDecoder();
-  let buf = "";
-  const dispatch = (frame) => {
-    let event = "message";
-    const data = [];
-    for (const line of frame.split("\n")) {
-      if (!line || line.startsWith(":")) continue;
-      if (line.startsWith("event:")) event = line.slice(6).trim();
-      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
-    }
-    if (!data.length) return null;
-    const payload = JSON.parse(data.join("\n"));
-    if (event === "progress") onProgress?.(payload);
-    else if (event === "page") onPage?.(payload);
-    else if (event === "error") {
-      const error = new Error(payload.message || "parse error");
-      error.code = payload.code;
-      error.page = payload.page;
-      throw error;
-    }
-    return event;
-  };
-  for (; ; ) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    buf = buf.replace(/\r\n/g, "\n");
-    const frames = buf.split("\n\n");
-    buf = frames.pop() ?? "";
-    for (const frame of frames) {
-      if (dispatch(frame) === "done") {
-        try {
-          await reader.cancel();
-        } catch {
-        }
-        return;
-      }
-    }
-  }
-  if (buf.trim()) dispatch(buf);
-}
-var TOKEN_SETTING = "parse-helper-token";
-function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
-  const fetchFn = fetchImpl;
-  const clock = typeof now3 === "function" ? now3 : () => Date.now();
-  let healthCache = null;
-  let probeCache = null;
-  const config = () => {
-    const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
-    const token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
-    return { url, token };
-  };
-  const call = (url, init, signal) => fetchFn(url, {
-    ...init,
-    targetAddressSpace: "loopback",
-    signal: signal ?? init?.signal
-  });
-  async function health({ force = false } = {}) {
-    const { url, token } = config();
-    const at = clock();
-    if (!force && healthCache && healthCache.url === url && healthCache.token === token && at - healthCache.at < HEALTH_CACHE_MS) {
-      return healthCache.value;
-    }
-    if (!token) {
-      const value = { state: "not-running", reason: "disabled" };
-      healthCache = { url, token, at, value };
-      return value;
-    }
-    if (typeof fetchFn !== "function") {
-      const value = { state: "not-running" };
-      healthCache = { url, token, at, value };
-      return value;
-    }
-    const timer = withTimeout(timeoutMs);
-    try {
-      const res = await call(`${url}/v1/health`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` }
-      }, timer.signal);
-      let value;
-      const httpOk = res.status >= 200 && res.status < 300;
-      if (res.status === 401) value = { state: "wrong-token" };
-      else if (!httpOk) value = { state: "not-running" };
-      else {
-        let body = null;
-        try {
-          body = await res.json();
-        } catch {
-          body = null;
-        }
-        const major = schemaMajor(body?.schema);
-        if (body?.helper !== HELPER_NAME || major == null) value = { state: "not-running" };
-        else if (major >= 2) value = { state: "newer-schema", schema: body.schema };
-        else {
-          const models2 = body.models || {};
-          const needed = ["layout", "tableformer", "ocr"];
-          const missing2 = needed.some((name) => models2[name] !== "ready");
-          value = missing2 ? { state: "models-missing", schema: body.schema, models: models2, version: body.version } : { state: "ready", schema: body.schema, models: models2, version: body.version, busy: body.busy ?? 0 };
-        }
-      }
-      healthCache = { url, token, at, value };
-      return value;
-    } catch {
-      const value = { state: "not-running" };
-      healthCache = { url, token, at, value };
-      return value;
-    } finally {
-      timer.clear();
-    }
-  }
-  function invalidate() {
-    healthCache = null;
-    probeCache = null;
-  }
-  async function probe({ force = false } = {}) {
-    const { url } = config();
-    const at = clock();
-    if (!force && probeCache && probeCache.url === url && at - probeCache.at < HEALTH_CACHE_MS) return probeCache.value;
-    let value = { state: "not-installed" };
-    if (typeof fetchFn === "function") {
-      const timer = withTimeout(timeoutMs);
-      try {
-        const res = await call(`${url}/v1/health`, { method: "GET" }, timer.signal);
-        let body = null;
-        try {
-          body = await res.json();
-        } catch {
-          body = null;
-        }
-        if (res.status === 401 && body?.helper === HELPER_NAME) value = { state: "not-paired" };
-      } catch {
-      } finally {
-        timer.clear();
-      }
-    }
-    probeCache = { url, at, value };
-    return value;
-  }
-  async function models() {
-    const { url, token } = config();
-    if (!token || typeof fetchFn !== "function") return null;
-    const timer = withTimeout(timeoutMs);
-    try {
-      const res = await call(`${url}/v1/models`, { method: "GET", headers: { Authorization: `Bearer ${token}` } }, timer.signal);
-      if (res.status < 200 || res.status >= 300) return null;
-      return await res.json();
-    } catch {
-      return null;
-    } finally {
-      timer.clear();
-    }
-  }
-  async function status({ force = false } = {}) {
-    const { token } = config();
-    if (!token) return { ...await probe({ force }), paired: false };
-    const h = await health({ force });
-    if (h.state === "models-missing") {
-      const report = await models();
-      const bytes = Number(report?.bytes) || 0;
-      const done = Number(report?.done) || 0;
-      const fraction = Number.isFinite(report?.fraction) ? report.fraction : bytes ? done / bytes : 0;
-      if (report?.state === "downloading") {
-        return { ...h, state: "downloading", paired: true, progress: { bytes, done, fraction } };
-      }
-      return { ...h, paired: true, progress: { bytes, done, fraction } };
-    }
-    return { ...h, paired: true };
-  }
-  async function pair2({ signal } = {}) {
-    const { url } = config();
-    if (typeof fetchFn !== "function") return { ok: false, reason: "not-running" };
-    if (typeof setSetting !== "function") return { ok: false, reason: "no-settings" };
-    const timer = withTimeout(timeoutMs, signal);
-    try {
-      const res = await call(`${url}/v1/pair`, { method: "GET" }, timer.signal);
-      if (res.status === 404) return { ok: false, reason: "window-closed" };
-      if (res.status < 200 || res.status >= 300) return { ok: false, reason: "error", status: res.status };
-      let body = null;
-      try {
-        body = await res.json();
-      } catch {
-        body = null;
-      }
-      if (body?.helper !== HELPER_NAME || typeof body.token !== "string" || !body.token) return { ok: false, reason: "error" };
-      await setSetting(TOKEN_SETTING, body.token);
-      invalidate();
-      return { ok: true, version: body.version };
-    } catch {
-      return { ok: false, reason: "not-running" };
-    } finally {
-      timer.clear();
-    }
-  }
-  async function downloadModels() {
-    const { url, token } = config();
-    if (!token || typeof fetchFn !== "function") return false;
-    try {
-      const res = await call(`${url}/v1/models/download`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-      invalidate();
-      return res.status === 202 || res.status === 200;
-    } catch {
-      return false;
-    }
-  }
-  async function cancelModels() {
-    const { url, token } = config();
-    if (!token || typeof fetchFn !== "function") return false;
-    try {
-      const res = await call(`${url}/v1/models/download`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
-      invalidate();
-      return res.status === 200;
-    } catch {
-      return false;
-    }
-  }
-  async function readJob(base, token, jobId, { onProgress, onPage, signal }) {
-    const headers = { Authorization: `Bearer ${token}` };
-    const events = await call(`${base}/v1/jobs/${encodeURIComponent(jobId)}/events`, {
-      method: "GET",
-      headers
-    }, signal);
-    await readSSE(events, { onProgress, onPage });
-    const finalRes = await call(`${base}/v1/jobs/${encodeURIComponent(jobId)}`, {
-      method: "GET",
-      headers
-    }, signal);
-    const doc = await finalRes.json();
-    return doc;
-  }
-  async function parse({ bytes, sha256, options, onProgress, onPage, signal } = {}) {
-    const { url, token } = config();
-    const sha = sha256 || await sha256Hex(bytes);
-    const optsHash = await optionsHash(options || {});
-    const headers = { Authorization: `Bearer ${token}` };
-    const cacheUrl = `${url}/v1/cache/${encodeURIComponent(sha)}?opts=${encodeURIComponent(optsHash)}`;
-    const head = await call(cacheUrl, { method: "HEAD", headers }, signal);
-    if (head.status === 200) {
-      const got = await call(cacheUrl, { method: "GET", headers }, signal);
-      return { doc: await got.json(), cached: true, sha256: sha, optsHash, job: null };
-    }
-    const posted = await call(`${url}/v1/jobs`, {
-      method: "POST",
-      headers: {
-        ...headers,
-        "Content-Type": "application/pdf",
-        "X-Pxd-Options": JSON.stringify(options || {})
-      },
-      body: bytes
-    }, signal);
-    const job = await posted.json();
-    if (posted.status === 409) {
-      const error = new Error("helper busy");
-      error.status = 409;
-      error.running = job?.running;
-      throw error;
-    }
-    const doc = await readJob(url, token, job.job, { onProgress, onPage, signal });
-    return { doc, cached: false, sha256: sha, optsHash, job: job.job };
-  }
-  async function cancel(jobId) {
-    const { url, token } = config();
-    const res = await call(`${url}/v1/jobs/${encodeURIComponent(jobId)}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    return res.status === 204 || res.status === 200;
-  }
-  async function reparseTable({ bytes, sha256, page, bbox, base, onProgress, onPage, signal } = {}) {
-    const { url, token } = config();
-    const sha = sha256 || await sha256Hex(bytes);
-    const ocr2 = readSetting(settings, "parse-ocr", "auto");
-    const formula = readSetting(settings, "parse-formula", false) === true;
-    const options = {
-      pages: [page],
-      ocr: ocr2,
-      formula,
-      tables: "accurate",
-      scope: { page, bbox }
-    };
-    const posted = await call(`${url}/v1/jobs`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/pdf",
-        "X-Pxd-Options": JSON.stringify(options)
-      },
-      body: bytes
-    }, signal);
-    const job = await posted.json();
-    const doc = await readJob(url, token, job.job, { onProgress, onPage, signal });
-    const merged = base ? mergeScoped(base, doc, { page, bbox }) : null;
-    return { doc, merged, cached: false, sha256: sha, job: job.job };
-  }
-  async function ocr({ bytes, sha256, pages, cells, signal } = {}) {
-    const { url, token } = config();
-    const sha = sha256 || await sha256Hex(bytes);
-    const options = {};
-    if (pages && pages.length) options.pages = pages;
-    if (cells && cells.length) options.cells = cells.map((c) => ({ page: c.page, bbox: c.bbox }));
-    const res = await call(`${url}/v1/ocr`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/pdf",
-        "X-Pxd-Options": JSON.stringify(options)
-      },
-      body: bytes
-    }, signal);
-    let body = null;
-    try {
-      body = await res.json();
-    } catch {
-      body = null;
-    }
-    if (res.status < 200 || res.status >= 300) {
-      const error = new Error(body?.error || `ocr ${res.status}`);
-      error.status = res.status;
-      throw error;
-    }
-    if (cells && cells.length && Array.isArray(body?.cells)) {
-      body.cells = body.cells.map((c, i) => ({ ...cells[i], ...c }));
-    }
-    return { ...body, sha256: sha };
-  }
-  return { health, status, pair: pair2, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr };
-}
-
 // src/view/read-pane.js
 init_relchips();
 init_avoid();
 
 // src/view/engines-panel.js
 var INSTALL_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh";
-var RESTART_COMMAND = "plexus-parse-helper install-agent";
+var DOCLING_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh -s -- --docling";
+var RESTART_COMMAND = 'launchctl kickstart -k "gui/$(id -u)/com.plexus.parse-helper"';
 var MANUAL_COMMAND = 'uv tool install "git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper" && plexus-parse-helper serve';
 var HELPER_MB_FALLBACK = 500;
 var DEFAULT_POLL_MS = 3e3;
@@ -44537,8 +44583,16 @@ function deviceOcrRow(device) {
 function helperRow(helper) {
   const row4 = { id: "helper", name: "Local helper", tip: "engines.helper" };
   switch (helper?.state) {
-    case "ready":
-      return { ...row4, dot: "ok", text: helper.version ? `Ready · v${helper.version}` : "Ready", button: null };
+    case "ready": {
+      const scansOnly = helper.ocr === true && helper.docling === false;
+      const text3 = scansOnly ? helper.version ? `Ready for scans · v${helper.version}` : "Ready for scans" : helper.version ? `Ready · v${helper.version}` : "Ready";
+      const out = { ...row4, dot: "ok", text: text3, button: null };
+      if (scansOnly) {
+        out.note = "Docling is an optional add-on for layout, formulas and tables. The light helper already reads scans.";
+        out.command = DOCLING_COMMAND;
+      }
+      return out;
+    }
     case "not-paired":
       return { ...row4, dot: "warn", text: "Running, not paired", button: button("pair", "Pair", "engines.pair") };
     case "wrong-token":
@@ -44588,7 +44642,7 @@ function helperSheet(helperState, platform = "mac") {
     return {
       title: "Start the local helper",
       command: RESTART_COMMAND,
-      note: "Paste this in Terminal. It restarts the helper and keeps it starting at login. Then come back here.",
+      note: "Paste this in Terminal. It starts the helper again. Then come back here.",
       copyLabel: "Copy command"
     };
   }
@@ -44679,6 +44733,21 @@ function renderEnginesPanel(doc, parent, deps = {}) {
         fill.style.width = pct(row4.progress);
         bar.append(fill);
         node2.append(bar);
+      }
+      if (row4.note) {
+        const addon = doc.createElement("div");
+        addon.className = "pxd-engines__addon";
+        const note = doc.createElement("div");
+        note.className = "pxd-engines__note";
+        note.textContent = row4.note;
+        addon.append(note);
+        if (row4.command) {
+          const code = doc.createElement("code");
+          code.className = "pxd-engines__command";
+          code.textContent = row4.command;
+          addon.append(code);
+        }
+        node2.append(addon);
       }
       if (row4.button) {
         const b = doc.createElement("button");
@@ -44864,6 +44933,11 @@ var BUTTON_LABEL = {
   retry: "Retry",
   cancel: "Cancel"
 };
+function helperReadsScans(helper) {
+  if (!helper) return false;
+  if (typeof helper.ocr === "boolean") return helper.ocr;
+  return helper.state === "ready";
+}
 function secondsText(ms) {
   const n2 = Number(ms);
   if (!Number.isFinite(n2) || n2 < 0) return "";
@@ -44895,7 +44969,7 @@ function stripModel(kind, input = {}) {
     case "scan-first":
     case "scan-cached":
       if (ocr.deviceAvailable === false) {
-        return input.helper?.state === "ready" ? { kind, text: "This page is an image. Read its text with the local helper.", tip: "parse.strip.use-helper", buttons: [btn("read-text", true), btn("not-now")] } : { kind, text: "This page is an image. Its text needs the local helper.", tip: "parse.strip.setup-helper", buttons: [btn("setup-helper", true), btn("not-now")] };
+        return helperReadsScans(input.helper) ? { kind, text: "This page is an image. Read its text with the local helper.", tip: "parse.strip.use-helper", buttons: [btn("read-text", true), btn("not-now")] } : { kind, text: "This page is an image. Its text needs the local helper.", tip: "parse.strip.setup-helper", buttons: [btn("setup-helper", true), btn("not-now")] };
       }
       return kind === "scan-cached" ? {
         kind,
@@ -47759,7 +47833,12 @@ function createReadPane({
         modelMB: deviceNow?.mb,
         deviceAvailable: Boolean(deviceOcr) && deviceNow?.state !== "unavailable"
       },
-      helper: { state: helperSnap.state, paired: helperSnap.paired }
+      helper: {
+        state: helperSnap.state,
+        paired: helperSnap.paired,
+        ...typeof helperSnap.ocr === "boolean" ? { ocr: helperSnap.ocr } : {},
+        ...typeof helperSnap.docling === "boolean" ? { docling: helperSnap.docling } : {}
+      }
     };
   };
   function paintStrip() {
@@ -47778,7 +47857,12 @@ function createReadPane({
   const refreshSnaps = async (force = true) => {
     try {
       const status = await ensureHelper().status({ force });
-      helperSnap = { state: status?.state || "not-installed", paired: Boolean(status?.paired) };
+      helperSnap = {
+        state: status?.state || "not-installed",
+        paired: Boolean(status?.paired),
+        ...typeof status?.ocr === "boolean" ? { ocr: status.ocr } : {},
+        ...typeof status?.docling === "boolean" ? { docling: status.docling } : {}
+      };
     } catch {
       helperSnap = { state: "not-installed", paired: false };
     }
@@ -47787,7 +47871,7 @@ function createReadPane({
   };
   const deviceReady = () => deviceNow?.state === "ready" && typeof deviceOcr?.read === "function";
   const deviceDownloadable = () => deviceNow?.state === "not-downloaded" && typeof deviceOcr?.download === "function" && typeof deviceOcr?.read === "function";
-  const helperIsReady = () => helperSnap.state === "ready";
+  const helperIsReady = () => helperCanOcr(helperSnap);
   function openEngines({ sheet = false } = {}) {
     if (!panel) {
       panel = renderEnginesPanel(doc, enginesMount, {
@@ -69166,7 +69250,8 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
     if (source) return { source: source === helper ? "helper" : "injected", state: "ready" };
     if (helper && typeof helper.health === "function") {
       try {
-        return { source: null, state: (await helper.health())?.state || "not-running" };
+        const health = await helper.health();
+        return { source: null, state: health?.state || "not-running", ocr: health?.ocr, docling: health?.docling };
       } catch {
       }
     }
@@ -69200,7 +69285,7 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
       if (!source && helper && typeof helper.ocr === "function") {
         const health = await ocrState(null);
         ocr = health;
-        if (health.state === "ready") source = helper;
+        if (helperCanOcr(health)) source = helper;
       }
       if (source && typeof source.ocr === "function") {
         ocr = { source: source === helper ? "helper" : "injected", state: "ready" };

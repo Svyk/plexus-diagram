@@ -13,7 +13,7 @@ import { isTextEntryTarget } from "./cards.js";
 import { applyMotionClasses } from "./motion.js";
 import { BOTH_MIN_PX, BUILTIN_OPTIONS, createParseView, readParsedUrls } from "./parse-view.js";
 import { createParseStore } from "../host/parse-store.js";
-import { createHelperClient } from "../host/parse-helper-client.js";
+import { createHelperClient, helperCanOcr } from "../host/parse-helper-client.js";
 import { imageKey, restorableByUrl } from "../host/parse-store.js";
 import { placePopover } from "../relchips.js";
 import { chromeObstacles } from "./avoid.js";
@@ -2097,7 +2097,12 @@ export function createReadPane({
         modelMB: deviceNow?.mb,
         deviceAvailable: Boolean(deviceOcr) && deviceNow?.state !== "unavailable",
       },
-      helper: { state: helperSnap.state, paired: helperSnap.paired },
+      helper: {
+        state: helperSnap.state,
+        paired: helperSnap.paired,
+        ...(typeof helperSnap.ocr === "boolean" ? { ocr: helperSnap.ocr } : {}),
+        ...(typeof helperSnap.docling === "boolean" ? { docling: helperSnap.docling } : {}),
+      },
     };
   };
   function paintStrip() {
@@ -2112,14 +2117,19 @@ export function createReadPane({
   const refreshSnaps = async (force = true) => {
     try {
       const status = await ensureHelper().status({ force });
-      helperSnap = { state: status?.state || "not-installed", paired: Boolean(status?.paired) };
+      helperSnap = {
+        state: status?.state || "not-installed",
+        paired: Boolean(status?.paired),
+        ...(typeof status?.ocr === "boolean" ? { ocr: status.ocr } : {}),
+        ...(typeof status?.docling === "boolean" ? { docling: status.docling } : {}),
+      };
     } catch { helperSnap = { state: "not-installed", paired: false }; }
     deviceNow = await readDevice();
     paintStrip();
   };
   const deviceReady = () => deviceNow?.state === "ready" && typeof deviceOcr?.read === "function";
   const deviceDownloadable = () => deviceNow?.state === "not-downloaded" && typeof deviceOcr?.download === "function" && typeof deviceOcr?.read === "function";
-  const helperIsReady = () => helperSnap.state === "ready";
+  const helperIsReady = () => helperCanOcr(helperSnap);
   function openEngines({ sheet = false } = {}) {
     if (!panel) {
       panel = renderEnginesPanel(doc, enginesMount, {

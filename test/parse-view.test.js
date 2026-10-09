@@ -483,6 +483,53 @@ test("a pointer drag drops the parse payload on the element under the pointer", 
   }
 });
 
+test("an OCR-only helper hides Parse with Docling and stays off the models chip", async () => {
+  const { doc, restore } = mount();
+  try {
+    const view = createParseView({
+      doc,
+      helper: {
+        async health() {
+          return { state: "ready", ocr: true, docling: false, engines: ["ocr"], version: "0.1.0-rs" };
+        },
+        async parse() { throw new Error("jobs must not run"); },
+        async reparseTable() { throw new Error("jobs must not run"); },
+      },
+    });
+    doc.body.append(view.element());
+    view.showDoc(sample());
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(view.element().querySelector(".pxd-parse__docling").hidden, true);
+    assert.equal(view.chipText().includes("downloading models"), false);
+    view.element().querySelector(".pxd-parse__docling").click();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(view.chipText().includes("downloading models"), false);
+  } finally {
+    restore();
+  }
+});
+
+test("a full helper still offers Parse with Docling", async () => {
+  const { doc, restore } = mount();
+  try {
+    const view = createParseView({
+      doc,
+      helper: {
+        async health() {
+          return { state: "ready", ocr: true, docling: true, engines: ["docling", "ocr"], version: "0.1.0" };
+        },
+      },
+    });
+    doc.body.append(view.element());
+    view.showDoc(sample());
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(view.element().querySelector(".pxd-parse__docling").hidden, false);
+    assert.equal(view.element().querySelector(".pxd-parse__docling").textContent, "Parse with Docling");
+  } finally {
+    restore();
+  }
+});
+
 test("a helper that is not running replaces the timing chip", async () => {
   const { stub, doc, restore } = mount();
   try {

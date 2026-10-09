@@ -20,7 +20,7 @@ import {
   writeMistralKey,
 } from "../src/host/cloud-parse.js";
 import { createParseStore, restorableByUrl } from "../src/host/parse-store.js";
-import { llamaparseToParse, mistralToParse } from "../src/model/cloud-to-parse.js";
+import { layoutImagePage, llamaparseToParse, mistralToParse } from "../src/model/cloud-to-parse.js";
 import { PARSE_REV } from "../src/model/parse/index.js";
 import { validateParse } from "../src/model/parse-schema.js";
 import { cloudRow, renderEnginesPanel } from "../src/view/engines-panel.js";
@@ -130,7 +130,7 @@ test("a relay job uploads, polls, then fetches the expanded result", async () =>
     ["POST", "https://relay.example/api/v2/parse"],
     ["GET", "https://relay.example/api/v2/parse/job1"],
     ["GET", "https://relay.example/api/v2/parse/job1"],
-    ["GET", "https://relay.example/api/v2/parse/job1?expand=items&expand=markdown&expand=usage"],
+    ["GET", "https://relay.example/api/v2/parse/job1?expand=items&expand=markdown&expand=usage&expand=images_content_metadata"],
   ]);
   assert.equal(calls[0].headers.Authorization, "Bearer test-cloud-key");
   assert.equal(calls[0].headers["X-Pxd-Region"], "eu");
@@ -138,6 +138,8 @@ test("a relay job uploads, polls, then fetches the expanded result", async () =>
   const started = JSON.parse(calls[1].body);
   assert.equal(started.tier, "agentic");
   assert.deepEqual(started.output_options.granular_bboxes, ["cell"]);
+  assert.deepEqual(started.output_options.images_to_save, ["layout"]);
+  assert.equal(started.page_ranges, undefined);
   assert.deepEqual(sleeps, [1000, 2000]);
 });
 
@@ -451,6 +453,128 @@ test("a synthetic LlamaParse job becomes pxd-parse/1", () => {
   assert.equal(blocks[4].caption, blocks[5].id);
   assert.equal(blocks[5].for, blocks[4].id);
   assert.equal(blocks[5].text, "Figure 1. Kaplan-Meier.");
+  assert.equal(table.fromChart, undefined);
+});
+
+test("a layout image becomes a figure, and a chart table keeps its cells", () => {
+  assert.equal(layoutImagePage("page_1_chart_1_v2.jpg", [10]), 10);
+  assert.equal(layoutImagePage("page_1_chart_1_v2.jpg", [10, 11]), 10);
+  assert.equal(layoutImagePage("page_2_chart_1_v2.jpg", [10, 11]), 11);
+  assert.equal(layoutImagePage("page_10_chart_1_v2.jpg", [10, 11]), 10);
+  assert.equal(layoutImagePage("page_11_chart_1_v2.jpg", [10, 11]), 11);
+  assert.equal(layoutImagePage("page_2_chart_1_v2.jpg", [2, 10]), 2);
+  const provider = {
+    _synthetic: true,
+    items: {
+      pages: [{
+        page_number: 10,
+        page_width: 610,
+        page_height: 792,
+        success: true,
+        items: [
+          { type: "header", value: "N.A.C.A.", bbox: [{ x: 89, y: 45, w: 200, h: 12, label: "header" }] },
+          { type: "text", value: "Fig. 2", bbox: [{ x: 486, y: 51, w: 40, h: 16, label: "header" }] },
+          { type: "heading", level: 1, value: "Inside the chart", bbox: [{ x: 200, y: 249, w: 250, h: 40, label: "paragraph_title" }] },
+          {
+            type: "table",
+            html: "<table><tr><th>Angle</th><th>CL</th></tr><tr><td>0</td><td>0.75</td></tr></table>",
+            rows: [["Angle", "CL"], ["0", "0.75"]],
+            parse_concerns: [{ type: "layout_lvm_disagreement", details: "layout detected [chart] but no table" }],
+          },
+          {
+            type: "text",
+            value: "Fig. 2 Characteristics of propeller section of camber .12",
+            bbox: [{ x: 77, y: 683.47, w: 423.2, h: 22.99, label: "caption" }],
+          },
+        ],
+      }],
+    },
+    images_content_metadata: {
+      images: [{
+        filename: "page_1_chart_1_v2.jpg",
+        category: "layout",
+        bbox: { x: 54, y: 79, w: 504, h: 611 },
+      }],
+    },
+  };
+  const doc = llamaparseToParse(provider, { tier: "agentic" });
+  assert.equal(validateParse(doc).ok, true);
+  assert.equal(doc.pages[0].n, 10);
+  const blocks = doc.order.map((id) => doc.blocks[id]);
+  const figure = blocks.find((block) => block.type === "figure");
+  const caption = blocks.find((block) => block.type === "caption");
+  const table = blocks.find((block) => block.type === "table");
+  assert.deepEqual(figure.bbox, [54, 79, 558, 690]);
+  assert.equal(figure.page, 10);
+  assert.equal(figure.image.source, "llamaparse");
+  assert.equal(figure.image.kind, "crop");
+  assert.equal(figure.caption, caption.id);
+  assert.equal(caption.for, figure.id);
+  assert.equal(caption.text, "Fig. 2 Characteristics of propeller section of camber .12");
+  assert.deepEqual(caption.bbox, [77, 683.47, 500.2, 706.46]);
+  assert.equal(table.fromChart, true);
+  assert.equal(table.rows, 2);
+  assert.equal(table.cells[0].text, "Angle");
+  assert.equal(blocks.some((block) => block.type === "para" && block.text === "Fig. 2"), true);
+  assert.equal(JSON.stringify(doc).includes("presigned"), false);
+});
+
+test("a cell rowspan past the table is clamped instead of failing the schema", () => {
+  const row = (cells) => `<tr>${cells}</tr>`;
+  const body = [
+    row("<th>x</th>"),
+    ...Array.from({ length: 30 }, (_, i) => row(`<td>${i}</td>`)),
+    row('<td rowspan="2">last</td>'),
+  ].join("");
+  const tiny = { type: "table", html: "<table><tr><td>a</td></tr></table>" };
+  const provider = {
+    items: {
+      pages: [{
+        page_number: 13,
+        page_width: 612,
+        page_height: 792,
+        success: true,
+        items: [tiny, tiny, tiny, { type: "table", html: `<table>${body}</table>` }],
+      }],
+    },
+  };
+  const doc = llamaparseToParse(provider, { tier: "agentic" });
+  assert.equal(validateParse(doc).ok, true);
+  const table = doc.blocks.t4;
+  assert.equal(table.rows, 32);
+  const last = table.cells.find((cell) => cell.text === "last");
+  assert.equal(last.r, 31);
+  assert.equal(last.c, 0);
+  assert.equal(last.rowSpan, 1);
+});
+
+test("the helper is told which pages to parse", async () => {
+  let options = null;
+  await parseCloud({
+    fetch: async (url, init = {}) => {
+      options = JSON.parse(init.headers["X-Pxd-Options"]);
+      return {
+        status: 200,
+        body: {
+          getReader() {
+            let sent = false;
+            return { async read() {
+              if (sent) return { done: true };
+              sent = true;
+              return { done: false, value: new TextEncoder().encode('event: result\ndata: {"items":{"pages":[]}}\n\n') };
+            } };
+          },
+        },
+      };
+    },
+    transport: { kind: "helper", url: "http://127.0.0.1:9", token: "helper-token" },
+    bytes: new Uint8Array([1]),
+    apiKey: "test-cloud-key",
+    pages: "4",
+    confirmed: true,
+  });
+  assert.equal(options.pages, "4");
+  assert.equal(options.tier, "agentic");
 });
 
 test("a stored cloud parse is what reopens, and a builtin-only lookup stays builtin", async () => {

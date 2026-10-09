@@ -49,7 +49,7 @@ All routes except a rejected `Origin` require `Authorization: Bearer <token>`. H
 | GET | `/v1/jobs/{id}/events` | SSE `progress`, `page`, `done`, `error` |
 | GET | `/v1/jobs/{id}` | the document when `done`, else `{state}` |
 | DELETE | `/v1/jobs/{id}` | `204` cancels a running job (kills and respawns the worker). `404` otherwise |
-| POST | `/v1/cloud/parse` | body is the PDF. `Authorization` is the helper token. `X-Pxd-Cloud-Key` is the LlamaParse key (not stored, not copied into the SSE). `X-Pxd-Options` is `{region, tier, version}`. SSE `started` `{job}`, then `progress`, then `result` (provider JSON) or `error` `{code, message, status}` |
+| POST | `/v1/cloud/parse` | body is the PDF. `Authorization` is the helper token. `X-Pxd-Cloud-Key` is the LlamaParse key (not stored, not copied into the SSE). `X-Pxd-Options` is `{region, tier, version, pages}`. `pages` is a LlamaParse `target_pages` string (`"4"`, `"10,11"`); omit it to parse the whole file. SSE `started` `{job}`, then `progress`, then `result` (provider JSON) or `error` `{code, message, status}` |
 | DELETE | `/v1/cloud/parse/{id}` | `204` cancels that cloud job. `404` if it is unknown |
 
 A second `POST /v1/jobs` while one job is running is `409` `{"running":"j_…"}`. `pages` in the 202 body is the PDF page count.

@@ -1,6 +1,14 @@
 // Call LlamaParse or Mistral directly and cache the raw JSON plus pxd-parse/1.
 // The key comes from the environment. This file never prints it.
-//   node tools/parse-bench/cloud-run.mjs --provider llamaparse|mistral --pdf <file> [--pages 1,3] --out <dir>
+// Layout images are on, the same request as the extension. `--no-layout` omits
+// images_to_save so a credit comparison can use this script.
+//   node tools/parse-bench/cloud-run.mjs --provider llamaparse|mistral --pdf <file> [--pages 1,3] [--no-layout] --out <dir>
+//
+// Corpus (LLAMA_CLOUD_API_KEY; cloud-bench.mjs skips a page that already has a pxd file):
+//   node /tmp/wo/pxd14/cloud-bench.mjs <this repo> llamaparse
+// Expected after a refetch: diesel p13 converts (the span behind cell-range:t4:31:0 is clamped).
+// Each layout image becomes a figure. A chart that is also a table keeps the table with fromChart.
+// Whether images_to_save changes credits is the with/without pair, not this default run.
 
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -29,6 +37,7 @@ export function parseCloudRunArgs(argv) {
     else if (arg === "--pdf") { out.pdf = next || ""; i += 1; }
     else if (arg === "--pages") { out.pages = next || ""; i += 1; }
     else if (arg === "--out") { out.outDir = next || ""; i += 1; }
+    else if (arg === "--no-layout") out.layout = false;
     else if (arg === "--help" || arg === "-h") out.help = true;
   }
   return out;
@@ -72,6 +81,7 @@ export async function runCloudBench({
   readFile: read = readFile,
   writeFile: write = writeFile,
   mkdir: makeDir = mkdir,
+  layout = true,
 } = {}) {
   const which = provider === "mistral" ? "mistral" : provider === "llamaparse" ? "llamaparse" : "";
   if (!which) return { code: 1, message: "Pass --provider llamaparse or --provider mistral." };
@@ -91,7 +101,6 @@ export async function runCloudBench({
     return { code: 1, message: redact(error?.message || "could not read the PDF", key) };
   }
   let raw;
-  let doc;
   try {
     if (which === "mistral") {
       const result = await parseMistral({
@@ -102,7 +111,6 @@ export async function runCloudBench({
         confirmed: true,
       });
       raw = result.provider;
-      doc = mistralToParse(raw, { sha256: null });
     } else {
       const region = String(env.LLAMA_CLOUD_REGION || "").toLowerCase() === "eu" ? "eu" : "us";
       const tier = Object.prototype.hasOwnProperty.call(TIER_CREDITS, env.LLAMA_CLOUD_TIER)
@@ -116,10 +124,10 @@ export async function runCloudBench({
         region,
         tier,
         pages: pages || undefined,
+        layout,
         confirmed: true,
       });
       raw = result.provider;
-      doc = llamaparseToParse(raw, { sha256: null, tier, region });
     }
   } catch (error) {
     return { code: 1, message: redact(error?.message || "cloud parse failed", key) };
@@ -129,6 +137,14 @@ export async function runCloudBench({
   const rawPath = path.join(outDir, `${tag}.raw.json`);
   const pxdPath = path.join(outDir, `${tag}.pxd.json`);
   await write(rawPath, `${JSON.stringify(raw, null, 2)}\n`);
+  let doc;
+  try {
+    doc = which === "mistral"
+      ? mistralToParse(raw, { sha256: null })
+      : llamaparseToParse(raw, { sha256: null, tier: Object.prototype.hasOwnProperty.call(TIER_CREDITS, env.LLAMA_CLOUD_TIER) ? env.LLAMA_CLOUD_TIER : DEFAULT_TIER, region: String(env.LLAMA_CLOUD_REGION || "").toLowerCase() === "eu" ? "eu" : "us" });
+  } catch (error) {
+    return { code: 1, message: redact(`${error?.message || "cloud parse failed"}\n${rawPath}`, key), rawPath };
+  }
   await write(pxdPath, `${JSON.stringify(doc, null, 2)}\n`);
   const spend = cloudSpend(which, raw);
   const credits = spend.credits == null ? "n/a" : String(spend.credits);
@@ -147,7 +163,7 @@ export async function runCloudBench({
 async function main() {
   const args = parseCloudRunArgs(process.argv.slice(2));
   if (args.help) {
-    process.stdout.write("node tools/parse-bench/cloud-run.mjs --provider llamaparse|mistral --pdf <file> [--pages 1,3] --out <dir>\n");
+    process.stdout.write("node tools/parse-bench/cloud-run.mjs --provider llamaparse|mistral --pdf <file> [--pages 1,3] [--no-layout] --out <dir>\n");
     return;
   }
   const result = await runCloudBench({
@@ -155,6 +171,7 @@ async function main() {
     pdfPath: args.pdf,
     pages: args.pages,
     outDir: args.outDir,
+    layout: args.layout !== false,
   });
   const stream = result.code === 0 ? process.stdout : process.stderr;
   stream.write(`${result.message}\n`);

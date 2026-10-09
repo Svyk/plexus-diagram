@@ -450,7 +450,10 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
 
         def work():
             try:
-                result = run_cloud(data, api_key=api_key, region=region, tier=tier, on_event=on_event, cancel=cancel)
+                result = run_cloud(
+                    data, api_key=api_key, region=region, tier=tier,
+                    pages=options.get("pages"), on_event=on_event, cancel=cancel,
+                )
                 events.put(("result", result))
             except CloudCancelled:
                 events.put(("error", {"code": "cancelled", "message": "cancelled", "status": 499}))

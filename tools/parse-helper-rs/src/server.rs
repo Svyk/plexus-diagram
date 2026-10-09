@@ -24,7 +24,9 @@ use tokio::sync::mpsc::{self, UnboundedReceiver};
 
 use crate::auth::token_matches;
 use crate::cache::ParseCache;
-use crate::cloud::{run_llamaparse, Cancel, CloudClient, ParseRequest, DEFAULT_TIMEOUT_S, TIERS};
+use crate::cloud::{
+    run_llamaparse, target_pages, Cancel, CloudClient, ParseRequest, DEFAULT_TIMEOUT_S, TIERS,
+};
 use crate::hashutil::{ocr_options_hash, sha256_hex};
 use crate::ocr::{run_cells, run_pdf};
 use crate::pair::{close_window, window_open};
@@ -579,6 +581,7 @@ async fn post_cloud(State(state): State<Arc<App>>, headers: HeaderMap, body: Byt
     if !TIERS.contains(&tier.as_str()) {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "bad tier"}))).into_response();
     }
+    let pages = target_pages(options.get("pages"));
     if body.len() > MAX_BODY {
         return (
             StatusCode::PAYLOAD_TOO_LARGE,
@@ -615,6 +618,7 @@ async fn post_cloud(State(state): State<Arc<App>>, headers: HeaderMap, body: Byt
     let pdf = body.to_vec();
     let base = state.cloud_base.clone();
     let client = state.cloud.clone();
+    let pages_owned = pages;
     tokio::spawn(async move {
         let _guard = JobGuard {
             state: state_task.clone(),
@@ -648,6 +652,7 @@ async fn post_cloud(State(state): State<Arc<App>>, headers: HeaderMap, body: Byt
                 tier: &tier,
                 timeout_s: DEFAULT_TIMEOUT_S,
                 base_override: base.as_deref(),
+                pages: pages_owned.as_deref(),
             },
             &cancel_task,
             on_event,

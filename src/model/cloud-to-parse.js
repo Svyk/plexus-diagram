@@ -1,8 +1,9 @@
-// LlamaParse v2 JSON (expand=items, optional grounded_pages) → pxd-parse/1.
+// LlamaParse v2 JSON (expand=items,markdown,usage,images_content_metadata,
+// optional grounded_pages) → pxd-parse/1. A layout image becomes a figure.
 // Synthetic fixtures are fine. No DOM, no fetch, no graph writes.
 
 import { parseMarkdownBlocks } from "./anydoc-to-parse.js";
-import { SCHEMA, validateParse } from "./parse-schema.js";
+import { SCHEMA, iou, validateParse } from "./parse-schema.js";
 
 const ENGINE = "cloud";
 
@@ -109,7 +110,56 @@ function cellsFromHtml(html) {
     }
   });
   const headerRows = rows[0]?.every((cell) => cell.header) ? 1 : 0;
-  return { rows: rows.length, cols, headerRows, cells: placed };
+  return fitCells({ rows: rows.length, cols, headerRows, cells: placed });
+}
+
+// A rowspan past the last <tr> (or a cell origin past the grid) used to fail
+// validateParse as cell-range. Keep the cell, grow the grid to its origin, and
+// clamp the span so it stays inside. A later cell that still overlaps is dropped.
+function fitCells(parsed) {
+  if (!parsed) return null;
+  let rows = parsed.rows;
+  let cols = parsed.cols;
+  if (!Number.isInteger(rows) || rows < 0 || !Number.isInteger(cols) || cols < 0) return null;
+  const incoming = [];
+  for (const cell of parsed.cells || []) {
+    const r = cell?.r;
+    const c = cell?.c;
+    let rowSpan = cell?.rowSpan ?? 1;
+    let colSpan = cell?.colSpan ?? 1;
+    if (!Number.isInteger(r) || !Number.isInteger(c) || r < 0 || c < 0) continue;
+    if (!Number.isInteger(rowSpan) || rowSpan < 1) rowSpan = 1;
+    if (!Number.isInteger(colSpan) || colSpan < 1) colSpan = 1;
+    rows = Math.max(rows, r + 1);
+    cols = Math.max(cols, c + 1);
+    incoming.push({ ...cell, r, c, rowSpan, colSpan });
+  }
+  if (!rows || !cols || !incoming.length) return null;
+  const grid = Array.from({ length: rows }, () => Array(cols).fill(false));
+  const hits = (r, c, rowSpan, colSpan) => {
+    for (let dr = 0; dr < rowSpan; dr += 1) {
+      for (let dc = 0; dc < colSpan; dc += 1) {
+        if (grid[r + dr][c + dc]) return true;
+      }
+    }
+    return false;
+  };
+  const cells = [];
+  for (const cell of incoming) {
+    let rowSpan = Math.min(cell.rowSpan, rows - cell.r);
+    let colSpan = Math.min(cell.colSpan, cols - cell.c);
+    while ((rowSpan > 1 || colSpan > 1) && hits(cell.r, cell.c, rowSpan, colSpan)) {
+      if (rowSpan > 1) rowSpan -= 1;
+      else colSpan -= 1;
+    }
+    if (rowSpan < 1 || colSpan < 1 || hits(cell.r, cell.c, rowSpan, colSpan)) continue;
+    for (let dr = 0; dr < rowSpan; dr += 1) {
+      for (let dc = 0; dc < colSpan; dc += 1) grid[cell.r + dr][cell.c + dc] = true;
+    }
+    cells.push({ ...cell, rowSpan, colSpan });
+  }
+  if (!cells.length) return null;
+  return { ...parsed, rows, cols, cells };
 }
 
 function cellsFromRows(rows) {
@@ -131,7 +181,7 @@ function cellsFromRows(rows) {
       });
     }
   });
-  return { rows: rows.length, cols: width, headerRows: 0, cells };
+  return fitCells({ rows: rows.length, cols: width, headerRows: 0, cells });
 }
 
 function applyGrounding(table, grounding) {
@@ -157,6 +207,116 @@ function groundedTables(pageNumber, pages) {
   return (page?.items || []).filter((item) => item?.type === "table");
 }
 
+const FIG_RE = /^(?:fig(?:ure)?)\.?\s*\d+\b/i;
+
+function boxLabel(item) {
+  const list = Array.isArray(item?.bbox) ? item.bbox : (item?.bbox && typeof item.bbox === "object" ? [item.bbox] : []);
+  for (const raw of list) {
+    if (raw && typeof raw.label === "string" && raw.label.trim()) return raw.label.trim().toLowerCase();
+  }
+  return "";
+}
+
+function isCaptionItem(item) {
+  if (!item || typeof item !== "object") return false;
+  if (item.type === "header" || item.type === "footer") return false;
+  const label = boxLabel(item);
+  if (label === "header" || label === "footer") return false;
+  if (label === "caption") return true;
+  return FIG_RE.test(plainItem(item));
+}
+
+function layoutImagesOf(provider) {
+  const images = provider?.images_content_metadata?.images;
+  if (!Array.isArray(images)) return [];
+  return images.filter((image) => {
+    if (!image || typeof image !== "object") return false;
+    if (image.category != null && image.category !== "layout") return false;
+    return Boolean(llamaBox(image.bbox));
+  });
+}
+
+function pageNumbersOf(pages) {
+  return (pages || [])
+    .map((page) => Number(page?.page_number))
+    .filter((n) => Number.isInteger(n) && n >= 1);
+}
+
+// `page_N` in a layout filename. N is the absolute PDF page when it matches a
+// returned page_number and is not also a 1-based index into this result.
+// N is the Nth returned page when it is only an index (a one-page job for PDF
+// page 10 comes back as page_number 10 with filename page_1). When both
+// readings name a returned page, N is the absolute page_number.
+export function layoutImagePage(filename, pageNumbers) {
+  const nums = (pageNumbers || []).map(Number).filter((n) => Number.isInteger(n) && n >= 1);
+  if (!nums.length) return null;
+  const match = /(?:^|[^\d])page_(\d+)(?=[^\d]|$)/i.exec(String(filename || ""));
+  const n = match ? Number(match[1]) : null;
+  if (n == null) return nums.length === 1 ? nums[0] : null;
+  const absolute = nums.includes(n);
+  const relative = n >= 1 && n <= nums.length;
+  if (absolute && !relative) return n;
+  if (relative && !absolute) return nums[n - 1];
+  if (absolute && relative) return n;
+  return nums.length === 1 ? nums[0] : null;
+}
+
+function verticalGap(fig, cand) {
+  const slack = 12;
+  const below = cand[1] - fig[3];
+  const above = fig[1] - cand[3];
+  const belowOk = below >= -slack;
+  const aboveOk = above >= -slack;
+  if (belowOk && (!aboveOk || below <= above)) return { dir: "below", gap: Math.max(0, below) };
+  if (aboveOk) return { dir: "above", gap: Math.max(0, above) };
+  return null;
+}
+
+function assignCaptions(images, items) {
+  const pairs = new Map();
+  const used = new Set();
+  const sorted = images.slice().sort((a, b) => (llamaBox(a.bbox)?.bbox[1] || 0) - (llamaBox(b.bbox)?.bbox[1] || 0));
+  for (const image of sorted) {
+    const fig = llamaBox(image.bbox)?.bbox;
+    if (!fig) continue;
+    let best = null;
+    let bestScore = Infinity;
+    for (const item of items) {
+      if (used.has(item)) continue;
+      const cand = llamaBox(item.bbox)?.bbox;
+      if (!cand) continue;
+      const gap = verticalGap(fig, cand);
+      if (!gap) continue;
+      const overlapX = cand[2] > fig[0] && cand[0] < fig[2];
+      const score = gap.gap + (gap.dir === "below" ? 0 : 0.5) + (overlapX ? 0 : 400);
+      if (score < bestScore) {
+        bestScore = score;
+        best = item;
+      }
+    }
+    if (best) {
+      used.add(best);
+      pairs.set(best, image);
+    }
+  }
+  return pairs;
+}
+
+function emptyBox(box) {
+  return !box || box[2] - box[0] <= 0 || box[3] - box[1] <= 0;
+}
+
+function chartTable(item, block, images) {
+  if (!images.length) return false;
+  if (!emptyBox(block.bbox)) {
+    for (const image of images) {
+      const other = llamaBox(image.bbox)?.bbox;
+      if (other && iou(block.bbox, other) >= 0.15) return true;
+    }
+  }
+  return Boolean(item?.parse_concerns) && /chart/i.test(JSON.stringify(item.parse_concerns));
+}
+
 export function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region = "us" } = {}) {
   const pagesIn = provider?.items?.pages || [];
   const grounded = provider?.grounded_pages || [];
@@ -170,6 +330,9 @@ export function llamaparseToParse(provider, { sha256 = null, tier = "agentic", r
     return `${prefix}${n}`;
   };
   let title = null;
+  const layoutImages = layoutImagesOf(provider);
+  const pageNums = pageNumbersOf(pagesIn);
+  let pageLayout = [];
 
   const push = (block) => {
     blocks[block.id] = block;
@@ -240,6 +403,11 @@ export function llamaparseToParse(provider, { sha256 = null, tier = "agentic", r
       return block;
     }
     if (type === "image") {
+      const covered = pageLayout.some((image) => {
+        const other = llamaBox(image.bbox)?.bbox;
+        return other && iou(bbox, other) >= 0.5;
+      });
+      if (covered) return null;
       const id = nextId("f");
       const captionText = typeof item.caption === "string" ? item.caption.replace(/\s+/g, " ").trim() : "";
       let captionId = null;
@@ -306,13 +474,57 @@ export function llamaparseToParse(provider, { sha256 = null, tier = "agentic", r
       parsed: ok,
     });
     if (!ok || !Array.isArray(page.items)) continue;
+    pageLayout = layoutImages.filter((image) => layoutImagePage(image.filename, pageNums) === pageNumber);
+    const assigned = assignCaptions(pageLayout, page.items.filter(isCaptionItem));
+    const paired = new Set(assigned.values());
+    const emitLayout = (image, captionItem) => {
+      const box = llamaBox(image?.bbox);
+      if (!box) return;
+      const id = nextId("f");
+      const block = push({
+        id,
+        type: "figure",
+        page: pageNumber,
+        bbox: box.bbox,
+        caption: null,
+        image: { kind: "crop", source: "llamaparse" },
+        confidence: box.confidence == null ? 0.9 : box.confidence,
+        engine: ENGINE,
+      });
+      const text = captionItem ? plainItem(captionItem) : "";
+      if (!text) return;
+      const capBox = llamaBox(captionItem.bbox);
+      const captionId = nextId("c");
+      push({
+        id: captionId,
+        type: "caption",
+        page: pageNumber,
+        bbox: capBox?.bbox || box.bbox,
+        text,
+        for: id,
+        confidence: capBox?.confidence == null ? block.confidence : capBox.confidence,
+        engine: ENGINE,
+      });
+      block.caption = captionId;
+    };
     const tables = [];
     for (const item of page.items) {
+      const image = assigned.get(item);
+      if (image) {
+        emitLayout(image, item);
+        continue;
+      }
       const block = walk(item, pageNumber);
-      if (block?.type === "table") tables.push(block);
+      if (block?.type === "table") tables.push({ block, item });
+    }
+    for (const image of pageLayout) {
+      if (!paired.has(image)) emitLayout(image, null);
     }
     const groundedRows = groundedTables(pageNumber, grounded);
-    tables.forEach((block, index) => applyGrounding(block, groundedRows[index]?.grounding));
+    tables.forEach(({ block }, index) => applyGrounding(block, groundedRows[index]?.grounding));
+    for (const { block, item } of tables) {
+      if (chartTable(item, block, pageLayout)) block.fromChart = true;
+    }
   }
 
   const doc = {

@@ -11,6 +11,7 @@ US = "https://api.cloud.llamaindex.ai"
 EU = "https://api.cloud.eu.llamaindex.ai"
 TIERS = frozenset({"fast", "cost_effective", "agentic", "agentic_plus"})
 SIDECAR_CAP = 8 * 1024 * 1024
+EXPAND = "expand=items&expand=markdown&expand=usage&expand=images_content_metadata"
 
 
 class CloudError(Exception):
@@ -102,6 +103,27 @@ def _call(http, method, url, headers, body, timeout, cancel):
     return parsed
 
 
+def target_pages(pages) -> str | None:
+    """X-Pxd-Options `pages` → LlamaParse `page_ranges.target_pages`. Empty means the whole file."""
+    if pages is None:
+        return None
+    if isinstance(pages, list):
+        parts = []
+        for item in pages:
+            if isinstance(item, bool):
+                continue
+            if isinstance(item, int) and item >= 1:
+                parts.append(str(item))
+            elif isinstance(item, str) and item.strip():
+                parts.append(item.strip())
+        text = ",".join(parts)
+        return text or None
+    if isinstance(pages, int) and not isinstance(pages, bool) and pages >= 1:
+        return str(pages)
+    text = str(pages).strip()
+    return text or None
+
+
 def run_llamaparse(
     pdf: bytes,
     *,
@@ -110,6 +132,7 @@ def run_llamaparse(
     tier: str,
     on_event,
     cancel,
+    pages=None,
     http=None,
     sleep=None,
     timeout_s: float = 240,
@@ -145,15 +168,19 @@ def run_llamaparse(
         raise CloudError(502, "upload did not return a file id", "bad-json")
 
     on_event("progress", {"status": "starting"})
+    payload = {
+        "file_id": file_id,
+        "tier": tier,
+        "version": "latest",
+        "output_options": {"granular_bboxes": ["cell"], "images_to_save": ["layout"]},
+    }
+    spec = target_pages(pages)
+    if spec:
+        payload["page_ranges"] = {"target_pages": spec}
     created = _call(
         send, "POST", f"{base}/api/v2/parse",
         {**auth, "Content-Type": "application/json"},
-        json.dumps({
-            "file_id": file_id,
-            "tier": tier,
-            "version": "latest",
-            "output_options": {"granular_bboxes": ["cell"]},
-        }).encode("utf-8"),
+        json.dumps(payload).encode("utf-8"),
         remaining(), cancel,
     )
     job = _job(created)
@@ -188,7 +215,7 @@ def run_llamaparse(
 
     result = _call(
         send, "GET",
-        f"{base}/api/v2/parse/{job_id}?expand=items&expand=markdown&expand=usage",
+        f"{base}/api/v2/parse/{job_id}?{EXPAND}",
         auth, None, remaining(), cancel,
     )
     _attach_sidecar(result, send, cancel, remaining)

@@ -48,7 +48,7 @@ node tools/parse-bench/scan.mjs scan.pdf truth.json --helper-url http://127.0.0.
 
 ## Cloud (`POST /v1/cloud/parse`)
 
-The extension cannot call LlamaParse (CORS). It posts the PDF here. The helper bearer is `Authorization`. The LlamaParse key is `X-Pxd-Cloud-Key` for that request only: it is not stored, logged, or copied into an event. `X-Pxd-Options` is `{region, tier, version}`. `region` is `us` (default) or `eu`. `tier` is `fast`, `cost_effective`, `agentic` (default), or `agentic_plus`. `version` is accepted and ignored; the upstream body always sends `"version":"latest"`, same as the Python helper.
+The extension cannot call LlamaParse (CORS). It posts the PDF here. The helper bearer is `Authorization`. The LlamaParse key is `X-Pxd-Cloud-Key` for that request only: it is not stored, logged, or copied into an event. `X-Pxd-Options` is `{region, tier, version, pages}`. `region` is `us` (default) or `eu`. `tier` is `fast`, `cost_effective`, `agentic` (default), or `agentic_plus`. `version` is accepted and ignored; the upstream body always sends `"version":"latest"`, same as the Python helper. `pages` is forwarded as `page_ranges.target_pages` (`"4"` or `"10,11"`). Omit it, or send `""`, and the whole PDF is parsed.
 
 The response is `text/event-stream`:
 
@@ -59,7 +59,7 @@ The response is `text/event-stream`:
 
 `DELETE /v1/cloud/parse/{job_id}` is 204 or 404. It accepts the helper id from `started` and the upstream id from `progress`, because the extension's SSE reader replaces the helper id with that upstream id before it cancels. The helper then POSTs `{base}/api/v2/parse/{upstream}/cancel`.
 
-Upstream is `https://api.cloud.llamaindex.ai` or `https://api.cloud.eu.llamaindex.ai`: upload `POST /api/v1/beta/files` (multipart, purpose `parse`), start `POST /api/v2/parse` with `output_options.granular_bboxes = ["cell"]`, poll with backoff 1 s, 2 s, 4 s, 8 s, then `GET` the same job with `expand=items&expand=markdown&expand=usage`. The sidecar URL must be `https://` (8 MB cap, no Authorization header). The HTTP client is reqwest on rustls, with no OpenSSL and no system proxy.
+Upstream is `https://api.cloud.llamaindex.ai` or `https://api.cloud.eu.llamaindex.ai`: upload `POST /api/v1/beta/files` (multipart, purpose `parse`), start `POST /api/v2/parse` with `output_options.granular_bboxes = ["cell"]` and `output_options.images_to_save = ["layout"]`, plus `page_ranges.target_pages` when `pages` is set, poll with backoff 1 s, 2 s, 4 s, 8 s, then `GET` the same job with `expand=items&expand=markdown&expand=usage&expand=images_content_metadata`. The sidecar URL must be `https://` (8 MB cap, no Authorization header). The HTTP client is reqwest on rustls, with no OpenSSL and no system proxy.
 
 ## What it does not do
 

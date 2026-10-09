@@ -134,6 +134,11 @@ export function planParseInsert(doc, payload) {
     if (!table) return { action: "empty" };
     return { action: "table", table };
   }
+  if (kind === "figure" || kind === "formula") {
+    const hit = blocks.find((block) => block?.type === kind);
+    if (!hit) return { action: "empty" };
+    return { action: "card", markdown: toRoamMarkdown(doc, [hit.id], { footnoteFormat: payload?.footnoteFormat }).markdown };
+  }
   if (kind !== "blocks" || !blocks.length) return { action: "empty" };
   const sections = [];
   let current = null;
@@ -158,9 +163,51 @@ export function planParseInsert(doc, payload) {
   return { action: "card", markdown: toRoamMarkdown(doc, ids, { footnoteFormat: payload?.footnoteFormat }).markdown };
 }
 
+function dataUrlToBlob(url) {
+  const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(String(url || ""));
+  if (!m || typeof Blob !== "function") return null;
+  const type = m[1] || "image/png";
+  let bytes;
+  if (m[2]) {
+    let bin = "";
+    try { bin = globalThis.atob(m[3]); } catch { return null; }
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  } else {
+    try { bytes = new TextEncoder().encode(decodeURIComponent(m[3])); } catch { return null; }
+  }
+  return new Blob([bytes], { type });
+}
+
+function imageKey(sha256, blockId) {
+  return `${sha256}/${blockId}`;
+}
+
+// A figure drag carries ids, not pixels. Upload the cached crop (or leave the caption if it is missing)
+// before the markdown is planned, so the card is an image instead of "c5 (figure, p. 6)".
+async function withDropImages(doc, payload, store, upload) {
+  if (!doc || typeof upload !== "function") return doc;
+  const ids = Array.isArray(payload?.ids) ? payload.ids : [];
+  const blocks = selectBlocks(doc, ids).filter((block) => (block?.type === "figure" || block?.type === "formula") && !(block.image?.url || block.url));
+  if (!blocks.length) return doc;
+  const next = { ...doc, blocks: { ...doc.blocks } };
+  for (const block of blocks) {
+    try {
+      const src = await store?.getImage?.(imageKey(doc.sha256, block.id));
+      const blob = typeof src === "string" ? dataUrlToBlob(src) : null;
+      if (!blob) continue;
+      const name = `figure-p${block.page ?? 0}.png`;
+      const file = typeof File === "function" ? new File([blob], name, { type: blob.type || "image/png" }) : blob;
+      const url = await upload(file);
+      if (typeof url === "string" && url) next.blocks[block.id] = { ...block, image: { ...(block.image || {}), url } };
+    } catch { /* caption fallback in toRoamMarkdown */ }
+  }
+  return next;
+}
+
 // Missing cache writes nothing and toasts PARSE_MISSING_TOAST. The session methods
 // own the write budget. Returns { ok, uids, ... } for the board to select.
-export async function handleParseDrop({ payload, store, session, point, toast } = {}) {
+export async function handleParseDrop({ payload, store, session, point, toast, upload } = {}) {
   if (payload?.kind === "text") {
     const markdown = textCardMarkdown(payload);
     if (!markdown) return { ok: false, reason: "empty", uids: [] };
@@ -181,7 +228,8 @@ export async function handleParseDrop({ payload, store, session, point, toast } 
     if (typeof toast === "function") toast(PARSE_MISSING_TOAST);
     return { ok: false, reason: "missing-cache", uids: [] };
   }
-  const plan = planParseInsert(doc, { ...payload, footnoteFormat: session?.footnoteFormat?.() });
+  const ready = await withDropImages(doc, payload, store, upload);
+  const plan = planParseInsert(ready, { ...payload, footnoteFormat: session?.footnoteFormat?.() });
   const x = Number.isFinite(point?.x) ? point.x : 0;
   const y = Number.isFinite(point?.y) ? point.y : 0;
   if (plan.action === "table") {

@@ -1,4 +1,4 @@
-// MEM-2. Label and why in one popover. Enter saves both. Shift+Enter breaks the why line.
+// MEM-2. One field at a time: the label, or the why. Enter saves both values. Shift+Enter breaks the why line.
 
 import { placePopover } from "../relchips.js";
 
@@ -54,11 +54,13 @@ export function openWhyPopover({
   whyField.value = why;
   whyField.setAttribute("aria-label", "Why");
 
+  const showWhy = focus === "why";
   const hint = doc.createElement("div");
   hint.className = "pxd-why__hint";
-  hint.textContent = "Enter saves. Shift+Enter adds a line.";
+  hint.textContent = showWhy ? "Enter saves. Shift+Enter adds a line." : "Enter saves.";
 
-  pop.append(labelField, whyField, hint);
+  // The other field stays in memory so a save does not wipe the value that is not on screen.
+  pop.append(showWhy ? whyField : labelField, hint);
   openPops.add(pop);
   const offs = [];
   const on = (el, type, fn) => {
@@ -85,12 +87,12 @@ export function openWhyPopover({
       focusEl(opener);
       return;
     }
-    if (event.key === "ArrowDown" && event.target === labelField) {
+    if (event.key === "ArrowDown" && event.target === labelField && whyField.isConnected === true) {
       event.preventDefault();
       focusEl(whyField);
       return;
     }
-    if (event.key === "ArrowUp" && event.target === whyField) {
+    if (event.key === "ArrowUp" && event.target === whyField && labelField.isConnected === true) {
       let start = 0;
       try { start = whyField.selectionStart; } catch { start = 0; }
       if (start == null || start === 0) {

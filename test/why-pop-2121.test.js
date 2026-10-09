@@ -14,12 +14,14 @@ test("Enter saves the label and the why, Shift+Enter does not, Esc cancels", () 
       doc: stub.document,
       label: "causes",
       why: "seal",
+      focus: "why",
       onSave: (next) => saved.push(next),
       onCancel: () => cancelled.push(1),
     });
     const pop = handle.el;
     assert.equal(pop.classList.contains("pxd-root"), true);
     assert.notEqual(pop.style.height, "560px");
+    assert.equal(pop.querySelector(".pxd-why__label"), null);
     const note = pop.querySelector(".pxd-why__note");
     stub.dispatch(note, "keydown", { key: "Enter", shiftKey: true, target: note });
     assert.equal(saved.length, 0);
@@ -29,6 +31,7 @@ test("Enter saves the label and the why, Shift+Enter does not, Esc cancels", () 
     assert.equal(pop.isConnected, false);
 
     const again = openWhyPopover({ doc: stub.document, onCancel: () => cancelled.push(1) });
+    assert.equal(again.el.querySelector(".pxd-why__note"), null);
     stub.dispatch(again.el, "keydown", { key: "Escape", target: again.el.querySelector(".pxd-why__label") });
     assert.equal(cancelled.length, 1);
     assert.equal(again.el.isConnected, false);

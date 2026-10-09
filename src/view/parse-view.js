@@ -564,6 +564,7 @@ export function createParseView({
       if (!parsed || !block) return;
       return copyBlock(block).then((ok) => { try { onToast?.(ok ? "Copied" : "Could not copy"); } catch { /* host */ } return ok; });
     },
+    drag: (block, event) => beginPointerDrag(event, [block]),
     run: (act, item) => {
       const go = (extra = {}) => runChipAction({ act, ...item, ...extra }, {
         session,
@@ -579,8 +580,13 @@ export function createParseView({
           else onToast?.("Run Docling on this page to read the formula as LaTeX");
         },
       });
-      if (!PLACE_ACTS.includes(act) || item?.extra?.beside || !ghostRoot || !parsed) { go(); return; }
-      void beginPlacement(act, item, go);
+      const start = () => {
+        if (!PLACE_ACTS.includes(act) || item?.extra?.beside || !ghostRoot || !parsed) { go(); return; }
+        void beginPlacement(act, item, go);
+      };
+      const figs = (item?.ids || []).map((id) => parsed?.blocks?.[id]).filter((block) => block && (block.type === "figure" || block.type === "formula"));
+      if (!figs.length) { start(); return; }
+      void warmFigures(figs).then(() => { if (!dead) start(); });
     },
   }));
 
@@ -895,8 +901,8 @@ export function createParseView({
   }
 
   async function writeClipboard(text) {
-    if (typeof writeText === "function") { await writeText(text); return; }
-    try { await doc.defaultView?.navigator?.clipboard?.writeText?.(text); } catch { /* clipboard */ }
+    try { await writeTextOnly(text); }
+    catch { try { onToast?.("Could not copy"); } catch { /* host */ } }
   }
 
   function isImageCopy(block) {
@@ -912,9 +918,20 @@ export function createParseView({
   }
 
   async function writeTextOnly(text) {
-    if (typeof writeText === "function") { await writeText(text); return; }
-    const clip = doc.defaultView?.navigator?.clipboard;
-    if (!clip?.writeText) throw new Error("no clipboard");
+    if (typeof writeText === "function") {
+      try { await writeText(text); return; } catch { /* Roam often rejects writeText; clipboard.write still works */ }
+    }
+    const win = doc.defaultView || globalThis;
+    const clip = win.navigator?.clipboard;
+    const Item = win.ClipboardItem || globalThis.ClipboardItem;
+    const BlobCtor = win.Blob || globalThis.Blob;
+    if (typeof clip?.write === "function" && typeof Item === "function" && typeof BlobCtor === "function") {
+      try {
+        await clip.write([new Item({ "text/plain": new BlobCtor([text], { type: "text/plain" }) })]);
+        return;
+      } catch { /* fall through to writeText */ }
+    }
+    if (typeof clip?.writeText !== "function") throw new Error("no clipboard");
     await clip.writeText(text);
   }
 
@@ -1062,9 +1079,14 @@ export function createParseView({
       const y = Number(ev.clientY) || 0;
       ghost?.move(x, y);
       const at = ghost && ghost.zone() === "board" ? ghost.dropPoint() : { x, y };
-      drop(x, y, at);
-      ghost?.land();
-      ghost = null;
+      const figs = expand(blocks).filter((block) => block?.type === "figure" || block?.type === "formula");
+      const land = () => {
+        drop(x, y, at);
+        ghost?.land();
+        ghost = null;
+      };
+      if (!figs.length) { land(); return; }
+      void warmFigures(figs).then(land);
     };
     listen(win, "pointermove", move, true);
     listen(win, "pointerup", up, true);
@@ -1093,6 +1115,23 @@ export function createParseView({
   function imageSrc(cached) {
     if (typeof cached === "string" && cached) return cached;
     return "";
+  }
+
+  async function warmFigures(blocks) {
+    for (const block of blocks || []) {
+      if (!block || (block.type !== "figure" && block.type !== "formula")) continue;
+      const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
+      if (!key || typeof store?.putImage !== "function") continue;
+      let src = "";
+      if (typeof store.getImage === "function") {
+        try { src = imageSrc(await store.getImage(key)); } catch { src = ""; }
+      }
+      if (!src) {
+        try { src = await cropAt2x(block); } catch { src = ""; }
+      }
+      if (!src) continue;
+      try { await store.putImage(key, src); } catch { /* cache */ }
+    }
   }
 
   async function cropAt2x(block) {

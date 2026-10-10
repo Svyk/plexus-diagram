@@ -1,12 +1,14 @@
-"""High-accuracy page read: PP-DocLayoutV2 boxes, then PaddleOCR-VL on each one.
+"""High-accuracy page read: PP-DocLayoutV2 boxes, then a reader on each one.
 
 Table regions are the layout model's table boxes plus caller boxes it missed.
 Where both found the same grid, the layout rectangle is the crop. A page the
 layout model does not mark as a table, and that has aligned numeric columns,
-is read as a whole page.
-Text is optional: each text region is read with the "OCR:" prompt. Figure
-boxes are hints only; the caller keeps its own figures when it has any.
-Decoding is greedy with a fixed seed.
+is read as a whole page. Tables stay on PaddleOCR-VL.
+Text is optional. A page asked for text is transcribed once by the page-text
+model and poured into the text regions. A caption strip under a plate stays
+a crop, read with PaddleOCR-VL, so a one-line credit is not replaced by the
+whole page. Figure boxes are hints only; the caller keeps its own figures
+when it has any. Decoding is greedy with a fixed seed.
 """
 
 from __future__ import annotations
@@ -33,6 +35,8 @@ from plexus_parse_helper.vlm_tables import (
     _crop,
     _generate,
 )
+from plexus_parse_helper.vlm_text import label as text_label
+from plexus_parse_helper.vlm_text import read_page_text
 
 MAX_PAGES = 40
 MAX_TEXT = 24
@@ -69,6 +73,20 @@ def _clip(box, pw, ph):
 def _clean_ocr(raw):
     lines = plain_lines(raw)
     return " ".join(lines).strip()
+
+
+def _append_ocr(lines_out, page, page_no, items, bitmap):
+    """PaddleOCR-VL on each crop. Used for caption strips and as a fallback."""
+    for item in items:
+        if len(lines_out) >= MAX_TEXT:
+            break
+        if item["bbox"][3] - item["bbox"][1] < 8:
+            continue
+        top_pad = 0.0 if item.get("captionStrip") else None
+        image = _crop(page, item["bbox"], bitmap) if top_pad is None else _crop(page, item["bbox"], bitmap, pad=2.0, top_pad=0.0)
+        text = _clean_ocr(_generate(image, OCR_PROMPT, TEXT_TOKENS))
+        if text:
+            lines_out.append({"page": page_no, "bbox": item["bbox"], "text": text})
 
 
 def caption_strips(detected, pw, ph):
@@ -119,6 +137,28 @@ def _inter(a, b):
     if ix <= 0 or iy <= 0:
         return 0.0
     return ix * iy
+
+
+def text_plan(detected, pw, ph):
+    """Which text boxes are one page transcription, and which stay crops.
+
+    A caption strip stays a crop. Body text, or a page with no text box, is
+    one transcription. A plate whose only text is the strip is crops only.
+    """
+    text_items = [item for item in detected or [] if item.get("label") in TEXT_LABELS]
+    text_items.extend(caption_strips(detected, pw, ph))
+    body = [item for item in text_items if not item.get("captionStrip")]
+    strips = [item for item in text_items if item.get("captionStrip")]
+    return {"body": body, "strips": strips, "pageRead": bool(body) or not text_items}
+
+
+def union_box(boxes):
+    return [
+        round(min(box[0] for box in boxes), 2),
+        round(min(box[1] for box in boxes), 2),
+        round(max(box[2] for box in boxes), 2),
+        round(max(box[3] for box in boxes), 2),
+    ]
 
 
 def covered_by_table(box, chosen, min_iou=0.45) -> bool:
@@ -187,6 +227,7 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
     figures_out = []
     layout_out = []
     boxes_out = []
+    text_model = None
     pdf = pdfium.PdfDocument(str(pdf_path))
     try:
         n_pages = len(pdf)
@@ -261,25 +302,27 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
                     "score": item["score"],
                 })
             if want_text:
-                text_n = 0
-                text_items = [item for item in detected if item["label"] in TEXT_LABELS]
-                text_items.extend(caption_strips(detected, pw, ph))
-                for item in text_items:
-                    if item["bbox"][3] - item["bbox"][1] < 8:
-                        continue
-                    if text_n >= MAX_TEXT:
-                        break
-                    text_n += 1
-                    # A caption strip is already the gap. Growing it upward reads the plate.
-                    top_pad = 0.0 if item.get("captionStrip") else None
-                    image = _crop(page, item["bbox"], bitmap) if top_pad is None else _crop(page, item["bbox"], bitmap, pad=2.0, top_pad=0.0)
-                    text = _clean_ocr(_generate(image, OCR_PROMPT, TEXT_TOKENS))
-                    if text:
-                        lines_out.append({"page": page_no, "bbox": item["bbox"], "text": text})
+                plan = text_plan(detected, pw, ph)
+                body = plan["body"]
+                strips = plan["strips"]
+                page_text = read_page_text(bitmap) if plan["pageRead"] else ""
+                if page_text:
+                    text_model = text_label()
+                    boxes = [item["bbox"] for item in body] or [[0.0, 0.0, float(pw), float(ph)]]
+                    lines_out.append({
+                        "page": page_no,
+                        "bbox": union_box(boxes),
+                        "text": page_text,
+                        "pageText": True,
+                    })
+                else:
+                    _append_ocr(lines_out, page, page_no, body, bitmap)
+                _append_ocr(lines_out, page, page_no, strips, bitmap)
     finally:
         pdf.close()
     return {
         "model": MODEL_LABEL,
+        "textModel": text_model,
         "layoutModel": LAYOUT_MODEL,
         "tables": tables_out,
         "lines": lines_out,

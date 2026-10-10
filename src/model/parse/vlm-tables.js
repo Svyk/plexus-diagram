@@ -355,6 +355,25 @@ function splitByWidth(text, widths) {
   return out;
 }
 
+// A page transcription is poured in document order, an equal share of words
+// to each host, with any remainder on the earlier hosts. Empty shares clear
+// the Vision text they replace, so the hosts that remain concatenate to the
+// transcription.
+function pourInOrder(text, hosts) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const base = Math.floor(words.length / hosts.length);
+  let extra = words.length % hosts.length;
+  const out = [];
+  let at = 0;
+  for (let i = 0; i < hosts.length; i++) {
+    const count = base + (extra > 0 ? 1 : 0);
+    if (extra > 0) extra -= 1;
+    out.push(words.slice(at, at + count).join(" "));
+    at += count;
+  }
+  return out;
+}
+
 // Replace the text of Vision lines whose centres sit in a VLM text region.
 // The line boxes stay. `regions` are `{page, bbox, text}` in top-left PDF points.
 export function alignVlmText(doc, regions) {
@@ -390,6 +409,35 @@ export function alignVlmText(doc, regions) {
     // full of TeX commands is a second notation, and swapping it in wipes the line.
     const hostText = inside.map((b) => b.text).join(" ");
     if (texCommandCount(region.text) >= 2 && texCommandCount(hostText) === 0) continue;
+    if (region.pageText) {
+      const parts = pourInOrder(region.text, inside);
+      // A caption that shares no word with its slice is a different line.
+      // The slice is kept on the nearest prose host so the transcription
+      // stays in the page, and the caption keeps the reading it already had.
+      const held = [];
+      inside.forEach((block, i) => {
+        const text = parts[i] || "";
+        if (block.type === "caption" && text && block.text && !sharesWord(text, block.text)) {
+          held.push(text);
+          return;
+        }
+        if (text === block.text) return;
+        blocks[block.id] = { ...block, text };
+        applied.push(block.id);
+      });
+      if (held.length) {
+        const host = [...inside].reverse().find((block) => block.type !== "caption" && blocks[block.id]);
+        if (host) {
+          const current = blocks[host.id].text || "";
+          const text = [current, held.join(" ")].filter(Boolean).join(" ");
+          if (text !== current) {
+            blocks[host.id] = { ...blocks[host.id], text };
+            if (!applied.includes(host.id)) applied.push(host.id);
+          }
+        }
+      }
+      continue;
+    }
     inside.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
     const parts = splitByWidth(region.text, inside.map((b) => Math.max(1, b.bbox[2] - b.bbox[0])));
     inside.forEach((block, i) => {
@@ -404,6 +452,14 @@ export function alignVlmText(doc, regions) {
 
 function texCommandCount(text) {
   return (String(text || "").match(/\\(?:[A-Za-z]+|[()[\]])/g) || []).length;
+}
+
+function sharesWord(a, b) {
+  const words = new Set(String(a || "").toLowerCase().match(/[a-z0-9]{3,}/g) || []);
+  for (const word of String(b || "").toLowerCase().match(/[a-z0-9]{3,}/g) || []) {
+    if (words.has(word)) return true;
+  }
+  return false;
 }
 
 function overlapsX(a, b) {

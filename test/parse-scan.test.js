@@ -746,6 +746,39 @@ test("alignVlmText rewrites Vision lines inside a region and leaves the boxes", 
   assert.equal(tex.doc.blocks.p.text, "old left");
 });
 
+test("alignVlmText pours a page transcription in document order and clears the leftover", () => {
+  const doc = {
+    order: ["late", "early", "out"],
+    blocks: {
+      late: { id: "late", type: "para", page: 1, bbox: [0, 40, 80, 50], text: "vision late" },
+      early: { id: "early", type: "para", page: 1, bbox: [0, 0, 20, 10], text: "vision early" },
+      out: { id: "out", type: "para", page: 1, bbox: [200, 0, 220, 10], text: "kept" },
+    },
+  };
+  const out = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 80, 60], text: "one two three", pageText: true }]);
+  assert.equal(out.doc.blocks.late.text, "one two");
+  assert.equal(out.doc.blocks.early.text, "three");
+  assert.equal(out.doc.blocks.out.text, "kept");
+  const short = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 80, 60], text: "only", pageText: true }]);
+  assert.equal(short.doc.blocks.late.text, "only");
+  assert.equal(short.doc.blocks.early.text, "");
+});
+
+test("alignVlmText keeps a caption the page slice does not share a word with", () => {
+  const doc = {
+    order: ["p", "c"],
+    blocks: {
+      p: { id: "p", type: "para", page: 1, bbox: [0, 0, 40, 10], text: "old title" },
+      c: { id: "c", type: "caption", page: 1, bbox: [40, 0, 80, 10], text: "METAL DRAWING MACHINE" },
+    },
+  };
+  const out = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 80, 12], text: "one two three four", pageText: true }]);
+  assert.equal(out.doc.blocks.c.text, "METAL DRAWING MACHINE");
+  assert.equal(out.doc.blocks.p.text, "one two three four");
+  const shared = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 80, 12], text: "notes about metal drawing", pageText: true }]);
+  assert.equal(shared.doc.blocks.c.text, "metal drawing");
+});
+
 test("readScan keeps the rule table when the VLM text does not match, and does not call tables without the flag", async () => {
   const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 300, h: 120, rotation: 0, fonts: {} }, 2);
   scanRec.kind = "scan";

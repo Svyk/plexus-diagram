@@ -40,6 +40,31 @@ LAYOUT_SHA256 = "2009fcb35e64085ab9f6f2b27aca550edc29a040a24f7d6a0f05b74a2f80486
 LAYOUT_BYTES = 213963712
 LAYOUT_LICENCE = "Apache-2.0"
 
+# mlx-community/Qwen3-VL-8B-Instruct-4bit @ defcdea7cc7a4b0858fea563cbbce171d328e457.
+# Apache-2.0. Converted from Qwen/Qwen3-VL-8B-Instruct. Page text on a weak
+# page only; tables stay on PaddleOCR-VL. About 5.8 GB.
+TEXT_LABEL = "Qwen3-VL-8B-Instruct-4bit"
+TEXT_REPO = "mlx-community/Qwen3-VL-8B-Instruct-4bit"
+TEXT_REVISION = "defcdea7cc7a4b0858fea563cbbce171d328e457"
+TEXT_LICENCE = "Apache-2.0"
+TEXT_FILES = {
+    "added_tokens.json": {"sha256": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680", "bytes": 707},
+    "chat_template.jinja": {"sha256": "3636d0f0bd6bef02654cdffdc447b79cb2cef8ab02cc75267345946291a489e4", "bytes": 5292},
+    "chat_template.json": {"sha256": "5c72a170d2a4a1a3bc5adad2e689ae28138a9700e5b8c96c0266331e86c0acce", "bytes": 5499},
+    "config.json": {"sha256": "cb750ae5688f3df07b110381d3dd54a7f2bfa9ec5175ae11e41305b516f3059a", "bytes": 7140},
+    "generation_config.json": {"sha256": "8469742d1fce0de951c8909b26a2c0c0d8490837ce476efb114da9e0cefc4d44", "bytes": 269},
+    "merges.txt": {"sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5", "bytes": 1671853},
+    "model-00001-of-00002.safetensors": {"sha256": "7c637158b2203e321d83596d3661f33b7b98a72beddfaaaa0eddc512acbdd1fb", "bytes": 5353972197},
+    "model-00002-of-00002.safetensors": {"sha256": "77190cd1dcf244522869bf923558340112b26d7db2ef3692f88407dd9b33c25d", "bytes": 406693049},
+    "model.safetensors.index.json": {"sha256": "520b2e05079402e9468a8701d03d1154d14b2599593afb6effa7fb60c1bff070", "bytes": 67759},
+    "preprocessor_config.json": {"sha256": "93585062a80db5e8ca038efc7726a3e6411d9db948472d81d63c6303993be8c5", "bytes": 782},
+    "special_tokens_map.json": {"sha256": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd", "bytes": 613},
+    "tokenizer.json": {"sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4", "bytes": 11422654},
+    "tokenizer_config.json": {"sha256": "81ec7bb9530159b326c0bef1d0b6c33d392090524014ea3f0123a3c1eb9c2af5", "bytes": 5445},
+    "video_preprocessor_config.json": {"sha256": "59c5c9eb52182eb14c06ffb10ca9effd29adce5f238a95de23ca14a38dbd2cb1", "bytes": 817},
+    "vocab.json": {"sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910", "bytes": 2776833},
+}
+
 
 def sha256_file(path) -> str:
     digest = hashlib.sha256()
@@ -89,6 +114,27 @@ def ensure_reader(dest) -> str:
         path.unlink(missing_ok=True)
         hf_hub_download(READER_REPO, name, revision=READER_REVISION, local_dir=str(dest))
     verify_tree(dest, READER_FILES)
+    return str(dest)
+
+
+def ensure_text_reader(dest) -> str:
+    """Download the pinned page-text reader into `dest` if the check does not already pass."""
+    dest = Path(dest)
+    try:
+        verify_tree(dest, TEXT_FILES)
+        return str(dest)
+    except ValueError:
+        pass
+    dest.mkdir(parents=True, exist_ok=True)
+    from huggingface_hub import hf_hub_download
+
+    for name, spec in TEXT_FILES.items():
+        path = dest / name
+        if path.is_file() and path.stat().st_size == spec["bytes"] and sha256_file(path) == spec["sha256"]:
+            continue
+        path.unlink(missing_ok=True)
+        hf_hub_download(TEXT_REPO, name, revision=TEXT_REVISION, local_dir=str(dest))
+    verify_tree(dest, TEXT_FILES)
     return str(dest)
 
 

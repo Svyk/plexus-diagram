@@ -131,7 +131,7 @@ export function engineChip({ phase = "idle", engine = "builtin", provider = "", 
   if (engine === "cloud") return { text: cloudLabel(provider) };
   if (read === "high") {
     const text = ms != null ? `High accuracy · ${formatSeconds(ms)}` : "High accuracy";
-    return { text, tip: "PaddleOCR-VL + PP-DocLayoutV2" };
+    return { text, tip: "Qwen3-VL for page text, PaddleOCR-VL for tables, PP-DocLayoutV2" };
   }
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };

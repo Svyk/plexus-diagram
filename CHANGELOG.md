@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.14.0 — 2026-10-10
+
+Old printed text and old tables read closer to the page.
+
+- **Printed text on old scans.** Words that Vision reads glued together stay whole, plurals are not shortened to the dictionary singular, and the "Digitized by Google" / HathiTrust stamps are treated as page furniture, not text. On our 1916 Bureau of Mines pages the text now matches the page 97–100% (was 82–92%). A caption line under a wide plate is read and kept.
+- **Tables.** Unit lines under a header, blank leader cells, labels fused to the next word and fragments printed beside a row are put back in the right cells. A 1922 viscometer table now scores 0.96 on cell content (was 0.78), and a born-digital regression table 0.96 (was 0.63).
+- Cached parses from earlier versions are refreshed automatically.
+
 ## 3.13.0 — 2026-10-10
 
 Handwriting and photographed pages read much better in High accuracy, more old tables come out exactly, and every figure on our old-scan test pages is found.

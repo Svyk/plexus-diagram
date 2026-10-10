@@ -5,9 +5,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { gritsCon } from "../tools/parse-bench/grits.mjs";
 import { scorePage } from "../tools/parse-bench/scan-score.mjs";
 import {
-  applicable, avgRanks, bootstrapCI, cohenDz, components, evaluate, indexDocsDir, informative, mulberry32, pageScore, parseArgs, resolveDoc, scoreWith, wilcoxon, withoutFigureText,
+  applicable, avgRanks, bootstrapCI, cohenDz, components, evaluate, foldPrint, indexDocsDir, informative, mulberry32, pageScore, parseArgs, resolveDoc, scoreWith, wilcoxon, withoutFigureText,
 } from "../tools/parse-bench/paired-stats.mjs";
 
 const near = (a, b, tol = 1e-9) => assert.ok(Math.abs(a - b) < tol, `${a} vs ${b}`);
@@ -256,4 +257,42 @@ test("text inside a truth figure is dropped before the text score; text outside 
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("foldPrint drops leader dots and reads digit middle dots as decimal points, on copies", () => {
+  const cell = (r, c, text) => ({ r, c, rowSpan: 1, colSpan: 1, text });
+  const doc = {
+    order: ["b1", "l1"],
+    blocks: {
+      b1: { type: "table", cells: [cell(0, 0, "PADD 1 ....."), cell(0, 1, "0·01")] },
+      l1: { type: "list", items: [{ text: "Total . . . . . 12" }, { text: "see 1·121 …… ok" }, { text: "wait.. no. Done." }] },
+    },
+  };
+  const truth = {
+    lines: ["Item .... 5", { text: "x … y" }],
+    tables: [{ cells: [cell(0, 0, "PADD 1"), cell(0, 1, "0.01")] }],
+    figures: [{ caption: "Fig. 2 ..... Flow" }],
+  };
+  const before = JSON.stringify([doc, truth]);
+  const [d, t] = foldPrint(doc, truth);
+  assert.equal(JSON.stringify([doc, truth]), before);
+  assert.equal(d.blocks.b1.cells[0].text, "PADD 1");
+  assert.equal(d.blocks.b1.cells[1].text, "0.01");
+  assert.equal(d.blocks.l1.items[0].text, "Total 12");
+  assert.equal(d.blocks.l1.items[1].text, "see 1.121 ok");
+  assert.equal(d.blocks.l1.items[2].text, "wait.. no. Done.");
+  assert.equal(t.lines[0], "Item 5");
+  assert.equal(t.lines[1].text, "x y");
+  assert.equal(t.figures[0].caption, "Fig. 2 Flow");
+  assert.equal(foldPrint({ a: { text: "A plain sentence. Nothing here, 3.5 ok." } }, {})[0].a.text, "A plain sentence. Nothing here, 3.5 ok.");
+  assert.equal(foldPrint({ a: { text: "a·b 0·x" } }, {})[0].a.text, "a·b 0·x");
+});
+
+test("a leader-dot cell and a middle-dot decimal score 1 against clean truth once folded", () => {
+  const cell = (r, c, text) => ({ r, c, rowSpan: 1, colSpan: 1, text });
+  const doc = { order: ["t"], blocks: { t: { type: "table", cells: [cell(0, 0, "PADD 1 ....."), cell(0, 1, "0·01")] } } };
+  const truth = { tables: [{ cells: [cell(0, 0, "PADD 1"), cell(0, 1, "0.01")] }] };
+  assert.ok(gritsCon(doc.blocks.t.cells, truth.tables[0].cells).score < 1);
+  const [d, t] = foldPrint(doc, truth);
+  assert.equal(gritsCon(d.blocks.t.cells, t.tables[0].cells).score, 1);
 });

@@ -102,11 +102,37 @@ export function withoutFigureText(doc, truthFigures) {
   return { doc: { ...doc, order: doc.order.filter((id) => !dropIds.has(id)) }, dropped: dropIds.size };
 }
 
+// Printing artefacts: leader-dot runs and the "0·01" decimal middle dot. Folded on both sides, on copies.
+function foldPrintString(s) {
+  const LEADER = /(?:\.[ \t]*){3,}|…+(?:[ \t]*…+)*/g;
+  let out = s;
+  if (LEADER.test(s)) out = s.replace(LEADER, " ").replace(/[ \t]{2,}/g, " ").trim();
+  return out.replace(/(\d)\u00B7(?=\d)/g, "$1.");
+}
+
+export function foldPrint(doc, truth) {
+  const walk = (node, linesToo) => {
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, linesToo);
+    } else if (node && typeof node === "object") {
+      for (const key of Object.keys(node)) {
+        const v = node[key];
+        if ((key === "text" || key === "caption") && typeof v === "string") node[key] = foldPrintString(v);
+        else if (linesToo && key === "lines" && Array.isArray(v)) {
+          node[key] = v.map((x) => (typeof x === "string" ? foldPrintString(x) : walk(x, linesToo)));
+        } else walk(v, linesToo);
+      }
+    }
+    return node;
+  };
+  return [walk(structuredClone(doc), false), walk(structuredClone(truth), true)];
+}
+
 export function scoreWith(docPath, truth, fold) {
   if (!docPath) return null;
   try {
     const doc = JSON.parse(readFileSync(docPath, "utf8"));
-    const [d, t] = fold ? foldQuotes(doc, truth) : [doc, truth];
+    const [d, t] = fold ? foldPrint(...foldQuotes(doc, truth)) : [doc, truth];
     const scored = scorePage(d, t);
     if (Array.isArray(t.tables)) scored.grits = gritsPage(predTables(d), t.tables);
     const stripped = withoutFigureText(d, t.figures);

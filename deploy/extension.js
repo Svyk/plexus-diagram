@@ -6838,15 +6838,19 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   const emptyAt = (r, c) => c >= 0 && c < k && !cellMap.has(`${r}:${c}`);
   for (const cell of [...cellMap.values()]) {
     if (fixedSpan.has(cell)) continue;
-    const mid = (Math.min(...cell.words.map((w) => w.x0)) + Math.max(...cell.words.map((w) => w.x1))) / 2;
+    const textX0 = Math.min(...cell.words.map((w) => w.x0));
+    const textX1 = Math.max(...cell.words.map((w) => w.x1));
+    const mid = (textX0 + textX1) / 2;
+    const overlapsCol = (i) => i >= 0 && i < k && textX1 > cols[i].x0 + 1.5 && textX0 < cols[i].x1 - 1.5;
+    const bodyCell = cell.r >= headerRows;
     let guard = 0;
     while (guard++ < k) {
       const c0 = cell.c;
       const c1 = cell.c + cell.colSpan - 1;
       const cur = Math.abs((cols[c0].x0 + cols[c1].x1) / 2 - mid);
       const dist = (a, b) => Math.abs((cols[a].x0 + cols[b].x1) / 2 - mid);
-      const canLeft = emptyAt(cell.r, c0 - 1) && dist(c0 - 1, c1) < cur - 1;
-      const canRight = emptyAt(cell.r, c1 + 1) && dist(c0, c1 + 1) < cur - 1;
+      const canLeft = emptyAt(cell.r, c0 - 1) && dist(c0 - 1, c1) < cur - 1 && (!bodyCell || overlapsCol(c0 - 1));
+      const canRight = emptyAt(cell.r, c1 + 1) && dist(c0, c1 + 1) < cur - 1 && (!bodyCell || overlapsCol(c1 + 1));
       const textW = Math.max(...cell.words.map((w) => w.x1)) - Math.min(...cell.words.map((w) => w.x0));
       const wide = textW > cols[c1].x1 - cols[c0].x0;
       const slack = (a, b) => wide ? 0.5 * ((cols[b].x1 - cols[a].x0) / (b - a + 1)) : 0;
@@ -7457,7 +7461,7 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
       const table = buildTable(rowsIn, { headerRowsHint, rules });
       const proseCols = ocr && proseColumnTable(table);
       const weakHand = handwriting && !contentsList(run);
-      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table) && !lacksTabularEvidence(table) && !proseCols && !weakHand) {
+      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table) && !lacksTabularEvidence(table) && !damagedIndexColumn(table) && !proseCols && !weakHand) {
         table.usedWords = run.flatMap((r) => r.row.words);
         table.lines = [...run.flatMap((r) => r.row.lines), ...ruleLines];
         out.push(table);
@@ -7752,6 +7756,17 @@ function proseGrid(table) {
   let sentence = 0;
   for (const texts of byRow.values()) if (words(texts.join(" ")).length >= 8) sentence++;
   return byRow.size >= 3 && sentence / byRow.size >= 0.6;
+}
+function damagedIndexColumn(table) {
+  const start = table?.headerRows || 0;
+  for (let c = 0; c < (table?.cols || 0); c++) {
+    const texts = (table.cells || []).filter((k) => k.c === c && (k.colSpan || 1) === 1 && k.r >= start && String(k.text || "").trim()).map((k) => String(k.text).trim());
+    if (texts.length < 6) continue;
+    const marked = texts.filter((t) => /^\d{1,3}[.\-–−]$/.test(t)).length;
+    const bare = texts.filter((t) => /^\d{1,3}$/.test(t)).length;
+    if (marked >= 3 && bare >= 2) return true;
+  }
+  return false;
 }
 function lacksTabularEvidence(table) {
   if (!table || table.method !== "stream") return false;
@@ -10758,6 +10773,30 @@ function stackStatRows(table) {
     deleteRow(table, found);
   }
 }
+function wordsOf(text3) {
+  return String(text3 || "").toLowerCase().replace(/[^a-z]+/g, " ").split(/\s+/).filter((w) => w.length >= 4);
+}
+function spanSectionBanners(table) {
+  if (!table || table.cols < 2) return;
+  const mark = (c) => /^[*•·∙.]$/.test(String(c.text || "").trim());
+  for (let r = 0; r < table.rows; r++) {
+    const row4 = table.cells.filter((c) => c.r === r && (c.rowSpan || 1) === 1);
+    const filled = row4.filter((c) => String(c.text || "").trim());
+    const label = filled.find((c) => c.c === 0);
+    if (!label) continue;
+    const text3 = String(label.text || "").trim();
+    if (!/\d/.test(text3) || wordsOf(text3).length < 2) continue;
+    const rest = filled.filter((c) => c !== label);
+    if ((label.colSpan || 1) >= table.cols) continue;
+    const marks = rest.length > 0 && rest.every(mark);
+    const sibling = table.cells.some((c) => c.r !== r && (c.colSpan || 1) >= table.cols && wordsOf(c.text).length >= 2 && /\d/.test(c.text));
+    const cutShort = rest.length === 0 && (label.colSpan || 1) >= 2 && sibling;
+    if (!marks && !cutShort) continue;
+    table.cells = table.cells.filter((c) => c.r !== r || c === label);
+    label.c = 0;
+    label.colSpan = table.cols;
+  }
+}
 function spanPanelRows(table) {
   for (let r = 0; r < table.rows; r++) {
     const row4 = table.cells.filter((c) => c.r === r);
@@ -10903,20 +10942,272 @@ function spaceFootnoteMarks(table) {
     if (/^[a-z][.\d]/.test(text3) && /\d/.test(text3)) c.text = text3.replace(/^([a-z])(?=[.\d])/, "$1 ");
   }
 }
-function repairTableReading(table) {
+function tidyMeasuredCells(table) {
+  for (const cell of table.cells) {
+    let text3 = String(cell.text || "");
+    if (!text3) continue;
+    text3 = text3.replace(/(?<!\d)(\d{1,3})\s*\.\s*(\d+)/g, "$1.$2");
+    text3 = text3.replace(/\bIbs\b/g, "lbs");
+    if (/[A-Za-z]/.test(text3) && /\d{4}-+\s*$/.test(text3)) text3 = text3.replace(/-+\s*$/, "").trim();
+    if (text3 !== cell.text) cell.text = text3;
+  }
+  const start = table.headerRows || 0;
+  for (let c = 0; c < table.cols; c++) {
+    const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && k.r >= start);
+    const dotted = cells.some((k) => /\d\s*[.,]\s*\d/.test(String(k.text || "")) || /^\s*[.,]\d/.test(String(k.text || "")));
+    if (!dotted) continue;
+    for (const cell of cells) {
+      const m = String(cell.text || "").trim().match(/^[•·∙]\s*(\d+(?:[.,]\d+)?)$/);
+      if (m) cell.text = `.${m[1]}`;
+    }
+  }
+}
+function restoreBareDecimals(table) {
+  const start = table.headerRows || 0;
+  const textOf2 = (k) => String(k.text || "").trim();
+  for (let c = 0; c < table.cols; c++) {
+    const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= start);
+    const dotted = cells.filter((k) => /^(?:0)?\.\d{3,6}$/.test(textOf2(k)));
+    const bare = cells.filter((k) => /^\d{3,6}$/.test(textOf2(k)));
+    if (!dotted.length || !bare.length) continue;
+    if (bare.some((k) => /^(?:1[89]|20)\d{2}$/.test(textOf2(k)))) continue;
+    const fracLen = (t) => t.replace(/^0?\./, "").length;
+    const anchors = dotted.filter((k) => /^0\.\d{3,6}$/.test(textOf2(k)));
+    for (const cell of bare) {
+      const n2 = textOf2(cell).length;
+      const sample = anchors.find((k) => fracLen(textOf2(k)) === n2);
+      if (!sample) continue;
+      const mag = Number(textOf2(sample).replace(/^0\./, "").replace(/^0+/, "") || "0");
+      const bareN = Number(textOf2(cell));
+      if (!(mag > 0) || bareN > mag * 20 || mag > bareN * 20) continue;
+      cell.text = `.${textOf2(cell)}`;
+      cell.numeric = true;
+    }
+  }
+}
+function blankDecimalRun(table) {
+  const start = table.headerRows || 0;
+  const plain2 = (r, c) => table.cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+  const textOf2 = (r, c) => String(plain2(r, c)?.text || "").trim();
+  for (let c = 1; c < table.cols; c++) {
+    const seen = /* @__PURE__ */ new Set();
+    for (let r3 = start; r3 < table.rows; r3++) {
+      const t = textOf2(r3, c);
+      if (t && /\d/.test(t)) seen.add(t);
+    }
+    if (seen.size < 2) continue;
+    let r = start;
+    while (r < table.rows) {
+      const token = textOf2(r, c);
+      if (!/^\.\d{2,4}$/.test(token)) {
+        r++;
+        continue;
+      }
+      let r1 = r + 1;
+      while (r1 < table.rows && textOf2(r1, c) === token) r1++;
+      if (r1 - r >= 3) {
+        for (let rr = r; rr < r1; rr++) {
+          let other = false;
+          for (let k = 1; k < table.cols; k++) {
+            if (k === c) continue;
+            if (textOf2(rr, k)) other = true;
+          }
+          if (!other) {
+            const cell = plain2(rr, c);
+            if (cell) cell.text = "";
+          }
+        }
+      }
+      r = r1;
+    }
+  }
+}
+function joinSplitDates(table) {
+  const start = table.headerRows || 0;
+  for (let c = 0; c < table.cols - 1; c++) {
+    const pairs = [];
+    let rows = 0;
+    for (let r = start; r < table.rows; r++) {
+      const left = table.cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+      const right = table.cells.find((k) => k.r === r && k.c === c + 1 && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+      const lt = String(left?.text || "").trim();
+      const rt = String(right?.text || "").trim();
+      if (!lt && !rt) continue;
+      rows++;
+      if (MONTH_RE2.test(lt) && DAY_YEAR_RE.test(rt)) pairs.push([left, right]);
+    }
+    if (rows < 3 || pairs.length < 3 || pairs.length < 0.6 * rows) continue;
+    for (const [left, right] of pairs) {
+      left.text = `${String(left.text).trim()} ${String(right.text).trim()}`.replace(/\s+/g, " ");
+      right.text = "";
+    }
+    if (!table.cells.some((k) => k.c === c + 1 && String(k.text || "").trim())) deleteColumn(table, c + 1);
+  }
+}
+function joinScatteredWrap(table) {
+  let guard = 0;
+  while (guard++ < table.rows) {
+    let found = -1;
+    for (let r = 0; r < table.rows - 2; r++) {
+      const stub = table.cells.find((k) => k.r === r && k.c === 0 && (k.colSpan || 1) === 1);
+      const label = String(stub?.text || "").trim();
+      if (!stub || label.length < 12 || !/:\s*$/.test(label)) continue;
+      const vals = table.cells.filter((k) => k.r === r && k.c > 0 && String(k.text || "").trim());
+      if (vals.length) continue;
+      const cont = [];
+      for (let k = r + 1; k < table.rows; k++) {
+        const next = table.cells.find((cell) => cell.r === k && cell.c === 0 && (cell.colSpan || 1) === 1);
+        const text3 = String(next?.text || "").trim();
+        if (!text3 || !/^[a-z]/.test(text3)) break;
+        const nums = table.cells.filter((cell) => cell.r === k && cell.c > 0 && String(cell.text || "").trim() && (cell.colSpan || 1) === 1);
+        if (nums.length !== 1 || !/\d/.test(nums[0].text)) break;
+        cont.push({ row: k, stub: next, num: nums[0] });
+      }
+      if (cont.length < 2) continue;
+      const cols = cont.map((item) => item.num.c);
+      if (new Set(cols).size !== cols.length) continue;
+      found = r;
+      stub.text = [label, ...cont.map((item) => String(item.stub.text).trim())].join(" ");
+      for (const item of cont) {
+        const host = table.cells.find((cell) => cell.r === r && cell.c === item.num.c && (cell.colSpan || 1) === 1);
+        if (host) host.text = String(item.num.text).trim();
+        else table.cells.push({ r, c: item.num.c, rowSpan: 1, colSpan: 1, text: String(item.num.text).trim(), header: false });
+      }
+      for (const item of [...cont].reverse()) deleteRow(table, item.row);
+      break;
+    }
+    if (found < 0) break;
+  }
+}
+function factorKind(text3) {
+  const s = String(text3 || "").trim();
+  if (!s) return "";
+  if (/^\d{1,3}\s+E[+\-−]\d+$/i.test(s)) return "tail";
+  if (/^E[+\-−]\d+$/i.test(s)) return "exp";
+  if (/^\.?\s*\d[\d.\s]*E[+\-−]\d+$/i.test(s)) return "full";
+  return "";
+}
+function deleteColumn(table, c) {
+  if (c < 0 || c >= table.cols) return;
+  const kept = [];
+  for (const cell of table.cells) {
+    const span = cell.colSpan || 1;
+    const c0 = cell.c;
+    const c1 = c0 + span - 1;
+    if (c1 < c) {
+      kept.push(cell);
+      continue;
+    }
+    if (c0 > c) {
+      cell.c = c0 - 1;
+      kept.push(cell);
+      continue;
+    }
+    if (span === 1) continue;
+    cell.colSpan = span - 1;
+    if (cell.colSpan >= 1) kept.push(cell);
+  }
+  if (Array.isArray(table.grid?.xs) && table.grid.xs.length === table.cols + 1) {
+    const at = c + 1 < table.grid.xs.length - 1 ? c + 1 : table.grid.xs.length - 1;
+    table.grid.xs.splice(at, 1);
+  }
+  table.cols -= 1;
+  table.cells = kept;
+}
+function foldScientificSplit(table) {
+  const start = table.headerRows || 0;
+  for (let c = table.cols - 1; c >= 2; c--) {
+    const cells = table.cells.filter((k) => k.r >= start && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+    const filled = cells.filter((k) => String(k.text || "").trim());
+    if (filled.length < 3) continue;
+    if (!filled.every((k) => factorKind(k.text))) continue;
+    const tails = filled.filter((k) => factorKind(k.text) === "tail");
+    if (!tails.length) continue;
+    let joined = 0;
+    for (const right of filled) {
+      const kind = factorKind(right.text);
+      const covered = table.cells.find((k) => k.r === right.r && k.c <= c - 1 && c - 1 < k.c + (k.colSpan || 1) && (k.colSpan || 1) > 1);
+      if (covered) continue;
+      let left = table.cells.find((k) => k.r === right.r && k.c === c - 1 && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+      const lt = String(left?.text || "").trim();
+      if (kind === "tail" && /^\d+\.\d+$/.test(lt)) {
+        left.text = `${lt} ${String(right.text).trim()}`;
+        right.text = "";
+        joined++;
+      } else if ((kind === "full" || kind === "exp") && left && !lt) {
+        left.text = String(right.text).trim().replace(/^\.\s+(?=\d)/, "");
+        right.text = "";
+        joined++;
+      } else if ((kind === "full" || kind === "exp") && !left) {
+        table.cells.push({ r: right.r, c: c - 1, rowSpan: 1, colSpan: 1, text: String(right.text).trim().replace(/^\.\s+(?=\d)/, ""), header: false });
+        right.text = "";
+        joined++;
+      }
+    }
+    if (joined < 3) continue;
+    if (table.cells.some((k) => k.c === c && (k.colSpan || 1) === 1 && String(k.text || "").trim())) continue;
+    deleteColumn(table, c);
+  }
+}
+function dropBannerNote(table) {
+  if ((table.rows || 0) < 3) return;
+  const row4 = table.cells.filter((c) => c.r === 0);
+  const filled = row4.filter((c) => String(c.text || "").trim());
+  if (filled.length !== 1 || (filled[0].colSpan || 1) < table.cols) return;
+  const text3 = String(filled[0].text).trim();
+  if (/\d/.test(text3) || text3.split(/\s+/).length < 4) return;
+  if (!/\b(?:are|is|was|were)\b/.test(text3)) return;
+  const next = table.cells.filter((c) => c.r === 1 && String(c.text || "").trim());
+  if (next.length < 2) return;
+  deleteRow(table, 0);
+}
+function repairDamagedIndex(table) {
+  if (!damagedIndexColumn(table)) return;
+  for (const cell of table.cells) {
+    if ((cell.colSpan || 1) !== 1) continue;
+    let text3 = String(cell.text || "").trim();
+    const doubled = text3.match(/^(\d{1,3})-\s+\1$/);
+    if (doubled) text3 = doubled[1];
+    else if (/^\d{1,3}[.\-–−]$/.test(text3)) text3 = text3.slice(0, -1);
+    if (text3 !== cell.text) cell.text = text3;
+  }
+  while ((table.headerRows || 0) > 0 && table.rows > 2) {
+    const texts = table.cells.filter((c) => c.r === 0).map((c) => String(c.text || "").trim()).filter(Boolean);
+    if (!texts.length || texts.some((t) => /\d/.test(t))) break;
+    deleteRow(table, 0);
+  }
+}
+function repairTableReading(table, options = {}) {
   if (!table?.cells?.length) return table;
+  repairDamagedIndex(table);
   foldIndexHeads(table);
   foldContinuationHeads(table);
   stackStatRows(table);
   spanPanelRows(table);
+  spanSectionBanners(table);
   splitFusedLabelRow(table);
   unshiftRepeatedUnit(table);
   shiftSectionValues(table);
   blankRepeatedFill(table);
+  blankDecimalRun(table);
   spaceFootnoteMarks(table);
+  if (options.tidy !== false) tidyMeasuredCells(table);
+  restoreBareDecimals(table);
+  joinSplitDates(table);
+  joinScatteredWrap(table);
+  foldScientificSplit(table);
+  dropBannerNote(table);
   return table;
 }
-function polishTableText(table) {
+function tidyDocumentTables(doc) {
+  for (const block of Object.values(doc?.blocks || {})) {
+    if (block?.type !== "table") continue;
+    spanSectionBanners(block);
+    tidyMeasuredCells(block);
+  }
+  return doc;
+}
+function polishTableText(table, options) {
   if (!table?.cells) return table;
   for (const cell of table.cells) {
     if (!cell.text) continue;
@@ -10927,7 +11218,7 @@ function polishTableText(table) {
   restoreDegree(table);
   spanGroupHeaders(table);
   moveStubTotal(table);
-  repairTableReading(table);
+  repairTableReading(table, options);
   return table;
 }
 function repairOcrTable(table) {
@@ -10935,7 +11226,7 @@ function repairOcrTable(table) {
   const years = repairYearHeader(table);
   const { fixed, unrepaired, numericCols } = repairNumericColumns(table);
   const spans = spanNoteRows(table, { numericCols });
-  polishTableText(table);
+  polishTableText(table, { tidy: false });
   return { fixed: [...years, ...fixed], unrepaired, spans, numericCols };
 }
 function tableNumericValidity(table) {
@@ -11051,10 +11342,11 @@ function fitsColumn(number, column) {
   const widest = Math.max(...column.map(intDigits));
   return intDigits(number) <= widest + 1;
 }
-var LOW_CONF, NUMERIC_COLUMN_SHARE, DIGIT_MAP, NUMERIC_LIKE_RE, PLACEHOLDER_RE, SUBSCRIPTS, ELEMENT, COMMA_THOUSANDS, DOT_THOUSANDS;
+var LOW_CONF, NUMERIC_COLUMN_SHARE, DIGIT_MAP, NUMERIC_LIKE_RE, PLACEHOLDER_RE, SUBSCRIPTS, ELEMENT, COMMA_THOUSANDS, DOT_THOUSANDS, MONTH_RE2, DAY_YEAR_RE;
 var init_ocr_fix = __esm({
   "src/model/parse/ocr-fix.js"() {
     init_lattice();
+    init_stream();
     LOW_CONF = 0.3;
     NUMERIC_COLUMN_SHARE = 0.8;
     DIGIT_MAP = { O: "0", o: "0", D: "0", Q: "0", B: "8", S: "5", s: "5", l: "1", I: "1", "|": "1", Z: "2", G: "6", "Б": "6", "б": "6", "А": "4" };
@@ -11064,6 +11356,8 @@ var init_ocr_fix = __esm({
     ELEMENT = new Set("H He C N O F P S Cl Br I Na K Ca Fe Cu Zn".split(" "));
     COMMA_THOUSANDS = /^\d{1,3}(?:,\d{3})+$/;
     DOT_THOUSANDS = /^\d{1,3}(?:\.\d{3})+$/;
+    MONTH_RE2 = /^(?:jan|feb|mar|apr|may|june|july|aug|sept|sep|oct|nov|dec)\.?$/i;
+    DAY_YEAR_RE = /^\d{1,2},\s*\d{4}\.?$/;
   }
 });
 
@@ -12702,6 +12996,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       }
     }
     stitchTables(pageTables, textBlocks, bodySize);
+    absorbSectionBanners(pageTables, textBlocks, bodySize);
+    absorbTableFooters(pageTables, textBlocks, bodySize);
     demoteFalseCaptions(textBlocks, bodySize, pageFigures);
     if (pg.ocr) coverChartTables(pageTables, pageFigures, pg.h);
     absorbFigureTables(pageTables, pageFigures);
@@ -12758,7 +13054,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       if (pg.ocr) {
         annotateOcrCells(block, pg.words);
         block.repairs = repairOcrTable(block);
-      } else repairTableReading(block);
+      } else repairTableReading(block, { tidy: false });
       if (cap4) blocks[captionIds.get(cap4)].for = id;
       blocks[id] = block;
       units.push({ id, x0: t.bbox[0], y0: t.bbox[1], x1: t.bbox[2], y1: t.bbox[3] });
@@ -12875,12 +13171,51 @@ function isTitledBox(t) {
   if (t.rows > 2) return false;
   return t.cells.some((k) => k.colSpan === t.cols && k.text);
 }
+function sectionBanner(table) {
+  if ((table?.headerRows || 0) !== 1 || (table.cols || 0) < 2) return false;
+  const filled = (table.cells || []).filter((c) => c.r === 0 && String(c.text || "").trim());
+  if (filled.length !== 1) return false;
+  const cell = filled[0];
+  if ((cell.colSpan || 1) < table.cols) return false;
+  if (!/\d/.test(cell.text)) return false;
+  const words = String(cell.text).toLowerCase().replace(/[^a-z]+/g, " ").split(/\s+/).filter((w) => w.length >= 4);
+  return words.length >= 2;
+}
+function bannerWords(text3) {
+  return String(text3 || "").toLowerCase().replace(/[^a-z]+/g, " ").trim().split(/\s+/).filter((w) => w.length >= 4);
+}
+function sameBanner(a, b) {
+  if (!/\d/.test(String(a || "")) || !/\d/.test(String(b || ""))) return false;
+  const A = bannerWords(a);
+  const B = bannerWords(b);
+  if (A.length < 2 || B.length < 2) return false;
+  const set = new Set(B);
+  const inter = A.filter((w) => set.has(w)).length;
+  return inter >= 2 && inter / Math.min(A.length, B.length) >= 0.6;
+}
+function spanningBannerTexts(table) {
+  const out = [];
+  for (let r = 0; r < (table.rows || 0); r++) {
+    const row4 = (table.cells || []).filter((c) => c.r === r);
+    const filled = row4.filter((c) => String(c.text || "").trim());
+    if (filled.length === 1 && (filled[0].colSpan || 1) >= table.cols) out.push(String(filled[0].text));
+  }
+  return out;
+}
+function blockBox(tb) {
+  const b = tb?.bbox;
+  if (!b) return null;
+  if (Array.isArray(b)) return { x0: b[0], y0: b[1], x1: b[2], y1: b[3] };
+  if (b.x0 == null || b.y0 == null) return null;
+  return b;
+}
 function stitchTables(tables, textBlocks, bodySize) {
   tables.sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
   for (let i = 0; i + 1 < tables.length; i++) {
     const a = tables[i];
     const b = tables[i + 1];
-    if (a.method !== "stream" || b.method !== "stream" || a.cols !== b.cols || b.headerRows > 0) continue;
+    if (a.method !== "stream" || b.method !== "stream" || a.cols !== b.cols) continue;
+    if ((b.headerRows || 0) > 0 && !sectionBanner(b)) continue;
     const gap = b.bbox[1] - a.bbox[3];
     if (gap < -2 || gap > 4 * bodySize) continue;
     const ox = Math.min(a.bbox[2], b.bbox[2]) - Math.max(a.bbox[0], b.bbox[0]);
@@ -12903,6 +13238,112 @@ function stitchTables(tables, textBlocks, bodySize) {
     tables.splice(i, 2, merged);
     i--;
   }
+  return tables;
+}
+function absorbSectionBanners(tables, textBlocks, bodySize) {
+  const size = bodySize || 10;
+  const used = /* @__PURE__ */ new Set();
+  for (const table of tables || []) {
+    if (!table?.bbox || !table.cells?.length || table.cols < 2) continue;
+    const banners = spanningBannerTexts(table);
+    if (!banners.length) continue;
+    let best = -1;
+    let bestGap = Infinity;
+    for (let i = 0; i < textBlocks.length; i++) {
+      if (used.has(i)) continue;
+      const tb2 = textBlocks[i];
+      if (!tb2 || tb2.type !== "para" && tb2.type !== "heading") continue;
+      const b2 = blockBox(tb2);
+      if (!b2) continue;
+      const gap = table.bbox[1] - b2.y1;
+      if (gap < -4 || gap > 2.2 * size || b2.y0 >= table.bbox[1]) continue;
+      if (b2.y1 - b2.y0 > 1.8 * size) continue;
+      const bw = b2.x1 - b2.x0;
+      const ox = Math.min(b2.x1, table.bbox[2]) - Math.max(b2.x0, table.bbox[0]);
+      if (!(bw > 0) || ox < 0.5 * bw) continue;
+      const text3 = String(tb2.text || "").trim();
+      if (!banners.some((banner) => sameBanner(banner, text3))) continue;
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = i;
+      }
+    }
+    if (best < 0) continue;
+    const tb = textBlocks[best];
+    const b = blockBox(tb);
+    used.add(best);
+    for (const cell of table.cells) cell.r += 1;
+    table.cells.unshift({
+      r: 0,
+      c: 0,
+      rowSpan: 1,
+      colSpan: table.cols,
+      text: String(tb.text || "").trim(),
+      header: false
+    });
+    table.rows += 1;
+    if ((table.headerRows || 0) > 0) table.headerRows += 1;
+    table.bbox = [Math.min(table.bbox[0], b.x0), Math.min(table.bbox[1], b.y0), Math.max(table.bbox[2], b.x1), table.bbox[3]];
+    if (table.grid?.ys) table.grid.ys = [b.y0, ...table.grid.ys];
+  }
+  for (let i = textBlocks.length - 1; i >= 0; i--) if (used.has(i)) textBlocks.splice(i, 1);
+  return tables;
+}
+function absorbTableFooters(tables, textBlocks, bodySize) {
+  const size = bodySize || 10;
+  const used = /* @__PURE__ */ new Set();
+  for (const table of tables || []) {
+    if (!table?.bbox || table.cols < 2 || table.rows < 2) continue;
+    let best = -1;
+    let bestGap = Infinity;
+    for (let i = 0; i < textBlocks.length; i++) {
+      if (used.has(i)) continue;
+      const tb2 = textBlocks[i];
+      if (!tb2 || tb2.type === "caption" || tb2.type === "heading" || tb2.type === "footnote") continue;
+      const b2 = blockBox(tb2);
+      if (!b2) continue;
+      const gap = b2.y0 - table.bbox[3];
+      if (gap < -2 || gap > size) continue;
+      if (b2.y1 - b2.y0 > 3 * size) continue;
+      const text3 = String(tb2.text || "").trim();
+      const words = text3.split(/\s+/).filter(Boolean);
+      if (words.length < 4 || words.length > 40 || !/\d/.test(text3)) continue;
+      if (/^[a-z]/.test(text3)) continue;
+      if (/^[*†‡§¶⁎∗]\s/u.test(text3)) continue;
+      if (/-\s*$/.test(text3)) continue;
+      if (/^(?:sources?|notes?|note)\b/i.test(text3)) continue;
+      if (/^\d+\.\s/.test(text3)) continue;
+      if (/^[A-Z]{2,}:/.test(text3)) continue;
+      if (/[χΧ]\s*=/.test(text3) || /\bp\s*[=<>]/.test(text3)) continue;
+      if (isCaptionText(text3)) continue;
+      if ((tables || []).some((other) => spanningBannerTexts(other).some((banner) => sameBanner(banner, text3)))) continue;
+      const bw = b2.x1 - b2.x0;
+      const tw = table.bbox[2] - table.bbox[0];
+      if (!(tw > 0) || bw < 0.34 * tw || bw > tw * 1.08) continue;
+      const ox = Math.min(b2.x1, table.bbox[2]) - Math.max(b2.x0, table.bbox[0]);
+      if (ox < 0.9 * bw) continue;
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = i;
+      }
+    }
+    if (best < 0) continue;
+    const tb = textBlocks[best];
+    const b = blockBox(tb);
+    used.add(best);
+    table.cells.push({
+      r: table.rows,
+      c: 0,
+      rowSpan: 1,
+      colSpan: table.cols,
+      text: String(tb.text || "").trim(),
+      header: false
+    });
+    table.rows += 1;
+    table.bbox = [Math.min(table.bbox[0], b.x0), table.bbox[1], Math.max(table.bbox[2], b.x1), Math.max(table.bbox[3], b.y1)];
+    if (table.grid?.ys) table.grid.ys.push(b.y1);
+  }
+  for (let i = textBlocks.length - 1; i >= 0; i--) if (used.has(i)) textBlocks.splice(i, 1);
   return tables;
 }
 function linkContinuedTables(order, blocks, pages) {
@@ -12979,7 +13420,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 29;
+    PARSE_REV = 30;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -43405,7 +43846,7 @@ function mergeOcrDocument(base, fresh, { pages = [] } = {}) {
     choices.push({ page: block.page, id, layerId: best.table.id, ...verdict });
     if (verdict.chose === "layer") {
       const layer = { ...best.table, cells: (best.table.cells || []).map((c) => ({ ...c })), id, caption: block.caption, engine: "builtin", ocrSource: "layer", ocrCompare: verdict };
-      polishTableText(layer);
+      polishTableText(layer, { tidy: false });
       doc.blocks[id] = layer;
     } else {
       doc.blocks[id] = { ...block, ocrSource: "fresh", ocrCompare: verdict };
@@ -45633,11 +46074,15 @@ function cleanCoverage(table, rows, owner) {
   }
   return { covered, counted };
 }
+function scientificFactor(text3) {
+  return /^\d[\d.,]*(\s+\d{1,3})?\s+E[+\-−]\d+$/i.test(String(text3 || "").trim());
+}
 function plainNumber(text3) {
   let s = String(text3 || "").trim();
   s = s.replace(/\\overline\{([^}]*)\}/g, "$1");
   s = s.replace(/\\\(|\\\)|\\[a-z]+/g, "");
   s = s.replace(/[{}]/g, "").trim();
+  if (scientificFactor(s)) return true;
   return /^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(s);
 }
 function plainPhrase(text3) {
@@ -45683,6 +46128,10 @@ function singleValues(table) {
   for (const cell of table?.cells || []) {
     if ((cell.colSpan || 1) > 1) continue;
     if (cell.header || cell.r < (table.headerRows || 0)) continue;
+    if (scientificFactor(cell.text)) {
+      n2 += 1;
+      continue;
+    }
     const nums = tokens(cell.text).filter((token) => /\d/.test(token) && token.replace(/\D/g, "").length >= 2);
     if (!nums.length) continue;
     n2 += 1;
@@ -46552,7 +47001,10 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n2) => !from || !to || n2 >= from && n2 <= to);
   const high = helper.vlmHigh === true && typeof helper.vlm === "function";
   const layerPages = high ? textLayerPages(base, { from, to }).filter((n2) => !wanted.includes(n2)) : [];
-  if (!wanted.length && !layerPages.length) return { doc: base, choices: [], rereads: [], pages: [] };
+  if (!wanted.length && !layerPages.length) {
+    tidyDocumentTables(base);
+    return { doc: base, choices: [], rereads: [], pages: [] };
+  }
   const throwIfAborted3 = () => {
     if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" });
   };
@@ -46662,6 +47114,7 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   }
   const rereads = await rereadCells({ doc, ocr: ask, signal, onPhase });
   doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), lines: lined.applied.length, vlm: vlmApplied.length, vlmFigures: vlmFigures.length, vlmLines: vlmLines.length, elapsedMs: got?.elapsedMs ?? null };
+  tidyDocumentTables(doc);
   return { doc, choices: merged.choices, rereads, lines: lined.applied, pages: wanted, records: next, ocrPages: lined.pages };
 }
 async function rereadLines({ doc, ocrPages, ocr, lexicon = null, signal, onPhase } = {}) {

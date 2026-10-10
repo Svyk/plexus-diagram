@@ -5,7 +5,7 @@ import test from "node:test";
 import { buildLines, mul, applyPoint, normalizeText, fontFlags, makeLine, relineWords } from "../src/model/parse/lines.js";
 import { decodePathData, extractGraphics, luminanceOf, snapRules, OP } from "../src/model/parse/rules.js";
 import { findLatticeTables, cellTextOf, isNumericText } from "../src/model/parse/lattice.js";
-import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand, phraseTable, tickGrid, alignNumericColumns, lacksTabularEvidence } from "../src/model/parse/stream.js";
+import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand, phraseTable, tickGrid, alignNumericColumns, lacksTabularEvidence, damagedIndexColumn } from "../src/model/parse/stream.js";
 import { dropFigureLabelTables } from "../src/model/parse/index.js";
 import { resplitColumns } from "../src/model/parse/resplit.js";
 import { findFigures, clusterBoxes } from "../src/model/parse/figures.js";
@@ -553,6 +553,9 @@ test("an unheaded stream grid without a number, date, or time column is not a ta
     { r: 2, c: 0, text: "Edwards" }, { r: 2, c: 1, text: "Jan. 9, 1923" }, { r: 2, c: 2, text: "Present." },
     { r: 3, c: 0, text: "Everding" }, { r: 3, c: 1, text: "Jan. 9, 1923" }, { r: 3, c: 2, text: "Present." },
   ] }), false, "a date column is tabular evidence");
+  const mixed = (texts) => ({ headerRows: 1, cols: 1, cells: texts.map((text, i) => ({ r: i + 1, c: 0, colSpan: 1, text })) });
+  assert.equal(damagedIndexColumn(mixed(["56", "58.", "60.", "62.", "64", "66"])), true);
+  assert.equal(damagedIndexColumn(mixed(["1.", "2.", "3.", "4.", "5.", "6."])), false);
   assert.equal(lacksTabularEvidence({ method: "stream", headerRows: 1, rows: 4, cols: 2, cells: [
     { r: 0, c: 0, text: "Name" }, { r: 0, c: 1, text: "City" },
     { r: 1, c: 0, text: "Ada" }, { r: 1, c: 1, text: "Paris" },

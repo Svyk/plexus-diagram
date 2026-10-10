@@ -229,11 +229,16 @@ function cleanCoverage(table, rows, owner) {
   return { covered, counted };
 }
 
+function scientificFactor(text) {
+  return /^\d[\d.,]*(\s+\d{1,3})?\s+E[+\-−]\d+$/i.test(String(text || "").trim());
+}
+
 function plainNumber(text) {
   let s = String(text || "").trim();
   s = s.replace(/\\overline\{([^}]*)\}/g, "$1");
   s = s.replace(/\\\(|\\\)|\\[a-z]+/g, "");
   s = s.replace(/[{}]/g, "").trim();
+  if (scientificFactor(s)) return true;
   return /^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(s);
 }
 
@@ -286,6 +291,7 @@ function singleValues(table) {
   for (const cell of table?.cells || []) {
     if ((cell.colSpan || 1) > 1) continue;
     if (cell.header || cell.r < (table.headerRows || 0)) continue;
+    if (scientificFactor(cell.text)) { n += 1; continue; }
     const nums = tokens(cell.text).filter((token) => /\d/.test(token) && token.replace(/\D/g, "").length >= 2);
     if (!nums.length) continue;
     n += 1;

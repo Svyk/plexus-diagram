@@ -22,7 +22,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 29;
+export const PARSE_REV = 30;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -1066,6 +1066,8 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       }
     }
     stitchTables(pageTables, textBlocks, bodySize);
+    absorbSectionBanners(pageTables, textBlocks, bodySize);
+    absorbTableFooters(pageTables, textBlocks, bodySize);
     demoteFalseCaptions(textBlocks, bodySize, pageFigures);
     if (pg.ocr) coverChartTables(pageTables, pageFigures, pg.h);
     // A chart's labels are inside the drawing on a born-digital page too.
@@ -1108,7 +1110,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       if (pg.ocr) {
         annotateOcrCells(block, pg.words);
         block.repairs = repairOcrTable(block);
-      } else repairTableReading(block);
+      } else repairTableReading(block, { tidy: false });
       if (cap) blocks[captionIds.get(cap)].for = id;
       blocks[id] = block;
       units.push({ id, x0: t.bbox[0], y0: t.bbox[1], x1: t.bbox[2], y1: t.bbox[3] });
@@ -1243,14 +1245,62 @@ export function isTitledBox(t) {
   return t.cells.some((k) => k.colSpan === t.cols && k.text);
 }
 
+// The second piece's only header is one numbered line across every column
+// ("Supercharger speed - 2,000 r.p.m."), not a row of column names.
+function sectionBanner(table) {
+  if ((table?.headerRows || 0) !== 1 || (table.cols || 0) < 2) return false;
+  const filled = (table.cells || []).filter((c) => c.r === 0 && String(c.text || "").trim());
+  if (filled.length !== 1) return false;
+  const cell = filled[0];
+  if ((cell.colSpan || 1) < table.cols) return false;
+  if (!/\d/.test(cell.text)) return false;
+  const words = String(cell.text).toLowerCase().replace(/[^a-z]+/g, " ").split(/\s+/).filter((w) => w.length >= 4);
+  return words.length >= 2;
+}
+
+function bannerWords(text) {
+  return String(text || "").toLowerCase().replace(/[^a-z]+/g, " ").trim().split(/\s+/).filter((w) => w.length >= 4);
+}
+
+// Two numbered section lines are the same banner when they share their long words.
+function sameBanner(a, b) {
+  if (!/\d/.test(String(a || "")) || !/\d/.test(String(b || ""))) return false;
+  const A = bannerWords(a);
+  const B = bannerWords(b);
+  if (A.length < 2 || B.length < 2) return false;
+  const set = new Set(B);
+  const inter = A.filter((w) => set.has(w)).length;
+  return inter >= 2 && inter / Math.min(A.length, B.length) >= 0.6;
+}
+
+function spanningBannerTexts(table) {
+  const out = [];
+  for (let r = 0; r < (table.rows || 0); r++) {
+    const row = (table.cells || []).filter((c) => c.r === r);
+    const filled = row.filter((c) => String(c.text || "").trim());
+    if (filled.length === 1 && (filled[0].colSpan || 1) >= table.cols) out.push(String(filled[0].text));
+  }
+  return out;
+}
+
+function blockBox(tb) {
+  const b = tb?.bbox;
+  if (!b) return null;
+  if (Array.isArray(b)) return { x0: b[0], y0: b[1], x1: b[2], y1: b[3] };
+  if (b.x0 == null || b.y0 == null) return null;
+  return b;
+}
+
 // Two stream tables in one column split by a slightly wider row gap: same column structure,
-// nothing between them, join them into one.
+// nothing between them, join them into one. A second piece that opens with a section
+// banner is the same table; a piece with its own column heads is not.
 export function stitchTables(tables, textBlocks, bodySize) {
   tables.sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
   for (let i = 0; i + 1 < tables.length; i++) {
     const a = tables[i];
     const b = tables[i + 1];
-    if (a.method !== "stream" || b.method !== "stream" || a.cols !== b.cols || b.headerRows > 0) continue;
+    if (a.method !== "stream" || b.method !== "stream" || a.cols !== b.cols) continue;
+    if ((b.headerRows || 0) > 0 && !sectionBanner(b)) continue;
     const gap = b.bbox[1] - a.bbox[3];
     if (gap < -2 || gap > 4 * bodySize) continue;
     const ox = Math.min(a.bbox[2], b.bbox[2]) - Math.max(a.bbox[0], b.bbox[0]);
@@ -1273,6 +1323,109 @@ export function stitchTables(tables, textBlocks, bodySize) {
     tables.splice(i, 2, merged);
     i--;
   }
+  return tables;
+}
+
+// A section line left above the grid ("Supercharger Speed - 1,000 r.p.m.") is the
+// same banner the table already repeats. It becomes the first row.
+export function absorbSectionBanners(tables, textBlocks, bodySize) {
+  const size = bodySize || 10;
+  const used = new Set();
+  for (const table of tables || []) {
+    if (!table?.bbox || !table.cells?.length || table.cols < 2) continue;
+    const banners = spanningBannerTexts(table);
+    if (!banners.length) continue;
+    let best = -1;
+    let bestGap = Infinity;
+    for (let i = 0; i < textBlocks.length; i++) {
+      if (used.has(i)) continue;
+      const tb = textBlocks[i];
+      if (!tb || (tb.type !== "para" && tb.type !== "heading")) continue;
+      const b = blockBox(tb);
+      if (!b) continue;
+      const gap = table.bbox[1] - b.y1;
+      if (gap < -4 || gap > 2.2 * size || b.y0 >= table.bbox[1]) continue;
+      if (b.y1 - b.y0 > 1.8 * size) continue;
+      const bw = b.x1 - b.x0;
+      const ox = Math.min(b.x1, table.bbox[2]) - Math.max(b.x0, table.bbox[0]);
+      if (!(bw > 0) || ox < 0.5 * bw) continue;
+      const text = String(tb.text || "").trim();
+      if (!banners.some((banner) => sameBanner(banner, text))) continue;
+      if (gap < bestGap) { bestGap = gap; best = i; }
+    }
+    if (best < 0) continue;
+    const tb = textBlocks[best];
+    const b = blockBox(tb);
+    used.add(best);
+    for (const cell of table.cells) cell.r += 1;
+    table.cells.unshift({
+      r: 0, c: 0, rowSpan: 1, colSpan: table.cols, text: String(tb.text || "").trim(), header: false,
+    });
+    table.rows += 1;
+    if ((table.headerRows || 0) > 0) table.headerRows += 1;
+    table.bbox = [Math.min(table.bbox[0], b.x0), Math.min(table.bbox[1], b.y0), Math.max(table.bbox[2], b.x1), table.bbox[3]];
+    if (table.grid?.ys) table.grid.ys = [b.y0, ...table.grid.ys];
+  }
+  for (let i = textBlocks.length - 1; i >= 0; i--) if (used.has(i)) textBlocks.splice(i, 1);
+  return tables;
+}
+
+// A line sitting on the bottom rule, inside the table's width and carrying a
+// number, is the table's last row (a totals line, a prefix note), not a paragraph.
+export function absorbTableFooters(tables, textBlocks, bodySize) {
+  const size = bodySize || 10;
+  const used = new Set();
+  for (const table of tables || []) {
+    if (!table?.bbox || table.cols < 2 || table.rows < 2) continue;
+    let best = -1;
+    let bestGap = Infinity;
+    for (let i = 0; i < textBlocks.length; i++) {
+      if (used.has(i)) continue;
+      const tb = textBlocks[i];
+      if (!tb || tb.type === "caption" || tb.type === "heading" || tb.type === "footnote") continue;
+      const b = blockBox(tb);
+      if (!b) continue;
+      const gap = b.y0 - table.bbox[3];
+      // A source line, a chi-square, or the next paragraph sits further down
+      // than one line. The row we want is on the bottom rule.
+      if (gap < -2 || gap > size) continue;
+      if (b.y1 - b.y0 > 3 * size) continue;
+      const text = String(tb.text || "").trim();
+      const words = text.split(/\s+/).filter(Boolean);
+      if (words.length < 4 || words.length > 40 || !/\d/.test(text)) continue;
+      // A sentence that starts lowercase is a note continuing under the rule
+      // ("after rounding are shown as 0.00"), not the table's last row.
+      if (/^[a-z]/.test(text)) continue;
+      // A star or dagger in front of the line is an affiliation or a footnote.
+      if (/^[*†‡§¶⁎∗]\s/u.test(text)) continue;
+      if (/-\s*$/.test(text)) continue;
+      // A citation, a numbered note, a glossary label, or a test statistic
+      // printed under the rule is not the table's last row.
+      if (/^(?:sources?|notes?|note)\b/i.test(text)) continue;
+      if (/^\d+\.\s/.test(text)) continue;
+      if (/^[A-Z]{2,}:/.test(text)) continue;
+      if (/[χΧ]\s*=/.test(text) || /\bp\s*[=<>]/.test(text)) continue;
+      if (isCaptionText(text)) continue;
+      if ((tables || []).some((other) => spanningBannerTexts(other).some((banner) => sameBanner(banner, text)))) continue;
+      const bw = b.x1 - b.x0;
+      const tw = table.bbox[2] - table.bbox[0];
+      if (!(tw > 0) || bw < 0.34 * tw || bw > tw * 1.08) continue;
+      const ox = Math.min(b.x1, table.bbox[2]) - Math.max(b.x0, table.bbox[0]);
+      if (ox < 0.9 * bw) continue;
+      if (gap < bestGap) { bestGap = gap; best = i; }
+    }
+    if (best < 0) continue;
+    const tb = textBlocks[best];
+    const b = blockBox(tb);
+    used.add(best);
+    table.cells.push({
+      r: table.rows, c: 0, rowSpan: 1, colSpan: table.cols, text: String(tb.text || "").trim(), header: false,
+    });
+    table.rows += 1;
+    table.bbox = [Math.min(table.bbox[0], b.x0), table.bbox[1], Math.max(table.bbox[2], b.x1), Math.max(table.bbox[3], b.y1)];
+    if (table.grid?.ys) table.grid.ys.push(b.y1);
+  }
+  for (let i = textBlocks.length - 1; i >= 0; i--) if (used.has(i)) textBlocks.splice(i, 1);
   return tables;
 }
 

@@ -3,6 +3,7 @@
 // re-read at 3x are accepted when they fit the column. Text columns are never "corrected".
 
 import { isNumericText } from "./lattice.js";
+import { damagedIndexColumn } from "./stream.js";
 
 export const LOW_CONF = 0.3;
 export const NUMERIC_COLUMN_SHARE = 0.8;
@@ -425,6 +426,37 @@ function stackStatRows(table) {
   }
 }
 
+// A numbered section line that already covers more than one column
+// ("Supercharger Speed - 2,500 r.p.m.") is the banner for the whole grid.
+// A star or bullet left in the columns it did not reach is not a value.
+function wordsOf(text) {
+  return String(text || "").toLowerCase().replace(/[^a-z]+/g, " ").split(/\s+/).filter((w) => w.length >= 4);
+}
+
+function spanSectionBanners(table) {
+  if (!table || table.cols < 2) return;
+  const mark = (c) => /^[*•·∙.]$/.test(String(c.text || "").trim());
+  for (let r = 0; r < table.rows; r++) {
+    const row = table.cells.filter((c) => c.r === r && (c.rowSpan || 1) === 1);
+    const filled = row.filter((c) => String(c.text || "").trim());
+    const label = filled.find((c) => c.c === 0);
+    if (!label) continue;
+    const text = String(label.text || "").trim();
+    if (!/\d/.test(text) || wordsOf(text).length < 2) continue;
+    const rest = filled.filter((c) => c !== label);
+    if ((label.colSpan || 1) >= table.cols) continue;
+    // A stray mark is the banner cut short. So is a shorter copy of a
+    // full-width banner already in the table, with nothing beside it.
+    const marks = rest.length > 0 && rest.every(mark);
+    const sibling = table.cells.some((c) => c.r !== r && (c.colSpan || 1) >= table.cols && wordsOf(c.text).length >= 2 && /\d/.test(c.text));
+    const cutShort = rest.length === 0 && (label.colSpan || 1) >= 2 && sibling;
+    if (!marks && !cutShort) continue;
+    table.cells = table.cells.filter((c) => c.r !== r || c === label);
+    label.c = 0;
+    label.colSpan = table.cols;
+  }
+}
+
 // "Panel A: Full sample" is a section banner, one cell across the grid.
 function spanPanelRows(table) {
   for (let r = 0; r < table.rows; r++) {
@@ -585,26 +617,301 @@ function spaceFootnoteMarks(table) {
   }
 }
 
+// A space that belongs to the decimal mark ("3. 133", "56. 7"), a bullet
+// standing in for the missing point, and the unit "Ibs" read with a capital i.
+function tidyMeasuredCells(table) {
+  for (const cell of table.cells) {
+    let text = String(cell.text || "");
+    if (!text) continue;
+    text = text.replace(/(?<!\d)(\d{1,3})\s*\.\s*(\d+)/g, "$1.$2");
+    text = text.replace(/\bIbs\b/g, "lbs");
+    if (/[A-Za-z]/.test(text) && /\d{4}-+\s*$/.test(text)) text = text.replace(/-+\s*$/, "").trim();
+    if (text !== cell.text) cell.text = text;
+  }
+  const start = table.headerRows || 0;
+  for (let c = 0; c < table.cols; c++) {
+    const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && k.r >= start);
+    const dotted = cells.some((k) => /\d\s*[.,]\s*\d/.test(String(k.text || "")) || /^\s*[.,]\d/.test(String(k.text || "")));
+    if (!dotted) continue;
+    for (const cell of cells) {
+      const m = String(cell.text || "").trim().match(/^[•·∙]\s*(\d+(?:[.,]\d+)?)$/);
+      if (m) cell.text = `.${m[1]}`;
+    }
+  }
+}
+
+// The first row of a decimal column kept its point ("0.4804") and the rows
+// under it came back as the digits only ("4743"). Put the point back when
+// those digits are the same width as the fraction.
+function restoreBareDecimals(table) {
+  const start = table.headerRows || 0;
+  const textOf = (k) => String(k.text || "").trim();
+  for (let c = 0; c < table.cols; c++) {
+    const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= start);
+    const dotted = cells.filter((k) => /^(?:0)?\.\d{3,6}$/.test(textOf(k)));
+    const bare = cells.filter((k) => /^\d{3,6}$/.test(textOf(k)));
+    if (!dotted.length || !bare.length) continue;
+    if (bare.some((k) => /^(?:1[89]|20)\d{2}$/.test(textOf(k)))) continue;
+    const fracLen = (t) => t.replace(/^0?\./, "").length;
+    const anchors = dotted.filter((k) => /^0\.\d{3,6}$/.test(textOf(k)));
+    for (const cell of bare) {
+      const n = textOf(cell).length;
+      const sample = anchors.find((k) => fracLen(textOf(k)) === n);
+      if (!sample) continue;
+      const mag = Number(textOf(sample).replace(/^0\./, "").replace(/^0+/, "") || "0");
+      const bareN = Number(textOf(cell));
+      if (!(mag > 0) || bareN > mag * 20 || mag > bareN * 20) continue;
+      cell.text = `.${textOf(cell)}`;
+      cell.numeric = true;
+    }
+  }
+}
+
+// The same short decimal copied down a mixed column, on rows that have nothing
+// else in them, is a leader. A later lone copy of that decimal stays.
+function blankDecimalRun(table) {
+  const start = table.headerRows || 0;
+  const plain = (r, c) => table.cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+  const textOf = (r, c) => String(plain(r, c)?.text || "").trim();
+  for (let c = 1; c < table.cols; c++) {
+    const seen = new Set();
+    for (let r = start; r < table.rows; r++) {
+      const t = textOf(r, c);
+      if (t && /\d/.test(t)) seen.add(t);
+    }
+    if (seen.size < 2) continue;
+    let r = start;
+    while (r < table.rows) {
+      const token = textOf(r, c);
+      if (!/^\.\d{2,4}$/.test(token)) { r++; continue; }
+      let r1 = r + 1;
+      while (r1 < table.rows && textOf(r1, c) === token) r1++;
+      if (r1 - r >= 3) {
+        for (let rr = r; rr < r1; rr++) {
+          let other = false;
+          for (let k = 1; k < table.cols; k++) {
+            if (k === c) continue;
+            if (textOf(rr, k)) other = true;
+          }
+          if (!other) {
+            const cell = plain(rr, c);
+            if (cell) cell.text = "";
+          }
+        }
+      }
+      r = r1;
+    }
+  }
+}
+
+const MONTH_RE = /^(?:jan|feb|mar|apr|may|june|july|aug|sept|sep|oct|nov|dec)\.?$/i;
+const DAY_YEAR_RE = /^\d{1,2},\s*\d{4}\.?$/;
+
+// "May" in one column and "2, 1900" in the next are one date the gap split.
+function joinSplitDates(table) {
+  const start = table.headerRows || 0;
+  for (let c = 0; c < table.cols - 1; c++) {
+    const pairs = [];
+    let rows = 0;
+    for (let r = start; r < table.rows; r++) {
+      const left = table.cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+      const right = table.cells.find((k) => k.r === r && k.c === c + 1 && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+      const lt = String(left?.text || "").trim();
+      const rt = String(right?.text || "").trim();
+      if (!lt && !rt) continue;
+      rows++;
+      if (MONTH_RE.test(lt) && DAY_YEAR_RE.test(rt)) pairs.push([left, right]);
+    }
+    if (rows < 3 || pairs.length < 3 || pairs.length < 0.6 * rows) continue;
+    for (const [left, right] of pairs) {
+      left.text = `${String(left.text).trim()} ${String(right.text).trim()}`.replace(/\s+/g, " ");
+      right.text = "";
+    }
+    if (!table.cells.some((k) => k.c === c + 1 && String(k.text || "").trim())) deleteColumn(table, c + 1);
+  }
+}
+
+// A stub that ends a sentence, then lowercase lines that each hold one number
+// in a different column, is one wrapped cell the lattice split into rows.
+function joinScatteredWrap(table) {
+  let guard = 0;
+  while (guard++ < table.rows) {
+    let found = -1;
+    for (let r = 0; r < table.rows - 2; r++) {
+      const stub = table.cells.find((k) => k.r === r && k.c === 0 && (k.colSpan || 1) === 1);
+      const label = String(stub?.text || "").trim();
+      if (!stub || label.length < 12 || !/:\s*$/.test(label)) continue;
+      const vals = table.cells.filter((k) => k.r === r && k.c > 0 && String(k.text || "").trim());
+      if (vals.length) continue;
+      const cont = [];
+      for (let k = r + 1; k < table.rows; k++) {
+        const next = table.cells.find((cell) => cell.r === k && cell.c === 0 && (cell.colSpan || 1) === 1);
+        const text = String(next?.text || "").trim();
+        if (!text || !/^[a-z]/.test(text)) break;
+        const nums = table.cells.filter((cell) => cell.r === k && cell.c > 0 && String(cell.text || "").trim() && (cell.colSpan || 1) === 1);
+        if (nums.length !== 1 || !/\d/.test(nums[0].text)) break;
+        cont.push({ row: k, stub: next, num: nums[0] });
+      }
+      if (cont.length < 2) continue;
+      const cols = cont.map((item) => item.num.c);
+      if (new Set(cols).size !== cols.length) continue;
+      found = r;
+      stub.text = [label, ...cont.map((item) => String(item.stub.text).trim())].join(" ");
+      for (const item of cont) {
+        const host = table.cells.find((cell) => cell.r === r && cell.c === item.num.c && (cell.colSpan || 1) === 1);
+        if (host) host.text = String(item.num.text).trim();
+        else table.cells.push({ r, c: item.num.c, rowSpan: 1, colSpan: 1, text: String(item.num.text).trim(), header: false });
+      }
+      for (const item of [...cont].reverse()) deleteRow(table, item.row);
+      break;
+    }
+    if (found < 0) break;
+  }
+}
+
+function factorKind(text) {
+  const s = String(text || "").trim();
+  if (!s) return "";
+  if (/^\d{1,3}\s+E[+\-−]\d+$/i.test(s)) return "tail";
+  if (/^E[+\-−]\d+$/i.test(s)) return "exp";
+  if (/^\.?\s*\d[\d.\s]*E[+\-−]\d+$/i.test(s)) return "full";
+  return "";
+}
+
+function deleteColumn(table, c) {
+  if (c < 0 || c >= table.cols) return;
+  const kept = [];
+  for (const cell of table.cells) {
+    const span = cell.colSpan || 1;
+    const c0 = cell.c;
+    const c1 = c0 + span - 1;
+    if (c1 < c) { kept.push(cell); continue; }
+    if (c0 > c) { cell.c = c0 - 1; kept.push(cell); continue; }
+    if (span === 1) continue;
+    cell.colSpan = span - 1;
+    if (cell.colSpan >= 1) kept.push(cell);
+  }
+  if (Array.isArray(table.grid?.xs) && table.grid.xs.length === table.cols + 1) {
+    const at = c + 1 < table.grid.xs.length - 1 ? c + 1 : table.grid.xs.length - 1;
+    table.grid.xs.splice(at, 1);
+  }
+  table.cols -= 1;
+  table.cells = kept;
+}
+
+// "9.806" | "65 E+00" is one factor, and "1.0 E+01" in the column beside an
+// empty cell is that same factor. The extra column goes away once it is empty.
+function foldScientificSplit(table) {
+  const start = table.headerRows || 0;
+  for (let c = table.cols - 1; c >= 2; c--) {
+    const cells = table.cells.filter((k) => k.r >= start && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+    const filled = cells.filter((k) => String(k.text || "").trim());
+    if (filled.length < 3) continue;
+    if (!filled.every((k) => factorKind(k.text))) continue;
+    const tails = filled.filter((k) => factorKind(k.text) === "tail");
+    if (!tails.length) continue;
+    let joined = 0;
+    for (const right of filled) {
+      const kind = factorKind(right.text);
+      const covered = table.cells.find((k) => k.r === right.r && k.c <= c - 1 && c - 1 < k.c + (k.colSpan || 1) && (k.colSpan || 1) > 1);
+      if (covered) continue;
+      let left = table.cells.find((k) => k.r === right.r && k.c === c - 1 && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+      const lt = String(left?.text || "").trim();
+      if (kind === "tail" && /^\d+\.\d+$/.test(lt)) {
+        left.text = `${lt} ${String(right.text).trim()}`;
+        right.text = "";
+        joined++;
+      } else if ((kind === "full" || kind === "exp") && left && !lt) {
+        left.text = String(right.text).trim().replace(/^\.\s+(?=\d)/, "");
+        right.text = "";
+        joined++;
+      } else if ((kind === "full" || kind === "exp") && !left) {
+        table.cells.push({ r: right.r, c: c - 1, rowSpan: 1, colSpan: 1, text: String(right.text).trim().replace(/^\.\s+(?=\d)/, ""), header: false });
+        right.text = "";
+        joined++;
+      }
+    }
+    if (joined < 3) continue;
+    if (table.cells.some((k) => k.c === c && (k.colSpan || 1) === 1 && String(k.text || "").trim())) continue;
+    deleteColumn(table, c);
+  }
+}
+
+// "Factors in boldface are exact" is a note across the top, not a header row.
+function dropBannerNote(table) {
+  if ((table.rows || 0) < 3) return;
+  const row = table.cells.filter((c) => c.r === 0);
+  const filled = row.filter((c) => String(c.text || "").trim());
+  if (filled.length !== 1 || (filled[0].colSpan || 1) < table.cols) return;
+  const text = String(filled[0].text).trim();
+  if (/\d/.test(text) || text.split(/\s+/).length < 4) return;
+  if (!/\b(?:are|is|was|were)\b/.test(text)) return;
+  const next = table.cells.filter((c) => c.r === 1 && String(c.text || "").trim());
+  if (next.length < 2) return;
+  deleteRow(table, 0);
+}
+
 // Grid repairs that do not need the page's geometry: stacked heads, standard
 // errors, section banners, a fused body row, a unit line on the first city,
-// a section label holding the next row, a filled-in leader.
-export function repairTableReading(table) {
+// a section label holding the next row, a filled-in leader, a wrapped stub
+// whose numbers landed on their own rows, a factor split beside its exponent.
+// "56." beside "64" and "68-" is a header dot glued onto the integers. Take the
+// mark off, and drop a header row that has no digits of its own.
+function repairDamagedIndex(table) {
+  if (!damagedIndexColumn(table)) return;
+  for (const cell of table.cells) {
+    if ((cell.colSpan || 1) !== 1) continue;
+    let text = String(cell.text || "").trim();
+    const doubled = text.match(/^(\d{1,3})-\s+\1$/);
+    if (doubled) text = doubled[1];
+    else if (/^\d{1,3}[.\-–−]$/.test(text)) text = text.slice(0, -1);
+    if (text !== cell.text) cell.text = text;
+  }
+  while ((table.headerRows || 0) > 0 && table.rows > 2) {
+    const texts = table.cells.filter((c) => c.r === 0).map((c) => String(c.text || "").trim()).filter(Boolean);
+    if (!texts.length || texts.some((t) => /\d/.test(t))) break;
+    deleteRow(table, 0);
+  }
+}
+
+export function repairTableReading(table, options = {}) {
   if (!table?.cells?.length) return table;
+  repairDamagedIndex(table);
   foldIndexHeads(table);
   foldContinuationHeads(table);
   stackStatRows(table);
   spanPanelRows(table);
+  spanSectionBanners(table);
   splitFusedLabelRow(table);
   unshiftRepeatedUnit(table);
   shiftSectionValues(table);
   blankRepeatedFill(table);
+  blankDecimalRun(table);
   spaceFootnoteMarks(table);
+  // A spaced decimal ("3. 133") or a bullet standing in for the point makes the
+  // rule grid look tidier. That lift is enough to keep the rule when a VLM
+  // reading is actually clearer, so the scan path tidies only after the choice.
+  if (options.tidy !== false) tidyMeasuredCells(table);
+  restoreBareDecimals(table);
+  joinSplitDates(table);
+  joinScatteredWrap(table);
+  foldScientificSplit(table);
+  dropBannerNote(table);
   return table;
+}
+
+export function tidyDocumentTables(doc) {
+  for (const block of Object.values(doc?.blocks || {})) {
+    if (block?.type !== "table") continue;
+    spanSectionBanners(block);
+    tidyMeasuredCells(block);
+  }
+  return doc;
 }
 
 // Text repairs that do not depend on a fresh OCR pass: formula subscripts,
 // thousands marks, a degree sign, group-header spans, a total left in the stub.
-export function polishTableText(table) {
+export function polishTableText(table, options) {
   if (!table?.cells) return table;
   for (const cell of table.cells) {
     if (!cell.text) continue;
@@ -615,7 +922,7 @@ export function polishTableText(table) {
   restoreDegree(table);
   spanGroupHeaders(table);
   moveStubTotal(table);
-  repairTableReading(table);
+  repairTableReading(table, options);
   return table;
 }
 
@@ -625,7 +932,7 @@ export function repairOcrTable(table) {
   const years = repairYearHeader(table);
   const { fixed, unrepaired, numericCols } = repairNumericColumns(table);
   const spans = spanNoteRows(table, { numericCols });
-  polishTableText(table);
+  polishTableText(table, { tidy: false });
   return { fixed: [...years, ...fixed], unrepaired, spans, numericCols };
 }
 

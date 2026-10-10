@@ -47,6 +47,14 @@ export function applicable(truth) {
   };
 }
 
+// A page is worth scoring only when its truth holds something to score: a table with a scored cell, a figure, or complete text.
+export function informative(truth) {
+  if (!truth) return false;
+  if (Array.isArray(truth.tables) && truth.tables.some((t) => t && Array.isArray(t.cells) && t.cells.some((c) => c && !c.unsure))) return true;
+  if (Array.isArray(truth.figures) && truth.figures.length > 0) return true;
+  return !!truth.textComplete && truthLines(truth).length > 0;
+}
+
 // Component values for one scored page; scored === null is a failed read (every applicable component 0).
 export function components(scored, truth) {
   const ap = applicable(truth);
@@ -215,11 +223,13 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
   const namesB = indexDocsDir(bDir);
   const pages = [];
   const skipped = [];
+  const uninformative = [];
   const missing = { a: [], b: [] };
   for (const page of manifest.pages) {
     const tp = join(root, "truth", `${page.id}.json`);
     if (!existsSync(tp)) { skipped.push({ id: page.id, reason: "no truth file" }); continue; }
     const truth = JSON.parse(readFileSync(tp, "utf8"));
+    if (!informative(truth)) { uninformative.push(page.id); continue; }
     const pa = resolveDoc(aDir, namesA, page);
     const pb = resolveDoc(bDir, namesB, page);
     if (!pa) missing.a.push(page.id);
@@ -229,7 +239,7 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
     const sa = pageScore(ca);
     const sb = pageScore(cb);
     if (sa == null) { skipped.push({ id: page.id, reason: "no applicable component" }); continue; }
-    pages.push({ id: page.id, category: categoryOf(page), a: ca, b: cb, sA: sa, sB: sb, d: sa - sb });
+    pages.push({ id: page.id, category: categoryOf(page), doc: page.file ?? page.pdf ?? page.id, a: ca, b: cb, sA: sa, sB: sb, d: sa - sb });
   }
   const d = pages.map((p) => p.d);
   const w = wilcoxon(d);
@@ -258,6 +268,12 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
     for (const c of CATEGORIES) {
       const n = cats[c] ? cats[c].n : 0;
       add(`>= 5 pages in ${c}`, n, n >= 5);
+      const perDoc = {};
+      for (const p of pages) if (p.category === c) perDoc[p.doc] = (perDoc[p.doc] || 0) + 1;
+      const docs = Object.keys(perDoc).length;
+      const most = Math.max(0, ...Object.values(perDoc));
+      add(`>= 3 documents in ${c}`, docs, docs >= 3);
+      add(`<= 3 pages per document in ${c}`, most, most <= 3);
     }
   }
   add("exact one-sided p < 0.01", w.pExact, w.pExact < 0.01);
@@ -277,6 +293,7 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
     categories,
     failedReads: { a: missing.a.length, b: missing.b.length, aIds: missing.a, bIds: missing.b },
     skipped,
+    uninformative,
     gate: { mode: gate, pass: checks.every((c) => c.pass), checks },
     pages,
   };
@@ -289,7 +306,7 @@ const f3 = (x) => (x == null ? "-" : !Number.isFinite(x) ? String(x) : Math.abs(
 export function table(res, aName, bName) {
   const w = res.wilcoxon;
   const L = [];
-  L.push(`pages ${res.n}  failed reads ${aName} ${res.failedReads.a}, ${bName} ${res.failedReads.b}  left out ${res.skipped.length}`);
+  L.push(`pages ${res.n}  failed reads ${aName} ${res.failedReads.a}, ${bName} ${res.failedReads.b}  left out ${res.skipped.length}  uninformative ${res.uninformative.length}`);
   L.push(`mean S ${aName} ${f3(res.meanA)}  ${bName} ${f3(res.meanB)}  mean d ${f3(res.meanD)}  95% CI [${f3(res.ci.lo)}, ${f3(res.ci.hi)}]`);
   L.push(`Wilcoxon (n=${w.n}, zeros ${w.zeros}) W+ ${w.wPlus} W- ${w.wMinus}  exact p ${f3(w.pExact)}  normal p ${f3(w.pNormal)} (z ${f3(w.z)})`);
   L.push(`rank-biserial r ${f3(w.r)}  Cohen d_z ${f3(res.dz)}`);
@@ -329,6 +346,7 @@ export function markdown(res, aName, bName) {
   for (const p of sorted.slice(-10).reverse()) L.push(row(p));
   if (res.failedReads.aIds.length) L.push("", `${aName} failed reads: ${res.failedReads.aIds.join(", ")}`);
   if (res.failedReads.bIds.length) L.push("", `${bName} failed reads: ${res.failedReads.bIds.join(", ")}`);
+  L.push("", `Uninformative pages left out (nothing to score in the truth): ${res.uninformative.length}${res.uninformative.length ? ` (${res.uninformative.join(", ")})` : ""}`);
   if (res.skipped.length) L.push("", `Left out: ${res.skipped.map((s) => `${s.id} (${s.reason})`).join(", ")}`);
   return L.join("\n") + "\n";
 }

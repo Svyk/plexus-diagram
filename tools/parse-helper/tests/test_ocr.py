@@ -134,6 +134,19 @@ def test_a_turn_that_flattens_the_text_rows_is_refused():
     assert abs(ocr.deskew_angle(tilted) - 2.0) < 0.5
 
 
+def test_a_drawing_page_without_rows_keeps_the_line_fit():
+    # Scattered rings, no text rows: a two-degree turn moves the row profile
+    # by a few percent either way, so the profile cannot refuse it.
+    import cv2
+
+    arr = np.full((800, 600), 255, dtype=np.uint8)
+    for k in range(9):
+        cv2.circle(arr, (100 + (k * 157) % 400, 100 + (k * 233) % 600), 40 + (k * 17) % 50, 0, 4)
+    ink = ocr._ink(arr)
+    assert ocr.profile_confirms(ink, 2.0)
+    assert ocr.profile_confirms(ink, -2.0)
+
+
 def test_ink_glyph_dash_star_and_nothing():
     dash = np.full((30, 120), 255, dtype=np.uint8)
     dash[14:17, 50:70] = 0

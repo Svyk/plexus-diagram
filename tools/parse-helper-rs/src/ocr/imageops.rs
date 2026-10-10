@@ -722,12 +722,14 @@ pub fn deskew_angle(img: &GrayImage) -> f64 {
     if profile_confirms(&ink, angle) { angle } else { 0.0 }
 }
 
-// A page is turned only when the turn makes its text lines sharper: the row
-// profile (ink per row) of the turned page must have a clearly higher variance
-// than the page as it is. A line of small capitals, whose tall first letter
-// tilts the contour fit of every word, leaves the profile flatter when turned.
+// A page is not turned when the turn makes its text lines clearly flatter: the
+// row profile (ink per row) of the turned page loses more than a seventh of the
+// variance of the page as it is. A line of small capitals, whose tall first
+// letter tilts the contour fit of every word, loses two thirds. A page that is
+// mostly drawing or photograph has no rows for the profile to judge (either turn
+// moves it by a few percent), so the line fit stands there.
 const PROFILE_WIDTH: usize = 600;
-const PROFILE_GAIN: f64 = 1.1;
+const PROFILE_FLATTER: f64 = 0.85;
 const PROFILE_MIN_ANGLE: f64 = 1.0;
 
 fn shrink_ink(ink: &Gray, width: usize) -> GrayImage {
@@ -772,7 +774,7 @@ fn profile_variance(small: &GrayImage, angle: f64) -> f64 {
     rows.iter().map(|r| (r - mean) * (r - mean)).sum::<f64>() / h as f64
 }
 
-/// True when `deskew(page, angle)` would sharpen the page's row profile.
+/// False when `deskew(page, angle)` would clearly flatten the page's row profile.
 fn profile_confirms(ink: &Gray, angle: f64) -> bool {
     if ink.w == 0 || ink.h == 0 {
         return true;
@@ -780,7 +782,7 @@ fn profile_confirms(ink: &Gray, angle: f64) -> bool {
     let small = shrink_ink(ink, PROFILE_WIDTH);
     let flat = profile_variance(&small, 0.0);
     let turned = profile_variance(&small, angle);
-    turned >= flat * PROFILE_GAIN
+    turned >= flat * PROFILE_FLATTER
 }
 
 pub fn deskew(img: &GrayImage, angle: f64) -> GrayImage {
@@ -1178,6 +1180,22 @@ mod tests {
         let ink = ink_mask(&Gray::from_image(&tilted));
         assert!(profile_confirms(&ink, 2.0));
         assert!(!profile_confirms(&ink, -2.0));
+    }
+
+    #[test]
+    fn a_drawing_page_without_rows_keeps_the_line_fit() {
+        // Scattered rings, no text rows: a two-degree turn moves the row profile
+        // by a few percent either way, so the profile cannot refuse it.
+        let mut page = GrayImage::from_pixel(600, 800, Luma([255]));
+        for k in 0..9i32 {
+            let (cx, cy) = (100 + (k * 157) % 400, 100 + (k * 233) % 600);
+            for t in 0..4 {
+                imageproc::drawing::draw_hollow_circle_mut(&mut page, (cx, cy), 40 + (k * 17) % 50 - 2 + t, Luma([0]));
+            }
+        }
+        let ink = ink_mask(&Gray::from_image(&page));
+        assert!(profile_confirms(&ink, 2.0));
+        assert!(profile_confirms(&ink, -2.0));
     }
 
     #[test]

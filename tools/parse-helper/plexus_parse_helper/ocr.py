@@ -124,19 +124,21 @@ def deskew_angle(gray) -> float:
     median = float(values[np.searchsorted(np.cumsum(weights), half)])
     if abs(median) < 0.05:
         return 0.0
-    # A turn of a degree or more must sharpen the rows. A few tenths of a degree
+    # A turn of a degree or more must not flatten the rows. A few tenths of a degree
     # (a table-rule correction) is too small to show in the profile and is kept.
     if abs(median) >= PROFILE_MIN_ANGLE and not profile_confirms(ink, -median):
         return 0.0
     return round(-median, 3)
 
 
-# A page is turned only when the turn makes its text lines sharper: the row
-# profile (ink per row) of the turned page must have a clearly higher variance
-# than the page as it is. A line of small capitals, whose tall first letter
-# tilts the contour fit of every word, leaves the profile flatter when turned.
+# A page is not turned when the turn makes its text lines clearly flatter: the
+# row profile (ink per row) of the turned page loses more than a seventh of the
+# variance of the page as it is. A line of small capitals, whose tall first
+# letter tilts the contour fit of every word, loses two thirds. A page that is
+# mostly drawing or photograph has no rows for the profile to judge (either turn
+# moves it by a few percent), so the line fit stands there.
 PROFILE_WIDTH = 600
-PROFILE_GAIN = 1.1
+PROFILE_FLATTER = 0.85
 PROFILE_MIN_ANGLE = 1.0
 
 
@@ -156,7 +158,7 @@ def _profile_variance(ink_small, angle: float) -> float:
 
 
 def profile_confirms(ink, angle: float) -> bool:
-    """True when `deskew(page, angle)` would sharpen the page's row profile."""
+    """False when `deskew(page, angle)` would clearly flatten the page's row profile."""
     import cv2
 
     h, w = ink.shape
@@ -166,7 +168,7 @@ def profile_confirms(ink, angle: float) -> bool:
     small = cv2.resize(ink, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA) if scale < 1.0 else ink
     flat = _profile_variance(small, 0.0)
     turned = _profile_variance(small, angle)
-    return turned >= flat * PROFILE_GAIN
+    return turned >= flat * PROFILE_FLATTER
 
 
 def deskew(img, angle: float):

@@ -167,6 +167,11 @@ function vlmHelper(pdfPath) {
       if (layoutOnly === true) options.layoutOnly = true;
       if (numericPages && numericPages.length) options.numericPages = numericPages;
       if (mode) options.boxMode = mode;
+      // PXD_VLM_REPLAY=<dir> answers a request from a trace written by PXD_VLM_TRACE with the
+      // same options (JS-only changes re-run in seconds); anything else goes to the helper.
+      const replayDir = process.env.PXD_VLM_REPLAY;
+      const traceName = `${basename(pdfPath)}.p${(pages || []).join("_")}.${text === true ? "text" : "tables"}.${createHash("sha256").update(JSON.stringify(options)).digest("hex").slice(0, 10)}.json`;
+      if (replayDir && existsSync(join(replayDir, traceName))) return JSON.parse(readFileSync(join(replayDir, traceName), "utf8")).response;
       const res = await fetch(`${url}/v1/vlm`, {
         method: "POST",
         headers: {
@@ -182,8 +187,7 @@ function vlmHelper(pdfPath) {
       const traceDir = process.env.PXD_VLM_TRACE;
       if (traceDir) {
         mkdirSync(traceDir, { recursive: true });
-        const name = `${basename(pdfPath)}.p${(pages || []).join("_")}.${text === true ? "text" : "tables"}.json`;
-        writeFileSync(join(traceDir, name), JSON.stringify({ options, response: body }, null, 1));
+        writeFileSync(join(traceDir, traceName), JSON.stringify({ options, response: body }, null, 1));
       }
       return body;
     },

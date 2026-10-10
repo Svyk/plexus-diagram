@@ -479,3 +479,26 @@ test("a total column takes the rule row that adds and keeps the row that already
   assert.equal(at(5, 5), "100.00");
   assert.equal(at(2, 2), "79.2");
 });
+
+test("a reader's head cell spanning down keeps its sub-heads out of the body, and 1,740 is a clean number", async () => {
+  const { scoreTable } = await import("../src/model/parse/vlm-arbitrate.js");
+  const cell = (r, c, text, rowSpan = 1, colSpan = 1) => ({ r, c, rowSpan, colSpan, text, header: false });
+  const reading = {
+    rows: 5, cols: 5, headerRows: 0, bbox: [0, 0, 200, 62],
+    cells: [
+      cell(0, 0, "Variety", 3), cell(0, 1, "Yields per acre (pounds)", 1, 4),
+      cell(1, 1, "Treated half", 1, 2), cell(1, 3, "Control half", 1, 2),
+      cell(2, 1, "Grain"), cell(2, 2, "Straw"), cell(2, 3, "Grain"), cell(2, 4, "Straw"),
+      cell(3, 0, "Fultz"), cell(3, 1, "1,320"), cell(3, 2, "1,920"), cell(3, 3, "1,450"), cell(3, 4, "2,070"),
+      cell(4, 0, "Harvest"), cell(4, 1, "820"), cell(4, 2, "1,740"), cell(4, 3, "780"), cell(4, 4, "1,360"),
+    ],
+  };
+  const page = evidence([["Variety", "Grain", "Straw"], ["Fultz", "1,320", "1,920"], ["Harvest", "820", "1,740"]]);
+  const read = scoreTable(reading, page, { reading: true });
+  assert.equal(read.tidy, 1);
+  assert.equal(read.filled, 1);
+  assert.equal(read.debris, 0);
+  // A rule grid marks its own header: an unmarked stray first row stays body.
+  const rule = grid([["", "", "x"], ["Fultz", "1,320", "1,920"], ["Harvest", "820", "1,740"]], { headerRows: 0 });
+  assert.ok(scoreTable(rule, page).filled < 1);
+});

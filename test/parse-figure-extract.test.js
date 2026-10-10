@@ -1035,6 +1035,16 @@ test("a page image of a letter is not a figure, and a caption band under a plate
     ocrItem("Oelgemälde", 180, 700, 12, 80),
   ]);
   assert.equal(ofType(band, "figure").length, 1);
+  const title = "Dorfstrasse Delgemaelde bon Baul Menerbeim".split(" ");
+  const credit = "Nach einer Photographie im Verlage der photographischen Gesellschaft in Berlin".split(" ");
+  const plate = bareScan([
+    ...title.map((t, i) => ocrItem(t, 80 + i * 70, 700, 12, 60)),
+    ...credit.map((t, i) => ocrItem(t, 40 + i * 52, 724, 11, 48)),
+  ]);
+  const text = plate.order.map((id) => plate.blocks[id]?.text || "").join(" ");
+  assert.match(text, /Dorfstrasse/);
+  assert.match(text, /Menerbeim/);
+  assert.equal(ofType(plate, "figure").length, 1);
 });
 
 test("a frame of text is not a picture, and a compact mark with no words in it is", () => {

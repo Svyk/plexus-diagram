@@ -39,6 +39,10 @@ test("chooseReading keeps Vision numbers and takes a lexicon spelling", () => {
   assert.equal(chooseReading({ str: "success." }, { str: "success-" }, new Set(["success"])), "success-");
   assert.equal(chooseReading({ str: "success-" }, { str: "success." }, new Set(["success"])), "success-");
   assert.equal(chooseReading({ str: "form." }, { str: "form" }, lexicon), "form.");
+  const glued = new Set(["his", "is", "an"]);
+  assert.equal(chooseReading({ str: "Hisisan" }, { str: "His" }, glued), "Hisisan");
+  assert.equal(chooseReading({ str: "slags" }, { str: "slag" }, new Set(["slag"])), "slags");
+  assert.equal(chooseReading({ str: "glas" }, { str: "glass" }, new Set(["glass"])), "glass");
 });
 
 test("preferSpellings fixes a repeated one-edit miss and leaves lexicon words", () => {
@@ -47,6 +51,13 @@ test("preferSpellings fixes a repeated one-edit miss and leaves lexicon words", 
   assert.deepEqual(once.map((item) => item.str), ["pressure", "pressure", "pressure", "form", "from", "from"]);
   const twice = preferSpellings(once, lexicon);
   assert.deepEqual(twice.map((item) => item.str), once.map((item) => item.str));
+});
+
+test("preferSpellings does not strip a printed plural the list lacks", () => {
+  const lex = new Set(["slag"]);
+  const items = [word("slags", 40), word("slag", 120), word("slag", 200)];
+  const out = preferSpellings(items, lex);
+  assert.equal(out[0].str, "slags");
 });
 
 test("an unknown spelling that the page repeats replaces the one-edit miss", () => {

@@ -609,6 +609,39 @@ test("readScan high accuracy calls vlm, keeps the rule table when the reading dr
   assert.equal(linked.applied.length, 0);
 });
 
+test("readScan high accuracy reads the caption under a page plate", async () => {
+  const title = "Dorfstrasse Delgemaelde bon Baul".split(" ");
+  const credit = "Nach einer Photographie im Verlage der photographischen Gesellschaft in Berlin".split(" ");
+  const items = [
+    ...title.map((t, i) => word(t, 40 + i * 48, 168, { width: t.length * 4 })),
+    ...credit.map((t, i) => word(t, 20 + i * 36, 184, { width: t.length * 4 })),
+  ];
+  const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 400, h: 200, rotation: 0, fonts: {} }, 1);
+  scanRec.kind = "scan";
+  const base = assembleDocument([scanRec], { numPages: 1 });
+  let called = null;
+  const helper = {
+    vlmHigh: true,
+    async ocr({ pages }) {
+      if (pages) {
+        return {
+          schema: "pxd-ocr/1", pageCount: 1, elapsedMs: 1,
+          pages: [{ n: 1, w: 400, h: 200, rotation: 0, transform: [1, 0, 0, 1, 0, 0], scan: true, dpi: 300, deskew: 0, fonts: { ocr: { name: "ocr" } }, items, rules: [], ops: { fnArray: [], argsArray: [] } }],
+        };
+      }
+      return { cells: [] };
+    },
+    async vlm(req) { called = req; return { tables: [], figures: [], layout: [], lines: [] }; },
+  };
+  await readScan({
+    helper, bytes: new Uint8Array([1]), sha256: "s", base, records: [scanRec],
+    numPages: 1, from: 1, to: 1, lines: false,
+  });
+  assert.ok(called, "a plate with only a bottom caption is read");
+  assert.equal(called.text, true);
+  assert.deepEqual(called.numericPages, []);
+});
+
 test("readScan high accuracy skips a prose page", async () => {
   const items = [];
   const sentence = "The report describes the method and the sample in plain words".split(" ");

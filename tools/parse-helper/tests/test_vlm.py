@@ -29,6 +29,22 @@ RECORDED = {
 }
 
 
+def test_caption_strip_is_the_gap_under_a_full_width_plate():
+    from plexus_parse_helper.vlm_read import caption_strips
+
+    plate = {"page": 1, "label": "image", "score": 0.94, "bbox": [1, 4, 1025, 684]}
+    strips = caption_strips([plate], 1025, 735)
+    assert len(strips) == 1
+    assert strips[0]["captionStrip"] is True
+    assert strips[0]["bbox"][1] == 684
+    assert strips[0]["bbox"][3] == 735
+    covered = caption_strips([
+        plate,
+        {"page": 1, "label": "text", "score": 0.9, "bbox": [0, 684, 1025, 735]},
+    ], 1025, 735)
+    assert covered == []
+
+
 def test_spanned_header_empty_column_and_decimal_column():
     raw = (
         "<fcel>Length of channel<fcel>At 2-inch pressure<lcel><fcel><nl>"

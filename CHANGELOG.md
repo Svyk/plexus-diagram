@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.15.0 — 2026-10-10
+
+More figures found in photographed pages and menus, and more old tables read exactly.
+
+- **Figures and captions.** Small labelled diagrams (a sketch with "G(s)" or "(k)" labels), pictures on a letter, hatched menu illustrations and plates split across two columns are found, and a caption is joined only from text inside the picture, so the next column's text no longer leaks in.
+- **Tables.** A section banner split across the width stays one table row, a scientific factor such as "9.806 65 E+00" stays one value, a footnote printed under the bottom rule stays a paragraph, and number formatting is tidied after High accuracy picks its reading. A 1932 NACA table now scores 0.98 on cell content (was 0.79), and NIST unit tables 0.96–1.00.
+- Cached parses from earlier versions are refreshed automatically.
+
 ## 3.14.0 — 2026-10-10
 
 Old printed text and old tables read closer to the page.

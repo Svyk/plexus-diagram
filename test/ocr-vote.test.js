@@ -1,6 +1,7 @@
 // Vision/PP-OCR word vote and the page-consensus spelling it shares with the helpers.
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as ocrVote from "../src/model/parse/ocr-vote.js";
 
 import { joinLines } from "../src/model/parse/blocks.js";
 import { assembleDocument, parsePageGeometry } from "../src/model/parse/index.js";
@@ -228,6 +229,31 @@ test("confident unknown words with a little doubt skip the printed-text vote", (
   assert.equal(page.items[2].str, "qqqq2");
 });
 
+test("a short page of doubtful words is weak; a short confident caption is not", () => {
+  const { weakOcrPage } = ocrVote;
+  const note = many("pp", 8, 0.6);
+  assert.equal(weakOcrPage(note, lexicon), true);
+  const caption = many("the", 3, 1);
+  assert.equal(weakOcrPage(caption, lexicon), false);
+  const empty = [];
+  assert.equal(weakOcrPage(empty, lexicon), false);
+});
+
+test("unknown long words with a little doubt are weak; a confident page in another language is not", () => {
+  const { weakOcrPage } = ocrVote;
+  // Twelve word-shaped reads the lexicon does not know, each a little below full confidence.
+  const scrawl = many("qwxz", 12, 0.95);
+  assert.equal(weakOcrPage(scrawl, lexicon), true);
+  // The same words read at full confidence: Latin, German, a roster. Vision keeps it.
+  const latin = many("qwxz", 12, 1);
+  assert.equal(weakOcrPage(latin, lexicon), false);
+  // Half the long words known: a printed page with a few misreads stays.
+  const mixed = [...many("pressure", 12, 0.95), ...many("qwxz", 12, 0.95)];
+  assert.equal(weakOcrPage(mixed, lexicon), false);
+  // Without a lexicon the clause cannot judge.
+  assert.equal(weakOcrPage(scrawl, null), false);
+});
+
 test("a confident page is still voted", () => {
   const items = [word("prossure", 80), ...many("the", 14, 1)];
   const other = items.map((it, i) => (i === 0 ? { ...it, str: "pressure" } : it));
@@ -262,6 +288,28 @@ test("readScan asks for VLM text on a weak page and not on a confident page", as
   calls.length = 0;
   helper.ocr = async () => ({ pages: [{ n: 1, w: 612, h: 792, rules: [], scan: true, items: many("the", 16, 1) }] });
   await readScan({ helper, base, records: [scanRec], numPages: 1, from: 1, to: 1, lines: false, bytes: new Uint8Array([1]) });
+  assert.equal(calls.some((c) => c.text === true), false);
+});
+
+test("readScan with the all-pages reader asks for VLM text on a confident page", async () => {
+  const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 612, h: 792, rotation: 0, fonts: {} }, 1);
+  scanRec.kind = "scan";
+  const base = assembleDocument([scanRec], { numPages: 1, from: 1, to: 1 });
+  const calls = [];
+  const helper = {
+    vlmHigh: true,
+    async ocr() {
+      return { pages: [{ n: 1, w: 612, h: 792, rules: [], scan: true, items: many("the", 16, 1) }] };
+    },
+    async vlm(req) {
+      calls.push({ pages: [...req.pages], text: req.text });
+      return { tables: [], lines: [{ page: 1, bbox: [0, 0, 612, 792], text: "the the the the the the the the the the the the the the the the" }], layout: [] };
+    },
+  };
+  await readScan({ helper, base, records: [scanRec], numPages: 1, from: 1, to: 1, lines: false, bytes: new Uint8Array([1]), options: { textPages: "all" } });
+  assert.ok(calls.some((c) => c.text === true && c.pages.includes(1)));
+  calls.length = 0;
+  await readScan({ helper, base, records: [scanRec], numPages: 1, from: 1, to: 1, lines: false, bytes: new Uint8Array([1]), options: { textPages: "weak" } });
   assert.equal(calls.some((c) => c.text === true), false);
 });
 

@@ -11,6 +11,9 @@ test("parse settings have defaults, rows, a password token, and tooltip strings"
   assert.equal(defaults["parse-engine-default"], "auto");
   assert.equal(defaults["parse-formula"], false);
   assert.equal(defaults["parse-ocr"], "auto");
+  assert.equal(defaults["parse-page-reader"], "doubtful");
+  assert.equal(normalizeSetting("parse-page-reader", "all"), "all");
+  assert.equal(normalizeSetting("parse-page-reader", "every"), "doubtful");
   assert.equal(defaults["parse-link-safe"], true);
   assert.equal(defaults["parse-numbered"], false);
   assert.equal(defaults["parse-footnotes"], "inline");
@@ -32,6 +35,7 @@ test("parse settings have defaults, rows, a password token, and tooltip strings"
   assert.deepEqual(byId["parse-engine-default"].action.items, ["auto", "builtin", "docling"]);
   assert.equal(byId["parse-formula"].action.type, "switch");
   assert.deepEqual(byId["parse-ocr"].action.items, ["auto", "on", "off"]);
+  assert.deepEqual(byId["parse-page-reader"].action.items, ["doubtful", "all"]);
   assert.equal(byId["parse-link-safe"].action.type, "switch");
   assert.equal(byId["parse-numbered"].action.type, "switch");
   assert.deepEqual(byId["parse-footnotes"].action.items, ["inline", "end"]);

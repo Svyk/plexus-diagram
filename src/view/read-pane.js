@@ -2283,6 +2283,7 @@ export function createReadPane({
       doc,
       store: ensureStore(),
       helper: ensureHelper(),
+      pageReader: () => { try { return settings?.get?.("parse-page-reader") === "all" ? "all" : "doubtful"; } catch { return "doubtful"; } },
       ocrAlt: () => {
         if (!deviceReady() || typeof deviceOcr?.read !== "function") return null;
         return {

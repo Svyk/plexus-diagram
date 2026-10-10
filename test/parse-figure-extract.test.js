@@ -1012,6 +1012,29 @@ test("one ink region with no Fig. word is the picture, and the short line under 
   assert.equal(cap.for, figs[0].id);
 });
 
+test("the shadow on a photographed title page is not a picture: the ink holds the page's lines of type", () => {
+  // Centred title lines over a shaded lower half: one ink region from mid-page to the foot.
+  const rows = ["STATUTES AND RULES", "OF THE", "UNITED STATES PATENT OFFICE", "RELATING TO THE", "REGISTRATION OF TRADE-MARKS AND LABELS", "JULY 1, 1881."];
+  const words = [];
+  rows.forEach((row, r) => {
+    const y0 = 300 + r * 60;
+    let x = 120;
+    for (const t of row.split(" ")) { words.push(word(t, x, y0, x + 12 * t.length, y0 + 14, 12)); x += 12 * t.length + 10; }
+  });
+  const got = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [{ x0: 0, y0: 280, x1: W, y1: H }] },
+    words, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(got.figures.filter((f) => f.fromPicture).length, 0);
+  // The same ink under a drawing with a few short labels is still a plate.
+  const labels = ["Fig. 1", "A", "B", "Fig. 2", "C"].map((t, i) => word(t, 100 + i * 90, 500, 130 + i * 90, 514, 12));
+  const plate = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [{ x0: 40, y0: 280, x1: W - 40, y1: H - 40 }] },
+    words: labels, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(plate.figures.filter((f) => f.fromPicture).length, 1);
+});
+
 test("sparse ink under an all-caps heading is still not a picture", () => {
   const got = findFigures({
     graphics: { images: [], shapes: [], boxes: [], rules: [], ink: plateInk(200, 520) },

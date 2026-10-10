@@ -427,6 +427,7 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | PDF parse | Default parse engine | Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper. |
 | PDF parse | Formula enrichment | Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse. |
 | PDF parse | Parse OCR | Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR. |
+| PDF parse | High accuracy page reader | Doubtful (default) sends only the scanned pages the recogniser is unsure of (handwriting, photographs, a few doubtful words) to the page model. All sends every scanned page: better on photographed and handwritten pages, about ten times slower per scanned page. |
 | PDF parse | Auto-read scanned pages | Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text. |
 | PDF parse | Safe links when inserting | Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default. |
 | PDF parse | Numbered lists when inserting | On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet. |

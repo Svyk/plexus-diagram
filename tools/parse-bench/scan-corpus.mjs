@@ -8,6 +8,7 @@
 // PXD_KEEP_VISION=1 keeps each page transcription and the Vision text it replaced in doc.ocr.pageReads (text-placement.mjs).
 // and POSTs the page to PXD_VLM_URL /v1/vlm (default http://127.0.0.1:48766).
 // PXD_VLM_TEXT=1 also replaces Vision line text with the VLM OCR reading.
+// PXD_TEXT_PAGES=all sends every OCR page to the page reader (the "all" page reader setting).
 //
 // builtin    — parseFile/assemble on the PDF as shipped (embedded text layer, or a scan block).
 // web-ocr    — that parse plus readScan --source ppocr-web (what a user without the helper gets).
@@ -238,7 +239,7 @@ async function runEngine(pdfPath, page, engine, cacheDir, helperFlag) {
   const lines = process.env.PXD_OCR_LINES !== "0";
   const result = await readScan({
     helper, bytes, base, records, pages: wanted, numPages, info, from, to, lexicon: lineLexicon, lines,
-    options: { vlmText: process.env.PXD_VLM_TEXT === "1", keepVision: process.env.PXD_KEEP_VISION === "1" },
+    options: { vlmText: process.env.PXD_VLM_TEXT === "1", keepVision: process.env.PXD_KEEP_VISION === "1", textPages: process.env.PXD_TEXT_PAGES === "all" ? "all" : "weak" },
     onPhase: (p) => process.stderr.write(`phase ${JSON.stringify(p)}\n`),
   });
   return { ...result, ms: performance.now() - t0, builtinMs };
@@ -307,10 +308,18 @@ function evidence(root, id, engine, pdf, page, truth, scored, doc) {
   const badTable = scored.tables && (scored.tables.f1 < 0.999 || scored.tables.extras);
   if (!badFig && !badTable) return;
   const png = join(dir, "page.png");
+  // Two bench runs on one corpus share this folder: render under a name only
+  // this process uses, then rename, so a half-written file is never read.
   if (!existsSync(png)) {
-    execFileSync("pdftoppm", ["-f", String(page), "-l", String(page), "-r", "80", "-png", pdf, join(dir, "page")]);
-    const made = readdirSync(dir).find((n) => n.startsWith("page-") && n.endsWith(".png"));
-    if (made) execFileSync("mv", [join(dir, made), png]);
+    const stem = join(dir, `page-${process.pid}`);
+    try {
+      execFileSync("pdftoppm", ["-f", String(page), "-l", String(page), "-r", "80", "-png", pdf, stem]);
+      const made = readdirSync(dir).find((n) => n.startsWith(`page-${process.pid}-`) && n.endsWith(".png"));
+      if (made) execFileSync("mv", [join(dir, made), png]);
+    } catch (err) {
+      process.stderr.write(`overlay render failed for ${id}: ${err?.message || err}\n`);
+      return;
+    }
   }
   if (!existsSync(png)) return;
   const size = (doc.pages || [])[0];
@@ -327,7 +336,12 @@ function evidence(root, id, engine, pdf, page, truth, scored, doc) {
     truth: [...(truth.figures || []).map((f) => f.bbox), ...(truth.tables || []).map((t) => t.bbox).filter(Boolean)],
     pred: pred.map(norm),
   };
-  execFileSync("python3", ["-c", DRAW], { input: JSON.stringify(spec) });
+  // The overlay is a diagnostic; a broken render must not end the corpus run.
+  try {
+    execFileSync("python3", ["-c", DRAW], { input: JSON.stringify(spec), stdio: ["pipe", "ignore", "pipe"] });
+  } catch (err) {
+    process.stderr.write(`overlay draw failed for ${id}: ${String(err?.stderr || err?.message || err).split("\n").pop()}\n`);
+  }
 }
 
 function add(bucket, key, counts) {

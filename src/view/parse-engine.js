@@ -207,7 +207,10 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
       ? vlmPages.filter((n) => layerPages.includes(n) || regionPages.has(n) || numericPages.includes(n) || decimalPages.includes(n))
       : wanted;
     const explicitText = options.vlmText === true;
-    const weak = new Set(weakTextPages(got?.pages).filter((n) => wanted.includes(n)));
+    // Page reader setting "all": every page that had to be OCR'd (no usable text
+    // layer) is read whole by the page model, not only the doubtful ones.
+    const everyPage = options.textPages === "all";
+    const weak = new Set((everyPage ? wanted : weakTextPages(got?.pages)).filter((n) => wanted.includes(n)));
     const plates = captionPlatePages(doc, wanted);
     const tableSend = send.filter((n) => explicitText || !weak.has(n));
     const textSend = [...new Set([...weak, ...plates])].filter((n) => !explicitText || !tableSend.includes(n));

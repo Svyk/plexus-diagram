@@ -270,6 +270,22 @@ test("tiled images with no text are a scan, and a labelled page image is a drawi
   }), false);
 });
 
+test("opening hours on a short photographed page are not a drawing sheet", () => {
+  const line = (text, y) => ({ text, x0: 80, x1: 80 + text.length * 5, y0: y, y1: y + 12, base: y + 10, size: 11, words: [] });
+  const lines = [
+    line("Willkommen", 40),
+    line("Dienstag:", 200),
+    line("12.00 - 17.00 Uhr", 216),
+    line("Donnerstag: 12.00-17.00 Uhr", 232),
+    line("Sonntag:", 248),
+    line("12.00 - 17.00 Uhr", 264),
+  ];
+  assert.equal(drawingSheetPage({
+    images: [{ x0: 0, y0: 0, x1: W, y1: H }],
+    lines, tables: [], pageW: W, pageH: H, textChars: 159,
+  }), false);
+});
+
 test("a contents run is not a caption, and a figure line next to art is", () => {
   const toc = [1, 2, 3, 4].map((n, i) => ({
     type: "caption",
@@ -976,4 +992,31 @@ test("axis ticks in front of FIG stay out of the caption, and a lowercase tail o
   ], plateInk(160, 560));
   const sideCaps = captionText(side);
   assert.ok(sideCaps.some((t) => /Fig\. of propeller section/.test(t)), sideCaps.join(" | "));
+});
+
+test("a rule cluster that is not a figure gives its labels back to the text", () => {
+  const segs = [];
+  for (let i = 0; i < 40; i++) segs.push({ axis: "h", a: 40, b: 400, pos: 80 + i * 4 });
+  const words = [];
+  for (let i = 0; i < 30; i++) {
+    const parts = [`Contrefilet${i}`, "Mousseline", "Jardiniere"];
+    let x = 70;
+    for (const part of parts) {
+      const w = part.length * 5;
+      const y = 100 + i * 12;
+      words.push({ text: part, x0: x, x1: x + w, y0: y - 8, y1: y + 2, base: y, size: 10 });
+      x += w + 6;
+    }
+  }
+  const found = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], ink: [] },
+    ruleSegments: segs,
+    words,
+    bodySize: 10,
+    pageW: W,
+    pageH: H,
+    plates: true,
+  });
+  assert.equal(found.figures.length, 0, "engraving rules on a text page are not a figure");
+  assert.equal(found.used.size, 0, "the menu words stay available as text");
 });

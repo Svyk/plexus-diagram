@@ -936,7 +936,8 @@ export function tableFromBand(band, words) {
   const headerRowsHint = edges.length > 2 ? bandsOf.slice(0, headerBands).reduce((n, k) => n + k, 0) : 0;
   mergeWrappedLabelRows(rowsIn, headerRowsHint);
   const table = buildTable(rowsIn, { bands: band, headerRowsHint });
-  if (!table) return null;
+  // Ruling around a letter or a two-column article is not a table. The words stay text.
+  if (!table || lacksTabularEvidence(table)) return null;
   table.usedWords = inside;
   return table;
 }
@@ -1234,7 +1235,7 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
       if (code) { out.push(code); i = j; continue; }
       const rowsIn = run.map((r) => ({ y0: r.row.y0, y1: r.row.y1, tokens: r.tokens }));
       const table = buildTable(rowsIn, { headerRowsHint, rules });
-      if (table && !looksLikeProse(run) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table)) {
+      if (table && !looksLikeProse(run) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table) && !lacksTabularEvidence(table)) {
         table.usedWords = run.flatMap((r) => r.row.words);
         table.lines = [...run.flatMap((r) => r.row.lines), ...ruleLines];
         out.push(table);
@@ -1467,6 +1468,46 @@ export function phraseTable(table) {
   let long = 0;
   for (const ts of byRow.values()) if (words(ts.join(" ")).length >= 8) long++;
   return byRow.size >= 3 && long / byRow.size > 0.5;
+}
+
+const YEAR_RE = /\b(?:1[89]|20)\d{2}\b/;
+const CLOCK_RE = /\b\d{1,2}[.:]\d{2}\b/;
+const MONTH_RE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i;
+// "1.0 E+01" and "9.806 65 E+00": a conversion factor, not an identifier.
+const SCI_RE = /\d(?:[\d.,\s]*\d)?\s*[eE][+\-]?\d+/;
+
+// A number, a scientific factor, a clock time, or a date. An identifier that
+// merely contains a digit ("D-324", "IN-63") is not a value.
+function valueCell(text) {
+  const s = String(text || "").trim();
+  if (!s) return false;
+  if (isNumericText(s)) return true;
+  if (SCI_RE.test(s)) return true;
+  if (YEAR_RE.test(s)) return true;
+  if (CLOCK_RE.test(s)) return true;
+  return MONTH_RE.test(s) && /\d/.test(s);
+}
+
+// Aligned prose, a letter, or diagram labels: a stream grid with no body under a
+// header and no number, date, or time column. A header with body rows, or one
+// such value column, is a table.
+export function lacksTabularEvidence(table) {
+  if (!table || table.method !== "stream") return false;
+  const cols = table.cols || 0;
+  const rows = table.rows || 0;
+  if (cols < 2 || rows < 2) return false;
+  // A header is evidence only when body rows sit under it. Ruling that marks
+  // every row as a header (a letter, a stamp) still needs a value column.
+  const header = table.headerRows || 0;
+  if (header > 0 && header < rows) return false;
+  const byCol = Array.from({ length: cols }, () => []);
+  for (const cell of table.cells || []) {
+    const text = String(cell.text || "").trim();
+    if (!text || cell.c == null || cell.c < 0 || cell.c >= cols) continue;
+    byCol[cell.c].push(text);
+  }
+  const valueCol = byCol.some((texts) => texts.length >= 2 && texts.filter(valueCell).length / texts.length >= 0.5);
+  return !valueCol;
 }
 
 // Justified prose splits into tokens at random x; tables keep short cells with wide gaps.

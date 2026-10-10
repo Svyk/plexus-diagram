@@ -105,24 +105,28 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
     }
   }
   const kept = [];
+  const dropped = [];
   for (const fig of figures) {
     const box = clipBox(fig, pageW, pageH);
-    if (!box) continue;
+    if (!box) { dropped.push(fig); continue; }
     fig.x0 = box.x0; fig.y0 = box.y0; fig.x1 = box.x1; fig.y1 = box.y1;
     const area = (fig.x1 - fig.x0) * (fig.y1 - fig.y0);
     // A cluster that covers the page on a text page is not a figure. A single
     // page image (a drawing sheet) is decided by the caller and kept.
-    if (!fig.pageImage && !fig.fromPlate && area >= 0.7 * pageW * pageH && textChars >= 180) continue;
+    let drop = !fig.pageImage && !fig.fromPlate && area >= 0.7 * pageW * pageH && textChars >= 180;
     // A rule cluster on a text page, with no figure caption, is a table the lattice
     // missed (USDA p10, 2500 characters). A patent sheet is short (p1 is under 300)
     // and keeps the drawing. A chart whose caption was accepted is fromPlate.
     // A contents entry ("Figure 1. …… 7") is not a drawing, even when the page is short.
-    if (plates && !fig.fromPlate && !fig.pageImage && (textChars >= 400 || contentsLead(lines))) continue;
-    if (plates && !fig.fromPlate && !fig.pageImage && lines.some((line) => proseLine(line) && line.y1 > fig.y0 + 1 && line.y0 < fig.y1 - 1 && Math.min(line.x1, fig.x1) - Math.max(line.x0, fig.x0) > 0.5 * (line.x1 - line.x0))) continue;
+    if (plates && !fig.fromPlate && !fig.pageImage && (textChars >= 400 || contentsLead(lines))) drop = true;
+    if (plates && !fig.fromPlate && !fig.pageImage && lines.some((line) => proseLine(line) && line.y1 > fig.y0 + 1 && line.y0 < fig.y1 - 1 && Math.min(line.x1, fig.x1) - Math.max(line.x0, fig.x0) > 0.5 * (line.x1 - line.x0))) drop = true;
+    if (drop) { dropped.push(fig); continue; }
     fig.bbox = [round(fig.x0), round(fig.y0), round(fig.x1), round(fig.y1)];
     delete fig.pageImage;
     kept.push(fig);
   }
+  // Labels grown onto a cluster that is not a figure are the page's text.
+  releaseFigureWords(dropped, kept, lines, used);
   return {
     figures: rejectFalseFigures(kept, {
       lines, pageW, pageH,
@@ -130,6 +134,24 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
     }),
     used,
   };
+}
+
+// Words absorbed while a candidate was growing go back to the text when that
+// candidate is not kept, unless a figure we did keep still covers them.
+function releaseFigureWords(dropped, kept, lines, used) {
+  if (!dropped.length || !used.size) return;
+  const inside = (w, fig) => {
+    const cx = (w.x0 + w.x1) / 2;
+    const cy = ((w.y0 ?? w.base) + (w.y1 ?? w.base)) / 2;
+    return cx >= fig.x0 - 4 && cx <= fig.x1 + 4 && cy >= fig.y0 - 4 && cy <= fig.y1 + 4;
+  };
+  for (const line of lines) {
+    for (const w of line.words) {
+      if (!used.has(w) || !dropped.some((fig) => inside(w, fig))) continue;
+      if (kept.some((fig) => inside(w, fig))) continue;
+      used.delete(w);
+    }
+  }
 }
 
 // Image tiles that cover the page, with no text layer and no vector drawing, are a scan.
@@ -159,6 +181,9 @@ export function drawingSheetPage({ images, lines, tables, shapes, pageW, pageH, 
   if (textLines.length >= 16) return false;
   if (bodyish >= 3) return false;
   if (alignedLineCount(textLines) >= 4) return false;
+  // Opening hours and a timetable are the page's text, not part labels on a sheet.
+  const clocks = textLines.filter((l) => /\b\d{1,2}[.:]\d{2}\b/.test(l.text || "")).length;
+  if (clocks >= 2) return false;
   return !dense;
 }
 

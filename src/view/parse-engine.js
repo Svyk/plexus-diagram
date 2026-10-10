@@ -1,7 +1,7 @@
 // Thin pdf.js adapter for the built-in parse engine. Runs on Roam's window.pdfjsLib (or any
 // pdfjs-dist build): page -> { items, ops, w, h, rotation, transform, fonts }. No graph access.
 
-import { assembleDocument, parsePageGeometry, parsePdf } from "../model/parse/index.js";
+import { assembleDocument, dropFigureLabelTables, parsePageGeometry, parsePdf } from "../model/parse/index.js";
 import { applyCellOcr, cellsToReread } from "../model/parse/ocr-fix.js";
 import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lines.js";
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
@@ -203,6 +203,8 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
       if (err?.name === "AbortError") throw err;
       doc.ocr = { ...(doc.ocr || {}), vlmError: err?.message || String(err) };
     }
+    // A chart reading is still the drawing, including one the layout model just added.
+    dropFigureLabelTables(doc);
   }
   const rereads = await rereadCells({ doc, ocr: ask, signal, onPhase });
   doc.ocr = { ...(doc.ocr || {}), rereads: rereads.reduce((n, r) => n + r.applied.length, 0), lines: lined.applied.length, vlm: vlmApplied.length, vlmFigures: vlmFigures.length, vlmLines: vlmLines.length, elapsedMs: got?.elapsedMs ?? null };

@@ -5,7 +5,8 @@ import test from "node:test";
 import { buildLines, mul, applyPoint, normalizeText, fontFlags, makeLine } from "../src/model/parse/lines.js";
 import { decodePathData, extractGraphics, luminanceOf, snapRules, OP } from "../src/model/parse/rules.js";
 import { findLatticeTables, cellTextOf, isNumericText } from "../src/model/parse/lattice.js";
-import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand, phraseTable, tickGrid, alignNumericColumns } from "../src/model/parse/stream.js";
+import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand, phraseTable, tickGrid, alignNumericColumns, lacksTabularEvidence } from "../src/model/parse/stream.js";
+import { dropFigureLabelTables } from "../src/model/parse/index.js";
 import { resplitColumns } from "../src/model/parse/resplit.js";
 import { findFigures, clusterBoxes } from "../src/model/parse/figures.js";
 import { findFurniture, isScanBanner, normalizeFurniture } from "../src/model/parse/furniture.js";
@@ -523,6 +524,67 @@ test("tokenizeLine keeps a footnote letter with its number and leader dots as on
   const lead = { x0: 100, x1: 170, text: "........" };
   const val = { x0: 200, x1: 230, text: "0.12" };
   assert.equal(projectColumns([[name, lead, val], [name, lead, val]]).length, 2);
+});
+
+test("an unheaded stream grid without a number, date, or time column is not a table", () => {
+  const names = [];
+  for (let i = 0; i < 6; i++) names.push(row([["RICHARD STOCKTON,", 70], ["GEORGE READ,", 300]], 100 + i * 14));
+  assert.equal(detectStreamRuns(names).length, 0, "two columns of names are the page's text");
+  const letter = [];
+  for (let i = 0; i < 4; i++) letter.push(row([["Dear", 40], ["Mr", 160], ["Johnson", 240]], 80 + i * 16));
+  assert.equal(detectStreamRuns(letter).length, 0, "a letter's lines are not a table");
+  const roster = [];
+  for (let i = 0; i < 4; i++) roster.push(row([["Blaney", 40], ["1911", 200], ["1917", 320]], 100 + i * 14));
+  assert.equal(detectStreamRuns(roster).length, 1, "a name beside two years stays a table");
+  const hours = [];
+  for (let i = 0; i < 3; i++) hours.push(row([["Dienstag:", 40], ["12.00 - 17.00 Uhr", 200]], 100 + i * 16));
+  assert.equal(detectStreamRuns(hours).length, 1, "a label beside a clock time stays a table");
+  assert.equal(lacksTabularEvidence({ method: "stream", headerRows: 0, rows: 4, cols: 3, cells: [
+    { r: 0, c: 0, text: "Blaney" }, { r: 0, c: 1, text: "Aug. 2, 1911" }, { r: 0, c: 2, text: "Present." },
+    { r: 1, c: 0, text: "Darlington" }, { r: 1, c: 1, text: "Jan. 9, 1923" }, { r: 1, c: 2, text: "Present." },
+    { r: 2, c: 0, text: "Edwards" }, { r: 2, c: 1, text: "Jan. 9, 1923" }, { r: 2, c: 2, text: "Present." },
+    { r: 3, c: 0, text: "Everding" }, { r: 3, c: 1, text: "Jan. 9, 1923" }, { r: 3, c: 2, text: "Present." },
+  ] }), false, "a date column is tabular evidence");
+  assert.equal(lacksTabularEvidence({ method: "stream", headerRows: 1, rows: 4, cols: 2, cells: [
+    { r: 0, c: 0, text: "Name" }, { r: 0, c: 1, text: "City" },
+    { r: 1, c: 0, text: "Ada" }, { r: 1, c: 1, text: "Paris" },
+    { r: 2, c: 0, text: "Bea" }, { r: 2, c: 1, text: "Lyon" },
+    { r: 3, c: 0, text: "Cara" }, { r: 3, c: 1, text: "Nice" },
+  ] }), false, "a header keeps a text grid");
+  assert.equal(lacksTabularEvidence({ method: "stream", headerRows: 4, rows: 4, cols: 2, cells: [
+    { r: 0, c: 0, text: "Dear" }, { r: 0, c: 1, text: "sir" },
+    { r: 1, c: 0, text: "your" }, { r: 1, c: 1, text: "letter" },
+    { r: 2, c: 0, text: "came" }, { r: 2, c: 1, text: "today" },
+    { r: 3, c: 0, text: "with" }, { r: 3, c: 1, text: "thanks" },
+  ] }), true, "a header with no body rows is not evidence");
+});
+
+test("a chart's label table inside the figure is dropped after layout puts it back", () => {
+  const table = {
+    id: "t1", type: "table", page: 1, method: "vlm", rows: 2, cols: 3, headerRows: 0,
+    bbox: [80, 400, 500, 460],
+    cells: [
+      { r: 0, c: 0, text: "35.7" }, { r: 0, c: 1, text: "35.6" }, { r: 0, c: 2, text: "35.5" },
+      { r: 1, c: 0, text: "34.1" }, { r: 1, c: 1, text: "34.0" }, { r: 1, c: 2, text: "33.8" },
+    ],
+  };
+  const data = {
+    id: "t2", type: "table", page: 1, method: "lattice", rows: 6, cols: 4, headerRows: 1,
+    bbox: [80, 80, 400, 220],
+    cells: ["Ada", "12", "Bea", "14", "Cara", "16", "Dora", "18", "Eve", "20", "Fay", "22", "Gus", "24", "Hal", "26", "Ivy", "28", "Jan", "30", "Kim", "32", "Leo", "34"].map((text, i) => ({ r: Math.floor(i / 4), c: i % 4, text })),
+  };
+  const doc = {
+    blocks: {
+      t1: table,
+      t2: data,
+      f1: { id: "f1", type: "figure", page: 1, bbox: [40, 300, 560, 700] },
+    },
+    order: ["t2", "f1", "t1"],
+  };
+  dropFigureLabelTables(doc);
+  assert.deepEqual(doc.order, ["t2", "f1"]);
+  assert.equal(doc.blocks.t1, undefined);
+  assert.equal(doc.blocks.t2.type, "table");
 });
 
 test("detectStreamRuns rejects justified prose and numbered lists", () => {

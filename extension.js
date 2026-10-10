@@ -6718,7 +6718,8 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   const shortRow = (row4) => row4.every((p) => String(p.t.text || "").trim().split(/\s+/).length <= 4);
   const wordish = (t) => /[A-Za-z]{2,}/.test(t);
   const mixed = (a, b) => valueToken(a) && valueToken(b) || valueToken(a) && wordish(b) || wordish(a) && valueToken(b);
-  const wrappedPair = (a, b) => insideColumn(a) && insideColumn(b) && (dateCell(`${a.t.text} ${b.t.text}`) || !mixed(a.t.text, b.t.text));
+  const lowerWord = (t) => /^[a-z]+$/.test(String(t || "").trim());
+  const wrappedPair = (a, b) => insideColumn(a) && insideColumn(b) && (dateCell(`${a.t.text} ${b.t.text}`) || !mixed(a.t.text, b.t.text) && !lowerWord(a.t.text) && !lowerWord(b.t.text));
   placed.forEach((row4) => {
     if (row4.length < 2) return;
     counted++;
@@ -13458,6 +13459,7 @@ function sectionLineBetween(tb, a, b, bodySize) {
   if (!tb || tb.type !== "para" && tb.type !== "heading") return null;
   const text3 = String(tb.text || "").trim();
   if (!text3 || CAPTION_RE.test(text3)) return null;
+  if (!/\d/.test(text3)) return null;
   const words = text3.split(/\s+/).filter(Boolean);
   if (words.length > 12 || words.length < 2) return null;
   if (tb.bbox.y1 - tb.bbox.y0 > 1.8 * (bodySize || 10)) return null;

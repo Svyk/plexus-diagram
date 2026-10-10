@@ -330,6 +330,10 @@ test("text beside figure labels, one line each, is not a table even when two lin
   const prose = ["Britain and in the United States for many years.", "It has been superseded, however, and is now nearly", "obsolete. By the repeated copying of old specifica-", "tions its use has persisted to some extent, both in"];
   const items = labels.flatMap((l, i) => row(400 + i * 12, [[l, 74], [prose[i], 150]]));
   assert.equal(tablesOf(doc([page(items)])).length, 0);
+  // The same prose cut into short pieces by the OCR ("was" | "started") is still prose.
+  const pieces = [["The", "current", "was", "started"], ["and", "was", "continued", "until"], ["the", "plats", "increased", "the"], ["yield", "was", "April", "reduced"]];
+  const cut = pieces.flatMap((ws, i) => row(500 + i * 12, ws.map((w, k) => [w, 74 + k * 60])));
+  assert.equal(tablesOf(doc([page(cut)])).length, 0);
 });
 
 test("stitchTables leaves a second piece with its own header rows alone", () => {
@@ -406,9 +410,11 @@ test("stitchTables takes one short section line between two pieces as a row, onc
   assert.equal(row.colSpan, 3);
   assert.equal(out[0].cells.find((k) => k.r === 5 && k.c === 1).text, "Sept. 8, 1913");
   assert.equal(blocks.length, 0, "the banner line left the text blocks");
-  // A caption between two pieces keeps them apart.
+  // A caption between two pieces keeps them apart, and so does the tail of a title with no number in it.
   const caption = { type: "para", text: "Table 2. Members by year, 1913-1924.", bbox: { x0: 91, x1: 280, y0: 226, y1: 233 } };
   assert.equal(stitchTables([structuredClone(a), structuredClone(b)], [caption], 7.5).length, 2);
+  const titleTail = { type: "para", text: "WITH HIGH-PRESSURE MANOMETER.", bbox: { x0: 91, x1: 280, y0: 226, y1: 233 } };
+  assert.equal(stitchTables([structuredClone(a), structuredClone(b)], [titleTail], 7.5).length, 2);
 });
 
 test("stitchTables joins a section banner and the same banner above the first piece", () => {

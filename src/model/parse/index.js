@@ -1341,6 +1341,10 @@ function sectionLineBetween(tb, a, b, bodySize) {
   if (!tb || (tb.type !== "para" && tb.type !== "heading")) return null;
   const text = String(tb.text || "").trim();
   if (!text || CAPTION_RE.test(text)) return null;
+  // A section head carries its number or its years ("Harbor Commissioners
+  // for the Port of San Jose, 1913-1924."); the tail of a title between two
+  // tables ("WITH HIGH-PRESSURE MANOMETER.") does not.
+  if (!/\d/.test(text)) return null;
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length > 12 || words.length < 2) return null;
   if (tb.bbox.y1 - tb.bbox.y0 > 1.8 * (bodySize || 10)) return null;

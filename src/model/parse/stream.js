@@ -869,7 +869,10 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   const shortRow = (row) => row.every((p) => String(p.t.text || "").trim().split(/\s+/).length <= 4);
   const wordish = (t) => /[A-Za-z]{2,}/.test(t);
   const mixed = (a, b) => (valueToken(a) && valueToken(b)) || (valueToken(a) && wordish(b)) || (wordish(a) && valueToken(b));
-  const wrappedPair = (a, b) => insideColumn(a) && insideColumn(b) && (dateCell(`${a.t.text} ${b.t.text}`) || !mixed(a.t.text, b.t.text));
+  // A bare lowercase word ("was" + "started") is running text the OCR cut
+  // into pieces, not a name and its initial.
+  const lowerWord = (t) => /^[a-z]+$/.test(String(t || "").trim());
+  const wrappedPair = (a, b) => insideColumn(a) && insideColumn(b) && (dateCell(`${a.t.text} ${b.t.text}`) || (!mixed(a.t.text, b.t.text) && !lowerWord(a.t.text) && !lowerWord(b.t.text)));
   placed.forEach((row) => {
     // Group labels and spanning headers (one token) enter a run on their own terms.
     if (row.length < 2) return;

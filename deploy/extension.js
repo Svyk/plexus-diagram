@@ -8479,6 +8479,11 @@ function clipBox(b, pageW, pageH) {
 function wordCount2(text3) {
   return String(text3 || "").trim().split(/\s+/).filter(Boolean).length;
 }
+function diagramLabel(text3) {
+  const t = String(text3 || "").replace(/\s+/g, " ").trim();
+  if (!t || wordCount2(t) > 2) return false;
+  return /[A-Za-z]\s*\([^)\s]{1,8}\)/.test(t);
+}
 function alignedLineCount(lines) {
   let best = 0;
   for (const l of lines) {
@@ -9417,7 +9422,12 @@ function textThroughMiddle(box2, lines) {
 function headerBand(box2, lines, pageH) {
   const h = box2.y1 - box2.y0;
   if (!(pageH > 0) || h > 0.22 * pageH || h < 8) return false;
-  const inside8 = (lines || []).filter((line) => String(line.text || "").trim() && lineCenterIn(line, box2));
+  const inside8 = (lines || []).filter((line) => {
+    const text3 = String(line.text || "").trim();
+    if (!text3 || !lineCenterIn(line, box2)) return false;
+    if (diagramLabel(text3)) return false;
+    return true;
+  });
   return inside8.length >= 4;
 }
 function clipLowerText(box2, lines) {
@@ -9494,6 +9504,82 @@ function mergeTouchingPictures(made, lines, pageH) {
     }
   }
 }
+function diagramBand(box2, lines) {
+  let n2 = 0;
+  for (const line of lines || []) {
+    if (diagramLabel(line.text) && lineCenterIn(line, box2)) n2 += 1;
+  }
+  return n2 >= 3;
+}
+function widenBetweenColumns(box2, lines, pageW, pageH) {
+  const h = box2.y1 - box2.y0;
+  const pageArea = pageW * pageH;
+  if (h < 0.18 * pageH || boxArea(box2) < 0.08 * pageArea) return null;
+  const flank = (lines || []).filter((line) => {
+    if (wordCount2(line.text) < 3) return false;
+    const cy = ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2;
+    if (cy < box2.y0 + 0.08 * h || cy > box2.y1 - 0.05 * h) return false;
+    const cx = ((line.x0 ?? 0) + (line.x1 ?? 0)) / 2;
+    const lw = (line.x1 ?? 0) - (line.x0 ?? 0);
+    if (lw > 0.45 * pageW) return false;
+    return cx < box2.x0 || cx > box2.x1;
+  });
+  const left = flank.filter((line) => (line.x0 + line.x1) / 2 < box2.x0);
+  const right = flank.filter((line) => (line.x0 + line.x1) / 2 > box2.x1);
+  if (left.length < 4 || right.length < 4) return null;
+  const x0 = Math.min(...left.map((line) => line.x0), ...right.map((line) => line.x0));
+  const x1 = Math.max(...left.map((line) => line.x1), ...right.map((line) => line.x1));
+  if (!(x1 > x0) || x1 - x0 < box2.x1 - box2.x0 + 24) return null;
+  return { x0: Math.max(0, x0), y0: box2.y0, x1: Math.min(pageW, x1), y1: box2.y1 };
+}
+function hatchPicture(boxes, lines, pageW, pageH) {
+  const pageArea = pageW * pageH;
+  if (!(pageArea > 0) || boxes.some((b) => boxArea(b) >= 0.018 * pageArea)) return null;
+  const small = boxes.filter((b) => boxArea(b) >= 40 && boxArea(b) < 0.018 * pageArea);
+  if (small.length < 30) return null;
+  const narrow = (lines || []).filter((line) => {
+    const w = (line.x1 ?? 0) - (line.x0 ?? 0);
+    return w > 8 && w < 0.42 * pageW && wordCount2(line.text) >= 1;
+  });
+  const column = (pred) => {
+    const col2 = narrow.filter(pred);
+    if (col2.length < 8) return null;
+    const ys2 = col2.map((line) => ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2);
+    if (Math.max(...ys2) - Math.min(...ys2) < 0.3 * pageH) return null;
+    return col2;
+  };
+  const right = column((line) => line.x0 > 0.52 * pageW);
+  const left = column((line) => line.x1 < 0.48 * pageW);
+  const side2 = right && (!left || right.length >= left.length) ? "right" : left ? "left" : null;
+  const col = side2 === "right" ? right : left;
+  if (!col) return null;
+  const cut = side2 === "right" ? Math.min(...col.map((line) => line.x0)) : Math.max(...col.map((line) => line.x1));
+  const keep = small.filter((b) => {
+    const cx = (b.x0 + b.x1) / 2;
+    return side2 === "right" ? cx < cut - 4 : cx > cut + 4;
+  });
+  if (keep.length < 20) return null;
+  const box2 = {
+    x0: Math.min(...keep.map((b) => b.x0)),
+    y0: Math.min(...keep.map((b) => b.y0)),
+    x1: Math.max(...keep.map((b) => b.x1)),
+    y1: Math.max(...keep.map((b) => b.y1))
+  };
+  if (side2 === "right") box2.x1 = Math.min(box2.x1, cut - 4);
+  else box2.x0 = Math.max(box2.x0, cut + 4);
+  if (box2.x1 - box2.x0 < 0.25 * pageW || box2.y1 - box2.y0 < 0.4 * pageH) return null;
+  if (boxArea(box2) < 0.3 * pageArea) return null;
+  if (textThroughMiddle(box2, lines) || headerBand(box2, lines, pageH)) return null;
+  if (marginStrip(box2, pageW, pageH) || edgeBand(box2, pageW, pageH)) return null;
+  const h = box2.y1 - box2.y0;
+  const mid = (lines || []).filter((line) => {
+    if (wordCount2(line.text) < 2 || !lineCenterIn(line, box2)) return false;
+    const cy = ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2;
+    return cy > box2.y0 + 0.2 * h && cy < box2.y1 - 0.2 * h;
+  });
+  if (mid.length > 3) return null;
+  return box2;
+}
 function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = null) {
   const pageArea = pageW * pageH;
   if (!(pageArea > 0)) return;
@@ -9543,7 +9629,12 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = nul
     if (areas[0] < 2 * areas[1]) made.length = 0;
   }
   for (const box2 of pending) {
-    if (made.some((other) => boxArea(other) >= 0.08 * pageArea && picturesTouch(other, box2, lines, pageH))) made.push(box2);
+    if (made.some((other) => boxArea(other) >= 0.08 * pageArea && picturesTouch(other, box2, lines, pageH))) {
+      made.push(box2);
+      continue;
+    }
+    const wide = widenBetweenColumns(box2, lines, pageW, pageH);
+    if (wide) made.push(wide);
   }
   mergeTouchingPictures(made, lines, pageH);
   if (spread && made.length >= 3) {
@@ -9554,7 +9645,7 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = nul
     const max = made.length ? Math.max(...made.map((b) => boxArea(b))) : 0;
     for (let i = made.length - 1; i >= 0; i--) {
       const a = boxArea(made[i]);
-      if (a < 0.08 * pageArea && (made.length === 1 || a < 0.35 * max)) made.splice(i, 1);
+      if (a < 0.08 * pageArea && !diagramBand(made[i], lines) && (made.length === 1 || a < 0.35 * max)) made.splice(i, 1);
     }
   }
   const emblems = [];
@@ -9580,6 +9671,10 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = nul
     return letters.length >= 4 && letters.replace(/[^A-Z]/g, "").length / letters.length >= 0.7;
   }).length;
   if (!spread || emblems.length === 1 && proseN < 2 && capsN >= 3) made.push(...emblems);
+  if (!made.length) {
+    const hatched = hatchPicture(boxes, lines, pageW, pageH);
+    if (hatched) made.push(hatched);
+  }
   for (const box2 of made) {
     figures.push({ ...box2, kind: "drawing", count: 1, pageImage: false, fromPlate: true, fromPicture: true });
   }
@@ -12349,6 +12444,30 @@ function blockBetween(line, figBox2, blocks) {
     return ox > 8;
   });
 }
+function captionLineBlocks(anchor, figBox2, blocks) {
+  const ah = Math.max(8, anchor.bbox.y1 - anchor.bbox.y0);
+  const out = [anchor];
+  for (const other of blocks) {
+    if (other === anchor) continue;
+    if (!other?.bbox || other.type !== "para" && other.type !== "heading") continue;
+    const sameBand = Math.abs(other.bbox.y0 - anchor.bbox.y0) <= 3 && Math.abs(other.bbox.y1 - anchor.bbox.y1) <= 3;
+    const oh = Math.max(8, other.bbox.y1 - other.bbox.y0);
+    const oy = Math.min(other.bbox.y1, anchor.bbox.y1) - Math.max(other.bbox.y0, anchor.bbox.y0);
+    const splitLine = oy >= 0.45 * Math.min(ah, oh);
+    if (!sameBand && !splitLine) continue;
+    const cx = (other.bbox.x0 + other.bbox.x1) / 2;
+    if (cx < figBox2[0] - 6 || cx > figBox2[2] + 12) continue;
+    const oxFig = Math.min(figBox2[2], other.bbox.x1) - Math.max(figBox2[0], other.bbox.x0);
+    if (oxFig < 8) continue;
+    const ox = Math.min(other.bbox.x1, anchor.bbox.x1) - Math.max(other.bbox.x0, anchor.bbox.x0);
+    const gapX = other.bbox.x0 > anchor.bbox.x1 ? other.bbox.x0 - anchor.bbox.x1 : anchor.bbox.x0 > other.bbox.x1 ? anchor.bbox.x0 - other.bbox.x1 : 0;
+    if (ox < 8 && gapX > 18) continue;
+    if (wordCountText(other.text) > 4) continue;
+    out.push(other);
+  }
+  out.sort((a, b) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0);
+  return out;
+}
 function attachPictureTitles(blocks, figures, bodySize, pageH) {
   const gapLimit = Math.max(2.6 * bodySize, 30);
   const used = /* @__PURE__ */ new Set();
@@ -12361,9 +12480,9 @@ function attachPictureTitles(blocks, figures, bodySize, pageH) {
     let bestText = "";
     for (const b of blocks) {
       if (!b?.bbox || used.has(b) || b.type !== "para" && b.type !== "heading") continue;
-      const band = blocks.filter((other) => other?.bbox && Math.abs(other.bbox.y0 - b.bbox.y0) <= 3 && Math.abs(other.bbox.y1 - b.bbox.y1) <= 3);
+      const band = captionLineBlocks(b, tb, blocks);
       const joined = band.map((p) => p.text).join(" ");
-      const shortBand = band.length > 1 && band.every((p) => wordCountText(p.text) <= 4) && wordCountText(joined) <= 8;
+      const shortBand = band.length > 1 && band.every((p) => wordCountText(p.text) <= 4) && wordCountText(joined) <= 12;
       const title = shortBand ? joined : b.text;
       if (!pictureTitleText(title)) continue;
       const strictAbove = b.bbox.y1 <= tb[1] + 2;
@@ -12979,7 +13098,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 29;
+    PARSE_REV = 30;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;

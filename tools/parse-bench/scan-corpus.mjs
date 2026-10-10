@@ -189,7 +189,13 @@ async function helperFor(engine, pdfPath, cacheDir, helperFlag) {
     // Same stamp as the helper engine so the Vision page cache is reused.
     // The PP-OCR vote is the same one the helper engine uses, so page text stays
     // at that CER. High accuracy replaces tables; it does not replace the reading.
-    const wrapped = cacheWrap(raw, cacheDir, `helper:${helperBuildStamp()}:${ocrKey("helper")}:${sha}`);
+    // --helper rust writes the Vision cache under the rust binary's stamp.
+    // Read that cache. The Python stamp is a different file, so a page read
+    // only by the rust helper would miss and this engine refuses to OCR.
+    const rust = helperFlag === "rust";
+    const bin = rust ? RUST_BIN : undefined;
+    const stampName = rust ? "helper-rs" : "helper";
+    const wrapped = cacheWrap(raw, cacheDir, `${stampName}:${helperBuildStamp(bin)}:${ocrKey(stampName)}:${sha}`);
     const altRaw = (await import("./ppocr-node.mjs")).createPpocrSource({ pdfPath, dpi: 300, log });
     const alt = cacheWrap(altRaw, cacheDir, `web-ocr:${ocrKey("web-ocr")}:${sha}`);
     const voted = votingHelper({ vision: wrapped, alt, lexicon: await lexicon() });

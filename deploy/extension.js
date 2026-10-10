@@ -5695,14 +5695,51 @@ var init_formulas = __esm({
 });
 
 // src/model/parse/stream.js
+function explodeLeaders(words) {
+  const src = words || [];
+  const out = [];
+  const dot = (p) => /^[.·…]+$/.test(p);
+  for (let i = 0; i < src.length; i++) {
+    const w = src[i];
+    const text3 = String(w.text || "");
+    if (!/[.·…]{4,}/.test(text3) || LEADER_RE.test(text3)) {
+      out.push(w);
+      continue;
+    }
+    const parts = text3.split(/([.·…]{4,})/).filter(Boolean);
+    const interior = parts.some((p, idx) => dot(p) && parts.slice(0, idx).some((q) => !dot(q)) && parts.slice(idx + 1).some((q) => !dot(q)));
+    const suffix = dot(parts[parts.length - 1]) && parts.every((p, idx) => idx === parts.length - 1 || !dot(p));
+    const prefix = dot(parts[0]) && parts.every((p, idx) => idx === 0 || !dot(p));
+    const next = src[i + 1];
+    const prev = src[i - 1];
+    const touchesNext = !!next && next.x0 - (w.x1 ?? 0) <= 4;
+    const touchesPrev = !!prev && (w.x0 ?? 0) - (prev.x1 ?? 0) <= 4;
+    if (!interior && !(suffix && touchesNext) && !(prefix && touchesPrev)) {
+      out.push(w);
+      continue;
+    }
+    const width = Math.max(0.1, (w.x1 ?? 0) - (w.x0 ?? 0));
+    const chars = Math.max(1, [...text3].length);
+    let at = 0;
+    for (const part of parts) {
+      const n2 = [...part].length;
+      const x0 = (w.x0 ?? 0) + width * (at / chars);
+      at += n2;
+      const x1 = (w.x0 ?? 0) + width * (at / chars);
+      out.push({ ...w, text: part, x0, x1 });
+    }
+  }
+  return out;
+}
 function tokenizeLine(line) {
+  line = { ...line, words: explodeLeaders(line.words) };
   const chars = Math.max(1, line.words.reduce((n2, w) => n2 + w.text.length, 0));
   const inkW = line.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0);
   const charW = inkW / chars || 0.5 * line.size;
   const threshold = Math.max(1.8 * charW, 0.6 * line.size);
   const tokens2 = [];
   let cur = null;
-  const dots = (s) => /^[.·…]+$/.test(s);
+  const dots = (s) => LEADER_RE.test(s);
   const ocr = line.words.some((w) => w.conf != null);
   const yearSpan = (text3) => /^(1[89]|20)\d{2}\s*[-–—]\s*(1[89]|20)\d{2}[.,]?$/.test(String(text3 || "").trim());
   const columnGap = (prev, w) => {
@@ -5714,18 +5751,28 @@ function tokenizeLine(line) {
     if (gap < Math.max(2, 0.5 * (line.size || 8))) return false;
     return /\d/.test(left) && /\d/.test(w.text || "");
   };
+  const dotBag = [];
+  let sawContent = false;
   for (const w of line.words) {
+    if (dots(w.text)) {
+      cur = null;
+      dotBag.push(w);
+      continue;
+    }
     const prev = cur && cur.words[cur.words.length - 1];
     const glueLetter = cur && cur.words.length === 1 && /^[a-z]$/.test(cur.words[0].text) && isNumericText(w.text) && w.x0 - cur.x1 < 1.2 * (line.size || 10);
-    const glueDots = prev && dots(prev.text) && dots(w.text);
-    if (cur && !columnGap(cur, w) && (w.x0 - cur.x1 < threshold || glueLetter || glueDots)) {
+    const mantissa = /^\d+\.\d+$/.test(String(prev?.text || "").trim());
+    const sci = cur && w.x0 - cur.x1 <= 1.5 * (line.size || 10) && (/^E[+\-−]?\d+$/.test(w.text) && /\d/.test(prev?.text || "") || /^\d{3}$/.test(w.text) && mantissa);
+    if (cur && !columnGap(cur, w) && (w.x0 - cur.x1 < threshold || glueLetter || sci)) {
       cur.words.push(w);
       cur.x1 = Math.max(cur.x1, w.x1);
     } else {
       cur = { x0: w.x0, x1: w.x1, words: [w] };
       tokens2.push(cur);
     }
+    sawContent = true;
   }
+  if (!sawContent && dotBag.length) tokens2.push({ x0: dotBag[0].x0, x1: dotBag[dotBag.length - 1].x1, words: dotBag });
   for (const t of tokens2) t.text = t.words.map((w) => w.text).join(" ");
   return tokens2;
 }
@@ -5741,6 +5788,65 @@ function projectColumns(rows) {
     else cols.push({ x0: a, x1: b });
   }
   return cols;
+}
+function splitAtAlignedStarts(tokenRows, cols, size) {
+  const tol = Math.max(8, 1.5 * (size || 10));
+  const out = [];
+  const rowsN = tokenRows.length;
+  for (const col of cols) {
+    const starts = [];
+    for (const tokens2 of tokenRows) {
+      for (const t of tokens2) {
+        if (t.x0 < col.x0 + (size || 10) || t.x0 > col.x1 - (size || 10)) continue;
+        starts.push(t.x0);
+      }
+    }
+    starts.sort((a, b) => a - b);
+    const clusters = [];
+    for (const x of starts) {
+      const c = clusters[clusters.length - 1];
+      if (c && x <= c.mean + tol) {
+        c.xs.push(x);
+        c.mean = c.xs.reduce((s, v) => s + v, 0) / c.xs.length;
+      } else clusters.push({ mean: x, xs: [x] });
+    }
+    const cuts = clusters.filter((c) => c.xs.length >= Math.max(3, 0.55 * rowsN)).map((c) => c.mean).filter((cut) => {
+      const gaps = [];
+      for (const tokens2 of tokenRows) {
+        const starter = tokens2.find((t) => Math.abs(t.x0 - cut) <= tol);
+        if (!starter) continue;
+        const left = tokens2.filter((t) => t !== starter && t.x1 > col.x0 && t.x0 < starter.x0);
+        if (!left.length) continue;
+        const edge = Math.max(...left.map((t) => t.x1));
+        gaps.push(starter.x0 - edge);
+      }
+      if (gaps.length < Math.max(3, 0.55 * rowsN)) return false;
+      let words = 0;
+      let seen = 0;
+      for (const tokens2 of tokenRows) {
+        const starter = tokens2.find((t) => Math.abs(t.x0 - cut) <= tol);
+        if (!starter) continue;
+        seen++;
+        if (!isNumericText(String(starter.text || "").trim())) words++;
+      }
+      if (seen < 3 || words < 0.6 * seen) return false;
+      gaps.sort((a, b) => a - b);
+      const med = gaps[gaps.length >> 1];
+      const minGap = Math.max(10, 1.2 * (size || 10));
+      return med < 0 || med >= minGap;
+    }).sort((a, b) => a - b);
+    if (!cuts.length) {
+      out.push(col);
+      continue;
+    }
+    let prev = col.x0;
+    for (const cut of cuts) {
+      if (cut - prev > size) out.push({ x0: prev, x1: cut - 0.5 });
+      prev = cut;
+    }
+    if (col.x1 - prev > 1) out.push({ x0: prev, x1: col.x1 });
+  }
+  return out.length >= cols.length ? out : cols;
 }
 function refineColumns(rowsIn, cols) {
   const words = rowsIn.flatMap((r) => r.tokens.flatMap((t) => t.words));
@@ -5804,6 +5910,9 @@ function splitColumn(rowsIn, col, size) {
     const numeric = (ws) => ws.filter((w) => isNumericText(w.text)).length >= 0.6 * ws.length;
     const groups = right.every((w) => /^\d{3}$/.test(w.text)) && left.every((w) => /^\d{1,3}$/.test(w.text));
     if (groups) continue;
+    const expCount = right.filter((w) => /^E[+\-−–]?\d+$/.test(w.text)).length;
+    const exponent = expCount >= 0.7 * right.length && left.some((w) => /\d/.test(w.text));
+    if (exponent) continue;
     if (tightL || tightR || numeric(left) && numeric(right)) seps.push({ x0: g0, x1: g1 });
   }
   if (!seps.length) return { cols: [col], seps: [] };
@@ -6104,7 +6213,9 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   const bodyProjected = body ? projectColumns(body.map((r) => r.tokens)) : null;
   const useBody = bodyProjected && bodyProjected.length >= fromPage.length + 2;
   const source = useBody ? body : rowsIn;
-  const projected = useBody ? bodyProjected : fromPage;
+  const projectedRaw = useBody ? bodyProjected : fromPage;
+  const splitStarts = splitAtAlignedStarts(source.map((r) => r.tokens), projectedRaw, bodySize);
+  const projected = splitStarts.length > projectedRaw.length ? splitStarts : projectedRaw;
   const aligned = useBody ? alignNumericColumns(source.map((r) => r.tokens), bodySize) : null;
   const useAligned = aligned && aligned.length >= projected.length + 3;
   const coarse = useAligned ? aligned : projected;
@@ -6113,7 +6224,20 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   const cols = refined.cols;
   if (refined.seps.length) for (const r of rowsIn) r.tokens = splitTokensAt(r.tokens, refined.seps);
   const k = cols.length;
-  const placed = rowsIn.map((r) => r.tokens.map((t) => ({ t, ...assignToken(t, cols) })));
+  const placed = rowsIn.map((r) => {
+    const raw = r.tokens.map((t) => ({ t, ...assignToken(t, cols) }));
+    return raw.map((p, i) => {
+      const next = raw[i + 1];
+      if (!next || p.span < 2 || next.c <= p.c || next.c >= p.c + p.span) return p;
+      const start = cols[p.c];
+      const end = cols[Math.min(cols.length - 1, p.c + p.span - 1)];
+      const mid = (p.t.x0 + p.t.x1) / 2;
+      const inStart = Math.abs(mid - (start.x0 + start.x1) / 2);
+      const inSpan = Math.abs(mid - (start.x0 + end.x1) / 2);
+      if (inStart + 1 < inSpan) return { ...p, span: next.c - p.c };
+      return p;
+    });
+  });
   let conforming = 0;
   let counted = 0;
   placed.forEach((row4) => {
@@ -6463,7 +6587,7 @@ function tableFromBand(band, words) {
   }
   if (rowsIn.length < 2) return null;
   const run = rowsIn.map((r) => ({ row: { words: r.tokens.flatMap((t) => t.words), lines: [] }, tokens: r.tokens }));
-  if (equationRun(run, { x0: band.x0, x1: band.x1 })) return null;
+  if (!numericGrid(run) && equationRun(run, { x0: band.x0, x1: band.x1 })) return null;
   let prose = 0;
   let tabular = 0;
   const numbered = run.filter((r) => r.tokens.length >= 2 && /^\d{1,4}$/.test(r.tokens[0].text));
@@ -6487,14 +6611,39 @@ function hasSubRows(words, band) {
   if (base.length < 2) return false;
   let numeric = 0;
   let labels = 0;
+  const soft = [];
   const value = (t) => isNumericText(t.text) || /^[-–—.]{1,3}$|^n\/?a$/i.test(t.text);
   for (const g of base) {
     const toks = tokenizeLine({ words: [...g.words].sort((a, b) => a.x0 - b.x0), size: g.size });
     if (toks.filter(value).length >= 2) numeric++;
     const first = toks[0];
-    if (toks.length >= 2 && first.x0 - band.x0 <= 1.5 * g.size && /^[A-Z0-9(]/.test(first.text)) labels++;
+    if (!first || toks.length < 2) continue;
+    if (first.x0 - band.x0 > 1.5 * g.size) continue;
+    if (/^[A-Z0-9(]/.test(first.text)) labels++;
+    const rest = toks.slice(1);
+    const short = rest.every((t) => String(t.text || "").trim().split(/\s+/).length <= 6);
+    if (short && /[\p{L}\p{N}]/u.test(first.text)) soft.push(toks[1].x0);
   }
-  return numeric >= 2 || labels >= 2;
+  if (numeric >= 2 || labels >= 2) return true;
+  if (soft.length < 3) return false;
+  soft.sort((a, b) => a - b);
+  const med = soft[soft.length >> 1];
+  const tol = Math.max(8, 0.8 * (base[0]?.size || 10));
+  const tight = soft.filter((x) => Math.abs(x - med) <= tol).length;
+  return tight >= 3 && tight / soft.length >= 0.6;
+}
+function gridNumber(text3) {
+  const s = String(text3 || "").trim().replace(/[*†‡]+$/u, "");
+  if (isNumericText(s)) return true;
+  return /^\[[\d.,\s]+\]$/.test(s);
+}
+function numericGrid(run) {
+  let n2 = 0;
+  for (const r of run) {
+    const nums = (r.tokens || []).filter((t) => gridNumber(t.text));
+    if (nums.length >= 3) n2 += 1;
+  }
+  return n2 >= 4;
 }
 function headerRowGroups(words) {
   const base = baselineGroups(words);
@@ -6573,6 +6722,11 @@ function contentsContinuation(row4, tokens2, run) {
   if (!/[A-Za-z]/.test(tok.text || "") || row4.words.length > 18) return false;
   return tok.x1 < right - 4;
 }
+function valueToken(text3) {
+  const s = String(text3 || "").trim().replace(/^[.·…\s]+/, "");
+  if (isNumericText(s)) return true;
+  return /^\d[\d\s.,]*\s*E[+\-−]?\d+$/i.test(s);
+}
 function proseRow(row4, tokens2, columnWidth = Infinity) {
   const words = row4.words;
   const n2 = words.length;
@@ -6580,7 +6734,7 @@ function proseRow(row4, tokens2, columnWidth = Infinity) {
   const chars = words.reduce((k, w) => k + w.text.length, 0);
   if (chars / n2 < 3.5) return false;
   if (Number.isFinite(columnWidth) && row4.x1 - row4.x0 < 0.6 * columnWidth) return false;
-  const short = tokens2.filter((t) => t.words.length <= 2 || isNumericText(t.text)).length;
+  const short = tokens2.filter((t) => t.words.length <= 2 || valueToken(t.text)).length;
   return tokens2.length === 1 || tokens2.length < n2 / 2 && short === 0;
 }
 function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeGaps = true } = {}) {
@@ -6710,7 +6864,7 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
       lead = null;
     }
     const multi = run.filter((r) => r.tokens.length >= 2).length;
-    if (run.length >= 2) {
+    if (run.length >= 2 && !numericGrid(run)) {
       const eq = equationRun(run, colBox);
       if (eq) {
         out.push(eq);
@@ -6740,7 +6894,24 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
   return out;
 }
 function singleTokenRow(row4, tokens2, run, next, colBox, lead, next2 = null) {
-  if (tokens2.length !== 1 || row4.words.length > 8 || lead) return null;
+  if (tokens2.length !== 1 || lead) return null;
+  if (row4.words.length > 8) {
+    if (!next || next.tokens.length < 3) return null;
+    if (Math.abs(next.row.base - row4.base) > 1.8 * Math.max(row4.size, next.row.size)) return null;
+    const host = next.tokens[0];
+    const tok2 = tokens2[0];
+    if (!(host.x0 < tok2.x1 + 1 && host.x1 > tok2.x0 - 1)) return null;
+    const body = run.filter((r) => r.tokens.length >= 3);
+    if (body.length < 3) return null;
+    const tol = Math.max(8, 0.8 * row4.size);
+    const last = next.tokens[next.tokens.length - 1];
+    const hit = body.filter((r) => {
+      const p = r.tokens[r.tokens.length - 1];
+      return Math.abs(p.x1 - last.x1) <= tol || Math.abs(p.x0 - last.x0) <= tol;
+    }).length;
+    if (hit < 0.6 * body.length) return null;
+    return "lead";
+  }
   const tok = tokens2[0];
   const near2 = (a, b) => Math.abs(a.base - b.base) <= 1.6 * Math.max(a.size, b.size);
   const overlapping = (toks) => toks.find((t) => t.x0 < tok.x1 + 1 && t.x1 > tok.x0 - 1);
@@ -6783,6 +6954,14 @@ function mergeRows(lead, cur) {
   row4.words.push(...tok.words);
   row4.lines.push(...lead.row.lines);
   row4.y0 = Math.min(row4.y0, lead.row.y0);
+  const host = cur.tokens.find((t) => t.x0 < tok.x1 + 1 && t.x1 > tok.x0 - 1);
+  if (host) {
+    host.words.push(...tok.words);
+    host.x0 = Math.min(host.x0, tok.x0);
+    host.x1 = Math.max(host.x1, tok.x1);
+    host.text = [...host.words].sort((a, b) => a.base - b.base || a.x0 - b.x0).map((w) => w.text).join(" ");
+    return { row: row4, tokens: cur.tokens };
+  }
   return { row: row4, tokens: [...cur.tokens, { ...tok }].sort((a, b) => a.x0 - b.x0) };
 }
 function equationRun(run, column) {
@@ -6879,7 +7058,7 @@ function phraseTable(table) {
   const words = (s) => String(s).trim().split(/\s+/).filter(Boolean);
   const phrases = filled.filter((c) => words(c.text).length >= 5).length;
   if (phrases / filled.length > 0.5) return true;
-  const numeric = filled.filter((c) => isNumericText(c.text)).length;
+  const numeric = filled.filter((c) => valueToken(c.text)).length;
   if (numeric / filled.length >= 0.2) return false;
   const byRow = /* @__PURE__ */ new Map();
   for (const c of filled) {
@@ -6895,6 +7074,7 @@ function looksLikeProse(run) {
   for (const r of run) {
     const words = r.row.words.length;
     const chars = r.row.words.reduce((n2, w) => n2 + w.text.length, 0);
+    if (r.tokens.some((t) => valueToken(t.text))) continue;
     if (words >= 6 && chars / words >= 3.5 && r.tokens.length < words / 2) wordy++;
   }
   return wordy >= run.length * 0.5;
@@ -10716,7 +10896,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 20;
+    PARSE_REV = 21;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -44133,6 +44313,54 @@ function mostlyInside(inner, outer) {
   const h = Math.max(0, Math.min(inner[3], outer[3]) - Math.max(inner[1], outer[1]));
   return w * h / area >= 0.7;
 }
+function pageTokenBag(doc, page) {
+  const bag = /* @__PURE__ */ new Set();
+  const add = (text3) => {
+    for (const part of String(text3 || "").toLowerCase().split(/[^a-z0-9.+-]+/)) {
+      if (part.length > 1 || /\d/.test(part)) bag.add(part);
+    }
+  };
+  for (const id of doc?.order || []) {
+    const block = doc.blocks?.[id];
+    if (!block || block.page !== page) continue;
+    if (block.type === "table") for (const cell of block.cells || []) add(cell.text);
+    else if (block.type === "list") for (const item of block.items || []) add(item.text);
+    else add(block.text);
+  }
+  return bag;
+}
+function structureTokens(structure) {
+  const bag = /* @__PURE__ */ new Set();
+  for (const cell of structure?.cells || []) {
+    for (const part of String(cell.text || "").toLowerCase().split(/[^a-z0-9.+-]+/)) {
+      if (part.length > 1 || /\d/.test(part)) bag.add(part);
+    }
+  }
+  return bag;
+}
+function overlapsTable(doc, structure) {
+  if (!structure?.bbox) return false;
+  for (const id of doc?.order || []) {
+    const block = doc.blocks?.[id];
+    if (!block || block.type !== "table" || block.page !== structure.page || !block.bbox) continue;
+    if (iou4(block.bbox, structure.bbox) >= 0.15 || mostlyInside(block.bbox, structure.bbox) || mostlyInside(structure.bbox, block.bbox)) return true;
+  }
+  return false;
+}
+function keepTextLayerReads(doc, structures, ocrPages) {
+  const ocr = new Set(ocrPages || []);
+  const bags = /* @__PURE__ */ new Map();
+  return (structures || []).filter((structure) => {
+    if (!structure || ocr.has(structure.page)) return true;
+    if (overlapsTable(doc, structure)) return true;
+    if (!bags.has(structure.page)) bags.set(structure.page, pageTokenBag(doc, structure.page));
+    const cells = structureTokens(structure);
+    if (!cells.size) return false;
+    let hit = 0;
+    for (const token of cells) if (bags.get(structure.page).has(token)) hit += 1;
+    return hit / cells.size >= 0.55;
+  });
+}
 function tableRegions(doc, pages) {
   const want = pages && pages.length ? new Set(pages) : null;
   const out = [];
@@ -44458,18 +44686,32 @@ async function loadPageData(page, { includeOps = true } = {}) {
     fonts
   };
 }
+function textLayerPages(doc, { from, to } = {}) {
+  return (doc?.pages || []).filter((p) => {
+    if (!p || p.ocr || p.scanLayer || p.kind === "scan") return false;
+    if (p.kind !== "text" && p.kind !== "mixed") return false;
+    if (from && p.n < from) return false;
+    if (to && p.n > to) return false;
+    return true;
+  }).map((p) => p.n);
+}
 async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true, alt = null } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n2) => !from || !to || n2 >= from && n2 <= to);
-  if (!wanted.length) return { doc: base, choices: [], rereads: [], pages: [] };
+  const high = helper.vlmHigh === true && typeof helper.vlm === "function";
+  const layerPages = high ? textLayerPages(base, { from, to }).filter((n2) => !wanted.includes(n2)) : [];
+  if (!wanted.length && !layerPages.length) return { doc: base, choices: [], rereads: [], pages: [] };
   const throwIfAborted3 = () => {
     if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" });
   };
-  onPhase?.({ phase: "ocr", pages: wanted });
-  const gotRaw = await helper.ocr({ bytes, sha256, pages: wanted, signal });
-  throwIfAborted3();
-  let got = gotRaw;
-  if (alt && typeof alt.ocr === "function" && gotRaw?.pages) {
+  let got = null;
+  if (wanted.length) {
+    onPhase?.({ phase: "ocr", pages: wanted });
+    const gotRaw = await helper.ocr({ bytes, sha256, pages: wanted, signal });
+    throwIfAborted3();
+    got = gotRaw;
+  }
+  if (wanted.length && alt && typeof alt.ocr === "function" && got?.pages) {
     let words = null;
     try {
       words = typeof lexicon === "function" ? await lexicon({ signal }) : lexicon;
@@ -44485,25 +44727,25 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
       if (error?.name === "AbortError") throw error;
     }
     throwIfAborted3();
-    got = { ...gotRaw, pages: voteOcrBodies(gotRaw.pages, otherPages, words instanceof Set ? words : null) };
+    got = { ...got, pages: voteOcrBodies(got.pages, otherPages, words instanceof Set ? words : null) };
   }
   const ask = (req) => helper.ocr({ bytes, sha256, cells: req, signal });
-  let merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
-  const lined = lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
+  let merged = wanted.length ? mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 }) : { doc: base, choices: [], records: records || [] };
+  const lined = wanted.length && lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
   if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
   let vlmApplied = [];
   let vlmFigures = [];
   let vlmLines = [];
-  const high = helper.vlmHigh === true && typeof helper.vlm === "function";
-  if (high || helper.vlmTables === true && typeof helper.tables === "function") {
-    const regions = tableRegions(doc, wanted);
+  const vlmPages = [...wanted, ...layerPages];
+  if ((high || helper.vlmTables === true && typeof helper.tables === "function") && vlmPages.length) {
+    const regions = tableRegions(doc, vlmPages);
     const figures = (doc.order || []).map((id) => doc.blocks[id]).filter((block) => block && block.type === "figure");
     const numericPages = high ? numericPagesOf(next, wanted, figures) : [];
     const decimalPages = high ? decimalColumnPagesOf(next, wanted, figures) : [];
     const regionPages = new Set(regions.map((r) => r.page));
-    const send = high ? wanted.filter((n2) => regionPages.has(n2) || numericPages.includes(n2) || decimalPages.includes(n2)) : wanted;
+    const send = high ? vlmPages.filter((n2) => layerPages.includes(n2) || regionPages.has(n2) || numericPages.includes(n2) || decimalPages.includes(n2)) : wanted;
     try {
       if (high && send.length) {
         onPhase?.({ phase: "vlm", count: send.length, mode: "high" });
@@ -44517,7 +44759,8 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
           signal
         });
         throwIfAborted3();
-        const applied = applyVlmTables(doc, read2?.tables || [], {
+        const structures = keepTextLayerReads(doc, read2?.tables || [], wanted);
+        const applied = applyVlmTables(doc, structures, {
           method: read2?.model || "vlm",
           arbitrate: true,
           evidence: evidenceFromRecords(next)

@@ -22,7 +22,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 29;
+export const PARSE_REV = 30;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -665,6 +665,35 @@ function blockBetween(line, figBox, blocks) {
   });
 }
 
+// Blocks that are one caption under the picture. A second column on the same
+// baseline is not part of it. A word the line builder split off (it overlaps
+// the caption in y and the picture in x) is.
+function captionLineBlocks(anchor, figBox, blocks) {
+  const ah = Math.max(8, anchor.bbox.y1 - anchor.bbox.y0);
+  const out = [anchor];
+  for (const other of blocks) {
+    if (other === anchor) continue;
+    if (!other?.bbox || (other.type !== "para" && other.type !== "heading")) continue;
+    const sameBand = Math.abs(other.bbox.y0 - anchor.bbox.y0) <= 3 && Math.abs(other.bbox.y1 - anchor.bbox.y1) <= 3;
+    const oh = Math.max(8, other.bbox.y1 - other.bbox.y0);
+    const oy = Math.min(other.bbox.y1, anchor.bbox.y1) - Math.max(other.bbox.y0, anchor.bbox.y0);
+    const splitLine = oy >= 0.45 * Math.min(ah, oh);
+    if (!sameBand && !splitLine) continue;
+    const cx = (other.bbox.x0 + other.bbox.x1) / 2;
+    if (cx < figBox[0] - 6 || cx > figBox[2] + 12) continue;
+    const oxFig = Math.min(figBox[2], other.bbox.x1) - Math.max(figBox[0], other.bbox.x0);
+    if (oxFig < 8) continue;
+    // A column on the same baseline is not the rest of this caption.
+    const ox = Math.min(other.bbox.x1, anchor.bbox.x1) - Math.max(other.bbox.x0, anchor.bbox.x0);
+    const gapX = other.bbox.x0 > anchor.bbox.x1 ? other.bbox.x0 - anchor.bbox.x1 : anchor.bbox.x0 > other.bbox.x1 ? anchor.bbox.x0 - other.bbox.x1 : 0;
+    if (ox < 8 && gapX > 18) continue;
+    if (wordCountText(other.text) > 4) continue;
+    out.push(other);
+  }
+  out.sort((a, b) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0);
+  return out;
+}
+
 function attachPictureTitles(blocks, figures, bodySize, pageH) {
   const gapLimit = Math.max(2.6 * bodySize, 30);
   const used = new Set();
@@ -677,9 +706,9 @@ function attachPictureTitles(blocks, figures, bodySize, pageH) {
     let bestText = "";
     for (const b of blocks) {
       if (!b?.bbox || used.has(b) || (b.type !== "para" && b.type !== "heading")) continue;
-      const band = blocks.filter((other) => other?.bbox && Math.abs(other.bbox.y0 - b.bbox.y0) <= 3 && Math.abs(other.bbox.y1 - b.bbox.y1) <= 3);
+      const band = captionLineBlocks(b, tb, blocks);
       const joined = band.map((p) => p.text).join(" ");
-      const shortBand = band.length > 1 && band.every((p) => wordCountText(p.text) <= 4) && wordCountText(joined) <= 8;
+      const shortBand = band.length > 1 && band.every((p) => wordCountText(p.text) <= 4) && wordCountText(joined) <= 12;
       const title = shortBand ? joined : b.text;
       if (!pictureTitleText(title)) continue;
       const strictAbove = b.bbox.y1 <= tb[1] + 2;

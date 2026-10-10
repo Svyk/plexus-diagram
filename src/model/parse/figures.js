@@ -256,6 +256,14 @@ function wordCount(text) {
   return String(text || "").trim().split(/\s+/).filter(Boolean).length;
 }
 
+// A label drawn on a block diagram ("G(s)", "r(t)+", "c (t)"). A header row
+// is words; one of these is not a row of the header.
+function diagramLabel(text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  if (!t || wordCount(t) > 2) return false;
+  return /[A-Za-z]\s*\([^)\s]{1,8}\)/.test(t);
+}
+
 function alignedLineCount(lines) {
   // A column of labels shares an x even when a wide gap splits each row into one word.
   let best = 0;
@@ -1313,7 +1321,13 @@ function textThroughMiddle(box, lines) {
 function headerBand(box, lines, pageH) {
   const h = box.y1 - box.y0;
   if (!(pageH > 0) || h > 0.22 * pageH || h < 8) return false;
-  const inside = (lines || []).filter((line) => String(line.text || "").trim() && lineCenterIn(line, box));
+  const inside = (lines || []).filter((line) => {
+    const text = String(line.text || "").trim();
+    if (!text || !lineCenterIn(line, box)) return false;
+    // Formula labels sit on the drawing. They are not a table header.
+    if (diagramLabel(text)) return false;
+    return true;
+  });
   return inside.length >= 4;
 }
 
@@ -1399,6 +1413,89 @@ function mergeTouchingPictures(made, lines, pageH) {
   }
 }
 
+function diagramBand(box, lines) {
+  let n = 0;
+  for (const line of lines || []) {
+    if (diagramLabel(line.text) && lineCenterIn(line, box)) n += 1;
+  }
+  return n >= 3;
+}
+
+// An engraving set into a two-column page. The ink is the picture; the columns
+// flank it. The box the page uses is the text measure, not the dark core.
+function widenBetweenColumns(box, lines, pageW, pageH) {
+  const h = box.y1 - box.y0;
+  const pageArea = pageW * pageH;
+  if (h < 0.18 * pageH || boxArea(box) < 0.08 * pageArea) return null;
+  const flank = (lines || []).filter((line) => {
+    if (wordCount(line.text) < 3) return false;
+    const cy = ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2;
+    if (cy < box.y0 + 0.08 * h || cy > box.y1 - 0.05 * h) return false;
+    const cx = ((line.x0 ?? 0) + (line.x1 ?? 0)) / 2;
+    const lw = (line.x1 ?? 0) - (line.x0 ?? 0);
+    if (lw > 0.45 * pageW) return false;
+    return cx < box.x0 || cx > box.x1;
+  });
+  const left = flank.filter((line) => ((line.x0 + line.x1) / 2) < box.x0);
+  const right = flank.filter((line) => ((line.x0 + line.x1) / 2) > box.x1);
+  if (left.length < 4 || right.length < 4) return null;
+  const x0 = Math.min(...left.map((line) => line.x0), ...right.map((line) => line.x0));
+  const x1 = Math.max(...left.map((line) => line.x1), ...right.map((line) => line.x1));
+  if (!(x1 > x0) || x1 - x0 < (box.x1 - box.x0) + 24) return null;
+  return { x0: Math.max(0, x0), y0: box.y0, x1: Math.min(pageW, x1), y1: box.y1 };
+}
+
+// Hatching is many small strokes, none of them a photograph on its own.
+// A column of text beside that field is the caption side, not the drawing.
+function hatchPicture(boxes, lines, pageW, pageH) {
+  const pageArea = pageW * pageH;
+  if (!(pageArea > 0) || boxes.some((b) => boxArea(b) >= 0.018 * pageArea)) return null;
+  const small = boxes.filter((b) => boxArea(b) >= 40 && boxArea(b) < 0.018 * pageArea);
+  if (small.length < 30) return null;
+  const narrow = (lines || []).filter((line) => {
+    const w = (line.x1 ?? 0) - (line.x0 ?? 0);
+    return w > 8 && w < 0.42 * pageW && wordCount(line.text) >= 1;
+  });
+  const column = (pred) => {
+    const col = narrow.filter(pred);
+    if (col.length < 8) return null;
+    const ys = col.map((line) => ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2);
+    if (Math.max(...ys) - Math.min(...ys) < 0.3 * pageH) return null;
+    return col;
+  };
+  const right = column((line) => line.x0 > 0.52 * pageW);
+  const left = column((line) => line.x1 < 0.48 * pageW);
+  const side = right && (!left || right.length >= left.length) ? "right" : left ? "left" : null;
+  const col = side === "right" ? right : left;
+  if (!col) return null;
+  const cut = side === "right" ? Math.min(...col.map((line) => line.x0)) : Math.max(...col.map((line) => line.x1));
+  const keep = small.filter((b) => {
+    const cx = (b.x0 + b.x1) / 2;
+    return side === "right" ? cx < cut - 4 : cx > cut + 4;
+  });
+  if (keep.length < 20) return null;
+  const box = {
+    x0: Math.min(...keep.map((b) => b.x0)),
+    y0: Math.min(...keep.map((b) => b.y0)),
+    x1: Math.max(...keep.map((b) => b.x1)),
+    y1: Math.max(...keep.map((b) => b.y1)),
+  };
+  if (side === "right") box.x1 = Math.min(box.x1, cut - 4);
+  else box.x0 = Math.max(box.x0, cut + 4);
+  if (box.x1 - box.x0 < 0.25 * pageW || box.y1 - box.y0 < 0.4 * pageH) return null;
+  if (boxArea(box) < 0.3 * pageArea) return null;
+  if (textThroughMiddle(box, lines) || headerBand(box, lines, pageH)) return null;
+  if (marginStrip(box, pageW, pageH) || edgeBand(box, pageW, pageH)) return null;
+  const h = box.y1 - box.y0;
+  const mid = (lines || []).filter((line) => {
+    if (wordCount(line.text) < 2 || !lineCenterIn(line, box)) return false;
+    const cy = ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2;
+    return cy > box.y0 + 0.2 * h && cy < box.y1 - 0.2 * h;
+  });
+  if (mid.length > 3) return null;
+  return box;
+}
+
 // One ink component that is a photograph, an engraving, or a compact mark
 // (a seal, a logo). Coordinates stay in the page frame the truth uses: a
 // photo of a sheet is not cropped to the sheet before the box is stored.
@@ -1462,7 +1559,14 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines = null
   // Only a picture that would stand on its own may pull the hidden ink out.
   // Gluing it onto a speck would turn the speck into a figure.
   for (const box of pending) {
-    if (made.some((other) => boxArea(other) >= 0.08 * pageArea && picturesTouch(other, box, lines, pageH))) made.push(box);
+    if (made.some((other) => boxArea(other) >= 0.08 * pageArea && picturesTouch(other, box, lines, pageH))) {
+      made.push(box);
+      continue;
+    }
+    // A rule cluster on the text is not the engraving it covers. The ink
+    // between the two columns is the plate; the columns set its width.
+    const wide = widenBetweenColumns(box, lines, pageW, pageH);
+    if (wide) made.push(wide);
   }
   // A white band inside one drawing splits the ink. Two photographs with a
   // line of text between them stay apart.
@@ -1478,7 +1582,9 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines = null
     for (let i = made.length - 1; i >= 0; i--) {
       const a = boxArea(made[i]);
       // Handwriting on a letter stays smaller than a pasted photograph.
-      if (a < 0.08 * pageArea && (made.length === 1 || a < 0.35 * max)) made.splice(i, 1);
+      // A block diagram is one ink region with formula labels on it, and it
+      // is smaller than a pasted photograph.
+      if (a < 0.08 * pageArea && !diagramBand(made[i], lines) && (made.length === 1 || a < 0.35 * max)) made.splice(i, 1);
     }
   }
   const emblems = [];
@@ -1507,6 +1613,10 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines = null
     return letters.length >= 4 && letters.replace(/[^A-Z]/g, "").length / letters.length >= 0.7;
   }).length;
   if (!spread || (emblems.length === 1 && proseN < 2 && capsN >= 3)) made.push(...emblems);
+  if (!made.length) {
+    const hatched = hatchPicture(boxes, lines, pageW, pageH);
+    if (hatched) made.push(hatched);
+  }
   for (const box of made) {
     figures.push({ ...box, kind: "drawing", count: 1, pageImage: false, fromPlate: true, fromPicture: true });
   }

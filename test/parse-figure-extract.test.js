@@ -1268,3 +1268,96 @@ test("same-sized ink on a letter stays handwriting after a hairline join", () =>
   });
   assert.equal(letter.figures.filter((f) => f.fromPicture).length, 0);
 });
+
+function scanPage(items, { ink = [], rules = [] } = {}) {
+  const page = parsePageGeometry({
+    n: 1, w: W, h: H, rotation: 0, transform: [1, 0, 0, 1, 0, 0], scan: true, dpi: 300, deskew: 0,
+    fonts: { ocr: { name: "ocr" } }, items, rules, ink, ops: { fnArray: [], argsArray: [] },
+  }, 1);
+  return assembleDocument([page], { numPages: 1 });
+}
+
+test("formula labels keep a small diagram, and the line under it is the caption", () => {
+  const spread = [
+    ocrItem("Opening note of the page", 40, 36, 11, 180),
+    ocrItem("A margin beside the drawing", 40, 200, 11, 150),
+    ocrItem("Closing note of the page", 40, 700, 11, 180),
+    ocrItem("See the appendix now", 40, 740, 11, 140),
+  ];
+  const frame = [
+    ocrItem("Above", 220, 328, 10, 140),
+    ocrItem("Left", 40, 400, 10, 150),
+    ocrItem("Right", 410, 400, 10, 90),
+    ocrItem("Sketch", 220, 500, 12, 52),
+    ocrItem("(k)", 278, 500, 12, 22),
+  ];
+  const ink = [{ x0: 200, y0: 340, x1: 400, y1: 470 }];
+  const plain = scanPage([...spread, ...frame], { ink });
+  assert.equal(ofType(plain, "figure").length, 0, "without formula labels the ink is handwriting-sized");
+  const labels = ["G(s)", "H(s)", "r(t)"].map((t, i) => ocrItem(t, 230, 360 + i * 28, 11, 36));
+  const drawn = scanPage([...spread, ...frame, ...labels], { ink });
+  const figs = ofType(drawn, "figure");
+  assert.equal(figs.length, 1);
+  const caps = captionText(drawn);
+  assert.ok(caps.some((t) => /Sketch \(k\)/.test(t)), caps.join(" | "));
+});
+
+test("a split word under the picture joins, and the next column on that baseline does not", () => {
+  const ink = [{ x0: 70, y0: 180, x1: 430, y1: 500 }];
+  const body = [];
+  for (let i = 0; i < 8; i++) body.push(ocrItem("The harbor note continues here", 80, 36 + i * 14, 10, 220));
+  const d = scanPage([
+    ...body,
+    ocrItem("the right column sits beside the photograph", 500, 320, 11, 90),
+    ocrItem("La", 120, 520, 11, 22),
+    ocrItem("I", 148, 520, 11, 8),
+    ocrItem("Rebeca", 140, 526, 11, 56),
+    ocrItem("34.", 520, 520, 11, 24),
+    ocrItem("he and his wife", 500, 560, 11, 90),
+  ], { ink });
+  const caps = captionText(d);
+  assert.ok(caps.some((t) => /Rebeca/.test(t) && !/\b34\b/.test(t) && !/wife/.test(t)), caps.join(" | "));
+});
+
+test("ink between two columns widens to the text measure, and the line under it stays the caption", () => {
+  const rules = [];
+  for (let y = 160; y <= 560; y += 4) rules.push({ x0: 150, y0: y, x1: 470, y1: y });
+  const ink = [{ x0: 220, y0: 240, x1: 400, y1: 500 }];
+  const flank = (x, y, text) => ocrItem(text, x, y, 10, 90);
+  const items = [];
+  for (let i = 0; i < 6; i++) {
+    items.push(flank(36, 280 + i * 28, "und auf dem"));
+    items.push(flank(490, 280 + i * 28, "Worte der Seite"));
+  }
+  const title = "Der Brunnen an der alten Kirche.".split(" ");
+  title.forEach((t, i) => items.push(ocrItem(t, 230 + i * 28, 530, 11, 24)));
+  items.push(ocrItem("und auf dem Feste", 36, 530, 11, 110));
+  const d = scanPage(items, { ink, rules });
+  const figs = ofType(d, "figure");
+  assert.equal(figs.length, 1, figs.map((f) => f.bbox.join(",")).join(" | "));
+  assert.ok(figs[0].bbox[0] <= 50, `left column sets x0 ${figs[0].bbox[0]}`);
+  assert.ok(figs[0].bbox[2] >= 560, `right column sets x1 ${figs[0].bbox[2]}`);
+  const caps = captionText(d);
+  assert.ok(caps.some((t) => /Der Brunnen an der alten Kirche/.test(t) && !/Feste/.test(t)), caps.join(" | "));
+});
+
+test("hatching beside a text column is one picture that stops at the column", () => {
+  const ink = [];
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 4; col++) {
+      const x0 = 16 + col * 72;
+      const y0 = 30 + row * 90;
+      ink.push({ x0, y0, x1: x0 + 36, y1: y0 + 28 });
+    }
+  }
+  const menu = [];
+  for (let i = 0; i < 10; i++) menu.push(ocrItem("Potage", 420, 120 + i * 52, 12, 70));
+  const drawn = scanPage(menu, { ink });
+  const figs = ofType(drawn, "figure");
+  assert.equal(figs.length, 1);
+  assert.ok(figs[0].bbox[2] < 420, `picture stops before the column, x1=${figs[0].bbox[2]}`);
+  const text = drawn.order.map((id) => drawn.blocks[id]?.text || "").join(" ");
+  assert.match(text, /Potage/);
+  const few = scanPage(menu, { ink: ink.slice(0, 8) });
+  assert.equal(ofType(few, "figure").length, 0, "a handful of strokes beside a column is not a plate");
+});

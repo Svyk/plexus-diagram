@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { scorePage } from "../tools/parse-bench/scan-score.mjs";
 import {
-  applicable, avgRanks, bootstrapCI, cohenDz, components, evaluate, indexDocsDir, mulberry32, pageScore, parseArgs, resolveDoc, wilcoxon,
+  applicable, avgRanks, bootstrapCI, cohenDz, components, evaluate, indexDocsDir, informative, mulberry32, pageScore, parseArgs, resolveDoc, scoreWith, wilcoxon, withoutFigureText,
 } from "../tools/parse-bench/paired-stats.mjs";
 
 const near = (a, b, tol = 1e-9) => assert.ok(Math.abs(a - b) < tol, `${a} vs ${b}`);
@@ -105,7 +106,7 @@ test("component applicability follows the truth", () => {
 test("components: empty-array rule, text from cer, failed read is zero", () => {
   const emptyDoc = { order: [], blocks: {}, pages: [] };
   const truth = { tables: [], figures: [], textComplete: true, lines: ["abc"] };
-  const c = components({ tables: { f1: 1, structure: { f1: 1 } }, figures: { f1: 1, caption: { recall: 0 } }, text: { cer: 0.25 } }, truth);
+  const c = components({ tables: { f1: 0.2, structure: { f1: 0.2 } }, grits: { con: 1, top: 1 }, figures: { f1: 1, caption: { recall: 0 } }, text: { cer: 0.25 } }, truth);
   assert.deepEqual(c, { cell: 1, struct: 1, fig: 1, text: 0.75 });
   assert.equal(pageScore(c), 0.9375);
   assert.equal(components({ text: { cer: 3 } }, { textComplete: true, lines: ["a"] }).text, 0);
@@ -132,36 +133,87 @@ test("doc resolution: id first, then pdf + page, p1 does not match p12", async (
   }
 });
 
-test("evaluate: missing docs count as failed reads, categories and gate are reported", async () => {
+test("informative: needs a scored cell, a figure, or complete text with lines", () => {
+  const cell = (c) => ({ cells: [c] });
+  assert.equal(informative({ tables: [cell({ text: "a", unsure: true })] }), false);
+  assert.equal(informative({ tables: [cell({ text: "a", unsure: true }), cell({ text: "b" })] }), true);
+  assert.equal(informative({ tables: [], figures: [], textComplete: false }), false);
+  assert.equal(informative({ figures: [{ caption: "" }] }), true);
+  assert.equal(informative({ textComplete: true, lines: ["abc"] }), true);
+  assert.equal(informative({ textComplete: true, lines: [{ text: "x", unsure: true }] }), false);
+  assert.equal(informative({ textComplete: false, lines: ["abc"] }), false);
+  assert.equal(informative({}), false);
+});
+
+const emptyDocJson = JSON.stringify({ order: [], blocks: {}, pages: [{ w: 1, h: 1 }] });
+const textDocJson = JSON.stringify({ order: ["x"], blocks: { x: { type: "paragraph", text: "hello world" } }, pages: [{ w: 1, h: 1 }] });
+const textTruth = JSON.stringify({ textComplete: true, lines: ["hello world"] });
+
+test("evaluate: uninformative pages are left out, missing docs count as failed reads, categories and gate are reported", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "pstats-"));
   try {
     for (const d of ["truth", "a", "b"]) await mkdir(path.join(dir, d));
     const pages = [];
     for (let i = 1; i <= 8; i++) {
       pages.push({ id: `p${i}`, file: "f.pdf", page: i, class: ["text"], ...(i > 6 ? { category: "photo" } : {}) });
-      await writeFile(path.join(dir, "truth", `p${i}.json`), JSON.stringify({ tables: [], figures: [] }));
-      // a reads every page as "no table, no figure" (score 1); b has no doc for any page (score 0)
-      await writeFile(path.join(dir, "a", `p${i}.pxd.json`), JSON.stringify({ order: [], blocks: {}, pages: [{ w: 1, h: 1 }] }));
+      await writeFile(path.join(dir, "truth", `p${i}.json`), textTruth);
+      // a reads the text exactly (score 1); b has no doc for any page (score 0)
+      await writeFile(path.join(dir, "a", `p${i}.pxd.json`), textDocJson);
     }
+    await writeFile(path.join(dir, "truth", "empty.json"), JSON.stringify({ tables: [], figures: [] }));
+    await writeFile(path.join(dir, "a", "empty.pxd.json"), emptyDocJson);
+    pages.push({ id: "empty", file: "f.pdf", page: 9, class: "text" });
     await writeFile(path.join(dir, "truth", "nocomp.json"), JSON.stringify({ textComplete: false }));
-    pages.push({ id: "nocomp", file: "f.pdf", page: 9, class: "text" });
-    pages.push({ id: "ghost", file: "f.pdf", page: 10, class: "text" });
+    pages.push({ id: "nocomp", file: "f.pdf", page: 10, class: "text" });
+    pages.push({ id: "ghost", file: "f.pdf", page: 11, class: "text" });
     const res = evaluate({ root: dir, manifest: { pages }, aDir: path.join(dir, "a"), bDir: path.join(dir, "b"), resamples: 200, gate: "dev" });
     assert.equal(res.n, 8);
-    assert.equal(res.failedReads.b, 9);
-    assert.equal(res.failedReads.a, 1);
-    assert.deepEqual(res.skipped.map((s) => s.reason).sort(), ["no applicable component", "no truth file"]);
+    assert.deepEqual(res.uninformative.sort(), ["empty", "nocomp"]);
+    assert.equal(res.failedReads.b, 8);
+    assert.equal(res.failedReads.a, 0);
+    assert.deepEqual(res.skipped.map((s) => s.reason), ["no truth file"]);
     near(res.meanA, 1);
     near(res.meanB, 0);
     assert.equal(res.wilcoxon.pExact, 1 / 256);
     assert.equal(res.categories.find((c) => c.name === "photo").n, 2);
     assert.equal(res.categories.find((c) => c.name === "text").wins, 6);
-    // no page here supports text, so that non-inferiority check has no evidence and fails closed
-    assert.equal(res.nonInferiority.text.n, 0);
-    assert.deepEqual(res.gate.checks.filter((c) => !c.pass).map((c) => c.name), ["non-inferiority text: CI lower > -0.05"]);
+    // every page here is text-only, so the table and figure non-inferiority checks have no evidence and fail closed
+    assert.equal(res.nonInferiority.cell.n, 0);
+    assert.deepEqual(res.gate.checks.filter((c) => !c.pass).map((c) => c.name), ["non-inferiority cell: CI lower > -0.05", "non-inferiority fig: CI lower > -0.05"]);
     const sealed = evaluate({ root: dir, manifest: { pages }, aDir: path.join(dir, "a"), bDir: path.join(dir, "b"), resamples: 200, gate: "sealed" });
     assert.equal(sealed.gate.pass, false);
     assert.equal(sealed.gate.checks.find((c) => c.name === "n >= 30").pass, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("sealed gate: a category with 2 documents and a document with 4 pages fail", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pstats-"));
+  try {
+    for (const d of ["truth", "a", "b"]) await mkdir(path.join(dir, d));
+    const pages = [];
+    // rough-scan: 6 pages from 2 documents, 4 of them from one; modern-digital: 6 pages from 3 documents, 2 each
+    const plan = [["rough-scan", "d1", 4], ["rough-scan", "d2", 2], ["modern-digital", "e1", 2], ["modern-digital", "e2", 2], ["modern-digital", "e3", 2]];
+    let i = 0;
+    for (const [category, file, k] of plan) {
+      for (let j = 0; j < k; j++, i++) {
+        const id = `s${i}`;
+        pages.push({ id, file, page: j + 1, category });
+        await writeFile(path.join(dir, "truth", `${id}.json`), textTruth);
+        await writeFile(path.join(dir, "a", `${id}.pxd.json`), textDocJson);
+      }
+    }
+    const res = evaluate({ root: dir, manifest: { pages }, aDir: path.join(dir, "a"), bDir: path.join(dir, "b"), resamples: 200, gate: "sealed" });
+    const check = (name) => res.gate.checks.find((c) => c.name === name);
+    assert.equal(check(">= 3 documents in rough-scan").value, 2);
+    assert.equal(check(">= 3 documents in rough-scan").pass, false);
+    assert.equal(check("<= 3 pages per document in rough-scan").value, 4);
+    assert.equal(check("<= 3 pages per document in rough-scan").pass, false);
+    assert.equal(check(">= 3 documents in modern-digital").pass, true);
+    assert.equal(check("<= 3 pages per document in modern-digital").pass, true);
+    assert.equal(check(">= 3 documents in photo").value, 0);
+    assert.equal(res.gate.pass, false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -176,4 +228,32 @@ test("parseArgs", () => {
   assert.throws(() => parseArgs(["--root", "r"]), /required/);
   assert.throws(() => parseArgs(["--root", "r", "--manifest", "m", "--a", "x", "--b", "y", "--gate", "z"]), /gate/);
   assert.throws(() => parseArgs(["--nope"]), /unknown/);
+});
+
+test("text inside a truth figure is dropped before the text score; text outside still counts", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pxs-fig-"));
+  try {
+    const mk = (blocks) => ({
+      pages: [{ n: 1, w: 100, h: 100 }],
+      order: Object.keys(blocks),
+      blocks,
+    });
+    const body = { type: "para", page: 1, text: "the quick brown fox", bbox: [10, 80, 90, 90] };
+    const label = { type: "para", page: 1, text: "axis 10 20 30", bbox: [30, 30, 40, 36] };
+    const truth = { tables: [], figures: [{ bbox: [0.2, 0.2, 0.8, 0.6], caption: "" }], textComplete: true, lines: ["the quick brown fox"] };
+    const file = path.join(dir, "d.pxd.json");
+    await writeFile(file, JSON.stringify(mk({ a: body, b: label })));
+    const s = scoreWith(file, truth, false);
+    assert.equal(s.textDroppedInFigures, 1);
+    assert.equal(s.text.cer, 0);
+    assert.ok(scorePage(JSON.parse(await (await import("node:fs/promises")).readFile(file, "utf8")), truth).text.cer > 0);
+    await writeFile(file, JSON.stringify(mk({ a: { ...body, bbox: [10, 30, 90, 36] } })));
+    const out = scoreWith(file, truth, false);
+    assert.equal(out.textDroppedInFigures, 1);
+    assert.equal(out.text.cer, 1);
+    const kept = withoutFigureText(mk({ a: { type: "para", page: 1, text: "no box" } }), truth.figures);
+    assert.equal(kept.dropped, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

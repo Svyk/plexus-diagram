@@ -11,7 +11,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { foldQuotes } from "./scan-corpus.mjs";
-import { scorePage, truthLines } from "./scan-score.mjs";
+import { normBox, pageSize, predTables, scorePage, truthLines } from "./scan-score.mjs";
+import { gritsPage } from "./grits.mjs";
 
 export const CATEGORIES = ["rough-scan", "modern-digital", "photo", "handwritten", "mixed"];
 export const COMPONENTS = ["cell", "struct", "fig", "cap", "text"];
@@ -47,18 +48,32 @@ export function applicable(truth) {
   };
 }
 
+// A page is worth scoring only when its truth holds something to score: a table with a scored cell, a figure, or complete text.
+export function informative(truth) {
+  if (!truth) return false;
+  if (Array.isArray(truth.tables) && truth.tables.some((t) => t && Array.isArray(t.cells) && t.cells.some((c) => c && !c.unsure))) return true;
+  if (Array.isArray(truth.figures) && truth.figures.length > 0) return true;
+  return !!truth.textComplete && truthLines(truth).length > 0;
+}
+
 // Component values for one scored page; scored === null is a failed read (every applicable component 0).
 export function components(scored, truth) {
   const ap = applicable(truth);
   const out = {};
   for (const k of COMPONENTS) if (ap[k]) out[k] = 0;
   if (!scored) return out;
-  if (ap.cell) out.cell = scored.tables?.f1 ?? 0;
-  if (ap.struct) out.struct = scored.tables?.structure?.f1 ?? 0;
+  if (ap.cell) out.cell = scored.grits?.con ?? 0;
+  if (ap.struct) out.struct = scored.grits?.top ?? 0;
   if (ap.fig) out.fig = scored.figures?.f1 ?? 0;
   if (ap.cap) out.cap = scored.figures?.caption?.recall ?? 0;
   if (ap.text) out.text = Math.max(0, 1 - (scored.text?.cer ?? 1));
   return out;
+}
+
+// Anchor-matched table F1 from scorePage; diagnostics only, never part of S or the gate.
+export function exactOf(scored, truth) {
+  if (!Array.isArray(truth.tables)) return {};
+  return { cellExact: scored?.tables?.f1 ?? 0, structExact: scored?.tables?.structure?.f1 ?? 0 };
 }
 
 export function pageScore(comp) {
@@ -66,12 +81,42 @@ export function pageScore(comp) {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 }
 
+// Shallow copy of the doc without text blocks whose bbox centre sits inside a truth figure (chart labels are not page text).
+// Blocks without a bbox are kept; figure boxes are page-normalised [x0, y0, x1, y1].
+export function withoutFigureText(doc, truthFigures) {
+  const boxes = (truthFigures || []).map((f) => f && f.bbox).filter((b) => Array.isArray(b) && b.length >= 4);
+  if (!boxes.length) return { doc, dropped: 0 };
+  const dropIds = new Set();
+  for (const id of doc.order || []) {
+    const b = doc.blocks[id];
+    if (!b || b.type === "table" || !Array.isArray(b.bbox) || b.bbox.length < 4) continue;
+    if (!b.text && b.type !== "list") continue;
+    const size = pageSize(doc, b.page);
+    const nb = normBox(b.bbox, size.w, size.h);
+    if (!nb) continue;
+    const cx = (nb[0] + nb[2]) / 2;
+    const cy = (nb[1] + nb[3]) / 2;
+    if (boxes.some((f) => cx >= f[0] && cx <= f[2] && cy >= f[1] && cy <= f[3])) dropIds.add(id);
+  }
+  if (!dropIds.size) return { doc, dropped: 0 };
+  return { doc: { ...doc, order: doc.order.filter((id) => !dropIds.has(id)) }, dropped: dropIds.size };
+}
+
 export function scoreWith(docPath, truth, fold) {
   if (!docPath) return null;
   try {
     const doc = JSON.parse(readFileSync(docPath, "utf8"));
     const [d, t] = fold ? foldQuotes(doc, truth) : [doc, truth];
-    return scorePage(d, t);
+    const scored = scorePage(d, t);
+    if (Array.isArray(t.tables)) scored.grits = gritsPage(predTables(d), t.tables);
+    const stripped = withoutFigureText(d, t.figures);
+    scored.textDroppedInFigures = stripped.dropped;
+    if (stripped.dropped && scored.text) {
+      const again = scorePage(stripped.doc, t);
+      scored.text = again.text;
+      scored.textCounts = again.textCounts;
+    }
+    return scored;
   } catch {
     return null;
   }
@@ -215,21 +260,25 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
   const namesB = indexDocsDir(bDir);
   const pages = [];
   const skipped = [];
+  const uninformative = [];
   const missing = { a: [], b: [] };
   for (const page of manifest.pages) {
     const tp = join(root, "truth", `${page.id}.json`);
     if (!existsSync(tp)) { skipped.push({ id: page.id, reason: "no truth file" }); continue; }
     const truth = JSON.parse(readFileSync(tp, "utf8"));
+    if (!informative(truth)) { uninformative.push(page.id); continue; }
     const pa = resolveDoc(aDir, namesA, page);
     const pb = resolveDoc(bDir, namesB, page);
     if (!pa) missing.a.push(page.id);
     if (!pb) missing.b.push(page.id);
-    const ca = components(scoreWith(pa, truth, fold), truth);
-    const cb = components(scoreWith(pb, truth, fold), truth);
+    const scA = scoreWith(pa, truth, fold);
+    const scB = scoreWith(pb, truth, fold);
+    const ca = components(scA, truth);
+    const cb = components(scB, truth);
     const sa = pageScore(ca);
     const sb = pageScore(cb);
     if (sa == null) { skipped.push({ id: page.id, reason: "no applicable component" }); continue; }
-    pages.push({ id: page.id, category: categoryOf(page), a: ca, b: cb, sA: sa, sB: sb, d: sa - sb });
+    pages.push({ id: page.id, category: categoryOf(page), doc: page.file ?? page.pdf ?? page.id, a: ca, b: cb, sA: sa, sB: sb, d: sa - sb, aExact: exactOf(scA, truth), bExact: exactOf(scB, truth), textDroppedInFigures: { a: scA?.textDroppedInFigures ?? 0, b: scB?.textDroppedInFigures ?? 0 } });
   }
   const d = pages.map((p) => p.d);
   const w = wilcoxon(d);
@@ -258,6 +307,12 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
     for (const c of CATEGORIES) {
       const n = cats[c] ? cats[c].n : 0;
       add(`>= 5 pages in ${c}`, n, n >= 5);
+      const perDoc = {};
+      for (const p of pages) if (p.category === c) perDoc[p.doc] = (perDoc[p.doc] || 0) + 1;
+      const docs = Object.keys(perDoc).length;
+      const most = Math.max(0, ...Object.values(perDoc));
+      add(`>= 3 documents in ${c}`, docs, docs >= 3);
+      add(`<= 3 pages per document in ${c}`, most, most <= 3);
     }
   }
   add("exact one-sided p < 0.01", w.pExact, w.pExact < 0.01);
@@ -265,8 +320,14 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
   add("Cohen d_z >= 0.8", dz, dz != null && dz >= 0.8);
   add("bootstrap CI lower bound of mean(d) > 0", ci.lo, ci.lo != null && ci.lo > 0);
   for (const k of ["cell", "text", "fig"]) add(`non-inferiority ${k}: CI lower > -${MARGIN}`, nonInf[k].lo, nonInf[k].pass);
+  const meanOf = (side, k) => {
+    const v = pages.map((p) => p[side][k]).filter((x) => x != null);
+    return v.length ? mean(v) : null;
+  };
+  const exact = { cellA: meanOf("aExact", "cellExact"), cellB: meanOf("bExact", "cellExact"), structA: meanOf("aExact", "structExact"), structB: meanOf("bExact", "structExact") };
   return {
     n: pages.length,
+    exact,
     meanA: pages.length ? mean(pages.map((p) => p.sA)) : null,
     meanB: pages.length ? mean(pages.map((p) => p.sB)) : null,
     meanD: ci.mean,
@@ -277,6 +338,7 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
     categories,
     failedReads: { a: missing.a.length, b: missing.b.length, aIds: missing.a, bIds: missing.b },
     skipped,
+    uninformative,
     gate: { mode: gate, pass: checks.every((c) => c.pass), checks },
     pages,
   };
@@ -289,10 +351,11 @@ const f3 = (x) => (x == null ? "-" : !Number.isFinite(x) ? String(x) : Math.abs(
 export function table(res, aName, bName) {
   const w = res.wilcoxon;
   const L = [];
-  L.push(`pages ${res.n}  failed reads ${aName} ${res.failedReads.a}, ${bName} ${res.failedReads.b}  left out ${res.skipped.length}`);
+  L.push(`pages ${res.n}  failed reads ${aName} ${res.failedReads.a}, ${bName} ${res.failedReads.b}  left out ${res.skipped.length}  uninformative ${res.uninformative.length}`);
   L.push(`mean S ${aName} ${f3(res.meanA)}  ${bName} ${f3(res.meanB)}  mean d ${f3(res.meanD)}  95% CI [${f3(res.ci.lo)}, ${f3(res.ci.hi)}]`);
   L.push(`Wilcoxon (n=${w.n}, zeros ${w.zeros}) W+ ${w.wPlus} W- ${w.wMinus}  exact p ${f3(w.pExact)}  normal p ${f3(w.pNormal)} (z ${f3(w.z)})`);
   L.push(`rank-biserial r ${f3(w.r)}  Cohen d_z ${f3(res.dz)}`);
+  L.push(`diagnostic, exact-anchor table F1 (not in S): cell ${aName} ${f3(res.exact.cellA)} ${bName} ${f3(res.exact.cellB)}  struct ${aName} ${f3(res.exact.structA)} ${bName} ${f3(res.exact.structB)}`);
   for (const [k, v] of Object.entries(res.nonInferiority)) L.push(`non-inferiority ${k}: n ${v.n}  mean ${f3(v.mean)}  CI [${f3(v.lo)}, ${f3(v.hi)}]  ${v.pass ? "ok" : "FAIL"}`);
   L.push("");
   L.push(["category".padEnd(16), "n".padStart(4), aName.padStart(10), bName.padStart(10), "W/T/L"].join(" "));
@@ -316,7 +379,8 @@ export function markdown(res, aName, bName) {
   L.push(`| mean S ${aName} / ${bName} | ${f3(res.meanA)} / ${f3(res.meanB)} |`);
   L.push(`| mean difference, 95% bootstrap CI | ${f3(res.meanD)} [${f3(res.ci.lo)}, ${f3(res.ci.hi)}] (${res.ci.resamples} resamples, seed ${res.ci.seed}) |`);
   L.push(`| Wilcoxon exact one-sided p | ${f3(w.pExact)} (normal approx ${f3(w.pNormal)}; n ${w.n}, zeros ${w.zeros}) |`);
-  L.push(`| rank-biserial r / Cohen d_z | ${f3(w.r)} / ${f3(res.dz)} |`, "");
+  L.push(`| rank-biserial r / Cohen d_z | ${f3(w.r)} / ${f3(res.dz)} |`);
+  L.push(`| diagnostic: exact-anchor cell F1 ${aName} / ${bName} (not in S) | ${f3(res.exact.cellA)} / ${f3(res.exact.cellB)} |`, "");
   L.push(`## Gate (${res.gate.mode}): ${res.gate.pass ? "PASS" : "FAIL"}`, "");
   for (const c of res.gate.checks) L.push(`- [${c.pass ? "x" : " "}] ${c.name}: ${f3(c.value)}`);
   L.push("", "## By category", "", `| category | n | ${aName} | ${bName} | wins / ties / losses |`, "|---|---|---|---|---|");
@@ -329,6 +393,7 @@ export function markdown(res, aName, bName) {
   for (const p of sorted.slice(-10).reverse()) L.push(row(p));
   if (res.failedReads.aIds.length) L.push("", `${aName} failed reads: ${res.failedReads.aIds.join(", ")}`);
   if (res.failedReads.bIds.length) L.push("", `${bName} failed reads: ${res.failedReads.bIds.join(", ")}`);
+  L.push("", `Uninformative pages left out (nothing to score in the truth): ${res.uninformative.length}${res.uninformative.length ? ` (${res.uninformative.join(", ")})` : ""}`);
   if (res.skipped.length) L.push("", `Left out: ${res.skipped.map((s) => `${s.id} (${s.reason})`).join(", ")}`);
   return L.join("\n") + "\n";
 }

@@ -47934,6 +47934,13 @@ function gridReading(table) {
   }
   return texts.filter((t) => isNumericToken(t)).length / texts.length >= 0.45;
 }
+function sideBySide(a, b) {
+  const yOver = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  const xOver = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+  const minH = Math.min(a[3] - a[1], b[3] - b[1]);
+  const minW = Math.min(a[2] - a[0], b[2] - b[0]);
+  return minH > 0 && minW > 0 && yOver >= 0.5 * minH && xOver <= 0.1 * minW;
+}
 function sharedHosts(doc, structures) {
   const out = /* @__PURE__ */ new Map();
   const tables = (doc?.order || []).map((id) => doc.blocks?.[id]).filter((b) => b && b.type === "table" && b.bbox);
@@ -47945,6 +47952,7 @@ function sharedHosts(doc, structures) {
       for (let j = i + 1; j < inside8.length; j += 1) if (iou4(inside8[i].bbox, inside8[j].bbox) >= 0.1) apart = false;
     }
     if (!apart) continue;
+    if (!inside8.some((a, i) => inside8.some((b, j) => j > i && sideBySide(a.bbox, b.bbox)))) continue;
     const hostArea = Math.max(0, host.bbox[2] - host.bbox[0]) * Math.max(0, host.bbox[3] - host.bbox[1]);
     const covered = inside8.reduce((sum, s) => sum + Math.max(0, s.bbox[2] - s.bbox[0]) * Math.max(0, s.bbox[3] - s.bbox[1]), 0);
     if (!(hostArea > 0) || covered < 0.6 * hostArea) continue;
@@ -48354,7 +48362,8 @@ function alignVlmText(doc, regions) {
     const hostText = inside8.map((b) => b.text).join(" ");
     if (texCommandCount(region.text) >= 2 && texCommandCount(hostText) === 0) continue;
     if (region.pageText) {
-      const parts2 = placePageText(region.text, inside8);
+      const tablesHere = (order || []).map((id) => blocks[id]).filter((b) => b && b.page === region.page && b.type === "table" && b.cells?.length);
+      const parts2 = placePageText(withoutTableLines(region.text, tablesHere), inside8);
       reads.push({ page: region.page, text: region.text, hosts: inside8.map((block) => ({ id: block.id, vision: block.text || "" })) });
       settleHosts(inside8, parts2);
       continue;
@@ -48403,6 +48412,35 @@ function alignVlmText(doc, regions) {
     });
     return spare;
   }
+}
+function cellTokens(text3) {
+  return String(text3 || "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+}
+function withoutTableLines(text3, tables) {
+  if (!tables?.length) return text3;
+  const bag = /* @__PURE__ */ new Map();
+  for (const table of tables) {
+    for (const cell of table.cells || []) for (const t of cellTokens(cell.text)) bag.set(t, (bag.get(t) || 0) + 1);
+  }
+  if (!bag.size) return text3;
+  const lines = String(text3 || "").split("\n");
+  const kept = lines.filter((line) => {
+    const toks = cellTokens(line);
+    if (toks.length < 2) return true;
+    const left = new Map(bag);
+    let hit = 0;
+    for (const t of toks) {
+      const n2 = left.get(t) || 0;
+      if (n2 > 0) {
+        hit += 1;
+        left.set(t, n2 - 1);
+      }
+    }
+    if (hit < 0.8 * toks.length) return true;
+    for (const [t, n2] of left) bag.set(t, n2);
+    return false;
+  });
+  return kept.length === lines.length ? text3 : kept.join("\n");
 }
 var CAPTION_LABEL_RE = /^\s*(?:fig(?:ure)?|abb(?:ildung)?|plate|tafel|table|tab)\.?\s*(?:\d+|[IVXLC]+)[a-z]?\b/i;
 function labelKey(text3) {

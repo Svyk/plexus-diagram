@@ -11,7 +11,7 @@ import {
 } from "../src/model/parse/ocr-fix.js";
 import { chooseTable, mergeOcrDocument, scanPagesOf } from "../src/model/parse/ocr-merge.js";
 import { createHelperClient } from "../src/host/parse-helper-client.js";
-import { alignVlmText, applyLayoutFigures, captionReading, linkLayoutCaptions } from "../src/model/parse/vlm-tables.js";
+import { alignVlmText, applyLayoutFigures, captionReading, linkLayoutCaptions, withoutTableLines } from "../src/model/parse/vlm-tables.js";
 import { readScan } from "../src/view/parse-engine.js";
 import { buildLines } from "../src/model/parse/lines.js";
 import { visualRows } from "../src/model/parse/stream.js";
@@ -1461,4 +1461,24 @@ test("applyLayoutFigures on a scan: two panels over one figure caption stay one 
   two.blocks.a.text = "Fig. 10.";
   const split = applyLayoutFigures(two, layout, [1]);
   assert.equal(split.doc.order.map((id) => split.doc.blocks[id]).filter((b) => b.type === "figure").length, 2);
+});
+
+test("alignVlmText leaves out page-reader lines that are the page's table", () => {
+  const doc = {
+    order: ["p", "t", "q"],
+    blocks: {
+      p: { id: "p", type: "para", page: 1, bbox: [0, 0, 300, 10], text: "Wir haben fur Sie geoffnet" },
+      t: { id: "t", type: "table", page: 1, bbox: [0, 20, 300, 60], rows: 2, cols: 2, cells: [
+        { r: 0, c: 0, text: "Dienstag:" }, { r: 0, c: 1, text: "12.00 - 17.00 Uhr" },
+        { r: 1, c: 0, text: "Sonntag:" }, { r: 1, c: 1, text: "12.00 - 17.00 Uhr" },
+      ] },
+      q: { id: "q", type: "para", page: 1, bbox: [0, 70, 300, 80], text: "Festnetz 030" },
+    },
+  };
+  const text = "Wir haben für Sie geöffnet\nDienstag: 12.00 – 17.00 Uhr\nSonntag: 12.00 – 17.00 Uhr\nFestnetz: 030";
+  const out = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 300, 80], text, pageText: true }]);
+  assert.equal(out.doc.blocks.p.text, "Wir haben für Sie geöffnet");
+  assert.equal(out.doc.blocks.q.text, "Festnetz: 030");
+  // A prose line that shares one number with a cell stays.
+  assert.equal(withoutTableLines("the shop opens at 12.00 daily", [doc.blocks.t]), "the shop opens at 12.00 daily");
 });

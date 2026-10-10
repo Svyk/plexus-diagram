@@ -326,6 +326,14 @@ export function gridReading(table) {
 
 // Readings that share one rule table without overlapping each other, and
 // together cover most of it. Map: structure -> host block.
+function sideBySide(a, b) {
+  const yOver = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  const xOver = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+  const minH = Math.min(a[3] - a[1], b[3] - b[1]);
+  const minW = Math.min(a[2] - a[0], b[2] - b[0]);
+  return minH > 0 && minW > 0 && yOver >= 0.5 * minH && xOver <= 0.1 * minW;
+}
+
 export function sharedHosts(doc, structures) {
   const out = new Map();
   const tables = (doc?.order || []).map((id) => doc.blocks?.[id]).filter((b) => b && b.type === "table" && b.bbox);
@@ -337,6 +345,10 @@ export function sharedHosts(doc, structures) {
       for (let j = i + 1; j < inside.length; j += 1) if (iou(inside[i].bbox, inside[j].bbox) >= 0.1) apart = false;
     }
     if (!apart) continue;
+    // Side by side: two readings share rows. Readings stacked down one rule
+    // table are bands of that table (the layout model cuts a long roster at
+    // its group heads); they are arbitrated against it, not swapped in.
+    if (!inside.some((a, i) => inside.some((b, j) => j > i && sideBySide(a.bbox, b.bbox)))) continue;
     const hostArea = Math.max(0, host.bbox[2] - host.bbox[0]) * Math.max(0, host.bbox[3] - host.bbox[1]);
     const covered = inside.reduce((sum, s) => sum + Math.max(0, s.bbox[2] - s.bbox[0]) * Math.max(0, s.bbox[3] - s.bbox[1]), 0);
     if (!(hostArea > 0) || covered < 0.6 * hostArea) continue;
@@ -783,7 +795,8 @@ export function alignVlmText(doc, regions) {
     const hostText = inside.map((b) => b.text).join(" ");
     if (texCommandCount(region.text) >= 2 && texCommandCount(hostText) === 0) continue;
     if (region.pageText) {
-      const parts = placePageText(region.text, inside);
+      const tablesHere = (order || []).map((id) => blocks[id]).filter((b) => b && b.page === region.page && b.type === "table" && b.cells?.length);
+      const parts = placePageText(withoutTableLines(region.text, tablesHere), inside);
       reads.push({ page: region.page, text: region.text, hosts: inside.map((block) => ({ id: block.id, vision: block.text || "" })) });
       settleHosts(inside, parts);
       continue;
@@ -835,6 +848,38 @@ export function alignVlmText(doc, regions) {
     });
     return spare;
   }
+}
+
+function cellTokens(text) {
+  return String(text || "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+}
+
+// The page reader sometimes transcribes a table it was meant to skip. A line
+// of the transcription made of the page's table cells (at least 80% of its
+// words, two or more) is that table, which its table block already holds;
+// placed as prose it would be poured into the paragraph next to the table.
+export function withoutTableLines(text, tables) {
+  if (!tables?.length) return text;
+  const bag = new Map();
+  for (const table of tables) {
+    for (const cell of table.cells || []) for (const t of cellTokens(cell.text)) bag.set(t, (bag.get(t) || 0) + 1);
+  }
+  if (!bag.size) return text;
+  const lines = String(text || "").split("\n");
+  const kept = lines.filter((line) => {
+    const toks = cellTokens(line);
+    if (toks.length < 2) return true;
+    const left = new Map(bag);
+    let hit = 0;
+    for (const t of toks) {
+      const n = left.get(t) || 0;
+      if (n > 0) { hit += 1; left.set(t, n - 1); }
+    }
+    if (hit < 0.8 * toks.length) return true;
+    for (const [t, n] of left) bag.set(t, n);
+    return false;
+  });
+  return kept.length === lines.length ? text : kept.join("\n");
 }
 
 // A figure or table label at the start of a caption: "Fig.3", "FIG. 11.—", "Table IV".

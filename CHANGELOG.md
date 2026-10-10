@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.11.0 — 2026-10-10
+
+Scanned and born-digital PDFs read more accurately: fewer false figures, captions found, more tables right, and a High accuracy read that gives the same answer every time.
+
+- **Figures and captions on scans.** Library stamps, page-edge stripes, rules and text blocks are no longer taken for figures; a real drawing is never dropped, even when its caption runs across it. Captions that start with Fig., Figure, Plate, Abb. or Tafel are linked to their figure, including a caption set sideways beside a plate. On our set of 62 scanned technical pages (1900–1950), High accuracy now finds figures at F1 0.98 (was 0.92) and links 89% of captions (was 77%).
+- **Tables on old scans.** Narrow numeric columns that a spanning header had glued together are split again; contents lists under a plate stay lists; a numbered index or an equation is not turned into a table.
+- **Tables in born-digital PDFs.** Booktabs-style rows, leader-dot columns and regression tables stay tables. High accuracy also asks the layout model about tables on pages with a text layer, and keeps a table only when its words are on the page.
+- **High accuracy.** The same PDF gives the same reading every time (fixed decoding; the model weights are pinned and checked by SHA-256 on first use). The layout model and the reader run only on pages where they can change the result.
+- **Fixes:** a blank High accuracy cell no longer erases text the page shows; a running head is not taken for a plate title.
+- Cached parses from earlier versions are refreshed automatically.
+
 ## 3.10.0 — 2026-10-09
 
 Draw a region freehand, delete an arrow cleanly, read PDFs with LlamaParse, and read old scans far better on your own Mac.

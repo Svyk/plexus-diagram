@@ -6715,15 +6715,19 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   let counted = 0;
   const tol = 0.5 * bodySize;
   const insideColumn = (p) => p.span === 1 && p.t.x0 >= cols[p.c].x0 - tol && p.t.x1 <= cols[p.c].x1 + tol;
-  const wrappedPair = (a, b) => insideColumn(a) && insideColumn(b) && !(valueToken(a.t.text) && valueToken(b.t.text));
+  const shortRow = (row4) => row4.every((p) => String(p.t.text || "").trim().split(/\s+/).length <= 4);
+  const wordish = (t) => /[A-Za-z]{2,}/.test(t);
+  const mixed = (a, b) => valueToken(a) && valueToken(b) || valueToken(a) && wordish(b) || wordish(a) && valueToken(b);
+  const wrappedPair = (a, b) => insideColumn(a) && insideColumn(b) && (dateCell(`${a.t.text} ${b.t.text}`) || !mixed(a.t.text, b.t.text));
   placed.forEach((row4) => {
     if (row4.length < 2) return;
     counted++;
+    const short = shortRow(row4);
     const seen = /* @__PURE__ */ new Map();
     let dup = false;
     for (const p of row4) {
       const prev = seen.get(p.c);
-      if (prev && !wrappedPair(prev, p)) dup = true;
+      if (prev && !(short && wrappedPair(prev, p))) dup = true;
       if (!prev) seen.set(p.c, p);
     }
     const ok = seen.size >= 2 && (bands ? true : !dup);
@@ -7819,7 +7823,7 @@ var init_stream = __esm({
     TEXT_RULE_RE = /^[-–—_=.·•]{4,}$/;
     YEAR_RE = /\b(?:1[89]|20)\d{2}\b/;
     CLOCK_RE = /\b\d{1,2}[.:]\d{2}\b/;
-    MONTH_RE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i;
+    MONTH_RE = /\b(?:jan|feb|mar|apr|april|may|jun|june|jul|july|aug|sep|sept|oct|nov|dec)\b/i;
     SCI_RE = /\d(?:[\d.,\s]*\d)?\s*[eE][+\-]?\d+/;
     NAMED_ENTRY_RE = /^(?:\d{1,3}[.)]\s*)?(?:fig(?:ure)?s?|tables?|illustrations?|plates?)\b/i;
     PAGE_HEAD_RE = /^pages?\.?$/i;

@@ -21,7 +21,7 @@ import {
 } from "../src/host/cloud-parse.js";
 import { createParseStore, restorableByUrl, restorableTitle } from "../src/host/parse-store.js";
 import { layoutImageKind, layoutImagePage, llamaparseToParse, mistralToParse } from "../src/model/cloud-to-parse.js";
-import { bestLocalDoc, mergeCloudFigures } from "../src/model/cloud-merge.js";
+import { bestLocalDoc, betterCaption, mergeCloudFigures } from "../src/model/cloud-merge.js";
 import { nextParsedTitle, parsedDocTitle, withKeptTitle } from "../src/model/pdf.js";
 import { PARSE_REV } from "../src/model/parse/index.js";
 import { validateParse } from "../src/model/parse-schema.js";
@@ -954,6 +954,9 @@ test("hybrid figures keep a local match, add a miss, and drop a layout figure on
   const added = figures.find((block) => block.source === "local");
   assert.deepEqual(hybrid.bbox, [12, 12, 198, 198]);
   assert.equal(merged.blocks[hybrid.caption].text, "Fig. 1 The local caption is longer");
+  assert.equal(betterCaption("Fig. 1", "Fig. 1. Apparatus for determining compressibility"), "Fig. 1. Apparatus for determining compressibility");
+  assert.equal(betterCaption("FIGURE 1.—Apparatus for determining compressibility of natural gas.", "Fig. 1"), "FIGURE 1.—Apparatus for determining compressibility of natural gas.");
+  assert.equal(betterCaption("", "Fig. 1 from LlamaParse"), "Fig. 1 from LlamaParse");
   assert.equal(added.page, 1);
   assert.deepEqual(added.bbox, [20, 600, 120, 760]);
   assert.equal(merged.blocks[added.caption].text, "Fig. 3 missed");

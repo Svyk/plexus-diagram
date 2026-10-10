@@ -488,13 +488,16 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
   }
 
   // High-accuracy read. Layout boxes, table readings, optional OCR lines, figure hints.
-  // `tables` are the caller's boxes, used where the layout model finds no table.
-  async function vlm({ bytes, sha256, pages, tables: regions, text = false, signal } = {}) {
+  // `tables` are the caller's boxes, united with the layout boxes. `numericPages`
+  // are pages with aligned numeric columns. `boxMode` is optional.
+  async function vlm({ bytes, sha256, pages, tables: regions, text = false, numericPages, boxMode, signal } = {}) {
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
     const options = { text: text === true };
     if (pages && pages.length) options.pages = pages;
     if (regions && regions.length) options.tables = regions.map((t) => ({ page: t.page, bbox: t.bbox }));
+    if (numericPages && numericPages.length) options.numericPages = numericPages;
+    if (boxMode) options.boxMode = boxMode;
     const res = await call(`${url}/v1/vlm`, {
       method: "POST",
       headers: {

@@ -171,3 +171,173 @@ def test_vlm_route_returns_the_recorded_page(tmp_path):
     assert body.json()["layoutModel"] == "PP-DocLayoutV2"
     assert seen["options"]["pages"] == [1]
     assert seen["options"]["text"] is False
+
+
+def _col(x, ys, text="1.0", width=12):
+    return [{"text": text, "x0": x, "y0": y, "x1": x + width, "y1": y + 8} for y in ys]
+
+
+def test_union_keeps_a_second_table_and_the_layout_rectangle():
+    from plexus_parse_helper.vlm_boxes import choose_table_boxes
+
+    chosen = choose_table_boxes(
+        [{"label": "table", "score": 0.9, "bbox": [10, 10, 80, 40]}],
+        [{"label": "table", "score": 0, "bbox": [10, 120, 80, 180]}],
+        page_size=(200, 300),
+    )
+    assert len(chosen) == 2
+    assert {box["source"] for box in chosen} == {"layout", "caller"}
+    top = next(box for box in chosen if box["source"] == "layout")
+    assert top["bbox"] == [10.0, 10.0, 80.0, 40.0]
+    overlapped = choose_table_boxes(
+        [{"label": "table", "score": 0.8, "bbox": [10, 10, 100, 80]}],
+        [{"label": "table", "score": 0, "bbox": [12, 40, 110, 140]}],
+        page_size=(200, 200),
+    )
+    assert len(overlapped) == 1
+    assert overlapped[0]["source"] == "union"
+    # The layout rectangle. The caller box hangs below it and is not the crop.
+    assert overlapped[0]["bbox"] == [10.0, 10.0, 100.0, 80.0]
+    halves = choose_table_boxes(
+        [
+            {"label": "table", "score": 0.8, "bbox": [10, 10, 100, 50]},
+            {"label": "table", "score": 0.7, "bbox": [20, 30, 120, 80]},
+        ],
+        [],
+        page_size=(200, 200),
+    )
+    assert len(halves) == 1
+    assert halves[0]["source"] == "layout"
+    assert halves[0]["bbox"] == [10.0, 10.0, 120.0, 80.0]
+
+
+def test_whole_page_when_the_layout_model_misses_a_numeric_grid():
+    from plexus_parse_helper.vlm_boxes import aligned_numeric_columns, choose_table_boxes
+
+    rows = [20, 36, 52, 68, 84]
+    grid = _col(40, rows) + _col(90, rows, "2.5")
+    assert aligned_numeric_columns(grid) is True
+    assert aligned_numeric_columns(_col(40, rows)) is False
+    prose = [
+        {"text": "The", "x0": 20, "y0": 20, "x1": 40, "y1": 28},
+        {"text": "yield", "x0": 44, "y0": 20, "x1": 70, "y1": 28},
+        {"text": "1913", "x0": 20, "y0": 40, "x1": 40, "y1": 48},
+    ]
+    assert aligned_numeric_columns(prose) is False
+    page = choose_table_boxes(
+        [],
+        [{"label": "table", "score": 0, "bbox": [10, 10, 40, 30]}],
+        page_size=(200, 300),
+        numeric=True,
+    )
+    assert len(page) == 1
+    assert page[0]["source"] == "page"
+    assert page[0]["bbox"] == [0, 0, 200, 300]
+    kept = choose_table_boxes(
+        [],
+        [{"label": "table", "score": 0, "bbox": [10, 10, 40, 30]}],
+        page_size=(200, 300),
+        numeric=False,
+    )
+    assert kept[0]["source"] == "caller"
+    layout_only = choose_table_boxes(
+        [{"label": "table", "score": 0.9, "bbox": [10, 10, 80, 40]}],
+        [{"label": "table", "score": 0, "bbox": [10, 120, 80, 180]}],
+        page_size=(200, 300),
+        box_mode="layout",
+    )
+    assert len(layout_only) == 1 and layout_only[0]["source"] == "layout"
+    caller_only = choose_table_boxes(
+        [{"label": "table", "score": 0.9, "bbox": [10, 10, 80, 40]}],
+        [{"label": "table", "score": 0, "bbox": [10, 120, 80, 180]}],
+        page_size=(200, 300),
+        box_mode="caller",
+    )
+    assert len(caller_only) == 1 and caller_only[0]["source"] == "caller"
+
+
+def test_weight_sha256_rejects_a_mismatch_and_accepts_a_match(tmp_path):
+    import hashlib
+
+    from plexus_parse_helper.vlm_weights import verify_tree
+
+    path = tmp_path / "model.safetensors"
+    path.write_bytes(b"weights")
+    digest = hashlib.sha256(b"weights").hexdigest()
+    verify_tree(tmp_path, {"model.safetensors": {"sha256": digest, "bytes": 7}})
+    try:
+        verify_tree(tmp_path, {"model.safetensors": {"sha256": "0" * 64, "bytes": 7}})
+    except ValueError as exc:
+        assert "sha256" in str(exc)
+    else:
+        raise AssertionError("a mismatched weight was accepted")
+
+
+def test_whole_page_read_does_not_hide_a_figure():
+    from plexus_parse_helper.vlm_read import covered_by_table
+
+    page = {"bbox": [0, 0, 200, 300], "source": "page"}
+    table = {"bbox": [10, 10, 80, 40], "source": "layout"}
+    on_table = [12, 12, 70, 36]
+    aside = [100, 200, 140, 240]
+    assert covered_by_table(on_table, [page]) is False
+    assert covered_by_table(on_table, [table]) is True
+    assert covered_by_table(aside, [table]) is False
+
+
+def test_generate_is_greedy_and_repeatable(monkeypatch):
+    import mlx.core as mx
+
+    from plexus_parse_helper.vlm_tables import _generate, greedy_sampler
+
+    assert int(greedy_sampler(mx.array([[0.1, 3.0, 0.2]])).item()) == 1
+
+    class Config:
+        eos_token_id = []
+
+    class Model:
+        config = Config()
+
+    class Proc:
+        tokenizer = type("Tok", (), {"stopping_criteria": None})()
+
+    class Mx:
+        seeded = None
+
+        class random:
+            @staticmethod
+            def seed(value):
+                Mx.seeded = value
+
+        @staticmethod
+        def reset_peak_memory():
+            pass
+
+    class Stop:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("plexus_parse_helper.vlm_tables._get_model", lambda: (Model(), Proc(), "", Mx))
+    monkeypatch.setattr("plexus_parse_helper.vlm_tables._RepeatStop", Stop)
+    seen = []
+
+    def generate(*args, **kwargs):
+        seen.append(kwargs)
+        return type("Out", (), {"text": "<fcel>Year<nl>"})()
+
+    import mlx_vlm
+
+    monkeypatch.setattr(mlx_vlm, "generate", generate)
+    monkeypatch.setattr(
+        "mlx_vlm.prompt_utils.apply_chat_template",
+        lambda *args, **kwargs: "PROMPT",
+    )
+    first = _generate(None, "Table Recognition:", 8)
+    second = _generate(None, "Table Recognition:", 8)
+    assert first == second == "<fcel>Year<nl>"
+    assert len(seen) == 2
+    assert seen[0]["temperature"] == 0.0
+    assert seen[0]["seed"] == 0
+    assert seen[0]["sampler"] is greedy_sampler
+    assert seen[0] == seen[1]
+    assert Mx.seeded == 0

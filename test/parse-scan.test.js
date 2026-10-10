@@ -576,6 +576,7 @@ test("readScan high accuracy calls vlm, keeps the rule table when the reading dr
   });
   assert.equal(tablesCalled, false);
   assert.equal(vlmArgs.text, false);
+  assert.deepEqual(vlmArgs.numericPages, [2]);
   assert.ok(vlmArgs.tables.length >= 1);
   const t = tableOf(out.doc);
   assert.notEqual(t.method, "PaddleOCR-VL-0.9B");

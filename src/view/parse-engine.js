@@ -7,6 +7,7 @@ import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lin
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
 import { voteOcrBodies } from "../model/parse/ocr-vote.js";
 import { evidenceFromRecords } from "../model/parse/vlm-arbitrate.js";
+import { numericPagesOf } from "../model/parse/vlm-boxes.js";
 import { alignVlmText, applyVlmTables, tableRegions } from "../model/parse/vlm-tables.js";
 
 const GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
@@ -119,7 +120,9 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   let vlmApplied = [];
   let vlmFigures = [];
   let vlmLines = [];
-  // High accuracy: layout boxes, then PaddleOCR-VL. A helper that only advertised
+  // High accuracy: layout boxes united with the rule boxes, then PaddleOCR-VL.
+  // numericPages tells the helper which pages have aligned numeric columns, so a
+  // page the layout model missed can be read whole. A helper that only advertised
   // vlm-tables still re-reads the rule boxes. A mock that implements ocr() alone
   // must not be asked. A failed reading leaves the rule-assembly tables.
   const high = helper.vlmHigh === true && typeof helper.vlm === "function";
@@ -129,7 +132,9 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
       if (high) {
         onPhase?.({ phase: "vlm", count: regions.length, mode: "high" });
         const read = await helper.vlm({
-          bytes, sha256, pages: wanted, tables: regions, text: options.vlmText === true, signal,
+          bytes, sha256, pages: wanted, tables: regions,
+          numericPages: numericPagesOf(next, wanted),
+          text: options.vlmText === true, signal,
         });
         throwIfAborted();
         const applied = applyVlmTables(doc, read?.tables || [], {

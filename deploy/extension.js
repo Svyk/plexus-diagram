@@ -6296,7 +6296,11 @@ function columnCuts(rowsIn, col, rules, size) {
     const sides = sidesAt(rowsIn, x);
     if (sides.left >= 3 && sides.right >= 3 && sides.straddle <= 1) add(x);
   }
-  const gaps = [];
+  const gaps = col.x1 - col.x0 >= Math.max(24, 2.6 * size) ? [] : null;
+  if (!gaps) {
+    cuts.sort((a, b) => a - b);
+    return cuts;
+  }
   for (const r of rowsIn) {
     const ws = r.tokens.flatMap((t) => t.words || []).filter((w) => (w.x0 + w.x1) / 2 > col.x0 && (w.x0 + w.x1) / 2 < col.x1).sort((a, b) => a.x0 - b.x0);
     for (let i = 1; i < ws.length; i++) {
@@ -6465,23 +6469,26 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     const texts0 = [...cellMap.values()].filter((c) => c.r === 0).map((c) => cellTextOf(c.words).trim()).filter(Boolean);
     const hasLabel = texts0.some((t) => !isNumericText(t) && /[A-Za-z]/.test(t));
     if (!headerRows && (hasLabel || yearRow(0)) && rows >= 2 && (!numericRow(0) || yearRow(0)) && numericRow(1) && !yearRow(1)) headerRows = 1;
-    const labelRow = (r) => {
+    const unitLine = (r) => {
       const cs = [...cellMap.values()].filter((c) => c.r === r && cellTextOf(c.words).trim());
-      if (!cs.length) return false;
-      const nums = cs.filter((c) => isNumericText(cellTextOf(c.words))).length;
-      return nums < 2 && nums < cs.length;
+      if (cs.length < 2) return false;
+      const text3 = (c) => cellTextOf(c.words).trim();
+      if (cs.some((c) => /\d{2,}|\d\s*[.,]\s*\d/.test(text3(c)))) return false;
+      return cs.filter((c) => !isNumericText(text3(c))).length >= 2;
     };
-    const pageList = rowsIn.length >= 2 && rowsIn.some((r) => contentsEntry(r.tokens)) && rowsIn.every((r) => r.tokens.length < 2 || contentsEntry(r.tokens));
-    while (!pageList && headerRows < rows - 1 && headerRows < 4 && labelRow(headerRows)) {
-      let later = false;
-      for (let r = headerRows + 1; r < rows; r++) if (numericRow(r)) later = true;
-      if (!later) break;
-      headerRows++;
-    }
     const idRow = (r) => {
       const cs = [...cellMap.values()].filter((c) => c.r === r && cellTextOf(c.words).trim());
       return cs.length >= 4 && cs.every((c) => /^\d{5,6}$/.test(cellTextOf(c.words).trim()));
     };
+    const pageList = rowsIn.length >= 2 && rowsIn.some((r) => contentsEntry(r.tokens)) && rowsIn.every((r) => r.tokens.length < 2 || contentsEntry(r.tokens));
+    while (!pageList && headerRows < rows - 1 && headerRows < 4 && unitLine(headerRows)) {
+      const next = headerRows + 1;
+      if (!unitLine(next) && !idRow(next) && !numericRow(next)) break;
+      let later = false;
+      for (let r = next; r < rows; r++) if (numericRow(r)) later = true;
+      if (!later) break;
+      headerRows++;
+    }
     if (headerRows > 0 && headerRows < rows - 1 && idRow(headerRows)) headerRows++;
   }
   for (let r = 0; r < rows; r++) {
@@ -6893,6 +6900,9 @@ function contentsEntry(tokens2) {
   const body = labelTokens.filter((t, i) => !(i === 0 && /^\d{1,3}[.)]?$/.test(String(t.text || "").trim())));
   const nums = body.filter((t) => isNumericText(t.text)).length;
   if (nums >= 1 && nums >= body.length / 2) return false;
+  const labelText = labelTokens.map((t) => String(t.text || "")).join(" ");
+  const indexed = /^(?:\d{1,3}[.)]\s*)?(?:fig(?:ure)?s?|tables?|illustrations?|plates?|no\.?)\b/i.test(labelText.trim());
+  if (!indexed && /\d{3,}|\d\s*[.,]\s*\d|\d\s+\d/.test(labelText)) return false;
   return page.x0 - label.x1 >= 12;
 }
 function contentsList(run) {
@@ -6957,7 +6967,10 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
       const row4 = rows[j];
       const tokens2 = tokensOf2(row4);
       if (markerOf(row4.lines[0], dots) && !contentsEntry(tokens2) && !contentsContinuation(row4, tokens2, run) || CAPTION_RE.test(row4.text) && !contentsEntry(tokens2)) break;
-      if (run.length >= 2 && contentsList(run) && !contentsEntry(tokens2) && !contentsContinuation(row4, tokens2, run)) break;
+      const listed = contentsList(run);
+      const namedListSoFar = listed && run.some((r) => /\b(figures?|tables?|illustrations?|plates?)\b/i.test(r.row.text || ""));
+      const longList = listed && run.filter((r) => contentsEntry(r.tokens)).length >= 3;
+      if ((namedListSoFar || longList) && !contentsEntry(tokens2) && !contentsContinuation(row4, tokens2, run)) break;
       const ruleText = row4.text.replace(/\s+/g, "");
       if (/^[-–—−_=.·•]{4,}$/.test(ruleText) || /^[-–—−]$/.test(ruleText) || ruleText === ";") {
         ruleLines.push(...row4.lines);
@@ -11063,7 +11076,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 20;
+    PARSE_REV = 21;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -44224,6 +44237,7 @@ function clearsRule(best, ruleRow) {
   const rows = best.table?.rows || 0;
   const ruleRows = ruleRow.table?.rows || 0;
   if (Math.max(best.score.rowCov, ruleRow.score.rowCov) < 0.45 && best.score.rowFit - ruleRow.score.rowFit >= 0.12 && rows >= ruleRows) return true;
+  if (best.score.rowCov < 0.6 && ruleRow.score.rowCov < 0.6 && best.score.rowFit - ruleRow.score.rowFit >= 0.2 && rows >= ruleRows && best.score.total >= ruleRow.score.total) return true;
   if (Math.max(best.score.rowCov, ruleRow.score.rowCov) < 0.45 && best.score.tidy - ruleRow.score.tidy >= 0.25 && best.score.total >= ruleRow.score.total) return true;
   return false;
 }

@@ -452,6 +452,10 @@ function clearsRule(best, ruleRow) {
   const rows = best.table?.rows || 0;
   const ruleRows = ruleRow.table?.rows || 0;
   if (Math.max(best.score.rowCov, ruleRow.score.rowCov) < 0.45 && best.score.rowFit - ruleRow.score.rowFit >= 0.12 && rows >= ruleRows) return true;
+  // Coverage just above that line is still a weak match. A large row-count
+  // miss (the shorter grid left out a band of body lines) then takes the
+  // longer reading, when its score is not lower.
+  if (best.score.rowCov < 0.6 && ruleRow.score.rowCov < 0.6 && best.score.rowFit - ruleRow.score.rowFit >= 0.2 && rows >= ruleRows && best.score.total >= ruleRow.score.total) return true;
   // Neither reading matches the OCR tokens. A large tidy gap still means the
   // rule cells are stray punctuation and the other grid is the readable one.
   if (Math.max(best.score.rowCov, ruleRow.score.rowCov) < 0.45 && best.score.tidy - ruleRow.score.tidy >= 0.25 && best.score.total >= ruleRow.score.total) return true;

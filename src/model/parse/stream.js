@@ -478,7 +478,13 @@ function columnCuts(rowsIn, col, rules, size) {
     const sides = sidesAt(rowsIn, x);
     if (sides.left >= 3 && sides.right >= 3 && sides.straddle <= 1) add(x);
   }
-  const gaps = [];
+  // A gap inside a column that is already one number wide splits "1.01"
+  // into two columns. Two glued quantities need a wider host column.
+  const gaps = (col.x1 - col.x0) >= Math.max(24, 2.6 * size) ? [] : null;
+  if (!gaps) {
+    cuts.sort((a, b) => a - b);
+    return cuts;
+  }
   for (const r of rowsIn) {
     const ws = r.tokens.flatMap((t) => t.words || [])
       .filter((w) => (w.x0 + w.x1) / 2 > col.x0 && (w.x0 + w.x1) / 2 < col.x1)
@@ -655,29 +661,34 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     const texts0 = [...cellMap.values()].filter((c) => c.r === 0).map((c) => cellTextOf(c.words).trim()).filter(Boolean);
     const hasLabel = texts0.some((t) => !isNumericText(t) && /[A-Za-z]/.test(t));
     if (!headerRows && (hasLabel || yearRow(0)) && rows >= 2 && (!numericRow(0) || yearRow(0)) && numericRow(1) && !yearRow(1)) headerRows = 1;
-    // A unit line under the names ("C. c.", "Mm. of mercury") is a header row
-    // even when it is not bold. A row whose own cells are numbers is data,
-    // including a row where only the stub was read.
-    const labelRow = (r) => {
+    // A unit line ("C. c.", "Mm. of mercury") or a row of column names. A data
+    // row whose numbers were glued ("1,270 1,") is not a header, and a single
+    // stub ("Plat") is not a unit line. The row counts only when the next line
+    // is another unit line, the lab-id row, or the numeric body. A stub on the
+    // next line means these labels are not that header.
+    const unitLine = (r) => {
       const cs = [...cellMap.values()].filter((c) => c.r === r && cellTextOf(c.words).trim());
-      if (!cs.length) return false;
-      const nums = cs.filter((c) => isNumericText(cellTextOf(c.words))).length;
-      return nums < 2 && nums < cs.length;
+      if (cs.length < 2) return false;
+      const text = (c) => cellTextOf(c.words).trim();
+      if (cs.some((c) => /\d{2,}|\d\s*[.,]\s*\d/.test(text(c)))) return false;
+      return cs.filter((c) => !isNumericText(text(c))).length >= 2;
+    };
+    const idRow = (r) => {
+      const cs = [...cellMap.values()].filter((c) => c.r === r && cellTextOf(c.words).trim());
+      return cs.length >= 4 && cs.every((c) => /^\d{5,6}$/.test(cellTextOf(c.words).trim()));
     };
     const pageList = rowsIn.length >= 2 && rowsIn.some((r) => contentsEntry(r.tokens))
       && rowsIn.every((r) => r.tokens.length < 2 || contentsEntry(r.tokens));
-    while (!pageList && headerRows < rows - 1 && headerRows < 4 && labelRow(headerRows)) {
+    while (!pageList && headerRows < rows - 1 && headerRows < 4 && unitLine(headerRows)) {
+      const next = headerRows + 1;
+      if (!unitLine(next) && !idRow(next) && !numericRow(next)) break;
       let later = false;
-      for (let r = headerRows + 1; r < rows; r++) if (numericRow(r)) later = true;
+      for (let r = next; r < rows; r++) if (numericRow(r)) later = true;
       if (!later) break;
       headerRows++;
     }
     // Lab numbers under the names (22954, 22955, …) are a header row. A comma
     // quantity ("1,275") and a 4-digit year are not.
-    const idRow = (r) => {
-      const cs = [...cellMap.values()].filter((c) => c.r === r && cellTextOf(c.words).trim());
-      return cs.length >= 4 && cs.every((c) => /^\d{5,6}$/.test(cellTextOf(c.words).trim()));
-    };
     if (headerRows > 0 && headerRows < rows - 1 && idRow(headerRows)) headerRows++;
   }
   // Row spans: header band cells with nothing below in their column; body group labels (col 0 only).
@@ -1071,6 +1082,12 @@ function contentsEntry(tokens) {
   const body = labelTokens.filter((t, i) => !(i === 0 && /^\d{1,3}[.)]?$/.test(String(t.text || "").trim())));
   const nums = body.filter((t) => isNumericText(t.text)).length;
   if (nums >= 1 && nums >= body.length / 2) return false;
+  // A contents label may carry its own index ("Figure 1", "2. Plate").
+  // A measurement in that label ("2,000 r.p.m.", "Hg 12 15") is a table row
+  // whose last integer only happens to sit in a wide gap.
+  const labelText = labelTokens.map((t) => String(t.text || "")).join(" ");
+  const indexed = /^(?:\d{1,3}[.)]\s*)?(?:fig(?:ure)?s?|tables?|illustrations?|plates?|no\.?)\b/i.test(labelText.trim());
+  if (!indexed && /\d{3,}|\d\s*[.,]\s*\d|\d\s+\d/.test(labelText)) return false;
   return page.x0 - label.x1 >= 12;
 }
 
@@ -1150,8 +1167,13 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
       const tokens = tokensOf(row);
       if ((markerOf(row.lines[0], dots) && !contentsEntry(tokens) && !contentsContinuation(row, tokens, run)) || (CAPTION_RE.test(row.text) && !contentsEntry(tokens))) break;
       // A contents list ends at the next section head. Growing it further would
-      // fail the list and drop the entries already read.
-      if (run.length >= 2 && contentsList(run) && !contentsEntry(tokens) && !contentsContinuation(row, tokens, run)) break;
+      // fail the list and drop the entries already read. Two rows that only
+      // look like a list (a speed line and a column head, each ending in a
+      // small integer) are not one: a real short list names figures or tables.
+      const listed = contentsList(run);
+      const namedListSoFar = listed && run.some((r) => /\b(figures?|tables?|illustrations?|plates?)\b/i.test(r.row.text || ""));
+      const longList = listed && run.filter((r) => contentsEntry(r.tokens)).length >= 3;
+      if ((namedListSoFar || longList) && !contentsEntry(tokens) && !contentsContinuation(row, tokens, run)) break;
       // A rule drawn as a dash ("-" or "-----") is not a row and does not end the table.
       const ruleText = row.text.replace(/\s+/g, "");
       // A drawn rule (a dash, or four or more leader marks) is not a row. A bullet or a

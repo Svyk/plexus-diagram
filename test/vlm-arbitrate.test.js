@@ -68,6 +68,23 @@ test("arbitration takes the VLM table when the rule grid drops rows", () => {
   assert.ok(decision.scores.vlm.rowCov > decision.scores.rule.rowCov);
 });
 
+test("a weak match still takes the longer grid when the short one misses a band of rows", () => {
+  const full = Array.from({ length: 12 }, (_, i) => [`Name${i}`, `${(i + 1).toFixed(2)}`]);
+  const box = [0, 0, 90, 16 + 12 * 14];
+  const rule = grid(full.slice(0, 8).map((row, i) => (i < 6 ? row : [`Other${i}`, `9.${i}0`])), { headerRows: 0, bbox: box });
+  const vlm = grid(full.slice(0, 11).map((row, i) => (i < 6 ? row : [`Zeta${i}`, `8.${i}0`])), { headerRows: 0, bbox: box });
+  const words = [];
+  full.forEach((row, r) => row.forEach((text, c) => {
+    words.push({ text, x0: 8 + c * 40, x1: 36 + c * 40, base: 16 + r * 14, size: 8, y0: 8 + r * 14, y1: 16 + r * 14 });
+  }));
+  const decision = chooseTableReading(rule, vlm, { words, rules: [] });
+  assert.equal(decision.choice, "vlm");
+  assert.ok(decision.scores.rule.rowCov >= 0.45 && decision.scores.rule.rowCov < 0.6);
+  assert.ok(decision.scores.vlm.rowCov >= 0.45 && decision.scores.vlm.rowCov < 0.6);
+  assert.ok(decision.scores.vlm.total - decision.scores.rule.total < 0.06);
+  assert.ok(decision.scores.vlm.rowFit - decision.scores.rule.rowFit >= 0.2);
+});
+
 test("a near tie keeps the rule table", () => {
   const rule = grid(TEN);
   const vlm = grid(TEN.map((row) => [row[0], row[1] === "1980" ? "1980" : row[1]]), { bbox: rule.bbox });

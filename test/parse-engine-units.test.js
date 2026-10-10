@@ -858,4 +858,43 @@ test("a repeated narrow gap between numeric words is a column and a thousands gr
   const kept = detectStreamRuns(buildLines(grouped.flat(), { transform: VP, fonts: FONTS }).lines).find((b) => b.type === "table");
   assert.ok(kept);
   assert.equal(kept.cols, 3);
+  const narrow = [];
+  for (let i = 0; i < 6; i++) {
+    const y = 700 - i * 14;
+    narrow.push([
+      item("Treated", 40, y, 8, "f1", 48),
+      item("1", 180, y, 8, "f1", 8),
+      item("01", 190, y, 8, "f1", 10),
+      item("20.01", 280, y, 8, "f1", 28),
+    ]);
+  }
+  const oneNumber = detectStreamRuns(buildLines(narrow.flat(), { transform: VP, fonts: FONTS }).lines).find((b) => b.type === "table");
+  assert.ok(oneNumber);
+  assert.equal(oneNumber.cols, 3);
+});
+
+test("a speed line ending in a column integer does not end the table before the body", () => {
+  const lines = buildLines([
+    [item("Supercharger speed - 2,000 r.p.m.", 72, 700, 10, "f1", 220), item("15", 400, 700, 10, "f1", 14)],
+    [item("Pressure difference, in. of Hg", 72, 686, 10, "f1", 180), item("0", 270, 686, 10, "f1", 10), item("12", 330, 686, 10, "f1", 14), item("15", 400, 686, 10, "f1", 14)],
+    [item("N.A.C.A. Roots supercharger, hp", 72, 672, 10, "f1", 190), item("0.954", 260, 672, 10, "f1", 32), item("39.7", 330, 672, 10, "f1", 24), item("57.1", 390, 672, 10, "f1", 24)],
+    [item("Powerplus supercharger, hp", 72, 658, 10, "f1", 160), item("6.57", 270, 658, 10, "f1", 24), item("39.55", 330, 658, 10, "f1", 28), item("59.8", 390, 658, 10, "f1", 24)],
+  ].flat(), { transform: VP, fonts: FONTS }).lines;
+  const found = detectStreamRuns(lines).filter((b) => b.type === "table");
+  assert.equal(found.length, 1);
+  assert.ok(found[0].rows >= 4);
+});
+
+test("a unit line under the column names stays in the header", () => {
+  const units = buildLines([
+    [item("Volume", 40, 700, 8, "f1", 40), item("Pressure", 160, 700, 8, "f1", 52), item("PV", 280, 700, 8, "f1", 16)],
+    [item("C.c.", 40, 686, 8, "f1", 24), item("Mm.", 160, 686, 8, "f1", 22), item("mercury", 188, 686, 8, "f1", 48)],
+    [item("404.0", 40, 672, 8, "f1", 30), item("760", 170, 672, 8, "f1", 20), item("1.00", 276, 672, 8, "f1", 24)],
+    [item("401.6", 40, 658, 8, "f1", 30), item("755", 170, 658, 8, "f1", 20), item("0.99", 276, 658, 8, "f1", 24)],
+  ].flat(), { transform: VP, fonts: FONTS }).lines;
+  const named = detectStreamRuns(units).find((b) => b.type === "table");
+  assert.ok(named);
+  assert.equal(named.headerRows, 2);
+  assert.equal(named.cells.find((k) => k.text.startsWith("C.c.")).header, true);
+  assert.equal(named.cells.find((k) => k.text === "404.0").header, false);
 });

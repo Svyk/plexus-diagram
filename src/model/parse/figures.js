@@ -406,6 +406,8 @@ function allowGrowWord(w, line, ctx) {
 // OCR on a plate often writes "F1g. 2", "FIG,2", or "Fig.2". The caption regex sees "Fig. 2".
 export function normalizeFigSpelling(text) {
   let t = String(text || "").replace(/\s+/g, " ").trim();
+  // A gutter mark ("/ FIGURE 1") is not part of the lead.
+  t = t.replace(/^[^\p{L}\p{N}]+(?=(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|taf|sketch(?:es)?)\b)/iu, "");
   t = t.replace(/\bF[1l|]g/g, "Fig").replace(/\bf[1l|]g/g, "fig");
   t = t.replace(/\bfigu[nr]e\b/gi, (m) => (m[0] === "f" ? "figure" : "Figure"));
   t = t.replace(/\b([A-Za-z]{2,})\s*,\s*(?=\d)/g, "$1. ");
@@ -676,7 +678,10 @@ export function labelStarts(words) {
     let j = i + 1;
     if (words[j] && /^[.:]$/.test(String(words[j].text || "").trim())) j++;
     const next = words[j];
-    if (next && FIG_NUM.test(String(next.text || "").trim()) && next.x0 - words[i].x1 < 24) {
+    const nextText = String(next?.text || "").trim();
+    // "1.—Viscosity" keeps the number on the first word of the caption.
+    const gluedNum = /^\d+[A-Za-z]?[.:—–-]/.test(nextText);
+    if (next && (FIG_NUM.test(nextText) || gluedNum) && next.x0 - words[i].x1 < 36) {
       at.push(i);
       continue;
     }
@@ -803,13 +808,35 @@ function splitWordLine(line, indexes) {
 }
 
 function gapIndexAt(line, x) {
+  const at = cutsNear(line, [x]);
+  return at.length ? at[0] : -1;
+}
+
+// Word boundaries that sit on a known column cut. A closed-up gutter is still a cut
+// when the two words only touch; a boundary elsewhere on the line is not.
+function cutsNear(line, xs) {
   const words = line.words || [];
+  const idxs = [];
   for (let i = 1; i < words.length; i++) {
     const gap0 = words[i - 1].x1;
     const gap1 = words[i].x0;
-    if (gap1 - gap0 >= CAPTION_SPLIT_GAP && gap0 - 6 <= x && gap1 + 6 >= x) return i;
+    if (gap1 + 0.5 < gap0) continue;
+    const mid = (Math.max(gap0, gap1) + Math.min(gap0, gap1)) / 2;
+    if ((xs || []).some((x) => gap0 - 8 <= x && gap1 + 8 >= x && Math.abs(mid - x) <= 18)) idxs.push(i);
   }
-  return -1;
+  return idxs;
+}
+
+// Gaps that end a caption and start the next column. The gap between "FIGURE" and
+// its number is the label, not a column.
+function columnGapSplits(words) {
+  const at = [];
+  for (let i = 1; i < (words || []).length; i++) {
+    const prev = String(words[i - 1].text || "").trim();
+    if (FIG_TOKEN.test(prev) || /^[.:]$/.test(prev)) continue;
+    if (words[i].x0 - words[i - 1].x1 >= CAPTION_SPLIT_GAP) at.push(i);
+  }
+  return at;
 }
 
 function orderCaptionBand(band) {
@@ -847,25 +874,42 @@ export function splitSharedCaptions(lines) {
       const idx = starts[c];
       const prev = line.words[idx - 1];
       const cur = line.words[idx];
-      if (prev && cur && cur.x0 - prev.x1 >= CAPTION_SPLIT_GAP) splits.push(idx);
+      const between = line.words.slice(starts[c - 1], idx);
+      const captionWords = between.some((w) => {
+        const t = String(w.text || "").trim();
+        return t && !FIG_TOKEN.test(t) && !FIG_NUM.test(t) && !/^[.:]$/.test(t);
+      });
+      // Two captions share the baseline even when the column gap has closed up.
+      if (prev && cur && (cur.x0 - prev.x1 >= CAPTION_SPLIT_GAP || captionWords)) splits.push(idx);
+    }
+    if (starts.length >= 2) {
+      for (const g of columnGapSplits(line.words || [])) if (!splits.includes(g)) splits.push(g);
+      splits.sort((a, b) => a - b);
     }
     if (!splits.length) { out.push(line); continue; }
     bandId += 1;
     const parts = splitWordLine(line, splits);
-    if (parts.length >= 2 && parts[1].x0 - parts[0].x1 >= 6) gutters.push({ x0: parts[0].x1, x1: parts[1].x0 });
+    for (let p = 1; p < parts.length; p++) {
+      if (parts[p].x0 - parts[p - 1].x1 >= 6) gutters.push({ x0: parts[p - 1].x1, x1: parts[p].x0 });
+    }
     parts.forEach((p, col) => { p.capBand = bandId; p.capCol = col; });
-    const splitX = parts[1]?.x0;
+    const splitXs = parts.slice(1).map((p) => p.x0);
     const consumed = new Set();
     const band = [...parts];
-    if (splitX != null) {
+    if (splitXs.length) {
       for (let d = 1; d < 6 && i + d < lines.length; d++) {
         const next = lines[i + d];
         if (next.base - line.base > 3 * (next.size || line.size || 10)) break;
         if (labelStarts(next.words || []).length >= 2) break;
-        const at = gapIndexAt(next, splitX);
-        if (at < 0) break;
-        const segs = splitWordLine(next, [at]);
-        segs.forEach((p, col) => { p.capBand = bandId; p.capCol = col; });
+        const at = cutsNear(next, splitXs);
+        if (!at.length) break;
+        const segs = splitWordLine(next, at);
+        segs.forEach((p) => {
+          p.capBand = bandId;
+          let col = 0;
+          for (const x of splitXs) if (p.x0 >= x - 6) col++;
+          p.capCol = col;
+        });
         band.push(...segs);
         consumed.add(next);
       }
@@ -1185,7 +1229,10 @@ export function rejectFalseFigures(figures, opts = {}) {
     clipBodyBand(fig, opts.lines || [], strokes, pageW, pageH);
   }
   const peers = list.map((fig) => fig);
-  return list.filter((fig) => !falseFigureReason(fig, { ...opts, peers, strokes }));
+  return list.filter((fig) => {
+    const reason = falseFigureReason(fig, { ...opts, peers, strokes });
+    return !reason;
+  });
 }
 
 // A letter or a menu: text runs down the page, and it is not a drawing sheet.
@@ -1224,14 +1271,21 @@ function marginStrip(box, pageW, pageH) {
   return false;
 }
 
+function numericToken(text) {
+  const t = String(text || "").trim();
+  return /\d/.test(t) && /^[\d.,%±+\-–−()]+$/.test(t);
+}
+
 // Body lines through the middle of a large box are a framed letter, not a plate.
+// Eight numbers down the box are a table. Labels on a drawing ("PIER", "SPAN")
+// are neither: a word is not a cell.
 function textThroughMiddle(box, lines) {
   const h = box.y1 - box.y0;
   if (!(h > 0)) return false;
   const prose = (lines || []).filter((line) => wordCount(line.text) >= 2 && lineCenterIn(line, box));
-  const any = (lines || []).filter((line) => (line.text || "").trim() && lineCenterIn(line, box));
+  const numbers = (lines || []).filter((line) => numericToken(line.text) && lineCenterIn(line, box));
   // A numeric table is one token per cell. A caption is a line or two.
-  const inside = prose.length >= 5 ? prose : any.length >= 8 ? any : [];
+  const inside = prose.length >= 5 ? prose : numbers.length >= 8 ? numbers : [];
   if (inside.length < 5) return false;
   const mid = inside.filter((line) => {
     const c = (line.y0 + line.y1) / 2;
@@ -1240,6 +1294,15 @@ function textThroughMiddle(box, lines) {
   const top = Math.min(...inside.map((line) => line.y0));
   const bot = Math.max(...inside.map((line) => line.y1));
   return mid.length >= 3 && bot - top > 0.45 * h;
+}
+
+// A short band that several lines run through is a table header or a caption
+// strip. A plate is taller than that; labels drawn on it do not make it a header.
+function headerBand(box, lines, pageH) {
+  const h = box.y1 - box.y0;
+  if (!(pageH > 0) || h > 0.22 * pageH || h < 8) return false;
+  const inside = (lines || []).filter((line) => String(line.text || "").trim() && lineCenterIn(line, box));
+  return inside.length >= 4;
 }
 
 // Handwriting under a drawing is not part of the drawing. Cut it off when the
@@ -1277,6 +1340,53 @@ function growUntilText(box, lines, pageW, pageH) {
   return { x0, y0, x1, y1 };
 }
 
+// Ink split by a hairline of white is one picture. A sentence in the gap is
+// the caption between two pictures, so those stay apart.
+function picturesTouch(a, b, lines, pageH) {
+  const limit = Math.max(10, 0.02 * (pageH || 0));
+  const overlap = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+  const narrow = Math.min(a.x1 - a.x0, b.x1 - b.x0);
+  if (!(narrow > 0) || overlap < 0.55 * narrow) return false;
+  const yOverlap = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+  const gap = yOverlap > 0 ? 0 : a.y1 <= b.y0 ? b.y0 - a.y1 : a.y0 - b.y1;
+  if (gap > limit) return false;
+  if (yOverlap <= 0) {
+    const top = Math.min(a.y1, b.y1);
+    const bot = Math.max(a.y0, b.y0);
+    const between = (lines || []).some((line) => {
+      if (wordCount(line.text) < 3) return false;
+      const cy = ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2;
+      if (cy <= top + 1 || cy >= bot - 1) return false;
+      const ox = Math.min(line.x1, Math.max(a.x1, b.x1)) - Math.max(line.x0, Math.min(a.x0, b.x0));
+      return ox > 8;
+    });
+    if (between) return false;
+  }
+  return true;
+}
+
+function mergeTouchingPictures(made, lines, pageH) {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i < made.length; i++) {
+      for (let j = i + 1; j < made.length; j++) {
+        const a = made[i];
+        const b = made[j];
+        if (!picturesTouch(a, b, lines, pageH)) continue;
+        made[i] = {
+          x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0),
+          x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1),
+        };
+        made.splice(j, 1);
+        changed = true;
+        break;
+      }
+      if (changed) break;
+    }
+  }
+}
+
 // One ink component that is a photograph, an engraving, or a compact mark
 // (a seal, a logo). Coordinates stay in the page frame the truth uses: a
 // photo of a sheet is not cropped to the sheet before the box is stored.
@@ -1297,6 +1407,11 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines = null
     return cx > outer.x0 && cx < outer.x1 && cy > outer.y0 && cy < outer.y1;
   };
   const covered = (box) => figures.some((f) => covers(f, box)) || made.some((f) => insideFrac(box, f) >= 0.55 || insideFrac(f, box) >= 0.55);
+  // A rule cluster on a text page is dropped later. Ink it hides is still the
+  // rest of a plate when that ink touches a picture the cluster did not cover.
+  const onlyCluster = (box) => figures.some((f) => !f.fromPlate && !f.pageImage && f.kind === "drawing" && covers(f, box))
+    && !figures.some((f) => (f.fromPlate || f.kind === "image" || f.pageImage) && covers(f, box));
+  const pending = [];
   const spread = letterSpread(lines, pageH);
   for (const raw of boxes) {
     let area = boxArea(raw);
@@ -1318,10 +1433,28 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines = null
     const grown = growUntilText(box, lines, pageW, pageH);
     box = boxArea(grown) > 0.85 * pageArea ? box : grown;
     if (edgeBand(box, pageW, pageH)) continue;
-    if (textThroughMiddle(box, pageLines)) continue;
-    if (boxArea(box) > 0.85 * pageArea || covered(box)) continue;
+    if (textThroughMiddle(box, pageLines) || headerBand(box, pageLines, pageH)) continue;
+    if (boxArea(box) > 0.85 * pageArea) continue;
+    if (covered(box)) {
+      if (onlyCluster(box)) pending.push(box);
+      continue;
+    }
     made.push(box);
   }
+  // Several ink blobs of one size on a letter are the handwriting. Joining
+  // them across a hairline would hide that, so the check is before the join.
+  if (spread && made.length >= 3) {
+    const areas = made.map((b) => boxArea(b)).sort((a, b) => b - a);
+    if (areas[0] < 2 * areas[1]) made.length = 0;
+  }
+  // Only a picture that would stand on its own may pull the hidden ink out.
+  // Gluing it onto a speck would turn the speck into a figure.
+  for (const box of pending) {
+    if (made.some((other) => boxArea(other) >= 0.08 * pageArea && picturesTouch(other, box, lines, pageH))) made.push(box);
+  }
+  // A white band inside one drawing splits the ink. Two photographs with a
+  // line of text between them stay apart.
+  mergeTouchingPictures(made, lines, pageH);
   // Several ink blobs of one size on a letter are the handwriting, not a row of plates.
   // Two photographs on a notebook stay: there is no third, or one plate is clearly larger.
   if (spread && made.length >= 3) {
@@ -1354,8 +1487,14 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines = null
     emblems.push(box);
   }
   // A letter carries several small marks that are handwriting. A short page can
-  // carry one seal. A page of body text does not grow a logo out of one of them.
-  if (!spread) made.push(...emblems);
+  // carry one seal. A title page is headings in capitals and one seal, not a letter.
+  // A page of body text does not grow a logo out of one of them.
+  const proseN = (lines || []).filter((line) => proseLine(line)).length;
+  const capsN = (lines || []).filter((line) => {
+    const letters = String(line.text || "").replace(/[^A-Za-z]/g, "");
+    return letters.length >= 4 && letters.replace(/[^A-Z]/g, "").length / letters.length >= 0.7;
+  }).length;
+  if (!spread || (emblems.length === 1 && proseN < 2 && capsN >= 3)) made.push(...emblems);
   for (const box of made) {
     figures.push({ ...box, kind: "drawing", count: 1, pageImage: false, fromPlate: true, fromPicture: true });
   }
@@ -1376,6 +1515,7 @@ function plateLabelText(text, key) {
   if (/^sketch(?:es)?\b/i.test(t)) return false;
   const rest = t.replace(/^(?:fig(?:ure)?s?|plates?)\.?\s*\d+[A-Za-z]?[.:]?\s*/i, "");
   if (/^(?:is|are|was|were|shows|show|comprises|has|have)\b/i.test(rest)) return false;
+  if (/^(?:and|or|&|und|et)$/i.test(rest.trim())) return false;
   if (/^(?:herewith|above|below|following|opposite)[.]?$/i.test(rest)) return false;
   return true;
 }
@@ -1574,6 +1714,123 @@ function splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH) {
   return true;
 }
 
+// Words of one caption, stopping at the next label or at a column gutter.
+function captionSlice(words, start, end) {
+  const slice = [];
+  for (let i = start; i < end; i++) {
+    if (slice.length) {
+      const prev = String(words[i - 1].text || "").trim();
+      const gap = words[i].x0 - words[i - 1].x1;
+      if (gap >= CAPTION_SPLIT_GAP && !FIG_TOKEN.test(prev) && !/^[.:]$/.test(prev)) break;
+    }
+    slice.push(words[i]);
+  }
+  return slice;
+}
+
+// One line can carry two numbered captions ("FIGURE 1.—… FIGURE 2.—…") plus the
+// body column. Each lead becomes its own caption so the drawings stay apart.
+function anchorCaptions(lines) {
+  const out = [];
+  for (const line of lines || []) {
+    const words = line.words || [];
+    const starts = labelStarts(words);
+    if (starts.length < 2) continue;
+    const prefix = words.slice(0, starts[0]);
+    if (wordCount(prefix.map((w) => w.text).join(" ")) > 3) continue;
+    if (prefix.some((w) => /[.!?]/.test(String(w.text || "")))) continue;
+    for (let i = 0; i < starts.length; i++) {
+      const end = i + 1 < starts.length ? starts[i + 1] : words.length;
+      const slice = captionSlice(words, starts[i], end);
+      if (slice.length < 2) continue;
+      const text = normalizeFigSpelling(slice.map((w) => w.text).join(" "));
+      const key = figCaptionKey(text);
+      if (key == null || key === "" || !plateLabelText(text, key)) continue;
+      out.push({ ...makeLine(slice), key, text });
+    }
+  }
+  const keys = new Set(out.map((c) => c.key));
+  return keys.size >= 2 ? out : [];
+}
+
+function withAnchorCaptions(caps, lines) {
+  const anchors = anchorCaptions(lines);
+  if (anchors.length < 2) return caps;
+  const kept = (caps || []).filter((c) => !anchors.some((a) => Math.abs((a.y0 ?? 0) - (c.y0 ?? 0)) < 4 && a.x0 >= c.x0 - 2 && a.x1 <= c.x1 + 4));
+  return [...kept, ...anchors];
+}
+
+// Two numbered captions on one baseline name two drawings. Cut the ink just left of
+// each later label. A caption stacked above or below is a different plate.
+function sideBySideCaptions(caps) {
+  const ordered = [];
+  const seen = new Set();
+  for (const c of [...(caps || [])].filter((c) => c.key !== "" && c.key !== "title").sort((a, b) => a.x0 - b.x0 || a.y0 - b.y0)) {
+    if (seen.has(c.key)) continue;
+    seen.add(c.key);
+    ordered.push(c);
+  }
+  if (ordered.length < 2) return null;
+  const y0 = Math.min(...ordered.map((c) => c.y0));
+  const y1 = Math.max(...ordered.map((c) => c.y1));
+  const share = ordered.every((c) => {
+    const h = Math.max(6, c.y1 - c.y0);
+    return Math.min(c.y1, y1) - Math.max(c.y0, y0) >= 0.45 * h && Math.abs(c.y0 - ordered[0].y0) <= Math.max(h, 14);
+  });
+  if (!share) return null;
+  for (let i = 1; i < ordered.length; i++) {
+    if (ordered[i].x0 - ordered[i - 1].x0 < 36) return null;
+  }
+  return ordered;
+}
+
+function splitSideBySidePlates(figures, ink, caps, lines, bodySize, pageW, pageH) {
+  const cols = sideBySideCaptions(caps);
+  if (!cols) return false;
+  const numbered = new Set(caps.filter((c) => c.key !== "" && c.key !== "title").map((c) => c.key));
+  if (numbered.size !== cols.length) return false;
+  const cuts = cols.slice(1).map((c) => c.x0 - 4);
+  const groups = new Map(cols.map((c) => [c.key, []]));
+  for (const prim of ink) {
+    const cx = (prim.x0 + prim.x1) / 2;
+    let i = 0;
+    while (i < cuts.length && cx >= cuts[i]) i++;
+    const left = i === 0 ? -1e9 : cuts[i - 1];
+    const right = i < cuts.length ? cuts[i] : 1e9;
+    const x0 = Math.max(prim.x0, left === -1e9 ? prim.x0 : left);
+    const x1 = Math.min(prim.x1, right === 1e9 ? prim.x1 : right);
+    if (x1 - x0 < 2) continue;
+    const ph = prim.y1 - prim.y0;
+    const pw = prim.x1 - prim.x0;
+    if (ph <= 4 && pw > 40 && x1 - x0 < 0.85 * pw) continue;
+    groups.get(cols[i].key).push({ ...prim, x0, x1 });
+  }
+  const pageArea = pageW * pageH;
+  const made = [];
+  for (const [key, items] of groups) {
+    if (items.length < 4) continue;
+    const hull = hullOf(items);
+    if (!hull) continue;
+    const w = hull.x1 - hull.x0;
+    const h = hull.y1 - hull.y0;
+    const area = w * h;
+    if (w < 48 || h < 32 || area < 0.02 * pageArea || area > 0.7 * pageArea) continue;
+    const cap = cols.find((c) => c.key === key) || null;
+    const plate = { ...hull, kind: "drawing", count: items.length, pageImage: false, fromPlate: true };
+    extendTowardCaption(plate, cap, lines, bodySize, pageH);
+    if ((plate.y1 - plate.y0) * (plate.x1 - plate.x0) > 0.7 * pageArea) continue;
+    made.push(plate);
+  }
+  if (made.length < 2) return false;
+  for (let i = figures.length - 1; i >= 0; i--) {
+    const f = figures[i];
+    if (f.kind === "image") continue;
+    if (made.some((p) => insideFrac(f, p) >= 0.35 || insideFrac(p, f) >= 0.35)) figures.splice(i, 1);
+  }
+  figures.push(...made);
+  return true;
+}
+
 function dropCoveredDrawings(figures) {
   for (let i = figures.length - 1; i >= 0; i--) {
     const f = figures[i];
@@ -1610,13 +1867,17 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
     if (near.length >= 4) ink = near;
   }
   if (ink.length < 4) return;
-  let caps = plateCaptions(lines, pageH);
+  let caps = withAnchorCaptions(plateCaptions(lines, pageH), lines);
   // A plate title (PLATE I, TAFEL, an all-caps line on the drawing) is the caption
   // when the page has no Fig. line. A heading far from the ink is not one.
   if (!caps.length) caps = plateTitleCaptions(lines, inkOnly, pageW, pageH);
   if (!caps.length) return;
   // Band cuts need raster ink. Rule fragments alone hull too tight (accelerometer
   // helper Fig. 2) and the nearest-caption path is the one that matched before.
+  if (inkOnly.length && splitSideBySidePlates(figures, ink, caps, lines, bodySize, pageW, pageH)) {
+    dropCoveredDrawings(figures);
+    return;
+  }
   if (inkOnly.length && splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH)) {
     dropCoveredDrawings(figures);
     return;

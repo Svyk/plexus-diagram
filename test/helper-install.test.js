@@ -214,7 +214,7 @@ test("--docling and a non-macOS install keep the Python path", async () => {
     await writeFile(dir.log, "");
     const vlm = run(dir, ["--docling", "--vlm"], { path: `${dir.bin}:/usr/bin:/bin`, env });
     assert.equal(vlm.status, 0, vlm.stderr + vlm.stdout);
-    assert.match(vlm.stdout, /1\.8 GB/);
+    assert.match(vlm.stdout, /1\.9 GB/);
     assert.match(vlm.stdout, /5\.8 GB/);
     assert.match(vlm.stdout, /204 MB/);
     assert.match(vlm.stdout, /Apache-2\.0/);

@@ -324,6 +324,284 @@ export function moveStubTotal(table) {
   return { r, text: num };
 }
 
+function deleteRow(table, r) {
+  table.cells = table.cells.filter((c) => c.r !== r);
+  for (const c of table.cells) {
+    if (c.r > r) c.r -= 1;
+    else if (c.r < r && c.r + (c.rowSpan || 1) > r) c.rowSpan = Math.max(1, (c.rowSpan || 1) - 1);
+  }
+  table.rows -= 1;
+  if (r < (table.headerRows || 0)) table.headerRows = Math.max(0, table.headerRows - 1);
+}
+
+function cellAt(table, r, c) {
+  return table.cells.find((k) => k.r === r && k.c <= c && c < k.c + (k.colSpan || 1));
+}
+
+function joinFragment(prev, next) {
+  const left = String(prev || "").trim();
+  const right = String(next || "").trim();
+  if (!left) return right;
+  if (!right) return left;
+  const last = left.split(/\s+/).pop();
+  const first = right.split(/\s+/)[0];
+  if (/[A-Za-z]$/.test(last) && /^[a-z]{1,4}$/.test(first) && last.length >= 5 && !/^(of|the|and|or|in|on|at|to|for|per|from|by)$/.test(first)) return `${left}${right}`;
+  return `${left} ${right}`;
+}
+
+// A row of column indices "(1)" "(2)" belongs on the head under it.
+function foldIndexHeads(table) {
+  let guard = 0;
+  while (guard++ < 3 && table.rows > 2) {
+    const top = table.cells.filter((c) => c.r === 0 && (c.rowSpan || 1) === 1);
+    const texts = top.map((c) => String(c.text || "").trim()).filter(Boolean);
+    if (texts.length < 3 || !texts.every((t) => /^\(\d+\)$/.test(t))) break;
+    const below = table.cells.filter((c) => c.r === 1 && String(c.text || "").trim() && !/^\(\d+\)$/.test(String(c.text).trim()));
+    if (below.length < 2) break;
+    for (const c of top) {
+      const text = String(c.text || "").trim();
+      if (!/^\(\d+\)$/.test(text)) continue;
+      const host = table.cells.find((k) => k.r === 1 && k.c === c.c && (k.colSpan || 1) === (c.colSpan || 1));
+      if (host) host.text = `${text} ${host.text || ""}`.trim();
+    }
+    deleteRow(table, 0);
+  }
+}
+
+// "from MFIs" under "# of loans" is the same head. A lower-case header line
+// joins the line above and the extra row goes away.
+function foldContinuationHeads(table) {
+  const limit = Math.min(table.headerRows || 0, 4);
+  for (let r = 1; r < limit && r < table.rows; r++) {
+    const row = table.cells.filter((c) => c.r === r && (c.rowSpan || 1) === 1 && (c.colSpan || 1) === 1);
+    const filled = row.filter((c) => String(c.text || "").trim());
+    if (filled.length < 2 || !filled.every((c) => /^[a-z(]/.test(String(c.text).trim()) && !isNumericText(c.text))) continue;
+    // A group head spanning several columns is not the wrapped line of each subhead.
+    const hosts = filled.map((c) => {
+      const above = cellAt(table, r - 1, c.c);
+      if (!above || above.r !== r - 1 || above.c !== c.c || (above.colSpan || 1) !== (c.colSpan || 1)) return null;
+      return { c, above };
+    });
+    if (hosts.some((h) => !h)) continue;
+    for (const { c, above } of hosts) above.text = joinFragment(above.text, c.text);
+    deleteRow(table, r);
+    r -= 1;
+  }
+}
+
+// "(0.06)" and "[0.9989]" under a coefficient are the same cell, printed on
+// the next baselines. An empty stub and a number in parentheses on every
+// filled column is that row.
+function statText(text) {
+  const s = String(text || "").trim();
+  return /^\([^()\n]*\d[^()\n]*\)$/.test(s) || /^\[[^\[\]\n]*\d[^\[\]\n]*\]$/.test(s);
+}
+
+function stackStatRows(table) {
+  let guard = 0;
+  while (guard++ < table.rows) {
+    let found = -1;
+    for (let r = Math.max(1, table.headerRows || 0); r < table.rows; r++) {
+      const row = table.cells.filter((c) => c.r === r && (c.rowSpan || 1) === 1);
+      const stub = row.find((c) => c.c === 0);
+      if (stub && String(stub.text || "").trim()) continue;
+      const vals = row.filter((c) => c.c > 0 && String(c.text || "").trim());
+      if (vals.length < 2 || !vals.every((c) => statText(c.text) && (c.colSpan || 1) === 1)) continue;
+      const prev = table.cells.filter((c) => c.r === r - 1);
+      const prevStub = prev.find((c) => c.c === 0 && String(c.text || "").trim());
+      const prevNums = prev.filter((c) => c.c > 0 && /[0-9]/.test(c.text || ""));
+      if (!prevStub && prevNums.length < 2) continue;
+      if (!vals.every((c) => cellAt(table, r - 1, c.c))) continue;
+      found = r;
+      for (const c of vals) {
+        const host = cellAt(table, r - 1, c.c);
+        if (!host || host.r !== r - 1) continue;
+        host.text = `${String(host.text || "").trim()} ${String(c.text).trim()}`.trim();
+      }
+      break;
+    }
+    if (found < 0) break;
+    deleteRow(table, found);
+  }
+}
+
+// "Panel A: Full sample" is a section banner, one cell across the grid.
+function spanPanelRows(table) {
+  for (let r = 0; r < table.rows; r++) {
+    const row = table.cells.filter((c) => c.r === r);
+    const filled = row.filter((c) => String(c.text || "").trim());
+    if (filled.length !== 1 || filled[0].c !== 0) continue;
+    const text = String(filled[0].text).trim();
+    if (!/^panel\s+[a-z0-9]+\b/i.test(text)) continue;
+    if ((filled[0].colSpan || 1) >= table.cols) continue;
+    table.cells = table.cells.filter((c) => c === filled[0] || c.r !== r);
+    filled[0].c = 0;
+    filled[0].colSpan = table.cols;
+  }
+}
+
+// "Treated. Control." with "3,254 3,139" is two body rows the reader fused.
+// A single number beside them (the ratio) covers both rows.
+function splitFusedLabelRow(table) {
+  const labelsOf = (text) => {
+    const m = String(text || "").trim().match(/^([A-Z][a-z]+)\.\s+([A-Z][a-z]+)\.?$/);
+    return m ? [m[1], m[2]] : null;
+  };
+  const numToken = (p) => /^\d{1,3}(?:,\d{3})+$/.test(p) || /^\d+\.\d+$/.test(p) || /^\d{2,}$/.test(p);
+  const numsOf = (text) => {
+    const parts = String(text || "").trim().split(/\s+/);
+    if (parts.length !== 2 || !parts.every(numToken)) return null;
+    return parts;
+  };
+  for (let r = table.headerRows || 0; r < table.rows; r++) {
+    const row = table.cells.filter((c) => c.r === r && (c.rowSpan || 1) === 1);
+    const stub = row.find((c) => c.c === 0);
+    const labels = stub ? labelsOf(stub.text) : null;
+    if (!labels) continue;
+    const paired = row.filter((c) => c.c > 0 && numsOf(c.text)).map((c) => ({ cell: c, nums: numsOf(c.text) }));
+    if (!paired.length) continue;
+    stub.text = labels[0];
+    for (const c of row) {
+      if (c.c === 0) continue;
+      const hit = paired.find((p) => p.cell === c);
+      if (hit) c.text = hit.nums[0];
+      else if (String(c.text || "").trim()) c.rowSpan = 2;
+    }
+    for (const c of table.cells) if (c.r > r) c.r += 1;
+    table.cells.push({ r: r + 1, c: 0, rowSpan: 1, colSpan: 1, text: labels[1], header: false });
+    for (const p of paired) {
+      table.cells.push({ r: r + 1, c: p.cell.c, rowSpan: 1, colSpan: p.cell.colSpan || 1, text: p.nums[1], header: false });
+    }
+    table.rows += 1;
+    break;
+  }
+}
+
+// The unit line ("Per cent.") was written on the first city's row and every
+// city below took the previous city's numbers. Lift the repeated label into
+// its own row and put each stub back with the numbers that were under it.
+function unshiftRepeatedUnit(table) {
+  const start = table.headerRows || 0;
+  for (let r = start; r < table.rows - 2; r++) {
+    const row = table.cells.filter((c) => c.r === r && (c.rowSpan || 1) === 1 && (c.colSpan || 1) === 1);
+    const stub = row.find((c) => c.c === 0);
+    const vals = row.filter((c) => c.c > 0 && String(c.text || "").trim());
+    if (!stub || !String(stub.text || "").trim() || vals.length < 3) continue;
+    const unit = String(vals[0].text).trim();
+    if (/\d/.test(unit) || unit.length > 24 || !/[A-Za-z]/.test(unit)) continue;
+    if (!vals.every((c) => String(c.text).trim() === unit)) continue;
+    if (String(stub.text).trim() === unit) continue;
+    const next = table.cells.filter((c) => c.r === r + 1 && c.c > 0 && /\d/.test(c.text || ""));
+    if (next.length < 2) continue;
+    // Values stay on their row. Stubs move down one, so each city meets the
+    // numbers that were printed under it. The last stub keeps an empty row.
+    const values = table.cells.filter((c) => c.c > 0 && c.r >= r);
+    for (const c of table.cells) if (c.r >= r) c.r += 1;
+    for (const c of values) c.r -= 1;
+    table.rows += 1;
+    const head = table.cells.find((c) => c.c === 0 && c.r === r - 1);
+    if (head && (head.rowSpan || 1) === 1) head.rowSpan = 2;
+    if (r === 1 && (table.headerRows || 0) < 2) table.headerRows = 2;
+    break;
+  }
+}
+
+// A section label ("Total:") holds the next row's numbers, and the last row of
+// the section is a stub with nothing beside it. Move the values down.
+function shiftSectionValues(table) {
+  const stubOf = (r) => table.cells.find((c) => c.r === r && c.c === 0 && (c.colSpan || 1) === 1);
+  for (let r = table.headerRows || 0; r < table.rows - 1; r++) {
+    const stub = stubOf(r);
+    const label = String(stub?.text || "").trim();
+    if (!/:\s*$/.test(label)) continue;
+    const values = table.cells.filter((c) => c.r === r && c.c > 0 && String(c.text || "").trim());
+    if (!values.length) continue;
+    let end = r;
+    for (let k = r + 1; k < table.rows; k++) {
+      const next = String(stubOf(k)?.text || "").trim();
+      if (/:\s*$/.test(next)) break;
+      end = k;
+    }
+    if (end === r) continue;
+    const lastVals = table.cells.filter((c) => c.r === end && c.c > 0 && String(c.text || "").trim() && (c.rowSpan || 1) === 1);
+    if (lastVals.length) continue;
+    if (!String(stubOf(end)?.text || "").trim()) continue;
+    const moving = table.cells.filter((c) => c.c > 0 && c.r >= r && c.r < end && c.r + (c.rowSpan || 1) <= end + 1);
+    for (const c of moving) {
+      if (c.r + (c.rowSpan || 1) - 1 >= table.rows - 1 && c.r + 1 + (c.rowSpan || 1) > table.rows) continue;
+      c.r += 1;
+    }
+  }
+}
+
+// The same short decimal copied across a block of cells is a leader the reader
+// filled in. A column that is only that number is left alone.
+function blankRepeatedFill(table) {
+  const start = table.headerRows || 0;
+  const plain = (r, c) => table.cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+  const fillOf = (r, c) => {
+    const cell = plain(r, c);
+    const text = String(cell?.text || "").trim();
+    return /^\.\d{2,4}$/.test(text) ? text : "";
+  };
+  const otherIn = (c0, c1, text) => {
+    for (let c = c0; c < c1; c++) {
+      for (let r = start; r < table.rows; r++) {
+        const t = String(plain(r, c)?.text || "").trim();
+        if (t && t !== text) return true;
+      }
+    }
+    return false;
+  };
+  for (let r = start; r < table.rows; r++) {
+    for (let c = 0; c < table.cols - 2; c++) {
+      const text = fillOf(r, c);
+      if (!text) continue;
+      let c1 = c + 1;
+      while (c1 < table.cols && fillOf(r, c1) === text) c1++;
+      if (c1 - c < 3) continue;
+      let r1 = r + 1;
+      while (r1 < table.rows) {
+        let same = true;
+        for (let k = c; k < c1; k++) if (fillOf(r1, k) !== text) same = false;
+        if (!same) break;
+        r1++;
+      }
+      if (r1 - r < 3 || !otherIn(c, c1, text)) continue;
+      const blank = (rr, k) => { const cell = plain(rr, k); if (cell && String(cell.text || "").trim() === text) cell.text = ""; };
+      for (let rr = r; rr < r1; rr++) for (let k = c; k < c1; k++) blank(rr, k);
+      for (const rr of [r - 1, r1]) {
+        if (rr < start || rr >= table.rows) continue;
+        for (let k = c; k < c1; k++) if (fillOf(rr, k) === text) blank(rr, k);
+      }
+    }
+  }
+}
+
+function spaceFootnoteMarks(table) {
+  for (const c of table.cells) {
+    const text = String(c.text || "");
+    if (/^[a-z][.\d]/.test(text) && /\d/.test(text)) c.text = text.replace(/^([a-z])(?=[.\d])/, "$1 ");
+  }
+}
+
+// Grid repairs that do not need the page's geometry: stacked heads, standard
+// errors, section banners, a fused body row, a unit line on the first city,
+// a section label holding the next row, a filled-in leader.
+export function repairTableReading(table) {
+  if (!table?.cells?.length) return table;
+  foldIndexHeads(table);
+  foldContinuationHeads(table);
+  stackStatRows(table);
+  spanPanelRows(table);
+  splitFusedLabelRow(table);
+  unshiftRepeatedUnit(table);
+  shiftSectionValues(table);
+  blankRepeatedFill(table);
+  spaceFootnoteMarks(table);
+  return table;
+}
+
 // Text repairs that do not depend on a fresh OCR pass: formula subscripts,
 // thousands marks, a degree sign, group-header spans, a total left in the stub.
 export function polishTableText(table) {
@@ -337,6 +615,7 @@ export function polishTableText(table) {
   restoreDegree(table);
   spanGroupHeaders(table);
   moveStubTotal(table);
+  repairTableReading(table);
   return table;
 }
 

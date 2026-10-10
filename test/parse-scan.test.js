@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { assembleDocument, ocrGraphics, parsePageGeometry } from "../src/model/parse/index.js";
 import {
-  applyCellOcr, cellsToReread, chemicalSubscripts, decimalStyle, fitsColumn, isPlaceholder, moveStubTotal, numericLike, polishTableText, repairNumber,
+  applyCellOcr, cellsToReread, chemicalSubscripts, decimalStyle, fitsColumn, isPlaceholder, moveStubTotal, numericLike, polishTableText, repairNumber, repairTableReading,
   repairNumericColumns, repairOcrTable, repairYearHeader, spanGroupHeaders, spanNoteRows, tableNumericValidity, unspanNarrowCells,
 } from "../src/model/parse/ocr-fix.js";
 import { chooseTable, mergeOcrDocument, scanPagesOf } from "../src/model/parse/ocr-merge.js";
@@ -860,6 +860,149 @@ test("formula tokens, thousands marks, group headers and a stub total", () => {
   polishTableText(rates);
   assert.equal(rates.cells.find((c) => c.r === 3).text, "1.700");
   assert.equal(moveStubTotal({ rows: 2, cols: 2, headerRows: 0, cells: [] }), null);
+});
+
+const gridCell = (r, c, text, extra = {}) => ({ r, c, rowSpan: 1, colSpan: 1, text, ...extra });
+
+test("repairTableReading stacks errors, spans a panel, splits a fused row, and unshifts a unit line", () => {
+  const stats = {
+    rows: 4, cols: 3, headerRows: 1,
+    cells: [
+      gridCell(0, 1, "(1)"), gridCell(0, 2, "(2)"),
+      gridCell(1, 0, "# of MFIs"), gridCell(1, 1, "0.01"), gridCell(1, 2, "-0.08*"),
+      gridCell(2, 1, "(0.06)"), gridCell(2, 2, "(0.05)"),
+      gridCell(3, 0, "Panel A: Full sample"),
+    ],
+  };
+  repairTableReading(stats);
+  assert.equal(stats.rows, 3);
+  assert.equal(stats.cells.find((c) => c.r === 1 && c.c === 1).text, "0.01 (0.06)");
+  assert.equal(stats.cells.some((c) => c.text === "(0.06)"), false);
+  const panel = stats.cells.find((c) => /Panel A/.test(c.text));
+  assert.equal(panel.colSpan, 3);
+  assert.equal(panel.c, 0);
+
+  const fused = {
+    rows: 3, cols: 3, headerRows: 2,
+    cells: [
+      gridCell(0, 0, "Plat", { rowSpan: 2 }), gridCell(0, 1, "Yields", { colSpan: 2 }),
+      gridCell(1, 1, "Shock"), gridCell(1, 2, "Grain"),
+      gridCell(2, 0, "Treated. Control."), gridCell(2, 1, "3,254 3,139"), gridCell(2, 2, "1.04"),
+    ],
+  };
+  repairTableReading(fused);
+  assert.equal(fused.rows, 4);
+  assert.equal(fused.cells.find((c) => c.r === 2 && c.c === 0).text, "Treated");
+  assert.equal(fused.cells.find((c) => c.r === 3 && c.c === 0).text, "Control");
+  assert.equal(fused.cells.find((c) => c.r === 2 && c.c === 1).text, "3,254");
+  assert.equal(fused.cells.find((c) => c.r === 3 && c.c === 1).text, "3,139");
+  assert.equal(fused.cells.find((c) => c.r === 2 && c.c === 2).rowSpan, 2);
+  const place = {
+    rows: 1, cols: 2, headerRows: 0,
+    cells: [gridCell(0, 0, "New Mexico."), gridCell(0, 1, "2, 366")],
+  };
+  repairTableReading(place);
+  assert.equal(place.rows, 1);
+  assert.equal(place.cells.find((c) => c.c === 0).text, "New Mexico.");
+
+  const gas = {
+    rows: 4, cols: 4, headerRows: 0,
+    cells: [
+      gridCell(0, 0, "City."), gridCell(0, 1, "CO2"), gridCell(0, 2, "CH4"), gridCell(0, 3, "Total."),
+      gridCell(1, 0, "Pittsburgh, Pa."), gridCell(1, 1, "Per cent."), gridCell(1, 2, "Per cent."), gridCell(1, 3, "Per cent."),
+      gridCell(2, 0, "Louisville, Ky."), gridCell(2, 1, "Trace."), gridCell(2, 2, "79.2"), gridCell(2, 3, "100.00"),
+      gridCell(3, 0, "Chelsea, Okla."), gridCell(3, 1, "do."), gridCell(3, 2, "75.4"), gridCell(3, 3, "100.00"),
+    ],
+  };
+  repairTableReading(gas);
+  assert.equal(gas.rows, 5);
+  assert.equal(gas.headerRows, 2);
+  assert.equal(gas.cells.find((c) => c.r === 0 && c.c === 0).rowSpan, 2);
+  assert.equal(gas.cells.find((c) => c.r === 1 && c.c === 1).text, "Per cent.");
+  assert.equal(gas.cells.find((c) => c.r === 2 && c.c === 0).text, "Pittsburgh, Pa.");
+  assert.equal(gas.cells.find((c) => c.r === 2 && c.c === 2).text, "79.2");
+  assert.equal(gas.cells.find((c) => c.r === 4 && c.c === 0).text, "Chelsea, Okla.");
+  assert.equal(gas.cells.find((c) => c.r === 4 && c.c === 2), undefined);
+
+  const group = {
+    rows: 3, cols: 4, headerRows: 2,
+    cells: [
+      gridCell(0, 0, "Pollutant"),
+      gridCell(0, 1, "THRESHOLD FOR RELEASES", { colSpan: 3 }),
+      gridCell(1, 1, "to air kg/year"),
+      gridCell(1, 2, "to water kg/year"),
+      gridCell(1, 3, "to land kg/year"),
+      gridCell(2, 0, "Carbon dioxide (CO2)"),
+      gridCell(2, 1, "100 million"),
+    ],
+  };
+  repairTableReading(group);
+  assert.equal(group.rows, 3);
+  assert.equal(group.headerRows, 2);
+  assert.equal(group.cells.find((c) => c.r === 0 && c.c === 1).text, "THRESHOLD FOR RELEASES");
+  assert.equal(group.cells.find((c) => c.r === 1 && c.c === 1).text, "to air kg/year");
+
+  const wrapped = {
+    rows: 3, cols: 2, headerRows: 2,
+    cells: [
+      gridCell(0, 0, "# of loans"), gridCell(0, 1, "# of loans"),
+      gridCell(1, 0, "from MFIs"), gridCell(1, 1, "from others"),
+      gridCell(2, 0, "1"), gridCell(2, 1, "2"),
+    ],
+  };
+  repairTableReading(wrapped);
+  assert.equal(wrapped.rows, 2);
+  assert.equal(wrapped.cells.find((c) => c.r === 0 && c.c === 0).text, "# of loans from MFIs");
+  assert.equal(wrapped.cells.find((c) => c.r === 0 && c.c === 1).text, "# of loans from others");
+});
+
+test("repairTableReading shifts a section label's values down and blanks a copied leader", () => {
+  const section = {
+    rows: 3, cols: 4, headerRows: 0,
+    cells: [
+      gridCell(0, 0, "Total:"), gridCell(0, 1, "2,528"), gridCell(0, 2, "672"), gridCell(0, 3, "1.03", { rowSpan: 2 }),
+      gridCell(1, 0, "Treated"), gridCell(1, 1, "2,444"), gridCell(1, 2, "754"),
+      gridCell(2, 0, "Control"),
+    ],
+  };
+  repairTableReading(section);
+  assert.equal(section.cells.find((c) => c.r === 0 && c.c === 1), undefined);
+  assert.equal(section.cells.find((c) => c.r === 1 && c.c === 1).text, "2,528");
+  assert.equal(section.cells.find((c) => c.r === 2 && c.c === 1).text, "2,444");
+  assert.equal(section.cells.find((c) => c.r === 1 && c.c === 3).rowSpan, 2);
+  repairTableReading(section);
+  assert.equal(section.cells.find((c) => c.r === 1 && c.c === 1).text, "2,528");
+
+  const leaders = {
+    rows: 6, cols: 4, headerRows: 1,
+    cells: [
+      gridCell(0, 0, "Name"), gridCell(0, 1, "A"), gridCell(0, 2, "B"), gridCell(0, 3, "C"),
+      gridCell(1, 0, "Tube"), gridCell(1, 1, "0.15"), gridCell(1, 2, "0.158"), gridCell(1, 3, "0.16"),
+      gridCell(2, 0, "Stem"), gridCell(2, 1, ".63"), gridCell(2, 2, ".059"), gridCell(2, 3, ".059"),
+      gridCell(3, 0, "Bulb"), gridCell(3, 1, ".80"), gridCell(3, 2, ".059"), gridCell(3, 3, ".059"),
+      gridCell(4, 0, "Agate"), gridCell(4, 1, "1.27"), gridCell(4, 2, ".059"), gridCell(4, 3, ".059"),
+      gridCell(5, 0, "Base"), gridCell(5, 1, ".852"), gridCell(5, 2, ".059"), gridCell(5, 3, ".059"),
+    ],
+  };
+  // A two-column run is not the block. Widen it.
+  leaders.cols = 5;
+  leaders.cells.push(gridCell(0, 4, "D"), gridCell(1, 4, "9.4"), gridCell(2, 4, ".059"), gridCell(3, 4, ".059"), gridCell(4, 4, ".059"), gridCell(5, 4, "7.2"));
+  repairTableReading(leaders);
+  assert.equal(leaders.cells.find((c) => c.r === 2 && c.c === 2).text, "");
+  assert.equal(leaders.cells.find((c) => c.r === 4 && c.c === 4).text, "");
+  assert.equal(leaders.cells.find((c) => c.r === 5 && c.c === 2).text, "");
+  assert.equal(leaders.cells.find((c) => c.r === 5 && c.c === 4).text, "7.2");
+  assert.equal(leaders.cells.find((c) => c.r === 1 && c.c === 2).text, "0.158");
+  assert.equal(leaders.cells.some((c) => c.text === "e7.67" || c.text === "d.64"), false);
+});
+
+test("repairTableReading spaces a footnote letter that sits on a number", () => {
+  const t = { rows: 1, cols: 2, headerRows: 0, cells: [gridCell(0, 0, "e7.67"), gridCell(0, 1, "d.64")] };
+  repairTableReading(t);
+  assert.equal(t.cells[0].text, "e 7.67");
+  assert.equal(t.cells[1].text, "d .64");
+  repairTableReading(t);
+  assert.equal(t.cells[0].text, "e 7.67");
 });
 
 test("parse view shows Read the scan only for scan pages with a ready helper", async () => {

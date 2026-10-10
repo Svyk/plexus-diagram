@@ -195,6 +195,8 @@ test("cellTextOf joins wrapped lines, keeps hyphenated code joins and glues scri
   const w = (text, x, base, extra = {}) => ({ text, x0: x, x1: x + text.length * 5, base, size: 9, mathChars: 0, ...extra });
   assert.equal(cellTextOf([w("Z1-", 10, 100), w("014", 10, 111)]), "Z1-014");
   assert.equal(cellTextOf([w("Weekly after wet", 10, 100), w("clean", 10, 111)]), "Weekly after wet clean");
+  assert.equal(cellTextOf([w("Tempera", 10, 100), w("ture", 10, 111)]), "Temperature");
+  assert.equal(cellTextOf([w("Tempera", 10, 100), w("ture,", 10, 111), w("°C.", 28, 111)]), "Temperature, °C.");
   assert.equal(cellTextOf([w("10", 10, 100), w("19", 20, 97, { sup: true })]), "10¹⁹");
   const host = w("25", 70, 100, { conf: 1, boxY: [92, 102] });
   host.x0 = 70; host.x1 = 90;
@@ -233,6 +235,12 @@ test("tokenizeLine keeps an OCR thousands group and splits a wider numeric colum
   const w = (text, x0, x1) => ({ text, x0, x1, conf: 1 });
   const line = { words: [w("10,", 100, 118), w("533,", 120, 142), w("707", 144, 162), w("16,863", 172, 204)], size: 8 };
   assert.deepEqual(tokenizeLine(line).map((t) => t.text), ["10, 533, 707", "16,863"]);
+});
+
+test("tokenizeLine splits a repeated column head the gap failed to separate", () => {
+  const w = (text, x0, x1) => ({ text, x0, x1, conf: 1 });
+  const line = { words: [w("#", 100, 108), w("of", 112, 124), w("loans", 128, 160), w("from", 164, 190), w("#", 194, 202), w("of", 206, 218), w("loans", 222, 254), w("from", 258, 284)], size: 9 };
+  assert.deepEqual(tokenizeLine(line).map((t) => t.text), ["# of loans from", "# of loans from"]);
 });
 
 test("tokenizeLine splits at column gaps, not at word spaces", () => {

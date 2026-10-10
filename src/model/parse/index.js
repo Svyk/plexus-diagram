@@ -13,7 +13,7 @@ import { detectLists } from "./lists.js";
 import { detectFormulas } from "./formulas.js";
 import { FOOTNOTE_MARK_RE, groupParagraphs, inlineUnlinkedRefs, joinLines, spansOf } from "./blocks.js";
 import { boxOfUnits, crossesGutter, detectColumns, orderUnits, ruleCuts, splitAtGutters } from "./xycut.js";
-import { repairOcrTable } from "./ocr-fix.js";
+import { repairOcrTable, repairTableReading } from "./ocr-fix.js";
 import { lowConfidenceShare } from "./ocr-vote.js";
 import { capTitle, isCutPrefix, isGibberishTitle, isJunkTitleText, isMetaBanner } from "../title-cap.js";
 import { cleanPdfTitle } from "../pdf.js";
@@ -22,7 +22,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 27;
+export const PARSE_REV = 28;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -1108,7 +1108,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       if (pg.ocr) {
         annotateOcrCells(block, pg.words);
         block.repairs = repairOcrTable(block);
-      }
+      } else repairTableReading(block);
       if (cap) blocks[captionIds.get(cap)].for = id;
       blocks[id] = block;
       units.push({ id, x0: t.bbox[0], y0: t.bbox[1], x1: t.bbox[2], y1: t.bbox[3] });

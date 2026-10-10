@@ -4687,6 +4687,13 @@ function withoutEchoDigits(words) {
     });
   });
 }
+function midWordWrap(prev, next) {
+  const last = String(prev || "").trim().split(/\s+/).pop() || "";
+  const first = (String(next || "").trim().split(/\s+/)[0] || "").replace(/[.,;:]+$/, "");
+  if (!/[A-Za-z]$/.test(last) || last.length < 5) return false;
+  if (!/^[a-z]{1,4}$/.test(first) || STANDALONE.has(first)) return false;
+  return true;
+}
 function cellTextOf(words) {
   const lines = relineWords(withoutEchoDigits(words).filter((w) => !LEADER_RE.test(w.text)));
   if (!lines.length) return "";
@@ -4703,6 +4710,7 @@ function cellTextOf(words) {
       continue;
     }
     if (text3.endsWith("-") && /^[A-Za-z0-9]/.test(t)) text3 += t;
+    else if (midWordWrap(text3, t)) text3 += t;
     else text3 += ` ${t}`;
   }
   text3 = text3.replace(/\s+/g, " ").trim();
@@ -5648,13 +5656,14 @@ function alignOf(cell) {
   if (Math.abs(dl - dr) <= 2) return dl > 4 ? "center" : "left";
   return dl < dr ? "left" : "right";
 }
-var NUMERIC_RE, LEADER_RE, SUPERS, UF, CAPTION_START_RE, NOTES_RE;
+var NUMERIC_RE, LEADER_RE, STANDALONE, SUPERS, UF, CAPTION_START_RE, NOTES_RE;
 var init_lattice = __esm({
   "src/model/parse/lattice.js"() {
     init_lines();
     init_rules();
     NUMERIC_RE = /^[\s\d.,%±+\-–−()$€£¢×·^]*\d[\s\d.,%±+\-–−()$€£¢×·^]*$/;
     LEADER_RE = /^[.·…]{4,}$/;
+    STANDALONE = new Set("a an of the and or in on at to for per from by with no as if be is it vs day year man men all not but its are was than into over note unit each both such only also more most less high low net out new old age end use oil gas".split(" "));
     SUPERS = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
     UF = class {
       constructor(n2) {
@@ -6011,8 +6020,33 @@ function tokenizeLine(line) {
     sawContent = true;
   }
   if (!sawContent && dotBag.length) tokens2.push({ x0: dotBag[0].x0, x1: dotBag[dotBag.length - 1].x1, words: dotBag });
-  for (const t of tokens2) t.text = t.words.map((w) => w.text).join(" ");
-  return tokens2;
+  const split = [];
+  for (const t of tokens2) split.push(...splitRepeatedHeads(t));
+  for (const t of split) t.text = t.words.map((w) => w.text).join(" ");
+  return split;
+}
+function splitRepeatedHeads(token) {
+  const words = token.words || [];
+  if (words.length < 4) return [token];
+  const marker = (w) => {
+    const t = String(w.text || "").trim();
+    if (t === "#") return "#";
+    if (/^\(\d+\)$/.test(t)) return "n";
+    return null;
+  };
+  const first = marker(words[0]);
+  if (!first) return [token];
+  const parts = [];
+  let cur = [];
+  for (const w of words) {
+    if (cur.length && marker(w) === first) {
+      parts.push(cur);
+      cur = [w];
+    } else cur.push(w);
+  }
+  if (cur.length) parts.push(cur);
+  if (parts.length < 2) return [token];
+  return parts.map((ws) => ({ x0: ws[0].x0, x1: ws[ws.length - 1].x1, words: ws }));
 }
 function projectColumns(rows) {
   const counts = rows.map((r) => r.length).sort((a, b) => a - b);
@@ -6694,7 +6728,7 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   const stability = counted ? conforming / counted : 0;
   if (stability < 0.7 && !bands) return null;
   if (stability < 0.5) return null;
-  const rows = rowsIn.length;
+  let rows = rowsIn.length;
   const cellMap = /* @__PURE__ */ new Map();
   placed.forEach((row4, r) => {
     for (const p of row4) {
@@ -6860,7 +6894,23 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     if (!/^[a-z(]/.test(text3) || isNumericText(text3)) continue;
     above.words.push(...cell.words);
     above.rowSpan = cell.rowSpan + 1;
+    above.wrappedHead = true;
     cellMap.delete(`${cell.r}:${cell.c}`);
+  }
+  for (let r = 1; r < headerRows; r++) {
+    if ([...cellMap.values()].some((c) => c.r === r)) continue;
+    const covers2 = [...cellMap.values()].filter((c) => c.r < r && c.r + c.rowSpan > r);
+    if (!covers2.length || covers2.some((c) => !c.wrappedHead)) continue;
+    for (const c of covers2) c.rowSpan -= 1;
+    for (const c of cellMap.values()) if (c.r > r) c.r -= 1;
+    const next = /* @__PURE__ */ new Map();
+    for (const c of cellMap.values()) next.set(`${c.r}:${c.c}`, c);
+    cellMap.clear();
+    for (const [key, c] of next) cellMap.set(key, c);
+    rowsIn.splice(r, 1);
+    headerRows -= 1;
+    rows -= 1;
+    r -= 1;
   }
   const coveredBy2 = (r, c0, c1) => [...cellMap.values()].some((o) => o.r <= r && r < o.r + o.rowSpan && o.c <= c1 && o.c + o.colSpan - 1 >= c0);
   for (const cell of [...cellMap.values()].sort((a, b) => a.r - b.r)) {
@@ -7155,12 +7205,16 @@ function mergeWrappedLabelRows(rowsIn, headerRows = 0) {
     i--;
   }
 }
-function baselineRows(lines) {
+function baselineRows(lines, { loose = false } = {}) {
   const sorted = [...lines].sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
   for (const l of sorted) {
     const r = rows[rows.length - 1];
-    if (r && Math.abs(r.base - l.base) <= 0.3 * Math.max(r.size, l.size)) {
+    const rowText = r ? r.lines.map((x) => x.text || "").join(" ") : "";
+    const digit = r && (/\d/.test(rowText) || /\d/.test(l.text || ""));
+    const beside = r && l.x0 >= r.x1 - 1;
+    const band = loose && !digit && beside ? 0.5 : 0.3;
+    if (r && Math.abs(r.base - l.base) <= band * Math.max(r.size, l.size)) {
       r.lines.push(l);
       r.x1 = Math.max(r.x1, l.x1);
     } else rows.push({ base: l.base, size: l.size, x0: l.x0, x1: l.x1, lines: [l] });
@@ -7240,7 +7294,7 @@ function proseRow(row4, tokens2, columnWidth = Infinity) {
 }
 function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeGaps = true, ocr = false, handwriting = false } = {}) {
   const out = [];
-  const rows = baselineRows(lines);
+  const rows = baselineRows(lines, { loose: true });
   const colBox = column || (lines.length ? { x0: Math.min(...lines.map((l) => l.x0)), x1: Math.max(...lines.map((l) => l.x1)) } : null);
   const colW = colBox ? colBox.x1 - colBox.x0 : Infinity;
   const tokensOf2 = (row4) => row4.lines.flatMap((l) => tokenizeLine(l)).sort((a, b) => a.x0 - b.x0);
@@ -7566,12 +7620,14 @@ function repeatsHeader(tokens2, header) {
 }
 function alignsWithRun(run, tokens2, size) {
   if (!tokens2 || tokens2.length < 2) return false;
-  const prev = [];
-  for (const r of run) for (const t of r.tokens.slice(1)) prev.push(t.x0);
+  const prev = run.flatMap((r) => r.tokens);
   if (prev.length < 2) return false;
-  const tol = Math.max(4, 0.6 * size);
+  const tol = Math.max(4, 0.8 * (size || 8));
+  const overlaps2 = (a, b) => a.x0 < b.x1 + tol && a.x1 > b.x0 - tol;
+  const numeric = tokens2.filter((t) => isNumericText(t.text));
+  const side2 = numeric.length >= 2 ? numeric : tokens2.slice(1);
   let hit = 0;
-  for (const t of tokens2.slice(1)) if (prev.some((x) => Math.abs(x - t.x0) <= tol)) hit++;
+  for (const t of side2) if (prev.some((p) => Math.abs(p.x0 - t.x0) <= tol || overlaps2(p, t))) hit++;
   return hit >= 2;
 }
 function cellWords(text3) {
@@ -10571,6 +10627,251 @@ function moveStubTotal(table) {
   label.numeric = false;
   return { r, text: num6 };
 }
+function deleteRow(table, r) {
+  table.cells = table.cells.filter((c) => c.r !== r);
+  for (const c of table.cells) {
+    if (c.r > r) c.r -= 1;
+    else if (c.r < r && c.r + (c.rowSpan || 1) > r) c.rowSpan = Math.max(1, (c.rowSpan || 1) - 1);
+  }
+  table.rows -= 1;
+  if (r < (table.headerRows || 0)) table.headerRows = Math.max(0, table.headerRows - 1);
+}
+function cellAt(table, r, c) {
+  return table.cells.find((k) => k.r === r && k.c <= c && c < k.c + (k.colSpan || 1));
+}
+function joinFragment(prev, next) {
+  const left = String(prev || "").trim();
+  const right = String(next || "").trim();
+  if (!left) return right;
+  if (!right) return left;
+  const last = left.split(/\s+/).pop();
+  const first = right.split(/\s+/)[0];
+  if (/[A-Za-z]$/.test(last) && /^[a-z]{1,4}$/.test(first) && last.length >= 5 && !/^(of|the|and|or|in|on|at|to|for|per|from|by)$/.test(first)) return `${left}${right}`;
+  return `${left} ${right}`;
+}
+function foldIndexHeads(table) {
+  let guard = 0;
+  while (guard++ < 3 && table.rows > 2) {
+    const top = table.cells.filter((c) => c.r === 0 && (c.rowSpan || 1) === 1);
+    const texts = top.map((c) => String(c.text || "").trim()).filter(Boolean);
+    if (texts.length < 3 || !texts.every((t) => /^\(\d+\)$/.test(t))) break;
+    const below = table.cells.filter((c) => c.r === 1 && String(c.text || "").trim() && !/^\(\d+\)$/.test(String(c.text).trim()));
+    if (below.length < 2) break;
+    for (const c of top) {
+      const text3 = String(c.text || "").trim();
+      if (!/^\(\d+\)$/.test(text3)) continue;
+      const host = table.cells.find((k) => k.r === 1 && k.c === c.c && (k.colSpan || 1) === (c.colSpan || 1));
+      if (host) host.text = `${text3} ${host.text || ""}`.trim();
+    }
+    deleteRow(table, 0);
+  }
+}
+function foldContinuationHeads(table) {
+  const limit = Math.min(table.headerRows || 0, 4);
+  for (let r = 1; r < limit && r < table.rows; r++) {
+    const row4 = table.cells.filter((c) => c.r === r && (c.rowSpan || 1) === 1 && (c.colSpan || 1) === 1);
+    const filled = row4.filter((c) => String(c.text || "").trim());
+    if (filled.length < 2 || !filled.every((c) => /^[a-z(]/.test(String(c.text).trim()) && !isNumericText(c.text))) continue;
+    const hosts = filled.map((c) => {
+      const above = cellAt(table, r - 1, c.c);
+      if (!above || above.r !== r - 1 || above.c !== c.c || (above.colSpan || 1) !== (c.colSpan || 1)) return null;
+      return { c, above };
+    });
+    if (hosts.some((h) => !h)) continue;
+    for (const { c, above } of hosts) above.text = joinFragment(above.text, c.text);
+    deleteRow(table, r);
+    r -= 1;
+  }
+}
+function statText(text3) {
+  const s = String(text3 || "").trim();
+  return /^\([^()\n]*\d[^()\n]*\)$/.test(s) || /^\[[^\[\]\n]*\d[^\[\]\n]*\]$/.test(s);
+}
+function stackStatRows(table) {
+  let guard = 0;
+  while (guard++ < table.rows) {
+    let found = -1;
+    for (let r = Math.max(1, table.headerRows || 0); r < table.rows; r++) {
+      const row4 = table.cells.filter((c) => c.r === r && (c.rowSpan || 1) === 1);
+      const stub = row4.find((c) => c.c === 0);
+      if (stub && String(stub.text || "").trim()) continue;
+      const vals = row4.filter((c) => c.c > 0 && String(c.text || "").trim());
+      if (vals.length < 2 || !vals.every((c) => statText(c.text) && (c.colSpan || 1) === 1)) continue;
+      const prev = table.cells.filter((c) => c.r === r - 1);
+      const prevStub = prev.find((c) => c.c === 0 && String(c.text || "").trim());
+      const prevNums = prev.filter((c) => c.c > 0 && /[0-9]/.test(c.text || ""));
+      if (!prevStub && prevNums.length < 2) continue;
+      if (!vals.every((c) => cellAt(table, r - 1, c.c))) continue;
+      found = r;
+      for (const c of vals) {
+        const host = cellAt(table, r - 1, c.c);
+        if (!host || host.r !== r - 1) continue;
+        host.text = `${String(host.text || "").trim()} ${String(c.text).trim()}`.trim();
+      }
+      break;
+    }
+    if (found < 0) break;
+    deleteRow(table, found);
+  }
+}
+function spanPanelRows(table) {
+  for (let r = 0; r < table.rows; r++) {
+    const row4 = table.cells.filter((c) => c.r === r);
+    const filled = row4.filter((c) => String(c.text || "").trim());
+    if (filled.length !== 1 || filled[0].c !== 0) continue;
+    const text3 = String(filled[0].text).trim();
+    if (!/^panel\s+[a-z0-9]+\b/i.test(text3)) continue;
+    if ((filled[0].colSpan || 1) >= table.cols) continue;
+    table.cells = table.cells.filter((c) => c === filled[0] || c.r !== r);
+    filled[0].c = 0;
+    filled[0].colSpan = table.cols;
+  }
+}
+function splitFusedLabelRow(table) {
+  const labelsOf = (text3) => {
+    const m = String(text3 || "").trim().match(/^([A-Z][a-z]+)\.\s+([A-Z][a-z]+)\.?$/);
+    return m ? [m[1], m[2]] : null;
+  };
+  const numToken = (p) => /^\d{1,3}(?:,\d{3})+$/.test(p) || /^\d+\.\d+$/.test(p) || /^\d{2,}$/.test(p);
+  const numsOf = (text3) => {
+    const parts = String(text3 || "").trim().split(/\s+/);
+    if (parts.length !== 2 || !parts.every(numToken)) return null;
+    return parts;
+  };
+  for (let r = table.headerRows || 0; r < table.rows; r++) {
+    const row4 = table.cells.filter((c) => c.r === r && (c.rowSpan || 1) === 1);
+    const stub = row4.find((c) => c.c === 0);
+    const labels = stub ? labelsOf(stub.text) : null;
+    if (!labels) continue;
+    const paired = row4.filter((c) => c.c > 0 && numsOf(c.text)).map((c) => ({ cell: c, nums: numsOf(c.text) }));
+    if (!paired.length) continue;
+    stub.text = labels[0];
+    for (const c of row4) {
+      if (c.c === 0) continue;
+      const hit = paired.find((p) => p.cell === c);
+      if (hit) c.text = hit.nums[0];
+      else if (String(c.text || "").trim()) c.rowSpan = 2;
+    }
+    for (const c of table.cells) if (c.r > r) c.r += 1;
+    table.cells.push({ r: r + 1, c: 0, rowSpan: 1, colSpan: 1, text: labels[1], header: false });
+    for (const p of paired) {
+      table.cells.push({ r: r + 1, c: p.cell.c, rowSpan: 1, colSpan: p.cell.colSpan || 1, text: p.nums[1], header: false });
+    }
+    table.rows += 1;
+    break;
+  }
+}
+function unshiftRepeatedUnit(table) {
+  const start = table.headerRows || 0;
+  for (let r = start; r < table.rows - 2; r++) {
+    const row4 = table.cells.filter((c) => c.r === r && (c.rowSpan || 1) === 1 && (c.colSpan || 1) === 1);
+    const stub = row4.find((c) => c.c === 0);
+    const vals = row4.filter((c) => c.c > 0 && String(c.text || "").trim());
+    if (!stub || !String(stub.text || "").trim() || vals.length < 3) continue;
+    const unit = String(vals[0].text).trim();
+    if (/\d/.test(unit) || unit.length > 24 || !/[A-Za-z]/.test(unit)) continue;
+    if (!vals.every((c) => String(c.text).trim() === unit)) continue;
+    if (String(stub.text).trim() === unit) continue;
+    const next = table.cells.filter((c) => c.r === r + 1 && c.c > 0 && /\d/.test(c.text || ""));
+    if (next.length < 2) continue;
+    const values = table.cells.filter((c) => c.c > 0 && c.r >= r);
+    for (const c of table.cells) if (c.r >= r) c.r += 1;
+    for (const c of values) c.r -= 1;
+    table.rows += 1;
+    const head = table.cells.find((c) => c.c === 0 && c.r === r - 1);
+    if (head && (head.rowSpan || 1) === 1) head.rowSpan = 2;
+    if (r === 1 && (table.headerRows || 0) < 2) table.headerRows = 2;
+    break;
+  }
+}
+function shiftSectionValues(table) {
+  const stubOf = (r) => table.cells.find((c) => c.r === r && c.c === 0 && (c.colSpan || 1) === 1);
+  for (let r = table.headerRows || 0; r < table.rows - 1; r++) {
+    const stub = stubOf(r);
+    const label = String(stub?.text || "").trim();
+    if (!/:\s*$/.test(label)) continue;
+    const values = table.cells.filter((c) => c.r === r && c.c > 0 && String(c.text || "").trim());
+    if (!values.length) continue;
+    let end = r;
+    for (let k = r + 1; k < table.rows; k++) {
+      const next = String(stubOf(k)?.text || "").trim();
+      if (/:\s*$/.test(next)) break;
+      end = k;
+    }
+    if (end === r) continue;
+    const lastVals = table.cells.filter((c) => c.r === end && c.c > 0 && String(c.text || "").trim() && (c.rowSpan || 1) === 1);
+    if (lastVals.length) continue;
+    if (!String(stubOf(end)?.text || "").trim()) continue;
+    const moving = table.cells.filter((c) => c.c > 0 && c.r >= r && c.r < end && c.r + (c.rowSpan || 1) <= end + 1);
+    for (const c of moving) {
+      if (c.r + (c.rowSpan || 1) - 1 >= table.rows - 1 && c.r + 1 + (c.rowSpan || 1) > table.rows) continue;
+      c.r += 1;
+    }
+  }
+}
+function blankRepeatedFill(table) {
+  const start = table.headerRows || 0;
+  const plain2 = (r, c) => table.cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+  const fillOf = (r, c) => {
+    const cell = plain2(r, c);
+    const text3 = String(cell?.text || "").trim();
+    return /^\.\d{2,4}$/.test(text3) ? text3 : "";
+  };
+  const otherIn = (c0, c1, text3) => {
+    for (let c = c0; c < c1; c++) {
+      for (let r = start; r < table.rows; r++) {
+        const t = String(plain2(r, c)?.text || "").trim();
+        if (t && t !== text3) return true;
+      }
+    }
+    return false;
+  };
+  for (let r = start; r < table.rows; r++) {
+    for (let c = 0; c < table.cols - 2; c++) {
+      const text3 = fillOf(r, c);
+      if (!text3) continue;
+      let c1 = c + 1;
+      while (c1 < table.cols && fillOf(r, c1) === text3) c1++;
+      if (c1 - c < 3) continue;
+      let r1 = r + 1;
+      while (r1 < table.rows) {
+        let same2 = true;
+        for (let k = c; k < c1; k++) if (fillOf(r1, k) !== text3) same2 = false;
+        if (!same2) break;
+        r1++;
+      }
+      if (r1 - r < 3 || !otherIn(c, c1, text3)) continue;
+      const blank = (rr, k) => {
+        const cell = plain2(rr, k);
+        if (cell && String(cell.text || "").trim() === text3) cell.text = "";
+      };
+      for (let rr = r; rr < r1; rr++) for (let k = c; k < c1; k++) blank(rr, k);
+      for (const rr of [r - 1, r1]) {
+        if (rr < start || rr >= table.rows) continue;
+        for (let k = c; k < c1; k++) if (fillOf(rr, k) === text3) blank(rr, k);
+      }
+    }
+  }
+}
+function spaceFootnoteMarks(table) {
+  for (const c of table.cells) {
+    const text3 = String(c.text || "");
+    if (/^[a-z][.\d]/.test(text3) && /\d/.test(text3)) c.text = text3.replace(/^([a-z])(?=[.\d])/, "$1 ");
+  }
+}
+function repairTableReading(table) {
+  if (!table?.cells?.length) return table;
+  foldIndexHeads(table);
+  foldContinuationHeads(table);
+  stackStatRows(table);
+  spanPanelRows(table);
+  splitFusedLabelRow(table);
+  unshiftRepeatedUnit(table);
+  shiftSectionValues(table);
+  blankRepeatedFill(table);
+  spaceFootnoteMarks(table);
+  return table;
+}
 function polishTableText(table) {
   if (!table?.cells) return table;
   for (const cell of table.cells) {
@@ -10582,6 +10883,7 @@ function polishTableText(table) {
   restoreDegree(table);
   spanGroupHeaders(table);
   moveStubTotal(table);
+  repairTableReading(table);
   return table;
 }
 function repairOcrTable(table) {
@@ -12386,7 +12688,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       if (pg.ocr) {
         annotateOcrCells(block, pg.words);
         block.repairs = repairOcrTable(block);
-      }
+      } else repairTableReading(block);
       if (cap4) blocks[captionIds.get(cap4)].for = id;
       blocks[id] = block;
       units.push({ id, x0: t.bbox[0], y0: t.bbox[1], x1: t.bbox[2], y1: t.bbox[3] });
@@ -12607,7 +12909,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 27;
+    PARSE_REV = 28;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;

@@ -153,7 +153,7 @@ function vlmHelper(pdfPath) {
       if (res.status < 200 || res.status >= 300) throw new Error(body?.error || `tables ${res.status}`);
       return body;
     },
-    async vlm({ bytes, pages, tables, text, numericPages, boxMode }) {
+    async vlm({ bytes, pages, tables, text, numericPages, boxMode, layoutOnly }) {
       let regions = tables;
       let mode = boxMode;
       const oracleDir = process.env.PXD_VLM_ORACLE_DIR;
@@ -164,6 +164,7 @@ function vlmHelper(pdfPath) {
         mode = "caller";
       }
       const options = { pages, tables: regions, text: text === true };
+      if (layoutOnly === true) options.layoutOnly = true;
       if (numericPages && numericPages.length) options.numericPages = numericPages;
       if (mode) options.boxMode = mode;
       const res = await fetch(`${url}/v1/vlm`, {

@@ -1365,10 +1365,12 @@ function clipLowerText(box, lines) {
 
 // The dark of a photograph stops inside the mount. Grow into the empty margin
 // and stop at the first line, so the box is the picture and not the caption.
-function growUntilText(box, lines, pageW, pageH) {
+// `stops` are other pictures' ink: the paper gutter between two plates is not
+// part of either, so a picture grows toward text and stops short of the next ink.
+function growUntilText(box, lines, pageW, pageH, stops = []) {
   const padX = 0.08 * pageW;
   const padY = 0.07 * pageH;
-  const text = (lines || []).filter((line) => (line.text || "").trim());
+  const text = [...(lines || []).filter((line) => (line.text || "").trim()), ...stops];
   let { x0, y0, x1, y1 } = box;
   const overlapX = (line, a, b) => Math.min(b, line.x1) - Math.max(a, line.x0) > 8;
   const overlapY = (line, a, b) => Math.min(b, line.y1) - Math.max(a, line.y0) > 4;
@@ -1388,6 +1390,8 @@ function growUntilText(box, lines, pageW, pageH) {
 // the caption between two pictures, so those stay apart.
 function picturesTouch(a, b, lines, pageH) {
   const limit = Math.max(10, 0.02 * (pageH || 0));
+  // Grown boxes pad into the gutter; the ink itself says whether the gap is a hairline.
+  if (a.ink && b.ink) { a = a.ink; b = b.ink; }
   const overlap = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
   const narrow = Math.min(a.x1 - a.x0, b.x1 - b.x0);
   if (!(narrow > 0) || overlap < 0.55 * narrow) return false;
@@ -1422,6 +1426,7 @@ function mergeTouchingPictures(made, lines, pageH) {
           x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0),
           x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1),
         };
+        if (a.ink && b.ink) made[i].ink = { x0: Math.min(a.ink.x0, b.ink.x0), y0: Math.min(a.ink.y0, b.ink.y0), x1: Math.max(a.ink.x1, b.ink.x1), y1: Math.max(a.ink.y1, b.ink.y1) };
         made.splice(j, 1);
         changed = true;
         break;
@@ -1540,10 +1545,12 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines = null
     && !figures.some((f) => (f.fromPlate || f.kind === "image" || f.pageImage) && covers(f, box));
   const pending = [];
   const spread = letterSpread(lines, pageH);
+  const pictures = boxes.filter((b) => boxArea(b) >= 0.018 * pageArea);
   for (const raw of boxes) {
     let area = boxArea(raw);
     if (area < 0.018 * pageArea) continue;
-    let box = { x0: raw.x0, y0: raw.y0, x1: raw.x1, y1: raw.y1 };
+    let box = { x0: raw.x0, y0: raw.y0, x1: raw.x1, y1: raw.y1, ink: { x0: raw.x0, y0: raw.y0, x1: raw.x1, y1: raw.y1 } };
+    const stops = pictures.filter((b) => b !== raw && insideFrac(b, raw) < 0.5 && insideFrac(raw, b) < 0.5);
     if (area > 0.78 * pageArea) {
       const clipped = clipLowerText(box, lines);
       if (!(boxArea(clipped) < area - 1) || boxArea(clipped) > 0.78 * pageArea) continue;
@@ -1558,8 +1565,8 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines = null
     if (textThroughMiddle(box, pageLines)) continue;
     if (textBlockBox(box, lines)) continue;
     if (holdsPageText(box, pageLines)) continue;
-    const grown = growUntilText(box, lines, pageW, pageH);
-    box = boxArea(grown) > 0.85 * pageArea ? box : grown;
+    const grown = growUntilText(box, lines, pageW, pageH, stops);
+    box = boxArea(grown) > 0.85 * pageArea ? box : { ...grown, ink: box.ink };
     if (edgeBand(box, pageW, pageH)) continue;
     if (textThroughMiddle(box, pageLines) || headerBand(box, pageLines, pageH)) continue;
     if (boxArea(box) > 0.85 * pageArea) continue;

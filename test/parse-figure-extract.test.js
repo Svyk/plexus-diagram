@@ -1384,3 +1384,25 @@ test("hatching beside a text column is one picture that stops at the column", ()
   const few = scanPage(menu, { ink: ink.slice(0, 8) });
   assert.equal(ofType(few, "figure").length, 0, "a handful of strokes beside a column is not a plate");
 });
+
+test("two photographs on an uncaptioned plate stay two: a picture grows to text, not across the gutter", () => {
+  // Two halftone prints with a paper gutter of 5.7% of the page between them, a page number below.
+  const top = { x0: 44, y0: 70, x1: 520, y1: 352 };
+  const bot = { x0: 44, y0: 398, x1: 520, y1: 680 };
+  const out = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [top, bot] },
+    words: [word("45", 300, 740, 312, 750, 8)],
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(out.figures.length, 2, "the gutter is paper, not a hairline");
+  const [a, b] = [...out.figures].sort((p, q) => p.bbox[1] - q.bbox[1]);
+  assert.ok(a.bbox[3] <= bot.y0, "the upper picture stops at the lower one's ink");
+  assert.ok(b.bbox[1] >= top.y1, "the lower picture stops at the upper one's ink");
+  // The same ink split by a hairline of white is one picture.
+  const hair = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [top, { ...bot, y0: 358 }] },
+    words: [word("45", 300, 740, 312, 750, 8)],
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(hair.figures.length, 1);
+});

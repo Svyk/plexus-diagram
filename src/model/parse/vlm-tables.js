@@ -931,40 +931,189 @@ export function linkLayoutCaptions(doc, layout) {
   return { doc: { ...doc, blocks }, applied };
 }
 
-// A layout figure is added only on a page that has none. An existing figure
-// stays, so a hint cannot pull figure F1 down by adding a second box.
-export function hintLayoutFigures(doc, hints) {
-  if (!doc || !hints?.length) return { doc, applied: [] };
-  const blocks = { ...doc.blocks };
-  const order = [...(doc.order || [])];
-  const pagesWith = new Set();
-  for (const id of order) {
-    const block = blocks[id];
-    if (block?.type === "figure") pagesWith.add(block.page);
+// Figures on a page the layout model saw: its image / chart boxes reconciled
+// with the local detector's. Each detector fails in its own way. The local one
+// reads ink hulls and vector strokes: a scan border or a shadow joins two
+// photographs into one page-sized box, table rules and form boxes are strokes
+// with nothing drawn, a halftone sky splits one print into pieces. The trained
+// detector saw the rendered page and knows a picture from text, but on old
+// scans it cuts a hand-inked sheet into pieces and draws one box around two
+// stacked photographs.
+//  - Boxes under 1% of the page are icons and logos (the figure score ignores
+//    them); boxes that touch in one column or row are panels of one figure.
+//  - A box that mostly lies on a table already read from the page is that
+//    table's ink (a photographed ledger reads as "image").
+//  - Born-digital page: the layout boxes are the figures; a local figure that
+//    overlaps one is replaced by it; a raster image object with no layout box
+//    stays (an embedded picture is evidence on its own; strokes are not).
+//  - Scan page: a local figure the detector did not see at all is dropped. A
+//    local figure holding two or more substantial layout boxes is a join through
+//    a border or shadow, and the layout boxes replace it. A layout box holding
+//    local pieces that interleave (overlap, or sit side by side) is one picture
+//    the ink split, and it replaces them. A local figure the detector labels
+//    mostly as something other than a picture is clipped to its layout boxes.
+//    Otherwise the local box stays: ink gives the extent of a drawing on a scan
+//    better than the detector does. Layout boxes with no ink under them are not
+//    added on a scan (a dark text block is not a picture).
+// `pages` are the page numbers the layout model ran on. Other pages keep their
+// local figures.
+const LAYOUT_FIGURE_MIN_SCORE = 0.5;
+const LAYOUT_FIGURE_MIN_AREA = 0.01;
+// Panels of one figure share a frame, so their boxes touch; separate figures leave a gutter.
+const PANEL_GAP = 0.01;
+// Two stacked pictures grown toward each other may touch by a hairline; pieces of one
+// picture overlap by more than that.
+const PIECE_OVERLAP = 0.02;
+
+function area(b) { return Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]); }
+
+function interArea(a, b) {
+  const w = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
+  const h = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  return w * h;
+}
+
+// Share of `a` that lies inside `b`.
+function insideShare(a, b) {
+  const aa = area(a);
+  return aa > 0 ? interArea(a, b) / aa : 0;
+}
+
+function mergePanels(boxes, pageW, pageH) {
+  const out = boxes.map((b) => [...b]);
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < out.length && !merged; i++) for (let j = i + 1; j < out.length; j++) {
+      const a = out[i]; const b = out[j];
+      const xo = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+      const yo = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+      const narrow = Math.min(a[2] - a[0], b[2] - b[0]);
+      const short = Math.min(a[3] - a[1], b[3] - b[1]);
+      const stacked = xo >= 0.6 * narrow && -yo <= PANEL_GAP * pageH;
+      const beside = yo >= 0.6 * short && -xo <= PANEL_GAP * pageW;
+      if (!stacked && !beside) continue;
+      out[i] = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])];
+      out.splice(j, 1);
+      merged = true;
+      break;
+    }
   }
+  return out;
+}
+
+// Local pieces inside one layout box that overlap, or sit side by side, are halves of one picture.
+function interleaved(boxes, pageW, pageH) {
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+    const a = boxes[i]; const b = boxes[j];
+    const xo = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+    const yo = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+    if (xo > 0 && yo > PIECE_OVERLAP * pageH) return true;
+    if (yo > 0 && xo <= 0 && -xo < PIECE_OVERLAP * pageW && yo >= 0.5 * Math.min(a[3] - a[1], b[3] - b[1])) return true;
+  }
+  return false;
+}
+
+export function applyLayoutFigures(doc, layout, pages) {
+  const seen = new Set(pages || []);
+  if (!doc || !seen.size) return { doc, applied: [] };
+  const blocks = { ...doc.blocks };
+  let order = [...(doc.order || [])];
   const applied = [];
   let seq = 0;
-  for (const hint of hints) {
-    if (!hint?.bbox || pagesWith.has(hint.page)) continue;
-    if (hint.label && hint.label !== "image" && hint.label !== "chart") continue;
-    const id = `vfig${seq++}`;
-    const block = {
-      id,
-      type: "figure",
-      page: hint.page,
-      bbox: hint.bbox,
-      caption: null,
-      image: { kind: "crop", source: hint.label || "image" },
-      confidence: hint.score ?? 0.6,
-      method: "vlm-layout",
-      engine: "builtin",
-    };
-    blocks[id] = block;
-    const at = order.findIndex((oid) => blocks[oid]?.page > hint.page);
-    if (at < 0) order.push(id);
-    else order.splice(at, 0, id);
-    pagesWith.add(hint.page);
-    applied.push({ id, page: hint.page });
+  for (const n of seen) {
+    const page = (doc.pages || []).find((p) => p && p.n === n);
+    if (!page || !(page.w > 0) || !(page.h > 0)) continue;
+    const pageArea = page.w * page.h;
+    const onPage = (layout || []).filter((b) => b && b.page === n && b.bbox && b.bbox.length >= 4 && (b.score ?? 0) >= LAYOUT_FIGURE_MIN_SCORE);
+    const clip = (b) => [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(page.w, b[2]), Math.min(page.h, b[3])];
+    const tables = order.map((id) => blocks[id]).filter((b) => b?.type === "table" && b.page === n && b.bbox).map((b) => b.bbox);
+    const hints = onPage.filter((b) => b.label === "image" || b.label === "chart").map((b) => clip(b.bbox))
+      .filter((b) => area(b) >= LAYOUT_FIGURE_MIN_AREA * pageArea && !tables.some((t) => mostlyInside(b, t)));
+    const others = onPage.filter((b) => b.label !== "image" && b.label !== "chart").map((b) => clip(b.bbox));
+    const boxes = mergePanels(hints, page.w, page.h);
+    const locals = order.filter((id) => blocks[id]?.type === "figure" && blocks[id].page === n && blocks[id].bbox);
+    const born = !page.ocr && !page.scanLayer && page.kind !== "scan";
+    // next: [{ box, host }] figures to write; removed: local ids that go.
+    const next = [];
+    const removed = new Set();
+    if (born) {
+      const taken = new Set();
+      for (const box of boxes) {
+        let host = null; let best = 0;
+        for (const id of locals) {
+          if (taken.has(id)) continue;
+          const f = interArea(blocks[id].bbox, box);
+          if (f > best) { best = f; host = id; }
+        }
+        if (host) taken.add(host);
+        next.push({ box, host });
+      }
+      for (const id of locals) {
+        const local = blocks[id];
+        const kept = !taken.has(id) && local.image && (local.image.source === "image" || local.image.source === "mixed");
+        if (!kept) removed.add(id);
+      }
+    } else {
+      // Hints spent on a split picture are not support for another local box.
+      const spent = new Set();
+      for (let hi = 0; hi < boxes.length; hi++) {
+        const H = boxes[hi];
+        const pieces = locals.filter((id) => !removed.has(id) && insideShare(blocks[id].bbox, H) >= 0.5);
+        if (pieces.length < 2 || !interleaved(pieces.map((id) => blocks[id].bbox), page.w, page.h)) continue;
+        next.push({ box: H, host: pieces[0] });
+        for (const id of pieces) removed.add(id);
+        spent.add(hi);
+      }
+      for (const id of locals) {
+        if (removed.has(id)) continue;
+        const L = blocks[id].bbox;
+        const over = boxes.map((b, i) => i).filter((i) => !spent.has(i) && interArea(L, boxes[i]) > 0);
+        if (!over.length) { removed.add(id); continue; }
+        const strong = over.filter((i) => insideShare(boxes[i], L) >= 0.7 && area(boxes[i]) >= 0.2 * area(L));
+        const textShare = others.reduce((sum, b) => sum + interArea(b, L), 0) / area(L);
+        if (strong.length >= 2 || textShare >= 0.5) {
+          const use = strong.length >= 2 ? strong : over;
+          use.forEach((i, k) => { next.push({ box: boxes[i], host: k === 0 ? id : null }); spent.add(i); });
+          removed.add(id);
+        }
+      }
+    }
+    if (!removed.size && !next.length) continue;
+    for (const item of next) {
+      const id = `lfig${seq++}`;
+      const host = item.host ? blocks[item.host] : null;
+      const block = {
+        id,
+        type: "figure",
+        page: n,
+        bbox: item.box.map((v) => Math.round(v * 100) / 100),
+        caption: host?.caption || null,
+        image: { kind: "crop", source: "layout" },
+        confidence: 0.9,
+        method: "vlm-layout",
+        engine: "builtin",
+      };
+      blocks[id] = block;
+      if (host?.caption && blocks[host.caption]) blocks[host.caption] = { ...blocks[host.caption], for: id };
+      const at = item.host ? order.indexOf(item.host) : order.findIndex((oid) => blocks[oid]?.page === n && blocks[oid].bbox && blocks[oid].type !== "figure" && blocks[oid].bbox[1] >= block.bbox[3]);
+      const last = order.map((oid) => blocks[oid]?.page).lastIndexOf(n);
+      if (at >= 0) order.splice(at, 0, id);
+      else if (last >= 0) order.splice(last + 1, 0, id);
+      else order.push(id);
+      applied.push({ id, page: n, replaced: item.host || null });
+    }
+    for (const id of removed) {
+      const local = blocks[id];
+      if (local.caption && blocks[local.caption] && blocks[local.caption].for === id) {
+        const cap = { ...blocks[local.caption] };
+        delete cap.for;
+        blocks[local.caption] = cap;
+      }
+      delete blocks[id];
+      order = order.filter((oid) => oid !== id);
+      if (!applied.some((a) => a.replaced === id)) applied.push({ id: null, page: n, replaced: id });
+    }
   }
   return { doc: { ...doc, blocks, order }, applied };
 }

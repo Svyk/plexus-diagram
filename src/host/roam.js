@@ -1476,6 +1476,15 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       noteWrite("update");
     },
 
+    // Notes kept reads on a PDF block. Only the `plexus-reads` prop changes; every other prop stays.
+    async updateReads(uid, reads) {
+      forgetUid(uid);
+      const merged = { ...plainKeys(host.pullProps(uid)), "plexus-reads": plainKeys(reads) };
+      stats.writes++;
+      await data.block.update({ block: { uid, props: merged } });
+      noteWrite("update");
+    },
+
     async moveBlock(uid, parentUid, order = "last") {
       stats.writes++;
       await data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } });

@@ -13,6 +13,7 @@ import { isTextEntryTarget } from "./cards.js";
 import { applyMotionClasses } from "./motion.js";
 import { BOTH_MIN_PX, BUILTIN_OPTIONS, createParseView, readParsedUrls } from "./parse-view.js";
 import { createParseStore } from "../host/parse-store.js";
+import { createReadKeeper } from "../host/read-keep.js";
 import { createHelperClient, helperCanOcr } from "../host/parse-helper-client.js";
 import { imageKey, restorableTitle } from "../host/parse-store.js";
 import { placePopover } from "../relchips.js";
@@ -2277,6 +2278,11 @@ export function createReadPane({
     dismissedUrls.delete(pdfUrl());
     void runRead("", { explicit: true });
   };
+  let readKeeper = null;
+  const ensureKeeper = () => {
+    if (!readKeeper) readKeeper = createReadKeeper({ host, session, store: ensureStore(), settings });
+    return readKeeper;
+  };
   const ensureParsed = () => {
     if (parsedView) return parsedView;
     parsedView = createParseView({
@@ -2292,6 +2298,7 @@ export function createReadPane({
       },
       session,
       host,
+      keep: ensureKeeper(),
       storage,
       pdfUid: current.cardUid,
       pdfBlockUid: () => current.blockUid || current.cardUid,
@@ -2366,6 +2373,9 @@ export function createReadPane({
     if (view.blockCount() > 0 || view.isBusy()) return;
     if (!(await waitReaderPdf(gen))) return;
     if (view.blockCount() > 0 || view.isBusy()) return;
+    // The PDF is loaded now, so a read another computer kept in the graph can be matched by sha-256.
+    try { found = await view.restore(); } catch { found = null; }
+    if (found || gen !== bgGen || !openFlag || url !== pdfUrl()) return;
     bgParsing = true;
     try { await view.parseBuiltin(); } catch { /* parse */ } finally { bgParsing = false; }
   }

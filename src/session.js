@@ -1,4 +1,5 @@
 import { namespaceParent } from "./model/namespace.js";
+import { READS_KEY, mergeReads } from "./host/read-keep.js";
 import { CONTAINER_STRING, isContainerString, parseRegion, PIN_CONTAINER_STRING } from "./model/regions.js";
 import { imagePolyString, imageRegionString } from "./model/image-region.js";
 import { renameRegionCaption } from "./model/region-menu.js";
@@ -1898,6 +1899,16 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const made = await writePdfPin(spec);
         const writes = Math.max(0, (Number(host.stats?.writes) || 0) - before);
         return { ok: Boolean(made.uid), uid: made.uid || "", reused: Boolean(made.reused), writes };
+      });
+    },
+
+    // Notes a kept read on the PDF block's props: one write, one undo step. Nothing else changes.
+    noteRead(blockUid, entry) {
+      if (destroyed || gone) return Promise.resolve({ ok: false, reason: "gone" });
+      return runParsed(async () => {
+        const reads = mergeReads(host.pullProps(blockUid)?.[READS_KEY], entry);
+        await host.updateReads(blockUid, reads);
+        return { ok: true, writes: 1 };
       });
     },
 

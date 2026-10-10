@@ -6,8 +6,8 @@ import test from "node:test";
 
 import { assembleDocument, ocrGraphics, parsePageGeometry } from "../src/model/parse/index.js";
 import {
-  applyCellOcr, cellsToReread, decimalStyle, fitsColumn, isPlaceholder, numericLike, repairNumber,
-  repairNumericColumns, repairOcrTable, repairYearHeader, spanNoteRows, tableNumericValidity, unspanNarrowCells,
+  applyCellOcr, cellsToReread, chemicalSubscripts, decimalStyle, fitsColumn, isPlaceholder, moveStubTotal, numericLike, polishTableText, repairNumber,
+  repairNumericColumns, repairOcrTable, repairYearHeader, spanGroupHeaders, spanNoteRows, tableNumericValidity, unspanNarrowCells,
 } from "../src/model/parse/ocr-fix.js";
 import { chooseTable, mergeOcrDocument, scanPagesOf } from "../src/model/parse/ocr-merge.js";
 import { createHelperClient } from "../src/host/parse-helper-client.js";
@@ -801,6 +801,63 @@ test("readScan with nothing to read returns the base untouched", async () => {
 });
 
 // ---------------------------------------------------------------- view hook
+
+test("formula tokens, thousands marks, group headers and a stub total", () => {
+  assert.equal(chemicalSubscripts("Methane (CH4)"), "Methane (CH₄)");
+  assert.equal(chemicalSubscripts("Ethane (C2H6)"), "Ethane (C₂H₆)");
+  assert.equal(chemicalSubscripts("Nitrogen (N2)"), "Nitrogen (N₂)");
+  assert.equal(chemicalSubscripts("CO2."), "CO₂.");
+  assert.equal(chemicalSubscripts("N2."), "N₂.");
+  assert.equal(chemicalSubscripts("H1"), "H1");
+  const gas = {
+    rows: 4, cols: 2, headerRows: 0,
+    cells: [
+      { r: 0, c: 0, colSpan: 1, text: "Methane (CH4)" }, { r: 0, c: 1, colSpan: 1, text: "84.7" },
+      { r: 1, c: 0, colSpan: 1, text: "Ethane (C2H6)" }, { r: 1, c: 1, colSpan: 1, text: "9.4" },
+      { r: 2, c: 0, colSpan: 1, text: "Nitrogen (N2)" }, { r: 2, c: 1, colSpan: 1, text: "1.6" },
+      { r: 3, c: 0, colSpan: 1, text: "100.0" }, { r: 3, c: 1, colSpan: 1, text: "" },
+    ],
+  };
+  polishTableText(gas);
+  assert.equal(gas.cells.find((c) => c.r === 0 && c.c === 0).text, "Methane (CH₄)");
+  assert.equal(gas.cells.find((c) => c.r === 3 && c.c === 1).text, "100.0");
+  assert.equal(gas.cells.find((c) => c.r === 3 && c.c === 0).text, "");
+  const slag = {
+    rows: 6, cols: 4, headerRows: 2,
+    cells: [
+      { r: 0, c: 0, rowSpan: 2, colSpan: 1, text: "Temperature, C." },
+      { r: 0, c: 1, rowSpan: 1, colSpan: 1, text: "" },
+      { r: 0, c: 2, rowSpan: 1, colSpan: 1, text: "Viscosity" },
+      { r: 0, c: 3, rowSpan: 1, colSpan: 1, text: "" },
+      { r: 1, c: 1, rowSpan: 1, colSpan: 1, text: "22954" },
+      { r: 1, c: 2, rowSpan: 1, colSpan: 1, text: "22962" },
+      { r: 1, c: 3, rowSpan: 1, colSpan: 1, text: "22968" },
+      { r: 2, c: 0, colSpan: 1, text: "1,275." }, { r: 2, c: 1, colSpan: 1, text: "1,400" }, { r: 2, c: 2, colSpan: 1, text: "1.700" }, { r: 2, c: 3, colSpan: 1, text: "2,600" },
+      { r: 3, c: 0, colSpan: 1, text: "1,300" }, { r: 3, c: 1, colSpan: 1, text: "1,500" }, { r: 3, c: 2, colSpan: 1, text: "2.000" }, { r: 3, c: 3, colSpan: 1, text: "2,800" },
+      { r: 4, c: 0, colSpan: 1, text: "1,400." }, { r: 4, c: 1, colSpan: 1, text: "1,600" }, { r: 4, c: 2, colSpan: 1, text: "2.600" }, { r: 4, c: 3, colSpan: 1, text: "3,000" },
+      { r: 5, c: 0, colSpan: 1, text: "1,500" }, { r: 5, c: 1, colSpan: 1, text: "1,800" }, { r: 5, c: 2, colSpan: 1, text: "3.000" }, { r: 5, c: 3, colSpan: 1, text: "3,200" },
+    ],
+  };
+  polishTableText(slag);
+  assert.equal(slag.cells.find((c) => c.r === 0 && c.c === 0).text, "Temperature, °C.");
+  const visc = slag.cells.find((c) => c.text === "Viscosity");
+  assert.equal(visc.c, 1);
+  assert.equal(visc.colSpan, 3);
+  assert.equal(slag.cells.find((c) => c.r === 2 && c.c === 0).text, "1,275");
+  assert.equal(slag.cells.find((c) => c.r === 2 && c.c === 2).text, "1,700");
+  const rates = {
+    rows: 4, cols: 1, headerRows: 1,
+    cells: [
+      { r: 0, c: 0, text: "Rate" },
+      { r: 1, c: 0, text: "0.10" },
+      { r: 2, c: 0, text: "1.50" },
+      { r: 3, c: 0, text: "1.700" },
+    ],
+  };
+  polishTableText(rates);
+  assert.equal(rates.cells.find((c) => c.r === 3).text, "1.700");
+  assert.equal(moveStubTotal({ rows: 2, cols: 2, headerRows: 0, cells: [] }), null);
+});
 
 test("parse view shows Read the scan only for scan pages with a ready helper", async () => {
   const { createParseView } = await import("../src/view/parse-view.js");

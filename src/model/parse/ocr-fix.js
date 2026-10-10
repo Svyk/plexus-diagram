@@ -201,12 +201,152 @@ export function unspanNarrowCells(table) {
   return changed;
 }
 
+const SUBSCRIPTS = { 0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉" };
+
+function subscriptDigits(digits) {
+  return String(digits).replace(/\d/g, (ch) => SUBSCRIPTS[ch] || ch);
+}
+
+function formulaInner(inner) {
+  if (!/\d/.test(inner)) return inner;
+  const multi = /^[A-Z][a-z]?\d*(?:[A-Z][a-z]?\d*)+$/.test(inner);
+  const parenElement = /^[A-Z][a-z]?\d+$/.test(inner);
+  if (!multi && !parenElement) return inner;
+  return inner.replace(/([A-Z][a-z]?)(\d+)/g, (_, el, digits) => el + subscriptDigits(digits));
+}
+
+const ELEMENT = new Set("H He C N O F P S Cl Br I Na K Ca Fe Cu Zn".split(" "));
+
+// CH4, C2H6, CO2, N2, and the same tokens in parentheses, become unicode subscripts.
+// A single letter and the digit 1 (H1, a column head) is left as written.
+export function chemicalSubscripts(text) {
+  let s = String(text || "");
+  s = s.replace(/\(([A-Z][a-z]?\d*(?:[A-Z][a-z]?\d*)*)\)/g, (m, inner) => `(${formulaInner(inner)})`);
+  s = s.replace(/\b([A-Z][a-z]?\d*(?:[A-Z][a-z]?\d*)+)\b/g, (m) => formulaInner(m));
+  s = s.replace(/\b([A-Z][a-z]?)(\d+)\b/g, (m, el, digits) => (ELEMENT.has(el) && digits !== "1" ? el + subscriptDigits(digits) : m));
+  return s;
+}
+
+const COMMA_THOUSANDS = /^\d{1,3}(?:,\d{3})+$/;
+const DOT_THOUSANDS = /^\d{1,3}(?:\.\d{3})+$/;
+
+// A table that writes thousands with commas reads "1.700" as "1,700", including
+// in a column whose other values are smaller than 1,000. A trailing period is
+// the cell rule ("1,275."). A real decimal ("0.10", "1.50") keeps every period.
+export function normalizeThousands(table) {
+  const fixed = [];
+  const texts = [];
+  for (let c = 0; c < table.cols; c++) {
+    for (const k of bodyCellsOfColumn(table, c)) {
+      const s = String(k.text || "").trim();
+      if (s) texts.push(s);
+    }
+  }
+  const bare = (t) => t.replace(/\.$/, "");
+  const comma = texts.filter((t) => COMMA_THOUSANDS.test(bare(t))).length;
+  const decimal = texts.some((t) => /\d\.\d{1,2}$/.test(t));
+  if (comma < 2) return fixed;
+  for (let c = 0; c < table.cols; c++) {
+    for (const cell of bodyCellsOfColumn(table, c)) {
+      const s = String(cell.text || "").trim();
+      if (!s) continue;
+      let to = s;
+      if (to.endsWith(".") && (COMMA_THOUSANDS.test(bare(to)) || (!decimal && DOT_THOUSANDS.test(bare(to))))) to = bare(to);
+      if (!decimal && DOT_THOUSANDS.test(to)) to = to.replace(/\./g, ",");
+      if (to === s) continue;
+      fixed.push({ r: cell.r, c: cell.c, from: s, to });
+      cell.text = to;
+      cell.numeric = isNumericText(to);
+    }
+  }
+  return fixed;
+}
+
+function restoreDegree(table) {
+  const headerRows = Math.max(table.headerRows || 0, 1);
+  for (const cell of table.cells || []) {
+    if (cell.r >= headerRows) continue;
+    const s = String(cell.text || "");
+    const next = s.replace(/temperature,\s*C\b\.?/i, (m) => m.replace(/C\b\.?$/, "°C."));
+    if (next !== s) cell.text = next;
+  }
+}
+
+// A header label with empty neighbours, and sub-headers in the next header row,
+// covers those neighbours. It stops at a header cell that already has text.
+export function spanGroupHeaders(table) {
+  const headerRows = table.headerRows || 0;
+  if (headerRows < 2) return [];
+  const spans = [];
+  const textAt = (r, c) => table.cells.find((k) => k.r === r && k.c === c && String(k.text || "").trim());
+  const occupied = (c, cell) => table.cells.some((k) => k !== cell && k.r <= 0 && 0 < k.r + (k.rowSpan || 1) && k.c <= c && c < k.c + (k.colSpan || 1) && String(k.text || "").trim());
+  for (const cell of [...table.cells]) {
+    if (cell.r !== 0 || (cell.rowSpan || 1) !== 1) continue;
+    if (!String(cell.text || "").trim() || isNumericText(cell.text)) continue;
+    let start = cell.c;
+    let end = cell.c + (cell.colSpan || 1) - 1;
+    while (start > 0 && !occupied(start - 1, cell) && textAt(1, start - 1)) start--;
+    while (end + 1 < table.cols && !occupied(end + 1, cell) && textAt(1, end + 1)) end++;
+    if (start === cell.c && end === cell.c + (cell.colSpan || 1) - 1) continue;
+    table.cells = table.cells.filter((k) => !(k.r === 0 && k !== cell && !String(k.text || "").trim() && k.c >= start && k.c <= end));
+    cell.c = start;
+    cell.colSpan = end - start + 1;
+    spans.push({ c: start, colSpan: cell.colSpan, text: cell.text });
+  }
+  if (spans.length) table.cells.sort((a, b) => a.r - b.r || a.c - b.c);
+  return spans;
+}
+
+// The only number on the last row sits in the stub and the value cell is empty,
+// while the other rows put their numbers in the value column. It is the total.
+export function moveStubTotal(table) {
+  if (!table || table.cols < 2 || table.rows < 3) return null;
+  const r = table.rows - 1;
+  const label = table.cells.find((k) => k.r === r && k.c === 0 && (k.colSpan || 1) === 1);
+  const value = table.cells.find((k) => k.r === r && k.c === table.cols - 1 && (k.colSpan || 1) === 1);
+  if (!label || !value || String(value.text || "").trim()) return null;
+  const num = String(label.text || "").trim();
+  if (!isNumericText(num)) return null;
+  let valueNums = 0;
+  let labelNums = 0;
+  const samples = [];
+  for (let i = 0; i < r; i++) {
+    const v = table.cells.find((k) => k.r === i && k.c === value.c);
+    const lab = table.cells.find((k) => k.r === i && k.c === 0);
+    if (v && isNumericText(v.text)) { valueNums++; samples.push(v.text); }
+    if (lab && isNumericText(lab.text)) labelNums++;
+  }
+  if (valueNums < 2 || labelNums > 0 || !fitsColumn(num, samples)) return null;
+  value.text = num;
+  value.numeric = true;
+  label.text = "";
+  label.numeric = false;
+  return { r, text: num };
+}
+
+// Text repairs that do not depend on a fresh OCR pass: formula subscripts,
+// thousands marks, a degree sign, group-header spans, a total left in the stub.
+export function polishTableText(table) {
+  if (!table?.cells) return table;
+  for (const cell of table.cells) {
+    if (!cell.text) continue;
+    const next = chemicalSubscripts(cell.text);
+    if (next !== cell.text) cell.text = next;
+  }
+  normalizeThousands(table);
+  restoreDegree(table);
+  spanGroupHeaders(table);
+  moveStubTotal(table);
+  return table;
+}
+
 // Everything above, in order, for one table on an OCR page.
 export function repairOcrTable(table) {
   unspanNarrowCells(table);
   const years = repairYearHeader(table);
   const { fixed, unrepaired, numericCols } = repairNumericColumns(table);
   const spans = spanNoteRows(table, { numericCols });
+  polishTableText(table);
   return { fixed: [...years, ...fixed], unrepaired, spans, numericCols };
 }
 

@@ -260,6 +260,82 @@ function uniqPositions(values, tol) {
   return out.map((o) => ({ pos: o.sum / o.n, double: Boolean(o.double) }));
 }
 
+function unionLength(segs) {
+  const iv = segs.map((s) => [Math.min(s.a, s.b), Math.max(s.a, s.b)]).sort((a, b) => a[0] - b[0]);
+  let len = 0;
+  let end = -Infinity;
+  for (const [a, b] of iv) {
+    const start = Math.max(a, end);
+    if (b > start) len += b - start;
+    end = Math.max(end, b);
+  }
+  return len;
+}
+
+// A column rule crosses a row line. A header subcolumn tick is only one row
+// tall and stops on the header's bottom rule; it still names a column for the
+// rows below. A bracket inside a body cell does neither: it stays in one
+// column and does not end on a rule shared across the table. Row rules are
+// horizontals that cross the table, or that run from one frame vertical to
+// another and cross a frame in between (a row boundary under a spanning cell).
+// A bar that starts and ends on the two sides of a single cell is a fraction bar.
+function frameRuling(hs, vs) {
+  if (hs.length < 2 || vs.length < 2) return null;
+  const x0 = Math.min(...hs.map((s) => Math.min(s.a, s.b)));
+  const x1 = Math.max(...hs.map((s) => Math.max(s.a, s.b)));
+  const y0 = Math.min(...vs.map((s) => Math.min(s.a, s.b)));
+  const y1 = Math.max(...vs.map((s) => Math.max(s.a, s.b)));
+  const width = x1 - x0;
+  const height = y1 - y0;
+  if (!(width >= 40) || !(height >= 20)) return null;
+  const rowYs = uniqPositions(hs.map((s) => s.pos), 4).map((o) => o.pos);
+  const crossesRow = (s) => {
+    const lo = Math.min(s.a, s.b);
+    const hi = Math.max(s.a, s.b);
+    return rowYs.some((y) => y > lo + 1 && y < hi - 1);
+  };
+  const multiRow = vs.filter((s) => s.b - s.a >= 36 && crossesRow(s));
+  let headerBottom = null;
+  const short = vs.filter((s) => s.b - s.a < 0.55 * height);
+  for (const o of uniqPositions(short.map((s) => Math.max(s.a, s.b)), 4)) {
+    const group = short.filter((s) => Math.abs(Math.max(s.a, s.b) - o.pos) <= 4);
+    if (group.length < 3) continue;
+    const gx0 = Math.min(...group.map((s) => s.pos));
+    const gx1 = Math.max(...group.map((s) => s.pos));
+    if (gx1 - gx0 < 0.5 * width) continue;
+    if (o.pos > y0 + 0.6 * height) continue;
+    if (!rowYs.some((y) => Math.abs(y - o.pos) <= 4)) continue;
+    if (headerBottom == null || o.pos > headerBottom) headerBottom = o.pos;
+  }
+  const headerTick = (s) => headerBottom != null && Math.max(s.a, s.b) <= headerBottom + 4;
+  const frames = uniqPositions(vs.filter((s) => multiRow.includes(s) || headerTick(s)).map((s) => s.pos), 4).map((o) => o.pos);
+  // Two long verticals are only the outer frame. Interior columns are then the
+  // shorter rules, and dropping them collapses the table to one column.
+  if (frames.length < 3 || frames[frames.length - 1] - frames[0] < 0.9 * width) return null;
+  const ys = [];
+  for (const o of uniqPositions(hs.map((s) => s.pos), 4)) {
+    const segs = hs.filter((s) => Math.abs(s.pos - o.pos) <= 4);
+    if (!segs.length) continue;
+    const covered = unionLength(segs);
+    if (covered >= 0.55 * width) { ys.push(o.pos); continue; }
+    const left = Math.min(...segs.map((s) => Math.min(s.a, s.b)));
+    const right = Math.max(...segs.map((s) => Math.max(s.a, s.b)));
+    let a = null;
+    let b = null;
+    for (const f of frames) {
+      if (Math.abs(f - left) <= 4) a = f;
+      if (Math.abs(f - right) <= 4) b = f;
+    }
+    if (a == null || b == null || !(b > a)) continue;
+    const between = frames.some((f) => f > a + 1 && f < b - 1);
+    const claimed = b - a;
+    if (!between || claimed < 0.12 * width || covered < 0.7 * claimed) continue;
+    ys.push(o.pos);
+  }
+  if (ys.length < 2) return null;
+  return { xs: frames, ys };
+}
+
 function coverage(segs, axis, pos, a, b, tol = 1.5) {
   let covered = 0;
   for (const s of segs) {
@@ -299,8 +375,9 @@ export function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW
       for (const s of hs) if (s.b - s.a >= minW) { s.compVs = vs; leftover.push(s); }
       continue;
     }
-    const xs = xsAll.map((o) => o.pos);
-    const ys = ysAll.map((o) => o.pos);
+    const ruled = frameRuling(hs, vs);
+    const xs = ruled ? ruled.xs : xsAll.map((o) => o.pos);
+    const ys = ruled ? ruled.ys : ysAll.map((o) => o.pos);
     let grid = null;
     // Verticals must span the ruled width (and horizontals the ruled height), or the grid is
     // hollow: partial column separators inside a wider booktabs table.

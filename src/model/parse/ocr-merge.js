@@ -7,7 +7,7 @@
 // columns read better is kept. The choice is recorded on the page (`ocrChoice`) and on the
 // table (`ocrSource`), so the view can say which reading it shows.
 
-import { tableNumericValidity } from "./ocr-fix.js";
+import { polishTableText, tableNumericValidity } from "./ocr-fix.js";
 
 export function iou(a, b) {
   const ix = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
@@ -59,7 +59,9 @@ export function mergeOcrDocument(base, fresh, { pages = [] } = {}) {
     const verdict = chooseTable(block, best.table);
     choices.push({ page: block.page, id, layerId: best.table.id, ...verdict });
     if (verdict.chose === "layer") {
-      doc.blocks[id] = { ...best.table, id, caption: block.caption, engine: "builtin", ocrSource: "layer", ocrCompare: verdict };
+      const layer = { ...best.table, cells: (best.table.cells || []).map((c) => ({ ...c })), id, caption: block.caption, engine: "builtin", ocrSource: "layer", ocrCompare: verdict };
+      polishTableText(layer);
+      doc.blocks[id] = layer;
     } else {
       doc.blocks[id] = { ...block, ocrSource: "fresh", ocrCompare: verdict };
     }

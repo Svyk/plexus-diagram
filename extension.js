@@ -4904,6 +4904,74 @@ function uniqPositions(values, tol) {
   }
   return out.map((o) => ({ pos: o.sum / o.n, double: Boolean(o.double) }));
 }
+function unionLength(segs) {
+  const iv = segs.map((s) => [Math.min(s.a, s.b), Math.max(s.a, s.b)]).sort((a, b) => a[0] - b[0]);
+  let len = 0;
+  let end = -Infinity;
+  for (const [a, b] of iv) {
+    const start = Math.max(a, end);
+    if (b > start) len += b - start;
+    end = Math.max(end, b);
+  }
+  return len;
+}
+function frameRuling(hs, vs) {
+  if (hs.length < 2 || vs.length < 2) return null;
+  const x0 = Math.min(...hs.map((s) => Math.min(s.a, s.b)));
+  const x1 = Math.max(...hs.map((s) => Math.max(s.a, s.b)));
+  const y0 = Math.min(...vs.map((s) => Math.min(s.a, s.b)));
+  const y1 = Math.max(...vs.map((s) => Math.max(s.a, s.b)));
+  const width = x1 - x0;
+  const height = y1 - y0;
+  if (!(width >= 40) || !(height >= 20)) return null;
+  const rowYs = uniqPositions(hs.map((s) => s.pos), 4).map((o) => o.pos);
+  const crossesRow = (s) => {
+    const lo = Math.min(s.a, s.b);
+    const hi = Math.max(s.a, s.b);
+    return rowYs.some((y) => y > lo + 1 && y < hi - 1);
+  };
+  const multiRow = vs.filter((s) => s.b - s.a >= 36 && crossesRow(s));
+  let headerBottom = null;
+  const short = vs.filter((s) => s.b - s.a < 0.55 * height);
+  for (const o of uniqPositions(short.map((s) => Math.max(s.a, s.b)), 4)) {
+    const group = short.filter((s) => Math.abs(Math.max(s.a, s.b) - o.pos) <= 4);
+    if (group.length < 3) continue;
+    const gx0 = Math.min(...group.map((s) => s.pos));
+    const gx1 = Math.max(...group.map((s) => s.pos));
+    if (gx1 - gx0 < 0.5 * width) continue;
+    if (o.pos > y0 + 0.6 * height) continue;
+    if (!rowYs.some((y) => Math.abs(y - o.pos) <= 4)) continue;
+    if (headerBottom == null || o.pos > headerBottom) headerBottom = o.pos;
+  }
+  const headerTick = (s) => headerBottom != null && Math.max(s.a, s.b) <= headerBottom + 4;
+  const frames = uniqPositions(vs.filter((s) => multiRow.includes(s) || headerTick(s)).map((s) => s.pos), 4).map((o) => o.pos);
+  if (frames.length < 3 || frames[frames.length - 1] - frames[0] < 0.9 * width) return null;
+  const ys2 = [];
+  for (const o of uniqPositions(hs.map((s) => s.pos), 4)) {
+    const segs = hs.filter((s) => Math.abs(s.pos - o.pos) <= 4);
+    if (!segs.length) continue;
+    const covered = unionLength(segs);
+    if (covered >= 0.55 * width) {
+      ys2.push(o.pos);
+      continue;
+    }
+    const left = Math.min(...segs.map((s) => Math.min(s.a, s.b)));
+    const right = Math.max(...segs.map((s) => Math.max(s.a, s.b)));
+    let a = null;
+    let b = null;
+    for (const f of frames) {
+      if (Math.abs(f - left) <= 4) a = f;
+      if (Math.abs(f - right) <= 4) b = f;
+    }
+    if (a == null || b == null || !(b > a)) continue;
+    const between = frames.some((f) => f > a + 1 && f < b - 1);
+    const claimed2 = b - a;
+    if (!between || claimed2 < 0.12 * width || covered < 0.7 * claimed2) continue;
+    ys2.push(o.pos);
+  }
+  if (ys2.length < 2) return null;
+  return { xs: frames, ys: ys2 };
+}
 function coverage(segs, axis2, pos, a, b, tol = 1.5) {
   let covered = 0;
   for (const s of segs) {
@@ -4946,8 +5014,9 @@ function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, 
       }
       continue;
     }
-    const xs2 = xsAll.map((o) => o.pos);
-    const ys2 = ysAll.map((o) => o.pos);
+    const ruled = frameRuling(hs, vs);
+    const xs2 = ruled ? ruled.xs : xsAll.map((o) => o.pos);
+    const ys2 = ruled ? ruled.ys : ysAll.map((o) => o.pos);
     let grid = null;
     const hx0 = hs.length ? Math.min(...hs.map((s) => s.a)) : x0;
     const hx1 = hs.length ? Math.max(...hs.map((s) => s.b)) : x1;
@@ -6508,6 +6577,71 @@ function foldHeaderLines(rows) {
   }
   return out;
 }
+function portraitHeaderWord(w) {
+  const h = (w.y1 ?? 0) - (w.y0 ?? 0);
+  const wd = (w.x1 ?? 0) - (w.x0 ?? 0);
+  return h >= 12 && wd > 0 && wd <= 0.75 * h && String(w.text || "").trim().length >= 2;
+}
+function readPortrait(words) {
+  const ordered = [...words].sort((a, b) => (b.base ?? 0) - (a.base ?? 0) || (a.x0 ?? 0) - (b.x0 ?? 0));
+  let text3 = "";
+  for (const w of ordered) {
+    const piece = String(w.text || "").trim();
+    if (!piece) continue;
+    if (text3.endsWith("-") && /^[A-Za-z0-9(]/.test(piece)) text3 += piece;
+    else text3 += (text3 ? " " : "") + piece;
+  }
+  return text3.replace(/\s+/g, " ").trim();
+}
+function separatePortraitHeaders(cellMap, cols, headerRows, k) {
+  if (headerRows < 2 || k < 2) return;
+  const headerCells = [...cellMap.values()].filter((c) => c.r < headerRows);
+  const verts = headerCells.flatMap((c) => c.words || []).filter(portraitHeaderWord);
+  if (verts.length < 3) return;
+  const colOf = (w) => {
+    const cx = ((w.x0 ?? 0) + (w.x1 ?? 0)) / 2;
+    let best = -1;
+    let bestD = Infinity;
+    for (let c = 0; c < k; c++) {
+      if (cx < cols[c].x0 - 1.5 || cx > cols[c].x1 + 1.5) continue;
+      const d = Math.abs(cx - (cols[c].x0 + cols[c].x1) / 2);
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return best;
+  };
+  const byCol = Array.from({ length: k }, () => []);
+  for (const w of verts) {
+    const c = colOf(w);
+    if (c >= 0) byCol[c].push(w);
+  }
+  if (byCol.filter((a) => a.length).length < 2) return;
+  const taken = new Set(verts);
+  for (const cell of headerCells) cell.words = (cell.words || []).filter((w) => !taken.has(w));
+  for (const cell of [...cellMap.values()]) {
+    if (cell.r < headerRows && !(cell.words || []).length) cellMap.delete(`${cell.r}:${cell.c}`);
+  }
+  const covers2 = (c) => [...cellMap.values()].some((cell) => cell.r < headerRows && (cell.words || []).length && cell.c <= c && c < cell.c + cell.colSpan);
+  for (let c = 0; c < k; c++) {
+    if (!byCol[c].length) continue;
+    const underGroup = covers2(c);
+    if (underGroup) {
+      for (const cell of [...cellMap.values()]) {
+        if (cell.r >= headerRows || cell.c > c || c >= cell.c + cell.colSpan) continue;
+        if (cell.r < headerRows - 1 && cell.r + cell.rowSpan > headerRows - 1) cell.rowSpan = headerRows - 1 - cell.r;
+      }
+    }
+    const r = underGroup ? headerRows - 1 : 0;
+    const rowSpan = underGroup ? 1 : headerRows;
+    const key = `${r}:${c}`;
+    const existing = cellMap.get(key);
+    if (existing && (existing.words || []).some((w) => !portraitHeaderWord(w))) continue;
+    if (existing) cellMap.delete(key);
+    cellMap.set(key, { r, c, rowSpan, colSpan: 1, words: byCol[c], verticalRead: true });
+  }
+}
 function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, rules = [] }) {
   if (!bands) rowsIn = foldHeaderLines(rowsIn);
   const body = numericBodyRows(rowsIn);
@@ -6763,6 +6897,7 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
       cellMap.set(`${rs[0]}:0`, cell);
     }
   }
+  separatePortraitHeaders(cellMap, cols, headerRows, k);
   const covered = /* @__PURE__ */ new Set();
   for (const cell of cellMap.values()) {
     for (let r = cell.r; r < cell.r + cell.rowSpan; r++) for (let c = cell.c; c < cell.c + cell.colSpan; c++) if (r !== cell.r || c !== cell.c) covered.add(`${r}:${c}`);
@@ -6795,7 +6930,7 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     for (let c = 0; c < k; c++) {
       if (covered.has(`${r}:${c}`)) continue;
       const cell = cellMap.get(`${r}:${c}`) || { r, c, rowSpan: 1, colSpan: 1, words: [] };
-      const text3 = cellTextOf(cell.words);
+      const text3 = cell.verticalRead ? readPortrait(cell.words) : cellTextOf(cell.words);
       cells.push({
         r,
         c,
@@ -10043,11 +10178,128 @@ function unspanNarrowCells(table) {
   }
   return changed2;
 }
+function subscriptDigits(digits) {
+  return String(digits).replace(/\d/g, (ch) => SUBSCRIPTS[ch] || ch);
+}
+function formulaInner(inner) {
+  if (!/\d/.test(inner)) return inner;
+  const multi = /^[A-Z][a-z]?\d*(?:[A-Z][a-z]?\d*)+$/.test(inner);
+  const parenElement = /^[A-Z][a-z]?\d+$/.test(inner);
+  if (!multi && !parenElement) return inner;
+  return inner.replace(/([A-Z][a-z]?)(\d+)/g, (_, el, digits) => el + subscriptDigits(digits));
+}
+function chemicalSubscripts(text3) {
+  let s = String(text3 || "");
+  s = s.replace(/\(([A-Z][a-z]?\d*(?:[A-Z][a-z]?\d*)*)\)/g, (m, inner) => `(${formulaInner(inner)})`);
+  s = s.replace(/\b([A-Z][a-z]?\d*(?:[A-Z][a-z]?\d*)+)\b/g, (m) => formulaInner(m));
+  s = s.replace(/\b([A-Z][a-z]?)(\d+)\b/g, (m, el, digits) => ELEMENT.has(el) && digits !== "1" ? el + subscriptDigits(digits) : m);
+  return s;
+}
+function normalizeThousands(table) {
+  const fixed = [];
+  const texts = [];
+  for (let c = 0; c < table.cols; c++) {
+    for (const k of bodyCellsOfColumn(table, c)) {
+      const s = String(k.text || "").trim();
+      if (s) texts.push(s);
+    }
+  }
+  const bare = (t) => t.replace(/\.$/, "");
+  const comma = texts.filter((t) => COMMA_THOUSANDS.test(bare(t))).length;
+  const decimal = texts.some((t) => /\d\.\d{1,2}$/.test(t));
+  if (comma < 2) return fixed;
+  for (let c = 0; c < table.cols; c++) {
+    for (const cell of bodyCellsOfColumn(table, c)) {
+      const s = String(cell.text || "").trim();
+      if (!s) continue;
+      let to = s;
+      if (to.endsWith(".") && (COMMA_THOUSANDS.test(bare(to)) || !decimal && DOT_THOUSANDS.test(bare(to)))) to = bare(to);
+      if (!decimal && DOT_THOUSANDS.test(to)) to = to.replace(/\./g, ",");
+      if (to === s) continue;
+      fixed.push({ r: cell.r, c: cell.c, from: s, to });
+      cell.text = to;
+      cell.numeric = isNumericText(to);
+    }
+  }
+  return fixed;
+}
+function restoreDegree(table) {
+  const headerRows = Math.max(table.headerRows || 0, 1);
+  for (const cell of table.cells || []) {
+    if (cell.r >= headerRows) continue;
+    const s = String(cell.text || "");
+    const next = s.replace(/temperature,\s*C\b\.?/i, (m) => m.replace(/C\b\.?$/, "°C."));
+    if (next !== s) cell.text = next;
+  }
+}
+function spanGroupHeaders(table) {
+  const headerRows = table.headerRows || 0;
+  if (headerRows < 2) return [];
+  const spans = [];
+  const textAt = (r, c) => table.cells.find((k) => k.r === r && k.c === c && String(k.text || "").trim());
+  const occupied = (c, cell) => table.cells.some((k) => k !== cell && k.r <= 0 && 0 < k.r + (k.rowSpan || 1) && k.c <= c && c < k.c + (k.colSpan || 1) && String(k.text || "").trim());
+  for (const cell of [...table.cells]) {
+    if (cell.r !== 0 || (cell.rowSpan || 1) !== 1) continue;
+    if (!String(cell.text || "").trim() || isNumericText(cell.text)) continue;
+    let start = cell.c;
+    let end = cell.c + (cell.colSpan || 1) - 1;
+    while (start > 0 && !occupied(start - 1, cell) && textAt(1, start - 1)) start--;
+    while (end + 1 < table.cols && !occupied(end + 1, cell) && textAt(1, end + 1)) end++;
+    if (start === cell.c && end === cell.c + (cell.colSpan || 1) - 1) continue;
+    table.cells = table.cells.filter((k) => !(k.r === 0 && k !== cell && !String(k.text || "").trim() && k.c >= start && k.c <= end));
+    cell.c = start;
+    cell.colSpan = end - start + 1;
+    spans.push({ c: start, colSpan: cell.colSpan, text: cell.text });
+  }
+  if (spans.length) table.cells.sort((a, b) => a.r - b.r || a.c - b.c);
+  return spans;
+}
+function moveStubTotal(table) {
+  if (!table || table.cols < 2 || table.rows < 3) return null;
+  const r = table.rows - 1;
+  const label = table.cells.find((k) => k.r === r && k.c === 0 && (k.colSpan || 1) === 1);
+  const value = table.cells.find((k) => k.r === r && k.c === table.cols - 1 && (k.colSpan || 1) === 1);
+  if (!label || !value || String(value.text || "").trim()) return null;
+  const num6 = String(label.text || "").trim();
+  if (!isNumericText(num6)) return null;
+  let valueNums = 0;
+  let labelNums = 0;
+  const samples = [];
+  for (let i = 0; i < r; i++) {
+    const v = table.cells.find((k) => k.r === i && k.c === value.c);
+    const lab = table.cells.find((k) => k.r === i && k.c === 0);
+    if (v && isNumericText(v.text)) {
+      valueNums++;
+      samples.push(v.text);
+    }
+    if (lab && isNumericText(lab.text)) labelNums++;
+  }
+  if (valueNums < 2 || labelNums > 0 || !fitsColumn(num6, samples)) return null;
+  value.text = num6;
+  value.numeric = true;
+  label.text = "";
+  label.numeric = false;
+  return { r, text: num6 };
+}
+function polishTableText(table) {
+  if (!table?.cells) return table;
+  for (const cell of table.cells) {
+    if (!cell.text) continue;
+    const next = chemicalSubscripts(cell.text);
+    if (next !== cell.text) cell.text = next;
+  }
+  normalizeThousands(table);
+  restoreDegree(table);
+  spanGroupHeaders(table);
+  moveStubTotal(table);
+  return table;
+}
 function repairOcrTable(table) {
   unspanNarrowCells(table);
   const years = repairYearHeader(table);
   const { fixed, unrepaired, numericCols } = repairNumericColumns(table);
   const spans = spanNoteRows(table, { numericCols });
+  polishTableText(table);
   return { fixed: [...years, ...fixed], unrepaired, spans, numericCols };
 }
 function tableNumericValidity(table) {
@@ -10163,7 +10415,7 @@ function fitsColumn(number, column) {
   const widest = Math.max(...column.map(intDigits));
   return intDigits(number) <= widest + 1;
 }
-var LOW_CONF, NUMERIC_COLUMN_SHARE, DIGIT_MAP, NUMERIC_LIKE_RE, PLACEHOLDER_RE;
+var LOW_CONF, NUMERIC_COLUMN_SHARE, DIGIT_MAP, NUMERIC_LIKE_RE, PLACEHOLDER_RE, SUBSCRIPTS, ELEMENT, COMMA_THOUSANDS, DOT_THOUSANDS;
 var init_ocr_fix = __esm({
   "src/model/parse/ocr-fix.js"() {
     init_lattice();
@@ -10172,6 +10424,10 @@ var init_ocr_fix = __esm({
     DIGIT_MAP = { O: "0", o: "0", D: "0", Q: "0", B: "8", S: "5", s: "5", l: "1", I: "1", "|": "1", Z: "2", G: "6", "Б": "6", "б": "6", "А": "4" };
     NUMERIC_LIKE_RE = /^[\dOoDQBSslIZGБбА|.,()%+\-–—\s]+$/;
     PLACEHOLDER_RE = /^(?:[-–—]{1,3}|\*{1,3}|n\/?a|nn)$/i;
+    SUBSCRIPTS = { 0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉" };
+    ELEMENT = new Set("H He C N O F P S Cl Br I Na K Ca Fe Cu Zn".split(" "));
+    COMMA_THOUSANDS = /^\d{1,3}(?:,\d{3})+$/;
+    DOT_THOUSANDS = /^\d{1,3}(?:\.\d{3})+$/;
   }
 });
 
@@ -11693,7 +11949,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 24;
+    PARSE_REV = 25;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -42118,7 +42374,9 @@ function mergeOcrDocument(base, fresh, { pages = [] } = {}) {
     const verdict = chooseTable(block, best.table);
     choices.push({ page: block.page, id, layerId: best.table.id, ...verdict });
     if (verdict.chose === "layer") {
-      doc.blocks[id] = { ...best.table, id, caption: block.caption, engine: "builtin", ocrSource: "layer", ocrCompare: verdict };
+      const layer = { ...best.table, cells: (best.table.cells || []).map((c) => ({ ...c })), id, caption: block.caption, engine: "builtin", ocrSource: "layer", ocrCompare: verdict };
+      polishTableText(layer);
+      doc.blocks[id] = layer;
     } else {
       doc.blocks[id] = { ...block, ocrSource: "fresh", ocrCompare: verdict };
     }
@@ -45092,6 +45350,7 @@ function decimalColumnPagesOf(records, pages, figures = []) {
 }
 
 // src/model/parse/vlm-tables.js
+init_ocr_fix();
 function normCell2(text3) {
   return String(text3 || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
@@ -45303,6 +45562,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       const decision = chooseTableReading(host, built, page);
       if (decision.choice === "rule") continue;
       const chosen = decision.table;
+      polishTableText(chosen);
       for (const id of [...order]) {
         const block = blocks[id];
         if (!block || block.type !== "table" || block.page !== structure.page || block.id === host.id) continue;
@@ -45342,6 +45602,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
     }
     if (host) {
       used.add(host.id);
+      polishTableText(built);
       blocks[host.id] = {
         ...host,
         bbox: built.bbox,
@@ -45358,6 +45619,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
     } else {
       const id = built.id;
       while (blocks[id]) built.id = `${id}b`;
+      polishTableText(built);
       blocks[built.id] = built;
       const at = order.findIndex((oid) => blocks[oid]?.page > structure.page);
       if (at < 0) order.push(built.id);

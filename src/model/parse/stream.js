@@ -713,6 +713,75 @@ function foldHeaderLines(rows) {
   return out;
 }
 
+// A rotated header word is stored upright: the box is taller than it is wide.
+// A horizontal word of two letters is wider than its em.
+function portraitHeaderWord(w) {
+  const h = (w.y1 ?? 0) - (w.y0 ?? 0);
+  const wd = (w.x1 ?? 0) - (w.x0 ?? 0);
+  return h >= 12 && wd > 0 && wd <= 0.75 * h && String(w.text || "").trim().length >= 2;
+}
+
+function readPortrait(words) {
+  const ordered = [...words].sort((a, b) => (b.base ?? 0) - (a.base ?? 0) || (a.x0 ?? 0) - (b.x0 ?? 0));
+  let text = "";
+  for (const w of ordered) {
+    const piece = String(w.text || "").trim();
+    if (!piece) continue;
+    if (text.endsWith("-") && /^[A-Za-z0-9(]/.test(piece)) text += piece;
+    else text += (text ? " " : "") + piece;
+  }
+  return text.replace(/\s+/g, " ").trim();
+}
+
+// Rotated column heads are read upward, one column at a time. A wide horizontal
+// word above them is the group title and stays on the top header row.
+function separatePortraitHeaders(cellMap, cols, headerRows, k) {
+  if (headerRows < 2 || k < 2) return;
+  const headerCells = [...cellMap.values()].filter((c) => c.r < headerRows);
+  const verts = headerCells.flatMap((c) => c.words || []).filter(portraitHeaderWord);
+  if (verts.length < 3) return;
+  const colOf = (w) => {
+    const cx = ((w.x0 ?? 0) + (w.x1 ?? 0)) / 2;
+    let best = -1;
+    let bestD = Infinity;
+    for (let c = 0; c < k; c++) {
+      if (cx < cols[c].x0 - 1.5 || cx > cols[c].x1 + 1.5) continue;
+      const d = Math.abs(cx - (cols[c].x0 + cols[c].x1) / 2);
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    return best;
+  };
+  const byCol = Array.from({ length: k }, () => []);
+  for (const w of verts) {
+    const c = colOf(w);
+    if (c >= 0) byCol[c].push(w);
+  }
+  if (byCol.filter((a) => a.length).length < 2) return;
+  const taken = new Set(verts);
+  for (const cell of headerCells) cell.words = (cell.words || []).filter((w) => !taken.has(w));
+  for (const cell of [...cellMap.values()]) {
+    if (cell.r < headerRows && !(cell.words || []).length) cellMap.delete(`${cell.r}:${cell.c}`);
+  }
+  const covers = (c) => [...cellMap.values()].some((cell) => cell.r < headerRows && (cell.words || []).length && cell.c <= c && c < cell.c + cell.colSpan);
+  for (let c = 0; c < k; c++) {
+    if (!byCol[c].length) continue;
+    const underGroup = covers(c);
+    if (underGroup) {
+      for (const cell of [...cellMap.values()]) {
+        if (cell.r >= headerRows || cell.c > c || c >= cell.c + cell.colSpan) continue;
+        if (cell.r < headerRows - 1 && cell.r + cell.rowSpan > headerRows - 1) cell.rowSpan = headerRows - 1 - cell.r;
+      }
+    }
+    const r = underGroup ? headerRows - 1 : 0;
+    const rowSpan = underGroup ? 1 : headerRows;
+    const key = `${r}:${c}`;
+    const existing = cellMap.get(key);
+    if (existing && (existing.words || []).some((w) => !portraitHeaderWord(w))) continue;
+    if (existing) cellMap.delete(key);
+    cellMap.set(key, { r, c, rowSpan, colSpan: 1, words: byCol[c], verticalRead: true });
+  }
+}
+
 function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, rules = [] }) {
   if (!bands) rowsIn = foldHeaderLines(rowsIn);
   // rowsIn: [{ y0, y1, tokens, band }]
@@ -959,6 +1028,7 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
       cellMap.set(`${rs[0]}:0`, cell);
     }
   }
+  separatePortraitHeaders(cellMap, cols, headerRows, k);
   const covered = new Set();
   for (const cell of cellMap.values()) {
     for (let r = cell.r; r < cell.r + cell.rowSpan; r++) for (let c = cell.c; c < cell.c + cell.colSpan; c++) if (r !== cell.r || c !== cell.c) covered.add(`${r}:${c}`);
@@ -989,7 +1059,7 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     for (let c = 0; c < k; c++) {
       if (covered.has(`${r}:${c}`)) continue;
       const cell = cellMap.get(`${r}:${c}`) || { r, c, rowSpan: 1, colSpan: 1, words: [] };
-      const text = cellTextOf(cell.words);
+      const text = cell.verticalRead ? readPortrait(cell.words) : cellTextOf(cell.words);
       cells.push({
         r, c, rowSpan: cell.rowSpan, colSpan: cell.colSpan, text,
         header: r < headerRows,

@@ -1146,3 +1146,56 @@ test("a unit line under the column names stays in the header", () => {
   assert.equal(named.cells.find((k) => k.text.startsWith("C.c.")).header, true);
   assert.equal(named.cells.find((k) => k.text === "404.0").header, false);
 });
+
+test("formula strokes inside a ruled cell are not columns or rows", () => {
+  const rules = [];
+  for (const y of [0, 100, 300]) rules.push({ axis: "h", x0: 0, x1: 400, y0: y, y1: y });
+  rules.push({ axis: "h", x0: 0, x1: 200, y0: 150, y1: 150 });
+  rules.push({ axis: "h", x0: 90, x1: 180, y0: 50, y1: 50 });
+  for (const x of [0, 80, 200, 400]) rules.push({ axis: "v", x0: x, x1: x, y0: 0, y1: 300 });
+  rules.push({ axis: "v", x0: 250, x1: 250, y0: 40, y1: 70 });
+  const w = (text, x, base) => ({ text, x0: x, x1: x + 24, base, size: 10, y0: base - 8, y1: base + 2, bold: false, mathChars: 0, boldChars: 0, italicChars: 0, mathFontChars: 0 });
+  const words = [w("Case", 10, 40), w("K", 100, 40), w("Ref", 240, 40), w("1", 16, 120), w("2", 110, 180), w("3", 250, 180)];
+  const { tables } = findLatticeTables({ rules, boxes: [], words });
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].cols, 3);
+  assert.equal(tables[0].rows, 3);
+  assert.equal(tables[0].grid.xs.some((x) => Math.abs(x - 250) < 2), false);
+  const span = tables[0].cells.find((c) => c.c === 2 && c.rowSpan === 2);
+  assert.ok(span, "a line that stops at an interior rule does not split the columns past it");
+});
+
+test("rotated column heads are read upward in their own column", () => {
+  const w = (text, x0, x1, y0, y1) => ({
+    text, x0, x1, y0, y1, base: y1 - 1, size: Math.max(8, y1 - y0),
+    bold: false, mathChars: 0, boldChars: 0, italicChars: 0, mathFontChars: 0, conf: 1,
+  });
+  const band = {
+    x0: 20, x1: 160, y0: 40, y1: 220,
+    ys: [
+      { y: 40, full: true, thick: 0.5, parts: [[20, 160]] },
+      { y: 120, full: true, thick: 0.5, parts: [[20, 160]] },
+      { y: 170, full: true, thick: 0.5, parts: [[20, 160]] },
+      { y: 220, full: true, thick: 0.5, parts: [[20, 160]] },
+    ],
+    xs: [20, 90, 160],
+    fullWidth: 140,
+    segs: [],
+  };
+  const words = [
+    w("Number", 36, 42, 55, 110),
+    w("employed.", 36, 42, 48, 78),
+    w("Days", 110, 116, 70, 110),
+    w("worked.", 110, 116, 48, 78),
+    w("12", 40, 58, 140, 152),
+    w("4", 112, 124, 140, 152),
+    w("9", 40, 54, 186, 198),
+    w("2", 112, 124, 186, 198),
+  ];
+  const t = tableFromBand(band, words);
+  assert.ok(t);
+  assert.equal(t.headerRows >= 1, true);
+  const text = (needle) => t.cells.find((c) => c.text === needle);
+  assert.ok(text("Number employed."), t.cells.map((c) => c.text).join(" | "));
+  assert.ok(text("Days worked."), t.cells.map((c) => c.text).join(" | "));
+});

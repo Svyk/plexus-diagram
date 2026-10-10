@@ -1328,7 +1328,7 @@ export function proseRow(row, tokens, columnWidth = Infinity) {
 
 // Free mode: runs of aligned multi-token rows inside one column. Returns tables, and the
 // candidates that read as display equations ("formula") or numbered code listings ("code").
-export function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeGaps = true } = {}) {
+export function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeGaps = true, ocr = false, handwriting = false } = {}) {
   const out = [];
   const rows = baselineRows(lines);
   const colBox = column || (lines.length ? { x0: Math.min(...lines.map((l) => l.x0)), x1: Math.max(...lines.map((l) => l.x1)) } : null);
@@ -1495,7 +1495,12 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
       const table = buildTable(rowsIn, { headerRowsHint, rules });
       // A named contents list is a table even when its only numbers are pages.
       // An unnamed list of entries and page numbers is not (lacksTabularEvidence).
-      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table) && !lacksTabularEvidence(table)) {
+      // An OCR name roster has no measurement column. A date or a quantity column
+      // keeps the table. Handwriting is not a grid even when a few cells have digits:
+      // the lines have to stay text so a later read can replace them.
+      const proseCols = ocr && proseColumnTable(table);
+      const weakHand = handwriting && !contentsList(run);
+      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table) && !lacksTabularEvidence(table) && !proseCols && !weakHand) {
         table.usedWords = run.flatMap((r) => r.row.words);
         table.lines = [...run.flatMap((r) => r.row.lines), ...ruleLines];
         out.push(table);
@@ -1707,6 +1712,43 @@ function alignsWithRun(run, tokens, size) {
   let hit = 0;
   for (const t of tokens.slice(1)) if (prev.some((x) => Math.abs(x - t.x0) <= tol)) hit++;
   return hit >= 2;
+}
+
+function cellWords(text) {
+  return String(text || "").trim().split(/\s+/).filter(Boolean);
+}
+
+// A quantity, a year, or a date. A sentence that happens to mention a year is not.
+function measurementCell(text) {
+  const words = cellWords(text);
+  return words.length > 0 && words.length <= 6 && /\d/.test(text);
+}
+
+// One column of quantities or dates: at least three filled cells, half of them measured.
+export function measurementColumn(table) {
+  const cells = (table?.cells || []).filter((c) => cellWords(c.text).length && (c.colSpan || 1) === 1);
+  const cols = new Map();
+  for (const c of cells) {
+    if (!cols.has(c.c)) cols.set(c.c, []);
+    cols.get(c.c).push(c.text);
+  }
+  for (const list of cols.values()) {
+    if (list.length < 3) continue;
+    if (list.filter(measurementCell).length / list.length >= 0.5) return true;
+  }
+  return false;
+}
+
+// Names down a page, one to a cell. A measurement column is a real table.
+export function proseColumnTable(table) {
+  if (!table || table.method === "lattice") return false;
+  const filled = (table.cells || []).filter((c) => cellWords(c.text).length);
+  if (filled.length < 6) return false;
+  // A column header is one or two rows. A name roster continues down the page.
+  if (new Set(filled.map((c) => c.r)).size < 3) return false;
+  if (measurementColumn(table)) return false;
+  const numeric = filled.filter((c) => /\d/.test(c.text)).length;
+  return numeric / filled.length < 0.22;
 }
 
 // A paragraph read as a table: most filled cells are phrases of five or more words.

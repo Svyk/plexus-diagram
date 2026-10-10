@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.12.0 — 2026-10-10
+
+Photographed and scanned pages: figures found inside the page, no invented tables, and more tables read right on old scans.
+
+- **Figures inside photos and scans.** A photographed or scanned page is one picture, so Plexus now finds the charts, plates, sketches and maps inside it from the ink, and links their captions, including chart titles without "Fig." and German "Abb." plates. On our set of 57 newer pages (photos, handwriting, modern documents, mixed layouts) figures are found at F1 0.85 (was 0.39) and half of the captions are linked (was 7%).
+- **No invented tables.** Letters, handwritten notes, photographed title pages, contents lists and the labels inside a chart are no longer turned into tables; a table needs real tabular content (a value column or a header over body rows).
+- **Tables on old scans.** Columns split by partial rules or a short right edge are kept, unit lines and lab-id rows are header rows, and when two readings disagree the one the page text supports wins. On our 27-page set of 1890–1920 scans, High accuracy now reads 74% of table cells exactly (was 34% in 3.11.0).
+- Cached parses from earlier versions are refreshed automatically.
+
 ## 3.11.0 — 2026-10-10
 
 Scanned and born-digital PDFs read more accurately: fewer false figures, captions found, more tables right, and a High accuracy read that gives the same answer every time.

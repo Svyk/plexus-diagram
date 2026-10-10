@@ -153,7 +153,7 @@ export function gritsTop(predCells, truthCells) {
     boxIou([a.box[0] - i, a.box[1] - j, a.box[2] - i, a.box[3] - j], [b.box[0] - k, b.box[1] - l, b.box[2] - k, b.box[3] - l]));
 }
 
-// Same pairing as scan-score.scorePage: greedy per truth table, text Jaccard > 0.2, unsure truth cells ignored.
+// Diagnostic pairing, same as scan-score.scorePage: greedy per truth table, text Jaccard > 0.2, unsure truth cells ignored.
 export function matchTable(t, preds, used) {
   let best = null;
   for (const p of preds) {
@@ -167,7 +167,18 @@ export function matchTable(t, preds, used) {
   return best && best.score > 0.2 ? best.p : null;
 }
 
-export function gritsPage(predTables, truthTables, { match = matchTable } = {}) {
+// Pair a truth table with the unused predicted table of highest GriTS-Con (ties go to the earlier table); score 0 stays unmatched.
+export function matchByGrits(t, preds, used) {
+  let best = null;
+  for (const p of preds) {
+    if (used.has(p.id)) continue;
+    const s = gritsCon(p.cells || [], t.cells || []).score;
+    if (s > 0 && (!best || s > best.score)) best = { p, score: s };
+  }
+  return best ? best.p : null;
+}
+
+export function gritsPage(predTables, truthTables, { match = matchByGrits } = {}) {
   const preds = predTables || [];
   const truths = truthTables || [];
   if (!truths.length && !preds.length) return { con: 1, top: 1 };

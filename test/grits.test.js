@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { gritsCon, gritsTop, gritsPage, toGrid } from "../tools/parse-bench/grits.mjs";
+import { gritsCon, gritsTop, gritsPage, matchTable, toGrid } from "../tools/parse-bench/grits.mjs";
 import { tableCounts } from "../tools/parse-bench/scan-score.mjs";
 
 const cell = (r, c, text, extra = {}) => ({ r, c, rowSpan: 1, colSpan: 1, text, header: false, ...extra });
@@ -81,4 +81,28 @@ test("60x15 against 60x15 runs under 200 ms", () => {
   gritsTop(table(noisy), table(big));
   assert.ok(performance.now() - t0 < 200, `top ${performance.now() - t0} ms`);
   assert.ok(s.score > 0.95);
+});
+
+test("a heavily misread but correctly placed table gets partial credit", () => {
+  const truth = table([
+    ["alpha beta", "gamma delta", "epsilon zeta"],
+    ["eta theta", "iota kappa", "lambda mu"],
+    ["nu xi", "omicron pi", "rho sigma"],
+  ]);
+  const pred = table([
+    ["alpha bota", "gamma dalta", "epsilon zita"],
+    ["eta thota", "iota kappe", "lambda mo"],
+    ["nu xo", "omicron po", "rho sigme"],
+  ]);
+  const t = { cells: truth };
+  const p = { id: "p1", cells: pred };
+  assert.equal(matchTable(t, [p], new Set()), null);
+  const s = gritsPage([p], [t]);
+  assert.ok(s.con > 0.5 && s.con < 1, `con ${s.con}`);
+  assert.equal(s.top, 1);
+});
+
+test("a prediction sharing nothing with the truth stays unmatched", () => {
+  const s = gritsPage([{ id: "p", cells: table([["qqq"]]) }], [{ cells: table([["zzz"]]) }]);
+  assert.equal(s.con, 0);
 });

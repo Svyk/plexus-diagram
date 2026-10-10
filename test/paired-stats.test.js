@@ -105,7 +105,7 @@ test("component applicability follows the truth", () => {
 test("components: empty-array rule, text from cer, failed read is zero", () => {
   const emptyDoc = { order: [], blocks: {}, pages: [] };
   const truth = { tables: [], figures: [], textComplete: true, lines: ["abc"] };
-  const c = components({ tables: { f1: 1, structure: { f1: 1 } }, figures: { f1: 1, caption: { recall: 0 } }, text: { cer: 0.25 } }, truth);
+  const c = components({ tables: { f1: 0.2, structure: { f1: 0.2 } }, grits: { con: 1, top: 1 }, figures: { f1: 1, caption: { recall: 0 } }, text: { cer: 0.25 } }, truth);
   assert.deepEqual(c, { cell: 1, struct: 1, fig: 1, text: 0.75 });
   assert.equal(pageScore(c), 0.9375);
   assert.equal(components({ text: { cer: 3 } }, { textComplete: true, lines: ["a"] }).text, 0);

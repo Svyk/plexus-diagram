@@ -46942,6 +46942,20 @@ function splitByWidth(text3, widths) {
   }
   return out;
 }
+function pourInOrder(text3, hosts) {
+  const words = String(text3 || "").split(/\s+/).filter(Boolean);
+  const base = Math.floor(words.length / hosts.length);
+  let extra = words.length % hosts.length;
+  const out = [];
+  let at = 0;
+  for (let i = 0; i < hosts.length; i++) {
+    const count = base + (extra > 0 ? 1 : 0);
+    if (extra > 0) extra -= 1;
+    out.push(words.slice(at, at + count).join(" "));
+    at += count;
+  }
+  return out;
+}
 function alignVlmText(doc, regions) {
   if (!doc || !regions?.length) return { doc, applied: [] };
   const blocks = { ...doc.blocks };
@@ -46971,6 +46985,32 @@ function alignVlmText(doc, regions) {
     }
     const hostText = inside8.map((b) => b.text).join(" ");
     if (texCommandCount(region.text) >= 2 && texCommandCount(hostText) === 0) continue;
+    if (region.pageText) {
+      const parts2 = pourInOrder(region.text, inside8);
+      const held = [];
+      inside8.forEach((block, i) => {
+        const text3 = parts2[i] || "";
+        if (block.type === "caption" && text3 && block.text && !sharesWord(text3, block.text)) {
+          held.push(text3);
+          return;
+        }
+        if (text3 === block.text) return;
+        blocks[block.id] = { ...block, text: text3 };
+        applied.push(block.id);
+      });
+      if (held.length) {
+        const host = [...inside8].reverse().find((block) => block.type !== "caption" && blocks[block.id]);
+        if (host) {
+          const current3 = blocks[host.id].text || "";
+          const text3 = [current3, held.join(" ")].filter(Boolean).join(" ");
+          if (text3 !== current3) {
+            blocks[host.id] = { ...blocks[host.id], text: text3 };
+            if (!applied.includes(host.id)) applied.push(host.id);
+          }
+        }
+      }
+      continue;
+    }
     inside8.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
     const parts = splitByWidth(region.text, inside8.map((b) => Math.max(1, b.bbox[2] - b.bbox[0])));
     inside8.forEach((block, i) => {
@@ -46984,6 +47024,13 @@ function alignVlmText(doc, regions) {
 }
 function texCommandCount(text3) {
   return (String(text3 || "").match(/\\(?:[A-Za-z]+|[()[\]])/g) || []).length;
+}
+function sharesWord(a, b) {
+  const words = new Set(String(a || "").toLowerCase().match(/[a-z0-9]{3,}/g) || []);
+  for (const word of String(b || "").toLowerCase().match(/[a-z0-9]{3,}/g) || []) {
+    if (words.has(word)) return true;
+  }
+  return false;
 }
 function overlapsX2(a, b) {
   return Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
@@ -51613,7 +51660,7 @@ function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = nu
   if (engine === "cloud") return { text: cloudLabel(provider) };
   if (read2 === "high") {
     const text3 = ms != null ? `High accuracy · ${formatSeconds(ms)}` : "High accuracy";
-    return { text: text3, tip: "PaddleOCR-VL + PP-DocLayoutV2" };
+    return { text: text3, tip: "Qwen3-VL for page text, PaddleOCR-VL for tables, PP-DocLayoutV2" };
   }
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };

@@ -257,6 +257,10 @@ export function chooseReading(vision, other, lexicon) {
     if (hyphen(o) && !hyphen(v)) return o;
     return v;
   }
+  // Two unknown spellings a letter or two apart: the engine that was surer of
+  // its reading wins ("STEPHEN" at 1 over "STEPHIEN" at 0.5); on equal doubt the
+  // printed-text engine is the better speller.
+  if (!vl && !ol && d <= 4 && Number.isFinite(vision?.conf) && Number.isFinite(other?.conf) && vision.conf > other.conf) return v;
   if (d <= 2) return o;
   if (!vl && !ol && d <= 4) return o;
   return v;
@@ -388,6 +392,43 @@ function voteItems(visionItems, otherItems, lexicon, regions) {
   return preferSpellings([...next, ...added], lexicon, { regions });
 }
 
+// Each engine reads its own deskewed raster and reports word boxes in that frame.
+// When the two deskew angles differ, the same word sits a line apart in the two
+// records and the box pairing matches neighbours: on a photographed page the
+// other engine's "Hart" overlapped Vision's confident "Abraham". Turn the other
+// engine's boxes about the page centre into Vision's frame before pairing.
+// The helper (ocr.py, the Rust port) records the clockwise angle it turned the
+// page by; the in-browser PP-OCR path records a counter-clockwise one.
+function deskewCcw(page) {
+  const angle = Number(page?.deskew) || 0;
+  return page?.engine === "ppocr-web" ? angle : -angle;
+}
+
+export function reframeItems(items, from, to) {
+  const degrees = deskewCcw(to) - deskewCcw(from);
+  const w = Number(to?.w) || Number(from?.w) || 0;
+  const h = Number(to?.h) || Number(from?.h) || 0;
+  if (!items?.length || !Number.isFinite(degrees) || Math.abs(degrees) < 0.05 || !w || !h) return items || [];
+  const rad = degrees * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const cx = w / 2;
+  const cy = h / 2;
+  return items.map((item) => {
+    const t = item?.transform;
+    if (!Array.isArray(t) || t.length < 6) return item;
+    const dx = Number(t[4]) - cx;
+    const dy = Number(t[5]) - cy;
+    const x = cx + dx * cos + dy * sin;
+    const base = cy - dx * sin + dy * cos;
+    const shift = base - Number(t[5]);
+    const next = { ...item, transform: [t[0], t[1], t[2], t[3], x, base] };
+    if (Number.isFinite(item.y0)) next.y0 = item.y0 + shift;
+    if (Number.isFinite(item.y1)) next.y1 = item.y1 + shift;
+    return next;
+  });
+}
+
 // `otherPages` are PP-OCR page records. Vision pages keep their engine tag (unset
 // or whatever the helper wrote). They are not marked `ppocr-web`, so the line
 // re-read does not send them back through Vision.
@@ -401,7 +442,7 @@ export function voteOcrBodies(visionPages, otherPages, lexicon) {
     if (weakOcrPage(page.items, words)) return { ...page, weakText: true };
     const other = byN.get(page.n);
     const regions = ruledRegions(page.rules, page.w, page.h);
-    const items = voteItems(page.items || [], other?.items || [], words, regions);
+    const items = voteItems(page.items || [], reframeItems(other?.items || [], other, page), words, regions);
     return { ...page, items };
   });
 }

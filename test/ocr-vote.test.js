@@ -264,3 +264,46 @@ test("readScan asks for VLM text on a weak page and not on a confident page", as
   await readScan({ helper, base, records: [scanRec], numPages: 1, from: 1, to: 1, lines: false, bytes: new Uint8Array([1]) });
   assert.equal(calls.some((c) => c.text === true), false);
 });
+
+test("the other engine's boxes are turned into Vision's frame when the deskew angles differ", async () => {
+  const { reframeItems } = await import("../src/model/parse/ocr-vote.js");
+  const w = 600, h = 900;
+  // A word near the top-left corner of a page the other engine turned by 2.4 degrees.
+  const item = { str: "ABRAHAM", transform: [10, 0, 0, 10, 120, 190], width: 48, y0: 182, y1: 192, conf: 1 };
+  const [turned] = reframeItems([item], { deskew: 2.4, w, h, engine: "ppocr-web" }, { deskew: 0, w, h });
+  // Vision saw the same word about eleven points to the right and eight points higher.
+  assert.ok(turned.transform[4] > 128 && turned.transform[4] < 136, `x ${turned.transform[4]}`);
+  assert.ok(turned.y0 > 172 && turned.y0 < 177, `y0 ${turned.y0}`);
+  assert.equal(Math.round((turned.y1 - turned.y0) * 100) / 100, 10);
+  assert.equal(item.transform[4], 120, "the input is not mutated");
+  // Same frame: untouched.
+  assert.deepEqual(reframeItems([item], { deskew: 0.3, w, h }, { deskew: 0.3, w, h }), [item]);
+  // The helper records a clockwise angle, PP-OCR a counter-clockwise one: a page both
+  // turned the same way needs no turn, and a helper page turned the other way needs twice it.
+  assert.deepEqual(reframeItems([item], { deskew: 2.4, w, h, engine: "ppocr-web" }, { deskew: -2.4, w, h }), [item]);
+  const [twice] = reframeItems([item], { deskew: 2.4, w, h, engine: "ppocr-web" }, { deskew: 2.4, w, h });
+  assert.ok(Math.abs((twice.transform[4] - 120) - 2 * (turned.transform[4] - 120)) < 0.3, `twice ${twice.transform[4]}`);
+  // The vote pairs the right words once the frames agree: the lexicon word a line
+  // away no longer replaces the confident name.
+  const lex = new Set(["hart", "clark", "abraham", "island"]);
+  const vision = { n: 1, w, h, deskew: 0, items: [
+    { str: "HART,", transform: [10, 0, 0, 10, 167, 173], width: 29, y0: 163, y1: 176, conf: 1 },
+    { str: "ABRAHAM", transform: [10, 0, 0, 10, 132, 184], width: 52, y0: 174, y1: 187, conf: 1 },
+    { str: "CLARK.", transform: [10, 0, 0, 10, 185, 184], width: 37, y0: 174, y1: 187, conf: 1 },
+  ] };
+  const other = { n: 1, w, h, deskew: 2.43, engine: "ppocr-web", items: [
+    { str: "HaRT,", transform: [10, 0, 0, 10, 154, 179], width: 31, y0: 171, y1: 181, conf: 0.5 },
+    { str: "ABRAHAM", transform: [10, 0, 0, 10, 121, 190], width: 48, y0: 182, y1: 192, conf: 1 },
+    { str: "CLARK.", transform: [10, 0, 0, 10, 175, 190], width: 35, y0: 182, y1: 192, conf: 1 },
+  ] };
+  const [voted] = voteOcrBodies([vision], [other], lex);
+  assert.deepEqual(voted.items.map((it) => it.str), ["HART,", "ABRAHAM", "CLARK."]);
+});
+
+test("two unknown spellings a letter apart go to the surer engine", () => {
+  const none = new Set(["the"]);
+  assert.equal(chooseReading({ str: "STEPHEN", conf: 1 }, { str: "STEPHIEN", conf: 0.5 }, none), "STEPHEN");
+  assert.equal(chooseReading({ str: "STEPHEN", conf: 0.5 }, { str: "STEPHIEN", conf: 1 }, none), "STEPHIEN");
+  assert.equal(chooseReading({ str: "STEPHEN", conf: 1 }, { str: "STEPHIEN", conf: 1 }, none), "STEPHIEN");
+  assert.equal(chooseReading({ str: "STEPHEN" }, { str: "STEPHIEN" }, none), "STEPHIEN");
+});

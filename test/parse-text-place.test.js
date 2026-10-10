@@ -80,3 +80,30 @@ test("alignVlmText places a page transcription by alignment and reports the read
   assert.equal(out.reads[0].hosts[1].vision, "The harbour works were finished in the spring");
   assert.equal(alignVlmText(doc, [{ page: 1, bbox: [0, 0, 100, 80], text: "Report only", pageText: false }]).reads.length, 0);
 });
+
+test("alignVlmText hosts a page transcription on every text block of the page, not only inside the layout's union box", () => {
+  const doc = {
+    order: ["stamp", "p", "fig", "label", "cap", "sig"],
+    blocks: {
+      stamp: { id: "stamp", type: "para", page: 1, bbox: [170, 0, 260, 80], text: "rochara" },
+      p: { id: "p", type: "para", page: 1, bbox: [130, 250, 1130, 500], text: "Storconie do izoxnin Babuni krika" },
+      fig: { id: "fig", type: "figure", page: 1, bbox: [100, 600, 500, 900] },
+      label: { id: "label", type: "para", page: 1, bbox: [200, 700, 300, 720], text: "fig. 2" },
+      cap: { id: "cap", type: "caption", page: 1, bbox: [100, 905, 500, 930], text: "Plate one" },
+      sig: { id: "sig", type: "para", page: 1, bbox: [550, 1500, 670, 1580], text: "Stizef" },
+    },
+  };
+  const out = alignVlmText(doc, [
+    { page: 1, bbox: [130, 250, 1130, 500], text: "Kochana Babuniu. Stosownie do zyczenia Babuni krotka. Jozef Chelmonski", pageText: true },
+    { page: 1, bbox: [100, 900, 500, 935], text: "Plate one" },
+  ]);
+  // The stamp above the union box and the signature below it host the reading; the Vision noise is gone.
+  assert.deepEqual(out.reads[0].hosts.map((h) => h.id), ["stamp", "p", "sig"]);
+  assert.notEqual(out.doc.blocks.stamp.text, "rochara");
+  assert.notEqual(out.doc.blocks.sig.text, "Stizef");
+  assert.equal([out.doc.blocks.stamp.text, out.doc.blocks.p.text, out.doc.blocks.sig.text].join(" ").replace(/\s+/g, " ").trim(),
+    "Kochana Babuniu. Stosownie do zyczenia Babuni krotka. Jozef Chelmonski");
+  // A label on the painted-out figure and the caption strip keep their own readings.
+  assert.equal(out.doc.blocks.label.text, "fig. 2");
+  assert.equal(out.doc.blocks.cap.text, "Plate one");
+});

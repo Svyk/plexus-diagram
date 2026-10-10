@@ -105,6 +105,34 @@ function known(lexicon, word) {
   return Boolean(word) && lexicon instanceof Set && lexicon.has(word);
 }
 
+// "Hisisan" and "distributingcompanythat" are real words run together. A shorter
+// lexicon hit is one piece of that run, not a better spelling.
+export function segmentsIntoWords(token, lexicon) {
+  const raw = String(token || "").toLowerCase().replace(/[^a-z]/g, "");
+  if (!(lexicon instanceof Set) || raw.length < 4) return false;
+  const best = new Array(raw.length + 1).fill(0);
+  const reach = new Array(raw.length + 1).fill(false);
+  reach[0] = true;
+  for (let i = 0; i < raw.length; i += 1) {
+    if (!reach[i]) continue;
+    for (let j = i + 2; j <= raw.length; j += 1) {
+      if (!lexicon.has(raw.slice(i, j))) continue;
+      reach[j] = true;
+      if (best[i] + 1 > best[j]) best[j] = best[i] + 1;
+    }
+  }
+  return reach[raw.length] && best[raw.length] >= 2;
+}
+
+// The first word is the second plus a plural s. Adding the s ("glas" → "glass")
+// can still be a real correction; stripping a printed plural is not.
+function dropsPlural(printed, shorter) {
+  const long = String(printed || "").toLowerCase();
+  const stem = String(shorter || "").toLowerCase();
+  if (stem.length < 3 || long.length <= stem.length) return false;
+  return long === `${stem}s` || long === `${stem}es`;
+}
+
 function applyCase(sample, word) {
   const letters = String(sample || "").replace(/[^A-Za-z]/g, "");
   if (letters.length > 1 && letters === letters.toUpperCase()) return word.toUpperCase();
@@ -188,6 +216,8 @@ export function preferSpellings(items, lexicon, { rules = null, pageW = 612, pag
     for (const [word, n] of counts) {
       if (word === core || Math.abs(word.length - core.length) > 1) continue;
       if (editDistance(core, word) !== 1) continue;
+      // Dropping the plural s is not a spelling fix.
+      if (dropsPlural(core, word)) continue;
       const inLex = known(lexicon, word);
       const ok = (inLex && n >= 2 && n >= mine * 2) || (!inLex && n >= 3 && n >= mine * 3);
       if (!ok) continue;
@@ -215,6 +245,11 @@ export function chooseReading(vision, other, lexicon) {
   const vl = known(lexicon, vc.toLowerCase());
   const ol = known(lexicon, oc.toLowerCase());
   const d = editDistance(vc.toLowerCase(), oc.toLowerCase());
+  // The printed token is several real words, or a plural the list does not have.
+  // Replacing it with the other engine's shorter lexicon word deletes letters.
+  const piece = oc.toLowerCase();
+  if (!vl && ol && vc.toLowerCase().includes(piece) && vc.length >= piece.length + 2 && segmentsIntoWords(vc, lexicon)) return v;
+  if (dropsPlural(vc, oc)) return v;
   if (ol && !vl) return o;
   if (vl && !ol) return v;
   if (d === 0) {

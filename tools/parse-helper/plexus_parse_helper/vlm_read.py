@@ -71,6 +71,56 @@ def _clean_ocr(raw):
     return " ".join(lines).strip()
 
 
+def caption_strips(detected, pw, ph):
+    """The band a full-width plate left empty, when layout did not call it text.
+
+    A caption under an engraving sits in that gap. Reading the plate as one
+    image never returns the line.
+    """
+    if not pw or not ph:
+        return []
+    texts = [item["bbox"] for item in detected or [] if item.get("label") in TEXT_LABELS and item.get("bbox")]
+    strips = []
+    seen = []
+    for item in detected or []:
+        if item.get("label") not in FIGURE_LABELS or item.get("score", 0) < 0.5:
+            continue
+        box = item.get("bbox")
+        if not box:
+            continue
+        if _area(box) < 0.55 * pw * ph or (box[2] - box[0]) < 0.7 * pw:
+            continue
+        gaps = []
+        below = ph - box[3]
+        if 8 <= below <= 0.2 * ph:
+            gaps.append([0.0, float(box[3]), float(pw), float(ph)])
+        above = box[1]
+        if 8 <= above <= 0.2 * ph:
+            gaps.append([0.0, 0.0, float(pw), float(box[1])])
+        for gap in gaps:
+            if any(_iou(gap, prev) > 0.5 for prev in seen):
+                continue
+            if any(_area(gap) and _inter(gap, text) / _area(gap) >= 0.5 for text in texts):
+                continue
+            seen.append(gap)
+            strips.append({
+                "page": item.get("page"),
+                "label": "text",
+                "score": 1.0,
+                "bbox": [round(v, 2) for v in gap],
+                "captionStrip": True,
+            })
+    return strips
+
+
+def _inter(a, b):
+    ix = min(a[2], b[2]) - max(a[0], b[0])
+    iy = min(a[3], b[3]) - max(a[1], b[1])
+    if ix <= 0 or iy <= 0:
+        return 0.0
+    return ix * iy
+
+
 def covered_by_table(box, chosen, min_iou=0.45) -> bool:
     """True when a figure sits on a real table crop.
 
@@ -212,15 +262,17 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
                 })
             if want_text:
                 text_n = 0
-                for item in detected:
-                    if item["label"] not in TEXT_LABELS:
-                        continue
+                text_items = [item for item in detected if item["label"] in TEXT_LABELS]
+                text_items.extend(caption_strips(detected, pw, ph))
+                for item in text_items:
                     if item["bbox"][3] - item["bbox"][1] < 8:
                         continue
                     if text_n >= MAX_TEXT:
                         break
                     text_n += 1
-                    image = _crop(page, item["bbox"], bitmap)
+                    # A caption strip is already the gap. Growing it upward reads the plate.
+                    top_pad = 0.0 if item.get("captionStrip") else None
+                    image = _crop(page, item["bbox"], bitmap) if top_pad is None else _crop(page, item["bbox"], bitmap, pad=2.0, top_pad=0.0)
                     text = _clean_ocr(_generate(image, OCR_PROMPT, TEXT_TOKENS))
                     if text:
                         lines_out.append({"page": page_no, "bbox": item["bbox"], "text": text})

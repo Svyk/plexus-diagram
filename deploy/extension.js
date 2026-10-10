@@ -7757,6 +7757,23 @@ function isScanBanner(text3) {
 function normalizeFurniture(text3) {
   return text3.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
 }
+function isRepoStamp(text3) {
+  const t = String(text3 || "").replace(/\s+/g, " ").trim();
+  if (!t || t.length > 160) return false;
+  if (/hdl\.handle\.net|hathitrust\.org|books\.google\./i.test(t)) return t.length <= 120;
+  if (/^original\s+from$/i.test(t)) return true;
+  const digitized = t.match(/^digitized\s+(?:by\s+)?google\b(.*)$/i);
+  if (!digitized) return false;
+  const rest = digitized[1].replace(/^[\s,.:;-]+/, "").trim();
+  return !rest || rest.length <= 40 || isInstitutionLine(rest);
+}
+function isInstitutionLine(text3) {
+  const t = String(text3 || "").replace(/\s+/g, " ").trim();
+  if (!t || t.length > 40 || /[.,:;]/.test(t)) return false;
+  const words = t.split(" ");
+  if (words.length < 1 || words.length > 5) return false;
+  return words.every((word) => word.length >= 2 && /^[A-Z]+$/.test(word));
+}
 function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
   const n2 = pages.length;
   const need2 = Math.max(2, Math.min(3, n2), Math.ceil(n2 * 0.5));
@@ -7812,6 +7829,21 @@ function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
       removed.push({ page: pg.n, bbox: lineBox(line), text: line.text.trim(), reason: "page-number" });
     }
   }
+  for (const pg of pages) {
+    const stamps = pg.lines.filter((line) => !marks.has(line) && isRepoStamp(line.text));
+    for (const line of stamps) {
+      marks.add(line);
+      removed.push({ page: pg.n, bbox: lineBox(line), text: line.text.trim(), reason: "repo-stamp" });
+    }
+    if (!stamps.length && !pg.lines.some((line) => isRepoStamp(line.text))) continue;
+    for (const line of pg.lines) {
+      if (marks.has(line) || !isInstitutionLine(line.text)) continue;
+      const mid = ((line.y0 || 0) + (line.y1 || 0)) / 2;
+      if (!(pg.h > 0) || mid < pg.h * (1 - band)) continue;
+      marks.add(line);
+      removed.push({ page: pg.n, bbox: lineBox(line), text: line.text.trim(), reason: "repo-stamp" });
+    }
+  }
   removed.sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1]);
   return { removed, isFurniture: (line) => marks.has(line) };
 }
@@ -7845,15 +7877,18 @@ function marginCaption(text3) {
   const t = String(text3 || "").replace(/\s+/g, " ").trim();
   return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(t);
 }
+function sidewaysMarginLine(line) {
+  const words = line?.words || [];
+  const long = words.filter((word) => String(word?.text || "").replace(/\s+/g, "").length >= 4);
+  return long.length > 0 && long.every((word) => isVerticalOcrWord(word));
+}
 function dropMarginRotated(lines, rotated, { w = 0, h = 0, band = FURNITURE_BAND } = {}) {
   const kept = [];
   const removed = [];
   for (const line of lines || []) {
-    const words = line?.words || [];
-    const vertical = words.length > 0 && words.every((word) => isVerticalOcrWord(word));
     const mx = ((line?.x0 ?? 0) + (line?.x1 ?? 0)) / 2;
     const my = line?.base ?? ((line?.y0 ?? 0) + (line?.y1 ?? 0)) / 2;
-    if (vertical && inMargin(mx, my, w, h, band)) {
+    if (inMargin(mx, my, w, h, band) && sidewaysMarginLine(line)) {
       const text3 = String(line.text || "").replace(/\s+/g, " ").trim();
       if (!marginCaption(text3)) {
         if (text3) removed.push({ text: text3, bbox: [r2(line.x0), r2(line.y0), r2(line.x1), r2(line.y1)] });
@@ -8553,6 +8588,14 @@ function lineIsCaption(text3) {
 function lineIsBody(line) {
   return wordCount2(line.text) >= 8;
 }
+function captionBandLine(line, fig, pageW, pageH, bodySize) {
+  const area = Math.max(0, (fig.x1 - fig.x0) * (fig.y1 - fig.y0));
+  if (!(pageW > 0) || !(pageH > 0) || area < 0.75 * pageW * pageH) return false;
+  if (wordCount2(line.text) < 4) return false;
+  if ((line.size || 0) < 0.9 * bodySize) return false;
+  const mid = ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2;
+  return mid >= pageH * 0.82;
+}
 function takeWord(fig, w, art, maxOut, used) {
   const nx0 = Math.min(fig.x0, w.x0);
   const ny0 = Math.min(fig.y0, w.y0);
@@ -8606,6 +8649,7 @@ function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWord
         }
         continue;
       }
+      if (captionBandLine(line, art, pageW, pageH, bodySize)) continue;
       if (lineIsCaption(line.text) || lineIsBody(line)) continue;
       const nWords = wordCount2(line.text);
       const panel = nWords === 1 && /^[a-d]$/i.test(line.text.trim());
@@ -10801,6 +10845,28 @@ function editDistance2(a, b) {
 function known(lexicon, word) {
   return Boolean(word) && lexicon instanceof Set && lexicon.has(word);
 }
+function segmentsIntoWords(token, lexicon) {
+  const raw = String(token || "").toLowerCase().replace(/[^a-z]/g, "");
+  if (!(lexicon instanceof Set) || raw.length < 4) return false;
+  const best = new Array(raw.length + 1).fill(0);
+  const reach = new Array(raw.length + 1).fill(false);
+  reach[0] = true;
+  for (let i = 0; i < raw.length; i += 1) {
+    if (!reach[i]) continue;
+    for (let j = i + 2; j <= raw.length; j += 1) {
+      if (!lexicon.has(raw.slice(i, j))) continue;
+      reach[j] = true;
+      if (best[i] + 1 > best[j]) best[j] = best[i] + 1;
+    }
+  }
+  return reach[raw.length] && best[raw.length] >= 2;
+}
+function dropsPlural(printed, shorter) {
+  const long = String(printed || "").toLowerCase();
+  const stem = String(shorter || "").toLowerCase();
+  if (stem.length < 3 || long.length <= stem.length) return false;
+  return long === `${stem}s` || long === `${stem}es`;
+}
 function applyCase(sample, word) {
   const letters = String(sample || "").replace(/[^A-Za-z]/g, "");
   if (letters.length > 1 && letters === letters.toUpperCase()) return word.toUpperCase();
@@ -10875,6 +10941,7 @@ function preferSpellings(items, lexicon, { rules = null, pageW = 612, pageH = 79
     for (const [word, n2] of counts) {
       if (word === core || Math.abs(word.length - core.length) > 1) continue;
       if (editDistance2(core, word) !== 1) continue;
+      if (dropsPlural(core, word)) continue;
       const inLex = known(lexicon, word);
       const ok = inLex && n2 >= 2 && n2 >= mine * 2 || !inLex && n2 >= 3 && n2 >= mine * 3;
       if (!ok) continue;
@@ -10902,6 +10969,9 @@ function chooseReading(vision, other, lexicon) {
   const vl = known(lexicon, vc.toLowerCase());
   const ol = known(lexicon, oc.toLowerCase());
   const d = editDistance2(vc.toLowerCase(), oc.toLowerCase());
+  const piece = oc.toLowerCase();
+  if (!vl && ol && vc.toLowerCase().includes(piece) && vc.length >= piece.length + 2 && segmentsIntoWords(vc, lexicon)) return v;
+  if (dropsPlural(vc, oc)) return v;
   if (ol && !vl) return o;
   if (vl && !ol) return v;
   if (d === 0) {
@@ -12607,7 +12677,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 27;
+    PARSE_REV = 28;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -46150,6 +46220,31 @@ function weakTextPages(pages) {
   }
   return out;
 }
+function captionPlatePages(doc, pages) {
+  const wanted = new Set(pages || []);
+  const out = [];
+  for (const n2 of wanted) {
+    const page = (doc?.pages || []).find((item) => item && item.n === n2);
+    if (!page || !(page.w > 0) || !(page.h > 0)) continue;
+    const blocks = (doc.order || []).map((id) => doc.blocks[id]).filter((block) => block && block.page === n2);
+    const big = blocks.some((block) => {
+      if (block.type !== "figure" || !block.bbox) return false;
+      const area = Math.max(0, block.bbox[2] - block.bbox[0]) * Math.max(0, block.bbox[3] - block.bbox[1]);
+      return area >= 0.75 * page.w * page.h;
+    });
+    if (!big) continue;
+    const text3 = blocks.filter((block) => block.text && (block.type === "para" || block.type === "caption" || block.type === "heading" || block.type === "footnote"));
+    const chars = text3.reduce((sum, block) => sum + String(block.text).length, 0);
+    if (!text3.length || text3.length > 6 || chars < 8 || chars > 500) continue;
+    const band = text3.every((block) => {
+      if (!block.bbox) return false;
+      const cy = (block.bbox[1] + block.bbox[3]) / 2;
+      return cy <= page.h * 0.18 || cy >= page.h * 0.82;
+    });
+    if (band) out.push(n2);
+  }
+  return out;
+}
 async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true, alt = null } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n2) => !from || !to || n2 >= from && n2 <= to);
@@ -46204,8 +46299,9 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     const send = high ? vlmPages.filter((n2) => layerPages.includes(n2) || regionPages.has(n2) || numericPages.includes(n2) || decimalPages.includes(n2)) : wanted;
     const explicitText = options.vlmText === true;
     const weak = new Set(weakTextPages(got?.pages).filter((n2) => wanted.includes(n2)));
+    const plates = captionPlatePages(doc, wanted);
     const tableSend = send.filter((n2) => explicitText || !weak.has(n2));
-    const textSend = [...weak].filter((n2) => !explicitText || !tableSend.includes(n2));
+    const textSend = [.../* @__PURE__ */ new Set([...weak, ...plates])].filter((n2) => !explicitText || !tableSend.includes(n2));
     try {
       if (high && (tableSend.length || textSend.length)) {
         onPhase?.({ phase: "vlm", count: tableSend.length + textSend.length, mode: "high" });

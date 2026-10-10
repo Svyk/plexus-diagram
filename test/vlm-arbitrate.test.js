@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { dropMarginRotated, findFurniture, isRepoStamp } from "../src/model/parse/furniture.js";
 import { assembleDocument, parsePageGeometry } from "../src/model/parse/index.js";
 import { applyVlmTables, linkLayoutCaptions } from "../src/model/parse/vlm-tables.js";
 import { chooseTableReading } from "../src/model/parse/vlm-arbitrate.js";
@@ -319,6 +320,49 @@ test("sideways margin text is furniture and not a heading or the title", () => {
   assert.notEqual(doc.title, "NOTIFIABLE");
   const spun = (doc.removed || []).filter((row) => row.reason === "rotated-margin");
   assert.deepEqual(spun.map((row) => row.text).sort(), ["DISEASES", "NOTIFIABLE"]);
+});
+
+test("a digitization stamp and a sideways margin url are furniture", () => {
+  assert.equal(isRepoStamp("Digitized by Google"), true);
+  assert.equal(isRepoStamp("Original from"), true);
+  assert.equal(isRepoStamp("http://hdl.handle.net/2027/coo.31924003935148"), true);
+  assert.equal(isRepoStamp("GOVERNMENT PRINTING OFFICE"), false);
+  const line = (text, y0, y1, x0 = 72, x1 = 400) => ({
+    text, x0, x1, y0, y1, base: y1, size: 11,
+    words: [{ text, x0, x1, y0, y1, base: y1, size: 11 }],
+  });
+  const pages = [{
+    n: 1, h: 792,
+    lines: [
+      line("The viscosity of the slag was measured in the furnace", 200, 214),
+      line("Digitized by Google", 740, 754),
+      line("PRINCETON UNIVERSITY", 756, 770),
+      line("GOVERNMENT PRINTING OFFICE", 400, 414),
+    ],
+  }];
+  const furniture = findFurniture(pages);
+  const gone = furniture.removed.map((row) => row.text);
+  assert.ok(gone.includes("Digitized by Google"));
+  assert.ok(gone.includes("PRINCETON UNIVERSITY"));
+  assert.equal(gone.includes("GOVERNMENT PRINTING OFFICE"), false);
+  assert.equal(gone.includes("The viscosity of the slag was measured in the furnace"), false);
+  const url = {
+    text: "http://hdl.handle.net/2027/mdp.390150866",
+    words: [
+      { text: "http:", x0: 2, x1: 10, y0: 370, y1: 400, size: 40 },
+      { text: "/", x0: 4, x1: 8, y0: 400, y1: 412, size: 12 },
+      { text: "handle.net", x0: 2, x1: 14, y0: 420, y1: 490, size: 70 },
+    ],
+    x0: 1.6, x1: 17.5, y0: 364, y1: 499, base: 490, size: 40,
+  };
+  const speck = { text: "-", words: [{ text: "-", x0: 8, x1: 12, y0: 200, y1: 210, size: 10 }], x0: 8, x1: 12, y0: 200, y1: 210, base: 210, size: 10 };
+  const number = { text: "2", words: [{ text: "2", x0: 8, x1: 16, y0: 760, y1: 772, size: 11 }], x0: 8, x1: 16, y0: 760, y1: 772, base: 772, size: 11 };
+  const body = line("The viscosity of the slag was measured in the furnace", 300, 314);
+  const dropped = dropMarginRotated([url, speck, number, body], [], { w: 612, h: 792 });
+  assert.deepEqual(dropped.removed.map((row) => row.text), ["http://hdl.handle.net/2027/mdp.390150866"]);
+  assert.ok(dropped.lines.some((row) => row.text === "-"));
+  assert.ok(dropped.lines.some((row) => row.text === "2"));
+  assert.ok(dropped.lines.some((row) => row.text.startsWith("The viscosity")));
 });
 
 test("a text-layer quarter turn in the margin is furniture", () => {

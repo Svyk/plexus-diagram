@@ -22,6 +22,28 @@ export function normalizeFurniture(text) {
   return text.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+// A HathiTrust handle, a Google Books footer, or "Original from" on its own line.
+// A sentence that merely mentions the project is longer than the stamp.
+export function isRepoStamp(text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  if (!t || t.length > 160) return false;
+  if (/hdl\.handle\.net|hathitrust\.org|books\.google\./i.test(t)) return t.length <= 120;
+  if (/^original\s+from$/i.test(t)) return true;
+  const digitized = t.match(/^digitized\s+(?:by\s+)?google\b(.*)$/i);
+  if (!digitized) return false;
+  const rest = digitized[1].replace(/^[\s,.:;-]+/, "").trim();
+  return !rest || rest.length <= 40 || isInstitutionLine(rest);
+}
+
+// "PRINCETON UNIVERSITY": the library named on a Google Books footer, not a sentence.
+function isInstitutionLine(text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  if (!t || t.length > 40 || /[.,:;]/.test(t)) return false;
+  const words = t.split(" ");
+  if (words.length < 1 || words.length > 5) return false;
+  return words.every((word) => word.length >= 2 && /^[A-Z]+$/.test(word));
+}
+
 // pages: [{ n, h, lines }] ; returns { removed: [{page, bbox, text, reason}], isFurniture(line, n) }
 export function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
   const n = pages.length;
@@ -81,6 +103,23 @@ export function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
       removed.push({ page: pg.n, bbox: lineBox(line), text: line.text.trim(), reason: "page-number" });
     }
   }
+  // One scanned page never sees the footer twice, so a digitization stamp would
+  // stay in the text. The stamp is the line itself, not a repeated banner.
+  for (const pg of pages) {
+    const stamps = pg.lines.filter((line) => !marks.has(line) && isRepoStamp(line.text));
+    for (const line of stamps) {
+      marks.add(line);
+      removed.push({ page: pg.n, bbox: lineBox(line), text: line.text.trim(), reason: "repo-stamp" });
+    }
+    if (!stamps.length && !pg.lines.some((line) => isRepoStamp(line.text))) continue;
+    for (const line of pg.lines) {
+      if (marks.has(line) || !isInstitutionLine(line.text)) continue;
+      const mid = ((line.y0 || 0) + (line.y1 || 0)) / 2;
+      if (!(pg.h > 0) || mid < pg.h * (1 - band)) continue;
+      marks.add(line);
+      removed.push({ page: pg.n, bbox: lineBox(line), text: line.text.trim(), reason: "repo-stamp" });
+    }
+  }
   removed.sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1]);
   return { removed, isFurniture: (line) => marks.has(line) };
 }
@@ -129,15 +168,22 @@ function marginCaption(text) {
 // with a quarter-turn matrix. Either one is furniture, not a heading or a title.
 // `band` is the same edge fraction as running headers. Returns the kept lines and
 // `{text, bbox}` rows (page is filled in by the assembler).
+// A slash between two tall words is still the sideways running title. A short
+// token must not keep the line. A tall box with no tall word is a caption
+// fragment, and dropping it moves the lines beside it.
+function sidewaysMarginLine(line) {
+  const words = line?.words || [];
+  const long = words.filter((word) => String(word?.text || "").replace(/\s+/g, "").length >= 4);
+  return long.length > 0 && long.every((word) => isVerticalOcrWord(word));
+}
+
 export function dropMarginRotated(lines, rotated, { w = 0, h = 0, band = FURNITURE_BAND } = {}) {
   const kept = [];
   const removed = [];
   for (const line of lines || []) {
-    const words = line?.words || [];
-    const vertical = words.length > 0 && words.every((word) => isVerticalOcrWord(word));
     const mx = ((line?.x0 ?? 0) + (line?.x1 ?? 0)) / 2;
     const my = line?.base ?? ((line?.y0 ?? 0) + (line?.y1 ?? 0)) / 2;
-    if (vertical && inMargin(mx, my, w, h, band)) {
+    if (inMargin(mx, my, w, h, band) && sidewaysMarginLine(line)) {
       const text = String(line.text || "").replace(/\s+/g, " ").trim();
       if (!marginCaption(text)) {
         if (text) removed.push({ text, bbox: [r2(line.x0), r2(line.y0), r2(line.x1), r2(line.y1)] });

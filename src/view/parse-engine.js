@@ -111,6 +111,34 @@ function weakTextPages(pages) {
   return out;
 }
 
+// A plate that fills the page and leaves only a short line in the top or bottom
+// band. The layout model calls the plate an image and never reads the caption.
+function captionPlatePages(doc, pages) {
+  const wanted = new Set(pages || []);
+  const out = [];
+  for (const n of wanted) {
+    const page = (doc?.pages || []).find((item) => item && item.n === n);
+    if (!page || !(page.w > 0) || !(page.h > 0)) continue;
+    const blocks = (doc.order || []).map((id) => doc.blocks[id]).filter((block) => block && block.page === n);
+    const big = blocks.some((block) => {
+      if (block.type !== "figure" || !block.bbox) return false;
+      const area = Math.max(0, block.bbox[2] - block.bbox[0]) * Math.max(0, block.bbox[3] - block.bbox[1]);
+      return area >= 0.75 * page.w * page.h;
+    });
+    if (!big) continue;
+    const text = blocks.filter((block) => block.text && (block.type === "para" || block.type === "caption" || block.type === "heading" || block.type === "footnote"));
+    const chars = text.reduce((sum, block) => sum + String(block.text).length, 0);
+    if (!text.length || text.length > 6 || chars < 8 || chars > 500) continue;
+    const band = text.every((block) => {
+      if (!block.bbox) return false;
+      const cy = (block.bbox[1] + block.bbox[3]) / 2;
+      return cy <= page.h * 0.18 || cy >= page.h * 0.82;
+    });
+    if (band) out.push(n);
+  }
+  return out;
+}
+
 export async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true, alt = null } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n) => !from || !to || (n >= from && n <= to));
@@ -177,8 +205,9 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
       : wanted;
     const explicitText = options.vlmText === true;
     const weak = new Set(weakTextPages(got?.pages).filter((n) => wanted.includes(n)));
+    const plates = captionPlatePages(doc, wanted);
     const tableSend = send.filter((n) => explicitText || !weak.has(n));
-    const textSend = [...weak].filter((n) => !explicitText || !tableSend.includes(n));
+    const textSend = [...new Set([...weak, ...plates])].filter((n) => !explicitText || !tableSend.includes(n));
     try {
       if (high && (tableSend.length || textSend.length)) {
         onPhase?.({ phase: "vlm", count: tableSend.length + textSend.length, mode: "high" });

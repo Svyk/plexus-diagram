@@ -450,6 +450,17 @@ function lineIsBody(line) {
   return wordCount(line.text) >= 8;
 }
 
+// A plate that fills the page prints its title in the bottom band, one line
+// above the credit. That line is shorter than a paragraph, so it is not a label.
+function captionBandLine(line, fig, pageW, pageH, bodySize) {
+  const area = Math.max(0, (fig.x1 - fig.x0) * (fig.y1 - fig.y0));
+  if (!(pageW > 0) || !(pageH > 0) || area < 0.75 * pageW * pageH) return false;
+  if (wordCount(line.text) < 4) return false;
+  if ((line.size || 0) < 0.9 * bodySize) return false;
+  const mid = ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2;
+  return mid >= pageH * 0.82;
+}
+
 // Short labels and panel letters beside the art join the box. Body lines and captions do not.
 function takeWord(fig, w, art, maxOut, used) {
   const nx0 = Math.min(fig.x0, w.x0);
@@ -504,6 +515,7 @@ function growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWord
         }
         continue;
       }
+      if (captionBandLine(line, art, pageW, pageH, bodySize)) continue;
       if (lineIsCaption(line.text) || lineIsBody(line)) continue;
       const nWords = wordCount(line.text);
       const panel = nWords === 1 && /^[a-d]$/i.test(line.text.trim());

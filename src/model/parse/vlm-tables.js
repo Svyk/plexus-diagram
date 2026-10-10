@@ -1,5 +1,6 @@
 import { chooseTableReading } from "./vlm-arbitrate.js";
 import { isNumericToken } from "./vlm-boxes.js";
+import { polishTableText } from "./ocr-fix.js";
 
 // Replace a rule-assembly table with a local VLM reading of the same box.
 // The helper returns cells that already contain text. The high-accuracy path
@@ -252,6 +253,7 @@ export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0
       const decision = chooseTableReading(host, built, page);
       if (decision.choice === "rule") continue;
       const chosen = decision.table;
+      polishTableText(chosen);
       for (const id of [...order]) {
         const block = blocks[id];
         if (!block || block.type !== "table" || block.page !== structure.page || block.id === host.id) continue;
@@ -291,6 +293,7 @@ export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0
     }
     if (host) {
       used.add(host.id);
+      polishTableText(built);
       blocks[host.id] = {
         ...host,
         bbox: built.bbox,
@@ -307,6 +310,7 @@ export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0
     } else {
       const id = built.id;
       while (blocks[id]) built.id = `${id}b`;
+      polishTableText(built);
       blocks[built.id] = built;
       const at = order.findIndex((oid) => blocks[oid]?.page > structure.page);
       if (at < 0) order.push(built.id);

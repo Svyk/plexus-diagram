@@ -629,3 +629,34 @@ ICDAR 2013 text layer matches this branch's HEAD on all 67 documents (EU detecti
 `node tools/parse-bench/paired-stats.mjs --root <corpus dir> --manifest <manifest.json> --a <docs dir> --b <docs dir> [--a-name Plexus] [--b-name LlamaParse] [--fold-quotes] [--gate dev|sealed] [--seed 20261009] [--json out.json] [--md out.md]` compares two engines page by page on the same truth. Pages come from the manifest's `pages` (same shape as `scan-corpus.json`); truth is `<root>/truth/<id>.json`. A docs dir holds `<id>.pxd.json` (a `scan-corpus.mjs --dump` folder) or `<pdf file>.p<N>.<anything>.pxd.json` (a `cloud-run.mjs` folder); the id is tried first. A page with no readable doc counts as a failed read (every applicable component 0) and is reported. Scoring is `scorePage` (and `foldQuotes` with `--fold-quotes`); the tool adds only the page score and the statistics.
 
 Page score S is the mean of the components the truth supports: table cell F1 and structure F1 (when `tables` is an array), figure F1 (when `figures` is an array), caption recall (when a truth figure has a caption), and `max(0, 1 - CER)` (when `textComplete` with lines). On d = S_a - S_b over the kept pages it reports the one-sided Wilcoxon signed-rank test (zeros dropped, average ranks; exact p by dynamic programming over doubled ranks, plus the normal approximation with tie and continuity correction), matched-pairs rank-biserial r, Cohen's d_z, a 10,000-resample bootstrap 95% percentile CI of the mean (mulberry32, `--seed`), per-component non-inferiority for cell, text and figure (CI lower bound above -0.05 over the pages where the component applies; a component with no pages fails), and a breakdown by manifest `category` (first `class` when absent). `--gate sealed` is the loop's pass rule (n >= 30, five pages in each of rough-scan, modern-digital, photo, handwritten, mixed, exact p < 0.01, r >= 0.5, d_z >= 0.8, CI lower bound > 0, three non-inferiority checks); `--gate dev` drops the n and category conditions. Tests are in `test/paired-stats.test.js` (reference values from scipy 1.17.1 and a brute-force sign enumeration for tied vectors).
+
+## Which model reads a table crop best (tables round 11, 2026-10-10)
+
+The crops High accuracy sends today (layout boxes united with the rule boxes, same `PAD` / `TOP_PAD`, 200 dpi) on every
+development page with a truth table: 48 pages, 69 crops (A old scans 19 pages / 28 crops, B spent held-out 12 / 17, C new dev
+17 / 24). Each crop was read alone by three readers, greedy, temperature 0, seed 0, each in its own documented output format
+(`Table Recognition:` OTSL for the two PaddleOCR-VL models, an HTML-table instruction for Qwen), converted with
+`tables_from_text`, and scored with GriTS-Con / GriTS-Top against the truth (quotes and leader dots folded, as in the loop).
+The reading alone, no rule table, no arbitration.
+
+| Reader | Licence | Cell | Structure | s / crop | Peak GB | A cell | B cell | C cell |
+|---|---|---|---|---|---|---|---|---|
+| PaddleOCR-VL-0.9B (shipped) | Apache-2.0 | 0.837 | 0.877 | 9.2 | 3.0 | 0.899 | 0.857 | 0.753 |
+| PaddleOCR-VL-1.6-0.9B | Apache-2.0 | 0.842 | 0.876 | 6.7 | 3.0 | 0.847 | 0.888 | 0.806 |
+| Qwen3-VL-8B-Instruct-4bit | Apache-2.0 | 0.709 | 0.757 | 47.6 | 7.1 | 0.690 | 0.696 | 0.739 |
+
+By class (cell): typeset-table 27 pages 0.903 / 0.863 / 0.674; modern-digital 11 pages 0.890 / 0.933 / 0.790; rough-scan 4
+pages 0.344 / 0.450 / 0.670; typewritten-table 4 pages 0.744 / 0.860 / 0.815. Page by page, 1.6 beats 0.9B by more than 0.01
+on 12 pages and loses on 24; Qwen wins 8, loses 31. The 0.9B / 1.6 oracle (best of the two per page) is 0.888, but the
+shipped arbitration (rule table against the 0.9B reading) already averages 0.960 on these pages, and the oracle of that with
+the 1.6 reading is 0.965: one page (nist-jres126-008 p1, 0.801 → 0.858) is all a second reader could add. Nothing was wired.
+
+What the bake-off did find: the loop stop in `_RepeatStop` fired on twelve identical `<lcel>` tokens, which is a caption spanning
+thirteen columns, not a loop (coal-fatalities-1916 p1 stopped after its caption row; the shipped page scored 0.77 on cells from
+the rule table). Span tokens now run to 64 before the stop fires. The 0.9B crop on that page reads 0.950 / 0.961; the full
+bench page is S 0.904 → 0.970 (cell 0.77 → 0.95), every other A, B and C page unchanged against 3.17.0 (int-18695d1).
+
+The shipped 0.9B pin names the MLX re-save of `model.safetensors` (1 811 260 812 bytes), not the file the Hub serves at the pinned
+revision (1 917 255 968 bytes, `pt` format), so `ensure_reader` on a fresh machine downloads the Hub file and fails its own SHA-256
+check. Not fixed in this round; the pin should be re-measured from a real `hf_hub_download` at that revision. The 1.6 files at
+`c5630abae1d940eafe0697512a0325494b02ab42` match the Hub exactly and were downloaded that way, should a later round want them.

@@ -13,7 +13,7 @@ import { detectLists } from "./lists.js";
 import { detectFormulas } from "./formulas.js";
 import { FOOTNOTE_MARK_RE, groupParagraphs, inlineUnlinkedRefs, joinLines, spansOf } from "./blocks.js";
 import { boxOfUnits, crossesGutter, detectColumns, orderUnits, ruleCuts, splitAtGutters } from "./xycut.js";
-import { repairOcrTable } from "./ocr-fix.js";
+import { repairOcrTable, repairTableReading } from "./ocr-fix.js";
 import { lowConfidenceShare } from "./ocr-vote.js";
 import { capTitle, isCutPrefix, isGibberishTitle, isJunkTitleText, isMetaBanner } from "../title-cap.js";
 import { cleanPdfTitle } from "../pdf.js";
@@ -1108,7 +1108,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       if (pg.ocr) {
         annotateOcrCells(block, pg.words);
         block.repairs = repairOcrTable(block);
-      }
+      } else repairTableReading(block);
       if (cap) blocks[captionIds.get(cap)].for = id;
       blocks[id] = block;
       units.push({ id, x0: t.bbox[0], y0: t.bbox[1], x1: t.bbox[2], y1: t.bbox[3] });

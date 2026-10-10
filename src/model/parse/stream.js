@@ -95,8 +95,34 @@ export function tokenizeLine(line) {
     sawContent = true;
   }
   if (!sawContent && dotBag.length) tokens.push({ x0: dotBag[0].x0, x1: dotBag[dotBag.length - 1].x1, words: dotBag });
-  for (const t of tokens) t.text = t.words.map((w) => w.text).join(" ");
-  return tokens;
+  const split = [];
+  for (const t of tokens) split.push(...splitRepeatedHeads(t));
+  for (const t of split) t.text = t.words.map((w) => w.text).join(" ");
+  return split;
+}
+
+// "# of loans from # of loans from" is two column heads the gap failed to separate.
+// A repeated head marker (`#`, or a second "(n)") starts the next head.
+function splitRepeatedHeads(token) {
+  const words = token.words || [];
+  if (words.length < 4) return [token];
+  const marker = (w) => {
+    const t = String(w.text || "").trim();
+    if (t === "#") return "#";
+    if (/^\(\d+\)$/.test(t)) return "n";
+    return null;
+  };
+  const first = marker(words[0]);
+  if (!first) return [token];
+  const parts = [];
+  let cur = [];
+  for (const w of words) {
+    if (cur.length && marker(w) === first) { parts.push(cur); cur = [w]; }
+    else cur.push(w);
+  }
+  if (cur.length) parts.push(cur);
+  if (parts.length < 2) return [token];
+  return parts.map((ws) => ({ x0: ws[0].x0, x1: ws[ws.length - 1].x1, words: ws }));
 }
 
 // Column intervals from the token coverage of the fullest rows.
@@ -846,7 +872,7 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   if (stability < 0.7 && !bands) return null;
   if (stability < 0.5) return null;
   // Cells
-  const rows = rowsIn.length;
+  let rows = rowsIn.length;
   const cellMap = new Map();
   placed.forEach((row, r) => {
     for (const p of row) {
@@ -994,7 +1020,25 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     if (!/^[a-z(]/.test(text) || isNumericText(text)) continue;
     above.words.push(...cell.words);
     above.rowSpan = cell.rowSpan + 1;
+    above.wrappedHead = true;
     cellMap.delete(`${cell.r}:${cell.c}`);
+  }
+  // A header row left with no cell of its own was only the wrapped continuation
+  // ("Tempera" / "ture"). Drop it so the head occupies one row.
+  for (let r = 1; r < headerRows; r++) {
+    if ([...cellMap.values()].some((c) => c.r === r)) continue;
+    const covers = [...cellMap.values()].filter((c) => c.r < r && c.r + c.rowSpan > r);
+    if (!covers.length || covers.some((c) => !c.wrappedHead)) continue;
+    for (const c of covers) c.rowSpan -= 1;
+    for (const c of cellMap.values()) if (c.r > r) c.r -= 1;
+    const next = new Map();
+    for (const c of cellMap.values()) next.set(`${c.r}:${c.c}`, c);
+    cellMap.clear();
+    for (const [key, c] of next) cellMap.set(key, c);
+    rowsIn.splice(r, 1);
+    headerRows -= 1;
+    rows -= 1;
+    r -= 1;
   }
   // A header cell with nothing above it in its columns starts at the top of the header band
   // ("Characteristic" set on the last header line spans every header row).
@@ -1293,12 +1337,21 @@ function mergeWrappedLabelRows(rowsIn, headerRows = 0) {
 }
 
 // Line fragments on one baseline form a row (lines.js splits rows at wide gaps).
-export function baselineRows(lines) {
+export function baselineRows(lines, { loose = false } = {}) {
   const sorted = [...lines].sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
   for (const l of sorted) {
     const r = rows[rows.length - 1];
-    if (r && Math.abs(r.base - l.base) <= 0.3 * Math.max(r.size, l.size)) { r.lines.push(l); r.x1 = Math.max(r.x1, l.x1); }
+    // A head fragment that missed the baseline sits beside the row, within half an em.
+    // A line under the row is a wrap and keeps the tight band, as does any digit line.
+    // Column assignment uses the tight band, so a staggered head stays in its column.
+    const rowText = r ? r.lines.map((x) => x.text || "").join(" ") : "";
+    const digit = r && (/\d/.test(rowText) || /\d/.test(l.text || ""));
+    // A fragment of the same head that sits just beside the row, not under it.
+    // A line under the row is a wrap and stays on its own baseline.
+    const beside = r && l.x0 >= r.x1 - 1;
+    const band = loose && !digit && beside ? 0.5 : 0.3;
+    if (r && Math.abs(r.base - l.base) <= band * Math.max(r.size, l.size)) { r.lines.push(l); r.x1 = Math.max(r.x1, l.x1); }
     else rows.push({ base: l.base, size: l.size, x0: l.x0, x1: l.x1, lines: [l] });
   }
   for (const r of rows) {
@@ -1400,7 +1453,7 @@ export function proseRow(row, tokens, columnWidth = Infinity) {
 // candidates that read as display equations ("formula") or numbered code listings ("code").
 export function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeGaps = true, ocr = false, handwriting = false } = {}) {
   const out = [];
-  const rows = baselineRows(lines);
+  const rows = baselineRows(lines, { loose: true });
   const colBox = column || (lines.length ? { x0: Math.min(...lines.map((l) => l.x0)), x1: Math.max(...lines.map((l) => l.x1)) } : null);
   const colW = colBox ? colBox.x1 - colBox.x0 : Infinity;
   const tokensOf = (row) => row.lines.flatMap((l) => tokenizeLine(l)).sort((a, b) => a.x0 - b.x0);
@@ -1775,12 +1828,14 @@ function repeatsHeader(tokens, header) {
 // Number columns of a monospaced table: token starts land on an earlier row's starts.
 function alignsWithRun(run, tokens, size) {
   if (!tokens || tokens.length < 2) return false;
-  const prev = [];
-  for (const r of run) for (const t of r.tokens.slice(1)) prev.push(t.x0);
+  const prev = run.flatMap((r) => r.tokens);
   if (prev.length < 2) return false;
-  const tol = Math.max(4, 0.6 * size);
+  const tol = Math.max(4, 0.8 * (size || 8));
+  const overlaps = (a, b) => a.x0 < b.x1 + tol && a.x1 > b.x0 - tol;
+  const numeric = tokens.filter((t) => isNumericText(t.text));
+  const side = numeric.length >= 2 ? numeric : tokens.slice(1);
   let hit = 0;
-  for (const t of tokens.slice(1)) if (prev.some((x) => Math.abs(x - t.x0) <= tol)) hit++;
+  for (const t of side) if (prev.some((p) => Math.abs(p.x0 - t.x0) <= tol || overlaps(p, t))) hit++;
   return hit >= 2;
 }
 

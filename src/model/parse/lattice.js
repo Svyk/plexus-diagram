@@ -37,6 +37,19 @@ function withoutEchoDigits(words) {
   });
 }
 
+// "Tempera" / "ture" is one word broken across baselines. "Total" / "population"
+// and "wet" / "clean" stay two words. A short lowercase tail that is not itself
+// a word joins the longer word above it.
+const STANDALONE = new Set("a an of the and or in on at to for per from by with no as if be is it vs day year man men all not but its are was than into over note unit each both such only also more most less high low net out new old age end use oil gas".split(" "));
+
+function midWordWrap(prev, next) {
+  const last = String(prev || "").trim().split(/\s+/).pop() || "";
+  const first = (String(next || "").trim().split(/\s+/)[0] || "").replace(/[.,;:]+$/, "");
+  if (!/[A-Za-z]$/.test(last) || last.length < 5) return false;
+  if (!/^[a-z]{1,4}$/.test(first) || STANDALONE.has(first)) return false;
+  return true;
+}
+
 export function cellTextOf(words) {
   const lines = relineWords(withoutEchoDigits(words).filter((w) => !LEADER_RE.test(w.text)));
   if (!lines.length) return "";
@@ -50,6 +63,7 @@ export function cellTextOf(words) {
     }
     if (!text) { text = t; continue; }
     if (text.endsWith("-") && /^[A-Za-z0-9]/.test(t)) text += t;
+    else if (midWordWrap(text, t)) text += t;
     else text += ` ${t}`;
   }
   text = text.replace(/\s+/g, " ").trim();

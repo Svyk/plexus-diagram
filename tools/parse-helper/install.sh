@@ -91,7 +91,7 @@ install_docling() {
   say "Installing the Docling helper (first time takes a few minutes)..."
   if [ "$VLM" = 1 ]; then
     say "High accuracy also installs mlx-vlm and onnxruntime."
-    say "The first read downloads PaddleOCR-VL-0.9B (about 1.8 GB), Qwen3-VL-8B-Instruct-4bit for page text (about 5.8 GB), and PP-DocLayoutV2 (about 204 MB) and checks each file's SHA-256. Nothing is fetched at install. All three are Apache-2.0."
+    say "The first read downloads PaddleOCR-VL-0.9B (about 1.9 GB), Qwen3-VL-8B-Instruct-4bit for page text (about 5.8 GB), and PP-DocLayoutV2 (about 204 MB) and checks each file's SHA-256. Nothing is fetched at install. All three are Apache-2.0."
     uv tool install --force --with mlx-vlm --with onnxruntime "$SPEC" || fail "uv tool install failed"
   else
     uv tool install --force "$SPEC" || fail "uv tool install failed"

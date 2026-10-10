@@ -6931,7 +6931,7 @@ function tableFromBand(band, words) {
   const headerRowsHint = edges.length > 2 ? bandsOf.slice(0, headerBands).reduce((n2, k) => n2 + k, 0) : 0;
   mergeWrappedLabelRows(rowsIn, headerRowsHint);
   const table = buildTable(rowsIn, { bands: band, headerRowsHint });
-  if (!table) return null;
+  if (!table || lacksTabularEvidence(table)) return null;
   table.usedWords = inside8;
   return table;
 }
@@ -7266,7 +7266,7 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
         }
       }
       const table = buildTable(rowsIn, { headerRowsHint, rules });
-      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table)) {
+      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table) && !lacksTabularEvidence(table)) {
         table.usedWords = run.flatMap((r) => r.row.words);
         table.lines = [...run.flatMap((r) => r.row.lines), ...ruleLines];
         out.push(table);
@@ -7454,6 +7454,102 @@ function phraseTable(table) {
   for (const ts of byRow.values()) if (words(ts.join(" ")).length >= 8) long++;
   return byRow.size >= 3 && long / byRow.size > 0.5;
 }
+function indexOrPage(text3) {
+  const s = String(text3 || "").trim();
+  if (/^\d{1,3}\.?$/.test(s)) return true;
+  if (/^\d{1,3}[.)\-–−]$/.test(s)) return true;
+  return /^[–\-−]\d{1,3}$/.test(s);
+}
+function rangeValue(text3) {
+  const s = String(text3 || "").trim();
+  if (/^\d{1,4}\s+to\s+\d{1,4}\.?$/i.test(s)) return true;
+  if (/^\d{1,4}\s*[–\-−]\s*\d{1,4}\.?$/.test(s)) return true;
+  return /^\d{1,4}\+\.?$/.test(s);
+}
+function valueCell(text3) {
+  const s = String(text3 || "").trim();
+  if (!s || indexOrPage(s)) return false;
+  if (isNumericText(s)) return true;
+  if (rangeValue(s)) return true;
+  if (SCI_RE.test(s)) return true;
+  if (YEAR_RE.test(s)) return true;
+  if (CLOCK_RE.test(s)) return true;
+  return MONTH_RE.test(s) && /\d/.test(s);
+}
+function textsByColumn(table) {
+  const cols = table.cols || 0;
+  const byCol = Array.from({ length: cols }, () => []);
+  for (const cell of table.cells || []) {
+    const text3 = String(cell.text || "").trim();
+    if (!text3 || cell.c == null || cell.c < 0 || cell.c >= cols) continue;
+    byCol[cell.c].push(text3);
+  }
+  return byCol;
+}
+function columnKind(texts) {
+  if (texts.length < 2) return "short";
+  const values = texts.filter(valueCell).length;
+  if (values / texts.length >= 0.5) return "value";
+  const pages = texts.filter(indexOrPage).length;
+  if (pages / texts.length >= 0.5) return "page";
+  return "text";
+}
+function namedOrPagedContents(table) {
+  const header = table.headerRows || 0;
+  const cells = table.cells || [];
+  if (cells.some((cell) => NAMED_ENTRY_RE.test(String(cell.text || "").trim()))) return true;
+  return header > 0 && cells.some((cell) => cell.r < header && PAGE_HEAD_RE.test(String(cell.text || "").trim()));
+}
+function titleHeader(table) {
+  const header = table.headerRows || 0;
+  const rows = table.rows || 0;
+  const cols = table.cols || 0;
+  if (header <= 0 || header >= rows || cols < 2) return false;
+  const words = (text3) => String(text3).trim().split(/\s+/).filter(Boolean);
+  for (let r = 0; r < header; r++) {
+    const cells = (table.cells || []).filter((cell) => cell.r === r && String(cell.text || "").trim());
+    if (cells.length < 2) continue;
+    const labels = cells.filter((cell) => {
+      const text3 = String(cell.text).trim();
+      const n2 = words(text3).length;
+      return n2 >= 1 && n2 <= 8 && /[A-Za-z]/.test(text3) && !indexOrPage(text3);
+    });
+    if (labels.length >= 2 && labels.length / cells.length >= 0.5 && labels.length >= Math.min(3, cols - 1)) return true;
+  }
+  return false;
+}
+function proseGrid(table) {
+  const words = (text3) => String(text3).trim().split(/\s+/).filter(Boolean);
+  const byRow = /* @__PURE__ */ new Map();
+  for (const cell of table.cells || []) {
+    const text3 = String(cell.text || "").trim();
+    if (!text3) continue;
+    if (!byRow.has(cell.r)) byRow.set(cell.r, []);
+    byRow.get(cell.r).push(text3);
+  }
+  let sentence = 0;
+  for (const texts of byRow.values()) if (words(texts.join(" ")).length >= 8) sentence++;
+  return byRow.size >= 3 && sentence / byRow.size >= 0.6;
+}
+function lacksTabularEvidence(table) {
+  if (!table || table.method !== "stream") return false;
+  const cols = table.cols || 0;
+  const rows = table.rows || 0;
+  if (cols < 2 || rows < 2) return false;
+  const kinds = textsByColumn(table).map(columnKind);
+  const pageCols = kinds.filter((k) => k === "page").length;
+  const valueCols = kinds.filter((k) => k === "value").length;
+  if (valueCols > 0) return false;
+  if (namedOrPagedContents(table)) return false;
+  if (pageCols === 1) {
+    const header2 = table.headerRows || 0;
+    if (header2 > 0 && header2 < rows && titleHeader(table)) return false;
+    return true;
+  }
+  const header = table.headerRows || 0;
+  if (header > 0 && header < rows && (titleHeader(table) || !proseGrid(table))) return false;
+  return true;
+}
 function looksLikeProse(run) {
   let wordy = 0;
   for (const r of run) {
@@ -7464,7 +7560,7 @@ function looksLikeProse(run) {
   }
   return wordy >= run.length * 0.5;
 }
-var GAP_MIN, TEXT_RULE_RE;
+var GAP_MIN, TEXT_RULE_RE, YEAR_RE, CLOCK_RE, MONTH_RE, SCI_RE, NAMED_ENTRY_RE, PAGE_HEAD_RE;
 var init_stream = __esm({
   "src/model/parse/stream.js"() {
     init_lattice();
@@ -7474,6 +7570,12 @@ var init_stream = __esm({
     init_formulas();
     GAP_MIN = 3;
     TEXT_RULE_RE = /^[-–—_=.·•]{4,}$/;
+    YEAR_RE = /\b(?:1[89]|20)\d{2}\b/;
+    CLOCK_RE = /\b\d{1,2}[.:]\d{2}\b/;
+    MONTH_RE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i;
+    SCI_RE = /\d(?:[\d.,\s]*\d)?\s*[eE][+\-]?\d+/;
+    NAMED_ENTRY_RE = /^(?:\d{1,3}[.)]\s*)?(?:fig(?:ure)?s?|tables?|illustrations?|plates?)\b/i;
+    PAGE_HEAD_RE = /^pages?\.?$/i;
   }
 });
 
@@ -7942,21 +8044,30 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
     pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2);
   }
   const kept = [];
+  const dropped = [];
   for (const fig of figures) {
     const box2 = clipBox(fig, pageW, pageH);
-    if (!box2) continue;
+    if (!box2) {
+      dropped.push(fig);
+      continue;
+    }
     fig.x0 = box2.x0;
     fig.y0 = box2.y0;
     fig.x1 = box2.x1;
     fig.y1 = box2.y1;
     const area = (fig.x1 - fig.x0) * (fig.y1 - fig.y0);
-    if (!fig.pageImage && !fig.fromPlate && area >= 0.7 * pageW * pageH && textChars >= 180) continue;
-    if (plates && !fig.fromPlate && !fig.pageImage && (textChars >= 400 || contentsLead(lines))) continue;
-    if (plates && !fig.fromPlate && !fig.pageImage && lines.some((line) => proseLine(line) && line.y1 > fig.y0 + 1 && line.y0 < fig.y1 - 1 && Math.min(line.x1, fig.x1) - Math.max(line.x0, fig.x0) > 0.5 * (line.x1 - line.x0))) continue;
+    let drop = !fig.pageImage && !fig.fromPlate && area >= 0.7 * pageW * pageH && textChars >= 180;
+    if (plates && !fig.fromPlate && !fig.pageImage && (textChars >= 400 || contentsLead(lines))) drop = true;
+    if (plates && !fig.fromPlate && !fig.pageImage && lines.some((line) => proseLine(line) && line.y1 > fig.y0 + 1 && line.y0 < fig.y1 - 1 && Math.min(line.x1, fig.x1) - Math.max(line.x0, fig.x0) > 0.5 * (line.x1 - line.x0))) drop = true;
+    if (drop) {
+      dropped.push(fig);
+      continue;
+    }
     fig.bbox = [round(fig.x0), round(fig.y0), round(fig.x1), round(fig.y1)];
     delete fig.pageImage;
     kept.push(fig);
   }
+  releaseFigureWords(dropped, kept, lines, used);
   return {
     figures: rejectFalseFigures(kept, {
       lines,
@@ -7966,6 +8077,21 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
     }),
     used
   };
+}
+function releaseFigureWords(dropped, kept, lines, used) {
+  if (!dropped.length || !used.size) return;
+  const inside8 = (w, fig) => {
+    const cx = (w.x0 + w.x1) / 2;
+    const cy = ((w.y0 ?? w.base) + (w.y1 ?? w.base)) / 2;
+    return cx >= fig.x0 - 4 && cx <= fig.x1 + 4 && cy >= fig.y0 - 4 && cy <= fig.y1 + 4;
+  };
+  for (const line of lines) {
+    for (const w of line.words) {
+      if (!used.has(w) || !dropped.some((fig) => inside8(w, fig))) continue;
+      if (kept.some((fig) => inside8(w, fig))) continue;
+      used.delete(w);
+    }
+  }
 }
 function rasterScanPage({ images, shapes, words, pageW, pageH }) {
   const segs = (shapes || []).reduce((n2, s) => n2 + (s.segs || 1), 0);
@@ -7988,6 +8114,8 @@ function drawingSheetPage({ images, lines, tables, shapes, pageW, pageH, textCha
   if (textLines2.length >= 16) return false;
   if (bodyish >= 3) return false;
   if (alignedLineCount(textLines2) >= 4) return false;
+  const clocks = textLines2.filter((l) => /\b\d{1,2}[.:]\d{2}\b/.test(l.text || "")).length;
+  if (clocks >= 2) return false;
   return !dense;
 }
 function demoteFalseCaptions(blocks, bodySize, figures = []) {
@@ -10673,6 +10801,27 @@ function coverChartTables(tables, figures, pageH) {
     }
   }
 }
+function dropFigureLabelTables(doc) {
+  if (!doc?.blocks || !doc.order) return doc;
+  const tables = [];
+  const figures = [];
+  for (const id of doc.order) {
+    const block = doc.blocks[id];
+    if (!block) continue;
+    if (block.type === "table") tables.push(block);
+    else if (block.type === "figure") figures.push(block);
+  }
+  absorbFigureTables(tables, figures);
+  const keep = new Set(tables);
+  for (const id of [...doc.order]) {
+    const block = doc.blocks[id];
+    if (!block || block.type !== "table" || keep.has(block)) continue;
+    delete doc.blocks[id];
+    const at = doc.order.indexOf(id);
+    if (at >= 0) doc.order.splice(at, 1);
+  }
+  return doc;
+}
 function absorbFigureTables(tables, figures) {
   for (let i = tables.length - 1; i >= 0; i--) {
     const t = tables[i];
@@ -11269,10 +11418,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     }
     stitchTables(pageTables, textBlocks, bodySize);
     demoteFalseCaptions(textBlocks, bodySize, pageFigures);
-    if (pg.ocr) {
-      coverChartTables(pageTables, pageFigures, pg.h);
-      absorbFigureTables(pageTables, pageFigures);
-    }
+    if (pg.ocr) coverChartTables(pageTables, pageFigures, pg.h);
+    absorbFigureTables(pageTables, pageFigures);
     if (pg.ocr) {
       attachDroppedFigDigit(textBlocks);
       joinCaptionContinuation(textBlocks);
@@ -11546,7 +11693,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 23;
+    PARSE_REV = 24;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -44701,6 +44848,7 @@ function sameGridBetter(candidate, ruleRow) {
   if (!(ruleRows > 0) || rows < ruleRows * 0.9 || rows > ruleRows * 1.15) return false;
   if (next.tidy - rule.tidy >= 0.15) return true;
   if (next.filled - rule.filled >= 0.08 && next.tidy + 0.05 >= rule.tidy) return true;
+  if ((rule.total ?? 0) - (next.total ?? 0) < CLEAR && next.tidy - rule.tidy >= 0.12 && next.filled + 0.02 >= rule.filled) return true;
   return false;
 }
 function clearsRule(best, ruleRow) {
@@ -45465,6 +45613,7 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
       if (err?.name === "AbortError") throw err;
       doc.ocr = { ...doc.ocr || {}, vlmError: err?.message || String(err) };
     }
+    dropFigureLabelTables(doc);
   }
   const rereads = await rereadCells({ doc, ocr: ask, signal, onPhase });
   doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), lines: lined.applied.length, vlm: vlmApplied.length, vlmFigures: vlmFigures.length, vlmLines: vlmLines.length, elapsedMs: got?.elapsedMs ?? null };

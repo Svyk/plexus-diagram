@@ -5,7 +5,8 @@ import test from "node:test";
 import { buildLines, mul, applyPoint, normalizeText, fontFlags, makeLine, relineWords } from "../src/model/parse/lines.js";
 import { decodePathData, extractGraphics, luminanceOf, snapRules, OP } from "../src/model/parse/rules.js";
 import { findLatticeTables, cellTextOf, isNumericText } from "../src/model/parse/lattice.js";
-import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand, phraseTable, tickGrid, alignNumericColumns } from "../src/model/parse/stream.js";
+import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand, phraseTable, tickGrid, alignNumericColumns, lacksTabularEvidence } from "../src/model/parse/stream.js";
+import { dropFigureLabelTables } from "../src/model/parse/index.js";
 import { resplitColumns } from "../src/model/parse/resplit.js";
 import { findFigures, clusterBoxes } from "../src/model/parse/figures.js";
 import { findFurniture, isScanBanner, normalizeFurniture } from "../src/model/parse/furniture.js";
@@ -525,6 +526,149 @@ test("tokenizeLine keeps a footnote letter with its number and leader dots as on
   assert.equal(projectColumns([[name, lead, val], [name, lead, val]]).length, 2);
 });
 
+test("an unheaded stream grid without a number, date, or time column is not a table", () => {
+  const names = [];
+  for (let i = 0; i < 6; i++) names.push(row([["RICHARD STOCKTON,", 70], ["GEORGE READ,", 300]], 100 + i * 14));
+  assert.equal(detectStreamRuns(names).length, 0, "two columns of names are the page's text");
+  const letter = [];
+  for (let i = 0; i < 4; i++) letter.push(row([["Dear", 40], ["Mr", 160], ["Johnson", 240]], 80 + i * 16));
+  assert.equal(detectStreamRuns(letter).length, 0, "a letter's lines are not a table");
+  const roster = [];
+  for (let i = 0; i < 4; i++) roster.push(row([["Blaney", 40], ["1911", 200], ["1917", 320]], 100 + i * 14));
+  assert.equal(detectStreamRuns(roster).length, 1, "a name beside two years stays a table");
+  const hours = [];
+  for (let i = 0; i < 3; i++) hours.push(row([["Dienstag:", 40], ["12.00 - 17.00 Uhr", 200]], 100 + i * 16));
+  assert.equal(detectStreamRuns(hours).length, 1, "a label beside a clock time stays a table");
+  assert.equal(lacksTabularEvidence({ method: "stream", headerRows: 0, rows: 4, cols: 3, cells: [
+    { r: 0, c: 0, text: "Blaney" }, { r: 0, c: 1, text: "Aug. 2, 1911" }, { r: 0, c: 2, text: "Present." },
+    { r: 1, c: 0, text: "Darlington" }, { r: 1, c: 1, text: "Jan. 9, 1923" }, { r: 1, c: 2, text: "Present." },
+    { r: 2, c: 0, text: "Edwards" }, { r: 2, c: 1, text: "Jan. 9, 1923" }, { r: 2, c: 2, text: "Present." },
+    { r: 3, c: 0, text: "Everding" }, { r: 3, c: 1, text: "Jan. 9, 1923" }, { r: 3, c: 2, text: "Present." },
+  ] }), false, "a date column is tabular evidence");
+  assert.equal(lacksTabularEvidence({ method: "stream", headerRows: 1, rows: 4, cols: 2, cells: [
+    { r: 0, c: 0, text: "Name" }, { r: 0, c: 1, text: "City" },
+    { r: 1, c: 0, text: "Ada" }, { r: 1, c: 1, text: "Paris" },
+    { r: 2, c: 0, text: "Bea" }, { r: 2, c: 1, text: "Lyon" },
+    { r: 3, c: 0, text: "Cara" }, { r: 3, c: 1, text: "Nice" },
+  ] }), false, "a header keeps a text grid");
+  assert.equal(lacksTabularEvidence({ method: "stream", headerRows: 4, rows: 4, cols: 2, cells: [
+    { r: 0, c: 0, text: "Dear" }, { r: 0, c: 1, text: "sir" },
+    { r: 1, c: 0, text: "your" }, { r: 1, c: 1, text: "letter" },
+    { r: 2, c: 0, text: "came" }, { r: 2, c: 1, text: "today" },
+    { r: 3, c: 0, text: "with" }, { r: 3, c: 1, text: "thanks" },
+  ] }), true, "a header with no body rows is not evidence");
+});
+
+test("a page-number column is not a value column unless the list is named or headed Page", () => {
+  const toc = [
+    ["The expression of resistivity.", "54"],
+    ["The density of copper", "61"],
+    ["Calculation of the resistance", "64"],
+  ].map(([title, page], i) => row([[title, 40], [page, 360]], 100 + i * 14));
+  assert.equal(detectStreamRuns(toc).length, 0, "entries and a page number are not a data table");
+  const named = [
+    ["FIGURE 1. Apparatus", "7"],
+    ["FIGURE 2. Chart", "9"],
+    ["FIGURE 3. Plate", "11"],
+  ].map(([title, page], i) => row([[title, 40], [page, 360]], 100 + i * 14));
+  assert.equal(detectStreamRuns(named).filter((t) => !t.type || t.type === "table").length, 1, "a figures list stays a table");
+  const gages = [
+    ["12-", "-10", "Some of the later gages were based on the"],
+    ["13-", "-11", "It was used extensively both in Great"],
+    ["14-", "-12", "Britain and in the United States for many"],
+    ["15-", "-13", "It has been superseded and is now nearly"],
+  ].map(([a, b, prose], i) => row([[a, 40], [b, 90], [prose, 150]], 100 + i * 14));
+  assert.equal(detectStreamRuns(gages).length, 0, "gage indexes beside prose are not measured values");
+  const titled = [
+    ["The characteristics of the American wire gage", "20"],
+    ["Wire table short cuts", "20"],
+    ["Explanation of tables", "23"],
+  ].map(([title, page], i) => row([[title, 40], [page, 400]], 100 + i * 14));
+  assert.equal(detectStreamRuns(titled).length, 0, "the word table inside a chapter title does not name the list");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 1, rows: 4, cols: 2, cells: [
+      { r: 0, c: 1, text: "Page." },
+      { r: 1, c: 0, text: "Introduction" }, { r: 1, c: 1, text: "5" },
+      { r: 2, c: 0, text: "Composition of natural gas" }, { r: 2, c: 1, text: "6" },
+      { r: 3, c: 0, text: "Publications on petroleum" }, { r: 3, c: 1, text: "11" },
+    ],
+  }), false, "a Page heading keeps the contents table");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 0, rows: 3, cols: 2, cells: [
+      { r: 0, c: 0, text: "Introduction" }, { r: 0, c: 1, text: "5" },
+      { r: 1, c: 0, text: "Compressibility of methane" }, { r: 1, c: 1, text: "6" },
+      { r: 2, c: 0, text: "Publications on petroleum" }, { r: 2, c: 1, text: "11" },
+    ],
+  }), true, "page numbers alone are not a value column");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 0, rows: 2, cols: 2, cells: [
+      { r: 0, c: 0, text: "TABLE 1. PV values for air" }, { r: 0, c: 1, text: "8" },
+      { r: 1, c: 0, text: "2. PV values for natural gas" },
+    ],
+  }), false, "a tables list stays when the second page number is missing");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 1, rows: 4, cols: 3, cells: [
+      { r: 0, c: 0, text: "Era." }, { r: 0, c: 1, text: "Characteristic life." }, { r: 0, c: 2, text: "Duration." },
+      { r: 1, c: 0, text: "Quaternary." }, { r: 1, c: 1, text: "Age of man. Animals and plants of modern type." }, { r: 1, c: 2, text: "1 to 5." },
+      { r: 2, c: 0, text: "Tertiary." }, { r: 2, c: 1, text: "Age of mammals. Possible first appearance of man." }, { r: 2, c: 2, text: "1 to 10." },
+      { r: 3, c: 0, text: "Carboniferous." }, { r: 3, c: 1, text: "Age of amphibians. Dominance of club mosses and ferns." }, { r: 3, c: 2, text: "17 to 25." },
+    ],
+  }), false, "a duration range is a measured value even when the other cells are prose");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 2, rows: 5, cols: 5, cells: [
+      { r: 0, c: 1, text: "SI coherent derived unit" },
+      { r: 1, c: 0, text: "Quantity" }, { r: 1, c: 1, text: "Special name" }, { r: 1, c: 2, text: "Special symbol" }, { r: 1, c: 3, text: "Expression in terms of other SI units" }, { r: 1, c: 4, text: "Expression in terms of SI base units" },
+      { r: 2, c: 0, text: "plane angle" }, { r: 2, c: 1, text: "radian" }, { r: 2, c: 2, text: "rad" }, { r: 2, c: 3, text: "m/m" },
+      { r: 3, c: 0, text: "energy, work, amount of heat" }, { r: 3, c: 1, text: "joule" }, { r: 3, c: 2, text: "J" }, { r: 3, c: 3, text: "N · m" },
+      { r: 4, c: 0, text: "electric charge, amount of electricity" }, { r: 4, c: 1, text: "coulomb" }, { r: 4, c: 2, text: "C" }, { r: 4, c: 3, text: "s · A" },
+    ],
+  }), false, "column titles keep a unit table whose cells are names, not numbers");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 1, rows: 4, cols: 4, cells: [
+      { r: 0, c: 1, text: "8" }, { r: 0, c: 2, text: "2, page 18." }, { r: 0, c: 3, text: "brought out in Birmingham." },
+      { r: 1, c: 0, text: "12-" }, { r: 1, c: 1, text: "-10" }, { r: 1, c: 2, text: "Some of the later gages were based on the decimal system." },
+      { r: 2, c: 0, text: "13-" }, { r: 2, c: 1, text: "-11" }, { r: 2, c: 2, text: "It was used extensively both in Great Britain and America." },
+      { r: 3, c: 0, text: "14-" }, { r: 3, c: 1, text: "-12" }, { r: 3, c: 2, text: "It has been superseded and is now nearly forgotten." },
+    ],
+  }), true, "a sentence under a false header is not a column-title table");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 1, rows: 4, cols: 2, cells: [
+      { r: 0, c: 0, text: "Indicators" }, { r: 0, c: 1, text: "Weight of indicator in 2006" },
+      { r: 1, c: 0, text: "Employment" }, { r: 1, c: 1, text: "40" },
+      { r: 2, c: 0, text: "Further studies" }, { r: 2, c: 1, text: "15" },
+      { r: 3, c: 0, text: "Dropping out" }, { r: 3, c: 1, text: "15" },
+    ],
+  }), false, "small integers under a column title are weights, not page numbers");
+});
+
+test("a chart's label table inside the figure is dropped after layout puts it back", () => {
+  const table = {
+    id: "t1", type: "table", page: 1, method: "vlm", rows: 2, cols: 3, headerRows: 0,
+    bbox: [80, 400, 500, 460],
+    cells: [
+      { r: 0, c: 0, text: "35.7" }, { r: 0, c: 1, text: "35.6" }, { r: 0, c: 2, text: "35.5" },
+      { r: 1, c: 0, text: "34.1" }, { r: 1, c: 1, text: "34.0" }, { r: 1, c: 2, text: "33.8" },
+    ],
+  };
+  const data = {
+    id: "t2", type: "table", page: 1, method: "lattice", rows: 6, cols: 4, headerRows: 1,
+    bbox: [80, 80, 400, 220],
+    cells: ["Ada", "12", "Bea", "14", "Cara", "16", "Dora", "18", "Eve", "20", "Fay", "22", "Gus", "24", "Hal", "26", "Ivy", "28", "Jan", "30", "Kim", "32", "Leo", "34"].map((text, i) => ({ r: Math.floor(i / 4), c: i % 4, text })),
+  };
+  const doc = {
+    blocks: {
+      t1: table,
+      t2: data,
+      f1: { id: "f1", type: "figure", page: 1, bbox: [40, 300, 560, 700] },
+    },
+    order: ["t2", "f1", "t1"],
+  };
+  dropFigureLabelTables(doc);
+  assert.deepEqual(doc.order, ["t2", "f1"]);
+  assert.equal(doc.blocks.t1, undefined);
+  assert.equal(doc.blocks.t2.type, "table");
+});
+
 test("detectStreamRuns rejects justified prose and numbered lists", () => {
   const prose = [
     row([["Dry", 50], ["powder", 80], ["facilities", 125], ["depend", 180], ["on", 220], ["keeping", 240]], 100),
@@ -922,6 +1066,11 @@ test("a two-row contents list is a table and a two-row phrase is not", () => {
   const listed = detectStreamRuns(numbered).filter((b) => b.type === "table");
   assert.equal(listed.length, 1);
   assert.equal(listed[0].cols, 2);
+  const onePage = page([
+    [item("TABLE 1. PV values for air", 72, 700, 10, "f1", 180), item("8", 400, 700, 10, "f1", 8)],
+    [item("2. PV values for natural gas", 72, 684, 10, "f1", 190)],
+  ]);
+  assert.equal(detectStreamRuns(onePage).filter((b) => b.type === "table").length, 1, "the list stays when the second page number is missing");
   const phrase = page([
     [item("The mixture was heated slowly", 72, 700, 10, "f1", 180)],
     [item("and then left overnight", 72, 684, 10, "f1", 150)],

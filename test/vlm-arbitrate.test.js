@@ -92,6 +92,26 @@ test("a near tie keeps the rule table", () => {
   assert.equal(decision.choice, "rule");
 });
 
+test("a near tie takes the reading whose number cells are not Vision debris", () => {
+  const clean = [
+    ["Variety", "Grain", "Straw", "Ratio"],
+    ["Fultz", "1320", "1920", "0.91"],
+    ["Currell", "1240", "2520", "0.95"],
+    ["Harvest", "820", "1740", "1.05"],
+  ];
+  const dirty = [
+    ["Variety", "Grain", "Straw", "Ratio"],
+    ["Fultz", "1320", "920", "91"],
+    ["Currell", "1240", "520", "..95"],
+    ["Harvest", "820", "1,450 -i,", "1.05"],
+  ];
+  const rule = grid(dirty, { headerRows: 1 });
+  const vlm = grid(clean, { headerRows: 0, bbox: rule.bbox });
+  const decision = chooseTableReading(rule, vlm, evidence(clean));
+  assert.equal(decision.choice, "vlm");
+  assert.ok(decision.scores.vlm.tidy > decision.scores.rule.tidy);
+});
+
 test("arbitration prefers the column count the vertical rules support", () => {
   const labels = TEN.map((row) => [row[0], row[1], "", "", ""]);
   const rule = grid(labels, { cols: 5, headerRows: 1 });

@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 23;
+export const PARSE_REV = 24;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -316,6 +316,30 @@ function coverChartTables(tables, figures, pageH) {
 
 // A table that sits inside a figure (axis ticks, a prose title read as cells) is part of
 // the drawing. A data table stays a table even when the plate is much larger than it.
+// Layout can put a chart's labels back after the geometry pass dropped them.
+// The same rule applies to the document: a non-data table inside a figure goes.
+export function dropFigureLabelTables(doc) {
+  if (!doc?.blocks || !doc.order) return doc;
+  const tables = [];
+  const figures = [];
+  for (const id of doc.order) {
+    const block = doc.blocks[id];
+    if (!block) continue;
+    if (block.type === "table") tables.push(block);
+    else if (block.type === "figure") figures.push(block);
+  }
+  absorbFigureTables(tables, figures);
+  const keep = new Set(tables);
+  for (const id of [...doc.order]) {
+    const block = doc.blocks[id];
+    if (!block || block.type !== "table" || keep.has(block)) continue;
+    delete doc.blocks[id];
+    const at = doc.order.indexOf(id);
+    if (at >= 0) doc.order.splice(at, 1);
+  }
+  return doc;
+}
+
 export function absorbFigureTables(tables, figures) {
   for (let i = tables.length - 1; i >= 0; i--) {
     const t = tables[i];
@@ -992,10 +1016,9 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     }
     stitchTables(pageTables, textBlocks, bodySize);
     demoteFalseCaptions(textBlocks, bodySize, pageFigures);
-    if (pg.ocr) {
-      coverChartTables(pageTables, pageFigures, pg.h);
-      absorbFigureTables(pageTables, pageFigures);
-    }
+    if (pg.ocr) coverChartTables(pageTables, pageFigures, pg.h);
+    // A chart's labels are inside the drawing on a born-digital page too.
+    absorbFigureTables(pageTables, pageFigures);
     if (pg.ocr) {
       attachDroppedFigDigit(textBlocks);
       joinCaptionContinuation(textBlocks);

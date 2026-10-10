@@ -1120,7 +1120,8 @@ export function tableFromBand(band, words) {
   const headerRowsHint = edges.length > 2 ? bandsOf.slice(0, headerBands).reduce((n, k) => n + k, 0) : 0;
   mergeWrappedLabelRows(rowsIn, headerRowsHint);
   const table = buildTable(rowsIn, { bands: band, headerRowsHint });
-  if (!table) return null;
+  // Ruling around a letter or a two-column article is not a table. The words stay text.
+  if (!table || lacksTabularEvidence(table)) return null;
   table.usedWords = inside;
   return table;
 }
@@ -1492,7 +1493,9 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
         }
       }
       const table = buildTable(rowsIn, { headerRowsHint, rules });
-      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table)) {
+      // A named contents list is a table even when its only numbers are pages.
+      // An unnamed list of entries and page numbers is not (lacksTabularEvidence).
+      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table) && !lacksTabularEvidence(table)) {
         table.usedWords = run.flatMap((r) => r.row.words);
         table.lines = [...run.flatMap((r) => r.row.lines), ...ruleLines];
         out.push(table);
@@ -1725,6 +1728,144 @@ export function phraseTable(table) {
   let long = 0;
   for (const ts of byRow.values()) if (words(ts.join(" ")).length >= 8) long++;
   return byRow.size >= 3 && long / byRow.size > 0.5;
+}
+
+const YEAR_RE = /\b(?:1[89]|20)\d{2}\b/;
+const CLOCK_RE = /\b\d{1,2}[.:]\d{2}\b/;
+const MONTH_RE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i;
+// "1.0 E+01" and "9.806 65 E+00": a conversion factor, not an identifier.
+const SCI_RE = /\d(?:[\d.,\s]*\d)?\s*[eE][+\-]?\d+/;
+// "FIGURE 1" or "2. Table", not the word "table" inside a chapter title.
+const NAMED_ENTRY_RE = /^(?:\d{1,3}[.)]\s*)?(?:fig(?:ure)?s?|tables?|illustrations?|plates?)\b/i;
+const PAGE_HEAD_RE = /^pages?\.?$/i;
+
+// A page number ("54", "64.") or a list or gage index ("12-", "-10", "1.").
+// A four-digit year is a value, not a page number.
+function indexOrPage(text) {
+  const s = String(text || "").trim();
+  if (/^\d{1,3}\.?$/.test(s)) return true;
+  if (/^\d{1,3}[.)\-–−]$/.test(s)) return true;
+  return /^[–\-−]\d{1,3}$/.test(s);
+}
+
+// "1 to 5." and "50+" are durations. A trailing index mark ("12-") is not.
+function rangeValue(text) {
+  const s = String(text || "").trim();
+  if (/^\d{1,4}\s+to\s+\d{1,4}\.?$/i.test(s)) return true;
+  if (/^\d{1,4}\s*[–\-−]\s*\d{1,4}\.?$/.test(s)) return true;
+  return /^\d{1,4}\+\.?$/.test(s);
+}
+
+// A number, a scientific factor, a clock time, a date, or a duration range.
+// An identifier that merely contains a digit ("D-324", "IN-63") is not a
+// value. A page number or an index mark alone is not a value either.
+function valueCell(text) {
+  const s = String(text || "").trim();
+  if (!s || indexOrPage(s)) return false;
+  if (isNumericText(s)) return true;
+  if (rangeValue(s)) return true;
+  if (SCI_RE.test(s)) return true;
+  if (YEAR_RE.test(s)) return true;
+  if (CLOCK_RE.test(s)) return true;
+  return MONTH_RE.test(s) && /\d/.test(s);
+}
+
+function textsByColumn(table) {
+  const cols = table.cols || 0;
+  const byCol = Array.from({ length: cols }, () => []);
+  for (const cell of table.cells || []) {
+    const text = String(cell.text || "").trim();
+    if (!text || cell.c == null || cell.c < 0 || cell.c >= cols) continue;
+    byCol[cell.c].push(text);
+  }
+  return byCol;
+}
+
+function columnKind(texts) {
+  if (texts.length < 2) return "short";
+  const values = texts.filter(valueCell).length;
+  if (values / texts.length >= 0.5) return "value";
+  const pages = texts.filter(indexOrPage).length;
+  if (pages / texts.length >= 0.5) return "page";
+  return "text";
+}
+
+// The list is the page's figures, tables, illustrations, or plates, or the
+// column head is "Page". The name has to start the cell. "Explanation of
+// tables" is a chapter title, not a list of tables.
+function namedOrPagedContents(table) {
+  const header = table.headerRows || 0;
+  const cells = table.cells || [];
+  if (cells.some((cell) => NAMED_ENTRY_RE.test(String(cell.text || "").trim()))) return true;
+  return header > 0 && cells.some((cell) => cell.r < header && PAGE_HEAD_RE.test(String(cell.text || "").trim()));
+}
+
+// A header row of column titles ("Special name", "Symbol"), not a sentence
+// that the ruling happened to mark as a header.
+function titleHeader(table) {
+  const header = table.headerRows || 0;
+  const rows = table.rows || 0;
+  const cols = table.cols || 0;
+  if (header <= 0 || header >= rows || cols < 2) return false;
+  const words = (text) => String(text).trim().split(/\s+/).filter(Boolean);
+  for (let r = 0; r < header; r++) {
+    const cells = (table.cells || []).filter((cell) => cell.r === r && String(cell.text || "").trim());
+    if (cells.length < 2) continue;
+    const labels = cells.filter((cell) => {
+      const text = String(cell.text).trim();
+      const n = words(text).length;
+      return n >= 1 && n <= 8 && /[A-Za-z]/.test(text) && !indexOrPage(text);
+    });
+    if (labels.length >= 2 && labels.length / cells.length >= 0.5 && labels.length >= Math.min(3, cols - 1)) return true;
+  }
+  return false;
+}
+
+// Rows that join into sentences are a paragraph, even when a line was marked
+// as a header. A name-and-city grid stays short. Column titles keep a unit table
+// whose body cells are phrases.
+function proseGrid(table) {
+  const words = (text) => String(text).trim().split(/\s+/).filter(Boolean);
+  const byRow = new Map();
+  for (const cell of table.cells || []) {
+    const text = String(cell.text || "").trim();
+    if (!text) continue;
+    if (!byRow.has(cell.r)) byRow.set(cell.r, []);
+    byRow.get(cell.r).push(text);
+  }
+  let sentence = 0;
+  for (const texts of byRow.values()) if (words(texts.join(" ")).length >= 8) sentence++;
+  return byRow.size >= 3 && sentence / byRow.size >= 0.6;
+}
+
+// Aligned prose, a letter, or diagram labels: a stream grid with no body under a
+// header and no number, date, or time column. A header with body rows, or one
+// such value column, is a table. A contents list (one page-number column, no
+// other value column) is a table only when the page named it or headed it "Page".
+export function lacksTabularEvidence(table) {
+  if (!table || table.method !== "stream") return false;
+  const cols = table.cols || 0;
+  const rows = table.rows || 0;
+  if (cols < 2 || rows < 2) return false;
+  const kinds = textsByColumn(table).map(columnKind);
+  const pageCols = kinds.filter((k) => k === "page").length;
+  const valueCols = kinds.filter((k) => k === "value").length;
+  if (valueCols > 0) return false;
+  // A named list stays when a page number is missing, so that column is too
+  // short to count. An unnamed list with one page-number column is not a data
+  // table, unless a real header names the column (weights, not page numbers).
+  if (namedOrPagedContents(table)) return false;
+  if (pageCols === 1) {
+    const header = table.headerRows || 0;
+    if (header > 0 && header < rows && titleHeader(table)) return false;
+    return true;
+  }
+  // A header is evidence only when body rows sit under it and they are not a
+  // paragraph, or when the header is a row of column titles. Ruling that marks
+  // every row as a header still needs a value column.
+  const header = table.headerRows || 0;
+  if (header > 0 && header < rows && (titleHeader(table) || !proseGrid(table))) return false;
+  return true;
 }
 
 // Justified prose splits into tokens at random x; tables keep short cells with wide gaps.

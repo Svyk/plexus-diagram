@@ -440,6 +440,9 @@ function sameGridBetter(candidate, ruleRow) {
   if (!(ruleRows > 0) || rows < ruleRows * 0.9 || rows > ruleRows * 1.15) return false;
   if (next.tidy - rule.tidy >= 0.15) return true;
   if (next.filled - rule.filled >= 0.08 && next.tidy + 0.05 >= rule.tidy) return true;
+  // The totals already agree. Cleaner cells then win: a rule grid of the same
+  // shape whose numbers are Vision debris ("1,450 -i,") is not the reading.
+  if ((rule.total ?? 0) - (next.total ?? 0) < CLEAR && next.tidy - rule.tidy >= 0.12 && next.filled + 0.02 >= rule.filled) return true;
   return false;
 }
 

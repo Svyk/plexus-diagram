@@ -326,6 +326,14 @@ export function gridReading(table) {
 
 // Readings that share one rule table without overlapping each other, and
 // together cover most of it. Map: structure -> host block.
+function sideBySide(a, b) {
+  const yOver = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  const xOver = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+  const minH = Math.min(a[3] - a[1], b[3] - b[1]);
+  const minW = Math.min(a[2] - a[0], b[2] - b[0]);
+  return minH > 0 && minW > 0 && yOver >= 0.5 * minH && xOver <= 0.1 * minW;
+}
+
 export function sharedHosts(doc, structures) {
   const out = new Map();
   const tables = (doc?.order || []).map((id) => doc.blocks?.[id]).filter((b) => b && b.type === "table" && b.bbox);
@@ -337,6 +345,10 @@ export function sharedHosts(doc, structures) {
       for (let j = i + 1; j < inside.length; j += 1) if (iou(inside[i].bbox, inside[j].bbox) >= 0.1) apart = false;
     }
     if (!apart) continue;
+    // Side by side: two readings share rows. Readings stacked down one rule
+    // table are bands of that table (the layout model cuts a long roster at
+    // its group heads); they are arbitrated against it, not swapped in.
+    if (!inside.some((a, i) => inside.some((b, j) => j > i && sideBySide(a.bbox, b.bbox)))) continue;
     const hostArea = Math.max(0, host.bbox[2] - host.bbox[0]) * Math.max(0, host.bbox[3] - host.bbox[1]);
     const covered = inside.reduce((sum, s) => sum + Math.max(0, s.bbox[2] - s.bbox[0]) * Math.max(0, s.bbox[3] - s.bbox[1]), 0);
     if (!(hostArea > 0) || covered < 0.6 * hostArea) continue;
@@ -783,46 +795,128 @@ export function alignVlmText(doc, regions) {
     const hostText = inside.map((b) => b.text).join(" ");
     if (texCommandCount(region.text) >= 2 && texCommandCount(hostText) === 0) continue;
     if (region.pageText) {
-      const parts = placePageText(region.text, inside);
+      const tablesHere = (order || []).map((id) => blocks[id]).filter((b) => b && b.page === region.page && b.type === "table" && b.cells?.length);
+      const parts = placePageText(withoutTableLines(region.text, tablesHere), inside);
       reads.push({ page: region.page, text: region.text, hosts: inside.map((block) => ({ id: block.id, vision: block.text || "" })) });
-      // A caption that shares no word with its slice is a different line.
-      // The slice is kept on the nearest prose host so the transcription
-      // stays in the page, and the caption keeps the reading it already had.
-      const held = [];
-      inside.forEach((block, i) => {
-        const text = parts[i] || "";
-        if (block.type === "caption" && text && block.text && !sharesWord(text, block.text)) {
-          held.push(text);
-          return;
-        }
-        if (text === block.text) return;
-        blocks[block.id] = { ...block, text };
-        applied.push(block.id);
-      });
-      if (held.length) {
-        const host = [...inside].reverse().find((block) => block.type !== "caption" && blocks[block.id]);
-        if (host) {
-          const current = blocks[host.id].text || "";
-          const text = [current, held.join(" ")].filter(Boolean).join(" ");
-          if (text !== current) {
-            blocks[host.id] = { ...blocks[host.id], text };
-            if (!applied.includes(host.id)) applied.push(host.id);
-          }
-        }
-      }
+      settleHosts(inside, parts);
       continue;
     }
     inside.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
     const parts = splitByWidth(region.text, inside.map((b) => Math.max(1, b.bbox[2] - b.bbox[0])));
-    inside.forEach((block, i) => {
-      const text = parts[i] || "";
-      if (!text || text === block.text) return;
+    const spare = settleHosts(inside, parts);
+    // A strip read on its own whose only host is a caption it is not: the
+    // strip's line (a running head beside a figure label) becomes its own line.
+    if (spare && spare.replace(/\s/g, "").length >= 8) {
+      if (order === doc.order) order = [...(doc.order || [])];
+      const id = `vlmtext-p${region.page}-${applied.length + 1}`;
+      blocks[id] = { id, type: "para", page: region.page, bbox: region.bbox.map((v) => Math.round(v)), text: spare, confidence: 0.6, engine: "vlm" };
+      const at = order.indexOf(inside[0].id);
+      if (at >= 0) order.splice(at, 0, id);
+      else order.push(id);
+      applied.push(id);
+    }
+  }
+  return { doc: { ...doc, blocks, order }, applied, reads };
+
+  // Write each host's slice. A caption keeps its own reading of its label:
+  // the words of its slice before the label, or a slice that is a different
+  // line, go to the nearest prose host. Returns the words no prose host took.
+  function settleHosts(hosts, parts) {
+    const out = hosts.map((_, i) => parts[i] || "");
+    const before = hosts.map(() => []);
+    const after = hosts.map(() => []);
+    let spare = "";
+    hosts.forEach((block, i) => {
+      if (block.type !== "caption") return;
+      const reading = captionReading(block.text, out[i]);
+      out[i] = reading.text;
+      const moved = [reading.before, reading.held].filter(Boolean).join(" ");
+      if (!moved) return;
+      let k = i - 1;
+      while (k >= 0 && hosts[k].type === "caption") k -= 1;
+      if (k >= 0) { after[k].push(moved); return; }
+      k = i + 1;
+      while (k < hosts.length && hosts[k].type === "caption") k += 1;
+      if (k < hosts.length) before[k].push(moved);
+      else spare = [spare, moved].filter(Boolean).join(" ");
+    });
+    hosts.forEach((block, i) => {
+      const text = [...before[i], out[i], ...after[i]].filter(Boolean).join(" ");
+      if (text === block.text || (!text && block.type === "caption")) return;
       blocks[block.id] = { ...block, text };
       applied.push(block.id);
     });
+    return spare;
   }
-  return { doc: { ...doc, blocks, order }, applied, reads };
 }
+
+function cellTokens(text) {
+  return String(text || "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+}
+
+// The page reader sometimes transcribes a table it was meant to skip. A line
+// of the transcription made of the page's table cells (at least 80% of its
+// words, two or more) is that table, which its table block already holds;
+// placed as prose it would be poured into the paragraph next to the table.
+export function withoutTableLines(text, tables) {
+  if (!tables?.length) return text;
+  const bag = new Map();
+  for (const table of tables) {
+    for (const cell of table.cells || []) for (const t of cellTokens(cell.text)) bag.set(t, (bag.get(t) || 0) + 1);
+  }
+  if (!bag.size) return text;
+  const lines = String(text || "").split("\n");
+  const kept = lines.filter((line) => {
+    const toks = cellTokens(line);
+    if (toks.length < 2) return true;
+    const left = new Map(bag);
+    let hit = 0;
+    for (const t of toks) {
+      const n = left.get(t) || 0;
+      if (n > 0) { hit += 1; left.set(t, n - 1); }
+    }
+    if (hit < 0.8 * toks.length) return true;
+    for (const [t, n] of left) bag.set(t, n);
+    return false;
+  });
+  return kept.length === lines.length ? text : kept.join("\n");
+}
+
+// A figure or table label at the start of a caption: "Fig.3", "FIG. 11.—", "Table IV".
+const CAPTION_LABEL_RE = /^\s*(?:fig(?:ure)?|abb(?:ildung)?|plate|tafel|table|tab)\.?\s*(?:\d+|[IVXLC]+)[a-z]?\b/i;
+
+function labelKey(text) {
+  return String(text || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+// What a caption host keeps of the page reading placed on it. `text` is the
+// caption's new text; `before` are slice words ahead of its label (the line
+// above it, a running head); `held` is a slice that is a different line.
+export function captionReading(own, slice) {
+  const words = String(slice || "").split(/\s+/).filter(Boolean);
+  const mine = String(own || "");
+  if (!words.length) return { text: mine };
+  const label = mine.match(CAPTION_LABEL_RE);
+  if (label) {
+    const key = labelKey(label[0]);
+    for (let i = 0; i < words.length; i++) {
+      const joined = labelKey(words.slice(i, i + 3).join(""));
+      // "Fig.2" is not "Fig.21".
+      if (joined.startsWith(key) && !(/\d$/.test(key) && /^\d/.test(joined.slice(key.length)))) {
+        return { text: words.slice(i).join(" "), before: words.slice(0, i).join(" ") };
+      }
+    }
+    // The reader skipped the label (it sits on the painted-out figure) but read
+    // the caption's line: the label goes back in front of it.
+    const rest = mine.slice(label[0].length);
+    if (sharesWord(slice, rest)) return { text: `${label[0].trim()} ${words.join(" ")}` };
+    return { text: mine, held: words.join(" ") };
+  }
+  // A caption that shares no word with its slice is a different line.
+  if (mine && !sharesWord(slice, mine)) return { text: mine, held: words.join(" ") };
+  return { text: words.join(" ") };
+}
+
 
 function containsPoint(box, c) {
   return c[0] >= box[0] && c[0] <= box[2] && c[1] >= box[1] && c[1] <= box[3];
@@ -1014,6 +1108,29 @@ function interleaved(boxes, pageW, pageH) {
   return false;
 }
 
+// A figure label at the start of a line: "Fig. 11.—", "FIGURE 3", "Abb. 2". A
+// plate label ("Plate IV") names a page of pictures, not one picture.
+const FIGURE_LABEL_RE = /^\s*(?:fig(?:ure)?|abb(?:ildung)?)\.?\s*(?:\d+|[IVXLC]+)[a-z]?\b/i;
+// "Figs. 3 and 4", "Figures 2-3": one caption over several figures.
+const FIGURES_LABEL_RE = /^\s*(?:figs\.?|figures|abbildungen)\s/i;
+
+// The local figure `id` has a caption that names one figure, and no other
+// figure label sits inside its box (a second caption would make two pictures).
+function captionNamesOne(blocks, id, order, page) {
+  const figure = blocks[id];
+  const caption = figure?.caption ? blocks[figure.caption] : null;
+  const text = String(caption?.text || "");
+  if (!FIGURE_LABEL_RE.test(text) || FIGURES_LABEL_RE.test(text)) return false;
+  const box = figure.bbox;
+  return !order.some((oid) => {
+    const b = blocks[oid];
+    if (!b || oid === caption.id || b.page !== page || !b.bbox || b.type === "figure" || b.type === "table") return false;
+    const cx = (b.bbox[0] + b.bbox[2]) / 2;
+    const cy = (b.bbox[1] + b.bbox[3]) / 2;
+    return cx >= box[0] && cx <= box[2] && cy >= box[1] && cy <= box[3] && FIGURE_LABEL_RE.test(String(b.text || ""));
+  });
+}
+
 export function applyLayoutFigures(doc, layout, pages) {
   const seen = new Set(pages || []);
   if (!doc || !seen.size) return { doc, applied: [] };
@@ -1072,7 +1189,11 @@ export function applyLayoutFigures(doc, layout, pages) {
         if (!over.length) { removed.add(id); continue; }
         const strong = over.filter((i) => insideShare(boxes[i], L) >= 0.7 && area(boxes[i]) >= 0.2 * area(L));
         const textShare = others.reduce((sum, b) => sum + interArea(b, L), 0) / area(L);
-        if (strong.length >= 2 || textShare >= 0.5) {
+        // Panels of one captioned figure ("Fig. 11.—Graphs of ...", two graphs
+        // over one caption) are not separate pictures: the split is for a box
+        // the ink joined across a border, which no single caption names.
+        const panels = strong.length >= 2 && captionNamesOne(blocks, id, order, n);
+        if ((strong.length >= 2 && !panels) || textShare >= 0.5) {
           const use = strong.length >= 2 ? strong : over;
           use.forEach((i, k) => { next.push({ box: boxes[i], host: k === 0 ? id : null }); spent.add(i); });
           removed.add(id);

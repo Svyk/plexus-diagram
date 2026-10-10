@@ -14151,7 +14151,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 35;
+    PARSE_REV = 36;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -47069,18 +47069,21 @@ function plainNumber(text3) {
   s = s.replace(/[{}]/g, "").trim();
   s = s.normalize("NFD").replace(/\u0304/g, "");
   if (scientificFactor(s)) return true;
-  return /^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(s);
+  return /^[+-]?(?:\d+\.?\d*|\.\d+|\d{1,3}(?:,\d{3})+(?:\.\d+)?)$/.test(s);
 }
 function plainPhrase(text3) {
   return /^[A-Za-z][A-Za-z .,'’()/-]{0,80}$/.test(String(text3 || "").trim());
 }
-function effectiveHeader(table) {
+function effectiveHeader(table, reading = true) {
   const marked = table?.headerRows || 0;
-  if (marked) return marked;
-  return (table?.cells || []).some((cell) => cell.r === 0 && String(cell.text || "").trim()) ? 1 : 0;
+  if (marked || !reading) return marked;
+  const heads = (table?.cells || []).filter((cell) => cell.r === 0 && String(cell.text || "").trim());
+  if (!heads.length) return 0;
+  const span = Math.max(1, ...heads.map((cell) => cell.rowSpan || 1));
+  return Math.max(1, Math.min(span, (table?.rows || 0) - 1));
 }
-function filledShare(table) {
-  const header = effectiveHeader(table);
+function filledShare(table, reading) {
+  const header = effectiveHeader(table, reading);
   const rows = table?.rows || 0;
   const cols = table?.cols || 0;
   if (!rows || !cols) return 1;
@@ -47099,8 +47102,8 @@ function filledShare(table) {
   }
   return n2 ? 1 - empty / n2 : 1;
 }
-function tidyShare(table) {
-  const header = effectiveHeader(table);
+function tidyShare(table, reading) {
+  const header = effectiveHeader(table, reading);
   let n2 = 0;
   let ok = 0;
   for (const cell of table?.cells || []) {
@@ -47124,8 +47127,8 @@ function isDebris(text3) {
   if (/\d/.test(raw)) return true;
   return /^[~^`'?]$/.test(raw);
 }
-function debrisShare(table) {
-  const header = effectiveHeader(table);
+function debrisShare(table, reading) {
+  const header = effectiveHeader(table, reading);
   let n2 = 0;
   let bad = 0;
   for (const cell of table?.cells || []) {
@@ -47138,12 +47141,13 @@ function debrisShare(table) {
   }
   return n2 ? bad / n2 : 0;
 }
-function singleValues(table) {
+function singleValues(table, reading) {
+  const header = effectiveHeader(table, reading);
   let n2 = 0;
   let packed = 0;
   for (const cell of table?.cells || []) {
     if ((cell.colSpan || 1) > 1) continue;
-    if (cell.header || cell.r < effectiveHeader(table)) continue;
+    if (cell.header || cell.r < header) continue;
     if (scientificFactor(cell.text)) {
       n2 += 1;
       continue;
@@ -47219,7 +47223,7 @@ function evidenceIn(page, box2) {
   const words = (page?.words || []).filter((word) => inside5(word, box2));
   return { words, rows: baselineRows3(words), rules: page?.rules || [], box: box2 };
 }
-function scoreTable(table, evidence) {
+function scoreTable(table, evidence, { reading = false } = {}) {
   const rows = evidence?.rows || [];
   const owner = distinctiveOwners(rows);
   const clean = cleanCoverage(table, rows, owner);
@@ -47244,10 +47248,10 @@ function scoreTable(table, evidence) {
   const colFit = colsTarget ? fit(table?.cols || 0, colsTarget) : 1;
   const numeric = numericConsistency(table || { cells: [], cols: 0, rows: 0, headerRows: 0 });
   const header = headerScore(table || { cells: [], rows: 0 }, rows);
-  const single = singleValues(table || { cells: [] });
-  const tidy = tidyShare(table || { cells: [] });
-  const filled = filledShare(table || { cells: [], rows: 0, cols: 0 });
-  const debris = debrisShare(table || { cells: [] });
+  const single = singleValues(table || { cells: [] }, reading);
+  const tidy = tidyShare(table || { cells: [] }, reading);
+  const filled = filledShare(table || { cells: [], rows: 0, cols: 0 }, reading);
+  const debris = debrisShare(table || { cells: [] }, reading);
   const total = 0.28 * rowCov + 0.16 * rowFit + 0.08 * colFit + 0.12 * numeric + 0.08 * header + 0.14 * single + 0.14 * tidy;
   return { total, rowCov, rowFit, colFit, numeric, header, single, tidy, filled, debris, textRows, rowTarget, body, colsTarget };
 }
@@ -47458,7 +47462,7 @@ function chooseTableReading(rule, vlm, page = {}) {
   }
   const ranked = [];
   if (rule) ranked.push({ choice: "rule", table: rule, score: scoreTable(rule, evidence) });
-  if (vlm) ranked.push({ choice: "vlm", table: vlm, score: scoreTable(vlm, evidence) });
+  if (vlm) ranked.push({ choice: "vlm", table: vlm, score: scoreTable(vlm, evidence, { reading: true }) });
   const merged = mergeReading(rule, vlm);
   if (merged) ranked.push({ choice: "merge", table: merged, score: scoreTable(merged, evidence) });
   ranked.sort((a, b) => b.score.total - a.score.total || (a.choice === "rule" ? -1 : 1));
@@ -47930,6 +47934,13 @@ function gridReading(table) {
   }
   return texts.filter((t) => isNumericToken(t)).length / texts.length >= 0.45;
 }
+function sideBySide(a, b) {
+  const yOver = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  const xOver = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+  const minH = Math.min(a[3] - a[1], b[3] - b[1]);
+  const minW = Math.min(a[2] - a[0], b[2] - b[0]);
+  return minH > 0 && minW > 0 && yOver >= 0.5 * minH && xOver <= 0.1 * minW;
+}
 function sharedHosts(doc, structures) {
   const out = /* @__PURE__ */ new Map();
   const tables = (doc?.order || []).map((id) => doc.blocks?.[id]).filter((b) => b && b.type === "table" && b.bbox);
@@ -47941,6 +47952,7 @@ function sharedHosts(doc, structures) {
       for (let j = i + 1; j < inside8.length; j += 1) if (iou4(inside8[i].bbox, inside8[j].bbox) >= 0.1) apart = false;
     }
     if (!apart) continue;
+    if (!inside8.some((a, i) => inside8.some((b, j) => j > i && sideBySide(a.bbox, b.bbox)))) continue;
     const hostArea = Math.max(0, host.bbox[2] - host.bbox[0]) * Math.max(0, host.bbox[3] - host.bbox[1]);
     const covered = inside8.reduce((sum, s) => sum + Math.max(0, s.bbox[2] - s.bbox[0]) * Math.max(0, s.bbox[3] - s.bbox[1]), 0);
     if (!(hostArea > 0) || covered < 0.6 * hostArea) continue;
@@ -48350,42 +48362,109 @@ function alignVlmText(doc, regions) {
     const hostText = inside8.map((b) => b.text).join(" ");
     if (texCommandCount(region.text) >= 2 && texCommandCount(hostText) === 0) continue;
     if (region.pageText) {
-      const parts2 = placePageText(region.text, inside8);
+      const tablesHere = (order || []).map((id) => blocks[id]).filter((b) => b && b.page === region.page && b.type === "table" && b.cells?.length);
+      const parts2 = placePageText(withoutTableLines(region.text, tablesHere), inside8);
       reads.push({ page: region.page, text: region.text, hosts: inside8.map((block) => ({ id: block.id, vision: block.text || "" })) });
-      const held = [];
-      inside8.forEach((block, i) => {
-        const text3 = parts2[i] || "";
-        if (block.type === "caption" && text3 && block.text && !sharesWord(text3, block.text)) {
-          held.push(text3);
-          return;
-        }
-        if (text3 === block.text) return;
-        blocks[block.id] = { ...block, text: text3 };
-        applied.push(block.id);
-      });
-      if (held.length) {
-        const host = [...inside8].reverse().find((block) => block.type !== "caption" && blocks[block.id]);
-        if (host) {
-          const current3 = blocks[host.id].text || "";
-          const text3 = [current3, held.join(" ")].filter(Boolean).join(" ");
-          if (text3 !== current3) {
-            blocks[host.id] = { ...blocks[host.id], text: text3 };
-            if (!applied.includes(host.id)) applied.push(host.id);
-          }
-        }
-      }
+      settleHosts(inside8, parts2);
       continue;
     }
     inside8.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
     const parts = splitByWidth(region.text, inside8.map((b) => Math.max(1, b.bbox[2] - b.bbox[0])));
-    inside8.forEach((block, i) => {
-      const text3 = parts[i] || "";
-      if (!text3 || text3 === block.text) return;
+    const spare = settleHosts(inside8, parts);
+    if (spare && spare.replace(/\s/g, "").length >= 8) {
+      if (order === doc.order) order = [...doc.order || []];
+      const id = `vlmtext-p${region.page}-${applied.length + 1}`;
+      blocks[id] = { id, type: "para", page: region.page, bbox: region.bbox.map((v) => Math.round(v)), text: spare, confidence: 0.6, engine: "vlm" };
+      const at = order.indexOf(inside8[0].id);
+      if (at >= 0) order.splice(at, 0, id);
+      else order.push(id);
+      applied.push(id);
+    }
+  }
+  return { doc: { ...doc, blocks, order }, applied, reads };
+  function settleHosts(hosts, parts) {
+    const out = hosts.map((_, i) => parts[i] || "");
+    const before = hosts.map(() => []);
+    const after = hosts.map(() => []);
+    let spare = "";
+    hosts.forEach((block, i) => {
+      if (block.type !== "caption") return;
+      const reading = captionReading(block.text, out[i]);
+      out[i] = reading.text;
+      const moved = [reading.before, reading.held].filter(Boolean).join(" ");
+      if (!moved) return;
+      let k = i - 1;
+      while (k >= 0 && hosts[k].type === "caption") k -= 1;
+      if (k >= 0) {
+        after[k].push(moved);
+        return;
+      }
+      k = i + 1;
+      while (k < hosts.length && hosts[k].type === "caption") k += 1;
+      if (k < hosts.length) before[k].push(moved);
+      else spare = [spare, moved].filter(Boolean).join(" ");
+    });
+    hosts.forEach((block, i) => {
+      const text3 = [...before[i], out[i], ...after[i]].filter(Boolean).join(" ");
+      if (text3 === block.text || !text3 && block.type === "caption") return;
       blocks[block.id] = { ...block, text: text3 };
       applied.push(block.id);
     });
+    return spare;
   }
-  return { doc: { ...doc, blocks, order }, applied, reads };
+}
+function cellTokens(text3) {
+  return String(text3 || "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+}
+function withoutTableLines(text3, tables) {
+  if (!tables?.length) return text3;
+  const bag = /* @__PURE__ */ new Map();
+  for (const table of tables) {
+    for (const cell of table.cells || []) for (const t of cellTokens(cell.text)) bag.set(t, (bag.get(t) || 0) + 1);
+  }
+  if (!bag.size) return text3;
+  const lines = String(text3 || "").split("\n");
+  const kept = lines.filter((line) => {
+    const toks = cellTokens(line);
+    if (toks.length < 2) return true;
+    const left = new Map(bag);
+    let hit = 0;
+    for (const t of toks) {
+      const n2 = left.get(t) || 0;
+      if (n2 > 0) {
+        hit += 1;
+        left.set(t, n2 - 1);
+      }
+    }
+    if (hit < 0.8 * toks.length) return true;
+    for (const [t, n2] of left) bag.set(t, n2);
+    return false;
+  });
+  return kept.length === lines.length ? text3 : kept.join("\n");
+}
+var CAPTION_LABEL_RE = /^\s*(?:fig(?:ure)?|abb(?:ildung)?|plate|tafel|table|tab)\.?\s*(?:\d+|[IVXLC]+)[a-z]?\b/i;
+function labelKey(text3) {
+  return String(text3 || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function captionReading(own, slice) {
+  const words = String(slice || "").split(/\s+/).filter(Boolean);
+  const mine = String(own || "");
+  if (!words.length) return { text: mine };
+  const label = mine.match(CAPTION_LABEL_RE);
+  if (label) {
+    const key = labelKey(label[0]);
+    for (let i = 0; i < words.length; i++) {
+      const joined = labelKey(words.slice(i, i + 3).join(""));
+      if (joined.startsWith(key) && !(/\d$/.test(key) && /^\d/.test(joined.slice(key.length)))) {
+        return { text: words.slice(i).join(" "), before: words.slice(0, i).join(" ") };
+      }
+    }
+    const rest = mine.slice(label[0].length);
+    if (sharesWord(slice, rest)) return { text: `${label[0].trim()} ${words.join(" ")}` };
+    return { text: mine, held: words.join(" ") };
+  }
+  if (mine && !sharesWord(slice, mine)) return { text: mine, held: words.join(" ") };
+  return { text: words.join(" ") };
 }
 function containsPoint(box2, c) {
   return c[0] >= box2[0] && c[0] <= box2[2] && c[1] >= box2[1] && c[1] <= box2[3];
@@ -48531,6 +48610,22 @@ function interleaved(boxes, pageW, pageH) {
   }
   return false;
 }
+var FIGURE_LABEL_RE = /^\s*(?:fig(?:ure)?|abb(?:ildung)?)\.?\s*(?:\d+|[IVXLC]+)[a-z]?\b/i;
+var FIGURES_LABEL_RE = /^\s*(?:figs\.?|figures|abbildungen)\s/i;
+function captionNamesOne(blocks, id, order, page) {
+  const figure = blocks[id];
+  const caption = figure?.caption ? blocks[figure.caption] : null;
+  const text3 = String(caption?.text || "");
+  if (!FIGURE_LABEL_RE.test(text3) || FIGURES_LABEL_RE.test(text3)) return false;
+  const box2 = figure.bbox;
+  return !order.some((oid) => {
+    const b = blocks[oid];
+    if (!b || oid === caption.id || b.page !== page || !b.bbox || b.type === "figure" || b.type === "table") return false;
+    const cx = (b.bbox[0] + b.bbox[2]) / 2;
+    const cy = (b.bbox[1] + b.bbox[3]) / 2;
+    return cx >= box2[0] && cx <= box2[2] && cy >= box2[1] && cy <= box2[3] && FIGURE_LABEL_RE.test(String(b.text || ""));
+  });
+}
 function applyLayoutFigures(doc, layout, pages) {
   const seen = new Set(pages || []);
   if (!doc || !seen.size) return { doc, applied: [] };
@@ -48593,7 +48688,8 @@ function applyLayoutFigures(doc, layout, pages) {
         }
         const strong = over.filter((i) => insideShare(boxes[i], L) >= 0.7 && area(boxes[i]) >= 0.2 * area(L));
         const textShare = others.reduce((sum, b) => sum + interArea(b, L), 0) / area(L);
-        if (strong.length >= 2 || textShare >= 0.5) {
+        const panels = strong.length >= 2 && captionNamesOne(blocks, id, order, n2);
+        if (strong.length >= 2 && !panels || textShare >= 0.5) {
           const use = strong.length >= 2 ? strong : over;
           use.forEach((i, k) => {
             next.push({ box: boxes[i], host: k === 0 ? id : null });

@@ -192,6 +192,9 @@ test("two readings side by side inside one joined rule table replace it with two
   assert.equal(tables.length, 2);
   assert.ok(!out.doc.blocks.t1);
   assert.deepEqual(out.applied.map((a) => a.split), ["t1", "t1"]);
+  // The same readings stacked down the table are bands of one roster, not two tables.
+  const stacked = [read([100, 100, 400, 240], "5"), read([100, 260, 400, 400], "11")];
+  assert.equal(sharedHosts(doc, stacked).size, 0);
 });
 
 test("a stream table under a display-formula box on a text page becomes a formula", () => {

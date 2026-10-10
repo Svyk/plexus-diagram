@@ -248,7 +248,8 @@ function plainNumber(text) {
   // A barred characteristic (2̄.6972) is still that number. The bar stays in the cell.
   s = s.normalize("NFD").replace(/\u0304/g, "");
   if (scientificFactor(s)) return true;
-  return /^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(s);
+  // A printed thousands separator ("1,740", "12,500.5") is a clean number.
+  return /^[+-]?(?:\d+\.?\d*|\.\d+|\d{1,3}(?:,\d{3})+(?:\.\d+)?)$/.test(s);
 }
 
 function plainPhrase(text) {
@@ -256,15 +257,21 @@ function plainPhrase(text) {
 }
 
 // The reader does not mark header cells; its first row is the header when it
-// holds text, as headerScore already assumes. The rule grid marks its own.
-function effectiveHeader(table) {
+// holds text, as headerScore already assumes, and a head cell spanning down
+// ("Variety" over "Treated half" and "Grain | Straw") carries the header over
+// the rows it spans. The rule grid marks its own: an unmarked first row there
+// is a row the grid did not find a header in, often a stray fragment.
+function effectiveHeader(table, reading = true) {
   const marked = table?.headerRows || 0;
-  if (marked) return marked;
-  return (table?.cells || []).some((cell) => cell.r === 0 && String(cell.text || "").trim()) ? 1 : 0;
+  if (marked || !reading) return marked;
+  const heads = (table?.cells || []).filter((cell) => cell.r === 0 && String(cell.text || "").trim());
+  if (!heads.length) return 0;
+  const span = Math.max(1, ...heads.map((cell) => cell.rowSpan || 1));
+  return Math.max(1, Math.min(span, (table?.rows || 0) - 1));
 }
 
-function filledShare(table) {
-  const header = effectiveHeader(table);
+function filledShare(table, reading) {
+  const header = effectiveHeader(table, reading);
   const rows = table?.rows || 0;
   const cols = table?.cols || 0;
   if (!rows || !cols) return 1;
@@ -286,8 +293,8 @@ function filledShare(table) {
 
 // A body cell that is one number or a short phrase. "•0219", "1.20-" and
 // "0. 0305" are the Vision debris a second reading often cleans up.
-function tidyShare(table) {
-  const header = effectiveHeader(table);
+function tidyShare(table, reading) {
+  const header = effectiveHeader(table, reading);
   let n = 0;
   let ok = 0;
   for (const cell of table?.cells || []) {
@@ -319,8 +326,8 @@ function isDebris(text) {
   return /^[~^`'?]$/.test(raw);
 }
 
-function debrisShare(table) {
-  const header = effectiveHeader(table);
+function debrisShare(table, reading) {
+  const header = effectiveHeader(table, reading);
   let n = 0;
   let bad = 0;
   for (const cell of table?.cells || []) {
@@ -335,12 +342,13 @@ function debrisShare(table) {
 }
 
 // Two numbers from one text line stuffed into one cell ("0.15 0.003").
-function singleValues(table) {
+function singleValues(table, reading) {
+  const header = effectiveHeader(table, reading);
   let n = 0;
   let packed = 0;
   for (const cell of table?.cells || []) {
     if ((cell.colSpan || 1) > 1) continue;
-    if (cell.header || cell.r < effectiveHeader(table)) continue;
+    if (cell.header || cell.r < header) continue;
     if (scientificFactor(cell.text)) { n += 1; continue; }
     const nums = tokens(cell.text).filter((token) => /\d/.test(token) && token.replace(/\D/g, "").length >= 2);
     if (!nums.length) continue;
@@ -411,7 +419,8 @@ function evidenceIn(page, box) {
 }
 
 // One candidate against the words and rules inside `box`. Higher is better.
-export function scoreTable(table, evidence) {
+// `reading`: the table is a reader's, whose header rows are not marked.
+export function scoreTable(table, evidence, { reading = false } = {}) {
   const rows = evidence?.rows || [];
   const owner = distinctiveOwners(rows);
   const clean = cleanCoverage(table, rows, owner);
@@ -438,10 +447,10 @@ export function scoreTable(table, evidence) {
   const colFit = colsTarget ? fit(table?.cols || 0, colsTarget) : 1;
   const numeric = numericConsistency(table || { cells: [], cols: 0, rows: 0, headerRows: 0 });
   const header = headerScore(table || { cells: [], rows: 0 }, rows);
-  const single = singleValues(table || { cells: [] });
-  const tidy = tidyShare(table || { cells: [] });
-  const filled = filledShare(table || { cells: [], rows: 0, cols: 0 });
-  const debris = debrisShare(table || { cells: [] });
+  const single = singleValues(table || { cells: [] }, reading);
+  const tidy = tidyShare(table || { cells: [] }, reading);
+  const filled = filledShare(table || { cells: [], rows: 0, cols: 0 }, reading);
+  const debris = debrisShare(table || { cells: [] }, reading);
   const total = 0.28 * rowCov + 0.16 * rowFit + 0.08 * colFit + 0.12 * numeric + 0.08 * header + 0.14 * single + 0.14 * tidy;
   return { total, rowCov, rowFit, colFit, numeric, header, single, tidy, filled, debris, textRows, rowTarget, body, colsTarget };
 }
@@ -702,7 +711,7 @@ export function chooseTableReading(rule, vlm, page = {}) {
   }
   const ranked = [];
   if (rule) ranked.push({ choice: "rule", table: rule, score: scoreTable(rule, evidence) });
-  if (vlm) ranked.push({ choice: "vlm", table: vlm, score: scoreTable(vlm, evidence) });
+  if (vlm) ranked.push({ choice: "vlm", table: vlm, score: scoreTable(vlm, evidence, { reading: true }) });
   const merged = mergeReading(rule, vlm);
   if (merged) ranked.push({ choice: "merge", table: merged, score: scoreTable(merged, evidence) });
   ranked.sort((a, b) => b.score.total - a.score.total || (a.choice === "rule" ? -1 : 1));

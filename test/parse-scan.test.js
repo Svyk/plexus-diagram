@@ -11,7 +11,7 @@ import {
 } from "../src/model/parse/ocr-fix.js";
 import { chooseTable, mergeOcrDocument, scanPagesOf } from "../src/model/parse/ocr-merge.js";
 import { createHelperClient } from "../src/host/parse-helper-client.js";
-import { alignVlmText, applyLayoutFigures, linkLayoutCaptions } from "../src/model/parse/vlm-tables.js";
+import { alignVlmText, applyLayoutFigures, captionReading, linkLayoutCaptions, withoutTableLines } from "../src/model/parse/vlm-tables.js";
 import { readScan } from "../src/view/parse-engine.js";
 import { buildLines } from "../src/model/parse/lines.js";
 import { visualRows } from "../src/model/parse/stream.js";
@@ -1407,4 +1407,78 @@ test("parse view shows Read the scan only for scan pages with a ready helper", a
   const noHelper = createParseView({ doc: docEl, helper: null });
   noHelper.showDoc(parsed);
   assert.equal(noHelper.element().querySelector(".pxd-parse__scan").hidden, true, "hidden without a helper");
+});
+
+test("alignVlmText: a caption keeps its label; the page words before it and a different strip line go elsewhere", () => {
+  const doc = {
+    order: ["c", "p"],
+    blocks: {
+      c: { id: "c", type: "caption", page: 1, bbox: [480, 52, 520, 65], text: "Fig.2" },
+      p: { id: "p", type: "para", page: 1, bbox: [40, 600, 520, 640], text: "Ice on positive pitot head" },
+    },
+  };
+  // The page reader read the running head before the label; the label alone is too short to anchor.
+  const page = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 600, 700], text: "N.A.C.A. Technical Note No.313 Fig.2 Ice on positive pitot head", pageText: true }]);
+  assert.ok(page.doc.blocks.c.text.startsWith("Fig.2"), page.doc.blocks.c.text);
+  assert.ok(!page.doc.blocks.c.text.includes("Technical"));
+  assert.ok(page.doc.blocks.p.text.includes("Technical Note No.313"));
+  // A strip read on its own over the label: the running head is a line of its own.
+  const strip = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 600, 60], text: "N.A.O.A. Technical Note No.244" }]);
+  assert.equal(strip.doc.blocks.c.text, "Fig.2");
+  const added = strip.doc.order.map((id) => strip.doc.blocks[id]).find((b) => b.engine === "vlm");
+  assert.equal(added?.text, "N.A.O.A. Technical Note No.244");
+  assert.ok(strip.doc.order.indexOf(added.id) < strip.doc.order.indexOf("c"));
+  // The reader skipped the label on the painted-out figure but read the caption's line.
+  const merged = {
+    order: ["c"],
+    blocks: { c: { id: "c", type: "caption", page: 1, bbox: [95, 532, 410, 547], text: "Fig. 1 ment. As stated above, the Government depart-" } },
+  };
+  const skipped = alignVlmText(merged, [{ page: 1, bbox: [0, 0, 600, 700], text: "ment. As stated above, the Government depart-", pageText: true }]);
+  assert.equal(skipped.doc.blocks.c.text, "Fig. 1 ment. As stated above, the Government depart-");
+  // "Fig.2" is not found inside "Fig.21".
+  assert.equal(captionReading("Fig.2", "see Fig.21 here").held, "see Fig.21 here");
+});
+
+test("applyLayoutFigures on a scan: two panels over one figure caption stay one figure", () => {
+  const doc = {
+    pages: [{ n: 1, w: 400, h: 600, ocr: true, kind: "mixed" }],
+    order: ["f1", "a", "c1"],
+    blocks: {
+      f1: { id: "f1", type: "figure", page: 1, bbox: [100, 120, 290, 400], caption: "c1", image: { kind: "crop", source: "drawing" } },
+      a: { id: "a", type: "para", page: 1, bbox: [190, 124, 200, 136], text: "A" },
+      c1: { id: "c1", type: "caption", page: 1, bbox: [60, 398, 340, 408], text: "FIG. 11.—Graphs of pressure for different lengths", for: "f1" },
+    },
+  };
+  const layout = [
+    { page: 1, label: "chart", score: 0.94, bbox: [101, 140, 285, 254] },
+    { page: 1, label: "chart", score: 0.97, bbox: [101, 285, 285, 394] },
+  ];
+  const one = applyLayoutFigures(doc, layout, [1]);
+  const figs = one.doc.order.map((id) => one.doc.blocks[id]).filter((b) => b.type === "figure");
+  assert.deepEqual(figs.map((f) => f.bbox), [[100, 120, 290, 400]]);
+  // A second figure label inside the box: two figures, the split stands.
+  const two = structuredClone(doc);
+  two.blocks.a.text = "Fig. 10.";
+  const split = applyLayoutFigures(two, layout, [1]);
+  assert.equal(split.doc.order.map((id) => split.doc.blocks[id]).filter((b) => b.type === "figure").length, 2);
+});
+
+test("alignVlmText leaves out page-reader lines that are the page's table", () => {
+  const doc = {
+    order: ["p", "t", "q"],
+    blocks: {
+      p: { id: "p", type: "para", page: 1, bbox: [0, 0, 300, 10], text: "Wir haben fur Sie geoffnet" },
+      t: { id: "t", type: "table", page: 1, bbox: [0, 20, 300, 60], rows: 2, cols: 2, cells: [
+        { r: 0, c: 0, text: "Dienstag:" }, { r: 0, c: 1, text: "12.00 - 17.00 Uhr" },
+        { r: 1, c: 0, text: "Sonntag:" }, { r: 1, c: 1, text: "12.00 - 17.00 Uhr" },
+      ] },
+      q: { id: "q", type: "para", page: 1, bbox: [0, 70, 300, 80], text: "Festnetz 030" },
+    },
+  };
+  const text = "Wir haben für Sie geöffnet\nDienstag: 12.00 – 17.00 Uhr\nSonntag: 12.00 – 17.00 Uhr\nFestnetz: 030";
+  const out = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 300, 80], text, pageText: true }]);
+  assert.equal(out.doc.blocks.p.text, "Wir haben für Sie geöffnet");
+  assert.equal(out.doc.blocks.q.text, "Festnetz: 030");
+  // A prose line that shares one number with a cell stays.
+  assert.equal(withoutTableLines("the shop opens at 12.00 daily", [doc.blocks.t]), "the shop opens at 12.00 daily");
 });

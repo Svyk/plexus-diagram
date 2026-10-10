@@ -225,3 +225,22 @@ test("a column head wrapped over four short lines does not cost the reading its 
   assert.ok(decision.scores.vlm.rowCov >= decision.scores.rule.rowCov, JSON.stringify(decision.scores));
   assert.equal(decision.choice, "vlm");
 });
+
+test("a range cut at its dash goes back onto its number and the spare column is dropped", async () => {
+  const { foldSplitRanges, dropLeaderColumn } = await import("../src/model/parse/ocr-fix.js");
+  const cells = [];
+  const rows = [["Aether", "0,724", "-0,728", "0,728"], ["Acidum", "1,041—1,045", null, "1,042"], ["Alcohol", "0,892-", "-0,896", "0,894"], ["Aqua", "1,000", "", "1,000"]];
+  rows.forEach((row, r) => {
+    cells.push({ r, c: 0, rowSpan: 1, colSpan: 1, text: row[0], header: false });
+    if (row[2] === null) cells.push({ r, c: 1, rowSpan: 1, colSpan: 2, text: row[1], header: false });
+    else { cells.push({ r, c: 1, rowSpan: 1, colSpan: 1, text: row[1], header: false }); cells.push({ r, c: 2, rowSpan: 1, colSpan: 1, text: row[2], header: false }); }
+    cells.push({ r, c: 3, rowSpan: 1, colSpan: 1, text: row[3], header: false });
+  });
+  const table = { method: "stream", rows: 4, cols: 4, headerRows: 0, cells, grid: { xs: [0, 60, 100, 130, 170], ys: [] } };
+  foldSplitRanges(table);
+  assert.equal(cells.find((k) => k.r === 0 && k.c === 1).text, "0,724-0,728");
+  assert.equal(cells.find((k) => k.r === 2 && k.c === 1).text, "0,892-0,896");
+  dropLeaderColumn(table);
+  assert.equal(table.cols, 3);
+  assert.equal(cells.find((k) => k.r === 1 && k.c === 1).colSpan, 1);
+});

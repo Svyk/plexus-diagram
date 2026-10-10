@@ -894,8 +894,10 @@ export function dropLeaderColumn(table) {
   if ((table.cols || 0) < 3 || (table.rows || 0) < 3) return;
   for (let c = table.cols - 1; c >= 0; c--) {
     const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && String(k.text || "").trim());
-    if (!cells.length || cells.length > Math.max(1, 0.25 * table.rows)) continue;
-    if (!cells.every((k) => /^[-–—−_.·…]+$/.test(String(k.text).trim()))) continue;
+    if (cells.length > Math.max(1, 0.25 * table.rows)) continue;
+    // A column with no text at all (the leader dots OCR left out, a gap the
+    // tokeniser cut twice) is no column either.
+    if (cells.length && !cells.every((k) => /^[-–—−_.·…]+$/.test(String(k.text).trim()))) continue;
     if (table.cells.some((k) => k.c === c && (k.colSpan || 1) > 1 && /[A-Za-z0-9]/.test(String(k.text || "")))) continue;
     deleteColumn(table, c);
   }
@@ -927,8 +929,36 @@ function foldLoneTailColumn(table) {
   deleteColumn(table, c);
 }
 
+// A range printed "0,724-0,728" that the tokeniser cut at the dash lands in two
+// columns while the ranges that stayed whole span both. The dash-led half goes
+// back onto its number; the column it leaves is then empty and is dropped.
+export function foldSplitRanges(table) {
+  if ((table.cols || 0) < 3 || (table.rows || 0) < 4) return;
+  const at = (r, c) => table.cells.find((k) => k.r === r && k.c === c);
+  for (let c = table.cols - 1; c >= 1; c--) {
+    let spanned = 0;
+    const halves = [];
+    for (let r = 0; r < table.rows; r++) {
+      const left = at(r, c - 1);
+      if (left && (left.colSpan || 1) >= 2) { spanned++; continue; }
+      const cell = at(r, c);
+      const text = String(cell?.text || "").trim();
+      // A row with nothing in the column supports the fold like a spanned one.
+      if (!text) { spanned++; continue; }
+      if (/^[-–—−]\s*\d[\d.,]*$/.test(text) && left && (left.colSpan || 1) === 1 && /^\d[\d.,]*[-–—−]?$/.test(String(left.text || "").trim())) halves.push({ cell, left });
+      else { halves.length = 0; spanned = -1; break; }
+    }
+    if (spanned < 0 || !halves.length || spanned + halves.length < 0.8 * table.rows) continue;
+    for (const { cell, left } of halves) {
+      left.text = `${String(left.text).trim().replace(/[-–—−]$/, "")}${String(cell.text).trim()}`;
+      cell.text = "";
+    }
+  }
+}
+
 export function normalizeStreamPiece(table) {
   if (!table?.cells?.length) return table;
+  foldSplitRanges(table);
   dropLeaderColumn(table);
   joinSplitDates(table);
   foldLoneTailColumn(table);

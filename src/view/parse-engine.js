@@ -7,7 +7,7 @@ import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lin
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
 import { voteOcrBodies } from "../model/parse/ocr-vote.js";
 import { evidenceFromRecords } from "../model/parse/vlm-arbitrate.js";
-import { alignVlmText, applyVlmTables, tableRegions } from "../model/parse/vlm-tables.js";
+import { alignVlmText, applyVlmTables, keepTextLayerReads, tableRegions } from "../model/parse/vlm-tables.js";
 
 const GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
 
@@ -87,16 +87,33 @@ export function createEngine({ pdfjs = detectPdfjs() } = {}) {
 // reading of each table has the better numeric columns; then cells the repair could not read
 // are sent back for a 3x re-read. Doubtful text lines of in-browser OCR pages are read again
 // first (rereadLines). No graph access, no writes.
+// Born-digital pages are not scans, so High accuracy never OCR'd them and the
+// layout model never saw their tables. These are the pages it should still read.
+function textLayerPages(doc, { from, to } = {}) {
+  return (doc?.pages || []).filter((p) => {
+    if (!p || p.ocr || p.scanLayer || p.kind === "scan") return false;
+    if (p.kind !== "text" && p.kind !== "mixed") return false;
+    if (from && p.n < from) return false;
+    if (to && p.n > to) return false;
+    return true;
+  }).map((p) => p.n);
+}
+
 export async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true, alt = null } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n) => !from || !to || (n >= from && n <= to));
-  if (!wanted.length) return { doc: base, choices: [], rereads: [], pages: [] };
+  const high = helper.vlmHigh === true && typeof helper.vlm === "function";
+  const layerPages = high ? textLayerPages(base, { from, to }).filter((n) => !wanted.includes(n)) : [];
+  if (!wanted.length && !layerPages.length) return { doc: base, choices: [], rereads: [], pages: [] };
   const throwIfAborted = () => { if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" }); };
-  onPhase?.({ phase: "ocr", pages: wanted });
-  const gotRaw = await helper.ocr({ bytes, sha256, pages: wanted, signal });
-  throwIfAborted();
-  let got = gotRaw;
-  if (alt && typeof alt.ocr === "function" && gotRaw?.pages) {
+  let got = null;
+  if (wanted.length) {
+    onPhase?.({ phase: "ocr", pages: wanted });
+    const gotRaw = await helper.ocr({ bytes, sha256, pages: wanted, signal });
+    throwIfAborted();
+    got = gotRaw;
+  }
+  if (wanted.length && alt && typeof alt.ocr === "function" && got?.pages) {
     let words = null;
     try { words = typeof lexicon === "function" ? await lexicon({ signal }) : lexicon; } catch { words = null; }
     throwIfAborted();
@@ -108,11 +125,13 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
       if (error?.name === "AbortError") throw error;
     }
     throwIfAborted();
-    got = { ...gotRaw, pages: voteOcrBodies(gotRaw.pages, otherPages, words instanceof Set ? words : null) };
+    got = { ...got, pages: voteOcrBodies(got.pages, otherPages, words instanceof Set ? words : null) };
   }
   const ask = (req) => helper.ocr({ bytes, sha256, cells: req, signal });
-  let merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
-  const lined = lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
+  let merged = wanted.length
+    ? mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 })
+    : { doc: base, choices: [], records: records || [] };
+  const lined = wanted.length && lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
   if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
@@ -122,17 +141,21 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   // High accuracy: layout boxes, then PaddleOCR-VL. A helper that only advertised
   // vlm-tables still re-reads the rule boxes. A mock that implements ocr() alone
   // must not be asked. A failed reading leaves the rule-assembly tables.
-  const high = helper.vlmHigh === true && typeof helper.vlm === "function";
-  if (high || (helper.vlmTables === true && typeof helper.tables === "function")) {
-    const regions = tableRegions(doc, wanted);
+  // Text-layer pages are included here and not in the OCR pass: the text stays
+  // the text layer, and a layout table is kept only when the page already says
+  // those words or a rule table already covers the box.
+  const vlmPages = [...wanted, ...layerPages];
+  if ((high || (helper.vlmTables === true && typeof helper.tables === "function")) && vlmPages.length) {
+    const regions = tableRegions(doc, vlmPages);
     try {
       if (high) {
         onPhase?.({ phase: "vlm", count: regions.length, mode: "high" });
         const read = await helper.vlm({
-          bytes, sha256, pages: wanted, tables: regions, text: options.vlmText === true, signal,
+          bytes, sha256, pages: vlmPages, tables: regions, text: options.vlmText === true, signal,
         });
         throwIfAborted();
-        const applied = applyVlmTables(doc, read?.tables || [], {
+        const structures = keepTextLayerReads(doc, read?.tables || [], wanted);
+        const applied = applyVlmTables(doc, structures, {
           method: read?.model || "vlm",
           arbitrate: true,
           evidence: evidenceFromRecords(next),

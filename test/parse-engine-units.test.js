@@ -413,6 +413,105 @@ test("detectStreamRuns rejects a paragraph laid out as long phrase cells", () =>
   ] }), false);
 });
 
+test("detectStreamRuns joins a wrapped unit name to the factor row under it", () => {
+  const lineAt = (base, cells) => {
+    const words = [];
+    for (const [text, x] of cells) {
+      let at = x;
+      for (const bit of text.split(" ")) {
+        words.push({ text: bit, x0: at, x1: at + bit.length * 4.2, base, size: 9, y0: base - 7, y1: base + 2, bold: false, mathChars: 0, mathFontChars: 0 });
+        at += bit.length * 4.2 + 2.4;
+      }
+    }
+    return { words, text: words.map((w) => w.text).join(" "), x0: words[0].x0, x1: words.at(-1).x1, y0: base - 7, y1: base + 2, base, size: 9 };
+  };
+  const items = detectStreamRuns([
+    lineAt(100, [["To convert from", 40], ["to", 280], ["Multiply by", 460]]),
+    lineAt(112, [["abampere", 40], ["ampere (A)", 280], ["1.0 E+01", 460]]),
+    lineAt(124, [["abcoulomb", 40], ["coulomb (C)", 280], ["1.0 E+01", 460]]),
+    lineAt(136, [["abfarad", 40], ["farad (F)", 280], ["1.0 E+09", 460]]),
+    lineAt(148, [["British thermal unit of heat per hour square foot degree", 40]]),
+    lineAt(160, [["[Btu]", 40], ["watt per kelvin", 280], ["1.730 735 E+00", 460]]),
+  ]);
+  const tables = items.filter((t) => !t.type || t.type === "table");
+  assert.equal(tables.length, 1);
+  assert.ok(tables[0].rows >= 5);
+  assert.equal(tables[0].cells.some((c) => c.text.includes("British") && c.text.includes("Btu")), true);
+});
+
+test("detectStreamRuns keeps a conversion table with long names and a scientific factor", () => {
+  const lineAt = (base, cells) => {
+    const words = [];
+    for (const [text, x] of cells) {
+      let at = x;
+      for (const bit of text.split(" ")) {
+        words.push({ text: bit, x0: at, x1: at + bit.length * 4.2, base, size: 9, y0: base - 7, y1: base + 2, bold: false, mathChars: 0, mathFontChars: 0 });
+        at += bit.length * 4.2 + 2.4;
+      }
+    }
+    return { words, text: words.map((w) => w.text).join(" "), x0: words[0].x0, x1: words.at(-1).x1, y0: base - 7, y1: base + 2, base, size: 9 };
+  };
+  const items = detectStreamRuns([
+    lineAt(100, [["To convert from", 40], ["to", 280], ["Multiply by", 460]]),
+    lineAt(112, [["abampere", 40], ["ampere (A)", 280], ["1.0 E+01", 460]]),
+    lineAt(124, [["acceleration of free fall", 40], ["meter per second squared", 280], ["9.806 65 E+00", 460]]),
+    lineAt(136, [["acre foot based on the survey", 40], ["cubic meter (m)", 280], ["1.233 489 E+03", 460]]),
+    lineAt(148, [["bar", 40], ["pascal (Pa)", 280], ["1.0 E+05", 460]]),
+  ]);
+  const tables = items.filter((t) => !t.type || t.type === "table");
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].cols, 3);
+  assert.ok(tables[0].rows >= 4);
+});
+
+test("tokenizeLine splits leader dots into columns and keeps a scientific factor whole", () => {
+  const words = [
+    { text: "abampere", x0: 90, x1: 130 },
+    { text: ".......", x0: 140, x1: 250 },
+    { text: "ampere", x0: 260, x1: 300 },
+    { text: "(A)", x0: 304, x1: 324 },
+    { text: ".......", x0: 330, x1: 450 },
+    { text: "1.0", x0: 460, x1: 478 },
+    { text: "E+01", x0: 486, x1: 520 },
+  ];
+  const tok = tokenizeLine({ words, size: 10, x0: 90, x1: 520 });
+  assert.deepEqual(tok.map((t) => t.text), ["abampere", "ampere (A)", "1.0 E+01"]);
+});
+
+test("tableFromBand keeps sentence-case booktabs body rows apart", () => {
+  const w = (text, x, base) => ({ text, x0: x, x1: x + Math.max(12, text.length * 5), base, size: 10, y0: base - 8, y1: base + 2, bold: false, mathChars: 0, mathFontChars: 0, rowSize: 10 });
+  const words = [w("Quantity", 40, 100), w("Name", 200, 100), w("Symbol", 320, 100)];
+  for (const [i, cells] of [["length", "meter", "m"], ["mass", "kilogram", "kg"], ["time", "second", "s"], ["current", "ampere", "A"]].entries()) {
+    const base = 140 + i * 14;
+    words.push(w(cells[0], 40, base), w(cells[1], 200, base), w(cells[2], 320, base));
+  }
+  const band = { x0: 30, x1: 400, y0: 88, y1: 210, ys: [{ y: 88, full: true }, { y: 118, full: true }, { y: 210, full: true }] };
+  const t = tableFromBand(band, words);
+  assert.ok(t);
+  assert.equal(t.rows, 5);
+  assert.equal(t.cells.some((c) => c.text === "length"), true);
+  assert.equal(t.cells.some((c) => c.text.includes("length") && c.text.includes("mass")), false);
+});
+
+test("detectStreamRuns reads a regression grid as a table, not a formula", () => {
+  const stamp = (line) => {
+    for (const w of line.words) { w.mathChars = w.text.length; w.mathFontChars = w.text.length; }
+    return line;
+  };
+  const head = stamp(row([["(1)", 200], ["(2)", 280], ["(3)", 360], ["(4)", 440]], 100, 10));
+  const data = (a, b, c, d, base) => stamp(row([["MFIs", 40], [a, 200], [b, 280], [c, 360], [d, 440]], base, 10));
+  const items = detectStreamRuns([
+    head,
+    data("0.01", "-0.08", "-0.31", "-0.06", 114),
+    data("(0.06)", "(0.05)", "(0.13)", "(0.07)", 128),
+    data("0.72", "1.20", "0.24", "0.76", 142),
+    data("2735", "2735", "2735", "2735", 156),
+  ], { column: { x0: 30, x1: 500 } });
+  assert.equal(items.some((t) => t.type === "formula"), false);
+  assert.equal(items.filter((t) => !t.type || t.type === "table").length, 1);
+  assert.ok(items[0].rows >= 4);
+});
+
 test("tokenizeLine keeps a footnote letter with its number and leader dots as one token", () => {
   const note = row([["c", 200], ["0.1654", 216]], 100, 10);
   assert.equal(tokenizeLine(note).some((t) => t.text === "c 0.1654"), true);

@@ -62,6 +62,62 @@ function mostlyInside(inner, outer) {
   return (w * h) / area >= 0.7;
 }
 
+function pageTokenBag(doc, page) {
+  const bag = new Set();
+  const add = (text) => {
+    for (const part of String(text || "").toLowerCase().split(/[^a-z0-9.+-]+/)) {
+      if (part.length > 1 || /\d/.test(part)) bag.add(part);
+    }
+  };
+  for (const id of doc?.order || []) {
+    const block = doc.blocks?.[id];
+    if (!block || block.page !== page) continue;
+    if (block.type === "table") for (const cell of block.cells || []) add(cell.text);
+    else if (block.type === "list") for (const item of block.items || []) add(item.text);
+    else add(block.text);
+  }
+  return bag;
+}
+
+function structureTokens(structure) {
+  const bag = new Set();
+  for (const cell of structure?.cells || []) {
+    for (const part of String(cell.text || "").toLowerCase().split(/[^a-z0-9.+-]+/)) {
+      if (part.length > 1 || /\d/.test(part)) bag.add(part);
+    }
+  }
+  return bag;
+}
+
+function overlapsTable(doc, structure) {
+  if (!structure?.bbox) return false;
+  for (const id of doc?.order || []) {
+    const block = doc.blocks?.[id];
+    if (!block || block.type !== "table" || block.page !== structure.page || !block.bbox) continue;
+    if (iou(block.bbox, structure.bbox) >= 0.15 || mostlyInside(block.bbox, structure.bbox) || mostlyInside(structure.bbox, block.bbox)) return true;
+  }
+  return false;
+}
+
+// On a text-layer page the layout model may return a table the rules missed.
+// Keep that reading when its words are already on the page, and keep every
+// reading of a page that was OCR'd (the scan path is unchanged). A reading
+// that overlaps a rule table is kept so arbitration can choose.
+export function keepTextLayerReads(doc, structures, ocrPages) {
+  const ocr = new Set(ocrPages || []);
+  const bags = new Map();
+  return (structures || []).filter((structure) => {
+    if (!structure || ocr.has(structure.page)) return true;
+    if (overlapsTable(doc, structure)) return true;
+    if (!bags.has(structure.page)) bags.set(structure.page, pageTokenBag(doc, structure.page));
+    const cells = structureTokens(structure);
+    if (!cells.size) return false;
+    let hit = 0;
+    for (const token of cells) if (bags.get(structure.page).has(token)) hit += 1;
+    return hit / cells.size >= 0.55;
+  });
+}
+
 export function tableRegions(doc, pages) {
   const want = pages && pages.length ? new Set(pages) : null;
   const out = [];

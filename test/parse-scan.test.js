@@ -674,6 +674,49 @@ test("readScan keeps the rule table when the VLM text does not match, and does n
   assert.equal(blew, false);
 });
 
+test("readScan high accuracy reads a text-layer page with the layout model and does not OCR it", async () => {
+  const base = {
+    pages: [{ n: 1, kind: "text", ocr: false, scanLayer: false }],
+    order: ["p"],
+    blocks: { p: { id: "p", type: "para", page: 1, bbox: [40, 100, 400, 200], text: "length meter mass kilogram time second" } },
+  };
+  let ocrPages = false;
+  let vlmPages = null;
+  const out = await readScan({
+    helper: {
+      vlmHigh: true,
+      async ocr(req) {
+        if (req.pages) { ocrPages = true; throw new Error("must not ocr the text layer"); }
+        return { cells: [] };
+      },
+      async vlm(req) {
+        vlmPages = req.pages;
+        return {
+          model: "vlm",
+          tables: [
+            {
+              page: 1, bbox: [40, 100, 400, 220], rows: 3, cols: 2,
+              cells: [
+                { r: 0, c: 0, text: "length" }, { r: 0, c: 1, text: "meter" },
+                { r: 1, c: 0, text: "mass" }, { r: 1, c: 1, text: "kilogram" },
+                { r: 2, c: 0, text: "time" }, { r: 2, c: 1, text: "second" },
+              ],
+            },
+            { page: 1, bbox: [40, 300, 200, 360], rows: 1, cols: 1, cells: [{ r: 0, c: 0, text: "hallucinated zebra" }] },
+          ],
+        };
+      },
+    },
+    base, records: [], lines: false,
+  });
+  assert.equal(ocrPages, false);
+  assert.deepEqual(vlmPages, [1]);
+  const tables = out.doc.order.map((id) => out.doc.blocks[id]).filter((b) => b && b.type === "table");
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].cells.some((c) => c.text === "length"), true);
+  assert.equal(JSON.stringify(tables[0].cells).includes("zebra"), false);
+});
+
 test("readScan with nothing to read returns the base untouched", async () => {
   const base = { pages: [{ n: 1, kind: "text" }], order: [], blocks: {} };
   const out = await readScan({ helper: { ocr: async () => { throw new Error("must not call"); } }, base, records: [] });

@@ -8,14 +8,50 @@ import { equationRowSignals } from "./formulas.js";
 
 const GAP_MIN = 3;
 
+// A name and its leader dots sometimes arrive as one PDF word ("abfarad....").
+// Split that word when the dots actually touch the next column, so the name's box
+// does not swallow it. A trailing run with a real gap stays in the word: that is
+// the label the cell is scored on.
+function explodeLeaders(words) {
+  const src = words || [];
+  const out = [];
+  const dot = (p) => /^[.·…]+$/.test(p);
+  for (let i = 0; i < src.length; i++) {
+    const w = src[i];
+    const text = String(w.text || "");
+    if (!/[.·…]{4,}/.test(text) || LEADER_RE.test(text)) { out.push(w); continue; }
+    const parts = text.split(/([.·…]{4,})/).filter(Boolean);
+    const interior = parts.some((p, idx) => dot(p) && parts.slice(0, idx).some((q) => !dot(q)) && parts.slice(idx + 1).some((q) => !dot(q)));
+    const suffix = dot(parts[parts.length - 1]) && parts.every((p, idx) => idx === parts.length - 1 || !dot(p));
+    const prefix = dot(parts[0]) && parts.every((p, idx) => idx === 0 || !dot(p));
+    const next = src[i + 1];
+    const prev = src[i - 1];
+    const touchesNext = !!next && next.x0 - (w.x1 ?? 0) <= 4;
+    const touchesPrev = !!prev && (w.x0 ?? 0) - (prev.x1 ?? 0) <= 4;
+    if (!interior && !(suffix && touchesNext) && !(prefix && touchesPrev)) { out.push(w); continue; }
+    const width = Math.max(0.1, (w.x1 ?? 0) - (w.x0 ?? 0));
+    const chars = Math.max(1, [...text].length);
+    let at = 0;
+    for (const part of parts) {
+      const n = [...part].length;
+      const x0 = (w.x0 ?? 0) + width * (at / chars);
+      at += n;
+      const x1 = (w.x0 ?? 0) + width * (at / chars);
+      out.push({ ...w, text: part, x0, x1 });
+    }
+  }
+  return out;
+}
+
 export function tokenizeLine(line) {
+  line = { ...line, words: explodeLeaders(line.words) };
   const chars = Math.max(1, line.words.reduce((n, w) => n + w.text.length, 0));
   const inkW = line.words.reduce((n, w) => n + (w.x1 - w.x0), 0);
   const charW = inkW / chars || 0.5 * line.size;
   const threshold = Math.max(1.8 * charW, 0.6 * line.size);
   const tokens = [];
   let cur = null;
-  const dots = (s) => /^[.·…]+$/.test(s);
+  const dots = (s) => LEADER_RE.test(s);
   // OCR often leaves only a few points between numeric columns, inside the ordinary
   // word-space threshold, and splits a thousands group more tightly than that.
   // A comma-group ("10," "533,") stays one token. Two numbers a column-gap apart do not.
@@ -33,14 +69,32 @@ export function tokenizeLine(line) {
     if (gap < Math.max(2, 0.5 * (line.size || 8))) return false;
     return /\d/.test(left) && /\d/.test(w.text || "");
   };
+  const dotBag = [];
+  let sawContent = false;
   for (const w of line.words) {
+    // Leader dots are the gap between columns ("abampere .... ampere .... 1.0 E+01"),
+    // not part of either cell. A line that is only dots stays one token (a text rule).
+    if (dots(w.text)) {
+      cur = null;
+      dotBag.push(w);
+      continue;
+    }
     const prev = cur && cur.words[cur.words.length - 1];
-    // A footnote letter sits in the value ("c 0.1654"), and a run of leader dots is one token.
+    // A footnote letter sits in the value ("c 0.1654").
     const glueLetter = cur && cur.words.length === 1 && /^[a-z]$/.test(cur.words[0].text) && isNumericText(w.text) && w.x0 - cur.x1 < 1.2 * (line.size || 10);
-    const glueDots = prev && dots(prev.text) && dots(w.text);
-    if (cur && !columnGap(cur, w) && (w.x0 - cur.x1 < threshold || glueLetter || glueDots)) { cur.words.push(w); cur.x1 = Math.max(cur.x1, w.x1); }
+    // "1.0 E+01" and a spaced mantissa ("1.441 314") are one factor, even when the
+    // gap is wider than an ordinary word space. A comma-grouped integer beside the
+    // next column ("2,160,937" / "100") is not a mantissa.
+    const mantissa = /^\d+\.\d+$/.test(String(prev?.text || "").trim());
+    const sci = cur && w.x0 - cur.x1 <= 1.5 * (line.size || 10) && (
+      (/^E[+\-−]?\d+$/.test(w.text) && /\d/.test(prev?.text || ""))
+      || (/^\d{3}$/.test(w.text) && mantissa)
+    );
+    if (cur && !columnGap(cur, w) && (w.x0 - cur.x1 < threshold || glueLetter || sci)) { cur.words.push(w); cur.x1 = Math.max(cur.x1, w.x1); }
     else { cur = { x0: w.x0, x1: w.x1, words: [w] }; tokens.push(cur); }
+    sawContent = true;
   }
+  if (!sawContent && dotBag.length) tokens.push({ x0: dotBag[0].x0, x1: dotBag[dotBag.length - 1].x1, words: dotBag });
   for (const t of tokens) t.text = t.words.map((w) => w.text).join(" ");
   return tokens;
 }
@@ -59,6 +113,69 @@ export function projectColumns(rows) {
     else cols.push({ x0: a, x1: b });
   }
   return cols;
+}
+
+// A long cell overlaps the next column, so the two intervals merge. The next column is
+// still there: its tokens start on one shared edge. Cut the merged interval at that edge.
+function splitAtAlignedStarts(tokenRows, cols, size) {
+  const tol = Math.max(8, 1.5 * (size || 10));
+  const out = [];
+  const rowsN = tokenRows.length;
+  for (const col of cols) {
+    const starts = [];
+    for (const tokens of tokenRows) {
+      for (const t of tokens) {
+        if (t.x0 < col.x0 + (size || 10) || t.x0 > col.x1 - (size || 10)) continue;
+        starts.push(t.x0);
+      }
+    }
+    starts.sort((a, b) => a - b);
+    const clusters = [];
+    for (const x of starts) {
+      const c = clusters[clusters.length - 1];
+      if (c && x <= c.mean + tol) { c.xs.push(x); c.mean = c.xs.reduce((s, v) => s + v, 0) / c.xs.length; }
+      else clusters.push({ mean: x, xs: [x] });
+    }
+    // A long cell overlaps the next column, so the projection merged them. The next
+    // column's tokens still share a start. A right-aligned column with a positive gap
+    // is left for the whitespace splitter.
+    const cuts = clusters.filter((c) => c.xs.length >= Math.max(3, 0.55 * rowsN)).map((c) => c.mean).filter((cut) => {
+      const gaps = [];
+      for (const tokens of tokenRows) {
+        const starter = tokens.find((t) => Math.abs(t.x0 - cut) <= tol);
+        if (!starter) continue;
+        const left = tokens.filter((t) => t !== starter && t.x1 > col.x0 && t.x0 < starter.x0);
+        if (!left.length) continue;
+        const edge = Math.max(...left.map((t) => t.x1));
+        gaps.push(starter.x0 - edge);
+      }
+      if (gaps.length < Math.max(3, 0.55 * rowsN)) return false;
+      // A numeric column under a spanning header has a positive gap. The whitespace
+      // splitter cuts those. This cut is for a word column a long name swallowed
+      // ("ampere (A)" beside "abampere"), where leader dots hide the gap.
+      let words = 0;
+      let seen = 0;
+      for (const tokens of tokenRows) {
+        const starter = tokens.find((t) => Math.abs(t.x0 - cut) <= tol);
+        if (!starter) continue;
+        seen++;
+        if (!isNumericText(String(starter.text || "").trim())) words++;
+      }
+      if (seen < 3 || words < 0.6 * seen) return false;
+      gaps.sort((a, b) => a - b);
+      const med = gaps[gaps.length >> 1];
+      const minGap = Math.max(10, 1.2 * (size || 10));
+      return med < 0 || med >= minGap;
+    }).sort((a, b) => a - b);
+    if (!cuts.length) { out.push(col); continue; }
+    let prev = col.x0;
+    for (const cut of cuts) {
+      if (cut - prev > size) out.push({ x0: prev, x1: cut - 0.5 });
+      prev = cut;
+    }
+    if (col.x1 - prev > 1) out.push({ x0: prev, x1: col.x1 });
+  }
+  return out.length >= cols.length ? out : cols;
 }
 
 // Column separators the coarse projection misses: a band of whitespace that nearly every row
@@ -128,6 +245,10 @@ function splitColumn(rowsIn, col, size) {
     // "15 455": a space as the thousands separator is not a column gap.
     const groups = right.every((w) => /^\d{3}$/.test(w.text)) && left.every((w) => /^\d{1,3}$/.test(w.text));
     if (groups) continue;
+    // "1.0 E+01": the power of ten belongs to the factor, not to a column of its own.
+    const expCount = right.filter((w) => /^E[+\-−–]?\d+$/.test(w.text)).length;
+    const exponent = expCount >= 0.7 * right.length && left.some((w) => /\d/.test(w.text));
+    if (exponent) continue;
     if (tightL || tightR || (numeric(left) && numeric(right))) seps.push({ x0: g0, x1: g1 });
   }
   if (!seps.length) return { cols: [col], seps: [] };
@@ -456,7 +577,9 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   // add; an ordinary grid keeps the header in the projection.
   const useBody = bodyProjected && bodyProjected.length >= fromPage.length + 2;
   const source = useBody ? body : rowsIn;
-  const projected = useBody ? bodyProjected : fromPage;
+  const projectedRaw = useBody ? bodyProjected : fromPage;
+  const splitStarts = splitAtAlignedStarts(source.map((r) => r.tokens), projectedRaw, bodySize);
+  const projected = splitStarts.length > projectedRaw.length ? splitStarts : projectedRaw;
   const aligned = useBody ? alignNumericColumns(source.map((r) => r.tokens), bodySize) : null;
   // Right edges recover columns the body intervals still merged, as when a year
   // range sits against the quantity beside it. A one-column difference is noise.
@@ -469,7 +592,24 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   const cols = refined.cols;
   if (refined.seps.length) for (const r of rowsIn) r.tokens = splitTokensAt(r.tokens, refined.seps);
   const k = cols.length;
-  const placed = rowsIn.map((r) => r.tokens.map((t) => ({ t, ...assignToken(t, cols) })));
+  // A long label overlaps the next column. It stays in the column it starts in when
+  // that next column already has its own token on this row.
+  const placed = rowsIn.map((r) => {
+    const raw = r.tokens.map((t) => ({ t, ...assignToken(t, cols) }));
+    return raw.map((p, i) => {
+      const next = raw[i + 1];
+      if (!next || p.span < 2 || next.c <= p.c || next.c >= p.c + p.span) return p;
+      // A label that runs into the next column is left-heavy. A header centred over
+      // the columns it spans is not, and stays a span.
+      const start = cols[p.c];
+      const end = cols[Math.min(cols.length - 1, p.c + p.span - 1)];
+      const mid = (p.t.x0 + p.t.x1) / 2;
+      const inStart = Math.abs(mid - (start.x0 + start.x1) / 2);
+      const inSpan = Math.abs(mid - (start.x0 + end.x1) / 2);
+      if (inStart + 1 < inSpan) return { ...p, span: next.c - p.c };
+      return p;
+    });
+  });
   let conforming = 0;
   let counted = 0;
   placed.forEach((row) => {
@@ -779,7 +919,7 @@ export function tableFromBand(band, words) {
   if (rowsIn.length < 2) return null;
   // A framed code listing or display equation is not a table; the free pass reads its lines.
   const run = rowsIn.map((r) => ({ row: { words: r.tokens.flatMap((t) => t.words), lines: [] }, tokens: r.tokens }));
-  if (equationRun(run, { x0: band.x0, x1: band.x1 })) return null;
+  if (!numericGrid(run) && equationRun(run, { x0: band.x0, x1: band.x1 })) return null;
   // A framed box of prose and numbered monospace code: rows that are one long token, or a line
   // number plus monospace text, are not table rows; a table needs three others.
   let prose = 0;
@@ -806,15 +946,47 @@ function hasSubRows(words, band) {
   if (base.length < 2) return false;
   let numeric = 0;
   let labels = 0;
+  const soft = [];
   // Placeholders ("-", "NA", "..") stand for values too.
   const value = (t) => isNumericText(t.text) || /^[-–—.]{1,3}$|^n\/?a$/i.test(t.text);
   for (const g of base) {
     const toks = tokenizeLine({ words: [...g.words].sort((a, b) => a.x0 - b.x0), size: g.size });
     if (toks.filter(value).length >= 2) numeric++;
     const first = toks[0];
-    if (toks.length >= 2 && first.x0 - band.x0 <= 1.5 * g.size && /^[A-Z0-9(]/.test(first.text)) labels++;
+    if (!first || toks.length < 2) continue;
+    if (first.x0 - band.x0 > 1.5 * g.size) continue;
+    if (/^[A-Z0-9(]/.test(first.text)) labels++;
+    // Sentence-case rows ("length", "meter", "m") are still a grid when the
+    // second column starts in the same place. A wrapped note does not.
+    const rest = toks.slice(1);
+    const short = rest.every((t) => String(t.text || "").trim().split(/\s+/).length <= 6);
+    if (short && /[\p{L}\p{N}]/u.test(first.text)) soft.push(toks[1].x0);
   }
-  return numeric >= 2 || labels >= 2;
+  if (numeric >= 2 || labels >= 2) return true;
+  if (soft.length < 3) return false;
+  soft.sort((a, b) => a - b);
+  const med = soft[soft.length >> 1];
+  const tol = Math.max(8, 0.8 * (base[0]?.size || 10));
+  const tight = soft.filter((x) => Math.abs(x - med) <= tol).length;
+  return tight >= 3 && tight / soft.length >= 0.6;
+}
+
+// A regression table: several rows of three or more short numbers, including
+// parenthesized standard errors and bracketed p-values. That grid is not a
+// display equation, even when the digits sit in a math font.
+function gridNumber(text) {
+  const s = String(text || "").trim().replace(/[*†‡]+$/u, "");
+  if (isNumericText(s)) return true;
+  return /^\[[\d.,\s]+\]$/.test(s);
+}
+
+function numericGrid(run) {
+  let n = 0;
+  for (const r of run) {
+    const nums = (r.tokens || []).filter((t) => gridNumber(t.text));
+    if (nums.length >= 3) n += 1;
+  }
+  return n >= 4;
 }
 
 // Header baselines without rules between them: stacked fragments of one label merge into a
@@ -901,6 +1073,13 @@ function contentsContinuation(row, tokens, run) {
   return tok.x1 < right - 4;
 }
 
+// A cell value: a plain number, or grouped digits with a power of ten ("9.806 65 E+00").
+function valueToken(text) {
+  const s = String(text || "").trim().replace(/^[.·…\s]+/, "");
+  if (isNumericText(s)) return true;
+  return /^\d[\d\s.,]*\s*E[+\-−]?\d+$/i.test(s);
+}
+
 // A row of prose: many words, long on average, few gap tokens and none of them short.
 export function proseRow(row, tokens, columnWidth = Infinity) {
   const words = row.words;
@@ -909,7 +1088,7 @@ export function proseRow(row, tokens, columnWidth = Infinity) {
   const chars = words.reduce((k, w) => k + w.text.length, 0);
   if (chars / n < 3.5) return false;
   if (Number.isFinite(columnWidth) && row.x1 - row.x0 < 0.6 * columnWidth) return false;
-  const short = tokens.filter((t) => t.words.length <= 2 || isNumericText(t.text)).length;
+  const short = tokens.filter((t) => t.words.length <= 2 || valueToken(t.text)).length;
   return tokens.length === 1 || (tokens.length < n / 2 && short === 0);
 }
 
@@ -1046,7 +1225,7 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
     }
     if (lead) { j--; lead = null; }
     const multi = run.filter((r) => r.tokens.length >= 2).length;
-    if (run.length >= 2) {
+    if (run.length >= 2 && !numericGrid(run)) {
       const eq = equationRun(run, colBox);
       if (eq) { out.push(eq); i = j; continue; }
     }
@@ -1074,7 +1253,27 @@ const TEXT_RULE_RE = /^[-–—_=.·•]{4,}$/;
 // the first line of a wrapped label whose values sit on the next baseline ("lead"), a group
 // label at the left edge, or a group header centred over the columns ("row"); else the run ends.
 function singleTokenRow(row, tokens, run, next, colBox, lead, next2 = null) {
-  if (tokens.length !== 1 || row.words.length > 8 || lead) return null;
+  if (tokens.length !== 1 || lead) return null;
+  // A long unit name wraps onto its own line, and the symbol and factor sit on the next
+  // one ("British thermal unit …" / "[Btu …] watt … 1.73 E+00"). That is still one row.
+  if (row.words.length > 8) {
+    if (!next || next.tokens.length < 3) return null;
+    if (Math.abs(next.row.base - row.base) > 1.8 * Math.max(row.size, next.row.size)) return null;
+    const host = next.tokens[0];
+    const tok = tokens[0];
+    if (!(host.x0 < tok.x1 + 1 && host.x1 > tok.x0 - 1)) return null;
+    const body = run.filter((r) => r.tokens.length >= 3);
+    if (body.length < 3) return null;
+    // The middle column can start late after a long symbol. The factor column does not.
+    const tol = Math.max(8, 0.8 * row.size);
+    const last = next.tokens[next.tokens.length - 1];
+    const hit = body.filter((r) => {
+      const p = r.tokens[r.tokens.length - 1];
+      return Math.abs(p.x1 - last.x1) <= tol || Math.abs(p.x0 - last.x0) <= tol;
+    }).length;
+    if (hit < 0.6 * body.length) return null;
+    return "lead";
+  }
   const tok = tokens[0];
   const near = (a, b) => Math.abs(a.base - b.base) <= 1.6 * Math.max(a.size, b.size);
   const overlapping = (toks) => toks.find((t) => t.x0 < tok.x1 + 1 && t.x1 > tok.x0 - 1);
@@ -1125,6 +1324,15 @@ function mergeRows(lead, cur) {
   row.words.push(...tok.words);
   row.lines.push(...lead.row.lines);
   row.y0 = Math.min(row.y0, lead.row.y0);
+  // The wrapped first line belongs in the cell it sits over, not in a new column.
+  const host = cur.tokens.find((t) => t.x0 < tok.x1 + 1 && t.x1 > tok.x0 - 1);
+  if (host) {
+    host.words.push(...tok.words);
+    host.x0 = Math.min(host.x0, tok.x0);
+    host.x1 = Math.max(host.x1, tok.x1);
+    host.text = [...host.words].sort((a, b) => a.base - b.base || a.x0 - b.x0).map((w) => w.text).join(" ");
+    return { row, tokens: cur.tokens };
+  }
   return { row, tokens: [...cur.tokens, { ...tok }].sort((a, b) => a.x0 - b.x0) };
 }
 
@@ -1249,7 +1457,7 @@ export function phraseTable(table) {
   if (phrases / filled.length > 0.5) return true;
   // The same sentence split one word to a cell: the row joins into a phrase, and almost
   // no cell is a number. A numeric table keeps its values.
-  const numeric = filled.filter((c) => isNumericText(c.text)).length;
+  const numeric = filled.filter((c) => valueToken(c.text)).length;
   if (numeric / filled.length >= 0.2) return false;
   const byRow = new Map();
   for (const c of filled) {
@@ -1267,6 +1475,7 @@ function looksLikeProse(run) {
   for (const r of run) {
     const words = r.row.words.length;
     const chars = r.row.words.reduce((n, w) => n + w.text.length, 0);
+    if (r.tokens.some((t) => valueToken(t.text))) continue;
     if (words >= 6 && chars / words >= 3.5 && r.tokens.length < words / 2) wordy++;
   }
   return wordy >= run.length * 0.5;

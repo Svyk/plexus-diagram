@@ -10,16 +10,19 @@ import hashlib
 from pathlib import Path
 
 # PaddlePaddle/PaddleOCR-VL @ 7fa00a8c55b735ba51ba49a9058f3f9c57a99a11. Apache-2.0.
-# Hashes are of that snapshot, measured from the files the helper loads.
+# Hashes are of the files as the Hub serves them at that revision (PyTorch
+# key names, 620 tensors). mlx-vlm maps the names when it loads, so nothing is
+# rewritten after the download. About 1.9 GB. tests/fixtures/hub-listing.json
+# records the Hub listing these pins are checked against.
 READER_LABEL = "PaddleOCR-VL-0.9B"
 READER_REPO = "PaddlePaddle/PaddleOCR-VL"
 READER_REVISION = "7fa00a8c55b735ba51ba49a9058f3f9c57a99a11"
 READER_LICENCE = "Apache-2.0"
 READER_FILES = {
-    "model.safetensors": {"sha256": "a6d433670e422e64b4403dad2465725e14f7736655b1a1d848ea0809d89b1116", "bytes": 1811260812},
+    "model.safetensors": {"sha256": "3085f1042e184f68f8a412aa0f64f2c4b8562989598bbfba326aaa11fc685de8", "bytes": 1917255968},
     "config.json": {"sha256": "ce7f4565f8b1db78532ad5d1b9ebe55c2139d49bd4cb04778b580a08a598f171", "bytes": 2059},
     "tokenizer.json": {"sha256": "f90f04fd8e5eb6dfa380f37d10c87392de8438dccb6768a2486b5a96ee76dba6", "bytes": 11187679},
-    "tokenizer_config.json": {"sha256": "166973d1c25b8362213b2c8959327308bb9f013e884ee50ebf268c34ab15120e", "bytes": 950},
+    "tokenizer_config.json": {"sha256": "2eb86166750a1ce6aaeb60d12ef7d88a68e5545ee986a2d266bf143ff8d26f3c", "bytes": 185587},
     "preprocessor_config.json": {"sha256": "0c349d1210abce664bdba8986dc0637e94679b1fe90f13fcb18616a6466c4618", "bytes": 641},
     "processor_config.json": {"sha256": "1568858960a9760c54431dae693a6152e601ff55cdf6d2eab97a4a99958faea0", "bytes": 137},
     "chat_template.jinja": {"sha256": "ab4f984a185809daf6d36ebb6efa7a27c5fe7772ed7b0f0cabd3a1b30a2069cd", "bytes": 1472},

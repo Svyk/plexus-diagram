@@ -1,0 +1,248 @@
+{
+ "note": "Recorded Hub tree listings (huggingface.co/api/models/<repo>/tree/<revision>?recursive=true) on 2026-10-10. sha256 is the LFS oid; small files have none.",
+ "repos": [
+  {
+   "repo": "PaddlePaddle/PaddleOCR-VL",
+   "revision": "7fa00a8c55b735ba51ba49a9058f3f9c57a99a11",
+   "files": [
+    {
+     "path": ".eval_results/real5_omnidocbench.yaml",
+     "size": 1418,
+     "sha256": null
+    },
+    {
+     "path": ".gitattributes",
+     "size": 1659,
+     "sha256": null
+    },
+    {
+     "path": "LICENSE",
+     "size": 11376,
+     "sha256": null
+    },
+    {
+     "path": "PP-DocLayoutV2/config.json",
+     "size": 4535,
+     "sha256": null
+    },
+    {
+     "path": "PP-DocLayoutV2/inference.pdiparams",
+     "size": 212170944,
+     "sha256": "45404a84c9fdf91d7bbc94bd47ac4c03649bda84167de04c62bff4726657869a"
+    },
+    {
+     "path": "PP-DocLayoutV2/inference.pdmodel",
+     "size": 1515181,
+     "sha256": "fddd4b4359b95e6f1dd86c86f05e9516517bead9089287681838cdcbf003563b"
+    },
+    {
+     "path": "PP-DocLayoutV2/inference.yml",
+     "size": 1482,
+     "sha256": null
+    },
+    {
+     "path": "README.md",
+     "size": 26406,
+     "sha256": null
+    },
+    {
+     "path": "added_tokens.json",
+     "size": 25381,
+     "sha256": null
+    },
+    {
+     "path": "chat_template.jinja",
+     "size": 1472,
+     "sha256": null
+    },
+    {
+     "path": "config.json",
+     "size": 2059,
+     "sha256": null
+    },
+    {
+     "path": "configuration_paddleocr_vl.py",
+     "size": 8104,
+     "sha256": null
+    },
+    {
+     "path": "generation_config.json",
+     "size": 133,
+     "sha256": null
+    },
+    {
+     "path": "image_processing_paddleocr_vl.py",
+     "size": 25032,
+     "sha256": null
+    },
+    {
+     "path": "inference.yml",
+     "size": 39,
+     "sha256": null
+    },
+    {
+     "path": "model.safetensors",
+     "size": 1917255968,
+     "sha256": "3085f1042e184f68f8a412aa0f64f2c4b8562989598bbfba326aaa11fc685de8"
+    },
+    {
+     "path": "modeling_paddleocr_vl.py",
+     "size": 103889,
+     "sha256": null
+    },
+    {
+     "path": "preprocessor_config.json",
+     "size": 641,
+     "sha256": null
+    },
+    {
+     "path": "processing_paddleocr_vl.py",
+     "size": 12253,
+     "sha256": null
+    },
+    {
+     "path": "processor_config.json",
+     "size": 137,
+     "sha256": null
+    },
+    {
+     "path": "special_tokens_map.json",
+     "size": 1152,
+     "sha256": null
+    },
+    {
+     "path": "tokenizer.json",
+     "size": 11187679,
+     "sha256": "f90f04fd8e5eb6dfa380f37d10c87392de8438dccb6768a2486b5a96ee76dba6"
+    },
+    {
+     "path": "tokenizer.model",
+     "size": 1614363,
+     "sha256": "34ef7db83df785924fb83d7b887b6e822a031c56e15cff40aaf9b982988180df"
+    },
+    {
+     "path": "tokenizer_config.json",
+     "size": 185587,
+     "sha256": null
+    }
+   ]
+  },
+  {
+   "repo": "mlx-community/Qwen3-VL-8B-Instruct-4bit",
+   "revision": "defcdea7cc7a4b0858fea563cbbce171d328e457",
+   "files": [
+    {
+     "path": ".gitattributes",
+     "size": 1570,
+     "sha256": null
+    },
+    {
+     "path": "README.md",
+     "size": 572,
+     "sha256": null
+    },
+    {
+     "path": "added_tokens.json",
+     "size": 707,
+     "sha256": null
+    },
+    {
+     "path": "chat_template.jinja",
+     "size": 5292,
+     "sha256": null
+    },
+    {
+     "path": "chat_template.json",
+     "size": 5499,
+     "sha256": null
+    },
+    {
+     "path": "config.json",
+     "size": 7140,
+     "sha256": null
+    },
+    {
+     "path": "generation_config.json",
+     "size": 269,
+     "sha256": null
+    },
+    {
+     "path": "merges.txt",
+     "size": 1671853,
+     "sha256": null
+    },
+    {
+     "path": "model-00001-of-00002.safetensors",
+     "size": 5353972197,
+     "sha256": "7c637158b2203e321d83596d3661f33b7b98a72beddfaaaa0eddc512acbdd1fb"
+    },
+    {
+     "path": "model-00002-of-00002.safetensors",
+     "size": 406693049,
+     "sha256": "77190cd1dcf244522869bf923558340112b26d7db2ef3692f88407dd9b33c25d"
+    },
+    {
+     "path": "model.safetensors.index.json",
+     "size": 67759,
+     "sha256": null
+    },
+    {
+     "path": "preprocessor_config.json",
+     "size": 782,
+     "sha256": null
+    },
+    {
+     "path": "special_tokens_map.json",
+     "size": 613,
+     "sha256": null
+    },
+    {
+     "path": "tokenizer.json",
+     "size": 11422654,
+     "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+    },
+    {
+     "path": "tokenizer_config.json",
+     "size": 5445,
+     "sha256": null
+    },
+    {
+     "path": "video_preprocessor_config.json",
+     "size": 817,
+     "sha256": null
+    },
+    {
+     "path": "vocab.json",
+     "size": 2776833,
+     "sha256": null
+    }
+   ]
+  },
+  {
+   "repo": "alex-dinh/PP-DocLayoutV2-ONNX",
+   "revision": "5e30a2650d087e23af3a8084d42bd30d135af771",
+   "files": [
+    {
+     "path": ".gitattributes",
+     "size": 1519,
+     "sha256": null
+    },
+    {
+     "path": "PP-DocLayoutV2.onnx",
+     "size": 213963712,
+     "sha256": "2009fcb35e64085ab9f6f2b27aca550edc29a040a24f7d6a0f05b74a2f804860"
+    },
+    {
+     "path": "README.md",
+     "size": 3029,
+     "sha256": null
+    },
+    {
+     "path": "config.json",
+     "size": 4535,
+     "sha256": null
+    }
+   ]
+  }
+ ]
+}

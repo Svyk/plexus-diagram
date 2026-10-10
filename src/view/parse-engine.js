@@ -244,6 +244,8 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
           const linedText = alignVlmText(doc, readLines);
           vlmLines = linedText.applied;
           if (linedText.applied.length) Object.assign(doc, { blocks: linedText.doc.blocks, order: linedText.doc.order });
+          // The placement check needs each page transcription and the Vision text it replaced.
+          if (options.keepVision === true && linedText.reads?.length) doc.ocr = { ...(doc.ocr || {}), pageReads: linedText.reads };
         }
         const linked = linkLayoutCaptions(doc, readLayout);
         vlmFigures = linked.applied;

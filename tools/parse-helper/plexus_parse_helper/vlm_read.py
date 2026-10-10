@@ -5,7 +5,8 @@ Where both found the same grid, the layout rectangle is the crop. A page the
 layout model does not mark as a table, and that has aligned numeric columns,
 is read as a whole page. Tables stay on PaddleOCR-VL.
 Text is optional. A page asked for text is transcribed once by the page-text
-model and poured into the text regions. A caption strip under a plate stays
+model and poured into the text regions. Table and figure boxes are painted
+paper colour first, so the transcription holds the prose only. A caption strip under a plate stays
 a crop, read with PaddleOCR-VL, so a one-line credit is not replaced by the
 whole page. Figure boxes are hints only; the caller keeps its own figures
 when it has any. Decoding is greedy with a fixed seed.
@@ -14,6 +15,7 @@ when it has any. Decoding is greedy with a fixed seed.
 from __future__ import annotations
 
 import pypdfium2 as pdfium
+from PIL import Image, ImageDraw, ImageStat
 
 from plexus_parse_helper.table_text import plain_lines, tables_from_text
 from plexus_parse_helper.vlm_boxes import choose_table_boxes, drop_layout_inside_figures, merge_stacked
@@ -150,6 +152,59 @@ def text_plan(detected, pw, ph):
     body = [item for item in text_items if not item.get("captionStrip")]
     strips = [item for item in text_items if item.get("captionStrip")]
     return {"body": body, "strips": strips, "pageRead": bool(body) or not text_items}
+
+
+def text_mask_boxes(chosen, detected, body):
+    """Table and figure boxes to paint over before the page transcription.
+
+    The page model is asked for the text of the page; a table's cells and a
+    figure's labels are read by their own passes and must not be poured into
+    prose. A page with no body text box reads whole: layout may have called a
+    handwritten page an image. A box that covers half of a body text box
+    contradicts the text box and is left on the paper. The whole-page table
+    fallback is the read for a missed grid, not a mask.
+    """
+    if not body:
+        return []
+    texts = [item["bbox"] for item in body if item.get("bbox")]
+    out = []
+    for item in chosen or []:
+        if item.get("source") == "page" or not item.get("bbox"):
+            continue
+        out.append(item["bbox"])
+    for item in detected or []:
+        if item.get("label") not in FIGURE_LABELS or item.get("score", 0) < 0.5 or not item.get("bbox"):
+            continue
+        out.append(item["bbox"])
+    kept = []
+    for box in out:
+        if any(_area(text) and _inter(box, text) / _area(text) >= 0.5 for text in texts):
+            continue
+        kept.append(box)
+    return kept
+
+
+def paper_colour(image):
+    """Per-channel median of a thumbnail: the paper, on a page that is mostly paper."""
+    small = image.convert("RGB").resize((32, 32), Image.Resampling.BOX)
+    return tuple(int(v) for v in ImageStat.Stat(small).median[:3])
+
+
+def mask_boxes(bitmap, boxes, scale, pad=2):
+    """A copy of the page bitmap with `boxes` (top-left points) filled with paper colour."""
+    out = bitmap.copy()
+    draw = ImageDraw.Draw(out)
+    colour = paper_colour(bitmap)
+    w, h = out.size
+    for box in boxes:
+        x0 = max(0, int(box[0] * scale) - pad)
+        y0 = max(0, int(box[1] * scale) - pad)
+        x1 = min(w, int(box[2] * scale) + pad)
+        y1 = min(h, int(box[3] * scale) + pad)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        draw.rectangle([x0, y0, x1 - 1, y1 - 1], fill=colour)
+    return out
 
 
 def union_box(boxes):
@@ -305,7 +360,9 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
                 plan = text_plan(detected, pw, ph)
                 body = plan["body"]
                 strips = plan["strips"]
-                page_text = read_page_text(bitmap) if plan["pageRead"] else ""
+                masks = text_mask_boxes(chosen, detected, body) if plan["pageRead"] else []
+                page_image = mask_boxes(bitmap, masks, scale) if masks else bitmap
+                page_text = read_page_text(page_image) if plan["pageRead"] else ""
                 if page_text:
                     text_model = text_label()
                     boxes = [item["bbox"] for item in body] or [[0.0, 0.0, float(pw), float(ph)]]

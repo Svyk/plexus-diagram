@@ -588,3 +588,65 @@ def test_empty_page_text_falls_back_to_paddle_crops(monkeypatch):
     assert len(out["lines"]) == 1
     assert out["lines"][0]["text"] == "crop text"
     assert "pageText" not in out["lines"][0]
+
+
+def test_text_mask_boxes_skip_without_body_and_drop_a_box_over_text():
+    from plexus_parse_helper.vlm_read import text_mask_boxes
+
+    table = {"bbox": [10, 300, 300, 500], "source": "layout"}
+    whole = {"bbox": [0, 0, 612, 792], "source": "page"}
+    figure = {"page": 1, "label": "image", "score": 0.9, "bbox": [320, 300, 600, 500]}
+    weak_figure = {"page": 1, "label": "image", "score": 0.3, "bbox": [320, 520, 600, 700]}
+    text = {"page": 1, "label": "text", "score": 0.9, "bbox": [10, 10, 600, 280]}
+    assert text_mask_boxes([table, whole], [figure, weak_figure, text], []) == []
+    assert text_mask_boxes([table, whole], [figure, weak_figure, text], [text]) == [table["bbox"], figure["bbox"]]
+    # A figure box that covers most of a text box is a contradiction: the text stays.
+    over = {"page": 1, "label": "image", "score": 0.9, "bbox": [0, 0, 612, 300]}
+    assert text_mask_boxes([], [over, text], [text]) == []
+
+
+def test_mask_boxes_paints_paper_colour_inside_and_leaves_the_rest():
+    from PIL import Image
+
+    from plexus_parse_helper.vlm_read import mask_boxes, paper_colour
+
+    page = Image.new("RGB", (200, 300), (240, 236, 220))
+    for x in range(20, 180):
+        for y in range(150, 250):
+            page.putpixel((x, y), (20, 20, 20))
+    page.putpixel((50, 50), (0, 0, 0))
+    assert paper_colour(page) == (240, 236, 220)
+    out = mask_boxes(page, [[10.0, 75.0, 90.0, 125.0]], 2.0)
+    assert out.size == page.size
+    assert out.getpixel((100, 200)) == (240, 236, 220)
+    assert out.getpixel((50, 50)) == (0, 0, 0)
+    assert page.getpixel((100, 200)) == (20, 20, 20)
+
+
+def test_page_text_reads_a_masked_page(monkeypatch):
+    from plexus_parse_helper.vlm_read import read_pages
+
+    def layout(bitmap):
+        w, h = bitmap.size
+        return [
+            {"label": "text", "score": 0.9, "bbox": [8, 8, w - 8, int(h * 0.4)]},
+            {"label": "table", "score": 0.9, "bbox": [8, int(h * 0.5), w - 8, int(h * 0.9)]},
+        ]
+
+    seen = {}
+
+    def page_text(image):
+        seen["image"] = image
+        return "Dear reader one line"
+
+    monkeypatch.setattr("plexus_parse_helper.vlm_read.detect_layout", layout)
+    monkeypatch.setattr("plexus_parse_helper.vlm_read.read_page_text", page_text)
+    monkeypatch.setattr("plexus_parse_helper.vlm_read._generate", lambda image, prompt, tokens=None: "<table><tr><td>1</td></tr></table>")
+    out = read_pages(str(PDF), {"pages": [1], "text": True})
+    image = seen["image"]
+    w, h = image.size
+    colour = image.getpixel((w // 2, int(h * 0.7)))
+    # Everything inside the table box is one colour: the paper.
+    assert image.getpixel((w // 4, int(h * 0.6))) == colour
+    assert image.getpixel((3 * w // 4, int(h * 0.85))) == colour
+    assert [line for line in out["lines"] if line.get("pageText")][0]["text"] == "Dear reader one line"

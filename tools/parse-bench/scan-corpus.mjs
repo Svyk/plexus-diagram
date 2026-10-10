@@ -5,6 +5,7 @@
 // --fold-quotes folds typographic quotes to ASCII before scoring, on the truth and the prediction.
 // --dump writes <dir>/<engine>/<page id>.pxd.json when that file is not already there.
 // helper-vlm reads the helper OCR cache (it does not call the helper CLI or port 48765)
+// PXD_KEEP_VISION=1 keeps each page transcription and the Vision text it replaced in doc.ocr.pageReads (text-placement.mjs).
 // and POSTs the page to PXD_VLM_URL /v1/vlm (default http://127.0.0.1:48766).
 // PXD_VLM_TEXT=1 also replaces Vision line text with the VLM OCR reading.
 //
@@ -237,7 +238,7 @@ async function runEngine(pdfPath, page, engine, cacheDir, helperFlag) {
   const lines = process.env.PXD_OCR_LINES !== "0";
   const result = await readScan({
     helper, bytes, base, records, pages: wanted, numPages, info, from, to, lexicon: lineLexicon, lines,
-    options: { vlmText: process.env.PXD_VLM_TEXT === "1" },
+    options: { vlmText: process.env.PXD_VLM_TEXT === "1", keepVision: process.env.PXD_KEEP_VISION === "1" },
     onPhase: (p) => process.stderr.write(`phase ${JSON.stringify(p)}\n`),
   });
   return { ...result, ms: performance.now() - t0, builtinMs };

@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 24;
+export const PARSE_REV = 25;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -31,6 +31,11 @@ const now = () => (typeof performance !== "undefined" && performance.now ? perfo
 // Axis ticks ("-4 -3") sometimes sit on the caption line, in front of FIG.
 function peelTickPrefix(text) {
   return String(text || "").replace(/^(?:[-+]?\d+\s+){1,6}(?=(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b)/i, "");
+}
+
+// "con-" at the end of a caption line is the first half of a word on the next line.
+function peelHyphenTail(text) {
+  return String(text || "").replace(/\s+\S+-$/, "");
 }
 
 const NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -592,6 +597,8 @@ function pictureTitleText(text) {
   if (!t || /\.{4,}|…{2,}|·{4,}/.test(t)) return false;
   const words = t.split(" ").filter(Boolean);
   if (words.length < 2 || words.length > 18) return false;
+  // A lowercase word is the continuation of a sentence, not the plate's title.
+  if (/^[a-z]/.test(words[0])) return false;
   if (/^\d{1,4}[.]?$/.test(words[0]) || /^\d{1,4}[.]?$/.test(words[words.length - 1])) return false;
   if (/\bcontinued\b/i.test(t)) return false;
   if (/\b\d{4}\s*[-–—]\s*\d{2,4}\b/.test(t)) return false;
@@ -1008,7 +1015,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
             textBlocks.push({ type: "footnote", lines: group, mark, text, bbox: boxOfUnits(group) });
             return;
           }
-          const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(peelTickPrefix(joined.text)) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
+          const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(peelHyphenTail(peelTickPrefix(joined.text))) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
           textBlocks.push(block);
         }
         i = j;

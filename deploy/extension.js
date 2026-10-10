@@ -8313,6 +8313,7 @@ function allowGrowWord(w, line, ctx) {
 }
 function normalizeFigSpelling(text3) {
   let t = String(text3 || "").replace(/\s+/g, " ").trim();
+  t = t.replace(/^[^\p{L}\p{N}]+(?=(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|taf|sketch(?:es)?)\b)/iu, "");
   t = t.replace(/\bF[1l|]g/g, "Fig").replace(/\bf[1l|]g/g, "fig");
   t = t.replace(/\bfigu[nr]e\b/gi, (m) => m[0] === "f" ? "figure" : "Figure");
   t = t.replace(/\b([A-Za-z]{2,})\s*,\s*(?=\d)/g, "$1. ");
@@ -8563,7 +8564,9 @@ function labelStarts(words) {
     let j = i + 1;
     if (words[j] && /^[.:]$/.test(String(words[j].text || "").trim())) j++;
     const next = words[j];
-    if (next && FIG_NUM.test(String(next.text || "").trim()) && next.x0 - words[i].x1 < 24) {
+    const nextText = String(next?.text || "").trim();
+    const gluedNum = /^\d+[A-Za-z]?[.:—–-]/.test(nextText);
+    if (next && (FIG_NUM.test(nextText) || gluedNum) && next.x0 - words[i].x1 < 36) {
       at.push(i);
       continue;
     }
@@ -8682,14 +8685,26 @@ function splitWordLine(line, indexes) {
   }
   return parts;
 }
-function gapIndexAt(line, x) {
+function cutsNear(line, xs2) {
   const words = line.words || [];
+  const idxs = [];
   for (let i = 1; i < words.length; i++) {
     const gap0 = words[i - 1].x1;
     const gap1 = words[i].x0;
-    if (gap1 - gap0 >= CAPTION_SPLIT_GAP && gap0 - 6 <= x && gap1 + 6 >= x) return i;
+    if (gap1 + 0.5 < gap0) continue;
+    const mid = (Math.max(gap0, gap1) + Math.min(gap0, gap1)) / 2;
+    if ((xs2 || []).some((x) => gap0 - 8 <= x && gap1 + 8 >= x && Math.abs(mid - x) <= 18)) idxs.push(i);
   }
-  return -1;
+  return idxs;
+}
+function columnGapSplits(words) {
+  const at = [];
+  for (let i = 1; i < (words || []).length; i++) {
+    const prev = String(words[i - 1].text || "").trim();
+    if (FIG_TOKEN.test(prev) || /^[.:]$/.test(prev)) continue;
+    if (words[i].x0 - words[i - 1].x1 >= CAPTION_SPLIT_GAP) at.push(i);
+  }
+  return at;
 }
 function orderCaptionBand(band) {
   const cols = /* @__PURE__ */ new Map();
@@ -8722,7 +8737,16 @@ function splitSharedCaptions(lines) {
       const idx = starts[c];
       const prev = line.words[idx - 1];
       const cur = line.words[idx];
-      if (prev && cur && cur.x0 - prev.x1 >= CAPTION_SPLIT_GAP) splits.push(idx);
+      const between = line.words.slice(starts[c - 1], idx);
+      const captionWords = between.some((w) => {
+        const t = String(w.text || "").trim();
+        return t && !FIG_TOKEN.test(t) && !FIG_NUM.test(t) && !/^[.:]$/.test(t);
+      });
+      if (prev && cur && (cur.x0 - prev.x1 >= CAPTION_SPLIT_GAP || captionWords)) splits.push(idx);
+    }
+    if (starts.length >= 2) {
+      for (const g of columnGapSplits(line.words || [])) if (!splits.includes(g)) splits.push(g);
+      splits.sort((a, b) => a - b);
     }
     if (!splits.length) {
       out.push(line);
@@ -8730,24 +8754,28 @@ function splitSharedCaptions(lines) {
     }
     bandId += 1;
     const parts = splitWordLine(line, splits);
-    if (parts.length >= 2 && parts[1].x0 - parts[0].x1 >= 6) gutters.push({ x0: parts[0].x1, x1: parts[1].x0 });
+    for (let p = 1; p < parts.length; p++) {
+      if (parts[p].x0 - parts[p - 1].x1 >= 6) gutters.push({ x0: parts[p - 1].x1, x1: parts[p].x0 });
+    }
     parts.forEach((p, col) => {
       p.capBand = bandId;
       p.capCol = col;
     });
-    const splitX = parts[1]?.x0;
+    const splitXs = parts.slice(1).map((p) => p.x0);
     const consumed = /* @__PURE__ */ new Set();
     const band = [...parts];
-    if (splitX != null) {
+    if (splitXs.length) {
       for (let d = 1; d < 6 && i + d < lines.length; d++) {
         const next = lines[i + d];
         if (next.base - line.base > 3 * (next.size || line.size || 10)) break;
         if (labelStarts(next.words || []).length >= 2) break;
-        const at = gapIndexAt(next, splitX);
-        if (at < 0) break;
-        const segs = splitWordLine(next, [at]);
-        segs.forEach((p, col) => {
+        const at = cutsNear(next, splitXs);
+        if (!at.length) break;
+        const segs = splitWordLine(next, at);
+        segs.forEach((p) => {
           p.capBand = bandId;
+          let col = 0;
+          for (const x of splitXs) if (p.x0 >= x - 6) col++;
           p.capCol = col;
         });
         band.push(...segs);
@@ -9024,7 +9052,10 @@ function rejectFalseFigures(figures, opts = {}) {
     clipBodyBand(fig, opts.lines || [], strokes, pageW, pageH);
   }
   const peers = list.map((fig) => fig);
-  return list.filter((fig) => !falseFigureReason(fig, { ...opts, peers, strokes }));
+  return list.filter((fig) => {
+    const reason = falseFigureReason(fig, { ...opts, peers, strokes });
+    return !reason;
+  });
 }
 function letterSpread(lines, pageH) {
   const text3 = (lines || []).filter((line) => (line.text || "").trim());
@@ -9056,12 +9087,16 @@ function marginStrip(box2, pageW, pageH) {
   if ((touchT || touchB) && h <= 0.06 * pageH && w >= 0.4 * pageW) return true;
   return false;
 }
+function numericToken(text3) {
+  const t = String(text3 || "").trim();
+  return /\d/.test(t) && /^[\d.,%±+\-–−()]+$/.test(t);
+}
 function textThroughMiddle(box2, lines) {
   const h = box2.y1 - box2.y0;
   if (!(h > 0)) return false;
   const prose = (lines || []).filter((line) => wordCount2(line.text) >= 2 && lineCenterIn(line, box2));
-  const any = (lines || []).filter((line) => (line.text || "").trim() && lineCenterIn(line, box2));
-  const inside8 = prose.length >= 5 ? prose : any.length >= 8 ? any : [];
+  const numbers = (lines || []).filter((line) => numericToken(line.text) && lineCenterIn(line, box2));
+  const inside8 = prose.length >= 5 ? prose : numbers.length >= 8 ? numbers : [];
   if (inside8.length < 5) return false;
   const mid = inside8.filter((line) => {
     const c = (line.y0 + line.y1) / 2;
@@ -9070,6 +9105,12 @@ function textThroughMiddle(box2, lines) {
   const top = Math.min(...inside8.map((line) => line.y0));
   const bot = Math.max(...inside8.map((line) => line.y1));
   return mid.length >= 3 && bot - top > 0.45 * h;
+}
+function headerBand(box2, lines, pageH) {
+  const h = box2.y1 - box2.y0;
+  if (!(pageH > 0) || h > 0.22 * pageH || h < 8) return false;
+  const inside8 = (lines || []).filter((line) => String(line.text || "").trim() && lineCenterIn(line, box2));
+  return inside8.length >= 4;
 }
 function clipLowerText(box2, lines) {
   const h = box2.y1 - box2.y0;
@@ -9100,6 +9141,51 @@ function growUntilText(box2, lines, pageW, pageH) {
   if (x1 - x0 < 16 || y1 - y0 < 16) return box2;
   return { x0, y0, x1, y1 };
 }
+function picturesTouch(a, b, lines, pageH) {
+  const limit = Math.max(10, 0.02 * (pageH || 0));
+  const overlap = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+  const narrow = Math.min(a.x1 - a.x0, b.x1 - b.x0);
+  if (!(narrow > 0) || overlap < 0.55 * narrow) return false;
+  const yOverlap = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+  const gap = yOverlap > 0 ? 0 : a.y1 <= b.y0 ? b.y0 - a.y1 : a.y0 - b.y1;
+  if (gap > limit) return false;
+  if (yOverlap <= 0) {
+    const top = Math.min(a.y1, b.y1);
+    const bot = Math.max(a.y0, b.y0);
+    const between = (lines || []).some((line) => {
+      if (wordCount2(line.text) < 3) return false;
+      const cy = ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2;
+      if (cy <= top + 1 || cy >= bot - 1) return false;
+      const ox = Math.min(line.x1, Math.max(a.x1, b.x1)) - Math.max(line.x0, Math.min(a.x0, b.x0));
+      return ox > 8;
+    });
+    if (between) return false;
+  }
+  return true;
+}
+function mergeTouchingPictures(made, lines, pageH) {
+  let changed2 = true;
+  while (changed2) {
+    changed2 = false;
+    for (let i = 0; i < made.length; i++) {
+      for (let j = i + 1; j < made.length; j++) {
+        const a = made[i];
+        const b = made[j];
+        if (!picturesTouch(a, b, lines, pageH)) continue;
+        made[i] = {
+          x0: Math.min(a.x0, b.x0),
+          y0: Math.min(a.y0, b.y0),
+          x1: Math.max(a.x1, b.x1),
+          y1: Math.max(a.y1, b.y1)
+        };
+        made.splice(j, 1);
+        changed2 = true;
+        break;
+      }
+      if (changed2) break;
+    }
+  }
+}
 function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = null) {
   const pageArea = pageW * pageH;
   if (!(pageArea > 0)) return;
@@ -9115,6 +9201,8 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = nul
     return cx > outer.x0 && cx < outer.x1 && cy > outer.y0 && cy < outer.y1;
   };
   const covered = (box2) => figures.some((f) => covers2(f, box2)) || made.some((f) => insideFrac(box2, f) >= 0.55 || insideFrac(f, box2) >= 0.55);
+  const onlyCluster = (box2) => figures.some((f) => !f.fromPlate && !f.pageImage && f.kind === "drawing" && covers2(f, box2)) && !figures.some((f) => (f.fromPlate || f.kind === "image" || f.pageImage) && covers2(f, box2));
+  const pending = [];
   const spread = letterSpread(lines, pageH);
   for (const raw of boxes) {
     let area = boxArea(raw);
@@ -9134,10 +9222,22 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = nul
     const grown = growUntilText(box2, lines, pageW, pageH);
     box2 = boxArea(grown) > 0.85 * pageArea ? box2 : grown;
     if (edgeBand(box2, pageW, pageH)) continue;
-    if (textThroughMiddle(box2, pageLines)) continue;
-    if (boxArea(box2) > 0.85 * pageArea || covered(box2)) continue;
+    if (textThroughMiddle(box2, pageLines) || headerBand(box2, pageLines, pageH)) continue;
+    if (boxArea(box2) > 0.85 * pageArea) continue;
+    if (covered(box2)) {
+      if (onlyCluster(box2)) pending.push(box2);
+      continue;
+    }
     made.push(box2);
   }
+  if (spread && made.length >= 3) {
+    const areas = made.map((b) => boxArea(b)).sort((a, b) => b - a);
+    if (areas[0] < 2 * areas[1]) made.length = 0;
+  }
+  for (const box2 of pending) {
+    if (made.some((other) => boxArea(other) >= 0.08 * pageArea && picturesTouch(other, box2, lines, pageH))) made.push(box2);
+  }
+  mergeTouchingPictures(made, lines, pageH);
   if (spread && made.length >= 3) {
     const areas = made.map((b) => boxArea(b)).sort((a, b) => b - a);
     if (areas[0] < 2 * areas[1]) made.length = 0;
@@ -9166,7 +9266,12 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = nul
     if (covered(box2)) continue;
     emblems.push(box2);
   }
-  if (!spread) made.push(...emblems);
+  const proseN = (lines || []).filter((line) => proseLine(line)).length;
+  const capsN = (lines || []).filter((line) => {
+    const letters = String(line.text || "").replace(/[^A-Za-z]/g, "");
+    return letters.length >= 4 && letters.replace(/[^A-Z]/g, "").length / letters.length >= 0.7;
+  }).length;
+  if (!spread || emblems.length === 1 && proseN < 2 && capsN >= 3) made.push(...emblems);
   for (const box2 of made) {
     figures.push({ ...box2, kind: "drawing", count: 1, pageImage: false, fromPlate: true, fromPicture: true });
   }
@@ -9181,6 +9286,7 @@ function plateLabelText(text3, key) {
   if (/^sketch(?:es)?\b/i.test(t)) return false;
   const rest = t.replace(/^(?:fig(?:ure)?s?|plates?)\.?\s*\d+[A-Za-z]?[.:]?\s*/i, "");
   if (/^(?:is|are|was|were|shows|show|comprises|has|have)\b/i.test(rest)) return false;
+  if (/^(?:and|or|&|und|et)$/i.test(rest.trim())) return false;
   if (/^(?:herewith|above|below|following|opposite)[.]?$/i.test(rest)) return false;
   return true;
 }
@@ -9351,6 +9457,113 @@ function splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH) {
   figures.push(...made);
   return true;
 }
+function captionSlice(words, start, end) {
+  const slice = [];
+  for (let i = start; i < end; i++) {
+    if (slice.length) {
+      const prev = String(words[i - 1].text || "").trim();
+      const gap = words[i].x0 - words[i - 1].x1;
+      if (gap >= CAPTION_SPLIT_GAP && !FIG_TOKEN.test(prev) && !/^[.:]$/.test(prev)) break;
+    }
+    slice.push(words[i]);
+  }
+  return slice;
+}
+function anchorCaptions(lines) {
+  const out = [];
+  for (const line of lines || []) {
+    const words = line.words || [];
+    const starts = labelStarts(words);
+    if (starts.length < 2) continue;
+    const prefix = words.slice(0, starts[0]);
+    if (wordCount2(prefix.map((w) => w.text).join(" ")) > 3) continue;
+    if (prefix.some((w) => /[.!?]/.test(String(w.text || "")))) continue;
+    for (let i = 0; i < starts.length; i++) {
+      const end = i + 1 < starts.length ? starts[i + 1] : words.length;
+      const slice = captionSlice(words, starts[i], end);
+      if (slice.length < 2) continue;
+      const text3 = normalizeFigSpelling(slice.map((w) => w.text).join(" "));
+      const key = figCaptionKey(text3);
+      if (key == null || key === "" || !plateLabelText(text3, key)) continue;
+      out.push({ ...makeLine(slice), key, text: text3 });
+    }
+  }
+  const keys = new Set(out.map((c) => c.key));
+  return keys.size >= 2 ? out : [];
+}
+function withAnchorCaptions(caps, lines) {
+  const anchors = anchorCaptions(lines);
+  if (anchors.length < 2) return caps;
+  const kept = (caps || []).filter((c) => !anchors.some((a) => Math.abs((a.y0 ?? 0) - (c.y0 ?? 0)) < 4 && a.x0 >= c.x0 - 2 && a.x1 <= c.x1 + 4));
+  return [...kept, ...anchors];
+}
+function sideBySideCaptions(caps) {
+  const ordered = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const c of [...caps || []].filter((c2) => c2.key !== "" && c2.key !== "title").sort((a, b) => a.x0 - b.x0 || a.y0 - b.y0)) {
+    if (seen.has(c.key)) continue;
+    seen.add(c.key);
+    ordered.push(c);
+  }
+  if (ordered.length < 2) return null;
+  const y0 = Math.min(...ordered.map((c) => c.y0));
+  const y1 = Math.max(...ordered.map((c) => c.y1));
+  const share = ordered.every((c) => {
+    const h = Math.max(6, c.y1 - c.y0);
+    return Math.min(c.y1, y1) - Math.max(c.y0, y0) >= 0.45 * h && Math.abs(c.y0 - ordered[0].y0) <= Math.max(h, 14);
+  });
+  if (!share) return null;
+  for (let i = 1; i < ordered.length; i++) {
+    if (ordered[i].x0 - ordered[i - 1].x0 < 36) return null;
+  }
+  return ordered;
+}
+function splitSideBySidePlates(figures, ink, caps, lines, bodySize, pageW, pageH) {
+  const cols = sideBySideCaptions(caps);
+  if (!cols) return false;
+  const numbered = new Set(caps.filter((c) => c.key !== "" && c.key !== "title").map((c) => c.key));
+  if (numbered.size !== cols.length) return false;
+  const cuts = cols.slice(1).map((c) => c.x0 - 4);
+  const groups = new Map(cols.map((c) => [c.key, []]));
+  for (const prim of ink) {
+    const cx = (prim.x0 + prim.x1) / 2;
+    let i = 0;
+    while (i < cuts.length && cx >= cuts[i]) i++;
+    const left = i === 0 ? -1e9 : cuts[i - 1];
+    const right = i < cuts.length ? cuts[i] : 1e9;
+    const x0 = Math.max(prim.x0, left === -1e9 ? prim.x0 : left);
+    const x1 = Math.min(prim.x1, right === 1e9 ? prim.x1 : right);
+    if (x1 - x0 < 2) continue;
+    const ph = prim.y1 - prim.y0;
+    const pw = prim.x1 - prim.x0;
+    if (ph <= 4 && pw > 40 && x1 - x0 < 0.85 * pw) continue;
+    groups.get(cols[i].key).push({ ...prim, x0, x1 });
+  }
+  const pageArea = pageW * pageH;
+  const made = [];
+  for (const [key, items] of groups) {
+    if (items.length < 4) continue;
+    const hull = hullOf(items);
+    if (!hull) continue;
+    const w = hull.x1 - hull.x0;
+    const h = hull.y1 - hull.y0;
+    const area = w * h;
+    if (w < 48 || h < 32 || area < 0.02 * pageArea || area > 0.7 * pageArea) continue;
+    const cap4 = cols.find((c) => c.key === key) || null;
+    const plate = { ...hull, kind: "drawing", count: items.length, pageImage: false, fromPlate: true };
+    extendTowardCaption(plate, cap4, lines, bodySize, pageH);
+    if ((plate.y1 - plate.y0) * (plate.x1 - plate.x0) > 0.7 * pageArea) continue;
+    made.push(plate);
+  }
+  if (made.length < 2) return false;
+  for (let i = figures.length - 1; i >= 0; i--) {
+    const f = figures[i];
+    if (f.kind === "image") continue;
+    if (made.some((p) => insideFrac(f, p) >= 0.35 || insideFrac(p, f) >= 0.35)) figures.splice(i, 1);
+  }
+  figures.push(...made);
+  return true;
+}
 function dropCoveredDrawings(figures) {
   for (let i = figures.length - 1; i >= 0; i--) {
     const f = figures[i];
@@ -9386,9 +9599,13 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
     if (near2.length >= 4) ink = near2;
   }
   if (ink.length < 4) return;
-  let caps = plateCaptions(lines, pageH);
+  let caps = withAnchorCaptions(plateCaptions(lines, pageH), lines);
   if (!caps.length) caps = plateTitleCaptions(lines, inkOnly, pageW, pageH);
   if (!caps.length) return;
+  if (inkOnly.length && splitSideBySidePlates(figures, ink, caps, lines, bodySize, pageW, pageH)) {
+    dropCoveredDrawings(figures);
+    return;
+  }
   if (inkOnly.length && splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH)) {
     dropCoveredDrawings(figures);
     return;
@@ -10558,6 +10775,9 @@ var init_pdf = __esm({
 function peelTickPrefix(text3) {
   return String(text3 || "").replace(/^(?:[-+]?\d+\s+){1,6}(?=(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b)/i, "");
 }
+function peelHyphenTail(text3) {
+  return String(text3 || "").replace(/\s+\S+-$/, "");
+}
 function isCaptionText(text3) {
   const raw = peelTickPrefix(normalizeFigSpelling(String(text3 || "").replace(/[^\p{L}\p{N}.: ]/gu, " ").replace(/\s+/g, " ").trim()));
   if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(raw)) return false;
@@ -11041,6 +11261,7 @@ function pictureTitleText(text3) {
   if (!t || /\.{4,}|…{2,}|·{4,}/.test(t)) return false;
   const words = t.split(" ").filter(Boolean);
   if (words.length < 2 || words.length > 18) return false;
+  if (/^[a-z]/.test(words[0])) return false;
   if (/^\d{1,4}[.]?$/.test(words[0]) || /^\d{1,4}[.]?$/.test(words[words.length - 1])) return false;
   if (/\bcontinued\b/i.test(t)) return false;
   if (/\b\d{4}\s*[-–—]\s*\d{2,4}\b/.test(t)) return false;
@@ -11388,7 +11609,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
             textBlocks.push({ type: "footnote", lines: group, mark, text: text3, bbox: boxOfUnits(group) });
             return;
           }
-          const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(peelTickPrefix(joined.text)) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
+          const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(peelHyphenTail(peelTickPrefix(joined.text))) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
           textBlocks.push(block);
         };
         const line = lines[i];
@@ -11693,7 +11914,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 24;
+    PARSE_REV = 25;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;

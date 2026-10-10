@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 
 import { OP } from "../src/model/parse/rules.js";
 import { assembleDocument, parsePageGeometry } from "../src/model/parse/index.js";
-import { demoteFalseCaptions, drawingSheetPage, falseFigureReason, figCaptionKey, findFigures, normalizeFigSpelling, rasterScanPage, rejectFalseFigures, sheetRegions } from "../src/model/parse/figures.js";
+import { demoteFalseCaptions, drawingSheetPage, falseFigureReason, figCaptionKey, findFigures, labelStarts, normalizeFigSpelling, rasterScanPage, rejectFalseFigures, sheetRegions, splitSharedCaptions } from "../src/model/parse/figures.js";
 import { absorbFigureTables, figureLabels, sparseContentsTable } from "../src/model/parse/index.js";
 
 const H = 792;
@@ -1135,4 +1135,126 @@ test("a rule cluster that is not a figure gives its labels back to the text", ()
   });
   assert.equal(found.figures.length, 0, "engraving rules on a text page are not a figure");
   assert.equal(found.used.size, 0, "the menu words stay available as text");
+});
+
+test("a gutter mark before FIGURE is not part of the lead", () => {
+  assert.equal(figCaptionKey("/ FIGURE 1.—Apparatus for determining compressibility"), "1");
+  assert.match(normalizeFigSpelling("/ FIGURE 1.—Apparatus"), /^Figure 1\.—Apparatus$/);
+});
+
+test("a short band of header lines is not a picture", () => {
+  const words = ["Test No.", "Pressure lb", "Viscosity poises", "Tests included at temperature"].map((t, row) => {
+    const y = 148 + row * 8;
+    return word(t, 160, y, 420, y + 7, 10);
+  });
+  const band = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [{ x0: 80, y0: 140, x1: 520, y1: 180 }] },
+    words, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(band.figures.filter((f) => f.fromPicture).length, 0);
+});
+
+test("drawing labels on the ink stay a picture, and a column of numbers does not", () => {
+  const labels = ["PIER", "SPAN", "Folding", "Plate", "North", "South", "West", "East"].map((t, i) => word(t, 180, 220 + i * 28, 180 + t.length * 6, 232 + i * 28, 10));
+  const drawn = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [{ x0: 120, y0: 180, x1: 420, y1: 520 }] },
+    words: labels, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(drawn.figures.filter((f) => f.fromPicture).length, 1);
+});
+
+test("two ink regions with a hairline between them and no sentence are one picture", () => {
+  const ink = [
+    { x0: 100, y0: 120, x1: 400, y1: 280 },
+    { x0: 100, y0: 294, x1: 400, y1: 460 },
+  ];
+  const joined = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink },
+    words: [], bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(joined.figures.filter((f) => f.fromPicture).length, 1, "the hairline is not a second picture");
+  const sentence = "the caption sits in the gap".split(" ").map((t, i) => word(t, 140 + i * 42, 283, 176 + i * 42, 291, 10));
+  const apart = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink },
+    words: sentence, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(apart.figures.filter((f) => f.fromPicture).length, 2);
+});
+
+test("FIGURE followed by a glued number is a label, and two labels on one baseline split", () => {
+  const specs = [
+    ["FIGURE", 70], ["1.—Viscosity", 120], ["spindle", 210],
+    ["FIGURE", 250], ["2.-Graphite", 310], ["crucible", 400],
+  ];
+  const words = specs.map(([t, x]) => word(t, x, 500, x + Math.max(28, t.length * 5), 512, 10));
+  const starts = labelStarts(words);
+  assert.deepEqual(starts, [0, 3]);
+  const split = splitSharedCaptions([{ ...words[0], words, text: words.map((w) => w.text).join(" "), x0: 70, x1: 460, y0: 500, y1: 512, base: 512, size: 10 }]);
+  const texts = split.lines.map((l) => l.text);
+  assert.ok(texts.some((t) => t.startsWith("FIGURE 1")), texts.join(" | "));
+  assert.ok(texts.some((t) => t.startsWith("FIGURE 2")), texts.join(" | "));
+  assert.equal(texts.some((t) => /FIGURE 1/.test(t) && /FIGURE 2/.test(t)), false);
+  const ink = [
+    { x0: 60, y0: 140, x1: 200, y1: 470 },
+    { x0: 250, y0: 180, x1: 400, y1: 470 },
+  ];
+  const got = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink },
+    words, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(got.figures.length, 2, "each glued label keeps its own drawing");
+});
+
+test("a title page with one seal is a figure, and a sentence page is not", () => {
+  const heads = ["NASA", "TECHNICAL", "NOTE", "WASHINGTON"].map((t, i) => word(t, 220, 80 + i * 150, 340, 94 + i * 150, 14));
+  const seal = { x0: 260, y0: 200, x1: 345, y1: 285 };
+  const title = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [seal] },
+    words: heads, bodySize: 12, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(title.figures.filter((f) => f.fromPicture).length, 1);
+  const prose = [
+    word("The design of feedback control systems containing a", 80, 160, 520, 174, 11),
+    word("saturation type nonlinearity is described in this note", 80, 560, 530, 574, 11),
+  ];
+  const body = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [seal] },
+    words: [...heads, ...prose], bodySize: 11, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(body.figures.filter((f) => f.fromPicture).length, 0);
+});
+
+test("ink inside a rule cluster joins a picture that sticks out of the cluster", () => {
+  const rules = [];
+  for (let y = 430; y <= 700; y += 4) rules.push({ axis: "h", a: 150, b: 450, pos: y });
+  const lower = { x0: 180, y0: 450, x1: 400, y1: 680 };
+  const upper = { x0: 180, y0: 250, x1: 400, y1: 442 };
+  const joined = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [lower, upper] },
+    ruleSegments: rules, words: [], bodySize: 10, pageW: W, pageH: H, plates: true, pageTextChars: 500,
+  });
+  const pictures = joined.figures.filter((f) => f.fromPicture);
+  assert.equal(pictures.length, 1, "the two blobs are one plate");
+  assert.ok(pictures[0].bbox[1] < 320 && pictures[0].bbox[3] > 600, pictures[0].bbox.join(","));
+  const apart = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [lower, { x0: 180, y0: 80, x1: 400, y1: 200 }] },
+    ruleSegments: rules, words: [], bodySize: 10, pageW: W, pageH: H, plates: true, pageTextChars: 500,
+  });
+  const kept = apart.figures.filter((f) => f.fromPicture);
+  assert.equal(kept.length, 1, "ink that only the cluster covers is not its own picture");
+  assert.ok(kept[0].bbox[3] < 320, kept[0].bbox.join(","));
+});
+
+test("same-sized ink on a letter stays handwriting after a hairline join", () => {
+  const ink = [
+    { x0: 160, y0: 200, x1: 380, y1: 380 },
+    { x0: 394, y0: 200, x1: 560, y1: 380 },
+    { x0: 160, y0: 394, x1: 380, y1: 574 },
+  ];
+  const words = ["Dear", "Sir", "Yours", "Truly"].map((t, i) => word(t, 36, 40 + i * 220, 80, 52 + i * 220, 11));
+  const letter = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink },
+    words, bodySize: 11, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(letter.figures.filter((f) => f.fromPicture).length, 0);
 });

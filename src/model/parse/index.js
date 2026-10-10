@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 22;
+export const PARSE_REV = 23;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -132,7 +132,7 @@ export function parsePageGeometry(data, n) {
   const figWords = lines.flatMap((l) => l.words);
   const stripSet = new Set(strips);
   const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => !stripSet.has(im) && imageArea(im) < 0.85 * pageArea) } : graphics;
-  const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars, plates: ocr });
+  const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars, plates: ocr, textLines: lines });
   for (const wd of figs.used) used.add(wd);
   let figures = figs.figures.map((f) => ({ ...f, page: n }));
   // A plate found from the ink already covers the drawing. The full-page sheet
@@ -140,7 +140,15 @@ export function parsePageGeometry(data, n) {
   const plated = ocr && figures.some((f) => f.fromPlate && boxArea(f.bbox || f) >= 0.08 * pageArea && boxArea(f.bbox || f) <= 0.9 * pageArea);
   // The page image is the scan background once a plate already covers the drawing.
   if (plated) figures = figures.filter((f) => f.fromPlate || boxArea(f.bbox || f) < 0.75 * pageArea);
-  if (drawing && !plated) {
+  // A picture found inside an unlabelled photograph is the figure. A patent sheet
+  // still uses the page image: a numbered Fig. or "Sheet N of M" names that sheet.
+  const pictureBoxes = figures.filter((f) => f.fromPicture);
+  const biggestPicture = pictureBoxes.length ? Math.max(...pictureBoxes.map((f) => boxArea(f.bbox || f))) : 0;
+  const textN = lines.filter((line) => (line.text || "").trim()).length;
+  // A dark patch on a short plate page is not a reason to throw away the page image.
+  const plateFragment = biggestPicture >= 0.2 * pageArea && biggestPicture < 0.5 * pageArea && textN <= 6 && pictureBoxes.length === 1;
+  const pictureOnly = pictureBoxes.length > 0 && !sheetNamed(lines) && !plateFragment;
+  if (drawing && (plateFragment || sheetNamed(lines) || (!plated && !pictureOnly))) {
     const regions = sheetRegions(lines, w, h);
     if (regions.length) {
       figures = regions.map((r) => ({
@@ -152,6 +160,22 @@ export function parsePageGeometry(data, n) {
     }
   }
   if (ocr) absorbFigureTables(tables, figures);
+  // The page image is the photograph once a picture was found inside it.
+  // A plate whose only text is a caption keeps the page image when the ink is
+  // only a dark part of that plate. A picture inside a table is the table's ink.
+  if (figures.some((f) => f.fromPicture)) {
+    const textN = lines.filter((line) => (line.text || "").trim()).length;
+    const biggest = Math.max(...figures.filter((f) => f.fromPicture).map((f) => boxArea(f.bbox || f)));
+    const pageSized = figures.some((f) => !f.fromPicture && boxArea(f.bbox || f) >= 0.75 * pageArea);
+    // A dark patch of a full-page plate is not a better box than the plate.
+    // A seal on a short letter is smaller than that patch, and it is the figure.
+    const fragment = pageSized && textN <= 6 && biggest >= 0.2 * pageArea && biggest < 0.5 * pageArea;
+    if (fragment) figures = figures.filter((f) => !f.fromPicture);
+    else figures = figures.filter((f) => f.fromPicture || boxArea(f.bbox || f) < 0.75 * pageArea);
+  }
+  figures = figures.filter((f) => !f.fromPicture || !tables.some((t) => t.bbox && insideFrac(f.bbox, t.bbox) >= 0.5));
+  // A short plate keeps its page image. A letter with lines down the page does not.
+  if (!plateFragment) figures = dropSpreadPhoto(figures, lines, w, h);
   figures = rejectFalseFigures(figures, {
     lines, tables, pageW: w, pageH: h,
     strokes: [
@@ -250,11 +274,34 @@ function boxArea(b) {
   return Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
 }
 
+// A page-sized image of a letter or a menu is the photograph, not a plate.
+// A plate whose only text is a caption band (the lines sit together) stays.
+// A numbered figure caption, or a patent "Sheet 2 of 4", names the drawing sheet.
+// A bare "Sketch (k)" does not: the picture inside the photograph is the figure.
+function sheetNamed(lines) {
+  return (lines || []).some((line) => {
+    if (/sheet\s+\d+\s+of\s+\d+/i.test(line.text || "")) return true;
+    const key = figCaptionKey(line.text);
+    return key != null && key !== "";
+  });
+}
+
+function dropSpreadPhoto(figures, lines, pageW, pageH) {
+  const pageArea = pageW * pageH;
+  if (!(pageArea > 0)) return figures || [];
+  const text = (lines || []).filter((line) => (line.text || "").trim());
+  if (sheetNamed(lines)) return figures || [];
+  const ys = text.map((line) => ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2);
+  const span = ys.length ? Math.max(...ys) - Math.min(...ys) : 0;
+  if (!(text.length >= 5 && span > 0.35 * pageH)) return figures || [];
+  return (figures || []).filter((fig) => boxArea(fig.bbox || fig) < 0.82 * pageArea);
+}
+
 // A prose or tick table sitting on a chart (above the rules, still the drawing)
 // is pulled into the figure so it can be absorbed. A data table is left alone.
 function coverChartTables(tables, figures, pageH) {
   for (const f of figures) {
-    if (!f.bbox || f.kind === "image") continue;
+    if (!f.bbox || f.kind === "image" || f.fromPicture) continue;
     for (const t of tables) {
       if (!t.bbox || dataTable(t)) continue;
       const gap = f.bbox[1] - t.bbox[3];
@@ -297,11 +344,12 @@ function wordCountText(text) {
 function figLabelOnly(text) {
   const t = normalizeFigSpelling(text).replace(/\s+/g, " ").trim();
   return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?$/i.test(t)
-    || /^\d+[A-Za-z]?(?:[.\s]+)\s*(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafel|taf)\.?$/i.test(t);
+    || /^\d+[A-Za-z]?(?:[.\s]+)\s*(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafel|taf)\.?$/i.test(t)
+    || /^sketch(?:es)?\.?\s*(?:\([^)]{1,6}\)|\d+[A-Za-z]?)?[.:]?$/i.test(t);
 }
 
 function hasFigWord(text) {
-  return /\b(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel)\b/i.test(String(text || ""));
+  return /\b(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|sketch(?:es)?)\b/i.test(String(text || ""));
 }
 
 // A label-only first line, or the line that carries the ordinate note, ends the caption.
@@ -511,6 +559,95 @@ function attachPlateTitles(blocks, figures, bodySize, pageH) {
   }
 }
 
+// A chart title has no "Fig." ("Average tax wedge: …" above the plot). A plate
+// title under an engraving is the same kind of line ("Isla Tenglo and harbor…",
+// "Die geizigen Räuber"). It is the short line touching the figure, not a
+// paragraph with body text between it and the drawing.
+function pictureTitleText(text) {
+  const t = normalizeFigSpelling(String(text || "")).replace(/\s+/g, " ").trim();
+  if (!t || /\.{4,}|…{2,}|·{4,}/.test(t)) return false;
+  const words = t.split(" ").filter(Boolean);
+  if (words.length < 2 || words.length > 18) return false;
+  if (/^\d{1,4}[.]?$/.test(words[0]) || /^\d{1,4}[.]?$/.test(words[words.length - 1])) return false;
+  if (/\bcontinued\b/i.test(t)) return false;
+  if (/\b\d{4}\s*[-–—]\s*\d{2,4}\b/.test(t)) return false;
+  if (words.length >= 8 && /^(?:the|this|in|it|we|our|after|prior|as)\b/i.test(t)) return false;
+  const numeric = words.filter((w) => /^[\d.+-]+$/.test(w)).length;
+  if (numeric >= Math.ceil(words.length * 0.5)) return false;
+  // A dateline under a portrait ("Executive Mansion … 21/864") is the letter, not its title.
+  if (/\b(?:1[6-9]\d{2}|20\d{2})\b/.test(t) || /\b\d{1,2}\s*\/\s*\d{2,4}\b/.test(t)) return false;
+  return true;
+}
+
+function blockBetween(line, figBox, blocks) {
+  const top = Math.min(line.bbox.y1, figBox[1]);
+  const bot = Math.max(line.bbox.y1, figBox[1]);
+  const above = line.bbox.y1 <= figBox[1] + 2;
+  const a = above ? top : Math.min(line.bbox.y0, figBox[3]);
+  const b = above ? bot : Math.max(line.bbox.y0, figBox[3]);
+  if (b - a < 4) return false;
+  return (blocks || []).some((other) => {
+    if (other === line || !other.bbox) return false;
+    const cy = (other.bbox.y0 + other.bbox.y1) / 2;
+    if (cy <= a + 1 || cy >= b - 1) return false;
+    const ox = Math.min(other.bbox.x1, Math.max(line.bbox.x1, figBox[2])) - Math.max(other.bbox.x0, Math.min(line.bbox.x0, figBox[0]));
+    return ox > 8;
+  });
+}
+
+function attachPictureTitles(blocks, figures, bodySize, pageH) {
+  const gapLimit = Math.max(2.6 * bodySize, 30);
+  const used = new Set();
+  for (const fig of figures || []) {
+    const tb = fig.bbox;
+    if (!tb) continue;
+    const fh = tb[3] - tb[1];
+    let best = null;
+    let bestGap = Infinity;
+    let bestText = "";
+    for (const b of blocks) {
+      if (!b?.bbox || used.has(b) || (b.type !== "para" && b.type !== "heading")) continue;
+      const band = blocks.filter((other) => other?.bbox && Math.abs(other.bbox.y0 - b.bbox.y0) <= 3 && Math.abs(other.bbox.y1 - b.bbox.y1) <= 3);
+      const joined = band.map((p) => p.text).join(" ");
+      const shortBand = band.length > 1 && band.every((p) => wordCountText(p.text) <= 4) && wordCountText(joined) <= 8;
+      const title = shortBand ? joined : b.text;
+      if (!pictureTitleText(title)) continue;
+      const strictAbove = b.bbox.y1 <= tb[1] + 2;
+      const strictBelow = b.bbox.y0 >= tb[3] - 2;
+      if ((strictAbove || strictBelow) && blockBetween(b, tb, blocks)) continue;
+      const overlapsTop = b.bbox.y0 < tb[1] + 0.12 * fh && b.bbox.y1 > tb[1] - 2 && b.bbox.y0 >= tb[1] - gapLimit;
+      const above = b.bbox.y1 <= tb[1] + 2 || (b.bbox.y0 < tb[1] && b.bbox.y1 < tb[1] + 0.2 * fh);
+      const below = b.bbox.y0 >= tb[3] - 2;
+      // A plate title can sit in the bottom band of a page-sized figure.
+      const inFoot = pageH > 0 && fh >= 0.45 * pageH && b.bbox.y0 >= tb[3] - 0.08 * pageH && b.bbox.y1 <= tb[3] + 4 && b.bbox.y0 > tb[1] + 0.7 * fh;
+      // The line above a photograph, or overlapping its top, is the letterhead.
+      // A chart title sits above a chart and is not fromPicture.
+      if (fig.fromPicture && !below && !inFoot) continue;
+      if (!above && !below && !overlapsTop && !inFoot) continue;
+      const gap = above ? tb[1] - b.bbox.y1 : below ? b.bbox.y0 - tb[3] : 0;
+      if (!inFoot && gap > gapLimit) continue;
+      const ox = Math.min(tb[2], b.bbox.x1) - Math.max(tb[0], b.bbox.x0);
+      const narrower = Math.min(tb[2] - tb[0], Math.max(1, b.bbox.x1 - b.bbox.x0));
+      if (ox < 0.3 * narrower) continue;
+      // A line outside the box beats a legend that only overlaps the top edge.
+      const score = above || below ? gap : inFoot ? 6 : gap + 40;
+      if (score < bestGap) { bestGap = score; best = b; bestText = title; }
+    }
+    if (!best) continue;
+    // A Fig. / Plate / Abb. / Sketch line already next to this box keeps that link.
+    const bareFig = (text) => /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?$/i.test(normalizeFigSpelling(text || "").trim());
+    const lead = blocks.some((b) => {
+      if (b === best || !b.bbox || !(forwardFigLead(b.text) || bareFig(b.text))) return false;
+      const gap = b.bbox.y1 <= tb[1] ? tb[1] - b.bbox.y1 : b.bbox.y0 >= tb[3] ? b.bbox.y0 - tb[3] : 0;
+      return gap <= Math.max(gapLimit, pageH > 0 ? 0.08 * pageH : gapLimit);
+    });
+    if (lead) continue;
+    best.type = "caption";
+    best.text = normalizeFigSpelling(bestText || best.text);
+    used.add(best);
+  }
+}
+
 // Closest pair wins. A numbered caption beats a bare "Fig." that only touches the same box.
 // A caption beside the plate (a rotated margin line) links across a wider horizontal gap.
 function captionRank(text) {
@@ -526,7 +663,10 @@ function forwardFigLead(text) {
   const t = normalizeFigSpelling(text || "").replace(/\s+/g, " ").trim();
   const key = figCaptionKey(t);
   if (key == null || key === "") return false;
-  return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(t);
+  if (!/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(t)) return false;
+  const rest = t.replace(/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?\s*/i, "");
+  if (/^(?:is|are|was|were|shows|show|comprises|has|have)\b/i.test(rest)) return false;
+  return true;
 }
 
 function linkCaptions(blocks, targets, bodySize, pageH, { scan = false } = {}) {
@@ -548,7 +688,10 @@ function linkCaptions(blocks, targets, bodySize, pageH, { scan = false } = {}) {
       const capH = Math.max(8, cb.bbox.y1 - cb.bbox.y0);
       const yOverlap = Math.min(cb.bbox.y1, tb[3]) - Math.max(cb.bbox.y0, tb[1]);
       const beside = yOverlap >= 0.45 * capH && ox <= 0;
-      const yLimit = wantsTable ? 3 * bodySize : shortHead ? Math.max(3 * bodySize, 0.16 * pageH) : Math.max(3 * bodySize, 36);
+      let yLimit = wantsTable ? 3 * bodySize : shortHead ? Math.max(3 * bodySize, 0.16 * pageH) : Math.max(3 * bodySize, 36);
+      // A numbered caption with nothing but the margin between it and the chart
+      // still names that chart. A paragraph in the gap does not.
+      if (!wantsTable && !isTable && forwardFigLead(cb.text)) yLimit = Math.max(yLimit, 0.08 * pageH);
       const xLimit = beside ? Math.max(8 * bodySize, 96) : Math.max(3 * bodySize, 36);
       if (!beside && yGap > yLimit) continue;
       if (ox <= 0 && xGap > xLimit) continue;
@@ -860,6 +1003,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       joinCaptionTails(textBlocks, bodySize);
       attachPlateTitles(textBlocks, pageFigures, bodySize, pg.h);
     }
+    attachPictureTitles(textBlocks, pageFigures, bodySize, pg.h);
     // The closer caption wins. A Fig. line just outside the rules still attaches,
     // and on a scan a short plate number in the top band can reach the drawing under it.
     const captionFor = linkCaptions(textBlocks, [...pageTables, ...pageFigures], bodySize, pg.h, { scan: Boolean(pg.ocr) });

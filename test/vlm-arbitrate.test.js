@@ -68,6 +68,23 @@ test("arbitration takes the VLM table when the rule grid drops rows", () => {
   assert.ok(decision.scores.vlm.rowCov > decision.scores.rule.rowCov);
 });
 
+test("a weak match still takes the longer grid when the short one misses a band of rows", () => {
+  const full = Array.from({ length: 12 }, (_, i) => [`Name${i}`, `${(i + 1).toFixed(2)}`]);
+  const box = [0, 0, 90, 16 + 12 * 14];
+  const rule = grid(full.slice(0, 8).map((row, i) => (i < 6 ? row : [`Other${i}`, `9.${i}0`])), { headerRows: 0, bbox: box });
+  const vlm = grid(full.slice(0, 11).map((row, i) => (i < 6 ? row : [`Zeta${i}`, `8.${i}0`])), { headerRows: 0, bbox: box });
+  const words = [];
+  full.forEach((row, r) => row.forEach((text, c) => {
+    words.push({ text, x0: 8 + c * 40, x1: 36 + c * 40, base: 16 + r * 14, size: 8, y0: 8 + r * 14, y1: 16 + r * 14 });
+  }));
+  const decision = chooseTableReading(rule, vlm, { words, rules: [] });
+  assert.equal(decision.choice, "vlm");
+  assert.ok(decision.scores.rule.rowCov >= 0.45 && decision.scores.rule.rowCov < 0.6);
+  assert.ok(decision.scores.vlm.rowCov >= 0.45 && decision.scores.vlm.rowCov < 0.6);
+  assert.ok(decision.scores.vlm.total - decision.scores.rule.total < 0.06);
+  assert.ok(decision.scores.vlm.rowFit - decision.scores.rule.rowFit >= 0.2);
+});
+
 test("a near tie keeps the rule table", () => {
   const rule = grid(TEN);
   const vlm = grid(TEN.map((row) => [row[0], row[1] === "1980" ? "1980" : row[1]]), { bbox: rule.bbox });
@@ -317,4 +334,22 @@ test("--vlm is parsed and vlm() posts through the helper client", async () => {
   assert.ok(posted, "client vlm() posts /v1/vlm");
   assert.equal(posted.init.headers.Authorization, "Bearer tok");
   assert.equal(posted.init.targetAddressSpace, undefined);
+});
+
+test("an empty high-accuracy cell takes the rule text the page words contain", () => {
+  const data = [
+    ["State", "Rate", "Deaths"],
+    ["Alabama", "5.25", "239"],
+    ["Alaska", "4.39", "12"],
+    ["Arizona", "6.10", "80"],
+    ["Arkansas", "5.80", "70"],
+  ];
+  const ruleLabels = data.map((row) => row.map((cell) => (cell === "6.10" || cell === "5.80" ? `•${cell}` : cell)));
+  ruleLabels[2][1] = "zzmissing";
+  const rule = grid(ruleLabels, { headerRows: 1 });
+  const vlm = grid(data.map((row, r) => row.map((cell, c) => ((r === 1 && c === 1) || (r === 2 && c === 1) ? "" : cell))), { headerRows: 1, bbox: rule.bbox });
+  const decision = chooseTableReading(rule, vlm, evidence(data));
+  assert.equal(decision.choice, "vlm");
+  assert.equal(decision.table.cells.find((cell) => cell.r === 1 && cell.c === 1).text, "5.25");
+  assert.equal(decision.table.cells.find((cell) => cell.r === 2 && cell.c === 1).text, "");
 });

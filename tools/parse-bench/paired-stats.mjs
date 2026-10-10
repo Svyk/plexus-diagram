@@ -36,6 +36,17 @@ export function resolveDoc(dir, names, page) {
 
 // ---- page score ----
 
+// The text component needs at least this many sure characters (normText-ed, space-free) on the page.
+export const MIN_TEXT_CHARS = 40;
+
+export function sureTextChars(truth) {
+  return truthSegments(truth).reduce((a, s) => a + (s === WILD ? 0 : s.length), 0);
+}
+
+function textApplies(truth) {
+  return !!truth.textComplete && truthLines(truth).length > 0 && sureTextChars(truth) >= MIN_TEXT_CHARS;
+}
+
 // Which components the truth supports.
 export function applicable(truth) {
   const tables = Array.isArray(truth.tables);
@@ -45,7 +56,7 @@ export function applicable(truth) {
     struct: tables,
     fig: figs,
     cap: figs && truth.figures.some((f) => f && typeof f.caption === "string" && f.caption.trim() !== ""),
-    text: !!truth.textComplete && truthLines(truth).length > 0,
+    text: textApplies(truth),
   };
 }
 
@@ -54,7 +65,7 @@ export function informative(truth) {
   if (!truth) return false;
   if (Array.isArray(truth.tables) && truth.tables.some((t) => t && Array.isArray(t.cells) && t.cells.some((c) => c && !c.unsure))) return true;
   if (Array.isArray(truth.figures) && truth.figures.length > 0) return true;
-  return !!truth.textComplete && truthLines(truth).length > 0;
+  return textApplies(truth);
 }
 
 // Component values for one scored page; scored === null is a failed read (every applicable component 0).

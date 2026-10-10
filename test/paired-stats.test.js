@@ -8,7 +8,7 @@ import test from "node:test";
 import { gritsCon } from "../tools/parse-bench/grits.mjs";
 import { scorePage } from "../tools/parse-bench/scan-score.mjs";
 import {
-  applicable, avgRanks, bootstrapCI, cohenDz, components, evaluate, foldPrint, indexDocsDir, informative, mulberry32, pageScore, parseArgs, resolveDoc, scoreWith, textScore, wilcoxon, withoutFigureText,
+  MIN_TEXT_CHARS, applicable, avgRanks, bootstrapCI, cohenDz, components, evaluate, foldPrint, indexDocsDir, informative, mulberry32, pageScore, parseArgs, resolveDoc, scoreWith, sureTextChars, textScore, wilcoxon, withoutFigureText,
 } from "../tools/parse-bench/paired-stats.mjs";
 
 const near = (a, b, tol = 1e-9) => assert.ok(Math.abs(a - b) < tol, `${a} vs ${b}`);
@@ -92,6 +92,8 @@ test("seeded bootstrap is reproducible and the CI brackets the mean", () => {
   assert.deepEqual(first, [r2(), r2()]);
 });
 
+const LONG = "the quick brown fox jumps over the lazy dog again and again";
+
 test("component applicability follows the truth", () => {
   assert.deepEqual(applicable({}), { cell: false, struct: false, fig: false, cap: false, text: false });
   assert.deepEqual(applicable({ tables: [] }), { cell: true, struct: true, fig: false, cap: false, text: false });
@@ -101,16 +103,34 @@ test("component applicability follows the truth", () => {
   assert.equal(applicable({ textComplete: true, lines: [] }).text, false);
   assert.equal(applicable({ textComplete: true, lines: [{ text: "x", unsure: true }] }).text, false);
   assert.equal(applicable({ textComplete: false, lines: ["abc"] }).text, false);
-  assert.equal(applicable({ textComplete: true, lines: ["abc"] }).text, true);
+  assert.equal(applicable({ textComplete: true, lines: [LONG] }).text, true);
+  assert.equal(applicable({ textComplete: true, lines: ["abcde"] }).text, false);
+});
+
+test("text needs at least 40 sure characters, spaces and unsure lines not counted", () => {
+  assert.equal(MIN_TEXT_CHARS, 40);
+  const c39 = "a".repeat(39), c40 = "a".repeat(40);
+  assert.equal(sureTextChars({ lines: ["a b c", { text: "zzzzzzzz", unsure: true }] }), 3);
+  assert.equal(applicable({ textComplete: true, lines: [c39] }).text, false);
+  assert.equal(applicable({ textComplete: true, lines: [c40] }).text, true);
+  assert.equal(applicable({ textComplete: true, lines: ["a".repeat(20) + " " + "a".repeat(19)] }).text, false);
+  assert.equal(applicable({ textComplete: true, lines: ["a".repeat(20) + " " + "a".repeat(20)] }).text, true);
+  assert.equal(applicable({ textComplete: true, lines: [c39, { text: "z".repeat(50), unsure: true }] }).text, false);
+  assert.equal(informative({ textComplete: true, lines: ["abcde"] }), false);
+  assert.equal(informative({ textComplete: true, lines: ["abcde"], tables: [], figures: [] }), false);
+  assert.equal(informative({ textComplete: true, lines: [c39] }), false);
+  assert.equal(informative({ textComplete: true, lines: [c40] }), true);
+  assert.equal(informative({ textComplete: true, lines: ["abcde"], figures: [{ caption: "" }] }), true);
+  assert.deepEqual(components({ text: { cer: 0 } }, { tables: [], textComplete: true, lines: ["abcde"] }), { cell: 0, struct: 0 });
 });
 
 test("components: empty-array rule, text from cer, failed read is zero", () => {
   const emptyDoc = { order: [], blocks: {}, pages: [] };
-  const truth = { tables: [], figures: [], textComplete: true, lines: ["abc"] };
+  const truth = { tables: [], figures: [], textComplete: true, lines: [LONG] };
   const c = components({ tables: { f1: 0.2, structure: { f1: 0.2 } }, grits: { con: 1, top: 1 }, figures: { f1: 1, caption: { recall: 0 } }, text: { cer: 0.25 } }, truth);
   assert.deepEqual(c, { cell: 1, struct: 1, fig: 1, text: 0.75 });
   assert.equal(pageScore(c), 0.9375);
-  assert.equal(components({ text: { cer: 3 } }, { textComplete: true, lines: ["a"] }).text, 0);
+  assert.equal(components({ text: { cer: 3 } }, { textComplete: true, lines: [LONG] }).text, 0);
   assert.deepEqual(components(null, { tables: [], figures: [{ caption: "x" }] }), { cell: 0, struct: 0, fig: 0, cap: 0 });
   assert.equal(pageScore({}), null);
   assert.ok(emptyDoc);
@@ -140,15 +160,15 @@ test("informative: needs a scored cell, a figure, or complete text with lines", 
   assert.equal(informative({ tables: [cell({ text: "a", unsure: true }), cell({ text: "b" })] }), true);
   assert.equal(informative({ tables: [], figures: [], textComplete: false }), false);
   assert.equal(informative({ figures: [{ caption: "" }] }), true);
-  assert.equal(informative({ textComplete: true, lines: ["abc"] }), true);
+  assert.equal(informative({ textComplete: true, lines: [LONG] }), true);
   assert.equal(informative({ textComplete: true, lines: [{ text: "x", unsure: true }] }), false);
   assert.equal(informative({ textComplete: false, lines: ["abc"] }), false);
   assert.equal(informative({}), false);
 });
 
 const emptyDocJson = JSON.stringify({ order: [], blocks: {}, pages: [{ w: 1, h: 1 }] });
-const textDocJson = JSON.stringify({ order: ["x"], blocks: { x: { type: "paragraph", text: "hello world" } }, pages: [{ w: 1, h: 1 }] });
-const textTruth = JSON.stringify({ textComplete: true, lines: ["hello world"] });
+const textDocJson = JSON.stringify({ order: ["x"], blocks: { x: { type: "paragraph", text: LONG } }, pages: [{ w: 1, h: 1 }] });
+const textTruth = JSON.stringify({ textComplete: true, lines: [LONG] });
 
 test("evaluate: uninformative pages are left out, missing docs count as failed reads, categories and gate are reported", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "pstats-"));

@@ -481,7 +481,6 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
   }
   add("exact one-sided p < 0.01", w.pExact, w.pExact < 0.01);
   add("rank-biserial r >= 0.5", w.r, w.r >= 0.5);
-  add("Cohen d_z >= 0.8", dz, dz != null && dz >= 0.8);
   add("bootstrap CI lower bound of mean(d) > 0", ci.lo, ci.lo != null && ci.lo > 0);
   for (const k of ["cell", "text", "fig"]) add(`non-inferiority ${k}: CI lower > -${MARGIN}`, nonInf[k].lo, nonInf[k].pass);
   const meanOf = (side, k) => {

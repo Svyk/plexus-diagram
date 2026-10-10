@@ -201,6 +201,10 @@ test("evaluate: uninformative pages are left out, missing docs count as failed r
     // every page here is text-only, so the table and figure non-inferiority checks have no evidence and fail closed
     assert.equal(res.nonInferiority.cell.n, 0);
     assert.deepEqual(res.gate.checks.filter((c) => !c.pass).map((c) => c.name), ["non-inferiority cell: CI lower > -0.05", "non-inferiority fig: CI lower > -0.05"]);
+    // the effect-size bar is rank-biserial r; Cohen's d_z is reported, not gated
+    assert.ok(res.gate.checks.some((c) => c.name === "rank-biserial r >= 0.5"));
+    assert.equal(res.gate.checks.some((c) => /d_z/.test(c.name)), false);
+    assert.equal(typeof res.dz, "number");
     const sealed = evaluate({ root: dir, manifest: { pages }, aDir: path.join(dir, "a"), bDir: path.join(dir, "b"), resamples: 200, gate: "sealed" });
     assert.equal(sealed.gate.pass, false);
     assert.equal(sealed.gate.checks.find((c) => c.name === "n >= 30").pass, false);

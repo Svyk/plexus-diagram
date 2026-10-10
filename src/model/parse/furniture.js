@@ -118,6 +118,12 @@ function quarterTurn(angle) {
   return Math.abs(a - Math.PI / 2) < 0.2 || Math.abs(a - (3 * Math.PI) / 2) < 0.2;
 }
 
+// A sideways "Fig. 2" or "Tafel III" in the margin is the plate's caption, not a running title.
+function marginCaption(text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(t);
+}
+
 // Pull 90° margin text out of the line list. OCR often emits the sideways running
 // title ("NOTIFIABLE" / "DISEASES") as a huge upright word; a text layer emits it
 // with a quarter-turn matrix. Either one is furniture, not a heading or a title.
@@ -133,8 +139,10 @@ export function dropMarginRotated(lines, rotated, { w = 0, h = 0, band = FURNITU
     const my = line?.base ?? ((line?.y0 ?? 0) + (line?.y1 ?? 0)) / 2;
     if (vertical && inMargin(mx, my, w, h, band)) {
       const text = String(line.text || "").replace(/\s+/g, " ").trim();
-      if (text) removed.push({ text, bbox: [r2(line.x0), r2(line.y0), r2(line.x1), r2(line.y1)] });
-      continue;
+      if (!marginCaption(text)) {
+        if (text) removed.push({ text, bbox: [r2(line.x0), r2(line.y0), r2(line.x1), r2(line.y1)] });
+        continue;
+      }
     }
     kept.push(line);
   }
@@ -147,6 +155,16 @@ export function dropMarginRotated(lines, rotated, { w = 0, h = 0, band = FURNITU
     const size = piece.size || 8;
     const top = Math.max(0, Math.min(piece.base, piece.base - advance));
     const bot = Math.min(h || Infinity, Math.max(piece.base, piece.base - advance));
+    if (marginCaption(text)) {
+      const x0 = piece.x0;
+      const x1 = Math.min(w || x0 + size, x0 + size);
+      kept.push({
+        text,
+        words: [{ text, x0, x1, y0: top, y1: bot, base: piece.base, size }],
+        x0, y0: top, x1, y1: bot, base: piece.base, size, chars: text.length,
+      });
+      continue;
+    }
     removed.push({
       text,
       bbox: [r2(piece.x0), r2(top), r2(Math.min(w || piece.x0 + size, piece.x0 + size)), r2(bot)],

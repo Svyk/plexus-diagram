@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 
 import { OP } from "../src/model/parse/rules.js";
 import { assembleDocument, parsePageGeometry } from "../src/model/parse/index.js";
-import { demoteFalseCaptions, drawingSheetPage, figCaptionKey, findFigures, normalizeFigSpelling, rasterScanPage } from "../src/model/parse/figures.js";
+import { demoteFalseCaptions, drawingSheetPage, falseFigureReason, figCaptionKey, findFigures, normalizeFigSpelling, rasterScanPage, rejectFalseFigures, sheetRegions } from "../src/model/parse/figures.js";
 import { absorbFigureTables, figureLabels } from "../src/model/parse/index.js";
 
 const H = 792;
@@ -677,4 +677,268 @@ test("a split ordinate note returns to the caption and the next line stays out",
   const caps = captionText(d);
   assert.ok(caps.some((t) => /Ordinates in terms of/.test(t)), caps.join(" | "));
   assert.ok(caps.every((t) => !/orainate/.test(t)), caps.join(" | "));
+});
+
+test("Abb., Tafel and Plate captions link, and a steel plate size does not", () => {
+  assert.equal(figCaptionKey("Abb. 2 Schnitt durch die Achse"), "2");
+  assert.equal(figCaptionKey("Tafel III"), "III");
+  assert.equal(figCaptionKey("Plate I. Bureau of Mines"), "1");
+  assert.equal(figCaptionKey("plate 14 inches square and 38 inch thick"), null);
+  const abb = scanDoc([
+    ocrItem("Abb.", 90, 452, 12, 28),
+    ocrItem("2.", 122, 452, 12, 16),
+    ocrItem("Schnitt", 146, 452, 12, 52),
+  ], plateInk(180, 580));
+  const caps = captionText(abb);
+  assert.ok(caps.some((t) => /Abb\. 2/.test(t) && /Schnitt/.test(t)), caps.join(" | "));
+  assert.equal(ofType(abb, "caption")[0].for, ofType(abb, "figure")[0].id);
+});
+
+test("a short all-caps title above a page-sized drawing is the plate caption", () => {
+  const ink = [];
+  for (let y = 140; y < 640; y += 36) {
+    for (let x = 70; x < 500; x += 36) ink.push({ x0: x, y0: y, x1: x + 28, y1: y + 24 });
+  }
+  const words = "W. A. McCOOL. METAL DRAWING MACHINE.".split(" ").map((t, i) => word(t, 80 + i * 52, 90, 128 + i * 52, 102, 10));
+  const got = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink },
+    words, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.ok(got.figures.some((f) => f.fromPlate), "the title above a full plate is a caption");
+});
+
+test("an all-caps heading above the ink is not a plate title", () => {
+  const head = "THE COMPRESSIBILITY OF NATURAL GAS AT HIGH".split(" ");
+  const d = scanDoc(head.map((t, i) => ocrItem(t, 70 + i * 36, 120, 11, 32)), plateInk(200, 520));
+  assert.equal(ofType(d, "figure").length, 0);
+  assert.equal(captionText(d).length, 0);
+});
+
+test("a running head with the page number at one end is not a plate title", () => {
+  const ink = plateInk(140, 640);
+  const run = (text) => findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink },
+    words: text.split(" ").map((t, i) => word(t, 72 + i * 40, 96, 108 + i * 40, 108, 10)),
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.ok(run("420 CALIFORNIA BLUE BOOK, OR STATE ROSTER.").figures.every((f) => !f.fromPlate));
+  assert.ok(run("MEMBERS OF STATE BOARDS AND COMMISSIONS. 421").figures.every((f) => !f.fromPlate));
+  assert.ok(run("HEALTH, STATE BOARD OF. 1870-1924 Continued.").figures.every((f) => !f.fromPlate));
+  assert.ok(run("HISTORICAL SURVEY COMMISSION, CALIFORNIA. 1915-1924.").figures.every((f) => !f.fromPlate));
+});
+
+test("an all-caps plate title under the drawing becomes the caption", () => {
+  const title = "RENEWAL OF THE GIRDERS OF THE EAST ROW".split(" ");
+  const d = scanDoc(title.map((t, i) => ocrItem(t, 70 + i * 46, 455, 11, 42)), plateInk(160, 600));
+  const caps = captionText(d);
+  assert.ok(caps.some((t) => /RENEWAL OF THE GIRDERS/.test(t)), caps.join(" | "));
+  const fig = ofType(d, "figure")[0];
+  const cap = ofType(d, "caption").find((c) => /RENEWAL/.test(c.text));
+  assert.equal(cap.for, fig.id);
+});
+
+test("the next sentence under a caption stays a paragraph", () => {
+  const d = scanDoc([
+    ocrItem("Fig.", 90, 432, 11, 24),
+    ocrItem("5", 118, 432, 11, 10),
+    ocrItem("Ice", 136, 432, 11, 24),
+    ocrItem("formation", 164, 432, 11, 60),
+    ocrItem("on", 228, 432, 11, 16),
+    ocrItem("wing", 248, 432, 11, 32),
+    ocrItem("The", 90, 454, 11, 24),
+    ocrItem("deposit", 118, 454, 11, 48),
+    ocrItem("was", 170, 454, 11, 24),
+    ocrItem("accumulated", 198, 454, 11, 72),
+    ocrItem("during", 274, 454, 11, 40),
+    ocrItem("a", 318, 454, 11, 10),
+    ocrItem("flight", 332, 454, 11, 36),
+    ocrItem("through", 372, 454, 11, 48),
+  ], plateInk(160, 560));
+  const caps = captionText(d);
+  assert.ok(caps.some((t) => /Fig\. 5 Ice formation on wing/.test(t)), caps.join(" | "));
+  assert.ok(caps.every((t) => !/deposit/.test(t)), caps.join(" | "));
+});
+
+test("a finished caption does not take the next paragraph", () => {
+  const pack = (words, y) => {
+    let x = 72;
+    return words.map((t) => {
+      const w = Math.max(12, t.length * 5);
+      const item = ocrItem(t, x, y, 10, w);
+      x += w + 4;
+      return item;
+    });
+  };
+  const d = scanDoc([
+    ...pack("FIGURE 1.—Apparatus for determining compressibility of natural gas.".split(" "), 430),
+    ...pack("manometer. The tube contained the natural gas and the rest".split(" "), 448),
+  ], plateInk(160, 400));
+  const caps = captionText(d);
+  assert.ok(caps.some((t) => /Figure 1/.test(t) && /natural gas\./.test(t)), caps.join(" | "));
+  assert.ok(caps.every((t) => !/manometer/.test(t)), caps.join(" | "));
+});
+
+test("a contents line with leaders is not a plate, and a corner stamp is not a figure", () => {
+  const words = "FIGURE 1. Apparatus ............ 7".split(" ").map((t, i) => word(t, 70 + i * 48, 560, 110 + i * 48, 572, 10));
+  const led = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: plateInk(200, 480) },
+    words, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.ok(led.figures.every((f) => !f.fromPlate), "leaders do not caption a plate");
+  const stamp = { x0: 20, y0: 700, x1: 90, y1: 770 };
+  assert.equal(falseFigureReason(stamp, { pageW: W, pageH: H }), "stamp");
+  const ruled = { x0: 40, y0: 200, x1: 280, y1: 360 };
+  assert.equal(falseFigureReason(ruled, { pageW: W, pageH: H, tables: [{ bbox: [30, 180, 300, 400] }] }), "table-border");
+  const plate = { x0: 40, y0: 80, x1: 420, y1: 520, fromPlate: true };
+  assert.equal(falseFigureReason(plate, { pageW: W, pageH: H }), null);
+});
+
+test("a numbered Fig. line beats an all-caps part label, and a plate title beats a reversed fragment", () => {
+  const face = "FACE ALL READY FOR PUSHING".split(" ");
+  const labelled = scanDoc([
+    ...face.map((t, i) => ocrItem(t, 80 + i * 70, 440, 11, 60)),
+    ocrItem("Figs.", 80, 500, 11, 36),
+    ocrItem("20.", 120, 500, 11, 24),
+  ], plateInk(220, 470));
+  const linked = ofType(labelled, "caption").find((c) => c.for);
+  assert.ok(linked, captionText(labelled).join(" | "));
+  assert.match(linked.text, /Figs\. 20/);
+  const title = "W. A. McCOOL. METAL DRAWING MACHINE.".split(" ");
+  const ink = [];
+  for (let y = 230; y < 680; y += 40) {
+    for (let x = 60; x < 520; x += 50) ink.push({ x0: x, y0: y, x1: x + 36, y1: y + 28 });
+  }
+  const plate = scanDoc([
+    ...title.map((t, i) => ocrItem(t, 70 + i * 48, 214, 11, 44)),
+    ocrItem("1.", 200, 400, 10, 16),
+    ocrItem("Fig.", 220, 400, 10, 28),
+  ], ink);
+  const titled = ofType(plate, "caption").find((c) => c.for);
+  assert.ok(titled, captionText(plate).join(" | "));
+  assert.match(titled.text, /METAL DRAWING MACHINE/);
+});
+
+test("a paragraph under a running head is clipped off the top of a plate", () => {
+  const prose = (y, text) => ({ text, x0: 40, x1: 500, y0: y, y1: y + 12 });
+  const lines = [
+    prose(100, "It has been shown by earlier work that the field is wide"),
+    prose(116, "The network stands over the south plat and the control plat"),
+    prose(132, "Winter wheat was sown on both plats during the same week"),
+  ];
+  const fig = { x0: 0, y0: 0, x1: 320, y1: 420, fromPlate: true };
+  const kept = rejectFalseFigures([fig], { lines, pageW: 360, pageH: 620 });
+  assert.equal(kept.length, 1);
+  assert.ok(kept[0].y0 > 140, `clipped under the paragraph, y0=${kept[0].y0}`);
+  const mid = [
+    prose(400, "It has been shown by earlier work that the field is wide"),
+    prose(416, "The network stands over the south plat and the control plat"),
+    prose(432, "Winter wheat was sown on both plats during the same week"),
+  ];
+  const deep = { x0: 40, y0: 40, x1: 400, y1: 740, fromPlate: true };
+  const left = rejectFalseFigures([deep], { lines: mid, pageW: W, pageH: H });
+  assert.equal(left[0].y0, 40, "prose in the lower half stays inside the drawing");
+});
+
+test("a thin edge band split off a drawing sheet is dropped", () => {
+  const top = { words: [word("Fig.", 40, 24, 70, 36, 10), word("3", 74, 24, 86, 36, 10)], text: "Fig. 3", x0: 40, x1: 86, y0: 24, y1: 36, base: 36, size: 10 };
+  const low = { words: [word("Fig.", 80, 640, 110, 652, 10), word("3", 114, 640, 128, 652, 10), word("Sketch", 140, 640, 190, 652, 10)], text: "Fig. 3 Sketch", x0: 80, x1: 190, y0: 640, y1: 652, base: 652, size: 10 };
+  const regions = sheetRegions([top, low], W, H);
+  const figures = regions.map((r) => ({ bbox: [r.x0, r.y0, r.x1, r.y1], kind: "image" }));
+  assert.ok(figures.length >= 2, "two anchors split the sheet");
+  const kept = rejectFalseFigures(figures, { pageW: W, pageH: H });
+  assert.equal(kept.length, 1);
+  assert.ok(kept[0].bbox[1] > 40, "the edge band is the one that goes");
+});
+
+test("a caption and the paragraphs across a chart are not a side column, and the ink stays a figure", () => {
+  const prose = (y, text) => ({ text, x0: 70, x1: 390, y0: y, y1: y + 12 });
+  const lines = [
+    prose(40, "as the viscosity at the moment when the spindle was withdrawn was not"),
+    prose(520, "Figure 7 Relations of temperature to fluidity and viscosity shown in experiments"),
+    prose(548, "The separation of metallic iron owing to the strongly reducing atmosphere of the"),
+  ];
+  const fig = { x0: 64, y0: 0, x1: 431, y1: 585, fromPlate: true };
+  const ink = [{ x0: 106, y0: 94, x1: 350, y1: 512, kind: "ink" }];
+  const kept = rejectFalseFigures([fig], { lines, pageW: 431, pageH: 657, strokes: ink });
+  assert.equal(kept.length, 1);
+  assert.ok(kept[0].x0 < 120, `the chart stays, x0=${kept[0].x0}`);
+  assert.ok(kept[0].x1 > 340, `the chart's right side stays, x1=${kept[0].x1}`);
+  assert.equal(falseFigureReason(fig, { lines, pageW: 431, pageH: 657, strokes: ink }), null);
+});
+
+test("axes, a curve, and hatching are figures on a table, in a corner, and on an edge", () => {
+  const chart = { x0: 40, y0: 200, x1: 280, y1: 360 };
+  const axes = [
+    { x0: 50, y0: 340, x1: 260, y1: 340, kind: "rule" },
+    { x0: 50, y0: 210, x1: 50, y1: 340, kind: "rule" },
+    ...[0, 1, 2, 3, 4, 5].map((i) => ({ x0: 50, y0: 220 + i * 16, x1: 62, y1: 220 + i * 16, kind: "rule" })),
+  ];
+  assert.equal(falseFigureReason(chart, { pageW: W, pageH: H, tables: [{ bbox: [30, 180, 300, 400] }] }), "table-border");
+  assert.equal(falseFigureReason(chart, { pageW: W, pageH: H, tables: [{ bbox: [30, 180, 300, 400] }], strokes: axes }), null);
+  const stampBox = { x0: 20, y0: 700, x1: 90, y1: 770 };
+  assert.equal(falseFigureReason(stampBox, { pageW: W, pageH: H, strokes: [{ x0: 22, y0: 704, x1: 86, y1: 764, kind: "ink" }] }), "stamp");
+  assert.equal(falseFigureReason(stampBox, { pageW: W, pageH: H, strokes: [{ x0: 22, y0: 704, x1: 86, y1: 764, kind: "shape", segs: 24 }] }), null);
+  const band = { x0: 0, y0: 0, x1: 600, y1: 28 };
+  const hatch = [];
+  for (let x = 20; x < 580; x += 16) hatch.push({ x0: x, y0: 4, x1: x, y1: 24, kind: "rule" });
+  assert.equal(falseFigureReason(band, { pageW: W, pageH: H }), "edge-stripe");
+  assert.equal(falseFigureReason(band, { pageW: W, pageH: H, strokes: hatch }), null);
+});
+
+test("a paragraph above a plate still clips when the ink sits below it", () => {
+  const prose = (y, text) => ({ text, x0: 40, x1: 300, y0: y, y1: y + 12 });
+  const lines = [
+    prose(100, "It has been shown by earlier work that the field is wide"),
+    prose(116, "The network stands over the south plat and the control plat"),
+    prose(132, "Winter wheat was sown on both plats during the same week"),
+  ];
+  const fig = { x0: 0, y0: 0, x1: 320, y1: 420, fromPlate: true };
+  const ink = [{ x0: 30, y0: 160, x1: 300, y1: 400, kind: "ink" }];
+  const kept = rejectFalseFigures([fig], { lines, pageW: 360, pageH: 620, strokes: ink });
+  assert.equal(kept.length, 1);
+  assert.ok(kept[0].y0 > 140, `clipped under the paragraph, y0=${kept[0].y0}`);
+  assert.ok(kept[0].y1 >= 400);
+});
+
+test("a text page with a small sketch is not carved into a false figure", () => {
+  const lines = [];
+  for (let i = 0; i < 10; i++) {
+    lines.push({
+      text: "The wire gage is described in the paragraph beside the picture of it",
+      x0: 140, x1: 400, y0: 140 + i * 36, y1: 152 + i * 36,
+    });
+  }
+  const fig = { x0: 40, y0: 120, x1: 420, y1: 520 };
+  const ink = [];
+  for (let y = 180; y < 460; y += 28) ink.push({ x0: 60, y0: y, x1: 110, y1: y + 20, kind: "ink" });
+  const kept = rejectFalseFigures([fig], { lines, pageW: 432, pageH: 665, strokes: ink });
+  assert.equal(kept.length, 0);
+});
+
+test("a text column beside a drawing is clipped and the ink stays", () => {
+  const lines = [180, 200, 220, 240].map((y) => ({
+    text: "The notes in this column describe the plate and its parts",
+    x0: 340, x1: 520, y0: y, y1: y + 12,
+  }));
+  const fig = { x0: 40, y0: 80, x1: 540, y1: 500, fromPlate: true };
+  const ink = [{ x0: 60, y0: 100, x1: 300, y1: 460, kind: "ink" }];
+  const kept = rejectFalseFigures([fig], { lines, pageW: W, pageH: H, strokes: ink });
+  assert.equal(kept.length, 1);
+  assert.ok(kept[0].x1 < 360, `column clipped, x1=${kept[0].x1}`);
+  assert.ok(kept[0].x0 <= 60 && kept[0].x1 >= 300, `ink stays inside ${kept[0].x0}..${kept[0].x1}`);
+});
+
+test("axis ticks in front of FIG stay out of the caption, and a lowercase tail on the same baseline joins", () => {
+  const ticks = "-4 -3 FIG. 2.—Diagram for determining cooling error".split(" ");
+  const d = scanDoc(ticks.map((t, i) => ocrItem(t, 80 + i * 42, 448, 10, 36)), plateInk(160, 560));
+  const caps = captionText(d);
+  assert.ok(caps.some((t) => /^FIG\. 2/.test(t) && /cooling error/.test(t) && !/^-4/.test(t)), caps.join(" | "));
+  const side = scanDoc([
+    ocrItem("Fig.", 90, 448, 11, 28),
+    ocrItem("of", 280, 448, 11, 16),
+    ocrItem("propeller", 300, 448, 11, 64),
+    ocrItem("section", 368, 448, 11, 52),
+  ], plateInk(160, 560));
+  const sideCaps = captionText(side);
+  assert.ok(sideCaps.some((t) => /Fig\. of propeller section/.test(t)), sideCaps.join(" | "));
 });

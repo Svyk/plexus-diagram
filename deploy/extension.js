@@ -5785,7 +5785,7 @@ var NUMBERED_RE, CAPTION_RE;
 var init_headings = __esm({
   "src/model/parse/headings.js"() {
     NUMBERED_RE = /^((\d+)(\.\d+)*)\.?\s+\S/;
-    CAPTION_RE = /^(table|fig(ure)?\.?|figure)\s*\d+[A-Za-z]?[.:]?(\s|$)/i;
+    CAPTION_RE = /^(?:table|tabelle|tab(?!el)\.?|fig(?:ure)?s?\.?|figure|plates?|abb(?:ildung(?:en)?)?\.?|tafeln?|tafel|taf\.?)\s*\d+[A-Za-z]?[.:]?(\s|$)/i;
   }
 });
 
@@ -7380,6 +7380,10 @@ function quarterTurn(angle) {
   const a = Math.abs(Number(angle) || 0);
   return Math.abs(a - Math.PI / 2) < 0.2 || Math.abs(a - 3 * Math.PI / 2) < 0.2;
 }
+function marginCaption(text3) {
+  const t = String(text3 || "").replace(/\s+/g, " ").trim();
+  return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(t);
+}
 function dropMarginRotated(lines, rotated, { w = 0, h = 0, band = FURNITURE_BAND } = {}) {
   const kept = [];
   const removed = [];
@@ -7390,8 +7394,10 @@ function dropMarginRotated(lines, rotated, { w = 0, h = 0, band = FURNITURE_BAND
     const my = line?.base ?? ((line?.y0 ?? 0) + (line?.y1 ?? 0)) / 2;
     if (vertical && inMargin(mx, my, w, h, band)) {
       const text3 = String(line.text || "").replace(/\s+/g, " ").trim();
-      if (text3) removed.push({ text: text3, bbox: [r2(line.x0), r2(line.y0), r2(line.x1), r2(line.y1)] });
-      continue;
+      if (!marginCaption(text3)) {
+        if (text3) removed.push({ text: text3, bbox: [r2(line.x0), r2(line.y0), r2(line.x1), r2(line.y1)] });
+        continue;
+      }
     }
     kept.push(line);
   }
@@ -7404,6 +7410,22 @@ function dropMarginRotated(lines, rotated, { w = 0, h = 0, band = FURNITURE_BAND
     const size = piece.size || 8;
     const top = Math.max(0, Math.min(piece.base, piece.base - advance));
     const bot = Math.min(h || Infinity, Math.max(piece.base, piece.base - advance));
+    if (marginCaption(text3)) {
+      const x0 = piece.x0;
+      const x1 = Math.min(w || x0 + size, x0 + size);
+      kept.push({
+        text: text3,
+        words: [{ text: text3, x0, x1, y0: top, y1: bot, base: piece.base, size }],
+        x0,
+        y0: top,
+        x1,
+        y1: bot,
+        base: piece.base,
+        size,
+        chars: text3.length
+      });
+      continue;
+    }
     removed.push({
       text: text3,
       bbox: [r2(piece.x0), r2(top), r2(Math.min(w || piece.x0 + size, piece.x0 + size)), r2(bot)]
@@ -7713,7 +7735,7 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
   unionPanels(figures, lines, bodySize, pageW, pageH);
   for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWords);
   if (plates) {
-    coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes);
+    coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes.filter((b) => !overlapsBodyLine(b, lines)));
     for (const fig of figures) {
       if (!fig.fromPlate) continue;
       growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWords);
@@ -7735,13 +7757,21 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
     fig.y1 = box2.y1;
     const area = (fig.x1 - fig.x0) * (fig.y1 - fig.y0);
     if (!fig.pageImage && !fig.fromPlate && area >= 0.7 * pageW * pageH && textChars >= 180) continue;
-    if (plates && !fig.fromPlate && !fig.pageImage && textChars >= 400) continue;
+    if (plates && !fig.fromPlate && !fig.pageImage && (textChars >= 400 || contentsLead(lines))) continue;
     if (plates && !fig.fromPlate && !fig.pageImage && lines.some((line) => proseLine(line) && line.y1 > fig.y0 + 1 && line.y0 < fig.y1 - 1 && Math.min(line.x1, fig.x1) - Math.max(line.x0, fig.x0) > 0.5 * (line.x1 - line.x0))) continue;
     fig.bbox = [round(fig.x0), round(fig.y0), round(fig.x1), round(fig.y1)];
     delete fig.pageImage;
     kept.push(fig);
   }
-  return { figures: kept, used };
+  return {
+    figures: rejectFalseFigures(kept, {
+      lines,
+      pageW,
+      pageH,
+      strokes: [...inkBoxes, ...prims.filter((p) => p.kind === "rule" || p.kind === "shape")]
+    }),
+    used
+  };
 }
 function rasterScanPage({ images, shapes, words, pageW, pageH }) {
   const segs = (shapes || []).reduce((n2, s) => n2 + (s.segs || 1), 0);
@@ -7964,25 +7994,30 @@ function normalizeFigSpelling(text3) {
   t = t.replace(/\bF[1l|]g/g, "Fig").replace(/\bf[1l|]g/g, "fig");
   t = t.replace(/\bfigu[nr]e\b/gi, (m) => m[0] === "f" ? "figure" : "Figure");
   t = t.replace(/\b([A-Za-z]{2,})\s*,\s*(?=\d)/g, "$1. ");
-  t = t.replace(/\b((?:fig(?:ure)?|plates?)\.?\s+)[lI|](?=\s|$|[.:])/gi, "$11");
-  t = t.replace(/\b((?:fig(?:ure)?|plates?)\.?\s+)(II)(?=\s|$|[.:—–-])/gi, (full, pre, num6) => num6 === "II" ? `${pre}11` : full);
+  t = t.replace(/\b((?:fig(?:ure)?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s+)[lI|](?=\s|$|[.:])/gi, "$11");
+  t = t.replace(/\b((?:fig(?:ure)?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s+)(II)(?=\s|$|[.:—–-])/gi, (full, pre, num6) => num6 === "II" ? `${pre}11` : full);
   return t;
 }
 function figCaptionKey(text3) {
-  const t = normalizeFigSpelling(text3);
-  const rev = /^(\d+)\s*\.?\s*(?:fig(?:ure)?|plates?)\.?$/i.exec(t);
+  let t = normalizeFigSpelling(text3);
+  t = t.replace(/^(?:[-+]?\d+\s+){1,6}(?=(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b)/i, "");
+  if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return null;
+  const roman = /^(?:plates?|tafeln?|tafel|taf\.?)\s+([IVXLC]{1,6})\b/i.exec(t);
+  if (roman) return roman[1].toUpperCase();
+  const rev = new RegExp(`^(\\d+)\\s*\\.?\\s*(?:${FIG_LEAD})\\.?$`, "i").exec(t);
   if (rev) return rev[1];
-  const m = /^((?:fig(?:ure)?s?|plates?)\.?)\s*(\d+[A-Za-z]?)?/i.exec(t);
+  const m = new RegExp(`^((?:${FIG_LEAD})\\.?)\\s*(\\d+[A-Za-z]?)?`, "i").exec(t);
   if (!m) return null;
   if (!m[2]) return "";
   const rest = t.slice(m[0].length);
-  if (/^figs|^plates/i.test(m[1]) && /^[\s.,:&-]*(?:and\s+)?\d+/i.test(rest)) return null;
+  if (/^(?:figs|plates|abbildungen|tafeln)/i.test(m[1]) && /^[\s.,:&-]*(?:and\s+)?\d+/i.test(rest)) return null;
   return m[2].replace(/[A-Za-z]$/, "");
 }
 function lineIsCaption(text3) {
   const t = normalizeFigSpelling(text3);
-  if (CAPTION_RE.test(t) || figCaptionKey(t) != null || /^fig(?:ure)?\.?\s*$/i.test(t) || REVERSED_FIG_RE.test(t)) return true;
-  return /^fig(?:ure)?\.?\s+(\d+[A-Za-z]?[:.]?|[^\p{L}\p{N}]{1,4})$/iu.test(t);
+  if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return false;
+  if (CAPTION_RE.test(t) || figCaptionKey(t) != null || new RegExp(`^(?:${FIG_LEAD})\\.?\\s*$`, "i").test(t) || REVERSED_FIG_RE.test(t)) return true;
+  return new RegExp(`^(?:${FIG_LEAD})\\.?\\s+(\\d+[A-Za-z]?[:.]?|[^\\p{L}\\p{N}]{1,4})$`, "iu").test(t);
 }
 function lineIsBody(line) {
   return wordCount2(line.text) >= 8;
@@ -8236,7 +8271,7 @@ function orderedLabelWords(group) {
   return [figWord, { ...num6 }];
 }
 function normalizeFigWord(w) {
-  const m = /^(\d+[A-Za-z]?)\.?fig(?:ure)?\.?$/i.exec(String(w.text || "").trim());
+  const m = /^(\d+[A-Za-z]?)\.fig(?:ure)?\.?$/i.exec(String(w.text || "").trim());
   if (!m) return w;
   return { ...w, text: `FIG. ${m[1]}` };
 }
@@ -8429,9 +8464,239 @@ function proseLine(line) {
   if (words.length < 8) return false;
   return words.filter((w) => /[A-Za-z]{3,}/.test(w)).length >= 4;
 }
+function contentsLead(lines) {
+  const list = lines || [];
+  const leader = list.some((line) => {
+    const t = String(line.text || "");
+    const dots = (t.match(/[.]/g) || []).length;
+    return /\.{4,}|…{2,}|·{4,}/.test(t) || dots >= 6 && dots > t.length * 0.35;
+  });
+  const named = list.some((line) => /\b(?:fig(?:ure)?s?|tables?|plates?)\b/i.test(line.text || "") && /\d/.test(line.text || ""));
+  return leader && named;
+}
+function overlapsBodyLine(box2, lines) {
+  const bw = (box2.x1 ?? 0) - (box2.x0 ?? 0);
+  const bh = (box2.y1 ?? 0) - (box2.y0 ?? 0);
+  if (!(bw > 0) || !(bh > 0)) return false;
+  for (const line of lines || []) {
+    if (!proseLine(line)) continue;
+    const ox = Math.min(box2.x1, line.x1) - Math.max(box2.x0, line.x0);
+    const oy = Math.min(box2.y1, line.y1) - Math.max(box2.y0, line.y0);
+    if (ox > 0.6 * bw && oy > 0.5 * bh) return true;
+  }
+  return false;
+}
+function figBox(fig) {
+  if (fig.bbox && fig.bbox.length >= 4 && fig.x0 == null) return { x0: fig.bbox[0], y0: fig.bbox[1], x1: fig.bbox[2], y1: fig.bbox[3] };
+  if (fig.x0 != null) return { x0: fig.x0, y0: fig.y0, x1: fig.x1, y1: fig.y1 };
+  if (fig.bbox && fig.bbox.length >= 4) return { x0: fig.bbox[0], y0: fig.bbox[1], x1: fig.bbox[2], y1: fig.bbox[3] };
+  return null;
+}
+function writeFigBox(fig, box2) {
+  fig.x0 = box2.x0;
+  fig.y0 = box2.y0;
+  fig.x1 = box2.x1;
+  fig.y1 = box2.y1;
+  if (fig.bbox) fig.bbox = [round(box2.x0), round(box2.y0), round(box2.x1), round(box2.y1)];
+}
+function lineCenterIn(line, box2) {
+  const cx = ((line.x0 ?? 0) + (line.x1 ?? 0)) / 2;
+  const cy = ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2;
+  return cx >= box2.x0 && cx <= box2.x1 && cy >= box2.y0 && cy <= box2.y1;
+}
+function strokeGeom(s) {
+  if (!s || s.x0 == null || s.y0 == null || s.x1 == null || s.y1 == null) return null;
+  const x0 = Math.min(s.x0, s.x1);
+  const x1 = Math.max(s.x0, s.x1);
+  const y0 = Math.min(s.y0, s.y1);
+  const y1 = Math.max(s.y0, s.y1);
+  return { ...s, x0, y0, x1, y1, w: x1 - x0, h: y1 - y0, kind: s.kind || "ink" };
+}
+function strokeInBox(box2, g) {
+  if (g.h < 1 && g.w >= 1) {
+    return g.y0 >= box2.y0 - 1 && g.y0 <= box2.y1 + 1 && Math.min(box2.x1, g.x1) - Math.max(box2.x0, g.x0) > 1;
+  }
+  if (g.w < 1 && g.h >= 1) {
+    return g.x0 >= box2.x0 - 1 && g.x0 <= box2.x1 + 1 && Math.min(box2.y1, g.y1) - Math.max(box2.y0, g.y0) > 1;
+  }
+  return Math.min(box2.x1, g.x1) - Math.max(box2.x0, g.x0) > 0 && Math.min(box2.y1, g.y1) - Math.max(box2.y0, g.y0) > 0;
+}
+function drawingParts(box2, strokes, pageW, pageH) {
+  if (!box2 || !(pageW > 0) || !(pageH > 0)) return [];
+  const pageArea = pageW * pageH;
+  const inside8 = [];
+  for (const s of strokes || []) {
+    const g = strokeGeom(s);
+    if (!g || g.kind === "image") continue;
+    if (!strokeInBox(box2, g)) continue;
+    inside8.push(g);
+  }
+  if (!inside8.length) return [];
+  const blobs = inside8.filter((g) => (g.kind === "ink" || g.kind === "box") && g.w * g.h > 0.015 * pageArea && Math.min(g.w, g.h) >= 8);
+  const curves = inside8.filter((g) => g.kind === "shape" && ((g.segs || g.n || 0) >= 8 || g.w * g.h > 0.015 * pageArea && Math.min(g.w, g.h) >= 8));
+  const rules = inside8.filter((g) => g.kind === "rule");
+  const longH = rules.filter((g) => g.w >= 36 && g.h <= 4);
+  const longV = rules.filter((g) => g.h >= 36 && g.w <= 4);
+  const shortH = rules.filter((g) => g.w >= 8 && g.w < 36 && g.h <= 4);
+  const shortV = rules.filter((g) => g.h >= 8 && g.h < 36 && g.w <= 4);
+  const hatch = shortH.length >= 6 || shortV.length >= 6;
+  const axes = longH.length >= 1 && longV.length >= 1 && (shortH.length + shortV.length >= 4 || curves.length > 0 || blobs.length > 0);
+  const fragments = inside8.filter((g) => (g.kind === "ink" || g.kind === "shape") && Math.min(g.w, g.h) >= 6 && Math.max(g.w, g.h) >= 12 && g.w * g.h >= 80);
+  const fragHull = hullOf(fragments);
+  const fragArea = fragments.reduce((n2, g) => n2 + g.w * g.h, 0);
+  const many = fragments.length >= 8 && fragHull && fragArea >= 0.25 * Math.max(1, boxArea(fragHull));
+  if (!blobs.length && !curves.length && !hatch && !axes && !many) return [];
+  const parts = [];
+  if (blobs.length) parts.push(...blobs);
+  if (curves.length) parts.push(...curves);
+  if (hatch) parts.push(...shortH.length >= 6 ? shortH : shortV);
+  if (axes) parts.push(...longH, ...longV, ...shortH, ...shortV);
+  if (many) parts.push(...fragments);
+  return parts;
+}
+function drawingCovers(box2, parts, minShare) {
+  if (!parts.length) return false;
+  const hull = hullOf(parts);
+  if (!hull || insideFrac(hull, box2) < 0.8) return false;
+  const boxA = boxArea(box2);
+  if (!(boxA > 0)) return false;
+  const hw = Math.max(0, hull.x1 - hull.x0);
+  const hh = Math.max(0, hull.y1 - hull.y0);
+  const hullA = Math.max(hw * hh, hw * 8, hh * 8);
+  return hullA >= minShare * boxA;
+}
+function markMeasure(g) {
+  if (g.h <= 4 && g.w >= 8) return g.w;
+  if (g.w <= 4 && g.h >= 8) return g.h;
+  return Math.max(g.w, 0.6) * Math.max(g.h, 0.6);
+}
+function markOverlap(g, next) {
+  if (g.h <= 4 && g.w >= 8) {
+    if (g.y0 < next.y0 - 1.5 || g.y0 > next.y1 + 1.5) return 0;
+    return Math.max(0, Math.min(next.x1, g.x1) - Math.max(next.x0, g.x0));
+  }
+  if (g.w <= 4 && g.h >= 8) {
+    if (g.x0 < next.x0 - 1.5 || g.x0 > next.x1 + 1.5) return 0;
+    return Math.max(0, Math.min(next.y1, g.y1) - Math.max(next.y0, g.y0));
+  }
+  const ox = Math.max(0, Math.min(next.x1, g.x1) - Math.max(next.x0, g.x0));
+  const oy = Math.max(0, Math.min(next.y1, g.y1) - Math.max(next.y0, g.y0));
+  return ox * oy;
+}
+function drawingKept(box2, next, parts) {
+  if (!drawingCovers(box2, parts, 0.2)) return true;
+  let area = 0;
+  let kept = 0;
+  for (const p of parts) {
+    const a = markMeasure(p);
+    area += a;
+    kept += markOverlap(p, next);
+  }
+  return !(area > 0) || kept >= 0.75 * area;
+}
+function spansPlate(line, box2, parts) {
+  const lw = (line.x1 ?? 0) - (line.x0 ?? 0);
+  const bw = box2.x1 - box2.x0;
+  if (bw > 0 && lw >= 0.62 * bw) return true;
+  if (!parts.length) return false;
+  const x0 = Math.min(...parts.map((p) => p.x0));
+  const x1 = Math.max(...parts.map((p) => p.x1));
+  const dw = x1 - x0;
+  if (dw < 24) return false;
+  return Math.min(line.x1, x1) - Math.max(line.x0, x0) >= 0.7 * dw;
+}
+function textBlockBox(box2, lines) {
+  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box2));
+  if (prose.length < 6) return false;
+  const span = Math.max(...prose.map((line) => line.y1)) - Math.min(...prose.map((line) => line.y0));
+  return span >= 0.55 * (box2.y1 - box2.y0);
+}
+function clipBodyColumn(fig, lines, strokes, pageW, pageH) {
+  const box2 = figBox(fig);
+  if (!box2) return false;
+  if (textBlockBox(box2, lines)) return false;
+  const parts = drawingParts(box2, strokes, pageW, pageH);
+  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box2) && !spansPlate(line, box2, parts));
+  if (prose.length < 3) return false;
+  const mid = (box2.x0 + box2.x1) / 2;
+  const right = prose.filter((line) => (line.x0 + line.x1) / 2 >= mid);
+  const left = prose.filter((line) => (line.x0 + line.x1) / 2 < mid);
+  let next = { ...box2 };
+  if (right.length >= 3 && left.length <= 1) {
+    const cut = Math.min(...right.map((line) => line.x0));
+    if (cut - box2.x0 >= 48 && box2.x1 - cut >= 24) next = { ...next, x1: cut - 2 };
+  } else if (left.length >= 3 && right.length <= 1) {
+    const cut = Math.max(...left.map((line) => line.x1));
+    if (box2.x1 - cut >= 48 && cut - box2.x0 >= 24) next = { ...next, x0: cut + 2 };
+  }
+  if (next.x0 === box2.x0 && next.x1 === box2.x1) return false;
+  if (!drawingKept(box2, next, parts)) return false;
+  writeFigBox(fig, next);
+  return true;
+}
+function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, pageH = 792, peers = [], strokes = [] } = {}) {
+  const box2 = figBox(fig);
+  if (!box2 || !(pageW > 0) || !(pageH > 0)) return null;
+  const w = box2.x1 - box2.x0;
+  const h = box2.y1 - box2.y0;
+  const area = w * h;
+  const pageArea = pageW * pageH;
+  if (!(area > 0)) return null;
+  const textBlock = textBlockBox(box2, lines);
+  const parts = drawingParts(box2, strokes, pageW, pageH);
+  if (drawingCovers(box2, parts, 0.5) || drawingCovers(box2, parts, 0.2) && !textBlock) return null;
+  const touchTop = box2.y0 <= Math.max(4, 0.02 * pageH);
+  const touchBot = box2.y1 >= pageH - Math.max(4, 0.02 * pageH);
+  const touchLeft = box2.x0 <= Math.max(4, 0.02 * pageW);
+  const touchRight = box2.x1 >= pageW - Math.max(4, 0.02 * pageW);
+  const largerPeer = peers.some((other) => other !== fig && boxArea(figBox(other) || {}) >= 3 * area);
+  if ((touchTop || touchBot) && h <= 0.16 * pageH && w >= 0.65 * pageW && w >= 5 * h && (largerPeer || h <= 0.045 * pageH)) return "edge-stripe";
+  if ((touchLeft || touchRight) && w <= 0.055 * pageW && h >= 0.35 * pageH && h >= 8 * w) return "edge-stripe";
+  if (!fig.fromPlate && (h <= 0.012 * pageH && w >= 0.25 * pageW || w <= 0.012 * pageW && h >= 0.25 * pageH)) return "rule";
+  const cx = (box2.x0 + box2.x1) / 2;
+  const cy = (box2.y0 + box2.y1) / 2;
+  const aspect = h > 0 ? w / h : 0;
+  const corner = (cx <= 0.12 * pageW || cx >= 0.88 * pageW) && (cy <= 0.12 * pageH || cy >= 0.88 * pageH);
+  if (!fig.fromPlate && corner && area >= 2e-3 * pageArea && area <= 0.015 * pageArea && aspect >= 0.35 && aspect <= 2.8) return "stamp";
+  if (!fig.fromPlate && cy >= 0.9 * pageH && w <= 0.45 * pageW && h <= 0.045 * pageH && area <= 0.02 * pageArea && aspect >= 1.4) return "stamp";
+  for (const table of tables || []) {
+    const tb = table.bbox || table;
+    if (!tb || tb.length < 4) continue;
+    if (insideFrac(box2, { x0: tb[0], y0: tb[1], x1: tb[2], y1: tb[3] }) >= 0.55) return "table-border";
+  }
+  if (textBlock) return "text-block";
+  return null;
+}
+function clipBodyBand(fig, lines, strokes, pageW, pageH) {
+  const box2 = figBox(fig);
+  if (!box2) return;
+  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box2));
+  if (prose.length < 3) return;
+  const bot = Math.max(...prose.map((line) => line.y1));
+  const top = Math.min(...prose.map((line) => line.y0));
+  const h = box2.y1 - box2.y0;
+  if (bot - top <= 0.45 * h && bot - box2.y0 <= 0.45 * h && box2.y1 - bot >= 48) {
+    const next = { ...box2, y0: bot + 2 };
+    if (!drawingKept(box2, next, drawingParts(box2, strokes, pageW, pageH))) return;
+    writeFigBox(fig, next);
+  }
+}
+function rejectFalseFigures(figures, opts = {}) {
+  const list = figures || [];
+  const strokes = opts.strokes || [];
+  const pageW = opts.pageW || 612;
+  const pageH = opts.pageH || 792;
+  for (const fig of list) {
+    clipBodyColumn(fig, opts.lines || [], strokes, pageW, pageH);
+    clipBodyBand(fig, opts.lines || [], strokes, pageW, pageH);
+  }
+  const peers = list.map((fig) => fig);
+  return list.filter((fig) => !falseFigureReason(fig, { ...opts, peers, strokes }));
+}
 function plateLabelText(text3, key) {
   if (key == null) return false;
   const t = normalizeFigSpelling(text3).replace(/\s+/g, " ").trim();
+  if (/\.{4,}|…{2,}|·{4,}/.test(t)) return false;
   if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return false;
   const words = t.split(" ");
   if (key === "" && words.length > 2) return false;
@@ -8439,6 +8704,51 @@ function plateLabelText(text3, key) {
   if (/^(?:is|are|was|were|shows|show|comprises|has|have)\b/i.test(rest)) return false;
   if (/^(?:herewith|above|below|following|opposite)[.]?$/i.test(rest)) return false;
   return true;
+}
+function titleLikePlateLine(text3) {
+  const t = normalizeFigSpelling(String(text3 || "")).replace(/\s+/g, " ").trim();
+  if (!t || /\.{4,}|…{2,}|·{4,}/.test(t)) return false;
+  const words = t.split(" ").filter(Boolean);
+  if (words.length < 2 || words.length > 28) return false;
+  if (/^(?:table|tabelle|tab)\b/i.test(t) && !/^taf/i.test(t)) return false;
+  if (figCaptionKey(t) != null) return false;
+  if (/^(?:plates?|tafeln?|tafel|taf\.?|abb(?:ildung)?)\b/i.test(t)) return true;
+  if (words.length < 4) return false;
+  const edgeNum = (w) => /^\d{1,4}[.]?$/.test(w);
+  if (edgeNum(words[0]) || edgeNum(words[words.length - 1])) return false;
+  if (/\bcontinued\b/i.test(t)) return false;
+  if (/\b\d{4}\s*[-–—]\s*\d{2,4}\b/.test(t)) return false;
+  const letters = t.replace(/[^A-Za-z]/g, "");
+  if (letters.length < 8) return false;
+  return letters.replace(/[^A-Z]/g, "").length / letters.length >= 0.62;
+}
+function plateTitleCaptions(lines, ink, pageW, pageH) {
+  if (!ink || ink.length < 4) return [];
+  const hull = hullOf(ink);
+  if (!hull) return [];
+  const area = (hull.x1 - hull.x0) * (hull.y1 - hull.y0);
+  if (area < 0.04 * pageW * pageH) return [];
+  const paragraph = lines.some((line) => proseLine(line) && lineCenterIn(line, hull) && Math.min(line.x1, hull.x1) - Math.max(line.x0, hull.x0) > 0.5 * (hull.x1 - hull.x0));
+  if (paragraph) return [];
+  const limit = Math.max(48, 0.08 * pageH);
+  const out = [];
+  for (const line of lines) {
+    if (!titleLikePlateLine(line.text)) continue;
+    const below = line.y0 >= hull.y1 - 2;
+    const above = line.y1 <= hull.y0 + 2;
+    const gap = below ? line.y0 - hull.y1 : above ? hull.y0 - line.y1 : 0;
+    if (!below && !above) continue;
+    const plateWord = /\b(?:plates?|tafeln?|tafel|abb(?:ildung)?)\b/i.test(normalizeFigSpelling(line.text));
+    const proseN = lines.filter((l) => proseLine(l)).length;
+    if (!plateWord && !below && (proseN >= 2 || area < 0.18 * pageW * pageH)) continue;
+    if (gap > limit) continue;
+    const ox = Math.min(hull.x1, line.x1) - Math.max(hull.x0, line.x0);
+    const narrower = Math.min(hull.x1 - hull.x0, Math.max(1, line.x1 - line.x0));
+    if (ox < 0.35 * narrower) continue;
+    out.push({ ...line, key: "title", text: normalizeFigSpelling(line.text) });
+  }
+  out.sort((a, b) => a.y0 - b.y0);
+  return out.slice(0, 1);
 }
 function plateCaptions(lines, pageH) {
   const out = [];
@@ -8579,6 +8889,11 @@ function dropCoveredDrawings(figures) {
 }
 function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = []) {
   let ink = [...prims.filter((p) => p.kind === "rule" || p.kind === "shape"), ...inkBoxes];
+  ink = ink.filter((p) => {
+    if (p.kind !== "rule") return true;
+    const thin = p.y1 - p.y0 <= 4 || p.x1 - p.x0 <= 4;
+    return !thin || !overlapsBodyLine(p, lines);
+  });
   const inkOnly = ink.filter((p) => p.kind === "ink");
   if (inkOnly.length) {
     const drawn = hullOf(inkOnly);
@@ -8588,7 +8903,8 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
     if (near2.length >= 4) ink = near2;
   }
   if (ink.length < 4) return;
-  const caps = plateCaptions(lines, pageH);
+  let caps = plateCaptions(lines, pageH);
+  if (!caps.length) caps = plateTitleCaptions(lines, inkOnly, pageW, pageH);
   if (!caps.length) return;
   if (inkOnly.length && splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH)) {
     dropCoveredDrawings(figures);
@@ -8668,7 +8984,7 @@ function clusterBoxes(items, gap) {
   }
   return clusters;
 }
-var IMAGE_MIN, H_GAP, V_GAP, FIG_TOKEN, FIG_NUM, FIG_GLUED, REVERSED_FIG_RE, CAPTION_SPLIT_GAP, ANCHOR_SEP;
+var IMAGE_MIN, H_GAP, V_GAP, FIG_LEAD, FIG_TOKEN, FIG_NUM, FIG_GLUED, REVERSED_FIG_RE, CAPTION_SPLIT_GAP, ANCHOR_SEP;
 var init_figures = __esm({
   "src/model/parse/figures.js"() {
     init_lines();
@@ -8679,10 +8995,11 @@ var init_figures = __esm({
     IMAGE_MIN = 12;
     H_GAP = 56;
     V_GAP = 42;
-    FIG_TOKEN = /^fig(?:ure)?\.?$/i;
+    FIG_LEAD = String.raw`fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|taf`;
+    FIG_TOKEN = new RegExp(`^(?:${FIG_LEAD})\\.?$`, "i");
     FIG_NUM = /^\d+[A-Za-z]?[.:]?$/;
-    FIG_GLUED = /^fig(?:ure)?\.?\d+[A-Za-z]?$/i;
-    REVERSED_FIG_RE = /^\d+[A-Za-z]?\s*\.?\s*fig(?:ure)?\.?$/i;
+    FIG_GLUED = new RegExp(`^(?:${FIG_LEAD})\\.?\\d+[A-Za-z]?$`, "i");
+    REVERSED_FIG_RE = new RegExp(`^\\d+[A-Za-z]?(?:[.\\s]+)\\s*(?:${FIG_LEAD})\\.?$`, "i");
     CAPTION_SPLIT_GAP = 8;
     ANCHOR_SEP = 48;
   }
@@ -9755,9 +10072,13 @@ var init_pdf = __esm({
 });
 
 // src/model/parse/index.js
+function peelTickPrefix(text3) {
+  return String(text3 || "").replace(/^(?:[-+]?\d+\s+){1,6}(?=(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b)/i, "");
+}
 function isCaptionText(text3) {
-  const raw = normalizeFigSpelling(String(text3 || "").replace(/[^\p{L}\p{N}.: ]/gu, " ").replace(/\s+/g, " ").trim());
-  return CAPTION_RE.test(raw) || figCaptionKey(raw) != null || /^fig(?:ure)?\.?\s*$/i.test(raw) || /^\d+[A-Za-z]?\s*\.?\s*fig(?:ure)?\.?$/i.test(raw);
+  const raw = peelTickPrefix(normalizeFigSpelling(String(text3 || "").replace(/[^\p{L}\p{N}.: ]/gu, " ").replace(/\s+/g, " ").trim()));
+  if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(raw)) return false;
+  return CAPTION_RE.test(raw) || figCaptionKey(raw) != null || /^(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|taf)\.?\s*$/i.test(raw) || /^\d+[A-Za-z]?(?:[.\s]+)\s*(?:fig(?:ure)?|plates?|abb(?:ildung)?|tafel|taf)\.?$/i.test(raw);
 }
 function viewportTransform(w, h, rotation = 0) {
   switch ((rotation % 360 + 360) % 360) {
@@ -9854,6 +10175,17 @@ function parsePageGeometry(data, n2) {
     }
   }
   if (ocr) absorbFigureTables(tables, figures);
+  figures = rejectFalseFigures(figures, {
+    lines,
+    tables,
+    pageW: w,
+    pageH: h,
+    strokes: [
+      ...(graphics.ink || []).map((b) => ({ ...b, kind: "ink" })),
+      ...(graphics.shapes || []).map((s) => ({ ...s, kind: "shape" })),
+      ...(graphics.rules || []).map((r) => ({ ...r, kind: "rule" }))
+    ]
+  });
   for (let i = tables.length - 1; i >= 0; i--) {
     const t = tables[i];
     if (t.method !== "stream" || !figureLabels(t, figures)) continue;
@@ -9977,10 +10309,10 @@ function wordCountText(text3) {
 }
 function figLabelOnly(text3) {
   const t = normalizeFigSpelling(text3).replace(/\s+/g, " ").trim();
-  return /^(?:fig(?:ure)?|plates?)\.?\s*\d+[A-Za-z]?[.:]?$/i.test(t);
+  return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?$/i.test(t) || /^\d+[A-Za-z]?(?:[.\s]+)\s*(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafel|taf)\.?$/i.test(t);
 }
 function hasFigWord(text3) {
-  return /\b(?:fig(?:ure)?s?|plates?)\b/i.test(String(text3 || ""));
+  return /\b(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel)\b/i.test(String(text3 || ""));
 }
 function splitOcrCaptionGroup(group) {
   if (!group.length || !isCaptionText(group[0].text)) return [group];
@@ -9989,6 +10321,11 @@ function splitOcrCaptionGroup(group) {
   else {
     const at = group.findIndex((l) => /\bordin/i.test(String(l.text || "")));
     if (at >= 0 && at + 1 < group.length) keep = at + 1;
+    else {
+      const sentence = group.findIndex((l, i) => i > 0 && wordCountText(group[0].text) >= 4 && NEXT_SENTENCE_RE.test(String(l.text || "").trim()));
+      if (sentence > 0) keep = sentence;
+      else if (figCaptionKey(group[0].text) && wordCountText(group[0].text) >= 6 && /[.?!]["”']?$/.test(String(group[0].text || "").trim())) keep = 1;
+    }
   }
   if (keep >= group.length) return [group];
   return [group.slice(0, keep), group.slice(keep)];
@@ -9997,7 +10334,7 @@ function attachDroppedFigDigit(blocks) {
   const drop = /* @__PURE__ */ new Set();
   for (const b of blocks) {
     if (drop.has(b) || b.type !== "caption") continue;
-    if (!/^(?:fig(?:ure)?|plates?)\.?$/i.test(normalizeFigSpelling(b.text))) continue;
+    if (!/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?$/i.test(normalizeFigSpelling(b.text))) continue;
     let next = null;
     for (const n2 of blocks) {
       if (n2 === b || drop.has(n2) || n2.type !== "para" && n2.type !== "caption" && n2.type !== "heading") continue;
@@ -10018,6 +10355,34 @@ function attachDroppedFigDigit(blocks) {
     };
     b.lines = [...b.lines || [], ...next.lines || []];
     drop.add(next);
+  }
+  if (!drop.size) return;
+  for (let i = blocks.length - 1; i >= 0; i--) if (drop.has(blocks[i])) blocks.splice(i, 1);
+}
+function joinCaptionContinuation(blocks) {
+  const drop = /* @__PURE__ */ new Set();
+  for (const b of blocks) {
+    if (drop.has(b) || b.type !== "caption" || !figLabelOnly(b.text)) continue;
+    let side2 = null;
+    for (const n2 of blocks) {
+      if (n2 === b || drop.has(n2) || n2.type !== "para" || !n2.bbox) continue;
+      const overlap = Math.min(n2.bbox.y1, b.bbox.y1) - Math.max(n2.bbox.y0, b.bbox.y0);
+      const nh = Math.max(1, n2.bbox.y1 - n2.bbox.y0);
+      if (overlap < 0.5 * nh) continue;
+      if (n2.bbox.x0 < b.bbox.x1 - 4 || n2.bbox.x0 - b.bbox.x1 > 220) continue;
+      if (!/^[a-z]/.test(String(n2.text || "").trim())) continue;
+      if (!side2 || n2.bbox.x0 < side2.bbox.x0) side2 = n2;
+    }
+    if (!side2) continue;
+    b.text = normalizeFigSpelling(`${b.text} ${side2.text}`.replace(/\s+/g, " ").trim());
+    b.bbox = {
+      x0: Math.min(b.bbox.x0, side2.bbox.x0),
+      y0: Math.min(b.bbox.y0, side2.bbox.y0),
+      x1: Math.max(b.bbox.x1, side2.bbox.x1),
+      y1: Math.max(b.bbox.y1, side2.bbox.y1)
+    };
+    b.lines = [...b.lines || [], ...side2.lines || []];
+    drop.add(side2);
   }
   if (!drop.size) return;
   for (let i = blocks.length - 1; i >= 0; i--) if (drop.has(blocks[i])) blocks.splice(i, 1);
@@ -10046,7 +10411,7 @@ function liftOrdinateNote(blocks) {
 function joinCaptionTails(blocks, bodySize) {
   const drop = /* @__PURE__ */ new Set();
   for (const b of blocks) {
-    if (drop.has(b) || b.type !== "caption" || figCaptionKey(b.text) == null && !/^fig/i.test(normalizeFigSpelling(b.text || ""))) continue;
+    if (drop.has(b) || b.type !== "caption" || figCaptionKey(b.text) == null && !/^(?:fig|plate|abb|tafel|taf)\b/i.test(normalizeFigSpelling(b.text || ""))) continue;
     if (figLabelOnly(b.text)) continue;
     let plain2 = 0;
     let guard = 0;
@@ -10060,8 +10425,10 @@ function joinCaptionTails(blocks, bodySize) {
         if (!next || n2.bbox.y0 < next.bbox.y0) next = n2;
       }
       if (!next) break;
-      if (figCaptionKey(next.text) != null || /^table\b/i.test(next.text) || wordCountText(next.text) > 24) break;
+      if (figCaptionKey(next.text) != null || /^(?:table|tab)\b/i.test(next.text) || wordCountText(next.text) > 24) break;
       const figWord = hasFigWord(next.text);
+      if (!figWord && wordCountText(b.text) >= 4 && NEXT_SENTENCE_RE.test(String(next.text || "").trim())) break;
+      if (!figWord && wordCountText(b.text) >= 6 && /[.?!]["”']?$/.test(String(b.text || "").trim())) break;
       if (/\bordin/i.test(b.text) && !figWord) break;
       if (!figWord && plain2 >= 1) break;
       if (!figWord && /[.?!]["”']?$/.test(String(b.text || "").trim()) && /^[A-Z]/.test(String(next.text || "").trim())) break;
@@ -10080,12 +10447,78 @@ function joinCaptionTails(blocks, bodySize) {
   if (!drop.size) return;
   for (let i = blocks.length - 1; i >= 0; i--) if (drop.has(blocks[i])) blocks.splice(i, 1);
 }
+function peelCaptionColumn(group) {
+  if (!group?.length || group.length < 2 || !isCaptionText(group[0].text)) return { keep: group, rest: [] };
+  const host = group[0];
+  const keep = [host];
+  const rest = [];
+  for (const line of group.slice(1)) {
+    const overlap = Math.min(line.x1, host.x1) - Math.max(line.x0, host.x0);
+    if (overlap < 8 && line.x0 >= host.x1 - 4) rest.push(line);
+    else keep.push(line);
+  }
+  if (!rest.length) return { keep: group, rest: [] };
+  return { keep, rest };
+}
+function titleLikePlate(text3) {
+  const t = normalizeFigSpelling(String(text3 || "")).replace(/\s+/g, " ").trim();
+  if (!t || /\.{4,}|…{2,}|·{4,}/.test(t)) return false;
+  const words = t.split(" ").filter(Boolean);
+  if (words.length < 2 || words.length > 28) return false;
+  if (/^(?:table|tabelle|tab)\b/i.test(t) && !/^taf/i.test(t)) return false;
+  if (/^(?:plates?|tafeln?|tafel|taf\.?|abb(?:ildung)?)\b/i.test(t)) return true;
+  if (words.length < 4) return false;
+  const letters = t.replace(/[^A-Za-z]/g, "");
+  if (letters.length < 8) return false;
+  return letters.replace(/[^A-Z]/g, "").length / letters.length >= 0.62;
+}
+function attachPlateTitles(blocks, figures, bodySize, pageH) {
+  const gapLimit = Math.max(3 * bodySize, 36);
+  for (const fig of figures || []) {
+    const tb = fig.bbox;
+    if (!tb) continue;
+    const area = Math.max(0, tb[2] - tb[0]) * Math.max(0, tb[3] - tb[1]);
+    if (area < 12e3) continue;
+    let best = null;
+    let bestGap = Infinity;
+    for (const b of blocks) {
+      if (!b?.bbox || b.type !== "para" && b.type !== "heading") continue;
+      if (!titleLikePlate(b.text)) continue;
+      const yGap = b.bbox.y1 <= tb[1] ? tb[1] - b.bbox.y1 : b.bbox.y0 >= tb[3] ? b.bbox.y0 - tb[3] : 0;
+      if (yGap > gapLimit) continue;
+      const ox = Math.min(tb[2], b.bbox.x1) - Math.max(tb[0], b.bbox.x0);
+      const narrower = Math.min(tb[2] - tb[0], b.bbox.x1 - b.bbox.x0);
+      if (!(narrower > 0) || ox < 0.35 * narrower) continue;
+      if (yGap < bestGap) {
+        bestGap = yGap;
+        best = b;
+      }
+    }
+    if (best) {
+      best.type = "caption";
+      best.text = normalizeFigSpelling(best.text);
+    }
+  }
+}
+function captionRank(text3) {
+  const t = normalizeFigSpelling(text3 || "");
+  const words = wordCountText(t);
+  const numbered = figCaptionKey(t) != null && figCaptionKey(t) !== "";
+  return (numbered ? 4 : 0) + Math.min(words, 24);
+}
+function forwardFigLead(text3) {
+  const t = normalizeFigSpelling(text3 || "").replace(/\s+/g, " ").trim();
+  const key = figCaptionKey(t);
+  if (key == null || key === "") return false;
+  return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(t);
+}
 function linkCaptions(blocks, targets, bodySize, pageH, { scan = false } = {}) {
   const captionFor2 = /* @__PURE__ */ new Map();
   const caps = blocks.filter((b) => b.type === "caption");
   const pairs = [];
   for (const cb of caps) {
-    const wantsTable = /^table/i.test(normalizeFigSpelling(cb.text));
+    const spelled = normalizeFigSpelling(cb.text);
+    const wantsTable = /^(?:table|tabelle|tab)\b/i.test(spelled) && !/^taf/i.test(spelled);
     const shortHead = scan && !wantsTable && cb.bbox.y1 <= 0.14 * pageH && wordCountText(cb.text) <= 6;
     for (const target of targets) {
       const tb = target.bbox;
@@ -10095,14 +10528,26 @@ function linkCaptions(blocks, targets, bodySize, pageH, { scan = false } = {}) {
       const ox = Math.min(tb[2], cb.bbox.x1) - Math.max(tb[0], cb.bbox.x0);
       const xGap = cb.bbox.x1 < tb[0] ? tb[0] - cb.bbox.x1 : cb.bbox.x0 > tb[2] ? cb.bbox.x0 - tb[2] : 0;
       const yGap = cb.bbox.y1 <= tb[1] ? tb[1] - cb.bbox.y1 : cb.bbox.y0 >= tb[3] ? cb.bbox.y0 - tb[3] : 0;
+      const capH = Math.max(8, cb.bbox.y1 - cb.bbox.y0);
+      const yOverlap = Math.min(cb.bbox.y1, tb[3]) - Math.max(cb.bbox.y0, tb[1]);
+      const beside = yOverlap >= 0.45 * capH && ox <= 0;
       const yLimit = wantsTable ? 3 * bodySize : shortHead ? Math.max(3 * bodySize, 0.16 * pageH) : Math.max(3 * bodySize, 36);
-      const xLimit = Math.max(3 * bodySize, 36);
-      if (yGap > yLimit) continue;
+      const xLimit = beside ? Math.max(8 * bodySize, 96) : Math.max(3 * bodySize, 36);
+      if (!beside && yGap > yLimit) continue;
       if (ox <= 0 && xGap > xLimit) continue;
-      pairs.push({ cb, target, gap: yGap + (ox > 0 ? 0 : xGap) });
+      pairs.push({ cb, target, gap: (beside ? xGap : yGap) + (ox > 0 ? 0 : xGap * 0.25), rank: captionRank(cb.text) });
     }
   }
-  pairs.sort((a, b) => a.gap - b.gap);
+  pairs.sort((a, b) => {
+    const band = Math.max(2 * bodySize, 24);
+    if (Math.abs(a.gap - b.gap) <= band) {
+      const af = forwardFigLead(a.cb.text);
+      const bf = forwardFigLead(b.cb.text);
+      if (af !== bf) return af ? -1 : 1;
+      if (figLabelOnly(a.cb.text) !== figLabelOnly(b.cb.text)) return figLabelOnly(a.cb.text) ? 1 : -1;
+    }
+    return a.gap - b.gap || b.rank - a.rank;
+  });
   const used = /* @__PURE__ */ new Set();
   for (const p of pairs) {
     if (used.has(p.cb) || captionFor2.has(p.target)) continue;
@@ -10323,7 +10768,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
             textBlocks.push({ type: "footnote", lines: group, mark, text: text3, bbox: boxOfUnits(group) });
             return;
           }
-          const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(joined.text) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
+          const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(peelTickPrefix(joined.text)) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
           textBlocks.push(block);
         };
         const line = lines[i];
@@ -10343,8 +10788,10 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
         while (j < lines.length && !levelAt(j)) j++;
         const chunk = lines.slice(i, j);
         for (const group of groupParagraphs(chunk, { bodySize })) {
-          const pieces2 = pg.ocr ? splitOcrCaptionGroup(group) : [group];
+          const peeled = pg.ocr ? peelCaptionColumn(group) : { keep: group, rest: [] };
+          const pieces2 = pg.ocr ? splitOcrCaptionGroup(peeled.keep) : [peeled.keep];
           for (const part of pieces2) emitTextGroup(part);
+          if (peeled.rest.length) emitTextGroup(peeled.rest);
         }
         i = j;
       }
@@ -10357,8 +10804,10 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     }
     if (pg.ocr) {
       attachDroppedFigDigit(textBlocks);
+      joinCaptionContinuation(textBlocks);
       liftOrdinateNote(textBlocks);
       joinCaptionTails(textBlocks, bodySize);
+      attachPlateTitles(textBlocks, pageFigures, bodySize, pg.h);
     }
     const captionFor2 = linkCaptions(textBlocks, [...pageTables, ...pageFigures], bodySize, pg.h, { scan: Boolean(pg.ocr) });
     const unitOf = (b, id) => ({ id, x0: b.bbox.x0 ?? b.bbox[0], y0: b.bbox.y0 ?? b.bbox[1], x1: b.bbox.x1 ?? b.bbox[2], y1: b.bbox.y1 ?? b.bbox[3] });
@@ -10594,7 +11043,7 @@ function mergeContinuations(order, blocks) {
     i--;
   }
 }
-var SCHEMA, ENGINE_VERSION, PARSE_REV, MARK_ONLY_RE, now, EVIDENCE_LINES, EVIDENCE_CHARS;
+var SCHEMA, ENGINE_VERSION, PARSE_REV, MARK_ONLY_RE, now, NEXT_SENTENCE_RE, EVIDENCE_LINES, EVIDENCE_CHARS;
 var init_parse = __esm({
   "src/model/parse/index.js"() {
     init_lines();
@@ -10614,9 +11063,10 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 18;
+    PARSE_REV = 20;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+    NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
     EVIDENCE_LINES = 60;
     EVIDENCE_CHARS = 160;
   }
@@ -41107,6 +41557,24 @@ function captionBlock(doc, figure) {
 function captionText(block) {
   return String(block?.text || "").replace(/\s+/g, " ").trim();
 }
+function captionScore(text3) {
+  const words = text3.split(/\s+/).filter(Boolean);
+  let score = Math.min(words.length, 28);
+  if (/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(text3)) score += 6;
+  if (words.length <= 2 && /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?$/i.test(text3)) score -= 4;
+  if (words.length > 40) score -= 10;
+  return score;
+}
+function betterCaption(localText, cloudText) {
+  const local = String(localText || "").replace(/\s+/g, " ").trim();
+  const cloud = String(cloudText || "").replace(/\s+/g, " ").trim();
+  if (!local) return cloud;
+  if (!cloud) return local;
+  const localScore = captionScore(local);
+  const cloudScore = captionScore(cloud);
+  if (localScore === cloudScore) return local.length >= cloud.length ? local : cloud;
+  return localScore > cloudScore ? local : cloud;
+}
 function clampConf(value, fallback) {
   const n2 = Number(value);
   if (!Number.isFinite(n2)) return fallback;
@@ -41245,14 +41713,19 @@ function mergeCloudFigures(cloudDoc, localDoc) {
       cloud.bbox = local.bbox.slice();
       cloud.source = "hybrid";
       const localCap = captionBlock(localDoc, local);
-      const text3 = captionText(localCap);
+      const localText = captionText(localCap);
+      const cloudText = cloud.caption && blocks[cloud.caption] ? captionText(blocks[cloud.caption]) : "";
+      const text3 = betterCaption(localText, cloudText);
       if (!text3) continue;
+      const useLocal = text3 === localText && localText !== "";
       if (cloud.caption && blocks[cloud.caption]) {
-        blocks[cloud.caption] = {
-          ...blocks[cloud.caption],
-          text: text3,
-          bbox: localCap.bbox || blocks[cloud.caption].bbox
-        };
+        if (useLocal) {
+          blocks[cloud.caption] = {
+            ...blocks[cloud.caption],
+            text: text3,
+            bbox: localCap.bbox || blocks[cloud.caption].bbox
+          };
+        }
       } else {
         const id = nextId("c");
         blocks[id] = {

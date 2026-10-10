@@ -16,12 +16,29 @@ export function tokenizeLine(line) {
   const tokens = [];
   let cur = null;
   const dots = (s) => /^[.·…]+$/.test(s);
+  // OCR often leaves only a few points between numeric columns, inside the ordinary
+  // word-space threshold, and splits a thousands group more tightly than that.
+  // A comma-group ("10," "533,") stays one token. Two numbers a column-gap apart do not.
+  const ocr = line.words.some((w) => w.conf != null);
+  const yearSpan = (text) => /^(1[89]|20)\d{2}\s*[-–—]\s*(1[89]|20)\d{2}[.,]?$/.test(String(text || "").trim());
+  const columnGap = (prev, w) => {
+    if (!ocr || !prev) return false;
+    const left = prev.words?.[prev.words.length - 1]?.text || "";
+    // A year range and the quantity beside it are different cells even when the
+    // boxes touch. A thousands group ("10," "533,") is a smaller gap and stays one token.
+    if (yearSpan(left) && /\d/.test(w.text || "")) return true;
+    // "10," "533," is one number even when the groups sit a few points apart.
+    if (/,$/.test(String(left).trim())) return false;
+    const gap = w.x0 - (prev.x1 ?? 0);
+    if (gap < Math.max(2, 0.5 * (line.size || 8))) return false;
+    return /\d/.test(left) && /\d/.test(w.text || "");
+  };
   for (const w of line.words) {
     const prev = cur && cur.words[cur.words.length - 1];
     // A footnote letter sits in the value ("c 0.1654"), and a run of leader dots is one token.
     const glueLetter = cur && cur.words.length === 1 && /^[a-z]$/.test(cur.words[0].text) && isNumericText(w.text) && w.x0 - cur.x1 < 1.2 * (line.size || 10);
     const glueDots = prev && dots(prev.text) && dots(w.text);
-    if (cur && (w.x0 - cur.x1 < threshold || glueLetter || glueDots)) { cur.words.push(w); cur.x1 = Math.max(cur.x1, w.x1); }
+    if (cur && !columnGap(cur, w) && (w.x0 - cur.x1 < threshold || glueLetter || glueDots)) { cur.words.push(w); cur.x1 = Math.max(cur.x1, w.x1); }
     else { cur = { x0: w.x0, x1: w.x1, words: [w] }; tokens.push(cur); }
   }
   for (const t of tokens) t.text = t.words.map((w) => w.text).join(" ");
@@ -186,13 +203,30 @@ function assignToken(t, cols) {
   return { c: best.i, span: 1 };
 }
 
+function medianSize(words) {
+  const sizes = [];
+  for (const w of words || []) if (w && w.size > 0) sizes.push(w.size);
+  if (!sizes.length) return 0;
+  sizes.sort((a, b) => a - b);
+  return sizes[sizes.length >> 1];
+}
+
+// Vision sometimes returns a line-height box for one word (several times the body size).
+// That box must not set the em used to decide which baseline a neighbour belongs to.
+function joinSize(word, typical) {
+  const size = word?.size || typical || 8;
+  if (!typical || word?.conf == null || size <= typical * 1.45) return size;
+  return typical;
+}
+
 // Visual rows: words chained by vertical overlap of their boxes.
 export function visualRows(words) {
+  const typical = medianSize(words);
   const sorted = [...words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
   const rows = [];
   for (const w of sorted) {
     const r = rows[rows.length - 1];
-    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w, sorted)) {
+    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w, sorted, typical)) {
       r.words.push(w); r.y1 = Math.max(r.y1, w.y1); r.y0 = Math.min(r.y0, w.y0);
     } else rows.push({ y0: w.y0, y1: w.y1, words: [w] });
   }
@@ -206,11 +240,13 @@ export function visualRows(words) {
 // The centred cell itself can arrive before the wrapped second line and sit a little past 0.7 em
 // (half a pitch plus baseline noise): it joins when, within 0.8 em, a later word stacks under a
 // row word at line pitch with w's line centred between them and clear of that column.
-function ocrApart(row, w, words = []) {
+// `typical` is the median size of the words being grouped. An inflated box uses that median
+// so one tall word does not pull the next several baselines into its row.
+function ocrApart(row, w, words = [], typical = 0) {
   if (w.conf == null) return false;
   const anchor = row.words[0];
   if (anchor.conf == null) return false;
-  const em = Math.max(w.size, anchor.size);
+  const em = Math.max(joinSize(w, typical), joinSize(anchor, typical));
   if (Math.abs(w.base - anchor.base) <= 0.7 * em) return false;
   for (const u of row.words) {
     const gap = Math.abs(w.base - u.base);
@@ -225,6 +261,17 @@ function ocrApart(row, w, words = []) {
 function centredLine(row, w, words, em) {
   if (w.base - row.words[0].base > 0.8 * em) return false;
   const line = words.filter((v) => v.conf != null && !row.words.includes(v) && Math.abs(v.base - w.base) <= 0.3 * em);
+  // Evenly spaced table rows sit about one pitch apart, so the middle baseline is
+  // halfway between the row above and the row below — the same geometry as a value
+  // centred in a wrapped cell. A real row repeats its columns on the line below.
+  // A wrapped cell's centred values do not: the line below continues the label only.
+  const lower = words.filter((v) => v.conf != null && v.base > w.base + 0.4 * em && v.base < w.base + 1.3 * em);
+  const mid = (p) => (p.x0 + p.x1) / 2;
+  let echoed = 0;
+  for (const m of line) {
+    if (lower.some((v) => Math.abs(mid(v) - mid(m)) <= Math.max(6, 0.9 * em))) echoed += 1;
+  }
+  if (echoed >= 2) return false;
   const overlaps = (a, b) => Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 0;
   for (const u of row.words) {
     if (Math.abs(u.base - row.words[0].base) > 0.3 * em) continue;
@@ -299,11 +346,126 @@ function rowTokens(row) {
   return tokens.sort((a, b) => a.x0 - b.x0);
 }
 
+// Right edges of numeric tokens, clustered. Small-type scans put the next column
+// a point or two away, inside the gap that would merge the intervals, and a spanning
+// header covers the whitespace. The shared right edge is still the column.
+export function alignNumericColumns(tokenRows, size = 8) {
+  const yearSpan = (text) => /^(1[89]|20)\d{2}\s*[-–—]\s*(1[89]|20)\d{2}/.test(String(text || "").trim());
+  const edges = [];
+  const years = [];
+  let used = 0;
+  let textX0 = Infinity;
+  let textX1 = -Infinity;
+  let firstNum = Infinity;
+  for (const tokens of tokenRows) {
+    const nums = tokens.filter((t) => /\d/.test(t.text || ""));
+    if (nums.length < 2) continue;
+    used += 1;
+    for (const t of tokens) {
+      if (!/\d/.test(t.text || "")) {
+        textX0 = Math.min(textX0, t.x0);
+        textX1 = Math.max(textX1, t.x1);
+        continue;
+      }
+      firstNum = Math.min(firstNum, t.x0);
+      if (yearSpan(t.text)) years.push(t.x1);
+      else edges.push(t.x1);
+    }
+  }
+  if (used < 4 || !edges.length) return null;
+  edges.sort((a, b) => a - b);
+  const tol = Math.max(3.5, 0.5 * size);
+  const clusters = [];
+  for (const x of edges) {
+    const c = clusters[clusters.length - 1];
+    if (c && x <= c.mean + tol) {
+      c.xs.push(x);
+      c.mean = c.xs.reduce((s, v) => s + v, 0) / c.xs.length;
+    } else clusters.push({ mean: x, xs: [x] });
+  }
+  const minN = Math.max(3, Math.ceil(used * 0.22));
+  const rights = clusters.filter((c) => c.xs.length >= minN).map((c) => c.mean);
+  // A year range is its own column. Its right edge wanders more than a right-aligned
+  // quantity, so the edges are taken together instead of failing the cluster test.
+  if (years.length >= Math.max(3, Math.ceil(used * 0.2))) {
+    const ys = [...years].sort((a, b) => a - b);
+    rights.push(ys[ys.length >> 1]);
+  }
+  rights.sort((a, b) => a - b);
+  const merged = [];
+  for (const r of rights) {
+    if (merged.length && r - merged[merged.length - 1] <= tol) merged[merged.length - 1] = (merged[merged.length - 1] + r) / 2;
+    else merged.push(r);
+  }
+  if (merged.length < 2) return null;
+  // The label column runs up to the first aligned quantity. A stray digit in the
+  // label (firstNum) is not a column of its own.
+  const edgeX0 = [];
+  for (const tokens of tokenRows) {
+    for (const t of tokens) {
+      if (!/\d/.test(t.text || "")) continue;
+      if (Math.abs(t.x1 - merged[0]) <= tol * 2.2) edgeX0.push(t.x0);
+    }
+  }
+  edgeX0.sort((a, b) => a - b);
+  // Median, not the minimum: one token that also holds the row label starts far to the left.
+  const firstEdgeX0 = edgeX0.length ? edgeX0[edgeX0.length >> 1] : Infinity;
+  // Columns meet at the right edges and do not overlap, so a token that ends on one
+  // edge is not also a span across the next column.
+  const cols = [];
+  if (textX1 > textX0) {
+    const stop = Number.isFinite(firstEdgeX0) ? firstEdgeX0 - 1 : firstNum - 1;
+    const x1 = Math.min(textX1, stop);
+    if (x1 > textX0 + 1) cols.push({ x0: textX0, x1 });
+  }
+  let prev = cols.length ? cols[cols.length - 1].x1 : firstNum - 1;
+  for (const r of merged) {
+    const x0 = prev + 0.5;
+    if (r > x0 + 1) cols.push({ x0, x1: r });
+    prev = r;
+  }
+  return cols.length >= 2 ? cols : null;
+}
+
+// Rows that carry the column grid: numeric body lines. A spanning header is one wide
+// token and would glue every column it sits over into a single interval. Born-digital
+// rows (no OCR confidence) keep the old projection, which already matches those pages.
+function numericBodyRows(rowsIn) {
+  const ocr = rowsIn.some((r) => r.tokens.some((t) => (t.words || []).some((w) => w.conf != null)));
+  if (!ocr) return null;
+  const body = [];
+  for (const r of rowsIn) {
+    const ws = r.tokens.flatMap((t) => t.words || []);
+    if (ws.length < 3) continue;
+    let nums = 0;
+    for (const w of ws) if (/\d/.test(w.text || "")) nums += 1;
+    if (nums >= 3 && nums / ws.length >= 0.45) body.push(r);
+  }
+  if (body.length < 4 || body.length >= rowsIn.length) return null;
+  return body;
+}
+
 function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, rules = [] }) {
   // rowsIn: [{ y0, y1, tokens, band }]
-  const coarse = projectColumns(rowsIn.map((r) => r.tokens));
+  const body = numericBodyRows(rowsIn);
+  const bodySize = medianSize((body || rowsIn).flatMap((r) => r.tokens.flatMap((t) => t.words || []))) || 8;
+  const fromPage = projectColumns(rowsIn.map((r) => r.tokens));
+  const bodyProjected = body ? projectColumns(body.map((r) => r.tokens)) : null;
+  // A spanning header merges several body columns into one interval. Read the body
+  // only when that separates more than the single column whitespace refinement would
+  // add; an ordinary grid keeps the header in the projection.
+  const useBody = bodyProjected && bodyProjected.length >= fromPage.length + 2;
+  const source = useBody ? body : rowsIn;
+  const projected = useBody ? bodyProjected : fromPage;
+  const aligned = useBody ? alignNumericColumns(source.map((r) => r.tokens), bodySize) : null;
+  // Right edges recover columns the body intervals still merged, as when a year
+  // range sits against the quantity beside it. A one-column difference is noise.
+  const useAligned = aligned && aligned.length >= projected.length + 3;
+  const coarse = useAligned ? aligned : projected;
   if (coarse.length < 2) return null;
-  const refined = refineColumns(rowsIn, coarse);
+  // Alignment already placed the boundaries on the numeric right edges. The whitespace
+  // splitter would cut through a year range that nearly touches the next quantity.
+  const refined = useAligned ? { cols: aligned, seps: [] } : refineColumns(source, coarse);
   const cols = refined.cols;
   if (refined.seps.length) for (const r of rowsIn) r.tokens = splitTokensAt(r.tokens, refined.seps);
   const k = cols.length;
@@ -461,6 +623,12 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
       if (labels.length !== 1) continue;
       const cell = cellMap.get(`${labels[0]}:0`);
       if (cell.colSpan > 1 || isNumericText(cellTextOf(cell.words))) continue;
+      // Other rows of a wide table still have their own row label, even when that
+      // label was assigned to the next column. One label does not cover those rows.
+      const edge = Math.min(...cell.words.map((w) => w.x0));
+      const size = cell.words[0].size || 8;
+      const ownLabel = rs.some((r) => r !== labels[0] && rowsIn[r].tokens.some((t) => t.x0 <= edge + 1.5 * size && !isNumericText(t.text) && /[A-Za-z]/.test(t.text || "")));
+      if (ownLabel) continue;
       cellMap.delete(`${labels[0]}:0`);
       cell.r = rs[0];
       cell.rowSpan = rs.length;
@@ -582,11 +750,30 @@ export function tableFromBand(band, words) {
     bandsOf.push(vrows.length);
     const firstRow = rowsIn.length;
     for (const r of vrows) rowsIn.push({ y0: r.y0, y1: r.y1, tokens: rowTokens(r).sort((a, b) => a.x0 - b.x0), band: i });
-    // Multirow labels centred on the band ("(A)" beside four rows) span every row of the band.
+    // A multirow label spans the rows its box covers ("(A)" beside two rows), and only
+    // when those rows have no word of their own in that column. A one-line word whose
+    // box merely overlaps the neighbours belongs to the nearest row.
     for (const fw of floating) {
-      const tok = { x0: fw.x0, x1: fw.x1, words: [fw], text: fw.text, rowSpan: vrows.length };
-      rowsIn[firstRow].tokens.push(tok);
-      rowsIn[firstRow].tokens.sort((a, b) => a.x0 - b.x0);
+      const hit = [];
+      vrows.forEach((r, j) => { if (fw.y0 < r.y1 - 1 && fw.y1 > r.y0 + 1) hit.push(j); });
+      const overlapsX = (r) => r.words.some((w) => Math.min(w.x1, fw.x1) - Math.max(w.x0, fw.x0) > 2);
+      const crowded = hit.some((j) => overlapsX(vrows[j]));
+      let dest = 0;
+      let rowSpan = 1;
+      if (hit.length >= 2 && !crowded && hit[hit.length - 1] - hit[0] + 1 === hit.length) {
+        dest = hit[0];
+        rowSpan = hit.length;
+      } else {
+        let bestD = Infinity;
+        vrows.forEach((r, j) => {
+          const b = r.words[0]?.base ?? (r.y0 + r.y1) / 2;
+          const d = Math.abs(b - fw.base);
+          if (d < bestD) { bestD = d; dest = j; }
+        });
+      }
+      const tok = { x0: fw.x0, x1: fw.x1, words: [fw], text: fw.text, rowSpan };
+      rowsIn[firstRow + dest].tokens.push(tok);
+      rowsIn[firstRow + dest].tokens.sort((a, b) => a.x0 - b.x0);
     }
   }
   if (rowsIn.length < 2) return null;
@@ -697,6 +884,23 @@ export function baselineRows(lines) {
   return rows;
 }
 
+// A contents list: labels on the left, a page number at one shared right edge.
+// A title whose number landed on the line above is still a row of that list.
+// An all-caps section head ("ILLUSTRATIONS.") ends it.
+function contentsContinuation(row, tokens, run) {
+  if (!run.length || tokens.length !== 1) return false;
+  const head = String(row.text || "").trim();
+  if (/^[A-Z][A-Z .]{2,40}$/.test(head)) return false;
+  // Every row so far is a label plus one page number. A data row with more cells is not a contents list.
+  const shaped = run.filter((r) => r.tokens.length >= 2);
+  if (!shaped.length || !shaped.every((r) => r.tokens.length === 2 && /^\d{1,4}$/.test(r.tokens[1].text) && /[A-Za-z]/.test(r.tokens[0].text || ""))) return false;
+  const right = Math.min(...shaped.map((r) => r.tokens[1].x0));
+  const tok = tokens[0];
+  if (/^\d{1,4}$/.test(tok.text)) return tok.x0 >= right - 12;
+  if (!/[A-Za-z]/.test(tok.text || "") || row.words.length > 18) return false;
+  return tok.x1 < right - 4;
+}
+
 // A row of prose: many words, long on average, few gap tokens and none of them short.
 export function proseRow(row, tokens, columnWidth = Infinity) {
   const words = row.words;
@@ -778,6 +982,20 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
       }
       if (tokens.length < 2) {
         // A section line double-spaced above the first numeric header opens the table.
+        // "Page." sits in the number column above the first contents entry.
+        if (!run.length && tokens.length === 1) {
+          const nxt = rows[j + 1];
+          const nt = nxt ? tokensOf(nxt) : [];
+          const num = nt.find((t) => /^\d{1,4}$/.test(t.text));
+          const label = nt.find((t) => /[A-Za-z]/.test(t.text || "") && num && t.x1 < num.x0 - 4);
+          if (num && label && tokens[0].x0 > label.x1 && Math.abs(tokens[0].x0 - num.x0) <= 24) {
+            run.push({ row, tokens });
+            headerRowsHint = Math.max(headerRowsHint, 1);
+            lastBase = row.base;
+            j++;
+            continue;
+          }
+        }
         if (!run.length && row.words.length <= 8) {
           const nxt = rows[j + 1];
           const nt = nxt ? tokensOf(nxt) : [];
@@ -788,6 +1006,14 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
             j++;
             continue;
           }
+        }
+        // A contents title with no page number on its line is one token. Keep it as its
+        // own row before the wrapped-cell rule glues it to the entry above.
+        if (contentsContinuation(row, tokens, run)) {
+          run.push({ row, tokens });
+          lastBase = row.base;
+          j++;
+          continue;
         }
         const peek = (k) => (rows[k] ? { row: rows[k], tokens: tokensOf(rows[k]) } : null);
         const single = singleTokenRow(row, tokens, run, peek(j + 1), colBox, lead, peek(j + 2));

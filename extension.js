@@ -5703,11 +5703,22 @@ function tokenizeLine(line) {
   const tokens2 = [];
   let cur = null;
   const dots = (s) => /^[.·…]+$/.test(s);
+  const ocr = line.words.some((w) => w.conf != null);
+  const yearSpan = (text3) => /^(1[89]|20)\d{2}\s*[-–—]\s*(1[89]|20)\d{2}[.,]?$/.test(String(text3 || "").trim());
+  const columnGap = (prev, w) => {
+    if (!ocr || !prev) return false;
+    const left = prev.words?.[prev.words.length - 1]?.text || "";
+    if (yearSpan(left) && /\d/.test(w.text || "")) return true;
+    if (/,$/.test(String(left).trim())) return false;
+    const gap = w.x0 - (prev.x1 ?? 0);
+    if (gap < Math.max(2, 0.5 * (line.size || 8))) return false;
+    return /\d/.test(left) && /\d/.test(w.text || "");
+  };
   for (const w of line.words) {
     const prev = cur && cur.words[cur.words.length - 1];
     const glueLetter = cur && cur.words.length === 1 && /^[a-z]$/.test(cur.words[0].text) && isNumericText(w.text) && w.x0 - cur.x1 < 1.2 * (line.size || 10);
     const glueDots = prev && dots(prev.text) && dots(w.text);
-    if (cur && (w.x0 - cur.x1 < threshold || glueLetter || glueDots)) {
+    if (cur && !columnGap(cur, w) && (w.x0 - cur.x1 < threshold || glueLetter || glueDots)) {
       cur.words.push(w);
       cur.x1 = Math.max(cur.x1, w.x1);
     } else {
@@ -5872,12 +5883,25 @@ function assignToken(t, cols) {
   for (const h of hits) if (h.o > best.o) best = h;
   return { c: best.i, span: 1 };
 }
+function medianSize(words) {
+  const sizes = [];
+  for (const w of words || []) if (w && w.size > 0) sizes.push(w.size);
+  if (!sizes.length) return 0;
+  sizes.sort((a, b) => a - b);
+  return sizes[sizes.length >> 1];
+}
+function joinSize(word, typical) {
+  const size = word?.size || typical || 8;
+  if (!typical || word?.conf == null || size <= typical * 1.45) return size;
+  return typical;
+}
 function visualRows(words) {
+  const typical = medianSize(words);
   const sorted = [...words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
   const rows = [];
   for (const w of sorted) {
     const r = rows[rows.length - 1];
-    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w, sorted)) {
+    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w, sorted, typical)) {
       r.words.push(w);
       r.y1 = Math.max(r.y1, w.y1);
       r.y0 = Math.min(r.y0, w.y0);
@@ -5885,11 +5909,11 @@ function visualRows(words) {
   }
   return rows;
 }
-function ocrApart(row4, w, words = []) {
+function ocrApart(row4, w, words = [], typical = 0) {
   if (w.conf == null) return false;
   const anchor = row4.words[0];
   if (anchor.conf == null) return false;
-  const em = Math.max(w.size, anchor.size);
+  const em = Math.max(joinSize(w, typical), joinSize(anchor, typical));
   if (Math.abs(w.base - anchor.base) <= 0.7 * em) return false;
   for (const u of row4.words) {
     const gap = Math.abs(w.base - u.base);
@@ -5904,6 +5928,13 @@ function ocrApart(row4, w, words = []) {
 function centredLine(row4, w, words, em) {
   if (w.base - row4.words[0].base > 0.8 * em) return false;
   const line = words.filter((v) => v.conf != null && !row4.words.includes(v) && Math.abs(v.base - w.base) <= 0.3 * em);
+  const lower3 = words.filter((v) => v.conf != null && v.base > w.base + 0.4 * em && v.base < w.base + 1.3 * em);
+  const mid = (p) => (p.x0 + p.x1) / 2;
+  let echoed = 0;
+  for (const m of line) {
+    if (lower3.some((v) => Math.abs(mid(v) - mid(m)) <= Math.max(6, 0.9 * em))) echoed += 1;
+  }
+  if (echoed >= 2) return false;
   const overlaps2 = (a, b) => Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 0;
   for (const u of row4.words) {
     if (Math.abs(u.base - row4.words[0].base) > 0.3 * em) continue;
@@ -5982,10 +6013,103 @@ function rowTokens(row4) {
   for (const t of tokens2) t.text = t.words.map((w) => w.text).join(" ");
   return tokens2.sort((a, b) => a.x0 - b.x0);
 }
+function alignNumericColumns(tokenRows, size = 8) {
+  const yearSpan = (text3) => /^(1[89]|20)\d{2}\s*[-–—]\s*(1[89]|20)\d{2}/.test(String(text3 || "").trim());
+  const edges = [];
+  const years = [];
+  let used = 0;
+  let textX0 = Infinity;
+  let textX1 = -Infinity;
+  let firstNum = Infinity;
+  for (const tokens2 of tokenRows) {
+    const nums = tokens2.filter((t) => /\d/.test(t.text || ""));
+    if (nums.length < 2) continue;
+    used += 1;
+    for (const t of tokens2) {
+      if (!/\d/.test(t.text || "")) {
+        textX0 = Math.min(textX0, t.x0);
+        textX1 = Math.max(textX1, t.x1);
+        continue;
+      }
+      firstNum = Math.min(firstNum, t.x0);
+      if (yearSpan(t.text)) years.push(t.x1);
+      else edges.push(t.x1);
+    }
+  }
+  if (used < 4 || !edges.length) return null;
+  edges.sort((a, b) => a - b);
+  const tol = Math.max(3.5, 0.5 * size);
+  const clusters = [];
+  for (const x of edges) {
+    const c = clusters[clusters.length - 1];
+    if (c && x <= c.mean + tol) {
+      c.xs.push(x);
+      c.mean = c.xs.reduce((s, v) => s + v, 0) / c.xs.length;
+    } else clusters.push({ mean: x, xs: [x] });
+  }
+  const minN = Math.max(3, Math.ceil(used * 0.22));
+  const rights = clusters.filter((c) => c.xs.length >= minN).map((c) => c.mean);
+  if (years.length >= Math.max(3, Math.ceil(used * 0.2))) {
+    const ys2 = [...years].sort((a, b) => a - b);
+    rights.push(ys2[ys2.length >> 1]);
+  }
+  rights.sort((a, b) => a - b);
+  const merged = [];
+  for (const r of rights) {
+    if (merged.length && r - merged[merged.length - 1] <= tol) merged[merged.length - 1] = (merged[merged.length - 1] + r) / 2;
+    else merged.push(r);
+  }
+  if (merged.length < 2) return null;
+  const edgeX0 = [];
+  for (const tokens2 of tokenRows) {
+    for (const t of tokens2) {
+      if (!/\d/.test(t.text || "")) continue;
+      if (Math.abs(t.x1 - merged[0]) <= tol * 2.2) edgeX0.push(t.x0);
+    }
+  }
+  edgeX0.sort((a, b) => a - b);
+  const firstEdgeX0 = edgeX0.length ? edgeX0[edgeX0.length >> 1] : Infinity;
+  const cols = [];
+  if (textX1 > textX0) {
+    const stop3 = Number.isFinite(firstEdgeX0) ? firstEdgeX0 - 1 : firstNum - 1;
+    const x1 = Math.min(textX1, stop3);
+    if (x1 > textX0 + 1) cols.push({ x0: textX0, x1 });
+  }
+  let prev = cols.length ? cols[cols.length - 1].x1 : firstNum - 1;
+  for (const r of merged) {
+    const x0 = prev + 0.5;
+    if (r > x0 + 1) cols.push({ x0, x1: r });
+    prev = r;
+  }
+  return cols.length >= 2 ? cols : null;
+}
+function numericBodyRows(rowsIn) {
+  const ocr = rowsIn.some((r) => r.tokens.some((t) => (t.words || []).some((w) => w.conf != null)));
+  if (!ocr) return null;
+  const body = [];
+  for (const r of rowsIn) {
+    const ws = r.tokens.flatMap((t) => t.words || []);
+    if (ws.length < 3) continue;
+    let nums = 0;
+    for (const w of ws) if (/\d/.test(w.text || "")) nums += 1;
+    if (nums >= 3 && nums / ws.length >= 0.45) body.push(r);
+  }
+  if (body.length < 4 || body.length >= rowsIn.length) return null;
+  return body;
+}
 function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, rules = [] }) {
-  const coarse = projectColumns(rowsIn.map((r) => r.tokens));
+  const body = numericBodyRows(rowsIn);
+  const bodySize = medianSize((body || rowsIn).flatMap((r) => r.tokens.flatMap((t) => t.words || []))) || 8;
+  const fromPage = projectColumns(rowsIn.map((r) => r.tokens));
+  const bodyProjected = body ? projectColumns(body.map((r) => r.tokens)) : null;
+  const useBody = bodyProjected && bodyProjected.length >= fromPage.length + 2;
+  const source = useBody ? body : rowsIn;
+  const projected = useBody ? bodyProjected : fromPage;
+  const aligned = useBody ? alignNumericColumns(source.map((r) => r.tokens), bodySize) : null;
+  const useAligned = aligned && aligned.length >= projected.length + 3;
+  const coarse = useAligned ? aligned : projected;
   if (coarse.length < 2) return null;
-  const refined = refineColumns(rowsIn, coarse);
+  const refined = useAligned ? { cols: aligned, seps: [] } : refineColumns(source, coarse);
   const cols = refined.cols;
   if (refined.seps.length) for (const r of rowsIn) r.tokens = splitTokensAt(r.tokens, refined.seps);
   const k = cols.length;
@@ -6176,6 +6300,10 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
       if (labels.length !== 1) continue;
       const cell = cellMap.get(`${labels[0]}:0`);
       if (cell.colSpan > 1 || isNumericText(cellTextOf(cell.words))) continue;
+      const edge = Math.min(...cell.words.map((w) => w.x0));
+      const size = cell.words[0].size || 8;
+      const ownLabel = rs.some((r) => r !== labels[0] && rowsIn[r].tokens.some((t) => t.x0 <= edge + 1.5 * size && !isNumericText(t.text) && /[A-Za-z]/.test(t.text || "")));
+      if (ownLabel) continue;
       cellMap.delete(`${labels[0]}:0`);
       cell.r = rs[0];
       cell.rowSpan = rs.length;
@@ -6201,13 +6329,13 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   }
   const colAlign = [];
   for (let c = 0; c < k; c++) {
-    const body = [...cellMap.values()].filter((cell) => cell.c === c && cell.colSpan === 1 && cell.r >= headerRows);
-    const numeric = body.filter((cell) => isNumericText(cellTextOf(cell.words)));
-    const x1s = body.map((cell) => Math.max(...cell.words.map((w) => w.x1)));
-    const x0s = body.map((cell) => Math.min(...cell.words.map((w) => w.x0)));
+    const body2 = [...cellMap.values()].filter((cell) => cell.c === c && cell.colSpan === 1 && cell.r >= headerRows);
+    const numeric = body2.filter((cell) => isNumericText(cellTextOf(cell.words)));
+    const x1s = body2.map((cell) => Math.max(...cell.words.map((w) => w.x1)));
+    const x0s = body2.map((cell) => Math.min(...cell.words.map((w) => w.x0)));
     const spread = (v) => v.length ? Math.max(...v) - Math.min(...v) : 0;
-    const right = body.length >= 2 && spread(x1s) + 1 < spread(x0s) && numeric.length >= 0.8 * body.length;
-    colAlign[c] = right ? "right" : body.length >= 2 && numeric.length >= 0.8 * body.length && spread(x1s) <= 1.5 ? "right" : "left";
+    const right = body2.length >= 2 && spread(x1s) + 1 < spread(x0s) && numeric.length >= 0.8 * body2.length;
+    colAlign[c] = right ? "right" : body2.length >= 2 && numeric.length >= 0.8 * body2.length && spread(x1s) <= 1.5 ? "right" : "left";
   }
   const cells = [];
   for (let r = 0; r < rows; r++) {
@@ -6231,10 +6359,10 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   let tight = 0;
   let n2 = 0;
   for (let c = 0; c < k; c++) {
-    const body = cells.filter((cell) => cell.c === c && cell.colSpan === 1 && cell.text);
-    if (body.length < 2) continue;
+    const body2 = cells.filter((cell) => cell.c === c && cell.colSpan === 1 && cell.text);
+    if (body2.length < 2) continue;
     n2++;
-    const edge = colAlign[c] === "right" ? body.map((cell) => cell.bbox[2]) : body.map((cell) => cell.bbox[0]);
+    const edge = colAlign[c] === "right" ? body2.map((cell) => cell.bbox[2]) : body2.map((cell) => cell.bbox[0]);
     tight += Math.max(...edge) - Math.min(...edge) <= 2 ? 1 : 0.5;
   }
   const alignment = n2 ? tight / n2 : 1;
@@ -6306,9 +6434,31 @@ function tableFromBand(band, words) {
     const firstRow = rowsIn.length;
     for (const r of vrows) rowsIn.push({ y0: r.y0, y1: r.y1, tokens: rowTokens(r).sort((a, b) => a.x0 - b.x0), band: i });
     for (const fw of floating) {
-      const tok = { x0: fw.x0, x1: fw.x1, words: [fw], text: fw.text, rowSpan: vrows.length };
-      rowsIn[firstRow].tokens.push(tok);
-      rowsIn[firstRow].tokens.sort((a, b) => a.x0 - b.x0);
+      const hit = [];
+      vrows.forEach((r, j) => {
+        if (fw.y0 < r.y1 - 1 && fw.y1 > r.y0 + 1) hit.push(j);
+      });
+      const overlapsX = (r) => r.words.some((w) => Math.min(w.x1, fw.x1) - Math.max(w.x0, fw.x0) > 2);
+      const crowded = hit.some((j) => overlapsX(vrows[j]));
+      let dest = 0;
+      let rowSpan = 1;
+      if (hit.length >= 2 && !crowded && hit[hit.length - 1] - hit[0] + 1 === hit.length) {
+        dest = hit[0];
+        rowSpan = hit.length;
+      } else {
+        let bestD = Infinity;
+        vrows.forEach((r, j) => {
+          const b = r.words[0]?.base ?? (r.y0 + r.y1) / 2;
+          const d = Math.abs(b - fw.base);
+          if (d < bestD) {
+            bestD = d;
+            dest = j;
+          }
+        });
+      }
+      const tok = { x0: fw.x0, x1: fw.x1, words: [fw], text: fw.text, rowSpan };
+      rowsIn[firstRow + dest].tokens.push(tok);
+      rowsIn[firstRow + dest].tokens.sort((a, b) => a.x0 - b.x0);
     }
   }
   if (rowsIn.length < 2) return null;
@@ -6411,6 +6561,18 @@ function baselineRows(lines) {
   }
   return rows;
 }
+function contentsContinuation(row4, tokens2, run) {
+  if (!run.length || tokens2.length !== 1) return false;
+  const head = String(row4.text || "").trim();
+  if (/^[A-Z][A-Z .]{2,40}$/.test(head)) return false;
+  const shaped = run.filter((r) => r.tokens.length >= 2);
+  if (!shaped.length || !shaped.every((r) => r.tokens.length === 2 && /^\d{1,4}$/.test(r.tokens[1].text) && /[A-Za-z]/.test(r.tokens[0].text || ""))) return false;
+  const right = Math.min(...shaped.map((r) => r.tokens[1].x0));
+  const tok = tokens2[0];
+  if (/^\d{1,4}$/.test(tok.text)) return tok.x0 >= right - 12;
+  if (!/[A-Za-z]/.test(tok.text || "") || row4.words.length > 18) return false;
+  return tok.x1 < right - 4;
+}
 function proseRow(row4, tokens2, columnWidth = Infinity) {
   const words = row4.words;
   const n2 = words.length;
@@ -6472,6 +6634,19 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
         continue;
       }
       if (tokens2.length < 2) {
+        if (!run.length && tokens2.length === 1) {
+          const nxt2 = rows[j + 1];
+          const nt = nxt2 ? tokensOf2(nxt2) : [];
+          const num6 = nt.find((t) => /^\d{1,4}$/.test(t.text));
+          const label = nt.find((t) => /[A-Za-z]/.test(t.text || "") && num6 && t.x1 < num6.x0 - 4);
+          if (num6 && label && tokens2[0].x0 > label.x1 && Math.abs(tokens2[0].x0 - num6.x0) <= 24) {
+            run.push({ row: row4, tokens: tokens2 });
+            headerRowsHint = Math.max(headerRowsHint, 1);
+            lastBase = row4.base;
+            j++;
+            continue;
+          }
+        }
         if (!run.length && row4.words.length <= 8) {
           const nxt2 = rows[j + 1];
           const nt = nxt2 ? tokensOf2(nxt2) : [];
@@ -6482,6 +6657,12 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
             j++;
             continue;
           }
+        }
+        if (contentsContinuation(row4, tokens2, run)) {
+          run.push({ row: row4, tokens: tokens2 });
+          lastBase = row4.base;
+          j++;
+          continue;
         }
         const peek = (k) => rows[k] ? { row: rows[k], tokens: tokensOf2(rows[k]) } : null;
         const single = singleTokenRow(row4, tokens2, run, peek(j + 1), colBox, lead, peek(j + 2));
@@ -10259,6 +10440,8 @@ function figureLabels(t, figures) {
   const filled = t.cells.filter((k) => k.text).length;
   const singles = Array.from({ length: t.rows }, (_, r) => t.cells.filter((k) => k.r === r && k.text).length === 1).filter(Boolean).length;
   if (filled >= 0.6 * t.cells.length && singles < 0.5 * t.rows) return false;
+  const pageNums = texts.filter((s) => /^\d{1,4}$/.test(s)).length;
+  if (t.cols === 2 && t.rows >= 4 && pageNums >= 3) return false;
   return figures.some((f) => {
     const b = f.bbox;
     return t.bbox[0] <= b[2] + 12 && t.bbox[2] >= b[0] - 12 && t.bbox[1] <= b[3] + 12 && t.bbox[3] >= b[1] - 12;
@@ -62259,12 +62442,12 @@ async function readSegments(image, w, h, boxes, mask, scaleX, scaleY, runRec, di
   }
   return items;
 }
-function medianSize(items) {
+function medianSize2(items) {
   const sizes = items.filter((i) => /[A-Z0-9bdfhklt]/.test(i.str)).map((i) => i.transform[0]).sort((a, b) => a - b);
   return sizes.length ? sizes[sizes.length >> 1] : 0;
 }
 async function readOrphans(image, w, h, boxes, mask, items, scaleX, scaleY, runRec, dict, signal) {
-  const emPt = medianSize(items);
+  const emPt = medianSize2(items);
   if (!emPt) return [];
   const em = emPt * scaleY;
   const covered = coverMask(boxes, w, h, Math.round(0.1 * em));

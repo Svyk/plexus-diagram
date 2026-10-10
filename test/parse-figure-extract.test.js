@@ -536,6 +536,18 @@ test("a plate absorbs the tick table inside it and leaves a table of names", () 
   };
   assert.equal(figureLabels(labels, [{ fromPlate: true, bbox: [40, 80, 560, 640] }]), true);
   assert.equal(figureLabels(labels, [{ bbox: [40, 80, 560, 640] }]), false);
+  const contents = {
+    bbox: [70, 140, 420, 420], rows: 6, cols: 2,
+    cells: [
+      { r: 0, c: 0, text: "Page." },
+      { r: 1, c: 0, text: "Introduction" }, { r: 1, c: 1, text: "5" },
+      { r: 2, c: 0, text: "Composition of natural gas" },
+      { r: 3, c: 0, text: "methane" }, { r: 3, c: 1, text: "6" },
+      { r: 4, c: 0, text: "Experiments made." },
+      { r: 5, c: 0, text: "Publications" }, { r: 5, c: 1, text: "11" },
+    ],
+  };
+  assert.equal(figureLabels(contents, [{ bbox: [40, 100, 560, 640] }]), false, "a contents list under a plate box stays a table");
 });
 
 test("a stroke that crosses both caption baselines does not join the two drawings", () => {

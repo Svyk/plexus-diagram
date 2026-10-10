@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { assembleDocument, parsePageGeometry } from "../src/model/parse/index.js";
-import { applyVlmTables } from "../src/model/parse/vlm-tables.js";
+import { applyVlmTables, linkLayoutCaptions } from "../src/model/parse/vlm-tables.js";
 import { chooseTableReading } from "../src/model/parse/vlm-arbitrate.js";
 import { takeArgs, vlmHelper } from "../tools/parse-bench/scan.mjs";
 
@@ -214,6 +214,44 @@ test("applyVlmTables arbitration does not replace a full grid with a one-cell re
   assert.equal(out.applied.length, 0);
   assert.equal(out.doc.blocks.t1.rows, 10);
   assert.notEqual(out.doc.blocks.t1.method, "PaddleOCR-VL-0.9B");
+});
+
+test("arbitration does not insert a numbered list and does insert a numeric grid", () => {
+  const doc = { order: ["p"], blocks: { p: { id: "p", type: "para", page: 1, bbox: [0, 0, 10, 10], text: "x" } } };
+  const listCells = [];
+  for (let r = 0; r < 6; r++) {
+    listCells.push({ r, c: 0, rowSpan: 1, colSpan: 1, text: String(r + 1), header: false });
+    listCells.push({ r, c: 1, rowSpan: 1, colSpan: 1, text: "The integral of the tangent along this path", header: false });
+  }
+  const listed = applyVlmTables(doc, [{ page: 1, bbox: [0, 0, 200, 120], rows: 6, cols: 2, cells: listCells }], { arbitrate: true });
+  assert.equal(listed.applied.length, 0);
+  const gridCells = [];
+  for (let r = 0; r < 5; r++) {
+    gridCells.push({ r, c: 0, rowSpan: 1, colSpan: 1, text: "North", header: false });
+    gridCells.push({ r, c: 1, rowSpan: 1, colSpan: 1, text: (1.2 + r).toFixed(1), header: false });
+    gridCells.push({ r, c: 2, rowSpan: 1, colSpan: 1, text: (3.4 + r).toFixed(1), header: false });
+  }
+  const gridded = applyVlmTables(doc, [{ page: 1, bbox: [10, 10, 180, 140], rows: 5, cols: 3, cells: gridCells }], { arbitrate: true });
+  assert.equal(gridded.applied.length, 1);
+  assert.equal(gridded.applied[0].inserted, true);
+});
+
+test("linkLayoutCaptions attaches a title line and leaves the figure box", () => {
+  const doc = {
+    order: ["f", "c"],
+    blocks: {
+      f: { id: "f", type: "figure", page: 1, bbox: [40, 80, 300, 360], caption: null },
+      c: { id: "c", type: "para", page: 1, bbox: [40, 368, 280, 384], text: "Fig. 1 Drawing of the plate" },
+    },
+  };
+  const linked = linkLayoutCaptions(doc, [{ page: 1, label: "figure_title", bbox: [36, 364, 290, 388], score: 0.8 }]);
+  assert.equal(linked.applied.length, 1);
+  assert.deepEqual(linked.doc.blocks.f.bbox, [40, 80, 300, 360]);
+  assert.equal(linked.doc.blocks.f.caption, "c");
+  assert.equal(linked.doc.blocks.c.type, "caption");
+  assert.equal(linked.doc.blocks.c.text, "Fig. 1 Drawing of the plate");
+  const kept = linkLayoutCaptions(linked.doc, [{ page: 1, label: "figure_title", bbox: [36, 364, 290, 388], score: 0.8 }]);
+  assert.equal(kept.applied.length, 0);
 });
 
 test("sideways margin text is furniture and not a heading or the title", () => {

@@ -438,11 +438,14 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
 
     @app.post("/v1/vlm")
     async def post_vlm(request: Request):
-        """PDF body. X-Pxd-Options {pages, tables, text}.
+        """PDF body. X-Pxd-Options {pages, tables, text, numericPages, words, boxMode}.
 
-        `tables` are caller boxes in PDF points, origin top-left, used on a page
-        the layout model does not mark as a table. `text` true also reads each
-        text region with the OCR prompt. Figure boxes in the response are hints.
+        `tables` are caller boxes in PDF points, origin top-left. They are united
+        with the layout model's table boxes. `numericPages` are pages with aligned
+        numeric columns; a page the layout model does not mark as a table is then
+        read whole. `text` true also reads each text region with the OCR prompt.
+        Figure boxes in the response are hints. `boxMode` `caller` or `layout`
+        selects only those boxes.
         """
         if not authed(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)

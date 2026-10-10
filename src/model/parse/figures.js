@@ -862,6 +862,21 @@ function hullOf(items) {
   };
 }
 
+function touchesBox(a, b, pad) {
+  return a.x0 <= b.x1 + pad && b.x0 <= a.x1 + pad && a.y0 <= b.y1 + pad && b.y0 <= a.y1 + pad;
+}
+
+// A disconnected speck (a one-pixel Vision mark at the page origin) must not
+// pull the plate hull to the corner. Thin strokes of a line drawing are all
+// small, so they stay when nothing larger is on the page.
+function isolatedInk(boxes, pageW, pageH) {
+  if (boxes.length < 2) return [];
+  const minArea = Math.max(64, 0.001 * pageW * pageH);
+  const big = boxes.filter((b) => boxArea(b) >= minArea);
+  if (!big.length) return [];
+  return boxes.filter((b) => boxArea(b) < minArea && !big.some((g) => touchesBox(b, g, 6)));
+}
+
 // Share of `inner` that sits inside `outer`. Boxes are {x0,y0,x1,y1}.
 function insideFrac(inner, outer) {
   const area = boxArea(inner);
@@ -1375,7 +1390,11 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
   });
   const inkOnly = ink.filter((p) => p.kind === "ink");
   if (inkOnly.length) {
-    const drawn = hullOf(inkOnly);
+    const stray = new Set(isolatedInk(inkOnly, pageW, pageH));
+    if (stray.size) ink = ink.filter((p) => !stray.has(p));
+    const mass = ink.filter((p) => p.kind === "ink");
+    if (!mass.length) return;
+    const drawn = hullOf(mass);
     const padX = Math.max(36, 0.06 * pageW);
     const padY = Math.max(18, 0.04 * pageH);
     const near = ink.filter((p) => p.kind === "ink" || (p.x1 >= drawn.x0 - padX && p.x0 <= drawn.x1 + padX && p.y1 >= drawn.y0 - padY && p.y0 <= drawn.y1 + padY));

@@ -1,9 +1,12 @@
 """High-accuracy page read: PP-DocLayoutV2 boxes, then PaddleOCR-VL on each one.
 
-Table boxes come from the layout model. A page it does not mark as a table
-falls back to the boxes the caller already found (the built-in detector).
+Table regions are the layout model's table boxes plus caller boxes it missed.
+Where both found the same grid, the layout rectangle is the crop. A page the
+layout model does not mark as a table, and that has aligned numeric columns,
+is read as a whole page.
 Text is optional: each text region is read with the "OCR:" prompt. Figure
 boxes are hints only; the caller keeps its own figures when it has any.
+Decoding is greedy with a fixed seed.
 """
 
 from __future__ import annotations
@@ -11,14 +14,16 @@ from __future__ import annotations
 import pypdfium2 as pdfium
 
 from plexus_parse_helper.table_text import plain_lines, tables_from_text
+from plexus_parse_helper.vlm_boxes import choose_table_boxes, drop_layout_inside_figures, merge_stacked
 from plexus_parse_helper.vlm_layout import (
     FIGURE_LABELS,
     LAYOUT_MODEL,
-    TABLE_LABELS,
     TEXT_LABELS,
     detect_layout,
 )
 from plexus_parse_helper.vlm_tables import (
+    DECODE_SEED,
+    DECODE_TEMPERATURE,
     MAX_REGIONS,
     MODEL_LABEL,
     OCR_PROMPT,
@@ -31,7 +36,6 @@ from plexus_parse_helper.vlm_tables import (
 
 MAX_PAGES = 40
 MAX_TEXT = 24
-STACK_GAP = 22.0
 
 
 def _area(box):
@@ -46,40 +50,6 @@ def _iou(a, b):
     inter = ix * iy
     union = _area(a) + _area(b) - inter
     return inter / union if union else 0.0
-
-
-def merge_stacked(boxes, gap=STACK_GAP):
-    """Join table boxes that sit on top of each other with a small gap.
-
-    A typewritten table often comes back as two grids. One crop reads it as
-    one table. `boxes` are `{bbox, ...}` in top-left PDF points.
-    """
-    items = sorted((dict(b) for b in boxes if b.get("bbox")), key=lambda b: (b["bbox"][1], b["bbox"][0]))
-    merged = []
-    for box in items:
-        if not merged:
-            merged.append(box)
-            continue
-        prev = merged[-1]
-        a, c = prev["bbox"], box["bbox"]
-        overlap = min(a[2], c[2]) - max(a[0], c[0])
-        width = min(a[2] - a[0], c[2] - c[0])
-        gap_y = c[1] - a[3]
-        if width > 0 and overlap / width >= 0.55 and -6 <= gap_y <= gap:
-            prev["bbox"] = [min(a[0], c[0]), min(a[1], c[1]), max(a[2], c[2]), max(a[3], c[3])]
-            prev["score"] = max(float(prev.get("score") or 0), float(box.get("score") or 0))
-            continue
-        merged.append(box)
-    return merged
-
-
-def choose_table_boxes(layout_boxes, fallback_boxes):
-    """Layout tables when the page has any. Otherwise the caller's boxes."""
-    tables = [b for b in layout_boxes if b.get("label") in TABLE_LABELS]
-    chosen = merge_stacked(tables)
-    if chosen:
-        return chosen
-    return merge_stacked(fallback_boxes)
 
 
 def points_box(pixel_box, scale):
@@ -101,13 +71,59 @@ def _clean_ocr(raw):
     return " ".join(lines).strip()
 
 
+def covered_by_table(box, chosen, min_iou=0.45) -> bool:
+    """True when a figure sits on a real table crop.
+
+    A whole-page fallback covers every figure on the page. It is the table
+    read for a missed grid, not a reason to drop the figure.
+    """
+    for item in chosen or []:
+        if item.get("source") == "page":
+            continue
+        bbox = item.get("bbox")
+        if bbox and _iou(box, bbox) > min_iou:
+            return True
+    return False
+
+
+def _box_mode(options) -> str:
+    mode = options.get("boxMode") or "union"
+    if mode not in {"union", "caller", "layout"}:
+        raise ValueError("boxMode must be union, caller, or layout")
+    return mode
+
+
+def _page_numeric(options, page_no) -> bool:
+    from plexus_parse_helper.vlm_boxes import aligned_numeric_columns
+
+    flagged = options.get("numericPages") or []
+    if not isinstance(flagged, list):
+        raise ValueError("numericPages must be a list")
+    for page in flagged:
+        if int(page) == page_no:
+            return True
+    words = options.get("words") or []
+    if not isinstance(words, list):
+        raise ValueError("words must be a list")
+    page_words = [word for word in words if isinstance(word, dict) and int(word.get("page") or 0) == page_no]
+    if not page_words:
+        return False
+    return aligned_numeric_columns(page_words)
+
+
 def read_pages(pdf_path: str, options: dict | None = None) -> dict:
-    """`options` is `{pages, tables, text}`. `tables` are caller boxes, top-left points."""
+    """`options` is `{pages, tables, text, numericPages, words, boxMode}`.
+
+    `tables` are caller boxes, top-left points. `numericPages` are pages whose
+    words form aligned numeric columns. `boxMode` is `union` unless a caller
+    asks for `caller` or `layout`.
+    """
     options = options or {}
     pages = [int(p) for p in (options.get("pages") or [])]
     regions = options.get("tables") or []
     if not isinstance(regions, list):
         raise ValueError("tables must be a list")
+    mode = _box_mode(options)
     want_text = bool(options.get("text"))
     if not pages:
         pages = sorted({int(r.get("page") or 0) for r in regions if int(r.get("page") or 0) > 0})
@@ -120,6 +136,7 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
     lines_out = []
     figures_out = []
     layout_out = []
+    boxes_out = []
     pdf = pdfium.PdfDocument(str(pdf_path))
     try:
         n_pages = len(pdf)
@@ -150,8 +167,24 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
                 if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
                     raise ValueError("bbox must be [x0, y0, x1, y1]")
                 fallback.append({"page": page_no, "label": "table", "score": 0, "bbox": [float(v) for v in bbox]})
-            chosen = choose_table_boxes(detected, fallback)
+            chosen = choose_table_boxes(
+                detected,
+                fallback,
+                page_size=(pw, ph),
+                numeric=_page_numeric(options, page_no),
+                box_mode=mode,
+            )
+            figure_hints = [item for item in detected if item["label"] in FIGURE_LABELS]
+            chosen = drop_layout_inside_figures(chosen, figure_hints)
             for box in chosen:
+                boxes_out.append({
+                    "page": page_no,
+                    "bbox": box["bbox"],
+                    "source": box.get("source") or "union",
+                })
+            for box in chosen:
+                # Pad at crop time only. The bbox stored on the table stays the grid,
+                # so a later comparison still lines up with the rule table.
                 image = _crop(page, box["bbox"], bitmap)
                 parsed = tables_from_text(_generate(image, TABLE_PROMPT), "html")
                 if not parsed:
@@ -167,7 +200,7 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
             for item in detected:
                 if item["label"] not in FIGURE_LABELS or item["score"] < 0.5:
                     continue
-                if any(_iou(item["bbox"], t["bbox"]) > 0.45 for t in chosen):
+                if covered_by_table(item["bbox"], chosen):
                     continue
                 if _area(item["bbox"]) < 0.015 * pw * ph:
                     continue
@@ -200,4 +233,6 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
         "lines": lines_out,
         "figures": figures_out,
         "layout": layout_out,
+        "boxes": boxes_out,
+        "decode": {"temperature": DECODE_TEMPERATURE, "seed": DECODE_SEED, "greedy": True},
     }

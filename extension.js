@@ -6438,8 +6438,8 @@ function tableFromBand(band, words) {
       vrows.forEach((r, j) => {
         if (fw.y0 < r.y1 - 1 && fw.y1 > r.y0 + 1) hit.push(j);
       });
-      const overlapsX = (r) => r.words.some((w) => Math.min(w.x1, fw.x1) - Math.max(w.x0, fw.x0) > 2);
-      const crowded = hit.some((j) => overlapsX(vrows[j]));
+      const overlapsX2 = (r) => r.words.some((w) => Math.min(w.x1, fw.x1) - Math.max(w.x0, fw.x0) > 2);
+      const crowded = hit.some((j) => overlapsX2(vrows[j]));
       let dest = 0;
       let rowSpan = 1;
       if (hit.length >= 2 && !crowded && hit[hit.length - 1] - hit[0] + 1 === hit.length) {
@@ -8079,6 +8079,16 @@ function hullOf(items) {
     y1: Math.max(...items.map((p) => p.y1))
   };
 }
+function touchesBox(a, b, pad2) {
+  return a.x0 <= b.x1 + pad2 && b.x0 <= a.x1 + pad2 && a.y0 <= b.y1 + pad2 && b.y0 <= a.y1 + pad2;
+}
+function isolatedInk(boxes, pageW, pageH) {
+  if (boxes.length < 2) return [];
+  const minArea = Math.max(64, 1e-3 * pageW * pageH);
+  const big = boxes.filter((b) => boxArea(b) >= minArea);
+  if (!big.length) return [];
+  return boxes.filter((b) => boxArea(b) < minArea && !big.some((g) => touchesBox(b, g, 6)));
+}
 function insideFrac(inner, outer) {
   const area = boxArea(inner);
   if (area <= 0) return 0;
@@ -8524,7 +8534,11 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
   });
   const inkOnly = ink.filter((p) => p.kind === "ink");
   if (inkOnly.length) {
-    const drawn = hullOf(inkOnly);
+    const stray = new Set(isolatedInk(inkOnly, pageW, pageH));
+    if (stray.size) ink = ink.filter((p) => !stray.has(p));
+    const mass = ink.filter((p) => p.kind === "ink");
+    if (!mass.length) return;
+    const drawn = hullOf(mass);
     const padX = Math.max(36, 0.06 * pageW);
     const padY = Math.max(18, 0.04 * pageH);
     const near2 = ink.filter((p) => p.kind === "ink" || p.x1 >= drawn.x0 - padX && p.x0 <= drawn.x1 + padX && p.y1 >= drawn.y0 - padY && p.y0 <= drawn.y1 + padY);
@@ -9816,7 +9830,7 @@ function parsePageGeometry(data, n2) {
   });
   for (let i = tables.length - 1; i >= 0; i--) {
     const t = tables[i];
-    if (t.method !== "stream" || !figureLabels(t, figures)) continue;
+    if (t.method !== "stream" || !figureLabels(t, figures) && !sparseContentsTable(t)) continue;
     tables.splice(i, 1);
     for (const w2 of words) if (used.has(w2) && !figs.used.has(w2) && w2.x0 >= t.bbox[0] - 2 && w2.x1 <= t.bbox[2] + 2 && w2.base >= t.bbox[1] && w2.base <= t.bbox[3] + 2) used.delete(w2);
   }
@@ -10337,7 +10351,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
           textBlocks.push({ type: "code", lines: t.lines, bbox: boxOfUnits(t.lines), text: t.text });
           continue;
         }
-        if (isTitledBox(t) || figureLabels(t, pageFigures)) {
+        if (isTitledBox(t) || figureLabels(t, pageFigures) || sparseContentsTable(t)) {
           lines = [...lines, ...t.lines].sort((a, b) => a.base - b.base || a.x0 - b.x0);
           continue;
         }
@@ -10583,6 +10597,17 @@ function figureLabels(t, figures) {
     return t.bbox[0] <= b[2] + 12 && t.bbox[2] >= b[0] - 12 && t.bbox[1] <= b[3] + 12 && t.bbox[3] >= b[1] - 12;
   });
 }
+function sparseContentsTable(t) {
+  if (!t || t.method !== "stream" || t.cols < 3 || t.rows < 4) return false;
+  const cells = t.cells || [];
+  const slot2 = Math.max(1, t.rows * t.cols);
+  const texts = cells.map((c) => String(c.text || "").trim()).filter(Boolean);
+  if (!texts.length || texts.length >= 0.55 * slot2) return false;
+  if (texts.some((s) => /\d{4}|\d\.\d/.test(s))) return false;
+  const pageNums = texts.filter((s) => /^\d{1,3}$/.test(s)).length;
+  const prose = texts.filter((s) => /[A-Za-z]{5,}/.test(s)).length;
+  return pageNums >= 2 && prose >= 2;
+}
 function isTitledBox(t) {
   if (t.rows < 2 || t.cols < 2) return true;
   if (t.rows > 2) return false;
@@ -10691,7 +10716,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 19;
+    PARSE_REV = 20;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -42279,12 +42304,14 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
     }
     return { ...body, sha256: sha };
   }
-  async function vlm({ bytes, sha256, pages, tables: regions, text: text3 = false, signal } = {}) {
+  async function vlm({ bytes, sha256, pages, tables: regions, text: text3 = false, numericPages, boxMode, signal } = {}) {
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
     const options = { text: text3 === true };
     if (pages && pages.length) options.pages = pages;
     if (regions && regions.length) options.tables = regions.map((t) => ({ page: t.page, bbox: t.bbox }));
+    if (numericPages && numericPages.length) options.numericPages = numericPages;
+    if (boxMode) options.boxMode = boxMode;
     const res = await call(`${url}/v1/vlm`, {
       method: "POST",
       headers: {
@@ -43885,6 +43912,183 @@ function chooseTableReading(rule, vlm, page = {}) {
   };
 }
 
+// src/model/parse/vlm-boxes.js
+var NUMERIC = /^[\$£€]?\(?[+-]?(?:\d{1,3}(?:[, ]\d{3})+|\d+)(?:\.\d+)?\)?%?$|^\.\d+%?$/;
+var MIN_NUMERIC_ROWS = 4;
+var MIN_NUMERIC_COLS = 2;
+var ROW_GAP = 4;
+var ROW_PITCH_MAX = 36;
+var PROSE_LETTERS = 8;
+var LABEL_LETTERS_MAX = 24;
+function isNumericToken(text3) {
+  const token = String(text3 || "").replace(/\s+/g, "").replace(/^[.,;:]+|[.,;:]+$/g, "");
+  return token.length > 0 && NUMERIC.test(token);
+}
+function wordBox3(word) {
+  const bbox = word?.bbox;
+  if (Array.isArray(bbox) && bbox.length >= 4) return bbox.map(Number);
+  if (word?.x0 == null || word?.y0 == null || word?.x1 == null || word?.y1 == null) return null;
+  return [Number(word.x0), Number(word.y0), Number(word.x1), Number(word.y1)];
+}
+function rowCenters(ys2) {
+  if (!ys2.length) return [];
+  const ordered = [...ys2].sort((a, b) => a - b);
+  const rows = [ordered[0]];
+  for (let i = 1; i < ordered.length; i++) if (ordered[i] - rows[rows.length - 1] > ROW_GAP) rows.push(ordered[i]);
+  return rows;
+}
+function tablePitch(ys2) {
+  const rows = rowCenters(ys2);
+  if (rows.length < 2) return Infinity;
+  const gaps = [];
+  for (let i = 1; i < rows.length; i++) gaps.push(rows[i] - rows[i - 1]);
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor(gaps.length / 2)];
+}
+function letterCount(text3) {
+  const raw = String(text3 || "");
+  let n2 = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i);
+    if (c >= 65 && c <= 90 || c >= 97 && c <= 122) n2++;
+  }
+  return n2;
+}
+function listMarker(text3) {
+  const token = String(text3 || "").replace(/\s+/g, "").replace(/[.,;:]+$/g, "");
+  return /^\d{1,4}$/.test(token);
+}
+function sameLineLetters(words, y) {
+  let n2 = 0;
+  for (const word of words) {
+    if (!word || listMarker(word.text) || isNumericToken(word.text)) continue;
+    const box2 = wordBox3(word);
+    if (!box2) continue;
+    const cy = (box2[1] + box2[3]) / 2;
+    if (Math.abs(cy - y) > ROW_GAP) continue;
+    n2 += letterCount(word.text);
+  }
+  return n2;
+}
+function alignedNumericColumns(words, { minRows = MIN_NUMERIC_ROWS, minCols = MIN_NUMERIC_COLS } = {}) {
+  const nums = [];
+  for (const word of words || []) {
+    if (!word || !isNumericToken(word.text)) continue;
+    const box2 = wordBox3(word);
+    if (!box2) continue;
+    const cy = (box2[1] + box2[3]) / 2;
+    if (listMarker(word.text) && sameLineLetters(words, cy) >= PROSE_LETTERS) continue;
+    nums.push([(box2[0] + box2[2]) / 2, cy, box2[2] - box2[0]]);
+  }
+  if (nums.length < minRows * minCols) return false;
+  const widths = nums.map((item) => item[2]).filter((width) => width > 0).sort((a, b) => a - b);
+  const median7 = widths.length ? widths[Math.floor(widths.length / 2)] : 8;
+  const tol = Math.max(8, median7 * 0.6);
+  nums.sort((a, b) => a[0] - b[0]);
+  const columns = [];
+  for (const [x, y] of nums) {
+    const last = columns[columns.length - 1];
+    if (last && Math.abs(x - last.x) <= tol) {
+      last.ys.push(y);
+      last.x += (x - last.x) / last.ys.length;
+    } else columns.push({ x, ys: [y] });
+  }
+  const good = columns.filter((col) => rowCenters(col.ys).length >= minRows && tablePitch(col.ys) <= ROW_PITCH_MAX);
+  if (good.length < minCols) return false;
+  for (let i = 0; i < good.length; i++) {
+    const a0 = Math.min(...good[i].ys);
+    const a1 = Math.max(...good[i].ys);
+    for (let j = i + 1; j < good.length; j++) {
+      const b0 = Math.min(...good[j].ys);
+      const b1 = Math.max(...good[j].ys);
+      const overlap = Math.min(a1, b1) - Math.max(a0, b0);
+      const shorter = Math.min(a1 - a0, b1 - b0);
+      if (shorter > 0 && overlap / shorter >= 0.5) return true;
+    }
+  }
+  return false;
+}
+function decimalToken(text3) {
+  if (!isNumericToken(text3)) return false;
+  const token = String(text3 || "").replace(/\s+/g, "").replace(/^[.,;:]+|[.,;:]+$/g, "");
+  return token.includes(".") || token.includes("%");
+}
+function labeledDecimalColumn(words) {
+  const nums = [];
+  for (const word of words || []) {
+    if (!word || !decimalToken(word.text)) continue;
+    const box2 = wordBox3(word);
+    if (!box2) continue;
+    nums.push([(box2[0] + box2[2]) / 2, (box2[1] + box2[3]) / 2, box2[2] - box2[0]]);
+  }
+  if (nums.length < MIN_NUMERIC_ROWS) return false;
+  const widths = nums.map((item) => item[2]).filter((width) => width > 0).sort((a, b) => a - b);
+  const median7 = widths.length ? widths[Math.floor(widths.length / 2)] : 8;
+  const tol = Math.max(8, median7 * 0.6);
+  nums.sort((a, b) => a[0] - b[0]);
+  const columns = [];
+  for (const [x, y] of nums) {
+    const last = columns[columns.length - 1];
+    if (last && Math.abs(x - last.x) <= tol) {
+      last.ys.push(y);
+      last.x += (x - last.x) / last.ys.length;
+    } else columns.push({ x, ys: [y] });
+  }
+  for (const col of columns) {
+    const rows = rowCenters(col.ys);
+    if (rows.length < MIN_NUMERIC_ROWS || tablePitch(col.ys) > ROW_PITCH_MAX) continue;
+    let labeled = 0;
+    for (const y of rows) {
+      const letters = sameLineLetters(words, y);
+      if (letters >= 2 && letters <= LABEL_LETTERS_MAX) labeled++;
+    }
+    if (labeled >= MIN_NUMERIC_ROWS) return true;
+  }
+  return false;
+}
+function insideFigure(word, page, figures) {
+  const box2 = wordBox3(word);
+  if (!box2) return false;
+  const cx = (box2[0] + box2[2]) / 2;
+  const cy = (box2[1] + box2[3]) / 2;
+  for (const fig of figures) {
+    const b = fig?.bbox;
+    if (!b || fig.page !== page) continue;
+    if (cx >= b[0] && cx <= b[2] && cy >= b[1] && cy <= b[3]) return true;
+  }
+  return false;
+}
+function numericPagesOf(records, pages, figures = []) {
+  const want = pages && pages.length ? new Set(pages) : null;
+  const out = [];
+  for (const rec of records || []) {
+    if (!rec || want && !want.has(rec.n)) continue;
+    const words = [];
+    for (const word of rec.words || []) {
+      const next = { text: word.text, x0: word.x0, y0: word.y0, x1: word.x1, y1: word.y1 };
+      if (insideFigure(next, rec.n, figures)) continue;
+      words.push(next);
+    }
+    if (alignedNumericColumns(words)) out.push(rec.n);
+  }
+  return out;
+}
+function decimalColumnPagesOf(records, pages, figures = []) {
+  const want = pages && pages.length ? new Set(pages) : null;
+  const out = [];
+  for (const rec of records || []) {
+    if (!rec || want && !want.has(rec.n)) continue;
+    const words = [];
+    for (const word of rec.words || []) {
+      const next = { text: word.text, x0: word.x0, y0: word.y0, x1: word.x1, y1: word.y1 };
+      if (insideFigure(next, rec.n, figures)) continue;
+      words.push(next);
+    }
+    if (labeledDecimalColumn(words)) out.push(rec.n);
+  }
+  return out;
+}
+
 // src/model/parse/vlm-tables.js
 function normCell2(text3) {
   return String(text3 || "").replace(/\s+/g, " ").trim().toLowerCase();
@@ -43977,6 +44181,36 @@ function tableFromVlm(structure, { id = "vlm", method = "vlm" } = {}) {
     engine: "builtin"
   };
 }
+function letterCount2(text3) {
+  const raw = String(text3 || "");
+  let n2 = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i);
+    if (c >= 65 && c <= 90 || c >= 97 && c <= 122) n2++;
+  }
+  return n2;
+}
+function gridReading(table) {
+  const cells = table?.cells || [];
+  const texts = cells.map((c) => String(c.text || "").trim()).filter(Boolean);
+  const rows = table?.rows || 0;
+  const cols = table?.cols || 0;
+  if (rows < 4 || cols < 2 || texts.length < 6) return false;
+  const byCol = /* @__PURE__ */ new Map();
+  for (const cell of cells) {
+    const text3 = String(cell.text || "").trim();
+    if (!text3) continue;
+    if (!byCol.has(cell.c)) byCol.set(cell.c, []);
+    byCol.get(cell.c).push(text3);
+  }
+  const groups = [...byCol.values()];
+  if (groups.length === 2) {
+    const intCol = groups.some((col) => col.length >= 4 && col.filter((t) => /^\d{1,4}\.?$/.test(t)).length >= 0.6 * col.length);
+    const proseCol = groups.some((col) => col.filter((t) => letterCount2(t) >= 12).length >= 0.5 * col.length);
+    if (intCol && proseCol) return false;
+  }
+  return texts.filter((t) => isNumericToken(t)).length / texts.length >= 0.45;
+}
 function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, trust = false, arbitrate = false, evidence = null } = {}) {
   if (!doc || !structures?.length) return { doc, applied: [] };
   const blocks = { ...doc.blocks };
@@ -44012,6 +44246,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
         }
       }
     }
+    if (arbitrate && !host && !gridReading(built)) continue;
     const same2 = host && (setJaccard(host, built) >= minJaccard || tokenJaccard(host, built) >= minJaccard);
     if (arbitrate && host) {
       const page = (evidence || []).find((item) => item.page === structure.page) || { words: [], rules: [] };
@@ -44135,6 +44370,53 @@ function alignVlmText(doc, regions) {
   }
   return { doc: { ...doc, blocks }, applied };
 }
+function overlapsX(a, b) {
+  return Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+}
+function linkLayoutCaptions(doc, layout) {
+  if (!doc || !layout?.length) return { doc, applied: [] };
+  const titles = layout.filter((b) => b && b.label === "figure_title" && b.bbox && b.bbox.length >= 4);
+  if (!titles.length) return { doc, applied: [] };
+  const blocks = { ...doc.blocks };
+  const applied = [];
+  const figures = (doc.order || []).map((id) => blocks[id]).filter((b) => b && b.type === "figure" && b.bbox);
+  for (const title of titles) {
+    const hosts = [];
+    for (const id of doc.order || []) {
+      const block = blocks[id];
+      if (!block || block.page !== title.page || block.type !== "para" && block.type !== "caption" || !block.bbox || block.for) continue;
+      const c = centerOf4(block.bbox);
+      if (!c) continue;
+      if (c[0] < title.bbox[0] || c[0] > title.bbox[2] || c[1] < title.bbox[1] || c[1] > title.bbox[3]) continue;
+      hosts.push(block);
+    }
+    if (!hosts.length) continue;
+    hosts.sort((a, b) => String(b.text || "").length - String(a.text || "").length);
+    const host = hosts[0];
+    let best = null;
+    let bestGap = Infinity;
+    for (const fig of figures) {
+      if (fig.page !== title.page || fig.caption) continue;
+      const overlap = overlapsX(fig.bbox, host.bbox);
+      if (overlap < 12) continue;
+      let gap = 0;
+      if (host.bbox[1] >= fig.bbox[3] - 4) gap = host.bbox[1] - fig.bbox[3];
+      else if (host.bbox[3] <= fig.bbox[1] + 4) gap = fig.bbox[1] - host.bbox[3];
+      if (gap > 80 || gap < 0) continue;
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = fig;
+      }
+    }
+    if (!best) continue;
+    blocks[best.id] = { ...blocks[best.id], caption: host.id };
+    best.caption = host.id;
+    const next = blocks[host.id];
+    blocks[host.id] = next.type === "para" ? { ...next, type: "caption", for: best.id } : { ...next, for: best.id };
+    applied.push({ figure: best.id, caption: host.id, page: title.page });
+  }
+  return { doc: { ...doc, blocks }, applied };
+}
 
 // src/view/parse-engine.js
 var GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
@@ -44217,14 +44499,20 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   const high = helper.vlmHigh === true && typeof helper.vlm === "function";
   if (high || helper.vlmTables === true && typeof helper.tables === "function") {
     const regions = tableRegions(doc, wanted);
+    const figures = (doc.order || []).map((id) => doc.blocks[id]).filter((block) => block && block.type === "figure");
+    const numericPages = high ? numericPagesOf(next, wanted, figures) : [];
+    const decimalPages = high ? decimalColumnPagesOf(next, wanted, figures) : [];
+    const regionPages = new Set(regions.map((r) => r.page));
+    const send = high ? wanted.filter((n2) => regionPages.has(n2) || numericPages.includes(n2) || decimalPages.includes(n2)) : wanted;
     try {
-      if (high) {
-        onPhase?.({ phase: "vlm", count: regions.length, mode: "high" });
+      if (high && send.length) {
+        onPhase?.({ phase: "vlm", count: send.length, mode: "high" });
         const read2 = await helper.vlm({
           bytes,
           sha256,
-          pages: wanted,
-          tables: regions,
+          pages: send,
+          tables: regions.filter((r) => send.includes(r.page)),
+          numericPages,
           text: options.vlmText === true,
           signal
         });
@@ -44241,6 +44529,11 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
           vlmLines = linedText.applied;
           if (linedText.applied.length) Object.assign(doc, { blocks: linedText.doc.blocks });
         }
+        const linked = linkLayoutCaptions(doc, read2?.layout || []);
+        vlmFigures = linked.applied;
+        if (linked.applied.length) Object.assign(doc, { blocks: linked.doc.blocks });
+        doc.ocr = { ...doc.ocr || {}, mode: "high" };
+      } else if (high) {
         doc.ocr = { ...doc.ocr || {}, mode: "high" };
       } else if (regions.length) {
         onPhase?.({ phase: "vlm", count: regions.length });

@@ -1,4 +1,5 @@
 import { chooseTableReading } from "./vlm-arbitrate.js";
+import { isNumericToken } from "./vlm-boxes.js";
 
 // Replace a rule-assembly table with a local VLM reading of the same box.
 // The helper returns cells that already contain text. The high-accuracy path
@@ -113,8 +114,44 @@ function tableFromVlm(structure, { id = "vlm", method = "vlm" } = {}) {
   };
 }
 
+function letterCount(text) {
+  const raw = String(text || "");
+  let n = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i);
+    if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) n++;
+  }
+  return n;
+}
+
+// A reading with no rule table is inserted only when it is a grid of numbers.
+// A numbered list (one column of short integers, one column of sentences)
+// and a prose block the reader called a table are not.
+export function gridReading(table) {
+  const cells = table?.cells || [];
+  const texts = cells.map((c) => String(c.text || "").trim()).filter(Boolean);
+  const rows = table?.rows || 0;
+  const cols = table?.cols || 0;
+  if (rows < 4 || cols < 2 || texts.length < 6) return false;
+  const byCol = new Map();
+  for (const cell of cells) {
+    const text = String(cell.text || "").trim();
+    if (!text) continue;
+    if (!byCol.has(cell.c)) byCol.set(cell.c, []);
+    byCol.get(cell.c).push(text);
+  }
+  const groups = [...byCol.values()];
+  if (groups.length === 2) {
+    const intCol = groups.some((col) => col.length >= 4 && col.filter((t) => /^\d{1,4}\.?$/.test(t)).length >= 0.6 * col.length);
+    const proseCol = groups.some((col) => col.filter((t) => letterCount(t) >= 12).length >= 0.5 * col.length);
+    if (intCol && proseCol) return false;
+  }
+  return texts.filter((t) => isNumericToken(t)).length / texts.length >= 0.45;
+}
+
 // `minJaccard` applies to both the full-string set and the token set. Either one
-// is enough to replace. A region with no overlapping rule table is inserted.
+// is enough to replace. A region with no overlapping rule table is inserted
+// when arbitration is off, or when the reading is a numeric grid.
 // `trust` replaces every overlapping rule table. `arbitrate` keeps the better of
 // the rule table and the reading, using `evidence` (page words and rules).
 export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, trust = false, arbitrate = false, evidence = null } = {}) {
@@ -146,6 +183,7 @@ export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0
         if (next > area) { area = next; host = block; }
       }
     }
+    if (arbitrate && !host && !gridReading(built)) continue;
     // Full-string set Jaccard is what TableFormer uses. Token Jaccard is also
     // accepted: on this corpus that raised cell F1 from 0.140 to 0.155 and
     // left structure F1 at 0.606 versus 0.610.
@@ -274,6 +312,55 @@ export function alignVlmText(doc, regions) {
       blocks[block.id] = { ...block, text };
       applied.push(block.id);
     });
+  }
+  return { doc: { ...doc, blocks }, applied };
+}
+
+function overlapsX(a, b) {
+  return Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+}
+
+// A layout figure_title box links the local line it covers to the nearest
+// figure that has no caption. It does not move the figure box and it does
+// not replace the line's text.
+export function linkLayoutCaptions(doc, layout) {
+  if (!doc || !layout?.length) return { doc, applied: [] };
+  const titles = layout.filter((b) => b && b.label === "figure_title" && b.bbox && b.bbox.length >= 4);
+  if (!titles.length) return { doc, applied: [] };
+  const blocks = { ...doc.blocks };
+  const applied = [];
+  const figures = (doc.order || []).map((id) => blocks[id]).filter((b) => b && b.type === "figure" && b.bbox);
+  for (const title of titles) {
+    const hosts = [];
+    for (const id of doc.order || []) {
+      const block = blocks[id];
+      if (!block || block.page !== title.page || (block.type !== "para" && block.type !== "caption") || !block.bbox || block.for) continue;
+      const c = centerOf(block.bbox);
+      if (!c) continue;
+      if (c[0] < title.bbox[0] || c[0] > title.bbox[2] || c[1] < title.bbox[1] || c[1] > title.bbox[3]) continue;
+      hosts.push(block);
+    }
+    if (!hosts.length) continue;
+    hosts.sort((a, b) => String(b.text || "").length - String(a.text || "").length);
+    const host = hosts[0];
+    let best = null;
+    let bestGap = Infinity;
+    for (const fig of figures) {
+      if (fig.page !== title.page || fig.caption) continue;
+      const overlap = overlapsX(fig.bbox, host.bbox);
+      if (overlap < 12) continue;
+      let gap = 0;
+      if (host.bbox[1] >= fig.bbox[3] - 4) gap = host.bbox[1] - fig.bbox[3];
+      else if (host.bbox[3] <= fig.bbox[1] + 4) gap = fig.bbox[1] - host.bbox[3];
+      if (gap > 80 || gap < 0) continue;
+      if (gap < bestGap) { bestGap = gap; best = fig; }
+    }
+    if (!best) continue;
+    blocks[best.id] = { ...blocks[best.id], caption: host.id };
+    best.caption = host.id;
+    const next = blocks[host.id];
+    blocks[host.id] = next.type === "para" ? { ...next, type: "caption", for: best.id } : { ...next, for: best.id };
+    applied.push({ figure: best.id, caption: host.id, page: title.page });
   }
   return { doc: { ...doc, blocks }, applied };
 }

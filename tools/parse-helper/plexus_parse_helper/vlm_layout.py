@@ -1,8 +1,9 @@
 """PP-DocLayoutV2, the layout detector inside the PaddleOCR-VL pipeline.
 
 The weights are an ONNX export of PaddlePaddle/PP-DocLayoutV2 (Apache-2.0).
-onnxruntime is imported only when a page is detected. Boxes are pixels of the
-image passed in, origin top-left, the same corner as a PDF render.
+They download on first use and are checked by SHA-256. onnxruntime is imported
+only when a page is detected. Boxes are pixels of the image passed in, origin
+top-left, the same corner as a PDF render.
 """
 
 from __future__ import annotations
@@ -45,6 +46,8 @@ LABELS = (
 
 # Element prompts in PaddleOCR-VL. Figures stay with our own detector; these
 # labels are only a hint where that detector found nothing.
+# figure_title is not re-read. The caller links the local line the box covers.
+# Replacing that line with a second OCR pass dropped captions.
 TABLE_LABELS = frozenset({"table"})
 FIGURE_LABELS = frozenset({"image", "chart"})
 TEXT_LABELS = frozenset({
@@ -53,7 +56,6 @@ TEXT_LABELS = frozenset({
     "aside_text",
     "content",
     "doc_title",
-    "figure_title",
     "footer",
     "footnote",
     "header",
@@ -94,14 +96,15 @@ def layout_path() -> str:
 
 
 def _ensure_onnx(location: str) -> str:
+    from plexus_parse_helper.vlm_weights import ensure_layout, verify_layout_file
+
     path = Path(location)
-    if path.is_file() and path.stat().st_size > 1_000_000:
+    if path.is_file():
+        verify_layout_file(path)
         return str(path)
     if path.suffix == ".onnx":
-        path.parent.mkdir(parents=True, exist_ok=True)
-    from huggingface_hub import hf_hub_download
-
-    return hf_hub_download(HF_ONNX, ONNX_NAME)
+        return ensure_layout(path)
+    return ensure_layout(path / ONNX_NAME)
 
 
 def _get_session():

@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { scorePage } from "../tools/parse-bench/scan-score.mjs";
 import {
-  applicable, avgRanks, bootstrapCI, cohenDz, components, evaluate, indexDocsDir, informative, mulberry32, pageScore, parseArgs, resolveDoc, wilcoxon,
+  applicable, avgRanks, bootstrapCI, cohenDz, components, evaluate, indexDocsDir, informative, mulberry32, pageScore, parseArgs, resolveDoc, scoreWith, wilcoxon, withoutFigureText,
 } from "../tools/parse-bench/paired-stats.mjs";
 
 const near = (a, b, tol = 1e-9) => assert.ok(Math.abs(a - b) < tol, `${a} vs ${b}`);
@@ -227,4 +228,32 @@ test("parseArgs", () => {
   assert.throws(() => parseArgs(["--root", "r"]), /required/);
   assert.throws(() => parseArgs(["--root", "r", "--manifest", "m", "--a", "x", "--b", "y", "--gate", "z"]), /gate/);
   assert.throws(() => parseArgs(["--nope"]), /unknown/);
+});
+
+test("text inside a truth figure is dropped before the text score; text outside still counts", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pxs-fig-"));
+  try {
+    const mk = (blocks) => ({
+      pages: [{ n: 1, w: 100, h: 100 }],
+      order: Object.keys(blocks),
+      blocks,
+    });
+    const body = { type: "para", page: 1, text: "the quick brown fox", bbox: [10, 80, 90, 90] };
+    const label = { type: "para", page: 1, text: "axis 10 20 30", bbox: [30, 30, 40, 36] };
+    const truth = { tables: [], figures: [{ bbox: [0.2, 0.2, 0.8, 0.6], caption: "" }], textComplete: true, lines: ["the quick brown fox"] };
+    const file = path.join(dir, "d.pxd.json");
+    await writeFile(file, JSON.stringify(mk({ a: body, b: label })));
+    const s = scoreWith(file, truth, false);
+    assert.equal(s.textDroppedInFigures, 1);
+    assert.equal(s.text.cer, 0);
+    assert.ok(scorePage(JSON.parse(await (await import("node:fs/promises")).readFile(file, "utf8")), truth).text.cer > 0);
+    await writeFile(file, JSON.stringify(mk({ a: { ...body, bbox: [10, 30, 90, 36] } })));
+    const out = scoreWith(file, truth, false);
+    assert.equal(out.textDroppedInFigures, 1);
+    assert.equal(out.text.cer, 1);
+    const kept = withoutFigureText(mk({ a: { type: "para", page: 1, text: "no box" } }), truth.figures);
+    assert.equal(kept.dropped, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

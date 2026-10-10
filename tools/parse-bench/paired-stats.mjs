@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { foldQuotes } from "./scan-corpus.mjs";
-import { predTables, scorePage, truthLines } from "./scan-score.mjs";
+import { normBox, pageSize, predTables, scorePage, truthLines } from "./scan-score.mjs";
 import { gritsPage } from "./grits.mjs";
 
 export const CATEGORIES = ["rough-scan", "modern-digital", "photo", "handwritten", "mixed"];
@@ -81,6 +81,27 @@ export function pageScore(comp) {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 }
 
+// Shallow copy of the doc without text blocks whose bbox centre sits inside a truth figure (chart labels are not page text).
+// Blocks without a bbox are kept; figure boxes are page-normalised [x0, y0, x1, y1].
+export function withoutFigureText(doc, truthFigures) {
+  const boxes = (truthFigures || []).map((f) => f && f.bbox).filter((b) => Array.isArray(b) && b.length >= 4);
+  if (!boxes.length) return { doc, dropped: 0 };
+  const dropIds = new Set();
+  for (const id of doc.order || []) {
+    const b = doc.blocks[id];
+    if (!b || b.type === "table" || !Array.isArray(b.bbox) || b.bbox.length < 4) continue;
+    if (!b.text && b.type !== "list") continue;
+    const size = pageSize(doc, b.page);
+    const nb = normBox(b.bbox, size.w, size.h);
+    if (!nb) continue;
+    const cx = (nb[0] + nb[2]) / 2;
+    const cy = (nb[1] + nb[3]) / 2;
+    if (boxes.some((f) => cx >= f[0] && cx <= f[2] && cy >= f[1] && cy <= f[3])) dropIds.add(id);
+  }
+  if (!dropIds.size) return { doc, dropped: 0 };
+  return { doc: { ...doc, order: doc.order.filter((id) => !dropIds.has(id)) }, dropped: dropIds.size };
+}
+
 export function scoreWith(docPath, truth, fold) {
   if (!docPath) return null;
   try {
@@ -88,6 +109,13 @@ export function scoreWith(docPath, truth, fold) {
     const [d, t] = fold ? foldQuotes(doc, truth) : [doc, truth];
     const scored = scorePage(d, t);
     if (Array.isArray(t.tables)) scored.grits = gritsPage(predTables(d), t.tables);
+    const stripped = withoutFigureText(d, t.figures);
+    scored.textDroppedInFigures = stripped.dropped;
+    if (stripped.dropped && scored.text) {
+      const again = scorePage(stripped.doc, t);
+      scored.text = again.text;
+      scored.textCounts = again.textCounts;
+    }
     return scored;
   } catch {
     return null;
@@ -250,7 +278,7 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
     const sa = pageScore(ca);
     const sb = pageScore(cb);
     if (sa == null) { skipped.push({ id: page.id, reason: "no applicable component" }); continue; }
-    pages.push({ id: page.id, category: categoryOf(page), doc: page.file ?? page.pdf ?? page.id, a: ca, b: cb, sA: sa, sB: sb, d: sa - sb, aExact: exactOf(scA, truth), bExact: exactOf(scB, truth) });
+    pages.push({ id: page.id, category: categoryOf(page), doc: page.file ?? page.pdf ?? page.id, a: ca, b: cb, sA: sa, sB: sb, d: sa - sb, aExact: exactOf(scA, truth), bExact: exactOf(scB, truth), textDroppedInFigures: { a: scA?.textDroppedInFigures ?? 0, b: scB?.textDroppedInFigures ?? 0 } });
   }
   const d = pages.map((p) => p.d);
   const w = wilcoxon(d);

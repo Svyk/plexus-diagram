@@ -7103,7 +7103,7 @@ function proseRow(row4, tokens2, columnWidth = Infinity) {
   const short = tokens2.filter((t) => t.words.length <= 2 || valueToken(t.text)).length;
   return tokens2.length === 1 || tokens2.length < n2 / 2 && short === 0;
 }
-function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeGaps = true } = {}) {
+function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeGaps = true, ocr = false, handwriting = false } = {}) {
   const out = [];
   const rows = baselineRows(lines);
   const colBox = column || (lines.length ? { x0: Math.min(...lines.map((l) => l.x0)), x1: Math.max(...lines.map((l) => l.x1)) } : null);
@@ -7266,7 +7266,9 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
         }
       }
       const table = buildTable(rowsIn, { headerRowsHint, rules });
-      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table)) {
+      const proseCols = ocr && proseColumnTable(table);
+      const weakHand = handwriting && !contentsList(run);
+      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table) && !proseCols && !weakHand) {
         table.usedWords = run.flatMap((r) => r.row.words);
         table.lines = [...run.flatMap((r) => r.row.lines), ...ruleLines];
         out.push(table);
@@ -7436,6 +7438,35 @@ function alignsWithRun(run, tokens2, size) {
   let hit = 0;
   for (const t of tokens2.slice(1)) if (prev.some((x) => Math.abs(x - t.x0) <= tol)) hit++;
   return hit >= 2;
+}
+function cellWords(text3) {
+  return String(text3 || "").trim().split(/\s+/).filter(Boolean);
+}
+function measurementCell(text3) {
+  const words = cellWords(text3);
+  return words.length > 0 && words.length <= 6 && /\d/.test(text3);
+}
+function measurementColumn(table) {
+  const cells = (table?.cells || []).filter((c) => cellWords(c.text).length && (c.colSpan || 1) === 1);
+  const cols = /* @__PURE__ */ new Map();
+  for (const c of cells) {
+    if (!cols.has(c.c)) cols.set(c.c, []);
+    cols.get(c.c).push(c.text);
+  }
+  for (const list of cols.values()) {
+    if (list.length < 3) continue;
+    if (list.filter(measurementCell).length / list.length >= 0.5) return true;
+  }
+  return false;
+}
+function proseColumnTable(table) {
+  if (!table || table.method === "lattice") return false;
+  const filled = (table.cells || []).filter((c) => cellWords(c.text).length);
+  if (filled.length < 6) return false;
+  if (new Set(filled.map((c) => c.r)).size < 3) return false;
+  if (measurementColumn(table)) return false;
+  const numeric = filled.filter((c) => /\d/.test(c.text)).length;
+  return numeric / filled.length < 0.22;
 }
 function phraseTable(table) {
   const filled = (table.cells || []).filter((c) => String(c.text || "").trim());
@@ -7663,7 +7694,49 @@ function detectColumns(lines, { pageW, minLines = 4 } = {}) {
     const g1 = right.x;
     if (g1 - g0 >= 6) gutters.push({ x0: g0, x1: g1 });
   }
-  return mergeGutters([...gutters, ...internalGutters(lines, pageW || 612, minLines)]);
+  return mergeGutters([...gutters, ...internalGutters(lines, pageW || 612, minLines), ...shortColumnGutters(lines, pageW || 612, minLines)]);
+}
+function shortColumnGutters(lines, pageW, minLines) {
+  const short = (lines || []).filter((l) => {
+    const words = (l.words || []).length;
+    const w = (l.x1 ?? 0) - (l.x0 ?? 0);
+    return words >= 1 && words <= 6 && (l.chars || 0) >= 3 && w > 8 && w < 0.55 * pageW;
+  });
+  const clusters = [];
+  for (const l of short) {
+    let c = clusters.find((k) => Math.abs(k.x - l.x0) <= 14);
+    if (!c) {
+      c = { x: l.x0, lines: [] };
+      clusters.push(c);
+    }
+    c.lines.push(l);
+    c.x = c.lines.reduce((s, row4) => s + row4.x0, 0) / c.lines.length;
+  }
+  const cols = clusters.filter((c) => c.lines.length >= Math.max(6, minLines)).sort((a, b) => a.x - b.x);
+  const measured = (list) => {
+    const n2 = list.filter((l) => /\d/.test(l.text || "") && String(l.text || "").trim().split(/\s+/).length <= 6).length;
+    return list.length >= 3 && n2 / list.length >= 0.5;
+  };
+  if (cols.some((c) => measured(c.lines))) return [];
+  const gutters = [];
+  for (let i = 1; i < cols.length; i++) {
+    const left = cols[i - 1];
+    const right = cols[i];
+    if (right.x - left.x < 0.12 * pageW) continue;
+    const beside = left.lines.filter((l) => right.lines.some((r) => Math.abs((r.base ?? 0) - (l.base ?? 0)) <= 2.5 * Math.max(l.size || 8, r.size || 8)));
+    const ends = (beside.length >= 3 ? beside : left.lines).map((l) => l.x1);
+    const g0 = Math.max(...ends);
+    const g1 = Math.min(...right.lines.map((l) => l.x0));
+    if (g1 - g0 < 8) continue;
+    const crosses = (lines || []).some((l) => {
+      const words = (l.words || []).length;
+      const wide = (l.x1 ?? 0) - (l.x0 ?? 0) > 0.4 * pageW;
+      if (words <= 6 && !wide) return false;
+      return (l.x0 ?? 0) < g0 - 4 && (l.x1 ?? 0) > g1 + 4;
+    });
+    if (!crosses) gutters.push({ x0: g0, x1: g1 });
+  }
+  return gutters;
 }
 function internalGutters(lines, pageW, minLines) {
   const hits = [];
@@ -10047,6 +10120,342 @@ var init_ocr_fix = __esm({
   }
 });
 
+// src/model/parse/ocr-vote.js
+function lowConfidenceShare(items) {
+  const confs = (items || []).map((it) => it?.conf).filter((c) => Number.isFinite(c));
+  if (confs.length < WEAK_OCR_MIN_WORDS) return 0;
+  return confs.filter((c) => c < 0.5).length / confs.length;
+}
+function weakOcrPage(items, lexicon = null) {
+  if (lowConfidenceShare(items) >= WEAK_OCR_LOW) return true;
+  if (!(lexicon instanceof Set)) return false;
+  const cores = (items || []).map((it) => wordCore(it?.str || it?.text || "").toLowerCase()).filter((c) => c.length >= 4);
+  if (cores.length < 20) return false;
+  const confs = (items || []).map((it) => it?.conf).filter((c) => Number.isFinite(c));
+  const low = confs.length ? confs.filter((c) => c < 0.5).length / confs.length : 0;
+  if (low < 0.04) return false;
+  return cores.filter((c) => lexicon.has(c)).length / cores.length < 0.12;
+}
+function wordCore(text3) {
+  const parts = String(text3 || "").match(WORD_RE);
+  if (!parts || !parts.length) return "";
+  return parts.reduce((best, part) => part.length > best.length ? part : best, "");
+}
+function letterCore(text3) {
+  return wordCore(text3).replace(/[-']+$/g, "");
+}
+function digitHeavy(text3) {
+  const raw = String(text3 || "");
+  let digits = 0;
+  let alnum = 0;
+  for (const ch of raw) {
+    if (ch >= "0" && ch <= "9") {
+      digits += 1;
+      alnum += 1;
+    } else if (ch >= "A" && ch <= "Z" || ch >= "a" && ch <= "z") alnum += 1;
+  }
+  return alnum > 0 && digits * 2 >= alnum;
+}
+function boxOf3(item) {
+  const t = item?.transform || [];
+  const x = Number(t[4]) || 0;
+  const w = Number(item?.width) || 0;
+  const y0 = Number(item?.y0);
+  const y1 = Number(item?.y1);
+  if (Number.isFinite(y0) && Number.isFinite(y1)) return [x, y0, x + w, y1];
+  const base = Number(t[5]) || 0;
+  const size = Math.abs(Number(t[0]) || 0);
+  return [x, base - 0.8 * size, x + w, base + 0.22 * size];
+}
+function iou(a, b) {
+  const ix = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
+  const iy = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  const inter = ix * iy;
+  if (inter <= 0) return 0;
+  const area = Math.max(0, a[2] - a[0]) * Math.max(0, a[3] - a[1]) + Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]) - inter;
+  return area > 0 ? inter / area : 0;
+}
+function horizRatio(a, b) {
+  const overlap = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
+  const width = Math.min(Math.max(0, a[2] - a[0]), Math.max(0, b[2] - b[0]));
+  return width > 0 ? overlap / width : 0;
+}
+function editDistance2(a, b) {
+  const s = String(a || "");
+  const t = String(b || "");
+  const m = s.length;
+  const n2 = t.length;
+  const row4 = Array.from({ length: m + 1 }, (_, i) => i);
+  for (let j = 1; j <= n2; j += 1) {
+    let prev = row4[0];
+    row4[0] = j;
+    for (let i = 1; i <= m; i += 1) {
+      const cur = row4[i];
+      row4[i] = s[i - 1] === t[j - 1] ? prev : 1 + Math.min(prev, row4[i], row4[i - 1]);
+      prev = cur;
+    }
+  }
+  return row4[m];
+}
+function known(lexicon, word) {
+  return Boolean(word) && lexicon instanceof Set && lexicon.has(word);
+}
+function applyCase(sample, word) {
+  const letters = String(sample || "").replace(/[^A-Za-z]/g, "");
+  if (letters.length > 1 && letters === letters.toUpperCase()) return word.toUpperCase();
+  if (sample && sample[0] === sample[0].toUpperCase()) return word[0].toUpperCase() + word.slice(1);
+  return word;
+}
+function replaceCore(raw, core, next) {
+  const re = new RegExp(core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  return String(raw).replace(re, (found) => applyCase(found, next));
+}
+function ruledRegions(rules, pageW = 612, pageH = 792) {
+  const horiz = [];
+  const vert = [];
+  for (const rule of rules || []) {
+    const x0 = Math.min(rule.x0, rule.x1);
+    const x1 = Math.max(rule.x0, rule.x1);
+    const y0 = Math.min(rule.y0, rule.y1);
+    const y1 = Math.max(rule.y0, rule.y1);
+    if (y1 - y0 <= 1.5 && x1 - x0 >= 36) horiz.push({ x0, x1, y: (y0 + y1) / 2 });
+    else if (x1 - x0 <= 1.5 && y1 - y0 >= 36) vert.push({ y0, y1, x: (x0 + x1) / 2 });
+  }
+  const regions = [];
+  const pageArea = Math.max(1, pageW * pageH);
+  for (let i = 0; i < horiz.length; i += 1) {
+    for (let j = i + 1; j < horiz.length; j += 1) {
+      const top = Math.min(horiz[i].y, horiz[j].y);
+      const bot = Math.max(horiz[i].y, horiz[j].y);
+      if (bot - top < 20) continue;
+      const x0 = Math.max(horiz[i].x0, horiz[j].x0);
+      const x1 = Math.min(horiz[i].x1, horiz[j].x1);
+      if (x1 - x0 < 40) continue;
+      if ((x1 - x0) * (bot - top) > 0.65 * pageArea) continue;
+      let verts = 0;
+      for (const v of vert) {
+        if (v.x < x0 - 4 || v.x > x1 + 4) continue;
+        const span = Math.min(v.y1, bot) - Math.max(v.y0, top);
+        if (span >= 0.6 * (bot - top)) verts += 1;
+      }
+      if (verts >= 2) regions.push([x0, top, x1, bot]);
+    }
+  }
+  return regions;
+}
+function inRuledRegion(box2, regions) {
+  const cx = (box2[0] + box2[2]) / 2;
+  const cy = (box2[1] + box2[3]) / 2;
+  return regions.some((r) => cx >= r[0] && cx <= r[2] && cy >= r[1] && cy <= r[3]);
+}
+function betterCount(n2, bestN, word, best, knownWord) {
+  if (!best || n2 > bestN) return true;
+  if (n2 < bestN) return false;
+  if (knownWord !== best.known) return knownWord;
+  return word < best.word;
+}
+function preferSpellings(items, lexicon, { rules = null, pageW = 612, pageH = 792, regions = null } = {}) {
+  if (!(lexicon instanceof Set) || !items?.length) return items || [];
+  const rects = regions || (rules ? ruledRegions(rules, pageW, pageH) : []);
+  const cores = items.map((item) => wordCore(item?.str || "").toLowerCase());
+  const counts = /* @__PURE__ */ new Map();
+  cores.forEach((core, index) => {
+    if (core.length < 4) return;
+    if (rects.length && inRuledRegion(boxOf3(items[index]), rects)) return;
+    counts.set(core, (counts.get(core) || 0) + 1);
+  });
+  return items.map((item, index) => {
+    const core = cores[index];
+    if (!item || core.length < 4 || known(lexicon, core)) return item;
+    if (rects.length && inRuledRegion(boxOf3(item), rects)) return item;
+    const mine = counts.get(core) || 0;
+    let best = null;
+    let bestN = 0;
+    for (const [word, n2] of counts) {
+      if (word === core || Math.abs(word.length - core.length) > 1) continue;
+      if (editDistance2(core, word) !== 1) continue;
+      const inLex = known(lexicon, word);
+      const ok = inLex && n2 >= 2 && n2 >= mine * 2 || !inLex && n2 >= 3 && n2 >= mine * 3;
+      if (!ok) continue;
+      if (betterCount(n2, bestN, word, best, inLex)) {
+        best = { word, known: inLex };
+        bestN = n2;
+      }
+    }
+    if (!best) return item;
+    const str2 = replaceCore(item.str, core, best.word);
+    return str2 === item.str ? item : { ...item, str: str2 };
+  });
+}
+function chooseReading(vision, other, lexicon) {
+  const v = vision?.str ?? "";
+  const o = other?.str ?? "";
+  if (!o) return v;
+  if (v.replace(/\s+/g, "").toLowerCase() === o.replace(/\s+/g, "").toLowerCase()) return v;
+  if (digitHeavy(v)) return v;
+  if (digitHeavy(o)) return o;
+  const vc = letterCore(v);
+  const oc = letterCore(o);
+  if (!oc) return v;
+  if (!vc) return o;
+  const vl = known(lexicon, vc.toLowerCase());
+  const ol = known(lexicon, oc.toLowerCase());
+  const d = editDistance2(vc.toLowerCase(), oc.toLowerCase());
+  if (ol && !vl) return o;
+  if (vl && !ol) return v;
+  if (d === 0) {
+    const hyphen = (text3) => /[A-Za-z]-$/.test(String(text3).trim());
+    if (hyphen(o) && !hyphen(v)) return o;
+    return v;
+  }
+  if (d <= 2) return o;
+  if (!vl && !ol && d <= 4) return o;
+  return v;
+}
+function lineClusters(items) {
+  const entries = items.map((item, index) => ({ item, index, box: boxOf3(item) }));
+  entries.sort((a, b) => a.box[3] - b.box[3] || a.box[0] - b.box[0]);
+  const lines = [];
+  for (const entry of entries) {
+    const size = Math.max(6, entry.box[3] - entry.box[1]);
+    const line = lines.find((row4) => Math.abs(row4.base - entry.box[3]) <= 0.45 * size);
+    if (line) {
+      line.items.push(entry);
+      line.base = line.items.reduce((sum, row4) => sum + row4.box[3], 0) / line.items.length;
+    } else lines.push({ base: entry.box[3], items: [entry] });
+  }
+  return lines;
+}
+function centersClose(a, b) {
+  const size = Math.max(6, Math.min(Math.max(1, a[3] - a[1]), Math.max(1, b[3] - b[1])));
+  return Math.abs((a[1] + a[3]) / 2 - (b[1] + b[3]) / 2) <= 0.55 * size && horizRatio(a, b) >= 0.55;
+}
+function sameSpelling(a, b) {
+  const left = letterCore(a).toLowerCase();
+  const right = letterCore(b).toLowerCase();
+  return Boolean(left) && left.length >= 4 && (left === right || editDistance2(left, right) <= 1);
+}
+function median6(values) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[sorted.length >> 1];
+}
+function snapOnto(item, line) {
+  const hosts = line.items.map((entry) => entry.item).filter((it) => it?.transform);
+  if (!hosts.length) return { ...item, fontName: item.fontName || "ocr" };
+  const size = median6(hosts.map((it) => Math.abs(Number(it.transform[0]) || it.height || 10)));
+  const base = median6(hosts.map((it) => Number(it.transform[5]) || 0));
+  const sample = hosts[hosts.length >> 1];
+  const sampleBase = Number(sample.transform[5]) || base;
+  const y0 = Number.isFinite(Number(sample.y0)) ? base + (Number(sample.y0) - sampleBase) : base - 0.8 * size;
+  const y1 = Number.isFinite(Number(sample.y1)) ? base + (Number(sample.y1) - sampleBase) : base + 0.22 * size;
+  const x = Number(item.transform?.[4]) || 0;
+  return {
+    ...item,
+    fontName: item.fontName || "ocr",
+    height: Math.max(1, Math.abs(y1 - y0)),
+    y0,
+    y1,
+    transform: [size, 0, 0, size, x, base]
+  };
+}
+function voteItems(visionItems, otherItems, lexicon, regions) {
+  const pairs = [];
+  const vBoxes = visionItems.map(boxOf3);
+  const oBoxes = otherItems.map(boxOf3);
+  for (let i = 0; i < visionItems.length; i += 1) {
+    for (let j = 0; j < otherItems.length; j += 1) {
+      const score = iou(vBoxes[i], oBoxes[j]);
+      if (score >= IOU_MIN) pairs.push([score, i, j]);
+    }
+  }
+  pairs.sort((a, b) => b[0] - a[0] || a[1] - b[1] || a[2] - b[2]);
+  const usedV = /* @__PURE__ */ new Set();
+  const usedO = /* @__PURE__ */ new Set();
+  const match = /* @__PURE__ */ new Map();
+  for (const [, i, j] of pairs) {
+    if (usedV.has(i) || usedO.has(j)) continue;
+    usedV.add(i);
+    usedO.add(j);
+    match.set(i, j);
+  }
+  for (let i = 0; i < visionItems.length; i += 1) {
+    if (usedV.has(i)) continue;
+    let best = -1;
+    let bestScore = 0;
+    for (let j = 0; j < otherItems.length; j += 1) {
+      if (usedO.has(j) || !centersClose(vBoxes[i], oBoxes[j])) continue;
+      if (!sameSpelling(visionItems[i]?.str, otherItems[j]?.str)) continue;
+      const score = horizRatio(vBoxes[i], oBoxes[j]);
+      if (score > bestScore) {
+        best = j;
+        bestScore = score;
+      }
+    }
+    if (best < 0) continue;
+    usedV.add(i);
+    usedO.add(best);
+    match.set(i, best);
+  }
+  const next = visionItems.map((item, i) => {
+    if (regions.length && inRuledRegion(vBoxes[i], regions)) return item;
+    const j = match.get(i);
+    if (j == null) return item;
+    const str2 = chooseReading(item, otherItems[j], lexicon);
+    return str2 === item.str ? item : { ...item, str: str2 };
+  });
+  const lines = lineClusters(visionItems);
+  const added = [];
+  otherItems.forEach((item, j) => {
+    if (usedO.has(j) || added.length >= INSERT_CAP) return;
+    if (digitHeavy(item?.str)) return;
+    const core = wordCore(item?.str || "").toLowerCase();
+    if (core.length < 4 || !known(lexicon, core)) return;
+    const box2 = oBoxes[j];
+    if (regions.length && inRuledRegion(box2, regions)) return;
+    const line = lines.find((row4) => {
+      const top = Math.min(...row4.items.map((entry) => entry.box[1]));
+      const bot = Math.max(...row4.items.map((entry) => entry.box[3]));
+      const size = Math.max(6, bot - top);
+      return box2[3] >= top - 0.3 * size && box2[1] <= bot + 0.3 * size;
+    });
+    if (!line || line.items.length < 2) return;
+    if (line.items.some((entry) => horizRatio(box2, entry.box) > 0.3)) return;
+    const gap = 0.35 * Math.max(6, box2[3] - box2[1]);
+    const crowded = line.items.some((entry) => {
+      const host = entry.box;
+      const space = box2[0] >= host[2] ? box2[0] - host[2] : host[0] >= box2[2] ? host[0] - box2[2] : 0;
+      return space < gap;
+    });
+    if (crowded) return;
+    added.push(snapOnto(item, line));
+  });
+  added.sort((a, b) => boxOf3(a)[1] - boxOf3(b)[1] || boxOf3(a)[0] - boxOf3(b)[0]);
+  return preferSpellings([...next, ...added], lexicon, { regions });
+}
+function voteOcrBodies(visionPages, otherPages, lexicon) {
+  const words = lexicon instanceof Set ? lexicon : null;
+  const byN = new Map((otherPages || []).map((page) => [page.n, page]));
+  return (visionPages || []).map((page) => {
+    if (!page || page.engine === "ppocr-web") return page;
+    if (weakOcrPage(page.items, words)) return { ...page, weakText: true };
+    const other = byN.get(page.n);
+    const regions = ruledRegions(page.rules, page.w, page.h);
+    const items = voteItems(page.items || [], other?.items || [], words, regions);
+    return { ...page, items };
+  });
+}
+var WORD_RE, IOU_MIN, INSERT_CAP, WEAK_OCR_LOW, WEAK_OCR_MIN_WORDS;
+var init_ocr_vote = __esm({
+  "src/model/parse/ocr-vote.js"() {
+    WORD_RE = /[A-Za-z][A-Za-z'-]*/g;
+    IOU_MIN = 0.25;
+    INSERT_CAP = 16;
+    WEAK_OCR_LOW = 0.15;
+    WEAK_OCR_MIN_WORDS = 12;
+  }
+});
+
 // src/model/pdf.js
 function pdfMacroUrl(s) {
   if (typeof s !== "string") return "";
@@ -10447,6 +10856,29 @@ function viewportTransform(w, h, rotation = 0) {
       return [1, 0, 0, -1, 0, h];
   }
 }
+function figureBounds(fig) {
+  const b = fig?.bbox || fig;
+  if (Array.isArray(b)) return b;
+  if (!b) return null;
+  return [b.x0, b.y0, b.x1, b.y1];
+}
+function wordCenter(word) {
+  const cx = ((word.x0 ?? 0) + (word.x1 ?? 0)) / 2;
+  const cy = word.y0 != null && word.y1 != null ? (word.y0 + word.y1) / 2 : (word.base ?? 0) - 0.3 * (word.size || 8);
+  return [cx, cy];
+}
+function releaseOrphanFigureWords(used, figureWords, figures, tables) {
+  if ((tables || []).length) return;
+  for (const word of figureWords) {
+    const [cx, cy] = wordCenter(word);
+    const inside8 = (figures || []).some((fig) => {
+      const box2 = figureBounds(fig);
+      if (!box2) return false;
+      return cx >= box2[0] - 2 && cx <= box2[2] + 2 && cy >= box2[1] - 2 && cy <= box2[3] + 2;
+    });
+    if (!inside8) used.delete(word);
+  }
+}
 function parsePageGeometry(data, n2) {
   const t0 = now();
   let w = data.w;
@@ -10502,6 +10934,7 @@ function parsePageGeometry(data, n2) {
     const free = words.filter((w2) => !used.has(w2));
     const t = tableFromBand(band, free);
     if (!t || isTitledBox(t) || chartGrid(t)) continue;
+    if (ocr && proseColumnTable(t)) continue;
     t.page = n2;
     for (const w2 of t.usedWords) used.add(w2);
     delete t.usedWords;
@@ -10514,7 +10947,8 @@ function parsePageGeometry(data, n2) {
   const stripSet = new Set(strips);
   const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => !stripSet.has(im) && imageArea(im) < 0.85 * pageArea) } : graphics;
   const figs = kind === "scan" ? { figures: [], used: /* @__PURE__ */ new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars, plates: ocr, textLines: lines });
-  for (const wd of figs.used) used.add(wd);
+  const figureWords = figs.used;
+  for (const wd of figureWords) used.add(wd);
   let figures = figs.figures.map((f) => ({ ...f, page: n2 }));
   const plated = ocr && figures.some((f) => f.fromPlate && boxArea2(f.bbox || f) >= 0.08 * pageArea && boxArea2(f.bbox || f) <= 0.9 * pageArea);
   if (plated) figures = figures.filter((f) => f.fromPlate || boxArea2(f.bbox || f) < 0.75 * pageArea);
@@ -10562,6 +10996,7 @@ function parsePageGeometry(data, n2) {
     tables.splice(i, 1);
     for (const w2 of words) if (used.has(w2) && !figs.used.has(w2) && w2.x0 >= t.bbox[0] - 2 && w2.x1 <= t.bbox[2] + 2 && w2.base >= t.bbox[1] && w2.base <= t.bbox[3] + 2) used.delete(w2);
   }
+  releaseOrphanFigureWords(used, figureWords, figures, tables);
   return { n: n2, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, marginRotated, words: figWords, graphics, tables, figures, used, ms: round(now() - t0) };
 }
 function stripTiles(images, pageW, pageH, textChars) {
@@ -11164,12 +11599,13 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       seqs[idx].push(line);
     }
     const sequences = [...seqs, wideSeq].filter((s) => s.length).map((s) => s.sort((a, b) => a.base - b.base || a.x0 - b.x0));
+    const handwriting = options.releaseHandwriting === true && Boolean(pg.ocr) && lowConfidenceShare(pg.words) >= 0.15;
     const pageTables = [...pg.tables];
     const pageFigures = [...pg.figures];
     const textBlocks = [];
     for (const seq of sequences) {
       let lines = seq;
-      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq), rules: pg.graphics.rules, bridgeGaps: pg.tables.length === 0 })) {
+      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq), rules: pg.graphics.rules, bridgeGaps: pg.tables.length === 0, ocr: Boolean(pg.ocr), handwriting })) {
         const drop = new Set(t.lines);
         lines = lines.filter((l) => !drop.has(l));
         if (t.type === "formula") {
@@ -11542,11 +11978,12 @@ var init_parse = __esm({
     init_blocks();
     init_xycut();
     init_ocr_fix();
+    init_ocr_vote();
     init_title_cap();
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 23;
+    PARSE_REV = 25;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -11564,7 +12001,7 @@ function num2(value, fallback = 0) {
   const n2 = Number(value);
   return Number.isFinite(n2) ? n2 : fallback;
 }
-function boxOf3(bbox) {
+function boxOf4(bbox) {
   if (!Array.isArray(bbox) || bbox.length < 4) return null;
   const x0 = num2(bbox[0]);
   const y0 = num2(bbox[1]);
@@ -11578,7 +12015,7 @@ function viewportSize(w, h, rotation) {
   return { w, h };
 }
 function userBoxToViewport(bbox, page) {
-  const box2 = boxOf3(bbox);
+  const box2 = boxOf4(bbox);
   if (!box2) return null;
   const w = num2(page?.w, 1) || 1;
   const h = num2(page?.h, 1) || 1;
@@ -11595,7 +12032,7 @@ function userBoxToViewport(bbox, page) {
   return [Math.min(...xs2), Math.min(...ys2), Math.max(...xs2), Math.max(...ys2)];
 }
 function frameBoxToViewport(bbox, page) {
-  const box2 = boxOf3(bbox);
+  const box2 = boxOf4(bbox);
   if (!box2) return null;
   const fw = num2(page?.w, 1) || 1;
   const fh = num2(page?.h, 1) || 1;
@@ -12772,15 +13209,15 @@ var init_timeline = __esm({
 });
 
 // src/model/parse-schema.js
-function boxOf4(value) {
+function boxOf5(value) {
   if (!Array.isArray(value) || value.length < 4) return null;
   const [x0, y0, x1, y1] = value;
   if (![x0, y0, x1, y1].every((n2) => typeof n2 === "number" && Number.isFinite(n2))) return null;
   return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
 }
-function iou(a, b) {
-  const A = boxOf4(a);
-  const B = boxOf4(b);
+function iou2(a, b) {
+  const A = boxOf5(a);
+  const B = boxOf5(b);
   if (!A || !B) return 0;
   const ix0 = Math.max(A[0], B[0]);
   const iy0 = Math.max(A[1], B[1]);
@@ -12794,10 +13231,10 @@ function iou(a, b) {
   return inter / union;
 }
 function targetOf(bbox) {
-  if (Array.isArray(bbox)) return { page: null, bbox: boxOf4(bbox) };
+  if (Array.isArray(bbox)) return { page: null, bbox: boxOf5(bbox) };
   if (bbox && typeof bbox === "object") {
     const page = Number.isInteger(bbox.page) ? bbox.page : null;
-    const box2 = Array.isArray(bbox.bbox) ? boxOf4(bbox.bbox) : boxOf4(bbox);
+    const box2 = Array.isArray(bbox.bbox) ? boxOf5(bbox.bbox) : boxOf5(bbox);
     return { page, bbox: box2 };
   }
   return { page: null, bbox: null };
@@ -12951,7 +13388,7 @@ function mergeScoped(baseDoc, scopedPageResult, bbox) {
   if (page == null && target.bbox) {
     let best = 0;
     for (const block of Object.values(baseBlocks)) {
-      const score = iou(block?.bbox, target.bbox);
+      const score = iou2(block?.bbox, target.bbox);
       if (score > best) {
         best = score;
         page = block.page;
@@ -12964,7 +13401,7 @@ function mergeScoped(baseDoc, scopedPageResult, bbox) {
   for (const id of scopedOrder) {
     const block = scopedBlocks[id];
     if (!block || !samePage(block, page)) continue;
-    if (target.bbox && iou(block.bbox, target.bbox) >= IOU_MIN) incoming.push(block);
+    if (target.bbox && iou2(block.bbox, target.bbox) >= IOU_MIN2) incoming.push(block);
   }
   if (!incoming.length || !target.bbox) return baseDoc;
   const drop = /* @__PURE__ */ new Set();
@@ -12972,7 +13409,7 @@ function mergeScoped(baseDoc, scopedPageResult, bbox) {
   for (const id of consider) {
     const block = baseBlocks[id];
     if (!block || !samePage(block, page)) continue;
-    if (iou(block.bbox, target.bbox) >= IOU_MIN) drop.add(id);
+    if (iou2(block.bbox, target.bbox) >= IOU_MIN2) drop.add(id);
   }
   const used = new Set(Object.keys(baseBlocks).filter((id) => !drop.has(id)));
   const fresh = incoming.map((block) => {
@@ -13026,11 +13463,11 @@ function mergeScoped(baseDoc, scopedPageResult, bbox) {
     blocks
   };
 }
-var SCHEMA2, IOU_MIN, BLOCK_TYPES, TYPE_SET, ENGINES;
+var SCHEMA2, IOU_MIN2, BLOCK_TYPES, TYPE_SET, ENGINES;
 var init_parse_schema = __esm({
   "src/model/parse-schema.js"() {
     SCHEMA2 = "pxd-parse/1";
-    IOU_MIN = 0.5;
+    IOU_MIN2 = 0.5;
     BLOCK_TYPES = Object.freeze([
       "heading",
       "para",
@@ -41919,7 +42356,7 @@ ${block.text ?? ""}
 
 // src/model/parse/ocr-merge.js
 init_ocr_fix();
-function iou2(a, b) {
+function iou3(a, b) {
   const ix = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
   const iy = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
   if (ix <= 0 || iy <= 0) return 0;
@@ -41961,7 +42398,7 @@ function mergeOcrDocument(base, fresh, { pages = [] } = {}) {
     let best = null;
     for (const lt of layerTables) {
       if (lt.page !== block.page) continue;
-      const overlap = iou2(lt.bbox, block.bbox);
+      const overlap = iou3(lt.bbox, block.bbox);
       if (overlap >= 0.5 && (!best || overlap > best.overlap)) best = { table: lt, overlap };
     }
     if (!best) {
@@ -41998,7 +42435,7 @@ function emptyBox(box2) {
 }
 function onTable(box2, tableBox) {
   if (emptyBox(box2) || emptyBox(tableBox)) return false;
-  if (iou(box2, tableBox) >= IOU_MATCH) return true;
+  if (iou2(box2, tableBox) >= IOU_MATCH) return true;
   const area = (box2[2] - box2[0]) * (box2[3] - box2[1]);
   if (!(area > 0)) return false;
   const ix = Math.max(0, Math.min(box2[2], tableBox[2]) - Math.max(box2[0], tableBox[0]));
@@ -42107,7 +42544,7 @@ function matchFigures(cloudFigs, localFigs) {
     for (const cloud of open) {
       for (const local of localFigs) {
         if (used.has(local)) continue;
-        const score = iou(cloud.bbox, local.bbox);
+        const score = iou2(cloud.bbox, local.bbox);
         if (score >= IOU_MATCH && (!best || score > best.score)) best = { cloud, local, score };
       }
     }
@@ -43773,7 +44210,7 @@ function lineScore(tokens2, oldTokens, opts) {
     const c = coreOf(t);
     if (c.length < 3 || !/^[a-z]+$/.test(c) || pairs.has(c)) continue;
     const reach = Math.max(1, Math.floor(c.length / 3));
-    if (!cores.some((k) => k === c || Math.abs(k.length - c.length) <= reach && editDistance2(k, c) <= reach)) n2++;
+    if (!cores.some((k) => k === c || Math.abs(k.length - c.length) <= reach && editDistance3(k, c) <= reach)) n2++;
   }
   return n2;
 }
@@ -43785,7 +44222,7 @@ function restoreClean(tokens2, oldTokens, opts) {
     if (j < 0) return tok;
     const was = oldTokens[j];
     if (was === tok || !cleanWord(was, opts.lexicon)) return tok;
-    const d = editDistance2(coreOf(tok), coreOf(was));
+    const d = editDistance3(coreOf(tok), coreOf(was));
     if (d === 1 || suspiciousWord(tok, opts) && d <= Math.max(2, Math.floor(coreOf(was).length / 3))) return was;
     return tok;
   });
@@ -43830,7 +44267,7 @@ function fixTokens(tokens2, { lexicon = null, keep = null, confs = null, wordCon
     return splitJoined(t, lexicon, { low });
   }).flat();
 }
-function editDistance2(a, b) {
+function editDistance3(a, b) {
   const prev = new Array(b.length + 1).fill(0).map((_, j) => j);
   for (let i = 1; i <= a.length; i++) {
     let diag = prev[0];
@@ -43875,7 +44312,7 @@ function repairTokens(tokens2, others, opts = {}) {
       if (j < 0 || other[j] === tok || !suspiciousWord(tok, opts) || suspiciousWord(other[j], opts)) return;
       const a = tok.toLowerCase();
       const b = other[j].toLowerCase();
-      if (/[A-Za-z]/.test(b) && editDistance2(a, b) <= Math.min(2, Math.floor(a.length / 3))) out[i] = other[j];
+      if (/[A-Za-z]/.test(b) && editDistance3(a, b) <= Math.min(2, Math.floor(a.length / 3))) out[i] = other[j];
     });
   }
   return out;
@@ -43991,318 +44428,8 @@ function applyLineReads(ocrPages, requests, results, { lexicon = null, doc = nul
   return { pages, applied };
 }
 
-// src/model/parse/ocr-vote.js
-var WORD_RE = /[A-Za-z][A-Za-z'-]*/g;
-var IOU_MIN2 = 0.25;
-var INSERT_CAP = 16;
-function wordCore(text3) {
-  const parts = String(text3 || "").match(WORD_RE);
-  if (!parts || !parts.length) return "";
-  return parts.reduce((best, part) => part.length > best.length ? part : best, "");
-}
-function letterCore(text3) {
-  return wordCore(text3).replace(/[-']+$/g, "");
-}
-function digitHeavy(text3) {
-  const raw = String(text3 || "");
-  let digits = 0;
-  let alnum = 0;
-  for (const ch of raw) {
-    if (ch >= "0" && ch <= "9") {
-      digits += 1;
-      alnum += 1;
-    } else if (ch >= "A" && ch <= "Z" || ch >= "a" && ch <= "z") alnum += 1;
-  }
-  return alnum > 0 && digits * 2 >= alnum;
-}
-function boxOf5(item) {
-  const t = item?.transform || [];
-  const x = Number(t[4]) || 0;
-  const w = Number(item?.width) || 0;
-  const y0 = Number(item?.y0);
-  const y1 = Number(item?.y1);
-  if (Number.isFinite(y0) && Number.isFinite(y1)) return [x, y0, x + w, y1];
-  const base = Number(t[5]) || 0;
-  const size = Math.abs(Number(t[0]) || 0);
-  return [x, base - 0.8 * size, x + w, base + 0.22 * size];
-}
-function iou3(a, b) {
-  const ix = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
-  const iy = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
-  const inter = ix * iy;
-  if (inter <= 0) return 0;
-  const area = Math.max(0, a[2] - a[0]) * Math.max(0, a[3] - a[1]) + Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]) - inter;
-  return area > 0 ? inter / area : 0;
-}
-function horizRatio(a, b) {
-  const overlap = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
-  const width = Math.min(Math.max(0, a[2] - a[0]), Math.max(0, b[2] - b[0]));
-  return width > 0 ? overlap / width : 0;
-}
-function editDistance3(a, b) {
-  const s = String(a || "");
-  const t = String(b || "");
-  const m = s.length;
-  const n2 = t.length;
-  const row4 = Array.from({ length: m + 1 }, (_, i) => i);
-  for (let j = 1; j <= n2; j += 1) {
-    let prev = row4[0];
-    row4[0] = j;
-    for (let i = 1; i <= m; i += 1) {
-      const cur = row4[i];
-      row4[i] = s[i - 1] === t[j - 1] ? prev : 1 + Math.min(prev, row4[i], row4[i - 1]);
-      prev = cur;
-    }
-  }
-  return row4[m];
-}
-function known(lexicon, word) {
-  return Boolean(word) && lexicon instanceof Set && lexicon.has(word);
-}
-function applyCase(sample, word) {
-  const letters = String(sample || "").replace(/[^A-Za-z]/g, "");
-  if (letters.length > 1 && letters === letters.toUpperCase()) return word.toUpperCase();
-  if (sample && sample[0] === sample[0].toUpperCase()) return word[0].toUpperCase() + word.slice(1);
-  return word;
-}
-function replaceCore(raw, core, next) {
-  const re = new RegExp(core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-  return String(raw).replace(re, (found) => applyCase(found, next));
-}
-function ruledRegions(rules, pageW = 612, pageH = 792) {
-  const horiz = [];
-  const vert = [];
-  for (const rule of rules || []) {
-    const x0 = Math.min(rule.x0, rule.x1);
-    const x1 = Math.max(rule.x0, rule.x1);
-    const y0 = Math.min(rule.y0, rule.y1);
-    const y1 = Math.max(rule.y0, rule.y1);
-    if (y1 - y0 <= 1.5 && x1 - x0 >= 36) horiz.push({ x0, x1, y: (y0 + y1) / 2 });
-    else if (x1 - x0 <= 1.5 && y1 - y0 >= 36) vert.push({ y0, y1, x: (x0 + x1) / 2 });
-  }
-  const regions = [];
-  const pageArea = Math.max(1, pageW * pageH);
-  for (let i = 0; i < horiz.length; i += 1) {
-    for (let j = i + 1; j < horiz.length; j += 1) {
-      const top = Math.min(horiz[i].y, horiz[j].y);
-      const bot = Math.max(horiz[i].y, horiz[j].y);
-      if (bot - top < 20) continue;
-      const x0 = Math.max(horiz[i].x0, horiz[j].x0);
-      const x1 = Math.min(horiz[i].x1, horiz[j].x1);
-      if (x1 - x0 < 40) continue;
-      if ((x1 - x0) * (bot - top) > 0.65 * pageArea) continue;
-      let verts = 0;
-      for (const v of vert) {
-        if (v.x < x0 - 4 || v.x > x1 + 4) continue;
-        const span = Math.min(v.y1, bot) - Math.max(v.y0, top);
-        if (span >= 0.6 * (bot - top)) verts += 1;
-      }
-      if (verts >= 2) regions.push([x0, top, x1, bot]);
-    }
-  }
-  return regions;
-}
-function inRuledRegion(box2, regions) {
-  const cx = (box2[0] + box2[2]) / 2;
-  const cy = (box2[1] + box2[3]) / 2;
-  return regions.some((r) => cx >= r[0] && cx <= r[2] && cy >= r[1] && cy <= r[3]);
-}
-function betterCount(n2, bestN, word, best, knownWord) {
-  if (!best || n2 > bestN) return true;
-  if (n2 < bestN) return false;
-  if (knownWord !== best.known) return knownWord;
-  return word < best.word;
-}
-function preferSpellings(items, lexicon, { rules = null, pageW = 612, pageH = 792, regions = null } = {}) {
-  if (!(lexicon instanceof Set) || !items?.length) return items || [];
-  const rects = regions || (rules ? ruledRegions(rules, pageW, pageH) : []);
-  const cores = items.map((item) => wordCore(item?.str || "").toLowerCase());
-  const counts = /* @__PURE__ */ new Map();
-  cores.forEach((core, index) => {
-    if (core.length < 4) return;
-    if (rects.length && inRuledRegion(boxOf5(items[index]), rects)) return;
-    counts.set(core, (counts.get(core) || 0) + 1);
-  });
-  return items.map((item, index) => {
-    const core = cores[index];
-    if (!item || core.length < 4 || known(lexicon, core)) return item;
-    if (rects.length && inRuledRegion(boxOf5(item), rects)) return item;
-    const mine = counts.get(core) || 0;
-    let best = null;
-    let bestN = 0;
-    for (const [word, n2] of counts) {
-      if (word === core || Math.abs(word.length - core.length) > 1) continue;
-      if (editDistance3(core, word) !== 1) continue;
-      const inLex = known(lexicon, word);
-      const ok = inLex && n2 >= 2 && n2 >= mine * 2 || !inLex && n2 >= 3 && n2 >= mine * 3;
-      if (!ok) continue;
-      if (betterCount(n2, bestN, word, best, inLex)) {
-        best = { word, known: inLex };
-        bestN = n2;
-      }
-    }
-    if (!best) return item;
-    const str2 = replaceCore(item.str, core, best.word);
-    return str2 === item.str ? item : { ...item, str: str2 };
-  });
-}
-function chooseReading(vision, other, lexicon) {
-  const v = vision?.str ?? "";
-  const o = other?.str ?? "";
-  if (!o) return v;
-  if (v.replace(/\s+/g, "").toLowerCase() === o.replace(/\s+/g, "").toLowerCase()) return v;
-  if (digitHeavy(v)) return v;
-  if (digitHeavy(o)) return o;
-  const vc = letterCore(v);
-  const oc = letterCore(o);
-  if (!oc) return v;
-  if (!vc) return o;
-  const vl = known(lexicon, vc.toLowerCase());
-  const ol = known(lexicon, oc.toLowerCase());
-  const d = editDistance3(vc.toLowerCase(), oc.toLowerCase());
-  if (ol && !vl) return o;
-  if (vl && !ol) return v;
-  if (d === 0) {
-    const hyphen = (text3) => /[A-Za-z]-$/.test(String(text3).trim());
-    if (hyphen(o) && !hyphen(v)) return o;
-    return v;
-  }
-  if (d <= 2) return o;
-  if (!vl && !ol && d <= 4) return o;
-  return v;
-}
-function lineClusters(items) {
-  const entries = items.map((item, index) => ({ item, index, box: boxOf5(item) }));
-  entries.sort((a, b) => a.box[3] - b.box[3] || a.box[0] - b.box[0]);
-  const lines = [];
-  for (const entry of entries) {
-    const size = Math.max(6, entry.box[3] - entry.box[1]);
-    const line = lines.find((row4) => Math.abs(row4.base - entry.box[3]) <= 0.45 * size);
-    if (line) {
-      line.items.push(entry);
-      line.base = line.items.reduce((sum, row4) => sum + row4.box[3], 0) / line.items.length;
-    } else lines.push({ base: entry.box[3], items: [entry] });
-  }
-  return lines;
-}
-function centersClose(a, b) {
-  const size = Math.max(6, Math.min(Math.max(1, a[3] - a[1]), Math.max(1, b[3] - b[1])));
-  return Math.abs((a[1] + a[3]) / 2 - (b[1] + b[3]) / 2) <= 0.55 * size && horizRatio(a, b) >= 0.55;
-}
-function sameSpelling(a, b) {
-  const left = letterCore(a).toLowerCase();
-  const right = letterCore(b).toLowerCase();
-  return Boolean(left) && left.length >= 4 && (left === right || editDistance3(left, right) <= 1);
-}
-function median6(values) {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[sorted.length >> 1];
-}
-function snapOnto(item, line) {
-  const hosts = line.items.map((entry) => entry.item).filter((it) => it?.transform);
-  if (!hosts.length) return { ...item, fontName: item.fontName || "ocr" };
-  const size = median6(hosts.map((it) => Math.abs(Number(it.transform[0]) || it.height || 10)));
-  const base = median6(hosts.map((it) => Number(it.transform[5]) || 0));
-  const sample = hosts[hosts.length >> 1];
-  const sampleBase = Number(sample.transform[5]) || base;
-  const y0 = Number.isFinite(Number(sample.y0)) ? base + (Number(sample.y0) - sampleBase) : base - 0.8 * size;
-  const y1 = Number.isFinite(Number(sample.y1)) ? base + (Number(sample.y1) - sampleBase) : base + 0.22 * size;
-  const x = Number(item.transform?.[4]) || 0;
-  return {
-    ...item,
-    fontName: item.fontName || "ocr",
-    height: Math.max(1, Math.abs(y1 - y0)),
-    y0,
-    y1,
-    transform: [size, 0, 0, size, x, base]
-  };
-}
-function voteItems(visionItems, otherItems, lexicon, regions) {
-  const pairs = [];
-  const vBoxes = visionItems.map(boxOf5);
-  const oBoxes = otherItems.map(boxOf5);
-  for (let i = 0; i < visionItems.length; i += 1) {
-    for (let j = 0; j < otherItems.length; j += 1) {
-      const score = iou3(vBoxes[i], oBoxes[j]);
-      if (score >= IOU_MIN2) pairs.push([score, i, j]);
-    }
-  }
-  pairs.sort((a, b) => b[0] - a[0] || a[1] - b[1] || a[2] - b[2]);
-  const usedV = /* @__PURE__ */ new Set();
-  const usedO = /* @__PURE__ */ new Set();
-  const match = /* @__PURE__ */ new Map();
-  for (const [, i, j] of pairs) {
-    if (usedV.has(i) || usedO.has(j)) continue;
-    usedV.add(i);
-    usedO.add(j);
-    match.set(i, j);
-  }
-  for (let i = 0; i < visionItems.length; i += 1) {
-    if (usedV.has(i)) continue;
-    let best = -1;
-    let bestScore = 0;
-    for (let j = 0; j < otherItems.length; j += 1) {
-      if (usedO.has(j) || !centersClose(vBoxes[i], oBoxes[j])) continue;
-      if (!sameSpelling(visionItems[i]?.str, otherItems[j]?.str)) continue;
-      const score = horizRatio(vBoxes[i], oBoxes[j]);
-      if (score > bestScore) {
-        best = j;
-        bestScore = score;
-      }
-    }
-    if (best < 0) continue;
-    usedV.add(i);
-    usedO.add(best);
-    match.set(i, best);
-  }
-  const next = visionItems.map((item, i) => {
-    if (regions.length && inRuledRegion(vBoxes[i], regions)) return item;
-    const j = match.get(i);
-    if (j == null) return item;
-    const str2 = chooseReading(item, otherItems[j], lexicon);
-    return str2 === item.str ? item : { ...item, str: str2 };
-  });
-  const lines = lineClusters(visionItems);
-  const added = [];
-  otherItems.forEach((item, j) => {
-    if (usedO.has(j) || added.length >= INSERT_CAP) return;
-    if (digitHeavy(item?.str)) return;
-    const core = wordCore(item?.str || "").toLowerCase();
-    if (core.length < 4 || !known(lexicon, core)) return;
-    const box2 = oBoxes[j];
-    if (regions.length && inRuledRegion(box2, regions)) return;
-    const line = lines.find((row4) => {
-      const top = Math.min(...row4.items.map((entry) => entry.box[1]));
-      const bot = Math.max(...row4.items.map((entry) => entry.box[3]));
-      const size = Math.max(6, bot - top);
-      return box2[3] >= top - 0.3 * size && box2[1] <= bot + 0.3 * size;
-    });
-    if (!line || line.items.length < 2) return;
-    if (line.items.some((entry) => horizRatio(box2, entry.box) > 0.3)) return;
-    const gap = 0.35 * Math.max(6, box2[3] - box2[1]);
-    const crowded = line.items.some((entry) => {
-      const host = entry.box;
-      const space = box2[0] >= host[2] ? box2[0] - host[2] : host[0] >= box2[2] ? host[0] - box2[2] : 0;
-      return space < gap;
-    });
-    if (crowded) return;
-    added.push(snapOnto(item, line));
-  });
-  added.sort((a, b) => boxOf5(a)[1] - boxOf5(b)[1] || boxOf5(a)[0] - boxOf5(b)[0]);
-  return preferSpellings([...next, ...added], lexicon, { regions });
-}
-function voteOcrBodies(visionPages, otherPages, lexicon) {
-  const words = lexicon instanceof Set ? lexicon : null;
-  const byN = new Map((otherPages || []).map((page) => [page.n, page]));
-  return (visionPages || []).map((page) => {
-    if (!page || page.engine === "ppocr-web") return page;
-    const other = byN.get(page.n);
-    const regions = ruledRegions(page.rules, page.w, page.h);
-    const items = voteItems(page.items || [], other?.items || [], words, regions);
-    return { ...page, items };
-  });
-}
+// src/view/parse-engine.js
+init_ocr_vote();
 
 // src/model/parse/vlm-arbitrate.js
 init_ocr_fix();
@@ -45247,12 +45374,13 @@ function splitByWidth(text3, widths) {
 function alignVlmText(doc, regions) {
   if (!doc || !regions?.length) return { doc, applied: [] };
   const blocks = { ...doc.blocks };
+  let order = doc.order;
   const applied = [];
   const kinds = /* @__PURE__ */ new Set(["para", "heading", "caption", "footnote"]);
   for (const region of regions) {
     if (!region?.text || !region.bbox) continue;
     const inside8 = [];
-    for (const id of doc.order || []) {
+    for (const id of order || []) {
       const block = blocks[id];
       if (!block || block.page !== region.page || !kinds.has(block.type) || !block.bbox) continue;
       const c = centerOf4(block.bbox);
@@ -45260,7 +45388,18 @@ function alignVlmText(doc, regions) {
       if (c[0] < region.bbox[0] || c[0] > region.bbox[2] || c[1] < region.bbox[1] || c[1] > region.bbox[3]) continue;
       inside8.push(block);
     }
-    if (!inside8.length) continue;
+    if (!inside8.length) {
+      const have = (order || []).map((id2) => blocks[id2]).filter((block) => block && block.page === region.page && kinds.has(block.type));
+      if (have.length || String(region.text).replace(/\s/g, "").length < 8) continue;
+      if (order === doc.order) order = [...doc.order || []];
+      const id = `vlmtext-p${region.page}-${applied.length + 1}`;
+      blocks[id] = { id, type: "para", page: region.page, bbox: region.bbox.map((v) => Math.round(v)), text: region.text, confidence: 0.6, engine: "vlm" };
+      order.push(id);
+      applied.push(id);
+      continue;
+    }
+    const hostText = inside8.map((b) => b.text).join(" ");
+    if (texCommandCount(region.text) >= 2 && texCommandCount(hostText) === 0) continue;
     inside8.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
     const parts = splitByWidth(region.text, inside8.map((b) => Math.max(1, b.bbox[2] - b.bbox[0])));
     inside8.forEach((block, i) => {
@@ -45270,7 +45409,10 @@ function alignVlmText(doc, regions) {
       applied.push(block.id);
     });
   }
-  return { doc: { ...doc, blocks }, applied };
+  return { doc: { ...doc, blocks, order }, applied };
+}
+function texCommandCount(text3) {
+  return (String(text3 || "").match(/\\(?:[A-Za-z]+|[()[\]])/g) || []).length;
 }
 function overlapsX2(a, b) {
   return Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
@@ -45369,6 +45511,14 @@ function textLayerPages(doc, { from, to } = {}) {
     return true;
   }).map((p) => p.n);
 }
+function weakTextPages(pages) {
+  const out = [];
+  for (const page of pages || []) {
+    if (!page || page.n == null) continue;
+    if (page.weakText || weakOcrPage(page.items)) out.push(page.n);
+  }
+  return out;
+}
 async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true, alt = null } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n2) => !from || !to || n2 >= from && n2 <= to);
@@ -45404,9 +45554,10 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     got = { ...got, pages: voteOcrBodies(got.pages, otherPages, words instanceof Set ? words : null) };
   }
   const ask = (req) => helper.ocr({ bytes, sha256, cells: req, signal });
-  let merged = wanted.length ? mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 }) : { doc: base, choices: [], records: records || [] };
+  const scanOptions = { ...options, releaseHandwriting: high };
+  let merged = wanted.length ? mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options: scanOptions, from, to, sha256 }) : { doc: base, choices: [], records: records || [] };
   const lined = wanted.length && lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
-  if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options, from, to, sha256 });
+  if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options: scanOptions, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
   let vlmApplied = [];
@@ -45420,34 +45571,47 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     const decimalPages = high ? decimalColumnPagesOf(next, wanted, figures) : [];
     const regionPages = new Set(regions.map((r) => r.page));
     const send = high ? vlmPages.filter((n2) => layerPages.includes(n2) || regionPages.has(n2) || numericPages.includes(n2) || decimalPages.includes(n2)) : wanted;
+    const explicitText = options.vlmText === true;
+    const weak = new Set(weakTextPages(got?.pages).filter((n2) => wanted.includes(n2)));
+    const tableSend = send.filter((n2) => explicitText || !weak.has(n2));
+    const textSend = [...weak].filter((n2) => !explicitText || !tableSend.includes(n2));
     try {
-      if (high && send.length) {
-        onPhase?.({ phase: "vlm", count: send.length, mode: "high" });
-        const read2 = await helper.vlm({
-          bytes,
-          sha256,
-          pages: send,
-          tables: regions.filter((r) => send.includes(r.page)),
-          numericPages,
-          text: options.vlmText === true,
-          signal
-        });
+      if (high && (tableSend.length || textSend.length)) {
+        onPhase?.({ phase: "vlm", count: tableSend.length + textSend.length, mode: "high" });
+        const askVlm = (pageList, text3, numeric) => {
+          if (!pageList.length) return null;
+          return helper.vlm({
+            bytes,
+            sha256,
+            pages: pageList,
+            tables: regions.filter((r) => pageList.includes(r.page)),
+            numericPages: numeric.filter((n2) => pageList.includes(n2)),
+            text: text3,
+            signal
+          });
+        };
+        const readTable = await askVlm(tableSend, explicitText, numericPages);
         throwIfAborted3();
-        const structures = keepTextLayerReads(doc, read2?.tables || [], wanted);
+        const readText = await askVlm(textSend, true, []);
+        throwIfAborted3();
+        const readTables = [...readTable?.tables || [], ...readText?.tables || []];
+        const readLines = [...explicitText ? readTable?.lines || [] : [], ...readText?.lines || []];
+        const readLayout = [...readTable?.layout || [], ...readText?.layout || []];
+        const structures = keepTextLayerReads(doc, readTables, wanted);
         const applied = applyVlmTables(doc, structures, {
-          method: read2?.model || "vlm",
+          method: readText?.model || readTable?.model || "vlm",
           arbitrate: true,
           evidence: evidenceFromRecords(next),
           verifiedPages: layerPages
         });
         vlmApplied = applied.applied;
         if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });
-        if (options.vlmText === true) {
-          const linedText = alignVlmText(doc, read2?.lines || []);
+        if (readLines.length) {
+          const linedText = alignVlmText(doc, readLines);
           vlmLines = linedText.applied;
-          if (linedText.applied.length) Object.assign(doc, { blocks: linedText.doc.blocks });
+          if (linedText.applied.length) Object.assign(doc, { blocks: linedText.doc.blocks, order: linedText.doc.order });
         }
-        const linked = linkLayoutCaptions(doc, read2?.layout || []);
+        const linked = linkLayoutCaptions(doc, readLayout);
         vlmFigures = linked.applied;
         if (linked.applied.length) Object.assign(doc, { blocks: linked.doc.blocks });
         doc.ocr = { ...doc.ocr || {}, mode: "high" };
@@ -48939,14 +49103,14 @@ function chartTable(item, block, images) {
   if (charts.length && !emptyBox2(block.bbox)) {
     for (const image of charts) {
       const other = llamaBox(image.bbox)?.bbox;
-      if (other && iou(block.bbox, other) >= 0.15) return true;
+      if (other && iou2(block.bbox, other) >= 0.15) return true;
     }
   }
   return Boolean(item?.parse_concerns) && /chart/i.test(JSON.stringify(item.parse_concerns));
 }
 function layoutOnTable(box2, tableBox) {
   if (!box2 || !tableBox || emptyBox2(box2) || emptyBox2(tableBox)) return false;
-  if (iou(box2, tableBox) >= 0.5) return true;
+  if (iou2(box2, tableBox) >= 0.5) return true;
   const area = (box2[2] - box2[0]) * (box2[3] - box2[1]);
   if (!(area > 0)) return false;
   const ix = Math.max(0, Math.min(box2[2], tableBox[2]) - Math.max(box2[0], tableBox[0]));
@@ -48958,7 +49122,7 @@ function assignTableBoxes(tables, images) {
   for (const image of images) {
     const box2 = llamaBox(image.bbox)?.bbox;
     if (!box2) continue;
-    const hit = tables.find(({ block }) => !emptyBox2(block.bbox) && iou(block.bbox, box2) >= 0.15);
+    const hit = tables.find(({ block }) => !emptyBox2(block.bbox) && iou2(block.bbox, box2) >= 0.15);
     if (hit) continue;
     spare.push(image);
   }
@@ -49090,7 +49254,7 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
     if (type === "image") {
       const covered = pageLayout.some((image) => {
         const other = llamaBox(image.bbox)?.bbox;
-        return other && iou(bbox, other) >= 0.5;
+        return other && iou2(bbox, other) >= 0.5;
       });
       if (covered) return null;
       const id = nextId("f");

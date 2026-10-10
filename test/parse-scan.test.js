@@ -708,6 +708,9 @@ test("alignVlmText rewrites Vision lines inside a region and leaves the boxes", 
   assert.equal(out.applied.length, 2);
   const skipped = alignVlmText(doc, [{ page: 1, bbox: [200, 200, 220, 210], text: "elsewhere" }]);
   assert.equal(skipped.applied.length, 0);
+  const tex = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 80, 12], text: "\\(\\int f(x)\\,dx\\) \\phi(x)" }]);
+  assert.equal(tex.applied.length, 0);
+  assert.equal(tex.doc.blocks.p.text, "old left");
 });
 
 test("readScan keeps the rule table when the VLM text does not match, and does not call tables without the flag", async () => {

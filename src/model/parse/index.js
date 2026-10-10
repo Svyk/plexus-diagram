@@ -4,7 +4,7 @@
 import { buildLines, dominantRotation, lineBox, makeLine, mul, round } from "./lines.js";
 import { extractGraphics, luminanceOf } from "./rules.js";
 import { chartGrid, findLatticeTables, looksLikeChart } from "./lattice.js";
-import { baselineRows, detectStreamRuns, tableFromBand } from "./stream.js";
+import { baselineRows, detectStreamRuns, proseColumnTable, tableFromBand } from "./stream.js";
 import { demoteFalseCaptions, drawingSheetPage, figCaptionKey, findFigures, imageCover, normalizeFigSpelling, peelFigLabels, rasterScanPage, rejectFalseFigures, sheetRegions, splitSharedCaptions } from "./figures.js";
 import { dropMarginRotated, findFurniture, normalizeFurniture } from "./furniture.js";
 import { findPageTitle } from "./title.js";
@@ -14,6 +14,7 @@ import { detectFormulas } from "./formulas.js";
 import { FOOTNOTE_MARK_RE, groupParagraphs, inlineUnlinkedRefs, joinLines, spansOf } from "./blocks.js";
 import { boxOfUnits, crossesGutter, detectColumns, orderUnits, ruleCuts, splitAtGutters } from "./xycut.js";
 import { repairOcrTable } from "./ocr-fix.js";
+import { lowConfidenceShare } from "./ocr-vote.js";
 import { capTitle, isCutPrefix, isGibberishTitle, isJunkTitleText, isMetaBanner } from "../title-cap.js";
 import { cleanPdfTitle } from "../pdf.js";
 
@@ -21,7 +22,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 23;
+export const PARSE_REV = 25;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -64,6 +65,40 @@ export function viewportTransform(w, h, rotation = 0) {
 }
 
 // Pass 1 for one page: geometry only.
+function figureBounds(fig) {
+  const b = fig?.bbox || fig;
+  if (Array.isArray(b)) return b;
+  if (!b) return null;
+  return [b.x0, b.y0, b.x1, b.y1];
+}
+
+function wordCenter(word) {
+  const cx = ((word.x0 ?? 0) + (word.x1 ?? 0)) / 2;
+  const cy = word.y0 != null && word.y1 != null
+    ? (word.y0 + word.y1) / 2
+    : (word.base ?? 0) - 0.3 * (word.size || 8);
+  return [cx, cy];
+}
+
+// Grow-and-drop claims a word, then throws the figure away (a rule cluster on a
+// menu, a plate that shrinks to the picture). The word stays marked used and the
+// line never becomes text. A word whose centre is still inside a figure that
+// survived belongs to that figure.
+function releaseOrphanFigureWords(used, figureWords, figures, tables) {
+  // A page that already has a table keeps claimed labels. Releasing them shifts
+  // the columns of a stream table on the same page (a ruled numeric page).
+  if ((tables || []).length) return;
+  for (const word of figureWords) {
+    const [cx, cy] = wordCenter(word);
+    const inside = (figures || []).some((fig) => {
+      const box = figureBounds(fig);
+      if (!box) return false;
+      return cx >= box[0] - 2 && cx <= box[2] + 2 && cy >= box[1] - 2 && cy <= box[3] + 2;
+    });
+    if (!inside) used.delete(word);
+  }
+}
+
 export function parsePageGeometry(data, n) {
   const t0 = now();
   let w = data.w; let h = data.h;
@@ -121,6 +156,8 @@ export function parsePageGeometry(data, n) {
     const free = words.filter((w) => !used.has(w));
     const t = tableFromBand(band, free);
     if (!t || isTitledBox(t) || chartGrid(t)) continue;
+    // A ruled band of names is the same false table as a stream of names.
+    if (ocr && proseColumnTable(t)) continue;
     t.page = n;
     for (const w of t.usedWords) used.add(w);
     delete t.usedWords;
@@ -133,7 +170,8 @@ export function parsePageGeometry(data, n) {
   const stripSet = new Set(strips);
   const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => !stripSet.has(im) && imageArea(im) < 0.85 * pageArea) } : graphics;
   const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars, plates: ocr, textLines: lines });
-  for (const wd of figs.used) used.add(wd);
+  const figureWords = figs.used;
+  for (const wd of figureWords) used.add(wd);
   let figures = figs.figures.map((f) => ({ ...f, page: n }));
   // A plate found from the ink already covers the drawing. The full-page sheet
   // split is for a patent page, not for that plate.
@@ -191,6 +229,7 @@ export function parsePageGeometry(data, n) {
     tables.splice(i, 1);
     for (const w of words) if (used.has(w) && !figs.used.has(w) && w.x0 >= t.bbox[0] - 2 && w.x1 <= t.bbox[2] + 2 && w.base >= t.bbox[1] && w.base <= t.bbox[3] + 2) used.delete(w);
   }
+  releaseOrphanFigureWords(used, figureWords, figures, tables);
   return { n, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, marginRotated, words: figWords, graphics, tables, figures, used, ms: round(now() - t0) };
 }
 
@@ -890,13 +929,18 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       seqs[idx].push(line);
     }
     const sequences = [...seqs, wideSeq].filter((s) => s.length).map((s) => s.sort((a, b) => a.base - b.base || a.x0 - b.x0));
+    // Low confidence on the page, not the lexicon miss: a printed name list is
+    // confident and stays a table when it has a date or measurement column.
+    // Only High accuracy drops these grids. The local reading keeps them, because
+    // a wrong grid left out of the text score beats a wrong paragraph put into it.
+    const handwriting = options.releaseHandwriting === true && Boolean(pg.ocr) && lowConfidenceShare(pg.words) >= 0.15;
     const pageTables = [...pg.tables];
     const pageFigures = [...pg.figures];
     const textBlocks = [];
     for (const seq of sequences) {
       let lines = seq;
       // Stream tables, and aligned runs that are really equations or code listings.
-      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq), rules: pg.graphics.rules, bridgeGaps: pg.tables.length === 0 })) {
+      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq), rules: pg.graphics.rules, bridgeGaps: pg.tables.length === 0, ocr: Boolean(pg.ocr), handwriting })) {
         const drop = new Set(t.lines);
         lines = lines.filter((l) => !drop.has(l));
         if (t.type === "formula") {

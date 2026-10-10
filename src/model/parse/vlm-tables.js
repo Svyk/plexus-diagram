@@ -349,12 +349,13 @@ function splitByWidth(text, widths) {
 export function alignVlmText(doc, regions) {
   if (!doc || !regions?.length) return { doc, applied: [] };
   const blocks = { ...doc.blocks };
+  let order = doc.order;
   const applied = [];
   const kinds = new Set(["para", "heading", "caption", "footnote"]);
   for (const region of regions) {
     if (!region?.text || !region.bbox) continue;
     const inside = [];
-    for (const id of doc.order || []) {
+    for (const id of order || []) {
       const block = blocks[id];
       if (!block || block.page !== region.page || !kinds.has(block.type) || !block.bbox) continue;
       const c = centerOf(block.bbox);
@@ -362,7 +363,22 @@ export function alignVlmText(doc, regions) {
       if (c[0] < region.bbox[0] || c[0] > region.bbox[2] || c[1] < region.bbox[1] || c[1] > region.bbox[3]) continue;
       inside.push(block);
     }
-    if (!inside.length) continue;
+    if (!inside.length) {
+      // Vision found nothing to host the reading. A page that already has a
+      // paragraph keeps it: the region simply missed those lines.
+      const have = (order || []).map((id) => blocks[id]).filter((block) => block && block.page === region.page && kinds.has(block.type));
+      if (have.length || String(region.text).replace(/\s/g, "").length < 8) continue;
+      if (order === doc.order) order = [...(doc.order || [])];
+      const id = `vlmtext-p${region.page}-${applied.length + 1}`;
+      blocks[id] = { id, type: "para", page: region.page, bbox: region.bbox.map((v) => Math.round(v)), text: region.text, confidence: 0.6, engine: "vlm" };
+      order.push(id);
+      applied.push(id);
+      continue;
+    }
+    // A formula page is already transcribed in the page's own notation. A region
+    // full of TeX commands is a second notation, and swapping it in wipes the line.
+    const hostText = inside.map((b) => b.text).join(" ");
+    if (texCommandCount(region.text) >= 2 && texCommandCount(hostText) === 0) continue;
     inside.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
     const parts = splitByWidth(region.text, inside.map((b) => Math.max(1, b.bbox[2] - b.bbox[0])));
     inside.forEach((block, i) => {
@@ -372,7 +388,11 @@ export function alignVlmText(doc, regions) {
       applied.push(block.id);
     });
   }
-  return { doc: { ...doc, blocks }, applied };
+  return { doc: { ...doc, blocks, order }, applied };
+}
+
+function texCommandCount(text) {
+  return (String(text || "").match(/\\(?:[A-Za-z]+|[()[\]])/g) || []).length;
 }
 
 function overlapsX(a, b) {

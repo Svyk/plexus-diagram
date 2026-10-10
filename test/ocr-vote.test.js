@@ -184,3 +184,72 @@ test("a line-end hyphen matches a period on the same word even when the boxes ba
   );
   assert.equal(page.items[0].str, "success-");
 });
+
+function many(str, n, conf) {
+  const items = [];
+  for (let i = 0; i < n; i++) items.push({ ...word(`${str}${i}`, 40, 30 + i * 12), conf });
+  return items;
+}
+
+test("a weak page keeps Vision and is marked for a later text read", () => {
+  const items = many("zzzz", 16, 0.2);
+  const other = items.map((it) => ({ ...it, str: "pressure" }));
+  const [page] = voteOcrBodies(
+    [{ n: 1, w: 600, h: 800, rules: [], items }],
+    [{ n: 1, items: other }],
+    lexicon,
+  );
+  assert.equal(page.weakText, true);
+  assert.equal(page.items[0].str, "zzzz0");
+});
+
+test("confident unknown words with a little doubt skip the printed-text vote", () => {
+  const items = many("qqqq", 24, 1);
+  items[0].conf = 0.2;
+  items[1].conf = 0.2;
+  const other = items.map((it) => ({ ...it, str: "pressure" }));
+  const [page] = voteOcrBodies(
+    [{ n: 1, w: 600, h: 800, rules: [], items }],
+    [{ n: 1, items: other }],
+    lexicon,
+  );
+  assert.equal(page.weakText, true);
+  assert.equal(page.items[2].str, "qqqq2");
+});
+
+test("a confident page is still voted", () => {
+  const items = [word("prossure", 80), ...many("the", 14, 1)];
+  const other = items.map((it, i) => (i === 0 ? { ...it, str: "pressure" } : it));
+  const [page] = voteOcrBodies(
+    [{ n: 1, w: 600, h: 800, rules: [], items }],
+    [{ n: 1, items: other }],
+    lexicon,
+  );
+  assert.equal(page.weakText, undefined);
+  assert.equal(page.items[0].str, "pressure");
+});
+
+test("readScan asks for VLM text on a weak page and not on a confident page", async () => {
+  const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 612, h: 792, rotation: 0, fonts: {} }, 1);
+  scanRec.kind = "scan";
+  const base = assembleDocument([scanRec], { numPages: 1, from: 1, to: 1 });
+  const calls = [];
+  const helper = {
+    vlmHigh: true,
+    async ocr() {
+      return { pages: [{ n: 1, w: 612, h: 792, rules: [], scan: true, items: many("zzzz", 16, 0.2) }] };
+    },
+    async vlm(req) {
+      calls.push({ pages: [...req.pages], text: req.text });
+      return { tables: [], lines: [{ page: 1, bbox: [0, 0, 612, 792], text: "Dear friend this letter says hello today" }], layout: [] };
+    },
+  };
+  const weak = await readScan({ helper, base, records: [scanRec], numPages: 1, from: 1, to: 1, lines: false, bytes: new Uint8Array([1]) });
+  assert.ok(calls.some((c) => c.text === true && c.pages.includes(1)));
+  const weakText = weak.doc.order.map((id) => weak.doc.blocks[id]?.text || "").join("\n");
+  assert.match(weakText, /Dear friend/);
+  calls.length = 0;
+  helper.ocr = async () => ({ pages: [{ n: 1, w: 612, h: 792, rules: [], scan: true, items: many("the", 16, 1) }] });
+  await readScan({ helper, base, records: [scanRec], numPages: 1, from: 1, to: 1, lines: false, bytes: new Uint8Array([1]) });
+  assert.equal(calls.some((c) => c.text === true), false);
+});

@@ -5,7 +5,7 @@ import { assembleDocument, parsePageGeometry, parsePdf } from "../model/parse/in
 import { applyCellOcr, cellsToReread } from "../model/parse/ocr-fix.js";
 import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lines.js";
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
-import { voteOcrBodies } from "../model/parse/ocr-vote.js";
+import { voteOcrBodies, weakOcrPage } from "../model/parse/ocr-vote.js";
 import { evidenceFromRecords } from "../model/parse/vlm-arbitrate.js";
 import { decimalColumnPagesOf, numericPagesOf } from "../model/parse/vlm-boxes.js";
 import { alignVlmText, applyVlmTables, keepTextLayerReads, linkLayoutCaptions, tableRegions } from "../model/parse/vlm-tables.js";
@@ -100,6 +100,17 @@ function textLayerPages(doc, { from, to } = {}) {
   }).map((p) => p.n);
 }
 
+// Pages the printed-text vote left alone. `weakText` carries the lexicon test
+// from that vote; confidence alone covers a read that never voted.
+function weakTextPages(pages) {
+  const out = [];
+  for (const page of pages || []) {
+    if (!page || page.n == null) continue;
+    if (page.weakText || weakOcrPage(page.items)) out.push(page.n);
+  }
+  return out;
+}
+
 export async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true, alt = null } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n) => !from || !to || (n >= from && n <= to));
@@ -129,11 +140,15 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
     got = { ...got, pages: voteOcrBodies(got.pages, otherPages, words instanceof Set ? words : null) };
   }
   const ask = (req) => helper.ocr({ bytes, sha256, cells: req, signal });
+  // High accuracy will replace the paragraph text, so a handwriting grid can
+  // become lines. The local reading keeps the grid: dumping a bad read into the
+  // text score is worse than leaving it out.
+  const scanOptions = { ...options, releaseHandwriting: high };
   let merged = wanted.length
-    ? mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 })
+    ? mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options: scanOptions, from, to, sha256 })
     : { doc: base, choices: [], records: records || [] };
   const lined = wanted.length && lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
-  if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options, from, to, sha256 });
+  if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options: scanOptions, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
   let vlmApplied = [];
@@ -148,7 +163,8 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   // layout table is kept only when the page already says those words or a rule table covers the box). On OCR
   // pages, layout and the reader run only where there is already a table, a numeric grid, or a labeled column
   // of measured values. Decimal-column pages are not numericPages: if layout finds no table, the page is not
-  // read whole. A prose page stays local.
+  // read whole. A confident prose page stays local. A weak page (handwriting, a photo the
+  // recogniser is unsure of) is read for text even when it has no table.
   const vlmPages = [...wanted, ...layerPages];
   if ((high || (helper.vlmTables === true && typeof helper.tables === "function")) && vlmPages.length) {
     const regions = tableRegions(doc, vlmPages);
@@ -159,31 +175,45 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
     const send = high
       ? vlmPages.filter((n) => layerPages.includes(n) || regionPages.has(n) || numericPages.includes(n) || decimalPages.includes(n))
       : wanted;
+    const explicitText = options.vlmText === true;
+    const weak = new Set(weakTextPages(got?.pages).filter((n) => wanted.includes(n)));
+    const tableSend = send.filter((n) => explicitText || !weak.has(n));
+    const textSend = [...weak].filter((n) => !explicitText || !tableSend.includes(n));
     try {
-      if (high && send.length) {
-        onPhase?.({ phase: "vlm", count: send.length, mode: "high" });
-        const read = await helper.vlm({
-          bytes, sha256, pages: send,
-          tables: regions.filter((r) => send.includes(r.page)),
-          numericPages,
-          text: options.vlmText === true, signal,
-        });
+      if (high && (tableSend.length || textSend.length)) {
+        onPhase?.({ phase: "vlm", count: tableSend.length + textSend.length, mode: "high" });
+        const askVlm = (pageList, text, numeric) => {
+          if (!pageList.length) return null;
+          return helper.vlm({
+            bytes, sha256, pages: pageList,
+            tables: regions.filter((r) => pageList.includes(r.page)),
+            numericPages: numeric.filter((n) => pageList.includes(n)),
+            text, signal,
+          });
+        };
+        const readTable = await askVlm(tableSend, explicitText, numericPages);
         throwIfAborted();
-        const structures = keepTextLayerReads(doc, read?.tables || [], wanted);
+        // No whole-page numeric read: a letter is not a table the layout model missed.
+        const readText = await askVlm(textSend, true, []);
+        throwIfAborted();
+        const readTables = [...(readTable?.tables || []), ...(readText?.tables || [])];
+        const readLines = [...(explicitText ? (readTable?.lines || []) : []), ...(readText?.lines || [])];
+        const readLayout = [...(readTable?.layout || []), ...(readText?.layout || [])];
+        const structures = keepTextLayerReads(doc, readTables, wanted);
         const applied = applyVlmTables(doc, structures, {
-          method: read?.model || "vlm",
+          method: readText?.model || readTable?.model || "vlm",
           arbitrate: true,
           evidence: evidenceFromRecords(next),
           verifiedPages: layerPages,
         });
         vlmApplied = applied.applied;
         if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });
-        if (options.vlmText === true) {
-          const linedText = alignVlmText(doc, read?.lines || []);
+        if (readLines.length) {
+          const linedText = alignVlmText(doc, readLines);
           vlmLines = linedText.applied;
-          if (linedText.applied.length) Object.assign(doc, { blocks: linedText.doc.blocks });
+          if (linedText.applied.length) Object.assign(doc, { blocks: linedText.doc.blocks, order: linedText.doc.order });
         }
-        const linked = linkLayoutCaptions(doc, read?.layout || []);
+        const linked = linkLayoutCaptions(doc, readLayout);
         vlmFigures = linked.applied;
         if (linked.applied.length) Object.assign(doc, { blocks: linked.doc.blocks });
         // Layout figure boxes are not inserted. A hint on a page the detector

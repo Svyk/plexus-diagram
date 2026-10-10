@@ -63,7 +63,7 @@ test("the rule: 18+ letters, 3+ pieces, a function word, other pieces 4+ letters
 });
 
 test("revisions moved", () => {
-  assert.equal(PARSE_REV, 23);
+  assert.equal(PARSE_REV, 25);
   assert.equal(TITLE_REV, 3);
 });
 

@@ -28,7 +28,51 @@ export function detectColumns(lines, { pageW, minLines = 4 } = {}) {
     const g1 = right.x;
     if (g1 - g0 >= 6) gutters.push({ x0: g0, x1: g1 });
   }
-  return mergeGutters([...gutters, ...internalGutters(lines, pageW || 612, minLines)]);
+  return mergeGutters([...gutters, ...internalGutters(lines, pageW || 612, minLines), ...shortColumnGutters(lines, pageW || 612, minLines)]);
+}
+
+// Short lines down a page (a roster, a list) never reach the width a body column
+// needs, so their left edges were invisible. A column of dates or quantities is a
+// table read across, not down, and is left for the table pass.
+function shortColumnGutters(lines, pageW, minLines) {
+  const short = (lines || []).filter((l) => {
+    const words = (l.words || []).length;
+    const w = (l.x1 ?? 0) - (l.x0 ?? 0);
+    return words >= 1 && words <= 6 && (l.chars || 0) >= 3 && w > 8 && w < 0.55 * pageW;
+  });
+  const clusters = [];
+  for (const l of short) {
+    let c = clusters.find((k) => Math.abs(k.x - l.x0) <= 14);
+    if (!c) { c = { x: l.x0, lines: [] }; clusters.push(c); }
+    c.lines.push(l);
+    c.x = c.lines.reduce((s, row) => s + row.x0, 0) / c.lines.length;
+  }
+  const cols = clusters.filter((c) => c.lines.length >= Math.max(6, minLines)).sort((a, b) => a.x - b.x);
+  const measured = (list) => {
+    const n = list.filter((l) => /\d/.test(l.text || "") && String(l.text || "").trim().split(/\s+/).length <= 6).length;
+    return list.length >= 3 && n / list.length >= 0.5;
+  };
+  if (cols.some((c) => measured(c.lines))) return [];
+  const gutters = [];
+  for (let i = 1; i < cols.length; i++) {
+    const left = cols[i - 1];
+    const right = cols[i];
+    if (right.x - left.x < 0.12 * pageW) continue;
+    const beside = left.lines.filter((l) => right.lines.some((r) => Math.abs((r.base ?? 0) - (l.base ?? 0)) <= 2.5 * Math.max(l.size || 8, r.size || 8)));
+    const ends = (beside.length >= 3 ? beside : left.lines).map((l) => l.x1);
+    const g0 = Math.max(...ends);
+    const g1 = Math.min(...right.lines.map((l) => l.x0));
+    if (g1 - g0 < 8) continue;
+    // A table row or a paragraph that crosses the gap is one measure, not two lists.
+    const crosses = (lines || []).some((l) => {
+      const words = (l.words || []).length;
+      const wide = (l.x1 ?? 0) - (l.x0 ?? 0) > 0.4 * pageW;
+      if (words <= 6 && !wide) return false;
+      return (l.x0 ?? 0) < g0 - 4 && (l.x1 ?? 0) > g1 + 4;
+    });
+    if (!crosses) gutters.push({ x0: g0, x1: g1 });
+  }
+  return gutters;
 }
 
 // A joined two-column baseline hides both left edges. The widest internal word gap, repeated

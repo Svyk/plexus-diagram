@@ -7,6 +7,32 @@ const WORD_RE = /[A-Za-z][A-Za-z'-]*/g;
 const IOU_MIN = 0.25;
 const INSERT_CAP = 16;
 
+export const WEAK_OCR_LOW = 0.15;
+export const WEAK_OCR_MIN_WORDS = 12;
+
+// Share of words Vision itself marked below 0.5. Fewer than twelve confidences is
+// not a page: a short caption must not look like handwriting.
+export function lowConfidenceShare(items) {
+  const confs = (items || []).map((it) => it?.conf).filter((c) => Number.isFinite(c));
+  if (confs.length < WEAK_OCR_MIN_WORDS) return 0;
+  return confs.filter((c) => c < 0.5).length / confs.length;
+}
+
+// Handwriting and a page of words the lexicon does not know. The lexicon clause
+// needs a little doubt as well: a long confident page in another language is not
+// sent for a second reading. A printed name list (confident, some lexicon hits)
+// stays on Vision.
+export function weakOcrPage(items, lexicon = null) {
+  if (lowConfidenceShare(items) >= WEAK_OCR_LOW) return true;
+  if (!(lexicon instanceof Set)) return false;
+  const cores = (items || []).map((it) => wordCore(it?.str || it?.text || "").toLowerCase()).filter((c) => c.length >= 4);
+  if (cores.length < 20) return false;
+  const confs = (items || []).map((it) => it?.conf).filter((c) => Number.isFinite(c));
+  const low = confs.length ? confs.filter((c) => c < 0.5).length / confs.length : 0;
+  if (low < 0.04) return false;
+  return cores.filter((c) => lexicon.has(c)).length / cores.length < 0.12;
+}
+
 export function wordCore(text) {
   const parts = String(text || "").match(WORD_RE);
   if (!parts || !parts.length) return "";
@@ -335,6 +361,9 @@ export function voteOcrBodies(visionPages, otherPages, lexicon) {
   const byN = new Map((otherPages || []).map((page) => [page.n, page]));
   return (visionPages || []).map((page) => {
     if (!page || page.engine === "ppocr-web") return page;
+    // The printed-text model rewrites unknown words. On a weak page that rewrite
+    // is worse than Vision, so the page is left as read and marked for a text model.
+    if (weakOcrPage(page.items, words)) return { ...page, weakText: true };
     const other = byN.get(page.n);
     const regions = ruledRegions(page.rules, page.w, page.h);
     const items = voteItems(page.items || [], other?.items || [], words, regions);

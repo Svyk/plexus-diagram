@@ -1,9 +1,10 @@
 """Local table reading with PaddleOCR-VL (Apache-2.0) through MLX.
 
-The weights download and convert on first use into the helper cache. `PXD_VLM_MODEL`
-points at an already converted MLX directory or a Hub id. mlx-vlm is imported only
-when a request runs, so a helper install without that extra does not advertise the
-engine and does not load a model.
+The pinned weights download on first use into the helper cache and are checked
+by SHA-256. `PXD_VLM_MODEL` points at an already present directory or a Hub id.
+mlx-vlm is imported only when a request runs, so a helper install without that
+extra does not advertise the engine and does not load a model. Decoding is
+greedy (temperature 0) with a fixed seed.
 """
 
 from __future__ import annotations
@@ -18,7 +19,6 @@ from PIL import Image
 
 from plexus_parse_helper.table_text import tables_from_text
 
-HF_REPO = "PaddlePaddle/PaddleOCR-VL"
 MODEL_LABEL = "PaddleOCR-VL-0.9B"
 TABLE_PROMPT = "Table Recognition:"
 OCR_PROMPT = "OCR:"
@@ -30,6 +30,10 @@ TOP_PAD = 36.0
 MAX_REGIONS = 40
 MAX_TOKENS = 4096
 TEXT_TOKENS = 512
+# Greedy and seeded. Temperature 0 is argmax; the seed keeps the random
+# state from a previous sampled call out of this one.
+DECODE_TEMPERATURE = 0.0
+DECODE_SEED = 0
 
 _lock = threading.Lock()
 _loaded: tuple | None = None
@@ -52,23 +56,28 @@ def model_location() -> str:
     return str(Path.home() / ".cache" / "plexus-parse-helper" / "vlm" / "paddleocr-vl")
 
 
+def _has_weights(path: Path) -> bool:
+    return (path / "model.safetensors").is_file() or (path / "model.safetensors.index.json").is_file()
+
+
 def _ensure_weights(location: str) -> str:
     path = Path(location)
     # A Hub id (org/name) is loaded by mlx-vlm directly.
     if not path.is_absolute() and not path.exists() and location.count("/") == 1 and not location.startswith("."):
         return location
-    if (path / "model.safetensors").exists() or (path / "model.safetensors.index.json").exists():
+    # An explicit directory that already holds weights is the operator's copy
+    # (a bench model, or PXD_VLM_MODEL). The default cache is downloaded on
+    # the first read and checked against the pinned SHA-256 manifest.
+    cache = Path.home() / ".cache" / "plexus-parse-helper" / "vlm" / "paddleocr-vl"
+    if path.resolve() != cache.resolve() and _has_weights(path):
         return str(path)
-    path.mkdir(parents=True, exist_ok=True)
-    from huggingface_hub import snapshot_download
-    from mlx_vlm.convert import convert
+    from plexus_parse_helper.vlm_weights import ensure_reader
 
-    src = snapshot_download(HF_REPO)
-    convert(hf_path=src, mlx_path=str(path), trust_remote_code=True, dtype="bfloat16")
-    tokenizer = path / "tokenizer.json"
+    checked = ensure_reader(cache)
+    tokenizer = Path(checked) / "tokenizer.json"
     if tokenizer.exists():
         tokenizer.chmod(tokenizer.stat().st_mode | 0o200)
-    return str(path)
+    return checked
 
 
 def _get_model():
@@ -203,14 +212,21 @@ def crop_pixels(bbox, pw, ph, width, height, pad=PAD, top_pad=TOP_PAD):
     return box
 
 
-def _crop(page, bbox, bitmap=None) -> Image.Image:
+def _crop(page, bbox, bitmap=None, pad=PAD, top_pad=TOP_PAD) -> Image.Image:
     pw, ph = page.get_size()
     if bitmap is None:
         bitmap = page.render(scale=SCALE).to_pil().convert("RGB")
-    box = crop_pixels(bbox, pw, ph, bitmap.width, bitmap.height)
+    box = crop_pixels(bbox, pw, ph, bitmap.width, bitmap.height, pad=pad, top_pad=top_pad)
     if box[2] <= box[0] or box[3] <= box[1]:
         raise ValueError("table box is empty")
     return bitmap.crop(box)
+
+
+def greedy_sampler(logits):
+    """Argmax. Ties follow MLX argmax; the call is not a sample."""
+    import mlx.core as mx
+
+    return mx.argmax(logits, axis=-1)
 
 
 def _generate(image: Image.Image, instruction: str = TABLE_PROMPT, max_tokens: int = MAX_TOKENS) -> str:
@@ -228,7 +244,19 @@ def _generate(image: Image.Image, instruction: str = TABLE_PROMPT, max_tokens: i
         tok.stopping_criteria = _RepeatStop(eos, tok)
     if hasattr(mx, "reset_peak_memory"):
         mx.reset_peak_memory()
-    out = generate(model, processor, prompt, image=image, max_tokens=max_tokens, temperature=0.0, verbose=False)
+    if hasattr(mx, "random") and hasattr(mx.random, "seed"):
+        mx.random.seed(DECODE_SEED)
+    out = generate(
+        model,
+        processor,
+        prompt,
+        image=image,
+        max_tokens=max_tokens,
+        temperature=DECODE_TEMPERATURE,
+        seed=DECODE_SEED,
+        sampler=greedy_sampler,
+        verbose=False,
+    )
     return out.text or ""
 
 

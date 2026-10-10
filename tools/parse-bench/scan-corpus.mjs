@@ -21,7 +21,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assembleDocument } from "../../src/model/parse/index.js";
@@ -57,6 +57,18 @@ function takeArgs(argv) {
 // One pxd document per page: <dir>/<engine>/<page id>.pxd.json. Existing files are left in place.
 export function dumpTarget(dir, engine, id) {
   return join(dir, engine, `${id}.pxd.json`);
+}
+
+// Table boxes from a LlamaParse pxd document, top-left PDF points. Used when
+// PXD_VLM_ORACLE_DIR points at those documents, so a read can be scored on the
+// reference boxes instead of ours.
+export function oracleTableBoxes(doc, page) {
+  const out = [];
+  for (const block of Object.values(doc?.blocks || {})) {
+    if (!block || block.type !== "table" || !Array.isArray(block.bbox) || block.bbox.length < 4) continue;
+    out.push({ page, bbox: block.bbox.slice(0, 4).map(Number) });
+  }
+  return out;
 }
 
 function sha256File(path) {
@@ -113,7 +125,7 @@ function cacheWrap(helper, cacheDir, stamp) {
   };
 }
 
-function vlmHelper() {
+function vlmHelper(pdfPath) {
   const url = (process.env.PXD_VLM_URL || "http://127.0.0.1:48766").replace(/\/$/, "");
   const token = process.env.PXD_VLM_TOKEN || "pxd-vlm";
   return {
@@ -139,13 +151,25 @@ function vlmHelper() {
       if (res.status < 200 || res.status >= 300) throw new Error(body?.error || `tables ${res.status}`);
       return body;
     },
-    async vlm({ bytes, pages, tables, text }) {
+    async vlm({ bytes, pages, tables, text, numericPages, boxMode }) {
+      let regions = tables;
+      let mode = boxMode;
+      const oracleDir = process.env.PXD_VLM_ORACLE_DIR;
+      if (oracleDir) {
+        const page = (pages || [])[0];
+        const path = join(oracleDir, `${basename(pdfPath)}.p${page}.llamaparse.pxd.json`);
+        regions = existsSync(path) ? oracleTableBoxes(JSON.parse(readFileSync(path, "utf8")), page) : [];
+        mode = "caller";
+      }
+      const options = { pages, tables: regions, text: text === true };
+      if (numericPages && numericPages.length) options.numericPages = numericPages;
+      if (mode) options.boxMode = mode;
       const res = await fetch(`${url}/v1/vlm`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/pdf",
-          "X-Pxd-Options": JSON.stringify({ pages, tables, text: text === true }),
+          "X-Pxd-Options": JSON.stringify(options),
         },
         body: bytes,
       });
@@ -159,7 +183,7 @@ function vlmHelper() {
 async function helperFor(engine, pdfPath, cacheDir, helperFlag) {
   if (engine === "builtin") return null;
   if (engine === "helper-vlm") {
-    const raw = vlmHelper();
+    const raw = vlmHelper(pdfPath);
     const sha = sha256File(pdfPath);
     const log = (m) => process.stderr.write(`${m}\n`);
     // Same stamp as the helper engine so the Vision page cache is reused.

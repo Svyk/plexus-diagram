@@ -7,7 +7,8 @@ import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lin
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
 import { voteOcrBodies } from "../model/parse/ocr-vote.js";
 import { evidenceFromRecords } from "../model/parse/vlm-arbitrate.js";
-import { alignVlmText, applyVlmTables, tableRegions } from "../model/parse/vlm-tables.js";
+import { decimalColumnPagesOf, numericPagesOf } from "../model/parse/vlm-boxes.js";
+import { alignVlmText, applyVlmTables, linkLayoutCaptions, tableRegions } from "../model/parse/vlm-tables.js";
 
 const GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
 
@@ -119,17 +120,33 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   let vlmApplied = [];
   let vlmFigures = [];
   let vlmLines = [];
-  // High accuracy: layout boxes, then PaddleOCR-VL. A helper that only advertised
+  // High accuracy: layout boxes united with the rule boxes, then PaddleOCR-VL.
+  // numericPages tells the helper which pages have aligned numeric columns, so a
+  // page the layout model missed can be read whole. A helper that only advertised
   // vlm-tables still re-reads the rule boxes. A mock that implements ocr() alone
   // must not be asked. A failed reading leaves the rule-assembly tables.
   const high = helper.vlmHigh === true && typeof helper.vlm === "function";
   if (high || (helper.vlmTables === true && typeof helper.tables === "function")) {
     const regions = tableRegions(doc, wanted);
+    const figures = (doc.order || []).map((id) => doc.blocks[id]).filter((block) => block && block.type === "figure");
+    const numericPages = high ? numericPagesOf(next, wanted, figures) : [];
+    const decimalPages = high ? decimalColumnPagesOf(next, wanted, figures) : [];
+    const regionPages = new Set(regions.map((r) => r.page));
+    // Layout and the reader run on pages that already have a table, pages
+    // whose words form a numeric grid, or a labeled column of measured values
+    // the rules missed. Decimal-column pages are not numericPages: if layout
+    // finds no table, the page is not read whole. A prose page stays local.
+    const send = high
+      ? wanted.filter((n) => regionPages.has(n) || numericPages.includes(n) || decimalPages.includes(n))
+      : wanted;
     try {
-      if (high) {
-        onPhase?.({ phase: "vlm", count: regions.length, mode: "high" });
+      if (high && send.length) {
+        onPhase?.({ phase: "vlm", count: send.length, mode: "high" });
         const read = await helper.vlm({
-          bytes, sha256, pages: wanted, tables: regions, text: options.vlmText === true, signal,
+          bytes, sha256, pages: send,
+          tables: regions.filter((r) => send.includes(r.page)),
+          numericPages,
+          text: options.vlmText === true, signal,
         });
         throwIfAborted();
         const applied = applyVlmTables(doc, read?.tables || [], {
@@ -144,8 +161,13 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
           vlmLines = linedText.applied;
           if (linedText.applied.length) Object.assign(doc, { blocks: linedText.doc.blocks });
         }
+        const linked = linkLayoutCaptions(doc, read?.layout || []);
+        vlmFigures = linked.applied;
+        if (linked.applied.length) Object.assign(doc, { blocks: linked.doc.blocks });
         // Layout figure boxes are not inserted. A hint on a page the detector
         // left empty missed the drawing and lowered figure F1 from 0.920 to 0.902.
+        doc.ocr = { ...(doc.ocr || {}), mode: "high" };
+      } else if (high) {
         doc.ocr = { ...(doc.ocr || {}), mode: "high" };
       } else if (regions.length) {
         onPhase?.({ phase: "vlm", count: regions.length });

@@ -1,7 +1,8 @@
 // Parse step: body size, heading levels, title. Pure.
 
 export const NUMBERED_RE = /^((\d+)(\.\d+)*)\.?\s+\S/;
-export const CAPTION_RE = /^(table|fig(ure)?\.?|figure)\s*\d+[A-Za-z]?[.:]?(\s|$)/i;
+// Tab. / Tabelle are tables. Tafel is a plate (the negative lookahead keeps it out of this alternative).
+export const CAPTION_RE = /^(?:table|tabelle|tab(?!el)\.?|fig(?:ure)?s?\.?|figure|plates?|abb(?:ildung(?:en)?)?\.?|tafeln?|tafel|taf\.?)\s*\d+[A-Za-z]?[.:]?(\s|$)/i;
 
 export function bodySizeOf(lines) {
   const counts = new Map();

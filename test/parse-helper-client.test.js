@@ -316,4 +316,19 @@ test("health with all three vlm engines sets vlmHigh and vlm() posts /v1/vlm", a
     pages: [2],
     tables: [{ page: 2, bbox: [1, 2, 3, 4] }],
   });
+  await api.vlm({
+    bytes: new Uint8Array([9]),
+    pages: [2],
+    tables: [{ page: 2, bbox: [1, 2, 3, 4] }],
+    numericPages: [2],
+    boxMode: "caller",
+  });
+  const again = calls.filter((call) => call.url.endsWith("/v1/vlm")).at(-1);
+  assert.deepEqual(JSON.parse(again.headers["X-Pxd-Options"]), {
+    text: false,
+    pages: [2],
+    tables: [{ page: 2, bbox: [1, 2, 3, 4] }],
+    numericPages: [2],
+    boxMode: "caller",
+  });
 });

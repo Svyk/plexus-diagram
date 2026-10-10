@@ -11,7 +11,7 @@ import {
 } from "../src/model/parse/ocr-fix.js";
 import { chooseTable, mergeOcrDocument, scanPagesOf } from "../src/model/parse/ocr-merge.js";
 import { createHelperClient } from "../src/host/parse-helper-client.js";
-import { alignVlmText, hintLayoutFigures } from "../src/model/parse/vlm-tables.js";
+import { alignVlmText, hintLayoutFigures, linkLayoutCaptions } from "../src/model/parse/vlm-tables.js";
 import { readScan } from "../src/view/parse-engine.js";
 import { buildLines } from "../src/model/parse/lines.js";
 import { visualRows } from "../src/model/parse/stream.js";
@@ -593,6 +593,7 @@ test("readScan high accuracy calls vlm, keeps the rule table when the reading dr
   });
   assert.equal(tablesCalled, false);
   assert.equal(vlmArgs.text, false);
+  assert.deepEqual(vlmArgs.numericPages, [2]);
   assert.ok(vlmArgs.tables.length >= 1);
   const t = tableOf(out.doc);
   assert.notEqual(t.method, "PaddleOCR-VL-0.9B");
@@ -604,6 +605,81 @@ test("readScan high accuracy calls vlm, keeps the rule table when the reading dr
   assert.equal(out.doc.ocr.vlmFigures, 0);
   const hinted = out.doc.order.map((id) => out.doc.blocks[id]).filter((b) => b && b.method === "vlm-layout");
   assert.equal(hinted.length, 0);
+  const linked = linkLayoutCaptions(out.doc, [{ page: 2, label: "figure_title", bbox: [0, 0, 10, 10], score: 0.9 }]);
+  assert.equal(linked.applied.length, 0);
+});
+
+test("readScan high accuracy skips a prose page", async () => {
+  const items = [];
+  const sentence = "The report describes the method and the sample in plain words".split(" ");
+  for (let r = 0; r < 8; r++) {
+    let x = 30;
+    const y = 40 + r * 12;
+    for (const piece of sentence) {
+      items.push(word(piece, x, y));
+      x += piece.length * 4 + 4;
+    }
+  }
+  const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 400, h: 200, rotation: 0, fonts: {} }, 1);
+  scanRec.kind = "scan";
+  const base = assembleDocument([scanRec], { numPages: 1 });
+  let called = false;
+  const helper = {
+    vlmHigh: true,
+    async ocr({ pages }) {
+      if (pages) {
+        return {
+          schema: "pxd-ocr/1", pageCount: 1, elapsedMs: 1,
+          pages: [{ n: 1, w: 400, h: 200, rotation: 0, transform: [1, 0, 0, 1, 0, 0], scan: true, dpi: 300, deskew: 0, fonts: { ocr: { name: "ocr" } }, items, rules: [], ops: { fnArray: [], argsArray: [] } }],
+        };
+      }
+      return { cells: [] };
+    },
+    async vlm() { called = true; return { tables: [], figures: [], layout: [] }; },
+  };
+  const out = await readScan({
+    helper, bytes: new Uint8Array([1]), sha256: "s", base, records: [scanRec],
+    numPages: 1, from: 1, to: 1, lines: false,
+  });
+  assert.equal(called, false);
+  assert.equal(out.doc.ocr.mode, "high");
+  assert.equal(out.doc.ocr.vlm, 0);
+});
+
+test("readScan high accuracy lays out a labeled column the rules missed", async () => {
+  const labels = ["Methane", "Ethane", "Propane", "Butane", "Nitrogen"];
+  const values = ["84.7", "9.4", "3.0", "1.3", "1.6"];
+  const items = [];
+  labels.forEach((label, i) => {
+    const y = 80 + i * 14;
+    items.push(word(label, 40, y));
+    items.push(word(values[i], 180, y));
+  });
+  const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 400, h: 500, rotation: 0, fonts: {} }, 1);
+  scanRec.kind = "scan";
+  const base = assembleDocument([scanRec], { numPages: 1 });
+  let called = null;
+  const helper = {
+    vlmHigh: true,
+    async ocr({ pages }) {
+      if (pages) {
+        return {
+          schema: "pxd-ocr/1", pageCount: 1, elapsedMs: 1,
+          pages: [{ n: 1, w: 400, h: 500, rotation: 0, transform: [1, 0, 0, 1, 0, 0], scan: true, dpi: 300, deskew: 0, fonts: { ocr: { name: "ocr" } }, items, rules: [], ops: { fnArray: [], argsArray: [] } }],
+        };
+      }
+      return { cells: [] };
+    },
+    async vlm(req) { called = req; return { tables: [], figures: [], layout: [] }; },
+  };
+  const out = await readScan({
+    helper, bytes: new Uint8Array([1]), sha256: "s", base, records: [scanRec],
+    numPages: 1, from: 1, to: 1, lines: false,
+  });
+  assert.ok(called, "the page is sent so layout can find the column");
+  assert.deepEqual(called.numericPages, []);
+  assert.deepEqual(called.pages, [1]);
+  assert.equal(out.doc.ocr.mode, "high");
 });
 
 test("hintLayoutFigures adds one box on an empty page and skips a page that has a figure", () => {

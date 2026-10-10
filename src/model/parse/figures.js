@@ -11,10 +11,11 @@ import { detectColumns } from "./xycut.js";
 const IMAGE_MIN = 12;
 const H_GAP = 56;
 const V_GAP = 42;
-const FIG_TOKEN = /^fig(?:ure)?\.?$/i;
+const FIG_LEAD = String.raw`fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|taf`;
+const FIG_TOKEN = new RegExp(`^(?:${FIG_LEAD})\\.?$`, "i");
 const FIG_NUM = /^\d+[A-Za-z]?[.:]?$/;
-const FIG_GLUED = /^fig(?:ure)?\.?\d+[A-Za-z]?$/i;
-const REVERSED_FIG_RE = /^\d+[A-Za-z]?\s*\.?\s*fig(?:ure)?\.?$/i;
+const FIG_GLUED = new RegExp(`^(?:${FIG_LEAD})\\.?\\d+[A-Za-z]?$`, "i");
+const REVERSED_FIG_RE = new RegExp(`^\\d+[A-Za-z]?(?:[.\\s]+)\\s*(?:${FIG_LEAD})\\.?$`, "i");
 const CAPTION_SPLIT_GAP = 8;
 const ANCHOR_SEP = 48;
 
@@ -90,7 +91,7 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
   unionPanels(figures, lines, bodySize, pageW, pageH);
   for (const fig of figures) growLabels(fig, lines, used, bodySize, pageW, pageH, gutters, labelWords);
   if (plates) {
-    coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes);
+    coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes.filter((b) => !overlapsBodyLine(b, lines)));
     // Labels grow the plate. Words already inside stay free so a real table on the same page can still form.
     for (const fig of figures) {
       if (!fig.fromPlate) continue;
@@ -115,13 +116,20 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
     // A rule cluster on a text page, with no figure caption, is a table the lattice
     // missed (USDA p10, 2500 characters). A patent sheet is short (p1 is under 300)
     // and keeps the drawing. A chart whose caption was accepted is fromPlate.
-    if (plates && !fig.fromPlate && !fig.pageImage && textChars >= 400) continue;
+    // A contents entry ("Figure 1. …… 7") is not a drawing, even when the page is short.
+    if (plates && !fig.fromPlate && !fig.pageImage && (textChars >= 400 || contentsLead(lines))) continue;
     if (plates && !fig.fromPlate && !fig.pageImage && lines.some((line) => proseLine(line) && line.y1 > fig.y0 + 1 && line.y0 < fig.y1 - 1 && Math.min(line.x1, fig.x1) - Math.max(line.x0, fig.x0) > 0.5 * (line.x1 - line.x0))) continue;
     fig.bbox = [round(fig.x0), round(fig.y0), round(fig.x1), round(fig.y1)];
     delete fig.pageImage;
     kept.push(fig);
   }
-  return { figures: kept, used };
+  return {
+    figures: rejectFalseFigures(kept, {
+      lines, pageW, pageH,
+      strokes: [...inkBoxes, ...prims.filter((p) => p.kind === "rule" || p.kind === "shape")],
+    }),
+    used,
+  };
 }
 
 // Image tiles that cover the page, with no text layer and no vector drawing, are a scan.
@@ -372,32 +380,38 @@ export function normalizeFigSpelling(text) {
   t = t.replace(/\bfigu[nr]e\b/gi, (m) => (m[0] === "f" ? "figure" : "Figure"));
   t = t.replace(/\b([A-Za-z]{2,})\s*,\s*(?=\d)/g, "$1. ");
   // A plate number whose digit came back as a letter: "Fig. l" / "Fig. I."
-  t = t.replace(/\b((?:fig(?:ure)?|plates?)\.?\s+)[lI|](?=\s|$|[.:])/gi, "$11");
+  t = t.replace(/\b((?:fig(?:ure)?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s+)[lI|](?=\s|$|[.:])/gi, "$11");
   // "FIG. 11" on a plate comes back as two capitals. Only the figure number, and only
   // uppercase II (the crop of the gas-burners plate is "FIG. 11", not a roman two). III stays III.
-  t = t.replace(/\b((?:fig(?:ure)?|plates?)\.?\s+)(II)(?=\s|$|[.:—–-])/gi, (full, pre, num) => (num === "II" ? `${pre}11` : full));
+  t = t.replace(/\b((?:fig(?:ure)?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s+)(II)(?=\s|$|[.:—–-])/gi, (full, pre, num) => (num === "II" ? `${pre}11` : full));
   return t;
 }
 
 // The number that belongs to the figure word, not a later "8-inch" or a section
 // list. A range ("Figs. 5 & 6") is not a splitter. A bare "Fig." has no number.
 export function figCaptionKey(text) {
-  const t = normalizeFigSpelling(text);
-  const rev = /^(\d+)\s*\.?\s*(?:fig(?:ure)?|plates?)\.?$/i.exec(t);
+  let t = normalizeFigSpelling(text);
+  t = t.replace(/^(?:[-+]?\d+\s+){1,6}(?=(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b)/i, "");
+  // A steel "plate 14 inches" is a dimension, not Plate 14.
+  if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return null;
+  const roman = /^(?:plates?|tafeln?|tafel|taf\.?)\s+([IVXLC]{1,6})\b/i.exec(t);
+  if (roman) return roman[1].toUpperCase();
+  const rev = new RegExp(`^(\\d+)\\s*\\.?\\s*(?:${FIG_LEAD})\\.?$`, "i").exec(t);
   if (rev) return rev[1];
-  const m = /^((?:fig(?:ure)?s?|plates?)\.?)\s*(\d+[A-Za-z]?)?/i.exec(t);
+  const m = new RegExp(`^((?:${FIG_LEAD})\\.?)\\s*(\\d+[A-Za-z]?)?`, "i").exec(t);
   if (!m) return null;
   if (!m[2]) return "";
   const rest = t.slice(m[0].length);
-  if (/^figs|^plates/i.test(m[1]) && /^[\s.,:&-]*(?:and\s+)?\d+/i.test(rest)) return null;
+  if (/^(?:figs|plates|abbildungen|tafeln)/i.test(m[1]) && /^[\s.,:&-]*(?:and\s+)?\d+/i.test(rest)) return null;
   return m[2].replace(/[A-Za-z]$/, "");
 }
 
 function lineIsCaption(text) {
   const t = normalizeFigSpelling(text);
-  if (CAPTION_RE.test(t) || figCaptionKey(t) != null || /^fig(?:ure)?\.?\s*$/i.test(t) || REVERSED_FIG_RE.test(t)) return true;
+  if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return false;
+  if (CAPTION_RE.test(t) || figCaptionKey(t) != null || new RegExp(`^(?:${FIG_LEAD})\\.?\\s*$`, "i").test(t) || REVERSED_FIG_RE.test(t)) return true;
   // "Figure" followed by a missing glyph or a bare number, with no other words.
-  return /^fig(?:ure)?\.?\s+(\d+[A-Za-z]?[:.]?|[^\p{L}\p{N}]{1,4})$/iu.test(t);
+  return new RegExp(`^(?:${FIG_LEAD})\\.?\\s+(\\d+[A-Za-z]?[:.]?|[^\\p{L}\\p{N}]{1,4})$`, "iu").test(t);
 }
 
 function lineIsBody(line) {
@@ -667,7 +681,7 @@ function orderedLabelWords(group) {
 
 // On a drawing sheet, lift each FIG. label onto its own line and fix reversed labels.
 function normalizeFigWord(w) {
-  const m = /^(\d+[A-Za-z]?)\.?fig(?:ure)?\.?$/i.exec(String(w.text || "").trim());
+  const m = /^(\d+[A-Za-z]?)\.fig(?:ure)?\.?$/i.exec(String(w.text || "").trim());
   if (!m) return w;
   return { ...w, text: `FIG. ${m[1]}` };
 }
@@ -848,6 +862,21 @@ function hullOf(items) {
   };
 }
 
+function touchesBox(a, b, pad) {
+  return a.x0 <= b.x1 + pad && b.x0 <= a.x1 + pad && a.y0 <= b.y1 + pad && b.y0 <= a.y1 + pad;
+}
+
+// A disconnected speck (a one-pixel Vision mark at the page origin) must not
+// pull the plate hull to the corner. Thin strokes of a line drawing are all
+// small, so they stay when nothing larger is on the page.
+function isolatedInk(boxes, pageW, pageH) {
+  if (boxes.length < 2) return [];
+  const minArea = Math.max(64, 0.001 * pageW * pageH);
+  const big = boxes.filter((b) => boxArea(b) >= minArea);
+  if (!big.length) return [];
+  return boxes.filter((b) => boxArea(b) < minArea && !big.some((g) => touchesBox(b, g, 6)));
+}
+
 // Share of `inner` that sits inside `outer`. Boxes are {x0,y0,x1,y1}.
 function insideFrac(inner, outer) {
   const area = boxArea(inner);
@@ -864,11 +893,275 @@ function proseLine(line) {
   return words.filter((w) => /[A-Za-z]{3,}/.test(w)).length >= 4;
 }
 
+function contentsLead(lines) {
+  const list = lines || [];
+  const leader = list.some((line) => {
+    const t = String(line.text || "");
+    const dots = (t.match(/[.]/g) || []).length;
+    return /\.{4,}|…{2,}|·{4,}/.test(t) || (dots >= 6 && dots > t.length * 0.35);
+  });
+  const named = list.some((line) => /\b(?:fig(?:ure)?s?|tables?|plates?)\b/i.test(line.text || "") && /\d/.test(line.text || ""));
+  return leader && named;
+}
+
+// Ink that sits on a body line is the type, or an underline, not the drawing.
+function overlapsBodyLine(box, lines) {
+  const bw = (box.x1 ?? 0) - (box.x0 ?? 0);
+  const bh = (box.y1 ?? 0) - (box.y0 ?? 0);
+  if (!(bw > 0) || !(bh > 0)) return false;
+  for (const line of lines || []) {
+    if (!proseLine(line)) continue;
+    const ox = Math.min(box.x1, line.x1) - Math.max(box.x0, line.x0);
+    const oy = Math.min(box.y1, line.y1) - Math.max(box.y0, line.y0);
+    if (ox > 0.6 * bw && oy > 0.5 * bh) return true;
+  }
+  return false;
+}
+
+function figBox(fig) {
+  if (fig.bbox && fig.bbox.length >= 4 && (fig.x0 == null)) return { x0: fig.bbox[0], y0: fig.bbox[1], x1: fig.bbox[2], y1: fig.bbox[3] };
+  if (fig.x0 != null) return { x0: fig.x0, y0: fig.y0, x1: fig.x1, y1: fig.y1 };
+  if (fig.bbox && fig.bbox.length >= 4) return { x0: fig.bbox[0], y0: fig.bbox[1], x1: fig.bbox[2], y1: fig.bbox[3] };
+  return null;
+}
+
+function writeFigBox(fig, box) {
+  fig.x0 = box.x0; fig.y0 = box.y0; fig.x1 = box.x1; fig.y1 = box.y1;
+  if (fig.bbox) fig.bbox = [round(box.x0), round(box.y0), round(box.x1), round(box.y1)];
+}
+
+function lineCenterIn(line, box) {
+  const cx = ((line.x0 ?? 0) + (line.x1 ?? 0)) / 2;
+  const cy = ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2;
+  return cx >= box.x0 && cx <= box.x1 && cy >= box.y0 && cy <= box.y1;
+}
+
+function strokeGeom(s) {
+  if (!s || s.x0 == null || s.y0 == null || s.x1 == null || s.y1 == null) return null;
+  const x0 = Math.min(s.x0, s.x1);
+  const x1 = Math.max(s.x0, s.x1);
+  const y0 = Math.min(s.y0, s.y1);
+  const y1 = Math.max(s.y0, s.y1);
+  return { ...s, x0, y0, x1, y1, w: x1 - x0, h: y1 - y0, kind: s.kind || "ink" };
+}
+
+function strokeInBox(box, g) {
+  if (g.h < 1 && g.w >= 1) {
+    return g.y0 >= box.y0 - 1 && g.y0 <= box.y1 + 1 && Math.min(box.x1, g.x1) - Math.max(box.x0, g.x0) > 1;
+  }
+  if (g.w < 1 && g.h >= 1) {
+    return g.x0 >= box.x0 - 1 && g.x0 <= box.x1 + 1 && Math.min(box.y1, g.y1) - Math.max(box.y0, g.y0) > 1;
+  }
+  return Math.min(box.x1, g.x1) - Math.max(box.x0, g.x0) > 0 && Math.min(box.y1, g.y1) - Math.max(box.y0, g.y0) > 0;
+}
+
+// Axes (a long rule each way, plus ticks or a curve), a curve, hatching, a
+// raster region bigger than a library stamp, or a dense sketch. A table grid
+// of long rules is none of these. Margin specks are not either.
+function drawingParts(box, strokes, pageW, pageH) {
+  if (!box || !(pageW > 0) || !(pageH > 0)) return [];
+  const pageArea = pageW * pageH;
+  const inside = [];
+  for (const s of strokes || []) {
+    const g = strokeGeom(s);
+    if (!g || g.kind === "image") continue;
+    if (!strokeInBox(box, g)) continue;
+    inside.push(g);
+  }
+  if (!inside.length) return [];
+  const blobs = inside.filter((g) => (g.kind === "ink" || g.kind === "box") && g.w * g.h > 0.015 * pageArea && Math.min(g.w, g.h) >= 8);
+  const curves = inside.filter((g) => g.kind === "shape" && ((g.segs || g.n || 0) >= 8 || (g.w * g.h > 0.015 * pageArea && Math.min(g.w, g.h) >= 8)));
+  const rules = inside.filter((g) => g.kind === "rule");
+  const longH = rules.filter((g) => g.w >= 36 && g.h <= 4);
+  const longV = rules.filter((g) => g.h >= 36 && g.w <= 4);
+  const shortH = rules.filter((g) => g.w >= 8 && g.w < 36 && g.h <= 4);
+  const shortV = rules.filter((g) => g.h >= 8 && g.h < 36 && g.w <= 4);
+  const hatch = shortH.length >= 6 || shortV.length >= 6;
+  const axes = longH.length >= 1 && longV.length >= 1 && (shortH.length + shortV.length >= 4 || curves.length > 0 || blobs.length > 0);
+  const fragments = inside.filter((g) => (g.kind === "ink" || g.kind === "shape") && Math.min(g.w, g.h) >= 6 && Math.max(g.w, g.h) >= 12 && g.w * g.h >= 80);
+  const fragHull = hullOf(fragments);
+  const fragArea = fragments.reduce((n, g) => n + g.w * g.h, 0);
+  const many = fragments.length >= 8 && fragHull && fragArea >= 0.25 * Math.max(1, boxArea(fragHull));
+  if (!blobs.length && !curves.length && !hatch && !axes && !many) return [];
+  const parts = [];
+  if (blobs.length) parts.push(...blobs);
+  if (curves.length) parts.push(...curves);
+  if (hatch) parts.push(...(shortH.length >= 6 ? shortH : shortV));
+  if (axes) parts.push(...longH, ...longV, ...shortH, ...shortV);
+  if (many) parts.push(...fragments);
+  return parts;
+}
+
+// The drawing's hull lies in the candidate and fills at least `minShare` of it.
+// A fifth means the box is the drawing, not a margin that touched one stroke.
+function drawingCovers(box, parts, minShare) {
+  if (!parts.length) return false;
+  const hull = hullOf(parts);
+  if (!hull || insideFrac(hull, box) < 0.8) return false;
+  const boxA = boxArea(box);
+  if (!(boxA > 0)) return false;
+  const hw = Math.max(0, hull.x1 - hull.x0);
+  const hh = Math.max(0, hull.y1 - hull.y0);
+  const hullA = Math.max(hw * hh, hw * 8, hh * 8);
+  return hullA >= minShare * boxA;
+}
+
+function markMeasure(g) {
+  if (g.h <= 4 && g.w >= 8) return g.w;
+  if (g.w <= 4 && g.h >= 8) return g.h;
+  return Math.max(g.w, 0.6) * Math.max(g.h, 0.6);
+}
+
+function markOverlap(g, next) {
+  if (g.h <= 4 && g.w >= 8) {
+    if (g.y0 < next.y0 - 1.5 || g.y0 > next.y1 + 1.5) return 0;
+    return Math.max(0, Math.min(next.x1, g.x1) - Math.max(next.x0, g.x0));
+  }
+  if (g.w <= 4 && g.h >= 8) {
+    if (g.x0 < next.x0 - 1.5 || g.x0 > next.x1 + 1.5) return 0;
+    return Math.max(0, Math.min(next.y1, g.y1) - Math.max(next.y0, g.y0));
+  }
+  const ox = Math.max(0, Math.min(next.x1, g.x1) - Math.max(next.x0, g.x0));
+  const oy = Math.max(0, Math.min(next.y1, g.y1) - Math.max(next.y0, g.y0));
+  return ox * oy;
+}
+
+// A clip may shave labels. It may not throw the drawing away.
+function drawingKept(box, next, parts) {
+  if (!drawingCovers(box, parts, 0.2)) return true;
+  let area = 0;
+  let kept = 0;
+  for (const p of parts) {
+    const a = markMeasure(p);
+    area += a;
+    kept += markOverlap(p, next);
+  }
+  return !(area > 0) || kept >= 0.75 * area;
+}
+
+// A caption or a paragraph across the plate is not a column beside the ink.
+function spansPlate(line, box, parts) {
+  const lw = (line.x1 ?? 0) - (line.x0 ?? 0);
+  const bw = box.x1 - box.x0;
+  if (bw > 0 && lw >= 0.62 * bw) return true;
+  if (!parts.length) return false;
+  const x0 = Math.min(...parts.map((p) => p.x0));
+  const x1 = Math.max(...parts.map((p) => p.x1));
+  const dw = x1 - x0;
+  if (dw < 24) return false;
+  return Math.min(line.x1, x1) - Math.max(line.x0, x0) >= 0.7 * dw;
+}
+
+function textBlockBox(box, lines) {
+  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box));
+  if (prose.length < 6) return false;
+  const span = Math.max(...prose.map((line) => line.y1)) - Math.min(...prose.map((line) => line.y0));
+  return span >= 0.55 * (box.y1 - box.y0);
+}
+
+// A column of body text beside the ink is not part of the drawing. Clip it off
+// when the prose sits on one side and a drawing-sized remainder stays.
+// Lines that cross the drawing are the caption or the paragraph on the plate.
+// A text page is not carved: slicing one column off it leaves a strip.
+function clipBodyColumn(fig, lines, strokes, pageW, pageH) {
+  const box = figBox(fig);
+  if (!box) return false;
+  if (textBlockBox(box, lines)) return false;
+  const parts = drawingParts(box, strokes, pageW, pageH);
+  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box) && !spansPlate(line, box, parts));
+  if (prose.length < 3) return false;
+  const mid = (box.x0 + box.x1) / 2;
+  const right = prose.filter((line) => ((line.x0 + line.x1) / 2) >= mid);
+  const left = prose.filter((line) => ((line.x0 + line.x1) / 2) < mid);
+  let next = { ...box };
+  if (right.length >= 3 && left.length <= 1) {
+    const cut = Math.min(...right.map((line) => line.x0));
+    if (cut - box.x0 >= 48 && box.x1 - cut >= 24) next = { ...next, x1: cut - 2 };
+  } else if (left.length >= 3 && right.length <= 1) {
+    const cut = Math.max(...left.map((line) => line.x1));
+    if (box.x1 - cut >= 48 && cut - box.x0 >= 24) next = { ...next, x0: cut + 2 };
+  }
+  if (next.x0 === box.x0 && next.x1 === box.x1) return false;
+  if (!drawingKept(box, next, parts)) return false;
+  writeFigBox(fig, next);
+  return true;
+}
+
+// Why a box is not a figure: edge stripe, library stamp, rule, table border, text block.
+// A null reason means the box stays. A candidate whose ink is a drawing (axes, a curve,
+// hatching, many strokes) is a figure wherever it sits. A text hull that only contains
+// a small drawing is still a text block.
+export function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, pageH = 792, peers = [], strokes = [] } = {}) {
+  const box = figBox(fig);
+  if (!box || !(pageW > 0) || !(pageH > 0)) return null;
+  const w = box.x1 - box.x0;
+  const h = box.y1 - box.y0;
+  const area = w * h;
+  const pageArea = pageW * pageH;
+  if (!(area > 0)) return null;
+  const textBlock = textBlockBox(box, lines);
+  const parts = drawingParts(box, strokes, pageW, pageH);
+  if (drawingCovers(box, parts, 0.5) || (drawingCovers(box, parts, 0.2) && !textBlock)) return null;
+  const touchTop = box.y0 <= Math.max(4, 0.02 * pageH);
+  const touchBot = box.y1 >= pageH - Math.max(4, 0.02 * pageH);
+  const touchLeft = box.x0 <= Math.max(4, 0.02 * pageW);
+  const touchRight = box.x1 >= pageW - Math.max(4, 0.02 * pageW);
+  const largerPeer = peers.some((other) => other !== fig && boxArea(figBox(other) || {}) >= 3 * area);
+  if ((touchTop || touchBot) && h <= 0.16 * pageH && w >= 0.65 * pageW && w >= 5 * h && (largerPeer || h <= 0.045 * pageH)) return "edge-stripe";
+  if ((touchLeft || touchRight) && w <= 0.055 * pageW && h >= 0.35 * pageH && h >= 8 * w) return "edge-stripe";
+  if (!fig.fromPlate && (h <= 0.012 * pageH && w >= 0.25 * pageW || w <= 0.012 * pageW && h >= 0.25 * pageH)) return "rule";
+  const cx = (box.x0 + box.x1) / 2;
+  const cy = (box.y0 + box.y1) / 2;
+  const aspect = h > 0 ? w / h : 0;
+  const corner = (cx <= 0.12 * pageW || cx >= 0.88 * pageW) && (cy <= 0.12 * pageH || cy >= 0.88 * pageH);
+  if (!fig.fromPlate && corner && area >= 0.002 * pageArea && area <= 0.015 * pageArea && aspect >= 0.35 && aspect <= 2.8) return "stamp";
+  if (!fig.fromPlate && cy >= 0.9 * pageH && w <= 0.45 * pageW && h <= 0.045 * pageH && area <= 0.02 * pageArea && aspect >= 1.4) return "stamp";
+  for (const table of tables || []) {
+    const tb = table.bbox || table;
+    if (!tb || tb.length < 4) continue;
+    if (insideFrac(box, { x0: tb[0], y0: tb[1], x1: tb[2], y1: tb[3] }) >= 0.55) return "table-border";
+  }
+  if (textBlock) return "text-block";
+  return null;
+}
+
+// Body lines stacked in the upper part of a box are the paragraph above the drawing.
+// A running head may sit above that paragraph; the cut still drops the whole band.
+function clipBodyBand(fig, lines, strokes, pageW, pageH) {
+  const box = figBox(fig);
+  if (!box) return;
+  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box));
+  if (prose.length < 3) return;
+  const bot = Math.max(...prose.map((line) => line.y1));
+  const top = Math.min(...prose.map((line) => line.y0));
+  const h = box.y1 - box.y0;
+  if (bot - top <= 0.45 * h && bot - box.y0 <= 0.45 * h && box.y1 - bot >= 48) {
+    const next = { ...box, y0: bot + 2 };
+    if (!drawingKept(box, next, drawingParts(box, strokes, pageW, pageH))) return;
+    writeFigBox(fig, next);
+  }
+}
+
+export function rejectFalseFigures(figures, opts = {}) {
+  const list = figures || [];
+  const strokes = opts.strokes || [];
+  const pageW = opts.pageW || 612;
+  const pageH = opts.pageH || 792;
+  for (const fig of list) {
+    clipBodyColumn(fig, opts.lines || [], strokes, pageW, pageH);
+    clipBodyBand(fig, opts.lines || [], strokes, pageW, pageH);
+  }
+  const peers = list.map((fig) => fig);
+  return list.filter((fig) => !falseFigureReason(fig, { ...opts, peers, strokes }));
+}
+
 // A steel "plate 14 inches" is not Plate 14. "Figure 1 is a side elevation" and
 // "Figure 2 herewith." point at a drawing; they are not the caption under it.
 function plateLabelText(text, key) {
   if (key == null) return false;
   const t = normalizeFigSpelling(text).replace(/\s+/g, " ").trim();
+  // A contents entry ("FIGURE 1. …… 7") names a plate on another page.
+  if (/\.{4,}|…{2,}|·{4,}/.test(t)) return false;
   if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return false;
   const words = t.split(" ");
   if (key === "" && words.length > 2) return false;
@@ -879,6 +1172,62 @@ function plateLabelText(text, key) {
 }
 
 // Caption lines that name one figure. A "Figs. 5 & 6" range is not one of them.
+function titleLikePlateLine(text) {
+  const t = normalizeFigSpelling(String(text || "")).replace(/\s+/g, " ").trim();
+  if (!t || /\.{4,}|…{2,}|·{4,}/.test(t)) return false;
+  const words = t.split(" ").filter(Boolean);
+  if (words.length < 2 || words.length > 28) return false;
+  if (/^(?:table|tabelle|tab)\b/i.test(t) && !/^taf/i.test(t)) return false;
+  if (figCaptionKey(t) != null) return false;
+  // "flat plates fastened…" is a sentence. The label itself starts the line.
+  if (/^(?:plates?|tafeln?|tafel|taf\.?|abb(?:ildung)?)\b/i.test(t)) return true;
+  if (words.length < 4) return false;
+  // A running head carries the page number at one end, or the word Continued.
+  // "420 CALIFORNIA BLUE BOOK" and "… COMMISSIONS. 421" name the page, not the plate.
+  const edgeNum = (w) => /^\d{1,4}[.]?$/.test(w);
+  if (edgeNum(words[0]) || edgeNum(words[words.length - 1])) return false;
+  if (/\bcontinued\b/i.test(t)) return false;
+  // "COMMISSION, STATE. 1913-1924" is a term of office, not the title of a plate.
+  if (/\b\d{4}\s*[-–—]\s*\d{2,4}\b/.test(t)) return false;
+  const letters = t.replace(/[^A-Za-z]/g, "");
+  if (letters.length < 8) return false;
+  return letters.replace(/[^A-Z]/g, "").length / letters.length >= 0.62;
+}
+
+// The ink is one plate and the only label is a title under or over it.
+function plateTitleCaptions(lines, ink, pageW, pageH) {
+  if (!ink || ink.length < 4) return [];
+  const hull = hullOf(ink);
+  if (!hull) return [];
+  const area = (hull.x1 - hull.x0) * (hull.y1 - hull.y0);
+  if (area < 0.04 * pageW * pageH) return [];
+  // A heading over a paragraph is not a plate, even when the paragraph's rules look like ink.
+  const paragraph = lines.some((line) => proseLine(line) && lineCenterIn(line, hull)
+    && Math.min(line.x1, hull.x1) - Math.max(line.x0, hull.x0) > 0.5 * (hull.x1 - hull.x0));
+  if (paragraph) return [];
+  const limit = Math.max(48, 0.08 * pageH);
+  const out = [];
+  for (const line of lines) {
+    if (!titleLikePlateLine(line.text)) continue;
+    const below = line.y0 >= hull.y1 - 2;
+    const above = line.y1 <= hull.y0 + 2;
+    const gap = below ? line.y0 - hull.y1 : above ? hull.y0 - line.y1 : 0;
+    if (!below && !above) continue;
+    // An all-caps line above a small drawing is a heading. Above a plate that fills
+    // the page, with no body column, it is the plate title. Plate / Tafel / Abb. may sit on either side.
+    const plateWord = /\b(?:plates?|tafeln?|tafel|abb(?:ildung)?)\b/i.test(normalizeFigSpelling(line.text));
+    const proseN = lines.filter((l) => proseLine(l)).length;
+    if (!plateWord && !below && (proseN >= 2 || area < 0.18 * pageW * pageH)) continue;
+    if (gap > limit) continue;
+    const ox = Math.min(hull.x1, line.x1) - Math.max(hull.x0, line.x0);
+    const narrower = Math.min(hull.x1 - hull.x0, Math.max(1, line.x1 - line.x0));
+    if (ox < 0.35 * narrower) continue;
+    out.push({ ...line, key: "title", text: normalizeFigSpelling(line.text) });
+  }
+  out.sort((a, b) => a.y0 - b.y0);
+  return out.slice(0, 1);
+}
+
 function plateCaptions(lines, pageH) {
   const out = [];
   for (const line of lines) {
@@ -1034,17 +1383,28 @@ function dropCoveredDrawings(figures) {
 
 function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = []) {
   let ink = [...prims.filter((p) => p.kind === "rule" || p.kind === "shape"), ...inkBoxes];
+  ink = ink.filter((p) => {
+    if (p.kind !== "rule") return true;
+    const thin = (p.y1 - p.y0) <= 4 || (p.x1 - p.x0) <= 4;
+    return !thin || !overlapsBodyLine(p, lines);
+  });
   const inkOnly = ink.filter((p) => p.kind === "ink");
   if (inkOnly.length) {
-    const drawn = hullOf(inkOnly);
+    const stray = new Set(isolatedInk(inkOnly, pageW, pageH));
+    if (stray.size) ink = ink.filter((p) => !stray.has(p));
+    const mass = ink.filter((p) => p.kind === "ink");
+    if (!mass.length) return;
+    const drawn = hullOf(mass);
     const padX = Math.max(36, 0.06 * pageW);
     const padY = Math.max(18, 0.04 * pageH);
     const near = ink.filter((p) => p.kind === "ink" || (p.x1 >= drawn.x0 - padX && p.x0 <= drawn.x1 + padX && p.y1 >= drawn.y0 - padY && p.y0 <= drawn.y1 + padY));
     if (near.length >= 4) ink = near;
   }
   if (ink.length < 4) return;
-  const caps = plateCaptions(lines, pageH);
-  // Ink with no figure line is a table rule or a speck, not a plate.
+  let caps = plateCaptions(lines, pageH);
+  // A plate title (PLATE I, TAFEL, an all-caps line on the drawing) is the caption
+  // when the page has no Fig. line. A heading far from the ink is not one.
+  if (!caps.length) caps = plateTitleCaptions(lines, inkOnly, pageW, pageH);
   if (!caps.length) return;
   // Band cuts need raster ink. Rule fragments alone hull too tight (accelerometer
   // helper Fig. 2) and the nearest-caption path is the one that matched before.

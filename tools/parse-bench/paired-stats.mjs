@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Paired statistics for two parsers over the same truth pages (the beat-LlamaParse loop).
 //   node tools/parse-bench/paired-stats.mjs --root <corpus dir> --manifest <manifest.json> --a <docs dir> --b <docs dir>
-//     [--a-name Plexus] [--b-name LlamaParse] [--fold-quotes] [--gate dev|sealed] [--seed 20261009] [--json out.json] [--md out.md]
+//     [--a-name Plexus] [--b-name LlamaParse] [--fold-quotes] [--gate dev|sealed|match] [--seed 20261009] [--json out.json] [--md out.md]
 // Truth is <root>/truth/<id>.json. A docs dir holds <id>.pxd.json or <pdf file>.p<N>.<anything>.pxd.json.
 // Pages come from the manifest's `pages`. Scoring is scorePage (scan-score.mjs); this file adds only the
 // per-page score S, the paired tests and the gate.
@@ -463,7 +463,11 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
     if (p.d > 0) c.wins++; else if (p.d < 0) c.losses++; else c.ties++;
   }
   const categories = Object.entries(cats).map(([name, c]) => ({ name, n: c.n, meanA: c.sumA / c.n, meanB: c.sumB / c.n, wins: c.wins, ties: c.ties, losses: c.losses }));
-  const sealed = gate === "sealed";
+  // "At least matches LlamaParse": overall non-inferiority (the 95% CI lower bound of mean(d) above -MARGIN) and
+  // LlamaParse not significantly better (one-sided Wilcoxon on -d). Being better than LlamaParse also passes.
+  const worse = wilcoxon(d.map((x) => -x));
+  const match = { margin: MARGIN, lo: ci.lo, pass: ci.lo != null && ci.lo > -MARGIN, pWorse: worse.pExact };
+  const sealed = gate === "sealed" || gate === "match";
   const checks = [];
   const add = (name, value, pass) => checks.push({ name, value, pass: !!pass });
   if (sealed) {
@@ -479,9 +483,14 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
       add(`<= 3 pages per document in ${c}`, most, most <= 3);
     }
   }
-  add("exact one-sided p < 0.01", w.pExact, w.pExact < 0.01);
-  add("rank-biserial r >= 0.5", w.r, w.r >= 0.5);
-  add("bootstrap CI lower bound of mean(d) > 0", ci.lo, ci.lo != null && ci.lo > 0);
+  if (gate === "match") {
+    add(`non-inferiority overall: CI lower of mean(d) > -${MARGIN}`, ci.lo, match.pass);
+    add("LlamaParse not significantly better (one-sided p >= 0.05)", worse.pExact, worse.pExact >= 0.05);
+  } else {
+    add("exact one-sided p < 0.01", w.pExact, w.pExact < 0.01);
+    add("rank-biserial r >= 0.5", w.r, w.r >= 0.5);
+    add("bootstrap CI lower bound of mean(d) > 0", ci.lo, ci.lo != null && ci.lo > 0);
+  }
   for (const k of ["cell", "text", "fig"]) add(`non-inferiority ${k}: CI lower > -${MARGIN}`, nonInf[k].lo, nonInf[k].pass);
   const meanOf = (side, k) => {
     const v = pages.map((p) => p[side][k]).filter((x) => x != null);
@@ -497,6 +506,7 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
     wilcoxon: w,
     dz,
     ci: { lo: ci.lo, hi: ci.hi, resamples, seed },
+    match,
     nonInferiority: nonInf,
     categories,
     failedReads: { a: missing.a.length, b: missing.b.length, aIds: missing.a, bIds: missing.b },
@@ -518,6 +528,7 @@ export function table(res, aName, bName) {
   L.push(`mean S ${aName} ${f3(res.meanA)}  ${bName} ${f3(res.meanB)}  mean d ${f3(res.meanD)}  95% CI [${f3(res.ci.lo)}, ${f3(res.ci.hi)}]`);
   L.push(`Wilcoxon (n=${w.n}, zeros ${w.zeros}) W+ ${w.wPlus} W- ${w.wMinus}  exact p ${f3(w.pExact)}  normal p ${f3(w.pNormal)} (z ${f3(w.z)})`);
   L.push(`rank-biserial r ${f3(w.r)}  Cohen d_z ${f3(res.dz)}`);
+  L.push(`match (non-inferiority, margin ${res.match.margin}): CI lower ${f3(res.match.lo)} ${res.match.pass ? "pass" : "fail"}; LlamaParse better one-sided p ${f3(res.match.pWorse)}`);
   L.push(`diagnostic, exact-anchor table F1 (not in S): cell ${aName} ${f3(res.exact.cellA)} ${bName} ${f3(res.exact.cellB)}  struct ${aName} ${f3(res.exact.structA)} ${bName} ${f3(res.exact.structB)}`);
   for (const [k, v] of Object.entries(res.nonInferiority)) L.push(`non-inferiority ${k}: n ${v.n}  mean ${f3(v.mean)}  CI [${f3(v.lo)}, ${f3(v.hi)}]  ${v.pass ? "ok" : "FAIL"}`);
   L.push("");
@@ -543,6 +554,7 @@ export function markdown(res, aName, bName) {
   L.push(`| mean difference, 95% bootstrap CI | ${f3(res.meanD)} [${f3(res.ci.lo)}, ${f3(res.ci.hi)}] (${res.ci.resamples} resamples, seed ${res.ci.seed}) |`);
   L.push(`| Wilcoxon exact one-sided p | ${f3(w.pExact)} (normal approx ${f3(w.pNormal)}; n ${w.n}, zeros ${w.zeros}) |`);
   L.push(`| rank-biserial r / Cohen d_z | ${f3(w.r)} / ${f3(res.dz)} |`);
+  L.push(`| match: CI lower of mean(d) (margin -${res.match.margin}) / LlamaParse-better p | ${f3(res.match.lo)} / ${f3(res.match.pWorse)} |`);
   L.push(`| diagnostic: exact-anchor cell F1 ${aName} / ${bName} (not in S) | ${f3(res.exact.cellA)} / ${f3(res.exact.cellB)} |`, "");
   L.push(`## Gate (${res.gate.mode}): ${res.gate.pass ? "PASS" : "FAIL"}`, "");
   for (const c of res.gate.checks) L.push(`- [${c.pass ? "x" : " "}] ${c.name}: ${f3(c.value)}`);
@@ -583,7 +595,7 @@ export function parseArgs(argv) {
     else throw new Error(`unknown argument ${a}`);
   }
   for (const k of ["root", "manifest", "a", "b"]) if (!o[k]) throw new Error(`--${k} is required`);
-  if (!["dev", "sealed"].includes(o.gate)) throw new Error("--gate is dev or sealed");
+  if (!["dev", "sealed", "match"].includes(o.gate)) throw new Error("--gate is dev, sealed or match");
   if (!Number.isFinite(o.seed)) throw new Error("--seed must be a number");
   return o;
 }

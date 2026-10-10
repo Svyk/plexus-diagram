@@ -412,3 +412,22 @@ test("a page whose only truth figures are tiny has no figure component and is un
   assert.deepEqual(components(null, { figures: [qr] }), {});
   assert.equal(applicable({ figures: [] }).fig, true);
 });
+
+test("match gate: overall non-inferiority and LlamaParse not significantly better", async () => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+  const os = await import("node:os");
+  const dir = await mkdtemp(path.join(os.tmpdir(), "pxd-match-"));
+  try {
+    await mkdir(path.join(dir, "truth"), { recursive: true });
+    await mkdir(path.join(dir, "a"), { recursive: true });
+    await mkdir(path.join(dir, "b"), { recursive: true });
+    const res = evaluate({ root: dir, manifest: { pages: [] }, aDir: path.join(dir, "a"), bDir: path.join(dir, "b"), resamples: 200, gate: "match" });
+    assert.equal(res.gate.mode, "match");
+    assert.ok(res.gate.checks.some((c) => c.name.startsWith("non-inferiority overall")));
+    assert.ok(res.gate.checks.some((c) => c.name.startsWith("LlamaParse not significantly better")));
+    assert.equal(res.gate.checks.some((c) => c.name === "exact one-sided p < 0.01"), false);
+    assert.equal(res.match.margin, 0.05);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

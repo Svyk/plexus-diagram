@@ -6713,14 +6713,23 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   });
   let conforming = 0;
   let counted = 0;
+  const tol = 0.5 * bodySize;
+  const insideColumn = (p) => p.span === 1 && p.t.x0 >= cols[p.c].x0 - tol && p.t.x1 <= cols[p.c].x1 + tol;
+  const shortRow = (row4) => row4.every((p) => String(p.t.text || "").trim().split(/\s+/).length <= 4);
+  const wordish = (t) => /[A-Za-z]{2,}/.test(t);
+  const mixed = (a, b) => valueToken(a) && valueToken(b) || valueToken(a) && wordish(b) || wordish(a) && valueToken(b);
+  const lowerWord = (t) => /^[a-z]+$/.test(String(t || "").trim());
+  const wrappedPair = (a, b) => insideColumn(a) && insideColumn(b) && (dateCell(`${a.t.text} ${b.t.text}`) || !mixed(a.t.text, b.t.text) && !lowerWord(a.t.text) && !lowerWord(b.t.text));
   placed.forEach((row4) => {
     if (row4.length < 2) return;
     counted++;
-    const seen = /* @__PURE__ */ new Set();
+    const short = shortRow(row4);
+    const seen = /* @__PURE__ */ new Map();
     let dup = false;
     for (const p of row4) {
-      if (seen.has(p.c)) dup = true;
-      seen.add(p.c);
+      const prev = seen.get(p.c);
+      if (prev && !(short && wrappedPair(prev, p))) dup = true;
+      if (!prev) seen.set(p.c, p);
     }
     const ok = seen.size >= 2 && (bands ? true : !dup);
     if (ok) conforming++;
@@ -7293,7 +7302,7 @@ function proseRow(row4, tokens2, columnWidth = Infinity) {
   const chars = words.reduce((k, w) => k + w.text.length, 0);
   if (chars / n2 < 3.5) return false;
   if (Number.isFinite(columnWidth) && row4.x1 - row4.x0 < 0.6 * columnWidth) return false;
-  const short = tokens2.filter((t) => t.words.length <= 2 || valueToken(t.text)).length;
+  const short = tokens2.filter((t) => t.words.length <= 2 || valueToken(t.text) || dateCell(t.text)).length;
   return tokens2.length === 1 || tokens2.length < n2 / 2 && short === 0;
 }
 function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeGaps = true, ocr = false, handwriting = false } = {}) {
@@ -7669,7 +7678,7 @@ function phraseTable(table) {
   const words = (s) => String(s).trim().split(/\s+/).filter(Boolean);
   const phrases = filled.filter((c) => words(c.text).length >= 5).length;
   if (phrases / filled.length > 0.5) return true;
-  const numeric = filled.filter((c) => valueToken(c.text)).length;
+  const numeric = filled.filter((c) => valueToken(c.text) || dateCell(c.text)).length;
   if (numeric / filled.length >= 0.2) return false;
   const byRow = /* @__PURE__ */ new Map();
   for (const c of filled) {
@@ -7679,6 +7688,12 @@ function phraseTable(table) {
   let long = 0;
   for (const ts of byRow.values()) if (words(ts.join(" ")).length >= 8) long++;
   return byRow.size >= 3 && long / byRow.size > 0.5;
+}
+function dateCell(text3) {
+  const s = String(text3 || "").trim();
+  if (!s || s.split(/\s+/).length > 4) return false;
+  if (MONTH_RE.test(s) && /\d/.test(s)) return true;
+  return /^(?:1[89]|20)\d{2}[.,*]?$/.test(s);
 }
 function indexOrPage(text3) {
   const s = String(text3 || "").trim();
@@ -7809,7 +7824,7 @@ var init_stream = __esm({
     TEXT_RULE_RE = /^[-–—_=.·•]{4,}$/;
     YEAR_RE = /\b(?:1[89]|20)\d{2}\b/;
     CLOCK_RE = /\b\d{1,2}[.:]\d{2}\b/;
-    MONTH_RE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i;
+    MONTH_RE = /\b(?:jan|feb|mar|apr|april|may|jun|june|jul|july|aug|sep|sept|oct|nov|dec)\b/i;
     SCI_RE = /\d(?:[\d.,\s]*\d)?\s*[eE][+\-]?\d+/;
     NAMED_ENTRY_RE = /^(?:\d{1,3}[.)]\s*)?(?:fig(?:ure)?s?|tables?|illustrations?|plates?)\b/i;
     PAGE_HEAD_RE = /^pages?\.?$/i;
@@ -10981,10 +10996,17 @@ function shiftSectionValues(table) {
     if (lastVals.length) continue;
     if (!String(stubOf(end)?.text || "").trim()) continue;
     const moving = table.cells.filter((c) => c.c > 0 && c.r >= r && c.r < end && c.r + (c.rowSpan || 1) <= end + 1);
+    const moved = [];
     for (const c of moving) {
       if (c.r + (c.rowSpan || 1) - 1 >= table.rows - 1 && c.r + 1 + (c.rowSpan || 1) > table.rows) continue;
       c.r += 1;
+      moved.push(c);
     }
+    const covered = /* @__PURE__ */ new Set();
+    for (const c of moved) {
+      for (let rr = c.r; rr < c.r + (c.rowSpan || 1); rr++) for (let cc = c.c; cc < c.c + (c.colSpan || 1); cc++) covered.add(`${rr}:${cc}`);
+    }
+    table.cells = table.cells.filter((c) => moved.includes(c) || !(c.c > 0 && (c.rowSpan || 1) === 1 && (c.colSpan || 1) === 1 && !String(c.text || "").trim() && covered.has(`${c.r}:${c.c}`)));
   }
 }
 function blankRepeatedFill(table) {
@@ -11129,9 +11151,9 @@ function joinSplitDates(table) {
       const rt = String(right?.text || "").trim();
       if (!lt && !rt) continue;
       rows++;
-      if (MONTH_RE2.test(lt) && DAY_YEAR_RE.test(rt)) pairs.push([left, right]);
+      if (splitDatePair(lt, rt)) pairs.push([left, right]);
     }
-    if (rows < 3 || pairs.length < 3 || pairs.length < 0.6 * rows) continue;
+    if (rows < 2 || pairs.length < 2 || pairs.length < 0.6 * rows) continue;
     for (const [left, right] of pairs) {
       left.text = `${String(left.text).trim()} ${String(right.text).trim()}`.replace(/\s+/g, " ");
       right.text = "";
@@ -11203,8 +11225,7 @@ function deleteColumn(table, c) {
     if (cell.colSpan >= 1) kept.push(cell);
   }
   if (Array.isArray(table.grid?.xs) && table.grid.xs.length === table.cols + 1) {
-    const at = c + 1 < table.grid.xs.length - 1 ? c + 1 : table.grid.xs.length - 1;
-    table.grid.xs.splice(at, 1);
+    table.grid.xs.splice(c > 0 ? c : 1, 1);
   }
   table.cols -= 1;
   table.cells = kept;
@@ -11272,8 +11293,46 @@ function repairDamagedIndex(table) {
     deleteRow(table, 0);
   }
 }
+function dropLeaderColumn(table) {
+  if ((table.cols || 0) < 3 || (table.rows || 0) < 3) return;
+  for (let c = table.cols - 1; c >= 0; c--) {
+    const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && String(k.text || "").trim());
+    if (!cells.length || cells.length > Math.max(1, 0.25 * table.rows)) continue;
+    if (!cells.every((k) => /^[-–—−_.·…]+$/.test(String(k.text).trim()))) continue;
+    if (table.cells.some((k) => k.c === c && (k.colSpan || 1) > 1 && /[A-Za-z0-9]/.test(String(k.text || "")))) continue;
+    deleteColumn(table, c);
+  }
+}
+function foldLoneTailColumn(table) {
+  if ((table.cols || 0) < 3 || (table.rows || 0) < 8) return;
+  const c = table.cols - 1;
+  const start = table.headerRows || 0;
+  if (table.cells.some((k) => k.r < start && k.c === c && String(k.text || "").trim())) return;
+  const filled = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && String(k.text || "").trim());
+  if (!filled.length || filled.length > Math.max(1, 0.25 * table.rows)) return;
+  if (!filled.every((k) => !/\d/.test(k.text) && String(k.text).trim().split(/\s+/).length <= 2)) return;
+  if (table.cells.some((k) => k.c < c && k.c + (k.colSpan || 1) > c && k.c !== 0)) return;
+  for (const cell of filled) {
+    const left = table.cells.find((k) => k.r === cell.r && k.c === c - 1 && (k.colSpan || 1) === 1);
+    if (!left || !String(left.text || "").trim()) return;
+  }
+  for (const cell of filled) {
+    const left = table.cells.find((k) => k.r === cell.r && k.c === c - 1 && (k.colSpan || 1) === 1);
+    left.text = `${String(left.text).trim()} ${String(cell.text).trim()}`;
+    cell.text = "";
+  }
+  deleteColumn(table, c);
+}
+function normalizeStreamPiece(table) {
+  if (!table?.cells?.length) return table;
+  dropLeaderColumn(table);
+  joinSplitDates(table);
+  foldLoneTailColumn(table);
+  return table;
+}
 function repairTableReading(table, options = {}) {
   if (!table?.cells?.length) return table;
+  dropLeaderColumn(table);
   repairDamagedIndex(table);
   foldIndexHeads(table);
   foldContinuationHeads(table);
@@ -11292,7 +11351,65 @@ function repairTableReading(table, options = {}) {
   joinScatteredWrap(table);
   foldScientificSplit(table);
   dropBannerNote(table);
+  repairGlyphDigits(table);
   return table;
+}
+function repairGlyphDigits(table) {
+  const start = table.headerRows || 0;
+  const textOf2 = (cell) => String(cell?.text || "").trim();
+  const body = (c) => table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= start);
+  const integerValue = (text3) => /^\d{1,6}$/.test(text3) ? Number(text3) : null;
+  for (let c = 0; c < (table.cols || 0); c += 1) {
+    const cells = body(c);
+    const filled = cells.filter((k) => textOf2(k));
+    const ordered = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= 1).sort((a, b) => a.r - b.r);
+    const holes = ordered.filter((k) => !textOf2(k));
+    const runInts = ordered.filter((k) => integerValue(textOf2(k)) != null);
+    if (holes.length === 1 && runInts.length + 1 === ordered.length && runInts.length >= 4) {
+      const at = ordered.indexOf(holes[0]);
+      const first = at === 0 ? integerValue(textOf2(ordered[1])) - 1 : integerValue(textOf2(ordered[0]));
+      const run = ordered.every((k, i) => k === holes[0] || integerValue(textOf2(k)) === first + i);
+      if (run && first >= 0) {
+        holes[0].text = String(first + at);
+        if (holes[0].r < start) table.headerRows = holes[0].r;
+      }
+    }
+    if (filled.length < 4) continue;
+    const ints = filled.filter((k) => integerValue(textOf2(k)) != null);
+    const values = [...new Set(ints.map((k) => integerValue(textOf2(k))))].sort((a, b) => a - b);
+    const marks = filled.filter((k) => {
+      const text3 = textOf2(k);
+      if (!text3 || isPlaceholder(text3) || isNumericText(text3) || /\d/.test(text3)) return false;
+      if (/[A-Za-z]{2,}/.test(text3)) return false;
+      return true;
+    });
+    if (values.length >= 4 && values.length === ints.length && marks.length === 1 && values[values.length - 1] - values[0] <= 40) {
+      const have = new Set(values);
+      const missing2 = [];
+      for (let n2 = values[0]; n2 <= values[values.length - 1]; n2 += 1) if (!have.has(n2)) missing2.push(n2);
+      if (missing2.length === 1) marks[0].text = String(missing2[0]);
+    }
+    const refreshed = body(c).filter((k) => textOf2(k));
+    const numbers = refreshed.filter((k) => isNumericText(textOf2(k)));
+    if (numbers.length >= 3 && numbers.length >= 0.6 * refreshed.length && numbers.some((k) => /^0(?:\.0+)?$/.test(textOf2(k)))) {
+      for (const cell of refreshed) {
+        if (cell.r === 0) continue;
+        if (textOf2(cell) === "o" || textOf2(cell) === "O") cell.text = "0";
+      }
+    }
+    const dotted = refreshed.filter((k) => /^\.\d{2,5}$/.test(textOf2(k)));
+    if (dotted.length < 2 || dotted.length < 0.4 * refreshed.length) continue;
+    const lengths = /* @__PURE__ */ new Map();
+    for (const cell of dotted) {
+      const n2 = textOf2(cell).length - 1;
+      lengths.set(n2, (lengths.get(n2) || 0) + 1);
+    }
+    for (const cell of refreshed) {
+      const m = textOf2(cell).match(/^[lI|]\s*(\d{2,5})$/);
+      if (!m || (lengths.get(m[1].length) || 0) < 2) continue;
+      cell.text = `.${m[1]}`;
+    }
+  }
 }
 function tidyDocumentTables(doc) {
   for (const block of Object.values(doc?.blocks || {})) {
@@ -11437,7 +11554,7 @@ function fitsColumn(number, column) {
   const widest = Math.max(...column.map(intDigits));
   return intDigits(number) <= widest + 1;
 }
-var LOW_CONF, NUMERIC_COLUMN_SHARE, DIGIT_MAP, NUMERIC_LIKE_RE, PLACEHOLDER_RE, SUBSCRIPTS, ELEMENT, COMMA_THOUSANDS, DOT_THOUSANDS, MONTH_RE2, DAY_YEAR_RE;
+var LOW_CONF, NUMERIC_COLUMN_SHARE, DIGIT_MAP, NUMERIC_LIKE_RE, PLACEHOLDER_RE, SUBSCRIPTS, ELEMENT, COMMA_THOUSANDS, DOT_THOUSANDS, MONTH_RE2, DAY_YEAR_RE, MONTH_DAY_RE, YEAR_ONLY_RE, splitDatePair;
 var init_ocr_fix = __esm({
   "src/model/parse/ocr-fix.js"() {
     init_lattice();
@@ -11453,6 +11570,9 @@ var init_ocr_fix = __esm({
     DOT_THOUSANDS = /^\d{1,3}(?:\.\d{3})+$/;
     MONTH_RE2 = /^(?:jan|feb|mar|apr|may|june|july|aug|sept|sep|oct|nov|dec)\.?$/i;
     DAY_YEAR_RE = /^\d{1,2},\s*\d{4}\.?$/;
+    MONTH_DAY_RE = /^(?:jan|feb|mar|apr|may|june|july|aug|sept|sep|oct|nov|dec)\.?\s+\d{1,2},?$/i;
+    YEAR_ONLY_RE = /^\d{4}\.?$/;
+    splitDatePair = (lt, rt) => MONTH_RE2.test(lt) && DAY_YEAR_RE.test(rt) || MONTH_DAY_RE.test(lt) && YEAR_ONLY_RE.test(rt);
   }
 });
 
@@ -13114,6 +13234,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
         i = j;
       }
     }
+    for (const t of pageTables) if (t.method === "stream") normalizeStreamPiece(t);
     stitchTables(pageTables, textBlocks, bodySize);
     absorbSectionBanners(pageTables, textBlocks, bodySize);
     absorbTableFooters(pageTables, textBlocks, bodySize);
@@ -13303,8 +13424,14 @@ function sectionBanner(table) {
 function bannerWords(text3) {
   return String(text3 || "").toLowerCase().replace(/[^a-z]+/g, " ").trim().split(/\s+/).filter((w) => w.length >= 4);
 }
+function yearRangeBanner(text3) {
+  const s = String(text3 || "").trim();
+  if (!YEAR_RANGE_TAIL_RE.test(s)) return false;
+  return bannerWords(s).length >= 1 && s.split(/\s+/).length <= 12;
+}
 function sameBanner(a, b) {
   if (!/\d/.test(String(a || "")) || !/\d/.test(String(b || ""))) return false;
+  if (yearRangeBanner(a) && yearRangeBanner(b)) return true;
   const A = bannerWords(a);
   const B = bannerWords(b);
   if (A.length < 2 || B.length < 2) return false;
@@ -13328,6 +13455,22 @@ function blockBox(tb) {
   if (b.x0 == null || b.y0 == null) return null;
   return b;
 }
+function sectionLineBetween(tb, a, b, bodySize) {
+  if (!tb || tb.type !== "para" && tb.type !== "heading") return null;
+  const text3 = String(tb.text || "").trim();
+  if (!text3 || CAPTION_RE.test(text3)) return null;
+  if (!/\d/.test(text3)) return null;
+  const words = text3.split(/\s+/).filter(Boolean);
+  if (words.length > 12 || words.length < 2) return null;
+  if (tb.bbox.y1 - tb.bbox.y0 > 1.8 * (bodySize || 10)) return null;
+  const x0 = Math.min(a.bbox[0], b.bbox[0]);
+  const x1 = Math.max(a.bbox[2], b.bbox[2]);
+  if (tb.bbox.x0 < x0 - 2 || tb.bbox.x1 > x1 + 2) return null;
+  const heads = (t) => (t.cells || []).filter((c) => c.r === 0).map((c) => String(c.text || "").trim().toLowerCase()).filter(Boolean);
+  const low = text3.toLowerCase();
+  if ([...heads(a), ...heads(b)].some((h) => h.length >= 4 && low.includes(h))) return null;
+  return { text: text3, block: tb };
+}
 function stitchTables(tables, textBlocks, bodySize) {
   tables.sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
   for (let i = 0; i + 1 < tables.length; i++) {
@@ -13336,19 +13479,25 @@ function stitchTables(tables, textBlocks, bodySize) {
     if (a.method !== "stream" || b.method !== "stream" || a.cols !== b.cols) continue;
     if ((b.headerRows || 0) > 0 && !sectionBanner(b)) continue;
     const gap = b.bbox[1] - a.bbox[3];
-    if (gap < -2 || gap > 4 * bodySize) continue;
+    if (gap < -2 || gap > 6 * bodySize) continue;
     const ox = Math.min(a.bbox[2], b.bbox[2]) - Math.max(a.bbox[0], b.bbox[0]);
     if (ox < 0.8 * Math.min(a.bbox[2] - a.bbox[0], b.bbox[2] - b.bbox[0])) continue;
     const colW = (a.bbox[2] - a.bbox[0]) / a.cols;
     let same2 = true;
     for (let c = 1; c < a.cols; c++) if (Math.abs(a.grid.xs[c] - b.grid.xs[c]) > 0.35 * colW) same2 = false;
     if (!same2) continue;
-    const between = textBlocks.some((tb) => tb.bbox.y0 >= a.bbox[3] - 1 && tb.bbox.y1 <= b.bbox[1] + 1 && Math.min(tb.bbox.x1, a.bbox[2]) - Math.max(tb.bbox.x0, a.bbox[0]) > 0);
-    if (between) continue;
-    const cells = [...a.cells, ...b.cells.map((k) => ({ ...k, r: k.r + a.rows, header: false }))];
+    const between = textBlocks.filter((tb) => tb.bbox.y0 >= a.bbox[3] - 1 && tb.bbox.y1 <= b.bbox[1] + 1 && Math.min(tb.bbox.x1, a.bbox[2]) - Math.max(tb.bbox.x0, a.bbox[0]) > 0);
+    const banner = between.length === 1 ? sectionLineBetween(between[0], a, b, bodySize) : null;
+    if (between.length && !banner) continue;
+    if (!banner && gap > 4 * bodySize) continue;
+    if (banner && (a.rows < 3 || b.rows < 3)) continue;
+    const bannerRows = banner ? 1 : 0;
+    const bannerCells = banner ? [{ r: a.rows, c: 0, rowSpan: 1, colSpan: a.cols, text: banner.text, header: false }] : [];
+    const cells = [...a.cells, ...bannerCells, ...b.cells.map((k) => ({ ...k, r: k.r + a.rows + bannerRows, header: false }))];
+    if (banner) textBlocks.splice(textBlocks.indexOf(banner.block), 1);
     const merged = {
       ...a,
-      rows: a.rows + b.rows,
+      rows: a.rows + bannerRows + b.rows,
       cells,
       bbox: [Math.min(a.bbox[0], b.bbox[0]), a.bbox[1], Math.max(a.bbox[2], b.bbox[2]), b.bbox[3]],
       grid: { xs: a.grid.xs, ys: [...a.grid.ys.slice(0, -1), (a.grid.ys[a.grid.ys.length - 1] + b.grid.ys[0]) / 2, ...b.grid.ys.slice(1)] },
@@ -13362,10 +13511,10 @@ function stitchTables(tables, textBlocks, bodySize) {
 function absorbSectionBanners(tables, textBlocks, bodySize) {
   const size = bodySize || 10;
   const used = /* @__PURE__ */ new Set();
-  for (const table of tables || []) {
-    if (!table?.bbox || !table.cells?.length || table.cols < 2) continue;
+  for (const table of tables || []) for (let pass = 0; pass < 3; pass++) {
+    if (!table?.bbox || !table.cells?.length || table.cols < 2) break;
     const banners = spanningBannerTexts(table);
-    if (!banners.length) continue;
+    if (!banners.length) break;
     let best = -1;
     let bestGap = Infinity;
     for (let i = 0; i < textBlocks.length; i++) {
@@ -13387,7 +13536,7 @@ function absorbSectionBanners(tables, textBlocks, bodySize) {
         best = i;
       }
     }
-    if (best < 0) continue;
+    if (best < 0) break;
     const tb = textBlocks[best];
     const b = blockBox(tb);
     used.add(best);
@@ -13518,7 +13667,7 @@ function mergeContinuations(order, blocks) {
     i--;
   }
 }
-var SCHEMA, ENGINE_VERSION, PARSE_REV, MARK_ONLY_RE, now, NEXT_SENTENCE_RE, EVIDENCE_LINES, EVIDENCE_CHARS;
+var SCHEMA, ENGINE_VERSION, PARSE_REV, MARK_ONLY_RE, now, NEXT_SENTENCE_RE, EVIDENCE_LINES, EVIDENCE_CHARS, YEAR_RANGE_TAIL_RE;
 var init_parse = __esm({
   "src/model/parse/index.js"() {
     init_lines();
@@ -13539,12 +13688,13 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 31;
+    PARSE_REV = 32;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
     EVIDENCE_LINES = 60;
     EVIDENCE_CHARS = 160;
+    YEAR_RANGE_TAIL_RE = /\b(?:1[5-9]|20)\d{2}\s*[-–—]\s*(?:1[5-9]|20)\d{2}\.?(?:\s*[-–—]*\s*continued\.?)?$/i;
   }
 });
 
@@ -46201,6 +46351,7 @@ function plainNumber(text3) {
   s = s.replace(/\\overline\{([^}]*)\}/g, "$1");
   s = s.replace(/\\\(|\\\)|\\[a-z]+/g, "");
   s = s.replace(/[{}]/g, "").trim();
+  s = s.normalize("NFD").replace(/\u0304/g, "");
   if (scientificFactor(s)) return true;
   return /^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(s);
 }
@@ -46240,6 +46391,27 @@ function tidyShare(table) {
     if (plainNumber(raw) || isPlaceholder(raw) || plainPhrase(raw)) ok += 1;
   }
   return n2 ? ok / n2 : 1;
+}
+function isDebris(text3) {
+  const raw = String(text3 || "").trim();
+  if (!raw || plainNumber(raw) || isPlaceholder(raw)) return false;
+  if (!/\d/.test(raw) && plainPhrase(raw)) return false;
+  if (/\d/.test(raw)) return true;
+  return /^[~^`'?]$/.test(raw);
+}
+function debrisShare(table) {
+  const header = table?.headerRows || 0;
+  let n2 = 0;
+  let bad = 0;
+  for (const cell of table?.cells || []) {
+    if ((cell.colSpan || 1) > 1) continue;
+    if (header && cell.r < header) continue;
+    const raw = String(cell.text || "").trim();
+    if (!raw) continue;
+    n2 += 1;
+    if (isDebris(raw)) bad += 1;
+  }
+  return n2 ? bad / n2 : 0;
 }
 function singleValues(table) {
   let n2 = 0;
@@ -46350,8 +46522,9 @@ function scoreTable(table, evidence) {
   const single = singleValues(table || { cells: [] });
   const tidy = tidyShare(table || { cells: [] });
   const filled = filledShare(table || { cells: [], rows: 0, cols: 0 });
+  const debris = debrisShare(table || { cells: [] });
   const total = 0.28 * rowCov + 0.16 * rowFit + 0.08 * colFit + 0.12 * numeric + 0.08 * header + 0.14 * single + 0.14 * tidy;
-  return { total, rowCov, rowFit, colFit, numeric, header, single, tidy, filled, textRows, rowTarget, body, colsTarget };
+  return { total, rowCov, rowFit, colFit, numeric, header, single, tidy, filled, debris, textRows, rowTarget, body, colsTarget };
 }
 function mergeReading(rule, vlm) {
   if (!rule?.cells?.length || !vlm?.cells?.length) return null;
@@ -46397,6 +46570,20 @@ function sameGridBetter(candidate, ruleRow) {
   if ((rule.total ?? 0) - (next.total ?? 0) < CLEAR && next.tidy - rule.tidy >= 0.12 && next.filled + 0.02 >= rule.filled) return true;
   return false;
 }
+function cleanOverDebris(candidate, ruleRow) {
+  const next = candidate?.score;
+  const rule = ruleRow?.score;
+  if (!next || !rule) return false;
+  if (!(rule.debris >= 0.12) || !(next.debris <= 0.04)) return false;
+  const rows = candidate.table?.rows || 0;
+  const ruleRows = ruleRow.table?.rows || 0;
+  if (rows < 6 || ruleRows < 6) return false;
+  const ratio = rows / ruleRows;
+  if (ratio < 0.85 || ratio > 1.15) return false;
+  if (Math.abs((candidate.table?.cols || 0) - (ruleRow.table?.cols || 0)) > 1) return false;
+  if (next.numeric < 0.6) return false;
+  return true;
+}
 function clearsRule(best, ruleRow) {
   if (best.score.total - ruleRow.score.total >= CLEAR) return true;
   if (sameGridBetter(best, ruleRow)) return true;
@@ -46429,6 +46616,114 @@ function fillEmptyFromRule(chosen, rule, evidence) {
   if (!filled) return chosen;
   return { ...chosen, cells };
 }
+function cellTextAt(table, r, c) {
+  const cell = (table?.cells || []).find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+  return String(cell?.text || "").trim();
+}
+function stubKey(text3) {
+  return String(text3 || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function parseLoose(text3) {
+  let s = String(text3 || "").trim().replace(/,/g, "");
+  if (!s) return null;
+  if (/^\.\d+$/.test(s)) s = `0${s}`;
+  if (!/^[+-]?\d+(?:\.\d+)?$/.test(s)) return null;
+  const n2 = Number(s);
+  return Number.isFinite(n2) ? n2 : null;
+}
+function totalColumn(table) {
+  const cols = table?.cols || 0;
+  const rows = table?.rows || 0;
+  if (cols < 3 || rows < 3) return null;
+  const look = Math.min(rows, Math.max(table.headerRows || 0, 2));
+  for (let c = 1; c < cols; c += 1) {
+    for (let r = 0; r < look; r += 1) {
+      const text3 = cellTextAt(table, r, c).replace(/[.:]+$/g, "");
+      if (/^total\b/i.test(text3)) return c;
+    }
+  }
+  const start = table.headerRows || 0;
+  let best = null;
+  let bestShare = 0;
+  for (let c = 1; c < cols; c += 1) {
+    let n2 = 0;
+    let hundreds = 0;
+    for (let r = start; r < rows; r += 1) {
+      const text3 = cellTextAt(table, r, c);
+      if (!text3) continue;
+      n2 += 1;
+      const v = parseLoose(text3);
+      if (v != null && Math.abs(v - 100) < 1e-3) hundreds += 1;
+    }
+    if (n2 >= 3 && hundreds / n2 >= 0.6 && hundreds / n2 > bestShare) {
+      bestShare = hundreds / n2;
+      best = c;
+    }
+  }
+  return best;
+}
+function componentSum(table, row4, totalCol) {
+  const parts = [];
+  for (let c = 1; c < (table.cols || 0); c += 1) {
+    if (c === totalCol) continue;
+    const n2 = parseLoose(cellTextAt(table, row4, c));
+    if (n2 == null) continue;
+    parts.push(n2);
+  }
+  if (parts.length < 2) return null;
+  return parts.reduce((sum, n2) => sum + n2, 0);
+}
+function sumsToTotal(table, row4, totalCol) {
+  const total = parseLoose(cellTextAt(table, row4, totalCol));
+  const sum = componentSum(table, row4, totalCol);
+  if (total == null || sum == null) return false;
+  return Math.abs(sum - total) <= Math.max(0.55, Math.abs(total) * 5e-3);
+}
+function restoreLabeledTotals(chosen, rule) {
+  if (!chosen?.cells || !rule?.cells || chosen === rule) return chosen;
+  if ((chosen.cols || 0) !== (rule.cols || 0) || (chosen.cols || 0) < 3) return chosen;
+  const totalCol = totalColumn(chosen);
+  if (totalCol == null || totalColumn(rule) !== totalCol) return chosen;
+  const ruleRows = /* @__PURE__ */ new Map();
+  const ambiguous = /* @__PURE__ */ new Set();
+  for (let r = 0; r < (rule.rows || 0); r += 1) {
+    const key = stubKey(cellTextAt(rule, r, 0));
+    if (key.length < 4) continue;
+    if (ruleRows.has(key) || ambiguous.has(key)) {
+      ruleRows.delete(key);
+      ambiguous.add(key);
+      continue;
+    }
+    ruleRows.set(key, r);
+  }
+  const cells = chosen.cells.map((cell) => ({ ...cell }));
+  let changed2 = 0;
+  const start = chosen.headerRows || 0;
+  for (let r = start; r < (chosen.rows || 0); r += 1) {
+    const key = stubKey(cellTextAt(chosen, r, 0));
+    if (key.length < 4 || ambiguous.has(key)) continue;
+    const rr = ruleRows.get(key);
+    if (rr == null) continue;
+    if (sumsToTotal(chosen, r, totalCol) || !sumsToTotal(rule, rr, totalCol)) continue;
+    for (let c = 1; c < chosen.cols; c += 1) {
+      const text3 = cellTextAt(rule, rr, c);
+      if (!text3) continue;
+      const cell = cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+      const have = cell ? String(cell.text || "").trim() : "";
+      if (have && parseLoose(have) == null && parseLoose(text3) == null) continue;
+      if (cell) {
+        if (have === text3) continue;
+        cell.text = text3;
+        changed2 += 1;
+      } else {
+        cells.push({ r, c, rowSpan: 1, colSpan: 1, text: text3, header: false });
+        changed2 += 1;
+      }
+    }
+  }
+  if (!changed2) return chosen;
+  return { ...chosen, cells };
+}
 function chooseTableReading(rule, vlm, page = {}) {
   const box2 = unionBox(rule?.bbox, vlm?.bbox);
   const evidence = evidenceIn(page, box2);
@@ -46445,7 +46740,7 @@ function chooseTableReading(rule, vlm, page = {}) {
   const ruleRow = ranked.find((row4) => row4.choice === "rule");
   if (ruleRow && best.choice !== "rule" && !clearsRule(best, ruleRow)) best = ruleRow;
   if (ruleRow && best.choice === "rule") {
-    const alt = ranked.find((row4) => row4.choice !== "rule" && sameGridBetter(row4, ruleRow));
+    const alt = ranked.find((row4) => row4.choice !== "rule" && (sameGridBetter(row4, ruleRow) || cleanOverDebris(row4, ruleRow)));
     if (alt) best = alt;
   }
   if (rule && best.choice !== "rule" && best.table) best = { ...best, table: fillEmptyFromRule(best.table, rule, evidence) };
@@ -46851,6 +47146,13 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       if (decision.choice === "rule") continue;
       const chosen = decision.table;
       polishTableText(chosen);
+      const aligned = restoreLabeledTotals(chosen, host);
+      if (aligned !== chosen) {
+        chosen.cells = aligned.cells;
+        chosen.rows = aligned.rows;
+        chosen.cols = aligned.cols;
+        chosen.headerRows = aligned.headerRows;
+      }
       for (const id of [...order]) {
         const block = blocks[id];
         if (!block || block.type !== "table" || block.page !== structure.page || block.id === host.id) continue;

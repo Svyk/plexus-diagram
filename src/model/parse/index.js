@@ -13,7 +13,7 @@ import { detectLists } from "./lists.js";
 import { detectFormulas } from "./formulas.js";
 import { FOOTNOTE_MARK_RE, groupParagraphs, inlineUnlinkedRefs, joinLines, spansOf } from "./blocks.js";
 import { boxOfUnits, crossesGutter, detectColumns, orderUnits, ruleCuts, splitAtGutters } from "./xycut.js";
-import { repairOcrTable, repairTableReading } from "./ocr-fix.js";
+import { normalizeStreamPiece, repairOcrTable, repairTableReading } from "./ocr-fix.js";
 import { lowConfidenceShare } from "./ocr-vote.js";
 import { capTitle, isCutPrefix, isGibberishTitle, isJunkTitleText, isMetaBanner } from "../title-cap.js";
 import { cleanPdfTitle } from "../pdf.js";
@@ -22,7 +22,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 31;
+export const PARSE_REV = 32;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -1094,6 +1094,9 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
         i = j;
       }
     }
+    // A leader-dot column or a split date read on one piece and not the next
+    // would keep two pieces of one grid apart. They go before the pieces are compared.
+    for (const t of pageTables) if (t.method === "stream") normalizeStreamPiece(t);
     stitchTables(pageTables, textBlocks, bodySize);
     absorbSectionBanners(pageTables, textBlocks, bodySize);
     absorbTableFooters(pageTables, textBlocks, bodySize);
@@ -1292,8 +1295,20 @@ function bannerWords(text) {
 }
 
 // Two numbered section lines are the same banner when they share their long words.
+// A section banner of a roster or a register ends in its years ("Harbormaster,
+// at Eureka, 1899-1924." / "..., 1863-1924—Continued."). Two lines of that
+// shape are banners of one table even when the words differ.
+const YEAR_RANGE_TAIL_RE = /\b(?:1[5-9]|20)\d{2}\s*[-–—]\s*(?:1[5-9]|20)\d{2}\.?(?:\s*[-–—]*\s*continued\.?)?$/i;
+
+function yearRangeBanner(text) {
+  const s = String(text || "").trim();
+  if (!YEAR_RANGE_TAIL_RE.test(s)) return false;
+  return bannerWords(s).length >= 1 && s.split(/\s+/).length <= 12;
+}
+
 function sameBanner(a, b) {
   if (!/\d/.test(String(a || "")) || !/\d/.test(String(b || ""))) return false;
+  if (yearRangeBanner(a) && yearRangeBanner(b)) return true;
   const A = bannerWords(a);
   const B = bannerWords(b);
   if (A.length < 2 || B.length < 2) return false;
@@ -1320,6 +1335,28 @@ function blockBox(tb) {
   return b;
 }
 
+// A one-line paragraph inside the width of two grid pieces, at most twelve
+// words, not a caption and not a repeat of the column heads.
+function sectionLineBetween(tb, a, b, bodySize) {
+  if (!tb || (tb.type !== "para" && tb.type !== "heading")) return null;
+  const text = String(tb.text || "").trim();
+  if (!text || CAPTION_RE.test(text)) return null;
+  // A section head carries its number or its years ("Harbor Commissioners
+  // for the Port of San Jose, 1913-1924."); the tail of a title between two
+  // tables ("WITH HIGH-PRESSURE MANOMETER.") does not.
+  if (!/\d/.test(text)) return null;
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length > 12 || words.length < 2) return null;
+  if (tb.bbox.y1 - tb.bbox.y0 > 1.8 * (bodySize || 10)) return null;
+  const x0 = Math.min(a.bbox[0], b.bbox[0]);
+  const x1 = Math.max(a.bbox[2], b.bbox[2]);
+  if (tb.bbox.x0 < x0 - 2 || tb.bbox.x1 > x1 + 2) return null;
+  const heads = (t) => (t.cells || []).filter((c) => c.r === 0).map((c) => String(c.text || "").trim().toLowerCase()).filter(Boolean);
+  const low = text.toLowerCase();
+  if ([...heads(a), ...heads(b)].some((h) => h.length >= 4 && low.includes(h))) return null;
+  return { text, block: tb };
+}
+
 // Two stream tables in one column split by a slightly wider row gap: same column structure,
 // nothing between them, join them into one. A second piece that opens with a section
 // banner is the same table; a piece with its own column heads is not.
@@ -1331,19 +1368,28 @@ export function stitchTables(tables, textBlocks, bodySize) {
     if (a.method !== "stream" || b.method !== "stream" || a.cols !== b.cols) continue;
     if ((b.headerRows || 0) > 0 && !sectionBanner(b)) continue;
     const gap = b.bbox[1] - a.bbox[3];
-    if (gap < -2 || gap > 4 * bodySize) continue;
+    if (gap < -2 || gap > 6 * bodySize) continue;
     const ox = Math.min(a.bbox[2], b.bbox[2]) - Math.max(a.bbox[0], b.bbox[0]);
     if (ox < 0.8 * Math.min(a.bbox[2] - a.bbox[0], b.bbox[2] - b.bbox[0])) continue;
     const colW = (a.bbox[2] - a.bbox[0]) / a.cols;
     let same = true;
     for (let c = 1; c < a.cols; c++) if (Math.abs(a.grid.xs[c] - b.grid.xs[c]) > 0.35 * colW) same = false;
     if (!same) continue;
-    const between = textBlocks.some((tb) => tb.bbox.y0 >= a.bbox[3] - 1 && tb.bbox.y1 <= b.bbox[1] + 1 && Math.min(tb.bbox.x1, a.bbox[2]) - Math.max(tb.bbox.x0, a.bbox[0]) > 0);
-    if (between) continue;
-    const cells = [...a.cells, ...b.cells.map((k) => ({ ...k, r: k.r + a.rows, header: false }))];
+    const between = textBlocks.filter((tb) => tb.bbox.y0 >= a.bbox[3] - 1 && tb.bbox.y1 <= b.bbox[1] + 1 && Math.min(tb.bbox.x1, a.bbox[2]) - Math.max(tb.bbox.x0, a.bbox[0]) > 0);
+    // One short line between two pieces of the same grid is a section head
+    // inside the table ("Harbor Commissioners for the Port of San Jose,
+    // 1913-1924."): it joins as a full-width row. A caption names a new table.
+    const banner = between.length === 1 ? sectionLineBetween(between[0], a, b, bodySize) : null;
+    if (between.length && !banner) continue;
+    if (!banner && gap > 4 * bodySize) continue;
+    if (banner && (a.rows < 3 || b.rows < 3)) continue;
+    const bannerRows = banner ? 1 : 0;
+    const bannerCells = banner ? [{ r: a.rows, c: 0, rowSpan: 1, colSpan: a.cols, text: banner.text, header: false }] : [];
+    const cells = [...a.cells, ...bannerCells, ...b.cells.map((k) => ({ ...k, r: k.r + a.rows + bannerRows, header: false }))];
+    if (banner) textBlocks.splice(textBlocks.indexOf(banner.block), 1);
     const merged = {
       ...a,
-      rows: a.rows + b.rows,
+      rows: a.rows + bannerRows + b.rows,
       cells,
       bbox: [Math.min(a.bbox[0], b.bbox[0]), a.bbox[1], Math.max(a.bbox[2], b.bbox[2]), b.bbox[3]],
       grid: { xs: a.grid.xs, ys: [...a.grid.ys.slice(0, -1), (a.grid.ys[a.grid.ys.length - 1] + b.grid.ys[0]) / 2, ...b.grid.ys.slice(1)] },
@@ -1360,10 +1406,10 @@ export function stitchTables(tables, textBlocks, bodySize) {
 export function absorbSectionBanners(tables, textBlocks, bodySize) {
   const size = bodySize || 10;
   const used = new Set();
-  for (const table of tables || []) {
-    if (!table?.bbox || !table.cells?.length || table.cols < 2) continue;
+  for (const table of tables || []) for (let pass = 0; pass < 3; pass++) {
+    if (!table?.bbox || !table.cells?.length || table.cols < 2) break;
     const banners = spanningBannerTexts(table);
-    if (!banners.length) continue;
+    if (!banners.length) break;
     let best = -1;
     let bestGap = Infinity;
     for (let i = 0; i < textBlocks.length; i++) {
@@ -1382,7 +1428,7 @@ export function absorbSectionBanners(tables, textBlocks, bodySize) {
       if (!banners.some((banner) => sameBanner(banner, text))) continue;
       if (gap < bestGap) { bestGap = gap; best = i; }
     }
-    if (best < 0) continue;
+    if (best < 0) break;
     const tb = textBlocks[best];
     const b = blockBox(tb);
     used.add(best);

@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 
 import { OP } from "../src/model/parse/rules.js";
 import { absorbSectionBanners, absorbTableFooters, assembleDocument, parsePageGeometry, stitchTables } from "../src/model/parse/index.js";
+import { normalizeStreamPiece } from "../src/model/parse/ocr-fix.js";
 import { boxGridRules, findLatticeTables, tabularBetween, cellTextOf } from "../src/model/parse/lattice.js";
 import { detectStreamRuns, refineColumns, splitTokensAt, tokenizeLine, headerRowGroups } from "../src/model/parse/stream.js";
 import { buildLines, letterSpaced, dominantRotation } from "../src/model/parse/lines.js";
@@ -323,12 +324,97 @@ test("numbered monospace lines with an empty line stay a code block", () => {
   assert.equal(blocksOf(d, "code").length, 1);
 });
 
+test("text beside figure labels, one line each, is not a table even when two lines share a column", () => {
+  // Figure labels at the left and lines of prose at the right, one line each: no table.
+  const labels = ["14-", "-12", "18-", "16-"];
+  const prose = ["Britain and in the United States for many years.", "It has been superseded, however, and is now nearly", "obsolete. By the repeated copying of old specifica-", "tions its use has persisted to some extent, both in"];
+  const items = labels.flatMap((l, i) => row(400 + i * 12, [[l, 74], [prose[i], 150]]));
+  assert.equal(tablesOf(doc([page(items)])).length, 0);
+  // The same prose cut into short pieces by the OCR ("was" | "started") is still prose.
+  const pieces = [["The", "current", "was", "started"], ["and", "was", "continued", "until"], ["the", "plats", "increased", "the"], ["yield", "was", "April", "reduced"]];
+  const cut = pieces.flatMap((ws, i) => row(500 + i * 12, ws.map((w, k) => [w, 74 + k * 60])));
+  assert.equal(tablesOf(doc([page(cut)])).length, 0);
+});
+
 test("stitchTables leaves a second piece with its own header rows alone", () => {
   const a = { method: "stream", page: 1, cols: 3, rows: 3, headerRows: 1, bbox: [100, 100, 320, 140], grid: { xs: [98, 150, 250, 322], ys: [100, 115, 130, 140] }, cells: [], confidence: 1 };
   const b = { method: "stream", page: 1, cols: 3, rows: 3, headerRows: 1, bbox: [100, 150, 320, 190], grid: { xs: [98, 150, 250, 322], ys: [150, 165, 180, 190] }, cells: [], confidence: 1 };
   assert.equal(stitchTables([a, b], [], 10).length, 2);
   const c = { ...b, headerRows: 0 };
   assert.equal(stitchTables([{ ...a }, c], [], 10).length, 1);
+});
+
+test("stitchTables takes one short section line between two pieces as a row, once a leader column is off the second piece", () => {
+  const cell = (r, c, text, colSpan = 1) => ({ r, c, rowSpan: 1, colSpan, text, header: false });
+  const names = ["Alberti, Clark", "Barbour, J. H.", "Benton, Robert H.", "Burnham, F. R."];
+  const a = {
+    method: "stream", page: 1, cols: 3, rows: 4, headerRows: 0, bbox: [22, 156, 297, 220],
+    grid: { xs: [22, 160, 227, 297], ys: [156, 172, 188, 204, 220] },
+    cells: names.flatMap((n, r) => [cell(r, 0, n), cell(r, 1, "Mar. 18, 1889"), cell(r, 2, "Present.")]),
+    confidence: 1,
+  };
+  // The second piece read the leader dots of one row as a column of its own.
+  const b = {
+    method: "stream", page: 1, cols: 4, rows: 4, headerRows: 0, bbox: [22, 240, 297, 304],
+    grid: { xs: [22, 118, 171, 223, 297], ys: [240, 256, 272, 288, 304] },
+    cells: [
+      cell(0, 0, "Alexander, W. G."), cell(0, 1, "—"), cell(0, 2, "Sept. 8, 1913"), cell(0, 3, "Present."),
+      cell(1, 0, "Crummey, John D."), cell(1, 2, "Sept. 8, 1913"), cell(1, 3, "Present."),
+      cell(2, 0, "Sontheimer, W. M."), cell(2, 2, "Sept. 8, 1913"), cell(2, 3, "Present."),
+      cell(3, 0, "Tully, R. M."), cell(3, 2, "Sept. 8, 1913"), cell(3, 3, "Present."),
+    ],
+    confidence: 1,
+  };
+  normalizeStreamPiece(b);
+  assert.equal(b.cols, 3);
+  assert.deepEqual(b.grid.xs, [22, 171, 223, 297]);
+  // A three-row piece whose dates split at the month joins them before the comparison.
+  const split = {
+    method: "stream", page: 1, cols: 4, rows: 3, headerRows: 0, bbox: [22, 380, 276, 403],
+    grid: { xs: [22, 118, 171, 223, 276], ys: [380, 388, 396, 403] },
+    cells: [0, 1, 2].flatMap((r) => [cell(r, 0, "Crummey, John D."), cell(r, 1, "Sept."), cell(r, 2, "8, 1913"), cell(r, 3, "Present.")]),
+    confidence: 1,
+  };
+  normalizeStreamPiece(split);
+  assert.equal(split.cols, 3);
+  assert.deepEqual(split.grid.xs, [22, 118, 223, 276]);
+  assert.equal(split.cells.find((k) => k.r === 1 && k.c === 1).text, "Sept. 8, 1913");
+  // The split after the day ("Mar. 1," | "1917."), and one note word in a column of its own.
+  const rowsOf = (n, mk) => Array.from({ length: n }, (_, r) => mk(r)).flat();
+  const tail = {
+    method: "stream", page: 1, cols: 4, rows: 9, headerRows: 0, bbox: [29, 89, 339, 455],
+    grid: { xs: [29, 139, 229, 304, 339], ys: Array.from({ length: 10 }, (_, i) => 89 + i * 40) },
+    cells: rowsOf(9, (r) => [cell(r, 0, `Name ${r}`), cell(r, 1, "Mar. 1,"), cell(r, 2, "1917."), cell(r, 3, r === 4 || r === 7 ? "Deceased." : "")]),
+    confidence: 1,
+  };
+  normalizeStreamPiece(tail);
+  assert.equal(tail.cols, 2);
+  assert.equal(tail.cells.find((k) => k.r === 4 && k.c === 1).text, "Mar. 1, 1917. Deceased.");
+  assert.equal(tail.cells.find((k) => k.r === 3 && k.c === 1).text, "Mar. 1, 1917.");
+  // A headed column, or one filled in more than a quarter of the rows, stays.
+  const headed = {
+    method: "stream", page: 1, cols: 3, rows: 9, headerRows: 1, bbox: [29, 89, 339, 455],
+    grid: { xs: [29, 139, 304, 339], ys: Array.from({ length: 10 }, (_, i) => 89 + i * 40) },
+    cells: [cell(0, 0, "Name"), cell(0, 1, "Date"), cell(0, 2, "Note"), ...rowsOf(8, (r) => [cell(r + 1, 0, `Name ${r}`), cell(r + 1, 1, "Mar. 1, 1917."), cell(r + 1, 2, r === 4 ? "Deceased." : "")])],
+    confidence: 1,
+  };
+  normalizeStreamPiece(headed);
+  assert.equal(headed.cols, 3);
+  const banner = { type: "para", text: "Harbor Commissioners for the Port of San Jose, 1913-1924.", bbox: { x0: 91, x1: 280, y0: 226, y1: 233 } };
+  const blocks = [banner];
+  const out = stitchTables([a, b], blocks, 7.5);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].rows, 9);
+  const row = out[0].cells.find((k) => k.r === 4);
+  assert.equal(row.text, banner.text);
+  assert.equal(row.colSpan, 3);
+  assert.equal(out[0].cells.find((k) => k.r === 5 && k.c === 1).text, "Sept. 8, 1913");
+  assert.equal(blocks.length, 0, "the banner line left the text blocks");
+  // A caption between two pieces keeps them apart, and so does the tail of a title with no number in it.
+  const caption = { type: "para", text: "Table 2. Members by year, 1913-1924.", bbox: { x0: 91, x1: 280, y0: 226, y1: 233 } };
+  assert.equal(stitchTables([structuredClone(a), structuredClone(b)], [caption], 7.5).length, 2);
+  const titleTail = { type: "para", text: "WITH HIGH-PRESSURE MANOMETER.", bbox: { x0: 91, x1: 280, y0: 226, y1: 233 } };
+  assert.equal(stitchTables([structuredClone(a), structuredClone(b)], [titleTail], 7.5).length, 2);
 });
 
 test("stitchTables joins a section banner and the same banner above the first piece", () => {

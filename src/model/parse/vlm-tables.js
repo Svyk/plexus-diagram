@@ -1,4 +1,4 @@
-import { chooseTableReading } from "./vlm-arbitrate.js";
+import { chooseTableReading, restoreLabeledTotals } from "./vlm-arbitrate.js";
 import { isNumericToken } from "./vlm-boxes.js";
 import { polishTableText } from "./ocr-fix.js";
 
@@ -254,6 +254,13 @@ export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0
       if (decision.choice === "rule") continue;
       const chosen = decision.table;
       polishTableText(chosen);
+      const aligned = restoreLabeledTotals(chosen, host);
+      if (aligned !== chosen) {
+        chosen.cells = aligned.cells;
+        chosen.rows = aligned.rows;
+        chosen.cols = aligned.cols;
+        chosen.headerRows = aligned.headerRows;
+      }
       for (const id of [...order]) {
         const block = blocks[id];
         if (!block || block.type !== "table" || block.page !== structure.page || block.id === host.id) continue;

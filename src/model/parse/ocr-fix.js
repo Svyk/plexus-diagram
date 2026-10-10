@@ -559,10 +559,19 @@ function shiftSectionValues(table) {
     if (lastVals.length) continue;
     if (!String(stubOf(end)?.text || "").trim()) continue;
     const moving = table.cells.filter((c) => c.c > 0 && c.r >= r && c.r < end && c.r + (c.rowSpan || 1) <= end + 1);
+    const moved = [];
     for (const c of moving) {
       if (c.r + (c.rowSpan || 1) - 1 >= table.rows - 1 && c.r + 1 + (c.rowSpan || 1) > table.rows) continue;
       c.r += 1;
+      moved.push(c);
     }
+    // The empty cells the last stub had beside it now sit under the moved
+    // values. Two cells at one address read as the empty one.
+    const covered = new Set();
+    for (const c of moved) {
+      for (let rr = c.r; rr < c.r + (c.rowSpan || 1); rr++) for (let cc = c.c; cc < c.c + (c.colSpan || 1); cc++) covered.add(`${rr}:${cc}`);
+    }
+    table.cells = table.cells.filter((c) => moved.includes(c) || !(c.c > 0 && (c.rowSpan || 1) === 1 && (c.colSpan || 1) === 1 && !String(c.text || "").trim() && covered.has(`${c.r}:${c.c}`)));
   }
 }
 
@@ -706,6 +715,10 @@ function blankDecimalRun(table) {
 
 const MONTH_RE = /^(?:jan|feb|mar|apr|may|june|july|aug|sept|sep|oct|nov|dec)\.?$/i;
 const DAY_YEAR_RE = /^\d{1,2},\s*\d{4}\.?$/;
+// "Mar. 1," | "1917.": the split fell after the day instead of after the month.
+const MONTH_DAY_RE = /^(?:jan|feb|mar|apr|may|june|july|aug|sept|sep|oct|nov|dec)\.?\s+\d{1,2},?$/i;
+const YEAR_ONLY_RE = /^\d{4}\.?$/;
+const splitDatePair = (lt, rt) => (MONTH_RE.test(lt) && DAY_YEAR_RE.test(rt)) || (MONTH_DAY_RE.test(lt) && YEAR_ONLY_RE.test(rt));
 
 // "May" in one column and "2, 1900" in the next are one date the gap split.
 function joinSplitDates(table) {
@@ -720,9 +733,9 @@ function joinSplitDates(table) {
       const rt = String(right?.text || "").trim();
       if (!lt && !rt) continue;
       rows++;
-      if (MONTH_RE.test(lt) && DAY_YEAR_RE.test(rt)) pairs.push([left, right]);
+      if (splitDatePair(lt, rt)) pairs.push([left, right]);
     }
-    if (rows < 3 || pairs.length < 3 || pairs.length < 0.6 * rows) continue;
+    if (rows < 2 || pairs.length < 2 || pairs.length < 0.6 * rows) continue;
     for (const [left, right] of pairs) {
       left.text = `${String(left.text).trim()} ${String(right.text).trim()}`.replace(/\s+/g, " ");
       right.text = "";
@@ -791,9 +804,10 @@ function deleteColumn(table, c) {
     cell.colSpan = span - 1;
     if (cell.colSpan >= 1) kept.push(cell);
   }
+  // The column's width goes to the column on its left (the leader dots after a
+  // name, the day after its month): its left boundary is the one that goes.
   if (Array.isArray(table.grid?.xs) && table.grid.xs.length === table.cols + 1) {
-    const at = c + 1 < table.grid.xs.length - 1 ? c + 1 : table.grid.xs.length - 1;
-    table.grid.xs.splice(at, 1);
+    table.grid.xs.splice(c > 0 ? c : 1, 1);
   }
   table.cols -= 1;
   table.cells = kept;
@@ -874,8 +888,56 @@ function repairDamagedIndex(table) {
   }
 }
 
+// A column whose only content is a leader mark in a row or two is the dots
+// between a name and its date, read as a cell. It is not a column.
+export function dropLeaderColumn(table) {
+  if ((table.cols || 0) < 3 || (table.rows || 0) < 3) return;
+  for (let c = table.cols - 1; c >= 0; c--) {
+    const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && String(k.text || "").trim());
+    if (!cells.length || cells.length > Math.max(1, 0.25 * table.rows)) continue;
+    if (!cells.every((k) => /^[-–—−_.·…]+$/.test(String(k.text).trim()))) continue;
+    if (table.cells.some((k) => k.c === c && (k.colSpan || 1) > 1 && /[A-Za-z0-9]/.test(String(k.text || "")))) continue;
+    deleteColumn(table, c);
+  }
+}
+
+// The column shape of one stream piece before it is compared with its
+// neighbours: a leader-dot column off, a month and its day in one cell.
+// One word in one row of a column that is empty everywhere else, in a piece of
+// eight rows or more, is the tail of the cell on its left ("Nov., 1884." |
+// "Deceased."), not a column.
+function foldLoneTailColumn(table) {
+  if ((table.cols || 0) < 3 || (table.rows || 0) < 8) return;
+  const c = table.cols - 1;
+  const start = table.headerRows || 0;
+  if (table.cells.some((k) => k.r < start && k.c === c && String(k.text || "").trim())) return;
+  const filled = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && String(k.text || "").trim());
+  if (!filled.length || filled.length > Math.max(1, 0.25 * table.rows)) return;
+  if (!filled.every((k) => !/\d/.test(k.text) && String(k.text).trim().split(/\s+/).length <= 2)) return;
+  if (table.cells.some((k) => k.c < c && k.c + (k.colSpan || 1) > c && k.c !== 0)) return;
+  for (const cell of filled) {
+    const left = table.cells.find((k) => k.r === cell.r && k.c === c - 1 && (k.colSpan || 1) === 1);
+    if (!left || !String(left.text || "").trim()) return;
+  }
+  for (const cell of filled) {
+    const left = table.cells.find((k) => k.r === cell.r && k.c === c - 1 && (k.colSpan || 1) === 1);
+    left.text = `${String(left.text).trim()} ${String(cell.text).trim()}`;
+    cell.text = "";
+  }
+  deleteColumn(table, c);
+}
+
+export function normalizeStreamPiece(table) {
+  if (!table?.cells?.length) return table;
+  dropLeaderColumn(table);
+  joinSplitDates(table);
+  foldLoneTailColumn(table);
+  return table;
+}
+
 export function repairTableReading(table, options = {}) {
   if (!table?.cells?.length) return table;
+  dropLeaderColumn(table);
   repairDamagedIndex(table);
   foldIndexHeads(table);
   foldContinuationHeads(table);
@@ -897,7 +959,73 @@ export function repairTableReading(table, options = {}) {
   joinScatteredWrap(table);
   foldScientificSplit(table);
   dropBannerNote(table);
+  repairGlyphDigits(table);
   return table;
+}
+
+// Glyphs that are digits only in the column they sit in. A lone "o" beside a
+// real 0 is 0. "l 119" in a column of ".0498" is ".119". A consecutive run of
+// small integers with one broken mark ("~") is the missing integer.
+function repairGlyphDigits(table) {
+  const start = table.headerRows || 0;
+  const textOf = (cell) => String(cell?.text || "").trim();
+  const body = (c) => table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= start);
+  const integerValue = (text) => (/^\d{1,6}$/.test(text) ? Number(text) : null);
+  for (let c = 0; c < (table.cols || 0); c += 1) {
+    const cells = body(c);
+    const filled = cells.filter((k) => textOf(k));
+    // An index column (1, 2, 3, ... in row order) with one empty cell: the
+    // empty cell is the number the run skips at that row.
+    // A numbered row is not a header row, so the run is read from the second
+    // row down, whatever the header count says.
+    const ordered = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= 1).sort((a, b) => a.r - b.r);
+    const holes = ordered.filter((k) => !textOf(k));
+    const runInts = ordered.filter((k) => integerValue(textOf(k)) != null);
+    if (holes.length === 1 && runInts.length + 1 === ordered.length && runInts.length >= 4) {
+      const at = ordered.indexOf(holes[0]);
+      const first = at === 0 ? integerValue(textOf(ordered[1])) - 1 : integerValue(textOf(ordered[0]));
+      const run = ordered.every((k, i) => k === holes[0] || integerValue(textOf(k)) === first + i);
+      if (run && first >= 0) {
+        holes[0].text = String(first + at);
+        if (holes[0].r < start) table.headerRows = holes[0].r;
+      }
+    }
+    if (filled.length < 4) continue;
+    const ints = filled.filter((k) => integerValue(textOf(k)) != null);
+    const values = [...new Set(ints.map((k) => integerValue(textOf(k))))].sort((a, b) => a - b);
+    const marks = filled.filter((k) => {
+      const text = textOf(k);
+      if (!text || isPlaceholder(text) || isNumericText(text) || /\d/.test(text)) return false;
+      if (/[A-Za-z]{2,}/.test(text)) return false;
+      return true;
+    });
+    if (values.length >= 4 && values.length === ints.length && marks.length === 1 && values[values.length - 1] - values[0] <= 40) {
+      const have = new Set(values);
+      const missing = [];
+      for (let n = values[0]; n <= values[values.length - 1]; n += 1) if (!have.has(n)) missing.push(n);
+      if (missing.length === 1) marks[0].text = String(missing[0]);
+    }
+    const refreshed = body(c).filter((k) => textOf(k));
+    const numbers = refreshed.filter((k) => isNumericText(textOf(k)));
+    if (numbers.length >= 3 && numbers.length >= 0.6 * refreshed.length && numbers.some((k) => /^0(?:\.0+)?$/.test(textOf(k)))) {
+      for (const cell of refreshed) {
+        if (cell.r === 0) continue;
+        if (textOf(cell) === "o" || textOf(cell) === "O") cell.text = "0";
+      }
+    }
+    const dotted = refreshed.filter((k) => /^\.\d{2,5}$/.test(textOf(k)));
+    if (dotted.length < 2 || dotted.length < 0.4 * refreshed.length) continue;
+    const lengths = new Map();
+    for (const cell of dotted) {
+      const n = textOf(cell).length - 1;
+      lengths.set(n, (lengths.get(n) || 0) + 1);
+    }
+    for (const cell of refreshed) {
+      const m = textOf(cell).match(/^[lI|]\s*(\d{2,5})$/);
+      if (!m || (lengths.get(m[1].length) || 0) < 2) continue;
+      cell.text = `.${m[1]}`;
+    }
+  }
 }
 
 export function tidyDocumentTables(doc) {

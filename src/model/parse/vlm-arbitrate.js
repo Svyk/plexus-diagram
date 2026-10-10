@@ -238,6 +238,8 @@ function plainNumber(text) {
   s = s.replace(/\\overline\{([^}]*)\}/g, "$1");
   s = s.replace(/\\\(|\\\)|\\[a-z]+/g, "");
   s = s.replace(/[{}]/g, "").trim();
+  // A barred characteristic (2̄.6972) is still that number. The bar stays in the cell.
+  s = s.normalize("NFD").replace(/\u0304/g, "");
   if (scientificFactor(s)) return true;
   return /^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(s);
 }
@@ -282,6 +284,32 @@ function tidyShare(table) {
     if (plainNumber(raw) || isPlaceholder(raw) || plainPhrase(raw)) ok += 1;
   }
   return n ? ok / n : 1;
+}
+
+// A filled body cell the reader did not finish: a digit mixed with junk
+// ("~.69~2", "l 119") or a lone mark. A word, a placeholder, and a barred
+// log are not debris.
+function isDebris(text) {
+  const raw = String(text || "").trim();
+  if (!raw || plainNumber(raw) || isPlaceholder(raw)) return false;
+  if (!/\d/.test(raw) && plainPhrase(raw)) return false;
+  if (/\d/.test(raw)) return true;
+  return /^[~^`'?]$/.test(raw);
+}
+
+function debrisShare(table) {
+  const header = table?.headerRows || 0;
+  let n = 0;
+  let bad = 0;
+  for (const cell of table?.cells || []) {
+    if ((cell.colSpan || 1) > 1) continue;
+    if (header && cell.r < header) continue;
+    const raw = String(cell.text || "").trim();
+    if (!raw) continue;
+    n += 1;
+    if (isDebris(raw)) bad += 1;
+  }
+  return n ? bad / n : 0;
 }
 
 // Two numbers from one text line stuffed into one cell ("0.15 0.003").
@@ -391,8 +419,9 @@ export function scoreTable(table, evidence) {
   const single = singleValues(table || { cells: [] });
   const tidy = tidyShare(table || { cells: [] });
   const filled = filledShare(table || { cells: [], rows: 0, cols: 0 });
+  const debris = debrisShare(table || { cells: [] });
   const total = 0.28 * rowCov + 0.16 * rowFit + 0.08 * colFit + 0.12 * numeric + 0.08 * header + 0.14 * single + 0.14 * tidy;
-  return { total, rowCov, rowFit, colFit, numeric, header, single, tidy, filled, textRows, rowTarget, body, colsTarget };
+  return { total, rowCov, rowFit, colFit, numeric, header, single, tidy, filled, debris, textRows, rowTarget, body, colsTarget };
 }
 
 // VLM header (spans included) over the rule body's rows, when the VLM body is short.
@@ -452,6 +481,24 @@ function sameGridBetter(candidate, ruleRow) {
   return false;
 }
 
+// The rule grid matches its own broken glyphs, so token coverage keeps it.
+// A same-shape reading whose body is numbers, against a rule body that is
+// junk, is the reading. A short clean fragment is not: it dropped the rows.
+function cleanOverDebris(candidate, ruleRow) {
+  const next = candidate?.score;
+  const rule = ruleRow?.score;
+  if (!next || !rule) return false;
+  if (!(rule.debris >= 0.12) || !(next.debris <= 0.04)) return false;
+  const rows = candidate.table?.rows || 0;
+  const ruleRows = ruleRow.table?.rows || 0;
+  if (rows < 6 || ruleRows < 6) return false;
+  const ratio = rows / ruleRows;
+  if (ratio < 0.85 || ratio > 1.15) return false;
+  if (Math.abs((candidate.table?.cols || 0) - (ruleRow.table?.cols || 0)) > 1) return false;
+  if (next.numeric < 0.6) return false;
+  return true;
+}
+
 // A gap under CLEAR keeps the rule table, except when the other reading is
 // the one the page can actually support: cleaner cells without a dropped
 // grid, or a better row count when the OCR tokens match neither reading.
@@ -496,6 +543,131 @@ function fillEmptyFromRule(chosen, rule, evidence) {
   return { ...chosen, cells };
 }
 
+function cellTextAt(table, r, c) {
+  const cell = (table?.cells || []).find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+  return String(cell?.text || "").trim();
+}
+
+function stubKey(text) {
+  return String(text || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function parseLoose(text) {
+  let s = String(text || "").trim().replace(/,/g, "");
+  if (!s) return null;
+  if (/^\.\d+$/.test(s)) s = `0${s}`;
+  if (!/^[+-]?\d+(?:\.\d+)?$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+// The Total column, from a header word or from a column of 100 / 100.00.
+function totalColumn(table) {
+  const cols = table?.cols || 0;
+  const rows = table?.rows || 0;
+  if (cols < 3 || rows < 3) return null;
+  const look = Math.min(rows, Math.max(table.headerRows || 0, 2));
+  for (let c = 1; c < cols; c += 1) {
+    for (let r = 0; r < look; r += 1) {
+      const text = cellTextAt(table, r, c).replace(/[.:]+$/g, "");
+      if (/^total\b/i.test(text)) return c;
+    }
+  }
+  const start = table.headerRows || 0;
+  let best = null;
+  let bestShare = 0;
+  for (let c = 1; c < cols; c += 1) {
+    let n = 0;
+    let hundreds = 0;
+    for (let r = start; r < rows; r += 1) {
+      const text = cellTextAt(table, r, c);
+      if (!text) continue;
+      n += 1;
+      const v = parseLoose(text);
+      if (v != null && Math.abs(v - 100) < 0.001) hundreds += 1;
+    }
+    if (n >= 3 && hundreds / n >= 0.6 && hundreds / n > bestShare) {
+      bestShare = hundreds / n;
+      best = c;
+    }
+  }
+  return best;
+}
+
+function componentSum(table, row, totalCol) {
+  const parts = [];
+  for (let c = 1; c < (table.cols || 0); c += 1) {
+    if (c === totalCol) continue;
+    const n = parseLoose(cellTextAt(table, row, c));
+    if (n == null) continue;
+    parts.push(n);
+  }
+  if (parts.length < 2) return null;
+  return parts.reduce((sum, n) => sum + n, 0);
+}
+
+function sumsToTotal(table, row, totalCol) {
+  const total = parseLoose(cellTextAt(table, row, totalCol));
+  const sum = componentSum(table, row, totalCol);
+  if (total == null || sum == null) return false;
+  return Math.abs(sum - total) <= Math.max(0.55, Math.abs(total) * 0.005);
+}
+
+// Same stub, same columns. When the chosen row's numbers do not add to its
+// Total and the rule row's do, the rule row is the one the total names.
+// A row that already adds is left alone, so a repaired ".7" is not replaced
+// by a "7" that misses the total.
+// Called after the structural repairs. A unit line ("Per cent.") has to be
+// lifted first; copying numbers onto that row removes the signal and leaves
+// every city with the previous city's values.
+export function restoreLabeledTotals(chosen, rule) {
+  if (!chosen?.cells || !rule?.cells || chosen === rule) return chosen;
+  if ((chosen.cols || 0) !== (rule.cols || 0) || (chosen.cols || 0) < 3) return chosen;
+  const totalCol = totalColumn(chosen);
+  if (totalCol == null || totalColumn(rule) !== totalCol) return chosen;
+  const ruleRows = new Map();
+  const ambiguous = new Set();
+  for (let r = 0; r < (rule.rows || 0); r += 1) {
+    const key = stubKey(cellTextAt(rule, r, 0));
+    if (key.length < 4) continue;
+    if (ruleRows.has(key) || ambiguous.has(key)) {
+      ruleRows.delete(key);
+      ambiguous.add(key);
+      continue;
+    }
+    ruleRows.set(key, r);
+  }
+  const cells = chosen.cells.map((cell) => ({ ...cell }));
+  let changed = 0;
+  const start = chosen.headerRows || 0;
+  for (let r = start; r < (chosen.rows || 0); r += 1) {
+    const key = stubKey(cellTextAt(chosen, r, 0));
+    if (key.length < 4 || ambiguous.has(key)) continue;
+    const rr = ruleRows.get(key);
+    if (rr == null) continue;
+    if (sumsToTotal(chosen, r, totalCol) || !sumsToTotal(rule, rr, totalCol)) continue;
+    for (let c = 1; c < chosen.cols; c += 1) {
+      const text = cellTextAt(rule, rr, c);
+      if (!text) continue;
+      const cell = cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
+      // A label the chosen row already has ("do.") stays. Only numbers move,
+      // and an empty cell still takes the rule text.
+      const have = cell ? String(cell.text || "").trim() : "";
+      if (have && parseLoose(have) == null && parseLoose(text) == null) continue;
+      if (cell) {
+        if (have === text) continue;
+        cell.text = text;
+        changed += 1;
+      } else {
+        cells.push({ r, c, rowSpan: 1, colSpan: 1, text, header: false });
+        changed += 1;
+      }
+    }
+  }
+  if (!changed) return chosen;
+  return { ...chosen, cells };
+}
+
 // `page` is `{words, rules}` for the table's page. Choice is "rule", "vlm", or "merge".
 export function chooseTableReading(rule, vlm, page = {}) {
   const box = unionBox(rule?.bbox, vlm?.bbox);
@@ -513,7 +685,7 @@ export function chooseTableReading(rule, vlm, page = {}) {
   const ruleRow = ranked.find((row) => row.choice === "rule");
   if (ruleRow && best.choice !== "rule" && !clearsRule(best, ruleRow)) best = ruleRow;
   if (ruleRow && best.choice === "rule") {
-    const alt = ranked.find((row) => row.choice !== "rule" && sameGridBetter(row, ruleRow));
+    const alt = ranked.find((row) => row.choice !== "rule" && (sameGridBetter(row, ruleRow) || cleanOverDebris(row, ruleRow)));
     if (alt) best = alt;
   }
   if (rule && best.choice !== "rule" && best.table) best = { ...best, table: fillEmptyFromRule(best.table, rule, evidence) };

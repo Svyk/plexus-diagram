@@ -5,8 +5,9 @@
 //   "llamaparse" — kept from LlamaParse on a page the local read did not cover
 //                  with figure detection, and no local match
 //   "hybrid"     — IoU ≥ 0.5 with a local figure; the box is the local box;
-//                  the caption is the local caption when that caption is non-empty,
-//                  otherwise the LlamaParse caption
+//                  the caption is the better of the two when both are non-empty
+//                  (a description beats a bare "Fig. 1"; a longer complete caption
+//                  beats a shorter one). An empty side keeps the other.
 //   "local"      — a local figure LlamaParse missed
 // On a page where figure detection ran, the figures are the local ones only.
 // A LlamaParse figure with no local match is dropped there. Detection ran when
@@ -72,6 +73,27 @@ function captionBlock(doc, figure) {
 
 function captionText(block) {
   return String(block?.text || "").replace(/\s+/g, " ").trim();
+}
+
+function captionScore(text) {
+  const words = text.split(/\s+/).filter(Boolean);
+  let score = Math.min(words.length, 28);
+  if (/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(text)) score += 6;
+  if (words.length <= 2 && /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?$/i.test(text)) score -= 4;
+  if (words.length > 40) score -= 10;
+  return score;
+}
+
+// The description beats a label, and the complete line beats a fragment of the same caption.
+export function betterCaption(localText, cloudText) {
+  const local = String(localText || "").replace(/\s+/g, " ").trim();
+  const cloud = String(cloudText || "").replace(/\s+/g, " ").trim();
+  if (!local) return cloud;
+  if (!cloud) return local;
+  const localScore = captionScore(local);
+  const cloudScore = captionScore(cloud);
+  if (localScore === cloudScore) return local.length >= cloud.length ? local : cloud;
+  return localScore > cloudScore ? local : cloud;
 }
 
 function clampConf(value, fallback) {
@@ -229,14 +251,19 @@ export function mergeCloudFigures(cloudDoc, localDoc) {
       cloud.bbox = local.bbox.slice();
       cloud.source = "hybrid";
       const localCap = captionBlock(localDoc, local);
-      const text = captionText(localCap);
+      const localText = captionText(localCap);
+      const cloudText = cloud.caption && blocks[cloud.caption] ? captionText(blocks[cloud.caption]) : "";
+      const text = betterCaption(localText, cloudText);
       if (!text) continue;
+      const useLocal = text === localText && localText !== "";
       if (cloud.caption && blocks[cloud.caption]) {
-        blocks[cloud.caption] = {
-          ...blocks[cloud.caption],
-          text,
-          bbox: localCap.bbox || blocks[cloud.caption].bbox,
-        };
+        if (useLocal) {
+          blocks[cloud.caption] = {
+            ...blocks[cloud.caption],
+            text,
+            bbox: localCap.bbox || blocks[cloud.caption].bbox,
+          };
+        }
       } else {
         const id = nextId("c");
         blocks[id] = {

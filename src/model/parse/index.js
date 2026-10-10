@@ -5,7 +5,7 @@ import { buildLines, dominantRotation, lineBox, makeLine, mul, round } from "./l
 import { extractGraphics, luminanceOf } from "./rules.js";
 import { chartGrid, findLatticeTables, looksLikeChart } from "./lattice.js";
 import { baselineRows, detectStreamRuns, tableFromBand } from "./stream.js";
-import { demoteFalseCaptions, drawingSheetPage, figCaptionKey, findFigures, imageCover, normalizeFigSpelling, peelFigLabels, rasterScanPage, sheetRegions, splitSharedCaptions } from "./figures.js";
+import { demoteFalseCaptions, drawingSheetPage, figCaptionKey, findFigures, imageCover, normalizeFigSpelling, peelFigLabels, rasterScanPage, rejectFalseFigures, sheetRegions, splitSharedCaptions } from "./figures.js";
 import { dropMarginRotated, findFurniture, normalizeFurniture } from "./furniture.js";
 import { findPageTitle } from "./title.js";
 import { applyNumbering, bodySizeOf, CAPTION_RE, headingClasses, headingLevel, refineBodyHeadingLevels } from "./headings.js";
@@ -21,17 +21,25 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 16;
+export const PARSE_REV = 17;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
 
 const now = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
 
+// Axis ticks ("-4 -3") sometimes sit on the caption line, in front of FIG.
+function peelTickPrefix(text) {
+  return String(text || "").replace(/^(?:[-+]?\d+\s+){1,6}(?=(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b)/i, "");
+}
+
+const NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
+
 // A caption line may carry a missing-glyph number ("Figure" plus a private-use char).
 function isCaptionText(text) {
-  const raw = normalizeFigSpelling(String(text || "").replace(/[^\p{L}\p{N}.: ]/gu, " ").replace(/\s+/g, " ").trim());
-  return CAPTION_RE.test(raw) || figCaptionKey(raw) != null || /^fig(?:ure)?\.?\s*$/i.test(raw) || /^\d+[A-Za-z]?\s*\.?\s*fig(?:ure)?\.?$/i.test(raw);
+  const raw = peelTickPrefix(normalizeFigSpelling(String(text || "").replace(/[^\p{L}\p{N}.: ]/gu, " ").replace(/\s+/g, " ").trim()));
+  if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(raw)) return false;
+  return CAPTION_RE.test(raw) || figCaptionKey(raw) != null || /^(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|taf)\.?\s*$/i.test(raw) || /^\d+[A-Za-z]?(?:[.\s]+)\s*(?:fig(?:ure)?|plates?|abb(?:ildung)?|tafel|taf)\.?$/i.test(raw);
 }
 
 function yieldTick() {
@@ -144,6 +152,7 @@ export function parsePageGeometry(data, n) {
     }
   }
   if (ocr) absorbFigureTables(tables, figures);
+  figures = rejectFalseFigures(figures, { lines, tables, pageW: w, pageH: h });
   // Rule bands beside a chart that only hold its labels go back to the text pass.
   for (let i = tables.length - 1; i >= 0; i--) {
     const t = tables[i];
@@ -280,11 +289,12 @@ function wordCountText(text) {
 // "Fig. 1" with nothing after the number. The next line is the body, not the caption.
 function figLabelOnly(text) {
   const t = normalizeFigSpelling(text).replace(/\s+/g, " ").trim();
-  return /^(?:fig(?:ure)?|plates?)\.?\s*\d+[A-Za-z]?[.:]?$/i.test(t);
+  return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?$/i.test(t)
+    || /^\d+[A-Za-z]?(?:[.\s]+)\s*(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafel|taf)\.?$/i.test(t);
 }
 
 function hasFigWord(text) {
-  return /\b(?:fig(?:ure)?s?|plates?)\b/i.test(String(text || ""));
+  return /\b(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel)\b/i.test(String(text || ""));
 }
 
 // A label-only first line, or the line that carries the ordinate note, ends the caption.
@@ -297,6 +307,11 @@ function splitOcrCaptionGroup(group) {
   else {
     const at = group.findIndex((l) => /\bordin/i.test(String(l.text || "")));
     if (at >= 0 && at + 1 < group.length) keep = at + 1;
+    else {
+      const sentence = group.findIndex((l, i) => i > 0 && wordCountText(group[0].text) >= 4 && NEXT_SENTENCE_RE.test(String(l.text || "").trim()));
+      if (sentence > 0) keep = sentence;
+      else if (figCaptionKey(group[0].text) && wordCountText(group[0].text) >= 6 && /[.?!]["”']?$/.test(String(group[0].text || "").trim())) keep = 1;
+    }
   }
   if (keep >= group.length) return [group];
   return [group.slice(0, keep), group.slice(keep)];
@@ -308,7 +323,7 @@ function attachDroppedFigDigit(blocks) {
   const drop = new Set();
   for (const b of blocks) {
     if (drop.has(b) || b.type !== "caption") continue;
-    if (!/^(?:fig(?:ure)?|plates?)\.?$/i.test(normalizeFigSpelling(b.text))) continue;
+    if (!/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?$/i.test(normalizeFigSpelling(b.text))) continue;
     let next = null;
     for (const n of blocks) {
       if (n === b || drop.has(n) || (n.type !== "para" && n.type !== "caption" && n.type !== "heading")) continue;
@@ -327,6 +342,36 @@ function attachDroppedFigDigit(blocks) {
     };
     b.lines = [...(b.lines || []), ...(next.lines || [])];
     drop.add(next);
+  }
+  if (!drop.size) return;
+  for (let i = blocks.length - 1; i >= 0; i--) if (drop.has(blocks[i])) blocks.splice(i, 1);
+}
+
+// A label-only caption and the rest of the sentence on the same baseline, with the
+// figure's own labels sitting in the gap ("Fig." … "of propeller section…").
+// An axis title on that baseline starts with a capital and stays out.
+function joinCaptionContinuation(blocks) {
+  const drop = new Set();
+  for (const b of blocks) {
+    if (drop.has(b) || b.type !== "caption" || !figLabelOnly(b.text)) continue;
+    let side = null;
+    for (const n of blocks) {
+      if (n === b || drop.has(n) || n.type !== "para" || !n.bbox) continue;
+      const overlap = Math.min(n.bbox.y1, b.bbox.y1) - Math.max(n.bbox.y0, b.bbox.y0);
+      const nh = Math.max(1, n.bbox.y1 - n.bbox.y0);
+      if (overlap < 0.5 * nh) continue;
+      if (n.bbox.x0 < b.bbox.x1 - 4 || n.bbox.x0 - b.bbox.x1 > 220) continue;
+      if (!/^[a-z]/.test(String(n.text || "").trim())) continue;
+      if (!side || n.bbox.x0 < side.bbox.x0) side = n;
+    }
+    if (!side) continue;
+    b.text = normalizeFigSpelling(`${b.text} ${side.text}`.replace(/\s+/g, " ").trim());
+    b.bbox = {
+      x0: Math.min(b.bbox.x0, side.bbox.x0), y0: Math.min(b.bbox.y0, side.bbox.y0),
+      x1: Math.max(b.bbox.x1, side.bbox.x1), y1: Math.max(b.bbox.y1, side.bbox.y1),
+    };
+    b.lines = [...(b.lines || []), ...(side.lines || [])];
+    drop.add(side);
   }
   if (!drop.size) return;
   for (let i = blocks.length - 1; i >= 0; i--) if (drop.has(blocks[i])) blocks.splice(i, 1);
@@ -366,7 +411,7 @@ function liftOrdinateNote(blocks) {
 function joinCaptionTails(blocks, bodySize) {
   const drop = new Set();
   for (const b of blocks) {
-    if (drop.has(b) || b.type !== "caption" || figCaptionKey(b.text) == null && !/^fig/i.test(normalizeFigSpelling(b.text || ""))) continue;
+    if (drop.has(b) || b.type !== "caption" || figCaptionKey(b.text) == null && !/^(?:fig|plate|abb|tafel|taf)\b/i.test(normalizeFigSpelling(b.text || ""))) continue;
     if (figLabelOnly(b.text)) continue;
     let plain = 0;
     let guard = 0;
@@ -380,8 +425,11 @@ function joinCaptionTails(blocks, bodySize) {
         if (!next || n.bbox.y0 < next.bbox.y0) next = n;
       }
       if (!next) break;
-      if (figCaptionKey(next.text) != null || /^table\b/i.test(next.text) || wordCountText(next.text) > 24) break;
+      if (figCaptionKey(next.text) != null || /^(?:table|tab)\b/i.test(next.text) || wordCountText(next.text) > 24) break;
       const figWord = hasFigWord(next.text);
+      // The next sentence ("The deposit was…") is the body under the caption, not another caption line.
+      if (!figWord && wordCountText(b.text) >= 4 && NEXT_SENTENCE_RE.test(String(next.text || "").trim())) break;
+      if (!figWord && wordCountText(b.text) >= 6 && /[.?!]["”']?$/.test(String(b.text || "").trim())) break;
       if (/\bordin/i.test(b.text) && !figWord) break;
       if (!figWord && plain >= 1) break;
       if (!figWord && /[.?!]["”']?$/.test(String(b.text || "").trim()) && /^[A-Z]/.test(String(next.text || "").trim())) break;
@@ -399,13 +447,88 @@ function joinCaptionTails(blocks, bodySize) {
   for (let i = blocks.length - 1; i >= 0; i--) if (drop.has(blocks[i])) blocks.splice(i, 1);
 }
 
-// Closest pair wins, so a caption is not taken by a figure it only barely reaches.
+// A caption line grouped with the facing column (no horizontal overlap) is not one paragraph.
+function peelCaptionColumn(group) {
+  if (!group?.length || group.length < 2 || !isCaptionText(group[0].text)) return { keep: group, rest: [] };
+  const host = group[0];
+  const keep = [host];
+  const rest = [];
+  for (const line of group.slice(1)) {
+    const overlap = Math.min(line.x1, host.x1) - Math.max(line.x0, host.x0);
+    if (overlap < 8 && line.x0 >= host.x1 - 4) rest.push(line);
+    else keep.push(line);
+  }
+  if (!rest.length) return { keep: group, rest: [] };
+  return { keep, rest };
+}
+
+function titleLikePlate(text) {
+  const t = normalizeFigSpelling(String(text || "")).replace(/\s+/g, " ").trim();
+  if (!t || /\.{4,}|…{2,}|·{4,}/.test(t)) return false;
+  const words = t.split(" ").filter(Boolean);
+  if (words.length < 2 || words.length > 28) return false;
+  if (/^(?:table|tabelle|tab)\b/i.test(t) && !/^taf/i.test(t)) return false;
+  if (/^(?:plates?|tafeln?|tafel|taf\.?|abb(?:ildung)?)\b/i.test(t)) return true;
+  if (words.length < 4) return false;
+  const letters = t.replace(/[^A-Za-z]/g, "");
+  if (letters.length < 8) return false;
+  return letters.replace(/[^A-Z]/g, "").length / letters.length >= 0.62;
+}
+
+// A plate title sits on the figure ("PLATE I", "TAFEL 2", an all-caps line under the drawing)
+// and is not a Fig. line the caption regex already kept.
+function attachPlateTitles(blocks, figures, bodySize, pageH) {
+  const gapLimit = Math.max(3 * bodySize, 36);
+  for (const fig of figures || []) {
+    const tb = fig.bbox;
+    if (!tb) continue;
+    const area = Math.max(0, tb[2] - tb[0]) * Math.max(0, tb[3] - tb[1]);
+    // A stamp-sized box does not take the nearest all-caps line as its title.
+    if (area < 12000) continue;
+    let best = null;
+    let bestGap = Infinity;
+    for (const b of blocks) {
+      if (!b?.bbox || (b.type !== "para" && b.type !== "heading")) continue;
+      if (!titleLikePlate(b.text)) continue;
+      const yGap = b.bbox.y1 <= tb[1] ? tb[1] - b.bbox.y1 : b.bbox.y0 >= tb[3] ? b.bbox.y0 - tb[3] : 0;
+      if (yGap > gapLimit) continue;
+      const ox = Math.min(tb[2], b.bbox.x1) - Math.max(tb[0], b.bbox.x0);
+      const narrower = Math.min(tb[2] - tb[0], b.bbox.x1 - b.bbox.x0);
+      if (!(narrower > 0) || ox < 0.35 * narrower) continue;
+      if (yGap < bestGap) { bestGap = yGap; best = b; }
+    }
+    if (best) {
+      best.type = "caption";
+      best.text = normalizeFigSpelling(best.text);
+    }
+  }
+}
+
+// Closest pair wins. A numbered caption beats a bare "Fig." that only touches the same box.
+// A caption beside the plate (a rotated margin line) links across a wider horizontal gap.
+function captionRank(text) {
+  const t = normalizeFigSpelling(text || "");
+  const words = wordCountText(t);
+  const numbered = figCaptionKey(t) != null && figCaptionKey(t) !== "";
+  return (numbered ? 4 : 0) + Math.min(words, 24);
+}
+
+// "Figs. 20." names the plate. "1. Fig." is a reversed fragment, and an all-caps
+// part label ("FACE ALL READY FOR PUSHING") is not a figure lead.
+function forwardFigLead(text) {
+  const t = normalizeFigSpelling(text || "").replace(/\s+/g, " ").trim();
+  const key = figCaptionKey(t);
+  if (key == null || key === "") return false;
+  return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(t);
+}
+
 function linkCaptions(blocks, targets, bodySize, pageH, { scan = false } = {}) {
   const captionFor = new Map();
   const caps = blocks.filter((b) => b.type === "caption");
   const pairs = [];
   for (const cb of caps) {
-    const wantsTable = /^table/i.test(normalizeFigSpelling(cb.text));
+    const spelled = normalizeFigSpelling(cb.text);
+    const wantsTable = /^(?:table|tabelle|tab)\b/i.test(spelled) && !/^taf/i.test(spelled);
     const shortHead = scan && !wantsTable && cb.bbox.y1 <= 0.14 * pageH && wordCountText(cb.text) <= 6;
     for (const target of targets) {
       const tb = target.bbox;
@@ -415,14 +538,26 @@ function linkCaptions(blocks, targets, bodySize, pageH, { scan = false } = {}) {
       const ox = Math.min(tb[2], cb.bbox.x1) - Math.max(tb[0], cb.bbox.x0);
       const xGap = cb.bbox.x1 < tb[0] ? tb[0] - cb.bbox.x1 : cb.bbox.x0 > tb[2] ? cb.bbox.x0 - tb[2] : 0;
       const yGap = cb.bbox.y1 <= tb[1] ? tb[1] - cb.bbox.y1 : cb.bbox.y0 >= tb[3] ? cb.bbox.y0 - tb[3] : 0;
+      const capH = Math.max(8, cb.bbox.y1 - cb.bbox.y0);
+      const yOverlap = Math.min(cb.bbox.y1, tb[3]) - Math.max(cb.bbox.y0, tb[1]);
+      const beside = yOverlap >= 0.45 * capH && ox <= 0;
       const yLimit = wantsTable ? 3 * bodySize : shortHead ? Math.max(3 * bodySize, 0.16 * pageH) : Math.max(3 * bodySize, 36);
-      const xLimit = Math.max(3 * bodySize, 36);
-      if (yGap > yLimit) continue;
+      const xLimit = beside ? Math.max(8 * bodySize, 96) : Math.max(3 * bodySize, 36);
+      if (!beside && yGap > yLimit) continue;
       if (ox <= 0 && xGap > xLimit) continue;
-      pairs.push({ cb, target, gap: yGap + (ox > 0 ? 0 : xGap) });
+      pairs.push({ cb, target, gap: (beside ? xGap : yGap) + (ox > 0 ? 0 : xGap * 0.25), rank: captionRank(cb.text) });
     }
   }
-  pairs.sort((a, b) => a.gap - b.gap);
+  pairs.sort((a, b) => {
+    const band = Math.max(2 * bodySize, 24);
+    if (Math.abs(a.gap - b.gap) <= band) {
+      const af = forwardFigLead(a.cb.text);
+      const bf = forwardFigLead(b.cb.text);
+      if (af !== bf) return af ? -1 : 1;
+      if (figLabelOnly(a.cb.text) !== figLabelOnly(b.cb.text)) return figLabelOnly(a.cb.text) ? 1 : -1;
+    }
+    return a.gap - b.gap || b.rank - a.rank;
+  });
   const used = new Set();
   for (const p of pairs) {
     if (used.has(p.cb) || captionFor.has(p.target)) continue;
@@ -678,8 +813,10 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
         while (j < lines.length && !levelAt(j)) j++;
         const chunk = lines.slice(i, j);
         for (const group of groupParagraphs(chunk, { bodySize })) {
-          const pieces = pg.ocr ? splitOcrCaptionGroup(group) : [group];
+          const peeled = pg.ocr ? peelCaptionColumn(group) : { keep: group, rest: [] };
+          const pieces = pg.ocr ? splitOcrCaptionGroup(peeled.keep) : [peeled.keep];
           for (const part of pieces) emitTextGroup(part);
+          if (peeled.rest.length) emitTextGroup(peeled.rest);
         }
         function emitTextGroup(group) {
           const joined = joinLines(group);
@@ -697,7 +834,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
             textBlocks.push({ type: "footnote", lines: group, mark, text, bbox: boxOfUnits(group) });
             return;
           }
-          const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(joined.text) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
+          const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(peelTickPrefix(joined.text)) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
           textBlocks.push(block);
         }
         i = j;
@@ -711,8 +848,10 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     }
     if (pg.ocr) {
       attachDroppedFigDigit(textBlocks);
+      joinCaptionContinuation(textBlocks);
       liftOrdinateNote(textBlocks);
       joinCaptionTails(textBlocks, bodySize);
+      attachPlateTitles(textBlocks, pageFigures, bodySize, pg.h);
     }
     // The closer caption wins. A Fig. line just outside the rules still attaches,
     // and on a scan a short plate number in the top band can reach the drawing under it.

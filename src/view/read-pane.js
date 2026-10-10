@@ -2289,7 +2289,7 @@ export function createReadPane({
       doc,
       store: ensureStore(),
       helper: ensureHelper(),
-      pageReader: () => { try { return settings?.get?.("parse-page-reader") === "all" ? "all" : "doubtful"; } catch { return "doubtful"; } },
+      pageReader: () => { try { return settings?.get?.("parse-page-reader") === "doubtful" ? "doubtful" : "all"; } catch { return "all"; } },
       ocrAlt: () => {
         if (!deviceReady() || typeof deviceOcr?.read !== "function") return null;
         return {

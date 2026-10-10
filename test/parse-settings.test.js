@@ -11,9 +11,9 @@ test("parse settings have defaults, rows, a password token, and tooltip strings"
   assert.equal(defaults["parse-engine-default"], "auto");
   assert.equal(defaults["parse-formula"], false);
   assert.equal(defaults["parse-ocr"], "auto");
-  assert.equal(defaults["parse-page-reader"], "doubtful");
+  assert.equal(defaults["parse-page-reader"], "all");
   assert.equal(normalizeSetting("parse-page-reader", "all"), "all");
-  assert.equal(normalizeSetting("parse-page-reader", "every"), "doubtful");
+  assert.equal(normalizeSetting("parse-page-reader", "every"), "all");
   assert.equal(defaults["parse-link-safe"], true);
   assert.equal(defaults["parse-numbered"], false);
   assert.equal(defaults["parse-footnotes"], "inline");

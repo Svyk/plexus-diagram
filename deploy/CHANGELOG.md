@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.16.0 — 2026-10-10
+
+Long rosters and old tables printed in pieces read as one table.
+
+- **Rosters and registers.** A roster printed as several pieces down the page, with a section line between them ("Harbor Commissioners for the Port of San Jose, 1913-1924."), is read as one table with that line as a row. Leader dots, a date split across two cells and a lone "Deceased." beside a name no longer become columns of their own. Three 1924 California Blue Book roster pages now score 0.96–0.99 on cell content (were 0.26–0.78).
+- **Old numeric tables.** Totals are matched to their rows after the table's shape is repaired, a lone "o" in a column of numbers is read as 0, and a numbered column with one unreadable number is filled from the run. A 1929 NACA viscosity table now scores 0.98 on cell content (was 0.78), and a 1916 Bureau of Mines gas table 1.00 (was 0.91).
+- Cached parses from earlier versions are refreshed automatically.
+
 ## 3.15.0 — 2026-10-10
 
 More figures found in photographed pages and menus, and more old tables read exactly.

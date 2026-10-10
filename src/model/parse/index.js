@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 16;
+export const PARSE_REV = 17;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -846,6 +846,10 @@ export function figureLabels(t, figures) {
   const filled = t.cells.filter((k) => k.text).length;
   const singles = Array.from({ length: t.rows }, (_, r) => t.cells.filter((k) => k.r === r && k.text).length === 1).filter(Boolean).length;
   if (filled >= 0.6 * t.cells.length && singles < 0.5 * t.rows) return false;
+  // A contents list is a label column plus page numbers. A plate box over the
+  // labels does not make those rows into figure text.
+  const pageNums = texts.filter((s) => /^\d{1,4}$/.test(s)).length;
+  if (t.cols === 2 && t.rows >= 4 && pageNums >= 3) return false;
   return figures.some((f) => {
     const b = f.bbox;
     return t.bbox[0] <= b[2] + 12 && t.bbox[2] >= b[0] - 12 && t.bbox[1] <= b[3] + 12 && t.bbox[3] >= b[1] - 12;

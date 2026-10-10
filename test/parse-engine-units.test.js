@@ -5,7 +5,7 @@ import test from "node:test";
 import { buildLines, mul, applyPoint, normalizeText, fontFlags, makeLine } from "../src/model/parse/lines.js";
 import { decodePathData, extractGraphics, luminanceOf, snapRules, OP } from "../src/model/parse/rules.js";
 import { findLatticeTables, cellTextOf, isNumericText } from "../src/model/parse/lattice.js";
-import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand, phraseTable, tickGrid } from "../src/model/parse/stream.js";
+import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand, phraseTable, tickGrid, alignNumericColumns } from "../src/model/parse/stream.js";
 import { resplitColumns } from "../src/model/parse/resplit.js";
 import { findFigures, clusterBoxes } from "../src/model/parse/figures.js";
 import { findFurniture, isScanBanner, normalizeFurniture } from "../src/model/parse/furniture.js";
@@ -211,9 +211,85 @@ const row = (cells, base, size = 9) => {
   return { words, text: words.map((w) => w.text).join(" "), x0: words[0].x0, x1: Math.max(...words.map((w) => w.x1)), y0: base - 7.2, y1: base + 2, base, size, chars: words.reduce((n, w) => n + w.text.length, 0), bold: false, mathShare: 0 };
 };
 
+test("alignNumericColumns keeps a year range beside a right-aligned quantity", () => {
+  const tok = (text, x0, x1) => ({ text, x0, x1, words: [{ text, x0, x1, conf: 1 }] });
+  const row = (name, yearX1, qty) => [tok(name, 30, 58), tok("1893-1913", 81, yearX1), tok(qty, 118, 140), tok("16,863", 146, 165)];
+  const rows = ["Alabama", "Arkansas", "Colorado", "Georgia", "Illinois", "Indiana"].map((name, i) => row(name, 104 + (i % 3) * 4, "10,533,707"));
+  const cols = alignNumericColumns(rows, 8);
+  assert.ok(cols.length >= 4);
+  const year = cols.find((c) => c.x0 < 100 && c.x1 > 90);
+  const qty = cols.find((c) => c.x1 > 130 && c.x1 < 150);
+  assert.ok(year && qty && year.x1 < qty.x0);
+});
+
+test("tokenizeLine separates a year range from the quantity whose box touches it", () => {
+  const w = (text, x0, x1) => ({ text, x0, x1, conf: 1 });
+  const line = { words: [w("Alabama", 30, 57), w("1893-1913", 81, 112), w("10,533,707", 111, 140), w("16,863", 146, 165)], size: 8 };
+  assert.deepEqual(tokenizeLine(line).map((t) => t.text), ["Alabama", "1893-1913", "10,533,707", "16,863"]);
+});
+
+test("tokenizeLine keeps an OCR thousands group and splits a wider numeric column gap", () => {
+  const w = (text, x0, x1) => ({ text, x0, x1, conf: 1 });
+  const line = { words: [w("10,", 100, 118), w("533,", 120, 142), w("707", 144, 162), w("16,863", 172, 204)], size: 8 };
+  assert.deepEqual(tokenizeLine(line).map((t) => t.text), ["10, 533, 707", "16,863"]);
+});
+
 test("tokenizeLine splits at column gaps, not at word spaces", () => {
   const line = row([["Zone", 50], ["Swabs", 100], ["H1", 130], ["Pos.", 200]], 100);
   assert.deepEqual(tokenizeLine(line).map((t) => t.text), ["Zone", "Swabs H1", "Pos."]);
+});
+
+test("detectStreamRuns keeps a contents list when a title has no page number on its line", () => {
+  const w = (text, x0, x1) => ({ text, x0, x1, conf: 1 });
+  const line = (words, base) => ({
+    words: words.map((wd) => ({ ...wd, base, size: 10, y0: base - 8, y1: base + 2, bold: false, mathChars: 0, boldChars: 0, italicChars: 0, mathFontChars: 0 })),
+    text: words.map((wd) => wd.text).join(" "),
+    x0: words[0].x0, x1: Math.max(...words.map((wd) => wd.x1)),
+    y0: base - 8, y1: base + 2, base, size: 10, chars: 10, bold: false, mathShare: 0,
+  });
+  const lines = [
+    line([w("Page.", 370, 400)], 140),
+    line([w("Introduction", 70, 150), w("5", 380, 392)], 156),
+    line([w("Composition", 70, 140), w("of", 144, 160), w("natural", 164, 200), w("gas.", 204, 230)], 172),
+    line([w("Compressibility", 70, 160), w("of", 164, 176), w("methane", 180, 220), w("6", 380, 392)], 188),
+    line([w("Experiments", 70, 140), w("made.", 144, 180)], 204),
+    line([w("Publications", 70, 150), w("on", 154, 170), w("petroleum", 174, 230), w("11", 378, 392)], 220),
+  ];
+  const tables = detectStreamRuns(lines);
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].headerRows, 1);
+  const cell = (r, c) => tables[0].cells.find((k) => k.r === r && k.c === c);
+  assert.equal(cell(1, 0).text, "Introduction");
+  assert.equal(cell(1, 1).text, "5");
+  assert.match(cell(2, 0).text, /Composition/);
+  assert.equal(cell(3, 1).text, "6");
+  assert.equal(cell(5, 1).text, "11");
+});
+
+test("detectStreamRuns reads columns from the numeric body when a header spans them", () => {
+  const ocr = (text, x0, x1, base) => ({ text, x0, x1, base, size: 8, y0: base - 6, y1: base + 1, conf: 1, bold: false, mathChars: 0, boldChars: 0, italicChars: 0, mathFontChars: 0 });
+  const line = (words, base) => ({
+    words, text: words.map((w) => w.text).join(" "), x0: words[0].x0, x1: Math.max(...words.map((w) => w.x1)),
+    y0: base - 6, y1: base + 1, base, size: 8, chars: words.reduce((n, w) => n + w.text.length, 0), bold: false, mathShare: 0,
+  });
+  const head = line([ocr("State", 40, 80, 80), ocr("Number killed, by cause, this year", 150, 420, 80)], 80);
+  const body = (name, a, b, c, d, base) => line([
+    ocr(name, 40, 90, base), ocr(a, 160, 190, base), ocr(b, 230, 260, base), ocr(c, 300, 340, base), ocr(d, 380, 410, base),
+  ], base);
+  const tables = detectStreamRuns([
+    head,
+    body("Alabama", "12", "3", "1", "4", 96),
+    body("Georgia", "8", "2", "0", "1", 108),
+    body("Kansas", "15", "4", "2", "6", 120),
+    body("Ohio", "9", "1", "1", "3", 132),
+    body("Texas", "11", "2", "0", "2", 144),
+  ]);
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].cols, 5);
+  assert.equal(tables[0].cells.find((c) => c.r === 1 && c.c === 1).text, "12");
+  assert.equal(tables[0].cells.find((c) => c.r === 1 && c.c === 4).text, "4");
+  const span = tables[0].cells.find((c) => c.r === 0 && c.c > 0 && c.colSpan > 1);
+  assert.ok(span && span.colSpan >= 2, "the group header covers more than one body column");
 });
 
 test("detectStreamRuns finds a borderless numeric table with a bold header and right-aligned numbers", () => {

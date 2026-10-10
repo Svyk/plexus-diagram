@@ -225,6 +225,23 @@ test("visualRows keeps OCR rows apart by baseline and lets a wrapped line join t
   // Evenly pitched rows with every column filled stay three rows.
   const dense = visualRows([w("a", 0, 10, 10), w("b", 40, 10, 10), w("c", 0, 17.4, 10), w("d", 40, 17.4, 10), w("e", 0, 24.8, 10), w("f", 40, 24.8, 10)]);
   assert.equal(dense.length, 3);
+  // Three numeric rows at a tight pitch are not one wrapped cell: each row repeats the columns.
+  const grid = (text, x, base) => ({ text, x0: x, x1: x + 18, base, size: 8, y0: base - 6.4, y1: base + 1.6, conf: 1 });
+  const pitched = visualRows([
+    grid("Ala", 0, 100), grid("12", 80, 100), grid("3", 140, 100),
+    grid("Ark", 0, 105.8), grid("8", 80, 105.8), grid("1", 140, 105.8),
+    grid("Geo", 0, 111.6), grid("7", 80, 111.6), grid("2", 140, 111.6),
+  ]);
+  assert.equal(pitched.length, 3);
+  // One Vision box as tall as several lines does not swallow the baselines under it.
+  const tall = (text, x0, base) => ({ text, x0, x1: x0 + 24, base, size: 40, y0: base - 32, y1: base + 8, conf: 1 });
+  const body = (text, x0, base) => ({ text, x0, x1: x0 + 24, base, size: 8, y0: base - 6.4, y1: base + 1.8, conf: 1 });
+  const inflated = visualRows([
+    tall("838", 200, 20), body("Ark", 0, 20), body("2", 80, 20),
+    body("Col", 0, 26), body("6", 80, 26),
+    body("Geo", 0, 32), body("7", 80, 32),
+  ]);
+  assert.equal(inflated.length, 3);
   // Born-digital words (no conf) are unchanged: overlap alone decides.
   const digital = visualRows([{ text: "a", x0: 0, x1: 10, base: 10, size: 6, y0: 5, y1: 11 }, { text: "b", x0: 0, x1: 10, base: 12, size: 6, y0: 7, y1: 13 }]);
   assert.equal(digital.length, 1);

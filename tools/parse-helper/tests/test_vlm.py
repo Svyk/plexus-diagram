@@ -440,3 +440,213 @@ def test_generate_is_greedy_and_repeatable(monkeypatch):
     assert seen[0]["sampler"] is greedy_sampler
     assert seen[0] == seen[1]
     assert Mx.seeded == 0
+
+
+def test_text_reader_pin_names_every_file():
+    from plexus_parse_helper.vlm_weights import TEXT_FILES, TEXT_LABEL, TEXT_LICENCE, TEXT_REVISION
+
+    assert TEXT_LABEL == "Qwen3-VL-8B-Instruct-4bit"
+    assert TEXT_LICENCE == "Apache-2.0"
+    assert len(TEXT_REVISION) == 40
+    assert "model.safetensors.index.json" in TEXT_FILES
+    total = 0
+    for spec in TEXT_FILES.values():
+        assert len(spec["sha256"]) == 64
+        assert spec["bytes"] > 0
+        total += spec["bytes"]
+    assert total > 5_000_000_000
+
+
+def test_fit_page_caps_the_long_side_and_leaves_a_small_page():
+    from PIL import Image
+
+    from plexus_parse_helper.vlm_text import MAX_SIDE, fit_page
+
+    small = Image.new("RGB", (100, 80))
+    assert fit_page(small).size == (100, 80)
+    fitted = fit_page(Image.new("RGB", (4000, 2000)))
+    assert max(fitted.size) == MAX_SIDE
+    assert fitted.size[0] >= fitted.size[1]
+
+
+def test_page_text_decode_is_greedy(monkeypatch):
+    from PIL import Image
+
+    from plexus_parse_helper.vlm_tables import greedy_sampler
+    from plexus_parse_helper.vlm_text import read_page_text
+
+    class Model:
+        class config:
+            eos_token_id = 1
+
+    class Proc:
+        tokenizer = type("Tok", (), {"stopping_criteria": None})()
+
+    class Mx:
+        seeded = None
+
+        class random:
+            @staticmethod
+            def seed(value):
+                Mx.seeded = value
+
+        @staticmethod
+        def reset_peak_memory():
+            pass
+
+    class Stop:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("plexus_parse_helper.vlm_text._get_model", lambda: (Model(), Proc(), Mx))
+    monkeypatch.setattr("plexus_parse_helper.vlm_text._RepeatStop", Stop)
+    seen = []
+
+    def generate(*args, **kwargs):
+        seen.append(kwargs)
+        return type("Out", (), {"text": "Dear reader"})()
+
+    import mlx_vlm
+
+    monkeypatch.setattr(mlx_vlm, "generate", generate)
+    monkeypatch.setattr("mlx_vlm.prompt_utils.apply_chat_template", lambda *args, **kwargs: "PROMPT")
+    assert read_page_text(Image.new("RGB", (32, 32))) == "Dear reader"
+    assert seen[0]["temperature"] == 0.0
+    assert seen[0]["seed"] == 0
+    assert seen[0]["sampler"] is greedy_sampler
+    assert seen[0]["max_tokens"] == 2048
+    assert Mx.seeded == 0
+
+
+def _page_layout(kind):
+    def layout(bitmap):
+        w, h = bitmap.size
+        if kind == "empty":
+            return []
+        boxes = []
+        if kind != "plate":
+            boxes.append({"label": "text", "score": 0.9, "bbox": [8, 8, w - 8, int(h * 0.4)]})
+        if kind != "text":
+            boxes.append({"label": "image", "score": 0.95, "bbox": [0, 0, w, int(h * 0.85)]})
+        return boxes
+
+    return layout
+
+
+def test_body_text_uses_the_page_model_and_a_strip_stays_on_paddle(monkeypatch):
+    from plexus_parse_helper.vlm_read import read_pages
+    from plexus_parse_helper.vlm_tables import OCR_PROMPT
+    from plexus_parse_helper.vlm_weights import TEXT_LABEL
+
+    calls = {"page": 0, "prompts": []}
+    monkeypatch.setattr("plexus_parse_helper.vlm_read.detect_layout", _page_layout("both"))
+    monkeypatch.setattr(
+        "plexus_parse_helper.vlm_read.read_page_text",
+        lambda image: calls.__setitem__("page", calls["page"] + 1) or "Dear reader one line",
+    )
+
+    def generate(image, prompt, tokens):
+        calls["prompts"].append(prompt)
+        return "printed credit"
+
+    monkeypatch.setattr("plexus_parse_helper.vlm_read._generate", generate)
+    out = read_pages(str(PDF), {"pages": [1], "text": True})
+    assert calls["page"] == 1
+    assert calls["prompts"] == [OCR_PROMPT]
+    assert out["model"] == "PaddleOCR-VL-0.9B"
+    assert out["textModel"] == TEXT_LABEL
+    page_lines = [line for line in out["lines"] if line.get("pageText")]
+    strips = [line for line in out["lines"] if not line.get("pageText")]
+    assert len(page_lines) == 1 and page_lines[0]["text"] == "Dear reader one line"
+    assert len(strips) == 1 and strips[0]["text"] == "printed credit"
+
+
+def test_a_caption_plate_does_not_call_the_page_model(monkeypatch):
+    from plexus_parse_helper.vlm_read import read_pages
+
+    calls = {"page": 0}
+    monkeypatch.setattr("plexus_parse_helper.vlm_read.detect_layout", _page_layout("plate"))
+    monkeypatch.setattr(
+        "plexus_parse_helper.vlm_read.read_page_text",
+        lambda image: calls.__setitem__("page", calls["page"] + 1) or "should not run",
+    )
+    monkeypatch.setattr("plexus_parse_helper.vlm_read._generate", lambda image, prompt, tokens: "printed credit")
+    out = read_pages(str(PDF), {"pages": [1], "text": True})
+    assert calls["page"] == 0
+    assert out["textModel"] is None
+    assert out["lines"] and not any(line.get("pageText") for line in out["lines"])
+
+
+def test_empty_page_text_falls_back_to_paddle_crops(monkeypatch):
+    from plexus_parse_helper.vlm_read import read_pages
+
+    monkeypatch.setattr("plexus_parse_helper.vlm_read.detect_layout", _page_layout("text"))
+    monkeypatch.setattr("plexus_parse_helper.vlm_read.read_page_text", lambda image: "")
+    monkeypatch.setattr("plexus_parse_helper.vlm_read._generate", lambda image, prompt, tokens: "crop text")
+    out = read_pages(str(PDF), {"pages": [1], "text": True})
+    assert out["textModel"] is None
+    assert len(out["lines"]) == 1
+    assert out["lines"][0]["text"] == "crop text"
+    assert "pageText" not in out["lines"][0]
+
+
+def test_text_mask_boxes_skip_without_body_and_drop_a_box_over_text():
+    from plexus_parse_helper.vlm_read import text_mask_boxes
+
+    table = {"bbox": [10, 300, 300, 500], "source": "layout"}
+    whole = {"bbox": [0, 0, 612, 792], "source": "page"}
+    figure = {"page": 1, "label": "image", "score": 0.9, "bbox": [320, 300, 600, 500]}
+    weak_figure = {"page": 1, "label": "image", "score": 0.3, "bbox": [320, 520, 600, 700]}
+    text = {"page": 1, "label": "text", "score": 0.9, "bbox": [10, 10, 600, 280]}
+    assert text_mask_boxes([table, whole], [figure, weak_figure, text], []) == []
+    assert text_mask_boxes([table, whole], [figure, weak_figure, text], [text]) == [table["bbox"], figure["bbox"]]
+    # A figure box that covers most of a text box is a contradiction: the text stays.
+    over = {"page": 1, "label": "image", "score": 0.9, "bbox": [0, 0, 612, 300]}
+    assert text_mask_boxes([], [over, text], [text]) == []
+
+
+def test_mask_boxes_paints_paper_colour_inside_and_leaves_the_rest():
+    from PIL import Image
+
+    from plexus_parse_helper.vlm_read import mask_boxes, paper_colour
+
+    page = Image.new("RGB", (200, 300), (240, 236, 220))
+    for x in range(20, 180):
+        for y in range(150, 250):
+            page.putpixel((x, y), (20, 20, 20))
+    page.putpixel((50, 50), (0, 0, 0))
+    assert paper_colour(page) == (240, 236, 220)
+    out = mask_boxes(page, [[10.0, 75.0, 90.0, 125.0]], 2.0)
+    assert out.size == page.size
+    assert out.getpixel((100, 200)) == (240, 236, 220)
+    assert out.getpixel((50, 50)) == (0, 0, 0)
+    assert page.getpixel((100, 200)) == (20, 20, 20)
+
+
+def test_page_text_reads_a_masked_page(monkeypatch):
+    from plexus_parse_helper.vlm_read import read_pages
+
+    def layout(bitmap):
+        w, h = bitmap.size
+        return [
+            {"label": "text", "score": 0.9, "bbox": [8, 8, w - 8, int(h * 0.4)]},
+            {"label": "table", "score": 0.9, "bbox": [8, int(h * 0.5), w - 8, int(h * 0.9)]},
+        ]
+
+    seen = {}
+
+    def page_text(image):
+        seen["image"] = image
+        return "Dear reader one line"
+
+    monkeypatch.setattr("plexus_parse_helper.vlm_read.detect_layout", layout)
+    monkeypatch.setattr("plexus_parse_helper.vlm_read.read_page_text", page_text)
+    monkeypatch.setattr("plexus_parse_helper.vlm_read._generate", lambda image, prompt, tokens=None: "<table><tr><td>1</td></tr></table>")
+    out = read_pages(str(PDF), {"pages": [1], "text": True})
+    image = seen["image"]
+    w, h = image.size
+    colour = image.getpixel((w // 2, int(h * 0.7)))
+    # Everything inside the table box is one colour: the paper.
+    assert image.getpixel((w // 4, int(h * 0.6))) == colour
+    assert image.getpixel((3 * w // 4, int(h * 0.85))) == colour
+    assert [line for line in out["lines"] if line.get("pageText")][0]["text"] == "Dear reader one line"

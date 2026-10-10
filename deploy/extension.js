@@ -13688,7 +13688,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 32;
+    PARSE_REV = 33;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -47244,11 +47244,201 @@ function splitByWidth(text3, widths) {
   }
   return out;
 }
+var ALIGN_CELLS_MAX = 4e6;
+function alignKey(word) {
+  return String(word || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^\p{L}\p{N}]+/gu, "");
+}
+function editDistanceAtMost(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  const prev = new Array(b.length + 1);
+  const cur = new Array(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    cur[0] = i;
+    let rowMin = cur[0];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (cur[j] < rowMin) rowMin = cur[j];
+    }
+    if (rowMin > max) return max + 1;
+    for (let j = 0; j <= b.length; j++) prev[j] = cur[j];
+  }
+  return prev[b.length];
+}
+function matchWeight(a, b) {
+  if (a === b) {
+    if (/\d/.test(a)) return Math.min(Math.max(a.length, 3), 8);
+    return a.length < 2 ? 0 : Math.min(a.length, 8);
+  }
+  if (a.length < 2 || b.length < 2) return 0;
+  if (a.length < 5 || b.length < 5) return 0;
+  const slack = Math.min(a.length, b.length) >= 8 ? 2 : 1;
+  if (editDistanceAtMost(a, b, slack) > slack) return 0;
+  return 0.7 * Math.min(a.length, b.length, 8);
+}
+function weightedLcs(A, B) {
+  const n2 = A.length;
+  const m = B.length;
+  if (!n2 || !m || n2 * m > ALIGN_CELLS_MAX) return [];
+  const W = m + 1;
+  const dp = new Float32Array((n2 + 1) * W);
+  for (let i2 = 1; i2 <= n2; i2++) {
+    const a = A[i2 - 1];
+    for (let j2 = 1; j2 <= m; j2++) {
+      let best = Math.max(dp[(i2 - 1) * W + j2], dp[i2 * W + j2 - 1]);
+      const w = matchWeight(a, B[j2 - 1]);
+      if (w > 0) best = Math.max(best, dp[(i2 - 1) * W + j2 - 1] + w);
+      dp[i2 * W + j2] = best;
+    }
+  }
+  const pairs = [];
+  let i = n2;
+  let j = m;
+  while (i > 0 && j > 0) {
+    const here = dp[i * W + j];
+    if (here === dp[(i - 1) * W + j]) i -= 1;
+    else if (here === dp[i * W + j - 1]) j -= 1;
+    else {
+      pairs.push([i - 1, j - 1]);
+      i -= 1;
+      j -= 1;
+    }
+  }
+  return pairs.reverse();
+}
+function shareOut(count, weights, alt) {
+  const k = weights.length;
+  const out = new Array(k).fill(0);
+  if (!k || count <= 0) return out;
+  let use = weights;
+  if (!use.some((w) => w > 0)) use = alt && alt.some((w) => w > 0) ? alt : null;
+  if (!use) use = new Array(k).fill(1);
+  const total = use.reduce((sum, w) => sum + w, 0);
+  const raw = use.map((w) => count * w / total);
+  let given = 0;
+  for (let i = 0; i < k; i++) {
+    out[i] = Math.floor(raw[i]);
+    given += out[i];
+  }
+  const byRemainder = raw.map((r, i) => [r - Math.floor(r), i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (let t = 0; given < count && t < byRemainder.length; t++, given++) out[byRemainder[t][1]] += 1;
+  return out;
+}
+function hostHeight(host) {
+  const b = host?.bbox;
+  return b && b.length >= 4 ? Math.max(0, b[3] - b[1]) : 0;
+}
+var ANCHOR_WEIGHT = 5;
+function placePageText(text3, hosts) {
+  const words = String(text3 || "").split(/\s+/).filter(Boolean);
+  const k = hosts.length;
+  if (!k) return [];
+  const keys = words.map(alignKey);
+  const V = [];
+  const visionCount = hosts.map((host, hi) => {
+    const toks = String(host?.text || "").split(/\s+/).map(alignKey).filter((key) => key.length);
+    for (const key of toks) V.push({ key, host: hi });
+    return toks.length;
+  });
+  const pairs = weightedLcs(keys, V.map((v) => v.key));
+  const weight = new Array(k).fill(0);
+  for (const [ti, vi] of pairs) weight[V[vi].host] += matchWeight(keys[ti], V[vi].key);
+  const first = new Array(k).fill(-1);
+  const last = new Array(k).fill(-1);
+  const firstV = new Array(k).fill(-1);
+  const lastV = new Array(k).fill(-1);
+  for (const [ti, vi] of pairs) {
+    const hi = V[vi].host;
+    if (weight[hi] < ANCHOR_WEIGHT) continue;
+    if (first[hi] < 0) {
+      first[hi] = ti;
+      firstV[hi] = vi;
+    }
+    last[hi] = ti;
+    lastV[hi] = vi;
+  }
+  const anchored = [];
+  for (let hi = 0; hi < k; hi++) if (first[hi] >= 0) anchored.push(hi);
+  const vStart = [];
+  let acc = 0;
+  for (let hi = 0; hi < k; hi++) {
+    vStart.push(acc);
+    acc += visionCount[hi];
+  }
+  const from = new Array(k).fill(0);
+  const to = new Array(k).fill(0);
+  if (!anchored.length) {
+    const shares = shareOut(words.length, visionCount, hosts.map(hostHeight));
+    let at = 0;
+    for (let hi = 0; hi < k; hi++) {
+      from[hi] = at;
+      at += shares[hi];
+      to[hi] = at;
+    }
+    return hosts.map((_, hi) => words.slice(from[hi], to[hi]).join(" "));
+  }
+  for (const hi of anchored) {
+    from[hi] = first[hi];
+    to[hi] = last[hi] + 1;
+  }
+  const fill = (gapFrom, gapTo, before, between, after) => {
+    const pieces2 = [];
+    if (before != null) pieces2.push({ host: before, tail: true, w: vStart[before] + visionCount[before] - 1 - lastV[before], h: 0 });
+    for (const hi of between) pieces2.push({ host: hi, w: visionCount[hi], h: hostHeight(hosts[hi]) });
+    if (after != null) pieces2.push({ host: after, head: true, w: firstV[after] - vStart[after], h: 0 });
+    const n2 = gapTo - gapFrom;
+    const need2 = pieces2.reduce((sum, p) => sum + p.w, 0);
+    let shares;
+    if (n2 <= need2) shares = shareOut(n2, pieces2.map((p) => p.w), pieces2.map((p) => p.h));
+    else {
+      shares = pieces2.map((p) => p.w);
+      const extra = n2 - need2;
+      const mids = pieces2.map((p, i) => !p.tail && !p.head ? i : -1).filter((i) => i >= 0);
+      if (mids.length) {
+        const split = shareOut(extra, mids.map((i) => pieces2[i].w), mids.map((i) => pieces2[i].h));
+        mids.forEach((i, e2) => {
+          shares[i] += split[e2];
+        });
+      } else if (before == null) shares[0] += extra;
+      else {
+        const tailEnd = words[gapFrom + pieces2[0].w - 1] || "";
+        const toHead = after != null && !between.length && /[.!?:]["')\]]*$/.test(tailEnd);
+        shares[toHead ? pieces2.length - 1 : 0] += extra;
+      }
+    }
+    let at = gapFrom;
+    pieces2.forEach((piece, i) => {
+      const n3 = shares[i];
+      if (piece.tail) to[piece.host] = at + n3;
+      else if (piece.head) from[piece.host] = at;
+      else {
+        from[piece.host] = at;
+        to[piece.host] = at + n3;
+      }
+      at += n3;
+    });
+  };
+  const range = (a, b) => {
+    const out = [];
+    for (let hi = a; hi < b; hi++) out.push(hi);
+    return out;
+  };
+  fill(0, first[anchored[0]], null, range(0, anchored[0]), anchored[0]);
+  for (let a = 0; a + 1 < anchored.length; a++) {
+    const lo = anchored[a];
+    const hi = anchored[a + 1];
+    fill(last[lo] + 1, first[hi], lo, range(lo + 1, hi), hi);
+  }
+  const tail = anchored[anchored.length - 1];
+  fill(last[tail] + 1, words.length, tail, range(tail + 1, k), null);
+  return hosts.map((_, hi) => words.slice(from[hi], to[hi]).join(" "));
+}
 function alignVlmText(doc, regions) {
-  if (!doc || !regions?.length) return { doc, applied: [] };
+  if (!doc || !regions?.length) return { doc, applied: [], reads: [] };
   const blocks = { ...doc.blocks };
   let order = doc.order;
   const applied = [];
+  const reads = [];
   const kinds = /* @__PURE__ */ new Set(["para", "heading", "caption", "footnote"]);
   for (const region of regions) {
     if (!region?.text || !region.bbox) continue;
@@ -47273,6 +47463,33 @@ function alignVlmText(doc, regions) {
     }
     const hostText = inside8.map((b) => b.text).join(" ");
     if (texCommandCount(region.text) >= 2 && texCommandCount(hostText) === 0) continue;
+    if (region.pageText) {
+      const parts2 = placePageText(region.text, inside8);
+      reads.push({ page: region.page, text: region.text, hosts: inside8.map((block) => ({ id: block.id, vision: block.text || "" })) });
+      const held = [];
+      inside8.forEach((block, i) => {
+        const text3 = parts2[i] || "";
+        if (block.type === "caption" && text3 && block.text && !sharesWord(text3, block.text)) {
+          held.push(text3);
+          return;
+        }
+        if (text3 === block.text) return;
+        blocks[block.id] = { ...block, text: text3 };
+        applied.push(block.id);
+      });
+      if (held.length) {
+        const host = [...inside8].reverse().find((block) => block.type !== "caption" && blocks[block.id]);
+        if (host) {
+          const current3 = blocks[host.id].text || "";
+          const text3 = [current3, held.join(" ")].filter(Boolean).join(" ");
+          if (text3 !== current3) {
+            blocks[host.id] = { ...blocks[host.id], text: text3 };
+            if (!applied.includes(host.id)) applied.push(host.id);
+          }
+        }
+      }
+      continue;
+    }
     inside8.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
     const parts = splitByWidth(region.text, inside8.map((b) => Math.max(1, b.bbox[2] - b.bbox[0])));
     inside8.forEach((block, i) => {
@@ -47282,10 +47499,17 @@ function alignVlmText(doc, regions) {
       applied.push(block.id);
     });
   }
-  return { doc: { ...doc, blocks, order }, applied };
+  return { doc: { ...doc, blocks, order }, applied, reads };
 }
 function texCommandCount(text3) {
   return (String(text3 || "").match(/\\(?:[A-Za-z]+|[()[\]])/g) || []).length;
+}
+function sharesWord(a, b) {
+  const words = new Set(String(a || "").toLowerCase().match(/[a-z0-9]{3,}/g) || []);
+  for (const word of String(b || "").toLowerCase().match(/[a-z0-9]{3,}/g) || []) {
+    if (words.has(word)) return true;
+  }
+  return false;
 }
 function overlapsX2(a, b) {
   return Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
@@ -47512,6 +47736,7 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
           const linedText = alignVlmText(doc, readLines);
           vlmLines = linedText.applied;
           if (linedText.applied.length) Object.assign(doc, { blocks: linedText.doc.blocks, order: linedText.doc.order });
+          if (options.keepVision === true && linedText.reads?.length) doc.ocr = { ...doc.ocr || {}, pageReads: linedText.reads };
         }
         const linked = linkLayoutCaptions(doc, readLayout);
         vlmFigures = linked.applied;
@@ -51915,7 +52140,7 @@ function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = nu
   if (engine === "cloud") return { text: cloudLabel(provider) };
   if (read2 === "high") {
     const text3 = ms != null ? `High accuracy · ${formatSeconds(ms)}` : "High accuracy";
-    return { text: text3, tip: "PaddleOCR-VL + PP-DocLayoutV2" };
+    return { text: text3, tip: "Qwen3-VL for page text, PaddleOCR-VL for tables, PP-DocLayoutV2" };
   }
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };

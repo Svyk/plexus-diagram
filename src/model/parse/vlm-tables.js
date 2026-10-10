@@ -355,13 +355,217 @@ function splitByWidth(text, widths) {
   return out;
 }
 
+// A page transcription is placed by alignment against the hosts' own Vision
+// words, in document order. Each transcription word that matches a Vision word
+// belongs to that word's host; the words between two anchored hosts are shared
+// among the tail of the first, the hosts between that matched nothing, and the
+// head of the second, in proportion to the Vision words those pieces still
+// hold. A host with no Vision words takes its share from its box height. With
+// no match on the page at all, the split is proportional to Vision word
+// counts, the remainder on the earlier hosts. Returns one string per host;
+// the strings concatenate to the transcription.
+const ALIGN_CELLS_MAX = 4e6;
+
+function alignKey(word) {
+  return String(word || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function editDistanceAtMost(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  const prev = new Array(b.length + 1);
+  const cur = new Array(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    cur[0] = i;
+    let rowMin = cur[0];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (cur[j] < rowMin) rowMin = cur[j];
+    }
+    if (rowMin > max) return max + 1;
+    for (let j = 0; j <= b.length; j++) prev[j] = cur[j];
+  }
+  return prev[b.length];
+}
+
+// Weight of matching two words: zero when they are not the same word. Longer
+// words anchor harder; a number counts as a word of at least three letters;
+// a near spelling of a long word still counts.
+function matchWeight(a, b) {
+  if (a === b) {
+    if (/\d/.test(a)) return Math.min(Math.max(a.length, 3), 8);
+    return a.length < 2 ? 0 : Math.min(a.length, 8);
+  }
+  if (a.length < 2 || b.length < 2) return 0;
+  if (a.length < 5 || b.length < 5) return 0;
+  const slack = Math.min(a.length, b.length) >= 8 ? 2 : 1;
+  if (editDistanceAtMost(a, b, slack) > slack) return 0;
+  return 0.7 * Math.min(a.length, b.length, 8);
+}
+
+// Heaviest monotone matching of two key sequences. Returns [[i, j], ...] ascending.
+function weightedLcs(A, B) {
+  const n = A.length;
+  const m = B.length;
+  if (!n || !m || n * m > ALIGN_CELLS_MAX) return [];
+  const W = m + 1;
+  const dp = new Float32Array((n + 1) * W);
+  for (let i = 1; i <= n; i++) {
+    const a = A[i - 1];
+    for (let j = 1; j <= m; j++) {
+      let best = Math.max(dp[(i - 1) * W + j], dp[i * W + j - 1]);
+      const w = matchWeight(a, B[j - 1]);
+      if (w > 0) best = Math.max(best, dp[(i - 1) * W + j - 1] + w);
+      dp[i * W + j] = best;
+    }
+  }
+  const pairs = [];
+  let i = n;
+  let j = m;
+  while (i > 0 && j > 0) {
+    const here = dp[i * W + j];
+    if (here === dp[(i - 1) * W + j]) i -= 1;
+    else if (here === dp[i * W + j - 1]) j -= 1;
+    else {
+      pairs.push([i - 1, j - 1]);
+      i -= 1;
+      j -= 1;
+    }
+  }
+  return pairs.reverse();
+}
+
+// Largest-remainder split of `count` items over `weights`; a remainder goes to
+// the earlier pieces. All-zero weights fall back to `alt`, then to equal shares.
+function shareOut(count, weights, alt) {
+  const k = weights.length;
+  const out = new Array(k).fill(0);
+  if (!k || count <= 0) return out;
+  let use = weights;
+  if (!use.some((w) => w > 0)) use = alt && alt.some((w) => w > 0) ? alt : null;
+  if (!use) use = new Array(k).fill(1);
+  const total = use.reduce((sum, w) => sum + w, 0);
+  const raw = use.map((w) => (count * w) / total);
+  let given = 0;
+  for (let i = 0; i < k; i++) {
+    out[i] = Math.floor(raw[i]);
+    given += out[i];
+  }
+  const byRemainder = raw.map((r, i) => [r - Math.floor(r), i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (let t = 0; given < count && t < byRemainder.length; t++, given++) out[byRemainder[t][1]] += 1;
+  return out;
+}
+
+function hostHeight(host) {
+  const b = host?.bbox;
+  return b && b.length >= 4 ? Math.max(0, b[3] - b[1]) : 0;
+}
+
+// Fewer than this much matched weight is a stray word, not an anchor: one
+// word of five letters, a number and a word, or two short words.
+const ANCHOR_WEIGHT = 5;
+
+export function placePageText(text, hosts) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const k = hosts.length;
+  if (!k) return [];
+  const keys = words.map(alignKey);
+  const V = [];
+  const visionCount = hosts.map((host, hi) => {
+    const toks = String(host?.text || "").split(/\s+/).map(alignKey).filter((key) => key.length);
+    for (const key of toks) V.push({ key, host: hi });
+    return toks.length;
+  });
+  const pairs = weightedLcs(keys, V.map((v) => v.key));
+  const weight = new Array(k).fill(0);
+  for (const [ti, vi] of pairs) weight[V[vi].host] += matchWeight(keys[ti], V[vi].key);
+  const first = new Array(k).fill(-1);
+  const last = new Array(k).fill(-1);
+  const firstV = new Array(k).fill(-1);
+  const lastV = new Array(k).fill(-1);
+  for (const [ti, vi] of pairs) {
+    const hi = V[vi].host;
+    if (weight[hi] < ANCHOR_WEIGHT) continue;
+    if (first[hi] < 0) { first[hi] = ti; firstV[hi] = vi; }
+    last[hi] = ti;
+    lastV[hi] = vi;
+  }
+  const anchored = [];
+  for (let hi = 0; hi < k; hi++) if (first[hi] >= 0) anchored.push(hi);
+  const vStart = [];
+  let acc = 0;
+  for (let hi = 0; hi < k; hi++) { vStart.push(acc); acc += visionCount[hi]; }
+  // Words each host owns: [from, to) over the transcription.
+  const from = new Array(k).fill(0);
+  const to = new Array(k).fill(0);
+  if (!anchored.length) {
+    const shares = shareOut(words.length, visionCount, hosts.map(hostHeight));
+    let at = 0;
+    for (let hi = 0; hi < k; hi++) { from[hi] = at; at += shares[hi]; to[hi] = at; }
+    return hosts.map((_, hi) => words.slice(from[hi], to[hi]).join(" "));
+  }
+  for (const hi of anchored) { from[hi] = first[hi]; to[hi] = last[hi] + 1; }
+  // Pieces of a gap: the earlier anchor's tail, the unanchored hosts, the later anchor's head.
+  const fill = (gapFrom, gapTo, before, between, after) => {
+    const pieces = [];
+    if (before != null) pieces.push({ host: before, tail: true, w: vStart[before] + visionCount[before] - 1 - lastV[before], h: 0 });
+    for (const hi of between) pieces.push({ host: hi, w: visionCount[hi], h: hostHeight(hosts[hi]) });
+    if (after != null) pieces.push({ host: after, head: true, w: firstV[after] - vStart[after], h: 0 });
+    // Each piece's unmatched Vision words say how many words it expects. Fewer
+    // words than that are shared in proportion. The surplus goes to the hosts
+    // between the anchors (by Vision words, then box height); with none, it
+    // continues the earlier host, or starts the later host when the earlier
+    // host's last word ended a sentence.
+    const n = gapTo - gapFrom;
+    const need = pieces.reduce((sum, p) => sum + p.w, 0);
+    let shares;
+    if (n <= need) shares = shareOut(n, pieces.map((p) => p.w), pieces.map((p) => p.h));
+    else {
+      shares = pieces.map((p) => p.w);
+      const extra = n - need;
+      const mids = pieces.map((p, i) => (!p.tail && !p.head ? i : -1)).filter((i) => i >= 0);
+      if (mids.length) {
+        const split = shareOut(extra, mids.map((i) => pieces[i].w), mids.map((i) => pieces[i].h));
+        mids.forEach((i, e) => { shares[i] += split[e]; });
+      } else if (before == null) shares[0] += extra;
+      else {
+        const tailEnd = words[gapFrom + pieces[0].w - 1] || "";
+        const toHead = after != null && !between.length && /[.!?:]["')\]]*$/.test(tailEnd);
+        shares[toHead ? pieces.length - 1 : 0] += extra;
+      }
+    }
+    let at = gapFrom;
+    pieces.forEach((piece, i) => {
+      const n = shares[i];
+      if (piece.tail) to[piece.host] = at + n;
+      else if (piece.head) from[piece.host] = at;
+      else { from[piece.host] = at; to[piece.host] = at + n; }
+      at += n;
+    });
+  };
+  const range = (a, b) => { const out = []; for (let hi = a; hi < b; hi++) out.push(hi); return out; };
+  fill(0, first[anchored[0]], null, range(0, anchored[0]), anchored[0]);
+  for (let a = 0; a + 1 < anchored.length; a++) {
+    const lo = anchored[a];
+    const hi = anchored[a + 1];
+    fill(last[lo] + 1, first[hi], lo, range(lo + 1, hi), hi);
+  }
+  const tail = anchored[anchored.length - 1];
+  fill(last[tail] + 1, words.length, tail, range(tail + 1, k), null);
+  return hosts.map((_, hi) => words.slice(from[hi], to[hi]).join(" "));
+}
+
 // Replace the text of Vision lines whose centres sit in a VLM text region.
 // The line boxes stay. `regions` are `{page, bbox, text}` in top-left PDF points.
+// A `pageText` region is one page transcription placed by placePageText.
+// `reads` records each page transcription with its hosts' Vision text, for
+// the placement check (tools/parse-bench/text-placement.mjs).
 export function alignVlmText(doc, regions) {
-  if (!doc || !regions?.length) return { doc, applied: [] };
+  if (!doc || !regions?.length) return { doc, applied: [], reads: [] };
   const blocks = { ...doc.blocks };
   let order = doc.order;
   const applied = [];
+  const reads = [];
   const kinds = new Set(["para", "heading", "caption", "footnote"]);
   for (const region of regions) {
     if (!region?.text || !region.bbox) continue;
@@ -390,6 +594,36 @@ export function alignVlmText(doc, regions) {
     // full of TeX commands is a second notation, and swapping it in wipes the line.
     const hostText = inside.map((b) => b.text).join(" ");
     if (texCommandCount(region.text) >= 2 && texCommandCount(hostText) === 0) continue;
+    if (region.pageText) {
+      const parts = placePageText(region.text, inside);
+      reads.push({ page: region.page, text: region.text, hosts: inside.map((block) => ({ id: block.id, vision: block.text || "" })) });
+      // A caption that shares no word with its slice is a different line.
+      // The slice is kept on the nearest prose host so the transcription
+      // stays in the page, and the caption keeps the reading it already had.
+      const held = [];
+      inside.forEach((block, i) => {
+        const text = parts[i] || "";
+        if (block.type === "caption" && text && block.text && !sharesWord(text, block.text)) {
+          held.push(text);
+          return;
+        }
+        if (text === block.text) return;
+        blocks[block.id] = { ...block, text };
+        applied.push(block.id);
+      });
+      if (held.length) {
+        const host = [...inside].reverse().find((block) => block.type !== "caption" && blocks[block.id]);
+        if (host) {
+          const current = blocks[host.id].text || "";
+          const text = [current, held.join(" ")].filter(Boolean).join(" ");
+          if (text !== current) {
+            blocks[host.id] = { ...blocks[host.id], text };
+            if (!applied.includes(host.id)) applied.push(host.id);
+          }
+        }
+      }
+      continue;
+    }
     inside.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
     const parts = splitByWidth(region.text, inside.map((b) => Math.max(1, b.bbox[2] - b.bbox[0])));
     inside.forEach((block, i) => {
@@ -399,11 +633,19 @@ export function alignVlmText(doc, regions) {
       applied.push(block.id);
     });
   }
-  return { doc: { ...doc, blocks, order }, applied };
+  return { doc: { ...doc, blocks, order }, applied, reads };
 }
 
 function texCommandCount(text) {
   return (String(text || "").match(/\\(?:[A-Za-z]+|[()[\]])/g) || []).length;
+}
+
+function sharesWord(a, b) {
+  const words = new Set(String(a || "").toLowerCase().match(/[a-z0-9]{3,}/g) || []);
+  for (const word of String(b || "").toLowerCase().match(/[a-z0-9]{3,}/g) || []) {
+    if (words.has(word)) return true;
+  }
+  return false;
 }
 
 function overlapsX(a, b) {

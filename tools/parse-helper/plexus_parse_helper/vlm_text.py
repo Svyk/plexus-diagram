@@ -2,8 +2,11 @@
 
 Loaded only when a read asks for text. Table crops stay on PaddleOCR-VL.
 The weights download on first use and are checked by SHA-256. Decoding is
-greedy with a fixed seed. A full-page photograph is shrunk so the long side
-is at most 2048 px, which is the size this reader was measured at.
+greedy with a fixed seed. The page goes in at the helper's 200 dpi render; only
+a page larger than about 13 inches on its long side is shrunk, to 2560 px.
+Shrinking a letter page below its render cost three handwritten letters
+0.02-0.06 of their text score (round 3); 3072 px makes the vision encoder's
+patch attention crawl on a 64 GB machine.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ TEXT_PROMPT = (
     "Transcribe all the text on this page in reading order. "
     "Output only the transcription, one visual line per line."
 )
-MAX_SIDE = 2048
+MAX_SIDE = 2560
 MAX_TOKENS = 2048
 
 _lock = threading.Lock()

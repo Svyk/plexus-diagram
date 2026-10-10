@@ -942,3 +942,119 @@ test("axis ticks in front of FIG stay out of the caption, and a lowercase tail o
   const sideCaps = captionText(side);
   assert.ok(sideCaps.some((t) => /Fig\. of propeller section/.test(t)), sideCaps.join(" | "));
 });
+
+function bareScan(items, ink = []) {
+  const page = parsePageGeometry({
+    n: 1, w: W, h: H, rotation: 0, transform: [1, 0, 0, 1, 0, 0], scan: true, dpi: 300, deskew: 0,
+    fonts: { ocr: { name: "ocr" } }, items, rules: [], ink, ops: { fnArray: [], argsArray: [] },
+  }, 1);
+  return assembleDocument([page], { numPages: 1 });
+}
+
+test("one ink region with no Fig. word is the picture, and the short line under it is the caption", () => {
+  const title = "Isla Tenglo and harbor".split(" ");
+  const d = scanDoc(title.map((t, i) => ocrItem(t, 90 + i * 80, 600, 11, 70)), [{ x0: 80, y0: 200, x1: 520, y1: 560 }]);
+  const figs = ofType(d, "figure");
+  assert.equal(figs.length, 1);
+  const cap = ofType(d, "caption").find((c) => /Isla Tenglo and harbor/.test(c.text));
+  assert.ok(cap, captionText(d).join(" | "));
+  assert.equal(cap.for, figs[0].id);
+});
+
+test("sparse ink under an all-caps heading is still not a picture", () => {
+  const got = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: plateInk(200, 520) },
+    words: "THE COMPRESSIBILITY OF NATURAL GAS".split(" ").map((t, i) => word(t, 70 + i * 48, 100, 110 + i * 48, 112, 11)),
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(got.figures.filter((f) => f.fromPicture).length, 0);
+});
+
+test("a page image of a letter is not a figure, and a caption band under a plate stays", () => {
+  const letter = bareScan([
+    ocrItem("Dear", 80, 220, 12, 36),
+    ocrItem("friend", 140, 300, 12, 48),
+    ocrItem("today", 200, 380, 12, 40),
+    ocrItem("the", 90, 460, 12, 24),
+    ocrItem("news", 130, 540, 12, 36),
+  ]);
+  assert.equal(ofType(letter, "figure").length, 0);
+  const band = bareScan([
+    ocrItem("Dorfstraße.", 90, 700, 12, 80),
+    ocrItem("Oelgemälde", 180, 700, 12, 80),
+  ]);
+  assert.equal(ofType(band, "figure").length, 1);
+});
+
+test("a frame of text is not a picture, and a compact mark with no words in it is", () => {
+  const words = [];
+  for (let i = 0; i < 8; i++) {
+    "the letter fills the frame of the page".split(" ").forEach((t, k) => {
+      words.push(word(t, 140 + k * 42, 220 + i * 28, 176 + k * 42, 232 + i * 28, 10));
+    });
+  }
+  const framed = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [{ x0: 90, y0: 160, x1: 520, y1: 500 }] },
+    words, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(framed.figures.filter((f) => f.fromPicture).length, 0);
+  const mark = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [{ x0: 250, y0: 280, x1: 335, y1: 365 }] },
+    words: [word("National", 80, 120, 140, 132, 10), word("Advisory", 148, 120, 210, 132, 10)],
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(mark.figures.filter((f) => f.fromPicture).length, 1);
+});
+
+test("a numeric table, one token per cell, is not a picture", () => {
+  const words = [];
+  for (let i = 0; i < 8; i++) words.push(word(String(1400 + i), 220, 300 + i * 16, 260, 312 + i * 16, 9));
+  const table = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [{ x0: 180, y0: 280, x1: 430, y1: 460 }] },
+    words, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(table.figures.filter((f) => f.fromPicture).length, 0);
+});
+
+test("table rules with the rows running through them are not a picture", () => {
+  const words = [];
+  for (let i = 0; i < 6; i++) {
+    words.push(word("Slag", 200, 300 + i * 22, 240, 312 + i * 22, 9));
+    words.push(word("1410", 280, 300 + i * 22, 320, 312 + i * 22, 9));
+  }
+  const table = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [{ x0: 180, y0: 280, x1: 430, y1: 460 }] },
+    words, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(table.figures.filter((f) => f.fromPicture).length, 0);
+  const plate = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [{ x0: 180, y0: 280, x1: 430, y1: 460 }] },
+    words: [word("Harbor", 200, 500, 260, 512, 10)],
+    bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(plate.figures.filter((f) => f.fromPicture).length, 1);
+});
+
+test("a chart title with no Fig. word links, and a Fig. line with a clear gap still links", () => {
+  const titled = doc([page([
+    item("Average tax wedge for a single person", 80, H - 100, 11, "f1", 260),
+  ], { images: [[70, 120, 540, 400]] })]);
+  const fig = ofType(titled, "figure");
+  const cap = ofType(titled, "caption");
+  assert.equal(fig.length, 1);
+  assert.ok(cap.some((c) => /Average tax wedge/.test(c.text) && c.for === fig[0].id), cap.map((c) => c.text).join(" | "));
+
+  const gapped = doc([page([
+    item("Figure 6. Trade in value added", 80, H - 80, 11, "f1", 220),
+  ], { images: [[70, 140, 540, 420]] })]);
+  const gFig = ofType(gapped, "figure")[0];
+  const gCap = ofType(gapped, "caption").find((c) => /Figure 6/.test(c.text));
+  assert.ok(gCap && gCap.for === gFig.id, captionText(gapped).join(" | "));
+});
+
+test("a cloud of short strokes is not a figure, and a plate is", () => {
+  const specks = { x0: 40, y0: 400, x1: 180, y1: 500, kind: "drawing", count: 26 };
+  assert.equal(falseFigureReason(specks, { pageW: W, pageH: H }), "texture");
+  const plate = { x0: 40, y0: 160, x1: 400, y1: 560, kind: "drawing", count: 40, fromPlate: true };
+  assert.equal(falseFigureReason(plate, { pageW: W, pageH: H }), null);
+});

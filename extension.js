@@ -7295,7 +7295,7 @@ var init_xycut = __esm({
 });
 
 // src/model/parse/figures.js
-function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxes = /* @__PURE__ */ new Set(), words = [], bodySize = 10, pageW = 612, pageH = 792, ruleSegments = [], pageTextChars = null, plates = false }) {
+function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxes = /* @__PURE__ */ new Set(), words = [], bodySize = 10, pageW = 612, pageH = 792, ruleSegments = [], pageTextChars = null, plates = false, textLines: textLines2 = null }) {
   const prims = [];
   for (const img of graphics.images || []) {
     if (img.x1 - img.x0 < IMAGE_MIN || img.y1 - img.y0 < IMAGE_MIN) continue;
@@ -7374,6 +7374,7 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
         for (const w of line.words) if (w.x0 >= fig.x0 - 1 && w.x1 <= fig.x1 + 1) used.delete(w);
       }
     }
+    pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2);
   }
   const kept = [];
   for (const fig of figures) {
@@ -8271,6 +8272,7 @@ function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, pageH = 
   const pageArea = pageW * pageH;
   if (!(area > 0)) return null;
   const textBlock = textBlockBox(box2, lines);
+  if (!fig.fromPlate && fig.kind === "drawing" && (fig.count || 0) >= 18 && area < 0.035 * pageArea) return "texture";
   const parts = drawingParts(box2, strokes, pageW, pageH);
   if (drawingCovers(box2, parts, 0.5) || drawingCovers(box2, parts, 0.2) && !textBlock) return null;
   const touchTop = box2.y0 <= Math.max(4, 0.02 * pageH);
@@ -8321,6 +8323,151 @@ function rejectFalseFigures(figures, opts = {}) {
   const peers = list.map((fig) => fig);
   return list.filter((fig) => !falseFigureReason(fig, { ...opts, peers, strokes }));
 }
+function letterSpread(lines, pageH) {
+  const text3 = (lines || []).filter((line) => (line.text || "").trim());
+  if (text3.length < 4 || !(pageH > 0)) return false;
+  if (text3.some((line) => /sheet\s+\d+\s+of\s+\d+/i.test(line.text || ""))) return false;
+  const ys2 = text3.map((line) => ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2);
+  return Math.max(...ys2) - Math.min(...ys2) > 0.35 * pageH;
+}
+function edgeBand(box2, pageW, pageH) {
+  const w = box2.x1 - box2.x0;
+  const h = box2.y1 - box2.y0;
+  const touchT = box2.y0 <= 0.02 * pageH;
+  const touchB = box2.y1 >= pageH - 0.02 * pageH;
+  const touchL = box2.x0 <= 0.02 * pageW;
+  const touchR = box2.x1 >= pageW - 0.02 * pageW;
+  if ((touchT || touchB) && h <= 0.2 * pageH && w <= 0.75 * pageW) return true;
+  const cy = (box2.y0 + box2.y1) / 2;
+  const side2 = (touchL || touchR) && h <= 0.22 * pageH && w <= 0.5 * pageW && (cy < 0.3 * pageH || cy > 0.7 * pageH);
+  return side2;
+}
+function marginStrip(box2, pageW, pageH) {
+  const w = box2.x1 - box2.x0;
+  const h = box2.y1 - box2.y0;
+  const touchL = box2.x0 <= 0.02 * pageW;
+  const touchR = box2.x1 >= pageW - 0.02 * pageW;
+  const touchT = box2.y0 <= 0.02 * pageH;
+  const touchB = box2.y1 >= pageH - 0.02 * pageH;
+  if ((touchL || touchR) && w <= 0.08 * pageW && h >= 0.25 * pageH) return true;
+  if ((touchT || touchB) && h <= 0.06 * pageH && w >= 0.4 * pageW) return true;
+  return false;
+}
+function textThroughMiddle(box2, lines) {
+  const h = box2.y1 - box2.y0;
+  if (!(h > 0)) return false;
+  const prose = (lines || []).filter((line) => wordCount2(line.text) >= 2 && lineCenterIn(line, box2));
+  const any = (lines || []).filter((line) => (line.text || "").trim() && lineCenterIn(line, box2));
+  const inside8 = prose.length >= 5 ? prose : any.length >= 8 ? any : [];
+  if (inside8.length < 5) return false;
+  const mid = inside8.filter((line) => {
+    const c = (line.y0 + line.y1) / 2;
+    return c > box2.y0 + 0.2 * h && c < box2.y1 - 0.2 * h;
+  });
+  const top = Math.min(...inside8.map((line) => line.y0));
+  const bot = Math.max(...inside8.map((line) => line.y1));
+  return mid.length >= 3 && bot - top > 0.45 * h;
+}
+function clipLowerText(box2, lines) {
+  const h = box2.y1 - box2.y0;
+  if (!(h > 0)) return box2;
+  const inside8 = (lines || []).filter((line) => wordCount2(line.text) >= 2 && lineCenterIn(line, box2));
+  const low = inside8.filter((line) => line.y0 > box2.y0 + 0.55 * h);
+  const high = inside8.filter((line) => line.y0 <= box2.y0 + 0.55 * h);
+  if (low.length < 3 || high.length > 2) return box2;
+  const cut = Math.min(...low.map((line) => line.y0));
+  if (cut - box2.y0 < 0.28 * h) return box2;
+  return { ...box2, y1: cut - 2 };
+}
+function growUntilText(box2, lines, pageW, pageH) {
+  const padX = 0.08 * pageW;
+  const padY = 0.07 * pageH;
+  const text3 = (lines || []).filter((line) => (line.text || "").trim());
+  let { x0, y0, x1, y1 } = box2;
+  const overlapX2 = (line, a, b) => Math.min(b, line.x1) - Math.max(a, line.x0) > 8;
+  const overlapY2 = (line, a, b) => Math.min(b, line.y1) - Math.max(a, line.y0) > 4;
+  const above = text3.filter((line) => line.y1 <= y0 + 1 && overlapX2(line, x0, x1)).sort((a, b) => b.y1 - a.y1)[0];
+  y0 = above ? Math.max(y0 - padY, above.y1 + 2) : Math.max(0, y0 - padY);
+  const below = text3.filter((line) => line.y0 >= y1 - 1 && overlapX2(line, x0, x1)).sort((a, b) => a.y0 - b.y0)[0];
+  y1 = below ? Math.min(y1 + padY, below.y0 - 2) : Math.min(pageH, y1 + padY);
+  const left = text3.filter((line) => line.x1 <= x0 + 1 && overlapY2(line, y0, y1)).sort((a, b) => b.x1 - a.x1)[0];
+  x0 = left ? Math.max(x0 - padX, left.x1 + 2) : Math.max(0, x0 - padX);
+  const right = text3.filter((line) => line.x0 >= x1 - 1 && overlapY2(line, y0, y1)).sort((a, b) => a.x0 - b.x0)[0];
+  x1 = right ? Math.min(x1 + padX, right.x0 - 2) : Math.min(pageW, x1 + padX);
+  if (x1 - x0 < 16 || y1 - y0 < 16) return box2;
+  return { x0, y0, x1, y1 };
+}
+function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = null) {
+  const pageArea = pageW * pageH;
+  if (!(pageArea > 0)) return;
+  const boxes = [...inkBoxes || []].sort((a, b) => boxArea(b) - boxArea(a));
+  const made = [];
+  const covers2 = (outer, box2) => {
+    if (outer.pageImage || outer.fromPicture) return false;
+    const bigDrawing = outer.kind === "drawing" && boxArea(outer) >= 0.15 * pageArea;
+    if (!(outer.fromPlate || outer.kind === "image" || bigDrawing)) return false;
+    if (insideFrac(box2, outer) >= 0.4) return true;
+    const cx = (box2.x0 + box2.x1) / 2;
+    const cy = (box2.y0 + box2.y1) / 2;
+    return cx > outer.x0 && cx < outer.x1 && cy > outer.y0 && cy < outer.y1;
+  };
+  const covered = (box2) => figures.some((f) => covers2(f, box2)) || made.some((f) => insideFrac(box2, f) >= 0.55 || insideFrac(f, box2) >= 0.55);
+  const spread = letterSpread(lines, pageH);
+  for (const raw of boxes) {
+    let area = boxArea(raw);
+    if (area < 0.018 * pageArea) continue;
+    let box2 = { x0: raw.x0, y0: raw.y0, x1: raw.x1, y1: raw.y1 };
+    if (area > 0.78 * pageArea) {
+      const clipped = clipLowerText(box2, lines);
+      if (!(boxArea(clipped) < area - 1) || boxArea(clipped) > 0.78 * pageArea) continue;
+      box2 = clipped;
+      area = boxArea(box2);
+    }
+    if (marginStrip(box2, pageW, pageH)) continue;
+    box2 = clipLowerText(box2, lines);
+    const pageLines = textLines2 || lines;
+    if (textThroughMiddle(box2, pageLines)) continue;
+    if (textBlockBox(box2, lines)) continue;
+    const grown = growUntilText(box2, lines, pageW, pageH);
+    box2 = boxArea(grown) > 0.85 * pageArea ? box2 : grown;
+    if (edgeBand(box2, pageW, pageH)) continue;
+    if (textThroughMiddle(box2, pageLines)) continue;
+    if (boxArea(box2) > 0.85 * pageArea || covered(box2)) continue;
+    made.push(box2);
+  }
+  if (spread && made.length >= 3) {
+    const areas = made.map((b) => boxArea(b)).sort((a, b) => b - a);
+    if (areas[0] < 2 * areas[1]) made.length = 0;
+  }
+  if (spread) {
+    const max = made.length ? Math.max(...made.map((b) => boxArea(b))) : 0;
+    for (let i = made.length - 1; i >= 0; i--) {
+      const a = boxArea(made[i]);
+      if (a < 0.08 * pageArea && (made.length === 1 || a < 0.35 * max)) made.splice(i, 1);
+    }
+  }
+  const emblems = [];
+  for (const raw of boxes) {
+    const w = raw.x1 - raw.x0;
+    const h = raw.y1 - raw.y0;
+    const area = w * h;
+    if (area < 0.012 * pageArea || area >= 0.018 * pageArea) continue;
+    const aspect = h > 0 ? w / h : 0;
+    if (aspect < 0.45 || aspect > 2.3) continue;
+    const box2 = { x0: raw.x0, y0: raw.y0, x1: raw.x1, y1: raw.y1 };
+    if (marginStrip(box2, pageW, pageH)) continue;
+    const cx = (raw.x0 + raw.x1) / 2;
+    const cy = (raw.y0 + raw.y1) / 2;
+    if ((cx <= 0.14 * pageW || cx >= 0.86 * pageW) && (cy <= 0.14 * pageH || cy >= 0.86 * pageH)) continue;
+    if ((lines || []).some((line) => wordCount2(line.text) >= 2 && lineCenterIn(line, box2))) continue;
+    if (covered(box2)) continue;
+    emblems.push(box2);
+  }
+  if (!spread) made.push(...emblems);
+  for (const box2 of made) {
+    figures.push({ ...box2, kind: "drawing", count: 1, pageImage: false, fromPlate: true, fromPicture: true });
+  }
+}
 function plateLabelText(text3, key) {
   if (key == null) return false;
   const t = normalizeFigSpelling(text3).replace(/\s+/g, " ").trim();
@@ -8328,6 +8475,7 @@ function plateLabelText(text3, key) {
   if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return false;
   const words = t.split(" ");
   if (key === "" && words.length > 2) return false;
+  if (/^sketch(?:es)?\b/i.test(t)) return false;
   const rest = t.replace(/^(?:fig(?:ure)?s?|plates?)\.?\s*\d+[A-Za-z]?[.:]?\s*/i, "");
   if (/^(?:is|are|was|were|shows|show|comprises|has|have)\b/i.test(rest)) return false;
   if (/^(?:herewith|above|below|following|opposite)[.]?$/i.test(rest)) return false;
@@ -8623,7 +8771,7 @@ var init_figures = __esm({
     IMAGE_MIN = 12;
     H_GAP = 56;
     V_GAP = 42;
-    FIG_LEAD = String.raw`fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|taf`;
+    FIG_LEAD = String.raw`fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|taf|sketch(?:es)?`;
     FIG_TOKEN = new RegExp(`^(?:${FIG_LEAD})\\.?$`, "i");
     FIG_NUM = /^\d+[A-Za-z]?[.:]?$/;
     FIG_GLUED = new RegExp(`^(?:${FIG_LEAD})\\.?\\d+[A-Za-z]?$`, "i");
@@ -9786,12 +9934,17 @@ function parsePageGeometry(data, n2) {
   const figWords = lines.flatMap((l) => l.words);
   const stripSet = new Set(strips);
   const figGraphics = scanLayer && !drawing ? { ...graphics, images: graphics.images.filter((im) => !stripSet.has(im) && imageArea(im) < 0.85 * pageArea) } : graphics;
-  const figs = kind === "scan" ? { figures: [], used: /* @__PURE__ */ new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars, plates: ocr });
+  const figs = kind === "scan" ? { figures: [], used: /* @__PURE__ */ new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars, plates: ocr, textLines: lines });
   for (const wd of figs.used) used.add(wd);
   let figures = figs.figures.map((f) => ({ ...f, page: n2 }));
   const plated = ocr && figures.some((f) => f.fromPlate && boxArea2(f.bbox || f) >= 0.08 * pageArea && boxArea2(f.bbox || f) <= 0.9 * pageArea);
   if (plated) figures = figures.filter((f) => f.fromPlate || boxArea2(f.bbox || f) < 0.75 * pageArea);
-  if (drawing && !plated) {
+  const pictureBoxes = figures.filter((f) => f.fromPicture);
+  const biggestPicture = pictureBoxes.length ? Math.max(...pictureBoxes.map((f) => boxArea2(f.bbox || f))) : 0;
+  const textN = lines.filter((line) => (line.text || "").trim()).length;
+  const plateFragment = biggestPicture >= 0.2 * pageArea && biggestPicture < 0.5 * pageArea && textN <= 6 && pictureBoxes.length === 1;
+  const pictureOnly = pictureBoxes.length > 0 && !sheetNamed(lines) && !plateFragment;
+  if (drawing && (plateFragment || sheetNamed(lines) || !plated && !pictureOnly)) {
     const regions = sheetRegions(lines, w, h);
     if (regions.length) {
       figures = regions.map((r) => ({
@@ -9803,6 +9956,16 @@ function parsePageGeometry(data, n2) {
     }
   }
   if (ocr) absorbFigureTables(tables, figures);
+  if (figures.some((f) => f.fromPicture)) {
+    const textN2 = lines.filter((line) => (line.text || "").trim()).length;
+    const biggest = Math.max(...figures.filter((f) => f.fromPicture).map((f) => boxArea2(f.bbox || f)));
+    const pageSized = figures.some((f) => !f.fromPicture && boxArea2(f.bbox || f) >= 0.75 * pageArea);
+    const fragment = pageSized && textN2 <= 6 && biggest >= 0.2 * pageArea && biggest < 0.5 * pageArea;
+    if (fragment) figures = figures.filter((f) => !f.fromPicture);
+    else figures = figures.filter((f) => f.fromPicture || boxArea2(f.bbox || f) < 0.75 * pageArea);
+  }
+  figures = figures.filter((f) => !f.fromPicture || !tables.some((t) => t.bbox && insideFrac2(f.bbox, t.bbox) >= 0.5));
+  if (!plateFragment) figures = dropSpreadPhoto(figures, lines, w, h);
   figures = rejectFalseFigures(figures, {
     lines,
     tables,
@@ -9900,9 +10063,26 @@ function boxArea2(b) {
   const y1 = b.y1 ?? b[3];
   return Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
 }
+function sheetNamed(lines) {
+  return (lines || []).some((line) => {
+    if (/sheet\s+\d+\s+of\s+\d+/i.test(line.text || "")) return true;
+    const key = figCaptionKey(line.text);
+    return key != null && key !== "";
+  });
+}
+function dropSpreadPhoto(figures, lines, pageW, pageH) {
+  const pageArea = pageW * pageH;
+  if (!(pageArea > 0)) return figures || [];
+  const text3 = (lines || []).filter((line) => (line.text || "").trim());
+  if (sheetNamed(lines)) return figures || [];
+  const ys2 = text3.map((line) => ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2);
+  const span = ys2.length ? Math.max(...ys2) - Math.min(...ys2) : 0;
+  if (!(text3.length >= 5 && span > 0.35 * pageH)) return figures || [];
+  return (figures || []).filter((fig) => boxArea2(fig.bbox || fig) < 0.82 * pageArea);
+}
 function coverChartTables(tables, figures, pageH) {
   for (const f of figures) {
-    if (!f.bbox || f.kind === "image") continue;
+    if (!f.bbox || f.kind === "image" || f.fromPicture) continue;
     for (const t of tables) {
       if (!t.bbox || dataTable(t)) continue;
       const gap = f.bbox[1] - t.bbox[3];
@@ -9937,10 +10117,10 @@ function wordCountText(text3) {
 }
 function figLabelOnly(text3) {
   const t = normalizeFigSpelling(text3).replace(/\s+/g, " ").trim();
-  return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?$/i.test(t) || /^\d+[A-Za-z]?(?:[.\s]+)\s*(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafel|taf)\.?$/i.test(t);
+  return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?$/i.test(t) || /^\d+[A-Za-z]?(?:[.\s]+)\s*(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafel|taf)\.?$/i.test(t) || /^sketch(?:es)?\.?\s*(?:\([^)]{1,6}\)|\d+[A-Za-z]?)?[.:]?$/i.test(t);
 }
 function hasFigWord(text3) {
-  return /\b(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel)\b/i.test(String(text3 || ""));
+  return /\b(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|sketch(?:es)?)\b/i.test(String(text3 || ""));
 }
 function splitOcrCaptionGroup(group) {
   if (!group.length || !isCaptionText(group[0].text)) return [group];
@@ -10128,6 +10308,86 @@ function attachPlateTitles(blocks, figures, bodySize, pageH) {
     }
   }
 }
+function pictureTitleText(text3) {
+  const t = normalizeFigSpelling(String(text3 || "")).replace(/\s+/g, " ").trim();
+  if (!t || /\.{4,}|…{2,}|·{4,}/.test(t)) return false;
+  const words = t.split(" ").filter(Boolean);
+  if (words.length < 2 || words.length > 18) return false;
+  if (/^\d{1,4}[.]?$/.test(words[0]) || /^\d{1,4}[.]?$/.test(words[words.length - 1])) return false;
+  if (/\bcontinued\b/i.test(t)) return false;
+  if (/\b\d{4}\s*[-–—]\s*\d{2,4}\b/.test(t)) return false;
+  if (words.length >= 8 && /^(?:the|this|in|it|we|our|after|prior|as)\b/i.test(t)) return false;
+  const numeric = words.filter((w) => /^[\d.+-]+$/.test(w)).length;
+  if (numeric >= Math.ceil(words.length * 0.5)) return false;
+  if (/\b(?:1[6-9]\d{2}|20\d{2})\b/.test(t) || /\b\d{1,2}\s*\/\s*\d{2,4}\b/.test(t)) return false;
+  return true;
+}
+function blockBetween(line, figBox2, blocks) {
+  const top = Math.min(line.bbox.y1, figBox2[1]);
+  const bot = Math.max(line.bbox.y1, figBox2[1]);
+  const above = line.bbox.y1 <= figBox2[1] + 2;
+  const a = above ? top : Math.min(line.bbox.y0, figBox2[3]);
+  const b = above ? bot : Math.max(line.bbox.y0, figBox2[3]);
+  if (b - a < 4) return false;
+  return (blocks || []).some((other) => {
+    if (other === line || !other.bbox) return false;
+    const cy = (other.bbox.y0 + other.bbox.y1) / 2;
+    if (cy <= a + 1 || cy >= b - 1) return false;
+    const ox = Math.min(other.bbox.x1, Math.max(line.bbox.x1, figBox2[2])) - Math.max(other.bbox.x0, Math.min(line.bbox.x0, figBox2[0]));
+    return ox > 8;
+  });
+}
+function attachPictureTitles(blocks, figures, bodySize, pageH) {
+  const gapLimit = Math.max(2.6 * bodySize, 30);
+  const used = /* @__PURE__ */ new Set();
+  for (const fig of figures || []) {
+    const tb = fig.bbox;
+    if (!tb) continue;
+    const fh = tb[3] - tb[1];
+    let best = null;
+    let bestGap = Infinity;
+    let bestText = "";
+    for (const b of blocks) {
+      if (!b?.bbox || used.has(b) || b.type !== "para" && b.type !== "heading") continue;
+      const band = blocks.filter((other) => other?.bbox && Math.abs(other.bbox.y0 - b.bbox.y0) <= 3 && Math.abs(other.bbox.y1 - b.bbox.y1) <= 3);
+      const joined = band.map((p) => p.text).join(" ");
+      const shortBand = band.length > 1 && band.every((p) => wordCountText(p.text) <= 4) && wordCountText(joined) <= 8;
+      const title = shortBand ? joined : b.text;
+      if (!pictureTitleText(title)) continue;
+      const strictAbove = b.bbox.y1 <= tb[1] + 2;
+      const strictBelow = b.bbox.y0 >= tb[3] - 2;
+      if ((strictAbove || strictBelow) && blockBetween(b, tb, blocks)) continue;
+      const overlapsTop = b.bbox.y0 < tb[1] + 0.12 * fh && b.bbox.y1 > tb[1] - 2 && b.bbox.y0 >= tb[1] - gapLimit;
+      const above = b.bbox.y1 <= tb[1] + 2 || b.bbox.y0 < tb[1] && b.bbox.y1 < tb[1] + 0.2 * fh;
+      const below = b.bbox.y0 >= tb[3] - 2;
+      const inFoot = pageH > 0 && fh >= 0.45 * pageH && b.bbox.y0 >= tb[3] - 0.08 * pageH && b.bbox.y1 <= tb[3] + 4 && b.bbox.y0 > tb[1] + 0.7 * fh;
+      if (fig.fromPicture && !below && !inFoot) continue;
+      if (!above && !below && !overlapsTop && !inFoot) continue;
+      const gap = above ? tb[1] - b.bbox.y1 : below ? b.bbox.y0 - tb[3] : 0;
+      if (!inFoot && gap > gapLimit) continue;
+      const ox = Math.min(tb[2], b.bbox.x1) - Math.max(tb[0], b.bbox.x0);
+      const narrower = Math.min(tb[2] - tb[0], Math.max(1, b.bbox.x1 - b.bbox.x0));
+      if (ox < 0.3 * narrower) continue;
+      const score = above || below ? gap : inFoot ? 6 : gap + 40;
+      if (score < bestGap) {
+        bestGap = score;
+        best = b;
+        bestText = title;
+      }
+    }
+    if (!best) continue;
+    const bareFig = (text3) => /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?$/i.test(normalizeFigSpelling(text3 || "").trim());
+    const lead = blocks.some((b) => {
+      if (b === best || !b.bbox || !(forwardFigLead(b.text) || bareFig(b.text))) return false;
+      const gap = b.bbox.y1 <= tb[1] ? tb[1] - b.bbox.y1 : b.bbox.y0 >= tb[3] ? b.bbox.y0 - tb[3] : 0;
+      return gap <= Math.max(gapLimit, pageH > 0 ? 0.08 * pageH : gapLimit);
+    });
+    if (lead) continue;
+    best.type = "caption";
+    best.text = normalizeFigSpelling(bestText || best.text);
+    used.add(best);
+  }
+}
 function captionRank(text3) {
   const t = normalizeFigSpelling(text3 || "");
   const words = wordCountText(t);
@@ -10138,7 +10398,10 @@ function forwardFigLead(text3) {
   const t = normalizeFigSpelling(text3 || "").replace(/\s+/g, " ").trim();
   const key = figCaptionKey(t);
   if (key == null || key === "") return false;
-  return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(t);
+  if (!/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(t)) return false;
+  const rest = t.replace(/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?\s*/i, "");
+  if (/^(?:is|are|was|were|shows|show|comprises|has|have)\b/i.test(rest)) return false;
+  return true;
 }
 function linkCaptions(blocks, targets, bodySize, pageH, { scan = false } = {}) {
   const captionFor2 = /* @__PURE__ */ new Map();
@@ -10159,7 +10422,8 @@ function linkCaptions(blocks, targets, bodySize, pageH, { scan = false } = {}) {
       const capH = Math.max(8, cb.bbox.y1 - cb.bbox.y0);
       const yOverlap = Math.min(cb.bbox.y1, tb[3]) - Math.max(cb.bbox.y0, tb[1]);
       const beside = yOverlap >= 0.45 * capH && ox <= 0;
-      const yLimit = wantsTable ? 3 * bodySize : shortHead ? Math.max(3 * bodySize, 0.16 * pageH) : Math.max(3 * bodySize, 36);
+      let yLimit = wantsTable ? 3 * bodySize : shortHead ? Math.max(3 * bodySize, 0.16 * pageH) : Math.max(3 * bodySize, 36);
+      if (!wantsTable && !isTable && forwardFigLead(cb.text)) yLimit = Math.max(yLimit, 0.08 * pageH);
       const xLimit = beside ? Math.max(8 * bodySize, 96) : Math.max(3 * bodySize, 36);
       if (!beside && yGap > yLimit) continue;
       if (ox <= 0 && xGap > xLimit) continue;
@@ -10437,6 +10701,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       joinCaptionTails(textBlocks, bodySize);
       attachPlateTitles(textBlocks, pageFigures, bodySize, pg.h);
     }
+    attachPictureTitles(textBlocks, pageFigures, bodySize, pg.h);
     const captionFor2 = linkCaptions(textBlocks, [...pageTables, ...pageFigures], bodySize, pg.h, { scan: Boolean(pg.ocr) });
     const unitOf = (b, id) => ({ id, x0: b.bbox.x0 ?? b.bbox[0], y0: b.bbox.y0 ?? b.bbox[1], x1: b.bbox.x1 ?? b.bbox[2], y1: b.bbox.y1 ?? b.bbox[3] });
     const captionIds = /* @__PURE__ */ new Map();
@@ -10691,7 +10956,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 19;
+    PARSE_REV = 20;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;

@@ -11,7 +11,7 @@ import { detectColumns } from "./xycut.js";
 const IMAGE_MIN = 12;
 const H_GAP = 56;
 const V_GAP = 42;
-const FIG_LEAD = String.raw`fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|taf`;
+const FIG_LEAD = String.raw`fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|taf|sketch(?:es)?`;
 const FIG_TOKEN = new RegExp(`^(?:${FIG_LEAD})\\.?$`, "i");
 const FIG_NUM = /^\d+[A-Za-z]?[.:]?$/;
 const FIG_GLUED = new RegExp(`^(?:${FIG_LEAD})\\.?\\d+[A-Za-z]?$`, "i");
@@ -19,7 +19,7 @@ const REVERSED_FIG_RE = new RegExp(`^\\d+[A-Za-z]?(?:[.\\s]+)\\s*(?:${FIG_LEAD})
 const CAPTION_SPLIT_GAP = 8;
 const ANCHOR_SEP = 48;
 
-export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new Set(), words = [], bodySize = 10, pageW = 612, pageH = 792, ruleSegments = [], pageTextChars = null, plates = false }) {
+export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new Set(), words = [], bodySize = 10, pageW = 612, pageH = 792, ruleSegments = [], pageTextChars = null, plates = false, textLines = null }) {
   const prims = [];
   for (const img of graphics.images || []) {
     if (img.x1 - img.x0 < IMAGE_MIN || img.y1 - img.y0 < IMAGE_MIN) continue;
@@ -103,6 +103,11 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
         for (const w of line.words) if (w.x0 >= fig.x0 - 1 && w.x1 <= fig.x1 + 1) used.delete(w);
       }
     }
+    // A photograph or an engraving is a tone region inside the page image. The
+    // page image itself stays the background.
+    // Table words are already claimed, so `lines` no longer holds them. The ink
+    // of those rules is still on the page; judge it against the full text.
+    pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines);
   }
   const kept = [];
   for (const fig of figures) {
@@ -1085,6 +1090,9 @@ export function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, p
   const pageArea = pageW * pageH;
   if (!(area > 0)) return null;
   const textBlock = textBlockBox(box, lines);
+  // A cloud of short strokes in a small box is the grain of a photograph, or the
+  // edge of the next sheet in the picture, not a drawing.
+  if (!fig.fromPlate && fig.kind === "drawing" && (fig.count || 0) >= 18 && area < 0.035 * pageArea) return "texture";
   const parts = drawingParts(box, strokes, pageW, pageH);
   if (drawingCovers(box, parts, 0.5) || (drawingCovers(box, parts, 0.2) && !textBlock)) return null;
   const touchTop = box.y0 <= Math.max(4, 0.02 * pageH);
@@ -1140,6 +1148,179 @@ export function rejectFalseFigures(figures, opts = {}) {
   return list.filter((fig) => !falseFigureReason(fig, { ...opts, peers, strokes }));
 }
 
+// A letter or a menu: text runs down the page, and it is not a drawing sheet.
+function letterSpread(lines, pageH) {
+  const text = (lines || []).filter((line) => (line.text || "").trim());
+  if (text.length < 4 || !(pageH > 0)) return false;
+  if (text.some((line) => /sheet\s+\d+\s+of\s+\d+/i.test(line.text || ""))) return false;
+  const ys = text.map((line) => ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2);
+  return Math.max(...ys) - Math.min(...ys) > 0.35 * pageH;
+}
+
+// A short band along the top or bottom edge is a header, not a plate.
+function edgeBand(box, pageW, pageH) {
+  const w = box.x1 - box.x0;
+  const h = box.y1 - box.y0;
+  const touchT = box.y0 <= 0.02 * pageH;
+  const touchB = box.y1 >= pageH - 0.02 * pageH;
+  const touchL = box.x0 <= 0.02 * pageW;
+  const touchR = box.x1 >= pageW - 0.02 * pageW;
+  if ((touchT || touchB) && h <= 0.2 * pageH && w <= 0.75 * pageW) return true;
+  const cy = (box.y0 + box.y1) / 2;
+  const side = (touchL || touchR) && h <= 0.22 * pageH && w <= 0.5 * pageW && (cy < 0.3 * pageH || cy > 0.7 * pageH);
+  return side;
+}
+
+// A band on the mount beside the sheet, or a hairline along the top or bottom edge.
+function marginStrip(box, pageW, pageH) {
+  const w = box.x1 - box.x0;
+  const h = box.y1 - box.y0;
+  const touchL = box.x0 <= 0.02 * pageW;
+  const touchR = box.x1 >= pageW - 0.02 * pageW;
+  const touchT = box.y0 <= 0.02 * pageH;
+  const touchB = box.y1 >= pageH - 0.02 * pageH;
+  if ((touchL || touchR) && w <= 0.08 * pageW && h >= 0.25 * pageH) return true;
+  if ((touchT || touchB) && h <= 0.06 * pageH && w >= 0.4 * pageW) return true;
+  return false;
+}
+
+// Body lines through the middle of a large box are a framed letter, not a plate.
+function textThroughMiddle(box, lines) {
+  const h = box.y1 - box.y0;
+  if (!(h > 0)) return false;
+  const prose = (lines || []).filter((line) => wordCount(line.text) >= 2 && lineCenterIn(line, box));
+  const any = (lines || []).filter((line) => (line.text || "").trim() && lineCenterIn(line, box));
+  // A numeric table is one token per cell. A caption is a line or two.
+  const inside = prose.length >= 5 ? prose : any.length >= 8 ? any : [];
+  if (inside.length < 5) return false;
+  const mid = inside.filter((line) => {
+    const c = (line.y0 + line.y1) / 2;
+    return c > box.y0 + 0.2 * h && c < box.y1 - 0.2 * h;
+  });
+  const top = Math.min(...inside.map((line) => line.y0));
+  const bot = Math.max(...inside.map((line) => line.y1));
+  return mid.length >= 3 && bot - top > 0.45 * h;
+}
+
+// Handwriting under a drawing is not part of the drawing. Cut it off when the
+// upper part of the box is clear of text.
+function clipLowerText(box, lines) {
+  const h = box.y1 - box.y0;
+  if (!(h > 0)) return box;
+  const inside = (lines || []).filter((line) => wordCount(line.text) >= 2 && lineCenterIn(line, box));
+  const low = inside.filter((line) => line.y0 > box.y0 + 0.55 * h);
+  const high = inside.filter((line) => line.y0 <= box.y0 + 0.55 * h);
+  if (low.length < 3 || high.length > 2) return box;
+  const cut = Math.min(...low.map((line) => line.y0));
+  if (cut - box.y0 < 0.28 * h) return box;
+  return { ...box, y1: cut - 2 };
+}
+
+// The dark of a photograph stops inside the mount. Grow into the empty margin
+// and stop at the first line, so the box is the picture and not the caption.
+function growUntilText(box, lines, pageW, pageH) {
+  const padX = 0.08 * pageW;
+  const padY = 0.07 * pageH;
+  const text = (lines || []).filter((line) => (line.text || "").trim());
+  let { x0, y0, x1, y1 } = box;
+  const overlapX = (line, a, b) => Math.min(b, line.x1) - Math.max(a, line.x0) > 8;
+  const overlapY = (line, a, b) => Math.min(b, line.y1) - Math.max(a, line.y0) > 4;
+  const above = text.filter((line) => line.y1 <= y0 + 1 && overlapX(line, x0, x1)).sort((a, b) => b.y1 - a.y1)[0];
+  y0 = above ? Math.max(y0 - padY, above.y1 + 2) : Math.max(0, y0 - padY);
+  const below = text.filter((line) => line.y0 >= y1 - 1 && overlapX(line, x0, x1)).sort((a, b) => a.y0 - b.y0)[0];
+  y1 = below ? Math.min(y1 + padY, below.y0 - 2) : Math.min(pageH, y1 + padY);
+  const left = text.filter((line) => line.x1 <= x0 + 1 && overlapY(line, y0, y1)).sort((a, b) => b.x1 - a.x1)[0];
+  x0 = left ? Math.max(x0 - padX, left.x1 + 2) : Math.max(0, x0 - padX);
+  const right = text.filter((line) => line.x0 >= x1 - 1 && overlapY(line, y0, y1)).sort((a, b) => a.x0 - b.x0)[0];
+  x1 = right ? Math.min(x1 + padX, right.x0 - 2) : Math.min(pageW, x1 + padX);
+  if (x1 - x0 < 16 || y1 - y0 < 16) return box;
+  return { x0, y0, x1, y1 };
+}
+
+// One ink component that is a photograph, an engraving, or a compact mark
+// (a seal, a logo). Coordinates stay in the page frame the truth uses: a
+// photo of a sheet is not cropped to the sheet before the box is stored.
+function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines = null) {
+  const pageArea = pageW * pageH;
+  if (!(pageArea > 0)) return;
+  const boxes = [...(inkBoxes || [])].sort((a, b) => boxArea(b) - boxArea(a));
+  const made = [];
+  // A rule cluster on the photograph is not the photograph, and the page image
+  // is the photograph. A plate or a chart that already contains the ink blocks it.
+  const covers = (outer, box) => {
+    if (outer.pageImage || outer.fromPicture) return false;
+    const bigDrawing = outer.kind === "drawing" && boxArea(outer) >= 0.15 * pageArea;
+    if (!(outer.fromPlate || outer.kind === "image" || bigDrawing)) return false;
+    if (insideFrac(box, outer) >= 0.4) return true;
+    const cx = (box.x0 + box.x1) / 2;
+    const cy = (box.y0 + box.y1) / 2;
+    return cx > outer.x0 && cx < outer.x1 && cy > outer.y0 && cy < outer.y1;
+  };
+  const covered = (box) => figures.some((f) => covers(f, box)) || made.some((f) => insideFrac(box, f) >= 0.55 || insideFrac(f, box) >= 0.55);
+  const spread = letterSpread(lines, pageH);
+  for (const raw of boxes) {
+    let area = boxArea(raw);
+    if (area < 0.018 * pageArea) continue;
+    let box = { x0: raw.x0, y0: raw.y0, x1: raw.x1, y1: raw.y1 };
+    if (area > 0.78 * pageArea) {
+      const clipped = clipLowerText(box, lines);
+      if (!(boxArea(clipped) < area - 1) || boxArea(clipped) > 0.78 * pageArea) continue;
+      box = clipped;
+      area = boxArea(box);
+    }
+    if (marginStrip(box, pageW, pageH)) continue;
+    box = clipLowerText(box, lines);
+    // A table's rules are one ink blob. Its words may already belong to the
+    // table, so they are missing from `lines`; the full page text still shows them.
+    const pageLines = textLines || lines;
+    if (textThroughMiddle(box, pageLines)) continue;
+    if (textBlockBox(box, lines)) continue;
+    const grown = growUntilText(box, lines, pageW, pageH);
+    box = boxArea(grown) > 0.85 * pageArea ? box : grown;
+    if (edgeBand(box, pageW, pageH)) continue;
+    if (textThroughMiddle(box, pageLines)) continue;
+    if (boxArea(box) > 0.85 * pageArea || covered(box)) continue;
+    made.push(box);
+  }
+  // Several ink blobs of one size on a letter are the handwriting, not a row of plates.
+  // Two photographs on a notebook stay: there is no third, or one plate is clearly larger.
+  if (spread && made.length >= 3) {
+    const areas = made.map((b) => boxArea(b)).sort((a, b) => b - a);
+    if (areas[0] < 2 * areas[1]) made.length = 0;
+  }
+  if (spread) {
+    const max = made.length ? Math.max(...made.map((b) => boxArea(b))) : 0;
+    for (let i = made.length - 1; i >= 0; i--) {
+      const a = boxArea(made[i]);
+      // Handwriting on a letter stays smaller than a pasted photograph.
+      if (a < 0.08 * pageArea && (made.length === 1 || a < 0.35 * max)) made.splice(i, 1);
+    }
+  }
+  const emblems = [];
+  for (const raw of boxes) {
+    const w = raw.x1 - raw.x0;
+    const h = raw.y1 - raw.y0;
+    const area = w * h;
+    if (area < 0.012 * pageArea || area >= 0.018 * pageArea) continue;
+    const aspect = h > 0 ? w / h : 0;
+    if (aspect < 0.45 || aspect > 2.3) continue;
+    const box = { x0: raw.x0, y0: raw.y0, x1: raw.x1, y1: raw.y1 };
+    if (marginStrip(box, pageW, pageH)) continue;
+    const cx = (raw.x0 + raw.x1) / 2;
+    const cy = (raw.y0 + raw.y1) / 2;
+    if ((cx <= 0.14 * pageW || cx >= 0.86 * pageW) && (cy <= 0.14 * pageH || cy >= 0.86 * pageH)) continue;
+    if ((lines || []).some((line) => wordCount(line.text) >= 2 && lineCenterIn(line, box))) continue;
+    if (covered(box)) continue;
+    emblems.push(box);
+  }
+  // A letter carries several small marks that are handwriting. A short page can
+  // carry one seal. A page of body text does not grow a logo out of one of them.
+  if (!spread) made.push(...emblems);
+  for (const box of made) {
+    figures.push({ ...box, kind: "drawing", count: 1, pageImage: false, fromPlate: true, fromPicture: true });
+  }
+}
+
 // A steel "plate 14 inches" is not Plate 14. "Figure 1 is a side elevation" and
 // "Figure 2 herewith." point at a drawing; they are not the caption under it.
 function plateLabelText(text, key) {
@@ -1150,6 +1331,9 @@ function plateLabelText(text, key) {
   if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return false;
   const words = t.split(" ");
   if (key === "" && words.length > 2) return false;
+  // "Sketch (k)" names a drawing inside a photograph. It is not a plate label
+  // that should hull every stroke on the page.
+  if (/^sketch(?:es)?\b/i.test(t)) return false;
   const rest = t.replace(/^(?:fig(?:ure)?s?|plates?)\.?\s*\d+[A-Za-z]?[.:]?\s*/i, "");
   if (/^(?:is|are|was|were|shows|show|comprises|has|have)\b/i.test(rest)) return false;
   if (/^(?:herewith|above|below|following|opposite)[.]?$/i.test(rest)) return false;

@@ -22,7 +22,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 31;
+export const PARSE_REV = 32;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -1320,6 +1320,24 @@ function blockBox(tb) {
   return b;
 }
 
+// A one-line paragraph inside the width of two grid pieces, at most twelve
+// words, not a caption and not a repeat of the column heads.
+function sectionLineBetween(tb, a, b, bodySize) {
+  if (!tb || (tb.type !== "para" && tb.type !== "heading")) return null;
+  const text = String(tb.text || "").trim();
+  if (!text || CAPTION_RE.test(text)) return null;
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length > 12 || words.length < 2) return null;
+  if (tb.bbox.y1 - tb.bbox.y0 > 1.8 * (bodySize || 10)) return null;
+  const x0 = Math.min(a.bbox[0], b.bbox[0]);
+  const x1 = Math.max(a.bbox[2], b.bbox[2]);
+  if (tb.bbox.x0 < x0 - 2 || tb.bbox.x1 > x1 + 2) return null;
+  const heads = (t) => (t.cells || []).filter((c) => c.r === 0).map((c) => String(c.text || "").trim().toLowerCase()).filter(Boolean);
+  const low = text.toLowerCase();
+  if ([...heads(a), ...heads(b)].some((h) => h.length >= 4 && low.includes(h))) return null;
+  return { text, block: tb };
+}
+
 // Two stream tables in one column split by a slightly wider row gap: same column structure,
 // nothing between them, join them into one. A second piece that opens with a section
 // banner is the same table; a piece with its own column heads is not.
@@ -1331,19 +1349,28 @@ export function stitchTables(tables, textBlocks, bodySize) {
     if (a.method !== "stream" || b.method !== "stream" || a.cols !== b.cols) continue;
     if ((b.headerRows || 0) > 0 && !sectionBanner(b)) continue;
     const gap = b.bbox[1] - a.bbox[3];
-    if (gap < -2 || gap > 4 * bodySize) continue;
+    if (gap < -2 || gap > 6 * bodySize) continue;
     const ox = Math.min(a.bbox[2], b.bbox[2]) - Math.max(a.bbox[0], b.bbox[0]);
     if (ox < 0.8 * Math.min(a.bbox[2] - a.bbox[0], b.bbox[2] - b.bbox[0])) continue;
     const colW = (a.bbox[2] - a.bbox[0]) / a.cols;
     let same = true;
     for (let c = 1; c < a.cols; c++) if (Math.abs(a.grid.xs[c] - b.grid.xs[c]) > 0.35 * colW) same = false;
     if (!same) continue;
-    const between = textBlocks.some((tb) => tb.bbox.y0 >= a.bbox[3] - 1 && tb.bbox.y1 <= b.bbox[1] + 1 && Math.min(tb.bbox.x1, a.bbox[2]) - Math.max(tb.bbox.x0, a.bbox[0]) > 0);
-    if (between) continue;
-    const cells = [...a.cells, ...b.cells.map((k) => ({ ...k, r: k.r + a.rows, header: false }))];
+    const between = textBlocks.filter((tb) => tb.bbox.y0 >= a.bbox[3] - 1 && tb.bbox.y1 <= b.bbox[1] + 1 && Math.min(tb.bbox.x1, a.bbox[2]) - Math.max(tb.bbox.x0, a.bbox[0]) > 0);
+    // One short line between two pieces of the same grid is a section head
+    // inside the table ("Harbor Commissioners for the Port of San Jose,
+    // 1913-1924."): it joins as a full-width row. A caption names a new table.
+    const banner = between.length === 1 ? sectionLineBetween(between[0], a, b, bodySize) : null;
+    if (between.length && !banner) continue;
+    if (!banner && gap > 4 * bodySize) continue;
+    if (banner && (a.rows < 3 || b.rows < 3)) continue;
+    const bannerRows = banner ? 1 : 0;
+    const bannerCells = banner ? [{ r: a.rows, c: 0, rowSpan: 1, colSpan: a.cols, text: banner.text, header: false }] : [];
+    const cells = [...a.cells, ...bannerCells, ...b.cells.map((k) => ({ ...k, r: k.r + a.rows + bannerRows, header: false }))];
+    if (banner) textBlocks.splice(textBlocks.indexOf(banner.block), 1);
     const merged = {
       ...a,
-      rows: a.rows + b.rows,
+      rows: a.rows + bannerRows + b.rows,
       cells,
       bbox: [Math.min(a.bbox[0], b.bbox[0]), a.bbox[1], Math.max(a.bbox[2], b.bbox[2]), b.bbox[3]],
       grid: { xs: a.grid.xs, ys: [...a.grid.ys.slice(0, -1), (a.grid.ys[a.grid.ys.length - 1] + b.grid.ys[0]) / 2, ...b.grid.ys.slice(1)] },

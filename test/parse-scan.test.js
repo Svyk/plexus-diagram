@@ -1006,6 +1006,24 @@ test("repairTableReading shifts a section label's values down and blanks a copie
   repairTableReading(section);
   assert.equal(section.cells.find((c) => c.r === 1 && c.c === 1).text, "2,528");
 
+  // The reader also wrote the last stub's empty cells. After the shift those
+  // addresses hold the moved values, and the empty cells go.
+  const written = {
+    rows: 3, cols: 4, headerRows: 0,
+    cells: [
+      gridCell(0, 0, "Total:"), gridCell(0, 1, "2,528"), gridCell(0, 2, "672"), gridCell(0, 3, "1.03", { rowSpan: 2 }),
+      gridCell(1, 0, "Treated"), gridCell(1, 1, "2,444"), gridCell(1, 2, "754"),
+      gridCell(2, 0, "Control"), gridCell(2, 1, ""), gridCell(2, 2, ""), gridCell(2, 3, ""),
+    ],
+  };
+  repairTableReading(written);
+  assert.equal(written.cells.filter((c) => c.r === 2 && c.c === 1).length, 1);
+  assert.equal(written.cells.find((c) => c.r === 2 && c.c === 1).text, "2,444");
+  assert.equal(written.cells.find((c) => c.r === 2 && c.c === 2).text, "754");
+  assert.equal(written.cells.find((c) => c.r === 2 && c.c === 3), undefined);
+  assert.equal(written.cells.find((c) => c.r === 1 && c.c === 3).rowSpan, 2);
+  assert.equal(written.cells.length, 8);
+
   const leaders = {
     rows: 6, cols: 4, headerRows: 1,
     cells: [
@@ -1163,6 +1181,29 @@ test("repairTableReading blanks a vertical run of one copied decimal and keeps a
   assert.equal(t.cells.find((c) => c.r === 4 && c.c === 2).text, "");
   assert.equal(t.cells.find((c) => c.r === 5 && c.c === 2).text, ".05");
   assert.equal(t.cells.find((c) => c.r === 1 && c.c === 2).text, "0.003");
+});
+
+test("repairTableReading reads a lone o as 0, a leading l as a point, and the hole in a count", () => {
+  const rows = [
+    ["1", "12000", ".0498", "~.69~2"],
+    ["2", "o", ".239", "i .3784"],
+    ["3", "0", ".0526", "2.7210"],
+    ["4", "12000", ".240", "i .3802"],
+    ["5", "0", ".0563", "2.~505"],
+    ["6", "3000", ".0794", "~.8998"],
+    ["~", "6000", "l 119", "T.0755"],
+    ["8", "9000", ".179", "1.2529"],
+  ];
+  const t = {
+    rows: rows.length, cols: 4, headerRows: 0,
+    cells: rows.flatMap((row, r) => row.map((text, c) => gridCell(r, c, text))),
+  };
+  repairTableReading(t);
+  assert.equal(t.cells.find((c) => c.r === 6 && c.c === 0).text, "7");
+  assert.equal(t.cells.find((c) => c.r === 1 && c.c === 1).text, "0");
+  assert.equal(t.cells.find((c) => c.r === 6 && c.c === 2).text, ".119");
+  assert.equal(t.cells.find((c) => c.r === 0 && c.c === 3).text, "~.69~2");
+  assert.equal(t.cells.find((c) => c.r === 2 && c.c === 3).text, "2.7210");
 });
 
 test("parse view shows Read the scan only for scan pages with a ready helper", async () => {

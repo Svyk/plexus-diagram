@@ -4,7 +4,7 @@ import test from "node:test";
 import { dropMarginRotated, findFurniture, isRepoStamp } from "../src/model/parse/furniture.js";
 import { assembleDocument, parsePageGeometry } from "../src/model/parse/index.js";
 import { applyVlmTables, linkLayoutCaptions } from "../src/model/parse/vlm-tables.js";
-import { chooseTableReading } from "../src/model/parse/vlm-arbitrate.js";
+import { chooseTableReading, restoreLabeledTotals } from "../src/model/parse/vlm-arbitrate.js";
 import { takeArgs, vlmHelper } from "../tools/parse-bench/scan.mjs";
 
 function grid(labels, { cols = null, headerRows = 1, bbox = null } = {}) {
@@ -416,4 +416,66 @@ test("an empty high-accuracy cell takes the rule text the page words contain", (
   assert.equal(decision.choice, "vlm");
   assert.equal(decision.table.cells.find((cell) => cell.r === 1 && cell.c === 1).text, "5.25");
   assert.equal(decision.table.cells.find((cell) => cell.r === 2 && cell.c === 1).text, "");
+});
+
+test("a clean same-shape grid replaces glyph debris even when the page words are the debris", () => {
+  const ruleLabels = [
+    ["1", "12000", ".0498", "~.69~2"],
+    ["2", "0", ".239", "i .3784"],
+    ["3", "0", ".0526", "2.7210"],
+    ["4", "12000", ".240", "i .3802"],
+    ["5", "0", ".0563", "2.~505"],
+    ["6", "3000", ".0794", "~.8998"],
+    ["7", "6000", ".119", "T.0755"],
+    ["8", "9000", ".179", "Y.4533"],
+  ];
+  const logs = ["2\u0304.6972", "1.3784", "2.7210", "1.3802", "2.7505", "2.8998", "1.0755", "1.4533"];
+  const clean = ruleLabels.map((row, r) => row.map((cell, c) => (c === 3 ? logs[r] : cell)));
+  const rule = grid(ruleLabels, { headerRows: 0 });
+  const vlm = grid(clean, { headerRows: 0, bbox: rule.bbox });
+  const decision = chooseTableReading(rule, vlm, evidence(ruleLabels));
+  assert.equal(decision.choice, "vlm");
+  assert.ok(decision.scores.rule.debris >= 0.12);
+  assert.equal(decision.scores.vlm.debris, 0);
+  assert.equal(decision.scores.vlm.tidy, 1);
+  const short = chooseTableReading(rule, grid(clean.slice(0, 4), { headerRows: 0, bbox: rule.bbox }), evidence(ruleLabels));
+  assert.equal(short.choice, "rule");
+  const one = ruleLabels.map((row, r) => row.map((cell, c) => (c === 3 && r > 0 ? logs[r] : cell)));
+  const kept = chooseTableReading(grid(one, { headerRows: 0 }), grid(clean, { headerRows: 0, bbox: rule.bbox }), evidence(one));
+  assert.equal(kept.choice, "rule");
+});
+
+test("a total column takes the rule row that adds and keeps the row that already adds", () => {
+  const rule = grid([
+    ["Pittsburgh, Pa.", "Trace.", "79.2", "19.6", "1.2", "100.00"],
+    ["Cincinnati, Ohio.", "do.", "79.8", "19.5", "7", "100.00"],
+    ["Columbus, Ohio", "do", "80.4", "18.1", "1.5", "100.00"],
+    ["Chelsea, Okla.", "do", "75.4", "17.7", "6.6", "100.00"],
+  ], { headerRows: 0 });
+  const vlm = grid([
+    ["City.", "CO2.", "CH4.", "C2H6.", "N2.", "Total."],
+    ["", "Per cent.", "Per cent.", "Per cent.", "Per cent.", "Per cent."],
+    ["Pittsburgh, Pa.", "Trace.", "79.2", "19.6", "1.2", "100.00"],
+    ["Cincinnati, Ohio.", "do.", "79.8", "19.5", ".7", "100.00"],
+    ["Columbus, Ohio.", "do.", "75.4", "18.1", "1.5", "100.00"],
+    ["Chelsea, Okla.", "", "", "", "", ""],
+  ], { headerRows: 2, bbox: rule.bbox });
+  const decision = chooseTableReading(rule, vlm, evidence([
+    ["City.", "CO2.", "CH4.", "C2H6.", "N2.", "Total."],
+    ["", "Per cent.", "Per cent.", "Per cent.", "Per cent.", "Per cent."],
+    ["Pittsburgh, Pa.", "Trace.", "79.2", "19.6", "1.2", "100.00"],
+    ["Cincinnati, Ohio.", "do.", "79.8", "19.5", ".7", "100.00"],
+    ["Columbus, Ohio.", "do.", "80.4", "18.1", "1.5", "100.00"],
+    ["Chelsea, Okla.", "do", "75.4", "17.7", "6.6", "100.00"],
+  ]));
+  assert.equal(decision.choice, "vlm");
+  const restored = restoreLabeledTotals(decision.table, rule);
+  const at = (r, c) => restored.cells.find((cell) => cell.r === r && cell.c === c).text;
+  assert.equal(at(3, 4), ".7");
+  assert.equal(at(4, 2), "80.4");
+  assert.equal(at(5, 2), "75.4");
+  assert.equal(at(5, 3), "17.7");
+  assert.equal(at(5, 4), "6.6");
+  assert.equal(at(5, 5), "100.00");
+  assert.equal(at(2, 2), "79.2");
 });

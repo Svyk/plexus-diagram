@@ -481,12 +481,25 @@ export function round(n) {
 }
 
 // Re-line an arbitrary set of words (table cells, figure labels): baseline rows, x order.
+function sharesLine(row, w) {
+  const size = Math.max(row.size || 0, w.size || 0, 1);
+  if (Math.abs(row.base - w.base) > 0.5 * size) return false;
+  // Two glyphs stacked in one narrow column overlap in x. A baseline step
+  // larger than a superscript puts them on successive lines of a wrapped head.
+  const stacked = row.words.some((o) => {
+    const overlap = Math.min(o.x1, w.x1) - Math.max(o.x0, w.x0);
+    const narrow = Math.min(o.x1 - o.x0, w.x1 - w.x0);
+    return narrow > 1 && overlap > 0.55 * narrow && Math.abs((o.base ?? row.base) - w.base) > 0.22 * size;
+  });
+  return !stacked;
+}
+
 export function relineWords(words) {
   const sorted = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
   const rows = [];
   for (const w of sorted) {
     const r = rows[rows.length - 1];
-    if (r && Math.abs(r.base - w.base) <= 0.5 * Math.max(r.size, w.size)) r.words.push(w);
+    if (r && sharesLine(r, w)) r.words.push(w);
     else rows.push({ base: w.base, size: w.size, words: [w] });
   }
   return rows.map((r) => makeLine(r.words.sort((a, b) => a.x0 - b.x0)));

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildLines, mul, applyPoint, normalizeText, fontFlags, makeLine } from "../src/model/parse/lines.js";
+import { buildLines, mul, applyPoint, normalizeText, fontFlags, makeLine, relineWords } from "../src/model/parse/lines.js";
 import { decodePathData, extractGraphics, luminanceOf, snapRules, OP } from "../src/model/parse/rules.js";
 import { findLatticeTables, cellTextOf, isNumericText } from "../src/model/parse/lattice.js";
 import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand, phraseTable, tickGrid, alignNumericColumns, lacksTabularEvidence } from "../src/model/parse/stream.js";
@@ -559,6 +559,88 @@ test("an unheaded stream grid without a number, date, or time column is not a ta
   ] }), true, "a header with no body rows is not evidence");
 });
 
+test("a page-number column is not a value column unless the list is named or headed Page", () => {
+  const toc = [
+    ["The expression of resistivity.", "54"],
+    ["The density of copper", "61"],
+    ["Calculation of the resistance", "64"],
+  ].map(([title, page], i) => row([[title, 40], [page, 360]], 100 + i * 14));
+  assert.equal(detectStreamRuns(toc).length, 0, "entries and a page number are not a data table");
+  const named = [
+    ["FIGURE 1. Apparatus", "7"],
+    ["FIGURE 2. Chart", "9"],
+    ["FIGURE 3. Plate", "11"],
+  ].map(([title, page], i) => row([[title, 40], [page, 360]], 100 + i * 14));
+  assert.equal(detectStreamRuns(named).filter((t) => !t.type || t.type === "table").length, 1, "a figures list stays a table");
+  const gages = [
+    ["12-", "-10", "Some of the later gages were based on the"],
+    ["13-", "-11", "It was used extensively both in Great"],
+    ["14-", "-12", "Britain and in the United States for many"],
+    ["15-", "-13", "It has been superseded and is now nearly"],
+  ].map(([a, b, prose], i) => row([[a, 40], [b, 90], [prose, 150]], 100 + i * 14));
+  assert.equal(detectStreamRuns(gages).length, 0, "gage indexes beside prose are not measured values");
+  const titled = [
+    ["The characteristics of the American wire gage", "20"],
+    ["Wire table short cuts", "20"],
+    ["Explanation of tables", "23"],
+  ].map(([title, page], i) => row([[title, 40], [page, 400]], 100 + i * 14));
+  assert.equal(detectStreamRuns(titled).length, 0, "the word table inside a chapter title does not name the list");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 1, rows: 4, cols: 2, cells: [
+      { r: 0, c: 1, text: "Page." },
+      { r: 1, c: 0, text: "Introduction" }, { r: 1, c: 1, text: "5" },
+      { r: 2, c: 0, text: "Composition of natural gas" }, { r: 2, c: 1, text: "6" },
+      { r: 3, c: 0, text: "Publications on petroleum" }, { r: 3, c: 1, text: "11" },
+    ],
+  }), false, "a Page heading keeps the contents table");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 0, rows: 3, cols: 2, cells: [
+      { r: 0, c: 0, text: "Introduction" }, { r: 0, c: 1, text: "5" },
+      { r: 1, c: 0, text: "Compressibility of methane" }, { r: 1, c: 1, text: "6" },
+      { r: 2, c: 0, text: "Publications on petroleum" }, { r: 2, c: 1, text: "11" },
+    ],
+  }), true, "page numbers alone are not a value column");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 0, rows: 2, cols: 2, cells: [
+      { r: 0, c: 0, text: "TABLE 1. PV values for air" }, { r: 0, c: 1, text: "8" },
+      { r: 1, c: 0, text: "2. PV values for natural gas" },
+    ],
+  }), false, "a tables list stays when the second page number is missing");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 1, rows: 4, cols: 3, cells: [
+      { r: 0, c: 0, text: "Era." }, { r: 0, c: 1, text: "Characteristic life." }, { r: 0, c: 2, text: "Duration." },
+      { r: 1, c: 0, text: "Quaternary." }, { r: 1, c: 1, text: "Age of man. Animals and plants of modern type." }, { r: 1, c: 2, text: "1 to 5." },
+      { r: 2, c: 0, text: "Tertiary." }, { r: 2, c: 1, text: "Age of mammals. Possible first appearance of man." }, { r: 2, c: 2, text: "1 to 10." },
+      { r: 3, c: 0, text: "Carboniferous." }, { r: 3, c: 1, text: "Age of amphibians. Dominance of club mosses and ferns." }, { r: 3, c: 2, text: "17 to 25." },
+    ],
+  }), false, "a duration range is a measured value even when the other cells are prose");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 2, rows: 5, cols: 5, cells: [
+      { r: 0, c: 1, text: "SI coherent derived unit" },
+      { r: 1, c: 0, text: "Quantity" }, { r: 1, c: 1, text: "Special name" }, { r: 1, c: 2, text: "Special symbol" }, { r: 1, c: 3, text: "Expression in terms of other SI units" }, { r: 1, c: 4, text: "Expression in terms of SI base units" },
+      { r: 2, c: 0, text: "plane angle" }, { r: 2, c: 1, text: "radian" }, { r: 2, c: 2, text: "rad" }, { r: 2, c: 3, text: "m/m" },
+      { r: 3, c: 0, text: "energy, work, amount of heat" }, { r: 3, c: 1, text: "joule" }, { r: 3, c: 2, text: "J" }, { r: 3, c: 3, text: "N · m" },
+      { r: 4, c: 0, text: "electric charge, amount of electricity" }, { r: 4, c: 1, text: "coulomb" }, { r: 4, c: 2, text: "C" }, { r: 4, c: 3, text: "s · A" },
+    ],
+  }), false, "column titles keep a unit table whose cells are names, not numbers");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 1, rows: 4, cols: 4, cells: [
+      { r: 0, c: 1, text: "8" }, { r: 0, c: 2, text: "2, page 18." }, { r: 0, c: 3, text: "brought out in Birmingham." },
+      { r: 1, c: 0, text: "12-" }, { r: 1, c: 1, text: "-10" }, { r: 1, c: 2, text: "Some of the later gages were based on the decimal system." },
+      { r: 2, c: 0, text: "13-" }, { r: 2, c: 1, text: "-11" }, { r: 2, c: 2, text: "It was used extensively both in Great Britain and America." },
+      { r: 3, c: 0, text: "14-" }, { r: 3, c: 1, text: "-12" }, { r: 3, c: 2, text: "It has been superseded and is now nearly forgotten." },
+    ],
+  }), true, "a sentence under a false header is not a column-title table");
+  assert.equal(lacksTabularEvidence({
+    method: "stream", headerRows: 1, rows: 4, cols: 2, cells: [
+      { r: 0, c: 0, text: "Indicators" }, { r: 0, c: 1, text: "Weight of indicator in 2006" },
+      { r: 1, c: 0, text: "Employment" }, { r: 1, c: 1, text: "40" },
+      { r: 2, c: 0, text: "Further studies" }, { r: 2, c: 1, text: "15" },
+      { r: 3, c: 0, text: "Dropping out" }, { r: 3, c: 1, text: "15" },
+    ],
+  }), false, "small integers under a column title are weights, not page numbers");
+});
+
 test("a chart's label table inside the figure is dropped after layout puts it back", () => {
   const table = {
     id: "t1", type: "table", page: 1, method: "vlm", rows: 2, cols: 3, headerRows: 0,
@@ -888,4 +970,179 @@ test("assembleDocument links footnote refs to footnotes and attaches captions", 
   assert.equal(para.footnoteRefs[0].to, note.id);
   const cap = Object.values(doc.blocks).find((b) => b.text && b.text.startsWith("Table 1."));
   assert.equal(cap.type, "para", "caption with no table nearby stays a paragraph");
+});
+
+const wordAt = (text, x, base, width) => ({
+  text, x0: x, x1: x + (width ?? text.length * 5), base, size: 9,
+  y0: base - 7, y1: base + 2, bold: false, mathChars: 0, boldChars: 0, italicChars: 0, mathFontChars: 0, rowSize: 9,
+});
+
+test("a body-only vertical splits the number columns and leaves the spanning header", () => {
+  const rules = [];
+  for (const y of [100, 120, 140, 160, 180, 200]) rules.push({ axis: "h", x0: 100, x1: 400, y0: y, y1: y });
+  for (const x of [100, 200, 300, 400]) rules.push({ axis: "v", x0: x, x1: x, y0: 100, y1: 200 });
+  rules.push({ axis: "v", x0: 250, x1: 250, y0: 140, y1: 200 });
+  const words = [
+    wordAt("Trial", 210, 114, 70),
+    wordAt("12.1", 205, 154, 22), wordAt("399", 268, 154, 22),
+    wordAt("13.4", 205, 174, 22), wordAt("401", 268, 174, 22),
+    wordAt("14.0", 205, 194, 22), wordAt("388", 268, 194, 22),
+  ];
+  const { tables } = findLatticeTables({ rules, boxes: [], words });
+  assert.equal(tables.length, 1);
+  const t = tables[0];
+  assert.equal(t.cols, 4);
+  const head = t.cells.find((k) => k.text === "Trial");
+  assert.equal(head.colSpan, 2);
+  assert.equal(head.header, true);
+  assert.ok(t.cells.some((k) => k.text === "12.1" && k.colSpan === 1));
+  assert.ok(t.cells.some((k) => k.text === "399" && k.c === t.cells.find((c) => c.text === "12.1").c + 1));
+});
+
+test("unit lines above the numbers stay in the header", () => {
+  const rules = [];
+  const ys = [100, 118, 136, 154, 172];
+  for (const y of ys) rules.push({ axis: "h", x0: 40, x1: 280, y0: y, y1: y });
+  for (const x of [40, 120, 200, 280]) rules.push({ axis: "v", x0: x, x1: x, y0: 100, y1: 172 });
+  const words = [
+    wordAt("Volume", 48, 112, 40), wordAt("Pressure", 128, 112, 50), wordAt("PV", 220, 112, 20),
+    wordAt("C.c.", 48, 130, 24), wordAt("Mm.", 128, 130, 22), wordAt("mercury", 160, 130, 36),
+    wordAt("404.0", 48, 148, 30), wordAt("760", 140, 148, 20), wordAt("1.00", 214, 148, 28),
+    wordAt("401.6", 48, 166, 30), wordAt("755", 140, 166, 20), wordAt("0.99", 214, 166, 28),
+  ];
+  const { tables } = findLatticeTables({ rules, boxes: [], words });
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].rows, 4);
+  assert.equal(tables[0].headerRows, 2);
+  assert.equal(tables[0].cells.find((k) => k.text.startsWith("C.c.")).header, true);
+  assert.equal(tables[0].cells.find((k) => k.text === "404.0").header, false);
+});
+
+test("an identifier row under a rule is a header and a comma number is not", () => {
+  const rules = [];
+  for (const y of [40, 58, 76, 94, 112]) rules.push({ axis: "h", x0: 20, x1: 320, y0: y, y1: y });
+  for (const x of [20, 80, 140, 200, 260, 320]) rules.push({ axis: "v", x0: x, x1: x, y0: 40, y1: 112 });
+  const words = [
+    wordAt("Lab", 28, 52, 20), wordAt("A", 90, 52, 10), wordAt("B", 150, 52, 10), wordAt("C", 210, 52, 10), wordAt("D", 270, 52, 10),
+    wordAt("22954", 28, 70, 32), wordAt("22955", 88, 70, 32), wordAt("22956", 148, 70, 32), wordAt("22957", 208, 70, 32), wordAt("22958", 268, 70, 32),
+    wordAt("1,275", 28, 88, 32), wordAt("820", 96, 88, 18), wordAt("900", 156, 88, 18), wordAt("700", 216, 88, 18), wordAt("640", 276, 88, 18),
+    wordAt("1,300", 28, 106, 32), wordAt("810", 96, 106, 18), wordAt("880", 156, 106, 18), wordAt("690", 216, 106, 18), wordAt("630", 276, 106, 18),
+  ];
+  const { tables } = findLatticeTables({ rules, boxes: [], words });
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].headerRows, 2);
+  assert.equal(tables[0].cells.find((k) => k.text === "22954").header, true);
+  assert.equal(tables[0].cells.find((k) => k.text === "1,275").header, false);
+});
+
+test("wrapped glyphs that share a column stay on successive lines", () => {
+  const stacked = relineWords([
+    wordAt("ture", 20, 100, 40),
+    wordAt("which", 18, 104, 36),
+  ]);
+  assert.equal(stacked.length, 2);
+  assert.equal(stacked[0].text, "ture");
+  const sup = relineWords([
+    wordAt("10", 10, 100, 12),
+    wordAt("19", 24, 97, 12),
+  ]);
+  assert.equal(sup.length, 1);
+});
+
+test("a two-row contents list is a table and a two-row phrase is not", () => {
+  const page = (rows) => buildLines(rows.flat(), { transform: VP, fonts: FONTS }).lines;
+  const contents = page([
+    [item("FIGURE 1. Apparatus", 72, 700, 10, "f1", 150), item("7", 400, 700, 10, "f1", 8)],
+    [item("FIGURE 2. Chart", 72, 684, 10, "f1", 120), item("9", 401, 684, 10, "f1", 8)],
+  ]);
+  const found = detectStreamRuns(contents).filter((b) => b.type === "table");
+  assert.equal(found.length, 1);
+  assert.equal(found[0].rows, 2);
+  assert.equal(found[0].cols, 2);
+  const numbered = page([
+    [item("2.", 90, 700, 10, "f1", 14), item("Figure of the apparatus", 110, 700, 10, "f1", 180), item("9", 400, 700, 10, "f1", 8)],
+    [item("3.", 90, 684, 10, "f1", 14), item("Apparatus", 110, 684, 10, "f1", 70), item("11", 401, 684, 10, "f1", 10)],
+  ]);
+  const listed = detectStreamRuns(numbered).filter((b) => b.type === "table");
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].cols, 2);
+  const onePage = page([
+    [item("TABLE 1. PV values for air", 72, 700, 10, "f1", 180), item("8", 400, 700, 10, "f1", 8)],
+    [item("2. PV values for natural gas", 72, 684, 10, "f1", 190)],
+  ]);
+  assert.equal(detectStreamRuns(onePage).filter((b) => b.type === "table").length, 1, "the list stays when the second page number is missing");
+  const phrase = page([
+    [item("The mixture was heated slowly", 72, 700, 10, "f1", 180)],
+    [item("and then left overnight", 72, 684, 10, "f1", 150)],
+  ]);
+  assert.equal(detectStreamRuns(phrase).filter((b) => b.type === "table").length, 0);
+});
+
+test("a repeated narrow gap between numeric words is a column and a thousands group is not", () => {
+  const rows = [];
+  for (let i = 0; i < 6; i++) {
+    const y = 700 - i * 14;
+    rows.push([
+      item("Alabama", 40, y, 8, "f1", 52),
+      item("5.89", 180, y, 8, "f1", 22),
+      item(String(169 + i), 204.2, y, 8, "f1", 18),
+      item("12", 280, y, 8, "f1", 14),
+    ]);
+  }
+  const lines = buildLines(rows.flat(), { transform: VP, fonts: FONTS }).lines;
+  const table = detectStreamRuns(lines).find((b) => b.type === "table");
+  assert.ok(table);
+  assert.equal(table.cols, 4);
+  const grouped = [];
+  for (let i = 0; i < 6; i++) {
+    const y = 700 - i * 14;
+    grouped.push([
+      item("State", 40, y, 8, "f1", 36),
+      item("10,", 180, y, 8, "f1", 16),
+      item("533", 197, y, 8, "f1", 16),
+      item("8", 280, y, 8, "f1", 8),
+    ]);
+  }
+  const kept = detectStreamRuns(buildLines(grouped.flat(), { transform: VP, fonts: FONTS }).lines).find((b) => b.type === "table");
+  assert.ok(kept);
+  assert.equal(kept.cols, 3);
+  const narrow = [];
+  for (let i = 0; i < 6; i++) {
+    const y = 700 - i * 14;
+    narrow.push([
+      item("Treated", 40, y, 8, "f1", 48),
+      item("1", 180, y, 8, "f1", 8),
+      item("01", 190, y, 8, "f1", 10),
+      item("20.01", 280, y, 8, "f1", 28),
+    ]);
+  }
+  const oneNumber = detectStreamRuns(buildLines(narrow.flat(), { transform: VP, fonts: FONTS }).lines).find((b) => b.type === "table");
+  assert.ok(oneNumber);
+  assert.equal(oneNumber.cols, 3);
+});
+
+test("a speed line ending in a column integer does not end the table before the body", () => {
+  const lines = buildLines([
+    [item("Supercharger speed - 2,000 r.p.m.", 72, 700, 10, "f1", 220), item("15", 400, 700, 10, "f1", 14)],
+    [item("Pressure difference, in. of Hg", 72, 686, 10, "f1", 180), item("0", 270, 686, 10, "f1", 10), item("12", 330, 686, 10, "f1", 14), item("15", 400, 686, 10, "f1", 14)],
+    [item("N.A.C.A. Roots supercharger, hp", 72, 672, 10, "f1", 190), item("0.954", 260, 672, 10, "f1", 32), item("39.7", 330, 672, 10, "f1", 24), item("57.1", 390, 672, 10, "f1", 24)],
+    [item("Powerplus supercharger, hp", 72, 658, 10, "f1", 160), item("6.57", 270, 658, 10, "f1", 24), item("39.55", 330, 658, 10, "f1", 28), item("59.8", 390, 658, 10, "f1", 24)],
+  ].flat(), { transform: VP, fonts: FONTS }).lines;
+  const found = detectStreamRuns(lines).filter((b) => b.type === "table");
+  assert.equal(found.length, 1);
+  assert.ok(found[0].rows >= 4);
+});
+
+test("a unit line under the column names stays in the header", () => {
+  const units = buildLines([
+    [item("Volume", 40, 700, 8, "f1", 40), item("Pressure", 160, 700, 8, "f1", 52), item("PV", 280, 700, 8, "f1", 16)],
+    [item("C.c.", 40, 686, 8, "f1", 24), item("Mm.", 160, 686, 8, "f1", 22), item("mercury", 188, 686, 8, "f1", 48)],
+    [item("404.0", 40, 672, 8, "f1", 30), item("760", 170, 672, 8, "f1", 20), item("1.00", 276, 672, 8, "f1", 24)],
+    [item("401.6", 40, 658, 8, "f1", 30), item("755", 170, 658, 8, "f1", 20), item("0.99", 276, 658, 8, "f1", 24)],
+  ].flat(), { transform: VP, fonts: FONTS }).lines;
+  const named = detectStreamRuns(units).find((b) => b.type === "table");
+  assert.ok(named);
+  assert.equal(named.headerRows, 2);
+  assert.equal(named.cells.find((k) => k.text.startsWith("C.c.")).header, true);
+  assert.equal(named.cells.find((k) => k.text === "404.0").header, false);
 });

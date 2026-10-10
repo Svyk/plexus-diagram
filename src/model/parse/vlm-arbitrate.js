@@ -440,6 +440,9 @@ function sameGridBetter(candidate, ruleRow) {
   if (!(ruleRows > 0) || rows < ruleRows * 0.9 || rows > ruleRows * 1.15) return false;
   if (next.tidy - rule.tidy >= 0.15) return true;
   if (next.filled - rule.filled >= 0.08 && next.tidy + 0.05 >= rule.tidy) return true;
+  // The totals already agree. Cleaner cells then win: a rule grid of the same
+  // shape whose numbers are Vision debris ("1,450 -i,") is not the reading.
+  if ((rule.total ?? 0) - (next.total ?? 0) < CLEAR && next.tidy - rule.tidy >= 0.12 && next.filled + 0.02 >= rule.filled) return true;
   return false;
 }
 
@@ -452,10 +455,39 @@ function clearsRule(best, ruleRow) {
   const rows = best.table?.rows || 0;
   const ruleRows = ruleRow.table?.rows || 0;
   if (Math.max(best.score.rowCov, ruleRow.score.rowCov) < 0.45 && best.score.rowFit - ruleRow.score.rowFit >= 0.12 && rows >= ruleRows) return true;
+  // Coverage just above that line is still a weak match. A large row-count
+  // miss (the shorter grid left out a band of body lines) then takes the
+  // longer reading, when its score is not lower.
+  if (best.score.rowCov < 0.6 && ruleRow.score.rowCov < 0.6 && best.score.rowFit - ruleRow.score.rowFit >= 0.2 && rows >= ruleRows && best.score.total >= ruleRow.score.total) return true;
   // Neither reading matches the OCR tokens. A large tidy gap still means the
   // rule cells are stray punctuation and the other grid is the readable one.
   if (Math.max(best.score.rowCov, ruleRow.score.rowCov) < 0.45 && best.score.tidy - ruleRow.score.tidy >= 0.25 && best.score.total >= ruleRow.score.total) return true;
   return false;
+}
+
+// Same grid, empty VLM cell, rule text that the page's words actually contain.
+// A re-read that comes back blank must not erase the reading the page supports.
+function fillEmptyFromRule(chosen, rule, evidence) {
+  if (!chosen?.cells || !rule?.cells) return chosen;
+  if (chosen.rows !== rule.rows || chosen.cols !== rule.cols) return chosen;
+  const bag = [];
+  for (const word of evidence?.words || []) bag.push(...tokens(word.text));
+  if (!bag.length) return chosen;
+  const cells = chosen.cells.map((cell) => ({ ...cell }));
+  let filled = 0;
+  for (const cell of cells) {
+    if (String(cell.text || "").trim()) continue;
+    const src = (rule.cells || []).find((k) => k.r === cell.r && k.c === cell.c && (k.colSpan || 1) === (cell.colSpan || 1) && (k.rowSpan || 1) === (cell.rowSpan || 1));
+    const text = String(src?.text || "").trim();
+    if (!text) continue;
+    const keys = tokens(text);
+    if (!keys.length || !keys.every((key) => bagHas(bag, key))) continue;
+    cell.text = text;
+    cell.header = cell.r < (chosen.headerRows || 0);
+    filled++;
+  }
+  if (!filled) return chosen;
+  return { ...chosen, cells };
 }
 
 // `page` is `{words, rules}` for the table's page. Choice is "rule", "vlm", or "merge".
@@ -478,6 +510,7 @@ export function chooseTableReading(rule, vlm, page = {}) {
     const alt = ranked.find((row) => row.choice !== "rule" && sameGridBetter(row, ruleRow));
     if (alt) best = alt;
   }
+  if (rule && best.choice !== "rule" && best.table) best = { ...best, table: fillEmptyFromRule(best.table, rule, evidence) };
   return {
     choice: best.choice,
     table: best.table,

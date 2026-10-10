@@ -183,9 +183,12 @@ function vlmHelper(pdfPath) {
 async function helperFor(engine, pdfPath, cacheDir, helperFlag) {
   if (engine === "builtin") return null;
   if (engine === "helper-vlm") {
-    const raw = vlmHelper(pdfPath);
     const sha = sha256File(pdfPath);
     const log = (m) => process.stderr.write(`${m}\n`);
+    // Cell crops use the same Rust Vision cache as helper-rs. An empty stub
+    // was cached as the reading and wiped numbers the page pass had missed.
+    const cells = cacheWrap(cliHelper({ pdfPath, bin: RUST_BIN, log }), cacheDir, `helper-rs:${helperBuildStamp(RUST_BIN)}:${ocrKey("helper-rs")}:${sha}`);
+    const raw = vlmHelper(pdfPath);
     // Same stamp as the helper engine so the Vision page cache is reused.
     // The PP-OCR vote is the same one the helper engine uses, so page text stays
     // at that CER. High accuracy replaces tables; it does not replace the reading.
@@ -199,6 +202,8 @@ async function helperFor(engine, pdfPath, cacheDir, helperFlag) {
     const altRaw = (await import("./ppocr-node.mjs")).createPpocrSource({ pdfPath, dpi: 300, log });
     const alt = cacheWrap(altRaw, cacheDir, `web-ocr:${ocrKey("web-ocr")}:${sha}`);
     const voted = votingHelper({ vision: wrapped, alt, lexicon: await lexicon() });
+    const pageOcr = voted.ocr.bind(voted);
+    voted.ocr = (req) => (req?.cells?.length ? cells.ocr(req) : pageOcr(req));
     voted.tables = (req) => raw.tables(req);
     voted.vlm = (req) => raw.vlm(req);
     voted.vlmTables = true;

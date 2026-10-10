@@ -566,7 +566,155 @@ function numericBodyRows(rowsIn) {
   return body;
 }
 
+function sidesAt(rowsIn, x) {
+  const left = new Set();
+  const right = new Set();
+  let straddle = 0;
+  rowsIn.forEach((r, i) => {
+    for (const w of r.tokens.flatMap((t) => t.words || [])) {
+      if (w.x1 <= x + 0.5) left.add(i);
+      else if (w.x0 >= x - 0.5) right.add(i);
+      else if (w.x0 < x - 1 && w.x1 > x + 1) straddle++;
+    }
+  });
+  return { left: left.size, right: right.size, straddle };
+}
+
+// Cuts inside one coarse column. A partial vertical rule, or a gap that
+// repeats between two numeric words, is a column the token gap had glued.
+function columnCuts(rowsIn, col, rules, size) {
+  const cuts = [];
+  const add = (x) => {
+    if (x <= col.x0 + 1.5 || x >= col.x1 - 1.5) return;
+    if (cuts.some((c) => Math.abs(c - x) <= 2)) return;
+    cuts.push(x);
+  };
+  for (const rule of rules || []) {
+    const vertical = rule.axis === "v" || Math.abs((rule.x1 ?? 0) - (rule.x0 ?? 0)) + 0.5 < Math.abs((rule.y1 ?? 0) - (rule.y0 ?? 0));
+    if (!vertical) continue;
+    const x = (rule.x0 + rule.x1) / 2;
+    const y0 = Math.min(rule.y0, rule.y1);
+    const y1 = Math.max(rule.y0, rule.y1);
+    if (rowsIn.filter((r) => r.y1 > y0 - 1 && r.y0 < y1 + 1).length < 4) continue;
+    const sides = sidesAt(rowsIn, x);
+    if (sides.left >= 3 && sides.right >= 3 && sides.straddle <= 1) add(x);
+  }
+  // A gap inside a column that is already one number wide splits "1.01"
+  // into two columns. Two glued quantities need a wider host column.
+  const gaps = (col.x1 - col.x0) >= Math.max(24, 2.6 * size) ? [] : null;
+  if (!gaps) {
+    cuts.sort((a, b) => a - b);
+    return cuts;
+  }
+  for (const r of rowsIn) {
+    const ws = r.tokens.flatMap((t) => t.words || [])
+      .filter((w) => (w.x0 + w.x1) / 2 > col.x0 && (w.x0 + w.x1) / 2 < col.x1)
+      .sort((a, b) => a.x0 - b.x0);
+    for (let i = 1; i < ws.length; i++) {
+      const a = ws[i - 1];
+      const b = ws[i];
+      const gap = b.x0 - a.x1;
+      if (gap < 1.5 || gap > Math.max(6, 0.9 * size)) continue;
+      if (!isNumericText(a.text) || !isNumericText(b.text)) continue;
+      // "(1)" beside a quantity is a footnote, not the next column.
+      if (/^\(\d{1,2}\)$/.test(String(b.text || "").trim())) continue;
+      if (/,$/.test(String(a.text).trim())) continue;
+      if (/^\d{3}$/.test(b.text) && /^\d{1,3},?$/.test(String(a.text).trim())) continue;
+      gaps.push((a.x1 + b.x0) / 2);
+    }
+  }
+  gaps.sort((a, b) => a - b);
+  let cluster = [];
+  const flush = () => {
+    if (cluster.length >= 4) add(cluster.reduce((s, v) => s + v, 0) / cluster.length);
+    cluster = [];
+  };
+  for (const g of gaps) {
+    if (cluster.length && g - cluster[cluster.length - 1] > 2.5) flush();
+    cluster.push(g);
+  }
+  flush();
+  cuts.sort((a, b) => a - b);
+  return cuts;
+}
+
+function narrowSplits(rowsIn, cols, rules = []) {
+  const size = medianSize(rowsIn.flatMap((r) => r.tokens.flatMap((t) => t.words || []))) || 8;
+  const out = [];
+  const seps = [];
+  for (const col of cols) {
+    const cuts = columnCuts(rowsIn, col, rules, size);
+    if (!cuts.length) { out.push(col); continue; }
+    const edges = [col.x0, ...cuts, col.x1];
+    const pieces = [];
+    for (let k = 0; k + 1 < edges.length; k++) {
+      const inside = [];
+      for (const r of rowsIn) {
+        for (const w of r.tokens.flatMap((t) => t.words || [])) {
+          const cx = (w.x0 + w.x1) / 2;
+          if (cx >= edges[k] - 0.2 && cx < edges[k + 1] + 0.2 && w.x1 > col.x0 - 0.5 && w.x0 < col.x1 + 0.5) inside.push(w);
+        }
+      }
+      if (!inside.length) continue;
+      pieces.push({
+        x0: Math.max(edges[k], Math.min(...inside.map((w) => w.x0))),
+        x1: Math.min(edges[k + 1], Math.max(...inside.map((w) => w.x1))),
+      });
+    }
+    if (pieces.length < 2) { out.push(col); continue; }
+    out.push(...pieces);
+    for (const x of cuts) seps.push({ x0: x - 0.6, x1: x + 0.6 });
+  }
+  return { cols: out, seps };
+}
+
+function overlapsX(a, b) {
+  return Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 1;
+}
+
+// A centred title and the stub beside it sit on different baselines, and the
+// unit ("C.") sits on a third. They are one header row when the lower line
+// fills only columns the upper line left empty, or is a single unit token
+// under a label. A line of numbers is the body and stops the fold.
+function foldHeaderLines(rows) {
+  const out = rows.map((r) => ({ ...r, tokens: r.tokens.map((t) => ({ ...t, words: [...(t.words || [])] })) }));
+  let i = 0;
+  while (i + 1 < out.length && i < 4) {
+    const a = out[i];
+    const b = out[i + 1];
+    // A number on the lower line is a body row, or a rate sitting under a title.
+    // An equals sign is an equation, which folding would turn into a false table.
+    if (b.tokens.some((t) => isNumericText(t.text) || /[=≈≡]/.test(String(t.text || "")))) break;
+    if (a.tokens.some((t) => /[=≈≡]/.test(String(t.text || "")))) break;
+    const complementary = a.tokens.length > 0 && b.tokens.length > 0 && b.tokens.length <= a.tokens.length + 1
+      && b.tokens.every((t) => !a.tokens.some((u) => overlapsX(u, t)));
+    const unitTok = b.tokens.length === 1 ? b.tokens[0] : null;
+    const unit = unitTok && !isNumericText(unitTok.text) && String(unitTok.text || "").trim().length <= 12
+      && a.tokens.some((u) => overlapsX(u, unitTok));
+    if (complementary) {
+      a.tokens.push(...b.tokens);
+      a.tokens.sort((p, q) => p.x0 - q.x0);
+      a.y1 = Math.max(a.y1, b.y1);
+      out.splice(i + 1, 1);
+      continue;
+    }
+    if (unit) {
+      const host = a.tokens.find((u) => overlapsX(u, unitTok));
+      host.words.push(...(unitTok.words || []));
+      host.x0 = Math.min(host.x0, unitTok.x0);
+      host.x1 = Math.max(host.x1, unitTok.x1);
+      host.text = host.words.map((w) => w.text).join(" ");
+      a.y1 = Math.max(a.y1, b.y1);
+      out.splice(i + 1, 1);
+      continue;
+    }
+    i++;
+  }
+  return out;
+}
+
 function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, rules = [] }) {
+  if (!bands) rowsIn = foldHeaderLines(rowsIn);
   // rowsIn: [{ y0, y1, tokens, band }]
   const body = numericBodyRows(rowsIn);
   const bodySize = medianSize((body || rowsIn).flatMap((r) => r.tokens.flatMap((t) => t.words || []))) || 8;
@@ -589,8 +737,10 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   // Alignment already placed the boundaries on the numeric right edges. The whitespace
   // splitter would cut through a year range that nearly touches the next quantity.
   const refined = useAligned ? { cols: aligned, seps: [] } : refineColumns(source, coarse);
-  const cols = refined.cols;
-  if (refined.seps.length) for (const r of rowsIn) r.tokens = splitTokensAt(r.tokens, refined.seps);
+  const narrowed = narrowSplits(rowsIn, refined.cols, rules);
+  const cols = narrowed.cols;
+  const seps = [...refined.seps, ...narrowed.seps];
+  if (seps.length) for (const r of rowsIn) r.tokens = splitTokensAt(r.tokens, seps);
   const k = cols.length;
   // A long label overlaps the next column. It stays in the column it starts in when
   // that next column already has its own token on this row.
@@ -646,7 +796,40 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     const boldRow = (r) => { const ws = [...cellMap.values()].filter((c) => c.r === r).flatMap((c) => c.words); return ws.length && ws.every((w) => w.bold); };
     const yearRow = (r) => { const cs = [...cellMap.values()].filter((c) => c.r === r && c.c > 0); return cs.length >= 2 && cs.every((c) => /^(1[89]|20)\d\d[a-z*]?$/.test(cellTextOf(c.words))); };
     while (headerRows < rows - 1 && boldRow(headerRows)) headerRows++;
-    if (!headerRows && rows >= 2 && (!numericRow(0) || yearRow(0)) && numericRow(1) && !yearRow(1)) headerRows = 1;
+    // A name row ("Volume", "Pressure") opens the header. A lone quantity whose
+    // other cells were not read is a data row with a hole, not a header.
+    const texts0 = [...cellMap.values()].filter((c) => c.r === 0).map((c) => cellTextOf(c.words).trim()).filter(Boolean);
+    const hasLabel = texts0.some((t) => !isNumericText(t) && /[A-Za-z]/.test(t));
+    if (!headerRows && (hasLabel || yearRow(0)) && rows >= 2 && (!numericRow(0) || yearRow(0)) && numericRow(1) && !yearRow(1)) headerRows = 1;
+    // A unit line ("C. c.", "Mm. of mercury") or a row of column names. A data
+    // row whose numbers were glued ("1,270 1,") is not a header, and a single
+    // stub ("Plat") is not a unit line. The row counts only when the next line
+    // is another unit line, the lab-id row, or the numeric body. A stub on the
+    // next line means these labels are not that header.
+    const unitLine = (r) => {
+      const cs = [...cellMap.values()].filter((c) => c.r === r && cellTextOf(c.words).trim());
+      if (cs.length < 2) return false;
+      const text = (c) => cellTextOf(c.words).trim();
+      if (cs.some((c) => /\d{2,}|\d\s*[.,]\s*\d/.test(text(c)))) return false;
+      return cs.filter((c) => !isNumericText(text(c))).length >= 2;
+    };
+    const idRow = (r) => {
+      const cs = [...cellMap.values()].filter((c) => c.r === r && cellTextOf(c.words).trim());
+      return cs.length >= 4 && cs.every((c) => /^\d{5,6}$/.test(cellTextOf(c.words).trim()));
+    };
+    const pageList = rowsIn.length >= 2 && rowsIn.some((r) => contentsEntry(r.tokens))
+      && rowsIn.every((r) => r.tokens.length < 2 || contentsEntry(r.tokens));
+    while (!pageList && headerRows < rows - 1 && headerRows < 4 && unitLine(headerRows)) {
+      const next = headerRows + 1;
+      if (!unitLine(next) && !idRow(next) && !numericRow(next)) break;
+      let later = false;
+      for (let r = next; r < rows; r++) if (numericRow(r)) later = true;
+      if (!later) break;
+      headerRows++;
+    }
+    // Lab numbers under the names (22954, 22955, …) are a header row. A comma
+    // quantity ("1,275") and a 4-digit year are not.
+    if (headerRows > 0 && headerRows < rows - 1 && idRow(headerRows)) headerRows++;
   }
   // Row spans: header band cells with nothing below in their column; body group labels (col 0 only).
   for (let r = 0; r < rows; r++) {
@@ -749,6 +932,7 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   const coveredBy = (r, c0, c1) => [...cellMap.values()].some((o) => o.r <= r && r < o.r + o.rowSpan && o.c <= c1 && o.c + o.colSpan - 1 >= c0);
   for (const cell of [...cellMap.values()].sort((a, b) => a.r - b.r)) {
     if (cell.r === 0 || cell.r >= headerRows) continue;
+    if (isNumericText(cellTextOf(cell.words))) continue;
     let r = cell.r;
     while (r > 0 && !coveredBy(r - 1, cell.c, cell.c + cell.colSpan - 1)) r--;
     if (r < cell.r) { cellMap.delete(`${cell.r}:${cell.c}`); cell.rowSpan += cell.r - r; cell.r = r; cellMap.set(`${r}:${cell.c}`, cell); }
@@ -1057,6 +1241,49 @@ export function baselineRows(lines) {
   return rows;
 }
 
+// A figure or table caption in the body has no page number beside it. The same
+// words in a contents list do: the label, a wide gap, then the page.
+function contentsEntry(tokens) {
+  if (!tokens || tokens.length < 2) return false;
+  const page = tokens[tokens.length - 1];
+  const label = tokens[tokens.length - 2];
+  if (!/^\d{1,4}$/.test(String(page.text || "").trim())) return false;
+  const labelTokens = tokens.slice(0, -1);
+  if (!labelTokens.some((t) => /[A-Za-z]/.test(t.text || ""))) return false;
+  // A numeric body row also ends in a small integer. Its other cells are numbers.
+  // A leading "2." is the figure's own number, not one of those cells.
+  const body = labelTokens.filter((t, i) => !(i === 0 && /^\d{1,3}[.)]?$/.test(String(t.text || "").trim())));
+  const nums = body.filter((t) => isNumericText(t.text)).length;
+  if (nums >= 1 && nums >= body.length / 2) return false;
+  // A contents label may carry its own index ("Figure 1", "2. Plate").
+  // A measurement in that label ("2,000 r.p.m.", "Hg 12 15") is a table row
+  // whose last integer only happens to sit in a wide gap.
+  const labelText = labelTokens.map((t) => String(t.text || "")).join(" ");
+  const indexed = /^(?:\d{1,3}[.)]\s*)?(?:fig(?:ure)?s?|tables?|illustrations?|plates?|no\.?)\b/i.test(labelText.trim());
+  if (!indexed && /\d{3,}|\d\s*[.,]\s*\d|\d\s+\d/.test(labelText)) return false;
+  return page.x0 - label.x1 >= 12;
+}
+
+// Two rows are enough when every value cell is a page number at one right edge.
+// A contents page lists illustrations and tables in pairs, under their own heads.
+function contentsList(run) {
+  if (!run || run.length < 2) return false;
+  const shaped = run.filter((r) => r.tokens.length >= 2);
+  if (!shaped.length) return false;
+  if (!shaped.every((r) => contentsEntry(r.tokens))) return false;
+  const rights = shaped.map((r) => r.tokens[r.tokens.length - 1].x0);
+  if (Math.max(...rights) - Math.min(...rights) > 18) return false;
+  const right = Math.min(...rights);
+  for (const r of run) {
+    if (r.tokens.length >= 2) continue;
+    if (r.tokens.length !== 1) return false;
+    const tok = r.tokens[0];
+    if (/^\d{1,4}$/.test(String(tok.text || "").trim())) continue;
+    if (tok.x1 >= right - 4) return false;
+  }
+  return true;
+}
+
 // A contents list: labels on the left, a page number at one shared right edge.
 // A title whose number landed on the line above is still a row of that list.
 // An all-caps section head ("ILLUSTRATIONS.") ends it.
@@ -1066,11 +1293,17 @@ function contentsContinuation(row, tokens, run) {
   if (/^[A-Z][A-Z .]{2,40}$/.test(head)) return false;
   // Every row so far is a label plus one page number. A data row with more cells is not a contents list.
   const shaped = run.filter((r) => r.tokens.length >= 2);
-  if (!shaped.length || !shaped.every((r) => r.tokens.length === 2 && /^\d{1,4}$/.test(r.tokens[1].text) && /[A-Za-z]/.test(r.tokens[0].text || ""))) return false;
-  const right = Math.min(...shaped.map((r) => r.tokens[1].x0));
+  if (!shaped.length || !shaped.every((r) => contentsEntry(r.tokens))) return false;
+  const right = Math.min(...shaped.map((r) => r.tokens[r.tokens.length - 1].x0));
   const tok = tokens[0];
   if (/^\d{1,4}$/.test(tok.text)) return tok.x0 >= right - 12;
   if (!/[A-Za-z]/.test(tok.text || "") || row.words.length > 18) return false;
+  // A wrapped title continues under the label. A centred section head does not.
+  const prev = shaped[shaped.length - 1];
+  const label = prev.tokens.slice(0, -1);
+  const lx0 = Math.min(...label.map((t) => t.x0));
+  const lx1 = Math.max(...label.map((t) => t.x1));
+  if (tok.x0 > (lx0 + lx1) / 2) return false;
   return tok.x1 < right - 4;
 }
 
@@ -1112,7 +1345,15 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
     while (j < rows.length) {
       const row = rows[j];
       const tokens = tokensOf(row);
-      if (markerOf(row.lines[0], dots) || CAPTION_RE.test(row.text)) break;
+      if ((markerOf(row.lines[0], dots) && !contentsEntry(tokens) && !contentsContinuation(row, tokens, run)) || (CAPTION_RE.test(row.text) && !contentsEntry(tokens))) break;
+      // A contents list ends at the next section head. Growing it further would
+      // fail the list and drop the entries already read. Two rows that only
+      // look like a list (a speed line and a column head, each ending in a
+      // small integer) are not one: a real short list names figures or tables.
+      const listed = contentsList(run);
+      const namedListSoFar = listed && run.some((r) => /\b(figures?|tables?|illustrations?|plates?)\b/i.test(r.row.text || ""));
+      const longList = listed && run.filter((r) => contentsEntry(r.tokens)).length >= 3;
+      if ((namedListSoFar || longList) && !contentsEntry(tokens) && !contentsContinuation(row, tokens, run)) break;
       // A rule drawn as a dash ("-" or "-----") is not a row and does not end the table.
       const ruleText = row.text.replace(/\s+/g, "");
       // A drawn rule (a dash, or four or more leader marks) is not a row. A bullet or a
@@ -1230,12 +1471,31 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
       const eq = equationRun(run, colBox);
       if (eq) { out.push(eq); i = j; continue; }
     }
-    if (multi >= 3) {
+    // Two rows are a contents list only when the page named it (figures, tables).
+    // A numbered index has the same shape and is not a table by itself.
+    const namedList = contentsList(run) && run.some((r) => /\b(figures?|tables?|illustrations?|plates?)\b/i.test(r.row.text || ""));
+    if (multi >= 3 || namedList) {
       const code = codeRun(run);
       if (code) { out.push(code); i = j; continue; }
       const rowsIn = run.map((r) => ({ y0: r.row.y0, y1: r.row.y1, tokens: r.tokens }));
+      if (contentsList(run)) {
+        for (const r of rowsIn) {
+          if (!contentsEntry(r.tokens)) continue;
+          const page = r.tokens[r.tokens.length - 1];
+          const label = r.tokens.slice(0, -1);
+          const words = label.flatMap((t) => t.words || []);
+          r.tokens = [{
+            x0: Math.min(...label.map((t) => t.x0)),
+            x1: Math.max(...label.map((t) => t.x1)),
+            words,
+            text: words.map((w) => w.text).join(" "),
+          }, page];
+        }
+      }
       const table = buildTable(rowsIn, { headerRowsHint, rules });
-      if (table && !looksLikeProse(run) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table) && !lacksTabularEvidence(table)) {
+      // A named contents list is a table even when its only numbers are pages.
+      // An unnamed list of entries and page numbers is not (lacksTabularEvidence).
+      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table) && !lacksTabularEvidence(table)) {
         table.usedWords = run.flatMap((r) => r.row.words);
         table.lines = [...run.flatMap((r) => r.row.lines), ...ruleLines];
         out.push(table);
@@ -1475,39 +1735,137 @@ const CLOCK_RE = /\b\d{1,2}[.:]\d{2}\b/;
 const MONTH_RE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i;
 // "1.0 E+01" and "9.806 65 E+00": a conversion factor, not an identifier.
 const SCI_RE = /\d(?:[\d.,\s]*\d)?\s*[eE][+\-]?\d+/;
+// "FIGURE 1" or "2. Table", not the word "table" inside a chapter title.
+const NAMED_ENTRY_RE = /^(?:\d{1,3}[.)]\s*)?(?:fig(?:ure)?s?|tables?|illustrations?|plates?)\b/i;
+const PAGE_HEAD_RE = /^pages?\.?$/i;
 
-// A number, a scientific factor, a clock time, or a date. An identifier that
-// merely contains a digit ("D-324", "IN-63") is not a value.
+// A page number ("54", "64.") or a list or gage index ("12-", "-10", "1.").
+// A four-digit year is a value, not a page number.
+function indexOrPage(text) {
+  const s = String(text || "").trim();
+  if (/^\d{1,3}\.?$/.test(s)) return true;
+  if (/^\d{1,3}[.)\-–−]$/.test(s)) return true;
+  return /^[–\-−]\d{1,3}$/.test(s);
+}
+
+// "1 to 5." and "50+" are durations. A trailing index mark ("12-") is not.
+function rangeValue(text) {
+  const s = String(text || "").trim();
+  if (/^\d{1,4}\s+to\s+\d{1,4}\.?$/i.test(s)) return true;
+  if (/^\d{1,4}\s*[–\-−]\s*\d{1,4}\.?$/.test(s)) return true;
+  return /^\d{1,4}\+\.?$/.test(s);
+}
+
+// A number, a scientific factor, a clock time, a date, or a duration range.
+// An identifier that merely contains a digit ("D-324", "IN-63") is not a
+// value. A page number or an index mark alone is not a value either.
 function valueCell(text) {
   const s = String(text || "").trim();
-  if (!s) return false;
+  if (!s || indexOrPage(s)) return false;
   if (isNumericText(s)) return true;
+  if (rangeValue(s)) return true;
   if (SCI_RE.test(s)) return true;
   if (YEAR_RE.test(s)) return true;
   if (CLOCK_RE.test(s)) return true;
   return MONTH_RE.test(s) && /\d/.test(s);
 }
 
-// Aligned prose, a letter, or diagram labels: a stream grid with no body under a
-// header and no number, date, or time column. A header with body rows, or one
-// such value column, is a table.
-export function lacksTabularEvidence(table) {
-  if (!table || table.method !== "stream") return false;
+function textsByColumn(table) {
   const cols = table.cols || 0;
-  const rows = table.rows || 0;
-  if (cols < 2 || rows < 2) return false;
-  // A header is evidence only when body rows sit under it. Ruling that marks
-  // every row as a header (a letter, a stamp) still needs a value column.
-  const header = table.headerRows || 0;
-  if (header > 0 && header < rows) return false;
   const byCol = Array.from({ length: cols }, () => []);
   for (const cell of table.cells || []) {
     const text = String(cell.text || "").trim();
     if (!text || cell.c == null || cell.c < 0 || cell.c >= cols) continue;
     byCol[cell.c].push(text);
   }
-  const valueCol = byCol.some((texts) => texts.length >= 2 && texts.filter(valueCell).length / texts.length >= 0.5);
-  return !valueCol;
+  return byCol;
+}
+
+function columnKind(texts) {
+  if (texts.length < 2) return "short";
+  const values = texts.filter(valueCell).length;
+  if (values / texts.length >= 0.5) return "value";
+  const pages = texts.filter(indexOrPage).length;
+  if (pages / texts.length >= 0.5) return "page";
+  return "text";
+}
+
+// The list is the page's figures, tables, illustrations, or plates, or the
+// column head is "Page". The name has to start the cell. "Explanation of
+// tables" is a chapter title, not a list of tables.
+function namedOrPagedContents(table) {
+  const header = table.headerRows || 0;
+  const cells = table.cells || [];
+  if (cells.some((cell) => NAMED_ENTRY_RE.test(String(cell.text || "").trim()))) return true;
+  return header > 0 && cells.some((cell) => cell.r < header && PAGE_HEAD_RE.test(String(cell.text || "").trim()));
+}
+
+// A header row of column titles ("Special name", "Symbol"), not a sentence
+// that the ruling happened to mark as a header.
+function titleHeader(table) {
+  const header = table.headerRows || 0;
+  const rows = table.rows || 0;
+  const cols = table.cols || 0;
+  if (header <= 0 || header >= rows || cols < 2) return false;
+  const words = (text) => String(text).trim().split(/\s+/).filter(Boolean);
+  for (let r = 0; r < header; r++) {
+    const cells = (table.cells || []).filter((cell) => cell.r === r && String(cell.text || "").trim());
+    if (cells.length < 2) continue;
+    const labels = cells.filter((cell) => {
+      const text = String(cell.text).trim();
+      const n = words(text).length;
+      return n >= 1 && n <= 8 && /[A-Za-z]/.test(text) && !indexOrPage(text);
+    });
+    if (labels.length >= 2 && labels.length / cells.length >= 0.5 && labels.length >= Math.min(3, cols - 1)) return true;
+  }
+  return false;
+}
+
+// Rows that join into sentences are a paragraph, even when a line was marked
+// as a header. A name-and-city grid stays short. Column titles keep a unit table
+// whose body cells are phrases.
+function proseGrid(table) {
+  const words = (text) => String(text).trim().split(/\s+/).filter(Boolean);
+  const byRow = new Map();
+  for (const cell of table.cells || []) {
+    const text = String(cell.text || "").trim();
+    if (!text) continue;
+    if (!byRow.has(cell.r)) byRow.set(cell.r, []);
+    byRow.get(cell.r).push(text);
+  }
+  let sentence = 0;
+  for (const texts of byRow.values()) if (words(texts.join(" ")).length >= 8) sentence++;
+  return byRow.size >= 3 && sentence / byRow.size >= 0.6;
+}
+
+// Aligned prose, a letter, or diagram labels: a stream grid with no body under a
+// header and no number, date, or time column. A header with body rows, or one
+// such value column, is a table. A contents list (one page-number column, no
+// other value column) is a table only when the page named it or headed it "Page".
+export function lacksTabularEvidence(table) {
+  if (!table || table.method !== "stream") return false;
+  const cols = table.cols || 0;
+  const rows = table.rows || 0;
+  if (cols < 2 || rows < 2) return false;
+  const kinds = textsByColumn(table).map(columnKind);
+  const pageCols = kinds.filter((k) => k === "page").length;
+  const valueCols = kinds.filter((k) => k === "value").length;
+  if (valueCols > 0) return false;
+  // A named list stays when a page number is missing, so that column is too
+  // short to count. An unnamed list with one page-number column is not a data
+  // table, unless a real header names the column (weights, not page numbers).
+  if (namedOrPagedContents(table)) return false;
+  if (pageCols === 1) {
+    const header = table.headerRows || 0;
+    if (header > 0 && header < rows && titleHeader(table)) return false;
+    return true;
+  }
+  // A header is evidence only when body rows sit under it and they are not a
+  // paragraph, or when the header is a row of column titles. Ruling that marks
+  // every row as a header still needs a value column.
+  const header = table.headerRows || 0;
+  if (header > 0 && header < rows && (titleHeader(table) || !proseGrid(table))) return false;
+  return true;
 }
 
 // Justified prose splits into tokens at random x; tables keep short cells with wide gaps.

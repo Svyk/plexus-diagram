@@ -9308,6 +9308,18 @@ function spansPlate(line, box2, parts) {
   if (dw < 24) return false;
   return Math.min(line.x1, x1) - Math.max(line.x0, x0) >= 0.7 * dw;
 }
+function holdsPageText(box2, lines) {
+  const all = (lines || []).filter((line) => (line.text || "").trim());
+  const pageWords = all.reduce((n2, line) => n2 + wordCount2(line.text), 0);
+  if (pageWords < 8) return false;
+  const inside8 = all.filter((line) => lineCenterIn(line, box2));
+  const insideWords = inside8.reduce((n2, line) => n2 + wordCount2(line.text), 0);
+  if (insideWords < 0.6 * pageWords) return false;
+  const typeLines = inside8.filter((line) => wordCount2(line.text) >= 3);
+  if (typeLines.length < 3) return false;
+  const typeWords = typeLines.reduce((n2, line) => n2 + wordCount2(line.text), 0);
+  return typeWords >= 0.5 * insideWords;
+}
 function textBlockBox(box2, lines) {
   const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box2));
   if (prose.length < 6) return false;
@@ -9643,6 +9655,7 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = nul
     const pageLines = textLines2 || lines;
     if (textThroughMiddle(box2, pageLines)) continue;
     if (textBlockBox(box2, lines)) continue;
+    if (holdsPageText(box2, pageLines)) continue;
     const grown = growUntilText(box2, lines, pageW, pageH);
     box2 = boxArea(grown) > 0.85 * pageArea ? box2 : grown;
     if (edgeBand(box2, pageW, pageH)) continue;
@@ -11582,15 +11595,25 @@ function lowConfidenceShare(items) {
   if (confs.length < WEAK_OCR_MIN_WORDS) return 0;
   return confs.filter((c) => c < 0.5).length / confs.length;
 }
+function meanConfidence(items) {
+  const confs = (items || []).map((it) => it?.conf).filter((c) => Number.isFinite(c));
+  if (!confs.length) return null;
+  return confs.reduce((a, b) => a + b, 0) / confs.length;
+}
 function weakOcrPage(items, lexicon = null) {
   if (lowConfidenceShare(items) >= WEAK_OCR_LOW) return true;
+  const confs = (items || []).map((it) => it?.conf).filter((c) => Number.isFinite(c));
+  const mean = meanConfidence(items);
+  if (confs.length > 0 && confs.length < WEAK_OCR_MIN_WORDS && mean < WEAK_SHORT_MEAN) return true;
   if (!(lexicon instanceof Set)) return false;
   const cores = (items || []).map((it) => wordCore(it?.str || it?.text || "").toLowerCase()).filter((c) => c.length >= 4);
+  if (cores.length < WEAK_UNKNOWN_MIN_CORES) return false;
+  const known2 = cores.filter((c) => lexicon.has(c)).length / cores.length;
+  if (known2 < WEAK_UNKNOWN_LEX && mean != null && mean < WEAK_UNKNOWN_MEAN) return true;
   if (cores.length < 20) return false;
-  const confs = (items || []).map((it) => it?.conf).filter((c) => Number.isFinite(c));
   const low = confs.length ? confs.filter((c) => c < 0.5).length / confs.length : 0;
   if (low < 0.04) return false;
-  return cores.filter((c) => lexicon.has(c)).length / cores.length < 0.12;
+  return known2 < 0.12;
 }
 function wordCore(text3) {
   const parts = String(text3 || "").match(WORD_RE);
@@ -11956,7 +11979,7 @@ function voteOcrBodies(visionPages, otherPages, lexicon) {
     return { ...page, items };
   });
 }
-var WORD_RE, IOU_MIN, INSERT_CAP, WEAK_OCR_LOW, WEAK_OCR_MIN_WORDS;
+var WORD_RE, IOU_MIN, INSERT_CAP, WEAK_OCR_LOW, WEAK_OCR_MIN_WORDS, WEAK_SHORT_MEAN, WEAK_UNKNOWN_LEX, WEAK_UNKNOWN_MEAN, WEAK_UNKNOWN_MIN_CORES;
 var init_ocr_vote = __esm({
   "src/model/parse/ocr-vote.js"() {
     WORD_RE = /[A-Za-z][A-Za-z'-]*/g;
@@ -11964,6 +11987,10 @@ var init_ocr_vote = __esm({
     INSERT_CAP = 16;
     WEAK_OCR_LOW = 0.15;
     WEAK_OCR_MIN_WORDS = 12;
+    WEAK_SHORT_MEAN = 0.8;
+    WEAK_UNKNOWN_LEX = 0.5;
+    WEAK_UNKNOWN_MEAN = 0.98;
+    WEAK_UNKNOWN_MIN_CORES = 10;
   }
 });
 
@@ -13717,7 +13744,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 34;
+    PARSE_REV = 35;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -22617,6 +22644,7 @@ var init_settings = __esm({
       parseEngineDefault: "parse-engine-default",
       parseFormula: "parse-formula",
       parseOcr: "parse-ocr",
+      parsePageReader: "parse-page-reader",
       parseAutoRead: "parse-auto-read",
       keepReads: "keep-reads",
       parseLinkSafe: "parse-link-safe",
@@ -22686,6 +22714,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseEngineDefault]: "auto",
       [SETTING_IDS.parseFormula]: false,
       [SETTING_IDS.parseOcr]: "auto",
+      [SETTING_IDS.parsePageReader]: "doubtful",
       [SETTING_IDS.parseAutoRead]: true,
       [SETTING_IDS.keepReads]: true,
       [SETTING_IDS.parseLinkSafe]: true,
@@ -22723,6 +22752,7 @@ var init_settings = __esm({
       [SETTING_IDS.pdfDark]: ["off", "dim", "invert"],
       [SETTING_IDS.parseEngineDefault]: ["auto", "builtin", "docling"],
       [SETTING_IDS.parseOcr]: ["auto", "on", "off"],
+      [SETTING_IDS.parsePageReader]: ["doubtful", "all"],
       [SETTING_IDS.parseFootnotes]: ["inline", "end"],
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
@@ -22826,6 +22856,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
       [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
       [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
+      [SETTING_IDS.parsePageReader]: () => selectRow(SETTING_IDS.parsePageReader, "High accuracy page reader", "Doubtful reads only the scanned pages the recogniser is unsure of (handwriting, photographs) with the page model. All reads every scanned page with it: better on photographed and handwritten pages, about ten times slower per scanned page.", ["doubtful", "all"]),
       [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
       [SETTING_IDS.keepReads]: () => switchRow(SETTING_IDS.keepReads, "Keep reads in the graph", "After a High accuracy, helper or cloud read, upload the read as one file to the graph and note it on the PDF block, so your other computers load it instead of reading again. The built-in parse is never kept. Off uploads nothing; reads already kept still load."),
       [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
@@ -22911,6 +22942,7 @@ var init_settings = __esm({
         SETTING_IDS.parseEngineDefault,
         SETTING_IDS.parseFormula,
         SETTING_IDS.parseOcr,
+        SETTING_IDS.parsePageReader,
         SETTING_IDS.parseAutoRead,
         SETTING_IDS.keepReads,
         SETTING_IDS.parseLinkSafe,
@@ -47979,7 +48011,8 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     const regionPages = new Set(regions.map((r) => r.page));
     const send = high ? vlmPages.filter((n2) => layerPages.includes(n2) || regionPages.has(n2) || numericPages.includes(n2) || decimalPages.includes(n2)) : wanted;
     const explicitText = options.vlmText === true;
-    const weak = new Set(weakTextPages(got?.pages).filter((n2) => wanted.includes(n2)));
+    const everyPage = options.textPages === "all";
+    const weak = new Set((everyPage ? wanted : weakTextPages(got?.pages)).filter((n2) => wanted.includes(n2)));
     const plates = captionPlatePages(doc, wanted);
     const tableSend = send.filter((n2) => explicitText || !weak.has(n2));
     const textSend = [.../* @__PURE__ */ new Set([...weak, ...plates])].filter((n2) => !explicitText || !tableSend.includes(n2));
@@ -52635,6 +52668,7 @@ function createParseView({
   scanAuto = false,
   ocrSource = null,
   ocrAlt = null,
+  pageReader = null,
   lazyKeys = false,
   outline = false,
   onNeedOcr = null,
@@ -53936,6 +53970,12 @@ ${sourceAttrString(source)}` : markdown;
       }
       const t0 = now3();
       const extra = typeof ocrAlt === "function" ? ocrAlt() : ocrAlt;
+      let readerMode = "doubtful";
+      try {
+        readerMode = typeof pageReader === "function" ? pageReader() : pageReader;
+      } catch {
+        readerMode = "doubtful";
+      }
       const result = await readScan({
         helper: engine,
         bytes,
@@ -53947,6 +53987,7 @@ ${sourceAttrString(source)}` : markdown;
         from,
         to,
         signal: ctrl.signal,
+        options: { textPages: readerMode === "all" ? "all" : "weak" },
         alt: extra && typeof extra.ocr === "function" ? extra : null,
         lexicon: extra?.lexicon || null,
         onPhase: (info) => {
@@ -58480,6 +58521,13 @@ function createReadPane({
       doc,
       store: ensureStore2(),
       helper: ensureHelper(),
+      pageReader: () => {
+        try {
+          return settings?.get?.("parse-page-reader") === "all" ? "all" : "doubtful";
+        } catch {
+          return "doubtful";
+        }
+      },
       ocrAlt: () => {
         if (!deviceReady() || typeof deviceOcr?.read !== "function") return null;
         return {

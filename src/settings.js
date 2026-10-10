@@ -63,6 +63,7 @@ export const SETTING_IDS = Object.freeze({
   parseEngineDefault: "parse-engine-default",
   parseFormula: "parse-formula",
   parseOcr: "parse-ocr",
+  parsePageReader: "parse-page-reader",
   parseAutoRead: "parse-auto-read",
   keepReads: "keep-reads",
   parseLinkSafe: "parse-link-safe",
@@ -133,6 +134,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.parseEngineDefault]: "auto",
   [SETTING_IDS.parseFormula]: false,
   [SETTING_IDS.parseOcr]: "auto",
+  [SETTING_IDS.parsePageReader]: "doubtful",
   [SETTING_IDS.parseAutoRead]: true,
   [SETTING_IDS.keepReads]: true,
   [SETTING_IDS.parseLinkSafe]: true,
@@ -172,6 +174,7 @@ const ENUMS = Object.freeze({
   [SETTING_IDS.pdfDark]: ["off", "dim", "invert"],
   [SETTING_IDS.parseEngineDefault]: ["auto", "builtin", "docling"],
   [SETTING_IDS.parseOcr]: ["auto", "on", "off"],
+  [SETTING_IDS.parsePageReader]: ["doubtful", "all"],
   [SETTING_IDS.parseFootnotes]: ["inline", "end"],
   [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"],
 });
@@ -513,6 +516,7 @@ const SETTING_ROWS = {
   [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
   [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
   [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
+  [SETTING_IDS.parsePageReader]: () => selectRow(SETTING_IDS.parsePageReader, "High accuracy page reader", "Doubtful reads only the scanned pages the recogniser is unsure of (handwriting, photographs) with the page model. All reads every scanned page with it: better on photographed and handwritten pages, about ten times slower per scanned page.", ["doubtful", "all"]),
   [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
   [SETTING_IDS.keepReads]: () => switchRow(SETTING_IDS.keepReads, "Keep reads in the graph", "After a High accuracy, helper or cloud read, upload the read as one file to the graph and note it on the PDF block, so your other computers load it instead of reading again. The built-in parse is never kept. Off uploads nothing; reads already kept still load."),
   [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
@@ -553,7 +557,7 @@ const SETTING_GROUPS = [
   ]],
   ["group-parse", "PDF parse", "A local helper for harder PDFs, and how parsed text is inserted.", [
     SETTING_IDS.parseHelperUrl, SETTING_IDS.parseHelperToken, SETTING_IDS.parseEngineDefault, SETTING_IDS.parseFormula,
-    SETTING_IDS.parseOcr, SETTING_IDS.parseAutoRead, SETTING_IDS.keepReads, SETTING_IDS.parseLinkSafe, SETTING_IDS.parseNumbered, SETTING_IDS.parseFootnotes, SETTING_IDS.parseFootnoteFormat,
+    SETTING_IDS.parseOcr, SETTING_IDS.parsePageReader, SETTING_IDS.parseAutoRead, SETTING_IDS.keepReads, SETTING_IDS.parseLinkSafe, SETTING_IDS.parseNumbered, SETTING_IDS.parseFootnotes, SETTING_IDS.parseFootnoteFormat,
   ]],
 ];
 

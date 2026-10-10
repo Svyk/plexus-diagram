@@ -365,6 +365,7 @@ export function createParseView({
   scanAuto = false,
   ocrSource = null,
   ocrAlt = null,
+  pageReader = null,
   lazyKeys = false,
   outline = false,
   onNeedOcr = null,
@@ -1572,9 +1573,12 @@ export function createParseView({
       }
       const t0 = now();
       const extra = typeof ocrAlt === "function" ? ocrAlt() : ocrAlt;
+      let readerMode = "doubtful";
+      try { readerMode = typeof pageReader === "function" ? pageReader() : pageReader; } catch { readerMode = "doubtful"; }
       const result = await readScan({
         helper: engine, bytes, sha256: parsed.sha256, base: parsed, records: recs, pages,
         numPages: parsed.pageCount, from, to, signal: ctrl.signal,
+        options: { textPages: readerMode === "all" ? "all" : "weak" },
         alt: extra && typeof extra.ocr === "function" ? extra : null,
         lexicon: extra?.lexicon || null,
         onPhase: (info) => {

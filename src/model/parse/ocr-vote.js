@@ -18,19 +18,40 @@ export function lowConfidenceShare(items) {
   return confs.filter((c) => c < 0.5).length / confs.length;
 }
 
-// Handwriting and a page of words the lexicon does not know. The lexicon clause
-// needs a little doubt as well: a long confident page in another language is not
+// A page with only a few words that Vision itself doubts: a note, a label, a
+// slip of paper. Reading it whole costs little because there is little on it.
+export const WEAK_SHORT_MEAN = 0.8;
+// Half the long words unknown to the lexicon while the recogniser is not fully
+// sure: handwriting or a photograph the recogniser read into word-shaped noise.
+// A long confident page in Latin or German keeps its confident reading.
+export const WEAK_UNKNOWN_LEX = 0.5;
+export const WEAK_UNKNOWN_MEAN = 0.98;
+export const WEAK_UNKNOWN_MIN_CORES = 10;
+
+export function meanConfidence(items) {
+  const confs = (items || []).map((it) => it?.conf).filter((c) => Number.isFinite(c));
+  if (!confs.length) return null;
+  return confs.reduce((a, b) => a + b, 0) / confs.length;
+}
+
+// Handwriting and a page of words the lexicon does not know. The lexicon clauses
+// need a little doubt as well: a long confident page in another language is not
 // sent for a second reading. A printed name list (confident, some lexicon hits)
 // stays on Vision.
 export function weakOcrPage(items, lexicon = null) {
   if (lowConfidenceShare(items) >= WEAK_OCR_LOW) return true;
+  const confs = (items || []).map((it) => it?.conf).filter((c) => Number.isFinite(c));
+  const mean = meanConfidence(items);
+  if (confs.length > 0 && confs.length < WEAK_OCR_MIN_WORDS && mean < WEAK_SHORT_MEAN) return true;
   if (!(lexicon instanceof Set)) return false;
   const cores = (items || []).map((it) => wordCore(it?.str || it?.text || "").toLowerCase()).filter((c) => c.length >= 4);
+  if (cores.length < WEAK_UNKNOWN_MIN_CORES) return false;
+  const known = cores.filter((c) => lexicon.has(c)).length / cores.length;
+  if (known < WEAK_UNKNOWN_LEX && mean != null && mean < WEAK_UNKNOWN_MEAN) return true;
   if (cores.length < 20) return false;
-  const confs = (items || []).map((it) => it?.conf).filter((c) => Number.isFinite(c));
   const low = confs.length ? confs.filter((c) => c < 0.5).length / confs.length : 0;
   if (low < 0.04) return false;
-  return cores.filter((c) => lexicon.has(c)).length / cores.length < 0.12;
+  return known < 0.12;
 }
 
 export function wordCore(text) {

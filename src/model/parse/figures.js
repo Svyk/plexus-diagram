@@ -1146,6 +1146,24 @@ function spansPlate(line, box, parts) {
   return Math.min(line.x1, x1) - Math.max(line.x0, x0) >= 0.7 * dw;
 }
 
+// A photographed page carries a shadow, and the shadow is one ink region that
+// holds the page's own lines of type. A picture's labels are few and short; a
+// region that holds most of the page's words, mostly in lines of three words or
+// more, is the page under a shadow, not a picture on it. The lines need not fill
+// the region: a title page is a few centred lines over a shaded lower half.
+function holdsPageText(box, lines) {
+  const all = (lines || []).filter((line) => (line.text || "").trim());
+  const pageWords = all.reduce((n, line) => n + wordCount(line.text), 0);
+  if (pageWords < 8) return false;
+  const inside = all.filter((line) => lineCenterIn(line, box));
+  const insideWords = inside.reduce((n, line) => n + wordCount(line.text), 0);
+  if (insideWords < 0.6 * pageWords) return false;
+  const typeLines = inside.filter((line) => wordCount(line.text) >= 3);
+  if (typeLines.length < 3) return false;
+  const typeWords = typeLines.reduce((n, line) => n + wordCount(line.text), 0);
+  return typeWords >= 0.5 * insideWords;
+}
+
 function textBlockBox(box, lines) {
   const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box));
   if (prose.length < 6) return false;
@@ -1539,6 +1557,7 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines = null
     const pageLines = textLines || lines;
     if (textThroughMiddle(box, pageLines)) continue;
     if (textBlockBox(box, lines)) continue;
+    if (holdsPageText(box, pageLines)) continue;
     const grown = growUntilText(box, lines, pageW, pageH);
     box = boxArea(grown) > 0.85 * pageArea ? box : grown;
     if (edgeBand(box, pageW, pageH)) continue;

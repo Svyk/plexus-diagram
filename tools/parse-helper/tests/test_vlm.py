@@ -467,6 +467,10 @@ def test_fit_page_caps_the_long_side_and_leaves_a_small_page():
     fitted = fit_page(Image.new("RGB", (4000, 2000)))
     assert max(fitted.size) == MAX_SIDE
     assert fitted.size[0] >= fitted.size[1]
+    # A letter-size page at the helper's 200 dpi render goes in as rendered.
+    letter = Image.new("RGB", (1700, 2200))
+    assert fit_page(letter).size == (1700, 2200)
+    assert MAX_SIDE >= 2548, "a 600 x 917 pt letter rendered at 200 dpi must not be shrunk"
 
 
 def test_page_text_decode_is_greedy(monkeypatch):

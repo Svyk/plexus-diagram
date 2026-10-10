@@ -567,15 +567,30 @@ export function alignVlmText(doc, regions) {
   const applied = [];
   const reads = [];
   const kinds = new Set(["para", "heading", "caption", "footnote"]);
+  const covered = new Set(["table", "figure"]);
   for (const region of regions) {
     if (!region?.text || !region.bbox) continue;
+    // A page transcription read the whole page (tables and figures painted
+    // out, caption strips read on their own), so every text block on the page
+    // hosts it, except those sitting on a table, a figure, or another region.
+    // A block outside the union of the layout's text boxes would otherwise
+    // keep the Vision reading the page model was called in to replace.
+    const whole = !!region.pageText;
+    const others = whole
+      ? regions.filter((r) => r && r !== region && !r.pageText && r.page === region.page && r.bbox).map((r) => r.bbox)
+      : [];
+    const painted = whole
+      ? (order || []).map((id) => blocks[id]).filter((b) => b && b.page === region.page && covered.has(b.type) && b.bbox).map((b) => b.bbox)
+      : [];
     const inside = [];
     for (const id of order || []) {
       const block = blocks[id];
       if (!block || block.page !== region.page || !kinds.has(block.type) || !block.bbox) continue;
       const c = centerOf(block.bbox);
       if (!c) continue;
-      if (c[0] < region.bbox[0] || c[0] > region.bbox[2] || c[1] < region.bbox[1] || c[1] > region.bbox[3]) continue;
+      if (whole) {
+        if ([...painted, ...others].some((box) => containsPoint(box, c))) continue;
+      } else if (!containsPoint(region.bbox, c)) continue;
       inside.push(block);
     }
     if (!inside.length) {
@@ -634,6 +649,10 @@ export function alignVlmText(doc, regions) {
     });
   }
   return { doc: { ...doc, blocks, order }, applied, reads };
+}
+
+function containsPoint(box, c) {
+  return c[0] >= box[0] && c[0] <= box[2] && c[1] >= box[1] && c[1] <= box[3];
 }
 
 function texCommandCount(text) {

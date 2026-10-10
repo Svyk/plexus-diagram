@@ -746,7 +746,7 @@ test("alignVlmText rewrites Vision lines inside a region and leaves the boxes", 
   assert.equal(tex.doc.blocks.p.text, "old left");
 });
 
-test("alignVlmText pours a page transcription in document order and clears the leftover", () => {
+test("alignVlmText pours a page transcription in document order over every text block of the page", () => {
   const doc = {
     order: ["late", "early", "out"],
     blocks: {
@@ -756,12 +756,16 @@ test("alignVlmText pours a page transcription in document order and clears the l
     },
   };
   const out = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 80, 60], text: "one two three", pageText: true }]);
-  assert.equal(out.doc.blocks.late.text, "one two");
-  assert.equal(out.doc.blocks.early.text, "three");
-  assert.equal(out.doc.blocks.out.text, "kept");
+  // Document order, not box order: the page read covers the whole page, so the block
+  // outside the layout's union box hosts its share too instead of keeping Vision's word.
+  const texts = ["late", "early", "out"].map((id) => out.doc.blocks[id].text);
+  assert.equal(texts.filter(Boolean).join(" "), "one two three");
+  assert.ok(texts[0].startsWith("one"));
+  assert.notEqual(out.doc.blocks.out.text, "kept");
   const short = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 80, 60], text: "only", pageText: true }]);
   assert.equal(short.doc.blocks.late.text, "only");
   assert.equal(short.doc.blocks.early.text, "");
+  assert.equal(short.doc.blocks.out.text, "");
 });
 
 test("alignVlmText keeps a caption the page slice does not share a word with", () => {

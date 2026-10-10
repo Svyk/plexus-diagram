@@ -11790,6 +11790,7 @@ function chooseReading(vision, other, lexicon) {
     if (hyphen(o) && !hyphen(v)) return o;
     return v;
   }
+  if (!vl && !ol && d <= 4 && Number.isFinite(vision?.conf) && Number.isFinite(other?.conf) && vision.conf > other.conf) return v;
   if (d <= 2) return o;
   if (!vl && !ol && d <= 4) return o;
   return v;
@@ -11915,6 +11916,34 @@ function voteItems(visionItems, otherItems, lexicon, regions) {
   added.sort((a, b) => boxOf3(a)[1] - boxOf3(b)[1] || boxOf3(a)[0] - boxOf3(b)[0]);
   return preferSpellings([...next, ...added], lexicon, { regions });
 }
+function deskewCcw(page) {
+  const angle = Number(page?.deskew) || 0;
+  return page?.engine === "ppocr-web" ? angle : -angle;
+}
+function reframeItems(items, from, to) {
+  const degrees = deskewCcw(to) - deskewCcw(from);
+  const w = Number(to?.w) || Number(from?.w) || 0;
+  const h = Number(to?.h) || Number(from?.h) || 0;
+  if (!items?.length || !Number.isFinite(degrees) || Math.abs(degrees) < 0.05 || !w || !h) return items || [];
+  const rad = degrees * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const cx = w / 2;
+  const cy = h / 2;
+  return items.map((item) => {
+    const t = item?.transform;
+    if (!Array.isArray(t) || t.length < 6) return item;
+    const dx = Number(t[4]) - cx;
+    const dy = Number(t[5]) - cy;
+    const x = cx + dx * cos + dy * sin;
+    const base = cy - dx * sin + dy * cos;
+    const shift = base - Number(t[5]);
+    const next = { ...item, transform: [t[0], t[1], t[2], t[3], x, base] };
+    if (Number.isFinite(item.y0)) next.y0 = item.y0 + shift;
+    if (Number.isFinite(item.y1)) next.y1 = item.y1 + shift;
+    return next;
+  });
+}
 function voteOcrBodies(visionPages, otherPages, lexicon) {
   const words = lexicon instanceof Set ? lexicon : null;
   const byN = new Map((otherPages || []).map((page) => [page.n, page]));
@@ -11923,7 +11952,7 @@ function voteOcrBodies(visionPages, otherPages, lexicon) {
     if (weakOcrPage(page.items, words)) return { ...page, weakText: true };
     const other = byN.get(page.n);
     const regions = ruledRegions(page.rules, page.w, page.h);
-    const items = voteItems(page.items || [], other?.items || [], words, regions);
+    const items = voteItems(page.items || [], reframeItems(other?.items || [], other, page), words, regions);
     return { ...page, items };
   });
 }
@@ -13688,7 +13717,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 33;
+    PARSE_REV = 34;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -47440,15 +47469,21 @@ function alignVlmText(doc, regions) {
   const applied = [];
   const reads = [];
   const kinds = /* @__PURE__ */ new Set(["para", "heading", "caption", "footnote"]);
+  const covered = /* @__PURE__ */ new Set(["table", "figure"]);
   for (const region of regions) {
     if (!region?.text || !region.bbox) continue;
+    const whole2 = !!region.pageText;
+    const others = whole2 ? regions.filter((r) => r && r !== region && !r.pageText && r.page === region.page && r.bbox).map((r) => r.bbox) : [];
+    const painted = whole2 ? (order || []).map((id) => blocks[id]).filter((b) => b && b.page === region.page && covered.has(b.type) && b.bbox).map((b) => b.bbox) : [];
     const inside8 = [];
     for (const id of order || []) {
       const block = blocks[id];
       if (!block || block.page !== region.page || !kinds.has(block.type) || !block.bbox) continue;
       const c = centerOf4(block.bbox);
       if (!c) continue;
-      if (c[0] < region.bbox[0] || c[0] > region.bbox[2] || c[1] < region.bbox[1] || c[1] > region.bbox[3]) continue;
+      if (whole2) {
+        if ([...painted, ...others].some((box2) => containsPoint(box2, c))) continue;
+      } else if (!containsPoint(region.bbox, c)) continue;
       inside8.push(block);
     }
     if (!inside8.length) {
@@ -47500,6 +47535,9 @@ function alignVlmText(doc, regions) {
     });
   }
   return { doc: { ...doc, blocks, order }, applied, reads };
+}
+function containsPoint(box2, c) {
+  return c[0] >= box2[0] && c[0] <= box2[2] && c[1] >= box2[1] && c[1] <= box2[3];
 }
 function texCommandCount(text3) {
   return (String(text3 || "").match(/\\(?:[A-Za-z]+|[()[\]])/g) || []).length;

@@ -110,7 +110,7 @@ function ruleCount(rules, box, axis) {
 // Numeric text lines are body rows. The word lines above them are one wrapped
 // header, not one table row each. Used when that count is well under the raw
 // line count, so a split header does not look like extra body rows.
-function bodyTarget(rows) {
+export function bodyTarget(rows) {
   let numeric = 0;
   let words = 0;
   for (const row of rows || []) {
@@ -120,7 +120,8 @@ function bodyTarget(rows) {
     let nums = 0;
     let alpha = 0;
     for (const key of all) {
-      if (/\d/.test(key)) nums += 1;
+      // A dated column name ("feb-26", "4q26") is a label, not a value.
+      if (/\d/.test(key) && !/[a-z]/.test(key)) nums += 1;
       else if (/[a-z]/.test(key)) alpha += 1;
     }
     // A disease name plus its numbers is a body row. A header line is words.
@@ -194,12 +195,18 @@ function rowKind(row) {
 
 // Adjacent word lines in one cell are a wrapped header. A word line fused
 // with the number line under it ("Inch" + "0.00") is not.
-function cellCovers(hit, rows, cell) {
+function cellCovers(hit, rows, cell, headerRows = 0) {
   if (hit.size <= 1) return true;
   const span = cell?.rowSpan || 1;
   if (span > 1 && hit.size <= span + 1) return true;
   const indexes = [...hit].sort((a, b) => a - b);
   for (let i = 1; i < indexes.length; i += 1) if (indexes[i] - indexes[i - 1] > 1) return false;
+  // A column head wraps over several short lines ("CPIH Index (UK, 2015 = 100)"),
+  // numbers included. A head cell in the table's first rows may hold up to six.
+  const head = cell && (cell.header || cell.r < Math.max(1, headerRows));
+  if (head && indexes.length <= 6) return true;
+  // A note of several sentences is one cell over the lines it wraps onto.
+  if (cell && String(cell.text || "").split(/\s+/).filter((w) => /[A-Za-z]/.test(w)).length >= 6 && indexes.length <= 8) return true;
   const kinds = indexes.map((index) => rowKind(rows[index]));
   if (kinds.includes("word") && kinds.includes("num")) return false;
   if (kinds.filter((kind) => kind === "num").length >= 2) return false;
@@ -219,7 +226,7 @@ function cleanCoverage(table, rows, owner) {
     const bag = [];
     for (const cell of cells) {
       const hit = ownersOf(cell.text, owner);
-      if (!hit.has(index) || !cellCovers(hit, rows, cell)) continue;
+      if (!hit.has(index) || !cellCovers(hit, rows, cell, table?.headerRows || 0)) continue;
       bag.push(...tokens(cell.text));
     }
     let got = 0;
@@ -248,8 +255,16 @@ function plainPhrase(text) {
   return /^[A-Za-z][A-Za-z .,'’()/-]{0,80}$/.test(String(text || "").trim());
 }
 
+// The reader does not mark header cells; its first row is the header when it
+// holds text, as headerScore already assumes. The rule grid marks its own.
+function effectiveHeader(table) {
+  const marked = table?.headerRows || 0;
+  if (marked) return marked;
+  return (table?.cells || []).some((cell) => cell.r === 0 && String(cell.text || "").trim()) ? 1 : 0;
+}
+
 function filledShare(table) {
-  const header = table?.headerRows || 0;
+  const header = effectiveHeader(table);
   const rows = table?.rows || 0;
   const cols = table?.cols || 0;
   if (!rows || !cols) return 1;
@@ -272,7 +287,7 @@ function filledShare(table) {
 // A body cell that is one number or a short phrase. "•0219", "1.20-" and
 // "0. 0305" are the Vision debris a second reading often cleans up.
 function tidyShare(table) {
-  const header = table?.headerRows || 0;
+  const header = effectiveHeader(table);
   let n = 0;
   let ok = 0;
   for (const cell of table?.cells || []) {
@@ -281,9 +296,16 @@ function tidyShare(table) {
     const raw = String(cell.text || "").trim();
     if (!raw) continue;
     n += 1;
-    if (plainNumber(raw) || isPlaceholder(raw) || plainPhrase(raw)) ok += 1;
+    // A note of several sentences in one cell is prose, not debris; the rule
+    // grid that cuts it into one short cell per line is not the tidier reading.
+    if (plainNumber(raw) || isPlaceholder(raw) || plainPhrase(raw) || proseNote(raw)) ok += 1;
   }
   return n ? ok / n : 1;
+}
+
+function proseNote(text) {
+  const words = String(text || "").split(/\s+/).filter((w) => /[A-Za-z]/.test(w));
+  return words.length >= 6 && words.length >= 0.7 * String(text || "").split(/\s+/).filter(Boolean).length;
 }
 
 // A filled body cell the reader did not finish: a digit mixed with junk
@@ -298,7 +320,7 @@ function isDebris(text) {
 }
 
 function debrisShare(table) {
-  const header = table?.headerRows || 0;
+  const header = effectiveHeader(table);
   let n = 0;
   let bad = 0;
   for (const cell of table?.cells || []) {
@@ -318,7 +340,7 @@ function singleValues(table) {
   let packed = 0;
   for (const cell of table?.cells || []) {
     if ((cell.colSpan || 1) > 1) continue;
-    if (cell.header || cell.r < (table.headerRows || 0)) continue;
+    if (cell.header || cell.r < effectiveHeader(table)) continue;
     if (scientificFactor(cell.text)) { n += 1; continue; }
     const nums = tokens(cell.text).filter((token) => /\d/.test(token) && token.replace(/\D/g, "").length >= 2);
     if (!nums.length) continue;
@@ -473,6 +495,9 @@ function sameGridBetter(candidate, ruleRow) {
   const rows = candidate.table?.rows || 0;
   const ruleRows = ruleRow.table?.rows || 0;
   if (!(ruleRows > 0) || rows < ruleRows * 0.9 || rows > ruleRows * 1.15) return false;
+  // The rule grid has no header row the page supports (its first row is a
+  // stray fragment); the reading has the column heads and fills the cells as well.
+  if (next.header >= 0.9 && rule.header <= 0.3 && next.rowCov >= rule.rowCov && next.filled + 0.02 >= rule.filled) return true;
   if (next.tidy - rule.tidy >= 0.15) return true;
   if (next.filled - rule.filled >= 0.08 && next.tidy + 0.05 >= rule.tidy) return true;
   // The totals already agree. Cleaner cells then win: a rule grid of the same

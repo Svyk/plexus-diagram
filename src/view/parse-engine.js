@@ -8,7 +8,7 @@ import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
 import { voteOcrBodies, weakOcrPage } from "../model/parse/ocr-vote.js";
 import { evidenceFromRecords } from "../model/parse/vlm-arbitrate.js";
 import { decimalColumnPagesOf, numericPagesOf } from "../model/parse/vlm-boxes.js";
-import { alignVlmText, applyVlmTables, keepTextLayerReads, linkLayoutCaptions, tableRegions } from "../model/parse/vlm-tables.js";
+import { alignVlmText, applyVlmTables, dropFormulaTables, keepTextLayerReads, linkLayoutCaptions, tableRegions, withoutFormulaReads } from "../model/parse/vlm-tables.js";
 
 const GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
 
@@ -234,7 +234,9 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
         const readTables = [...(readTable?.tables || []), ...(readText?.tables || [])];
         const readLines = [...(explicitText ? (readTable?.lines || []) : []), ...(readText?.lines || [])];
         const readLayout = [...(readTable?.layout || []), ...(readText?.layout || [])];
-        const structures = keepTextLayerReads(doc, readTables, wanted);
+        const unTabled = dropFormulaTables(doc, readLayout, layerPages);
+        if (unTabled.applied.length) Object.assign(doc, { blocks: unTabled.doc.blocks });
+        const structures = keepTextLayerReads(doc, withoutFormulaReads(readTables, unTabled.boxes), wanted);
         const applied = applyVlmTables(doc, structures, {
           method: readText?.model || readTable?.model || "vlm",
           arbitrate: true,

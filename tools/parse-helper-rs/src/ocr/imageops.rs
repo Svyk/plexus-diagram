@@ -708,10 +708,79 @@ pub fn deskew_angle(img: &GrayImage) -> f64 {
     // axis can still report a tenth of a degree and rotate a straight page, which is
     // what scrambled the pitching-chart reading. Use that axis only to correct a
     // contour angle that is real but small (the case that keeps table rules apart).
-    if contour == 0.0 || contour.abs() >= 0.2 {
-        return contour;
+    let angle = if contour == 0.0 || contour.abs() >= 0.2 {
+        contour
+    } else {
+        weighted_median_angle(collect_line_angles(img, true))
+    };
+    if angle == 0.0 || angle.abs() < PROFILE_MIN_ANGLE {
+        return angle;
     }
-    weighted_median_angle(collect_line_angles(img, true))
+    // The same check as ocr.py `profile_confirms`: a turn of a degree or more must
+    // sharpen the text lines. A few tenths (a table-rule correction) is kept.
+    let ink = ink_mask(&Gray::from_image(img));
+    if profile_confirms(&ink, angle) { angle } else { 0.0 }
+}
+
+// A page is turned only when the turn makes its text lines sharper: the row
+// profile (ink per row) of the turned page must have a clearly higher variance
+// than the page as it is. A line of small capitals, whose tall first letter
+// tilts the contour fit of every word, leaves the profile flatter when turned.
+const PROFILE_WIDTH: usize = 600;
+const PROFILE_GAIN: f64 = 1.1;
+const PROFILE_MIN_ANGLE: f64 = 1.0;
+
+fn shrink_ink(ink: &Gray, width: usize) -> GrayImage {
+    // Box average onto `width` columns (area resampling, like cv2.INTER_AREA).
+    let scale = (width as f64 / ink.w as f64).min(1.0);
+    let w = ((ink.w as f64 * scale).round() as usize).max(1);
+    let h = ((ink.h as f64 * scale).round() as usize).max(1);
+    let mut out = GrayImage::new(w as u32, h as u32);
+    for y in 0..h {
+        let y0 = (y as f64 / scale) as usize;
+        let y1 = (((y + 1) as f64 / scale) as usize).min(ink.h).max(y0 + 1);
+        for x in 0..w {
+            let x0 = (x as f64 / scale) as usize;
+            let x1 = (((x + 1) as f64 / scale) as usize).min(ink.w).max(x0 + 1);
+            let mut sum: u64 = 0;
+            for yy in y0..y1 {
+                for xx in x0..x1 {
+                    sum += ink.data[yy * ink.w + xx] as u64;
+                }
+            }
+            let n = ((y1 - y0) * (x1 - x0)) as u64;
+            out.put_pixel(x as u32, y as u32, Luma([(sum / n.max(1)) as u8]));
+        }
+    }
+    out
+}
+
+fn profile_variance(small: &GrayImage, angle: f64) -> f64 {
+    let turned = if angle.abs() >= 0.05 {
+        // The same turn `deskew` gives the page.
+        rotate_about_center(small, angle.to_radians() as f32, Interpolation::Bilinear, Luma([0]))
+    } else {
+        small.clone()
+    };
+    let (w, h) = (turned.width() as usize, turned.height() as usize);
+    if h == 0 {
+        return 0.0;
+    }
+    let raw = turned.as_raw();
+    let rows: Vec<f64> = (0..h).map(|y| raw[y * w..(y + 1) * w].iter().map(|&p| p as f64).sum()).collect();
+    let mean = rows.iter().sum::<f64>() / h as f64;
+    rows.iter().map(|r| (r - mean) * (r - mean)).sum::<f64>() / h as f64
+}
+
+/// True when `deskew(page, angle)` would sharpen the page's row profile.
+fn profile_confirms(ink: &Gray, angle: f64) -> bool {
+    if ink.w == 0 || ink.h == 0 {
+        return true;
+    }
+    let small = shrink_ink(ink, PROFILE_WIDTH);
+    let flat = profile_variance(&small, 0.0);
+    let turned = profile_variance(&small, angle);
+    turned >= flat * PROFILE_GAIN
 }
 
 pub fn deskew(img: &GrayImage, angle: f64) -> GrayImage {
@@ -1087,6 +1156,28 @@ mod tests {
         assert!((angle - 1.5).abs() < 0.25, "detected {angle}");
         let straight = deskew(&tilted, angle);
         assert!(deskew_angle(&straight).abs() < 0.15, "residual {}", deskew_angle(&straight));
+    }
+
+    #[test]
+    fn a_turn_that_flattens_the_rows_is_refused() {
+        // Horizontal text bars: turning them by two degrees smears the row profile.
+        let mut page = GrayImage::from_pixel(600, 400, Luma([255]));
+        for row in 0..12 {
+            let y0 = 40 + row * 28;
+            for y in y0..y0 + 10 {
+                for x in 60..540 {
+                    page.put_pixel(x, y, Luma([0]));
+                }
+            }
+        }
+        let ink = ink_mask(&Gray::from_image(&page));
+        assert!(!profile_confirms(&ink, 2.0));
+        assert!(!profile_confirms(&ink, -2.0));
+        // The same bars drawn at a tilt: the turn that straightens them is confirmed.
+        let tilted = deskew(&page, -2.0);
+        let ink = ink_mask(&Gray::from_image(&tilted));
+        assert!(profile_confirms(&ink, 2.0));
+        assert!(!profile_confirms(&ink, -2.0));
     }
 
     #[test]

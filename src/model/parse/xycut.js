@@ -17,6 +17,10 @@ export function detectColumns(lines, { pageW, minLines = 4 } = {}) {
     const right = dominant[i];
     const leftX = dominant[i - 1].x;
     if (right.x - leftX < 0.2 * (pageW || 612)) continue;
+    // A column of dates or quantities beside a column of names is a table read
+    // across (a roster), not a second column of text. The same rule as
+    // shortColumnGutters, for a value column whose OCR lines ran together.
+    if (valueColumn(right.lines)) continue;
     // Only left lines beside the right column bound the gutter: a front-matter line far above or
     // below it (a title tail, a copyright line) may run almost to the right column's edge.
     const beside = (l) => right.lines.some((r) => Math.abs(r.base - l.base) <= 2.5 * Math.max(l.size, r.size));
@@ -29,6 +33,21 @@ export function detectColumns(lines, { pageW, minLines = 4 } = {}) {
     if (g1 - g0 >= 6) gutters.push({ x0: g0, x1: g1 });
   }
   return mergeGutters([...gutters, ...internalGutters(lines, pageW || 612, minLines), ...shortColumnGutters(lines, pageW || 612, minLines)]);
+}
+
+// Most lines are a few words made largely of digits (a date, a measure), and
+// none is a sentence. A line number beside a sentence is one digit in forty letters.
+function valueColumn(lines) {
+  const list = lines || [];
+  if (list.length < 3) return false;
+  const wordsOf = (l) => String(l.text || "").trim().split(/\s+/).filter(Boolean).length;
+  if (list.some((l) => wordsOf(l) >= 12)) return false;
+  const digitShare = (l) => {
+    const text = String(l.text || "").replace(/\s+/g, "");
+    return text.length ? (text.match(/\d/g) || []).length / text.length : 0;
+  };
+  const valued = list.filter((l) => wordsOf(l) <= 8 && digitShare(l) >= 0.3).length;
+  return valued / list.length >= 0.6;
 }
 
 // Short lines down a page (a roster, a list) never reach the width a body column

@@ -36,6 +36,7 @@ from plexus_parse_helper.vlm_tables import (
     TEXT_TOKENS,
     _crop,
     _generate,
+    token_budget,
 )
 from plexus_parse_helper.vlm_text import label as text_label
 from plexus_parse_helper.vlm_text import read_page_text
@@ -332,7 +333,7 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
                 # Pad at crop time only. The bbox stored on the table stays the grid,
                 # so a later comparison still lines up with the rule table.
                 image = _crop(page, box["bbox"], bitmap)
-                parsed = tables_from_text(_generate(image, TABLE_PROMPT), "html")
+                parsed = tables_from_text(_generate(image, TABLE_PROMPT, token_budget(box["bbox"], (pw, ph))), "html")
                 if not parsed:
                     continue
                 table = parsed[0]

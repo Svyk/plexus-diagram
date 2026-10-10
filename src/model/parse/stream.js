@@ -1394,11 +1394,14 @@ export function baselineRows(lines, { loose = false } = {}) {
 
 // A figure or table caption in the body has no page number beside it. The same
 // words in a contents list do: the label, a wide gap, then the page.
+// A page number, a page range ("25-27"), or a lettered page ("48-a").
+const PAGE_RE = /^\d{1,4}(?:\s*[-–]\s*(?:\d{1,4}|[a-z]))?$/;
+
 function contentsEntry(tokens) {
   if (!tokens || tokens.length < 2) return false;
   const page = tokens[tokens.length - 1];
   const label = tokens[tokens.length - 2];
-  if (!/^\d{1,4}$/.test(String(page.text || "").trim())) return false;
+  if (!PAGE_RE.test(String(page.text || "").trim())) return false;
   const labelTokens = tokens.slice(0, -1);
   if (!labelTokens.some((t) => /[A-Za-z]/.test(t.text || ""))) return false;
   // A numeric body row also ends in a small integer. Its other cells are numbers.
@@ -1458,6 +1461,33 @@ function contentsContinuation(row, tokens, run) {
   return tok.x1 < right - 4;
 }
 
+// The first line of a wrapped contents entry: words with no page number, then
+// a line that ends in the page number and starts under the entry with a hanging
+// indent. A section head ("Part I.—… :") sits flush with the entries and ends
+// in a colon; it is not the first line of the entry under it.
+function contentsLead(row, tokens, next, run) {
+  if (!next || !tokens || tokens.length !== 1 || !next.tokens || next.tokens.length < 2) return false;
+  const text = String(tokens[0].text || "").trim();
+  if (!/[A-Za-z]/.test(text) || /:$/.test(text)) return false;
+  if (!contentsEntry(next.tokens)) return false;
+  if (next.row.base - row.base > 1.8 * Math.max(row.size, next.row.size)) return false;
+  // Every row so far is an entry with its page number (one row is enough).
+  if (run.some((r) => r.tokens.length >= 2 && !contentsEntry(r.tokens))) return false;
+  const label = next.tokens[0];
+  return label.x0 - tokens[0].x0 >= 0.5 * row.size && label.x0 < tokens[0].x1;
+}
+
+function extendLead(lead, row, tokens) {
+  const tok = lead.tokens[0];
+  tok.words.push(...tokens[0].words);
+  tok.x0 = Math.min(tok.x0, tokens[0].x0);
+  tok.x1 = Math.max(tok.x1, tokens[0].x1);
+  tok.text = tok.words.map((w) => w.text).join(" ");
+  lead.row.words.push(...row.words);
+  lead.row.lines.push(...row.lines);
+  lead.row.y1 = Math.max(lead.row.y1, row.y1);
+}
+
 // A cell value: a plain number, or grouped digits with a power of ten ("9.806 65 E+00").
 function valueToken(text) {
   const s = String(text || "").trim().replace(/^[.·…\s]+/, "");
@@ -1496,7 +1526,9 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
     while (j < rows.length) {
       const row = rows[j];
       const tokens = tokensOf(row);
-      if ((markerOf(row.lines[0], dots) && !contentsEntry(tokens) && !contentsContinuation(row, tokens, run)) || (CAPTION_RE.test(row.text) && !contentsEntry(tokens))) break;
+      const peekNext = rows[j + 1] ? { row: rows[j + 1], tokens: tokensOf(rows[j + 1]) } : null;
+      const leadHere = tokens.length === 1 && contentsLead(row, tokens, peekNext, run);
+      if ((markerOf(row.lines[0], dots) && !contentsEntry(tokens) && !contentsContinuation(row, tokens, run) && !leadHere) || (CAPTION_RE.test(row.text) && !contentsEntry(tokens) && !leadHere)) break;
       // A contents list ends at the next section head. Growing it further would
       // fail the list and drop the entries already read. Two rows that only
       // look like a list (a speed line and a column head, each ending in a
@@ -1579,6 +1611,14 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
             continue;
           }
         }
+        // The first line of a wrapped entry waits for the line that carries its page number.
+        if (leadHere) {
+          if (lead) extendLead(lead, row, tokens);
+          else lead = { row, tokens };
+          lastBase = row.base;
+          j++;
+          continue;
+        }
         // A contents title with no page number on its line is one token. Keep it as its
         // own row before the wrapped-cell rule glues it to the entry above.
         if (contentsContinuation(row, tokens, run)) {
@@ -1644,6 +1684,10 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
         }
       }
       const table = buildTable(rowsIn, { headerRowsHint, rules });
+      if (typeof process !== "undefined" && process.env?.PXD_STREAM_DEBUG) {
+        const why = !table ? "no-table" : [contentsList(run) || !looksLikeProse(run) ? "" : "prose", sparseAxis(table) ? "sparseAxis" : "", tickGrid(table) ? "tick" : "", phraseTable(table) ? "phrase" : "", lacksTabularEvidence(table) ? "noEvidence" : "", damagedIndexColumn(table) ? "damagedIndex" : "", ocr && proseColumnTable(table) ? "proseCols" : "", handwriting && !contentsList(run) ? "hand" : ""].filter(Boolean).join(",") || "OK";
+        process.stderr.write(`run rows ${run.length} multi ${multi} ${table ? `${table.rows}x${table.cols}` : ""} y ${Math.round(run[0].row.y0)}..${Math.round(run[run.length - 1].row.y1)} -> ${why} | ${run.slice(0, 2).map((r) => r.tokens.map((t) => t.text.slice(0, 14)).join(" | ")).join(" ;; ")}\n`);
+      }
       // A named contents list is a table even when its only numbers are pages.
       // An unnamed list of entries and page numbers is not (lacksTabularEvidence).
       // An OCR name roster has no measurement column. A date or a quantity column
@@ -1803,6 +1847,68 @@ function codeRun(run) {
   const lines = run.flatMap((r) => r.row.lines);
   const text = run.map((r) => r.tokens.slice(1).map((t) => t.text).join(" ")).join("\n");
   return { type: "code", lines, text, usedWords: run.flatMap((r) => r.row.words) };
+}
+
+function lineCenterX(line) {
+  return ((line.x0 ?? 0) + (line.x1 ?? 0)) / 2;
+}
+
+// Two tables printed side by side, read as one grid because their rows share
+// baselines. The join shows as rows filled on one side only, across a column
+// gap wider than the grid's own gaps. Each side becomes its own table.
+export function splitSideBySide(table) {
+  if (!table || table.method !== "stream" || !(table.cols >= 4) || !(table.rows >= 6) || !table.grid?.xs) return [table];
+  const cells = table.cells || [];
+  const filled = cells.filter((k) => String(k.text || "").trim());
+  const xs = table.grid.xs;
+  const size = Math.max(6, median((table.usedWords || []).map((w) => w.size || 0).filter((v) => v > 0)) || 10);
+  for (let split = 2; split <= table.cols - 2; split++) {
+    if (filled.some((k) => k.c < split && k.c + (k.colSpan || 1) > split)) continue;
+    let left = 0;
+    let right = 0;
+    for (let r = 0; r < table.rows; r++) {
+      const L = filled.some((k) => k.r === r && k.c < split);
+      const R = filled.some((k) => k.r === r && k.c >= split);
+      if (L && !R) left++;
+      else if (R && !L) right++;
+    }
+    if (left < 2 || right < 2 || left + right < 0.35 * table.rows) continue;
+    // The gap between the two sides, measured on the words (a cell box ends on the shared boundary).
+    const words = (table.usedWords || []).filter((w) => Number.isFinite(w.x0) && Number.isFinite(w.x1));
+    const cut = xs[split];
+    const leftEdge = Math.max(...words.filter((w) => (w.x0 + w.x1) / 2 < cut).map((w) => w.x1));
+    const rightEdge = Math.min(...words.filter((w) => (w.x0 + w.x1) / 2 >= cut).map((w) => w.x0));
+    if (typeof process !== "undefined" && process.env?.PXD_STREAM_DEBUG) process.stderr.write(`split? cut ${cut} left ${left} right ${right} rows ${table.rows} edges ${leftEdge}..${rightEdge} size ${size} words ${words.length}\n`);
+    if (!words.length || !(rightEdge - leftEdge >= 2.5 * size)) continue;
+    const half = (from, to) => {
+      const own = cells.filter((k) => k.c >= from && k.c < to);
+      const rowsUsed = [...new Set(own.filter((k) => String(k.text || "").trim()).map((k) => k.r))].sort((a, b) => a - b);
+      if (rowsUsed.length < 3) return null;
+      const rowMap = new Map(rowsUsed.map((r, i) => [r, i]));
+      const out = own.filter((k) => rowMap.has(k.r)).map((k) => ({ ...k, r: rowMap.get(k.r), c: k.c - from }));
+      const ys = table.grid.ys ? [...rowsUsed.map((r) => table.grid.ys[r]), table.grid.ys[rowsUsed[rowsUsed.length - 1] + 1] ?? table.bbox[3]] : null;
+      const x0 = xs[from] ?? table.bbox[0];
+      const x1 = xs[to] ?? table.bbox[2];
+      const y0 = ys ? ys[0] : table.bbox[1];
+      const y1 = ys ? ys[ys.length - 1] : table.bbox[3];
+      return {
+        ...table,
+        rows: rowsUsed.length,
+        cols: to - from,
+        headerRows: rowsUsed[0] === 0 ? Math.min(table.headerRows || 0, 1) : 0,
+        cells: out,
+        bbox: [x0, y0, x1, y1],
+        grid: { xs: xs.slice(from, to + 1), ys: ys || undefined },
+        lines: (table.lines || []).filter((l) => lineCenterX(l) >= x0 - 2 && lineCenterX(l) <= x1 + 2),
+        usedWords: (table.usedWords || []).filter((w) => (w.x0 + w.x1) / 2 >= x0 - 2 && (w.x0 + w.x1) / 2 <= x1 + 2),
+      };
+    };
+    const a = half(0, split);
+    const b = half(split, table.cols);
+    if (!a || !b) return [table];
+    return [a, b];
+  }
+  return [table];
 }
 
 // Axis ticks of a chart on a scanned page (no vector graphics to make a figure): a few rows
@@ -2093,7 +2199,8 @@ function looksLikeProse(run) {
   for (const r of run) {
     const words = r.row.words.length;
     const chars = r.row.words.reduce((n, w) => n + w.text.length, 0);
-    if (r.tokens.some((t) => valueToken(t.text))) continue;
+    // A value or a date in the row is a cell: a roster line ("Clarke, Sir James, Bart., | Aug. 2, 1849.") is not prose.
+    if (r.tokens.some((t) => valueToken(t.text) || dateCell(t.text))) continue;
     if (words >= 6 && chars / words >= 3.5 && r.tokens.length < words / 2) wordy++;
   }
   return wordy >= run.length * 0.5;

@@ -122,7 +122,51 @@ def deskew_angle(gray) -> float:
     values = np.array([a[0] for a in angles])
     half = weights.sum() / 2
     median = float(values[np.searchsorted(np.cumsum(weights), half)])
-    return 0.0 if abs(median) < 0.05 else round(-median, 3)
+    if abs(median) < 0.05:
+        return 0.0
+    # A turn of a degree or more must sharpen the rows. A few tenths of a degree
+    # (a table-rule correction) is too small to show in the profile and is kept.
+    if abs(median) >= PROFILE_MIN_ANGLE and not profile_confirms(ink, -median):
+        return 0.0
+    return round(-median, 3)
+
+
+# A page is turned only when the turn makes its text lines sharper: the row
+# profile (ink per row) of the turned page must have a clearly higher variance
+# than the page as it is. A line of small capitals, whose tall first letter
+# tilts the contour fit of every word, leaves the profile flatter when turned.
+PROFILE_WIDTH = 600
+PROFILE_GAIN = 1.1
+PROFILE_MIN_ANGLE = 1.0
+
+
+def _profile_variance(ink_small, angle: float) -> float:
+    import cv2
+    import numpy as np
+
+    h, w = ink_small.shape
+    if abs(angle) >= 0.05:
+        # The same turn `deskew` gives the page.
+        matrix = cv2.getRotationMatrix2D((w / 2, h / 2), -angle, 1.0)
+        turned = cv2.warpAffine(ink_small, matrix, (w, h), flags=cv2.INTER_LINEAR, borderValue=0)
+    else:
+        turned = ink_small
+    rows = turned.sum(axis=1, dtype=np.float64)
+    return float(rows.var())
+
+
+def profile_confirms(ink, angle: float) -> bool:
+    """True when `deskew(page, angle)` would sharpen the page's row profile."""
+    import cv2
+
+    h, w = ink.shape
+    if not w or not h:
+        return True
+    scale = min(1.0, PROFILE_WIDTH / float(w))
+    small = cv2.resize(ink, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA) if scale < 1.0 else ink
+    flat = _profile_variance(small, 0.0)
+    turned = _profile_variance(small, angle)
+    return turned >= flat * PROFILE_GAIN
 
 
 def deskew(img, angle: float):

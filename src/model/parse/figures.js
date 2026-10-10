@@ -123,7 +123,13 @@ export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new S
     delete fig.pageImage;
     kept.push(fig);
   }
-  return { figures: rejectFalseFigures(kept, { lines, pageW, pageH }), used };
+  return {
+    figures: rejectFalseFigures(kept, {
+      lines, pageW, pageH,
+      strokes: [...inkBoxes, ...prims.filter((p) => p.kind === "rule" || p.kind === "shape")],
+    }),
+    used,
+  };
 }
 
 // Image tiles that cover the page, with no text layer and no vector drawing, are a scan.
@@ -915,12 +921,139 @@ function lineCenterIn(line, box) {
   return cx >= box.x0 && cx <= box.x1 && cy >= box.y0 && cy <= box.y1;
 }
 
+function strokeGeom(s) {
+  if (!s || s.x0 == null || s.y0 == null || s.x1 == null || s.y1 == null) return null;
+  const x0 = Math.min(s.x0, s.x1);
+  const x1 = Math.max(s.x0, s.x1);
+  const y0 = Math.min(s.y0, s.y1);
+  const y1 = Math.max(s.y0, s.y1);
+  return { ...s, x0, y0, x1, y1, w: x1 - x0, h: y1 - y0, kind: s.kind || "ink" };
+}
+
+function strokeInBox(box, g) {
+  if (g.h < 1 && g.w >= 1) {
+    return g.y0 >= box.y0 - 1 && g.y0 <= box.y1 + 1 && Math.min(box.x1, g.x1) - Math.max(box.x0, g.x0) > 1;
+  }
+  if (g.w < 1 && g.h >= 1) {
+    return g.x0 >= box.x0 - 1 && g.x0 <= box.x1 + 1 && Math.min(box.y1, g.y1) - Math.max(box.y0, g.y0) > 1;
+  }
+  return Math.min(box.x1, g.x1) - Math.max(box.x0, g.x0) > 0 && Math.min(box.y1, g.y1) - Math.max(box.y0, g.y0) > 0;
+}
+
+// Axes (a long rule each way, plus ticks or a curve), a curve, hatching, a
+// raster region bigger than a library stamp, or a dense sketch. A table grid
+// of long rules is none of these. Margin specks are not either.
+function drawingParts(box, strokes, pageW, pageH) {
+  if (!box || !(pageW > 0) || !(pageH > 0)) return [];
+  const pageArea = pageW * pageH;
+  const inside = [];
+  for (const s of strokes || []) {
+    const g = strokeGeom(s);
+    if (!g || g.kind === "image") continue;
+    if (!strokeInBox(box, g)) continue;
+    inside.push(g);
+  }
+  if (!inside.length) return [];
+  const blobs = inside.filter((g) => (g.kind === "ink" || g.kind === "box") && g.w * g.h > 0.015 * pageArea && Math.min(g.w, g.h) >= 8);
+  const curves = inside.filter((g) => g.kind === "shape" && ((g.segs || g.n || 0) >= 8 || (g.w * g.h > 0.015 * pageArea && Math.min(g.w, g.h) >= 8)));
+  const rules = inside.filter((g) => g.kind === "rule");
+  const longH = rules.filter((g) => g.w >= 36 && g.h <= 4);
+  const longV = rules.filter((g) => g.h >= 36 && g.w <= 4);
+  const shortH = rules.filter((g) => g.w >= 8 && g.w < 36 && g.h <= 4);
+  const shortV = rules.filter((g) => g.h >= 8 && g.h < 36 && g.w <= 4);
+  const hatch = shortH.length >= 6 || shortV.length >= 6;
+  const axes = longH.length >= 1 && longV.length >= 1 && (shortH.length + shortV.length >= 4 || curves.length > 0 || blobs.length > 0);
+  const fragments = inside.filter((g) => (g.kind === "ink" || g.kind === "shape") && Math.min(g.w, g.h) >= 6 && Math.max(g.w, g.h) >= 12 && g.w * g.h >= 80);
+  const fragHull = hullOf(fragments);
+  const fragArea = fragments.reduce((n, g) => n + g.w * g.h, 0);
+  const many = fragments.length >= 8 && fragHull && fragArea >= 0.25 * Math.max(1, boxArea(fragHull));
+  if (!blobs.length && !curves.length && !hatch && !axes && !many) return [];
+  const parts = [];
+  if (blobs.length) parts.push(...blobs);
+  if (curves.length) parts.push(...curves);
+  if (hatch) parts.push(...(shortH.length >= 6 ? shortH : shortV));
+  if (axes) parts.push(...longH, ...longV, ...shortH, ...shortV);
+  if (many) parts.push(...fragments);
+  return parts;
+}
+
+// The drawing's hull lies in the candidate and fills at least `minShare` of it.
+// A fifth means the box is the drawing, not a margin that touched one stroke.
+function drawingCovers(box, parts, minShare) {
+  if (!parts.length) return false;
+  const hull = hullOf(parts);
+  if (!hull || insideFrac(hull, box) < 0.8) return false;
+  const boxA = boxArea(box);
+  if (!(boxA > 0)) return false;
+  const hw = Math.max(0, hull.x1 - hull.x0);
+  const hh = Math.max(0, hull.y1 - hull.y0);
+  const hullA = Math.max(hw * hh, hw * 8, hh * 8);
+  return hullA >= minShare * boxA;
+}
+
+function markMeasure(g) {
+  if (g.h <= 4 && g.w >= 8) return g.w;
+  if (g.w <= 4 && g.h >= 8) return g.h;
+  return Math.max(g.w, 0.6) * Math.max(g.h, 0.6);
+}
+
+function markOverlap(g, next) {
+  if (g.h <= 4 && g.w >= 8) {
+    if (g.y0 < next.y0 - 1.5 || g.y0 > next.y1 + 1.5) return 0;
+    return Math.max(0, Math.min(next.x1, g.x1) - Math.max(next.x0, g.x0));
+  }
+  if (g.w <= 4 && g.h >= 8) {
+    if (g.x0 < next.x0 - 1.5 || g.x0 > next.x1 + 1.5) return 0;
+    return Math.max(0, Math.min(next.y1, g.y1) - Math.max(next.y0, g.y0));
+  }
+  const ox = Math.max(0, Math.min(next.x1, g.x1) - Math.max(next.x0, g.x0));
+  const oy = Math.max(0, Math.min(next.y1, g.y1) - Math.max(next.y0, g.y0));
+  return ox * oy;
+}
+
+// A clip may shave labels. It may not throw the drawing away.
+function drawingKept(box, next, parts) {
+  if (!drawingCovers(box, parts, 0.2)) return true;
+  let area = 0;
+  let kept = 0;
+  for (const p of parts) {
+    const a = markMeasure(p);
+    area += a;
+    kept += markOverlap(p, next);
+  }
+  return !(area > 0) || kept >= 0.75 * area;
+}
+
+// A caption or a paragraph across the plate is not a column beside the ink.
+function spansPlate(line, box, parts) {
+  const lw = (line.x1 ?? 0) - (line.x0 ?? 0);
+  const bw = box.x1 - box.x0;
+  if (bw > 0 && lw >= 0.62 * bw) return true;
+  if (!parts.length) return false;
+  const x0 = Math.min(...parts.map((p) => p.x0));
+  const x1 = Math.max(...parts.map((p) => p.x1));
+  const dw = x1 - x0;
+  if (dw < 24) return false;
+  return Math.min(line.x1, x1) - Math.max(line.x0, x0) >= 0.7 * dw;
+}
+
+function textBlockBox(box, lines) {
+  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box));
+  if (prose.length < 6) return false;
+  const span = Math.max(...prose.map((line) => line.y1)) - Math.min(...prose.map((line) => line.y0));
+  return span >= 0.55 * (box.y1 - box.y0);
+}
+
 // A column of body text beside the ink is not part of the drawing. Clip it off
 // when the prose sits on one side and a drawing-sized remainder stays.
-function clipBodyColumn(fig, lines) {
+// Lines that cross the drawing are the caption or the paragraph on the plate.
+// A text page is not carved: slicing one column off it leaves a strip.
+function clipBodyColumn(fig, lines, strokes, pageW, pageH) {
   const box = figBox(fig);
   if (!box) return false;
-  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box));
+  if (textBlockBox(box, lines)) return false;
+  const parts = drawingParts(box, strokes, pageW, pageH);
+  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box) && !spansPlate(line, box, parts));
   if (prose.length < 3) return false;
   const mid = (box.x0 + box.x1) / 2;
   const right = prose.filter((line) => ((line.x0 + line.x1) / 2) >= mid);
@@ -934,13 +1067,16 @@ function clipBodyColumn(fig, lines) {
     if (box.x1 - cut >= 48 && cut - box.x0 >= 24) next = { ...next, x0: cut + 2 };
   }
   if (next.x0 === box.x0 && next.x1 === box.x1) return false;
+  if (!drawingKept(box, next, parts)) return false;
   writeFigBox(fig, next);
   return true;
 }
 
 // Why a box is not a figure: edge stripe, library stamp, rule, table border, text block.
-// A null reason means the box stays. General shape rules only.
-export function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, pageH = 792, peers = [] } = {}) {
+// A null reason means the box stays. A candidate whose ink is a drawing (axes, a curve,
+// hatching, many strokes) is a figure wherever it sits. A text hull that only contains
+// a small drawing is still a text block.
+export function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, pageH = 792, peers = [], strokes = [] } = {}) {
   const box = figBox(fig);
   if (!box || !(pageW > 0) || !(pageH > 0)) return null;
   const w = box.x1 - box.x0;
@@ -948,6 +1084,9 @@ export function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, p
   const area = w * h;
   const pageArea = pageW * pageH;
   if (!(area > 0)) return null;
+  const textBlock = textBlockBox(box, lines);
+  const parts = drawingParts(box, strokes, pageW, pageH);
+  if (drawingCovers(box, parts, 0.5) || (drawingCovers(box, parts, 0.2) && !textBlock)) return null;
   const touchTop = box.y0 <= Math.max(4, 0.02 * pageH);
   const touchBot = box.y1 >= pageH - Math.max(4, 0.02 * pageH);
   const touchLeft = box.x0 <= Math.max(4, 0.02 * pageW);
@@ -967,17 +1106,13 @@ export function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, p
     if (!tb || tb.length < 4) continue;
     if (insideFrac(box, { x0: tb[0], y0: tb[1], x1: tb[2], y1: tb[3] }) >= 0.55) return "table-border";
   }
-  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box));
-  if (prose.length >= 6) {
-    const span = Math.max(...prose.map((line) => line.y1)) - Math.min(...prose.map((line) => line.y0));
-    if (span >= 0.55 * h) return "text-block";
-  }
+  if (textBlock) return "text-block";
   return null;
 }
 
 // Body lines stacked in the upper part of a box are the paragraph above the drawing.
 // A running head may sit above that paragraph; the cut still drops the whole band.
-function clipBodyBand(fig, lines) {
+function clipBodyBand(fig, lines, strokes, pageW, pageH) {
   const box = figBox(fig);
   if (!box) return;
   const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box));
@@ -986,18 +1121,23 @@ function clipBodyBand(fig, lines) {
   const top = Math.min(...prose.map((line) => line.y0));
   const h = box.y1 - box.y0;
   if (bot - top <= 0.45 * h && bot - box.y0 <= 0.45 * h && box.y1 - bot >= 48) {
-    writeFigBox(fig, { ...box, y0: bot + 2 });
+    const next = { ...box, y0: bot + 2 };
+    if (!drawingKept(box, next, drawingParts(box, strokes, pageW, pageH))) return;
+    writeFigBox(fig, next);
   }
 }
 
 export function rejectFalseFigures(figures, opts = {}) {
   const list = figures || [];
+  const strokes = opts.strokes || [];
+  const pageW = opts.pageW || 612;
+  const pageH = opts.pageH || 792;
   for (const fig of list) {
-    clipBodyColumn(fig, opts.lines || []);
-    clipBodyBand(fig, opts.lines || []);
+    clipBodyColumn(fig, opts.lines || [], strokes, pageW, pageH);
+    clipBodyBand(fig, opts.lines || [], strokes, pageW, pageH);
   }
   const peers = list.map((fig) => fig);
-  return list.filter((fig) => !falseFigureReason(fig, { ...opts, peers }));
+  return list.filter((fig) => !falseFigureReason(fig, { ...opts, peers, strokes }));
 }
 
 // A steel "plate 14 inches" is not Plate 14. "Figure 1 is a side elevation" and
@@ -1027,6 +1167,13 @@ function titleLikePlateLine(text) {
   // "flat plates fastened…" is a sentence. The label itself starts the line.
   if (/^(?:plates?|tafeln?|tafel|taf\.?|abb(?:ildung)?)\b/i.test(t)) return true;
   if (words.length < 4) return false;
+  // A running head carries the page number at one end, or the word Continued.
+  // "420 CALIFORNIA BLUE BOOK" and "… COMMISSIONS. 421" name the page, not the plate.
+  const edgeNum = (w) => /^\d{1,4}[.]?$/.test(w);
+  if (edgeNum(words[0]) || edgeNum(words[words.length - 1])) return false;
+  if (/\bcontinued\b/i.test(t)) return false;
+  // "COMMISSION, STATE. 1913-1924" is a term of office, not the title of a plate.
+  if (/\b\d{4}\s*[-–—]\s*\d{2,4}\b/.test(t)) return false;
   const letters = t.replace(/[^A-Za-z]/g, "");
   if (letters.length < 8) return false;
   return letters.replace(/[^A-Z]/g, "").length / letters.length >= 0.62;

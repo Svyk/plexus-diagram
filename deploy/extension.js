@@ -7391,7 +7391,15 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
     delete fig.pageImage;
     kept.push(fig);
   }
-  return { figures: rejectFalseFigures(kept, { lines, pageW, pageH }), used };
+  return {
+    figures: rejectFalseFigures(kept, {
+      lines,
+      pageW,
+      pageH,
+      strokes: [...inkBoxes, ...prims.filter((p) => p.kind === "rule" || p.kind === "shape")]
+    }),
+    used
+  };
 }
 function rasterScanPage({ images, shapes, words, pageW, pageH }) {
   const segs = (shapes || []).reduce((n2, s) => n2 + (s.segs || 1), 0);
@@ -8124,10 +8132,119 @@ function lineCenterIn(line, box2) {
   const cy = ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2;
   return cx >= box2.x0 && cx <= box2.x1 && cy >= box2.y0 && cy <= box2.y1;
 }
-function clipBodyColumn(fig, lines) {
+function strokeGeom(s) {
+  if (!s || s.x0 == null || s.y0 == null || s.x1 == null || s.y1 == null) return null;
+  const x0 = Math.min(s.x0, s.x1);
+  const x1 = Math.max(s.x0, s.x1);
+  const y0 = Math.min(s.y0, s.y1);
+  const y1 = Math.max(s.y0, s.y1);
+  return { ...s, x0, y0, x1, y1, w: x1 - x0, h: y1 - y0, kind: s.kind || "ink" };
+}
+function strokeInBox(box2, g) {
+  if (g.h < 1 && g.w >= 1) {
+    return g.y0 >= box2.y0 - 1 && g.y0 <= box2.y1 + 1 && Math.min(box2.x1, g.x1) - Math.max(box2.x0, g.x0) > 1;
+  }
+  if (g.w < 1 && g.h >= 1) {
+    return g.x0 >= box2.x0 - 1 && g.x0 <= box2.x1 + 1 && Math.min(box2.y1, g.y1) - Math.max(box2.y0, g.y0) > 1;
+  }
+  return Math.min(box2.x1, g.x1) - Math.max(box2.x0, g.x0) > 0 && Math.min(box2.y1, g.y1) - Math.max(box2.y0, g.y0) > 0;
+}
+function drawingParts(box2, strokes, pageW, pageH) {
+  if (!box2 || !(pageW > 0) || !(pageH > 0)) return [];
+  const pageArea = pageW * pageH;
+  const inside8 = [];
+  for (const s of strokes || []) {
+    const g = strokeGeom(s);
+    if (!g || g.kind === "image") continue;
+    if (!strokeInBox(box2, g)) continue;
+    inside8.push(g);
+  }
+  if (!inside8.length) return [];
+  const blobs = inside8.filter((g) => (g.kind === "ink" || g.kind === "box") && g.w * g.h > 0.015 * pageArea && Math.min(g.w, g.h) >= 8);
+  const curves = inside8.filter((g) => g.kind === "shape" && ((g.segs || g.n || 0) >= 8 || g.w * g.h > 0.015 * pageArea && Math.min(g.w, g.h) >= 8));
+  const rules = inside8.filter((g) => g.kind === "rule");
+  const longH = rules.filter((g) => g.w >= 36 && g.h <= 4);
+  const longV = rules.filter((g) => g.h >= 36 && g.w <= 4);
+  const shortH = rules.filter((g) => g.w >= 8 && g.w < 36 && g.h <= 4);
+  const shortV = rules.filter((g) => g.h >= 8 && g.h < 36 && g.w <= 4);
+  const hatch = shortH.length >= 6 || shortV.length >= 6;
+  const axes = longH.length >= 1 && longV.length >= 1 && (shortH.length + shortV.length >= 4 || curves.length > 0 || blobs.length > 0);
+  const fragments = inside8.filter((g) => (g.kind === "ink" || g.kind === "shape") && Math.min(g.w, g.h) >= 6 && Math.max(g.w, g.h) >= 12 && g.w * g.h >= 80);
+  const fragHull = hullOf(fragments);
+  const fragArea = fragments.reduce((n2, g) => n2 + g.w * g.h, 0);
+  const many = fragments.length >= 8 && fragHull && fragArea >= 0.25 * Math.max(1, boxArea(fragHull));
+  if (!blobs.length && !curves.length && !hatch && !axes && !many) return [];
+  const parts = [];
+  if (blobs.length) parts.push(...blobs);
+  if (curves.length) parts.push(...curves);
+  if (hatch) parts.push(...shortH.length >= 6 ? shortH : shortV);
+  if (axes) parts.push(...longH, ...longV, ...shortH, ...shortV);
+  if (many) parts.push(...fragments);
+  return parts;
+}
+function drawingCovers(box2, parts, minShare) {
+  if (!parts.length) return false;
+  const hull = hullOf(parts);
+  if (!hull || insideFrac(hull, box2) < 0.8) return false;
+  const boxA = boxArea(box2);
+  if (!(boxA > 0)) return false;
+  const hw = Math.max(0, hull.x1 - hull.x0);
+  const hh = Math.max(0, hull.y1 - hull.y0);
+  const hullA = Math.max(hw * hh, hw * 8, hh * 8);
+  return hullA >= minShare * boxA;
+}
+function markMeasure(g) {
+  if (g.h <= 4 && g.w >= 8) return g.w;
+  if (g.w <= 4 && g.h >= 8) return g.h;
+  return Math.max(g.w, 0.6) * Math.max(g.h, 0.6);
+}
+function markOverlap(g, next) {
+  if (g.h <= 4 && g.w >= 8) {
+    if (g.y0 < next.y0 - 1.5 || g.y0 > next.y1 + 1.5) return 0;
+    return Math.max(0, Math.min(next.x1, g.x1) - Math.max(next.x0, g.x0));
+  }
+  if (g.w <= 4 && g.h >= 8) {
+    if (g.x0 < next.x0 - 1.5 || g.x0 > next.x1 + 1.5) return 0;
+    return Math.max(0, Math.min(next.y1, g.y1) - Math.max(next.y0, g.y0));
+  }
+  const ox = Math.max(0, Math.min(next.x1, g.x1) - Math.max(next.x0, g.x0));
+  const oy = Math.max(0, Math.min(next.y1, g.y1) - Math.max(next.y0, g.y0));
+  return ox * oy;
+}
+function drawingKept(box2, next, parts) {
+  if (!drawingCovers(box2, parts, 0.2)) return true;
+  let area = 0;
+  let kept = 0;
+  for (const p of parts) {
+    const a = markMeasure(p);
+    area += a;
+    kept += markOverlap(p, next);
+  }
+  return !(area > 0) || kept >= 0.75 * area;
+}
+function spansPlate(line, box2, parts) {
+  const lw = (line.x1 ?? 0) - (line.x0 ?? 0);
+  const bw = box2.x1 - box2.x0;
+  if (bw > 0 && lw >= 0.62 * bw) return true;
+  if (!parts.length) return false;
+  const x0 = Math.min(...parts.map((p) => p.x0));
+  const x1 = Math.max(...parts.map((p) => p.x1));
+  const dw = x1 - x0;
+  if (dw < 24) return false;
+  return Math.min(line.x1, x1) - Math.max(line.x0, x0) >= 0.7 * dw;
+}
+function textBlockBox(box2, lines) {
+  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box2));
+  if (prose.length < 6) return false;
+  const span = Math.max(...prose.map((line) => line.y1)) - Math.min(...prose.map((line) => line.y0));
+  return span >= 0.55 * (box2.y1 - box2.y0);
+}
+function clipBodyColumn(fig, lines, strokes, pageW, pageH) {
   const box2 = figBox(fig);
   if (!box2) return false;
-  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box2));
+  if (textBlockBox(box2, lines)) return false;
+  const parts = drawingParts(box2, strokes, pageW, pageH);
+  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box2) && !spansPlate(line, box2, parts));
   if (prose.length < 3) return false;
   const mid = (box2.x0 + box2.x1) / 2;
   const right = prose.filter((line) => (line.x0 + line.x1) / 2 >= mid);
@@ -8141,10 +8258,11 @@ function clipBodyColumn(fig, lines) {
     if (box2.x1 - cut >= 48 && cut - box2.x0 >= 24) next = { ...next, x0: cut + 2 };
   }
   if (next.x0 === box2.x0 && next.x1 === box2.x1) return false;
+  if (!drawingKept(box2, next, parts)) return false;
   writeFigBox(fig, next);
   return true;
 }
-function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, pageH = 792, peers = [] } = {}) {
+function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, pageH = 792, peers = [], strokes = [] } = {}) {
   const box2 = figBox(fig);
   if (!box2 || !(pageW > 0) || !(pageH > 0)) return null;
   const w = box2.x1 - box2.x0;
@@ -8152,6 +8270,9 @@ function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, pageH = 
   const area = w * h;
   const pageArea = pageW * pageH;
   if (!(area > 0)) return null;
+  const textBlock = textBlockBox(box2, lines);
+  const parts = drawingParts(box2, strokes, pageW, pageH);
+  if (drawingCovers(box2, parts, 0.5) || drawingCovers(box2, parts, 0.2) && !textBlock) return null;
   const touchTop = box2.y0 <= Math.max(4, 0.02 * pageH);
   const touchBot = box2.y1 >= pageH - Math.max(4, 0.02 * pageH);
   const touchLeft = box2.x0 <= Math.max(4, 0.02 * pageW);
@@ -8171,14 +8292,10 @@ function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, pageH = 
     if (!tb || tb.length < 4) continue;
     if (insideFrac(box2, { x0: tb[0], y0: tb[1], x1: tb[2], y1: tb[3] }) >= 0.55) return "table-border";
   }
-  const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box2));
-  if (prose.length >= 6) {
-    const span = Math.max(...prose.map((line) => line.y1)) - Math.min(...prose.map((line) => line.y0));
-    if (span >= 0.55 * h) return "text-block";
-  }
+  if (textBlock) return "text-block";
   return null;
 }
-function clipBodyBand(fig, lines) {
+function clipBodyBand(fig, lines, strokes, pageW, pageH) {
   const box2 = figBox(fig);
   if (!box2) return;
   const prose = (lines || []).filter((line) => proseLine(line) && lineCenterIn(line, box2));
@@ -8187,17 +8304,22 @@ function clipBodyBand(fig, lines) {
   const top = Math.min(...prose.map((line) => line.y0));
   const h = box2.y1 - box2.y0;
   if (bot - top <= 0.45 * h && bot - box2.y0 <= 0.45 * h && box2.y1 - bot >= 48) {
-    writeFigBox(fig, { ...box2, y0: bot + 2 });
+    const next = { ...box2, y0: bot + 2 };
+    if (!drawingKept(box2, next, drawingParts(box2, strokes, pageW, pageH))) return;
+    writeFigBox(fig, next);
   }
 }
 function rejectFalseFigures(figures, opts = {}) {
   const list = figures || [];
+  const strokes = opts.strokes || [];
+  const pageW = opts.pageW || 612;
+  const pageH = opts.pageH || 792;
   for (const fig of list) {
-    clipBodyColumn(fig, opts.lines || []);
-    clipBodyBand(fig, opts.lines || []);
+    clipBodyColumn(fig, opts.lines || [], strokes, pageW, pageH);
+    clipBodyBand(fig, opts.lines || [], strokes, pageW, pageH);
   }
   const peers = list.map((fig) => fig);
-  return list.filter((fig) => !falseFigureReason(fig, { ...opts, peers }));
+  return list.filter((fig) => !falseFigureReason(fig, { ...opts, peers, strokes }));
 }
 function plateLabelText(text3, key) {
   if (key == null) return false;
@@ -8220,6 +8342,10 @@ function titleLikePlateLine(text3) {
   if (figCaptionKey(t) != null) return false;
   if (/^(?:plates?|tafeln?|tafel|taf\.?|abb(?:ildung)?)\b/i.test(t)) return true;
   if (words.length < 4) return false;
+  const edgeNum = (w) => /^\d{1,4}[.]?$/.test(w);
+  if (edgeNum(words[0]) || edgeNum(words[words.length - 1])) return false;
+  if (/\bcontinued\b/i.test(t)) return false;
+  if (/\b\d{4}\s*[-–—]\s*\d{2,4}\b/.test(t)) return false;
   const letters = t.replace(/[^A-Za-z]/g, "");
   if (letters.length < 8) return false;
   return letters.replace(/[^A-Z]/g, "").length / letters.length >= 0.62;
@@ -9677,7 +9803,17 @@ function parsePageGeometry(data, n2) {
     }
   }
   if (ocr) absorbFigureTables(tables, figures);
-  figures = rejectFalseFigures(figures, { lines, tables, pageW: w, pageH: h });
+  figures = rejectFalseFigures(figures, {
+    lines,
+    tables,
+    pageW: w,
+    pageH: h,
+    strokes: [
+      ...(graphics.ink || []).map((b) => ({ ...b, kind: "ink" })),
+      ...(graphics.shapes || []).map((s) => ({ ...s, kind: "shape" })),
+      ...(graphics.rules || []).map((r) => ({ ...r, kind: "rule" }))
+    ]
+  });
   for (let i = tables.length - 1; i >= 0; i--) {
     const t = tables[i];
     if (t.method !== "stream" || !figureLabels(t, figures)) continue;
@@ -10555,7 +10691,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 18;
+    PARSE_REV = 19;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;

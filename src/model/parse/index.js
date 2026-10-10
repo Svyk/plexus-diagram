@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 18;
+export const PARSE_REV = 19;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -152,7 +152,14 @@ export function parsePageGeometry(data, n) {
     }
   }
   if (ocr) absorbFigureTables(tables, figures);
-  figures = rejectFalseFigures(figures, { lines, tables, pageW: w, pageH: h });
+  figures = rejectFalseFigures(figures, {
+    lines, tables, pageW: w, pageH: h,
+    strokes: [
+      ...(graphics.ink || []).map((b) => ({ ...b, kind: "ink" })),
+      ...(graphics.shapes || []).map((s) => ({ ...s, kind: "shape" })),
+      ...(graphics.rules || []).map((r) => ({ ...r, kind: "rule" })),
+    ],
+  });
   // Rule bands beside a chart that only hold its labels go back to the text pass.
   for (let i = tables.length - 1; i >= 0; i--) {
     const t = tables[i];

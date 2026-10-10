@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.13.0 — 2026-10-10
+
+Handwriting and photographed pages read much better in High accuracy, more old tables come out exactly, and every figure on our old-scan test pages is found.
+
+- **Handwriting and photos.** When Apple Vision is unsure of a page (handwriting, a photographed letter or menu), High accuracy keeps Vision's reading and also asks the page reader (PaddleOCR-VL) for that page's text. Letters, recipe books and field notes now read as prose; name lists and menus stay text instead of becoming tables. A handwritten letter takes about 10–20 seconds.
+- **Tables on old scans.** Rotated column heads sit in their own columns, brackets inside a formula cell are not grid lines, and subscripts, thousands marks, degree signs, group heads and totals are tidied. A 1960 typewritten NASA table now scores 0.98 on cell content (was 0.51).
+- **Figures and captions.** Apparatus drawings with labels, rotated plates with their title along the edge, and pages with two figures are found, and captions printed side by side are split by column. On our 27-page set of 1890–1920 scans every figure is now found with no extras, and 82% of captions are linked (was 55%).
+- Cached parses from earlier versions are refreshed automatically.
+
 ## 3.12.0 — 2026-10-10
 
 Photographed and scanned pages: figures found inside the page, no invented tables, and more tables read right on old scans.

@@ -857,13 +857,26 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   });
   let conforming = 0;
   let counted = 0;
-  // Two tokens of one row in one column are one cell when both sit inside that
-  // column's interval (other rows have ink across the gap between them) and the
-  // pair is not two numbers. "May" + "2, 1900." is a date; "12" + "34" is a
-  // column the projection merged.
+  // "May" + "2, 1900." is one date cell when both pieces sit inside the column.
+  // Two numbers, or two words of a sentence, are a column the projection merged.
   const tol = 0.5 * bodySize;
   const insideColumn = (p) => p.span === 1 && p.t.x0 >= cols[p.c].x0 - tol && p.t.x1 <= cols[p.c].x1 + tol;
-  const wrappedPair = (a, b) => insideColumn(a) && insideColumn(b) && !(valueToken(a.t.text) && valueToken(b.t.text));
+  const monthWord = (s) => /^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\.?$/i.test(s);
+  const dateRest = (s) => /^(?:\d{1,2},?\s*)?(?:1[89]|20)\d{2}[.,]?$/.test(s);
+  const bareDay = (s) => /^\d{1,2},$/.test(s);
+  const yearToken = (s) => /^(?:1[89]|20)\d{2}[.,]?$/.test(s);
+  const wrappedPair = (a, b, row) => {
+    if (!insideColumn(a) || !insideColumn(b)) return false;
+    const ta = String(a.t.text || "").trim();
+    const tb = String(b.t.text || "").trim();
+    if ((monthWord(ta) && dateRest(tb)) || (monthWord(tb) && dateRest(ta))) return true;
+    // "May" + "2," is one date when both sit in the column. It is not one date
+    // when the year is already a token in a later column: that column is a split
+    // date, and treating the pair as a wrap keeps the extra column.
+    const bare = (monthWord(ta) && bareDay(tb)) || (monthWord(tb) && bareDay(ta));
+    if (!bare) return false;
+    return !row.some((p) => p !== a && p !== b && yearToken(String(p.t.text || "").trim()));
+  };
   placed.forEach((row) => {
     // Group labels and spanning headers (one token) enter a run on their own terms.
     if (row.length < 2) return;
@@ -872,7 +885,7 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     let dup = false;
     for (const p of row) {
       const prev = seen.get(p.c);
-      if (prev && !wrappedPair(prev, p)) dup = true;
+      if (prev && !wrappedPair(prev, p, row)) dup = true;
       if (!prev) seen.set(p.c, p);
     }
     // Single-line rows (free mode) must map one token per column; banded rows may wrap inside a cell.

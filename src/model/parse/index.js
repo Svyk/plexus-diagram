@@ -22,7 +22,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 32;
+export const PARSE_REV = 33;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -1138,8 +1138,8 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       const block = { id, type: "table", page: pg.n, bbox: t.bbox, rows: t.rows, cols: t.cols, headerRows: t.headerRows, headerCols: t.headerCols, cells: t.cells, caption: cap ? captionIds.get(cap) : null, method: t.method, grid: t.grid, confidence: t.confidence, engine: "builtin" };
       if (pg.ocr) {
         annotateOcrCells(block, pg.words);
-        block.repairs = repairOcrTable(block);
-      } else repairTableReading(block, { tidy: false });
+        block.repairs = repairOcrTable(block, { glyphs: options.glyphs });
+      } else repairTableReading(block, { tidy: false, glyphs: options.glyphs });
       if (cap) blocks[captionIds.get(cap)].for = id;
       blocks[id] = block;
       units.push({ id, x0: t.bbox[0], y0: t.bbox[1], x1: t.bbox[2], y1: t.bbox[3] });
@@ -1328,6 +1328,10 @@ function sectionLineBetween(tb, a, b, bodySize) {
   if (!text || CAPTION_RE.test(text)) return null;
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length > 12 || words.length < 2) return null;
+  // A line set in capitals is the title of the next table ("WITH LOW-PRESSURE
+  // MANOMETER."), not a section row inside the one above.
+  const letters = text.replace(/[^A-Za-z]+/g, "");
+  if (letters.length >= 6 && letters === letters.toUpperCase()) return null;
   if (tb.bbox.y1 - tb.bbox.y0 > 1.8 * (bodySize || 10)) return null;
   const x0 = Math.min(a.bbox[0], b.bbox[0]);
   const x1 = Math.max(a.bbox[2], b.bbox[2]);

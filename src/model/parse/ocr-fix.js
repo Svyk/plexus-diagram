@@ -920,14 +920,17 @@ export function repairTableReading(table, options = {}) {
   joinScatteredWrap(table);
   foldScientificSplit(table);
   dropBannerNote(table);
-  repairGlyphDigits(table);
+  // Glyph fixes manufacture numbers ("o" → "0", "l 119" → ".119"). The
+  // scanLayer-vs-fresh choice is a count of cells that already read as numbers,
+  // so those fixes run after the choice, on the table that won.
+  if (options.glyphs !== false) repairGlyphDigits(table);
   return table;
 }
 
 // Glyphs that are digits only in the column they sit in. A lone "o" beside a
 // real 0 is 0. "l 119" in a column of ".0498" is ".119". A consecutive run of
 // small integers with one broken mark ("~") is the missing integer.
-function repairGlyphDigits(table) {
+export function repairGlyphDigits(table) {
   const start = table.headerRows || 0;
   const textOf = (cell) => String(cell?.text || "").trim();
   const body = (c) => table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= start);
@@ -1000,12 +1003,12 @@ export function polishTableText(table, options) {
 }
 
 // Everything above, in order, for one table on an OCR page.
-export function repairOcrTable(table) {
+export function repairOcrTable(table, options = {}) {
   unspanNarrowCells(table);
   const years = repairYearHeader(table);
   const { fixed, unrepaired, numericCols } = repairNumericColumns(table);
   const spans = spanNoteRows(table, { numericCols });
-  polishTableText(table, { tidy: false });
+  polishTableText(table, { tidy: false, glyphs: options.glyphs });
   return { fixed: [...years, ...fixed], unrepaired, spans, numericCols };
 }
 

@@ -4,6 +4,7 @@
 
 import { sha256Hex, optionsHash } from "../model/parse-hash.js";
 import { assembleDocument, parsePageGeometry } from "../model/parse/index.js";
+import { repairGlyphDigits } from "../model/parse/ocr-fix.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { toGridModelSpec } from "../model/parse-to-grid.js";
 import { restorableParse } from "./parse-store.js";
@@ -95,8 +96,12 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
       records.push(parsePageGeometry(await loadPageData(page), n));
       try { page.cleanup?.(); } catch { /* ignore */ }
     }
-    const doc = assembleDocument(records, { numPages, info, sha256: sha, options: OPTIONS, from, to, engineVersion: `plexus-builtin/pdfjs-${pdfjsLib.version || "unknown"}` });
-    return { doc, records, bytes, sha256: sha, numPages, info, full: from === 1 && to === numPages };
+    // The scan comparison counts cells that already read as numbers. Glyph repairs
+    // stay off that copy; the returned document has them, and readScan repairs the winner.
+    const raw = assembleDocument(records, { numPages, info, sha256: sha, options: { ...OPTIONS, glyphs: false }, from, to, engineVersion: `plexus-builtin/pdfjs-${pdfjsLib.version || "unknown"}` });
+    const doc = structuredClone(raw);
+    for (const block of Object.values(doc.blocks || {})) if (block?.type === "table") repairGlyphDigits(block);
+    return { doc, raw, records, bytes, sha256: sha, numPages, info, full: from === 1 && to === numPages };
   }
 
   async function ocrState(source) {
@@ -142,7 +147,7 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
       if (source && typeof source.ocr === "function") {
         ocr = { source: source === helper ? "helper" : "injected", state: "ready" };
         if (!ctx) ctx = await builtin(url, null, signal);
-        const read = await readScan({ helper: source, bytes: ctx.bytes, sha256: ctx.sha256, base: ctx.doc, records: ctx.records, pages: scanPages, numPages: ctx.numPages, info: ctx.info, options: OPTIONS, signal });
+        const read = await readScan({ helper: source, bytes: ctx.bytes, sha256: ctx.sha256, base: ctx.raw || ctx.doc, records: ctx.records, pages: scanPages, numPages: ctx.numPages, info: ctx.info, options: OPTIONS, signal });
         doc = read.doc;
         engine = doc.engine;
         from = from === "cache" ? "cache+ocr" : "ocr";

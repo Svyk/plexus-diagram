@@ -2,7 +2,7 @@
 // pdfjs-dist build): page -> { items, ops, w, h, rotation, transform, fonts }. No graph access.
 
 import { assembleDocument, dropFigureLabelTables, parsePageGeometry, parsePdf } from "../model/parse/index.js";
-import { applyCellOcr, cellsToReread, tidyDocumentTables } from "../model/parse/ocr-fix.js";
+import { applyCellOcr, cellsToReread, repairGlyphDigits, tidyDocumentTables } from "../model/parse/ocr-fix.js";
 import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lines.js";
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
 import { voteOcrBodies, weakOcrPage } from "../model/parse/ocr-vote.js";
@@ -181,6 +181,9 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   const lined = wanted.length && lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
   if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options: scanOptions, from, to, sha256 });
   const doc = merged.doc;
+  // The choice counted cells that already read as numbers. Digit-glyph repairs
+  // ("o" → 0, "l 119" → ".119") run on the winner, before a VLM reading is compared.
+  for (const block of Object.values(doc.blocks || {})) if (block?.type === "table") repairGlyphDigits(block);
   const next = merged.records;
   let vlmApplied = [];
   let vlmFigures = [];
@@ -326,7 +329,7 @@ export function mergeOcrPageRecords({ base, ocrPages, records, pages, numPages, 
   next.sort((a, b) => a.n - b.n);
   const lo = from ?? next[0]?.n ?? 1;
   const hi = to ?? next[next.length - 1]?.n ?? numPages;
-  const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...(base?.options || {}), ...options, ocr: "vision" }, from: lo, to: hi });
+  const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...(base?.options || {}), ...options, ocr: "vision", glyphs: false }, from: lo, to: hi });
   const merged = mergeOcrDocument(base, fresh, { pages: wanted });
   return { doc: merged.doc, choices: merged.choices, records: next };
 }

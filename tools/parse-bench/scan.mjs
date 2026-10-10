@@ -123,7 +123,7 @@ async function sourceHelper(pdfPath, source, log, helper) {
 export async function runScan(pdfPath, { pages, log = () => {}, layerOnly = false, source = "vision", helper = null, vlm = false } = {}) {
   const t0 = performance.now();
   const { records, info, numPages, from, to, bytes } = await builtinRecords(pdfPath, { pages });
-  const base = assembleDocument(records, { numPages, info, from, to });
+  const base = assembleDocument(records, { numPages, info, from, to, options: layerOnly ? {} : { glyphs: false } });
   const builtinMs = performance.now() - t0;
   if (layerOnly) return { doc: base, base, ms: builtinMs, builtinMs, pages: [], choices: [], rereads: [], source };
   const ocrSource = await sourceHelper(pdfPath, source, log, helper);

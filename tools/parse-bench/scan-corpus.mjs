@@ -228,7 +228,9 @@ async function helperFor(engine, pdfPath, cacheDir, helperFlag) {
 async function runEngine(pdfPath, page, engine, cacheDir, helperFlag) {
   const t0 = performance.now();
   const { records, info, numPages, from, to, bytes } = await builtinRecords(pdfPath, { pages: [page, page] });
-  const base = assembleDocument(records, { numPages, info, from, to });
+  // Glyph repairs wait until readScan has chosen the layer or the fresh OCR.
+  // Counting the manufactured numbers would keep a broken text layer.
+  const base = assembleDocument(records, { numPages, info, from, to, options: engine === "builtin" ? {} : { glyphs: false } });
   const builtinMs = performance.now() - t0;
   if (engine === "builtin") return { doc: base, ms: builtinMs, builtinMs };
   const helper = await helperFor(engine, pdfPath, cacheDir, helperFlag);

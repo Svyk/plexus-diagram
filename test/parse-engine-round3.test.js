@@ -358,6 +358,30 @@ test("stitchTables joins a section banner and the same banner above the first pi
   assert.equal(joined[0].cells.find((c) => /2,000/.test(c.text)).r, 4);
 });
 
+test("stitchTables joins two pieces of one grid across a short section line", () => {
+  const cell = (r, c, text) => ({ r, c, rowSpan: 1, colSpan: 1, text, header: false });
+  const piece = (y0, rows, texts) => ({
+    method: "stream", page: 1, cols: 2, rows, headerRows: 0,
+    bbox: [80, y0, 400, y0 + rows * 14],
+    grid: { xs: [80, 240, 400], ys: Array.from({ length: rows + 1 }, (_, i) => y0 + i * 14) },
+    cells: texts.map((text, i) => cell(i, 0, text)),
+    confidence: 1,
+  });
+  const a = piece(100, 4, ["Conklin", "Creelman", "DeBurn", "Dixon"]);
+  const b = piece(186, 3, ["Alexander", "Crummey", "Sontheimer"]);
+  const line = { type: "para", text: "Harbor Commissioners for the Port of San Jose, 1913-1924.", bbox: { x0: 90, y0: 160, x1: 390, y1: 174 } };
+  const blocks = [line, { type: "para", text: "A caption of the next table sits too far aside and stays.", bbox: { x0: 420, y0: 160, x1: 560, y1: 174 } }];
+  const joined = stitchTables([a, b], blocks, 10);
+  assert.equal(joined.length, 1);
+  assert.equal(joined[0].rows, 8);
+  assert.equal(joined[0].cells.find((c) => c.r === 4).text, line.text);
+  assert.equal(joined[0].cells.find((c) => c.r === 4).colSpan, 2);
+  assert.equal(joined[0].cells.find((c) => c.r === 5).text, "Alexander");
+  assert.equal(blocks.length, 1);
+  const title = { type: "para", text: "WITH LOW-PRESSURE MANOMETER.", bbox: { x0: 90, y0: 160, x1: 390, y1: 174 } };
+  assert.equal(stitchTables([piece(100, 4, ["Conklin", "Creelman", "DeBurn", "Dixon"]), piece(186, 3, ["Alexander", "Crummey", "Sontheimer"])], [title], 10).length, 2);
+});
+
 test("absorbTableFooters takes the line on the bottom rule and leaves the paragraph under it", () => {
   const table = {
     method: "lattice", page: 1, cols: 3, rows: 2, headerRows: 1,

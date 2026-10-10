@@ -6715,7 +6715,19 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   let counted = 0;
   const tol = 0.5 * bodySize;
   const insideColumn = (p) => p.span === 1 && p.t.x0 >= cols[p.c].x0 - tol && p.t.x1 <= cols[p.c].x1 + tol;
-  const wrappedPair = (a, b) => insideColumn(a) && insideColumn(b) && !(valueToken(a.t.text) && valueToken(b.t.text));
+  const monthWord = (s) => /^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\.?$/i.test(s);
+  const dateRest = (s) => /^(?:\d{1,2},?\s*)?(?:1[89]|20)\d{2}[.,]?$/.test(s);
+  const bareDay = (s) => /^\d{1,2},$/.test(s);
+  const yearToken = (s) => /^(?:1[89]|20)\d{2}[.,]?$/.test(s);
+  const wrappedPair = (a, b, row4) => {
+    if (!insideColumn(a) || !insideColumn(b)) return false;
+    const ta = String(a.t.text || "").trim();
+    const tb = String(b.t.text || "").trim();
+    if (monthWord(ta) && dateRest(tb) || monthWord(tb) && dateRest(ta)) return true;
+    const bare = monthWord(ta) && bareDay(tb) || monthWord(tb) && bareDay(ta);
+    if (!bare) return false;
+    return !row4.some((p) => p !== a && p !== b && yearToken(String(p.t.text || "").trim()));
+  };
   placed.forEach((row4) => {
     if (row4.length < 2) return;
     counted++;
@@ -6723,7 +6735,7 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     let dup = false;
     for (const p of row4) {
       const prev = seen.get(p.c);
-      if (prev && !wrappedPair(prev, p)) dup = true;
+      if (prev && !wrappedPair(prev, p, row4)) dup = true;
       if (!prev) seen.set(p.c, p);
     }
     const ok = seen.size >= 2 && (bands ? true : !dup);
@@ -11320,7 +11332,7 @@ function repairTableReading(table, options = {}) {
   joinScatteredWrap(table);
   foldScientificSplit(table);
   dropBannerNote(table);
-  repairGlyphDigits(table);
+  if (options.glyphs !== false) repairGlyphDigits(table);
   return table;
 }
 function repairGlyphDigits(table) {
@@ -11390,12 +11402,12 @@ function polishTableText(table, options) {
   repairTableReading(table, options);
   return table;
 }
-function repairOcrTable(table) {
+function repairOcrTable(table, options = {}) {
   unspanNarrowCells(table);
   const years = repairYearHeader(table);
   const { fixed, unrepaired, numericCols } = repairNumericColumns(table);
   const spans = spanNoteRows(table, { numericCols });
-  polishTableText(table, { tidy: false });
+  polishTableText(table, { tidy: false, glyphs: options.glyphs });
   return { fixed: [...years, ...fixed], unrepaired, spans, numericCols };
 }
 function tableNumericValidity(table) {
@@ -13246,8 +13258,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       const block = { id, type: "table", page: pg.n, bbox: t.bbox, rows: t.rows, cols: t.cols, headerRows: t.headerRows, headerCols: t.headerCols, cells: t.cells, caption: cap4 ? captionIds.get(cap4) : null, method: t.method, grid: t.grid, confidence: t.confidence, engine: "builtin" };
       if (pg.ocr) {
         annotateOcrCells(block, pg.words);
-        block.repairs = repairOcrTable(block);
-      } else repairTableReading(block, { tidy: false });
+        block.repairs = repairOcrTable(block, { glyphs: options.glyphs });
+      } else repairTableReading(block, { tidy: false, glyphs: options.glyphs });
       if (cap4) blocks[captionIds.get(cap4)].for = id;
       blocks[id] = block;
       units.push({ id, x0: t.bbox[0], y0: t.bbox[1], x1: t.bbox[2], y1: t.bbox[3] });
@@ -13408,6 +13420,8 @@ function sectionLineBetween(tb, a, b, bodySize) {
   if (!text3 || CAPTION_RE.test(text3)) return null;
   const words = text3.split(/\s+/).filter(Boolean);
   if (words.length > 12 || words.length < 2) return null;
+  const letters = text3.replace(/[^A-Za-z]+/g, "");
+  if (letters.length >= 6 && letters === letters.toUpperCase()) return null;
   if (tb.bbox.y1 - tb.bbox.y0 > 1.8 * (bodySize || 10)) return null;
   const x0 = Math.min(a.bbox[0], b.bbox[0]);
   const x1 = Math.max(a.bbox[2], b.bbox[2]);
@@ -13634,7 +13648,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 32;
+    PARSE_REV = 33;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -47405,6 +47419,7 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   const lined = wanted.length && lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
   if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options: scanOptions, from, to, sha256 });
   const doc = merged.doc;
+  for (const block of Object.values(doc.blocks || {})) if (block?.type === "table") repairGlyphDigits(block);
   const next = merged.records;
   let vlmApplied = [];
   let vlmFigures = [];
@@ -47533,7 +47548,7 @@ function mergeOcrPageRecords({ base, ocrPages, records, pages, numPages, info = 
   next.sort((a, b) => a.n - b.n);
   const lo = from ?? next[0]?.n ?? 1;
   const hi = to ?? next[next.length - 1]?.n ?? numPages;
-  const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...base?.options || {}, ...options, ocr: "vision" }, from: lo, to: hi });
+  const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...base?.options || {}, ...options, ocr: "vision", glyphs: false }, from: lo, to: hi });
   const merged = mergeOcrDocument(base, fresh, { pages: wanted });
   return { doc: merged.doc, choices: merged.choices, records: next };
 }
@@ -79460,6 +79475,7 @@ init_board();
 // src/host/pdf-tables.js
 init_parse_hash();
 init_parse();
+init_ocr_fix();
 var PDF_TABLES_CAPABILITIES = Object.freeze(["tablesFromPdf", "tablesFromPdf.cache", "tablesFromPdf.scan.helper", "tablesFromPdf.scan.source"]);
 var OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
 var ENGINES2 = ["builtin", "docling", "mixed", "anydoc"];
@@ -79548,8 +79564,10 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
       } catch {
       }
     }
-    const doc = assembleDocument(records, { numPages, info, sha256: sha, options: OPTIONS, from, to, engineVersion: `plexus-builtin/pdfjs-${pdfjsLib.version || "unknown"}` });
-    return { doc, records, bytes, sha256: sha, numPages, info, full: from === 1 && to === numPages };
+    const raw = assembleDocument(records, { numPages, info, sha256: sha, options: { ...OPTIONS, glyphs: false }, from, to, engineVersion: `plexus-builtin/pdfjs-${pdfjsLib.version || "unknown"}` });
+    const doc = structuredClone(raw);
+    for (const block of Object.values(doc.blocks || {})) if (block?.type === "table") repairGlyphDigits(block);
+    return { doc, raw, records, bytes, sha256: sha, numPages, info, full: from === 1 && to === numPages };
   }
   async function ocrState(source) {
     if (source) return { source: source === helper ? "helper" : "injected", state: "ready" };
@@ -79595,7 +79613,7 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
       if (source && typeof source.ocr === "function") {
         ocr = { source: source === helper ? "helper" : "injected", state: "ready" };
         if (!ctx) ctx = await builtin(url, null, signal);
-        const read2 = await readScan({ helper: source, bytes: ctx.bytes, sha256: ctx.sha256, base: ctx.doc, records: ctx.records, pages: scanPages, numPages: ctx.numPages, info: ctx.info, options: OPTIONS, signal });
+        const read2 = await readScan({ helper: source, bytes: ctx.bytes, sha256: ctx.sha256, base: ctx.raw || ctx.doc, records: ctx.records, pages: scanPages, numPages: ctx.numPages, info: ctx.info, options: OPTIONS, signal });
         doc = read2.doc;
         engine = doc.engine;
         from = from === "cache" ? "cache+ocr" : "ocr";

@@ -534,6 +534,43 @@ test("tokenizeLine keeps a footnote letter with its number and leader dots as on
   assert.equal(projectColumns([[name, lead, val], [name, lead, val]]).length, 2);
 });
 
+test("a month and a bare day are not one cell when the year is already the next column", () => {
+  const size = 8;
+  const line = (words, base) => {
+    const ws = words.map(([text, x0, x1]) => ({ text, x0, x1, base, size, y0: base - 6, y1: base + 2, bold: false, mathChars: 0, boldChars: 0, italicChars: 0, mathFontChars: 0, rowSize: size }));
+    const ln = { words: ws, text: ws.map((w) => w.text).join(" "), x0: Math.min(...ws.map((w) => w.x0)), x1: Math.max(...ws.map((w) => w.x1)), y0: base - 6, y1: base + 2, base, size, chars: ws.reduce((n, w) => n + w.text.length, 0), bold: false, mathShare: 0 };
+    ln.lines = [ln];
+    return ln;
+  };
+  // Other rows carry one token across the day, so the month and the day share a
+  // column while the year stays in the next one. Wrapping the pair would keep that
+  // extra column; the year has to stay with the day or the row has to drop out.
+  const split = (name, month, day, year) => [
+    [name, 20, 70], ["Aug.", 90, 110], ["2, 1911", 125, 165],
+    [month, 200, 220], [day, 234, 248], [year, 280, 320],
+  ];
+  const span = (name) => [
+    [name, 20, 70], ["Jan.", 90, 110], ["9, 1923", 125, 165], ["Present.", 200, 255],
+  ];
+  const specs = [
+    split("Blaney", "Mar.", "1,", "1917."),
+    split("Darlington", "Jan.", "9,", "1923."),
+    split("Mansfield", "Jan.", "8,", "1923."),
+    split("Phillips", "June", "18,", "1919."),
+    split("Stern", "Dec.", "21,", "1918."),
+    split("Towne", "Jan.", "15,", "1914."),
+    split("Whitmore", "Oct.", "6,", "1918."),
+    ...["Edwards", "Everding", "Foster", "Gardner", "Hayes", "Ingram", "Jones", "Keller", "Lambert", "Morton", "Norris", "Owens", "Parker"].map(span),
+  ];
+  const tables = detectStreamRuns(specs.map((words, i) => line(words, 30 + i * 14)), { ocr: true }).filter((t) => !t.type || t.type === "table");
+  const blaney = tables.find((t) => t.cells.some((c) => c.text === "Blaney"));
+  if (!blaney) return;
+  const row = blaney.cells.find((c) => c.text === "Blaney").r;
+  const texts = blaney.cells.filter((c) => c.r === row).map((c) => c.text);
+  assert.equal(texts.some((t) => /1917/.test(t) && /Mar/.test(t)), true);
+  assert.equal(texts.some((t) => t === "1917."), false);
+});
+
 test("an unheaded stream grid without a number, date, or time column is not a table", () => {
   const names = [];
   for (let i = 0; i < 6; i++) names.push(row([["RICHARD STOCKTON,", 70], ["GEORGE READ,", 300]], 100 + i * 14));

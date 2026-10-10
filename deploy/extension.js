@@ -2044,13 +2044,13 @@ function highlightModel(input) {
   if (!record) return null;
   const block = typeof src.string === "string" ? src.string : "";
   const rawType = typeof record.type === "string" ? record.type : "";
-  const area = rawType === "area" || block.includes("![");
+  const area2 = rawType === "area" || block.includes("![");
   const stored = contentTextOf(record);
   const page = pageNumberOf(record);
   return {
-    type: area ? "area" : rawType || "text",
-    text: area || stored === "" ? stripHighlightTokens(block) : stored,
-    image: area,
+    type: area2 ? "area" : rawType || "text",
+    text: area2 || stored === "" ? stripHighlightTokens(block) : stored,
+    image: area2,
     natural: naturalSize(src.props),
     page,
     color: highlightColor(block),
@@ -2553,8 +2553,8 @@ function pickSmallestRegion(marks) {
   for (const mark of marks || []) {
     const uid = mark?.uid;
     if (!uid) continue;
-    const area = Number(mark.area);
-    const size = Number.isFinite(area) && area > 0 ? area : Number.POSITIVE_INFINITY;
+    const area2 = Number(mark.area);
+    const size = Number.isFinite(area2) && area2 > 0 ? area2 : Number.POSITIVE_INFINITY;
     if (!best || size < best.area) best = { uid, area: size };
   }
   return best?.uid || null;
@@ -4676,14 +4676,14 @@ function withoutEchoDigits(words) {
     if (w.conf == null || w.conf > 0.3 || !/^\d$/.test(w.text)) return true;
     const a = wordBox(w);
     if (!a) return true;
-    const area = Math.max(0.01, (a[2] - a[0]) * (a[3] - a[1]));
+    const area2 = Math.max(0.01, (a[2] - a[0]) * (a[3] - a[1]));
     return !words.some((o) => {
       if (o === w || o.conf != null && o.conf <= w.conf) return false;
       const b = wordBox(o);
       if (!b) return false;
       const ox = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
       const oy = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
-      return ox > 0 && oy > 0 && ox * oy >= 0.25 * area;
+      return ox > 0 && oy > 0 && ox * oy >= 0.25 * area2;
     });
   });
 }
@@ -4804,8 +4804,8 @@ function tabularBetween(words, box2) {
 }
 function boxGridRules(boxes) {
   const big = (boxes || []).filter((b) => b.x1 - b.x0 >= 8 && b.y1 - b.y0 >= 4 && !((luminanceOf(b.fill) ?? 0) >= 0.97));
-  const area = (b) => (b.x1 - b.x0) * (b.y1 - b.y0);
-  const outer = big.filter((b) => !big.some((o) => o !== b && o.x0 <= b.x0 + 0.5 && o.x1 >= b.x1 - 0.5 && o.y0 <= b.y0 + 0.5 && o.y1 >= b.y1 - 0.5 && area(o) > area(b) + 1));
+  const area2 = (b) => (b.x1 - b.x0) * (b.y1 - b.y0);
+  const outer = big.filter((b) => !big.some((o) => o !== b && o.x0 <= b.x0 + 0.5 && o.x1 >= b.x1 - 0.5 && o.y0 <= b.y0 + 0.5 && o.y1 >= b.y1 - 0.5 && area2(o) > area2(b) + 1));
   const clusters = outer.map((b) => ({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, items: [b] }));
   const heights = outer.map((b) => b.y1 - b.y0).sort((a, b) => a - b);
   const rowH = heights.length ? heights[heights.length >> 1] : 0;
@@ -4839,8 +4839,8 @@ function boxGridRules(boxes) {
     const xs2 = uniqPositions(cl.items.flatMap((b) => [b.x0, b.x1]), 3);
     const ys2 = uniqPositions(cl.items.flatMap((b) => [b.y0, b.y1]), 3);
     if (xs2.length < 3 || ys2.length < 3) continue;
-    const covered = cl.items.reduce((n2, b) => n2 + area(b), 0);
-    if (covered < 0.45 * area(cl)) continue;
+    const covered = cl.items.reduce((n2, b) => n2 + area2(b), 0);
+    if (covered < 0.45 * area2(cl)) continue;
     let overlap = 0;
     for (let i = 0; i < cl.items.length; i++) for (let j = i + 1; j < cl.items.length; j++) {
       const a = cl.items[i];
@@ -8384,8 +8384,8 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
     fig.y0 = box2.y0;
     fig.x1 = box2.x1;
     fig.y1 = box2.y1;
-    const area = (fig.x1 - fig.x0) * (fig.y1 - fig.y0);
-    let drop = !fig.pageImage && !fig.fromPlate && area >= 0.7 * pageW * pageH && textChars >= 180;
+    const area2 = (fig.x1 - fig.x0) * (fig.y1 - fig.y0);
+    let drop = !fig.pageImage && !fig.fromPlate && area2 >= 0.7 * pageW * pageH && textChars >= 180;
     if (plates && !fig.fromPlate && !fig.pageImage && (textChars >= 400 || contentsLead(lines))) drop = true;
     if (plates && !fig.fromPlate && !fig.pageImage && lines.some((line) => proseLine(line) && line.y1 > fig.y0 + 1 && line.y0 < fig.y1 - 1 && Math.min(line.x1, fig.x1) - Math.max(line.x0, fig.x0) > 0.5 * (line.x1 - line.x0))) drop = true;
     if (drop) {
@@ -8680,8 +8680,8 @@ function lineIsBody(line) {
   return wordCount2(line.text) >= 8;
 }
 function captionBandLine(line, fig, pageW, pageH, bodySize) {
-  const area = Math.max(0, (fig.x1 - fig.x0) * (fig.y1 - fig.y0));
-  if (!(pageW > 0) || !(pageH > 0) || area < 0.75 * pageW * pageH) return false;
+  const area2 = Math.max(0, (fig.x1 - fig.x0) * (fig.y1 - fig.y0));
+  if (!(pageW > 0) || !(pageH > 0) || area2 < 0.75 * pageW * pageH) return false;
   if (wordCount2(line.text) < 4) return false;
   if ((line.size || 0) < 0.9 * bodySize) return false;
   const mid = ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2;
@@ -8883,8 +8883,8 @@ function canUnion(a, b, lines, bodySize, pageW, pageH) {
   const differentNums = na.size && nb.size && !(na.size === nb.size && [...na].every((n2) => nb.has(n2)));
   if (differentNums && !(sameRow && sharedCaptionBelow(a, b, lines))) return false;
   if (bodyInGap(a, b, lines, bodySize)) return false;
-  const area = (Math.max(a.x1, b.x1) - Math.min(a.x0, b.x0)) * (Math.max(a.y1, b.y1) - Math.min(a.y0, b.y0));
-  if (!a.pageImage && !b.pageImage && area >= 0.68 * pageW * pageH) return false;
+  const area2 = (Math.max(a.x1, b.x1) - Math.min(a.x0, b.x0)) * (Math.max(a.y1, b.y1) - Math.min(a.y0, b.y0));
+  if (!a.pageImage && !b.pageImage && area2 >= 0.68 * pageW * pageH) return false;
   return true;
 }
 function figLabelCount(lines) {
@@ -9155,12 +9155,12 @@ function isolatedInk(boxes, pageW, pageH) {
   return boxes.filter((b) => boxArea(b) < minArea && !big.some((g) => touchesBox(b, g, 6)));
 }
 function insideFrac(inner, outer) {
-  const area = boxArea(inner);
-  if (area <= 0) return 0;
+  const area2 = boxArea(inner);
+  if (area2 <= 0) return 0;
   const ox = Math.min(inner.x1, outer.x1) - Math.max(inner.x0, outer.x0);
   const oy = Math.min(inner.y1, outer.y1) - Math.max(inner.y0, outer.y0);
   if (ox <= 0 || oy <= 0) return 0;
-  return ox * oy / area;
+  return ox * oy / area2;
 }
 function proseLine(line) {
   const words = String(line.text || "").trim().split(/\s+/).filter(Boolean);
@@ -9288,14 +9288,14 @@ function markOverlap(g, next) {
 }
 function drawingKept(box2, next, parts) {
   if (!drawingCovers(box2, parts, 0.2)) return true;
-  let area = 0;
+  let area2 = 0;
   let kept = 0;
   for (const p of parts) {
     const a = markMeasure(p);
-    area += a;
+    area2 += a;
     kept += markOverlap(p, next);
   }
-  return !(area > 0) || kept >= 0.75 * area;
+  return !(area2 > 0) || kept >= 0.75 * area2;
 }
 function spansPlate(line, box2, parts) {
   const lw = (line.x1 ?? 0) - (line.x0 ?? 0);
@@ -9342,18 +9342,18 @@ function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, pageH = 
   if (!box2 || !(pageW > 0) || !(pageH > 0)) return null;
   const w = box2.x1 - box2.x0;
   const h = box2.y1 - box2.y0;
-  const area = w * h;
+  const area2 = w * h;
   const pageArea = pageW * pageH;
-  if (!(area > 0)) return null;
+  if (!(area2 > 0)) return null;
   const textBlock = textBlockBox(box2, lines);
-  if (!fig.fromPlate && fig.kind === "drawing" && (fig.count || 0) >= 18 && area < 0.035 * pageArea) return "texture";
+  if (!fig.fromPlate && fig.kind === "drawing" && (fig.count || 0) >= 18 && area2 < 0.035 * pageArea) return "texture";
   const parts = drawingParts(box2, strokes, pageW, pageH);
   if (drawingCovers(box2, parts, 0.5) || drawingCovers(box2, parts, 0.2) && !textBlock) return null;
   const touchTop = box2.y0 <= Math.max(4, 0.02 * pageH);
   const touchBot = box2.y1 >= pageH - Math.max(4, 0.02 * pageH);
   const touchLeft = box2.x0 <= Math.max(4, 0.02 * pageW);
   const touchRight = box2.x1 >= pageW - Math.max(4, 0.02 * pageW);
-  const largerPeer = peers.some((other) => other !== fig && boxArea(figBox(other) || {}) >= 3 * area);
+  const largerPeer = peers.some((other) => other !== fig && boxArea(figBox(other) || {}) >= 3 * area2);
   if ((touchTop || touchBot) && h <= 0.16 * pageH && w >= 0.65 * pageW && w >= 5 * h && (largerPeer || h <= 0.045 * pageH)) return "edge-stripe";
   if ((touchLeft || touchRight) && w <= 0.055 * pageW && h >= 0.35 * pageH && h >= 8 * w) return "edge-stripe";
   if (!fig.fromPlate && (h <= 0.012 * pageH && w >= 0.25 * pageW || w <= 0.012 * pageW && h >= 0.25 * pageH)) return "rule";
@@ -9361,8 +9361,8 @@ function falseFigureReason(fig, { lines = [], tables = [], pageW = 612, pageH = 
   const cy = (box2.y0 + box2.y1) / 2;
   const aspect = h > 0 ? w / h : 0;
   const corner = (cx <= 0.12 * pageW || cx >= 0.88 * pageW) && (cy <= 0.12 * pageH || cy >= 0.88 * pageH);
-  if (!fig.fromPlate && corner && area >= 2e-3 * pageArea && area <= 0.015 * pageArea && aspect >= 0.35 && aspect <= 2.8) return "stamp";
-  if (!fig.fromPlate && cy >= 0.9 * pageH && w <= 0.45 * pageW && h <= 0.045 * pageH && area <= 0.02 * pageArea && aspect >= 1.4) return "stamp";
+  if (!fig.fromPlate && corner && area2 >= 2e-3 * pageArea && area2 <= 0.015 * pageArea && aspect >= 0.35 && aspect <= 2.8) return "stamp";
+  if (!fig.fromPlate && cy >= 0.9 * pageH && w <= 0.45 * pageW && h <= 0.045 * pageH && area2 <= 0.02 * pageArea && aspect >= 1.4) return "stamp";
   for (const table of tables || []) {
     const tb = table.bbox || table;
     if (!tb || tb.length < 4) continue;
@@ -9471,10 +9471,10 @@ function clipLowerText(box2, lines) {
   if (cut - box2.y0 < 0.28 * h) return box2;
   return { ...box2, y1: cut - 2 };
 }
-function growUntilText(box2, lines, pageW, pageH) {
+function growUntilText(box2, lines, pageW, pageH, stops = []) {
   const padX = 0.08 * pageW;
   const padY = 0.07 * pageH;
-  const text3 = (lines || []).filter((line) => (line.text || "").trim());
+  const text3 = [...(lines || []).filter((line) => (line.text || "").trim()), ...stops];
   let { x0, y0, x1, y1 } = box2;
   const overlapX2 = (line, a, b) => Math.min(b, line.x1) - Math.max(a, line.x0) > 8;
   const overlapY2 = (line, a, b) => Math.min(b, line.y1) - Math.max(a, line.y0) > 4;
@@ -9491,6 +9491,10 @@ function growUntilText(box2, lines, pageW, pageH) {
 }
 function picturesTouch(a, b, lines, pageH) {
   const limit = Math.max(10, 0.02 * (pageH || 0));
+  if (a.ink && b.ink) {
+    a = a.ink;
+    b = b.ink;
+  }
   const overlap = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
   const narrow = Math.min(a.x1 - a.x0, b.x1 - b.x0);
   if (!(narrow > 0) || overlap < 0.55 * narrow) return false;
@@ -9526,6 +9530,7 @@ function mergeTouchingPictures(made, lines, pageH) {
           x1: Math.max(a.x1, b.x1),
           y1: Math.max(a.y1, b.y1)
         };
+        if (a.ink && b.ink) made[i].ink = { x0: Math.min(a.ink.x0, b.ink.x0), y0: Math.min(a.ink.y0, b.ink.y0), x1: Math.max(a.ink.x1, b.ink.x1), y1: Math.max(a.ink.y1, b.ink.y1) };
         made.splice(j, 1);
         changed2 = true;
         break;
@@ -9628,23 +9633,25 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = nul
   const onlyCluster = (box2) => figures.some((f) => !f.fromPlate && !f.pageImage && f.kind === "drawing" && covers2(f, box2)) && !figures.some((f) => (f.fromPlate || f.kind === "image" || f.pageImage) && covers2(f, box2));
   const pending = [];
   const spread = letterSpread(lines, pageH);
+  const pictures = boxes.filter((b) => boxArea(b) >= 0.018 * pageArea);
   for (const raw of boxes) {
-    let area = boxArea(raw);
-    if (area < 0.018 * pageArea) continue;
-    let box2 = { x0: raw.x0, y0: raw.y0, x1: raw.x1, y1: raw.y1 };
-    if (area > 0.78 * pageArea) {
+    let area2 = boxArea(raw);
+    if (area2 < 0.018 * pageArea) continue;
+    let box2 = { x0: raw.x0, y0: raw.y0, x1: raw.x1, y1: raw.y1, ink: { x0: raw.x0, y0: raw.y0, x1: raw.x1, y1: raw.y1 } };
+    const stops = pictures.filter((b) => b !== raw && insideFrac(b, raw) < 0.5 && insideFrac(raw, b) < 0.5);
+    if (area2 > 0.78 * pageArea) {
       const clipped = clipLowerText(box2, lines);
-      if (!(boxArea(clipped) < area - 1) || boxArea(clipped) > 0.78 * pageArea) continue;
+      if (!(boxArea(clipped) < area2 - 1) || boxArea(clipped) > 0.78 * pageArea) continue;
       box2 = clipped;
-      area = boxArea(box2);
+      area2 = boxArea(box2);
     }
     if (marginStrip(box2, pageW, pageH)) continue;
     box2 = clipLowerText(box2, lines);
     const pageLines = textLines2 || lines;
     if (textThroughMiddle(box2, pageLines)) continue;
     if (textBlockBox(box2, lines)) continue;
-    const grown = growUntilText(box2, lines, pageW, pageH);
-    box2 = boxArea(grown) > 0.85 * pageArea ? box2 : grown;
+    const grown = growUntilText(box2, lines, pageW, pageH, stops);
+    box2 = boxArea(grown) > 0.85 * pageArea ? box2 : { ...grown, ink: box2.ink };
     if (edgeBand(box2, pageW, pageH)) continue;
     if (textThroughMiddle(box2, pageLines) || headerBand(box2, pageLines, pageH)) continue;
     if (boxArea(box2) > 0.85 * pageArea) continue;
@@ -9682,8 +9689,8 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = nul
   for (const raw of boxes) {
     const w = raw.x1 - raw.x0;
     const h = raw.y1 - raw.y0;
-    const area = w * h;
-    if (area < 0.012 * pageArea || area >= 0.018 * pageArea) continue;
+    const area2 = w * h;
+    if (area2 < 0.012 * pageArea || area2 >= 0.018 * pageArea) continue;
     const aspect = h > 0 ? w / h : 0;
     if (aspect < 0.45 || aspect > 2.3) continue;
     const box2 = { x0: raw.x0, y0: raw.y0, x1: raw.x1, y1: raw.y1 };
@@ -9744,8 +9751,8 @@ function plateTitleCaptions(lines, ink, pageW, pageH) {
   if (!ink || ink.length < 4) return [];
   const hull = hullOf(ink);
   if (!hull) return [];
-  const area = (hull.x1 - hull.x0) * (hull.y1 - hull.y0);
-  if (area < 0.04 * pageW * pageH) return [];
+  const area2 = (hull.x1 - hull.x0) * (hull.y1 - hull.y0);
+  if (area2 < 0.04 * pageW * pageH) return [];
   const paragraph = lines.some((line) => proseLine(line) && lineCenterIn(line, hull) && Math.min(line.x1, hull.x1) - Math.max(line.x0, hull.x0) > 0.5 * (hull.x1 - hull.x0));
   if (paragraph) return [];
   const limit = Math.max(48, 0.08 * pageH);
@@ -9758,7 +9765,7 @@ function plateTitleCaptions(lines, ink, pageW, pageH) {
     if (!below && !above) continue;
     const plateWord = /\b(?:plates?|tafeln?|tafel|abb(?:ildung)?)\b/i.test(normalizeFigSpelling(line.text));
     const proseN = lines.filter((l) => proseLine(l)).length;
-    if (!plateWord && !below && (proseN >= 2 || area < 0.18 * pageW * pageH)) continue;
+    if (!plateWord && !below && (proseN >= 2 || area2 < 0.18 * pageW * pageH)) continue;
     if (gap > limit) continue;
     const ox = Math.min(hull.x1, line.x1) - Math.max(hull.x0, line.x0);
     const narrower = Math.min(hull.x1 - hull.x0, Math.max(1, line.x1 - line.x0));
@@ -9873,8 +9880,8 @@ function splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH) {
     if (!hull) continue;
     const w = hull.x1 - hull.x0;
     const h = hull.y1 - hull.y0;
-    const area = w * h;
-    if (w < 48 || h < 32 || area < 0.02 * pageArea || area > 0.7 * pageArea) continue;
+    const area2 = w * h;
+    if (w < 48 || h < 32 || area2 < 0.02 * pageArea || area2 > 0.7 * pageArea) continue;
     const cap4 = ordered.find((c) => c.key === key) || null;
     const plate = { ...hull, kind: "drawing", count: items.length, pageImage: false, fromPlate: true };
     extendTowardCaption(plate, cap4, lines, bodySize, pageH);
@@ -9980,8 +9987,8 @@ function splitSideBySidePlates(figures, ink, caps, lines, bodySize, pageW, pageH
     if (!hull) continue;
     const w = hull.x1 - hull.x0;
     const h = hull.y1 - hull.y0;
-    const area = w * h;
-    if (w < 48 || h < 32 || area < 0.02 * pageArea || area > 0.7 * pageArea) continue;
+    const area2 = w * h;
+    if (w < 48 || h < 32 || area2 < 0.02 * pageArea || area2 > 0.7 * pageArea) continue;
     const cap4 = cols.find((c) => c.key === key) || null;
     const plate = { ...hull, kind: "drawing", count: items.length, pageImage: false, fromPlate: true };
     extendTowardCaption(plate, cap4, lines, bodySize, pageH);
@@ -10065,14 +10072,14 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
     if (!hull) continue;
     const w = hull.x1 - hull.x0;
     const h = hull.y1 - hull.y0;
-    const area = w * h;
-    if (w < 48 || h < 32 || area < 0.025 * pageArea || area > 0.92 * pageArea) continue;
+    const area2 = w * h;
+    if (w < 48 || h < 32 || area2 < 0.025 * pageArea || area2 > 0.92 * pageArea) continue;
     const drawings = figures.filter((f) => f.kind !== "image");
     const inside8 = drawings.filter((f) => insideFrac(f, hull) >= 0.5);
     const insideArea = inside8.reduce((n2, f) => n2 + boxArea(f), 0);
     const mine = caps.filter((c) => c.key === key);
     const cap4 = mine.filter((c) => c.y0 >= hull.y1 - 8).sort((a, b) => a.y0 - b.y0)[0] || mine.filter((c) => c.y1 <= hull.y0 + 8).sort((a, b) => b.y1 - a.y1)[0] || mine[0] || null;
-    if (inside8.length && insideArea >= 0.55 * area) {
+    if (inside8.length && insideArea >= 0.55 * area2) {
       for (const f of inside8) {
         f.x0 = Math.min(f.x0, hull.x0);
         f.y0 = Math.min(f.y0, hull.y0);
@@ -11628,8 +11635,8 @@ function iou(a, b) {
   const iy = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
   const inter = ix * iy;
   if (inter <= 0) return 0;
-  const area = Math.max(0, a[2] - a[0]) * Math.max(0, a[3] - a[1]) + Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]) - inter;
-  return area > 0 ? inter / area : 0;
+  const area2 = Math.max(0, a[2] - a[0]) * Math.max(0, a[3] - a[1]) + Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]) - inter;
+  return area2 > 0 ? inter / area2 : 0;
 }
 function horizRatio(a, b) {
   const overlap = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
@@ -12654,12 +12661,12 @@ function absorbFigureTables(tables, figures) {
   }
 }
 function insideFrac2(inner, outer) {
-  const area = boxArea2(inner);
-  if (!(area > 0)) return 0;
+  const area2 = boxArea2(inner);
+  if (!(area2 > 0)) return 0;
   const ox = Math.min(inner[2], outer[2]) - Math.max(inner[0], outer[0]);
   const oy = Math.min(inner[3], outer[3]) - Math.max(inner[1], outer[1]);
   if (ox <= 0 || oy <= 0) return 0;
-  return ox * oy / area;
+  return ox * oy / area2;
 }
 function wordCountText(text3) {
   return String(text3 || "").trim().split(/\s+/).filter(Boolean).length;
@@ -12834,8 +12841,8 @@ function attachPlateTitles(blocks, figures, bodySize, pageH) {
   for (const fig of figures || []) {
     const tb = fig.bbox;
     if (!tb) continue;
-    const area = Math.max(0, tb[2] - tb[0]) * Math.max(0, tb[3] - tb[1]);
-    if (area < 12e3) continue;
+    const area2 = Math.max(0, tb[2] - tb[0]) * Math.max(0, tb[3] - tb[1]);
+    if (area2 < 12e3) continue;
     let best = null;
     let bestGap = Infinity;
     for (const b of blocks) {
@@ -13717,7 +13724,7 @@ var init_parse = __esm({
     init_pdf();
     SCHEMA = "pxd-parse/1";
     ENGINE_VERSION = "plexus-builtin/1";
-    PARSE_REV = 34;
+    PARSE_REV = 35;
     MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
     now = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
@@ -18656,9 +18663,9 @@ function flipArrowsShown(total) {
   const raw = Number(total);
   return Number.isFinite(raw) && raw > 1;
 }
-function boardCramped(area) {
-  const w = Number(area?.width);
-  const h = Number(area?.height);
+function boardCramped(area2) {
+  const w = Number(area2?.width);
+  const h = Number(area2?.height);
   if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return false;
   return w < MINIMAP_MIN_W || h < MINIMAP_MIN_H;
 }
@@ -25660,12 +25667,12 @@ function createItemRenderer({
     const node2 = rec.el;
     if (item.type === "section") {
       const d = item.sectionDefaults || {};
-      const area = item.areaFill ?? d.areaFill;
+      const area2 = item.areaFill ?? d.areaFill;
       const border = item.border ?? d.border;
       const titleSize = item.titleSize ?? d.titleSize;
       const titleColor = item.titleColor ?? d.titleColor;
       const titleFill = item.titleFill ?? d.titleFill;
-      setVar(node2, "--pxd-fill", cssColor(area, "fill"));
+      setVar(node2, "--pxd-fill", cssColor(area2, "fill"));
       setVar(node2, "--pxd-line", cssColor(border, "line") || hexColor(item.color) || "");
       if (rec.title) {
         rec.title.style.fontSize = titleSize ? `${titleSize}px` : "";
@@ -38914,10 +38921,10 @@ function captionForView(sections, point, fallbackTitle) {
     const rect = section2?.rect;
     if (!rect || !point) continue;
     if (point.x < rect.x || point.y < rect.y || point.x > rect.x + rect.w || point.y > rect.y + rect.h) continue;
-    const area = rect.w * rect.h;
-    if (area < bestArea) {
+    const area2 = rect.w * rect.h;
+    if (area2 < bestArea) {
       best = section2;
-      bestArea = area;
+      bestArea = area2;
     }
   }
   if (best?.title) return best.title;
@@ -44173,11 +44180,11 @@ function emptyBox(box2) {
 function onTable(box2, tableBox) {
   if (emptyBox(box2) || emptyBox(tableBox)) return false;
   if (iou2(box2, tableBox) >= IOU_MATCH) return true;
-  const area = (box2[2] - box2[0]) * (box2[3] - box2[1]);
-  if (!(area > 0)) return false;
+  const area2 = (box2[2] - box2[0]) * (box2[3] - box2[1]);
+  if (!(area2 > 0)) return false;
   const ix = Math.max(0, Math.min(box2[2], tableBox[2]) - Math.max(box2[0], tableBox[0]));
   const iy = Math.max(0, Math.min(box2[3], tableBox[3]) - Math.max(box2[1], tableBox[1]));
-  return ix * iy / area >= 0.5;
+  return ix * iy / area2 >= 0.5;
 }
 function pagesOf(doc) {
   const set = /* @__PURE__ */ new Set();
@@ -45308,10 +45315,11 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
     }
     return { ...body, sha256: sha };
   }
-  async function vlm({ bytes, sha256, pages, tables: regions, text: text3 = false, numericPages, boxMode, signal } = {}) {
+  async function vlm({ bytes, sha256, pages, tables: regions, text: text3 = false, numericPages, boxMode, layoutOnly = false, signal } = {}) {
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
     const options = { text: text3 === true };
+    if (layoutOnly === true) options.layoutOnly = true;
     if (pages && pages.length) options.pages = pages;
     if (regions && regions.length) options.tables = regions.map((t) => ({ page: t.page, bbox: t.bbox }));
     if (numericPages && numericPages.length) options.numericPages = numericPages;
@@ -47000,11 +47008,11 @@ function iou4(a, b) {
 }
 function mostlyInside(inner, outer) {
   if (!inner || !outer) return false;
-  const area = Math.max(0, inner[2] - inner[0]) * Math.max(0, inner[3] - inner[1]);
-  if (area <= 0) return false;
+  const area2 = Math.max(0, inner[2] - inner[0]) * Math.max(0, inner[3] - inner[1]);
+  if (area2 <= 0) return false;
   const w = Math.max(0, Math.min(inner[2], outer[2]) - Math.max(inner[0], outer[0]));
   const h = Math.max(0, Math.min(inner[3], outer[3]) - Math.max(inner[1], outer[1]));
-  return w * h / area >= 0.7;
+  return w * h / area2 >= 0.7;
 }
 function pageTokenBag(doc, page) {
   const bag = /* @__PURE__ */ new Set();
@@ -47154,15 +47162,15 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       }
     }
     if (!host) {
-      let area = 0;
+      let area2 = 0;
       for (const id of order) {
         const block = blocks[id];
         if (!block || block.type !== "table" || block.page !== structure.page || used.has(id)) continue;
         if (!mostlyInside(block.bbox, built.bbox)) continue;
         const box2 = block.bbox;
         const next = Math.max(0, box2[2] - box2[0]) * Math.max(0, box2[3] - box2[1]);
-        if (next > area) {
-          area = next;
+        if (next > area2) {
+          area2 = next;
           host = block;
         }
       }
@@ -47596,6 +47604,166 @@ function linkLayoutCaptions(doc, layout) {
   }
   return { doc: { ...doc, blocks }, applied };
 }
+var LAYOUT_FIGURE_MIN_SCORE = 0.5;
+var LAYOUT_FIGURE_MIN_AREA = 0.01;
+var PANEL_GAP = 0.01;
+var PIECE_OVERLAP = 0.02;
+function area(b) {
+  return Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]);
+}
+function interArea(a, b) {
+  const w = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
+  const h = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  return w * h;
+}
+function insideShare(a, b) {
+  const aa = area(a);
+  return aa > 0 ? interArea(a, b) / aa : 0;
+}
+function mergePanels(boxes, pageW, pageH) {
+  const out = boxes.map((b) => [...b]);
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < out.length && !merged; i++) for (let j = i + 1; j < out.length; j++) {
+      const a = out[i];
+      const b = out[j];
+      const xo = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+      const yo = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+      const narrow = Math.min(a[2] - a[0], b[2] - b[0]);
+      const short = Math.min(a[3] - a[1], b[3] - b[1]);
+      const stacked = xo >= 0.6 * narrow && -yo <= PANEL_GAP * pageH;
+      const beside = yo >= 0.6 * short && -xo <= PANEL_GAP * pageW;
+      if (!stacked && !beside) continue;
+      out[i] = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])];
+      out.splice(j, 1);
+      merged = true;
+      break;
+    }
+  }
+  return out;
+}
+function interleaved(boxes, pageW, pageH) {
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+    const a = boxes[i];
+    const b = boxes[j];
+    const xo = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+    const yo = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+    if (xo > 0 && yo > PIECE_OVERLAP * pageH) return true;
+    if (yo > 0 && xo <= 0 && -xo < PIECE_OVERLAP * pageW && yo >= 0.5 * Math.min(a[3] - a[1], b[3] - b[1])) return true;
+  }
+  return false;
+}
+function applyLayoutFigures(doc, layout, pages) {
+  const seen = new Set(pages || []);
+  if (!doc || !seen.size) return { doc, applied: [] };
+  const blocks = { ...doc.blocks };
+  let order = [...doc.order || []];
+  const applied = [];
+  let seq = 0;
+  for (const n2 of seen) {
+    const page = (doc.pages || []).find((p) => p && p.n === n2);
+    if (!page || !(page.w > 0) || !(page.h > 0)) continue;
+    const pageArea = page.w * page.h;
+    const onPage = (layout || []).filter((b) => b && b.page === n2 && b.bbox && b.bbox.length >= 4 && (b.score ?? 0) >= LAYOUT_FIGURE_MIN_SCORE);
+    const clip5 = (b) => [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(page.w, b[2]), Math.min(page.h, b[3])];
+    const tables = order.map((id) => blocks[id]).filter((b) => b?.type === "table" && b.page === n2 && b.bbox).map((b) => b.bbox);
+    const hints = onPage.filter((b) => b.label === "image" || b.label === "chart").map((b) => clip5(b.bbox)).filter((b) => area(b) >= LAYOUT_FIGURE_MIN_AREA * pageArea && !tables.some((t) => mostlyInside(b, t)));
+    const others = onPage.filter((b) => b.label !== "image" && b.label !== "chart").map((b) => clip5(b.bbox));
+    const boxes = mergePanels(hints, page.w, page.h);
+    const locals = order.filter((id) => blocks[id]?.type === "figure" && blocks[id].page === n2 && blocks[id].bbox);
+    const born = !page.ocr && !page.scanLayer && page.kind !== "scan";
+    const next = [];
+    const removed = /* @__PURE__ */ new Set();
+    if (born) {
+      const taken = /* @__PURE__ */ new Set();
+      for (const box2 of boxes) {
+        let host = null;
+        let best = 0;
+        for (const id of locals) {
+          if (taken.has(id)) continue;
+          const f = interArea(blocks[id].bbox, box2);
+          if (f > best) {
+            best = f;
+            host = id;
+          }
+        }
+        if (host) taken.add(host);
+        next.push({ box: box2, host });
+      }
+      for (const id of locals) {
+        const local = blocks[id];
+        const kept = !taken.has(id) && local.image && (local.image.source === "image" || local.image.source === "mixed");
+        if (!kept) removed.add(id);
+      }
+    } else {
+      const spent = /* @__PURE__ */ new Set();
+      for (let hi = 0; hi < boxes.length; hi++) {
+        const H = boxes[hi];
+        const pieces2 = locals.filter((id) => !removed.has(id) && insideShare(blocks[id].bbox, H) >= 0.5);
+        if (pieces2.length < 2 || !interleaved(pieces2.map((id) => blocks[id].bbox), page.w, page.h)) continue;
+        next.push({ box: H, host: pieces2[0] });
+        for (const id of pieces2) removed.add(id);
+        spent.add(hi);
+      }
+      for (const id of locals) {
+        if (removed.has(id)) continue;
+        const L = blocks[id].bbox;
+        const over = boxes.map((b, i) => i).filter((i) => !spent.has(i) && interArea(L, boxes[i]) > 0);
+        if (!over.length) {
+          removed.add(id);
+          continue;
+        }
+        const strong = over.filter((i) => insideShare(boxes[i], L) >= 0.7 && area(boxes[i]) >= 0.2 * area(L));
+        const textShare = others.reduce((sum, b) => sum + interArea(b, L), 0) / area(L);
+        if (strong.length >= 2 || textShare >= 0.5) {
+          const use = strong.length >= 2 ? strong : over;
+          use.forEach((i, k) => {
+            next.push({ box: boxes[i], host: k === 0 ? id : null });
+            spent.add(i);
+          });
+          removed.add(id);
+        }
+      }
+    }
+    if (!removed.size && !next.length) continue;
+    for (const item of next) {
+      const id = `lfig${seq++}`;
+      const host = item.host ? blocks[item.host] : null;
+      const block = {
+        id,
+        type: "figure",
+        page: n2,
+        bbox: item.box.map((v) => Math.round(v * 100) / 100),
+        caption: host?.caption || null,
+        image: { kind: "crop", source: "layout" },
+        confidence: 0.9,
+        method: "vlm-layout",
+        engine: "builtin"
+      };
+      blocks[id] = block;
+      if (host?.caption && blocks[host.caption]) blocks[host.caption] = { ...blocks[host.caption], for: id };
+      const at = item.host ? order.indexOf(item.host) : order.findIndex((oid) => blocks[oid]?.page === n2 && blocks[oid].bbox && blocks[oid].type !== "figure" && blocks[oid].bbox[1] >= block.bbox[3]);
+      const last = order.map((oid) => blocks[oid]?.page).lastIndexOf(n2);
+      if (at >= 0) order.splice(at, 0, id);
+      else if (last >= 0) order.splice(last + 1, 0, id);
+      else order.push(id);
+      applied.push({ id, page: n2, replaced: item.host || null });
+    }
+    for (const id of removed) {
+      const local = blocks[id];
+      if (local.caption && blocks[local.caption] && blocks[local.caption].for === id) {
+        const cap4 = { ...blocks[local.caption] };
+        delete cap4.for;
+        blocks[local.caption] = cap4;
+      }
+      delete blocks[id];
+      order = order.filter((oid) => oid !== id);
+      if (!applied.some((a) => a.replaced === id)) applied.push({ id: null, page: n2, replaced: id });
+    }
+  }
+  return { doc: { ...doc, blocks, order }, applied };
+}
 
 // src/view/parse-engine.js
 var GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
@@ -47663,8 +47831,8 @@ function captionPlatePages(doc, pages) {
     const blocks = (doc.order || []).map((id) => doc.blocks[id]).filter((block) => block && block.page === n2);
     const big = blocks.some((block) => {
       if (block.type !== "figure" || !block.bbox) return false;
-      const area = Math.max(0, block.bbox[2] - block.bbox[0]) * Math.max(0, block.bbox[3] - block.bbox[1]);
-      return area >= 0.75 * page.w * page.h;
+      const area2 = Math.max(0, block.bbox[2] - block.bbox[0]) * Math.max(0, block.bbox[3] - block.bbox[1]);
+      return area2 >= 0.75 * page.w * page.h;
     });
     if (!big) continue;
     const text3 = blocks.filter((block) => block.text && (block.type === "para" || block.type === "caption" || block.type === "heading" || block.type === "footnote"));
@@ -47739,18 +47907,20 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     const plates = captionPlatePages(doc, wanted);
     const tableSend = send.filter((n2) => explicitText || !weak.has(n2));
     const textSend = [.../* @__PURE__ */ new Set([...weak, ...plates])].filter((n2) => !explicitText || !tableSend.includes(n2));
+    const layoutSend = high ? vlmPages.filter((n2) => !tableSend.includes(n2) && !textSend.includes(n2)) : [];
     try {
-      if (high && (tableSend.length || textSend.length)) {
+      if (high && (tableSend.length || textSend.length || layoutSend.length)) {
         onPhase?.({ phase: "vlm", count: tableSend.length + textSend.length, mode: "high" });
-        const askVlm = (pageList, text3, numeric) => {
+        const askVlm = (pageList, text3, numeric, layoutOnly = false) => {
           if (!pageList.length) return null;
           return helper.vlm({
             bytes,
             sha256,
             pages: pageList,
-            tables: regions.filter((r) => pageList.includes(r.page)),
-            numericPages: numeric.filter((n2) => pageList.includes(n2)),
+            tables: layoutOnly ? [] : regions.filter((r) => pageList.includes(r.page)),
+            numericPages: layoutOnly ? [] : numeric.filter((n2) => pageList.includes(n2)),
             text: text3,
+            layoutOnly,
             signal
           });
         };
@@ -47758,9 +47928,12 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
         throwIfAborted3();
         const readText = await askVlm(textSend, true, []);
         throwIfAborted3();
+        const readOnly = await askVlm(layoutSend, false, [], true);
+        throwIfAborted3();
         const readTables = [...readTable?.tables || [], ...readText?.tables || []];
         const readLines = [...explicitText ? readTable?.lines || [] : [], ...readText?.lines || []];
-        const readLayout = [...readTable?.layout || [], ...readText?.layout || []];
+        const readLayout = [...readTable?.layout || [], ...readText?.layout || [], ...readOnly?.layout || []];
+        const layoutPages = [.../* @__PURE__ */ new Set([...readTable ? tableSend : [], ...readText ? textSend : [], ...readOnly ? layoutSend : []])];
         const structures = keepTextLayerReads(doc, readTables, wanted);
         const applied = applyVlmTables(doc, structures, {
           method: readText?.model || readTable?.model || "vlm",
@@ -47776,8 +47949,10 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
           if (linedText.applied.length) Object.assign(doc, { blocks: linedText.doc.blocks, order: linedText.doc.order });
           if (options.keepVision === true && linedText.reads?.length) doc.ocr = { ...doc.ocr || {}, pageReads: linedText.reads };
         }
+        const figured = applyLayoutFigures(doc, readLayout, layoutPages);
+        if (figured.applied.length) Object.assign(doc, { blocks: figured.doc.blocks, order: figured.doc.order });
         const linked = linkLayoutCaptions(doc, readLayout);
-        vlmFigures = linked.applied;
+        vlmFigures = [...figured.applied, ...linked.applied];
         if (linked.applied.length) Object.assign(doc, { blocks: linked.doc.blocks });
         doc.ocr = { ...doc.ocr || {}, mode: "high" };
       } else if (high) {
@@ -47947,9 +48122,9 @@ function copyHoverId(entries, x, y, page, size = COPY_ICON) {
     const right = left + e2.width / 100 * W + 2 * BOX_PAD;
     const bottom = top + e2.height / 100 * H + 2 * BOX_PAD;
     if (x < left || x > right || y < top || y > bottom) continue;
-    const area = (right - left) * (bottom - top);
-    if (area < bestArea) {
-      bestArea = area;
+    const area2 = (right - left) * (bottom - top);
+    if (area2 < bestArea) {
+      bestArea = area2;
       best = e2.id;
     }
   }
@@ -48630,9 +48805,9 @@ function createPageChips({
       for (const block of pageBlocks(parsed, n2)) {
         const r = bboxToPageRect(block.bbox, info(n2), el);
         if (!r || x < r.left || x > r.left + r.width || y < r.top || y > r.top + r.height) continue;
-        const area = r.width * r.height;
-        if (area < best) {
-          best = area;
+        const area2 = r.width * r.height;
+        if (area2 < best) {
+          best = area2;
           hit = block;
         }
       }
@@ -51278,11 +51453,11 @@ function chartTable(item, block, images) {
 function layoutOnTable(box2, tableBox) {
   if (!box2 || !tableBox || emptyBox2(box2) || emptyBox2(tableBox)) return false;
   if (iou2(box2, tableBox) >= 0.5) return true;
-  const area = (box2[2] - box2[0]) * (box2[3] - box2[1]);
-  if (!(area > 0)) return false;
+  const area2 = (box2[2] - box2[0]) * (box2[3] - box2[1]);
+  if (!(area2 > 0)) return false;
   const ix = Math.max(0, Math.min(box2[2], tableBox[2]) - Math.max(box2[0], tableBox[0]));
   const iy = Math.max(0, Math.min(box2[3], tableBox[3]) - Math.max(box2[1], tableBox[1]));
-  return ix * iy / area >= 0.5;
+  return ix * iy / area2 >= 0.5;
 }
 function assignTableBoxes(tables, images) {
   const spare = [];
@@ -52011,12 +52186,12 @@ async function writeClipboard({ text: text3 = "", mime = null, data = null } = {
   }
   const doc = globalThis.document;
   if (!doc?.body) return false;
-  const area = doc.createElement("textarea");
-  area.value = String(text3);
-  area.setAttribute("readonly", "");
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  doc.body.append(area);
+  const area2 = doc.createElement("textarea");
+  area2.value = String(text3);
+  area2.setAttribute("readonly", "");
+  area2.style.position = "fixed";
+  area2.style.opacity = "0";
+  doc.body.append(area2);
   const onCopy = (event) => {
     if (mime && data != null) {
       try {
@@ -52028,14 +52203,14 @@ async function writeClipboard({ text: text3 = "", mime = null, data = null } = {
   doc.addEventListener("copy", onCopy, true);
   let ok = false;
   try {
-    area.focus?.();
-    area.select?.();
+    area2.focus?.();
+    area2.select?.();
     ok = Boolean(doc.execCommand?.("copy"));
   } catch {
     ok = false;
   }
   doc.removeEventListener("copy", onCopy, true);
-  area.remove();
+  area2.remove();
   return ok;
 }
 function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTextEntry, on = {}, now: now3 = () => Date.now() } = {}) {
@@ -65197,8 +65372,8 @@ function inkGlyph(gray, width, height) {
     marks.push({ bw: bw2, bh: bh2, area: c.area });
   }
   if (marks.length !== 1) return null;
-  const { bw, bh, area } = marks[0];
-  if (bw >= 3 * bh && bw >= 8 && bh <= 0.3 * height && area >= 0.6 * bw * bh) return "—";
+  const { bw, bh, area: area2 } = marks[0];
+  if (bw >= 3 * bh && bw >= 8 && bh <= 0.3 * height && area2 >= 0.6 * bw * bh) return "—";
   if (bw / Math.max(1, bh) >= 0.6 && bw / Math.max(1, bh) <= 1.6 && bw <= 0.5 * height && bh <= 0.5 * height && bw >= 5) return "*";
   return null;
 }
@@ -74824,8 +74999,8 @@ function buildBoardView(onFail, {
       },
       markRegion: () => {
         const it = singleItem() || barCard();
-        const area = it?.kind === "highlight" && it.highlight?.image === true;
-        if (!it || it.kind !== "image" && !area) return;
+        const area2 = it?.kind === "highlight" && it.highlight?.image === true;
+        if (!it || it.kind !== "image" && !area2) return;
         const card2 = root.querySelector(`[data-uid="${it.uid}"]`);
         const img = card2?.querySelector?.("img.rm-inline-img");
         if (!img) {
@@ -74834,7 +75009,7 @@ function buildBoardView(onFail, {
         }
         regionMark?.destroy?.();
         const cardUid = it.uid;
-        const parentUid = area ? it.target?.uid : cardUid;
+        const parentUid = area2 ? it.target?.uid : cardUid;
         if (!parentUid) {
           toast("The image is not ready");
           return;
@@ -74851,7 +75026,7 @@ function buildBoardView(onFail, {
               });
             } catch {
             }
-            if (area) session.addHighlightRegion(parentUid, frac, caption, uid);
+            if (area2) session.addHighlightRegion(parentUid, frac, caption, uid);
             else session.addImageRegion(cardUid, frac, caption, uid);
             toast("Region made, ref copied");
             regionMark = null;
@@ -76122,9 +76297,9 @@ function buildBoardView(onFail, {
         if (!mark || !card2.contains(mark)) continue;
         const id = mark.getAttribute?.("data-pxd-region") || "";
         if (!id || marks.some((row4) => row4.uid === id)) continue;
-        const area = Number(mark.getAttribute?.("data-pxd-area"));
+        const area2 = Number(mark.getAttribute?.("data-pxd-area"));
         const r = mark.getBoundingClientRect?.();
-        marks.push({ uid: id, area: Number.isFinite(area) && area > 0 ? area : (r?.width || 0) * (r?.height || 0) });
+        marks.push({ uid: id, area: Number.isFinite(area2) && area2 > 0 ? area2 : (r?.width || 0) * (r?.height || 0) });
       }
       const regionUid = pickSmallestRegion(marks);
       if (!card2) return null;
@@ -77501,7 +77676,7 @@ function buildBoardView(onFail, {
       ro.observe(root);
       observers.push(ro);
       let areaWait = null;
-      const area = trackObserver(new RO(() => {
+      const area2 = trackObserver(new RO(() => {
         if (disposed || suspended) return;
         areaWait?.();
         areaWait = timers.later(() => {
@@ -77512,8 +77687,8 @@ function buildBoardView(onFail, {
           chrome.toolbar.scheduleDock?.();
         }, 240);
       }));
-      area.observe(viewport);
-      observers.push(area);
+      area2.observe(viewport);
+      observers.push(area2);
     } catch {
     }
   }
@@ -79315,8 +79490,8 @@ function createCardChips({
       event.stopPropagation();
       return;
     }
-    const area = event.target?.closest?.("textarea");
-    const box2 = area?.closest?.(".roam-block-container");
+    const area2 = event.target?.closest?.("textarea");
+    const box2 = area2?.closest?.(".roam-block-container");
     if (!box2) return;
     for (const child of [...box2.children || []]) {
       if (child.classList?.contains("pxd-cardchip") || child.classList?.contains("pxd-cardchip-more")) {
@@ -79425,8 +79600,8 @@ function createCardChips({
     if (!uid || !cache?.hasTarget?.(uid)) return;
     if (blocked2(container, memo)) return;
     if (container.querySelector?.(".rm-block-highlight-view, .pxd-boardchip")) return;
-    const area = container.querySelector?.("textarea");
-    if (area && area === doc.activeElement) {
+    const area2 = container.querySelector?.("textarea");
+    if (area2 && area2 === doc.activeElement) {
       for (const child of [...container.children || []]) {
         if (child.classList?.contains("pxd-cardchip") || child.classList?.contains("pxd-cardchip-more")) {
           chips.delete(child);

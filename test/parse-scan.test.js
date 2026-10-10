@@ -11,7 +11,7 @@ import {
 } from "../src/model/parse/ocr-fix.js";
 import { chooseTable, mergeOcrDocument, scanPagesOf } from "../src/model/parse/ocr-merge.js";
 import { createHelperClient } from "../src/host/parse-helper-client.js";
-import { alignVlmText, hintLayoutFigures, linkLayoutCaptions } from "../src/model/parse/vlm-tables.js";
+import { alignVlmText, applyLayoutFigures, linkLayoutCaptions } from "../src/model/parse/vlm-tables.js";
 import { readScan } from "../src/view/parse-engine.js";
 import { buildLines } from "../src/model/parse/lines.js";
 import { visualRows } from "../src/model/parse/stream.js";
@@ -642,7 +642,7 @@ test("readScan high accuracy reads the caption under a page plate", async () => 
   assert.deepEqual(called.numericPages, []);
 });
 
-test("readScan high accuracy skips a prose page", async () => {
+test("readScan high accuracy sends a prose page to the layout model only", async () => {
   const items = [];
   const sentence = "The report describes the method and the sample in plain words".split(" ");
   for (let r = 0; r < 8; r++) {
@@ -668,15 +668,27 @@ test("readScan high accuracy skips a prose page", async () => {
       }
       return { cells: [] };
     },
-    async vlm() { called = true; return { tables: [], figures: [], layout: [] }; },
+    async vlm(req) {
+      called = req;
+      // The layout model calls a dark block under the prose an image.
+      return { tables: [], figures: [], layout: [{ page: 1, label: "image", score: 0.97, bbox: [40, 140, 360, 190] }] };
+    },
   };
   const out = await readScan({
     helper, bytes: new Uint8Array([1]), sha256: "s", base, records: [scanRec],
     numPages: 1, from: 1, to: 1, lines: false,
   });
-  assert.equal(called, false);
+  assert.ok(called, "the page goes to the layout model for its figures");
+  assert.equal(called.layoutOnly, true, "no table and no text are read on a prose page");
+  assert.equal(called.text, false);
+  assert.deepEqual(called.tables, []);
+  assert.deepEqual(called.numericPages, []);
   assert.equal(out.doc.ocr.mode, "high");
   assert.equal(out.doc.ocr.vlm, 0);
+  // On a scan a layout box with no ink under it is not added: a dark text block is not a picture.
+  const figs = out.doc.order.map((id) => out.doc.blocks[id]).filter((b) => b.type === "figure");
+  assert.deepEqual(figs, []);
+  assert.equal(out.doc.ocr.vlmFigures, 0);
 });
 
 test("readScan high accuracy lays out a labeled column the rules missed", async () => {
@@ -715,16 +727,117 @@ test("readScan high accuracy lays out a labeled column the rules missed", async 
   assert.equal(out.doc.ocr.mode, "high");
 });
 
-test("hintLayoutFigures adds one box on an empty page and skips a page that has a figure", () => {
-  const empty = { order: ["p"], blocks: { p: { id: "p", type: "para", page: 2, bbox: [0, 0, 10, 10], text: "x" } } };
-  const added = hintLayoutFigures(empty, [
-    { page: 2, bbox: [12, 12, 40, 40], label: "image", score: 0.8 },
-    { page: 2, bbox: [50, 12, 80, 40], label: "chart", score: 0.7 },
-  ]);
-  assert.equal(added.applied.length, 1);
-  assert.equal(added.doc.blocks[added.applied[0].id].method, "vlm-layout");
-  const again = hintLayoutFigures(added.doc, [{ page: 2, bbox: [1, 1, 8, 8], label: "image", score: 0.9 }]);
-  assert.equal(again.applied.length, 0);
+test("applyLayoutFigures: layout boxes replace local figures on the pages the layout model saw", () => {
+  const doc = {
+    pages: [{ n: 1, w: 400, h: 600, ocr: true, kind: "mixed" }, { n: 2, w: 400, h: 600, ocr: true, kind: "mixed" }],
+    order: ["f1", "c1", "p1", "f2", "p2"],
+    blocks: {
+      // One ink hull over two photographs (a scan border joined them).
+      f1: { id: "f1", type: "figure", page: 1, bbox: [0, 10, 380, 540], caption: "c1", image: { kind: "crop", source: "drawing" } },
+      c1: { id: "c1", type: "caption", page: 1, bbox: [20, 545, 300, 555], text: "Plate 3", for: "f1" },
+      p1: { id: "p1", type: "para", page: 1, bbox: [20, 570, 60, 580], text: "45" },
+      f2: { id: "f2", type: "figure", page: 2, bbox: [0, 200, 400, 600], caption: null, image: { kind: "crop", source: "drawing" } },
+      p2: { id: "p2", type: "para", page: 2, bbox: [20, 20, 300, 180], text: "a prose page under a shadow" },
+    },
+  };
+  const layout = [
+    { page: 1, label: "image", score: 0.98, bbox: [28, 50, 322, 280] },
+    { page: 1, label: "image", score: 0.98, bbox: [28, 320, 322, 540] },
+    { page: 1, label: "image", score: 0.9, bbox: [10, 560, 30, 575] }, // a 0.1% page icon
+    { page: 1, label: "number", score: 0.8, bbox: [170, 580, 180, 590] },
+    { page: 2, label: "text", score: 0.9, bbox: [20, 20, 300, 180] },
+  ];
+  const out = applyLayoutFigures(doc, layout, [1, 2]);
+  const figs = out.doc.order.map((id) => out.doc.blocks[id]).filter((b) => b.type === "figure");
+  assert.deepEqual(figs.map((f) => [f.page, ...f.bbox]), [[1, 28, 50, 322, 280], [1, 28, 320, 322, 540]]);
+  assert.ok(figs.every((f) => f.method === "vlm-layout" && f.image.source === "layout"));
+  // The caption of the replaced hull follows the first layout figure.
+  const linked = figs.find((f) => f.caption === "c1");
+  assert.ok(linked);
+  assert.equal(out.doc.blocks.c1.for, linked.id);
+  assert.ok(!out.doc.blocks.f1 && !out.doc.blocks.f2, "the ink hulls are gone");
+  assert.ok(out.doc.order.includes("p2"));
+});
+
+test("applyLayoutFigures on a scan: ink and layout reconcile each other's joins and splits", () => {
+  const pages = [1, 2, 3, 4].map((n) => ({ n, w: 400, h: 600, ocr: true, kind: "mixed" }));
+  const fig = (id, page, bbox) => ({ id, type: "figure", page, bbox, caption: null, image: { kind: "crop", source: "drawing" } });
+  const doc = {
+    pages,
+    order: ["a1", "b1", "b2", "c1", "c2", "c3", "d1"],
+    blocks: {
+      // p1: the ink joined two photographs through the scan border.
+      a1: fig("a1", 1, [0, 10, 380, 540]),
+      // p2: two stacked photographs the detector drew one box around.
+      b1: fig("b1", 2, [30, 20, 370, 280]),
+      b2: fig("b2", 2, [30, 290, 370, 540]),
+      // p3: one halftone print split by its light sky into three interleaved pieces.
+      c1: fig("c1", 3, [20, 40, 200, 180]),
+      c2: fig("c2", 3, [205, 40, 380, 170]),
+      c3: fig("c3", 3, [20, 150, 380, 300]),
+      // p4: a chart whose ink ran on into the caption and body text below it.
+      d1: fig("d1", 4, [150, 100, 250, 500]),
+    },
+  };
+  const layout = [
+    { page: 1, label: "image", score: 0.98, bbox: [28, 50, 322, 280] },
+    { page: 1, label: "image", score: 0.98, bbox: [28, 320, 322, 540] },
+    { page: 2, label: "image", score: 0.75, bbox: [40, 20, 360, 540] },
+    { page: 3, label: "image", score: 0.9, bbox: [25, 45, 375, 295] },
+    { page: 3, label: "image", score: 0.9, bbox: [20, 400, 380, 560] }, // nothing inked there
+    { page: 4, label: "chart", score: 0.95, bbox: [155, 100, 245, 250] },
+    { page: 4, label: "figure_title", score: 0.95, bbox: [60, 260, 340, 320] },
+    { page: 4, label: "text", score: 0.95, bbox: [60, 330, 340, 500] },
+  ];
+  const out = applyLayoutFigures(doc, layout, [1, 2, 3, 4]);
+  const by = (n) => out.doc.order.map((id) => out.doc.blocks[id]).filter((b) => b.type === "figure" && b.page === n).map((f) => f.bbox);
+  assert.deepEqual(by(1), [[28, 50, 322, 280], [28, 320, 322, 540]], "a join through the border takes the two layout boxes");
+  assert.deepEqual(by(2), [[30, 20, 370, 280], [30, 290, 370, 540]], "two stacked pictures the ink separates stay two");
+  assert.deepEqual(by(3), [[25, 45, 375, 295]], "interleaved pieces are one picture; a box over bare paper is not added");
+  assert.deepEqual(by(4), [[155, 100, 245, 250]], "ink that ran into the text is clipped to the chart");
+});
+
+test("applyLayoutFigures: touching panels merge, a gutter keeps two figures, other pages keep local figures", () => {
+  const doc = {
+    pages: [{ n: 1, w: 600, h: 800, kind: "text" }, { n: 2, w: 600, h: 800, kind: "text" }, { n: 3, w: 600, h: 800, ocr: true, kind: "mixed" }],
+    order: ["f3"],
+    blocks: { f3: { id: "f3", type: "figure", page: 3, bbox: [10, 10, 300, 300], caption: null, image: { kind: "crop", source: "drawing" } } },
+  };
+  const layout = [
+    { page: 1, label: "chart", score: 0.9, bbox: [230, 130, 380, 250] },
+    { page: 1, label: "chart", score: 0.8, bbox: [232, 251, 382, 380] }, // touches: one figure
+    { page: 2, label: "chart", score: 0.9, bbox: [80, 220, 280, 350] },
+    { page: 2, label: "chart", score: 0.9, bbox: [80, 370, 290, 500] }, // 20pt gutter: two figures
+  ];
+  const out = applyLayoutFigures(doc, layout, [1, 2]);
+  const by = (n) => out.doc.order.map((id) => out.doc.blocks[id]).filter((b) => b.type === "figure" && b.page === n);
+  assert.deepEqual(by(1).map((f) => f.bbox), [[230, 130, 382, 380]]);
+  assert.equal(by(2).length, 2);
+  assert.deepEqual(by(3).map((f) => f.id), ["f3"], "a page the layout model did not see keeps its figure");
+});
+
+test("applyLayoutFigures: on a born-digital page an embedded image stays, strokes without a layout figure go", () => {
+  const doc = {
+    pages: [{ n: 1, w: 600, h: 800, kind: "text" }],
+    order: ["i1", "d1", "c1"],
+    blocks: {
+      i1: { id: "i1", type: "figure", page: 1, bbox: [50, 50, 550, 300], caption: null, image: { kind: "crop", source: "image" } },
+      d1: { id: "d1", type: "figure", page: 1, bbox: [50, 400, 550, 600], caption: "c1", image: { kind: "crop", source: "drawing" } },
+      c1: { id: "c1", type: "caption", page: 1, bbox: [50, 610, 300, 620], text: "Table 1", for: "d1" },
+    },
+  };
+  const out = applyLayoutFigures(doc, [{ page: 1, label: "table", score: 0.95, bbox: [50, 400, 550, 600] }], [1]);
+  assert.deepEqual(out.doc.order, ["i1", "c1"]);
+  // An "image" box over a table the page already reads is the table's ink.
+  const tabled = { ...doc, order: ["t1"], blocks: { t1: { id: "t1", type: "table", page: 1, bbox: [50, 400, 550, 600], rows: 2, cols: 2, cells: [] } } };
+  const onTable = applyLayoutFigures(tabled, [{ page: 1, label: "image", score: 0.9, bbox: [60, 410, 540, 590] }], [1]);
+  assert.deepEqual(onTable.doc.order, ["t1"]);
+  assert.equal(out.doc.blocks.c1.for, undefined);
+  assert.equal(out.doc.blocks.c1.type, "caption");
+  // The same embedded image is trimmed to the chart when the layout model boxes it.
+  const trimmed = applyLayoutFigures(doc, [{ page: 1, label: "chart", score: 0.95, bbox: [60, 120, 540, 290] }], [1]);
+  const figs = trimmed.doc.order.map((id) => trimmed.doc.blocks[id]).filter((b) => b.type === "figure");
+  assert.deepEqual(figs.map((f) => f.bbox), [[60, 120, 540, 290]]);
 });
 
 test("alignVlmText rewrites Vision lines inside a region and leaves the boxes", () => {

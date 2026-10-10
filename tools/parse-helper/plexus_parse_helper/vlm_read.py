@@ -257,13 +257,15 @@ def _page_numeric(options, page_no) -> bool:
 
 
 def read_pages(pdf_path: str, options: dict | None = None) -> dict:
-    """`options` is `{pages, tables, text, numericPages, words, boxMode}`.
+    """`options` is `{pages, tables, text, numericPages, words, boxMode, layoutOnly}`.
 
     `tables` are caller boxes, top-left points. `numericPages` are pages whose
     words form aligned numeric columns. `boxMode` is `union` unless a caller
-    asks for `caller` or `layout`.
+    asks for `caller` or `layout`. `layoutOnly` runs the layout model alone:
+    the response carries layout and figure boxes, no table or text is read.
     """
     options = options or {}
+    layout_only = bool(options.get("layoutOnly"))
     pages = [int(p) for p in (options.get("pages") or [])]
     regions = options.get("tables") or []
     if not isinstance(regions, list):
@@ -313,7 +315,7 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
                 if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
                     raise ValueError("bbox must be [x0, y0, x1, y1]")
                 fallback.append({"page": page_no, "label": "table", "score": 0, "bbox": [float(v) for v in bbox]})
-            chosen = choose_table_boxes(
+            chosen = [] if layout_only else choose_table_boxes(
                 detected,
                 fallback,
                 page_size=(pw, ph),
@@ -356,7 +358,7 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
                     "label": item["label"],
                     "score": item["score"],
                 })
-            if want_text:
+            if want_text and not layout_only:
                 plan = text_plan(detected, pw, ph)
                 body = plan["body"]
                 strips = plan["strips"]

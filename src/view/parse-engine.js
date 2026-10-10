@@ -8,7 +8,7 @@ import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
 import { voteOcrBodies, weakOcrPage } from "../model/parse/ocr-vote.js";
 import { evidenceFromRecords } from "../model/parse/vlm-arbitrate.js";
 import { decimalColumnPagesOf, numericPagesOf } from "../model/parse/vlm-boxes.js";
-import { alignVlmText, applyVlmTables, keepTextLayerReads, linkLayoutCaptions, tableRegions } from "../model/parse/vlm-tables.js";
+import { alignVlmText, applyLayoutFigures, applyVlmTables, keepTextLayerReads, linkLayoutCaptions, tableRegions } from "../model/parse/vlm-tables.js";
 
 const GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
 
@@ -211,16 +211,19 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
     const plates = captionPlatePages(doc, wanted);
     const tableSend = send.filter((n) => explicitText || !weak.has(n));
     const textSend = [...new Set([...weak, ...plates])].filter((n) => !explicitText || !tableSend.includes(n));
+    // Every other page still goes to the layout model, for its figures only:
+    // no table or text is read there, so those readings stay as they were.
+    const layoutSend = high ? vlmPages.filter((n) => !tableSend.includes(n) && !textSend.includes(n)) : [];
     try {
-      if (high && (tableSend.length || textSend.length)) {
+      if (high && (tableSend.length || textSend.length || layoutSend.length)) {
         onPhase?.({ phase: "vlm", count: tableSend.length + textSend.length, mode: "high" });
-        const askVlm = (pageList, text, numeric) => {
+        const askVlm = (pageList, text, numeric, layoutOnly = false) => {
           if (!pageList.length) return null;
           return helper.vlm({
             bytes, sha256, pages: pageList,
-            tables: regions.filter((r) => pageList.includes(r.page)),
-            numericPages: numeric.filter((n) => pageList.includes(n)),
-            text, signal,
+            tables: layoutOnly ? [] : regions.filter((r) => pageList.includes(r.page)),
+            numericPages: layoutOnly ? [] : numeric.filter((n) => pageList.includes(n)),
+            text, layoutOnly, signal,
           });
         };
         const readTable = await askVlm(tableSend, explicitText, numericPages);
@@ -228,9 +231,12 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
         // No whole-page numeric read: a letter is not a table the layout model missed.
         const readText = await askVlm(textSend, true, []);
         throwIfAborted();
+        const readOnly = await askVlm(layoutSend, false, [], true);
+        throwIfAborted();
         const readTables = [...(readTable?.tables || []), ...(readText?.tables || [])];
         const readLines = [...(explicitText ? (readTable?.lines || []) : []), ...(readText?.lines || [])];
-        const readLayout = [...(readTable?.layout || []), ...(readText?.layout || [])];
+        const readLayout = [...(readTable?.layout || []), ...(readText?.layout || []), ...(readOnly?.layout || [])];
+        const layoutPages = [...new Set([...(readTable ? tableSend : []), ...(readText ? textSend : []), ...(readOnly ? layoutSend : [])])];
         const structures = keepTextLayerReads(doc, readTables, wanted);
         const applied = applyVlmTables(doc, structures, {
           method: readText?.model || readTable?.model || "vlm",
@@ -247,11 +253,13 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
           // The placement check needs each page transcription and the Vision text it replaced.
           if (options.keepVision === true && linedText.reads?.length) doc.ocr = { ...(doc.ocr || {}), pageReads: linedText.reads };
         }
+        // The layout model's figures replace the local ones on the pages it saw,
+        // then its figure titles are linked to them.
+        const figured = applyLayoutFigures(doc, readLayout, layoutPages);
+        if (figured.applied.length) Object.assign(doc, { blocks: figured.doc.blocks, order: figured.doc.order });
         const linked = linkLayoutCaptions(doc, readLayout);
-        vlmFigures = linked.applied;
+        vlmFigures = [...figured.applied, ...linked.applied];
         if (linked.applied.length) Object.assign(doc, { blocks: linked.doc.blocks });
-        // Layout figure boxes are not inserted. A hint on a page the detector
-        // left empty missed the drawing and lowered figure F1 from 0.920 to 0.902.
         doc.ocr = { ...(doc.ocr || {}), mode: "high" };
       } else if (high) {
         doc.ocr = { ...(doc.ocr || {}), mode: "high" };

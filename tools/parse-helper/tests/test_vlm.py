@@ -679,3 +679,24 @@ def test_a_wide_span_row_is_not_a_loop():
     run = _RepeatStop([], Tok())
     run.reset()
     assert any(run(1) for _ in range(SPAN_RUN))
+
+
+def test_layout_only_reads_no_table_and_no_text(monkeypatch):
+    from plexus_parse_helper.vlm_read import read_pages
+
+    calls = {"page": 0, "generate": 0}
+    monkeypatch.setattr("plexus_parse_helper.vlm_read.detect_layout", _page_layout("both"))
+    monkeypatch.setattr(
+        "plexus_parse_helper.vlm_read.read_page_text",
+        lambda image: calls.__setitem__("page", calls["page"] + 1) or "should not run",
+    )
+
+    def generate(image, prompt, tokens):
+        calls["generate"] += 1
+        return "should not run"
+
+    monkeypatch.setattr("plexus_parse_helper.vlm_read._generate", generate)
+    out = read_pages(str(PDF), {"pages": [1], "text": True, "tables": [{"page": 1, "bbox": [10, 300, 300, 500]}], "layoutOnly": True})
+    assert calls == {"page": 0, "generate": 0}
+    assert out["tables"] == [] and out["lines"] == [] and out["boxes"] == []
+    assert out["layout"], "the layout boxes are still returned"

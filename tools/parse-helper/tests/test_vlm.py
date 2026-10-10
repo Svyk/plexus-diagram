@@ -654,3 +654,28 @@ def test_page_text_reads_a_masked_page(monkeypatch):
     assert image.getpixel((w // 4, int(h * 0.6))) == colour
     assert image.getpixel((3 * w // 4, int(h * 0.85))) == colour
     assert [line for line in out["lines"] if line.get("pageText")][0]["text"] == "Dear reader one line"
+
+
+def test_a_wide_span_row_is_not_a_loop():
+    from plexus_parse_helper.vlm_tables import SPAN_RUN, _RepeatStop
+
+    class Tok:
+        def decode(self, ids, skip_special_tokens=False):
+            return "".join({1: "<lcel>", 2: "x", 3: "<nl>"}[i] for i in ids)
+
+        def convert_tokens_to_ids(self, name):
+            return -1
+
+    stop = _RepeatStop([], Tok())
+    stop.reset()
+    # A thirteen-column caption: twelve span tokens after the text.
+    assert all(not stop(2) for _ in range(3))
+    assert all(not stop(1) for _ in range(12))
+    # Twelve ordinary tokens in a row are still a loop.
+    loop = _RepeatStop([], Tok())
+    loop.reset()
+    assert any(loop(2) for _ in range(12))
+    # Span tokens that run past any table width stop too.
+    run = _RepeatStop([], Tok())
+    run.reset()
+    assert any(run(1) for _ in range(SPAN_RUN))

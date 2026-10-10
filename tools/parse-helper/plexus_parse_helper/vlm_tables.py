@@ -34,6 +34,9 @@ TEXT_TOKENS = 512
 # state from a previous sampled call out of this one.
 DECODE_TEMPERATURE = 0.0
 DECODE_SEED = 0
+# OTSL span tokens that may legitimately repeat across one wide row.
+SPAN_TOKENS = {"<lcel>", "<ucel>", "<xcel>", "<ecel>"}
+SPAN_RUN = 64
 
 _lock = threading.Lock()
 _loaded: tuple | None = None
@@ -145,7 +148,11 @@ class _RepeatStop:
             return True
         n = len(self.recent)
         if n >= 12 and len(set(self.recent[-12:])) == 1:
-            return True
+            # A caption spanning thirteen columns is twelve `<lcel>` tokens in
+            # a row: a wide span, not a loop. A span tag stops only when it
+            # has run past any table width.
+            if piece.strip() not in SPAN_TOKENS or (n >= SPAN_RUN and len(set(self.recent[-SPAN_RUN:])) == 1):
+                return True
         # Two copies of a header ("Rate of flow" three times across one row, or
         # the left half of a page repeated on the right) are the table, not a
         # loop. Stop only when the same span that contains a row break has been

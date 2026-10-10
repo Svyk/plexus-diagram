@@ -324,6 +324,14 @@ test("numbered monospace lines with an empty line stay a code block", () => {
   assert.equal(blocksOf(d, "code").length, 1);
 });
 
+test("text beside figure labels, one line each, is not a table even when two lines share a column", () => {
+  // Figure labels at the left and lines of prose at the right, one line each: no table.
+  const labels = ["14-", "-12", "18-", "16-"];
+  const prose = ["Britain and in the United States for many years.", "It has been superseded, however, and is now nearly", "obsolete. By the repeated copying of old specifica-", "tions its use has persisted to some extent, both in"];
+  const items = labels.flatMap((l, i) => row(400 + i * 12, [[l, 74], [prose[i], 150]]));
+  assert.equal(tablesOf(doc([page(items)])).length, 0);
+});
+
 test("stitchTables leaves a second piece with its own header rows alone", () => {
   const a = { method: "stream", page: 1, cols: 3, rows: 3, headerRows: 1, bbox: [100, 100, 320, 140], grid: { xs: [98, 150, 250, 322], ys: [100, 115, 130, 140] }, cells: [], confidence: 1 };
   const b = { method: "stream", page: 1, cols: 3, rows: 3, headerRows: 1, bbox: [100, 150, 320, 190], grid: { xs: [98, 150, 250, 322], ys: [150, 165, 180, 190] }, cells: [], confidence: 1 };

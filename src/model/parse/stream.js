@@ -863,16 +863,23 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   // column the projection merged.
   const tol = 0.5 * bodySize;
   const insideColumn = (p) => p.span === 1 && p.t.x0 >= cols[p.c].x0 - tol && p.t.x1 <= cols[p.c].x1 + tol;
-  const wrappedPair = (a, b) => insideColumn(a) && insideColumn(b) && !(valueToken(a.t.text) && valueToken(b.t.text));
+  // A number beside a word ("84,77" + "Ammoniak") is two columns too, and a
+  // row holding a line of prose ("It was used extensively both in Great") is
+  // text beside a figure, not a wrapped cell.
+  const shortRow = (row) => row.every((p) => String(p.t.text || "").trim().split(/\s+/).length <= 4);
+  const wordish = (t) => /[A-Za-z]{2,}/.test(t);
+  const mixed = (a, b) => (valueToken(a) && valueToken(b)) || (valueToken(a) && wordish(b)) || (wordish(a) && valueToken(b));
+  const wrappedPair = (a, b) => insideColumn(a) && insideColumn(b) && (dateCell(`${a.t.text} ${b.t.text}`) || !mixed(a.t.text, b.t.text));
   placed.forEach((row) => {
     // Group labels and spanning headers (one token) enter a run on their own terms.
     if (row.length < 2) return;
     counted++;
+    const short = shortRow(row);
     const seen = new Map();
     let dup = false;
     for (const p of row) {
       const prev = seen.get(p.c);
-      if (prev && !wrappedPair(prev, p)) dup = true;
+      if (prev && !(short && wrappedPair(prev, p))) dup = true;
       if (!prev) seen.set(p.c, p);
     }
     // Single-line rows (free mode) must map one token per column; banded rows may wrap inside a cell.
@@ -1918,7 +1925,7 @@ export function phraseTable(table) {
 
 const YEAR_RE = /\b(?:1[89]|20)\d{2}\b/;
 const CLOCK_RE = /\b\d{1,2}[.:]\d{2}\b/;
-const MONTH_RE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i;
+const MONTH_RE = /\b(?:jan|feb|mar|apr|april|may|jun|june|jul|july|aug|sep|sept|oct|nov|dec)\b/i;
 
 // A date in a cell: a month name with a day or a year ("Mar. 18, 1889.", "May,
 // 1903."), or a year on its own. Four words at most.

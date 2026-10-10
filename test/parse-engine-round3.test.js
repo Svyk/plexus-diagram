@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { OP } from "../src/model/parse/rules.js";
-import { assembleDocument, parsePageGeometry, stitchTables } from "../src/model/parse/index.js";
+import { absorbSectionBanners, absorbTableFooters, assembleDocument, parsePageGeometry, stitchTables } from "../src/model/parse/index.js";
 import { boxGridRules, findLatticeTables, tabularBetween, cellTextOf } from "../src/model/parse/lattice.js";
 import { detectStreamRuns, refineColumns, splitTokensAt, tokenizeLine, headerRowGroups } from "../src/model/parse/stream.js";
 import { buildLines, letterSpaced, dominantRotation } from "../src/model/parse/lines.js";
@@ -329,6 +329,59 @@ test("stitchTables leaves a second piece with its own header rows alone", () => 
   assert.equal(stitchTables([a, b], [], 10).length, 2);
   const c = { ...b, headerRows: 0 };
   assert.equal(stitchTables([{ ...a }, c], [], 10).length, 1);
+});
+
+test("stitchTables joins a section banner and the same banner above the first piece", () => {
+  const cell = (r, c, text, colSpan = 1) => ({ r, c, rowSpan: 1, colSpan, text, header: false });
+  const a = {
+    method: "stream", page: 1, cols: 4, rows: 3, headerRows: 0,
+    bbox: [100, 300, 520, 365],
+    grid: { xs: [99, 356, 424, 478, 521], ys: [300, 320, 340, 365] },
+    cells: [cell(0, 0, "Pressure"), cell(0, 1, "0"), cell(0, 2, "12"), cell(0, 3, "15")],
+    confidence: 1,
+  };
+  const b = {
+    method: "stream", page: 1, cols: 4, rows: 2, headerRows: 1,
+    bbox: [100, 374, 522, 430],
+    grid: { xs: [100, 357, 425, 482, 523], ys: [374, 390, 430] },
+    cells: [cell(0, 0, "Supercharger speed - 2,000 r.p.m.", 4), cell(1, 0, "Pressure"), cell(1, 1, "0")],
+    confidence: 1,
+  };
+  const blocks = [{ type: "para", text: "Supercharger Speed - 1,000 r.p.m.", bbox: { x0: 186, y0: 274, x1: 433, y1: 287 } }];
+  const joined = stitchTables([a, b], blocks, 12.5);
+  assert.equal(joined.length, 1);
+  absorbSectionBanners(joined, blocks, 12.5);
+  assert.equal(blocks.length, 0);
+  assert.equal(joined[0].rows, 6);
+  assert.equal(joined[0].cells.find((c) => c.r === 0).text, "Supercharger Speed - 1,000 r.p.m.");
+  assert.equal(joined[0].cells.find((c) => c.r === 0).colSpan, 4);
+  assert.equal(joined[0].cells.find((c) => /2,000/.test(c.text)).r, 4);
+});
+
+test("absorbTableFooters takes the line on the bottom rule and leaves the paragraph under it", () => {
+  const table = {
+    method: "lattice", page: 1, cols: 3, rows: 2, headerRows: 1,
+    bbox: [130, 82, 482, 280],
+    grid: { ys: [82, 100, 280] },
+    cells: [
+      { r: 0, c: 0, rowSpan: 1, colSpan: 1, text: "Factor" },
+      { r: 1, c: 0, rowSpan: 1, colSpan: 1, text: "10" },
+    ],
+  };
+  const blocks = [
+    { type: "para", text: "∗ 23 rue de l'Universite, 75007 Paris, France.", bbox: { x0: 135, y0: 281, x1: 467, y1: 291 } },
+    { type: "para", text: "after rounding are shown as 0.00 on the rate.", bbox: { x0: 135, y0: 283, x1: 467, y1: 293 } },
+    { type: "para", text: "This table shows the common prefixes. Others, from 10-24 to 1024 are acceptable.", bbox: { x0: 135, y0: 286, x1: 467, y1: 296 } },
+    { type: "para", text: "Prefixes produce units that are of an appropriate size for the application, e.g. 10 mm.", bbox: { x0: 72, y0: 340, x1: 540, y1: 430 } },
+  ];
+  absorbTableFooters([table], blocks, 10);
+  assert.equal(table.rows, 3);
+  assert.match(table.cells.find((c) => c.r === 2).text, /common prefixes/);
+  assert.equal(table.cells.find((c) => c.r === 2).colSpan, 3);
+  assert.equal(blocks.length, 3);
+  assert.match(blocks.map((b) => b.text).join("\n"), /rue de/);
+  assert.match(blocks.map((b) => b.text).join("\n"), /after rounding/);
+  assert.match(blocks.map((b) => b.text).join("\n"), /appropriate size/);
 });
 
 // ---------- scans with an OCR text layer ----------

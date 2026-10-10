@@ -1038,6 +1038,133 @@ test("repairTableReading spaces a footnote letter that sits on a number", () => 
   assert.equal(t.cells[0].text, "e 7.67");
 });
 
+test("repairTableReading restores a dropped decimal point, a bullet point, and a split date", () => {
+  const volume = {
+    rows: 4, cols: 2, headerRows: 1,
+    cells: [
+      gridCell(0, 0, "Volume"), gridCell(0, 1, "Pressure"),
+      gridCell(1, 0, "0.4804"), gridCell(1, 1, "841"),
+      gridCell(2, 0, "4743"), gridCell(2, 1, "852"),
+      gridCell(3, 0, "•575"), gridCell(3, 1, "3. 133"),
+    ],
+  };
+  repairTableReading(volume);
+  assert.equal(volume.cells.find((c) => c.r === 2 && c.c === 0).text, ".4743");
+  assert.equal(volume.cells.find((c) => c.r === 2 && c.c === 1).text, "852");
+  assert.equal(volume.cells.find((c) => c.r === 3 && c.c === 0).text, ".575");
+  assert.equal(volume.cells.find((c) => c.r === 3 && c.c === 1).text, "3.133");
+
+  const dates = {
+    rows: 4, cols: 3, headerRows: 0,
+    cells: [
+      gridCell(0, 0, "Conklin"), gridCell(0, 1, "May"), gridCell(0, 2, "2, 1900."),
+      gridCell(1, 0, "Creelman"), gridCell(1, 1, "Jan."), gridCell(1, 2, "18, 1911."),
+      gridCell(2, 0, "Dixon"), gridCell(2, 1, "May"), gridCell(2, 2, "2, 1900"),
+      gridCell(3, 0, "Silkwood"), gridCell(3, 1, "Oct. 23, 1923"), gridCell(3, 2, ""),
+    ],
+  };
+  repairTableReading(dates);
+  assert.equal(dates.cols, 2);
+  assert.equal(dates.cells.find((c) => c.r === 0 && c.c === 1).text, "May 2, 1900.");
+  assert.equal(dates.cells.find((c) => c.r === 3 && c.c === 1).text, "Oct. 23, 1923");
+});
+
+test("repairTableReading spans a numbered section line and drops the mark beside it", () => {
+  const t = {
+    rows: 2, cols: 4, headerRows: 0,
+    cells: [
+      gridCell(0, 0, "Supercharger Speed - 2,500 r.p.m.", { colSpan: 2 }),
+      gridCell(0, 1, "*", { colSpan: 3 }),
+      gridCell(1, 0, "Pressure difference, in. of Hg"), gridCell(1, 1, "0"), gridCell(1, 2, "12"), gridCell(1, 3, "15"),
+    ],
+  };
+  repairTableReading(t);
+  const banner = t.cells.find((c) => c.r === 0);
+  assert.equal(banner.text, "Supercharger Speed - 2,500 r.p.m.");
+  assert.equal(banner.colSpan, 4);
+  assert.equal(t.cells.filter((c) => c.r === 0).length, 1);
+  assert.equal(t.cells.find((c) => c.r === 1 && c.c === 1).text, "0");
+});
+
+test("repairTableReading joins a wrapped stub, folds a split factor, and drops a note row", () => {
+  const wrap = {
+    rows: 6, cols: 5, headerRows: 2,
+    cells: [
+      gridCell(0, 0, "Source", { rowSpan: 2 }),
+      gridCell(0, 1, "Random", { colSpan: 2 }), gridCell(0, 3, "Systematic", { colSpan: 2 }),
+      gridCell(1, 1, "Type A"), gridCell(1, 2, "Type B"), gridCell(1, 3, "Type A"), gridCell(1, 4, "Type B"),
+      gridCell(2, 0, "Calibration of standard end gauge"), gridCell(2, 4, "25"),
+      gridCell(3, 0, "Measured difference between end gauges:"),
+      gridCell(4, 0, "repeated observations"), gridCell(4, 1, "5.8"),
+      gridCell(5, 0, "random effects of comparator"), gridCell(5, 3, "3.9"),
+    ],
+  };
+  repairTableReading(wrap);
+  assert.equal(wrap.rows, 4);
+  const joined = wrap.cells.find((c) => c.r === 3 && c.c === 0);
+  assert.match(joined.text, /repeated observations/);
+  assert.equal(wrap.cells.find((c) => c.r === 3 && c.c === 1).text, "5.8");
+  assert.equal(wrap.cells.find((c) => c.r === 3 && c.c === 3).text, "3.9");
+
+  const factors = {
+    rows: 5, cols: 4, headerRows: 0,
+    cells: [
+      gridCell(0, 0, "Factors in boldface are exact", { colSpan: 4 }),
+      gridCell(1, 0, "To convert from"), gridCell(1, 1, "to"), gridCell(1, 2, "Multiply by", { colSpan: 2 }),
+      gridCell(2, 0, "abampere"), gridCell(2, 1, "ampere (A)"), gridCell(2, 3, "1.0 E+01"),
+      gridCell(3, 0, "acre"), gridCell(3, 1, "square meter"), gridCell(3, 2, "4.046"), gridCell(3, 3, "873 E+03"),
+      gridCell(4, 0, "bar"), gridCell(4, 1, "pascal"), gridCell(4, 3, "1.0 E+05"),
+    ],
+  };
+  repairTableReading(factors);
+  assert.equal(factors.rows, 4);
+  assert.equal(factors.cols, 3);
+  assert.equal(factors.cells.find((c) => c.r === 0 && c.c === 0).text, "To convert from");
+  assert.equal(factors.cells.find((c) => c.r === 1 && c.c === 2).text, "1.0 E+01");
+  assert.equal(factors.cells.find((c) => c.r === 2 && c.c === 2).text, "4.046 873 E+03");
+});
+
+test("repairTableReading strips a glued index mark and drops the empty header", () => {
+  const t = {
+    rows: 8, cols: 2, headerRows: 1,
+    cells: [
+      gridCell(0, 0, "Engler time", { colSpan: 2 }),
+      gridCell(1, 0, "56."), gridCell(1, 1, "0.0155"),
+      gridCell(2, 0, "58."), gridCell(2, 1, ".0210"),
+      gridCell(3, 0, "60."), gridCell(3, 1, ".0260"),
+      gridCell(4, 0, "64"), gridCell(4, 1, ".0357"),
+      gridCell(5, 0, "66"), gridCell(5, 1, ".0403"),
+      gridCell(6, 0, "68-"), gridCell(6, 1, ".0449"),
+      gridCell(7, 0, "120- 120"), gridCell(7, 1, ".1453"),
+    ],
+  };
+  repairTableReading(t);
+  assert.equal(t.headerRows, 0);
+  assert.equal(t.rows, 7);
+  assert.equal(t.cells.find((c) => c.r === 0 && c.c === 0).text, "56");
+  assert.equal(t.cells.find((c) => c.r === 5 && c.c === 0).text, "68");
+  assert.equal(t.cells.find((c) => c.r === 6 && c.c === 0).text, "120");
+});
+
+test("repairTableReading blanks a vertical run of one copied decimal and keeps a lone one", () => {
+  const t = {
+    rows: 6, cols: 3, headerRows: 1,
+    cells: [
+      gridCell(0, 0, "Name"), gridCell(0, 1, "Value"), gridCell(0, 2, "Tol"),
+      gridCell(1, 0, "Tube"), gridCell(1, 1, "0.15"), gridCell(1, 2, "0.003"),
+      gridCell(2, 0, "Stem"), gridCell(2, 1, ""), gridCell(2, 2, ".05"),
+      gridCell(3, 0, "Bulb"), gridCell(3, 1, ""), gridCell(3, 2, ".05"),
+      gridCell(4, 0, "Cup"), gridCell(4, 1, ""), gridCell(4, 2, ".05"),
+      gridCell(5, 0, "Base"), gridCell(5, 1, ".852"), gridCell(5, 2, ".05"),
+    ],
+  };
+  repairTableReading(t);
+  assert.equal(t.cells.find((c) => c.r === 2 && c.c === 2).text, "");
+  assert.equal(t.cells.find((c) => c.r === 4 && c.c === 2).text, "");
+  assert.equal(t.cells.find((c) => c.r === 5 && c.c === 2).text, ".05");
+  assert.equal(t.cells.find((c) => c.r === 1 && c.c === 2).text, "0.003");
+});
+
 test("parse view shows Read the scan only for scan pages with a ready helper", async () => {
   const { createParseView } = await import("../src/view/parse-view.js");
   const { createDomStub } = await import("./fixtures/dom-stub.js");

@@ -972,14 +972,21 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
   const emptyAt = (r, c) => c >= 0 && c < k && !cellMap.has(`${r}:${c}`);
   for (const cell of [...cellMap.values()]) {
     if (fixedSpan.has(cell)) continue;
-    const mid = (Math.min(...cell.words.map((w) => w.x0)) + Math.max(...cell.words.map((w) => w.x1))) / 2;
+    const textX0 = Math.min(...cell.words.map((w) => w.x0));
+    const textX1 = Math.max(...cell.words.map((w) => w.x1));
+    const mid = (textX0 + textX1) / 2;
+    // A short body value sitting inside its own column is not a group header.
+    // Widening it because the neighbour's centre is closer pulls a unit into
+    // the empty column beside it.
+    const overlapsCol = (i) => i >= 0 && i < k && textX1 > cols[i].x0 + 1.5 && textX0 < cols[i].x1 - 1.5;
+    const bodyCell = cell.r >= headerRows;
     let guard = 0;
     while (guard++ < k) {
       const c0 = cell.c; const c1 = cell.c + cell.colSpan - 1;
       const cur = Math.abs((cols[c0].x0 + cols[c1].x1) / 2 - mid);
       const dist = (a, b) => Math.abs((cols[a].x0 + cols[b].x1) / 2 - mid);
-      const canLeft = emptyAt(cell.r, c0 - 1) && dist(c0 - 1, c1) < cur - 1;
-      const canRight = emptyAt(cell.r, c1 + 1) && dist(c0, c1 + 1) < cur - 1;
+      const canLeft = emptyAt(cell.r, c0 - 1) && dist(c0 - 1, c1) < cur - 1 && (!bodyCell || overlapsCol(c0 - 1));
+      const canRight = emptyAt(cell.r, c1 + 1) && dist(c0, c1 + 1) < cur - 1 && (!bodyCell || overlapsCol(c1 + 1));
       // A header wider than the columns under it is a group header: it may sit a little
       // off-centre over its group.
       const textW = Math.max(...cell.words.map((w) => w.x1)) - Math.min(...cell.words.map((w) => w.x0));
@@ -1623,7 +1630,7 @@ export function detectStreamRuns(lines, { dots = [], column = null, rules = [], 
       // the lines have to stay text so a later read can replace them.
       const proseCols = ocr && proseColumnTable(table);
       const weakHand = handwriting && !contentsList(run);
-      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table) && !lacksTabularEvidence(table) && !proseCols && !weakHand) {
+      if (table && (contentsList(run) || !looksLikeProse(run)) && !sparseAxis(table) && !tickGrid(table) && !phraseTable(table) && !lacksTabularEvidence(table) && !damagedIndexColumn(table) && !proseCols && !weakHand) {
         table.usedWords = run.flatMap((r) => r.row.words);
         table.lines = [...run.flatMap((r) => r.row.lines), ...ruleLines];
         out.push(table);
@@ -2009,6 +2016,20 @@ function proseGrid(table) {
 // header and no number, date, or time column. A header with body rows, or one
 // such value column, is a table. A contents list (one page-number column, no
 // other value column) is a table only when the page named it or headed it "Page".
+// A column of integers that sometimes grew a period or a hyphen ("56", "56.", "68-")
+// is a header's punctuation glued onto the numbers. The run started too early.
+export function damagedIndexColumn(table) {
+  const start = table?.headerRows || 0;
+  for (let c = 0; c < (table?.cols || 0); c++) {
+    const texts = (table.cells || []).filter((k) => k.c === c && (k.colSpan || 1) === 1 && k.r >= start && String(k.text || "").trim()).map((k) => String(k.text).trim());
+    if (texts.length < 6) continue;
+    const marked = texts.filter((t) => /^\d{1,3}[.\-–−]$/.test(t)).length;
+    const bare = texts.filter((t) => /^\d{1,3}$/.test(t)).length;
+    if (marked >= 3 && bare >= 2) return true;
+  }
+  return false;
+}
+
 export function lacksTabularEvidence(table) {
   if (!table || table.method !== "stream") return false;
   const cols = table.cols || 0;

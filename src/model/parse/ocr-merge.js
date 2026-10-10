@@ -60,7 +60,7 @@ export function mergeOcrDocument(base, fresh, { pages = [] } = {}) {
     choices.push({ page: block.page, id, layerId: best.table.id, ...verdict });
     if (verdict.chose === "layer") {
       const layer = { ...best.table, cells: (best.table.cells || []).map((c) => ({ ...c })), id, caption: block.caption, engine: "builtin", ocrSource: "layer", ocrCompare: verdict };
-      polishTableText(layer);
+      polishTableText(layer, { tidy: false });
       doc.blocks[id] = layer;
     } else {
       doc.blocks[id] = { ...block, ocrSource: "fresh", ocrCompare: verdict };

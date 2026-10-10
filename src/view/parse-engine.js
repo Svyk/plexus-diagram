@@ -2,7 +2,7 @@
 // pdfjs-dist build): page -> { items, ops, w, h, rotation, transform, fonts }. No graph access.
 
 import { assembleDocument, dropFigureLabelTables, parsePageGeometry, parsePdf } from "../model/parse/index.js";
-import { applyCellOcr, cellsToReread } from "../model/parse/ocr-fix.js";
+import { applyCellOcr, cellsToReread, tidyDocumentTables } from "../model/parse/ocr-fix.js";
 import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lines.js";
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
 import { voteOcrBodies, weakOcrPage } from "../model/parse/ocr-vote.js";
@@ -144,7 +144,10 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n) => !from || !to || (n >= from && n <= to));
   const high = helper.vlmHigh === true && typeof helper.vlm === "function";
   const layerPages = high ? textLayerPages(base, { from, to }).filter((n) => !wanted.includes(n)) : [];
-  if (!wanted.length && !layerPages.length) return { doc: base, choices: [], rereads: [], pages: [] };
+  if (!wanted.length && !layerPages.length) {
+    tidyDocumentTables(base);
+    return { doc: base, choices: [], rereads: [], pages: [] };
+  }
   const throwIfAborted = () => { if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" }); };
   let got = null;
   if (wanted.length) {
@@ -267,6 +270,7 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   }
   const rereads = await rereadCells({ doc, ocr: ask, signal, onPhase });
   doc.ocr = { ...(doc.ocr || {}), rereads: rereads.reduce((n, r) => n + r.applied.length, 0), lines: lined.applied.length, vlm: vlmApplied.length, vlmFigures: vlmFigures.length, vlmLines: vlmLines.length, elapsedMs: got?.elapsedMs ?? null };
+  tidyDocumentTables(doc);
   return { doc, choices: merged.choices, rereads, lines: lined.applied, pages: wanted, records: next, ocrPages: lined.pages };
 }
 

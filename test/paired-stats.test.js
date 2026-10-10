@@ -8,7 +8,7 @@ import test from "node:test";
 import { gritsCon } from "../tools/parse-bench/grits.mjs";
 import { scorePage } from "../tools/parse-bench/scan-score.mjs";
 import {
-  applicable, avgRanks, bootstrapCI, cohenDz, components, evaluate, foldPrint, indexDocsDir, informative, mulberry32, pageScore, parseArgs, resolveDoc, scoreWith, wilcoxon, withoutFigureText,
+  applicable, avgRanks, bootstrapCI, cohenDz, components, evaluate, foldPrint, indexDocsDir, informative, mulberry32, pageScore, parseArgs, resolveDoc, scoreWith, textScore, wilcoxon, withoutFigureText,
 } from "../tools/parse-bench/paired-stats.mjs";
 
 const near = (a, b, tol = 1e-9) => assert.ok(Math.abs(a - b) < tol, `${a} vs ${b}`);
@@ -295,4 +295,49 @@ test("a leader-dot cell and a middle-dot decimal score 1 against clean truth onc
   assert.ok(gritsCon(doc.blocks.t.cells, truth.tables[0].cells).score < 1);
   const [d, t] = foldPrint(doc, truth);
   assert.equal(gritsCon(d.blocks.t.cells, t.tables[0].cells).score, 1);
+});
+
+const docOf = (...texts) => {
+  const blocks = {};
+  texts.forEach((t, i) => { blocks[`b${i}`] = { type: "para", page: 1, text: t }; });
+  return { pages: [{ n: 1, w: 100, h: 100 }], order: Object.keys(blocks), blocks };
+};
+
+test("textScore: an unsure middle line is a wildcard, read right, wrong, or absent", () => {
+  const truth = { textComplete: true, lines: ["alpha beta gamma", { text: "smudged words here", unsure: true }, "delta epsilon zeta"] };
+  const absent = textScore(docOf("alpha beta gamma", "delta epsilon zeta"), truth).cer;
+  const right = textScore(docOf("alpha beta gamma", "smudged words here", "delta epsilon zeta"), truth).cer;
+  const wrong = textScore(docOf("alpha beta gamma", "totally different junk text", "delta epsilon zeta"), truth).cer;
+  assert.equal(absent, 0);
+  assert.equal(right, 0);
+  assert.equal(wrong, 0);
+});
+
+test("textScore: reading only the sure lines is perfect; extra text away from an unsure line costs", () => {
+  const truth = { textComplete: true, lines: ["alpha beta gamma", { text: "x", unsure: true }, "delta epsilon zeta"] };
+  assert.equal(textScore(docOf("alpha beta gamma delta epsilon zeta"), truth).cer, 0);
+  assert.ok(textScore(docOf("header junk", "alpha beta gamma", "delta epsilon zeta"), truth).cer > 0);
+  assert.ok(textScore(docOf("alpha beta gamma", "delta epsilon zeta", "footer junk"), truth).cer > 0);
+  const trailing = { textComplete: true, lines: ["alpha beta", { text: "x", unsure: true }] };
+  assert.equal(textScore(docOf("alpha beta", "anything more"), trailing).cer, 0);
+});
+
+test("textScore: a paragraph made of table-cell text is dropped", () => {
+  const truth = {
+    textComplete: true,
+    lines: ["alpha beta gamma"],
+    tables: [{ cells: [{ r: 0, c: 0, text: "Sample" }, { r: 0, c: 1, text: "Result 12" }, { r: 1, c: 0, text: "Unsure cell", unsure: true }] }],
+  };
+  const s = textScore(docOf("alpha beta gamma", "Sample Result 12 Unsure cell"), truth);
+  assert.equal(s.cer, 0);
+  assert.equal(s.droppedTableText, 1);
+  assert.ok(textScore(docOf("alpha beta gamma", "Sample something else entirely"), truth).cer > 0);
+});
+
+test("textScore: with no unsure lines and no table text it equals the old 1 - CER", () => {
+  const truth = { textComplete: true, lines: ["the quick brown fox", "jumps over"] };
+  const doc = docOf("the quick brwn fox", "jumps ovr the");
+  const old = scorePage(doc, truth).text.cer;
+  near(textScore(doc, truth).cer, old);
+  assert.ok(old > 0);
 });

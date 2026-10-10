@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { foldQuotes } from "./scan-corpus.mjs";
 import { normBox, pageSize, predTables, scorePage, truthLines } from "./scan-score.mjs";
 import { gritsPage } from "./grits.mjs";
+import { normText, readingTexts } from "../../test/parse-metrics.js";
 
 export const CATEGORIES = ["rough-scan", "modern-digital", "photo", "handwritten", "mixed"];
 export const COMPONENTS = ["cell", "struct", "fig", "cap", "text"];
@@ -128,6 +129,80 @@ export function foldPrint(doc, truth) {
   return [walk(structuredClone(doc), false), walk(structuredClone(truth), true)];
 }
 
+const WILD = null;
+
+function alnumTokens(s) {
+  return String(s || "").toLowerCase().match(/[a-z0-9]+/g) || [];
+}
+
+// Truth as segments: one entry per sure line (normText-ed, space-free), WILD for each run of unsure lines.
+function truthSegments(truth) {
+  const segs = [];
+  for (const line of truth.lines || []) {
+    const unsure = !!(line && typeof line === "object" && line.unsure);
+    if (unsure) {
+      if (segs.length && segs[segs.length - 1] === WILD) continue;
+      segs.push(WILD);
+      continue;
+    }
+    const t = normText(typeof line === "string" ? line : (line && line.text) || "").replace(/ /g, "");
+    if (t) segs.push(t);
+  }
+  return segs;
+}
+
+// Edit distance of the truth segments against the predicted characters; the prediction is consumed for free at a WILD.
+export function wildcardDistance(segs, pred) {
+  const n = pred.length;
+  let prev = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (const seg of segs) {
+    const cur = new Array(n + 1);
+    if (seg === WILD) {
+      let m = Infinity;
+      for (let j = 0; j <= n; j++) {
+        if (prev[j] < m) m = prev[j];
+        cur[j] = m;
+      }
+      prev = cur;
+      continue;
+    }
+    for (const ch of seg) {
+      cur[0] = prev[0] + 1;
+      for (let j = 1; j <= n; j++) {
+        const sub = prev[j - 1] + (ch === pred[j - 1] ? 0 : 1);
+        const del = prev[j] + 1;
+        const ins = cur[j - 1] + 1;
+        cur[j] = sub < del ? (sub < ins ? sub : ins) : (del < ins ? del : ins);
+      }
+      prev = cur.slice();
+    }
+  }
+  return prev[n];
+}
+
+// Text score for the paired stats: unsure truth lines are wildcards, predicted blocks made of table-cell text are left out.
+export function textScore(doc, truth) {
+  const segs = truthSegments(truth);
+  const sure = segs.reduce((a, s) => a + (s === WILD ? 0 : s.length), 0);
+  const cellTokens = new Set();
+  for (const t of truth.tables || []) for (const c of t.cells || []) for (const w of alnumTokens(c.text)) cellTokens.add(w);
+  let droppedTableText = 0;
+  const kept = [];
+  for (const { text } of readingTexts(doc)) {
+    const toks = alnumTokens(text);
+    if (toks.length >= 3 && cellTokens.size && toks.filter((w) => cellTokens.has(w)).length / toks.length >= 0.8) {
+      droppedTableText++;
+      continue;
+    }
+    kept.push(text);
+  }
+  const pred = normText(kept.join("\n")).replace(/ /g, "");
+  const dist = wildcardDistance(segs, pred);
+  const cer = sure ? dist / sure : (pred.length ? 1 : 0);
+  return { cer, charDist: dist, charN: sure, droppedTableText };
+}
+
 export function scoreWith(docPath, truth, fold) {
   if (!docPath) return null;
   try {
@@ -141,6 +216,12 @@ export function scoreWith(docPath, truth, fold) {
       const again = scorePage(stripped.doc, t);
       scored.text = again.text;
       scored.textCounts = again.textCounts;
+    }
+    if (scored.text) {
+      scored.textExact = scored.text;
+      const ts = textScore(stripped.doc, t);
+      scored.text = { ...scored.text, cer: ts.cer };
+      scored.textDroppedTable = ts.droppedTableText;
     }
     return scored;
   } catch {
@@ -304,7 +385,7 @@ export function evaluate({ root, manifest, aDir, bDir, foldQuotes: fold = false,
     const sa = pageScore(ca);
     const sb = pageScore(cb);
     if (sa == null) { skipped.push({ id: page.id, reason: "no applicable component" }); continue; }
-    pages.push({ id: page.id, category: categoryOf(page), doc: page.file ?? page.pdf ?? page.id, a: ca, b: cb, sA: sa, sB: sb, d: sa - sb, aExact: exactOf(scA, truth), bExact: exactOf(scB, truth), textDroppedInFigures: { a: scA?.textDroppedInFigures ?? 0, b: scB?.textDroppedInFigures ?? 0 } });
+    pages.push({ id: page.id, category: categoryOf(page), doc: page.file ?? page.pdf ?? page.id, a: ca, b: cb, sA: sa, sB: sb, d: sa - sb, aExact: exactOf(scA, truth), bExact: exactOf(scB, truth), textDroppedInFigures: { a: scA?.textDroppedInFigures ?? 0, b: scB?.textDroppedInFigures ?? 0 }, textExact: { a: scA?.textExact?.cer ?? null, b: scB?.textExact?.cer ?? null } });
   }
   const d = pages.map((p) => p.d);
   const w = wilcoxon(d);

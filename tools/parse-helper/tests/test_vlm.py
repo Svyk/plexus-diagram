@@ -224,6 +224,74 @@ def test_whole_page_when_the_layout_model_misses_a_numeric_grid():
         {"text": "1913", "x0": 20, "y0": 40, "x1": 40, "y1": 48},
     ]
     assert aligned_numeric_columns(prose) is False
+    sentence = "The combination of the draw bench and the die"
+    ys = [20, 36, 52, 68, 84]
+
+    def prose_row(y, left, right):
+        return [
+            {"text": sentence, "x0": 40, "y0": y, "x1": 220, "y1": y + 8},
+            {"text": left, "x0": 230, "y0": y, "x1": 246, "y1": y + 8},
+            {"text": right, "x0": 280, "y0": y, "x1": 296, "y1": y + 8},
+        ]
+
+    claim = []
+    decimals = []
+    short = []
+    for y in ys:
+        claim.extend(prose_row(y, "1", "70"))
+        decimals.extend(prose_row(y, "1.2", "3.4"))
+        short.extend([
+            {"text": "North", "x0": 20, "y0": y, "x1": 52, "y1": y + 8},
+            {"text": "12", "x0": 80, "y0": y, "x1": 92, "y1": y + 8},
+            {"text": "14", "x0": 120, "y0": y, "x1": 132, "y1": y + 8},
+        ])
+    assert aligned_numeric_columns(claim) is False
+    assert aligned_numeric_columns(decimals) is True
+    assert aligned_numeric_columns(short) is True
+    contents = []
+    for i, y in enumerate(ys):
+        contents.extend([
+            {"text": f"{280 + i}.", "x0": 28, "y0": y, "x1": 48, "y1": y + 8},
+            {"text": "Cooling", "x0": 52, "y0": y, "x1": 100, "y1": y + 8},
+            {"text": "by", "x0": 104, "y0": y, "x1": 120, "y1": y + 8},
+            {"text": str(250 + i), "x0": 300, "y0": y, "x1": 320, "y1": y + 8},
+        ])
+    assert aligned_numeric_columns(contents) is False
+    scattered = []
+    for y in (20, 140, 260, 400):
+        scattered.extend([
+            {"text": "12", "x0": 40, "y0": y, "x1": 52, "y1": y + 8},
+            {"text": "40", "x0": 200, "y0": y, "x1": 212, "y1": y + 8},
+        ])
+    assert aligned_numeric_columns(scattered) is False
+    from plexus_parse_helper.vlm_boxes import labeled_decimal_column
+
+    names = ["Methane", "Ethane", "Propane", "Butane", "Nitrogen"]
+    values = ["84.7", "9.4", "3.0", "1.3", "1.6"]
+    column = []
+    integers = []
+    for i, y in enumerate(ys):
+        column.extend([
+            {"text": names[i], "x0": 40, "y0": y, "x1": 90, "y1": y + 8},
+            {"text": values[i], "x0": 200, "y0": y, "x1": 224, "y1": y + 8},
+        ])
+        integers.extend([
+            {"text": names[i], "x0": 40, "y0": y, "x1": 90, "y1": y + 8},
+            {"text": str(i + 1), "x0": 200, "y0": y, "x1": 212, "y1": y + 8},
+        ])
+    assert aligned_numeric_columns(column) is False
+    assert labeled_decimal_column(column) is True
+    assert labeled_decimal_column(integers) is False
+    assert labeled_decimal_column([
+        {"text": "1.5", "x0": 200, "y0": y, "x1": 220, "y1": y + 8} for y in ys
+    ]) is False
+    prose_decimals = []
+    for y in ys:
+        prose_decimals.extend([
+            {"text": sentence, "x0": 40, "y0": y, "x1": 280, "y1": y + 8},
+            {"text": "1.5", "x0": 300, "y0": y, "x1": 320, "y1": y + 8},
+        ])
+    assert labeled_decimal_column(prose_decimals) is False
     page = choose_table_boxes(
         [],
         [{"label": "table", "score": 0, "bbox": [10, 10, 40, 30]}],
@@ -271,6 +339,21 @@ def test_weight_sha256_rejects_a_mismatch_and_accepts_a_match(tmp_path):
         assert "sha256" in str(exc)
     else:
         raise AssertionError("a mismatched weight was accepted")
+
+
+def test_layout_table_inside_a_figure_is_not_read():
+    from plexus_parse_helper.vlm_boxes import drop_layout_inside_figures
+
+    figure = {"bbox": [20, 40, 180, 220], "label": "chart"}
+    axis = {"bbox": [40, 60, 160, 180], "source": "layout"}
+    beside = {"bbox": [20, 240, 180, 290], "source": "layout"}
+    asked = {"bbox": [40, 60, 160, 180], "source": "caller"}
+    union = {"bbox": [40, 60, 160, 180], "source": "union"}
+    kept = drop_layout_inside_figures([axis, beside, asked, union], [figure])
+    assert axis not in kept
+    assert beside in kept
+    assert asked in kept
+    assert union in kept
 
 
 def test_whole_page_read_does_not_hide_a_figure():

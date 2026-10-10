@@ -21,7 +21,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 17;
+export const PARSE_REV = 18;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -147,7 +147,7 @@ export function parsePageGeometry(data, n) {
   // Rule bands beside a chart that only hold its labels go back to the text pass.
   for (let i = tables.length - 1; i >= 0; i--) {
     const t = tables[i];
-    if (t.method !== "stream" || !figureLabels(t, figures)) continue;
+    if (t.method !== "stream" || (!figureLabels(t, figures) && !sparseContentsTable(t))) continue;
     tables.splice(i, 1);
     for (const w of words) if (used.has(w) && !figs.used.has(w) && w.x0 >= t.bbox[0] - 2 && w.x1 <= t.bbox[2] + 2 && w.base >= t.bbox[1] && w.base <= t.bbox[3] + 2) used.delete(w);
   }
@@ -622,7 +622,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
           textBlocks.push({ type: "code", lines: t.lines, bbox: boxOfUnits(t.lines), text: t.text });
           continue;
         }
-        if (isTitledBox(t) || figureLabels(t, pageFigures)) { lines = [...lines, ...t.lines].sort((a, b) => a.base - b.base || a.x0 - b.x0); continue; }
+        if (isTitledBox(t) || figureLabels(t, pageFigures) || sparseContentsTable(t)) { lines = [...lines, ...t.lines].sort((a, b) => a.base - b.base || a.x0 - b.x0); continue; }
         delete t.lines; delete t.usedWords;
         t.page = pg.n;
         pageTables.push(t);
@@ -854,6 +854,21 @@ export function figureLabels(t, figures) {
     const b = f.bbox;
     return t.bbox[0] <= b[2] + 12 && t.bbox[2] >= b[0] - 12 && t.bbox[1] <= b[3] + 12 && t.bbox[3] >= b[1] - 12;
   });
+}
+
+// A contents list read as a wide, mostly empty stream grid: page numbers, a
+// few prose cells, no decimals. A filled two-column contents list stays a
+// table. A measurement grid has a decimal or a four-digit year and stays.
+export function sparseContentsTable(t) {
+  if (!t || t.method !== "stream" || t.cols < 3 || t.rows < 4) return false;
+  const cells = t.cells || [];
+  const slot = Math.max(1, t.rows * t.cols);
+  const texts = cells.map((c) => String(c.text || "").trim()).filter(Boolean);
+  if (!texts.length || texts.length >= 0.55 * slot) return false;
+  if (texts.some((s) => /\d{4}|\d\.\d/.test(s))) return false;
+  const pageNums = texts.filter((s) => /^\d{1,3}$/.test(s)).length;
+  const prose = texts.filter((s) => /[A-Za-z]{5,}/.test(s)).length;
+  return pageNums >= 2 && prose >= 2;
 }
 
 // A heading over one spanning line of text ("ARTICLE INFO" + an editor line) is a box, not a

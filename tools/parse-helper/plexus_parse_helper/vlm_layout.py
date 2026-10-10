@@ -46,6 +46,8 @@ LABELS = (
 
 # Element prompts in PaddleOCR-VL. Figures stay with our own detector; these
 # labels are only a hint where that detector found nothing.
+# figure_title is not re-read. The caller links the local line the box covers.
+# Replacing that line with a second OCR pass dropped captions.
 TABLE_LABELS = frozenset({"table"})
 FIGURE_LABELS = frozenset({"image", "chart"})
 TEXT_LABELS = frozenset({
@@ -54,7 +56,6 @@ TEXT_LABELS = frozenset({
     "aside_text",
     "content",
     "doc_title",
-    "figure_title",
     "footer",
     "footnote",
     "header",

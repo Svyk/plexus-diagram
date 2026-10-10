@@ -22,6 +22,15 @@ UNION_COVER = 0.55
 MIN_NUMERIC_ROWS = 4
 MIN_NUMERIC_COLS = 2
 ROW_GAP = 4.0
+# A column of page numbers scattered down a contents list is not a table.
+# Table rows sit about a line apart. Same rule as vlm-boxes.js.
+ROW_PITCH_MAX = 36.0
+# A claim number, a margin line number, or an equation number sits on a
+# sentence. A short label beside a count does not. Same rule as vlm-boxes.js.
+PROSE_LETTERS = 8
+# A row label beside a measured value ("Methane" / "84.7") is a few words.
+# A full sentence is not a table row. Same rule as vlm-boxes.js.
+LABEL_LETTERS_MAX = 24
 
 # A number, a decimal, or a thousands group. A letter in the token is not a number.
 _NUMERIC = re.compile(
@@ -109,15 +118,50 @@ def _word_box(word):
     return [float(word["x0"]), float(word["y0"]), float(word["x1"]), float(word["y1"])]
 
 
-def _distinct_rows(ys, gap=ROW_GAP):
+def _letter_count(text) -> int:
+    return sum(1 for ch in str(text or "") if ("A" <= ch <= "Z") or ("a" <= ch <= "z"))
+
+
+def _list_marker(text) -> bool:
+    token = re.sub(r"\s+", "", str(text or "")).rstrip(".,;:")
+    return bool(re.fullmatch(r"\d{1,4}", token))
+
+
+def _same_line_letters(words, y) -> int:
+    total = 0
+    for word in words or []:
+        if not isinstance(word, dict):
+            continue
+        text = word.get("text")
+        if _list_marker(text) or is_numeric_token(text):
+            continue
+        box = _word_box(word)
+        if not box:
+            continue
+        cy = (box[1] + box[3]) / 2
+        if abs(cy - y) > ROW_GAP:
+            continue
+        total += _letter_count(text)
+    return total
+
+
+def _row_centers(ys, gap=ROW_GAP):
     if not ys:
-        return 0
+        return []
     ordered = sorted(ys)
-    count = 1
-    for prev, nxt in zip(ordered, ordered[1:]):
-        if nxt - prev > gap:
-            count += 1
-    return count
+    rows = [ordered[0]]
+    for y in ordered[1:]:
+        if y - rows[-1] > gap:
+            rows.append(y)
+    return rows
+
+
+def _table_pitch(ys) -> float:
+    rows = _row_centers(ys)
+    if len(rows) < 2:
+        return float("inf")
+    gaps = sorted(rows[i] - rows[i - 1] for i in range(1, len(rows)))
+    return gaps[len(gaps) // 2]
 
 
 def aligned_numeric_columns(words, *, min_rows=MIN_NUMERIC_ROWS, min_cols=MIN_NUMERIC_COLS) -> bool:
@@ -133,8 +177,11 @@ def aligned_numeric_columns(words, *, min_rows=MIN_NUMERIC_ROWS, min_cols=MIN_NU
         box = _word_box(word)
         if not box:
             continue
+        cy = (box[1] + box[3]) / 2
+        if _list_marker(word.get("text")) and _same_line_letters(words, cy) >= PROSE_LETTERS:
+            continue
         width = box[2] - box[0]
-        nums.append(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2, width))
+        nums.append(((box[0] + box[2]) / 2, cy, width))
     if len(nums) < min_rows * min_cols:
         return False
     widths = sorted(width for _, _, width in nums if width > 0)
@@ -149,7 +196,10 @@ def aligned_numeric_columns(words, *, min_rows=MIN_NUMERIC_ROWS, min_cols=MIN_NU
             columns[-1]["x"] = columns[-1]["x"] + (x - columns[-1]["x"]) / n
         else:
             columns.append({"x": x, "ys": [y]})
-    good = [col for col in columns if _distinct_rows(col["ys"]) >= min_rows]
+    good = [
+        col for col in columns
+        if len(_row_centers(col["ys"])) >= min_rows and _table_pitch(col["ys"]) <= ROW_PITCH_MAX
+    ]
     if len(good) < min_cols:
         return False
     for i, left in enumerate(good):
@@ -160,6 +210,56 @@ def aligned_numeric_columns(words, *, min_rows=MIN_NUMERIC_ROWS, min_cols=MIN_NU
             shorter = min(a1 - a0, b1 - b0)
             if shorter > 0 and overlap / shorter >= 0.5:
                 return True
+    return False
+
+
+def _decimal_token(text) -> bool:
+    if not is_numeric_token(text):
+        return False
+    token = re.sub(r"\s+", "", str(text or "")).strip(".,;:")
+    return "." in token or "%" in token
+
+
+def labeled_decimal_column(words) -> bool:
+    """One column of measured values with a short label on the same rows.
+
+    Two numeric columns are aligned_numeric_columns, which may read the whole
+    page. This signal only marks the page so the layout model can run. The
+    same rule is implemented in src/model/parse/vlm-boxes.js.
+    """
+    nums = []
+    for word in words or []:
+        if not isinstance(word, dict) or not _decimal_token(word.get("text")):
+            continue
+        box = _word_box(word)
+        if not box:
+            continue
+        nums.append(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2, box[2] - box[0]))
+    if len(nums) < MIN_NUMERIC_ROWS:
+        return False
+    widths = sorted(width for _, _, width in nums if width > 0)
+    median = widths[len(widths) // 2] if widths else 8.0
+    tol = max(8.0, median * 0.6)
+    nums.sort(key=lambda item: item[0])
+    columns = []
+    for x, y, _width in nums:
+        if columns and abs(x - columns[-1]["x"]) <= tol:
+            columns[-1]["ys"].append(y)
+            n = len(columns[-1]["ys"])
+            columns[-1]["x"] = columns[-1]["x"] + (x - columns[-1]["x"]) / n
+        else:
+            columns.append({"x": x, "ys": [y]})
+    for col in columns:
+        rows = _row_centers(col["ys"])
+        if len(rows) < MIN_NUMERIC_ROWS or _table_pitch(col["ys"]) > ROW_PITCH_MAX:
+            continue
+        labeled = 0
+        for y in rows:
+            letters = _same_line_letters(words, y)
+            if 2 <= letters <= LABEL_LETTERS_MAX:
+                labeled += 1
+        if labeled >= MIN_NUMERIC_ROWS:
+            return True
     return False
 
 
@@ -266,3 +366,29 @@ def choose_table_boxes(layout_boxes, fallback_boxes, *, page_size=None, numeric=
     for box in chosen:
         box["bbox"] = _round_box(box["bbox"])
     return chosen
+
+
+def drop_layout_inside_figures(boxes, figures, min_cover=0.6):
+    """A layout table inside a figure is the figure, not a grid to read.
+
+    A caller box, a union of caller and layout, and a whole-page crop stay.
+    The caller asked for those.
+    """
+    fig_boxes = []
+    for fig in figures or []:
+        bbox = fig.get("bbox") if isinstance(fig, dict) else None
+        if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+            fig_boxes.append([float(v) for v in bbox])
+    kept = []
+    for box in boxes or []:
+        bbox = box.get("bbox") if isinstance(box, dict) else None
+        if (
+            isinstance(box, dict)
+            and box.get("source") == "layout"
+            and isinstance(bbox, (list, tuple))
+            and len(bbox) == 4
+            and any(_cover(bbox, fig) >= min_cover for fig in fig_boxes)
+        ):
+            continue
+        kept.append(box)
+    return kept

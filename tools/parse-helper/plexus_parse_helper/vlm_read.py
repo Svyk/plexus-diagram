@@ -14,7 +14,7 @@ from __future__ import annotations
 import pypdfium2 as pdfium
 
 from plexus_parse_helper.table_text import plain_lines, tables_from_text
-from plexus_parse_helper.vlm_boxes import choose_table_boxes, merge_stacked
+from plexus_parse_helper.vlm_boxes import choose_table_boxes, drop_layout_inside_figures, merge_stacked
 from plexus_parse_helper.vlm_layout import (
     FIGURE_LABELS,
     LAYOUT_MODEL,
@@ -174,6 +174,8 @@ def read_pages(pdf_path: str, options: dict | None = None) -> dict:
                 numeric=_page_numeric(options, page_no),
                 box_mode=mode,
             )
+            figure_hints = [item for item in detected if item["label"] in FIGURE_LABELS]
+            chosen = drop_layout_inside_figures(chosen, figure_hints)
             for box in chosen:
                 boxes_out.append({
                     "page": page_no,

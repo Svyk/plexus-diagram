@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { OP } from "../src/model/parse/rules.js";
 import { assembleDocument, parsePageGeometry } from "../src/model/parse/index.js";
 import { demoteFalseCaptions, drawingSheetPage, figCaptionKey, findFigures, normalizeFigSpelling, rasterScanPage } from "../src/model/parse/figures.js";
-import { absorbFigureTables, figureLabels } from "../src/model/parse/index.js";
+import { absorbFigureTables, figureLabels, sparseContentsTable } from "../src/model/parse/index.js";
 
 const H = 792;
 const W = 612;
@@ -548,6 +548,41 @@ test("a plate absorbs the tick table inside it and leaves a table of names", () 
     ],
   };
   assert.equal(figureLabels(contents, [{ bbox: [40, 100, 560, 640] }]), false, "a contents list under a plate box stays a table");
+  assert.equal(sparseContentsTable({ ...contents, method: "stream" }), false, "two columns of contents stay a table");
+  const wide = {
+    method: "stream", bbox: [40, 300, 400, 420], rows: 5, cols: 6,
+    cells: [
+      { r: 0, c: 0, text: "Explanation of tables" }, { r: 0, c: 5, text: "23" },
+      { r: 1, c: 1, text: "TABLES" },
+      { r: 2, c: 0, text: "annealed copper" },
+      { r: 3, c: 0, text: "Temperature" }, { r: 3, c: 3, text: "different" }, { r: 3, c: 5, text: "33" },
+      { r: 4, c: 0, text: "copper" }, { r: 4, c: 4, text: "temperatures" }, { r: 4, c: 5, text: "34" },
+    ],
+  };
+  assert.equal(sparseContentsTable(wide), true);
+  const measured = {
+    method: "stream", rows: 5, cols: 4,
+    cells: Array.from({ length: 8 }, (_, i) => ({ text: i % 2 ? "1.25" : "Diameter" })),
+  };
+  assert.equal(sparseContentsTable(measured), false, "a decimal grid stays a table");
+});
+
+test("a disconnected ink speck does not pull the plate to the page origin", () => {
+  const drawing = [];
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      drawing.push({ x0: 80 + col * 70, y0: 220 + row * 60, x1: 140 + col * 70, y1: 270 + row * 60 });
+    }
+  }
+  const speck = { x0: 0, y0: 0, x1: 1, y1: 27 };
+  const words = ["Fig.", "1", "Drawing", "of", "the", "plate"].map((t, i) => word(t, 80 + i * 42, 430, 116 + i * 42, 442, 10));
+  const found = findFigures({
+    graphics: { images: [], shapes: [], boxes: [], rules: [], ink: [...drawing, speck] },
+    words, bodySize: 10, pageW: W, pageH: H, plates: true,
+  });
+  assert.equal(found.figures.length, 1);
+  assert.ok(found.figures[0].bbox[0] > 10, "the speck is not the left edge");
+  assert.ok(found.figures[0].bbox[1] > 40, "the speck is not the top edge");
 });
 
 test("a stroke that crosses both caption baselines does not join the two drawings", () => {

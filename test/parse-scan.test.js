@@ -1206,6 +1206,31 @@ test("repairTableReading reads a lone o as 0, a leading l as a point, and the ho
   assert.equal(t.cells.find((c) => c.r === 2 && c.c === 3).text, "2.7210");
 });
 
+test("repairTableReading fills the one empty cell of a numbered stub column and drops it from the header", () => {
+  const rows = [
+    ["Case", "Plant", "References"],
+    ["", "K/s", ""],
+    ["2", "K(s+1)", "11"],
+    ["3", "K/s^2", "12"],
+    ["4", "K/s^3", ""],
+    ["5", "K", "14"],
+  ];
+  const t = {
+    rows: rows.length, cols: 3, headerRows: 3,
+    cells: rows.flatMap((row, r) => row.map((text, c) => gridCell(r, c, text))),
+  };
+  repairTableReading(t);
+  assert.equal(t.cells.find((c) => c.r === 1 && c.c === 0).text, "1");
+  assert.equal(t.headerRows, 1);
+  // Two holes, or a run with a jump, stay as read.
+  const two = { rows: 6, cols: 2, headerRows: 1, cells: [["n", "x"], ["", "a"], ["2", "b"], ["", "c"], ["4", "d"], ["5", "e"]].flatMap((row, r) => row.map((text, c) => gridCell(r, c, text))) };
+  repairTableReading(two);
+  assert.equal(two.cells.find((c) => c.r === 1 && c.c === 0).text, "");
+  const jump = { rows: 6, cols: 2, headerRows: 1, cells: [["n", "x"], ["1", "a"], ["2", "b"], ["", "c"], ["5", "d"], ["6", "e"]].flatMap((row, r) => row.map((text, c) => gridCell(r, c, text))) };
+  repairTableReading(jump);
+  assert.equal(jump.cells.find((c) => c.r === 3 && c.c === 0).text, "");
+});
+
 test("parse view shows Read the scan only for scan pages with a ready helper", async () => {
   const { createParseView } = await import("../src/view/parse-view.js");
   const { createDomStub } = await import("./fixtures/dom-stub.js");

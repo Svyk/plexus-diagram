@@ -13,7 +13,7 @@ import { detectLists } from "./lists.js";
 import { detectFormulas } from "./formulas.js";
 import { FOOTNOTE_MARK_RE, groupParagraphs, inlineUnlinkedRefs, joinLines, spansOf } from "./blocks.js";
 import { boxOfUnits, crossesGutter, detectColumns, orderUnits, ruleCuts, splitAtGutters } from "./xycut.js";
-import { repairOcrTable, repairTableReading } from "./ocr-fix.js";
+import { normalizeStreamPiece, repairOcrTable, repairTableReading } from "./ocr-fix.js";
 import { lowConfidenceShare } from "./ocr-vote.js";
 import { capTitle, isCutPrefix, isGibberishTitle, isJunkTitleText, isMetaBanner } from "../title-cap.js";
 import { cleanPdfTitle } from "../pdf.js";
@@ -1094,6 +1094,9 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
         i = j;
       }
     }
+    // A leader-dot column or a split date read on one piece and not the next
+    // would keep two pieces of one grid apart. They go before the pieces are compared.
+    for (const t of pageTables) if (t.method === "stream") normalizeStreamPiece(t);
     stitchTables(pageTables, textBlocks, bodySize);
     absorbSectionBanners(pageTables, textBlocks, bodySize);
     absorbTableFooters(pageTables, textBlocks, bodySize);
@@ -1292,8 +1295,20 @@ function bannerWords(text) {
 }
 
 // Two numbered section lines are the same banner when they share their long words.
+// A section banner of a roster or a register ends in its years ("Harbormaster,
+// at Eureka, 1899-1924." / "..., 1863-1924—Continued."). Two lines of that
+// shape are banners of one table even when the words differ.
+const YEAR_RANGE_TAIL_RE = /\b(?:1[5-9]|20)\d{2}\s*[-–—]\s*(?:1[5-9]|20)\d{2}\.?(?:\s*[-–—]*\s*continued\.?)?$/i;
+
+function yearRangeBanner(text) {
+  const s = String(text || "").trim();
+  if (!YEAR_RANGE_TAIL_RE.test(s)) return false;
+  return bannerWords(s).length >= 1 && s.split(/\s+/).length <= 12;
+}
+
 function sameBanner(a, b) {
   if (!/\d/.test(String(a || "")) || !/\d/.test(String(b || ""))) return false;
+  if (yearRangeBanner(a) && yearRangeBanner(b)) return true;
   const A = bannerWords(a);
   const B = bannerWords(b);
   if (A.length < 2 || B.length < 2) return false;
@@ -1387,10 +1402,10 @@ export function stitchTables(tables, textBlocks, bodySize) {
 export function absorbSectionBanners(tables, textBlocks, bodySize) {
   const size = bodySize || 10;
   const used = new Set();
-  for (const table of tables || []) {
-    if (!table?.bbox || !table.cells?.length || table.cols < 2) continue;
+  for (const table of tables || []) for (let pass = 0; pass < 3; pass++) {
+    if (!table?.bbox || !table.cells?.length || table.cols < 2) break;
     const banners = spanningBannerTexts(table);
-    if (!banners.length) continue;
+    if (!banners.length) break;
     let best = -1;
     let bestGap = Infinity;
     for (let i = 0; i < textBlocks.length; i++) {
@@ -1409,7 +1424,7 @@ export function absorbSectionBanners(tables, textBlocks, bodySize) {
       if (!banners.some((banner) => sameBanner(banner, text))) continue;
       if (gap < bestGap) { bestGap = gap; best = i; }
     }
-    if (best < 0) continue;
+    if (best < 0) break;
     const tb = textBlocks[best];
     const b = blockBox(tb);
     used.add(best);

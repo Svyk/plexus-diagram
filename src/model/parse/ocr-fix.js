@@ -715,6 +715,10 @@ function blankDecimalRun(table) {
 
 const MONTH_RE = /^(?:jan|feb|mar|apr|may|june|july|aug|sept|sep|oct|nov|dec)\.?$/i;
 const DAY_YEAR_RE = /^\d{1,2},\s*\d{4}\.?$/;
+// "Mar. 1," | "1917.": the split fell after the day instead of after the month.
+const MONTH_DAY_RE = /^(?:jan|feb|mar|apr|may|june|july|aug|sept|sep|oct|nov|dec)\.?\s+\d{1,2},?$/i;
+const YEAR_ONLY_RE = /^\d{4}\.?$/;
+const splitDatePair = (lt, rt) => (MONTH_RE.test(lt) && DAY_YEAR_RE.test(rt)) || (MONTH_DAY_RE.test(lt) && YEAR_ONLY_RE.test(rt));
 
 // "May" in one column and "2, 1900" in the next are one date the gap split.
 function joinSplitDates(table) {
@@ -729,7 +733,7 @@ function joinSplitDates(table) {
       const rt = String(right?.text || "").trim();
       if (!lt && !rt) continue;
       rows++;
-      if (MONTH_RE.test(lt) && DAY_YEAR_RE.test(rt)) pairs.push([left, right]);
+      if (splitDatePair(lt, rt)) pairs.push([left, right]);
     }
     if (rows < 2 || pairs.length < 2 || pairs.length < 0.6 * rows) continue;
     for (const [left, right] of pairs) {
@@ -800,9 +804,10 @@ function deleteColumn(table, c) {
     cell.colSpan = span - 1;
     if (cell.colSpan >= 1) kept.push(cell);
   }
+  // The column's width goes to the column on its left (the leader dots after a
+  // name, the day after its month): its left boundary is the one that goes.
   if (Array.isArray(table.grid?.xs) && table.grid.xs.length === table.cols + 1) {
-    const at = c + 1 < table.grid.xs.length - 1 ? c + 1 : table.grid.xs.length - 1;
-    table.grid.xs.splice(at, 1);
+    table.grid.xs.splice(c > 0 ? c : 1, 1);
   }
   table.cols -= 1;
   table.cells = kept;
@@ -885,15 +890,49 @@ function repairDamagedIndex(table) {
 
 // A column whose only content is a leader mark in a row or two is the dots
 // between a name and its date, read as a cell. It is not a column.
-function dropLeaderColumn(table) {
-  if ((table.cols || 0) < 3 || (table.rows || 0) < 4) return;
+export function dropLeaderColumn(table) {
+  if ((table.cols || 0) < 3 || (table.rows || 0) < 3) return;
   for (let c = table.cols - 1; c >= 0; c--) {
     const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && String(k.text || "").trim());
-    if (!cells.length || cells.length > 0.25 * table.rows) continue;
+    if (!cells.length || cells.length > Math.max(1, 0.25 * table.rows)) continue;
     if (!cells.every((k) => /^[-–—−_.·…]+$/.test(String(k.text).trim()))) continue;
     if (table.cells.some((k) => k.c === c && (k.colSpan || 1) > 1 && /[A-Za-z0-9]/.test(String(k.text || "")))) continue;
     deleteColumn(table, c);
   }
+}
+
+// The column shape of one stream piece before it is compared with its
+// neighbours: a leader-dot column off, a month and its day in one cell.
+// One word in one row of a column that is empty everywhere else, in a piece of
+// eight rows or more, is the tail of the cell on its left ("Nov., 1884." |
+// "Deceased."), not a column.
+function foldLoneTailColumn(table) {
+  if ((table.cols || 0) < 3 || (table.rows || 0) < 8) return;
+  const c = table.cols - 1;
+  const start = table.headerRows || 0;
+  if (table.cells.some((k) => k.r < start && k.c === c && String(k.text || "").trim())) return;
+  const filled = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && String(k.text || "").trim());
+  if (!filled.length || filled.length > Math.max(1, 0.25 * table.rows)) return;
+  if (!filled.every((k) => !/\d/.test(k.text) && String(k.text).trim().split(/\s+/).length <= 2)) return;
+  if (table.cells.some((k) => k.c < c && k.c + (k.colSpan || 1) > c && k.c !== 0)) return;
+  for (const cell of filled) {
+    const left = table.cells.find((k) => k.r === cell.r && k.c === c - 1 && (k.colSpan || 1) === 1);
+    if (!left || !String(left.text || "").trim()) return;
+  }
+  for (const cell of filled) {
+    const left = table.cells.find((k) => k.r === cell.r && k.c === c - 1 && (k.colSpan || 1) === 1);
+    left.text = `${String(left.text).trim()} ${String(cell.text).trim()}`;
+    cell.text = "";
+  }
+  deleteColumn(table, c);
+}
+
+export function normalizeStreamPiece(table) {
+  if (!table?.cells?.length) return table;
+  dropLeaderColumn(table);
+  joinSplitDates(table);
+  foldLoneTailColumn(table);
+  return table;
 }
 
 export function repairTableReading(table, options = {}) {
@@ -935,6 +974,22 @@ function repairGlyphDigits(table) {
   for (let c = 0; c < (table.cols || 0); c += 1) {
     const cells = body(c);
     const filled = cells.filter((k) => textOf(k));
+    // An index column (1, 2, 3, ... in row order) with one empty cell: the
+    // empty cell is the number the run skips at that row.
+    // A numbered row is not a header row, so the run is read from the second
+    // row down, whatever the header count says.
+    const ordered = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= 1).sort((a, b) => a.r - b.r);
+    const holes = ordered.filter((k) => !textOf(k));
+    const runInts = ordered.filter((k) => integerValue(textOf(k)) != null);
+    if (holes.length === 1 && runInts.length + 1 === ordered.length && runInts.length >= 4) {
+      const at = ordered.indexOf(holes[0]);
+      const first = at === 0 ? integerValue(textOf(ordered[1])) - 1 : integerValue(textOf(ordered[0]));
+      const run = ordered.every((k, i) => k === holes[0] || integerValue(textOf(k)) === first + i);
+      if (run && first >= 0) {
+        holes[0].text = String(first + at);
+        if (holes[0].r < start) table.headerRows = holes[0].r;
+      }
+    }
     if (filled.length < 4) continue;
     const ints = filled.filter((k) => integerValue(textOf(k)) != null);
     const values = [...new Set(ints.map((k) => integerValue(textOf(k))))].sort((a, b) => a - b);

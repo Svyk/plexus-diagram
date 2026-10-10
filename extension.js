@@ -11146,7 +11146,7 @@ function joinSplitDates(table) {
       const rt = String(right?.text || "").trim();
       if (!lt && !rt) continue;
       rows++;
-      if (MONTH_RE2.test(lt) && DAY_YEAR_RE.test(rt)) pairs.push([left, right]);
+      if (splitDatePair(lt, rt)) pairs.push([left, right]);
     }
     if (rows < 2 || pairs.length < 2 || pairs.length < 0.6 * rows) continue;
     for (const [left, right] of pairs) {
@@ -11220,8 +11220,7 @@ function deleteColumn(table, c) {
     if (cell.colSpan >= 1) kept.push(cell);
   }
   if (Array.isArray(table.grid?.xs) && table.grid.xs.length === table.cols + 1) {
-    const at = c + 1 < table.grid.xs.length - 1 ? c + 1 : table.grid.xs.length - 1;
-    table.grid.xs.splice(at, 1);
+    table.grid.xs.splice(c > 0 ? c : 1, 1);
   }
   table.cols -= 1;
   table.cells = kept;
@@ -11290,14 +11289,41 @@ function repairDamagedIndex(table) {
   }
 }
 function dropLeaderColumn(table) {
-  if ((table.cols || 0) < 3 || (table.rows || 0) < 4) return;
+  if ((table.cols || 0) < 3 || (table.rows || 0) < 3) return;
   for (let c = table.cols - 1; c >= 0; c--) {
     const cells = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && String(k.text || "").trim());
-    if (!cells.length || cells.length > 0.25 * table.rows) continue;
+    if (!cells.length || cells.length > Math.max(1, 0.25 * table.rows)) continue;
     if (!cells.every((k) => /^[-–—−_.·…]+$/.test(String(k.text).trim()))) continue;
     if (table.cells.some((k) => k.c === c && (k.colSpan || 1) > 1 && /[A-Za-z0-9]/.test(String(k.text || "")))) continue;
     deleteColumn(table, c);
   }
+}
+function foldLoneTailColumn(table) {
+  if ((table.cols || 0) < 3 || (table.rows || 0) < 8) return;
+  const c = table.cols - 1;
+  const start = table.headerRows || 0;
+  if (table.cells.some((k) => k.r < start && k.c === c && String(k.text || "").trim())) return;
+  const filled = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && String(k.text || "").trim());
+  if (!filled.length || filled.length > Math.max(1, 0.25 * table.rows)) return;
+  if (!filled.every((k) => !/\d/.test(k.text) && String(k.text).trim().split(/\s+/).length <= 2)) return;
+  if (table.cells.some((k) => k.c < c && k.c + (k.colSpan || 1) > c && k.c !== 0)) return;
+  for (const cell of filled) {
+    const left = table.cells.find((k) => k.r === cell.r && k.c === c - 1 && (k.colSpan || 1) === 1);
+    if (!left || !String(left.text || "").trim()) return;
+  }
+  for (const cell of filled) {
+    const left = table.cells.find((k) => k.r === cell.r && k.c === c - 1 && (k.colSpan || 1) === 1);
+    left.text = `${String(left.text).trim()} ${String(cell.text).trim()}`;
+    cell.text = "";
+  }
+  deleteColumn(table, c);
+}
+function normalizeStreamPiece(table) {
+  if (!table?.cells?.length) return table;
+  dropLeaderColumn(table);
+  joinSplitDates(table);
+  foldLoneTailColumn(table);
+  return table;
 }
 function repairTableReading(table, options = {}) {
   if (!table?.cells?.length) return table;
@@ -11331,6 +11357,18 @@ function repairGlyphDigits(table) {
   for (let c = 0; c < (table.cols || 0); c += 1) {
     const cells = body(c);
     const filled = cells.filter((k) => textOf2(k));
+    const ordered = table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= 1).sort((a, b) => a.r - b.r);
+    const holes = ordered.filter((k) => !textOf2(k));
+    const runInts = ordered.filter((k) => integerValue(textOf2(k)) != null);
+    if (holes.length === 1 && runInts.length + 1 === ordered.length && runInts.length >= 4) {
+      const at = ordered.indexOf(holes[0]);
+      const first = at === 0 ? integerValue(textOf2(ordered[1])) - 1 : integerValue(textOf2(ordered[0]));
+      const run = ordered.every((k, i) => k === holes[0] || integerValue(textOf2(k)) === first + i);
+      if (run && first >= 0) {
+        holes[0].text = String(first + at);
+        if (holes[0].r < start) table.headerRows = holes[0].r;
+      }
+    }
     if (filled.length < 4) continue;
     const ints = filled.filter((k) => integerValue(textOf2(k)) != null);
     const values = [...new Set(ints.map((k) => integerValue(textOf2(k))))].sort((a, b) => a - b);
@@ -11511,7 +11549,7 @@ function fitsColumn(number, column) {
   const widest = Math.max(...column.map(intDigits));
   return intDigits(number) <= widest + 1;
 }
-var LOW_CONF, NUMERIC_COLUMN_SHARE, DIGIT_MAP, NUMERIC_LIKE_RE, PLACEHOLDER_RE, SUBSCRIPTS, ELEMENT, COMMA_THOUSANDS, DOT_THOUSANDS, MONTH_RE2, DAY_YEAR_RE;
+var LOW_CONF, NUMERIC_COLUMN_SHARE, DIGIT_MAP, NUMERIC_LIKE_RE, PLACEHOLDER_RE, SUBSCRIPTS, ELEMENT, COMMA_THOUSANDS, DOT_THOUSANDS, MONTH_RE2, DAY_YEAR_RE, MONTH_DAY_RE, YEAR_ONLY_RE, splitDatePair;
 var init_ocr_fix = __esm({
   "src/model/parse/ocr-fix.js"() {
     init_lattice();
@@ -11527,6 +11565,9 @@ var init_ocr_fix = __esm({
     DOT_THOUSANDS = /^\d{1,3}(?:\.\d{3})+$/;
     MONTH_RE2 = /^(?:jan|feb|mar|apr|may|june|july|aug|sept|sep|oct|nov|dec)\.?$/i;
     DAY_YEAR_RE = /^\d{1,2},\s*\d{4}\.?$/;
+    MONTH_DAY_RE = /^(?:jan|feb|mar|apr|may|june|july|aug|sept|sep|oct|nov|dec)\.?\s+\d{1,2},?$/i;
+    YEAR_ONLY_RE = /^\d{4}\.?$/;
+    splitDatePair = (lt, rt) => MONTH_RE2.test(lt) && DAY_YEAR_RE.test(rt) || MONTH_DAY_RE.test(lt) && YEAR_ONLY_RE.test(rt);
   }
 });
 
@@ -13188,6 +13229,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
         i = j;
       }
     }
+    for (const t of pageTables) if (t.method === "stream") normalizeStreamPiece(t);
     stitchTables(pageTables, textBlocks, bodySize);
     absorbSectionBanners(pageTables, textBlocks, bodySize);
     absorbTableFooters(pageTables, textBlocks, bodySize);
@@ -13377,8 +13419,14 @@ function sectionBanner(table) {
 function bannerWords(text3) {
   return String(text3 || "").toLowerCase().replace(/[^a-z]+/g, " ").trim().split(/\s+/).filter((w) => w.length >= 4);
 }
+function yearRangeBanner(text3) {
+  const s = String(text3 || "").trim();
+  if (!YEAR_RANGE_TAIL_RE.test(s)) return false;
+  return bannerWords(s).length >= 1 && s.split(/\s+/).length <= 12;
+}
 function sameBanner(a, b) {
   if (!/\d/.test(String(a || "")) || !/\d/.test(String(b || ""))) return false;
+  if (yearRangeBanner(a) && yearRangeBanner(b)) return true;
   const A = bannerWords(a);
   const B = bannerWords(b);
   if (A.length < 2 || B.length < 2) return false;
@@ -13457,10 +13505,10 @@ function stitchTables(tables, textBlocks, bodySize) {
 function absorbSectionBanners(tables, textBlocks, bodySize) {
   const size = bodySize || 10;
   const used = /* @__PURE__ */ new Set();
-  for (const table of tables || []) {
-    if (!table?.bbox || !table.cells?.length || table.cols < 2) continue;
+  for (const table of tables || []) for (let pass = 0; pass < 3; pass++) {
+    if (!table?.bbox || !table.cells?.length || table.cols < 2) break;
     const banners = spanningBannerTexts(table);
-    if (!banners.length) continue;
+    if (!banners.length) break;
     let best = -1;
     let bestGap = Infinity;
     for (let i = 0; i < textBlocks.length; i++) {
@@ -13482,7 +13530,7 @@ function absorbSectionBanners(tables, textBlocks, bodySize) {
         best = i;
       }
     }
-    if (best < 0) continue;
+    if (best < 0) break;
     const tb = textBlocks[best];
     const b = blockBox(tb);
     used.add(best);
@@ -13613,7 +13661,7 @@ function mergeContinuations(order, blocks) {
     i--;
   }
 }
-var SCHEMA, ENGINE_VERSION, PARSE_REV, MARK_ONLY_RE, now, NEXT_SENTENCE_RE, EVIDENCE_LINES, EVIDENCE_CHARS;
+var SCHEMA, ENGINE_VERSION, PARSE_REV, MARK_ONLY_RE, now, NEXT_SENTENCE_RE, EVIDENCE_LINES, EVIDENCE_CHARS, YEAR_RANGE_TAIL_RE;
 var init_parse = __esm({
   "src/model/parse/index.js"() {
     init_lines();
@@ -13640,6 +13688,7 @@ var init_parse = __esm({
     NEXT_SENTENCE_RE = /^(?:The|This|A|An|It|These|Those|For|See)\b/;
     EVIDENCE_LINES = 60;
     EVIDENCE_CHARS = 160;
+    YEAR_RANGE_TAIL_RE = /\b(?:1[5-9]|20)\d{2}\s*[-–—]\s*(?:1[5-9]|20)\d{2}\.?(?:\s*[-–—]*\s*continued\.?)?$/i;
   }
 });
 

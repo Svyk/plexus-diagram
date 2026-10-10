@@ -508,14 +508,16 @@ def tables_from_text(raw, kind):
     if kind in {"html", "auto"} or (kind == "doctags" and not found):
         for cells in parse_html_tables(raw):
             found.append(cells)
-    if not found and kind in {"html", "markdown", "auto", "doctags"}:
-        found.extend(parse_markdown_tables(raw))
-    # PaddleOCR-VL emits OTSL tags with no <otsl> wrapper.
+    # PaddleOCR-VL emits OTSL tags with no <otsl> wrapper. Those tags are read
+    # before the markdown fallback: a "|" inside a cell (a parallel sign, an
+    # absolute value) would otherwise turn the whole reading into one markdown row.
     if not found and re.search(r"<(?:fcel|ecel|ched|rhed|srow)>", raw, flags=re.I):
         cells = _collapse_repeat_rows(parse_otsl(raw))
         nonempty = [c for c in cells if c["text"]]
         if cells and (nonempty or len(cells) <= 40):
             found.append(cells[:400] if len(cells) > 400 else cells)
+    if not found and kind in {"html", "markdown", "auto", "doctags"}:
+        found.extend(parse_markdown_tables(raw))
     if not found and kind in {"doctags", "auto"}:
         loc_cells = table_from_locs(raw)
         if loc_cells:

@@ -120,6 +120,124 @@ export function keepTextLayerReads(doc, structures, ocrPages) {
   });
 }
 
+function wordTokens(words) {
+  const bag = new Set();
+  for (const word of words || []) {
+    for (const part of String(word?.text || "").split(/\s+/)) {
+      const token = part.replace(/^[(\[]+|[)\],;:]+$/g, "");
+      if (token) bag.add(token);
+    }
+  }
+  return bag;
+}
+
+// A leading zero the reader dropped (".3" for a printed "0.3") comes back when
+// the page's own words have the zero form. The helper strips zeros from long
+// factor columns because 1920s tables print ".0219"; a modern table prints
+// "0.3", and the text layer or the OCR words say which one this page is.
+export function restoreLeadingZeros(table, words) {
+  if (!table?.cells?.length) return table;
+  const bag = wordTokens(words);
+  if (!bag.size) return table;
+  for (const cell of table.cells) {
+    const text = String(cell.text || "").trim();
+    const m = /^([+\-−]?)(\.\d+%?)$/.exec(text);
+    if (!m) continue;
+    const zero = `${m[1]}0${m[2]}`;
+    if (bag.has(zero) && !bag.has(text)) cell.text = zero;
+  }
+  return table;
+}
+
+// The crop grows upward so a title above the rules is read. A first row that
+// is one cell across the grid, whose words sit on the page above the table's
+// box, is that title, not a row of the table.
+export function dropCaptionRow(table, words) {
+  if (!table?.cells?.length || !(table.rows > 2) || !(table.cols >= 2) || !table.bbox) return table;
+  const first = table.cells.filter((cell) => cell.r === 0);
+  const filled = first.filter((cell) => String(cell.text || "").trim());
+  if (filled.length !== 1 || (filled[0].colSpan || 1) < table.cols - 1 || (filled[0].rowSpan || 1) !== 1) return table;
+  const keys = String(filled[0].text).toLowerCase().split(/[^a-z0-9.]+/).filter((k) => k.length >= 2);
+  if (keys.length < 2) return table;
+  const top = table.bbox[1];
+  const above = new Set();
+  const inside = new Set();
+  for (const word of words || []) {
+    const base = word.base ?? word.y1 ?? 0;
+    const size = word.size || 8;
+    for (const key of String(word.text || "").toLowerCase().split(/[^a-z0-9.]+/)) {
+      if (key.length < 2) continue;
+      if (base < top + 0.3 * size) above.add(key);
+      else inside.add(key);
+    }
+  }
+  let up = 0;
+  let down = 0;
+  for (const key of keys) {
+    if (above.has(key)) up += 1;
+    if (inside.has(key)) down += 1;
+  }
+  if (up < 0.6 * keys.length || down >= up) return table;
+  const cells = table.cells.filter((cell) => cell.r !== 0).map((cell) => ({ ...cell, r: cell.r - 1 }));
+  return { ...table, cells, rows: table.rows - 1, headerRows: Math.max(0, (table.headerRows || 0) - (table.headerRows > 0 ? 1 : 0)) };
+}
+
+function wordCountOf(text) {
+  return String(text || "").split(/\s+/).filter((w) => /[A-Za-z]/.test(w)).length;
+}
+
+// A note written once beside several rows ("We only forecast an aggregate…")
+// is one cell over those rows and the empty columns to its right. The reader
+// writes it in the cell where its first line sits and leaves the rest empty;
+// the printed table has one merged cell. The span runs right over empty
+// cells of that row and down over rows that keep those cells empty while the
+// rest of the row is filled.
+export function spanNoteCells(table) {
+  if (!table?.cells?.length || !(table.cols >= 3) || !(table.rows >= 3)) return table;
+  const at = new Map();
+  for (const cell of table.cells) at.set(`${cell.r},${cell.c}`, cell);
+  const textAt = (r, c) => String(at.get(`${r},${c}`)?.text || "").trim();
+  const plainAt = (r, c) => { const cell = at.get(`${r},${c}`); return cell && (cell.colSpan || 1) === 1 && (cell.rowSpan || 1) === 1 ? cell : null; };
+  const header = table.headerRows || 0;
+  const drop = new Set();
+  for (const cell of table.cells) {
+    if (cell.r < header || cell.c === 0 || (cell.colSpan || 1) !== 1) continue;
+    if (wordCountOf(cell.text) < 6) continue;
+    // The reader may already have run the note down a few rows. Those rows
+    // must be empty to the right too for the span to widen.
+    const have = cell.rowSpan || 1;
+    let width = 1;
+    const emptyRight = (c) => {
+      for (let r = cell.r; r < cell.r + have; r += 1) if (!plainAt(r, c) || textAt(r, c)) return false;
+      return true;
+    };
+    while (cell.c + width < table.cols && emptyRight(cell.c + width)) width += 1;
+    let height = have;
+    while (cell.r + height < table.rows) {
+      const r = cell.r + height;
+      let blank = true;
+      for (let c = cell.c; c < cell.c + width; c += 1) if (!plainAt(r, c) || textAt(r, c)) blank = false;
+      if (!blank) break;
+      let elsewhere = false;
+      for (let c = 0; c < table.cols; c += 1) if ((c < cell.c || c >= cell.c + width) && textAt(r, c)) elsewhere = true;
+      if (!elsewhere) break;
+      height += 1;
+    }
+    if (height < 2 || (height === have && width === 1)) continue;
+    for (let r = cell.r; r < cell.r + height; r += 1) {
+      for (let c = cell.c; c < cell.c + width; c += 1) {
+        const covered = at.get(`${r},${c}`);
+        if (covered && covered !== cell) drop.add(covered);
+      }
+    }
+    cell.rowSpan = height;
+    cell.colSpan = width;
+  }
+  if (!drop.size) return table;
+  table.cells = table.cells.filter((cell) => !drop.has(cell));
+  return table;
+}
+
 export function tableRegions(doc, pages) {
   const want = pages && pages.length ? new Set(pages) : null;
   const out = [];
@@ -206,6 +324,27 @@ export function gridReading(table) {
   return texts.filter((t) => isNumericToken(t)).length / texts.length >= 0.45;
 }
 
+// Readings that share one rule table without overlapping each other, and
+// together cover most of it. Map: structure -> host block.
+export function sharedHosts(doc, structures) {
+  const out = new Map();
+  const tables = (doc?.order || []).map((id) => doc.blocks?.[id]).filter((b) => b && b.type === "table" && b.bbox);
+  for (const host of tables) {
+    const inside = (structures || []).filter((s) => s?.bbox && s.page === host.page && s.cells?.length && mostlyInside(s.bbox, host.bbox));
+    if (inside.length < 2) continue;
+    let apart = true;
+    for (let i = 0; i < inside.length && apart; i += 1) {
+      for (let j = i + 1; j < inside.length; j += 1) if (iou(inside[i].bbox, inside[j].bbox) >= 0.1) apart = false;
+    }
+    if (!apart) continue;
+    const hostArea = Math.max(0, host.bbox[2] - host.bbox[0]) * Math.max(0, host.bbox[3] - host.bbox[1]);
+    const covered = inside.reduce((sum, s) => sum + Math.max(0, s.bbox[2] - s.bbox[0]) * Math.max(0, s.bbox[3] - s.bbox[1]), 0);
+    if (!(hostArea > 0) || covered < 0.6 * hostArea) continue;
+    for (const s of inside) out.set(s, host);
+  }
+  return out;
+}
+
 // `minJaccard` applies to both the full-string set and the token set. Either one
 // is enough to replace. A region with no overlapping rule table is inserted
 // when arbitration is off, or when the reading is a numeric grid.
@@ -218,10 +357,37 @@ export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0
   const order = [...(doc.order || [])];
   const applied = [];
   const used = new Set();
+  // Two readings that sit side by side inside one rule table are two tables
+  // the rules joined (knot tables printed in two columns). Both readings
+  // replace that table; neither is arbitrated against the joined grid.
+  const shared = sharedHosts(doc, structures);
   let seq = 0;
   for (const structure of structures) {
     if (!structure?.cells?.length || !structure.bbox) continue;
     const built = tableFromVlm(structure, { id: `vlm${seq++}`, method });
+    const pageWords = (evidence || []).find((item) => item.page === structure.page)?.words || [];
+    if (arbitrate) {
+      spanNoteCells(built);
+      const trimmed = dropCaptionRow(built, pageWords);
+      if (trimmed !== built) Object.assign(built, { cells: trimmed.cells, rows: trimmed.rows, headerRows: trimmed.headerRows });
+    }
+    const sharedHost = shared.get(structure);
+    if (sharedHost) {
+      const hostBlock = blocks[sharedHost.id];
+      if (hostBlock) {
+        delete blocks[sharedHost.id];
+        const at = order.indexOf(sharedHost.id);
+        if (at >= 0) order.splice(at, 1);
+      }
+      polishTableText(built);
+      restoreLeadingZeros(built, pageWords);
+      blocks[built.id] = built;
+      const at = order.findIndex((oid) => blocks[oid]?.page > structure.page);
+      if (at < 0) order.push(built.id);
+      else order.splice(at, 0, built.id);
+      applied.push({ id: built.id, page: structure.page, rows: built.rows, cols: built.cols, inserted: true, split: sharedHost.id });
+      continue;
+    }
     let host = null;
     let best = 0.15;
     for (const id of order) {
@@ -251,9 +417,14 @@ export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0
     if (arbitrate && host) {
       const page = (evidence || []).find((item) => item.page === structure.page) || { words: [], rules: [] };
       const decision = chooseTableReading(host, built, page);
+      if (process.env.PXD_VLM_DEBUG) {
+        const short = (s) => s && Object.fromEntries(Object.entries(s).filter(([k, v]) => typeof v === "number").map(([k, v]) => [k, Math.round(v * 100) / 100]));
+        process.stderr.write(`arbitrate p${structure.page} host ${host.id} ${host.rows}x${host.cols} vlm ${built.rows}x${built.cols} -> ${decision.choice}\n  rule ${JSON.stringify(short(decision.scores.rule))}\n  vlm  ${JSON.stringify(short(decision.scores.vlm))}\n  merge ${JSON.stringify(short(decision.scores.merge))}\n`);
+      }
       if (decision.choice === "rule") continue;
       const chosen = decision.table;
       polishTableText(chosen);
+      restoreLeadingZeros(chosen, page.words);
       const aligned = restoreLabeledTotals(chosen, host);
       if (aligned !== chosen) {
         chosen.cells = aligned.cells;
@@ -301,6 +472,7 @@ export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0
     if (host) {
       used.add(host.id);
       polishTableText(built);
+      restoreLeadingZeros(built, pageWords);
       blocks[host.id] = {
         ...host,
         bbox: built.bbox,
@@ -318,6 +490,7 @@ export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0
       const id = built.id;
       while (blocks[id]) built.id = `${id}b`;
       polishTableText(built);
+      restoreLeadingZeros(built, pageWords);
       blocks[built.id] = built;
       const at = order.findIndex((oid) => blocks[oid]?.page > structure.page);
       if (at < 0) order.push(built.id);
@@ -669,6 +842,48 @@ function sharesWord(a, b) {
 
 function overlapsX(a, b) {
   return Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+}
+
+// On a text-layer page, an unruled rule table that the layout model does not
+// call a table, and that holds a display formula box, is a matrix or a
+// multi-line equation the stream detector aligned into cells. It becomes a
+// formula block; its words go back to the page text.
+export function dropFormulaTables(doc, layout, pages) {
+  if (!doc || !layout?.length || !pages?.length) return { doc, applied: [] };
+  const want = new Set(pages);
+  const tables = layout.filter((b) => b && b.label === "table" && b.bbox);
+  const formulas = layout.filter((b) => b && (b.label === "display_formula" || b.label === "inline_formula") && b.bbox);
+  if (!formulas.length) return { doc, applied: [] };
+  const blocks = { ...doc.blocks };
+  const applied = [];
+  const boxes = [];
+  for (const id of doc.order || []) {
+    const block = blocks[id];
+    if (!block || block.type !== "table" || block.method !== "stream" || !want.has(block.page) || !block.bbox) continue;
+    const onPage = (b) => b.page === block.page;
+    if (tables.some((b) => onPage(b) && (iou(b.bbox, block.bbox) >= 0.2 || mostlyInside(b.bbox, block.bbox) || mostlyInside(block.bbox, b.bbox)))) continue;
+    if (!formulas.some((b) => onPage(b) && b.label === "display_formula" && mostlyInside(b.bbox, block.bbox))) continue;
+    const rows = new Map();
+    for (const cell of block.cells || []) {
+      const text = String(cell.text || "").trim();
+      if (!text) continue;
+      if (!rows.has(cell.r)) rows.set(cell.r, []);
+      rows.get(cell.r).push({ c: cell.c, text });
+    }
+    const text = [...rows.keys()].sort((a, b) => a - b).map((r) => rows.get(r).sort((a, b) => a.c - b.c).map((k) => k.text).join(" ")).join(" ");
+    blocks[id] = { id, type: "formula", page: block.page, bbox: block.bbox, latex: null, number: null, text, confidence: 0.7, engine: block.engine || "builtin" };
+    if (block.caption && blocks[block.caption]) blocks[block.caption] = { ...blocks[block.caption], for: undefined };
+    applied.push({ id, page: block.page });
+    boxes.push({ page: block.page, bbox: block.bbox });
+  }
+  return { doc: { ...doc, blocks }, applied, boxes };
+}
+
+// Readings of the regions dropFormulaTables turned into formulas: the crop was
+// a matrix, and what the reader made of it is not a table to insert.
+export function withoutFormulaReads(structures, boxes) {
+  if (!boxes?.length) return structures || [];
+  return (structures || []).filter((s) => !boxes.some((b) => b.page === s.page && (iou(b.bbox, s.bbox) >= 0.5 || mostlyInside(s.bbox, b.bbox))));
 }
 
 // A layout figure_title box links the local line it covers to the nearest

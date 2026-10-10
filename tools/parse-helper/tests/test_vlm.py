@@ -112,6 +112,66 @@ def test_bare_otsl_parses_without_a_wrapper():
     assert tables[0]["cells"][3]["text"] == "0.98"
 
 
+def test_otsl_with_a_bar_in_a_cell_is_not_markdown():
+    # A parallel sign in a cell. The OTSL tags are the table; the "|" is text.
+    raw = "<fcel>Parameter<fcel>Expression<nl><fcel>μ||<fcel>vth,iλmfp<nl><fcel>Re<fcel>UL/μ||<nl>"
+    tables = tables_from_text(raw, "html")
+    assert len(tables) == 1
+    assert (tables[0]["rows"], tables[0]["cols"]) == (3, 2)
+    assert tables[0]["cells"][2]["text"] == "μ||"
+
+
+def test_two_layout_tables_stay_apart_unless_the_rules_bridge_them():
+    from plexus_parse_helper.vlm_boxes import choose_table_boxes
+
+    layout = [
+        {"label": "table", "score": 0.97, "bbox": [53, 164, 541, 379]},
+        {"label": "table", "score": 0.97, "bbox": [53, 389, 540, 603]},
+    ]
+    # Rule fragments inside each panel: two tables.
+    apart = choose_table_boxes(
+        layout,
+        [{"label": "table", "score": 0, "bbox": [54, 181, 539, 263]}, {"label": "table", "score": 0, "bbox": [54, 406, 539, 487]}],
+        page_size=(595, 842),
+    )
+    assert [box["bbox"] for box in apart] == [[53.0, 164.0, 541.0, 379.0], [53.0, 389.0, 540.0, 603.0]]
+    # One rule grid across the gap: the layout model split a single table.
+    joined = choose_table_boxes(
+        layout,
+        [{"label": "table", "score": 0, "bbox": [54, 181, 539, 590]}],
+        page_size=(595, 842),
+    )
+    assert len(joined) == 1
+    assert joined[0]["bbox"] == [53.0, 164.0, 541.0, 603.0]
+
+
+def test_a_contents_box_is_the_crop_when_the_rules_found_a_list_inside_it():
+    from plexus_parse_helper.vlm_boxes import choose_table_boxes
+
+    chosen = choose_table_boxes(
+        [{"label": "content", "score": 0.98, "bbox": [27, 100, 347, 298]}],
+        [{"label": "table", "score": 0, "bbox": [26, 106, 345, 167]}],
+        page_size=(372, 614),
+    )
+    assert len(chosen) == 1
+    assert chosen[0]["bbox"] == [27.0, 100.0, 347.0, 298.0]
+    # No rule table inside: a contents box alone is not read.
+    alone = choose_table_boxes(
+        [{"label": "content", "score": 0.98, "bbox": [27, 100, 347, 298]}],
+        [],
+        page_size=(372, 614),
+    )
+    assert alone == []
+
+
+def test_token_budget_grows_with_the_crop():
+    from plexus_parse_helper.vlm_tables import LARGE_TOKENS, MAX_TOKENS, token_budget
+
+    assert token_budget([109, 391, 418, 460], (612, 792)) == MAX_TOKENS
+    assert token_budget([53, 162, 541, 571], (595, 842)) == LARGE_TOKENS
+    assert token_budget(None, (595, 842)) == MAX_TOKENS
+
+
 def test_tables_route_returns_the_recorded_runner(tmp_path, monkeypatch):
     # Layout on this machine must not turn a tables-only runner into a high-accuracy engine.
     monkeypatch.setattr("plexus_parse_helper.server.layout_available", lambda: False)

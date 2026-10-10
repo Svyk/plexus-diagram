@@ -115,6 +115,25 @@ def test_rules_from_synthetic_image_and_deskew():
     assert abs(ocr.deskew_angle(straight)) < 0.1
 
 
+def test_a_turn_that_flattens_the_text_rows_is_refused():
+    # Twelve straight text bars. Turning them by two degrees smears the row
+    # profile, so the contour angle a line of small capitals produces is refused.
+    arr = np.full((400, 600), 255, dtype=np.uint8)
+    for row in range(12):
+        y0 = 40 + row * 28
+        arr[y0:y0 + 10, 60:540] = 0
+    ink = ocr._ink(arr)
+    assert not ocr.profile_confirms(ink, 2.0)
+    assert not ocr.profile_confirms(ink, -2.0)
+    # The same bars drawn at a tilt: the turn that straightens them is confirmed and read back.
+    tilted = np.asarray(ocr.deskew(Image.fromarray(arr), -2.0))
+    tilted_ink = ocr._ink(tilted)
+    assert ocr.profile_confirms(tilted_ink, 2.0)
+    assert not ocr.profile_confirms(tilted_ink, -2.0)
+    # The contour fit on thick bars is coarse; the point is that the angle is kept, not refused.
+    assert abs(ocr.deskew_angle(tilted) - 2.0) < 0.5
+
+
 def test_ink_glyph_dash_star_and_nothing():
     dash = np.full((30, 120), 255, dtype=np.uint8)
     dash[14:17, 50:70] = 0

@@ -263,11 +263,26 @@ def labeled_decimal_column(words) -> bool:
     return False
 
 
-def merge_stacked(boxes, gap=STACK_GAP):
+def _bridged(a, c, bridges):
+    """True when one of `bridges` (caller boxes) crosses the gap between a and c."""
+    top, bottom = a[3], c[1]
+    for box in bridges or []:
+        if box[1] < top - 2 and box[3] > bottom + 2:
+            overlap = min(box[2], a[2], c[2]) - max(box[0], a[0], c[0])
+            if overlap > 0:
+                return True
+    return False
+
+
+def merge_stacked(boxes, gap=STACK_GAP, bridges=None):
     """Join table boxes that sit on top of each other with a small gap.
 
     A typewritten table often comes back as two grids. One crop reads it as
     one table. `boxes` are `{bbox, ...}` in top-left PDF points.
+    Two layout tables are joined only when the caller's rule assembly saw one
+    grid across the gap (`bridges`): two stacked grids with their own header
+    rows (a statistical annex printed as two panels) are two tables, and the
+    layout model has already separated them.
     """
     items = sorted((dict(b) for b in boxes if b.get("bbox")), key=lambda b: (b["bbox"][1], b["bbox"][0]))
     merged = []
@@ -280,6 +295,11 @@ def merge_stacked(boxes, gap=STACK_GAP):
         overlap = min(a[2], c[2]) - max(a[0], c[0])
         width = min(a[2] - a[0], c[2] - c[0])
         gap_y = c[1] - a[3]
+        # A box the layout model drew (alone, or grown over a rule fragment).
+        layout_backed = all(item.get("source") in ("layout", "union") for item in (prev, box))
+        if layout_backed and gap_y > 3 and not _bridged(a, c, bridges):
+            merged.append(box)
+            continue
         if width > 0 and overlap / width >= 0.55 and -6 <= gap_y <= gap:
             prev["bbox"] = [min(a[0], c[0]), min(a[1], c[1]), max(a[2], c[2]), max(a[3], c[3])]
             prev["score"] = max(float(prev.get("score") or 0), float(box.get("score") or 0))
@@ -289,7 +309,7 @@ def merge_stacked(boxes, gap=STACK_GAP):
     return merged
 
 
-def union_regions(boxes):
+def union_regions(boxes, bridges=None):
     """Join boxes that are the same grid. Side-by-side tables stay apart."""
     items = []
     for box in boxes:
@@ -319,7 +339,7 @@ def union_regions(boxes):
                     continue
                 j += 1
             i += 1
-    return merge_stacked(items)
+    return merge_stacked(items, bridges=bridges)
 
 
 def _round_box(box):
@@ -347,6 +367,14 @@ def choose_table_boxes(layout_boxes, fallback_boxes, *, page_size=None, numeric=
         raise ValueError("boxMode must be union, caller, or layout")
     layout = [_as_region(b, "layout") for b in layout_boxes or [] if b.get("label") in TABLE_LABELS and b.get("bbox")]
     caller = [_as_region(b, "caller") for b in fallback_boxes or [] if b.get("bbox")]
+    # A `content` box is a table of contents: entries and page numbers. It is a
+    # table when the caller's rules already found one inside it; then the whole
+    # list is the crop, not the fragment the rules managed to assemble.
+    for item in layout_boxes or []:
+        if item.get("label") != "content" or not item.get("bbox"):
+            continue
+        if any(_cover(c["bbox"], [float(v) for v in item["bbox"]]) >= 0.5 for c in caller):
+            layout.append(_as_region(item, "layout"))
     pw = ph = None
     if page_size and len(page_size) >= 2:
         pw, ph = float(page_size[0]), float(page_size[1])
@@ -362,7 +390,7 @@ def choose_table_boxes(layout_boxes, fallback_boxes, *, page_size=None, numeric=
             "label": "table",
         }]
     else:
-        chosen = union_regions(layout + caller)
+        chosen = union_regions(layout + caller, bridges=[c["bbox"] for c in caller])
     for box in chosen:
         box["bbox"] = _round_box(box["bbox"])
     return chosen

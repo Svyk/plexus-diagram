@@ -176,12 +176,19 @@ function vlmHelper(pdfPath) {
       });
       const body = await res.json().catch(() => null);
       if (res.status < 200 || res.status >= 300) throw new Error(body?.error || `vlm ${res.status}`);
+      // PXD_VLM_TRACE=<dir> keeps each raw request and response: <dir>/<pdf>.p<pages>.<text|tables>.json.
+      const traceDir = process.env.PXD_VLM_TRACE;
+      if (traceDir) {
+        mkdirSync(traceDir, { recursive: true });
+        const name = `${basename(pdfPath)}.p${(pages || []).join("_")}.${text === true ? "text" : "tables"}.json`;
+        writeFileSync(join(traceDir, name), JSON.stringify({ options, response: body }, null, 1));
+      }
       return body;
     },
   };
 }
 
-async function helperFor(engine, pdfPath, cacheDir, helperFlag) {
+export async function helperFor(engine, pdfPath, cacheDir, helperFlag) {
   if (engine === "builtin") return null;
   if (engine === "helper-vlm") {
     const sha = sha256File(pdfPath);
@@ -226,7 +233,7 @@ async function helperFor(engine, pdfPath, cacheDir, helperFlag) {
   return votingHelper({ vision: cached, alt, lexicon: await lexicon() });
 }
 
-async function runEngine(pdfPath, page, engine, cacheDir, helperFlag) {
+export async function runEngine(pdfPath, page, engine, cacheDir, helperFlag) {
   const t0 = performance.now();
   const { records, info, numPages, from, to, bytes } = await builtinRecords(pdfPath, { pages: [page, page] });
   const base = assembleDocument(records, { numPages, info, from, to });

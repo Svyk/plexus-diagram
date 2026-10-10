@@ -4,7 +4,8 @@
 import { buildLines, dominantRotation, lineBox, makeLine, mul, round } from "./lines.js";
 import { extractGraphics, luminanceOf } from "./rules.js";
 import { chartGrid, findLatticeTables, looksLikeChart } from "./lattice.js";
-import { baselineRows, detectStreamRuns, proseColumnTable, tableFromBand } from "./stream.js";
+import { baselineRows, detectStreamRuns, proseColumnTable, tableFromBand, splitSideBySide } from "./stream.js";
+import { growContentsTables } from "./contents.js";
 import { demoteFalseCaptions, drawingSheetPage, figCaptionKey, findFigures, imageCover, normalizeFigSpelling, peelFigLabels, rasterScanPage, rejectFalseFigures, sheetRegions, splitSharedCaptions } from "./figures.js";
 import { dropMarginRotated, findFurniture, normalizeFurniture } from "./furniture.js";
 import { findPageTitle } from "./title.js";
@@ -22,7 +23,7 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 34;
+export const PARSE_REV = 35;
 
 // A footnote mark on its own (asterisk-like signs, a number, a letter).
 const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
@@ -989,6 +990,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       seqs[idx].push(line);
     }
     const sequences = [...seqs, wideSeq].filter((s) => s.length).map((s) => s.sort((a, b) => a.base - b.base || a.x0 - b.x0));
+    if (typeof process !== "undefined" && process.env?.PXD_STREAM_DEBUG) process.stderr.write(`page ${pg.n} gutters ${JSON.stringify(gutters.map((g) => [Math.round(g.x0), Math.round(g.x1)]))} sequences ${sequences.map((s) => s.length).join("/")}\n`);
     // Low confidence on the page, not the lexicon miss: a printed name list is
     // confident and stays a table when it has a date or measurement column.
     // Only High accuracy drops these grids. The local reading keeps them, because
@@ -1000,7 +1002,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     for (const seq of sequences) {
       let lines = seq;
       // Stream tables, and aligned runs that are really equations or code listings.
-      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq), rules: pg.graphics.rules, bridgeGaps: pg.tables.length === 0, ocr: Boolean(pg.ocr), handwriting })) {
+      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq), rules: pg.graphics.rules, bridgeGaps: pg.tables.length === 0, ocr: Boolean(pg.ocr), handwriting }).flatMap((run) => (run.type === "formula" || run.type === "code" ? [run] : splitSideBySide(run)))) {
         const drop = new Set(t.lines);
         lines = lines.filter((l) => !drop.has(l));
         if (t.type === "formula") {
@@ -1012,6 +1014,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
           continue;
         }
         if (isTitledBox(t) || figureLabels(t, pageFigures) || sparseContentsTable(t)) { lines = [...lines, ...t.lines].sort((a, b) => a.base - b.base || a.x0 - b.x0); continue; }
+        t.sourceLines = t.lines;
         delete t.lines; delete t.usedWords;
         t.page = pg.n;
         pageTables.push(t);
@@ -1096,6 +1099,8 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     }
     // A leader-dot column or a split date read on one piece and not the next
     // would keep two pieces of one grid apart. They go before the pieces are compared.
+    growContentsTables(pageTables, textBlocks, bodySize);
+    for (const t of pageTables) delete t.sourceLines;
     for (const t of pageTables) if (t.method === "stream") normalizeStreamPiece(t);
     stitchTables(pageTables, textBlocks, bodySize);
     absorbSectionBanners(pageTables, textBlocks, bodySize);

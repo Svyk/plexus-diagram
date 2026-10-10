@@ -29,6 +29,26 @@ PAD = 8.0
 TOP_PAD = 36.0
 MAX_REGIONS = 40
 MAX_TOKENS = 4096
+# A statistical annex page holds a 40-row, 14-column grid: about 560 cells, each
+# a tag and a few tokens. 4096 tokens cut such a reading off at row 33. A crop
+# that covers a large share of the page gets the longer budget; a small crop
+# keeps the short one, so a reading that loops on a crop that is not a table
+# does not run twice as long.
+LARGE_TOKENS = 8192
+LARGE_CROP = 0.3
+
+
+def token_budget(bbox, page_size) -> int:
+    """Generation budget for a crop: longer when the crop covers much of the page."""
+    try:
+        x0, y0, x1, y1 = (float(v) for v in bbox)
+        pw, ph = (float(v) for v in page_size)
+    except (TypeError, ValueError):
+        return MAX_TOKENS
+    if pw <= 0 or ph <= 0:
+        return MAX_TOKENS
+    share = max(0.0, x1 - x0) * max(0.0, y1 - y0) / (pw * ph)
+    return LARGE_TOKENS if share >= LARGE_CROP else MAX_TOKENS
 TEXT_TOKENS = 512
 # Greedy and seeded. Temperature 0 is argmax; the seed keeps the random
 # state from a previous sampled call out of this one.

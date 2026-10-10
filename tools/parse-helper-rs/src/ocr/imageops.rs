@@ -713,10 +713,11 @@ pub fn deskew_angle(img: &GrayImage) -> f64 {
     } else {
         weighted_median_angle(collect_line_angles(img, true))
     };
-    if angle == 0.0 {
-        return 0.0;
+    if angle == 0.0 || angle.abs() < PROFILE_MIN_ANGLE {
+        return angle;
     }
-    // The same check as ocr.py `profile_confirms`: the turn must sharpen the text lines.
+    // The same check as ocr.py `profile_confirms`: a turn of a degree or more must
+    // sharpen the text lines. A few tenths (a table-rule correction) is kept.
     let ink = ink_mask(&Gray::from_image(img));
     if profile_confirms(&ink, angle) { angle } else { 0.0 }
 }
@@ -727,6 +728,7 @@ pub fn deskew_angle(img: &GrayImage) -> f64 {
 // tilts the contour fit of every word, leaves the profile flatter when turned.
 const PROFILE_WIDTH: usize = 600;
 const PROFILE_GAIN: f64 = 1.1;
+const PROFILE_MIN_ANGLE: f64 = 1.0;
 
 fn shrink_ink(ink: &Gray, width: usize) -> GrayImage {
     // Box average onto `width` columns (area resampling, like cv2.INTER_AREA).

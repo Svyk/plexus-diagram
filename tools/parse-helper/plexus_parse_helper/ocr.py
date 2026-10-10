@@ -124,7 +124,9 @@ def deskew_angle(gray) -> float:
     median = float(values[np.searchsorted(np.cumsum(weights), half)])
     if abs(median) < 0.05:
         return 0.0
-    if not profile_confirms(ink, -median):
+    # A turn of a degree or more must sharpen the rows. A few tenths of a degree
+    # (a table-rule correction) is too small to show in the profile and is kept.
+    if abs(median) >= PROFILE_MIN_ANGLE and not profile_confirms(ink, -median):
         return 0.0
     return round(-median, 3)
 
@@ -135,6 +137,7 @@ def deskew_angle(gray) -> float:
 # tilts the contour fit of every word, leaves the profile flatter when turned.
 PROFILE_WIDTH = 600
 PROFILE_GAIN = 1.1
+PROFILE_MIN_ANGLE = 1.0
 
 
 def _profile_variance(ink_small, angle: float) -> float:

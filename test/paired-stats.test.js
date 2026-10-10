@@ -8,7 +8,7 @@ import test from "node:test";
 import { gritsCon } from "../tools/parse-bench/grits.mjs";
 import { scorePage } from "../tools/parse-bench/scan-score.mjs";
 import {
-  MIN_TEXT_CHARS, applicable, avgRanks, bootstrapCI, cohenDz, components, evaluate, foldPrint, indexDocsDir, informative, mulberry32, pageScore, parseArgs, resolveDoc, scoreWith, sureTextChars, textScore, wilcoxon, withoutFigureText,
+  MIN_FIGURE_AREA, MIN_TEXT_CHARS, applicable, avgRanks, bootstrapCI, cohenDz, components, evaluate, foldPrint, indexDocsDir, informative, mulberry32, pageScore, parseArgs, resolveDoc, scoreWith, sureTextChars, textScore, wilcoxon, withoutFigureText,
 } from "../tools/parse-bench/paired-stats.mjs";
 
 const near = (a, b, tol = 1e-9) => assert.ok(Math.abs(a - b) < tol, `${a} vs ${b}`);
@@ -360,4 +360,51 @@ test("textScore: with no unsure lines and no table text it equals the old 1 - CE
   const old = scorePage(doc, truth).text.cer;
   near(textScore(doc, truth).cer, old);
   assert.ok(old > 0);
+});
+
+test("figures under 1% of the page are ignored on both sides", async () => {
+  assert.equal(MIN_FIGURE_AREA, 0.01);
+  const dir = await mkdtemp(path.join(tmpdir(), "pxs-tiny-"));
+  try {
+    const file = path.join(dir, "d.pxd.json");
+    const mk = (blocks) => ({ pages: [{ n: 1, w: 100, h: 100 }], order: Object.keys(blocks), blocks });
+    const icon = { type: "figure", page: 1, bbox: [5, 5, 17, 17] }; // 1.44% is kept; 9x9 is dropped
+    const tinyIcon = { type: "figure", page: 1, bbox: [5, 5, 14, 14] };
+    const chart = { type: "figure", page: 1, bbox: [20, 20, 80, 60], caption: "cap" };
+    const cap = { type: "para", page: 1, text: "Figure 1 sales", bbox: [20, 62, 80, 66] };
+    // tiny predicted icon on a no-figure page
+    await writeFile(file, JSON.stringify(mk({ i: tinyIcon })));
+    let s = scoreWith(file, { figures: [] }, false);
+    assert.equal(components(s, { figures: [] }).fig, 1);
+    assert.equal(scorePage(JSON.parse(JSON.stringify(mk({ i: tinyIcon }))), { figures: [] }).figures.f1, 0);
+    // an icon above 1% still counts
+    await writeFile(file, JSON.stringify(mk({ i: icon })));
+    s = scoreWith(file, { figures: [] }, false);
+    assert.equal(components(s, { figures: [] }).fig, 0);
+    // tiny truth QR code plus a real chart: only the chart is scored
+    const truth = { figures: [{ bbox: [0.9, 0.9, 0.95, 0.95] }, { bbox: [0.2, 0.2, 0.8, 0.6], caption: "Figure 1 sales" }] };
+    await writeFile(file, JSON.stringify(mk({ c: chart, cp: cap })));
+    s = scoreWith(file, truth, false);
+    assert.equal(s.figures.truthN ?? s.figureCounts.truthN, 1);
+    assert.equal(components(s, truth).fig, 1);
+    // captions follow the same filter: the tiny figure's caption is not required
+    const capTruth = { figures: [{ bbox: [0.9, 0.9, 0.95, 0.95], caption: "QR code" }, { bbox: [0.2, 0.2, 0.8, 0.6] }] };
+    assert.equal(applicable(capTruth).cap, false);
+    assert.equal(applicable(capTruth).fig, true);
+    assert.equal(applicable({ figures: [{ bbox: [0.2, 0.2, 0.8, 0.6], caption: "x" }] }).cap, true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a page whose only truth figures are tiny has no figure component and is uninformative", () => {
+  const qr = { bbox: [0.9, 0.9, 0.95, 0.95], caption: "QR" };
+  const a = applicable({ figures: [qr] });
+  assert.equal(a.fig, false);
+  assert.equal(a.cap, false);
+  assert.equal(informative({ figures: [qr] }), false);
+  assert.equal(informative({ figures: [qr, { bbox: [0.1, 0.1, 0.6, 0.6] }] }), true);
+  assert.equal(informative({ figures: [qr], tables: [{ cells: [{ text: "a" }] }] }), true);
+  assert.deepEqual(components(null, { figures: [qr] }), {});
+  assert.equal(applicable({ figures: [] }).fig, true);
 });

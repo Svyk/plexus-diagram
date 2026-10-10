@@ -43,6 +43,45 @@ export function sureTextChars(truth) {
   return truthSegments(truth).reduce((a, s) => a + (s === WILD ? 0 : s.length), 0);
 }
 
+// Figures smaller than this share of the page (icons, QR codes, small logos) are ignored on both sides.
+export const MIN_FIGURE_AREA = 0.01;
+
+function boxArea(b) {
+  return Array.isArray(b) && b.length >= 4 ? Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]) : null;
+}
+
+function tinyTruthFigure(f) {
+  const a = boxArea(f && f.bbox);
+  return a !== null && a < MIN_FIGURE_AREA;
+}
+
+// Truth figures that count; null when the truth has no figure list.
+function bigTruthFigures(truth) {
+  return Array.isArray(truth.figures) ? truth.figures.filter((f) => !tinyTruthFigure(f)) : null;
+}
+
+// A figure list whose every entry is tiny says nothing about "no figure here".
+function figuresApply(truth) {
+  const big = bigTruthFigures(truth);
+  return !!big && !(truth.figures.length > 0 && big.length === 0);
+}
+
+// Copies of truth and doc without sub-1% figures, for the figure and caption components only.
+export function withoutTinyFigures(doc, truth) {
+  const t = Array.isArray(truth.figures) ? { ...truth, figures: bigTruthFigures(truth) } : truth;
+  const dropIds = new Set();
+  for (const id of doc.order || []) {
+    const b = doc.blocks[id];
+    if (!b || b.type !== "figure" || !Array.isArray(b.bbox) || b.bbox.length < 4) continue;
+    const size = pageSize(doc, b.page);
+    const nb = normBox(b.bbox, size.w, size.h);
+    const a = boxArea(nb);
+    if (a !== null && a < MIN_FIGURE_AREA) dropIds.add(id);
+  }
+  const d = dropIds.size ? { ...doc, order: doc.order.filter((id) => !dropIds.has(id)) } : doc;
+  return { doc: d, truth: t, changed: dropIds.size > 0 || (t !== truth && t.figures.length !== truth.figures.length) };
+}
+
 function textApplies(truth) {
   return !!truth.textComplete && truthLines(truth).length > 0 && sureTextChars(truth) >= MIN_TEXT_CHARS;
 }
@@ -50,12 +89,12 @@ function textApplies(truth) {
 // Which components the truth supports.
 export function applicable(truth) {
   const tables = Array.isArray(truth.tables);
-  const figs = Array.isArray(truth.figures);
+  const figs = figuresApply(truth);
   return {
     cell: tables,
     struct: tables,
     fig: figs,
-    cap: figs && truth.figures.some((f) => f && typeof f.caption === "string" && f.caption.trim() !== ""),
+    cap: figs && bigTruthFigures(truth).some((f) => f && typeof f.caption === "string" && f.caption.trim() !== ""),
     text: textApplies(truth),
   };
 }
@@ -64,7 +103,8 @@ export function applicable(truth) {
 export function informative(truth) {
   if (!truth) return false;
   if (Array.isArray(truth.tables) && truth.tables.some((t) => t && Array.isArray(t.cells) && t.cells.some((c) => c && !c.unsure))) return true;
-  if (Array.isArray(truth.figures) && truth.figures.length > 0) return true;
+  const big = bigTruthFigures(truth);
+  if (big && big.length > 0) return true;
   return textApplies(truth);
 }
 
@@ -221,6 +261,12 @@ export function scoreWith(docPath, truth, fold) {
     const [d, t] = fold ? foldPrint(...foldQuotes(doc, truth)) : [doc, truth];
     const scored = scorePage(d, t);
     if (Array.isArray(t.tables)) scored.grits = gritsPage(predTables(d), t.tables);
+    const tiny = withoutTinyFigures(d, t);
+    if (tiny.changed) {
+      const again = scorePage(tiny.doc, tiny.truth);
+      if (again.figures) scored.figures = again.figures;
+      else delete scored.figures;
+    }
     const stripped = withoutFigureText(d, t.figures);
     scored.textDroppedInFigures = stripped.dropped;
     if (stripped.dropped && scored.text) {

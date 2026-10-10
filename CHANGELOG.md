@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.17.0 — 2026-10-10
+
+Handwritten letters, ledgers and photographed pages read much closer to the page in High accuracy.
+
+- **Handwriting and photos.** When Apple Vision is unsure of a page, High accuracy now reads that page's text with Qwen3-VL-8B (Apache-2.0) instead of PaddleOCR-VL, which still reads the tables. Pages of a handwritten dye-recipe book now match the page 92–96% (were 53–71%), and a photographed 1867 letter 89% (was 58%). A handwritten page takes about 15–30 seconds.
+- **Text in the right place.** The page reading is lined up word by word with what Vision saw in each region, so a date, a greeting, a paragraph and a signature each keep their own text, and table cells and figure labels are kept out of the paragraphs.
+- The first such read downloads the model once (about 5.8 GB, checked against pinned SHA-256 hashes). To get it, re-run the High accuracy helper install.
+- Cached parses from earlier versions are refreshed automatically.
+
 ## 3.16.0 — 2026-10-10
 
 Long rosters and old tables printed in pieces read as one table.

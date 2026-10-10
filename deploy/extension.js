@@ -14298,6 +14298,327 @@ var init_pdf_pin = __esm({
   }
 });
 
+// src/model/parse-hash.js
+function bytesOf(input) {
+  if (input == null) return new Uint8Array();
+  if (typeof input === "string") return new TextEncoder().encode(input);
+  if (input instanceof ArrayBuffer) return new Uint8Array(input);
+  if (ArrayBuffer.isView(input)) return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  throw new TypeError("sha256Hex expects bytes");
+}
+async function sha256Hex(bytes) {
+  const view = bytesOf(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", view);
+  const hex = [];
+  for (const byte2 of new Uint8Array(digest)) hex.push(byte2.toString(16).padStart(2, "0"));
+  return hex.join("");
+}
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const key of Object.keys(value).sort()) out[key] = canonicalize(value[key]);
+    return out;
+  }
+  return value;
+}
+function canonicalOptions(options) {
+  const src = options && typeof options === "object" && !Array.isArray(options) ? options : {};
+  const copy = {};
+  for (const key of Object.keys(src).sort()) {
+    if (key === "scope") continue;
+    copy[key] = canonicalize(src[key]);
+  }
+  return copy;
+}
+function canonicalOptionsJson(options) {
+  return JSON.stringify(canonicalOptions(options));
+}
+async function optionsHash(options) {
+  return sha256Hex(canonicalOptionsJson(options));
+}
+var init_parse_hash = __esm({
+  "src/model/parse-hash.js"() {
+  }
+});
+
+// src/model/parse-schema.js
+function boxOf5(value) {
+  if (!Array.isArray(value) || value.length < 4) return null;
+  const [x0, y0, x1, y1] = value;
+  if (![x0, y0, x1, y1].every((n2) => typeof n2 === "number" && Number.isFinite(n2))) return null;
+  return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
+}
+function iou2(a, b) {
+  const A = boxOf5(a);
+  const B = boxOf5(b);
+  if (!A || !B) return 0;
+  const ix0 = Math.max(A[0], B[0]);
+  const iy0 = Math.max(A[1], B[1]);
+  const ix1 = Math.min(A[2], B[2]);
+  const iy1 = Math.min(A[3], B[3]);
+  const inter = Math.max(0, ix1 - ix0) * Math.max(0, iy1 - iy0);
+  const areaA = (A[2] - A[0]) * (A[3] - A[1]);
+  const areaB = (B[2] - B[0]) * (B[3] - B[1]);
+  const union = areaA + areaB - inter;
+  if (union <= 0) return 0;
+  return inter / union;
+}
+function targetOf(bbox) {
+  if (Array.isArray(bbox)) return { page: null, bbox: boxOf5(bbox) };
+  if (bbox && typeof bbox === "object") {
+    const page = Number.isInteger(bbox.page) ? bbox.page : null;
+    const box2 = Array.isArray(bbox.bbox) ? boxOf5(bbox.bbox) : boxOf5(bbox);
+    return { page, bbox: box2 };
+  }
+  return { page: null, bbox: null };
+}
+function samePage(block, page) {
+  if (page == null) return true;
+  return block?.page === page;
+}
+function validateParse(doc) {
+  const errors = [];
+  if (!doc || typeof doc !== "object") {
+    return { ok: false, errors: ["schema"] };
+  }
+  if (doc.schema !== SCHEMA2) errors.push("schema");
+  if (doc.engine != null && !ENGINES.has(doc.engine)) errors.push("engine");
+  const blocks = doc.blocks;
+  if (!blocks || typeof blocks !== "object" || Array.isArray(blocks)) {
+    errors.push("blocks");
+  }
+  const order = doc.order;
+  if (!Array.isArray(order)) {
+    errors.push("order");
+  } else if (blocks && typeof blocks === "object") {
+    const seen = /* @__PURE__ */ new Set();
+    for (const id of order) {
+      if (seen.has(id)) errors.push(`order-duplicate:${id}`);
+      seen.add(id);
+      if (!Object.prototype.hasOwnProperty.call(blocks, id)) errors.push(`order-missing:${id}`);
+    }
+  }
+  if (blocks && typeof blocks === "object" && !Array.isArray(blocks)) {
+    for (const [key, block] of Object.entries(blocks)) {
+      if (!block || typeof block !== "object") {
+        errors.push(`block-type:${key}`);
+        continue;
+      }
+      if (block.id != null && block.id !== key) errors.push(`block-id:${key}`);
+      if (!TYPE_SET.has(block.type)) errors.push(`block-type:${key}`);
+      if (block.confidence != null) {
+        const c = block.confidence;
+        if (typeof c !== "number" || c < 0 || c > 1) errors.push(`confidence:${key}`);
+      }
+      if (block.type === "table") validateTable(key, block, errors);
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+function validateTable(id, table, errors) {
+  const rows = table.rows;
+  const cols = table.cols;
+  if (!Number.isInteger(rows) || rows < 1 || !Number.isInteger(cols) || cols < 1) {
+    errors.push(`cell-range:${id}`);
+    return;
+  }
+  const grid = Array.from({ length: rows }, () => Array(cols).fill(null));
+  const cells = Array.isArray(table.cells) ? table.cells : [];
+  for (const cell of cells) {
+    const r = cell?.r;
+    const c = cell?.c;
+    const rs = cell?.rowSpan ?? 1;
+    const cs = cell?.colSpan ?? 1;
+    const inRange = Number.isInteger(r) && Number.isInteger(c) && Number.isInteger(rs) && Number.isInteger(cs) && r >= 0 && c >= 0 && rs >= 1 && cs >= 1 && r + rs <= rows && c + cs <= cols;
+    if (!inRange) {
+      errors.push(`cell-range:${id}:${r}:${c}`);
+      continue;
+    }
+    for (let dr = 0; dr < rs; dr += 1) {
+      for (let dc = 0; dc < cs; dc += 1) {
+        const rr = r + dr;
+        const cc = c + dc;
+        if (grid[rr][cc]) {
+          errors.push(`cell-overlap:${id}:${rr}:${cc}`);
+        } else {
+          grid[rr][cc] = true;
+        }
+      }
+    }
+  }
+}
+function blocksInRange(doc, fromPage, toPage) {
+  const from = Math.min(fromPage, toPage);
+  const to = Math.max(fromPage, toPage);
+  const blocks = doc?.blocks || {};
+  const order = Array.isArray(doc?.order) ? doc.order : [];
+  const out = [];
+  for (const id of order) {
+    const block = blocks[id];
+    if (!block) continue;
+    if (block.page >= from && block.page <= to) out.push(block);
+  }
+  return out;
+}
+function selectBlocks(doc, idsOrRange) {
+  const blocks = doc?.blocks || {};
+  if (idsOrRange == null) {
+    const order = Array.isArray(doc?.order) ? doc.order : [];
+    return order.map((id) => blocks[id]).filter(Boolean);
+  }
+  if (Array.isArray(idsOrRange)) {
+    if (idsOrRange.length === 2 && idsOrRange.every((n2) => typeof n2 === "number")) {
+      return blocksInRange(doc, idsOrRange[0], idsOrRange[1]);
+    }
+    return idsOrRange.map((id) => blocks[id]).filter(Boolean);
+  }
+  if (typeof idsOrRange === "object") {
+    const from = idsOrRange.fromPage ?? idsOrRange.from;
+    const to = idsOrRange.toPage ?? idsOrRange.to;
+    if (from != null && to != null) return blocksInRange(doc, from, to);
+  }
+  return [];
+}
+function tableGrid(table) {
+  const rows = Number.isInteger(table?.rows) ? table.rows : 0;
+  const cols = Number.isInteger(table?.cols) ? table.cols : 0;
+  const grid = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_2, c) => ({ anchor: false, covered: false, cell: null, text: "", r, c })));
+  for (const cell of table?.cells || []) {
+    const rs = cell.rowSpan ?? 1;
+    const cs = cell.colSpan ?? 1;
+    for (let dr = 0; dr < rs; dr += 1) {
+      for (let dc = 0; dc < cs; dc += 1) {
+        const r = cell.r + dr;
+        const c = cell.c + dc;
+        if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
+        const covered = dr !== 0 || dc !== 0;
+        grid[r][c] = {
+          anchor: !covered,
+          covered,
+          cell,
+          text: cell.text ?? "",
+          r,
+          c
+        };
+      }
+    }
+  }
+  return grid;
+}
+function freshId(used) {
+  let n2 = 1;
+  while (used.has(`d${n2}`)) n2 += 1;
+  const id = `d${n2}`;
+  used.add(id);
+  return id;
+}
+function mergeScoped(baseDoc, scopedPageResult, bbox) {
+  const target = targetOf(bbox);
+  const base = baseDoc && typeof baseDoc === "object" ? baseDoc : {};
+  const baseBlocks = base.blocks && typeof base.blocks === "object" ? base.blocks : {};
+  const baseOrder = Array.isArray(base.order) ? base.order : [];
+  let page = target.page;
+  if (page == null && target.bbox) {
+    let best = 0;
+    for (const block of Object.values(baseBlocks)) {
+      const score = iou2(block?.bbox, target.bbox);
+      if (score > best) {
+        best = score;
+        page = block.page;
+      }
+    }
+  }
+  const scopedBlocks = scopedPageResult?.blocks && typeof scopedPageResult.blocks === "object" ? scopedPageResult.blocks : {};
+  const scopedOrder = Array.isArray(scopedPageResult?.order) ? scopedPageResult.order : Object.keys(scopedBlocks);
+  const incoming = [];
+  for (const id of scopedOrder) {
+    const block = scopedBlocks[id];
+    if (!block || !samePage(block, page)) continue;
+    if (target.bbox && iou2(block.bbox, target.bbox) >= IOU_MIN2) incoming.push(block);
+  }
+  if (!incoming.length || !target.bbox) return baseDoc;
+  const drop = /* @__PURE__ */ new Set();
+  const consider = /* @__PURE__ */ new Set([...baseOrder, ...Object.keys(baseBlocks)]);
+  for (const id of consider) {
+    const block = baseBlocks[id];
+    if (!block || !samePage(block, page)) continue;
+    if (iou2(block.bbox, target.bbox) >= IOU_MIN2) drop.add(id);
+  }
+  const used = new Set(Object.keys(baseBlocks).filter((id) => !drop.has(id)));
+  const fresh = incoming.map((block) => {
+    const id = freshId(used);
+    return { ...block, id, engine: "docling" };
+  });
+  const order = [];
+  let inserted = false;
+  for (const id of baseOrder) {
+    if (drop.has(id)) {
+      if (!inserted) {
+        for (const block of fresh) order.push(block.id);
+        inserted = true;
+      }
+      continue;
+    }
+    order.push(id);
+  }
+  if (!inserted) {
+    for (const block of fresh) order.push(block.id);
+  }
+  const blocks = {};
+  for (const [id, block] of Object.entries(baseBlocks)) {
+    if (!drop.has(id)) blocks[id] = block;
+  }
+  for (const block of fresh) blocks[block.id] = block;
+  const grouped = [];
+  const index = /* @__PURE__ */ new Map();
+  for (const id of order) {
+    const engine = blocks[id]?.engine || base.engine || "builtin";
+    if (!index.has(engine)) {
+      const entry = { engine, ids: [] };
+      if (engine === "docling") {
+        entry.engineVersion = scopedPageResult?.engineVersion || null;
+        entry.bbox = target.bbox;
+        if (page != null) entry.page = page;
+      } else if (base.engineVersion) {
+        entry.engineVersion = base.engineVersion;
+      }
+      index.set(engine, entry);
+      grouped.push(entry);
+    }
+    index.get(engine).ids.push(id);
+  }
+  return {
+    ...base,
+    schema: SCHEMA2,
+    engine: "mixed",
+    sources: grouped,
+    order,
+    blocks
+  };
+}
+var SCHEMA2, IOU_MIN2, BLOCK_TYPES, TYPE_SET, ENGINES;
+var init_parse_schema = __esm({
+  "src/model/parse-schema.js"() {
+    SCHEMA2 = "pxd-parse/1";
+    IOU_MIN2 = 0.5;
+    BLOCK_TYPES = Object.freeze([
+      "heading",
+      "para",
+      "list",
+      "table",
+      "figure",
+      "formula",
+      "caption",
+      "footnote",
+      "code",
+      "scan"
+    ]);
+    TYPE_SET = new Set(BLOCK_TYPES);
+    ENGINES = /* @__PURE__ */ new Set(["builtin", "docling", "mixed", "anydoc", "cloud"]);
+  }
+});
+
 // src/model/region-menu.js
 function imageKind(row4) {
   if (!row4?.uid || row4.error) return false;
@@ -14940,283 +15261,6 @@ var init_timeline = __esm({
     TIMELINE_DAY_CAP = 365;
     DAILY_TITLE_PATTERN = "^(January|February|March|April|May|June|July|August|September|October|November|December) \\d{1,2}(?:st|nd|rd|th), \\d{4}$";
     TIMELINE_QUERY = "[:find ?card ?ref ?title ?page ?time :in $ [?card ...] ?pat :where [?c :block/uid ?card] [?b :block/refs ?c] [?b :block/uid ?ref] [?b :block/page ?pg] [?pg :node/title ?title] [?pg :block/uid ?page] [(get-else $ ?b :create/time 0) ?time] [(re-pattern ?pat) ?re] [(re-find ?re ?title)]]";
-  }
-});
-
-// src/model/parse-schema.js
-function boxOf5(value) {
-  if (!Array.isArray(value) || value.length < 4) return null;
-  const [x0, y0, x1, y1] = value;
-  if (![x0, y0, x1, y1].every((n2) => typeof n2 === "number" && Number.isFinite(n2))) return null;
-  return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
-}
-function iou2(a, b) {
-  const A = boxOf5(a);
-  const B = boxOf5(b);
-  if (!A || !B) return 0;
-  const ix0 = Math.max(A[0], B[0]);
-  const iy0 = Math.max(A[1], B[1]);
-  const ix1 = Math.min(A[2], B[2]);
-  const iy1 = Math.min(A[3], B[3]);
-  const inter = Math.max(0, ix1 - ix0) * Math.max(0, iy1 - iy0);
-  const areaA = (A[2] - A[0]) * (A[3] - A[1]);
-  const areaB = (B[2] - B[0]) * (B[3] - B[1]);
-  const union = areaA + areaB - inter;
-  if (union <= 0) return 0;
-  return inter / union;
-}
-function targetOf(bbox) {
-  if (Array.isArray(bbox)) return { page: null, bbox: boxOf5(bbox) };
-  if (bbox && typeof bbox === "object") {
-    const page = Number.isInteger(bbox.page) ? bbox.page : null;
-    const box2 = Array.isArray(bbox.bbox) ? boxOf5(bbox.bbox) : boxOf5(bbox);
-    return { page, bbox: box2 };
-  }
-  return { page: null, bbox: null };
-}
-function samePage(block, page) {
-  if (page == null) return true;
-  return block?.page === page;
-}
-function validateParse(doc) {
-  const errors = [];
-  if (!doc || typeof doc !== "object") {
-    return { ok: false, errors: ["schema"] };
-  }
-  if (doc.schema !== SCHEMA2) errors.push("schema");
-  if (doc.engine != null && !ENGINES.has(doc.engine)) errors.push("engine");
-  const blocks = doc.blocks;
-  if (!blocks || typeof blocks !== "object" || Array.isArray(blocks)) {
-    errors.push("blocks");
-  }
-  const order = doc.order;
-  if (!Array.isArray(order)) {
-    errors.push("order");
-  } else if (blocks && typeof blocks === "object") {
-    const seen = /* @__PURE__ */ new Set();
-    for (const id of order) {
-      if (seen.has(id)) errors.push(`order-duplicate:${id}`);
-      seen.add(id);
-      if (!Object.prototype.hasOwnProperty.call(blocks, id)) errors.push(`order-missing:${id}`);
-    }
-  }
-  if (blocks && typeof blocks === "object" && !Array.isArray(blocks)) {
-    for (const [key, block] of Object.entries(blocks)) {
-      if (!block || typeof block !== "object") {
-        errors.push(`block-type:${key}`);
-        continue;
-      }
-      if (block.id != null && block.id !== key) errors.push(`block-id:${key}`);
-      if (!TYPE_SET.has(block.type)) errors.push(`block-type:${key}`);
-      if (block.confidence != null) {
-        const c = block.confidence;
-        if (typeof c !== "number" || c < 0 || c > 1) errors.push(`confidence:${key}`);
-      }
-      if (block.type === "table") validateTable(key, block, errors);
-    }
-  }
-  return { ok: errors.length === 0, errors };
-}
-function validateTable(id, table, errors) {
-  const rows = table.rows;
-  const cols = table.cols;
-  if (!Number.isInteger(rows) || rows < 1 || !Number.isInteger(cols) || cols < 1) {
-    errors.push(`cell-range:${id}`);
-    return;
-  }
-  const grid = Array.from({ length: rows }, () => Array(cols).fill(null));
-  const cells = Array.isArray(table.cells) ? table.cells : [];
-  for (const cell of cells) {
-    const r = cell?.r;
-    const c = cell?.c;
-    const rs = cell?.rowSpan ?? 1;
-    const cs = cell?.colSpan ?? 1;
-    const inRange = Number.isInteger(r) && Number.isInteger(c) && Number.isInteger(rs) && Number.isInteger(cs) && r >= 0 && c >= 0 && rs >= 1 && cs >= 1 && r + rs <= rows && c + cs <= cols;
-    if (!inRange) {
-      errors.push(`cell-range:${id}:${r}:${c}`);
-      continue;
-    }
-    for (let dr = 0; dr < rs; dr += 1) {
-      for (let dc = 0; dc < cs; dc += 1) {
-        const rr = r + dr;
-        const cc = c + dc;
-        if (grid[rr][cc]) {
-          errors.push(`cell-overlap:${id}:${rr}:${cc}`);
-        } else {
-          grid[rr][cc] = true;
-        }
-      }
-    }
-  }
-}
-function blocksInRange(doc, fromPage, toPage) {
-  const from = Math.min(fromPage, toPage);
-  const to = Math.max(fromPage, toPage);
-  const blocks = doc?.blocks || {};
-  const order = Array.isArray(doc?.order) ? doc.order : [];
-  const out = [];
-  for (const id of order) {
-    const block = blocks[id];
-    if (!block) continue;
-    if (block.page >= from && block.page <= to) out.push(block);
-  }
-  return out;
-}
-function selectBlocks(doc, idsOrRange) {
-  const blocks = doc?.blocks || {};
-  if (idsOrRange == null) {
-    const order = Array.isArray(doc?.order) ? doc.order : [];
-    return order.map((id) => blocks[id]).filter(Boolean);
-  }
-  if (Array.isArray(idsOrRange)) {
-    if (idsOrRange.length === 2 && idsOrRange.every((n2) => typeof n2 === "number")) {
-      return blocksInRange(doc, idsOrRange[0], idsOrRange[1]);
-    }
-    return idsOrRange.map((id) => blocks[id]).filter(Boolean);
-  }
-  if (typeof idsOrRange === "object") {
-    const from = idsOrRange.fromPage ?? idsOrRange.from;
-    const to = idsOrRange.toPage ?? idsOrRange.to;
-    if (from != null && to != null) return blocksInRange(doc, from, to);
-  }
-  return [];
-}
-function tableGrid(table) {
-  const rows = Number.isInteger(table?.rows) ? table.rows : 0;
-  const cols = Number.isInteger(table?.cols) ? table.cols : 0;
-  const grid = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_2, c) => ({ anchor: false, covered: false, cell: null, text: "", r, c })));
-  for (const cell of table?.cells || []) {
-    const rs = cell.rowSpan ?? 1;
-    const cs = cell.colSpan ?? 1;
-    for (let dr = 0; dr < rs; dr += 1) {
-      for (let dc = 0; dc < cs; dc += 1) {
-        const r = cell.r + dr;
-        const c = cell.c + dc;
-        if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
-        const covered = dr !== 0 || dc !== 0;
-        grid[r][c] = {
-          anchor: !covered,
-          covered,
-          cell,
-          text: cell.text ?? "",
-          r,
-          c
-        };
-      }
-    }
-  }
-  return grid;
-}
-function freshId(used) {
-  let n2 = 1;
-  while (used.has(`d${n2}`)) n2 += 1;
-  const id = `d${n2}`;
-  used.add(id);
-  return id;
-}
-function mergeScoped(baseDoc, scopedPageResult, bbox) {
-  const target = targetOf(bbox);
-  const base = baseDoc && typeof baseDoc === "object" ? baseDoc : {};
-  const baseBlocks = base.blocks && typeof base.blocks === "object" ? base.blocks : {};
-  const baseOrder = Array.isArray(base.order) ? base.order : [];
-  let page = target.page;
-  if (page == null && target.bbox) {
-    let best = 0;
-    for (const block of Object.values(baseBlocks)) {
-      const score = iou2(block?.bbox, target.bbox);
-      if (score > best) {
-        best = score;
-        page = block.page;
-      }
-    }
-  }
-  const scopedBlocks = scopedPageResult?.blocks && typeof scopedPageResult.blocks === "object" ? scopedPageResult.blocks : {};
-  const scopedOrder = Array.isArray(scopedPageResult?.order) ? scopedPageResult.order : Object.keys(scopedBlocks);
-  const incoming = [];
-  for (const id of scopedOrder) {
-    const block = scopedBlocks[id];
-    if (!block || !samePage(block, page)) continue;
-    if (target.bbox && iou2(block.bbox, target.bbox) >= IOU_MIN2) incoming.push(block);
-  }
-  if (!incoming.length || !target.bbox) return baseDoc;
-  const drop = /* @__PURE__ */ new Set();
-  const consider = /* @__PURE__ */ new Set([...baseOrder, ...Object.keys(baseBlocks)]);
-  for (const id of consider) {
-    const block = baseBlocks[id];
-    if (!block || !samePage(block, page)) continue;
-    if (iou2(block.bbox, target.bbox) >= IOU_MIN2) drop.add(id);
-  }
-  const used = new Set(Object.keys(baseBlocks).filter((id) => !drop.has(id)));
-  const fresh = incoming.map((block) => {
-    const id = freshId(used);
-    return { ...block, id, engine: "docling" };
-  });
-  const order = [];
-  let inserted = false;
-  for (const id of baseOrder) {
-    if (drop.has(id)) {
-      if (!inserted) {
-        for (const block of fresh) order.push(block.id);
-        inserted = true;
-      }
-      continue;
-    }
-    order.push(id);
-  }
-  if (!inserted) {
-    for (const block of fresh) order.push(block.id);
-  }
-  const blocks = {};
-  for (const [id, block] of Object.entries(baseBlocks)) {
-    if (!drop.has(id)) blocks[id] = block;
-  }
-  for (const block of fresh) blocks[block.id] = block;
-  const grouped = [];
-  const index = /* @__PURE__ */ new Map();
-  for (const id of order) {
-    const engine = blocks[id]?.engine || base.engine || "builtin";
-    if (!index.has(engine)) {
-      const entry = { engine, ids: [] };
-      if (engine === "docling") {
-        entry.engineVersion = scopedPageResult?.engineVersion || null;
-        entry.bbox = target.bbox;
-        if (page != null) entry.page = page;
-      } else if (base.engineVersion) {
-        entry.engineVersion = base.engineVersion;
-      }
-      index.set(engine, entry);
-      grouped.push(entry);
-    }
-    index.get(engine).ids.push(id);
-  }
-  return {
-    ...base,
-    schema: SCHEMA2,
-    engine: "mixed",
-    sources: grouped,
-    order,
-    blocks
-  };
-}
-var SCHEMA2, IOU_MIN2, BLOCK_TYPES, TYPE_SET, ENGINES;
-var init_parse_schema = __esm({
-  "src/model/parse-schema.js"() {
-    SCHEMA2 = "pxd-parse/1";
-    IOU_MIN2 = 0.5;
-    BLOCK_TYPES = Object.freeze([
-      "heading",
-      "para",
-      "list",
-      "table",
-      "figure",
-      "formula",
-      "caption",
-      "footnote",
-      "code",
-      "scan"
-    ]);
-    TYPE_SET = new Set(BLOCK_TYPES);
-    ENGINES = /* @__PURE__ */ new Set(["builtin", "docling", "mixed", "anydoc", "cloud"]);
   }
 });
 
@@ -19576,50 +19620,6 @@ var init_anydoc_to_parse = __esm({
   }
 });
 
-// src/model/parse-hash.js
-function bytesOf(input) {
-  if (input == null) return new Uint8Array();
-  if (typeof input === "string") return new TextEncoder().encode(input);
-  if (input instanceof ArrayBuffer) return new Uint8Array(input);
-  if (ArrayBuffer.isView(input)) return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
-  throw new TypeError("sha256Hex expects bytes");
-}
-async function sha256Hex(bytes) {
-  const view = bytesOf(bytes);
-  const digest = await crypto.subtle.digest("SHA-256", view);
-  const hex = [];
-  for (const byte2 of new Uint8Array(digest)) hex.push(byte2.toString(16).padStart(2, "0"));
-  return hex.join("");
-}
-function canonicalize(value) {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value && typeof value === "object") {
-    const out = {};
-    for (const key of Object.keys(value).sort()) out[key] = canonicalize(value[key]);
-    return out;
-  }
-  return value;
-}
-function canonicalOptions(options) {
-  const src = options && typeof options === "object" && !Array.isArray(options) ? options : {};
-  const copy = {};
-  for (const key of Object.keys(src).sort()) {
-    if (key === "scope") continue;
-    copy[key] = canonicalize(src[key]);
-  }
-  return copy;
-}
-function canonicalOptionsJson(options) {
-  return JSON.stringify(canonicalOptions(options));
-}
-async function optionsHash(options) {
-  return sha256Hex(canonicalOptionsJson(options));
-}
-var init_parse_hash = __esm({
-  "src/model/parse-hash.js"() {
-  }
-});
-
 // src/model/drop.js
 function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   if (!dataTransfer) return [];
@@ -19800,7 +19800,7 @@ function figureCardSize(block) {
   const inner = FIGURE_CARD_W - FIGURE_CARD_PAD;
   return { w: FIGURE_CARD_W, h: Math.round(inner * (bh / bw) + FIGURE_CARD_PAD) };
 }
-function imageKey(sha256, blockId) {
+function imageKey2(sha256, blockId) {
   return `${sha256}/${blockId}`;
 }
 async function withDropImages(doc, payload, store, upload) {
@@ -19811,7 +19811,7 @@ async function withDropImages(doc, payload, store, upload) {
   const next = { ...doc, blocks: { ...doc.blocks } };
   for (const block of blocks) {
     try {
-      const src = await store?.getImage?.(imageKey(doc.sha256, block.id));
+      const src = await store?.getImage?.(imageKey2(doc.sha256, block.id));
       const blob = typeof src === "string" ? dataUrlToBlob2(src) : null;
       if (!blob) continue;
       const name = `figure-p${block.page ?? 0}.png`;
@@ -22618,6 +22618,7 @@ var init_settings = __esm({
       parseFormula: "parse-formula",
       parseOcr: "parse-ocr",
       parseAutoRead: "parse-auto-read",
+      keepReads: "keep-reads",
       parseLinkSafe: "parse-link-safe",
       parseNumbered: "parse-numbered",
       parseFootnotes: "parse-footnotes",
@@ -22686,6 +22687,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFormula]: false,
       [SETTING_IDS.parseOcr]: "auto",
       [SETTING_IDS.parseAutoRead]: true,
+      [SETTING_IDS.keepReads]: true,
       [SETTING_IDS.parseLinkSafe]: true,
       [SETTING_IDS.parseNumbered]: false,
       [SETTING_IDS.parseFootnotes]: "inline",
@@ -22825,6 +22827,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
       [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
       [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
+      [SETTING_IDS.keepReads]: () => switchRow(SETTING_IDS.keepReads, "Keep reads in the graph", "After a High accuracy, helper or cloud read, upload the read as one file to the graph and note it on the PDF block, so your other computers load it instead of reading again. The built-in parse is never kept. Off uploads nothing; reads already kept still load."),
       [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
       [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
       [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"]),
@@ -22909,6 +22912,7 @@ var init_settings = __esm({
         SETTING_IDS.parseFormula,
         SETTING_IDS.parseOcr,
         SETTING_IDS.parseAutoRead,
+        SETTING_IDS.keepReads,
         SETTING_IDS.parseLinkSafe,
         SETTING_IDS.parseNumbered,
         SETTING_IDS.parseFootnotes,
@@ -31522,6 +31526,1048 @@ function dropNamespace(strings) {
   return { parent, indexes: hits.map((hit) => hit.i) };
 }
 
+// src/host/read-keep.js
+init_parse_hash();
+init_parse_schema();
+init_parse();
+
+// src/model/parse/ocr-merge.js
+init_ocr_fix();
+function iou3(a, b) {
+  const ix = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+  const iy = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  if (ix <= 0 || iy <= 0) return 0;
+  const inter = ix * iy;
+  const union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter;
+  return union > 0 ? inter / union : 0;
+}
+function chooseTable(fresh, layer) {
+  const f = tableNumericValidity(fresh);
+  const l = tableNumericValidity(layer);
+  const freshScore = f.share * Math.min(1, f.total / Math.max(1, l.total));
+  const layerScore = l.share * Math.min(1, l.total / Math.max(1, f.total));
+  const sameShape = fresh.rows === layer.rows && fresh.cols === layer.cols;
+  const chose = layerScore > freshScore + 0.05 || sameShape && layerScore > freshScore + 0.02 ? "layer" : "fresh";
+  return { chose, fresh: { ...f, score: round2(freshScore) }, layer: { ...l, score: round2(layerScore) } };
+}
+function round2(n2) {
+  return Math.round(n2 * 1e3) / 1e3;
+}
+function mergeOcrDocument(base, fresh, { pages = [] } = {}) {
+  const set = new Set(pages);
+  const doc = { ...fresh, blocks: { ...fresh.blocks }, pages: fresh.pages.map((p) => ({ ...p })) };
+  const choices = [];
+  const layerTables = Object.values(base?.blocks || {}).filter((b) => b.type === "table" && set.has(b.page));
+  const basePages = new Map((base?.pages || []).map((p) => [p.n, p]));
+  for (const page of doc.pages) {
+    if (!set.has(page.n)) continue;
+    const was = basePages.get(page.n);
+    page.ocrChoice = was && was.scanLayer ? "compared" : "fresh";
+  }
+  for (const id of Object.keys(doc.blocks)) {
+    const block = doc.blocks[id];
+    if (block.type !== "table" || !set.has(block.page)) continue;
+    const was = basePages.get(block.page);
+    if (!was || !was.scanLayer) {
+      doc.blocks[id] = { ...block, ocrSource: "fresh" };
+      continue;
+    }
+    let best = null;
+    for (const lt of layerTables) {
+      if (lt.page !== block.page) continue;
+      const overlap = iou3(lt.bbox, block.bbox);
+      if (overlap >= 0.5 && (!best || overlap > best.overlap)) best = { table: lt, overlap };
+    }
+    if (!best) {
+      doc.blocks[id] = { ...block, ocrSource: "fresh" };
+      continue;
+    }
+    const verdict = chooseTable(block, best.table);
+    choices.push({ page: block.page, id, layerId: best.table.id, ...verdict });
+    if (verdict.chose === "layer") {
+      const layer = { ...best.table, cells: (best.table.cells || []).map((c) => ({ ...c })), id, caption: block.caption, engine: "builtin", ocrSource: "layer", ocrCompare: verdict };
+      polishTableText(layer, { tidy: false });
+      doc.blocks[id] = layer;
+    } else {
+      doc.blocks[id] = { ...block, ocrSource: "fresh", ocrCompare: verdict };
+    }
+  }
+  if (choices.length) {
+    for (const page of doc.pages) {
+      if (page.ocrChoice !== "compared") continue;
+      const mine = choices.filter((c) => c.page === page.n);
+      page.ocrChoice = mine.length && mine.every((c) => c.chose === "layer") ? "layer" : mine.some((c) => c.chose === "layer") ? "mixed" : "fresh";
+    }
+  }
+  doc.ocr = { pages: [...set].sort((a, b) => a - b), choices };
+  return { doc, choices };
+}
+function scanPagesOf(doc) {
+  return (doc?.pages || []).filter((p) => !p.ocr && (p.kind === "scan" || p.scanLayer)).map((p) => p.n);
+}
+
+// src/model/cloud-merge.js
+init_parse_schema();
+var IOU_MATCH = 0.5;
+function emptyBox(box2) {
+  return !box2 || box2.length < 4 || box2[2] - box2[0] <= 0 || box2[3] - box2[1] <= 0;
+}
+function onTable(box2, tableBox) {
+  if (emptyBox(box2) || emptyBox(tableBox)) return false;
+  if (iou2(box2, tableBox) >= IOU_MATCH) return true;
+  const area = (box2[2] - box2[0]) * (box2[3] - box2[1]);
+  if (!(area > 0)) return false;
+  const ix = Math.max(0, Math.min(box2[2], tableBox[2]) - Math.max(box2[0], tableBox[0]));
+  const iy = Math.max(0, Math.min(box2[3], tableBox[3]) - Math.max(box2[1], tableBox[1]));
+  return ix * iy / area >= 0.5;
+}
+function pagesOf(doc) {
+  const set = /* @__PURE__ */ new Set();
+  for (const page of doc?.pages || []) if (Number.isInteger(page?.n)) set.add(page.n);
+  for (const block of Object.values(doc?.blocks || {})) {
+    if (Number.isInteger(block?.page)) set.add(block.page);
+  }
+  return [...set];
+}
+function blocksOf(doc, page, type) {
+  const out = [];
+  const blocks = doc?.blocks || {};
+  for (const id of doc?.order || []) {
+    const block = blocks[id];
+    if (block?.type === type && block.page === page) out.push(block);
+  }
+  return out;
+}
+function pagePairs(cloud, local) {
+  const cloudPages = pagesOf(cloud);
+  const localPages = new Set(pagesOf(local));
+  const pairs = [];
+  for (const n2 of cloudPages) if (localPages.has(n2)) pairs.push([n2, n2]);
+  if (!pairs.length && cloudPages.length === 1 && localPages.size === 1) {
+    pairs.push([cloudPages[0], [...localPages][0]]);
+  }
+  return pairs;
+}
+function captionBlock(doc, figure) {
+  const id = figure?.caption;
+  const block = id && doc?.blocks ? doc.blocks[id] : null;
+  return block?.type === "caption" ? block : null;
+}
+function captionText(block) {
+  return String(block?.text || "").replace(/\s+/g, " ").trim();
+}
+function captionScore(text3) {
+  const words = text3.split(/\s+/).filter(Boolean);
+  let score = Math.min(words.length, 28);
+  if (/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(text3)) score += 6;
+  if (words.length <= 2 && /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?$/i.test(text3)) score -= 4;
+  if (words.length > 40) score -= 10;
+  return score;
+}
+function betterCaption(localText, cloudText) {
+  const local = String(localText || "").replace(/\s+/g, " ").trim();
+  const cloud = String(cloudText || "").replace(/\s+/g, " ").trim();
+  if (!local) return cloud;
+  if (!cloud) return local;
+  const localScore = captionScore(local);
+  const cloudScore = captionScore(cloud);
+  if (localScore === cloudScore) return local.length >= cloud.length ? local : cloud;
+  return localScore > cloudScore ? local : cloud;
+}
+function clampConf(value, fallback) {
+  const n2 = Number(value);
+  if (!Number.isFinite(n2)) return fallback;
+  return Math.max(0, Math.min(1, n2));
+}
+function idFactory(blocks) {
+  const used = new Set(Object.keys(blocks));
+  return (prefix) => {
+    let n2 = 1;
+    while (used.has(`${prefix}${n2}`)) n2 += 1;
+    const id = `${prefix}${n2}`;
+    used.add(id);
+    return id;
+  };
+}
+function insertAfter(order, id, extra) {
+  const at = order.indexOf(id);
+  if (at < 0) return order.concat(extra);
+  return order.slice(0, at + 1).concat(extra, order.slice(at + 1));
+}
+function insertOnPage(order, blocks, page, extra) {
+  let at = -1;
+  for (let i = 0; i < order.length; i += 1) {
+    if (blocks[order[i]]?.page === page) at = i;
+  }
+  if (at < 0) return order.concat(extra);
+  return order.slice(0, at + 1).concat(extra, order.slice(at + 1));
+}
+function dropFigure(blocks, order, id) {
+  const fig = blocks[id];
+  if (!fig) return order;
+  const capId = fig.caption;
+  delete blocks[id];
+  let next = order.filter((item) => item !== id);
+  if (capId && blocks[capId]?.for === id && !Object.values(blocks).some((block) => block && block.caption === capId)) {
+    delete blocks[capId];
+    next = next.filter((item) => item !== capId);
+  }
+  return next;
+}
+function matchFigures(cloudFigs, localFigs) {
+  const pairs = /* @__PURE__ */ new Map();
+  const used = /* @__PURE__ */ new Set();
+  const open = new Set(cloudFigs);
+  for (; ; ) {
+    let best = null;
+    for (const cloud of open) {
+      for (const local of localFigs) {
+        if (used.has(local)) continue;
+        const score = iou2(cloud.bbox, local.bbox);
+        if (score >= IOU_MATCH && (!best || score > best.score)) best = { cloud, local, score };
+      }
+    }
+    if (!best) break;
+    pairs.set(best.cloud, best.local);
+    open.delete(best.cloud);
+    used.add(best.local);
+  }
+  return { pairs, used };
+}
+function pageByN(doc, n2) {
+  for (const page of doc?.pages || []) if (page?.n === n2) return page;
+  return null;
+}
+function figureDetectionRan(localDoc, pageN) {
+  const page = pageByN(localDoc, pageN);
+  if (localDoc?.ocr && (ocrPageListed(localDoc, pageN) || page?.ocr)) return true;
+  const kind = page?.kind;
+  return kind === "text" || kind === "mixed";
+}
+function ocrPageListed(doc, n2) {
+  const pages = doc?.ocr?.pages;
+  return Array.isArray(pages) && pages.includes(n2);
+}
+function isOcrRead(doc) {
+  if (!doc) return false;
+  const mode = doc.options?.ocr;
+  if (mode && mode !== "none") return true;
+  if (doc.ocr?.pages?.length) return true;
+  if (doc.ocr?.source) return true;
+  return (doc.pages || []).some((page) => page?.ocr);
+}
+function localTier(row4) {
+  const doc = row4?.doc;
+  if (!doc) return -1;
+  const engine = row4.engine || doc.engine;
+  if (engine === "cloud" || doc.engine === "cloud") return -1;
+  if (doc.ocr?.source === "helper") return 3;
+  if (isOcrRead(doc)) return 2;
+  if (engine === "builtin") return 1;
+  return -1;
+}
+function bestLocalDoc(rows) {
+  let best = null;
+  let tier = -1;
+  let at = -Infinity;
+  for (const row4 of rows || []) {
+    const rank = localTier(row4);
+    if (rank < 0) continue;
+    const when = Number(row4.at);
+    const stamp2 = Number.isFinite(when) ? when : 0;
+    if (rank > tier || rank === tier && stamp2 >= at) {
+      best = row4.doc;
+      tier = rank;
+      at = stamp2;
+    }
+  }
+  return best;
+}
+async function localParseForCloud(store, sha, current3) {
+  let rows = [];
+  try {
+    if (sha && typeof store?.listParses === "function") rows = await store.listParses(sha) || [];
+  } catch {
+    rows = [];
+  }
+  if (current3 && current3.engine !== "cloud") {
+    rows = rows.concat([{ engine: current3.engine || "builtin", doc: current3, at: Number.MAX_SAFE_INTEGER }]);
+  }
+  return bestLocalDoc(rows);
+}
+function mergeCloudFigures(cloudDoc, localDoc) {
+  if (!cloudDoc || typeof cloudDoc !== "object") return cloudDoc;
+  if (!localDoc || typeof localDoc !== "object" || !localDoc.blocks && !localDoc.order) return cloudDoc;
+  const blocks = {};
+  for (const [id, block] of Object.entries(cloudDoc.blocks || {})) {
+    blocks[id] = block?.image ? { ...block, image: { ...block.image } } : { ...block };
+  }
+  let order = [...cloudDoc.order || []];
+  const nextId = idFactory(blocks);
+  for (const [cloudPage, localPage] of pagePairs(cloudDoc, localDoc)) {
+    const cloudFigs = order.map((id) => blocks[id]).filter((block) => block?.type === "figure" && block.page === cloudPage);
+    const localFigs = blocksOf(localDoc, localPage, "figure").filter((block) => !emptyBox(block.bbox));
+    const { pairs, used } = matchFigures(cloudFigs, localFigs);
+    for (const [cloud, local] of pairs) {
+      cloud.bbox = local.bbox.slice();
+      cloud.source = "hybrid";
+      const localCap = captionBlock(localDoc, local);
+      const localText = captionText(localCap);
+      const cloudText = cloud.caption && blocks[cloud.caption] ? captionText(blocks[cloud.caption]) : "";
+      const text3 = betterCaption(localText, cloudText);
+      if (!text3) continue;
+      const useLocal = text3 === localText && localText !== "";
+      if (cloud.caption && blocks[cloud.caption]) {
+        if (useLocal) {
+          blocks[cloud.caption] = {
+            ...blocks[cloud.caption],
+            text: text3,
+            bbox: localCap.bbox || blocks[cloud.caption].bbox
+          };
+        }
+      } else {
+        const id = nextId("c");
+        blocks[id] = {
+          id,
+          type: "caption",
+          page: cloud.page,
+          bbox: localCap.bbox || cloud.bbox,
+          text: text3,
+          for: cloud.id,
+          confidence: clampConf(localCap.confidence, cloud.confidence ?? 0.9),
+          engine: "cloud"
+        };
+        cloud.caption = id;
+        order = insertAfter(order, cloud.id, [id]);
+      }
+    }
+    const added = [];
+    for (const local of localFigs) {
+      if (used.has(local)) continue;
+      const id = nextId("f");
+      const localCap = captionBlock(localDoc, local);
+      const text3 = captionText(localCap);
+      const figure = {
+        id,
+        type: "figure",
+        page: cloudPage,
+        bbox: local.bbox.slice(),
+        caption: null,
+        image: local.image ? { ...local.image } : { kind: "crop", source: "local" },
+        confidence: clampConf(local.confidence, 0.9),
+        engine: "cloud",
+        source: "local"
+      };
+      blocks[id] = figure;
+      added.push(id);
+      if (text3) {
+        const capId = nextId("c");
+        blocks[capId] = {
+          id: capId,
+          type: "caption",
+          page: cloudPage,
+          bbox: localCap.bbox || figure.bbox,
+          text: text3,
+          for: id,
+          confidence: clampConf(localCap.confidence, figure.confidence),
+          engine: "cloud"
+        };
+        figure.caption = capId;
+        added.push(capId);
+      }
+    }
+    if (added.length) order = insertOnPage(order, blocks, cloudPage, added);
+    if (figureDetectionRan(localDoc, localPage)) {
+      for (const cloud of cloudFigs) {
+        if (pairs.has(cloud)) continue;
+        order = dropFigure(blocks, order, cloud.id);
+      }
+    }
+  }
+  for (const id of order) {
+    const fig = blocks[id];
+    if (fig?.type === "figure" && !fig.source) fig.source = "llamaparse";
+  }
+  const tables = Object.values(blocks).filter((block) => block?.type === "table");
+  for (const id of [...order]) {
+    const fig = blocks[id];
+    if (fig?.type !== "figure" || fig.source !== "llamaparse" || !fig.image?.layout) continue;
+    if (!tables.some((table) => table.page === fig.page && onTable(fig.bbox, table.bbox))) continue;
+    order = dropFigure(blocks, order, id);
+  }
+  const doc = { ...cloudDoc, blocks, order };
+  const check = validateParse(doc);
+  if (!check.ok) {
+    const error = new Error(`cloud merge schema: ${check.errors.join(",")}`);
+    error.code = "schema";
+    error.errors = check.errors;
+    throw error;
+  }
+  return doc;
+}
+
+// src/host/parse-store.js
+init_pdf();
+
+// src/host/diagram-db.js
+var DIAGRAM_DB = "plexus-diagram";
+var DIAGRAM_DB_VERSION = 2;
+var STORE_COVERS = "covers";
+var STORE_PARSE = "parse";
+var STORE_PARSE_IMAGES = "parse-images";
+var STORE_PARSE_INDEX = "parse-index";
+var STORES = [STORE_COVERS, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX];
+function arm(ms, fn) {
+  try {
+    const id = setTimeout(fn, ms);
+    try {
+      id?.unref?.();
+    } catch {
+    }
+    return id;
+  } catch {
+    return null;
+  }
+}
+function ensureStore(db, name) {
+  try {
+    if (db && !db.objectStoreNames?.contains?.(name)) db.createObjectStore(name);
+  } catch {
+  }
+}
+function openDiagramDb(factory, { capMs = 2e3 } = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      if (timer != null) {
+        try {
+          clearTimeout(timer);
+        } catch {
+        }
+      }
+      resolve(value);
+    };
+    timer = arm(capMs, () => done(null));
+    try {
+      if (!factory || typeof factory.open !== "function") {
+        done(null);
+        return;
+      }
+      const req = factory.open(DIAGRAM_DB, DIAGRAM_DB_VERSION);
+      if (!req) {
+        done(null);
+        return;
+      }
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        for (const name of STORES) ensureStore(db, name);
+      };
+      req.onsuccess = () => done(req.result || null);
+      req.onerror = (event) => {
+        try {
+          event?.preventDefault?.();
+        } catch {
+        }
+        try {
+          req.preventDefault?.();
+        } catch {
+        }
+        done(null);
+      };
+      req.onblocked = () => done(null);
+    } catch {
+      done(null);
+    }
+  });
+}
+
+// src/host/parse-store.js
+init_parse_hash();
+init_parse();
+var PARSE_DOC_CAP = 50;
+var PARSE_IMAGE_CAP = 200 * 1024 * 1024;
+var META_KEY = "meta:lru";
+function parseKey(sha256, engine, optsHash) {
+  return `${sha256}|${engine}|${optsHash}`;
+}
+function ocrRead(doc) {
+  const mode = doc?.options?.ocr;
+  return mode && mode !== "none" || Boolean(doc?.ocr?.pages?.length) || (doc?.pages || []).some((p) => p.ocr);
+}
+function isStaleParse(doc) {
+  if (!doc || doc.engine !== "builtin" || ocrRead(doc)) return false;
+  return !(Number(doc.parseRev) >= PARSE_REV);
+}
+async function restorableParse(store, sha, { engines, plainHash, readHashOf = null } = {}) {
+  if (!store || !sha) return null;
+  let listed = [];
+  try {
+    listed = typeof store.listParses === "function" ? await store.listParses(sha) : [];
+  } catch {
+    listed = [];
+  }
+  listed = listed.filter((row4) => !isStaleParse(row4.doc));
+  if (engines?.includes?.("cloud")) {
+    const paid = listed.filter((row4) => row4.engine === "cloud").pop();
+    if (paid) return paid.doc;
+  }
+  for (const engine of engines) {
+    const mine = listed.filter((row4) => row4.engine === engine);
+    const read2 = mine.filter((row4) => row4.doc?.options?.ocr === "vision" && !scanPagesOf(row4.doc).length).pop();
+    if (read2) return read2.doc;
+    let plain2 = await store.getParse(sha, engine, plainHash);
+    if (isStaleParse(plain2)) plain2 = null;
+    plain2 = plain2 || mine.pop()?.doc || null;
+    if (!plain2) continue;
+    if (scanPagesOf(plain2).length && readHashOf) {
+      const alt = await store.getParse(sha, engine, await readHashOf(plain2));
+      if (alt && !isStaleParse(alt)) return alt;
+    }
+    return plain2;
+  }
+  return null;
+}
+var RESTORE_ENGINES = Object.freeze(["builtin", "docling", "mixed", "anydoc", "cloud"]);
+async function restorableByUrl(store, url, { plainOptions, engines = RESTORE_ENGINES } = {}) {
+  if (!store || !url) return null;
+  const hit = await store.findByUrl(url);
+  if (!hit?.sha256) return null;
+  return restorableParse(store, hit.sha256, {
+    engines,
+    plainHash: await optionsHash(plainOptions),
+    readHashOf: (plain2) => optionsHash({ ...plain2.options || plainOptions, ocr: "vision" })
+  });
+}
+async function restorableTitle(store, url, plainOptions) {
+  const found = await restorableByUrl(store, url, { plainOptions });
+  if (!found) return { doc: null, title: "", lines: [] };
+  let title = parsedDocTitle(found);
+  let linesDoc = found;
+  if (!title && found.engine === "cloud" && found.sha256 && typeof store.listParses === "function") {
+    let listed = [];
+    try {
+      listed = await store.listParses(found.sha256);
+    } catch {
+      listed = [];
+    }
+    const local = bestLocalDoc(listed);
+    const localTitle = parsedDocTitle(local);
+    if (localTitle) {
+      title = localTitle;
+      linesDoc = local;
+    }
+  }
+  return { doc: found, title, lines: parsedTitleLines(linesDoc) };
+}
+function imageKey(sha256, blockId) {
+  return `${sha256}/${blockId}`;
+}
+function requestResult(req) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    try {
+      req.onsuccess = () => done({ ok: true, result: req.result });
+      req.onerror = (event) => {
+        try {
+          event?.preventDefault?.();
+        } catch {
+        }
+        done({ ok: false, result: null });
+      };
+    } catch {
+      done({ ok: false, result: null });
+    }
+  });
+}
+function byteLengthOf(bytes) {
+  if (bytes == null) return 0;
+  if (typeof bytes === "string") return new TextEncoder().encode(bytes).byteLength;
+  if (bytes instanceof ArrayBuffer) return bytes.byteLength;
+  if (ArrayBuffer.isView(bytes)) return bytes.byteLength;
+  if (typeof bytes.size === "number") return bytes.size;
+  return 0;
+}
+function copyBytes(bytes) {
+  if (ArrayBuffer.isView(bytes)) return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength).slice();
+  if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes).slice();
+  return bytes;
+}
+function emptyMeta() {
+  return { docs: [], images: [] };
+}
+function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CAP, imageCap = PARSE_IMAGE_CAP } = {}) {
+  const clock = typeof now3 === "function" ? now3 : () => Date.now();
+  const memory = {
+    parse: /* @__PURE__ */ new Map(),
+    images: /* @__PURE__ */ new Map(),
+    index: /* @__PURE__ */ new Map()
+  };
+  let dbPromise = null;
+  let idbDead = !factory;
+  const open = () => {
+    if (idbDead) return Promise.resolve(null);
+    if (!dbPromise) {
+      dbPromise = openDiagramDb(factory).then((db) => {
+        if (!db) {
+          idbDead = true;
+          dbPromise = null;
+        }
+        return db;
+      });
+    }
+    return dbPromise;
+  };
+  const run = async (storeName, mode, fn) => {
+    if (idbDead) return { ok: false };
+    try {
+      const db = await open();
+      if (!db || typeof db.transaction !== "function") {
+        idbDead = true;
+        return { ok: false };
+      }
+      const tx = db.transaction(storeName, mode);
+      const store = tx.objectStore(storeName);
+      return await fn(store);
+    } catch {
+      idbDead = true;
+      return { ok: false };
+    }
+  };
+  const backend = {
+    async get(storeName, key) {
+      if (!idbDead) {
+        const hit = await run(storeName, "readonly", (store) => requestResult(store.get(key)));
+        if (hit?.ok) return hit.result === void 0 ? null : hit.result;
+      }
+      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
+      return map.has(key) ? map.get(key) : null;
+    },
+    async put(storeName, key, value) {
+      if (!idbDead) {
+        const wrote = await run(storeName, "readwrite", (store) => requestResult(store.put(value, key)));
+        if (wrote?.ok) return true;
+      }
+      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
+      map.set(key, value);
+      return true;
+    },
+    async delete(storeName, key) {
+      if (!idbDead) {
+        const removed = await run(storeName, "readwrite", (store) => requestResult(store.delete(key)));
+        if (removed?.ok) return true;
+      }
+      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
+      map.delete(key);
+      return true;
+    },
+    async keys(storeName) {
+      if (!idbDead) {
+        const hit = await run(storeName, "readonly", (store) => {
+          if (typeof store.getAllKeys === "function") return requestResult(store.getAllKeys());
+          if (typeof store.getAll === "function") {
+            return requestResult(store.getAll()).then((res) => {
+              if (!res?.ok || !Array.isArray(res.result)) return res;
+              const keys = res.result.map((row4) => row4?.key).filter((key) => key != null);
+              return { ok: true, result: keys };
+            });
+          }
+          return Promise.resolve({ ok: false, result: null });
+        });
+        if (hit?.ok && Array.isArray(hit.result)) return hit.result;
+      }
+      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
+      return [...map.keys()];
+    }
+  };
+  const loadMeta = async () => {
+    const raw = await backend.get(STORE_PARSE_INDEX, META_KEY);
+    if (!raw || typeof raw !== "object") return emptyMeta();
+    return {
+      docs: Array.isArray(raw.docs) ? raw.docs.filter((key) => typeof key === "string") : [],
+      images: Array.isArray(raw.images) ? raw.images.filter((row4) => row4 && typeof row4.key === "string" && typeof row4.bytes === "number") : []
+    };
+  };
+  const saveMeta = (meta) => backend.put(STORE_PARSE_INDEX, META_KEY, meta);
+  const touch = (list, key) => {
+    const next = list.filter((item) => item !== key);
+    next.push(key);
+    return next;
+  };
+  return {
+    async getParse(sha, engine, optsHash) {
+      try {
+        if (!sha || !engine || !optsHash) return null;
+        const key = parseKey(sha, engine, optsHash);
+        const record = await backend.get(STORE_PARSE, key);
+        if (!record?.doc) return null;
+        const meta = await loadMeta();
+        meta.docs = touch(meta.docs, key);
+        await saveMeta(meta);
+        return record.doc;
+      } catch {
+        return null;
+      }
+    },
+    // Every cached parse of one PDF: [{ engine, optsHash, at, doc }], oldest first.
+    async listParses(sha) {
+      try {
+        if (!sha) return [];
+        const prefix = `${sha}|`;
+        const keys = (await backend.keys(STORE_PARSE)).filter((key) => typeof key === "string" && key.startsWith(prefix));
+        const out = [];
+        for (const key of keys) {
+          const record = await backend.get(STORE_PARSE, key);
+          if (!record?.doc) continue;
+          out.push({ engine: record.doc.engine || key.split("|")[1], optsHash: record.optsHash || key.split("|")[2], at: record.at || 0, doc: record.doc });
+        }
+        return out.sort((a, b) => a.at - b.at);
+      } catch {
+        return [];
+      }
+    },
+    async putParse(doc) {
+      try {
+        if (!doc || typeof doc !== "object" || !doc.sha256 || !doc.engine) return null;
+        const optsHash = typeof doc.optsHash === "string" && doc.optsHash ? doc.optsHash : await optionsHash(doc.options || {});
+        const key = parseKey(doc.sha256, doc.engine, optsHash);
+        const stored = { ...doc, optsHash };
+        const record = { doc: stored, optsHash, at: clock() };
+        if (!await backend.put(STORE_PARSE, key, record)) return null;
+        const meta = await loadMeta();
+        meta.docs = touch(meta.docs, key);
+        while (meta.docs.length > docCap) {
+          const oldest = meta.docs.shift();
+          if (oldest) await backend.delete(STORE_PARSE, oldest);
+        }
+        if (stored.engine === "builtin" && !isStaleParse(stored)) {
+          const prefix = `${stored.sha256}|builtin|`;
+          for (const old of (await backend.keys(STORE_PARSE)).filter((k) => typeof k === "string" && k.startsWith(prefix) && k !== key)) {
+            const rec = await backend.get(STORE_PARSE, old);
+            if (rec?.doc && isStaleParse(rec.doc)) {
+              await backend.delete(STORE_PARSE, old);
+              meta.docs = meta.docs.filter((k) => k !== old);
+            }
+          }
+        }
+        await saveMeta(meta);
+        return stored;
+      } catch {
+        return null;
+      }
+    },
+    async findByUrl(url) {
+      try {
+        if (!url) return null;
+        const record = await backend.get(STORE_PARSE_INDEX, url);
+        if (!record || record.sha256 == null) return null;
+        return {
+          sha256: record.sha256,
+          pageCount: record.pageCount ?? null,
+          at: record.at ?? null
+        };
+      } catch {
+        return null;
+      }
+    },
+    async indexUrl(url, info) {
+      try {
+        if (!url || !info || !info.sha256) return null;
+        const record = {
+          sha256: info.sha256,
+          pageCount: Number.isInteger(info.pageCount) ? info.pageCount : null,
+          at: clock()
+        };
+        if (!await backend.put(STORE_PARSE_INDEX, url, record)) return null;
+        return record;
+      } catch {
+        return null;
+      }
+    },
+    async getImage(key) {
+      try {
+        if (!key) return null;
+        const record = await backend.get(STORE_PARSE_IMAGES, key);
+        if (!record || record.bytes == null) return null;
+        const meta = await loadMeta();
+        meta.images = meta.images.filter((row4) => row4.key !== key).concat(
+          meta.images.filter((row4) => row4.key === key)
+        );
+        await saveMeta(meta);
+        return record.bytes;
+      } catch {
+        return null;
+      }
+    },
+    async putImage(key, bytes) {
+      try {
+        if (!key || bytes == null) return null;
+        const size = byteLengthOf(bytes);
+        if (size <= 0 || size > imageCap) return null;
+        const stored = copyBytes(bytes);
+        const meta = await loadMeta();
+        meta.images = meta.images.filter((row4) => row4.key !== key);
+        let used = meta.images.reduce((sum, row4) => sum + row4.bytes, 0);
+        while (meta.images.length && used + size > imageCap) {
+          const oldest = meta.images.shift();
+          used -= oldest.bytes;
+          await backend.delete(STORE_PARSE_IMAGES, oldest.key);
+        }
+        if (!await backend.put(STORE_PARSE_IMAGES, key, { bytes: stored, byteLength: size, at: clock() })) return null;
+        meta.images.push({ key, bytes: size });
+        await saveMeta(meta);
+        return stored;
+      } catch {
+        return null;
+      }
+    },
+    async clear() {
+      try {
+        const meta = await loadMeta();
+        for (const key of meta.docs) await backend.delete(STORE_PARSE, key);
+        for (const row4 of meta.images) await backend.delete(STORE_PARSE_IMAGES, row4.key);
+        const indexKeys = await backend.keys(STORE_PARSE_INDEX);
+        for (const key of indexKeys) await backend.delete(STORE_PARSE_INDEX, key);
+        const parseKeys = await backend.keys(STORE_PARSE);
+        for (const key of parseKeys) await backend.delete(STORE_PARSE, key);
+        const imageKeys = await backend.keys(STORE_PARSE_IMAGES);
+        for (const key of imageKeys) await backend.delete(STORE_PARSE_IMAGES, key);
+        memory.parse.clear();
+        memory.images.clear();
+        memory.index.clear();
+        return true;
+      } catch {
+        return null;
+      }
+    }
+  };
+}
+
+// src/host/read-keep.js
+var READS_KEY = "plexus-reads";
+var READ_SCHEMA = "pxd-read/1";
+var KEEP_READS_SETTING = "keep-reads";
+var RANK = Object.freeze({ high: 3, cloud: 2, other: 1 });
+function readKind(doc) {
+  if (!doc || typeof doc !== "object" || !doc.sha256 || !doc.engine) return null;
+  if (doc.engine === "cloud") {
+    const provider = typeof doc.options?.provider === "string" && doc.options.provider ? doc.options.provider : "llamaparse";
+    return { engine: "cloud", mode: provider, rank: RANK.cloud };
+  }
+  if (doc.engine !== "builtin") return { engine: doc.engine, mode: "helper", rank: RANK.other };
+  if (doc.ocr?.mode === "high") return { engine: "builtin", mode: "high", rank: RANK.high };
+  const ocrPages = Boolean(doc.ocr?.pages?.length) || (doc.pages || []).some((p) => p.ocr);
+  if (ocrPages && doc.ocr?.source === "helper") return { engine: "builtin", mode: "helper", rank: RANK.other };
+  return null;
+}
+function isCompleteRead(doc, total = 0) {
+  const pages = Array.isArray(doc?.pages) ? doc.pages : [];
+  const count = Number(doc?.pageCount) || pages.length;
+  if (!count || pages.length < count) return false;
+  if (total && count < total) return false;
+  const range = doc?.stats?.range;
+  if (Array.isArray(range) && range.length === 2 && (range[0] !== 1 || range[1] < count)) return false;
+  const seen = new Set(pages.map((p) => p?.n));
+  for (let n2 = 1; n2 <= count; n2 += 1) if (!seen.has(n2)) return false;
+  return true;
+}
+function readEntryKey(kind) {
+  return `${kind.engine}:${kind.mode}`;
+}
+function readFileName(sha256, engine, gz) {
+  return `plexus-read-${String(sha256).slice(0, 12)}-${engine}.json${gz ? ".gz" : ""}`;
+}
+function readEntries(props) {
+  const reads = props && typeof props === "object" ? props[READS_KEY] : null;
+  if (!reads || typeof reads !== "object" || Array.isArray(reads)) return [];
+  const out = [];
+  for (const [key, e2] of Object.entries(reads)) {
+    if (!e2 || typeof e2 !== "object") continue;
+    if (typeof e2.url !== "string" || !e2.url || typeof e2.sha256 !== "string" || !e2.sha256) continue;
+    if (typeof e2.engine !== "string" || typeof e2.mode !== "string") continue;
+    out.push({ key, ...e2 });
+  }
+  return out;
+}
+function mergeReads(existing, entry) {
+  const out = {};
+  if (existing && typeof existing === "object" && !Array.isArray(existing)) {
+    for (const [k, v] of Object.entries(existing)) out[k] = v;
+  }
+  out[readEntryKey(entry)] = {
+    url: entry.url,
+    sha256: entry.sha256,
+    engine: entry.engine,
+    mode: entry.mode,
+    parseRev: entry.parseRev,
+    schema: entry.schema,
+    bytes: entry.bytes,
+    createdAt: entry.createdAt,
+    docHash: entry.docHash
+  };
+  return out;
+}
+function rankOf(entry) {
+  if (entry.engine === "builtin" && entry.mode === "high") return RANK.high;
+  if (entry.engine === "cloud") return RANK.cloud;
+  return RANK.other;
+}
+function bareUrl(raw) {
+  const text3 = String(raw ?? "").trim();
+  const hit = /https?:\/\/[^\s)}\]"']+/.exec(text3);
+  return hit ? hit[0] : text3;
+}
+async function gzipBytes(bytes) {
+  if (typeof CompressionStream !== "function") return null;
+  try {
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+async function gunzipBytes(bytes) {
+  if (typeof DecompressionStream !== "function") throw new Error("gunzip-unavailable");
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function bytesOf2(file) {
+  if (!file) return null;
+  if (file instanceof Uint8Array) return file;
+  if (file instanceof ArrayBuffer) return new Uint8Array(file);
+  if (ArrayBuffer.isView(file)) return new Uint8Array(file.buffer, file.byteOffset, file.byteLength);
+  if (typeof file.arrayBuffer === "function") return new Uint8Array(await file.arrayBuffer());
+  return null;
+}
+function createReadKeeper({ host = null, session = null, store = null, settings = null, now: now3 = Date.now, log = null } = {}) {
+  const warned = /* @__PURE__ */ new Set();
+  const warn = (what, error) => {
+    if (warned.has(what)) return;
+    warned.add(what);
+    try {
+      (log || console.warn)(`[plexus] keep reads: ${what}${error ? ` (${error?.message || error})` : ""}`);
+    } catch {
+    }
+  };
+  const enabled = () => {
+    try {
+      return settings?.get?.(KEEP_READS_SETTING) !== false;
+    } catch {
+      return true;
+    }
+  };
+  const propsOf = (uid) => {
+    try {
+      return host?.pullProps?.(uid) || {};
+    } catch {
+      return {};
+    }
+  };
+  const inflight = /* @__PURE__ */ new Set();
+  async function keepRead(doc, { blockUid: blockUid2 = "", total = 0 } = {}) {
+    try {
+      if (!enabled()) return { ok: false, reason: "off" };
+      const kind = readKind(doc);
+      if (!kind) return { ok: false, reason: "not-kept" };
+      if (!blockUid2 || typeof host?.uploadFile !== "function") return { ok: false, reason: "no-target" };
+      if (!isCompleteRead(doc, total)) return { ok: false, reason: "partial" };
+      const text3 = JSON.stringify({ schema: READ_SCHEMA, parseRev: PARSE_REV, engine: kind.engine, mode: kind.mode, doc });
+      const raw = new TextEncoder().encode(text3);
+      const docHash = await sha256Hex(raw);
+      const key = readEntryKey(kind);
+      const have = readEntries(propsOf(blockUid2)).find((e2) => e2.key === key);
+      if (have && have.docHash === docHash && have.sha256 === doc.sha256) return { ok: false, reason: "already" };
+      const flight = `${blockUid2}|${key}|${docHash}`;
+      if (inflight.has(flight)) return { ok: false, reason: "busy" };
+      inflight.add(flight);
+      try {
+        const zipped = await gzipBytes(raw);
+        const payload = zipped || raw;
+        const file = new File([payload], readFileName(doc.sha256, kind.engine, Boolean(zipped)), { type: zipped ? "application/gzip" : "application/json" });
+        const url = bareUrl(await host.uploadFile(file));
+        if (!url) return { ok: false, reason: "upload-failed" };
+        const entry = {
+          url,
+          sha256: doc.sha256,
+          engine: kind.engine,
+          mode: kind.mode,
+          parseRev: PARSE_REV,
+          schema: READ_SCHEMA,
+          bytes: payload.byteLength,
+          createdAt: now3(),
+          docHash
+        };
+        const write = async () => {
+          await host.updateReads(blockUid2, mergeReads(propsOf(blockUid2)[READS_KEY], entry));
+          return { ok: true };
+        };
+        const wrote = typeof session?.noteRead === "function" ? await session.noteRead(blockUid2, entry) : await (typeof host.group === "function" ? host.group(write, "Keep read") : write());
+        if (wrote && wrote.ok === false) return { ok: false, reason: wrote.reason || "write-failed" };
+        return { ok: true, url, entry };
+      } finally {
+        inflight.delete(flight);
+      }
+    } catch (error) {
+      warn("could not keep the read", error);
+      return { ok: false, reason: "error" };
+    }
+  }
+  async function restoreRead({ blockUid: blockUid2 = "", getBytes = null, url = "", sha256 = "" } = {}) {
+    try {
+      if (!blockUid2 || !store || typeof host?.getFile !== "function") return null;
+      const entries = readEntries(propsOf(blockUid2)).filter((e2) => e2.schema === READ_SCHEMA);
+      if (!entries.length) return null;
+      let sha = String(sha256 || "");
+      if (!sha) {
+        const bytes = typeof getBytes === "function" ? await getBytes() : null;
+        if (!bytes) return null;
+        sha = await sha256Hex(bytes);
+      }
+      const mine = entries.filter((e2) => e2.sha256 === sha).sort((a, b) => rankOf(b) - rankOf(a) || (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
+      for (const entry of mine) {
+        try {
+          const file = await host.getFile(entry.url);
+          let bytes = await bytesOf2(file);
+          if (!bytes || !bytes.byteLength) {
+            warn("kept read could not be fetched");
+            continue;
+          }
+          if (bytes[0] === 31 && bytes[1] === 139) bytes = await gunzipBytes(bytes);
+          const payload = JSON.parse(new TextDecoder().decode(bytes));
+          const doc = payload?.doc;
+          if (payload?.schema !== READ_SCHEMA || !doc || doc.sha256 !== sha) {
+            warn("kept read does not match its PDF");
+            continue;
+          }
+          if (!validateParse(doc).ok) {
+            warn("kept read has an unknown schema");
+            continue;
+          }
+          if (!readKind(doc) || isStaleParse(doc)) continue;
+          const stored = await store.putParse(doc);
+          if (!stored) continue;
+          if (url) await store.indexUrl?.(url, { sha256: sha, pageCount: doc.pageCount });
+          return stored;
+        } catch (error) {
+          warn("kept read could not be loaded", error);
+        }
+      }
+      return null;
+    } catch (error) {
+      warn("restore failed", error);
+      return null;
+    }
+  }
+  return { keepRead, restoreRead, enabled };
+}
+
 // src/session.js
 init_regions();
 init_image_region();
@@ -33735,6 +34781,14 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     async updateProps(uid, plexus) {
       forgetUid(uid);
       const merged = mergePropsForWrite(host.pullProps(uid), plexus);
+      stats.writes++;
+      await data.block.update({ block: { uid, props: merged } });
+      noteWrite("update");
+    },
+    // Notes kept reads on a PDF block. Only the `plexus-reads` prop changes; every other prop stays.
+    async updateReads(uid, reads) {
+      forgetUid(uid);
+      const merged = { ...plainKeys(host.pullProps(uid)), "plexus-reads": plainKeys(reads) };
       stats.writes++;
       await data.block.update({ block: { uid, props: merged } });
       noteWrite("update");
@@ -36967,6 +38021,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return { ok: Boolean(made.uid), uid: made.uid || "", reused: Boolean(made.reused), writes };
       });
     },
+    // Notes a kept read on the PDF block's props: one write, one undo step. Nothing else changes.
+    noteRead(blockUid2, entry) {
+      if (destroyed || gone) return Promise.resolve({ ok: false, reason: "gone" });
+      return runParsed(async () => {
+        const reads = mergeReads(host.pullProps(blockUid2)?.[READS_KEY], entry);
+        await host.updateReads(blockUid2, reads);
+        return { ok: true, writes: 1 };
+      });
+    },
     createText({ x, y, string = "", look, w, h, color, shape } = {}) {
       return txn((t) => {
         const sticky = look === "sticky";
@@ -39913,83 +40976,6 @@ function highlightById(fiber, id) {
 
 // src/host/cover-store.js
 init_title_cap();
-
-// src/host/diagram-db.js
-var DIAGRAM_DB = "plexus-diagram";
-var DIAGRAM_DB_VERSION = 2;
-var STORE_COVERS = "covers";
-var STORE_PARSE = "parse";
-var STORE_PARSE_IMAGES = "parse-images";
-var STORE_PARSE_INDEX = "parse-index";
-var STORES = [STORE_COVERS, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX];
-function arm(ms, fn) {
-  try {
-    const id = setTimeout(fn, ms);
-    try {
-      id?.unref?.();
-    } catch {
-    }
-    return id;
-  } catch {
-    return null;
-  }
-}
-function ensureStore(db, name) {
-  try {
-    if (db && !db.objectStoreNames?.contains?.(name)) db.createObjectStore(name);
-  } catch {
-  }
-}
-function openDiagramDb(factory, { capMs = 2e3 } = {}) {
-  return new Promise((resolve) => {
-    let settled = false;
-    let timer = null;
-    const done = (value) => {
-      if (settled) return;
-      settled = true;
-      if (timer != null) {
-        try {
-          clearTimeout(timer);
-        } catch {
-        }
-      }
-      resolve(value);
-    };
-    timer = arm(capMs, () => done(null));
-    try {
-      if (!factory || typeof factory.open !== "function") {
-        done(null);
-        return;
-      }
-      const req = factory.open(DIAGRAM_DB, DIAGRAM_DB_VERSION);
-      if (!req) {
-        done(null);
-        return;
-      }
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        for (const name of STORES) ensureStore(db, name);
-      };
-      req.onsuccess = () => done(req.result || null);
-      req.onerror = (event) => {
-        try {
-          event?.preventDefault?.();
-        } catch {
-        }
-        try {
-          req.preventDefault?.();
-        } catch {
-        }
-        done(null);
-      };
-      req.onblocked = () => done(null);
-    } catch {
-      done(null);
-    }
-  });
-}
-
-// src/host/cover-store.js
 var COVER_STORE = STORE_COVERS;
 var COVER_LS_KEY = "plexus-diagram:covers";
 var COVER_LS_CAP = 8;
@@ -40029,7 +41015,7 @@ function withCap(work, ms) {
     Promise.resolve().then(work).then((value) => done(value), () => done(null));
   });
 }
-function requestResult(req) {
+function requestResult2(req) {
   return new Promise((resolve) => {
     let settled = false;
     const done = (value) => {
@@ -40223,15 +41209,15 @@ function createCoverStore({ indexedDB, storage } = {}) {
     }
   };
   const idbGet = (url) => withCap(
-    () => run("readonly", (store) => requestResult(store.get(url))),
+    () => run("readonly", (store) => requestResult2(store.get(url))),
     OPEN_CAP_MS
   );
   const idbPut = (url, record) => withCap(
-    () => run("readwrite", (store) => requestResult(store.put(record, url))),
+    () => run("readwrite", (store) => requestResult2(store.put(record, url))),
     OPEN_CAP_MS
   );
   const idbDelete = (url) => withCap(
-    () => run("readwrite", (store) => requestResult(store.delete(url))),
+    () => run("readwrite", (store) => requestResult2(store.delete(url))),
     OPEN_CAP_MS
   );
   const lsGet = (url) => {
@@ -44087,748 +45073,6 @@ ${block.text ?? ""}
   }
   if (notes.length) lines.push(notes.join("\n"));
   return lines.join("\n\n");
-}
-
-// src/model/parse/ocr-merge.js
-init_ocr_fix();
-function iou3(a, b) {
-  const ix = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
-  const iy = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
-  if (ix <= 0 || iy <= 0) return 0;
-  const inter = ix * iy;
-  const union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter;
-  return union > 0 ? inter / union : 0;
-}
-function chooseTable(fresh, layer) {
-  const f = tableNumericValidity(fresh);
-  const l = tableNumericValidity(layer);
-  const freshScore = f.share * Math.min(1, f.total / Math.max(1, l.total));
-  const layerScore = l.share * Math.min(1, l.total / Math.max(1, f.total));
-  const sameShape = fresh.rows === layer.rows && fresh.cols === layer.cols;
-  const chose = layerScore > freshScore + 0.05 || sameShape && layerScore > freshScore + 0.02 ? "layer" : "fresh";
-  return { chose, fresh: { ...f, score: round2(freshScore) }, layer: { ...l, score: round2(layerScore) } };
-}
-function round2(n2) {
-  return Math.round(n2 * 1e3) / 1e3;
-}
-function mergeOcrDocument(base, fresh, { pages = [] } = {}) {
-  const set = new Set(pages);
-  const doc = { ...fresh, blocks: { ...fresh.blocks }, pages: fresh.pages.map((p) => ({ ...p })) };
-  const choices = [];
-  const layerTables = Object.values(base?.blocks || {}).filter((b) => b.type === "table" && set.has(b.page));
-  const basePages = new Map((base?.pages || []).map((p) => [p.n, p]));
-  for (const page of doc.pages) {
-    if (!set.has(page.n)) continue;
-    const was = basePages.get(page.n);
-    page.ocrChoice = was && was.scanLayer ? "compared" : "fresh";
-  }
-  for (const id of Object.keys(doc.blocks)) {
-    const block = doc.blocks[id];
-    if (block.type !== "table" || !set.has(block.page)) continue;
-    const was = basePages.get(block.page);
-    if (!was || !was.scanLayer) {
-      doc.blocks[id] = { ...block, ocrSource: "fresh" };
-      continue;
-    }
-    let best = null;
-    for (const lt of layerTables) {
-      if (lt.page !== block.page) continue;
-      const overlap = iou3(lt.bbox, block.bbox);
-      if (overlap >= 0.5 && (!best || overlap > best.overlap)) best = { table: lt, overlap };
-    }
-    if (!best) {
-      doc.blocks[id] = { ...block, ocrSource: "fresh" };
-      continue;
-    }
-    const verdict = chooseTable(block, best.table);
-    choices.push({ page: block.page, id, layerId: best.table.id, ...verdict });
-    if (verdict.chose === "layer") {
-      const layer = { ...best.table, cells: (best.table.cells || []).map((c) => ({ ...c })), id, caption: block.caption, engine: "builtin", ocrSource: "layer", ocrCompare: verdict };
-      polishTableText(layer, { tidy: false });
-      doc.blocks[id] = layer;
-    } else {
-      doc.blocks[id] = { ...block, ocrSource: "fresh", ocrCompare: verdict };
-    }
-  }
-  if (choices.length) {
-    for (const page of doc.pages) {
-      if (page.ocrChoice !== "compared") continue;
-      const mine = choices.filter((c) => c.page === page.n);
-      page.ocrChoice = mine.length && mine.every((c) => c.chose === "layer") ? "layer" : mine.some((c) => c.chose === "layer") ? "mixed" : "fresh";
-    }
-  }
-  doc.ocr = { pages: [...set].sort((a, b) => a - b), choices };
-  return { doc, choices };
-}
-function scanPagesOf(doc) {
-  return (doc?.pages || []).filter((p) => !p.ocr && (p.kind === "scan" || p.scanLayer)).map((p) => p.n);
-}
-
-// src/model/cloud-merge.js
-init_parse_schema();
-var IOU_MATCH = 0.5;
-function emptyBox(box2) {
-  return !box2 || box2.length < 4 || box2[2] - box2[0] <= 0 || box2[3] - box2[1] <= 0;
-}
-function onTable(box2, tableBox) {
-  if (emptyBox(box2) || emptyBox(tableBox)) return false;
-  if (iou2(box2, tableBox) >= IOU_MATCH) return true;
-  const area = (box2[2] - box2[0]) * (box2[3] - box2[1]);
-  if (!(area > 0)) return false;
-  const ix = Math.max(0, Math.min(box2[2], tableBox[2]) - Math.max(box2[0], tableBox[0]));
-  const iy = Math.max(0, Math.min(box2[3], tableBox[3]) - Math.max(box2[1], tableBox[1]));
-  return ix * iy / area >= 0.5;
-}
-function pagesOf(doc) {
-  const set = /* @__PURE__ */ new Set();
-  for (const page of doc?.pages || []) if (Number.isInteger(page?.n)) set.add(page.n);
-  for (const block of Object.values(doc?.blocks || {})) {
-    if (Number.isInteger(block?.page)) set.add(block.page);
-  }
-  return [...set];
-}
-function blocksOf(doc, page, type) {
-  const out = [];
-  const blocks = doc?.blocks || {};
-  for (const id of doc?.order || []) {
-    const block = blocks[id];
-    if (block?.type === type && block.page === page) out.push(block);
-  }
-  return out;
-}
-function pagePairs(cloud, local) {
-  const cloudPages = pagesOf(cloud);
-  const localPages = new Set(pagesOf(local));
-  const pairs = [];
-  for (const n2 of cloudPages) if (localPages.has(n2)) pairs.push([n2, n2]);
-  if (!pairs.length && cloudPages.length === 1 && localPages.size === 1) {
-    pairs.push([cloudPages[0], [...localPages][0]]);
-  }
-  return pairs;
-}
-function captionBlock(doc, figure) {
-  const id = figure?.caption;
-  const block = id && doc?.blocks ? doc.blocks[id] : null;
-  return block?.type === "caption" ? block : null;
-}
-function captionText(block) {
-  return String(block?.text || "").replace(/\s+/g, " ").trim();
-}
-function captionScore(text3) {
-  const words = text3.split(/\s+/).filter(Boolean);
-  let score = Math.min(words.length, 28);
-  if (/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(text3)) score += 6;
-  if (words.length <= 2 && /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?$/i.test(text3)) score -= 4;
-  if (words.length > 40) score -= 10;
-  return score;
-}
-function betterCaption(localText, cloudText) {
-  const local = String(localText || "").replace(/\s+/g, " ").trim();
-  const cloud = String(cloudText || "").replace(/\s+/g, " ").trim();
-  if (!local) return cloud;
-  if (!cloud) return local;
-  const localScore = captionScore(local);
-  const cloudScore = captionScore(cloud);
-  if (localScore === cloudScore) return local.length >= cloud.length ? local : cloud;
-  return localScore > cloudScore ? local : cloud;
-}
-function clampConf(value, fallback) {
-  const n2 = Number(value);
-  if (!Number.isFinite(n2)) return fallback;
-  return Math.max(0, Math.min(1, n2));
-}
-function idFactory(blocks) {
-  const used = new Set(Object.keys(blocks));
-  return (prefix) => {
-    let n2 = 1;
-    while (used.has(`${prefix}${n2}`)) n2 += 1;
-    const id = `${prefix}${n2}`;
-    used.add(id);
-    return id;
-  };
-}
-function insertAfter(order, id, extra) {
-  const at = order.indexOf(id);
-  if (at < 0) return order.concat(extra);
-  return order.slice(0, at + 1).concat(extra, order.slice(at + 1));
-}
-function insertOnPage(order, blocks, page, extra) {
-  let at = -1;
-  for (let i = 0; i < order.length; i += 1) {
-    if (blocks[order[i]]?.page === page) at = i;
-  }
-  if (at < 0) return order.concat(extra);
-  return order.slice(0, at + 1).concat(extra, order.slice(at + 1));
-}
-function dropFigure(blocks, order, id) {
-  const fig = blocks[id];
-  if (!fig) return order;
-  const capId = fig.caption;
-  delete blocks[id];
-  let next = order.filter((item) => item !== id);
-  if (capId && blocks[capId]?.for === id && !Object.values(blocks).some((block) => block && block.caption === capId)) {
-    delete blocks[capId];
-    next = next.filter((item) => item !== capId);
-  }
-  return next;
-}
-function matchFigures(cloudFigs, localFigs) {
-  const pairs = /* @__PURE__ */ new Map();
-  const used = /* @__PURE__ */ new Set();
-  const open = new Set(cloudFigs);
-  for (; ; ) {
-    let best = null;
-    for (const cloud of open) {
-      for (const local of localFigs) {
-        if (used.has(local)) continue;
-        const score = iou2(cloud.bbox, local.bbox);
-        if (score >= IOU_MATCH && (!best || score > best.score)) best = { cloud, local, score };
-      }
-    }
-    if (!best) break;
-    pairs.set(best.cloud, best.local);
-    open.delete(best.cloud);
-    used.add(best.local);
-  }
-  return { pairs, used };
-}
-function pageByN(doc, n2) {
-  for (const page of doc?.pages || []) if (page?.n === n2) return page;
-  return null;
-}
-function figureDetectionRan(localDoc, pageN) {
-  const page = pageByN(localDoc, pageN);
-  if (localDoc?.ocr && (ocrPageListed(localDoc, pageN) || page?.ocr)) return true;
-  const kind = page?.kind;
-  return kind === "text" || kind === "mixed";
-}
-function ocrPageListed(doc, n2) {
-  const pages = doc?.ocr?.pages;
-  return Array.isArray(pages) && pages.includes(n2);
-}
-function isOcrRead(doc) {
-  if (!doc) return false;
-  const mode = doc.options?.ocr;
-  if (mode && mode !== "none") return true;
-  if (doc.ocr?.pages?.length) return true;
-  if (doc.ocr?.source) return true;
-  return (doc.pages || []).some((page) => page?.ocr);
-}
-function localTier(row4) {
-  const doc = row4?.doc;
-  if (!doc) return -1;
-  const engine = row4.engine || doc.engine;
-  if (engine === "cloud" || doc.engine === "cloud") return -1;
-  if (doc.ocr?.source === "helper") return 3;
-  if (isOcrRead(doc)) return 2;
-  if (engine === "builtin") return 1;
-  return -1;
-}
-function bestLocalDoc(rows) {
-  let best = null;
-  let tier = -1;
-  let at = -Infinity;
-  for (const row4 of rows || []) {
-    const rank = localTier(row4);
-    if (rank < 0) continue;
-    const when = Number(row4.at);
-    const stamp2 = Number.isFinite(when) ? when : 0;
-    if (rank > tier || rank === tier && stamp2 >= at) {
-      best = row4.doc;
-      tier = rank;
-      at = stamp2;
-    }
-  }
-  return best;
-}
-async function localParseForCloud(store, sha, current3) {
-  let rows = [];
-  try {
-    if (sha && typeof store?.listParses === "function") rows = await store.listParses(sha) || [];
-  } catch {
-    rows = [];
-  }
-  if (current3 && current3.engine !== "cloud") {
-    rows = rows.concat([{ engine: current3.engine || "builtin", doc: current3, at: Number.MAX_SAFE_INTEGER }]);
-  }
-  return bestLocalDoc(rows);
-}
-function mergeCloudFigures(cloudDoc, localDoc) {
-  if (!cloudDoc || typeof cloudDoc !== "object") return cloudDoc;
-  if (!localDoc || typeof localDoc !== "object" || !localDoc.blocks && !localDoc.order) return cloudDoc;
-  const blocks = {};
-  for (const [id, block] of Object.entries(cloudDoc.blocks || {})) {
-    blocks[id] = block?.image ? { ...block, image: { ...block.image } } : { ...block };
-  }
-  let order = [...cloudDoc.order || []];
-  const nextId = idFactory(blocks);
-  for (const [cloudPage, localPage] of pagePairs(cloudDoc, localDoc)) {
-    const cloudFigs = order.map((id) => blocks[id]).filter((block) => block?.type === "figure" && block.page === cloudPage);
-    const localFigs = blocksOf(localDoc, localPage, "figure").filter((block) => !emptyBox(block.bbox));
-    const { pairs, used } = matchFigures(cloudFigs, localFigs);
-    for (const [cloud, local] of pairs) {
-      cloud.bbox = local.bbox.slice();
-      cloud.source = "hybrid";
-      const localCap = captionBlock(localDoc, local);
-      const localText = captionText(localCap);
-      const cloudText = cloud.caption && blocks[cloud.caption] ? captionText(blocks[cloud.caption]) : "";
-      const text3 = betterCaption(localText, cloudText);
-      if (!text3) continue;
-      const useLocal = text3 === localText && localText !== "";
-      if (cloud.caption && blocks[cloud.caption]) {
-        if (useLocal) {
-          blocks[cloud.caption] = {
-            ...blocks[cloud.caption],
-            text: text3,
-            bbox: localCap.bbox || blocks[cloud.caption].bbox
-          };
-        }
-      } else {
-        const id = nextId("c");
-        blocks[id] = {
-          id,
-          type: "caption",
-          page: cloud.page,
-          bbox: localCap.bbox || cloud.bbox,
-          text: text3,
-          for: cloud.id,
-          confidence: clampConf(localCap.confidence, cloud.confidence ?? 0.9),
-          engine: "cloud"
-        };
-        cloud.caption = id;
-        order = insertAfter(order, cloud.id, [id]);
-      }
-    }
-    const added = [];
-    for (const local of localFigs) {
-      if (used.has(local)) continue;
-      const id = nextId("f");
-      const localCap = captionBlock(localDoc, local);
-      const text3 = captionText(localCap);
-      const figure = {
-        id,
-        type: "figure",
-        page: cloudPage,
-        bbox: local.bbox.slice(),
-        caption: null,
-        image: local.image ? { ...local.image } : { kind: "crop", source: "local" },
-        confidence: clampConf(local.confidence, 0.9),
-        engine: "cloud",
-        source: "local"
-      };
-      blocks[id] = figure;
-      added.push(id);
-      if (text3) {
-        const capId = nextId("c");
-        blocks[capId] = {
-          id: capId,
-          type: "caption",
-          page: cloudPage,
-          bbox: localCap.bbox || figure.bbox,
-          text: text3,
-          for: id,
-          confidence: clampConf(localCap.confidence, figure.confidence),
-          engine: "cloud"
-        };
-        figure.caption = capId;
-        added.push(capId);
-      }
-    }
-    if (added.length) order = insertOnPage(order, blocks, cloudPage, added);
-    if (figureDetectionRan(localDoc, localPage)) {
-      for (const cloud of cloudFigs) {
-        if (pairs.has(cloud)) continue;
-        order = dropFigure(blocks, order, cloud.id);
-      }
-    }
-  }
-  for (const id of order) {
-    const fig = blocks[id];
-    if (fig?.type === "figure" && !fig.source) fig.source = "llamaparse";
-  }
-  const tables = Object.values(blocks).filter((block) => block?.type === "table");
-  for (const id of [...order]) {
-    const fig = blocks[id];
-    if (fig?.type !== "figure" || fig.source !== "llamaparse" || !fig.image?.layout) continue;
-    if (!tables.some((table) => table.page === fig.page && onTable(fig.bbox, table.bbox))) continue;
-    order = dropFigure(blocks, order, id);
-  }
-  const doc = { ...cloudDoc, blocks, order };
-  const check = validateParse(doc);
-  if (!check.ok) {
-    const error = new Error(`cloud merge schema: ${check.errors.join(",")}`);
-    error.code = "schema";
-    error.errors = check.errors;
-    throw error;
-  }
-  return doc;
-}
-
-// src/host/parse-store.js
-init_pdf();
-init_parse_hash();
-init_parse();
-var PARSE_DOC_CAP = 50;
-var PARSE_IMAGE_CAP = 200 * 1024 * 1024;
-var META_KEY = "meta:lru";
-function parseKey(sha256, engine, optsHash) {
-  return `${sha256}|${engine}|${optsHash}`;
-}
-function ocrRead(doc) {
-  const mode = doc?.options?.ocr;
-  return mode && mode !== "none" || Boolean(doc?.ocr?.pages?.length) || (doc?.pages || []).some((p) => p.ocr);
-}
-function isStaleParse(doc) {
-  if (!doc || doc.engine !== "builtin" || ocrRead(doc)) return false;
-  return !(Number(doc.parseRev) >= PARSE_REV);
-}
-async function restorableParse(store, sha, { engines, plainHash, readHashOf = null } = {}) {
-  if (!store || !sha) return null;
-  let listed = [];
-  try {
-    listed = typeof store.listParses === "function" ? await store.listParses(sha) : [];
-  } catch {
-    listed = [];
-  }
-  listed = listed.filter((row4) => !isStaleParse(row4.doc));
-  if (engines?.includes?.("cloud")) {
-    const paid = listed.filter((row4) => row4.engine === "cloud").pop();
-    if (paid) return paid.doc;
-  }
-  for (const engine of engines) {
-    const mine = listed.filter((row4) => row4.engine === engine);
-    const read2 = mine.filter((row4) => row4.doc?.options?.ocr === "vision" && !scanPagesOf(row4.doc).length).pop();
-    if (read2) return read2.doc;
-    let plain2 = await store.getParse(sha, engine, plainHash);
-    if (isStaleParse(plain2)) plain2 = null;
-    plain2 = plain2 || mine.pop()?.doc || null;
-    if (!plain2) continue;
-    if (scanPagesOf(plain2).length && readHashOf) {
-      const alt = await store.getParse(sha, engine, await readHashOf(plain2));
-      if (alt && !isStaleParse(alt)) return alt;
-    }
-    return plain2;
-  }
-  return null;
-}
-var RESTORE_ENGINES = Object.freeze(["builtin", "docling", "mixed", "anydoc", "cloud"]);
-async function restorableByUrl(store, url, { plainOptions, engines = RESTORE_ENGINES } = {}) {
-  if (!store || !url) return null;
-  const hit = await store.findByUrl(url);
-  if (!hit?.sha256) return null;
-  return restorableParse(store, hit.sha256, {
-    engines,
-    plainHash: await optionsHash(plainOptions),
-    readHashOf: (plain2) => optionsHash({ ...plain2.options || plainOptions, ocr: "vision" })
-  });
-}
-async function restorableTitle(store, url, plainOptions) {
-  const found = await restorableByUrl(store, url, { plainOptions });
-  if (!found) return { doc: null, title: "", lines: [] };
-  let title = parsedDocTitle(found);
-  let linesDoc = found;
-  if (!title && found.engine === "cloud" && found.sha256 && typeof store.listParses === "function") {
-    let listed = [];
-    try {
-      listed = await store.listParses(found.sha256);
-    } catch {
-      listed = [];
-    }
-    const local = bestLocalDoc(listed);
-    const localTitle = parsedDocTitle(local);
-    if (localTitle) {
-      title = localTitle;
-      linesDoc = local;
-    }
-  }
-  return { doc: found, title, lines: parsedTitleLines(linesDoc) };
-}
-function imageKey2(sha256, blockId) {
-  return `${sha256}/${blockId}`;
-}
-function requestResult2(req) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (value) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
-    try {
-      req.onsuccess = () => done({ ok: true, result: req.result });
-      req.onerror = (event) => {
-        try {
-          event?.preventDefault?.();
-        } catch {
-        }
-        done({ ok: false, result: null });
-      };
-    } catch {
-      done({ ok: false, result: null });
-    }
-  });
-}
-function byteLengthOf(bytes) {
-  if (bytes == null) return 0;
-  if (typeof bytes === "string") return new TextEncoder().encode(bytes).byteLength;
-  if (bytes instanceof ArrayBuffer) return bytes.byteLength;
-  if (ArrayBuffer.isView(bytes)) return bytes.byteLength;
-  if (typeof bytes.size === "number") return bytes.size;
-  return 0;
-}
-function copyBytes(bytes) {
-  if (ArrayBuffer.isView(bytes)) return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength).slice();
-  if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes).slice();
-  return bytes;
-}
-function emptyMeta() {
-  return { docs: [], images: [] };
-}
-function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CAP, imageCap = PARSE_IMAGE_CAP } = {}) {
-  const clock = typeof now3 === "function" ? now3 : () => Date.now();
-  const memory = {
-    parse: /* @__PURE__ */ new Map(),
-    images: /* @__PURE__ */ new Map(),
-    index: /* @__PURE__ */ new Map()
-  };
-  let dbPromise = null;
-  let idbDead = !factory;
-  const open = () => {
-    if (idbDead) return Promise.resolve(null);
-    if (!dbPromise) {
-      dbPromise = openDiagramDb(factory).then((db) => {
-        if (!db) {
-          idbDead = true;
-          dbPromise = null;
-        }
-        return db;
-      });
-    }
-    return dbPromise;
-  };
-  const run = async (storeName, mode, fn) => {
-    if (idbDead) return { ok: false };
-    try {
-      const db = await open();
-      if (!db || typeof db.transaction !== "function") {
-        idbDead = true;
-        return { ok: false };
-      }
-      const tx = db.transaction(storeName, mode);
-      const store = tx.objectStore(storeName);
-      return await fn(store);
-    } catch {
-      idbDead = true;
-      return { ok: false };
-    }
-  };
-  const backend = {
-    async get(storeName, key) {
-      if (!idbDead) {
-        const hit = await run(storeName, "readonly", (store) => requestResult2(store.get(key)));
-        if (hit?.ok) return hit.result === void 0 ? null : hit.result;
-      }
-      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
-      return map.has(key) ? map.get(key) : null;
-    },
-    async put(storeName, key, value) {
-      if (!idbDead) {
-        const wrote = await run(storeName, "readwrite", (store) => requestResult2(store.put(value, key)));
-        if (wrote?.ok) return true;
-      }
-      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
-      map.set(key, value);
-      return true;
-    },
-    async delete(storeName, key) {
-      if (!idbDead) {
-        const removed = await run(storeName, "readwrite", (store) => requestResult2(store.delete(key)));
-        if (removed?.ok) return true;
-      }
-      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
-      map.delete(key);
-      return true;
-    },
-    async keys(storeName) {
-      if (!idbDead) {
-        const hit = await run(storeName, "readonly", (store) => {
-          if (typeof store.getAllKeys === "function") return requestResult2(store.getAllKeys());
-          if (typeof store.getAll === "function") {
-            return requestResult2(store.getAll()).then((res) => {
-              if (!res?.ok || !Array.isArray(res.result)) return res;
-              const keys = res.result.map((row4) => row4?.key).filter((key) => key != null);
-              return { ok: true, result: keys };
-            });
-          }
-          return Promise.resolve({ ok: false, result: null });
-        });
-        if (hit?.ok && Array.isArray(hit.result)) return hit.result;
-      }
-      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
-      return [...map.keys()];
-    }
-  };
-  const loadMeta = async () => {
-    const raw = await backend.get(STORE_PARSE_INDEX, META_KEY);
-    if (!raw || typeof raw !== "object") return emptyMeta();
-    return {
-      docs: Array.isArray(raw.docs) ? raw.docs.filter((key) => typeof key === "string") : [],
-      images: Array.isArray(raw.images) ? raw.images.filter((row4) => row4 && typeof row4.key === "string" && typeof row4.bytes === "number") : []
-    };
-  };
-  const saveMeta = (meta) => backend.put(STORE_PARSE_INDEX, META_KEY, meta);
-  const touch = (list, key) => {
-    const next = list.filter((item) => item !== key);
-    next.push(key);
-    return next;
-  };
-  return {
-    async getParse(sha, engine, optsHash) {
-      try {
-        if (!sha || !engine || !optsHash) return null;
-        const key = parseKey(sha, engine, optsHash);
-        const record = await backend.get(STORE_PARSE, key);
-        if (!record?.doc) return null;
-        const meta = await loadMeta();
-        meta.docs = touch(meta.docs, key);
-        await saveMeta(meta);
-        return record.doc;
-      } catch {
-        return null;
-      }
-    },
-    // Every cached parse of one PDF: [{ engine, optsHash, at, doc }], oldest first.
-    async listParses(sha) {
-      try {
-        if (!sha) return [];
-        const prefix = `${sha}|`;
-        const keys = (await backend.keys(STORE_PARSE)).filter((key) => typeof key === "string" && key.startsWith(prefix));
-        const out = [];
-        for (const key of keys) {
-          const record = await backend.get(STORE_PARSE, key);
-          if (!record?.doc) continue;
-          out.push({ engine: record.doc.engine || key.split("|")[1], optsHash: record.optsHash || key.split("|")[2], at: record.at || 0, doc: record.doc });
-        }
-        return out.sort((a, b) => a.at - b.at);
-      } catch {
-        return [];
-      }
-    },
-    async putParse(doc) {
-      try {
-        if (!doc || typeof doc !== "object" || !doc.sha256 || !doc.engine) return null;
-        const optsHash = typeof doc.optsHash === "string" && doc.optsHash ? doc.optsHash : await optionsHash(doc.options || {});
-        const key = parseKey(doc.sha256, doc.engine, optsHash);
-        const stored = { ...doc, optsHash };
-        const record = { doc: stored, optsHash, at: clock() };
-        if (!await backend.put(STORE_PARSE, key, record)) return null;
-        const meta = await loadMeta();
-        meta.docs = touch(meta.docs, key);
-        while (meta.docs.length > docCap) {
-          const oldest = meta.docs.shift();
-          if (oldest) await backend.delete(STORE_PARSE, oldest);
-        }
-        if (stored.engine === "builtin" && !isStaleParse(stored)) {
-          const prefix = `${stored.sha256}|builtin|`;
-          for (const old of (await backend.keys(STORE_PARSE)).filter((k) => typeof k === "string" && k.startsWith(prefix) && k !== key)) {
-            const rec = await backend.get(STORE_PARSE, old);
-            if (rec?.doc && isStaleParse(rec.doc)) {
-              await backend.delete(STORE_PARSE, old);
-              meta.docs = meta.docs.filter((k) => k !== old);
-            }
-          }
-        }
-        await saveMeta(meta);
-        return stored;
-      } catch {
-        return null;
-      }
-    },
-    async findByUrl(url) {
-      try {
-        if (!url) return null;
-        const record = await backend.get(STORE_PARSE_INDEX, url);
-        if (!record || record.sha256 == null) return null;
-        return {
-          sha256: record.sha256,
-          pageCount: record.pageCount ?? null,
-          at: record.at ?? null
-        };
-      } catch {
-        return null;
-      }
-    },
-    async indexUrl(url, info) {
-      try {
-        if (!url || !info || !info.sha256) return null;
-        const record = {
-          sha256: info.sha256,
-          pageCount: Number.isInteger(info.pageCount) ? info.pageCount : null,
-          at: clock()
-        };
-        if (!await backend.put(STORE_PARSE_INDEX, url, record)) return null;
-        return record;
-      } catch {
-        return null;
-      }
-    },
-    async getImage(key) {
-      try {
-        if (!key) return null;
-        const record = await backend.get(STORE_PARSE_IMAGES, key);
-        if (!record || record.bytes == null) return null;
-        const meta = await loadMeta();
-        meta.images = meta.images.filter((row4) => row4.key !== key).concat(
-          meta.images.filter((row4) => row4.key === key)
-        );
-        await saveMeta(meta);
-        return record.bytes;
-      } catch {
-        return null;
-      }
-    },
-    async putImage(key, bytes) {
-      try {
-        if (!key || bytes == null) return null;
-        const size = byteLengthOf(bytes);
-        if (size <= 0 || size > imageCap) return null;
-        const stored = copyBytes(bytes);
-        const meta = await loadMeta();
-        meta.images = meta.images.filter((row4) => row4.key !== key);
-        let used = meta.images.reduce((sum, row4) => sum + row4.bytes, 0);
-        while (meta.images.length && used + size > imageCap) {
-          const oldest = meta.images.shift();
-          used -= oldest.bytes;
-          await backend.delete(STORE_PARSE_IMAGES, oldest.key);
-        }
-        if (!await backend.put(STORE_PARSE_IMAGES, key, { bytes: stored, byteLength: size, at: clock() })) return null;
-        meta.images.push({ key, bytes: size });
-        await saveMeta(meta);
-        return stored;
-      } catch {
-        return null;
-      }
-    },
-    async clear() {
-      try {
-        const meta = await loadMeta();
-        for (const key of meta.docs) await backend.delete(STORE_PARSE, key);
-        for (const row4 of meta.images) await backend.delete(STORE_PARSE_IMAGES, row4.key);
-        const indexKeys = await backend.keys(STORE_PARSE_INDEX);
-        for (const key of indexKeys) await backend.delete(STORE_PARSE_INDEX, key);
-        const parseKeys = await backend.keys(STORE_PARSE);
-        for (const key of parseKeys) await backend.delete(STORE_PARSE, key);
-        const imageKeys = await backend.keys(STORE_PARSE_IMAGES);
-        for (const key of imageKeys) await backend.delete(STORE_PARSE_IMAGES, key);
-        memory.parse.clear();
-        memory.images.clear();
-        memory.index.clear();
-        return true;
-      } catch {
-        return null;
-      }
-    }
-  };
 }
 
 // src/view/parse-view.js
@@ -49603,7 +49847,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     const next = { ...doc, blocks: { ...doc.blocks } };
     for (const block of blocks) {
       try {
-        const src = await store?.getImage?.(imageKey2(doc.sha256, block.id));
+        const src = await store?.getImage?.(imageKey(doc.sha256, block.id));
         const blob = typeof src === "string" ? dataUrlToBlob3(src) : src;
         if (!blob) continue;
         const file = new File([blob], `figure-p${block.page ?? 0}.png`, { type: "image/png" });
@@ -52399,6 +52643,7 @@ function createParseView({
   ghostRoot = null,
   ghostPane = null,
   anydoc = null,
+  keep = null,
   fetch: fetchImpl = null
 } = {}) {
   const el = (tag, cls, parent) => {
@@ -52823,7 +53068,7 @@ ${sourceAttrString(source)}` : markdown;
     if (plan.content.kind === "figure" && first && store?.getImage) {
       try {
         const src = await Promise.race([
-          store.getImage(imageKey2(parsed.sha256, first.id)),
+          store.getImage(imageKey(parsed.sha256, first.id)),
           new Promise((resolve) => {
             const id = setTimeout(() => resolve(null), 120);
             id?.unref?.();
@@ -53201,7 +53446,7 @@ ${sourceAttrString(source)}` : markdown;
       }
       const caption = captionText2(block);
       let src = "";
-      const key = parsed?.sha256 ? imageKey2(parsed.sha256, block.id) : "";
+      const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
       if (key && store?.getImage) {
         try {
           src = imageSrc2(await store.getImage(key));
@@ -53396,7 +53641,7 @@ ${sourceAttrString(source)}` : markdown;
   async function warmFigures(blocks) {
     for (const block of blocks || []) {
       if (!block || block.type !== "figure" && block.type !== "formula") continue;
-      const key = parsed?.sha256 ? imageKey2(parsed.sha256, block.id) : "";
+      const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
       if (!key || typeof store?.putImage !== "function") continue;
       let src = "";
       if (typeof store.getImage === "function") {
@@ -53483,7 +53728,7 @@ ${sourceAttrString(source)}` : markdown;
     return Promise.resolve();
   }
   async function paintCropNow(block, img) {
-    const key = parsed?.sha256 ? imageKey2(parsed.sha256, block.id) : "";
+    const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
     if (key && store?.getImage) {
       try {
         const cached = await store.getImage(key);
@@ -53531,6 +53776,7 @@ ${sourceAttrString(source)}` : markdown;
     if (dead) return;
     const optsHash = await optionsHash(docResult.options || BUILTIN_OPTIONS);
     if (dead) return;
+    const total = Number(parsed?.pageCount) || Number(progress.pageCount) || 0;
     parsed = { ...docResult, optsHash, stats: { ...docResult.stats || {}, ms } };
     phase = "idle";
     try {
@@ -53544,6 +53790,10 @@ ${sourceAttrString(source)}` : markdown;
         }
       }
     } catch {
+    }
+    if (keep && typeof keep.keepRead === "function") {
+      void Promise.resolve(keep.keepRead(parsed, { blockUid: pdfBlockUidNow(), total })).catch(() => {
+      });
     }
     render();
     onProgress?.({ page: progress.pageCount, pageCount: progress.pageCount, fraction: 1 });
@@ -54346,7 +54596,17 @@ ${sourceAttrString(source)}` : markdown;
   }
   async function restore2() {
     if (!store || !currentUrl) return null;
-    const found = await restorableByUrl(store, currentUrl, { plainOptions: BUILTIN_OPTIONS });
+    let found = await restorableByUrl(store, currentUrl, { plainOptions: BUILTIN_OPTIONS });
+    if (!found && keep && typeof keep.restoreRead === "function") {
+      found = await keep.restoreRead({
+        blockUid: pdfBlockUidNow(),
+        url: currentUrl,
+        getBytes: async () => {
+          const pdf = typeof getPdf === "function" ? await getPdf() : null;
+          return pdf && typeof pdf.getData === "function" ? pdf.getData() : null;
+        }
+      });
+    }
     if (!found) return null;
     parsed = found;
     rememberParsedUrl(storage, currentUrl);
@@ -57881,7 +58141,7 @@ function createReadPane({
   const persistOcr = async (pages, sha) => {
     if (!sha) return;
     const store = ensureStore2();
-    const key = imageKey2(sha, OCR_LAYER_ID);
+    const key = imageKey(sha, OCR_LAYER_ID);
     let stored = [];
     try {
       const raw = await store.getImage(key);
@@ -57912,7 +58172,7 @@ function createReadPane({
     if (!sha) return 0;
     ocrSha = sha;
     try {
-      const raw = await ensureStore2().getImage(imageKey2(sha, OCR_LAYER_ID));
+      const raw = await ensureStore2().getImage(imageKey(sha, OCR_LAYER_ID));
       if (typeof raw !== "string" || !openFlag || sha !== ocrSha) return 0;
       const n2 = textLayer.setPages(JSON.parse(raw));
       if (n2) {
@@ -58209,6 +58469,11 @@ function createReadPane({
     dismissedUrls.delete(pdfUrl());
     void runRead("", { explicit: true });
   };
+  let readKeeper = null;
+  const ensureKeeper = () => {
+    if (!readKeeper) readKeeper = createReadKeeper({ host, session, store: ensureStore2(), settings });
+    return readKeeper;
+  };
   const ensureParsed = () => {
     if (parsedView) return parsedView;
     parsedView = createParseView({
@@ -58224,6 +58489,7 @@ function createReadPane({
       },
       session,
       host,
+      keep: ensureKeeper(),
       storage,
       pdfUid: current3.cardUid,
       pdfBlockUid: () => current3.blockUid || current3.cardUid,
@@ -58321,6 +58587,12 @@ function createReadPane({
     if (view2.blockCount() > 0 || view2.isBusy()) return;
     if (!await waitReaderPdf(gen)) return;
     if (view2.blockCount() > 0 || view2.isBusy()) return;
+    try {
+      found = await view2.restore();
+    } catch {
+      found = null;
+    }
+    if (found || gen !== bgGen || !openFlag || url !== pdfUrl()) return;
     bgParsing = true;
     try {
       await view2.parseBuiltin();

@@ -373,6 +373,7 @@ export function createParseView({
   ghostRoot = null,
   ghostPane = null,
   anydoc = null,
+  keep = null,
   fetch: fetchImpl = null,
 } = {}) {
   const el = (tag, cls, parent) => {
@@ -1408,6 +1409,7 @@ export function createParseView({
     if (dead) return;
     const optsHash = await optionsHash(docResult.options || BUILTIN_OPTIONS);
     if (dead) return;
+    const total = Number(parsed?.pageCount) || Number(progress.pageCount) || 0;
     parsed = { ...docResult, optsHash, stats: { ...(docResult.stats || {}), ms } };
     phase = "idle";
     try {
@@ -1418,6 +1420,10 @@ export function createParseView({
         try { onCached?.(currentUrl); } catch { /* host */ }
       }
     } catch { /* cache */ }
+    // A finished read that cost time or money goes to the graph once (the keeper checks the setting). Never awaited.
+    if (keep && typeof keep.keepRead === "function") {
+      void Promise.resolve(keep.keepRead(parsed, { blockUid: pdfBlockUidNow(), total })).catch(() => {});
+    }
     render();
     onProgress?.({ page: progress.pageCount, pageCount: progress.pageCount, fraction: 1 });
   }
@@ -2143,7 +2149,18 @@ export function createParseView({
   async function restore() {
     if (!store || !currentUrl) return null;
     // The OCR-merged parse supersedes the scan-only one saved before the read.
-    const found = await restorableByUrl(store, currentUrl, { plainOptions: BUILTIN_OPTIONS });
+    let found = await restorableByUrl(store, currentUrl, { plainOptions: BUILTIN_OPTIONS });
+    if (!found && keep && typeof keep.restoreRead === "function") {
+      // Another computer read this PDF and kept the read in the graph. Loading it writes nothing.
+      found = await keep.restoreRead({
+        blockUid: pdfBlockUidNow(),
+        url: currentUrl,
+        getBytes: async () => {
+          const pdf = typeof getPdf === "function" ? await getPdf() : null;
+          return pdf && typeof pdf.getData === "function" ? pdf.getData() : null;
+        },
+      });
+    }
     if (!found) return null;
     parsed = found;
     rememberParsedUrl(storage, currentUrl);

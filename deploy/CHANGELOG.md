@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.18.0 — 2026-10-10
+
+Handwritten letters read closer to the page, a wide old table reads whole, and High accuracy installs on a clean Mac.
+
+- **Handwritten letters.** The page reading now fills every text block on the page, including a stamp, a word in the margin and the signature, and the page is read at its full scan size. Three handwritten 1859–1914 letters now match the page 79–97% (were 64–90%). A handwritten letter takes about 30 seconds in High accuracy.
+- **Photographed lists.** When two readers see a photographed page at slightly different tilts, their words are lined up before they are compared, so a confident name is no longer swapped for a dictionary word. A photographed 1924 roster now matches the page 90% (was 83%).
+- **Wide tables.** A caption row that spans many columns no longer stops the High accuracy table reader early. A 1916 thirteen-column table now scores 0.95 on cell content (was 0.77).
+- **Install.** The High accuracy table reader now verifies against the files Hugging Face serves, so a clean install works (it failed its own checksum before). An existing install downloads the reader once more (about 1.9 GB).
+- Cached parses from earlier versions are refreshed automatically.
+
 ## 3.17.0 — 2026-10-10
 
 Handwritten letters, ledgers and photographed pages read much closer to the page in High accuracy.

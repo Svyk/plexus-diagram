@@ -44439,7 +44439,7 @@ function gridReading(table) {
   }
   return texts.filter((t) => isNumericToken(t)).length / texts.length >= 0.45;
 }
-function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, trust = false, arbitrate = false, evidence = null } = {}) {
+function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, trust = false, arbitrate = false, evidence = null, verifiedPages = [] } = {}) {
   if (!doc || !structures?.length) return { doc, applied: [] };
   const blocks = { ...doc.blocks };
   const order = [...doc.order || []];
@@ -44474,7 +44474,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
         }
       }
     }
-    if (arbitrate && !host && !gridReading(built)) continue;
+    if (arbitrate && !host && !gridReading(built) && !verifiedPages.includes(structure.page)) continue;
     const same2 = host && (setJaccard(host, built) >= minJaccard || tokenJaccard(host, built) >= minJaccard);
     if (arbitrate && host) {
       const page = (evidence || []).find((item) => item.page === structure.page) || { words: [], rules: [] };
@@ -44763,7 +44763,8 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
         const applied = applyVlmTables(doc, structures, {
           method: read2?.model || "vlm",
           arbitrate: true,
-          evidence: evidenceFromRecords(next)
+          evidence: evidenceFromRecords(next),
+          verifiedPages: layerPages
         });
         vlmApplied = applied.applied;
         if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });

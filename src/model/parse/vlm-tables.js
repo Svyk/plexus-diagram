@@ -210,7 +210,8 @@ export function gridReading(table) {
 // when arbitration is off, or when the reading is a numeric grid.
 // `trust` replaces every overlapping rule table. `arbitrate` keeps the better of
 // the rule table and the reading, using `evidence` (page words and rules).
-export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, trust = false, arbitrate = false, evidence = null } = {}) {
+// `verifiedPages` are text-layer pages whose readings were already checked against the page words.
+export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, trust = false, arbitrate = false, evidence = null, verifiedPages = [] } = {}) {
   if (!doc || !structures?.length) return { doc, applied: [] };
   const blocks = { ...doc.blocks };
   const order = [...(doc.order || [])];
@@ -239,7 +240,9 @@ export function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0
         if (next > area) { area = next; host = block; }
       }
     }
-    if (arbitrate && !host && !gridReading(built)) continue;
+    // On a text-layer page the reading already passed keepTextLayerReads (its words are on the page), so a
+    // word table counts; elsewhere a reading with no rule table must be a numeric grid.
+    if (arbitrate && !host && !gridReading(built) && !verifiedPages.includes(structure.page)) continue;
     // Full-string set Jaccard is what TableFormer uses. Token Jaccard is also
     // accepted: on this corpus that raised cell F1 from 0.140 to 0.155 and
     // left structure F1 at 0.606 versus 0.610.

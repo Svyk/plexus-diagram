@@ -174,6 +174,7 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
           method: read?.model || "vlm",
           arbitrate: true,
           evidence: evidenceFromRecords(next),
+          verifiedPages: layerPages,
         });
         vlmApplied = applied.applied;
         if (applied.applied.length) Object.assign(doc, { blocks: applied.doc.blocks, order: applied.doc.order });

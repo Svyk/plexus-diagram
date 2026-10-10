@@ -458,6 +458,31 @@ function clearsRule(best, ruleRow) {
   return false;
 }
 
+// Same grid, empty VLM cell, rule text that the page's words actually contain.
+// A re-read that comes back blank must not erase the reading the page supports.
+function fillEmptyFromRule(chosen, rule, evidence) {
+  if (!chosen?.cells || !rule?.cells) return chosen;
+  if (chosen.rows !== rule.rows || chosen.cols !== rule.cols) return chosen;
+  const bag = [];
+  for (const word of evidence?.words || []) bag.push(...tokens(word.text));
+  if (!bag.length) return chosen;
+  const cells = chosen.cells.map((cell) => ({ ...cell }));
+  let filled = 0;
+  for (const cell of cells) {
+    if (String(cell.text || "").trim()) continue;
+    const src = (rule.cells || []).find((k) => k.r === cell.r && k.c === cell.c && (k.colSpan || 1) === (cell.colSpan || 1) && (k.rowSpan || 1) === (cell.rowSpan || 1));
+    const text = String(src?.text || "").trim();
+    if (!text) continue;
+    const keys = tokens(text);
+    if (!keys.length || !keys.every((key) => bagHas(bag, key))) continue;
+    cell.text = text;
+    cell.header = cell.r < (chosen.headerRows || 0);
+    filled++;
+  }
+  if (!filled) return chosen;
+  return { ...chosen, cells };
+}
+
 // `page` is `{words, rules}` for the table's page. Choice is "rule", "vlm", or "merge".
 export function chooseTableReading(rule, vlm, page = {}) {
   const box = unionBox(rule?.bbox, vlm?.bbox);
@@ -478,6 +503,7 @@ export function chooseTableReading(rule, vlm, page = {}) {
     const alt = ranked.find((row) => row.choice !== "rule" && sameGridBetter(row, ruleRow));
     if (alt) best = alt;
   }
+  if (rule && best.choice !== "rule" && best.table) best = { ...best, table: fillEmptyFromRule(best.table, rule, evidence) };
   return {
     choice: best.choice,
     table: best.table,

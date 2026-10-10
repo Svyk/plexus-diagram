@@ -280,3 +280,21 @@ test("--vlm is parsed and vlm() posts through the helper client", async () => {
   assert.equal(posted.init.headers.Authorization, "Bearer tok");
   assert.equal(posted.init.targetAddressSpace, undefined);
 });
+
+test("an empty high-accuracy cell takes the rule text the page words contain", () => {
+  const data = [
+    ["State", "Rate", "Deaths"],
+    ["Alabama", "5.25", "239"],
+    ["Alaska", "4.39", "12"],
+    ["Arizona", "6.10", "80"],
+    ["Arkansas", "5.80", "70"],
+  ];
+  const ruleLabels = data.map((row) => row.map((cell) => (cell === "6.10" || cell === "5.80" ? `•${cell}` : cell)));
+  ruleLabels[2][1] = "zzmissing";
+  const rule = grid(ruleLabels, { headerRows: 1 });
+  const vlm = grid(data.map((row, r) => row.map((cell, c) => ((r === 1 && c === 1) || (r === 2 && c === 1) ? "" : cell))), { headerRows: 1, bbox: rule.bbox });
+  const decision = chooseTableReading(rule, vlm, evidence(data));
+  assert.equal(decision.choice, "vlm");
+  assert.equal(decision.table.cells.find((cell) => cell.r === 1 && cell.c === 1).text, "5.25");
+  assert.equal(decision.table.cells.find((cell) => cell.r === 2 && cell.c === 1).text, "");
+});

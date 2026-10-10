@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildLines, mul, applyPoint, normalizeText, fontFlags, makeLine } from "../src/model/parse/lines.js";
+import { buildLines, mul, applyPoint, normalizeText, fontFlags, makeLine, relineWords } from "../src/model/parse/lines.js";
 import { decodePathData, extractGraphics, luminanceOf, snapRules, OP } from "../src/model/parse/rules.js";
 import { findLatticeTables, cellTextOf, isNumericText } from "../src/model/parse/lattice.js";
 import { tokenizeLine, projectColumns, visualRows, detectStreamRuns, tableFromBand, phraseTable, tickGrid, alignNumericColumns } from "../src/model/parse/stream.js";
@@ -727,4 +727,135 @@ test("assembleDocument links footnote refs to footnotes and attaches captions", 
   assert.equal(para.footnoteRefs[0].to, note.id);
   const cap = Object.values(doc.blocks).find((b) => b.text && b.text.startsWith("Table 1."));
   assert.equal(cap.type, "para", "caption with no table nearby stays a paragraph");
+});
+
+const wordAt = (text, x, base, width) => ({
+  text, x0: x, x1: x + (width ?? text.length * 5), base, size: 9,
+  y0: base - 7, y1: base + 2, bold: false, mathChars: 0, boldChars: 0, italicChars: 0, mathFontChars: 0, rowSize: 9,
+});
+
+test("a body-only vertical splits the number columns and leaves the spanning header", () => {
+  const rules = [];
+  for (const y of [100, 120, 140, 160, 180, 200]) rules.push({ axis: "h", x0: 100, x1: 400, y0: y, y1: y });
+  for (const x of [100, 200, 300, 400]) rules.push({ axis: "v", x0: x, x1: x, y0: 100, y1: 200 });
+  rules.push({ axis: "v", x0: 250, x1: 250, y0: 140, y1: 200 });
+  const words = [
+    wordAt("Trial", 210, 114, 70),
+    wordAt("12.1", 205, 154, 22), wordAt("399", 268, 154, 22),
+    wordAt("13.4", 205, 174, 22), wordAt("401", 268, 174, 22),
+    wordAt("14.0", 205, 194, 22), wordAt("388", 268, 194, 22),
+  ];
+  const { tables } = findLatticeTables({ rules, boxes: [], words });
+  assert.equal(tables.length, 1);
+  const t = tables[0];
+  assert.equal(t.cols, 4);
+  const head = t.cells.find((k) => k.text === "Trial");
+  assert.equal(head.colSpan, 2);
+  assert.equal(head.header, true);
+  assert.ok(t.cells.some((k) => k.text === "12.1" && k.colSpan === 1));
+  assert.ok(t.cells.some((k) => k.text === "399" && k.c === t.cells.find((c) => c.text === "12.1").c + 1));
+});
+
+test("unit lines above the numbers stay in the header", () => {
+  const rules = [];
+  const ys = [100, 118, 136, 154, 172];
+  for (const y of ys) rules.push({ axis: "h", x0: 40, x1: 280, y0: y, y1: y });
+  for (const x of [40, 120, 200, 280]) rules.push({ axis: "v", x0: x, x1: x, y0: 100, y1: 172 });
+  const words = [
+    wordAt("Volume", 48, 112, 40), wordAt("Pressure", 128, 112, 50), wordAt("PV", 220, 112, 20),
+    wordAt("C.c.", 48, 130, 24), wordAt("Mm.", 128, 130, 22), wordAt("mercury", 160, 130, 36),
+    wordAt("404.0", 48, 148, 30), wordAt("760", 140, 148, 20), wordAt("1.00", 214, 148, 28),
+    wordAt("401.6", 48, 166, 30), wordAt("755", 140, 166, 20), wordAt("0.99", 214, 166, 28),
+  ];
+  const { tables } = findLatticeTables({ rules, boxes: [], words });
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].rows, 4);
+  assert.equal(tables[0].headerRows, 2);
+  assert.equal(tables[0].cells.find((k) => k.text.startsWith("C.c.")).header, true);
+  assert.equal(tables[0].cells.find((k) => k.text === "404.0").header, false);
+});
+
+test("an identifier row under a rule is a header and a comma number is not", () => {
+  const rules = [];
+  for (const y of [40, 58, 76, 94, 112]) rules.push({ axis: "h", x0: 20, x1: 320, y0: y, y1: y });
+  for (const x of [20, 80, 140, 200, 260, 320]) rules.push({ axis: "v", x0: x, x1: x, y0: 40, y1: 112 });
+  const words = [
+    wordAt("Lab", 28, 52, 20), wordAt("A", 90, 52, 10), wordAt("B", 150, 52, 10), wordAt("C", 210, 52, 10), wordAt("D", 270, 52, 10),
+    wordAt("22954", 28, 70, 32), wordAt("22955", 88, 70, 32), wordAt("22956", 148, 70, 32), wordAt("22957", 208, 70, 32), wordAt("22958", 268, 70, 32),
+    wordAt("1,275", 28, 88, 32), wordAt("820", 96, 88, 18), wordAt("900", 156, 88, 18), wordAt("700", 216, 88, 18), wordAt("640", 276, 88, 18),
+    wordAt("1,300", 28, 106, 32), wordAt("810", 96, 106, 18), wordAt("880", 156, 106, 18), wordAt("690", 216, 106, 18), wordAt("630", 276, 106, 18),
+  ];
+  const { tables } = findLatticeTables({ rules, boxes: [], words });
+  assert.equal(tables.length, 1);
+  assert.equal(tables[0].headerRows, 2);
+  assert.equal(tables[0].cells.find((k) => k.text === "22954").header, true);
+  assert.equal(tables[0].cells.find((k) => k.text === "1,275").header, false);
+});
+
+test("wrapped glyphs that share a column stay on successive lines", () => {
+  const stacked = relineWords([
+    wordAt("ture", 20, 100, 40),
+    wordAt("which", 18, 104, 36),
+  ]);
+  assert.equal(stacked.length, 2);
+  assert.equal(stacked[0].text, "ture");
+  const sup = relineWords([
+    wordAt("10", 10, 100, 12),
+    wordAt("19", 24, 97, 12),
+  ]);
+  assert.equal(sup.length, 1);
+});
+
+test("a two-row contents list is a table and a two-row phrase is not", () => {
+  const page = (rows) => buildLines(rows.flat(), { transform: VP, fonts: FONTS }).lines;
+  const contents = page([
+    [item("FIGURE 1. Apparatus", 72, 700, 10, "f1", 150), item("7", 400, 700, 10, "f1", 8)],
+    [item("FIGURE 2. Chart", 72, 684, 10, "f1", 120), item("9", 401, 684, 10, "f1", 8)],
+  ]);
+  const found = detectStreamRuns(contents).filter((b) => b.type === "table");
+  assert.equal(found.length, 1);
+  assert.equal(found[0].rows, 2);
+  assert.equal(found[0].cols, 2);
+  const numbered = page([
+    [item("2.", 90, 700, 10, "f1", 14), item("Figure of the apparatus", 110, 700, 10, "f1", 180), item("9", 400, 700, 10, "f1", 8)],
+    [item("3.", 90, 684, 10, "f1", 14), item("Apparatus", 110, 684, 10, "f1", 70), item("11", 401, 684, 10, "f1", 10)],
+  ]);
+  const listed = detectStreamRuns(numbered).filter((b) => b.type === "table");
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].cols, 2);
+  const phrase = page([
+    [item("The mixture was heated slowly", 72, 700, 10, "f1", 180)],
+    [item("and then left overnight", 72, 684, 10, "f1", 150)],
+  ]);
+  assert.equal(detectStreamRuns(phrase).filter((b) => b.type === "table").length, 0);
+});
+
+test("a repeated narrow gap between numeric words is a column and a thousands group is not", () => {
+  const rows = [];
+  for (let i = 0; i < 6; i++) {
+    const y = 700 - i * 14;
+    rows.push([
+      item("Alabama", 40, y, 8, "f1", 52),
+      item("5.89", 180, y, 8, "f1", 22),
+      item(String(169 + i), 204.2, y, 8, "f1", 18),
+      item("12", 280, y, 8, "f1", 14),
+    ]);
+  }
+  const lines = buildLines(rows.flat(), { transform: VP, fonts: FONTS }).lines;
+  const table = detectStreamRuns(lines).find((b) => b.type === "table");
+  assert.ok(table);
+  assert.equal(table.cols, 4);
+  const grouped = [];
+  for (let i = 0; i < 6; i++) {
+    const y = 700 - i * 14;
+    grouped.push([
+      item("State", 40, y, 8, "f1", 36),
+      item("10,", 180, y, 8, "f1", 16),
+      item("533", 197, y, 8, "f1", 16),
+      item("8", 280, y, 8, "f1", 8),
+    ]);
+  }
+  const kept = detectStreamRuns(buildLines(grouped.flat(), { transform: VP, fonts: FONTS }).lines).find((b) => b.type === "table");
+  assert.ok(kept);
+  assert.equal(kept.cols, 3);
 });

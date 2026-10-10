@@ -312,7 +312,7 @@ export function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW
     const spansHeight = ys.length >= 2 && ys[ys.length - 1] - ys[0] >= 0.9 * (vy1 - vy0);
     if (xs.length >= 2 && ys.length >= 2 && spansWidth && spansHeight) grid = buildGrid(comp, xs, ys);
     if (grid && grid.coverage >= 0.4 && grid.rows >= 2 && grid.cols >= 2) {
-      const table = assembleTable(grid, comp, boxes, words, ysAll, usedWords);
+      const table = assembleTable(grid, comp, boxes, words, ysAll, usedWords, rules);
       if (table) {
         // Tick marks in a graph's grid are not cells. Leave the rules for the figure pass.
         if (chartGrid(table)) continue;
@@ -442,13 +442,25 @@ export function splitRowsByText(grid, words) {
       }).length;
       if (aligned.length >= 2 && numericCols.length >= 1 && numericRows >= 2) {
         // A line in one column set tighter than the row pitch is a wrapped cell, not a row.
-        const pitches = rowsIn.slice(1).map((r, i) => r.base - rowsIn[i].base).sort((a, b) => a - b);
+        const pitches = rowsIn.slice(1).map((row, i) => row.base - rowsIn[i].base).sort((a, b) => a - b);
         const pitch = pitches[pitches.length >> 1];
-        const colsOf = (r) => new Set(r.words.map(colOf).filter((c) => c >= 0));
+        const colsOf = (row) => new Set(row.words.map(colOf).filter((c) => c >= 0));
+        const dataLine = (row) => {
+          const cs = new Set();
+          for (const w of row.words) { const c = colOf(w); if (c >= 0 && isNumericText(w.text)) cs.add(c); }
+          return cs.size >= 2;
+        };
         for (let i = 1; i < rowsIn.length; i++) {
           const a = rowsIn[i - 1]; const b = rowsIn[i];
-          const tight = b.base - a.base < 0.7 * pitch;
+          const gap = b.base - a.base;
+          const tight = gap < 0.7 * pitch;
           if (tight && (colsOf(a).size <= 1 || colsOf(b).size <= 1)) continue;
+          // A hyphenated head ("Mm. of" / "mer-") or a unit line wraps across
+          // several columns. A section label stacked on the next section label
+          // is one column and stays its own row.
+          const wrapped = colsOf(a).size >= 2 && colsOf(b).size >= 2
+            || a.words.some((w) => /[-–]$/.test(String(w.text || "").trim()));
+          if (!dataLine(a) && !dataLine(b) && wrapped && gap <= Math.max(1.2 * Math.max(a.size, b.size), 0.9 * pitch)) continue;
           cuts.push((a.base + 0.22 * a.size + b.base - 0.8 * b.size) / 2);
         }
       } else cuts = proseRowCuts(rowsIn, colOf);
@@ -524,8 +536,110 @@ function frameRows(cells, rows, cols) {
   return drop;
 }
 
-function assembleTable(gridIn, segs, boxes, words, ysAll, usedWords) {
-  const grid = splitRowsByText(gridIn, words);
+function verticalRule(rule) {
+  if (!rule) return false;
+  if (rule.axis === "v") return true;
+  if (rule.axis === "h") return false;
+  return Math.abs(rule.x1 - rule.x0) + 0.5 < Math.abs(rule.y1 - rule.y0);
+}
+
+// A vertical that does not reach the top and bottom rules is still a column
+// when body words sit on both sides of it and almost none straddle it.
+function partialColumnCuts(grid, rules, words) {
+  const { xs, ys } = grid;
+  const y0 = ys[0];
+  const y1 = ys[ys.length - 1];
+  const height = y1 - y0;
+  const cuts = [];
+  for (const rule of rules || []) {
+    if (!verticalRule(rule)) continue;
+    const x = (rule.x0 + rule.x1) / 2;
+    if (x <= xs[0] + 3 || x >= xs[xs.length - 1] - 3) continue;
+    if (xs.some((v) => Math.abs(v - x) <= 3.5)) continue;
+    if (cuts.some((v) => Math.abs(v.x - x) <= 3.5)) continue;
+    const ry0 = Math.min(rule.y0, rule.y1);
+    const ry1 = Math.max(rule.y0, rule.y1);
+    const overlap = Math.min(ry1, y1) - Math.max(ry0, y0);
+    if (overlap < Math.max(16, 0.22 * height)) continue;
+    const left = new Set();
+    const right = new Set();
+    let straddle = 0;
+    for (const w of words || []) {
+      const cy = (w.base ?? 0) - 0.3 * (w.size || 8);
+      if (cy <= y0 || cy >= y1) continue;
+      const key = Math.round(cy);
+      if (w.x1 <= x - 0.6) left.add(key);
+      else if (w.x0 >= x + 0.6) right.add(key);
+      else if (w.x0 < x - 1 && w.x1 > x + 1) straddle++;
+    }
+    if (left.size < 3 || right.size < 3 || straddle > 1) continue;
+    cuts.push({ x, y0: Math.max(ry0, y0), y1: Math.min(ry1, y1) });
+  }
+  return cuts;
+}
+
+function insertColumn(grid, cut) {
+  const { xs, ys, top, left } = grid;
+  let at = xs.findIndex((v) => v > cut.x);
+  if (at < 1) return grid;
+  const xs2 = xs.slice();
+  xs2.splice(at, 0, cut.x);
+  const cols = xs2.length - 1;
+  const rows = ys.length - 1;
+  const splitCol = at - 1;
+  const newTop = [];
+  for (let r = 0; r <= rows; r++) {
+    newTop[r] = [];
+    for (let c = 0; c < cols; c++) {
+      const oldC = c > splitCol ? c - 1 : c;
+      newTop[r][c] = top[r][oldC];
+    }
+  }
+  const newLeft = [];
+  for (let r = 0; r < rows; r++) {
+    newLeft[r] = [];
+    const mid = (ys[r] + ys[r + 1]) / 2;
+    const ruled = mid >= cut.y0 - 1 && mid <= cut.y1 + 1;
+    for (let c = 0; c <= cols; c++) {
+      if (c === at) { newLeft[r][c] = ruled; continue; }
+      const oldC = c > at ? c - 1 : c;
+      newLeft[r][c] = left[r][oldC];
+    }
+  }
+  return { ...grid, xs: xs2, cols, top: newTop, left: newLeft };
+}
+
+// A last column whose right rule was not drawn: words continue one pitch
+// past the frame, on the same baselines, and are short numbers or ids.
+function extendRightEdge(grid, words) {
+  const { xs, ys } = grid;
+  const gaps = xs.slice(1).map((x, i) => x - xs[i]).filter((g) => g > 4).sort((a, b) => a - b);
+  const pitch = gaps.length ? gaps[gaps.length >> 1] : 0;
+  if (pitch < 8 || pitch > 80) return grid;
+  const right = xs[xs.length - 1];
+  const y0 = ys[0];
+  const y1 = ys[ys.length - 1];
+  const out = (words || []).filter((w) => {
+    const cy = (w.base ?? 0) - 0.3 * (w.size || 8);
+    // The missing rule sits just after the frame. A gutter to the next table is wider.
+    return cy > y0 && cy < y1 && w.x0 > right + 0.4 && w.x0 < right + Math.max(8, 0.55 * pitch) && String(w.text || "").trim().length <= 10;
+  });
+  const bases = new Set(out.map((w) => Math.round((w.base || 0) / 2)));
+  const numeric = out.filter((w) => /\d/.test(w.text || "")).length;
+  if (bases.size < 3 || numeric < 0.5 * out.length) return grid;
+  const x1 = Math.max(...out.map((w) => w.x1)) + 1.5;
+  const cols = xs.length;
+  const rows = ys.length - 1;
+  const top = grid.top.map((row) => [...row, row[row.length - 1]]);
+  const left = grid.left.map((row) => [...row, false]);
+  return { ...grid, xs: [...xs, x1], cols, rows, top, left };
+}
+
+function assembleTable(gridIn, segs, boxes, words, ysAll, usedWords, pageRules) {
+  let shaped = gridIn;
+  for (const cut of partialColumnCuts(gridIn, pageRules, words)) shaped = insertColumn(shaped, cut);
+  shaped = extendRightEdge(shaped, words);
+  const grid = splitRowsByText(shaped, words);
   const { xs, ys, rows, cols, top, left } = grid;
   const uf = new UF(rows * cols);
   const id = (r, c) => r * cols + c;
@@ -595,12 +709,51 @@ function assembleTable(gridIn, segs, boxes, words, ysAll, usedWords) {
     newYs.push(ys[rows]);
     for (let r = rows - 1; r >= 0; r--) if (!framed.has(r)) { newYs[newYs.length - 1] = ys[r + 1]; break; }
     for (const k of keep) { k.r = rowMap[k.r]; k.bbox = [round(xs[k.c]), round(newYs[k.r]), round(xs[k.c + k.colSpan]), round(newYs[k.r + k.rowSpan])]; }
-    return finishTable({ xs, ys: newYs, rows: newYs.length - 1, cols, coverage: grid.coverage }, keep, boxes, ysAll, usedWords, splitFixes, released);
+    return finishTable({ xs, ys: newYs, rows: newYs.length - 1, cols, coverage: grid.coverage }, keep, boxes, ysAll, usedWords, splitFixes, released, pageRules);
   }
-  return finishTable(grid, cells, boxes, ysAll, usedWords, splitFixes, released);
+  return finishTable(grid, cells, boxes, ysAll, usedWords, splitFixes, released, pageRules);
 }
 
-function finishTable(grid, cells, boxes, ysAll, usedWords, splitFixes, released) {
+function rowCells(cells, r) {
+  return cells.filter((k) => r >= k.r && r < k.r + (k.rowSpan || 1));
+}
+
+function rowNumericCount(cells, r) {
+  return rowCells(cells, r).filter((k) => (k.colSpan || 1) === 1 && isNumericText(k.text)).length;
+}
+
+function rowIsLabel(cells, r) {
+  const texts = rowCells(cells, r).map((k) => String(k.text || "").trim()).filter(Boolean);
+  if (!texts.length) return false;
+  return rowNumericCount(cells, r) < 2;
+}
+
+function idHeaderRow(cells, r) {
+  const texts = cells.filter((k) => k.r === r && (k.colSpan || 1) === 1).map((k) => String(k.text || "").trim()).filter(Boolean);
+  const ids = texts.filter((t) => /^\d{4,6}$/.test(t));
+  // One cell may hold a number that belongs to the row below. The rest are plain ids.
+  return ids.length >= 4 && ids.length >= texts.length - 1 && ids.length / texts.length >= 0.6;
+}
+
+function ruleUnderRow(rules, grid, r) {
+  const y = grid.ys?.[r + 1];
+  if (y == null) return false;
+  const x0 = grid.xs[0];
+  const x1 = grid.xs[grid.xs.length - 1];
+  const width = x1 - x0;
+  if (!(width > 0)) return false;
+  let cover = 0;
+  for (const rule of rules || []) {
+    const horiz = rule.axis === "h" || Math.abs(rule.y1 - rule.y0) + 0.5 < Math.abs(rule.x1 - rule.x0);
+    if (!horiz) continue;
+    const ry = (rule.y0 + rule.y1) / 2;
+    if (Math.abs(ry - y) > 4) continue;
+    cover += Math.max(0, Math.min(rule.x1, x1) - Math.max(rule.x0, x0));
+  }
+  return cover >= 0.45 * width;
+}
+
+function finishTable(grid, cells, boxes, ysAll, usedWords, splitFixes, released, pageRules) {
   const { xs, ys, rows, cols } = grid;
   const bx0 = xs[0]; const bx1 = xs[cols]; const by0 = ys[0]; const by1 = ys[rows];
   for (const cell of cells) for (const w of cell.words) usedWords.add(w);
@@ -633,11 +786,31 @@ function finishTable(grid, cells, boxes, ysAll, usedWords, splitFixes, released)
   let headerRows = 0;
   while (headerRows < rows - 1 && (rowShaded[headerRows] || rowBold[headerRows])) headerRows++;
   if (!headerRows && ysAll[1] && ysAll[1].double) headerRows = 1;
-  // A header cell spanning into body rows extends the header band.
-  for (const k of cells) if (k.r < headerRows && k.r + k.rowSpan > headerRows && k.r + k.rowSpan < rows) headerRows = k.r + k.rowSpan;
+  for (const cell of cells) cell.text = cellTextOf(cell.words);
+  // Leading rows of labels (a name line, then a unit line) are the header even
+  // when nothing is bold or shaded. An identifier row under them (lab numbers)
+  // is too, when a rule closes it and every cell is a plain id.
+  const numericLater = (from) => {
+    for (let r = from; r < rows; r++) if (rowNumericCount(cells, r) >= 2) return true;
+    return false;
+  };
+  if (!headerRows) {
+    let lead = 0;
+    while (lead < rows - 1 && lead < 4 && rowIsLabel(cells, lead)) lead++;
+    if (lead > 0 && numericLater(lead)) headerRows = lead;
+  }
+  while (headerRows < rows - 1 && headerRows < 4 && rowIsLabel(cells, headerRows) && rowCells(cells, headerRows).filter((k) => String(k.text || "").trim()).length >= 2 && numericLater(headerRows + 1)) headerRows++;
+  if (headerRows > 0 && headerRows < rows - 1 && headerRows < 4 && idHeaderRow(cells, headerRows) && ruleUnderRow(pageRules, grid, headerRows)) headerRows++;
+  // A header cell spanning into body rows extends the header band, but not
+  // through a row that already holds the numbers.
+  for (const k of cells) {
+    if (!(k.r < headerRows && k.r + k.rowSpan > headerRows && k.r + k.rowSpan < rows)) continue;
+    let end = k.r + k.rowSpan;
+    while (end > headerRows && rowNumericCount(cells, end - 1) >= 2) end--;
+    if (end > headerRows) headerRows = end;
+  }
   let withText = 0;
   for (const cell of cells) {
-    cell.text = cellTextOf(cell.words);
     cell.header = cell.r < headerRows;
     cell.numeric = isNumericText(cell.text);
     cell.align = alignOf(cell);
@@ -670,6 +843,7 @@ function tokensSplitColumns(words, xs, ys, r0, r1, c0, c1) {
   if (!rows.length) return false;
   const inner = xs.slice(c0 + 1, c1 + 1);
   let split = 0;
+  let considered = 0;
   for (const row of rows) {
     const chars = Math.max(1, row.words.reduce((n, w) => n + w.text.length, 0));
     const charW = row.words.reduce((n, w) => n + (w.x1 - w.x0), 0) / chars || 0.5 * row.size;
@@ -680,7 +854,7 @@ function tokensSplitColumns(words, xs, ys, r0, r1, c0, c1) {
       if (cur && w.x0 - cur.x1 < threshold) { cur.x1 = Math.max(cur.x1, w.x1); }
       else { cur = { x0: w.x0, x1: w.x1 }; tokens.push(cur); }
     }
-    if (tokens.length < 2) return false;
+    if (tokens.length < 2) continue;
     const cols = new Set();
     for (const t of tokens) {
       if (inner.some((x) => t.x0 < x - 1 && t.x1 > x + 1)) return false;
@@ -690,8 +864,11 @@ function tokensSplitColumns(words, xs, ys, r0, r1, c0, c1) {
       cols.add(c);
     }
     if (cols.size >= 2) split++;
+    considered++;
   }
-  return split >= Math.ceil(rows.length * 0.5);
+  if (!considered) return false;
+  // A one-token row is a spanning head. It does not veto a split the other rows show.
+  return split >= Math.ceil(considered * 0.5);
 }
 
 // A ruled grid whose cells are tick marks (".2", "—", "10") is a graph, not a table.

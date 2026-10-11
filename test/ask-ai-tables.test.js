@@ -140,3 +140,13 @@ test("answer card draws the source edge for a part that only carries the PDF url
   });
   assert.deepEqual(edges.map((e) => [e.from, e.to]), [["ans", "pxdLab00"], ["ans", "pxdLab04"]]);
 });
+
+test("a Markdown heading becomes a bold paragraph in the dialog and the card, never a raw ## line", async () => {
+  const { parseAnswer, answerBlocks } = await import("../src/model/ai-context.js");
+  const parts = parseAnswer("## Comparison\n\nOur table is stricter.\n\n### **Gaps** ###\n- Stage mismatch.");
+  assert.deepEqual(parts.slice(0, 2).map((p) => [p.type, p.text]), [["p", "**Comparison**"], ["p", "Our table is stricter."]]);
+  assert.equal(parts[2].text, "**Gaps**");
+  const blocks = answerBlocks("## Comparison\n\nText.");
+  assert.equal(blocks[0].text, "**Comparison**");
+  assert.ok(!blocks.some((b) => /^#/.test(b.text)));
+});

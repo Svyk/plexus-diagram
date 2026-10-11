@@ -52489,6 +52489,13 @@ function parseAnswer(answer) {
         continue;
       }
     }
+    const heading = /^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/.exec(raw);
+    if (heading && !item) {
+      flush();
+      endList();
+      out.push({ type: "p", text: `**${heading[1].replace(/^\*\*(.*)\*\*$/, "$1")}**`, heading: true });
+      continue;
+    }
     if (item) {
       flush();
       const indent = indentOf(item);

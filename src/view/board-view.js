@@ -143,6 +143,8 @@ import {
 } from "../model/section6.js";
 import { mountLater, mountPrintSheet } from "./later-views.js";
 import { cellElementOf, cellUidOf, isTableCard } from "./table-cells.js";
+import { CHANGE_CAP, changedSince, createVisitStore } from "../model/changes.js";
+import { commentTargetUid } from "../model/comments.js";
 import { endpointUnderPointer, focusEnds, imageSourceOf, pickSmallestRegion, regionDropPlan, regionUidFromHover, wireStart } from "../model/endpoints.js";
 import { imageRegionFrac, paintedRectOfElement } from "../model/image-region.js";
 
@@ -934,6 +936,48 @@ function buildBoardView(onFail, {
   const storage = globalThis.localStorage;
   let dateMode = "attribute";
   let strengthOn = false;
+  // "Changed since last visit": the stamp is per board per device; the pull runs in idle and only while the toggle is on.
+  const visitStore = createVisitStore({ storage, graph });
+  const prevVisit = visitStore.get(boardUid);
+  if (prevVisit == null) visitStore.set(boardUid, Date.now());
+  let changedOn = false;
+  let changedRows = [];
+  let changedGen = 0;
+  const changedModel = () => ({ on: changedOn, hasBaseline: prevVisit != null, since: prevVisit, rows: changedRows });
+  const refreshChanged = () => {
+    if (disposed) return;
+    const gen = ++changedGen;
+    if (!changedOn || prevVisit == null) {
+      changedRows = [];
+      itemsR.setChanged(null);
+      panel.refreshChanged?.();
+      return;
+    }
+    timers.idle(() => {
+      if (disposed || gen !== changedGen) return;
+      const b = board();
+      if (!b || typeof host?.editTimes !== "function") return;
+      const cards = [];
+      for (const item of b.items.values()) {
+        if (item.type !== "card") continue;
+        cards.push(item);
+        if (cards.length >= CHANGE_CAP) break;
+      }
+      const uids = [];
+      for (const card of cards) uids.push(card.uid, commentTargetUid(card) || card.uid);
+      let pulled;
+      try { pulled = host.editTimes(uids); } catch { pulled = null; }
+      if (!(pulled instanceof Map)) return;
+      const nodes = new Map();
+      for (const card of cards) {
+        const parts = [pulled.get(card.uid), pulled.get(commentTargetUid(card) || card.uid)].filter(Boolean);
+        if (parts.length) nodes.set(card.uid, parts);
+      }
+      changedRows = changedSince(nodes, prevVisit, (uid) => plainText(b.items.get(uid)?.title || b.items.get(uid)?.string || "", 80) || "Card");
+      itemsR.setChanged(new Set(changedRows.map((row) => row.uid)));
+      panel.refreshChanged?.();
+    });
+  };
   let dustPeriod = "off";
   let strengthScores = null;
   let dustAges = null;
@@ -1574,7 +1618,15 @@ function buildBoardView(onFail, {
       });
       return false;
     },
-    onBadgeClick: (uid) => { ctl.select([uid]); panel.open("related"); },
+    onBadgeClick: (uid, action) => {
+      if (action === "comments") {
+        const item = board()?.items.get(uid);
+        const thread = item ? badgeCache.get(badgeKeyOf(item))?.stats?.commentThread : null;
+        if (thread && host?.openCommentThread?.(thread)) return;
+      }
+      ctl.select([uid]);
+      panel.open("related");
+    },
     bt,
     onTaskChip: (uid, kind, anchor) => taskPop.open(uid, kind, anchor),
     onPageLayout: (uid) => { if (blockCards.has(uid)) scheduleAnchors(); },
@@ -4167,7 +4219,7 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true };
-      case "board-menu": return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod };
+      case "board-menu": return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -4186,7 +4238,7 @@ function buildBoardView(onFail, {
           } catch { /* keep the card string */ }
         }
         const officeFile = officeTargetFromText(officeText);
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -4484,6 +4536,32 @@ function buildBoardView(onFail, {
         };
         if (dateMode === "attribute" || (timelineRows && timelineCacheUid === b.uid)) write(timelineRows || []);
         else void loadTimelineRows().then((rows) => { if (!disposed) write(rows); });
+        break;
+      }
+      case "changed-since": {
+        changedOn = !changedOn;
+        refreshChanged();
+        if (changedOn) panel.open("changed");
+        break;
+      }
+      case "comment": {
+        const target = commentTargetUid(item);
+        if (!target || !item) break;
+        askView({
+          caption: "",
+          showCopy: false,
+          dialogLabel: "Comment",
+          onSave: ({ caption }) => {
+            const text = String(caption || "").trim();
+            if (!text) return;
+            Promise.resolve(host.addComment(target, text)).then((res) => {
+              if (disposed || !res) return;
+              badgeCache.delete(badgeKeyOf(item));
+              refreshBadges();
+              host.openCommentThread?.(res.anchorUid);
+            }).catch(() => { if (!disposed) toast("Could not add the comment"); });
+          },
+        });
         break;
       }
       case "lens-strength": {
@@ -5516,6 +5594,9 @@ function buildBoardView(onFail, {
         } catch { /* a missing day is an empty list */ }
         return { rows: [] };
       },
+      listChanged: () => changedModel(),
+      loadChanged: () => refreshChanged(),
+      selectChanged: (uid) => { fitSelection([uid]); ctl.select([uid]); },
       listTrails: () => board()?.trails || [],
       activeTrail: () => currentTrail(board())?.uid || "",
       stopTitle: (ref) => board()?.items.get(ref)?.title || ref,
@@ -8414,6 +8495,7 @@ function buildBoardView(onFail, {
       step(() => { offBasketPill(); basketPill?.remove(); basketPill = null; });
       step(() => closeHalo());
       step(() => { regionMark?.destroy?.(); regionMark = null; });
+      step(() => visitStore.set(boardUid, Date.now()));
       step(() => closeViewDialog());
       step(() => closeHighlightDialog());
       step(() => closeLens());

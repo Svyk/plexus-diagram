@@ -10,6 +10,7 @@ import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColo
 import { isQueryString } from "../model/query.js";
 import { dueChip, isTaskString, taskAttrId, taskMeta, taskNamesSig } from "../model/tasks.js";
 import { commentCount } from "../model/section6.js";
+import { commentBadgeCount } from "../model/comments.js";
 import { LINKED_REF_CAP, linkedRefCard, linkedRefLabel } from "../model/refs.js";
 import { boardPreview, descendantsOf, sectionNoteUid } from "../model/board.js";
 import { CARD_MIME } from "./panel.js";
@@ -4601,7 +4602,13 @@ export function createItemRenderer({
     return out;
   };
 
+  let changedUids = null;
   const renderBadges = (rec) => {
+    const changed = Boolean(changedUids?.has(rec.uid));
+    if (changed !== (rec.changedPaint === true)) {
+      rec.changedPaint = changed;
+      rec.el.classList.toggle("pxd-item--changed", changed);
+    }
     const item = lastBoard?.items.get(rec.uid);
     const visible = showBadges && lod === "detail" && rec.type === "card" && item && editing?.uid !== rec.uid;
     const clear = () => { if (rec.badgeEl) { rec.badgeEl.remove(); rec.badgeEl = null; } rec.badgeKey = null; };
@@ -4613,8 +4620,8 @@ export function createItemRenderer({
     if (regionCount > 0) chips.push({ cls: "regions", text: regionBadge(regionCount), title: `${regionCount} ${regionCount === 1 ? "region" : "regions"}` });
     if (info?.boards > 0) chips.push({ cls: "boards", text: `on ${countText(info.boards, "board", "boards")}`, title: "Shown on other boards", action: "boards" });
     if (info && (info.open > 0 || info.done > 0)) chips.push({ cls: "todo", text: `${info.open || 0}/${info.done || 0}`, title: `${info.open || 0} open, ${info.done || 0} done` });
-    const comments = commentCount(lastBoard, rec.uid);
-    if (comments > 0) chips.push({ cls: "comments", text: `${comments}`, title: `${comments} comments` });
+    const comments = commentBadgeCount(info?.comments ? { count: info.comments } : null, commentCount(lastBoard, rec.uid));
+    if (comments > 0) chips.push({ cls: "comments", text: `${comments}`, title: `${comments} ${comments === 1 ? "comment" : "comments"}`, ...(info?.commentThread ? { action: "comments" } : {}) });
     const task = isTaskCard(item) ? taskMeta(item.string, item.content) : null;
     if (task) {
       if (taskChips !== "none") chips.unshift(...taskChipsOf(task));
@@ -4653,6 +4660,10 @@ export function createItemRenderer({
     rec.badgeKey = key;
   };
 
+  const setChanged = (set) => {
+    changedUids = set instanceof Set && set.size ? set : null;
+    for (const rec of shells.values()) renderBadges(rec);
+  };
   const setBadges = (map) => {
     badgeMap = map instanceof Map ? map : new Map();
     if (showBadges) for (const rec of shells.values()) renderBadges(rec);
@@ -5592,6 +5603,7 @@ export function createItemRenderer({
     measureContent,
     toggleKids,
     setBadges,
+    setChanged,
     setShowBadges,
     setTrailBadges,
     setTaskChips,

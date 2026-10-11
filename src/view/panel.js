@@ -9,6 +9,7 @@ import { PART_LABELS, partSnippet } from "../model/parts-search.js";
 import { COLOR_ANCHORS, COLOR_NAMES } from "../model/color.js";
 import { CARD_MIME, PARSE_MIME, parseDropPayload } from "../model/drop.js";
 import { dailyTitle, startOfDay, stepDay } from "../model/journal.js";
+import { timeAgo } from "../model/changes.js";
 import { minimapSvg } from "./minimap-svg.js";
 
 export { CARD_MIME, parseDropPayload };
@@ -43,7 +44,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       if ((type === "keydown" || type === "keyup") && event.target?.closest?.(".pxd-panel__info-mount")) return;
       event.stopPropagation();
       // Trails controls share this listener so listenersPerBoard does not rise.
-      if (type === "click") trailClick(event);
+      if (type === "click") { trailClick(event); changedClick(event); }
       else if (type === "pointerdown") trailPointerDown(event);
       else if (type === "keydown") trailKey(event);
     });
@@ -91,7 +92,8 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const tabJournal = tabBtn("journal", "Journal", "calendar");
   const tabInfo = tabBtn("info", "Info", "info-sign");
   const tabTrails = tabBtn("trails", "Trails", "flows");
-  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, journal: tabJournal, info: tabInfo, trails: tabTrails };
+  const tabChanged = tabBtn("changed", "Changed", "history");
+  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, journal: tabJournal, info: tabInfo, trails: tabTrails, changed: tabChanged };
   const closeBtn = el("button", "pxd-btn pxd-iconbtn pxd-panel__close", head);
   closeBtn.type = "button";
   closeBtn.title = "Close";
@@ -295,6 +297,10 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   trailsNew.type = "button";
   trailsNew.dataset.trailAction = "new";
   const trailsList = el("div", "pxd-trails__list", trailsPane);
+  const changedPane = el("div", "pxd-panel__pane pxd-panel__pane--changed", panel);
+  changedPane.style.display = "none";
+  const changedHead = el("div", "pxd-panel__empty", changedPane);
+  const changedList = el("div", "pxd-panel__list", changedPane);
   let trailSig = "";
   let trailDrag = null;
   const infoTabsBar = el("div", "pxd-panel__infotabs", infoPane);
@@ -628,12 +634,43 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     journalPane.style.display = tab === "journal" ? "" : "none";
     infoPane.style.display = tab === "info" ? "" : "none";
     trailsPane.style.display = tab === "trails" ? "" : "none";
+    changedPane.style.display = tab === "changed" ? "" : "none";
+    if (tab === "changed") { on.loadChanged?.(); renderChanged(); }
     if (tab === "related") void loadRelated();
     if (tab === "boards") void loadBoards();
     if (tab === "outline") renderOutline();
     if (tab === "journal") void loadJournal();
     if (tab === "info") void loadInfo();
     if (tab === "trails") renderTrails();
+  };
+  const renderChanged = () => {
+    let model = null;
+    try { model = on.listChanged?.() || null; } catch { model = null; }
+    changedList.replaceChildren();
+    if (!model || !model.on) {
+      changedHead.textContent = "Turn on Changed since last visit in the board menu";
+      return;
+    }
+    if (!model.hasBaseline) {
+      changedHead.textContent = "No earlier visit on this device yet";
+      return;
+    }
+    const rows = model.rows || [];
+    changedHead.textContent = `Changed (${rows.length})`;
+    for (const row of rows) {
+      const node = el("button", "pxd-btn pxd-changed__row", changedList, row.title || "Card");
+      node.type = "button";
+      node.dataset.changed = row.uid;
+      node.setAttribute("data-changed", row.uid);
+      const meta = el("span", "pxd-changed__meta", node, `${row.user ? `${row.user}, ` : ""}${timeAgo(row.time)}`);
+      meta.setAttribute("aria-hidden", "true");
+    }
+  };
+  const changedClick = (event) => {
+    const node = event.target?.closest?.("[data-changed]");
+    if (!node || !changedPane.contains(node)) return;
+    event.preventDefault?.();
+    on.selectChanged?.(node.dataset.changed || node.getAttribute?.("data-changed"));
   };
   const renderTrails = () => {
     let trails = [];
@@ -1152,6 +1189,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       refreshTimer = timers.later(() => { refreshTimer = null; searchNow(); }, 300);
     },
     refreshBoards() { if (tab === "boards") void loadBoards(); },
+    refreshChanged() { if (tab === "changed" && api.isOpen()) renderChanged(); },
     refreshTrails() {
       if (tab !== "trails" || !api.isOpen()) return;
       trailSig = "";

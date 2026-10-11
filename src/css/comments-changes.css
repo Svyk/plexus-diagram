@@ -1,0 +1,40 @@
+.pxd-root .pxd-badge-chip.pxd-badge-chip--comments {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pxd-root .pxd-badge-chip.pxd-badge-chip--comments::before {
+  content: "";
+  width: 8px;
+  height: 6px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px 3px 3px 0;
+  box-sizing: content-box;
+}
+
+.pxd-root button.pxd-badge-chip.pxd-badge-chip--comments {
+  pointer-events: auto;
+  cursor: pointer;
+  border-color: var(--pxd-accent);
+  color: var(--pxd-accent);
+}
+
+.pxd-root .pxd-item.pxd-item--changed {
+  outline: 2px solid var(--pxd-accent);
+  outline-offset: 2px;
+}
+
+.pxd-root .pxd-changed__row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.pxd-root .pxd-changed__meta {
+  display: block;
+  font-size: 11px;
+  color: var(--pxd-muted);
+}

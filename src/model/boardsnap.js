@@ -100,7 +100,7 @@ export function boardStamp(board, rects = null) {
 }
 
 // Cells of a Roam {{[[table]]}} card: each row is a chain of first children.
-export function tableGrid(item, { rows: maxRows = 12, cols: maxCols = 8 } = {}) {
+export function tableGrid(item, { rows: maxRows = 30, cols: maxCols = 10 } = {}) {
   const rows = [];
   for (const row of kidsOf({ ":block/children": item?.content })) {
     if (rows.length >= maxRows) break;

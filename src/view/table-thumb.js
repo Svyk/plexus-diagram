@@ -3,9 +3,9 @@
 // where the card used to be a grey "Table · N rows" box.
 
 export const THUMB_W = 320;
-const ROW_H = 20;
-const PAD = 6;
-const MAX_H = 260;
+export const THUMB_MAX = 480;
+const ROW_H = 24;
+const PAD = 7;
 
 export function tableThumbKey(item, sig) {
   return item?.uid && sig ? `t:${item.uid}:${sig}` : "";
@@ -40,17 +40,26 @@ function fit(g, text, max) {
   return lo ? `${s.slice(0, lo)}…` : "";
 }
 
+// The PNG box for a card: its own aspect, at most THUMB_MAX on the long side.
+export function thumbBox(item) {
+  const w = Number(item?.w) > 0 ? Number(item.w) : THUMB_W;
+  const h = Number(item?.h) > 0 ? Number(item.h) : 200;
+  const k = Math.min(1, THUMB_MAX / Math.max(w, h));
+  return { width: Math.max(120, Math.round(w * k)), height: Math.max(48, Math.round(h * k)) };
+}
+
 // Returns a PNG data URL, or "" when there is no canvas or nothing to draw.
-export function renderTableThumb(doc, grid, { dark = false, width = THUMB_W } = {}) {
+// Rows past the box height are not drawn; the card's header already says how many there are.
+export function renderTableThumb(doc, grid, { dark = false, width = THUMB_W, height: boxH = 0 } = {}) {
   if (!doc || !Array.isArray(grid) || !grid.length) return "";
   const widths = columnWidths(grid, width);
   if (!widths.length) return "";
-  const height = Math.min(MAX_H, grid.length * ROW_H + 1);
+  const height = Math.min(boxH > 0 ? boxH : grid.length * ROW_H + 1, grid.length * ROW_H + 1);
   let canvas;
   try { canvas = doc.createElement("canvas"); } catch { return ""; }
   const g = canvas?.getContext?.("2d");
   if (!g || typeof canvas.toDataURL !== "function") return "";
-  const scale = 1.5;
+  const scale = 1;
   canvas.width = Math.round(width * scale);
   canvas.height = Math.round(height * scale);
   g.scale(scale, scale);
@@ -67,7 +76,7 @@ export function renderTableThumb(doc, grid, { dark = false, width = THUMB_W } = 
       g.fillStyle = head;
       g.fillRect(0, y, width, ROW_H);
     }
-    g.font = `${r === 0 ? "600 " : ""}11px -apple-system, system-ui, sans-serif`;
+    g.font = `${r === 0 ? "600 " : ""}13px -apple-system, system-ui, sans-serif`;
     g.fillStyle = ink;
     let x = 0;
     widths.forEach((w, c) => {

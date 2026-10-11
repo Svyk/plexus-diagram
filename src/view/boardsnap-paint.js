@@ -19,7 +19,7 @@ import {
 } from "../model/boardsnap.js";
 
 export const SNAP_CLASS = "pxd-item--snap";
-const CHROME_KEEP = /(^|\s)(pxd-toolbar|pxd-rail|pxd-palette|pxd-dock|pxd-mode|pxd-minimap|pxd-props|pxd-resize-grip|pxd-tabs)(\s|$)/;
+const CHROME_KEEP = /(^|\s)(pxd-toolbar|pxd-rail|pxd-palette|pxd-dock|pxd-mode|pxd-minimap|pxd-props|pxd-resize-grip|pxd-tabs|pxd-fstabs)(\s|$)/;
 export const SNAP_ROOT_CLASS = "pxd-snap-root";
 
 const finite = (n) => typeof n === "number" && Number.isFinite(n);
@@ -40,7 +40,7 @@ function rootVars(root) {
 
 const skipChrome = (el) => {
   const cls = typeof el.getAttribute === "function" ? String(el.getAttribute("class") || "") : "";
-  return /(^|\s)(pxd-ports|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip)(\s|$)/.test(cls);
+  return /(^|\s)(pxd-ports|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip|pxd-table-thumb)(\s|$)/.test(cls);
 };
 
 // Reads classes, inline styles, attributes and text only. No layout read, no Roam call.

@@ -16,7 +16,7 @@ import { isTextEntryTarget } from "./view/cards.js";
 import { createBoardSnapStore } from "./host/boardsnap-store.js";
 import { armSnapGestures, captureBoardSnap, paintBoardSnap, removeBoardSnap, resolveSnapViewport } from "./view/boardsnap-paint.js";
 import { itemSig, tableGrid } from "./model/boardsnap.js";
-import { renderTableThumb, tableThumbKey } from "./view/table-thumb.js";
+import { renderTableThumb, tableThumbKey, thumbBox } from "./view/table-thumb.js";
 import { applyFullscreenChrome } from "./view/fullscreen.js";
 import { assignDeepLink, hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
@@ -835,7 +835,8 @@ export async function installPlexusDiagram({
   };
   const thumbKeyOf = (item, dark) => {
     const base = tableThumbKey(item, itemSig(item));
-    return base ? `${base}:${dark ? "d" : "l"}` : "";
+    const box = thumbBox(item);
+    return base ? `${base}:${box.width}x${box.height}:${dark ? "d" : "l"}` : "";
   };
   function tableThumbFor(rec, item) {
     if (!snapAllowed()) return null;
@@ -853,11 +854,25 @@ export async function installPlexusDiagram({
       thumbAsked.delete(key);
       if (stopped || snapStore.thumb(key)) return;
       let url = "";
-      try { url = renderTableThumb(doc, tableGrid(item), { dark }); } catch { url = ""; }
+      try { url = renderTableThumb(doc, tableGrid(item), { dark, ...thumbBox(item) }); } catch { url = ""; }
       if (!url || !snapStore.putThumb(key, url)) return;
       try { rec.view?.repaintThumb?.(item.uid); } catch { /* the card mounted its table meanwhile */ }
       scheduleSnap(rec);
     });
+  }
+  // One snapshot per mount kind: a sidebar copy has its own width, chrome and camera.
+  // The main copy's key is the bare uid; another kind falls back to it, cards only.
+  function snapKindOf(rec) {
+    if (rec?.fullscreen) return "fullscreen";
+    try { return inRightSidebar(rec?.native) ? "sidebar" : "main"; } catch { return "main"; }
+  }
+  const snapKey = (uid, kind) => (kind && kind !== "main" ? `${uid}@${kind}` : uid);
+  function snapFor(rec, uid) {
+    const kind = snapKindOf(rec);
+    const own = snapStore.get(snapKey(uid, kind));
+    if (own || kind === "main") return own;
+    const main = snapStore.get(uid);
+    return main ? { ...main, chrome: [] } : null;
   }
   function clearSnapTimer(rec) {
     const timer = snapTimers.get(rec);
@@ -873,6 +888,7 @@ export async function installPlexusDiagram({
     if (src.gesturing) return null;
     const uid = currentUid(rec);
     if (!uid) return false;
+    const key = snapKey(uid, snapKindOf(rec));
     const dark = isDarkTheme(rec);
     const thumbs = new Map();
     let snap = null;
@@ -880,7 +896,7 @@ export async function installPlexusDiagram({
       snap = captureBoardSnap({
         ...src,
         uid,
-        prev: snapStore.get(uid),
+        prev: snapStore.get(key) || snapStore.get(uid),
         thumbs,
         tableThumbKey: (item) => {
           if (item?.type === "section" || !/^\{\{\s*(\[\[table\]\]|table)\s*\}\}$/i.test(String(item?.string || "").trim())) return null;
@@ -891,7 +907,7 @@ export async function installPlexusDiagram({
     } catch { snap = null; }
     if (!snap) return false;
     rec.snapDirty = false;
-    return snapStore.set(uid, snap, thumbs);
+    return snapStore.set(key, snap, thumbs);
   }
   // After a change or a settled camera: 1 s quiet, then an idle slot.
   function scheduleSnap(rec) {
@@ -967,7 +983,7 @@ export async function installPlexusDiagram({
   function paintSnapFor(rec, initialViewport) {
     if (!snapAllowed() || !rec?.mountEl) return null;
     const uid = currentUid(rec);
-    const snap = snapStore.get(uid);
+    const snap = snapFor(rec, uid);
     if (!snap?.items?.length) return null;
     let fsOff = null;
     try {
@@ -1895,7 +1911,7 @@ export async function installPlexusDiagram({
         return;
       }
       // A nested board with a stored snapshot paints before its first read.
-      if (snapAllowed() && snapStore.get(target)?.items?.length) {
+      if (snapAllowed() && snapFor(rec, target)?.items?.length) {
         try { commit?.(); } catch { /* history is optional */ }
         saveSketchNow(rec);
         forgetSketch(rec);

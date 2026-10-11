@@ -171,20 +171,21 @@ const SNAP = {
   }],
 };
 
-async function seededIdb(snap = SNAP) {
+async function seededIdb(snap = SNAP, more = []) {
   const idb = createFakeIDB();
   const store = createBoardSnapStore({ indexedDB: idb, graph: "Svy", debounceMs: 0, idle: (fn) => fn() });
   await store.ready;
   store.set(UID, snap);
+  for (const extra of more) store.set(extra.uid, extra);
   await tick(10);
   await store.dispose();
   idb.opens.length = 0;
   return idb;
 }
 
-function installEnv({ idb, flags = null } = {}) {
+function installEnv({ idb, flags = null, sidebar = false } = {}) {
   const saved = {};
-  const globals = ["document", "window", "location", "MutationObserver"];
+  const globals = ["document", "window", "location", "MutationObserver", "IntersectionObserver"];
   for (const key of globals) saved[key] = Object.getOwnPropertyDescriptor(globalThis, key);
   const define = (key, value) => Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
   const doc = makeDoc();
@@ -200,6 +201,15 @@ function installEnv({ idb, flags = null } = {}) {
   define("window", win);
   define("location", { hash: "#/app/Svy" });
   define("MutationObserver", class { observe() {} disconnect() {} });
+  const watchers = [];
+  if (sidebar) {
+    define("IntersectionObserver", class {
+      constructor(cb) { this.cb = cb; this.targets = []; watchers.push(this); }
+      observe(target) { this.targets.push(target); }
+      unobserve(target) { this.targets = this.targets.filter((t) => t !== target); }
+      disconnect() { this.targets = []; }
+    });
+  } else define("IntersectionObserver", undefined);
   const block = { ":block/props": { ":plexus": { ":v": 2 } } };
   const writes = [];
   const reads = { n: 0 };
@@ -223,9 +233,17 @@ function installEnv({ idb, flags = null } = {}) {
     edges: new Map(),
   };
   const acquired = [];
+  const boards = new Map([[UID, board]]);
   const acquireSession = (uid) => {
     acquired.push({ uid, readsAtAcquire: reads.n });
-    return { uid, board, on: () => () => {}, release() {} };
+    const own = boards.get(uid) || {
+      uid,
+      enhanced: true,
+      items: new Map([["cardCCCC3", { uid: "cardCCCC3", type: "card", parentUid: uid, x: 0, y: 0, w: 100, h: 60, title: "Child", string: "Child" }]]),
+      order: ["cardCCCC3"],
+      edges: new Map(),
+    };
+    return { uid, board: own, on: () => () => {}, release() {} };
   };
   const seen = [];
   const mountView = (args) => {
@@ -252,9 +270,17 @@ function installEnv({ idb, flags = null } = {}) {
   const storage = memoryStorage();
   storage.setItem(`plexus-diagram:collapsed:Svy:${UID}`, "1");
   const lifecycle = createLifecycle();
-  addNative(doc, UID);
+  const native = addNative(doc, UID);
+  if (sidebar) {
+    const pane = doc.createElement("div");
+    pane.cls.add("rm-sidebar-window");
+    pane.id = "sidebar-window-sidebar-block-x";
+    doc.app.append(pane);
+    pane.append(native);
+    native.closestMap[".rm-sidebar-window"] = pane;
+  }
   return {
-    doc, host, writes, seen, acquired, reads, lifecycle, win,
+    doc, host, writes, seen, acquired, reads, lifecycle, win, watchers,
     install: () => installPlexusDiagram({ extensionAPI, lifecycle, version: "x", mountView, host, acquireSession, storage }),
     restore() {
       for (const key of globals) {
@@ -365,6 +391,68 @@ test("dispose during the snapshot frame cancels the live mount and removes the s
     assert.equal(env.seen.length, 0);
     assert.equal(env.acquired.length, 0);
   } finally {
+    env.restore();
+  }
+});
+
+test("a nested board with a snapshot paints it before its session is read", async () => {
+  const child = {
+    ...SNAP,
+    uid: "childBBB2",
+    items: [{ ...SNAP.items[0], uid: "cardCCCC3", face: { t: "div", k: [{ t: "div", c: "pxd-item__header", k: ["Child snap"] }] } }],
+  };
+  const idb = await seededIdb(SNAP, [child]);
+  const env = installEnv({ idb });
+  try {
+    await env.install();
+    await tick(20);
+    env.seen[0].args.onFirstPaint();
+    assert.equal(env.acquired.length, 1);
+    env.seen[0].args.onOpenBoard("childBBB2");
+    await tick(0);
+    const mount = env.doc.querySelector(".pxd-mount");
+    const root = mount.querySelector(".pxd-snap-root");
+    assert.ok(root, "the nested board's snapshot is up");
+    assert.equal(root.querySelector(".pxd-item--snap").getAttribute("data-uid"), "cardCCCC3");
+    assert.equal(env.acquired.length, 1, "the nested session is not read yet");
+    await tick(20);
+    assert.equal(env.acquired.length, 2);
+    assert.equal(env.acquired[1].uid, "childBBB2");
+    assert.deepEqual(env.seen[1].shells, ["cardCCCC3"]);
+    env.seen[1].args.onFirstPaint();
+    assert.equal(mount.querySelector(".pxd-snap-root"), null);
+    assert.equal(env.win.__plexusDiagram.perf.lastOpen.kind, "nested");
+    assert.deepEqual(env.writes.filter((w) => w[0] !== "open-state"), []);
+  } finally {
+    await env.lifecycle.dispose().catch(() => {});
+    env.restore();
+  }
+});
+
+test("a sidebar copy paints its snapshot while dormant; the viewport watcher brings the live board", async () => {
+  const idb = await seededIdb();
+  const env = installEnv({ idb, sidebar: true });
+  try {
+    await env.install();
+    const mount = env.doc.querySelector(".pxd-mount");
+    assert.ok(mount.querySelector(".pxd-snap-root"), "painted at mount, before the watcher fires");
+    assert.equal(mount.style.minHeight, "480px", "the gap is the snapshot's height, no layout read");
+    await tick(20);
+    assert.equal(env.acquired.length, 0, "a dormant copy reads nothing");
+    const io = env.watchers[0];
+    assert.ok(io);
+    io.cb([{ target: mount, isIntersecting: true }]);
+    await tick(20);
+    assert.equal(env.acquired.length, 1);
+    assert.deepEqual(env.seen[0].shells, ["cardAAAA1"]);
+    env.seen[0].args.onFirstPaint();
+    assert.equal(mount.querySelector(".pxd-snap-root"), null);
+    const open = env.win.__plexusDiagram.perf.lastOpen;
+    assert.equal(open.kind, "sidebar");
+    assert.equal(open.snap, true);
+    assert.equal(open.queriesBeforePaint, 0);
+  } finally {
+    await env.lifecycle.dispose().catch(() => {});
     env.restore();
   }
 });

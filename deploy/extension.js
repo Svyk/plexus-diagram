@@ -44739,7 +44739,7 @@ function boardStamp(board2, rects = null) {
   for (const edge of board2.edges?.values?.() || []) parts.push(`e:${edge.uid}|${edge.from}|${edge.to}|${edge.label ?? ""}`);
   return fnv(parts.join("\n"));
 }
-function tableGrid2(item, { rows: maxRows = 12, cols: maxCols = 8 } = {}) {
+function tableGrid2(item, { rows: maxRows = 30, cols: maxCols = 10 } = {}) {
   const rows = [];
   for (const row4 of kidsOf2({ ":block/children": item?.content })) {
     if (rows.length >= maxRows) break;
@@ -85740,7 +85740,7 @@ function createBoardSnapStore({
 init_geometry();
 init_board();
 var SNAP_CLASS = "pxd-item--snap";
-var CHROME_KEEP = /(^|\s)(pxd-toolbar|pxd-rail|pxd-palette|pxd-dock|pxd-mode|pxd-minimap|pxd-props|pxd-resize-grip|pxd-tabs)(\s|$)/;
+var CHROME_KEEP = /(^|\s)(pxd-toolbar|pxd-rail|pxd-palette|pxd-dock|pxd-mode|pxd-minimap|pxd-props|pxd-resize-grip|pxd-tabs|pxd-fstabs)(\s|$)/;
 var SNAP_ROOT_CLASS = "pxd-snap-root";
 var finite8 = (n2) => typeof n2 === "number" && Number.isFinite(n2);
 function rootVars(root) {
@@ -85758,7 +85758,7 @@ function rootVars(root) {
 }
 var skipChrome = (el2) => {
   const cls = typeof el2.getAttribute === "function" ? String(el2.getAttribute("class") || "") : "";
-  return /(^|\s)(pxd-ports|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip)(\s|$)/.test(cls);
+  return /(^|\s)(pxd-ports|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip|pxd-table-thumb)(\s|$)/.test(cls);
 };
 function captureBoardSnap({
   uid,
@@ -86101,9 +86101,9 @@ function snapEvent(event) {
 
 // src/view/table-thumb.js
 var THUMB_W = 320;
-var ROW_H = 20;
-var PAD = 6;
-var MAX_H = 260;
+var THUMB_MAX = 480;
+var ROW_H = 24;
+var PAD = 7;
 function tableThumbKey(item, sig) {
   return item?.uid && sig ? `t:${item.uid}:${sig}` : "";
 }
@@ -86133,11 +86133,17 @@ function fit2(g, text4, max) {
   }
   return lo ? `${s.slice(0, lo)}…` : "";
 }
-function renderTableThumb(doc, grid, { dark = false, width = THUMB_W } = {}) {
+function thumbBox(item) {
+  const w = Number(item?.w) > 0 ? Number(item.w) : THUMB_W;
+  const h = Number(item?.h) > 0 ? Number(item.h) : 200;
+  const k = Math.min(1, THUMB_MAX / Math.max(w, h));
+  return { width: Math.max(120, Math.round(w * k)), height: Math.max(48, Math.round(h * k)) };
+}
+function renderTableThumb(doc, grid, { dark = false, width = THUMB_W, height: boxH = 0 } = {}) {
   if (!doc || !Array.isArray(grid) || !grid.length) return "";
   const widths = columnWidths(grid, width);
   if (!widths.length) return "";
-  const height = Math.min(MAX_H, grid.length * ROW_H + 1);
+  const height = Math.min(boxH > 0 ? boxH : grid.length * ROW_H + 1, grid.length * ROW_H + 1);
   let canvas;
   try {
     canvas = doc.createElement("canvas");
@@ -86146,7 +86152,7 @@ function renderTableThumb(doc, grid, { dark = false, width = THUMB_W } = {}) {
   }
   const g = canvas?.getContext?.("2d");
   if (!g || typeof canvas.toDataURL !== "function") return "";
-  const scale = 1.5;
+  const scale = 1;
   canvas.width = Math.round(width * scale);
   canvas.height = Math.round(height * scale);
   g.scale(scale, scale);
@@ -86163,7 +86169,7 @@ function renderTableThumb(doc, grid, { dark = false, width = THUMB_W } = {}) {
       g.fillStyle = head;
       g.fillRect(0, y, width, ROW_H);
     }
-    g.font = `${r === 0 ? "600 " : ""}11px -apple-system, system-ui, sans-serif`;
+    g.font = `${r === 0 ? "600 " : ""}13px -apple-system, system-ui, sans-serif`;
     g.fillStyle = ink;
     let x2 = 0;
     widths.forEach((w, c) => {
@@ -88565,7 +88571,8 @@ async function installPlexusDiagram({
   };
   const thumbKeyOf = (item, dark) => {
     const base = tableThumbKey(item, itemSig(item));
-    return base ? `${base}:${dark ? "d" : "l"}` : "";
+    const box2 = thumbBox(item);
+    return base ? `${base}:${box2.width}x${box2.height}:${dark ? "d" : "l"}` : "";
   };
   function tableThumbFor(rec, item) {
     if (!snapAllowed()) return null;
@@ -88584,7 +88591,7 @@ async function installPlexusDiagram({
       if (stopped || snapStore.thumb(key)) return;
       let url = "";
       try {
-        url = renderTableThumb(doc, tableGrid2(item), { dark });
+        url = renderTableThumb(doc, tableGrid2(item), { dark, ...thumbBox(item) });
       } catch {
         url = "";
       }
@@ -88595,6 +88602,22 @@ async function installPlexusDiagram({
       }
       scheduleSnap(rec);
     });
+  }
+  function snapKindOf(rec) {
+    if (rec?.fullscreen) return "fullscreen";
+    try {
+      return inRightSidebar(rec?.native) ? "sidebar" : "main";
+    } catch {
+      return "main";
+    }
+  }
+  const snapKey = (uid, kind) => kind && kind !== "main" ? `${uid}@${kind}` : uid;
+  function snapFor(rec, uid) {
+    const kind = snapKindOf(rec);
+    const own = snapStore.get(snapKey(uid, kind));
+    if (own || kind === "main") return own;
+    const main = snapStore.get(uid);
+    return main ? { ...main, chrome: [] } : null;
   }
   function clearSnapTimer(rec) {
     const timer = snapTimers.get(rec);
@@ -88613,6 +88636,7 @@ async function installPlexusDiagram({
     if (src.gesturing) return null;
     const uid = currentUid(rec);
     if (!uid) return false;
+    const key = snapKey(uid, snapKindOf(rec));
     const dark = isDarkTheme(rec);
     const thumbs = /* @__PURE__ */ new Map();
     let snap = null;
@@ -88620,12 +88644,12 @@ async function installPlexusDiagram({
       snap = captureBoardSnap({
         ...src,
         uid,
-        prev: snapStore.get(uid),
+        prev: snapStore.get(key) || snapStore.get(uid),
         thumbs,
         tableThumbKey: (item) => {
           if (item?.type === "section" || !/^\{\{\s*(\[\[table\]\]|table)\s*\}\}$/i.test(String(item?.string || "").trim())) return null;
-          const key = thumbKeyOf(item, dark);
-          return key && snapStore.thumb(key) ? key : null;
+          const key2 = thumbKeyOf(item, dark);
+          return key2 && snapStore.thumb(key2) ? key2 : null;
         }
       });
     } catch {
@@ -88633,7 +88657,7 @@ async function installPlexusDiagram({
     }
     if (!snap) return false;
     rec.snapDirty = false;
-    return snapStore.set(uid, snap, thumbs);
+    return snapStore.set(key, snap, thumbs);
   }
   function scheduleSnap(rec) {
     if (!snapAllowed() || stopped || !rec || mounts.get(rec.native) !== rec) return;
@@ -88707,7 +88731,7 @@ async function installPlexusDiagram({
   function paintSnapFor(rec, initialViewport) {
     if (!snapAllowed() || !rec?.mountEl) return null;
     const uid = currentUid(rec);
-    const snap = snapStore.get(uid);
+    const snap = snapFor(rec, uid);
     if (!snap?.items?.length) return null;
     let fsOff = null;
     try {
@@ -89799,7 +89823,7 @@ async function installPlexusDiagram({
         }
         return;
       }
-      if (snapAllowed() && snapStore.get(target)?.items?.length) {
+      if (snapAllowed() && snapFor(rec, target)?.items?.length) {
         try {
           commit?.();
         } catch {

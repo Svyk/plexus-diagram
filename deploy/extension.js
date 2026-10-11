@@ -1570,14 +1570,14 @@ var init_roam_table = __esm({
 });
 
 // src/model/region-card.js
-function accepted(targetString, api) {
-  if (api == null || typeof api.apiVersion !== "number" || api.apiVersion < 6) return null;
+function accepted(targetString, api2) {
+  if (api2 == null || typeof api2.apiVersion !== "number" || api2.apiVersion < 6) return null;
   const region = parseRegion(targetString);
   if (!region || region.owner !== "roam-plexus" || region.error != null) return null;
   return region;
 }
-function regionRefModel(targetString, api) {
-  const region = accepted(targetString, api);
+function regionRefModel(targetString, api2) {
+  const region = accepted(targetString, api2);
   if (!region) return null;
   return {
     kind: "region-ref",
@@ -5109,7 +5109,7 @@ function buildGrid(segs, xs2, ys2) {
   const rows = ys2.length - 1;
   const top = [];
   const left = [];
-  let present = 0;
+  let present2 = 0;
   let total = 0;
   for (let r = 0; r <= rows; r++) {
     top[r] = [];
@@ -5117,7 +5117,7 @@ function buildGrid(segs, xs2, ys2) {
       const ok = coverage(segs, "h", ys2[r], xs2[c], xs2[c + 1], 2.5) >= 0.6;
       top[r][c] = ok;
       total++;
-      if (ok) present++;
+      if (ok) present2++;
     }
   }
   for (let r = 0; r < rows; r++) {
@@ -5126,10 +5126,10 @@ function buildGrid(segs, xs2, ys2) {
       const ok = coverage(segs, "v", xs2[c], ys2[r], ys2[r + 1], 2.5) >= 0.6;
       left[r][c] = ok;
       total++;
-      if (ok) present++;
+      if (ok) present2++;
     }
   }
-  return { xs: xs2, ys: ys2, rows, cols, top, left, coverage: total ? present / total : 0 };
+  return { xs: xs2, ys: ys2, rows, cols, top, left, coverage: total ? present2 / total : 0 };
 }
 function splitRowsByText(grid, words) {
   const { xs: xs2, ys: ys2, cols } = grid;
@@ -14274,7 +14274,7 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
   const bound = [];
   let fadeTimer = null;
   let drag = null;
-  const win = () => doc?.defaultView || null;
+  const win2 = () => doc?.defaultView || null;
   const dropNode = (node2) => {
     try {
       node2?.remove?.();
@@ -14283,7 +14283,7 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
   };
   const clearNow = () => {
     if (fadeTimer != null) {
-      const w = win();
+      const w = win2();
       (w?.clearTimeout || clearTimeout)(fadeTimer);
       fadeTimer = null;
     }
@@ -14305,7 +14305,7 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
     const state = drag;
     drag = null;
     if (!state) return;
-    const w = win();
+    const w = win2();
     w?.removeEventListener?.("pointermove", state.move, true);
     w?.removeEventListener?.("pointerup", state.up, true);
     w?.removeEventListener?.("pointercancel", state.up, true);
@@ -14406,7 +14406,7 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
         };
         endDrag();
         drag = { move, up, xs: origin.slice() };
-        const w = win();
+        const w = win2();
         w?.addEventListener?.("pointermove", move, true);
         w?.addEventListener?.("pointerup", up, true);
         w?.addEventListener?.("pointercancel", up, true);
@@ -14424,7 +14424,7 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
     },
     hide() {
       for (const node2 of owned) node2.classList.add("pxd-parse-region--fade");
-      const w = win();
+      const w = win2();
       const later = w?.setTimeout || setTimeout;
       if (fadeTimer != null) (w?.clearTimeout || clearTimeout)(fadeTimer);
       fadeTimer = later(() => {
@@ -15390,10 +15390,10 @@ function backgroundImage(url) {
   if (/[\s"'()<>]/.test(s)) return null;
   return s;
 }
-function versionPeekRequest(api) {
-  if (!api || typeof api !== "object") return null;
-  if (typeof api.block?.history === "function") return "block.history";
-  if (typeof api.ui?.blockHistory === "function") return "ui.blockHistory";
+function versionPeekRequest(api2) {
+  if (!api2 || typeof api2 !== "object") return null;
+  if (typeof api2.block?.history === "function") return "block.history";
+  if (typeof api2.ui?.blockHistory === "function") return "ui.blockHistory";
   return null;
 }
 var MONTHS3, DAY, ATTRIBUTE_TEMPLATE, FOCUS_MS, THUMBNAIL_CAP, VIA_CAP;
@@ -15734,7 +15734,7 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
       order.push(m[1]);
     }
   }
-  const make2 = typeof uid === "function" ? uid : () => `fn${Math.random().toString(36).slice(2, 11)}`;
+  const make3 = typeof uid === "function" ? uid : () => `fn${Math.random().toString(36).slice(2, 11)}`;
   const limit = Math.max(0, Math.min(FOOTNOTE_CAP, Math.floor(Number(cap4) || 0)));
   const notes = [];
   const overflow = [];
@@ -15743,7 +15743,7 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
     const d = known2.get(id);
     const n2 = Math.max(0, Math.floor(startAt)) + i + 1;
     if (i < limit) {
-      const note = { id, uid: make2(), n: n2, mark: d.mark, text: d.text };
+      const note = { id, uid: make3(), n: n2, mark: d.mark, text: d.text };
       notes.push(note);
       byId2.set(id, { kind: "note", note });
     } else {
@@ -15815,7 +15815,7 @@ function noteRows(table) {
 function tableCellText(cell) {
   return String(cell?.text ?? "");
 }
-function prepareTable(table, available = [], { format = "extension" } = {}) {
+function prepareTable(table, available2 = [], { format = "extension" } = {}) {
   if (format === "off" || !table || !Array.isArray(table.cells)) return { table, notes: [], used: 0 };
   const rows = noteRows(table);
   const byMark = /* @__PURE__ */ new Map();
@@ -15823,7 +15823,7 @@ function prepareTable(table, available = [], { format = "extension" } = {}) {
     const key = normalizeMark(row4.mark);
     if (key && !byMark.has(key)) byMark.set(key, { id: `${table.id ?? "t"}:row:${row4.r}`, mark: row4.mark, text: row4.text, row: row4.r });
   }
-  for (const note of available || []) {
+  for (const note of available2 || []) {
     const key = normalizeMark(note?.mark);
     if (key && !byMark.has(key)) byMark.set(key, { id: String(note.id), mark: note.mark, text: note.text ?? "" });
   }
@@ -17356,6 +17356,7 @@ var init_tooltip_text = __esm({
       "read.sel.copy": e("Copy", "Copy the selected text."),
       "read.sel.card": e("Card", "A note card beside the PDF with the selected text and its page."),
       "read.sel.quote": e("Quote", "A quote card beside the PDF with the selected text and its page."),
+      "read.sel.ask": e("Ask AI", "Ask your Live AI Assistant about the selected text. The document around it goes along."),
       "read.sel.drag": e("Drag to the board", "Drag the selection onto the board as a card. Hold Alt when you drop for a quote."),
       "parse.range": e("Page range", "All, the current page, or a range such as 1–5."),
       "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),
@@ -17712,7 +17713,7 @@ function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP, obstacles
   const clampX = (x, w) => Math.max(box2.left + edge, Math.min(x, box2.right - edge - w));
   const clampY = (y, h) => Math.max(box2.top + edge, Math.min(y, box2.bottom - edge - h));
   const sides = ["below", "above", "right", "left"];
-  const make2 = (side2, along, h, scroll) => {
+  const make3 = (side2, along, h, scroll) => {
     const vertical = side2 === "below" || side2 === "above";
     const left = vertical ? clampX(along, width) : side2 === "right" ? anchor.right + gap : anchor.left - gap - width;
     const top = vertical ? side2 === "below" ? anchor.bottom + gap : anchor.top - gap - h : clampY(along, h);
@@ -17737,7 +17738,7 @@ function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP, obstacles
   for (const side2 of sides) {
     if (!fitsSide(side2)) continue;
     for (const along of alongOf(side2, size.h)) {
-      const p = make2(side2, along, size.h, false);
+      const p = make3(side2, along, size.h, false);
       if (!wall.some((o) => rectsHit(spanOf(p), o))) return p;
     }
   }
@@ -17745,7 +17746,7 @@ function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP, obstacles
   for (const side2 of sides) {
     for (const along of alongOf(side2, size.h)) {
       const vertical = side2 === "below" || side2 === "above";
-      const probe = make2(side2, along, vertical ? 1 : size.h, false);
+      const probe = make3(side2, along, vertical ? 1 : size.h, false);
       let room;
       if (vertical) {
         const xs2 = { left: probe.left, right: probe.left + probe.width };
@@ -17761,7 +17762,7 @@ function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP, obstacles
         room = hi - lo;
         if (room < 80) continue;
         const h = Math.min(size.h, room);
-        const p = make2(side2, along, h, true);
+        const p = make3(side2, along, h, true);
         if (side2 === "above") p.top = Math.round(hi - h);
         if (!best || h > best.h) best = { p, h };
       } else {
@@ -17781,7 +17782,7 @@ function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP, obstacles
         if (straddles) continue;
         const h = Math.min(size.h, hi - lo);
         if (h < 80) continue;
-        const p = make2(side2, 0, h, true);
+        const p = make3(side2, 0, h, true);
         p.top = Math.round(Math.max(lo, Math.min(anchor.top, hi - h)));
         if (!best || h > best.h) best = { p, h };
       }
@@ -17841,7 +17842,7 @@ function rowFraction(blocks, uid) {
   const i = rows.indexOf(uid);
   return i < 0 || !rows.length ? null : (i + 0.5) / rows.length;
 }
-function mountLazyCrop(doc, frame, { src, frac, points, win } = {}) {
+function mountLazyCrop(doc, frame, { src, frac, points, win: win2 } = {}) {
   const f = frac || {};
   const rw = Number(f.rw) > 0 ? Number(f.rw) : 1;
   const rh = Number(f.rh) > 0 ? Number(f.rh) : 1;
@@ -17855,12 +17856,12 @@ function mountLazyCrop(doc, frame, { src, frac, points, win } = {}) {
   img.style.left = `${-(Number(f.rx) || 0) / rw * 100}%`;
   img.style.top = `${-(Number(f.ry) || 0) / rh * 100}%`;
   frame.append(img);
-  const clip5 = polygonClipInBox(f, points);
-  if (clip5) frame.style.clipPath = clip5;
+  const clip6 = polygonClipInBox(f, points);
+  if (clip6) frame.style.clipPath = clip6;
   const show = () => {
     if (src) img.setAttribute("src", src);
   };
-  const IO = win?.IntersectionObserver || globalThis.IntersectionObserver;
+  const IO = win2?.IntersectionObserver || globalThis.IntersectionObserver;
   let watched = false;
   if (typeof IO === "function") {
     try {
@@ -18043,7 +18044,7 @@ function createConnectionCache({ host } = {}) {
     }
   };
 }
-function createRelChips({ doc = globalThis.document, win = globalThis.window, host, graph, timers, setting, openNested } = {}) {
+function createRelChips({ doc = globalThis.document, win: win2 = globalThis.window, host, graph, timers, setting, openNested } = {}) {
   const cache = createConnectionCache({ host });
   const chips = /* @__PURE__ */ new Set();
   const models = /* @__PURE__ */ new Map();
@@ -18108,13 +18109,13 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       }
       return;
     }
-    assignDeepLink(win?.location, {
+    assignDeepLink(win2?.location, {
       graph: (typeof graph === "function" ? graph() : graph) || host?.graph || "",
       pageUid,
       cardUid: edgeUid
     }, () => {
       try {
-        win.dispatchEvent?.(new Event("hashchange"));
+        win2.dispatchEvent?.(new Event("hashchange"));
       } catch {
       }
     });
@@ -18160,7 +18161,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
           src,
           frac: cropFrac,
           points: region.kind === "imgpoly" ? region.p : null,
-          win
+          win: win2
         });
       }
       const caption = rel?.label || region?.caption || "";
@@ -18196,7 +18197,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     doc.body.append(el);
     const scrollParent = (node2) => {
       for (let n2 = node2?.parentElement; n2; n2 = n2.parentElement) {
-        const o = win?.getComputedStyle?.(n2)?.overflowY;
+        const o = win2?.getComputedStyle?.(n2)?.overflowY;
         if (o === "auto" || o === "scroll") return n2;
       }
       return null;
@@ -18209,8 +18210,8 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       }
       const rects = [chip, ...[].concat(avoid || [])].map((n2) => n2?.getBoundingClientRect?.()).filter(Boolean);
       const cr = rects.length > 1 ? { left: Math.min(...rects.map((r) => r.left)), top: Math.min(...rects.map((r) => r.top)), right: Math.max(...rects.map((r) => r.right)), bottom: Math.max(...rects.map((r) => r.bottom)) } : rects[0] || { left: 0, top: 0, right: 0, bottom: 0 };
-      const vw = win?.innerWidth || 1024;
-      const vh = win?.innerHeight || 768;
+      const vw = win2?.innerWidth || 1024;
+      const vh = win2?.innerHeight || 768;
       const own = rects[0] || cr;
       if (own.bottom < 0 || own.top > vh || own.right < 0 || own.left > vw) {
         closePop();
@@ -18246,16 +18247,16 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     let queued = null;
     const again = () => {
       if (queued || !pop) return;
-      const id = win?.requestAnimationFrame?.(() => {
+      const id = win2?.requestAnimationFrame?.(() => {
         queued = null;
         if (pop) place2();
       });
-      queued = () => win?.cancelAnimationFrame?.(id);
+      queued = () => win2?.cancelAnimationFrame?.(id);
     };
-    on(win, "scroll", (event) => {
+    on(win2, "scroll", (event) => {
       if (!el.contains?.(event.target)) again();
     }, { capture: true, passive: true });
-    on(win, "resize", again, { passive: true });
+    on(win2, "resize", again, { passive: true });
     offs.push(() => {
       queued?.();
       queued = null;
@@ -18669,10 +18670,10 @@ function side(value) {
 function statusKey(name) {
   return String(name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
-function statusApi(win) {
-  const api = win?.RoamTaskStatusTags;
-  if (!api || api.apiVersion !== 1 || typeof api.statuses !== "function") return null;
-  return api;
+function statusApi(win2) {
+  const api2 = win2?.RoamTaskStatusTags;
+  if (!api2 || api2.apiVersion !== 1 || typeof api2.statuses !== "function") return null;
+  return api2;
 }
 function normalize(raw) {
   const name = String(raw?.name || "").trim();
@@ -18689,11 +18690,11 @@ function normalize(raw) {
     dark: raw?.dark ? side(raw.dark) : known2 ? { ...known2.dark } : { ...NEUTRAL.dark }
   };
 }
-function statusPalette(api) {
+function statusPalette(api2) {
   let rows = null;
-  if (api && typeof api.statuses === "function") {
+  if (api2 && typeof api2.statuses === "function") {
     try {
-      const got = api.statuses();
+      const got = api2.statuses();
       if (Array.isArray(got) && got.length) rows = got;
     } catch {
       rows = null;
@@ -18783,7 +18784,7 @@ var init_status_tags = __esm({
 });
 
 // src/view/avoid.js
-function chromeObstacles(root, { win = root?.ownerDocument?.defaultView, skip = null } = {}) {
+function chromeObstacles(root, { win: win2 = root?.ownerDocument?.defaultView, skip = null } = {}) {
   const out = [];
   let nodes = [];
   try {
@@ -18793,14 +18794,14 @@ function chromeObstacles(root, { win = root?.ownerDocument?.defaultView, skip = 
   }
   for (const node2 of nodes) {
     if (skip && (node2 === skip || node2.contains?.(skip))) continue;
-    if (!visible(node2, win)) continue;
+    if (!visible(node2, win2)) continue;
     const r = node2.getBoundingClientRect?.();
     if (!r || !(r.right > r.left) || !(r.bottom > r.top)) continue;
     out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
   }
   return out;
 }
-function placeNearAnchor(node2, anchor, root, { gap = 6, skip = null, origin = root, win = root?.ownerDocument?.defaultView } = {}) {
+function placeNearAnchor(node2, anchor, root, { gap = 6, skip = null, origin = root, win: win2 = root?.ownerDocument?.defaultView } = {}) {
   const r = root?.getBoundingClientRect?.();
   const o = origin?.getBoundingClientRect?.() || r;
   if (!node2 || !anchor || !r) return null;
@@ -18812,7 +18813,7 @@ function placeNearAnchor(node2, anchor, root, { gap = 6, skip = null, origin = r
     size,
     viewport: { left: r.left, top: r.top, right: r.right || r.left + size.w, bottom: r.bottom || r.top + size.h },
     gap,
-    obstacles: chromeObstacles(root, { win, skip })
+    obstacles: chromeObstacles(root, { win: win2, skip })
   });
   node2.style.left = `${Math.round(at.left - o.left)}px`;
   node2.style.top = `${Math.round(at.top - o.top)}px`;
@@ -18827,10 +18828,10 @@ var init_avoid = __esm({
   "src/view/avoid.js"() {
     init_relchips();
     CHROME_SELECTOR = ".pxd-toolbar, .pxd-dock, .pxd-rail, .pxd-minimap, .pxd-props, .pxd-panel";
-    visible = (node2, win) => {
+    visible = (node2, win2) => {
       if (!node2 || node2.hidden || node2.style?.display === "none") return false;
       try {
-        const style = win?.getComputedStyle?.(node2);
+        const style = win2?.getComputedStyle?.(node2);
         if (style && (style.display === "none" || style.visibility === "hidden")) return false;
       } catch {
       }
@@ -19021,8 +19022,8 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
   return { open, close, isOpen: () => Boolean(node2), dispose: close };
 }
 function openStatusChooser({ doc = globalThis.document, anchor, palette, current: current3, onPick, onRemove, avoid } = {}) {
-  const win = doc?.defaultView || globalThis;
-  if (!statusApi(win)) return null;
+  const win2 = doc?.defaultView || globalThis;
+  if (!statusApi(win2)) return null;
   const root = avoid?.nodeType === 1 ? avoid : avoid?.root?.nodeType === 1 ? avoid.root : null;
   const home = root || doc.body;
   if (doc.querySelector?.(".bp3-dialog") || home?.querySelector?.(".bp3-dialog")) return null;
@@ -19143,7 +19144,7 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
   on(doc, "mousedown", (event) => {
     if (!pop.contains?.(event.target) && !anchor?.contains?.(event.target)) close();
   }, true);
-  on(win, "keydown", onKey, true);
+  on(win2, "keydown", onKey, true);
   on(pop, "keydown", onKey);
   const rect = anchor?.getBoundingClientRect?.() || { left: 0, top: 0, right: 16, bottom: 16, width: 16, height: 16 };
   if (home) placeNearAnchor(pop, rect, home, { gap: 6 });
@@ -19341,8 +19342,8 @@ function pdfDockLift(card2, obstacles, zoom = 1, { clipBottom = Infinity } = {})
   if (!(w > 0) || !(h > 0)) return 0;
   const bottom = top + h;
   const floor = top + Math.min(h * 0.35, 96);
-  const clip5 = Number(clipBottom);
-  let edge = Number.isFinite(clip5) && clip5 < bottom ? clip5 - 6 : bottom;
+  const clip6 = Number(clipBottom);
+  let edge = Number.isFinite(clip6) && clip6 < bottom ? clip6 - 6 : bottom;
   for (let pass = 0; pass < list.length; pass += 1) {
     let moved = false;
     for (const r of list) {
@@ -19553,9 +19554,9 @@ var init_progressive = __esm({
 
 // src/view/timeline.js
 function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}) {
-  const document = doc || globalThis.document;
-  if (!document?.createElement) throw new Error("mountTimeline needs a document");
-  const el = document.createElement("div");
+  const document2 = doc || globalThis.document;
+  if (!document2?.createElement) throw new Error("mountTimeline needs a document");
+  const el = document2.createElement("div");
   el.className = "pxd-timeline";
   el.setAttribute("role", "region");
   el.setAttribute("aria-label", "Timeline");
@@ -19610,42 +19611,42 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
     grouped = groupTimeline(nextRows);
     el.replaceChildren();
     if (!grouped.length) {
-      const empty = document.createElement("div");
+      const empty = document2.createElement("div");
       empty.className = "pxd-timeline__empty";
       empty.textContent = EMPTY;
       el.append(empty);
       return;
     }
     for (const year of grouped) {
-      const group = document.createElement("div");
+      const group = document2.createElement("div");
       group.className = "pxd-timeline__group";
-      const button2 = document.createElement("button");
+      const button2 = document2.createElement("button");
       button2.type = "button";
       button2.className = "pxd-timeline__year";
       button2.setAttribute("data-year", String(year.year));
       const shut = collapsed.has(year.year);
       button2.setAttribute("aria-expanded", shut ? "false" : "true");
       button2.setAttribute("aria-label", `Year ${year.year}`);
-      const label = document.createElement("span");
+      const label = document2.createElement("span");
       label.className = "pxd-timeline__year-label";
       label.textContent = String(year.year);
       button2.append(label);
-      const days = document.createElement("div");
+      const days = document2.createElement("div");
       days.className = "pxd-timeline__days";
       if (shut) days.setAttribute("hidden", "");
       for (const day of year.days) {
-        const row4 = document.createElement("div");
+        const row4 = document2.createElement("div");
         row4.className = "pxd-timeline__day";
         row4.setAttribute("data-page-uid", day.pageUid || "");
-        const open = document.createElement("button");
+        const open = document2.createElement("button");
         open.type = "button";
         open.className = "pxd-timeline__open";
         open.textContent = day.title;
         open.setAttribute("aria-label", day.title || "Open day");
-        const count = document.createElement("span");
+        const count = document2.createElement("span");
         count.className = "pxd-timeline__count";
         count.textContent = String(day.count);
-        const show = document.createElement("button");
+        const show = document2.createElement("button");
         show.type = "button";
         show.className = "pxd-timeline__show";
         show.setAttribute("data-page-uid", day.pageUid || "");
@@ -21095,7 +21096,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     event.stopPropagation();
     if (event.key === "Escape") {
       event.preventDefault();
-      api.close();
+      api2.close();
     }
     if (event.key === "Enter") {
       event.preventDefault();
@@ -21292,7 +21293,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const name = b?.dataset?.tab;
     if (name && tabs.contains?.(b) && Object.prototype.hasOwnProperty.call(tabButtons, name)) setTab(name);
   });
-  listen(closeBtn, "click", () => api.close());
+  listen(closeBtn, "click", () => api2.close());
   const journalRow = (parent, item) => {
     const uid = String(item?.uid || "");
     if (!uid) return null;
@@ -21441,7 +21442,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     event.stopPropagation();
     if (event.key === "Escape") {
       event.preventDefault();
-      api.close();
+      api2.close();
     }
   });
   const renderOutline = () => {
@@ -21689,7 +21690,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     on.focusInfoTab?.(uid);
     void loadInfo();
   });
-  const api = {
+  const api2 = {
     el: panel,
     open(which = tab) {
       panel.style.display = "";
@@ -21707,18 +21708,18 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     },
     currentTab: () => tab,
     refreshOutline() {
-      if (api.isOpen() && tab === "outline") renderOutline();
+      if (api2.isOpen() && tab === "outline") renderOutline();
     },
     refreshBoards() {
       if (tab === "boards") void loadBoards();
     },
     refreshTrails() {
-      if (tab !== "trails" || !api.isOpen()) return;
+      if (tab !== "trails" || !api2.isOpen()) return;
       trailSig = "";
       renderTrails();
     },
     refreshViews() {
-      if (tab !== "boards" || !api.isOpen()) return;
+      if (tab !== "boards" || !api2.isOpen()) return;
       let views = [];
       try {
         views = on.listViews?.() || [];
@@ -21735,16 +21736,16 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       on.opened?.(false);
     },
     toggle() {
-      if (api.isOpen()) api.close();
-      else api.open();
+      if (api2.isOpen()) api2.close();
+      else api2.open();
     },
     isOpen: () => panel.style.display !== "none",
     setSelection(item) {
       selected = item && item.type !== "section" ? item : null;
       followInfoSelection = true;
       if (selected && cardItems.has(selected.uid)) cardCurrent = selected.uid;
-      if (api.isOpen() && tab === "related") void loadRelated();
-      if (api.isOpen() && tab === "info") {
+      if (api2.isOpen() && tab === "related") void loadRelated();
+      if (api2.isOpen() && tab === "info") {
         renderCardTabs();
         void loadInfo();
       }
@@ -21781,7 +21782,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       panel.remove();
     }
   };
-  return api;
+  return api2;
 }
 var DEBOUNCE_MS, LIMIT;
 var init_panel = __esm({
@@ -22492,9 +22493,9 @@ var init_pdf_chip_strip = __esm({
 });
 
 // src/model/detect.js
-function read(win, key) {
+function read(win2, key) {
   try {
-    return win?.[key];
+    return win2?.[key];
   } catch {
     return void 0;
   }
@@ -22504,9 +22505,9 @@ function plainVersion(value) {
   if (typeof value === "string" && value.trim()) return value.trim();
   return "";
 }
-function apiVersionText(api) {
-  if (!api || typeof api !== "object") return "";
-  const text3 = plainVersion(api.apiVersion);
+function apiVersionText(api2) {
+  if (!api2 || typeof api2 !== "object") return "";
+  const text3 = plainVersion(api2.apiVersion);
   return text3 ? `apiVersion ${text3}` : "";
 }
 function row3(id, label, state, version) {
@@ -22515,36 +22516,36 @@ function row3(id, label, state, version) {
 function missing(id, label) {
   return row3(id, label, MISSING, "");
 }
-function betterTasks(win) {
+function betterTasks(win2) {
   let entry = null;
   try {
-    entry = win?.RoamExtensionTools?.["better-tasks"];
+    entry = win2?.RoamExtensionTools?.["better-tasks"];
   } catch {
     entry = null;
   }
-  const bt = read(win, "betterTasks");
+  const bt = read(win2, "betterTasks");
   const entryOn = entry != null && typeof entry === "object";
   const btOn = bt != null && typeof bt === "object";
   if (!entryOn && !btOn) return missing("better-tasks", "Better Tasks");
   const version = plainVersion(entry?.version) || plainVersion(bt?.version) || plainVersion(bt?.v1?.version) || plainVersion(bt?.v2?.version);
   return row3("better-tasks", "Better Tasks", FOUND, version);
 }
-function taskStatusTags(win) {
-  const api = read(win, "RoamTaskStatusTags");
-  if (!api || typeof api !== "object") return missing("task-status-tags", "Task Status Tags");
-  return row3("task-status-tags", "Task Status Tags", FOUND, apiVersionText(api));
+function taskStatusTags(win2) {
+  const api2 = read(win2, "RoamTaskStatusTags");
+  if (!api2 || typeof api2 !== "object") return missing("task-status-tags", "Task Status Tags");
+  return row3("task-status-tags", "Task Status Tags", FOUND, apiVersionText(api2));
 }
-function roamPlexus(win) {
-  const api = read(win, "RoamPlexus");
-  if (!api || typeof api !== "object") return missing("roam-plexus", "Roam Plexus");
-  return row3("roam-plexus", "Roam Plexus", FOUND, apiVersionText(api));
+function roamPlexus(win2) {
+  const api2 = read(win2, "RoamPlexus");
+  if (!api2 || typeof api2 !== "object") return missing("roam-plexus", "Roam Plexus");
+  return row3("roam-plexus", "Roam Plexus", FOUND, apiVersionText(api2));
 }
-function compass(win) {
-  const api = read(win, "RoamCompass");
-  const flag = plainVersion(read(win, "__ROAM_COMPASS_VERSION"));
-  const apiOn = api != null && typeof api === "object";
+function compass(win2) {
+  const api2 = read(win2, "RoamCompass");
+  const flag = plainVersion(read(win2, "__ROAM_COMPASS_VERSION"));
+  const apiOn = api2 != null && typeof api2 === "object";
   if (!apiOn && !flag) return missing("compass", "Compass");
-  return row3("compass", "Compass", FOUND, flag || apiVersionText(api));
+  return row3("compass", "Compass", FOUND, flag || apiVersionText(api2));
 }
 function styleText(doc) {
   let text3 = "";
@@ -22565,9 +22566,9 @@ function styleText(doc) {
   }
   return text3;
 }
-function highlighterVars(win) {
-  const doc = win?.document;
-  const view = doc?.defaultView || win;
+function highlighterVars(win2) {
+  const doc = win2?.document;
+  const view = doc?.defaultView || win2;
   const body = doc?.body;
   if (!body || typeof view?.getComputedStyle !== "function") return false;
   let style = null;
@@ -22590,8 +22591,8 @@ function highlighterVars(win) {
   }
   return false;
 }
-function highlighterMarker(win) {
-  const doc = win?.document;
+function highlighterMarker(win2) {
+  const doc = win2?.document;
   if (!doc) return false;
   try {
     if (typeof doc.querySelector === "function" && doc.querySelector('[id*="roam-extension-color-highlighter"]')) return true;
@@ -22600,26 +22601,26 @@ function highlighterMarker(win) {
   const text3 = styleText(doc);
   return text3.includes('[data-tag^=".bg-"]') || text3.includes("--cl-lh-");
 }
-function highlighterGlobal(win) {
+function highlighterGlobal(win2) {
   for (const key of ["RoamColorHighlighter", "colorHighlighter"]) {
-    const value = read(win, key);
+    const value = read(win2, key);
     if (value && typeof value === "object") return value;
   }
   return null;
 }
-function highlighter(win) {
-  const global = highlighterGlobal(win);
+function highlighter(win2) {
+  const global = highlighterGlobal(win2);
   let marked = false;
   try {
-    marked = highlighterVars(win) || highlighterMarker(win);
+    marked = highlighterVars(win2) || highlighterMarker(win2);
   } catch {
     marked = false;
   }
   if (!global && !marked) return missing("highlighter", "Colour highlighter");
   return row3("highlighter", "Colour highlighter", FOUND, plainVersion(global?.version));
 }
-function integrations(win) {
-  return [betterTasks(win), taskStatusTags(win), roamPlexus(win), compass(win), highlighter(win)];
+function integrations(win2) {
+  return [betterTasks(win2), taskStatusTags(win2), roamPlexus(win2), compass(win2), highlighter(win2)];
 }
 function statusLine(row4, switchOn2) {
   const label = String(row4?.label || "Integration");
@@ -22757,8 +22758,8 @@ function perfReadoutText(perf) {
   ].join(" · ");
 }
 function readHostPerf() {
-  const win = globalThis.window ?? globalThis;
-  const stats = win.__plexusDiagram?.stats;
+  const win2 = globalThis.window ?? globalThis;
+  const stats = win2.__plexusDiagram?.stats;
   if (stats && Object.prototype.hasOwnProperty.call(stats, "perf")) return stats.perf ?? null;
   return latestPerf;
 }
@@ -23171,8 +23172,8 @@ async function resetPlexusSettings() {
     emit(id, value);
   }
 }
-function integrationHost(win) {
-  if (win) return win;
+function integrationHost(win2) {
+  if (win2) return win2;
   return globalThis.window ?? globalThis;
 }
 function switchOn(detectId) {
@@ -23188,8 +23189,8 @@ function switchOn(detectId) {
   if (raw == null || raw === "") return DEFAULTS[settingId] === true;
   return normalizeSetting(settingId, raw) === true;
 }
-function syncIntegrationText(win) {
-  for (const found of integrations(integrationHost(win))) {
+function syncIntegrationText(win2) {
+  for (const found of integrations(integrationHost(win2))) {
     const statusId = Object.keys(STATUS_FOR).find((id) => STATUS_FOR[id] === found.id);
     if (!statusId) continue;
     integrationText.set(statusId, statusLine(found, switchOn(found.id)));
@@ -23228,8 +23229,8 @@ function paintIntegrationRows() {
     entry.description = integrationText.get(entry.id);
   }
 }
-function refreshIntegrations(win) {
-  syncIntegrationText(win);
+function refreshIntegrations(win2) {
+  syncIntegrationText(win2);
   paintIntegrationRows();
 }
 function errorRow(n2) {
@@ -23833,10 +23834,10 @@ function clientRect(node2) {
     bottom: Number.isFinite(r.bottom) ? r.bottom : top + height
   };
 }
-function openHoverPopover({ doc, win, anchor, delayMs, build, obstacles, timers } = {}) {
-  const document = doc || globalThis.document;
-  const view = win || document?.defaultView || globalThis;
-  const el = document.createElement("div");
+function openHoverPopover({ doc, win: win2, anchor, delayMs, build, obstacles, timers } = {}) {
+  const document2 = doc || globalThis.document;
+  const view = win2 || document2?.defaultView || globalThis;
+  const el = document2.createElement("div");
   el.className = "pxd-root pxd-region-pop";
   el.style.position = "fixed";
   const stop3 = (event) => {
@@ -23894,22 +23895,22 @@ function openHoverPopover({ doc, win, anchor, delayMs, build, obstacles, timers 
       close();
       return;
     }
-    document.body?.append(el);
+    document2.body?.append(el);
     build?.(el);
     if (closed) return;
     place2();
     if (closed) return;
-    on(document, "keydown", (event) => {
+    on(document2, "keydown", (event) => {
       if (event.key === "Escape" || event.key === "Esc") close();
     }, true);
-    on(document, "pointerdown", (event) => {
+    on(document2, "pointerdown", (event) => {
       if (!el.contains?.(event.target)) close();
     }, true);
     const again = () => {
       if (!closed) place2();
     };
     on(view, "scroll", again, true);
-    on(document, "scroll", again, true);
+    on(document2, "scroll", again, true);
     on(view, "resize", again);
   };
   const wait2 = Math.max(0, Number(delayMs) || 0);
@@ -24115,8 +24116,8 @@ function applyFrame(frame, img, frac, maxH, points) {
   img.style.height = `${box2.imgH}px`;
   img.style.left = `${box2.left}px`;
   img.style.top = `${box2.top}px`;
-  const clip5 = polygonClipInBox(fracParts(frac), points);
-  if (clip5) frame.style.clipPath = clip5;
+  const clip6 = polygonClipInBox(fracParts(frac), points);
+  if (clip6) frame.style.clipPath = clip6;
   return true;
 }
 function mountRegionCrop({ doc = globalThis.document, button: button2, region, file, maxH = CROP_MAX_H, onOpen, delayMs, buildPopover, obstacles } = {}) {
@@ -24505,7 +24506,7 @@ function mountPdfPin({
   else parent.append(span);
   let loads = 0;
   let pop = null;
-  const ask = () => {
+  const ask2 = () => {
     if (loads) return;
     const url = pinPdfUrl(region.url || "");
     if (!url || typeof loadCrop !== "function") return;
@@ -24521,7 +24522,7 @@ function mountPdfPin({
   if (typeof IO === "function") {
     try {
       observer = new IO((entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) ask();
+        if (entries.some((entry) => entry.isIntersecting)) ask2();
       });
       observer.observe(span);
     } catch {
@@ -24815,21 +24816,21 @@ function findCell(host, uid, { pullTree } = {}) {
   return null;
 }
 function visibleClip(cell, host, body) {
-  let clip5 = rectOf4(body);
+  let clip6 = rectOf4(body);
   const cut = (node2) => {
     const r = rectOf4(node2);
     if (!r) return;
-    if (!clip5) {
-      clip5 = r;
+    if (!clip6) {
+      clip6 = r;
       return;
     }
-    clip5 = { top: Math.max(clip5.top, r.top), bottom: Math.min(clip5.bottom, r.bottom), left: Math.max(clip5.left, r.left), right: Math.min(clip5.right, r.right) };
+    clip6 = { top: Math.max(clip6.top, r.top), bottom: Math.min(clip6.bottom, r.bottom), left: Math.max(clip6.left, r.left), right: Math.min(clip6.right, r.right) };
   };
   cut(host);
   for (let n2 = cell?.parentElement; n2 && n2 !== host && n2 !== body; n2 = n2.parentElement) {
     if (n2.scrollHeight > n2.clientHeight || n2.scrollWidth > n2.clientWidth) cut(n2);
   }
-  return clip5;
+  return clip6;
 }
 function measureCell({ card: card2, host, body, uid, zoom = 1, pullTree } = {}) {
   const cardRect = rectOf4(card2);
@@ -24840,20 +24841,20 @@ function measureCell({ card: card2, host, body, uid, zoom = 1, pullTree } = {}) 
   const cell = findCell(host, uid, { pullTree });
   const r = cell ? rectOf4(cell) : null;
   if (!r || !r.width && !r.height) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
-  const clip5 = visibleClip(cell, host, body);
+  const clip6 = visibleClip(cell, host, body);
   const rowHeight = round16(r.height / z);
   let rowTop = round16((r.top - cardRect.top) / z);
-  if (clip5) {
+  if (clip6) {
     const cx = (r.left + r.right) / 2;
-    if (cx < clip5.left || cx > clip5.right) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
+    if (cx < clip6.left || cx > clip6.right) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
     else {
       const cy = (r.top + r.bottom) / 2;
-      if (cy < clip5.top) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
-      else if (cy > clip5.bottom) rowTop = round16(out.bodyBottom + 1);
+      if (cy < clip6.top) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
+      else if (cy > clip6.bottom) rowTop = round16(out.bodyBottom + 1);
     }
   }
-  const left = clip5 ? Math.max(r.left, clip5.left) : r.left;
-  const right = clip5 ? Math.min(r.right, clip5.right) : r.right;
+  const left = clip6 ? Math.max(r.left, clip6.left) : r.left;
+  const right = clip6 ? Math.min(r.right, clip6.right) : r.right;
   return { ...out, rowTop, rowHeight, rowLeft: round16((left - cardRect.left) / z), rowRight: round16((right - cardRect.left) / z), rendered: true, cell: true };
 }
 function revealCell(cell, body) {
@@ -25290,19 +25291,19 @@ function cardContentKey(item, live = false, pdfOpen = false, chipSig = "", cover
   walk2(item.content || [], 1);
   return parts.join("");
 }
-function regionHub(win) {
-  if (!win || typeof win !== "object" && typeof win !== "function") return null;
-  let hub = regionHubs.get(win);
+function regionHub(win2) {
+  if (!win2 || typeof win2 !== "object" && typeof win2 !== "function") return null;
+  let hub = regionHubs.get(win2);
   if (hub) return hub;
-  hub = { win, entries: /* @__PURE__ */ new Set(), listening: false };
+  hub = { win: win2, entries: /* @__PURE__ */ new Set(), listening: false };
   const detach2 = () => {
     if (!hub.listening) return;
     try {
-      win.removeEventListener?.("roam-plexus:ready", hub.onReady);
+      win2.removeEventListener?.("roam-plexus:ready", hub.onReady);
     } catch {
     }
     try {
-      win.removeEventListener?.("roam-plexus:unload", hub.onUnload);
+      win2.removeEventListener?.("roam-plexus:unload", hub.onUnload);
     } catch {
     }
     hub.listening = false;
@@ -25331,15 +25332,15 @@ function regionHub(win) {
   hub.onUnload = () => fan("onUnload");
   hub.attach = () => {
     if (hub.listening) return;
-    win.addEventListener?.("roam-plexus:ready", hub.onReady);
-    win.addEventListener?.("roam-plexus:unload", hub.onUnload);
+    win2.addEventListener?.("roam-plexus:ready", hub.onReady);
+    win2.addEventListener?.("roam-plexus:unload", hub.onUnload);
     hub.listening = true;
   };
-  regionHubs.set(win, hub);
+  regionHubs.set(win2, hub);
   return hub;
 }
-function joinRegionHub(win, entry) {
-  const hub = regionHub(win);
+function joinRegionHub(win2, entry) {
+  const hub = regionHub(win2);
   if (!hub) return () => {
   };
   hub.entries.add(entry);
@@ -25351,11 +25352,11 @@ function joinRegionHub(win, entry) {
     hub.entries.delete(entry);
     if (!hub.entries.size) {
       try {
-        win.removeEventListener?.("roam-plexus:ready", hub.onReady);
+        win2.removeEventListener?.("roam-plexus:ready", hub.onReady);
       } catch {
       }
       try {
-        win.removeEventListener?.("roam-plexus:unload", hub.onUnload);
+        win2.removeEventListener?.("roam-plexus:unload", hub.onUnload);
       } catch {
       }
       hub.listening = false;
@@ -25934,11 +25935,11 @@ function createItemRenderer({
   };
   const taskUidOf = (item) => item?.target?.kind === "block" && item.target.uid ? item.target.uid : item?.uid;
   const setTaskStatus = async (uid, name) => {
-    const api = statusApi(statusWin());
-    if (!api || !uid) return;
+    const api2 = statusApi(statusWin());
+    if (!api2 || !uid) return;
     let result = null;
     try {
-      result = await api.setStatus(uid, name);
+      result = await api2.setStatus(uid, name);
     } catch {
       result = { status: "unknown", reason: "set-status-failed" };
     }
@@ -27772,8 +27773,8 @@ function createItemRenderer({
       placeFrac(hit, region.frac);
       if (region.poly?.length >= 3 && f) {
         hit.classList.add("pxd-region-hit--poly");
-        const clip5 = polygonClipInBox(f, region.poly);
-        if (clip5) hit.style.clipPath = clip5;
+        const clip6 = polygonClipInBox(f, region.poly);
+        if (clip6) hit.style.clipPath = clip6;
         const svg = doc.createElementNS?.("http://www.w3.org/2000/svg", "svg") || doc.createElement("svg");
         svg.setAttribute("viewBox", "0 0 100 100");
         svg.setAttribute("preserveAspectRatio", "none");
@@ -29152,8 +29153,8 @@ function createItemRenderer({
   };
   const regionWindow = () => doc.defaultView || globalThis;
   const roamPlexus2 = () => {
-    const api = regionWindow().RoamPlexus ?? globalThis.RoamPlexus;
-    return api && typeof api === "object" ? api : null;
+    const api2 = regionWindow().RoamPlexus ?? globalThis.RoamPlexus;
+    return api2 && typeof api2 === "object" ? api2 : null;
   };
   const drawingEditorMounted = (drawingUid) => {
     if (!drawingUid) return false;
@@ -29235,17 +29236,17 @@ function createItemRenderer({
     dropSnapshot(snap);
     return blob;
   };
-  const loadDrawingBlob = async (api, drawingUid) => {
-    if (interopAllowed() && api && Number(api.apiVersion) >= 6 && typeof api.thumbnail === "function") {
+  const loadDrawingBlob = async (api2, drawingUid) => {
+    if (interopAllowed() && api2 && Number(api2.apiVersion) >= 6 && typeof api2.thumbnail === "function") {
       let shot2 = null;
       try {
-        shot2 = await blobOf(api.thumbnail(drawingUid, { maxWidth: 160 }));
+        shot2 = await blobOf(api2.thumbnail(drawingUid, { maxWidth: 160 }));
       } catch {
         shot2 = null;
       }
       if (shot2 == null) {
         try {
-          shot2 = await blobOf(api.thumbnail(drawingUid, { maxWidth: 160, render: true }));
+          shot2 = await blobOf(api2.thumbnail(drawingUid, { maxWidth: 160, render: true }));
         } catch {
           shot2 = null;
         }
@@ -29256,13 +29257,13 @@ function createItemRenderer({
   };
   const mountDrawingBody = (rec, item) => {
     const ref = item.target?.uid;
-    const api = roamPlexus2();
+    const api2 = roamPlexus2();
     const off = rec.el.classList.contains("pxd-item--offscreen");
     const detail = lod === "detail" && !off;
     let regions;
-    if (api && typeof api.regionsOf === "function" && ref) {
+    if (api2 && typeof api2.regionsOf === "function" && ref) {
       try {
-        const rows = api.regionsOf(ref);
+        const rows = api2.regionsOf(ref);
         regions = Array.isArray(rows) ? rows : [];
       } catch {
         regions = [];
@@ -29307,13 +29308,13 @@ function createItemRenderer({
     };
     paint2(null);
     if (!detail || !ref) return;
-    void loadDrawingBlob(api, ref).then((blob) => {
+    void loadDrawingBlob(api2, ref).then((blob) => {
       if (blob) paint2(blob);
     }).catch(() => {
     });
   };
   const mountRegionBody = (rec, item) => {
-    const api = regionWindow().RoamPlexus ?? null;
+    const api2 = regionWindow().RoamPlexus ?? null;
     const ref = item.target?.uid;
     let text3 = "";
     try {
@@ -29321,7 +29322,7 @@ function createItemRenderer({
     } catch {
       text3 = "";
     }
-    const model = regionRefModel(text3, api);
+    const model = regionRefModel(text3, api2);
     const caption = model?.caption ?? item.title ?? "";
     if (model?.drawingUid) item.regionDrawing = model.drawingUid;
     const off = rec.el.classList.contains("pxd-item--offscreen");
@@ -30350,12 +30351,12 @@ function createItemRenderer({
         editor.scrollTop = placedScroll;
       }
       if (input && caretOff != null && caretRow) {
-        const win = pageEditWindowId(editor);
+        const win2 = pageEditWindowId(editor);
         const place2 = host?.api?.ui?.setBlockFocusAndSelection;
-        if (win && typeof place2 === "function") {
+        if (win2 && typeof place2 === "function") {
           try {
             place2({
-              location: { "block-uid": caretRow, "window-id": win },
+              location: { "block-uid": caretRow, "window-id": win2 },
               selection: { start: caretOff, end: caretOff }
             });
           } catch {
@@ -30611,14 +30612,14 @@ function createItemRenderer({
     h.classList.add("pxd-item__header--editing");
     h.contentEditable = "true";
     h.setAttribute("contenteditable", "true");
-    const win = doc.defaultView;
+    const win2 = doc.defaultView;
     const finish = (commit) => {
       if (!rec.renaming) return;
       rec.renaming = false;
       h.contentEditable = "false";
       h.removeAttribute("contenteditable");
       h.classList.remove("pxd-item__header--editing");
-      win?.removeEventListener("keydown", onKey, true);
+      win2?.removeEventListener("keydown", onKey, true);
       h.removeEventListener("blur", onBlur);
       h.removeEventListener("pointerdown", stopEvent);
       h.removeEventListener("dblclick", stopEvent);
@@ -30641,7 +30642,7 @@ function createItemRenderer({
       }
     };
     const onBlur = () => finish(true);
-    win?.addEventListener("keydown", onKey, true);
+    win2?.addEventListener("keydown", onKey, true);
     h.addEventListener("blur", onBlur);
     h.addEventListener("pointerdown", stopEvent);
     h.addEventListener("dblclick", stopEvent);
@@ -30668,13 +30669,13 @@ function createItemRenderer({
     refreshRegionKinds(eventUid);
   };
   const bindRegionWatch = () => {
-    const api = regionWindow().RoamPlexus;
-    if (regionWatch === api) return;
+    const api2 = regionWindow().RoamPlexus;
+    if (regionWatch === api2) return;
     try {
       regionWatch?.removeEventListener?.("change", onRegionChange);
     } catch {
     }
-    regionWatch = api && typeof api.addEventListener === "function" ? api : null;
+    regionWatch = api2 && typeof api2.addEventListener === "function" ? api2 : null;
     try {
       regionWatch?.addEventListener("change", onRegionChange);
     } catch {
@@ -30682,7 +30683,7 @@ function createItemRenderer({
   };
   const refreshRegionKinds = (eventUid) => {
     if (disposed || !lastBoard) return;
-    const api = regionWindow().RoamPlexus ?? null;
+    const api2 = regionWindow().RoamPlexus ?? null;
     let changed2 = false;
     for (const item of lastBoard.items.values()) {
       if (item.type !== "card" || item.kind !== "block" && item.kind !== "region-ref" && item.kind !== "drawing-ref") continue;
@@ -30704,7 +30705,7 @@ function createItemRenderer({
       } catch {
         text3 = null;
       }
-      const model = regionRefModel(typeof text3 === "string" ? text3 : "", api);
+      const model = regionRefModel(typeof text3 === "string" ? text3 : "", api2);
       const drawing = model?.drawingUid || item.regionDrawing || "";
       if (eventUid && drawing !== eventUid && ref !== eventUid) continue;
       const nextKind = model ? "region-ref" : "block";
@@ -31678,7 +31679,7 @@ function createReadDrawer({
     event.preventDefault?.();
     const startPx = Math.round(paneH * fraction);
     const startY = Number(event.clientY) || 0;
-    const win = view();
+    const win2 = view();
     const move = (ev) => {
       const y = Number(ev.clientY) || 0;
       fraction = clampFraction((startPx + (startY - y)) / paneH);
@@ -31689,8 +31690,8 @@ function createReadDrawer({
       writeFraction();
     };
     const arm4 = (type, fn) => {
-      win.addEventListener?.(type, fn);
-      dragOff.push(() => win.removeEventListener?.(type, fn));
+      win2.addEventListener?.(type, fn);
+      dragOff.push(() => win2.removeEventListener?.(type, fn));
     };
     endDrag();
     arm4("pointermove", move);
@@ -33747,10 +33748,10 @@ function diagramsWithin(root) {
 function isEnhancedProps(pulledProps) {
   return readPlexus(pulledProps)?.v === SCHEMA_VERSION;
 }
-function readEnhanced(api, uid) {
+function readEnhanced(api2, uid) {
   if (!uid) return false;
   try {
-    const pulled = api?.data?.pull?.("[:block/props]", [":block/uid", uid]);
+    const pulled = api2?.data?.pull?.("[:block/props]", [":block/uid", uid]);
     return isEnhancedProps(pulled?.[":block/props"] ?? pulled?.props ?? null);
   } catch {
     return false;
@@ -34597,10 +34598,10 @@ function markdownRootUids(result) {
   }
   return roots;
 }
-function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
+function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
   const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
   bindGuardStats(stats);
-  const data = api.data;
+  const data = api2.data;
   const undoLog = [];
   const redoLog = [];
   const UNDO_LOG_MAX = 200;
@@ -34931,7 +34932,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
   };
   const gname = graph ?? graphName();
   const host = {
-    api,
+    api: api2,
     pull,
     // A fresh read, never the board cache: false only when Roam has no block with this uid.
     blockExists(uid) {
@@ -35387,12 +35388,12 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     },
     // Bytes for a graph file. Encrypted graphs only decrypt through file.get; the URL itself taints a canvas.
     async getFile(url) {
-      const get = api.file?.get;
+      const get = api2.file?.get;
       if (typeof get !== "function") return null;
       const src = String(url ?? "").trim();
       if (!src) return null;
       try {
-        return await get.call(api.file, { url: src });
+        return await get.call(api2.file, { url: src });
       } catch {
         return null;
       }
@@ -35427,10 +35428,10 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       return id;
     },
     generateUid() {
-      return api.util.generateUID();
+      return api2.util.generateUID();
     },
     async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType } = {}) {
-      const id = uid ?? api.util.generateUID();
+      const id = uid ?? api2.util.generateUID();
       const block = { uid: id, string };
       if (props !== void 0) block.props = plainKeys(props);
       if (open !== void 0) block.open = open;
@@ -35643,21 +35644,21 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       redoLog.length = 0;
     },
     openInSidebar(uid, type = "block") {
-      return api.ui.rightSidebar.addWindow({ window: { type, "block-uid": uid } });
+      return api2.ui.rightSidebar.addWindow({ window: { type, "block-uid": uid } });
     },
     openBlock(uid) {
-      return api.ui.mainWindow.openBlock({ block: { uid } });
+      return api2.ui.mainWindow.openBlock({ block: { uid } });
     },
     openPage(uid) {
-      return api.ui.mainWindow.openPage({ page: { uid } });
+      return api2.ui.mainWindow.openPage({ page: { uid } });
     },
     renderString(el, string) {
       stats.renders++;
-      return api.ui.components.renderString({ el, string });
+      return api2.ui.components.renderString({ el, string });
     },
     renderBlock(el, uid, { open = true } = {}) {
       stats.renders++;
-      return api.ui.components.renderBlock({ uid, el, "open?": open });
+      return api2.ui.components.renderBlock({ uid, el, "open?": open });
     },
     renderPage(el, uid, opts) {
       stats.renders++;
@@ -35665,10 +35666,10 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       if (opts && typeof opts === "object") {
         for (const key of Object.keys(opts)) if (key !== "uid" && key !== "el") props[key] = opts[key];
       }
-      return api.ui.components.renderPage(props);
+      return api2.ui.components.renderPage(props);
     },
     unmount(el) {
-      return api.ui.components.unmountNode({ el });
+      return api2.ui.components.unmountNode({ el });
     },
     q(query, ...inputs) {
       return data.fast?.q ? data.fast.q(query, ...inputs) : data.q(query, ...inputs);
@@ -35945,9 +35946,9 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       return remember2(result);
     },
     async uploadFile(file) {
-      const upload = api.file?.upload;
+      const upload = api2.file?.upload;
       if (typeof upload !== "function") throw new Error("upload-unavailable");
-      const res = await upload.call(api.file, { file });
+      const res = await upload.call(api2.file, { file });
       const raw = typeof res === "string" ? res : res?.url;
       const md = typeof raw === "string" ? /^\s*!\[[^\]]*\]\((.+)\)\s*$/s.exec(raw) : null;
       const url = md ? md[1] : raw;
@@ -37079,9 +37080,9 @@ function addPublicCard(opts = {}, createFn) {
     x: Number.isFinite(x) ? x : 40,
     y: Number.isFinite(y) ? y : 40
   };
-  const make2 = typeof create === "function" ? create : createFn;
-  if (typeof make2 !== "function") return op;
-  return make2(op);
+  const make3 = typeof create === "function" ? create : createFn;
+  if (typeof make3 !== "function") return op;
+  return make3(op);
 }
 var PARSE_BLOCK_CHUNK = 400;
 var PARSE_CHUNK_CAP = 10;
@@ -38942,10 +38943,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     createDrawing({ x, y } = {}) {
       if (!board2 || destroyed || gone) return Promise.resolve(void 0);
       const spec = drawingCreateSpec(uid);
-      const api2 = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
+      const api3 = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
       const place2 = () => {
-        if (api2 && typeof api2.create === "function") {
-          return Promise.resolve(api2.create({ parentUid: spec.parentUid, order: spec.order })).then((made) => {
+        if (api3 && typeof api3.create === "function") {
+          return Promise.resolve(api3.create({ parentUid: spec.parentUid, order: spec.order })).then((made) => {
             const id = made?.uid || null;
             if (id) host.adoptCreated?.(id);
             return id;
@@ -40057,7 +40058,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     return sectionUid;
   }
   if (linkMode !== "off" && board2) refreshLinks();
-  const api = {
+  const api2 = {
     uid,
     host,
     settings,
@@ -40084,7 +40085,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   };
   for (const fn of [...extensions]) {
     try {
-      fn(session, api);
+      fn(session, api2);
     } catch (err) {
       console.error("[plexus session] extension", err);
     }
@@ -40140,12 +40141,12 @@ function findNode2(node2, uid) {
   return null;
 }
 var isEnhancedBoardNode = (node2) => Boolean(node2) && readPlexus(node2[PROPS2])?.v === 2 && classifyString(node2[STR2]).kind === "board";
-extendSession((session, api) => {
-  const { host } = api;
+extendSession((session, api2) => {
+  const { host } = api2;
   const gen = () => host.generateUid();
   function placeCard(t, string, x, y, { w, h, color } = {}, exclude) {
-    const board2 = api.board();
-    const rects = api.rects();
+    const board2 = api2.board();
+    const rects = api2.rects();
     const cw = w ?? DEFAULT_SIZES.card.w;
     const ch = h ?? DEFAULT_SIZES.card.h;
     const parent = containerAt(board2, { x: x + cw / 2, y: y + ch / 2 }, { rects, exclude });
@@ -40154,7 +40155,7 @@ extendSession((session, api) => {
     if (w !== void 0) layout.w = w;
     if (h !== void 0) layout.h = h;
     if (color) layout.color = color;
-    const look = lookForNewString(string, api.setting("default-card-look", "block"));
+    const look = lookForNewString(string, api2.setting("default-card-look", "block"));
     if (look) layout.look = look;
     return t.create({ parent, string, plexus: serializeItemLayout(layout) });
   }
@@ -40172,8 +40173,8 @@ extendSession((session, api) => {
     }
   }
   function cloneSet(t, src, entries, exclude) {
-    const board2 = api.board();
-    const rects = api.rects();
+    const board2 = api2.board();
+    const rects = api2.rects();
     const at = new Map(entries.map((e2) => [e2.uid, e2]));
     const uidMap = /* @__PURE__ */ new Map();
     const tops = [];
@@ -40185,8 +40186,8 @@ extendSession((session, api) => {
       if (item.kind === "board" && !item.enhanced) continue;
       const parent = containerAt(board2, { x: e2.x + item.w / 2, y: e2.y + item.h / 2 }, { rects, exclude });
       const rel = toRelative(board2, parent, { x: e2.x, y: e2.y }, rects);
-      const x = api.round1(rel.x);
-      const y = api.round1(rel.y);
+      const x = api2.round1(rel.x);
+      const y = api2.round1(rel.y);
       const simple = item.type === "text" || ["page", "block", "image"].includes(item.kind);
       if (simple) {
         const plexus = { ...readPlexus(node2[PROPS2]) ?? {}, x, y };
@@ -40200,7 +40201,7 @@ extendSession((session, api) => {
       }
       const patch = { x, y };
       if (item.type === "section") Object.assign(patch, { type: "section", w: item.w, h: item.h });
-      const plan = planSubtreeClone(node2, { genUid: gen, parentUid: parent, order: api.insertOrder(parent), plexusPatch: patch, uidMap });
+      const plan = planSubtreeClone(node2, { genUid: gen, parentUid: parent, order: api2.insertOrder(parent), plexusPatch: patch, uidMap });
       const oldOf = new Map([...uidMap].map(([o, n2]) => [n2, o]));
       for (const c of plan.creates) {
         const plexus = c.props?.[PLEXUS_KEY] ? { ...c.props[PLEXUS_KEY] } : null;
@@ -40229,7 +40230,7 @@ extendSession((session, api) => {
         const it = src.board.items.get(old);
         refs.set(fresh, it && (it.target?.kind === "page" || it.target?.kind === "block") ? semanticRef(it) : `((${fresh}))`);
       }
-      const containerUid = api.ensureContainer(t);
+      const containerUid = api2.ensureContainer(t);
       for (const c of planEdgeClones(edges, uidMap, { genUid: gen, containerUid, refOfNew: (fresh) => refs.get(fresh) })) {
         t.create({ parent: c.parent, uid: c.uid, string: c.string, plexus: c.props[PLEXUS_KEY], order: "last" });
       }
@@ -40241,9 +40242,9 @@ extendSession((session, api) => {
   Object.assign(session, {
     // New top-level uids. asRef=true makes ref cards instead. The pinned flag is not copied.
     duplicateItems(uids, { dx = 24, dy = 24, asRef = false } = {}) {
-      return api.txn((t) => {
-        const board2 = api.board();
-        const rects = api.rects();
+      return api2.txn((t) => {
+        const board2 = api2.board();
+        const rects = api2.rects();
         const top = topLevelOf(board2, uids ?? []);
         if (!top.length) return [];
         const exclude = new Set(top);
@@ -40251,26 +40252,26 @@ extendSession((session, api) => {
         if (asRef) {
           made = top.map((id) => {
             const r = rects.get(id);
-            return placeCard(t, api.refOf(id), r.x + dx, r.y + dy, {}, exclude);
+            return placeCard(t, api2.refOf(id), r.x + dx, r.y + dy, {}, exclude);
           });
         } else {
           const entries = top.map((id) => ({ uid: id, x: rects.get(id).x + dx, y: rects.get(id).y + dy }));
-          made = cloneSet(t, { board: board2, node: api.rawNode }, entries, exclude);
+          made = cloneSet(t, { board: board2, node: api2.rawNode }, entries, exclude);
         }
-        api.applyFit(t, made);
+        api2.applyFit(t, made);
         return made;
       }).then((made) => made ?? []);
     },
     // A detached copy of the items (and their subtrees and the connections between them) as a synthetic board
     // tree. A cut puts it in the clipboard payload, so the paste no longer depends on the deleted blocks.
     snapshotItems(uids) {
-      const board2 = api.board();
+      const board2 = api2.board();
       if (!board2) return null;
       const top = topLevelOf(board2, uids ?? []);
       if (!top.length) return null;
       const set = new Set(top);
       for (const id of top) for (const d of descendantsOf(board2, id)) set.add(d);
-      const copy = (id) => JSON.parse(JSON.stringify(api.rawNode(id) ?? null));
+      const copy = (id) => JSON.parse(JSON.stringify(api2.rawNode(id) ?? null));
       const nodes = top.map(copy).filter(Boolean);
       if (!nodes.length) return null;
       const edgeNodes = [...board2.edges.values()].filter((e2) => e2.valid && set.has(e2.from) && set.has(e2.to)).map((e2) => copy(e2.uid)).filter(Boolean);
@@ -40284,7 +40285,7 @@ extendSession((session, api) => {
       const payload = data?.kind === "plexus" ? data.data : data;
       if (!payload || !Array.isArray(payload.items) || !payload.items.length) return Promise.resolve([]);
       if (payload.snapshot && typeof payload.snapshot === "object") mode = "clone";
-      return api.txn((t) => {
+      return api2.txn((t) => {
         let made;
         if (mode === "clone") {
           let src;
@@ -40292,7 +40293,7 @@ extendSession((session, api) => {
             const board2 = buildBoard(payload.snapshot);
             if (!board2) return [];
             src = { board: board2, node: (id) => findNode2(payload.snapshot, id) };
-          } else if (payload.board === session.uid) src = { board: api.board(), node: api.rawNode };
+          } else if (payload.board === session.uid) src = { board: api2.board(), node: api2.rawNode };
           else {
             const pulled = host.pullBoard(payload.board);
             const board2 = pulled ? buildBoard(pulled) : null;
@@ -40303,9 +40304,9 @@ extendSession((session, api) => {
           const entries = payload.items.map((i) => ({ uid: i.uid, x: x + (i.x - bounds.x), y: y + (i.y - bounds.y) }));
           made = cloneSet(t, src, entries);
         } else {
-          made = capBulk(refCardStrings(payload, { x, y }), api.emit).map((c) => placeCard(t, c.string, c.x, c.y, { w: c.w, h: c.h, color: c.color }));
+          made = capBulk(refCardStrings(payload, { x, y }), api2.emit).map((c) => placeCard(t, c.string, c.x, c.y, { w: c.w, h: c.h, color: c.color }));
         }
-        api.applyFit(t, made);
+        api2.applyFit(t, made);
         return made;
       }).then((made) => made ?? []);
     },
@@ -40313,25 +40314,25 @@ extendSession((session, api) => {
     pasteText(text3, { x = 0, y = 0 } = {}) {
       const list = (Array.isArray(text3) ? text3 : parsePastedText(text3)).map((e2) => typeof e2 === "string" ? e2 : e2?.string).filter((s) => typeof s === "string" && s.trim() !== "");
       if (!list.length) return Promise.resolve([]);
-      return api.txn((t) => {
-        const made = capBulk(stackAt(list, x, y), api.emit).map((c) => placeCard(t, c.string, c.x, c.y));
-        api.applyFit(t, made);
+      return api2.txn((t) => {
+        const made = capBulk(stackAt(list, x, y), api2.emit).map((c) => placeCard(t, c.string, c.x, c.y));
+        api2.applyFit(t, made);
         return made;
       }).then((made) => made ?? []);
     },
     // Adds ref cards for the items to the right of the target board's content. Resolves {added, title} or null.
     sendToBoard(uids, targetUid) {
-      const board2 = api.board();
+      const board2 = api2.board();
       if (!board2 || !targetUid || targetUid === session.uid) return Promise.resolve(null);
       const top = topLevelOf(board2, uids ?? []).filter((id) => id !== targetUid);
       if (!top.length) return Promise.resolve(null);
-      const node2 = api.rawNode(targetUid);
+      const node2 = api2.rawNode(targetUid);
       if (node2) {
         if (!isEnhancedBoardNode(node2)) return Promise.resolve(null);
         const origin2 = outlineOrigin(boardPreview({ uid: targetUid, string: node2[STR2], content: node2[KIDS2] ?? [] }));
         const title = parseBoardTitle(node2[STR2]) || UNTITLED_BOARD;
-        return api.txn((t) => {
-          for (const c of stackAt(top.map((id) => api.refOf(id)), origin2.x, origin2.y)) {
+        return api2.txn((t) => {
+          for (const c of stackAt(top.map((id) => api2.refOf(id)), origin2.x, origin2.y)) {
             t.create({ parent: targetUid, string: c.string, plexus: serializeItemLayout({ x: c.x, y: c.y }) });
           }
           return { added: top.length, title };
@@ -40341,8 +40342,8 @@ extendSession((session, api) => {
       if (!isEnhancedBoardNode(pulled)) return Promise.resolve(null);
       const target = buildBoard(pulled);
       const origin = outlineOrigin(boardPreview({ uid: targetUid, string: pulled[STR2], content: pulled[KIDS2] ?? [] }));
-      const cards = stackAt(top.map((id) => api.refOf(id)), origin.x, origin.y);
-      return api.queue.run(async () => {
+      const cards = stackAt(top.map((id) => api2.refOf(id)), origin.x, origin.y);
+      return api2.queue.run(async () => {
         for (let i = 0; i < cards.length; i++) {
           await host.createBlock({
             parentUid: targetUid,
@@ -40354,7 +40355,7 @@ extendSession((session, api) => {
         return { added: cards.length, title: target.title || UNTITLED_BOARD };
       }).catch((err) => {
         console.error("[plexus session] sendToBoard", err);
-        api.emit("toast", { message: "Couldn't send the cards to that board." });
+        api2.emit("toast", { message: "Couldn't send the cards to that board." });
         return null;
       });
     },
@@ -40362,7 +40363,7 @@ extendSession((session, api) => {
     // Children already on the board as ref cards are skipped. Two writes per child, so the cap is 22.
     spreadChildren(cardUid) {
       const none = { added: 0, skipped: 0 };
-      const board2 = api.board();
+      const board2 = api2.board();
       const item = board2?.items.get(cardUid);
       if (!item || item.type !== "card") return Promise.resolve(none);
       let kids;
@@ -40386,13 +40387,13 @@ extendSession((session, api) => {
       }
       if (!fresh.length) return Promise.resolve({ added: 0, skipped });
       const list = fresh.length > SPREAD_CAP ? fresh.slice(0, SPREAD_CAP) : fresh;
-      if (fresh.length > SPREAD_CAP) api.emit("toast", { message: `Added ${SPREAD_CAP} of ${fresh.length} (Roam undo holds 50 changes)` });
-      const own = api.rects().get(cardUid);
+      if (fresh.length > SPREAD_CAP) api2.emit("toast", { message: `Added ${SPREAD_CAP} of ${fresh.length} (Roam undo holds 50 changes)` });
+      const own = api2.rects().get(cardUid);
       if (!own) return Promise.resolve(none);
       const x = own.x + own.w + SPREAD_GAP;
-      return api.txn((t) => {
-        const refOfCard = api.refOf(cardUid);
-        const container = api.ensureContainer(t);
+      return api2.txn((t) => {
+        const refOfCard = api2.refOf(cardUid);
+        const container = api2.ensureContainer(t);
         const made = [];
         let y = own.y;
         for (const k of list) {
@@ -40406,7 +40407,7 @@ extendSession((session, api) => {
           });
           y += DEFAULT_SIZES.card.h + STACK_GAP;
         }
-        api.applyFit(t, made);
+        api2.applyFit(t, made);
         return { added: made.length, skipped, total: fresh.length };
       }).then((res) => res ?? none);
     },
@@ -40425,7 +40426,7 @@ extendSession((session, api) => {
         colorBranches: opts.colorBranches
       });
       const gaps = MIND_GAPS[preset.spacing];
-      const board2 = api.board();
+      const board2 = api2.board();
       const item = board2?.items.get(cardUid);
       if (!item || item.type !== "card") return Promise.resolve(none);
       const plain2 = (list) => list.filter((n2) => n2?.uid).map((n2) => ({
@@ -40436,10 +40437,10 @@ extendSession((session, api) => {
       const rawTree = (list) => list.filter((n2) => n2?.[UID2]).map((n2) => ({
         uid: n2[UID2],
         string: n2[STR2] ?? "",
-        children: rawTree(api.kidsOf(n2))
+        children: rawTree(api2.kidsOf(n2))
       }));
       let tree;
-      if (item.kind === "note") tree = rawTree(api.kidsOf({ [KIDS2]: item.content }));
+      if (item.kind === "note") tree = rawTree(api2.kidsOf({ [KIDS2]: item.content }));
       else if (item.kind === "block") tree = plain2(host.pullTree(item.target.uid, preset.depth, max) ?? []);
       else if (item.kind === "page") tree = plain2(host.pagePreview(item.target.title, preset.depth, max)?.blocks ?? []);
       else return Promise.resolve(none);
@@ -40457,7 +40458,7 @@ extendSession((session, api) => {
       const chosen = new Set([...flat2].sort((a, b) => a.depth - b.depth || a.at - b.at).slice(0, Math.max(0, max)).map((f) => f.uid));
       const picked = flat2.filter((f) => chosen.has(f.uid));
       if (!picked.length) return Promise.resolve(none);
-      const rects = api.rects();
+      const rects = api2.rects();
       const own = rects.get(cardUid);
       const onBoard = /* @__PURE__ */ new Map();
       for (const it of board2.items.values()) {
@@ -40479,9 +40480,9 @@ extendSession((session, api) => {
           else colorOf3.set(f.uid, branchColor(branch++));
         }
       }
-      return api.txn((t) => {
+      return api2.txn((t) => {
         const cardOf = /* @__PURE__ */ new Map();
-        const refOfCard = /* @__PURE__ */ new Map([[cardUid, api.refOf(cardUid)]]);
+        const refOfCard = /* @__PURE__ */ new Map([[cardUid, api2.refOf(cardUid)]]);
         const created = [];
         const shift = /* @__PURE__ */ new Map();
         for (const f of picked) {
@@ -40491,7 +40492,7 @@ extendSession((session, api) => {
             const r = rects.get(have);
             shift.set(f.uid, r ? { dx: r.x - (own.x + p.x), dy: r.y - (own.y + p.y) } : { dx: 0, dy: 0 });
             cardOf.set(f.uid, have);
-            refOfCard.set(have, api.refOf(have));
+            refOfCard.set(have, api2.refOf(have));
             continue;
           }
           const inherited = shift.get(f.parent) ?? { dx: 0, dy: 0 };
@@ -40507,7 +40508,7 @@ extendSession((session, api) => {
           const from = f.parent && cardOf.has(f.parent) ? cardOf.get(f.parent) : cardUid;
           const to = cardOf.get(f.uid);
           if (from === to || findEdge(board2, from, to)) continue;
-          container ?? (container = api.ensureContainer(t));
+          container ?? (container = api2.ensureContainer(t));
           t.create({
             parent: container,
             order: "last",
@@ -40516,7 +40517,7 @@ extendSession((session, api) => {
           });
           edges++;
         }
-        api.applyFit(t, created);
+        api2.applyFit(t, created);
         const skipped = flat2.length - picked.length;
         return skipped > 0 ? { added: created.length, edges, skipped, total: flat2.length } : { added: created.length, edges };
       }).then((res) => res ?? none);
@@ -40636,16 +40637,16 @@ async function writeChunks(chunks, write, toast) {
     if (chunks.length > 1) toast(`Template ${i + 1} of ${chunks.length}`);
   }
 }
-extendSession((session, api) => {
-  const { host } = api;
+extendSession((session, api2) => {
+  const { host } = api2;
   session.insertTemplate = (id, rect) => {
     const starter = starterById(id);
-    const board2 = api.board();
+    const board2 = api2.board();
     if (!starter || !board2) return Promise.resolve(null);
     const d = DEFAULT_BOARD_CARD;
     const r = { x: rect?.x ?? 0, y: rect?.y ?? 0, w: rect?.w ?? d.w, h: rect?.h ?? d.h };
-    const parent = containerAt(board2, { x: r.x + r.w / 2, y: r.y + r.h / 2 }, { rects: api.rects() });
-    const rel = toRelative(board2, parent, { x: r.x, y: r.y }, api.rects());
+    const parent = containerAt(board2, { x: r.x + r.w / 2, y: r.y + r.h / 2 }, { rects: api2.rects() });
+    const rel = toRelative(board2, parent, { x: r.x, y: r.y }, api2.rects());
     const plan = planTemplate(id, {
       genUid: () => host.generateUid(),
       parentUid: parent,
@@ -40653,7 +40654,7 @@ extendSession((session, api) => {
     });
     if (!plan?.creates.length) return Promise.resolve(null);
     const rootUid = plan.rootUid;
-    return writeChunks(plan.chunks, (chunk) => api.txn((t) => {
+    return writeChunks(plan.chunks, (chunk) => api2.txn((t) => {
       for (const op of chunk) {
         t.create({
           uid: op.uid,
@@ -40664,20 +40665,20 @@ extendSession((session, api) => {
           open: op.open
         });
       }
-    }), (message) => api.emit("toast", { message })).then(() => {
-      api.emit("toast", {
+    }), (message) => api2.emit("toast", { message })).then(() => {
+      api2.emit("toast", {
         message: `Inserted ${starter.title}`,
-        action: { label: "Undo", run: () => api.txn((t) => t.del(rootUid)) }
+        action: { label: "Undo", run: () => api2.txn((t) => t.del(rootUid)) }
       });
       return rootUid;
     });
   };
   session.saveAsTemplate = async () => {
-    const tree = api.rawNode(api.uid);
+    const tree = api2.rawNode(api2.uid);
     if (!tree) return null;
     const pageUid = await host.ensurePage?.(TEMPLATE_PAGE);
     if (!pageUid) {
-      api.emit("toast", { message: "Couldn't open the templates page." });
+      api2.emit("toast", { message: "Couldn't open the templates page." });
       return null;
     }
     const plan = planCopy(tree, { genUid: () => host.generateUid(), parentUid: pageUid });
@@ -40696,8 +40697,8 @@ extendSession((session, api) => {
           });
         }
       });
-    }, (message) => api.emit("toast", { message }));
-    api.emit("toast", {
+    }, (message) => api2.emit("toast", { message }));
+    api2.emit("toast", {
       message: "Saved board as template",
       action: { label: "Undo", run: () => host.deleteBlock(rootUid) }
     });
@@ -40707,18 +40708,18 @@ extendSession((session, api) => {
 
 // src/snapshots.js
 init_snapshots();
-extendSession((session, api) => {
+extendSession((session, api2) => {
   session.saveSnapshot = (now3 = /* @__PURE__ */ new Date()) => {
-    const board2 = api.board();
+    const board2 = api2.board();
     if (!board2) return Promise.resolve(null);
     const title = snapshotTitle(now3);
     if (!title) return Promise.resolve(null);
     const items = captureLayout(board2);
-    return api.txn((t) => {
+    return api2.txn((t) => {
       let parent = board2.snapshotsUid;
       if (!parent) {
         parent = t.create({
-          parent: api.uid,
+          parent: api2.uid,
           string: SNAPSHOTS_TITLE,
           plexus: { type: "snapshots" },
           open: false
@@ -40732,16 +40733,16 @@ extendSession((session, api) => {
     });
   };
   session.restoreSnapshot = async (snapUid) => {
-    const board2 = api.board();
+    const board2 = api2.board();
     const snap = board2?.snapshots?.find((item) => item.uid === snapUid);
     if (!snap) return false;
     const chunks = planRestore(snap.items, board2);
     for (const chunk of chunks) {
-      await api.txn((t) => {
+      await api2.txn((t) => {
         for (const op of chunk) {
           if (op.op === "move") t.move(op.uid, op.parent);
           else {
-            t.props(op.uid, api.itemPlexus(op.uid, {
+            t.props(op.uid, api2.itemPlexus(op.uid, {
               x: op.x,
               y: op.y,
               w: op.w,
@@ -40753,11 +40754,11 @@ extendSession((session, api) => {
         }
       });
     }
-    api.emit("toast", { message: `Restored ${snap.title}` });
+    api2.emit("toast", { message: `Restored ${snap.title}` });
     return true;
   };
-  session.deleteSnapshot = (snapUid) => api.txn((t) => {
-    const snap = api.board()?.snapshots?.find((item) => item.uid === snapUid);
+  session.deleteSnapshot = (snapUid) => api2.txn((t) => {
+    const snap = api2.board()?.snapshots?.find((item) => item.uid === snapUid);
     if (!snap) return false;
     t.del(snapUid);
     return true;
@@ -40817,45 +40818,45 @@ function captionForView(sections, point, fallbackTitle) {
 var UID3 = ":block/uid";
 var STR3 = ":block/string";
 var CONTAINER = "{{[[plexus-regions]]}}";
-function regionsParent(api, board2) {
+function regionsParent(api2, board2) {
   if (board2.regionsUid) return board2.regionsUid;
-  const root = api.rawNode(api.uid);
-  for (const child of api.kidsOf(root)) {
+  const root = api2.rawNode(api2.uid);
+  for (const child of api2.kidsOf(root)) {
     const text3 = child[STR3] ?? child.string ?? "";
     if (isContainerString(text3)) return child[UID3] || child.uid;
   }
   return null;
 }
-function viewRegion(api, uid) {
-  const node2 = api.rawNode(uid);
+function viewRegion(api2, uid) {
+  const node2 = api2.rawNode(uid);
   if (!node2) return null;
   const region = parseRegion(node2[STR3] ?? node2.string ?? "");
   if (!region || region.kind !== "view" || region.supported !== true) return null;
   return region;
 }
-function imageCardContainer(api, cardUid) {
-  const card2 = api.rawNode(cardUid);
+function imageCardContainer(api2, cardUid) {
+  const card2 = api2.rawNode(cardUid);
   if (!card2) return null;
-  for (const child of api.kidsOf(card2)) {
+  for (const child of api2.kidsOf(card2)) {
     const id = child[UID3] || child.uid;
     if (!id) continue;
     const text3 = child[STR3] ?? child.string ?? "";
-    if (isContainerString(text3) || api.rawPlexus(id)?.type === "regions") return id;
+    if (isContainerString(text3) || api2.rawPlexus(id)?.type === "regions") return id;
   }
   return null;
 }
-extendSession((session, api) => {
+extendSession((session, api2) => {
   session.addView = ({ caption = "", v, ids } = {}) => {
-    const board2 = api.board();
+    const board2 = api2.board();
     if (!board2) return Promise.resolve(null);
-    const string = viewBlockString({ drawingUid: api.uid, caption, v, ids });
+    const string = viewBlockString({ drawingUid: api2.uid, caption, v, ids });
     if (!string) return Promise.resolve(null);
-    const uid = api.host.generateUid();
-    const promise = api.txn((t) => {
-      let parent = regionsParent(api, board2);
+    const uid = api2.host.generateUid();
+    const promise = api2.txn((t) => {
+      let parent = regionsParent(api2, board2);
       if (!parent) {
         parent = t.create({
-          parent: api.uid,
+          parent: api2.uid,
           string: CONTAINER,
           plexus: { type: "regions" },
           open: false,
@@ -40869,7 +40870,7 @@ extendSession((session, api) => {
     return promise;
   };
   session.renameView = (uid, caption) => {
-    const region = viewRegion(api, uid);
+    const region = viewRegion(api2, uid);
     if (!region) return Promise.resolve(false);
     let string;
     try {
@@ -40877,14 +40878,14 @@ extendSession((session, api) => {
     } catch {
       return Promise.resolve(false);
     }
-    return api.txn((t) => {
+    return api2.txn((t) => {
       t.string(uid, string);
       return true;
     });
   };
   session.deleteView = (uid) => {
-    if (!viewRegion(api, uid)) return Promise.resolve(false);
-    return api.txn((t) => {
+    if (!viewRegion(api2, uid)) return Promise.resolve(false);
+    return api2.txn((t) => {
       t.del(uid);
       return true;
     });
@@ -40892,10 +40893,10 @@ extendSession((session, api) => {
   session.addImageRegion = (cardUid, frac, caption, uid) => {
     const string = imageRegionString(cardUid, frac, caption);
     if (string == null) return Promise.resolve(null);
-    const regionUid = uid || api.host.generateUid();
-    const existing = imageCardContainer(api, cardUid);
+    const regionUid = uid || api2.host.generateUid();
+    const existing = imageCardContainer(api2, cardUid);
     if (!existing) {
-      api.txn((t) => {
+      api2.txn((t) => {
         t.create({
           parent: cardUid,
           string: CONTAINER,
@@ -40905,8 +40906,8 @@ extendSession((session, api) => {
         });
       });
     }
-    const parent = existing || imageCardContainer(api, cardUid);
-    const promise = api.txn((t) => {
+    const parent = existing || imageCardContainer(api2, cardUid);
+    const promise = api2.txn((t) => {
       t.create({ parent, uid: regionUid, string, order: "last" });
       return regionUid;
     });
@@ -40916,10 +40917,10 @@ extendSession((session, api) => {
   session.addHighlightRegion = (highlightUid, frac, caption, uid) => {
     const string = imageRegionString(highlightUid, frac, caption);
     if (string == null) return Promise.resolve(null);
-    const regionUid = uid || api.host.generateUid();
+    const regionUid = uid || api2.host.generateUid();
     let existing = null;
     try {
-      for (const kid of api.host.pullTree?.(highlightUid, 1, 200) || []) {
+      for (const kid of api2.host.pullTree?.(highlightUid, 1, 200) || []) {
         if (kid?.uid && isContainerString(kid.string ?? "")) {
           existing = kid.uid;
           break;
@@ -40928,7 +40929,7 @@ extendSession((session, api) => {
     } catch {
       existing = null;
     }
-    const promise = api.txn((t) => {
+    const promise = api2.txn((t) => {
       const parent = existing || t.create({
         parent: highlightUid,
         string: CONTAINER,
@@ -43430,10 +43431,10 @@ function createBt(options = {}) {
     return cachedWin;
   };
   const tools = () => {
-    const win = readWin();
+    const win2 = readWin();
     let entry = null;
     try {
-      entry = win?.[REGISTRY]?.[ENTRY];
+      entry = win2?.[REGISTRY]?.[ENTRY];
     } catch {
       entry = null;
     }
@@ -43524,7 +43525,7 @@ var FIND_MS = 2500;
 var DONE_MS = 3e3;
 var POLL_MS = 40;
 var GRACE_MS = 400;
-function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win = doc?.defaultView || globalThis } = {}) {
+function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win: win2 = doc?.defaultView || globalThis } = {}) {
   const busy = /* @__PURE__ */ new Map();
   const wait2 = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const until = async (probe, limit) => {
@@ -43537,7 +43538,7 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
     }
   };
   const fire2 = (target, type) => {
-    const Ctor = win.PointerEvent || win.MouseEvent || win.Event;
+    const Ctor = win2.PointerEvent || win2.MouseEvent || win2.Event;
     target.dispatchEvent(new Ctor(type, { bubbles: true, cancelable: true, composed: true, pointerType: "mouse", button: 0 }));
   };
   const run = async (uid) => {
@@ -43759,8 +43760,8 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
         body.push(`<text x="${n1(r.x)}" y="${n1(r.y + size)}" font-size="${size}" fill="${theme.text}">${esc(titleOf2(item))}</text>`);
       }
     } else {
-      const clip5 = `pxd-clip-${index}`;
-      defs.push(`<clipPath id="${clip5}"><rect x="${n1(r.x + 10)}" y="${n1(r.y)}" width="${n1(Math.max(1, r.w - 20))}" height="${n1(r.h)}"/></clipPath>`);
+      const clip6 = `pxd-clip-${index}`;
+      defs.push(`<clipPath id="${clip6}"><rect x="${n1(r.x + 10)}" y="${n1(r.y)}" width="${n1(Math.max(1, r.w - 20))}" height="${n1(r.h)}"/></clipPath>`);
       body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="8" fill="${theme.card}" stroke="${item.color ? line : theme.border}" stroke-width="${item.color ? 2 : 1}"/>`);
       const picture = imageHrefOf(item, imageHrefs);
       if (picture) {
@@ -43768,7 +43769,7 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
         const iy = r.y + 8;
         body.push(`<image href="${esc(picture)}" x="${n1(ix)}" y="${n1(iy)}" width="${n1(Math.max(1, r.w - 16))}" height="${n1(Math.max(1, r.h - 16))}" preserveAspectRatio="xMidYMid meet"/>`);
       } else {
-        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip5})">${esc(titleOf2(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip6})">${esc(titleOf2(item))}</text>`);
       }
     }
   });
@@ -45181,8 +45182,8 @@ function createInteractions({ actions, settings } = {}) {
       return false;
     }
     if (call("presentActive") && !mod && !ev.alt) {
-      const present = findShortcut(ev, "present");
-      if (present) return runShortcut(present, ev);
+      const present2 = findShortcut(ev, "present");
+      if (present2) return runShortcut(present2, ev);
     }
     const always = findShortcut(ev, "always");
     if (always) return runShortcut(always, ev);
@@ -45297,13 +45298,13 @@ function openAddToBoard({ doc = globalThis.document, listBoards, onPick } = {}) 
   const close = () => {
     if (closed) return;
     closed = true;
-    if (current === api) current = null;
+    if (current === api2) current = null;
     for (const off of offs) off();
     back.remove();
     box2.remove();
   };
-  const api = { close };
-  current = api;
+  const api2 = { close };
+  current = api2;
   const render = () => {
     list.replaceChildren();
     const q = String(filter.value || "").trim().toLowerCase();
@@ -45368,7 +45369,7 @@ ${b.pageTitle || b.page || ""}`.toLowerCase().includes(q));
     filter.focus();
   } catch {
   }
-  return api;
+  return api2;
 }
 function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs = 150 } = {}) {
   current?.close();
@@ -45401,14 +45402,14 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
   const close = () => {
     if (closed) return;
     closed = true;
-    if (current === api) current = null;
+    if (current === api2) current = null;
     if (timer) clearTimeout(timer);
     for (const off of offs) off();
     back.remove();
     box2.remove();
   };
-  const api = { close };
-  current = api;
+  const api2 = { close };
+  current = api2;
   const show = (rows, text3) => {
     list.replaceChildren();
     if (!rows.length) {
@@ -45485,7 +45486,7 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
     filter.focus();
   } catch {
   }
-  return api;
+  return api2;
 }
 
 // src/view/board-view.js
@@ -45840,7 +45841,7 @@ function toMarkdown(doc, idsOrRange) {
   for (const block of blocks) {
     if (block.type === "caption" && block.for && byId2.has(block.for)) skip.add(block.id);
   }
-  const captionOf = (block) => {
+  const captionOf2 = (block) => {
     for (const other of blocks) {
       if (other.type === "caption" && other.for === block.id) return other.text || "";
     }
@@ -45866,13 +45867,13 @@ function toMarkdown(doc, idsOrRange) {
       }
     } else if (block.type === "table") {
       lines.push(tableToMarkdown(block));
-      const caption = captionOf(block);
+      const caption = captionOf2(block);
       if (caption) lines.push(caption);
     } else if (block.type === "formula") {
       if (block.latex) lines.push(`$$${block.latex}$$${block.number ? ` ${block.number}` : ""}`);
       else lines.push(block.text || "Formula");
     } else if (block.type === "figure") {
-      const caption = captionOf(block) || block.text || "Figure";
+      const caption = captionOf2(block) || block.text || "Figure";
       const url = block.image?.url || "";
       lines.push(url ? `![${caption}](${url})` : caption);
     } else if (block.type === "caption") {
@@ -49025,10 +49026,10 @@ function applyLayoutFigures(doc, layout, pages) {
     if (!page || !(page.w > 0) || !(page.h > 0)) continue;
     const pageArea = page.w * page.h;
     const onPage = (layout || []).filter((b) => b && b.page === n2 && b.bbox && b.bbox.length >= 4 && (b.score ?? 0) >= LAYOUT_FIGURE_MIN_SCORE);
-    const clip5 = (b) => [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(page.w, b[2]), Math.min(page.h, b[3])];
+    const clip6 = (b) => [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(page.w, b[2]), Math.min(page.h, b[3])];
     const tables = order.map((id) => blocks[id]).filter((b) => b?.type === "table" && b.page === n2 && b.bbox).map((b) => b.bbox);
-    const hints = onPage.filter((b) => b.label === "image" || b.label === "chart").map((b) => clip5(b.bbox)).filter((b) => area(b) >= LAYOUT_FIGURE_MIN_AREA * pageArea && !tables.some((t) => mostlyInside(b, t)));
-    const others = onPage.filter((b) => b.label !== "image" && b.label !== "chart").map((b) => clip5(b.bbox));
+    const hints = onPage.filter((b) => b.label === "image" || b.label === "chart").map((b) => clip6(b.bbox)).filter((b) => area(b) >= LAYOUT_FIGURE_MIN_AREA * pageArea && !tables.some((t) => mostlyInside(b, t)));
+    const others = onPage.filter((b) => b.label !== "image" && b.label !== "chart").map((b) => clip6(b.bbox));
     const boxes = mergePanels(hints, page.w, page.h);
     const locals = order.filter((id) => blocks[id]?.type === "figure" && blocks[id].page === n2 && blocks[id].bbox);
     const born = !page.ocr && !page.scanLayer && page.kind !== "scan";
@@ -49127,10 +49128,10 @@ function applyLayoutFigures(doc, layout, pages) {
 
 // src/view/parse-engine.js
 var GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
-function detectPdfjs(win = typeof window !== "undefined" ? window : null) {
-  if (!win) return null;
+function detectPdfjs(win2 = typeof window !== "undefined" ? window : null) {
+  if (!win2) return null;
   for (const key of GLOBAL_KEYS) {
-    const lib = win[key];
+    const lib = win2[key];
     if (lib && typeof lib.getDocument === "function") return lib;
   }
   return null;
@@ -49244,10 +49245,10 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     throwIfAborted3();
     got = { ...got, pages: voteOcrBodies(got.pages, otherPages, words instanceof Set ? words : null) };
   }
-  const ask = (req) => helper.ocr({ bytes, sha256, cells: req, signal });
+  const ask2 = (req) => helper.ocr({ bytes, sha256, cells: req, signal });
   const scanOptions = { ...options, releaseHandwriting: high };
   let merged = wanted.length ? mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options: scanOptions, from, to, sha256 }) : { doc: base, choices: [], records: records || [] };
-  const lined = wanted.length && lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
+  const lined = wanted.length && lines ? await rereadLines({ doc: merged.doc, ocrPages: got?.pages || [], ocr: ask2, lexicon, signal, onPhase }) : { pages: got?.pages || [], applied: [] };
   if (lined.applied.length) merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records, pages: wanted, numPages, info, options: scanOptions, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
@@ -49334,7 +49335,7 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     }
     dropFigureLabelTables(doc);
   }
-  const rereads = await rereadCells({ doc, ocr: ask, signal, onPhase });
+  const rereads = await rereadCells({ doc, ocr: ask2, signal, onPhase });
   doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), lines: lined.applied.length, vlm: vlmApplied.length, vlmFigures: vlmFigures.length, vlmLines: vlmLines.length, elapsedMs: got?.elapsedMs ?? null };
   tidyDocumentTables(doc);
   return { doc, choices: merged.choices, rereads, lines: lined.applied, pages: wanted, records: next, ocrPages: lined.pages };
@@ -49583,11 +49584,12 @@ function createPageChips({
   getSelection = null,
   copy = null,
   copyMenu = null,
+  ask: ask2 = null,
   drag = null,
   storage = null,
   boxCap = 4e3
 } = {}) {
-  const win = () => doc?.defaultView || null;
+  const win2 = () => doc?.defaultView || null;
   const bound = [];
   let outline = null;
   let chipNode = null;
@@ -49619,12 +49621,12 @@ function createPageChips({
   };
   const stopTimer = () => {
     if (hideTimer == null) return;
-    (win()?.clearTimeout || clearTimeout)(hideTimer);
+    (win2()?.clearTimeout || clearTimeout)(hideTimer);
     hideTimer = null;
   };
   const selecting = () => {
     try {
-      const sel = typeof getSelection === "function" ? getSelection() : doc?.getSelection?.() || win()?.getSelection?.();
+      const sel = typeof getSelection === "function" ? getSelection() : doc?.getSelection?.() || win2()?.getSelection?.();
       return Boolean(sel && !sel.isCollapsed && String(sel).length > 0);
     } catch {
       return false;
@@ -49656,7 +49658,7 @@ function createPageChips({
     outline = null;
     chipNode = null;
   };
-  const later = (fn, ms) => (win()?.setTimeout || setTimeout)(fn, ms);
+  const later = (fn, ms) => (win2()?.setTimeout || setTimeout)(fn, ms);
   const button2 = (cls, text3, tip) => {
     const node2 = doc.createElement("button");
     node2.type = "button";
@@ -49750,6 +49752,21 @@ function createPageChips({
         closeCopyMenu();
         const icon = anchor?.closest?.(".pxd-parsed-copy") || anchor;
         runCopyMenu(item.id, block, icon);
+      });
+      menu.append(entry);
+    }
+    if (typeof ask2 === "function") {
+      const entry = button2("pxd-copy-menu__item", "Ask AI…");
+      entry.setAttribute("role", "menuitem");
+      entry.setAttribute("data-copy", "ask-ai");
+      on(entry, "click", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        closeCopyMenu();
+        try {
+          ask2(block);
+        } catch {
+        }
       });
       menu.append(entry);
     }
@@ -49853,7 +49870,7 @@ function createPageChips({
     }
     el.append(layer);
     let observer = null;
-    const MO = win()?.MutationObserver;
+    const MO = win2()?.MutationObserver;
     if (typeof MO === "function") {
       observer = new MO(() => queueSync());
       try {
@@ -49921,7 +49938,7 @@ function createPageChips({
   };
   function queueSync() {
     if (syncFrame || disposed || !showParsed) return;
-    const raf2 = win()?.requestAnimationFrame;
+    const raf2 = win2()?.requestAnimationFrame;
     if (typeof raf2 !== "function") {
       sync();
       return;
@@ -49938,7 +49955,7 @@ function createPageChips({
     if (!icon.__label) icon.__label = icon.getAttribute("aria-label");
     icon.setAttribute("aria-label", "Copied");
     icon.classList.add("pxd-parsed-copy--copied");
-    if (icon.__copiedTimer != null) (win()?.clearTimeout || clearTimeout)(icon.__copiedTimer);
+    if (icon.__copiedTimer != null) (win2()?.clearTimeout || clearTimeout)(icon.__copiedTimer);
     icon.__copiedTimer = later(() => {
       icon.__copiedTimer = null;
       icon.setAttribute("aria-label", icon.__label);
@@ -49951,7 +49968,7 @@ function createPageChips({
     icon.setAttribute("aria-label", "Could not copy");
     icon.classList.add("pxd-parsed-copy--fail");
     icon.classList.remove("pxd-parsed-copy--copied");
-    if (icon.__copiedTimer != null) (win()?.clearTimeout || clearTimeout)(icon.__copiedTimer);
+    if (icon.__copiedTimer != null) (win2()?.clearTimeout || clearTimeout)(icon.__copiedTimer);
     icon.__copiedTimer = later(() => {
       icon.__copiedTimer = null;
       icon.setAttribute("aria-label", icon.__label);
@@ -50010,7 +50027,7 @@ function createPageChips({
     openCopyMenu(blockFromId(node2.getAttribute("data-block")), node2);
   };
   const clearPress = () => {
-    if (pressTimer != null) (win()?.clearTimeout || clearTimeout)(pressTimer);
+    if (pressTimer != null) (win2()?.clearTimeout || clearTimeout)(pressTimer);
     pressTimer = null;
     pressStart = null;
   };
@@ -50069,7 +50086,7 @@ function createPageChips({
     chipNode.style.position = "absolute";
     chipNode.style.left = `${rect.left + rect.width}px`;
     chipNode.style.top = `${Math.max(0, rect.top)}px`;
-    const chipLabel = plan.label;
+    const chipLabel2 = plan.label;
     chipNode.style.pointerEvents = "auto";
     const main = button2("pxd-page-chip__main", plan.label, `page-chip.${plan.type}`);
     chipNode.append(main);
@@ -50125,7 +50142,7 @@ function createPageChips({
       } catch {
         w = 0;
       }
-      if (!(w > 0)) w = 16 + String(chipLabel).length * 7 + (plan.menu.length ? 22 : 0);
+      if (!(w > 0)) w = 16 + String(chipLabel2).length * 7 + (plan.menu.length ? 22 : 0);
       const r = layers.get(block.page)?.rects.find((q) => q.id === block.id);
       const bx = el.getBoundingClientRect?.();
       const pagePx = { w: bx?.width > 0 ? bx.width : info(block.page)?.w, h: bx?.height > 0 ? bx.height : info(block.page)?.h };
@@ -50231,9 +50248,9 @@ function createPageChips({
   on(target, "pointermove", onMove, true);
   on(target, "pointerleave", onLeave, true);
   on(doc, "selectionchange", onSelection);
-  on(win(), "keydown", onKeyDown, true);
-  on(win(), "keyup", onKeyUp, true);
-  on(win(), "blur", clearDots);
+  on(win2(), "keydown", onKeyDown, true);
+  on(win2(), "keyup", onKeyUp, true);
+  on(win2(), "blur", clearDots);
   on(target, "pointerdown", onIconDown, true);
   on(target, "mousedown", onIconDown, true);
   if (typeof drag === "function") on(target, "pointerdown", onBoxDown, true);
@@ -50243,7 +50260,7 @@ function createPageChips({
   on(target, "pointerdown", onCopyDown, true);
   on(target, "pointermove", onCopyMove, true);
   on(target, "pointerup", onCopyUp, true);
-  on(win(), "keydown", onCopyKey, true);
+  on(win2(), "keydown", onCopyKey, true);
   on(target, "scroll", queueSync, true);
   if (showParsed) queueSync();
   return {
@@ -50277,7 +50294,7 @@ function createPageChips({
       dropLayers();
       if (syncFrame) {
         try {
-          win()?.cancelAnimationFrame?.(syncFrame);
+          win2()?.cancelAnimationFrame?.(syncFrame);
         } catch {
         }
         syncFrame = 0;
@@ -50584,7 +50601,7 @@ var num4 = (value, fallback = 0) => {
 };
 var clamp3 = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 var easeOut = (t) => 1 - (1 - clamp3(t, 0, 1)) ** 3;
-function boardZoom(root, win = root?.ownerDocument?.defaultView || globalThis) {
+function boardZoom(root, win2 = root?.ownerDocument?.defaultView || globalThis) {
   let raw = "";
   try {
     raw = root?.style?.getPropertyValue?.("--pxd-screen-px") || "";
@@ -50593,7 +50610,7 @@ function boardZoom(root, win = root?.ownerDocument?.defaultView || globalThis) {
   }
   if (!raw) {
     try {
-      raw = win?.getComputedStyle?.(root)?.getPropertyValue?.("--pxd-screen-px") || "";
+      raw = win2?.getComputedStyle?.(root)?.getPropertyValue?.("--pxd-screen-px") || "";
     } catch {
       raw = "";
     }
@@ -50671,7 +50688,7 @@ function createDragGhost({
   footprint = null,
   now: now3 = () => globalThis.performance?.now?.() ?? Date.now()
 } = {}) {
-  const win = doc?.defaultView || globalThis;
+  const win2 = doc?.defaultView || globalThis;
   const host = root || doc?.body;
   const look = ghostContent(content);
   const node2 = buildGhost(doc, look);
@@ -50693,10 +50710,10 @@ function createDragGhost({
   const rects = {
     rootRect: root?.getBoundingClientRect?.() || null,
     paneRect: pane?.getBoundingClientRect?.() || null,
-    blocked: blocked3 || chromeObstacles(root, { win })
+    blocked: blocked3 || chromeObstacles(root, { win: win2 })
   };
   if (rects.rootRect && !(rects.rootRect.right > rects.rootRect.left)) rects.rootRect = null;
-  const zoomNow = zoom != null ? num4(zoom, 1) : boardZoom(root, win);
+  const zoomNow = zoom != null ? num4(zoom, 1) : boardZoom(root, win2);
   const start = { x: num4(pointer?.x), y: num4(pointer?.y) };
   const src = from && num4(from.width) > 0 && num4(from.height) > 0 ? from : { left: start.x - 8, top: start.y - 8, width: 16, height: 16 };
   const grab = grabAt ? { fx: clamp3(num4(grabAt.fx, 0.5), 0, 1), fy: clamp3(num4(grabAt.fy, 0.5), 0, 1) } : {
@@ -50712,7 +50729,7 @@ function createDragGhost({
     if (z !== "board") return PANE_SCALE;
     const zoomScale = zoneScale(z, zoomNow);
     if (!(previewMin > 0) || zoomScale >= previewMin) return zoomScale;
-    const room = num4(rects.rootRect?.right) - num4(rects.rootRect?.left) || num4(win?.innerWidth, 0) || 0;
+    const room = num4(rects.rootRect?.right) - num4(rects.rootRect?.left) || num4(win2?.innerWidth, 0) || 0;
     const cap4 = room > 0 ? room * PREVIEW_VIEW_FRACTION / size.w : previewMin;
     return Math.max(zoomScale, Math.min(previewMin, cap4));
   };
@@ -50786,7 +50803,7 @@ function createDragGhost({
   }
   function schedule() {
     if (raf2 || ended) return;
-    const req = win?.requestAnimationFrame;
+    const req = win2?.requestAnimationFrame;
     if (typeof req !== "function") {
       frame();
       return;
@@ -50797,7 +50814,7 @@ function createDragGhost({
     ended = true;
     if (raf2) {
       try {
-        win?.cancelAnimationFrame?.(raf2);
+        win2?.cancelAnimationFrame?.(raf2);
       } catch {
       }
       raf2 = 0;
@@ -50819,7 +50836,7 @@ function createDragGhost({
       } catch {
       }
     };
-    const later = win?.setTimeout || globalThis.setTimeout;
+    const later = win2?.setTimeout || globalThis.setTimeout;
     try {
       later(kill, LAND_MS + 20);
     } catch {
@@ -50865,13 +50882,13 @@ function createDragGhost({
   };
 }
 function dispatchDrop({ doc = globalThis.document, root, pointer, at, entries = [], altKey = false } = {}) {
-  const win = doc?.defaultView || globalThis;
+  const win2 = doc?.defaultView || globalThis;
   const target = doc?.elementFromPoint?.(num4(pointer?.x), num4(pointer?.y)) || null;
   if (!target || root && !root.contains?.(target) || target.closest?.(".pxd-read")) return false;
   const x = num4(at?.x, num4(pointer?.x));
   const y = num4(at?.y, num4(pointer?.y));
-  const Transfer = win.DataTransfer;
-  const Drag = win.DragEvent;
+  const Transfer = win2.DataTransfer;
+  const Drag = win2.DragEvent;
   if (typeof Transfer === "function" && typeof Drag === "function") {
     const data = new Transfer();
     for (const [type, value] of entries) data.setData(type, value);
@@ -50914,7 +50931,7 @@ function startPlacement({
   onCancel = null,
   now: now3
 } = {}) {
-  const win = doc?.defaultView || globalThis;
+  const win2 = doc?.defaultView || globalThis;
   const ghost = createDragGhost({ doc, root, pane, from, pointer, content, width, footprint, zoom, blocked: blocked3, grab: PLACE_GRAB, previewMin: PLACE_PREVIEW_MIN, ...now3 ? { now: now3 } : {} });
   try {
     ghost.element().classList.add("pxd-ghost--place");
@@ -50929,13 +50946,13 @@ function startPlacement({
   const clock = () => typeof now3 === "function" ? now3() : globalThis.performance?.now?.() ?? Date.now();
   const bound = [];
   const on = (type, fn) => {
-    win?.addEventListener?.(type, fn, true);
+    win2?.addEventListener?.(type, fn, true);
     bound.push([type, fn]);
   };
   const release = () => {
     while (bound.length) {
       const [type, fn] = bound.pop();
-      win?.removeEventListener?.(type, fn, true);
+      win2?.removeEventListener?.(type, fn, true);
     }
   };
   const finish = () => {
@@ -50945,7 +50962,7 @@ function startPlacement({
       root?.classList?.remove?.("pxd-root--placing");
     } catch {
     }
-    const later = win?.setTimeout || globalThis.setTimeout;
+    const later = win2?.setTimeout || globalThis.setTimeout;
     try {
       later(release, SWALLOW_MS);
     } catch {
@@ -51221,6 +51238,26 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);
         say(payload.quote ? "Quote card inserted" : "Card inserted");
+      }
+      return res || { ok: false, reason: "no-session" };
+    },
+    // Ask AI. The answer as one card beside the PDF; a source pin (when the part has a box) rides along as Source::.
+    async insertAnswerCard(payload) {
+      const markdown = String(payload?.markdown || "").trim();
+      if (!markdown) return { ok: false, reason: "empty" };
+      let sourceUid = "";
+      if (payload.pin && typeof session?.ensurePdfPin === "function") {
+        try {
+          sourceUid = (await session.ensurePdfPin(payload.pin))?.uid || "";
+        } catch {
+          sourceUid = "";
+        }
+      }
+      const at = where(payload, CARD_SIZE);
+      const res = await session?.insertParsedCard?.({ ...at, markdown, ...sourceUid ? { sourceUid } : {} });
+      if (res?.ok) {
+        pick(res.uid ? [res.uid] : []);
+        say("Answer card inserted");
       }
       return res || { ok: false, reason: "no-session" };
     },
@@ -52486,7 +52523,7 @@ function openCloudConfirm({
     const next = list[(index + (backward ? -1 : 1) + list.length) % list.length];
     focusEl4(next);
   }
-  const win = doc.defaultView;
+  const win2 = doc.defaultView;
   function onKey(event) {
     if (done) return;
     event.stopPropagation?.();
@@ -52509,7 +52546,7 @@ function openCloudConfirm({
     if (done) return;
     done = true;
     try {
-      win?.removeEventListener?.("keydown", onKey, true);
+      win2?.removeEventListener?.("keydown", onKey, true);
     } catch {
     }
     try {
@@ -52525,7 +52562,7 @@ function openCloudConfirm({
   paint2();
   (anchor || doc.body)?.append?.(sheet);
   try {
-    win?.addEventListener?.("keydown", onKey, true);
+    win2?.addEventListener?.("keydown", onKey, true);
   } catch {
   }
   sheet.addEventListener("keydown", onKey);
@@ -53578,7 +53615,7 @@ async function writeClipboard({ text: text3 = "", mime = null, data = null } = {
 }
 function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTextEntry, on = {}, now: now3 = () => Date.now() } = {}) {
   const offs = [];
-  const win = doc.defaultView ?? globalThis.window;
+  const win2 = doc.defaultView ?? globalThis.window;
   let lastCloneKey = -Infinity;
   const listen = (target, type, fn, opts) => {
     if (!target?.addEventListener) return;
@@ -53615,10 +53652,10 @@ function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTe
     }
     if (active(event) && copy(event, true)) on.cutDone?.();
   }, true);
-  listen(win, "keydown", (event) => {
+  listen(win2, "keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key).toLowerCase() === "v") lastCloneKey = now3();
   }, true);
-  listen(win, "paste", (event) => {
+  listen(win2, "paste", (event) => {
     if (!editorNode(event)) return;
     if (on.editorPaste?.(event)) {
       event.preventDefault();
@@ -53639,6 +53676,736 @@ function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTe
   return { dispose() {
     offs.splice(0).forEach((off) => off());
   } };
+}
+
+// src/model/ai-context.js
+init_parse_to_roam_md();
+init_pdf();
+var CONTEXT_TOKEN_CAP = 12e3;
+var OUTLINE_TOKEN_CAP = 1500;
+var NEARBY_CHAR_BUDGET = 4e3;
+var NEARBY_PARAS = 2;
+var CHARS_PER_TOKEN = 4;
+var PARA_CLIP = 1200;
+var INSTRUCTIONS = [
+  "You are helping someone read one part of a PDF.",
+  "Analyse the part under FOCUS. Use DOCUMENT, SECTION and NEARBY only to interpret it, not as the subject.",
+  "Cite pages as [p. N] using the page numbers shown in the context.",
+  "If the FOCUS alone does not support a claim, say so instead of filling the gap from elsewhere."
+].join("\n");
+var DEFAULT_PROMPT = "Explain this part in plain language.";
+var QUICK_PROMPTS = Object.freeze([
+  { id: "explain", label: "Explain", prompt: "Explain this part in plain language." },
+  { id: "summarize", label: "Summarize", prompt: "Summarize this part in three to five sentences." },
+  { id: "numbers", label: "Key numbers", prompt: "List the key numbers in this part with their units and what each one measures." },
+  { id: "unusual", label: "What's unusual?", prompt: "What is unusual, surprising or inconsistent in this part?" }
+]);
+var squash2 = (text3) => String(text3 ?? "").replace(/\s+/g, " ").trim();
+var clip5 = (text3, max) => {
+  const t = String(text3 ?? "");
+  return t.length <= max ? t : `${t.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+};
+var estimateTokens = (text3) => Math.ceil(String(text3 ?? "").length / CHARS_PER_TOKEN);
+function orderOf2(doc) {
+  const blocks = doc?.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
+  const order = Array.isArray(doc?.order) ? doc.order : Object.keys(blocks);
+  return order.filter((id) => blocks[id]);
+}
+function blockText(block) {
+  if (!block) return "";
+  if (block.type === "list") return (block.items || []).map((item) => squash2(item.text)).filter(Boolean).join("; ");
+  if (block.type === "table") return (block.cells || []).map((cell) => squash2(cell.text)).filter(Boolean).join(" ");
+  return squash2(block.text || block.latex || "");
+}
+function captionOf(doc, block) {
+  if (!block) return "";
+  const blocks = doc?.blocks || {};
+  for (const id of orderOf2(doc)) {
+    const other = blocks[id];
+    if (other.type === "caption" && other.for === block.id) return squash2(other.text);
+  }
+  if (typeof block.caption === "string") {
+    const hit = blocks[block.caption];
+    return squash2(hit ? hit.text : block.caption);
+  }
+  if (block.caption && typeof block.caption === "object") return squash2(block.caption.text);
+  return "";
+}
+function attachedCaptionIds(doc, block) {
+  const ids = /* @__PURE__ */ new Set();
+  const blocks = doc?.blocks || {};
+  if (!block) return ids;
+  for (const id of orderOf2(doc)) {
+    if (blocks[id].type === "caption" && blocks[id].for === block.id) ids.add(id);
+  }
+  if (typeof block.caption === "string" && blocks[block.caption]) ids.add(block.caption);
+  return ids;
+}
+var KIND_NAMES = { table: "Table", figure: "Figure", para: "Paragraph", list: "List", heading: "Heading", caption: "Caption", formula: "Formula", code: "Code", footnote: "Footnote", scan: "Scanned page" };
+var LABEL_RE = /^((?:table|figure|fig\.?|chart|plate|exhibit)\s+[A-Za-z]?\d+(?:\.\d+)?[A-Za-z]?)/i;
+function chipLabel(doc, block, selection) {
+  if (selection) return "Selection";
+  if (!block) return "Page";
+  if (block.type === "table" || block.type === "figure" || block.type === "caption") {
+    const cap4 = block.type === "caption" ? squash2(block.text) : captionOf(doc, block);
+    const m = LABEL_RE.exec(cap4);
+    if (m) return m[1].replace(/^fig\.?\s/i, "Figure ").replace(/\s+/g, " ");
+  }
+  if (block.type === "heading") return `Heading: ${clip5(squash2(block.text), 40)}`;
+  return KIND_NAMES[block.type] || "Block";
+}
+function findSelectionBlock(doc, selection, page = null) {
+  const needle = squash2(selection).toLowerCase();
+  if (!needle) return null;
+  const blocks = doc?.blocks || {};
+  const probe = needle.length > 120 ? needle.slice(0, 120) : needle;
+  const ids = orderOf2(doc);
+  const hit = (pool) => pool.find((id) => {
+    const b = blocks[id];
+    if (!b) return false;
+    return blockText(b).toLowerCase().includes(probe);
+  });
+  if (page != null) {
+    const found2 = hit(ids.filter((id) => blocks[id].page === page));
+    if (found2) return blocks[found2];
+  }
+  const found = hit(ids);
+  return found ? blocks[found] : null;
+}
+function sectionChain(doc, ids, index) {
+  const blocks = doc.blocks;
+  const stack = [];
+  for (let i = 0; i <= index && i < ids.length; i += 1) {
+    const b = blocks[ids[i]];
+    if (b.type !== "heading") continue;
+    const level = Math.max(1, Number(b.level) || 1);
+    while (stack.length && stack[stack.length - 1].level >= level) stack.pop();
+    stack.push({ level, text: squash2(b.text), page: b.page });
+  }
+  return stack;
+}
+function outlineLines(doc, ids) {
+  const blocks = doc.blocks;
+  const heads = [];
+  const items = [];
+  for (const id of ids) {
+    const b = blocks[id];
+    if (b.type === "heading" && squash2(b.text)) {
+      const level = Math.min(Math.max(Number(b.level) || 1, 1), 6);
+      heads.push({ level, line: `${"  ".repeat(level - 1)}- ${clip5(squash2(b.text), 100)} (p. ${b.page})` });
+    } else if (b.type === "table" || b.type === "figure") {
+      const cap4 = captionOf(doc, b);
+      items.push(`- ${b.type === "table" ? "Table" : "Figure"}: ${cap4 ? clip5(cap4, 110) : "(no caption)"} (p. ${b.page})`);
+    }
+  }
+  return { heads, items };
+}
+function fitOutline(doc, ids, maxChars) {
+  const { heads, items } = outlineLines(doc, ids);
+  if (maxChars <= 0) return "";
+  const out = [];
+  let used = 0;
+  const push = (line) => {
+    if (used + line.length + 1 > maxChars) return false;
+    out.push(line);
+    used += line.length + 1;
+    return true;
+  };
+  const kept = /* @__PURE__ */ new Set();
+  for (let level = 1; level <= 6; level += 1) {
+    for (let i = 0; i < heads.length; i += 1) {
+      if (heads[i].level !== level) continue;
+      if (used + heads[i].line.length + 1 > maxChars - 60) break;
+      kept.add(i);
+      used += heads[i].line.length + 1;
+    }
+  }
+  used = 0;
+  out.push("Headings:");
+  used += 10;
+  let skipped = 0;
+  heads.forEach((h, i) => {
+    if (kept.has(i)) push(h.line);
+    else skipped += 1;
+  });
+  if (skipped) push(`- …${skipped} more headings`);
+  if (items.length) {
+    push("Tables and figures:");
+    let shown = 0;
+    for (const line of items) {
+      if (!push(line)) break;
+      shown += 1;
+    }
+    if (shown < items.length) push(`- …${items.length - shown} more`);
+  }
+  return out.join("\n");
+}
+function nearbyText(doc, ids, index, focusIds, budget, paras) {
+  if (budget <= 0 || index < 0) return "";
+  const blocks = doc.blocks;
+  const usable = (id) => {
+    if (focusIds.has(id)) return false;
+    const b = blocks[id];
+    return (b.type === "para" || b.type === "list") && blockText(b);
+  };
+  const before = [];
+  for (let i = index - 1; i >= 0 && before.length < paras; i -= 1) if (usable(ids[i])) before.push(ids[i]);
+  const after = [];
+  for (let i = index + 1; i < ids.length && after.length < paras; i += 1) if (usable(ids[i])) after.push(ids[i]);
+  const pick = [];
+  for (let k = 0; k < paras; k += 1) {
+    if (before[k]) pick.push({ id: before[k], side: "before" });
+    if (after[k]) pick.push({ id: after[k], side: "after" });
+  }
+  const chosen = [];
+  let used = 0;
+  for (const { id, side: side2 } of pick) {
+    const b = blocks[id];
+    const room = budget - used;
+    if (room < 80) break;
+    const text3 = clip5(blockText(b), Math.min(PARA_CLIP, room - 30));
+    const line = `[p. ${b.page}] ${text3}`;
+    used += line.length + 2;
+    chosen.push({ id, side: side2, line });
+  }
+  const pos = (id) => ids.indexOf(id);
+  chosen.sort((a, b) => pos(a.id) - pos(b.id));
+  return chosen.map((c) => c.line).join("\n\n");
+}
+function focusBody(doc, block) {
+  if (!block) return "";
+  if (block.type === "table") {
+    const md = tableToMarkdown(block);
+    const cap4 = captionOf(doc, block);
+    return [cap4 ? `Caption: ${cap4}` : "", md || "(table with no readable cells)"].filter(Boolean).join("\n\n");
+  }
+  if (block.type === "figure") {
+    const cap4 = captionOf(doc, block);
+    const inner = squash2(block.text);
+    return [`Figure caption: ${cap4 || "(none)"}`, inner && inner !== cap4 ? `Text inside the figure: ${inner}` : ""].filter(Boolean).join("\n");
+  }
+  if (block.type === "list") {
+    return (block.items || []).map((item, i) => `${block.ordered ? `${i + 1}.` : "-"} ${squash2(item.text)}`).join("\n");
+  }
+  if (block.type === "formula") return block.latex ? `$$${block.latex}$$` : squash2(block.text);
+  if (block.type === "code") return `\`\`\`
+${block.text ?? ""}
+\`\`\``;
+  return squash2(block.text ?? "");
+}
+function pageFocus(doc, ids, page) {
+  const parts = [];
+  for (const id of ids) {
+    const b = doc.blocks[id];
+    if (b.page !== page) continue;
+    const text3 = focusBody(doc, b);
+    if (text3) parts.push(text3);
+  }
+  return parts.join("\n\n");
+}
+function buildFocusContext(doc, focus = {}, opts = {}) {
+  const cap4 = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN;
+  const outlineCap = (Number(opts.outlineTokens) > 0 ? Number(opts.outlineTokens) : OUTLINE_TOKEN_CAP) * CHARS_PER_TOKEN;
+  const nearbyCap = Number(opts.nearbyChars) >= 0 ? Number(opts.nearbyChars) : NEARBY_CHAR_BUDGET;
+  const paras = Number.isInteger(opts.nearbyParas) && opts.nearbyParas >= 0 ? opts.nearbyParas : NEARBY_PARAS;
+  const safe = doc && typeof doc === "object" ? doc : { blocks: {}, order: [] };
+  const ids = orderOf2(safe);
+  const blocks = safe.blocks || {};
+  const selection = squash2(focus.selection);
+  let block = focus.blockId ? blocks[focus.blockId] || null : null;
+  if (!block && Array.isArray(focus.blockIds)) block = blocks[focus.blockIds.find((id) => blocks[id])] || null;
+  if (!block && selection) block = findSelectionBlock(safe, selection, focus.page ?? null);
+  const page = block ? block.page : Number.isInteger(focus.page) ? focus.page : null;
+  const extraIds = Array.isArray(focus.blockIds) ? focus.blockIds.filter((id) => blocks[id]) : [];
+  const focusIds = new Set(extraIds.length ? extraIds : block ? [block.id] : []);
+  for (const id of attachedCaptionIds(safe, block)) focusIds.add(id);
+  const index = block ? ids.indexOf(block.id) : -1;
+  const docTitle = parsedDocTitle(safe) || squash2(safe.title) || "";
+  let focusText = "";
+  if (selection) {
+    focusText = `Selected text:
+> ${clip5(selection, 6e3)}`;
+    if (block && squash2(blockText(block)) !== selection) {
+      focusText += `
+
+The block that contains it (${KIND_NAMES[block.type] || "block"}, p. ${block.page}):
+${focusBody(safe, block)}`;
+    }
+  } else if (extraIds.length > 1) {
+    focusText = extraIds.map((id) => focusBody(safe, blocks[id])).filter(Boolean).join("\n\n");
+  } else if (block) {
+    focusText = focusBody(safe, block);
+  } else if (page != null) {
+    focusText = pageFocus(safe, ids, page);
+  }
+  const chain = block ? sectionChain(safe, ids, index) : [];
+  const sectionText = chain.length ? `${chain.map((h) => h.text).join(" > ")} (starts p. ${chain[chain.length - 1].page})` : "(before the first heading, or no headings found)";
+  const pageCount = Array.isArray(safe.pages) && safe.pages.length ? safe.pages.length : Number(safe.stats?.pages) || (ids.length ? Math.max(...ids.map((id) => blocks[id].page || 1)) : 0);
+  const header = (name) => `=== ${name} ===`;
+  const section2 = `${header("SECTION")}
+${sectionText}`;
+  const focusHead = block ? `${header("FOCUS")}
+(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})` : `${header("FOCUS")}
+(${page != null ? `page ${page}` : "no part found"})`;
+  const fixedChars = section2.length + focusHead.length + 400;
+  const focusRoom = Math.max(400, cap4 - fixedChars - 200);
+  const focusBounded = focusText.length > focusRoom ? `${focusText.slice(0, focusRoom).trimEnd()}
+[focus trimmed to fit]` : focusText;
+  const afterFixed = Math.max(0, cap4 - fixedChars - focusBounded.length);
+  const nearbyBudget = Math.min(nearbyCap, afterFixed);
+  const nearbyBody = nearbyText(safe, ids, index, focusIds, nearbyBudget, paras);
+  const captionNear = block && (block.type === "table" || block.type === "figure") ? captionOf(safe, block) : "";
+  const nearby = nearbyBody || captionNear ? `${header("NEARBY")}
+${[captionNear ? `Caption of the focus: ${captionNear}` : "", nearbyBody].filter(Boolean).join("\n\n")}` : "";
+  const outlineRoom = Math.min(outlineCap, Math.max(0, afterFixed - nearby.length - 120));
+  const outline = fitOutline(safe, ids, outlineRoom);
+  const documentPart = `${header("DOCUMENT")}
+Title: ${docTitle || "(untitled)"}
+Pages: ${pageCount || "?"}${outline ? `
+
+${outline}` : ""}`;
+  const context = [documentPart, section2, nearby, `${focusHead}
+${focusBounded}`].filter(Boolean).join("\n\n");
+  return {
+    chip: { label: chipLabel(safe, block, selection), page, docTitle },
+    context,
+    instructions: INSTRUCTIONS,
+    prompt: DEFAULT_PROMPT,
+    tokensEstimate: estimateTokens(context) + estimateTokens(INSTRUCTIONS),
+    focusIds: [...focusIds]
+  };
+}
+function chipText2(chip) {
+  if (!chip) return "";
+  return [chip.label, chip.page != null ? `p. ${chip.page}` : "", chip.docTitle].filter(Boolean).join(" · ");
+}
+function previewText({ instructions = "", context = "", prompt = "" } = {}) {
+  return [`--- instructions ---
+${instructions}`, `--- context ---
+${context}`, `--- question ---
+${prompt}`].join("\n\n");
+}
+function selectionDoc({ text: text3 = "", page = 1, title = "" } = {}) {
+  const body = squash2(text3);
+  return {
+    schema: "pxd-parse/1",
+    title,
+    pages: [{ n: page }],
+    order: ["sel"],
+    blocks: { sel: { id: "sel", type: "para", page, text: body } }
+  };
+}
+function splitCitations(text3) {
+  const out = [];
+  const re = /\[(?:p|pp)\.\s*(\d+(?:\s*[,–-]\s*\d+)*)\]/gi;
+  let last = 0;
+  let m;
+  const src = String(text3 ?? "");
+  while (m = re.exec(src)) {
+    if (m.index > last) out.push({ text: src.slice(last, m.index) });
+    const pages = (m[1].match(/\d+/g) || []).map(Number);
+    out.push({ text: m[0], page: pages[0], pages });
+    last = m.index + m[0].length;
+  }
+  if (last < src.length) out.push({ text: src.slice(last) });
+  return out;
+}
+function answerCardMarkdown({ answer = "", chip = null } = {}) {
+  const paras = String(answer ?? "").split(/\n\s*\n/).map((p) => flattenLine(p)).filter(Boolean);
+  if (!paras.length) return "";
+  const head = `AI answer · ${chipText2(chip) || "PDF"}`;
+  const line = (text3, leading) => `- ${escapeMarkdownText(linkSafeText(clip5(text3, 1800)), { leading })}`;
+  return [line(head, true), ...paras.slice(0, 40).map((p) => line(p, true))].join("\n");
+}
+
+// src/host/liveai.js
+var CALLER = "Plexus Diagram";
+var READY_EVENT = "liveai:api-ready";
+var UNLOADED_EVENT = "liveai:api-unloaded";
+var SETUP_HINT = "Turn on Live AI Assistant → Settings → Enable Public API, then reload Roam.";
+var win = (w) => w || (typeof window !== "undefined" ? window : globalThis);
+var api = (w) => {
+  const a = win(w)?.LiveAI_API;
+  return a && typeof a === "object" ? a : null;
+};
+function available(w) {
+  const a = api(w);
+  if (!a || typeof a.generate !== "function") return false;
+  try {
+    return typeof a.isAvailable === "function" ? Boolean(a.isAvailable()) : true;
+  } catch {
+    return false;
+  }
+}
+function present(w) {
+  return Boolean(api(w));
+}
+function listModels(w) {
+  const a = api(w);
+  if (!a || typeof a.listModels !== "function") return [];
+  try {
+    const rows = a.listModels();
+    return (Array.isArray(rows) ? rows : []).filter((m) => m && typeof m.id === "string" && m.id).map((m) => ({ id: m.id, name: m.name || m.id, provider: m.provider || "", contextLength: m.contextLength ?? null, isDefault: Boolean(m.isDefault) }));
+  } catch {
+    return [];
+  }
+}
+function defaultModel(w) {
+  const a = api(w);
+  let id = null;
+  try {
+    id = typeof a?.getDefaultModel === "function" ? a.getDefaultModel() : null;
+  } catch {
+    id = null;
+  }
+  if (typeof id === "string" && id) return id;
+  return listModels(w).find((m) => m.isDefault)?.id || listModels(w)[0]?.id || "";
+}
+function onReady(cb, w) {
+  const target = win(w);
+  if (typeof cb !== "function" || typeof target?.addEventListener !== "function") return () => {
+  };
+  const tell = () => {
+    try {
+      cb(available(target));
+    } catch {
+    }
+  };
+  target.addEventListener(READY_EVENT, tell);
+  target.addEventListener(UNLOADED_EVENT, tell);
+  tell();
+  return () => {
+    try {
+      target.removeEventListener(READY_EVENT, tell);
+    } catch {
+    }
+    try {
+      target.removeEventListener(UNLOADED_EVENT, tell);
+    } catch {
+    }
+  };
+}
+function friendlyError(error) {
+  const code = error?.code;
+  if (code === "RATE_LIMIT") return "Live AI is rate limited (20 requests a minute). Wait a moment and try again.";
+  if (code === "INVALID_MODEL") return "That model is not available in Live AI Assistant. Pick another model.";
+  if (code === "NO_API_KEY") return "That model has no API key in Live AI Assistant. Add one there or pick another model.";
+  if (code === "EMPTY_RESPONSE") return "The model returned nothing. Try again or pick another model.";
+  if (code === "PROVIDER_ERROR") return "The model provider returned an error. Check Live AI Assistant's settings and try again.";
+  if (code === "INVALID_OPTIONS") return "Live AI Assistant rejected the request. Shorten the question or the context and try again.";
+  if (error?.name === "AbortError") return "Stopped.";
+  if (error?.code === "UNAVAILABLE") return SETUP_HINT;
+  const msg = String(error?.message || "").replace(/^\[LiveAI_API\]\s*/, "").trim();
+  return msg || "Live AI Assistant could not answer.";
+}
+async function ask({ context = "", prompt = "", systemPrompt = "", model = "", onChunk = null, signal = null, window: w } = {}) {
+  if (!available(w)) return { ok: false, code: "UNAVAILABLE", error: SETUP_HINT };
+  const options = { prompt: String(prompt), caller: CALLER };
+  if (context) options.context = String(context);
+  if (systemPrompt) options.systemPrompt = String(systemPrompt);
+  if (model) options.model = model;
+  if (signal) options.signal = signal;
+  if (typeof onChunk === "function") options.onChunk = (chunk) => {
+    try {
+      onChunk(chunk);
+    } catch {
+    }
+  };
+  try {
+    const result = await api(w).generate(options);
+    return { ok: true, text: String(result?.text ?? ""), model: result?.model || model, provider: result?.provider || "", usage: result?.usage || null };
+  } catch (error) {
+    return { ok: false, code: error?.code || (error?.name === "AbortError" ? "ABORTED" : "ERROR"), error: friendlyError(error) };
+  }
+}
+
+// src/view/ask-ai.js
+var openDialog = null;
+function make(doc, tag, cls, parent, text3) {
+  const node2 = doc.createElement(tag);
+  if (cls) node2.className = cls;
+  if (text3 != null) node2.textContent = text3;
+  if (parent) parent.append(node2);
+  return node2;
+}
+function paintAnswer(doc, node2, text3, onPage) {
+  node2.replaceChildren?.();
+  if (!node2.replaceChildren) while (node2.firstChild) node2.removeChild(node2.firstChild);
+  for (const piece of splitCitations(text3)) {
+    if (piece.page == null) {
+      node2.append(doc.createTextNode(piece.text));
+      continue;
+    }
+    const link = make(doc, "a", "pxd-ask__cite", node2, piece.text);
+    link.setAttribute("href", "#");
+    link.setAttribute("data-page", String(piece.page));
+    link.setAttribute("role", "button");
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      try {
+        onPage?.(piece.page);
+      } catch {
+      }
+    });
+  }
+}
+function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null } = {}) {
+  const dom = ownerDoc || (typeof document !== "undefined" ? document : null);
+  if (!dom) return null;
+  const win2 = w || dom.defaultView || globalThis;
+  try {
+    openDialog?.close();
+  } catch {
+  }
+  const hasBlocks = parsed && parsed.blocks && Object.keys(parsed.blocks).length;
+  const source = hasBlocks ? parsed : selection ? selectionDoc({ text: selection, page: Number.isInteger(page) ? page : 1 }) : parsed;
+  const focus = hasBlocks ? { ...blockId ? { blockId } : {}, ...blockIds ? { blockIds } : {}, ...selection ? { selection } : {}, ...page != null ? { page } : {} } : { blockId: "sel", selection };
+  const built = buildFocusContext(source, focus);
+  const root = make(dom, "div", "pxd-ask", null);
+  root.setAttribute("role", "dialog");
+  root.setAttribute("aria-label", "Ask AI");
+  const stop3 = (event) => event.stopPropagation();
+  for (const type of ["pointerdown", "mousedown", "click", "mouseup", "dblclick", "wheel"]) root.addEventListener(type, stop3);
+  const head = make(dom, "div", "pxd-ask__head", root);
+  make(dom, "span", "pxd-ask__title", head, "Ask AI");
+  const closeBtn = make(dom, "button", "pxd-ask__close", head, "×");
+  closeBtn.type = "button";
+  closeBtn.setAttribute("aria-label", "Close");
+  const chip = make(dom, "button", "pxd-ask__chip", root, chipText2(built.chip));
+  chip.type = "button";
+  chip.setAttribute("aria-expanded", "false");
+  chip.setAttribute("title", "Show exactly what will be sent");
+  const preview = make(dom, "pre", "pxd-ask__preview", root);
+  preview.hidden = true;
+  const body = make(dom, "div", "pxd-ask__body", root);
+  let dead = false;
+  let ctl = null;
+  let answer = "";
+  let offReady = () => {
+  };
+  let formReady = false;
+  const prompt = { text: built.prompt };
+  let textarea = null;
+  let modelSel = null;
+  let sendBtn = null;
+  let stopBtn = null;
+  let out = null;
+  let status = null;
+  let actions = null;
+  const refreshPreview = () => {
+    preview.textContent = `${previewText({ instructions: built.instructions, context: built.context, prompt: textarea ? textarea.value : prompt.text })}
+
+(about ${built.tokensEstimate.toLocaleString?.() ?? built.tokensEstimate} tokens before the question)`;
+  };
+  chip.addEventListener("click", () => {
+    const show = preview.hidden;
+    preview.hidden = !show;
+    chip.setAttribute("aria-expanded", show ? "true" : "false");
+    if (show) refreshPreview();
+  });
+  const goPage = (n2) => {
+    try {
+      jumpPage?.(n2);
+    } catch {
+    }
+  };
+  const say = (msg) => {
+    try {
+      toast?.(msg);
+    } catch {
+    }
+  };
+  const setBusy = (busy) => {
+    if (sendBtn) sendBtn.hidden = busy;
+    if (stopBtn) stopBtn.hidden = !busy;
+    if (textarea) textarea.disabled = busy;
+  };
+  const showActions = (on) => {
+    if (actions) actions.hidden = !on;
+  };
+  const run = async () => {
+    if (!textarea || ctl) return;
+    const question = textarea.value.trim();
+    if (!question) {
+      status.textContent = "Type a question first.";
+      return;
+    }
+    ctl = typeof win2.AbortController === "function" ? new win2.AbortController() : new AbortController();
+    answer = "";
+    status.textContent = "Thinking…";
+    paintAnswer(dom, out, "", goPage);
+    showActions(false);
+    setBusy(true);
+    const result = await ask({
+      context: built.context,
+      systemPrompt: built.instructions,
+      prompt: question,
+      model: modelSel?.value || "",
+      signal: ctl.signal,
+      window: win2,
+      onChunk: (chunk) => {
+        if (dead) return;
+        answer += chunk;
+        paintAnswer(dom, out, answer, goPage);
+        status.textContent = "";
+      }
+    });
+    ctl = null;
+    if (dead) return;
+    setBusy(false);
+    if (!result.ok) {
+      status.textContent = result.error;
+      if (answer) showActions(true);
+      return;
+    }
+    answer = result.text || answer;
+    paintAnswer(dom, out, answer, goPage);
+    status.textContent = result.model ? `${result.model}${result.usage?.outputTokens ? ` · ${result.usage.outputTokens} tokens` : ""}` : "";
+    showActions(Boolean(answer));
+  };
+  const buildForm = () => {
+    body.replaceChildren?.();
+    formReady = true;
+    const row4 = make(dom, "div", "pxd-ask__row", body);
+    make(dom, "label", "pxd-ask__label", row4, "Model");
+    modelSel = make(dom, "select", "pxd-ask__model", row4);
+    modelSel.setAttribute("aria-label", "Model");
+    const models = listModels(win2);
+    const def = defaultModel(win2);
+    for (const m of models) {
+      const opt = make(dom, "option", "", modelSel, m.provider ? `${m.name} · ${m.provider}` : m.name);
+      opt.value = m.id;
+      if (m.id === def) opt.selected = true;
+    }
+    if (def) modelSel.value = def;
+    const quick = make(dom, "div", "pxd-ask__quick", body);
+    textarea = make(dom, "textarea", "pxd-ask__question", body);
+    textarea.rows = 3;
+    textarea.value = prompt.text;
+    textarea.setAttribute("aria-label", "Question");
+    for (const q of QUICK_PROMPTS) {
+      const btn2 = make(dom, "button", "pxd-ask__quickbtn", quick, q.label);
+      btn2.type = "button";
+      btn2.addEventListener("click", () => {
+        textarea.value = q.prompt;
+        if (!preview.hidden) refreshPreview();
+        void run();
+      });
+    }
+    textarea.addEventListener("input", () => {
+      if (!preview.hidden) refreshPreview();
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        void run();
+      }
+    });
+    const bar = make(dom, "div", "pxd-ask__bar", body);
+    sendBtn = make(dom, "button", "pxd-ask__send", bar, "Send");
+    sendBtn.type = "button";
+    sendBtn.addEventListener("click", () => {
+      void run();
+    });
+    stopBtn = make(dom, "button", "pxd-ask__stop", bar, "Stop");
+    stopBtn.type = "button";
+    stopBtn.hidden = true;
+    stopBtn.addEventListener("click", () => {
+      try {
+        ctl?.abort();
+      } catch {
+      }
+    });
+    status = make(dom, "span", "pxd-ask__status", bar);
+    status.setAttribute("aria-live", "polite");
+    out = make(dom, "div", "pxd-ask__answer", body);
+    out.setAttribute("aria-live", "polite");
+    actions = make(dom, "div", "pxd-ask__actions", body);
+    actions.hidden = true;
+    const copyBtn = make(dom, "button", "pxd-ask__act", actions, "Copy");
+    copyBtn.type = "button";
+    copyBtn.addEventListener("click", () => {
+      const clip6 = win2.navigator?.clipboard || globalThis.navigator?.clipboard;
+      if (!clip6?.writeText) {
+        say("Could not copy");
+        return;
+      }
+      void clip6.writeText(answer).then(() => say("Copied"), () => say("Could not copy"));
+    });
+    const cardBtn = make(dom, "button", "pxd-ask__act", actions, "Add as card");
+    cardBtn.type = "button";
+    cardBtn.addEventListener("click", () => {
+      const markdown = answerCardMarkdown({ answer, chip: built.chip });
+      if (!markdown || typeof addCard !== "function") {
+        say("Cannot add a card here");
+        return;
+      }
+      cardBtn.disabled = true;
+      void Promise.resolve(addCard({ markdown, chip: built.chip, blockId: blockId || "", answer })).catch(() => {
+      }).then(() => {
+        cardBtn.disabled = false;
+      });
+    });
+    try {
+      textarea.focus();
+    } catch {
+    }
+  };
+  const buildSetup = () => {
+    body.replaceChildren?.();
+    formReady = false;
+    make(dom, "p", "pxd-ask__hint", body, present(win2) ? "Live AI Assistant has no model ready. Add a model and its API key in Live AI Assistant's settings." : SETUP_HINT);
+    make(dom, "p", "pxd-ask__hint pxd-ask__hint--quiet", body, "Needs the Live AI Assistant extension, v29 or later.");
+  };
+  const sync = (ok) => {
+    if (dead) return;
+    if (ok && !formReady) buildForm();
+    else if (!ok && (formReady || !body.firstChild)) {
+      try {
+        ctl?.abort();
+      } catch {
+      }
+      buildSetup();
+    }
+  };
+  offReady = onReady(sync, win2);
+  if (!body.firstChild) sync(available(win2));
+  const close = () => {
+    if (dead) return;
+    dead = true;
+    try {
+      ctl?.abort();
+    } catch {
+    }
+    try {
+      offReady();
+    } catch {
+    }
+    try {
+      dom.removeEventListener?.("keydown", onDocKey, true);
+    } catch {
+    }
+    try {
+      root.remove();
+    } catch {
+    }
+    if (openDialog && openDialog.el === root) openDialog = null;
+  };
+  const onDocKey = (event) => {
+    if (event.key === "Escape") close();
+  };
+  dom.addEventListener?.("keydown", onDocKey, true);
+  closeBtn.addEventListener("click", close);
+  root.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    close();
+  });
+  (dom.body || dom.documentElement)?.append?.(root);
+  openDialog = { el: root, close };
+  return { el: root, close, built };
 }
 
 // src/view/parse-view.js
@@ -54197,18 +54964,18 @@ function createParseView({
     const custom = Object.keys(parts).some((type) => !ASYNC_CLIPBOARD_TYPES.has(type) && typeof parts[type] === "string");
     if (custom && copyViaEvent(doc, parts)) return true;
     if (custom) parts = Object.fromEntries(Object.entries(parts).filter(([type]) => ASYNC_CLIPBOARD_TYPES.has(type)));
-    const win = doc.defaultView || globalThis;
-    const Item = win.ClipboardItem || globalThis.ClipboardItem;
-    const clip5 = win.navigator?.clipboard;
-    const BlobCtor = win.Blob || globalThis.Blob;
-    if (typeof Item === "function" && typeof clip5?.write === "function" && typeof BlobCtor === "function") {
+    const win2 = doc.defaultView || globalThis;
+    const Item = win2.ClipboardItem || globalThis.ClipboardItem;
+    const clip6 = win2.navigator?.clipboard;
+    const BlobCtor = win2.Blob || globalThis.Blob;
+    if (typeof Item === "function" && typeof clip6?.write === "function" && typeof BlobCtor === "function") {
       const bag = {};
       for (const [type, value] of Object.entries(parts)) {
         if (value == null) continue;
         bag[type] = typeof BlobCtor === "function" && value instanceof BlobCtor ? value : new BlobCtor([typeof value === "string" ? value : JSON.stringify(value)], { type });
       }
       if (Object.keys(bag).length) {
-        await clip5.write([new Item(bag)]);
+        await clip6.write([new Item(bag)]);
         return true;
       }
     }
@@ -54222,6 +54989,33 @@ function createParseView({
     if (!spec || typeof session?.ensurePdfPin !== "function") return "";
     const made = await session.ensurePdfPin(spec);
     return made?.uid || "";
+  }
+  function askAbout(spec = {}) {
+    if (!parsed) return null;
+    const block = spec.blockId ? parsed.blocks?.[spec.blockId] : null;
+    return openAskAI({
+      doc: parsed,
+      ...spec,
+      document: doc,
+      jumpPage: (n2) => jumpPage?.(n2),
+      toast: (message) => {
+        try {
+          onToast?.(message);
+        } catch {
+        }
+      },
+      addCard: async ({ markdown }) => {
+        if (typeof session?.insertAnswerCard !== "function") {
+          try {
+            onToast?.("Cannot add a card here");
+          } catch {
+          }
+          return { ok: false };
+        }
+        const pin2 = block ? pinForBlock(block) : null;
+        return session.insertAnswerCard({ markdown, pdfUid: currentUid2, pdfBlockUid: pdfBlockUidNow(), ...pin2 ? { pin: pin2 } : {} });
+      }
+    });
   }
   async function handleCopyMenu(id, block) {
     if (!parsed || !block) return false;
@@ -54287,6 +55081,7 @@ ${sourceAttrString(source)}` : markdown;
       });
     },
     copyMenu: (id, block) => handleCopyMenu(id, block),
+    ask: (block) => askAbout({ blockId: block?.id }),
     drag: (block, event) => beginPointerDrag(event, [block]),
     run: (act, item) => {
       if (act === "pin-ref") {
@@ -54719,19 +55514,19 @@ ${sourceAttrString(source)}` : markdown;
       } catch {
       }
     }
-    const win = doc.defaultView || globalThis;
-    const clip5 = win.navigator?.clipboard;
-    const Item = win.ClipboardItem || globalThis.ClipboardItem;
-    const BlobCtor = win.Blob || globalThis.Blob;
-    if (typeof clip5?.write === "function" && typeof Item === "function" && typeof BlobCtor === "function") {
+    const win2 = doc.defaultView || globalThis;
+    const clip6 = win2.navigator?.clipboard;
+    const Item = win2.ClipboardItem || globalThis.ClipboardItem;
+    const BlobCtor = win2.Blob || globalThis.Blob;
+    if (typeof clip6?.write === "function" && typeof Item === "function" && typeof BlobCtor === "function") {
       try {
-        await clip5.write([new Item({ "text/plain": new BlobCtor([text3], { type: "text/plain" }) })]);
+        await clip6.write([new Item({ "text/plain": new BlobCtor([text3], { type: "text/plain" }) })]);
         return;
       } catch {
       }
     }
-    if (typeof clip5?.writeText !== "function") throw new Error("no clipboard");
-    await clip5.writeText(text3);
+    if (typeof clip6?.writeText !== "function") throw new Error("no clipboard");
+    await clip6.writeText(text3);
   }
   async function copyBlock(block) {
     try {
@@ -54749,14 +55544,14 @@ ${sourceAttrString(source)}` : markdown;
         }
       }
       if (!src) src = await cropAt2x(block);
-      const win = doc.defaultView || globalThis;
-      const Item = win.ClipboardItem || globalThis.ClipboardItem;
-      const clip5 = win.navigator?.clipboard;
-      const BlobCtor = win.Blob || globalThis.Blob;
+      const win2 = doc.defaultView || globalThis;
+      const Item = win2.ClipboardItem || globalThis.ClipboardItem;
+      const clip6 = win2.navigator?.clipboard;
+      const BlobCtor = win2.Blob || globalThis.Blob;
       const blob = src ? dataUrlToBlob3(src, BlobCtor) : null;
-      if (blob && typeof Item === "function" && typeof clip5?.write === "function") {
+      if (blob && typeof Item === "function" && typeof clip6?.write === "function") {
         try {
-          await clip5.write([new Item({ "image/png": blob, "text/plain": new BlobCtor([caption], { type: "text/plain" }) })]);
+          await clip6.write([new Item({ "image/png": blob, "text/plain": new BlobCtor([caption], { type: "text/plain" }) })]);
           return true;
         } catch {
         }
@@ -54833,18 +55628,18 @@ ${sourceAttrString(source)}` : markdown;
     const rowEl = event.target?.closest?.(".pxd-parse__block") || null;
     let moved = false;
     let ghost = null;
-    const win = doc.defaultView || doc;
+    const win2 = doc.defaultView || doc;
     const drop = (x, y, at, altKey = false) => {
       const json = JSON.stringify(payload(blocks));
       if (!doc.elementFromPoint) return;
       dispatchDrop({ doc, root: ghostRoot, pointer: { x, y }, at, altKey: Boolean(altKey), entries: [[PARSE_MIME2, json], ["text/plain", json]] });
     };
     const finish = () => {
-      win?.removeEventListener?.("pointermove", move2, true);
-      win?.removeEventListener?.("pointerup", up, true);
-      win?.removeEventListener?.("keydown", key, true);
-      win?.removeEventListener?.("dragstart", native, true);
-      win?.removeEventListener?.("pointercancel", cancelled, true);
+      win2?.removeEventListener?.("pointermove", move2, true);
+      win2?.removeEventListener?.("pointerup", up, true);
+      win2?.removeEventListener?.("keydown", key, true);
+      win2?.removeEventListener?.("dragstart", native, true);
+      win2?.removeEventListener?.("pointercancel", cancelled, true);
       for (const fn of [move2, up, key, native, cancelled]) {
         const idx = armed.findIndex((entry) => entry[2] === fn);
         if (idx >= 0) armed.splice(idx, 1);
@@ -54905,11 +55700,11 @@ ${sourceAttrString(source)}` : markdown;
       }
       void warmFigures(figs).then(land);
     };
-    listen(win, "pointermove", move2, true);
-    listen(win, "pointerup", up, true);
-    listen(win, "keydown", key, true);
-    listen(win, "dragstart", native, true);
-    listen(win, "pointercancel", cancelled, true);
+    listen(win2, "pointermove", move2, true);
+    listen(win2, "pointerup", up, true);
+    listen(win2, "keydown", key, true);
+    listen(win2, "dragstart", native, true);
+    listen(win2, "pointercancel", cancelled, true);
   }
   function wordsFor(table) {
     const rec = records.find((row4) => row4.n === table.page);
@@ -55680,8 +56475,8 @@ ${sourceAttrString(source)}` : markdown;
   function armKeys() {
     if (keyFn) return;
     keyFn = onKey;
-    const win = doc.defaultView;
-    listen(win, "keydown", keyFn, true);
+    const win2 = doc.defaultView;
+    listen(win2, "keydown", keyFn, true);
   }
   listen(body, "scroll", onBodyScroll);
   listen(body, "click", (event) => {
@@ -55970,6 +56765,8 @@ ${sourceAttrString(source)}` : markdown;
       return pageChips2 ? pageChips2.setShown(on) : (writeShowParsed(storage, on), Boolean(on));
     },
     hasParse: () => Boolean(parsed),
+    getDoc: () => parsed,
+    askAbout,
     selectedIds: () => selected.slice(),
     blockCount: () => shown().length,
     isBusy: () => phase === "running",
@@ -57410,7 +58207,7 @@ function createReadPane({
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", "Selection");
   setHidden2(bar, true);
-  for (const [act, text3, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"]]) {
+  for (const [act, text3, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"], ["ask", "Ask AI", "read.sel.ask"]]) {
     const button2 = el("button", "pxd-selbar__btn pxd-chrome", bar);
     button2.type = "button";
     button2.textContent = text3;
@@ -58383,7 +59180,7 @@ function createReadPane({
   const onLiveLeave = () => {
     if (!dragging) disarm2();
   };
-  const chipLabel = (uid, highlight) => {
+  const chipLabel2 = (uid, highlight) => {
     const row4 = catalog.find((entry) => entry.uid === uid);
     const text3 = row4 && row4.snippet || highlight?.content?.text || "";
     const color = row4 && row4.color || (typeof highlight?.color === "string" ? highlight.color : "");
@@ -58445,7 +59242,7 @@ function createReadPane({
   const onListDrag = (event) => {
     const row4 = rowFromEvent(event);
     if (!row4?.uid) return;
-    const label = chipLabel(row4.uid, null);
+    const label = chipLabel2(row4.uid, null);
     beginDrag(event, row4.uid, row4.color || label.color, dragChipText(row4.snippet || label.text));
   };
   const targetIsArmed = (target) => {
@@ -58460,7 +59257,7 @@ function createReadPane({
     }
     if (press) endPress();
     if (!armedUid || !targetIsArmed(event.target)) return;
-    const label = chipLabel(armedUid, armedHighlight);
+    const label = chipLabel2(armedUid, armedHighlight);
     dragging = beginDrag(event, armedUid, label.color, label.text) === true;
   };
   const selectionOf = () => {
@@ -58562,9 +59359,9 @@ function createReadPane({
     barTimers.push(later(placeBar, 0), later(placeBar, BAR_SETTLE_MS));
   };
   const writeClip = async (text3) => {
-    const clip5 = doc.defaultView?.navigator?.clipboard || globalThis.navigator?.clipboard;
-    if (!clip5 || typeof clip5.writeText !== "function") throw new Error("no clipboard");
-    await clip5.writeText(text3);
+    const clip6 = doc.defaultView?.navigator?.clipboard || globalThis.navigator?.clipboard;
+    if (!clip6 || typeof clip6.writeText !== "function") throw new Error("no clipboard");
+    await clip6.writeText(text3);
   };
   const toast = (message) => {
     try {
@@ -58579,6 +59376,22 @@ function createReadPane({
     const { text: text3, page } = barInfo;
     if (act === "copy") {
       void writeClip(text3).then(() => toast("Copied"), () => toast("Copy failed"));
+      return;
+    }
+    if (act === "ask") {
+      hideBar();
+      const spec = { selection: text3, page };
+      if (parsedView?.hasParse?.()) {
+        parsedView.askAbout(spec);
+        return;
+      }
+      openAskAI({
+        ...spec,
+        document: doc,
+        jumpPage: (n2) => jumpPage(n2),
+        toast,
+        addCard: ({ markdown }) => session?.insertAnswerCard?.({ markdown, pdfUid: current3.cardUid || "" })
+      });
       return;
     }
     hideBar();
@@ -60179,8 +60992,8 @@ init_parse();
 var FIRST_PAGE_TIMEOUT_MS = 8e3;
 var FIRST_PAGE_JPEG = 0.72;
 var GLOBAL_KEYS2 = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
-function detectPdfjs2(win) {
-  const scope = win && typeof win === "object" ? win : null;
+function detectPdfjs2(win2) {
+  const scope = win2 && typeof win2 === "object" ? win2 : null;
   if (!scope) return null;
   for (const key of GLOBAL_KEYS2) {
     let lib = null;
@@ -61527,7 +62340,7 @@ function destroyQuiet(obj) {
   } catch {
   }
 }
-function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, hostOf: hostOf2 = null, sizeOf = null, onLive = null } = {}) {
+function createPdfFlip({ doc, win: win2, lib = null, timers = null, urlOf = null, hostOf: hostOf2 = null, sizeOf = null, onLive = null } = {}) {
   let selected = "";
   let hovered = "";
   let lod = "detail";
@@ -61586,7 +62399,7 @@ function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, host
   };
   const engine = () => {
     if (lib && typeof lib.getDocument === "function") return lib;
-    return detectPdfjs2(win)?.lib || null;
+    return detectPdfjs2(win2)?.lib || null;
   };
   const unwheel = () => {
     if (wheelNode && wheelFn) {
@@ -64998,8 +65811,8 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
   listen(doc, "pointermove", onMove);
   listen(doc, "pointerup", onUp);
   listen(doc, "keydown", onKey);
-  const win = doc.defaultView;
-  if (win && win !== doc) listen(win, "keydown", onKey, true);
+  const win2 = doc.defaultView;
+  if (win2 && win2 !== doc) listen(win2, "keydown", onKey, true);
   listen(button2, "click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -65642,8 +66455,8 @@ function mountKanban({
   const palette = () => typeof getPalette === "function" ? getPalette() : statusPalette(statusApi(doc.defaultView));
   const writer = () => {
     if (typeof setStatus === "function") return setStatus;
-    const api = statusApi(doc.defaultView);
-    return typeof api?.setStatus === "function" ? api.setStatus.bind(api) : null;
+    const api2 = statusApi(doc.defaultView);
+    return typeof api2?.setStatus === "function" ? api2.setStatus.bind(api2) : null;
   };
   const commit = async (plan) => {
     try {
@@ -68314,11 +69127,11 @@ function createOcrWeb({
       else waiter.resolve(msg);
     };
     let dead = null;
-    let api = null;
+    let api2 = null;
     worker.onerror = (ev) => {
       dead = new Error(ev?.message || "ocr worker failed");
       rejectAll(dead);
-      if (api && engine === api) engine = null;
+      if (api2 && engine === api2) engine = null;
     };
     function call(msg, transfers, signal2) {
       if (signal2?.aborted) return Promise.reject(abortError());
@@ -68358,7 +69171,7 @@ function createOcrWeb({
       }
       throw error;
     }
-    api = {
+    api2 = {
       stop() {
         try {
           worker.postMessage({ type: "abort" });
@@ -68397,7 +69210,7 @@ function createOcrWeb({
         return msg.cells;
       }
     };
-    return api;
+    return api2;
   }
   async function ensure(signal) {
     if (engine) return engine;
@@ -68648,7 +69461,7 @@ function sharedDeviceOcr() {
 }
 
 // src/view/title-lexicon-warm.js
-function scheduleTitleLexiconWarm({ win, hasPdf, ocr, isDisposed, onWarm, setTimer = setTimeout }) {
+function scheduleTitleLexiconWarm({ win: win2, hasPdf, ocr, isDisposed, onWarm, setTimer = setTimeout }) {
   if (typeof hasPdf !== "function" || !hasPdf()) return false;
   const run = () => {
     if (isDisposed()) return;
@@ -68663,9 +69476,9 @@ function scheduleTitleLexiconWarm({ win, hasPdf, ocr, isDisposed, onWarm, setTim
     }).catch(() => {
     });
   };
-  if (typeof win?.requestIdleCallback === "function") {
+  if (typeof win2?.requestIdleCallback === "function") {
     try {
-      win.requestIdleCallback(run, { timeout: 1500 });
+      win2.requestIdleCallback(run, { timeout: 1500 });
       return true;
     } catch {
     }
@@ -68789,10 +69602,10 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       const viewTop = Math.max(rootRect.top || 0, 0);
       const viewBottom = viewH ? Math.min(rootRect.bottom || viewH, viewH) : rootRect.bottom || 0;
       const visibleSpan = viewBottom > viewTop ? viewBottom - viewTop : rootRect.height || 0;
-      const available = visibleSpan ? Math.max(ROW_HEIGHT * 3, visibleSpan - 2 * MARGIN2) : h;
-      const used = h > available && available > 0 ? available : h;
-      if (h > available && available > 0) {
-        sub.style.maxHeight = `${Math.round(available)}px`;
+      const available2 = visibleSpan ? Math.max(ROW_HEIGHT * 3, visibleSpan - 2 * MARGIN2) : h;
+      const used = h > available2 && available2 > 0 ? available2 : h;
+      if (h > available2 && available2 > 0) {
+        sub.style.maxHeight = `${Math.round(available2)}px`;
         sub.style.overflowY = "auto";
         sub.style.overscrollBehavior = "contain";
       } else {
@@ -68938,7 +69751,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     return void 0;
   };
   const rowOf = (event) => event.target?.closest?.(".pxd-menu__item") || null;
-  const api = {
+  const api2 = {
     el: null,
     open({ x = 0, y = 0, items = [] } = {}) {
       if (disposed) return false;
@@ -68946,7 +69759,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       const list = Array.isArray(items) ? items : [];
       if (!list.some((item) => !item.separator)) return false;
       menuEl = el("div", "pxd-menu pxd-chrome", root);
-      api.el = menuEl;
+      api2.el = menuEl;
       menuEl.setAttribute("role", "menu");
       menuEl.style.left = "0px";
       menuEl.style.top = "0px";
@@ -68973,11 +69786,11 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
         setActive(level, row4);
         if (entry.sub) openSub(row4);
       });
-      const win = doc.defaultView || doc;
+      const win2 = doc.defaultView || doc;
       on_(doc, "pointerdown", (event) => {
         if (menuEl && !menuEl.contains(event.target)) close();
       }, true);
-      on_(win, "keydown", onKey, true);
+      on_(win2, "keydown", onKey, true);
       const rootRect = root.getBoundingClientRect();
       const rows = list.filter((item) => !item.separator).length;
       const w = menuEl.offsetWidth || MENU_WIDTH;
@@ -69008,7 +69821,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       menuEl.style.left = `${Math.round(left)}px`;
       menuEl.style.top = `${Math.round(top)}px`;
       const box2 = { left: vpLeft, top: vpTop, right: vpLeft + w, bottom: vpTop + h };
-      if (chromeObstacles(root, { win }).some((o) => box2.left < o.right && box2.right > o.left && box2.top < o.bottom && box2.bottom > o.top)) {
+      if (chromeObstacles(root, { win: win2 }).some((o) => box2.left < o.right && box2.right > o.left && box2.top < o.bottom && box2.bottom > o.top)) {
         placeNearAnchor(menuEl, pointAnchor(x, y), root, { gap: 0 });
         const nl = Number.parseFloat(menuEl.style.left) + rl;
         const nt = Number.parseFloat(menuEl.style.top) + rt;
@@ -69033,10 +69846,10 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     dispose() {
       close();
       disposed = true;
-      api.el = null;
+      api2.el = null;
     }
   };
-  return api;
+  return api2;
 }
 
 // src/view/shortcut-sheet.js
@@ -69323,52 +70136,52 @@ function statusRows(source) {
   return [...value];
 }
 function statusSubmenu(c) {
-  const api = c.statusTags;
-  if (typeof api?.available !== "function" || api.available() !== true) return null;
+  const api2 = c.statusTags;
+  if (typeof api2?.available !== "function" || api2.available() !== true) return null;
   const current3 = String(c.status ?? "").trim().toLowerCase();
   const children = [];
-  for (const row4 of statusRows(api.palette)) {
+  for (const row4 of statusRows(api2.palette)) {
     const name = String(row4?.name || "").trim();
     if (!name) continue;
-    children.push(make(`status:${name}`, name, {
+    children.push(make2(`status:${name}`, name, {
       checked: name.toLowerCase() === current3,
       glyph: row4.glyph
     }));
   }
-  children.push(make("status:remove", "Remove status"));
-  return make("status", "Status ▸", { children });
+  children.push(make2("status:remove", "Remove status"));
+  return make2("status", "Status ▸", { children });
 }
 function trailChildren(c, prefix) {
   const trails = Array.isArray(c.trails) ? c.trails : [];
   const children = [];
   for (const trail of trails) {
     if (!trail?.uid) continue;
-    children.push(make(`${prefix}:${trail.uid}`, trail.name || "Trail"));
+    children.push(make2(`${prefix}:${trail.uid}`, trail.name || "Trail"));
   }
-  children.push(make(`${prefix}:new`, "New trail…"));
+  children.push(make2(`${prefix}:new`, "New trail…"));
   return children;
 }
 function trailItem(c) {
-  return make("trail", "Add to trail ▸", { children: trailChildren(c, "trail-add") });
+  return make2("trail", "Add to trail ▸", { children: trailChildren(c, "trail-add") });
 }
 function selectionTrailItem(c) {
-  return make("trail-sel", "Add selection to trail ▸", { children: trailChildren(c, "trail-sel") });
+  return make2("trail-sel", "Add selection to trail ▸", { children: trailChildren(c, "trail-sel") });
 }
 function landmarkItem(c) {
   const on = c.landmark === true;
-  if (!on) return make("landmark-toggle", "Make landmark");
+  if (!on) return make2("landmark-toggle", "Make landmark");
   const size = c.landmarkSize === "S" || c.landmarkSize === "L" ? c.landmarkSize : "M";
-  return make("landmark", "Landmark", {
+  return make2("landmark", "Landmark", {
     children: [
-      make("landmark-toggle", "Remove landmark", { checked: true }),
-      make("landmark-glyph", "Glyph…"),
-      make("landmark-size:S", "Small", { checked: size === "S" }),
-      make("landmark-size:M", "Medium", { checked: size === "M" }),
-      make("landmark-size:L", "Large", { checked: size === "L" })
+      make2("landmark-toggle", "Remove landmark", { checked: true }),
+      make2("landmark-glyph", "Glyph…"),
+      make2("landmark-size:S", "Small", { checked: size === "S" }),
+      make2("landmark-size:M", "Medium", { checked: size === "M" }),
+      make2("landmark-size:L", "Large", { checked: size === "L" })
     ]
   });
 }
-var make = (id, label, extra = {}) => {
+var make2 = (id, label, extra = {}) => {
   const out = { id, label };
   for (const [key, value] of Object.entries(extra)) {
     if (value === void 0 || value === false) continue;
@@ -69383,23 +70196,23 @@ function buildMenu(kind, ctx = {}) {
   const empty = count === 0;
   let separators = 0;
   const sep = () => ({ id: `sep-${separators += 1}`, separator: true });
-  const templateMenu = () => make("template", "New board from template…", {
-    children: STARTERS.map((s) => make(`template:${s.id}`, s.id === "timeline" ? "Timeline template" : s.title))
+  const templateMenu = () => make2("template", "New board from template…", {
+    children: STARTERS.map((s) => make2(`template:${s.id}`, s.id === "timeline" ? "Timeline template" : s.title))
   });
-  const viewsMenu = () => make("views", "Views", {
+  const viewsMenu = () => make2("views", "Views", {
     children: [
-      make("gallery", "Gallery"),
-      make("timeline", "Timeline"),
-      make("graph", "Graph")
+      make2("gallery", "Gallery"),
+      make2("timeline", "Timeline"),
+      make2("graph", "Graph")
     ]
   });
   const mindPresetMenu = () => {
     const preset = normalizeMindPreset(c.mindPreset);
-    const dirs = MIND_DIRECTIONS.map((d) => make(`mind-dir:${d}`, cap3(d), { checked: preset.direction === d }));
-    const spaces = MIND_SPACINGS.map((s) => make(`mind-space:${s}`, cap3(s), { checked: preset.spacing === s }));
+    const dirs = MIND_DIRECTIONS.map((d) => make2(`mind-dir:${d}`, cap3(d), { checked: preset.direction === d }));
+    const spaces = MIND_SPACINGS.map((s) => make2(`mind-space:${s}`, cap3(s), { checked: preset.spacing === s }));
     const depths = [];
-    for (let d = MIND_DEPTH_MIN; d <= MIND_DEPTH_MAX; d++) depths.push(make(`mind-depth:${d}`, `Depth ${d}`, { checked: preset.depth === d }));
-    return make("mind-preset", "Mind map preset…", {
+    for (let d = MIND_DEPTH_MIN; d <= MIND_DEPTH_MAX; d++) depths.push(make2(`mind-depth:${d}`, `Depth ${d}`, { checked: preset.depth === d }));
+    return make2("mind-preset", "Mind map preset…", {
       children: [
         ...dirs,
         sep(),
@@ -69407,29 +70220,29 @@ function buildMenu(kind, ctx = {}) {
         sep(),
         ...depths,
         sep(),
-        make("mind-refs:include", "Include block refs", { checked: preset.includeRefs }),
-        make("mind-refs:skip", "Skip block refs", { checked: !preset.includeRefs }),
+        make2("mind-refs:include", "Include block refs", { checked: preset.includeRefs }),
+        make2("mind-refs:skip", "Skip block refs", { checked: !preset.includeRefs }),
         sep(),
-        make("mind-color:on", "Color branches", { checked: preset.colorBranches }),
-        make("mind-color:off", "No branch color", { checked: !preset.colorBranches })
+        make2("mind-color:on", "Color branches", { checked: preset.colorBranches }),
+        make2("mind-color:off", "No branch color", { checked: !preset.colorBranches })
       ]
     });
   };
   const snapshotMenus = () => {
     const parts = partitionSnapshots(c.snapshots);
     const items = [
-      make("save-snapshot", "Save snapshot"),
-      make("restore-snapshot", "Restore snapshot…", {
+      make2("save-snapshot", "Save snapshot"),
+      make2("restore-snapshot", "Restore snapshot…", {
         disabled: parts.newest.length === 0,
-        children: parts.newest.map((snap) => make(`snapshot:${snap.uid}`, snap.title))
+        children: parts.newest.map((snap) => make2(`snapshot:${snap.uid}`, snap.title))
       })
     ];
     if (parts.older.length) {
-      items.push(make("older-snapshots", "Older snapshots", {
-        children: parts.older.map((snap) => make(`older:${snap.uid}`, snap.title, {
+      items.push(make2("older-snapshots", "Older snapshots", {
+        children: parts.older.map((snap) => make2(`older:${snap.uid}`, snap.title, {
           children: [
-            make(`snapshot:${snap.uid}`, "Restore"),
-            make(`delete-snapshot:${snap.uid}`, "Delete", { danger: true })
+            make2(`snapshot:${snap.uid}`, "Restore"),
+            make2(`delete-snapshot:${snap.uid}`, "Delete", { danger: true })
           ]
         }))
       }));
@@ -69438,93 +70251,93 @@ function buildMenu(kind, ctx = {}) {
   };
   const colorMenu = () => {
     const current3 = item?.color || null;
-    return make("color", "Color", {
+    return make2("color", "Color", {
       children: [
-        make("color:none", "No color", { checked: !current3 }),
-        ...PALETTE.map((name) => make(`color:${name}`, cap3(name), { checked: current3 === name }))
+        make2("color:none", "No color", { checked: !current3 }),
+        ...PALETTE.map((name) => make2(`color:${name}`, cap3(name), { checked: current3 === name }))
       ]
     });
   };
-  const pinItem = (pinned2) => pinned2 ? make("unpin", "Unpin") : make("pin", "Pin");
-  const foldItem = (folded) => folded ? make("unfold", "Unfold", { hint: "Cmd Alt Enter" }) : make("fold", "Fold", { hint: "Cmd Alt Enter" });
-  const tidyMenu = (disabled) => make("tidy", "Tidy", {
+  const pinItem = (pinned2) => pinned2 ? make2("unpin", "Unpin") : make2("pin", "Pin");
+  const foldItem = (folded) => folded ? make2("unfold", "Unfold", { hint: "Cmd Alt Enter" }) : make2("fold", "Fold", { hint: "Cmd Alt Enter" });
+  const tidyMenu = (disabled) => make2("tidy", "Tidy", {
     disabled,
     children: [
-      make("tidy:grid", "Grid"),
-      make("tidy:row", "Row"),
-      make("tidy:column", "Column"),
-      make("tidy:outline", "Outline order")
+      make2("tidy:grid", "Grid"),
+      make2("tidy:row", "Row"),
+      make2("tidy:column", "Column"),
+      make2("tidy:outline", "Outline order")
     ]
   });
   switch (kind) {
     case "canvas":
       return [
-        make("new-card", "New card", { hint: "N" }),
-        ...c.taskTool === false ? [] : [make("new-task", "New task", { hint: "K" })],
-        make("new-text", "New text", { hint: "T" }),
-        make("new-sticky", "New sticky"),
-        make("new-section", "New section", { hint: "G" }),
-        make("new-lane-h", "Horizontal lane"),
-        make("new-lane-v", "Vertical lane"),
-        make("new-board", "New board", { hint: "W" }),
-        make("new-drawing", "New drawing here"),
-        make("new-table", "Table", { hint: "B" }),
+        make2("new-card", "New card", { hint: "N" }),
+        ...c.taskTool === false ? [] : [make2("new-task", "New task", { hint: "K" })],
+        make2("new-text", "New text", { hint: "T" }),
+        make2("new-sticky", "New sticky"),
+        make2("new-section", "New section", { hint: "G" }),
+        make2("new-lane-h", "Horizontal lane"),
+        make2("new-lane-v", "Vertical lane"),
+        make2("new-board", "New board", { hint: "W" }),
+        make2("new-drawing", "New drawing here"),
+        make2("new-table", "Table", { hint: "B" }),
         templateMenu(),
-        make("save-template", "Save board as template"),
+        make2("save-template", "Save board as template"),
         ...snapshotMenus(),
         sep(),
-        make("paste", "Paste", { hint: "Cmd V", disabled: !c.canPaste }),
-        make("paste-clone", "Paste as copies", { disabled: !c.canPaste }),
+        make2("paste", "Paste", { hint: "Cmd V", disabled: !c.canPaste }),
+        make2("paste-clone", "Paste as copies", { disabled: !c.canPaste }),
         sep(),
-        make("add-page", "Add page…"),
-        make("add-today", "Add today's journal"),
-        make("add-week", "Add this week's journals"),
+        make2("add-page", "Add page…"),
+        make2("add-today", "Add today's journal"),
+        make2("add-week", "Add this week's journals"),
         sep(),
-        make("select-all", "Select all", { hint: "Cmd A" }),
-        make("fit-all", "Fit all", { hint: "Shift 1" }),
-        make("fold-all", "Fold all cards"),
-        make("unfold-all", "Unfold all cards"),
+        make2("select-all", "Select all", { hint: "Cmd A" }),
+        make2("fit-all", "Fit all", { hint: "Shift 1" }),
+        make2("fold-all", "Fold all cards"),
+        make2("unfold-all", "Unfold all cards"),
         sep(),
-        make("background", "Background…"),
-        make("bg-image", "Lock copied image as background"),
+        make2("background", "Background…"),
+        make2("bg-image", "Lock copied image as background"),
         viewsMenu(),
-        make("print", "Print…"),
-        make("highlights", "Highlight marks"),
-        make("export-svg", "Export as SVG"),
-        make("export-png", "Export as PNG"),
-        make("copy-outline", "Copy as outline")
+        make2("print", "Print…"),
+        make2("highlights", "Highlight marks"),
+        make2("export-svg", "Export as SVG"),
+        make2("export-png", "Export as PNG"),
+        make2("copy-outline", "Copy as outline")
       ];
     case "card": {
       const folded = Boolean(c.collapsed);
       const out = [
-        make("edit", c.isBoard ? "Rename board" : "Edit", { hint: "Enter" }),
-        make("open", c.isBoard ? "Open board" : "Open"),
-        ...c.isBoard ? [make("open-own-page", "Open nested board in its own page")] : [],
-        make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
-        ...c.compass && c.interop !== false ? [make("open-compass", "Open in Compass")] : [],
-        ...c.isPdf ? [make("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : [],
-        ...c.isPdf ? [make("parse-pdf", "Parse PDF…")] : [],
-        ...c.isPdf && c.hasParse ? [make("open-parsed", "Open parsed")] : [],
-        ...c.officeFile ? [make("convert-office", "Convert to cards")] : [],
+        make2("edit", c.isBoard ? "Rename board" : "Edit", { hint: "Enter" }),
+        make2("open", c.isBoard ? "Open board" : "Open"),
+        ...c.isBoard ? [make2("open-own-page", "Open nested board in its own page")] : [],
+        make2("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
+        ...c.compass && c.interop !== false ? [make2("open-compass", "Open in Compass")] : [],
+        ...c.isPdf ? [make2("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : [],
+        ...c.isPdf ? [make2("parse-pdf", "Parse PDF…")] : [],
+        ...c.isPdf && c.hasParse ? [make2("open-parsed", "Open parsed")] : [],
+        ...c.officeFile ? [make2("convert-office", "Convert to cards")] : [],
         sep(),
-        make("copy", "Copy", { hint: "Cmd C" }),
-        make("copy-png", "Copy selection as PNG"),
-        make("copy-ref", "Copy ref"),
-        make("copy-link", "Copy link"),
-        make("duplicate", "Duplicate", { hint: "Cmd D" }),
-        make("duplicate-ref", "Duplicate as ref"),
+        make2("copy", "Copy", { hint: "Cmd C" }),
+        make2("copy-png", "Copy selection as PNG"),
+        make2("copy-ref", "Copy ref"),
+        make2("copy-link", "Copy link"),
+        make2("duplicate", "Duplicate", { hint: "Cmd D" }),
+        make2("duplicate-ref", "Duplicate as ref"),
         sep(),
         colorMenu(),
-        item?.look === "card" ? make("show-as-block", "Show as block") : make("show-as-card", "Show as card"),
-        ...c.canMakeTask ? [make("make-task", "Make task")] : [],
-        make("apply-template", "Add attribute template"),
-        make("version-peek", "Version history"),
+        item?.look === "card" ? make2("show-as-block", "Show as block") : make2("show-as-card", "Show as card"),
+        ...c.canMakeTask ? [make2("make-task", "Make task")] : [],
+        make2("apply-template", "Add attribute template"),
+        make2("version-peek", "Version history"),
         foldItem(folded),
-        make("fit-height", "Fit height", { disabled: folded }),
-        make("reset-size", "Reset size", { disabled: folded }),
+        make2("fit-height", "Fit height", { disabled: folded }),
+        make2("reset-size", "Reset size", { disabled: folded }),
         pinItem(Boolean(c.pinned)),
-        make("select-same-color", "Select same color"),
-        make("select-connected", "Select connected")
+        make2("select-same-color", "Select same color"),
+        make2("select-connected", "Select connected")
       ];
       const regionsItem = regionMenu(c.regions);
       if (regionsItem) {
@@ -69537,215 +70350,215 @@ function buildMenu(kind, ctx = {}) {
         out.splice(at < 0 ? out.length : at + 1, 0, statusItem);
       }
       if (c.hasOutline) {
-        out.push(make("mind-map", "Expand as mind map"));
+        out.push(make2("mind-map", "Expand as mind map"));
         out.push(mindPresetMenu());
       }
-      if (c.canSpread) out.push(make("spread-children", "Spread children as cards"));
-      if (c.isQuery) out.push(make("query-results", "Add results as cards"));
+      if (c.canSpread) out.push(make2("spread-children", "Spread children as cards"));
+      if (c.isQuery) out.push(make2("query-results", "Add results as cards"));
       if (c.canExpand) {
-        out.push(make("neighbors:out", "Add pages it links to"));
-        out.push(make("neighbors:in", "Add pages that link here"));
-        out.push(make("neighbors:attr", "Add attribute values"));
+        out.push(make2("neighbors:out", "Add pages it links to"));
+        out.push(make2("neighbors:in", "Add pages that link here"));
+        out.push(make2("neighbors:attr", "Add attribute values"));
       }
-      if (c.canAnnotate) out.push(make("annotate-drawing", "Annotate as drawing"));
+      if (c.canAnnotate) out.push(make2("annotate-drawing", "Annotate as drawing"));
       out.push(
-        make("send-to", "Send to board…"),
-        make("related", "Related…"),
-        make("context", "Context"),
+        make2("send-to", "Send to board…"),
+        make2("related", "Related…"),
+        make2("context", "Context"),
         trailItem(c),
         landmarkItem(c),
         sep(),
-        make("delete", "Delete", { hint: "Del", danger: true })
+        make2("delete", "Delete", { hint: "Del", danger: true })
       );
       return out;
     }
     case "section":
       return [
-        make("rename", "Rename", { hint: "Enter" }),
-        make("select-contents", "Select contents", { disabled: empty }),
-        make("select-all-in-section", "Select all in section", { disabled: empty }),
-        make("select-same-color", "Select same color"),
-        make("select-connected", "Select connected"),
-        make("collapse-section", c.collapsed ? "Expand" : "Collapse"),
-        make("section-note", c.hasNote ? "Remove description" : "Add description"),
-        c.locked ? make("unlock-contents", "Unlock") : make("lock-contents", "Lock"),
-        make("present-section", "Present this section"),
-        make("layout-dates", "Lay out by date"),
-        make("date-source", "Date source", {
+        make2("rename", "Rename", { hint: "Enter" }),
+        make2("select-contents", "Select contents", { disabled: empty }),
+        make2("select-all-in-section", "Select all in section", { disabled: empty }),
+        make2("select-same-color", "Select same color"),
+        make2("select-connected", "Select connected"),
+        make2("collapse-section", c.collapsed ? "Expand" : "Collapse"),
+        make2("section-note", c.hasNote ? "Remove description" : "Add description"),
+        c.locked ? make2("unlock-contents", "Unlock") : make2("lock-contents", "Lock"),
+        make2("present-section", "Present this section"),
+        make2("layout-dates", "Lay out by date"),
+        make2("date-source", "Date source", {
           children: [
-            make("date-source:attribute", "Attribute", { checked: !c.dateSource || c.dateSource === "attribute" }),
-            make("date-source:first", "First mention", { checked: c.dateSource === "first" }),
-            make("date-source:last", "Last mention", { checked: c.dateSource === "last" })
+            make2("date-source:attribute", "Attribute", { checked: !c.dateSource || c.dateSource === "attribute" }),
+            make2("date-source:first", "First mention", { checked: c.dateSource === "first" }),
+            make2("date-source:last", "Last mention", { checked: c.dateSource === "last" })
           ]
         }),
-        make("focus-timer", "Focus timer"),
+        make2("focus-timer", "Focus timer"),
         sep(),
-        make("fit-section", "Fit to contents", { disabled: empty }),
-        make("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
+        make2("fit-section", "Fit to contents", { disabled: empty }),
+        make2("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
         tidyMenu(empty),
-        make("fold-all-in", "Fold all inside", { disabled: empty }),
-        make("unfold-all-in", "Unfold all inside", { disabled: empty }),
+        make2("fold-all-in", "Fold all inside", { disabled: empty }),
+        make2("unfold-all-in", "Unfold all inside", { disabled: empty }),
         sep(),
         colorMenu(),
         pinItem(Boolean(c.pinned)),
-        make("duplicate", "Duplicate", { hint: "Cmd D" }),
-        make("copy-ref", "Copy ref"),
-        make("copy-png", "Copy selection as PNG"),
+        make2("duplicate", "Duplicate", { hint: "Cmd D" }),
+        make2("copy-ref", "Copy ref"),
+        make2("copy-png", "Copy selection as PNG"),
         trailItem(c),
         landmarkItem(c),
         sep(),
-        make("delete-frame", "Delete frame", { hint: "Del", danger: true }),
-        make("delete-contents", "Delete frame and contents", { hint: "Shift Del", danger: true, disabled: empty })
+        make2("delete-frame", "Delete frame", { hint: "Del", danger: true }),
+        make2("delete-contents", "Delete frame and contents", { hint: "Shift Del", danger: true, disabled: empty })
       ];
     case "text":
       return [
-        make("edit", "Edit", { hint: "Enter" }),
+        make2("edit", "Edit", { hint: "Enter" }),
         colorMenu(),
-        make("size", "Size", {
-          children: FONT_SIZES.map((px) => make(`size:${px}`, `${SIZE_LABELS[px] || px} (${px}px)`, { checked: item?.fontSize === px }))
+        make2("size", "Size", {
+          children: FONT_SIZES.map((px) => make2(`size:${px}`, `${SIZE_LABELS[px] || px} (${px}px)`, { checked: item?.fontSize === px }))
         }),
-        make("shape", "Shape", {
-          children: SHAPES.map((name) => make(`shape:${name}`, SHAPE_LABELS2[name] || name, { checked: item?.shape === name }))
+        make2("shape", "Shape", {
+          children: SHAPES.map((name) => make2(`shape:${name}`, SHAPE_LABELS2[name] || name, { checked: item?.shape === name }))
         }),
-        make("duplicate", "Duplicate", { hint: "Cmd D" }),
+        make2("duplicate", "Duplicate", { hint: "Cmd D" }),
         pinItem(Boolean(c.pinned)),
-        make("copy", "Copy", { hint: "Cmd C" }),
-        make("copy-png", "Copy selection as PNG"),
+        make2("copy", "Copy", { hint: "Cmd C" }),
+        make2("copy-png", "Copy selection as PNG"),
         trailItem(c),
         landmarkItem(c),
         sep(),
-        make("delete", "Delete", { hint: "Del", danger: true })
+        make2("delete", "Delete", { hint: "Del", danger: true })
       ];
     case "edge":
       return [
-        make("dir", "Direction", {
+        make2("dir", "Direction", {
           children: [
-            make("dir:one", "One way", { checked: c.dir === "one" }),
-            make("dir:two", "Two way", { checked: c.dir === "two" }),
-            make("dir:none", "No arrow", { checked: c.dir === "none" })
+            make2("dir:one", "One way", { checked: c.dir === "one" }),
+            make2("dir:two", "Two way", { checked: c.dir === "two" }),
+            make2("dir:none", "No arrow", { checked: c.dir === "none" })
           ]
         }),
-        make("flip", "Flip direction"),
-        ...c.blockEnd ? [make("unblock", "Connect to the page instead")] : [],
-        make("route", "Route", {
+        make2("flip", "Flip direction"),
+        ...c.blockEnd ? [make2("unblock", "Connect to the page instead")] : [],
+        make2("route", "Route", {
           children: [
-            make("route:curve", "Curve", { checked: c.route === "curve" }),
-            make("route:straight", "Straight", { checked: c.route === "straight" }),
-            make("route:elbow", "Elbow", { checked: c.route === "elbow" }),
-            make("route:around", "Around cards", { checked: c.route === "around" })
+            make2("route:curve", "Curve", { checked: c.route === "curve" }),
+            make2("route:straight", "Straight", { checked: c.route === "straight" }),
+            make2("route:elbow", "Elbow", { checked: c.route === "elbow" }),
+            make2("route:around", "Around cards", { checked: c.route === "around" })
           ]
         }),
-        make("dash", "Line", {
+        make2("dash", "Line", {
           children: [
-            make("dash:solid", "Solid", { checked: c.dash === "solid" }),
-            make("dash:dashed", "Dashed", { checked: c.dash === "dashed" })
+            make2("dash:solid", "Solid", { checked: c.dash === "solid" }),
+            make2("dash:dashed", "Dashed", { checked: c.dash === "dashed" })
           ]
         }),
         colorMenu(),
         sep(),
-        make("add-bend", "Add bend"),
-        make("clear-bends", "Clear bends"),
-        make("label", "Label"),
-        make("edit-why", "Edit why"),
-        make("notes", "Notes"),
-        make("write-to-graph", "Write to graph"),
+        make2("add-bend", "Add bend"),
+        make2("clear-bends", "Clear bends"),
+        make2("label", "Label"),
+        make2("edit-why", "Edit why"),
+        make2("notes", "Notes"),
+        make2("write-to-graph", "Write to graph"),
         sep(),
-        make("copy-png", "Copy selection as PNG"),
-        make("context", "Context"),
-        make("delete", "Delete", { hint: "Del", danger: true })
+        make2("copy-png", "Copy selection as PNG"),
+        make2("context", "Context"),
+        make2("delete", "Delete", { hint: "Del", danger: true })
       ];
     case "multi": {
       const few = count !== null && count < 2;
       const statusItem = statusSubmenu(c);
       return [
-        make("copy", "Copy", { hint: "Cmd C" }),
-        make("copy-png", "Copy selection as PNG"),
-        make("duplicate", "Duplicate", { hint: "Cmd D" }),
+        make2("copy", "Copy", { hint: "Cmd C" }),
+        make2("copy-png", "Copy selection as PNG"),
+        make2("duplicate", "Duplicate", { hint: "Cmd D" }),
         colorMenu(),
         ...statusItem ? [statusItem] : [],
         sep(),
-        make("align", "Align", {
+        make2("align", "Align", {
           disabled: few,
-          children: ["left", "center", "right", "top", "middle", "bottom"].map((side2) => make(`align:${side2}`, cap3(side2)))
+          children: ["left", "center", "right", "top", "middle", "bottom"].map((side2) => make2(`align:${side2}`, cap3(side2)))
         }),
-        make("distribute", "Distribute", {
+        make2("distribute", "Distribute", {
           disabled: count !== null && count < 3,
-          children: [make("distribute:h", "Horizontally"), make("distribute:v", "Vertically")]
+          children: [make2("distribute:h", "Horizontally"), make2("distribute:v", "Vertically")]
         }),
         tidyMenu(false),
-        make("same-size", "Same size", {
+        make2("same-size", "Same size", {
           disabled: few,
-          children: [make("same-size:width", "Width"), make("same-size:height", "Height"), make("same-size:both", "Width and height")]
+          children: [make2("same-size:width", "Width"), make2("same-size:height", "Height"), make2("same-size:both", "Width and height")]
         }),
         foldItem(Boolean(c.anyCollapsed)),
         pinItem(Boolean(c.allPinned)),
         sep(),
-        ...c.sectionPair ? [make("group-connect", "Connect sections")] : [],
-        make("wrap-section", "Wrap in section", { hint: "Cmd G" }),
-        make("wrap-board", "Move into new board"),
-        make("save-view-selection", "Save view of selection"),
-        make("send-to", "Send to board…"),
+        ...c.sectionPair ? [make2("group-connect", "Connect sections")] : [],
+        make2("wrap-section", "Wrap in section", { hint: "Cmd G" }),
+        make2("wrap-board", "Move into new board"),
+        make2("save-view-selection", "Save view of selection"),
+        make2("send-to", "Send to board…"),
         selectionTrailItem(c),
         sep(),
-        make("delete", "Delete", { hint: "Del", danger: true })
+        make2("delete", "Delete", { hint: "Del", danger: true })
       ];
     }
     case "board-menu":
       return [
         templateMenu(),
-        make("save-template", "Save board as template"),
+        make2("save-template", "Save board as template"),
         ...snapshotMenus(),
-        make("save-view", "Save view…"),
-        make("memory-lane", "Memory lane", { hint: "Shift T" }),
+        make2("save-view", "Save view…"),
+        make2("memory-lane", "Memory lane", { hint: "Shift T" }),
         ...c.lens ? [
-          make("lens-strength", "Strength", { checked: c.strength === true }),
-          make("lens-dust", "Dust", {
+          make2("lens-strength", "Strength", { checked: c.strength === true }),
+          make2("lens-dust", "Dust", {
             children: [
-              make("lens-dust:off", "Off", { checked: !c.dust || c.dust === "off" }),
-              make("lens-dust:6 months", "6 months", { checked: c.dust === "6 months" }),
-              make("lens-dust:1 year", "1 year", { checked: c.dust === "1 year" }),
-              make("lens-dust:2 years", "2 years", { checked: c.dust === "2 years" })
+              make2("lens-dust:off", "Off", { checked: !c.dust || c.dust === "off" }),
+              make2("lens-dust:6 months", "6 months", { checked: c.dust === "6 months" }),
+              make2("lens-dust:1 year", "1 year", { checked: c.dust === "1 year" }),
+              make2("lens-dust:2 years", "2 years", { checked: c.dust === "2 years" })
             ]
           })
         ] : [],
-        ...c.walk ? [make("walk", "Walk", {
+        ...c.walk ? [make2("walk", "Walk", {
           children: [
-            make("walk:reading", "Reading order"),
-            make("walk:nearest", "Nearest next"),
-            make("walk:trail", "Along the trail", { disabled: !c.hasTrail })
+            make2("walk:reading", "Reading order"),
+            make2("walk:nearest", "Nearest next"),
+            make2("walk:trail", "Along the trail", { disabled: !c.hasTrail })
           ]
         })] : [],
         sep(),
-        make("export-svg", "Export as SVG"),
-        make("export-png", "Export as PNG"),
-        make("copy-outline", "Copy as outline"),
-        make("sort-outline", "Sort outline by position"),
-        make("open-outline", "Open outline in sidebar"),
+        make2("export-svg", "Export as SVG"),
+        make2("export-png", "Export as PNG"),
+        make2("copy-outline", "Copy as outline"),
+        make2("sort-outline", "Sort outline by position"),
+        make2("open-outline", "Open outline in sidebar"),
         sep(),
-        make("fold-all", "Fold all cards"),
-        make("unfold-all", "Unfold all cards"),
+        make2("fold-all", "Fold all cards"),
+        make2("unfold-all", "Unfold all cards"),
         sep(),
-        make("add-page", "Add page…"),
-        make("add-today", "Add today's journal"),
-        make("add-week", "Add this week's journals"),
+        make2("add-page", "Add page…"),
+        make2("add-today", "Add today's journal"),
+        make2("add-week", "Add this week's journals"),
         sep(),
-        make("background", "Background…"),
+        make2("background", "Background…"),
         ...c.readOpen ? [
-          make("bar-table", "Table view"),
-          make("bar-kanban", "Kanban view"),
-          make("bar-lens", "Tag lens"),
-          make("bar-focus", "Focus mode"),
-          make("bar-present", "Present")
+          make2("bar-table", "Table view"),
+          make2("bar-kanban", "Kanban view"),
+          make2("bar-lens", "Tag lens"),
+          make2("bar-focus", "Focus mode"),
+          make2("bar-present", "Present")
         ] : [],
         viewsMenu(),
-        make("dock", "Dock position for this board", {
+        make2("dock", "Dock position for this board", {
           children: [
-            ...DOCK_POSITIONS.map((d) => make(`dock:${d}`, cap3(d), { checked: c.dock === d })),
+            ...DOCK_POSITIONS.map((d) => make2(`dock:${d}`, cap3(d), { checked: c.dock === d })),
             sep(),
-            make("dock:default", "Use setting", { checked: !DOCK_POSITIONS.includes(c.dock) })
+            make2("dock:default", "Use setting", { checked: !DOCK_POSITIONS.includes(c.dock) })
           ]
         }),
-        make("tidy:grid", "Tidy into a grid")
+        make2("tidy:grid", "Tidy into a grid")
       ];
     default:
       return [];
@@ -69783,7 +70596,7 @@ var LIMIT2 = 24;
 var STOP_EVENTS2 = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "wheel", "keydown", "keyup", "contextmenu"];
 var childString5 = (c) => c?.[":block/string"] ?? c?.string ?? "";
 var childKids2 = (c) => c?.[":block/children"] ?? c?.children ?? [];
-function createQuickLook({ doc = globalThis.document, root, host, timers, on = {}, win = doc?.defaultView || null, pdfLib = null } = {}) {
+function createQuickLook({ doc = globalThis.document, root, host, timers, on = {}, win: win2 = doc?.defaultView || null, pdfLib = null } = {}) {
   let node2 = null;
   let pdfOff = null;
   let roots = [];
@@ -69852,7 +70665,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
   };
   const engine = () => {
     if (pdfLib && typeof pdfLib.getDocument === "function") return pdfLib;
-    const found = detectPdfjs2(win);
+    const found = detectPdfjs2(win2);
     return found?.workerReady ? found.lib : null;
   };
   const fillPdf = (body, item, onFail) => {
@@ -69908,7 +70721,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
         return;
       }
       const width = Number(stage.clientWidth) || 600;
-      const dpr = Number(win?.devicePixelRatio) || 1;
+      const dpr = Number(win2?.devicePixelRatio) || 1;
       const scale = width / (Number(base?.width) || width);
       let view = null;
       try {
@@ -69956,7 +70769,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
         event.stopPropagation?.();
       }
     };
-    const keyTarget = win || doc;
+    const keyTarget = win2 || doc;
     keyTarget.addEventListener("keydown", onKey, true);
     pdfOff = () => {
       live = false;
@@ -70469,18 +71282,18 @@ function applyFullscreenChrome(mount, on, root = globalThis.document) {
     disconnects.forEach((d) => d());
   };
 }
-function watchRouteExit({ boardUid, onExit, win = globalThis.window } = {}) {
-  if (!win?.addEventListener) return () => {
+function watchRouteExit({ boardUid, onExit, win: win2 = globalThis.window } = {}) {
+  if (!win2?.addEventListener) return () => {
   };
   const check = () => {
-    const hash = win.location?.hash || "";
+    const hash = win2.location?.hash || "";
     if (routeLeftZoomedDiagram(boardUid, hash)) onExit?.();
   };
-  win.addEventListener("hashchange", check);
-  win.addEventListener("popstate", check);
+  win2.addEventListener("hashchange", check);
+  win2.addEventListener("popstate", check);
   return () => {
-    win.removeEventListener("hashchange", check);
-    win.removeEventListener("popstate", check);
+    win2.removeEventListener("hashchange", check);
+    win2.removeEventListener("popstate", check);
   };
 }
 
@@ -70685,9 +71498,9 @@ init_image_region();
 var SVG_NS4 = "http://www.w3.org/2000/svg";
 var pointerBoard = null;
 function sidebarMountKind(nativeEl) {
-  const win = nativeEl?.closest?.(".rm-sidebar-window");
-  if (!win) return "main";
-  const id = String(win.id || "");
+  const win2 = nativeEl?.closest?.(".rm-sidebar-window");
+  if (!win2) return "main";
+  const id = String(win2.id || "");
   if (id.includes("mentions")) return "mentions";
   if (id.includes("outline")) return "outline";
   return "block";
@@ -70921,7 +71734,7 @@ function clearPinnedToast() {
   } catch {
   }
 }
-function pinAnnotateToast(doc, win = globalThis) {
+function pinAnnotateToast(doc, win2 = globalThis) {
   const body = doc?.body;
   if (!body || typeof doc.createElement !== "function") return;
   clearPinnedToast();
@@ -70937,14 +71750,14 @@ function pinAnnotateToast(doc, win = globalThis) {
   span.textContent = ANNOTATE_TOAST;
   node2.append(span);
   body.append(node2);
-  const id = win.setTimeout?.(() => {
+  const id = win2.setTimeout?.(() => {
     if (pinned?.node === node2) pinned = null;
     try {
       node2.remove();
     } catch {
     }
   }, 6e3);
-  pinned = { node: node2, cancel: () => win.clearTimeout?.(id) };
+  pinned = { node: node2, cancel: () => win2.clearTimeout?.(id) };
 }
 function isDarkHost(root, doc = globalThis.document) {
   const has = (el, name) => Boolean(el?.classList?.contains?.(name));
@@ -71297,13 +72110,13 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
   paint2();
   return root;
 }
-function isLightHost(root, doc = globalThis.document, win = globalThis.window) {
+function isLightHost(root, doc = globalThis.document, win2 = globalThis.window) {
   if (isDarkHost(root, doc)) return false;
-  if (typeof win?.getComputedStyle !== "function") return false;
+  if (typeof win2?.getComputedStyle !== "function") return false;
   for (let node2 = root; node2; node2 = node2.parentElement) {
     let color;
     try {
-      color = rgbOf(win.getComputedStyle(node2)?.backgroundColor);
+      color = rgbOf(win2.getComputedStyle(node2)?.backgroundColor);
     } catch {
       return false;
     }
@@ -71312,8 +72125,8 @@ function isLightHost(root, doc = globalThis.document, win = globalThis.window) {
   }
   return false;
 }
-function graphName2(win = globalThis.window) {
-  const m = /#\/app\/([^/]+)/.exec(String(win?.location?.hash || ""));
+function graphName2(win2 = globalThis.window) {
+  const m = /#\/app\/([^/]+)/.exec(String(win2?.location?.hash || ""));
   return m ? decodeURIComponent(m[1]) : "graph";
 }
 function createLocalViewportStore({ storage, graph, timers }) {
@@ -71389,13 +72202,13 @@ function buildBoardView(onFail, {
   boardsOf = null
 } = {}) {
   const doc = globalThis.document;
-  const win = globalThis.window;
+  const win2 = globalThis.window;
   let settingsRef = settings;
   const readSetting2 = (k) => typeof settingsRef?.get === "function" ? settingsRef.get(k) : settingsRef?.[k];
   const settingsProxy = { get: readSetting2 };
   const bt = createBt({
     enabled: () => readSetting2("better-tasks") === true,
-    win
+    win: win2
   });
   const setting = (k, d) => {
     const v = readSetting2(k);
@@ -71407,7 +72220,7 @@ function buildBoardView(onFail, {
   };
   let motionMq = null;
   try {
-    motionMq = win?.matchMedia?.("(prefers-reduced-motion: reduce)") || null;
+    motionMq = win2?.matchMedia?.("(prefers-reduced-motion: reduce)") || null;
   } catch {
     motionMq = null;
   }
@@ -71496,7 +72309,7 @@ function buildBoardView(onFail, {
     return node2;
   };
   const boardUid = session.uid;
-  const graph = host?.graph || graphName2(win);
+  const graph = host?.graph || graphName2(win2);
   const storage = globalThis.localStorage;
   let dateMode = "attribute";
   let strengthOn = false;
@@ -72576,19 +73389,19 @@ function buildBoardView(onFail, {
   };
   const ensureCoverStore = () => {
     if (coverStore) return coverStore;
-    coverStore = createCoverStore({ indexedDB: win?.indexedDB, storage });
+    coverStore = createCoverStore({ indexedDB: win2?.indexedDB, storage });
     return coverStore;
   };
   const warmTimers = {
-    setTimeout: (fn, ms) => typeof win?.setTimeout === "function" ? win.setTimeout(fn, ms) : setTimeout(fn, ms),
-    clearTimeout: (id) => typeof win?.clearTimeout === "function" ? win.clearTimeout(id) : clearTimeout(id)
+    setTimeout: (fn, ms) => typeof win2?.setTimeout === "function" ? win2.setTimeout(fn, ms) : setTimeout(fn, ms),
+    clearTimeout: (id) => typeof win2?.clearTimeout === "function" ? win2.clearTimeout(id) : clearTimeout(id)
   };
   let firstPage = null;
   let pdfjsProbe = null;
   let pdfMeta = null;
   const probePdfjs = () => {
     if (pdfjsProbe && firstPage) return pdfjsProbe;
-    const found = detectPdfjs2(win);
+    const found = detectPdfjs2(win2);
     pdfjsProbe = { found: Boolean(found), key: found?.key || "", version: found?.version || "", workerReady: Boolean(found?.workerReady) };
     if (found && found.workerReady) {
       firstPage = createFirstPageRenderer({ doc, lib: found.lib, timers: warmTimers });
@@ -72894,7 +73707,7 @@ function buildBoardView(onFail, {
       sharpTimer = timers.later(() => refreshSharpCovers(), 400);
       return;
     }
-    const dpr = Number(win?.devicePixelRatio) > 0 ? Number(win.devicePixelRatio) : 1;
+    const dpr = Number(win2?.devicePixelRatio) > 0 ? Number(win2.devicePixelRatio) : 1;
     const zoom = Number(vp?.zoom) > 0 ? Number(vp.zoom) : 1;
     let picked = null;
     for (const item of board2()?.items.values() || []) {
@@ -73035,7 +73848,7 @@ function buildBoardView(onFail, {
   };
   const saveDataOn = () => {
     try {
-      return win?.navigator?.connection?.saveData === true;
+      return win2?.navigator?.connection?.saveData === true;
     } catch {
       return false;
     }
@@ -73193,9 +74006,9 @@ function buildBoardView(onFail, {
         next();
       }).catch(() => next());
     };
-    if (typeof win?.requestIdleCallback === "function") {
+    if (typeof win2?.requestIdleCallback === "function") {
       try {
-        win.requestIdleCallback(() => start(), { timeout: 2e3 });
+        win2.requestIdleCallback(() => start(), { timeout: 2e3 });
         return;
       } catch {
       }
@@ -73247,7 +74060,7 @@ function buildBoardView(onFail, {
     });
   };
   const taskPop = createTaskPopover({ doc, root, bt, toast: (m) => chrome.toast.show(m) });
-  const taskDone = createTaskCompleter({ doc, getRoot: () => root, host, bt, win });
+  const taskDone = createTaskCompleter({ doc, getRoot: () => root, host, bt, win: win2 });
   let betterTasksOn = false;
   const taskCardUids = () => {
     const b = board2();
@@ -73425,7 +74238,7 @@ function buildBoardView(onFail, {
     } catch {
     }
     try {
-      const list = win?.PlexusDiagram?.boardsWith?.(uid);
+      const list = win2?.PlexusDiagram?.boardsWith?.(uid);
       return Array.isArray(list) ? list.map((row4) => row4?.uid).filter(Boolean) : [];
     } catch {
       return [];
@@ -75033,10 +75846,10 @@ function buildBoardView(onFail, {
   const taskUidOf = (it) => it?.target?.kind === "block" && it.target.uid ? it.target.uid : it?.uid;
   const isTaskItem = (it) => Boolean(it) && isTaskString(it.string || (it.target?.kind === "block" ? host?.blockString?.(it.target.uid) : "") || "");
   const setStatusOf = async (uid, name) => {
-    const api = statusApi(statusWin());
-    if (!api || !uid) return { status: "unknown", reason: "no-api" };
+    const api2 = statusApi(statusWin());
+    if (!api2 || !uid) return { status: "unknown", reason: "no-api" };
     try {
-      return await api.setStatus(uid, name);
+      return await api2.setStatus(uid, name);
     } catch {
       return { status: "unknown", reason: "set-status-failed" };
     }
@@ -75445,7 +76258,7 @@ function buildBoardView(onFail, {
         root.append(sheet);
         root.classList.add("pxd-root--print");
         try {
-          win?.print?.();
+          win2?.print?.();
         } catch {
         }
         sheet.remove();
@@ -75608,19 +76421,19 @@ function buildBoardView(onFail, {
         break;
       case "open-compass": {
         if (!item) break;
-        const api = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
-        if (typeof api?.open !== "function") break;
+        const api2 = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
+        if (typeof api2?.open !== "function") break;
         let uid = null;
         if (item.target?.kind === "page") uid = host?.pageUid?.(item.target.title) || null;
         else if (item.target?.kind === "block") uid = item.target.uid || null;
         else uid = item.uid || null;
-        if (uid) api.open(uid);
+        if (uid) api2.open(uid);
         break;
       }
       case "annotate-drawing": {
         if (!item || item.kind !== "image") break;
-        const api = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
-        if (typeof api?.create !== "function") break;
+        const api2 = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
+        if (typeof api2?.create !== "function") break;
         const live = rects().get(item.uid);
         const plan = annotatePlan({
           uid: item.uid,
@@ -75632,7 +76445,7 @@ function buildBoardView(onFail, {
         void (async () => {
           let made = null;
           try {
-            made = await api.create(plan.create);
+            made = await api2.create(plan.create);
           } catch {
             return;
           }
@@ -75656,7 +76469,7 @@ function buildBoardView(onFail, {
           if (disposed) return;
           pinAnnotateToast(doc);
           toast("Drop the image into the drawing");
-          if (typeof api.open === "function") api.open(drawingUid);
+          if (typeof api2.open === "function") api2.open(drawingUid);
         })();
         break;
       }
@@ -75674,7 +76487,7 @@ function buildBoardView(onFail, {
         } catch {
           pageUid = "";
         }
-        if (!pageUid) pageUid = pageUidFromHash(win?.location?.hash || "");
+        if (!pageUid) pageUid = pageUidFromHash(win2?.location?.hash || "");
         copyText2(copyLinkText(item, { graph, pageUid }), "Link copied");
         break;
       }
@@ -76054,7 +76867,7 @@ function buildBoardView(onFail, {
     if (pdfFlip) return pdfFlip;
     pdfFlip = createPdfFlip({
       doc,
-      win,
+      win: win2,
       timers,
       urlOf: pdfUrlOf,
       hostOf: (uid) => itemsR.shellOf?.(uid)?.querySelector?.(".pxd-pdf-paper") || null,
@@ -76062,7 +76875,7 @@ function buildBoardView(onFail, {
         const rect = rects().get(uid);
         if (!rect) return null;
         const z = Number(vp.zoom) || 1;
-        return { cssW: rect.w * z, cssH: rect.h * z, dpr: Number(win?.devicePixelRatio) || 1 };
+        return { cssW: rect.w * z, cssH: rect.h * z, dpr: Number(win2?.devicePixelRatio) || 1 };
       },
       onLive: (on) => {
         if (!on) return;
@@ -76169,15 +76982,15 @@ function buildBoardView(onFail, {
   });
   const openHighlightNote = async (hlUid) => {
     if (typeof hlUid !== "string" || !hlUid) return;
-    const api = host?.api;
+    const api2 = host?.api;
     let kids = [];
     try {
-      kids = api?.data?.pull?.("[{:block/children [:block/uid :block/string :block/order :block/props]}]", [":block/uid", hlUid])?.[":block/children"] || [];
+      kids = api2?.data?.pull?.("[{:block/children [:block/uid :block/string :block/order :block/props]}]", [":block/uid", hlUid])?.[":block/children"] || [];
     } catch {
       kids = [];
     }
     const plan = noteActionPlan(kids);
-    const sidebar = api?.ui?.rightSidebar;
+    const sidebar = api2?.ui?.rightSidebar;
     try {
       await sidebar?.addWindow?.({ window: { type: "block", "block-uid": hlUid } });
     } catch {
@@ -76187,11 +77000,11 @@ function buildBoardView(onFail, {
     if (!noteUid || disposed) return;
     timers.later(() => {
       if (disposed) return;
-      const win2 = (sidebar?.getWindows?.() || []).find((w) => w?.["block-uid"] === hlUid);
-      const windowId = win2?.["window-id"];
+      const win3 = (sidebar?.getWindows?.() || []).find((w) => w?.["block-uid"] === hlUid);
+      const windowId = win3?.["window-id"];
       if (!windowId) return;
       try {
-        api?.ui?.setBlockFocusAndSelection?.({ location: { "block-uid": noteUid, "window-id": windowId } });
+        api2?.ui?.setBlockFocusAndSelection?.({ location: { "block-uid": noteUid, "window-id": windowId } });
       } catch {
       }
     }, 200);
@@ -78349,19 +79162,19 @@ function buildBoardView(onFail, {
   const openRefFromClick = (event) => {
     const t = event.target;
     if (!t?.closest || !t.closest(".pxd-item") || t.closest(".pxd-item--editing")) return false;
-    const api = host?.api;
+    const api2 = host?.api;
     const page = t.closest("[data-link-uid]");
     const block = t.closest(".rm-block-ref[data-uid]");
     const uid = page?.getAttribute("data-link-uid") || block?.getAttribute("data-uid");
-    if (!uid || !api?.ui) return false;
+    if (!uid || !api2?.ui) return false;
     const key = `${uid}:${event.shiftKey ? 1 : 0}`;
     const now3 = Date.now();
     if (key === lastRefKey && now3 - lastRefAt < 500) return true;
     lastRefKey = key;
     lastRefAt = now3;
-    if (event.shiftKey) api.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
-    else if (page) api.ui.mainWindow?.openPage?.({ page: { uid } });
-    else api.ui.mainWindow?.openBlock?.({ block: { uid } });
+    if (event.shiftKey) api2.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
+    else if (page) api2.ui.mainWindow?.openPage?.({ page: { uid } });
+    else api2.ui.mainWindow?.openBlock?.({ block: { uid } });
     return true;
   };
   listen(root, "click", (event) => {
@@ -78706,10 +79519,10 @@ function buildBoardView(onFail, {
     const planned = planDroppedCards(list, {
       blockOf: dateBlockForDrop,
       confirm: (message) => {
-        const ask = win?.confirm;
-        if (typeof ask !== "function") return false;
+        const ask2 = win2?.confirm;
+        if (typeof ask2 !== "function") return false;
         try {
-          return ask(message) === true;
+          return ask2(message) === true;
         } catch {
           return false;
         }
@@ -79011,17 +79824,17 @@ function buildBoardView(onFail, {
   listen(doc, "input", (event) => {
     if (!root.contains?.(event.target)) host?.invalidateUndo?.();
   }, true);
-  listen(win, "keydown", onKeyDown, true);
-  listen(win, "keyup", onKeyUp, true);
-  listen(win, "beforeinput", typeAhead.takeInput, true);
-  listen(win, "textInput", typeAhead.takeText, true);
-  listen(win, "focusin", (event) => {
+  listen(win2, "keydown", onKeyDown, true);
+  listen(win2, "keyup", onKeyUp, true);
+  listen(win2, "beforeinput", typeAhead.takeInput, true);
+  listen(win2, "textInput", typeAhead.takeText, true);
+  listen(win2, "focusin", (event) => {
     if (!typeAhead.isArmed() || !root.contains?.(event.target)) return;
     timers.frame(() => {
       if (!disposed && doc.activeElement === event.target) typeAhead.flush(event.target);
     });
   }, true);
-  const clip5 = createClipboardIO({
+  const clip6 = createClipboardIO({
     doc,
     root,
     ownsKeyboard,
@@ -79091,7 +79904,7 @@ function buildBoardView(onFail, {
       editorPaste
     }
   });
-  onFail.unshift(() => clip5.dispose());
+  onFail.unshift(() => clip6.dispose());
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
     if (disposed || suspended) return;
     const b = board2();
@@ -79215,7 +80028,7 @@ function buildBoardView(onFail, {
     }
   }
   try {
-    const mq = win?.matchMedia?.("(prefers-color-scheme: dark)");
+    const mq = win2?.matchMedia?.("(prefers-color-scheme: dark)");
     if (mq?.addEventListener) listen(mq, "change", () => {
       if (!disposed) applyTheme();
     });
@@ -79233,7 +80046,7 @@ function buildBoardView(onFail, {
   }
   routeOff = watchRouteExit({ boardUid: routeUid, onExit: () => {
     if (isFullscreen) requestFullscreen(false);
-  }, win });
+  }, win: win2 });
   const renderFrame = () => {
     if (disposed || suspended) return;
     const b = board2();
@@ -79242,7 +80055,7 @@ function buildBoardView(onFail, {
       coverPaintAt = Date.now();
       armCoverWarm();
       scheduleTitleLexiconWarm({
-        win,
+        win: win2,
         hasPdf: () => [...b.items.values()].some((it) => it?.kind === "pdf"),
         ocr: sharedDeviceOcr,
         isDisposed: () => disposed,
@@ -79297,7 +80110,7 @@ function buildBoardView(onFail, {
       const focused = doc.activeElement;
       if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {
         try {
-          win?.dispatchEvent?.(new win.CustomEvent("plexus-diagram:camera"));
+          win2?.dispatchEvent?.(new win2.CustomEvent("plexus-diagram:camera"));
         } catch {
         }
       }
@@ -79404,7 +80217,7 @@ function buildBoardView(onFail, {
     let n2 = 1;
     if (!target) return n2;
     try {
-      const list = win?.PlexusDiagram?.boardsWith?.(target);
+      const list = win2?.PlexusDiagram?.boardsWith?.(target);
       if (Array.isArray(list) && list.length) {
         const here = board2()?.uid;
         n2 = list.some((row4) => row4 && row4.uid === here) ? list.length : list.length + 1;
@@ -79613,7 +80426,7 @@ function buildBoardView(onFail, {
       if (!disposed) node2.remove();
     }, ms);
   };
-  const consumeDeepLink = (hash = win?.location?.hash || "") => {
+  const consumeDeepLink = (hash = win2?.location?.hash || "") => {
     if (disposed) return false;
     const target = pxdTarget(hash);
     if (!target?.cardUid) return false;
@@ -79661,7 +80474,7 @@ function buildBoardView(onFail, {
     });
     return true;
   };
-  listen(win, "hashchange", (event) => {
+  listen(win2, "hashchange", (event) => {
     const fromEvent = hashFromUrl(event?.newURL);
     consumeDeepLink(fromEvent || void 0);
   });
@@ -80167,7 +80980,7 @@ function buildBoardView(onFail, {
       step(() => menu.dispose());
       step(() => quicklook.dispose());
       step(() => presenter.dispose());
-      step(() => clip5.dispose());
+      step(() => clip6.dispose());
       step(() => {
         try {
           pdfWarm?.cancelAll?.();
@@ -80834,11 +81647,11 @@ function createPrefetch({
     cancel();
     doc?.removeEventListener?.("pointerover", onOver);
     doc?.removeEventListener?.("pointerout", onOut);
-    if (current2 === api) current2 = null;
+    if (current2 === api2) current2 = null;
   }
-  const api = { schedule, cancel, dispose, misses: () => misses.length };
-  current2 = api;
-  return api;
+  const api2 = { schedule, cancel, dispose, misses: () => misses.length };
+  current2 = api2;
+  return api2;
 }
 
 // src/cardchips.js
@@ -80846,7 +81659,7 @@ var SKIP2 = ".pxd-root, .rm-pdf-container, .rm-search-results, .rm-search";
 var OPT_OUT = "plexus-no-chips";
 var OWN = ".pxd-cardchip-row, .pxd-cardchip, .pxd-cardchip-more, .pxd-cardpop";
 var HOVER_GRACE_MS = 250;
-function chipText2(title) {
+function chipText3(title) {
   const name = String(title || "").trim() || "Untitled board";
   return `▦ on ${name}`;
 }
@@ -81057,7 +81870,7 @@ function createCardChips({
     const chip = doc.createElement("button");
     chip.type = "button";
     chip.className = "pxd-cardchip";
-    chip.textContent = chipText2(cache?.titleOf?.(boardUid));
+    chip.textContent = chipText3(cache?.titleOf?.(boardUid));
     chip.setAttribute("data-board", boardUid);
     chip.setAttribute("data-uid", cache?.cardOn?.(boardUid, blockUid2) || blockUid2);
     chips.add(chip);
@@ -81075,12 +81888,12 @@ function createCardChips({
         child.remove();
       }
     }
-    const present = /* @__PURE__ */ new Set();
+    const present2 = /* @__PURE__ */ new Set();
     for (const child of parent.children || []) {
-      if (child.classList?.contains("pxd-cardchip")) present.add(child.getAttribute?.("data-board") || "");
+      if (child.classList?.contains("pxd-cardchip")) present2.add(child.getAttribute?.("data-board") || "");
     }
     for (const boardUid of boards) {
-      if (present.has(boardUid)) continue;
+      if (present2.has(boardUid)) continue;
       const chip = makeChip(boardUid, blockUid2);
       if (before && before.parentElement === parent) parent.insertBefore(chip, before);
       else parent.append(chip);
@@ -81743,11 +82556,11 @@ function boardBounds(rects) {
   if (!n2) return empty;
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }
-function fire(win, type, detail, Ctor) {
+function fire(win2, type, detail, Ctor) {
   try {
-    const C = Ctor ?? win.CustomEvent ?? globalThis.CustomEvent;
-    if (typeof win.dispatchEvent !== "function" || typeof C !== "function") return;
-    win.dispatchEvent(new C(type, { detail }));
+    const C = Ctor ?? win2.CustomEvent ?? globalThis.CustomEvent;
+    if (typeof win2.dispatchEvent !== "function" || typeof C !== "function") return;
+    win2.dispatchEvent(new C(type, { detail }));
   } catch {
   }
 }
@@ -81764,7 +82577,7 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
       }
     }
   }
-  const api = {
+  const api2 = {
     apiVersion: API_VERSION,
     version: String(version ?? ""),
     capabilities,
@@ -81878,33 +82691,33 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
         apiVersion: API_VERSION,
         events: [...API_EVENTS],
         capabilities: [...capabilities],
-        methods: Object.keys(api).filter((key) => typeof api[key] === "function").sort()
+        methods: Object.keys(api2).filter((key) => typeof api2[key] === "function").sort()
       };
     },
     help() {
       return "PlexusDiagram apiVersion 1. Listeners: change, mount, unmount. spec() lists the methods.";
     }
   };
-  const frozen = Object.freeze(api);
+  const frozen = Object.freeze(api2);
   emitters.set(frozen, emit2);
   return frozen;
 }
-function emitPublicEvent(api, type, detail) {
+function emitPublicEvent(api2, type, detail) {
   if (!EVENTS.has(type)) return;
-  emitters.get(api)?.(type, detail);
+  emitters.get(api2)?.(type, detail);
 }
-function installPublicApi(api, { win = globalThis.window ?? globalThis, CustomEventCtor } = {}) {
-  const target = win ?? globalThis;
-  if (target.PlexusDiagram != null && target.PlexusDiagram !== api) return false;
-  target.PlexusDiagram = api;
+function installPublicApi(api2, { win: win2 = globalThis.window ?? globalThis, CustomEventCtor } = {}) {
+  const target = win2 ?? globalThis;
+  if (target.PlexusDiagram != null && target.PlexusDiagram !== api2) return false;
+  target.PlexusDiagram = api2;
   fire(target, "plexus-diagram:ready", { apiVersion: API_VERSION }, CustomEventCtor);
   return true;
 }
-function uninstallPublicApi(api, { win = globalThis.window ?? globalThis, CustomEventCtor } = {}) {
-  const target = win ?? globalThis;
+function uninstallPublicApi(api2, { win: win2 = globalThis.window ?? globalThis, CustomEventCtor } = {}) {
+  const target = win2 ?? globalThis;
   let ours = false;
   try {
-    ours = target.PlexusDiagram === api;
+    ours = target.PlexusDiagram === api2;
     if (ours) delete target.PlexusDiagram;
   } catch {
     ours = false;
@@ -82323,7 +83136,7 @@ async function installPlexusDiagram({
   storage = globalThis.localStorage
 }) {
   const doc = globalThis.document;
-  const win = globalThis.window ?? globalThis;
+  const win2 = globalThis.window ?? globalThis;
   const badge = PACKAGE_VERSION || version || "DEV";
   lifecycle.add(() => {
     try {
@@ -82393,7 +83206,7 @@ async function installPlexusDiagram({
   const legacyUids = readLegacyEnhanced(host);
   const guardUids = /* @__PURE__ */ new Set([...readEnhancedUidCache(storage), ...legacyUids]);
   let guardStyle = null;
-  const relChips = createRelChips({ doc, win, host, graph: () => host.graph || graphFromHash(), openNested: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid) });
+  const relChips = createRelChips({ doc, win: win2, host, graph: () => host.graph || graphFromHash(), openNested: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid) });
   const cardCache = createCardCache();
   const boardChips = createBoardChips({ doc, cache: cardCache });
   const pageUidByTitle = /* @__PURE__ */ new Map();
@@ -83266,7 +84079,7 @@ async function installPlexusDiagram({
     const handoff = {
       rec,
       vp,
-      win,
+      win: win2,
       cancelled: false,
       mounted: false,
       queue: [],
@@ -83437,7 +84250,7 @@ async function installPlexusDiagram({
     }, 6e3);
     assignDeepLink(globalThis.location, { graph: host.graph || graphFromHash(), pageUid, cardUid: root }, () => {
       try {
-        win.dispatchEvent?.(new Event("hashchange"));
+        win2.dispatchEvent?.(new Event("hashchange"));
       } catch {
       }
     });
@@ -83924,10 +84737,10 @@ async function installPlexusDiagram({
       return null;
     }
   }
-  function windowIsCollapsed(win2) {
-    if (!win2) return false;
-    if (win2.classList?.contains?.("rm-sidebar-window--collapsed") || win2.classList?.contains?.("collapsed")) return true;
-    for (const child of win2.children || []) {
+  function windowIsCollapsed(win3) {
+    if (!win3) return false;
+    if (win3.classList?.contains?.("rm-sidebar-window--collapsed") || win3.classList?.contains?.("collapsed")) return true;
+    for (const child of win3.children || []) {
       if (!child.classList?.contains?.("window-headers")) continue;
       return Boolean(child.querySelector?.(".rm-caret")?.classList?.contains?.("rm-caret-closed"));
     }
@@ -83961,8 +84774,8 @@ async function installPlexusDiagram({
     return false;
   }
   function hostHides(rec, windows) {
-    const win2 = sidebarWindowEl(rec.native) || sidebarWindowEl(rec.mountEl);
-    if (windowIsCollapsed(win2, windows)) return true;
+    const win3 = sidebarWindowEl(rec.native) || sidebarWindowEl(rec.mountEl);
+    if (windowIsCollapsed(win3, windows)) return true;
     return ancestorClosed(rec.native) || ancestorClosed(rec.mountEl);
   }
   function ensureViewportWatch() {
@@ -84508,8 +85321,8 @@ async function installPlexusDiagram({
         pic.style.top = "0";
         pic.style.width = `${box2.w}px`;
         pic.style.height = `${box2.h}px`;
-        const clip5 = region.p ? polygonClipPath(region.p) : "";
-        if (clip5) pic.style.clipPath = clip5;
+        const clip6 = region.p ? polygonClipPath(region.p) : "";
+        if (clip6) pic.style.clipPath = clip6;
         preview.append(pic);
       }
       const shown = imageRegionFrac(region);
@@ -84702,8 +85515,8 @@ async function installPlexusDiagram({
           return boardsFromRefs(rows).map((row4) => ({ ...row4, title: firstLine(row4.string) || row4.uid }));
         },
         writeText: (value) => {
-          const clip5 = doc?.defaultView?.navigator?.clipboard;
-          if (typeof clip5?.writeText === "function") return clip5.writeText(value);
+          const clip6 = doc?.defaultView?.navigator?.clipboard;
+          if (typeof clip6?.writeText === "function") return clip6.writeText(value);
           return void 0;
         },
         onOpen: ({ mode, region: pin2, board: board2 }) => {
@@ -85221,7 +86034,7 @@ async function installPlexusDiagram({
             cardUid: hit.cardUid
           }, () => {
             try {
-              win.dispatchEvent?.(new Event("hashchange"));
+              win2.dispatchEvent?.(new Event("hashchange"));
             } catch {
             }
           });
@@ -85403,7 +86216,7 @@ async function installPlexusDiagram({
     const probe = doc?.querySelector?.(".pxd-root") || doc?.body || doc?.documentElement;
     let color = "";
     try {
-      const view = doc?.defaultView || win;
+      const view = doc?.defaultView || win2;
       const style = probe ? view?.getComputedStyle?.(probe) : null;
       color = style?.getPropertyValue?.("--pxd-border") || style?.borderTopColor || "";
     } catch {
@@ -85413,7 +86226,7 @@ async function installPlexusDiagram({
   }
   function rasterBoard(svg, width, height) {
     return new Promise((resolve) => {
-      const view = doc?.defaultView || win;
+      const view = doc?.defaultView || win2;
       let url = "";
       const finish = (blob) => {
         try {
@@ -85617,10 +86430,10 @@ async function installPlexusDiagram({
     });
   }
   const pdfTables = createPdfTables({
-    store: createParseStore({ indexedDB: win.indexedDB }),
-    helper: createHelperClient({ settings: extensionAPI?.settings, setSetting: (id, value) => extensionAPI?.settings?.set?.(id, value), fetch: win.fetch?.bind(win) }),
+    store: createParseStore({ indexedDB: win2.indexedDB }),
+    helper: createHelperClient({ settings: extensionAPI?.settings, setSetting: (id, value) => extensionAPI?.settings?.set?.(id, value), fetch: win2.fetch?.bind(win2) }),
     fetchBytes: async (url) => {
-      const res = await win.fetch(url);
+      const res = await win2.fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return new Uint8Array(await res.arrayBuffer());
     }
@@ -85648,8 +86461,8 @@ async function installPlexusDiagram({
     thumbnail: (boardUid, opts) => thumbnailBoard(boardUid, opts)
   });
   publicEmit = (type, detail) => emitPublicEvent(publicApi, type, detail);
-  installPublicApi(publicApi, { win });
-  const api = {
+  installPublicApi(publicApi, { win: win2 });
+  const api2 = {
     version: badge,
     stats: host.stats,
     mounts: () => [...mounts.values()].map((rec) => ({
@@ -85685,10 +86498,10 @@ async function installPlexusDiagram({
       return acquireSession2(uid, { host, settings: liveSettings });
     }
   };
-  win.__plexusDiagram = api;
+  win2.__plexusDiagram = api2;
   lifecycle.add(() => {
-    uninstallPublicApi(publicApi, { win });
-    if (win.__plexusDiagram === api) delete win.__plexusDiagram;
+    uninstallPublicApi(publicApi, { win: win2 });
+    if (win2.__plexusDiagram === api2) delete win2.__plexusDiagram;
   });
   syncGuard();
   await registerCommands();
@@ -85733,7 +86546,7 @@ async function installPlexusDiagram({
   let quietTimer = null;
   const wakeVisible = () => {
     wakeTimer = null;
-    const height = win.innerHeight || 0;
+    const height = win2.innerHeight || 0;
     const windows = sidebarWindows();
     for (const rec of mounts.values()) {
       if (!rec.dormant) continue;
@@ -85808,14 +86621,14 @@ async function installPlexusDiagram({
     if (quietTimer) clearTimeout(quietTimer);
   });
   try {
-    refreshIntegrations(win);
+    refreshIntegrations(win2);
   } catch {
   }
-  if (typeof win.addEventListener === "function") {
+  if (typeof win2.addEventListener === "function") {
     for (const name of INTEGRATION_EVENTS) {
-      lifecycle.event(win, name, () => {
+      lifecycle.event(win2, name, () => {
         try {
-          refreshIntegrations(win);
+          refreshIntegrations(win2);
         } catch {
         }
       });
@@ -85830,21 +86643,21 @@ async function installPlexusDiagram({
     };
     let statusApiSeen = null;
     const followStatusApi = () => {
-      const api2 = win.RoamTaskStatusTags;
-      if (statusApiSeen === api2) return;
+      const api3 = win2.RoamTaskStatusTags;
+      if (statusApiSeen === api3) return;
       try {
         statusApiSeen?.removeEventListener?.("statuses", refreshStatuses);
       } catch {
       }
-      statusApiSeen = api2 && api2.apiVersion === 1 ? api2 : null;
+      statusApiSeen = api3 && api3.apiVersion === 1 ? api3 : null;
       try {
         statusApiSeen?.addEventListener?.("statuses", refreshStatuses);
       } catch {
       }
       refreshStatuses();
     };
-    lifecycle.event(win, "roam-task-status-tags:ready", followStatusApi);
-    lifecycle.event(win, "roam-task-status-tags:unload", () => {
+    lifecycle.event(win2, "roam-task-status-tags:ready", followStatusApi);
+    lifecycle.event(win2, "roam-task-status-tags:unload", () => {
       statusApiSeen = null;
       refreshStatuses();
     });
@@ -85855,8 +86668,8 @@ async function installPlexusDiagram({
       }
     });
     followStatusApi();
-    lifecycle.event(win, "hashchange", onHash);
-    lifecycle.event(win, "popstate", onNavigate);
+    lifecycle.event(win2, "hashchange", onHash);
+    lifecycle.event(win2, "popstate", onNavigate);
   }
   bindErrorStats(host.stats);
   lifecycle.add(() => clearErrorStats());
@@ -85870,7 +86683,7 @@ async function installPlexusDiagram({
     viewportWatch?.disconnect();
   });
   syncSpeedLog();
-  rememberPin(win.location?.hash || doc?.location?.hash || "");
+  rememberPin(win2.location?.hash || doc?.location?.hash || "");
   reconcile();
 }
 
@@ -85882,21 +86695,21 @@ var ourTeardown = null;
 function plexusWindow() {
   return globalThis.window ?? globalThis;
 }
-function detachTeardown(win, fn) {
-  if (fn && win.__plexusDiagramTeardown === fn) delete win.__plexusDiagramTeardown;
+function detachTeardown(win2, fn) {
+  if (fn && win2.__plexusDiagramTeardown === fn) delete win2.__plexusDiagramTeardown;
   if (ourTeardown === fn) ourTeardown = null;
 }
 async function onload({ extensionAPI, extension, deps }) {
   if (!extensionAPI) throw new TypeError("Roam did not provide extensionAPI");
-  const win = plexusWindow();
-  const prior = win.__plexusDiagramTeardown;
+  const win2 = plexusWindow();
+  const prior = win2.__plexusDiagramTeardown;
   if (typeof prior === "function" && prior !== ourTeardown) {
     try {
       await prior();
     } catch (error) {
       console.error("[plexus-diagram] previous copy teardown failed", error);
     }
-    if (win.__plexusDiagramTeardown === prior) delete win.__plexusDiagramTeardown;
+    if (win2.__plexusDiagramTeardown === prior) delete win2.__plexusDiagramTeardown;
   }
   if (activeLifecycle) await activeLifecycle.dispose();
   const perf = globalThis.performance;
@@ -85907,7 +86720,7 @@ async function onload({ extensionAPI, extension, deps }) {
   const lifecycle = createLifecycle();
   activeLifecycle = lifecycle;
   const dispose = async () => {
-    detachTeardown(win, dispose);
+    detachTeardown(win2, dispose);
     if (activeLifecycle === lifecycle) activeLifecycle = null;
     await lifecycle.dispose();
   };
@@ -85927,13 +86740,13 @@ async function onload({ extensionAPI, extension, deps }) {
     throw error;
   }
   ourTeardown = dispose;
-  win.__plexusDiagramTeardown = dispose;
+  win2.__plexusDiagramTeardown = dispose;
   return dispose;
 }
 async function onunload() {
-  const win = plexusWindow();
+  const win2 = plexusWindow();
   const fn = ourTeardown;
-  if (fn && win.__plexusDiagramTeardown === fn) delete win.__plexusDiagramTeardown;
+  if (fn && win2.__plexusDiagramTeardown === fn) delete win2.__plexusDiagramTeardown;
   ourTeardown = null;
   const lifecycle = activeLifecycle;
   activeLifecycle = null;

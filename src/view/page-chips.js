@@ -218,6 +218,7 @@ export function createPageChips({
   getSelection = null,
   copy = null,
   copyMenu = null,
+  ask = null,
   drag = null,
   storage = null,
   boxCap = 4000,
@@ -373,6 +374,18 @@ export function createPageChips({
         closeCopyMenu();
         const icon = anchor?.closest?.(".pxd-parsed-copy") || anchor;
         runCopyMenu(item.id, block, icon);
+      });
+      menu.append(entry);
+    }
+    if (typeof ask === "function") {
+      const entry = button("pxd-copy-menu__item", "Ask AI…");
+      entry.setAttribute("role", "menuitem");
+      entry.setAttribute("data-copy", "ask-ai");
+      on(entry, "click", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        closeCopyMenu();
+        try { ask(block); } catch { /* dialog */ }
       });
       menu.append(entry);
     }

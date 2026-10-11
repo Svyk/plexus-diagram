@@ -23,6 +23,7 @@ import { renderEnginesPanel } from "./engines-panel.js";
 import { selectionBarPlacement, selectionInReader } from "./make-highlight.js";
 import { renderParseStatus } from "./parse-status.js";
 import { readShowParsed, writeShowParsed } from "./page-chips.js";
+import { openAskAI } from "./ask-ai.js";
 import { compactPage, createTextLayer, pageRecords } from "./text-layer.js";
 
 // U4 owns the visible drawer. The import is async so a missing file leaves the pane's own list.
@@ -320,7 +321,7 @@ export function createReadPane({
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", "Selection");
   setHidden(bar, true);
-  for (const [act, text, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"]]) {
+  for (const [act, text, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"], ["ask", "Ask AI", "read.sel.ask"]]) {
     const button = el("button", "pxd-selbar__btn pxd-chrome", bar);
     button.type = "button";
     button.textContent = text;
@@ -1305,6 +1306,19 @@ export function createReadPane({
     const { text, page } = barInfo;
     if (act === "copy") {
       void writeClip(text).then(() => toast("Copied"), () => toast("Copy failed"));
+      return;
+    }
+    if (act === "ask") {
+      hideBar();
+      const spec = { selection: text, page };
+      if (parsedView?.hasParse?.()) { parsedView.askAbout(spec); return; }
+      openAskAI({
+        ...spec,
+        document: doc,
+        jumpPage: (n) => jumpPage(n),
+        toast,
+        addCard: ({ markdown }) => session?.insertAnswerCard?.({ markdown, pdfUid: current.cardUid || "" }),
+      });
       return;
     }
     hideBar();

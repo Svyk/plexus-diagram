@@ -1,0 +1,91 @@
+// Ask AI adapter for the Live AI Assistant extension's public API (window.LiveAI_API, v29+, "Enable Public API").
+// It is the only AI path. Inert and throw-free when the API is absent.
+
+export const CALLER = "Plexus Diagram";
+export const READY_EVENT = "liveai:api-ready";
+export const UNLOADED_EVENT = "liveai:api-unloaded";
+
+export const SETUP_HINT = "Turn on Live AI Assistant → Settings → Enable Public API, then reload Roam.";
+
+const win = (w) => w || (typeof window !== "undefined" ? window : globalThis);
+const api = (w) => {
+  const a = win(w)?.LiveAI_API;
+  return a && typeof a === "object" ? a : null;
+};
+
+export function available(w) {
+  const a = api(w);
+  if (!a || typeof a.generate !== "function") return false;
+  try { return typeof a.isAvailable === "function" ? Boolean(a.isAvailable()) : true; } catch { return false; }
+}
+
+// True when the API object exists but no model is configured yet.
+export function present(w) {
+  return Boolean(api(w));
+}
+
+export function listModels(w) {
+  const a = api(w);
+  if (!a || typeof a.listModels !== "function") return [];
+  try {
+    const rows = a.listModels();
+    return (Array.isArray(rows) ? rows : [])
+      .filter((m) => m && typeof m.id === "string" && m.id)
+      .map((m) => ({ id: m.id, name: m.name || m.id, provider: m.provider || "", contextLength: m.contextLength ?? null, isDefault: Boolean(m.isDefault) }));
+  } catch {
+    return [];
+  }
+}
+
+export function defaultModel(w) {
+  const a = api(w);
+  let id = null;
+  try { id = typeof a?.getDefaultModel === "function" ? a.getDefaultModel() : null; } catch { id = null; }
+  if (typeof id === "string" && id) return id;
+  return listModels(w).find((m) => m.isDefault)?.id || listModels(w)[0]?.id || "";
+}
+
+// cb(true|false) now and on every ready/unloaded event. Returns the cleanup.
+export function onReady(cb, w) {
+  const target = win(w);
+  if (typeof cb !== "function" || typeof target?.addEventListener !== "function") return () => {};
+  const tell = () => { try { cb(available(target)); } catch { /* listener */ } };
+  target.addEventListener(READY_EVENT, tell);
+  target.addEventListener(UNLOADED_EVENT, tell);
+  tell();
+  return () => {
+    try { target.removeEventListener(READY_EVENT, tell); } catch { /* gone */ }
+    try { target.removeEventListener(UNLOADED_EVENT, tell); } catch { /* gone */ }
+  };
+}
+
+export function friendlyError(error) {
+  const code = error?.code;
+  if (code === "RATE_LIMIT") return "Live AI is rate limited (20 requests a minute). Wait a moment and try again.";
+  if (code === "INVALID_MODEL") return "That model is not available in Live AI Assistant. Pick another model.";
+  if (code === "NO_API_KEY") return "That model has no API key in Live AI Assistant. Add one there or pick another model.";
+  if (code === "EMPTY_RESPONSE") return "The model returned nothing. Try again or pick another model.";
+  if (code === "PROVIDER_ERROR") return "The model provider returned an error. Check Live AI Assistant's settings and try again.";
+  if (code === "INVALID_OPTIONS") return "Live AI Assistant rejected the request. Shorten the question or the context and try again.";
+  if (error?.name === "AbortError") return "Stopped.";
+  if (error?.code === "UNAVAILABLE") return SETUP_HINT;
+  const msg = String(error?.message || "").replace(/^\[LiveAI_API\]\s*/, "").trim();
+  return msg || "Live AI Assistant could not answer.";
+}
+
+// ask({ context, prompt, systemPrompt, model, onChunk, signal }) -> { ok, text, model, provider, usage } | { ok:false, error, code }
+export async function ask({ context = "", prompt = "", systemPrompt = "", model = "", onChunk = null, signal = null, window: w } = {}) {
+  if (!available(w)) return { ok: false, code: "UNAVAILABLE", error: SETUP_HINT };
+  const options = { prompt: String(prompt), caller: CALLER };
+  if (context) options.context = String(context);
+  if (systemPrompt) options.systemPrompt = String(systemPrompt);
+  if (model) options.model = model;
+  if (signal) options.signal = signal;
+  if (typeof onChunk === "function") options.onChunk = (chunk) => { try { onChunk(chunk); } catch { /* view */ } };
+  try {
+    const result = await api(w).generate(options);
+    return { ok: true, text: String(result?.text ?? ""), model: result?.model || model, provider: result?.provider || "", usage: result?.usage || null };
+  } catch (error) {
+    return { ok: false, code: error?.code || (error?.name === "AbortError" ? "ABORTED" : "ERROR"), error: friendlyError(error) };
+  }
+}

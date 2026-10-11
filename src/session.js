@@ -29,6 +29,7 @@ import {
 } from "./model/board.js";
 import { whyPlan } from "./model/why.js";
 import { isInlinePdfCard, pageCardString } from "./model/pdf-page.js";
+import { isOldTableCard } from "./model/table-captions.js";
 import { trailString } from "./model/trails.js";
 import {
   BOARD_PATTERNS,
@@ -63,7 +64,7 @@ import {
   withBoardMarker,
 } from "./model/schema.js";
 import { drawingCreateSpec, drawingRefString } from "./model/drawing-card.js";
-import { appendTable, parsedTableSize, TABLE_SIZE } from "./model/roam-table.js";
+import { appendTable, parsedTableCaption, parsedTableSize, TABLE_SIZE } from "./model/roam-table.js";
 import { flatRows, toGridSpec } from "./model/parse-to-grid.js";
 import { escapeMarkdownText, flattenLine, linkSafeText, toRoamMarkdown } from "./model/parse-to-roam-md.js";
 import {
@@ -1836,7 +1837,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     // auto = grid when Roam Grid can createTableFromModel, otherwise native.
     // grid falls back to native when the API is missing. flat repeats covered cells.
     // notes: the parse's footnote blocks on the table's page ([{ id, mark, text }]) for cell marks.
-    insertParsedTable({ x, y, table, mode = "auto", notes, pin } = {}) {
+    // The card is a folded caption block (caption: the parse's table caption, else "Table · N rows") with the table under it.
+    insertParsedTable({ x, y, table, mode = "auto", notes, pin, caption } = {}) {
       if (!board || destroyed || gone) return Promise.resolve(undefined);
       const asked = mode === "grid" || mode === "native" || mode === "flat" ? mode : "auto";
       const format = footnoteFormatNow();
@@ -1852,7 +1854,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const plexus = serializeItemLayout({ x: rel.x, y: rel.y, w: size.w, h: size.h });
       const order = insertOrder(parent);
       const tryGrid = asked === "grid" || (asked === "auto" && host.canCreateGridTable?.());
+      const captionText = flattenLine(String(caption || "")).trim() || parsedTableCaption(source);
       return runParsed(async () => {
+        const card = host.generateUid();
+        await host.createBlock({ parentUid: parent, order, uid: card, string: captionText, props: { plexus }, open: false });
         let uid = null;
         let path = asked === "flat" ? "flat" : "native";
         const draft = asked === "flat" ? flatTableMarkdown(table) : nativeTableMarkdown(table);
@@ -1860,7 +1865,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const settled = (text) => (fn ? fn.apply(text) : text);
         if (tryGrid) {
           try {
-            const spec = { ...toGridSpec(table), parentUid: parent, order };
+            const spec = { ...toGridSpec(table), parentUid: card, order: 0 };
             if (fn) spec.rows = spec.rows.map((row) => row.map(settled));
             if (rawSize.widths) spec.widths = rawSize.widths;
             const info = await host.createGridTable(spec);
@@ -1870,15 +1875,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           }
         }
         if (!uid) {
-          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: settled(draft) });
+          const roots = await host.fromMarkdown({ parentUid: card, order: 0, markdown: settled(draft) });
           uid = roots[0] || null;
           path = asked === "flat" ? "flat" : "native";
         }
-        if (!uid) return { ok: false, reason: "empty" };
-        await host.updateProps(uid, plexus);
+        if (!uid) {
+          await host.deleteBlock(card);
+          return { ok: false, reason: "empty" };
+        }
+        // The Source:: pin stays under the table block, so the caption keeps exactly one child.
         if (pin) await citePin(uid, pin);
         repull();
-        return { ok: true, uid, path, w: size.w, h: size.h };
+        return { ok: true, uid: card, tableUid: uid, path, w: size.w, h: size.h };
       });
     },
 
@@ -2252,6 +2260,76 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           edges += 1;
         }
         return { moved: moves.length, edges };
+      }, custom);
+    },
+
+    // "Fold tables under captions": apply a plan from planTableCaptions for THIS board. One undo entry with recorded
+    // inverse writes. A table that is no longer an old-form card of this board is skipped, so a second run writes nothing.
+    foldTableCaptions(plan) {
+      if (!plan || plan.boardUid !== uid) return Promise.resolve({ folded: 0, refused: "board" });
+      let graphNow = "";
+      try { graphNow = String(host.graphName?.() || ""); } catch { graphNow = ""; }
+      if (plan.graph && graphNow && plan.graph !== graphNow) return Promise.resolve({ folded: 0, refused: "graph" });
+      const folds = (plan.folds || []).filter((f) => isOldTableCard(board?.items?.get(f.tableUid)) && f.captionUid);
+      if (!folds.length) return Promise.resolve({ folded: 0 });
+      const folding = new Set(folds.map((f) => f.tableUid));
+      const records = [];
+      const edgeRecords = [];
+      const custom = {
+        forward: [],
+        async undo() {
+          // Highest original order first: every slot before it still holds one block (a caption stands where its
+          // table was), so each table lands right before its own caption. Captions go only after their table left.
+          const back = records.slice().sort((a, b) => (a.parentUid < b.parentUid ? -1 : a.parentUid > b.parentUid ? 1 : b.order - a.order));
+          const ops = [];
+          for (const r of back) {
+            ops.push({ op: "move", uid: r.tableUid, parent: r.parentUid, order: r.order });
+            ops.push({ op: "props", uid: r.tableUid, plexus: r.props });
+          }
+          for (const e of edgeRecords) {
+            ops.push({ op: "string", uid: e.uid, string: e.oldString });
+            ops.push({ op: "props", uid: e.uid, plexus: e.oldProps });
+          }
+          await execute(ops);
+          for (const r of back) {
+            // Deleting a caption that still holds its table would delete the table: wait for Roam to apply the move.
+            let out = false;
+            for (let tries = 0; tries < 15 && !out; tries += 1) {
+              const loc = host.blockLocation?.(r.tableUid);
+              out = !loc || loc.parentUid !== r.captionUid;
+              if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+            if (out) await execute([{ op: "delete", uid: r.captionUid }]);
+          }
+        },
+        async redo() {
+          await execute(custom.forward);
+        },
+      };
+      return txn((t) => {
+        for (const f of folds) {
+          const parent = board.items.get(f.tableUid).parentUid;
+          const kids = kidsOf(rawNode(parent));
+          const at = Math.max(0, kids.findIndex((k) => k[UID] === f.tableUid));
+          const props = clone(rawPlexus(f.tableUid));
+          records.push({ tableUid: f.tableUid, captionUid: f.captionUid, parentUid: parent, order: at, props });
+          t.create({ parent, uid: f.captionUid, string: f.caption, plexus: f.layout, open: false, order: at });
+          t.props(f.tableUid, null);
+          t.move(f.tableUid, f.captionUid, 0);
+        }
+        let edges = 0;
+        for (const e of plan.edges || []) {
+          const cur = board.edges?.get(e.uid);
+          if (!cur || ![cur.from, cur.to, cur.fromBlock, cur.toBlock].some((id) => id && folding.has(id))) continue;
+          edgeRecords.push({ uid: e.uid, oldString: rawNode(e.uid)?.[STR] ?? "", oldProps: clone(rawPlexus(e.uid)) });
+          const patch = { from: e.from, to: e.to };
+          if (e.fromBlock) patch.fromBlock = e.fromBlock;
+          if (e.toBlock) patch.toBlock = e.toBlock;
+          t.string(e.uid, e.string);
+          t.props(e.uid, edgePlexus(e.uid, patch));
+          edges += 1;
+        }
+        return { folded: folds.length, edges };
       }, custom);
     },
 

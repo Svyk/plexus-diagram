@@ -229,7 +229,9 @@ export function boardToMarkdown(board, rects) {
       } else {
         lines.push(`- ${oneLine(titleOf(item))}`);
         const kids = [...(item.content ?? [])].sort((a, b) => (a[":block/order"] ?? 0) - (b[":block/order"] ?? 0));
-        content(kids, 1);
+        // A caption card's content is its table's rows: they go back under the {{[[table]]}} line.
+        if (item.tableUid) lines.push("  - {{[[table]]}}");
+        content(kids, item.tableUid ? 2 : 1);
       }
     }
   };

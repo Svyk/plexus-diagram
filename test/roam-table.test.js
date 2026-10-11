@@ -35,12 +35,16 @@ test("isRoamTableString accepts a table macro and rejects everything else", () =
   }
 });
 
-test("planTableCreates is one 3x3 of empty cells under {{[[table]]}}, columns nested", () => {
+test("planTableCreates is a folded caption over one 3x3 of empty cells under {{[[table]]}}, columns nested", () => {
   const plan = planTableCreates();
   assert.equal(plan.writes, TABLE_WRITES);
-  assert.equal(plan.writes, 10);
-  assert.equal(plan.ops[0].string, "{{[[table]]}}");
-  const rows = plan.ops.filter((op) => op.parent === plan.root);
+  assert.equal(plan.writes, 11);
+  assert.equal(plan.ops[0].string, "Table \u00b7 3 rows");
+  assert.equal(plan.ops[0].open, false);
+  assert.equal(plan.ops[1].string, "{{[[table]]}}");
+  assert.equal(plan.ops[1].parent, plan.root);
+  assert.equal(plan.ops.filter((op) => op.parent === plan.root).length, 1);
+  const rows = plan.ops.filter((op) => op.parent === plan.table);
   assert.equal(rows.length, 3);
   rows.forEach((row, index) => {
     assert.equal(row.string, "");
@@ -55,7 +59,7 @@ test("planTableCreates is one 3x3 of empty cells under {{[[table]]}}, columns ne
     }
     assert.equal(plan.ops.filter((op) => op.parent === cell.uid).length, 0);
   });
-  assert.equal(plan.ops.length, 10);
+  assert.equal(plan.ops.length, 11);
 });
 
 test("keyboard ownership yields only while it is verified and Escape keeps the source bytes", () => {
@@ -111,7 +115,7 @@ test("keyboard ownership yields only while it is verified and Escape keeps the s
   assert.equal(escapeKeeps(source, source), true);
 });
 
-test("appendTable writes ten creates and nothing else", () => {
+test("appendTable writes eleven creates and nothing else: the caption holds the layout", () => {
   const ops = [];
   const t = {
     create(spec) {
@@ -122,10 +126,14 @@ test("appendTable writes ten creates and nothing else", () => {
   };
   const root = appendTable(t, { parent: "board", plexus: { x: 1, y: 2, w: 3, h: 4 } });
   assert.equal(root, "id0");
-  assert.equal(ops.length, 10);
-  assert.equal(ops[0].string, "{{[[table]]}}");
+  assert.equal(ops.length, 11);
+  assert.equal(ops[0].string, "Table \u00b7 3 rows");
+  assert.equal(ops[0].open, false);
   assert.deepEqual(ops[0].plexus, { x: 1, y: 2, w: 3, h: 4 });
-  assert.equal(ops.slice(1).every((op) => op.string === "" && op.plexus === undefined), true);
+  assert.equal(ops[1].string, "{{[[table]]}}");
+  assert.equal(ops[1].parent, "id0");
+  assert.equal(ops[1].plexus, undefined);
+  assert.equal(ops.slice(2).every((op) => op.string === "" && op.plexus === undefined), true);
 });
 
 test("mountRoamTable renders the block once, leaves a grid unscaled, and opens at board scale", () => {
@@ -308,7 +316,7 @@ test("a page outline row that is a table does not emit its children", () => {
   }
 });
 
-test("createTable is one undo of ten writes and a 3x3 of empty cells", async () => {
+test("createTable is one undo of eleven writes: a folded caption over a 3x3 of empty cells", async () => {
   const fake = createFakeRoam();
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   fake.seedBoard({
@@ -327,8 +335,14 @@ test("createTable is one undo of ten writes and a 3x3 of empty cells", async () 
   const session = acquireSession("b1", { host, linkDelay: 0 });
   fake.clearLog();
   const uid = await session.createTable({ x: 2000, y: 2000 });
-  assert.equal(fake.block(uid).string, "{{[[table]]}}");
-  const rows = fake.children(uid);
+  assert.equal(fake.block(uid).string, "Table \u00b7 3 rows");
+  assert.equal(fake.block(uid).open, false);
+  const [tableUid] = fake.children(uid);
+  assert.equal(fake.children(uid).length, 1);
+  assert.equal(fake.block(tableUid).string, "{{[[table]]}}");
+  assert.equal(session.board.items.get(uid).tableUid, tableUid);
+  assert.equal(session.board.items.has(tableUid), false);
+  const rows = fake.children(tableUid);
   assert.equal(rows.length, 3);
   for (const row of rows) {
     assert.equal(fake.block(row).string, "");
@@ -342,15 +356,15 @@ test("createTable is one undo of ten writes and a 3x3 of empty cells", async () 
     assert.equal(fake.children(cell).length, 0);
   }
   const writes = fake.writesLog();
-  assert.equal(writes.length, 10);
+  assert.equal(writes.length, 11);
   assert.equal(writes.every((row) => row[0] === "create"), true);
-  assert.equal(host.stats.lastAction.writes, 10);
+  assert.equal(host.stats.lastAction.writes, 11);
   const blob = JSON.stringify(fake.props(uid));
   assert.equal(blob.includes(":diagram"), false);
   assert.equal(blob.includes("BT_attr"), false);
   assert.equal(TABLE_SIZE.w, 480);
   await session.undo();
-  assert.equal(fake.calls.filter((row) => row[0] === "undo").length, 10);
+  assert.equal(fake.calls.filter((row) => row[0] === "undo").length, 11);
 });
 
 test("a focused grid inside a card keeps board keys and the wheel", async () => {

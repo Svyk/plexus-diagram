@@ -451,6 +451,7 @@ export function buildMenu(kind, ctx = {}) {
         make("copy-outline", "Copy as outline"),
         make("sort-outline", "Sort outline by position"),
         ...(c.inlinePdfs > 0 ? [make("pdf-pages", "Move PDFs to their own pages")] : []),
+        ...(c.oldTables > 0 ? [make("table-captions", "Fold tables under captions")] : []),
         make("open-outline", "Open outline in sidebar"),
         sep(),
         make("fold-all", "Fold all cards"),

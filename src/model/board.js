@@ -17,7 +17,7 @@ import {
   semanticRef,
 } from "./schema.js";
 import { isQueryString } from "./query.js";
-import { isRoamTableString } from "./roam-table.js";
+import { captionTableKid, isRoamTableString, rowsCaption } from "./roam-table.js";
 import { regionRefModel } from "./region-card.js";
 import { drawingRefModel, isDrawingString } from "./drawing-card.js";
 import { isContainerString, parseRegion } from "./regions.js";
@@ -194,6 +194,8 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
       const layout = normalizeItemLayout(cplexus);
       let type = layout.type;
       if (!cplexus && heading > 0 && kids.length) type = "section";
+      // A caption card: rows, cells and the card face come from its only child, the {{[[table]]}} block.
+      const tableKid = type === "card" ? captionTableKid(cstring, kids) : null;
       const cls = classifyString(cstring);
       if (cls.kind === "regions" || cls.kind === "region") continue;
       if (isDrawingString(cstring)) continue;
@@ -204,7 +206,8 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
       if (kind === "page") title = cls.title;
       else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
       else if (isQueryString(cstring)) title = "Query";
-      else if (isRoamTableString(cstring)) title = kids.length ? `Table \u00b7 ${kids.length} ${kids.length === 1 ? "row" : "rows"}` : "Table";
+      else if (isRoamTableString(cstring)) title = kids.length ? rowsCaption(kids.length) : "Table";
+      else if (tableKid) title = firstLine(cstring) || rowsCaption(sortedChildren(tableKid).length);
       else title = firstLine(cstring);
       let regionDrawing;
       let highlight;
@@ -254,7 +257,8 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         }
       }
       // A page card shows the pdf block's pins (they sit under the pdf block, not under the card).
-      const cardKids = pdfPage && !kids.length && Array.isArray(pdfPage.children) ? pdfPage.children : kids;
+      const cardKids = tableKid ? sortedChildren(tableKid)
+        : pdfPage && !kids.length && Array.isArray(pdfPage.children) ? pdfPage.children : kids;
       let target;
       if (pdfPage) target = { kind: "block", uid: pdfPage.pdfUid, page: pdfPage.title, ...(pdfPage.pageUid ? { pageUid: pdfPage.pageUid } : {}) };
       else if (kind === "page") target = { kind: "page", title: cls.title };
@@ -296,6 +300,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         autofit: !(type === "section" && layout.fit === false),
         title,
         target,
+        ...(tableKid ? { tableUid: tableKid[":block/uid"] } : {}),
         ...(regionDrawing ? { regionDrawing } : {}),
         ...(highlight ? { highlight } : {}),
         ...(layout.landmark ? { landmark: true, glyph: layout.glyph || "", size: layout.size === "S" || layout.size === "L" ? layout.size : "M" } : {}),

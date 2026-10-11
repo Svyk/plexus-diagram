@@ -1,10 +1,11 @@
 // The dry run for "Move PDFs to their own pages": what will move, then Move or Cancel. No writes here.
+// "Fold tables under captions" reuses it with its own label, text and apply button.
 
-export function openPdfPagesDialog(doc, { count = 0, lines = [], onApply, onCancel } = {}) {
+export function openPdfPagesDialog(doc, { count = 0, lines = [], onApply, onCancel, label = "", headText = "", applyText = "" } = {}) {
   const root = doc.createElement("div");
   root.className = "pxd-view-dialog pxd-pdf-pages";
   root.setAttribute("role", "dialog");
-  root.setAttribute("aria-label", "Move PDFs to their own pages");
+  root.setAttribute("aria-label", label || "Move PDFs to their own pages");
   const stop = (event) => event.stopPropagation();
   root.addEventListener("pointerdown", stop);
   root.addEventListener("mousedown", stop);
@@ -18,7 +19,7 @@ export function openPdfPagesDialog(doc, { count = 0, lines = [], onApply, onCanc
 
   const head = doc.createElement("p");
   head.className = "pxd-pdf-pages__head";
-  head.textContent = `Move ${count} ${count === 1 ? "PDF" : "PDFs"} on this board to ${count === 1 ? "its own page" : "their own pages"}? `
+  head.textContent = headText || `Move ${count} ${count === 1 ? "PDF" : "PDFs"} on this board to ${count === 1 ? "its own page" : "their own pages"}? `
     + "Each card becomes a link to the page. Highlights, pins and reads stay with the PDF.";
   card.append(head);
 
@@ -46,7 +47,7 @@ export function openPdfPagesDialog(doc, { count = 0, lines = [], onApply, onCanc
     return node;
   };
   const cancel = button("pxd-pdf-pages-cancel", "Cancel", onCancel);
-  actions.append(button("pxd-pdf-pages-apply", "Move", onApply), cancel);
+  actions.append(button("pxd-pdf-pages-apply", applyText || "Move", onApply), cancel);
   card.append(actions);
 
   let closed = false;

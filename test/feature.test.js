@@ -934,6 +934,7 @@ test("PF-1: Commands… lists every action and keeps the focused block after the
       "New drawing here",
       "Resurface here",
       "Move PDFs to their own pages",
+      "Fold tables under captions",
     ]);
     t.env.focused = null;
     const row = t.doc.querySelectorAll(".pxd-commands__row").find((node) => node.textContent === "Enhance this diagram");

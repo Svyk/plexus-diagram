@@ -38,7 +38,7 @@ import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
 import { authorBlockUid, buildSourceChip, chipWithAuthor, sourceChipFor, sourceChipKey } from "../model/source-chip.js";
 import { sourcePinOf } from "../model/pdf-pin.js";
 import { buildPinChip } from "./pdf-pin-view.js";
-import { isRoamTableString } from "../model/roam-table.js";
+import { isRoamTableString, tableUidOf } from "../model/roam-table.js";
 import { mountRoamTable } from "./table-card.js";
 import { findCell, forgetTableCells, measureCell, revealCell, watchTable } from "./table-cells.js";
 
@@ -1416,7 +1416,7 @@ export function createItemRenderer({
   // INSTANT-4. A bare {{[[table]]}} card shows its PNG thumbnail instead of a grey box.
   const paintThumb = (rec, item) => {
     if (typeof tableThumb !== "function" || item?.type === "section" || !rec?.body) return;
-    if (!isRoamTableString(item.string)) return;
+    if (!tableUidOf(item)) return;
     let url = null;
     try { url = tableThumb(item); } catch { url = null; }
     if (typeof url !== "string" || !url.startsWith("data:image/")) {
@@ -4107,9 +4107,9 @@ export function createItemRenderer({
       }
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid, item.string));
-    } else if (isRoamTableString(item.string)) {
+    } else if (tableUidOf(item)) {
       rec.el.classList.add("pxd-item--roam-table");
-      mountTableHost(body, item.uid, budget);
+      mountTableHost(body, tableUidOf(item), budget);
       armLayoutWatch(rec);
       if (typeof onTableShown === "function") { try { onTableShown(item); } catch { /* thumbs are optional */ } }
       rec.kidCount = 0;
@@ -4413,7 +4413,7 @@ export function createItemRenderer({
   };
   const cardHeavy = (item, rec) => {
     if (!item || item.type === "section") return false;
-    if (isHeavyRow(item.string) || isHeavyRow(rec?.refString)) return true;
+    if (isHeavyRow(item.string) || isHeavyRow(rec?.refString) || item.tableUid) return true;
     return item.kind === "image" || item.kind === "pdf" || item.kind === "board" || item.kind === "drawing-ref";
   };
   const centreDist = (uid, visibleRect) => {
@@ -4560,7 +4560,7 @@ export function createItemRenderer({
         } else if (item?.kind === "highlight" && mounted.has(uid) && editing?.uid !== uid) {
           unmountContent(uid);
           moved = true;
-        } else if (lod !== "detail" && item && mounted.has(uid) && editing?.uid !== uid && isRoamTableString(item.string) && tableThumbReady(item)) {
+        } else if (lod !== "detail" && item && mounted.has(uid) && editing?.uid !== uid && tableUidOf(item) && tableThumbReady(item)) {
           // A live table grid is 1,000+ elements that make every restyle dearer; the map tier shows its PNG instead.
           unmountContent(uid);
           moved = true;

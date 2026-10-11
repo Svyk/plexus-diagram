@@ -4,6 +4,8 @@
 import { boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, findEdge, toRelative, topLevelOf } from "./model/board.js";
 import { parsePastedText, planEdgeClones, planSubtreeClone, refCardStrings } from "./model/clipboard.js";
 import { mindMapLayout } from "./model/layout.js";
+import { isOldTableCard } from "./model/table-captions.js";
+import { wrapTableNode } from "./model/roam-table.js";
 import { isContainerString, parseRegion } from "./model/regions.js";
 import { MIND_GAPS, branchColor, normalizeMindPreset } from "./model/mindmap.js";
 import {
@@ -115,7 +117,9 @@ extendSession((session, api) => {
       }
       const patch = { x, y };
       if (item.type === "section") Object.assign(patch, { type: "section", w: item.w, h: item.h });
-      const plan = planSubtreeClone(node, { genUid: gen, parentUid: parent, order: api.insertOrder(parent), plexusPatch: patch, uidMap });
+      // An old-form table card duplicates as a folded caption with the table under it.
+      const tree = isOldTableCard(item) ? wrapTableNode(node, item.title) : node;
+      const plan = planSubtreeClone(tree, { genUid: gen, parentUid: parent, order: api.insertOrder(parent), plexusPatch: patch, uidMap });
       const oldOf = new Map([...uidMap].map(([o, n]) => [n, o]));
       for (const c of plan.creates) {
         const plexus = c.props?.[PLEXUS_KEY] ? { ...c.props[PLEXUS_KEY] } : null;
@@ -170,7 +174,9 @@ extendSession((session, api) => {
         if (asRef) {
           made = top.map((id) => {
             const r = rects.get(id);
-            return placeCard(t, api.refOf(id), r.x + dx, r.y + dy, {}, exclude);
+            // A ref to a caption card's table block shows the table; a ref to the caption would show one line.
+            const tableUid = board.items.get(id)?.tableUid;
+            return placeCard(t, tableUid ? `((${tableUid}))` : api.refOf(id), r.x + dx, r.y + dy, {}, exclude);
           });
         } else {
           const entries = top.map((id) => ({ uid: id, x: rects.get(id).x + dx, y: rects.get(id).y + dy }));

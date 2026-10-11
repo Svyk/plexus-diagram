@@ -19,6 +19,7 @@ import { pinSpecFromBlock } from "./pdf-pin.js";
 import { selectBlocks } from "./parse-schema.js";
 import { escapeMarkdownText, flattenLine, linkSafeText, toRoamMarkdown } from "./parse-to-roam-md.js";
 import { pageNoteBlocks } from "./footnotes.js";
+import { parsedTableCaption } from "./roam-table.js";
 
 export const CARD_MIME = "application/x-plexus-card";
 export const PARSE_MIME = "application/x-plexus-parse";
@@ -258,7 +259,7 @@ export async function handleParseDrop({ payload, store, session, point, toast, u
   const pin = pinForDrop(doc, payload);
   const cited = pin ? { pin } : {};
   if (plan.action === "table") {
-    const res = await session?.insertParsedTable?.({ x, y, table: plan.table, mode: "auto", notes: pageNoteBlocks(doc, plan.table), ...cited });
+    const res = await session?.insertParsedTable?.({ x, y, table: plan.table, mode: "auto", notes: pageNoteBlocks(doc, plan.table), caption: parsedTableCaption(plan.table, doc), ...cited });
     return { ...(res || { ok: false, reason: "empty" }), uids: res?.uid ? [res.uid] : [] };
   }
   if (plan.action === "sections") {

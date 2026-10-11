@@ -117,6 +117,7 @@ import { sha256Hex } from "../model/parse-hash.js";
 import { inlinePdfCards, migrationLines, pdfPageBaseTitle, planPdfMigration, uniquePageTitle } from "../model/pdf-page.js";
 import { highlightAsk, highlightPart } from "../model/highlight-ask.js";
 import { openPdfPagesDialog } from "./pdf-pages-dialog.js";
+import { oldTableCards, planTableCaptions, tableCaptionLines } from "../model/table-captions.js";
 import { dataUrlToBlob } from "./parse-crop.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { scheduleTitleLexiconWarm } from "./title-lexicon-warm.js";
@@ -2171,6 +2172,47 @@ function buildBoardView(onFail, {
             else if (res?.moved) toast(`Moved ${res.moved} ${res.moved === 1 ? "PDF" : "PDFs"} to ${res.moved === 1 ? "its own page" : "their own pages"}`, true);
             resolve(res);
           }, () => { if (!disposed) toast("Couldn't move the PDFs"); resolve(null); });
+        },
+        onCancel: () => { closePdfPagesDialog(); resolve(null); },
+      });
+      root.append(pdfPagesDialog.el);
+      pdfPagesDialog.focus?.();
+    });
+  };
+  // "Fold tables under captions": old-form table cards become a folded caption block over the table. Same dry-run
+  // dialog, one undo entry. This board only.
+  const foldTableCaptions = async () => {
+    if (disposed) return null;
+    closePdfPagesDialog();
+    if (typeof session.foldTableCaptions !== "function") { toast("Folding tables is not available here"); return null; }
+    const b = board();
+    if (!b) return null;
+    const plan = planTableCaptions(b, {
+      graph: (() => { try { return String(host?.graphName?.() || graphOfWindow(win) || ""); } catch { return ""; } })(),
+      layoutOf: (id) => session.layoutOf?.(id) || null,
+      newUid: () => host?.generateUid?.() || "",
+    });
+    if (!plan.folds.length) {
+      toast("Every table on this board already has a caption");
+      return { folded: 0 };
+    }
+    const n = plan.folds.length;
+    return new Promise((resolve) => {
+      pdfPagesDialog = openPdfPagesDialog(doc, {
+        count: n,
+        lines: tableCaptionLines(plan),
+        label: "Fold tables under captions",
+        headText: `Fold ${n} ${n === 1 ? "table" : "tables"} on this board under ${n === 1 ? "a caption" : "captions"}? `
+          + "Each card becomes a one-line caption with the table folded under it, so the outline stops drawing every row.",
+        applyText: "Fold",
+        onApply: () => {
+          closePdfPagesDialog();
+          Promise.resolve(session.foldTableCaptions(plan)).then((res) => {
+            if (disposed) return resolve(res);
+            if (res?.refused) toast("This board changed. Run the command again");
+            else if (res?.folded) toast(`Folded ${res.folded} ${res.folded === 1 ? "table" : "tables"} under ${res.folded === 1 ? "a caption" : "captions"}`, true);
+            resolve(res);
+          }, () => { if (!disposed) toast("Couldn't fold the tables"); resolve(null); });
         },
         onCancel: () => { closePdfPagesDialog(); resolve(null); },
       });
@@ -4441,7 +4483,7 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true };
-      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn };
+      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -5029,6 +5071,7 @@ function buildBoardView(onFail, {
       case "tidy": void session.tidyItems?.(mc.kind === "board-menu" ? b.roots : uids, arg); break;
       case "sort-outline": void session.sortOutline?.(); break;
       case "pdf-pages": void movePdfsToPages(); break;
+      case "table-captions": void foldTableCaptions(); break;
       case "fold-all-in": if (item) void session.collapseAll?.(true, { within: item.uid }); break;
       case "unfold-all-in": if (item) void session.collapseAll?.(false, { within: item.uid }); break;
       case "collapse-section": if (item?.type === "section") void session.setCollapsed?.(item.uid, !item.collapsed); break;
@@ -8697,6 +8740,7 @@ function buildBoardView(onFail, {
     async exportPng() { return exportPng(); },
     addPage(at = null) { addPage(at); },
     movePdfsToPages() { return movePdfsToPages(); },
+    foldTableCaptions() { return foldTableCaptions(); },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;
       const world = at || { x: 80, y: 80 };

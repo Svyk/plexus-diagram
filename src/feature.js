@@ -17,6 +17,7 @@ import { createBoardSnapStore } from "./host/boardsnap-store.js";
 import { armSnapGestures, captureBoardSnap, paintBoardSnap, removeBoardSnap, resolveSnapViewport } from "./view/boardsnap-paint.js";
 import { itemSig, tableGrid } from "./model/boardsnap.js";
 import { renderTableThumb, tableThumbKey, thumbBox } from "./view/table-thumb.js";
+import { tableUidOf } from "./model/roam-table.js";
 import { applyFullscreenChrome } from "./view/fullscreen.js";
 import { assignDeepLink, hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
@@ -900,7 +901,7 @@ export async function installPlexusDiagram({
         prev: snapStore.get(key) || snapStore.get(uid),
         thumbs,
         tableThumbKey: (item) => {
-          if (item?.type === "section" || !/^\{\{\s*(\[\[table\]\]|table)\s*\}\}$/i.test(String(item?.string || "").trim())) return null;
+          if (!tableUidOf(item)) return null;
           const key = thumbKeyOf(item, dark);
           return key && snapStore.thumb(key) ? key : null;
         },
@@ -3276,6 +3277,10 @@ export async function installPlexusDiagram({
     return targetView(context)?.movePdfsToPages?.();
   }
 
+  function foldTablesCommand(context) {
+    return targetView(context)?.foldTableCaptions?.();
+  }
+
   function newDrawingCommand(context) {
     return targetView(context)?.newDrawing?.();
   }
@@ -3304,6 +3309,7 @@ export async function installPlexusDiagram({
     ["Plexus: New drawing here", newDrawingCommand],
     ["Plexus: Resurface here", resurfaceCommand],
     ["Plexus: Move PDFs to their own pages", movePdfPagesCommand],
+    ["Plexus: Fold tables under captions", foldTablesCommand],
   ];
 
   function runCommand(label, fn) {

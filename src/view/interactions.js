@@ -34,7 +34,7 @@
 
 import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES, STICKY_SIZE } from "../model/schema.js";
 import { clampPdfCard } from "../model/pdf.js";
-import { TABLE_SIZE, isRoamTableString } from "../model/roam-table.js";
+import { TABLE_SIZE, tableUidOf } from "../model/roam-table.js";
 import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
 import { clampToBox, edgeMayTarget, pointInside, regionBoxFrac, regionPolyFrac } from "../model/endpoints.js";
 import { regionDrawMode, setRegionDrawMode } from "../model/image-region.js";
@@ -280,7 +280,7 @@ export function createInteractions({ actions, settings } = {}) {
     const text = String(item.string ?? "").trim();
     const refCard = /^\(\(([\w-]+)\)\)$/.test(text) || /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i.test(text);
     const marked = item.kind === "page" || item.kind === "image" || item.kind === "pdf" || item.kind === "block"
-      || refCard || isRoamTableString(item.string);
+      || refCard || Boolean(tableUidOf(item));
     if (!marked) { call("clearBlockTarget"); return null; }
     const bt = call("blockTarget", ev.client || null);
     return bt && bt.uid === uid ? bt : null;

@@ -8,7 +8,8 @@ export const TABLE_ROWS = 3;
 export const TABLE_COLS = 3;
 export const TABLE_SIZE = { w: 480, h: 260 };
 // Roam tables nest columns: a row block is column 1, its child column 2, and so on.
-export const TABLE_WRITES = 1 + TABLE_ROWS * TABLE_COLS;
+// One caption block, the table block, then every cell.
+export const TABLE_WRITES = 2 + TABLE_ROWS * TABLE_COLS;
 // Roam Grid column pixels. The sum of column widths stays at 1200 when it can;
 // the card adds the 42px row header and 16px of padding on top of that sum.
 const COL_MIN = 56;
@@ -160,18 +161,68 @@ export function parsedTableSize(table) {
   };
 }
 
-export function appendTable(t, { parent, plexus, order } = {}) {
-  const root = t.create({
+// A table card is a one-line caption block, folded, whose only child is the {{[[table]]}} block. Roam does not
+// render the children of a folded block, so unfolding the board in the outline shows one line per table.
+// The caption block is the card and holds the plexus layout; rows, cells and Roam Grid props stay on the table.
+export function captionTableKid(string, kids) {
+  if (isRoamTableString(string)) return null;
+  if (!Array.isArray(kids) || kids.length !== 1) return null;
+  const kid = kids[0];
+  return isRoamTableString(kid?.[":block/string"] ?? kid?.string) ? kid : null;
+}
+
+// The {{[[table]]}} block a board item shows: the inner table of a caption card, the card itself in the old form.
+export function tableUidOf(item) {
+  if (!item || item.type === "section") return null;
+  if (item.tableUid) return item.tableUid;
+  return isRoamTableString(item.string) ? item.uid : null;
+}
+
+export function rowsCaption(rows) {
+  const n = Math.max(0, Math.round(Number(rows) || 0));
+  return `Table \u00b7 ${n} ${n === 1 ? "row" : "rows"}`;
+}
+
+const squashCaption = (s) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+
+// Caption text for a parsed table: an attached caption block in the doc, the table's own caption, a title row
+// merged across every column (chart -> table), else "Table · N rows".
+export function parsedTableCaption(table, doc = null) {
+  if (!table || typeof table !== "object") return rowsCaption(0);
+  const blocks = doc?.blocks || {};
+  const order = Array.isArray(doc?.order) ? doc.order : Object.keys(blocks);
+  if (table.id) {
+    for (const id of order) {
+      const b = blocks[id];
+      if (b?.type === "caption" && b.for === table.id && squashCaption(b.text)) return squashCaption(b.text);
+    }
+  }
+  if (typeof table.caption === "string" && table.caption) {
+    const hit = blocks[table.caption];
+    const text = squashCaption(hit ? hit.text : table.caption);
+    if (text) return text;
+  }
+  if (table.caption && typeof table.caption === "object" && squashCaption(table.caption.text)) return squashCaption(table.caption.text);
+  const shape = tableShape(table);
+  const head = (table.cells || []).find((cell) => cell?.r === 0 && cell?.c === 0);
+  if (head && shape.cols > 1 && (head.colSpan ?? 1) >= shape.cols && squashCaption(head.text)) return squashCaption(head.text);
+  return rowsCaption(shape.rows);
+}
+
+export function appendTable(t, { parent, plexus, order, caption } = {}) {
+  const card = t.create({
     parent,
-    string: TABLE_ROOT,
+    string: caption || rowsCaption(TABLE_ROWS),
     plexus,
+    open: false,
     ...(order !== undefined ? { order } : {}),
   });
+  const root = t.create({ parent: card, string: TABLE_ROOT, order: 0 });
   for (let r = 0; r < TABLE_ROWS; r += 1) {
     let cell = t.create({ parent: root, string: "", order: r });
     for (let c = 1; c < TABLE_COLS; c += 1) cell = t.create({ parent: cell, string: "", order: 0 });
   }
-  return root;
+  return card;
 }
 
 export function planTableCreates() {
@@ -179,12 +230,35 @@ export function planTableCreates() {
   const t = {
     create(spec) {
       const uid = `u${ops.length}`;
-      ops.push({ uid, parent: spec.parent, string: spec.string, order: spec.order });
+      ops.push({ uid, parent: spec.parent, string: spec.string, order: spec.order, ...(spec.open !== undefined ? { open: spec.open } : {}) });
       return uid;
     },
   };
   const root = appendTable(t, { parent: "board" });
-  return { root, ops, writes: ops.length, rows: TABLE_ROWS, cols: TABLE_COLS };
+  return { root, table: ops[1].uid, ops, writes: ops.length, rows: TABLE_ROWS, cols: TABLE_COLS };
+}
+
+// An old-form table node (pulled shape) as a caption node over it, for a clone. The caption keeps the card's uid
+// so a clone's uid map sends connections to the new caption; the table gets `<uid>~table` and loses its layout.
+export function wrapTableNode(node, caption) {
+  const uid = node?.[":block/uid"];
+  const props = node?.[":block/props"] && typeof node[":block/props"] === "object" ? { ...node[":block/props"] } : null;
+  const inner = { ...node, ":block/uid": `${uid}~table`, ":block/order": 0 };
+  if (props) {
+    const rest = { ...props };
+    delete rest[":plexus"];
+    delete rest.plexus;
+    inner[":block/props"] = Object.keys(rest).length ? rest : null;
+  }
+  const plexus = props ? (props[":plexus"] ?? props.plexus) : null;
+  return {
+    ":block/uid": uid,
+    ":block/string": caption || rowsCaption((node?.[":block/children"] || []).length),
+    ":block/order": node?.[":block/order"],
+    ":block/open": false,
+    ...(plexus ? { ":block/props": { ":plexus": plexus } } : {}),
+    ":block/children": [inner],
+  };
 }
 
 export const TABLE_HOST_SELECTOR = [

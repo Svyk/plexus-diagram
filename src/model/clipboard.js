@@ -22,7 +22,8 @@ export function copyPayload(board, uids, rects) {
       type: item.type,
       kind: item.kind,
       string: item.string,
-      target: item.target,
+      // A caption card pastes elsewhere as a ref to its table block, which a ref card shows as the table.
+      target: item.tableUid ? { kind: "block", uid: item.tableUid } : item.target,
       x: r.x,
       y: r.y,
       w: r.w,

@@ -6,7 +6,7 @@ import { pinSpecFromBlock } from "../model/pdf-pin.js";
 import { findSourceCard } from "../model/ask-basket.js";
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
 import { selectBlocks, tableGrid } from "../model/parse-schema.js";
-import { parsedTableSize } from "../model/roam-table.js";
+import { parsedTableCaption, parsedTableSize } from "../model/roam-table.js";
 import { MIN_SIZES } from "../model/schema.js";
 import { pageNoteBlocks } from "../model/footnotes.js";
 import { imageKey } from "../host/parse-store.js";
@@ -162,7 +162,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       const sized = parsedTableSize(table);
       const at = where(payload, sized);
       const pin = pinFor(doc, payload);
-      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: pageNoteBlocks(doc, table), ...(pin ? { pin } : {}) });
+      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: pageNoteBlocks(doc, table), caption: parsedTableCaption(table, doc), ...(pin ? { pin } : {}) });
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);
         const merged = mergedCells(table);

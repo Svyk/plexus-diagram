@@ -298,18 +298,24 @@ test("native, flat, and grid table cards", async () => {
   assert.equal(native.writes, 2);
   assert.equal(native.w, 200);
   assert.equal(native.h, 28 + 3 * 32 + 8);
-  assert.equal(isRoamTableString(fake.block(native.uid).string), true);
+  // The card is a folded caption block; the table is its only child.
+  assert.equal(fake.block(native.uid).string, "Table \u00b7 3 rows");
+  assert.equal(fake.block(native.uid).open, false);
+  assert.deepEqual(fake.children(native.uid), [native.tableUid]);
+  assert.equal(isRoamTableString(fake.block(native.tableUid).string), true);
+  assert.equal(fake.props(native.tableUid)?.plexus, undefined);
   assert.equal(session.board.items.get(native.uid).w, 200);
+  assert.equal(session.board.items.get(native.uid).tableUid, native.tableUid);
   assert.equal(fake.props(native.uid).plexus.look, undefined);
 
   const flat = await session.insertParsedTable({ x: 2000, y: 2400, table: merged, mode: "flat" });
   assert.equal(flat.path, "flat");
   assert.equal(flat.writes, 2);
-  const flatRows = fake.children(flat.uid);
+  const flatRows = fake.children(flat.tableUid);
   assert.equal(fake.block(fake.children(flatRows[0])[0]).string, "H");
 
   const covered = await session.insertParsedTable({ x: 2000, y: 2800, table: merged, mode: "native" });
-  const nativeRows = fake.children(covered.uid);
+  const nativeRows = fake.children(covered.tableUid);
   assert.equal(fake.block(fake.children(nativeRows[0])[0]).string, "");
 
   assert.equal(host.canCreateGridTable(), false);
@@ -352,6 +358,7 @@ test("Roam Grid table is three undos and one step removes the table and the meta
       },
     },
   };
+  fake.trackUndo = true;
   const grid = await session.insertParsedTable({ x: 2000, y: 3600, table: numeric, mode: "auto" });
   assert.equal(grid.path, "grid");
   assert.equal(grid.writes, 3);
@@ -390,6 +397,7 @@ test("a measured grid passes column widths and one undo removes that table", asy
     },
   };
   const measured = table(2, 2, { grid: { xs: [0, 80, 200] }, headerRows: 1 });
+  fake.trackUndo = true;
   const sized = await session.insertParsedTable({ x: 2000, y: 4000, table: measured, mode: "grid" });
   assert.equal(sized.path, "grid");
   assert.deepEqual(seen.widths, { 0: 112, 1: 168 });
@@ -487,7 +495,8 @@ test("parse drop payload, plan, and missing cache", async () => {
     toast: () => {},
   });
   assert.equal(tableDrop.path, "native");
-  assert.equal(isRoamTableString(fake.block(tableDrop.uid).string), true);
+  assert.equal(isRoamTableString(fake.block(tableDrop.tableUid).string), true);
+  assert.equal(fake.children(tableDrop.uid).length, 1);
   // 3 short columns floor at 56, plus 16 of native padding, then the card minimum of 200.
   assert.equal(tableDrop.w, 200);
   assert.equal(tableDrop.h, 132);

@@ -37,7 +37,7 @@ export function paintAnswer(doc, node, text, onPage) {
 
 // doc: a pxd-parse document, or null (then `selection` is all there is). focus keys: blockId | selection | page.
 // Extras: jumpPage(n), addCard({ markdown, chip, blockId }) -> Promise, toast(msg), win, host document.
-export function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null } = {}) {
+export function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, wholeDoc = false, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null } = {}) {
   const dom = ownerDoc || (typeof document !== "undefined" ? document : null);
   if (!dom) return null;
   const win = w || dom.defaultView || globalThis;
@@ -46,7 +46,7 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   const hasBlocks = parsed && parsed.blocks && Object.keys(parsed.blocks).length;
   const source = hasBlocks ? parsed : (selection ? selectionDoc({ text: selection, page: Number.isInteger(page) ? page : 1 }) : parsed);
   const focus = hasBlocks
-    ? { ...(blockId ? { blockId } : {}), ...(blockIds ? { blockIds } : {}), ...(selection ? { selection } : {}), ...(page != null ? { page } : {}) }
+    ? { ...(blockId ? { blockId } : {}), ...(blockIds ? { blockIds } : {}), ...(selection ? { selection } : {}), ...(page != null ? { page } : {}), ...(wholeDoc ? { wholeDoc: true } : {}) }
     : { blockId: "sel", selection };
   const built = buildFocusContext(source, focus);
 

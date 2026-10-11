@@ -310,6 +310,14 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     const head = el("div", "pxd-panel__part-head", r);
     el("span", `pxd-panel__badge pxd-panel__badge--${part.kind}`, head, PART_LABELS[part.kind] || part.kind);
     el("span", "pxd-panel__row-label", head, `p. ${part.page} · ${part.docTitle || "PDF"}`);
+    if (typeof on.askPart === "function") {
+      const ask = el("button", "pxd-panel__row-act", head);
+      ask.setAttribute("type", "button");
+      ask.setAttribute("aria-label", "Ask AI");
+      ask.setAttribute("title", "Ask AI");
+      el("span", "bp3-icon bp3-icon-lightbulb", ask).setAttribute("aria-hidden", "true");
+      listen(ask, "click", (event) => { event.stopPropagation(); on.askPart(part); });
+    }
     const snip = partSnippet(part.text, needle);
     const body = el("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
     if (snip.before) body.append(snip.before);
@@ -320,7 +328,11 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       pdfUid: part.pdfUid || "", pdfBlockUid: part.pdfUid || "",
       kind: part.kind === "table" || part.kind === "figure" || part.kind === "formula" ? part.kind : "blocks",
     };
-    listen(r, "click", (event) => { event.stopPropagation(); on.addPart?.(payload); r.classList.add("pxd-panel__row--on"); });
+    listen(r, "click", (event) => {
+      event.stopPropagation();
+      if (on.openPart?.(part) !== true) on.addPart?.(payload);
+      r.classList.add("pxd-panel__row--on");
+    });
     listen(r, "dragstart", (event) => {
       try {
         const json = JSON.stringify(payload);

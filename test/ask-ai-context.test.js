@@ -179,3 +179,18 @@ test("answer card: header bullet then one bullet per paragraph", () => {
   assert.match(lines[0], /^- AI answer · Table 3 · p\. 3 · Report/);
   assert.equal(answerCardMarkdown({ answer: "  " }), "");
 });
+
+test("wholeDoc focus: opening text in FOCUS, doc title as the chip, outline in DOCUMENT", () => {
+  const doc = fixture();
+  doc.title = "Annual Report";
+  const out = buildFocusContext(doc, { wholeDoc: true });
+  assert.match(out.context, /=== FOCUS ===\n\(whole document, opening pages\)/);
+  assert.match(out.context, /\[p\. 2\] Revenue grew in the second half\./);
+  assert.match(out.context, /Headings:/);
+  assert.equal(out.chip.page, null);
+  assert.equal(chipText(out.chip), out.chip.label);
+  const tiny = buildFocusContext(doc, { wholeDoc: true }, { tokenCap: 200, outlineTokens: 50 });
+  assert.ok(tiny.context.length < out.context.length + 1);
+  const withBlock = buildFocusContext(doc, { wholeDoc: true, blockId: "p1" });
+  assert.doesNotMatch(withBlock.context, /whole document/);
+});

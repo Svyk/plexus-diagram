@@ -493,3 +493,39 @@ test("Type filter persists, and PDF part rows show a badge, snippet, source, and
   assert.equal(saved.at(-1).length, 15);
   assert.equal(typeBtn.textContent, "All");
 });
+
+test("PDF part rows: Ask AI button does not add the card; click opens the board's PDF card when there is one", async (t) => {
+  const added = [];
+  const asked = [];
+  const opened = [];
+  let onBoard = true;
+  const part = { kind: "para", page: 7, text: "Swab limit 0 CFU", docTitle: "Plan", sha256: "abc", engine: "builtin", optsHash: "oh", blockId: "p9", pdfUid: "u1", url: "https://x/plan.pdf" };
+  const f = setup({
+    loadTypes: () => null,
+    searchParts: () => [part],
+    addPart: (payload) => added.push(payload),
+    askPart: (row) => asked.push(row),
+    openPart: (row) => { opened.push(row); return onBoard; },
+  }, { librarySearch: () => ({ rows: [], queries: [] }) });
+  t.after(f.restore);
+  f.panel.open("search");
+  const input = q(f.root, ".pxd-panel__input");
+  input.value = "swab";
+  f.stub.dispatch(input, "keydown", { key: "Enter" });
+  await tick();
+  const row = q(f.root, ".pxd-panel__row--part");
+  const btn = q(row, ".pxd-panel__row-act");
+  assert.equal(btn.getAttribute("aria-label"), "Ask AI");
+  assert.equal(q(btn, ".bp3-icon").className, "bp3-icon bp3-icon-lightbulb");
+  f.stub.dispatch(btn, "click");
+  assert.deepEqual(asked, [part]);
+  assert.equal(opened.length, 0);
+  assert.equal(added.length, 0);
+  f.stub.dispatch(row, "click");
+  assert.deepEqual(opened, [part]);
+  assert.equal(added.length, 0);
+  onBoard = false;
+  f.stub.dispatch(row, "click");
+  assert.equal(added.length, 1);
+  assert.equal(added[0].ids[0], "p9");
+});

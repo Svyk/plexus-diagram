@@ -20930,6 +20930,17 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const head2 = el("div", "pxd-panel__part-head", r);
     el("span", `pxd-panel__badge pxd-panel__badge--${part.kind}`, head2, PART_LABELS[part.kind] || part.kind);
     el("span", "pxd-panel__row-label", head2, `p. ${part.page} · ${part.docTitle || "PDF"}`);
+    if (typeof on.askPart === "function") {
+      const ask2 = el("button", "pxd-panel__row-act", head2);
+      ask2.setAttribute("type", "button");
+      ask2.setAttribute("aria-label", "Ask AI");
+      ask2.setAttribute("title", "Ask AI");
+      el("span", "bp3-icon bp3-icon-lightbulb", ask2).setAttribute("aria-hidden", "true");
+      listen(ask2, "click", (event) => {
+        event.stopPropagation();
+        on.askPart(part);
+      });
+    }
     const snip = partSnippet(part.text, needle);
     const body = el("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
     if (snip.before) body.append(snip.before);
@@ -20946,7 +20957,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     };
     listen(r, "click", (event) => {
       event.stopPropagation();
-      on.addPart?.(payload);
+      if (on.openPart?.(part) !== true) on.addPart?.(payload);
       r.classList.add("pxd-panel__row--on");
     });
     listen(r, "dragstart", (event) => {
@@ -53903,6 +53914,21 @@ function pageFocus(doc, ids, page) {
   }
   return parts.join("\n\n");
 }
+function openingText(doc, ids, budget) {
+  const parts = [];
+  let used = 0;
+  for (const id of ids) {
+    const b = doc.blocks[id];
+    if (b.type === "caption") continue;
+    const text3 = focusBody(doc, b);
+    if (!text3) continue;
+    const line = `[p. ${b.page}] ${clip5(text3, PARA_CLIP)}`;
+    if (used + line.length + 2 > budget) break;
+    parts.push(line);
+    used += line.length + 2;
+  }
+  return parts.join("\n\n");
+}
 function buildFocusContext(doc, focus = {}, opts = {}) {
   const cap4 = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN;
   const outlineCap = (Number(opts.outlineTokens) > 0 ? Number(opts.outlineTokens) : OUTLINE_TOKEN_CAP) * CHARS_PER_TOKEN;
@@ -53920,6 +53946,7 @@ function buildFocusContext(doc, focus = {}, opts = {}) {
   const focusIds = new Set(extraIds.length ? extraIds : block ? [block.id] : []);
   for (const id of attachedCaptionIds(safe, block)) focusIds.add(id);
   const index = block ? ids.indexOf(block.id) : -1;
+  const wholeDoc = focus.wholeDoc === true && !block && !selection && !Number.isInteger(focus.page);
   const docTitle = parsedDocTitle(safe) || squash3(safe.title) || "";
   let focusText = "";
   if (selection) {
@@ -53937,6 +53964,8 @@ ${focusBody(safe, block)}`;
     focusText = focusBody(safe, block);
   } else if (page != null) {
     focusText = pageFocus(safe, ids, page);
+  } else if (wholeDoc) {
+    focusText = openingText(safe, ids, Math.max(400, cap4 - outlineCap - 1e3));
   }
   const chain = block ? sectionChain(safe, ids, index) : [];
   const sectionText = chain.length ? `${chain.map((h) => h.text).join(" > ")} (starts p. ${chain[chain.length - 1].page})` : "(before the first heading, or no headings found)";
@@ -53946,7 +53975,7 @@ ${focusBody(safe, block)}`;
 ${sectionText}`;
   const focusHead = block ? `${header("FOCUS")}
 (${KIND_NAMES[block.type] || "Block"}, p. ${block.page})` : `${header("FOCUS")}
-(${page != null ? `page ${page}` : "no part found"})`;
+(${wholeDoc ? "whole document, opening pages" : page != null ? `page ${page}` : "no part found"})`;
   const fixedChars = section2.length + focusHead.length + 400;
   const focusRoom = Math.max(400, cap4 - fixedChars - 200);
   const focusBounded = focusText.length > focusRoom ? `${focusText.slice(0, focusRoom).trimEnd()}
@@ -53967,7 +53996,7 @@ ${outline}` : ""}`;
   const context = [documentPart, section2, nearby, `${focusHead}
 ${focusBounded}`].filter(Boolean).join("\n\n");
   return {
-    chip: { label: chipLabel(safe, block, selection), page, docTitle },
+    chip: { label: wholeDoc ? docTitle || "Document" : chipLabel(safe, block, selection), page, docTitle: wholeDoc ? "" : docTitle },
     context,
     instructions: INSTRUCTIONS,
     prompt: DEFAULT_PROMPT,
@@ -54150,7 +54179,7 @@ function paintAnswer(doc, node2, text3, onPage) {
     });
   }
 }
-function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null } = {}) {
+function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, wholeDoc = false, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null } = {}) {
   const dom = ownerDoc || (typeof document !== "undefined" ? document : null);
   if (!dom) return null;
   const win2 = w || dom.defaultView || globalThis;
@@ -54160,7 +54189,7 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   }
   const hasBlocks = parsed && parsed.blocks && Object.keys(parsed.blocks).length;
   const source = hasBlocks ? parsed : selection ? selectionDoc({ text: selection, page: Number.isInteger(page) ? page : 1 }) : parsed;
-  const focus = hasBlocks ? { ...blockId ? { blockId } : {}, ...blockIds ? { blockIds } : {}, ...selection ? { selection } : {}, ...page != null ? { page } : {} } : { blockId: "sel", selection };
+  const focus = hasBlocks ? { ...blockId ? { blockId } : {}, ...blockIds ? { blockIds } : {}, ...selection ? { selection } : {}, ...page != null ? { page } : {}, ...wholeDoc ? { wholeDoc: true } : {} } : { blockId: "sel", selection };
   const built = buildFocusContext(source, focus);
   const root = make(dom, "div", "pxd-ask", null);
   root.setAttribute("role", "dialog");
@@ -70318,6 +70347,7 @@ function buildMenu(kind, ctx = {}) {
         ...c.isPdf ? [make2("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : [],
         ...c.isPdf ? [make2("parse-pdf", "Parse PDF…")] : [],
         ...c.isPdf && c.hasParse ? [make2("open-parsed", "Open parsed")] : [],
+        ...c.isPdf && c.hasParse ? [make2("ask-ai", "Ask AI…")] : [],
         ...c.officeFile ? [make2("convert-office", "Convert to cards")] : [],
         sep(),
         make2("copy", "Copy", { hint: "Cmd C" }),
@@ -73442,6 +73472,42 @@ function buildBoardView(onFail, {
     }).catch(() => {
     });
   };
+  const parseStoreShared = () => {
+    if (!titleStore) titleStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
+    return titleStore;
+  };
+  const askAboutParsed = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "", page = null, wholeDoc = false }) => {
+    let parsed = null;
+    try {
+      const store = parseStoreShared();
+      parsed = sha256 ? await store.getParse(sha256, engine, optsHash) : null;
+      if (!parsed && url) parsed = await restorableByUrl(store, url, { plainOptions: BUILTIN_OPTIONS });
+    } catch {
+      parsed = null;
+    }
+    if (disposed) return null;
+    if (!parsed) {
+      toast("Parse not found. Open the PDF and parse it again");
+      return null;
+    }
+    return openAskAI({
+      doc: parsed,
+      ...blockId ? { blockId } : {},
+      ...page != null ? { page } : {},
+      ...wholeDoc ? { wholeDoc: true } : {},
+      document: doc,
+      jumpPage: (n2) => {
+        if (pdfUid) void itemsR?.openPdfAt?.(pdfUid, n2);
+      },
+      toast: (message) => toast(message),
+      addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfUid })
+    });
+  };
+  const pdfCardUidFor = (pdfUid, url) => {
+    const items = [...board2()?.items.values() || []].filter((it) => it?.kind === "pdf");
+    if (pdfUid && items.some((it) => it.uid === pdfUid)) return pdfUid;
+    return pdfCardForUrl(url, items.map((it) => ({ uid: it.uid, source: pdfSourceOfItem(it) }))) || "";
+  };
   const metaQueued = /* @__PURE__ */ new Set();
   let metaTail = Promise.resolve();
   const warmTitleOf = (key) => {
@@ -76416,6 +76482,11 @@ function buildBoardView(onFail, {
         }
         break;
       }
+      case "ask-ai": {
+        if (!item || item.kind !== "pdf") break;
+        void askAboutParsed({ pdfUid: item.uid, url: pdfUrlOf(item.uid), wholeDoc: true });
+        break;
+      }
       case "hl-open":
         if (item) openHighlightAs(item, arg);
         break;
@@ -77575,6 +77646,15 @@ function buildBoardView(onFail, {
       },
       addPart: (payload) => {
         void parseActions().sendParsedToBoard(payload);
+      },
+      openPart: (row4) => {
+        const uid = pdfCardUidFor(row4?.pdfUid || "", row4?.url || "");
+        if (!uid || typeof itemsR?.openPdfAt !== "function") return false;
+        void itemsR.openPdfAt(uid, row4.page || 1);
+        return true;
+      },
+      askPart: (row4) => {
+        void askAboutParsed({ pdfUid: pdfCardUidFor(row4?.pdfUid || "", row4?.url || "") || row4?.pdfUid || "", url: row4?.url || "", sha256: row4?.sha256 || "", engine: row4?.engine || "builtin", optsHash: row4?.optsHash || "", blockId: row4?.blockId || "", page: row4?.page ?? null });
       },
       listBoards: () => Promise.resolve(host?.listBoards?.()).then((rows) => rows || []),
       openBoardByUid: (uid) => {

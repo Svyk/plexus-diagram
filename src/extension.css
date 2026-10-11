@@ -1565,6 +1565,19 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   background: var(--pxd-accent-soft);
 }
 
+.pxd-panel__row-act {
+  margin-left: auto;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0;
+}
+.pxd-panel__row--part:hover .pxd-panel__row-act,
+.pxd-panel__row-act:focus-visible {
+  opacity: 1;
+}
 .pxd-panel__row--on {
   opacity: 0.6;
 }

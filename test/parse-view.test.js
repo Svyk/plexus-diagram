@@ -392,6 +392,8 @@ test("card menu adds Parse PDF and Open parsed without moving Compass", () => {
   assert.equal(byId(pdf, "parse-pdf").label, "Parse PDF…");
   assert.equal(byId(pdf, "open-parsed"), undefined);
   assert.equal(byId(buildMenu("card", { isPdf: true, hasParse: true }), "open-parsed").label, "Open parsed");
+  assert.equal(byId(buildMenu("card", { isPdf: true, hasParse: true }), "ask-ai").label, "Ask AI…");
+  assert.equal(byId(buildMenu("card", { isPdf: true }), "ask-ai"), undefined);
   assert.equal(byId(buildMenu("card", {}), "parse-pdf"), undefined);
   const compass = buildMenu("card", { isPdf: true, hasParse: true, compass: true }).map((row) => row.id);
   assert.equal(compass[compass.indexOf("open-sidebar") + 1], "open-compass");

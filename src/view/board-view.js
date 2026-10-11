@@ -75,6 +75,7 @@ import { createInteractions, emptyLabelShouldDeleteEdge, whyLabelField } from ".
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
+import { openAskAI } from "./ask-ai.js";
 import { BUILTIN_OPTIONS, readParsedUrls } from "./parse-view.js";
 import { createPdfWarm } from "./pdf-warm.js";
 import { createFirstPageRenderer, createPdfMetaLookup, detectPdfjs, firstPageAllowed } from "./pdf-first-page.js";
@@ -102,7 +103,7 @@ import { createPanel, parseDropPayload } from "./panel.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
-import { createParseStore, restorableTitle } from "../host/parse-store.js";
+import { createParseStore, restorableByUrl, restorableTitle } from "../host/parse-store.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { scheduleTitleLexiconWarm } from "./title-lexicon-warm.js";
 import { createParseActions, freeSpotBeside } from "./parse-actions.js";
@@ -1860,6 +1861,36 @@ function buildBoardView(onFail, {
       try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
       try { readPane?.refreshCards?.(); } catch { /* switcher */ }
     }).catch(() => {});
+  };
+  const parseStoreShared = () => {
+    if (!titleStore) titleStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
+    return titleStore;
+  };
+  // Ask AI about a parsed PDF: one part (blockId, page) or the whole document. The answer card lands beside the PDF.
+  const askAboutParsed = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "", page = null, wholeDoc = false }) => {
+    let parsed = null;
+    try {
+      const store = parseStoreShared();
+      parsed = sha256 ? await store.getParse(sha256, engine, optsHash) : null;
+      if (!parsed && url) parsed = await restorableByUrl(store, url, { plainOptions: BUILTIN_OPTIONS });
+    } catch { parsed = null; }
+    if (disposed) return null;
+    if (!parsed) { toast("Parse not found. Open the PDF and parse it again"); return null; }
+    return openAskAI({
+      doc: parsed,
+      ...(blockId ? { blockId } : {}),
+      ...(page != null ? { page } : {}),
+      ...(wholeDoc ? { wholeDoc: true } : {}),
+      document: doc,
+      jumpPage: (n) => { if (pdfUid) void itemsR?.openPdfAt?.(pdfUid, n); },
+      toast: (message) => toast(message),
+      addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfUid }),
+    });
+  };
+  const pdfCardUidFor = (pdfUid, url) => {
+    const items = [...(board()?.items.values() || [])].filter((it) => it?.kind === "pdf");
+    if (pdfUid && items.some((it) => it.uid === pdfUid)) return pdfUid;
+    return pdfCardForUrl(url, items.map((it) => ({ uid: it.uid, source: pdfSourceOfItem(it) }))) || "";
   };
   const metaQueued = new Set();
   let metaTail = Promise.resolve();
@@ -4400,6 +4431,11 @@ function buildBoardView(onFail, {
         try { ensureReadPane().showParsed?.(); } catch { /* pane */ }
         break;
       }
+      case "ask-ai": {
+        if (!item || item.kind !== "pdf") break;
+        void askAboutParsed({ pdfUid: item.uid, url: pdfUrlOf(item.uid), wholeDoc: true });
+        break;
+      }
       case "hl-open": if (item) openHighlightAs(item, arg); break;
       case "open-compass": {
         if (!item) break;
@@ -5238,6 +5274,15 @@ function buildBoardView(onFail, {
         return searchParts(await partsIndex().get(), query, limit);
       },
       addPart: (payload) => { void parseActions().sendParsedToBoard(payload); },
+      openPart: (row) => {
+        const uid = pdfCardUidFor(row?.pdfUid || "", row?.url || "");
+        if (!uid || typeof itemsR?.openPdfAt !== "function") return false;
+        void itemsR.openPdfAt(uid, row.page || 1);
+        return true;
+      },
+      askPart: (row) => {
+        void askAboutParsed({ pdfUid: pdfCardUidFor(row?.pdfUid || "", row?.url || "") || row?.pdfUid || "", url: row?.url || "", sha256: row?.sha256 || "", engine: row?.engine || "builtin", optsHash: row?.optsHash || "", blockId: row?.blockId || "", page: row?.page ?? null });
+      },
       listBoards: () => Promise.resolve(host?.listBoards?.()).then((rows) => rows || []),
       openBoardByUid: (uid) => {
         if (sendPending) { const list = sendPending; sendPending = null; finishSend(list, uid); return; }

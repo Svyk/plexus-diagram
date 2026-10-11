@@ -247,7 +247,24 @@ function pageFocus(doc, ids, page) {
   return parts.join("\n\n");
 }
 
-// focus: { blockId } | { blockId, selection } | { selection, page? } | { blockIds } | { page }.
+// The first pages' text, whole blocks in reading order, until the budget is spent.
+function openingText(doc, ids, budget) {
+  const parts = [];
+  let used = 0;
+  for (const id of ids) {
+    const b = doc.blocks[id];
+    if (b.type === "caption") continue;
+    const text = focusBody(doc, b);
+    if (!text) continue;
+    const line = `[p. ${b.page}] ${clip(text, PARA_CLIP)}`;
+    if (used + line.length + 2 > budget) break;
+    parts.push(line);
+    used += line.length + 2;
+  }
+  return parts.join("\n\n");
+}
+
+// focus: { blockId } | { blockId, selection } | { selection, page? } | { blockIds } | { page } | { wholeDoc: true }.
 // Returns { chip: { label, page, docTitle }, context, instructions, prompt, tokensEstimate, focusIds }.
 export function buildFocusContext(doc, focus = {}, opts = {}) {
   const cap = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN;
@@ -267,6 +284,7 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
   const focusIds = new Set(extraIds.length ? extraIds : block ? [block.id] : []);
   for (const id of attachedCaptionIds(safe, block)) focusIds.add(id);
   const index = block ? ids.indexOf(block.id) : -1;
+  const wholeDoc = focus.wholeDoc === true && !block && !selection && !Number.isInteger(focus.page);
 
   const docTitle = parsedDocTitle(safe) || squash(safe.title) || "";
 
@@ -282,6 +300,9 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
     focusText = focusBody(safe, block);
   } else if (page != null) {
     focusText = pageFocus(safe, ids, page);
+  } else if (wholeDoc) {
+    // The outline rides in DOCUMENT; FOCUS is the opening text, leaving that room free.
+    focusText = openingText(safe, ids, Math.max(400, cap - outlineCap - 1000));
   }
 
   const chain = block ? sectionChain(safe, ids, index) : [];
@@ -295,7 +316,7 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
   const section = `${header("SECTION")}\n${sectionText}`;
   const focusHead = block
     ? `${header("FOCUS")}\n(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})`
-    : `${header("FOCUS")}\n(${page != null ? `page ${page}` : "no part found"})`;
+    : `${header("FOCUS")}\n(${wholeDoc ? "whole document, opening pages" : page != null ? `page ${page}` : "no part found"})`;
 
   // Fixed parts first. The focus keeps its room; nearby and then the outline give way.
   const fixedChars = section.length + focusHead.length + 400;
@@ -317,7 +338,7 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
   const context = [documentPart, section, nearby, `${focusHead}\n${focusBounded}`].filter(Boolean).join("\n\n");
 
   return {
-    chip: { label: chipLabel(safe, block, selection), page, docTitle },
+    chip: { label: wholeDoc ? docTitle || "Document" : chipLabel(safe, block, selection), page, docTitle: wholeDoc ? "" : docTitle },
     context,
     instructions: INSTRUCTIONS,
     prompt: DEFAULT_PROMPT,

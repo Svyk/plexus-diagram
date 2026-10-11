@@ -58,25 +58,68 @@ export function pdfPageName(title) {
   return head || t;
 }
 
-// A page title from what the card shows. No brackets, hashes or line breaks; at most 150 characters.
-export function cleanPageTitle(s) {
+const TITLE_MAX = 100;
+
+// A page title from what the card shows. One line, no Roam syntax ([[ ]] # { } ` ^^ ** __ ~~ (( ))), no "/" (a Roam
+// namespace separator, so it becomes "-"), no ellipsis. Longer than `max` is cut at a word boundary.
+export function cleanPageTitle(s, max = 150) {
   let t = String(s ?? "").replace(/[\r\n\t]+/g, " ");
-  t = t.replace(/\[\[|\]\]/g, "").replace(/^#+/, "").replace(/\s+/g, " ").trim();
-  if (t.length > 150) t = t.slice(0, 150).trimEnd();
+  t = t.replace(/\u2026|\.{3,}/g, " ").replace(/\s*\/+\s*/g, (m) => (/\s/.test(m) ? " - " : "-"));
+  t = t.replace(/\(\(|\)\)|\^\^|\*\*|__|~~|::/g, " ").replace(/[\[\]{}#`]/g, " ");
+  t = t.replace(/^[\s\-:;,.]+|[\s\-:;,]+$/g, "").replace(/\s+/g, " ").trim();
+  if (t.length > max) {
+    const cut = t.slice(0, max);
+    const space = cut.lastIndexOf(" ");
+    t = (t[max] === " " || space < max / 2 ? cut : cut.slice(0, space)).replace(/[\s\-:;,(]+$/, "");
+  }
   return t;
 }
 
-// The display title first, then the uploaded file's name (Roam's own fallback), then "PDF".
-export function pdfPageBaseTitle({ display = "", fileName = "" } = {}) {
-  const shown = cleanPageTitle(display);
-  if (shown && shown !== "PDF") return shown;
-  const file = cleanPageTitle(String(fileName ?? "").replace(/\.pdf$/i, "").replace(/_+/g, " "));
-  return file || "PDF";
+const MEANINGLESS = /^(?:pdf|untitled(?:\b.*)?|document|scan(?:ned)?)$/i;
+const meaningful = (t) => t.length >= 3 && !MEANINGLESS.test(t);
+
+// A storage id, not a name: up to 12 characters of [A-Za-z0-9_ -] with a capital after the first letter ("Y_Wx3LSX7k").
+export function looksRandomName(name) {
+  const n = String(name ?? "").trim();
+  if (!n) return true;
+  return /^[A-Za-z0-9_ -]{1,12}$/.test(n) && /[A-Z]/.test(n.slice(1));
+}
+
+// The first "name.pdf" in the blocks that mention the file: "report-scan.pdf: Fixture" -> "report-scan".
+export function pdfNameFromRefs(strings) {
+  for (const raw of Array.isArray(strings) ? strings : []) {
+    const m = /\b([\w.-]+)\.pdf\b/i.exec(String(raw ?? "").replace(/\{\{[^}]*\}\}|\(\([^)]*\)\)|https?:\/\/\S+/g, " "));
+    if (!m) continue;
+    const name = cleanPageTitle(m[1].replace(/_+/g, " "), TITLE_MAX);
+    if (meaningful(name)) return name;
+  }
+  return "";
+}
+
+const shortDate = (now) => {
+  const d = new Date(Number.isFinite(now) ? now : Date.now());
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+// The parsed document title when it says something, then the card's alias label, a file name in a block that
+// refers to the PDF, the file name of a url that is not a storage id, and last "PDF <date>". Never "PDF (2)".
+export function pdfPageBaseTitle({ display = "", alias = "", refs = [], fileName = "", now } = {}) {
+  const shown = cleanPageTitle(display, TITLE_MAX);
+  if (meaningful(shown)) return shown;
+  const label = cleanPageTitle(alias, TITLE_MAX);
+  if (meaningful(label)) return label;
+  const named = pdfNameFromRefs(refs);
+  if (named) return named;
+  const raw = String(fileName ?? "").replace(/\.pdf$/i, "");
+  const file = cleanPageTitle(raw.replace(/_+/g, " "), TITLE_MAX);
+  if (meaningful(file) && !looksRandomName(raw.replace(/_+/g, " ").trim())) return file;
+  return `PDF ${shortDate(now)}`;
 }
 
 // "Title", then "Title (2)", "Title (3)", ... `taken(title)` is true for a title already used.
 export function uniquePageTitle(base, taken) {
-  const root = cleanPageTitle(base) || "PDF";
+  const root = cleanPageTitle(base, TITLE_MAX) || `PDF ${shortDate()}`;
   const used = (t) => {
     try { return typeof taken === "function" && taken(t) === true; } catch { return true; }
   };
@@ -108,10 +151,13 @@ export function inlinePdfCards(board) {
 //   findPage({url, uid})   -> { uid, title, pdfUid? } of a page that already holds this file, or null
 //   pageExists(title)      -> true when a page with that title exists
 //   titleFor(item)         -> the title the card shows today ("PDF" when unknown)
+//   aliasOf(item)          -> the card's alias label ("" when none)
+//   refsOf(item)           -> strings of the blocks that refer to the pdf block
+//   now()                  -> ms, for the "PDF <date>" fallback
 //   newUid()               -> a fresh block uid
 // Out: { graph, boardUid, moves, edges, skipped }. moves[i] = { pdfUid, url, parentUid, order, cardUid, cardString,
 // layout, page: { uid, title, reuse, why } } where page.uid is null for a page to create (newUid in page.newUid).
-export function planPdfMigration(board, { graph = "", urlOf, layoutOf, findPage, pageExists, titleFor, newUid } = {}) {
+export function planPdfMigration(board, { graph = "", urlOf, layoutOf, findPage, pageExists, titleFor, aliasOf, refsOf, now, newUid } = {}) {
   const plan = { graph, boardUid: board?.uid || "", moves: [], edges: [], skipped: [] };
   if (!board?.items) return plan;
   const call = (fn, ...args) => {
@@ -122,7 +168,7 @@ export function planPdfMigration(board, { graph = "", urlOf, layoutOf, findPage,
   const moved = new Map();
   for (const item of inlinePdfCards(board)) {
     const url = String(call(urlOf, item) || "");
-    const shown = cleanPageTitle(call(titleFor, item) || "") || "PDF";
+    const shown = cleanPageTitle(call(titleFor, item) || "", TITLE_MAX) || "PDF";
     if (url && byUrl.has(url)) {
       plan.skipped.push({ pdfUid: item.uid, title: shown, reason: "same-file" });
       continue;
@@ -136,7 +182,7 @@ export function planPdfMigration(board, { graph = "", urlOf, layoutOf, findPage,
     if (found?.uid && found.title) {
       page = { uid: found.uid, title: found.title, reuse: true, why: found.why || "url" };
     } else {
-      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, fileName: pdfFileTitle(url) }), (t) => plannedTitles.has(t) || call(pageExists, t) === true);
+      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, alias: call(aliasOf, item) || "", refs: call(refsOf, item) || [], fileName: pdfFileTitle(url), now: call(now) }), (t) => plannedTitles.has(t) || call(pageExists, t) === true);
       page = { uid: null, newUid: String(call(newUid) || ""), title, reuse: false, why: "new" };
     }
     plannedTitles.add(page.title);

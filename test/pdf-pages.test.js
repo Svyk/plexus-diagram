@@ -7,6 +7,7 @@ import { pdfMacroUrl } from "../src/model/pdf.js";
 import {
   cleanPageTitle, inlinePdfCards, isPdfString, migrationLines, pageCardRef, pdfOfPageNode, pdfPageBaseTitle,
   pdfPageName, planPdfMigration, uniquePageTitle,
+  looksRandomName, pdfNameFromRefs,
 } from "../src/model/pdf-page.js";
 import { highlightAsk, highlightImageUrl, highlightPart } from "../src/model/highlight-ask.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
@@ -56,10 +57,10 @@ test("pdfOfPageNode: the first top-level pdf block by order", () => {
 test("titles: Roam's long PDF title shows its first part; new titles are clean and never collide", () => {
   assert.equal(pdfPageName("Novel risk model -- Yongming Han; Jiaxin Liu -- Science -- 10_1016 -- 84a551fd"), "Novel risk model");
   assert.equal(pdfPageName("report"), "report");
-  assert.equal(cleanPageTitle("  [[A]]\nB #x "), "A B #x");
+  assert.equal(cleanPageTitle("  [[A]]\nB #x "), "A B x");
   assert.equal(pdfPageBaseTitle({ display: "PDF", fileName: "cdc1980_p25.pdf" }), "cdc1980 p25");
   assert.equal(pdfPageBaseTitle({ display: "Annual report 2024" }), "Annual report 2024");
-  assert.equal(pdfPageBaseTitle({}), "PDF");
+  assert.equal(pdfPageBaseTitle({ now: new Date(2026, 9, 11, 9).getTime() }), "PDF 2026-10-11");
   const taken = new Set(["Report", "Report (2)"]);
   assert.equal(uniquePageTitle("Report", (t) => taken.has(t)), "Report (3)");
   assert.equal(uniquePageTitle("Fresh", (t) => taken.has(t)), "Fresh");
@@ -398,4 +399,111 @@ test("host: findPdfPage matches Roam's :pdf/content-hash (sha256 of the file) an
   assert.deepEqual(host.findPdfPage({ sha: sha.toUpperCase() }), { uid: "rp", title: "report", pdfUid: "", why: "sha" });
   assert.equal(host.findPdfPage({ sha: "nothex" }), null);
   assert.equal(route.calls.length, 1);
+});
+
+// ---- migration page titles ----
+
+const TODAY = new Date(2026, 9, 11, 9).getTime();
+
+test("titles: no ellipsis, no namespace slash, no Roam syntax (the live EC 2073/2005 title)", () => {
+  const live = "COMMISSION REGULATION (EC) No 2073/2005 of 15 November 2005 on microbiological\u2026";
+  assert.equal(pdfPageBaseTitle({ display: live }), "COMMISSION REGULATION (EC) No 2073-2005 of 15 November 2005 on microbiological");
+  assert.equal(cleanPageTitle("A/B"), "A-B");
+  assert.equal(cleanPageTitle("Part 1 / Part 2"), "Part 1 - Part 2");
+  assert.equal(cleanPageTitle("a... b"), "a b");
+  assert.equal(cleanPageTitle("[[Ref]] #tag {{x}} ((uid)) `c` ^^h^^ **b** __i__ k::v"), "Ref tag x uid c h b i k v");
+});
+
+test("titles: long titles are cut at a word boundary within 100 characters, without an ellipsis", () => {
+  const long = "Guidance for industry on the control of Listeria monocytogenes in ready-to-eat foods and related surveillance programs";
+  const t = pdfPageBaseTitle({ display: long });
+  assert.ok(t.length <= 100, String(t.length));
+  assert.ok(long.startsWith(t));
+  assert.equal(long[t.length], " ");
+  assert.ok(!t.includes("\u2026") && !t.includes("..."));
+  assert.equal(t, "Guidance for industry on the control of Listeria monocytogenes in ready-to-eat foods and related");
+});
+
+test("titles: sources go parsed title, alias, a file name in a referring block, a real url name, then PDF date", () => {
+  assert.equal(pdfPageBaseTitle({ display: "Annual report 2024", alias: "Alias", refs: ["x.pdf"], fileName: "real_name.pdf" }), "Annual report 2024");
+  assert.equal(pdfPageBaseTitle({ display: "PDF", alias: "My alias", refs: ["x.pdf"], fileName: "real_name.pdf" }), "My alias");
+  assert.equal(pdfPageBaseTitle({ display: "PDF", alias: "", refs: ["report-scan.pdf: Fixture page 3"], fileName: "real_name.pdf" }), "report-scan");
+  assert.equal(pdfPageBaseTitle({ display: "Untitled", refs: ["no file here", "see Lab_Notes.PDF today"], fileName: "" }), "Lab Notes");
+  assert.equal(pdfPageBaseTitle({ display: "PDF", refs: [], fileName: "real_name.pdf", now: TODAY }), "real name");
+  assert.equal(pdfPageBaseTitle({ display: "PDF", refs: [], fileName: "Y Wx3LSX7k", now: TODAY }), "PDF 2026-10-11");
+  assert.equal(pdfPageBaseTitle({ display: "PDF", fileName: "", now: TODAY }), "PDF 2026-10-11");
+  assert.equal(pdfPageBaseTitle({ display: "ab", fileName: "", now: TODAY }), "PDF 2026-10-11");
+});
+
+test("titles: random storage names are recognised; page-card refs and urls are not names", () => {
+  assert.equal(looksRandomName("Y_Wx3LSX7k"), true);
+  assert.equal(looksRandomName("Y Wx3LSX7k"), true);
+  assert.equal(looksRandomName("zqJy0wsTc"), true);
+  assert.equal(looksRandomName("cdc1980_p25"), false);
+  assert.equal(looksRandomName("annual report"), false);
+  assert.equal(pdfNameFromRefs(["{{[[pdf]]: https://x/y/abc.pdf}}", "((uid12345)) cites it"]), "");
+  assert.equal(pdfNameFromRefs(["report-scan.pdf: Fixture"]), "report-scan");
+});
+
+test("planner: scanned PDFs get dated titles with a plain suffix, never PDF (2); refs and alias feed the title", () => {
+  const plan = planPdfMigration(fakeBoard(), planDeps({
+    titleFor: () => "PDF",
+    urlOf: (item) => (item.uid === "pA" ? "https://x/o/imgs%2Fapp%2FG%2FY_Wx3LSX7k.pdf?alt=media" : pdfMacroUrl(item.string)),
+    refsOf: (item) => (item.uid === "pB" ? ["report-scan.pdf: Fixture"] : []),
+    now: () => TODAY,
+  }));
+  assert.deepEqual(plan.moves.map((m) => m.page.title), ["PDF 2026-10-11", "report-scan", "PDF 2026-10-11 (2)"]);
+  const two = planPdfMigration(fakeBoard(), planDeps({ titleFor: () => "PDF", urlOf: (item) => `https://x/o/${item.uid}Z9.pdf`, now: () => TODAY }));
+  assert.deepEqual(two.moves.map((m) => m.page.title), ["PDF 2026-10-11", "PDF 2026-10-11 (2)", "PDF 2026-10-11 (3)"]);
+  assert.ok(!two.moves.some((m) => m.page.title === "PDF (2)"));
+});
+
+// ---- undo and redo of the whole migration ----
+
+test("undo: three PDFs, the first onto an EXISTING page: one undo restores every pdf block, props and order; redo migrates again", async () => {
+  const fake = createFakeRoam();
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  host.graphName = () => "g";
+  fake.seedPage({ title: "Lab", uid: "lab", children: [] });
+  fake.seedPage({ title: "report", uid: "rep", children: [{ uid: "repNote", string: "Notes by [[Svy]]" }] });
+  const urls = ["https://x/o/report.pdf", "https://x/o/Beta Study.pdf", "https://x/o/Gamma Study.pdf"];
+  const pdfKid = (uid, i) => ({ uid, string: pdf(urls[i]), props: { plexus: { type: "card", x: 10 + i * 300, y: 20, w: 240, h: 320 }, ...(i ? { "plexus-reads": { k: i } } : {}) } });
+  fake.seedBoard({
+    uid: "b1",
+    parent: "lab",
+    props: { plexus: { v: 2 } },
+    children: [
+      { uid: "sec", string: "PDFS", heading: 1, props: { plexus: { type: "section", x: 0, y: 0, w: 1200, h: 600 } }, children: [pdfKid("q0", 0), { uid: "n0", string: "between", props: { plexus: { type: "card", x: 5, y: 500 } } }, pdfKid("q1", 1), pdfKid("q2", 2)] },
+      { uid: "n1", string: "a note", props: { plexus: { type: "card", x: 1000, y: 0 } } },
+      { uid: "E", string: "Connections", props: { plexus: { type: "edges" } }, open: false, children: [{ uid: "e1", string: "((q0)) → cites → ((n1))", props: { plexus: { type: "edge", from: "q0", to: "n1" } } }] },
+    ],
+  });
+  fake.trackUndo = true;
+  const session = acquireSession("b1", { host, raf: (fn) => fn(), linkDelay: 0, settings: { "graph-links": "off" } });
+  const snap = () => ({
+    sec: fake.children("sec"),
+    rep: fake.children("rep"),
+    props: Object.fromEntries(["q0", "q1", "q2"].map((u) => [u, JSON.stringify(fake.props(u))])),
+    edge: [fake.block("e1").string, JSON.stringify(fake.props("e1"))],
+  });
+  const before = snap();
+  const plan = sessionPlan(session, host, {
+    findPage: ({ url }) => (url === urls[0] ? { uid: "rep", title: "report", why: "url" } : null),
+    titleFor: (item) => ({ q0: "report", q1: "Beta Study", q2: "Gamma Study" })[item.uid] || "PDF",
+  });
+  assert.equal(plan.moves.length, 3);
+  assert.equal(plan.moves[0].page.reuse, true);
+  const res = await session.movePdfsToPages(plan);
+  assert.equal(res.moved, 3);
+  const after = snap();
+  assert.deepEqual(fake.children("rep").slice(0, 2), ["q0", "repNote"]);
+  assert.ok(!after.sec.includes("q0") && !after.sec.includes("q1") && !after.sec.includes("q2"));
+  await session.undo();
+  assert.deepEqual(snap(), before);
+  assert.equal(fake.block("q0").parent, "sec");
+  assert.ok(plan.moves.every((m) => !fake.block(m.cardUid)), "every new card is gone");
+  await session.redo();
+  assert.deepEqual(snap(), after);
+  await session.undo();
+  assert.deepEqual(snap(), before);
 });

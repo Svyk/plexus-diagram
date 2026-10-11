@@ -37,12 +37,26 @@ export function createQueryCards({ doc = globalThis.document, host, storage, gra
   const swallow = (event) => event.stopPropagation();
 
   // One run per query card at a time; a remount inside REUSE_MS shows the last result without a new read.
+  // The query block itself and everything under it never count as results.
+  function excludeOf(uid) {
+    const out = new Set([uid]);
+    const walk = (nodes) => {
+      for (const node of Array.isArray(nodes) ? nodes : []) {
+        const id = node?.uid || node?.[":block/uid"];
+        if (typeof id === "string") out.add(id);
+        walk(node?.children || node?.[":block/children"]);
+      }
+    };
+    try { walk(host?.pullTree?.(uid, 6, 400)); } catch { /* the card block alone is excluded */ }
+    return out;
+  }
+
   function fetchRows(uid, ast, force) {
     const hit = runs.get(uid);
     if (!force && hit?.result && now() - hit.at < REUSE_MS) return Promise.resolve(hit.result);
     if (hit?.promise) return hit.promise;
     const entry = { at: now(), result: null, promise: null };
-    entry.promise = loadQueryRows(ast, source, { tick: () => new Promise((resolve) => later(resolve)) })
+    entry.promise = loadQueryRows(ast, source, { exclude: excludeOf(uid), tick: () => new Promise((resolve) => later(resolve)) })
       .catch(() => ({ status: "error", rows: [], total: 0, partial: true }))
       .then((result) => {
         entry.promise = null;

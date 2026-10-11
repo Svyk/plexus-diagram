@@ -9,7 +9,7 @@ import {
   commentTargetUid,
   commentThreadPlan,
 } from "../src/model/comments.js";
-import { changedSince, createVisitStore, latestEdit, timeAgo } from "../src/model/changes.js";
+import { changedSince, changedToggle, createVisitStore, latestEdit, timeAgo } from "../src/model/changes.js";
 import { installCommentHost } from "../src/host/comments.js";
 import { createPanel } from "../src/view/panel.js";
 import { buildMenu, flattenMenu } from "../src/view/menu-model.js";
@@ -230,4 +230,24 @@ test("menus offer Comment and Changed since last visit only when the host suppor
   assert.equal(ids(buildMenu("board-menu", {})).includes("changed-since"), false);
   const on = flattenMenu(buildMenu("board-menu", { changes: true, changed: true })).find((row) => row.id === "changed-since");
   assert.equal(on.checked, true);
+});
+
+test("board menu keeps Changed since last visit in both states and shows the check when on", () => {
+  const ctx = { changes: true, lens: true, walk: true, snapshots: [], inlinePdfs: 0 };
+  const off = flattenMenu(buildMenu("board-menu", { ...ctx, changed: false }));
+  const on = flattenMenu(buildMenu("board-menu", { ...ctx, changed: true }));
+  assert.equal(on.length, off.length);
+  const rowOff = off.find((row) => row.id === "changed-since");
+  const rowOn = on.find((row) => row.id === "changed-since");
+  assert.equal(rowOff.label, "Changed since last visit");
+  assert.equal(rowOn.label, "Changed since last visit");
+  assert.ok(!rowOff.checked);
+  assert.equal(rowOn.checked, true);
+});
+
+test("selecting Changed since last visit again turns it off and closes the Changed tab", () => {
+  assert.deepEqual(changedToggle(false, ""), { on: true, open: true, close: false });
+  assert.deepEqual(changedToggle(true, "changed"), { on: false, open: false, close: true });
+  assert.deepEqual(changedToggle(true, "search"), { on: false, open: false, close: false });
+  assert.deepEqual(changedToggle(true, ""), { on: false, open: false, close: false });
 });

@@ -462,3 +462,40 @@ test("QI-8: rules install on the api object, q passes the rule as the % input, a
   fresh();
   assert.equal("rules" in api, false);
 });
+
+test("QI-7: the query block itself is not a result; the count equals what the list can show", async () => {
+  const all = ["queryUID1", "aaaaaaaa1", "ghostUID1"];
+  const backend = {
+    hits: async () => ({ uids: all, partial: false }),
+    times: () => new Map(),
+    details: (order) => order.filter((u) => u !== "ghostUID1").map((uid) => ({ uid, string: `text ${uid}`, page: "Lab" })),
+  };
+  const ast = parseQuery("{{[[query]]: {and: [[Readwise]] [[TODO]]}}}").ast;
+  const got = await loadQueryRows(ast, backend, { tick: async () => {}, exclude: ["queryUID1"] });
+  assert.deepEqual(got.rows.map((r) => r.uid), ["aaaaaaaa1"]);
+  assert.equal(got.total, 1);
+  assert.equal(got.partial, false);
+  const none = await loadQueryRows(ast, { ...backend, hits: async () => ({ uids: ["queryUID1"], partial: false }) }, { tick: async () => {}, exclude: ["queryUID1"] });
+  assert.deepEqual([none.rows.length, none.total], [0, 0]);
+  // A hit the list cannot show (no details) is not counted either.
+  const unseen = await loadQueryRows(ast, backend, { tick: async () => {} });
+  assert.equal(unseen.total, unseen.rows.length);
+});
+
+test("QI-7: a card whose only match is its own block says 0 results above 'No results'", async () => {
+  const backend = {
+    hits: async () => ({ uids: ["queryUID1", "childUID01"], partial: false }),
+    times: () => new Map(),
+    details: (order) => order.map((uid) => ({ uid, string: `text ${uid}` })),
+  };
+  const { root } = mountCard({
+    string: "{{[[query]]: {and: [[Readwise]] [[TODO]]}}}",
+    backend,
+    hostExtra: { pullTree: () => [{ uid: "childUID01", children: [] }] },
+  });
+  await flush(); await flush(); await flush(); await flush();
+  assert.equal(root.querySelectorAll(".pxd-qc__row").length, 0);
+  assert.match(root.querySelector(".pxd-qc__empty").textContent, /No results/);
+  assert.match(root.querySelector(".pxd-qc__count").textContent, /0 results/);
+  assert.doesNotMatch(root.querySelector(".pxd-qc__count").textContent, /partial/);
+});

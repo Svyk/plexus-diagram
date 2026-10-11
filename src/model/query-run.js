@@ -227,15 +227,21 @@ export function rankUids(uids, times, cap = QUERY_RESULT_CAP) {
 }
 
 // One full run: leaves, ranking, details. Rows are capped at QUERY_RESULT_CAP; `total` is the match count before the cap.
+// `opts.exclude` (uids) drops the query block itself and what sits under it before ranking and counting, so the count
+// is the number of rows the list can show.
 export async function loadQueryRows(ast, backend, opts = {}) {
   const run = await runQuery(ast, backend, opts);
   if (run.status !== "ok") return { status: run.status, rows: [], total: 0, partial: run.partial };
   const tick = opts.tick || defaultTick;
-  const times = backend.times(run.uids);
+  const skip = new Set(opts.exclude || []);
+  const uids = skip.size ? run.uids.filter((u) => !skip.has(u)) : run.uids;
+  const times = backend.times(uids);
   await tick();
-  const order = rankUids(run.uids, times, QUERY_RESULT_CAP);
+  const order = rankUids(uids, times, QUERY_RESULT_CAP);
   const details = backend.details(order);
-  return { status: "ok", rows: queryRows(details, order), total: run.uids.length, partial: run.partial || run.uids.length > QUERY_RESULT_CAP };
+  const rows = queryRows(details, order);
+  const total = uids.length - (order.length - rows.length);
+  return { status: "ok", rows, total, partial: run.partial || total > QUERY_RESULT_CAP };
 }
 
 // One painted row. A page result is a [[page]] card, a block result a ((uid)) card.

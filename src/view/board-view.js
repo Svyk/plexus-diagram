@@ -149,7 +149,7 @@ import {
 } from "../model/section6.js";
 import { mountLater, mountPrintSheet } from "./later-views.js";
 import { cellElementOf, cellUidOf, isTableCard } from "./table-cells.js";
-import { CHANGE_CAP, changedSince, createVisitStore } from "../model/changes.js";
+import { CHANGE_CAP, changedSince, changedToggle, createVisitStore } from "../model/changes.js";
 import { commentTargetUid } from "../model/comments.js";
 import { endpointUnderPointer, focusEnds, imageSourceOf, pickSmallestRegion, regionDropPlan, regionUidFromHover, wireStart } from "../model/endpoints.js";
 import { imageRegionFrac, paintedRectOfElement } from "../model/image-region.js";
@@ -2133,6 +2133,13 @@ function buildBoardView(onFail, {
       findPage: ({ url }) => host?.findPdfPage?.({ url, sha: shaOf.get(url) || "" }) || null,
       pageExists: (title) => host?.pageExists?.(title) === true,
       titleFor: (item) => pdfDisplayTitle(item),
+      aliasOf: (item) => aliasOfCard(item),
+      refsOf: (item) => {
+        let rows = [];
+        try { rows = host?.q?.("[:find ?s :in $ ?u :where [?b :block/uid ?u] [?r :block/refs ?b] [?r :block/string ?s]]", item.uid) || []; } catch { rows = []; }
+        return rows.map((row) => (Array.isArray(row) ? row[0] : row)).filter((v) => typeof v === "string");
+      },
+      now: () => Date.now(),
       newUid: () => host?.generateUid?.() || "",
     });
   };
@@ -4749,9 +4756,11 @@ function buildBoardView(onFail, {
         break;
       }
       case "changed-since": {
-        changedOn = !changedOn;
+        const fx = changedToggle(changedOn, panel.isOpen?.() ? panel.currentTab?.() : "");
+        changedOn = fx.on;
         refreshChanged();
-        if (changedOn) panel.open("changed");
+        if (fx.open) panel.open("changed");
+        if (fx.close) panel.close();
         break;
       }
       case "comment": {

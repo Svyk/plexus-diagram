@@ -93,6 +93,18 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   // One fromMarkdown is one undo, even when it builds a nested tree. Generic create/update stay
   // call-counters only: existing undo tests assert call names and must not see blocks disappear.
   const undoStack = [];
+  // fake.trackUndo = true: every block/page write is one undo entry that restores the whole tree (opt-in).
+  const history = [];
+  const redoStack = [];
+  const takeState = () => ({ blocks: structuredClone([...blocks]), pages: structuredClone([...pages]) });
+  const putState = (state) => {
+    blocks.clear(); pages.clear();
+    for (const [k, v] of state.blocks) blocks.set(k, v);
+    for (const [k, v] of state.pages) pages.set(k, v);
+    for (const w of watches.slice()) {
+      schedule(() => { if (watches.includes(w)) w.cb(null, pull(w.pattern, [":block/uid", w.uid])); }, fake.echoDelay);
+    }
+  };
   const CONSUMED = new Set(["\\", "#", "`", "*", "-", ".", ">", "[", "]", "(", ")"]);
   const unescapeMeasured = (line) => {
     let out = "";
@@ -238,6 +250,7 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
         }
         const before = snapshotBefore(uid);
         const chainBefore = topUid(uid);
+        if (fake.trackUndo) { history.push(takeState()); redoStack.length = 0; }
         fn();
         fake.log.push(logEntry);
         notify(uid, before, chainBefore);
@@ -319,7 +332,7 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
               const order = typeof start === "number" ? start + i : "last";
               attach(node.uid, parentUid, order);
             });
-            undoStack.push(() => { for (const node of roots) dropTree(node.uid); });
+            if (!fake.trackUndo) undoStack.push(() => { for (const node of roots) dropTree(node.uid); });
             try { fake.onFromMarkdown?.(uids); } catch { /* a test hook must not abort the write */ }
           }, entry).then(() => ({ uids }));
         },
@@ -347,11 +360,23 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
       },
       undo() {
         fake.calls.push(["undo"]);
+        if (fake.trackUndo) {
+          const prev = history.pop();
+          if (prev) { redoStack.push(takeState()); putState(prev); }
+          return Promise.resolve();
+        }
         const fn = undoStack.pop();
         if (typeof fn === "function") fn();
         return Promise.resolve();
       },
-      redo() { fake.calls.push(["redo"]); return Promise.resolve(); },
+      redo() {
+        fake.calls.push(["redo"]);
+        if (fake.trackUndo) {
+          const next = redoStack.pop();
+          if (next) { history.push(takeState()); putState(next); }
+        }
+        return Promise.resolve();
+      },
     },
     get file() {
       if (!uploadStub && !fileGetStub) return undefined;

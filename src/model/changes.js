@@ -55,6 +55,13 @@ export function changedSince(nodes, lastVisit, titleOf = (uid) => uid) {
   return rows;
 }
 
+// The board menu item is a toggle. `tab` is the panel's current tab, or "" when the panel is closed.
+// Turning it on opens the Changed tab; turning it off closes that tab when it is showing.
+export function changedToggle(wasOn, tab = "") {
+  const on = wasOn !== true;
+  return { on, open: on, close: !on && tab === "changed" };
+}
+
 export function timeAgo(time, now = Date.now()) {
   const s = Math.max(0, Math.floor((now - time) / 1000));
   if (s < 60) return "just now";

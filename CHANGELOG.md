@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.22.0 — 2026-10-11
+
+Boards respond at once to zoom, hover, click, drag, edit and undo, and unfolding a board in the outline no longer draws every table.
+
+- **Smooth zoom and hover.** Zooming with the wheel or trackpad no longer stutters: a zoom burst is one gesture, and the board settles once at the end. Moving the mouse over cards no longer makes the page catch.
+- **Faster clicks.** Selecting, deselecting, dropping a dragged card, leaving a card's editor and opening or closing the Add panel each paint in about 25–100 ms, down from about 200–300 ms. Board state no longer changes classes on the whole board, which some other extensions' styles (zotero-roam) turned into a full restyle, and the board ignores Reference Path's highlight colours on its own block.
+- **Tables fold under captions.** A table card is now a one-line caption ("Table · 7 rows") with the table folded under it, so unfolding a board in the outline shows one line per table instead of drawing every row (Parse Lab: 3.6 s → 0.24 s). New tables are made this way. "Fold tables under captions" in the board ⋯ menu converts the tables already on a board, with a preview first and one undo for the whole change.
+- **Lighter after zooming out.** Large tables swap back to their picture as soon as you zoom out to the map, instead of staying live for ten seconds.
+- **Faster undo.** Undo and redo repaint at once; badge counts refresh just after.
+- Comment counts on cards load with one small query whatever the size of the board.
+
 ## 3.21.0 — 2026-10-11
 
 Boards open instantly, PDFs live on their own pages the way Roam keeps them, Ask AI reads charts and compares parts across PDFs, and images are searchable by colour and by the text inside them.

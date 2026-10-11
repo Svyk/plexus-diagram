@@ -1865,6 +1865,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return remember(result);
     },
 
+    // True when the graph is end-to-end encrypted: its files are .enc and no outside service can read them.
+    graphEncrypted() {
+      try {
+        const flag = api.graph?.isEncrypted;
+        return typeof flag === "function" ? Boolean(flag.call(api.graph)) : flag === true;
+      } catch {
+        return false;
+      }
+    },
+
     async uploadFile(file) {
       const upload = api.file?.upload;
       if (typeof upload !== "function") throw new Error("upload-unavailable");

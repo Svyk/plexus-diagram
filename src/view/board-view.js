@@ -103,7 +103,10 @@ import { createPanel, parseDropPayload } from "./panel.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
-import { createParseStore, readableParse, restorableTitle } from "../host/parse-store.js";
+import { createParseStore, imageKey, readableParse, restorableTitle } from "../host/parse-store.js";
+import { createFigureImages, getFigureImages, setFigureImages, shrinkImage } from "../host/figure-image.js";
+import { imageDoc } from "../model/ai-context.js";
+import { dataUrlToBlob } from "./parse-crop.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { scheduleTitleLexiconWarm } from "./title-lexicon-warm.js";
 import { createParseActions, freeSpotBeside } from "./parse-actions.js";
@@ -1866,6 +1869,50 @@ function buildBoardView(onFail, {
     if (!titleStore) titleStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
     return titleStore;
   };
+  // Pictures for Ask AI: uploaded to the graph on Send (never on open), remembered in the parse store.
+  const figureImages = createFigureImages({
+    store: { getMeta: (k) => parseStoreShared().getMeta?.(k), putMeta: (k, v) => parseStoreShared().putMeta?.(k, v) },
+    upload: (file) => host.uploadFile(file),
+    encrypted: () => host?.graphEncrypted?.() === true,
+    enabled: () => readSetting("ask-figure-images") !== false,
+    fetchFn: (...args) => globalThis.fetch(...args),
+    shrink: (blob) => shrinkImage(blob, { doc }),
+  });
+  setFigureImages(figureImages);
+  // The cached crop of a parsed figure. Rendering a missing one needs the open PDF, so a search row without a cached crop asks text-only.
+  const figureSpecFor = (parsed, block) => {
+    const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
+    const url = typeof block.image?.url === "string" ? block.image.url : typeof block.url === "string" ? block.url : "";
+    let cached;
+    const crop = async () => {
+      if (cached !== undefined) return cached;
+      let src = "";
+      try { const got = key ? await parseStoreShared().getImage(key) : ""; src = typeof got === "string" ? got : ""; } catch { src = ""; }
+      cached = src || null;
+      return cached;
+    };
+    return { key, url, name: `figure-p${block.page ?? 0}`, getBlob: async () => { const src = await crop(); return src ? dataUrlToBlob(src) : null; }, getThumb: crop };
+  };
+  // An image card on the board: the image's own URL goes straight to the model; its words and page title are the context.
+  const askAboutImageCard = (item) => {
+    const text = String(item?.string ?? "");
+    const m = /!\[([^\]]*)\]\(([^)\s]+)\)/.exec(text);
+    const url = m ? m[2] : "";
+    const alt = m ? m[1] : "";
+    const rest = text.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+    const caption = [alt, rest].filter(Boolean).join(" — ");
+    let title = "";
+    try { title = host?.pageTitleOf?.(item?.uid) || ""; } catch { title = ""; }
+    if (!title) title = board()?.title || "";
+    return openAskAI({
+      doc: imageDoc({ caption, title }),
+      blockId: "img",
+      document: doc,
+      toast: (message) => toast(message),
+      image: { key: "", url, caption: caption || "Image", name: "image", thumb: url },
+      addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid: item.uid, pdfBlockUid: item.uid }),
+    });
+  };
   // Ask AI about a parsed PDF: one part (blockId, page) or the whole document. The answer card lands beside the PDF.
   const askAboutParsed = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "", page = null, wholeDoc = false }) => {
     let parsed = null;
@@ -1876,8 +1923,10 @@ function buildBoardView(onFail, {
     } catch { parsed = null; }
     if (disposed) return null;
     if (!parsed) { toast("Parse not found. Open the PDF and parse it again"); return null; }
+    const figure = blockId && parsed.blocks?.[blockId]?.type === "figure" ? parsed.blocks[blockId] : null;
     return openAskAI({
       doc: parsed,
+      ...(figure ? { image: figureSpecFor(parsed, figure) } : {}),
       ...(blockId ? { blockId } : {}),
       ...(page != null ? { page } : {}),
       ...(wholeDoc ? { wholeDoc: true } : {}),
@@ -4049,7 +4098,7 @@ function buildBoardView(onFail, {
           } catch { /* keep the card string */ }
         }
         const officeFile = officeTargetFromText(officeText);
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -4432,6 +4481,7 @@ function buildBoardView(onFail, {
         break;
       }
       case "ask-ai": {
+        if (item?.kind === "image") { askAboutImageCard(item); break; }
         if (!item || item.kind !== "pdf") break;
         void askAboutParsed({ pdfUid: item.uid, url: pdfUrlOf(item.uid), wholeDoc: true });
         break;
@@ -8198,6 +8248,7 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      if (getFigureImages() === figureImages) setFigureImages(null);
       const step = (fn) => {
         try { fn(); } catch (error) { console.warn("[plexus-diagram] dispose step failed", error); }
       };

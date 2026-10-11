@@ -671,6 +671,32 @@ export function createParseView({
     const made = await session.ensurePdfPin(spec);
     return made?.uid || "";
   }
+  // The picture of a figure for Ask AI: a graph URL if it has one, else the cached crop, else a fresh render of its box.
+  function figureImageSpec(block) {
+    const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
+    const url = typeof block.image?.url === "string" ? block.image.url : typeof block.url === "string" ? block.url : "";
+    let cropped = null;
+    const crop = async () => {
+      if (cropped) return cropped;
+      let src = "";
+      if (key && typeof store?.getImage === "function") {
+        try { src = imageSrc(await store.getImage(key)); } catch { src = ""; }
+      }
+      if (!src) { try { src = await cropAt2x(block); } catch { src = ""; } }
+      cropped = src || null;
+      return cropped;
+    };
+    return {
+      key,
+      url,
+      name: `figure-p${block.page ?? 0}`,
+      getBlob: async () => {
+        const src = await crop();
+        return src ? dataUrlToBlob(src) : null;
+      },
+      getThumb: () => crop(),
+    };
+  }
   // Ask AI about one block, or a selection inside it. The answer card cites the block as its source pin.
   function askAbout(spec = {}) {
     if (!parsed) return null;
@@ -678,6 +704,7 @@ export function createParseView({
     return openAskAI({
       doc: parsed,
       ...spec,
+      ...(block?.type === "figure" ? { image: figureImageSpec(block) } : {}),
       document: doc,
       jumpPage: (n) => jumpPage?.(n),
       toast: (message) => { try { onToast?.(message); } catch { /* host */ } },

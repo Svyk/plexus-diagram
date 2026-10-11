@@ -66,6 +66,7 @@ export const SETTING_IDS = Object.freeze({
   parsePageReader: "parse-page-reader",
   parseAutoRead: "parse-auto-read",
   keepReads: "keep-reads",
+  askFigureImages: "ask-figure-images",
   parseLinkSafe: "parse-link-safe",
   parseNumbered: "parse-numbered",
   parseFootnotes: "parse-footnotes",
@@ -137,6 +138,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.parsePageReader]: "all",
   [SETTING_IDS.parseAutoRead]: true,
   [SETTING_IDS.keepReads]: true,
+  [SETTING_IDS.askFigureImages]: true,
   [SETTING_IDS.parseLinkSafe]: true,
   [SETTING_IDS.parseNumbered]: false,
   [SETTING_IDS.parseFootnotes]: "inline",
@@ -519,6 +521,7 @@ const SETTING_ROWS = {
   [SETTING_IDS.parsePageReader]: () => selectRow(SETTING_IDS.parsePageReader, "High accuracy page reader", "All (default) reads every scanned page with the page model: better on photographed, handwritten and old printed pages, about ten times slower per scanned page. Doubtful reads only the scanned pages the recogniser is unsure of.", ["doubtful", "all"]),
   [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
   [SETTING_IDS.keepReads]: () => switchRow(SETTING_IDS.keepReads, "Keep reads in the graph", "After a High accuracy, helper or cloud read, upload the read as one file to the graph and note it on the PDF block, so your other computers load it instead of reading again. The built-in parse is never kept. Off uploads nothing; reads already kept still load."),
+  [SETTING_IDS.askFigureImages]: () => switchRow(SETTING_IDS.askFigureImages, "Send figure images to AI", "Uploads the figure's image to your graph as a file the first time you ask about it."),
   [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
   [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
   [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"]),
@@ -557,7 +560,7 @@ const SETTING_GROUPS = [
   ]],
   ["group-parse", "PDF parse", "A local helper for harder PDFs, and how parsed text is inserted.", [
     SETTING_IDS.parseHelperUrl, SETTING_IDS.parseHelperToken, SETTING_IDS.parseEngineDefault, SETTING_IDS.parseFormula,
-    SETTING_IDS.parseOcr, SETTING_IDS.parsePageReader, SETTING_IDS.parseAutoRead, SETTING_IDS.keepReads, SETTING_IDS.parseLinkSafe, SETTING_IDS.parseNumbered, SETTING_IDS.parseFootnotes, SETTING_IDS.parseFootnoteFormat,
+    SETTING_IDS.parseOcr, SETTING_IDS.parsePageReader, SETTING_IDS.parseAutoRead, SETTING_IDS.keepReads, SETTING_IDS.askFigureImages, SETTING_IDS.parseLinkSafe, SETTING_IDS.parseNumbered, SETTING_IDS.parseFootnotes, SETTING_IDS.parseFootnoteFormat,
   ]],
 ];
 

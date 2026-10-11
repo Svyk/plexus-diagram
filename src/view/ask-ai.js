@@ -1,8 +1,16 @@
 // Ask AI dialog. One part of a parsed PDF goes to the user's Live AI Assistant (the only AI path) together
 // with the document around it. Floating, one at a time, closes on Esc.
 
-import { answerCardMarkdown, buildFocusContext, chipText, parseAnswer, previewText, QUICK_PROMPTS, selectionDoc, splitCitations } from "../model/ai-context.js";
+import { answerCardMarkdown, buildFocusContext, chipText, parseAnswer, previewText, promptWithImage, QUICK_PROMPTS, selectionDoc, splitCitations, withImageInstructions } from "../model/ai-context.js";
 import * as liveai from "../host/liveai.js";
+import { getFigureImages, isUsableImageUrl, noteFor } from "../host/figure-image.js";
+
+export const SEES_NOTE = "The model will see this image";
+export const BLIND_NOTE = "This model can't see images — text only";
+export const OFF_NOTE = "Figure images are off in settings — text only";
+export const UPLOADING_NOTE = "Uploading figure…";
+export const VISION_KEY = "pxd-ask-vision-model";
+const PENDING_URL = "https://… (uploaded when you press Send)";
 
 let openDialog = null;
 
@@ -67,8 +75,10 @@ export function paintAnswer(doc, node, text, onPage) {
 }
 
 // doc: a pxd-parse document, or null (then `selection` is all there is). focus keys: blockId | selection | page.
-// Extras: jumpPage(n), addCard({ markdown, chip, blockId }) -> Promise, toast(msg), win, host document.
-export function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, wholeDoc = false, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null } = {}) {
+// Extras: jumpPage(n), addCard({ markdown, chip, blockId, imageUrl }) -> Promise, toast(msg), win, host document.
+// image: { key, caption, url?, name?, getBlob(), getThumb() } is a picture the model may see; imageService decides how its
+// URL is made (default: the one the board registered). Nothing is uploaded before Send.
+export function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, wholeDoc = false, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null, image = null, imageService = null } = {}) {
   const dom = ownerDoc || (typeof document !== "undefined" ? document : null);
   if (!dom) return null;
   const win = w || dom.defaultView || globalThis;
@@ -104,12 +114,29 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   closeBtn.type = "button";
   closeBtn.setAttribute("aria-label", "Close");
 
+  const hasImage = Boolean(image) && !isWhole;
+  const service = imageService || getFigureImages();
+  const altText = () => image?.caption || built.figure?.caption || "";
   const chip = make(dom, "button", "pxd-ask__chip", root, chipText(built.chip));
   chip.type = "button";
   chip.setAttribute("aria-expanded", "false");
   chip.setAttribute("title", "Show exactly what will be sent");
   const preview = make(dom, "pre", "pxd-ask__preview", root);
   preview.hidden = true;
+  let thumb = null;
+  let imageNote = null;
+  if (hasImage) {
+    const strip = make(dom, "div", "pxd-ask__imagerow", root);
+    thumb = make(dom, "img", "pxd-ask__thumb", strip);
+    thumb.setAttribute("alt", "");
+    thumb.hidden = true;
+    imageNote = make(dom, "span", "pxd-ask__imgnote", strip);
+    imageNote.setAttribute("aria-live", "polite");
+    const show = (src) => { if (src) { thumb.setAttribute("src", src); thumb.hidden = false; } };
+    if (image.thumb) show(image.thumb);
+    else if (typeof image.getThumb === "function") void Promise.resolve().then(() => image.getThumb()).then(show, () => {});
+    else if (image.url) show(image.url);
+  }
 
   const body = make(dom, "div", "pxd-ask__body", root);
 
@@ -128,10 +155,27 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   let out = null;
   let status = null;
   let actions = null;
+  let models = [];
+  let knownUrl = "";
+  let sentUrl = "";
 
+  const modelSees = () => Boolean(models.find((m) => m.id === (modelSel?.value || ""))?.imageInput);
+  const imagesOn = () => { try { return service ? service.enabled() !== false : Boolean(image?.url); } catch { return true; } };
+  // Will the next Send carry the picture?
+  const willSend = () => hasImage && imagesOn() && modelSees();
+  const paintNote = () => {
+    if (!imageNote) return;
+    imageNote.textContent = !imagesOn() ? OFF_NOTE : modelSees() ? SEES_NOTE : BLIND_NOTE;
+  };
   const refreshPreview = () => {
     rebuild(textarea ? textarea.value : prompt.text);
-    preview.textContent = `${previewText({ instructions: built.instructions, context: built.context, prompt: textarea ? textarea.value : prompt.text })}\n\n(about ${built.tokensEstimate.toLocaleString?.() ?? built.tokensEstimate} tokens before the question)`;
+    const sending = willSend();
+    const question = textarea ? textarea.value : prompt.text;
+    preview.textContent = `${previewText({
+      instructions: sending ? withImageInstructions(built.instructions) : built.instructions,
+      context: built.context,
+      prompt: sending ? promptWithImage(question, knownUrl || PENDING_URL, altText()) : question,
+    })}\n\n(about ${built.tokensEstimate.toLocaleString?.() ?? built.tokensEstimate} tokens before the question)`;
   };
   chip.addEventListener("click", () => {
     const show = preview.hidden;
@@ -149,6 +193,17 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   };
   const showActions = (on) => { if (actions) actions.hidden = !on; };
 
+  const ensureImage = async () => {
+    try {
+      if (service) return await service.ensureUrl(image);
+      return image.url && isUsableImageUrl(image.url) ? { ok: true, url: image.url } : { ok: false, reason: "upload-failed" };
+    } catch {
+      return { ok: false, reason: "upload-failed" };
+    }
+  };
+  const storage = () => { try { return win.localStorage || globalThis.localStorage || null; } catch { return null; } };
+  const visionKey = () => `${VISION_KEY}:${/#\/app\/([^/?#]+)/.exec(String(win.location?.hash || ""))?.[1] || ""}`;
+
   const run = async () => {
     if (!textarea || ctl) return;
     const question = textarea.value.trim();
@@ -158,14 +213,23 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     token += 1;
     const mine = token;
     answer = "";
-    status.textContent = "Thinking…";
+    sentUrl = "";
     paintAnswer(dom, out, "", goPage);
     showActions(false);
     setBusy(true);
+    let note = "";
+    if (willSend()) {
+      status.textContent = UPLOADING_NOTE;
+      const got = await ensureImage();
+      if (mine !== token || dead) return;
+      if (got.ok) { sentUrl = got.url; knownUrl = got.url; } else note = noteFor(got.reason);
+    }
+    status.textContent = note ? `${note} Thinking…` : "Thinking…";
+    if (note) say(note);
     const result = await liveai.ask({
       context: built.context,
-      systemPrompt: built.instructions,
-      prompt: question,
+      systemPrompt: sentUrl ? withImageInstructions(built.instructions) : built.instructions,
+      prompt: promptWithImage(question, sentUrl, altText()),
       model: modelSel?.value || "",
       signal: ctl.signal,
       window: win,
@@ -197,14 +261,31 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     make(dom, "label", "pxd-ask__label", row, "Model");
     modelSel = make(dom, "select", "pxd-ask__model", row);
     modelSel.setAttribute("aria-label", "Model");
-    const models = liveai.listModels(win);
-    const def = liveai.defaultModel(win);
+    models = liveai.listModels(win);
+    let def = liveai.defaultModel(win);
+    // A figure goes to a model that can see it: the user's default stays when it can, else the last vision model.
+    if (hasImage && !models.find((m) => m.id === def)?.imageInput) {
+      let last = "";
+      try { last = String(storage()?.getItem(visionKey()) || ""); } catch { last = ""; }
+      const pick = models.find((m) => m.id === last && m.imageInput) || models.find((m) => m.imageInput);
+      if (pick) def = pick.id;
+    }
     for (const m of models) {
       const opt = make(dom, "option", "", modelSel, m.provider ? `${m.name} · ${m.provider}` : m.name);
       opt.value = m.id;
       if (m.id === def) opt.selected = true;
     }
     if (def) modelSel.value = def;
+    modelSel.addEventListener("change", () => {
+      if (hasImage && modelSees()) { try { storage()?.setItem(visionKey(), modelSel.value); } catch { /* private mode */ } }
+      paintNote();
+      if (!preview.hidden) refreshPreview();
+    });
+    paintNote();
+    if (hasImage && image.url && isUsableImageUrl(image.url)) knownUrl = image.url;
+    else if (hasImage && service?.peek && image.key) {
+      void Promise.resolve(service.peek(image.key)).then((url) => { if (url && !dead) { knownUrl = url; if (!preview.hidden) refreshPreview(); } }, () => {});
+    }
 
     const quick = make(dom, "div", "pxd-ask__quick", body);
     textarea = make(dom, "textarea", "pxd-ask__question", body);
@@ -258,10 +339,10 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     const cardBtn = make(dom, "button", "pxd-ask__act", actions, "Add as card");
     cardBtn.type = "button";
     cardBtn.addEventListener("click", () => {
-      const markdown = answerCardMarkdown({ answer, chip: built.chip });
+      const markdown = answerCardMarkdown({ answer, chip: built.chip, imageUrl: sentUrl });
       if (!markdown || typeof addCard !== "function") { say("Cannot add a card here"); return; }
       cardBtn.disabled = true;
-      void Promise.resolve(addCard({ markdown, chip: built.chip, blockId: blockId || "", answer }))
+      void Promise.resolve(addCard({ markdown, chip: built.chip, blockId: blockId || "", answer, imageUrl: sentUrl }))
         .catch(() => {})
         .then(() => { cardBtn.disabled = false; });
     });

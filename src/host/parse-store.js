@@ -377,6 +377,26 @@ export function createParseStore({ indexedDB: factory, now, docCap = PARSE_DOC_C
       }
     },
 
+    // Small key/value records beside the URL index, under "meta:" so they never collide with a PDF URL.
+    async getMeta(key) {
+      try {
+        if (!key) return null;
+        const got = await backend.get(STORE_PARSE_INDEX, `meta:${key}`);
+        return got === undefined ? null : got;
+      } catch {
+        return null;
+      }
+    },
+
+    async putMeta(key, value) {
+      try {
+        if (!key) return false;
+        return Boolean(await backend.put(STORE_PARSE_INDEX, `meta:${key}`, value));
+      } catch {
+        return false;
+      }
+    },
+
     async getImage(key) {
       try {
         if (!key) return null;

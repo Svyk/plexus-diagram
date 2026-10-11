@@ -33,7 +33,7 @@ use crate::pair::{close_window, window_open};
 use crate::pdf;
 
 pub const HELPER_NAME: &str = "plexus-parse-helper";
-pub const HELPER_VERSION: &str = "0.1.0-rs";
+pub const HELPER_VERSION: &str = "0.2.0-rs";
 pub const SCHEMA_ID: &str = "pxd-parse/1";
 pub const MAX_BODY: usize = 200 * 1024 * 1024;
 

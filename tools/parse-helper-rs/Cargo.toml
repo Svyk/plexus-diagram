@@ -1,6 +1,6 @@
 [package]
 name = "plexus-parse-helper-rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Spike: Plexus local parse helper in Rust (Apple Vision OCR, same HTTP contract)"
 license = "MIT"

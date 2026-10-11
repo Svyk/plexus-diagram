@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.19.0 — 2026-10-10
+
+High accuracy reads every scanned page with the page model, a finished read follows you to your other computers, and old tables, photographed pages and figures read much closer to the page.
+
+- **Every scanned page through the page model.** High accuracy now reads each scanned page with Qwen3-VL by default (setting "High accuracy page reader": All, or Doubtful for the old behaviour). It is slower, about ten times per scanned page, and much better on photographed, handwritten and old printed pages: a photographed 1881 title page now matches the page 100% (was 3%), and a handwritten 1925 note 100% (was 36%).
+- **Reads are kept in the graph.** After a High accuracy, helper or LlamaParse read, Plexus uploads the read as one file to the graph and notes it on the PDF block, so your other computers load it instead of reading the PDF again. Setting "Keep reads in the graph" (on by default).
+- **Old tables.** Lists with leader dots and page numbers are read as whole tables, pages set in small capitals are no longer tilted before reading, side-by-side and stacked tables are kept apart, and printed leading zeros stay. An 1850 roster now scores 0.84 on cell content (was 0.08), a 1921 hydraulic table 0.94 (was 0.19).
+- **Figures.** The layout model's picture boxes are combined with the ink detector's: two photographs on one plate are two figures, a shadow over a photographed page is not a picture, and a drawing with one caption stays one figure.
+- **Tested on pages Plexus was not tuned on.** On 35 pages from libraries never used in development, High accuracy now scores 0.80 against LlamaParse's 0.82 (3.18.0 scored 0.73), and leads on handwritten pages (0.88 against 0.77).
+- **Rust helper 0.2.0.** The light helper's deskew check changed; re-run the helper install to get it.
+- Cached parses from earlier versions are refreshed automatically.
+
 ## 3.18.0 — 2026-10-10
 
 Handwritten letters read closer to the page, a wide old table reads whole, and High accuracy installs on a clean Mac.

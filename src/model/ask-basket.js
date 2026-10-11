@@ -2,6 +2,7 @@
 // closing the dialog, not a reload. Pure state; the views draw it.
 
 import { buildFocusContext, chipText } from "./ai-context.js";
+import { pdfCardForUrl } from "./pdf.js";
 
 export const BASKET_MAX = 8;
 
@@ -57,8 +58,9 @@ export const BASKET_MESSAGES = Object.freeze({
 export const pillText = (n) => `${n} part${n === 1 ? "" : "s"} · Ask`;
 
 // The card on a board that stands for a source: the PDF card itself, or a card made from the same pin
-// (it targets the pin or carries Source:: ((pin))). items: iterable of board items. -> uid or "".
-export function findSourceCard(items, { pinUid = "", pdfUid = "", sourceOf = null } = {}) {
+// (it targets the pin or carries Source:: ((pin))), else the PDF card whose source URL is the part's url. items: iterable of
+// board items. pdfSourceOf(item) -> the item's `{{[[pdf]]: url}}` string (defaults to item.string). -> uid or "".
+export function findSourceCard(items, { pinUid = "", pdfUid = "", url = "", sourceOf = null, pdfSourceOf = null } = {}) {
   const list = [...(items || [])];
   if (pinUid) {
     const hit = list.find((it) => it?.uid === pinUid || it?.target?.uid === pinUid || (typeof sourceOf === "function" && sourceOf(it) === pinUid));
@@ -67,6 +69,17 @@ export function findSourceCard(items, { pinUid = "", pdfUid = "", sourceOf = nul
   if (pdfUid) {
     const hit = list.find((it) => it?.uid === pdfUid && it.kind === "pdf") || list.find((it) => it?.uid === pdfUid);
     if (hit) return hit.uid;
+  }
+  if (url) {
+    const cards = list
+      .filter((it) => it?.kind === "pdf")
+      .map((it) => {
+        let source = "";
+        try { source = typeof pdfSourceOf === "function" ? pdfSourceOf(it) : it.string; } catch { source = ""; }
+        return { uid: it.uid, source };
+      });
+    const hit = pdfCardForUrl(url, cards);
+    if (hit) return hit;
   }
   return "";
 }

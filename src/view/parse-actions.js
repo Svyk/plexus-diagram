@@ -72,7 +72,7 @@ export function placementContent(doc, ids, act, extra = null) {
   return { content: { kind: "text", text, page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
 }
 
-export function createParseActions({ session, store, placeBeside, toast, select, show, focus, upload, toWorld, linkSources } = {}) {
+export function createParseActions({ session, store, placeBeside, toast, select, show, focus, upload, toWorld, linkSources, pdfSourceOf } = {}) {
   const say = (message) => { try { if (typeof toast === "function") toast(message); } catch { /* host */ } };
   const pick = (uids) => {
     const list = (Array.isArray(uids) ? uids : []).filter((id) => typeof id === "string" && id);
@@ -96,7 +96,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       const items = session.board?.items ? [...session.board.items.values()] : [];
       const used = new Set([answerUid]);
       for (const src of sources) {
-        const to = findSourceCard(items, { pinUid: src.pinUid, pdfUid: src.pdfUid, sourceOf: (it) => sourcePinOf(it?.content)?.uid || "" });
+        const to = findSourceCard(items, { pinUid: src.pinUid, pdfUid: src.pdfUid, url: src.url, pdfSourceOf, sourceOf: (it) => sourcePinOf(it?.content)?.uid || "" });
         if (!to || used.has(to)) continue;
         used.add(to);
         await session.addEdge({ from: answerUid, to, label: "source", dir: "one" });
@@ -219,14 +219,14 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       const markdown = String(payload?.markdown || "").trim();
       if (!markdown) return { ok: false, reason: "empty" };
       // One source for a single part; payload.sources holds one per part of a question over several.
-      const given = Array.isArray(payload.sources) && payload.sources.length ? payload.sources : [{ pdfUid: payload.pdfUid, pin: payload.pin, sourceUid: payload.sourceUid }];
+      const given = Array.isArray(payload.sources) && payload.sources.length ? payload.sources : [{ pdfUid: payload.pdfUid, url: payload.url, pin: payload.pin, sourceUid: payload.sourceUid }];
       const resolved = [];
       for (const src of given) {
         let uid = typeof src?.sourceUid === "string" ? src.sourceUid : "";
         if (!uid && src?.pin && typeof session?.ensurePdfPin === "function") {
           try { uid = (await session.ensurePdfPin(src.pin))?.uid || ""; } catch { uid = ""; }
         }
-        resolved.push({ uid, pinUid: src?.pin ? uid : "", pdfUid: typeof src?.pdfUid === "string" ? src.pdfUid : "" });
+        resolved.push({ uid, pinUid: src?.pin ? uid : "", pdfUid: typeof src?.pdfUid === "string" ? src.pdfUid : "", url: typeof src?.url === "string" ? src.url : "" });
       }
       const uids = [...new Set(resolved.map((r) => r.uid).filter(Boolean))];
       const at = where(payload, CARD_SIZE);

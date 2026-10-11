@@ -14,12 +14,15 @@ export const NEARBY_PARAS = 2;
 const CHARS_PER_TOKEN = 4;
 const PARA_CLIP = 1200;
 
+export const PLAIN_MARKDOWN = "Write plain Markdown. For comparisons use a Markdown table (| a | b |). Never use Roam syntax such as {{[[table]]}}, [[links]] or ((refs)).";
+
 export const INSTRUCTIONS = [
   "You are helping someone read one part of a PDF.",
   "Analyse the part under \"Selected part\". Use \"Document outline\", \"Section\" and \"Nearby text\" only to interpret it, not as the subject.",
   "Cite pages as [p. N] using the page numbers shown in the context.",
   "If the selected part alone does not support a claim, say so instead of filling the gap from elsewhere.",
   "Refer to the selected part as 'this table', 'this paragraph' or 'this figure' (as appropriate); never mention section labels.",
+  PLAIN_MARKDOWN,
 ].join("\n");
 
 export const DOC_INSTRUCTIONS = [
@@ -28,6 +31,7 @@ export const DOC_INSTRUCTIONS = [
   "Cite pages as [p. N] using the page numbers shown in the context.",
   "The parts under \"Relevant parts of the document\" were chosen for the question and are not the whole document. When they do not cover something, say so instead of filling the gap from elsewhere.",
   "Refer to it as 'this document'; never mention section labels.",
+  PLAIN_MARKDOWN,
 ].join("\n");
 
 // Added to the instructions only when the model is actually sent the picture.
@@ -587,7 +591,26 @@ export function splitCitations(text) {
   return out;
 }
 
-// An answer split into paragraphs and lists: [{ type: "p", text } | { type: "list", ordered, items: [{ text, depth }] }].
+const TABLE_MACRO = /^\{\{\[\[table\]\]\}\}$/i;
+const BULLET = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+const SEPARATOR_ROW = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+const indentOf = (m) => m[1].replace(/\t/g, "  ").length;
+
+function pipeCells(line) {
+  const cells = [];
+  let cur = "";
+  const t = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  for (let i = 0; i < t.length; i += 1) {
+    if (t[i] === "\\" && t[i + 1] === "|") { cur += "|"; i += 1; } else if (t[i] === "|") { cells.push(cur.trim()); cur = ""; } else cur += t[i];
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+// An answer split into paragraphs, lists and tables: [{ type: "p", text } | { type: "list", ordered, items: [{ text, depth }] } |
+// { type: "table", rows: [[cell]] }]. A table is a Markdown table (header, separator, rows) or a Roam outline: a
+// `{{[[table]]}}` bullet whose children are rows, each row a chain with every cell nested under the one before it.
+// The first row is the header.
 export function parseAnswer(answer) {
   const out = [];
   let para = [];
@@ -599,11 +622,47 @@ export function parseAnswer(answer) {
     para = [];
   };
   const endList = () => { list = null; stack = []; };
-  for (const raw of String(answer ?? "").replace(/\r/g, "").split("\n")) {
-    const item = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(raw);
+  const lines = String(answer ?? "").replace(/\r/g, "").split("\n");
+  for (let i = 0; i < lines.length; i += 1) {
+    const raw = lines[i];
+    const item = BULLET.exec(raw);
+    if (item && TABLE_MACRO.test(item[3].trim())) {
+      const base = indentOf(item);
+      const rows = [];
+      let row = null;
+      let rowIndent = -1;
+      let j = i + 1;
+      for (; j < lines.length; j += 1) {
+        const next = BULLET.exec(lines[j]);
+        if (!next || indentOf(next) <= base) break;
+        const at = indentOf(next);
+        if (!row || at <= rowIndent) { row = []; rows.push(row); rowIndent = at; }
+        row.push(next[3].trim());
+      }
+      if (rows.length && rows.some((r) => r.length > 1)) {
+        flush();
+        endList();
+        out.push({ type: "table", rows });
+        i = j - 1;
+        continue;
+      }
+    }
+    if (raw.includes("|") && i + 1 < lines.length && lines[i + 1].includes("-") && SEPARATOR_ROW.test(lines[i + 1]) && !BULLET.test(raw)) {
+      const head = pipeCells(raw);
+      if (head.length > 1) {
+        flush();
+        endList();
+        const rows = [head];
+        let j = i + 2;
+        for (; j < lines.length && lines[j].includes("|") && lines[j].trim(); j += 1) rows.push(pipeCells(lines[j]));
+        out.push({ type: "table", rows });
+        i = j - 1;
+        continue;
+      }
+    }
     if (item) {
       flush();
-      const indent = item[1].replace(/\t/g, "  ").length;
+      const indent = indentOf(item);
       const ordered = /\d/.test(item[2]);
       if (!list || (stack.length <= 1 && indent <= stack[0] && list.ordered !== ordered)) {
         list = { type: "list", ordered, items: [] };
@@ -629,13 +688,17 @@ export function parseAnswer(answer) {
   return out;
 }
 
-// An answer as Roam blocks: a paragraph is one block, a list item is one block (nested by indent).
-// Returns [{ text, depth }].
+// An answer as Roam blocks: a paragraph is one block, a list item is one block (nested by indent). A table is a
+// `{{[[table]]}}` block (table: true) followed by its cells, each row a chain one level deeper per cell (cell: true).
+// Returns [{ text, depth, table?, cell? }].
 export function answerBlocks(answer) {
   const out = [];
   for (const part of parseAnswer(answer)) {
     if (part.type === "p") out.push({ text: part.text, depth: 0 });
-    else for (const item of part.items) out.push({ text: item.text, depth: item.depth });
+    else if (part.type === "table") {
+      out.push({ text: "{{[[table]]}}", depth: 0, table: true });
+      for (const row of part.rows) row.forEach((text, c) => out.push({ text, depth: 1 + c, cell: true }));
+    } else for (const item of part.items) out.push({ text: item.text, depth: item.depth });
   }
   return out;
 }
@@ -643,12 +706,17 @@ export function answerBlocks(answer) {
 // The card for an answer: one header bullet, then one bullet per paragraph or list item (indented for nesting).
 // With imageUrl (an image the model was sent), the first child is that image, so the card shows what the model saw.
 export function answerCardMarkdown({ answer = "", chip = null, imageUrl = "" } = {}) {
-  const blocks = answerBlocks(answer).map((b) => ({ ...b, text: flattenLine(b.text) })).filter((b) => b.text);
+  const blocks = answerBlocks(answer).map((b) => ({ ...b, text: flattenLine(b.text) })).filter((b) => b.text || b.cell);
   if (!blocks.length) return "";
   const head = `AI answer · ${chipText(chip) || "PDF"}`;
   const line = (text, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip(text, 1800)), { leading: true })}`;
   const image = imageUrl ? [`  - ![](${String(imageUrl).trim()})`] : [];
-  return [line(head), ...image, ...blocks.slice(0, 40).map((b) => line(b.text, Math.min(b.depth, 3)))].join("\n");
+  const body = blocks.slice(0, 45).map((b) => {
+    if (b.table) return `  - ${b.text}`;
+    if (b.cell) return `${"  ".repeat(Math.min(b.depth, 12) + 1)}- ${escapeMarkdownText(linkSafeText(clip(b.text || "-", 600)), { leading: true })}`;
+    return line(b.text, Math.min(b.depth, 3));
+  });
+  return [line(head), ...image, ...body].join("\n");
 }
 
 // ---- Ask AI over several parts (the basket) ----
@@ -661,6 +729,7 @@ export const MULTI_INSTRUCTIONS = [
   "Cite as [Part N, p. M] using the part number and the page numbers shown. When every part comes from one document, [p. M] is also fine.",
   "Name the document when parts come from different PDFs.",
   "Say so when the parts do not support a claim or a comparison.",
+  PLAIN_MARKDOWN,
 ].join("\n");
 
 export const MULTI_IMAGE_INSTRUCTIONS = "The context starts with images of figure parts, each labelled \"Image of Part N\". Look at them. Read values off charts (axes, units, series, notable points); say when something is not legible instead of guessing, and mark values read off a scale as approximate.";

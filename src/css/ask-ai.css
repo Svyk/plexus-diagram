@@ -190,6 +190,30 @@
   padding-left: 20px;
 }
 
+.pxd-ask__tablewrap {
+  margin: 0 0 8px;
+  overflow-x: auto;
+}
+
+.pxd-ask__table {
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.pxd-ask__table th,
+.pxd-ask__table td {
+  padding: 3px 6px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  text-align: left;
+  vertical-align: top;
+}
+
+.pxd-ask__table th {
+  font-weight: 600;
+  background: rgba(127, 127, 127, 0.12);
+}
+
 .pxd-ask__li--n1 { margin-left: 16px; }
 .pxd-ask__li--n2 { margin-left: 32px; }
 .pxd-ask__li--n3 { margin-left: 48px; }

@@ -1733,6 +1733,7 @@ function buildBoardView(onFail, {
         focus: () => focusBoardAfterInsert(),
         upload: (file) => host.uploadFile?.(file),
         linkSources: () => readSetting("link-answer-sources") !== false,
+        pdfSourceOf: (item) => pdfSourceOfItem(item),
       });
     }
     return parseActionsObj;
@@ -2002,7 +2003,7 @@ function buildBoardView(onFail, {
       markdown,
       pdfUid: parts?.[0]?.pdfUid || "",
       pdfBlockUid: parts?.[0]?.pdfUid || "",
-      sources: (parts || []).map((p) => ({ pdfUid: p.pdfUid || "", ...(p.source || {}) })),
+      sources: (parts || []).map((p) => ({ pdfUid: p.pdfUid || "", url: p.url || "", ...(p.source || {}) })),
     }),
   });
   let basketPill = null;

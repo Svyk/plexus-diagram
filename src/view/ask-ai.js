@@ -77,6 +77,18 @@ export function paintAnswer(doc, node, text, onPage) {
       inlineInto(doc, make(doc, "p", "pxd-ask__p", node), part.text, onPage);
       continue;
     }
+    if (part.type === "table") {
+      const wrap = make(doc, "div", "pxd-ask__tablewrap", node);
+      const table = make(doc, "table", "pxd-ask__table", wrap);
+      const width = Math.max(...part.rows.map((r) => r.length));
+      const thead = make(doc, "thead", "", table);
+      const tbody = make(doc, "tbody", "", table);
+      part.rows.forEach((row, r) => {
+        const tr = make(doc, "tr", "", r === 0 ? thead : tbody);
+        for (let c = 0; c < width; c += 1) inlineInto(doc, make(doc, r === 0 ? "th" : "td", "", tr), row[c] ?? "", onPage);
+      });
+      continue;
+    }
     const list = make(doc, part.ordered ? "ol" : "ul", "pxd-ask__list", node);
     for (const item of part.items) {
       const li = make(doc, "li", item.depth ? `pxd-ask__li pxd-ask__li--n${Math.min(item.depth, 3)}` : "pxd-ask__li", list);

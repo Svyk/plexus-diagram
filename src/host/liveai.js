@@ -99,7 +99,10 @@ export async function ask({ context = "", prompt = "", systemPrompt = "", model 
   if (!available(w)) return { ok: false, code: "UNAVAILABLE", error: SETUP_HINT };
   const options = { prompt: String(prompt), caller: CALLER };
   if (context) options.context = String(context);
-  if (systemPrompt) options.systemPrompt = String(systemPrompt);
+  if (systemPrompt) {
+    options.systemPrompt = String(systemPrompt);
+    options.useDefaultSystemPrompt = false;
+  }
   if (model) options.model = model;
   if (signal) options.signal = signal;
   if (json) options.responseFormat = "json_object";

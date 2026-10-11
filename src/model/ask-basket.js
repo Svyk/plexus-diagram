@@ -57,13 +57,15 @@ export const BASKET_MESSAGES = Object.freeze({
 
 export const pillText = (n) => `${n} part${n === 1 ? "" : "s"} · Ask`;
 
-// The card on a board that stands for a source: the PDF card itself, or a card made from the same pin
-// (it targets the pin or carries Source:: ((pin))), else the PDF card whose source URL is the part's url. items: iterable of
-// board items. pdfSourceOf(item) -> the item's `{{[[pdf]]: url}}` string (defaults to item.string). -> uid or "".
-export function findSourceCard(items, { pinUid = "", pdfUid = "", url = "", sourceOf = null, pdfSourceOf = null } = {}) {
+// The card on a board that stands for a source: the PDF card itself, or a pin card (the item's OWN block is the pin or a
+// bare ref to it; never a card that merely has Source:: ((pin)) as a child, and never an "AI answer" card), else the PDF
+// card whose source URL is the part's url. items: iterable of ALL board items, section members included.
+// pdfSourceOf(item) -> the item's `{{[[pdf]]: url}}` string (defaults to item.string). -> uid or "".
+export function findSourceCard(items, { pinUid = "", pdfUid = "", url = "", pdfSourceOf = null } = {}) {
   const list = [...(items || [])];
   if (pinUid) {
-    const hit = list.find((it) => it?.uid === pinUid || it?.target?.uid === pinUid || (typeof sourceOf === "function" && sourceOf(it) === pinUid));
+    const isAnswer = (it) => /^\s*AI answer\b/.test(String(it?.string ?? ""));
+    const hit = list.find((it) => it && !isAnswer(it) && (it.uid === pinUid || (it.target?.kind !== "self" && it.target?.uid === pinUid)));
     if (hit) return hit.uid;
   }
   if (pdfUid) {

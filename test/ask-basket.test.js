@@ -363,12 +363,12 @@ test("multi dialog: figure parts upload their own image on Send, and only for a 
 
 // ---- 3. answers connected to their sources ----------------------------------------------------------
 
-test("findSourceCard: the PDF card, a card that targets the pin, or one with Source:: ((pin)); nothing otherwise", () => {
+test("findSourceCard: the PDF card, a card that targets the pin (a Source:: child does not count); nothing otherwise", () => {
   const items = [{ uid: "pdf1", kind: "pdf" }, { uid: "reg1", kind: "region-ref", target: { uid: "pinA" } }, { uid: "note1", kind: "note", content: "src" }];
   assert.equal(findSourceCard(items, { pdfUid: "pdf1" }), "pdf1");
   assert.equal(findSourceCard(items, { pinUid: "pinA", pdfUid: "pdf1" }), "reg1");
   assert.equal(findSourceCard(items, { pinUid: "pinZ", pdfUid: "pdf1" }), "pdf1");
-  assert.equal(findSourceCard(items, { pinUid: "pinB", sourceOf: (it) => (it.uid === "note1" ? "pinB" : "") }), "note1");
+  assert.equal(findSourceCard(items, { pinUid: "pinB", pdfUid: "pdf1", sourceOf: (it) => (it.uid === "note1" ? "pinB" : "") }), "pdf1");
   assert.equal(findSourceCard(items, { pinUid: "pinZ", pdfUid: "elsewhere" }), "");
   assert.equal(findSourceCard([], { pdfUid: "pdf1" }), "");
 });

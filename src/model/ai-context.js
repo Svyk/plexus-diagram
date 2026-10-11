@@ -712,8 +712,8 @@ export function answerCardMarkdown({ answer = "", chip = null, imageUrl = "" } =
   const line = (text, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip(text, 1800)), { leading: true })}`;
   const image = imageUrl ? [`  - ![](${String(imageUrl).trim()})`] : [];
   const body = blocks.slice(0, 45).map((b) => {
-    if (b.table) return `  - ${b.text}`;
-    if (b.cell) return `${"  ".repeat(Math.min(b.depth, 12) + 1)}- ${escapeMarkdownText(linkSafeText(clip(b.text || "-", 600)), { leading: true })}`;
+    if (b.table) return `- ${b.text}`;
+    if (b.cell) return `${"  ".repeat(Math.min(b.depth, 12))}- ${escapeMarkdownText(linkSafeText(clip(b.text, 600)), { leading: true })}`;
     return line(b.text, Math.min(b.depth, 3));
   });
   return [line(head), ...image, ...body].join("\n");

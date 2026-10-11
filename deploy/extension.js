@@ -52534,8 +52534,8 @@ function answerCardMarkdown({ answer = "", chip = null, imageUrl = "" } = {}) {
   const line = (text4, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip5(text4, 1800)), { leading: true })}`;
   const image = imageUrl ? [`  - ![](${String(imageUrl).trim()})`] : [];
   const body = blocks.slice(0, 45).map((b) => {
-    if (b.table) return `  - ${b.text}`;
-    if (b.cell) return `${"  ".repeat(Math.min(b.depth, 12) + 1)}- ${escapeMarkdownText(linkSafeText(clip5(b.text || "-", 600)), { leading: true })}`;
+    if (b.table) return `- ${b.text}`;
+    if (b.cell) return `${"  ".repeat(Math.min(b.depth, 12))}- ${escapeMarkdownText(linkSafeText(clip5(b.text, 600)), { leading: true })}`;
     return line(b.text, Math.min(b.depth, 3));
   });
   return [line(head), ...image, ...body].join("\n");
@@ -52676,10 +52676,11 @@ var BASKET_MESSAGES = Object.freeze({
   full: `Your question holds ${BASKET_MAX} parts. Remove one first`
 });
 var pillText = (n2) => `${n2} part${n2 === 1 ? "" : "s"} · Ask`;
-function findSourceCard(items, { pinUid = "", pdfUid = "", url = "", sourceOf = null, pdfSourceOf = null } = {}) {
+function findSourceCard(items, { pinUid = "", pdfUid = "", url = "", pdfSourceOf = null } = {}) {
   const list = [...items || []];
   if (pinUid) {
-    const hit = list.find((it) => it?.uid === pinUid || it?.target?.uid === pinUid || typeof sourceOf === "function" && sourceOf(it) === pinUid);
+    const isAnswer = (it) => /^\s*AI answer\b/.test(String(it?.string ?? ""));
+    const hit = list.find((it) => it && !isAnswer(it) && (it.uid === pinUid || it.target?.kind !== "self" && it.target?.uid === pinUid));
     if (hit) return hit.uid;
   }
   if (pdfUid) {
@@ -52818,7 +52819,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const items = session.board?.items ? [...session.board.items.values()] : [];
       const used = /* @__PURE__ */ new Set([answerUid]);
       for (const src of sources) {
-        const to = findSourceCard(items, { pinUid: src.pinUid, pdfUid: src.pdfUid, url: src.url, pdfSourceOf, sourceOf: (it) => sourcePinOf(it?.content)?.uid || "" });
+        const to = findSourceCard(items, { pinUid: src.pinUid, pdfUid: src.pdfUid, url: src.url, pdfSourceOf });
         if (!to || used.has(to)) continue;
         used.add(to);
         await session.addEdge({ from: answerUid, to, label: "source", dir: "one" });
@@ -55751,6 +55752,10 @@ var clipQuestion = (text4) => {
   const q = String(text4 ?? "").replace(/\s+/g, " ").trim();
   return q.length > 60 ? `${q.slice(0, 59).trimEnd()}…` : q;
 };
+var WIDTH_KEY = "pxd-ask-width";
+var MIN_WIDTH = 360;
+var QUESTION_MIN_ROWS = 2;
+var QUESTION_MAX_ROWS = 6;
 var PENDING_URL = "https://… (uploaded when you press Send)";
 var openDialog = null;
 var askModelSetting = () => "auto";
@@ -55863,11 +55868,48 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   root.setAttribute("aria-label", "Ask AI");
   const stop3 = (event) => event.stopPropagation();
   for (const type of ["pointerdown", "mousedown", "click", "mouseup", "dblclick", "wheel"]) root.addEventListener(type, stop3);
+  const grip = make(dom, "div", "pxd-ask__grip", root);
+  grip.setAttribute("aria-hidden", "true");
   const head = make(dom, "div", "pxd-ask__head", root);
   make(dom, "span", "pxd-ask__title", head, "Ask AI");
   const closeBtn = make(dom, "button", "pxd-ask__close", head, "×");
   closeBtn.type = "button";
   closeBtn.setAttribute("aria-label", "Close");
+  const widthKey = () => `${WIDTH_KEY}:${graphOfWindow(win2)}`;
+  const maxWidth = () => Math.max(MIN_WIDTH, (Number(win2.innerWidth) || 1280) - 32);
+  const clampWidth = (n2) => Math.round(Math.min(maxWidth(), Math.max(MIN_WIDTH, n2)));
+  const setWide = (on) => {
+    root.classList.toggle("pxd-ask--wide", Boolean(on));
+  };
+  if (multi) setWide(true);
+  try {
+    const saved2 = Number(win2.localStorage?.getItem(widthKey()));
+    if (Number.isFinite(saved2) && saved2 > 0) root.style.width = `${clampWidth(saved2)}px`;
+  } catch {
+  }
+  grip.addEventListener("pointerdown", (event) => {
+    event.preventDefault?.();
+    const startX = Number(event.clientX) || 0;
+    const startW = Number(root.getBoundingClientRect?.().width) || parseFloat(root.style.width) || 440;
+    let last = startW;
+    const move = (e2) => {
+      last = clampWidth(startW + (startX - (Number(e2.clientX) || 0)));
+      root.style.width = `${last}px`;
+    };
+    const up = () => {
+      dom.removeEventListener?.("pointermove", move, true);
+      dom.removeEventListener?.("pointerup", up, true);
+      dom.removeEventListener?.("pointercancel", up, true);
+      try {
+        win2.localStorage?.setItem(widthKey(), String(last));
+      } catch {
+      }
+      growQuestion();
+    };
+    dom.addEventListener?.("pointermove", move, true);
+    dom.addEventListener?.("pointerup", up, true);
+    dom.addEventListener?.("pointercancel", up, true);
+  });
   let hasImage = multi ? partImages().length > 0 : Boolean(image) && !isWhole;
   const service = imageService || getFigureImages();
   const altText = () => image?.caption || built.figure?.caption || "";
@@ -55990,6 +56032,22 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   const showActions = (on) => {
     if (actions) actions.hidden = !on;
   };
+  const paintAnswerNow = () => {
+    paintAnswer(dom, out, answer, goPage);
+    if (multi || parseAnswer(answer).some((part) => part.type === "table")) setWide(true);
+  };
+  function growQuestion() {
+    const ta = textarea;
+    if (!ta) return;
+    const value = String(ta.value ?? "");
+    const wrapped = value.split("\n").reduce((n2, line) => n2 + Math.max(1, Math.ceil(line.length / 52)), 0);
+    ta.rows = Math.min(QUESTION_MAX_ROWS, Math.max(QUESTION_MIN_ROWS, wrapped));
+    if (ta.style) {
+      ta.style.height = "auto";
+      const h = Number(ta.scrollHeight);
+      if (h > 0) ta.style.height = `${h + 2}px`;
+    }
+  }
   const ensureImage = async (spec = image) => {
     try {
       if (service) return await service.ensureUrl(spec);
@@ -56106,7 +56164,7 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
       onChunk: (chunk) => {
         if (dead || mine !== token) return;
         answer += chunk;
-        paintAnswer(dom, out, answer, goPage);
+        paintAnswerNow();
         status.textContent = "";
       }
     });
@@ -56128,7 +56186,7 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
       showEmpty();
       return;
     }
-    paintAnswer(dom, out, answer, goPage);
+    paintAnswerNow();
     status.textContent = result.model ? `${result.model}${result.usage?.outputTokens ? ` · ${result.usage.outputTokens} tokens` : ""}` : "";
     showActions(Boolean(answer));
   };
@@ -56198,19 +56256,21 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     }
     const quick = make(dom, "div", "pxd-ask__quick", body);
     textarea = make(dom, "textarea", "pxd-ask__question", body);
-    textarea.rows = 3;
     textarea.value = multi ? built.prompt : prompt.text;
+    growQuestion();
     textarea.setAttribute("aria-label", "Question");
     for (const q of multi ? MULTI_QUICK_PROMPTS : QUICK_PROMPTS) {
       const btn2 = make(dom, "button", "pxd-ask__quickbtn", quick, q.label);
       btn2.type = "button";
       btn2.addEventListener("click", () => {
         textarea.value = !multi && wholeDoc && !blockId && !blockIds ? q.prompt.replace("this part", "this document") : q.prompt;
+        growQuestion();
         if (!preview.hidden) refreshPreview();
         void run();
       });
     }
     textarea.addEventListener("input", () => {
+      growQuestion();
       if (!preview.hidden) refreshPreview();
     });
     textarea.addEventListener("keydown", (event) => {

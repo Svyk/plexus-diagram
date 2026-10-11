@@ -95,17 +95,17 @@ test("paintAnswer draws Markdown tables and Roam outlines as a real table with i
 
 test("Add as card: a Markdown table and a Roam outline both become a real {{[[table]]}} block with row chains", () => {
   const card = answerCardMarkdown({ answer: OUTLINE, chip: null }).split("\n");
-  const at = card.indexOf("  - {{[[table]]}}");
+  const at = card.indexOf("- {{[[table]]}}");
   assert.ok(at > 0);
-  assert.equal(card[at + 1], "    - Organism");
-  assert.equal(card[at + 2], "      - Our Table 1");
-  assert.equal(card[at + 4], "          - Gap");
-  assert.match(card[at + 5], /^    - Salmonella$/);
+  assert.equal(card[at + 1], "  - Organism");
+  assert.equal(card[at + 2], "    - Our Table 1");
+  assert.equal(card[at + 4], "        - Gap");
+  assert.match(card[at + 5], /^  - Salmonella$/);
   assert.ok(!card.some((l) => /`\{\{/.test(l) || /\\\{\{/.test(l)));
   const md = answerCardMarkdown({ answer: MD }).split("\n");
-  const t = md.indexOf("  - {{[[table]]}}");
-  assert.deepEqual(md.slice(t + 1, t + 4), ["    - Organism", "      - Ours", "        - EU"]);
-  assert.equal(md[t + 4], "    - Salmonella");
+  const t = md.indexOf("- {{[[table]]}}");
+  assert.deepEqual(md.slice(t + 1, t + 4), ["  - Organism", "    - Ours", "      - EU"]);
+  assert.equal(md[t + 4], "  - Salmonella");
 });
 
 test("findSourceCard falls back to the PDF card whose source URL equals the part url", () => {

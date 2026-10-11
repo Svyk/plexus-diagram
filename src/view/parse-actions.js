@@ -2,7 +2,7 @@
 // { sha256, engine, optsHash, ids, pdfUid, kind }; the session wants converted content.
 
 import { planParseInsert, PARSE_MISSING_TOAST, textCardMarkdown } from "../model/drop.js";
-import { pinSpecFromBlock, sourcePinOf } from "../model/pdf-pin.js";
+import { pinSpecFromBlock } from "../model/pdf-pin.js";
 import { findSourceCard } from "../model/ask-basket.js";
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
 import { selectBlocks, tableGrid } from "../model/parse-schema.js";
@@ -96,7 +96,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       const items = session.board?.items ? [...session.board.items.values()] : [];
       const used = new Set([answerUid]);
       for (const src of sources) {
-        const to = findSourceCard(items, { pinUid: src.pinUid, pdfUid: src.pdfUid, url: src.url, pdfSourceOf, sourceOf: (it) => sourcePinOf(it?.content)?.uid || "" });
+        const to = findSourceCard(items, { pinUid: src.pinUid, pdfUid: src.pdfUid, url: src.url, pdfSourceOf });
         if (!to || used.has(to)) continue;
         used.add(to);
         await session.addEdge({ from: answerUid, to, label: "source", dir: "one" });

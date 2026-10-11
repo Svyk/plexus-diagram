@@ -2309,6 +2309,8 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   gap: 8px;
   box-sizing: border-box;
   width: min(440px, calc(100vw - 32px));
+  min-width: min(360px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
   max-height: min(78vh, 720px, calc(100vh - 32px));
   padding: 12px;
   overflow: hidden;
@@ -2320,6 +2322,28 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   font-size: 13px;
 }
 
+/* A table or several parts need room. A width the user dragged to is an inline style and wins. */
+.pxd-ask--wide {
+  width: min(720px, calc(100vw - 48px));
+}
+
+/* Drag this strip on the left edge to change the width. */
+.pxd-ask__grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  width: 6px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.pxd-ask__grip:hover {
+  background: var(--pxd-accent, #2563eb);
+  opacity: 0.35;
+}
+
 .bp3-dark .pxd-ask,
 .pxd-root--dark ~ .pxd-ask {
   color: var(--pxd-fg, #e5e7eb);
@@ -2328,6 +2352,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 .pxd-ask__head {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2364,8 +2389,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 .pxd-ask__chip {
+  flex: 0 0 auto;
   align-self: flex-start;
   max-width: 100%;
+  height: auto;
   overflow: hidden;
   text-align: left;
   text-overflow: ellipsis;
@@ -2373,6 +2400,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 .pxd-ask__imagerow {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2457,7 +2485,12 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   box-sizing: border-box;
   width: 100%;
   padding: 6px 8px;
-  resize: vertical;
+  flex-shrink: 0;
+  min-height: calc(2 * 18px + 14px);
+  max-height: calc(6 * 18px + 14px);
+  line-height: 18px;
+  overflow-y: auto;
+  resize: none;
   background: transparent;
   border: 1px solid var(--pxd-border, #d1d5db);
   border-radius: 6px;
@@ -2496,6 +2529,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 .pxd-ask__table {
+  table-layout: auto;
   border-collapse: collapse;
   font-size: 12px;
   line-height: 1.35;
@@ -2505,8 +2539,11 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 .pxd-ask__table td {
   padding: 3px 6px;
   border: 1px solid rgba(127, 127, 127, 0.4);
+  min-width: 7em;
   text-align: left;
   vertical-align: top;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .pxd-ask__table th {
@@ -2574,18 +2611,23 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 .pxd-ask__parts {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: 4px;
   max-height: 96px;
   overflow-y: auto;
 }
 
 .pxd-ask__partchip {
+  flex: 0 1 auto;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
   max-width: 100%;
+  height: auto;
   padding: 2px 4px 2px 8px;
   border: 1px solid var(--pxd-border, #d1d5db);
   border-radius: 999px;
@@ -2600,7 +2642,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 .pxd-ask__partx {
-  padding: 0 4px;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
   line-height: 1;
   cursor: pointer;
 }

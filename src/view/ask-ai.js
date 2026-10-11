@@ -15,6 +15,10 @@ const clipQuestion = (text) => {
   const q = String(text ?? "").replace(/\s+/g, " ").trim();
   return q.length > 60 ? `${q.slice(0, 59).trimEnd()}…` : q;
 };
+export const WIDTH_KEY = "pxd-ask-width";
+export const MIN_WIDTH = 360;
+export const QUESTION_MIN_ROWS = 2;
+export const QUESTION_MAX_ROWS = 6;
 const PENDING_URL = "https://… (uploaded when you press Send)";
 
 let openDialog = null;
@@ -142,11 +146,44 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   const stop = (event) => event.stopPropagation();
   for (const type of ["pointerdown", "mousedown", "click", "mouseup", "dblclick", "wheel"]) root.addEventListener(type, stop);
 
+  const grip = make(dom, "div", "pxd-ask__grip", root);
+  grip.setAttribute("aria-hidden", "true");
   const head = make(dom, "div", "pxd-ask__head", root);
   make(dom, "span", "pxd-ask__title", head, "Ask AI");
   const closeBtn = make(dom, "button", "pxd-ask__close", head, "×");
   closeBtn.type = "button";
   closeBtn.setAttribute("aria-label", "Close");
+
+  const widthKey = () => `${WIDTH_KEY}:${graphOfWindow(win)}`;
+  const maxWidth = () => Math.max(MIN_WIDTH, (Number(win.innerWidth) || 1280) - 32);
+  const clampWidth = (n) => Math.round(Math.min(maxWidth(), Math.max(MIN_WIDTH, n)));
+  // A wider dialog for a table or several parts; a width the user dragged to wins and is kept per graph.
+  const setWide = (on) => { root.classList.toggle("pxd-ask--wide", Boolean(on)); };
+  if (multi) setWide(true);
+  try {
+    const saved = Number(win.localStorage?.getItem(widthKey()));
+    if (Number.isFinite(saved) && saved > 0) root.style.width = `${clampWidth(saved)}px`;
+  } catch { /* private mode */ }
+  grip.addEventListener("pointerdown", (event) => {
+    event.preventDefault?.();
+    const startX = Number(event.clientX) || 0;
+    const startW = Number(root.getBoundingClientRect?.().width) || parseFloat(root.style.width) || 440;
+    let last = startW;
+    const move = (e) => {
+      last = clampWidth(startW + (startX - (Number(e.clientX) || 0)));
+      root.style.width = `${last}px`;
+    };
+    const up = () => {
+      dom.removeEventListener?.("pointermove", move, true);
+      dom.removeEventListener?.("pointerup", up, true);
+      dom.removeEventListener?.("pointercancel", up, true);
+      try { win.localStorage?.setItem(widthKey(), String(last)); } catch { /* private mode */ }
+      growQuestion();
+    };
+    dom.addEventListener?.("pointermove", move, true);
+    dom.addEventListener?.("pointerup", up, true);
+    dom.addEventListener?.("pointercancel", up, true);
+  });
 
   let hasImage = multi ? partImages().length > 0 : Boolean(image) && !isWhole;
   const service = imageService || getFigureImages();
@@ -245,6 +282,23 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     if (textarea) textarea.disabled = busy;
   };
   const showActions = (on) => { if (actions) actions.hidden = !on; };
+  const paintAnswerNow = () => {
+    paintAnswer(dom, out, answer, goPage);
+    if (multi || parseAnswer(answer).some((part) => part.type === "table")) setWide(true);
+  };
+  // The question grows with its text, two to six lines.
+  function growQuestion() {
+    const ta = textarea;
+    if (!ta) return;
+    const value = String(ta.value ?? "");
+    const wrapped = value.split("\n").reduce((n, line) => n + Math.max(1, Math.ceil(line.length / 52)), 0);
+    ta.rows = Math.min(QUESTION_MAX_ROWS, Math.max(QUESTION_MIN_ROWS, wrapped));
+    if (ta.style) {
+      ta.style.height = "auto";
+      const h = Number(ta.scrollHeight);
+      if (h > 0) ta.style.height = `${h + 2}px`;
+    }
+  }
 
   const ensureImage = async (spec = image) => {
     try {
@@ -342,7 +396,7 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
       onChunk: (chunk) => {
         if (dead || mine !== token) return;
         answer += chunk;
-        paintAnswer(dom, out, answer, goPage);
+        paintAnswerNow();
         status.textContent = "";
       },
     });
@@ -357,7 +411,7 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     }
     answer = result.text || answer;
     if (!answer.trim()) { answer = ""; showEmpty(); return; }
-    paintAnswer(dom, out, answer, goPage);
+    paintAnswerNow();
     status.textContent = result.model ? `${result.model}${result.usage?.outputTokens ? ` · ${result.usage.outputTokens} tokens` : ""}` : "";
     showActions(Boolean(answer));
   };
@@ -400,19 +454,20 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
 
     const quick = make(dom, "div", "pxd-ask__quick", body);
     textarea = make(dom, "textarea", "pxd-ask__question", body);
-    textarea.rows = 3;
     textarea.value = multi ? built.prompt : prompt.text;
+    growQuestion();
     textarea.setAttribute("aria-label", "Question");
     for (const q of multi ? MULTI_QUICK_PROMPTS : QUICK_PROMPTS) {
       const btn = make(dom, "button", "pxd-ask__quickbtn", quick, q.label);
       btn.type = "button";
       btn.addEventListener("click", () => {
         textarea.value = !multi && wholeDoc && !blockId && !blockIds ? q.prompt.replace("this part", "this document") : q.prompt;
+        growQuestion();
         if (!preview.hidden) refreshPreview();
         void run();
       });
     }
-    textarea.addEventListener("input", () => { if (!preview.hidden) refreshPreview(); });
+    textarea.addEventListener("input", () => { growQuestion(); if (!preview.hidden) refreshPreview(); });
     textarea.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void run(); }
     });

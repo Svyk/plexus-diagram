@@ -219,6 +219,7 @@ export function createPageChips({
   copy = null,
   copyMenu = null,
   ask = null,
+  chart = null,
   drag = null,
   storage = null,
   boxCap = 4000,
@@ -386,6 +387,18 @@ export function createPageChips({
         event.stopPropagation?.();
         closeCopyMenu();
         try { ask(block); } catch { /* dialog */ }
+      });
+      menu.append(entry);
+    }
+    if (typeof chart === "function" && block.type === "figure") {
+      const entry = button("pxd-copy-menu__item", "Chart → table");
+      entry.setAttribute("role", "menuitem");
+      entry.setAttribute("data-copy", "chart-table");
+      on(entry, "click", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        closeCopyMenu();
+        try { chart(block); } catch { /* toast */ }
       });
       menu.append(entry);
     }

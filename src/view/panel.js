@@ -200,6 +200,13 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     swatchBtns.set(name, b);
   }
   paintTypes();
+  const likeChip = el("div", "pxd-panel__like", searchPane);
+  likeChip.style.display = "none";
+  const likeText = el("span", "pxd-panel__like-text", likeChip);
+  const likeClear = el("button", "pxd-panel__like-x", likeChip, "×");
+  likeClear.type = "button";
+  likeClear.setAttribute("aria-label", "Clear similar-image search");
+  likeClear.setAttribute("title", "Clear");
   const results = el("div", "pxd-panel__list", searchPane);
   const indexNote = el("div", "pxd-panel__index-note", searchPane);
   indexNote.style.display = "none";
@@ -294,6 +301,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const infoScroll = el("div", "pxd-panel__info", infoPane);
 
   let tab = "search";
+  let like = null;
   let debounce = null;
   let selected = null;
   let relatedRows = [];
@@ -311,7 +319,19 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     }
   };
 
-  const row = (parent, { string, label, text, kind, url, thumb, palette }) => {
+  const likeButton = (parent, key, name) => {
+    if (!key || typeof on.searchImages !== "function") return;
+    const b = el("button", "pxd-panel__row-act pxd-panel__row-like", parent);
+    b.setAttribute("type", "button");
+    b.setAttribute("aria-label", "More like this");
+    b.setAttribute("title", "More like this");
+    b.dataset.like = key;
+    b.setAttribute("data-like", key);
+    el("span", "bp3-icon bp3-icon-style", b).setAttribute("aria-hidden", "true");
+    listen(b, "click", (event) => { event.stopPropagation(); startLike(key, name); });
+  };
+
+  const row = (parent, { string, label, text, kind, url, thumb, palette, likeKey, likeName }) => {
     const r = el("div", "pxd-panel__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
@@ -340,6 +360,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
     }
     paletteDots(r, palette);
+    likeButton(r, likeKey, likeName);
     if (on.isOnBoard?.(string)) {
       r.classList.add("pxd-panel__row--on");
       el("span", "pxd-panel__row-on", r, "on board");
@@ -373,12 +394,21 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       el("span", "bp3-icon bp3-icon-lightbulb", ask).setAttribute("aria-hidden", "true");
       listen(ask, "click", (event) => { event.stopPropagation(); on.askPart(part); });
     }
+    if (part.kind === "figure" && typeof on.chartPart === "function") {
+      const chart = el("button", "pxd-panel__row-act pxd-panel__row-chart", head);
+      chart.setAttribute("type", "button");
+      chart.setAttribute("aria-label", "Chart to table");
+      chart.setAttribute("title", "Chart → table");
+      el("span", "bp3-icon bp3-icon-timeline-line-chart", chart).setAttribute("aria-hidden", "true");
+      listen(chart, "click", (event) => { event.stopPropagation(); on.chartPart(part); });
+    }
     const snip = partSnippet(part.text, needle);
     const body = el("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
     if (snip.before) body.append(snip.before);
     if (snip.hit) el("mark", "pxd-panel__mark", body, snip.hit);
     if (snip.after) body.append(snip.after);
     paletteDots(r, part.palette);
+    if (part.kind === "figure") likeButton(head, part.key, `Figure p. ${part.page}`);
     const payload = {
       sha256: part.sha256, engine: part.engine || "builtin", optsHash: part.optsHash || "", ids: [part.blockId],
       pdfUid: part.pdfUid || "", pdfBlockUid: part.pdfUid || "",
@@ -409,10 +439,53 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     orphan: orphanBox.checked === true,
   });
 
+  const paintLike = () => {
+    likeChip.style.display = like ? "" : "none";
+    likeText.textContent = like ? `Like: ${like.name}` : "";
+  };
+  const imageName = (img) => {
+    const alt = /!\[([^\]]*)\]/.exec(String(img?.string ?? ""));
+    return (alt && alt[1].trim()) || String(img?.pageTitle || "").trim() || "image";
+  };
+  // Similarity mode: the source's palette against every indexed image and figure, nearest first.
+  const runSimilar = async (id) => {
+    const wantImages = checked.has("image");
+    const wantFigures = checked.has("figure");
+    if (!wantImages && !wantFigures) { el("div", "pxd-panel__empty", results, "Turn on Image or Figure to compare"); return; }
+    let found = null;
+    try { found = await Promise.resolve(on.searchImages({ like: like.key, images: wantImages, figures: wantFigures }, LIMIT)); } catch { found = null; }
+    if (id !== queryId || !like) return;
+    results.replaceChildren();
+    if (found?.similar === false) { el("div", "pxd-panel__empty", results, "This image has no colours yet. Try again in a moment"); return; }
+    const images = Array.isArray(found?.images) ? found.images : [];
+    const figures = Array.isArray(found?.figures) ? found.figures : [];
+    if (!images.length && !figures.length) { el("div", "pxd-panel__empty", results, "No similar images"); return; }
+    const draw = (item, figure) => {
+      if (figure) partRow(results, item, "");
+      else row(results, { ...libraryCard({ kind: "block", uid: item.uid, string: item.string, pageTitle: item.pageTitle }), palette: item.palette, likeKey: item.key, likeName: imageName(item) });
+    };
+    const order = Array.isArray(found?.order) ? found.order : null;
+    if (order) order.forEach((item) => draw(item, item.kind === "figure"));
+    else { images.forEach((i) => draw(i, false)); figures.forEach((f) => draw(f, true)); }
+  };
+  const startLike = (key, name) => {
+    like = { key, name: String(name || "image").slice(0, 40) };
+    paintLike();
+    searchNow();
+  };
+  const clearLike = () => {
+    if (!like) return;
+    like = null;
+    paintLike();
+    searchNow();
+  };
+  listen(likeClear, "click", (event) => { event.stopPropagation(); clearLike(); });
+
   const runSearch = async () => {
     const filter = readFilter();
     const id = queryId += 1;
     results.replaceChildren();
+    if (like) { await runSimilar(id); return; }
     if (checked.size === 0) { el("div", "pxd-panel__empty", results, "No card types selected"); return; }
     if (!libraryFilterActive(filter)) return;
     let pack = null;
@@ -469,7 +542,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     results.replaceChildren();
     if (!rows.length && !parts.length && !images.length && !figures.length) { el("div", "pxd-panel__empty", results, "No matches"); return; }
     rows.forEach((r) => row(results, r));
-    images.forEach((img) => row(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette }));
+    images.forEach((img) => row(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette, likeKey: img.key, likeName: imageName(img) }));
     parts.forEach((part) => partRow(results, part, needle));
     figures.forEach((part) => partRow(results, part, needle));
   };
@@ -480,7 +553,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     debounce = timers.later(() => { debounce = null; void runSearch(); }, DEBOUNCE_MS);
   };
   const searchNow = () => { debounce?.(); debounce = null; void runSearch(); };
-  listen(input, "input", () => { try { on.typing?.(); } catch { /* host */ } paintSwatches(); scheduleSearch(); });
+  listen(input, "input", () => { try { on.typing?.(); } catch { /* host */ } if (like) { like = null; paintLike(); } paintSwatches(); scheduleSearch(); });
   const paintSwatches = () => {
     const have = new Set(input.value.toLowerCase().split(/\s+/));
     for (const [name, b] of swatchBtns) b.setAttribute("aria-pressed", have.has(name) ? "true" : "false");
@@ -492,6 +565,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     const at = tokens.findIndex((t) => t.toLowerCase() === name);
     if (at >= 0) tokens.splice(at, 1); else tokens.push(name);
     input.value = tokens.join(" ");
+    if (like) { like = null; paintLike(); }
     paintSwatches();
     searchNow();
   });

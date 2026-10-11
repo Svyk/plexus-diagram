@@ -1,7 +1,7 @@
 // Search over images: graph images and parsed-PDF figures. Words match the name, caption, page title, and any text read from
 // the image. Colour words (red, #1e90ff) rank by palette. Pure: records come from the host image index.
 
-import { COLOR_MIN_SCORE, colorQuery, colorScore } from "./color.js";
+import { COLOR_MIN_SCORE, colorQuery, colorScore, paletteDistance } from "./color.js";
 import { parsePageRange, queryTerms } from "./library.js";
 
 // { words, colors } from a query. A quoted phrase stays a word.
@@ -58,4 +58,30 @@ export function searchImages(items, records, { text = "", pages = "" } = {}, lim
     palette: palette ? palette.slice(0, 3).map((p) => p.hex) : [],
     colorScore: score,
   }));
+}
+
+export const SIMILAR_LIMIT = 40;
+
+// "More like this": every indexed item except the source, nearest palette first. Items without a palette are left out.
+// Same row shape as searchImages. `pages` is not applied; the source is the whole query. Ties keep input order.
+export function similarImages(items, records, sourceKey, limit = SIMILAR_LIMIT) {
+  const source = records?.get?.(sourceKey) || null;
+  if (!source || source.failed || !Array.isArray(source.palette) || !source.palette.length) return { ok: false, rows: [] };
+  const hits = [];
+  let seq = 0;
+  for (const item of Array.isArray(items) ? items : []) {
+    seq += 1;
+    if (item.key === sourceKey) continue;
+    const rec = records.get(item.key);
+    if (!rec || rec.failed || !Array.isArray(rec.palette) || !rec.palette.length) continue;
+    const distance = paletteDistance(source.palette, rec.palette);
+    if (Number.isFinite(distance)) hits.push({ item, distance, seq, palette: rec.palette });
+  }
+  hits.sort((a, b) => a.distance - b.distance || a.seq - b.seq);
+  const rows = hits.slice(0, Math.max(1, Math.floor(Number(limit) || SIMILAR_LIMIT))).map(({ item, palette, distance }) => ({
+    ...item,
+    palette: palette.slice(0, 3).map((p) => p.hex),
+    distance,
+  }));
+  return { ok: true, rows };
 }

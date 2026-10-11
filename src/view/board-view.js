@@ -76,6 +76,7 @@ import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
 import { openAskAI } from "./ask-ai.js";
+import { runChartToTable } from "./chart-table.js";
 import { BUILTIN_OPTIONS, readParsedUrls } from "./parse-view.js";
 import { createPdfWarm } from "./pdf-warm.js";
 import { createFirstPageRenderer, createPdfMetaLookup, detectPdfjs, firstPageAllowed } from "./pdf-first-page.js";
@@ -105,7 +106,7 @@ import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
 import { createParseStore, imageKey, readableParse, restorableTitle } from "../host/parse-store.js";
 import { createImageIndex } from "../host/image-index.js";
-import { searchImages } from "../model/image-search.js";
+import { searchImages, similarImages } from "../model/image-search.js";
 import { createFigureImages, getFigureImages, setFigureImages, shrinkImage } from "../host/figure-image.js";
 import { imageDoc } from "../model/ai-context.js";
 import { dataUrlToBlob } from "./parse-crop.js";
@@ -1936,6 +1937,26 @@ function buildBoardView(onFail, {
       jumpPage: (n) => { if (pdfUid) void itemsR?.openPdfAt?.(pdfUid, n); },
       toast: (message) => toast(message),
       addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfUid, ...answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) }),
+    });
+  };
+  // Chart -> table for a figure found in the search panel. The table lands beside the PDF card, the figure is its Source::.
+  const chartAboutParsed = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "" }) => {
+    let parsed = null;
+    try {
+      const store = parseStoreShared();
+      parsed = sha256 ? await store.getParse(sha256, engine, optsHash) : null;
+      if (!parsed && url) parsed = await readableParse(store, url, { plainOptions: BUILTIN_OPTIONS });
+    } catch { parsed = null; }
+    if (disposed) return null;
+    if (!parsed) { toast("Parse not found. Open the PDF and parse it again"); return null; }
+    const figure = blockId && parsed.blocks?.[blockId]?.type === "figure" ? parsed.blocks[blockId] : null;
+    if (!figure) return null;
+    return runChartToTable({
+      doc: parsed,
+      blockId,
+      image: figureSpecFor(parsed, figure),
+      toast: (message) => toast(message),
+      addTable: ({ table }) => parseActions().insertChartTable({ table, pdfUid, pdfBlockUid: pdfUid, ...answerSource({ doc: parsed, blockId, pdfUid }) }),
     });
   };
   const pdfCardUidFor = (pdfUid, url) => {
@@ -5310,7 +5331,7 @@ function buildBoardView(onFail, {
     }
     return imgIndex;
   };
-  const searchImageCards = async ({ text, images, figures, pages }, limit) => {
+  const searchImageCards = async ({ text, images, figures, pages, like }, limit) => {
     const index = imageIndex();
     await index.load();
     const imgItems = [];
@@ -5330,6 +5351,11 @@ function buildBoardView(onFail, {
       ...figItems.map((f) => ({ key: f.key, bytes: () => imgStore.getImage(f.key) })),
     ];
     if (feed.length) timers.later(() => { void index.enqueue(feed); }, 0);
+    if (like) {
+      const found = similarImages([...imgItems, ...figItems], index.records, like, limit);
+      const order = found.rows.map((r) => (r.kind === "figure" ? r : { ...r, kind: "image" }));
+      return { similar: found.ok, order, images: order.filter((r) => r.kind !== "figure"), figures: order.filter((r) => r.kind === "figure") };
+    }
     return {
       images: searchImages(imgItems, index.records, { text }, limit),
       figures: searchImages(figItems, index.records, { text, pages }, limit),
@@ -5379,6 +5405,9 @@ function buildBoardView(onFail, {
       },
       askPart: (row) => {
         void askAboutParsed({ pdfUid: pdfCardUidFor(row?.pdfUid || "", row?.url || "") || row?.pdfUid || "", url: row?.url || "", sha256: row?.sha256 || "", engine: row?.engine || "builtin", optsHash: row?.optsHash || "", blockId: row?.blockId || "", page: row?.page ?? null });
+      },
+      chartPart: (row) => {
+        void chartAboutParsed({ pdfUid: pdfCardUidFor(row?.pdfUid || "", row?.url || "") || row?.pdfUid || "", url: row?.url || "", sha256: row?.sha256 || "", engine: row?.engine || "builtin", optsHash: row?.optsHash || "", blockId: row?.blockId || "" });
       },
       listBoards: () => Promise.resolve(host?.listBoards?.()).then((rows) => rows || []),
       openBoardByUid: (uid) => {

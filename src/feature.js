@@ -19,6 +19,7 @@ import { createRelChips } from "./relchips.js";
 import { createBoardChips } from "./boardchips.js";
 import { createCardChips } from "./cardchips.js";
 import { createPrefetch } from "./prefetch.js";
+import { installBoardRules } from "./model/board-rule.js";
 import { createResurface } from "./view/resurface-panel.js";
 import { closeOpenWhyPopovers } from "./view/why-pop.js";
 import { createCardCache } from "./model/card-cache.js";
@@ -3315,6 +3316,7 @@ export async function installPlexusDiagram({
     },
   };
   win.__plexusDiagram = api;
+  lifecycle.add(installBoardRules(api, win));
   lifecycle.add(() => {
     uninstallPublicApi(publicApi, { win });
     if (win.__plexusDiagram === api) delete win.__plexusDiagram;

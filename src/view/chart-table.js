@@ -15,7 +15,6 @@ export const UNREADABLE_TOAST = (name) => `Could not read a table from ${name ||
 export const NOT_A_CHART_TOAST = "No chart data found in this figure.";
 
 // Errors that may come from the JSON response option itself: those get one plain-text retry.
-const RETRY_CODES = new Set(["INVALID_OPTIONS", "INVALID_JSON", "PROVIDER_ERROR"]);
 
 function nearbyOf(doc, blockId) {
   try {
@@ -48,7 +47,8 @@ export async function runChartToTable({ doc, blockId, image = null, imageService
   const { caption, nearby } = nearbyOf(doc, blockId);
   const request = { context: chartContext({ url: got.url, caption, nearby }), prompt: CHART_PROMPT, systemPrompt: CHART_SYSTEM_PROMPT, model: model.id, window: w };
   let res = await api.ask({ ...request, json: true });
-  if (!res.ok && RETRY_CODES.has(res.code)) res = await api.ask(request);
+  // Live AI's JSON mode throws a bare parse error when the model adds prose (seen live with Claude); the plain reply goes through the tolerant parser.
+  if (!res.ok) res = await api.ask(request);
   if (!res.ok) { say(res.error || "Live AI Assistant could not read the chart."); return { ok: false, reason: res.code || "error" }; }
   const hasText = String(res.text || "").trim() || (res.json && typeof res.json === "object");
   if (!hasText) { say(EMPTY_TOAST(model.name)); return { ok: false, reason: "empty" }; }

@@ -56125,7 +56125,6 @@ var READING_TOAST = "Reading chart…";
 var EMPTY_TOAST = (name) => `${name || "The model"} returned nothing. Try another model in Live AI Assistant.`;
 var UNREADABLE_TOAST = (name) => `Could not read a table from ${name || "the model"}'s answer. Try another model in Live AI Assistant.`;
 var NOT_A_CHART_TOAST = "No chart data found in this figure.";
-var RETRY_CODES = /* @__PURE__ */ new Set(["INVALID_OPTIONS", "INVALID_JSON", "PROVIDER_ERROR"]);
 function nearbyOf(doc, blockId) {
   try {
     const built = buildFocusContext(doc, { blockId }, { tokenCap: 1500, outlineTokens: 1, nearbyChars: 800 });
@@ -56168,7 +56167,7 @@ async function runChartToTable({ doc, blockId, image = null, imageService = null
   const { caption, nearby } = nearbyOf(doc, blockId);
   const request = { context: chartContext({ url: got.url, caption, nearby }), prompt: CHART_PROMPT, systemPrompt: CHART_SYSTEM_PROMPT, model: model.id, window: w };
   let res = await api2.ask({ ...request, json: true });
-  if (!res.ok && RETRY_CODES.has(res.code)) res = await api2.ask(request);
+  if (!res.ok) res = await api2.ask(request);
   if (!res.ok) {
     say(res.error || "Live AI Assistant could not read the chart.");
     return { ok: false, reason: res.code || "error" };

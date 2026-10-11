@@ -390,3 +390,14 @@ test("insertChartTable: places a table with the figure pin, refuses an empty tab
   assert.equal((await actions.insertChartTable({ table: { type: "table", rows: 0 } })).reason, "empty");
   assert.equal((await actions.insertChartTable({})).reason, "empty");
 });
+
+test("run: Live AI's bare JSON-parse failure (no error code, seen live with Claude) still gets the plain retry", async () => {
+  const w = fakeWindow([SONNET], async (req) => {
+    if (req.responseFormat) throw new Error("Generation failed: Unexpected token 'T', \"There is a\"... is not valid JSON");
+    return { text: "There is a chart.\n```json\n" + JSON.stringify(GOOD) + "\n```", model: "so" };
+  });
+  const { res } = await run({ w });
+  assert.equal(res.ok, true);
+  assert.equal(w.sent.length, 2);
+  assert.equal(w.sent[1].responseFormat, undefined);
+});

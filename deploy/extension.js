@@ -14535,6 +14535,14 @@ function pinSpecFromBlock(block, doc, pdfUid) {
   if (!frac) return null;
   return { pdfUid: parent, page, frac, caption: pinCaption(block, doc) };
 }
+function answerSource({ doc, blockId = "", pdfUid = "", wholeDoc = false } = {}) {
+  const uid = typeof pdfUid === "string" ? pdfUid.trim() : "";
+  if (!uid) return {};
+  if (wholeDoc) return UID_RE4.test(uid) ? { sourceUid: uid } : {};
+  const block = blockId ? doc?.blocks?.[blockId] : null;
+  const pin2 = block ? pinSpecFromBlock(block, doc, uid) : null;
+  return pin2 ? { pin: pin2 } : {};
+}
 function sourceAttrString(uid) {
   const id = String(uid ?? "").trim();
   if (!UID_RE4.test(id)) return "";
@@ -16454,9 +16462,17 @@ function libraryKind(row4) {
   if (row4?.kind === "daily" || isDailyTitle(title)) return "daily";
   return "page";
 }
+function queryTerms(text3) {
+  const terms = [];
+  for (const m of String(text3 ?? "").toLowerCase().matchAll(/"([^"]*)"|(\S+)/g)) {
+    const t = (m[1] ?? m[2] ?? "").replace(/\s+/g, " ").trim();
+    if (t) terms.push(t);
+  }
+  return terms;
+}
 function narrowLibrary(rows, filter, now3 = Date.now()) {
   const f = normalizeLibraryFilter(filter);
-  const needle = f.text.toLowerCase();
+  const terms = queryTerms(f.text);
   return (Array.isArray(rows) ? rows : []).filter((row4) => {
     const kind = libraryKind(row4);
     if (f.types.length && !f.types.includes(kind)) return false;
@@ -16464,9 +16480,9 @@ function narrowLibrary(rows, filter, now3 = Date.now()) {
       const tags = Array.isArray(row4?.tags) ? row4.tags : [];
       if (!tags.includes(f.tag)) return false;
     }
-    if (needle) {
+    if (terms.length) {
       const hay = [row4?.title, row4?.string, row4?.text].filter((v) => v != null).join("\n").toLowerCase();
-      if (!hay.includes(needle)) return false;
+      if (!terms.every((t) => hay.includes(t))) return false;
     }
     if (f.days && !editedSince(row4?.edited, f.days, now3)) return false;
     if (f.orphan && (kind === "board" || row4?.onBoard)) return false;
@@ -19807,7 +19823,8 @@ function countHits(hay, needle) {
   return n2;
 }
 function searchParts(rows, { text: text3 = "", kinds = [], pages = "" } = {}, limit = 40) {
-  const needle = String(text3 ?? "").trim().toLowerCase();
+  const phrase = String(text3 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
+  const terms = queryTerms(text3);
   const kindSet = kinds && kinds.length ? new Set(kinds) : null;
   const range = parsePageRange(pages);
   const hits = [];
@@ -19817,19 +19834,45 @@ function searchParts(rows, { text: text3 = "", kinds = [], pages = "" } = {}, li
     if (kindSet && !kindSet.has(row4.kind)) continue;
     if (range && (row4.page < range.from || row4.page > range.to)) continue;
     let count = 1;
-    if (needle) {
-      count = countHits(row4.lower, needle);
-      if (!count) continue;
+    let exact = 0;
+    if (terms.length) {
+      count = 0;
+      let all = true;
+      for (const t of terms) {
+        const n2 = countHits(row4.lower, t);
+        if (!n2) {
+          all = false;
+          break;
+        }
+        count += n2;
+      }
+      if (!all) continue;
+      if (terms.length > 1 && row4.lower.includes(phrase)) exact = 1;
     }
-    hits.push({ row: row4, count, seq });
+    hits.push({ row: row4, count, seq, exact });
   }
-  hits.sort((a, b) => b.count - a.count || a.seq - b.seq);
-  return hits.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map(({ row: row4, count }) => ({ ...row4, hits: needle ? count : 0 }));
+  hits.sort((a, b) => b.exact - a.exact || b.count - a.count || a.seq - b.seq);
+  return hits.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map(({ row: row4, count }) => ({ ...row4, hits: terms.length ? count : 0 }));
 }
 function partSnippet(text3, needle, width = SNIPPET_W) {
   const t = squash2(text3);
-  const n2 = String(needle ?? "").trim().toLowerCase();
-  const at = n2 ? t.toLowerCase().indexOf(n2) : -1;
+  const low = t.toLowerCase();
+  const phrase = String(needle ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
+  let n2 = "";
+  let at = -1;
+  if (phrase) {
+    at = low.indexOf(phrase);
+    if (at !== -1) n2 = phrase;
+    else {
+      for (const term of queryTerms(needle)) {
+        at = low.indexOf(term);
+        if (at !== -1) {
+          n2 = term;
+          break;
+        }
+      }
+    }
+  }
   if (at === -1) return { before: "", hit: "", after: t.length > width ? `${t.slice(0, width)}…` : t };
   const room = Math.max(0, width - n2.length);
   const start = Math.max(0, at - Math.floor(room / 3));
@@ -36151,7 +36194,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         where.push("[?p :node/title ?t]");
         if (f.text) {
           inputs.push("?pat");
-          args.push(ciPattern(f.text));
+          args.push(ciPattern(queryTerms(f.text)[0] || f.text));
           where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?t)]");
         }
         where.push("[?p :block/uid ?u]");
@@ -36200,7 +36243,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         where.push("[?b :block/string ?s]");
         if (f.text) {
           inputs.push("?pat");
-          args.push(ciPattern(f.text));
+          args.push(ciPattern(queryTerms(f.text)[0] || f.text));
           where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?s)]");
         }
         where.push("[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
@@ -36257,7 +36300,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
           const pageTitle = rec?.[2];
           if (!uid || typeof string !== "string") continue;
           const title = parseBoardTitle(string) || "Untitled board";
-          if (f.text && !title.toLowerCase().includes(f.text.toLowerCase())) continue;
+          if (f.text && !queryTerms(f.text).every((t) => title.toLowerCase().includes(t))) continue;
           let edited = null;
           let props = {};
           try {
@@ -36295,7 +36338,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         where.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]");
         if (f.text) {
           inputs.push("?pat");
-          args.push(ciPattern(f.text));
+          args.push(ciPattern(queryTerms(f.text)[0] || f.text));
           where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?s)]");
         }
         where.push("[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
@@ -51351,8 +51394,8 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     async insertAnswerCard(payload) {
       const markdown = String(payload?.markdown || "").trim();
       if (!markdown) return { ok: false, reason: "empty" };
-      let sourceUid = "";
-      if (payload.pin && typeof session?.ensurePdfPin === "function") {
+      let sourceUid = typeof payload.sourceUid === "string" ? payload.sourceUid : "";
+      if (!sourceUid && payload.pin && typeof session?.ensurePdfPin === "function") {
         try {
           sourceUid = (await session.ensurePdfPin(payload.pin))?.uid || "";
         } catch {
@@ -53800,6 +53843,13 @@ var INSTRUCTIONS = [
   "If the selected part alone does not support a claim, say so instead of filling the gap from elsewhere.",
   "Refer to the selected part as 'this table', 'this paragraph' or 'this figure' (as appropriate); never mention section labels."
 ].join("\n");
+var DOC_INSTRUCTIONS = [
+  "You are helping someone read a PDF as a whole.",
+  'Answer about the document as a whole. Use "Document outline" to locate things, and "Document text (opening pages)" for what the document says.',
+  "Cite pages as [p. N] using the page numbers shown in the context.",
+  "The provided text covers only the outline and the opening pages. When it does not cover something, say so instead of filling the gap from elsewhere.",
+  "Refer to it as 'this document'; never mention section labels."
+].join("\n");
 var DEFAULT_PROMPT = "Explain this part in plain language.";
 var QUICK_PROMPTS = Object.freeze([
   { id: "explain", label: "Explain", prompt: "Explain this part in plain language." },
@@ -54026,7 +54076,6 @@ function openingText(doc, ids, budget) {
   return parts.join("\n\n");
 }
 function buildFocusContext(doc, focus = {}, opts = {}) {
-  const cap4 = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN - INSTRUCTIONS.length;
   const outlineCap = (Number(opts.outlineTokens) > 0 ? Number(opts.outlineTokens) : OUTLINE_TOKEN_CAP) * CHARS_PER_TOKEN;
   const nearbyCap = Number(opts.nearbyChars) >= 0 ? Number(opts.nearbyChars) : NEARBY_CHAR_BUDGET;
   const paras = Number.isInteger(opts.nearbyParas) && opts.nearbyParas >= 0 ? opts.nearbyParas : NEARBY_PARAS;
@@ -54043,6 +54092,8 @@ function buildFocusContext(doc, focus = {}, opts = {}) {
   for (const id of attachedCaptionIds(safe, block)) focusIds.add(id);
   const index = block ? ids.indexOf(block.id) : -1;
   const wholeDoc = focus.wholeDoc === true && !block && !selection && !Number.isInteger(focus.page);
+  const instructions = wholeDoc ? DOC_INSTRUCTIONS : INSTRUCTIONS;
+  const cap4 = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN - instructions.length;
   const docTitle = parsedDocTitle(safe) || squash3(safe.title) || "";
   let focusText = "";
   if (selection) {
@@ -54070,8 +54121,8 @@ ${focusBody(safe, block)}`;
   const section2 = `${header("Section")}
 ${sectionText}`;
   const focusHead = block ? `${header("Selected part")}
-(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})` : `${header("Selected part")}
-(${wholeDoc ? "whole document, opening pages" : page != null ? `page ${page}` : "no part found"})`;
+(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})` : wholeDoc ? `${header("Document text (opening pages)")}` : `${header("Selected part")}
+(${page != null ? `page ${page}` : "no part found"})`;
   const fixedChars = section2.length + focusHead.length + 400;
   const focusRoom = Math.max(400, cap4 - fixedChars - 200);
   const focusBounded = focusText.length > focusRoom ? `${focusText.slice(0, focusRoom).trimEnd()}
@@ -54094,9 +54145,9 @@ ${focusBounded}`].filter(Boolean).join("\n\n");
   return {
     chip: { label: wholeDoc ? docTitle || "Document" : chipLabel(safe, block, selection), page, docTitle: wholeDoc ? "" : docTitle },
     context,
-    instructions: INSTRUCTIONS,
-    prompt: DEFAULT_PROMPT,
-    tokensEstimate: estimateTokens(context) + estimateTokens(INSTRUCTIONS),
+    instructions,
+    prompt: wholeDoc ? "Summarize this document in plain language." : DEFAULT_PROMPT,
+    tokensEstimate: estimateTokens(context) + estimateTokens(instructions),
     focusIds: [...focusIds]
   };
 }
@@ -73695,7 +73746,7 @@ function buildBoardView(onFail, {
         if (pdfUid) void itemsR?.openPdfAt?.(pdfUid, n2);
       },
       toast: (message) => toast(message),
-      addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfUid })
+      addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfUid, ...answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) })
     });
   };
   const pdfCardUidFor = (pdfUid, url) => {

@@ -1,7 +1,7 @@
 // Search over the parts of parsed PDFs. Pure: a parse doc becomes flat index rows, rows are matched in memory.
 // The host decides which docs to index and when; nothing here touches IndexedDB or the graph.
 
-import { parsePageRange } from "./library.js";
+import { parsePageRange, queryTerms } from "./library.js";
 
 const PART_OF = { heading: "heading", para: "paragraph", list: "paragraph", footnote: "paragraph", code: "paragraph", table: "table", figure: "figure", formula: "formula", caption: "caption" };
 const SNIPPET_W = 120;
@@ -71,9 +71,11 @@ function countHits(hay, needle) {
 }
 
 // rows: index rows (possibly from several docs, in doc order). kinds: [] means any part kind.
-// Ranked by hit count, then reading order (doc, then position). With no text, reading order only.
+// A row matches when every query term (whitespace-split; "quoted phrase" stays one term) is in it.
+// Ranked: rows holding the whole query as a phrase, then total term hits, then reading order. With no text, reading order only.
 export function searchParts(rows, { text = "", kinds = [], pages = "" } = {}, limit = 40) {
-  const needle = String(text ?? "").trim().toLowerCase();
+  const phrase = String(text ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
+  const terms = queryTerms(text);
   const kindSet = kinds && kinds.length ? new Set(kinds) : null;
   const range = parsePageRange(pages);
   const hits = [];
@@ -83,21 +85,41 @@ export function searchParts(rows, { text = "", kinds = [], pages = "" } = {}, li
     if (kindSet && !kindSet.has(row.kind)) continue;
     if (range && (row.page < range.from || row.page > range.to)) continue;
     let count = 1;
-    if (needle) {
-      count = countHits(row.lower, needle);
-      if (!count) continue;
+    let exact = 0;
+    if (terms.length) {
+      count = 0;
+      let all = true;
+      for (const t of terms) {
+        const n = countHits(row.lower, t);
+        if (!n) { all = false; break; }
+        count += n;
+      }
+      if (!all) continue;
+      if (terms.length > 1 && row.lower.includes(phrase)) exact = 1;
     }
-    hits.push({ row, count, seq });
+    hits.push({ row, count, seq, exact });
   }
-  hits.sort((a, b) => b.count - a.count || a.seq - b.seq);
-  return hits.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map(({ row, count }) => ({ ...row, hits: needle ? count : 0 }));
+  hits.sort((a, b) => b.exact - a.exact || b.count - a.count || a.seq - b.seq);
+  return hits.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map(({ row, count }) => ({ ...row, hits: terms.length ? count : 0 }));
 }
 
-// {before, hit, after} around the first hit; the text head when there is no needle.
+// {before, hit, after} around the first matching term (the whole phrase when the text holds it); the text head when nothing matches.
 export function partSnippet(text, needle, width = SNIPPET_W) {
   const t = squash(text);
-  const n = String(needle ?? "").trim().toLowerCase();
-  const at = n ? t.toLowerCase().indexOf(n) : -1;
+  const low = t.toLowerCase();
+  const phrase = String(needle ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
+  let n = "";
+  let at = -1;
+  if (phrase) {
+    at = low.indexOf(phrase);
+    if (at !== -1) n = phrase;
+    else {
+      for (const term of queryTerms(needle)) {
+        at = low.indexOf(term);
+        if (at !== -1) { n = term; break; }
+      }
+    }
+  }
   if (at === -1) return { before: "", hit: "", after: t.length > width ? `${t.slice(0, width)}…` : t };
   const room = Math.max(0, width - n.length);
   const start = Math.max(0, at - Math.floor(room / 3));

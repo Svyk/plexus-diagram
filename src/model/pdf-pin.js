@@ -118,6 +118,16 @@ export function pinSpecFromBlock(block, doc, pdfUid) {
   return { pdfUid: parent, page, frac, caption: pinCaption(block, doc) };
 }
 
+// What an Ask AI answer card cites: a pin for one parsed block, the PDF block itself for a whole-document question.
+export function answerSource({ doc, blockId = "", pdfUid = "", wholeDoc = false } = {}) {
+  const uid = typeof pdfUid === "string" ? pdfUid.trim() : "";
+  if (!uid) return {};
+  if (wholeDoc) return UID_RE.test(uid) ? { sourceUid: uid } : {};
+  const block = blockId ? doc?.blocks?.[blockId] : null;
+  const pin = block ? pinSpecFromBlock(block, doc, uid) : null;
+  return pin ? { pin } : {};
+}
+
 export function sourceAttrString(uid) {
   const id = String(uid ?? "").trim();
   if (!UID_RE.test(id)) return "";

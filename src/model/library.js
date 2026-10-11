@@ -126,9 +126,19 @@ export function libraryKind(row) {
   return "page";
 }
 
+// Search terms: whitespace-separated, lowercased; a "quoted phrase" stays one term.
+export function queryTerms(text) {
+  const terms = [];
+  for (const m of String(text ?? "").toLowerCase().matchAll(/"([^"]*)"|(\S+)/g)) {
+    const t = (m[1] ?? m[2] ?? "").replace(/\s+/g, " ").trim();
+    if (t) terms.push(t);
+  }
+  return terms;
+}
+
 export function narrowLibrary(rows, filter, now = Date.now()) {
   const f = normalizeLibraryFilter(filter);
-  const needle = f.text.toLowerCase();
+  const terms = queryTerms(f.text);
   return (Array.isArray(rows) ? rows : []).filter((row) => {
     const kind = libraryKind(row);
     if (f.types.length && !f.types.includes(kind)) return false;
@@ -136,9 +146,9 @@ export function narrowLibrary(rows, filter, now = Date.now()) {
       const tags = Array.isArray(row?.tags) ? row.tags : [];
       if (!tags.includes(f.tag)) return false;
     }
-    if (needle) {
+    if (terms.length) {
       const hay = [row?.title, row?.string, row?.text].filter((v) => v != null).join("\n").toLowerCase();
-      if (!hay.includes(needle)) return false;
+      if (!terms.every((t) => hay.includes(t))) return false;
     }
     if (f.days && !editedSince(row?.edited, f.days, now)) return false;
     if (f.orphan && (kind === "board" || row?.onBoard)) return false;

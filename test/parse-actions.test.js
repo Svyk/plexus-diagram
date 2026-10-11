@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { answerSource } from "../src/model/pdf-pin.js";
 import { createParseActions, freeSpotBeside } from "../src/view/parse-actions.js";
 import { cropRect, createCropQueue, dataUrlToBlob } from "../src/view/parse-crop.js";
 import { imageKey } from "../src/host/parse-store.js";
@@ -201,4 +202,38 @@ test("board-view gives every parse store the page's IndexedDB, so it sees what t
   const calls = src.match(/createParseStore\([^)]*\)/g) || [];
   assert.ok(calls.length >= 2);
   for (const call of calls) assert.match(call, /indexedDB/);
+});
+
+test("answer card from a search-panel part row gets a source pin built from the block", async () => {
+  const doc = makeDoc();
+  const src = answerSource({ doc, blockId: "f1", pdfUid: "pdf1" });
+  assert.equal(src.pin.pdfUid, "pdf1");
+  assert.equal(src.pin.page, 4);
+  assert.ok(src.pin.frac);
+  const pins = [];
+  const cards = [];
+  const actions = createParseActions({
+    session: {
+      ensurePdfPin: async (spec) => { pins.push(spec); return { ok: true, uid: "pin1" }; },
+      insertParsedCard: async (a) => { cards.push(a); return { ok: true, uid: "c1" }; },
+    },
+    placeBeside: () => ({ x: 1, y: 2 }),
+  });
+  await actions.insertAnswerCard({ markdown: "- AI answer", pdfUid: "pdf1", pdfBlockUid: "pdf1", ...src });
+  assert.equal(pins.length, 1);
+  assert.equal(cards[0].sourceUid, "pin1");
+  assert.deepEqual(answerSource({ doc, blockId: "p1", pdfUid: "pdf1" }), {});
+});
+
+test("whole-PDF answer card cites the PDF block as its source", async () => {
+  const src = answerSource({ doc: makeDoc(), pdfUid: "pdf1", wholeDoc: true });
+  assert.deepEqual(src, { sourceUid: "pdf1" });
+  const cards = [];
+  const actions = createParseActions({
+    session: { insertParsedCard: async (a) => { cards.push(a); return { ok: true, uid: "c1" }; } },
+    placeBeside: () => ({ x: 1, y: 2 }),
+  });
+  await actions.insertAnswerCard({ markdown: "- AI answer", pdfUid: "pdf1", pdfBlockUid: "pdf1", ...src });
+  assert.equal(cards[0].sourceUid, "pdf1");
+  assert.deepEqual(answerSource({ doc: makeDoc(), pdfUid: "", wholeDoc: true }), {});
 });

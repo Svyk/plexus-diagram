@@ -118,3 +118,9 @@ test("orphan-only and days-only are not selective searches", () => {
   assert.equal(librarySelective({ text: "a" }), true);
   assert.equal(librarySelective({ tag: "#TODO" }), true);
 });
+
+test("narrowLibrary: every word of the text must match, in any order", () => {
+  const rows = [{ kind: "block", uid: "x1", string: "Fixture swab limits for zone one" }, { kind: "block", uid: "x2", string: "Fixture only" }];
+  assert.deepEqual(narrowLibrary(rows, { text: "zone fixture swab" }, NOW).map((r) => r.uid), ["x1"]);
+  assert.deepEqual(narrowLibrary(rows, { text: "fixture" }, NOW).map((r) => r.uid), ["x1", "x2"]);
+});

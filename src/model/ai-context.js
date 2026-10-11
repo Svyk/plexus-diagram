@@ -22,6 +22,14 @@ export const INSTRUCTIONS = [
   "Refer to the selected part as 'this table', 'this paragraph' or 'this figure' (as appropriate); never mention section labels.",
 ].join("\n");
 
+export const DOC_INSTRUCTIONS = [
+  "You are helping someone read a PDF as a whole.",
+  "Answer about the document as a whole. Use \"Document outline\" to locate things, and \"Document text (opening pages)\" for what the document says.",
+  "Cite pages as [p. N] using the page numbers shown in the context.",
+  "The provided text covers only the outline and the opening pages. When it does not cover something, say so instead of filling the gap from elsewhere.",
+  "Refer to it as 'this document'; never mention section labels.",
+].join("\n");
+
 export const DEFAULT_PROMPT = "Explain this part in plain language.";
 
 export const QUICK_PROMPTS = Object.freeze([
@@ -269,7 +277,6 @@ function openingText(doc, ids, budget) {
 // Returns { chip: { label, page, docTitle }, context, instructions, prompt, tokensEstimate, focusIds }.
 export function buildFocusContext(doc, focus = {}, opts = {}) {
   // The instructions travel with the context, so they come out of the same budget.
-  const cap = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN - INSTRUCTIONS.length;
   const outlineCap = (Number(opts.outlineTokens) > 0 ? Number(opts.outlineTokens) : OUTLINE_TOKEN_CAP) * CHARS_PER_TOKEN;
   const nearbyCap = Number(opts.nearbyChars) >= 0 ? Number(opts.nearbyChars) : NEARBY_CHAR_BUDGET;
   const paras = Number.isInteger(opts.nearbyParas) && opts.nearbyParas >= 0 ? opts.nearbyParas : NEARBY_PARAS;
@@ -287,6 +294,9 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
   for (const id of attachedCaptionIds(safe, block)) focusIds.add(id);
   const index = block ? ids.indexOf(block.id) : -1;
   const wholeDoc = focus.wholeDoc === true && !block && !selection && !Number.isInteger(focus.page);
+
+  const instructions = wholeDoc ? DOC_INSTRUCTIONS : INSTRUCTIONS;
+  const cap = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN - instructions.length;
 
   const docTitle = parsedDocTitle(safe) || squash(safe.title) || "";
 
@@ -318,7 +328,9 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
   const section = `${header("Section")}\n${sectionText}`;
   const focusHead = block
     ? `${header("Selected part")}\n(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})`
-    : `${header("Selected part")}\n(${wholeDoc ? "whole document, opening pages" : page != null ? `page ${page}` : "no part found"})`;
+    : wholeDoc
+      ? `${header("Document text (opening pages)")}`
+      : `${header("Selected part")}\n(${page != null ? `page ${page}` : "no part found"})`;
 
   // Fixed parts first. The focus keeps its room; nearby and then the outline give way.
   const fixedChars = section.length + focusHead.length + 400;
@@ -342,9 +354,9 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
   return {
     chip: { label: wholeDoc ? docTitle || "Document" : chipLabel(safe, block, selection), page, docTitle: wholeDoc ? "" : docTitle },
     context,
-    instructions: INSTRUCTIONS,
-    prompt: DEFAULT_PROMPT,
-    tokensEstimate: estimateTokens(context) + estimateTokens(INSTRUCTIONS),
+    instructions,
+    prompt: wholeDoc ? "Summarize this document in plain language." : DEFAULT_PROMPT,
+    tokensEstimate: estimateTokens(context) + estimateTokens(instructions),
     focusIds: [...focusIds],
   };
 }

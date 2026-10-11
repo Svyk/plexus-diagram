@@ -349,6 +349,7 @@ A pin is a `plexus-pin` block (kind `pdf`) under `{{[[plexus-pins]]}}` on the PD
 | `CARD_JSON_MIME` | `application/x-plexus-card+json`. |
 | `PIN_BOARDS_QUERY` | Datalog that finds boards whose card cites the pin through `:block/refs`. |
 | `COPY_MENU` | Frozen list. Ids `copy`, `plain`, `card`, `source`, `crop`, `link`. Labels Copy, Copy as plain text, Copy as card, Copy with source, Copy crop as image, Copy link. Shortcuts ⌘C, ⇧⌘C, ⌥⌘C, ⌥⇧⌘C, then two blanks. |
+| `answerSource({ doc, blockId, pdfUid, wholeDoc })` | Out: `{ pin }` for a parsed block with a box, `{ sourceUid: pdfUid }` for a whole-document question, else `{}`. The Ask AI answer card cites it as `Source::`. |
 | `pageFracFromBbox(bbox, page)` | Out: four fractions in 0..1 from `viewportBox`, or null. Rotation and `page.userSpace` use that same frame. Fail: no box, or a viewport side that is not greater than 0, is null. |
 | `pinCaption(block, doc)` | Text uses `block.text` or `block.latex`, squashed, cut at `CAPTION_CAP`. A table is `Table N · rows×cols, p. P`. `N` is the 1-based index of `type === "table"` in `doc.order`. A figure or formula uses a caption block id, a caption whose `for` is the block, or the caption string. Fail: a missing block is `""`. |
 | `rectIou(a, b)` | Out: intersection over union of two fraction rects (arrays or `{x,y,w,h}` / `{rx,ry,rw,rh}`). Fail: a bad rect, or no overlap, is 0. |

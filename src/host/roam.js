@@ -6,6 +6,7 @@ import {
   libraryCard,
   librarySelective,
   narrowLibrary,
+  queryTerms,
   normalizeLibraryFilter,
   recentDailyTitles,
   wantsType,
@@ -1978,7 +1979,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         where.push("[?p :node/title ?t]");
         if (f.text) {
           inputs.push("?pat");
-          args.push(ciPattern(f.text));
+          args.push(ciPattern(queryTerms(f.text)[0] || f.text));
           where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?t)]");
         }
         where.push("[?p :block/uid ?u]");
@@ -2028,7 +2029,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         where.push("[?b :block/string ?s]");
         if (f.text) {
           inputs.push("?pat");
-          args.push(ciPattern(f.text));
+          args.push(ciPattern(queryTerms(f.text)[0] || f.text));
           where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?s)]");
         }
         where.push("[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
@@ -2086,7 +2087,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           const pageTitle = rec?.[2];
           if (!uid || typeof string !== "string") continue;
           const title = parseBoardTitle(string) || "Untitled board";
-          if (f.text && !title.toLowerCase().includes(f.text.toLowerCase())) continue;
+          if (f.text && !queryTerms(f.text).every((t) => title.toLowerCase().includes(t))) continue;
           let edited = null;
           let props = {};
           try {
@@ -2124,7 +2125,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         where.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]");
         if (f.text) {
           inputs.push("?pat");
-          args.push(ciPattern(f.text));
+          args.push(ciPattern(queryTerms(f.text)[0] || f.text));
           where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?s)]");
         }
         where.push("[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");

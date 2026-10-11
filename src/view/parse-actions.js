@@ -201,8 +201,8 @@ export function createParseActions({ session, store, placeBeside, toast, select,
     async insertAnswerCard(payload) {
       const markdown = String(payload?.markdown || "").trim();
       if (!markdown) return { ok: false, reason: "empty" };
-      let sourceUid = "";
-      if (payload.pin && typeof session?.ensurePdfPin === "function") {
+      let sourceUid = typeof payload.sourceUid === "string" ? payload.sourceUid : "";
+      if (!sourceUid && payload.pin && typeof session?.ensurePdfPin === "function") {
         try { sourceUid = (await session.ensurePdfPin(payload.pin))?.uid || ""; } catch { sourceUid = ""; }
       }
       const at = where(payload, CARD_SIZE);

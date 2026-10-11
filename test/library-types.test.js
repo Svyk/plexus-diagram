@@ -114,6 +114,24 @@ test("search ranks by hits then reading order, filters kind and page range", () 
   assert.equal(searchParts(rows, { text: "swab" }, 1).length, 1);
 });
 
+test("multi-word search needs every term, phrase rows rank first, quotes keep a phrase", () => {
+  const rows = buildPartsIndex({
+    blocks: {
+      a: { id: "a", type: "para", page: 1, text: "Listeria criteria are microbiological in nature." },
+      b: { id: "b", type: "para", page: 2, text: "Microbiological criteria listeria monocytogenes." },
+      c: { id: "c", type: "para", page: 3, text: "Microbiological criteria only." },
+    },
+    order: ["a", "b", "c"],
+  });
+  const hits = searchParts(rows, { text: "microbiological criteria listeria" });
+  assert.deepEqual(hits.map((r) => r.blockId), ["b", "a"]);
+  assert.deepEqual(searchParts(rows, { text: "listeria  MICROBIOLOGICAL" }).map((r) => r.blockId), ["a", "b"]);
+  assert.deepEqual(searchParts(rows, { text: '"criteria listeria"' }).map((r) => r.blockId), ["b"]);
+  assert.deepEqual(searchParts(rows, { text: "criteria nomatch" }), []);
+  const s = partSnippet(rows[0].text, "microbiological criteria listeria");
+  assert.equal(s.hit.toLowerCase(), "microbiological");
+});
+
 test("snippet marks the hit", () => {
   const s = partSnippet("x ".repeat(100) + "Swab results " + "y ".repeat(100), "swab");
   assert.equal(s.hit, "Swab");
@@ -144,6 +162,11 @@ test("a 300-page index searches well under 50 ms", () => {
   const ms = performance.now() - t0;
   assert.equal(hit.length, 1);
   assert.equal(hit[0].page, 150);
+  const t2 = performance.now();
+  const multi = searchParts(rows, { text: "needle lorem phrase" });
+  const ms3 = performance.now() - t2;
+  assert.equal(multi.length, 1);
+  assert.ok(ms3 < 50, `multi-term search took ${ms3}ms`);
   const t1 = performance.now();
   searchParts(rows, { text: "lorem", pages: "100-200" });
   const ms2 = performance.now() - t1;

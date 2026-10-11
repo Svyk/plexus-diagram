@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.21.0 — 2026-10-11
+
+Boards open instantly, PDFs live on their own pages the way Roam keeps them, Ask AI reads charts and compares parts across PDFs, and images are searchable by colour and by the text inside them.
+
+- **Instant open.** A board paints from a saved snapshot in its first frame, then the live board takes over the same cards without flicker. Cold open in the right sidebar shows real content in about 66 ms (was about 760 ms) and in the main view about 100 ms (was about 850 ms), with no grey placeholder cards. Badges and graph links load right after. Large tables show a picture of their cells instead of a grey "Table · N rows" box.
+- **PDFs on their own pages.** A PDF card can now be a link to the PDF's page: the PDF and its highlights live together on that page, as in Roam's own PDF annotator, and unfolding a board in the outline no longer opens a PDF viewer for every PDF. New PDFs dropped on a board are placed this way. "Move PDFs to their own pages" (board ⋯ menu) moves the PDFs already on a board, with a preview first and one undo for the whole move.
+- **Ask AI across several parts.** "Add to question" on a table, paragraph, figure, highlight, image or whole PDF, then ask once about all of them from the "N parts · Ask" pill. Answers cite [Part N, p. M], tables come back as real tables, and an answer added to the board links to the cards it used.
+- **Ask AI sees figures.** Asking about a figure sends its picture to a model that can read images (the crop is uploaded to your graph once). **Chart → table** turns a chart into a table card, with the values marked as read from the chart.
+- **Whole-PDF answers find the right pages.** Asking about a whole PDF now picks the parts that match the question from every page, not just the opening pages.
+- **Default model.** Ask AI uses Claude Sonnet (or Gemini) by default and remembers the model you pick. A model that returns an empty answer says so and offers the next one.
+- **Search inside images.** Images and PDF figures can be found by colour ("red", "blue", a #hex value, or the colour swatches) and, with "Read text in images" turned on, by the words in them. "More like this" finds images with similar colours.
+- **Comments on cards.** "Comment…" on a card adds a Roam comment; cards with comments show a count that opens the thread in the sidebar.
+- **Changed since last visit.** Board ⋯ menu: outlines the cards edited since you last opened the board on this device and lists who changed them.
+- **Query cards.** A card holding a Roam query shows its results as a live list; drag a result onto the board as a card.
+- **Daily-note inbox.** Blocks on daily pages that mention a board appear in its "Inbox (N)" pill, ready to place.
+- **Board rule for your own queries.** `window.__plexusDiagram.rules.boardMember` finds the cards of a board in a Datalog query.
+- Newly parsed PDFs show up in search right away.
+
 ## 3.20.0 — 2026-10-11
 
 Filter the search panel by type, search inside your parsed PDFs, and ask AI about one table or paragraph with the rest of the PDF as context.

@@ -17659,13 +17659,13 @@ function chipText({ from, to, label, boardTitle: boardTitle3, fromBlockText, toB
   const board2 = clip3(boardTitle3, 32);
   return `↗ ${endName(from, fromBlockText)} ${arrow2} ${endName(to, toBlockText)}${board2 ? ` · on ${board2}` : ""}${becauseClause(why)}`;
 }
-function relationOf(board2, edgeUid, { blockText: blockText2 } = {}) {
+function relationOf(board2, edgeUid, { blockText: blockText3 } = {}) {
   const edge = board2?.edges?.get(edgeUid);
   if (!edge) return null;
   const read2 = (uid) => {
     if (!uid) return "";
     try {
-      const t = blockText2?.(uid);
+      const t = blockText3?.(uid);
       return typeof t === "string" ? t : "";
     } catch {
       return "";
@@ -17673,7 +17673,7 @@ function relationOf(board2, edgeUid, { blockText: blockText2 } = {}) {
   };
   const title = (uid) => {
     const item = board2.items.get(uid);
-    return item ? itemLabel(item, blockText2) || item.title || "card" : "card";
+    return item ? itemLabel(item, blockText3) || item.title || "card" : "card";
   };
   return {
     edge,
@@ -17880,7 +17880,7 @@ function mountLazyCrop(doc, frame, { src, frac, points, win: win2 } = {}) {
   if (!watched) return { show, img };
   return { show, img };
 }
-function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockText: blockText2, rowFrac } = {}) {
+function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockText: blockText3, rowFrac } = {}) {
   const edge = board2?.edges?.get(edgeUid);
   if (!edge) return null;
   const rects = worldRects(board2);
@@ -17918,7 +17918,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
   const bounds = boundsOf([a, b]);
   const view = { x: bounds.x - pad2, y: bounds.y - pad2, w: bounds.w + 2 * pad2, h: bounds.h + 2 * pad2 };
   const inside8 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
-  const label = (item) => itemLabel(item, blockText2) || item.title || "";
+  const label = (item) => itemLabel(item, blockText3) || item.title || "";
   const cards = [];
   let others = 0;
   for (const item of board2.items.values()) {
@@ -17935,7 +17935,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
   const font = previewFont(view.w);
   const textOf2 = (uid) => {
     try {
-      const t = blockText2?.(uid);
+      const t = blockText3?.(uid);
       return typeof t === "string" && t ? endpointDisplayText(t) : "block";
     } catch {
       return "block";
@@ -18053,7 +18053,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
   const stop3 = (event) => {
     event.stopPropagation?.();
   };
-  const blockText2 = (uid) => {
+  const blockText3 = (uid) => {
     try {
       return host?.blockString?.(uid);
     } catch {
@@ -18079,7 +18079,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     } catch {
       raw = null;
     }
-    const board2 = raw ? buildBoard(raw, { resolve: blockText2 }) : null;
+    const board2 = raw ? buildBoard(raw, { resolve: blockText3 }) : null;
     models.set(boardUid, { board: board2, at: Date.now() });
     return board2;
   };
@@ -18124,8 +18124,8 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     closePop();
     const boardUid = cache.boardOf(edgeUid);
     const board2 = boardUid ? modelOf(boardUid) : null;
-    const rel = board2 ? relationOf(board2, edgeUid, { blockText: blockText2 }) : null;
-    const model = board2 ? previewModel(board2, edgeUid, { blockText: blockText2 }) : null;
+    const rel = board2 ? relationOf(board2, edgeUid, { blockText: blockText3 }) : null;
+    const model = board2 ? previewModel(board2, edgeUid, { blockText: blockText3 }) : null;
     const el = doc.createElement("div");
     el.className = `pxd-root ${POP_CLASS}`;
     el.setAttribute("role", "dialog");
@@ -18142,7 +18142,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     if (endpointUid) {
       let text3 = "";
       try {
-        text3 = blockText2(endpointUid) || "";
+        text3 = blockText3(endpointUid) || "";
       } catch {
         text3 = "";
       }
@@ -18151,7 +18151,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
       if (cropFrac && (region.kind === "img" || region.kind === "imgpoly" || region.kind === "imgrect") && !region.error) {
         let drawing = "";
         try {
-          drawing = blockText2(region.drawingUid) || "";
+          drawing = blockText3(region.drawingUid) || "";
         } catch {
           drawing = "";
         }
@@ -18273,7 +18273,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
   const buildChip = (edgeUid) => {
     const boardUid = cache.boardOf(edgeUid);
     const board2 = boardUid ? modelOf(boardUid) : null;
-    const rel = board2 ? relationOf(board2, edgeUid, { blockText: blockText2 }) : null;
+    const rel = board2 ? relationOf(board2, edgeUid, { blockText: blockText3 }) : null;
     if (!rel) return null;
     const chip = doc.createElement("div");
     chip.className = CHIP_CLASS;
@@ -18489,9 +18489,9 @@ var init_relchips = __esm({
       const t = String(text3 ?? "").replace(/\s+/g, " ").trim();
       return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
     };
-    endName = (name, blockText2) => {
+    endName = (name, blockText3) => {
       const base = clip3(name, NAME_MAX) || "card";
-      const block = clip3(endpointDisplayText(blockText2), BLOCK_MAX);
+      const block = clip3(endpointDisplayText(blockText3), BLOCK_MAX);
       return block ? `${base} ▸ “${block}”` : base;
     };
     ROW_PAD = 10;
@@ -53700,7 +53700,7 @@ var QUICK_PROMPTS = Object.freeze([
   { id: "numbers", label: "Key numbers", prompt: "List the key numbers in this part with their units and what each one measures." },
   { id: "unusual", label: "What's unusual?", prompt: "What is unusual, surprising or inconsistent in this part?" }
 ]);
-var squash2 = (text3) => String(text3 ?? "").replace(/\s+/g, " ").trim();
+var squash3 = (text3) => String(text3 ?? "").replace(/\s+/g, " ").trim();
 var clip5 = (text3, max) => {
   const t = String(text3 ?? "");
   return t.length <= max ? t : `${t.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
@@ -53711,24 +53711,24 @@ function orderOf2(doc) {
   const order = Array.isArray(doc?.order) ? doc.order : Object.keys(blocks);
   return order.filter((id) => blocks[id]);
 }
-function blockText(block) {
+function blockText2(block) {
   if (!block) return "";
-  if (block.type === "list") return (block.items || []).map((item) => squash2(item.text)).filter(Boolean).join("; ");
-  if (block.type === "table") return (block.cells || []).map((cell) => squash2(cell.text)).filter(Boolean).join(" ");
-  return squash2(block.text || block.latex || "");
+  if (block.type === "list") return (block.items || []).map((item) => squash3(item.text)).filter(Boolean).join("; ");
+  if (block.type === "table") return (block.cells || []).map((cell) => squash3(cell.text)).filter(Boolean).join(" ");
+  return squash3(block.text || block.latex || "");
 }
 function captionOf(doc, block) {
   if (!block) return "";
   const blocks = doc?.blocks || {};
   for (const id of orderOf2(doc)) {
     const other = blocks[id];
-    if (other.type === "caption" && other.for === block.id) return squash2(other.text);
+    if (other.type === "caption" && other.for === block.id) return squash3(other.text);
   }
   if (typeof block.caption === "string") {
     const hit = blocks[block.caption];
-    return squash2(hit ? hit.text : block.caption);
+    return squash3(hit ? hit.text : block.caption);
   }
-  if (block.caption && typeof block.caption === "object") return squash2(block.caption.text);
+  if (block.caption && typeof block.caption === "object") return squash3(block.caption.text);
   return "";
 }
 function attachedCaptionIds(doc, block) {
@@ -53747,15 +53747,15 @@ function chipLabel(doc, block, selection) {
   if (selection) return "Selection";
   if (!block) return "Page";
   if (block.type === "table" || block.type === "figure" || block.type === "caption") {
-    const cap4 = block.type === "caption" ? squash2(block.text) : captionOf(doc, block);
+    const cap4 = block.type === "caption" ? squash3(block.text) : captionOf(doc, block);
     const m = LABEL_RE.exec(cap4);
     if (m) return m[1].replace(/^fig\.?\s/i, "Figure ").replace(/\s+/g, " ");
   }
-  if (block.type === "heading") return `Heading: ${clip5(squash2(block.text), 40)}`;
+  if (block.type === "heading") return `Heading: ${clip5(squash3(block.text), 40)}`;
   return KIND_NAMES[block.type] || "Block";
 }
 function findSelectionBlock(doc, selection, page = null) {
-  const needle = squash2(selection).toLowerCase();
+  const needle = squash3(selection).toLowerCase();
   if (!needle) return null;
   const blocks = doc?.blocks || {};
   const probe = needle.length > 120 ? needle.slice(0, 120) : needle;
@@ -53763,7 +53763,7 @@ function findSelectionBlock(doc, selection, page = null) {
   const hit = (pool) => pool.find((id) => {
     const b = blocks[id];
     if (!b) return false;
-    return blockText(b).toLowerCase().includes(probe);
+    return blockText2(b).toLowerCase().includes(probe);
   });
   if (page != null) {
     const found2 = hit(ids.filter((id) => blocks[id].page === page));
@@ -53780,7 +53780,7 @@ function sectionChain(doc, ids, index) {
     if (b.type !== "heading") continue;
     const level = Math.max(1, Number(b.level) || 1);
     while (stack.length && stack[stack.length - 1].level >= level) stack.pop();
-    stack.push({ level, text: squash2(b.text), page: b.page });
+    stack.push({ level, text: squash3(b.text), page: b.page });
   }
   return stack;
 }
@@ -53790,9 +53790,9 @@ function outlineLines(doc, ids) {
   const items = [];
   for (const id of ids) {
     const b = blocks[id];
-    if (b.type === "heading" && squash2(b.text)) {
+    if (b.type === "heading" && squash3(b.text)) {
       const level = Math.min(Math.max(Number(b.level) || 1, 1), 6);
-      heads.push({ level, line: `${"  ".repeat(level - 1)}- ${clip5(squash2(b.text), 100)} (p. ${b.page})` });
+      heads.push({ level, line: `${"  ".repeat(level - 1)}- ${clip5(squash3(b.text), 100)} (p. ${b.page})` });
     } else if (b.type === "table" || b.type === "figure") {
       const cap4 = captionOf(doc, b);
       items.push(`- ${b.type === "table" ? "Table" : "Figure"}: ${cap4 ? clip5(cap4, 110) : "(no caption)"} (p. ${b.page})`);
@@ -53846,7 +53846,7 @@ function nearbyText(doc, ids, index, focusIds, budget, paras) {
   const usable = (id) => {
     if (focusIds.has(id)) return false;
     const b = blocks[id];
-    return (b.type === "para" || b.type === "list") && blockText(b);
+    return (b.type === "para" || b.type === "list") && blockText2(b);
   };
   const before = [];
   for (let i = index - 1; i >= 0 && before.length < paras; i -= 1) if (usable(ids[i])) before.push(ids[i]);
@@ -53863,7 +53863,7 @@ function nearbyText(doc, ids, index, focusIds, budget, paras) {
     const b = blocks[id];
     const room = budget - used;
     if (room < 80) break;
-    const text3 = clip5(blockText(b), Math.min(PARA_CLIP, room - 30));
+    const text3 = clip5(blockText2(b), Math.min(PARA_CLIP, room - 30));
     const line = `[p. ${b.page}] ${text3}`;
     used += line.length + 2;
     chosen.push({ id, side: side2, line });
@@ -53881,17 +53881,17 @@ function focusBody(doc, block) {
   }
   if (block.type === "figure") {
     const cap4 = captionOf(doc, block);
-    const inner = squash2(block.text);
+    const inner = squash3(block.text);
     return [`Figure caption: ${cap4 || "(none)"}`, inner && inner !== cap4 ? `Text inside the figure: ${inner}` : ""].filter(Boolean).join("\n");
   }
   if (block.type === "list") {
-    return (block.items || []).map((item, i) => `${block.ordered ? `${i + 1}.` : "-"} ${squash2(item.text)}`).join("\n");
+    return (block.items || []).map((item, i) => `${block.ordered ? `${i + 1}.` : "-"} ${squash3(item.text)}`).join("\n");
   }
-  if (block.type === "formula") return block.latex ? `$$${block.latex}$$` : squash2(block.text);
+  if (block.type === "formula") return block.latex ? `$$${block.latex}$$` : squash3(block.text);
   if (block.type === "code") return `\`\`\`
 ${block.text ?? ""}
 \`\`\``;
-  return squash2(block.text ?? "");
+  return squash3(block.text ?? "");
 }
 function pageFocus(doc, ids, page) {
   const parts = [];
@@ -53911,7 +53911,7 @@ function buildFocusContext(doc, focus = {}, opts = {}) {
   const safe = doc && typeof doc === "object" ? doc : { blocks: {}, order: [] };
   const ids = orderOf2(safe);
   const blocks = safe.blocks || {};
-  const selection = squash2(focus.selection);
+  const selection = squash3(focus.selection);
   let block = focus.blockId ? blocks[focus.blockId] || null : null;
   if (!block && Array.isArray(focus.blockIds)) block = blocks[focus.blockIds.find((id) => blocks[id])] || null;
   if (!block && selection) block = findSelectionBlock(safe, selection, focus.page ?? null);
@@ -53920,12 +53920,12 @@ function buildFocusContext(doc, focus = {}, opts = {}) {
   const focusIds = new Set(extraIds.length ? extraIds : block ? [block.id] : []);
   for (const id of attachedCaptionIds(safe, block)) focusIds.add(id);
   const index = block ? ids.indexOf(block.id) : -1;
-  const docTitle = parsedDocTitle(safe) || squash2(safe.title) || "";
+  const docTitle = parsedDocTitle(safe) || squash3(safe.title) || "";
   let focusText = "";
   if (selection) {
     focusText = `Selected text:
 > ${clip5(selection, 6e3)}`;
-    if (block && squash2(blockText(block)) !== selection) {
+    if (block && squash3(blockText2(block)) !== selection) {
       focusText += `
 
 The block that contains it (${KIND_NAMES[block.type] || "block"}, p. ${block.page}):
@@ -53986,7 +53986,7 @@ ${context}`, `--- question ---
 ${prompt}`].join("\n\n");
 }
 function selectionDoc({ text: text3 = "", page = 1, title = "" } = {}) {
-  const body = squash2(text3);
+  const body = squash3(text3);
   return {
     schema: "pxd-parse/1",
     title,
@@ -63073,7 +63073,7 @@ var setClass = (el, name) => {
   el.setAttribute("class", name);
   if (el.classList && !el.classList.contains(name.split(" ")[0])) el.className = name;
 };
-function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText: blockText2, onHover } = {}) {
+function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText: blockText3, onHover } = {}) {
   const edgeEls = /* @__PURE__ */ new Map();
   const laneHidden = /* @__PURE__ */ new Set();
   const linkEls = /* @__PURE__ */ new Map();
@@ -63327,7 +63327,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (!bend) return;
     let text3 = "";
     try {
-      text3 = String(blockText2?.(uid) ?? "").trim().slice(0, 120);
+      text3 = String(blockText3?.(uid) ?? "").trim().slice(0, 120);
     } catch {
       text3 = "";
     }
@@ -75880,8 +75880,8 @@ function buildBoardView(onFail, {
         let officeText = item?.string || "";
         if (item?.target?.kind === "block") {
           try {
-            const blockText2 = host?.blockString?.(item.target.uid);
-            if (blockText2) officeText = blockText2;
+            const blockText3 = host?.blockString?.(item.target.uid);
+            if (blockText3) officeText = blockText3;
           } catch {
           }
         }

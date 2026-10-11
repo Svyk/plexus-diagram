@@ -14,6 +14,22 @@ export const PARSE_DOC_CAP = 50;
 export const PARSE_IMAGE_CAP = 200 * 1024 * 1024;
 const META_KEY = "meta:lru";
 
+// One shared listener list for every store instance (boards each build their own store).
+const storedListeners = new Set();
+
+// fn({ sha256, engine }) runs after a parse is written. Returns the unsubscribe.
+export function subscribeParseStored(fn) {
+  if (typeof fn !== "function") return () => {};
+  storedListeners.add(fn);
+  return () => { storedListeners.delete(fn); };
+}
+
+function notifyParseStored(doc) {
+  for (const fn of [...storedListeners]) {
+    try { fn({ sha256: doc.sha256, engine: doc.engine }); } catch { /* a listener must not fail a write */ }
+  }
+}
+
 export function parseKey(sha256, engine, optsHash) {
   return `${sha256}|${engine}|${optsHash}`;
 }
@@ -324,6 +340,7 @@ export function createParseStore({ indexedDB: factory, now, docCap = PARSE_DOC_C
           }
         }
         await saveMeta(meta);
+        notifyParseStored(stored);
         return stored;
       } catch {
         return null;

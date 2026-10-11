@@ -184,7 +184,7 @@ test("wholeDoc focus: opening text in FOCUS, doc title as the chip, outline in D
   const doc = fixture();
   doc.title = "Annual Report";
   const out = buildFocusContext(doc, { wholeDoc: true });
-  assert.match(out.context, /=== Document text \(opening pages\) ===\n/);
+  assert.match(out.context, /=== Relevant parts of the document ===\n/);
   assert.doesNotMatch(out.context, /Selected part/);
   assert.match(out.instructions, /this document/);
   assert.doesNotMatch(out.instructions, /this table|selected part/i);
@@ -197,6 +197,6 @@ test("wholeDoc focus: opening text in FOCUS, doc title as the chip, outline in D
   const tiny = buildFocusContext(doc, { wholeDoc: true }, { tokenCap: 200, outlineTokens: 50 });
   assert.ok(tiny.context.length < out.context.length + 1);
   const withBlock = buildFocusContext(doc, { wholeDoc: true, blockId: "p1" });
-  assert.doesNotMatch(withBlock.context, /Document text \(opening pages\)/);
+  assert.doesNotMatch(withBlock.context, /Relevant parts of the document/);
   assert.match(withBlock.instructions, /this table/);
 });

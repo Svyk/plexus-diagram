@@ -79,7 +79,18 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   const focus = hasBlocks
     ? { ...(blockId ? { blockId } : {}), ...(blockIds ? { blockIds } : {}), ...(selection ? { selection } : {}), ...(page != null ? { page } : {}), ...(wholeDoc ? { wholeDoc: true } : {}) }
     : { blockId: "sel", selection };
-  const built = buildFocusContext(source, focus);
+  let built = buildFocusContext(source, focus);
+  const isWhole = Boolean(wholeDoc) && !focus.blockId && !focus.blockIds && !focus.selection && focus.page == null && hasBlocks;
+  let builtFor = built.prompt;
+  // A whole-document context is retrieved for the question, so it follows the textarea.
+  const rebuild = (question) => {
+    if (!isWhole) return;
+    const q = String(question ?? "").trim();
+    if (q === builtFor) return;
+    builtFor = q;
+    built = buildFocusContext(source, focus, { question: q });
+    chip.textContent = chipText(built.chip);
+  };
 
   const root = make(dom, "div", "pxd-ask", null);
   root.setAttribute("role", "dialog");
@@ -119,6 +130,7 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   let actions = null;
 
   const refreshPreview = () => {
+    rebuild(textarea ? textarea.value : prompt.text);
     preview.textContent = `${previewText({ instructions: built.instructions, context: built.context, prompt: textarea ? textarea.value : prompt.text })}\n\n(about ${built.tokensEstimate.toLocaleString?.() ?? built.tokensEstimate} tokens before the question)`;
   };
   chip.addEventListener("click", () => {
@@ -141,6 +153,7 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     if (!textarea || ctl) return;
     const question = textarea.value.trim();
     if (!question) { status.textContent = "Type a question first."; return; }
+    rebuild(question);
     ctl = typeof win.AbortController === "function" ? new win.AbortController() : new AbortController();
     token += 1;
     const mine = token;

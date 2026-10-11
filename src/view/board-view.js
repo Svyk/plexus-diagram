@@ -5232,12 +5232,14 @@ function buildBoardView(onFail, {
   const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
   const LIB_TYPES_KEY = `plexus-diagram:libtypes:${graph}`;
   let partsIdx = null;
+  let offPartsChange = null;
   const partsIndex = () => {
     if (!partsIdx) {
       partsIdx = createPartsIndex({
         store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
         listPdfs: () => host?.listPdfBlocks?.() || [],
       });
+      offPartsChange = partsIdx.onChange(() => { try { panel?.refreshSearch?.(); } catch { /* panel gone */ } });
     }
     return partsIdx;
   };
@@ -8262,6 +8264,7 @@ function buildBoardView(onFail, {
       step(() => readPane?.dispose?.());
       step(() => itemsR.dispose());
       step(() => edgesR.dispose());
+      step(() => { offPartsChange?.(); partsIdx?.dispose(); partsIdx = null; });
       step(() => panel.dispose());
       step(() => propsPanel.dispose());
       step(() => tooltip.dispose());

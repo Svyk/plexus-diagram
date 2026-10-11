@@ -65,7 +65,7 @@ function fakeHost({ threadRows = [], commentsEid = 7, tree = null } = {}) {
     resolveEid: (ref) => (ref.title === "roam/comments" ? commentsEid : ref.uid === "gone" ? null : ref.uid.charCodeAt(0)),
     q: (query, ...inputs) => {
       queries.push(query);
-      if (query.includes(":block/refs ?cp] [?anchor :block/uid ?au]")) return threadRows;
+      if (query.includes("(count ?comment)")) return threadRows;
       if (query.includes("[?b :block/page ?p] [?p :block/uid ?pu]")) return [["pg"]];
       if (query.includes(":user/display-page")) return [["Svy"]];
       if (query.includes("[?c :block/refs ?cp] [?c :block/uid ?cu]")) return tree ? [["c"]] : [];

@@ -36139,9 +36139,9 @@ init_guard();
 init_journal();
 init_comments();
 init_changes();
-var THREAD_QUERY = `[:find ?cell ?au (count ?comment) :in $ ?cp [?cell ...] :where
- [?t :block/uid ?cell] [?anchor :block/refs ?t] [?author :block/children ?anchor] [?date :block/children ?author]
- [?container :block/children ?date] [?container :block/refs ?cp] [?anchor :block/uid ?au] [?anchor :block/children ?comment]]`;
+var THREAD_QUERY = `[:find ?cell ?au (count ?comment) :in $ ?cp :where
+ [?container :block/refs ?cp] [?container :block/children ?date] [?date :block/children ?author] [?author :block/children ?anchor]
+ [?anchor :block/refs ?t] [?t :block/uid ?cell] [?anchor :block/uid ?au] [?anchor :block/children ?comment]]`;
 var PAGE_QUERY = `[:find ?pu :in $ ?u :where [?b :block/uid ?u] [?b :block/page ?p] [?p :block/uid ?pu]]`;
 var CONTAINER_QUERY = `[:find ?cu :in $ ?pu ?cp :where [?p :block/uid ?pu] [?p :block/children ?c] [?c :block/refs ?cp] [?c :block/uid ?cu]]`;
 var AUTHOR_QUERY = `[:find ?title :in $ ?uid :where [?u :user/uid ?uid] [?u :user/display-page ?p] [?p :node/title ?title]]`;
@@ -36159,8 +36159,9 @@ function installCommentHost(host, { api: api2, data = api2?.data, now: now3 = ()
     const list = [...new Set((uids || []).map((u) => String(u || "")).filter(Boolean))];
     const cp = commentsEid();
     if (cp == null || !list.length) return /* @__PURE__ */ new Map();
+    const want = new Set(list);
     try {
-      return commentIndexFromRows(host.q(THREAD_QUERY, cp, list));
+      return commentIndexFromRows((host.q(THREAD_QUERY, cp) || []).filter((row4) => want.has(String(row4?.[0] ?? ""))));
     } catch {
       return /* @__PURE__ */ new Map();
     }
@@ -39907,7 +39908,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   };
   const repull = () => {
     if (destroyed) return;
-    const fresh = host.pullBoard(uid);
+    const fresh = host.pullBoard(uid, { light: true });
     if (!fresh) {
       markGone();
       return;
@@ -40049,7 +40050,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   const onBoard = (after) => {
     if (destroyed || pausedHolds >= holders) return;
     if (!after || !after[UID]) {
-      if (!host.pullBoard(uid)) markGone();
+      if (!host.pullBoard(uid, { light: true })) markGone();
       return;
     }
     latest = after;
@@ -40125,7 +40126,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (destroyed || pausedHolds >= holders || !highlightDirty) return;
     highlightDirty = false;
     propsCache.clear();
-    onBoard(host.pullBoard(uid));
+    onBoard(host.pullBoard(uid, { light: true }));
   };
   syncHighlightWatches = () => {
     const live2 = /* @__PURE__ */ new Set();

@@ -598,7 +598,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   };
   const repull = () => {
     if (destroyed) return;
-    const fresh = host.pullBoard(uid);
+    const fresh = host.pullBoard(uid, { light: true });
     if (!fresh) { markGone(); return; }
     raw = clone(fresh);
     propsCache.clear();
@@ -745,7 +745,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   const onBoard = (after) => {
     if (destroyed || pausedHolds >= holders) return;
     if (!after || !after[UID]) {
-      if (!host.pullBoard(uid)) markGone();
+      if (!host.pullBoard(uid, { light: true })) markGone();
       return;
     }
     latest = after;
@@ -809,7 +809,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     if (destroyed || pausedHolds >= holders || !highlightDirty) return;
     highlightDirty = false;
     propsCache.clear();
-    onBoard(host.pullBoard(uid));
+    onBoard(host.pullBoard(uid, { light: true }));
   };
   syncHighlightWatches = () => {
     const live = new Set();

@@ -389,7 +389,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   const ledger = createEchoLedger({ graceMs, now });
 
   let destroyed = false;
-  let raw = clone(host.pullBoard(uid));
+  // Light: the linked-ref and card-stat reads that ride on the open pull run in idle time,
+  // after the board has painted (INSTANT-3).
+  let raw = clone(host.pullBoard(uid, { light: true }));
   let board = null;
   let editingUid = null;
   let rects = new Map();

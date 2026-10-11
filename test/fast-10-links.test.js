@@ -108,7 +108,8 @@ test("open publishes cards before runLinks, then links arrive on an idle callbac
 
     ctx.stub.flushIdle();
     await pending;
-    assert.equal(ctx.queries(), before + 1);
+    // The link query, plus the open's linked-ref prime (INSTANT-3: it waits for idle too).
+    assert.equal(ctx.queries(), before + 2);
     assert.equal(ctx.session.links.length, 1);
     assert.equal(ctx.session.links[0].key, "c1->c2");
     assert.deepEqual(events, ["links"]);

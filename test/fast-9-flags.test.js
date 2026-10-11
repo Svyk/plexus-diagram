@@ -29,9 +29,10 @@ const ALL_ON = {
   prefetch: true,
   sketch: true,
   budgetedMount: true,
+  snapshot: true,
 };
 
-test("the panel has no speed-flags control, and bad JSON leaves all six on", () => {
+test("the panel has no speed-flags control, and bad JSON leaves all seven on", () => {
   assert.equal(createSettingsPanel().settings.some((row) => row.id === "speed-flags"), false);
   assert.equal(Object.hasOwn(settingsDefaults(), "speed-flags"), false);
   assert.deepEqual(flagsDefault(), ALL_ON);

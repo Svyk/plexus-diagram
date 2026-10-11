@@ -690,6 +690,9 @@ export function createItemRenderer({
   onPinOpen = null,
   settings: speedSettings = null,
   interopOn = null,
+  adoptShell = null,
+  tableThumb = null,
+  onTableShown = null,
 } = {}) {
   // Production reads the hidden setting. A test passes `settings` and does not open the panel.
   const speedOf = () => {
@@ -1396,9 +1399,68 @@ export function createItemRenderer({
     }
   };
 
+  // INSTANT-4. A bare {{[[table]]}} card shows its PNG thumbnail instead of a grey box.
+  const paintThumb = (rec, item) => {
+    if (typeof tableThumb !== "function" || item?.type === "section" || !rec?.body) return;
+    if (!isRoamTableString(item.string)) return;
+    let url = null;
+    try { url = tableThumb(item); } catch { url = null; }
+    if (typeof url !== "string" || !url.startsWith("data:image/")) {
+      // No PNG yet: ask for one (drawn from the model in idle time); repaintThumb puts it in.
+      if (typeof onTableShown === "function") { try { onTableShown(item); } catch { /* thumbs are optional */ } }
+      return;
+    }
+    let img = rec.body.querySelector?.("img.pxd-table-thumb");
+    if (!img) {
+      img = el("img", "pxd-table-thumb", rec.body);
+      img.setAttribute("alt", "");
+      img.setAttribute("draggable", "false");
+    }
+    if (img.getAttribute?.("src") !== url) img.setAttribute("src", url);
+    rec.faced = true;
+    rec.thumbed = true;
+    rec.el.classList.add("pxd-item--thumb");
+    rec.el.classList.remove("pxd-item--bare");
+  };
+  // INSTANT-1. A snapshot shell for this uid becomes the live shell: same node, its
+  // header and face body stay until the content pass mounts the real body.
+  const adoptedNode = (item) => {
+    if (typeof adoptShell !== "function") return null;
+    let node = null;
+    try { node = adoptShell(item.uid, item); } catch { node = null; }
+    if (!node || !node.classList) return null;
+    const section = item.type === "section";
+    if (node.classList.contains("pxd-section") !== section) return null;
+    return node;
+  };
   const buildShell = (item) => {
     const rec = { uid: item.uid, type: item.type, roots: [], contentKey: null, rect: null, bare: item.type === "card" };
-    if (item.type === "section") {
+    const adopted = adoptedNode(item);
+    if (adopted && item.type === "section") {
+      adopted.replaceChildren?.();
+      rec.el = adopted;
+      rec.title = el("div", "pxd-section__title", adopted);
+      rec.note = el("div", "pxd-section__note", adopted);
+      for (const side of ["t", "r", "b", "l"]) el("div", `pxd-section__edge pxd-section__edge--${side}`, adopted);
+      buildGrips(adopted);
+      buildPorts(adopted);
+    } else if (adopted) {
+      const kids = [...(adopted.children || [])];
+      const header = kids.find((child) => child.classList?.contains("pxd-item__header")) || null;
+      const body = kids.find((child) => child.classList?.contains("pxd-item__body")) || null;
+      for (const child of kids) {
+        if (child !== header && child !== body) child.remove();
+      }
+      rec.el = adopted;
+      rec.header = header || el("div", "pxd-item__header", null);
+      if (!header) adopted.insertBefore?.(rec.header, adopted.firstChild || null);
+      rec.body = body || el("div", "pxd-item__body", adopted);
+      rec.faced = Boolean(rec.body.firstChild);
+      rec.thumbed = adopted.classList.contains("pxd-item--thumb");
+      buildPorts(adopted);
+      buildGrips(adopted);
+      if (item.kind === "page") armPageCaret(rec);
+    } else if (item.type === "section") {
       const node = el("div", "pxd-section", null);
       rec.el = node;
       rec.title = el("div", "pxd-section__title", node);
@@ -1415,7 +1477,8 @@ export function createItemRenderer({
       buildGrips(node);
       if (item.kind === "page") armPageCaret(rec);
     }
-    rec.el.dataset.uid = item.uid;
+    if (item.type !== "section") paintThumb(rec, item);
+    if (rec.el.dataset) rec.el.dataset.uid = item.uid;
     rec.el.setAttribute("data-uid", item.uid);
     rec.el.setAttribute("role", "group");
     rec.el.tabIndex = -1;
@@ -1656,7 +1719,8 @@ export function createItemRenderer({
     if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
     if (item.type !== "section") {
       if (isKidsCard(item)) cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
-      if (rec.bare) cls.push("pxd-item--bare");
+      if (rec.bare && !rec.faced) cls.push("pxd-item--bare");
+      if (rec.thumbed) cls.push("pxd-item--thumb");
       if (rec.refBoard) cls.push("pxd-item--wb");
       if (rec.regionImg) cls.push("pxd-item--imgregion");
       if (item.kind === "region-ref") cls.push("pxd-item--region");
@@ -3878,7 +3942,10 @@ export function createItemRenderer({
     rec.stickyLive = false;
     rec.editor = null;
     rec.bare = false;
+    rec.faced = false;
+    rec.thumbed = false;
     rec.el.classList.remove("pxd-item--bare");
+    rec.el.classList.remove("pxd-item--thumb");
     rec.el.classList.remove("pxd-item--roam-table");
     const budget = { n: 0, roots: [] };
     if (item.collapsed) {
@@ -4022,6 +4089,7 @@ export function createItemRenderer({
       rec.el.classList.add("pxd-item--roam-table");
       mountTableHost(body, item.uid, budget);
       armLayoutWatch(rec);
+      if (typeof onTableShown === "function") { try { onTableShown(item); } catch { /* thumbs are optional */ } }
       rec.kidCount = 0;
       rec.kidRows = 0;
       paintPinChip(body, item.content);
@@ -4213,7 +4281,9 @@ export function createItemRenderer({
     } else {
       rec.body?.replaceChildren?.();
       dropKidsBadge(rec);
-      if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
+      if (rec.type === "card") { rec.bare = true; rec.faced = false; rec.el.classList.add("pxd-item--bare"); }
+      const gone = lastBoard?.items.get(uid);
+      if (gone) paintThumb(rec, gone);
       onPageLayout?.(uid);
     }
     rec.contentKey = null;
@@ -5609,6 +5679,15 @@ export function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    // INSTANT-4. A table thumbnail arrived: show it on the card if its body is still bare.
+    repaintThumb: (uid) => {
+      const rec = shells.get(uid);
+      const item = lastBoard?.items.get(uid);
+      if (!rec || !item || disposed || mounted.has(uid) || editing?.uid === uid) return false;
+      if (!rec.bare && !rec.thumbed) return false;
+      paintThumb(rec, item);
+      return rec.thumbed === true;
+    },
     drawnRect: (uid) => drawnRect(uid, lastRects?.get(uid)) ?? null,
     measureRow,
     setLayoutWatch,

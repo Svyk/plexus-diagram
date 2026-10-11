@@ -548,10 +548,60 @@ function markdownRootUids(result) {
   return roots;
 }
 
+// INSTANT-6. Counts Datascript reads (q, pull, pull_many, fast.q) on stats.reads, so an
+// open can report how many reads ran before its first paint.
+const READ_FNS = new Set(["q", "pull", "pull_many"]);
+function countReads(data, stats) {
+  if (!data || typeof data !== "object" || typeof Proxy !== "function") return data;
+  stats.reads = 0;
+  const wrapped = new Map();
+  const wrap = (owner, prop, fn) => {
+    const key = owner === data ? prop : `fast.${prop}`;
+    const hit = wrapped.get(key);
+    if (hit && hit.fn === fn) return hit.out;
+    const out = function counted(...args) {
+      stats.reads += 1;
+      return fn.apply(owner, args);
+    };
+    wrapped.set(key, { fn, out });
+    return out;
+  };
+  let fastProxy = null;
+  let fastOf = null;
+  return new Proxy(data, {
+    get(target, prop) {
+      const value = target[prop];
+      if (typeof prop === "string" && READ_FNS.has(prop) && typeof value === "function") return wrap(target, prop, value);
+      if (prop === "fast" && value && typeof value === "object") {
+        if (fastOf !== value) {
+          fastOf = value;
+          fastProxy = new Proxy(value, {
+            get(fast, name) {
+              const fn = fast[name];
+              return name === "q" && typeof fn === "function" ? wrap(fast, name, fn) : fn;
+            },
+          });
+        }
+        return fastProxy;
+      }
+      // Other methods run against the real object, as before the proxy.
+      if (typeof value === "function") {
+        const key = `bound.${String(prop)}`;
+        const hit = wrapped.get(key);
+        if (hit && hit.fn === value) return hit.out;
+        const out = value.bind(target);
+        wrapped.set(key, { fn: value, out });
+        return out;
+      }
+      return value;
+    },
+  });
+}
+
 export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
   const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
   bindGuardStats(stats);
-  const data = api.data;
+  const data = countReads(api.data, stats);
   // Every data.block.* call is its own Roam undo entry. The log groups the calls of one session transaction
   // (host.group) so one undo()/redo() steps over the whole user operation. A write outside a group is its own step.
   // A group holds at most MAX_GROUP_WRITES writes: a larger transaction is split into consecutive groups (one plexus
@@ -598,6 +648,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const pdfUrls = new Map();
   const boardCovers = new Map();
   const watchedBoards = new Map();
+  // uid -> pull sequence number at which its last board watch was dropped.
+  const unwatchedAt = new Map();
+  let pullSeq = 0;
   const watchedBlocks = new Map();
   const eidByUid = new Map();
   const eidByTitle = new Map();
@@ -946,9 +999,12 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         const later = (fn) => (typeof idle === "function" ? idle(() => fn(), { timeout: 1500 }) : setTimeout(fn, 250));
         const titles = found.titles;
         const targets = found.stats;
+        const pulledAt = ++pullSeq;
         let ti = 0;
         let statsDone = false;
         const step = () => {
+          // The board's last watch went away after this pull (closed, parked): skip the reads.
+          if (unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
           if (ti === 0 && !statsDone) dropStats(uid);
           if (ti < titles.length) {
             try { fetchLinked(titles.slice(ti, ti + PRIME_CHUNK)); } catch { /* a later linkedRefs ask reads Roam */ }
@@ -996,6 +1052,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         watchedBoards.set(uid, slot);
       } else if (covers) slot.coversRefs = true;
       slot.n += 1;
+      unwatchedAt.delete(uid);
       const entity = watchEntity(uid);
       const wrapped = guardCallback("watchBoard", (before, after) => {
         if (after?.[":block/uid"]) absorb(uid, after, hasRefs(after));
@@ -1012,6 +1069,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         stats.watches--;
         slot.n = Math.max(0, slot.n - 1);
         if (slot.n === 0 && slot.pages.size === 0) watchedBoards.delete(uid);
+        if (slot.n === 0) unwatchedAt.set(uid, pullSeq);
       };
     },
 

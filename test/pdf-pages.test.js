@@ -460,7 +460,7 @@ test("planner: scanned PDFs get dated titles with a plain suffix, never PDF (2);
 
 // ---- undo and redo of the whole migration ----
 
-test("undo: three PDFs, the first onto an EXISTING page: one undo restores every pdf block, props and order; redo migrates again", async () => {
+test("undo: three PDFs, the first onto an EXISTING page, page.create = 2 native undo entries: one undo restores every pdf block, props and order; redo migrates again", async () => {
   const fake = createFakeRoam();
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   host.graphName = () => "g";
@@ -479,12 +479,13 @@ test("undo: three PDFs, the first onto an EXISTING page: one undo restores every
     ],
   });
   fake.trackUndo = true;
+  fake.pageCreateEntries = 2;
   const session = acquireSession("b1", { host, raf: (fn) => fn(), linkDelay: 0, settings: { "graph-links": "off" } });
   const snap = () => ({
     sec: fake.children("sec"),
     rep: fake.children("rep"),
-    props: Object.fromEntries(["q0", "q1", "q2"].map((u) => [u, JSON.stringify(fake.props(u))])),
-    edge: [fake.block("e1").string, JSON.stringify(fake.props("e1"))],
+    props: Object.fromEntries(["q0", "q1", "q2"].map((u) => [u, structuredClone(fake.props(u))])),
+    edge: [fake.block("e1").string, structuredClone(fake.props("e1"))],
   });
   const before = snap();
   const plan = sessionPlan(session, host, {
@@ -502,6 +503,10 @@ test("undo: three PDFs, the first onto an EXISTING page: one undo restores every
   assert.deepEqual(snap(), before);
   assert.equal(fake.block("q0").parent, "sec");
   assert.ok(plan.moves.every((m) => !fake.block(m.cardUid)), "every new card is gone");
+  assert.equal(fake.children("rep").includes("q0"), false);
+  assert.deepEqual(fake.children("rep"), ["repNote"], "the pre-existing page stays");
+  assert.ok(plan.moves.slice(1).every((m) => !host.pageUid(m.page.title)), "pages the migration created are removed");
+  assert.ok(host.pageUid("report"));
   await session.redo();
   assert.deepEqual(snap(), after);
   await session.undo();

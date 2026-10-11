@@ -989,16 +989,20 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return fn();
   }));
 
-  function commit(ops, result) {
+  function commit(ops, result, custom = null) {
     if (!ops.length) return Promise.resolve(result);
     stampBoard(ops);
     const list = coalesce(ops);
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish();
-    return queue.run(() => grouped(() => execute(list))).then(() => result, (err) => { handleFailure(err); return result; });
+    if (custom) custom.forward = list;
+    return queue.run(() => grouped(() => {
+      if (custom) host.setCustomUndo?.(custom);
+      return execute(list);
+    })).then(() => result, (err) => { handleFailure(err); return result; });
   }
 
-  function txn(fn) {
+  function txn(fn, custom = null) {
     if (!board || destroyed || gone) return Promise.resolve(undefined);
     const ops = [];
     const t = {
@@ -1037,7 +1041,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       sync: rebuild,
     };
     const result = fn(t);
-    return commit(ops, result);
+    return commit(ops, result, custom);
   }
 
   // ---- layout helpers ----
@@ -2189,13 +2193,45 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const moves = (plan.moves || []).filter((m) => isInlinePdfCard(board?.items?.get(m.pdfUid)) && m.cardUid && m.page?.title);
       if (!moves.length) return Promise.resolve({ moved: 0 });
       const moving = new Set(moves.map((m) => m.pdfUid));
+      // Its own undo entry: the inverse is recorded here, from the state before the first write, and applied by
+      // explicit writes. It does not depend on how many native Roam undo steps these writes made.
+      const records = [];
+      const edgeRecords = [];
+      const custom = {
+        forward: [],
+        async undo() {
+          const ops = [];
+          for (const r of records) ops.push({ op: "delete", uid: r.newCardUid });
+          const back = records.slice().sort((a, b) => (a.originalParentUid < b.originalParentUid ? -1 : a.originalParentUid > b.originalParentUid ? 1 : a.originalOrder - b.originalOrder));
+          for (const r of back) {
+            ops.push({ op: "move", uid: r.pdfUid, parent: r.originalParentUid, order: r.originalOrder });
+            ops.push({ op: "props", uid: r.pdfUid, plexus: r.originalProps });
+          }
+          for (const e of edgeRecords) {
+            ops.push({ op: "string", uid: e.uid, string: e.oldString });
+            ops.push({ op: "props", uid: e.uid, plexus: e.oldProps });
+          }
+          await execute(ops);
+          for (const r of records) {
+            if (!r.pageCreated) continue;
+            const page = host.pullPage?.(r.pageTitle);
+            if (page && !(page[":block/children"] || []).length) await host.deletePage?.(r.pageUid);
+          }
+        },
+        async redo() {
+          const ops = custom.forward.filter((op) => op.op !== "page" || host.pageExists?.(op.title) !== true);
+          await execute(ops);
+        },
+      };
       return txn((t) => {
         for (const m of moves) {
           const parent = rawNode(m.parentUid) ? m.parentUid : board.items.get(m.pdfUid).parentUid;
           const kids = kidsOf(rawNode(parent));
           const at = Math.max(0, kids.findIndex((k) => k[UID] === m.pdfUid));
           const pdfString = rawNode(m.pdfUid)?.[STR] || `{{[[pdf]]: ${m.url}}}`;
+          const originalProps = clone(rawPlexus(m.pdfUid));
           const pageUid = m.page.uid || t.page({ uid: m.page.newUid || undefined, title: m.page.title });
+          records.push({ pdfUid: m.pdfUid, originalParentUid: parent, originalOrder: at, originalProps, newCardUid: m.cardUid, pageUid, pageTitle: m.page.title, pageCreated: !m.page.uid });
           t.props(m.pdfUid, null);
           t.move(m.pdfUid, pageUid, 0);
           t.create({ parent, uid: m.cardUid, string: m.cardString, plexus: m.layout, order: at });
@@ -2205,12 +2241,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         for (const e of plan.edges || []) {
           const cur = board.edges?.get(e.uid);
           if (!cur || !(moving.has(cur.from) || moving.has(cur.to))) continue;
+          edgeRecords.push({ uid: e.uid, oldString: rawNode(e.uid)?.[STR] ?? "", oldProps: clone(rawPlexus(e.uid)) });
           t.string(e.uid, e.string);
           t.props(e.uid, edgePlexus(e.uid, { from: e.from, to: e.to }));
           edges += 1;
         }
         return { moved: moves.length, edges };
-      });
+      }, custom);
     },
 
     // One ref card, centered on the board's content (the origin when nothing is placed yet).

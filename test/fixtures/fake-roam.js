@@ -250,7 +250,11 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
         }
         const before = snapshotBefore(uid);
         const chainBefore = topUid(uid);
-        if (fake.trackUndo) { history.push(takeState()); redoStack.length = 0; }
+        if (fake.trackUndo) {
+          const entries = logEntry[0] === "page-create" ? fake.pageCreateEntries || 1 : 1; // real Roam may stack more than one
+          for (let i = 0; i < entries; i += 1) history.push(takeState());
+          redoStack.length = 0;
+        }
         fn();
         fake.log.push(logEntry);
         notify(uid, before, chainBefore);
@@ -343,6 +347,14 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
             const uid = page.uid ?? fake.generateUid();
             pages.set(uid, { uid, title: page.title, children: [], eid: ++eidCounter });
           }, ["page-create", page.uid ?? "?", page.title]);
+        },
+        delete({ page }) {
+          return write(page.uid, () => {
+            const p = pages.get(page.uid);
+            if (!p) return;
+            for (const u of p.children.slice()) dropTree(u);
+            pages.delete(page.uid);
+          }, ["page-delete", page.uid]);
         },
         update(arg) {
           const page = arg?.page || {};

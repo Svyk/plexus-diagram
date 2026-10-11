@@ -36679,6 +36679,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
   const MAX_GROUP_WRITES = 45;
   const UNDO_ECHO_MS = 900;
   let openGroup = null;
+  let silent = false;
   let lastWriteAt = -Infinity;
   let dropBurst = () => {
   };
@@ -36692,9 +36693,10 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
   const noteWrite = (kind) => {
     dropBurst();
     lastWriteAt = Date.now();
+    if (silent) return;
     redoLog.length = 0;
     if (openGroup) {
-      if (openGroup.n >= MAX_GROUP_WRITES) {
+      if (openGroup.n >= MAX_GROUP_WRITES && !openGroup.custom) {
         const done2 = openGroup;
         openGroup = { n: 0, kinds: [], label: done2.label || "" };
         closeChunk(done2);
@@ -37666,6 +37668,16 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         closeChunk(g);
       }
     },
+    // The open group becomes ONE entry that undoes and redoes through its own callbacks ({ undo, redo }, async),
+    // not through a count of Roam's native undo steps (one Plexus write can be more than one native entry).
+    setCustomUndo(entry) {
+      if (openGroup && entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
+    },
+    async deletePage(uid) {
+      stats.writes++;
+      await data.page.delete({ page: { uid } });
+      noteWrite("delete");
+    },
     // A block another extension created inside the open group (Roam Plexus "New drawing").
     // That write never passed through noteWrite, so it is one extra Roam undo entry.
     // Recording the uid makes this group's undo/redo step over it too. No-op with no group open.
@@ -37684,6 +37696,20 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     async undo() {
       lastWriteAt = Date.now();
       const entry = undoLog.pop();
+      if (entry?.custom) {
+        silent = true;
+        try {
+          await entry.custom.undo();
+        } catch (err) {
+          undoLog.push(entry);
+          throw err;
+        } finally {
+          silent = false;
+          lastWriteAt = Date.now();
+        }
+        redoLog.push(entry);
+        return;
+      }
       const span = entry ? groupSpan(entry) : 1;
       let done2 = 0;
       try {
@@ -37702,6 +37728,20 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     async redo() {
       lastWriteAt = Date.now();
       const entry = redoLog.pop();
+      if (entry?.custom) {
+        silent = true;
+        try {
+          await entry.custom.redo();
+        } catch (err) {
+          redoLog.push(entry);
+          throw err;
+        } finally {
+          silent = false;
+          lastWriteAt = Date.now();
+        }
+        undoLog.push(entry);
+        return;
+      }
       const span = entry ? groupSpan(entry) : 1;
       let done2 = 0;
       try {
@@ -40143,18 +40183,22 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     await execute(list);
     return fn();
   }));
-  function commit(ops, result) {
+  function commit(ops, result, custom = null) {
     if (!ops.length) return Promise.resolve(result);
     stampBoard(ops);
     const list = coalesce(ops);
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish();
-    return queue.run(() => grouped(() => execute(list))).then(() => result, (err) => {
+    if (custom) custom.forward = list;
+    return queue.run(() => grouped(() => {
+      if (custom) host.setCustomUndo?.(custom);
+      return execute(list);
+    })).then(() => result, (err) => {
       handleFailure(err);
       return result;
     });
   }
-  function txn(fn) {
+  function txn(fn, custom = null) {
     if (!board2 || destroyed || gone) return Promise.resolve(void 0);
     const ops = [];
     const t = {
@@ -40193,7 +40237,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       sync: rebuild
     };
     const result = fn(t);
-    return commit(ops, result);
+    return commit(ops, result, custom);
   }
   const rawPlexus = (id) => readPlexus(rawNode(id)?.[PROPS]) ?? {};
   function hasStoredLayout() {
@@ -41312,13 +41356,43 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const moves = (plan.moves || []).filter((m) => isInlinePdfCard(board2?.items?.get(m.pdfUid)) && m.cardUid && m.page?.title);
       if (!moves.length) return Promise.resolve({ moved: 0 });
       const moving = new Set(moves.map((m) => m.pdfUid));
+      const records = [];
+      const edgeRecords = [];
+      const custom = {
+        forward: [],
+        async undo() {
+          const ops = [];
+          for (const r of records) ops.push({ op: "delete", uid: r.newCardUid });
+          const back = records.slice().sort((a, b) => a.originalParentUid < b.originalParentUid ? -1 : a.originalParentUid > b.originalParentUid ? 1 : a.originalOrder - b.originalOrder);
+          for (const r of back) {
+            ops.push({ op: "move", uid: r.pdfUid, parent: r.originalParentUid, order: r.originalOrder });
+            ops.push({ op: "props", uid: r.pdfUid, plexus: r.originalProps });
+          }
+          for (const e2 of edgeRecords) {
+            ops.push({ op: "string", uid: e2.uid, string: e2.oldString });
+            ops.push({ op: "props", uid: e2.uid, plexus: e2.oldProps });
+          }
+          await execute(ops);
+          for (const r of records) {
+            if (!r.pageCreated) continue;
+            const page = host.pullPage?.(r.pageTitle);
+            if (page && !(page[":block/children"] || []).length) await host.deletePage?.(r.pageUid);
+          }
+        },
+        async redo() {
+          const ops = custom.forward.filter((op) => op.op !== "page" || host.pageExists?.(op.title) !== true);
+          await execute(ops);
+        }
+      };
       return txn((t) => {
         for (const m of moves) {
           const parent = rawNode(m.parentUid) ? m.parentUid : board2.items.get(m.pdfUid).parentUid;
           const kids = kidsOf2(rawNode(parent));
           const at = Math.max(0, kids.findIndex((k) => k[UID] === m.pdfUid));
           const pdfString = rawNode(m.pdfUid)?.[STR] || `{{[[pdf]]: ${m.url}}}`;
+          const originalProps = clone(rawPlexus(m.pdfUid));
           const pageUid = m.page.uid || t.page({ uid: m.page.newUid || void 0, title: m.page.title });
+          records.push({ pdfUid: m.pdfUid, originalParentUid: parent, originalOrder: at, originalProps, newCardUid: m.cardUid, pageUid, pageTitle: m.page.title, pageCreated: !m.page.uid });
           t.props(m.pdfUid, null);
           t.move(m.pdfUid, pageUid, 0);
           t.create({ parent, uid: m.cardUid, string: m.cardString, plexus: m.layout, order: at });
@@ -41328,12 +41402,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         for (const e2 of plan.edges || []) {
           const cur = board2.edges?.get(e2.uid);
           if (!cur || !(moving.has(cur.from) || moving.has(cur.to))) continue;
+          edgeRecords.push({ uid: e2.uid, oldString: rawNode(e2.uid)?.[STR] ?? "", oldProps: clone(rawPlexus(e2.uid)) });
           t.string(e2.uid, e2.string);
           t.props(e2.uid, edgePlexus(e2.uid, { from: e2.from, to: e2.to }));
           edges += 1;
         }
         return { moved: moves.length, edges };
-      });
+      }, custom);
     },
     // One ref card, centered on the board's content (the origin when nothing is placed yet).
     addBlockRef(blockUid2) {

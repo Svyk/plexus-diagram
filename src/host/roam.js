@@ -621,6 +621,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const MAX_GROUP_WRITES = 45; // under Roam's undo depth (50)
   const UNDO_ECHO_MS = 900; // Roam echoes our own writes back through the pull watch; those are not foreign edits
   let openGroup = null;
+  let silent = false; // inverse writes of a custom undo entry: they are not new user steps
   let lastWriteAt = -Infinity;
   let dropBurst = () => {};
   // Debug only. The undo group that just closed, and how many create/update/move/delete writes it held.
@@ -634,9 +635,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const noteWrite = (kind) => {
     dropBurst();
     lastWriteAt = Date.now();
+    if (silent) return;
     redoLog.length = 0;
     if (openGroup) {
-      if (openGroup.n >= MAX_GROUP_WRITES) {
+      if (openGroup.n >= MAX_GROUP_WRITES && !openGroup.custom) {
         const done = openGroup;
         openGroup = { n: 0, kinds: [], label: done.label || "" };
         closeChunk(done);
@@ -1596,6 +1598,18 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       }
     },
 
+    // The open group becomes ONE entry that undoes and redoes through its own callbacks ({ undo, redo }, async),
+    // not through a count of Roam's native undo steps (one Plexus write can be more than one native entry).
+    setCustomUndo(entry) {
+      if (openGroup && entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
+    },
+
+    async deletePage(uid) {
+      stats.writes++;
+      await data.page.delete({ page: { uid } });
+      noteWrite("delete");
+    },
+
     // A block another extension created inside the open group (Roam Plexus "New drawing").
     // That write never passed through noteWrite, so it is one extra Roam undo entry.
     // Recording the uid makes this group's undo/redo step over it too. No-op with no group open.
@@ -1615,6 +1629,12 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     async undo() {
       lastWriteAt = Date.now();
       const entry = undoLog.pop();
+      if (entry?.custom) {
+        silent = true;
+        try { await entry.custom.undo(); } catch (err) { undoLog.push(entry); throw err; } finally { silent = false; lastWriteAt = Date.now(); }
+        redoLog.push(entry);
+        return;
+      }
       const span = entry ? groupSpan(entry) : 1;
       let done = 0;
       try {
@@ -1633,6 +1653,12 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     async redo() {
       lastWriteAt = Date.now();
       const entry = redoLog.pop();
+      if (entry?.custom) {
+        silent = true;
+        try { await entry.custom.redo(); } catch (err) { redoLog.push(entry); throw err; } finally { silent = false; lastWriteAt = Date.now(); }
+        undoLog.push(entry);
+        return;
+      }
       const span = entry ? groupSpan(entry) : 1;
       let done = 0;
       try {

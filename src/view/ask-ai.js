@@ -202,7 +202,7 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
       const btn = make(dom, "button", "pxd-ask__quickbtn", quick, q.label);
       btn.type = "button";
       btn.addEventListener("click", () => {
-        textarea.value = q.prompt;
+        textarea.value = wholeDoc && !blockId && !blockIds ? q.prompt.replace("this part", "this document") : q.prompt;
         if (!preview.hidden) refreshPreview();
         void run();
       });

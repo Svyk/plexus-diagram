@@ -54557,7 +54557,7 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
       const btn2 = make(dom, "button", "pxd-ask__quickbtn", quick, q.label);
       btn2.type = "button";
       btn2.addEventListener("click", () => {
-        textarea.value = q.prompt;
+        textarea.value = wholeDoc && !blockId && !blockIds ? q.prompt.replace("this part", "this document") : q.prompt;
         if (!preview.hidden) refreshPreview();
         void run();
       });

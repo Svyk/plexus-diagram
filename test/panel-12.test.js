@@ -235,7 +235,17 @@ test("Add panel filters narrow through librarySearch", async (t) => {
   f.panel.open("search");
   const input = q(f.root, ".pxd-panel__input");
   assert.equal(input.placeholder, "Search pages and blocks…");
-  const type = q(f.root, ".pxd-panel__type");
+  const typeBtn = q(f.root, ".pxd-panel__type-btn");
+  const pick = async (...values) => {
+    f.stub.dispatch(q(f.root, ".pxd-panel__type-none"), "click");
+    for (const value of values) {
+      const box = [...f.root.querySelectorAll(".pxd-panel__type-box")].find((b) => b.dataset.type === value);
+      box.checked = true;
+      f.stub.dispatch(box, "change");
+    }
+    if (!values.length) f.stub.dispatch(q(f.root, ".pxd-panel__type-all"), "click");
+    await tick();
+  };
   const tag = q(f.root, ".pxd-panel__tag");
   const days = q(f.root, ".pxd-panel__days");
   const orphan = q(f.root, ".pxd-panel__orphan input");
@@ -250,22 +260,20 @@ test("Add panel filters narrow through librarySearch", async (t) => {
   assert.deepEqual(base, expectRows({ text: "fixture", type: "all", tag: "", days: "", orphan: false }));
   assert.ok(base.length >= 2);
 
-  type.value = "block";
-  f.stub.dispatch(type, "change");
-  await tick();
+  await pick("block");
+  assert.equal(typeBtn.textContent, "1 type");
   const blocks = strings();
   assert.ok(blocks.length < base.length);
   assert.ok(blocks.every((s) => base.includes(s)));
   assert.deepEqual(blocks, expectRows({ text: "fixture", type: "block", tag: "", days: "", orphan: false }));
 
-  type.value = "board";
-  f.stub.dispatch(type, "change");
-  await tick();
+  await pick("board");
   const boards = strings();
   assert.ok(boards.length < base.length);
   assert.ok(boards.every((s) => base.includes(s)));
 
-  type.value = "all";
+  await pick();
+  assert.equal(typeBtn.textContent, "All");
   orphan.checked = true;
   f.stub.dispatch(orphan, "change");
   await tick();
@@ -450,4 +458,38 @@ test("Info inserts Context after the card body when contextLine returns text", a
   );
   assert.equal(q(f.root, ".pxd-panel__info-body").textContent, "Field note #hb1");
   assert.equal(q(f.root, ".pxd-panel__info-context").textContent, "Made October 4th, 2026 on Lab");
+});
+
+test("Type filter persists, and PDF part rows show a badge, snippet, source, and add the part", async (t) => {
+  const saved = [];
+  const added = [];
+  const asked = [];
+  const part = { kind: "table", page: 4, text: "Zone Swab limit 0 CFU", docTitle: "Plan", sha256: "abc", engine: "builtin", optsHash: "oh", blockId: "t1", pdfUid: "u1" };
+  const f = setup({
+    loadTypes: () => ["table", "pdf"],
+    saveTypes: (types) => saved.push(types),
+    searchParts: (query) => { asked.push(query); return [part]; },
+    addPart: (payload) => added.push(payload),
+  }, { librarySearch: () => ({ rows: [], queries: [] }) });
+  t.after(f.restore);
+  f.panel.open("search");
+  const typeBtn = q(f.root, ".pxd-panel__type-btn");
+  assert.equal(typeBtn.textContent, "2 types");
+  const boxes = [...f.root.querySelectorAll(".pxd-panel__type-box")];
+  assert.deepEqual(boxes.filter((b) => b.checked).map((b) => b.dataset.type).sort(), ["pdf", "table"]);
+  const input = q(f.root, ".pxd-panel__input");
+  input.value = "swab";
+  q(f.root, ".pxd-panel__pages").value = "p. 3-8";
+  f.stub.dispatch(input, "keydown", { key: "Enter" });
+  await tick();
+  assert.deepEqual(asked, [{ text: "swab", kinds: ["table"], pages: "p. 3-8" }]);
+  const row = q(f.root, ".pxd-panel__row--part");
+  assert.equal(q(row, ".pxd-panel__badge").textContent, "Table");
+  assert.equal(q(row, ".pxd-panel__mark").textContent, "Swab");
+  assert.equal(q(row, ".pxd-panel__row-label").textContent, "p. 4 \u00b7 Plan");
+  f.stub.dispatch(row, "click");
+  assert.deepEqual(added, [{ sha256: "abc", engine: "builtin", optsHash: "oh", ids: ["t1"], pdfUid: "u1", pdfBlockUid: "u1", kind: "table" }]);
+  f.stub.dispatch(q(f.root, ".pxd-panel__type-all"), "click");
+  assert.equal(saved.at(-1).length, 15);
+  assert.equal(typeBtn.textContent, "All");
 });

@@ -8,6 +8,7 @@ import {
   narrowLibrary,
   normalizeLibraryFilter,
   recentDailyTitles,
+  wantsType,
 } from "../model/library.js";
 import { splitNeighbors } from "../model/neighbors.js";
 import { coverModel, pdfMacroUrl, pdfPagePlan } from "../model/pdf.js";
@@ -144,6 +145,13 @@ export const NATIVE_PATTERN = `[:block/props
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
 
 const DIAGRAM_RE = "^\\{\\{(\\[\\[)?diagram";
+const BLOCK_KIND_PATTERNS = {
+  pdf: "\\{\\{(\\[\\[)?pdf(\\]\\])?:",
+  image: "!\\[[^\\]]*\\]\\(",
+  web: "^\\s*(\\[[^\\]]*\\]\\(\\s*)?https?://\\S+\\)?\\s*$",
+  region: "plexus-region\\]\\]:",
+  pin: "plexus-pin\\]\\]:",
+};
 const DIAGRAM_STRING = /^\s*\{\{(?:\[\[)?diagram/i;
 const DIAGRAM_FIND = new RegExp(DIAGRAM_RE);
 // Index lookup. A `[?t ...]` binding on :block/refs scans every refs datom in the graph.
@@ -1902,6 +1910,24 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         .map(([s, u, t]) => ({ uid: u, string: s, pageTitle: t }));
     },
 
+    // Every PDF block in the graph, for the parsed-part index. Read-only and capped.
+    listPdfBlocks(limit = 300) {
+      const rows = host.q(
+        `[:find ?u ?s ?t :in $ ?kind :where [?b :block/string ?s] [(re-pattern ?kind) ?kre] [(re-find ?kre ?s)]
+ [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]`,
+        BLOCK_KIND_PATTERNS.pdf,
+      ) || [];
+      const out = [];
+      for (const [uid, string, pageTitle] of rows) {
+        if (typeof string !== "string" || !uid) continue;
+        const url = pdfMacroUrl(string) || (/https?:\/\/[^\s}]+/.exec(string) || [""])[0];
+        if (!url) continue;
+        out.push({ uid: String(uid), url, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
+        if (out.length >= limit) break;
+      }
+      return out;
+    },
+
     // Add-panel filters. Read-only. Each query is timed. Days and orphan never scan the graph alone.
     librarySearch(filter, limit = 40) {
       const f = normalizeLibraryFilter(filter);
@@ -1933,10 +1959,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         queries.push({ name, ms: performance.now() - t0 });
         return out;
       };
-      const wantPage = f.type === "all" || f.type === "page";
-      const wantBlock = f.type === "all" || f.type === "block";
-      const wantBoard = f.type === "all" || f.type === "board";
-      const wantDaily = f.type === "daily";
+      const wantPage = wantsType(f, "page");
+      const wantBlock = wantsType(f, "block");
+      const wantBoard = wantsType(f, "board");
+      const wantDaily = f.types.includes("daily");
       const editedOf = (value) => (Number.isFinite(value) ? value : null);
 
       if ((wantPage && (f.text || f.tag)) || (wantDaily && f.tag)) {
@@ -2036,7 +2062,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         }
       }
 
-      if (wantBoard && (f.type === "board" || f.text || f.tag)) {
+      if (wantBoard && (f.types.includes("board") || f.text || f.tag)) {
         let found;
         if (f.tag) {
           found = timed("boards", () => host.q(
@@ -2080,6 +2106,53 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
             tags: f.tag ? [f.tag] : [],
             onBoard: true,
           });
+        }
+      }
+
+      // PDF, image, web link, region and pin blocks. One bounded string-pattern query per kind, capped like the rest.
+      for (const kind of ["pdf", "image", "web", "region", "pin"]) {
+        if (!f.types.includes(kind)) continue;
+        const find = ["?s", "?u", "?t"];
+        const inputs = ["$", "?kind"];
+        const where = [];
+        const args = [BLOCK_KIND_PATTERNS[kind]];
+        if (f.tag) {
+          inputs.push("?name");
+          args.push(f.tag);
+          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
+        }
+        where.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]");
+        if (f.text) {
+          inputs.push("?pat");
+          args.push(ciPattern(f.text));
+          where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?s)]");
+        }
+        where.push("[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
+        if (since != null) {
+          inputs.push("?since");
+          args.push(since);
+          find.push("?e");
+          where.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
+        }
+        const found = timed(kind, () => host.q(
+          `[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`,
+          ...args,
+        ));
+        for (const rec of found) {
+          const string = rec?.[0];
+          const uid = rec?.[1];
+          const pageTitle = rec?.[2];
+          if (typeof string !== "string" || !uid) continue;
+          if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) continue;
+          if (!push({
+            kind: "block",
+            uid: String(uid),
+            string,
+            pageTitle: typeof pageTitle === "string" ? pageTitle : "",
+            edited: since != null ? editedOf(rec?.[3]) : null,
+            tags: f.tag ? [f.tag] : [],
+            onBoard: false,
+          })) break;
         }
       }
 

@@ -16386,27 +16386,47 @@ function cleanTag(raw) {
   if (wiki) tag = wiki[1].trim();
   return tag;
 }
+function normalizeTypes(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const out = [];
+  for (const t of list) if (TYPE_SET2.has(t) && !out.includes(t)) out.push(t);
+  return out.length === TYPE_SET2.size ? [] : out;
+}
+function parsePageRange(raw) {
+  const m = /^\s*(?:p(?:ages?)?\.?\s*)?(\d+)?\s*(?:[-\u2013]\s*(\d+)?)?\s*$/i.exec(String(raw ?? ""));
+  if (!m || m[1] == null && m[2] == null) return null;
+  const dash = /[-\u2013]/.test(String(raw));
+  const from = m[1] != null ? Number(m[1]) : 1;
+  const to = m[2] != null ? Number(m[2]) : dash ? Infinity : from;
+  if (!(from >= 1) || !(to >= from)) return null;
+  return { from, to };
+}
 function normalizeLibraryFilter(raw = {}) {
   const src = raw && typeof raw === "object" ? raw : {};
-  const type = LIBRARY_TYPES.includes(src.type) ? src.type : "all";
+  const types = Array.isArray(src.types) ? normalizeTypes(src.types) : TYPE_SET2.has(src.type) ? [src.type] : [];
   const daysN = Number(src.days);
   const days = Number.isFinite(daysN) ? Math.max(0, Math.floor(daysN)) : 0;
   return {
-    type,
+    types,
     tag: cleanTag(src.tag),
     days,
     orphan: src.orphan === true,
-    text: String(src.text ?? "").trim()
+    text: String(src.text ?? "").trim(),
+    pages: String(src.pages ?? "").trim()
   };
+}
+function wantsType(filter, type) {
+  const f = normalizeLibraryFilter(filter);
+  return f.types.length === 0 || f.types.includes(type);
 }
 function libraryFilterActive(filter) {
   const f = normalizeLibraryFilter(filter);
-  return Boolean(f.text || f.tag || f.days || f.orphan || f.type !== "all");
+  return Boolean(f.text || f.tag || f.days || f.orphan || f.types.length);
 }
 function librarySelective(filter) {
   const f = normalizeLibraryFilter(filter);
   if (f.text || f.tag) return true;
-  return f.type === "board" || f.type === "daily";
+  return f.types.some((t) => BOUNDED_TYPES.includes(t));
 }
 function editedSince(edited, days, now3 = Date.now()) {
   const n2 = Math.max(0, Math.floor(Number(days) || 0));
@@ -16414,9 +16434,22 @@ function editedSince(edited, days, now3 = Date.now()) {
   const t = now3 instanceof Date ? now3.getTime() : Number(now3);
   return Number.isFinite(edited) && edited > t - n2 * DAY_MS;
 }
+function blockKind(string) {
+  const s = typeof string === "string" ? string : "";
+  if (!s) return "block";
+  if (s.includes("plexus-region") || s.includes(PIN_COMPONENT)) {
+    const r = parseRegion(s);
+    if (r) return r.macro === PIN_COMPONENT ? "pin" : "region";
+  }
+  if (PDF_BLOCK_RE.test(s)) return "pdf";
+  if (IMAGE_RE.test(s)) return "image";
+  if (WEB_RE.test(s.trim())) return "web";
+  return "block";
+}
 function libraryKind(row4) {
   if (row4?.kind === "board") return "board";
-  if (row4?.kind === "block") return "block";
+  if (row4?.kind === "part") return LIBRARY_PART_TYPES.includes(row4.part) ? row4.part : "paragraph";
+  if (row4?.kind === "block") return blockKind(row4.string ?? row4.text);
   const title = row4?.title ?? "";
   if (row4?.kind === "daily" || isDailyTitle(title)) return "daily";
   return "page";
@@ -16426,7 +16459,7 @@ function narrowLibrary(rows, filter, now3 = Date.now()) {
   const needle = f.text.toLowerCase();
   return (Array.isArray(rows) ? rows : []).filter((row4) => {
     const kind = libraryKind(row4);
-    if (f.type !== "all" && kind !== f.type) return false;
+    if (f.types.length && !f.types.includes(kind)) return false;
     if (f.tag) {
       const tags = Array.isArray(row4?.tags) ? row4.tags : [];
       if (!tags.includes(f.tag)) return false;
@@ -16468,15 +16501,24 @@ function recentDailyTitles(days = 14, now3 = /* @__PURE__ */ new Date()) {
 function libraryCap() {
   return LIBRARY_CAP;
 }
-var LIBRARY_TYPES, LIBRARY_CAP, DAY_MS, MONTHS5, DAILY_RE;
+var LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, LIBRARY_TYPES, PARSE_PART_TYPES, BOUNDED_TYPES, TYPE_SET2, LIBRARY_CAP, DAY_MS, MONTHS5, DAILY_RE, PDF_BLOCK_RE, IMAGE_RE, WEB_RE;
 var init_library = __esm({
   "src/model/library.js"() {
     init_schema();
-    LIBRARY_TYPES = ["all", "page", "block", "board", "daily"];
+    init_regions();
+    LIBRARY_DOC_TYPES = ["page", "block", "board", "daily", "pdf", "image", "web"];
+    LIBRARY_PART_TYPES = ["paragraph", "table", "figure", "caption", "heading", "formula", "region", "pin"];
+    LIBRARY_TYPES = ["all", ...LIBRARY_DOC_TYPES, ...LIBRARY_PART_TYPES];
+    PARSE_PART_TYPES = ["paragraph", "table", "figure", "caption", "heading", "formula"];
+    BOUNDED_TYPES = ["board", "daily", "pdf", "image", "web", "region", "pin"];
+    TYPE_SET2 = new Set(LIBRARY_TYPES.filter((t) => t !== "all"));
     LIBRARY_CAP = 80;
     DAY_MS = 864e5;
     MONTHS5 = "January|February|March|April|May|June|July|August|September|October|November|December";
     DAILY_RE = new RegExp(`^(${MONTHS5}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+    PDF_BLOCK_RE = /\{\{(?:\[\[)?pdf(?:\]\])?:/i;
+    IMAGE_RE = /!\[[^\]]*\]\([^)\s]+[^)]*\)/;
+    WEB_RE = /^(?:\[[^\]]*\]\(\s*https?:\/\/[^\s)]+\s*\)|https?:\/\/\S+)$/i;
   }
 });
 
@@ -17616,13 +17658,13 @@ function chipText({ from, to, label, boardTitle: boardTitle3, fromBlockText, toB
   const board2 = clip3(boardTitle3, 32);
   return `↗ ${endName(from, fromBlockText)} ${arrow2} ${endName(to, toBlockText)}${board2 ? ` · on ${board2}` : ""}${becauseClause(why)}`;
 }
-function relationOf(board2, edgeUid, { blockText } = {}) {
+function relationOf(board2, edgeUid, { blockText: blockText2 } = {}) {
   const edge = board2?.edges?.get(edgeUid);
   if (!edge) return null;
   const read2 = (uid) => {
     if (!uid) return "";
     try {
-      const t = blockText?.(uid);
+      const t = blockText2?.(uid);
       return typeof t === "string" ? t : "";
     } catch {
       return "";
@@ -17630,7 +17672,7 @@ function relationOf(board2, edgeUid, { blockText } = {}) {
   };
   const title = (uid) => {
     const item = board2.items.get(uid);
-    return item ? itemLabel(item, blockText) || item.title || "card" : "card";
+    return item ? itemLabel(item, blockText2) || item.title || "card" : "card";
   };
   return {
     edge,
@@ -17837,7 +17879,7 @@ function mountLazyCrop(doc, frame, { src, frac, points, win } = {}) {
   if (!watched) return { show, img };
   return { show, img };
 }
-function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockText, rowFrac } = {}) {
+function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockText: blockText2, rowFrac } = {}) {
   const edge = board2?.edges?.get(edgeUid);
   if (!edge) return null;
   const rects = worldRects(board2);
@@ -17875,7 +17917,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
   const bounds = boundsOf([a, b]);
   const view = { x: bounds.x - pad2, y: bounds.y - pad2, w: bounds.w + 2 * pad2, h: bounds.h + 2 * pad2 };
   const inside8 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
-  const label = (item) => itemLabel(item, blockText) || item.title || "";
+  const label = (item) => itemLabel(item, blockText2) || item.title || "";
   const cards = [];
   let others = 0;
   for (const item of board2.items.values()) {
@@ -17892,7 +17934,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
   const font = previewFont(view.w);
   const textOf2 = (uid) => {
     try {
-      const t = blockText?.(uid);
+      const t = blockText2?.(uid);
       return typeof t === "string" && t ? endpointDisplayText(t) : "block";
     } catch {
       return "block";
@@ -18010,7 +18052,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
   const stop3 = (event) => {
     event.stopPropagation?.();
   };
-  const blockText = (uid) => {
+  const blockText2 = (uid) => {
     try {
       return host?.blockString?.(uid);
     } catch {
@@ -18036,7 +18078,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     } catch {
       raw = null;
     }
-    const board2 = raw ? buildBoard(raw, { resolve: blockText }) : null;
+    const board2 = raw ? buildBoard(raw, { resolve: blockText2 }) : null;
     models.set(boardUid, { board: board2, at: Date.now() });
     return board2;
   };
@@ -18081,8 +18123,8 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     closePop();
     const boardUid = cache.boardOf(edgeUid);
     const board2 = boardUid ? modelOf(boardUid) : null;
-    const rel = board2 ? relationOf(board2, edgeUid, { blockText }) : null;
-    const model = board2 ? previewModel(board2, edgeUid, { blockText }) : null;
+    const rel = board2 ? relationOf(board2, edgeUid, { blockText: blockText2 }) : null;
+    const model = board2 ? previewModel(board2, edgeUid, { blockText: blockText2 }) : null;
     const el = doc.createElement("div");
     el.className = `pxd-root ${POP_CLASS}`;
     el.setAttribute("role", "dialog");
@@ -18099,7 +18141,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     if (endpointUid) {
       let text3 = "";
       try {
-        text3 = blockText(endpointUid) || "";
+        text3 = blockText2(endpointUid) || "";
       } catch {
         text3 = "";
       }
@@ -18108,7 +18150,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       if (cropFrac && (region.kind === "img" || region.kind === "imgpoly" || region.kind === "imgrect") && !region.error) {
         let drawing = "";
         try {
-          drawing = blockText(region.drawingUid) || "";
+          drawing = blockText2(region.drawingUid) || "";
         } catch {
           drawing = "";
         }
@@ -18230,7 +18272,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
   const buildChip = (edgeUid) => {
     const boardUid = cache.boardOf(edgeUid);
     const board2 = boardUid ? modelOf(boardUid) : null;
-    const rel = board2 ? relationOf(board2, edgeUid, { blockText }) : null;
+    const rel = board2 ? relationOf(board2, edgeUid, { blockText: blockText2 }) : null;
     if (!rel) return null;
     const chip = doc.createElement("div");
     chip.className = CHIP_CLASS;
@@ -18446,9 +18488,9 @@ var init_relchips = __esm({
       const t = String(text3 ?? "").replace(/\s+/g, " ").trim();
       return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
     };
-    endName = (name, blockText) => {
+    endName = (name, blockText2) => {
       const base = clip3(name, NAME_MAX) || "card";
-      const block = clip3(endpointDisplayText(blockText), BLOCK_MAX);
+      const block = clip3(endpointDisplayText(blockText2), BLOCK_MAX);
       return block ? `${base} ▸ “${block}”` : base;
     };
     ROW_PAD = 10;
@@ -19646,6 +19688,113 @@ var init_timeline2 = __esm({
   }
 });
 
+// src/model/parts-search.js
+function tableText(block) {
+  const cells = Array.isArray(block?.cells) ? block.cells : [];
+  return cells.map((cell) => squash2(cell?.text)).filter(Boolean).join(" ");
+}
+function blockText(block) {
+  switch (block.type) {
+    case "table":
+      return tableText(block);
+    case "list":
+      return (block.items || []).map((item) => squash2(item?.text)).filter(Boolean).join(" ");
+    case "formula":
+      return squash2(block.latex || block.text);
+    default:
+      return squash2(block.text);
+  }
+}
+function buildPartsIndex(doc, { url = "", docTitle = "", pdfUid = "" } = {}) {
+  const blocks = doc?.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
+  const order = Array.isArray(doc?.order) ? doc.order : Object.keys(blocks);
+  const attached = /* @__PURE__ */ new Map();
+  for (const id of order) {
+    const b = blocks[id];
+    if (b?.type === "caption" && b.for && blocks[b.for]) {
+      const text3 = squash2(b.text);
+      if (text3) attached.set(b.for, attached.has(b.for) ? `${attached.get(b.for)} ${text3}` : text3);
+    }
+  }
+  const rows = [];
+  for (const id of order) {
+    const b = blocks[id];
+    const kind = b && PART_OF[b.type];
+    if (!kind) continue;
+    let text3 = blockText(b);
+    const cap4 = attached.get(b.id ?? id) || (typeof b.caption === "string" && !blocks[b.caption] ? squash2(b.caption) : "");
+    if (cap4 && kind !== "caption" && !text3.includes(cap4)) text3 = text3 ? `${text3} ${cap4}` : cap4;
+    if (!text3) continue;
+    rows.push({
+      kind,
+      page: Number(b.page) || 0,
+      text: text3,
+      lower: text3.toLowerCase(),
+      docTitle,
+      url,
+      pdfUid,
+      sha256: doc?.sha256 || "",
+      engine: doc?.engine || "",
+      optsHash: doc?.optsHash || "",
+      blockId: b.id ?? id
+    });
+  }
+  return rows;
+}
+function countHits(hay, needle) {
+  let n2 = 0;
+  let at = hay.indexOf(needle);
+  while (at !== -1) {
+    n2 += 1;
+    at = hay.indexOf(needle, at + needle.length);
+  }
+  return n2;
+}
+function searchParts(rows, { text: text3 = "", kinds = [], pages = "" } = {}, limit = 40) {
+  const needle = String(text3 ?? "").trim().toLowerCase();
+  const kindSet = kinds && kinds.length ? new Set(kinds) : null;
+  const range = parsePageRange(pages);
+  const hits = [];
+  let seq = 0;
+  for (const row4 of Array.isArray(rows) ? rows : []) {
+    seq += 1;
+    if (kindSet && !kindSet.has(row4.kind)) continue;
+    if (range && (row4.page < range.from || row4.page > range.to)) continue;
+    let count = 1;
+    if (needle) {
+      count = countHits(row4.lower, needle);
+      if (!count) continue;
+    }
+    hits.push({ row: row4, count, seq });
+  }
+  hits.sort((a, b) => b.count - a.count || a.seq - b.seq);
+  return hits.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map(({ row: row4, count }) => ({ ...row4, hits: needle ? count : 0 }));
+}
+function partSnippet(text3, needle, width = SNIPPET_W) {
+  const t = squash2(text3);
+  const n2 = String(needle ?? "").trim().toLowerCase();
+  const at = n2 ? t.toLowerCase().indexOf(n2) : -1;
+  if (at === -1) return { before: "", hit: "", after: t.length > width ? `${t.slice(0, width)}…` : t };
+  const room = Math.max(0, width - n2.length);
+  const start = Math.max(0, at - Math.floor(room / 3));
+  const end = Math.min(t.length, at + n2.length + room - (at - start));
+  return {
+    before: `${start > 0 ? "…" : ""}${t.slice(start, at)}`,
+    hit: t.slice(at, at + n2.length),
+    after: `${t.slice(at + n2.length, end)}${end < t.length ? "…" : ""}`
+  };
+}
+var PART_OF, SNIPPET_W, squash2, PART_LABELS;
+var init_parts_search = __esm({
+  "src/model/parts-search.js"() {
+    init_library();
+    PART_OF = { heading: "heading", para: "paragraph", list: "paragraph", footnote: "paragraph", code: "paragraph", table: "table", figure: "figure", formula: "formula", caption: "caption" };
+    SNIPPET_W = 120;
+    squash2 = (text3) => String(text3 ?? "").replace(/\s+/g, " ").trim();
+    PART_LABELS = { paragraph: "Paragraph", table: "Table", figure: "Figure", caption: "Caption", heading: "Heading", formula: "Formula" };
+  }
+});
+
 // src/model/anydoc-to-parse.js
 function officeFormatFromName(name) {
   const text3 = String(name || "");
@@ -20555,15 +20704,72 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   input.placeholder = "Search pages and blocks…";
   input.setAttribute("placeholder", "Search pages and blocks…");
   const filters = el("div", "pxd-panel__filters", searchPane);
-  const typeSel = el("select", "pxd-panel__type", filters);
-  typeSel.setAttribute("aria-label", "Type");
-  const typeLabels = { all: "All", page: "Pages", block: "Blocks", board: "Boards", daily: "Dailies" };
-  for (const value of LIBRARY_TYPES) {
-    const opt = el("option", "pxd-panel__type-opt", typeSel, typeLabels[value]);
-    opt.value = value;
-    opt.setAttribute("value", value);
+  const typeBtn = el("button", "pxd-btn pxd-panel__type-btn", filters, "All");
+  typeBtn.type = "button";
+  typeBtn.setAttribute("aria-label", "Filter card type");
+  typeBtn.setAttribute("aria-haspopup", "true");
+  typeBtn.setAttribute("aria-expanded", "false");
+  const typePop = el("div", "pxd-panel__type-pop", filters);
+  typePop.style.display = "none";
+  typePop.setAttribute("role", "group");
+  typePop.setAttribute("aria-label", "Card types");
+  const typeLabels = {
+    page: "Page",
+    block: "Block",
+    board: "Board",
+    daily: "Daily",
+    pdf: "PDF",
+    image: "Image",
+    web: "Web link",
+    paragraph: "Paragraph",
+    table: "Table",
+    figure: "Figure",
+    caption: "Caption",
+    heading: "Heading",
+    formula: "Formula",
+    region: "Region",
+    pin: "Pin"
+  };
+  const ALL_TYPES = [...LIBRARY_DOC_TYPES, ...LIBRARY_PART_TYPES];
+  const typeBoxes = /* @__PURE__ */ new Map();
+  let checked = new Set(ALL_TYPES);
+  try {
+    const saved2 = on.loadTypes?.();
+    if (Array.isArray(saved2)) checked = new Set(saved2.filter((t) => ALL_TYPES.includes(t)));
+  } catch {
   }
-  typeSel.value = "all";
+  const typeBulk = el("div", "pxd-panel__type-bulk", typePop);
+  const showAll = el("button", "pxd-btn pxd-panel__type-all", typeBulk, "Show all");
+  showAll.type = "button";
+  showAll.setAttribute("aria-label", "Show all");
+  const hideAll = el("button", "pxd-btn pxd-panel__type-none", typeBulk, "Hide all");
+  hideAll.type = "button";
+  hideAll.setAttribute("aria-label", "Hide all");
+  for (const [title, list] of [["Documents", LIBRARY_DOC_TYPES], ["Inside PDFs", LIBRARY_PART_TYPES]]) {
+    el("div", "pxd-panel__type-group", typePop, title);
+    for (const value of list) {
+      const line = el("label", "pxd-panel__type-row", typePop);
+      line.dataset.type = value;
+      const box2 = el("input", "pxd-panel__type-box", line);
+      box2.type = "checkbox";
+      box2.dataset.type = value;
+      box2.setAttribute("data-type", value);
+      box2.setAttribute("aria-label", typeLabels[value]);
+      line.append(typeLabels[value]);
+      typeBoxes.set(value, box2);
+    }
+  }
+  const paintTypes = () => {
+    for (const [value, box2] of typeBoxes) box2.checked = checked.has(value);
+    const n2 = checked.size;
+    typeBtn.textContent = n2 === ALL_TYPES.length ? "All" : n2 === 0 ? "None" : `${n2} ${n2 === 1 ? "type" : "types"}`;
+  };
+  paintTypes();
+  const setTypesOpen = (open) => {
+    typePop.style.display = open ? "" : "none";
+    typeBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  const typesOpen = () => typePop.style.display !== "none";
   const tagInput = el("input", "pxd-panel__tag", filters);
   tagInput.type = "text";
   tagInput.placeholder = "#tag";
@@ -20575,6 +20781,11 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   daysInput.placeholder = "days";
   daysInput.setAttribute("placeholder", "days");
   daysInput.setAttribute("aria-label", "Edited in the last N days");
+  const pagesInput = el("input", "pxd-panel__pages", filters);
+  pagesInput.type = "text";
+  pagesInput.placeholder = "p. 3-8";
+  pagesInput.setAttribute("placeholder", "p. 3-8");
+  pagesInput.setAttribute("aria-label", "Page range, PDF parts only");
   const orphanLabel = el("label", "pxd-panel__orphan", filters);
   const orphanBox = el("input", "pxd-panel__orphan-box", orphanLabel);
   orphanBox.type = "checkbox";
@@ -20708,9 +20919,50 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     });
     return r;
   };
+  const partRow = (parent, part, needle) => {
+    const r = el("div", "pxd-panel__row pxd-panel__row--part", parent);
+    r.setAttribute("draggable", "true");
+    r.draggable = true;
+    r.dataset.part = part.blockId;
+    r.setAttribute("data-part", part.blockId);
+    r.dataset.kind = part.kind;
+    const head2 = el("div", "pxd-panel__part-head", r);
+    el("span", `pxd-panel__badge pxd-panel__badge--${part.kind}`, head2, PART_LABELS[part.kind] || part.kind);
+    el("span", "pxd-panel__row-label", head2, `p. ${part.page} · ${part.docTitle || "PDF"}`);
+    const snip = partSnippet(part.text, needle);
+    const body = el("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
+    if (snip.before) body.append(snip.before);
+    if (snip.hit) el("mark", "pxd-panel__mark", body, snip.hit);
+    if (snip.after) body.append(snip.after);
+    const payload = {
+      sha256: part.sha256,
+      engine: part.engine || "builtin",
+      optsHash: part.optsHash || "",
+      ids: [part.blockId],
+      pdfUid: part.pdfUid || "",
+      pdfBlockUid: part.pdfUid || "",
+      kind: part.kind === "table" || part.kind === "figure" || part.kind === "formula" ? part.kind : "blocks"
+    };
+    listen(r, "click", (event) => {
+      event.stopPropagation();
+      on.addPart?.(payload);
+      r.classList.add("pxd-panel__row--on");
+    });
+    listen(r, "dragstart", (event) => {
+      try {
+        const json = JSON.stringify(payload);
+        event.dataTransfer?.setData?.(PARSE_MIME, json);
+        event.dataTransfer?.setData?.("text/plain", json);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+      } catch {
+      }
+    });
+    return r;
+  };
   const readFilter = () => ({
     text: input.value,
-    type: typeSel.value || "all",
+    types: checked.size === ALL_TYPES.length ? [] : ALL_TYPES.filter((t) => checked.has(t)),
+    pages: pagesInput.value,
     tag: tagInput.value,
     days: daysInput.value,
     orphan: orphanBox.checked === true
@@ -20719,6 +20971,10 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const filter = readFilter();
     const id = queryId += 1;
     results.replaceChildren();
+    if (checked.size === 0) {
+      el("div", "pxd-panel__empty", results, "No card types selected");
+      return;
+    }
     if (!libraryFilterActive(filter)) return;
     let pack = null;
     try {
@@ -20750,12 +21006,26 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     results.dataset.queryLog = log;
     results.setAttribute("data-query-log", log);
     const rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
+    let parts = [];
+    const needle = String(filter.text || "").trim();
+    const kinds = checked.size === ALL_TYPES.length ? [] : PARSE_PART_TYPES.filter((t) => checked.has(t));
+    if (typeof on.searchParts === "function" && (checked.size === ALL_TYPES.length || kinds.length > 0) && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true) {
+      const t0 = Date.now();
+      try {
+        parts = await Promise.resolve(on.searchParts({ text: needle, kinds, pages: filter.pages }, LIMIT)) || [];
+      } catch {
+        parts = [];
+      }
+      if (id !== queryId) return;
+      results.dataset.partsMs = String(Date.now() - t0);
+    }
     results.replaceChildren();
-    if (!rows.length) {
+    if (!rows.length && !parts.length) {
       el("div", "pxd-panel__empty", results, "No matches");
       return;
     }
     rows.forEach((r) => row4(results, r));
+    parts.forEach((part) => partRow(results, part, needle));
   };
   const scheduleSearch = () => {
     debounce?.();
@@ -20772,7 +21042,54 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   listen(input, "input", scheduleSearch);
   listen(tagInput, "input", scheduleSearch);
   listen(daysInput, "input", scheduleSearch);
-  listen(typeSel, "change", searchNow);
+  listen(pagesInput, "input", scheduleSearch);
+  const saveTypes = () => {
+    try {
+      on.saveTypes?.([...checked]);
+    } catch {
+    }
+  };
+  const changeTypes = () => {
+    paintTypes();
+    saveTypes();
+    searchNow();
+  };
+  listen(typeBtn, "click", (event) => {
+    event.stopPropagation();
+    setTypesOpen(!typesOpen());
+  });
+  listen(showAll, "click", () => {
+    checked = new Set(ALL_TYPES);
+    changeTypes();
+  });
+  listen(hideAll, "click", () => {
+    checked = /* @__PURE__ */ new Set();
+    changeTypes();
+  });
+  listen(typePop, "change", (event) => {
+    const box2 = event.target;
+    const value = box2?.dataset?.type;
+    if (!ALL_TYPES.includes(value)) return;
+    if (box2.checked) checked.add(value);
+    else checked.delete(value);
+    changeTypes();
+  });
+  listen(panel, "click", (event) => {
+    if (!typesOpen()) return;
+    const t = event.target;
+    if (t && (typePop.contains?.(t) || typeBtn.contains?.(t) || t === typeBtn)) return;
+    setTypesOpen(false);
+  });
+  listen(typePop, "keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      setTypesOpen(false);
+      try {
+        typeBtn.focus?.();
+      } catch {
+      }
+    }
+  });
   listen(orphanBox, "change", searchNow);
   listen(input, "keydown", (event) => {
     event.stopPropagation();
@@ -20785,7 +21102,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       searchNow();
     }
   });
-  for (const field of [tagInput, daysInput]) {
+  for (const field of [tagInput, daysInput, pagesInput]) {
     listen(field, "keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -21472,6 +21789,7 @@ var init_panel = __esm({
     init_info();
     init_timeline2();
     init_library();
+    init_parts_search();
     init_drop();
     init_journal();
     init_minimap_svg();
@@ -33890,6 +34208,13 @@ var NATIVE_PATTERN = `[:block/props
  {:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
 var DIAGRAM_RE2 = "^\\{\\{(\\[\\[)?diagram";
+var BLOCK_KIND_PATTERNS = {
+  pdf: "\\{\\{(\\[\\[)?pdf(\\]\\])?:",
+  image: "!\\[[^\\]]*\\]\\(",
+  web: "^\\s*(\\[[^\\]]*\\]\\(\\s*)?https?://\\S+\\)?\\s*$",
+  region: "plexus-region\\]\\]:",
+  pin: "plexus-pin\\]\\]:"
+};
 var DIAGRAM_STRING = /^\s*\{\{(?:\[\[)?diagram/i;
 var DIAGRAM_FIND = new RegExp(DIAGRAM_RE2);
 var STATS_PULL = `[:db/id {:block/_refs [:db/id {:block/parents [:db/id :block/string]}]} {:block/_parents [:db/id {:block/refs [:db/id]}]} {:block/_page [:db/id {:block/refs [:db/id]}]}]`;
@@ -35653,6 +35978,23 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       ) || [];
       return rows.filter(([, , t]) => typeof t === "string" && !t.startsWith("roam/")).slice(0, limit).map(([s, u, t]) => ({ uid: u, string: s, pageTitle: t }));
     },
+    // Every PDF block in the graph, for the parsed-part index. Read-only and capped.
+    listPdfBlocks(limit = 300) {
+      const rows = host.q(
+        `[:find ?u ?s ?t :in $ ?kind :where [?b :block/string ?s] [(re-pattern ?kind) ?kre] [(re-find ?kre ?s)]
+ [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]`,
+        BLOCK_KIND_PATTERNS.pdf
+      ) || [];
+      const out = [];
+      for (const [uid, string, pageTitle] of rows) {
+        if (typeof string !== "string" || !uid) continue;
+        const url = pdfMacroUrl(string) || (/https?:\/\/[^\s}]+/.exec(string) || [""])[0];
+        if (!url) continue;
+        out.push({ uid: String(uid), url, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
+        if (out.length >= limit) break;
+      }
+      return out;
+    },
     // Add-panel filters. Read-only. Each query is timed. Days and orphan never scan the graph alone.
     librarySearch(filter, limit = 40) {
       const f = normalizeLibraryFilter(filter);
@@ -35684,10 +36026,10 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         queries.push({ name, ms: performance.now() - t0 });
         return out;
       };
-      const wantPage = f.type === "all" || f.type === "page";
-      const wantBlock = f.type === "all" || f.type === "block";
-      const wantBoard = f.type === "all" || f.type === "board";
-      const wantDaily = f.type === "daily";
+      const wantPage = wantsType(f, "page");
+      const wantBlock = wantsType(f, "block");
+      const wantBoard = wantsType(f, "board");
+      const wantDaily = f.types.includes("daily");
       const editedOf = (value) => Number.isFinite(value) ? value : null;
       if (wantPage && (f.text || f.tag) || wantDaily && f.tag) {
         const find = ["?t", "?u"];
@@ -35784,7 +36126,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
           })) break;
         }
       }
-      if (wantBoard && (f.type === "board" || f.text || f.tag)) {
+      if (wantBoard && (f.types.includes("board") || f.text || f.tag)) {
         let found;
         if (f.tag) {
           found = timed("boards", () => host.q(
@@ -35830,6 +36172,51 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
             tags: f.tag ? [f.tag] : [],
             onBoard: true
           });
+        }
+      }
+      for (const kind of ["pdf", "image", "web", "region", "pin"]) {
+        if (!f.types.includes(kind)) continue;
+        const find = ["?s", "?u", "?t"];
+        const inputs = ["$", "?kind"];
+        const where = [];
+        const args = [BLOCK_KIND_PATTERNS[kind]];
+        if (f.tag) {
+          inputs.push("?name");
+          args.push(f.tag);
+          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
+        }
+        where.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]");
+        if (f.text) {
+          inputs.push("?pat");
+          args.push(ciPattern(f.text));
+          where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?s)]");
+        }
+        where.push("[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
+        if (since != null) {
+          inputs.push("?since");
+          args.push(since);
+          find.push("?e");
+          where.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
+        }
+        const found = timed(kind, () => host.q(
+          `[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`,
+          ...args
+        ));
+        for (const rec of found) {
+          const string = rec?.[0];
+          const uid = rec?.[1];
+          const pageTitle = rec?.[2];
+          if (typeof string !== "string" || !uid) continue;
+          if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) continue;
+          if (!push({
+            kind: "block",
+            uid: String(uid),
+            string,
+            pageTitle: typeof pageTitle === "string" ? pageTitle : "",
+            edited: since != null ? editedOf(rec?.[3]) : null,
+            tags: f.tag ? [f.tag] : [],
+            onBoard: false
+          })) break;
         }
       }
       if (wantDaily && !f.tag) {
@@ -61873,7 +62260,7 @@ var setClass = (el, name) => {
   el.setAttribute("class", name);
   if (el.classList && !el.classList.contains(name.split(" ")[0])) el.className = name;
 };
-function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText, onHover } = {}) {
+function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText: blockText2, onHover } = {}) {
   const edgeEls = /* @__PURE__ */ new Map();
   const laneHidden = /* @__PURE__ */ new Set();
   const linkEls = /* @__PURE__ */ new Map();
@@ -62127,7 +62514,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (!bend) return;
     let text3 = "";
     try {
-      text3 = String(blockText?.(uid) ?? "").trim().slice(0, 120);
+      text3 = String(blockText2?.(uid) ?? "").trim().slice(0, 120);
     } catch {
       text3 = "";
     }
@@ -68286,6 +68673,70 @@ function scheduleTitleLexiconWarm({ win, hasPdf, ocr, isDisposed, onWarm, setTim
   setTimer(run, 1500);
   return true;
 }
+
+// src/host/parts-index.js
+init_pdf();
+init_parts_search();
+var PLAIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
+function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS } = {}) {
+  const perDoc = /* @__PURE__ */ new Map();
+  let rows = null;
+  let building = null;
+  let epoch = 0;
+  const build = async () => {
+    const mine = epoch;
+    const pdfs = [];
+    const seen = /* @__PURE__ */ new Set();
+    let listed = [];
+    try {
+      listed = await Promise.resolve(listPdfs?.()) || [];
+    } catch {
+      listed = [];
+    }
+    for (const pdf of listed) {
+      if (!pdf?.url || seen.has(pdf.url)) continue;
+      seen.add(pdf.url);
+      pdfs.push(pdf);
+    }
+    const out = [];
+    for (const pdf of pdfs) {
+      let doc = null;
+      try {
+        doc = await restorableByUrl(store, pdf.url, { plainOptions });
+      } catch {
+        doc = null;
+      }
+      if (!doc?.sha256) continue;
+      const key = `${doc.sha256}|${doc.engine}|${doc.optsHash || ""}|${doc.parseRev || 0}|${pdf.uid}`;
+      let part = perDoc.get(key);
+      if (!part) {
+        const docTitle = parsedDocTitle(doc) || pdfFileTitle(pdf.url) || pdf.pageTitle || "PDF";
+        part = buildPartsIndex(doc, { url: pdf.url, docTitle, pdfUid: pdf.uid });
+        perDoc.set(key, part);
+      }
+      out.push(...part);
+    }
+    if (mine === epoch) rows = out;
+    return out;
+  };
+  return {
+    async get() {
+      if (rows) return rows;
+      if (!building) building = build().finally(() => {
+        building = null;
+      });
+      return building;
+    },
+    invalidate() {
+      epoch += 1;
+      rows = null;
+    },
+    size: () => rows ? rows.length : 0
+  };
+}
+
+// src/view/board-view.js
+init_parts_search();
 
 // src/view/menu.js
 init_avoid();
@@ -74616,8 +75067,8 @@ function buildBoardView(onFail, {
         let officeText = item?.string || "";
         if (item?.target?.kind === "block") {
           try {
-            const blockText = host?.blockString?.(item.target.uid);
-            if (blockText) officeText = blockText;
+            const blockText2 = host?.blockString?.(item.target.uid);
+            if (blockText2) officeText = blockText2;
           } catch {
           }
         }
@@ -76258,6 +76709,17 @@ function buildBoardView(onFail, {
     }
   };
   const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
+  const LIB_TYPES_KEY = `plexus-diagram:libtypes:${graph}`;
+  let partsIdx = null;
+  const partsIndex = () => {
+    if (!partsIdx) {
+      partsIdx = createPartsIndex({
+        store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
+        listPdfs: () => host?.listPdfBlocks?.() || []
+      });
+    }
+    return partsIdx;
+  };
   let panelWidth = PANEL_WIDTH_DEFAULT;
   try {
     const stored = Number(storage?.getItem?.(PANEL_WIDTH_KEY));
@@ -76277,6 +76739,29 @@ function buildBoardView(onFail, {
       opened: (open) => {
         chrome.toolbar.setPanel(open);
         if (!open) sendPending = null;
+        else partsIdx?.invalidate();
+      },
+      loadTypes: () => {
+        try {
+          const raw = storage?.getItem?.(LIB_TYPES_KEY);
+          const list = raw ? JSON.parse(raw) : null;
+          return Array.isArray(list) ? list : null;
+        } catch {
+          return null;
+        }
+      },
+      saveTypes: (types) => {
+        try {
+          storage?.setItem?.(LIB_TYPES_KEY, JSON.stringify(types));
+        } catch {
+        }
+      },
+      searchParts: async (query, limit) => {
+        if (typeof host?.listPdfBlocks !== "function") return [];
+        return searchParts(await partsIndex().get(), query, limit);
+      },
+      addPart: (payload) => {
+        void parseActions().sendParsedToBoard(payload);
       },
       listBoards: () => Promise.resolve(host?.listBoards?.()).then((rows) => rows || []),
       openBoardByUid: (uid) => {

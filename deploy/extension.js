@@ -51882,19 +51882,22 @@ var NEARBY_CHAR_BUDGET = 4e3;
 var NEARBY_PARAS = 2;
 var CHARS_PER_TOKEN = 4;
 var PARA_CLIP = 1200;
+var PLAIN_MARKDOWN = "Write plain Markdown. For comparisons use a Markdown table (| a | b |). Never use Roam syntax such as {{[[table]]}}, [[links]] or ((refs)).";
 var INSTRUCTIONS = [
   "You are helping someone read one part of a PDF.",
   'Analyse the part under "Selected part". Use "Document outline", "Section" and "Nearby text" only to interpret it, not as the subject.',
   "Cite pages as [p. N] using the page numbers shown in the context.",
   "If the selected part alone does not support a claim, say so instead of filling the gap from elsewhere.",
-  "Refer to the selected part as 'this table', 'this paragraph' or 'this figure' (as appropriate); never mention section labels."
+  "Refer to the selected part as 'this table', 'this paragraph' or 'this figure' (as appropriate); never mention section labels.",
+  PLAIN_MARKDOWN
 ].join("\n");
 var DOC_INSTRUCTIONS = [
   "You are helping someone read a PDF as a whole.",
   'Answer about the document as a whole. Use "Document outline" to locate things, and "Relevant parts of the document" for what the document says.',
   "Cite pages as [p. N] using the page numbers shown in the context.",
   'The parts under "Relevant parts of the document" were chosen for the question and are not the whole document. When they do not cover something, say so instead of filling the gap from elsewhere.',
-  "Refer to it as 'this document'; never mention section labels."
+  "Refer to it as 'this document'; never mention section labels.",
+  PLAIN_MARKDOWN
 ].join("\n");
 var FIGURE_INSTRUCTIONS = [
   "The context starts with the image of the selected part. Look at it.",
@@ -52410,6 +52413,26 @@ function splitCitations(text4) {
   if (last < src.length) out.push({ text: src.slice(last) });
   return out;
 }
+var TABLE_MACRO = /^\{\{\[\[table\]\]\}\}$/i;
+var BULLET = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+var SEPARATOR_ROW = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+var indentOf = (m) => m[1].replace(/\t/g, "  ").length;
+function pipeCells(line) {
+  const cells = [];
+  let cur = "";
+  const t = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  for (let i = 0; i < t.length; i += 1) {
+    if (t[i] === "\\" && t[i + 1] === "|") {
+      cur += "|";
+      i += 1;
+    } else if (t[i] === "|") {
+      cells.push(cur.trim());
+      cur = "";
+    } else cur += t[i];
+  }
+  cells.push(cur.trim());
+  return cells;
+}
 function parseAnswer(answer) {
   const out = [];
   let para = [];
@@ -52424,11 +52447,51 @@ function parseAnswer(answer) {
     list = null;
     stack = [];
   };
-  for (const raw of String(answer ?? "").replace(/\r/g, "").split("\n")) {
-    const item = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(raw);
+  const lines = String(answer ?? "").replace(/\r/g, "").split("\n");
+  for (let i = 0; i < lines.length; i += 1) {
+    const raw = lines[i];
+    const item = BULLET.exec(raw);
+    if (item && TABLE_MACRO.test(item[3].trim())) {
+      const base = indentOf(item);
+      const rows = [];
+      let row4 = null;
+      let rowIndent = -1;
+      let j = i + 1;
+      for (; j < lines.length; j += 1) {
+        const next = BULLET.exec(lines[j]);
+        if (!next || indentOf(next) <= base) break;
+        const at = indentOf(next);
+        if (!row4 || at <= rowIndent) {
+          row4 = [];
+          rows.push(row4);
+          rowIndent = at;
+        }
+        row4.push(next[3].trim());
+      }
+      if (rows.length && rows.some((r) => r.length > 1)) {
+        flush();
+        endList();
+        out.push({ type: "table", rows });
+        i = j - 1;
+        continue;
+      }
+    }
+    if (raw.includes("|") && i + 1 < lines.length && lines[i + 1].includes("-") && SEPARATOR_ROW.test(lines[i + 1]) && !BULLET.test(raw)) {
+      const head = pipeCells(raw);
+      if (head.length > 1) {
+        flush();
+        endList();
+        const rows = [head];
+        let j = i + 2;
+        for (; j < lines.length && lines[j].includes("|") && lines[j].trim(); j += 1) rows.push(pipeCells(lines[j]));
+        out.push({ type: "table", rows });
+        i = j - 1;
+        continue;
+      }
+    }
     if (item) {
       flush();
-      const indent = item[1].replace(/\t/g, "  ").length;
+      const indent = indentOf(item);
       const ordered = /\d/.test(item[2]);
       if (!list || stack.length <= 1 && indent <= stack[0] && list.ordered !== ordered) {
         list = { type: "list", ordered, items: [] };
@@ -52457,17 +52520,25 @@ function answerBlocks(answer) {
   const out = [];
   for (const part of parseAnswer(answer)) {
     if (part.type === "p") out.push({ text: part.text, depth: 0 });
-    else for (const item of part.items) out.push({ text: item.text, depth: item.depth });
+    else if (part.type === "table") {
+      out.push({ text: "{{[[table]]}}", depth: 0, table: true });
+      for (const row4 of part.rows) row4.forEach((text4, c) => out.push({ text: text4, depth: 1 + c, cell: true }));
+    } else for (const item of part.items) out.push({ text: item.text, depth: item.depth });
   }
   return out;
 }
 function answerCardMarkdown({ answer = "", chip = null, imageUrl = "" } = {}) {
-  const blocks = answerBlocks(answer).map((b) => ({ ...b, text: flattenLine(b.text) })).filter((b) => b.text);
+  const blocks = answerBlocks(answer).map((b) => ({ ...b, text: flattenLine(b.text) })).filter((b) => b.text || b.cell);
   if (!blocks.length) return "";
   const head = `AI answer · ${chipText2(chip) || "PDF"}`;
   const line = (text4, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip5(text4, 1800)), { leading: true })}`;
   const image = imageUrl ? [`  - ![](${String(imageUrl).trim()})`] : [];
-  return [line(head), ...image, ...blocks.slice(0, 40).map((b) => line(b.text, Math.min(b.depth, 3)))].join("\n");
+  const body = blocks.slice(0, 45).map((b) => {
+    if (b.table) return `  - ${b.text}`;
+    if (b.cell) return `${"  ".repeat(Math.min(b.depth, 12) + 1)}- ${escapeMarkdownText(linkSafeText(clip5(b.text || "-", 600)), { leading: true })}`;
+    return line(b.text, Math.min(b.depth, 3));
+  });
+  return [line(head), ...image, ...body].join("\n");
 }
 var MULTI_TOKEN_CAP = 14e3;
 var MULTI_INSTRUCTIONS = [
@@ -52475,7 +52546,8 @@ var MULTI_INSTRUCTIONS = [
   "Compare and combine the parts to answer. Use only the parts, their captions and the nearby text shown; do not fill gaps from elsewhere.",
   "Cite as [Part N, p. M] using the part number and the page numbers shown. When every part comes from one document, [p. M] is also fine.",
   "Name the document when parts come from different PDFs.",
-  "Say so when the parts do not support a claim or a comparison."
+  "Say so when the parts do not support a claim or a comparison.",
+  PLAIN_MARKDOWN
 ].join("\n");
 var MULTI_IMAGE_INSTRUCTIONS = 'The context starts with images of figure parts, each labelled "Image of Part N". Look at them. Read values off charts (axes, units, series, notable points); say when something is not legible instead of guessing, and mark values read off a scale as approximate.';
 var MULTI_DEFAULT_PROMPT = "How do these parts relate? Compare them and point out any conflict.";
@@ -52542,6 +52614,7 @@ ${pc.nearby}`);
 }
 
 // src/model/ask-basket.js
+init_pdf();
 var BASKET_MAX = 8;
 function createBasket(max = BASKET_MAX) {
   const parts = [];
@@ -52603,7 +52676,7 @@ var BASKET_MESSAGES = Object.freeze({
   full: `Your question holds ${BASKET_MAX} parts. Remove one first`
 });
 var pillText = (n2) => `${n2} part${n2 === 1 ? "" : "s"} · Ask`;
-function findSourceCard(items, { pinUid = "", pdfUid = "", sourceOf = null } = {}) {
+function findSourceCard(items, { pinUid = "", pdfUid = "", url = "", sourceOf = null, pdfSourceOf = null } = {}) {
   const list = [...items || []];
   if (pinUid) {
     const hit = list.find((it) => it?.uid === pinUid || it?.target?.uid === pinUid || typeof sourceOf === "function" && sourceOf(it) === pinUid);
@@ -52612,6 +52685,19 @@ function findSourceCard(items, { pinUid = "", pdfUid = "", sourceOf = null } = {
   if (pdfUid) {
     const hit = list.find((it) => it?.uid === pdfUid && it.kind === "pdf") || list.find((it) => it?.uid === pdfUid);
     if (hit) return hit.uid;
+  }
+  if (url) {
+    const cards = list.filter((it) => it?.kind === "pdf").map((it) => {
+      let source = "";
+      try {
+        source = typeof pdfSourceOf === "function" ? pdfSourceOf(it) : it.string;
+      } catch {
+        source = "";
+      }
+      return { uid: it.uid, source };
+    });
+    const hit = pdfCardForUrl(url, cards);
+    if (hit) return hit;
   }
   return "";
 }
@@ -52692,7 +52778,7 @@ function placementContent(doc, ids, act, extra = null) {
   const text4 = blocks.map((b) => b.type === "list" ? (b.items || []).map((item) => item.text).join(" ") : b.text || b.latex || "").join(" ");
   return { content: { kind: "text", text: text4, page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
 }
-function createParseActions({ session, store, placeBeside, toast, select, show, focus, upload, toWorld, linkSources } = {}) {
+function createParseActions({ session, store, placeBeside, toast, select, show, focus, upload, toWorld, linkSources, pdfSourceOf } = {}) {
   const say = (message) => {
     try {
       if (typeof toast === "function") toast(message);
@@ -52732,7 +52818,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const items = session.board?.items ? [...session.board.items.values()] : [];
       const used = /* @__PURE__ */ new Set([answerUid]);
       for (const src of sources) {
-        const to = findSourceCard(items, { pinUid: src.pinUid, pdfUid: src.pdfUid, sourceOf: (it) => sourcePinOf(it?.content)?.uid || "" });
+        const to = findSourceCard(items, { pinUid: src.pinUid, pdfUid: src.pdfUid, url: src.url, pdfSourceOf, sourceOf: (it) => sourcePinOf(it?.content)?.uid || "" });
         if (!to || used.has(to)) continue;
         used.add(to);
         await session.addEdge({ from: answerUid, to, label: "source", dir: "one" });
@@ -52857,7 +52943,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     async insertAnswerCard(payload) {
       const markdown = String(payload?.markdown || "").trim();
       if (!markdown) return { ok: false, reason: "empty" };
-      const given = Array.isArray(payload.sources) && payload.sources.length ? payload.sources : [{ pdfUid: payload.pdfUid, pin: payload.pin, sourceUid: payload.sourceUid }];
+      const given = Array.isArray(payload.sources) && payload.sources.length ? payload.sources : [{ pdfUid: payload.pdfUid, url: payload.url, pin: payload.pin, sourceUid: payload.sourceUid }];
       const resolved = [];
       for (const src of given) {
         let uid = typeof src?.sourceUid === "string" ? src.sourceUid : "";
@@ -52868,7 +52954,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
             uid = "";
           }
         }
-        resolved.push({ uid, pinUid: src?.pin ? uid : "", pdfUid: typeof src?.pdfUid === "string" ? src.pdfUid : "" });
+        resolved.push({ uid, pinUid: src?.pin ? uid : "", pdfUid: typeof src?.pdfUid === "string" ? src.pdfUid : "", url: typeof src?.url === "string" ? src.url : "" });
       }
       const uids = [...new Set(resolved.map((r) => r.uid).filter(Boolean))];
       const at = where(payload, CARD_SIZE);
@@ -55475,7 +55561,10 @@ async function ask({ context = "", prompt = "", systemPrompt = "", model = "", o
   if (!available(w)) return { ok: false, code: "UNAVAILABLE", error: SETUP_HINT };
   const options = { prompt: String(prompt), caller: CALLER };
   if (context) options.context = String(context);
-  if (systemPrompt) options.systemPrompt = String(systemPrompt);
+  if (systemPrompt) {
+    options.systemPrompt = String(systemPrompt);
+    options.useDefaultSystemPrompt = false;
+  }
   if (model) options.model = model;
   if (signal) options.signal = signal;
   if (json) options.responseFormat = "json_object";
@@ -55716,6 +55805,18 @@ function paintAnswer(doc, node2, text4, onPage) {
   for (const part of parseAnswer(text4)) {
     if (part.type === "p") {
       inlineInto(doc, make(doc, "p", "pxd-ask__p", node2), part.text, onPage);
+      continue;
+    }
+    if (part.type === "table") {
+      const wrap = make(doc, "div", "pxd-ask__tablewrap", node2);
+      const table = make(doc, "table", "pxd-ask__table", wrap);
+      const width = Math.max(...part.rows.map((r) => r.length));
+      const thead = make(doc, "thead", "", table);
+      const tbody = make(doc, "tbody", "", table);
+      part.rows.forEach((row4, r) => {
+        const tr = make(doc, "tr", "", r === 0 ? thead : tbody);
+        for (let c = 0; c < width; c += 1) inlineInto(doc, make(doc, r === 0 ? "th" : "td", "", tr), row4[c] ?? "", onPage);
+      });
       continue;
     }
     const list = make(doc, part.ordered ? "ol" : "ul", "pxd-ask__list", node2);
@@ -76052,7 +76153,8 @@ function buildBoardView(onFail, {
         },
         focus: () => focusBoardAfterInsert(),
         upload: (file) => host.uploadFile?.(file),
-        linkSources: () => readSetting2("link-answer-sources") !== false
+        linkSources: () => readSetting2("link-answer-sources") !== false,
+        pdfSourceOf: (item) => pdfSourceOfItem(item)
       });
     }
     return parseActionsObj;
@@ -76378,7 +76480,7 @@ function buildBoardView(onFail, {
       markdown,
       pdfUid: parts?.[0]?.pdfUid || "",
       pdfBlockUid: parts?.[0]?.pdfUid || "",
-      sources: (parts || []).map((p) => ({ pdfUid: p.pdfUid || "", ...p.source || {} }))
+      sources: (parts || []).map((p) => ({ pdfUid: p.pdfUid || "", url: p.url || "", ...p.source || {} }))
     })
   });
   let basketPill = null;

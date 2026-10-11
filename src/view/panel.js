@@ -6,6 +6,7 @@ import { closeInfoTab, infoTabList, nextPanelWidth, PANEL_WIDTH_DEFAULT } from "
 import { mountTimeline } from "./timeline.js";
 import { LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, PARSE_PART_TYPES, libraryCard, libraryFilterActive } from "../model/library.js";
 import { PART_LABELS, partSnippet } from "../model/parts-search.js";
+import { COLOR_ANCHORS, COLOR_NAMES } from "../model/color.js";
 import { CARD_MIME, PARSE_MIME, parseDropPayload } from "../model/drop.js";
 import { dailyTitle, startOfDay, stepDay } from "../model/journal.js";
 import { minimapSvg } from "./minimap-svg.js";
@@ -120,6 +121,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   };
   const ALL_TYPES = [...LIBRARY_DOC_TYPES, ...LIBRARY_PART_TYPES];
   const typeBoxes = new Map();
+  let swatches = null;
   let checked = new Set(ALL_TYPES);
   try {
     const saved = on.loadTypes?.();
@@ -150,6 +152,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     for (const [value, box] of typeBoxes) box.checked = checked.has(value);
     const n = checked.size;
     typeBtn.textContent = n === ALL_TYPES.length ? "All" : n === 0 ? "None" : `${n} ${n === 1 ? "type" : "types"}`;
+    if (swatches) swatches.style.display = typeof on.searchImages === "function" && (checked.has("image") || checked.has("figure")) ? "" : "none";
   };
   paintTypes();
   const setTypesOpen = (open) => {
@@ -180,7 +183,27 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   orphanBox.type = "checkbox";
   orphanBox.setAttribute("aria-label", "Not on any board");
   orphanLabel.append("Not on any board");
+  swatches = el("div", "pxd-panel__swatches", searchPane);
+  swatches.style.display = "none";
+  swatches.setAttribute("role", "group");
+  swatches.setAttribute("aria-label", "Search images by colour");
+  const swatchBtns = new Map();
+  for (const name of COLOR_NAMES) {
+    const b = el("button", "pxd-panel__swatch", swatches);
+    b.type = "button";
+    b.dataset.color = name;
+    b.setAttribute("data-color", name);
+    b.setAttribute("aria-label", name);
+    b.setAttribute("aria-pressed", "false");
+    b.setAttribute("title", name);
+    b.style.background = COLOR_ANCHORS[name].hex;
+    swatchBtns.set(name, b);
+  }
+  paintTypes();
   const results = el("div", "pxd-panel__list", searchPane);
+  const indexNote = el("div", "pxd-panel__index-note", searchPane);
+  indexNote.style.display = "none";
+  indexNote.setAttribute("aria-live", "polite");
   const relatedHead = el("div", "pxd-panel__related-head", relatedPane);
   const relatedTitle = el("span", "pxd-panel__related-title", relatedHead, "Select a card");
   const addAll = el("button", "pxd-btn pxd-panel__add-all", relatedHead, "Add all");
@@ -279,7 +302,16 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const journalNow = () => (typeof on.now === "function" ? on.now() : Date.now());
   let journalDay = startOfDay(journalNow());
 
-  const row = (parent, { string, label, text, kind, url, thumb }) => {
+  const paletteDots = (parent, palette) => {
+    if (!Array.isArray(palette) || !palette.length) return;
+    const wrap = el("span", "pxd-panel__dots", parent);
+    for (const hex of palette.slice(0, 3)) {
+      const dot = el("span", "pxd-panel__dot", wrap);
+      dot.style.background = hex;
+    }
+  };
+
+  const row = (parent, { string, label, text, kind, url, thumb, palette }) => {
     const r = el("div", "pxd-panel__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
@@ -300,6 +332,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       try { shown = on.pdfTitle?.(url) || text; } catch { shown = text; }
     }
     el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
+    paletteDots(r, palette);
     if (on.isOnBoard?.(string)) {
       r.classList.add("pxd-panel__row--on");
       el("span", "pxd-panel__row-on", r, "on board");
@@ -338,6 +371,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (snip.before) body.append(snip.before);
     if (snip.hit) el("mark", "pxd-panel__mark", body, snip.hit);
     if (snip.after) body.append(snip.after);
+    paletteDots(r, part.palette);
     const payload = {
       sha256: part.sha256, engine: part.engine || "builtin", optsHash: part.optsHash || "", ids: [part.blockId],
       pdfUid: part.pdfUid || "", pdfBlockUid: part.pdfUid || "",
@@ -375,9 +409,14 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (checked.size === 0) { el("div", "pxd-panel__empty", results, "No card types selected"); return; }
     if (!libraryFilterActive(filter)) return;
     let pack = null;
+    const wantImages = typeof on.searchImages === "function" && checked.has("image");
+    const wantFigures = typeof on.searchImages === "function" && checked.has("figure");
+    const hostFilter = wantImages ? { ...filter, types: ALL_TYPES.filter((t) => checked.has(t) && t !== "image") } : filter;
     try {
-      if (typeof host?.librarySearch === "function") {
-        pack = await Promise.resolve(host.librarySearch(filter, LIMIT));
+      if (wantImages && !hostFilter.types.length) {
+        pack = { rows: [], queries: [] };
+      } else if (typeof host?.librarySearch === "function") {
+        pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT));
       } else {
         const q = String(filter.text || "").trim();
         if (!q) return;
@@ -405,7 +444,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     const rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
     let parts = [];
     const needle = String(filter.text || "").trim();
-    const kinds = checked.size === ALL_TYPES.length ? [] : PARSE_PART_TYPES.filter((t) => checked.has(t));
+    const kinds = checked.size === ALL_TYPES.length && !wantFigures ? [] : PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
     if (typeof on.searchParts === "function" && (checked.size === ALL_TYPES.length || kinds.length > 0)
       && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true) {
       const t0 = Date.now();
@@ -413,10 +452,19 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       if (id !== queryId) return;
       results.dataset.partsMs = String(Date.now() - t0);
     }
+    let found = { images: [], figures: [] };
+    if ((wantImages || wantFigures) && (needle || filter.types.length) && !filter.tag && !filter.days && filter.orphan !== true) {
+      try { found = (await Promise.resolve(on.searchImages({ text: needle, images: wantImages, figures: wantFigures, pages: filter.pages }, LIMIT))) || found; } catch { /* keep none */ }
+      if (id !== queryId) return;
+    }
+    const images = Array.isArray(found.images) ? found.images : [];
+    const figures = Array.isArray(found.figures) ? found.figures : [];
     results.replaceChildren();
-    if (!rows.length && !parts.length) { el("div", "pxd-panel__empty", results, "No matches"); return; }
+    if (!rows.length && !parts.length && !images.length && !figures.length) { el("div", "pxd-panel__empty", results, "No matches"); return; }
     rows.forEach((r) => row(results, r));
+    images.forEach((img) => row(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette }));
     parts.forEach((part) => partRow(results, part, needle));
+    figures.forEach((part) => partRow(results, part, needle));
   };
 
   const scheduleSearch = () => {
@@ -424,7 +472,21 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     debounce = timers.later(() => { debounce = null; void runSearch(); }, DEBOUNCE_MS);
   };
   const searchNow = () => { debounce?.(); debounce = null; void runSearch(); };
-  listen(input, "input", scheduleSearch);
+  listen(input, "input", () => { try { on.typing?.(); } catch { /* host */ } paintSwatches(); scheduleSearch(); });
+  const paintSwatches = () => {
+    const have = new Set(input.value.toLowerCase().split(/\s+/));
+    for (const [name, b] of swatchBtns) b.setAttribute("aria-pressed", have.has(name) ? "true" : "false");
+  };
+  listen(swatches, "click", (event) => {
+    const name = event.target?.closest?.("[data-color]")?.dataset?.color;
+    if (!name) return;
+    const tokens = input.value.split(/\s+/).filter(Boolean);
+    const at = tokens.findIndex((t) => t.toLowerCase() === name);
+    if (at >= 0) tokens.splice(at, 1); else tokens.push(name);
+    input.value = tokens.join(" ");
+    paintSwatches();
+    searchNow();
+  });
   listen(tagInput, "input", scheduleSearch);
   listen(daysInput, "input", scheduleSearch);
   listen(pagesInput, "input", scheduleSearch);
@@ -989,6 +1051,11 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       if (focusTarget) { try { focusTarget.focus({ preventScroll: true }); } catch { focusTarget.focus?.(); } }
     },
     currentTab: () => tab,
+    setIndexing(n) {
+      const count = Math.max(0, Math.floor(Number(n) || 0));
+      indexNote.textContent = count ? `Indexing ${count} ${count === 1 ? "image" : "images"}…` : "";
+      indexNote.style.display = count ? "" : "none";
+    },
     refreshOutline() { if (api.isOpen() && tab === "outline") renderOutline(); },
     refreshBoards() { if (tab === "boards") void loadBoards(); },
     refreshTrails() {

@@ -1,6 +1,7 @@
 import { isShowableCard, locateShowTarget } from "../model/deeplink.js";
 import { attributeRows, boardsFromRows, tagNames } from "../model/info.js";
 import {
+  blockDisplay,
   isDailyTitle,
   libraryCap,
   libraryCard,
@@ -1924,6 +1925,25 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         const url = pdfMacroUrl(string) || (/https?:\/\/[^\s}]+/.exec(string) || [""])[0];
         if (!url) continue;
         out.push({ uid: String(uid), url, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
+        if (out.length >= limit) break;
+      }
+      return out;
+    },
+
+    // Every image block in the graph, for the image index and image search. Read-only and capped.
+    listImageBlocks(limit = 2000) {
+      const rows = host.q(
+        `[:find ?u ?s ?t :in $ ?kind :where [?b :block/string ?s] [(re-pattern ?kind) ?kre] [(re-find ?kre ?s)]
+ [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]`,
+        BLOCK_KIND_PATTERNS.image,
+      ) || [];
+      const out = [];
+      for (const [uid, string, pageTitle] of rows) {
+        if (typeof string !== "string" || !uid) continue;
+        if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) continue;
+        const shown = blockDisplay(string, "image");
+        if (!shown.url) continue;
+        out.push({ uid: String(uid), string, url: shown.url, name: shown.text, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
         if (out.length >= limit) break;
       }
       return out;

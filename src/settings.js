@@ -70,6 +70,8 @@ export const SETTING_IDS = Object.freeze({
   parseNumbered: "parse-numbered",
   parseFootnotes: "parse-footnotes",
   parseFootnoteFormat: "parse-footnote-format",
+  imageColors: "image-index-colors",
+  imageText: "image-read-text",
   // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
   speedFlags: "speed-flags",
 });
@@ -141,6 +143,8 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.parseNumbered]: false,
   [SETTING_IDS.parseFootnotes]: "inline",
   [SETTING_IDS.parseFootnoteFormat]: "extension",
+  [SETTING_IDS.imageColors]: true,
+  [SETTING_IDS.imageText]: false,
 });
 
 const BOARD_TONES = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
@@ -517,6 +521,8 @@ const SETTING_ROWS = {
   [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
   [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
   [SETTING_IDS.parsePageReader]: () => selectRow(SETTING_IDS.parsePageReader, "High accuracy page reader", "All (default) reads every scanned page with the page model: better on photographed, handwritten and old printed pages, about ten times slower per scanned page. Doubtful reads only the scanned pages the recogniser is unsure of.", ["doubtful", "all"]),
+  [SETTING_IDS.imageColors]: () => switchRow(SETTING_IDS.imageColors, "Index image colours", "On. While the board search panel lists Image or Figure cards, Plexus reads each picture once, in the background, to find its main colours so you can search by colour. Nothing leaves this device."),
+  [SETTING_IDS.imageText]: () => switchRow(SETTING_IDS.imageText, "Read text in images", "Off. On lets the board search find words inside pictures, using the in-browser reading models. It only runs when those models are already on this device, never downloads them, and reads at most a few dozen pictures per session."),
   [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
   [SETTING_IDS.keepReads]: () => switchRow(SETTING_IDS.keepReads, "Keep reads in the graph", "After a High accuracy, helper or cloud read, upload the read as one file to the graph and note it on the PDF block, so your other computers load it instead of reading again. The built-in parse is never kept. Off uploads nothing; reads already kept still load."),
   [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
@@ -558,6 +564,9 @@ const SETTING_GROUPS = [
   ["group-parse", "PDF parse", "A local helper for harder PDFs, and how parsed text is inserted.", [
     SETTING_IDS.parseHelperUrl, SETTING_IDS.parseHelperToken, SETTING_IDS.parseEngineDefault, SETTING_IDS.parseFormula,
     SETTING_IDS.parseOcr, SETTING_IDS.parsePageReader, SETTING_IDS.parseAutoRead, SETTING_IDS.keepReads, SETTING_IDS.parseLinkSafe, SETTING_IDS.parseNumbered, SETTING_IDS.parseFootnotes, SETTING_IDS.parseFootnoteFormat,
+  ]],
+  ["group-images", "Image search", "Search inside pictures by colour and by the words in them.", [
+    SETTING_IDS.imageColors, SETTING_IDS.imageText,
   ]],
 ];
 

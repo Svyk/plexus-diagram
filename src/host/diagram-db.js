@@ -1,15 +1,16 @@
 // Shared IndexedDB open for the cover cache and the parse cache.
-// Database "plexus-diagram", version 2. One onupgradeneeded keeps "covers"
-// (version 1) and adds "parse", "parse-images", and "parse-index".
+// Database "plexus-diagram", version 3. One onupgradeneeded keeps "covers"
+// (version 1) and adds "parse", "parse-images", and "parse-index" (version 2), then "image-index" (version 3).
 
 export const DIAGRAM_DB = "plexus-diagram";
-export const DIAGRAM_DB_VERSION = 2;
+export const DIAGRAM_DB_VERSION = 3;
 export const STORE_COVERS = "covers";
 export const STORE_PARSE = "parse";
 export const STORE_PARSE_IMAGES = "parse-images";
 export const STORE_PARSE_INDEX = "parse-index";
+export const STORE_IMAGE_INDEX = "image-index";
 
-const STORES = [STORE_COVERS, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX];
+const STORES = [STORE_COVERS, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX, STORE_IMAGE_INDEX];
 
 function arm(ms, fn) {
   try {

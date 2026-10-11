@@ -19894,6 +19894,217 @@ var init_parts_search = __esm({
   }
 });
 
+// src/model/color.js
+function rgbToOklab(r, g, b) {
+  const lr = LIN[r & 255];
+  const lg = LIN[g & 255];
+  const lb = LIN[b & 255];
+  const l = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
+  const m = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
+  const s = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s
+  ];
+}
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex ?? "").trim());
+  if (!m) return null;
+  let h = m[1];
+  if (h.length === 3) h = [...h].map((c) => c + c).join("");
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+function chroma(lab) {
+  return Math.hypot(lab[1], lab[2]);
+}
+function oklabToHex([L, a, b]) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  const lin = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s
+  ];
+  const enc = (c) => {
+    const v = Math.max(0, Math.min(1, c));
+    return 255 * (v <= 31308e-7 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055);
+  };
+  return toHex(enc(lin[0]), enc(lin[1]), enc(lin[2]));
+}
+function colorPalette(rgba, { k = 5, iterations = 10 } = {}) {
+  const n2 = Math.floor((rgba?.length || 0) / 4);
+  const L = new Float32Array(n2);
+  const A = new Float32Array(n2);
+  const B = new Float32Array(n2);
+  let count = 0;
+  for (let i = 0; i < n2; i += 1) {
+    if (rgba[i * 4 + 3] < 128) continue;
+    const lab = rgbToOklab(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]);
+    L[count] = lab[0];
+    A[count] = lab[1];
+    B[count] = lab[2];
+    count += 1;
+  }
+  if (!count) return [];
+  const kk = Math.min(k, count);
+  let mL = 0;
+  let mA = 0;
+  let mB = 0;
+  for (let i = 0; i < count; i += 1) {
+    mL += L[i];
+    mA += A[i];
+    mB += B[i];
+  }
+  mL /= count;
+  mA /= count;
+  mB /= count;
+  const d2 = (i, l, a, b) => (L[i] - l) ** 2 + (A[i] - a) ** 2 + (B[i] - b) ** 2;
+  let first = 0;
+  let best = Infinity;
+  for (let i = 0; i < count; i += 1) {
+    const d = d2(i, mL, mA, mB);
+    if (d < best) {
+      best = d;
+      first = i;
+    }
+  }
+  const cl = [L[first]];
+  const ca = [A[first]];
+  const cb = [B[first]];
+  const near2 = new Float32Array(count);
+  for (let i = 0; i < count; i += 1) near2[i] = d2(i, cl[0], ca[0], cb[0]);
+  while (cl.length < kk) {
+    let at = -1;
+    let far = 1e-9;
+    for (let i = 0; i < count; i += 1) if (near2[i] > far) {
+      far = near2[i];
+      at = i;
+    }
+    if (at < 0) break;
+    cl.push(L[at]);
+    ca.push(A[at]);
+    cb.push(B[at]);
+    for (let i = 0; i < count; i += 1) near2[i] = Math.min(near2[i], d2(i, L[at], A[at], B[at]));
+  }
+  const m = cl.length;
+  const owner = new Int32Array(count);
+  const sums = new Float64Array(m * 4);
+  for (let it = 0; it < iterations; it += 1) {
+    sums.fill(0);
+    let moved = 0;
+    for (let i = 0; i < count; i += 1) {
+      let bj = 0;
+      let bd = Infinity;
+      for (let j = 0; j < m; j += 1) {
+        const d = d2(i, cl[j], ca[j], cb[j]);
+        if (d < bd) {
+          bd = d;
+          bj = j;
+        }
+      }
+      if (owner[i] !== bj) {
+        owner[i] = bj;
+        moved += 1;
+      }
+      sums[bj * 4] += L[i];
+      sums[bj * 4 + 1] += A[i];
+      sums[bj * 4 + 2] += B[i];
+      sums[bj * 4 + 3] += 1;
+    }
+    for (let j = 0; j < m; j += 1) {
+      const c = sums[j * 4 + 3];
+      if (!c) continue;
+      cl[j] = sums[j * 4] / c;
+      ca[j] = sums[j * 4 + 1] / c;
+      cb[j] = sums[j * 4 + 2] / c;
+    }
+    if (!moved && it > 0) break;
+  }
+  sums.fill(0);
+  for (let i = 0; i < count; i += 1) sums[owner[i] * 4 + 3] += 1;
+  const out = [];
+  for (let j = 0; j < m; j += 1) {
+    const c = sums[j * 4 + 3];
+    if (!c) continue;
+    const lab = [cl[j], ca[j], cb[j]];
+    out.push({ hex: oklabToHex(lab), lab: lab.map((v) => Math.round(v * 1e3) / 1e3), weight: Math.round(c / count * 1e3) / 1e3 });
+  }
+  out.sort((a, b) => b.weight - a.weight);
+  return out;
+}
+function colorQuery(text3) {
+  const t = String(text3 ?? "").trim().toLowerCase();
+  if (!t) return null;
+  const named = COLOR_ANCHORS[t];
+  if (named) return { name: named.name, hex: named.hex, lab: named.lab, achromatic: chroma(named.lab) < GRAY_CHROMA, token: t };
+  if (t.startsWith("#")) {
+    const rgb = hexToRgb(t);
+    if (!rgb) return null;
+    const lab = rgbToOklab(rgb[0], rgb[1], rgb[2]);
+    return { name: "", hex: toHex(rgb[0], rgb[1], rgb[2]), lab, achromatic: chroma(lab) < GRAY_CHROMA, token: t };
+  }
+  return null;
+}
+function closeness(entry, target) {
+  const c = chroma(entry.lab);
+  if (target.achromatic) {
+    if (c > 0.05) return 0;
+    const d2 = Math.hypot(entry.lab[0] - target.lab[0], entry.lab[1], entry.lab[2]);
+    return Math.max(0, 1 - d2 / (target.name === "gray" ? 0.25 : CLOSE_AT * 1.5));
+  }
+  if (c < CHROMA_MIN) return 0;
+  const d = Math.hypot(0.5 * (entry.lab[0] - target.lab[0]), entry.lab[1] - target.lab[1], entry.lab[2] - target.lab[2]);
+  return Math.max(0, 1 - d / CLOSE_AT);
+}
+function colorScore(palette, target) {
+  if (!Array.isArray(palette) || !target) return 0;
+  let best = 0;
+  for (let i = 0; i < palette.length; i += 1) {
+    const e2 = palette[i];
+    const s = e2.weight * closeness(e2, target);
+    if (s > best) best = s;
+  }
+  return best;
+}
+var LIN, hex2, toHex, GRAY_CHROMA, CHROMA_MIN, CLOSE_AT, COLOR_MIN_SCORE, ANCHOR_HEX, COLOR_NAMES, COLOR_ANCHORS;
+var init_color = __esm({
+  "src/model/color.js"() {
+    LIN = new Float32Array(256);
+    for (let i = 0; i < 256; i += 1) {
+      const c = i / 255;
+      LIN[i] = c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    }
+    hex2 = (n2) => Math.max(0, Math.min(255, Math.round(n2))).toString(16).padStart(2, "0");
+    toHex = (r, g, b) => `#${hex2(r)}${hex2(g)}${hex2(b)}`;
+    GRAY_CHROMA = 0.04;
+    CHROMA_MIN = 0.035;
+    CLOSE_AT = 0.12;
+    COLOR_MIN_SCORE = 0.15;
+    ANCHOR_HEX = {
+      red: "#e02020",
+      orange: "#f08020",
+      yellow: "#f0d020",
+      green: "#30b030",
+      teal: "#20a0a0",
+      blue: "#2060e0",
+      purple: "#8040c0",
+      pink: "#f080b0",
+      brown: "#8b5a2b",
+      black: "#000000",
+      white: "#ffffff",
+      gray: "#808080"
+    };
+    COLOR_NAMES = Object.keys(ANCHOR_HEX);
+    COLOR_ANCHORS = Object.fromEntries(COLOR_NAMES.map((name) => {
+      const rgb = hexToRgb(ANCHOR_HEX[name]);
+      return [name, { name, hex: ANCHOR_HEX[name], lab: rgbToOklab(rgb[0], rgb[1], rgb[2]) }];
+    }));
+    COLOR_ANCHORS.grey = COLOR_ANCHORS.gray;
+  }
+});
+
 // src/model/anydoc-to-parse.js
 function officeFormatFromName(name) {
   const text3 = String(name || "");
@@ -20831,6 +21042,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   };
   const ALL_TYPES = [...LIBRARY_DOC_TYPES, ...LIBRARY_PART_TYPES];
   const typeBoxes = /* @__PURE__ */ new Map();
+  let swatches = null;
   let checked = new Set(ALL_TYPES);
   try {
     const saved2 = on.loadTypes?.();
@@ -20862,6 +21074,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     for (const [value, box2] of typeBoxes) box2.checked = checked.has(value);
     const n2 = checked.size;
     typeBtn.textContent = n2 === ALL_TYPES.length ? "All" : n2 === 0 ? "None" : `${n2} ${n2 === 1 ? "type" : "types"}`;
+    if (swatches) swatches.style.display = typeof on.searchImages === "function" && (checked.has("image") || checked.has("figure")) ? "" : "none";
   };
   paintTypes();
   const setTypesOpen = (open) => {
@@ -20891,7 +21104,27 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   orphanBox.type = "checkbox";
   orphanBox.setAttribute("aria-label", "Not on any board");
   orphanLabel.append("Not on any board");
+  swatches = el("div", "pxd-panel__swatches", searchPane);
+  swatches.style.display = "none";
+  swatches.setAttribute("role", "group");
+  swatches.setAttribute("aria-label", "Search images by colour");
+  const swatchBtns = /* @__PURE__ */ new Map();
+  for (const name of COLOR_NAMES) {
+    const b = el("button", "pxd-panel__swatch", swatches);
+    b.type = "button";
+    b.dataset.color = name;
+    b.setAttribute("data-color", name);
+    b.setAttribute("aria-label", name);
+    b.setAttribute("aria-pressed", "false");
+    b.setAttribute("title", name);
+    b.style.background = COLOR_ANCHORS[name].hex;
+    swatchBtns.set(name, b);
+  }
+  paintTypes();
   const results = el("div", "pxd-panel__list", searchPane);
+  const indexNote = el("div", "pxd-panel__index-note", searchPane);
+  indexNote.style.display = "none";
+  indexNote.setAttribute("aria-live", "polite");
   const relatedHead = el("div", "pxd-panel__related-head", relatedPane);
   const relatedTitle = el("span", "pxd-panel__related-title", relatedHead, "Select a card");
   const addAll = el("button", "pxd-btn pxd-panel__add-all", relatedHead, "Add all");
@@ -20992,7 +21225,15 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   let journalId = 0;
   const journalNow = () => typeof on.now === "function" ? on.now() : Date.now();
   let journalDay = startOfDay(journalNow());
-  const row4 = (parent, { string, label, text: text3, kind, url, thumb: thumb2 }) => {
+  const paletteDots = (parent, palette) => {
+    if (!Array.isArray(palette) || !palette.length) return;
+    const wrap = el("span", "pxd-panel__dots", parent);
+    for (const hex of palette.slice(0, 3)) {
+      const dot = el("span", "pxd-panel__dot", wrap);
+      dot.style.background = hex;
+    }
+  };
+  const row4 = (parent, { string, label, text: text3, kind, url, thumb: thumb2, palette }) => {
     const r = el("div", "pxd-panel__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
@@ -21017,6 +21258,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       }
     }
     el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
+    paletteDots(r, palette);
     if (on.isOnBoard?.(string)) {
       r.classList.add("pxd-panel__row--on");
       el("span", "pxd-panel__row-on", r, "on board");
@@ -21062,6 +21304,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     if (snip.before) body.append(snip.before);
     if (snip.hit) el("mark", "pxd-panel__mark", body, snip.hit);
     if (snip.after) body.append(snip.after);
+    paletteDots(r, part.palette);
     const payload = {
       sha256: part.sha256,
       engine: part.engine || "builtin",
@@ -21105,9 +21348,14 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     }
     if (!libraryFilterActive(filter)) return;
     let pack = null;
+    const wantImages = typeof on.searchImages === "function" && checked.has("image");
+    const wantFigures = typeof on.searchImages === "function" && checked.has("figure");
+    const hostFilter = wantImages ? { ...filter, types: ALL_TYPES.filter((t) => checked.has(t) && t !== "image") } : filter;
     try {
-      if (typeof host?.librarySearch === "function") {
-        pack = await Promise.resolve(host.librarySearch(filter, LIMIT));
+      if (wantImages && !hostFilter.types.length) {
+        pack = { rows: [], queries: [] };
+      } else if (typeof host?.librarySearch === "function") {
+        pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT));
       } else {
         const q = String(filter.text || "").trim();
         if (!q) return;
@@ -21136,7 +21384,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
     let parts = [];
     const needle = String(filter.text || "").trim();
-    const kinds = checked.size === ALL_TYPES.length ? [] : PARSE_PART_TYPES.filter((t) => checked.has(t));
+    const kinds = checked.size === ALL_TYPES.length && !wantFigures ? [] : PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
     if (typeof on.searchParts === "function" && (checked.size === ALL_TYPES.length || kinds.length > 0) && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true) {
       const t0 = Date.now();
       try {
@@ -21147,13 +21395,25 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       if (id !== queryId) return;
       results.dataset.partsMs = String(Date.now() - t0);
     }
+    let found = { images: [], figures: [] };
+    if ((wantImages || wantFigures) && (needle || filter.types.length) && !filter.tag && !filter.days && filter.orphan !== true) {
+      try {
+        found = await Promise.resolve(on.searchImages({ text: needle, images: wantImages, figures: wantFigures, pages: filter.pages }, LIMIT)) || found;
+      } catch {
+      }
+      if (id !== queryId) return;
+    }
+    const images = Array.isArray(found.images) ? found.images : [];
+    const figures = Array.isArray(found.figures) ? found.figures : [];
     results.replaceChildren();
-    if (!rows.length && !parts.length) {
+    if (!rows.length && !parts.length && !images.length && !figures.length) {
       el("div", "pxd-panel__empty", results, "No matches");
       return;
     }
     rows.forEach((r) => row4(results, r));
+    images.forEach((img) => row4(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette }));
     parts.forEach((part) => partRow(results, part, needle));
+    figures.forEach((part) => partRow(results, part, needle));
   };
   const scheduleSearch = () => {
     debounce?.();
@@ -21167,7 +21427,29 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     debounce = null;
     void runSearch();
   };
-  listen(input, "input", scheduleSearch);
+  listen(input, "input", () => {
+    try {
+      on.typing?.();
+    } catch {
+    }
+    paintSwatches();
+    scheduleSearch();
+  });
+  const paintSwatches = () => {
+    const have = new Set(input.value.toLowerCase().split(/\s+/));
+    for (const [name, b] of swatchBtns) b.setAttribute("aria-pressed", have.has(name) ? "true" : "false");
+  };
+  listen(swatches, "click", (event) => {
+    const name = event.target?.closest?.("[data-color]")?.dataset?.color;
+    if (!name) return;
+    const tokens2 = input.value.split(/\s+/).filter(Boolean);
+    const at = tokens2.findIndex((t) => t.toLowerCase() === name);
+    if (at >= 0) tokens2.splice(at, 1);
+    else tokens2.push(name);
+    input.value = tokens2.join(" ");
+    paintSwatches();
+    searchNow();
+  });
   listen(tagInput, "input", scheduleSearch);
   listen(daysInput, "input", scheduleSearch);
   listen(pagesInput, "input", scheduleSearch);
@@ -21835,6 +22117,11 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       }
     },
     currentTab: () => tab,
+    setIndexing(n2) {
+      const count = Math.max(0, Math.floor(Number(n2) || 0));
+      indexNote.textContent = count ? `Indexing ${count} ${count === 1 ? "image" : "images"}…` : "";
+      indexNote.style.display = count ? "" : "none";
+    },
     refreshOutline() {
       if (api2.isOpen() && tab === "outline") renderOutline();
     },
@@ -21920,6 +22207,7 @@ var init_panel = __esm({
     init_timeline2();
     init_library();
     init_parts_search();
+    init_color();
     init_drop();
     init_journal();
     init_minimap_svg();
@@ -23506,6 +23794,8 @@ var init_settings = __esm({
       parseNumbered: "parse-numbered",
       parseFootnotes: "parse-footnotes",
       parseFootnoteFormat: "parse-footnote-format",
+      imageColors: "image-index-colors",
+      imageText: "image-read-text",
       // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
       speedFlags: "speed-flags"
     });
@@ -23575,7 +23865,9 @@ var init_settings = __esm({
       [SETTING_IDS.parseLinkSafe]: true,
       [SETTING_IDS.parseNumbered]: false,
       [SETTING_IDS.parseFootnotes]: "inline",
-      [SETTING_IDS.parseFootnoteFormat]: "extension"
+      [SETTING_IDS.parseFootnoteFormat]: "extension",
+      [SETTING_IDS.imageColors]: true,
+      [SETTING_IDS.imageText]: false
     });
     BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
     MAP_ZOOMS = ["0.3", "0.45", "0.6"];
@@ -23712,6 +24004,8 @@ var init_settings = __esm({
       [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
       [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
       [SETTING_IDS.parsePageReader]: () => selectRow(SETTING_IDS.parsePageReader, "High accuracy page reader", "All (default) reads every scanned page with the page model: better on photographed, handwritten and old printed pages, about ten times slower per scanned page. Doubtful reads only the scanned pages the recogniser is unsure of.", ["doubtful", "all"]),
+      [SETTING_IDS.imageColors]: () => switchRow(SETTING_IDS.imageColors, "Index image colours", "On. While the board search panel lists Image or Figure cards, Plexus reads each picture once, in the background, to find its main colours so you can search by colour. Nothing leaves this device."),
+      [SETTING_IDS.imageText]: () => switchRow(SETTING_IDS.imageText, "Read text in images", "Off. On lets the board search find words inside pictures, using the in-browser reading models. It only runs when those models are already on this device, never downloads them, and reads at most a few dozen pictures per session."),
       [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
       [SETTING_IDS.keepReads]: () => switchRow(SETTING_IDS.keepReads, "Keep reads in the graph", "After a High accuracy, helper or cloud read, upload the read as one file to the graph and note it on the PDF block, so your other computers load it instead of reading again. The built-in parse is never kept. Off uploads nothing; reads already kept still load."),
       [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
@@ -23804,6 +24098,10 @@ var init_settings = __esm({
         SETTING_IDS.parseNumbered,
         SETTING_IDS.parseFootnotes,
         SETTING_IDS.parseFootnoteFormat
+      ]],
+      ["group-images", "Image search", "Search inside pictures by colour and by the words in them.", [
+        SETTING_IDS.imageColors,
+        SETTING_IDS.imageText
       ]]
     ];
     ERROR_ROW_ID = "plexus-errors";
@@ -32798,12 +33096,13 @@ init_pdf();
 
 // src/host/diagram-db.js
 var DIAGRAM_DB = "plexus-diagram";
-var DIAGRAM_DB_VERSION = 2;
+var DIAGRAM_DB_VERSION = 3;
 var STORE_COVERS = "covers";
 var STORE_PARSE = "parse";
 var STORE_PARSE_IMAGES = "parse-images";
 var STORE_PARSE_INDEX = "parse-index";
-var STORES = [STORE_COVERS, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX];
+var STORE_IMAGE_INDEX = "image-index";
+var STORES = [STORE_COVERS, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX, STORE_IMAGE_INDEX];
 function arm(ms, fn) {
   try {
     const id = setTimeout(fn, ms);
@@ -36141,6 +36440,24 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         const url = pdfMacroUrl(string) || (/https?:\/\/[^\s}]+/.exec(string) || [""])[0];
         if (!url) continue;
         out.push({ uid: String(uid), url, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
+        if (out.length >= limit) break;
+      }
+      return out;
+    },
+    // Every image block in the graph, for the image index and image search. Read-only and capped.
+    listImageBlocks(limit = 2e3) {
+      const rows = host.q(
+        `[:find ?u ?s ?t :in $ ?kind :where [?b :block/string ?s] [(re-pattern ?kind) ?kre] [(re-find ?kre ?s)]
+ [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]`,
+        BLOCK_KIND_PATTERNS.image
+      ) || [];
+      const out = [];
+      for (const [uid, string, pageTitle] of rows) {
+        if (typeof string !== "string" || !uid) continue;
+        if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) continue;
+        const shown = blockDisplay(string, "image");
+        if (!shown.url) continue;
+        out.push({ uid: String(uid), string, url: shown.url, name: shown.text, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
         if (out.length >= limit) break;
       }
       return out;
@@ -51790,8 +52107,8 @@ function createAnydocHost({
         const hit = await cache.match(url);
         if (hit) {
           const buf2 = asBytes(await hit.arrayBuffer());
-          const hex2 = await sha256Hex(buf2);
-          if (hex2 === spec.sha256 && buf2.byteLength === spec.bytes) return buf2;
+          const hex3 = await sha256Hex(buf2);
+          if (hex3 === spec.sha256 && buf2.byteLength === spec.bytes) return buf2;
         }
       } catch {
       }
@@ -67278,6 +67595,363 @@ init_panel();
 init_drop();
 init_anydoc_to_parse();
 
+// src/host/image-index.js
+init_color();
+var IMAGE_INDEX_V = 1;
+var RETRY_MS = 7 * 864e5;
+var TYPING_PAUSE_MS = 600;
+var MAX_FETCHES = 2;
+var OCR_MIN_W = 200;
+var OCR_MIN_H = 120;
+var OCR_SESSION_CAP = 40;
+var OCR_MAX_SIDE = 1280;
+var SAMPLE = 64;
+function makeCanvas(w, h) {
+  if (typeof OffscreenCanvas === "function") return new OffscreenCanvas(w, h);
+  const canvas = globalThis.document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  return canvas;
+}
+async function decodeSample(blob) {
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = makeCanvas(SAMPLE, SAMPLE);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(bitmap, 0, 0, SAMPLE, SAMPLE);
+    return { rgba: ctx.getImageData(0, 0, SAMPLE, SAMPLE).data, w: bitmap.width, h: bitmap.height };
+  } finally {
+    try {
+      bitmap.close?.();
+    } catch {
+    }
+  }
+}
+async function decodeRgb(blob, maxSide = OCR_MAX_SIDE) {
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const k = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * k));
+    const height = Math.max(1, Math.round(bitmap.height * k));
+    const canvas = makeCanvas(width, height);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    const px = ctx.getImageData(0, 0, width, height).data;
+    const rgb = new Uint8Array(width * height * 3);
+    for (let i = 0, j = 0; i < px.length; i += 4, j += 3) {
+      rgb[j] = px[i];
+      rgb[j + 1] = px[i + 1];
+      rgb[j + 2] = px[i + 2];
+    }
+    return { rgb, width, height, w: bitmap.width, h: bitmap.height };
+  } finally {
+    try {
+      bitmap.close?.();
+    } catch {
+    }
+  }
+}
+function requestResult3(req) {
+  return new Promise((resolve) => {
+    try {
+      req.onsuccess = () => resolve({ ok: true, result: req.result });
+      req.onerror = (event) => {
+        try {
+          event?.preventDefault?.();
+        } catch {
+        }
+        resolve({ ok: false, result: null });
+      };
+    } catch {
+      resolve({ ok: false, result: null });
+    }
+  });
+}
+function createImageIndex({
+  indexedDB: factory = null,
+  fetch: fetchImpl = globalThis.fetch?.bind(globalThis),
+  decode = decodeSample,
+  decodeFull = decodeRgb,
+  ocr = null,
+  settings = {},
+  now: now3 = () => Date.now(),
+  idle = (fn) => {
+    if (typeof requestIdleCallback === "function") requestIdleCallback(() => fn(), { timeout: 500 });
+    else setTimeout(fn, 16);
+  },
+  later = (fn, ms) => setTimeout(fn, ms),
+  onProgress = null,
+  ocrCap = OCR_SESSION_CAP
+} = {}) {
+  const wantColors = () => typeof settings.colors === "function" ? settings.colors() !== false : true;
+  const wantText = () => typeof settings.readText === "function" ? settings.readText() === true : false;
+  const records = /* @__PURE__ */ new Map();
+  const colorQ = [];
+  const ocrQ = [];
+  const queued = /* @__PURE__ */ new Set();
+  let loaded = null;
+  let dbPromise = null;
+  let dead = !factory;
+  let pausedUntil = 0;
+  let pumpTimer = false;
+  let activeColor = 0;
+  let activeOcr = 0;
+  let ocrDone = 0;
+  let ocrBlocked = false;
+  let disposed = false;
+  const openDb2 = () => {
+    if (dead) return Promise.resolve(null);
+    if (!dbPromise) {
+      dbPromise = openDiagramDb(factory).then((db) => {
+        if (!db) dead = true;
+        return db;
+      });
+    }
+    return dbPromise;
+  };
+  async function withStore(mode, fn) {
+    if (dead) return { ok: false };
+    try {
+      const db = await openDb2();
+      if (!db || typeof db.transaction !== "function") {
+        dead = true;
+        return { ok: false };
+      }
+      const store = db.transaction(STORE_IMAGE_INDEX, mode).objectStore(STORE_IMAGE_INDEX);
+      return await fn(store);
+    } catch {
+      dead = true;
+      return { ok: false };
+    }
+  }
+  function load() {
+    if (!loaded) {
+      loaded = (async () => {
+        const keys = await withStore("readonly", (store) => requestResult3(store.getAllKeys()));
+        if (keys?.ok && Array.isArray(keys.result)) {
+          for (const key of keys.result) {
+            const got = await withStore("readonly", (store) => requestResult3(store.get(key)));
+            if (got?.ok && got.result && typeof got.result === "object" && !records.has(key)) records.set(key, got.result);
+          }
+        }
+        return records;
+      })();
+    }
+    return loaded;
+  }
+  async function save(key, record) {
+    records.set(key, record);
+    await withStore("readwrite", (store) => requestResult3(store.put(record, key)));
+  }
+  const paused = () => pausedUntil > now3();
+  const progress = () => {
+    try {
+      onProgress?.(status());
+    } catch {
+    }
+  };
+  function status() {
+    const textRuns = ocrQ.length > 0 && wantText() && !ocrBlocked && ocrDone < ocrCap;
+    const colorRuns = colorQ.length > 0 && wantColors();
+    return {
+      pending: colorQ.length + activeColor,
+      textPending: ocrQ.length + activeOcr,
+      indexed: records.size,
+      busy: activeColor + activeOcr > 0 || colorRuns || textRuns
+    };
+  }
+  function whenIdle() {
+    return new Promise((resolve) => {
+      const go = () => {
+        if (disposed) {
+          resolve();
+          return;
+        }
+        if (paused()) {
+          later(go, pausedUntil - now3() + 10);
+          return;
+        }
+        idle(resolve);
+      };
+      go();
+    });
+  }
+  async function loadBlob(item) {
+    if (typeof item.bytes === "function") {
+      const bytes = await item.bytes();
+      if (bytes == null) throw Object.assign(new Error("no bytes"), { skip: true });
+      return new Blob([bytes]);
+    }
+    if (typeof fetchImpl !== "function" || !item.url) throw new Error("no source");
+    const res = await fetchImpl(item.url, { mode: "cors" });
+    if (!res?.ok) throw new Error(`fetch ${res?.status || ""}`);
+    return res.blob();
+  }
+  async function colorJob(item) {
+    activeColor += 1;
+    try {
+      await whenIdle();
+      const blob = await loadBlob(item);
+      await whenIdle();
+      const { rgba, w, h } = await decode(blob);
+      await whenIdle();
+      const palette = colorPalette(rgba);
+      const old = records.get(item.key);
+      const keep = old && !old.failed && old.text !== void 0 ? { text: old.text } : {};
+      await save(item.key, { ...keep, palette, w, h, at: now3(), v: IMAGE_INDEX_V });
+    } catch (error) {
+      if (!error?.skip) await save(item.key, { failed: true, at: now3() });
+    } finally {
+      activeColor -= 1;
+      queued.delete(item.key);
+      progress();
+      schedulePump(0);
+    }
+  }
+  async function ocrJob(item) {
+    activeOcr += 1;
+    let counted = false;
+    try {
+      await whenIdle();
+      const blob = await loadBlob(item);
+      await whenIdle();
+      const full = await decodeFull(blob, OCR_MAX_SIDE);
+      const old = records.get(item.key) || {};
+      let text3 = "";
+      if (full.w >= OCR_MIN_W && full.h >= OCR_MIN_H) {
+        const got = await ocr.readImageText({ rgb: full.rgb, width: full.width, height: full.height });
+        if (got === null) {
+          ocrBlocked = true;
+          return;
+        }
+        text3 = got;
+        counted = true;
+      }
+      await save(item.key, { ...old, text: text3, w: old.w || full.w, h: old.h || full.h, at: now3(), v: IMAGE_INDEX_V });
+    } catch (error) {
+      const old = records.get(item.key) || {};
+      if (!old.failed && !error?.skip) await save(item.key, { ...old, text: "", at: now3(), v: IMAGE_INDEX_V });
+    } finally {
+      if (counted) ocrDone += 1;
+      activeOcr -= 1;
+      queued.delete(`t:${item.key}`);
+      progress();
+      schedulePump(0);
+    }
+  }
+  function pump() {
+    pumpTimer = false;
+    if (disposed) return;
+    if (paused()) {
+      schedulePump(pausedUntil - now3() + 10);
+      return;
+    }
+    while (activeColor < MAX_FETCHES && colorQ.length && wantColors()) void colorJob(colorQ.shift());
+    if (!activeColor && !colorQ.length && !activeOcr && ocrQ.length && wantText() && !ocrBlocked && ocrDone < ocrCap) {
+      void ocrJob(ocrQ.shift());
+    }
+  }
+  function schedulePump(ms = 0) {
+    if (pumpTimer || disposed) return;
+    pumpTimer = true;
+    later(pump, Math.max(0, ms));
+  }
+  function pause(ms = TYPING_PAUSE_MS) {
+    pausedUntil = now3() + ms;
+  }
+  async function enqueue(items) {
+    await load();
+    ocrBlocked = false;
+    const t = now3();
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!item?.key || !item.url && typeof item.bytes !== "function") continue;
+      const rec = records.get(item.key);
+      const fresh = rec && !rec.failed && rec.v === IMAGE_INDEX_V && rec.palette;
+      if (rec?.failed && t - (rec.at || 0) < RETRY_MS) continue;
+      if (!fresh) {
+        if (wantColors() && !queued.has(item.key)) {
+          queued.add(item.key);
+          colorQ.push(item);
+        }
+      }
+      const needText = (!rec || rec.text === void 0) && !rec?.failed;
+      if (needText && ocr && wantText() && !queued.has(`t:${item.key}`)) {
+        const small = rec && rec.w && rec.h && (rec.w < OCR_MIN_W || rec.h < OCR_MIN_H);
+        if (!small) {
+          queued.add(`t:${item.key}`);
+          ocrQ.push(item);
+        }
+      }
+    }
+    progress();
+    schedulePump(0);
+    return status();
+  }
+  function dispose() {
+    disposed = true;
+    colorQ.length = 0;
+    ocrQ.length = 0;
+  }
+  return { load, enqueue, pause, status, records, dispose, version: DIAGRAM_DB_VERSION };
+}
+
+// src/model/image-search.js
+init_color();
+init_library();
+function splitImageQuery(text3) {
+  const words = [];
+  const colors = [];
+  const raw = String(text3 ?? "");
+  const quoted = /* @__PURE__ */ new Set();
+  for (const m of raw.matchAll(/"([^"]*)"/g)) quoted.add(m[1].replace(/\s+/g, " ").trim().toLowerCase());
+  for (const term of queryTerms(raw)) {
+    const target = quoted.has(term) ? null : colorQuery(term);
+    if (target) colors.push(target);
+    else words.push(term);
+  }
+  return { words, colors };
+}
+function searchImages(items, records, { text: text3 = "", pages = "" } = {}, limit = 40) {
+  const { words, colors } = splitImageQuery(text3);
+  const range = parsePageRange(pages);
+  const hits = [];
+  let seq = 0;
+  for (const item of Array.isArray(items) ? items : []) {
+    seq += 1;
+    if (range && !(item.page >= range.from && item.page <= range.to)) continue;
+    const rec = records?.get?.(item.key) || null;
+    const ok = Boolean(rec) && !rec.failed;
+    let score = 0;
+    if (colors.length) {
+      if (!ok || !rec.palette) continue;
+      let all = true;
+      for (const c of colors) {
+        const s = colorScore(rec.palette, c);
+        if (s < COLOR_MIN_SCORE) {
+          all = false;
+          break;
+        }
+        score += s;
+      }
+      if (!all) continue;
+    }
+    if (words.length) {
+      const hay = ok && rec.text ? `${item.hay}
+${String(rec.text).toLowerCase()}` : item.hay;
+      if (!words.every((w) => hay.includes(w))) continue;
+    }
+    hits.push({ item, score, seq, palette: ok ? rec.palette : null });
+  }
+  hits.sort((a, b) => b.score - a.score || a.seq - b.seq);
+  return hits.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map(({ item, palette, score }) => ({
+    ...item,
+    palette: palette ? palette.slice(0, 3).map((p) => p.hex) : [],
+    colorScore: score
+  }));
+}
+
 // src/model/ocr/manifest.js
 var CACHE_NAME = "plexus-diagram-models";
 var SCHEMA3 = "pxd-ocr/1";
@@ -69349,6 +70023,10 @@ function createOcrWeb({
         if (!(band > 0)) prepared2.set(n2, prep);
         return prep.record;
       },
+      async image(rendered, signal) {
+        const prep = await preparePageImage({ ...rendered, dpi: rendered.dpi || dpi, page: -1, runDet, runRec, dict, signal });
+        return prep.record;
+      },
       async cells(list, bytes, signal) {
         const need2 = [...new Set(list.map((c) => c.page))];
         for (const n2 of need2) if (!prepared2.has(n2)) await this.page(n2, bytes, signal);
@@ -69478,6 +70156,20 @@ function createOcrWeb({
         if (!(band > 0)) records.set(n2, msg.record);
         return msg.record;
       },
+      async image(rendered, signal2) {
+        const rgb = rendered.rgb;
+        const msg = await call({
+          type: "page",
+          n: -1,
+          width: rendered.width,
+          height: rendered.height,
+          dpi: rendered.dpi,
+          pointW: rendered.pointW,
+          pointH: rendered.pointH,
+          rgb
+        }, [rgb.buffer], signal2);
+        return msg.record;
+      },
       async cells(list, bytes, signal2) {
         const need2 = [...new Set(list.map((c) => c.page))];
         for (const n2 of need2) if (!records.has(n2)) await this.page(n2, bytes, signal2);
@@ -69547,6 +70239,19 @@ function createOcrWeb({
     const elapsedMs = Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - t0);
     return { schema: SCHEMA3, engine: ENGINE2, sha256, elapsedMs, ...body };
   }
+  async function ocrImage({ rgb, width, height, signal } = {}) {
+    throwIfAborted2(signal);
+    const ready = await ensure(signal);
+    const record = await ready.image({
+      rgb,
+      width,
+      height,
+      dpi: DPI,
+      pointW: width * 72 / DPI,
+      pointH: height * 72 / DPI
+    }, signal);
+    return record;
+  }
   function forget() {
     prepared2.clear();
     engine?.forget?.();
@@ -69554,6 +70259,7 @@ function createOcrWeb({
   return {
     health,
     ocr,
+    ocrImage,
     cached,
     prefetch,
     lexicon,
@@ -69686,6 +70392,15 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
     const { lines } = buildLines(page.items, { transform: page.transform || [1, 0, 0, 1, 0, 0], fonts: page.fonts || {} });
     return titleFromBand(lines) || "";
   }
+  async function readImageText({ rgb, width, height, signal = null } = {}) {
+    if (signal?.aborted) throw abortError2();
+    const st = await status();
+    if (st.state !== "ready") return null;
+    const src = web();
+    if (typeof src.ocrImage !== "function") return null;
+    const record = await src.ocrImage({ rgb, width, height, signal });
+    return (record?.items || []).map((item) => String(item.str || "").trim()).filter(Boolean).join(" ");
+  }
   async function readCells({ cells = [], url = "", getPdf = null, signal = null } = {}) {
     if (signal?.aborted) throw abortError2();
     if (!cells.length) return { cells: [] };
@@ -69724,7 +70439,7 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
     }
     return warmJob;
   }
-  return { status, download, cancel, read: read2, readCells, readBandTitle, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
+  return { status, download, cancel, read: read2, readCells, readBandTitle, readImageText, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
 }
 var shared = null;
 function sharedDeviceOcr() {
@@ -77850,6 +78565,52 @@ function buildBoardView(onFail, {
     }
     return partsIdx;
   };
+  let imgIndex = null;
+  let imgStore = null;
+  let imgList = null;
+  const imageIndex = () => {
+    if (!imgIndex) {
+      imgIndex = createImageIndex({
+        indexedDB: doc.defaultView?.indexedDB,
+        ocr: sharedDeviceOcr(),
+        settings: { colors: () => readSetting2("image-index-colors") !== false, readText: () => readSetting2("image-read-text") === true },
+        onProgress: (st) => {
+          try {
+            panel.setIndexing?.(st.pending);
+          } catch {
+          }
+        }
+      });
+    }
+    return imgIndex;
+  };
+  const searchImageCards = async ({ text: text3, images, figures, pages }, limit) => {
+    const index = imageIndex();
+    await index.load();
+    const imgItems = [];
+    const figItems = [];
+    if (images && typeof host?.listImageBlocks === "function") {
+      if (!imgList) imgList = host.listImageBlocks(2e3) || [];
+      for (const r of imgList) imgItems.push({ key: r.url, uid: r.uid, string: r.string, pageTitle: r.pageTitle, hay: String(r.string).toLowerCase(), url: r.url });
+    }
+    if (figures && typeof host?.listPdfBlocks === "function") {
+      if (!imgStore) imgStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
+      for (const r of await partsIndex().get()) {
+        if (r.kind === "figure" && r.sha256) figItems.push({ ...r, key: imageKey(r.sha256, r.blockId), hay: r.lower });
+      }
+    }
+    const feed = [
+      ...imgItems.map((i) => ({ key: i.key, url: i.url })),
+      ...figItems.map((f) => ({ key: f.key, bytes: () => imgStore.getImage(f.key) }))
+    ];
+    if (feed.length) timers.later(() => {
+      void index.enqueue(feed);
+    }, 0);
+    return {
+      images: searchImages(imgItems, index.records, { text: text3 }, limit),
+      figures: searchImages(figItems, index.records, { text: text3, pages }, limit)
+    };
+  };
   let panelWidth = PANEL_WIDTH_DEFAULT;
   try {
     const stored = Number(storage?.getItem?.(PANEL_WIDTH_KEY));
@@ -77869,7 +78630,10 @@ function buildBoardView(onFail, {
       opened: (open) => {
         chrome.toolbar.setPanel(open);
         if (!open) sendPending = null;
-        else partsIdx?.invalidate();
+        else {
+          partsIdx?.invalidate();
+          imgList = null;
+        }
       },
       loadTypes: () => {
         try {
@@ -77887,6 +78651,8 @@ function buildBoardView(onFail, {
         } catch {
         }
       },
+      searchImages: searchImageCards,
+      typing: () => imgIndex?.pause(),
       searchParts: async (query, limit) => {
         if (typeof host?.listPdfBlocks !== "function") return [];
         return searchParts(await partsIndex().get(), query, limit);
@@ -81334,6 +82100,7 @@ function buildBoardView(onFail, {
       step(() => readPane?.dispose?.());
       step(() => itemsR.dispose());
       step(() => edgesR.dispose());
+      step(() => imgIndex?.dispose());
       step(() => panel.dispose());
       step(() => propsPanel.dispose());
       step(() => tooltip.dispose());

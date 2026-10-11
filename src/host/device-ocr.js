@@ -123,6 +123,17 @@ export function createDeviceOcr({ source = null, env = globalThis, dpi = 300, cr
     return titleFromBand(lines) || "";
   }
 
+  // Words in one picture ({ rgb, width, height }). Never downloads: without cached models it answers null.
+  async function readImageText({ rgb, width, height, signal = null } = {}) {
+    if (signal?.aborted) throw abortError();
+    const st = await status();
+    if (st.state !== "ready") return null;
+    const src = web();
+    if (typeof src.ocrImage !== "function") return null;
+    const record = await src.ocrImage({ rgb, width, height, signal });
+    return (record?.items || []).map((item) => String(item.str || "").trim()).filter(Boolean).join(" ");
+  }
+
   // Doubtful-cell re-read at higher zoom on the same source. Never downloads: without cached
   // models it answers nothing, so an automatic read cannot start a fetch.
   async function readCells({ cells = [], url = "", getPdf = null, signal = null } = {}) {
@@ -163,7 +174,7 @@ export function createDeviceOcr({ source = null, env = globalThis, dpi = 300, cr
     return warmJob;
   }
 
-  return { status, download, cancel, read, readCells, readBandTitle, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
+  return { status, download, cancel, read, readCells, readBandTitle, readImageText, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
 }
 
 let shared = null;

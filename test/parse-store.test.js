@@ -163,7 +163,7 @@ test("IndexedDB keeps an existing covers store and serves parse records", async 
   await parse.putParse(doc("s"));
   assert.equal((await parse.getParse("s", "builtin", hash)).engine, "builtin");
   assert.deepEqual(indexedDB.opens[0], [DIAGRAM_DB, DIAGRAM_DB_VERSION]);
-  assert.equal(DIAGRAM_DB_VERSION, 2);
+  assert.equal(DIAGRAM_DB_VERSION, 3);
 
   const covers = createCoverStore({ indexedDB });
   const got = await covers.get("https://example.test/old.pdf");

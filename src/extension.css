@@ -1619,6 +1619,47 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   background: var(--pxd-fill);
 }
 
+.pxd-panel__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 2px;
+}
+
+.pxd-panel__swatch {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--pxd-border, rgba(128, 128, 128, 0.5));
+  cursor: pointer;
+}
+
+.pxd-panel__swatch[aria-pressed="true"] {
+  outline: 2px solid var(--pxd-accent);
+  outline-offset: 1px;
+}
+
+.pxd-panel__dots {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  align-self: center;
+}
+
+.pxd-panel__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+}
+
+.pxd-panel__index-note {
+  padding: 4px 2px;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
 .pxd-panel__row-on {
   flex: 0 0 auto;
   font-size: 10px;

@@ -317,6 +317,10 @@ export function createOcrWeb({
         if (!(band > 0)) prepared.set(n, prep);
         return prep.record;
       },
+      async image(rendered, signal) {
+        const prep = await preparePageImage({ ...rendered, dpi: rendered.dpi || dpi, page: -1, runDet, runRec, dict, signal });
+        return prep.record;
+      },
       async cells(list, bytes, signal) {
         const need = [...new Set(list.map((c) => c.page))];
         for (const n of need) if (!prepared.has(n)) await this.page(n, bytes, signal);
@@ -426,6 +430,14 @@ export function createOcrWeb({
         if (!(band > 0)) records.set(n, msg.record);
         return msg.record;
       },
+      async image(rendered, signal) {
+        const rgb = rendered.rgb;
+        const msg = await call({
+          type: "page", n: -1, width: rendered.width, height: rendered.height, dpi: rendered.dpi,
+          pointW: rendered.pointW, pointH: rendered.pointH, rgb,
+        }, [rgb.buffer], signal);
+        return msg.record;
+      },
       async cells(list, bytes, signal) {
         const need = [...new Set(list.map((c) => c.page))];
         for (const n of need) if (!records.has(n)) await this.page(n, bytes, signal);
@@ -497,6 +509,16 @@ export function createOcrWeb({
     return { schema: SCHEMA, engine: ENGINE, sha256, elapsedMs, ...body };
   }
 
+  // Text in one picture: { rgb, width, height } at any size. Nothing is cached. The record is a page record; items hold the words.
+  async function ocrImage({ rgb, width, height, signal } = {}) {
+    throwIfAborted(signal);
+    const ready = await ensure(signal);
+    const record = await ready.image({
+      rgb, width, height, dpi: DPI, pointW: width * 72 / DPI, pointH: height * 72 / DPI,
+    }, signal);
+    return record;
+  }
+
   // Page frames and records are per document: drop them before reading another PDF.
   function forget() {
     prepared.clear();
@@ -506,6 +528,7 @@ export function createOcrWeb({
   return {
     health,
     ocr,
+    ocrImage,
     cached,
     prefetch,
     lexicon,

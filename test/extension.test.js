@@ -63,6 +63,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
     "why-prompt", "resurface-intervals", "resurface", "regions-inline", "interop", "auto-enhance", "speed-log",
     "look-canvas", "look-sections", "look-highlights", "theme",
     "parse-helper-url", "parse-helper-token", "parse-engine-default", "parse-formula", "parse-ocr", "parse-page-reader", "parse-auto-read", "keep-reads", "parse-link-safe", "parse-numbered", "parse-footnotes", "parse-footnote-format",
+    "image-index-colors", "image-read-text",
   ].sort());
   assert.equal(settingsDefaults()["auto-enhance"], true);
   assert.equal(settingsDefaults()["enter-in-card"], "newline");
@@ -165,14 +166,14 @@ test("UI-10: settings are grouped, described in plain language, and reset applie
       members[current] = [];
       assert.equal(row.action.type, "reactComponent");
     } else if (row.id === "reset-plexus-settings") {
-      assert.equal(current, "PDF parse");
+      assert.equal(current, "Image search");
       assert.equal(row.action.type, "button");
       assert.equal(row.action.content, "Reset Plexus settings");
     } else {
       members[current].push(row.id);
     }
   }
-  assert.deepEqual(groups, ["Cards", "Integrations", "Sections", "Connections", "Board", "Performance", "PDF parse"]);
+  assert.deepEqual(groups, ["Cards", "Integrations", "Sections", "Connections", "Board", "Performance", "PDF parse", "Image search"]);
   assert.deepEqual(members.Cards, ["default-card-look", "default-card-width", "default-card-height", "enter-in-card", "show-card-badges", "space-out", "pdf-cover", "pdf-cover-warm", "highlight-open", "pdf-dark"]);
   assert.deepEqual(members.Integrations, [
     "status-better-tasks", "better-tasks", "status-task-status-tags", "task-tool", "task-chips", "task-default-project",
@@ -186,6 +187,9 @@ test("UI-10: settings are grouped, described in plain language, and reset applie
     "parse-helper-url", "parse-helper-token", "parse-engine-default", "parse-formula",
     "parse-ocr", "parse-page-reader", "parse-auto-read", "keep-reads", "parse-link-safe", "parse-numbered", "parse-footnotes", "parse-footnote-format",
   ]);
+  assert.deepEqual(members["Image search"], ["image-index-colors", "image-read-text"]);
+  assert.equal(defaults["image-index-colors"], true);
+  assert.equal(defaults["image-read-text"], false);
   assert.equal(defaults["better-tasks"], false);
   assert.equal(defaults["task-tool"], false);
   assert.equal(defaults.resurface, true);

@@ -103,7 +103,9 @@ import { createPanel, parseDropPayload } from "./panel.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
-import { createParseStore, readableParse, restorableTitle } from "../host/parse-store.js";
+import { createParseStore, imageKey, readableParse, restorableTitle } from "../host/parse-store.js";
+import { createImageIndex } from "../host/image-index.js";
+import { searchImages } from "../model/image-search.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { scheduleTitleLexiconWarm } from "./title-lexicon-warm.js";
 import { createParseActions, freeSpotBeside } from "./parse-actions.js";
@@ -5243,6 +5245,46 @@ function buildBoardView(onFail, {
     }
     return partsIdx;
   };
+  // Image search: the index fills in the background after a search lists images, never while typing.
+  let imgIndex = null;
+  let imgStore = null;
+  let imgList = null;
+  const imageIndex = () => {
+    if (!imgIndex) {
+      imgIndex = createImageIndex({
+        indexedDB: doc.defaultView?.indexedDB,
+        ocr: sharedDeviceOcr(),
+        settings: { colors: () => readSetting("image-index-colors") !== false, readText: () => readSetting("image-read-text") === true },
+        onProgress: (st) => { try { panel.setIndexing?.(st.pending); } catch { /* panel gone */ } },
+      });
+    }
+    return imgIndex;
+  };
+  const searchImageCards = async ({ text, images, figures, pages }, limit) => {
+    const index = imageIndex();
+    await index.load();
+    const imgItems = [];
+    const figItems = [];
+    if (images && typeof host?.listImageBlocks === "function") {
+      if (!imgList) imgList = host.listImageBlocks(2000) || [];
+      for (const r of imgList) imgItems.push({ key: r.url, uid: r.uid, string: r.string, pageTitle: r.pageTitle, hay: String(r.string).toLowerCase(), url: r.url });
+    }
+    if (figures && typeof host?.listPdfBlocks === "function") {
+      if (!imgStore) imgStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
+      for (const r of await partsIndex().get()) {
+        if (r.kind === "figure" && r.sha256) figItems.push({ ...r, key: imageKey(r.sha256, r.blockId), hay: r.lower });
+      }
+    }
+    const feed = [
+      ...imgItems.map((i) => ({ key: i.key, url: i.url })),
+      ...figItems.map((f) => ({ key: f.key, bytes: () => imgStore.getImage(f.key) })),
+    ];
+    if (feed.length) timers.later(() => { void index.enqueue(feed); }, 0);
+    return {
+      images: searchImages(imgItems, index.records, { text }, limit),
+      figures: searchImages(figItems, index.records, { text, pages }, limit),
+    };
+  };
   let panelWidth = PANEL_WIDTH_DEFAULT;
   try {
     const stored = Number(storage?.getItem?.(PANEL_WIDTH_KEY));
@@ -5261,7 +5303,7 @@ function buildBoardView(onFail, {
       opened: (open) => {
         chrome.toolbar.setPanel(open);
         if (!open) sendPending = null;
-        else partsIdx?.invalidate();
+        else { partsIdx?.invalidate(); imgList = null; }
       },
       loadTypes: () => {
         try {
@@ -5272,6 +5314,8 @@ function buildBoardView(onFail, {
       },
       pdfTitle: (url) => parsedTitles.get(url) || "",
       saveTypes: (types) => { try { storage?.setItem?.(LIB_TYPES_KEY, JSON.stringify(types)); } catch { /* private mode */ } },
+      searchImages: searchImageCards,
+      typing: () => imgIndex?.pause(),
       searchParts: async (query, limit) => {
         if (typeof host?.listPdfBlocks !== "function") return [];
         return searchParts(await partsIndex().get(), query, limit);
@@ -8265,6 +8309,7 @@ function buildBoardView(onFail, {
       step(() => itemsR.dispose());
       step(() => edgesR.dispose());
       step(() => { offPartsChange?.(); partsIdx?.dispose(); partsIdx = null; });
+      step(() => imgIndex?.dispose());
       step(() => panel.dispose());
       step(() => propsPanel.dispose());
       step(() => tooltip.dispose());

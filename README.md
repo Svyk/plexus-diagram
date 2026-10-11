@@ -452,6 +452,8 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | PDF parse | Numbered lists when inserting | On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet. |
 | PDF parse | Footnotes | Inline places each note after the paragraph that cites it. End places every note after the insert. |
 | PDF parse | PDF footnotes | Extension writes each note under the page's #footnotes block and links it with an alias, the format of the Footnotes extension (it works without the extension). Plain keeps (N) in the text with the notes as lines. Off keeps the PDF's own marks. |
+| Image search | Index image colours | On. While the board search panel lists Image or Figure cards, Plexus reads each picture once, in the background, to find its main colours so you can search by colour. Nothing leaves this device. |
+| Image search | Read text in images | Off. On lets the board search find words inside pictures, using the in-browser reading models. It only runs when those models are already on this device, never downloads them, and reads at most a few dozen pictures per session. |
 | Performance | speed-flags | Hidden. Not a panel row. A JSON object, parsed by parseSpeedFlags. |
 
 ## Privacy

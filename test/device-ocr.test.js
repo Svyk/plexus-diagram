@@ -164,3 +164,16 @@ test("a scanned page in the reading pane with the real device source fetches no 
     restore();
   }
 });
+
+test("readImageText reads one picture only when models are cached, and never fetches", async () => {
+  const fetches = [];
+  const img = { rgb: new Uint8Array(12), width: 2, height: 2 };
+  const cold = createDeviceOcr({ env: fakeEnv({ fetches }), source: { cached: async () => false, ocrImage: async () => { throw new Error("should not read"); } } });
+  assert.equal(await cold.readImageText(img), null);
+  const ready = createDeviceOcr({
+    env: fakeEnv({ fetches }),
+    source: { cached: async () => true, ocrImage: async (got) => { assert.equal(got.width, 2); return { items: [{ str: "Revenue" }, { str: " 2026 " }, { str: "" }] }; } },
+  });
+  assert.equal(await ready.readImageText(img), "Revenue 2026");
+  assert.deepEqual(fetches, []);
+});

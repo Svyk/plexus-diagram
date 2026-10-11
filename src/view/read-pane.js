@@ -198,6 +198,7 @@ export function createReadPane({
   onClose,
   onPlace,
   onNote,
+  onAskHighlight,
   onHover,
   onSwitch,
   onSnapshot,
@@ -1826,6 +1827,11 @@ export function createReadPane({
     onNote(row) {
       try { onNote?.(row); } catch { /* host */ }
     },
+    ...(typeof onAskHighlight === "function" ? {
+      onAsk(row, opts) {
+        try { onAskHighlight(row, { ...(opts || {}), url: pdfUrl(), cardUid: current.cardUid || "" }); } catch { /* host */ }
+      },
+    } : {}),
     onHover(uid, on) {
       try { onHover?.(uid, on); } catch { /* host */ }
     },

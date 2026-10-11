@@ -2,7 +2,7 @@
 
 import { capTitle, isBannerOf, isCutPrefix, isJunkTitleText, segmentTitle, titleWordCount } from "./title-cap.js";
 
-const PDF_MACRO = "{{[[pdf]]:";
+const PDF_MACRO = /^\{\{\s*(?:\[\[pdf\]\]|pdf)\s*:/;
 
 export const PDF_READER_W = 640;
 export const PDF_READER_H = 820;
@@ -11,8 +11,9 @@ export const PDF_CARD_MAX = 4000;
 export function pdfMacroUrl(s) {
   if (typeof s !== "string") return "";
   const text = s.trim();
-  if (!text.startsWith(PDF_MACRO)) return "";
-  const match = /https?:\/\/[^\s}]+/.exec(text.slice(PDF_MACRO.length));
+  const head = PDF_MACRO.exec(text);
+  if (!head) return "";
+  const match = /https?:\/\/[^\s}]+/.exec(text.slice(head[0].length));
   if (!match) return "";
   // Encrypted graphs store PDFs as .enc. The url only keys the page lookup; nothing here fetches it.
   return match[0];

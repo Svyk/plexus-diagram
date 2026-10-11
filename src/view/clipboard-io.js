@@ -31,6 +31,17 @@ export function filesFromDataTransfer(dt) {
   return out;
 }
 
+// PDF files in a drop. A drop never lists the same File twice in `files`, so no dedupe beyond identity.
+export function pdfFilesFromDataTransfer(dt) {
+  const out = [];
+  for (const f of dt?.files ?? []) {
+    if (!f || out.includes(f) || out.length >= MAX_IMAGES) continue;
+    const type = typeof f.type === "string" ? f.type : "";
+    if (type === "application/pdf" || (!type && /\.pdf$/i.test(String(f.name || "")))) out.push(f);
+  }
+  return out;
+}
+
 // During dragenter/dragover the browser hides file contents (files is empty, getAsFile is
 // null) but still exposes each item's kind and type, so acceptance must be decided from those.
 export function dragHasImages(dt) {

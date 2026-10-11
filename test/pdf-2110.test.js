@@ -18,7 +18,7 @@ import { mergePropsForWrite } from "../src/model/schema.js";
 const URL = "https://example.test/papers/Risk%20model.pdf";
 const MACRO = `{{[[pdf]]: ${URL}}}`;
 
-test("pdfMacroUrl returns the http(s) url only when the trimmed string starts with the pdf macro", () => {
+test("pdfMacroUrl returns the http(s) url only when the trimmed string starts with the pdf macro ({{[[pdf]]: or {{pdf:)", () => {
   assert.equal(pdfMacroUrl(MACRO), URL);
   assert.equal(pdfMacroUrl(` \n${MACRO} `), URL);
   assert.equal(pdfMacroUrl("{{[[pdf]]:http://example.test/a.pdf}}"), "http://example.test/a.pdf");
@@ -27,7 +27,7 @@ test("pdfMacroUrl returns the http(s) url only when the trimmed string starts wi
   assert.equal(pdfMacroUrl("{{[[pdf]]: https://example.test/dir.encyclopedia/a.pdf}}"), "https://example.test/dir.encyclopedia/a.pdf");
   assert.equal(pdfMacroUrl("see {{[[pdf]]: https://example.test/a.pdf}}"), "");
   assert.equal(pdfMacroUrl("{{[[pdf]]: ftp://example.test/a.pdf}}"), "");
-  assert.equal(pdfMacroUrl("{{pdf: https://example.test/a.pdf}}"), "");
+  assert.equal(pdfMacroUrl("{{pdf: https://example.test/a.pdf}}"), "https://example.test/a.pdf");
   assert.equal(pdfMacroUrl("{{[[PDF]]: https://example.test/a.pdf}}"), "");
   assert.equal(pdfMacroUrl("{{[[pdf]]:}}"), "");
   assert.equal(pdfMacroUrl(""), "");

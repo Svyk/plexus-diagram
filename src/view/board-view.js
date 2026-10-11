@@ -18,7 +18,7 @@ import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/
 import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
-import { HIGHLIGHT_COLORS, noteActionPlan } from "../model/highlight.js";
+import { HIGHLIGHT_COLORS, highlightModel, noteActionPlan } from "../model/highlight.js";
 import { cleanPdfTitle, coverModel, embedSplit, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
 import { answerSource, gestureSource, pasteCardPlan, pinOpenPlan, readWithSource } from "../model/pdf-pin.js";
 import { parseRegion } from "../model/regions.js";
@@ -112,6 +112,10 @@ import { createImageIndex } from "../host/image-index.js";
 import { searchImages, similarImages } from "../model/image-search.js";
 import { createFigureImages, getFigureImages, setFigureImages, shrinkImage } from "../host/figure-image.js";
 import { imageDoc } from "../model/ai-context.js";
+import { sha256Hex } from "../model/parse-hash.js";
+import { inlinePdfCards, migrationLines, pdfPageBaseTitle, planPdfMigration, uniquePageTitle } from "../model/pdf-page.js";
+import { highlightAsk, highlightPart } from "../model/highlight-ask.js";
+import { openPdfPagesDialog } from "./pdf-pages-dialog.js";
 import { dataUrlToBlob } from "./parse-crop.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { scheduleTitleLexiconWarm } from "./title-lexicon-warm.js";
@@ -128,7 +132,7 @@ import { statusApi, statusPalette } from "../model/status-tags.js";
 import { createQuickLook } from "./quicklook.js";
 import { boardCramped, freeBoardArea, pdfDockLift } from "../model/card-face.js";
 import { createPresenter } from "./present.js";
-import { createClipboardIO, dragHasImages, filesFromDataTransfer, writeClipboard } from "./clipboard-io.js";
+import { createClipboardIO, dragHasImages, filesFromDataTransfer, pdfFilesFromDataTransfer, writeClipboard } from "./clipboard-io.js";
 import { applyFullscreenChrome, watchRouteExit } from "./fullscreen.js";
 import { embedOwnerUid } from "../discovery.js";
 import {
@@ -1842,6 +1846,9 @@ function buildBoardView(onFail, {
     session: parseActions(),
     settings: { get: (id) => readSetting(id) },
     setSetting: (id, value) => (typeof onSetDefaults === "function" ? onSetDefaults({ [id]: value }) : undefined),
+    onAskHighlight: (row, { basket = false, url = "", cardUid = "" } = {}) => {
+      if (row?.uid) void askHighlight(row.uid, { basket, url, pdfCard: cardUid });
+    },
     onPlace: (row) => {
       const items = [...(board()?.items.values() || [])];
       const card = board()?.items.get(readPane?.cardUid?.() || "");
@@ -1999,7 +2006,7 @@ function buildBoardView(onFail, {
       document: doc,
       jumpPage: (n) => { if (pdfUid) void itemsR?.openPdfAt?.(pdfUid, n); },
       toast: (message) => toast(message),
-      addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfUid, ...answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) }),
+      addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfBlockOfCard(pdfUid), ...answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) }),
     });
   };
   // Chart -> table for a figure found in the search panel. The table lands beside the PDF card, the figure is its Source::.
@@ -2019,7 +2026,7 @@ function buildBoardView(onFail, {
       blockId,
       image: figureSpecFor(parsed, figure),
       toast: (message) => toast(message),
-      addTable: ({ table }) => parseActions().insertChartTable({ table, pdfUid, pdfBlockUid: pdfUid, ...answerSource({ doc: parsed, blockId, pdfUid }) }),
+      addTable: ({ table }) => parseActions().insertChartTable({ table, pdfUid, pdfBlockUid: pdfBlockOfCard(pdfUid), ...answerSource({ doc: parsed, blockId, pdfUid }) }),
     });
   };
   // ---- Ask about several parts: the basket (in memory, per graph, up to 8) and its pill ----
@@ -2046,6 +2053,129 @@ function buildBoardView(onFail, {
     part.label = ["Image", caption && caption.length > 40 ? `${caption.slice(0, 39)}…` : caption, title].filter(Boolean).join(" · ");
     addedToBasket(part);
   };
+  // Ask AI (or add to the question) about one native highlight: a highlight card, or a drawer row in the reader.
+  // pdfCard: the board card of the PDF, when known, so a page citation can open it.
+  const askHighlight = async (uid, { basket = false, url: knownUrl = "", pdfCard = "" } = {}) => {
+    if (!uid) return null;
+    let bag = null;
+    try { bag = host?.blockProps?.(uid) || null; } catch { bag = null; }
+    let children = [];
+    try { children = host?.pullTree?.(uid, 1, 20) || []; } catch { children = []; }
+    const highlight = bag ? highlightModel({ props: bag.props, string: bag.string, pageTitle: bag.pageTitle, children: (children || []).map((c) => ({ string: c?.string ?? "", props: c?.props ?? {} })) }) : null;
+    if (!highlight) { toast("That highlight could not be read"); return null; }
+    let url = knownUrl;
+    if (!url) {
+      try { url = host?.pdfPageUrl?.(host?.blockPageUid?.(uid) || "") || ""; } catch { url = ""; }
+    }
+    const parsed = url ? await loadParsedFor({ url }) : null;
+    if (disposed) return null;
+    const ask = highlightAsk({ highlight, string: bag.string, uid, parsed, title: bag.pageTitle || "" });
+    if (!ask) { toast("Nothing to ask about in that highlight"); return null; }
+    const cardUid = pdfCard || (url ? pdfCardUidFor("", url) : "") || "";
+    if (basket) { addedToBasket(highlightPart(ask, { uid, pdfUid: cardUid, url })); return null; }
+    return openAskAI({
+      doc: ask.doc,
+      ...ask.focus,
+      ...(ask.image ? { image: ask.image } : {}),
+      document: doc,
+      jumpPage: (n) => { if (cardUid) void itemsR?.openPdfAt?.(cardUid, n); },
+      toast: (message) => toast(message),
+      addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid: cardUid || uid, pdfBlockUid: pdfBlockOfCard(cardUid), ...ask.source }),
+    });
+  };
+  // ---- PDFs on their own pages ----
+  // "Move PDFs to their own pages": dry run in a dialog, then one undo group. This board only.
+  let pdfPagesDialog = null;
+  const closePdfPagesDialog = () => { try { pdfPagesDialog?.close?.(); } catch { /* gone */ } pdfPagesDialog = null; };
+  const planPdfPages = async () => {
+    const b = board();
+    if (!b) return null;
+    const store = parseStoreShared();
+    const shaOf = new Map();
+    for (const item of inlinePdfCards(b)) {
+      const url = pdfMacroUrl(pdfSourceOfItem(item));
+      if (!url || shaOf.has(url)) continue;
+      let hit = null;
+      try { hit = await store.findByUrl(url); } catch { hit = null; }
+      shaOf.set(url, hit?.sha256 || "");
+    }
+    if (disposed || board() !== b) return null;
+    return planPdfMigration(b, {
+      graph: (() => { try { return String(host?.graphName?.() || graphOfWindow(win) || ""); } catch { return ""; } })(),
+      urlOf: (item) => pdfMacroUrl(pdfSourceOfItem(item)),
+      layoutOf: (id) => session.layoutOf?.(id) || null,
+      findPage: ({ url }) => host?.findPdfPage?.({ url, sha: shaOf.get(url) || "" }) || null,
+      pageExists: (title) => host?.pageExists?.(title) === true,
+      titleFor: (item) => pdfDisplayTitle(item),
+      newUid: () => host?.generateUid?.() || "",
+    });
+  };
+  const movePdfsToPages = async () => {
+    if (disposed) return null;
+    closePdfPagesDialog();
+    if (typeof host?.createPage !== "function" || typeof session.movePdfsToPages !== "function") { toast("Moving PDFs is not available here"); return null; }
+    const plan = await planPdfPages();
+    if (disposed || !plan) return null;
+    if (!plan.moves.length) {
+      toast(plan.skipped.length ? "No PDF on this board can move to its own page" : "Every PDF on this board already has its own page");
+      return { moved: 0 };
+    }
+    return new Promise((resolve) => {
+      pdfPagesDialog = openPdfPagesDialog(doc, {
+        count: plan.moves.length,
+        lines: migrationLines(plan),
+        onApply: () => {
+          closePdfPagesDialog();
+          Promise.resolve(session.movePdfsToPages(plan)).then((res) => {
+            if (disposed) return resolve(res);
+            if (res?.refused) toast("This board changed. Run the command again");
+            else if (res?.moved) toast(`Moved ${res.moved} ${res.moved === 1 ? "PDF" : "PDFs"} to ${res.moved === 1 ? "its own page" : "their own pages"}`, true);
+            resolve(res);
+          }, () => { if (!disposed) toast("Couldn't move the PDFs"); resolve(null); });
+        },
+        onCancel: () => { closePdfPagesDialog(); resolve(null); },
+      });
+      root.append(pdfPagesDialog.el);
+      pdfPagesDialog.focus?.();
+    });
+  };
+  // A PDF dropped from the computer: the file goes to its own page (an existing page with the same file is reused)
+  // and the board gets a [[page]] card.
+  const addPdfFiles = async (files, at) => {
+    if (!files?.length) return;
+    if (typeof host?.uploadFile !== "function" || typeof session.addPdfPageCards !== "function") { toast("PDF upload is not available here"); return; }
+    const rows = [];
+    const titles = new Set();
+    const h = DEFAULT_SIZES.pdf?.h || 420;
+    let failed = 0;
+    for (const file of files) {
+      let sha = "";
+      try { sha = await sha256Hex(new Uint8Array(await file.arrayBuffer())); } catch { sha = ""; }
+      if (disposed) return;
+      const pos = { x: at.x, y: at.y + rows.length * (h + 24) };
+      const found = sha ? host?.findPdfPage?.({ sha }) : null;
+      if (found?.title && found.pdfUid) { rows.push({ title: found.title, ...pos }); continue; }
+      // Roam's own page for this file (highlights only): its :pdf/url is the file, so nothing is uploaded again.
+      let known = "";
+      try { known = found?.uid ? host?.pdfPageUrl?.(found.uid) || "" : ""; } catch { known = ""; }
+      if (found?.title && known) { rows.push({ title: found.title, pageUid: found.uid, url: known, ...pos }); continue; }
+      let url = "";
+      try { url = await host.uploadFile(file); } catch (err) {
+        if (err?.message === "upload-unavailable") { if (!disposed) toast("PDF upload is not available here"); return; }
+        failed += 1;
+        continue;
+      }
+      if (disposed) return;
+      if (found?.title) { rows.push({ title: found.title, pageUid: found.uid, url, ...pos }); continue; }
+      const title = uniquePageTitle(pdfPageBaseTitle({ fileName: file?.name || "" }), (t) => titles.has(t) || host?.pageExists?.(t) === true);
+      titles.add(title);
+      rows.push({ title, newPage: true, pageUid: host?.generateUid?.() || undefined, url, ...pos });
+    }
+    if (!rows.length) { if (failed) toast("Couldn't upload the PDF"); return; }
+    const made = await Promise.resolve(session.addPdfPageCards(rows)).catch(() => null);
+    if (disposed) return;
+    if (Array.isArray(made) && made.length) { ctl.select(made); toast(failed ? `Added ${made.length} of ${files.length} PDFs` : `Added ${made.length} ${made.length === 1 ? "PDF" : "PDFs"}`, true); }
+  };
   const openBasketAsk = () => openAskAI({
     multi: {
       basket: askBasket,
@@ -2056,7 +2186,7 @@ function buildBoardView(onFail, {
     addCard: ({ markdown, parts }) => parseActions().insertAnswerCard({
       markdown,
       pdfUid: parts?.[0]?.pdfUid || "",
-      pdfBlockUid: parts?.[0]?.pdfUid || "",
+      pdfBlockUid: pdfBlockOfCard(parts?.[0]?.pdfUid || ""),
       sources: (parts || []).map((p) => ({ pdfUid: p.pdfUid || "", url: p.url || "", ...(p.source || {}) })),
     }),
   });
@@ -2173,6 +2303,11 @@ function buildBoardView(onFail, {
   const pdfBlockUid = (item) => {
     if (item?.target?.kind === "block" && typeof item.target.uid === "string" && item.target.uid) return item.target.uid;
     return typeof item?.uid === "string" ? item.uid : "";
+  };
+  // A card uid -> the pdf block it shows (a [[page]] or ((ref)) card points elsewhere). Pins live under that block.
+  const pdfBlockOfCard = (cardUid) => {
+    const item = cardUid ? board()?.items.get(cardUid) : null;
+    return item?.kind === "pdf" ? pdfBlockUid(item) : (cardUid || "");
   };
   const coverUrlOf = (item) => coverKey(pdfMacroUrl(pdfSourceOfItem(item)));
   const wholePage = (value) => {
@@ -4239,7 +4374,7 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true };
-      case "board-menu": return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn };
+      case "board-menu": return { inlinePdfs: inlinePdfCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -4258,7 +4393,7 @@ function buildBoardView(onFail, {
           } catch { /* keep the card string */ }
         }
         const officeFile = officeTargetFromText(officeText);
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", canComment: Boolean(commentTargetUid(item)) && typeof host?.addComment === "function", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -4668,12 +4803,14 @@ function buildBoardView(onFail, {
       }
       case "add-to-ask": {
         if (item?.kind === "image") { addImageToBasket(item); break; }
+        if (item?.kind === "highlight") { void askHighlight(item.target?.uid, { basket: true }); break; }
         if (!item || item.kind !== "pdf") break;
         void addParsedToBasket({ pdfUid: item.uid, url: pdfUrlOf(item.uid), wholeDoc: true });
         break;
       }
       case "ask-ai": {
         if (item?.kind === "image") { askAboutImageCard(item); break; }
+        if (item?.kind === "highlight") { void askHighlight(item.target?.uid); break; }
         if (!item || item.kind !== "pdf") break;
         void askAboutParsed({ pdfUid: item.uid, url: pdfUrlOf(item.uid), wholeDoc: true });
         break;
@@ -4821,6 +4958,7 @@ function buildBoardView(onFail, {
       case "toggle-fit": if (item) void session.setFit?.(item.uid, item.autofit === false); break;
       case "tidy": void session.tidyItems?.(mc.kind === "board-menu" ? b.roots : uids, arg); break;
       case "sort-outline": void session.sortOutline?.(); break;
+      case "pdf-pages": void movePdfsToPages(); break;
       case "fold-all-in": if (item) void session.collapseAll?.(true, { within: item.uid }); break;
       case "unfold-all-in": if (item) void session.collapseAll?.(false, { within: item.uid }); break;
       case "collapse-section": if (item?.type === "section") void session.setCollapsed?.(item.uid, !item.collapsed); break;
@@ -6318,6 +6456,7 @@ function buildBoardView(onFail, {
         return true;
       }
       if (regionDelete) { closeRegionDelete(); noteOverlayClosed(); return true; }
+      if (pdfPagesDialog) { pdfPagesDialog.cancel?.(); noteOverlayClosed(); return true; }
       if (!laterCtl.isOpen()) return false;
       laterCtl.close();
       noteOverlayClosed();
@@ -7251,6 +7390,8 @@ function buildBoardView(onFail, {
     if (event.target?.closest?.(".pxd-read")) return;
     measure();
     const p = screenToWorld(vp, { x: event.clientX - rootRect.left, y: event.clientY - rootRect.top });
+    const pdfFiles = pdfFilesFromDataTransfer(event.dataTransfer);
+    if (pdfFiles.length) { void addPdfFiles(pdfFiles, p); return; }
     const files = filesFromDataTransfer(event.dataTransfer);
     if (files.length) { void pasteImages(files, p); return; }
     const resolveUid = (u) => (host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`);
@@ -8472,6 +8613,7 @@ function buildBoardView(onFail, {
     },
     async exportPng() { return exportPng(); },
     addPage(at = null) { addPage(at); },
+    movePdfsToPages() { return movePdfsToPages(); },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;
       const world = at || { x: 80, y: 80 };
@@ -8497,6 +8639,7 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      closePdfPagesDialog();
       if (getFigureImages() === figureImages) setFigureImages(null);
       const step = (fn) => {
         try { fn(); } catch (error) { console.warn("[plexus-diagram] dispose step failed", error); }

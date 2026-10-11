@@ -409,7 +409,7 @@ test("mouseup on a selection shows Copy · Card · Quote · drag handle below it
     stub.flushTimers();
     assert.equal(rig.bar().hasAttribute("hidden"), false);
     assert.equal(rig.pane.selectionBarOpen(), true);
-    assert.deepEqual(rig.bar().querySelectorAll("button").map((b) => b.textContent), ["Copy", "Card", "Quote", "Ask AI", "⠿"]);
+    assert.deepEqual(rig.bar().querySelectorAll("button").map((b) => b.textContent), ["Copy", "Card", "Quote", "Ask AI", "Add to question", "⠿"]);
     assert.equal(rig.bar().style.top, "36px", "6px below the selection");
     for (const b of rig.bar().querySelectorAll("button")) assert.ok(tipEntry(b.getAttribute("data-tip")), b.getAttribute("data-tip"));
     // Pressing a bar button keeps the selection.

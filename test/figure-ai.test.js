@@ -359,7 +359,7 @@ test("empty answer: message with the model name, Try <next> from another provide
   const A2 = { id: "a2", name: "GPT 6 Sol", provider: "OpenAI", capabilities: { imageInput: false } };
   const B = { id: "b", name: "Claude Fable", provider: "Anthropic", capabilities: { imageInput: false } };
   const w = fakeWindow([A, A2, B], { generate: async (req) => { w.sent.push(req); return req.model === "b" ? { text: "Hello", model: "b" } : { text: "", model: req.model }; } });
-  const dialog = openAskAI({ doc: DOC, blockId: "f", document: doc, window: w });
+  const dialog = openAskAI({ doc: DOC, blockId: "f", document: doc, window: w, askModel: "GPT 6 Luna" });
   find(dialog.el, "pxd-ask__send").click();
   await flush();
   const out = find(dialog.el, "pxd-ask__answer");

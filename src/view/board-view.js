@@ -75,7 +75,9 @@ import { createInteractions, emptyLabelShouldDeleteEdge, whyLabelField } from ".
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
-import { openAskAI } from "./ask-ai.js";
+import { openAskAI, setAskSettings } from "./ask-ai.js";
+import { BASKET_MESSAGES, basketFor, makePart, pillText } from "../model/ask-basket.js";
+import { graphOfWindow } from "../model/ask-models.js";
 import { BUILTIN_OPTIONS, readParsedUrls } from "./parse-view.js";
 import { createPdfWarm } from "./pdf-warm.js";
 import { createFirstPageRenderer, createPdfMetaLookup, detectPdfjs, firstPageAllowed } from "./pdf-first-page.js";
@@ -1729,6 +1731,7 @@ function buildBoardView(onFail, {
         show: (uids) => { if (!disposed) revealParsed(uids); },
         focus: () => focusBoardAfterInsert(),
         upload: (file) => host.uploadFile?.(file),
+        linkSources: () => readSetting("link-answer-sources") !== false,
       });
     }
     return parseActionsObj;
@@ -1881,6 +1884,7 @@ function buildBoardView(onFail, {
     shrink: (blob) => shrinkImage(blob, { doc }),
   });
   setFigureImages(figureImages);
+  setAskSettings({ model: () => String(readSetting("ask-model") || "auto") });
   // The cached crop of a parsed figure. Rendering a missing one needs the open PDF, so a search row without a cached crop asks text-only.
   const figureSpecFor = (parsed, block) => {
     const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
@@ -1916,13 +1920,17 @@ function buildBoardView(onFail, {
     });
   };
   // Ask AI about a parsed PDF: one part (blockId, page) or the whole document. The answer card lands beside the PDF.
-  const askAboutParsed = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "", page = null, wholeDoc = false }) => {
+  const loadParsedFor = async ({ url = "", sha256 = "", engine = "builtin", optsHash = "" }) => {
     let parsed = null;
     try {
       const store = parseStoreShared();
       parsed = sha256 ? await store.getParse(sha256, engine, optsHash) : null;
       if (!parsed && url) parsed = await readableParse(store, url, { plainOptions: BUILTIN_OPTIONS });
     } catch { parsed = null; }
+    return parsed;
+  };
+  const askAboutParsed = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "", page = null, wholeDoc = false }) => {
+    const parsed = await loadParsedFor({ url, sha256, engine, optsHash });
     if (disposed) return null;
     if (!parsed) { toast("Parse not found. Open the PDF and parse it again"); return null; }
     const figure = blockId && parsed.blocks?.[blockId]?.type === "figure" ? parsed.blocks[blockId] : null;
@@ -1938,6 +1946,62 @@ function buildBoardView(onFail, {
       addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfUid, ...answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) }),
     });
   };
+  // ---- Ask about several parts: the basket (in memory, per graph, up to 8) and its pill ----
+  const askBasket = basketFor(graphOfWindow(win));
+  const addedToBasket = (part) => { if (part) toast(BASKET_MESSAGES[askBasket.add(part)]); };
+  const addParsedToBasket = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "", page = null, wholeDoc = false }) => {
+    const parsed = await loadParsedFor({ url, sha256, engine, optsHash });
+    if (disposed) return;
+    if (!parsed) { toast("Parse not found. Open the PDF and parse it again"); return; }
+    const figure = blockId && parsed.blocks?.[blockId]?.type === "figure" ? parsed.blocks[blockId] : null;
+    const focus = { ...(blockId ? { blockId } : {}), ...(page != null ? { page } : {}), ...(wholeDoc ? { wholeDoc: true } : {}) };
+    addedToBasket(makePart({ doc: parsed, focus, pdfUid, url, image: figure ? figureSpecFor(parsed, figure) : null, source: answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) }));
+  };
+  const addImageToBasket = (item) => {
+    const text = String(item?.string ?? "");
+    const m = /!\[([^\]]*)\]\(([^)\s]+)\)/.exec(text);
+    const url = m ? m[2] : "";
+    const rest = text.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+    const caption = [m ? m[1] : "", rest].filter(Boolean).join(" — ");
+    let title = "";
+    try { title = host?.pageTitleOf?.(item?.uid) || ""; } catch { title = ""; }
+    if (!title) title = board()?.title || "";
+    const part = makePart({ doc: imageDoc({ caption, title }), focus: { blockId: "img" }, pdfUid: item.uid, url: item.uid, image: { key: "", url, caption: caption || "Image", name: "image", thumb: url }, source: { sourceUid: item.uid }, kind: "image" });
+    part.label = ["Image", caption && caption.length > 40 ? `${caption.slice(0, 39)}…` : caption, title].filter(Boolean).join(" · ");
+    addedToBasket(part);
+  };
+  const openBasketAsk = () => openAskAI({
+    multi: {
+      basket: askBasket,
+      jump: (part, n) => { if (part?.kind !== "image" && part?.pdfUid) void itemsR?.openPdfAt?.(part.pdfUid, n || 1); },
+    },
+    document: doc,
+    toast: (message) => toast(message),
+    addCard: ({ markdown, parts }) => parseActions().insertAnswerCard({
+      markdown,
+      pdfUid: parts?.[0]?.pdfUid || "",
+      pdfBlockUid: parts?.[0]?.pdfUid || "",
+      sources: (parts || []).map((p) => ({ pdfUid: p.pdfUid || "", ...(p.source || {}) })),
+    }),
+  });
+  let basketPill = null;
+  const paintBasketPill = () => {
+    const n = askBasket.size();
+    if (!n) { basketPill?.remove(); basketPill = null; return; }
+    if (!basketPill) {
+      basketPill = doc.createElement("button");
+      basketPill.type = "button";
+      basketPill.className = "pxd-basket pxd-chrome";
+      basketPill.setAttribute("data-tip", "ask.basket");
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) basketPill.addEventListener(type, (event) => event.stopPropagation());
+      basketPill.addEventListener("click", (event) => { event.stopPropagation(); openBasketAsk(); });
+      root.append(basketPill);
+    }
+    basketPill.textContent = pillText(n);
+    basketPill.setAttribute("aria-label", `Ask AI about ${n} part${n === 1 ? "" : "s"}`);
+  };
+  const offBasketPill = askBasket.subscribe(paintBasketPill);
+  paintBasketPill();
   const pdfCardUidFor = (pdfUid, url) => {
     const items = [...(board()?.items.values() || [])].filter((it) => it?.kind === "pdf");
     if (pdfUid && items.some((it) => it.uid === pdfUid)) return pdfUid;
@@ -4482,6 +4546,12 @@ function buildBoardView(onFail, {
         try { ensureReadPane().showParsed?.(); } catch { /* pane */ }
         break;
       }
+      case "add-to-ask": {
+        if (item?.kind === "image") { addImageToBasket(item); break; }
+        if (!item || item.kind !== "pdf") break;
+        void addParsedToBasket({ pdfUid: item.uid, url: pdfUrlOf(item.uid), wholeDoc: true });
+        break;
+      }
       case "ask-ai": {
         if (item?.kind === "image") { askAboutImageCard(item); break; }
         if (!item || item.kind !== "pdf") break;
@@ -5379,6 +5449,9 @@ function buildBoardView(onFail, {
       },
       askPart: (row) => {
         void askAboutParsed({ pdfUid: pdfCardUidFor(row?.pdfUid || "", row?.url || "") || row?.pdfUid || "", url: row?.url || "", sha256: row?.sha256 || "", engine: row?.engine || "builtin", optsHash: row?.optsHash || "", blockId: row?.blockId || "", page: row?.page ?? null });
+      },
+      basketPart: (row) => {
+        void addParsedToBasket({ pdfUid: pdfCardUidFor(row?.pdfUid || "", row?.url || "") || row?.pdfUid || "", url: row?.url || "", sha256: row?.sha256 || "", engine: row?.engine || "builtin", optsHash: row?.optsHash || "", blockId: row?.blockId || "", page: row?.page ?? null });
       },
       listBoards: () => Promise.resolve(host?.listBoards?.()).then((rows) => rows || []),
       openBoardByUid: (uid) => {
@@ -8308,6 +8381,7 @@ function buildBoardView(onFail, {
         memoryLane = null;
         clearLaneMarks();
       });
+      step(() => { offBasketPill(); basketPill?.remove(); basketPill = null; });
       step(() => closeHalo());
       step(() => { regionMark?.destroy?.(); regionMark = null; });
       step(() => closeViewDialog());

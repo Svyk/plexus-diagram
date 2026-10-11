@@ -373,6 +373,13 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       el("span", "bp3-icon bp3-icon-lightbulb", ask).setAttribute("aria-hidden", "true");
       listen(ask, "click", (event) => { event.stopPropagation(); on.askPart(part); });
     }
+    if (typeof on.basketPart === "function") {
+      const add = el("button", "pxd-panel__row-act", head, "+");
+      add.setAttribute("type", "button");
+      add.setAttribute("aria-label", "Add to question");
+      add.setAttribute("title", "Add to question");
+      listen(add, "click", (event) => { event.stopPropagation(); on.basketPart(part); });
+    }
     const snip = partSnippet(part.text, needle);
     const body = el("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
     if (snip.before) body.append(snip.before);

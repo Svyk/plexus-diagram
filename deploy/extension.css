@@ -2505,6 +2505,60 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   color: var(--pxd-muted);
 }
 
+/* Basket pill on the board and the part chips in the dialog. */
+.pxd-basket {
+  position: absolute;
+  left: 12px;
+  bottom: 64px;
+  z-index: 30;
+  padding: 4px 12px;
+  color: var(--pxd-fg, var(--pxd-text, inherit));
+  background: var(--pxd-surface, #fff);
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bp3-dark .pxd-basket {
+  color: var(--pxd-fg, #e5e7eb);
+  background: var(--pxd-surface, #111);
+  border-color: var(--pxd-border, #4b5563);
+}
+
+.pxd-ask__parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.pxd-ask__partchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.pxd-ask__partlabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-ask__partx {
+  padding: 0 4px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 /* Plexus Diagram 1.2 backgrounds: the grid pattern (minor + major lines) and board tones. Rules are
    scoped .pxd-root .pxd-x or .pxd-root.pxd-bg-x (two classes at least). Tones only set --pxd-surface,
    which .pxd-root already paints; palette tones mix the palette line into the base surface at ~9%

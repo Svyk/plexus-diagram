@@ -2,7 +2,8 @@
 // { sha256, engine, optsHash, ids, pdfUid, kind }; the session wants converted content.
 
 import { planParseInsert, PARSE_MISSING_TOAST, textCardMarkdown } from "../model/drop.js";
-import { pinSpecFromBlock } from "../model/pdf-pin.js";
+import { pinSpecFromBlock, sourcePinOf } from "../model/pdf-pin.js";
+import { findSourceCard } from "../model/ask-basket.js";
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
 import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { parsedTableSize } from "../model/roam-table.js";
@@ -71,7 +72,7 @@ export function placementContent(doc, ids, act, extra = null) {
   return { content: { kind: "text", text, page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
 }
 
-export function createParseActions({ session, store, placeBeside, toast, select, show, focus, upload, toWorld } = {}) {
+export function createParseActions({ session, store, placeBeside, toast, select, show, focus, upload, toWorld, linkSources } = {}) {
   const say = (message) => { try { if (typeof toast === "function") toast(message); } catch { /* host */ } };
   const pick = (uids) => {
     const list = (Array.isArray(uids) ? uids : []).filter((id) => typeof id === "string" && id);
@@ -86,6 +87,22 @@ export function createParseActions({ session, store, placeBeside, toast, select,
     return { x: Number.isFinite(at?.x) ? at.x : 0, y: Number.isFinite(at?.y) ? at.y : 0 };
   };
   const fnFormat = () => session?.footnoteFormat?.() ?? "off";
+  // A connection "source" from the answer card to each source card that is on THIS board (the PDF card, or a card made
+  // from the same pin). At most one per card; nothing happens when the card is not here.
+  const linkAnswer = async (answerUid, sources) => {
+    try {
+      if (!answerUid || typeof session?.addEdge !== "function") return;
+      if (typeof linkSources === "function" && linkSources() === false) return;
+      const items = session.board?.items ? [...session.board.items.values()] : [];
+      const used = new Set([answerUid]);
+      for (const src of sources) {
+        const to = findSourceCard(items, { pinUid: src.pinUid, pdfUid: src.pdfUid, sourceOf: (it) => sourcePinOf(it?.content)?.uid || "" });
+        if (!to || used.has(to)) continue;
+        used.add(to);
+        await session.addEdge({ from: answerUid, to, label: "source", dir: "one" });
+      }
+    } catch { /* the answer card is already in; a missing line is fine */ }
+  };
   // Where an insert lands: a placed client point (click-to-place), explicit board x/y, else beside the PDF.
   const where = (payload, size) => {
     const c = payload?.client;
@@ -201,15 +218,23 @@ export function createParseActions({ session, store, placeBeside, toast, select,
     async insertAnswerCard(payload) {
       const markdown = String(payload?.markdown || "").trim();
       if (!markdown) return { ok: false, reason: "empty" };
-      let sourceUid = typeof payload.sourceUid === "string" ? payload.sourceUid : "";
-      if (!sourceUid && payload.pin && typeof session?.ensurePdfPin === "function") {
-        try { sourceUid = (await session.ensurePdfPin(payload.pin))?.uid || ""; } catch { sourceUid = ""; }
+      // One source for a single part; payload.sources holds one per part of a question over several.
+      const given = Array.isArray(payload.sources) && payload.sources.length ? payload.sources : [{ pdfUid: payload.pdfUid, pin: payload.pin, sourceUid: payload.sourceUid }];
+      const resolved = [];
+      for (const src of given) {
+        let uid = typeof src?.sourceUid === "string" ? src.sourceUid : "";
+        if (!uid && src?.pin && typeof session?.ensurePdfPin === "function") {
+          try { uid = (await session.ensurePdfPin(src.pin))?.uid || ""; } catch { uid = ""; }
+        }
+        resolved.push({ uid, pinUid: src?.pin ? uid : "", pdfUid: typeof src?.pdfUid === "string" ? src.pdfUid : "" });
       }
+      const uids = [...new Set(resolved.map((r) => r.uid).filter(Boolean))];
       const at = where(payload, CARD_SIZE);
-      const res = await session?.insertParsedCard?.({ ...at, markdown, ...(sourceUid ? { sourceUid } : {}) });
+      const res = await session?.insertParsedCard?.({ ...at, markdown, ...(uids[0] ? { sourceUid: uids[0] } : {}), ...(uids.length > 1 ? { sourceUids: uids.slice(1) } : {}) });
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);
         say("Answer card inserted");
+        await linkAnswer(res.uid, resolved);
       }
       return res || { ok: false, reason: "no-session" };
     },

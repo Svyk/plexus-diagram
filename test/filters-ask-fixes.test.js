@@ -66,7 +66,7 @@ test("the parts index covers PDFs that only have a stale parse", async () => {
 
 test("Ask AI from the card menu and from a part row reads through readableParse", () => {
   const src = readFileSync(new URL("../src/view/board-view.js", import.meta.url), "utf8");
-  const start = src.indexOf("const askAboutParsed");
+  const start = src.indexOf("const loadParsedFor");
   const body = src.slice(start, start + 900);
   assert.match(body, /readableParse\(/);
   assert.doesNotMatch(body, /restorableByUrl/);

@@ -45,6 +45,8 @@ import { llamaparseToParse, mistralToParse } from "../model/cloud-to-parse.js";
 import { localParseForCloud, mergeCloudFigures } from "../model/cloud-merge.js";
 import { ASYNC_CLIPBOARD_TYPES, copyViaEvent } from "./clipboard-io.js";
 import { openAskAI } from "./ask-ai.js";
+import { BASKET_MESSAGES, basketFor, makePart } from "../model/ask-basket.js";
+import { graphOfWindow } from "../model/ask-models.js";
 
 export const PARSE_MIME = "application/x-plexus-parse";
 export const BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
@@ -715,6 +717,17 @@ export function createParseView({
       },
     });
   }
+  // Keep one block (or a selection inside it) for a question across several parts. Nothing is sent.
+  function basketAdd(spec = {}) {
+    if (!parsed) return null;
+    const block = spec.blockId ? parsed.blocks?.[spec.blockId] : null;
+    const pin = block ? pinForBlock(block) : null;
+    const focus = { ...(spec.blockId ? { blockId: spec.blockId } : {}), ...(spec.selection ? { selection: spec.selection } : {}), ...(spec.page != null ? { page: spec.page } : {}) };
+    const part = makePart({ doc: parsed, focus, pdfUid: currentUid, url, image: block?.type === "figure" ? figureImageSpec(block) : null, source: pin ? { pin } : {} });
+    const result = basketFor(graphOfWindow(doc.defaultView)).add(part);
+    try { onToast?.(BASKET_MESSAGES[result]); } catch { /* host */ }
+    return result;
+  }
   async function handleCopyMenu(id, block) {
     if (!parsed || !block) return false;
     try {
@@ -770,6 +783,7 @@ export function createParseView({
     },
     copyMenu: (id, block) => handleCopyMenu(id, block),
     ask: (block) => askAbout({ blockId: block?.id }),
+    basket: (block) => basketAdd({ blockId: block?.id }),
     drag: (block, event) => beginPointerDrag(event, [block]),
     run: (act, item) => {
       if (act === "pin-ref") {
@@ -2263,6 +2277,7 @@ export function createParseView({
     hasParse: () => Boolean(parsed),
     getDoc: () => parsed,
     askAbout,
+    basketAdd,
     selectedIds: () => selected.slice(),
     blockCount: () => shown().length,
     isBusy: () => phase === "running",

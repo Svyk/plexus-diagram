@@ -214,6 +214,19 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       return res || { ok: false, reason: "no-session" };
     },
 
+    // Chart -> table. A table the model read off a figure, as a normal table card with the figure as Source::.
+    async insertChartTable(payload) {
+      const table = payload?.table;
+      if (!table || table.type !== "table" || !(table.rows > 0)) return { ok: false, reason: "empty" };
+      const at = where(payload, parsedTableSize(table));
+      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: [], ...(payload.pin ? { pin: payload.pin } : {}) });
+      if (res?.ok) {
+        pick(res.uid ? [res.uid] : []);
+        say("Chart data inserted");
+      }
+      return res || { ok: false, reason: "no-session" };
+    },
+
     async insertParsedCard(payload) {
       const doc = await load(payload);
       if (!doc) return { ok: false, reason: "missing-cache" };

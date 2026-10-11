@@ -93,18 +93,20 @@ export function friendlyError(error) {
   return msg || "Live AI Assistant could not answer.";
 }
 
-// ask({ context, prompt, systemPrompt, model, onChunk, signal }) -> { ok, text, model, provider, usage } | { ok:false, error, code }
-export async function ask({ context = "", prompt = "", systemPrompt = "", model = "", onChunk = null, signal = null, window: w } = {}) {
+// ask({ context, prompt, systemPrompt, model, onChunk, signal, json }) -> { ok, text, json?, model, provider, usage } | { ok:false, error, code }
+// json: true asks Live AI for responseFormat "json_object" (answer parsed into result.json; the reply comes whole, no chunks).
+export async function ask({ context = "", prompt = "", systemPrompt = "", model = "", onChunk = null, signal = null, json = false, window: w } = {}) {
   if (!available(w)) return { ok: false, code: "UNAVAILABLE", error: SETUP_HINT };
   const options = { prompt: String(prompt), caller: CALLER };
   if (context) options.context = String(context);
   if (systemPrompt) options.systemPrompt = String(systemPrompt);
   if (model) options.model = model;
   if (signal) options.signal = signal;
+  if (json) options.responseFormat = "json_object";
   if (typeof onChunk === "function") options.onChunk = (chunk) => { try { onChunk(chunk); } catch { /* view */ } };
   try {
     const result = await api(w).generate(options);
-    return { ok: true, text: String(result?.text ?? ""), model: result?.model || model, provider: result?.provider || "", usage: result?.usage || null };
+    return { ok: true, text: String(result?.text ?? ""), ...(result?.json !== undefined ? { json: result.json } : {}), model: result?.model || model, provider: result?.provider || "", usage: result?.usage || null };
   } catch (error) {
     return { ok: false, code: error?.code || (error?.name === "AbortError" ? "ABORTED" : "ERROR"), error: friendlyError(error) };
   }

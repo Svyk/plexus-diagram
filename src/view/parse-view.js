@@ -45,6 +45,7 @@ import { llamaparseToParse, mistralToParse } from "../model/cloud-to-parse.js";
 import { localParseForCloud, mergeCloudFigures } from "../model/cloud-merge.js";
 import { ASYNC_CLIPBOARD_TYPES, copyViaEvent } from "./clipboard-io.js";
 import { openAskAI } from "./ask-ai.js";
+import { runChartToTable } from "./chart-table.js";
 
 export const PARSE_MIME = "application/x-plexus-parse";
 export const BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
@@ -715,6 +716,21 @@ export function createParseView({
       },
     });
   }
+  // Chart -> table for one figure: a vision model reads it, the table lands beside the PDF with the figure as its source.
+  function chartAbout(block) {
+    if (!parsed || block?.type !== "figure") return null;
+    return runChartToTable({
+      doc: parsed,
+      blockId: block.id,
+      image: figureImageSpec(block),
+      toast: (message) => { try { onToast?.(message); } catch { /* host */ } },
+      addTable: async ({ table }) => {
+        if (typeof session?.insertChartTable !== "function") { try { onToast?.("Cannot add a table here"); } catch { /* host */ } return { ok: false }; }
+        const pin = pinForBlock(block);
+        return session.insertChartTable({ table, pdfUid: currentUid, pdfBlockUid: pdfBlockUidNow(), ...(pin ? { pin } : {}) });
+      },
+    });
+  }
   async function handleCopyMenu(id, block) {
     if (!parsed || !block) return false;
     try {
@@ -770,6 +786,7 @@ export function createParseView({
     },
     copyMenu: (id, block) => handleCopyMenu(id, block),
     ask: (block) => askAbout({ blockId: block?.id }),
+    chart: (block) => chartAbout(block),
     drag: (block, event) => beginPointerDrag(event, [block]),
     run: (act, item) => {
       if (act === "pin-ref") {

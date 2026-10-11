@@ -202,3 +202,53 @@ export function colorScore(palette, target) {
   }
   return best;
 }
+
+// How far apart two palettes look: 0 for the same colours in the same shares, up to about 1 for black against white.
+// Earth-mover-like: each palette's weights are scaled to sum to 1, then the closest pair of entries (OKLab distance)
+// moves as much weight as both still hold, until all of it is placed. Share mismatch shows up as weight sent to a farther entry.
+// Infinity when either palette is empty. Allocation-light: a few hundred float operations for two 5-colour palettes.
+export function paletteDistance(a, b) {
+  const A = Array.isArray(a) ? a : [];
+  const B = Array.isArray(b) ? b : [];
+  const n = A.length;
+  const m = B.length;
+  if (!n || !m) return Infinity;
+  const ra = new Float64Array(n);
+  const rb = new Float64Array(m);
+  let sa = 0;
+  let sb = 0;
+  for (let i = 0; i < n; i += 1) { ra[i] = Math.max(0, Number(A[i]?.weight) || 0); sa += ra[i]; }
+  for (let j = 0; j < m; j += 1) { rb[j] = Math.max(0, Number(B[j]?.weight) || 0); sb += rb[j]; }
+  if (!(sa > 0) || !(sb > 0)) return Infinity;
+  for (let i = 0; i < n; i += 1) ra[i] /= sa;
+  for (let j = 0; j < m; j += 1) rb[j] /= sb;
+  const d = new Float64Array(n * m);
+  for (let i = 0; i < n; i += 1) {
+    const x = A[i].lab;
+    for (let j = 0; j < m; j += 1) {
+      const y = B[j].lab;
+      d[i * m + j] = Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+    }
+  }
+  let cost = 0;
+  for (let step = 0; step < n + m; step += 1) {
+    let at = -1;
+    let best = Infinity;
+    for (let i = 0; i < n; i += 1) {
+      if (ra[i] <= 1e-12) continue;
+      for (let j = 0; j < m; j += 1) {
+        if (rb[j] <= 1e-12) continue;
+        const v = d[i * m + j];
+        if (v < best) { best = v; at = i * m + j; }
+      }
+    }
+    if (at < 0) break;
+    const i = Math.floor(at / m);
+    const j = at % m;
+    const move = Math.min(ra[i], rb[j]);
+    cost += move * best;
+    ra[i] -= move;
+    rb[j] -= move;
+  }
+  return cost;
+}

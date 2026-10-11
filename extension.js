@@ -544,8 +544,8 @@ var init_geometry = __esm({
 // src/model/regions.js
 function isContainerString(s) {
   if (typeof s !== "string") return false;
-  const text3 = s.trim();
-  return text3 === CONTAINER_STRING || text3 === PIN_CONTAINER_STRING;
+  const text4 = s.trim();
+  return text4 === CONTAINER_STRING || text4 === PIN_CONTAINER_STRING;
 }
 function normalizeFrac(f) {
   let v;
@@ -1144,15 +1144,15 @@ function itemLabel(item, resolve) {
   const own = String(item?.title ?? "").trim();
   if (own) return own;
   if (item?.kind === "block" && item.target?.uid) {
-    let text3 = null;
+    let text4 = null;
     try {
-      text3 = typeof resolve === "function" ? resolve(item.target.uid) : null;
+      text4 = typeof resolve === "function" ? resolve(item.target.uid) : null;
     } catch {
-      text3 = null;
+      text4 = null;
     }
-    if (typeof text3 === "string") {
-      if (classifyString(text3).kind === "board") return parseBoardTitle(text3) || "Untitled board";
-      const line = firstLine(text3);
+    if (typeof text4 === "string") {
+      if (classifyString(text4).kind === "board") return parseBoardTitle(text4) || "Untitled board";
+      const line = firstLine(text4);
       if (line) return line;
     }
     return "Block reference";
@@ -1429,12 +1429,12 @@ function textFloors(table, cols) {
     const c = Number.isInteger(cell?.c) ? cell.c : 0;
     if (c < 0 || c >= count) continue;
     const span = Math.max(1, Number(cell?.colSpan) || 1);
-    const text3 = String(cell?.text ?? "").trim();
-    const longest = text3.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 0);
+    const text4 = String(cell?.text ?? "").trim();
+    const longest = text4.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 0);
     const isHead = cell?.header === true || Number.isInteger(cell?.r) && cell.r < headerRows;
     for (let i = 0; i < span && c + i < count; i += 1) {
       word[c + i] = Math.max(word[c + i], Math.ceil(longest / span));
-      if (isHead && span === 1) head[c + i] = Math.max(head[c + i], Math.min(22, text3.length));
+      if (isHead && span === 1) head[c + i] = Math.max(head[c + i], Math.min(22, text4.length));
     }
   }
   return word.map((n2, i) => ({ word: n2, head: head[i] }));
@@ -1595,8 +1595,8 @@ var init_region_card = __esm({
 // src/model/drawing-card.js
 function isDrawingString(value) {
   if (typeof value !== "string") return false;
-  const text3 = value.trim();
-  return text3.startsWith(DRAWING_STRING) || text3.startsWith(ALT_DRAWING_STRING);
+  const text4 = value.trim();
+  return text4.startsWith(DRAWING_STRING) || text4.startsWith(ALT_DRAWING_STRING);
 }
 function drawingRefString(uid) {
   return typeof uid === "string" && UID_RE2.test(uid) ? `((${uid}))` : null;
@@ -1613,13 +1613,13 @@ function droppedDrawingUids(strings, blockString2) {
   for (const string of strings || []) {
     const match = String(string ?? "").trim().match(REF_ONLY);
     if (!match) continue;
-    let text3 = "";
+    let text4 = "";
     try {
-      text3 = blockString2?.(match[1]) || "";
+      text4 = blockString2?.(match[1]) || "";
     } catch {
-      text3 = "";
+      text4 = "";
     }
-    if (isDrawingString(text3)) out.push(match[1]);
+    if (isDrawingString(text4)) out.push(match[1]);
   }
   return out;
 }
@@ -1918,8 +1918,8 @@ function highlightRecord(props) {
   if (!colon && !plain2) return null;
   const raw = colon ? props[":pdf-highlight"] : props["pdf-highlight"];
   if (!isObject2(raw)) return {};
-  const flat2 = plainKeys(raw);
-  return isObject2(flat2) ? flat2 : {};
+  const flat3 = plainKeys(raw);
+  return isObject2(flat3) ? flat3 : {};
 }
 function pageNumberOf(record) {
   const position = record.position;
@@ -2071,20 +2071,20 @@ var init_highlight = __esm({
 // src/model/why.js
 function readWhy(children) {
   for (const child of children || []) {
-    const text3 = String(child?.[":block/string"] ?? child?.string ?? "").trim();
-    if (!text3 || attrNameOf(text3)) continue;
-    return { uid: child?.[":block/uid"] || child?.uid || "", text: text3 };
+    const text4 = String(child?.[":block/string"] ?? child?.string ?? "").trim();
+    if (!text4 || attrNameOf(text4)) continue;
+    return { uid: child?.[":block/uid"] || child?.uid || "", text: text4 };
   }
   return null;
 }
-function becauseClause(text3, max = 48) {
-  const body = flat(text3);
+function becauseClause(text4, max = 48) {
+  const body = flat(text4);
   if (!body) return "";
   const cut = body.length > max ? `${body.slice(0, max - 1).trimEnd()}…` : body;
   return ` · because ${cut}`;
 }
-function whyTip(text3, max = 200) {
-  const body = flat(text3);
+function whyTip(text4, max = 200) {
+  const body = flat(text4);
   if (!body) return "";
   return body.length > max ? `${body.slice(0, max - 1).trimEnd()}…` : body;
 }
@@ -2105,7 +2105,7 @@ var flat;
 var init_why = __esm({
   "src/model/why.js"() {
     init_schema();
-    flat = (text3) => String(text3 ?? "").replace(/\s+/g, " ").trim();
+    flat = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
   }
 });
 
@@ -2165,15 +2165,15 @@ function clamp012(n2) {
   return clamp(n2, 0, 1);
 }
 function posToken(token, axis2) {
-  const text3 = String(token || "").trim().toLowerCase();
-  if (!text3) return null;
-  if (text3.endsWith("%")) {
-    const n2 = Number(text3.slice(0, -1));
+  const text4 = String(token || "").trim().toLowerCase();
+  if (!text4) return null;
+  if (text4.endsWith("%")) {
+    const n2 = Number(text4.slice(0, -1));
     return Number.isFinite(n2) ? n2 / 100 : null;
   }
-  if (axis2 === "x" && Object.prototype.hasOwnProperty.call(X_POS, text3) && text3 !== "center") return X_POS[text3];
-  if (axis2 === "y" && Object.prototype.hasOwnProperty.call(Y_POS, text3) && text3 !== "center") return Y_POS[text3];
-  if (text3 === "center") return 0.5;
+  if (axis2 === "x" && Object.prototype.hasOwnProperty.call(X_POS, text4) && text4 !== "center") return X_POS[text4];
+  if (axis2 === "y" && Object.prototype.hasOwnProperty.call(Y_POS, text4) && text4 !== "center") return Y_POS[text4];
+  if (text4 === "center") return 0.5;
   return null;
 }
 function parseObjectPosition(value) {
@@ -2427,10 +2427,10 @@ function simplifyPoly(points, { epsilon = 4e-3, max = 64 } = {}) {
 function imagePolyString(cardUid, points, caption) {
   const pairs = simplifyPoly(points) || polyPairs(points);
   if (!pairs) return null;
-  const flat2 = [];
-  for (const p of pairs) flat2.push(round42(p.x), round42(p.y));
+  const flat3 = [];
+  for (const p of pairs) flat3.push(round42(p.x), round42(p.y));
   try {
-    return serializeRegion({ kind: "imgpoly", drawingUid: cardUid, i: 0, p: flat2, caption });
+    return serializeRegion({ kind: "imgpoly", drawingUid: cardUid, i: 0, p: flat3, caption });
   } catch {
     return null;
   }
@@ -2458,8 +2458,8 @@ var init_image_region = __esm({
 });
 
 // src/model/endpoints.js
-function clip(text3, max) {
-  const t = String(text3 ?? "").replace(/\s+/g, " ").trim();
+function clip(text4, max) {
+  const t = String(text4 ?? "").replace(/\s+/g, " ").trim();
   return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
 }
 function asBox(rect) {
@@ -2486,15 +2486,15 @@ function hasEdge(edges, uid) {
 function refsIn(string) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  const text3 = String(string ?? "");
+  const text4 = String(string ?? "");
   REF_RE.lastIndex = 0;
-  let m = REF_RE.exec(text3);
+  let m = REF_RE.exec(text4);
   while (m) {
     if (!seen.has(m[1])) {
       seen.add(m[1]);
       out.push(m[1]);
     }
-    m = REF_RE.exec(text3);
+    m = REF_RE.exec(text4);
   }
   return out;
 }
@@ -2510,9 +2510,9 @@ function endpointKindOf(blockString2) {
   return null;
 }
 function endpointDisplayText(blockString2) {
-  const text3 = String(blockString2 ?? "");
-  const region = parseRegion(text3);
-  if (!region) return text3;
+  const text4 = String(blockString2 ?? "");
+  const region = parseRegion(text4);
+  if (!region) return text4;
   if (region.caption) return region.caption;
   return region.kind === "pdf" && Number.isInteger(Number(region.pg)) ? `p. ${region.pg}` : "Region";
 }
@@ -2523,11 +2523,11 @@ function endpointHitsOf(nodes) {
     const string = node2?.[":block/string"] ?? node2?.string ?? "";
     if (!isContainerString(string)) continue;
     for (const kid of node2?.[":block/children"] ?? node2?.children ?? []) {
-      const text3 = kid?.[":block/string"] ?? kid?.string ?? "";
+      const text4 = kid?.[":block/string"] ?? kid?.string ?? "";
       const id = kid?.[":block/uid"] ?? kid?.uid;
-      const kind = endpointKindOf(text3);
+      const kind = endpointKindOf(text4);
       if (!id || !kind) continue;
-      const parsed = parseRegion(text3);
+      const parsed = parseRegion(text4);
       const poly = kind === "region" ? polyPairs(parsed?.p) : null;
       const box2 = imageRegionFrac(parsed);
       const frac = box2 ? [box2.rx, box2.ry, box2.rw, box2.rh] : parsed?.f;
@@ -2562,8 +2562,8 @@ function pickSmallestRegion(marks) {
 function imageSourceOf(item, read2) {
   if (!item) return { ok: false, reason: "missing" };
   if (item.kind === "image") return { ok: true, uid: item.uid, viaRef: false };
-  const text3 = String(item.string ?? "").trim();
-  const ref = REF_ONLY2.exec(text3) || EMBED_ONLY.exec(text3);
+  const text4 = String(item.string ?? "").trim();
+  const ref = REF_ONLY2.exec(text4) || EMBED_ONLY.exec(text4);
   if (!ref) return { ok: false, reason: "not-image" };
   let source = null;
   try {
@@ -2794,8 +2794,8 @@ function regionPolyFrac(imageRect, worldPoints) {
   return { frac, poly };
 }
 function regionCaption(label, existingCount) {
-  const text3 = String(label ?? "").trim();
-  if (text3) return text3;
+  const text4 = String(label ?? "").trim();
+  if (text4) return text4;
   const n2 = Number.isFinite(existingCount) ? existingCount : 0;
   return `Region ${n2 + 1}`;
 }
@@ -2991,8 +2991,8 @@ function bagFromRef(ref) {
     children: Array.isArray(ref?.[":block/children"]) ? ref[":block/children"] : []
   };
 }
-function highlightCandidate(text3, refUid, known2) {
-  if (typeof text3 === "string" && HIGHLIGHT_HINT.test(text3)) return true;
+function highlightCandidate(text4, refUid, known2) {
+  if (typeof text4 === "string" && HIGHLIGHT_HINT.test(text4)) return true;
   if (typeof known2 !== "function") return false;
   try {
     return known2(refUid) === true;
@@ -3742,22 +3742,22 @@ function cardDeepLink({ graph, pageUid, cardUid } = {}) {
   return `#/app/${encodeURIComponent(g)}/page/${encodeURIComponent(page)}?pxd=${encodeURIComponent(card2)}`;
 }
 function hashFromUrl(url) {
-  const text3 = String(url ?? "");
-  const mark = text3.indexOf("#");
-  return mark >= 0 ? text3.slice(mark) : "";
+  const text4 = String(url ?? "");
+  const mark = text4.indexOf("#");
+  return mark >= 0 ? text4.slice(mark) : "";
 }
 function pxdTarget(hash) {
-  const text3 = String(hash ?? "");
-  const q = text3.indexOf("?");
+  const text4 = String(hash ?? "");
+  const q = text4.indexOf("?");
   if (q < 0) return null;
   let card2 = "";
   try {
-    card2 = new URLSearchParams(text3.slice(q + 1).split("#")[0]).get("pxd") || "";
+    card2 = new URLSearchParams(text4.slice(q + 1).split("#")[0]).get("pxd") || "";
   } catch {
     return null;
   }
   if (!UID_RE3.test(card2)) return null;
-  return { cardUid: card2, pageUid: pageUidFromHash(text3), graph: graphFromDeepLink(text3) };
+  return { cardUid: card2, pageUid: pageUidFromHash(text4), graph: graphFromDeepLink(text4) };
 }
 function copyLinkText(item, { graph, pageUid, cardUid } = {}) {
   const ref = semanticRef(item);
@@ -4057,8 +4057,8 @@ function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGa
   const main = [];
   const small = [];
   for (const r of rows) {
-    const text3 = r.pieces.filter((p) => !p.space);
-    const chars = text3.reduce((n2, p) => n2 + p.text.length, 0);
+    const text4 = r.pieces.filter((p) => !p.space);
+    const chars = text4.reduce((n2, p) => n2 + p.text.length, 0);
     r.chars = chars;
     main.push(r);
   }
@@ -4663,8 +4663,8 @@ var init_rules = __esm({
 });
 
 // src/model/parse/lattice.js
-function isNumericText(text3) {
-  return NUMERIC_RE.test(text3.trim()) && /\d/.test(text3);
+function isNumericText(text4) {
+  return NUMERIC_RE.test(text4.trim()) && /\d/.test(text4);
 }
 function wordBox(w) {
   if (w.boxY) return [w.x0, w.boxY[0], w.x1, w.boxY[1]];
@@ -4697,7 +4697,7 @@ function midWordWrap(prev, next) {
 function cellTextOf(words) {
   const lines = relineWords(withoutEchoDigits(words).filter((w) => !LEADER_RE.test(w.text)));
   if (!lines.length) return "";
-  let text3 = "";
+  let text4 = "";
   for (const line of lines) {
     let t = "";
     for (const w of line.words) {
@@ -4705,18 +4705,18 @@ function cellTextOf(words) {
       if ((w.sup || w.sub) && t) t += piece;
       else t += (t ? " " : "") + piece;
     }
-    if (!text3) {
-      text3 = t;
+    if (!text4) {
+      text4 = t;
       continue;
     }
-    if (text3.endsWith("-") && /^[A-Za-z0-9]/.test(t)) text3 += t;
-    else if (midWordWrap(text3, t)) text3 += t;
-    else text3 += ` ${t}`;
+    if (text4.endsWith("-") && /^[A-Za-z0-9]/.test(t)) text4 += t;
+    else if (midWordWrap(text4, t)) text4 += t;
+    else text4 += ` ${t}`;
   }
-  text3 = text3.replace(/\s+/g, " ").trim();
+  text4 = text4.replace(/\s+/g, " ").trim();
   const ocr = (words || []).some((w) => w && (w.font === "ocr" || w.conf != null));
-  if (!ocr || /^[.·…]+$/u.test(text3)) return text3;
-  return text3.replace(/(?:\s*[.·…]){2,}$/u, "").trim();
+  if (!ocr || /^[.·…]+$/u.test(text4)) return text4;
+  return text4.replace(/(?:\s*[.·…]){2,}$/u, "").trim();
 }
 function sup(t) {
   return t.split("").map((c) => SUPERS[c] ?? c).join("");
@@ -5156,10 +5156,10 @@ function splitRowsByText(grid, words) {
           byCol.get(c).push(w);
         }
         for (const [c, ws] of byCol) {
-          const text3 = ws.map((w) => w.text).join(" ");
+          const text4 = ws.map((w) => w.text).join(" ");
           perCol[c].lines++;
-          if (isNumericText(text3)) perCol[c].numeric++;
-          if (ws.length <= 2 || isNumericText(text3)) perCol[c].short++;
+          if (isNumericText(text4)) perCol[c].numeric++;
+          if (ws.length <= 2 || isNumericText(text4)) perCol[c].short++;
         }
       }
       const aligned = perCol.filter((p) => p.lines >= 2 && p.short === p.lines);
@@ -5254,9 +5254,9 @@ function frameRows(cells, rows, cols) {
   for (let r = 0; r < rows - 1; r++) {
     const k = fullRow(r);
     if (!k) break;
-    const text3 = cellTextOf(k.words);
-    const n2 = text3 ? text3.split(/\s+/).length : 0;
-    if (!text3 || CAPTION_START_RE.test(text3) || r === 0 && n2 >= 6) drop.add(r);
+    const text4 = cellTextOf(k.words);
+    const n2 = text4 ? text4.split(/\s+/).length : 0;
+    if (!text4 || CAPTION_START_RE.test(text4) || r === 0 && n2 >= 6) drop.add(r);
     else break;
   }
   const trailing = [];
@@ -5802,25 +5802,25 @@ function headingClasses(lines, bodySize) {
   }
   return [...counts.keys()].sort((a, b) => b - a).slice(0, 3);
 }
-function wordCount(text3) {
-  return text3.trim().split(/\s+/).filter(Boolean).length;
+function wordCount(text4) {
+  return text4.trim().split(/\s+/).filter(Boolean).length;
 }
 function headingLevel(line, { bodySize, classes, nextIsBody = true, isolated = false }) {
   const k = Math.round(line.size * 2) / 2;
-  const text3 = line.text.trim();
-  if (!text3 || CAPTION_RE.test(text3) || !/[\p{L}\p{N}]/u.test(text3)) return 0;
+  const text4 = line.text.trim();
+  if (!text4 || CAPTION_RE.test(text4) || !/[\p{L}\p{N}]/u.test(text4)) return 0;
   const idx = classes.indexOf(k);
-  if (idx >= 0 && wordCount(text3) <= 24) return idx + 1;
+  if (idx >= 0 && wordCount(text4) <= 24) return idx + 1;
   if (idx >= 0) return 0;
   const bodySized = k >= bodySize - 0.5 && k < bodySize * 1.15;
-  const hasWord = /[A-Za-z]{3}/.test(text3) && (line.mathShare || 0) < 0.1;
-  if (line.bold && bodySized && hasWord && wordCount(text3) <= 14 && !/[.?!,;]$/.test(text3) && nextIsBody) {
+  const hasWord = /[A-Za-z]{3}/.test(text4) && (line.mathShare || 0) < 0.1;
+  if (line.bold && bodySized && hasWord && wordCount(text4) <= 14 && !/[.?!,;]$/.test(text4) && nextIsBody) {
     return Math.min(4, classes.length + 1);
   }
-  const depth = numberedDepth(text3);
-  const rest = depth ? text3.replace(NUMBERED_RE, (m, num6, a, b, ...r) => m.slice(m.length - 1)) : "";
+  const depth = numberedDepth(text4);
+  const rest = depth ? text4.replace(NUMBERED_RE, (m, num6, a, b, ...r) => m.slice(m.length - 1)) : "";
   const wordy = depth && /^[A-Z][A-Za-z]{2,}/.test(rest) && (line.mathShare || 0) < 0.1 && !line.words.some((w) => w.sup || w.sub);
-  if (wordy && bodySized && wordCount(text3) <= 14 && !/[.?!,;:]$/.test(text3) && (line.bold || line.italic || isolated) && nextIsBody) {
+  if (wordy && bodySized && wordCount(text4) <= 14 && !/[.?!,;:]$/.test(text4) && (line.bold || line.italic || isolated) && nextIsBody) {
     return Math.min(6, classes.length + depth);
   }
   return 0;
@@ -5842,8 +5842,8 @@ function refineBodyHeadingLevels(headings, { classes }) {
   for (const h of body) h.level = Math.min(6, base + ranks.indexOf(key(h)));
   return headings;
 }
-function numberedDepth(text3) {
-  const m = NUMBERED_RE.exec(text3.trim());
+function numberedDepth(text4) {
+  const m = NUMBERED_RE.exec(text4.trim());
   if (!m) return 0;
   return m[1].split(".").length;
 }
@@ -5948,12 +5948,12 @@ function explodeLeaders(words) {
   const dot = (p) => /^[.·…]+$/.test(p);
   for (let i = 0; i < src.length; i++) {
     const w = src[i];
-    const text3 = String(w.text || "");
-    if (!/[.·…]{4,}/.test(text3) || LEADER_RE.test(text3)) {
+    const text4 = String(w.text || "");
+    if (!/[.·…]{4,}/.test(text4) || LEADER_RE.test(text4)) {
       out.push(w);
       continue;
     }
-    const parts = text3.split(/([.·…]{4,})/).filter(Boolean);
+    const parts = text4.split(/([.·…]{4,})/).filter(Boolean);
     const interior = parts.some((p, idx) => dot(p) && parts.slice(0, idx).some((q) => !dot(q)) && parts.slice(idx + 1).some((q) => !dot(q)));
     const suffix = dot(parts[parts.length - 1]) && parts.every((p, idx) => idx === parts.length - 1 || !dot(p));
     const prefix = dot(parts[0]) && parts.every((p, idx) => idx === 0 || !dot(p));
@@ -5966,7 +5966,7 @@ function explodeLeaders(words) {
       continue;
     }
     const width = Math.max(0.1, (w.x1 ?? 0) - (w.x0 ?? 0));
-    const chars = Math.max(1, [...text3].length);
+    const chars = Math.max(1, [...text4].length);
     let at = 0;
     for (const part of parts) {
       const n2 = [...part].length;
@@ -5988,7 +5988,7 @@ function tokenizeLine(line) {
   let cur = null;
   const dots = (s) => LEADER_RE.test(s);
   const ocr = line.words.some((w) => w.conf != null);
-  const yearSpan = (text3) => /^(1[89]|20)\d{2}\s*[-–—]\s*(1[89]|20)\d{2}[.,]?$/.test(String(text3 || "").trim());
+  const yearSpan = (text4) => /^(1[89]|20)\d{2}\s*[-–—]\s*(1[89]|20)\d{2}[.,]?$/.test(String(text4 || "").trim());
   const columnGap = (prev, w) => {
     if (!ocr || !prev) return false;
     const left = prev.words?.[prev.words.length - 1]?.text || "";
@@ -6395,7 +6395,7 @@ function rowTokens(row4) {
   return tokens2.sort((a, b) => a.x0 - b.x0);
 }
 function alignNumericColumns(tokenRows, size = 8) {
-  const yearSpan = (text3) => /^(1[89]|20)\d{2}\s*[-–—]\s*(1[89]|20)\d{2}/.test(String(text3 || "").trim());
+  const yearSpan = (text4) => /^(1[89]|20)\d{2}\s*[-–—]\s*(1[89]|20)\d{2}/.test(String(text4 || "").trim());
   const edges = [];
   const years = [];
   let used = 0;
@@ -6618,14 +6618,14 @@ function portraitHeaderWord(w) {
 }
 function readPortrait(words) {
   const ordered = [...words].sort((a, b) => (b.base ?? 0) - (a.base ?? 0) || (a.x0 ?? 0) - (b.x0 ?? 0));
-  let text3 = "";
+  let text4 = "";
   for (const w of ordered) {
     const piece = String(w.text || "").trim();
     if (!piece) continue;
-    if (text3.endsWith("-") && /^[A-Za-z0-9(]/.test(piece)) text3 += piece;
-    else text3 += (text3 ? " " : "") + piece;
+    if (text4.endsWith("-") && /^[A-Za-z0-9(]/.test(piece)) text4 += piece;
+    else text4 += (text4 ? " " : "") + piece;
   }
-  return text3.replace(/\s+/g, " ").trim();
+  return text4.replace(/\s+/g, " ").trim();
 }
 function separatePortraitHeaders(cellMap, cols, headerRows, k) {
   if (headerRows < 2 || k < 2) return;
@@ -6773,9 +6773,9 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     const unitLine = (r) => {
       const cs = [...cellMap.values()].filter((c) => c.r === r && cellTextOf(c.words).trim());
       if (cs.length < 2) return false;
-      const text3 = (c) => cellTextOf(c.words).trim();
-      if (cs.some((c) => /\d{2,}|\d\s*[.,]\s*\d/.test(text3(c)))) return false;
-      return cs.filter((c) => !isNumericText(text3(c))).length >= 2;
+      const text4 = (c) => cellTextOf(c.words).trim();
+      if (cs.some((c) => /\d{2,}|\d\s*[.,]\s*\d/.test(text4(c)))) return false;
+      return cs.filter((c) => !isNumericText(text4(c))).length >= 2;
     };
     const idRow = (r) => {
       const cs = [...cellMap.values()].filter((c) => c.r === r && cellTextOf(c.words).trim());
@@ -6903,8 +6903,8 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     if (cell.r === 0 || cell.r >= headerRows || cell.colSpan !== 1) continue;
     const above = cellMap.get(`${cell.r - 1}:${cell.c}`);
     if (!above || above.colSpan !== 1 || above.rowSpan !== 1) continue;
-    const text3 = cellTextOf(cell.words);
-    if (!/^[a-z(]/.test(text3) || isNumericText(text3)) continue;
+    const text4 = cellTextOf(cell.words);
+    if (!/^[a-z(]/.test(text4) || isNumericText(text4)) continue;
     above.words.push(...cell.words);
     above.rowSpan = cell.rowSpan + 1;
     above.wrappedHead = true;
@@ -6993,17 +6993,17 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     for (let c = 0; c < k; c++) {
       if (covered.has(`${r}:${c}`)) continue;
       const cell = cellMap.get(`${r}:${c}`) || { r, c, rowSpan: 1, colSpan: 1, words: [] };
-      const text3 = cell.verticalRead ? readPortrait(cell.words) : cellTextOf(cell.words);
+      const text4 = cell.verticalRead ? readPortrait(cell.words) : cellTextOf(cell.words);
       cells.push({
         r,
         c,
         rowSpan: cell.rowSpan,
         colSpan: cell.colSpan,
-        text: text3,
+        text: text4,
         header: r < headerRows,
         bbox: [round(xs2[c]), round(ys2[r]), round(xs2[c + cell.colSpan]), round(ys2[r + cell.rowSpan])],
         align: cell.colSpan > 1 ? "center" : colAlign[c],
-        numeric: isNumericText(text3)
+        numeric: isNumericText(text4)
       });
     }
   }
@@ -7159,8 +7159,8 @@ function hasSubRows(words, band) {
   const tight = soft.filter((x) => Math.abs(x - med) <= tol).length;
   return tight >= 3 && tight / soft.length >= 0.6;
 }
-function gridNumber(text3) {
-  const s = String(text3 || "").trim().replace(/[*†‡]+$/u, "");
+function gridNumber(text4) {
+  const s = String(text4 || "").trim().replace(/[*†‡]+$/u, "");
   if (isNumericText(s)) return true;
   return /^\[[\d.,\s]+\]$/.test(s);
 }
@@ -7292,8 +7292,8 @@ function contentsContinuation(row4, tokens2, run) {
 }
 function contentsLead(row4, tokens2, next, run) {
   if (!next || !tokens2 || tokens2.length !== 1 || !next.tokens || next.tokens.length < 2) return false;
-  const text3 = String(tokens2[0].text || "").trim();
-  if (!/[A-Za-z]/.test(text3) || /:$/.test(text3)) return false;
+  const text4 = String(tokens2[0].text || "").trim();
+  if (!/[A-Za-z]/.test(text4) || /:$/.test(text4)) return false;
   if (!contentsEntry(next.tokens)) return false;
   if (next.row.base - row4.base > 1.8 * Math.max(row4.size, next.row.size)) return false;
   if (run.some((r) => r.tokens.length >= 2 && !contentsEntry(r.tokens))) return false;
@@ -7310,8 +7310,8 @@ function extendLead(lead, row4, tokens2) {
   lead.row.lines.push(...row4.lines);
   lead.row.y1 = Math.max(lead.row.y1, row4.y1);
 }
-function valueToken(text3) {
-  const s = String(text3 || "").trim().replace(/^[.·…\s]+/, "");
+function valueToken(text4) {
+  const s = String(text4 || "").trim().replace(/^[.·…\s]+/, "");
   if (isNumericText(s)) return true;
   return /^\d[\d\s.,]*\s*E[+\-−]?\d+$/i.test(s);
 }
@@ -7627,8 +7627,8 @@ function codeRun(run) {
   if (withCode < 2) return null;
   if (!isMonospace(run.flatMap((r) => r.tokens.slice(1).flatMap((t) => t.words)))) return null;
   const lines = run.flatMap((r) => r.row.lines);
-  const text3 = run.map((r) => r.tokens.slice(1).map((t) => t.text).join(" ")).join("\n");
-  return { type: "code", lines, text: text3, usedWords: run.flatMap((r) => r.row.words) };
+  const text4 = run.map((r) => r.tokens.slice(1).map((t) => t.text).join(" ")).join("\n");
+  return { type: "code", lines, text: text4, usedWords: run.flatMap((r) => r.row.words) };
 }
 function lineCenterX(line) {
   return ((line.x0 ?? 0) + (line.x1 ?? 0)) / 2;
@@ -7734,12 +7734,12 @@ function alignsWithRun(run, tokens2, size) {
   for (const t of side2) if (prev.some((p) => Math.abs(p.x0 - t.x0) <= tol || overlaps2(p, t))) hit++;
   return hit >= 2;
 }
-function cellWords(text3) {
-  return String(text3 || "").trim().split(/\s+/).filter(Boolean);
+function cellWords(text4) {
+  return String(text4 || "").trim().split(/\s+/).filter(Boolean);
 }
-function measurementCell(text3) {
-  const words = cellWords(text3);
-  return words.length > 0 && words.length <= 6 && /\d/.test(text3);
+function measurementCell(text4) {
+  const words = cellWords(text4);
+  return words.length > 0 && words.length <= 6 && /\d/.test(text4);
 }
 function measurementColumn(table) {
   const cells = (table?.cells || []).filter((c) => cellWords(c.text).length && (c.colSpan || 1) === 1);
@@ -7780,26 +7780,26 @@ function phraseTable(table) {
   for (const ts of byRow.values()) if (words(ts.join(" ")).length >= 8) long++;
   return byRow.size >= 3 && long / byRow.size > 0.5;
 }
-function dateCell(text3) {
-  const s = String(text3 || "").trim();
+function dateCell(text4) {
+  const s = String(text4 || "").trim();
   if (!s || s.split(/\s+/).length > 4) return false;
   if (MONTH_RE.test(s) && /\d/.test(s)) return true;
   return /^(?:1[89]|20)\d{2}[.,*]?$/.test(s);
 }
-function indexOrPage(text3) {
-  const s = String(text3 || "").trim();
+function indexOrPage(text4) {
+  const s = String(text4 || "").trim();
   if (/^\d{1,3}\.?$/.test(s)) return true;
   if (/^\d{1,3}[.)\-–−]$/.test(s)) return true;
   return /^[–\-−]\d{1,3}$/.test(s);
 }
-function rangeValue(text3) {
-  const s = String(text3 || "").trim();
+function rangeValue(text4) {
+  const s = String(text4 || "").trim();
   if (/^\d{1,4}\s+to\s+\d{1,4}\.?$/i.test(s)) return true;
   if (/^\d{1,4}\s*[–\-−]\s*\d{1,4}\.?$/.test(s)) return true;
   return /^\d{1,4}\+\.?$/.test(s);
 }
-function valueCell(text3) {
-  const s = String(text3 || "").trim();
+function valueCell(text4) {
+  const s = String(text4 || "").trim();
   if (!s || indexOrPage(s)) return false;
   if (isNumericText(s)) return true;
   if (rangeValue(s)) return true;
@@ -7812,9 +7812,9 @@ function textsByColumn(table) {
   const cols = table.cols || 0;
   const byCol = Array.from({ length: cols }, () => []);
   for (const cell of table.cells || []) {
-    const text3 = String(cell.text || "").trim();
-    if (!text3 || cell.c == null || cell.c < 0 || cell.c >= cols) continue;
-    byCol[cell.c].push(text3);
+    const text4 = String(cell.text || "").trim();
+    if (!text4 || cell.c == null || cell.c < 0 || cell.c >= cols) continue;
+    byCol[cell.c].push(text4);
   }
   return byCol;
 }
@@ -7837,27 +7837,27 @@ function titleHeader(table) {
   const rows = table.rows || 0;
   const cols = table.cols || 0;
   if (header <= 0 || header >= rows || cols < 2) return false;
-  const words = (text3) => String(text3).trim().split(/\s+/).filter(Boolean);
+  const words = (text4) => String(text4).trim().split(/\s+/).filter(Boolean);
   for (let r = 0; r < header; r++) {
     const cells = (table.cells || []).filter((cell) => cell.r === r && String(cell.text || "").trim());
     if (cells.length < 2) continue;
     const labels = cells.filter((cell) => {
-      const text3 = String(cell.text).trim();
-      const n2 = words(text3).length;
-      return n2 >= 1 && n2 <= 8 && /[A-Za-z]/.test(text3) && !indexOrPage(text3);
+      const text4 = String(cell.text).trim();
+      const n2 = words(text4).length;
+      return n2 >= 1 && n2 <= 8 && /[A-Za-z]/.test(text4) && !indexOrPage(text4);
     });
     if (labels.length >= 2 && labels.length / cells.length >= 0.5 && labels.length >= Math.min(3, cols - 1)) return true;
   }
   return false;
 }
 function proseGrid(table) {
-  const words = (text3) => String(text3).trim().split(/\s+/).filter(Boolean);
+  const words = (text4) => String(text4).trim().split(/\s+/).filter(Boolean);
   const byRow = /* @__PURE__ */ new Map();
   for (const cell of table.cells || []) {
-    const text3 = String(cell.text || "").trim();
-    if (!text3) continue;
+    const text4 = String(cell.text || "").trim();
+    if (!text4) continue;
     if (!byRow.has(cell.r)) byRow.set(cell.r, []);
-    byRow.get(cell.r).push(text3);
+    byRow.get(cell.r).push(text4);
   }
   let sentence = 0;
   for (const texts of byRow.values()) if (words(texts.join(" ")).length >= 8) sentence++;
@@ -7924,14 +7924,14 @@ var init_stream = __esm({
 });
 
 // src/model/parse/contents.js
-function pageToken(text3) {
-  const raw = String(text3 || "").trim().replace(/^[.·…\s]+|[.·…\s]+$/g, "");
+function pageToken(text4) {
+  const raw = String(text4 || "").trim().replace(/^[.·…\s]+|[.·…\s]+$/g, "");
   if (!raw || raw.length > 7 || !/\d/.test(raw)) return null;
   const fixed = raw.replace(/[Il|]/g, "1").replace(/[Oo]/g, "0");
   return PAGE_RE2.test(fixed) ? fixed : null;
 }
-function wordCount2(text3) {
-  return String(text3 || "").trim().split(/\s+/).filter(Boolean).length;
+function wordCount2(text4) {
+  return String(text4 || "").trim().split(/\s+/).filter(Boolean).length;
 }
 function contentsShaped(table, { maxCols = 2 } = {}) {
   if (!table || table.method !== "stream" || !(table.cols >= 2) || table.cols > maxCols || !(table.rows >= 2)) return false;
@@ -7939,12 +7939,12 @@ function contentsShaped(table, { maxCols = 2 } = {}) {
   if (!right.length) return false;
   return right.filter((c) => pageToken(c.text)).length >= Math.max(1, 0.5 * right.length);
 }
-function capsHead(text3) {
-  const t = String(text3 || "").trim();
+function capsHead(text4) {
+  const t = String(text4 || "").trim();
   return /^[A-Z][A-Z .,'’-]{1,40}$/.test(t) && wordCount2(t) <= 4 && (wordCount2(t) >= 2 || /\.$/.test(t));
 }
-function groupHead(text3) {
-  return /:$/.test(String(text3 || "").trim()) && wordCount2(text3) <= 6;
+function groupHead(text4) {
+  return /:$/.test(String(text4 || "").trim()) && wordCount2(text4) <= 6;
 }
 function overlapX(a, b) {
   return Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
@@ -7956,8 +7956,8 @@ function boxOf3(block) {
 function classify(row4, pageX) {
   const tokens2 = row4.lines.flatMap((l) => tokenizeLine(l)).sort((a, b) => a.x0 - b.x0);
   if (!tokens2.length) return { kind: "junk", tokens: tokens2 };
-  const text3 = tokens2.map((t) => t.text).join(" ").trim();
-  if (HEAD_RE2.test(text3)) return { kind: "head", tokens: tokens2 };
+  const text4 = tokens2.map((t) => t.text).join(" ").trim();
+  if (HEAD_RE2.test(text4)) return { kind: "head", tokens: tokens2 };
   const headAt = tokens2.findIndex((t) => HEAD_RE2.test(String(t.text).trim()));
   if (headAt >= 0) {
     const rest = tokens2.filter((_, i) => i !== headAt);
@@ -7965,16 +7965,16 @@ function classify(row4, pageX) {
     if (rest.every((t) => capsHead(t.text) || /^\d{1,4}$/.test(String(t.text).trim()))) return { kind: "head", tokens: tokens2 };
     if (groupHead(restText)) return { kind: "head", tokens: tokens2, group: restText };
   }
-  if (capsHead(text3) && !/\d/.test(text3)) return { kind: "stop", tokens: tokens2 };
+  if (capsHead(text4) && !/\d/.test(text4)) return { kind: "stop", tokens: tokens2 };
   const last = tokens2[tokens2.length - 1];
   const atPageColumn = Number.isFinite(pageX) && last.x0 >= pageX - 12;
   const lastText = String(last.text).trim();
   const lastPage = pageToken(lastText) || (atPageColumn && lastText.length <= 5 && wordCount2(lastText) === 1 && (/\d/.test(lastText) || /^[—–-]+$/.test(lastText)) ? lastText : null);
   if (lastPage && tokens2.length === 1) return { kind: "num", tokens: tokens2, page: lastPage };
   if (lastPage && last.x0 - tokens2[tokens2.length - 2].x1 >= 8) return { kind: "entry", tokens: tokens2, page: lastPage };
-  if (wordCount2(text3) >= 12 && /[.?!]$/.test(text3) && !/\d\s*$/.test(text3)) return { kind: "stop", tokens: tokens2 };
-  if (groupHead(text3)) return { kind: "group", tokens: tokens2 };
-  if (wordCount2(text3) >= 3) return { kind: "title", tokens: tokens2 };
+  if (wordCount2(text4) >= 12 && /[.?!]$/.test(text4) && !/\d\s*$/.test(text4)) return { kind: "stop", tokens: tokens2 };
+  if (groupHead(text4)) return { kind: "group", tokens: tokens2 };
+  if (wordCount2(text4) >= 3) return { kind: "title", tokens: tokens2 };
   return { kind: "junk", tokens: tokens2 };
 }
 function selectRows(rows, seedIndexes, size) {
@@ -8180,19 +8180,19 @@ var init_contents = __esm({
 });
 
 // src/model/parse/furniture.js
-function isScanBanner(text3) {
-  const t = String(text3 || "").replace(/[•·∙⋅]/g, " ").replace(/\s+/g, " ").trim();
+function isScanBanner(text4) {
+  const t = String(text4 || "").replace(/[•·∙⋅]/g, " ").replace(/\s+/g, " ").trim();
   if (t.length < 8 || t.length > 90) return false;
   const numbered = /\bno\s*\.?\s*\d/i.test(t) || /\b\d{2,4}\b/.test(t);
   if (/\ba\s*\.?\s*c\s*\.?\s*a\b/i.test(t) && /\bno\s*\.?\s*\d/i.test(t)) return true;
   if (/\bt[oe]chnical\s+not[eo]\b/i.test(t) && numbered) return true;
   return false;
 }
-function normalizeFurniture(text3) {
-  return text3.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
+function normalizeFurniture(text4) {
+  return text4.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
 }
-function isRepoStamp(text3) {
-  const t = String(text3 || "").replace(/\s+/g, " ").trim();
+function isRepoStamp(text4) {
+  const t = String(text4 || "").replace(/\s+/g, " ").trim();
   if (!t || t.length > 160) return false;
   if (/hdl\.handle\.net|hathitrust\.org|books\.google\./i.test(t)) return t.length <= 120;
   if (/^original\s+from$/i.test(t)) return true;
@@ -8201,8 +8201,8 @@ function isRepoStamp(text3) {
   const rest = digitized[1].replace(/^[\s,.:;-]+/, "").trim();
   return !rest || rest.length <= 40 || isInstitutionLine(rest);
 }
-function isInstitutionLine(text3) {
-  const t = String(text3 || "").replace(/\s+/g, " ").trim();
+function isInstitutionLine(text4) {
+  const t = String(text4 || "").replace(/\s+/g, " ").trim();
   if (!t || t.length > 40 || /[.,:;]/.test(t)) return false;
   const words = t.split(" ");
   if (words.length < 1 || words.length > 5) return false;
@@ -8233,8 +8233,8 @@ function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
     const pagesSeen = new Set(list.map((e2) => e2.page));
     const recurring = pagesSeen.size >= need2 && n2 >= 2;
     for (const e2 of list) {
-      const text3 = e2.line.text.trim();
-      const pageNum = PAGE_NUM_RE.test(text3) && alone.has(e2.line);
+      const text4 = e2.line.text.trim();
+      const pageNum = PAGE_NUM_RE.test(text4) && alone.has(e2.line);
       let ok = pageNum;
       if (recurring) {
         const ys2 = list.filter((o) => o.page !== e2.page).map((o) => o.y);
@@ -8243,7 +8243,7 @@ function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
       if (!ok) continue;
       const where = key.startsWith("top") ? "running-header" : "running-footer";
       marks.add(e2.line);
-      removed.push({ page: e2.page, bbox: [r2(e2.line.x0), r2(e2.line.y0), r2(e2.line.x1), r2(e2.line.y1)], text: text3, reason: pageNum && !recurring ? "page-number" : where });
+      removed.push({ page: e2.page, bbox: [r2(e2.line.x0), r2(e2.line.y0), r2(e2.line.x1), r2(e2.line.y1)], text: text4, reason: pageNum && !recurring ? "page-number" : where });
     }
   }
   for (const pg of pages) {
@@ -8292,8 +8292,8 @@ function r2(v) {
   return Math.round(v * 100) / 100;
 }
 function isVerticalOcrWord(word) {
-  const text3 = String(word?.text || "").replace(/\s+/g, "");
-  if (text3.length < 4) return false;
+  const text4 = String(word?.text || "").replace(/\s+/g, "");
+  if (text4.length < 4) return false;
   const width = (word.x1 ?? 0) - (word.x0 ?? 0);
   const size = Number(word.size) || 0;
   if (size < 14 || !(width > 0)) return false;
@@ -8307,8 +8307,8 @@ function quarterTurn(angle) {
   const a = Math.abs(Number(angle) || 0);
   return Math.abs(a - Math.PI / 2) < 0.2 || Math.abs(a - 3 * Math.PI / 2) < 0.2;
 }
-function marginCaption(text3) {
-  const t = String(text3 || "").replace(/\s+/g, " ").trim();
+function marginCaption(text4) {
+  const t = String(text4 || "").replace(/\s+/g, " ").trim();
   return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(t);
 }
 function sidewaysMarginLine(line) {
@@ -8323,9 +8323,9 @@ function dropMarginRotated(lines, rotated, { w = 0, h = 0, band = FURNITURE_BAND
     const mx = ((line?.x0 ?? 0) + (line?.x1 ?? 0)) / 2;
     const my = line?.base ?? ((line?.y0 ?? 0) + (line?.y1 ?? 0)) / 2;
     if (inMargin(mx, my, w, h, band) && sidewaysMarginLine(line)) {
-      const text3 = String(line.text || "").replace(/\s+/g, " ").trim();
-      if (!marginCaption(text3)) {
-        if (text3) removed.push({ text: text3, bbox: [r2(line.x0), r2(line.y0), r2(line.x1), r2(line.y1)] });
+      const text4 = String(line.text || "").replace(/\s+/g, " ").trim();
+      if (!marginCaption(text4)) {
+        if (text4) removed.push({ text: text4, bbox: [r2(line.x0), r2(line.y0), r2(line.x1), r2(line.y1)] });
         continue;
       }
     }
@@ -8333,31 +8333,31 @@ function dropMarginRotated(lines, rotated, { w = 0, h = 0, band = FURNITURE_BAND
   }
   for (const piece of rotated || []) {
     if (!quarterTurn(piece?.angle)) continue;
-    const text3 = String(piece.text || "").replace(/\s+/g, " ").trim();
-    if (text3.length < 4) continue;
+    const text4 = String(piece.text || "").replace(/\s+/g, " ").trim();
+    if (text4.length < 4) continue;
     if (!inMargin(piece.x0, piece.base, w, h, band)) continue;
     const advance = Math.abs((piece.x1 ?? piece.x0) - piece.x0);
     const size = piece.size || 8;
     const top = Math.max(0, Math.min(piece.base, piece.base - advance));
     const bot = Math.min(h || Infinity, Math.max(piece.base, piece.base - advance));
-    if (marginCaption(text3)) {
+    if (marginCaption(text4)) {
       const x0 = piece.x0;
       const x1 = Math.min(w || x0 + size, x0 + size);
       kept.push({
-        text: text3,
-        words: [{ text: text3, x0, x1, y0: top, y1: bot, base: piece.base, size }],
+        text: text4,
+        words: [{ text: text4, x0, x1, y0: top, y1: bot, base: piece.base, size }],
         x0,
         y0: top,
         x1,
         y1: bot,
         base: piece.base,
         size,
-        chars: text3.length
+        chars: text4.length
       });
       continue;
     }
     removed.push({
-      text: text3,
+      text: text4,
       bbox: [r2(piece.x0), r2(top), r2(Math.min(w || piece.x0 + size, piece.x0 + size)), r2(bot)]
     });
   }
@@ -8409,8 +8409,8 @@ function valueColumn(lines) {
   const wordsOf2 = (l) => String(l.text || "").trim().split(/\s+/).filter(Boolean).length;
   if (list.some((l) => wordsOf2(l) >= 12)) return false;
   const digitShare = (l) => {
-    const text3 = String(l.text || "").replace(/\s+/g, "");
-    return text3.length ? (text3.match(/\d/g) || []).length / text3.length : 0;
+    const text4 = String(l.text || "").replace(/\s+/g, "");
+    return text4.length ? (text4.match(/\d/g) || []).length / text4.length : 0;
   };
   const valued = list.filter((l) => wordsOf2(l) <= 8 && digitShare(l) >= 0.3).length;
   return valued / list.length >= 0.6;
@@ -8867,11 +8867,11 @@ function clipBox(b, pageW, pageH) {
   if (!thinX && !thinY && (x1 - x0 < 1 || y1 - y0 < 1)) return null;
   return { ...b, x0, y0, x1, y1 };
 }
-function wordCount3(text3) {
-  return String(text3 || "").trim().split(/\s+/).filter(Boolean).length;
+function wordCount3(text4) {
+  return String(text4 || "").trim().split(/\s+/).filter(Boolean).length;
 }
-function diagramLabel(text3) {
-  const t = String(text3 || "").replace(/\s+/g, " ").trim();
+function diagramLabel(text4) {
+  const t = String(text4 || "").replace(/\s+/g, " ").trim();
   if (!t || wordCount3(t) > 2) return false;
   return /[A-Za-z]\s*\([^)\s]{1,8}\)/.test(t);
 }
@@ -8986,8 +8986,8 @@ function inMarginBand(y, pageH) {
 function lineIsFlow(line, bodySize) {
   return wordCount3(line.text) >= 8 && (line.size || bodySize) > 0.85 * bodySize;
 }
-function isEqNumber(text3) {
-  return EQ_NUMBER_RE.test(String(text3 || "").trim());
+function isEqNumber(text4) {
+  return EQ_NUMBER_RE.test(String(text4 || "").trim());
 }
 function allowGrowWord(w, line, ctx) {
   if (isEqNumber(w.text) || isEqNumber(line.text)) return false;
@@ -9006,8 +9006,8 @@ function allowGrowWord(w, line, ctx) {
   }
   return true;
 }
-function normalizeFigSpelling(text3) {
-  let t = String(text3 || "").replace(/\s+/g, " ").trim();
+function normalizeFigSpelling(text4) {
+  let t = String(text4 || "").replace(/\s+/g, " ").trim();
   t = t.replace(/^[^\p{L}\p{N}]+(?=(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|taf|sketch(?:es)?)\b)/iu, "");
   t = t.replace(/\bF[1l|]g/g, "Fig").replace(/\bf[1l|]g/g, "fig");
   t = t.replace(/\bfigu[nr]e\b/gi, (m) => m[0] === "f" ? "figure" : "Figure");
@@ -9016,8 +9016,8 @@ function normalizeFigSpelling(text3) {
   t = t.replace(/\b((?:fig(?:ure)?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s+)(II)(?=\s|$|[.:—–-])/gi, (full, pre, num6) => num6 === "II" ? `${pre}11` : full);
   return t;
 }
-function figCaptionKey(text3) {
-  let t = normalizeFigSpelling(text3);
+function figCaptionKey(text4) {
+  let t = normalizeFigSpelling(text4);
   t = t.replace(/^(?:[-+]?\d+\s+){1,6}(?=(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b)/i, "");
   if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return null;
   const roman = /^(?:plates?|tafeln?|tafel|taf\.?)\s+([IVXLC]{1,6})\b/i.exec(t);
@@ -9031,8 +9031,8 @@ function figCaptionKey(text3) {
   if (/^(?:figs|plates|abbildungen|tafeln)/i.test(m[1]) && /^[\s.,:&-]*(?:and\s+)?\d+/i.test(rest)) return null;
   return m[2].replace(/[A-Za-z]$/, "");
 }
-function lineIsCaption(text3) {
-  const t = normalizeFigSpelling(text3);
+function lineIsCaption(text4) {
+  const t = normalizeFigSpelling(text4);
   if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return false;
   if (CAPTION_RE.test(t) || figCaptionKey(t) != null || new RegExp(`^(?:${FIG_LEAD})\\.?\\s*$`, "i").test(t) || REVERSED_FIG_RE.test(t)) return true;
   return new RegExp(`^(?:${FIG_LEAD})\\.?\\s+(\\d+[A-Za-z]?[:.]?|[^\\p{L}\\p{N}]{1,4})$`, "iu").test(t);
@@ -9774,10 +9774,10 @@ function rejectFalseFigures(figures, opts = {}) {
   });
 }
 function letterSpread(lines, pageH) {
-  const text3 = (lines || []).filter((line) => (line.text || "").trim());
-  if (text3.length < 4 || !(pageH > 0)) return false;
-  if (text3.some((line) => /sheet\s+\d+\s+of\s+\d+/i.test(line.text || ""))) return false;
-  const ys2 = text3.map((line) => ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2);
+  const text4 = (lines || []).filter((line) => (line.text || "").trim());
+  if (text4.length < 4 || !(pageH > 0)) return false;
+  if (text4.some((line) => /sheet\s+\d+\s+of\s+\d+/i.test(line.text || ""))) return false;
+  const ys2 = text4.map((line) => ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2);
   return Math.max(...ys2) - Math.min(...ys2) > 0.35 * pageH;
 }
 function edgeBand(box2, pageW, pageH) {
@@ -9803,8 +9803,8 @@ function marginStrip(box2, pageW, pageH) {
   if ((touchT || touchB) && h <= 0.06 * pageH && w >= 0.4 * pageW) return true;
   return false;
 }
-function numericToken(text3) {
-  const t = String(text3 || "").trim();
+function numericToken(text4) {
+  const t = String(text4 || "").trim();
   return /\d/.test(t) && /^[\d.,%±+\-–−()]+$/.test(t);
 }
 function textThroughMiddle(box2, lines) {
@@ -9826,9 +9826,9 @@ function headerBand(box2, lines, pageH) {
   const h = box2.y1 - box2.y0;
   if (!(pageH > 0) || h > 0.22 * pageH || h < 8) return false;
   const inside8 = (lines || []).filter((line) => {
-    const text3 = String(line.text || "").trim();
-    if (!text3 || !lineCenterIn(line, box2)) return false;
-    if (diagramLabel(text3)) return false;
+    const text4 = String(line.text || "").trim();
+    if (!text4 || !lineCenterIn(line, box2)) return false;
+    if (diagramLabel(text4)) return false;
     return true;
   });
   return inside8.length >= 4;
@@ -9847,17 +9847,17 @@ function clipLowerText(box2, lines) {
 function growUntilText(box2, lines, pageW, pageH, stops = []) {
   const padX = 0.08 * pageW;
   const padY = 0.07 * pageH;
-  const text3 = [...(lines || []).filter((line) => (line.text || "").trim()), ...stops];
+  const text4 = [...(lines || []).filter((line) => (line.text || "").trim()), ...stops];
   let { x0, y0, x1, y1 } = box2;
   const overlapX3 = (line, a, b) => Math.min(b, line.x1) - Math.max(a, line.x0) > 8;
   const overlapY2 = (line, a, b) => Math.min(b, line.y1) - Math.max(a, line.y0) > 4;
-  const above = text3.filter((line) => line.y1 <= y0 + 1 && overlapX3(line, x0, x1)).sort((a, b) => b.y1 - a.y1)[0];
+  const above = text4.filter((line) => line.y1 <= y0 + 1 && overlapX3(line, x0, x1)).sort((a, b) => b.y1 - a.y1)[0];
   y0 = above ? Math.max(y0 - padY, above.y1 + 2) : Math.max(0, y0 - padY);
-  const below = text3.filter((line) => line.y0 >= y1 - 1 && overlapX3(line, x0, x1)).sort((a, b) => a.y0 - b.y0)[0];
+  const below = text4.filter((line) => line.y0 >= y1 - 1 && overlapX3(line, x0, x1)).sort((a, b) => a.y0 - b.y0)[0];
   y1 = below ? Math.min(y1 + padY, below.y0 - 2) : Math.min(pageH, y1 + padY);
-  const left = text3.filter((line) => line.x1 <= x0 + 1 && overlapY2(line, y0, y1)).sort((a, b) => b.x1 - a.x1)[0];
+  const left = text4.filter((line) => line.x1 <= x0 + 1 && overlapY2(line, y0, y1)).sort((a, b) => b.x1 - a.x1)[0];
   x0 = left ? Math.max(x0 - padX, left.x1 + 2) : Math.max(0, x0 - padX);
-  const right = text3.filter((line) => line.x0 >= x1 - 1 && overlapY2(line, y0, y1)).sort((a, b) => a.x0 - b.x0)[0];
+  const right = text4.filter((line) => line.x0 >= x1 - 1 && overlapY2(line, y0, y1)).sort((a, b) => a.x0 - b.x0)[0];
   x1 = right ? Math.min(x1 + padX, right.x0 - 2) : Math.min(pageW, x1 + padX);
   if (x1 - x0 < 16 || y1 - y0 < 16) return box2;
   return { x0, y0, x1, y1 };
@@ -10090,9 +10090,9 @@ function pictureRegions(figures, inkBoxes, lines, pageW, pageH, textLines2 = nul
     figures.push({ ...box2, kind: "drawing", count: 1, pageImage: false, fromPlate: true, fromPicture: true });
   }
 }
-function plateLabelText(text3, key) {
+function plateLabelText(text4, key) {
   if (key == null) return false;
-  const t = normalizeFigSpelling(text3).replace(/\s+/g, " ").trim();
+  const t = normalizeFigSpelling(text4).replace(/\s+/g, " ").trim();
   if (/\.{4,}|…{2,}|·{4,}/.test(t)) return false;
   if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(t)) return false;
   const words = t.split(" ");
@@ -10104,8 +10104,8 @@ function plateLabelText(text3, key) {
   if (/^(?:herewith|above|below|following|opposite)[.]?$/i.test(rest)) return false;
   return true;
 }
-function titleLikePlateLine(text3) {
-  const t = normalizeFigSpelling(String(text3 || "")).replace(/\s+/g, " ").trim();
+function titleLikePlateLine(text4) {
+  const t = normalizeFigSpelling(String(text4 || "")).replace(/\s+/g, " ").trim();
   if (!t || /\.{4,}|…{2,}|·{4,}/.test(t)) return false;
   const words = t.split(" ").filter(Boolean);
   if (words.length < 2 || words.length > 28) return false;
@@ -10152,11 +10152,11 @@ function plateTitleCaptions(lines, ink, pageW, pageH) {
 function plateCaptions(lines, pageH) {
   const out = [];
   for (const line of lines) {
-    const text3 = normalizeFigSpelling(line.text);
-    let keyed = text3;
-    let key = figCaptionKey(text3);
+    const text4 = normalizeFigSpelling(line.text);
+    let keyed = text4;
+    let key = figCaptionKey(text4);
     if (key == null) {
-      const words = text3.split(/\s+/);
+      const words = text4.split(/\s+/);
       const at = words.findIndex((w) => /^fig/i.test(w));
       const header = line.y1 <= 0.18 * pageH;
       const before = at > 0 ? words.slice(0, at).join(" ") : "";
@@ -10167,7 +10167,7 @@ function plateCaptions(lines, pageH) {
       }
     }
     if (!plateLabelText(keyed, key)) continue;
-    out.push({ ...line, key, text: text3 });
+    out.push({ ...line, key, text: text4 });
   }
   const numbered = out.filter((c) => c.key !== "");
   return numbered.length ? numbered : out;
@@ -10296,10 +10296,10 @@ function anchorCaptions(lines) {
       const end = i + 1 < starts.length ? starts[i + 1] : words.length;
       const slice = captionSlice(words, starts[i], end);
       if (slice.length < 2) continue;
-      const text3 = normalizeFigSpelling(slice.map((w) => w.text).join(" "));
-      const key = figCaptionKey(text3);
-      if (key == null || key === "" || !plateLabelText(text3, key)) continue;
-      out.push({ ...makeLine(slice), key, text: text3 });
+      const text4 = normalizeFigSpelling(slice.map((w) => w.text).join(" "));
+      const key = figCaptionKey(text4);
+      if (key == null || key === "" || !plateLabelText(text4, key)) continue;
+      out.push({ ...makeLine(slice), key, text: text4 });
     }
   }
   const keys = new Set(out.map((c) => c.key));
@@ -10548,8 +10548,8 @@ function segmentToken(token, lexicon) {
   if (!out.some((piece) => FUNCTION_WORDS.has(piece.toLowerCase()))) return null;
   return out;
 }
-function segmentTitle(text3, lexicon = titleLexicon) {
-  const clean = typeof text3 === "string" ? text3 : "";
+function segmentTitle(text4, lexicon = titleLexicon) {
+  const clean = typeof text4 === "string" ? text4 : "";
   if (!lexicon || !clean) return clean;
   return clean.replace(/\S*\p{L}{18,}\S*/gu, (word) => {
     const runs = word.match(/\p{L}+|[^\p{L}]+/gu) || [];
@@ -10569,8 +10569,8 @@ function segmentTitle(text3, lexicon = titleLexicon) {
     return out;
   });
 }
-function capTitle(text3, cap4 = TITLE_CAP, lexicon = titleLexicon) {
-  const clean = segmentTitle(typeof text3 === "string" ? text3.replace(/\s+/g, " ").trim() : "", lexicon);
+function capTitle(text4, cap4 = TITLE_CAP, lexicon = titleLexicon) {
+  const clean = segmentTitle(typeof text4 === "string" ? text4.replace(/\s+/g, " ").trim() : "", lexicon);
   if (clean.length <= cap4) return clean;
   const cut = clean.slice(0, cap4 + 1);
   const space = cut.lastIndexOf(" ");
@@ -10594,8 +10594,8 @@ function implausibleWord(word) {
   if (t.length >= 8 && ratio > 0.55 && /([aeiou])\1/.test(t)) return true;
   return false;
 }
-function isGibberishTitle(text3) {
-  const raw = typeof text3 === "string" ? text3 : "";
+function isGibberishTitle(text4) {
+  const raw = typeof text4 === "string" ? text4 : "";
   const judged = [];
   for (const tok of raw.split(/\s+/)) {
     if (!tok) continue;
@@ -10611,22 +10611,22 @@ function isGibberishTitle(text3) {
   if (judged.length < 2) return false;
   return judged.filter(Boolean).length / judged.length > 0.5;
 }
-function isJunkTitleText(text3) {
-  const t = typeof text3 === "string" ? text3.replace(/\s+/g, " ").trim() : "";
+function isJunkTitleText(text4) {
+  const t = typeof text4 === "string" ? text4.replace(/\s+/g, " ").trim() : "";
   if (!t) return true;
   if (JUNK_LINE_RES.some((re) => re.test(t))) return true;
   const digits = (t.match(/\d/g) || []).length;
   const letters = (t.match(/\p{L}/gu) || []).length;
   return digits >= 6 && digits > letters * 2;
 }
-function titleWordCount(text3) {
-  return String(text3 ?? "").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+function titleWordCount(text4) {
+  return String(text4 ?? "").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 }
 function plainTitle(value) {
   return String(value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
 }
-function isBannerOf(text3, line, { exact = true } = {}) {
-  const a = plainTitle(text3);
+function isBannerOf(text4, line, { exact = true } = {}) {
+  const a = plainTitle(text4);
   const b = plainTitle(line);
   if (!a || !b) return false;
   if (a === b) return exact;
@@ -10697,7 +10697,7 @@ function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
   const furniture2 = new Set(removed.map((r) => normalizeFurniture(r.text || "")));
   const running = removed.filter((r) => r && r.reason !== "page-number" && r.text).map((r) => r.text);
   const pageLines = pages.flatMap((pg) => pg && !pg.ocr && pg.kind !== "scan" ? (pg.free || []).map(textOf) : []);
-  const banner = (text3) => running.some((line) => isBannerOf(text3, line, { exact: false })) || pageLines.some((line) => isBannerOf(text3, line, { exact: false }));
+  const banner = (text4) => running.some((line) => isBannerOf(text4, line, { exact: false })) || pageLines.some((line) => isBannerOf(text4, line, { exact: false }));
   for (const pg of pages) {
     if (!pg || pg.ocr || pg.kind === "scan") continue;
     const lines = (pg.free || []).map((line) => ({ line, text: textOf(line) })).filter((c) => c.text && !isJunkTitleText(c.text) && !isGibberishTitle(c.text) && !furniture2.has(normalizeFurniture(c.text))).sort((a, b) => a.line.base - b.line.base || a.line.x0 - b.line.x0);
@@ -10717,12 +10717,12 @@ function findPageTitle(pages, { bodySize = 10, removed = [] } = {}) {
     let best = null;
     for (const b of blocks) {
       const first = b.items[0].line;
-      const text3 = b.items.map((c) => c.text).join(" ").replace(/^\(\s*\d+\s*\)\s*/, "").replace(/\s+/g, " ").trim();
-      const words = titleWordCount(text3);
-      if (words < 3 || words > MAX_WORDS || isJunkTitleText(text3) || isGibberishTitle(text3)) continue;
+      const text4 = b.items.map((c) => c.text).join(" ").replace(/^\(\s*\d+\s*\)\s*/, "").replace(/\s+/g, " ").trim();
+      const words = titleWordCount(text4);
+      if (words < 3 || words > MAX_WORDS || isJunkTitleText(text4) || isGibberishTitle(text4)) continue;
       if (!(first.size > 1.1 * bodySize || first.bold && first.size >= bodySize - 0.3)) continue;
-      if (banner(text3)) continue;
-      const cand = { text: text3, size: first.size, bold: Boolean(first.bold), y: first.base, page: pg.n };
+      if (banner(text4)) continue;
+      const cand = { text: text4, size: first.size, bold: Boolean(first.bold), y: first.base, page: pg.n };
       if (!best || cand.size > best.size + 0.5 || Math.abs(cand.size - best.size) <= 0.5 && (cand.bold && !best.bold || cand.bold === best.bold && cand.y < best.y)) best = cand;
     }
     if (best) return best.text;
@@ -10744,47 +10744,47 @@ var init_title = __esm({
 });
 
 // src/model/parse/blocks.js
-function superscriptDigits(text3) {
-  return text3.split("").map((ch) => SUPERS2[ch] ?? ch).join("");
+function superscriptDigits(text4) {
+  return text4.split("").map((ch) => SUPERS2[ch] ?? ch).join("");
 }
-function isUnitScript(text3, mark) {
-  if (/^[23]$/.test(mark) && UNIT_BEFORE_RE.test(text3)) return true;
-  return /^\d{1,2}$/.test(mark) && EXPONENT_BASE_RE.test(text3);
+function isUnitScript(text4, mark) {
+  if (/^[23]$/.test(mark) && UNIT_BEFORE_RE.test(text4)) return true;
+  return /^\d{1,2}$/.test(mark) && EXPONENT_BASE_RE.test(text4);
 }
-function superscriptRun(text3) {
-  return superscriptDigits(text3).replace(/,/g, COMMA_SUPER);
+function superscriptRun(text4) {
+  return superscriptDigits(text4).replace(/,/g, COMMA_SUPER);
 }
 function lineTextWithRefs(line, { collectRefs = true } = {}) {
-  let text3 = "";
+  let text4 = "";
   const refs = [];
   let lead = [];
   let prev = null;
   const words = line.words;
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
-    if (w.sup && collectRefs && FOOTNOTE_MARK_RE.test(w.text) && text3.length && !isUnitScript(text3, w.text)) {
+    if (w.sup && collectRefs && FOOTNOTE_MARK_RE.test(w.text) && text4.length && !isUnitScript(text4, w.text)) {
       const next = words[i + 1];
       const apart = prev && next && !next.sup && !next.sub && Number.isFinite(w.x0) && Number.isFinite(prev.x1) && w.x0 - prev.x1 > 0.3 * Math.min(prev.size || 10, 10) && !/^[,.;:)\]]/.test(next.text);
       if (apart) lead.push(w.text);
-      else refs.push({ mark: w.text, at: text3.length });
+      else refs.push({ mark: w.text, at: text4.length });
       prev = w;
       continue;
     }
     const script = w.sup && (/^\d+$/.test(w.text) || MARK_RUN_RE.test(w.text));
     const piece = script ? superscriptRun(w.text) : w.text;
     let glue = "";
-    if ((w.sup || w.sub) && text3 && !text3.endsWith(" ")) glue = "";
-    else if (text3 && /^[,.;:)\]]/.test(piece)) glue = "";
-    else glue = text3 ? " " : "";
-    text3 += glue;
+    if ((w.sup || w.sub) && text4 && !text4.endsWith(" ")) glue = "";
+    else if (text4 && /^[,.;:)\]]/.test(piece)) glue = "";
+    else glue = text4 ? " " : "";
+    text4 += glue;
     if (lead.length && !w.sup && !w.sub) {
-      for (const mark of lead) refs.push({ mark, at: text3.length });
+      for (const mark of lead) refs.push({ mark, at: text4.length });
       lead = [];
     }
-    text3 += piece;
+    text4 += piece;
     prev = w;
   }
-  return { text: text3, refs };
+  return { text: text4, refs };
 }
 function inlineUnlinkedRefs(block) {
   const refs = block.footnoteRefs;
@@ -10792,41 +10792,41 @@ function inlineUnlinkedRefs(block) {
   const keep = refs.filter((r) => r.to);
   const drop = refs.filter((r) => !r.to);
   if (!drop.length) return;
-  let text3 = block.text;
+  let text4 = block.text;
   const shifts = [];
   for (const r of [...drop].sort((a, b) => b.at - a.at)) {
     const piece = /^\d+$/.test(r.mark) ? superscriptDigits(r.mark) : r.mark;
-    const at = Math.min(Math.max(r.at, 0), text3.length);
-    text3 = text3.slice(0, at) + piece + text3.slice(at);
+    const at = Math.min(Math.max(r.at, 0), text4.length);
+    text4 = text4.slice(0, at) + piece + text4.slice(at);
     shifts.push({ at, n: piece.length });
   }
   for (const r of keep) for (const sh of shifts) if (sh.at <= r.at) r.at += sh.n;
-  block.text = text3;
+  block.text = text4;
   if (keep.length) block.footnoteRefs = keep;
   else delete block.footnoteRefs;
 }
 function joinLines(lines, { collectRefs = true, keepHyphenSet = null } = {}) {
-  let text3 = "";
+  let text4 = "";
   const footnoteRefs = [];
   for (const line of lines) {
     const { text: t, refs } = lineTextWithRefs(line, { collectRefs });
     if (!t) continue;
     let glue = " ";
-    if (text3.endsWith("-") && text3.length > 1) {
-      const left = /(\S+)-$/.exec(text3)?.[1] || "";
+    if (text4.endsWith("-") && text4.length > 1) {
+      const left = /(\S+)-$/.exec(text4)?.[1] || "";
       const nextStartsLower = /^[a-z]/.test(t);
       const keep = /\d/.test(left) || left === left.toUpperCase() && /[A-Z]/.test(left) || keepHyphenSet && keepHyphenSet.has(`${left}-${t.split(/\s/)[0]}`);
       if (nextStartsLower && !keep) {
-        text3 = text3.slice(0, -1);
+        text4 = text4.slice(0, -1);
         glue = "";
       } else if (/^[A-Za-z0-9]/.test(t)) glue = "";
     }
-    if (!text3) glue = "";
-    const base = text3.length + glue.length;
+    if (!text4) glue = "";
+    const base = text4.length + glue.length;
     for (const r of refs) footnoteRefs.push({ mark: r.mark, at: base + r.at });
-    text3 += glue + t;
+    text4 += glue + t;
   }
-  return { text: text3.replace(/\s+/g, " ").trim(), footnoteRefs };
+  return { text: text4.replace(/\s+/g, " ").trim(), footnoteRefs };
 }
 function spansOf(lines) {
   const spans = [];
@@ -10901,11 +10901,11 @@ var init_blocks = __esm({
 });
 
 // src/model/parse/ocr-fix.js
-function isPlaceholder(text3) {
-  return PLACEHOLDER_RE.test(String(text3 || "").trim());
+function isPlaceholder(text4) {
+  return PLACEHOLDER_RE.test(String(text4 || "").trim());
 }
-function numericLike(text3) {
-  const s = String(text3 || "").trim();
+function numericLike(text4) {
+  const s = String(text4 || "").trim();
   return s.length > 0 && NUMERIC_LIKE_RE.test(s) && (/\d/.test(s) || /[OoDQBSslIZGБб]\s*[.,]\s*[OoDQBSslIZGБб]/.test(s));
 }
 function decimalStyle(values) {
@@ -10918,8 +10918,8 @@ function decimalStyle(values) {
   if (!period && !comma) return null;
   return period >= comma ? "." : ",";
 }
-function repairNumber(text3, { decimal = ".", leadingZero = true } = {}) {
-  let s = String(text3 || "").trim();
+function repairNumber(text4, { decimal = ".", leadingZero = true } = {}) {
+  let s = String(text4 || "").trim();
   if (!s) return s;
   s = s.replace(/^\|+(\d[\d.,]*)\|+$/, "$1").replace(/(\d)\|+$/, "$1");
   s = s.replace(/(\d)\s*([.,])\s*(\d)/g, "$1$2$3").replace(/(\d)\s+(\d)/g, "$1$2");
@@ -11027,21 +11027,21 @@ function spanNoteRows(table, { numericCols = null } = {}) {
     const rest = filled.filter((k) => k.c > prefixEnd);
     if (!rest.length) continue;
     if (rest.some((k) => isNumericText(k.text) && !/^\d{4}$/.test(k.text))) continue;
-    let text3 = rest.map((k) => k.text.trim()).join(" ");
-    if (rest.length > 1 && rest.every((k) => isPlaceholder(k.text) && k.text.trim() === rest[0].text.trim())) text3 = rest[0].text.trim();
-    const words = text3.split(/\s+/);
-    const prose = words.length >= 3 && /[A-Za-z]{3,}/.test(text3);
-    if (!prose && !(isPlaceholder(text3) && !/^[-–—]+$/.test(text3))) continue;
+    let text4 = rest.map((k) => k.text.trim()).join(" ");
+    if (rest.length > 1 && rest.every((k) => isPlaceholder(k.text) && k.text.trim() === rest[0].text.trim())) text4 = rest[0].text.trim();
+    const words = text4.split(/\s+/);
+    const prose = words.length >= 3 && /[A-Za-z]{3,}/.test(text4);
+    if (!prose && !(isPlaceholder(text4) && !/^[-–—]+$/.test(text4))) continue;
     if (numericSet && !rest.every((k) => numericSet.has(k.c) || k.colSpan > 1)) continue;
     const start = prefixEnd + 1;
     const end = cols - 1;
     if (end - start + 1 < 2) continue;
     const first = rest[0];
-    const keep = { ...first, c: start, colSpan: end - start + 1, text: text3, align: "center", numeric: false, header: false };
+    const keep = { ...first, c: start, colSpan: end - start + 1, text: text4, align: "center", numeric: false, header: false };
     const removed = new Set(values.filter((k) => k.c >= start).map((k) => `${k.r}:${k.c}`));
     table.cells = table.cells.filter((k) => !(k.r === r && removed.has(`${k.r}:${k.c}`)));
     table.cells.push(keep);
-    spans.push({ r, c: start, colSpan: keep.colSpan, text: text3 });
+    spans.push({ r, c: start, colSpan: keep.colSpan, text: text4 });
   }
   if (spans.length) table.cells.sort((a, b) => a.r - b.r || a.c - b.c);
   return spans;
@@ -11084,8 +11084,8 @@ function formulaInner(inner) {
   if (!multi && !parenElement) return inner;
   return inner.replace(/([A-Z][a-z]?)(\d+)/g, (_, el, digits) => el + subscriptDigits(digits));
 }
-function chemicalSubscripts(text3) {
-  let s = String(text3 || "");
+function chemicalSubscripts(text4) {
+  let s = String(text4 || "");
   s = s.replace(/\(([A-Z][a-z]?\d*(?:[A-Z][a-z]?\d*)*)\)/g, (m, inner) => `(${formulaInner(inner)})`);
   s = s.replace(/\b([A-Z][a-z]?\d*(?:[A-Z][a-z]?\d*)+)\b/g, (m) => formulaInner(m));
   s = s.replace(/\b([A-Z][a-z]?)(\d+)\b/g, (m, el, digits) => ELEMENT.has(el) && digits !== "1" ? el + subscriptDigits(digits) : m);
@@ -11208,10 +11208,10 @@ function foldIndexHeads(table) {
     const below = table.cells.filter((c) => c.r === 1 && String(c.text || "").trim() && !/^\(\d+\)$/.test(String(c.text).trim()));
     if (below.length < 2) break;
     for (const c of top) {
-      const text3 = String(c.text || "").trim();
-      if (!/^\(\d+\)$/.test(text3)) continue;
+      const text4 = String(c.text || "").trim();
+      if (!/^\(\d+\)$/.test(text4)) continue;
       const host = table.cells.find((k) => k.r === 1 && k.c === c.c && (k.colSpan || 1) === (c.colSpan || 1));
-      if (host) host.text = `${text3} ${host.text || ""}`.trim();
+      if (host) host.text = `${text4} ${host.text || ""}`.trim();
     }
     deleteRow(table, 0);
   }
@@ -11233,8 +11233,8 @@ function foldContinuationHeads(table) {
     r -= 1;
   }
 }
-function statText(text3) {
-  const s = String(text3 || "").trim();
+function statText(text4) {
+  const s = String(text4 || "").trim();
   return /^\([^()\n]*\d[^()\n]*\)$/.test(s) || /^\[[^\[\]\n]*\d[^\[\]\n]*\]$/.test(s);
 }
 function stackStatRows(table) {
@@ -11264,8 +11264,8 @@ function stackStatRows(table) {
     deleteRow(table, found);
   }
 }
-function wordsOf(text3) {
-  return String(text3 || "").toLowerCase().replace(/[^a-z]+/g, " ").split(/\s+/).filter((w) => w.length >= 4);
+function wordsOf(text4) {
+  return String(text4 || "").toLowerCase().replace(/[^a-z]+/g, " ").split(/\s+/).filter((w) => w.length >= 4);
 }
 function spanSectionBanners(table) {
   if (!table || table.cols < 2) return;
@@ -11275,8 +11275,8 @@ function spanSectionBanners(table) {
     const filled = row4.filter((c) => String(c.text || "").trim());
     const label = filled.find((c) => c.c === 0);
     if (!label) continue;
-    const text3 = String(label.text || "").trim();
-    if (!/\d/.test(text3) || wordsOf(text3).length < 2) continue;
+    const text4 = String(label.text || "").trim();
+    if (!/\d/.test(text4) || wordsOf(text4).length < 2) continue;
     const rest = filled.filter((c) => c !== label);
     if ((label.colSpan || 1) >= table.cols) continue;
     const marks = rest.length > 0 && rest.every(mark);
@@ -11293,8 +11293,8 @@ function spanPanelRows(table) {
     const row4 = table.cells.filter((c) => c.r === r);
     const filled = row4.filter((c) => String(c.text || "").trim());
     if (filled.length !== 1 || filled[0].c !== 0) continue;
-    const text3 = String(filled[0].text).trim();
-    if (!/^panel\s+[a-z0-9]+\b/i.test(text3)) continue;
+    const text4 = String(filled[0].text).trim();
+    if (!/^panel\s+[a-z0-9]+\b/i.test(text4)) continue;
     if ((filled[0].colSpan || 1) >= table.cols) continue;
     table.cells = table.cells.filter((c) => c === filled[0] || c.r !== r);
     filled[0].c = 0;
@@ -11302,13 +11302,13 @@ function spanPanelRows(table) {
   }
 }
 function splitFusedLabelRow(table) {
-  const labelsOf = (text3) => {
-    const m = String(text3 || "").trim().match(/^([A-Z][a-z]+)\.\s+([A-Z][a-z]+)\.?$/);
+  const labelsOf = (text4) => {
+    const m = String(text4 || "").trim().match(/^([A-Z][a-z]+)\.\s+([A-Z][a-z]+)\.?$/);
     return m ? [m[1], m[2]] : null;
   };
   const numToken = (p) => /^\d{1,3}(?:,\d{3})+$/.test(p) || /^\d+\.\d+$/.test(p) || /^\d{2,}$/.test(p);
-  const numsOf = (text3) => {
-    const parts = String(text3 || "").trim().split(/\s+/);
+  const numsOf = (text4) => {
+    const parts = String(text4 || "").trim().split(/\s+/);
     if (parts.length !== 2 || !parts.every(numToken)) return null;
     return parts;
   };
@@ -11395,59 +11395,59 @@ function blankRepeatedFill(table) {
   const plain2 = (r, c) => table.cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
   const fillOf = (r, c) => {
     const cell = plain2(r, c);
-    const text3 = String(cell?.text || "").trim();
-    return /^\.\d{2,4}$/.test(text3) ? text3 : "";
+    const text4 = String(cell?.text || "").trim();
+    return /^\.\d{2,4}$/.test(text4) ? text4 : "";
   };
-  const otherIn = (c0, c1, text3) => {
+  const otherIn = (c0, c1, text4) => {
     for (let c = c0; c < c1; c++) {
       for (let r = start; r < table.rows; r++) {
         const t = String(plain2(r, c)?.text || "").trim();
-        if (t && t !== text3) return true;
+        if (t && t !== text4) return true;
       }
     }
     return false;
   };
   for (let r = start; r < table.rows; r++) {
     for (let c = 0; c < table.cols - 2; c++) {
-      const text3 = fillOf(r, c);
-      if (!text3) continue;
+      const text4 = fillOf(r, c);
+      if (!text4) continue;
       let c1 = c + 1;
-      while (c1 < table.cols && fillOf(r, c1) === text3) c1++;
+      while (c1 < table.cols && fillOf(r, c1) === text4) c1++;
       if (c1 - c < 3) continue;
       let r1 = r + 1;
       while (r1 < table.rows) {
         let same2 = true;
-        for (let k = c; k < c1; k++) if (fillOf(r1, k) !== text3) same2 = false;
+        for (let k = c; k < c1; k++) if (fillOf(r1, k) !== text4) same2 = false;
         if (!same2) break;
         r1++;
       }
-      if (r1 - r < 3 || !otherIn(c, c1, text3)) continue;
+      if (r1 - r < 3 || !otherIn(c, c1, text4)) continue;
       const blank = (rr, k) => {
         const cell = plain2(rr, k);
-        if (cell && String(cell.text || "").trim() === text3) cell.text = "";
+        if (cell && String(cell.text || "").trim() === text4) cell.text = "";
       };
       for (let rr = r; rr < r1; rr++) for (let k = c; k < c1; k++) blank(rr, k);
       for (const rr of [r - 1, r1]) {
         if (rr < start || rr >= table.rows) continue;
-        for (let k = c; k < c1; k++) if (fillOf(rr, k) === text3) blank(rr, k);
+        for (let k = c; k < c1; k++) if (fillOf(rr, k) === text4) blank(rr, k);
       }
     }
   }
 }
 function spaceFootnoteMarks(table) {
   for (const c of table.cells) {
-    const text3 = String(c.text || "");
-    if (/^[a-z][.\d]/.test(text3) && /\d/.test(text3)) c.text = text3.replace(/^([a-z])(?=[.\d])/, "$1 ");
+    const text4 = String(c.text || "");
+    if (/^[a-z][.\d]/.test(text4) && /\d/.test(text4)) c.text = text4.replace(/^([a-z])(?=[.\d])/, "$1 ");
   }
 }
 function tidyMeasuredCells(table) {
   for (const cell of table.cells) {
-    let text3 = String(cell.text || "");
-    if (!text3) continue;
-    text3 = text3.replace(/(?<!\d)(\d{1,3})\s*\.\s*(\d+)/g, "$1.$2");
-    text3 = text3.replace(/\bIbs\b/g, "lbs");
-    if (/[A-Za-z]/.test(text3) && /\d{4}-+\s*$/.test(text3)) text3 = text3.replace(/-+\s*$/, "").trim();
-    if (text3 !== cell.text) cell.text = text3;
+    let text4 = String(cell.text || "");
+    if (!text4) continue;
+    text4 = text4.replace(/(?<!\d)(\d{1,3})\s*\.\s*(\d+)/g, "$1.$2");
+    text4 = text4.replace(/\bIbs\b/g, "lbs");
+    if (/[A-Za-z]/.test(text4) && /\d{4}-+\s*$/.test(text4)) text4 = text4.replace(/-+\s*$/, "").trim();
+    if (text4 !== cell.text) cell.text = text4;
   }
   const start = table.headerRows || 0;
   for (let c = 0; c < table.cols; c++) {
@@ -11555,8 +11555,8 @@ function joinScatteredWrap(table) {
       const cont = [];
       for (let k = r + 1; k < table.rows; k++) {
         const next = table.cells.find((cell) => cell.r === k && cell.c === 0 && (cell.colSpan || 1) === 1);
-        const text3 = String(next?.text || "").trim();
-        if (!text3 || !/^[a-z]/.test(text3)) break;
+        const text4 = String(next?.text || "").trim();
+        if (!text4 || !/^[a-z]/.test(text4)) break;
         const nums = table.cells.filter((cell) => cell.r === k && cell.c > 0 && String(cell.text || "").trim() && (cell.colSpan || 1) === 1);
         if (nums.length !== 1 || !/\d/.test(nums[0].text)) break;
         cont.push({ row: k, stub: next, num: nums[0] });
@@ -11577,8 +11577,8 @@ function joinScatteredWrap(table) {
     if (found < 0) break;
   }
 }
-function factorKind(text3) {
-  const s = String(text3 || "").trim();
+function factorKind(text4) {
+  const s = String(text4 || "").trim();
   if (!s) return "";
   if (/^\d{1,3}\s+E[+\-−]\d+$/i.test(s)) return "tail";
   if (/^E[+\-−]\d+$/i.test(s)) return "exp";
@@ -11651,9 +11651,9 @@ function dropBannerNote(table) {
   const row4 = table.cells.filter((c) => c.r === 0);
   const filled = row4.filter((c) => String(c.text || "").trim());
   if (filled.length !== 1 || (filled[0].colSpan || 1) < table.cols) return;
-  const text3 = String(filled[0].text).trim();
-  if (/\d/.test(text3) || text3.split(/\s+/).length < 4) return;
-  if (!/\b(?:are|is|was|were)\b/.test(text3)) return;
+  const text4 = String(filled[0].text).trim();
+  if (/\d/.test(text4) || text4.split(/\s+/).length < 4) return;
+  if (!/\b(?:are|is|was|were)\b/.test(text4)) return;
   const next = table.cells.filter((c) => c.r === 1 && String(c.text || "").trim());
   if (next.length < 2) return;
   deleteRow(table, 0);
@@ -11662,11 +11662,11 @@ function repairDamagedIndex(table) {
   if (!damagedIndexColumn(table)) return;
   for (const cell of table.cells) {
     if ((cell.colSpan || 1) !== 1) continue;
-    let text3 = String(cell.text || "").trim();
-    const doubled = text3.match(/^(\d{1,3})-\s+\1$/);
-    if (doubled) text3 = doubled[1];
-    else if (/^\d{1,3}[.\-–−]$/.test(text3)) text3 = text3.slice(0, -1);
-    if (text3 !== cell.text) cell.text = text3;
+    let text4 = String(cell.text || "").trim();
+    const doubled = text4.match(/^(\d{1,3})-\s+\1$/);
+    if (doubled) text4 = doubled[1];
+    else if (/^\d{1,3}[.\-–−]$/.test(text4)) text4 = text4.slice(0, -1);
+    if (text4 !== cell.text) cell.text = text4;
   }
   while ((table.headerRows || 0) > 0 && table.rows > 2) {
     const texts = table.cells.filter((c) => c.r === 0).map((c) => String(c.text || "").trim()).filter(Boolean);
@@ -11717,12 +11717,12 @@ function foldSplitRanges(table) {
         continue;
       }
       const cell = at(r, c);
-      const text3 = String(cell?.text || "").trim();
-      if (!text3) {
+      const text4 = String(cell?.text || "").trim();
+      if (!text4) {
         spanned++;
         continue;
       }
-      if (/^[-–—−]\s*\d[\d.,]*$/.test(text3) && left && (left.colSpan || 1) === 1 && /^\d[\d.,]*[-–—−]?$/.test(String(left.text || "").trim())) halves.push({ cell, left });
+      if (/^[-–—−]\s*\d[\d.,]*$/.test(text4) && left && (left.colSpan || 1) === 1 && /^\d[\d.,]*[-–—−]?$/.test(String(left.text || "").trim())) halves.push({ cell, left });
       else {
         halves.length = 0;
         spanned = -1;
@@ -11772,7 +11772,7 @@ function repairGlyphDigits(table) {
   const start = table.headerRows || 0;
   const textOf2 = (cell) => String(cell?.text || "").trim();
   const body = (c) => table.cells.filter((k) => k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1 && k.r >= start);
-  const integerValue = (text3) => /^\d{1,6}$/.test(text3) ? Number(text3) : null;
+  const integerValue = (text4) => /^\d{1,6}$/.test(text4) ? Number(text4) : null;
   for (let c = 0; c < (table.cols || 0); c += 1) {
     const cells = body(c);
     const filled = cells.filter((k) => textOf2(k));
@@ -11792,9 +11792,9 @@ function repairGlyphDigits(table) {
     const ints = filled.filter((k) => integerValue(textOf2(k)) != null);
     const values = [...new Set(ints.map((k) => integerValue(textOf2(k))))].sort((a, b) => a - b);
     const marks = filled.filter((k) => {
-      const text3 = textOf2(k);
-      if (!text3 || isPlaceholder(text3) || isNumericText(text3) || /\d/.test(text3)) return false;
-      if (/[A-Za-z]{2,}/.test(text3)) return false;
+      const text4 = textOf2(k);
+      if (!text4 || isPlaceholder(text4) || isNumericText(text4) || /\d/.test(text4)) return false;
+      if (/[A-Za-z]{2,}/.test(text4)) return false;
       return true;
     });
     if (values.length >= 4 && values.length === ints.length && marks.length === 1 && values[values.length - 1] - values[0] <= 40) {
@@ -11924,21 +11924,21 @@ function applyCellOcr(table, results) {
     if (res.id && table.id && res.id !== table.id) continue;
     const cell = table.cells.find((k) => k.r === res.r && k.c === res.c);
     if (!cell) continue;
-    let text3 = String(res.text || "").trim().replace(/^[.·•\s]+(?=\S)/, "").replace(/(?<=\S)[.·•\s]+$/, (m) => /\d$/.test(m) ? m : "");
+    let text4 = String(res.text || "").trim().replace(/^[.·•\s]+(?=\S)/, "").replace(/(?<=\S)[.·•\s]+$/, (m) => /\d$/.test(m) ? m : "");
     const column = bodyCellsOfColumn(table, cell.c).filter((k) => k !== cell && isNumericText(k.text)).map((k) => k.text);
     if (cell.reread && isNumericText(cell.text) && fitsColumn(cell.text, column)) continue;
     const decimal = decimalStyle(column) || ".";
     const leadingZero = !column.some((v) => /^[.,]\d/.test(v));
     let to = null;
     const empty = !cell.text || !cell.text.trim();
-    if (text3 && !/\s/.test(text3) && !isPlaceholder(text3)) {
-      const number = repairNumber(text3, { decimal, leadingZero });
+    if (text4 && !/\s/.test(text4) && !isPlaceholder(text4)) {
+      const number = repairNumber(text4, { decimal, leadingZero });
       if (number != null && fitsColumn(number, column)) to = number;
     }
-    const letter2 = text3.replace(/^\|+/, "").replace(/\|+$/, "");
+    const letter2 = text4.replace(/^\|+/, "").replace(/\|+$/, "");
     if (to == null && empty && /^[A-Za-z]$/.test(letter2) && (res.conf ?? 0) >= 0.8) to = letter2;
     if (to == null && res.glyph && isPlaceholder(res.glyph) && empty) to = res.glyph;
-    if (to == null && /^(?:n\/?a|nn)$/i.test(text3) && (!cell.text || !cell.text.trim())) to = text3;
+    if (to == null && /^(?:n\/?a|nn)$/i.test(text4) && (!cell.text || !cell.text.trim())) to = text4;
     if (to == null || to === cell.text) continue;
     applied.push({ r: cell.r, c: cell.c, from: cell.text, to });
     cell.text = to;
@@ -12016,16 +12016,16 @@ function weakOcrPage(items, lexicon = null) {
   if (low < 0.04) return false;
   return known2 < 0.12;
 }
-function wordCore(text3) {
-  const parts = String(text3 || "").match(WORD_RE);
+function wordCore(text4) {
+  const parts = String(text4 || "").match(WORD_RE);
   if (!parts || !parts.length) return "";
   return parts.reduce((best, part) => part.length > best.length ? part : best, "");
 }
-function letterCore(text3) {
-  return wordCore(text3).replace(/[-']+$/g, "");
+function letterCore(text4) {
+  return wordCore(text4).replace(/[-']+$/g, "");
 }
-function digitHeavy(text3) {
-  const raw = String(text3 || "");
+function digitHeavy(text4) {
+  const raw = String(text4 || "");
   let digits = 0;
   let alnum = 0;
   for (const ch of raw) {
@@ -12210,7 +12210,7 @@ function chooseReading(vision, other, lexicon) {
   if (ol && !vl) return o;
   if (vl && !ol) return v;
   if (d === 0) {
-    const hyphen = (text3) => /[A-Za-z]-$/.test(String(text3).trim());
+    const hyphen = (text4) => /[A-Za-z]-$/.test(String(text4).trim());
     if (hyphen(o) && !hyphen(v)) return o;
     return v;
   }
@@ -12398,9 +12398,9 @@ var init_ocr_vote = __esm({
 // src/model/pdf.js
 function pdfMacroUrl(s) {
   if (typeof s !== "string") return "";
-  const text3 = s.trim();
-  if (!text3.startsWith(PDF_MACRO)) return "";
-  const match = /https?:\/\/[^\s}]+/.exec(text3.slice(PDF_MACRO.length));
+  const text4 = s.trim();
+  if (!text4.startsWith(PDF_MACRO)) return "";
+  const match = /https?:\/\/[^\s}]+/.exec(text4.slice(PDF_MACRO.length));
   if (!match) return "";
   return match[0];
 }
@@ -12433,28 +12433,28 @@ function pdfFileTitle(url) {
   return titleText(name);
 }
 function cleanPdfTitle(value) {
-  let text3 = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
-  text3 = text3.replace(/^(?:microsoft\s+(?:word|powerpoint|excel)\s*[-\u2013\u2014]\s*)/i, "").trim();
-  if (text3.length < 4) return "";
-  if (ROMAN_ONLY.test(text3)) return "";
-  if (/^untitled\b/i.test(text3)) return "";
-  return titleText(text3);
+  let text4 = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  text4 = text4.replace(/^(?:microsoft\s+(?:word|powerpoint|excel)\s*[-\u2013\u2014]\s*)/i, "").trim();
+  if (text4.length < 4) return "";
+  if (ROMAN_ONLY.test(text4)) return "";
+  if (/^untitled\b/i.test(text4)) return "";
+  return titleText(text4);
 }
 function isStorageTitle(value) {
-  const text3 = typeof value === "string" ? value.trim() : "";
-  if (!text3) return true;
-  if (text3.startsWith("{{") || text3.includes("{{[[")) return true;
-  if (/imgs\/app\//i.test(text3)) return true;
-  const last = text3.split("/").filter(Boolean).pop() || text3;
+  const text4 = typeof value === "string" ? value.trim() : "";
+  if (!text4) return true;
+  if (text4.startsWith("{{") || text4.includes("{{[[")) return true;
+  if (/imgs\/app\//i.test(text4)) return true;
+  const last = text4.split("/").filter(Boolean).pop() || text4;
   const bare = last.replace(/\.pdf$/i, "");
-  if (text3.includes("/") && /^[A-Za-z0-9_-]{9,}$/.test(bare) && !/\.pdf$/i.test(last)) return true;
-  if (!text3.includes(" ") && /^[A-Za-z0-9_-]{9,}$/.test(text3) && !/\.pdf$/i.test(text3)) return true;
+  if (text4.includes("/") && /^[A-Za-z0-9_-]{9,}$/.test(bare) && !/\.pdf$/i.test(last)) return true;
+  if (!text4.includes(" ") && /^[A-Za-z0-9_-]{9,}$/.test(text4) && !/\.pdf$/i.test(text4)) return true;
   return false;
 }
 function titleText(value) {
-  const text3 = typeof value === "string" ? value.trim() : "";
-  if (!text3 || text3 === "PDF" || isStorageTitle(text3)) return "";
-  return text3;
+  const text4 = typeof value === "string" ? value.trim() : "";
+  if (!text4 || text4 === "PDF" || isStorageTitle(text4)) return "";
+  return text4;
 }
 function pdfTitlePlan(source) {
   const src = source && typeof source === "object" ? source : {};
@@ -12471,8 +12471,8 @@ function parsedTitleLines(doc) {
   for (const id of Array.isArray(doc.order) ? doc.order : Object.keys(blocks)) {
     const block = blocks[id];
     if (!block || block.page !== 1 || typeof block.text !== "string") continue;
-    const text3 = block.text.replace(/\s+/g, " ").trim();
-    if (text3) out.push(text3.slice(0, 160));
+    const text4 = block.text.replace(/\s+/g, " ").trim();
+    if (text4) out.push(text4.slice(0, 160));
     if (out.length >= 80) break;
   }
   return [...new Set(out)].slice(0, 60);
@@ -12514,8 +12514,8 @@ function parsedDocTitleRaw(doc) {
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "heading" || (block.level || 1) !== 1) continue;
-    const text3 = typeof block.text === "string" ? block.text.replace(/\s+/g, " ").trim() : "";
-    const real = usable(text3);
+    const text4 = typeof block.text === "string" ? block.text.replace(/\s+/g, " ").trim() : "";
+    const real = usable(text4);
     if (real) return real;
   }
   const clean = (value) => typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
@@ -12529,14 +12529,14 @@ function parsedDocTitleRaw(doc) {
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "table" || !block.caption) continue;
-    const text3 = clean(blocks[block.caption]?.text);
-    if (text3 && !isStorageTitle(text3)) return text3;
+    const text4 = clean(blocks[block.caption]?.text);
+    if (text4 && !isStorageTitle(text4)) return text4;
   }
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "para" || (block.page || 1) !== 1) continue;
-    const text3 = clean(block.text);
-    if (text3 && text3.length <= 160 && !/^scan\b/i.test(text3) && !isStorageTitle(text3) && !isJunkTitleText(text3) && !running.has(norm2(text3)) && titleWordCount(text3) >= 3) return text3;
+    const text4 = clean(block.text);
+    if (text4 && text4.length <= 160 && !/^scan\b/i.test(text4) && !isStorageTitle(text4) && !isJunkTitleText(text4) && !running.has(norm2(text4)) && titleWordCount(text4) >= 3) return text4;
   }
   return "";
 }
@@ -12621,9 +12621,9 @@ function posterThumb(source) {
 }
 function heavyEmbed(string, opts) {
   if (opts && postersEnabled(opts) === false) return null;
-  const text3 = String(string ?? "").trim();
-  if (!text3) return null;
-  const match = HEAVY_ONE.exec(text3);
+  const text4 = String(string ?? "").trim();
+  if (!text4) return null;
+  const match = HEAVY_ONE.exec(text4);
   if (match) {
     const name = match[1].toLowerCase();
     const body = String(match[2] || "").trim();
@@ -12632,15 +12632,15 @@ function heavyEmbed(string, opts) {
     const kind = embedKind(name);
     return { kind, url, title: embedTitle(kind, name, url) };
   }
-  if (/^<iframe\b/i.test(text3)) return { kind: "iframe", url: "", title: "Embed" };
-  if (/^<video\b/i.test(text3)) return { kind: "video", url: "", title: "Video" };
+  if (/^<iframe\b/i.test(text4)) return { kind: "iframe", url: "", title: "Embed" };
+  if (/^<video\b/i.test(text4)) return { kind: "video", url: "", title: "Video" };
   return null;
 }
 function heavyRefUid(string) {
-  const text3 = String(string ?? "").trim();
-  const block = REF_ONLY3.exec(text3);
+  const text4 = String(string ?? "").trim();
+  const block = REF_ONLY3.exec(text4);
   if (block) return block[1];
-  const embed = EMBED_ONLY2.exec(text3);
+  const embed = EMBED_ONLY2.exec(text4);
   if (embed) return embed[1];
   return "";
 }
@@ -12669,13 +12669,13 @@ function posterModel(source) {
 function embedPoster(string, opts = {}) {
   if (postersEnabled(opts) === false) return null;
   const { read: read2, cover, uid = "" } = opts;
-  const text3 = String(string ?? "").trim();
-  if (!text3) return null;
-  let hit = heavyEmbed(text3);
+  const text4 = String(string ?? "").trim();
+  if (!text4) return null;
+  let hit = heavyEmbed(text4);
   let mountUid = uid || "";
-  let source = text3;
+  let source = text4;
   if (!hit) {
-    const ref = heavyRefUid(text3);
+    const ref = heavyRefUid(text4);
     if (!ref || typeof read2 !== "function") return null;
     let inner = "";
     try {
@@ -12712,14 +12712,14 @@ function embedPoster(string, opts = {}) {
   return { ...model, uid: mountUid, url: hit.url };
 }
 function embedSplit(string, opts = {}) {
-  const text3 = String(string ?? "");
-  const macros = [...text3.matchAll(new RegExp(HEAVY_MACRO.source, "gi"))].map((m) => m[0]);
+  const text4 = String(string ?? "");
+  const macros = [...text4.matchAll(new RegExp(HEAVY_MACRO.source, "gi"))].map((m) => m[0]);
   if (macros.length) {
     const posters = macros.map((macro) => embedPoster(macro, opts)).filter(Boolean);
-    const rest = text3.replace(new RegExp(HEAVY_MACRO.source, "gi"), " ").replace(/\s+/g, " ").trim();
+    const rest = text4.replace(new RegExp(HEAVY_MACRO.source, "gi"), " ").replace(/\s+/g, " ").trim();
     return { posters, rest };
   }
-  const one = embedPoster(text3, opts);
+  const one = embedPoster(text4, opts);
   return { posters: one ? [one] : [], rest: "" };
 }
 function pdfCardForUrl(url, cards) {
@@ -12735,11 +12735,11 @@ function pdfCardForUrl(url, cards) {
 function writeReaderPage(input, page) {
   if (!input || typeof input.dispatchEvent !== "function") return false;
   if (typeof page !== "number" || !Number.isInteger(page) || page < 1) return false;
-  const text3 = String(page);
+  const text4 = String(page);
   const ctor = globalThis.HTMLInputElement;
   const proto = typeof ctor === "function" ? Object.getOwnPropertyDescriptor(ctor.prototype, "value") : null;
-  if (proto && typeof proto.set === "function") proto.set.call(input, text3);
-  else input.value = text3;
+  if (proto && typeof proto.set === "function") proto.set.call(input, text4);
+  else input.value = text4;
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
   return true;
@@ -12775,14 +12775,14 @@ var init_pdf = __esm({
 });
 
 // src/model/parse/index.js
-function peelTickPrefix(text3) {
-  return String(text3 || "").replace(/^(?:[-+]?\d+\s+){1,6}(?=(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b)/i, "");
+function peelTickPrefix(text4) {
+  return String(text4 || "").replace(/^(?:[-+]?\d+\s+){1,6}(?=(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b)/i, "");
 }
-function peelHyphenTail(text3) {
-  return String(text3 || "").replace(/\s+\S+-$/, "");
+function peelHyphenTail(text4) {
+  return String(text4 || "").replace(/\s+\S+-$/, "");
 }
-function isCaptionText(text3) {
-  const raw = peelTickPrefix(normalizeFigSpelling(String(text3 || "").replace(/[^\p{L}\p{N}.: ]/gu, " ").replace(/\s+/g, " ").trim()));
+function isCaptionText(text4) {
+  const raw = peelTickPrefix(normalizeFigSpelling(String(text4 || "").replace(/[^\p{L}\p{N}.: ]/gu, " ").replace(/\s+/g, " ").trim()));
   if (/^plates?\s+\d+[A-Za-z]?\s+(?:inches?|mm|cm|ft|feet|thick)\b/i.test(raw)) return false;
   return CAPTION_RE.test(raw) || figCaptionKey(raw) != null || /^(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|taf)\.?\s*$/i.test(raw) || /^\d+[A-Za-z]?(?:[.\s]+)\s*(?:fig(?:ure)?|plates?|abb(?:ildung)?|tafel|taf)\.?$/i.test(raw);
 }
@@ -13029,11 +13029,11 @@ function sheetNamed(lines) {
 function dropSpreadPhoto(figures, lines, pageW, pageH) {
   const pageArea = pageW * pageH;
   if (!(pageArea > 0)) return figures || [];
-  const text3 = (lines || []).filter((line) => (line.text || "").trim());
+  const text4 = (lines || []).filter((line) => (line.text || "").trim());
   if (sheetNamed(lines)) return figures || [];
-  const ys2 = text3.map((line) => ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2);
+  const ys2 = text4.map((line) => ((line.y0 ?? 0) + (line.y1 ?? 0)) / 2);
   const span = ys2.length ? Math.max(...ys2) - Math.min(...ys2) : 0;
-  if (!(text3.length >= 5 && span > 0.35 * pageH)) return figures || [];
+  if (!(text4.length >= 5 && span > 0.35 * pageH)) return figures || [];
   return (figures || []).filter((fig) => boxArea2(fig.bbox || fig) < 0.82 * pageArea);
 }
 function coverChartTables(tables, figures, pageH) {
@@ -13089,15 +13089,15 @@ function insideFrac2(inner, outer) {
   if (ox <= 0 || oy <= 0) return 0;
   return ox * oy / area2;
 }
-function wordCountText(text3) {
-  return String(text3 || "").trim().split(/\s+/).filter(Boolean).length;
+function wordCountText(text4) {
+  return String(text4 || "").trim().split(/\s+/).filter(Boolean).length;
 }
-function figLabelOnly(text3) {
-  const t = normalizeFigSpelling(text3).replace(/\s+/g, " ").trim();
+function figLabelOnly(text4) {
+  const t = normalizeFigSpelling(text4).replace(/\s+/g, " ").trim();
   return /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?$/i.test(t) || /^\d+[A-Za-z]?(?:[.\s]+)\s*(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafel|taf)\.?$/i.test(t) || /^sketch(?:es)?\.?\s*(?:\([^)]{1,6}\)|\d+[A-Za-z]?)?[.:]?$/i.test(t);
 }
-function hasFigWord(text3) {
-  return /\b(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|sketch(?:es)?)\b/i.test(String(text3 || ""));
+function hasFigWord(text4) {
+  return /\b(?:fig(?:ure)?s?|plates?|abb(?:ildung(?:en)?)?|tafeln?|tafel|sketch(?:es)?)\b/i.test(String(text4 || ""));
 }
 function splitOcrCaptionGroup(group) {
   if (!group.length || !isCaptionText(group[0].text)) return [group];
@@ -13245,8 +13245,8 @@ function peelCaptionColumn(group) {
   if (!rest.length) return { keep: group, rest: [] };
   return { keep, rest };
 }
-function titleLikePlate(text3) {
-  const t = normalizeFigSpelling(String(text3 || "")).replace(/\s+/g, " ").trim();
+function titleLikePlate(text4) {
+  const t = normalizeFigSpelling(String(text4 || "")).replace(/\s+/g, " ").trim();
   if (!t || /\.{4,}|…{2,}|·{4,}/.test(t)) return false;
   const words = t.split(" ").filter(Boolean);
   if (words.length < 2 || words.length > 28) return false;
@@ -13285,8 +13285,8 @@ function attachPlateTitles(blocks, figures, bodySize, pageH) {
     }
   }
 }
-function pictureTitleText(text3) {
-  const t = normalizeFigSpelling(String(text3 || "")).replace(/\s+/g, " ").trim();
+function pictureTitleText(text4) {
+  const t = normalizeFigSpelling(String(text4 || "")).replace(/\s+/g, " ").trim();
   if (!t || /\.{4,}|…{2,}|·{4,}/.test(t)) return false;
   const words = t.split(" ").filter(Boolean);
   if (words.length < 2 || words.length > 18) return false;
@@ -13378,7 +13378,7 @@ function attachPictureTitles(blocks, figures, bodySize, pageH) {
       }
     }
     if (!best) continue;
-    const bareFig = (text3) => /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?$/i.test(normalizeFigSpelling(text3 || "").trim());
+    const bareFig = (text4) => /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?$/i.test(normalizeFigSpelling(text4 || "").trim());
     const lead = blocks.some((b) => {
       if (b === best || !b.bbox || !(forwardFigLead(b.text) || bareFig(b.text))) return false;
       const gap = b.bbox.y1 <= tb[1] ? tb[1] - b.bbox.y1 : b.bbox.y0 >= tb[3] ? b.bbox.y0 - tb[3] : 0;
@@ -13390,14 +13390,14 @@ function attachPictureTitles(blocks, figures, bodySize, pageH) {
     used.add(best);
   }
 }
-function captionRank(text3) {
-  const t = normalizeFigSpelling(text3 || "");
+function captionRank(text4) {
+  const t = normalizeFigSpelling(text4 || "");
   const words = wordCountText(t);
   const numbered = figCaptionKey(t) != null && figCaptionKey(t) !== "";
   return (numbered ? 4 : 0) + Math.min(words, 24);
 }
-function forwardFigLead(text3) {
-  const t = normalizeFigSpelling(text3 || "").replace(/\s+/g, " ").trim();
+function forwardFigLead(text4) {
+  const t = normalizeFigSpelling(text4 || "").replace(/\s+/g, " ").trim();
   const key = figCaptionKey(t);
   if (key == null || key === "") return false;
   if (!/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(t)) return false;
@@ -13474,8 +13474,8 @@ function titleEvidenceLines(pageRecords2, removed = []) {
   for (const r of removed || []) if (r?.text && r.reason !== "page-number") out.push(String(r.text));
   const first = (pageRecords2 || [])[0];
   for (const line of first?.free || first?.lines || []) {
-    const text3 = line.words.map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
-    if (text3) out.push(text3);
+    const text4 = line.words.map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
+    if (text4) out.push(text4);
   }
   return [...new Set(out.map((t) => t.slice(0, EVIDENCE_CHARS)))].slice(0, EVIDENCE_LINES);
 }
@@ -13662,8 +13662,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
             const mark = first.text;
             const rest = { ...group[0], words: group[0].words.slice(1) };
             rest.text = rest.words.map((w) => w.text).join(" ");
-            const text3 = joinLines([rest, ...group.slice(1)], { collectRefs: false }).text;
-            textBlocks.push({ type: "footnote", lines: group, mark, text: text3, bbox: boxOfUnits(group) });
+            const text4 = joinLines([rest, ...group.slice(1)], { collectRefs: false }).text;
+            textBlocks.push({ type: "footnote", lines: group, mark, text: text4, bbox: boxOfUnits(group) });
             return;
           }
           const block = { type: isCaption ? "caption" : "para", lines: group, text: isCaption ? normalizeFigSpelling(peelHyphenTail(peelTickPrefix(joined.text))) : joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
@@ -13883,11 +13883,11 @@ function sectionBanner(table) {
   const words = String(cell.text).toLowerCase().replace(/[^a-z]+/g, " ").split(/\s+/).filter((w) => w.length >= 4);
   return words.length >= 2;
 }
-function bannerWords(text3) {
-  return String(text3 || "").toLowerCase().replace(/[^a-z]+/g, " ").trim().split(/\s+/).filter((w) => w.length >= 4);
+function bannerWords(text4) {
+  return String(text4 || "").toLowerCase().replace(/[^a-z]+/g, " ").trim().split(/\s+/).filter((w) => w.length >= 4);
 }
-function yearRangeBanner(text3) {
-  const s = String(text3 || "").trim();
+function yearRangeBanner(text4) {
+  const s = String(text4 || "").trim();
   if (!YEAR_RANGE_TAIL_RE.test(s)) return false;
   return bannerWords(s).length >= 1 && s.split(/\s+/).length <= 12;
 }
@@ -13919,19 +13919,19 @@ function blockBox(tb) {
 }
 function sectionLineBetween(tb, a, b, bodySize) {
   if (!tb || tb.type !== "para" && tb.type !== "heading") return null;
-  const text3 = String(tb.text || "").trim();
-  if (!text3 || CAPTION_RE.test(text3)) return null;
-  if (!/\d/.test(text3)) return null;
-  const words = text3.split(/\s+/).filter(Boolean);
+  const text4 = String(tb.text || "").trim();
+  if (!text4 || CAPTION_RE.test(text4)) return null;
+  if (!/\d/.test(text4)) return null;
+  const words = text4.split(/\s+/).filter(Boolean);
   if (words.length > 12 || words.length < 2) return null;
   if (tb.bbox.y1 - tb.bbox.y0 > 1.8 * (bodySize || 10)) return null;
   const x0 = Math.min(a.bbox[0], b.bbox[0]);
   const x1 = Math.max(a.bbox[2], b.bbox[2]);
   if (tb.bbox.x0 < x0 - 2 || tb.bbox.x1 > x1 + 2) return null;
   const heads = (t) => (t.cells || []).filter((c) => c.r === 0).map((c) => String(c.text || "").trim().toLowerCase()).filter(Boolean);
-  const low = text3.toLowerCase();
+  const low = text4.toLowerCase();
   if ([...heads(a), ...heads(b)].some((h) => h.length >= 4 && low.includes(h))) return null;
-  return { text: text3, block: tb };
+  return { text: text4, block: tb };
 }
 function stitchTables(tables, textBlocks, bodySize) {
   tables.sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
@@ -13991,8 +13991,8 @@ function absorbSectionBanners(tables, textBlocks, bodySize) {
       const bw = b2.x1 - b2.x0;
       const ox = Math.min(b2.x1, table.bbox[2]) - Math.max(b2.x0, table.bbox[0]);
       if (!(bw > 0) || ox < 0.5 * bw) continue;
-      const text3 = String(tb2.text || "").trim();
-      if (!banners.some((banner) => sameBanner(banner, text3))) continue;
+      const text4 = String(tb2.text || "").trim();
+      if (!banners.some((banner) => sameBanner(banner, text4))) continue;
       if (gap < bestGap) {
         bestGap = gap;
         best = i;
@@ -14035,18 +14035,18 @@ function absorbTableFooters(tables, textBlocks, bodySize) {
       const gap = b2.y0 - table.bbox[3];
       if (gap < -2 || gap > size) continue;
       if (b2.y1 - b2.y0 > 3 * size) continue;
-      const text3 = String(tb2.text || "").trim();
-      const words = text3.split(/\s+/).filter(Boolean);
-      if (words.length < 4 || words.length > 40 || !/\d/.test(text3)) continue;
-      if (/^[a-z]/.test(text3)) continue;
-      if (/^[*†‡§¶⁎∗]\s/u.test(text3)) continue;
-      if (/-\s*$/.test(text3)) continue;
-      if (/^(?:sources?|notes?|note)\b/i.test(text3)) continue;
-      if (/^\d+\.\s/.test(text3)) continue;
-      if (/^[A-Z]{2,}:/.test(text3)) continue;
-      if (/[χΧ]\s*=/.test(text3) || /\bp\s*[=<>]/.test(text3)) continue;
-      if (isCaptionText(text3)) continue;
-      if ((tables || []).some((other) => spanningBannerTexts(other).some((banner) => sameBanner(banner, text3)))) continue;
+      const text4 = String(tb2.text || "").trim();
+      const words = text4.split(/\s+/).filter(Boolean);
+      if (words.length < 4 || words.length > 40 || !/\d/.test(text4)) continue;
+      if (/^[a-z]/.test(text4)) continue;
+      if (/^[*†‡§¶⁎∗]\s/u.test(text4)) continue;
+      if (/-\s*$/.test(text4)) continue;
+      if (/^(?:sources?|notes?|note)\b/i.test(text4)) continue;
+      if (/^\d+\.\s/.test(text4)) continue;
+      if (/^[A-Z]{2,}:/.test(text4)) continue;
+      if (/[χΧ]\s*=/.test(text4) || /\bp\s*[=<>]/.test(text4)) continue;
+      if (isCaptionText(text4)) continue;
+      if ((tables || []).some((other) => spanningBannerTexts(other).some((banner) => sameBanner(banner, text4)))) continue;
       const bw = b2.x1 - b2.x0;
       const tw = table.bbox[2] - table.bbox[0];
       if (!(tw > 0) || bw < 0.34 * tw || bw > tw * 1.08) continue;
@@ -14550,10 +14550,10 @@ function sourceAttrString(uid) {
 }
 function sourcePinOf(children) {
   for (const child of children || []) {
-    const text3 = String(child?.[":block/string"] ?? child?.string ?? "").trim();
-    const match = SOURCE_RE.exec(text3);
+    const text4 = String(child?.[":block/string"] ?? child?.string ?? "").trim();
+    const match = SOURCE_RE.exec(text4);
     if (!match) continue;
-    return { uid: match[1], string: text3 };
+    return { uid: match[1], string: text4 };
   }
   return null;
 }
@@ -14617,17 +14617,17 @@ function pinDeepLink({ graph, pageUid, pinUid } = {}) {
   return `#/app/${encodeURIComponent(g)}/page/${encodeURIComponent(page)}?pxd-pin=${encodeURIComponent(pin2)}`;
 }
 function pxdPinTarget(hash) {
-  const text3 = String(hash ?? "");
-  const q = text3.indexOf("?");
+  const text4 = String(hash ?? "");
+  const q = text4.indexOf("?");
   if (q < 0) return null;
   let pin2 = "";
   try {
-    pin2 = new URLSearchParams(text3.slice(q + 1).split("#")[0]).get("pxd-pin") || "";
+    pin2 = new URLSearchParams(text4.slice(q + 1).split("#")[0]).get("pxd-pin") || "";
   } catch {
     return null;
   }
   if (!UID_RE4.test(pin2)) return null;
-  return { pinUid: pin2, pageUid: pageUidFromHash(text3), graph: graphFromDeepLink(text3) };
+  return { pinUid: pin2, pageUid: pageUidFromHash(text4), graph: graphFromDeepLink(text4) };
 }
 function pinClickMode({ shiftKey = false, metaKey = false, ctrlKey = false } = {}) {
   if (shiftKey) return "sidebar";
@@ -14682,9 +14682,9 @@ function boardsFromRefs(rows) {
   return out;
 }
 function pinPdfUrl(url) {
-  const text3 = typeof url === "string" ? url.trim() : "";
-  if (!text3 || /\.enc(?:$|[?#])/i.test(text3)) return "";
-  return text3;
+  const text4 = typeof url === "string" ? url.trim() : "";
+  if (!text4 || /\.enc(?:$|[?#])/i.test(text4)) return "";
+  return text4;
 }
 function planPinWrites(spec) {
   const regions = Array.isArray(spec?.regions) ? spec.regions : [];
@@ -14735,7 +14735,7 @@ var init_pdf_pin = __esm({
       { id: "crop", label: "Copy crop as image", keys: "" },
       { id: "link", label: "Copy link", keys: "" }
     ]);
-    squash = (text3) => String(text3 ?? "").replace(/\s+/g, " ").trim();
+    squash = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
     PIN_PENDING_MS = 8e3;
   }
 });
@@ -15146,8 +15146,8 @@ function highlightHits(string) {
   let m;
   const s = String(string ?? "");
   while (m = re.exec(s)) {
-    const text3 = m[1].trim();
-    if (text3) out.push(text3);
+    const text4 = m[1].trim();
+    if (text4) out.push(text4);
   }
   return out;
 }
@@ -15292,9 +15292,9 @@ function commentCount(board2, uid) {
     const kid = board2.items.get(member);
     if (!kid) continue;
     const title = String(kid.title || "").trim();
-    const text3 = `${title} ${kid.string || ""}`.trim();
+    const text4 = `${title} ${kid.string || ""}`.trim();
     if (/^comments?$/i.test(title) && kid.members?.length) n2 += kid.members.length;
-    else if (/\{\{\[\[comment\]\]\}\}|^\[\[comment\]\]|^comment::/i.test(text3)) n2 += 1;
+    else if (/\{\{\[\[comment\]\]\}\}|^\[\[comment\]\]|^comment::/i.test(text4)) n2 += 1;
   }
   return n2;
 }
@@ -15377,8 +15377,8 @@ function presenterNote(board2, uid) {
   for (const member of item.members || []) {
     const kid = board2.items.get(member);
     const raw = kid?.string || kid?.title || "";
-    const text3 = String(raw).replace(/\s+/g, " ").trim();
-    if (text3) return text3.slice(0, 240);
+    const text4 = String(raw).replace(/\s+/g, " ").trim();
+    if (text4) return text4.slice(0, 240);
   }
   return "";
 }
@@ -15433,8 +15433,8 @@ function pageTitleToDate(title) {
   if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
   return date.getTime();
 }
-function parseIntervals(text3) {
-  const nums = String(text3 ?? "").split(",").map((part) => Number(part.trim())).filter((n2) => Number.isFinite(n2) && n2 > 0);
+function parseIntervals(text4) {
+  const nums = String(text4 ?? "").split(",").map((part) => Number(part.trim())).filter((n2) => Number.isFinite(n2) && n2 > 0);
   return nums.length ? nums : [...DEFAULT_INTERVALS];
 }
 function intervalLabel(days) {
@@ -15640,8 +15640,8 @@ function firstMention(rows) {
 function lastMention(rows) {
   return mentionMap(rows, "last");
 }
-function isoDate(text3) {
-  const match = /(\d{4})-(\d{2})-(\d{2})/.exec(String(text3 ?? ""));
+function isoDate(text4) {
+  const match = /(\d{4})-(\d{2})-(\d{2})/.exec(String(text4 ?? ""));
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]) - 1;
@@ -15658,8 +15658,8 @@ function blobsOf(item) {
   if (item?.string) blobs.push(String(item.string));
   if (item?.title) blobs.push(String(item.title));
   for (const kid of item?.content || item?.children || []) {
-    const text3 = kid?.[":block/string"] ?? kid?.string ?? "";
-    if (text3) blobs.push(String(text3));
+    const text4 = kid?.[":block/string"] ?? kid?.string ?? "";
+    if (text4) blobs.push(String(text4));
   }
   return blobs;
 }
@@ -15785,18 +15785,18 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
 function plainFootnotes(strings, opts = {}) {
   return planFootnotes(strings, { ...opts, startAt: 0, cap: 0 });
 }
-function markSpans(text3) {
+function markSpans(text4) {
   const spans = [];
-  const lead = LEAD_RE.exec(text3);
+  const lead = LEAD_RE.exec(text4);
   if (lead) spans.push({ start: lead[1].length, end: lead[0].length, raw: lead[3], bracket: true });
-  const trail = TRAIL_RE2.exec(text3);
+  const trail = TRAIL_RE2.exec(text4);
   if (trail) {
     const start = trail.index + trail[1].length;
     if (!spans.some((s) => start < s.end)) spans.push({ start, end: trail.index + trail[0].replace(/\s+$/, "").length, raw: trail[3], bracket: true, eat: trail[1].length });
   }
   RUN_RE.lastIndex = 0;
   let m;
-  while (m = RUN_RE.exec(text3)) {
+  while (m = RUN_RE.exec(text4)) {
     const start = m.index;
     const end = start + m[0].length;
     if (spans.some((s) => start < s.end && end > s.start)) continue;
@@ -15841,8 +15841,8 @@ function prepareTable(table, available2 = [], { format = "extension" } = {}) {
   const edits = /* @__PURE__ */ new Map();
   const order = [...table.cells].map((cell, index) => ({ cell, index })).filter(({ cell }) => !noteRowSet.has(cell.r)).sort((a, b) => a.cell.r - b.cell.r || a.cell.c - b.cell.c);
   for (const { cell, index } of order) {
-    const text3 = tableCellText(cell);
-    const spans = markSpans(text3).filter((s) => byMark.has(normalizeMark(s.raw)));
+    const text4 = tableCellText(cell);
+    const spans = markSpans(text4).filter((s) => byMark.has(normalizeMark(s.raw)));
     if (!spans.length) continue;
     edits.set(index, spans);
     for (const s of spans) {
@@ -15857,14 +15857,14 @@ function prepareTable(table, available2 = [], { format = "extension" } = {}) {
     if (!spans) return cell;
     let out = "";
     let at = 0;
-    const text3 = tableCellText(cell);
+    const text4 = tableCellText(cell);
     for (const s of spans) {
       const note = byMark.get(normalizeMark(s.raw));
-      out += text3.slice(at, s.start - (s.eat || 0));
+      out += text4.slice(at, s.start - (s.eat || 0));
       out += format === "plain" ? `(${numberOf.get(note)})` : refToken(note.id, note.mark);
       at = s.end;
     }
-    out += text3.slice(at);
+    out += text4.slice(at);
     return { ...cell, text: out.trim() };
   });
   const used = new Set(found.filter((n2) => n2.row != null).map((n2) => n2.row));
@@ -15881,7 +15881,7 @@ function prepareTable(table, available2 = [], { format = "extension" } = {}) {
     rowCount += found.length;
   }
   const prepared2 = { ...table, rows: rowCount, cells: next };
-  return { table: prepared2, notes: format === "plain" ? [] : found.map(({ id, mark, text: text3 }) => ({ id, mark, text: text3 })), used: found.length };
+  return { table: prepared2, notes: format === "plain" ? [] : found.map(({ id, mark, text: text4 }) => ({ id, mark, text: text4 })), used: found.length };
 }
 function pageNoteBlocks(doc, block) {
   const out = [];
@@ -15950,7 +15950,7 @@ var init_footnotes = __esm({
     TRAIL_RE2 = new RegExp(`(\\s*)([(\\[])\\s*(${BRACKET_INNER})\\s*([)\\]])\\s*$`);
     RUN_RE = new RegExp(`[${SUP_CLASS}]+|[${SYMBOLS}]+`, "g");
     refToken = (id, mark) => `${FN_OPEN}${id}${FN_SEP}${mark ?? ""}${FN_CLOSE}`;
-    defLine = (id, mark, text3) => `- ${FN_DEF}${id}${FN_SEP}${mark ?? ""}${FN_CLOSE}${text3 ?? ""}`;
+    defLine = (id, mark, text4) => `- ${FN_DEF}${id}${FN_SEP}${mark ?? ""}${FN_CLOSE}${text4 ?? ""}`;
     hasFootnoteTokens = (strings) => (Array.isArray(strings) ? strings : [strings]).some((s) => typeof s === "string" && (s.includes(FN_OPEN) || s.includes(FN_DEF)));
     REF_RE2 = new RegExp(`${FN_OPEN}([^${FN_SEP}${FN_CLOSE}]*)${FN_SEP}([^${FN_CLOSE}]*)${FN_CLOSE}`, "g");
     DEF_RE = new RegExp(`^[ \\t]*- ${FN_DEF}([^${FN_SEP}${FN_CLOSE}]*)${FN_SEP}([^${FN_CLOSE}]*)${FN_CLOSE}(.*)$`);
@@ -15959,15 +15959,15 @@ var init_footnotes = __esm({
 });
 
 // src/model/parse-to-roam-md.js
-function flattenLine(text3) {
-  return String(text3 ?? "").replace(/\r/g, ESCAPES.whitespace.cr).replace(/ /g, ESCAPES.whitespace.nbsp).replace(/\t/g, ESCAPES.whitespace.tab).replace(/\n/g, ESCAPES.whitespace.newline).replace(ESCAPES.control, "").replace(/ {2,}/g, " ").trim();
+function flattenLine(text4) {
+  return String(text4 ?? "").replace(/\r/g, ESCAPES.whitespace.cr).replace(/ /g, ESCAPES.whitespace.nbsp).replace(/\t/g, ESCAPES.whitespace.tab).replace(/\n/g, ESCAPES.whitespace.newline).replace(ESCAPES.control, "").replace(/ {2,}/g, " ").trim();
 }
 function wrapInline(match) {
   if (match.startsWith("`") && match.endsWith("`")) return match;
   return `\`${match}\``;
 }
-function linkSafeText(text3) {
-  let out = String(text3 ?? "");
+function linkSafeText(text4) {
+  let out = String(text4 ?? "");
   for (const rule of ESCAPES.link) {
     if (rule.id === "hash") {
       out = out.replace(rule.re, (full, pre, word) => `${pre}\`${word}\``);
@@ -15979,9 +15979,9 @@ function linkSafeText(text3) {
   }
   return out;
 }
-function escapeMarkdownText(text3, { leading = true } = {}) {
+function escapeMarkdownText(text4, { leading = true } = {}) {
   let out = "";
-  const src = String(text3 ?? "");
+  const src = String(text4 ?? "");
   for (let i = 0; i < src.length; i += 1) {
     const ch = src[i];
     out += ch === "\\" && i + 1 < src.length && ESCAPES.consumed.has(src[i + 1]) ? "\\\\" : ch;
@@ -15989,14 +15989,14 @@ function escapeMarkdownText(text3, { leading = true } = {}) {
   if (leading && ESCAPES.leading.some((rule) => rule.re.test(out))) out = `\\${out}`;
   return out;
 }
-function prepareLine(text3, { linkSafe, leading }) {
-  let line = flattenLine(text3);
+function prepareLine(text4, { linkSafe, leading }) {
+  let line = flattenLine(text4);
   if (linkSafe) line = linkSafeText(line);
   return escapeMarkdownText(line, { leading });
 }
-function applyFootnoteRefs(text3, refs, tokenFor) {
-  if (!refs?.length) return text3;
-  let out = text3;
+function applyFootnoteRefs(text4, refs, tokenFor) {
+  if (!refs?.length) return text4;
+  let out = text4;
   const inText = [];
   const placed = [];
   for (const ref of refs) {
@@ -16004,17 +16004,17 @@ function applyFootnoteRefs(text3, refs, tokenFor) {
     if (!mark) continue;
     const token = `[${mark}]`;
     const swap = tokenFor ? tokenFor(ref) : token;
-    if (text3.includes(token)) inText.push({ from: token, swap });
+    if (text4.includes(token)) inText.push({ from: token, swap });
     else {
       const sup2 = Object.keys(SUPERSCRIPT).find((ch) => SUPERSCRIPT[ch] === mark);
-      if (sup2 && text3.includes(sup2)) inText.push({ from: sup2, swap });
+      if (sup2 && text4.includes(sup2)) inText.push({ from: sup2, swap });
       else placed.push({ ref, swap });
     }
   }
   const word = /[\p{L}\p{N}]/u;
   let tail = "";
   for (const { ref, swap } of [...placed].sort((a, b) => (Number.isInteger(b.ref.at) ? b.ref.at : -1) - (Number.isInteger(a.ref.at) ? a.ref.at : -1))) {
-    if (!(Number.isInteger(ref.at) && ref.at >= 0 && ref.at <= text3.length)) {
+    if (!(Number.isInteger(ref.at) && ref.at >= 0 && ref.at <= text4.length)) {
       tail += swap;
       continue;
     }
@@ -16027,19 +16027,19 @@ function applyFootnoteRefs(text3, refs, tokenFor) {
   }
   return out + tail;
 }
-function bullet(depth, text3) {
-  return `${"  ".repeat(depth)}- ${text3 ?? ""}`;
+function bullet(depth, text4) {
+  return `${"  ".repeat(depth)}- ${text4 ?? ""}`;
 }
 function itemContent(item, ordered, numbered) {
   const marker = item.marker || (ordered ? "1." : "•");
-  const text3 = item.text ?? "";
+  const text4 = item.text ?? "";
   if (ordered && numbered) {
-    if (/^\d+\.$/.test(marker)) return marker === "1." ? `1. ${text3}` : `1. ${marker} ${text3}`;
-    return `1. ${marker} ${text3}`;
+    if (/^\d+\.$/.test(marker)) return marker === "1." ? `1. ${text4}` : `1. ${marker} ${text4}`;
+    return `1. ${marker} ${text4}`;
   }
-  if (ordered) return `• ${marker} ${text3}`;
-  if (!marker || marker === "•" || marker === "-" || marker === "*") return `• ${text3}`;
-  return `• ${marker} ${text3}`;
+  if (ordered) return `• ${marker} ${text4}`;
+  if (!marker || marker === "•" || marker === "-" || marker === "*") return `• ${text4}`;
+  return `• ${marker} ${text4}`;
 }
 function headingPrefix(level) {
   if (level === 1) return "# ";
@@ -16063,21 +16063,21 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
     const lines = [];
     const emittedNotes = /* @__PURE__ */ new Set();
     const foldedHere = new Set(folded);
-    const putUser = (depth, text3, prefix = "", suffix = "") => {
-      const line = prepareLine(text3, { linkSafe, leading: prefix === "" });
+    const putUser = (depth, text4, prefix = "", suffix = "") => {
+      const line = prepareLine(text4, { linkSafe, leading: prefix === "" });
       lines.push(bullet(depth, `${prefix}${line}${suffix}`));
     };
-    const emitRaw = (depth, text3) => {
-      lines.push(bullet(depth, text3));
+    const emitRaw = (depth, text4) => {
+      lines.push(bullet(depth, text4));
     };
     const emitNote = (note) => {
       if (!note || emittedNotes.has(note.id)) return;
       emittedNotes.add(note.id);
       const mark = note.mark ?? "";
       if (tokens2) {
-        let text3 = flattenLine(note.text ?? "");
-        if (linkSafe) text3 = linkSafeText(text3);
-        lines.push(defLine(note.id, mark, text3));
+        let text4 = flattenLine(note.text ?? "");
+        if (linkSafe) text4 = linkSafeText(text4);
+        lines.push(defLine(note.id, mark, text4));
         return;
       }
       putUser(0, note.text ?? "", `[${mark}] `);
@@ -16119,10 +16119,10 @@ function toRoamMarkdown(doc, idsOrRange, options = {}) {
       } else if (block.type === "list") {
         for (const item of block.items || []) {
           const depth = Number.isInteger(item.level) && item.level > 0 ? item.level : 0;
-          const text3 = item.text ?? "";
+          const text4 = item.text ?? "";
           if (block.ordered === true && numbered) {
             const marker = item.marker || "1.";
-            const body = marker === "1." ? text3 : `${marker} ${text3}`;
+            const body = marker === "1." ? text4 : `${marker} ${text4}`;
             putUser(depth, body, "1. ");
           } else {
             putUser(depth, itemContent(item, block.ordered === true, false));
@@ -16189,27 +16189,27 @@ function captionFor(block, byId2, doc) {
   }
   return "";
 }
-function figureImageAlt(text3, block) {
-  const flat2 = flattenLine(text3);
+function figureImageAlt(text4, block) {
+  const flat3 = flattenLine(text4);
   let sentence = "";
-  if (flat2) {
-    let end = flat2.length;
-    for (let i = 0; i < flat2.length; i += 1) {
-      const ch = flat2[i];
+  if (flat3) {
+    let end = flat3.length;
+    for (let i = 0; i < flat3.length; i += 1) {
+      const ch = flat3[i];
       if (ch !== "." && ch !== "!" && ch !== "?") continue;
       let j = i + 1;
-      while (j < flat2.length && /[\]\)"'”’]/.test(flat2[j])) j += 1;
-      const next = flat2[j];
+      while (j < flat3.length && /[\]\)"'”’]/.test(flat3[j])) j += 1;
+      const next = flat3[j];
       if (next != null && next !== " ") continue;
       if (ch === ".") {
-        const token = /([A-Za-z0-9]+)$/.exec(flat2.slice(0, i));
+        const token = /([A-Za-z0-9]+)$/.exec(flat3.slice(0, i));
         const word = token ? token[1] : "";
         if (word && (word.length <= 3 || /^\d+$/.test(word))) continue;
       }
       end = i + 1;
       break;
     }
-    sentence = flat2.slice(0, end).trim();
+    sentence = flat3.slice(0, end).trim();
     if (sentence.length > 80) sentence = sentence.slice(0, 80).trim();
   }
   if (sentence) return sentence;
@@ -16251,8 +16251,8 @@ function emitTable(block, putUser, emitRaw, byId2, folded, doc) {
   for (let r = 0; r < rows; r += 1) {
     for (let c = 0; c < cols; c += 1) {
       const key = `${r}:${c}`;
-      const text3 = covered.has(key) ? "" : at.get(key)?.text ?? "";
-      putUser(1 + c, text3);
+      const text4 = covered.has(key) ? "" : at.get(key)?.text ?? "";
+      putUser(1 + c, text4);
     }
   }
   const caption = captionFor(block, byId2, doc);
@@ -16334,17 +16334,17 @@ function attributeRows(strings) {
   for (const raw of strings || []) {
     const name = attrNameOf(raw);
     if (!name) continue;
-    const text3 = String(raw);
-    const cut = text3.indexOf("::");
-    out.push({ name, value: cut >= 0 ? text3.slice(cut + 2).trim() : "" });
+    const text4 = String(raw);
+    const cut = text4.indexOf("::");
+    out.push({ name, value: cut >= 0 ? text4.slice(cut + 2).trim() : "" });
   }
   return out;
 }
-function tagNames(text3) {
+function tagNames(text4) {
   const out = [];
   const re = /#\[\[([^\]\n]+)\]\]|#([^\s#[\]()]+)/g;
   let match;
-  const source = String(text3 ?? "");
+  const source = String(text4 ?? "");
   while (match = re.exec(source)) {
     const name = String(match[1] || match[2] || "").trim();
     if (name && !out.includes(name)) out.push(name);
@@ -16462,9 +16462,9 @@ function libraryKind(row4) {
   if (row4?.kind === "daily" || isDailyTitle(title)) return "daily";
   return "page";
 }
-function queryTerms(text3) {
+function queryTerms(text4) {
   const terms = [];
-  for (const m of String(text3 ?? "").toLowerCase().matchAll(/"([^"]*)"|(\S+)/g)) {
+  for (const m of String(text4 ?? "").toLowerCase().matchAll(/"([^"]*)"|(\S+)/g)) {
     const t = (m[1] ?? m[2] ?? "").replace(/\s+/g, " ").trim();
     if (t) terms.push(t);
   }
@@ -16526,14 +16526,14 @@ function blockDisplay(string, kind = blockKind(string), { pdfTitle = null } = {}
     const md = /^\[([^\]]*)\]\(\s*(https?:\/\/[^\s)]+)\s*\)$/i.exec(t);
     const url = md ? md[2] : t;
     const label = md ? md[1].trim() : "";
-    let text3 = url;
+    let text4 = url;
     try {
       const u = new URL(url);
       const path = u.pathname === "/" ? "" : u.pathname;
-      text3 = `${u.hostname.replace(/^www\./, "")}${path}`;
+      text4 = `${u.hostname.replace(/^www\./, "")}${path}`;
     } catch {
     }
-    return { text: label || text3, url, thumb: "" };
+    return { text: label || text4, url, thumb: "" };
   }
   return { text: s.slice(0, 120), url: "", thumb: "" };
 }
@@ -16629,9 +16629,9 @@ function dailyUid(date) {
   return `${mm}-${dd}-${d.getFullYear()}`;
 }
 function firstLine2(string) {
-  const text3 = String(string ?? "");
-  const cut = text3.search(/\r?\n/);
-  return cut < 0 ? text3 : text3.slice(0, cut);
+  const text4 = String(string ?? "");
+  const cut = text4.search(/\r?\n/);
+  return cut < 0 ? text4 : text4.slice(0, cut);
 }
 function childList2(tree) {
   if (!tree) return [];
@@ -16682,9 +16682,9 @@ function signatureOf(error) {
   const stack = error && typeof error.stack === "string" ? error.stack : "";
   let frame = "";
   for (const line of stack.split("\n")) {
-    const text3 = line.trim();
-    if (text3.startsWith("at ") || text3.includes("@")) {
-      frame = text3;
+    const text4 = line.trim();
+    if (text4.startsWith("at ") || text4.includes("@")) {
+      frame = text4;
       break;
     }
   }
@@ -16771,9 +16771,9 @@ function highlighterTags(string) {
   let match = re.exec(string);
   while (match) {
     const bg = bgName(match);
-    const text3 = textName(match);
+    const text4 = textName(match);
     if (bg && out.bg == null) out.bg = bg;
-    if (text3 && out.text == null) out.text = text3;
+    if (text4 && out.text == null) out.text = text4;
     if (out.bg != null && out.text != null) break;
     match = re.exec(string);
   }
@@ -16888,8 +16888,8 @@ function highlightRecord2(props) {
   if (!colon && !plain2) return null;
   const raw = colon ? props[":pdf-highlight"] : props["pdf-highlight"];
   if (!isObject3(raw)) return {};
-  const flat2 = plainKeys(raw);
-  return isObject3(flat2) ? flat2 : {};
+  const flat3 = plainKeys(raw);
+  return isObject3(flat3) ? flat3 : {};
 }
 function pageOf2(record) {
   const position = record.position;
@@ -17176,8 +17176,8 @@ var init_minimap_svg = __esm({
     VIEW_MAX_W = 240;
     VIEW_MAX_H = 140;
     CARD_CAP = 40;
-    clip2 = (text3, max) => {
-      const t = String(text3 ?? "").replace(/\s+/g, " ").trim();
+    clip2 = (text4, max) => {
+      const t = String(text4 ?? "").replace(/\s+/g, " ").trim();
       return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
     };
     previewFont = (viewWidth) => Math.max(12, Math.round(viewWidth / 32));
@@ -17565,11 +17565,11 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
       head.append(kbd);
     }
     tip.append(head);
-    const add = (cls, text3) => {
-      if (!text3) return;
+    const add = (cls, text4) => {
+      if (!text4) return;
       const line = doc.createElement("div");
       line.className = `pxd-tooltip__${cls}`;
-      line.textContent = text3;
+      line.textContent = text4;
       tip.append(line);
     };
     add("desc", info.desc);
@@ -17927,8 +17927,8 @@ function mountLazyCrop(doc, frame, { src, frac, points, win: win2 } = {}) {
   img.style.left = `${-(Number(f.rx) || 0) / rw * 100}%`;
   img.style.top = `${-(Number(f.ry) || 0) / rh * 100}%`;
   frame.append(img);
-  const clip6 = polygonClipInBox(f, points);
-  if (clip6) frame.style.clipPath = clip6;
+  const clip7 = polygonClipInBox(f, points);
+  if (clip7) frame.style.clipPath = clip7;
   const show = () => {
     if (src) img.setAttribute("src", src);
   };
@@ -18201,23 +18201,23 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     el.className = `pxd-root ${POP_CLASS}`;
     el.setAttribute("role", "dialog");
     el.setAttribute("aria-label", "Connection preview");
-    const mk = (tag, cls, parent, text3) => {
+    const mk = (tag, cls, parent, text4) => {
       const n2 = doc.createElement(tag);
       n2.className = cls;
-      if (text3 !== void 0) n2.textContent = text3;
+      if (text4 !== void 0) n2.textContent = text4;
       parent?.append(n2);
       return n2;
     };
     const head = mk("div", "pxd-relpop__head", el);
     mk("div", "pxd-relpop__title", head, rel ? chipText({ ...rel }).replace(/^↗ /, "") : "This connection is no longer on a board");
     if (endpointUid) {
-      let text3 = "";
+      let text4 = "";
       try {
-        text3 = blockText3(endpointUid) || "";
+        text4 = blockText3(endpointUid) || "";
       } catch {
-        text3 = "";
+        text4 = "";
       }
-      const region = parseRegion(text3);
+      const region = parseRegion(text4);
       const cropFrac = imageRegionFrac(region);
       if (cropFrac && (region.kind === "img" || region.kind === "imgpoly" || region.kind === "imgrect") && !region.error) {
         let drawing = "";
@@ -18242,8 +18242,8 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     else mk("div", "pxd-relpop__empty", el, "The connected cards could not be found on the board.");
     if (!endpointUid && rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip3(rel.toBlockText, 60)}”`);
     const row4 = mk("div", "pxd-relpop__actions", el);
-    const button2 = (tip, text3, fn) => {
-      const b = mk("button", "pxd-btn pxd-relpop__btn", row4, text3);
+    const button2 = (tip, text4, fn) => {
+      const b = mk("button", "pxd-btn pxd-relpop__btn", row4, text4);
       b.type = "button";
       b.setAttribute("data-tip", tip);
       b.addEventListener("click", (event) => {
@@ -18556,8 +18556,8 @@ var init_relchips = __esm({
     MODEL_TTL_MS = 5e3;
     BLOCK_SELECTOR = ".roam-block";
     isInput = (el) => String(el?.id || "").startsWith("block-input-");
-    clip3 = (text3, max) => {
-      const t = String(text3 ?? "").replace(/\s+/g, " ").trim();
+    clip3 = (text4, max) => {
+      const t = String(text4 ?? "").replace(/\s+/g, " ").trim();
       return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
     };
     endName = (name, blockText3) => {
@@ -18582,9 +18582,9 @@ function setTaskAttrNames(map) {
   liveNames = map instanceof Map && map.size ? map : null;
   namesSig = liveNames ? [...liveNames].map(([id, set]) => `${id}=${[...set].sort().join("|")}`).join(";") : "";
 }
-function taskAttrId(text3, names = liveNames) {
-  if (String(text3 ?? "").trim() === ACTIVITY_LOG) return "activity";
-  const name = attrNameOf(text3);
+function taskAttrId(text4, names = liveNames) {
+  if (String(text4 ?? "").trim() === ACTIVITY_LOG) return "activity";
+  const name = attrNameOf(text4);
   if (!name) return null;
   const key = lower(name);
   if (names) {
@@ -18622,10 +18622,10 @@ function dueChip(content, today = /* @__PURE__ */ new Date()) {
   let raw = null;
   let title = "";
   for (const child of content || []) {
-    const text3 = String(childString2(child));
-    if (taskAttrId(text3) !== "due") continue;
-    raw = text3;
-    const rest = text3.slice(text3.indexOf("::") + 2).trim();
+    const text4 = String(childString2(child));
+    if (taskAttrId(text4) !== "due") continue;
+    raw = text4;
+    const rest = text4.slice(text4.indexOf("::") + 2).trim();
     const wiki = /^\[\[([\s\S]+)\]\]$/.exec(rest);
     title = (wiki ? wiki[1] : rest).trim();
     break;
@@ -18650,8 +18650,8 @@ function dayChoices(today = /* @__PURE__ */ new Date()) {
     { label: "Next week", value: at(toMonday) }
   ];
 }
-function attrValue(text3) {
-  const rest = String(text3).slice(String(text3).indexOf("::") + 2).trim();
+function attrValue(text4) {
+  const rest = String(text4).slice(String(text4).indexOf("::") + 2).trim();
   const ref = /\[\[([^\]]+)\]\]/.exec(rest);
   if (ref) return ref[1].trim();
   return rest.replace(/\{\{[\s\S]*$/, "").trim();
@@ -18667,11 +18667,11 @@ function taskMeta(string, content, today = /* @__PURE__ */ new Date(), names = l
   }
   const seen = /* @__PURE__ */ new Set();
   for (const child of content || []) {
-    const text3 = String(childString2(child));
-    const id = taskAttrId(text3, names);
+    const text4 = String(childString2(child));
+    const id = taskAttrId(text4, names);
     if (!id || id === "other" || id === "activity" || seen.has(id)) continue;
     seen.add(id);
-    const value = attrValue(text3);
+    const value = attrValue(text4);
     if (!value) continue;
     if (id === "due") {
       const chip = dueChip([child], today);
@@ -18808,12 +18808,12 @@ function paletteVars(entry, theme) {
   };
 }
 function taskStatusOf(string, palette) {
-  const text3 = String(string ?? "");
+  const text4 = String(string ?? "");
   let raw = "";
-  const meta = taskMeta(text3, []);
+  const meta = taskMeta(text4, []);
   if (meta?.status) raw = meta.status;
   else {
-    const tag = STATUS_TAG2.exec(text3);
+    const tag = STATUS_TAG2.exec(text4);
     if (tag) raw = tag[1].trim();
   }
   if (!raw) return null;
@@ -18945,10 +18945,10 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     placeAgain = () => {
     };
   };
-  const el = (tag, cls, parent, text3) => {
+  const el = (tag, cls, parent, text4) => {
     const n2 = doc.createElement(tag);
     n2.className = cls;
-    if (text3 != null) n2.textContent = text3;
+    if (text4 != null) n2.textContent = text4;
     parent?.append(n2);
     return n2;
   };
@@ -19393,9 +19393,9 @@ function quickLookTitle(item, displayTitle) {
   if (shown && !shown.startsWith("{{") && !shown.startsWith("((")) return shown;
   const title = typeof item?.title === "string" ? item.title.trim() : "";
   if (title && !title.startsWith("{{") && !title.startsWith("((")) return title;
-  const text3 = typeof item?.string === "string" ? item.string.trim() : "";
-  if (text3 && !text3.startsWith("{{") && !text3.startsWith("((")) return text3;
-  return item?.kind === "pdf" ? "PDF" : text3;
+  const text4 = typeof item?.string === "string" ? item.string.trim() : "";
+  if (text4 && !text4.startsWith("{{") && !text4.startsWith("((")) return text4;
+  return item?.kind === "pdf" ? "PDF" : text4;
 }
 function startPage(cardPage, total) {
   const n2 = Math.floor(Number(cardPage));
@@ -19413,8 +19413,8 @@ function pdfDockLift(card2, obstacles, zoom = 1, { clipBottom = Infinity } = {})
   if (!(w > 0) || !(h > 0)) return 0;
   const bottom = top + h;
   const floor = top + Math.min(h * 0.35, 96);
-  const clip6 = Number(clipBottom);
-  let edge = Number.isFinite(clip6) && clip6 < bottom ? clip6 - 6 : bottom;
+  const clip7 = Number(clipBottom);
+  let edge = Number.isFinite(clip7) && clip7 < bottom ? clip7 - 6 : bottom;
   for (let pass = 0; pass < list.length; pass += 1) {
     let moved = false;
     for (const r of list) {
@@ -19784,8 +19784,8 @@ function buildPartsIndex(doc, { url = "", docTitle = "", pdfUid = "" } = {}) {
   for (const id of order) {
     const b = blocks[id];
     if (b?.type === "caption" && b.for && blocks[b.for]) {
-      const text3 = squash2(b.text);
-      if (text3) attached.set(b.for, attached.has(b.for) ? `${attached.get(b.for)} ${text3}` : text3);
+      const text4 = squash2(b.text);
+      if (text4) attached.set(b.for, attached.has(b.for) ? `${attached.get(b.for)} ${text4}` : text4);
     }
   }
   const rows = [];
@@ -19793,16 +19793,16 @@ function buildPartsIndex(doc, { url = "", docTitle = "", pdfUid = "" } = {}) {
     const b = blocks[id];
     const kind = b && PART_OF[b.type];
     if (!kind) continue;
-    let text3 = blockText(b);
+    let text4 = blockText(b);
     const cap4 = attached.get(b.id ?? id) || (typeof b.caption === "string" && !blocks[b.caption] ? squash2(b.caption) : "");
-    if (cap4 && kind !== "caption" && !text3.includes(cap4)) text3 = text3 ? `${text3} ${cap4}` : cap4;
-    if (!text3 && kind === "figure") text3 = "Figure";
-    if (!text3) continue;
+    if (cap4 && kind !== "caption" && !text4.includes(cap4)) text4 = text4 ? `${text4} ${cap4}` : cap4;
+    if (!text4 && kind === "figure") text4 = "Figure";
+    if (!text4) continue;
     rows.push({
       kind,
       page: Number(b.page) || 0,
-      text: text3,
-      lower: text3.toLowerCase(),
+      text: text4,
+      lower: text4.toLowerCase(),
       docTitle,
       url,
       pdfUid,
@@ -19823,9 +19823,9 @@ function countHits(hay, needle) {
   }
   return n2;
 }
-function searchParts(rows, { text: text3 = "", kinds = [], pages = "" } = {}, limit = 40) {
-  const phrase = String(text3 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
-  const terms = queryTerms(text3);
+function searchParts(rows, { text: text4 = "", kinds = [], pages = "" } = {}, limit = 40) {
+  const phrase = String(text4 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
+  const terms = queryTerms(text4);
   const kindSet = kinds && kinds.length ? new Set(kinds) : null;
   const range = parsePageRange(pages);
   const hits = [];
@@ -19855,8 +19855,8 @@ function searchParts(rows, { text: text3 = "", kinds = [], pages = "" } = {}, li
   hits.sort((a, b) => b.exact - a.exact || b.count - a.count || a.seq - b.seq);
   return hits.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map(({ row: row4, count }) => ({ ...row4, hits: terms.length ? count : 0 }));
 }
-function partSnippet(text3, needle, width = SNIPPET_W) {
-  const t = squash2(text3);
+function partSnippet(text4, needle, width = SNIPPET_W) {
+  const t = squash2(text4);
   const low = t.toLowerCase();
   const phrase = String(needle ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
   let n2 = "";
@@ -19890,7 +19890,7 @@ var init_parts_search = __esm({
     init_library();
     PART_OF = { heading: "heading", para: "paragraph", list: "paragraph", footnote: "paragraph", code: "paragraph", table: "table", figure: "figure", formula: "formula", caption: "caption" };
     SNIPPET_W = 120;
-    squash2 = (text3) => String(text3 ?? "").replace(/\s+/g, " ").trim();
+    squash2 = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
     PART_LABELS = { paragraph: "Paragraph", table: "Table", figure: "Figure", caption: "Caption", heading: "Heading", formula: "Formula" };
   }
 });
@@ -20035,8 +20035,8 @@ function colorPalette(rgba, { k = 5, iterations = 10 } = {}) {
   out.sort((a, b) => b.weight - a.weight);
   return out;
 }
-function colorQuery(text3) {
-  const t = String(text3 ?? "").trim().toLowerCase();
+function colorQuery(text4) {
+  const t = String(text4 ?? "").trim().toLowerCase();
   if (!t) return null;
   const named = COLOR_ANCHORS[t];
   if (named) {
@@ -20080,6 +20080,60 @@ function colorScore(palette, target) {
     if (s > best) best = s;
   }
   return best;
+}
+function paletteDistance(a, b) {
+  const A = Array.isArray(a) ? a : [];
+  const B = Array.isArray(b) ? b : [];
+  const n2 = A.length;
+  const m = B.length;
+  if (!n2 || !m) return Infinity;
+  const ra = new Float64Array(n2);
+  const rb = new Float64Array(m);
+  let sa = 0;
+  let sb = 0;
+  for (let i = 0; i < n2; i += 1) {
+    ra[i] = Math.max(0, Number(A[i]?.weight) || 0);
+    sa += ra[i];
+  }
+  for (let j = 0; j < m; j += 1) {
+    rb[j] = Math.max(0, Number(B[j]?.weight) || 0);
+    sb += rb[j];
+  }
+  if (!(sa > 0) || !(sb > 0)) return Infinity;
+  for (let i = 0; i < n2; i += 1) ra[i] /= sa;
+  for (let j = 0; j < m; j += 1) rb[j] /= sb;
+  const d = new Float64Array(n2 * m);
+  for (let i = 0; i < n2; i += 1) {
+    const x = A[i].lab;
+    for (let j = 0; j < m; j += 1) {
+      const y = B[j].lab;
+      d[i * m + j] = Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+    }
+  }
+  let cost = 0;
+  for (let step = 0; step < n2 + m; step += 1) {
+    let at = -1;
+    let best = Infinity;
+    for (let i2 = 0; i2 < n2; i2 += 1) {
+      if (ra[i2] <= 1e-12) continue;
+      for (let j2 = 0; j2 < m; j2 += 1) {
+        if (rb[j2] <= 1e-12) continue;
+        const v = d[i2 * m + j2];
+        if (v < best) {
+          best = v;
+          at = i2 * m + j2;
+        }
+      }
+    }
+    if (at < 0) break;
+    const i = Math.floor(at / m);
+    const j = at % m;
+    const move = Math.min(ra[i], rb[j]);
+    cost += move * best;
+    ra[i] -= move;
+    rb[j] -= move;
+  }
+  return cost;
 }
 var LIN, hex2, toHex, GRAY_CHROMA, CHROMA_MIN, CLOSE_AT, HEX_OK, HUE_RANGES, HUE_CHROMA_MIN, BROWN_L_MAX, BROWN_C_MAX, COLOR_MIN_SCORE, ANCHOR_HEX, COLOR_NAMES, COLOR_ANCHORS;
 var init_color = __esm({
@@ -20135,20 +20189,20 @@ var init_color = __esm({
 
 // src/model/anydoc-to-parse.js
 function officeFormatFromName(name) {
-  const text3 = String(name || "");
-  if (ENC.test(text3)) return null;
-  const base = text3.split(/[?#]/)[0];
+  const text4 = String(name || "");
+  if (ENC.test(text4)) return null;
+  const base = text4.split(/[?#]/)[0];
   const match = /\.([A-Za-z0-9]+)$/.exec(base);
   if (!match) return null;
   const ext = match[1].toLowerCase();
   return OFFICE_EXT.has(ext) ? ext : null;
 }
 function officeFormatFromUrl(url) {
-  const text3 = String(url || "").trim();
-  if (!text3 || ENC.test(text3)) return null;
-  let path = text3.split(/[?#]/)[0];
+  const text4 = String(url || "").trim();
+  if (!text4 || ENC.test(text4)) return null;
+  let path = text4.split(/[?#]/)[0];
   try {
-    path = new URL(text3).pathname;
+    path = new URL(text4).pathname;
   } catch {
   }
   return officeFormatFromName(path);
@@ -20162,12 +20216,12 @@ function nameFromUrl(url) {
   }
 }
 function officeFetchAllowed(url) {
-  const text3 = String(url || "").trim();
-  if (!text3 || ENC.test(text3)) return false;
-  return /^https:\/\//i.test(text3);
+  const text4 = String(url || "").trim();
+  if (!text4 || ENC.test(text4)) return false;
+  return /^https:\/\//i.test(text4);
 }
-function officeTargetFromText(text3) {
-  const raw = String(text3 || "").trim();
+function officeTargetFromText(text4) {
+  const raw = String(text4 || "").trim();
   if (!raw || raw.length > 4e3) return null;
   const linked = /^\[([^\]]*)\]\(([^)\s]+)\)\s*$/.exec(raw);
   if (linked) {
@@ -20191,15 +20245,15 @@ function officeTargetFromText(text3) {
   return null;
 }
 function inlineText(value) {
-  let text3 = String(value ?? "");
-  text3 = text3.replace(/!\[[^\]]*\]\([^)]*\)/g, " ");
-  text3 = text3.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
-  text3 = text3.replace(/`([^`]*)`/g, "$1");
-  text3 = text3.replace(/\*\*([^*]+)\*\*/g, "$1");
-  text3 = text3.replace(/~~([^~]+)~~/g, "$1");
-  text3 = text3.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1$2");
-  text3 = text3.replace(/<[^>]+>/g, "");
-  return text3.replace(/\s+/g, " ").trim();
+  let text4 = String(value ?? "");
+  text4 = text4.replace(/!\[[^\]]*\]\([^)]*\)/g, " ");
+  text4 = text4.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
+  text4 = text4.replace(/`([^`]*)`/g, "$1");
+  text4 = text4.replace(/\*\*([^*]+)\*\*/g, "$1");
+  text4 = text4.replace(/~~([^~]+)~~/g, "$1");
+  text4 = text4.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1$2");
+  text4 = text4.replace(/<[^>]+>/g, "");
+  return text4.replace(/\s+/g, " ").trim();
 }
 function isAnchorLine(line) {
   return /^\s*<a\s+id="[^"]*"\s*\/?\s*>(?:\s*<\/a>)?\s*$/i.test(line);
@@ -20211,10 +20265,10 @@ function isListLine(line) {
   return /^(\s*)([-*+]|\d+\.)\s+\S/.test(line);
 }
 function splitRow(line) {
-  let text3 = String(line || "").trim();
-  if (text3.startsWith("|")) text3 = text3.slice(1);
-  if (text3.endsWith("|")) text3 = text3.slice(0, -1);
-  return text3.split("|").map((cell) => cell.trim());
+  let text4 = String(line || "").trim();
+  if (text4.startsWith("|")) text4 = text4.slice(1);
+  if (text4.endsWith("|")) text4 = text4.slice(0, -1);
+  return text4.split("|").map((cell) => cell.trim());
 }
 function isSeparator(line) {
   const cells = splitRow(line);
@@ -20344,7 +20398,7 @@ function parseMarkdownBlocks(markdown) {
       blocks.push({
         type: "list",
         ordered: items.length > 0 && items.every((item) => item.ordered),
-        items: items.map(({ text: text4, level, marker }) => ({ text: text4, level, marker }))
+        items: items.map(({ text: text5, level, marker }) => ({ text: text5, level, marker }))
       });
       continue;
     }
@@ -20354,8 +20408,8 @@ function parseMarkdownBlocks(markdown) {
       buf.push(lines[i]);
       i += 1;
     }
-    const text3 = inlineText(buf.join(" "));
-    if (text3) blocks.push({ type: "para", text: text3 });
+    const text4 = inlineText(buf.join(" "));
+    if (text4) blocks.push({ type: "para", text: text4 });
   }
   return blocks;
 }
@@ -20565,7 +20619,7 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   if (own) return [{ string: own }];
   const officeFiles = officeFilesFrom(dataTransfer);
   if (officeFiles.length) return officeFiles.map((office) => ({ office }));
-  const tokens2 = (text3) => text3.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
+  const tokens2 = (text4) => text4.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
   let uids = tokens2(take("roam/block-uid-list-only-parents"));
   if (!uids.length) uids = tokens2(take("roam/block-uid-list"));
   if (!uids.length) {
@@ -20602,8 +20656,8 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
     }
     if (out.length) return out;
   }
-  const soleOffice = (text3) => {
-    const lines = String(text3 || "").split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+  const soleOffice = (text4) => {
+    const lines = String(text4 || "").split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
     if (lines.length !== 1) return null;
     return officeTargetFromText(lines[0]);
   };
@@ -20634,8 +20688,8 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   }
   return [];
 }
-function textCardMarkdown({ text: text3, page, quote = false } = {}) {
-  let line = flattenLine(text3);
+function textCardMarkdown({ text: text4, page, quote = false } = {}) {
+  let line = flattenLine(text4);
   if (!line) return "";
   if (line.length > TEXT_CARD_MAX) line = `${line.slice(0, TEXT_CARD_MAX - 1).trimEnd()}…`;
   const n2 = Number(page);
@@ -20958,10 +21012,10 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     el2.addEventListener(type, fn, opts);
     listeners3.push(() => el2.removeEventListener(type, fn, opts));
   };
-  const el = (tag, cls, parent, text3) => {
+  const el = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
-    if (text3 !== void 0) node2.textContent = text3;
+    if (text4 !== void 0) node2.textContent = text4;
     parent?.append(node2);
     return node2;
   };
@@ -21149,6 +21203,13 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     swatchBtns.set(name, b);
   }
   paintTypes();
+  const likeChip = el("div", "pxd-panel__like", searchPane);
+  likeChip.style.display = "none";
+  const likeText = el("span", "pxd-panel__like-text", likeChip);
+  const likeClear = el("button", "pxd-panel__like-x", likeChip, "×");
+  likeClear.type = "button";
+  likeClear.setAttribute("aria-label", "Clear similar-image search");
+  likeClear.setAttribute("title", "Clear");
   const results = el("div", "pxd-panel__list", searchPane);
   const indexNote = el("div", "pxd-panel__index-note", searchPane);
   indexNote.style.display = "none";
@@ -21246,6 +21307,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   const infoTabsBar = el("div", "pxd-panel__infotabs", infoPane);
   const infoScroll = el("div", "pxd-panel__info", infoPane);
   let tab = "search";
+  let like = null;
   let debounce = null;
   let selected = null;
   let relatedRows = [];
@@ -21261,7 +21323,21 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       dot.style.background = hex;
     }
   };
-  const row4 = (parent, { string, label, text: text3, kind, url, thumb: thumb2, palette }) => {
+  const likeButton = (parent, key, name) => {
+    if (!key || typeof on.searchImages !== "function") return;
+    const b = el("button", "pxd-panel__row-act pxd-panel__row-like", parent);
+    b.setAttribute("type", "button");
+    b.setAttribute("aria-label", "More like this");
+    b.setAttribute("title", "More like this");
+    b.dataset.like = key;
+    b.setAttribute("data-like", key);
+    el("span", "bp3-icon bp3-icon-style", b).setAttribute("aria-hidden", "true");
+    listen(b, "click", (event) => {
+      event.stopPropagation();
+      startLike(key, name);
+    });
+  };
+  const row4 = (parent, { string, label, text: text4, kind, url, thumb: thumb2, palette, likeKey, likeName }) => {
     const r = el("div", "pxd-panel__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
@@ -21278,12 +21354,12 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       img.setAttribute("width", "40");
       img.setAttribute("height", "40");
     }
-    let shown = text3;
+    let shown = text4;
     if (kind === "pdf" && url) {
       try {
-        shown = on.pdfTitle?.(url) || text3;
+        shown = on.pdfTitle?.(url) || text4;
       } catch {
-        shown = text3;
+        shown = text4;
       }
     }
     if (thumb2) {
@@ -21294,6 +21370,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
     }
     paletteDots(r, palette);
+    likeButton(r, likeKey, likeName);
     if (on.isOnBoard?.(string)) {
       r.classList.add("pxd-panel__row--on");
       el("span", "pxd-panel__row-on", r, "on board");
@@ -21334,12 +21411,24 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
         on.askPart(part);
       });
     }
+    if (part.kind === "figure" && typeof on.chartPart === "function") {
+      const chart = el("button", "pxd-panel__row-act pxd-panel__row-chart", head2);
+      chart.setAttribute("type", "button");
+      chart.setAttribute("aria-label", "Chart to table");
+      chart.setAttribute("title", "Chart → table");
+      el("span", "bp3-icon bp3-icon-timeline-line-chart", chart).setAttribute("aria-hidden", "true");
+      listen(chart, "click", (event) => {
+        event.stopPropagation();
+        on.chartPart(part);
+      });
+    }
     const snip = partSnippet(part.text, needle);
     const body = el("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
     if (snip.before) body.append(snip.before);
     if (snip.hit) el("mark", "pxd-panel__mark", body, snip.hit);
     if (snip.after) body.append(snip.after);
     paletteDots(r, part.palette);
+    if (part.kind === "figure") likeButton(head2, part.key, `Figure p. ${part.page}`);
     const payload = {
       sha256: part.sha256,
       engine: part.engine || "builtin",
@@ -21373,10 +21462,73 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     days: daysInput.value,
     orphan: orphanBox.checked === true
   });
+  const paintLike = () => {
+    likeChip.style.display = like ? "" : "none";
+    likeText.textContent = like ? `Like: ${like.name}` : "";
+  };
+  const imageName = (img) => {
+    const alt = /!\[([^\]]*)\]/.exec(String(img?.string ?? ""));
+    return alt && alt[1].trim() || String(img?.pageTitle || "").trim() || "image";
+  };
+  const runSimilar = async (id) => {
+    const wantImages = checked.has("image");
+    const wantFigures = checked.has("figure");
+    if (!wantImages && !wantFigures) {
+      el("div", "pxd-panel__empty", results, "Turn on Image or Figure to compare");
+      return;
+    }
+    let found = null;
+    try {
+      found = await Promise.resolve(on.searchImages({ like: like.key, images: wantImages, figures: wantFigures }, LIMIT));
+    } catch {
+      found = null;
+    }
+    if (id !== queryId || !like) return;
+    results.replaceChildren();
+    if (found?.similar === false) {
+      el("div", "pxd-panel__empty", results, "This image has no colours yet. Try again in a moment");
+      return;
+    }
+    const images = Array.isArray(found?.images) ? found.images : [];
+    const figures = Array.isArray(found?.figures) ? found.figures : [];
+    if (!images.length && !figures.length) {
+      el("div", "pxd-panel__empty", results, "No similar images");
+      return;
+    }
+    const draw = (item, figure) => {
+      if (figure) partRow(results, item, "");
+      else row4(results, { ...libraryCard({ kind: "block", uid: item.uid, string: item.string, pageTitle: item.pageTitle }), palette: item.palette, likeKey: item.key, likeName: imageName(item) });
+    };
+    const order = Array.isArray(found?.order) ? found.order : null;
+    if (order) order.forEach((item) => draw(item, item.kind === "figure"));
+    else {
+      images.forEach((i) => draw(i, false));
+      figures.forEach((f) => draw(f, true));
+    }
+  };
+  const startLike = (key, name) => {
+    like = { key, name: String(name || "image").slice(0, 40) };
+    paintLike();
+    searchNow();
+  };
+  const clearLike = () => {
+    if (!like) return;
+    like = null;
+    paintLike();
+    searchNow();
+  };
+  listen(likeClear, "click", (event) => {
+    event.stopPropagation();
+    clearLike();
+  });
   const runSearch = async () => {
     const filter = readFilter();
     const id = queryId += 1;
     results.replaceChildren();
+    if (like) {
+      await runSimilar(id);
+      return;
+    }
     if (checked.size === 0) {
       el("div", "pxd-panel__empty", results, "No card types selected");
       return;
@@ -21446,7 +21598,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       return;
     }
     rows.forEach((r) => row4(results, r));
-    images.forEach((img) => row4(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette }));
+    images.forEach((img) => row4(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette, likeKey: img.key, likeName: imageName(img) }));
     parts.forEach((part) => partRow(results, part, needle));
     figures.forEach((part) => partRow(results, part, needle));
   };
@@ -21468,6 +21620,10 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       on.typing?.();
     } catch {
     }
+    if (like) {
+      like = null;
+      paintLike();
+    }
     paintSwatches();
     scheduleSearch();
   });
@@ -21483,6 +21639,10 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     if (at >= 0) tokens2.splice(at, 1);
     else tokens2.push(name);
     input.value = tokens2.join(" ");
+    if (like) {
+      like = null;
+      paintLike();
+    }
     paintSwatches();
     searchNow();
   });
@@ -21826,9 +21986,9 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     for (const rel of list) {
       const t = rel.target || {};
       const string = t.kind === "page" ? `[[${t.title}]]` : `((${t.uid}))`;
-      const text3 = rel.text || (t.kind === "page" ? t.title : t.uid) || "";
+      const text4 = rel.text || (t.kind === "page" ? t.title : t.uid) || "";
       relatedRows.push({ string });
-      row4(relatedList, { string, label: rel.relation || "related", text: text3, kind: t.kind });
+      row4(relatedList, { string, label: rel.relation || "related", text: text4, kind: t.kind });
     }
     if (!list.length) el("div", "pxd-panel__empty", relatedList, "Nothing related yet");
     addAll.style.display = list.length ? "" : "none";
@@ -21847,10 +22007,10 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       const r = el("div", "pxd-panel__board-row", boardsList);
       r.dataset.uid = b.uid;
       r.setAttribute("data-uid", b.uid);
-      const text3 = el("div", "pxd-panel__board-text", r);
-      el("span", "pxd-panel__board-title", text3, b.title || "Untitled board");
+      const text4 = el("div", "pxd-panel__board-text", r);
+      el("span", "pxd-panel__board-title", text4, b.title || "Untitled board");
       const page = b.page || b.pageTitle;
-      if (page) el("span", "pxd-panel__board-page", text3, page);
+      if (page) el("span", "pxd-panel__board-page", text4, page);
       const n2 = b.count ?? b.itemCount ?? b.items;
       if (Number.isFinite(n2)) el("span", "pxd-panel__board-count", r, `${n2} ${n2 === 1 ? "item" : "items"}`);
       const add = el("button", "pxd-btn pxd-panel__board-add", r, "Add shortcut");
@@ -22665,14 +22825,14 @@ function paintThumb(doc, node2, blob) {
   node2._pxdObjectUrl = url;
   img.src = url;
 }
-function mountButton(doc, node2, className, text3, onClick) {
+function mountButton(doc, node2, className, text4, onClick) {
   node2.querySelector(`.${className}`)?.remove();
   const btn2 = doc.createElement("button");
   btn2.type = "button";
   btn2.setAttribute("type", "button");
   btn2.className = className;
-  btn2.textContent = text3;
-  btn2.setAttribute("aria-label", text3);
+  btn2.textContent = text4;
+  btn2.setAttribute("aria-label", text4);
   const stop3 = (event) => event.stopPropagation?.();
   btn2.addEventListener("pointerdown", stop3);
   btn2.addEventListener("mousedown", stop3);
@@ -22762,13 +22922,13 @@ function onPress(el, fn) {
     fn();
   });
 }
-function mountButton2(doc, node2, className, text3, fn) {
+function mountButton2(doc, node2, className, text4, fn) {
   node2.querySelector(`.${className}`)?.remove();
   const btn2 = doc.createElement("button");
   btn2.type = "button";
   btn2.setAttribute("type", "button");
   btn2.className = className;
-  btn2.textContent = text3;
+  btn2.textContent = text4;
   onPress(btn2, fn);
   node2.append(btn2);
   return btn2;
@@ -22968,8 +23128,8 @@ function plainVersion(value) {
 }
 function apiVersionText(api2) {
   if (!api2 || typeof api2 !== "object") return "";
-  const text3 = plainVersion(api2.apiVersion);
-  return text3 ? `apiVersion ${text3}` : "";
+  const text4 = plainVersion(api2.apiVersion);
+  return text4 ? `apiVersion ${text4}` : "";
 }
 function row3(id, label, state, version) {
   return { id, label, state, version: version || "" };
@@ -23009,23 +23169,23 @@ function compass(win2) {
   return row3("compass", "Compass", FOUND, flag || apiVersionText(api2));
 }
 function styleText(doc) {
-  let text3 = "";
+  let text4 = "";
   try {
     const nodes = typeof doc.querySelectorAll === "function" ? doc.querySelectorAll("style") : [];
-    for (const node2 of nodes || []) text3 += String(node2?.textContent || "");
+    for (const node2 of nodes || []) text4 += String(node2?.textContent || "");
   } catch {
   }
   const sheets = doc?.styleSheets;
-  if (!sheets) return text3;
+  if (!sheets) return text4;
   for (const sheet of sheets) {
     try {
       const rules = sheet?.cssRules || sheet?.rules;
       if (!rules) continue;
-      for (const rule of rules) text3 += String(rule?.cssText || "");
+      for (const rule of rules) text4 += String(rule?.cssText || "");
     } catch {
     }
   }
-  return text3;
+  return text4;
 }
 function highlighterVars(win2) {
   const doc = win2?.document;
@@ -23059,8 +23219,8 @@ function highlighterMarker(win2) {
     if (typeof doc.querySelector === "function" && doc.querySelector('[id*="roam-extension-color-highlighter"]')) return true;
   } catch {
   }
-  const text3 = styleText(doc);
-  return text3.includes('[data-tag^=".bg-"]') || text3.includes("--cl-lh-");
+  const text4 = styleText(doc);
+  return text4.includes('[data-tag^=".bg-"]') || text4.includes("--cl-lh-");
 }
 function highlighterGlobal(win2) {
   for (const key of ["RoamColorHighlighter", "colorHighlighter"]) {
@@ -23143,14 +23303,14 @@ function ring(cap4) {
   };
 }
 function isPlexusExtensionUrl(url, own = OWN_URL) {
-  const text3 = String(url || "");
+  const text4 = String(url || "");
   if (typeof own !== "string") own = OWN_URL;
-  if (!text3) return false;
-  if (own && text3.split(/[?#]/)[0] === own.split(/[?#]/)[0]) return true;
-  if (text3.startsWith("blob:")) return false;
-  let path = text3;
+  if (!text4) return false;
+  if (own && text4.split(/[?#]/)[0] === own.split(/[?#]/)[0]) return true;
+  if (text4.startsWith("blob:")) return false;
+  let path = text4;
   try {
-    path = new URL(text3).pathname;
+    path = new URL(text4).pathname;
   } catch {
   }
   return /(?:^|\/)plexus-diagram\/extension\.js$/i.test(path);
@@ -23231,8 +23391,8 @@ function bindPerfReadout(row4, blurb) {
 }
 function paintReadout() {
   if (!readoutRow) return;
-  const text3 = perfReadoutText(latestPerf);
-  readoutRow.description = readoutBlurb ? `${readoutBlurb} ${text3}` : text3;
+  const text4 = perfReadoutText(latestPerf);
+  readoutRow.description = readoutBlurb ? `${readoutBlurb} ${text4}` : text4;
 }
 function publishLatest(perf) {
   latestPerf = perf ?? null;
@@ -23499,8 +23659,8 @@ function normalizeSetting(id, value) {
     return Number.isFinite(n2) && n2 >= 40 ? n2 : fallback;
   }
   if (ENUMS[id]) {
-    const text3 = typeof value === "number" ? String(value) : value;
-    return ENUMS[id].includes(text3) ? text3 : fallback;
+    const text4 = typeof value === "number" ? String(value) : value;
+    return ENUMS[id].includes(text4) ? text4 : fallback;
   }
   return value;
 }
@@ -23512,10 +23672,10 @@ function parseSpeedFlags(raw) {
   if (raw == null || raw === "") return base;
   let obj = raw;
   if (typeof raw === "string") {
-    const text3 = raw.trim();
-    if (!text3) return base;
+    const text4 = raw.trim();
+    if (!text4) return base;
     try {
-      obj = JSON.parse(text3);
+      obj = JSON.parse(text4);
     } catch {
       return base;
     }
@@ -23664,13 +23824,13 @@ function reactOf() {
 }
 function integrationStatusComponent(statusId) {
   return function IntegrationStatus() {
-    const text3 = integrationText.get(statusId) || "";
+    const text4 = integrationText.get(statusId) || "";
     const React = reactOf();
-    if (!React) return text3;
+    if (!React) return text4;
     try {
-      return React.createElement("span", { className: "pxd-integration-status" }, text3);
+      return React.createElement("span", { className: "pxd-integration-status" }, text4);
     } catch {
-      return text3;
+      return text4;
     }
   };
 }
@@ -23695,12 +23855,12 @@ function refreshIntegrations(win2) {
   paintIntegrationRows();
 }
 function errorRow(n2) {
-  const text3 = `${n2} errors`;
+  const text4 = `${n2} errors`;
   return {
     id: ERROR_ROW_ID,
-    name: text3,
+    name: text4,
     description: "Callback errors since this copy loaded. Nothing is sent.",
-    action: { type: "reactComponent", component: () => text3 }
+    action: { type: "reactComponent", component: () => text4 }
   };
 }
 function placeErrorRow() {
@@ -23733,8 +23893,8 @@ function clearErrorStats() {
   placeErrorRow();
 }
 function performanceGroupRow(id, name, description) {
-  const text3 = () => perfReadoutText(readHostPerf());
-  const row4 = groupRow(id, name, `${description} ${text3()}`, text3);
+  const text4 = () => perfReadoutText(readHostPerf());
+  const row4 = groupRow(id, name, `${description} ${text4()}`, text4);
   bindPerfReadout(row4, description);
   return row4;
 }
@@ -24161,9 +24321,9 @@ var init_settings = __esm({
 
 // src/model/source-chip.js
 function readingTitle(title) {
-  const text3 = typeof title === "string" ? title.trim() : "";
-  if (!text3) return "";
-  return READING_PREFIXES.some((prefix) => text3.startsWith(prefix)) ? text3 : "";
+  const text4 = typeof title === "string" ? title.trim() : "";
+  if (!text4) return "";
+  return READING_PREFIXES.some((prefix) => text4.startsWith(prefix)) ? text4 : "";
 }
 function childString3(child) {
   if (typeof child === "string") return child;
@@ -24177,9 +24337,9 @@ function cleanAuthor(raw) {
 function authorFrom(children) {
   const list = Array.isArray(children) ? children : [];
   for (const child of list) {
-    const text3 = childString3(child).trim();
-    if (!text3.startsWith(AUTHOR_PREFIX)) continue;
-    const author = cleanAuthor(text3.slice(AUTHOR_PREFIX.length));
+    const text4 = childString3(child).trim();
+    if (!text4.startsWith(AUTHOR_PREFIX)) continue;
+    const author = cleanAuthor(text4.slice(AUTHOR_PREFIX.length));
     if (author) return author;
   }
   return "";
@@ -24547,15 +24707,15 @@ function regionUidForButton(button2, blockString2) {
   const container = button2?.closest?.(".roam-block-container[data-block-uid]");
   const containerInside = Boolean(container && card2?.contains?.(container));
   if (!containerInside && cardUid && typeof blockString2 === "function") {
-    let text3 = "";
+    let text4 = "";
     try {
-      text3 = blockString2(cardUid) || "";
+      text4 = blockString2(cardUid) || "";
     } catch {
-      text3 = "";
+      text4 = "";
     }
-    const hop = /^\(\(([A-Za-z0-9_-]+)\)\)$/.exec(String(text3).trim());
+    const hop = /^\(\(([A-Za-z0-9_-]+)\)\)$/.exec(String(text4).trim());
     if (hop) return hop[1];
-    if (/\{\{\s*(?:\[\[)?plexus-(?:region|pin)(?:\]\])?\s*:/.test(text3)) return cardUid;
+    if (/\{\{\s*(?:\[\[)?plexus-(?:region|pin)(?:\]\])?\s*:/.test(text4)) return cardUid;
   }
   return container?.getAttribute?.("data-block-uid") || "";
 }
@@ -24591,8 +24751,8 @@ function applyFrame(frame, img, frac, maxH, points) {
   img.style.height = `${box2.imgH}px`;
   img.style.left = `${box2.left}px`;
   img.style.top = `${box2.top}px`;
-  const clip6 = polygonClipInBox(fracParts(frac), points);
-  if (clip6) frame.style.clipPath = clip6;
+  const clip7 = polygonClipInBox(fracParts(frac), points);
+  if (clip7) frame.style.clipPath = clip7;
   return true;
 }
 function mountRegionCrop({ doc = globalThis.document, button: button2, region, file, maxH = CROP_MAX_H, onOpen, delayMs, buildPopover, obstacles } = {}) {
@@ -24923,8 +25083,8 @@ function openPinPopover({
   });
   boardBtn.setAttribute("data-boards", String(Array.isArray(boards) ? boards.length : 0));
   add("Copy ref", () => {
-    const text3 = region.uid ? sourceAttrString(region.uid).replace(/^Source::\s*/, "") : "";
-    onCopy?.(text3 || (region.uid ? `((${region.uid}))` : ""));
+    const text4 = region.uid ? sourceAttrString(region.uid).replace(/^Source::\s*/, "") : "";
+    onCopy?.(text4 || (region.uid ? `((${region.uid}))` : ""));
   });
   pop.append(row4);
   const host = root || doc.body || doc.documentElement;
@@ -25032,8 +25192,8 @@ function mountPdfPin({
       boards,
       root: root || doc.body,
       onOpen: (info) => onOpen?.(info),
-      onCopy: (text3) => {
-        if (typeof writeText === "function") writeText(text3);
+      onCopy: (text4) => {
+        if (typeof writeText === "function") writeText(text4);
       }
     });
   };
@@ -25212,11 +25372,11 @@ function detectBases(grid, tds) {
   for (const td of tds) {
     const r = attrInt(td, "data-row");
     const c = attrInt(td, "data-col");
-    const text3 = plain(td.textContent);
-    if (r == null || c == null || !text3) continue;
+    const text4 = plain(td.textContent);
+    if (r == null || c == null || !text4) continue;
     for (const rb of [0, 1]) for (const cb of [0, 1]) {
       const cell = grid[r - rb]?.[c - cb];
-      if (cell && plain(cell.string) === text3) score[`${rb},${cb}`] += 1;
+      if (cell && plain(cell.string) === text4) score[`${rb},${cb}`] += 1;
     }
   }
   const dflt = `${NATIVE_CELL_BASE},${NATIVE_CELL_BASE}`;
@@ -25291,21 +25451,21 @@ function findCell(host, uid, { pullTree } = {}) {
   return null;
 }
 function visibleClip(cell, host, body) {
-  let clip6 = rectOf4(body);
+  let clip7 = rectOf4(body);
   const cut = (node2) => {
     const r = rectOf4(node2);
     if (!r) return;
-    if (!clip6) {
-      clip6 = r;
+    if (!clip7) {
+      clip7 = r;
       return;
     }
-    clip6 = { top: Math.max(clip6.top, r.top), bottom: Math.min(clip6.bottom, r.bottom), left: Math.max(clip6.left, r.left), right: Math.min(clip6.right, r.right) };
+    clip7 = { top: Math.max(clip7.top, r.top), bottom: Math.min(clip7.bottom, r.bottom), left: Math.max(clip7.left, r.left), right: Math.min(clip7.right, r.right) };
   };
   cut(host);
   for (let n2 = cell?.parentElement; n2 && n2 !== host && n2 !== body; n2 = n2.parentElement) {
     if (n2.scrollHeight > n2.clientHeight || n2.scrollWidth > n2.clientWidth) cut(n2);
   }
-  return clip6;
+  return clip7;
 }
 function measureCell({ card: card2, host, body, uid, zoom = 1, pullTree } = {}) {
   const cardRect = rectOf4(card2);
@@ -25316,20 +25476,20 @@ function measureCell({ card: card2, host, body, uid, zoom = 1, pullTree } = {}) 
   const cell = findCell(host, uid, { pullTree });
   const r = cell ? rectOf4(cell) : null;
   if (!r || !r.width && !r.height) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
-  const clip6 = visibleClip(cell, host, body);
+  const clip7 = visibleClip(cell, host, body);
   const rowHeight = round16(r.height / z);
   let rowTop = round16((r.top - cardRect.top) / z);
-  if (clip6) {
+  if (clip7) {
     const cx = (r.left + r.right) / 2;
-    if (cx < clip6.left || cx > clip6.right) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
+    if (cx < clip7.left || cx > clip7.right) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
     else {
       const cy = (r.top + r.bottom) / 2;
-      if (cy < clip6.top) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
-      else if (cy > clip6.bottom) rowTop = round16(out.bodyBottom + 1);
+      if (cy < clip7.top) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
+      else if (cy > clip7.bottom) rowTop = round16(out.bodyBottom + 1);
     }
   }
-  const left = clip6 ? Math.max(r.left, clip6.left) : r.left;
-  const right = clip6 ? Math.min(r.right, clip6.right) : r.right;
+  const left = clip7 ? Math.max(r.left, clip7.left) : r.left;
+  const right = clip7 ? Math.min(r.right, clip7.right) : r.right;
   return { ...out, rowTop, rowHeight, rowLeft: round16((left - cardRect.left) / z), rowRight: round16((right - cardRect.left) / z), rendered: true, cell: true };
 }
 function revealCell(cell, body) {
@@ -25919,10 +26079,10 @@ function tickPage(tick) {
   return Number.isInteger(n2) && n2 >= 1 ? n2 : null;
 }
 function highlightChipTitle(footer) {
-  const text3 = typeof footer === "string" ? footer.trim() : "";
-  const mark = text3.indexOf(" · ");
-  let title = mark >= 0 ? text3.slice(mark + 3).trim() : "";
-  if (!title && text3 && !/^p\. \d+/.test(text3)) title = text3;
+  const text4 = typeof footer === "string" ? footer.trim() : "";
+  const mark = text4.indexOf(" · ");
+  let title = mark >= 0 ? text4.slice(mark + 3).trim() : "";
+  if (!title && text4 && !/^p\. \d+/.test(text4)) title = text4;
   return title.length > 24 ? title.slice(0, 24) : title;
 }
 function highlightChipPage(hl) {
@@ -26126,15 +26286,15 @@ function createItemRenderer({
     } catch {
       title = "";
     }
-    const text3 = typeof title === "string" ? title.trim() : "";
-    if (!text3.startsWith("Articles/") && !text3.startsWith("Media Captures/")) return null;
+    const text4 = typeof title === "string" ? title.trim() : "";
+    if (!text4.startsWith("Articles/") && !text4.startsWith("Media Captures/")) return null;
     let pageUid = "";
     try {
-      pageUid = host?.pageUid?.(text3) || "";
+      pageUid = host?.pageUid?.(text4) || "";
     } catch {
       pageUid = "";
     }
-    return sourceChipFor({ pageTitle: text3, pageUid, pageChildren: pageChildrenOf(pageUid) });
+    return sourceChipFor({ pageTitle: text4, pageUid, pageChildren: pageChildrenOf(pageUid) });
   };
   const readingUidOf = () => {
     if (typeof readingUid !== "function") return "";
@@ -26302,8 +26462,8 @@ function createItemRenderer({
       const item = lastBoard?.items.get(id);
       if (typeof item?.string === "string" && item.string.trim()) return item.string;
       try {
-        const text3 = host?.blockString?.(id);
-        return typeof text3 === "string" ? text3 : "";
+        const text4 = host?.blockString?.(id);
+        return typeof text4 === "string" ? text4 : "";
       } catch {
         return "";
       }
@@ -26326,13 +26486,13 @@ function createItemRenderer({
       for (const poster of split.posters) out.push({ ...poster, uid: poster.uid || id || item.uid });
     };
     if (item.kind === "block" && item.target?.uid) {
-      let text3 = "";
+      let text4 = "";
       try {
-        text3 = host?.blockString?.(item.target.uid) || "";
+        text4 = host?.blockString?.(item.target.uid) || "";
       } catch {
-        text3 = "";
+        text4 = "";
       }
-      pushString(text3, item.target.uid);
+      pushString(text4, item.target.uid);
     } else pushString(item.string || "", item.uid);
     const walk2 = (list, depth) => {
       if (!Array.isArray(list) || depth > CONTENT_DEPTH) return;
@@ -26470,8 +26630,8 @@ function createItemRenderer({
     box2.setAttribute("role", "checkbox");
     box2.setAttribute("aria-checked", meta?.done ? "true" : "false");
     box2.setAttribute("aria-label", meta?.done ? "Done" : "To do");
-    const text3 = renderRoot(line, String(item.string).replace(TASK_MARK, ""), "pxd-rs pxd-item__string pxd-item__tasktext", item.uid);
-    return text3;
+    const text4 = renderRoot(line, String(item.string).replace(TASK_MARK, ""), "pxd-rs pxd-item__string pxd-item__tasktext", item.uid);
+    return text4;
   };
   const setHidden2 = (node2, hidden) => {
     node2.hidden = hidden;
@@ -27015,8 +27175,8 @@ function createItemRenderer({
     rec.el.classList.remove("pxd-sticky--picking");
   };
   const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table"];
-  const imageRegionString2 = (text3) => {
-    const region = parseRegion(text3);
+  const imageRegionString2 = (text4) => {
+    const region = parseRegion(text4);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
   };
   const paintShell = (rec, item) => {
@@ -27141,8 +27301,8 @@ function createItemRenderer({
       return;
     }
     if (!rec.landmarkEl) rec.landmarkEl = el("span", "pxd-landmark", rec.el);
-    const text3 = item.glyph || "";
-    if (rec.landmarkEl.textContent !== text3) rec.landmarkEl.textContent = text3;
+    const text4 = item.glyph || "";
+    if (rec.landmarkEl.textContent !== text4) rec.landmarkEl.textContent = text4;
   };
   const paintTrailBadge = (rec, uid) => {
     const n2 = trailBadgeMap.get(uid);
@@ -27154,8 +27314,8 @@ function createItemRenderer({
       return;
     }
     if (!rec.trailBadge) rec.trailBadge = el("span", "pxd-trail-badge", rec.el);
-    const text3 = String(n2);
-    if (rec.trailBadge.textContent !== text3) rec.trailBadge.textContent = text3;
+    const text4 = String(n2);
+    if (rec.trailBadge.textContent !== text4) rec.trailBadge.textContent = text4;
   };
   const shownRect = (uid, rect) => {
     if (!rect) return rect;
@@ -27397,7 +27557,7 @@ function createItemRenderer({
     const item = itemArg || lastBoard?.items.get(rec.uid);
     const want = Boolean(item) && isKidsCard(item) && lod === "detail" && editing?.uid !== rec.uid && !item.collapsed && !rec.refBoard && !rec.bare && Number(rec.kidCount) > 0;
     if (!want) return dropKidsBadge(rec);
-    const text3 = `${item.kids ? "▾" : "▸"} ${rec.kidCount}`;
+    const text4 = `${item.kids ? "▾" : "▸"} ${rec.kidCount}`;
     if (!rec.kidsBtn) {
       const btn2 = el("button", "pxd-kids", rec.el);
       btn2.type = "button";
@@ -27425,7 +27585,7 @@ function createItemRenderer({
       on("mouseleave", () => closePeek());
       rec.kidsBtn = btn2;
     }
-    rec.kidsBtn.textContent = text3;
+    rec.kidsBtn.textContent = text4;
     rec.kidsBtn.setAttribute("aria-expanded", item.kids ? "true" : "false");
     rec.kidsBtn.setAttribute("aria-label", `${rec.kidCount} ${rec.kidCount === 1 ? "child" : "children"}`);
     rec.kidsBtn.setAttribute("data-tip", "kids");
@@ -27484,8 +27644,8 @@ function createItemRenderer({
         mini.style.height = pct2(r.h);
         let title = r.title;
         if (!title && r.ref) {
-          const text3 = host?.blockString?.(r.ref);
-          if (typeof text3 === "string") title = firstLine(text3).slice(0, REF_TITLE_MAX);
+          const text4 = host?.blockString?.(r.ref);
+          if (typeof text4 === "string") title = firstLine(text4).slice(0, REF_TITLE_MAX);
         }
         if (!title && r.kind === "image") title = "Image";
         if (title) el("div", "pxd-mini__title", mini).textContent = title;
@@ -27967,15 +28127,15 @@ function createItemRenderer({
       else parent.append(row4);
     }
   };
-  const syncTail = (parent, cls, text3) => {
+  const syncTail = (parent, cls, text4) => {
     let node2 = null;
     for (const child of [...parent.children || []]) if (child.classList?.contains(cls)) node2 = child;
-    if (text3 == null) {
+    if (text4 == null) {
       node2?.remove();
       return node2;
     }
     if (!node2) return null;
-    if (node2.textContent !== text3) node2.textContent = text3;
+    if (node2.textContent !== text4) node2.textContent = text4;
     return node2;
   };
   const patchPage = (rec, holder, p) => {
@@ -28033,8 +28193,8 @@ function createItemRenderer({
     }
     for (const [parent, rows] of groups) reorderProws(parent, rows);
     if (more) {
-      const text3 = `+${more} more`;
-      if (!syncTail(holder, "pxd-row__more", text3)) moreRow(holder, more, rec.pageTitle, rec.pageUid);
+      const text4 = `+${more} more`;
+      if (!syncTail(holder, "pxd-row__more", text4)) moreRow(holder, more, rec.pageTitle, rec.pageUid);
     } else syncTail(holder, "pxd-row__more", null);
     if (!specs.length) {
       if (!syncTail(holder, "pxd-item__placeholder", "Empty page")) el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
@@ -28248,8 +28408,8 @@ function createItemRenderer({
       placeFrac(hit, region.frac);
       if (region.poly?.length >= 3 && f) {
         hit.classList.add("pxd-region-hit--poly");
-        const clip6 = polygonClipInBox(f, region.poly);
-        if (clip6) hit.style.clipPath = clip6;
+        const clip7 = polygonClipInBox(f, region.poly);
+        if (clip7) hit.style.clipPath = clip7;
         const svg = doc.createElementNS?.("http://www.w3.org/2000/svg", "svg") || doc.createElement("svg");
         svg.setAttribute("viewBox", "0 0 100 100");
         svg.setAttribute("preserveAspectRatio", "none");
@@ -28627,8 +28787,8 @@ function createItemRenderer({
   const drawnRect = (uid, rect) => shownRect(uid, rect);
   const pdfSourceOf = (item) => {
     if (item?.target?.kind === "block") {
-      const text3 = host?.blockString?.(item.target.uid);
-      return typeof text3 === "string" ? text3 : "";
+      const text4 = host?.blockString?.(item.target.uid);
+      return typeof text4 === "string" ? text4 : "";
     }
     return typeof item?.string === "string" ? item.string : "";
   };
@@ -28649,9 +28809,9 @@ function createItemRenderer({
     return title;
   };
   const humanText = (item) => {
-    const text3 = typeof item?.string === "string" ? item.string.trim() : "";
-    if (!text3 || text3.startsWith("{{") || text3.startsWith("((")) return "";
-    return text3;
+    const text4 = typeof item?.string === "string" ? item.string.trim() : "";
+    if (!text4 || text4.startsWith("{{") || text4.startsWith("((")) return "";
+    return text4;
   };
   const pdfCoverOf = (item) => {
     let cover = null;
@@ -29791,13 +29951,13 @@ function createItemRenderer({
   const mountRegionBody = (rec, item) => {
     const api2 = regionWindow().RoamPlexus ?? null;
     const ref = item.target?.uid;
-    let text3 = "";
+    let text4 = "";
     try {
-      text3 = ref ? host?.blockString?.(ref) || "" : "";
+      text4 = ref ? host?.blockString?.(ref) || "" : "";
     } catch {
-      text3 = "";
+      text4 = "";
     }
-    const model = regionRefModel(text3, api2);
+    const model = regionRefModel(text4, api2);
     const caption = model?.caption ?? item.title ?? "";
     if (model?.drawingUid) item.regionDrawing = model.drawingUid;
     const off = rec.el.classList.contains("pxd-item--offscreen");
@@ -29934,15 +30094,15 @@ function createItemRenderer({
   const holdQuiet = (rec, uid) => {
     if (!rec.roots?.length || editing?.uid === uid) return;
     if (rec.type === "section") {
-      const text3 = rec.title?.textContent || lastBoard?.items.get(uid)?.title || "Section";
+      const text4 = rec.title?.textContent || lastBoard?.items.get(uid)?.title || "Section";
       unmountRoots(rec);
-      if (rec.title) rec.title.textContent = text3;
+      if (rec.title) rec.title.textContent = text4;
       rec.titleRendered = false;
     } else if (rec.body) {
-      const text3 = rec.body.textContent || "";
+      const text4 = rec.body.textContent || "";
       unmountRoots(rec);
       rec.body.replaceChildren();
-      if (text3) el("div", "pxd-quiet", rec.body).textContent = text3;
+      if (text4) el("div", "pxd-quiet", rec.body).textContent = text4;
     } else {
       unmountRoots(rec);
     }
@@ -30242,7 +30402,7 @@ function createItemRenderer({
       const due = item.type === "card" ? dueChip(item.content) : null;
       if (due) chips.unshift({ cls: "due", text: due.text, title: "Due", overdue: due.overdue });
     }
-    for (const text3 of attrChipsOf(rec, item)) chips.push({ cls: "attr", text: text3 });
+    for (const text4 of attrChipsOf(rec, item)) chips.push({ cls: "attr", text: text4 });
     if (!chips.length) return clear();
     const key = JSON.stringify(chips);
     if (rec.badgeEl && rec.badgeKey === key) return;
@@ -31174,13 +31334,13 @@ function createItemRenderer({
         continue;
       }
       if (eventUid && item.regionDrawing && item.regionDrawing !== eventUid && ref !== eventUid) continue;
-      let text3 = null;
+      let text4 = null;
       try {
-        text3 = host?.blockString?.(ref);
+        text4 = host?.blockString?.(ref);
       } catch {
-        text3 = null;
+        text4 = null;
       }
-      const model = regionRefModel(typeof text3 === "string" ? text3 : "", api2);
+      const model = regionRefModel(typeof text4 === "string" ? text4 : "", api2);
       const drawing = model?.drawingUid || item.regionDrawing || "";
       if (eventUid && drawing !== eventUid && ref !== eventUid) continue;
       const nextKind = model ? "region-ref" : "block";
@@ -31555,9 +31715,9 @@ function placedUidSet(placed) {
   return out;
 }
 function readKeyPair(raw) {
-  const text3 = typeof raw === "string" ? raw.trim() : "";
-  if (!text3) return { width: null, drawer: null };
-  const parts = text3.split(/\s+/);
+  const text4 = typeof raw === "string" ? raw.trim() : "";
+  if (!text4) return { width: null, drawer: null };
+  const parts = text4.split(/\s+/);
   const width = Number(parts[0]);
   const drawer = parts.length > 1 ? Number(parts[1]) : NaN;
   return {
@@ -31566,10 +31726,10 @@ function readKeyPair(raw) {
   };
 }
 function writeKeyPair(raw, drawer) {
-  const text3 = typeof raw === "string" ? raw.trim() : "";
+  const text4 = typeof raw === "string" ? raw.trim() : "";
   const n2 = Number(drawer);
-  if (!Number.isFinite(n2) || n2 <= 0 || n2 > 1) return text3;
-  const first = text3 ? text3.split(/\s+/)[0] : "0";
+  if (!Number.isFinite(n2) || n2 <= 0 || n2 > 1) return text4;
+  const first = text4 ? text4.split(/\s+/)[0] : "0";
   const second = String(Math.round(n2 * 1e3) / 1e3);
   return `${first} ${second}`;
 }
@@ -32322,9 +32482,9 @@ function copyPayload(board2, uids, rects) {
     text: items.map((i) => semanticRef(i)).join("\n")
   };
 }
-function parsePastedText(text3) {
+function parsePastedText(text4) {
   const out = [];
-  for (const raw of String(text3 ?? "").split(/\r?\n/)) {
+  for (const raw of String(text4 ?? "").split(/\r?\n/)) {
     const line = raw.trim().replace(/^[-*]\s+/, "").trim();
     if (!line) continue;
     out.push({ string: line });
@@ -32357,7 +32517,7 @@ function parseClipboard(data) {
 }
 var MAX_EDITOR_LINES = 45;
 function editorPastePlan({
-  text: text3 = "",
+  text: text4 = "",
   imageCount = 0,
   value = "",
   selectionStart = 0,
@@ -32366,7 +32526,7 @@ function editorPastePlan({
 } = {}) {
   if ((Number(imageCount) || 0) > 0) return { type: "images" };
   if (!isRoot) return { type: "roam" };
-  const raw = String(text3 ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const raw = String(text4 ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   if (!raw.includes("\n")) return { type: "roam" };
   let lines = raw.split("\n");
   if (lines.length && lines[lines.length - 1] === "") lines.pop();
@@ -32889,11 +33049,11 @@ function captionBlock(doc, figure) {
 function captionText(block) {
   return String(block?.text || "").replace(/\s+/g, " ").trim();
 }
-function captionScore(text3) {
-  const words = text3.split(/\s+/).filter(Boolean);
+function captionScore(text4) {
+  const words = text4.split(/\s+/).filter(Boolean);
   let score = Math.min(words.length, 28);
-  if (/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(text3)) score += 6;
-  if (words.length <= 2 && /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?$/i.test(text3)) score -= 4;
+  if (/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\b/i.test(text4)) score += 6;
+  if (words.length <= 2 && /^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s*(?:\d+[A-Za-z]?|[IVXLC]+)?[.:]?$/i.test(text4)) score -= 4;
   if (words.length > 40) score -= 10;
   return score;
 }
@@ -33047,14 +33207,14 @@ function mergeCloudFigures(cloudDoc, localDoc) {
       const localCap = captionBlock(localDoc, local);
       const localText = captionText(localCap);
       const cloudText = cloud.caption && blocks[cloud.caption] ? captionText(blocks[cloud.caption]) : "";
-      const text3 = betterCaption(localText, cloudText);
-      if (!text3) continue;
-      const useLocal = text3 === localText && localText !== "";
+      const text4 = betterCaption(localText, cloudText);
+      if (!text4) continue;
+      const useLocal = text4 === localText && localText !== "";
       if (cloud.caption && blocks[cloud.caption]) {
         if (useLocal) {
           blocks[cloud.caption] = {
             ...blocks[cloud.caption],
-            text: text3,
+            text: text4,
             bbox: localCap.bbox || blocks[cloud.caption].bbox
           };
         }
@@ -33065,7 +33225,7 @@ function mergeCloudFigures(cloudDoc, localDoc) {
           type: "caption",
           page: cloud.page,
           bbox: localCap.bbox || cloud.bbox,
-          text: text3,
+          text: text4,
           for: cloud.id,
           confidence: clampConf(localCap.confidence, cloud.confidence ?? 0.9),
           engine: "cloud"
@@ -33079,7 +33239,7 @@ function mergeCloudFigures(cloudDoc, localDoc) {
       if (used.has(local)) continue;
       const id = nextId("f");
       const localCap = captionBlock(localDoc, local);
-      const text3 = captionText(localCap);
+      const text4 = captionText(localCap);
       const figure = {
         id,
         type: "figure",
@@ -33093,14 +33253,14 @@ function mergeCloudFigures(cloudDoc, localDoc) {
       };
       blocks[id] = figure;
       added.push(id);
-      if (text3) {
+      if (text4) {
         const capId = nextId("c");
         blocks[capId] = {
           id: capId,
           type: "caption",
           page: cloudPage,
           bbox: localCap.bbox || figure.bbox,
-          text: text3,
+          text: text4,
           for: id,
           confidence: clampConf(localCap.confidence, figure.confidence),
           engine: "cloud"
@@ -33767,9 +33927,9 @@ function rankOf(entry) {
   return RANK.other;
 }
 function bareUrl(raw) {
-  const text3 = String(raw ?? "").trim();
-  const hit = /https?:\/\/[^\s)}\]"']+/.exec(text3);
-  return hit ? hit[0] : text3;
+  const text4 = String(raw ?? "").trim();
+  const hit = /https?:\/\/[^\s)}\]"']+/.exec(text4);
+  return hit ? hit[0] : text4;
 }
 async function gzipBytes(bytes) {
   if (typeof CompressionStream !== "function") return null;
@@ -33825,8 +33985,8 @@ function createReadKeeper({ host = null, session = null, store = null, settings 
       if (!kind) return { ok: false, reason: "not-kept" };
       if (!blockUid2 || typeof host?.uploadFile !== "function") return { ok: false, reason: "no-target" };
       if (!isCompleteRead(doc, total)) return { ok: false, reason: "partial" };
-      const text3 = JSON.stringify({ schema: READ_SCHEMA, parseRev: PARSE_REV, engine: kind.engine, mode: kind.mode, doc });
-      const raw = new TextEncoder().encode(text3);
+      const text4 = JSON.stringify({ schema: READ_SCHEMA, parseRev: PARSE_REV, engine: kind.engine, mode: kind.mode, doc });
+      const raw = new TextEncoder().encode(text4);
       const docHash = await sha256Hex(raw);
       const key = readEntryKey(kind);
       const have = readEntries(propsOf(blockUid2)).find((e2) => e2.key === key);
@@ -33947,8 +34107,8 @@ function isNumericCell(value) {
   if (!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/.test(s)) return false;
   return Number.isFinite(Number(s));
 }
-function gridCellText(text3, { linkSafe = true } = {}) {
-  const line = flattenLine(text3);
+function gridCellText(text4, { linkSafe = true } = {}) {
+  const line = flattenLine(text4);
   return linkSafe ? linkSafeText(line) : line;
 }
 function cellText(slot2, repeatAnchor) {
@@ -33976,9 +34136,9 @@ function toGridSpec(table) {
     for (let r = headerCount; r < grid.length; r += 1) {
       const slot2 = grid[r][c];
       if (!slot2 || slot2.covered || slot2.cell == null) continue;
-      const text3 = String(slot2.text ?? "").trim();
-      if (!text3) continue;
-      values.push(text3);
+      const text4 = String(slot2.text ?? "").trim();
+      if (!text4) continue;
+      values.push(text4);
     }
     if (!values.length) continue;
     const numeric = values.filter(isNumericCell).length / values.length;
@@ -34117,9 +34277,9 @@ var PENDING_CLASS = "pxd-native-pending";
 var NATIVE_HIDDEN_CLASS = "pxd-native-hidden";
 var OUTLINE_NATIVE_CLASS = "pxd-outline-native";
 function isDiagramString(value) {
-  const text3 = String(value ?? "");
-  if (text3.indexOf("{") === -1) return false;
-  return DIAGRAM_MARKER.test(text3);
+  const text4 = String(value ?? "");
+  if (text4.indexOf("{") === -1) return false;
+  return DIAGRAM_MARKER.test(text4);
 }
 function cssAttributeValue(value) {
   return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -34793,7 +34953,7 @@ function unpackPulls(rows) {
   }
   return out;
 }
-var ciPattern = (text3) => `(?i)${String(text3).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
+var ciPattern = (text4) => `(?i)${String(text4).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
 var NATIVE_PATTERN = `[:block/props
  {:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
@@ -34818,8 +34978,8 @@ function refEid(node2) {
   return null;
 }
 function isDiagramBlock(node2) {
-  const text3 = node2?.[":block/string"];
-  return typeof text3 === "string" && DIAGRAM_FIND.test(text3);
+  const text4 = node2?.[":block/string"];
+  return typeof text4 === "string" && DIAGRAM_FIND.test(text4);
 }
 function pullRows(many) {
   if (Array.isArray(many)) return many;
@@ -34889,10 +35049,10 @@ function graphName(hash = globalThis.location?.hash ?? "") {
 var CACHE_ASKED = /* @__PURE__ */ new Set([":block/uid", ":block/string", ":block/order", ":block/heading", ":block/open", ":block/props", ":block/children"]);
 var patternMemo = /* @__PURE__ */ new Map();
 function patternNeeds(pattern) {
-  const text3 = String(pattern ?? "");
-  const hit = patternMemo.get(text3);
+  const text4 = String(pattern ?? "");
+  const hit = patternMemo.get(text4);
   if (hit) return hit;
-  const tokens2 = text3.match(/\.\.\.|[[\]{}]|:[^\s[\]{}]+|[^\s[\]{}]+/g) || [];
+  const tokens2 = text4.match(/\.\.\.|[[\]{}]|:[^\s[\]{}]+|[^\s[\]{}]+/g) || [];
   let i = 0;
   const vector = () => {
     const out = [];
@@ -34922,7 +35082,7 @@ function patternNeeds(pattern) {
   };
   const needs = vector();
   if (patternMemo.size > 200) patternMemo.clear();
-  patternMemo.set(text3, needs);
+  patternMemo.set(text4, needs);
   return needs;
 }
 function nodeAnswers(node2, needs) {
@@ -35403,8 +35563,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
   const servePull = (pattern, entity) => {
     const parsed = parseEntity(entity);
     if (!parsed) return MISS;
-    const text3 = String(pattern ?? "");
-    const compact = text3.replace(/\s+/g, "");
+    const text4 = String(pattern ?? "");
+    const compact = text4.replace(/\s+/g, "");
     let node2 = null;
     let id = "";
     if (parsed.key === ":node/title") {
@@ -35422,7 +35582,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     if (compact === "[:db/id]" && node2[":db/id"] == null) return MISS;
     if (compact === "[:block/open]" && !(":block/open" in node2)) return MISS;
     if (compact.includes(":diagram/") && !cache.nativeKnown(id) && !node2[":diagram/nodes"] && !node2[":diagram/edges"]) return MISS;
-    if (!nodeAnswers(node2, patternNeeds(text3))) return MISS;
+    if (!nodeAnswers(node2, patternNeeds(text4))) return MISS;
     return node2;
   };
   const pull = (pattern, entity) => {
@@ -36095,8 +36255,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       const walk2 = (b) => {
         re.lastIndex = 0;
         let m;
-        const text3 = strOf(b);
-        while (m = re.exec(text3)) max = Math.max(max, Number(m[1]) || 0);
+        const text4 = strOf(b);
+        while (m = re.exec(text4)) max = Math.max(max, Number(m[1]) || 0);
         for (const k of kids(b)) walk2(k);
       };
       for (const b of top) walk2(b);
@@ -36554,8 +36714,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       stats.writes++;
       return url;
     },
-    searchPages(text3, limit = 40) {
-      const needle = String(text3 ?? "").toLowerCase();
+    searchPages(text4, limit = 40) {
+      const needle = String(text4 ?? "").toLowerCase();
       if (!needle) return [];
       const rows = host.q(
         `[:find ?t ?u :in $ ?pat :where [?p :node/title ?t] [(re-pattern ?pat) ?re] [(re-find ?re ?t)] [?p :block/uid ?u]]`,
@@ -36567,8 +36727,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         return ap - bp || a.title.length - b.title.length || a.title.localeCompare(b.title);
       }).slice(0, limit);
     },
-    searchBlocks(text3, limit = 40) {
-      const needle = String(text3 ?? "").toLowerCase();
+    searchBlocks(text4, limit = 40) {
+      const needle = String(text4 ?? "").toLowerCase();
       if (!needle) return [];
       const rows = host.q(
         `[:find ?s ?u ?t :in $ ?pat :where [?b :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
@@ -36925,11 +37085,11 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       const links = [];
       const pages = /* @__PURE__ */ new Map();
       const seen = /* @__PURE__ */ new Set();
-      const add = (list, relation, target, text3) => {
+      const add = (list, relation, target, text4) => {
         const key = `${relation}|${target.kind}|${target.title ?? target.uid}`;
         if (seen.has(key)) return;
         seen.add(key);
-        list.push({ relation, target, text: text3 });
+        list.push({ relation, target, text: text4 });
       };
       for (const [rt, ss] of outgoing) {
         const attr = attrNameOf(ss);
@@ -37162,8 +37322,8 @@ function sortedKids3(node2) {
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
 var str = (n2) => String(n2?.[":block/string"] ?? "").trim();
-function pair(text3) {
-  const p = String(text3).split(",").map((s) => Number(s.trim()));
+function pair(text4) {
+  const p = String(text4).split(",").map((s) => Number(s.trim()));
   return p.length >= 2 && p.slice(0, 2).every(Number.isFinite) ? { a: p[0], b: p[1], c: p[2] } : null;
 }
 function prop(line, name) {
@@ -37736,17 +37896,17 @@ function topLevelTrees(markdown) {
   return trees;
 }
 function chunkParsedMarkdown(markdown, blockEstimate) {
-  const text3 = String(markdown ?? "");
-  const bullets = bulletCount(text3);
+  const text4 = String(markdown ?? "");
+  const bullets = bulletCount(text4);
   const estimate = Number.isFinite(Number(blockEstimate)) ? Number(blockEstimate) : bullets;
   const ceiling = PARSE_BLOCK_CHUNK * PARSE_CHUNK_CAP;
   if (bullets > ceiling || estimate > ceiling) return { ok: false, reason: "too-large" };
-  if (!text3.trim() || bullets === 0) return { ok: true, chunks: [] };
+  if (!text4.trim() || bullets === 0) return { ok: true, chunks: [] };
   const chunks = [];
   let buf = [];
   let count = 0;
   const treeBullets = (tree) => tree.filter((line) => /^\s*- /.test(line)).length;
-  for (const tree of topLevelTrees(text3)) {
+  for (const tree of topLevelTrees(text4)) {
     const n2 = treeBullets(tree);
     if (count > 0 && count + n2 > PARSE_BLOCK_CHUNK) {
       chunks.push(buf.join("\n"));
@@ -37997,8 +38157,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     board2 = raw ? buildBoard(raw, {
       resolve: (id) => {
         try {
-          const text3 = host.blockString?.(id);
-          return typeof text3 === "string" ? text3 : null;
+          const text4 = host.blockString?.(id);
+          return typeof text4 === "string" ? text4 : null;
         } catch {
           return null;
         }
@@ -39386,7 +39546,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         let path = asked === "flat" ? "flat" : "native";
         const draft = asked === "flat" ? flatTableMarkdown(table) : nativeTableMarkdown(table);
         const fn = await settleFootnotes([draft], { reserve: 6, defs });
-        const settled = (text3) => fn ? fn.apply(text3) : text3;
+        const settled = (text4) => fn ? fn.apply(text4) : text4;
         if (tryGrid) {
           try {
             const spec = { ...toGridSpec(table), parentUid: parent, order };
@@ -40258,8 +40418,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return txn((t) => {
         if (!trailByUid(trailUid) || !cardUid) return null;
         const stop3 = t.create({ parent: trailUid, order: "last", string: `((${cardUid}))`, open: true });
-        const text3 = typeof note === "string" ? note.trim() : "";
-        if (text3) t.create({ parent: stop3, order: "first", string: text3 });
+        const text4 = typeof note === "string" ? note.trim() : "";
+        if (text4) t.create({ parent: stop3, order: "first", string: text4 });
         return stop3;
       });
     },
@@ -40781,9 +40941,9 @@ extendSession((session, api2) => {
       if (!isBox) continue;
       const box2 = t.create({ parent: freshUid, uid: gen(), string: kid[STR2] ?? "", plexus: { type: "regions" }, open: false, order: "last" });
       for (const region of kid[KIDS2] ?? []) {
-        const text3 = region[STR2] ?? "";
-        const parsed = parseRegion(text3);
-        const string = parsed && parsed.drawingUid === oldUid ? text3.replace(`d=${oldUid}`, `d=${freshUid}`) : text3;
+        const text4 = region[STR2] ?? "";
+        const parsed = parseRegion(text4);
+        const string = parsed && parsed.drawingUid === oldUid ? text4.replace(`d=${oldUid}`, `d=${freshUid}`) : text4;
         t.create({ parent: box2, uid: gen(), string, order: "last" });
       }
     }
@@ -40927,8 +41087,8 @@ extendSession((session, api2) => {
       }).then((made) => made ?? []);
     },
     // text: raw clipboard text or the entries parsePastedText returned.
-    pasteText(text3, { x = 0, y = 0 } = {}) {
-      const list = (Array.isArray(text3) ? text3 : parsePastedText(text3)).map((e2) => typeof e2 === "string" ? e2 : e2?.string).filter((s) => typeof s === "string" && s.trim() !== "");
+    pasteText(text4, { x = 0, y = 0 } = {}) {
+      const list = (Array.isArray(text4) ? text4 : parsePastedText(text4)).map((e2) => typeof e2 === "string" ? e2 : e2?.string).filter((s) => typeof s === "string" && s.trim() !== "");
       if (!list.length) return Promise.resolve([]);
       return api2.txn((t) => {
         const made = capBulk(stackAt(list, x, y), api2.emit).map((c) => placeCard(t, c.string, c.x, c.y));
@@ -41060,19 +41220,19 @@ extendSession((session, api2) => {
       else if (item.kind === "block") tree = plain2(host.pullTree(item.target.uid, preset.depth, max) ?? []);
       else if (item.kind === "page") tree = plain2(host.pagePreview(item.target.title, preset.depth, max)?.blocks ?? []);
       else return Promise.resolve(none);
-      const flat2 = [];
+      const flat3 = [];
       const walk2 = (list, depth, parent) => {
         for (const n2 of list) {
-          if (depth > preset.depth || flat2.some((f) => f.uid === n2.uid)) continue;
+          if (depth > preset.depth || flat3.some((f) => f.uid === n2.uid)) continue;
           if (!preset.includeRefs && classifyString(n2.string).kind === "block") continue;
-          const entry = { uid: n2.uid, depth, parent, at: flat2.length };
-          flat2.push(entry);
+          const entry = { uid: n2.uid, depth, parent, at: flat3.length };
+          flat3.push(entry);
           walk2(n2.children, depth + 1, n2.uid);
         }
       };
       walk2(tree, 1, null);
-      const chosen = new Set([...flat2].sort((a, b) => a.depth - b.depth || a.at - b.at).slice(0, Math.max(0, max)).map((f) => f.uid));
-      const picked = flat2.filter((f) => chosen.has(f.uid));
+      const chosen = new Set([...flat3].sort((a, b) => a.depth - b.depth || a.at - b.at).slice(0, Math.max(0, max)).map((f) => f.uid));
+      const picked = flat3.filter((f) => chosen.has(f.uid));
       if (!picked.length) return Promise.resolve(none);
       const rects = api2.rects();
       const own = rects.get(cardUid);
@@ -41134,8 +41294,8 @@ extendSession((session, api2) => {
           edges++;
         }
         api2.applyFit(t, created);
-        const skipped = flat2.length - picked.length;
-        return skipped > 0 ? { added: created.length, edges, skipped, total: flat2.length } : { added: created.length, edges };
+        const skipped = flat3.length - picked.length;
+        return skipped > 0 ? { added: created.length, edges, skipped, total: flat3.length } : { added: created.length, edges };
       }).then((res) => res ?? none);
     }
   });
@@ -41438,8 +41598,8 @@ function regionsParent(api2, board2) {
   if (board2.regionsUid) return board2.regionsUid;
   const root = api2.rawNode(api2.uid);
   for (const child of api2.kidsOf(root)) {
-    const text3 = child[STR3] ?? child.string ?? "";
-    if (isContainerString(text3)) return child[UID3] || child.uid;
+    const text4 = child[STR3] ?? child.string ?? "";
+    if (isContainerString(text4)) return child[UID3] || child.uid;
   }
   return null;
 }
@@ -41456,8 +41616,8 @@ function imageCardContainer(api2, cardUid) {
   for (const child of api2.kidsOf(card2)) {
     const id = child[UID3] || child.uid;
     if (!id) continue;
-    const text3 = child[STR3] ?? child.string ?? "";
-    if (isContainerString(text3) || api2.rawPlexus(id)?.type === "regions") return id;
+    const text4 = child[STR3] ?? child.string ?? "";
+    if (isContainerString(text4) || api2.rawPlexus(id)?.type === "regions") return id;
   }
   return null;
 }
@@ -41921,13 +42081,13 @@ init_schema();
 function hayOf(item, resolve) {
   const bits = [item?.title, plainText(item?.string, 2e3)];
   if (item?.kind === "block" && item.target?.uid) {
-    let text3 = null;
+    let text4 = null;
     try {
-      text3 = typeof resolve === "function" ? resolve(item.target.uid) : null;
+      text4 = typeof resolve === "function" ? resolve(item.target.uid) : null;
     } catch {
-      text3 = null;
+      text4 = null;
     }
-    if (typeof text3 === "string") bits.push(plainText(text3, 2e3));
+    if (typeof text4 === "string") bits.push(plainText(text4, 2e3));
   }
   if (item?.kind === "image") bits.push(itemLabel(item));
   const kids = Array.isArray(item?.content) ? item.content : [];
@@ -41963,10 +42123,10 @@ var ATTR_DASHES = ["solid", "dashed", "dotted"];
 function parseAttrStyles(raw) {
   let obj = raw;
   if (typeof raw === "string") {
-    const text3 = raw.trim();
-    if (!text3) return {};
+    const text4 = raw.trim();
+    if (!text4) return {};
     try {
-      obj = JSON.parse(text3);
+      obj = JSON.parse(text4);
     } catch {
       return {};
     }
@@ -42833,8 +42993,8 @@ function tagsForCard(item, extra = "") {
   const parts = [];
   if (item?.string) parts.push(String(item.string));
   for (const kid of item?.content || []) {
-    const text3 = kid?.[":block/string"] ?? kid?.string ?? "";
-    if (text3) parts.push(String(text3));
+    const text4 = kid?.[":block/string"] ?? kid?.string ?? "";
+    if (text4) parts.push(String(text4));
   }
   if (extra) parts.push(String(extra));
   return tagNames(parts.join("\n"));
@@ -42940,12 +43100,12 @@ function formatMade(ms) {
 function headerText({ created, board: board2, section: section2, userName } = {}) {
   const when = formatMade(created);
   const where = String(board2 || "").trim() || "Untitled board";
-  let text3 = when ? `Made ${when} on ${where}` : `Made on ${where}`;
+  let text4 = when ? `Made ${when} on ${where}` : `Made on ${where}`;
   const sec = String(section2 || "").trim();
-  if (sec) text3 += ` › ${sec}`;
+  if (sec) text4 += ` › ${sec}`;
   const name = String(userName || "").trim();
-  if (name) text3 += ` by ${name}`;
-  return text3;
+  if (name) text4 += ` by ${name}`;
+  return text4;
 }
 function company(rows, uid) {
   const list = Array.isArray(rows) ? rows : [];
@@ -43419,8 +43579,8 @@ function dropTip(el) {
   const tips = el?.querySelectorAll?.(".pxd-strength__tip") || [];
   for (const tip of tips) tip.remove?.();
 }
-function putTip(el, text3) {
-  el.setAttribute?.("title", text3);
+function putTip(el, text4) {
+  el.setAttribute?.("title", text4);
   const doc = el.ownerDocument || globalThis.document;
   if (!doc?.createElement) return;
   let tip = el.querySelector?.(".pxd-strength__tip");
@@ -43429,7 +43589,7 @@ function putTip(el, text3) {
     tip.setAttribute?.("class", "pxd-strength__tip");
     el.append?.(tip);
   }
-  tip.textContent = text3;
+  tip.textContent = text4;
 }
 function partsOf(raw) {
   if (typeof raw === "number") return { score: raw, components: null };
@@ -43462,9 +43622,9 @@ function applyStrength(edgeEls, scores) {
       node2.style.strokeOpacity = String(stroke.opacity);
     }
     if (components) {
-      const text3 = `${explain(components)} Heuristic.`;
-      putTip(el, text3);
-      if (node2 !== el) node2?.setAttribute?.("title", text3);
+      const text4 = `${explain(components)} Heuristic.`;
+      putTip(el, text4);
+      if (node2 !== el) node2?.setAttribute?.("title", text4);
     }
   });
 }
@@ -43672,8 +43832,8 @@ function leavesBoardPointer(target) {
 var CONTEXT_CAP = 200;
 var CONTEXT_CHUNK = 25;
 var CONTEXT_FILTER_AT = 20;
-var clip4 = (text3, max) => {
-  const body = String(text3 ?? "").replace(/\s+/g, " ").trim();
+var clip4 = (text4, max) => {
+  const body = String(text4 ?? "").replace(/\s+/g, " ").trim();
   if (body.length <= max) return body;
   return `${body.slice(0, max - 1).trimEnd()}…`;
 };
@@ -43684,8 +43844,8 @@ function breadcrumb(page, parent) {
   if (!b || b === a) return a;
   return `${a} › ${b}`;
 }
-function snippetOf2(text3, max = 200) {
-  return clip4(text3, max);
+function snippetOf2(text4, max = 200) {
+  return clip4(text4, max);
 }
 function filterRows(rows, query) {
   const q = String(query ?? "").trim().toLowerCase();
@@ -43728,8 +43888,8 @@ function mountContextsDrawer({
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", "References");
   const grouped = groupRefs(rows);
-  const flat2 = grouped.groups.flatMap((group) => group.rows.map((row4) => ({ ...row4, year: group.year })));
-  const chunks = rowChunks(flat2);
+  const flat3 = grouped.groups.flatMap((group) => group.rows.map((row4) => ({ ...row4, year: group.year })));
+  const chunks = rowChunks(flat3);
   const list = doc.createElement("div");
   list.className = "pxd-contexts__list";
   if (rows.length > CONTEXT_FILTER_AT) {
@@ -43738,7 +43898,7 @@ function mountContextsDrawer({
     filter.type = "search";
     filter.setAttribute("aria-label", "Filter references");
     filter.addEventListener("input", () => {
-      const shown = new Set(filterRows(flat2, filter.value).map((row4) => row4.uid));
+      const shown = new Set(filterRows(flat3, filter.value).map((row4) => row4.uid));
       for (const node2 of list.querySelectorAll(".pxd-contexts__row")) {
         node2.hidden = !shown.has(node2.getAttribute("data-uid"));
       }
@@ -43748,7 +43908,7 @@ function mountContextsDrawer({
   if (grouped.hidden > 0) {
     const note = doc.createElement("div");
     note.className = "pxd-contexts__cap";
-    note.textContent = `Showing ${flat2.length} of ${grouped.total}`;
+    note.textContent = `Showing ${flat3.length} of ${grouped.total}`;
     el.append(note);
   }
   let year;
@@ -43918,26 +44078,26 @@ var SUGGEST_CAP = 60;
 var SUGGEST_LIMIT = 300;
 var MONTHS7 = "January|February|March|April|May|June|July|August|September|October|November|December";
 var DAILY_RE2 = new RegExp(`^(${MONTHS7}) \\d{1,2}(?:st|nd|rd|th), \\d{4}$`);
-var escapeReg = (text3) => String(text3).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var escapeReg = (text4) => String(text4).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function isDailyTitle2(title) {
   return DAILY_RE2.test(String(title ?? "").trim());
 }
 function boundary(title) {
   return new RegExp(`(^|[^A-Za-z0-9])(${escapeReg(title)})(?=$|[^A-Za-z0-9])`, "gi");
 }
-function linkRanges(text3) {
+function linkRanges(text4) {
   const ranges = [];
   const re = /\[\[[^\]]*\]\]/g;
   let match;
-  while (match = re.exec(text3)) ranges.push([match.index, match.index + match[0].length]);
+  while (match = re.exec(text4)) ranges.push([match.index, match.index + match[0].length]);
   return ranges;
 }
 function inside3(ranges, start, end) {
   return ranges.some(([a, b]) => start >= a && end <= b);
 }
-function bareMention(text3, title) {
+function bareMention(text4, title) {
   if (!title || String(title).trim().length < 4 || isDailyTitle2(title)) return false;
-  const src = String(text3 ?? "");
+  const src = String(text4 ?? "");
   const ranges = linkRanges(src);
   const re = boundary(title);
   let from = 0;
@@ -43952,8 +44112,8 @@ function bareMention(text3, title) {
   }
   return false;
 }
-function linkMention(text3, title) {
-  const src = String(text3 ?? "");
+function linkMention(text4, title) {
+  const src = String(text4 ?? "");
   if (!bareMention(src, title)) return null;
   const ranges = linkRanges(src);
   const re = boundary(title);
@@ -44108,11 +44268,11 @@ function createBt(options = {}) {
       return priming;
     },
     // Shared by status and attribute edits. attributes keys are Better Tasks ids: due, project, priority, repeat, ...
-    modify(uid, { status, attributes, text: text3 } = {}) {
+    modify(uid, { status, attributes, text: text4 } = {}) {
       const args = { uid };
       if (status) args.status = status;
       if (attributes && Object.keys(attributes).length) args.attributes = attributes;
-      if (typeof text3 === "string") args.text = text3;
+      if (typeof text4 === "string") args.text = text4;
       return call("bt_modify", args);
     },
     create(args) {
@@ -44346,15 +44506,15 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
   const body = [];
   included.forEach((item, index) => {
     const r = rects.get(item.uid);
-    const [line, fill, text3] = hex(item.color);
+    const [line, fill, text4] = hex(item.color);
     if (item.type === "section") {
       const lane2 = item.look === "lane";
       const rx = lane2 ? 0 : 12;
       body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="${rx}" fill="${fill}" fill-opacity="${dark ? 0.6 : 1}" stroke="${line}" stroke-width="2"/>`);
       if (lane2 && item.axis !== "vertical") {
-        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + r.h / 2)}" font-size="16" font-weight="700" dominant-baseline="central" fill="${text3}">${esc(titleOf2(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + r.h / 2)}" font-size="16" font-weight="700" dominant-baseline="central" fill="${text4}">${esc(titleOf2(item))}</text>`);
       } else {
-        body.push(`<text x="${n1(r.x + 4)}" y="${n1(r.y - 10)}" font-size="16" font-weight="700" fill="${text3}">${esc(titleOf2(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 4)}" y="${n1(r.y - 10)}" font-size="16" font-weight="700" fill="${text4}">${esc(titleOf2(item))}</text>`);
       }
     } else if (item.type === "text") {
       const size = item.fontSize || 16;
@@ -44366,7 +44526,7 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
         body.push(`<text x="${n1(r.x + r.w / 2)}" y="${n1(r.y + r.h / 2)}" font-size="${size}" text-anchor="middle" dominant-baseline="central" fill="${ink}">${esc(titleOf2(item))}</text>`);
       } else if (item.look === "sticky") {
         const paper = item.fill ? hex(item.fill)[1] : item.color ? fill : hex("yellow")[1];
-        const ink = item.textColor ? hex(item.textColor)[2] : item.color ? text3 : hex("yellow")[2];
+        const ink = item.textColor ? hex(item.textColor)[2] : item.color ? text4 : hex("yellow")[2];
         if (!defs.some((d) => d.includes("pxd-sticky-shadow"))) {
           defs.push(`<filter id="pxd-sticky-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#1c1917" flood-opacity="0.22"/></filter>`);
         }
@@ -44376,8 +44536,8 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
         body.push(`<text x="${n1(r.x)}" y="${n1(r.y + size)}" font-size="${size}" fill="${theme.text}">${esc(titleOf2(item))}</text>`);
       }
     } else {
-      const clip6 = `pxd-clip-${index}`;
-      defs.push(`<clipPath id="${clip6}"><rect x="${n1(r.x + 10)}" y="${n1(r.y)}" width="${n1(Math.max(1, r.w - 20))}" height="${n1(r.h)}"/></clipPath>`);
+      const clip7 = `pxd-clip-${index}`;
+      defs.push(`<clipPath id="${clip7}"><rect x="${n1(r.x + 10)}" y="${n1(r.y)}" width="${n1(Math.max(1, r.w - 20))}" height="${n1(r.h)}"/></clipPath>`);
       body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="8" fill="${theme.card}" stroke="${item.color ? line : theme.border}" stroke-width="${item.color ? 2 : 1}"/>`);
       const picture = imageHrefOf(item, imageHrefs);
       if (picture) {
@@ -44385,7 +44545,7 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
         const iy = r.y + 8;
         body.push(`<image href="${esc(picture)}" x="${n1(ix)}" y="${n1(iy)}" width="${n1(Math.max(1, r.w - 16))}" height="${n1(Math.max(1, r.h - 16))}" preserveAspectRatio="xMidYMid meet"/>`);
       } else {
-        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip6})">${esc(titleOf2(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip7})">${esc(titleOf2(item))}</text>`);
       }
     }
   });
@@ -44801,8 +44961,8 @@ function createInteractions({ actions, settings } = {}) {
       call("clearBlockTarget");
       return null;
     }
-    const text3 = String(item.string ?? "").trim();
-    const refCard = /^\(\(([\w-]+)\)\)$/.test(text3) || /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i.test(text3);
+    const text4 = String(item.string ?? "").trim();
+    const refCard = /^\(\(([\w-]+)\)\)$/.test(text4) || /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i.test(text4);
     const marked = item.kind === "page" || item.kind === "image" || item.kind === "pdf" || item.kind === "block" || refCard || isRoamTableString(item.string);
     if (!marked) {
       call("clearBlockTarget");
@@ -45891,10 +46051,10 @@ function openAddToBoard({ doc = globalThis.document, listBoards, onPick } = {}) 
     target.addEventListener(type, fn, capture);
     offs.push(() => target.removeEventListener(type, fn, capture));
   };
-  const el = (tag, cls, parent, text3) => {
+  const el = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
-    if (text3 !== void 0) node2.textContent = text3;
+    if (text4 !== void 0) node2.textContent = text4;
     parent?.append(node2);
     return node2;
   };
@@ -45934,10 +46094,10 @@ ${b.pageTitle || b.page || ""}`.toLowerCase().includes(q));
       const row4 = el("div", "pxd-addboard__row", list);
       row4.dataset.uid = b.uid;
       row4.setAttribute("data-uid", b.uid);
-      const text3 = el("span", "pxd-addboard__text", row4);
-      el("span", "pxd-addboard__name", text3, b.title || "Untitled board");
+      const text4 = el("span", "pxd-addboard__text", row4);
+      el("span", "pxd-addboard__name", text4, b.title || "Untitled board");
       const page = b.pageTitle || b.page;
-      if (page) el("span", "pxd-addboard__page", text3, page);
+      if (page) el("span", "pxd-addboard__page", text4, page);
     }
   };
   on(box2, "pxd-close", () => close());
@@ -45994,10 +46154,10 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
     target.addEventListener(type, fn, capture);
     offs.push(() => target.removeEventListener(type, fn, capture));
   };
-  const el = (tag, cls, parent, text3) => {
+  const el = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
-    if (text3 !== void 0) node2.textContent = text3;
+    if (text4 !== void 0) node2.textContent = text4;
     parent?.append(node2);
     return node2;
   };
@@ -46026,10 +46186,10 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
   };
   const api2 = { close };
   current = api2;
-  const show = (rows, text3) => {
+  const show = (rows, text4) => {
     list.replaceChildren();
     if (!rows.length) {
-      el("div", "pxd-addboard__empty", list, text3 ? "No matching pages" : "Type to search pages");
+      el("div", "pxd-addboard__empty", list, text4 ? "No matching pages" : "Type to search pages");
       return;
     }
     for (const page of rows) {
@@ -46042,18 +46202,18 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
   };
   const run = () => {
     timer = null;
-    const text3 = String(filter.value || "").trim();
+    const text4 = String(filter.value || "").trim();
     const mine = ++ticket;
-    if (!text3) {
+    if (!text4) {
       show([], "");
       return;
     }
-    Promise.resolve(typeof search === "function" ? search(text3) : []).then((got) => {
+    Promise.resolve(typeof search === "function" ? search(text4) : []).then((got) => {
       if (closed || mine !== ticket) return;
-      show((Array.isArray(got) ? got : []).filter((row4) => row4 && typeof row4.title === "string" && row4.title), text3);
+      show((Array.isArray(got) ? got : []).filter((row4) => row4 && typeof row4.title === "string" && row4.title), text4);
     }, () => {
       if (closed || mine !== ticket) return;
-      show([], text3);
+      show([], text4);
     });
   };
   on(box2, "pxd-close", () => close());
@@ -46180,9 +46340,9 @@ function pageIndicator(inputValue, siblingText) {
 function pageTotalText(candidates2) {
   const list = Array.isArray(candidates2) ? candidates2 : [];
   for (const value of list) {
-    const text3 = String(value ?? "").replace(/\u00a0/g, " ").trim();
-    if (!text3 || text3.length > 16) continue;
-    if (/^\/\s*\d+$/.test(text3)) return text3;
+    const text4 = String(value ?? "").replace(/\u00a0/g, " ").trim();
+    if (!text4 || text4.length > 16) continue;
+    if (/^\/\s*\d+$/.test(text4)) return text4;
   }
   return "";
 }
@@ -46337,17 +46497,17 @@ function resplitColumns(table, words, xs2) {
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const ws = buckets2.get(`${r}:${c}`) || [];
-      const text3 = cellTextOf(ws);
+      const text4 = cellTextOf(ws);
       cells.push({
         r,
         c,
         rowSpan: 1,
         colSpan: 1,
-        text: text3,
+        text: text4,
         header: r < headerRows,
         bbox: [round(bounds[c]), round(ys2[r]), round(bounds[c + 1]), round(ys2[r + 1])],
         align: "left",
-        numeric: isNumericText(text3)
+        numeric: isNumericText(text4)
       });
     }
   }
@@ -46374,25 +46534,25 @@ init_parse_schema();
 // src/model/parse-to-text.js
 init_parse_schema();
 function csvField(value, sep) {
-  const text3 = value == null ? "" : String(value);
+  const text4 = value == null ? "" : String(value);
   const needs = sep === "	" ? /["\t\r\n]/ : /[",\r\n]/;
-  if (!needs.test(text3)) return text3;
-  return `"${text3.replace(/"/g, '""')}"`;
+  if (!needs.test(text4)) return text4;
+  return `"${text4.replace(/"/g, '""')}"`;
 }
 function toCSV(table, { tsv = false } = {}) {
   const sep = tsv ? "	" : ",";
   const grid = tableGrid(table);
   const lines = grid.map((row4) => row4.map((slot2) => {
-    const text3 = !slot2 || slot2.covered || slot2.cell == null ? "" : String(slot2.text ?? "");
-    return csvField(text3, sep);
+    const text4 = !slot2 || slot2.covered || slot2.cell == null ? "" : String(slot2.text ?? "");
+    return csvField(text4, sep);
   }).join(sep));
   return lines.join("\r\n");
 }
-function htmlEscape(text3) {
-  return String(text3 ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function htmlEscape(text4) {
+  return String(text4 ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
-function gfmCell(text3) {
-  return String(text3 ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
+function gfmCell(text4) {
+  return String(text4 ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 function tableHasSpan(table) {
   return (table.cells || []).some((cell) => (cell.rowSpan ?? 1) > 1 || (cell.colSpan ?? 1) > 1);
@@ -46415,8 +46575,8 @@ function tableToMarkdown(table) {
       const tag = cell?.header ? "th" : "td";
       const rs = cell && (cell.rowSpan ?? 1) > 1 ? ` rowspan="${cell.rowSpan}"` : "";
       const cs = cell && (cell.colSpan ?? 1) > 1 ? ` colspan="${cell.colSpan}"` : "";
-      const text3 = cell ? htmlEscape(cell.text ?? "") : "";
-      cells.push(`<${tag}${rs}${cs}>${text3}</${tag}>`);
+      const text4 = cell ? htmlEscape(cell.text ?? "") : "";
+      cells.push(`<${tag}${rs}${cs}>${text4}</${tag}>`);
     }
     return `<tr>${cells.join("")}</tr>`;
   });
@@ -46436,8 +46596,8 @@ var SUPERSCRIPT2 = {
   "⁸": "8",
   "⁹": "9"
 };
-function footnoteText(text3, refs) {
-  let out = String(text3 ?? "");
+function footnoteText(text4, refs) {
+  let out = String(text4 ?? "");
   for (const ref of refs || []) {
     const mark = String(ref.mark ?? "");
     if (!mark || out.includes(`[^${mark}]`)) continue;
@@ -46995,10 +47155,10 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
     }
     return { ...body, sha256: sha };
   }
-  async function vlm({ bytes, sha256, pages, tables: regions, text: text3 = false, numericPages, boxMode, layoutOnly = false, signal } = {}) {
+  async function vlm({ bytes, sha256, pages, tables: regions, text: text4 = false, numericPages, boxMode, layoutOnly = false, signal } = {}) {
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
-    const options = { text: text3 === true };
+    const options = { text: text4 === true };
     if (layoutOnly === true) options.layoutOnly = true;
     if (pages && pages.length) options.pages = pages;
     if (regions && regions.length) options.tables = regions.map((t) => ({ page: t.page, bbox: t.bbox }));
@@ -47082,9 +47242,9 @@ var SWAPS = {
   s: ["a"]
 };
 var MULTI = [["rn", "m"], ["m", "rn"], ["cl", "d"], ["d", "cl"], ["ri", "n"], ["vv", "w"]];
-function parseLexicon(text3) {
+function parseLexicon(text4) {
   const set = /* @__PURE__ */ new Set();
-  for (const line of String(text3 || "").split(/\r?\n/)) {
+  for (const line of String(text4 || "").split(/\r?\n/)) {
     const w = line.trim().toLowerCase();
     if (w) set.add(w);
   }
@@ -47263,16 +47423,16 @@ function bucketConf(mean) {
   if (mean >= 0.5) return 0.5;
   return 0.3;
 }
-function softenPhrase(text3) {
-  return String(text3 || "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/,(\S)/g, ", $1").replace(/;(\S)/g, "; $1").replace(/(\S)\(/g, "$1 (").replace(/\)([A-Za-z])/g, ") $1");
+function softenPhrase(text4) {
+  return String(text4 || "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/,(\S)/g, ", $1").replace(/;(\S)/g, "; $1").replace(/(\S)\(/g, "$1 (").replace(/\)([A-Za-z])/g, ") $1");
 }
-function wordItem(text3, x0, x1, box2, conf) {
+function wordItem(text4, x0, x1, box2, conf) {
   const width = Math.max(0.4, x1 - x0);
   const size = Math.max(0.5, box2.y1 - box2.y0);
   const base = box2.y1 - 0.2 * size;
   const sized = round22(size);
   return {
-    str: text3,
+    str: text4,
     transform: [sized, 0, 0, sized, round22(x0), round22(base)],
     width: round22(width),
     height: sized,
@@ -47298,8 +47458,8 @@ function ctcText({ logits, time, classes, dict }) {
     }
   }
   raw = raw.replace(/\s+/g, " ").trim();
-  const text3 = /[A-Za-z]/.test(raw) ? softenPhrase(raw) : raw;
-  return { text: text3, conf: n2 ? Math.round(conf / n2 * 1e3) / 1e3 : 0 };
+  const text4 = /[A-Za-z]/.test(raw) ? softenPhrase(raw) : raw;
+  return { text: text4, conf: n2 ? Math.round(conf / n2 * 1e3) / 1e3 : 0 };
 }
 function wordsFromCtc({ logits, time, classes, dict, box: box2 }) {
   const chars = ctcDecode(logits, time, classes, dict);
@@ -47318,11 +47478,11 @@ function wordsFromCtc({ logits, time, classes, dict, box: box2 }) {
   flush();
   if (!groups.length) return [];
   if (groups.length === 1 && !chars.some((ch) => SPACE.has(ch.ch))) {
-    const text3 = groups[0].map((ch) => ch.ch).join("");
-    const parts = softenPhrase(text3).split(/\s+/).filter(Boolean);
+    const text4 = groups[0].map((ch) => ch.ch).join("");
+    const parts = softenPhrase(text4).split(/\s+/).filter(Boolean);
     if (parts.length <= 1) {
       const conf2 = groups[0].reduce((s, ch) => s + ch.conf, 0) / groups[0].length;
-      return text3 ? [wordItem(text3, box2.x0, box2.x1, box2, conf2)] : [];
+      return text4 ? [wordItem(text4, box2.x0, box2.x1, box2, conf2)] : [];
     }
     const total = parts.reduce((s, p) => s + p.length, 0);
     let x = box2.x0;
@@ -47335,13 +47495,13 @@ function wordsFromCtc({ logits, time, classes, dict, box: box2 }) {
     });
   }
   return groups.map((group) => {
-    const text3 = group.map((ch) => ch.ch).join("");
+    const text4 = group.map((ch) => ch.ch).join("");
     const t0 = group[0].t;
     const t1 = group[group.length - 1].t + 1;
     const x0 = box2.x0 + t0 / time * span;
     const x1 = box2.x0 + t1 / time * span;
     const conf = group.reduce((s, ch) => s + ch.conf, 0) / group.length;
-    return wordItem(text3, x0, x1, box2, conf);
+    return wordItem(text4, x0, x1, box2, conf);
   }).filter((item) => item.str);
 }
 var TALL_RE = /[A-Z0-9bdfhklt]/;
@@ -47813,19 +47973,19 @@ function applyLineReads(ocrPages, requests, results, { lexicon = null, doc = nul
     const reads = Array.isArray(res?.reads) && res.reads.length ? res.reads : res ? [res] : [];
     const seen = reads.map((read2) => String(read2?.text || "").trim());
     for (const read2 of reads) {
-      const text3 = String(read2?.text || "").trim();
-      if (!text3 || (read2.conf ?? 0) < MIN_READ_CONF) continue;
-      const tokens2 = text3.split(" ").filter(Boolean);
+      const text4 = String(read2?.text || "").trim();
+      if (!text4 || (read2.conf ?? 0) < MIN_READ_CONF) continue;
+      const tokens2 = text4.split(" ").filter(Boolean);
       if (Math.abs(tokens2.length - old.length) > Math.max(2, Math.round(0.25 * old.length))) continue;
       const fixed = restoreClean(fixTokens(tokens2, { lexicon, keep, confs: read2.confs || null }), oldFixed, { lexicon, keep });
       const score = lineScore(fixed, oldTokens, { lexicon, keep });
-      const agreed = best.confs === null && score === best.score && read2.conf >= AGREE_CONF && seen.filter((t) => t === text3).length >= 2;
+      const agreed = best.confs === null && score === best.score && read2.conf >= AGREE_CONF && seen.filter((t) => t === text4).length >= 2;
       if (score < best.score || agreed || score === best.score && read2.conf > best.conf) best = { tokens: fixed, score, conf: read2.conf, confs: read2.confs || [] };
     }
     const cands = reads.map((read2) => {
-      const text3 = String(read2?.text || "").trim();
-      if (!text3 || (read2.conf ?? 0) < MIN_READ_CONF) return null;
-      return fixTokens(text3.split(" ").filter(Boolean), { lexicon, keep, confs: read2.confs || null });
+      const text4 = String(read2?.text || "").trim();
+      if (!text4 || (read2.conf ?? 0) < MIN_READ_CONF) return null;
+      return fixTokens(text4.split(" ").filter(Boolean), { lexicon, keep, confs: read2.confs || null });
     }).filter(Boolean);
     let repaired = repairTokens(best.tokens, cands, { lexicon, keep });
     if (best.confs !== null) repaired = restoreClean(repaired, oldFixed, { lexicon, keep });
@@ -47859,8 +48019,8 @@ init_ocr_vote();
 // src/model/parse/vlm-arbitrate.js
 init_ocr_fix();
 var CLEAR = 0.06;
-function tokens(text3) {
-  return String(text3 || "").toLowerCase().replace(/[–—]/g, "-").split(/[^a-z0-9.-]+/).map((part) => part.replace(/^[.-]+|[.-]+$/g, "")).filter((part) => part.length > 0);
+function tokens(text4) {
+  return String(text4 || "").toLowerCase().replace(/[–—]/g, "-").split(/[^a-z0-9.-]+/).map((part) => part.replace(/^[.-]+|[.-]+$/g, "")).filter((part) => part.length > 0);
 }
 function near(a, b) {
   if (a === b) return true;
@@ -48001,9 +48161,9 @@ function distinctiveOwners(rows) {
   for (const [key, index] of hits) if (index >= 0) owner.set(key, index);
   return owner;
 }
-function ownersOf(text3, owner) {
+function ownersOf(text4, owner) {
   const found = /* @__PURE__ */ new Set();
-  for (const key of tokens(text3)) {
+  for (const key of tokens(text4)) {
     if (owner.has(key)) {
       found.add(owner.get(key));
       continue;
@@ -48063,11 +48223,11 @@ function cleanCoverage(table, rows, owner) {
   }
   return { covered, counted };
 }
-function scientificFactor(text3) {
-  return /^\d[\d.,]*(\s+\d{1,3})?\s+E[+\-−]\d+$/i.test(String(text3 || "").trim());
+function scientificFactor(text4) {
+  return /^\d[\d.,]*(\s+\d{1,3})?\s+E[+\-−]\d+$/i.test(String(text4 || "").trim());
 }
-function plainNumber(text3) {
-  let s = String(text3 || "").trim();
+function plainNumber(text4) {
+  let s = String(text4 || "").trim();
   s = s.replace(/\\overline\{([^}]*)\}/g, "$1");
   s = s.replace(/\\\(|\\\)|\\[a-z]+/g, "");
   s = s.replace(/[{}]/g, "").trim();
@@ -48075,8 +48235,8 @@ function plainNumber(text3) {
   if (scientificFactor(s)) return true;
   return /^[+-]?(?:\d+\.?\d*|\.\d+|\d{1,3}(?:,\d{3})+(?:\.\d+)?)$/.test(s);
 }
-function plainPhrase(text3) {
-  return /^[A-Za-z][A-Za-z .,'’()/-]{0,80}$/.test(String(text3 || "").trim());
+function plainPhrase(text4) {
+  return /^[A-Za-z][A-Za-z .,'’()/-]{0,80}$/.test(String(text4 || "").trim());
 }
 function effectiveHeader(table, reading = true) {
   const marked = table?.headerRows || 0;
@@ -48120,12 +48280,12 @@ function tidyShare(table, reading) {
   }
   return n2 ? ok / n2 : 1;
 }
-function proseNote(text3) {
-  const words = String(text3 || "").split(/\s+/).filter((w) => /[A-Za-z]/.test(w));
-  return words.length >= 6 && words.length >= 0.7 * String(text3 || "").split(/\s+/).filter(Boolean).length;
+function proseNote(text4) {
+  const words = String(text4 || "").split(/\s+/).filter((w) => /[A-Za-z]/.test(w));
+  return words.length >= 6 && words.length >= 0.7 * String(text4 || "").split(/\s+/).filter(Boolean).length;
 }
-function isDebris(text3) {
-  const raw = String(text3 || "").trim();
+function isDebris(text4) {
+  const raw = String(text4 || "").trim();
   if (!raw || plainNumber(raw) || isPlaceholder(raw)) return false;
   if (!/\d/.test(raw) && plainPhrase(raw)) return false;
   if (/\d/.test(raw)) return true;
@@ -48339,11 +48499,11 @@ function fillEmptyFromRule(chosen, rule, evidence) {
   for (const cell of cells) {
     if (String(cell.text || "").trim()) continue;
     const src = (rule.cells || []).find((k) => k.r === cell.r && k.c === cell.c && (k.colSpan || 1) === (cell.colSpan || 1) && (k.rowSpan || 1) === (cell.rowSpan || 1));
-    const text3 = String(src?.text || "").trim();
-    if (!text3) continue;
-    const keys = tokens(text3);
+    const text4 = String(src?.text || "").trim();
+    if (!text4) continue;
+    const keys = tokens(text4);
     if (!keys.length || !keys.every((key) => bagHas(bag, key))) continue;
-    cell.text = text3;
+    cell.text = text4;
     cell.header = cell.r < (chosen.headerRows || 0);
     filled++;
   }
@@ -48354,11 +48514,11 @@ function cellTextAt(table, r, c) {
   const cell = (table?.cells || []).find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
   return String(cell?.text || "").trim();
 }
-function stubKey(text3) {
-  return String(text3 || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+function stubKey(text4) {
+  return String(text4 || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
-function parseLoose(text3) {
-  let s = String(text3 || "").trim().replace(/,/g, "");
+function parseLoose(text4) {
+  let s = String(text4 || "").trim().replace(/,/g, "");
   if (!s) return null;
   if (/^\.\d+$/.test(s)) s = `0${s}`;
   if (!/^[+-]?\d+(?:\.\d+)?$/.test(s)) return null;
@@ -48372,8 +48532,8 @@ function totalColumn(table) {
   const look = Math.min(rows, Math.max(table.headerRows || 0, 2));
   for (let c = 1; c < cols; c += 1) {
     for (let r = 0; r < look; r += 1) {
-      const text3 = cellTextAt(table, r, c).replace(/[.:]+$/g, "");
-      if (/^total\b/i.test(text3)) return c;
+      const text4 = cellTextAt(table, r, c).replace(/[.:]+$/g, "");
+      if (/^total\b/i.test(text4)) return c;
     }
   }
   const start = table.headerRows || 0;
@@ -48383,10 +48543,10 @@ function totalColumn(table) {
     let n2 = 0;
     let hundreds = 0;
     for (let r = start; r < rows; r += 1) {
-      const text3 = cellTextAt(table, r, c);
-      if (!text3) continue;
+      const text4 = cellTextAt(table, r, c);
+      if (!text4) continue;
       n2 += 1;
-      const v = parseLoose(text3);
+      const v = parseLoose(text4);
       if (v != null && Math.abs(v - 100) < 1e-3) hundreds += 1;
     }
     if (n2 >= 3 && hundreds / n2 >= 0.6 && hundreds / n2 > bestShare) {
@@ -48440,17 +48600,17 @@ function restoreLabeledTotals(chosen, rule) {
     if (rr == null) continue;
     if (sumsToTotal(chosen, r, totalCol) || !sumsToTotal(rule, rr, totalCol)) continue;
     for (let c = 1; c < chosen.cols; c += 1) {
-      const text3 = cellTextAt(rule, rr, c);
-      if (!text3) continue;
+      const text4 = cellTextAt(rule, rr, c);
+      if (!text4) continue;
       const cell = cells.find((k) => k.r === r && k.c === c && (k.colSpan || 1) === 1 && (k.rowSpan || 1) === 1);
       const have = cell ? String(cell.text || "").trim() : "";
-      if (have && parseLoose(have) == null && parseLoose(text3) == null) continue;
+      if (have && parseLoose(have) == null && parseLoose(text4) == null) continue;
       if (cell) {
-        if (have === text3) continue;
-        cell.text = text3;
+        if (have === text4) continue;
+        cell.text = text4;
         changed2 += 1;
       } else {
-        cells.push({ r, c, rowSpan: 1, colSpan: 1, text: text3, header: false });
+        cells.push({ r, c, rowSpan: 1, colSpan: 1, text: text4, header: false });
         changed2 += 1;
       }
     }
@@ -48497,8 +48657,8 @@ var ROW_GAP = 4;
 var ROW_PITCH_MAX = 36;
 var PROSE_LETTERS = 8;
 var LABEL_LETTERS_MAX = 24;
-function isNumericToken(text3) {
-  const token = String(text3 || "").replace(/\s+/g, "").replace(/^[.,;:]+|[.,;:]+$/g, "");
+function isNumericToken(text4) {
+  const token = String(text4 || "").replace(/\s+/g, "").replace(/^[.,;:]+|[.,;:]+$/g, "");
   return token.length > 0 && NUMERIC.test(token);
 }
 function wordBox3(word) {
@@ -48522,8 +48682,8 @@ function tablePitch(ys2) {
   gaps.sort((a, b) => a - b);
   return gaps[Math.floor(gaps.length / 2)];
 }
-function letterCount(text3) {
-  const raw = String(text3 || "");
+function letterCount(text4) {
+  const raw = String(text4 || "");
   let n2 = 0;
   for (let i = 0; i < raw.length; i++) {
     const c = raw.charCodeAt(i);
@@ -48531,8 +48691,8 @@ function letterCount(text3) {
   }
   return n2;
 }
-function listMarker(text3) {
-  const token = String(text3 || "").replace(/\s+/g, "").replace(/[.,;:]+$/g, "");
+function listMarker(text4) {
+  const token = String(text4 || "").replace(/\s+/g, "").replace(/[.,;:]+$/g, "");
   return /^\d{1,4}$/.test(token);
 }
 function sameLineLetters(words, y) {
@@ -48585,9 +48745,9 @@ function alignedNumericColumns(words, { minRows = MIN_NUMERIC_ROWS, minCols = MI
   }
   return false;
 }
-function decimalToken(text3) {
-  if (!isNumericToken(text3)) return false;
-  const token = String(text3 || "").replace(/\s+/g, "").replace(/^[.,;:]+|[.,;:]+$/g, "");
+function decimalToken(text4) {
+  if (!isNumericToken(text4)) return false;
+  const token = String(text4 || "").replace(/\s+/g, "").replace(/^[.,;:]+|[.,;:]+$/g, "");
   return token.includes(".") || token.includes("%");
 }
 function labeledDecimalColumn(words) {
@@ -48668,8 +48828,8 @@ function decimalColumnPagesOf(records, pages, figures = []) {
 
 // src/model/parse/vlm-tables.js
 init_ocr_fix();
-function normCell2(text3) {
-  return String(text3 || "").replace(/\s+/g, " ").trim().toLowerCase();
+function normCell2(text4) {
+  return String(text4 || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 function setJaccard(a, b) {
   const A = new Set((a?.cells || []).map((c) => normCell2(c.text)).filter(Boolean));
@@ -48713,8 +48873,8 @@ function mostlyInside(inner, outer) {
 }
 function pageTokenBag(doc, page) {
   const bag = /* @__PURE__ */ new Set();
-  const add = (text3) => {
-    for (const part of String(text3 || "").toLowerCase().split(/[^a-z0-9.+-]+/)) {
+  const add = (text4) => {
+    for (const part of String(text4 || "").toLowerCase().split(/[^a-z0-9.+-]+/)) {
       if (part.length > 1 || /\d/.test(part)) bag.add(part);
     }
   };
@@ -48774,11 +48934,11 @@ function restoreLeadingZeros(table, words) {
   const bag = wordTokens(words);
   if (!bag.size) return table;
   for (const cell of table.cells) {
-    const text3 = String(cell.text || "").trim();
-    const m = /^([+\-−]?)(\.\d+%?)$/.exec(text3);
+    const text4 = String(cell.text || "").trim();
+    const m = /^([+\-−]?)(\.\d+%?)$/.exec(text4);
     if (!m) continue;
     const zero = `${m[1]}0${m[2]}`;
-    if (bag.has(zero) && !bag.has(text3)) cell.text = zero;
+    if (bag.has(zero) && !bag.has(text4)) cell.text = zero;
   }
   return table;
 }
@@ -48811,8 +48971,8 @@ function dropCaptionRow(table, words) {
   const cells = table.cells.filter((cell) => cell.r !== 0).map((cell) => ({ ...cell, r: cell.r - 1 }));
   return { ...table, cells, rows: table.rows - 1, headerRows: Math.max(0, (table.headerRows || 0) - (table.headerRows > 0 ? 1 : 0)) };
 }
-function wordCountOf(text3) {
-  return String(text3 || "").split(/\s+/).filter((w) => /[A-Za-z]/.test(w)).length;
+function wordCountOf(text4) {
+  return String(text4 || "").split(/\s+/).filter((w) => /[A-Za-z]/.test(w)).length;
 }
 function spanNoteCells(table) {
   if (!table?.cells?.length || !(table.cols >= 3) || !(table.rows >= 3)) return table;
@@ -48908,8 +49068,8 @@ function tableFromVlm(structure, { id = "vlm", method = "vlm" } = {}) {
     engine: "builtin"
   };
 }
-function letterCount2(text3) {
-  const raw = String(text3 || "");
+function letterCount2(text4) {
+  const raw = String(text4 || "");
   let n2 = 0;
   for (let i = 0; i < raw.length; i++) {
     const c = raw.charCodeAt(i);
@@ -48925,10 +49085,10 @@ function gridReading(table) {
   if (rows < 4 || cols < 2 || texts.length < 6) return false;
   const byCol = /* @__PURE__ */ new Map();
   for (const cell of cells) {
-    const text3 = String(cell.text || "").trim();
-    if (!text3) continue;
+    const text4 = String(cell.text || "").trim();
+    if (!text4) continue;
     if (!byCol.has(cell.c)) byCol.set(cell.c, []);
-    byCol.get(cell.c).push(text3);
+    byCol.get(cell.c).push(text4);
   }
   const groups = [...byCol.values()];
   if (groups.length === 2) {
@@ -49119,8 +49279,8 @@ function centerOf4(bbox) {
   if (!bbox || bbox.length < 4) return null;
   return [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2];
 }
-function splitByWidth(text3, widths) {
-  const words = String(text3 || "").split(/\s+/).filter(Boolean);
+function splitByWidth(text4, widths) {
+  const words = String(text4 || "").split(/\s+/).filter(Boolean);
   if (!widths.length) return [];
   if (!words.length) return widths.map(() => "");
   if (widths.length === 1) return [words.join(" ")];
@@ -49225,8 +49385,8 @@ function hostHeight(host) {
   return b && b.length >= 4 ? Math.max(0, b[3] - b[1]) : 0;
 }
 var ANCHOR_WEIGHT = 5;
-function placePageText(text3, hosts) {
-  const words = String(text3 || "").split(/\s+/).filter(Boolean);
+function placePageText(text4, hosts) {
+  const words = String(text4 || "").split(/\s+/).filter(Boolean);
   const k = hosts.length;
   if (!k) return [];
   const keys = words.map(alignKey);
@@ -49409,25 +49569,25 @@ function alignVlmText(doc, regions) {
       else spare = [spare, moved].filter(Boolean).join(" ");
     });
     hosts.forEach((block, i) => {
-      const text3 = [...before[i], out[i], ...after[i]].filter(Boolean).join(" ");
-      if (text3 === block.text || !text3 && block.type === "caption") return;
-      blocks[block.id] = { ...block, text: text3 };
+      const text4 = [...before[i], out[i], ...after[i]].filter(Boolean).join(" ");
+      if (text4 === block.text || !text4 && block.type === "caption") return;
+      blocks[block.id] = { ...block, text: text4 };
       applied.push(block.id);
     });
     return spare;
   }
 }
-function cellTokens(text3) {
-  return String(text3 || "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+function cellTokens(text4) {
+  return String(text4 || "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
 }
-function withoutTableLines(text3, tables) {
-  if (!tables?.length) return text3;
+function withoutTableLines(text4, tables) {
+  if (!tables?.length) return text4;
   const bag = /* @__PURE__ */ new Map();
   for (const table of tables) {
     for (const cell of table.cells || []) for (const t of cellTokens(cell.text)) bag.set(t, (bag.get(t) || 0) + 1);
   }
-  if (!bag.size) return text3;
-  const lines = String(text3 || "").split("\n");
+  if (!bag.size) return text4;
+  const lines = String(text4 || "").split("\n");
   const kept = lines.filter((line) => {
     const toks = cellTokens(line);
     if (toks.length < 2) return true;
@@ -49444,11 +49604,11 @@ function withoutTableLines(text3, tables) {
     for (const [t, n2] of left) bag.set(t, n2);
     return false;
   });
-  return kept.length === lines.length ? text3 : kept.join("\n");
+  return kept.length === lines.length ? text4 : kept.join("\n");
 }
 var CAPTION_LABEL_RE = /^\s*(?:fig(?:ure)?|abb(?:ildung)?|plate|tafel|table|tab)\.?\s*(?:\d+|[IVXLC]+)[a-z]?\b/i;
-function labelKey(text3) {
-  return String(text3 || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+function labelKey(text4) {
+  return String(text4 || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 function captionReading(own, slice) {
   const words = String(slice || "").split(/\s+/).filter(Boolean);
@@ -49473,8 +49633,8 @@ function captionReading(own, slice) {
 function containsPoint(box2, c) {
   return c[0] >= box2[0] && c[0] <= box2[2] && c[1] >= box2[1] && c[1] <= box2[3];
 }
-function texCommandCount(text3) {
-  return (String(text3 || "").match(/\\(?:[A-Za-z]+|[()[\]])/g) || []).length;
+function texCommandCount(text4) {
+  return (String(text4 || "").match(/\\(?:[A-Za-z]+|[()[\]])/g) || []).length;
 }
 function sharesWord(a, b) {
   const words = new Set(String(a || "").toLowerCase().match(/[a-z0-9]{3,}/g) || []);
@@ -49503,13 +49663,13 @@ function dropFormulaTables(doc, layout, pages) {
     if (!formulas.some((b) => onPage(b) && b.label === "display_formula" && mostlyInside(b.bbox, block.bbox))) continue;
     const rows = /* @__PURE__ */ new Map();
     for (const cell of block.cells || []) {
-      const text4 = String(cell.text || "").trim();
-      if (!text4) continue;
+      const text5 = String(cell.text || "").trim();
+      if (!text5) continue;
       if (!rows.has(cell.r)) rows.set(cell.r, []);
-      rows.get(cell.r).push({ c: cell.c, text: text4 });
+      rows.get(cell.r).push({ c: cell.c, text: text5 });
     }
-    const text3 = [...rows.keys()].sort((a, b) => a - b).map((r) => rows.get(r).sort((a, b) => a.c - b.c).map((k) => k.text).join(" ")).join(" ");
-    blocks[id] = { id, type: "formula", page: block.page, bbox: block.bbox, latex: null, number: null, text: text3, confidence: 0.7, engine: block.engine || "builtin" };
+    const text4 = [...rows.keys()].sort((a, b) => a - b).map((r) => rows.get(r).sort((a, b) => a.c - b.c).map((k) => k.text).join(" ")).join(" ");
+    blocks[id] = { id, type: "formula", page: block.page, bbox: block.bbox, latex: null, number: null, text: text4, confidence: 0.7, engine: block.engine || "builtin" };
     if (block.caption && blocks[block.caption]) blocks[block.caption] = { ...blocks[block.caption], for: void 0 };
     applied.push({ id, page: block.page });
     boxes.push({ page: block.page, bbox: block.bbox });
@@ -49619,8 +49779,8 @@ var FIGURES_LABEL_RE = /^\s*(?:figs\.?|figures|abbildungen)\s/i;
 function captionNamesOne(blocks, id, order, page) {
   const figure = blocks[id];
   const caption = figure?.caption ? blocks[figure.caption] : null;
-  const text3 = String(caption?.text || "");
-  if (!FIGURE_LABEL_RE.test(text3) || FIGURES_LABEL_RE.test(text3)) return false;
+  const text4 = String(caption?.text || "");
+  if (!FIGURE_LABEL_RE.test(text4) || FIGURES_LABEL_RE.test(text4)) return false;
   const box2 = figure.bbox;
   return !order.some((oid) => {
     const b = blocks[oid];
@@ -49642,10 +49802,10 @@ function applyLayoutFigures(doc, layout, pages) {
     if (!page || !(page.w > 0) || !(page.h > 0)) continue;
     const pageArea = page.w * page.h;
     const onPage = (layout || []).filter((b) => b && b.page === n2 && b.bbox && b.bbox.length >= 4 && (b.score ?? 0) >= LAYOUT_FIGURE_MIN_SCORE);
-    const clip6 = (b) => [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(page.w, b[2]), Math.min(page.h, b[3])];
+    const clip7 = (b) => [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(page.w, b[2]), Math.min(page.h, b[3])];
     const tables = order.map((id) => blocks[id]).filter((b) => b?.type === "table" && b.page === n2 && b.bbox).map((b) => b.bbox);
-    const hints = onPage.filter((b) => b.label === "image" || b.label === "chart").map((b) => clip6(b.bbox)).filter((b) => area(b) >= LAYOUT_FIGURE_MIN_AREA * pageArea && !tables.some((t) => mostlyInside(b, t)));
-    const others = onPage.filter((b) => b.label !== "image" && b.label !== "chart").map((b) => clip6(b.bbox));
+    const hints = onPage.filter((b) => b.label === "image" || b.label === "chart").map((b) => clip7(b.bbox)).filter((b) => area(b) >= LAYOUT_FIGURE_MIN_AREA * pageArea && !tables.some((t) => mostlyInside(b, t)));
+    const others = onPage.filter((b) => b.label !== "image" && b.label !== "chart").map((b) => clip7(b.bbox));
     const boxes = mergePanels(hints, page.w, page.h);
     const locals = order.filter((id) => blocks[id]?.type === "figure" && blocks[id].page === n2 && blocks[id].bbox);
     const born = !page.ocr && !page.scanLayer && page.kind !== "scan";
@@ -49812,10 +49972,10 @@ function captionPlatePages(doc, pages) {
       return area2 >= 0.75 * page.w * page.h;
     });
     if (!big) continue;
-    const text3 = blocks.filter((block) => block.text && (block.type === "para" || block.type === "caption" || block.type === "heading" || block.type === "footnote"));
-    const chars = text3.reduce((sum, block) => sum + String(block.text).length, 0);
-    if (!text3.length || text3.length > 6 || chars < 8 || chars > 500) continue;
-    const band = text3.every((block) => {
+    const text4 = blocks.filter((block) => block.text && (block.type === "para" || block.type === "caption" || block.type === "heading" || block.type === "footnote"));
+    const chars = text4.reduce((sum, block) => sum + String(block.text).length, 0);
+    if (!text4.length || text4.length > 6 || chars < 8 || chars > 500) continue;
+    const band = text4.every((block) => {
       if (!block.bbox) return false;
       const cy = (block.bbox[1] + block.bbox[3]) / 2;
       return cy <= page.h * 0.18 || cy >= page.h * 0.82;
@@ -49889,7 +50049,7 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     try {
       if (high && (tableSend.length || textSend.length || layoutSend.length)) {
         onPhase?.({ phase: "vlm", count: tableSend.length + textSend.length, mode: "high" });
-        const askVlm = (pageList, text3, numeric, layoutOnly = false) => {
+        const askVlm = (pageList, text4, numeric, layoutOnly = false) => {
           if (!pageList.length) return null;
           return helper.vlm({
             bytes,
@@ -49897,7 +50057,7 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
             pages: pageList,
             tables: layoutOnly ? [] : regions.filter((r) => pageList.includes(r.page)),
             numericPages: layoutOnly ? [] : numeric.filter((n2) => pageList.includes(n2)),
-            text: text3,
+            text: text4,
             layoutOnly,
             signal
           });
@@ -50066,9 +50226,9 @@ function skipParsedBox(block, plan, page) {
   const h = plan.height / 100 * H;
   if (h < MIN_BOX_H && w < MIN_BOX_W) return true;
   if ((block?.type === "figure" || block?.type === "image") && (h < MIN_IMAGE || w < MIN_IMAGE)) return true;
-  const text3 = typeof block?.text === "string" ? block.text.trim() : "";
+  const text4 = typeof block?.text === "string" ? block.text.trim() : "";
   const pictorial = block?.type === "figure" || block?.type === "formula" || block?.type === "image";
-  if (!pictorial && block?.type !== "table" && text3 && MARK_TEXT.test(text3)) return true;
+  if (!pictorial && block?.type !== "table" && text4 && MARK_TEXT.test(text4)) return true;
   return false;
 }
 function copyIconSpot(entry, page, dy = 0, size = COPY_ICON) {
@@ -50201,6 +50361,7 @@ function createPageChips({
   copy = null,
   copyMenu = null,
   ask: ask2 = null,
+  chart = null,
   drag = null,
   storage = null,
   boxCap = 4e3
@@ -50275,11 +50436,11 @@ function createPageChips({
     chipNode = null;
   };
   const later = (fn, ms) => (win2()?.setTimeout || setTimeout)(fn, ms);
-  const button2 = (cls, text3, tip) => {
+  const button2 = (cls, text4, tip) => {
     const node2 = doc.createElement("button");
     node2.type = "button";
     node2.className = cls;
-    node2.textContent = text3;
+    node2.textContent = text4;
     if (tip) node2.setAttribute("data-tip", tip);
     return node2;
   };
@@ -50381,6 +50542,21 @@ function createPageChips({
         closeCopyMenu();
         try {
           ask2(block);
+        } catch {
+        }
+      });
+      menu.append(entry);
+    }
+    if (typeof chart === "function" && block.type === "figure") {
+      const entry = button2("pxd-copy-menu__item", "Chart → table");
+      entry.setAttribute("role", "menuitem");
+      entry.setAttribute("data-copy", "chart-table");
+      on(entry, "click", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        closeCopyMenu();
+        try {
+          chart(block);
         } catch {
         }
       });
@@ -51146,8 +51322,8 @@ async function makeHighlight({ block, live: live2, pageEl, page, getContext, ado
 }
 function selectionInReader(sel, readerEl) {
   if (!sel || sel.isCollapsed || !readerEl || typeof sel.rangeCount === "number" && sel.rangeCount < 1) return null;
-  const text3 = String(sel.toString?.() ?? "").replace(/\s+/g, " ").trim();
-  if (!text3) return null;
+  const text4 = String(sel.toString?.() ?? "").replace(/\s+/g, " ").trim();
+  if (!text4) return null;
   const elOf = (node2) => node2?.nodeType === 1 ? node2 : node2?.parentElement || null;
   const start = elOf(sel.anchorNode);
   const end = elOf(sel.focusNode);
@@ -51175,7 +51351,7 @@ function selectionInReader(sel, readerEl) {
     }
   }
   const box2 = rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.right - rect.left, height: rect.bottom - rect.top } : null;
-  return { text: text3, page, pageEl, range, rect: box2 };
+  return { text: text4, page, pageEl, range, rect: box2 };
 }
 function unionRect3(a, b) {
   if (!a) return b || null;
@@ -51247,14 +51423,14 @@ function zoneScale(zone, zoom) {
 }
 function ghostContent(source = {}) {
   const kind = ["text", "table", "figure", "highlight", "blocks"].includes(source.kind) ? source.kind : "text";
-  const text3 = String(source.text ?? "").replace(/\s+/g, " ").trim();
+  const text4 = String(source.text ?? "").replace(/\s+/g, " ").trim();
   const rowCap = clamp3(Math.round(num4(source.rowCap, 3)) || 3, 1, 12);
   const colCap = clamp3(Math.round(num4(source.colCap, 6)) || 6, 1, 12);
   const rows = Array.isArray(source.rows) ? source.rows.slice(0, rowCap).map((row4) => Array.isArray(row4) ? row4.slice(0, colCap).map((cell) => String(cell ?? "")) : []) : [];
   const src = typeof source.src === "string" ? source.src : "";
   const color = typeof source.color === "string" ? source.color : "";
   const page = Number.isFinite(Number(source.page)) && Number(source.page) > 0 ? Number(source.page) : null;
-  return { kind, text: text3, rows, src, color, page };
+  return { kind, text: text4, rows, src, color, page };
 }
 function ghostOrigin(pointer, grab, size, sx, sy) {
   return { x: pointer.x - grab.fx * size.w * sx, y: pointer.y - grab.fy * size.h * sy };
@@ -51708,8 +51884,8 @@ function placementContent(doc, ids, act, extra = null) {
   if (blocks.length === 1 && first.type === "figure") {
     return { content: { kind: "figure", text: first.caption && doc?.blocks?.[first.caption]?.text ? doc.blocks[first.caption].text : "", page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
   }
-  const text3 = blocks.map((b) => b.type === "list" ? (b.items || []).map((item) => item.text).join(" ") : b.text || b.latex || "").join(" ");
-  return { content: { kind: "text", text: text3, page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
+  const text4 = blocks.map((b) => b.type === "list" ? (b.items || []).map((item) => item.text).join(" ") : b.text || b.latex || "").join(" ");
+  return { content: { kind: "text", text: text4, page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
 }
 function createParseActions({ session, store, placeBeside, toast, select, show, focus, upload, toWorld } = {}) {
   const say = (message) => {
@@ -51874,6 +52050,18 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);
         say("Answer card inserted");
+      }
+      return res || { ok: false, reason: "no-session" };
+    },
+    // Chart -> table. A table the model read off a figure, as a normal table card with the figure as Source::.
+    async insertChartTable(payload) {
+      const table = payload?.table;
+      if (!table || table.type !== "table" || !(table.rows > 0)) return { ok: false, reason: "empty" };
+      const at = where(payload, parsedTableSize(table));
+      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: [], ...payload.pin ? { pin: payload.pin } : {} });
+      if (res?.ok) {
+        pick(res.uid ? [res.uid] : []);
+        say("Chart data inserted");
       }
       return res || { ok: false, reason: "no-session" };
     },
@@ -52327,8 +52515,8 @@ function createAnydocHost({
         if (err && typeof err === "object" && !err.code) err.code = "convert";
         throw err;
       }
-      const text3 = typeof markdown === "string" ? markdown : new TextDecoder().decode(asBytes(markdown));
-      return { markdown: text3, ms: clock() - t0, format };
+      const text4 = typeof markdown === "string" ? markdown : new TextDecoder().decode(asBytes(markdown));
+      return { markdown: text4, ms: clock() - t0, format };
     }
   };
 }
@@ -52430,8 +52618,8 @@ function estimateCloudCost({ pages, tier } = {}) {
 function formatUsd(usd) {
   const n2 = Number(usd) || 0;
   if (n2 >= 1) return `$${n2.toFixed(2)}`;
-  const text3 = n2.toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
-  return text3 === "0" ? "$0.00" : `$${text3}`;
+  const text4 = n2.toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
+  return text4 === "0" ? "$0.00" : `$${text4}`;
 }
 function defaultCloudScope(pageCount) {
   const n2 = Number(pageCount);
@@ -53035,9 +53223,9 @@ function openCloudConfirm({
       mark.setAttribute("data-cloud-check", "");
       mark.setAttribute("aria-hidden", "true");
       mark.textContent = "✓";
-      const text3 = doc.createElement("span");
-      text3.textContent = label;
-      button2.append(mark, text3);
+      const text4 = doc.createElement("span");
+      text4.textContent = label;
+      button2.append(mark, text4);
       button2.addEventListener("click", (event) => {
         event.preventDefault?.();
         event.stopPropagation?.();
@@ -53507,9 +53695,9 @@ function applyHeadingTitles(blocks, order, pageNumber) {
       if (prev.type === "caption") continue;
       break;
     }
-    const text3 = String(heading?.text || "").replace(/\s+/g, " ").trim();
-    if (!text3 || !headingSitsOn(heading?.bbox, table.bbox)) continue;
-    table.title = text3;
+    const text4 = String(heading?.text || "").replace(/\s+/g, " ").trim();
+    if (!text4 || !headingSitsOn(heading?.bbox, table.bbox)) continue;
+    table.title = text4;
   }
 }
 function headingSitsOn(heading, table) {
@@ -53558,18 +53746,18 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
     const bbox = box2?.bbox || [0, 0, 0, 0];
     if (type === "heading") {
       const level = Math.min(6, Math.max(1, Math.floor(Number(item.level) || 1)));
-      const text4 = plainItem(item);
+      const text5 = plainItem(item);
       const block = push({
         id: nextId("h"),
         type: "heading",
         level,
-        text: text4,
+        text: text5,
         page: pageNumber,
         bbox,
         confidence,
         engine: ENGINE
       });
-      if (!title && level === 1 && pageNumber === 1 && text4) title = text4;
+      if (!title && level === 1 && pageNumber === 1 && text5) title = text5;
       return block;
     }
     if (type === "list") {
@@ -53655,12 +53843,12 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
         engine: ENGINE
       });
     }
-    const text3 = plainItem(item);
-    if (!text3 && type !== "text" && type !== "link") return null;
+    const text4 = plainItem(item);
+    if (!text4 && type !== "text" && type !== "link") return null;
     return push({
       id: nextId("p"),
       type: "para",
-      text: text3,
+      text: text4,
       page: pageNumber,
       bbox,
       confidence,
@@ -53707,8 +53895,8 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
         confidence: box2.confidence == null ? 0.9 : box2.confidence,
         engine: ENGINE
       });
-      const text3 = captionItem ? plainItem(captionItem) : "";
-      if (!text3) return;
+      const text4 = captionItem ? plainItem(captionItem) : "";
+      if (!text4) return;
       const capBox = llamaBox(captionItem.bbox);
       const captionId = nextId("c");
       push({
@@ -53716,7 +53904,7 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
         type: "caption",
         page: pageNumber,
         bbox: capBox?.bbox || box2.bbox,
-        text: text3,
+        text: text4,
         for: id,
         confidence: capBox?.confidence == null ? block.confidence : capBox.confidence,
         engine: ENGINE
@@ -53818,11 +54006,11 @@ function tablePlaceholder(line) {
   return match ? { id: match[1] } : null;
 }
 function plainLine(line) {
-  const text3 = String(line || "");
-  if (!text3.trim()) return false;
-  if (imageLine(text3) || tablePlaceholder(text3)) return false;
-  if (/^(#{1,6})\s+/.test(text3) || /^(\s*)([-*+]|\d+\.)\s+\S/.test(text3)) return false;
-  if (/<table\b/i.test(text3) || text3.includes("|")) return false;
+  const text4 = String(line || "");
+  if (!text4.trim()) return false;
+  if (imageLine(text4) || tablePlaceholder(text4)) return false;
+  if (/^(#{1,6})\s+/.test(text4) || /^(\s*)([-*+]|\d+\.)\s+\S/.test(text4)) return false;
+  if (/<table\b/i.test(text4) || text4.includes("|")) return false;
   return true;
 }
 function neighborBelow(lines, index) {
@@ -53849,23 +54037,23 @@ function tableFromContent(content) {
   if (!table) return null;
   return { rows: table.rows, cols: table.cols, headerRows: table.headerRows, cells: table.cells };
 }
-function splitHtml(text3) {
+function splitHtml(text4) {
   const parts = [];
   const re = /<table\b[\s\S]*?<\/table>/gi;
   let last = 0;
   let match;
-  while (match = re.exec(text3)) {
-    if (match.index > last) parts.push({ kind: "md", text: text3.slice(last, match.index) });
+  while (match = re.exec(text4)) {
+    if (match.index > last) parts.push({ kind: "md", text: text4.slice(last, match.index) });
     parts.push({ kind: "html", html: match[0] });
     last = match.index + match[0].length;
   }
-  if (last < text3.length) parts.push({ kind: "md", text: text3.slice(last) });
-  if (!parts.length) parts.push({ kind: "md", text: text3 });
+  if (last < text4.length) parts.push({ kind: "md", text: text4.slice(last) });
+  if (!parts.length) parts.push({ kind: "md", text: text4 });
   return parts;
 }
-function markdownNodes(text3) {
+function markdownNodes(text4) {
   const nodes = [];
-  for (const part of splitHtml(text3)) {
+  for (const part of splitHtml(text4)) {
     if (part.kind === "html") {
       const parsed = cellsFromHtml(part.html);
       if (parsed) nodes.push({ type: "table", ...parsed });
@@ -53892,9 +54080,9 @@ function pageNodes(page) {
   const nodes = [];
   let buf = [];
   const flush = () => {
-    const text3 = buf.join("\n");
+    const text4 = buf.join("\n");
     buf = [];
-    if (text3.trim()) nodes.push(...markdownNodes(text3));
+    if (text4.trim()) nodes.push(...markdownNodes(text4));
   };
   for (let i = 0; i < lines.length; i += 1) {
     if (consumed.has(i)) continue;
@@ -53981,9 +54169,9 @@ function mistralToParse(provider, { sha256 = null } = {}) {
       const bbox = node2.bbox || [0, 0, 0, 0];
       if (node2.type === "heading") {
         const level = Math.min(6, Math.max(1, Math.floor(Number(node2.level) || 1)));
-        const text4 = String(node2.text || "").replace(/\s+/g, " ").trim();
-        push({ id: nextId("h"), type: "heading", level, text: text4, page: pageNumber, bbox, confidence, engine: ENGINE });
-        if (!title && level === 1 && pageNumber === 1 && text4) title = text4;
+        const text5 = String(node2.text || "").replace(/\s+/g, " ").trim();
+        push({ id: nextId("h"), type: "heading", level, text: text5, page: pageNumber, bbox, confidence, engine: ENGINE });
+        if (!title && level === 1 && pageNumber === 1 && text5) title = text5;
         continue;
       }
       if (node2.type === "list") {
@@ -54079,12 +54267,12 @@ function mistralToParse(provider, { sha256 = null } = {}) {
         });
         continue;
       }
-      const text3 = String(node2.text || "").replace(/\s+/g, " ").trim();
-      if (!text3) continue;
+      const text4 = String(node2.text || "").replace(/\s+/g, " ").trim();
+      if (!text4) continue;
       push({
         id: nextId("p"),
         type: "para",
-        text: text3,
+        text: text4,
         page: pageNumber,
         bbox,
         confidence,
@@ -54191,11 +54379,11 @@ function copyViaEvent(doc, parts) {
   target.removeEventListener("copy", onCopy, true);
   return ran && set;
 }
-async function writeClipboard({ text: text3 = "", mime = null, data = null } = {}) {
+async function writeClipboard({ text: text4 = "", mime = null, data = null } = {}) {
   const nav = globalThis.navigator;
   try {
     if (nav?.clipboard?.writeText) {
-      await nav.clipboard.writeText(String(text3));
+      await nav.clipboard.writeText(String(text4));
       return true;
     }
   } catch {
@@ -54203,7 +54391,7 @@ async function writeClipboard({ text: text3 = "", mime = null, data = null } = {
   const doc = globalThis.document;
   if (!doc?.body) return false;
   const area2 = doc.createElement("textarea");
-  area2.value = String(text3);
+  area2.value = String(text4);
   area2.setAttribute("readonly", "");
   area2.style.position = "fixed";
   area2.style.opacity = "0";
@@ -54332,12 +54520,12 @@ var QUICK_PROMPTS = Object.freeze([
   { id: "numbers", label: "Key numbers", prompt: "List the key numbers in this part with their units and what each one measures." },
   { id: "unusual", label: "What's unusual?", prompt: "What is unusual, surprising or inconsistent in this part?" }
 ]);
-var squash3 = (text3) => String(text3 ?? "").replace(/\s+/g, " ").trim();
-var clip5 = (text3, max) => {
-  const t = String(text3 ?? "");
+var squash3 = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
+var clip5 = (text4, max) => {
+  const t = String(text4 ?? "");
   return t.length <= max ? t : `${t.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 };
-var estimateTokens = (text3) => Math.ceil(String(text3 ?? "").length / CHARS_PER_TOKEN);
+var estimateTokens = (text4) => Math.ceil(String(text4 ?? "").length / CHARS_PER_TOKEN);
 function orderOf2(doc) {
   const blocks = doc?.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
   const order = Array.isArray(doc?.order) ? doc.order : Object.keys(blocks);
@@ -54495,8 +54683,8 @@ function nearbyText(doc, ids, index, focusIds, budget, paras) {
     const b = blocks[id];
     const room = budget - used;
     if (room < 80) break;
-    const text3 = clip5(blockText2(b), Math.min(PARA_CLIP, room - 30));
-    const line = `[p. ${b.page}] ${text3}`;
+    const text4 = clip5(blockText2(b), Math.min(PARA_CLIP, room - 30));
+    const line = `[p. ${b.page}] ${text4}`;
     used += line.length + 2;
     chosen.push({ id, side: side2, line });
   }
@@ -54530,16 +54718,16 @@ function pageFocus(doc, ids, page) {
   for (const id of ids) {
     const b = doc.blocks[id];
     if (b.page !== page) continue;
-    const text3 = focusBody(doc, b);
-    if (text3) parts.push(text3);
+    const text4 = focusBody(doc, b);
+    if (text4) parts.push(text4);
   }
   return parts.join("\n\n");
 }
 var STOPWORDS = new Set("a an and are as at be but by for from has have he her his how i if in into is it its of on or our she so than that the their them then there these they this to was we were what when where which who why will with you your do does did can could should would not no".split(" "));
 var GENERIC_WORDS = new Set("summarize summarise summary overview describe explain tell me about document pdf paper report file main key points point plain language simple simply words sentences sentence three five short brief briefly give list whole entire all".split(" "));
-function tokenize(text3) {
+function tokenize(text4) {
   const out = [];
-  for (const w of String(text3 ?? "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || []) {
+  for (const w of String(text4 ?? "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || []) {
     if (w.length >= 2 && !STOPWORDS.has(w)) out.push(w);
   }
   return out;
@@ -54572,8 +54760,8 @@ function retrievalParts(doc, ids) {
         cap4 = squash3(hit ? hit.text : b.caption);
       } else if (!cap4 && b.caption && typeof b.caption === "object") cap4 = squash3(b.caption.text);
     }
-    const text3 = blockText2(b);
-    const scored = cap4 ? `${cap4} ${text3}` : text3;
+    const text4 = blockText2(b);
+    const scored = cap4 ? `${cap4} ${text4}` : text4;
     if (!scored) return;
     parts.push({ id, order, block: b, cap: cap4, tokens: tokenize(scored) });
   });
@@ -54625,21 +54813,21 @@ function relevantParts(doc, ids, question, budget) {
   if (!parts.length) return "";
   const rendered = /* @__PURE__ */ new Map();
   const line = (part) => {
-    let text3 = rendered.get(part.id);
-    if (text3 == null) {
-      text3 = renderPart(part);
-      rendered.set(part.id, text3);
+    let text4 = rendered.get(part.id);
+    if (text4 == null) {
+      text4 = renderPart(part);
+      rendered.set(part.id, text4);
     }
-    return text3;
+    return text4;
   };
   const picked = /* @__PURE__ */ new Set();
   let used = 0;
   const take = (part, force = false) => {
     if (picked.has(part.id)) return true;
-    const text3 = line(part);
-    if (!force && used + text3.length + 2 > budget) return false;
+    const text4 = line(part);
+    if (!force && used + text4.length + 2 > budget) return false;
     picked.add(part.id);
-    used += text3.length + 2;
+    used += text4.length + 2;
     return true;
   };
   const firstHeading = parts.find((p) => p.block.type === "heading");
@@ -54763,8 +54951,8 @@ ${focusBounded}`].filter(Boolean).join("\n\n");
   };
 }
 function imageAlt2(caption, fallback = "Figure") {
-  const text3 = squash3(String(caption ?? "").replace(/[[\]()!]/g, " "));
-  return clip5(text3, 120) || fallback;
+  const text4 = squash3(String(caption ?? "").replace(/[[\]()!]/g, " "));
+  return clip5(text4, 120) || fallback;
 }
 var imageLine2 = (url, caption, fallback) => `![${imageAlt2(caption, fallback)}](${String(url ?? "").trim()})`;
 function contextWithImage(context, url, caption, fallback) {
@@ -54799,8 +54987,8 @@ ${instructions}`, `--- context ---
 ${context}`, `--- question ---
 ${prompt}`].join("\n\n");
 }
-function selectionDoc({ text: text3 = "", page = 1, title = "" } = {}) {
-  const body = squash3(text3);
+function selectionDoc({ text: text4 = "", page = 1, title = "" } = {}) {
+  const body = squash3(text4);
   return {
     schema: "pxd-parse/1",
     title,
@@ -54809,12 +54997,12 @@ function selectionDoc({ text: text3 = "", page = 1, title = "" } = {}) {
     blocks: { sel: { id: "sel", type: "para", page, text: body } }
   };
 }
-function splitCitations(text3) {
+function splitCitations(text4) {
   const out = [];
   const re = /\[(?:p|pp)\.\s*(\d+(?:\s*[,–-]\s*\d+)*)\]/gi;
   let last = 0;
   let m;
-  const src = String(text3 ?? "");
+  const src = String(text4 ?? "");
   while (m = re.exec(src)) {
     if (m.index > last) out.push({ text: src.slice(last, m.index) });
     const pages = (m[1].match(/\d+/g) || []).map(Number);
@@ -54830,8 +55018,8 @@ function parseAnswer(answer) {
   let list = null;
   let stack = [];
   const flush = () => {
-    const text3 = para.join(" ").trim();
-    if (text3) out.push({ type: "p", text: text3 });
+    const text4 = para.join(" ").trim();
+    if (text4) out.push({ type: "p", text: text4 });
     para = [];
   };
   const endList = () => {
@@ -54851,8 +55039,8 @@ function parseAnswer(answer) {
       }
       while (stack.length && stack[stack.length - 1] >= indent) stack.pop();
       stack.push(indent);
-      const text3 = item[3].trim();
-      if (text3) list.items.push({ text: text3, depth: stack.length - 1 });
+      const text4 = item[3].trim();
+      if (text4) list.items.push({ text: text4, depth: stack.length - 1 });
     } else if (!raw.trim()) {
       flush();
       endList();
@@ -54879,12 +55067,28 @@ function answerCardMarkdown({ answer = "", chip = null, imageUrl = "" } = {}) {
   const blocks = answerBlocks(answer).map((b) => ({ ...b, text: flattenLine(b.text) })).filter((b) => b.text);
   if (!blocks.length) return "";
   const head = `AI answer · ${chipText2(chip) || "PDF"}`;
-  const line = (text3, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip5(text3, 1800)), { leading: true })}`;
+  const line = (text4, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip5(text4, 1800)), { leading: true })}`;
   const image = imageUrl ? [`  - ![](${String(imageUrl).trim()})`] : [];
   return [line(head), ...image, ...blocks.slice(0, 40).map((b) => line(b.text, Math.min(b.depth, 3)))].join("\n");
 }
 
 // src/host/liveai.js
+var liveai_exports = {};
+__export(liveai_exports, {
+  CALLER: () => CALLER,
+  READY_EVENT: () => READY_EVENT,
+  SETUP_HINT: () => SETUP_HINT,
+  UNLOADED_EVENT: () => UNLOADED_EVENT,
+  ask: () => ask,
+  available: () => available,
+  defaultModel: () => defaultModel,
+  friendlyError: () => friendlyError,
+  isChatModel: () => isChatModel,
+  listModels: () => listModels,
+  onReady: () => onReady,
+  present: () => present,
+  sendsImages: () => sendsImages
+});
 var CALLER = "Plexus Diagram";
 var READY_EVENT = "liveai:api-ready";
 var UNLOADED_EVENT = "liveai:api-unloaded";
@@ -54979,13 +55183,14 @@ function friendlyError(error) {
   const msg = String(error?.message || "").replace(/^\[LiveAI_API\]\s*/, "").trim();
   return msg || "Live AI Assistant could not answer.";
 }
-async function ask({ context = "", prompt = "", systemPrompt = "", model = "", onChunk = null, signal = null, window: w } = {}) {
+async function ask({ context = "", prompt = "", systemPrompt = "", model = "", onChunk = null, signal = null, json = false, window: w } = {}) {
   if (!available(w)) return { ok: false, code: "UNAVAILABLE", error: SETUP_HINT };
   const options = { prompt: String(prompt), caller: CALLER };
   if (context) options.context = String(context);
   if (systemPrompt) options.systemPrompt = String(systemPrompt);
   if (model) options.model = model;
   if (signal) options.signal = signal;
+  if (json) options.responseFormat = "json_object";
   if (typeof onChunk === "function") options.onChunk = (chunk) => {
     try {
       onChunk(chunk);
@@ -54994,7 +55199,7 @@ async function ask({ context = "", prompt = "", systemPrompt = "", model = "", o
   };
   try {
     const result = await api(w).generate(options);
-    return { ok: true, text: String(result?.text ?? ""), model: result?.model || model, provider: result?.provider || "", usage: result?.usage || null };
+    return { ok: true, text: String(result?.text ?? ""), ...result?.json !== void 0 ? { json: result.json } : {}, model: result?.model || model, provider: result?.provider || "", usage: result?.usage || null };
   } catch (error) {
     return { ok: false, code: error?.code || (error?.name === "AbortError" ? "ABORTED" : "ERROR"), error: friendlyError(error) };
   }
@@ -55008,9 +55213,9 @@ var ENCRYPTED_NOTE = "This graph is encrypted, so the image can't be shared with
 var UPLOAD_FAILED_NOTE = "Could not upload the figure; sending text only.";
 var NO_IMAGE_NOTE = "The figure's image is not available; sending text only.";
 function isUsableImageUrl(url) {
-  const text3 = String(url ?? "").trim();
-  if (!/^https:\/\/[^\s)]+$/i.test(text3)) return false;
-  const path = text3.split(/[?#]/)[0];
+  const text4 = String(url ?? "").trim();
+  if (!/^https:\/\/[^\s)]+$/i.test(text4)) return false;
+  const path = text4.split(/[?#]/)[0];
   return !/\.enc$/i.test(path);
 }
 function fitSize(w, h, max = MAX_SIDE) {
@@ -55167,15 +55372,15 @@ var UPLOADING_NOTE = "Uploading figure…";
 var VISION_KEY = "pxd-ask-vision-model";
 var PENDING_URL = "https://… (uploaded when you press Send)";
 var openDialog = null;
-function make(doc, tag, cls, parent, text3) {
+function make(doc, tag, cls, parent, text4) {
   const node2 = doc.createElement(tag);
   if (cls) node2.className = cls;
-  if (text3 != null) node2.textContent = text3;
+  if (text4 != null) node2.textContent = text4;
   if (parent) parent.append(node2);
   return node2;
 }
-function citeInto(doc, parent, text3, onPage) {
-  for (const piece of splitCitations(text3)) {
+function citeInto(doc, parent, text4, onPage) {
+  for (const piece of splitCitations(text4)) {
     if (piece.page == null) {
       parent.append(doc.createTextNode(piece.text));
       continue;
@@ -55194,11 +55399,11 @@ function citeInto(doc, parent, text3, onPage) {
     });
   }
 }
-function inlineInto(doc, parent, text3, onPage) {
+function inlineInto(doc, parent, text4, onPage) {
   const re = /`([^`]+)`|\*\*([^*]+?)\*\*|(?<![\w*])\*([^*\s][^*]*?)\*(?![\w*])/g;
   let last = 0;
   let m;
-  const src = String(text3 ?? "");
+  const src = String(text4 ?? "");
   while (m = re.exec(src)) {
     if (m.index > last) citeInto(doc, parent, src.slice(last, m.index), onPage);
     if (m[1] != null) make(doc, "code", "pxd-ask__code", parent, m[1]);
@@ -55208,10 +55413,10 @@ function inlineInto(doc, parent, text3, onPage) {
   }
   if (last < src.length) citeInto(doc, parent, src.slice(last), onPage);
 }
-function paintAnswer(doc, node2, text3, onPage) {
+function paintAnswer(doc, node2, text4, onPage) {
   node2.replaceChildren?.();
   if (!node2.replaceChildren) while (node2.firstChild) node2.removeChild(node2.firstChild);
-  for (const part of parseAnswer(text3)) {
+  for (const part of parseAnswer(text4)) {
     if (part.type === "p") {
       inlineInto(doc, make(doc, "p", "pxd-ask__p", node2), part.text, onPage);
       continue;
@@ -55564,12 +55769,12 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     const copyBtn = make(dom, "button", "pxd-ask__act", actions, "Copy");
     copyBtn.type = "button";
     copyBtn.addEventListener("click", () => {
-      const clip6 = win2.navigator?.clipboard || globalThis.navigator?.clipboard;
-      if (!clip6?.writeText) {
+      const clip7 = win2.navigator?.clipboard || globalThis.navigator?.clipboard;
+      if (!clip7?.writeText) {
         say("Could not copy");
         return;
       }
-      void clip6.writeText(answer).then(() => say("Copied"), () => say("Could not copy"));
+      void clip7.writeText(answer).then(() => say("Copied"), () => say("Could not copy"));
     });
     const cardBtn = make(dom, "button", "pxd-ask__act", actions, "Add as card");
     cardBtn.type = "button";
@@ -55646,6 +55851,358 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   return { el: root, close, built };
 }
 
+// src/model/chart-data.js
+var MAX_SERIES = 12;
+var MAX_POINTS = 40;
+var MAX_ABS = 1e15;
+var MODEL_PREFERENCE = Object.freeze([
+  /claude sonnet 5 5/,
+  /claude opus 5 5/,
+  /gemini 3 8 flash/,
+  /gemini 3 1 pro/
+]);
+var flat2 = (text4) => String(text4 ?? "").toLowerCase().replace(/[-_.]+/g, " ").replace(/\s+/g, " ").trim();
+var isOpenAi = (m) => /openai|\bgpt\b|^o\d\b/.test(`${flat2(m?.provider)} ${flat2(m?.id)}`) || /^(gpt|o\d)\b/.test(flat2(m?.name));
+function pickVisionModel(models) {
+  const usable = (Array.isArray(models) ? models : []).filter((m) => m && m.id && m.imageInput === true && !isOpenAi(m));
+  for (const re of MODEL_PREFERENCE) {
+    const hit = usable.find((m) => re.test(flat2(`${m.id} ${m.name}`)));
+    if (hit) return hit;
+  }
+  return usable.find((m) => m.isDefault) || usable[0] || null;
+}
+var CHART_SYSTEM_PROMPT = [
+  "You turn one chart image into data.",
+  "Answer with a single JSON object and nothing else. Shape:",
+  '{"title": string, "x": {"label": string, "unit": string}, "y": {"label": string, "unit": string},',
+  ' "series": [{"name": string, "points": [{"x": number or string, "y": number, "approx": true or false}]}], "notes": string}',
+  "Read each value off the gridlines or axis ticks. Set approx to true for every value you estimated from the scale and false only when the value is printed on the chart.",
+  "Use the names in the legend for the series. If there is no legend and one series, use the y axis label. Never invent a series that is not drawn.",
+  "Give at most 40 points per series; for a dense line, pick the points where it changes direction plus evenly spaced ones.",
+  "Use numbers for x when the axis is numeric or a date year; use the category text for a bar chart. y must be a number without units or thousands separators.",
+  "Put units in x.unit and y.unit, not in the numbers. Use an empty string when the chart shows none.",
+  "Use notes for anything not legible, a broken axis, or a log scale. If the image is not a chart, return an empty series list and say so in notes."
+].join("\n");
+var CHART_PROMPT = "Read the chart in the image and return the JSON object described in the instructions.";
+var squash4 = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
+var clip6 = (text4, max) => {
+  const t = String(text4 ?? "");
+  return t.length <= max ? t : `${t.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+};
+var altOf = (caption) => clip6(squash4(String(caption ?? "").replace(/[[\]()!]/g, " ")), 120) || "Chart";
+function chartContext({ url = "", caption = "", nearby = "" } = {}) {
+  const parts = [];
+  if (url) parts.push(`Image of the chart:
+![${altOf(caption)}](${String(url).trim()})`);
+  const cap4 = squash4(caption);
+  if (cap4) parts.push(`Caption: ${clip6(cap4, 400)}`);
+  const near2 = String(nearby ?? "").trim();
+  if (near2) parts.push(`Nearby text:
+${clip6(near2, 1200)}`);
+  return parts.join("\n\n");
+}
+var LABEL_RE2 = /^((?:figure|fig\.?|chart|graph|plate|exhibit)\s+[A-Za-z]?\d+(?:\.\d+)?[A-Za-z]?)/i;
+function figureLabel(doc, blockId, caption = "") {
+  const m = LABEL_RE2.exec(squash4(caption));
+  if (m) {
+    const [, word, rest] = /^([A-Za-z]+)\.?\s+(.+)$/.exec(m[1].replace(/\s+/g, " "));
+    const name = /^fig/i.test(word) ? "Figure" : `${word[0].toUpperCase()}${word.slice(1).toLowerCase()}`;
+    return `${name} ${rest}`;
+  }
+  const blocks = doc?.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
+  const order = Array.isArray(doc?.order) ? doc.order : Object.keys(blocks);
+  let n2 = 0;
+  for (const id of order) {
+    if (blocks[id]?.type !== "figure") continue;
+    n2 += 1;
+    if (id === blockId) return `Figure ${n2}`;
+  }
+  return "Figure";
+}
+function chartTitle({ label = "Figure", page = null, docTitle = "" } = {}) {
+  return ["Chart data", squash4(label) || "Figure", Number.isInteger(page) && page > 0 ? `p. ${page}` : "", squash4(docTitle)].filter(Boolean).join(" · ");
+}
+function chartNote(modelName = "", extra = []) {
+  const who = squash4(modelName);
+  const base = who ? `Values read from the chart by ${who}; approximate.` : "Values read from the chart by a model; approximate.";
+  const more = (Array.isArray(extra) ? extra : []).map((t) => squash4(t)).filter(Boolean);
+  return [base, ...more].join(" ");
+}
+function stripFence(text4) {
+  const m = /```(?:json|JSON)?\s*([\s\S]*?)```/.exec(text4);
+  return m ? m[1] : text4;
+}
+function firstObject(text4) {
+  const start = text4.indexOf("{");
+  if (start < 0) return "";
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text4.length; i += 1) {
+    const ch = text4[i];
+    if (inString) {
+      if (ch === "\\") i += 1;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return text4.slice(start, i + 1);
+    }
+  }
+  return "";
+}
+var tryParse = (text4) => {
+  try {
+    return JSON.parse(text4);
+  } catch {
+    return void 0;
+  }
+};
+function parseChartJson(answer) {
+  if (answer && typeof answer === "object" && !Array.isArray(answer)) return answer;
+  if (typeof answer !== "string") return null;
+  const raw = answer.replace(/“|”/g, '"').trim();
+  if (!raw) return null;
+  const candidates2 = [raw, stripFence(raw), firstObject(stripFence(raw)), firstObject(raw)].filter(Boolean);
+  for (const c of candidates2) {
+    const text4 = c.trim();
+    const got = tryParse(text4) ?? tryParse(text4.replace(/,\s*([}\]])/g, "$1"));
+    if (got && typeof got === "object" && !Array.isArray(got)) return got;
+  }
+  return null;
+}
+function toNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+  if (typeof value !== "string") return NaN;
+  let t = value.trim().replace(/−/g, "-");
+  if (!t) return NaN;
+  const paren = /^\(([^)]+)\)$/.exec(t);
+  if (paren) t = `-${paren[1]}`;
+  t = t.replace(/(\d),(?=\d{3}(?:\D|$))/g, "$1").replace(/%$/, "").trim();
+  if (!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/.test(t)) return NaN;
+  const n2 = Number(t);
+  return Number.isFinite(n2) ? n2 : NaN;
+}
+var text3 = (value, max = 120) => typeof value === "string" || typeof value === "number" ? clip6(squash4(value), max) : "";
+function axisOf(value) {
+  if (typeof value === "string") return { label: text3(value), unit: "" };
+  const a = value && typeof value === "object" ? value : {};
+  return { label: text3(a.label ?? a.name ?? a.title), unit: text3(a.unit ?? a.units, 40) };
+}
+function xOf(value) {
+  const n2 = toNumber(value);
+  if (Number.isFinite(n2)) return Math.abs(n2) > MAX_ABS ? null : n2;
+  const t = text3(value, 60);
+  return t || null;
+}
+function normalizeChart(raw) {
+  const obj = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : null;
+  if (!obj) return { ok: false, reason: "not-json", message: "The model's answer was not a chart table." };
+  const list = Array.isArray(obj.series) ? obj.series : Array.isArray(obj.data) ? obj.data : [];
+  if (!list.length) return { ok: false, reason: "no-series", message: text3(obj.notes, 200) || "The model found no chart data in the picture." };
+  const warnings = [];
+  const series = [];
+  const used = /* @__PURE__ */ new Set();
+  let dropped = 0;
+  let clipped = false;
+  for (const entry of list) {
+    if (!entry || typeof entry !== "object") continue;
+    const pts = Array.isArray(entry.points) ? entry.points : Array.isArray(entry.data) ? entry.data : [];
+    const seen = /* @__PURE__ */ new Set();
+    const points = [];
+    for (const p of pts) {
+      const isPair = Array.isArray(p) && p.length >= 2;
+      const rawX = isPair ? p[0] : p?.x;
+      const rawY = isPair ? p[1] : p?.y;
+      const x = xOf(rawX);
+      const y = toNumber(rawY);
+      if (x === null || !Number.isFinite(y) || Math.abs(y) > MAX_ABS) {
+        dropped += 1;
+        continue;
+      }
+      const key = typeof x === "number" ? `n:${x}` : `s:${x.toLowerCase()}`;
+      if (seen.has(key)) {
+        dropped += 1;
+        continue;
+      }
+      seen.add(key);
+      const approx = isPair ? true : p.approx === false || p.approx === "false" ? false : true;
+      points.push({ x, y, approx });
+    }
+    if (!points.length) continue;
+    if (points.length > MAX_POINTS) {
+      clipped = true;
+      points.length = MAX_POINTS;
+    }
+    if (points.every((p) => typeof p.x === "number")) points.sort((a, b) => a.x - b.x);
+    let name = text3(entry.name ?? entry.label ?? entry.series) || `Series ${series.length + 1}`;
+    let base = name;
+    for (let n2 = 2; used.has(name.toLowerCase()); n2 += 1) name = `${base} (${n2})`;
+    used.add(name.toLowerCase());
+    series.push({ name, points });
+    if (series.length >= MAX_SERIES) break;
+  }
+  if (!series.length) return { ok: false, reason: "no-points", message: "The model returned series without readable values." };
+  if (list.length > MAX_SERIES && series.length >= MAX_SERIES) warnings.push(`Kept the first ${MAX_SERIES} series.`);
+  if (clipped) warnings.push(`Kept the first ${MAX_POINTS} points of a series.`);
+  if (dropped) warnings.push(`Dropped ${dropped} unreadable or repeated ${dropped === 1 ? "point" : "points"}.`);
+  return {
+    ok: true,
+    chart: { title: text3(obj.title, 200), x: axisOf(obj.x), y: axisOf(obj.y), series, notes: text3(obj.notes, 400) },
+    warnings
+  };
+}
+function formatValue(n2) {
+  if (!Number.isFinite(n2)) return "";
+  return String(Number(n2.toPrecision(6)));
+}
+var withUnit = (label, unit) => {
+  const l = squash4(label);
+  const u = squash4(unit);
+  if (!u) return l;
+  if (!l) return u;
+  return l.toLowerCase().includes(u.toLowerCase()) ? l : `${l} (${u})`;
+};
+function chartToTable(chart, { title = "", note = "" } = {}) {
+  const series = Array.isArray(chart?.series) ? chart.series : [];
+  const keyOf2 = (x) => typeof x === "number" ? `n:${x}` : `s:${String(x).toLowerCase()}`;
+  const xs2 = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of series) {
+    for (const p of s.points) {
+      const k = keyOf2(p.x);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      xs2.push(p.x);
+    }
+  }
+  if (xs2.every((x) => typeof x === "number")) xs2.sort((a, b) => a - b);
+  const lookups = series.map((s) => new Map(s.points.map((p) => [keyOf2(p.x), p])));
+  const anyExact = series.some((s) => s.points.some((p) => p.approx === false));
+  const cols = series.length + 1;
+  const cells = [];
+  let r = 0;
+  const headerRows = (title ? 1 : 0) + 1;
+  if (title) {
+    cells.push({ r, c: 0, text: squash4(title), colSpan: cols });
+    r += 1;
+  }
+  cells.push({ r, c: 0, text: withUnit(chart?.x?.label || "x", chart?.x?.unit) });
+  series.forEach((s, i) => cells.push({ r, c: i + 1, text: withUnit(s.name, chart?.y?.unit) }));
+  r += 1;
+  for (const x of xs2) {
+    cells.push({ r, c: 0, text: typeof x === "number" ? formatValue(x) : String(x) });
+    series.forEach((s, i) => {
+      const p = lookups[i].get(keyOf2(x));
+      if (!p) return;
+      cells.push({ r, c: i + 1, text: `${anyExact && p.approx ? "~" : ""}${formatValue(p.y)}` });
+    });
+    r += 1;
+  }
+  if (note) {
+    cells.push({ r, c: 0, text: squash4(note), colSpan: cols });
+    r += 1;
+  }
+  const filled = new Set(cells.map((c) => `${c.r}:${c.c}`));
+  for (let row4 = 0; row4 < r; row4 += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const covered = cells.some((c) => c.r === row4 && c.colSpan > 1 && col > c.c && col < c.c + c.colSpan);
+      if (covered || filled.has(`${row4}:${col}`)) continue;
+      cells.push({ r: row4, c: col, text: "" });
+    }
+  }
+  cells.sort((a, b) => a.r - b.r || a.c - b.c);
+  return { type: "table", rows: r, cols, headerRows, cells };
+}
+
+// src/view/chart-table.js
+init_pdf();
+var OFF_TOAST = "Figure images are off in settings. Turn on “Send figure images to AI” to read charts.";
+var NO_MODEL_TOAST = "No model with image input in Live AI Assistant. Add one that accepts images (Claude or Gemini).";
+var READING_TOAST = "Reading chart…";
+var EMPTY_TOAST = (name) => `${name || "The model"} returned nothing. Try another model in Live AI Assistant.`;
+var UNREADABLE_TOAST = (name) => `Could not read a table from ${name || "the model"}'s answer. Try another model in Live AI Assistant.`;
+var NOT_A_CHART_TOAST = "No chart data found in this figure.";
+var RETRY_CODES = /* @__PURE__ */ new Set(["INVALID_OPTIONS", "INVALID_JSON", "PROVIDER_ERROR"]);
+function nearbyOf(doc, blockId) {
+  try {
+    const built = buildFocusContext(doc, { blockId }, { tokenCap: 1500, outlineTokens: 1, nearbyChars: 800 });
+    const m = /=== Nearby text ===\n([\s\S]*?)(?=\n\n=== |$)/.exec(built.context || "");
+    const body = m ? m[1].split("\n").filter((line) => !line.startsWith("Caption of the selected part:")).join("\n").trim() : "";
+    return { caption: built.figure?.caption || "", nearby: body };
+  } catch {
+    return { caption: "", nearby: "" };
+  }
+}
+async function runChartToTable({ doc, blockId, image = null, imageService = null, toast = null, addTable = null, api: api2 = liveai_exports, window: w } = {}) {
+  const say = (message) => {
+    try {
+      if (typeof toast === "function") toast(message);
+    } catch {
+    }
+  };
+  const block = doc?.blocks?.[blockId];
+  if (!block || block.type !== "figure") return { ok: false, reason: "not-figure" };
+  const service = imageService || getFigureImages();
+  if (!service || service.enabled?.() === false) {
+    say(OFF_TOAST);
+    return { ok: false, reason: "off" };
+  }
+  if (!api2.available(w)) {
+    say(api2.SETUP_HINT);
+    return { ok: false, reason: "unavailable" };
+  }
+  const model = pickVisionModel(api2.listModels(w));
+  if (!model) {
+    say(NO_MODEL_TOAST);
+    return { ok: false, reason: "no-model" };
+  }
+  say(READING_TOAST);
+  const got = await service.ensureUrl({ key: image?.key || "", url: image?.url || "", getBlob: image?.getBlob, name: image?.name || "figure" });
+  if (!got?.ok) {
+    say(got?.reason === "off" ? OFF_TOAST : `${noteFor(got?.reason).replace(/; sending text only\.?$/, "")}. Chart reading needs the picture.`);
+    return { ok: false, reason: got?.reason || "no-image" };
+  }
+  const { caption, nearby } = nearbyOf(doc, blockId);
+  const request = { context: chartContext({ url: got.url, caption, nearby }), prompt: CHART_PROMPT, systemPrompt: CHART_SYSTEM_PROMPT, model: model.id, window: w };
+  let res = await api2.ask({ ...request, json: true });
+  if (!res.ok && RETRY_CODES.has(res.code)) res = await api2.ask(request);
+  if (!res.ok) {
+    say(res.error || "Live AI Assistant could not read the chart.");
+    return { ok: false, reason: res.code || "error" };
+  }
+  const hasText = String(res.text || "").trim() || res.json && typeof res.json === "object";
+  if (!hasText) {
+    say(EMPTY_TOAST(model.name));
+    return { ok: false, reason: "empty" };
+  }
+  const parsed = parseChartJson(res.json ?? res.text) || parseChartJson(res.text);
+  const checked = normalizeChart(parsed);
+  if (!checked.ok) {
+    say(checked.reason === "no-series" ? NOT_A_CHART_TOAST : UNREADABLE_TOAST(model.name));
+    return { ok: false, reason: checked.reason };
+  }
+  const label = figureLabel(doc, blockId, caption);
+  const table = chartToTable(checked.chart, {
+    title: chartTitle({ label, page: block.page, docTitle: parsedDocTitle(doc) || String(doc?.title || "") }),
+    note: chartNote(model.name, [...checked.warnings, checked.chart.notes ? `Model notes: ${checked.chart.notes}` : ""])
+  });
+  if (typeof addTable !== "function") return { ok: true, table, model };
+  let placed = null;
+  try {
+    placed = await addTable({ table, model });
+  } catch {
+    placed = { ok: false };
+  }
+  if (placed && placed.ok === false) {
+    say("Could not add the table to the board.");
+    return { ok: false, reason: "insert" };
+  }
+  return { ok: true, table, model };
+}
+
 // src/view/parse-view.js
 var PARSE_MIME2 = "application/x-plexus-parse";
 var BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
@@ -55683,8 +56240,8 @@ function removedSummary(removed) {
 }
 function formatSeconds(ms) {
   const s = Math.max(0, Number(ms) || 0) / 1e3;
-  const text3 = s < 10 ? s.toFixed(1) : String(Math.round(s));
-  return `${text3} s`;
+  const text4 = s < 10 ? s.toFixed(1) : String(Math.round(s));
+  return `${text4} s`;
 }
 function defaultRangeChoice(pageCount) {
   const n2 = Number(pageCount);
@@ -55711,17 +56268,17 @@ function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = nu
   if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
   if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
   if (engine === "cloud" && ms != null) {
-    const text3 = `${cloudLabel(provider)} · ${formatSeconds(ms)}`;
+    const text4 = `${cloudLabel(provider)} · ${formatSeconds(ms)}`;
     const n2 = Number(credits);
     if (provider !== "mistral" && Number.isFinite(n2) && n2 >= 0) {
-      return { text: text3, tip: `${text3} · ${n2} ${n2 === 1 ? "credit" : "credits"}` };
+      return { text: text4, tip: `${text4} · ${n2} ${n2 === 1 ? "credit" : "credits"}` };
     }
-    return { text: text3 };
+    return { text: text4 };
   }
   if (engine === "cloud") return { text: cloudLabel(provider) };
   if (read2 === "high") {
-    const text3 = ms != null ? `High accuracy · ${formatSeconds(ms)}` : "High accuracy";
-    return { text: text3, tip: "Qwen3-VL for page text, PaddleOCR-VL for tables, PP-DocLayoutV2" };
+    const text4 = ms != null ? `High accuracy · ${formatSeconds(ms)}` : "High accuracy";
+    return { text: text4, tip: "Qwen3-VL for page text, PaddleOCR-VL for tables, PP-DocLayoutV2" };
   }
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
@@ -56204,22 +56761,22 @@ function createParseView({
     if (custom) parts = Object.fromEntries(Object.entries(parts).filter(([type]) => ASYNC_CLIPBOARD_TYPES.has(type)));
     const win2 = doc.defaultView || globalThis;
     const Item = win2.ClipboardItem || globalThis.ClipboardItem;
-    const clip6 = win2.navigator?.clipboard;
+    const clip7 = win2.navigator?.clipboard;
     const BlobCtor = win2.Blob || globalThis.Blob;
-    if (typeof Item === "function" && typeof clip6?.write === "function" && typeof BlobCtor === "function") {
+    if (typeof Item === "function" && typeof clip7?.write === "function" && typeof BlobCtor === "function") {
       const bag = {};
       for (const [type, value] of Object.entries(parts)) {
         if (value == null) continue;
         bag[type] = typeof BlobCtor === "function" && value instanceof BlobCtor ? value : new BlobCtor([typeof value === "string" ? value : JSON.stringify(value)], { type });
       }
       if (Object.keys(bag).length) {
-        await clip6.write([new Item(bag)]);
+        await clip7.write([new Item(bag)]);
         return true;
       }
     }
-    const text3 = parts["text/plain"];
-    if (typeof text3 !== "string") return false;
-    await writeTextOnly(text3);
+    const text4 = parts["text/plain"];
+    if (typeof text4 !== "string") return false;
+    await writeTextOnly(text4);
     return true;
   }
   async function ensurePin(block) {
@@ -56291,6 +56848,31 @@ function createParseView({
       }
     });
   }
+  function chartAbout(block) {
+    if (!parsed || block?.type !== "figure") return null;
+    return runChartToTable({
+      doc: parsed,
+      blockId: block.id,
+      image: figureImageSpec(block),
+      toast: (message) => {
+        try {
+          onToast?.(message);
+        } catch {
+        }
+      },
+      addTable: async ({ table }) => {
+        if (typeof session?.insertChartTable !== "function") {
+          try {
+            onToast?.("Cannot add a table here");
+          } catch {
+          }
+          return { ok: false };
+        }
+        const pin2 = pinForBlock(block);
+        return session.insertChartTable({ table, pdfUid: currentUid2, pdfBlockUid: pdfBlockUidNow(), ...pin2 ? { pin: pin2 } : {} });
+      }
+    });
+  }
   async function handleCopyMenu(id, block) {
     if (!parsed || !block) return false;
     try {
@@ -56311,9 +56893,9 @@ function createParseView({
           }
         }
         const json = cardJsonPayload({ markdown, size: { w: 280, h: 160 }, kind: block.type || "card", source });
-        const text3 = source ? `${markdown}
+        const text4 = source ? `${markdown}
 ${sourceAttrString(source)}` : markdown;
-        return writeTyped({ "text/plain": text3, [CARD_JSON_MIME]: JSON.stringify(json) });
+        return writeTyped({ "text/plain": text4, [CARD_JSON_MIME]: JSON.stringify(json) });
       }
       if (id === "crop") {
         const src = await cropAt2x(block);
@@ -56356,6 +56938,7 @@ ${sourceAttrString(source)}` : markdown;
     },
     copyMenu: (id, block) => handleCopyMenu(id, block),
     ask: (block) => askAbout({ blockId: block?.id }),
+    chart: (block) => chartAbout(block),
     drag: (block, event) => beginPointerDrag(event, [block]),
     run: (act, item) => {
       if (act === "pin-ref") {
@@ -56760,9 +57343,9 @@ ${sourceAttrString(source)}` : markdown;
     overlay.flash({ ...block, bbox: block.bbox });
     void info;
   }
-  async function writeClipboard2(text3) {
+  async function writeClipboard2(text4) {
     try {
-      await writeTextOnly(text3);
+      await writeTextOnly(text4);
     } catch {
       try {
         onToast?.("Could not copy");
@@ -56780,27 +57363,27 @@ ${sourceAttrString(source)}` : markdown;
     }
     return `${block.type === "formula" ? "Formula" : "Figure"} (p. ${block.page})`;
   }
-  async function writeTextOnly(text3) {
+  async function writeTextOnly(text4) {
     if (typeof writeText === "function") {
       try {
-        await writeText(text3);
+        await writeText(text4);
         return;
       } catch {
       }
     }
     const win2 = doc.defaultView || globalThis;
-    const clip6 = win2.navigator?.clipboard;
+    const clip7 = win2.navigator?.clipboard;
     const Item = win2.ClipboardItem || globalThis.ClipboardItem;
     const BlobCtor = win2.Blob || globalThis.Blob;
-    if (typeof clip6?.write === "function" && typeof Item === "function" && typeof BlobCtor === "function") {
+    if (typeof clip7?.write === "function" && typeof Item === "function" && typeof BlobCtor === "function") {
       try {
-        await clip6.write([new Item({ "text/plain": new BlobCtor([text3], { type: "text/plain" }) })]);
+        await clip7.write([new Item({ "text/plain": new BlobCtor([text4], { type: "text/plain" }) })]);
         return;
       } catch {
       }
     }
-    if (typeof clip6?.writeText !== "function") throw new Error("no clipboard");
-    await clip6.writeText(text3);
+    if (typeof clip7?.writeText !== "function") throw new Error("no clipboard");
+    await clip7.writeText(text4);
   }
   async function copyBlock(block) {
     try {
@@ -56820,12 +57403,12 @@ ${sourceAttrString(source)}` : markdown;
       if (!src) src = await cropAt2x(block);
       const win2 = doc.defaultView || globalThis;
       const Item = win2.ClipboardItem || globalThis.ClipboardItem;
-      const clip6 = win2.navigator?.clipboard;
+      const clip7 = win2.navigator?.clipboard;
       const BlobCtor = win2.Blob || globalThis.Blob;
       const blob = src ? dataUrlToBlob3(src, BlobCtor) : null;
-      if (blob && typeof Item === "function" && typeof clip6?.write === "function") {
+      if (blob && typeof Item === "function" && typeof clip7?.write === "function") {
         try {
-          await clip6.write([new Item({ "image/png": blob, "text/plain": new BlobCtor([caption], { type: "text/plain" }) })]);
+          await clip7.write([new Item({ "image/png": blob, "text/plain": new BlobCtor([caption], { type: "text/plain" }) })]);
           return true;
         } catch {
         }
@@ -56891,9 +57474,9 @@ ${sourceAttrString(source)}` : markdown;
       const rows = tableGrid(list[0]).slice(0, 3).map((row4) => row4.filter((slot2) => !slot2.covered).map((slot2) => slot2.cell?.text ?? ""));
       return { kind: "table", rows, page: list[0].page };
     }
-    const text3 = list.map((block) => block.type === "list" ? (block.items || []).map((item) => item.text).join(" ") : block.text || block.latex || "").join(" ");
+    const text4 = list.map((block) => block.type === "list" ? (block.items || []).map((item) => item.text).join(" ") : block.text || block.latex || "").join(" ");
     const kind = list.length === 1 && list[0].type === "figure" ? "figure" : "blocks";
-    return { kind, text: text3, page: list[0]?.page };
+    return { kind, text: text4, page: list[0]?.page };
   }
   function beginPointerDrag(event, blocks) {
     if (event.button != null && event.button !== 0) return;
@@ -57469,9 +58052,9 @@ ${sourceAttrString(source)}` : markdown;
   function cloudToast(error, provider) {
     if (error?.code === "cancelled" || error?.code === "confirm") return;
     const name = provider === "mistral" ? "Mistral OCR" : "LlamaParse";
-    const text3 = error?.status === 402 ? `${name} is out of credits.` : error?.status === 401 ? `${name} rejected the key.` : error?.code === "timeout" ? `${name} timed out.` : error?.message || `${name} did not finish.`;
+    const text4 = error?.status === 402 ? `${name} is out of credits.` : error?.status === 401 ? `${name} rejected the key.` : error?.code === "timeout" ? `${name} timed out.` : error?.message || `${name} did not finish.`;
     try {
-      onToast?.(text3);
+      onToast?.(text4);
     } catch {
     }
   }
@@ -57893,15 +58476,15 @@ ${sourceAttrString(source)}` : markdown;
   });
   listen(rangeInput, "change", () => {
     rangeTouched = true;
-    const text3 = String(rangeInput.value || "").trim();
-    const match = /^(\d+)\s*[–-]\s*(\d+)$/.exec(text3);
+    const text4 = String(rangeInput.value || "").trim();
+    const match = /^(\d+)\s*[–-]\s*(\d+)$/.exec(text4);
     if (match) {
       range = [Number(match[1]), Number(match[2])];
-      rangeLabel = text3;
-    } else if (/^\d+$/.test(text3)) {
-      range = [Number(text3), Number(text3)];
-      rangeLabel = text3;
-    } else if (!text3) {
+      rangeLabel = text4;
+    } else if (/^\d+$/.test(text4)) {
+      range = [Number(text4), Number(text4)];
+      rangeLabel = text4;
+    } else if (!text4) {
       range = null;
       rangeLabel = "All";
     } else {
@@ -58185,8 +58768,8 @@ function helperRow(helper) {
   switch (helper?.state) {
     case "ready": {
       const scansOnly = helper.ocr === true && helper.docling === false;
-      const text3 = scansOnly ? helper.version ? `Ready for scans · v${helper.version}` : "Ready for scans" : helper.version ? `Ready · v${helper.version}` : "Ready";
-      const out = { ...row4, dot: "ok", text: text3, button: null };
+      const text4 = scansOnly ? helper.version ? `Ready for scans · v${helper.version}` : "Ready for scans" : helper.version ? `Ready · v${helper.version}` : "Ready";
+      const out = { ...row4, dot: "ok", text: text4, button: null };
       if (scansOnly) {
         out.note = "Docling is an optional add-on for layout, formulas and tables. The light helper already reads scans.";
         out.command = DOCLING_COMMAND;
@@ -58315,9 +58898,9 @@ function renderEnginesPanel(doc, parent, deps = {}) {
   let visible2 = true;
   let busy = false;
   let disposed = false;
-  const say = (text3) => {
+  const say = (text4) => {
     try {
-      toast?.(text3);
+      toast?.(text4);
     } catch {
     }
   };
@@ -58341,10 +58924,10 @@ function renderEnginesPanel(doc, parent, deps = {}) {
       name.className = "pxd-engines__name";
       name.setAttribute("data-tip", row4.tip);
       name.textContent = row4.name;
-      const text3 = doc.createElement("span");
-      text3.className = "pxd-engines__text";
-      text3.textContent = row4.text;
-      node2.append(dot, name, text3);
+      const text4 = doc.createElement("span");
+      text4.className = "pxd-engines__text";
+      text4.textContent = row4.text;
+      node2.append(dot, name, text4);
       if (row4.progress != null) {
         const bar = doc.createElement("span");
         bar.className = "pxd-engines__bar";
@@ -58810,10 +59393,10 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
   const paint2 = (model) => {
     release(heldButtons);
     el.innerHTML = "";
-    const text3 = doc.createElement("span");
-    text3.className = "pxd-parse-status__text";
-    text3.textContent = model.text;
-    el.append(text3);
+    const text4 = doc.createElement("span");
+    text4.className = "pxd-parse-status__text";
+    text4.textContent = model.text;
+    el.append(text4);
     if (model.progress != null) {
       const bar = doc.createElement("span");
       bar.className = "pxd-parse-status__bar";
@@ -58911,17 +59494,17 @@ function ocrWords(record) {
   if (Array.isArray(record.boxes)) {
     for (const box2 of record.boxes) {
       if (!Array.isArray(box2)) continue;
-      const text3 = String(box2[0] ?? "").trim();
+      const text4 = String(box2[0] ?? "").trim();
       const w = num5(box2[3]);
       const h = num5(box2[4]);
-      if (text3 && w > 0 && h > 0) out.push({ text: text3, x: num5(box2[1]), y: num5(box2[2]), w, h });
+      if (text4 && w > 0 && h > 0) out.push({ text: text4, x: num5(box2[1]), y: num5(box2[2]), w, h });
     }
     return out;
   }
   if (Array.isArray(record.items)) {
     for (const item of record.items) {
-      const text3 = String(item?.str ?? "").trim();
-      if (!text3) continue;
+      const text4 = String(item?.str ?? "").trim();
+      if (!text4) continue;
       const m = Array.isArray(item.transform) ? item.transform : [0, 0, 0, 0, 0, 0];
       const height = num5(item.height, Math.hypot(num5(m[2]), num5(m[3])));
       const y0 = Number.isFinite(Number(item.y0)) ? Number(item.y0) : num5(m[5]) - height;
@@ -58929,18 +59512,18 @@ function ocrWords(record) {
       const h = y1 - y0 > 0 ? y1 - y0 : height;
       const w = num5(item.width);
       if (!(h > 0) || !(w > 0)) continue;
-      out.push({ text: text3, x: num5(m[4]), y: y0, w, h });
+      out.push({ text: text4, x: num5(m[4]), y: y0, w, h });
     }
     return out;
   }
   const words = Array.isArray(record.words) ? record.words : Array.isArray(record.lines) ? record.lines.flatMap((line) => line?.words || []) : [];
   for (const word of words) {
-    const text3 = String(word?.text ?? "").trim();
-    if (!text3 || word.rotated) continue;
+    const text4 = String(word?.text ?? "").trim();
+    if (!text4 || word.rotated) continue;
     const size = num5(word.size);
     const w = num5(word.x1) - num5(word.x0);
     if (!(size > 0) || !(w > 0)) continue;
-    out.push({ text: text3, x: num5(word.x0), y: num5(word.base) - size * ASCENT, w, h: size });
+    out.push({ text: text4, x: num5(word.x0), y: num5(word.base) - size * ASCENT, w, h: size });
   }
   return out;
 }
@@ -58989,8 +59572,8 @@ function createMeasure(doc) {
     ctx = null;
   }
   const cache = /* @__PURE__ */ new Map();
-  return (text3) => {
-    const key = String(text3 ?? "");
+  return (text4) => {
+    const key = String(text4 ?? "");
     const hit = cache.get(key);
     if (hit != null) return hit;
     let w = 0;
@@ -59263,8 +59846,8 @@ function placedHighlightUid(items, refUid) {
 }
 function singleRefUid(list) {
   if (!Array.isArray(list) || list.length !== 1) return "";
-  const text3 = String(list[0]?.string ?? "").trim();
-  const match = ONE_REF.exec(text3);
+  const text4 = String(list[0]?.string ?? "").trim();
+  const match = ONE_REF.exec(text4);
   return match ? match[1] : "";
 }
 function highlightDropPlan(list, items) {
@@ -59323,10 +59906,10 @@ function crossGlyph(doc) {
   path?.setAttribute?.("stroke-linecap", "round");
   return svg;
 }
-function pillButton(doc, el, parent, label, text3) {
+function pillButton(doc, el, parent, label, text4) {
   const button2 = el("button", "pxd-read__pillbtn", parent);
   button2.type = "button";
-  button2.textContent = text3;
+  button2.textContent = text4;
   button2.setAttribute("aria-label", label);
   return button2;
 }
@@ -59481,10 +60064,10 @@ function createReadPane({
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", "Selection");
   setHidden2(bar, true);
-  for (const [act, text3, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"], ["ask", "Ask AI", "read.sel.ask"]]) {
+  for (const [act, text4, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"], ["ask", "Ask AI", "read.sel.ask"]]) {
     const button2 = el("button", "pxd-selbar__btn pxd-chrome", bar);
     button2.type = "button";
-    button2.textContent = text3;
+    button2.textContent = text4;
     button2.setAttribute("data-act", act);
     button2.setAttribute("data-tip", tip);
   }
@@ -59542,8 +60125,8 @@ function createReadPane({
     try {
       const key = readPaneKey(graph);
       const raw = storage?.getItem?.(key);
-      const text3 = typeof raw === "string" ? raw.trim() : "";
-      const rest = text3 ? text3.split(/\s+/).slice(1).join(" ") : "";
+      const text4 = typeof raw === "string" ? raw.trim() : "";
+      const rest = text4 ? text4.split(/\s+/).slice(1).join(" ") : "";
       storage?.setItem?.(key, rest ? `${px} ${rest}` : String(px));
     } catch {
     }
@@ -60456,9 +61039,9 @@ function createReadPane({
   };
   const chipLabel2 = (uid, highlight) => {
     const row4 = catalog.find((entry) => entry.uid === uid);
-    const text3 = row4 && row4.snippet || highlight?.content?.text || "";
+    const text4 = row4 && row4.snippet || highlight?.content?.text || "";
     const color = row4 && row4.color || (typeof highlight?.color === "string" ? highlight.color : "");
-    return { text: dragChipText(text3), color };
+    return { text: dragChipText(text4), color };
   };
   const dropChip = () => {
     const node2 = dragChip;
@@ -60479,7 +61062,7 @@ function createReadPane({
     if (was) clearLiveSelection();
     disarm2();
   };
-  const paintChip = (data, color, text3) => {
+  const paintChip = (data, color, text4) => {
     dropChip();
     const chip = el("div", "pxd-read__drag");
     chip.style.position = "fixed";
@@ -60487,7 +61070,7 @@ function createReadPane({
     chip.style.top = "0";
     const bar2 = el("span", "pxd-read__bar", chip);
     if (color) bar2.setAttribute("data-color", color);
-    el("span", "pxd-read__dragtext", chip).textContent = text3 || "";
+    el("span", "pxd-read__dragtext", chip).textContent = text4 || "";
     pane.append(chip);
     try {
       data?.setDragImage?.(chip, 8, 8);
@@ -60495,7 +61078,7 @@ function createReadPane({
     }
     dragChip = chip;
   };
-  const beginDrag = (event, uid, color, text3) => {
+  const beginDrag = (event, uid, color, text4) => {
     const data = event.dataTransfer;
     if (!uid || !data || typeof data.setData !== "function") return;
     const payload = `((${uid}))`;
@@ -60508,7 +61091,7 @@ function createReadPane({
       data.effectAllowed = "copy";
     } catch {
     }
-    paintChip(data, color, text3);
+    paintChip(data, color, text4);
     root?.classList?.add("pxd-root--pdf-drag");
     event.stopPropagation?.();
     return true;
@@ -60632,10 +61215,10 @@ function createReadPane({
     cancelBarTimers();
     barTimers.push(later(placeBar, 0), later(placeBar, BAR_SETTLE_MS));
   };
-  const writeClip = async (text3) => {
-    const clip6 = doc.defaultView?.navigator?.clipboard || globalThis.navigator?.clipboard;
-    if (!clip6 || typeof clip6.writeText !== "function") throw new Error("no clipboard");
-    await clip6.writeText(text3);
+  const writeClip = async (text4) => {
+    const clip7 = doc.defaultView?.navigator?.clipboard || globalThis.navigator?.clipboard;
+    if (!clip7 || typeof clip7.writeText !== "function") throw new Error("no clipboard");
+    await clip7.writeText(text4);
   };
   const toast = (message) => {
     try {
@@ -60647,14 +61230,14 @@ function createReadPane({
     const act = event.target?.closest?.("[data-act]")?.getAttribute?.("data-act");
     if (!act || !barInfo) return;
     event.stopPropagation?.();
-    const { text: text3, page } = barInfo;
+    const { text: text4, page } = barInfo;
     if (act === "copy") {
-      void writeClip(text3).then(() => toast("Copied"), () => toast("Copy failed"));
+      void writeClip(text4).then(() => toast("Copied"), () => toast("Copy failed"));
       return;
     }
     if (act === "ask") {
       hideBar();
-      const spec = { selection: text3, page };
+      const spec = { selection: text4, page };
       if (parsedView?.hasParse?.()) {
         parsedView.askAbout(spec);
         return;
@@ -60672,7 +61255,7 @@ function createReadPane({
     const fn = session?.insertTextCard;
     if (typeof fn !== "function") return;
     try {
-      void Promise.resolve(fn({ text: text3, page, pdfUid: current3.cardUid || "", quote: act === "quote" })).catch(() => {
+      void Promise.resolve(fn({ text: text4, page, pdfUid: current3.cardUid || "", quote: act === "quote" })).catch(() => {
       });
     } catch {
     }
@@ -61471,19 +62054,19 @@ function createReadPane({
     return realTitle(parsedTitle) || given || file || "PDF";
   };
   const paintTitle = () => {
-    const text3 = shownTitle();
-    titleNode.textContent = text3;
+    const text4 = shownTitle();
+    titleNode.textContent = text4;
     const options = switcher.querySelectorAll?.("option") || [];
-    for (const opt of options) if (opt.value === current3.cardUid) opt.textContent = text3;
+    for (const opt of options) if (opt.value === current3.cardUid) opt.textContent = text4;
   };
   const noteParsedTitle = (value, lines) => {
-    const text3 = nextParsedTitle(parsedTitle, value);
-    if (text3 === parsedTitle) return;
-    parsedTitle = text3;
+    const text4 = nextParsedTitle(parsedTitle, value);
+    if (text4 === parsedTitle) return;
+    parsedTitle = text4;
     if (openFlag) paintTitle();
-    if (text3) {
+    if (text4) {
       try {
-        onParsedTitle?.(pdfUrl(), text3, Array.isArray(lines) ? lines : void 0);
+        onParsedTitle?.(pdfUrl(), text4, Array.isArray(lines) ? lines : void 0);
       } catch {
       }
     }
@@ -61655,10 +62238,10 @@ function createReadPane({
         ...deviceOcr ? { device: deviceOcr } : {},
         storage,
         setSetting: setSettingFn,
-        copy: (text3) => doc.defaultView?.navigator?.clipboard?.writeText?.(text3),
-        toast: (text3) => {
+        copy: (text4) => doc.defaultView?.navigator?.clipboard?.writeText?.(text4),
+        toast: (text4) => {
           try {
-            host?.toast?.(text3);
+            host?.toast?.(text4);
           } catch {
           }
         },
@@ -62285,10 +62868,10 @@ function detectPdfjs2(win2) {
   return null;
 }
 function firstPageAllowed(url) {
-  const text3 = typeof url === "string" ? url.trim() : "";
-  if (!text3) return false;
-  if (/\.enc(?:[?#]|$)/i.test(text3)) return false;
-  return /^(?:https?:|blob:)/i.test(text3);
+  const text4 = typeof url === "string" ? url.trim() : "";
+  if (!text4) return false;
+  if (/\.enc(?:[?#]|$)/i.test(text4)) return false;
+  return /^(?:https?:|blob:)/i.test(text4);
 }
 function timersOf(timers) {
   const set = typeof timers?.setTimeout === "function" ? timers.setTimeout.bind(timers) : setTimeout;
@@ -62517,10 +63100,10 @@ function createPdfMetaLookup({ lib } = {}) {
     const pending = inflight.get(key);
     if (pending) return pending;
     const job = fetchOne(key).then((got) => {
-      const text3 = typeof got === "string" ? got : "";
-      cache.set(key, text3);
+      const text4 = typeof got === "string" ? got : "";
+      cache.set(key, text4);
       inflight.delete(key);
-      return text3;
+      return text4;
     }, () => {
       cache.set(key, "");
       inflight.delete(key);
@@ -63134,12 +63717,12 @@ function alpha(n2) {
   const v = pct2 ? x / 100 : x;
   return Math.max(0, Math.min(1, v));
 }
-function hexByte(text3) {
-  const n2 = Number.parseInt(text3, 16);
+function hexByte(text4) {
+  const n2 = Number.parseInt(text4, 16);
   return Number.isFinite(n2) ? n2 : null;
 }
-function fromHex(text3) {
-  const hex = text3.slice(1);
+function fromHex(text4) {
+  const hex = text4.slice(1);
   if (hex.length === 3 || hex.length === 4) {
     const r = hexByte(hex[0] + hex[0]);
     const g = hexByte(hex[1] + hex[1]);
@@ -63196,8 +63779,8 @@ function hslToRgb(h, s, l, a) {
     a: a == null ? 1 : a
   };
 }
-function fromFunc(text3) {
-  const match = /^(rgba?|hsla?)\(([^)]+)\)$/i.exec(text3.trim());
+function fromFunc(text4) {
+  const match = /^(rgba?|hsla?)\(([^)]+)\)$/i.exec(text4.trim());
   if (!match) return null;
   const kind = match[1].toLowerCase();
   const parts = match[2].split(/[,\s/]+/).map((part) => part.trim()).filter(Boolean);
@@ -63217,10 +63800,10 @@ function fromFunc(text3) {
 }
 function parseColor(input) {
   if (typeof input !== "string") return null;
-  const text3 = input.trim().toLowerCase();
-  if (!text3 || text3 === "transparent") return null;
-  if (text3.startsWith("#")) return fromHex(text3);
-  if (text3.startsWith("rgb") || text3.startsWith("hsl")) return fromFunc(text3);
+  const text4 = input.trim().toLowerCase();
+  if (!text4 || text4 === "transparent") return null;
+  if (text4.startsWith("#")) return fromHex(text4);
+  if (text4.startsWith("rgb") || text4.startsWith("hsl")) return fromFunc(text4);
   return null;
 }
 function channel(v) {
@@ -63282,10 +63865,10 @@ function composite(fg, bg) {
 function deriveTheme(sample) {
   const src = sample && typeof sample === "object" ? sample : {};
   const background = parseColor(src.background);
-  const text3 = parseColor(src.text);
-  if (!background || !text3 || background.a < 0.5 || text3.a <= 0) return null;
+  const text4 = parseColor(src.text);
+  if (!background || !text4 || background.a < 0.5 || text4.a <= 0) return null;
   const bg = opaque(background);
-  const ink = composite(text3, bg) || opaque(text3);
+  const ink = composite(text4, bg) || opaque(text4);
   const dark = src.dark === true || luminance(bg) < 0.4;
   const card2 = mix(bg, ink, SURFACE_MIX);
   if (!card2) return null;
@@ -63437,13 +64020,13 @@ function sampleRoam(doc) {
     block = article;
   }
   const background = opaqueColor(computed(d, main, "background-color")) || opaqueColor(computed(d, d.body, "background-color")) || opaqueColor(computed(d, article, "background-color"));
-  const text3 = opaqueColor(computed(d, article, "color")) || opaqueColor(computed(d, d.body, "color"));
+  const text4 = opaqueColor(computed(d, article, "color")) || opaqueColor(computed(d, d.body, "color"));
   const borderPx = Number.parseFloat(computed(d, block, "border-top-width")) || Number.parseFloat(computed(d, article, "border-top-width")) || 0;
   const border = borderPx > 0 ? opaqueColor(computed(d, block, "border-top-color")) || opaqueColor(computed(d, article, "border-top-color")) : "";
   const linkColor = link ? opaqueColor(computed(d, link, "color")) : "";
   return {
     background,
-    text: text3,
+    text: text4,
     muted: "",
     border,
     link: linkColor,
@@ -64190,10 +64773,10 @@ function openRegionDeleteDialog(doc, { message = "", onDelete, onOpen, onCancel 
   card2.className = "pxd-view-dialog__card";
   card2.addEventListener("submit", (event) => event.preventDefault());
   root.append(card2);
-  const text3 = doc.createElement("p");
-  text3.className = "pxd-region-delete__message";
-  text3.textContent = message;
-  card2.append(text3);
+  const text4 = doc.createElement("p");
+  text4.className = "pxd-region-delete__message";
+  text4.textContent = message;
+  card2.append(text4);
   const actions = doc.createElement("div");
   actions.className = "pxd-view-dialog__actions";
   const button2 = (cls, label, run) => {
@@ -64297,10 +64880,10 @@ function editorKeyAction({
   if (key === "Enter" && mod && !shift && !alt) return { type: "roam" };
   if (key === "Enter" && isRoot && !shift && !mod && !alt && enterMode !== "child") return { type: "newline" };
   if (key === "Backspace" && isRoot && fresh && !mod && !alt) {
-    const text3 = String(value ?? "");
+    const text4 = String(value ?? "");
     const start = Math.min(selectionStart, selectionEnd);
     const end = Math.max(selectionStart, selectionEnd);
-    if (!text3.trim() && start === end) return { type: "delete-card" };
+    if (!text4.trim() && start === end) return { type: "delete-card" };
   }
   return { type: "roam" };
 }
@@ -64546,12 +65129,12 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     pill.setAttribute("height", "18");
     pill.setAttribute("rx", "9");
     pill.setAttribute("y", "-9");
-    const text3 = mk("text", "pxd-edge__bend-text", g);
-    text3.setAttribute("y", "4");
+    const text4 = mk("text", "pxd-edge__bend-text", g);
+    text4.setAttribute("y", "4");
     mk("circle", "pxd-edge__bend-dot", g).setAttribute("r", "5");
     mk("path", "pxd-edge__bend-chevron", g);
     g.setAttribute("data-tip", "edge.bend");
-    rec.bends = { ...rec.bends || {}, [end]: { g, clamp: null, side: null, pill, text: text3, words: "" } };
+    rec.bends = { ...rec.bends || {}, [end]: { g, clamp: null, side: null, pill, text: text4, words: "" } };
     return rec.bends[end];
   };
   const dropBend = (rec, end) => {
@@ -64599,14 +65182,14 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const bendTitle = (rec, end, uid) => {
     const bend = rec.bends?.[end];
     if (!bend) return;
-    let text3 = "";
+    let text4 = "";
     try {
-      text3 = String(blockText3?.(uid) ?? "").trim().slice(0, 120);
+      text4 = String(blockText3?.(uid) ?? "").trim().slice(0, 120);
     } catch {
-      text3 = "";
+      text4 = "";
     }
-    bend.g.setAttribute("data-tip-extra", text3 || "Block");
-    const first = (text3 || "Block").split(/\s+/).slice(0, 4).join(" ");
+    bend.g.setAttribute("data-tip-extra", text4 || "Block");
+    const first = (text4 || "Block").split(/\s+/).slice(0, 4).join(" ");
     bend.words = first.length > 22 ? `${first.slice(0, 21)}…` : first;
   };
   const innerClass = (rec) => `pxd-inner${rec.innerCls || ""}`;
@@ -64672,8 +65255,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const placeEnds = (rec, geo) => {
     if (!rec.ends || !geo) return;
     let covered = false;
-    const text3 = String(rec.label?.textContent || "");
-    const half = text3 ? (Number(rec.label.offsetWidth) || text3.length * 6.5 + 18) / 2 : 0;
+    const text4 = String(rec.label?.textContent || "");
+    const half = text4 ? (Number(rec.label.offsetWidth) || text4.length * 6.5 + 18) / 2 : 0;
     for (const end of ["from", "to"]) {
       const p = end === "from" ? geo.start : geo.end;
       rec.ends[end].setAttribute("cx", String(p.x));
@@ -64746,9 +65329,9 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       bendTitle(rec, end, uid);
     }
   };
-  const pagePill = (rec, end, text3, point) => {
+  const pagePill = (rec, end, text4, point) => {
     let node2 = rec.pagePills?.[end];
-    if (!text3 || !point) {
+    if (!text4 || !point) {
       node2?.remove();
       if (rec.pagePills) delete rec.pagePills[end];
       return;
@@ -64757,7 +65340,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       node2 = mk("text", "pxd-edge__page", rec.g);
       rec.pagePills = { ...rec.pagePills || {}, [end]: node2 };
     }
-    if (node2.textContent !== text3) node2.textContent = text3;
+    if (node2.textContent !== text4) node2.textContent = text4;
     node2.setAttribute("x", String(point.x));
     node2.setAttribute("y", String(point.y - 10));
   };
@@ -65192,10 +65775,10 @@ init_shapes();
 
 // src/model/changelog.js
 function changelogEntry(markdown, version) {
-  const text3 = String(markdown || "").replace(/^\uFEFF/, "");
+  const text4 = String(markdown || "").replace(/^\uFEFF/, "");
   const ver = String(version || "").trim().replace(/^v/, "");
   if (!ver) return "";
-  const lines = text3.split(/\r?\n/);
+  const lines = text4.split(/\r?\n/);
   const start = lines.findIndex((line) => line.startsWith(`## ${ver} `) || line.startsWith(`## ${ver}
 `) || line === `## ${ver}`);
   if (start < 0) return "";
@@ -65423,10 +66006,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     el2.addEventListener(type, fn, opts);
     listeners3.push(() => el2.removeEventListener(type, fn, opts));
   };
-  const el = (tag, cls, parent, text3) => {
+  const el = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
-    if (text3 !== void 0) node2.textContent = text3;
+    if (text4 !== void 0) node2.textContent = text4;
     parent?.append(node2);
     return node2;
   };
@@ -67159,8 +67742,8 @@ function cellText2(row4, column) {
   const hit = (row4.attrs || []).find((attr) => attr.name === column);
   return hit ? String(hit.value ?? "") : "";
 }
-function filterRows3(rows, text3) {
-  const needle = String(text3 ?? "").trim().toLowerCase();
+function filterRows3(rows, text4) {
+  const needle = String(text4 ?? "").trim().toLowerCase();
   if (!needle) return (rows || []).slice();
   const cols = tableColumns(rows);
   return (rows || []).filter((row4) => cols.some((column) => cellText2(row4, column).toLowerCase().includes(needle)));
@@ -67181,10 +67764,10 @@ function sortRows3(rows, column, dir = "asc") {
 function planAttrCell({ name, value, blockUid: blockUid2 = null, parentUid = null } = {}) {
   const attr = cleanName(name);
   if (!attr) return null;
-  const text3 = String(value ?? "").trim();
-  const string = text3 ? `${attr}:: ${text3}` : `${attr}::`;
+  const text4 = String(value ?? "").trim();
+  const string = text4 ? `${attr}:: ${text4}` : `${attr}::`;
   if (blockUid2) return { op: "update", uid: blockUid2, string };
-  if (!text3 || !parentUid) return null;
+  if (!text4 || !parentUid) return null;
   return { op: "create", parent: parentUid, string };
 }
 function tableRows(board2, resolve) {
@@ -67202,11 +67785,11 @@ function tableRows(board2, resolve) {
       const string = child?.[":block/string"] ?? child?.string ?? "";
       const name = cleanName(attrNameOf(String(string)));
       if (!name) continue;
-      const text3 = String(string);
-      const cut = text3.indexOf("::");
+      const text4 = String(string);
+      const cut = text4.indexOf("::");
       attrs.push({
         name,
-        value: cut >= 0 ? text3.slice(cut + 2).trim() : "",
+        value: cut >= 0 ? text4.slice(cut + 2).trim() : "",
         uid: child?.[":block/uid"] ?? child?.uid ?? null
       });
     }
@@ -67671,8 +68254,8 @@ var BAD_STATUS = /* @__PURE__ */ new Set(["rejected", "unknown", "conflict", "no
 function kanbanTitle(card2) {
   const raw = typeof card2?.string === "string" && card2.string ? card2.string : "";
   if (!/task-status\//.test(raw)) return card2?.title || "";
-  const text3 = raw.replace(/#\[\[task-status\/[^\]]+\]\]|#task-status\/\S+/g, "").replace(/\{\{\[\[(TODO|DONE)\]\]\}\}|\{\{(TODO|DONE)\}\}/g, "").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/\s+/g, " ").trim();
-  return text3 || card2?.title || "";
+  const text4 = raw.replace(/#\[\[task-status\/[^\]]+\]\]|#task-status\/\S+/g, "").replace(/\{\{\[\[(TODO|DONE)\]\]\}\}|\{\{(TODO|DONE)\}\}/g, "").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/\s+/g, " ").trim();
+  return text4 || card2?.title || "";
 }
 function mountKanban({
   doc = globalThis.document,
@@ -68045,10 +68628,10 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     el2.addEventListener(type, fn);
     listeners3.push(() => el2.removeEventListener(type, fn));
   };
-  const el = (tag, cls, parent, text3) => {
+  const el = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
-    if (text3 !== void 0) node2.textContent = text3;
+    if (text4 !== void 0) node2.textContent = text4;
     parent?.append(node2);
     return node2;
   };
@@ -68158,8 +68741,8 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
   const blocks = (items) => {
     const g = group("Blocks", "blocks");
     const cards = items.filter((it) => it.type !== "text");
-    const text3 = items.filter((it) => it.type === "text");
-    const sample = cards[0] || text3[0];
+    const text4 = items.filter((it) => it.type === "text");
+    const sample = cards[0] || text4[0];
     const fallback = sample?.type === "text" ? 24 : CARD_FONT_DEFAULT;
     const same2 = items.every((it) => (it.fontSize ?? fallback) === (sample.fontSize ?? fallback));
     el("span", "pxd-props__label", g, "Text size");
@@ -68501,17 +69084,17 @@ function createImageIndex({
       await whenIdle();
       const full = await decodeFull(blob, OCR_MAX_SIDE);
       const old = records.get(item.key) || {};
-      let text3 = "";
+      let text4 = "";
       if (full.w >= OCR_MIN_W && full.h >= OCR_MIN_H) {
         const got = await ocr.readImageText({ rgb: full.rgb, width: full.width, height: full.height });
         if (got === null) {
           ocrBlocked = true;
           return;
         }
-        text3 = got;
+        text4 = got;
         counted = true;
       }
-      await save(item.key, { ...old, text: text3, w: old.w || full.w, h: old.h || full.h, at: now3(), v: IMAGE_INDEX_V });
+      await save(item.key, { ...old, text: text4, w: old.w || full.w, h: old.h || full.h, at: now3(), v: IMAGE_INDEX_V });
     } catch (error) {
       const old = records.get(item.key) || {};
       if (!old.failed && !error?.skip) await save(item.key, { ...old, text: "", at: now3(), v: IMAGE_INDEX_V });
@@ -68592,10 +69175,10 @@ function createImageIndex({
 // src/model/image-search.js
 init_color();
 init_library();
-function splitImageQuery(text3) {
+function splitImageQuery(text4) {
   const words = [];
   const colors = [];
-  const raw = String(text3 ?? "");
+  const raw = String(text4 ?? "");
   const quoted = /* @__PURE__ */ new Set();
   for (const m of raw.matchAll(/"([^"]*)"/g)) quoted.add(m[1].replace(/\s+/g, " ").trim().toLowerCase());
   for (const term of queryTerms(raw)) {
@@ -68605,8 +69188,8 @@ function splitImageQuery(text3) {
   }
   return { words, colors };
 }
-function searchImages(items, records, { text: text3 = "", pages = "" } = {}, limit = 40) {
-  const { words, colors } = splitImageQuery(text3);
+function searchImages(items, records, { text: text4 = "", pages = "" } = {}, limit = 40) {
+  const { words, colors } = splitImageQuery(text4);
   const range = parsePageRange(pages);
   const hits = [];
   let seq = 0;
@@ -68642,6 +69225,28 @@ ${String(rec.text).toLowerCase()}` : item.hay;
     palette: palette ? palette.slice(0, 3).map((p) => p.hex) : [],
     colorScore: score
   }));
+}
+var SIMILAR_LIMIT = 40;
+function similarImages(items, records, sourceKey, limit = SIMILAR_LIMIT) {
+  const source = records?.get?.(sourceKey) || null;
+  if (!source || source.failed || !Array.isArray(source.palette) || !source.palette.length) return { ok: false, rows: [] };
+  const hits = [];
+  let seq = 0;
+  for (const item of Array.isArray(items) ? items : []) {
+    seq += 1;
+    if (item.key === sourceKey) continue;
+    const rec = records.get(item.key);
+    if (!rec || rec.failed || !Array.isArray(rec.palette) || !rec.palette.length) continue;
+    const distance = paletteDistance(source.palette, rec.palette);
+    if (Number.isFinite(distance)) hits.push({ item, distance, seq, palette: rec.palette });
+  }
+  hits.sort((a, b) => a.distance - b.distance || a.seq - b.seq);
+  const rows = hits.slice(0, Math.max(1, Math.floor(Number(limit) || SIMILAR_LIMIT))).map(({ item, palette, distance }) => ({
+    ...item,
+    palette: palette.slice(0, 3).map((p) => p.hex),
+    distance
+  }));
+  return { ok: true, rows };
 }
 
 // src/model/ocr/manifest.js
@@ -68692,8 +69297,8 @@ var LEXICON_FILE = {
   sha256: "b754012207b309972024fbe5778525f8d39ffb3dd9c615244f943aa5676b7f60",
   bytes: 115131
 };
-function dictLines(text3) {
-  return String(text3 || "").replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.length > 0);
+function dictLines(text4) {
+  return String(text4 || "").replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.length > 0);
 }
 function joinUrl(base, path) {
   return `${String(base || "").replace(/\/$/, "")}/${String(path || "").replace(/^\//, "")}`;
@@ -69647,9 +70252,9 @@ function snapWords(groups, seg, proj) {
   });
   return words;
 }
-function sizeFromInk(text3, capH) {
+function sizeFromInk(text4, capH) {
   if (!(capH > 0)) return null;
-  if (/[A-Z0-9bdfhklt]/.test(text3)) return capH / 0.64;
+  if (/[A-Z0-9bdfhklt]/.test(text4)) return capH / 0.64;
   return null;
 }
 function dashRuns(mask, pageW, proj, c0, c1, base, capH) {
@@ -69798,8 +70403,8 @@ function blobBaseline(blob, em) {
   return (blob.y0 + blob.y1) / 2 + 0.25 * em;
 }
 var HALLUCINATION = /yanma|ianm|gent|cmyk/i;
-function acceptOrphanRead(text3, conf, blob, em) {
-  const t = String(text3 || "").trim();
+function acceptOrphanRead(text4, conf, blob, em) {
+  const t = String(text4 || "").trim();
   if (!t) return false;
   const w = blob.x1 - blob.x0;
   const h = blob.y1 - blob.y0;
@@ -70168,10 +70773,10 @@ async function readOrphans(image, w, h, boxes, mask, items, scaleX, scaleY, runR
   if (!blobs.length) return [];
   const crops = [];
   const out = [];
-  const place2 = (text3, blob, conf) => {
+  const place2 = (text4, blob, conf) => {
     const base = blobBaseline(blob, em) / scaleY;
     const box2 = { x0: blob.x0 / scaleX, x1: blob.x1 / scaleX, y1: base + 0.2 * emPt, y0: base - 0.8 * emPt };
-    out.push(wordItem(text3, box2.x0, box2.x1, box2, conf));
+    out.push(wordItem(text4, box2.x0, box2.x1, box2, conf));
   };
   for (const blob of blobs) {
     const dash = dashFromShape(blob, em);
@@ -70280,9 +70885,9 @@ async function preparePageImage({
 }
 async function polishDirty(items, frame, page, runRec, dict, signal) {
   const dirty = items.filter((item) => {
-    const text3 = item.str.trim();
-    if (/^[-–—.•*·]+$/.test(text3)) return false;
-    return !CLEAN_NUM.test(text3) && !LONG_WORD.test(text3);
+    const text4 = item.str.trim();
+    if (/^[-–—.•*·]+$/.test(text4)) return false;
+    return !CLEAN_NUM.test(text4) && !LONG_WORD.test(text4);
   });
   if (!dirty.length) return;
   const read2 = await recognizeCells({
@@ -70296,9 +70901,9 @@ async function polishDirty(items, frame, page, runRec, dict, signal) {
     signal
   });
   dirty.forEach((item, i) => {
-    const text3 = (read2.cells[i]?.text || "").trim();
-    if (!CLEAN_NUM.test(text3)) return;
-    item.str = text3;
+    const text4 = (read2.cells[i]?.text || "").trim();
+    if (!CLEAN_NUM.test(text4)) return;
+    item.str = text4;
     item.conf = bucketConf(read2.cells[i].conf || 0);
   });
 }
@@ -70317,30 +70922,30 @@ async function readLine(prep, cell, runRec, dict, signal) {
     const out = await runRec(nchwNormalize(resized.rgb, resized.w, resized.h), [1, 3, resized.h, resized.w]);
     const contentT = Math.max(1, Math.min(out.time, Math.round(out.time * (resized.contentW || resized.w) / resized.w)));
     const chars = ctcDecode(out.logits.subarray(0, contentT * out.classes), contentT, out.classes, dict);
-    let text3 = "";
+    let text4 = "";
     const confs = [];
     let sum = 0;
     let n2 = 0;
     for (const ch of chars) {
       if (SPACE_CH.has(ch.ch)) {
-        if (text3 && !text3.endsWith(" ")) {
-          text3 += " ";
+        if (text4 && !text4.endsWith(" ")) {
+          text4 += " ";
           confs.push(1);
         }
         continue;
       }
-      text3 += ch.ch;
+      text4 += ch.ch;
       confs.push(Math.round(ch.conf * 100) / 100);
       sum += ch.conf;
       n2++;
     }
-    if (text3.endsWith(" ")) {
-      text3 = text3.slice(0, -1);
+    if (text4.endsWith(" ")) {
+      text4 = text4.slice(0, -1);
       confs.pop();
     }
     const conf = n2 ? Math.round(sum / n2 * 1e3) / 1e3 : 0;
-    reads.push({ text: text3, conf, confs, scale: k });
-    if (conf > best.conf) best = { page: cell.page, bbox: cell.bbox, text: text3, conf, confs, scale: k };
+    reads.push({ text: text4, conf, confs, scale: k });
+    if (conf > best.conf) best = { page: cell.page, bbox: cell.bbox, text: text4, conf, confs, scale: k };
   }
   return { ...best, reads };
 }
@@ -70360,8 +70965,8 @@ async function readCell(prep, cell, runRec, dict, signal) {
   const out = await runRec(data, [1, 3, resized.h, resized.w]);
   const contentT = Math.max(1, Math.min(out.time, Math.round(out.time * (resized.contentW || resized.w) / resized.w)));
   const slice = out.logits.subarray(0, contentT * out.classes);
-  const text3 = ctcText({ logits: slice, time: contentT, classes: out.classes, dict });
-  return { page: cell.page, bbox: cell.bbox, text: text3.text, conf: text3.conf, glyph };
+  const text4 = ctcText({ logits: slice, time: contentT, classes: out.classes, dict });
+  return { page: cell.page, bbox: cell.bbox, text: text4.text, conf: text4.conf, glyph };
 }
 async function recognizeCells({ pages, cells, runRec, dict, signal } = {}) {
   const out = [];
@@ -70681,8 +71286,8 @@ function createOcrWeb({
     const buf = await loadVerified(joinUrl(assetBase, `assets/ocr/${LEXICON_FILE.file}`), LEXICON_FILE, signal);
     if (typeof DecompressionStream !== "function") return null;
     const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
-    const text3 = await new Response(stream).text();
-    lexiconSet = parseLexicon(text3);
+    const text4 = await new Response(stream).text();
+    lexiconSet = parseLexicon(text4);
     return lexiconSet;
   }
   async function cachedLexicon() {
@@ -70738,8 +71343,8 @@ function createOcrWeb({
   }
   async function workerScriptUrl(signal) {
     if (workerUrl) return workerUrl;
-    const text3 = await loadVerified(joinUrl(assetBase, `assets/ocr/${workerFile.file}`), workerFile, signal);
-    return createObjectURL(new Blob([text3], { type: "text/javascript" }));
+    const text4 = await loadVerified(joinUrl(assetBase, `assets/ocr/${workerFile.file}`), workerFile, signal);
+    return createObjectURL(new Blob([text4], { type: "text/javascript" }));
   }
   async function bootWorker(signal) {
     const ortMjs = await loadVerified(joinUrl(ortBase, ortFiles.mjs.file), ortFiles.mjs, signal);
@@ -71289,10 +71894,10 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
   const entries = /* @__PURE__ */ new Map();
   const levels = [];
   let disposed = false;
-  const el = (tag, cls, parent, text3) => {
+  const el = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
-    if (text3 !== void 0) node2.textContent = text3;
+    if (text4 !== void 0) node2.textContent = text4;
     parent?.append(node2);
     return node2;
   };
@@ -71717,8 +72322,8 @@ function createTypeAhead({ doc, isTarget, later, armMs = ARM_MS } = {}) {
     clearTimer();
     if (typeof later === "function") stopTimer = later(cancel, armMs);
   };
-  const insert = (target, text3) => {
-    if (!text3) return true;
+  const insert = (target, text4) => {
+    if (!text4) return true;
     const view = doc?.defaultView || globalThis;
     if (doc?.activeElement !== target) {
       try {
@@ -71729,7 +72334,7 @@ function createTypeAhead({ doc, isTarget, later, armMs = ARM_MS } = {}) {
     let done = false;
     if (doc?.activeElement === target && typeof doc.execCommand === "function") {
       try {
-        done = doc.execCommand("insertText", false, text3) === true;
+        done = doc.execCommand("insertText", false, text4) === true;
       } catch {
         done = false;
       }
@@ -71740,14 +72345,14 @@ function createTypeAhead({ doc, isTarget, later, armMs = ARM_MS } = {}) {
     const start = Number.isFinite(target.selectionStart) ? target.selectionStart : value.length;
     const end = Number.isFinite(target.selectionEnd) ? target.selectionEnd : start;
     try {
-      target.setRangeText(text3, start, end, "end");
+      target.setRangeText(text4, start, end, "end");
     } catch {
       return false;
     }
     const Ctor = view?.InputEvent || view?.Event || globalThis.Event;
     if (typeof Ctor === "function") {
       try {
-        target.dispatchEvent(new Ctor("input", { bubbles: true, inputType: "insertText", data: text3 }));
+        target.dispatchEvent(new Ctor("input", { bubbles: true, inputType: "insertText", data: text4 }));
       } catch {
       }
     }
@@ -71756,10 +72361,10 @@ function createTypeAhead({ doc, isTarget, later, armMs = ARM_MS } = {}) {
   const flush = (target) => {
     if (!armed) return "";
     if (!target || !isTarget?.(target)) return "";
-    const text3 = buffer;
+    const text4 = buffer;
     cancel();
-    if (text3) insert(target, text3);
-    return text3;
+    if (text4) insert(target, text4);
+    return text4;
   };
   const take = (event) => {
     if (!armed || !event) return false;
@@ -72331,10 +72936,10 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
   let cancelPending = null;
   let disposed = false;
   const offs = [];
-  const el = (tag, cls, parent, text3) => {
+  const el = (tag, cls, parent, text4) => {
     const n2 = doc.createElement(tag);
     n2.className = cls;
-    if (text3 !== void 0) n2.textContent = text3;
+    if (text4 !== void 0) n2.textContent = text4;
     parent?.append(n2);
     return n2;
   };
@@ -72697,10 +73302,10 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
   let drawing = false;
   const strokes = [];
   const offs = [];
-  const el = (tag, cls, parent, text3) => {
+  const el = (tag, cls, parent, text4) => {
     const n2 = doc.createElement(tag);
     n2.className = cls;
-    if (text3 !== void 0) n2.textContent = text3;
+    if (text4 !== void 0) n2.textContent = text4;
     parent?.append(n2);
     return n2;
   };
@@ -73526,9 +74131,9 @@ function isDateBlockString(string) {
   return Boolean(match && isDailyTitle(match[1]));
 }
 function dateDropExpansion(dropString, block) {
-  const text3 = String(dropString ?? "").trim();
-  if (DATE_BLOCK.test(text3)) return null;
-  if (!BLOCK_REF.test(text3)) return null;
+  const text4 = String(dropString ?? "").trim();
+  if (DATE_BLOCK.test(text4)) return null;
+  if (!BLOCK_REF.test(text4)) return null;
   if (!block || !isDateBlockString(block.string)) return null;
   const uids = expandDateHighlights(block);
   if (!uids) return null;
@@ -73660,15 +74265,15 @@ function pdfHighlightButton(doc, onClick, count = 0) {
 }
 function setHighlightCount(btn2, count) {
   const n2 = Number(count);
-  const text3 = Number.isFinite(n2) && n2 > 0 ? String(Math.floor(n2)) : "";
+  const text4 = Number.isFinite(n2) && n2 > 0 ? String(Math.floor(n2)) : "";
   const num6 = btn2?.querySelector?.(".pxd-pdf-highlights__count");
-  if (num6 && num6.textContent !== text3) num6.textContent = text3;
+  if (num6 && num6.textContent !== text4) num6.textContent = text4;
   if (num6) {
-    if (text3) num6.removeAttribute?.("hidden");
+    if (text4) num6.removeAttribute?.("hidden");
     else num6.setAttribute?.("hidden", "");
   }
-  btn2?.setAttribute?.("data-count", text3 || "0");
-  return text3;
+  btn2?.setAttribute?.("data-count", text4 || "0");
+  return text4;
 }
 function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
   let rowsState = (Array.isArray(rows) ? rows : []).map((row4) => ({ ...row4, selected: false }));
@@ -73753,8 +74358,8 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
   actions.append(gridBtn, columnBtn);
   root.append(actions);
   const groupLabel = (row4) => {
-    const text3 = typeof row4?.group === "string" ? row4.group.trim() : "";
-    return text3 || "Other";
+    const text4 = typeof row4?.group === "string" ? row4.group.trim() : "";
+    return text4 || "Other";
   };
   const paint2 = () => {
     list.replaceChildren();
@@ -73788,13 +74393,13 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
       const bar = doc.createElement("span");
       bar.className = "pxd-hl-bar";
       bar.setAttribute("data-color", row4.color || "gray");
-      const text3 = doc.createElement("span");
-      text3.className = "pxd-hl-row__text";
-      text3.textContent = row4.snippet || row4.uid || "";
+      const text4 = doc.createElement("span");
+      text4.className = "pxd-hl-row__text";
+      text4.textContent = row4.snippet || row4.uid || "";
       const page = doc.createElement("span");
       page.className = "pxd-hl-rowpage";
       page.textContent = row4.page == null ? "" : `p. ${row4.page}`;
-      line.append(box2, bar, text3, page);
+      line.append(box2, bar, text4, page);
       if (typeof row4.note === "string" && row4.note.trim()) {
         const mark = doc.createElement("span");
         mark.className = "pxd-hl-note";
@@ -74258,8 +74863,8 @@ function buildBoardView(onFail, {
     const item = board2()?.items.get(id);
     if (typeof item?.string === "string" && item.string.trim()) return item.string;
     try {
-      const text3 = host?.blockString?.(id);
-      return typeof text3 === "string" ? text3 : "";
+      const text4 = host?.blockString?.(id);
+      return typeof text4 === "string" ? text4 : "";
     } catch {
       return "";
     }
@@ -74283,8 +74888,8 @@ function buildBoardView(onFail, {
       seenPoster.add(key);
       posters.push(mount ? { ...poster, uid: mount } : poster);
     };
-    const fromText = (text3, id) => {
-      const split = embedSplit(text3, { read: outlineRead, cover: outlineCover, uid: id });
+    const fromText = (text4, id) => {
+      const split = embedSplit(text4, { read: outlineRead, cover: outlineCover, uid: id });
       for (const poster of split.posters) add(poster, id);
     };
     const walk2 = (id, depth) => {
@@ -74400,8 +75005,8 @@ function buildBoardView(onFail, {
       const own = outlineRead(uid);
       const ownSplit = embedSplit(own, { read: outlineRead, cover: outlineCover, uid });
       if (!ownSplit.posters.length && own.trim()) {
-        const text3 = el("div", "pxd-outline-rest", row4);
-        text3.textContent = plainText(own);
+        const text4 = el("div", "pxd-outline-rest", row4);
+        text4.textContent = plainText(own);
       }
       for (const poster of heavies) {
         const mount = poster.uid || uid;
@@ -74921,13 +75526,13 @@ function buildBoardView(onFail, {
     return true;
   }
   openPinFromChip = (pinUid, event) => {
-    let text3 = "";
+    let text4 = "";
     try {
-      text3 = host?.blockString?.(pinUid) || "";
+      text4 = host?.blockString?.(pinUid) || "";
     } catch {
-      text3 = "";
+      text4 = "";
     }
-    const region = parseRegion(text3);
+    const region = parseRegion(text4);
     if (!region) return false;
     region.uid = pinUid;
     const plan = pinOpenPlan(region);
@@ -75204,11 +75809,11 @@ function buildBoardView(onFail, {
     }, getThumb: crop };
   };
   const askAboutImageCard = (item) => {
-    const text3 = String(item?.string ?? "");
-    const m = /!\[([^\]]*)\]\(([^)\s]+)\)/.exec(text3);
+    const text4 = String(item?.string ?? "");
+    const m = /!\[([^\]]*)\]\(([^)\s]+)\)/.exec(text4);
     const url = m ? m[2] : "";
     const alt = m ? m[1] : "";
-    const rest = text3.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+    const rest = text4.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
     const caption = [alt, rest].filter(Boolean).join(" — ");
     let title = "";
     try {
@@ -75253,6 +75858,30 @@ function buildBoardView(onFail, {
       },
       toast: (message) => toast(message),
       addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfUid, ...answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) })
+    });
+  };
+  const chartAboutParsed = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "" }) => {
+    let parsed = null;
+    try {
+      const store = parseStoreShared();
+      parsed = sha256 ? await store.getParse(sha256, engine, optsHash) : null;
+      if (!parsed && url) parsed = await readableParse(store, url, { plainOptions: BUILTIN_OPTIONS });
+    } catch {
+      parsed = null;
+    }
+    if (disposed) return null;
+    if (!parsed) {
+      toast("Parse not found. Open the PDF and parse it again");
+      return null;
+    }
+    const figure = blockId && parsed.blocks?.[blockId]?.type === "figure" ? parsed.blocks[blockId] : null;
+    if (!figure) return null;
+    return runChartToTable({
+      doc: parsed,
+      blockId,
+      image: figureSpecFor(parsed, figure),
+      toast: (message) => toast(message),
+      addTable: ({ table }) => parseActions().insertChartTable({ table, pdfUid, pdfBlockUid: pdfUid, ...answerSource({ doc: parsed, blockId, pdfUid }) })
     });
   };
   const pdfCardUidFor = (pdfUid, url) => {
@@ -76877,14 +77506,14 @@ function buildBoardView(onFail, {
     const cards = [];
     for (const item of b.items.values()) {
       if (item.type === "section") continue;
-      const text3 = `${item.string || ""} ${item.title || ""}`;
+      const text4 = `${item.string || ""} ${item.title || ""}`;
       const refs = [];
       const re = /\[\[([^\]\n]+)\]\]/g;
       let match;
-      while (match = re.exec(text3)) refs.push(match[1]);
+      while (match = re.exec(text4)) refs.push(match[1]);
       cards.push({
         uid: item.uid,
-        text: text3,
+        text: text4,
         refs,
         attrs: [],
         pageTitle: item.kind === "page" ? item.target?.title || item.title || "" : ""
@@ -77162,8 +77791,8 @@ function buildBoardView(onFail, {
     const noun = types.size === 1 && (types.has("card") || types.has("section")) ? [...types][0] : "item";
     toast(`${label} ${list.length} ${list.length === 1 ? noun : `${noun}s`}`, true);
   };
-  const copyText2 = (text3, message) => {
-    void writeClipboard({ text: text3 }).then((ok) => {
+  const copyText2 = (text4, message) => {
+    void writeClipboard({ text: text4 }).then((ok) => {
       if (!disposed) toast(ok ? message : "Copy failed");
     });
   };
@@ -77424,7 +78053,7 @@ function buildBoardView(onFail, {
     pagePicker?.close();
     const picker = openPagePicker({
       doc,
-      search: (text3) => host?.searchPages?.(text3, 30) || [],
+      search: (text4) => host?.searchPages?.(text4, 30) || [],
       onPick: async (title) => {
         const b = board2();
         if (!b || disposed) return false;
@@ -77477,14 +78106,14 @@ function buildBoardView(onFail, {
     });
   };
   const pasteFromMenu = async (at, clone2) => {
-    let text3 = null;
+    let text4 = null;
     try {
-      text3 = await globalThis.navigator?.clipboard?.readText?.();
+      text4 = await globalThis.navigator?.clipboard?.readText?.();
     } catch {
-      text3 = null;
+      text4 = null;
     }
     if (disposed) return;
-    if (lastPayload && (text3 == null || text3 === lastPayload.text)) {
+    if (lastPayload && (text4 == null || text4 === lastPayload.text)) {
       let data = null;
       try {
         data = JSON.parse(lastPayload.mime);
@@ -77496,7 +78125,7 @@ function buildBoardView(onFail, {
         return;
       }
     }
-    const entries = parsePastedText(text3 ?? "");
+    const entries = parsePastedText(text4 ?? "");
     if (entries.length) pasteEntries(entries, at);
     else toast("Nothing to paste");
   };
@@ -77630,16 +78259,16 @@ function buildBoardView(onFail, {
     const ta = editorTextarea(event.target) || editorTextarea(doc.activeElement);
     if (!ta || !root.contains?.(ta)) return false;
     const files = filesFromDataTransfer(event.clipboardData);
-    let text3 = "";
+    let text4 = "";
     try {
-      text3 = event.clipboardData?.getData?.("text/plain") ?? "";
+      text4 = event.clipboardData?.getData?.("text/plain") ?? "";
     } catch {
-      text3 = "";
+      text4 = "";
     }
     const cardUid = itemsR.editingUid?.();
     const role = inputBlockRole(ta, cardUid);
     const plan = editorPastePlan({
-      text: text3,
+      text: text4,
       imageCount: files.length,
       value: ta.value ?? "",
       selectionStart: ta.selectionStart,
@@ -78053,13 +78682,13 @@ function buildBoardView(onFail, {
         break;
       case "bg-image": {
         void (async () => {
-          let text3 = "";
+          let text4 = "";
           try {
-            text3 = await globalThis.navigator?.clipboard?.readText?.() || "";
+            text4 = await globalThis.navigator?.clipboard?.readText?.() || "";
           } catch {
-            text3 = "";
+            text4 = "";
           }
-          const ok = await session.setBoardBackground?.({ bgImage: text3.trim() });
+          const ok = await session.setBoardBackground?.({ bgImage: text4.trim() });
           if (!disposed && !ok) toast("Copy an https image URL first");
         })();
         break;
@@ -78680,8 +79309,8 @@ function buildBoardView(onFail, {
   };
   const pdfSourceOfItem = (item) => {
     if (item?.target?.kind === "block") {
-      const text3 = host?.blockString?.(item.target.uid);
-      return typeof text3 === "string" ? text3 : "";
+      const text4 = host?.blockString?.(item.target.uid);
+      return typeof text4 === "string" ? text4 : "";
     }
     return typeof item?.string === "string" ? item.string : "";
   };
@@ -79086,7 +79715,7 @@ function buildBoardView(onFail, {
         if (selection.items.length) void session.wrapInSection?.(selection.items);
       },
       navigate: (worldPoint) => centerOn(worldPoint),
-      searchFilter: (text3) => searchFilter(text3),
+      searchFilter: (text4) => searchFilter(text4),
       searchNext: (dir) => searchNext(dir),
       searchClosed: () => {
         noteOverlayClosed();
@@ -79386,7 +80015,7 @@ function buildBoardView(onFail, {
     }
     return imgIndex;
   };
-  const searchImageCards = async ({ text: text3, images, figures, pages }, limit) => {
+  const searchImageCards = async ({ text: text4, images, figures, pages, like }, limit) => {
     const index = imageIndex();
     await index.load();
     const imgItems = [];
@@ -79408,9 +80037,14 @@ function buildBoardView(onFail, {
     if (feed.length) timers.later(() => {
       void index.enqueue(feed);
     }, 0);
+    if (like) {
+      const found = similarImages([...imgItems, ...figItems], index.records, like, limit);
+      const order = found.rows.map((r) => r.kind === "figure" ? r : { ...r, kind: "image" });
+      return { similar: found.ok, order, images: order.filter((r) => r.kind !== "figure"), figures: order.filter((r) => r.kind === "figure") };
+    }
     return {
-      images: searchImages(imgItems, index.records, { text: text3 }, limit),
-      figures: searchImages(figItems, index.records, { text: text3, pages }, limit)
+      images: searchImages(imgItems, index.records, { text: text4 }, limit),
+      figures: searchImages(figItems, index.records, { text: text4, pages }, limit)
     };
   };
   let panelWidth = PANEL_WIDTH_DEFAULT;
@@ -79470,6 +80104,9 @@ function buildBoardView(onFail, {
       },
       askPart: (row4) => {
         void askAboutParsed({ pdfUid: pdfCardUidFor(row4?.pdfUid || "", row4?.url || "") || row4?.pdfUid || "", url: row4?.url || "", sha256: row4?.sha256 || "", engine: row4?.engine || "builtin", optsHash: row4?.optsHash || "", blockId: row4?.blockId || "", page: row4?.page ?? null });
+      },
+      chartPart: (row4) => {
+        void chartAboutParsed({ pdfUid: pdfCardUidFor(row4?.pdfUid || "", row4?.url || "") || row4?.pdfUid || "", url: row4?.url || "", sha256: row4?.sha256 || "", engine: row4?.engine || "builtin", optsHash: row4?.optsHash || "", blockId: row4?.blockId || "" });
       },
       listBoards: () => Promise.resolve(host?.listBoards?.()).then((rows) => rows || []),
       openBoardByUid: (uid) => {
@@ -79872,9 +80509,9 @@ function buildBoardView(onFail, {
     const edges = q ? new Set((hits || []).filter((h) => h.kind === "edge").map((h) => h.uid)) : null;
     edgesR.setSearch(edges);
   };
-  const searchFilter = (text3) => {
+  const searchFilter = (text4) => {
     const b = board2();
-    const q = String(text3 || "").trim().toLowerCase();
+    const q = String(text4 || "").trim().toLowerCase();
     searchIndex = -1;
     root.classList.toggle("pxd-root--searching", Boolean(q));
     searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
@@ -79912,8 +80549,8 @@ function buildBoardView(onFail, {
     if (!freshTasks.delete(uid)) return;
     const project = defaultTaskProject();
     if (!project || !bt.available()) return;
-    const text3 = host?.blockString?.(uid);
-    if (!isTaskString(text3) || isBareTask(text3)) return;
+    const text4 = host?.blockString?.(uid);
+    if (!isTaskString(text4) || isBareTask(text4)) return;
     void bt.modify(uid, { attributes: { project } });
   };
   const makeTask = async (uid, string) => {
@@ -79927,9 +80564,9 @@ function buildBoardView(onFail, {
     await itemsR.exitEdit();
     if (uid && freshItems.delete(uid)) {
       const item = session.board?.items?.get(uid);
-      const text3 = host?.blockString?.(uid);
+      const text4 = host?.blockString?.(uid);
       if (item && freshCardIsBlank({
-        blockString: text3,
+        blockString: text4,
         itemString: item.string,
         contentCount: (item.content || []).filter((c) => !isTaskAttr(c)).length,
         editorText
@@ -80149,8 +80786,8 @@ function buildBoardView(onFail, {
   };
   const shortcutSheet = createShortcutSheet({ doc, root, settings: settingsProxy });
   let connectHintEl = null;
-  const showConnectHint = (text3, screen) => {
-    if (!text3) {
+  const showConnectHint = (text4, screen) => {
+    if (!text4) {
       connectHintEl?.remove?.();
       connectHintEl = null;
       return;
@@ -80161,7 +80798,7 @@ function buildBoardView(onFail, {
       connectHintEl.setAttribute("role", "status");
       root.append(connectHintEl);
     }
-    if (connectHintEl.textContent !== text3) connectHintEl.textContent = text3;
+    if (connectHintEl.textContent !== text4) connectHintEl.textContent = text4;
     if (screen) {
       connectHintEl.style.left = `${Math.round(screen.x + 14)}px`;
       connectHintEl.style.top = `${Math.round(screen.y + 18)}px`;
@@ -80549,7 +81186,7 @@ function buildBoardView(onFail, {
       });
       return regionUid;
     },
-    connectHint: (text3, screen) => showConnectHint(text3, screen),
+    connectHint: (text4, screen) => showConnectHint(text4, screen),
     undo: () => session.undo?.(),
     redo: () => session.redo?.(),
     enterEdit: (uid, opts) => enterEdit(uid, opts),
@@ -81216,8 +81853,8 @@ function buildBoardView(onFail, {
     else node2?.remove?.();
   };
   const dateBlockForDrop = (dropString) => {
-    const text3 = String(dropString ?? "").trim();
-    const match = BLOCK_REF.exec(text3);
+    const text4 = String(dropString ?? "").trim();
+    const match = BLOCK_REF.exec(text4);
     if (!match) return null;
     const uid = match[1];
     let string = null;
@@ -81729,7 +82366,7 @@ function buildBoardView(onFail, {
       if (!disposed && doc.activeElement === event.target) typeAhead.flush(event.target);
     });
   }, true);
-  const clip6 = createClipboardIO({
+  const clip7 = createClipboardIO({
     doc,
     root,
     ownsKeyboard,
@@ -81746,8 +82383,8 @@ function buildBoardView(onFail, {
         if (selection.edge && !selection.items?.length) {
           const edge = b?.edges.get(selection.edge);
           if (!edge) return null;
-          const text3 = edge.string || `((${selection.edge}))`;
-          const payload2 = { text: text3, mime: JSON.stringify({ kind: "edge", uid: selection.edge, string: text3 }) };
+          const text4 = edge.string || `((${selection.edge}))`;
+          const payload2 = { text: text4, mime: JSON.stringify({ kind: "edge", uid: selection.edge, string: text4 }) };
           lastPayload = payload2;
           return payload2;
         }
@@ -81799,7 +82436,7 @@ function buildBoardView(onFail, {
       editorPaste
     }
   });
-  onFail.unshift(() => clip6.dispose());
+  onFail.unshift(() => clip7.dispose());
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
     if (disposed || suspended) return;
     const b = board2();
@@ -82440,8 +83077,8 @@ function buildBoardView(onFail, {
       const data = await dataUrlFor(imageSrc(item.string));
       if (data) hrefs.set(item.uid, data);
     }
-    const text3 = boardToSvg(pictured, rects(), { dark: root.classList.contains("pxd-root--dark"), imageHrefs: hrefs });
-    return dropExternalImages(text3);
+    const text4 = boardToSvg(pictured, rects(), { dark: root.classList.contains("pxd-root--dark"), imageHrefs: hrefs });
+    return dropExternalImages(text4);
   };
   const pngName = (b) => {
     let pageTitle = "";
@@ -82740,10 +83377,10 @@ function buildBoardView(onFail, {
     async exportSvg({ download = true } = {}) {
       const b = board2();
       if (!b) return "";
-      const text3 = boardToSvg(b, rects(), { dark: root.classList.contains("pxd-root--dark") });
+      const text4 = boardToSvg(b, rects(), { dark: root.classList.contains("pxd-root--dark") });
       if (download) {
         try {
-          const blob = new Blob([text3], { type: "image/svg+xml" });
+          const blob = new Blob([text4], { type: "image/svg+xml" });
           const url = URL.createObjectURL(blob);
           const a = doc.createElement("a");
           a.href = url;
@@ -82755,7 +83392,7 @@ function buildBoardView(onFail, {
         } catch {
         }
       }
-      return text3;
+      return text4;
     },
     async exportPng() {
       return exportPng();
@@ -82772,10 +83409,10 @@ function buildBoardView(onFail, {
     async copyOutline() {
       const b = board2();
       if (!b) return "";
-      const text3 = boardToMarkdown(b, rects());
-      const ok = await writeClipboard({ text: text3 });
+      const text4 = boardToMarkdown(b, rects());
+      const ok = await writeClipboard({ text: text4 });
       if (!disposed) toast(ok ? "Outline copied" : "Copy failed");
-      return text3;
+      return text4;
     },
     stats() {
       return { timers: timers.count(), listeners: listeners3.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount() };
@@ -82876,7 +83513,7 @@ function buildBoardView(onFail, {
       step(() => menu.dispose());
       step(() => quicklook.dispose());
       step(() => presenter.dispose());
-      step(() => clip6.dispose());
+      step(() => clip7.dispose());
       step(() => {
         try {
           pdfWarm?.cancelAll?.();
@@ -83006,26 +83643,26 @@ function packSketch(sketch) {
     if (clean) edges.push(clean);
   }
   const fit2 = (next) => {
-    const text4 = JSON.stringify(next);
-    return text4.length <= SKETCH_MAX_BYTES ? text4 : null;
+    const text5 = JSON.stringify(next);
+    return text5.length <= SKETCH_MAX_BYTES ? text5 : null;
   };
   let payload = { items, edges };
-  let text3 = fit2(payload);
-  if (text3) return text3;
+  let text4 = fit2(payload);
+  if (text4) return text4;
   payload = { items, edges: [] };
-  text3 = fit2(payload);
-  if (text3) return text3;
+  text4 = fit2(payload);
+  if (text4) return text4;
   payload = {
     items: items.map((item) => ({ ...item, title: item.title.slice(0, 40) })),
     edges: []
   };
-  text3 = fit2(payload);
-  if (text3) return text3;
+  text4 = fit2(payload);
+  if (text4) return text4;
   let kept = payload.items;
   while (kept.length) {
     kept = kept.slice(0, kept.length - 1);
-    text3 = fit2({ items: kept, edges: [] });
-    if (text3) return text3;
+    text4 = fit2({ items: kept, edges: [] });
+    if (text4) return text4;
   }
   return null;
 }
@@ -83067,11 +83704,11 @@ function createSketchStore({ storage = globalThis.localStorage, graph = "", now:
   const flush = (uid) => {
     timers.delete(uid);
     if (!latest.has(uid)) return;
-    const text3 = latest.get(uid);
+    const text4 = latest.get(uid);
     latest.delete(uid);
-    if (!allow() || typeof text3 !== "string") return;
+    if (!allow() || typeof text4 !== "string") return;
     try {
-      storage?.setItem(key(uid), text3);
+      storage?.setItem(key(uid), text4);
     } catch {
     }
     lastWrite.set(uid, now3());
@@ -83089,9 +83726,9 @@ function createSketchStore({ storage = globalThis.localStorage, graph = "", now:
     },
     set(uid, sketch) {
       if (!allow() || !uid || !sketch) return;
-      const text3 = packSketch(sketch);
-      if (!text3) return;
-      latest.set(uid, text3);
+      const text4 = packSketch(sketch);
+      if (!text4) return;
+      latest.set(uid, text4);
       const since = now3() - (lastWrite.get(uid) ?? -Infinity);
       if (since >= SKETCH_DEBOUNCE_MS) {
         flush(uid);
@@ -83846,9 +84483,9 @@ function createCardChips({
   const CHIP_ROW_H = 28;
   const reserveChipRow = (row4) => {
     if (!row4?.style) return;
-    const text3 = `${CHIP_ROW_H}px`;
-    row4.style.height = text3;
-    row4.style.minHeight = text3;
+    const text4 = `${CHIP_ROW_H}px`;
+    row4.style.height = text4;
+    row4.style.minHeight = text4;
     row4.style.boxSizing = "border-box";
     row4.style.overflow = "hidden";
   };
@@ -86960,13 +87597,13 @@ async function installPlexusDiagram({
     if (!entry || !rec?.view) return;
     if (!allowShowMount(rec)) return;
     if (rec.shown === entry) return;
-    let text3 = "";
+    let text4 = "";
     try {
-      text3 = host.blockString?.(entry.uid) || "";
+      text4 = host.blockString?.(entry.uid) || "";
     } catch {
       return;
     }
-    const region = parseRegion(text3);
+    const region = parseRegion(text4);
     const imageKind2 = region && !region.error && (region.owner === "plexus-diagram" && region.supported === true && region.kind === "img" || region.kind === "imgpoly" || region.kind === "imgrect");
     if (!imageKind2 && (region?.owner !== "plexus-diagram" || region?.supported !== true)) return;
     if (region.kind === "img" || region.kind === "imgpoly" || region.kind === "imgrect") {
@@ -87184,10 +87821,10 @@ async function installPlexusDiagram({
     viewBoards.set(id, { board: board2, at: Date.now() });
     return board2;
   }
-  function popButton(parent, text3, shiftKey, onOpen) {
+  function popButton(parent, text4, shiftKey, onOpen) {
     const button2 = (parent.ownerDocument || doc).createElement("button");
     button2.type = "button";
-    button2.textContent = text3;
+    button2.textContent = text4;
     button2.addEventListener("pointerdown", (event) => event.stopPropagation?.());
     button2.addEventListener("click", (event) => {
       event.preventDefault?.();
@@ -87223,8 +87860,8 @@ async function installPlexusDiagram({
         pic.style.top = "0";
         pic.style.width = `${box2.w}px`;
         pic.style.height = `${box2.h}px`;
-        const clip6 = region.p ? polygonClipPath(region.p) : "";
-        if (clip6) pic.style.clipPath = clip6;
+        const clip7 = region.p ? polygonClipPath(region.p) : "";
+        if (clip7) pic.style.clipPath = clip7;
         preview.append(pic);
       }
       const shown = imageRegionFrac(region);
@@ -87296,14 +87933,14 @@ async function installPlexusDiagram({
       pendingPin = null;
       return;
     }
-    let text3 = "";
+    let text4 = "";
     try {
-      text3 = host.blockString?.(pending.pinUid) || "";
+      text4 = host.blockString?.(pending.pinUid) || "";
     } catch {
-      text3 = "";
+      text4 = "";
     }
-    if (!text3) return;
-    const region = parseRegion(text3);
+    if (!text4) return;
+    const region = parseRegion(text4);
     if (!region) {
       pendingPin = null;
       return;
@@ -87381,13 +88018,13 @@ async function installPlexusDiagram({
       }
     });
     if (!uid) return;
-    let text3 = "";
+    let text4 = "";
     try {
-      text3 = host.blockString?.(uid) || "";
+      text4 = host.blockString?.(uid) || "";
     } catch {
       return;
     }
-    const region = parseRegion(text3);
+    const region = parseRegion(text4);
     const ours = Boolean(region && region.owner === "plexus-diagram" && region.supported === true && !region.error);
     const plexusImage = Boolean(region && !region.error && (region.kind === "imgpoly" || region.kind === "imgrect"));
     if (!ours && !plexusImage) return;
@@ -87417,8 +88054,8 @@ async function installPlexusDiagram({
           return boardsFromRefs(rows).map((row4) => ({ ...row4, title: firstLine(row4.string) || row4.uid }));
         },
         writeText: (value) => {
-          const clip6 = doc?.defaultView?.navigator?.clipboard;
-          if (typeof clip6?.writeText === "function") return clip6.writeText(value);
+          const clip7 = doc?.defaultView?.navigator?.clipboard;
+          if (typeof clip7?.writeText === "function") return clip7.writeText(value);
           return void 0;
         },
         onOpen: ({ mode, region: pin2, board: board2 }) => {
@@ -87527,13 +88164,13 @@ async function installPlexusDiagram({
     trailStrips.clear();
   }
   function stopTitleOf(ref) {
-    let text3 = "";
+    let text4 = "";
     try {
-      text3 = host.blockString?.(ref) || "";
+      text4 = host.blockString?.(ref) || "";
     } catch {
-      text3 = "";
+      text4 = "";
     }
-    const line = firstLine(text3) || String(text3).split("\n")[0] || "";
+    const line = firstLine(text4) || String(text4).split("\n")[0] || "";
     return line.replace(/^\[\[|\]\]$/g, "").trim().slice(0, 48);
   }
   function trailNodeFromPull(uid) {
@@ -88256,13 +88893,13 @@ async function installPlexusDiagram({
     }
   }
   function showSavedView(rec, viewUid, left) {
-    let text3 = "";
+    let text4 = "";
     try {
-      text3 = host.blockString?.(viewUid) || "";
+      text4 = host.blockString?.(viewUid) || "";
     } catch {
-      text3 = "";
+      text4 = "";
     }
-    const region = parseRegion(text3);
+    const region = parseRegion(text4);
     if (!region || region.kind !== "view" || region.supported !== true) return;
     const cam = setCameraFromView(region.v, mountSize(rec));
     if (!cam) {

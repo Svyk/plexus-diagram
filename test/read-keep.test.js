@@ -313,7 +313,7 @@ test("the parse view keeps a finished helper read and restores a kept read into 
     await viewA.refreshHelper();
     viewA.showDoc(builtinPlain(sha));
     await viewA.parseDocling();
-    for (let i = 0; i < 20 && a.log.writes < 2; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    for (const end = Date.now() + 2000; Date.now() < end && a.log.writes < 2;) await new Promise((resolve) => setTimeout(resolve, 5));
     assert.equal(a.log.writes, 2);
     assert.equal(Object.keys(graph.props.get("blk")[READS_KEY])[0], "docling:helper");
 

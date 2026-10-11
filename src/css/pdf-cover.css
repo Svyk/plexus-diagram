@@ -83,8 +83,8 @@ body.bt-theme-dark .pxd-root .pxd-pdf-paper,
   object-position: top center;
 }
 
-.pxd-root.pxd-lod-map .pxd-pdf-img,
-.pxd-root.pxd-lod-overview .pxd-pdf-img {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-img,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-img {
   display: none;
 }
 
@@ -354,11 +354,11 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill:hover,
   display: block;
 }
 
-.pxd-root.pxd-lod-overview .pxd-pdf-hover,
-.pxd-root.pxd-lod-overview .pxd-pdf-pills,
-.pxd-root.pxd-lod-map .pxd-pdf-pills,
-.pxd-root.pxd-lod-overview .pxd-pdf-title--face,
-.pxd-root.pxd-lod-overview .pxd-pdf-density {
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-hover,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-pills,
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-pills,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-title--face,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-density {
   display: none;
 }
 
@@ -379,8 +379,8 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill:hover,
 /* P32-1. Map and overview paint the cached cover on the paper itself: the same data URL the detail
    <img> uses, as a background. No <img>, no title, no strip at those tiers; the card reads as a small
    page, as in Heptabase at 11-17 %. */
-.pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper,
-.pxd-root.pxd-lod-overview .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper {
   background-color: var(--pxd-pdf-paper, #ffffff);
   background-image: var(--pxd-cover);
   background-size: cover;
@@ -388,8 +388,8 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill:hover,
   background-repeat: no-repeat;
 }
 
-.pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-glyph,
-.pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-title--face {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-glyph,
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-title--face {
   display: none;
 }
 
@@ -462,10 +462,10 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill:hover,
   text-align: center;
 }
 
-.pxd-root.pxd-lod-map .pxd-pdf-flip,
-.pxd-root.pxd-lod-overview .pxd-pdf-flip,
-.pxd-root.pxd-lod-map .pxd-pdf-bar,
-.pxd-root.pxd-lod-overview .pxd-pdf-bar {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-flip,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-flip,
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-bar,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-bar {
   display: none;
 }
 
@@ -528,15 +528,15 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-paper {
 
 /* P32-1 (live fix). Map and overview hide every card body, which left the cover with no box. A PDF card with a cached
    cover keeps its body as a full-card layer at those tiers, above the colour tile and the title tile. */
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:not(.pxd-item--editing):has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:not(.pxd-item--editing):has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body {
   display: block;
   position: absolute;
   inset: 0;
   z-index: 1;
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header {
   visibility: hidden;
 }

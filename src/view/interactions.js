@@ -103,6 +103,8 @@ function normRect(a, b) {
   return { x, y, w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
 }
 
+const WHEEL_ZOOM_IDLE_MS = 160;
+
 export function createInteractions({ actions, settings } = {}) {
   const a = actions || {};
   const call = (name, ...args) => (typeof a[name] === "function" ? a[name](...args) : undefined);
@@ -317,6 +319,7 @@ export function createInteractions({ actions, settings } = {}) {
   };
 
   const onPointerDown = (ev) => {
+    endWheelZoom();
     const t = ev.target || { kind: "empty" };
     const g0 = state.gesture;
     if (g0 && ((g0.kind === "connect" && g0.sticky) || (g0.kind === "region-end" && g0.phase === "wait"))) {
@@ -969,6 +972,26 @@ export function createInteractions({ actions, settings } = {}) {
     return true;
   };
 
+  // A burst of zoom wheel ticks is one lightweight gesture: the board pauses content work and skips the
+  // per-tick restyle, then resumes once the wheel goes quiet. moved:false keeps the next click alive.
+  let wheelTimer = null;
+  let wheelZooming = false;
+  const endWheelZoom = () => {
+    if (wheelTimer) { clearTimeout(wheelTimer); wheelTimer = null; }
+    if (!wheelZooming) return;
+    wheelZooming = false;
+    call("setGesturing", false, { moved: false });
+  };
+  const armWheelZoom = () => {
+    if (!wheelZooming) {
+      if (state.gesture) return;
+      wheelZooming = true;
+      call("setGesturing", true);
+    }
+    if (wheelTimer) clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => { wheelTimer = null; endWheelZoom(); }, WHEEL_ZOOM_IDLE_MS);
+  };
+
   const onWheel = (ev) => {
     const t = ev.target || { kind: "empty" };
     if (t.kind === "chrome") return false;
@@ -979,6 +1002,7 @@ export function createInteractions({ actions, settings } = {}) {
     const wheelMode = setting("wheel", "pan");
     if (pinch || wheelMode === "zoom") {
       const factor = Math.exp(-(ev.deltaY || 0) * (pinch ? 0.01 : 0.002));
+      armWheelZoom();
       call("setViewport", zoomAt(v, ev.screen, factor));
     } else {
       call("setViewport", { x: v.x - (ev.deltaX || 0), y: v.y - (ev.deltaY || 0), zoom: v.zoom });
@@ -1227,7 +1251,7 @@ export function createInteractions({ actions, settings } = {}) {
     escape,
     isGesturing: () => Boolean(state.gesture),
     gestureKind: () => state.gesture?.kind ?? null,
-    cancel: () => { cancelOpen(); onPointerCancel(); },
+    cancel: () => { cancelOpen(); endWheelZoom(); onPointerCancel(); },
     // Model changed under us: drop selection entries that no longer exist.
     reconcile() {
       const b = board();

@@ -133,7 +133,7 @@ test("a 60-move pan on a board with 40 edges does not measure edge handles", asy
     assert.equal(counted.ends.length, 2, "the selected edge has two handles to measure");
     const viewport = f.root.querySelector(".pxd-viewport");
     pointerDown(f, viewport, 120, 240, { button: 1, buttons: 4 });
-    assert.ok(f.root.classList.contains("pxd-root--gesturing"));
+    assert.ok(f.root.hasAttribute("data-pxd-gesturing"));
     for (let i = 1; i <= 60; i += 1) pointerMove(f, 120 + i * 3, 240, { buttons: 4 });
     pointerUp(f, 120 + 60 * 3, 240, { button: 1 });
     assert.equal(counted.n, 0);
@@ -181,7 +181,7 @@ test("dragging an edge end still finds the nearest handle", async () => {
     const drop = { x: 660, y: 50 };
 
     pointerDown(f, card0, from.x, from.y);
-    assert.ok(f.root.classList.contains("pxd-root--gesturing"));
+    assert.ok(f.root.hasAttribute("data-pxd-gesturing"));
     assert.ok(f.root.querySelector(".pxd-wire"), "the end drag shows the temp wire");
     pointerMove(f, drop.x, drop.y);
     pointerUp(f, drop.x, drop.y);

@@ -28,7 +28,7 @@
   outline: none;
 }
 
-.pxd-root.pxd-lod-map .pxd-kids {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-kids {
   display: none;
 }
 

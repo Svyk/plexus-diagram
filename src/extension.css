@@ -6,6 +6,24 @@
 
 /* ------------------------------------------------------------------ tokens (light) */
 
+/* The Reference Path extension writes these inherited custom properties on ancestor .rm-block-main
+   nodes on every focus change and hover. Declared here they stop at the board root, so the write
+   does not restyle the whole board subtree. */
+.pxd-root {
+  --roam-reference-path-box-height: initial;
+  --roam-reference-path-box-width: initial;
+  --roam-reference-path-brackets-color: initial;
+  --roam-reference-path-bullet-color: initial;
+  --roam-reference-path-bullet-scale-factor: initial;
+  --roam-reference-path-line-color: initial;
+  --roam-reference-path-line-left-offset: initial;
+  --roam-reference-path-line-roundness: initial;
+  --roam-reference-path-line-style: initial;
+  --roam-reference-path-line-top-offset: initial;
+  --roam-reference-path-line-width: initial;
+  --roam-reference-path-link-color: initial;
+}
+
 .pxd-root {
   --pxd-surface: var(--bc-main, #ffffff);
   --pxd-card: #ffffff;
@@ -147,18 +165,18 @@ body.roam-body.dark .pxd-root,
 
 /* ------------------------------------------------------------------ root states */
 
-.pxd-root--gesturing {
+:where(.pxd-root)[data-pxd-gesturing] {
   user-select: none;
   -webkit-user-select: none;
 }
 
-.pxd-root--space,
+:where(.pxd-root)[data-pxd-space],
 .pxd-root[data-tool="hand"] {
   cursor: grab;
 }
 
-.pxd-root--gesturing.pxd-root--space,
-.pxd-root--gesturing[data-tool="hand"] {
+:where(.pxd-root)[data-pxd-gesturing][data-pxd-space],
+:where(.pxd-root)[data-pxd-gesturing][data-tool="hand"] {
   cursor: grabbing;
 }
 
@@ -248,7 +266,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   overflow: visible;
 }
 
-.pxd-root.pxd-root--zooming .pxd-world {
+.pxd-root[data-pxd-zooming] .pxd-world {
   transition: transform var(--pxd-zoom-ms, 180ms) ease-out;
 }
 
@@ -590,7 +608,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   display: block;
 }
 
-.pxd-root--gesturing .pxd-ports {
+:where(.pxd-root)[data-pxd-gesturing] .pxd-ports {
   display: none;
 }
 
@@ -632,7 +650,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   display: block;
 }
 
-.pxd-root--gesturing .pxd-item:not(.pxd-item--selected) > .pxd-grip {
+:where(.pxd-root)[data-pxd-gesturing] .pxd-item:not(.pxd-item--selected) > .pxd-grip {
   display: none;
 }
 
@@ -806,46 +824,46 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 /* ------------------------------------------------------------------ LOD (map / overview) */
 
-.pxd-lod-map .pxd-item__body,
-.pxd-lod-overview .pxd-item__body {
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item__body,
+:where(.pxd-root)[data-pxd-lod="overview"] .pxd-item__body {
   display: none;
 }
 
-.pxd-lod-map .pxd-item--editing .pxd-item__body,
-.pxd-lod-map .pxd-item--text .pxd-item__body,
-.pxd-lod-overview .pxd-item--text .pxd-item__body {
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item--editing .pxd-item__body,
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item--text .pxd-item__body,
+:where(.pxd-root)[data-pxd-lod="overview"] .pxd-item--text .pxd-item__body {
   display: block;
 }
 
 /* Board thumbnails are plain divs, so they stay at map zoom; the overview tier hides them (cards read as blocks). */
-.pxd-lod-map .pxd-item--board .pxd-item__body,
-.pxd-lod-map .pxd-item--wb .pxd-item__body {
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item--board .pxd-item__body,
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item--wb .pxd-item__body {
   display: block;
 }
 
-.pxd-lod-overview .pxd-item--board .pxd-item__body,
-.pxd-lod-overview .pxd-item--wb .pxd-item__body {
+:where(.pxd-root)[data-pxd-lod="overview"] .pxd-item--board .pxd-item__body,
+:where(.pxd-root)[data-pxd-lod="overview"] .pxd-item--wb .pxd-item__body {
   display: none;
 }
 
-.pxd-lod-map .pxd-item__header {
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item__header {
   font-size: var(--pxd-map-font);
   line-height: 1.2;
   white-space: normal;
 }
 
-.pxd-lod-map .pxd-section__title {
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-section__title {
   font-size: var(--pxd-map-font);
   line-height: 1.2;
 }
 
 /* Map tile: a title-only card. The header clamps to three lines. No container-type (it laid out every card on a zoom
    step) and no overflow:hidden on .pxd-item (ports sit across the edge); the header alone clips. */
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing) {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card:not(.pxd-item--editing) {
   background-image: linear-gradient(180deg, transparent 0%, var(--pxd-fill, transparent) 100%);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card:not(.pxd-item--editing) > .pxd-item__header {
   flex: 0 1 auto;
   min-height: 0;
   padding-bottom: 0;
@@ -862,8 +880,8 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 /* A board card keeps its thumbnail under a one-line title. */
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--board:not(.pxd-item--editing) > .pxd-item__header,
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--wb:not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card.pxd-item--board:not(.pxd-item--editing) > .pxd-item__header,
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card.pxd-item--wb:not(.pxd-item--editing) > .pxd-item__header {
   flex: 0 0 auto;
   max-height: calc(1.2em + 6px);
   -webkit-line-clamp: 1;
@@ -879,17 +897,17 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 /* Overview tier: cards read as colored blocks; section titles grow to stay legible. */
-.pxd-root.pxd-lod-overview .pxd-item--card > .pxd-item__header {
+.pxd-root[data-pxd-lod="overview"] .pxd-item--card > .pxd-item__header {
   display: none;
 }
 
 /* Palette fills are near-white at 100%; at overview scale a colored card reads by its line color. */
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card[class*="pxd-c-"] {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card[class*="pxd-c-"] {
   background-color: var(--pxd-line);
   background-image: none;
 }
 
-.pxd-root.pxd-lod-overview .pxd-section__title {
+.pxd-root[data-pxd-lod="overview"] .pxd-section__title {
   font-size: var(--pxd-overview-font, 40px);
   line-height: 1.2;
   /* Above cards (auto). Under an editing card (3), ports (4), and the overlay (5). */
@@ -1464,7 +1482,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   background: var(--pxd-accent-soft);
 }
 
-.pxd-root.pxd-root--panel-open .pxd-panel {
+.pxd-root[data-pxd-panel-open] .pxd-panel {
   z-index: 13;
 }
 
@@ -1934,7 +1952,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 /* The header comes back for collapsed cards and at map zoom. */
 .pxd-root .pxd-item.pxd-item--card.pxd-item--collapsed > .pxd-item__header,
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card > .pxd-item__header {
   display: block;
 }
 
@@ -2240,8 +2258,8 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
 }
 
-.pxd-root.pxd-lod-map .pxd-item__badges,
-.pxd-root.pxd-lod-overview .pxd-item__badges {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item__badges,
+.pxd-root[data-pxd-lod="overview"] .pxd-item__badges {
   display: none;
 }
 
@@ -2284,11 +2302,11 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   right: 8px;
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf > .pxd-item__body {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf > .pxd-item__body {
   display: block;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf > .pxd-item__body {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf > .pxd-item__body {
   display: none;
 }
 

@@ -23287,7 +23287,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     el: panel,
     open(which = tab) {
       panel.style.display = "";
-      root.classList.add("pxd-root--panel-open");
+      root.setAttribute("data-pxd-panel-open", "");
       setTab(which);
       on.opened?.(true);
       const focusTarget = which === "search" ? input : which === "boards" ? boardsFilter : null;
@@ -23342,7 +23342,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       setTypesOpen(false);
       if (tab === "info") unmountInfo();
       panel.style.display = "none";
-      root.classList.remove("pxd-root--panel-open");
+      root.removeAttribute("data-pxd-panel-open");
       on.opened?.(false);
     },
     toggle() {
@@ -28015,6 +28015,14 @@ function createItemRenderer({
     rec.el.classList.add("pxd-item--thumb");
     rec.el.classList.remove("pxd-item--bare");
   };
+  const tableThumbReady = (item) => {
+    if (typeof tableThumb !== "function") return false;
+    try {
+      return String(tableThumb(item) || "").startsWith("data:image/");
+    } catch {
+      return false;
+    }
+  };
   const adoptedNode = (item) => {
     if (typeof adoptShell !== "function") return null;
     let node2 = null;
@@ -31350,6 +31358,9 @@ function createItemRenderer({
           applyPdfSize(rec);
           moved = true;
         } else if (item?.kind === "highlight" && mounted.has(uid) && editing?.uid !== uid) {
+          unmountContent(uid);
+          moved = true;
+        } else if (lod !== "detail" && item && mounted.has(uid) && editing?.uid !== uid && isRoamTableString(item.string) && tableThumbReady(item)) {
           unmountContent(uid);
           moved = true;
         } else if (item && item.kind !== "pdf" && ownsOpen(item) && mounted.has(uid) && editing?.uid !== uid) {
@@ -46915,6 +46926,7 @@ function normRect(a, b) {
   const y = Math.min(a.y, b.y);
   return { x, y, w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
 }
+var WHEEL_ZOOM_IDLE_MS = 160;
 function createInteractions({ actions, settings } = {}) {
   const a = actions || {};
   const call = (name, ...args) => typeof a[name] === "function" ? a[name](...args) : void 0;
@@ -47125,6 +47137,7 @@ function createInteractions({ actions, settings } = {}) {
     call("connectHint", null);
   };
   const onPointerDown = (ev) => {
+    endWheelZoom();
     const t = ev.target || { kind: "empty" };
     const g0 = state.gesture;
     if (g0 && (g0.kind === "connect" && g0.sticky || g0.kind === "region-end" && g0.phase === "wait")) {
@@ -47808,6 +47821,29 @@ function createInteractions({ actions, settings } = {}) {
     call("openMenu", { kind, uid, screen: ev.screen, world: ev.world, selection: [...state.selection] });
     return true;
   };
+  let wheelTimer = null;
+  let wheelZooming = false;
+  const endWheelZoom = () => {
+    if (wheelTimer) {
+      clearTimeout(wheelTimer);
+      wheelTimer = null;
+    }
+    if (!wheelZooming) return;
+    wheelZooming = false;
+    call("setGesturing", false, { moved: false });
+  };
+  const armWheelZoom = () => {
+    if (!wheelZooming) {
+      if (state.gesture) return;
+      wheelZooming = true;
+      call("setGesturing", true);
+    }
+    if (wheelTimer) clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => {
+      wheelTimer = null;
+      endWheelZoom();
+    }, WHEEL_ZOOM_IDLE_MS);
+  };
   const onWheel = (ev) => {
     const t = ev.target || { kind: "empty" };
     if (t.kind === "chrome") return false;
@@ -47818,6 +47854,7 @@ function createInteractions({ actions, settings } = {}) {
     const wheelMode = setting("wheel", "pan");
     if (pinch || wheelMode === "zoom") {
       const factor = Math.exp(-(ev.deltaY || 0) * (pinch ? 0.01 : 2e-3));
+      armWheelZoom();
       call("setViewport", zoomAt(v, ev.screen, factor));
     } else {
       call("setViewport", { x: v.x - (ev.deltaX || 0), y: v.y - (ev.deltaY || 0), zoom: v.zoom });
@@ -48134,6 +48171,7 @@ function createInteractions({ actions, settings } = {}) {
     gestureKind: () => state.gesture?.kind ?? null,
     cancel: () => {
       cancelOpen();
+      endWheelZoom();
       onPointerCancel();
     },
     // Model changed under us: drop selection entries that no longer exist.
@@ -77838,6 +77876,10 @@ function buildBoardView(onFail, {
   };
   const heightKey = `plexus-diagram:h:${graph}:${routeUid}`;
   const root = el2("div", "pxd-root", mountEl);
+  const setRootFlag = (name, on) => {
+    if (on) root.setAttribute(`data-pxd-${name}`, "");
+    else root.removeAttribute(`data-pxd-${name}`);
+  };
   const typeAhead = createTypeAhead({
     doc,
     later: (fn, ms) => timers.later(fn, ms),
@@ -78509,7 +78551,7 @@ function buildBoardView(onFail, {
     tableThumb,
     onTableShown,
     onEditChange: (uid) => {
-      root.classList.toggle("pxd-root--editing", Boolean(uid));
+      setRootFlag("editing", Boolean(uid));
       session.setEditing?.(uid || null);
       if (!uid && grown.size) {
         liveRects = null;
@@ -80484,16 +80526,16 @@ function buildBoardView(onFail, {
       zoomOff();
       zoomOff = null;
     }
-    root.classList.remove("pxd-root--zooming");
+    setRootFlag("zooming", false);
   };
   const armZoomAnim = () => {
     const ms = motionProfile(currentMotion()).zoomMs;
     clearZoomAnim();
     if (ms <= 0) return;
-    root.classList.add("pxd-root--zooming");
+    setRootFlag("zooming", true);
     zoomOff = timers.later(() => {
       zoomOff = null;
-      if (!disposed) root.classList.remove("pxd-root--zooming");
+      if (!disposed) setRootFlag("zooming", false);
     }, ms);
   };
   const animateViewport = (next) => {
@@ -80531,8 +80573,7 @@ function buildBoardView(onFail, {
   };
   const mapThreshold = () => zoomThreshold(board2()?.plexus?.lodZoom, setting("map-zoom", "0.45"));
   const paintTier = () => {
-    root.classList.toggle("pxd-lod-map", tier !== "detail");
-    root.classList.toggle("pxd-lod-overview", tier === "overview");
+    root.setAttribute("data-pxd-lod", tier);
     const f = lodFonts(vp.zoom);
     root.style.setProperty("--pxd-map-font", `${f.map}px`);
     root.style.setProperty("--pxd-ui", String(f.ui));
@@ -81419,7 +81460,7 @@ function buildBoardView(onFail, {
     const focus = focusSetNow();
     const set = lensTag ? lensBright(lensIndex, lensTag, focus) : focus;
     const key = `${lensTag || ""}|${set ? [...set].sort().join("|") : ""}`;
-    root.classList.toggle("pxd-root--focus", Boolean(set) || focusOn || Boolean(lensTag));
+    setRootFlag("focus", Boolean(set) || focusOn || Boolean(lensTag));
     chrome.toolbar.setFocus(focusOn);
     chrome.toolbar.setLens?.(Boolean(lensTag));
     if (key === focusKey) return;
@@ -82209,7 +82250,8 @@ function buildBoardView(onFail, {
         break;
       }
       case "highlights": {
-        const on = root.classList.toggle("pxd-root--highlights");
+        const on = !root.hasAttribute("data-pxd-highlights");
+        setRootFlag("highlights", on);
         for (const card2 of b.items.values()) {
           const shell = itemsR.shellOf(card2.uid);
           if (!shell) continue;
@@ -84068,7 +84110,7 @@ function buildBoardView(onFail, {
     const b = board2();
     const q = String(text4 || "").trim().toLowerCase();
     searchIndex = -1;
-    root.classList.toggle("pxd-root--searching", Boolean(q));
+    setRootFlag("searching", Boolean(q));
     searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
     paintSearch(b, searchMatches, q);
     return searchMatches.length;
@@ -84388,7 +84430,7 @@ function buildBoardView(onFail, {
     },
     setGesturing: (on, info) => {
       gesturing = Boolean(on);
-      root.classList.toggle("pxd-root--gesturing", gesturing);
+      setRootFlag("gesturing", gesturing);
       world.style.willChange = gesturing ? "transform" : "";
       if (gesturing) {
         resumeTimer?.();
@@ -84786,7 +84828,7 @@ function buildBoardView(onFail, {
       onSelectTab?.(tab.uid);
       return true;
     },
-    setSpace: (on) => root.classList.toggle("pxd-root--space", Boolean(on))
+    setSpace: (on) => setRootFlag("space", Boolean(on))
   };
   let targetEl = null;
   let targetCls = "";
@@ -85142,7 +85184,9 @@ function buildBoardView(onFail, {
       doc.addEventListener("pointercancel", onDocCancel, true);
     }
     try {
-      if (!editingUid && ev.target.kind !== "label") root.focus({ preventScroll: true });
+      const active = doc.activeElement;
+      const onBoard = Boolean(active) && (active === root || root.contains?.(active)) && !isTextEntryTarget(active);
+      if (!editingUid && ev.target.kind !== "label" && !onBoard) root.focus({ preventScroll: true });
     } catch {
     }
     armLongPress(event);
@@ -86224,7 +86268,7 @@ function buildBoardView(onFail, {
         }
       }
       itemsR.setZoom(vp.zoom);
-      paintInvZoom();
+      if (!gesturing) paintInvZoom();
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       if (nextTier !== tier) {
         tier = nextTier;
@@ -86280,7 +86324,7 @@ function buildBoardView(onFail, {
       if (refreshBlockCards()) scheduleAnchors();
       else edgesR.setMeasures(/* @__PURE__ */ new Map());
     }
-    if (searchMatches.length || root.classList.contains("pxd-root--searching")) panel.refreshMarks();
+    if (searchMatches.length || root.hasAttribute("data-pxd-searching")) panel.refreshMarks();
     if (itemsChanged || edgesDue || itemsMoveEdges) paintLenses();
     dirty.minimap = false;
     dirty.viewport = false;
@@ -88027,8 +88071,7 @@ function applyCamera(state) {
   world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
   const tier = lodTier(vp.zoom, state.tier || "detail", { threshold });
   state.tier = tier;
-  root.classList.toggle("pxd-lod-map", tier !== "detail");
-  root.classList.toggle("pxd-lod-overview", tier === "overview");
+  root.setAttribute("data-pxd-lod", tier);
   const f = lodFonts(vp.zoom);
   setVar(root, "--pxd-map-font", `${f.map}px`);
   setVar(root, "--pxd-ui", String(f.ui));
@@ -90636,7 +90679,7 @@ async function installPlexusDiagram({
     }
   }
   function sketchGesturing(rec) {
-    return rec?.view?.root?.classList?.contains?.("pxd-root--gesturing") === true;
+    return rec?.view?.root?.hasAttribute?.("data-pxd-gesturing") === true;
   }
   function clearSketchTimer(rec) {
     const timer = sketchTimers.get(rec);

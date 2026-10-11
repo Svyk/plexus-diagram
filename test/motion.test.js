@@ -133,17 +133,17 @@ test("UI-6: each motion value sets zoom, present, edges, and pulses", () => {
     expectLevel("full");
     const before = world.style.transform;
     f.stub.dispatch(zoomBtn, "click", {});
-    assert.equal(root.classList.contains("pxd-root--zooming"), true);
+    assert.equal(root.hasAttribute("data-pxd-zooming"), true);
     f.stub.flushFrames();
     assert.notEqual(world.style.transform, before);
     f.stub.dispatch(world, "wheel", { deltaX: 12, deltaY: 0 });
-    assert.equal(root.classList.contains("pxd-root--zooming"), false, "a pan clears the zoom transition");
+    assert.equal(root.hasAttribute("data-pxd-zooming"), false, "a pan clears the zoom transition");
 
     root.querySelector(".pxd-toolbar__present").click();
     const hud = root.querySelector(".pxd-present-hud");
     assert.equal(f.view.state().present, true);
     assert.ok(hud.classList.contains("pxd-present-hud--step"));
-    assert.equal(root.classList.contains("pxd-root--zooming"), true);
+    assert.equal(root.hasAttribute("data-pxd-zooming"), true);
     hud.querySelector(".pxd-present-hud__exit").click();
     assert.equal(f.view.state().present, false);
 
@@ -155,11 +155,11 @@ test("UI-6: each motion value sets zoom, present, edges, and pulses", () => {
     f.view.setSettings({ get: (k) => (k === "motion" ? "reduced" : undefined) });
     expectLevel("reduced");
     f.stub.dispatch(zoomBtn, "click", {});
-    assert.equal(root.classList.contains("pxd-root--zooming"), true);
+    assert.equal(root.hasAttribute("data-pxd-zooming"), true);
     root.querySelector(".pxd-toolbar__present").click();
     assert.ok(root.querySelector(".pxd-present-hud").classList.contains("pxd-present-hud--step"));
     assert.equal(root.style["--pxd-present-ms"], "60ms");
-    assert.equal(root.classList.contains("pxd-root--zooming"), true);
+    assert.equal(root.hasAttribute("data-pxd-zooming"), true);
     root.querySelector(".pxd-present-hud__exit").click();
     shell().classList.remove("pxd-item--pulse");
     f.stub.dispatch(f.stub.window, "hashchange", {});
@@ -170,12 +170,12 @@ test("UI-6: each motion value sets zoom, present, edges, and pulses", () => {
     expectLevel("none");
     const snapped = world.style.transform;
     f.stub.dispatch(zoomBtn, "click", {});
-    assert.equal(root.classList.contains("pxd-root--zooming"), false);
+    assert.equal(root.hasAttribute("data-pxd-zooming"), false);
     f.stub.flushFrames();
     assert.notEqual(world.style.transform, snapped);
     root.querySelector(".pxd-toolbar__present").click();
     assert.ok(root.querySelector(".pxd-present-hud").classList.contains("pxd-present-hud--step"));
-    assert.equal(root.classList.contains("pxd-root--zooming"), false);
+    assert.equal(root.hasAttribute("data-pxd-zooming"), false);
     root.querySelector(".pxd-present-hud__exit").click();
     shell().classList.remove("pxd-item--pulse");
     f.stub.dispatch(f.stub.window, "hashchange", {});
@@ -228,7 +228,7 @@ test("UI-6: css gates zoom, present, pulses, and animated edges", () => {
   const ext = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
   const overlays = readFileSync(new URL("../src/css/overlays.css", import.meta.url), "utf8");
   const props = readFileSync(new URL("../src/css/props.css", import.meta.url), "utf8");
-  assert.match(ext, /\.pxd-root\.pxd-root--zooming \.pxd-world \{[^}]*transition: transform var\(--pxd-zoom-ms, 180ms\)/);
+  assert.match(ext, /\.pxd-root\[data-pxd-zooming\] \.pxd-world \{[^}]*transition: transform var\(--pxd-zoom-ms, 180ms\)/);
   assert.match(ext, /\.pxd-root\.pxd-root--motion-none \.pxd-world \{[^}]*transition: none/);
   assert.match(ext, /\.pxd-root\.pxd-root--motion-reduced \.pxd-item--pulse \{[^}]*animation-duration: 0\.4s/);
   assert.match(ext, /\.pxd-root\.pxd-root--motion-none \.pxd-item--pulse \{[^}]*animation: none/);

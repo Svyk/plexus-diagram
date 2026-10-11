@@ -1066,9 +1066,9 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
   display: none;
 }
 
-.pxd-root.pxd-root--docked.pxd-lod-overview .pxd-dock__btn:not([data-tool="select"]):not([data-tool="hand"]):not([data-tool="board"]),
-.pxd-root.pxd-root--docked.pxd-lod-overview .pxd-dock__sep,
-.pxd-root.pxd-root--docked.pxd-lod-overview .pxd-dock__options {
+.pxd-root.pxd-root--docked[data-pxd-lod="overview"] .pxd-dock__btn:not([data-tool="select"]):not([data-tool="hand"]):not([data-tool="board"]),
+.pxd-root.pxd-root--docked[data-pxd-lod="overview"] .pxd-dock__sep,
+.pxd-root.pxd-root--docked[data-pxd-lod="overview"] .pxd-dock__options {
   display: none;
 }
 

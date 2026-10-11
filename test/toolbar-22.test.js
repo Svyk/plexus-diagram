@@ -340,8 +340,8 @@ test("TB-7: overview keeps Select, Hand and Board and hides the other eight dock
   const hidden = f.root.querySelectorAll(".pxd-dock__btn").filter((b) => !["select", "hand", "board"].includes(b.dataset.tool));
   assert.equal(hidden.length, 8);
   const css = await read("chrome.css");
-  assert.match(css, /pxd-lod-overview \.pxd-dock__btn:not\(\[data-tool="select"\]\):not\(\[data-tool="hand"\]\):not\(\[data-tool="board"\]\)/);
-  assert.match(css, /pxd-lod-overview \.pxd-dock__options/);
+  assert.match(css, /\[data-pxd-lod="overview"\] \.pxd-dock__btn:not\(\[data-tool="select"\]\):not\(\[data-tool="hand"\]\):not\(\[data-tool="board"\]\)/);
+  assert.match(css, /\[data-pxd-lod="overview"\] \.pxd-dock__options/);
 });
 
 test("TB-7: a narrow board shrinks the dock buttons and drops separators and options", async () => {

@@ -1,6 +1,6 @@
 /* NP-1. A block-look card is a plain Roam block: no title row, 14px text, root bullet hidden. */
 
-.pxd-root:not(.pxd-lod-map) .pxd-item.pxd-card--block:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
+.pxd-root:not(:is([data-pxd-lod="map"],[data-pxd-lod="overview"])) .pxd-item.pxd-card--block:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
   display: none;
 }
 

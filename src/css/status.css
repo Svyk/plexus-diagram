@@ -168,7 +168,7 @@
 }
 
 /* Map tier: the header mark is the only visible status. 22 screen px via --pxd-screen-px. Done keeps its check. */
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing):not(:has(.pxd-task-check--done)):has(.pxd-task-check[data-status]) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing):not(:has(.pxd-task-check--done)):has(.pxd-task-check[data-status]) > .pxd-item__header::before {
   content: "";
   width: calc(22px * var(--pxd-screen-px, 1));
   height: calc(22px * var(--pxd-screen-px, 1));
@@ -179,7 +179,7 @@
 }
 
 /* Overview tier: a coloured 20 px border box. No fill. */
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing):not(:has(.pxd-task-check--done)):has(.pxd-task-check[data-status]) > .pxd-item__header::before {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing):not(:has(.pxd-task-check--done)):has(.pxd-task-check[data-status]) > .pxd-item__header::before {
   border-color: var(--pxd-status-text, currentColor);
   background: transparent;
 }

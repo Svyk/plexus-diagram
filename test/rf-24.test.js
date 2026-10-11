@@ -24,7 +24,7 @@ test("RF-1: the panel sits left of the rail (rail width plus gap), 8px from the 
   assert.match(rail, /\.pxd-root \{[^}]*--pxd-rail-w: 40px;[^}]*--pxd-panel-gap: 8px;[^}]*--pxd-panel-right: 8px;/);
   assert.match(rail, /\.pxd-root\.pxd-root--rail \{\s*--pxd-panel-right: calc\(8px \+ var\(--pxd-rail-w\) \+ var\(--pxd-panel-gap\)\);/);
   assert.match(rail, /\.pxd-root \.pxd-panel \{[^}]*right: var\(--pxd-panel-right\);/);
-  assert.match(rail, /\.pxd-root\.pxd-root--panel-open \.pxd-minimap \{\s*right: calc\(var\(--pxd-panel-right\) \+ var\(--pxd-panel-w, 340px\) \+ var\(--pxd-panel-gap\)\);/);
+  assert.match(rail, /\.pxd-root\[data-pxd-panel-open\] \.pxd-minimap \{\s*right: calc\(var\(--pxd-panel-right\) \+ var\(--pxd-panel-w, 340px\) \+ var\(--pxd-panel-gap\)\);/);
   const railBlock = /\.pxd-root \.pxd-rail \{[^}]*\}/.exec(rail)[0];
   assert.match(railBlock, /right: 8px;/, "the rail stays put");
   assert.match(railBlock, /width: var\(--pxd-rail-w, 40px\);/, "the rail is as wide as the offset assumes");
@@ -40,11 +40,11 @@ test("RF-1: opening the panel marks the root and publishes its width for the min
   stub.document.body.append(root);
   const panel = createPanel({ doc: stub.document, root, host: {}, timers, width: 400 });
   assert.equal(root.style["--pxd-panel-w"], "400px");
-  assert.ok(!root.classList.contains("pxd-root--panel-open"));
+  assert.ok(!root.hasAttribute("data-pxd-panel-open"));
   panel.open();
-  assert.ok(root.classList.contains("pxd-root--panel-open"));
+  assert.ok(root.hasAttribute("data-pxd-panel-open"));
   panel.close();
-  assert.ok(!root.classList.contains("pxd-root--panel-open"));
+  assert.ok(!root.hasAttribute("data-pxd-panel-open"));
 });
 
 // ------------------------------------------------------------------ RF-5 generous page-card grips

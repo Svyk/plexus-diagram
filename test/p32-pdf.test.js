@@ -680,7 +680,7 @@ test("P32-1: a ready cover paints map and overview as the page itself, with no <
     assert.equal(map.getAttribute("data-cover-img"), "1");
     assert.equal(map.querySelector(".pxd-pdf-title--face"), null, "map with an image is the page alone");
     const css = readFileSync(new URL("../src/css/pdf-cover.css", import.meta.url), "utf8");
-    assert.match(css, /\.pxd-root\.pxd-lod-map \.pxd-pdf-cover\[data-cover-img\] > \.pxd-pdf-paper,\n\.pxd-root\.pxd-lod-overview \.pxd-pdf-cover\[data-cover-img\] > \.pxd-pdf-paper \{[^}]*background-image: var\(--pxd-cover\)/);
+    assert.match(css, /\.pxd-root:is\(\[data-pxd-lod="map"\],\[data-pxd-lod="overview"\]\) \.pxd-pdf-cover\[data-cover-img\] > \.pxd-pdf-paper,\n\.pxd-root\[data-pxd-lod="overview"\] \.pxd-pdf-cover\[data-cover-img\] > \.pxd-pdf-paper \{[^}]*background-image: var\(--pxd-cover\)/);
   } finally {
     f.restore();
   }

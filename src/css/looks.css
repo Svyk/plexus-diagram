@@ -82,8 +82,8 @@
 }
 
 .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
-.pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight:not(.pxd-item--editing),
-.pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight {
+.pxd-root.pxd-look--tint:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight:not(.pxd-item--editing),
+.pxd-root.pxd-look--tint[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight {
   background-color: var(--pxd-fill, transparent);
   background-image: none;
   border-color: var(--pxd-line, var(--pxd-border));
@@ -110,20 +110,20 @@ body.roam-body.dark .pxd-root.pxd-look--pastel .pxd-section,
 }
 
 .bp3-dark .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
-.bp3-dark .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
-.bp3-dark .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+.bp3-dark .pxd-root.pxd-look--tint:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight,
+.bp3-dark .pxd-root.pxd-look--tint[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight,
 body.bt-theme-dark .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
-body.bt-theme-dark .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
-body.bt-theme-dark .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+body.bt-theme-dark .pxd-root.pxd-look--tint:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight,
+body.bt-theme-dark .pxd-root.pxd-look--tint[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight,
 .rm-dark-theme .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
-.rm-dark-theme .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
-.rm-dark-theme .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+.rm-dark-theme .pxd-root.pxd-look--tint:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight,
+.rm-dark-theme .pxd-root.pxd-look--tint[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight,
 body.roam-body.dark .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
-body.roam-body.dark .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
-body.roam-body.dark .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+body.roam-body.dark .pxd-root.pxd-look--tint:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight,
+body.roam-body.dark .pxd-root.pxd-look--tint[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight,
 .pxd-root.pxd-root--dark.pxd-look--tint .pxd-item.pxd-item--highlight,
-.pxd-root.pxd-root--dark.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
-.pxd-root.pxd-root--dark.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight {
+.pxd-root.pxd-root--dark.pxd-look--tint:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight,
+.pxd-root.pxd-root--dark.pxd-look--tint[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight {
   background-color: color-mix(in srgb, var(--pxd-line, var(--pxd-border-strong)) 6%, transparent);
   background-image: none;
   border-color: var(--pxd-line, var(--pxd-border-strong));

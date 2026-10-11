@@ -18,6 +18,6 @@
   border-color: var(--pxd-teal-line, #0d9488);
 }
 
-.pxd-root.pxd-lod-map .pxd-item .pxd-highlight-notebtn {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item .pxd-highlight-notebtn {
   display: none;
 }

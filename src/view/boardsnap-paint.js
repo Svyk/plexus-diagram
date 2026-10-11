@@ -177,8 +177,7 @@ function applyCamera(state) {
   world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
   const tier = lodTier(vp.zoom, state.tier || "detail", { threshold });
   state.tier = tier;
-  root.classList.toggle("pxd-lod-map", tier !== "detail");
-  root.classList.toggle("pxd-lod-overview", tier === "overview");
+  root.setAttribute("data-pxd-lod", tier);
   const f = lodFonts(vp.zoom);
   setVar(root, "--pxd-map-font", `${f.map}px`);
   setVar(root, "--pxd-ui", String(f.ui));

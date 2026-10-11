@@ -129,13 +129,13 @@
   padding-right: calc(12px + 44px * var(--pxd-screen-px, 1));
 }
 
-.pxd-root.pxd-lod-map .pxd-pdf-highlights.pxd-hl-add,
-.pxd-root.pxd-lod-overview .pxd-pdf-highlights.pxd-hl-add {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-highlights.pxd-hl-add,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-highlights.pxd-hl-add {
   display: none;
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header {
   padding-right: 12px;
 }
 

@@ -144,7 +144,7 @@ const css = ["src/css/overlays.css", "src/css/block-arrows.css", "src/extension.
 test("BUG-9 / BUG-10 / BUG-11 / PL-13 PL-14 PL-15: overlays and the board bar are opaque, titles may overflow in overview", () => {
   assert.match(css, /\.pxd-root \.pxd-later \{[^}]*background: var\(--pxd-surface\)/);
   assert.match(css, /\.pxd-root\.pxd-root--docked \.pxd-toolbar \{\s*background: var\(--pxd-surface\)/);
-  assert.match(css, /pxd-lod-overview \.pxd-section__title,\s*\.pxd-root\.pxd-lod-map \.pxd-section__title \{\s*max-width: max\(/);
+  assert.match(css, /\[data-pxd-lod="overview"\] \.pxd-section__title,\s*\.pxd-root:is\(\[data-pxd-lod="map"\],\[data-pxd-lod="overview"\]\) \.pxd-section__title \{\s*max-width: max\(/);
   assert.match(css, /\.pxd-props\.pxd-props--collapsed \{\s*width: auto/);
 });
 

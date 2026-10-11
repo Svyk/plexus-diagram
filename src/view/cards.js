@@ -1436,6 +1436,10 @@ export function createItemRenderer({
     rec.el.classList.add("pxd-item--thumb");
     rec.el.classList.remove("pxd-item--bare");
   };
+  const tableThumbReady = (item) => {
+    if (typeof tableThumb !== "function") return false;
+    try { return String(tableThumb(item) || "").startsWith("data:image/"); } catch { return false; }
+  };
   // INSTANT-1. A snapshot shell for this uid becomes the live shell: same node, its
   // header and face body stay until the content pass mounts the real body.
   const adoptedNode = (item) => {
@@ -4554,6 +4558,10 @@ export function createItemRenderer({
           applyPdfSize(rec);
           moved = true;
         } else if (item?.kind === "highlight" && mounted.has(uid) && editing?.uid !== uid) {
+          unmountContent(uid);
+          moved = true;
+        } else if (lod !== "detail" && item && mounted.has(uid) && editing?.uid !== uid && isRoamTableString(item.string) && tableThumbReady(item)) {
+          // A live table grid is 1,000+ elements that make every restyle dearer; the map tier shows its PNG instead.
           unmountContent(uid);
           moved = true;
         } else if (item && item.kind !== "pdf" && ownsOpen(item) && mounted.has(uid) && editing?.uid !== uid) {

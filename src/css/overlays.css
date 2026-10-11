@@ -463,11 +463,11 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   pointer-events: none;
 }
 
-.pxd-root--highlights .pxd-item {
+:where(.pxd-root)[data-pxd-highlights] .pxd-item {
   opacity: 0.35;
 }
 
-.pxd-root--highlights .pxd-has-highlight {
+:where(.pxd-root)[data-pxd-highlights] .pxd-has-highlight {
   opacity: 1;
 }
 
@@ -483,8 +483,8 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 }
 
 /* PL-11 BUG-11: overview and map titles may run wider than a small frame before the ellipsis. */
-.pxd-root.pxd-lod-overview .pxd-section__title,
-.pxd-root.pxd-lod-map .pxd-section__title {
+.pxd-root[data-pxd-lod="overview"] .pxd-section__title,
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-section__title {
   max-width: max(calc(100% + 4px), 12em);
 }
 

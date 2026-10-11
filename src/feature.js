@@ -718,7 +718,7 @@ export async function installPlexusDiagram({
   }
 
   function sketchGesturing(rec) {
-    return rec?.view?.root?.classList?.contains?.("pxd-root--gesturing") === true;
+    return rec?.view?.root?.hasAttribute?.("data-pxd-gesturing") === true;
   }
 
   function clearSketchTimer(rec) {

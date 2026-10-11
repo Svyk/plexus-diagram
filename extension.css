@@ -6,6 +6,24 @@
 
 /* ------------------------------------------------------------------ tokens (light) */
 
+/* The Reference Path extension writes these inherited custom properties on ancestor .rm-block-main
+   nodes on every focus change and hover. Declared here they stop at the board root, so the write
+   does not restyle the whole board subtree. */
+.pxd-root {
+  --roam-reference-path-box-height: initial;
+  --roam-reference-path-box-width: initial;
+  --roam-reference-path-brackets-color: initial;
+  --roam-reference-path-bullet-color: initial;
+  --roam-reference-path-bullet-scale-factor: initial;
+  --roam-reference-path-line-color: initial;
+  --roam-reference-path-line-left-offset: initial;
+  --roam-reference-path-line-roundness: initial;
+  --roam-reference-path-line-style: initial;
+  --roam-reference-path-line-top-offset: initial;
+  --roam-reference-path-line-width: initial;
+  --roam-reference-path-link-color: initial;
+}
+
 .pxd-root {
   --pxd-surface: var(--bc-main, #ffffff);
   --pxd-card: #ffffff;
@@ -147,18 +165,18 @@ body.roam-body.dark .pxd-root,
 
 /* ------------------------------------------------------------------ root states */
 
-.pxd-root--gesturing {
+:where(.pxd-root)[data-pxd-gesturing] {
   user-select: none;
   -webkit-user-select: none;
 }
 
-.pxd-root--space,
+:where(.pxd-root)[data-pxd-space],
 .pxd-root[data-tool="hand"] {
   cursor: grab;
 }
 
-.pxd-root--gesturing.pxd-root--space,
-.pxd-root--gesturing[data-tool="hand"] {
+:where(.pxd-root)[data-pxd-gesturing][data-pxd-space],
+:where(.pxd-root)[data-pxd-gesturing][data-tool="hand"] {
   cursor: grabbing;
 }
 
@@ -248,7 +266,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   overflow: visible;
 }
 
-.pxd-root.pxd-root--zooming .pxd-world {
+.pxd-root[data-pxd-zooming] .pxd-world {
   transition: transform var(--pxd-zoom-ms, 180ms) ease-out;
 }
 
@@ -590,7 +608,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   display: block;
 }
 
-.pxd-root--gesturing .pxd-ports {
+:where(.pxd-root)[data-pxd-gesturing] .pxd-ports {
   display: none;
 }
 
@@ -632,7 +650,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   display: block;
 }
 
-.pxd-root--gesturing .pxd-item:not(.pxd-item--selected) > .pxd-grip {
+:where(.pxd-root)[data-pxd-gesturing] .pxd-item:not(.pxd-item--selected) > .pxd-grip {
   display: none;
 }
 
@@ -806,46 +824,46 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 /* ------------------------------------------------------------------ LOD (map / overview) */
 
-.pxd-lod-map .pxd-item__body,
-.pxd-lod-overview .pxd-item__body {
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item__body,
+:where(.pxd-root)[data-pxd-lod="overview"] .pxd-item__body {
   display: none;
 }
 
-.pxd-lod-map .pxd-item--editing .pxd-item__body,
-.pxd-lod-map .pxd-item--text .pxd-item__body,
-.pxd-lod-overview .pxd-item--text .pxd-item__body {
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item--editing .pxd-item__body,
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item--text .pxd-item__body,
+:where(.pxd-root)[data-pxd-lod="overview"] .pxd-item--text .pxd-item__body {
   display: block;
 }
 
 /* Board thumbnails are plain divs, so they stay at map zoom; the overview tier hides them (cards read as blocks). */
-.pxd-lod-map .pxd-item--board .pxd-item__body,
-.pxd-lod-map .pxd-item--wb .pxd-item__body {
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item--board .pxd-item__body,
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item--wb .pxd-item__body {
   display: block;
 }
 
-.pxd-lod-overview .pxd-item--board .pxd-item__body,
-.pxd-lod-overview .pxd-item--wb .pxd-item__body {
+:where(.pxd-root)[data-pxd-lod="overview"] .pxd-item--board .pxd-item__body,
+:where(.pxd-root)[data-pxd-lod="overview"] .pxd-item--wb .pxd-item__body {
   display: none;
 }
 
-.pxd-lod-map .pxd-item__header {
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item__header {
   font-size: var(--pxd-map-font);
   line-height: 1.2;
   white-space: normal;
 }
 
-.pxd-lod-map .pxd-section__title {
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-section__title {
   font-size: var(--pxd-map-font);
   line-height: 1.2;
 }
 
 /* Map tile: a title-only card. The header clamps to three lines. No container-type (it laid out every card on a zoom
    step) and no overflow:hidden on .pxd-item (ports sit across the edge); the header alone clips. */
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing) {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card:not(.pxd-item--editing) {
   background-image: linear-gradient(180deg, transparent 0%, var(--pxd-fill, transparent) 100%);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card:not(.pxd-item--editing) > .pxd-item__header {
   flex: 0 1 auto;
   min-height: 0;
   padding-bottom: 0;
@@ -862,8 +880,8 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 /* A board card keeps its thumbnail under a one-line title. */
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--board:not(.pxd-item--editing) > .pxd-item__header,
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--wb:not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card.pxd-item--board:not(.pxd-item--editing) > .pxd-item__header,
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card.pxd-item--wb:not(.pxd-item--editing) > .pxd-item__header {
   flex: 0 0 auto;
   max-height: calc(1.2em + 6px);
   -webkit-line-clamp: 1;
@@ -879,17 +897,17 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 /* Overview tier: cards read as colored blocks; section titles grow to stay legible. */
-.pxd-root.pxd-lod-overview .pxd-item--card > .pxd-item__header {
+.pxd-root[data-pxd-lod="overview"] .pxd-item--card > .pxd-item__header {
   display: none;
 }
 
 /* Palette fills are near-white at 100%; at overview scale a colored card reads by its line color. */
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card[class*="pxd-c-"] {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card[class*="pxd-c-"] {
   background-color: var(--pxd-line);
   background-image: none;
 }
 
-.pxd-root.pxd-lod-overview .pxd-section__title {
+.pxd-root[data-pxd-lod="overview"] .pxd-section__title {
   font-size: var(--pxd-overview-font, 40px);
   line-height: 1.2;
   /* Above cards (auto). Under an editing card (3), ports (4), and the overlay (5). */
@@ -1464,7 +1482,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   background: var(--pxd-accent-soft);
 }
 
-.pxd-root.pxd-root--panel-open .pxd-panel {
+.pxd-root[data-pxd-panel-open] .pxd-panel {
   z-index: 13;
 }
 
@@ -1934,7 +1952,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 /* The header comes back for collapsed cards and at map zoom. */
 .pxd-root .pxd-item.pxd-item--card.pxd-item--collapsed > .pxd-item__header,
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card > .pxd-item__header {
   display: block;
 }
 
@@ -2240,8 +2258,8 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
 }
 
-.pxd-root.pxd-lod-map .pxd-item__badges,
-.pxd-root.pxd-lod-overview .pxd-item__badges {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item__badges,
+.pxd-root[data-pxd-lod="overview"] .pxd-item__badges {
   display: none;
 }
 
@@ -2284,11 +2302,11 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   right: 8px;
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf > .pxd-item__body {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf > .pxd-item__body {
   display: block;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf > .pxd-item__body {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf > .pxd-item__body {
   display: none;
 }
 
@@ -3229,7 +3247,7 @@ body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked:hover,
 
 /* NP-1. A block-look card is a plain Roam block: no title row, 14px text, root bullet hidden. */
 
-.pxd-root:not(.pxd-lod-map) .pxd-item.pxd-card--block:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
+.pxd-root:not(:is([data-pxd-lod="map"],[data-pxd-lod="overview"])) .pxd-item.pxd-card--block:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
   display: none;
 }
 
@@ -3514,7 +3532,7 @@ body.roam-body.dark .pxd-addboard.pxd-addboard {
   outline: none;
 }
 
-.pxd-root.pxd-lod-map .pxd-kids {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-kids {
   display: none;
 }
 
@@ -4779,9 +4797,9 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
   display: none;
 }
 
-.pxd-root.pxd-root--docked.pxd-lod-overview .pxd-dock__btn:not([data-tool="select"]):not([data-tool="hand"]):not([data-tool="board"]),
-.pxd-root.pxd-root--docked.pxd-lod-overview .pxd-dock__sep,
-.pxd-root.pxd-root--docked.pxd-lod-overview .pxd-dock__options {
+.pxd-root.pxd-root--docked[data-pxd-lod="overview"] .pxd-dock__btn:not([data-tool="select"]):not([data-tool="hand"]):not([data-tool="board"]),
+.pxd-root.pxd-root--docked[data-pxd-lod="overview"] .pxd-dock__sep,
+.pxd-root.pxd-root--docked[data-pxd-lod="overview"] .pxd-dock__options {
   display: none;
 }
 
@@ -5010,7 +5028,7 @@ body.roam-body.dark .pxd-commands__box.pxd-commands__box {
   font-size: 12px;
 }
 
-.pxd-lod-map .pxd-contexts { display: none; }
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-contexts { display: none; }
 
 .pxd-root .pxd-contexts__year {
   margin: 6px 8px 2px;
@@ -5465,8 +5483,8 @@ body.roam-body.dark .pxd-halo .pxd-halo__spark,
 
 /* PDF-2 highlight card. The bar is the colour. The card fill stays clear and the border stays the card border. */
 .pxd-root .pxd-item.pxd-item--highlight,
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--highlight:not(.pxd-item--editing),
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--highlight {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight:not(.pxd-item--editing),
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight {
   background: transparent;
   background-color: transparent;
   background-image: none;
@@ -5478,7 +5496,7 @@ body.roam-body.dark .pxd-halo .pxd-halo__spark,
 }
 
 .pxd-root .pxd-item.pxd-item--highlight:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header,
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--highlight:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
   display: none;
 }
 
@@ -5524,11 +5542,11 @@ body.roam-body.dark .pxd-halo .pxd-halo__spark,
   max-width: 100%;
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--highlight > .pxd-item__body {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight > .pxd-item__body {
   display: block;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--highlight > .pxd-item__body {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight > .pxd-item__body {
   display: none;
 }
 
@@ -5597,8 +5615,8 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip,
   color: var(--pxd-muted);
 }
 
-.pxd-root.pxd-lod-map .pxd-highlight-chip,
-.pxd-root.pxd-lod-overview .pxd-highlight-chip {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-highlight-chip,
+.pxd-root[data-pxd-lod="overview"] .pxd-highlight-chip {
   display: none;
 }
 
@@ -5640,8 +5658,8 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
   background: transparent;
 }
 
-.pxd-root.pxd-lod-map .pxd-highlight-chip__more,
-.pxd-root.pxd-lod-overview .pxd-highlight-chip__more {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-highlight-chip__more,
+.pxd-root[data-pxd-lod="overview"] .pxd-highlight-chip__more {
   display: none;
 }
 
@@ -5665,7 +5683,7 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
   border-color: var(--pxd-teal-line, #0d9488);
 }
 
-.pxd-root.pxd-lod-map .pxd-item .pxd-highlight-notebtn {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item .pxd-highlight-notebtn {
   display: none;
 }
 
@@ -5800,13 +5818,13 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
   padding-right: calc(12px + 44px * var(--pxd-screen-px, 1));
 }
 
-.pxd-root.pxd-lod-map .pxd-pdf-highlights.pxd-hl-add,
-.pxd-root.pxd-lod-overview .pxd-pdf-highlights.pxd-hl-add {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-highlights.pxd-hl-add,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-highlights.pxd-hl-add {
   display: none;
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf:has(> .pxd-hl-add) > .pxd-item__header {
   padding-right: 12px;
 }
 
@@ -5944,29 +5962,29 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
 }
 
 /* Overview hides every card header. A landmark keeps its glyph and its title. */
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--landmark > .pxd-item__header,
-.pxd-root.pxd-lod-overview .pxd-section.pxd-section--landmark > .pxd-section__title {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--landmark > .pxd-item__header,
+.pxd-root[data-pxd-lod="overview"] .pxd-section.pxd-section--landmark > .pxd-section__title {
   display: flex;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item--landmark,
-.pxd-root.pxd-lod-overview .pxd-section--landmark {
+.pxd-root[data-pxd-lod="overview"] .pxd-item--landmark,
+.pxd-root[data-pxd-lod="overview"] .pxd-section--landmark {
   overflow: visible;
 }
 
-.pxd-root.pxd-lod-overview .pxd-landmark--S > .pxd-landmark {
+.pxd-root[data-pxd-lod="overview"] .pxd-landmark--S > .pxd-landmark {
   width: calc(48px * var(--pxd-screen-px, 1));
   height: calc(48px * var(--pxd-screen-px, 1));
   font-size: calc(26px * var(--pxd-screen-px, 1));
 }
 
-.pxd-root.pxd-lod-overview .pxd-landmark--M > .pxd-landmark {
+.pxd-root[data-pxd-lod="overview"] .pxd-landmark--M > .pxd-landmark {
   width: calc(72px * var(--pxd-screen-px, 1));
   height: calc(72px * var(--pxd-screen-px, 1));
   font-size: calc(36px * var(--pxd-screen-px, 1));
 }
 
-.pxd-root.pxd-lod-overview .pxd-landmark--L > .pxd-landmark {
+.pxd-root[data-pxd-lod="overview"] .pxd-landmark--L > .pxd-landmark {
   width: calc(96px * var(--pxd-screen-px, 1));
   height: calc(96px * var(--pxd-screen-px, 1));
   font-size: calc(48px * var(--pxd-screen-px, 1));
@@ -6078,8 +6096,8 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
 }
 
 .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
-.pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight:not(.pxd-item--editing),
-.pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight {
+.pxd-root.pxd-look--tint:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight:not(.pxd-item--editing),
+.pxd-root.pxd-look--tint[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight {
   background-color: var(--pxd-fill, transparent);
   background-image: none;
   border-color: var(--pxd-line, var(--pxd-border));
@@ -6106,20 +6124,20 @@ body.roam-body.dark .pxd-root.pxd-look--pastel .pxd-section,
 }
 
 .bp3-dark .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
-.bp3-dark .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
-.bp3-dark .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+.bp3-dark .pxd-root.pxd-look--tint:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight,
+.bp3-dark .pxd-root.pxd-look--tint[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight,
 body.bt-theme-dark .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
-body.bt-theme-dark .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
-body.bt-theme-dark .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+body.bt-theme-dark .pxd-root.pxd-look--tint:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight,
+body.bt-theme-dark .pxd-root.pxd-look--tint[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight,
 .rm-dark-theme .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
-.rm-dark-theme .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
-.rm-dark-theme .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+.rm-dark-theme .pxd-root.pxd-look--tint:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight,
+.rm-dark-theme .pxd-root.pxd-look--tint[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight,
 body.roam-body.dark .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
-body.roam-body.dark .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
-body.roam-body.dark .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+body.roam-body.dark .pxd-root.pxd-look--tint:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight,
+body.roam-body.dark .pxd-root.pxd-look--tint[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight,
 .pxd-root.pxd-root--dark.pxd-look--tint .pxd-item.pxd-item--highlight,
-.pxd-root.pxd-root--dark.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
-.pxd-root.pxd-root--dark.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight {
+.pxd-root.pxd-root--dark.pxd-look--tint:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--highlight,
+.pxd-root.pxd-root--dark.pxd-look--tint[data-pxd-lod="overview"] .pxd-item.pxd-item--highlight {
   background-color: color-mix(in srgb, var(--pxd-line, var(--pxd-border-strong)) 6%, transparent);
   background-image: none;
   border-color: var(--pxd-line, var(--pxd-border-strong));
@@ -6841,11 +6859,11 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   pointer-events: none;
 }
 
-.pxd-root--highlights .pxd-item {
+:where(.pxd-root)[data-pxd-highlights] .pxd-item {
   opacity: 0.35;
 }
 
-.pxd-root--highlights .pxd-has-highlight {
+:where(.pxd-root)[data-pxd-highlights] .pxd-has-highlight {
   opacity: 1;
 }
 
@@ -6861,8 +6879,8 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 }
 
 /* PL-11 BUG-11: overview and map titles may run wider than a small frame before the ellipsis. */
-.pxd-root.pxd-lod-overview .pxd-section__title,
-.pxd-root.pxd-lod-map .pxd-section__title {
+.pxd-root[data-pxd-lod="overview"] .pxd-section__title,
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-section__title {
   max-width: max(calc(100% + 4px), 12em);
 }
 
@@ -6890,7 +6908,7 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 
 /* P9 page cards: title header in both looks, the whole outline, an internal scroll. */
 
-.pxd-root:not(.pxd-lod-map) .pxd-item.pxd-card--block.pxd-item--page:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
+.pxd-root:not(:is([data-pxd-lod="map"],[data-pxd-lod="overview"])) .pxd-item.pxd-card--block.pxd-item--page:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
   display: block;
 }
 
@@ -8354,8 +8372,8 @@ body.bt-theme-dark .pxd-root .pxd-pdf-paper,
   object-position: top center;
 }
 
-.pxd-root.pxd-lod-map .pxd-pdf-img,
-.pxd-root.pxd-lod-overview .pxd-pdf-img {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-img,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-img {
   display: none;
 }
 
@@ -8625,11 +8643,11 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill:hover,
   display: block;
 }
 
-.pxd-root.pxd-lod-overview .pxd-pdf-hover,
-.pxd-root.pxd-lod-overview .pxd-pdf-pills,
-.pxd-root.pxd-lod-map .pxd-pdf-pills,
-.pxd-root.pxd-lod-overview .pxd-pdf-title--face,
-.pxd-root.pxd-lod-overview .pxd-pdf-density {
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-hover,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-pills,
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-pills,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-title--face,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-density {
   display: none;
 }
 
@@ -8650,8 +8668,8 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill:hover,
 /* P32-1. Map and overview paint the cached cover on the paper itself: the same data URL the detail
    <img> uses, as a background. No <img>, no title, no strip at those tiers; the card reads as a small
    page, as in Heptabase at 11-17 %. */
-.pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper,
-.pxd-root.pxd-lod-overview .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper {
   background-color: var(--pxd-pdf-paper, #ffffff);
   background-image: var(--pxd-cover);
   background-size: cover;
@@ -8659,8 +8677,8 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill:hover,
   background-repeat: no-repeat;
 }
 
-.pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-glyph,
-.pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-title--face {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-glyph,
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-title--face {
   display: none;
 }
 
@@ -8733,10 +8751,10 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill:hover,
   text-align: center;
 }
 
-.pxd-root.pxd-lod-map .pxd-pdf-flip,
-.pxd-root.pxd-lod-overview .pxd-pdf-flip,
-.pxd-root.pxd-lod-map .pxd-pdf-bar,
-.pxd-root.pxd-lod-overview .pxd-pdf-bar {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-flip,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-flip,
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-pdf-bar,
+.pxd-root[data-pxd-lod="overview"] .pxd-pdf-bar {
   display: none;
 }
 
@@ -8799,16 +8817,16 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-paper {
 
 /* P32-1 (live fix). Map and overview hide every card body, which left the cover with no box. A PDF card with a cached
    cover keeps its body as a full-card layer at those tiers, above the colour tile and the title tile. */
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:not(.pxd-item--editing):has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:not(.pxd-item--editing):has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body {
   display: block;
   position: absolute;
   inset: 0;
   z-index: 1;
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header {
   visibility: hidden;
 }
 
@@ -9589,7 +9607,7 @@ body.roam-body.dark .pxd-root,
   overflow: hidden;
 }
 
-.pxd-root.pxd-root--panel-open .pxd-minimap {
+.pxd-root[data-pxd-panel-open] .pxd-minimap {
   right: calc(var(--pxd-panel-right) + var(--pxd-panel-w, 340px) + var(--pxd-panel-gap));
 }
 
@@ -11448,8 +11466,8 @@ body.roam-body.dark .pxd-resurface,
   overflow: hidden;
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--thumb > .pxd-item__body,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--thumb > .pxd-item__body {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--thumb > .pxd-item__body,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--thumb > .pxd-item__body {
   display: block;
 }
 
@@ -11664,7 +11682,7 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
 }
 
 /* Map tier: the header mark is the only visible status. 22 screen px via --pxd-screen-px. Done keeps its check. */
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing):not(:has(.pxd-task-check--done)):has(.pxd-task-check[data-status]) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing):not(:has(.pxd-task-check--done)):has(.pxd-task-check[data-status]) > .pxd-item__header::before {
   content: "";
   width: calc(22px * var(--pxd-screen-px, 1));
   height: calc(22px * var(--pxd-screen-px, 1));
@@ -11675,7 +11693,7 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
 }
 
 /* Overview tier: a coloured 20 px border box. No fill. */
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing):not(:has(.pxd-task-check--done)):has(.pxd-task-check[data-status]) > .pxd-item__header::before {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing):not(:has(.pxd-task-check--done)):has(.pxd-task-check[data-status]) > .pxd-item__header::before {
   border-color: var(--pxd-status-text, currentColor);
   background: transparent;
 }
@@ -11888,13 +11906,13 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
 }
 
 /* Map zoom: the header title carries the tile. */
-.pxd-root.pxd-lod-map .pxd-item--sticky > .pxd-item__header,
-.pxd-root.pxd-lod-overview .pxd-item--sticky > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item--sticky > .pxd-item__header,
+.pxd-root[data-pxd-lod="overview"] .pxd-item--sticky > .pxd-item__header {
   display: none;
 }
 
-.pxd-root.pxd-lod-map .pxd-item--sticky.pxd-item--min > .pxd-item__header,
-.pxd-root.pxd-lod-overview .pxd-item--sticky.pxd-item--min > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item--sticky.pxd-item--min > .pxd-item__header,
+.pxd-root[data-pxd-lod="overview"] .pxd-item--sticky.pxd-item--min > .pxd-item__header {
   display: flex;
 }
 
@@ -11984,8 +12002,8 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   word-break: normal;
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--roam-table > .pxd-item__body,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--roam-table > .pxd-item__body {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--roam-table > .pxd-item__body,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--roam-table > .pxd-item__body {
   display: block;
 }
 
@@ -12342,13 +12360,13 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
 /* RE-3. Zoomed out, a task card is a status mark first. The mark and the due date are sized in screen pixels:
    --pxd-screen-px is world px per screen px (1 / zoom, not clamped), so calc(20px * var(--pxd-screen-px)) is 20 px
    on screen at any zoom. The mark carries the state: empty, check (done), cross (cancelled), and the due colour. */
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header {
   padding-left: calc(26px * var(--pxd-screen-px, 1));
   -webkit-line-clamp: 2;
   max-height: calc(2 * 1.2em + 6px);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::before {
   content: "\2610";
   position: absolute;
   left: calc(4px * var(--pxd-screen-px, 1));
@@ -12358,25 +12376,25 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   color: var(--pxd-text);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::before {
   content: "\2611";
   color: var(--pxd-muted);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::before {
   content: "\2612";
   color: var(--pxd-muted);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header::before {
   color: var(--pxd-accent);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header::before {
   color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
   content: attr(data-task-due);
   position: absolute;
   left: calc(26px * var(--pxd-screen-px, 1));
@@ -12387,17 +12405,17 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   color: var(--pxd-muted);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
   color: var(--pxd-accent);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
   color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
 }
 
 /* Overview tier: the mark alone, centred in the card, 20 px or more on screen. The box is drawn with borders (the
    ballot-box glyphs sit on the baseline and clip in a 20 px card); done fills it with a check, cancelled crosses it. */
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -12412,20 +12430,20 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   color: var(--pxd-text);
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header {
   color: var(--pxd-accent);
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header {
   color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header {
   color: var(--pxd-muted);
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::before {
   content: "";
   position: static;
   display: block;
@@ -12437,12 +12455,12 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   background: transparent;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::before {
   background: currentColor;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::after,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::after {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::after,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::after {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -12453,17 +12471,17 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   line-height: 1;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::after {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::after {
   content: "\2713";
   color: var(--pxd-card);
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::after {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::after {
   content: "\2715";
   color: currentColor;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--task-cancelled):not(.pxd-item--editing) > .pxd-item__header::after {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--task-cancelled):not(.pxd-item--editing) > .pxd-item__header::after {
   content: none;
 }
 
@@ -12985,7 +13003,7 @@ body.roam-body.dark .pxd-root .pxd-tooltip.pxd-chrome,
   font-size: 10px;
 }
 
-.pxd-root.pxd-lod-map .pxd-label--why::after { content: none; }
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-label--why::after { content: none; }
 
 .bp3-dark .pxd-why,
 body.bt-theme-dark .pxd-why,
@@ -13000,18 +13018,18 @@ body.roam-body.dark .pxd-why,
 /* A picture has no title. Map zoom used to unmount the body and leave a blank tile.
    An image-region card is the same: the crop is the body. Overview still hides both. */
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--image > .pxd-item__body,
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--imgregion > .pxd-item__body {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--image > .pxd-item__body,
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--imgregion > .pxd-item__body {
   display: block;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--image > .pxd-item__body,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--imgregion > .pxd-item__body {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--image > .pxd-item__body,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--imgregion > .pxd-item__body {
   display: none;
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--image:not(.pxd-item--collapsed):not(.pxd-item--bare):not(.pxd-item--editing) > .pxd-item__header,
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--imgregion:not(.pxd-item--collapsed):not(.pxd-item--bare):not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card.pxd-item--image:not(.pxd-item--collapsed):not(.pxd-item--bare):not(.pxd-item--editing) > .pxd-item__header,
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card.pxd-item--imgregion:not(.pxd-item--collapsed):not(.pxd-item--bare):not(.pxd-item--editing) > .pxd-item__header {
   display: none;
 }
 

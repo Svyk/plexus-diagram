@@ -165,13 +165,13 @@ test("RE-3 zoomed-out task marks: 20 px or more, due 11 px or more, status colou
   const css = await readFile(new URL("../src/css/task.css", import.meta.url), "utf8");
   const sizes = [...css.matchAll(/font-size:\s*calc\((\d+)px \* var\(--pxd-screen-px/g)].map((m) => Number(m[1]));
   assert.ok(sizes.some((n) => n >= 20), "the map mark is 20 px or more on screen");
-  assert.match(css, /pxd-lod-overview[^{]*> \.pxd-item__header::before \{[^}]*width: calc\((\d+)px \* var\(--pxd-screen-px/, "the overview box is drawn in screen pixels");
-  const box = /pxd-lod-overview[^{]*> \.pxd-item__header::before \{[^}]*width: calc\((\d+)px/.exec(css);
+  assert.match(css, /\[data-pxd-lod="overview"\][^{]*> \.pxd-item__header::before \{[^}]*width: calc\((\d+)px \* var\(--pxd-screen-px/, "the overview box is drawn in screen pixels");
+  const box = /\[data-pxd-lod="overview"\][^{]*> \.pxd-item__header::before \{[^}]*width: calc\((\d+)px/.exec(css);
   assert.ok(Number(box[1]) >= 20, "the overview box is 20 px or more on screen");
   assert.ok(sizes.includes(11), "the due text is 11 px on screen");
-  assert.match(css, /pxd-lod-map \.pxd-item\.pxd-item--task-overdue[^{]*> \.pxd-item__header::before \{\s*color: var\(--pxd-red-text/);
-  assert.match(css, /pxd-lod-map \.pxd-item\.pxd-item--task-today[^{]*> \.pxd-item__header::before \{\s*color: var\(--pxd-accent\)/);
-  assert.match(css, /pxd-lod-overview \.pxd-item\.pxd-item--card\.pxd-item--task-overdue[^{]*> \.pxd-item__header \{\s*color: var\(--pxd-red-text/);
+  assert.match(css, /:is\(\[data-pxd-lod="map"\],\[data-pxd-lod="overview"\]\) \.pxd-item\.pxd-item--task-overdue[^{]*> \.pxd-item__header::before \{\s*color: var\(--pxd-red-text/);
+  assert.match(css, /:is\(\[data-pxd-lod="map"\],\[data-pxd-lod="overview"\]\) \.pxd-item\.pxd-item--task-today[^{]*> \.pxd-item__header::before \{\s*color: var\(--pxd-accent\)/);
+  assert.match(css, /\[data-pxd-lod="overview"\] \.pxd-item\.pxd-item--card\.pxd-item--task-overdue[^{]*> \.pxd-item__header \{\s*color: var\(--pxd-red-text/);
   for (const glyph of ["2610", "2611", "2612", "2713", "2715"]) assert.match(css, new RegExp(`content: "\\\\${glyph}"`));
 });
 

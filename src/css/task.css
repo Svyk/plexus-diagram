@@ -147,13 +147,13 @@
 /* RE-3. Zoomed out, a task card is a status mark first. The mark and the due date are sized in screen pixels:
    --pxd-screen-px is world px per screen px (1 / zoom, not clamped), so calc(20px * var(--pxd-screen-px)) is 20 px
    on screen at any zoom. The mark carries the state: empty, check (done), cross (cancelled), and the due colour. */
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header {
   padding-left: calc(26px * var(--pxd-screen-px, 1));
   -webkit-line-clamp: 2;
   max-height: calc(2 * 1.2em + 6px);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::before {
   content: "\2610";
   position: absolute;
   left: calc(4px * var(--pxd-screen-px, 1));
@@ -163,25 +163,25 @@
   color: var(--pxd-text);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::before {
   content: "\2611";
   color: var(--pxd-muted);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::before {
   content: "\2612";
   color: var(--pxd-muted);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header::before {
   color: var(--pxd-accent);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header::before {
   color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
   content: attr(data-task-due);
   position: absolute;
   left: calc(26px * var(--pxd-screen-px, 1));
@@ -192,17 +192,17 @@
   color: var(--pxd-muted);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
   color: var(--pxd-accent);
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
   color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
 }
 
 /* Overview tier: the mark alone, centred in the card, 20 px or more on screen. The box is drawn with borders (the
    ballot-box glyphs sit on the baseline and clip in a 20 px card); done fills it with a check, cancelled crosses it. */
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -217,20 +217,20 @@
   color: var(--pxd-text);
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header {
   color: var(--pxd-accent);
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header {
   color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header {
   color: var(--pxd-muted);
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::before {
   content: "";
   position: static;
   display: block;
@@ -242,12 +242,12 @@
   background: transparent;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::before {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::before {
   background: currentColor;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::after,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::after {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::after,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::after {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -258,17 +258,17 @@
   line-height: 1;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::after {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::after {
   content: "\2713";
   color: var(--pxd-card);
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::after {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::after {
   content: "\2715";
   color: currentColor;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--task-cancelled):not(.pxd-item--editing) > .pxd-item__header::after {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--task-cancelled):not(.pxd-item--editing) > .pxd-item__header::after {
   content: none;
 }
 

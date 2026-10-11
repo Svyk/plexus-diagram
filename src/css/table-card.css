@@ -21,8 +21,8 @@
   word-break: normal;
 }
 
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--roam-table > .pxd-item__body,
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--roam-table > .pxd-item__body {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--roam-table > .pxd-item__body,
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--roam-table > .pxd-item__body {
   display: block;
 }
 

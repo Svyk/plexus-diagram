@@ -262,7 +262,7 @@ test("LOD: map class toggles at zoom 0.45 and no render calls happen during a pa
     const before = f.host.calls.renderString;
     // middle-button drag on empty space = pan
     f.stub.dispatch(viewport, "pointerdown", { button: 1, buttons: 4, clientX: 100, clientY: 100, pointerId: 1 });
-    assert.ok(root.classList.contains("pxd-root--gesturing"));
+    assert.ok(root.hasAttribute("data-pxd-gesturing"));
     assert.equal(world.style.willChange, "transform");
     for (let i = 1; i <= 5; i += 1) {
       f.stub.dispatch(f.stub.document, "pointermove", { clientX: 100 + i * 30, clientY: 100 + i * 10, pointerId: 1 });
@@ -275,17 +275,17 @@ test("LOD: map class toggles at zoom 0.45 and no render calls happen during a pa
     assert.equal(f.host.calls.renderString, before, "no renderString during the pan");
     assert.equal(f.session.mutations.length, 0, "pan writes nothing");
     assert.equal(world.style.willChange, "");
-    assert.equal(root.classList.contains("pxd-lod-map"), false);
+    assert.equal(["map", "overview"].includes(root.getAttribute("data-pxd-lod")), false);
     // ctrl-wheel zoom out below 0.45
     f.stub.dispatch(viewport, "wheel", { ctrlKey: true, deltaY: 100, clientX: 400, clientY: 300 });
     f.stub.flushFrames();
     await tick(140);
-    assert.ok(root.classList.contains("pxd-lod-map"), "zoom < 0.45 switches to map LOD");
+    assert.ok(["map", "overview"].includes(root.getAttribute("data-pxd-lod")), "zoom < 0.45 switches to map LOD");
     assert.match(root.style["--pxd-map-font"], /px$/);
     f.stub.dispatch(viewport, "wheel", { ctrlKey: true, deltaY: -100, clientX: 400, clientY: 300 });
     f.stub.flushFrames();
     await tick(140);
-    assert.equal(root.classList.contains("pxd-lod-map"), false);
+    assert.equal(["map", "overview"].includes(root.getAttribute("data-pxd-lod")), false);
     assert.equal(f.session.mutations.length, 0, "zoom writes nothing");
     assert.equal(JSON.parse(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001")).zoom, 1, "viewport persisted to localStorage only");
   } finally {
@@ -510,7 +510,7 @@ test("edit mode mounts renderBlock into the card, exits on Esc, and typed text n
     f.stub.flushFrames();
     assert.equal(f.host.calls.renderBlock, 1);
     assert.ok(alpha.classList.contains("pxd-item--editing"));
-    assert.ok(root.classList.contains("pxd-root--editing"));
+    assert.ok(root.hasAttribute("data-pxd-editing"));
     const editor = alpha.querySelector(".pxd-item__editor");
     assert.ok(editor.querySelector(".rm-block__input"));
     assert.equal(f.session.mutations.filter((m) => m[0] === "setString").length, 0, "no writes to the edited block");
@@ -1297,14 +1297,14 @@ test("CSS contract: block-look cards hide the root bullet and use 14px text", as
   const css = readFileSync(new URL("../src/css/block-card.css", import.meta.url), "utf8");
   assert.match(css, /\.pxd-root \.pxd-card--block > \.pxd-item__body > \.pxd-item__editor > \.rm-api-render--block > \.rm-block > \.rm-block-main > \.controls \{\s*display: none/);
   assert.match(css, /\.pxd-root \.pxd-card--block > \.pxd-item__body \{\s*font-size: 14px/);
-  assert.match(css, /\.pxd-root:not\(\.pxd-lod-map\) \.pxd-item\.pxd-card--block:not\(\.pxd-item--collapsed\):not\(\.pxd-item--bare\) > \.pxd-item__header \{\s*display: none/);
+  assert.match(css, /\.pxd-root:not\(:is\(\[data-pxd-lod="map"\],\[data-pxd-lod="overview"\]\)\) \.pxd-item\.pxd-card--block:not\(\.pxd-item--collapsed\):not\(\.pxd-item--bare\) > \.pxd-item__header \{\s*display: none/);
 });
 
 test("CSS contract: card header rules, LOD, editing strip and text font variable", async () => {
   const { readFileSync } = await import("node:fs");
   const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
   assert.match(css, /\.pxd-root \.pxd-item\.pxd-item--card\.pxd-item--note > \.pxd-item__header[^{]*\{\s*display: none/);
-  assert.match(css, /\.pxd-item--collapsed > \.pxd-item__header,\s*\.pxd-root\.pxd-lod-map \.pxd-item\.pxd-item--card > \.pxd-item__header \{\s*display: block/);
+  assert.match(css, /\.pxd-item--collapsed > \.pxd-item__header,\s*\.pxd-root:is\(\[data-pxd-lod="map"\],\[data-pxd-lod="overview"\]\) \.pxd-item\.pxd-item--card > \.pxd-item__header \{\s*display: block/);
   assert.match(css, /\.pxd-item--editing > \.pxd-item__header \{[^}]*height: 8px/);
   assert.match(css, /--pxd-text-fs: 48px/);
   assert.match(css, /\.pxd-item--text \.pxd-item__editor \{[^}]*font-size: var\(--pxd-text-fs/);
@@ -1318,21 +1318,21 @@ test("CSS contract (1.2): map tile clamp, overview tier, bare header, pin, focus
     assert.ok(at >= 0, `rule ${selector}`);
     return css.slice(at, css.indexOf("}", at));
   };
-  assert.doesNotMatch(rule(".pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing)"), /container-type:\s*size/);
-  const header = rule(".pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing) > .pxd-item__header");
+  assert.doesNotMatch(rule(`.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card:not(.pxd-item--editing)`), /container-type:\s*size/);
+  const header = rule(`.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card:not(.pxd-item--editing) > .pxd-item__header`);
   for (const decl of ["flex: 0 1 auto", "min-height: 0", "padding-bottom: 0", "max-height: calc(3 * 1.2em + 6px)", "line-height: 1.2", "overflow: hidden", "display: -webkit-box", "-webkit-box-orient: vertical", "-webkit-line-clamp: 3", "overflow-wrap: anywhere", "text-overflow: ellipsis"]) assert.ok(header.includes(decl), decl);
   assert.doesNotMatch(header, /flex:\s*1 1 auto/, "a stretched -webkit-box paints lines after the clamp");
-  assert.match(rule(".pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--wb:not(.pxd-item--editing) > .pxd-item__header"), /max-height: calc\(1\.2em \+ 6px\)/);
+  assert.match(rule(`.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item.pxd-item--card.pxd-item--wb:not(.pxd-item--editing) > .pxd-item__header`), /max-height: calc\(1\.2em \+ 6px\)/);
   assert.match(header, /font-size: var\(--pxd-map-font\)/);
   assert.doesNotMatch(rule(".pxd-item"), /overflow:\s*hidden/, "ports sit across the card edge");
   assert.match(rule(".pxd-item__header"), /max-height: 100%;[^}]*overflow: hidden/);
-  assert.match(css, /\.pxd-lod-map \.pxd-item--board \.pxd-item__body,\s*\.pxd-lod-map \.pxd-item--wb \.pxd-item__body \{\s*display: block/, "whiteboard-shortcut cards keep their thumbnail at map zoom");
-  assert.match(css, /\.pxd-lod-overview \.pxd-item--board \.pxd-item__body,\s*\.pxd-lod-overview \.pxd-item--wb \.pxd-item__body \{\s*display: none/);
+  assert.match(css, /:where\(\.pxd-root\):is\(\[data-pxd-lod="map"\],\[data-pxd-lod="overview"\]\) \.pxd-item--board \.pxd-item__body,\s*:where\(\.pxd-root\):is\(\[data-pxd-lod="map"\],\[data-pxd-lod="overview"\]\) \.pxd-item--wb \.pxd-item__body \{\s*display: block/, "whiteboard-shortcut cards keep their thumbnail at map zoom");
+  assert.match(css, /:where\(\.pxd-root\)\[data-pxd-lod="overview"\] \.pxd-item--board \.pxd-item__body,\s*:where\(\.pxd-root\)\[data-pxd-lod="overview"\] \.pxd-item--wb \.pxd-item__body \{\s*display: none/);
   assert.match(rule(".pxd-section__title > .pxd-section__title-text"), /text-overflow: ellipsis/, "the rendered title child owns the ellipsis");
-  assert.match(rule('.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card[class*="pxd-c-"]'), /background-color: var\(--pxd-line\)/);
-  assert.match(rule(".pxd-root.pxd-lod-overview .pxd-item--card > .pxd-item__header"), /display: none/);
-  assert.match(rule(".pxd-root.pxd-lod-overview .pxd-section__title"), /font-size: var\(--pxd-overview-font, 40px\)/);
-  assert.match(rule(".pxd-root.pxd-lod-overview .pxd-section__title"), /z-index: 1/, "overview titles paint above cards");
+  assert.match(rule('.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card[class*="pxd-c-"]'), /background-color: var\(--pxd-line\)/);
+  assert.match(rule(`.pxd-root[data-pxd-lod="overview"] .pxd-item--card > .pxd-item__header`), /display: none/);
+  assert.match(rule(`.pxd-root[data-pxd-lod="overview"] .pxd-section__title`), /font-size: var\(--pxd-overview-font, 40px\)/);
+  assert.match(rule(`.pxd-root[data-pxd-lod="overview"] .pxd-section__title`), /z-index: 1/, "overview titles paint above cards");
   const pill = rule(".pxd-section__title");
   assert.match(pill, /border: 1px solid var\(--pxd-line/);
   assert.match(pill, /border-radius: 6px/);
@@ -1754,10 +1754,10 @@ test("F5: opening a board card calls onOpenBoard with the uid, and leaves edit m
     await tick();
     assert.deepEqual(opened, ["nbCard001"]);
     await startEdit(f, "cardAAAA1");
-    assert.ok(f.view.root.classList.contains("pxd-root--editing"));
+    assert.ok(f.view.root.hasAttribute("data-pxd-editing"));
     f.stub.dispatch(card, "dblclick", { clientX: 560, clientY: 320 });
     await tick(20);
-    assert.equal(f.view.root.classList.contains("pxd-root--editing"), false, "edit mode exited before navigating");
+    assert.equal(f.view.root.hasAttribute("data-pxd-editing"), false, "edit mode exited before navigating");
     assert.deepEqual(opened, ["nbCard001", "nbCard001"]);
   } finally {
     f.view.dispose();
@@ -1941,7 +1941,7 @@ test("NP-7: a sidebar board keeps its own viewport, keys, and fullscreen", async
     assert.equal(side.root.querySelector(".pxd-item[data-uid=cardAAAA1]").style.transform, moved);
     const zoomBefore = sideVp.zoom;
     f.stub.dispatch(side.root.querySelector(".pxd-viewport"), "wheel", { ctrlKey: true, deltaY: -80, clientX: 200, clientY: 200 });
-    await tick(700);
+    await tick(1100);
     const zoomed = JSON.parse(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:block"));
     assert.ok(zoomed.zoom > zoomBefore, "a pinch on the sidebar stores its own zoom");
     assert.equal(JSON.parse(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001")).zoom, 1);
@@ -2211,7 +2211,7 @@ test("R2 guard: a key pressed while editing with focus on <body> recovers focus 
   try {
     await f.flush();
     await startEdit(f, "cardAAAA1");
-    assert.ok(f.view.root.classList.contains("pxd-root--editing"));
+    assert.ok(f.view.root.hasAttribute("data-pxd-editing"));
     f.stub.document.activeElement = f.stub.document.body;
     f.stub.dispatch(f.stub.window, "keydown", { key: "Backspace" });
     f.stub.dispatch(f.stub.window, "keydown", { key: "n" });
@@ -2649,7 +2649,7 @@ test("ED-8: Cmd+Z in the editor is left to Roam; Cmd+Z on the board undoes", asy
     f.stub.dispatch(ta, "keydown", { key: "Escape" });
     await tick(30);
     f.stub.flushFrames();
-    assert.equal(f.view.root.classList.contains("pxd-root--editing"), false);
+    assert.equal(f.view.root.hasAttribute("data-pxd-editing"), false);
     f.view.root.focus();
     f.view.controller.select(["cardAAAA1"]);
     const board = f.stub.dispatch(f.view.root, "keydown", { key: "z", metaKey: true });

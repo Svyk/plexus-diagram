@@ -71,6 +71,8 @@ class El {
     if (name === "class") this.className = String(value);
   }
   getAttribute(name) { return this.attrs.has(name) ? this.attrs.get(name) : name === "class" ? this.className : null; }
+  hasAttribute(name) { return this.attrs.has(name); }
+  removeAttribute(name) { this.attrs.delete(name); }
   append(child) { child.remove(); child.parentElement = this; this.children.push(child); }
   appendChild(child) { this.append(child); return child; }
   after(node) {
@@ -449,7 +451,8 @@ function installEnv({ sketch = null, corrupt = false, failMount = false, gesturi
       args.mountEl.append(item);
     }
     const root = doc.createElement("div");
-    root.className = gesturing ? "pxd-root pxd-root--gesturing" : "pxd-root";
+    root.className = "pxd-root";
+    if (gesturing) root.setAttribute("data-pxd-gesturing", "");
     root.addEventListener("pointerdown", (event) => { pointers.push(event?.type); });
     args.mountEl.append(root);
     return {
@@ -552,7 +555,7 @@ test("a pan frame does not write the sketch; the write lands after the gesture",
     await env.install();
     await wait(700);
     assert.equal(env.storage.getItem(KEY), null);
-    env.doc.querySelector(".pxd-root").classList.remove("pxd-root--gesturing");
+    env.doc.querySelector(".pxd-root").removeAttribute("data-pxd-gesturing");
     await wait(700);
     const saved = parseSketch(env.storage.getItem(KEY));
     assert.equal(saved.items.length, 2);

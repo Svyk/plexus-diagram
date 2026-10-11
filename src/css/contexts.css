@@ -15,7 +15,7 @@
   font-size: 12px;
 }
 
-.pxd-lod-map .pxd-contexts { display: none; }
+:where(.pxd-root):is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-contexts { display: none; }
 
 .pxd-root .pxd-contexts__year {
   margin: 6px 8px 2px;

@@ -457,7 +457,7 @@ async function measureBoard(tree) {
     stub.dispatch(viewport, "pointerdown", { button: 1, buttons: 4, clientX: 100, clientY: 100, pointerId: 3 });
     stub.flushFrames();
     stub.flushIdle();
-    if (!root.classList.contains("pxd-root--gesturing")) throw new Error("pan pointerdown did not gesture");
+    if (!root.hasAttribute("data-pxd-gesturing")) throw new Error("pan pointerdown did not gesture");
     const reads0 = meter.reads;
     stub.dispatch(stub.document, "pointermove", { button: 1, buttons: 4, clientX: 140, clientY: 110, pointerId: 3 });
     const queued = stub.frames.length;

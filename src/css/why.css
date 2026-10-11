@@ -39,7 +39,7 @@
   font-size: 10px;
 }
 
-.pxd-root.pxd-lod-map .pxd-label--why::after { content: none; }
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-label--why::after { content: none; }
 
 .bp3-dark .pxd-why,
 body.bt-theme-dark .pxd-why,

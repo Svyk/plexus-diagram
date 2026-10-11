@@ -1044,6 +1044,12 @@ function buildBoardView(onFail, {
 
   // ------------------------------------------------------------ DOM
   const root = el("div", "pxd-root", mountEl);
+  // Per-interaction root state lives in data-* attributes, never classes: other extensions ship
+  // [class*="…"] selectors (zotero-roam), so any class change on the root restyles the whole board subtree.
+  const setRootFlag = (name, on) => {
+    if (on) root.setAttribute(`data-pxd-${name}`, "");
+    else root.removeAttribute(`data-pxd-${name}`);
+  };
   // FIX-TYPE-1: keys typed before a new card's textarea is live are kept and replayed into it.
   const typeAhead = createTypeAhead({
     doc,
@@ -1626,7 +1632,7 @@ function buildBoardView(onFail, {
     tableThumb,
     onTableShown,
     onEditChange: (uid) => {
-      root.classList.toggle("pxd-root--editing", Boolean(uid));
+      setRootFlag("editing", Boolean(uid));
       session.setEditing?.(uid || null);
       if (!uid && grown.size) { liveRects = null; resetGrown(); } // the edit ended: the commit (growToFit) takes over
     },
@@ -3251,16 +3257,16 @@ function buildBoardView(onFail, {
   let zoomOff = null;
   const clearZoomAnim = () => {
     if (zoomOff) { zoomOff(); zoomOff = null; }
-    root.classList.remove("pxd-root--zooming");
+    setRootFlag("zooming", false);
   };
   const armZoomAnim = () => {
     const ms = motionProfile(currentMotion()).zoomMs;
     clearZoomAnim();
     if (ms <= 0) return;
-    root.classList.add("pxd-root--zooming");
+    setRootFlag("zooming", true);
     zoomOff = timers.later(() => {
       zoomOff = null;
-      if (!disposed) root.classList.remove("pxd-root--zooming");
+      if (!disposed) setRootFlag("zooming", false);
     }, ms);
   };
   const animateViewport = (next) => { armZoomAnim(); setViewport(next); };
@@ -3297,8 +3303,7 @@ function buildBoardView(onFail, {
   const mapThreshold = () => zoomThreshold(board()?.plexus?.lodZoom, setting("map-zoom", "0.45"));
   // Classes and font variables are written only when the tier changes (renderFrame) or a viewport settles.
   const paintTier = () => {
-    root.classList.toggle("pxd-lod-map", tier !== "detail");
-    root.classList.toggle("pxd-lod-overview", tier === "overview");
+    root.setAttribute("data-pxd-lod", tier);
     const f = lodFonts(vp.zoom);
     root.style.setProperty("--pxd-map-font", `${f.map}px`);
     root.style.setProperty("--pxd-ui", String(f.ui));
@@ -4121,7 +4126,7 @@ function buildBoardView(onFail, {
     const focus = focusSetNow();
     const set = lensTag ? lensBright(lensIndex, lensTag, focus) : focus;
     const key = `${lensTag || ""}|${set ? [...set].sort().join("|") : ""}`;
-    root.classList.toggle("pxd-root--focus", Boolean(set) || focusOn || Boolean(lensTag));
+    setRootFlag("focus", Boolean(set) || focusOn || Boolean(lensTag));
     chrome.toolbar.setFocus(focusOn);
     chrome.toolbar.setLens?.(Boolean(lensTag));
     if (key === focusKey) return;
@@ -4728,7 +4733,8 @@ function buildBoardView(onFail, {
         break;
       }
       case "highlights": {
-        const on = root.classList.toggle("pxd-root--highlights");
+        const on = !root.hasAttribute("data-pxd-highlights");
+        setRootFlag("highlights", on);
         for (const card of b.items.values()) {
           const shell = itemsR.shellOf(card.uid);
           if (!shell) continue;
@@ -6108,7 +6114,7 @@ function buildBoardView(onFail, {
     const b = board();
     const q = String(text || "").trim().toLowerCase();
     searchIndex = -1;
-    root.classList.toggle("pxd-root--searching", Boolean(q));
+    setRootFlag("searching", Boolean(q));
     searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
     paintSearch(b, searchMatches, q);
     return searchMatches.length;
@@ -6420,7 +6426,7 @@ function buildBoardView(onFail, {
     },
     setGesturing: (on, info) => {
       gesturing = Boolean(on);
-      root.classList.toggle("pxd-root--gesturing", gesturing);
+      setRootFlag("gesturing", gesturing);
       world.style.willChange = gesturing ? "transform" : "";
       if (gesturing) {
         resumeTimer?.();
@@ -6725,7 +6731,7 @@ function buildBoardView(onFail, {
       onSelectTab?.(tab.uid);
       return true;
     },
-    setSpace: (on) => root.classList.toggle("pxd-root--space", Boolean(on)),
+    setSpace: (on) => setRootFlag("space", Boolean(on)),
   };
   // BA-2: highlight the page-card row (or title header) under the pointer while an arrow end is dragged.
   let targetEl = null;
@@ -7096,7 +7102,12 @@ function buildBoardView(onFail, {
       // No setPointerCapture: capture retargets click/dblclick to the root, which made double-click on a card
       // create a phantom card and swallowed [[link]] clicks. Document-level listeners already follow the drag.
     }
-    try { if (!editingUid && ev.target.kind !== "label") root.focus({ preventScroll: true }); } catch { /* stub */ }
+    try {
+      // Focus already on the board (and not in a text field) needs no move; root.focus() flushes pending style.
+      const active = doc.activeElement;
+      const onBoard = Boolean(active) && (active === root || root.contains?.(active)) && !isTextEntryTarget(active);
+      if (!editingUid && ev.target.kind !== "label" && !onBoard) root.focus({ preventScroll: true });
+    } catch { /* stub */ }
     armLongPress(event);
   });
   // Capture runs before a grid cell or a live sticky body can stop the bubble. A move past the
@@ -8069,7 +8080,7 @@ function buildBoardView(onFail, {
         try { win?.dispatchEvent?.(new win.CustomEvent("plexus-diagram:camera")); } catch { /* no caret */ }
       }
       itemsR.setZoom(vp.zoom);
-      paintInvZoom();
+      if (!gesturing) paintInvZoom(); // the resume path (applyLod) paints it once the gesture ends
       // The tier flips (classes + font variables, once) the moment the zoom crosses the threshold, mid-gesture too.
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       if (nextTier !== tier) { tier = nextTier; paintTier(); pdfFlip?.setLod?.(tier); chrome.toolbar.scheduleDock?.(); }
@@ -8122,7 +8133,7 @@ function buildBoardView(onFail, {
       if (refreshBlockCards()) scheduleAnchors();
       else edgesR.setMeasures(new Map());
     }
-    if (searchMatches.length || root.classList.contains("pxd-root--searching")) panel.refreshMarks();
+    if (searchMatches.length || root.hasAttribute("data-pxd-searching")) panel.refreshMarks();
     if (itemsChanged || edgesDue || itemsMoveEdges) paintLenses();
     dirty.minimap = false;
     dirty.viewport = false;

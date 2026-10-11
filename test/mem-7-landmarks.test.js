@@ -180,8 +180,8 @@ test("minimap dots carry the three glyphs and Walk uses reading order with no wr
 
 test("landmarks.css keeps the overview title and a transparent disc", () => {
   const css = readFileSync(new URL("../src/css/landmarks.css", import.meta.url), "utf8");
-  assert.match(css, /\.pxd-root\.pxd-lod-overview \.pxd-item\.pxd-item--card\.pxd-item--landmark > \.pxd-item__header/);
-  assert.match(css, /\.pxd-root\.pxd-lod-overview \.pxd-section\.pxd-section--landmark > \.pxd-section__title/);
+  assert.match(css, /\.pxd-root\[data-pxd-lod="overview"\] \.pxd-item\.pxd-item--card\.pxd-item--landmark > \.pxd-item__header/);
+  assert.match(css, /\.pxd-root\[data-pxd-lod="overview"\] \.pxd-section\.pxd-section--landmark > \.pxd-section__title/);
   assert.match(css, /--pxd-screen-px/);
   assert.match(css, /\.pxd-root--dark \.pxd-landmark\s*\{[^}]*background:\s*transparent/);
   assert.match(css, /width:\s*48px/);

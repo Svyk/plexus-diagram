@@ -168,7 +168,7 @@ test("LOD: the tier class flips mid-gesture at the threshold, with hysteresis, a
     const counter = countSetProperty(root);
     // a pan gesture is in progress while the zoom keys are pressed: settle() never runs
     pointerDown(f, root.querySelector(".pxd-viewport"), 400, 300, { button: 1, buttons: 4 });
-    assert.ok(root.classList.contains("pxd-root--gesturing"));
+    assert.ok(root.hasAttribute("data-pxd-gesturing"));
     const steps = [];
     for (let i = 0; i < 4; i += 1) {
       key(f, "-", { ctrlKey: true });
@@ -178,13 +178,13 @@ test("LOD: the tier class flips mid-gesture at the threshold, with hysteresis, a
     // 1 / 1.2^4 = 0.482: above the 0.45 threshold, still detail, and not a single style write happened
     assert.ok(steps[3].zoom > 0.45 && steps[3].zoom < 0.5);
     assert.equal(steps[3].lod, "detail");
-    assert.equal(root.classList.contains("pxd-lod-map"), false);
+    assert.equal(["map", "overview"].includes(root.getAttribute("data-pxd-lod")), false);
     assert.equal(counter.n, 0, "frames that do not cross a threshold write no root styles");
     key(f, "-", { ctrlKey: true });
     f.stub.flushFrames();
     assert.equal(f.view.state().lod, "map");
-    assert.ok(root.classList.contains("pxd-lod-map"), "class flips during the gesture, before any settle");
-    assert.equal(root.classList.contains("pxd-lod-overview"), false);
+    assert.ok(["map", "overview"].includes(root.getAttribute("data-pxd-lod")), "class flips during the gesture, before any settle");
+    assert.equal((root.getAttribute("data-pxd-lod") === "overview"), false);
     assert.equal(counter.n, 3, "one flip writes the three font variables once");
     assert.match(root.style["--pxd-map-font"], /px$/);
     assert.match(root.style["--pxd-overview-font"], /px$/);
@@ -201,7 +201,7 @@ test("LOD: the tier class flips mid-gesture at the threshold, with hysteresis, a
     key(f, "=", { ctrlKey: true });
     f.stub.flushFrames();
     assert.equal(f.view.state().lod, "detail");
-    assert.equal(root.classList.contains("pxd-lod-map"), false);
+    assert.equal(["map", "overview"].includes(root.getAttribute("data-pxd-lod")), false);
     pointerUp(f, 400, 300, { button: 1 });
     assert.equal(f.session.mutations.length, 0, "zooming writes nothing");
   } finally {
@@ -215,17 +215,43 @@ test("LOD: below the overview threshold the overview class joins the map class",
   try {
     await f.flush();
     assert.equal(f.view.state().lod, "overview");
-    assert.ok(f.root.classList.contains("pxd-lod-map"));
-    assert.ok(f.root.classList.contains("pxd-lod-overview"));
+    assert.ok(["map", "overview"].includes(f.root.getAttribute("data-pxd-lod")));
+    assert.ok((f.root.getAttribute("data-pxd-lod") === "overview"));
     assert.match(f.root.style["--pxd-overview-font"], /px$/);
     pointerDown(f, f.root.querySelector(".pxd-viewport"), 400, 300, { button: 1, buttons: 4 });
     for (let i = 0; i < 4; i += 1) { key(f, "=", { ctrlKey: true }); f.stub.flushFrames(); }
     assert.equal(f.view.state().lod, "overview", "0.1 * 1.2^4 = 0.207 is inside the overview hysteresis band (needs 0.23)");
     for (let i = 0; i < 6; i += 1) { key(f, "=", { ctrlKey: true }); f.stub.flushFrames(); }
     assert.equal(f.view.state().lod, "detail");
-    assert.equal(f.root.classList.contains("pxd-lod-overview"), false);
-    assert.equal(f.root.classList.contains("pxd-lod-map"), false);
+    assert.equal((f.root.getAttribute("data-pxd-lod") === "overview"), false);
+    assert.equal(["map", "overview"].includes(f.root.getAttribute("data-pxd-lod")), false);
     pointerUp(f, 400, 300, { button: 1 });
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("FEEL-1: root flags are data attributes, the inverse-zoom variable waits for the gesture to end, and no old class appears", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const { root } = f;
+    const oldClasses = () => String(root.className).split(/\s+/).filter((c) => /^pxd-root--(gesturing|zooming|editing|panel-open)$|^pxd-lod-/.test(c));
+    assert.equal(root.getAttribute("data-pxd-lod"), "detail");
+    const counter = countSetProperty(root);
+    pointerDown(f, root.querySelector(".pxd-viewport"), 400, 300, { button: 1, buttons: 4 });
+    assert.equal(root.hasAttribute("data-pxd-gesturing"), true);
+    for (let i = 0; i < 3; i += 1) { key(f, "-", { ctrlKey: true }); f.stub.flushFrames(); }
+    assert.equal(counter.inv, 0, "no --pxd-inv-zoom write while gesturing");
+    for (let i = 0; i < 3; i += 1) { key(f, "-", { ctrlKey: true }); f.stub.flushFrames(); }
+    assert.equal(root.getAttribute("data-pxd-lod"), "map", "the tier flip still lands mid-gesture");
+    assert.equal(counter.inv, 0);
+    pointerUp(f, 400, 300, { button: 1 });
+    await settleWait(f);
+    assert.equal(root.hasAttribute("data-pxd-gesturing"), false);
+    assert.equal(counter.inv, 1, "one write on resume");
+    assert.deepEqual(oldClasses(), []);
   } finally {
     f.view.dispose();
     f.restore();
@@ -1113,7 +1139,7 @@ test("focus: the set is the selection plus its connection neighbours; Esc leaves
     key(f, "f");
     f.stub.flushFrames();
     assert.equal(f.view.state().focus, true);
-    assert.ok(f.root.classList.contains("pxd-root--focus"));
+    assert.ok(f.root.hasAttribute("data-pxd-focus"));
     const dim = (uid) => shell(f, uid).classList.contains("pxd-item--focus-dim");
     assert.equal(dim("cardAAAA1"), false);
     assert.equal(dim("cardBBBB2"), false, "the connected card stays lit");
@@ -1137,7 +1163,7 @@ test("focus: the set is the selection plus its connection neighbours; Esc leaves
     f.stub.flushFrames();
     assert.equal(f.view.state().focus, false);
     assert.equal(dim("cardAAAA1"), false, "focus cleared");
-    assert.equal(f.root.classList.contains("pxd-root--focus"), false);
+    assert.equal(f.root.hasAttribute("data-pxd-focus"), false);
     assert.deepEqual(f.view.state().selection, ["textTTTT5"], "the first Esc left focus only");
     key(f, "Escape");
     assert.deepEqual(f.view.state().selection, []);
@@ -1438,7 +1464,7 @@ test("setSettings: swaps pattern, tone, map threshold, minimap and badge visibil
     assert.ok(grid.classList.contains("pxd-grid--lines"));
     assert.ok(f.root.classList.contains("pxd-bg-teal"));
     assert.equal(f.view.state().lod, "map", "0.5 is below the new 0.6 threshold");
-    assert.ok(f.root.classList.contains("pxd-lod-map"));
+    assert.ok(["map", "overview"].includes(f.root.getAttribute("data-pxd-lod")));
     assert.equal(minimap.style.display, "none");
     // a plain object is accepted too, and an unchanged minimap setting does not undo a manual toggle
     f.root.querySelector(".pxd-toolbar__minimap").click();
@@ -2178,13 +2204,13 @@ test("HB-9: zoom keys move the focused board and stay quiet while a card is bein
     assert.equal(tool(), "select");
     const panFrom = read();
     key(f, " ", { code: "Space" });
-    assert.equal(f.root.classList.contains("pxd-root--space"), true);
+    assert.equal(f.root.hasAttribute("data-pxd-space"), true);
     pointerDown(f, f.root.querySelector(".pxd-viewport"), 600, 150);
     pointerMove(f, 640, 200);
     pointerUp(f, 640, 200);
     f.stub.dispatch(f.stub.window, "keyup", { key: " ", code: "Space" });
     same(read(), { x: panFrom.x + 40, y: panFrom.y + 50, zoom: panFrom.zoom });
-    assert.equal(f.root.classList.contains("pxd-root--space"), false);
+    assert.equal(f.root.hasAttribute("data-pxd-space"), false);
     assert.equal(writes(), before, "zoom, fit, and pan write nothing");
 
     const cardEl = shell(f, "cardAAAA1");
@@ -2208,7 +2234,7 @@ test("HB-9: zoom keys move the focused board and stay quiet while a card is bein
     f.stub.flushFrames();
     same(read(), quiet);
     assert.equal(tool(), "select");
-    assert.equal(f.root.classList.contains("pxd-root--space"), false);
+    assert.equal(f.root.hasAttribute("data-pxd-space"), false);
     pointerDown(f, f.root.querySelector(".pxd-viewport"), 600, 150);
     pointerMove(f, 680, 220);
     pointerUp(f, 680, 220);

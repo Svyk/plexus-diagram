@@ -146,12 +146,12 @@
 }
 
 /* Map zoom: the header title carries the tile. */
-.pxd-root.pxd-lod-map .pxd-item--sticky > .pxd-item__header,
-.pxd-root.pxd-lod-overview .pxd-item--sticky > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item--sticky > .pxd-item__header,
+.pxd-root[data-pxd-lod="overview"] .pxd-item--sticky > .pxd-item__header {
   display: none;
 }
 
-.pxd-root.pxd-lod-map .pxd-item--sticky.pxd-item--min > .pxd-item__header,
-.pxd-root.pxd-lod-overview .pxd-item--sticky.pxd-item--min > .pxd-item__header {
+.pxd-root:is([data-pxd-lod="map"],[data-pxd-lod="overview"]) .pxd-item--sticky.pxd-item--min > .pxd-item__header,
+.pxd-root[data-pxd-lod="overview"] .pxd-item--sticky.pxd-item--min > .pxd-item__header {
   display: flex;
 }

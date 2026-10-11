@@ -43,29 +43,29 @@
 }
 
 /* Overview hides every card header. A landmark keeps its glyph and its title. */
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--landmark > .pxd-item__header,
-.pxd-root.pxd-lod-overview .pxd-section.pxd-section--landmark > .pxd-section__title {
+.pxd-root[data-pxd-lod="overview"] .pxd-item.pxd-item--card.pxd-item--landmark > .pxd-item__header,
+.pxd-root[data-pxd-lod="overview"] .pxd-section.pxd-section--landmark > .pxd-section__title {
   display: flex;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item--landmark,
-.pxd-root.pxd-lod-overview .pxd-section--landmark {
+.pxd-root[data-pxd-lod="overview"] .pxd-item--landmark,
+.pxd-root[data-pxd-lod="overview"] .pxd-section--landmark {
   overflow: visible;
 }
 
-.pxd-root.pxd-lod-overview .pxd-landmark--S > .pxd-landmark {
+.pxd-root[data-pxd-lod="overview"] .pxd-landmark--S > .pxd-landmark {
   width: calc(48px * var(--pxd-screen-px, 1));
   height: calc(48px * var(--pxd-screen-px, 1));
   font-size: calc(26px * var(--pxd-screen-px, 1));
 }
 
-.pxd-root.pxd-lod-overview .pxd-landmark--M > .pxd-landmark {
+.pxd-root[data-pxd-lod="overview"] .pxd-landmark--M > .pxd-landmark {
   width: calc(72px * var(--pxd-screen-px, 1));
   height: calc(72px * var(--pxd-screen-px, 1));
   font-size: calc(36px * var(--pxd-screen-px, 1));
 }
 
-.pxd-root.pxd-lod-overview .pxd-landmark--L > .pxd-landmark {
+.pxd-root[data-pxd-lod="overview"] .pxd-landmark--L > .pxd-landmark {
   width: calc(96px * var(--pxd-screen-px, 1));
   height: calc(96px * var(--pxd-screen-px, 1));
   font-size: calc(48px * var(--pxd-screen-px, 1));

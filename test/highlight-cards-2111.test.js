@@ -247,7 +247,7 @@ test("highlight bar css stays under .pxd-root and does not paint a card fill", (
   assert.match(slice, /\.pxd-root \.pxd-item\.pxd-item--highlight[\s\S]*background:\s*transparent/);
   assert.match(slice, /\.pxd-root \.pxd-highlight-bar \{[\s\S]*position:\s*absolute;[\s\S]*left:\s*0;[\s\S]*top:\s*0;[\s\S]*bottom:\s*0;[\s\S]*width:\s*var\(--pxd-hl-bar-w,\s*3px\);/);
   assert.match(slice, /\.pxd-root \.pxd-highlight-bar\[data-color="yellow"\] \{ background: var\(--pxd-yellow-line\); \}/);
-  assert.match(slice, /\.pxd-root\.pxd-lod-map \.pxd-item\.pxd-item--highlight > \.pxd-item__body \{[\s\S]*display:\s*block;/);
+  assert.match(slice, /\.pxd-root:is\(\[data-pxd-lod="map"\],\[data-pxd-lod="overview"\]\) \.pxd-item\.pxd-item--highlight > \.pxd-item__body \{[\s\S]*display:\s*block;/);
   assert.match(slice, /\.pxd-root \.pxd-item\.pxd-item--highlight:not\(\.pxd-item--collapsed\):not\(\.pxd-item--bare\) > \.pxd-item__header[\s\S]*display:\s*none;/);
   const selectors = [...slice.matchAll(/([^{}]+)\{/g)].map((m) => m[1]);
   assert.ok(selectors.length > 0);

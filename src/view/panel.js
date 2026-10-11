@@ -1170,7 +1170,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     el: panel,
     open(which = tab) {
       panel.style.display = "";
-      root.classList.add("pxd-root--panel-open");
+      root.setAttribute("data-pxd-panel-open", "");
       setTab(which);
       on.opened?.(true);
       const focusTarget = which === "search" ? input : which === "boards" ? boardsFilter : null;
@@ -1206,7 +1206,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       setTypesOpen(false);
       if (tab === "info") unmountInfo();
       panel.style.display = "none";
-      root.classList.remove("pxd-root--panel-open");
+      root.removeAttribute("data-pxd-panel-open");
       on.opened?.(false);
     },
     toggle() { if (api.isOpen()) api.close(); else api.open(); },

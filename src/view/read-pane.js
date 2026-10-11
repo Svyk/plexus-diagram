@@ -24,6 +24,9 @@ import { selectionBarPlacement, selectionInReader } from "./make-highlight.js";
 import { renderParseStatus } from "./parse-status.js";
 import { readShowParsed, writeShowParsed } from "./page-chips.js";
 import { openAskAI } from "./ask-ai.js";
+import { selectionDoc } from "../model/ai-context.js";
+import { BASKET_MESSAGES, basketFor, makePart } from "../model/ask-basket.js";
+import { graphOfWindow } from "../model/ask-models.js";
 import { compactPage, createTextLayer, pageRecords } from "./text-layer.js";
 
 // U4 owns the visible drawer. The import is async so a missing file leaves the pane's own list.
@@ -321,7 +324,7 @@ export function createReadPane({
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", "Selection");
   setHidden(bar, true);
-  for (const [act, text, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"], ["ask", "Ask AI", "read.sel.ask"]]) {
+  for (const [act, text, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"], ["ask", "Ask AI", "read.sel.ask"], ["basket", "Add to question", "read.sel.basket"]]) {
     const button = el("button", "pxd-selbar__btn pxd-chrome", bar);
     button.type = "button";
     button.textContent = text;
@@ -1306,6 +1309,14 @@ export function createReadPane({
     const { text, page } = barInfo;
     if (act === "copy") {
       void writeClip(text).then(() => toast("Copied"), () => toast("Copy failed"));
+      return;
+    }
+    if (act === "basket") {
+      hideBar();
+      const spec = { selection: text, page };
+      if (parsedView?.hasParse?.()) { parsedView.basketAdd(spec); return; }
+      const part = makePart({ doc: selectionDoc({ text, page: Number.isInteger(page) ? page : 1 }), focus: { blockId: "sel", selection: text }, pdfUid: current.cardUid || "", url: pdfUrl(), source: {} });
+      toast(BASKET_MESSAGES[basketFor(graphOfWindow(doc.defaultView)).add(part)]);
       return;
     }
     if (act === "ask") {

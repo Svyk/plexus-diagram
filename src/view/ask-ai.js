@@ -1,7 +1,8 @@
 // Ask AI dialog. One part of a parsed PDF goes to the user's Live AI Assistant (the only AI path) together
 // with the document around it. Floating, one at a time, closes on Esc.
 
-import { answerCardMarkdown, buildFocusContext, chipText, contextWithImage, parseAnswer, previewText, promptWithImage, QUICK_PROMPTS, selectionDoc, splitCitations, withImageInstructions } from "../model/ai-context.js";
+import { answerCardMarkdown, buildFocusContext, buildMultiContext, chipText, contextWithImage, MULTI_QUICK_PROMPTS, parseAnswer, previewText, promptWithImage, promptWithImages, QUICK_PROMPTS, selectionDoc, splitCitations, withImageInstructions } from "../model/ai-context.js";
+import { graphOfWindow, modelPickKey, pickAskModel } from "../model/ask-models.js";
 import * as liveai from "../host/liveai.js";
 import { getFigureImages, isUsableImageUrl, noteFor } from "../host/figure-image.js";
 
@@ -10,9 +11,18 @@ export const BLIND_NOTE = "This model can't see images — text only";
 export const OFF_NOTE = "Figure images are off in settings — text only";
 export const UPLOADING_NOTE = "Uploading figure…";
 export const VISION_KEY = "pxd-ask-vision-model";
+const clipQuestion = (text) => {
+  const q = String(text ?? "").replace(/\s+/g, " ").trim();
+  return q.length > 60 ? `${q.slice(0, 59).trimEnd()}…` : q;
+};
 const PENDING_URL = "https://… (uploaded when you press Send)";
 
 let openDialog = null;
+let askModelSetting = () => "auto";
+// The board hands over the "Ask AI model" setting; a dialog reads it each time it opens.
+export function setAskSettings({ model = null } = {}) {
+  askModelSetting = typeof model === "function" ? model : () => "auto";
+}
 
 function make(doc, tag, cls, parent, text) {
   const node = doc.createElement(tag);
@@ -25,18 +35,19 @@ function make(doc, tag, cls, parent, text) {
 // Text with [p. N] links, as nodes.
 function citeInto(doc, parent, text, onPage) {
   for (const piece of splitCitations(text)) {
-    if (piece.page == null) {
+    if (piece.page == null && piece.part == null) {
       parent.append(doc.createTextNode(piece.text));
       continue;
     }
     const link = make(doc, "a", "pxd-ask__cite", parent, piece.text);
     link.setAttribute("href", "#");
-    link.setAttribute("data-page", String(piece.page));
+    if (piece.page != null) link.setAttribute("data-page", String(piece.page));
+    if (piece.part != null) link.setAttribute("data-part", String(piece.part));
     link.setAttribute("role", "button");
     link.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      try { onPage?.(piece.page); } catch { /* reader */ }
+      try { onPage?.(piece.page, piece.part); } catch { /* reader */ }
     });
   }
 }
@@ -78,22 +89,33 @@ export function paintAnswer(doc, node, text, onPage) {
 // Extras: jumpPage(n), addCard({ markdown, chip, blockId, imageUrl }) -> Promise, toast(msg), win, host document.
 // image: { key, caption, url?, name?, getBlob(), getThumb() } is a picture the model may see; imageService decides how its
 // URL is made (default: the one the board registered). Nothing is uploaded before Send.
-export function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, wholeDoc = false, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null, image = null, imageService = null } = {}) {
+// multi: { basket, jump(part, page) } asks one question about every part in the basket instead (see ask-basket.js).
+export function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, wholeDoc = false, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null, image = null, imageService = null, multi = null, askModel = null } = {}) {
   const dom = ownerDoc || (typeof document !== "undefined" ? document : null);
   if (!dom) return null;
   const win = w || dom.defaultView || globalThis;
   try { openDialog?.close(); } catch { /* gone */ }
 
-  const hasBlocks = parsed && parsed.blocks && Object.keys(parsed.blocks).length;
+  let parts = multi ? multi.basket.list() : [];
+  const partImages = () => parts.filter((p) => p.image);
+  const hasBlocks = !multi && parsed && parsed.blocks && Object.keys(parsed.blocks).length;
   const source = hasBlocks ? parsed : (selection ? selectionDoc({ text: selection, page: Number.isInteger(page) ? page : 1 }) : parsed);
   const focus = hasBlocks
     ? { ...(blockId ? { blockId } : {}), ...(blockIds ? { blockIds } : {}), ...(selection ? { selection } : {}), ...(page != null ? { page } : {}), ...(wholeDoc ? { wholeDoc: true } : {}) }
     : { blockId: "sel", selection };
-  let built = buildFocusContext(source, focus);
-  const isWhole = Boolean(wholeDoc) && !focus.blockId && !focus.blockIds && !focus.selection && focus.page == null && hasBlocks;
+  let built = multi ? buildMultiContext(parts, "") : buildFocusContext(source, focus);
+  const isWhole = !multi && Boolean(wholeDoc) && !focus.blockId && !focus.blockIds && !focus.selection && focus.page == null && hasBlocks;
   let builtFor = built.prompt;
   // A whole-document context is retrieved for the question, so it follows the textarea.
+  const multiLabel = () => `${parts.length} part${parts.length === 1 ? "" : "s"}`;
   const rebuild = (question) => {
+    if (multi) {
+      const q = String(question ?? "").trim();
+      built = buildMultiContext(parts, q);
+      builtFor = q;
+      chip.textContent = multiLabel();
+      return;
+    }
     if (!isWhole) return;
     const q = String(question ?? "").trim();
     if (q === builtFor) return;
@@ -114,10 +136,11 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   closeBtn.type = "button";
   closeBtn.setAttribute("aria-label", "Close");
 
-  const hasImage = Boolean(image) && !isWhole;
+  let hasImage = multi ? partImages().length > 0 : Boolean(image) && !isWhole;
   const service = imageService || getFigureImages();
   const altText = () => image?.caption || built.figure?.caption || "";
-  const chip = make(dom, "button", "pxd-ask__chip", root, chipText(built.chip));
+  const chipsRow = multi ? make(dom, "div", "pxd-ask__parts", root) : null;
+  const chip = make(dom, "button", "pxd-ask__chip", root, multi ? `${parts.length} part${parts.length === 1 ? "" : "s"}` : chipText(built.chip));
   chip.type = "button";
   chip.setAttribute("aria-expanded", "false");
   chip.setAttribute("title", "Show exactly what will be sent");
@@ -125,7 +148,11 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   preview.hidden = true;
   let thumb = null;
   let imageNote = null;
-  if (hasImage) {
+  if (multi) {
+    const strip = make(dom, "div", "pxd-ask__imagerow", root);
+    imageNote = make(dom, "span", "pxd-ask__imgnote", strip);
+    imageNote.setAttribute("aria-live", "polite");
+  } else if (hasImage) {
     const strip = make(dom, "div", "pxd-ask__imagerow", root);
     thumb = make(dom, "img", "pxd-ask__thumb", strip);
     thumb.setAttribute("alt", "");
@@ -158,6 +185,7 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   let models = [];
   let knownUrl = "";
   let sentUrl = "";
+  const knownUrls = new Map();
 
   const modelSees = () => Boolean(models.find((m) => m.id === (modelSel?.value || ""))?.imageInput);
   const imagesOn = () => { try { return service ? service.enabled() !== false : Boolean(image?.url); } catch { return true; } };
@@ -165,12 +193,19 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   const willSend = () => hasImage && imagesOn() && modelSees();
   const paintNote = () => {
     if (!imageNote) return;
+    if (multi && !hasImage) { imageNote.textContent = ""; return; }
     imageNote.textContent = !imagesOn() ? OFF_NOTE : modelSees() ? SEES_NOTE : BLIND_NOTE;
   };
   const refreshPreview = () => {
     rebuild(textarea ? textarea.value : prompt.text);
     const sending = willSend();
     const question = textarea ? textarea.value : prompt.text;
+    if (multi) {
+      const shown = parts.map((p) => (p.image && sending ? { ...p, imageUrl: knownUrls.get(p.key) || PENDING_URL } : p));
+      const b = buildMultiContext(shown, question);
+      preview.textContent = `${previewText({ instructions: b.instructions, context: b.context, prompt: promptWithImages(question, shown.some((p) => p.imageUrl)) })}\n\n(about ${b.tokensEstimate.toLocaleString?.() ?? b.tokensEstimate} tokens before the question)`;
+      return;
+    }
     preview.textContent = `${previewText({
       instructions: sending ? withImageInstructions(built.instructions) : built.instructions,
       context: sending ? contextWithImage(built.context, knownUrl || PENDING_URL, altText()) : built.context,
@@ -184,7 +219,13 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     if (show) refreshPreview();
   });
 
-  const goPage = (n) => { try { jumpPage?.(n); } catch { /* reader */ } };
+  const goPage = (n, partNo) => {
+    try {
+      if (!multi) { if (n != null) jumpPage?.(n); return; }
+      const part = partNo != null ? parts[partNo - 1] : parts[0];
+      if (part && (n != null || partNo != null)) multi.jump?.(part, n != null ? n : part.page);
+    } catch { /* reader */ }
+  };
   const say = (msg) => { try { toast?.(msg); } catch { /* host */ } };
   const setBusy = (busy) => {
     if (sendBtn) sendBtn.hidden = busy;
@@ -193,10 +234,10 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   };
   const showActions = (on) => { if (actions) actions.hidden = !on; };
 
-  const ensureImage = async () => {
+  const ensureImage = async (spec = image) => {
     try {
-      if (service) return await service.ensureUrl(image);
-      return image.url && isUsableImageUrl(image.url) ? { ok: true, url: image.url } : { ok: false, reason: "upload-failed" };
+      if (service) return await service.ensureUrl(spec);
+      return spec.url && isUsableImageUrl(spec.url) ? { ok: true, url: spec.url } : { ok: false, reason: "upload-failed" };
     } catch {
       return { ok: false, reason: "upload-failed" };
     }
@@ -225,6 +266,7 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     btn.type = "button";
     btn.addEventListener("click", () => {
       modelSel.value = next.id;
+      try { storage()?.setItem(modelPickKey(graphOfWindow(win)), modelSel.value); } catch { /* private mode */ }
       if (hasImage && modelSees()) { try { storage()?.setItem(visionKey(), modelSel.value); } catch { /* private mode */ } }
       paintNote();
       if (!preview.hidden) refreshPreview();
@@ -246,18 +288,42 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     showActions(false);
     setBusy(true);
     let note = "";
-    if (willSend()) {
-      status.textContent = UPLOADING_NOTE;
-      const got = await ensureImage();
-      if (mine !== token || dead) return;
-      if (got.ok) { sentUrl = got.url; knownUrl = got.url; } else note = noteFor(got.reason);
+    let sendContext = "";
+    let sendInstructions = "";
+    let sendPrompt = "";
+    if (multi) {
+      const urls = new Map();
+      if (willSend()) {
+        status.textContent = UPLOADING_NOTE;
+        for (const p of partImages()) {
+          const got = await ensureImage(p.image);
+          if (mine !== token || dead) return;
+          if (got.ok) { urls.set(p.key, got.url); knownUrls.set(p.key, got.url); } else note = noteFor(got.reason);
+        }
+      }
+      const shown = parts.map((p) => (urls.has(p.key) ? { ...p, imageUrl: urls.get(p.key) } : p));
+      const b = buildMultiContext(shown, question);
+      sendContext = b.context;
+      sendInstructions = b.instructions;
+      sendPrompt = promptWithImages(question, urls.size > 0);
+      sentUrl = urls.size ? "multi" : "";
+    } else {
+      if (willSend()) {
+        status.textContent = UPLOADING_NOTE;
+        const got = await ensureImage();
+        if (mine !== token || dead) return;
+        if (got.ok) { sentUrl = got.url; knownUrl = got.url; } else note = noteFor(got.reason);
+      }
+      sendContext = contextWithImage(built.context, sentUrl, altText());
+      sendInstructions = sentUrl ? withImageInstructions(built.instructions) : built.instructions;
+      sendPrompt = promptWithImage(question, sentUrl);
     }
     status.textContent = note ? `${note} Thinking…` : "Thinking…";
     if (note) say(note);
     const result = await liveai.ask({
-      context: contextWithImage(built.context, sentUrl, altText()),
-      systemPrompt: sentUrl ? withImageInstructions(built.instructions) : built.instructions,
-      prompt: promptWithImage(question, sentUrl),
+      context: sendContext,
+      systemPrompt: sendInstructions,
+      prompt: sendPrompt,
       model: modelSel?.value || "",
       signal: ctl.signal,
       window: win,
@@ -292,14 +358,11 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     modelSel = make(dom, "select", "pxd-ask__model", row);
     modelSel.setAttribute("aria-label", "Model");
     models = liveai.listModels(win);
-    let def = liveai.defaultModel(win);
-    // A figure goes to a model that can see it: the user's default stays when it can, else the last vision model.
-    if (hasImage && !models.find((m) => m.id === def)?.imageInput) {
-      let last = "";
-      try { last = String(storage()?.getItem(visionKey()) || ""); } catch { last = ""; }
-      const pick = models.find((m) => m.id === last && m.imageInput) || models.find((m) => m.imageInput);
-      if (pick) def = pick.id;
-    }
+    // Plexus' own default (Claude, then Gemini) unless the user picked a model here before; a figure needs one that sees it.
+    let remembered = "";
+    try { remembered = String(storage()?.getItem(modelPickKey(graphOfWindow(win))) || ""); } catch { remembered = ""; }
+    if (!remembered && hasImage) { try { remembered = String(storage()?.getItem(visionKey()) || ""); } catch { remembered = ""; } }
+    const def = pickAskModel(models, { setting: askModel ?? askModelSetting(), remembered, liveDefault: liveai.defaultModel(win), needImage: hasImage });
     for (const m of models) {
       const opt = make(dom, "option", "", modelSel, m.provider ? `${m.name} · ${m.provider}` : m.name);
       opt.value = m.id;
@@ -307,12 +370,18 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     }
     if (def) modelSel.value = def;
     modelSel.addEventListener("change", () => {
+      try { storage()?.setItem(modelPickKey(graphOfWindow(win)), modelSel.value); } catch { /* private mode */ }
       if (hasImage && modelSees()) { try { storage()?.setItem(visionKey(), modelSel.value); } catch { /* private mode */ } }
       paintNote();
       if (!preview.hidden) refreshPreview();
     });
     paintNote();
-    if (hasImage && image.url && isUsableImageUrl(image.url)) knownUrl = image.url;
+    if (multi) {
+      for (const p of partImages()) {
+        if (p.image.url && isUsableImageUrl(p.image.url)) knownUrls.set(p.key, p.image.url);
+        else if (service?.peek && p.image.key) void Promise.resolve(service.peek(p.image.key)).then((url) => { if (url && !dead) { knownUrls.set(p.key, url); if (!preview.hidden) refreshPreview(); } }, () => {});
+      }
+    } else if (hasImage && image.url && isUsableImageUrl(image.url)) knownUrl = image.url;
     else if (hasImage && service?.peek && image.key) {
       void Promise.resolve(service.peek(image.key)).then((url) => { if (url && !dead) { knownUrl = url; if (!preview.hidden) refreshPreview(); } }, () => {});
     }
@@ -320,13 +389,13 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     const quick = make(dom, "div", "pxd-ask__quick", body);
     textarea = make(dom, "textarea", "pxd-ask__question", body);
     textarea.rows = 3;
-    textarea.value = prompt.text;
+    textarea.value = multi ? built.prompt : prompt.text;
     textarea.setAttribute("aria-label", "Question");
-    for (const q of QUICK_PROMPTS) {
+    for (const q of multi ? MULTI_QUICK_PROMPTS : QUICK_PROMPTS) {
       const btn = make(dom, "button", "pxd-ask__quickbtn", quick, q.label);
       btn.type = "button";
       btn.addEventListener("click", () => {
-        textarea.value = wholeDoc && !blockId && !blockIds ? q.prompt.replace("this part", "this document") : q.prompt;
+        textarea.value = !multi && wholeDoc && !blockId && !blockIds ? q.prompt.replace("this part", "this document") : q.prompt;
         if (!preview.hidden) refreshPreview();
         void run();
       });
@@ -369,10 +438,11 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     const cardBtn = make(dom, "button", "pxd-ask__act", actions, "Add as card");
     cardBtn.type = "button";
     cardBtn.addEventListener("click", () => {
-      const markdown = answerCardMarkdown({ answer, chip: built.chip, imageUrl: sentUrl });
+      const cardChip = multi ? { label: multiLabel(), page: null, docTitle: clipQuestion(textarea?.value) } : built.chip;
+      const markdown = answerCardMarkdown({ answer, chip: cardChip, imageUrl: multi ? "" : sentUrl });
       if (!markdown || typeof addCard !== "function") { say("Cannot add a card here"); return; }
       cardBtn.disabled = true;
-      void Promise.resolve(addCard({ markdown, chip: built.chip, blockId: blockId || "", answer, imageUrl: sentUrl }))
+      void Promise.resolve(addCard({ markdown, chip: cardChip, blockId: blockId || "", answer, imageUrl: multi ? "" : sentUrl, ...(multi ? { parts: parts.slice() } : {}) }))
         .catch(() => {})
         .then(() => { cardBtn.disabled = false; });
     });
@@ -399,9 +469,24 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   offReady = liveai.onReady(sync, win);
   if (!body.firstChild) sync(liveai.available(win));
 
+  let offBasket = () => {};
+  const paintParts = () => {
+    if (!chipsRow) return;
+    if (chipsRow.replaceChildren) chipsRow.replaceChildren();
+    else while (chipsRow.firstChild) chipsRow.removeChild(chipsRow.firstChild);
+    parts.forEach((p, i) => {
+      const c = make(dom, "span", "pxd-ask__partchip", chipsRow);
+      make(dom, "span", "pxd-ask__partlabel", c, `Part ${i + 1}: ${p.label || "Part"}`);
+      const x = make(dom, "button", "pxd-ask__partx", c, "×");
+      x.type = "button";
+      x.setAttribute("aria-label", `Remove part ${i + 1}`);
+      x.addEventListener("click", () => { multi.basket.remove(p.key); });
+    });
+  };
   const close = () => {
     if (dead) return;
     dead = true;
+    try { offBasket(); } catch { /* gone */ }
     try { ctl?.abort(); } catch { /* done */ }
     try { offReady(); } catch { /* gone */ }
     try { dom.removeEventListener?.("keydown", onDocKey, true); } catch { /* gone */ }
@@ -418,6 +503,20 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     close();
   });
 
+  if (multi) {
+    paintParts();
+    offBasket = multi.basket.subscribe((list) => {
+      if (dead) return;
+      parts = list;
+      if (!parts.length) { close(); return; }
+      hasImage = partImages().length > 0;
+      paintParts();
+      chip.textContent = multiLabel();
+      rebuild(textarea ? textarea.value : "");
+      paintNote();
+      if (!preview.hidden) refreshPreview();
+    });
+  }
   (dom.body || dom.documentElement)?.append?.(root);
   openDialog = { el: root, close };
   return { el: root, close, built };

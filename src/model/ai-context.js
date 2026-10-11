@@ -503,6 +503,7 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
     tokensEstimate: estimateTokens(context) + estimateTokens(instructions),
     focusIds: [...focusIds],
     figure: block && block.type === "figure" ? { caption: captionOf(safe, block) } : null,
+    pieces: { focus: focusBounded, section: block ? sectionText : "", nearby: nearby ? nearby.replace(`${header("Nearby text")}\n`, "") : "", docTitle, page, kind: block ? block.type : "" },
   };
 }
 
@@ -564,16 +565,22 @@ export function selectionDoc({ text = "", page = 1, title = "" } = {}) {
 }
 
 // "[p. 14]" and "[p. 3, 7]" in an answer -> pieces for the view to turn into links.
+// "[Part 2, p. 10]" and "[Part 2]" carry the part number too (Ask AI over several parts).
 export function splitCitations(text) {
   const out = [];
-  const re = /\[(?:p|pp)\.\s*(\d+(?:\s*[,–-]\s*\d+)*)\]/gi;
+  const re = /\[(?:p|pp)\.\s*(\d+(?:\s*[,–-]\s*\d+)*)\]|\[Part\s+(\d+)(?:\s*,\s*pp?\.\s*(\d+(?:\s*[,–-]\s*\d+)*))?\]/gi;
   let last = 0;
   let m;
   const src = String(text ?? "");
   while ((m = re.exec(src))) {
     if (m.index > last) out.push({ text: src.slice(last, m.index) });
-    const pages = (m[1].match(/\d+/g) || []).map(Number);
-    out.push({ text: m[0], page: pages[0], pages });
+    if (m[2] != null) {
+      const pages = (String(m[3] ?? "").match(/\d+/g) || []).map(Number);
+      out.push({ text: m[0], part: Number(m[2]), ...(pages.length ? { page: pages[0], pages } : { page: null, pages: [] }) });
+    } else {
+      const pages = (m[1].match(/\d+/g) || []).map(Number);
+      out.push({ text: m[0], page: pages[0], pages });
+    }
     last = m.index + m[0].length;
   }
   if (last < src.length) out.push({ text: src.slice(last) });
@@ -642,4 +649,89 @@ export function answerCardMarkdown({ answer = "", chip = null, imageUrl = "" } =
   const line = (text, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip(text, 1800)), { leading: true })}`;
   const image = imageUrl ? [`  - ![](${String(imageUrl).trim()})`] : [];
   return [line(head), ...image, ...blocks.slice(0, 40).map((b) => line(b.text, Math.min(b.depth, 3)))].join("\n");
+}
+
+// ---- Ask AI over several parts (the basket) ----
+
+export const MULTI_TOKEN_CAP = 14000;
+
+export const MULTI_INSTRUCTIONS = [
+  "You are helping someone compare parts of PDFs. Each part is under \"Part N — label\".",
+  "Compare and combine the parts to answer. Use only the parts, their captions and the nearby text shown; do not fill gaps from elsewhere.",
+  "Cite as [Part N, p. M] using the part number and the page numbers shown. When every part comes from one document, [p. M] is also fine.",
+  "Name the document when parts come from different PDFs.",
+  "Say so when the parts do not support a claim or a comparison.",
+].join("\n");
+
+export const MULTI_IMAGE_INSTRUCTIONS = "The context starts with images of figure parts, each labelled \"Image of Part N\". Look at them. Read values off charts (axes, units, series, notable points); say when something is not legible instead of guessing, and mark values read off a scale as approximate.";
+
+export const MULTI_DEFAULT_PROMPT = "How do these parts relate? Compare them and point out any conflict.";
+
+export const MULTI_QUICK_PROMPTS = Object.freeze([
+  { id: "compare", label: "Compare", prompt: MULTI_DEFAULT_PROMPT },
+  { id: "conflict", label: "Conflicts?", prompt: "Do these parts contradict each other or leave a gap? Be specific." },
+  { id: "combine", label: "Summarize together", prompt: "Summarize what these parts say together in three to five sentences." },
+]);
+
+export const IMAGE_QUESTION_PREFIX_MULTI = "Look at the images of the figure parts. ";
+export const promptWithImages = (question, any) => (any ? `${IMAGE_QUESTION_PREFIX_MULTI}${String(question ?? "")}` : String(question ?? ""));
+
+// parts: [{ doc, blockId?, blockIds?, selection?, page?, wholeDoc?, label?, imageUrl?, caption? }] -> the same fields as
+// buildFocusContext: { context, instructions, prompt, tokensEstimate, labels }. The budget is split evenly; nearby text goes
+// first when the whole is too long, then each part's own text is trimmed to its share.
+export function buildMultiContext(parts, question = "", opts = {}) {
+  const list = (Array.isArray(parts) ? parts : []).filter(Boolean);
+  const withImages = list.some((p) => p.imageUrl);
+  const instructions = withImages ? `${MULTI_INSTRUCTIONS}\n${MULTI_IMAGE_INSTRUCTIONS}` : MULTI_INSTRUCTIONS;
+  const totalChars = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : MULTI_TOKEN_CAP) * CHARS_PER_TOKEN - instructions.length;
+  const n = Math.max(1, list.length);
+  const focusOf = (p) => ({
+    ...(p.blockId ? { blockId: p.blockId } : {}),
+    ...(Array.isArray(p.blockIds) ? { blockIds: p.blockIds } : {}),
+    ...(p.selection ? { selection: p.selection } : {}),
+    ...(p.page != null ? { page: p.page } : {}),
+    ...(p.wholeDoc ? { wholeDoc: true } : {}),
+  });
+  const imagesText = list
+    .map((p, i) => (p.imageUrl ? `Image of Part ${i + 1}:\n${imageLine(p.imageUrl, p.caption || buildFocusContext(p.doc, focusOf(p)).figure?.caption || p.label, "Figure")}` : ""))
+    .filter(Boolean)
+    .join("\n\n");
+
+  const assemble = (shareChars, nearbyChars) => {
+    const blocks = list.map((p, i) => {
+      const focus = focusOf(p);
+      const built = buildFocusContext(p.doc, focus, {
+        question,
+        tokenCap: Math.ceil((shareChars + INSTRUCTIONS.length + 900) / CHARS_PER_TOKEN),
+        nearbyParas: 1,
+        nearbyChars,
+        outlineTokens: 50,
+      });
+      const pc = built.pieces;
+      const label = p.label || chipText(built.chip) || `Part ${i + 1}`;
+      const lines = [`=== Part ${i + 1} — ${label} ===`];
+      if (pc.docTitle) lines.push(`Document: ${pc.docTitle}`);
+      if (pc.section && !/^\(before/.test(pc.section)) lines.push(`Section: ${pc.section}`);
+      lines.push(pc.focus);
+      if (pc.nearby) lines.push(`Nearby text:\n${pc.nearby}`);
+      return lines.join("\n");
+    });
+    return [imagesText, ...blocks].filter(Boolean).join("\n\n");
+  };
+
+  const budget = totalChars - imagesText.length;
+  let share = Math.max(600, Math.floor(budget / n) - 200);
+  let context = assemble(share, Math.min(NEARBY_CHAR_BUDGET / 2, Math.floor(share * 0.35)));
+  if (context.length > totalChars) context = assemble(share, 0);
+  for (let i = 0; i < 8 && context.length > totalChars; i += 1) {
+    share = Math.max(300, Math.floor(share * Math.max(0.5, (totalChars / context.length) * 0.95)));
+    context = assemble(share, 0);
+  }
+  return {
+    context,
+    instructions,
+    prompt: MULTI_DEFAULT_PROMPT,
+    tokensEstimate: estimateTokens(context) + estimateTokens(instructions),
+    labels: list.map((p, i) => p.label || `Part ${i + 1}`),
+  };
 }

@@ -239,6 +239,8 @@ export const TIP_TEXT = {
   "read.sel.card": e("Card", "A note card beside the PDF with the selected text and its page."),
   "read.sel.quote": e("Quote", "A quote card beside the PDF with the selected text and its page."),
   "read.sel.ask": e("Ask AI", "Ask your Live AI Assistant about the selected text. The document around it goes along."),
+  "ask.basket": e("Ask about your parts", "Open Ask AI with every part you added to the question. Mix tables, paragraphs and figures from different PDFs."),
+  "read.sel.basket": e("Add to question", "Keep the selected text for one question across several parts of your PDFs. Open the basket pill on the board to ask."),
   "read.sel.drag": e("Drag to the board", "Drag the selection onto the board as a card. Hold Alt when you drop for a quote."),
   "parse.range": e("Page range", "All, the current page, or a range such as 1–5."),
   "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),

@@ -220,6 +220,7 @@ export function createPageChips({
   copyMenu = null,
   ask = null,
   chart = null,
+  basket = null,
   drag = null,
   storage = null,
   boxCap = 4000,
@@ -399,6 +400,18 @@ export function createPageChips({
         event.stopPropagation?.();
         closeCopyMenu();
         try { chart(block); } catch { /* toast */ }
+      });
+      menu.append(entry);
+    }
+    if (typeof basket === "function") {
+      const entry = button("pxd-copy-menu__item", "Add to question");
+      entry.setAttribute("role", "menuitem");
+      entry.setAttribute("data-copy", "add-to-ask");
+      on(entry, "click", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        closeCopyMenu();
+        try { basket(block); } catch { /* basket */ }
       });
       menu.append(entry);
     }

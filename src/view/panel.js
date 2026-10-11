@@ -402,6 +402,13 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       el("span", "bp3-icon bp3-icon-timeline-line-chart", chart).setAttribute("aria-hidden", "true");
       listen(chart, "click", (event) => { event.stopPropagation(); on.chartPart(part); });
     }
+    if (typeof on.basketPart === "function") {
+      const add = el("button", "pxd-panel__row-act", head, "+");
+      add.setAttribute("type", "button");
+      add.setAttribute("aria-label", "Add to question");
+      add.setAttribute("title", "Add to question");
+      listen(add, "click", (event) => { event.stopPropagation(); on.basketPart(part); });
+    }
     const snip = partSnippet(part.text, needle);
     const body = el("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
     if (snip.before) body.append(snip.before);

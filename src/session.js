@@ -1775,7 +1775,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     },
 
     // One note card. Children stay in the block tree; kids stays off unless the layout says so.
-    insertParsedCard({ x, y, w, h, markdown, pin, sourceUid } = {}) {
+    insertParsedCard({ x, y, w, h, markdown, pin, sourceUid, sourceUids } = {}) {
       if (!board || destroyed || gone) return Promise.resolve(undefined);
       const nested = nestMarkdownUnderFirst(markdown);
       if (!String(nested).trim() || bulletCount(nested) === 0) return Promise.resolve({ ok: false, reason: "empty" });
@@ -1795,6 +1795,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         await host.updateProps(uid, plexus);
         if (pin) await citePin(uid, pin);
         else if (sourceUid && sourceAttrString(sourceUid)) await host.createBlock({ parentUid: uid, order: "last", string: sourceAttrString(sourceUid) });
+        // An answer over several parts cites each one: one Source:: child per part.
+        for (const extra of Array.isArray(sourceUids) ? sourceUids : []) {
+          if (extra && sourceAttrString(extra)) await host.createBlock({ parentUid: uid, order: "last", string: sourceAttrString(extra) });
+        }
         repull();
         return { ok: true, uid };
       });

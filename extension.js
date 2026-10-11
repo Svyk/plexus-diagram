@@ -9535,8 +9535,8 @@ function contentsLead2(lines) {
     const dots = (t.match(/[.]/g) || []).length;
     return /\.{4,}|…{2,}|·{4,}/.test(t) || dots >= 6 && dots > t.length * 0.35;
   });
-  const named = list.some((line) => /\b(?:fig(?:ure)?s?|tables?|plates?)\b/i.test(line.text || "") && /\d/.test(line.text || ""));
-  return leader && named;
+  const named2 = list.some((line) => /\b(?:fig(?:ure)?s?|tables?|plates?)\b/i.test(line.text || "") && /\d/.test(line.text || ""));
+  return leader && named2;
 }
 function overlapsBodyLine(box2, lines) {
   const bw = (box2.x1 ?? 0) - (box2.x0 ?? 0);
@@ -12458,8 +12458,8 @@ function titleText(value) {
 }
 function pdfTitlePlan(source) {
   const src = source && typeof source === "object" ? source : {};
-  const named = cleanPdfTitle(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title) || cleanPdfTitle(src.parsedTitle);
-  if (named) return segmentTitle(named);
+  const named2 = cleanPdfTitle(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title) || cleanPdfTitle(src.parsedTitle);
+  if (named2) return segmentTitle(named2);
   const file = titleText(fileName(src.url));
   return file ? segmentTitle(file) : "PDF";
 }
@@ -12496,12 +12496,12 @@ function parsedDocTitleRaw(doc) {
   if (!doc || typeof doc !== "object") return "";
   const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
   const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
-  const norm2 = (value) => String(value ?? "").replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
+  const norm3 = (value) => String(value ?? "").replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
   const runningTexts = (Array.isArray(doc.removed) ? doc.removed : []).filter((r) => r && r.reason !== "page-number" && r.text).map((r) => String(r.text));
-  const running = new Set(runningTexts.map(norm2));
+  const running = new Set(runningTexts.map(norm3));
   const usable = (value) => {
     const real = cleanPdfTitle(value);
-    if (!real || isJunkTitleText(real) || running.has(norm2(real))) return "";
+    if (!real || isJunkTitleText(real) || running.has(norm3(real))) return "";
     return runningTexts.some((line) => isBannerOf(real, line, { exact: false })) ? "" : real;
   };
   const given = usable(doc.title);
@@ -12536,7 +12536,7 @@ function parsedDocTitleRaw(doc) {
     const block = blocks[id];
     if (block?.type !== "para" || (block.page || 1) !== 1) continue;
     const text4 = clean(block.text);
-    if (text4 && text4.length <= 160 && !/^scan\b/i.test(text4) && !isStorageTitle(text4) && !isJunkTitleText(text4) && !running.has(norm2(text4)) && titleWordCount(text4) >= 3) return text4;
+    if (text4 && text4.length <= 160 && !/^scan\b/i.test(text4) && !isStorageTitle(text4) && !isJunkTitleText(text4) && !running.has(norm3(text4)) && titleWordCount(text4) >= 3) return text4;
   }
   return "";
 }
@@ -14489,9 +14489,9 @@ function pinCaption(block, doc) {
   }
   if (block.type === "figure" || block.type === "formula") {
     let caption = "";
-    const named = block.caption;
-    if (typeof named === "string" && named && doc?.blocks?.[named]?.text) caption = doc.blocks[named].text;
-    else if (typeof named === "string" && named && !doc?.blocks?.[named]) caption = named;
+    const named2 = block.caption;
+    if (typeof named2 === "string" && named2 && doc?.blocks?.[named2]?.text) caption = doc.blocks[named2].text;
+    else if (typeof named2 === "string" && named2 && !doc?.blocks?.[named2]) caption = named2;
     else {
       for (const other of Object.values(doc?.blocks || {})) {
         if (other?.type === "caption" && other.for === block.id && other.text) {
@@ -17428,6 +17428,8 @@ var init_tooltip_text = __esm({
       "read.sel.card": e("Card", "A note card beside the PDF with the selected text and its page."),
       "read.sel.quote": e("Quote", "A quote card beside the PDF with the selected text and its page."),
       "read.sel.ask": e("Ask AI", "Ask your Live AI Assistant about the selected text. The document around it goes along."),
+      "ask.basket": e("Ask about your parts", "Open Ask AI with every part you added to the question. Mix tables, paragraphs and figures from different PDFs."),
+      "read.sel.basket": e("Add to question", "Keep the selected text for one question across several parts of your PDFs. Open the basket pill on the board to ask."),
       "read.sel.drag": e("Drag to the board", "Drag the selection onto the board as a card. Hold Alt when you drop for a quote."),
       "parse.range": e("Page range", "All, the current page, or a range such as 1–5."),
       "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),
@@ -18038,7 +18040,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     fromPoint: fromEnd?.point,
     toPoint: toEnd?.point
   });
-  const named = PALETTE.includes(edge.color);
+  const named2 = PALETTE.includes(edge.color);
   return {
     viewBox: view,
     cards,
@@ -18048,8 +18050,8 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     start: geo.start,
     startAngle: geo.startAngle,
     dir: edge.dir,
-    color: named ? edge.color : "",
-    hex: named ? "" : hexColor(edge.color) || "",
+    color: named2 ? edge.color : "",
+    hex: named2 ? "" : hexColor(edge.color) || "",
     font,
     toBar,
     fromBar,
@@ -20038,10 +20040,10 @@ function colorPalette(rgba, { k = 5, iterations = 10 } = {}) {
 function colorQuery(text4) {
   const t = String(text4 ?? "").trim().toLowerCase();
   if (!t) return null;
-  const named = COLOR_ANCHORS[t];
-  if (named) {
-    const achromatic = chroma(named.lab) < GRAY_CHROMA;
-    return { name: named.name, hex: named.hex, lab: named.lab, achromatic, hue: achromatic ? null : HUE_RANGES[named.name] || null, token: t };
+  const named2 = COLOR_ANCHORS[t];
+  if (named2) {
+    const achromatic = chroma(named2.lab) < GRAY_CHROMA;
+    return { name: named2.name, hex: named2.hex, lab: named2.lab, achromatic, hue: achromatic ? null : HUE_RANGES[named2.name] || null, token: t };
   }
   if (t.startsWith("#")) {
     const rgb = hexToRgb(t);
@@ -21420,6 +21422,16 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       listen(chart, "click", (event) => {
         event.stopPropagation();
         on.chartPart(part);
+      });
+    }
+    if (typeof on.basketPart === "function") {
+      const add = el("button", "pxd-panel__row-act", head2, "+");
+      add.setAttribute("type", "button");
+      add.setAttribute("aria-label", "Add to question");
+      add.setAttribute("title", "Add to question");
+      listen(add, "click", (event) => {
+        event.stopPropagation();
+        on.basketPart(part);
       });
     }
     const snip = partSnippet(part.text, needle);
@@ -23995,6 +24007,8 @@ var init_settings = __esm({
       parseAutoRead: "parse-auto-read",
       keepReads: "keep-reads",
       askFigureImages: "ask-figure-images",
+      askModel: "ask-model",
+      linkAnswers: "link-answer-sources",
       parseLinkSafe: "parse-link-safe",
       parseNumbered: "parse-numbered",
       parseFootnotes: "parse-footnotes",
@@ -24068,6 +24082,8 @@ var init_settings = __esm({
       [SETTING_IDS.parseAutoRead]: true,
       [SETTING_IDS.keepReads]: true,
       [SETTING_IDS.askFigureImages]: true,
+      [SETTING_IDS.askModel]: "auto",
+      [SETTING_IDS.linkAnswers]: true,
       [SETTING_IDS.parseLinkSafe]: true,
       [SETTING_IDS.parseNumbered]: false,
       [SETTING_IDS.parseFootnotes]: "inline",
@@ -24215,6 +24231,8 @@ var init_settings = __esm({
       [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
       [SETTING_IDS.keepReads]: () => switchRow(SETTING_IDS.keepReads, "Keep reads in the graph", "After a High accuracy, helper or cloud read, upload the read as one file to the graph and note it on the PDF block, so your other computers load it instead of reading again. The built-in parse is never kept. Off uploads nothing; reads already kept still load."),
       [SETTING_IDS.askFigureImages]: () => switchRow(SETTING_IDS.askFigureImages, "Send figure images to AI", "Uploads the figure's image to your graph as a file the first time you ask about it."),
+      [SETTING_IDS.askModel]: () => inputRow(SETTING_IDS.askModel, "Ask AI model", "Auto picks Claude Sonnet 5.5, then Claude Opus 5.5, Claude Sonnet 5, Gemini 3.8 Flash, Gemini 3.1 Pro, then any Claude or Gemini, then your Live AI default. Or type a model name from Live AI Assistant. A model you pick in the Ask AI window is remembered for this graph and wins.", { placeholder: "auto" }),
+      [SETTING_IDS.linkAnswers]: () => switchRow(SETTING_IDS.linkAnswers, "Link answers to their sources", "When you add an AI answer as a card and its source (the PDF card, or a part card made from the same part) is on this board, draw a connection labelled source from the answer to it."),
       [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
       [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
       [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"]),
@@ -24302,6 +24320,8 @@ var init_settings = __esm({
         SETTING_IDS.parseAutoRead,
         SETTING_IDS.keepReads,
         SETTING_IDS.askFigureImages,
+        SETTING_IDS.askModel,
+        SETTING_IDS.linkAnswers,
         SETTING_IDS.parseLinkSafe,
         SETTING_IDS.parseNumbered,
         SETTING_IDS.parseFootnotes,
@@ -35364,8 +35384,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     if (!(chunk.n || chunk.created?.length)) return;
     undoLog.push(chunk);
     if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
-    const named = typeof chunk.label === "string" && chunk.label ? chunk.label : (chunk.kinds || []).join("+");
-    stats.lastAction = { label: named, writes: chunk.n || 0 };
+    const named2 = typeof chunk.label === "string" && chunk.label ? chunk.label : (chunk.kinds || []).join("+");
+    stats.lastAction = { label: named2, writes: chunk.n || 0 };
   };
   const noteWrite = (kind) => {
     dropBurst();
@@ -39498,7 +39518,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       });
     },
     // One note card. Children stay in the block tree; kids stays off unless the layout says so.
-    insertParsedCard({ x, y, w, h, markdown, pin: pin2, sourceUid } = {}) {
+    insertParsedCard({ x, y, w, h, markdown, pin: pin2, sourceUid, sourceUids } = {}) {
       if (!board2 || destroyed || gone) return Promise.resolve(void 0);
       const nested = nestMarkdownUnderFirst(markdown);
       if (!String(nested).trim() || bulletCount(nested) === 0) return Promise.resolve({ ok: false, reason: "empty" });
@@ -39518,6 +39538,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         await host.updateProps(uid2, plexus);
         if (pin2) await citePin(uid2, pin2);
         else if (sourceUid && sourceAttrString(sourceUid)) await host.createBlock({ parentUid: uid2, order: "last", string: sourceAttrString(sourceUid) });
+        for (const extra of Array.isArray(sourceUids) ? sourceUids : []) {
+          if (extra && sourceAttrString(extra)) await host.createBlock({ parentUid: uid2, order: "last", string: sourceAttrString(extra) });
+        }
         repull();
         return { ok: true, uid: uid2 };
       });
@@ -44422,8 +44445,8 @@ function imageSrc(string) {
 function pngFileName({ boardTitle: boardTitle3 = "", pageTitle = "", date = "" } = {}) {
   const board2 = String(boardTitle3 ?? "").trim();
   const page = String(pageTitle ?? "").trim();
-  const named = board2 && board2.toLowerCase() !== UNTITLED_BOARD.toLowerCase();
-  const raw = (named ? board2 : page) || board2 || "board";
+  const named2 = board2 && board2.toLowerCase() !== UNTITLED_BOARD.toLowerCase();
+  const raw = (named2 ? board2 : page) || board2 || "board";
   const name = raw.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim() || "board";
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? String(date) : "1970-01-01";
   return `${name} ${day}.png`;
@@ -46311,8 +46334,8 @@ function blocked(button2) {
   if (tokens2.some((name) => BLOCKED_ICONS.has(name))) return true;
   const aria = button2.getAttribute?.("aria-label") || "";
   const title = button2.getAttribute?.("title") || "";
-  const named = tokens2.some((name) => name.startsWith("bp3-icon-") || name && !PLAIN.has(name) && !name.startsWith("bp3-"));
-  if (!named && !aria && !title) return true;
+  const named2 = tokens2.some((name) => name.startsWith("bp3-icon-") || name && !PLAIN.has(name) && !name.startsWith("bp3-"));
+  if (!named2 && !aria && !title) return true;
   return false;
 }
 function matches(button2, spec) {
@@ -50362,6 +50385,7 @@ function createPageChips({
   copyMenu = null,
   ask: ask2 = null,
   chart = null,
+  basket = null,
   drag = null,
   storage = null,
   boxCap = 4e3
@@ -50557,6 +50581,21 @@ function createPageChips({
         closeCopyMenu();
         try {
           chart(block);
+        } catch {
+        }
+      });
+      menu.append(entry);
+    }
+    if (typeof basket === "function") {
+      const entry = button2("pxd-copy-menu__item", "Add to question");
+      entry.setAttribute("role", "menuitem");
+      entry.setAttribute("data-copy", "add-to-ask");
+      on(entry, "click", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        closeCopyMenu();
+        try {
+          basket(block);
         } catch {
         }
       });
@@ -51833,6 +51872,772 @@ function startPlacement({
 // src/view/parse-actions.js
 init_drop();
 init_pdf_pin();
+
+// src/model/ai-context.js
+init_parse_to_roam_md();
+init_pdf();
+var CONTEXT_TOKEN_CAP = 12e3;
+var OUTLINE_TOKEN_CAP = 1500;
+var NEARBY_CHAR_BUDGET = 4e3;
+var NEARBY_PARAS = 2;
+var CHARS_PER_TOKEN = 4;
+var PARA_CLIP = 1200;
+var INSTRUCTIONS = [
+  "You are helping someone read one part of a PDF.",
+  'Analyse the part under "Selected part". Use "Document outline", "Section" and "Nearby text" only to interpret it, not as the subject.',
+  "Cite pages as [p. N] using the page numbers shown in the context.",
+  "If the selected part alone does not support a claim, say so instead of filling the gap from elsewhere.",
+  "Refer to the selected part as 'this table', 'this paragraph' or 'this figure' (as appropriate); never mention section labels."
+].join("\n");
+var DOC_INSTRUCTIONS = [
+  "You are helping someone read a PDF as a whole.",
+  'Answer about the document as a whole. Use "Document outline" to locate things, and "Relevant parts of the document" for what the document says.',
+  "Cite pages as [p. N] using the page numbers shown in the context.",
+  'The parts under "Relevant parts of the document" were chosen for the question and are not the whole document. When they do not cover something, say so instead of filling the gap from elsewhere.',
+  "Refer to it as 'this document'; never mention section labels."
+].join("\n");
+var FIGURE_INSTRUCTIONS = [
+  "The context starts with the image of the selected part. Look at it.",
+  "Read values off the chart: axes and their units, series or legend entries, and notable points (peaks, drops, crossings).",
+  "Say when something is not legible instead of guessing. Do not invent numbers that are not visible; mark estimates read off a scale as approximate.",
+  "Cite [p. N] for claims that rest on the document text; the caption and nearby text are in the context."
+].join("\n");
+var withImageInstructions = (instructions) => `${instructions}
+${FIGURE_INSTRUCTIONS}`;
+var DEFAULT_PROMPT = "Explain this part in plain language.";
+var QUICK_PROMPTS = Object.freeze([
+  { id: "explain", label: "Explain", prompt: "Explain this part in plain language." },
+  { id: "summarize", label: "Summarize", prompt: "Summarize this part in three to five sentences." },
+  { id: "numbers", label: "Key numbers", prompt: "List the key numbers in this part with their units and what each one measures." },
+  { id: "unusual", label: "What's unusual?", prompt: "What is unusual, surprising or inconsistent in this part?" }
+]);
+var squash3 = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
+var clip5 = (text4, max) => {
+  const t = String(text4 ?? "");
+  return t.length <= max ? t : `${t.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+};
+var estimateTokens = (text4) => Math.ceil(String(text4 ?? "").length / CHARS_PER_TOKEN);
+function orderOf2(doc) {
+  const blocks = doc?.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
+  const order = Array.isArray(doc?.order) ? doc.order : Object.keys(blocks);
+  return order.filter((id) => blocks[id]);
+}
+function blockText2(block) {
+  if (!block) return "";
+  if (block.type === "list") return (block.items || []).map((item) => squash3(item.text)).filter(Boolean).join("; ");
+  if (block.type === "table") return (block.cells || []).map((cell) => squash3(cell.text)).filter(Boolean).join(" ");
+  return squash3(block.text || block.latex || "");
+}
+function captionOf(doc, block) {
+  if (!block) return "";
+  const blocks = doc?.blocks || {};
+  for (const id of orderOf2(doc)) {
+    const other = blocks[id];
+    if (other.type === "caption" && other.for === block.id) return squash3(other.text);
+  }
+  if (typeof block.caption === "string") {
+    const hit = blocks[block.caption];
+    return squash3(hit ? hit.text : block.caption);
+  }
+  if (block.caption && typeof block.caption === "object") return squash3(block.caption.text);
+  return "";
+}
+function attachedCaptionIds(doc, block) {
+  const ids = /* @__PURE__ */ new Set();
+  const blocks = doc?.blocks || {};
+  if (!block) return ids;
+  for (const id of orderOf2(doc)) {
+    if (blocks[id].type === "caption" && blocks[id].for === block.id) ids.add(id);
+  }
+  if (typeof block.caption === "string" && blocks[block.caption]) ids.add(block.caption);
+  return ids;
+}
+var KIND_NAMES = { table: "Table", figure: "Figure", para: "Paragraph", list: "List", heading: "Heading", caption: "Caption", formula: "Formula", code: "Code", footnote: "Footnote", scan: "Scanned page" };
+var LABEL_RE = /^((?:table|figure|fig\.?|chart|plate|exhibit)\s+[A-Za-z]?\d+(?:\.\d+)?[A-Za-z]?)/i;
+function chipLabel(doc, block, selection) {
+  if (selection) return "Selection";
+  if (!block) return "Page";
+  if (block.type === "table" || block.type === "figure" || block.type === "caption") {
+    const cap4 = block.type === "caption" ? squash3(block.text) : captionOf(doc, block);
+    const m = LABEL_RE.exec(cap4);
+    if (m) return m[1].replace(/^fig\.?\s/i, "Figure ").replace(/\s+/g, " ");
+  }
+  if (block.type === "heading") return `Heading: ${clip5(squash3(block.text), 40)}`;
+  return KIND_NAMES[block.type] || "Block";
+}
+function findSelectionBlock(doc, selection, page = null) {
+  const needle = squash3(selection).toLowerCase();
+  if (!needle) return null;
+  const blocks = doc?.blocks || {};
+  const probe = needle.length > 120 ? needle.slice(0, 120) : needle;
+  const ids = orderOf2(doc);
+  const hit = (pool) => pool.find((id) => {
+    const b = blocks[id];
+    if (!b) return false;
+    return blockText2(b).toLowerCase().includes(probe);
+  });
+  if (page != null) {
+    const found2 = hit(ids.filter((id) => blocks[id].page === page));
+    if (found2) return blocks[found2];
+  }
+  const found = hit(ids);
+  return found ? blocks[found] : null;
+}
+function sectionChain(doc, ids, index) {
+  const blocks = doc.blocks;
+  const stack = [];
+  for (let i = 0; i <= index && i < ids.length; i += 1) {
+    const b = blocks[ids[i]];
+    if (b.type !== "heading") continue;
+    const level = Math.max(1, Number(b.level) || 1);
+    while (stack.length && stack[stack.length - 1].level >= level) stack.pop();
+    stack.push({ level, text: squash3(b.text), page: b.page });
+  }
+  return stack;
+}
+function outlineLines(doc, ids) {
+  const blocks = doc.blocks;
+  const heads = [];
+  const items = [];
+  for (const id of ids) {
+    const b = blocks[id];
+    if (b.type === "heading" && squash3(b.text)) {
+      const level = Math.min(Math.max(Number(b.level) || 1, 1), 6);
+      heads.push({ level, line: `${"  ".repeat(level - 1)}- ${clip5(squash3(b.text), 100)} (p. ${b.page})` });
+    } else if (b.type === "table" || b.type === "figure") {
+      const cap4 = captionOf(doc, b);
+      items.push(`- ${b.type === "table" ? "Table" : "Figure"}: ${cap4 ? clip5(cap4, 110) : "(no caption)"} (p. ${b.page})`);
+    }
+  }
+  return { heads, items };
+}
+function fitOutline(doc, ids, maxChars) {
+  const { heads, items } = outlineLines(doc, ids);
+  if (maxChars <= 0) return "";
+  const out = [];
+  let used = 0;
+  const push = (line) => {
+    if (used + line.length + 1 > maxChars) return false;
+    out.push(line);
+    used += line.length + 1;
+    return true;
+  };
+  const kept = /* @__PURE__ */ new Set();
+  for (let level = 1; level <= 6; level += 1) {
+    for (let i = 0; i < heads.length; i += 1) {
+      if (heads[i].level !== level) continue;
+      if (used + heads[i].line.length + 1 > maxChars - 60) break;
+      kept.add(i);
+      used += heads[i].line.length + 1;
+    }
+  }
+  used = 0;
+  out.push("Headings:");
+  used += 10;
+  let skipped = 0;
+  heads.forEach((h, i) => {
+    if (kept.has(i)) push(h.line);
+    else skipped += 1;
+  });
+  if (skipped) push(`- …${skipped} more headings`);
+  if (items.length) {
+    push("Tables and figures:");
+    let shown = 0;
+    for (const line of items) {
+      if (!push(line)) break;
+      shown += 1;
+    }
+    if (shown < items.length) push(`- …${items.length - shown} more`);
+  }
+  return out.join("\n");
+}
+function nearbyText(doc, ids, index, focusIds, budget, paras) {
+  if (budget <= 0 || index < 0) return "";
+  const blocks = doc.blocks;
+  const usable = (id) => {
+    if (focusIds.has(id)) return false;
+    const b = blocks[id];
+    return (b.type === "para" || b.type === "list") && blockText2(b);
+  };
+  const before = [];
+  for (let i = index - 1; i >= 0 && before.length < paras; i -= 1) if (usable(ids[i])) before.push(ids[i]);
+  const after = [];
+  for (let i = index + 1; i < ids.length && after.length < paras; i += 1) if (usable(ids[i])) after.push(ids[i]);
+  const pick = [];
+  for (let k = 0; k < paras; k += 1) {
+    if (before[k]) pick.push({ id: before[k], side: "before" });
+    if (after[k]) pick.push({ id: after[k], side: "after" });
+  }
+  const chosen = [];
+  let used = 0;
+  for (const { id, side: side2 } of pick) {
+    const b = blocks[id];
+    const room = budget - used;
+    if (room < 80) break;
+    const text4 = clip5(blockText2(b), Math.min(PARA_CLIP, room - 30));
+    const line = `[p. ${b.page}] ${text4}`;
+    used += line.length + 2;
+    chosen.push({ id, side: side2, line });
+  }
+  const pos = (id) => ids.indexOf(id);
+  chosen.sort((a, b) => pos(a.id) - pos(b.id));
+  return chosen.map((c) => c.line).join("\n\n");
+}
+function focusBody(doc, block) {
+  if (!block) return "";
+  if (block.type === "table") {
+    const md = tableToMarkdown(block);
+    const cap4 = captionOf(doc, block);
+    return [cap4 ? `Caption: ${cap4}` : "", md || "(table with no readable cells)"].filter(Boolean).join("\n\n");
+  }
+  if (block.type === "figure") {
+    const cap4 = captionOf(doc, block);
+    const inner = squash3(block.text);
+    return [`Figure caption: ${cap4 || "(none)"}`, inner && inner !== cap4 ? `Text inside the figure: ${inner}` : ""].filter(Boolean).join("\n");
+  }
+  if (block.type === "list") {
+    return (block.items || []).map((item, i) => `${block.ordered ? `${i + 1}.` : "-"} ${squash3(item.text)}`).join("\n");
+  }
+  if (block.type === "formula") return block.latex ? `$$${block.latex}$$` : squash3(block.text);
+  if (block.type === "code") return `\`\`\`
+${block.text ?? ""}
+\`\`\``;
+  return squash3(block.text ?? "");
+}
+function pageFocus(doc, ids, page) {
+  const parts = [];
+  for (const id of ids) {
+    const b = doc.blocks[id];
+    if (b.page !== page) continue;
+    const text4 = focusBody(doc, b);
+    if (text4) parts.push(text4);
+  }
+  return parts.join("\n\n");
+}
+var STOPWORDS = new Set("a an and are as at be but by for from has have he her his how i if in into is it its of on or our she so than that the their them then there these they this to was we were what when where which who why will with you your do does did can could should would not no".split(" "));
+var GENERIC_WORDS = new Set("summarize summarise summary overview describe explain tell me about document pdf paper report file main key points point plain language simple simply words sentences sentence three five short brief briefly give list whole entire all".split(" "));
+function tokenize(text4) {
+  const out = [];
+  for (const w of String(text4 ?? "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || []) {
+    if (w.length >= 2 && !STOPWORDS.has(w)) out.push(w);
+  }
+  return out;
+}
+function isGenericQuestion(question) {
+  const words = tokenize(question);
+  return !words.length || words.every((w) => GENERIC_WORDS.has(w));
+}
+var TABLE_CLIP = 3e3;
+function retrievalParts(doc, ids) {
+  const blocks = doc.blocks;
+  const caps = /* @__PURE__ */ new Map();
+  const attached = /* @__PURE__ */ new Set();
+  for (const id of ids) {
+    const b = blocks[id];
+    if (b.type === "caption" && b.for && blocks[b.for] && !caps.has(b.for)) {
+      caps.set(b.for, squash3(b.text));
+      attached.add(id);
+    }
+  }
+  const parts = [];
+  ids.forEach((id, order) => {
+    if (attached.has(id)) return;
+    const b = blocks[id];
+    let cap4 = "";
+    if (b.type === "table" || b.type === "figure") {
+      cap4 = caps.get(id) || "";
+      if (!cap4 && typeof b.caption === "string") {
+        const hit = blocks[b.caption];
+        cap4 = squash3(hit ? hit.text : b.caption);
+      } else if (!cap4 && b.caption && typeof b.caption === "object") cap4 = squash3(b.caption.text);
+    }
+    const text4 = blockText2(b);
+    const scored = cap4 ? `${cap4} ${text4}` : text4;
+    if (!scored) return;
+    parts.push({ id, order, block: b, cap: cap4, tokens: tokenize(scored) });
+  });
+  return parts;
+}
+function bm25(parts, queryTokens) {
+  const k1 = 1.2;
+  const b = 0.75;
+  const uniq = [...new Set(queryTokens)];
+  const n2 = parts.length;
+  const df = new Map(uniq.map((t) => [t, 0]));
+  let total = 0;
+  const tfs = parts.map((part) => {
+    total += part.tokens.length;
+    const tf = /* @__PURE__ */ new Map();
+    for (const t of part.tokens) if (df.has(t)) tf.set(t, (tf.get(t) || 0) + 1);
+    for (const t of tf.keys()) df.set(t, df.get(t) + 1);
+    return tf;
+  });
+  const avg = total / Math.max(1, n2);
+  return parts.map((part, i) => {
+    const tf = tfs[i];
+    if (!tf.size) return 0;
+    const len = part.tokens.length;
+    let score = 0;
+    for (const [t, f] of tf) {
+      const d = df.get(t);
+      const idf = Math.log(1 + (n2 - d + 0.5) / (d + 0.5));
+      score += idf * (f * (k1 + 1) / (f + k1 * (1 - b + b * (len / avg))));
+    }
+    return score;
+  });
+}
+function renderPart(part) {
+  const b = part.block;
+  const kind = KIND_NAMES[b.type] || "Block";
+  let body = focusBody(null, b);
+  if (b.type === "table") {
+    const md = tableToMarkdown(b);
+    body = [part.cap ? `Caption: ${part.cap}` : "", md || "(table with no readable cells)"].filter(Boolean).join("\n");
+  } else if (b.type === "figure") {
+    const inner = squash3(b.text);
+    body = [`Figure caption: ${part.cap || "(none)"}`, inner && inner !== part.cap ? `Text inside the figure: ${inner}` : ""].filter(Boolean).join("\n");
+  }
+  return `${kind} [p. ${b.page}] ${clip5(body, b.type === "table" ? TABLE_CLIP : PARA_CLIP)}`;
+}
+function relevantParts(doc, ids, question, budget) {
+  const parts = retrievalParts(doc, ids);
+  if (!parts.length) return "";
+  const rendered = /* @__PURE__ */ new Map();
+  const line = (part) => {
+    let text4 = rendered.get(part.id);
+    if (text4 == null) {
+      text4 = renderPart(part);
+      rendered.set(part.id, text4);
+    }
+    return text4;
+  };
+  const picked = /* @__PURE__ */ new Set();
+  let used = 0;
+  const take = (part, force = false) => {
+    if (picked.has(part.id)) return true;
+    const text4 = line(part);
+    if (!force && used + text4.length + 2 > budget) return false;
+    picked.add(part.id);
+    used += text4.length + 2;
+    return true;
+  };
+  const firstHeading = parts.find((p) => p.block.type === "heading");
+  if (firstHeading) take(firstHeading);
+  const firstPara = parts.find((p) => p.block.type === "para");
+  if (firstPara) take(firstPara);
+  const abstractAt = parts.findIndex((p) => p.block.type === "heading" && /^\s*(abstract|summary|executive summary)\b/i.test(p.block.text || ""));
+  if (abstractAt >= 0) {
+    const next = parts.slice(abstractAt + 1).find((p) => p.block.type === "para");
+    if (next) take(next);
+  }
+  const generic = isGenericQuestion(question);
+  if (!generic) {
+    const scores = bm25(parts, tokenize(question));
+    const ranked = parts.map((part, i) => ({ part, score: scores[i] })).filter((r) => r.score > 0).sort((x, y) => y.score - x.score || x.part.order - y.part.order);
+    for (const { part } of ranked) {
+      if (picked.has(part.id)) continue;
+      take(part);
+      if (used >= budget - 80) break;
+    }
+  }
+  if (generic || picked.size <= 3) {
+    const headLevels = parts.filter((p) => p.block.type === "heading").map((p) => Math.max(1, Number(p.block.level) || 1));
+    const top = headLevels.length ? Math.min(...headLevels) : 1;
+    const topLevel = top === 1 && headLevels.filter((l) => l === 1).length <= 1 ? 2 : top;
+    let afterTop = false;
+    for (const part of parts) {
+      const b = part.block;
+      if (b.type === "heading") afterTop = (Number(b.level) || 1) <= topLevel;
+      else if (afterTop && (b.type === "para" || b.type === "list")) {
+        take(part);
+        afterTop = false;
+      }
+    }
+    for (const part of parts) {
+      if (part.block.type === "table" || part.block.type === "figure") take(part);
+    }
+    for (const part of parts) {
+      if (used >= budget - 80) break;
+      if (part.block.type !== "caption") take(part);
+    }
+  }
+  return parts.filter((p) => picked.has(p.id)).map(line).join("\n\n");
+}
+function buildFocusContext(doc, focus = {}, opts = {}) {
+  const outlineCap = (Number(opts.outlineTokens) > 0 ? Number(opts.outlineTokens) : OUTLINE_TOKEN_CAP) * CHARS_PER_TOKEN;
+  const nearbyCap = Number(opts.nearbyChars) >= 0 ? Number(opts.nearbyChars) : NEARBY_CHAR_BUDGET;
+  const paras = Number.isInteger(opts.nearbyParas) && opts.nearbyParas >= 0 ? opts.nearbyParas : NEARBY_PARAS;
+  const safe = doc && typeof doc === "object" ? doc : { blocks: {}, order: [] };
+  const ids = orderOf2(safe);
+  const blocks = safe.blocks || {};
+  const selection = squash3(focus.selection);
+  let block = focus.blockId ? blocks[focus.blockId] || null : null;
+  if (!block && Array.isArray(focus.blockIds)) block = blocks[focus.blockIds.find((id) => blocks[id])] || null;
+  if (!block && selection) block = findSelectionBlock(safe, selection, focus.page ?? null);
+  const noPages = safe.noPages === true;
+  const page = noPages ? null : block ? block.page : Number.isInteger(focus.page) ? focus.page : null;
+  const extraIds = Array.isArray(focus.blockIds) ? focus.blockIds.filter((id) => blocks[id]) : [];
+  const focusIds = new Set(extraIds.length ? extraIds : block ? [block.id] : []);
+  for (const id of attachedCaptionIds(safe, block)) focusIds.add(id);
+  const index = block ? ids.indexOf(block.id) : -1;
+  const wholeDoc = focus.wholeDoc === true && !block && !selection && !Number.isInteger(focus.page);
+  const instructions = wholeDoc ? DOC_INSTRUCTIONS : INSTRUCTIONS;
+  const cap4 = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN - instructions.length;
+  const docTitle = parsedDocTitle(safe) || squash3(safe.title) || "";
+  let focusText = "";
+  if (selection) {
+    focusText = `Selected text:
+> ${clip5(selection, 6e3)}`;
+    if (block && squash3(blockText2(block)) !== selection) {
+      focusText += `
+
+The block that contains it (${KIND_NAMES[block.type] || "block"}, p. ${block.page}):
+${focusBody(safe, block)}`;
+    }
+  } else if (extraIds.length > 1) {
+    focusText = extraIds.map((id) => focusBody(safe, blocks[id])).filter(Boolean).join("\n\n");
+  } else if (block) {
+    focusText = focusBody(safe, block);
+  } else if (page != null) {
+    focusText = pageFocus(safe, ids, page);
+  } else if (wholeDoc) {
+    focusText = relevantParts(safe, ids, opts.question ?? focus.question ?? "", Math.max(400, cap4 - outlineCap - 1e3));
+  }
+  const chain = block ? sectionChain(safe, ids, index) : [];
+  const sectionText = chain.length ? `${chain.map((h) => h.text).join(" > ")} (starts p. ${chain[chain.length - 1].page})` : "(before the first heading, or no headings found)";
+  const pageCount = Array.isArray(safe.pages) && safe.pages.length ? safe.pages.length : Number(safe.stats?.pages) || (ids.length ? Math.max(...ids.map((id) => blocks[id].page || 1)) : 0);
+  const header = (name) => `=== ${name} ===`;
+  const section2 = `${header("Section")}
+${sectionText}`;
+  const focusHead = block ? `${header("Selected part")}
+(${KIND_NAMES[block.type] || "Block"}${noPages ? "" : `, p. ${block.page}`})` : wholeDoc ? `${header("Relevant parts of the document")}` : `${header("Selected part")}
+(${page != null ? `page ${page}` : "no part found"})`;
+  const fixedChars = section2.length + focusHead.length + 400;
+  const focusRoom = Math.max(400, cap4 - fixedChars - 200);
+  const focusBounded = focusText.length > focusRoom ? `${focusText.slice(0, focusRoom).trimEnd()}
+[focus trimmed to fit]` : focusText;
+  const afterFixed = Math.max(0, cap4 - fixedChars - focusBounded.length);
+  const nearbyBudget = Math.min(nearbyCap, afterFixed);
+  const nearbyBody = nearbyText(safe, ids, index, focusIds, nearbyBudget, paras);
+  const captionNear = block && (block.type === "table" || block.type === "figure") ? captionOf(safe, block) : "";
+  const nearby = nearbyBody || captionNear ? `${header("Nearby text")}
+${[captionNear ? `Caption of the selected part: ${captionNear}` : "", nearbyBody].filter(Boolean).join("\n\n")}` : "";
+  const outlineRoom = Math.min(outlineCap, Math.max(0, afterFixed - nearby.length - 120));
+  const outline = noPages ? "" : fitOutline(safe, ids, outlineRoom);
+  const documentPart = `${header("Document outline")}
+Title: ${docTitle || "(untitled)"}${noPages ? "" : `
+Pages: ${pageCount || "?"}`}${outline ? `
+
+${outline}` : ""}`;
+  const context = [documentPart, section2, nearby, `${focusHead}
+${focusBounded}`].filter(Boolean).join("\n\n");
+  return {
+    chip: { label: wholeDoc ? docTitle || "Document" : chipLabel(safe, block, selection), page, docTitle: wholeDoc ? "" : docTitle },
+    context,
+    instructions,
+    prompt: wholeDoc ? "Summarize this document in plain language." : DEFAULT_PROMPT,
+    tokensEstimate: estimateTokens(context) + estimateTokens(instructions),
+    focusIds: [...focusIds],
+    figure: block && block.type === "figure" ? { caption: captionOf(safe, block) } : null,
+    pieces: { focus: focusBounded, section: block ? sectionText : "", nearby: nearby ? nearby.replace(`${header("Nearby text")}
+`, "") : "", docTitle, page, kind: block ? block.type : "" }
+  };
+}
+function imageAlt2(caption, fallback = "Figure") {
+  const text4 = squash3(String(caption ?? "").replace(/[[\]()!]/g, " "));
+  return clip5(text4, 120) || fallback;
+}
+var imageLine = (url, caption, fallback) => `![${imageAlt2(caption, fallback)}](${String(url ?? "").trim()})`;
+function contextWithImage(context, url, caption, fallback) {
+  const c = String(context ?? "");
+  return url ? `Image of the selected part:
+${imageLine(url, caption, fallback)}
+
+${c}` : c;
+}
+var IMAGE_QUESTION_PREFIX = "Look at the image of the selected part. ";
+function promptWithImage(question, url) {
+  const q = String(question ?? "");
+  return url ? `${IMAGE_QUESTION_PREFIX}${q}` : q;
+}
+function imageDoc({ caption = "", title = "" } = {}) {
+  return {
+    schema: "pxd-parse/1",
+    title,
+    noPages: true,
+    pages: [{ n: 1 }],
+    order: ["img"],
+    blocks: { img: { id: "img", type: "figure", page: 1, caption: squash3(caption), text: "" } }
+  };
+}
+function chipText2(chip) {
+  if (!chip) return "";
+  return [chip.label, chip.page != null ? `p. ${chip.page}` : "", chip.docTitle].filter(Boolean).join(" · ");
+}
+function previewText({ instructions = "", context = "", prompt = "" } = {}) {
+  return [`--- instructions ---
+${instructions}`, `--- context ---
+${context}`, `--- question ---
+${prompt}`].join("\n\n");
+}
+function selectionDoc({ text: text4 = "", page = 1, title = "" } = {}) {
+  const body = squash3(text4);
+  return {
+    schema: "pxd-parse/1",
+    title,
+    pages: [{ n: page }],
+    order: ["sel"],
+    blocks: { sel: { id: "sel", type: "para", page, text: body } }
+  };
+}
+function splitCitations(text4) {
+  const out = [];
+  const re = /\[(?:p|pp)\.\s*(\d+(?:\s*[,–-]\s*\d+)*)\]|\[Part\s+(\d+)(?:\s*,\s*pp?\.\s*(\d+(?:\s*[,–-]\s*\d+)*))?\]/gi;
+  let last = 0;
+  let m;
+  const src = String(text4 ?? "");
+  while (m = re.exec(src)) {
+    if (m.index > last) out.push({ text: src.slice(last, m.index) });
+    if (m[2] != null) {
+      const pages = (String(m[3] ?? "").match(/\d+/g) || []).map(Number);
+      out.push({ text: m[0], part: Number(m[2]), ...pages.length ? { page: pages[0], pages } : { page: null, pages: [] } });
+    } else {
+      const pages = (m[1].match(/\d+/g) || []).map(Number);
+      out.push({ text: m[0], page: pages[0], pages });
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < src.length) out.push({ text: src.slice(last) });
+  return out;
+}
+function parseAnswer(answer) {
+  const out = [];
+  let para = [];
+  let list = null;
+  let stack = [];
+  const flush = () => {
+    const text4 = para.join(" ").trim();
+    if (text4) out.push({ type: "p", text: text4 });
+    para = [];
+  };
+  const endList = () => {
+    list = null;
+    stack = [];
+  };
+  for (const raw of String(answer ?? "").replace(/\r/g, "").split("\n")) {
+    const item = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(raw);
+    if (item) {
+      flush();
+      const indent = item[1].replace(/\t/g, "  ").length;
+      const ordered = /\d/.test(item[2]);
+      if (!list || stack.length <= 1 && indent <= stack[0] && list.ordered !== ordered) {
+        list = { type: "list", ordered, items: [] };
+        stack = [];
+        out.push(list);
+      }
+      while (stack.length && stack[stack.length - 1] >= indent) stack.pop();
+      stack.push(indent);
+      const text4 = item[3].trim();
+      if (text4) list.items.push({ text: text4, depth: stack.length - 1 });
+    } else if (!raw.trim()) {
+      flush();
+      endList();
+    } else if (list && /^\s+/.test(raw) && list.items.length) {
+      const last = list.items[list.items.length - 1];
+      last.text = `${last.text} ${raw.trim()}`;
+    } else {
+      endList();
+      para.push(raw.trim());
+    }
+  }
+  flush();
+  return out;
+}
+function answerBlocks(answer) {
+  const out = [];
+  for (const part of parseAnswer(answer)) {
+    if (part.type === "p") out.push({ text: part.text, depth: 0 });
+    else for (const item of part.items) out.push({ text: item.text, depth: item.depth });
+  }
+  return out;
+}
+function answerCardMarkdown({ answer = "", chip = null, imageUrl = "" } = {}) {
+  const blocks = answerBlocks(answer).map((b) => ({ ...b, text: flattenLine(b.text) })).filter((b) => b.text);
+  if (!blocks.length) return "";
+  const head = `AI answer · ${chipText2(chip) || "PDF"}`;
+  const line = (text4, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip5(text4, 1800)), { leading: true })}`;
+  const image = imageUrl ? [`  - ![](${String(imageUrl).trim()})`] : [];
+  return [line(head), ...image, ...blocks.slice(0, 40).map((b) => line(b.text, Math.min(b.depth, 3)))].join("\n");
+}
+var MULTI_TOKEN_CAP = 14e3;
+var MULTI_INSTRUCTIONS = [
+  'You are helping someone compare parts of PDFs. Each part is under "Part N — label".',
+  "Compare and combine the parts to answer. Use only the parts, their captions and the nearby text shown; do not fill gaps from elsewhere.",
+  "Cite as [Part N, p. M] using the part number and the page numbers shown. When every part comes from one document, [p. M] is also fine.",
+  "Name the document when parts come from different PDFs.",
+  "Say so when the parts do not support a claim or a comparison."
+].join("\n");
+var MULTI_IMAGE_INSTRUCTIONS = 'The context starts with images of figure parts, each labelled "Image of Part N". Look at them. Read values off charts (axes, units, series, notable points); say when something is not legible instead of guessing, and mark values read off a scale as approximate.';
+var MULTI_DEFAULT_PROMPT = "How do these parts relate? Compare them and point out any conflict.";
+var MULTI_QUICK_PROMPTS = Object.freeze([
+  { id: "compare", label: "Compare", prompt: MULTI_DEFAULT_PROMPT },
+  { id: "conflict", label: "Conflicts?", prompt: "Do these parts contradict each other or leave a gap? Be specific." },
+  { id: "combine", label: "Summarize together", prompt: "Summarize what these parts say together in three to five sentences." }
+]);
+var IMAGE_QUESTION_PREFIX_MULTI = "Look at the images of the figure parts. ";
+var promptWithImages = (question, any) => any ? `${IMAGE_QUESTION_PREFIX_MULTI}${String(question ?? "")}` : String(question ?? "");
+function buildMultiContext(parts, question = "", opts = {}) {
+  const list = (Array.isArray(parts) ? parts : []).filter(Boolean);
+  const withImages = list.some((p) => p.imageUrl);
+  const instructions = withImages ? `${MULTI_INSTRUCTIONS}
+${MULTI_IMAGE_INSTRUCTIONS}` : MULTI_INSTRUCTIONS;
+  const totalChars = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : MULTI_TOKEN_CAP) * CHARS_PER_TOKEN - instructions.length;
+  const n2 = Math.max(1, list.length);
+  const focusOf = (p) => ({
+    ...p.blockId ? { blockId: p.blockId } : {},
+    ...Array.isArray(p.blockIds) ? { blockIds: p.blockIds } : {},
+    ...p.selection ? { selection: p.selection } : {},
+    ...p.page != null ? { page: p.page } : {},
+    ...p.wholeDoc ? { wholeDoc: true } : {}
+  });
+  const imagesText = list.map((p, i) => p.imageUrl ? `Image of Part ${i + 1}:
+${imageLine(p.imageUrl, p.caption || buildFocusContext(p.doc, focusOf(p)).figure?.caption || p.label, "Figure")}` : "").filter(Boolean).join("\n\n");
+  const assemble = (shareChars, nearbyChars) => {
+    const blocks = list.map((p, i) => {
+      const focus = focusOf(p);
+      const built = buildFocusContext(p.doc, focus, {
+        question,
+        tokenCap: Math.ceil((shareChars + INSTRUCTIONS.length + 900) / CHARS_PER_TOKEN),
+        nearbyParas: 1,
+        nearbyChars,
+        outlineTokens: 50
+      });
+      const pc = built.pieces;
+      const label = p.label || chipText2(built.chip) || `Part ${i + 1}`;
+      const lines = [`=== Part ${i + 1} — ${label} ===`];
+      if (pc.docTitle) lines.push(`Document: ${pc.docTitle}`);
+      if (pc.section && !/^\(before/.test(pc.section)) lines.push(`Section: ${pc.section}`);
+      lines.push(pc.focus);
+      if (pc.nearby) lines.push(`Nearby text:
+${pc.nearby}`);
+      return lines.join("\n");
+    });
+    return [imagesText, ...blocks].filter(Boolean).join("\n\n");
+  };
+  const budget = totalChars - imagesText.length;
+  let share = Math.max(600, Math.floor(budget / n2) - 200);
+  let context = assemble(share, Math.min(NEARBY_CHAR_BUDGET / 2, Math.floor(share * 0.35)));
+  if (context.length > totalChars) context = assemble(share, 0);
+  for (let i = 0; i < 8 && context.length > totalChars; i += 1) {
+    share = Math.max(300, Math.floor(share * Math.max(0.5, totalChars / context.length * 0.95)));
+    context = assemble(share, 0);
+  }
+  return {
+    context,
+    instructions,
+    prompt: MULTI_DEFAULT_PROMPT,
+    tokensEstimate: estimateTokens(context) + estimateTokens(instructions),
+    labels: list.map((p, i) => p.label || `Part ${i + 1}`)
+  };
+}
+
+// src/model/ask-basket.js
+var BASKET_MAX = 8;
+function createBasket(max = BASKET_MAX) {
+  const parts = [];
+  const subs = /* @__PURE__ */ new Set();
+  const tell = () => {
+    for (const fn of [...subs]) {
+      try {
+        fn(parts.slice());
+      } catch {
+      }
+    }
+  };
+  return {
+    max,
+    list: () => parts.slice(),
+    size: () => parts.length,
+    has: (key) => parts.some((p) => p.key === key),
+    // -> "added" | "have" | "full"
+    add(part) {
+      if (!part || !part.key) return "have";
+      if (parts.some((p) => p.key === part.key)) return "have";
+      if (parts.length >= max) return "full";
+      parts.push(part);
+      tell();
+      return "added";
+    },
+    remove(key) {
+      const at = parts.findIndex((p) => p.key === key);
+      if (at < 0) return false;
+      parts.splice(at, 1);
+      tell();
+      return true;
+    },
+    clear() {
+      if (!parts.length) return;
+      parts.length = 0;
+      tell();
+    },
+    subscribe(fn) {
+      subs.add(fn);
+      return () => subs.delete(fn);
+    }
+  };
+}
+var baskets = /* @__PURE__ */ new Map();
+function basketFor(graph) {
+  const id = String(graph || "");
+  let b = baskets.get(id);
+  if (!b) {
+    b = createBasket();
+    baskets.set(id, b);
+  }
+  return b;
+}
+var partKey = ({ pdfUid = "", url = "", blockId = "", selection = "", page = null, wholeDoc = false } = {}) => [pdfUid || url, wholeDoc ? "doc" : blockId || (selection ? `sel:${String(selection).slice(0, 80)}` : page != null ? `pg${page}` : "x")].join("|");
+var BASKET_MESSAGES = Object.freeze({
+  added: "Added to your question",
+  have: "Already in your question",
+  full: `Your question holds ${BASKET_MAX} parts. Remove one first`
+});
+var pillText = (n2) => `${n2} part${n2 === 1 ? "" : "s"} · Ask`;
+function findSourceCard(items, { pinUid = "", pdfUid = "", sourceOf = null } = {}) {
+  const list = [...items || []];
+  if (pinUid) {
+    const hit = list.find((it) => it?.uid === pinUid || it?.target?.uid === pinUid || typeof sourceOf === "function" && sourceOf(it) === pinUid);
+    if (hit) return hit.uid;
+  }
+  if (pdfUid) {
+    const hit = list.find((it) => it?.uid === pdfUid && it.kind === "pdf") || list.find((it) => it?.uid === pdfUid);
+    if (hit) return hit.uid;
+  }
+  return "";
+}
+function makePart({ doc, focus = {}, pdfUid = "", url = "", image = null, source = null, kind = "pdf" } = {}) {
+  const chip = buildFocusContext(doc, focus).chip;
+  const whole2 = focus.wholeDoc === true && !focus.blockId && !focus.selection && !Number.isInteger(focus.page);
+  const label = whole2 ? `Whole document · ${chip.label || "PDF"}` : chipText2(chip);
+  return {
+    key: partKey({ pdfUid, url, blockId: focus.blockId || "", selection: focus.selection || "", page: focus.page ?? null, wholeDoc: whole2 }),
+    kind,
+    label: label || "Part",
+    docTitle: whole2 ? chip.label : chip.docTitle || "",
+    page: chip.page ?? null,
+    pdfUid,
+    url,
+    blockId: focus.blockId || "",
+    ...focus.blockIds ? { blockIds: focus.blockIds } : {},
+    selection: focus.selection || "",
+    wholeDoc: whole2,
+    doc,
+    image: image || null,
+    source: source || {}
+  };
+}
+
+// src/view/parse-actions.js
 init_parse_to_roam_md();
 init_parse_schema();
 init_roam_table();
@@ -51887,7 +52692,7 @@ function placementContent(doc, ids, act, extra = null) {
   const text4 = blocks.map((b) => b.type === "list" ? (b.items || []).map((item) => item.text).join(" ") : b.text || b.latex || "").join(" ");
   return { content: { kind: "text", text: text4, page: first.page }, width: CARD_SIZE.w, height: CARD_SIZE.h };
 }
-function createParseActions({ session, store, placeBeside, toast, select, show, focus, upload, toWorld } = {}) {
+function createParseActions({ session, store, placeBeside, toast, select, show, focus, upload, toWorld, linkSources } = {}) {
   const say = (message) => {
     try {
       if (typeof toast === "function") toast(message);
@@ -51920,6 +52725,21 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     return { x: Number.isFinite(at?.x) ? at.x : 0, y: Number.isFinite(at?.y) ? at.y : 0 };
   };
   const fnFormat = () => session?.footnoteFormat?.() ?? "off";
+  const linkAnswer = async (answerUid, sources) => {
+    try {
+      if (!answerUid || typeof session?.addEdge !== "function") return;
+      if (typeof linkSources === "function" && linkSources() === false) return;
+      const items = session.board?.items ? [...session.board.items.values()] : [];
+      const used = /* @__PURE__ */ new Set([answerUid]);
+      for (const src of sources) {
+        const to = findSourceCard(items, { pinUid: src.pinUid, pdfUid: src.pdfUid, sourceOf: (it) => sourcePinOf(it?.content)?.uid || "" });
+        if (!to || used.has(to)) continue;
+        used.add(to);
+        await session.addEdge({ from: answerUid, to, label: "source", dir: "one" });
+      }
+    } catch {
+    }
+  };
   const where = (payload, size) => {
     const c = payload?.client;
     if (c && Number.isFinite(c.x) && Number.isFinite(c.y) && typeof toWorld === "function") {
@@ -52037,19 +52857,26 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     async insertAnswerCard(payload) {
       const markdown = String(payload?.markdown || "").trim();
       if (!markdown) return { ok: false, reason: "empty" };
-      let sourceUid = typeof payload.sourceUid === "string" ? payload.sourceUid : "";
-      if (!sourceUid && payload.pin && typeof session?.ensurePdfPin === "function") {
-        try {
-          sourceUid = (await session.ensurePdfPin(payload.pin))?.uid || "";
-        } catch {
-          sourceUid = "";
+      const given = Array.isArray(payload.sources) && payload.sources.length ? payload.sources : [{ pdfUid: payload.pdfUid, pin: payload.pin, sourceUid: payload.sourceUid }];
+      const resolved = [];
+      for (const src of given) {
+        let uid = typeof src?.sourceUid === "string" ? src.sourceUid : "";
+        if (!uid && src?.pin && typeof session?.ensurePdfPin === "function") {
+          try {
+            uid = (await session.ensurePdfPin(src.pin))?.uid || "";
+          } catch {
+            uid = "";
+          }
         }
+        resolved.push({ uid, pinUid: src?.pin ? uid : "", pdfUid: typeof src?.pdfUid === "string" ? src.pdfUid : "" });
       }
+      const uids = [...new Set(resolved.map((r) => r.uid).filter(Boolean))];
       const at = where(payload, CARD_SIZE);
-      const res = await session?.insertParsedCard?.({ ...at, markdown, ...sourceUid ? { sourceUid } : {} });
+      const res = await session?.insertParsedCard?.({ ...at, markdown, ...uids[0] ? { sourceUid: uids[0] } : {}, ...uids.length > 1 ? { sourceUids: uids.slice(1) } : {} });
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);
         say("Answer card inserted");
+        await linkAnswer(res.uid, resolved);
       }
       return res || { ok: false, reason: "no-session" };
     },
@@ -53997,7 +54824,7 @@ function blockConfidence(raw) {
   if (!Number.isFinite(score)) return null;
   return Math.max(0, Math.min(1, score));
 }
-function imageLine(line) {
+function imageLine2(line) {
   const match = /^\s*!\[[^\]]*\]\(([^)\s]+)\)\s*$/.exec(line || "");
   return match ? { id: match[1] } : null;
 }
@@ -54008,7 +54835,7 @@ function tablePlaceholder(line) {
 function plainLine(line) {
   const text4 = String(line || "");
   if (!text4.trim()) return false;
-  if (imageLine(text4) || tablePlaceholder(text4)) return false;
+  if (imageLine2(text4) || tablePlaceholder(text4)) return false;
   if (/^(#{1,6})\s+/.test(text4) || /^(\s*)([-*+]|\d+\.)\s+\S/.test(text4)) return false;
   if (/<table\b/i.test(text4) || text4.includes("|")) return false;
   return true;
@@ -54068,7 +54895,7 @@ function pageNodes(page) {
   const consumed = /* @__PURE__ */ new Set();
   const captions = /* @__PURE__ */ new Map();
   for (let i = 0; i < lines.length; i += 1) {
-    if (!imageLine(lines[i])) continue;
+    if (!imageLine2(lines[i])) continue;
     const below = neighborBelow(lines, i);
     const above = below < 0 ? captionAbove(lines, i) : -1;
     const at = below >= 0 ? below : above;
@@ -54086,7 +54913,7 @@ function pageNodes(page) {
   };
   for (let i = 0; i < lines.length; i += 1) {
     if (consumed.has(i)) continue;
-    const image = imageLine(lines[i]);
+    const image = imageLine2(lines[i]);
     if (image) {
       flush();
       const found = byId(page?.images, image.id);
@@ -54482,594 +55309,55 @@ function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTe
   } };
 }
 
-// src/model/ai-context.js
-init_parse_to_roam_md();
-init_pdf();
-var CONTEXT_TOKEN_CAP = 12e3;
-var OUTLINE_TOKEN_CAP = 1500;
-var NEARBY_CHAR_BUDGET = 4e3;
-var NEARBY_PARAS = 2;
-var CHARS_PER_TOKEN = 4;
-var PARA_CLIP = 1200;
-var INSTRUCTIONS = [
-  "You are helping someone read one part of a PDF.",
-  'Analyse the part under "Selected part". Use "Document outline", "Section" and "Nearby text" only to interpret it, not as the subject.',
-  "Cite pages as [p. N] using the page numbers shown in the context.",
-  "If the selected part alone does not support a claim, say so instead of filling the gap from elsewhere.",
-  "Refer to the selected part as 'this table', 'this paragraph' or 'this figure' (as appropriate); never mention section labels."
-].join("\n");
-var DOC_INSTRUCTIONS = [
-  "You are helping someone read a PDF as a whole.",
-  'Answer about the document as a whole. Use "Document outline" to locate things, and "Relevant parts of the document" for what the document says.',
-  "Cite pages as [p. N] using the page numbers shown in the context.",
-  'The parts under "Relevant parts of the document" were chosen for the question and are not the whole document. When they do not cover something, say so instead of filling the gap from elsewhere.',
-  "Refer to it as 'this document'; never mention section labels."
-].join("\n");
-var FIGURE_INSTRUCTIONS = [
-  "The context starts with the image of the selected part. Look at it.",
-  "Read values off the chart: axes and their units, series or legend entries, and notable points (peaks, drops, crossings).",
-  "Say when something is not legible instead of guessing. Do not invent numbers that are not visible; mark estimates read off a scale as approximate.",
-  "Cite [p. N] for claims that rest on the document text; the caption and nearby text are in the context."
-].join("\n");
-var withImageInstructions = (instructions) => `${instructions}
-${FIGURE_INSTRUCTIONS}`;
-var DEFAULT_PROMPT = "Explain this part in plain language.";
-var QUICK_PROMPTS = Object.freeze([
-  { id: "explain", label: "Explain", prompt: "Explain this part in plain language." },
-  { id: "summarize", label: "Summarize", prompt: "Summarize this part in three to five sentences." },
-  { id: "numbers", label: "Key numbers", prompt: "List the key numbers in this part with their units and what each one measures." },
-  { id: "unusual", label: "What's unusual?", prompt: "What is unusual, surprising or inconsistent in this part?" }
+// src/model/ask-models.js
+var MODEL_SETTING_DEFAULT = "auto";
+var MODEL_PICK_KEY = "pxd-ask-model";
+var AUTO_ORDER = Object.freeze([
+  "Claude Sonnet 5.5",
+  "Claude Opus 5.5",
+  "Claude Sonnet 5",
+  "Gemini 3.8 Flash",
+  "Gemini 3.1 Pro"
 ]);
-var squash3 = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
-var clip5 = (text4, max) => {
-  const t = String(text4 ?? "");
-  return t.length <= max ? t : `${t.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+var norm2 = (s) => String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+var named = (m, want) => {
+  const w = norm2(want);
+  return Boolean(w) && (norm2(m.name) === w || norm2(m.id) === w);
 };
-var estimateTokens = (text4) => Math.ceil(String(text4 ?? "").length / CHARS_PER_TOKEN);
-function orderOf2(doc) {
-  const blocks = doc?.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
-  const order = Array.isArray(doc?.order) ? doc.order : Object.keys(blocks);
-  return order.filter((id) => blocks[id]);
-}
-function blockText2(block) {
-  if (!block) return "";
-  if (block.type === "list") return (block.items || []).map((item) => squash3(item.text)).filter(Boolean).join("; ");
-  if (block.type === "table") return (block.cells || []).map((cell) => squash3(cell.text)).filter(Boolean).join(" ");
-  return squash3(block.text || block.latex || "");
-}
-function captionOf(doc, block) {
-  if (!block) return "";
-  const blocks = doc?.blocks || {};
-  for (const id of orderOf2(doc)) {
-    const other = blocks[id];
-    if (other.type === "caption" && other.for === block.id) return squash3(other.text);
+var providerIs = (m, re) => re.test(`${m.provider || ""} ${m.id || ""} ${m.name || ""}`);
+function graphOfWindow(w) {
+  try {
+    return /#\/app\/([^/?#]+)/.exec(String(w?.location?.hash || ""))?.[1] || "";
+  } catch {
+    return "";
   }
-  if (typeof block.caption === "string") {
-    const hit = blocks[block.caption];
-    return squash3(hit ? hit.text : block.caption);
+}
+var modelPickKey = (graph) => `${MODEL_PICK_KEY}:${graph || ""}`;
+function pickAskModel(models, { setting = MODEL_SETTING_DEFAULT, remembered = "", liveDefault = "", needImage = false } = {}) {
+  const list = Array.isArray(models) ? models : [];
+  if (!list.length) return "";
+  const ok = (m) => Boolean(m) && (!needImage || m.imageInput);
+  const pickFrom = (pool) => pool.find(ok) || null;
+  const mine = list.find((m) => m.id === remembered);
+  if (ok(mine)) return mine.id;
+  const want = norm2(setting);
+  if (want && want !== MODEL_SETTING_DEFAULT) {
+    const hit = list.find((m) => named(m, setting) && ok(m));
+    if (hit) return hit.id;
   }
-  if (block.caption && typeof block.caption === "object") return squash3(block.caption.text);
-  return "";
-}
-function attachedCaptionIds(doc, block) {
-  const ids = /* @__PURE__ */ new Set();
-  const blocks = doc?.blocks || {};
-  if (!block) return ids;
-  for (const id of orderOf2(doc)) {
-    if (blocks[id].type === "caption" && blocks[id].for === block.id) ids.add(id);
+  for (const name of AUTO_ORDER) {
+    const hit = list.find((m) => named(m, name) && ok(m));
+    if (hit) return hit.id;
   }
-  if (typeof block.caption === "string" && blocks[block.caption]) ids.add(block.caption);
-  return ids;
-}
-var KIND_NAMES = { table: "Table", figure: "Figure", para: "Paragraph", list: "List", heading: "Heading", caption: "Caption", formula: "Formula", code: "Code", footnote: "Footnote", scan: "Scanned page" };
-var LABEL_RE = /^((?:table|figure|fig\.?|chart|plate|exhibit)\s+[A-Za-z]?\d+(?:\.\d+)?[A-Za-z]?)/i;
-function chipLabel(doc, block, selection) {
-  if (selection) return "Selection";
-  if (!block) return "Page";
-  if (block.type === "table" || block.type === "figure" || block.type === "caption") {
-    const cap4 = block.type === "caption" ? squash3(block.text) : captionOf(doc, block);
-    const m = LABEL_RE.exec(cap4);
-    if (m) return m[1].replace(/^fig\.?\s/i, "Figure ").replace(/\s+/g, " ");
-  }
-  if (block.type === "heading") return `Heading: ${clip5(squash3(block.text), 40)}`;
-  return KIND_NAMES[block.type] || "Block";
-}
-function findSelectionBlock(doc, selection, page = null) {
-  const needle = squash3(selection).toLowerCase();
-  if (!needle) return null;
-  const blocks = doc?.blocks || {};
-  const probe = needle.length > 120 ? needle.slice(0, 120) : needle;
-  const ids = orderOf2(doc);
-  const hit = (pool) => pool.find((id) => {
-    const b = blocks[id];
-    if (!b) return false;
-    return blockText2(b).toLowerCase().includes(probe);
-  });
-  if (page != null) {
-    const found2 = hit(ids.filter((id) => blocks[id].page === page));
-    if (found2) return blocks[found2];
-  }
-  const found = hit(ids);
-  return found ? blocks[found] : null;
-}
-function sectionChain(doc, ids, index) {
-  const blocks = doc.blocks;
-  const stack = [];
-  for (let i = 0; i <= index && i < ids.length; i += 1) {
-    const b = blocks[ids[i]];
-    if (b.type !== "heading") continue;
-    const level = Math.max(1, Number(b.level) || 1);
-    while (stack.length && stack[stack.length - 1].level >= level) stack.pop();
-    stack.push({ level, text: squash3(b.text), page: b.page });
-  }
-  return stack;
-}
-function outlineLines(doc, ids) {
-  const blocks = doc.blocks;
-  const heads = [];
-  const items = [];
-  for (const id of ids) {
-    const b = blocks[id];
-    if (b.type === "heading" && squash3(b.text)) {
-      const level = Math.min(Math.max(Number(b.level) || 1, 1), 6);
-      heads.push({ level, line: `${"  ".repeat(level - 1)}- ${clip5(squash3(b.text), 100)} (p. ${b.page})` });
-    } else if (b.type === "table" || b.type === "figure") {
-      const cap4 = captionOf(doc, b);
-      items.push(`- ${b.type === "table" ? "Table" : "Figure"}: ${cap4 ? clip5(cap4, 110) : "(no caption)"} (p. ${b.page})`);
-    }
-  }
-  return { heads, items };
-}
-function fitOutline(doc, ids, maxChars) {
-  const { heads, items } = outlineLines(doc, ids);
-  if (maxChars <= 0) return "";
-  const out = [];
-  let used = 0;
-  const push = (line) => {
-    if (used + line.length + 1 > maxChars) return false;
-    out.push(line);
-    used += line.length + 1;
-    return true;
-  };
-  const kept = /* @__PURE__ */ new Set();
-  for (let level = 1; level <= 6; level += 1) {
-    for (let i = 0; i < heads.length; i += 1) {
-      if (heads[i].level !== level) continue;
-      if (used + heads[i].line.length + 1 > maxChars - 60) break;
-      kept.add(i);
-      used += heads[i].line.length + 1;
-    }
-  }
-  used = 0;
-  out.push("Headings:");
-  used += 10;
-  let skipped = 0;
-  heads.forEach((h, i) => {
-    if (kept.has(i)) push(h.line);
-    else skipped += 1;
-  });
-  if (skipped) push(`- …${skipped} more headings`);
-  if (items.length) {
-    push("Tables and figures:");
-    let shown = 0;
-    for (const line of items) {
-      if (!push(line)) break;
-      shown += 1;
-    }
-    if (shown < items.length) push(`- …${items.length - shown} more`);
-  }
-  return out.join("\n");
-}
-function nearbyText(doc, ids, index, focusIds, budget, paras) {
-  if (budget <= 0 || index < 0) return "";
-  const blocks = doc.blocks;
-  const usable = (id) => {
-    if (focusIds.has(id)) return false;
-    const b = blocks[id];
-    return (b.type === "para" || b.type === "list") && blockText2(b);
-  };
-  const before = [];
-  for (let i = index - 1; i >= 0 && before.length < paras; i -= 1) if (usable(ids[i])) before.push(ids[i]);
-  const after = [];
-  for (let i = index + 1; i < ids.length && after.length < paras; i += 1) if (usable(ids[i])) after.push(ids[i]);
-  const pick = [];
-  for (let k = 0; k < paras; k += 1) {
-    if (before[k]) pick.push({ id: before[k], side: "before" });
-    if (after[k]) pick.push({ id: after[k], side: "after" });
-  }
-  const chosen = [];
-  let used = 0;
-  for (const { id, side: side2 } of pick) {
-    const b = blocks[id];
-    const room = budget - used;
-    if (room < 80) break;
-    const text4 = clip5(blockText2(b), Math.min(PARA_CLIP, room - 30));
-    const line = `[p. ${b.page}] ${text4}`;
-    used += line.length + 2;
-    chosen.push({ id, side: side2, line });
-  }
-  const pos = (id) => ids.indexOf(id);
-  chosen.sort((a, b) => pos(a.id) - pos(b.id));
-  return chosen.map((c) => c.line).join("\n\n");
-}
-function focusBody(doc, block) {
-  if (!block) return "";
-  if (block.type === "table") {
-    const md = tableToMarkdown(block);
-    const cap4 = captionOf(doc, block);
-    return [cap4 ? `Caption: ${cap4}` : "", md || "(table with no readable cells)"].filter(Boolean).join("\n\n");
-  }
-  if (block.type === "figure") {
-    const cap4 = captionOf(doc, block);
-    const inner = squash3(block.text);
-    return [`Figure caption: ${cap4 || "(none)"}`, inner && inner !== cap4 ? `Text inside the figure: ${inner}` : ""].filter(Boolean).join("\n");
-  }
-  if (block.type === "list") {
-    return (block.items || []).map((item, i) => `${block.ordered ? `${i + 1}.` : "-"} ${squash3(item.text)}`).join("\n");
-  }
-  if (block.type === "formula") return block.latex ? `$$${block.latex}$$` : squash3(block.text);
-  if (block.type === "code") return `\`\`\`
-${block.text ?? ""}
-\`\`\``;
-  return squash3(block.text ?? "");
-}
-function pageFocus(doc, ids, page) {
-  const parts = [];
-  for (const id of ids) {
-    const b = doc.blocks[id];
-    if (b.page !== page) continue;
-    const text4 = focusBody(doc, b);
-    if (text4) parts.push(text4);
-  }
-  return parts.join("\n\n");
-}
-var STOPWORDS = new Set("a an and are as at be but by for from has have he her his how i if in into is it its of on or our she so than that the their them then there these they this to was we were what when where which who why will with you your do does did can could should would not no".split(" "));
-var GENERIC_WORDS = new Set("summarize summarise summary overview describe explain tell me about document pdf paper report file main key points point plain language simple simply words sentences sentence three five short brief briefly give list whole entire all".split(" "));
-function tokenize(text4) {
-  const out = [];
-  for (const w of String(text4 ?? "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || []) {
-    if (w.length >= 2 && !STOPWORDS.has(w)) out.push(w);
-  }
-  return out;
-}
-function isGenericQuestion(question) {
-  const words = tokenize(question);
-  return !words.length || words.every((w) => GENERIC_WORDS.has(w));
-}
-var TABLE_CLIP = 3e3;
-function retrievalParts(doc, ids) {
-  const blocks = doc.blocks;
-  const caps = /* @__PURE__ */ new Map();
-  const attached = /* @__PURE__ */ new Set();
-  for (const id of ids) {
-    const b = blocks[id];
-    if (b.type === "caption" && b.for && blocks[b.for] && !caps.has(b.for)) {
-      caps.set(b.for, squash3(b.text));
-      attached.add(id);
-    }
-  }
-  const parts = [];
-  ids.forEach((id, order) => {
-    if (attached.has(id)) return;
-    const b = blocks[id];
-    let cap4 = "";
-    if (b.type === "table" || b.type === "figure") {
-      cap4 = caps.get(id) || "";
-      if (!cap4 && typeof b.caption === "string") {
-        const hit = blocks[b.caption];
-        cap4 = squash3(hit ? hit.text : b.caption);
-      } else if (!cap4 && b.caption && typeof b.caption === "object") cap4 = squash3(b.caption.text);
-    }
-    const text4 = blockText2(b);
-    const scored = cap4 ? `${cap4} ${text4}` : text4;
-    if (!scored) return;
-    parts.push({ id, order, block: b, cap: cap4, tokens: tokenize(scored) });
-  });
-  return parts;
-}
-function bm25(parts, queryTokens) {
-  const k1 = 1.2;
-  const b = 0.75;
-  const uniq = [...new Set(queryTokens)];
-  const n2 = parts.length;
-  const df = new Map(uniq.map((t) => [t, 0]));
-  let total = 0;
-  const tfs = parts.map((part) => {
-    total += part.tokens.length;
-    const tf = /* @__PURE__ */ new Map();
-    for (const t of part.tokens) if (df.has(t)) tf.set(t, (tf.get(t) || 0) + 1);
-    for (const t of tf.keys()) df.set(t, df.get(t) + 1);
-    return tf;
-  });
-  const avg = total / Math.max(1, n2);
-  return parts.map((part, i) => {
-    const tf = tfs[i];
-    if (!tf.size) return 0;
-    const len = part.tokens.length;
-    let score = 0;
-    for (const [t, f] of tf) {
-      const d = df.get(t);
-      const idf = Math.log(1 + (n2 - d + 0.5) / (d + 0.5));
-      score += idf * (f * (k1 + 1) / (f + k1 * (1 - b + b * (len / avg))));
-    }
-    return score;
-  });
-}
-function renderPart(part) {
-  const b = part.block;
-  const kind = KIND_NAMES[b.type] || "Block";
-  let body = focusBody(null, b);
-  if (b.type === "table") {
-    const md = tableToMarkdown(b);
-    body = [part.cap ? `Caption: ${part.cap}` : "", md || "(table with no readable cells)"].filter(Boolean).join("\n");
-  } else if (b.type === "figure") {
-    const inner = squash3(b.text);
-    body = [`Figure caption: ${part.cap || "(none)"}`, inner && inner !== part.cap ? `Text inside the figure: ${inner}` : ""].filter(Boolean).join("\n");
-  }
-  return `${kind} [p. ${b.page}] ${clip5(body, b.type === "table" ? TABLE_CLIP : PARA_CLIP)}`;
-}
-function relevantParts(doc, ids, question, budget) {
-  const parts = retrievalParts(doc, ids);
-  if (!parts.length) return "";
-  const rendered = /* @__PURE__ */ new Map();
-  const line = (part) => {
-    let text4 = rendered.get(part.id);
-    if (text4 == null) {
-      text4 = renderPart(part);
-      rendered.set(part.id, text4);
-    }
-    return text4;
-  };
-  const picked = /* @__PURE__ */ new Set();
-  let used = 0;
-  const take = (part, force = false) => {
-    if (picked.has(part.id)) return true;
-    const text4 = line(part);
-    if (!force && used + text4.length + 2 > budget) return false;
-    picked.add(part.id);
-    used += text4.length + 2;
-    return true;
-  };
-  const firstHeading = parts.find((p) => p.block.type === "heading");
-  if (firstHeading) take(firstHeading);
-  const firstPara = parts.find((p) => p.block.type === "para");
-  if (firstPara) take(firstPara);
-  const abstractAt = parts.findIndex((p) => p.block.type === "heading" && /^\s*(abstract|summary|executive summary)\b/i.test(p.block.text || ""));
-  if (abstractAt >= 0) {
-    const next = parts.slice(abstractAt + 1).find((p) => p.block.type === "para");
-    if (next) take(next);
-  }
-  const generic = isGenericQuestion(question);
-  if (!generic) {
-    const scores = bm25(parts, tokenize(question));
-    const ranked = parts.map((part, i) => ({ part, score: scores[i] })).filter((r) => r.score > 0).sort((x, y) => y.score - x.score || x.part.order - y.part.order);
-    for (const { part } of ranked) {
-      if (picked.has(part.id)) continue;
-      take(part);
-      if (used >= budget - 80) break;
-    }
-  }
-  if (generic || picked.size <= 3) {
-    const headLevels = parts.filter((p) => p.block.type === "heading").map((p) => Math.max(1, Number(p.block.level) || 1));
-    const top = headLevels.length ? Math.min(...headLevels) : 1;
-    const topLevel = top === 1 && headLevels.filter((l) => l === 1).length <= 1 ? 2 : top;
-    let afterTop = false;
-    for (const part of parts) {
-      const b = part.block;
-      if (b.type === "heading") afterTop = (Number(b.level) || 1) <= topLevel;
-      else if (afterTop && (b.type === "para" || b.type === "list")) {
-        take(part);
-        afterTop = false;
-      }
-    }
-    for (const part of parts) {
-      if (part.block.type === "table" || part.block.type === "figure") take(part);
-    }
-    for (const part of parts) {
-      if (used >= budget - 80) break;
-      if (part.block.type !== "caption") take(part);
-    }
-  }
-  return parts.filter((p) => picked.has(p.id)).map(line).join("\n\n");
-}
-function buildFocusContext(doc, focus = {}, opts = {}) {
-  const outlineCap = (Number(opts.outlineTokens) > 0 ? Number(opts.outlineTokens) : OUTLINE_TOKEN_CAP) * CHARS_PER_TOKEN;
-  const nearbyCap = Number(opts.nearbyChars) >= 0 ? Number(opts.nearbyChars) : NEARBY_CHAR_BUDGET;
-  const paras = Number.isInteger(opts.nearbyParas) && opts.nearbyParas >= 0 ? opts.nearbyParas : NEARBY_PARAS;
-  const safe = doc && typeof doc === "object" ? doc : { blocks: {}, order: [] };
-  const ids = orderOf2(safe);
-  const blocks = safe.blocks || {};
-  const selection = squash3(focus.selection);
-  let block = focus.blockId ? blocks[focus.blockId] || null : null;
-  if (!block && Array.isArray(focus.blockIds)) block = blocks[focus.blockIds.find((id) => blocks[id])] || null;
-  if (!block && selection) block = findSelectionBlock(safe, selection, focus.page ?? null);
-  const noPages = safe.noPages === true;
-  const page = noPages ? null : block ? block.page : Number.isInteger(focus.page) ? focus.page : null;
-  const extraIds = Array.isArray(focus.blockIds) ? focus.blockIds.filter((id) => blocks[id]) : [];
-  const focusIds = new Set(extraIds.length ? extraIds : block ? [block.id] : []);
-  for (const id of attachedCaptionIds(safe, block)) focusIds.add(id);
-  const index = block ? ids.indexOf(block.id) : -1;
-  const wholeDoc = focus.wholeDoc === true && !block && !selection && !Number.isInteger(focus.page);
-  const instructions = wholeDoc ? DOC_INSTRUCTIONS : INSTRUCTIONS;
-  const cap4 = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN - instructions.length;
-  const docTitle = parsedDocTitle(safe) || squash3(safe.title) || "";
-  let focusText = "";
-  if (selection) {
-    focusText = `Selected text:
-> ${clip5(selection, 6e3)}`;
-    if (block && squash3(blockText2(block)) !== selection) {
-      focusText += `
-
-The block that contains it (${KIND_NAMES[block.type] || "block"}, p. ${block.page}):
-${focusBody(safe, block)}`;
-    }
-  } else if (extraIds.length > 1) {
-    focusText = extraIds.map((id) => focusBody(safe, blocks[id])).filter(Boolean).join("\n\n");
-  } else if (block) {
-    focusText = focusBody(safe, block);
-  } else if (page != null) {
-    focusText = pageFocus(safe, ids, page);
-  } else if (wholeDoc) {
-    focusText = relevantParts(safe, ids, opts.question ?? focus.question ?? "", Math.max(400, cap4 - outlineCap - 1e3));
-  }
-  const chain = block ? sectionChain(safe, ids, index) : [];
-  const sectionText = chain.length ? `${chain.map((h) => h.text).join(" > ")} (starts p. ${chain[chain.length - 1].page})` : "(before the first heading, or no headings found)";
-  const pageCount = Array.isArray(safe.pages) && safe.pages.length ? safe.pages.length : Number(safe.stats?.pages) || (ids.length ? Math.max(...ids.map((id) => blocks[id].page || 1)) : 0);
-  const header = (name) => `=== ${name} ===`;
-  const section2 = `${header("Section")}
-${sectionText}`;
-  const focusHead = block ? `${header("Selected part")}
-(${KIND_NAMES[block.type] || "Block"}${noPages ? "" : `, p. ${block.page}`})` : wholeDoc ? `${header("Relevant parts of the document")}` : `${header("Selected part")}
-(${page != null ? `page ${page}` : "no part found"})`;
-  const fixedChars = section2.length + focusHead.length + 400;
-  const focusRoom = Math.max(400, cap4 - fixedChars - 200);
-  const focusBounded = focusText.length > focusRoom ? `${focusText.slice(0, focusRoom).trimEnd()}
-[focus trimmed to fit]` : focusText;
-  const afterFixed = Math.max(0, cap4 - fixedChars - focusBounded.length);
-  const nearbyBudget = Math.min(nearbyCap, afterFixed);
-  const nearbyBody = nearbyText(safe, ids, index, focusIds, nearbyBudget, paras);
-  const captionNear = block && (block.type === "table" || block.type === "figure") ? captionOf(safe, block) : "";
-  const nearby = nearbyBody || captionNear ? `${header("Nearby text")}
-${[captionNear ? `Caption of the selected part: ${captionNear}` : "", nearbyBody].filter(Boolean).join("\n\n")}` : "";
-  const outlineRoom = Math.min(outlineCap, Math.max(0, afterFixed - nearby.length - 120));
-  const outline = noPages ? "" : fitOutline(safe, ids, outlineRoom);
-  const documentPart = `${header("Document outline")}
-Title: ${docTitle || "(untitled)"}${noPages ? "" : `
-Pages: ${pageCount || "?"}`}${outline ? `
-
-${outline}` : ""}`;
-  const context = [documentPart, section2, nearby, `${focusHead}
-${focusBounded}`].filter(Boolean).join("\n\n");
-  return {
-    chip: { label: wholeDoc ? docTitle || "Document" : chipLabel(safe, block, selection), page, docTitle: wholeDoc ? "" : docTitle },
-    context,
-    instructions,
-    prompt: wholeDoc ? "Summarize this document in plain language." : DEFAULT_PROMPT,
-    tokensEstimate: estimateTokens(context) + estimateTokens(instructions),
-    focusIds: [...focusIds],
-    figure: block && block.type === "figure" ? { caption: captionOf(safe, block) } : null
-  };
-}
-function imageAlt2(caption, fallback = "Figure") {
-  const text4 = squash3(String(caption ?? "").replace(/[[\]()!]/g, " "));
-  return clip5(text4, 120) || fallback;
-}
-var imageLine2 = (url, caption, fallback) => `![${imageAlt2(caption, fallback)}](${String(url ?? "").trim()})`;
-function contextWithImage(context, url, caption, fallback) {
-  const c = String(context ?? "");
-  return url ? `Image of the selected part:
-${imageLine2(url, caption, fallback)}
-
-${c}` : c;
-}
-var IMAGE_QUESTION_PREFIX = "Look at the image of the selected part. ";
-function promptWithImage(question, url) {
-  const q = String(question ?? "");
-  return url ? `${IMAGE_QUESTION_PREFIX}${q}` : q;
-}
-function imageDoc({ caption = "", title = "" } = {}) {
-  return {
-    schema: "pxd-parse/1",
-    title,
-    noPages: true,
-    pages: [{ n: 1 }],
-    order: ["img"],
-    blocks: { img: { id: "img", type: "figure", page: 1, caption: squash3(caption), text: "" } }
-  };
-}
-function chipText2(chip) {
-  if (!chip) return "";
-  return [chip.label, chip.page != null ? `p. ${chip.page}` : "", chip.docTitle].filter(Boolean).join(" · ");
-}
-function previewText({ instructions = "", context = "", prompt = "" } = {}) {
-  return [`--- instructions ---
-${instructions}`, `--- context ---
-${context}`, `--- question ---
-${prompt}`].join("\n\n");
-}
-function selectionDoc({ text: text4 = "", page = 1, title = "" } = {}) {
-  const body = squash3(text4);
-  return {
-    schema: "pxd-parse/1",
-    title,
-    pages: [{ n: page }],
-    order: ["sel"],
-    blocks: { sel: { id: "sel", type: "para", page, text: body } }
-  };
-}
-function splitCitations(text4) {
-  const out = [];
-  const re = /\[(?:p|pp)\.\s*(\d+(?:\s*[,–-]\s*\d+)*)\]/gi;
-  let last = 0;
-  let m;
-  const src = String(text4 ?? "");
-  while (m = re.exec(src)) {
-    if (m.index > last) out.push({ text: src.slice(last, m.index) });
-    const pages = (m[1].match(/\d+/g) || []).map(Number);
-    out.push({ text: m[0], page: pages[0], pages });
-    last = m.index + m[0].length;
-  }
-  if (last < src.length) out.push({ text: src.slice(last) });
-  return out;
-}
-function parseAnswer(answer) {
-  const out = [];
-  let para = [];
-  let list = null;
-  let stack = [];
-  const flush = () => {
-    const text4 = para.join(" ").trim();
-    if (text4) out.push({ type: "p", text: text4 });
-    para = [];
-  };
-  const endList = () => {
-    list = null;
-    stack = [];
-  };
-  for (const raw of String(answer ?? "").replace(/\r/g, "").split("\n")) {
-    const item = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(raw);
-    if (item) {
-      flush();
-      const indent = item[1].replace(/\t/g, "  ").length;
-      const ordered = /\d/.test(item[2]);
-      if (!list || stack.length <= 1 && indent <= stack[0] && list.ordered !== ordered) {
-        list = { type: "list", ordered, items: [] };
-        stack = [];
-        out.push(list);
-      }
-      while (stack.length && stack[stack.length - 1] >= indent) stack.pop();
-      stack.push(indent);
-      const text4 = item[3].trim();
-      if (text4) list.items.push({ text: text4, depth: stack.length - 1 });
-    } else if (!raw.trim()) {
-      flush();
-      endList();
-    } else if (list && /^\s+/.test(raw) && list.items.length) {
-      const last = list.items[list.items.length - 1];
-      last.text = `${last.text} ${raw.trim()}`;
-    } else {
-      endList();
-      para.push(raw.trim());
-    }
-  }
-  flush();
-  return out;
-}
-function answerBlocks(answer) {
-  const out = [];
-  for (const part of parseAnswer(answer)) {
-    if (part.type === "p") out.push({ text: part.text, depth: 0 });
-    else for (const item of part.items) out.push({ text: item.text, depth: item.depth });
-  }
-  return out;
-}
-function answerCardMarkdown({ answer = "", chip = null, imageUrl = "" } = {}) {
-  const blocks = answerBlocks(answer).map((b) => ({ ...b, text: flattenLine(b.text) })).filter((b) => b.text);
-  if (!blocks.length) return "";
-  const head = `AI answer · ${chipText2(chip) || "PDF"}`;
-  const line = (text4, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip5(text4, 1800)), { leading: true })}`;
-  const image = imageUrl ? [`  - ![](${String(imageUrl).trim()})`] : [];
-  return [line(head), ...image, ...blocks.slice(0, 40).map((b) => line(b.text, Math.min(b.depth, 3)))].join("\n");
+  const anthropic = pickFrom(list.filter((m) => providerIs(m, /anthropic|claude/i)));
+  if (anthropic) return anthropic.id;
+  const google = pickFrom(list.filter((m) => providerIs(m, /google|gemini/i)));
+  if (google) return google.id;
+  const def = list.find((m) => m.id === liveDefault);
+  if (ok(def)) return def.id;
+  const any = pickFrom(list);
+  if (any) return any.id;
+  return def?.id || list.find((m) => m.isDefault)?.id || list[0].id;
 }
 
 // src/host/liveai.js
@@ -55370,8 +55658,16 @@ var BLIND_NOTE = "This model can't see images — text only";
 var OFF_NOTE = "Figure images are off in settings — text only";
 var UPLOADING_NOTE = "Uploading figure…";
 var VISION_KEY = "pxd-ask-vision-model";
+var clipQuestion = (text4) => {
+  const q = String(text4 ?? "").replace(/\s+/g, " ").trim();
+  return q.length > 60 ? `${q.slice(0, 59).trimEnd()}…` : q;
+};
 var PENDING_URL = "https://… (uploaded when you press Send)";
 var openDialog = null;
+var askModelSetting = () => "auto";
+function setAskSettings({ model = null } = {}) {
+  askModelSetting = typeof model === "function" ? model : () => "auto";
+}
 function make(doc, tag, cls, parent, text4) {
   const node2 = doc.createElement(tag);
   if (cls) node2.className = cls;
@@ -55381,19 +55677,20 @@ function make(doc, tag, cls, parent, text4) {
 }
 function citeInto(doc, parent, text4, onPage) {
   for (const piece of splitCitations(text4)) {
-    if (piece.page == null) {
+    if (piece.page == null && piece.part == null) {
       parent.append(doc.createTextNode(piece.text));
       continue;
     }
     const link = make(doc, "a", "pxd-ask__cite", parent, piece.text);
     link.setAttribute("href", "#");
-    link.setAttribute("data-page", String(piece.page));
+    if (piece.page != null) link.setAttribute("data-page", String(piece.page));
+    if (piece.part != null) link.setAttribute("data-part", String(piece.part));
     link.setAttribute("role", "button");
     link.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       try {
-        onPage?.(piece.page);
+        onPage?.(piece.page, piece.part);
       } catch {
       }
     });
@@ -55428,7 +55725,7 @@ function paintAnswer(doc, node2, text4, onPage) {
     }
   }
 }
-function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, wholeDoc = false, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null, image = null, imageService = null } = {}) {
+function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, wholeDoc = false, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null, image = null, imageService = null, multi = null, askModel = null } = {}) {
   const dom = ownerDoc || (typeof document !== "undefined" ? document : null);
   if (!dom) return null;
   const win2 = w || dom.defaultView || globalThis;
@@ -55436,13 +55733,23 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     openDialog?.close();
   } catch {
   }
-  const hasBlocks = parsed && parsed.blocks && Object.keys(parsed.blocks).length;
+  let parts = multi ? multi.basket.list() : [];
+  const partImages = () => parts.filter((p) => p.image);
+  const hasBlocks = !multi && parsed && parsed.blocks && Object.keys(parsed.blocks).length;
   const source = hasBlocks ? parsed : selection ? selectionDoc({ text: selection, page: Number.isInteger(page) ? page : 1 }) : parsed;
   const focus = hasBlocks ? { ...blockId ? { blockId } : {}, ...blockIds ? { blockIds } : {}, ...selection ? { selection } : {}, ...page != null ? { page } : {}, ...wholeDoc ? { wholeDoc: true } : {} } : { blockId: "sel", selection };
-  let built = buildFocusContext(source, focus);
-  const isWhole = Boolean(wholeDoc) && !focus.blockId && !focus.blockIds && !focus.selection && focus.page == null && hasBlocks;
+  let built = multi ? buildMultiContext(parts, "") : buildFocusContext(source, focus);
+  const isWhole = !multi && Boolean(wholeDoc) && !focus.blockId && !focus.blockIds && !focus.selection && focus.page == null && hasBlocks;
   let builtFor = built.prompt;
+  const multiLabel = () => `${parts.length} part${parts.length === 1 ? "" : "s"}`;
   const rebuild = (question) => {
+    if (multi) {
+      const q2 = String(question ?? "").trim();
+      built = buildMultiContext(parts, q2);
+      builtFor = q2;
+      chip.textContent = multiLabel();
+      return;
+    }
     if (!isWhole) return;
     const q = String(question ?? "").trim();
     if (q === builtFor) return;
@@ -55460,10 +55767,11 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   const closeBtn = make(dom, "button", "pxd-ask__close", head, "×");
   closeBtn.type = "button";
   closeBtn.setAttribute("aria-label", "Close");
-  const hasImage = Boolean(image) && !isWhole;
+  let hasImage = multi ? partImages().length > 0 : Boolean(image) && !isWhole;
   const service = imageService || getFigureImages();
   const altText = () => image?.caption || built.figure?.caption || "";
-  const chip = make(dom, "button", "pxd-ask__chip", root, chipText2(built.chip));
+  const chipsRow = multi ? make(dom, "div", "pxd-ask__parts", root) : null;
+  const chip = make(dom, "button", "pxd-ask__chip", root, multi ? `${parts.length} part${parts.length === 1 ? "" : "s"}` : chipText2(built.chip));
   chip.type = "button";
   chip.setAttribute("aria-expanded", "false");
   chip.setAttribute("title", "Show exactly what will be sent");
@@ -55471,7 +55779,11 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   preview.hidden = true;
   let thumb2 = null;
   let imageNote = null;
-  if (hasImage) {
+  if (multi) {
+    const strip = make(dom, "div", "pxd-ask__imagerow", root);
+    imageNote = make(dom, "span", "pxd-ask__imgnote", strip);
+    imageNote.setAttribute("aria-live", "polite");
+  } else if (hasImage) {
     const strip = make(dom, "div", "pxd-ask__imagerow", root);
     thumb2 = make(dom, "img", "pxd-ask__thumb", strip);
     thumb2.setAttribute("alt", "");
@@ -55508,6 +55820,7 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   let models = [];
   let knownUrl = "";
   let sentUrl = "";
+  const knownUrls = /* @__PURE__ */ new Map();
   const modelSees = () => Boolean(models.find((m) => m.id === (modelSel?.value || ""))?.imageInput);
   const imagesOn = () => {
     try {
@@ -55519,12 +55832,24 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   const willSend = () => hasImage && imagesOn() && modelSees();
   const paintNote = () => {
     if (!imageNote) return;
+    if (multi && !hasImage) {
+      imageNote.textContent = "";
+      return;
+    }
     imageNote.textContent = !imagesOn() ? OFF_NOTE : modelSees() ? SEES_NOTE : BLIND_NOTE;
   };
   const refreshPreview = () => {
     rebuild(textarea ? textarea.value : prompt.text);
     const sending = willSend();
     const question = textarea ? textarea.value : prompt.text;
+    if (multi) {
+      const shown = parts.map((p) => p.image && sending ? { ...p, imageUrl: knownUrls.get(p.key) || PENDING_URL } : p);
+      const b = buildMultiContext(shown, question);
+      preview.textContent = `${previewText({ instructions: b.instructions, context: b.context, prompt: promptWithImages(question, shown.some((p) => p.imageUrl)) })}
+
+(about ${b.tokensEstimate.toLocaleString?.() ?? b.tokensEstimate} tokens before the question)`;
+      return;
+    }
     preview.textContent = `${previewText({
       instructions: sending ? withImageInstructions(built.instructions) : built.instructions,
       context: sending ? contextWithImage(built.context, knownUrl || PENDING_URL, altText()) : built.context,
@@ -55539,9 +55864,14 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     chip.setAttribute("aria-expanded", show ? "true" : "false");
     if (show) refreshPreview();
   });
-  const goPage = (n2) => {
+  const goPage = (n2, partNo) => {
     try {
-      jumpPage?.(n2);
+      if (!multi) {
+        if (n2 != null) jumpPage?.(n2);
+        return;
+      }
+      const part = partNo != null ? parts[partNo - 1] : parts[0];
+      if (part && (n2 != null || partNo != null)) multi.jump?.(part, n2 != null ? n2 : part.page);
     } catch {
     }
   };
@@ -55559,10 +55889,10 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   const showActions = (on) => {
     if (actions) actions.hidden = !on;
   };
-  const ensureImage = async () => {
+  const ensureImage = async (spec = image) => {
     try {
-      if (service) return await service.ensureUrl(image);
-      return image.url && isUsableImageUrl(image.url) ? { ok: true, url: image.url } : { ok: false, reason: "upload-failed" };
+      if (service) return await service.ensureUrl(spec);
+      return spec.url && isUsableImageUrl(spec.url) ? { ok: true, url: spec.url } : { ok: false, reason: "upload-failed" };
     } catch {
       return { ok: false, reason: "upload-failed" };
     }
@@ -55595,6 +55925,10 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     btn2.type = "button";
     btn2.addEventListener("click", () => {
       modelSel.value = next.id;
+      try {
+        storage()?.setItem(modelPickKey(graphOfWindow(win2)), modelSel.value);
+      } catch {
+      }
       if (hasImage && modelSees()) {
         try {
           storage()?.setItem(visionKey(), modelSel.value);
@@ -55623,21 +55957,48 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     showActions(false);
     setBusy(true);
     let note = "";
-    if (willSend()) {
-      status.textContent = UPLOADING_NOTE;
-      const got = await ensureImage();
-      if (mine !== token || dead) return;
-      if (got.ok) {
-        sentUrl = got.url;
-        knownUrl = got.url;
-      } else note = noteFor(got.reason);
+    let sendContext = "";
+    let sendInstructions = "";
+    let sendPrompt = "";
+    if (multi) {
+      const urls2 = /* @__PURE__ */ new Map();
+      if (willSend()) {
+        status.textContent = UPLOADING_NOTE;
+        for (const p of partImages()) {
+          const got = await ensureImage(p.image);
+          if (mine !== token || dead) return;
+          if (got.ok) {
+            urls2.set(p.key, got.url);
+            knownUrls.set(p.key, got.url);
+          } else note = noteFor(got.reason);
+        }
+      }
+      const shown = parts.map((p) => urls2.has(p.key) ? { ...p, imageUrl: urls2.get(p.key) } : p);
+      const b = buildMultiContext(shown, question);
+      sendContext = b.context;
+      sendInstructions = b.instructions;
+      sendPrompt = promptWithImages(question, urls2.size > 0);
+      sentUrl = urls2.size ? "multi" : "";
+    } else {
+      if (willSend()) {
+        status.textContent = UPLOADING_NOTE;
+        const got = await ensureImage();
+        if (mine !== token || dead) return;
+        if (got.ok) {
+          sentUrl = got.url;
+          knownUrl = got.url;
+        } else note = noteFor(got.reason);
+      }
+      sendContext = contextWithImage(built.context, sentUrl, altText());
+      sendInstructions = sentUrl ? withImageInstructions(built.instructions) : built.instructions;
+      sendPrompt = promptWithImage(question, sentUrl);
     }
     status.textContent = note ? `${note} Thinking…` : "Thinking…";
     if (note) say(note);
     const result = await ask({
-      context: contextWithImage(built.context, sentUrl, altText()),
-      systemPrompt: sentUrl ? withImageInstructions(built.instructions) : built.instructions,
-      prompt: promptWithImage(question, sentUrl),
+      context: sendContext,
+      systemPrompt: sendInstructions,
+      prompt: sendPrompt,
       model: modelSel?.value || "",
       signal: ctl.signal,
       window: win2,
@@ -55678,17 +56039,20 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     modelSel = make(dom, "select", "pxd-ask__model", row4);
     modelSel.setAttribute("aria-label", "Model");
     models = listModels(win2);
-    let def = defaultModel(win2);
-    if (hasImage && !models.find((m) => m.id === def)?.imageInput) {
-      let last = "";
-      try {
-        last = String(storage()?.getItem(visionKey()) || "");
-      } catch {
-        last = "";
-      }
-      const pick = models.find((m) => m.id === last && m.imageInput) || models.find((m) => m.imageInput);
-      if (pick) def = pick.id;
+    let remembered = "";
+    try {
+      remembered = String(storage()?.getItem(modelPickKey(graphOfWindow(win2))) || "");
+    } catch {
+      remembered = "";
     }
+    if (!remembered && hasImage) {
+      try {
+        remembered = String(storage()?.getItem(visionKey()) || "");
+      } catch {
+        remembered = "";
+      }
+    }
+    const def = pickAskModel(models, { setting: askModel ?? askModelSetting(), remembered, liveDefault: defaultModel(win2), needImage: hasImage });
     for (const m of models) {
       const opt = make(dom, "option", "", modelSel, m.provider ? `${m.name} · ${m.provider}` : m.name);
       opt.value = m.id;
@@ -55696,6 +56060,10 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     }
     if (def) modelSel.value = def;
     modelSel.addEventListener("change", () => {
+      try {
+        storage()?.setItem(modelPickKey(graphOfWindow(win2)), modelSel.value);
+      } catch {
+      }
       if (hasImage && modelSees()) {
         try {
           storage()?.setItem(visionKey(), modelSel.value);
@@ -55706,7 +56074,18 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
       if (!preview.hidden) refreshPreview();
     });
     paintNote();
-    if (hasImage && image.url && isUsableImageUrl(image.url)) knownUrl = image.url;
+    if (multi) {
+      for (const p of partImages()) {
+        if (p.image.url && isUsableImageUrl(p.image.url)) knownUrls.set(p.key, p.image.url);
+        else if (service?.peek && p.image.key) void Promise.resolve(service.peek(p.image.key)).then((url) => {
+          if (url && !dead) {
+            knownUrls.set(p.key, url);
+            if (!preview.hidden) refreshPreview();
+          }
+        }, () => {
+        });
+      }
+    } else if (hasImage && image.url && isUsableImageUrl(image.url)) knownUrl = image.url;
     else if (hasImage && service?.peek && image.key) {
       void Promise.resolve(service.peek(image.key)).then((url) => {
         if (url && !dead) {
@@ -55719,13 +56098,13 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     const quick = make(dom, "div", "pxd-ask__quick", body);
     textarea = make(dom, "textarea", "pxd-ask__question", body);
     textarea.rows = 3;
-    textarea.value = prompt.text;
+    textarea.value = multi ? built.prompt : prompt.text;
     textarea.setAttribute("aria-label", "Question");
-    for (const q of QUICK_PROMPTS) {
+    for (const q of multi ? MULTI_QUICK_PROMPTS : QUICK_PROMPTS) {
       const btn2 = make(dom, "button", "pxd-ask__quickbtn", quick, q.label);
       btn2.type = "button";
       btn2.addEventListener("click", () => {
-        textarea.value = wholeDoc && !blockId && !blockIds ? q.prompt.replace("this part", "this document") : q.prompt;
+        textarea.value = !multi && wholeDoc && !blockId && !blockIds ? q.prompt.replace("this part", "this document") : q.prompt;
         if (!preview.hidden) refreshPreview();
         void run();
       });
@@ -55779,13 +56158,14 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     const cardBtn = make(dom, "button", "pxd-ask__act", actions, "Add as card");
     cardBtn.type = "button";
     cardBtn.addEventListener("click", () => {
-      const markdown = answerCardMarkdown({ answer, chip: built.chip, imageUrl: sentUrl });
+      const cardChip = multi ? { label: multiLabel(), page: null, docTitle: clipQuestion(textarea?.value) } : built.chip;
+      const markdown = answerCardMarkdown({ answer, chip: cardChip, imageUrl: multi ? "" : sentUrl });
       if (!markdown || typeof addCard !== "function") {
         say("Cannot add a card here");
         return;
       }
       cardBtn.disabled = true;
-      void Promise.resolve(addCard({ markdown, chip: built.chip, blockId: blockId || "", answer, imageUrl: sentUrl })).catch(() => {
+      void Promise.resolve(addCard({ markdown, chip: cardChip, blockId: blockId || "", answer, imageUrl: multi ? "" : sentUrl, ...multi ? { parts: parts.slice() } : {} })).catch(() => {
       }).then(() => {
         cardBtn.disabled = false;
       });
@@ -55814,9 +56194,30 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   };
   offReady = onReady(sync, win2);
   if (!body.firstChild) sync(available(win2));
+  let offBasket = () => {
+  };
+  const paintParts = () => {
+    if (!chipsRow) return;
+    if (chipsRow.replaceChildren) chipsRow.replaceChildren();
+    else while (chipsRow.firstChild) chipsRow.removeChild(chipsRow.firstChild);
+    parts.forEach((p, i) => {
+      const c = make(dom, "span", "pxd-ask__partchip", chipsRow);
+      make(dom, "span", "pxd-ask__partlabel", c, `Part ${i + 1}: ${p.label || "Part"}`);
+      const x = make(dom, "button", "pxd-ask__partx", c, "×");
+      x.type = "button";
+      x.setAttribute("aria-label", `Remove part ${i + 1}`);
+      x.addEventListener("click", () => {
+        multi.basket.remove(p.key);
+      });
+    });
+  };
   const close = () => {
     if (dead) return;
     dead = true;
+    try {
+      offBasket();
+    } catch {
+    }
     try {
       ctl?.abort();
     } catch {
@@ -55846,6 +56247,23 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     event.stopPropagation();
     close();
   });
+  if (multi) {
+    paintParts();
+    offBasket = multi.basket.subscribe((list) => {
+      if (dead) return;
+      parts = list;
+      if (!parts.length) {
+        close();
+        return;
+      }
+      hasImage = partImages().length > 0;
+      paintParts();
+      chip.textContent = multiLabel();
+      rebuild(textarea ? textarea.value : "");
+      paintNote();
+      if (!preview.hidden) refreshPreview();
+    });
+  }
   (dom.body || dom.documentElement)?.append?.(root);
   openDialog = { el: root, close };
   return { el: root, close, built };
@@ -56872,6 +57290,19 @@ function createParseView({
       }
     });
   }
+  function basketAdd(spec = {}) {
+    if (!parsed) return null;
+    const block = spec.blockId ? parsed.blocks?.[spec.blockId] : null;
+    const pin2 = block ? pinForBlock(block) : null;
+    const focus = { ...spec.blockId ? { blockId: spec.blockId } : {}, ...spec.selection ? { selection: spec.selection } : {}, ...spec.page != null ? { page: spec.page } : {} };
+    const part = makePart({ doc: parsed, focus, pdfUid: currentUid2, url, image: block?.type === "figure" ? figureImageSpec(block) : null, source: pin2 ? { pin: pin2 } : {} });
+    const result = basketFor(graphOfWindow(doc.defaultView)).add(part);
+    try {
+      onToast?.(BASKET_MESSAGES[result]);
+    } catch {
+    }
+    return result;
+  }
   async function handleCopyMenu(id, block) {
     if (!parsed || !block) return false;
     try {
@@ -56938,6 +57369,7 @@ ${sourceAttrString(source)}` : markdown;
     copyMenu: (id, block) => handleCopyMenu(id, block),
     ask: (block) => askAbout({ blockId: block?.id }),
     chart: (block) => chartAbout(block),
+    basket: (block) => basketAdd({ blockId: block?.id }),
     drag: (block, event) => beginPointerDrag(event, [block]),
     run: (act, item) => {
       if (act === "pin-ref") {
@@ -58623,6 +59055,7 @@ ${sourceAttrString(source)}` : markdown;
     hasParse: () => Boolean(parsed),
     getDoc: () => parsed,
     askAbout,
+    basketAdd,
     selectedIds: () => selected.slice(),
     blockCount: () => shown().length,
     isBusy: () => phase === "running",
@@ -60063,7 +60496,7 @@ function createReadPane({
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", "Selection");
   setHidden2(bar, true);
-  for (const [act, text4, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"], ["ask", "Ask AI", "read.sel.ask"]]) {
+  for (const [act, text4, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"], ["ask", "Ask AI", "read.sel.ask"], ["basket", "Add to question", "read.sel.basket"]]) {
     const button2 = el("button", "pxd-selbar__btn pxd-chrome", bar);
     button2.type = "button";
     button2.textContent = text4;
@@ -60196,8 +60629,8 @@ function createReadPane({
     const boxed = live2.querySelector?.(".rm-pdf-container");
     const pool = bar2?.querySelectorAll ? [...bar2.querySelectorAll("input")] : [];
     const inputs = pool.length ? pool : [...boxed?.querySelectorAll?.("input") || []];
-    const named = inputs.find((node2) => node2.classList?.contains?.("bp3-input") && /^\d+$/.test(String(node2.value || "").trim()));
-    if (named) return named;
+    const named2 = inputs.find((node2) => node2.classList?.contains?.("bp3-input") && /^\d+$/.test(String(node2.value || "").trim()));
+    if (named2) return named2;
     return inputs.find((node2) => /^\d+$/.test(String(node2.value || "").trim())) || inputs[0] || null;
   };
   const jumpPage = (page) => {
@@ -60281,10 +60714,10 @@ function createReadPane({
     const now3 = readerScale();
     if (!now3) return false;
     if (now3.value === kept.value && Math.abs(now3.scale - kept.scale) < 5e-3) return false;
-    const named = /^(page-width|page-fit|page-actual|auto)$/.test(kept.value);
+    const named2 = /^(page-width|page-fit|page-actual|auto)$/.test(kept.value);
     autoZoom = true;
     try {
-      if (named) now3.viewer.currentScaleValue = kept.value;
+      if (named2) now3.viewer.currentScaleValue = kept.value;
       else if (kept.scale > 0) now3.viewer.currentScale = kept.scale;
       else now3.viewer.currentScaleValue = kept.value;
     } catch {
@@ -61232,6 +61665,17 @@ function createReadPane({
     const { text: text4, page } = barInfo;
     if (act === "copy") {
       void writeClip(text4).then(() => toast("Copied"), () => toast("Copy failed"));
+      return;
+    }
+    if (act === "basket") {
+      hideBar();
+      const spec = { selection: text4, page };
+      if (parsedView?.hasParse?.()) {
+        parsedView.basketAdd(spec);
+        return;
+      }
+      const part = makePart({ doc: selectionDoc({ text: text4, page: Number.isInteger(page) ? page : 1 }), focus: { blockId: "sel", selection: text4 }, pdfUid: current3.cardUid || "", url: pdfUrl(), source: {} });
+      toast(BASKET_MESSAGES[basketFor(graphOfWindow(doc.defaultView)).add(part)]);
       return;
     }
     if (act === "ask") {
@@ -65287,9 +65731,9 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const dimmed = (e2) => Boolean(focusSet) && !(focusSet.has(e2.from) && focusSet.has(e2.to));
   const paintEdge = (board2, edge, rec, { covered, selected }) => {
     const cls = ["pxd-edge"];
-    const named = PALETTE.includes(edge.color);
+    const named2 = PALETTE.includes(edge.color);
     const hex = hexColor(edge.color);
-    if (named) cls.push(`pxd-c-${edge.color}`);
+    if (named2) cls.push(`pxd-c-${edge.color}`);
     if (edge.dash === "dashed") cls.push("pxd-edge--dashed");
     if (edge.dash === "animated") cls.push("pxd-edge--animated");
     if (edge.weight > 1) cls.push(`pxd-edge--w${edge.weight}`);
@@ -65304,14 +65748,14 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (searchOn) cls.push("pxd-edge--hit");
     const hovered = hoverUid === edge.uid && (edge.fromBlock || edge.toBlock);
     if (hovered) cls.push("pxd-edge--hover");
-    rec.innerCls = `${named ? ` pxd-c-${edge.color}` : ""}${selected ? " pxd-inner--selected" : ""}${dim ? " pxd-inner--dim" : ""}${hovered ? " pxd-inner--hover" : ""}`;
+    rec.innerCls = `${named2 ? ` pxd-c-${edge.color}` : ""}${selected ? " pxd-inner--selected" : ""}${dim ? " pxd-inner--dim" : ""}${hovered ? " pxd-inner--hover" : ""}`;
     rec.innerHex = hex || "";
     paintInner(rec);
     setClass(rec.g, cls.join(" "));
     if (hex) rec.g.style.setProperty("--pxd-line", hex);
     else rec.g.style.removeProperty("--pxd-line");
     const wasClear = Boolean(rec.ends) && rec.label.classList.contains("pxd-label--clear");
-    rec.label.className = `pxd-label${named ? ` pxd-c-${edge.color}` : ""}${edge.label || edge.why ? "" : " pxd-label--empty"}${edge.why ? " pxd-label--why" : ""}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
+    rec.label.className = `pxd-label${named2 ? ` pxd-c-${edge.color}` : ""}${edge.label || edge.why ? "" : " pxd-label--empty"}${edge.why ? " pxd-label--why" : ""}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
     rec.label.title = edge.why ? whyTip(edge.why) : "";
     if (wasClear) rec.label.classList.add("pxd-label--clear");
     rec.label.style.color = hex || "";
@@ -65876,7 +66320,7 @@ function buildColorPicker(doc, onPick, listen, fourth) {
     });
     box2.append(gear, note);
   }
-  const row4 = (label, colors, named) => {
+  const row4 = (label, colors, named2) => {
     const wrap = doc.createElement("div");
     wrap.className = "pxd-picker__row";
     const cap4 = doc.createElement("div");
@@ -65889,14 +66333,14 @@ function buildColorPicker(doc, onPick, listen, fourth) {
       if (!color) continue;
       const b = doc.createElement("button");
       b.type = "button";
-      b.className = named ? `pxd-swatch pxd-picker__swatch pxd-c-${color}` : "pxd-swatch pxd-picker__swatch";
+      b.className = named2 ? `pxd-swatch pxd-picker__swatch pxd-c-${color}` : "pxd-swatch pxd-picker__swatch";
       b.setAttribute("data-tip", "picker.swatch");
       b.setAttribute("aria-label", color);
       b.setAttribute("data-color", color);
-      if (!named) b.style.background = color;
+      if (!named2) b.style.background = color;
       on(b, "click", (event) => {
         stop3(event);
-        if (named && tagMode && onTag) onTag(color);
+        if (named2 && tagMode && onTag) onTag(color);
         else onPick?.(color);
       });
       swatches.append(b);
@@ -66872,8 +67316,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         colorBtn.setAttribute("aria-haspopup", "menu");
         colorBtn.setAttribute("aria-expanded", "false");
         tip(colorBtn, "ctx.edge-color");
-        const named = typeof model?.color === "string" && PALETTE.includes(model.color);
-        el("span", `pxd-ctx__dot${named ? ` pxd-c-${model.color}` : " pxd-ctx__dot--none"}`, colorBtn);
+        const named2 = typeof model?.color === "string" && PALETTE.includes(model.color);
+        el("span", `pxd-ctx__dot${named2 ? ` pxd-c-${model.color}` : " pxd-ctx__dot--none"}`, colorBtn);
         btn2("pxd-ctx__label", "tag", "Label", "Edit the label", () => on.label?.());
         btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         popBtn("pxd-ctx__edge-more", "more", "More", "More arrow actions", (pop) => {
@@ -70726,18 +71170,18 @@ async function readSegments(image, w, h, boxes, mask, scaleX, scaleY, runRec, di
     }
     if (!groups.length) return;
     const toCol = (t) => crop.cropLeft + t / read2.time * crop.cropW - crop.proj.x0;
-    const named = groups.map((g) => ({
+    const named2 = groups.map((g) => ({
       text: g.chars.map((c) => c.ch).join(""),
       c0: toCol(g.chars[0].t),
       c1: toCol(g.chars[g.chars.length - 1].t + 1),
       conf: g.chars.reduce((s, c) => s + c.conf, 0) / g.chars.length
     }));
-    const snapped = snapWords(named, crop.seg, crop.proj).map((word, i) => ({ ...word, conf: named[i].conf }));
+    const snapped = snapWords(named2, crop.seg, crop.proj).map((word, i) => ({ ...word, conf: named2[i].conf }));
     const capH = crop.seg.ink ? crop.seg.ink.base - crop.seg.ink.top : 0;
     const words = capH ? joinNumberWords(snapped, 0.35 * capH) : snapped;
     const boxPt = { x0: crop.box.x0 / scaleX, y0: crop.box.y0 / scaleY, x1: crop.box.x1 / scaleX, y1: crop.box.y1 / scaleY };
     const ink = crop.seg.ink;
-    const size = ink ? sizeFromInk(named.map((g) => g.text).join(""), (ink.base - ink.capTop) / scaleY) || boxPt.y1 - boxPt.y0 : 0;
+    const size = ink ? sizeFromInk(named2.map((g) => g.text).join(""), (ink.base - ink.capTop) / scaleY) || boxPt.y1 - boxPt.y0 : 0;
     for (const word of words) {
       if (!word.text) continue;
       let box2 = boxPt;
@@ -72647,8 +73091,8 @@ function buildMenu(kind, ctx = {}) {
         ...c.isPdf ? [make2("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : [],
         ...c.isPdf ? [make2("parse-pdf", "Parse PDF…")] : [],
         ...c.isPdf && c.hasParse ? [make2("open-parsed", "Open parsed")] : [],
-        ...c.isPdf && c.hasParse ? [make2("ask-ai", "Ask AI…")] : [],
-        ...c.isImage ? [make2("ask-ai", "Ask AI…")] : [],
+        ...c.isPdf && c.hasParse ? [make2("ask-ai", "Ask AI…"), make2("add-to-ask", "Add to question")] : [],
+        ...c.isImage ? [make2("ask-ai", "Ask AI…"), make2("add-to-ask", "Add to question")] : [],
         ...c.officeFile ? [make2("convert-office", "Convert to cards")] : [],
         sep(),
         make2("copy", "Copy", { hint: "Cmd C" }),
@@ -75607,7 +76051,8 @@ function buildBoardView(onFail, {
           if (!disposed) revealParsed(uids);
         },
         focus: () => focusBoardAfterInsert(),
-        upload: (file) => host.uploadFile?.(file)
+        upload: (file) => host.uploadFile?.(file),
+        linkSources: () => readSetting2("link-answer-sources") !== false
       });
     }
     return parseActionsObj;
@@ -75786,6 +76231,7 @@ function buildBoardView(onFail, {
     shrink: (blob) => shrinkImage(blob, { doc })
   });
   setFigureImages(figureImages);
+  setAskSettings({ model: () => String(readSetting2("ask-model") || "auto") });
   const figureSpecFor = (parsed, block) => {
     const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
     const url = typeof block.image?.url === "string" ? block.image.url : typeof block.url === "string" ? block.url : "";
@@ -75830,7 +76276,7 @@ function buildBoardView(onFail, {
       addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid: item.uid, pdfBlockUid: item.uid })
     });
   };
-  const askAboutParsed = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "", page = null, wholeDoc = false }) => {
+  const loadParsedFor = async ({ url = "", sha256 = "", engine = "builtin", optsHash = "" }) => {
     let parsed = null;
     try {
       const store = parseStoreShared();
@@ -75839,6 +76285,10 @@ function buildBoardView(onFail, {
     } catch {
       parsed = null;
     }
+    return parsed;
+  };
+  const askAboutParsed = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "", page = null, wholeDoc = false }) => {
+    const parsed = await loadParsedFor({ url, sha256, engine, optsHash });
     if (disposed) return null;
     if (!parsed) {
       toast("Parse not found. Open the PDF and parse it again");
@@ -75883,6 +76333,79 @@ function buildBoardView(onFail, {
       addTable: ({ table }) => parseActions().insertChartTable({ table, pdfUid, pdfBlockUid: pdfUid, ...answerSource({ doc: parsed, blockId, pdfUid }) })
     });
   };
+  const askBasket = basketFor(graphOfWindow(win2));
+  const addedToBasket = (part) => {
+    if (part) toast(BASKET_MESSAGES[askBasket.add(part)]);
+  };
+  const addParsedToBasket = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "", page = null, wholeDoc = false }) => {
+    const parsed = await loadParsedFor({ url, sha256, engine, optsHash });
+    if (disposed) return;
+    if (!parsed) {
+      toast("Parse not found. Open the PDF and parse it again");
+      return;
+    }
+    const figure = blockId && parsed.blocks?.[blockId]?.type === "figure" ? parsed.blocks[blockId] : null;
+    const focus = { ...blockId ? { blockId } : {}, ...page != null ? { page } : {}, ...wholeDoc ? { wholeDoc: true } : {} };
+    addedToBasket(makePart({ doc: parsed, focus, pdfUid, url, image: figure ? figureSpecFor(parsed, figure) : null, source: answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) }));
+  };
+  const addImageToBasket = (item) => {
+    const text4 = String(item?.string ?? "");
+    const m = /!\[([^\]]*)\]\(([^)\s]+)\)/.exec(text4);
+    const url = m ? m[2] : "";
+    const rest = text4.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+    const caption = [m ? m[1] : "", rest].filter(Boolean).join(" — ");
+    let title = "";
+    try {
+      title = host?.pageTitleOf?.(item?.uid) || "";
+    } catch {
+      title = "";
+    }
+    if (!title) title = board2()?.title || "";
+    const part = makePart({ doc: imageDoc({ caption, title }), focus: { blockId: "img" }, pdfUid: item.uid, url: item.uid, image: { key: "", url, caption: caption || "Image", name: "image", thumb: url }, source: { sourceUid: item.uid }, kind: "image" });
+    part.label = ["Image", caption && caption.length > 40 ? `${caption.slice(0, 39)}…` : caption, title].filter(Boolean).join(" · ");
+    addedToBasket(part);
+  };
+  const openBasketAsk = () => openAskAI({
+    multi: {
+      basket: askBasket,
+      jump: (part, n2) => {
+        if (part?.kind !== "image" && part?.pdfUid) void itemsR?.openPdfAt?.(part.pdfUid, n2 || 1);
+      }
+    },
+    document: doc,
+    toast: (message) => toast(message),
+    addCard: ({ markdown, parts }) => parseActions().insertAnswerCard({
+      markdown,
+      pdfUid: parts?.[0]?.pdfUid || "",
+      pdfBlockUid: parts?.[0]?.pdfUid || "",
+      sources: (parts || []).map((p) => ({ pdfUid: p.pdfUid || "", ...p.source || {} }))
+    })
+  });
+  let basketPill = null;
+  const paintBasketPill = () => {
+    const n2 = askBasket.size();
+    if (!n2) {
+      basketPill?.remove();
+      basketPill = null;
+      return;
+    }
+    if (!basketPill) {
+      basketPill = doc.createElement("button");
+      basketPill.type = "button";
+      basketPill.className = "pxd-basket pxd-chrome";
+      basketPill.setAttribute("data-tip", "ask.basket");
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) basketPill.addEventListener(type, (event) => event.stopPropagation());
+      basketPill.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openBasketAsk();
+      });
+      root.append(basketPill);
+    }
+    basketPill.textContent = pillText(n2);
+    basketPill.setAttribute("aria-label", `Ask AI about ${n2} part${n2 === 1 ? "" : "s"}`);
+  };
+  const offBasketPill = askBasket.subscribe(paintBasketPill);
+  paintBasketPill();
   const pdfCardUidFor = (pdfUid, url) => {
     const items = [...board2()?.items.values() || []].filter((it) => it?.kind === "pdf");
     if (pdfUid && items.some((it) => it.uid === pdfUid)) return pdfUid;
@@ -78862,6 +79385,15 @@ function buildBoardView(onFail, {
         }
         break;
       }
+      case "add-to-ask": {
+        if (item?.kind === "image") {
+          addImageToBasket(item);
+          break;
+        }
+        if (!item || item.kind !== "pdf") break;
+        void addParsedToBasket({ pdfUid: item.uid, url: pdfUrlOf(item.uid), wholeDoc: true });
+        break;
+      }
       case "ask-ai": {
         if (item?.kind === "image") {
           askAboutImageCard(item);
@@ -80106,6 +80638,9 @@ function buildBoardView(onFail, {
       },
       chartPart: (row4) => {
         void chartAboutParsed({ pdfUid: pdfCardUidFor(row4?.pdfUid || "", row4?.url || "") || row4?.pdfUid || "", url: row4?.url || "", sha256: row4?.sha256 || "", engine: row4?.engine || "builtin", optsHash: row4?.optsHash || "", blockId: row4?.blockId || "" });
+      },
+      basketPart: (row4) => {
+        void addParsedToBasket({ pdfUid: pdfCardUidFor(row4?.pdfUid || "", row4?.url || "") || row4?.pdfUid || "", url: row4?.url || "", sha256: row4?.sha256 || "", engine: row4?.engine || "builtin", optsHash: row4?.optsHash || "", blockId: row4?.blockId || "", page: row4?.page ?? null });
       },
       listBoards: () => Promise.resolve(host?.listBoards?.()).then((rows) => rows || []),
       openBoardByUid: (uid) => {
@@ -83452,6 +83987,11 @@ function buildBoardView(onFail, {
         memoryLane.close();
         memoryLane = null;
         clearLaneMarks();
+      });
+      step(() => {
+        offBasketPill();
+        basketPill?.remove();
+        basketPill = null;
       });
       step(() => closeHalo());
       step(() => {

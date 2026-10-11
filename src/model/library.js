@@ -1,6 +1,7 @@
 // Add-panel library filters. Queries stay in the host. This module only narrows rows the host already fetched.
 import { dailyPageTitle } from "./schema.js";
 import { PIN_COMPONENT, parseRegion } from "./regions.js";
+import { pdfFileTitle } from "./pdf.js";
 
 // Card types. An empty selection means every type. Parts are the pieces of a parsed PDF; region and pin are graph blocks.
 export const LIBRARY_DOC_TYPES = ["page", "block", "board", "daily", "pdf", "image", "web"];
@@ -145,6 +146,48 @@ export function narrowLibrary(rows, filter, now = Date.now()) {
   });
 }
 
+const PDF_URL_RE = /\{\{(?:\[\[)?pdf(?:\]\])?:\s*(https?:\/\/[^\s}]+)/i;
+const IMAGE_PARTS_RE = /!\[([^\]]*)\]\(\s*([^)\s]+)[^)]*\)/;
+
+function urlFileName(url) {
+  let path = String(url ?? "");
+  try { path = new URL(path).pathname; } catch { path = path.split("#")[0].split("?")[0]; }
+  let seg = path.split("/").filter(Boolean).pop() || "";
+  try { seg = decodeURIComponent(seg); } catch { /* keep the raw segment */ }
+  return (seg.split("/").filter(Boolean).pop() || "").trim();
+}
+
+// A readable line for a pdf, image or web-link block string. { text, url, thumb }. `pdfTitle(url)` may name a parsed PDF.
+export function blockDisplay(string, kind = blockKind(string), { pdfTitle = null } = {}) {
+  const s = String(string ?? "");
+  if (kind === "pdf") {
+    const url = PDF_URL_RE.exec(s)?.[1] || "";
+    let parsed = "";
+    try { parsed = (typeof pdfTitle === "function" ? pdfTitle(url) : "") || ""; } catch { parsed = ""; }
+    return { text: parsed || (url && pdfFileTitle(url)) || "PDF", url, thumb: "" };
+  }
+  if (kind === "image") {
+    const m = IMAGE_PARTS_RE.exec(s);
+    const url = m?.[2] || "";
+    const alt = (m?.[1] || "").trim();
+    return { text: alt || urlFileName(url) || "Image", url, thumb: url };
+  }
+  if (kind === "web") {
+    const t = s.trim();
+    const md = /^\[([^\]]*)\]\(\s*(https?:\/\/[^\s)]+)\s*\)$/i.exec(t);
+    const url = md ? md[2] : t;
+    const label = md ? md[1].trim() : "";
+    let text = url;
+    try {
+      const u = new URL(url);
+      const path = u.pathname === "/" ? "" : u.pathname;
+      text = `${u.hostname.replace(/^www\./, "")}${path}`;
+    } catch { /* keep the raw url */ }
+    return { text: label || text, url, thumb: "" };
+  }
+  return { text: s.slice(0, 120), url: "", thumb: "" };
+}
+
 export function libraryCard(row) {
   const kind = libraryKind(row);
   if (kind === "page" || kind === "daily") {
@@ -158,6 +201,10 @@ export function libraryCard(row) {
     return { string: `((${uid}))`, text: title, kind, label };
   }
   const label = row?.pageTitle ? `in ${row.pageTitle}` : "block";
+  if (kind === "pdf" || kind === "image" || kind === "web") {
+    const shown = blockDisplay(row?.string ?? row?.text, kind);
+    return { string: `((${uid}))`, text: shown.text, kind, label, ...(shown.url ? { url: shown.url } : {}), ...(shown.thumb ? { thumb: shown.thumb } : {}) };
+  }
   return { string: `((${uid}))`, text: String(row?.string ?? row?.text ?? "").slice(0, 120), kind, label };
 }
 

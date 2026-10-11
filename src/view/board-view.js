@@ -103,7 +103,7 @@ import { createPanel, parseDropPayload } from "./panel.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
-import { createParseStore, restorableByUrl, restorableTitle } from "../host/parse-store.js";
+import { createParseStore, readableParse, restorableTitle } from "../host/parse-store.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { scheduleTitleLexiconWarm } from "./title-lexicon-warm.js";
 import { createParseActions, freeSpotBeside } from "./parse-actions.js";
@@ -1872,7 +1872,7 @@ function buildBoardView(onFail, {
     try {
       const store = parseStoreShared();
       parsed = sha256 ? await store.getParse(sha256, engine, optsHash) : null;
-      if (!parsed && url) parsed = await restorableByUrl(store, url, { plainOptions: BUILTIN_OPTIONS });
+      if (!parsed && url) parsed = await readableParse(store, url, { plainOptions: BUILTIN_OPTIONS });
     } catch { parsed = null; }
     if (disposed) return null;
     if (!parsed) { toast("Parse not found. Open the PDF and parse it again"); return null; }
@@ -5268,6 +5268,7 @@ function buildBoardView(onFail, {
           return Array.isArray(list) ? list : null;
         } catch { return null; }
       },
+      pdfTitle: (url) => parsedTitles.get(url) || "",
       saveTypes: (types) => { try { storage?.setItem?.(LIB_TYPES_KEY, JSON.stringify(types)); } catch { /* private mode */ } },
       searchParts: async (query, limit) => {
         if (typeof host?.listPdfBlocks !== "function") return [];

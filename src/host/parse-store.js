@@ -73,6 +73,26 @@ export async function restorableByUrl(store, url, { plainOptions, engines = REST
   });
 }
 
+// A parse to READ text from (part search, Ask AI). Stale built-in parses are fine here: the words are
+// the same, only the layout analysis is older. Falls back to any stored parse of the url:
+// cloud first, then an OCR-read doc with no unread scan pages, then the newest by `at`.
+export async function readableParse(store, url, { plainOptions, engines = RESTORE_ENGINES } = {}) {
+  if (!store || !url) return null;
+  const fresh = await restorableByUrl(store, url, { plainOptions, engines });
+  if (fresh) return fresh;
+  const hit = await store.findByUrl(url);
+  if (!hit?.sha256 || typeof store.listParses !== "function") return null;
+  let listed = [];
+  try { listed = await store.listParses(hit.sha256); } catch { listed = []; }
+  const rows = listed.filter((row) => row?.doc?.blocks);
+  const newest = (list) => list.slice().sort((x, y) => (Number(y.at) || 0) - (Number(x.at) || 0))[0]?.doc || null;
+  const cloud = rows.filter((row) => (row.engine || row.doc.engine) === "cloud");
+  if (cloud.length) return newest(cloud);
+  const read = rows.filter((row) => row.doc.options?.ocr === "vision" && !scanPagesOf(row.doc).length);
+  if (read.length) return newest(read);
+  return newest(rows);
+}
+
 // The document to show, plus a title that does not degrade when the cloud read has none.
 // `linesDoc` is the document the title came from (for the banner check).
 export async function restorableTitle(store, url, plainOptions) {

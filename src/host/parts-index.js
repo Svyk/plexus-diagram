@@ -3,7 +3,7 @@
 
 import { parsedDocTitle, pdfFileTitle } from "../model/pdf.js";
 import { buildPartsIndex } from "../model/parts-search.js";
-import { restorableByUrl } from "./parse-store.js";
+import { readableParse } from "./parse-store.js";
 
 // Same options the reader uses for the plain built-in parse.
 const PLAIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
@@ -28,7 +28,7 @@ export function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS
     const out = [];
     for (const pdf of pdfs) {
       let doc = null;
-      try { doc = await restorableByUrl(store, pdf.url, { plainOptions }); } catch { doc = null; }
+      try { doc = await readableParse(store, pdf.url, { plainOptions }); } catch { doc = null; }
       if (!doc?.sha256) continue;
       const key = `${doc.sha256}|${doc.engine}|${doc.optsHash || ""}|${doc.parseRev || 0}|${pdf.uid}`;
       let part = perDoc.get(key);

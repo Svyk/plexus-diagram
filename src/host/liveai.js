@@ -24,13 +24,27 @@ export function present(w) {
   return Boolean(api(w));
 }
 
+// Chat models only. Capabilities (array of strings, or an object of flags) or output modalities that name
+// image generation, speech or embeddings exclude a model; the id and name are checked either way.
+const NON_CHAT_RE = /image|dall-?e|tts|whisper|embed/i;
+function listed(value) {
+  if (Array.isArray(value)) return value.map((v) => String(v).toLowerCase());
+  if (value && typeof value === "object") return Object.keys(value).filter((k) => value[k]).map((k) => k.toLowerCase());
+  return [];
+}
+export function isChatModel(m) {
+  const caps = [...listed(m?.capabilities), ...listed(m?.outputModalities), ...listed(m?.modalities?.output)];
+  if (caps.some((c) => /image.?(output|gen)|embed|speech|audio.?output|tts|transcri/.test(c))) return false;
+  return !NON_CHAT_RE.test(`${m?.id || ""} ${m?.name || ""}`);
+}
+
 export function listModels(w) {
   const a = api(w);
   if (!a || typeof a.listModels !== "function") return [];
   try {
     const rows = a.listModels();
     return (Array.isArray(rows) ? rows : [])
-      .filter((m) => m && typeof m.id === "string" && m.id)
+      .filter((m) => m && typeof m.id === "string" && m.id && isChatModel(m))
       .map((m) => ({ id: m.id, name: m.name || m.id, provider: m.provider || "", contextLength: m.contextLength ?? null, isDefault: Boolean(m.isDefault) }));
   } catch {
     return [];
@@ -41,8 +55,9 @@ export function defaultModel(w) {
   const a = api(w);
   let id = null;
   try { id = typeof a?.getDefaultModel === "function" ? a.getDefaultModel() : null; } catch { id = null; }
-  if (typeof id === "string" && id) return id;
-  return listModels(w).find((m) => m.isDefault)?.id || listModels(w)[0]?.id || "";
+  const models = listModels(w);
+  if (typeof id === "string" && id && models.some((m) => m.id === id)) return id;
+  return models.find((m) => m.isDefault)?.id || models[0]?.id || "";
 }
 
 // cb(true|false) now and on every ready/unloaded event. Returns the cleanup.

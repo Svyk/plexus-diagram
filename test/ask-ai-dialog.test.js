@@ -86,7 +86,7 @@ test("send streams into the answer, [p. N] becomes a link that jumps", async () 
     find(dialog.el, "pxd-ask__send").click();
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(seen.caller, "Plexus Diagram");
-    assert.match(seen.context, /=== FOCUS ===/);
+    assert.match(seen.context, /=== Selected part ===/);
     assert.match(seen.systemPrompt, /\[p\. N\]/);
     const cite = find(dialog.el, "pxd-ask__cite");
     assert.ok(cite);

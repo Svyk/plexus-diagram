@@ -7345,9 +7345,9 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
       const peekNext = rows[j + 1] ? { row: rows[j + 1], tokens: tokensOf2(rows[j + 1]) } : null;
       const leadHere = tokens2.length === 1 && contentsLead(row4, tokens2, peekNext, run);
       if (markerOf(row4.lines[0], dots) && !contentsEntry(tokens2) && !contentsContinuation(row4, tokens2, run) && !leadHere || CAPTION_RE.test(row4.text) && !contentsEntry(tokens2) && !leadHere) break;
-      const listed = contentsList(run);
-      const namedListSoFar = listed && run.some((r) => /\b(figures?|tables?|illustrations?|plates?)\b/i.test(r.row.text || ""));
-      const longList = listed && run.filter((r) => contentsEntry(r.tokens)).length >= 3;
+      const listed2 = contentsList(run);
+      const namedListSoFar = listed2 && run.some((r) => /\b(figures?|tables?|illustrations?|plates?)\b/i.test(r.row.text || ""));
+      const longList = listed2 && run.filter((r) => contentsEntry(r.tokens)).length >= 3;
       if ((namedListSoFar || longList) && !contentsEntry(tokens2) && !contentsContinuation(row4, tokens2, run)) break;
       const ruleText = row4.text.replace(/\s+/g, "");
       if (/^[-–—−_=.·•]{4,}$/.test(ruleText) || /^[-–—−]$/.test(ruleText) || ruleText === ";") {
@@ -16473,6 +16473,54 @@ function narrowLibrary(rows, filter, now3 = Date.now()) {
     return true;
   });
 }
+function urlFileName(url) {
+  let path = String(url ?? "");
+  try {
+    path = new URL(path).pathname;
+  } catch {
+    path = path.split("#")[0].split("?")[0];
+  }
+  let seg = path.split("/").filter(Boolean).pop() || "";
+  try {
+    seg = decodeURIComponent(seg);
+  } catch {
+  }
+  return (seg.split("/").filter(Boolean).pop() || "").trim();
+}
+function blockDisplay(string, kind = blockKind(string), { pdfTitle = null } = {}) {
+  const s = String(string ?? "");
+  if (kind === "pdf") {
+    const url = PDF_URL_RE.exec(s)?.[1] || "";
+    let parsed = "";
+    try {
+      parsed = (typeof pdfTitle === "function" ? pdfTitle(url) : "") || "";
+    } catch {
+      parsed = "";
+    }
+    return { text: parsed || url && pdfFileTitle(url) || "PDF", url, thumb: "" };
+  }
+  if (kind === "image") {
+    const m = IMAGE_PARTS_RE.exec(s);
+    const url = m?.[2] || "";
+    const alt = (m?.[1] || "").trim();
+    return { text: alt || urlFileName(url) || "Image", url, thumb: url };
+  }
+  if (kind === "web") {
+    const t = s.trim();
+    const md = /^\[([^\]]*)\]\(\s*(https?:\/\/[^\s)]+)\s*\)$/i.exec(t);
+    const url = md ? md[2] : t;
+    const label = md ? md[1].trim() : "";
+    let text3 = url;
+    try {
+      const u = new URL(url);
+      const path = u.pathname === "/" ? "" : u.pathname;
+      text3 = `${u.hostname.replace(/^www\./, "")}${path}`;
+    } catch {
+    }
+    return { text: label || text3, url, thumb: "" };
+  }
+  return { text: s.slice(0, 120), url: "", thumb: "" };
+}
 function libraryCard(row4) {
   const kind = libraryKind(row4);
   if (kind === "page" || kind === "daily") {
@@ -16486,6 +16534,10 @@ function libraryCard(row4) {
     return { string: `((${uid}))`, text: title, kind, label: label2 };
   }
   const label = row4?.pageTitle ? `in ${row4.pageTitle}` : "block";
+  if (kind === "pdf" || kind === "image" || kind === "web") {
+    const shown = blockDisplay(row4?.string ?? row4?.text, kind);
+    return { string: `((${uid}))`, text: shown.text, kind, label, ...shown.url ? { url: shown.url } : {}, ...shown.thumb ? { thumb: shown.thumb } : {} };
+  }
   return { string: `((${uid}))`, text: String(row4?.string ?? row4?.text ?? "").slice(0, 120), kind, label };
 }
 function recentDailyTitles(days = 14, now3 = /* @__PURE__ */ new Date()) {
@@ -16501,11 +16553,12 @@ function recentDailyTitles(days = 14, now3 = /* @__PURE__ */ new Date()) {
 function libraryCap() {
   return LIBRARY_CAP;
 }
-var LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, LIBRARY_TYPES, PARSE_PART_TYPES, BOUNDED_TYPES, TYPE_SET2, LIBRARY_CAP, DAY_MS, MONTHS5, DAILY_RE, PDF_BLOCK_RE, IMAGE_RE, WEB_RE;
+var LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, LIBRARY_TYPES, PARSE_PART_TYPES, BOUNDED_TYPES, TYPE_SET2, LIBRARY_CAP, DAY_MS, MONTHS5, DAILY_RE, PDF_BLOCK_RE, IMAGE_RE, WEB_RE, PDF_URL_RE, IMAGE_PARTS_RE;
 var init_library = __esm({
   "src/model/library.js"() {
     init_schema();
     init_regions();
+    init_pdf();
     LIBRARY_DOC_TYPES = ["page", "block", "board", "daily", "pdf", "image", "web"];
     LIBRARY_PART_TYPES = ["paragraph", "table", "figure", "caption", "heading", "formula", "region", "pin"];
     LIBRARY_TYPES = ["all", ...LIBRARY_DOC_TYPES, ...LIBRARY_PART_TYPES];
@@ -16519,6 +16572,8 @@ var init_library = __esm({
     PDF_BLOCK_RE = /\{\{(?:\[\[)?pdf(?:\]\])?:/i;
     IMAGE_RE = /!\[[^\]]*\]\([^)\s]+[^)]*\)/;
     WEB_RE = /^(?:\[[^\]]*\]\(\s*https?:\/\/[^\s)]+\s*\)|https?:\/\/\S+)$/i;
+    PDF_URL_RE = /\{\{(?:\[\[)?pdf(?:\]\])?:\s*(https?:\/\/[^\s}]+)/i;
+    IMAGE_PARTS_RE = /!\[([^\]]*)\]\(\s*([^)\s]+)[^)]*\)/;
   }
 });
 
@@ -20768,6 +20823,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   paintTypes();
   const setTypesOpen = (open) => {
     typePop.style.display = open ? "" : "none";
+    root?.classList?.toggle?.("pxd-root--types-open", open);
     typeBtn.setAttribute("aria-expanded", open ? "true" : "false");
   };
   const typesOpen = () => typePop.style.display !== "none";
@@ -20893,14 +20949,31 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   let journalId = 0;
   const journalNow = () => typeof on.now === "function" ? on.now() : Date.now();
   let journalDay = startOfDay(journalNow());
-  const row4 = (parent, { string, label, text: text3, kind }) => {
+  const row4 = (parent, { string, label, text: text3, kind, url, thumb: thumb2 }) => {
     const r = el("div", "pxd-panel__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
     r.dataset.string = string;
     r.setAttribute("data-string", string);
     if (label) el("span", "pxd-panel__row-label", r, label);
-    el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, text3);
+    if (thumb2) {
+      const img = el("img", "pxd-panel__thumb", r);
+      img.setAttribute("src", thumb2);
+      img.setAttribute("alt", "");
+      img.setAttribute("loading", "lazy");
+      img.setAttribute("decoding", "async");
+      img.setAttribute("width", "40");
+      img.setAttribute("height", "40");
+    }
+    let shown = text3;
+    if (kind === "pdf" && url) {
+      try {
+        shown = on.pdfTitle?.(url) || text3;
+      } catch {
+        shown = text3;
+      }
+    }
+    el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
     if (on.isOnBoard?.(string)) {
       r.classList.add("pxd-panel__row--on");
       el("span", "pxd-panel__row-on", r, "on board");
@@ -21002,7 +21075,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
         pack = {
           rows: [
             ...(pages || []).map((p) => ({ string: `[[${p.title}]]`, text: p.title, kind: "page", label: "page" })),
-            ...(blocks || []).map((b) => ({ string: `((${b.uid}))`, text: `${b.string || ""}`.slice(0, 120), kind: "block", label: b.pageTitle ? `in ${b.pageTitle}` : "block" }))
+            ...(blocks || []).map((b) => libraryCard({ kind: "block", uid: b.uid, string: b.string || "", pageTitle: b.pageTitle }))
           ].slice(0, LIMIT),
           queries: []
         };
@@ -21123,6 +21196,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     });
   }
   const setTab = (next) => {
+    setTypesOpen(false);
     if (tab === "info" && next !== "info") unmountInfo();
     tab = next;
     for (const [name, b] of Object.entries(tabButtons)) b.classList.toggle("pxd-panel__tab--on", tab === name);
@@ -21741,6 +21815,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       renderViews();
     },
     close() {
+      setTypesOpen(false);
       if (tab === "info") unmountInfo();
       panel.style.display = "none";
       root.classList.remove("pxd-root--panel-open");
@@ -32772,19 +32847,19 @@ function isStaleParse(doc) {
 }
 async function restorableParse(store, sha, { engines, plainHash, readHashOf = null } = {}) {
   if (!store || !sha) return null;
-  let listed = [];
+  let listed2 = [];
   try {
-    listed = typeof store.listParses === "function" ? await store.listParses(sha) : [];
+    listed2 = typeof store.listParses === "function" ? await store.listParses(sha) : [];
   } catch {
-    listed = [];
+    listed2 = [];
   }
-  listed = listed.filter((row4) => !isStaleParse(row4.doc));
+  listed2 = listed2.filter((row4) => !isStaleParse(row4.doc));
   if (engines?.includes?.("cloud")) {
-    const paid = listed.filter((row4) => row4.engine === "cloud").pop();
+    const paid = listed2.filter((row4) => row4.engine === "cloud").pop();
     if (paid) return paid.doc;
   }
   for (const engine of engines) {
-    const mine = listed.filter((row4) => row4.engine === engine);
+    const mine = listed2.filter((row4) => row4.engine === engine);
     const read2 = mine.filter((row4) => row4.doc?.options?.ocr === "vision" && !scanPagesOf(row4.doc).length).pop();
     if (read2) return read2.doc;
     let plain2 = await store.getParse(sha, engine, plainHash);
@@ -32810,19 +32885,39 @@ async function restorableByUrl(store, url, { plainOptions, engines = RESTORE_ENG
     readHashOf: (plain2) => optionsHash({ ...plain2.options || plainOptions, ocr: "vision" })
   });
 }
+async function readableParse(store, url, { plainOptions, engines = RESTORE_ENGINES } = {}) {
+  if (!store || !url) return null;
+  const fresh = await restorableByUrl(store, url, { plainOptions, engines });
+  if (fresh) return fresh;
+  const hit = await store.findByUrl(url);
+  if (!hit?.sha256 || typeof store.listParses !== "function") return null;
+  let listed2 = [];
+  try {
+    listed2 = await store.listParses(hit.sha256);
+  } catch {
+    listed2 = [];
+  }
+  const rows = listed2.filter((row4) => row4?.doc?.blocks);
+  const newest = (list) => list.slice().sort((x, y) => (Number(y.at) || 0) - (Number(x.at) || 0))[0]?.doc || null;
+  const cloud = rows.filter((row4) => (row4.engine || row4.doc.engine) === "cloud");
+  if (cloud.length) return newest(cloud);
+  const read2 = rows.filter((row4) => row4.doc.options?.ocr === "vision" && !scanPagesOf(row4.doc).length);
+  if (read2.length) return newest(read2);
+  return newest(rows);
+}
 async function restorableTitle(store, url, plainOptions) {
   const found = await restorableByUrl(store, url, { plainOptions });
   if (!found) return { doc: null, title: "", lines: [] };
   let title = parsedDocTitle(found);
   let linesDoc = found;
   if (!title && found.engine === "cloud" && found.sha256 && typeof store.listParses === "function") {
-    let listed = [];
+    let listed2 = [];
     try {
-      listed = await store.listParses(found.sha256);
+      listed2 = await store.listParses(found.sha256);
     } catch {
-      listed = [];
+      listed2 = [];
     }
-    const local = bestLocalDoc(listed);
+    const local = bestLocalDoc(listed2);
     const localTitle = parsedDocTitle(local);
     if (localTitle) {
       title = localTitle;
@@ -45951,11 +46046,11 @@ function schemaMajor(schema) {
 function classifyModels(body) {
   const models = body?.models || {};
   const engines = Array.isArray(body?.engines) ? body.engines : [];
-  const listed = engines.length > 0;
+  const listed2 = engines.length > 0;
   const docling = models.layout === "ready" && models.tableformer === "ready";
-  const ocr = listed ? engines.includes("ocr") && models.ocr === "ready" : docling && models.ocr === "ready";
+  const ocr = listed2 ? engines.includes("ocr") && models.ocr === "ready" : docling && models.ocr === "ready";
   let state;
-  if (!listed) {
+  if (!listed2) {
     const missing2 = ["layout", "tableformer", "ocr"].some((name) => models[name] !== "ready");
     state = missing2 ? "models-missing" : "ready";
   } else if (engines.includes("docling") && !docling) {
@@ -53700,9 +53795,10 @@ var CHARS_PER_TOKEN = 4;
 var PARA_CLIP = 1200;
 var INSTRUCTIONS = [
   "You are helping someone read one part of a PDF.",
-  "Analyse the part under FOCUS. Use DOCUMENT, SECTION and NEARBY only to interpret it, not as the subject.",
+  'Analyse the part under "Selected part". Use "Document outline", "Section" and "Nearby text" only to interpret it, not as the subject.',
   "Cite pages as [p. N] using the page numbers shown in the context.",
-  "If the FOCUS alone does not support a claim, say so instead of filling the gap from elsewhere."
+  "If the selected part alone does not support a claim, say so instead of filling the gap from elsewhere.",
+  "Refer to the selected part as 'this table', 'this paragraph' or 'this figure' (as appropriate); never mention section labels."
 ].join("\n");
 var DEFAULT_PROMPT = "Explain this part in plain language.";
 var QUICK_PROMPTS = Object.freeze([
@@ -53930,7 +54026,7 @@ function openingText(doc, ids, budget) {
   return parts.join("\n\n");
 }
 function buildFocusContext(doc, focus = {}, opts = {}) {
-  const cap4 = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN;
+  const cap4 = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN - INSTRUCTIONS.length;
   const outlineCap = (Number(opts.outlineTokens) > 0 ? Number(opts.outlineTokens) : OUTLINE_TOKEN_CAP) * CHARS_PER_TOKEN;
   const nearbyCap = Number(opts.nearbyChars) >= 0 ? Number(opts.nearbyChars) : NEARBY_CHAR_BUDGET;
   const paras = Number.isInteger(opts.nearbyParas) && opts.nearbyParas >= 0 ? opts.nearbyParas : NEARBY_PARAS;
@@ -53971,10 +54067,10 @@ ${focusBody(safe, block)}`;
   const sectionText = chain.length ? `${chain.map((h) => h.text).join(" > ")} (starts p. ${chain[chain.length - 1].page})` : "(before the first heading, or no headings found)";
   const pageCount = Array.isArray(safe.pages) && safe.pages.length ? safe.pages.length : Number(safe.stats?.pages) || (ids.length ? Math.max(...ids.map((id) => blocks[id].page || 1)) : 0);
   const header = (name) => `=== ${name} ===`;
-  const section2 = `${header("SECTION")}
+  const section2 = `${header("Section")}
 ${sectionText}`;
-  const focusHead = block ? `${header("FOCUS")}
-(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})` : `${header("FOCUS")}
+  const focusHead = block ? `${header("Selected part")}
+(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})` : `${header("Selected part")}
 (${wholeDoc ? "whole document, opening pages" : page != null ? `page ${page}` : "no part found"})`;
   const fixedChars = section2.length + focusHead.length + 400;
   const focusRoom = Math.max(400, cap4 - fixedChars - 200);
@@ -53984,11 +54080,11 @@ ${sectionText}`;
   const nearbyBudget = Math.min(nearbyCap, afterFixed);
   const nearbyBody = nearbyText(safe, ids, index, focusIds, nearbyBudget, paras);
   const captionNear = block && (block.type === "table" || block.type === "figure") ? captionOf(safe, block) : "";
-  const nearby = nearbyBody || captionNear ? `${header("NEARBY")}
-${[captionNear ? `Caption of the focus: ${captionNear}` : "", nearbyBody].filter(Boolean).join("\n\n")}` : "";
+  const nearby = nearbyBody || captionNear ? `${header("Nearby text")}
+${[captionNear ? `Caption of the selected part: ${captionNear}` : "", nearbyBody].filter(Boolean).join("\n\n")}` : "";
   const outlineRoom = Math.min(outlineCap, Math.max(0, afterFixed - nearby.length - 120));
   const outline = fitOutline(safe, ids, outlineRoom);
-  const documentPart = `${header("DOCUMENT")}
+  const documentPart = `${header("Document outline")}
 Title: ${docTitle || "(untitled)"}
 Pages: ${pageCount || "?"}${outline ? `
 
@@ -54039,12 +54135,63 @@ function splitCitations(text3) {
   if (last < src.length) out.push({ text: src.slice(last) });
   return out;
 }
+function parseAnswer(answer) {
+  const out = [];
+  let para = [];
+  let list = null;
+  let stack = [];
+  const flush = () => {
+    const text3 = para.join(" ").trim();
+    if (text3) out.push({ type: "p", text: text3 });
+    para = [];
+  };
+  const endList = () => {
+    list = null;
+    stack = [];
+  };
+  for (const raw of String(answer ?? "").replace(/\r/g, "").split("\n")) {
+    const item = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(raw);
+    if (item) {
+      flush();
+      const indent = item[1].replace(/\t/g, "  ").length;
+      const ordered = /\d/.test(item[2]);
+      if (!list || stack.length <= 1 && indent <= stack[0] && list.ordered !== ordered) {
+        list = { type: "list", ordered, items: [] };
+        stack = [];
+        out.push(list);
+      }
+      while (stack.length && stack[stack.length - 1] >= indent) stack.pop();
+      stack.push(indent);
+      const text3 = item[3].trim();
+      if (text3) list.items.push({ text: text3, depth: stack.length - 1 });
+    } else if (!raw.trim()) {
+      flush();
+      endList();
+    } else if (list && /^\s+/.test(raw) && list.items.length) {
+      const last = list.items[list.items.length - 1];
+      last.text = `${last.text} ${raw.trim()}`;
+    } else {
+      endList();
+      para.push(raw.trim());
+    }
+  }
+  flush();
+  return out;
+}
+function answerBlocks(answer) {
+  const out = [];
+  for (const part of parseAnswer(answer)) {
+    if (part.type === "p") out.push({ text: part.text, depth: 0 });
+    else for (const item of part.items) out.push({ text: item.text, depth: item.depth });
+  }
+  return out;
+}
 function answerCardMarkdown({ answer = "", chip = null } = {}) {
-  const paras = String(answer ?? "").split(/\n\s*\n/).map((p) => flattenLine(p)).filter(Boolean);
-  if (!paras.length) return "";
+  const blocks = answerBlocks(answer).map((b) => ({ ...b, text: flattenLine(b.text) })).filter((b) => b.text);
+  if (!blocks.length) return "";
   const head = `AI answer · ${chipText2(chip) || "PDF"}`;
-  const line = (text3, leading) => `- ${escapeMarkdownText(linkSafeText(clip5(text3, 1800)), { leading })}`;
-  return [line(head, true), ...paras.slice(0, 40).map((p) => line(p, true))].join("\n");
+  const line = (text3, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip5(text3, 1800)), { leading: true })}`;
+  return [line(head), ...blocks.slice(0, 40).map((b) => line(b.text, Math.min(b.depth, 3)))].join("\n");
 }
 
 // src/host/liveai.js
@@ -54069,12 +54216,23 @@ function available(w) {
 function present(w) {
   return Boolean(api(w));
 }
+var NON_CHAT_RE = /image|dall-?e|tts|whisper|embed/i;
+function listed(value) {
+  if (Array.isArray(value)) return value.map((v) => String(v).toLowerCase());
+  if (value && typeof value === "object") return Object.keys(value).filter((k) => value[k]).map((k) => k.toLowerCase());
+  return [];
+}
+function isChatModel(m) {
+  const caps = [...listed(m?.capabilities), ...listed(m?.outputModalities), ...listed(m?.modalities?.output)];
+  if (caps.some((c) => /image.?(output|gen)|embed|speech|audio.?output|tts|transcri/.test(c))) return false;
+  return !NON_CHAT_RE.test(`${m?.id || ""} ${m?.name || ""}`);
+}
 function listModels(w) {
   const a = api(w);
   if (!a || typeof a.listModels !== "function") return [];
   try {
     const rows = a.listModels();
-    return (Array.isArray(rows) ? rows : []).filter((m) => m && typeof m.id === "string" && m.id).map((m) => ({ id: m.id, name: m.name || m.id, provider: m.provider || "", contextLength: m.contextLength ?? null, isDefault: Boolean(m.isDefault) }));
+    return (Array.isArray(rows) ? rows : []).filter((m) => m && typeof m.id === "string" && m.id && isChatModel(m)).map((m) => ({ id: m.id, name: m.name || m.id, provider: m.provider || "", contextLength: m.contextLength ?? null, isDefault: Boolean(m.isDefault) }));
   } catch {
     return [];
   }
@@ -54087,8 +54245,9 @@ function defaultModel(w) {
   } catch {
     id = null;
   }
-  if (typeof id === "string" && id) return id;
-  return listModels(w).find((m) => m.isDefault)?.id || listModels(w)[0]?.id || "";
+  const models = listModels(w);
+  if (typeof id === "string" && id && models.some((m) => m.id === id)) return id;
+  return models.find((m) => m.isDefault)?.id || models[0]?.id || "";
 }
 function onReady(cb, w) {
   const target = win(w);
@@ -54157,15 +54316,13 @@ function make(doc, tag, cls, parent, text3) {
   if (parent) parent.append(node2);
   return node2;
 }
-function paintAnswer(doc, node2, text3, onPage) {
-  node2.replaceChildren?.();
-  if (!node2.replaceChildren) while (node2.firstChild) node2.removeChild(node2.firstChild);
+function citeInto(doc, parent, text3, onPage) {
   for (const piece of splitCitations(text3)) {
     if (piece.page == null) {
-      node2.append(doc.createTextNode(piece.text));
+      parent.append(doc.createTextNode(piece.text));
       continue;
     }
-    const link = make(doc, "a", "pxd-ask__cite", node2, piece.text);
+    const link = make(doc, "a", "pxd-ask__cite", parent, piece.text);
     link.setAttribute("href", "#");
     link.setAttribute("data-page", String(piece.page));
     link.setAttribute("role", "button");
@@ -54177,6 +54334,35 @@ function paintAnswer(doc, node2, text3, onPage) {
       } catch {
       }
     });
+  }
+}
+function inlineInto(doc, parent, text3, onPage) {
+  const re = /`([^`]+)`|\*\*([^*]+?)\*\*|(?<![\w*])\*([^*\s][^*]*?)\*(?![\w*])/g;
+  let last = 0;
+  let m;
+  const src = String(text3 ?? "");
+  while (m = re.exec(src)) {
+    if (m.index > last) citeInto(doc, parent, src.slice(last, m.index), onPage);
+    if (m[1] != null) make(doc, "code", "pxd-ask__code", parent, m[1]);
+    else if (m[2] != null) inlineInto(doc, make(doc, "strong", "", parent), m[2], onPage);
+    else inlineInto(doc, make(doc, "em", "", parent), m[3], onPage);
+    last = m.index + m[0].length;
+  }
+  if (last < src.length) citeInto(doc, parent, src.slice(last), onPage);
+}
+function paintAnswer(doc, node2, text3, onPage) {
+  node2.replaceChildren?.();
+  if (!node2.replaceChildren) while (node2.firstChild) node2.removeChild(node2.firstChild);
+  for (const part of parseAnswer(text3)) {
+    if (part.type === "p") {
+      inlineInto(doc, make(doc, "p", "pxd-ask__p", node2), part.text, onPage);
+      continue;
+    }
+    const list = make(doc, part.ordered ? "ol" : "ul", "pxd-ask__list", node2);
+    for (const item of part.items) {
+      const li = make(doc, "li", item.depth ? `pxd-ask__li pxd-ask__li--n${Math.min(item.depth, 3)}` : "pxd-ask__li", list);
+      inlineInto(doc, li, item.text, onPage);
+    }
   }
 }
 function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, wholeDoc = false, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null } = {}) {
@@ -54210,6 +54396,7 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   const body = make(dom, "div", "pxd-ask__body", root);
   let dead = false;
   let ctl = null;
+  let token = 0;
   let answer = "";
   let offReady = () => {
   };
@@ -54261,6 +54448,8 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
       return;
     }
     ctl = typeof win2.AbortController === "function" ? new win2.AbortController() : new AbortController();
+    token += 1;
+    const mine = token;
     answer = "";
     status.textContent = "Thinking…";
     paintAnswer(dom, out, "", goPage);
@@ -54274,14 +54463,14 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
       signal: ctl.signal,
       window: win2,
       onChunk: (chunk) => {
-        if (dead) return;
+        if (dead || mine !== token) return;
         answer += chunk;
         paintAnswer(dom, out, answer, goPage);
         status.textContent = "";
       }
     });
+    if (mine !== token || dead) return;
     ctl = null;
-    if (dead) return;
     setBusy(false);
     if (!result.ok) {
       status.textContent = result.error;
@@ -54341,10 +54530,16 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     stopBtn.type = "button";
     stopBtn.hidden = true;
     stopBtn.addEventListener("click", () => {
+      const was = ctl;
+      token += 1;
+      ctl = null;
       try {
-        ctl?.abort();
+        was?.abort();
       } catch {
       }
+      setBusy(false);
+      status.textContent = "Stopped.";
+      showActions(Boolean(answer));
     });
     status = make(dom, "span", "pxd-ask__status", bar);
     status.setAttribute("aria-live", "polite");
@@ -69529,13 +69724,13 @@ function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS } = {}
     const mine = epoch;
     const pdfs = [];
     const seen = /* @__PURE__ */ new Set();
-    let listed = [];
+    let listed2 = [];
     try {
-      listed = await Promise.resolve(listPdfs?.()) || [];
+      listed2 = await Promise.resolve(listPdfs?.()) || [];
     } catch {
-      listed = [];
+      listed2 = [];
     }
-    for (const pdf of listed) {
+    for (const pdf of listed2) {
       if (!pdf?.url || seen.has(pdf.url)) continue;
       seen.add(pdf.url);
       pdfs.push(pdf);
@@ -69544,7 +69739,7 @@ function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS } = {}
     for (const pdf of pdfs) {
       let doc = null;
       try {
-        doc = await restorableByUrl(store, pdf.url, { plainOptions });
+        doc = await readableParse(store, pdf.url, { plainOptions });
       } catch {
         doc = null;
       }
@@ -73481,7 +73676,7 @@ function buildBoardView(onFail, {
     try {
       const store = parseStoreShared();
       parsed = sha256 ? await store.getParse(sha256, engine, optsHash) : null;
-      if (!parsed && url) parsed = await restorableByUrl(store, url, { plainOptions: BUILTIN_OPTIONS });
+      if (!parsed && url) parsed = await readableParse(store, url, { plainOptions: BUILTIN_OPTIONS });
     } catch {
       parsed = null;
     }
@@ -77634,6 +77829,7 @@ function buildBoardView(onFail, {
           return null;
         }
       },
+      pdfTitle: (url) => parsedTitles.get(url) || "",
       saveTypes: (types) => {
         try {
           storage?.setItem?.(LIB_TYPES_KEY, JSON.stringify(types));
@@ -82670,14 +82866,14 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
       }
     },
     boardsOn(pageUid) {
-      let listed = [];
+      let listed2 = [];
       try {
         const rows = host?.listBoards?.();
-        listed = Array.isArray(rows) ? rows : [];
+        listed2 = Array.isArray(rows) ? rows : [];
       } catch {
-        listed = [];
+        listed2 = [];
       }
-      return listed.filter((row4) => row4 && row4.pageUid === pageUid).map((row4) => ({ uid: row4.uid, title: row4.title || "Untitled board" }));
+      return listed2.filter((row4) => row4 && row4.pageUid === pageUid).map((row4) => ({ uid: row4.uid, title: row4.title || "Untitled board" }));
     },
     boardsWith(targetUid) {
       let rows = [];

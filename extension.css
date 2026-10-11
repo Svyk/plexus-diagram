@@ -1464,14 +1464,18 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   background: var(--pxd-accent-soft);
 }
 
+.pxd-root.pxd-root--types-open .pxd-panel {
+  z-index: 30;
+}
+
 .pxd-panel__type-pop {
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 5;
+  z-index: 1000;
   box-sizing: border-box;
   width: 200px;
-  max-height: 340px;
+  max-height: min(340px, calc(100vh - 180px));
   overflow: auto;
   margin-top: 4px;
   padding: 6px;
@@ -1594,6 +1598,16 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pxd-panel__thumb {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--pxd-fill);
 }
 
 .pxd-panel__row-on {
@@ -2195,9 +2209,9 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   gap: 8px;
   box-sizing: border-box;
   width: min(440px, calc(100vw - 32px));
-  max-height: min(78vh, 720px);
+  max-height: min(78vh, 720px, calc(100vh - 32px));
   padding: 12px;
-  overflow-y: auto;
+  overflow: hidden;
   color: var(--pxd-fg, var(--pxd-text, inherit));
   background: var(--pxd-surface, #fff);
   border: 1px solid var(--pxd-border, #d1d5db);
@@ -2285,14 +2299,17 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-ask__body {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
 }
 
 .pxd-ask__row,
 .pxd-ask__quick,
 .pxd-ask__bar,
 .pxd-ask__actions {
+  flex-shrink: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2329,9 +2346,35 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 .pxd-ask__answer {
-  white-space: pre-wrap;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
   overflow-wrap: anywhere;
   line-height: 1.45;
+}
+
+.pxd-ask__actions {
+  flex: 0 0 auto;
+}
+
+.pxd-ask__p {
+  margin: 0 0 8px;
+}
+
+.pxd-ask__list {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.pxd-ask__li--n1 { margin-left: 16px; }
+.pxd-ask__li--n2 { margin-left: 32px; }
+.pxd-ask__li--n3 { margin-left: 48px; }
+
+.pxd-ask__code {
+  padding: 0 3px;
+  font: 12px ui-monospace, Menlo, monospace;
+  background: rgba(127, 127, 127, 0.15);
+  border-radius: 3px;
 }
 
 .pxd-ask__cite {

@@ -4,7 +4,7 @@
 
 import { closeInfoTab, infoTabList, nextPanelWidth, PANEL_WIDTH_DEFAULT } from "../model/info.js";
 import { mountTimeline } from "./timeline.js";
-import { LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, PARSE_PART_TYPES, libraryFilterActive } from "../model/library.js";
+import { LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, PARSE_PART_TYPES, libraryCard, libraryFilterActive } from "../model/library.js";
 import { PART_LABELS, partSnippet } from "../model/parts-search.js";
 import { CARD_MIME, PARSE_MIME, parseDropPayload } from "../model/drop.js";
 import { dailyTitle, startOfDay, stepDay } from "../model/journal.js";
@@ -154,6 +154,8 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   paintTypes();
   const setTypesOpen = (open) => {
     typePop.style.display = open ? "" : "none";
+    // The panel is its own stacking context, under the palette: lift it while the list is open.
+    root?.classList?.toggle?.("pxd-root--types-open", open);
     typeBtn.setAttribute("aria-expanded", open ? "true" : "false");
   };
   const typesOpen = () => typePop.style.display !== "none";
@@ -277,14 +279,27 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const journalNow = () => (typeof on.now === "function" ? on.now() : Date.now());
   let journalDay = startOfDay(journalNow());
 
-  const row = (parent, { string, label, text, kind }) => {
+  const row = (parent, { string, label, text, kind, url, thumb }) => {
     const r = el("div", "pxd-panel__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
     r.dataset.string = string;
     r.setAttribute("data-string", string);
     if (label) el("span", "pxd-panel__row-label", r, label);
-    el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, text);
+    if (thumb) {
+      const img = el("img", "pxd-panel__thumb", r);
+      img.setAttribute("src", thumb);
+      img.setAttribute("alt", "");
+      img.setAttribute("loading", "lazy");
+      img.setAttribute("decoding", "async");
+      img.setAttribute("width", "40");
+      img.setAttribute("height", "40");
+    }
+    let shown = text;
+    if (kind === "pdf" && url) {
+      try { shown = on.pdfTitle?.(url) || text; } catch { shown = text; }
+    }
+    el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
     if (on.isOnBoard?.(string)) {
       r.classList.add("pxd-panel__row--on");
       el("span", "pxd-panel__row-on", r, "on board");
@@ -373,7 +388,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
         pack = {
           rows: [
             ...(pages || []).map((p) => ({ string: `[[${p.title}]]`, text: p.title, kind: "page", label: "page" })),
-            ...(blocks || []).map((b) => ({ string: `((${b.uid}))`, text: `${b.string || ""}`.slice(0, 120), kind: "block", label: b.pageTitle ? `in ${b.pageTitle}` : "block" })),
+            ...(blocks || []).map((b) => libraryCard({ kind: "block", uid: b.uid, string: b.string || "", pageTitle: b.pageTitle })),
           ].slice(0, LIMIT),
           queries: [],
         };
@@ -451,6 +466,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   }
 
   const setTab = (next) => {
+    setTypesOpen(false);
     if (tab === "info" && next !== "info") unmountInfo();
     tab = next;
     for (const [name, b] of Object.entries(tabButtons)) b.classList.toggle("pxd-panel__tab--on", tab === name);
@@ -988,6 +1004,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       renderViews();
     },
     close() {
+      setTypesOpen(false);
       if (tab === "info") unmountInfo();
       panel.style.display = "none";
       root.classList.remove("pxd-root--panel-open");

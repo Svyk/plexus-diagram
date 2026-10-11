@@ -1,6 +1,6 @@
-// Ask AI. Pure. Builds the text a model gets for one part of a parsed PDF: the part itself (FOCUS), the
-// words around it (NEARBY), the heading chain it sits in (SECTION), and a short map of the whole
-// document (DOCUMENT). Nothing here touches the DOM, the network, or Roam.
+// Ask AI. Pure. Builds the text a model gets for one part of a parsed PDF: the part itself (Selected part), the
+// words around it (Nearby text), the heading chain it sits in (Section), and a short map of the whole
+// document (Document outline). Nothing here touches the DOM, the network, or Roam.
 
 import { tableToMarkdown } from "./parse-to-text.js";
 import { escapeMarkdownText, flattenLine, linkSafeText } from "./parse-to-roam-md.js";
@@ -16,9 +16,10 @@ const PARA_CLIP = 1200;
 
 export const INSTRUCTIONS = [
   "You are helping someone read one part of a PDF.",
-  "Analyse the part under FOCUS. Use DOCUMENT, SECTION and NEARBY only to interpret it, not as the subject.",
+  "Analyse the part under \"Selected part\". Use \"Document outline\", \"Section\" and \"Nearby text\" only to interpret it, not as the subject.",
   "Cite pages as [p. N] using the page numbers shown in the context.",
-  "If the FOCUS alone does not support a claim, say so instead of filling the gap from elsewhere.",
+  "If the selected part alone does not support a claim, say so instead of filling the gap from elsewhere.",
+  "Refer to the selected part as 'this table', 'this paragraph' or 'this figure' (as appropriate); never mention section labels.",
 ].join("\n");
 
 export const DEFAULT_PROMPT = "Explain this part in plain language.";
@@ -267,7 +268,8 @@ function openingText(doc, ids, budget) {
 // focus: { blockId } | { blockId, selection } | { selection, page? } | { blockIds } | { page } | { wholeDoc: true }.
 // Returns { chip: { label, page, docTitle }, context, instructions, prompt, tokensEstimate, focusIds }.
 export function buildFocusContext(doc, focus = {}, opts = {}) {
-  const cap = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN;
+  // The instructions travel with the context, so they come out of the same budget.
+  const cap = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : CONTEXT_TOKEN_CAP) * CHARS_PER_TOKEN - INSTRUCTIONS.length;
   const outlineCap = (Number(opts.outlineTokens) > 0 ? Number(opts.outlineTokens) : OUTLINE_TOKEN_CAP) * CHARS_PER_TOKEN;
   const nearbyCap = Number(opts.nearbyChars) >= 0 ? Number(opts.nearbyChars) : NEARBY_CHAR_BUDGET;
   const paras = Number.isInteger(opts.nearbyParas) && opts.nearbyParas >= 0 ? opts.nearbyParas : NEARBY_PARAS;
@@ -301,7 +303,7 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
   } else if (page != null) {
     focusText = pageFocus(safe, ids, page);
   } else if (wholeDoc) {
-    // The outline rides in DOCUMENT; FOCUS is the opening text, leaving that room free.
+    // The outline rides in the document outline; the selected part is the opening text, leaving that room free.
     focusText = openingText(safe, ids, Math.max(400, cap - outlineCap - 1000));
   }
 
@@ -313,10 +315,10 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
   const pageCount = Array.isArray(safe.pages) && safe.pages.length ? safe.pages.length : Number(safe.stats?.pages) || (ids.length ? Math.max(...ids.map((id) => blocks[id].page || 1)) : 0);
 
   const header = (name) => `=== ${name} ===`;
-  const section = `${header("SECTION")}\n${sectionText}`;
+  const section = `${header("Section")}\n${sectionText}`;
   const focusHead = block
-    ? `${header("FOCUS")}\n(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})`
-    : `${header("FOCUS")}\n(${wholeDoc ? "whole document, opening pages" : page != null ? `page ${page}` : "no part found"})`;
+    ? `${header("Selected part")}\n(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})`
+    : `${header("Selected part")}\n(${wholeDoc ? "whole document, opening pages" : page != null ? `page ${page}` : "no part found"})`;
 
   // Fixed parts first. The focus keeps its room; nearby and then the outline give way.
   const fixedChars = section.length + focusHead.length + 400;
@@ -328,12 +330,12 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
   const nearbyBody = nearbyText(safe, ids, index, focusIds, nearbyBudget, paras);
   const captionNear = block && (block.type === "table" || block.type === "figure") ? captionOf(safe, block) : "";
   const nearby = nearbyBody || captionNear
-    ? `${header("NEARBY")}\n${[captionNear ? `Caption of the focus: ${captionNear}` : "", nearbyBody].filter(Boolean).join("\n\n")}`
+    ? `${header("Nearby text")}\n${[captionNear ? `Caption of the selected part: ${captionNear}` : "", nearbyBody].filter(Boolean).join("\n\n")}`
     : "";
 
   const outlineRoom = Math.min(outlineCap, Math.max(0, afterFixed - nearby.length - 120));
   const outline = fitOutline(safe, ids, outlineRoom);
-  const documentPart = `${header("DOCUMENT")}\nTitle: ${docTitle || "(untitled)"}\nPages: ${pageCount || "?"}${outline ? `\n\n${outline}` : ""}`;
+  const documentPart = `${header("Document outline")}\nTitle: ${docTitle || "(untitled)"}\nPages: ${pageCount || "?"}${outline ? `\n\n${outline}` : ""}`;
 
   const context = [documentPart, section, nearby, `${focusHead}\n${focusBounded}`].filter(Boolean).join("\n\n");
 
@@ -387,11 +389,64 @@ export function splitCitations(text) {
   return out;
 }
 
-// The card for an answer: one header bullet, then one bullet per paragraph of the answer.
+// An answer split into paragraphs and lists: [{ type: "p", text } | { type: "list", ordered, items: [{ text, depth }] }].
+export function parseAnswer(answer) {
+  const out = [];
+  let para = [];
+  let list = null;
+  let stack = [];
+  const flush = () => {
+    const text = para.join(" ").trim();
+    if (text) out.push({ type: "p", text });
+    para = [];
+  };
+  const endList = () => { list = null; stack = []; };
+  for (const raw of String(answer ?? "").replace(/\r/g, "").split("\n")) {
+    const item = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(raw);
+    if (item) {
+      flush();
+      const indent = item[1].replace(/\t/g, "  ").length;
+      const ordered = /\d/.test(item[2]);
+      if (!list || (stack.length <= 1 && indent <= stack[0] && list.ordered !== ordered)) {
+        list = { type: "list", ordered, items: [] };
+        stack = [];
+        out.push(list);
+      }
+      while (stack.length && stack[stack.length - 1] >= indent) stack.pop();
+      stack.push(indent);
+      const text = item[3].trim();
+      if (text) list.items.push({ text, depth: stack.length - 1 });
+    } else if (!raw.trim()) {
+      flush();
+      endList();
+    } else if (list && /^\s+/.test(raw) && list.items.length) {
+      const last = list.items[list.items.length - 1];
+      last.text = `${last.text} ${raw.trim()}`;
+    } else {
+      endList();
+      para.push(raw.trim());
+    }
+  }
+  flush();
+  return out;
+}
+
+// An answer as Roam blocks: a paragraph is one block, a list item is one block (nested by indent).
+// Returns [{ text, depth }].
+export function answerBlocks(answer) {
+  const out = [];
+  for (const part of parseAnswer(answer)) {
+    if (part.type === "p") out.push({ text: part.text, depth: 0 });
+    else for (const item of part.items) out.push({ text: item.text, depth: item.depth });
+  }
+  return out;
+}
+
+// The card for an answer: one header bullet, then one bullet per paragraph or list item (indented for nesting).
 export function answerCardMarkdown({ answer = "", chip = null } = {}) {
-  const paras = String(answer ?? "").split(/\n\s*\n/).map((p) => flattenLine(p)).filter(Boolean);
-  if (!paras.length) return "";
+  const blocks = answerBlocks(answer).map((b) => ({ ...b, text: flattenLine(b.text) })).filter((b) => b.text);
+  if (!blocks.length) return "";
   const head = `AI answer · ${chipText(chip) || "PDF"}`;
-  const line = (text, leading) => `- ${escapeMarkdownText(linkSafeText(clip(text, 1800)), { leading })}`;
-  return [line(head, true), ...paras.slice(0, 40).map((p) => line(p, true))].join("\n");
+  const line = (text, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip(text, 1800)), { leading: true })}`;
+  return [line(head), ...blocks.slice(0, 40).map((b) => line(b.text, Math.min(b.depth, 3)))].join("\n");
 }

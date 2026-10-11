@@ -1464,14 +1464,18 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   background: var(--pxd-accent-soft);
 }
 
+.pxd-root.pxd-root--types-open .pxd-panel {
+  z-index: 30;
+}
+
 .pxd-panel__type-pop {
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 5;
+  z-index: 1000;
   box-sizing: border-box;
   width: 200px;
-  max-height: 340px;
+  max-height: min(340px, calc(100vh - 180px));
   overflow: auto;
   margin-top: 4px;
   padding: 6px;
@@ -1594,6 +1598,16 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pxd-panel__thumb {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--pxd-fill);
 }
 
 .pxd-panel__row-on {

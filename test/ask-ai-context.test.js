@@ -45,7 +45,7 @@ function fixture() {
 
 test("table focus: markdown table, caption, chip, section chain, page citations", () => {
   const out = buildFocusContext(fixture(), { blockId: "tab" });
-  assert.match(out.context, /=== FOCUS ===/);
+  assert.match(out.context, /=== Selected part ===/);
   assert.match(out.context, /\| Region \| Sales \|/);
   assert.match(out.context, /\| North \| 41 \|/);
   assert.match(out.context, /Table 3\. Sales by region/);
@@ -55,7 +55,7 @@ test("table focus: markdown table, caption, chip, section chain, page citations"
   assert.match(out.context, /Results > Regional split/);
   assert.match(out.instructions, /\[p\. N\]/);
   assert.equal(out.instructions, INSTRUCTIONS);
-  assert.match(out.instructions, /focus alone does not support/i);
+  assert.match(out.instructions, /selected part alone does not support/i);
 });
 
 test("merged cells survive as an HTML table", () => {
@@ -70,7 +70,7 @@ test("merged cells survive as an HTML table", () => {
 
 test("outline lists headings with pages and tables/figures with captions", () => {
   const out = buildFocusContext(fixture(), { blockId: "p3" });
-  assert.match(out.context, /=== DOCUMENT ===/);
+  assert.match(out.context, /=== Document outline ===/);
   assert.match(out.context, /Title: Annual Report/);
   assert.match(out.context, /Pages: 4/);
   assert.match(out.context, /Regional split \(p\. 3\)/);
@@ -80,7 +80,7 @@ test("outline lists headings with pages and tables/figures with captions", () =>
 
 test("nearby window: two paragraphs each side, in reading order, without the focus", () => {
   const out = buildFocusContext(fixture(), { blockId: "p5" });
-  const nearby = out.context.split("=== NEARBY ===")[1].split("=== FOCUS ===")[0];
+  const nearby = out.context.split("=== Nearby text ===")[1].split("=== Selected part ===")[0];
   assert.match(nearby, /North led all regions/);
   assert.match(nearby, /South trailed/);
   assert.match(nearby, /West is closed/);
@@ -88,15 +88,15 @@ test("nearby window: two paragraphs each side, in reading order, without the foc
   assert.doesNotMatch(nearby, /East is new/);
   assert.ok(nearby.indexOf("South trailed") < nearby.indexOf("West is closed"));
   const narrow = buildFocusContext(fixture(), { blockId: "p5" }, { nearbyParas: 1 });
-  const n2 = narrow.context.split("=== NEARBY ===")[1].split("=== FOCUS ===")[0];
+  const n2 = narrow.context.split("=== Nearby text ===")[1].split("=== Selected part ===")[0];
   assert.match(n2, /South trailed/);
   assert.doesNotMatch(n2, /North led/);
 });
 
 test("a table's caption is in NEARBY", () => {
   const out = buildFocusContext(fixture(), { blockId: "tab" });
-  const nearby = out.context.split("=== NEARBY ===")[1].split("=== FOCUS ===")[0];
-  assert.match(nearby, /Caption of the focus: Table 3/);
+  const nearby = out.context.split("=== Nearby text ===")[1].split("=== Selected part ===")[0];
+  assert.match(nearby, /Caption of the selected part: Table 3/);
 });
 
 test("selection focus: the selection plus its containing block", () => {
@@ -131,7 +131,7 @@ test("budget: huge outline is trimmed first, then nearby; focus and cap hold", (
     doc.order.push(id);
   }
   const out = buildFocusContext(doc, { blockId: "tab" });
-  const outline = out.context.split("=== SECTION ===")[0];
+  const outline = out.context.split("=== Section ===")[0];
   assert.ok(outline.length <= 1500 * 4 + 200, `outline ${outline.length}`);
   assert.match(outline, /more headings/);
   assert.match(out.context, /\| North \| 41 \|/);
@@ -184,7 +184,7 @@ test("wholeDoc focus: opening text in FOCUS, doc title as the chip, outline in D
   const doc = fixture();
   doc.title = "Annual Report";
   const out = buildFocusContext(doc, { wholeDoc: true });
-  assert.match(out.context, /=== FOCUS ===\n\(whole document, opening pages\)/);
+  assert.match(out.context, /=== Selected part ===\n\(whole document, opening pages\)/);
   assert.match(out.context, /\[p\. 2\] Revenue grew in the second half\./);
   assert.match(out.context, /Headings:/);
   assert.equal(out.chip.page, null);

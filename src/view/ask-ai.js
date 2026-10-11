@@ -1,7 +1,7 @@
 // Ask AI dialog. One part of a parsed PDF goes to the user's Live AI Assistant (the only AI path) together
 // with the document around it. Floating, one at a time, closes on Esc.
 
-import { answerCardMarkdown, buildFocusContext, chipText, previewText, QUICK_PROMPTS, selectionDoc, splitCitations } from "../model/ai-context.js";
+import { answerCardMarkdown, buildFocusContext, chipText, parseAnswer, previewText, QUICK_PROMPTS, selectionDoc, splitCitations } from "../model/ai-context.js";
 import * as liveai from "../host/liveai.js";
 
 let openDialog = null;
@@ -14,16 +14,14 @@ function make(doc, tag, cls, parent, text) {
   return node;
 }
 
-// Fills `node` with the answer. "[p. 14]" becomes a link that opens the reader at that page.
-export function paintAnswer(doc, node, text, onPage) {
-  node.replaceChildren?.();
-  if (!node.replaceChildren) while (node.firstChild) node.removeChild(node.firstChild);
+// Text with [p. N] links, as nodes.
+function citeInto(doc, parent, text, onPage) {
   for (const piece of splitCitations(text)) {
     if (piece.page == null) {
-      node.append(doc.createTextNode(piece.text));
+      parent.append(doc.createTextNode(piece.text));
       continue;
     }
-    const link = make(doc, "a", "pxd-ask__cite", node, piece.text);
+    const link = make(doc, "a", "pxd-ask__cite", parent, piece.text);
     link.setAttribute("href", "#");
     link.setAttribute("data-page", String(piece.page));
     link.setAttribute("role", "button");
@@ -32,6 +30,39 @@ export function paintAnswer(doc, node, text, onPage) {
       event.stopPropagation();
       try { onPage?.(piece.page); } catch { /* reader */ }
     });
+  }
+}
+
+// **bold**, *italic*, `code` and [p. N] links, as nodes. Nothing here parses HTML.
+function inlineInto(doc, parent, text, onPage) {
+  const re = /`([^`]+)`|\*\*([^*]+?)\*\*|(?<![\w*])\*([^*\s][^*]*?)\*(?![\w*])/g;
+  let last = 0;
+  let m;
+  const src = String(text ?? "");
+  while ((m = re.exec(src))) {
+    if (m.index > last) citeInto(doc, parent, src.slice(last, m.index), onPage);
+    if (m[1] != null) make(doc, "code", "pxd-ask__code", parent, m[1]);
+    else if (m[2] != null) inlineInto(doc, make(doc, "strong", "", parent), m[2], onPage);
+    else inlineInto(doc, make(doc, "em", "", parent), m[3], onPage);
+    last = m.index + m[0].length;
+  }
+  if (last < src.length) citeInto(doc, parent, src.slice(last), onPage);
+}
+
+// Fills `node` with the answer as minimal markdown: paragraphs, lists, bold, italic, code, "[p. 14]" links.
+export function paintAnswer(doc, node, text, onPage) {
+  node.replaceChildren?.();
+  if (!node.replaceChildren) while (node.firstChild) node.removeChild(node.firstChild);
+  for (const part of parseAnswer(text)) {
+    if (part.type === "p") {
+      inlineInto(doc, make(doc, "p", "pxd-ask__p", node), part.text, onPage);
+      continue;
+    }
+    const list = make(doc, part.ordered ? "ol" : "ul", "pxd-ask__list", node);
+    for (const item of part.items) {
+      const li = make(doc, "li", item.depth ? `pxd-ask__li pxd-ask__li--n${Math.min(item.depth, 3)}` : "pxd-ask__li", list);
+      inlineInto(doc, li, item.text, onPage);
+    }
   }
 }
 
@@ -73,6 +104,7 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
 
   let dead = false;
   let ctl = null;
+  let token = 0;
   let answer = "";
   let offReady = () => {};
   let formReady = false;
@@ -110,6 +142,8 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     const question = textarea.value.trim();
     if (!question) { status.textContent = "Type a question first."; return; }
     ctl = typeof win.AbortController === "function" ? new win.AbortController() : new AbortController();
+    token += 1;
+    const mine = token;
     answer = "";
     status.textContent = "Thinking…";
     paintAnswer(dom, out, "", goPage);
@@ -123,14 +157,14 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
       signal: ctl.signal,
       window: win,
       onChunk: (chunk) => {
-        if (dead) return;
+        if (dead || mine !== token) return;
         answer += chunk;
         paintAnswer(dom, out, answer, goPage);
         status.textContent = "";
       },
     });
+    if (mine !== token || dead) return;
     ctl = null;
-    if (dead) return;
     setBusy(false);
     if (!result.ok) {
       status.textContent = result.error;
@@ -185,7 +219,15 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     stopBtn = make(dom, "button", "pxd-ask__stop", bar, "Stop");
     stopBtn.type = "button";
     stopBtn.hidden = true;
-    stopBtn.addEventListener("click", () => { try { ctl?.abort(); } catch { /* done */ } });
+    stopBtn.addEventListener("click", () => {
+      const was = ctl;
+      token += 1;
+      ctl = null;
+      try { was?.abort(); } catch { /* done */ }
+      setBusy(false);
+      status.textContent = "Stopped.";
+      showActions(Boolean(answer));
+    });
     status = make(dom, "span", "pxd-ask__status", bar);
     status.setAttribute("aria-live", "polite");
 

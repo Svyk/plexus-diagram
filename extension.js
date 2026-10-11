@@ -1463,18 +1463,76 @@ function parsedTableSize(table) {
     widths: fromGrid ? fromGrid.map : null
   };
 }
-function appendTable(t, { parent, plexus, order } = {}) {
-  const root = t.create({
+function captionTableKid(string, kids) {
+  if (isRoamTableString(string)) return null;
+  if (!Array.isArray(kids) || kids.length !== 1) return null;
+  const kid = kids[0];
+  return isRoamTableString(kid?.[":block/string"] ?? kid?.string) ? kid : null;
+}
+function tableUidOf(item) {
+  if (!item || item.type === "section") return null;
+  if (item.tableUid) return item.tableUid;
+  return isRoamTableString(item.string) ? item.uid : null;
+}
+function rowsCaption(rows) {
+  const n2 = Math.max(0, Math.round(Number(rows) || 0));
+  return `Table · ${n2} ${n2 === 1 ? "row" : "rows"}`;
+}
+function parsedTableCaption(table, doc = null) {
+  if (!table || typeof table !== "object") return rowsCaption(0);
+  const blocks = doc?.blocks || {};
+  const order = Array.isArray(doc?.order) ? doc.order : Object.keys(blocks);
+  if (table.id) {
+    for (const id of order) {
+      const b = blocks[id];
+      if (b?.type === "caption" && b.for === table.id && squashCaption(b.text)) return squashCaption(b.text);
+    }
+  }
+  if (typeof table.caption === "string" && table.caption) {
+    const hit = blocks[table.caption];
+    const text4 = squashCaption(hit ? hit.text : table.caption);
+    if (text4) return text4;
+  }
+  if (table.caption && typeof table.caption === "object" && squashCaption(table.caption.text)) return squashCaption(table.caption.text);
+  const shape = tableShape(table);
+  const head = (table.cells || []).find((cell) => cell?.r === 0 && cell?.c === 0);
+  if (head && shape.cols > 1 && (head.colSpan ?? 1) >= shape.cols && squashCaption(head.text)) return squashCaption(head.text);
+  return rowsCaption(shape.rows);
+}
+function appendTable(t, { parent, plexus, order, caption } = {}) {
+  const card2 = t.create({
     parent,
-    string: TABLE_ROOT,
+    string: caption || rowsCaption(TABLE_ROWS),
     plexus,
+    open: false,
     ...order !== void 0 ? { order } : {}
   });
+  const root = t.create({ parent: card2, string: TABLE_ROOT, order: 0 });
   for (let r = 0; r < TABLE_ROWS; r += 1) {
     let cell = t.create({ parent: root, string: "", order: r });
     for (let c = 1; c < TABLE_COLS; c += 1) cell = t.create({ parent: cell, string: "", order: 0 });
   }
-  return root;
+  return card2;
+}
+function wrapTableNode(node2, caption) {
+  const uid = node2?.[":block/uid"];
+  const props = node2?.[":block/props"] && typeof node2[":block/props"] === "object" ? { ...node2[":block/props"] } : null;
+  const inner = { ...node2, ":block/uid": `${uid}~table`, ":block/order": 0 };
+  if (props) {
+    const rest = { ...props };
+    delete rest[":plexus"];
+    delete rest.plexus;
+    inner[":block/props"] = Object.keys(rest).length ? rest : null;
+  }
+  const plexus = props ? props[":plexus"] ?? props.plexus : null;
+  return {
+    ":block/uid": uid,
+    ":block/string": caption || rowsCaption((node2?.[":block/children"] || []).length),
+    ":block/order": node2?.[":block/order"],
+    ":block/open": false,
+    ...plexus ? { ":block/props": { ":plexus": plexus } } : {},
+    ":block/children": [inner]
+  };
 }
 function hostOf(node2) {
   return node2?.closest?.(TABLE_HOST_SELECTOR) || null;
@@ -1532,14 +1590,14 @@ function keyGate(event, ownership) {
     sourceText
   };
 }
-var TABLE_ROOT, TABLE_ROWS, TABLE_COLS, TABLE_SIZE, TABLE_WRITES, COL_MIN, COL_MAX, PX_PER_PT, WIDTH_CAP, ROW_HEADER, GRID_PAD, NATIVE_PAD, COL_HEADER, ROW_PX, HEIGHT_CAP, HEIGHT_CHROME, CHAR_PX, CELL_PAD, WORD_PX, WORD_PAD, TABLE_RE, TABLE_HOST_SELECTOR, PORTAL_SELECTOR;
+var TABLE_ROOT, TABLE_ROWS, TABLE_COLS, TABLE_SIZE, TABLE_WRITES, COL_MIN, COL_MAX, PX_PER_PT, WIDTH_CAP, ROW_HEADER, GRID_PAD, NATIVE_PAD, COL_HEADER, ROW_PX, HEIGHT_CAP, HEIGHT_CHROME, CHAR_PX, CELL_PAD, WORD_PX, WORD_PAD, TABLE_RE, squashCaption, TABLE_HOST_SELECTOR, PORTAL_SELECTOR;
 var init_roam_table = __esm({
   "src/model/roam-table.js"() {
     TABLE_ROOT = "{{[[table]]}}";
     TABLE_ROWS = 3;
     TABLE_COLS = 3;
     TABLE_SIZE = { w: 480, h: 260 };
-    TABLE_WRITES = 1 + TABLE_ROWS * TABLE_COLS;
+    TABLE_WRITES = 2 + TABLE_ROWS * TABLE_COLS;
     COL_MIN = 56;
     COL_MAX = 640;
     PX_PER_PT = 1.4;
@@ -1556,6 +1614,7 @@ var init_roam_table = __esm({
     WORD_PX = 8.2;
     WORD_PAD = 24;
     TABLE_RE = /^\{\{\s*(?:\[\[table\]\]|table)\s*\}\}$/i;
+    squashCaption = (s) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
     TABLE_HOST_SELECTOR = [
       ".pxd-roam-table",
       ".pxd-table-overlay",
@@ -3803,6 +3862,7 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
       const layout = normalizeItemLayout(cplexus);
       let type = layout.type;
       if (!cplexus && heading > 0 && kids.length) type = "section";
+      const tableKid = type === "card" ? captionTableKid(cstring, kids) : null;
       const cls = classifyString(cstring);
       if (cls.kind === "regions" || cls.kind === "region") continue;
       if (isDrawingString(cstring)) continue;
@@ -3813,7 +3873,8 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
       if (kind === "page") title = cls.title;
       else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
       else if (isQueryString(cstring)) title = "Query";
-      else if (isRoamTableString(cstring)) title = kids.length ? `Table · ${kids.length} ${kids.length === 1 ? "row" : "rows"}` : "Table";
+      else if (isRoamTableString(cstring)) title = kids.length ? rowsCaption(kids.length) : "Table";
+      else if (tableKid) title = firstLine(cstring) || rowsCaption(sortedChildren2(tableKid).length);
       else title = firstLine(cstring);
       let regionDrawing;
       let highlight;
@@ -3870,7 +3931,7 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
           title = ref.label || pdfPageName(pdfPage.title || ref.title);
         }
       }
-      const cardKids = pdfPage && !kids.length && Array.isArray(pdfPage.children) ? pdfPage.children : kids;
+      const cardKids = tableKid ? sortedChildren2(tableKid) : pdfPage && !kids.length && Array.isArray(pdfPage.children) ? pdfPage.children : kids;
       let target;
       if (pdfPage) target = { kind: "block", uid: pdfPage.pdfUid, page: pdfPage.title, ...pdfPage.pageUid ? { pageUid: pdfPage.pageUid } : {} };
       else if (kind === "page") target = { kind: "page", title: cls.title };
@@ -3912,6 +3973,7 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         autofit: !(type === "section" && layout.fit === false),
         title,
         target,
+        ...tableKid ? { tableUid: tableKid[":block/uid"] } : {},
         ...regionDrawing ? { regionDrawing } : {},
         ...highlight ? { highlight } : {},
         ...layout.landmark ? { landmark: true, glyph: layout.glyph || "", size: layout.size === "S" || layout.size === "L" ? layout.size : "M" } : {},
@@ -20634,7 +20696,7 @@ async function handleParseDrop({ payload, store, session, point, toast, upload }
   const pin2 = pinForDrop(doc, payload);
   const cited = pin2 ? { pin: pin2 } : {};
   if (plan.action === "table") {
-    const res = await session?.insertParsedTable?.({ x, y, table: plan.table, mode: "auto", notes: pageNoteBlocks(doc, plan.table), ...cited });
+    const res = await session?.insertParsedTable?.({ x, y, table: plan.table, mode: "auto", notes: pageNoteBlocks(doc, plan.table), caption: parsedTableCaption(plan.table, doc), ...cited });
     return { ...res || { ok: false, reason: "empty" }, uids: res?.uid ? [res.uid] : [] };
   }
   if (plan.action === "sections") {
@@ -20801,6 +20863,7 @@ var init_drop = __esm({
     init_parse_schema();
     init_parse_to_roam_md();
     init_footnotes();
+    init_roam_table();
     CARD_MIME = "application/x-plexus-card";
     PARSE_MIME = "application/x-plexus-parse";
     PARSE_MISSING_TOAST = "Parse result not found; parse the PDF again";
@@ -26401,7 +26464,7 @@ function tableCells(tableUid, pullTree, scope) {
 }
 function nativeCellUid(td, pullTree) {
   if (typeof pullTree !== "function") return null;
-  const tableUid = tableUidOf(td);
+  const tableUid = tableUidOf2(td);
   const r = attrInt(td, "data-row");
   const c = attrInt(td, "data-col");
   if (!tableUid || r == null || c == null) return null;
@@ -26437,7 +26500,7 @@ function findCell(host, uid, { pullTree } = {}) {
     const input = td.querySelector?.(".rm-block__input, .roam-block");
     if (input && UID_AT_END.exec(String(input.id || ""))?.[1] === uid) return td;
   }
-  const tableUid = host.getAttribute?.("data-pxd-table") || tableUidOf(host);
+  const tableUid = host.getAttribute?.("data-pxd-table") || tableUidOf2(host);
   if (typeof pullTree !== "function" || !tableUid) return null;
   const any = tds[0];
   const t = tableCells(tableUid, pullTree, any?.closest?.("table") || host);
@@ -26535,7 +26598,7 @@ function watchTable({ host, body, onChange, doc } = {}) {
     if (body && body !== host) body.removeEventListener?.("scroll", onChange, opts);
   };
 }
-var UID_AT_END, UID_RE6, hasClass, NATIVE_CELL_BASE, GRID_DEPTH, GRID_LIMIT, CACHE_MS, tableCache, forgetTableCells, plain, nowMs, tableUidOf, attrInt, rectOf4, round16, isTableCard;
+var UID_AT_END, UID_RE6, hasClass, NATIVE_CELL_BASE, GRID_DEPTH, GRID_LIMIT, CACHE_MS, tableCache, forgetTableCells, plain, nowMs, tableUidOf2, attrInt, rectOf4, round16, isTableCard;
 var init_table_cells = __esm({
   "src/view/table-cells.js"() {
     UID_AT_END = /-([\w-]{9})$/;
@@ -26552,7 +26615,7 @@ var init_table_cells = __esm({
     };
     plain = (s) => String(s ?? "").replace(/\{\{[^}]*\}\}/g, "").replace(/\[\[|\]\]|\(\(|\)\)|\*\*|__|\^\^|~~|`/g, "").replace(/\s+/g, " ").trim().toLowerCase();
     nowMs = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
-    tableUidOf = (node2) => node2?.closest?.("[data-pxd-table]")?.getAttribute?.("data-pxd-table") || null;
+    tableUidOf2 = (node2) => node2?.closest?.("[data-pxd-table]")?.getAttribute?.("data-pxd-table") || null;
     attrInt = (td, name) => {
       const v = td.getAttribute?.(name) ?? td.dataset?.[name.slice(5)];
       const n2 = Number.parseInt(v, 10);
@@ -27987,7 +28050,7 @@ function createItemRenderer({
   };
   const paintThumb3 = (rec, item) => {
     if (typeof tableThumb !== "function" || item?.type === "section" || !rec?.body) return;
-    if (!isRoamTableString(item.string)) return;
+    if (!tableUidOf(item)) return;
     let url = null;
     try {
       url = tableThumb(item);
@@ -30867,9 +30930,9 @@ function createItemRenderer({
       }
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid, item.string));
-    } else if (isRoamTableString(item.string)) {
+    } else if (tableUidOf(item)) {
       rec.el.classList.add("pxd-item--roam-table");
-      mountTableHost(body, item.uid, budget);
+      mountTableHost(body, tableUidOf(item), budget);
       armLayoutWatch(rec);
       if (typeof onTableShown === "function") {
         try {
@@ -31222,7 +31285,7 @@ function createItemRenderer({
   };
   const cardHeavy = (item, rec) => {
     if (!item || item.type === "section") return false;
-    if (isHeavyRow(item.string) || isHeavyRow(rec?.refString)) return true;
+    if (isHeavyRow(item.string) || isHeavyRow(rec?.refString) || item.tableUid) return true;
     return item.kind === "image" || item.kind === "pdf" || item.kind === "board" || item.kind === "drawing-ref";
   };
   const centreDist = (uid, visibleRect) => {
@@ -31360,7 +31423,7 @@ function createItemRenderer({
         } else if (item?.kind === "highlight" && mounted.has(uid) && editing?.uid !== uid) {
           unmountContent(uid);
           moved = true;
-        } else if (lod !== "detail" && item && mounted.has(uid) && editing?.uid !== uid && isRoamTableString(item.string) && tableThumbReady(item)) {
+        } else if (lod !== "detail" && item && mounted.has(uid) && editing?.uid !== uid && tableUidOf(item) && tableThumbReady(item)) {
           unmountContent(uid);
           moved = true;
         } else if (item && item.kind !== "pdf" && ownsOpen(item) && mounted.has(uid) && editing?.uid !== uid) {
@@ -33619,7 +33682,8 @@ function copyPayload(board2, uids, rects) {
       type: item.type,
       kind: item.kind,
       string: item.string,
-      target: item.target,
+      // A caption card pastes elsewhere as a ref to its table block, which a ref card shows as the table.
+      target: item.tableUid ? { kind: "block", uid: item.tableUid } : item.target,
       x: r.x,
       y: r.y,
       w: r.w,
@@ -33989,7 +34053,75 @@ function findNode(node2, uid) {
   return null;
 }
 
+// src/model/table-captions.js
+init_schema();
+init_roam_table();
+function isOldTableCard(item) {
+  return Boolean(item && item.type === "card" && !item.tableUid && isRoamTableString(item.string));
+}
+function oldTableCards(board2) {
+  const out = [];
+  for (const item of board2?.items?.values?.() || []) if (isOldTableCard(item)) out.push(item);
+  return out;
+}
+function planTableCaptions(board2, { graph = "", layoutOf, newUid, captionOf: captionOf2 } = {}) {
+  const plan = { graph, boardUid: board2?.uid || "", folds: [], edges: [] };
+  if (!board2?.items) return plan;
+  const call = (fn, ...args) => {
+    try {
+      return typeof fn === "function" ? fn(...args) : null;
+    } catch {
+      return null;
+    }
+  };
+  const folded = /* @__PURE__ */ new Map();
+  for (const item of oldTableCards(board2)) {
+    const captionUid = String(call(newUid) || "");
+    if (!captionUid) continue;
+    const layout = call(layoutOf, item.uid);
+    const fold = {
+      tableUid: item.uid,
+      captionUid,
+      parentUid: item.parentUid,
+      order: Number.isInteger(item.order) ? item.order : 0,
+      caption: String(call(captionOf2, item) || "").replace(/\s+/g, " ").trim() || rowsCaption((item.content || []).length),
+      layout: layout && typeof layout === "object" ? { ...layout } : { type: "card", x: item.x, y: item.y, w: item.w, h: item.h }
+    };
+    plan.folds.push(fold);
+    folded.set(item.uid, fold);
+  }
+  if (!folded.size) return plan;
+  const swap = (id) => folded.get(id)?.captionUid || id;
+  const refOf2 = (id) => {
+    if (folded.has(id)) return `((${folded.get(id).captionUid}))`;
+    const item = board2.items.get(id);
+    return item ? semanticRef(item) : `((${id}))`;
+  };
+  for (const edge of board2.edges?.values?.() || []) {
+    const hit = [edge.from, edge.to, edge.fromBlock, edge.toBlock].some((id) => id && folded.has(id));
+    if (!hit) continue;
+    const fromBlock = edge.fromBlock ? swap(edge.fromBlock) : void 0;
+    const toBlock = edge.toBlock ? swap(edge.toBlock) : void 0;
+    plan.edges.push({
+      uid: edge.uid,
+      from: swap(edge.from),
+      to: swap(edge.to),
+      ...fromBlock ? { fromBlock } : {},
+      ...toBlock ? { toBlock } : {},
+      string: edgeString({ srcRef: refOf2(edge.from), dstRef: refOf2(edge.to), dir: edge.dir, label: edge.label || "", srcBlock: fromBlock, dstBlock: toBlock })
+    });
+  }
+  return plan;
+}
+function tableCaptionLines(plan) {
+  const lines = [];
+  for (const f of plan?.folds || []) lines.push(`${f.caption}: folded under a caption`);
+  if (plan?.edges?.length) lines.push(`${plan.edges.length} ${plan.edges.length === 1 ? "connection" : "connections"} rewritten`);
+  return lines;
+}
+
 // src/session-clip.js
+init_roam_table();
 init_regions();
 
 // src/model/mindmap.js
@@ -41022,7 +41154,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     // auto = grid when Roam Grid can createTableFromModel, otherwise native.
     // grid falls back to native when the API is missing. flat repeats covered cells.
     // notes: the parse's footnote blocks on the table's page ([{ id, mark, text }]) for cell marks.
-    insertParsedTable({ x, y, table, mode = "auto", notes, pin: pin2 } = {}) {
+    // The card is a folded caption block (caption: the parse's table caption, else "Table · N rows") with the table under it.
+    insertParsedTable({ x, y, table, mode = "auto", notes, pin: pin2, caption } = {}) {
       if (!board2 || destroyed || gone) return Promise.resolve(void 0);
       const asked = mode === "grid" || mode === "native" || mode === "flat" ? mode : "auto";
       const format = footnoteFormatNow();
@@ -41038,7 +41171,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const plexus = serializeItemLayout({ x: rel.x, y: rel.y, w: size.w, h: size.h });
       const order = insertOrder(parent);
       const tryGrid = asked === "grid" || asked === "auto" && host.canCreateGridTable?.();
+      const captionText2 = flattenLine(String(caption || "")).trim() || parsedTableCaption(source);
       return runParsed(async () => {
+        const card2 = host.generateUid();
+        await host.createBlock({ parentUid: parent, order, uid: card2, string: captionText2, props: { plexus }, open: false });
         let uid2 = null;
         let path = asked === "flat" ? "flat" : "native";
         const draft = asked === "flat" ? flatTableMarkdown(table) : nativeTableMarkdown(table);
@@ -41046,7 +41182,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         const settled = (text4) => fn ? fn.apply(text4) : text4;
         if (tryGrid) {
           try {
-            const spec = { ...toGridSpec(table), parentUid: parent, order };
+            const spec = { ...toGridSpec(table), parentUid: card2, order: 0 };
             if (fn) spec.rows = spec.rows.map((row4) => row4.map(settled));
             if (rawSize.widths) spec.widths = rawSize.widths;
             const info = await host.createGridTable(spec);
@@ -41059,15 +41195,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           }
         }
         if (!uid2) {
-          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: settled(draft) });
+          const roots = await host.fromMarkdown({ parentUid: card2, order: 0, markdown: settled(draft) });
           uid2 = roots[0] || null;
           path = asked === "flat" ? "flat" : "native";
         }
-        if (!uid2) return { ok: false, reason: "empty" };
-        await host.updateProps(uid2, plexus);
+        if (!uid2) {
+          await host.deleteBlock(card2);
+          return { ok: false, reason: "empty" };
+        }
         if (pin2) await citePin(uid2, pin2);
         repull();
-        return { ok: true, uid: uid2, path, w: size.w, h: size.h };
+        return { ok: true, uid: card2, tableUid: uid2, path, w: size.w, h: size.h };
       });
     },
     // One card per section, stacked down from the drop point. Cap keeps one undo step.
@@ -41426,6 +41564,76 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           edges += 1;
         }
         return { moved: moves.length, edges };
+      }, custom);
+    },
+    // "Fold tables under captions": apply a plan from planTableCaptions for THIS board. One undo entry with recorded
+    // inverse writes. A table that is no longer an old-form card of this board is skipped, so a second run writes nothing.
+    foldTableCaptions(plan) {
+      if (!plan || plan.boardUid !== uid) return Promise.resolve({ folded: 0, refused: "board" });
+      let graphNow = "";
+      try {
+        graphNow = String(host.graphName?.() || "");
+      } catch {
+        graphNow = "";
+      }
+      if (plan.graph && graphNow && plan.graph !== graphNow) return Promise.resolve({ folded: 0, refused: "graph" });
+      const folds = (plan.folds || []).filter((f) => isOldTableCard(board2?.items?.get(f.tableUid)) && f.captionUid);
+      if (!folds.length) return Promise.resolve({ folded: 0 });
+      const folding = new Set(folds.map((f) => f.tableUid));
+      const records = [];
+      const edgeRecords = [];
+      const custom = {
+        forward: [],
+        async undo() {
+          const back = records.slice().sort((a, b) => a.parentUid < b.parentUid ? -1 : a.parentUid > b.parentUid ? 1 : b.order - a.order);
+          const ops = [];
+          for (const r of back) {
+            ops.push({ op: "move", uid: r.tableUid, parent: r.parentUid, order: r.order });
+            ops.push({ op: "props", uid: r.tableUid, plexus: r.props });
+          }
+          for (const e2 of edgeRecords) {
+            ops.push({ op: "string", uid: e2.uid, string: e2.oldString });
+            ops.push({ op: "props", uid: e2.uid, plexus: e2.oldProps });
+          }
+          await execute(ops);
+          for (const r of back) {
+            let out = false;
+            for (let tries = 0; tries < 15 && !out; tries += 1) {
+              const loc = host.blockLocation?.(r.tableUid);
+              out = !loc || loc.parentUid !== r.captionUid;
+              if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+            if (out) await execute([{ op: "delete", uid: r.captionUid }]);
+          }
+        },
+        async redo() {
+          await execute(custom.forward);
+        }
+      };
+      return txn((t) => {
+        for (const f of folds) {
+          const parent = board2.items.get(f.tableUid).parentUid;
+          const kids = kidsOf2(rawNode(parent));
+          const at = Math.max(0, kids.findIndex((k) => k[UID] === f.tableUid));
+          const props = clone(rawPlexus(f.tableUid));
+          records.push({ tableUid: f.tableUid, captionUid: f.captionUid, parentUid: parent, order: at, props });
+          t.create({ parent, uid: f.captionUid, string: f.caption, plexus: f.layout, open: false, order: at });
+          t.props(f.tableUid, null);
+          t.move(f.tableUid, f.captionUid, 0);
+        }
+        let edges = 0;
+        for (const e2 of plan.edges || []) {
+          const cur = board2.edges?.get(e2.uid);
+          if (!cur || ![cur.from, cur.to, cur.fromBlock, cur.toBlock].some((id) => id && folding.has(id))) continue;
+          edgeRecords.push({ uid: e2.uid, oldString: rawNode(e2.uid)?.[STR] ?? "", oldProps: clone(rawPlexus(e2.uid)) });
+          const patch = { from: e2.from, to: e2.to };
+          if (e2.fromBlock) patch.fromBlock = e2.fromBlock;
+          if (e2.toBlock) patch.toBlock = e2.toBlock;
+          t.string(e2.uid, e2.string);
+          t.props(e2.uid, edgePlexus(e2.uid, patch));
+          edges += 1;
+        }
+        return { folded: folds.length, edges };
       }, custom);
     },
     // One ref card, centered on the board's content (the origin when nothing is placed yet).
@@ -42575,7 +42783,8 @@ extendSession((session, api2) => {
       }
       const patch = { x, y };
       if (item.type === "section") Object.assign(patch, { type: "section", w: item.w, h: item.h });
-      const plan = planSubtreeClone(node2, { genUid: gen, parentUid: parent, order: api2.insertOrder(parent), plexusPatch: patch, uidMap });
+      const tree = isOldTableCard(item) ? wrapTableNode(node2, item.title) : node2;
+      const plan = planSubtreeClone(tree, { genUid: gen, parentUid: parent, order: api2.insertOrder(parent), plexusPatch: patch, uidMap });
       const oldOf = new Map([...uidMap].map(([o, n2]) => [n2, o]));
       for (const c of plan.creates) {
         const plexus = c.props?.[PLEXUS_KEY] ? { ...c.props[PLEXUS_KEY] } : null;
@@ -42626,7 +42835,8 @@ extendSession((session, api2) => {
         if (asRef) {
           made = top.map((id) => {
             const r = rects.get(id);
-            return placeCard(t, api2.refOf(id), r.x + dx, r.y + dy, {}, exclude);
+            const tableUid = board2.items.get(id)?.tableUid;
+            return placeCard(t, tableUid ? `((${tableUid}))` : api2.refOf(id), r.x + dx, r.y + dy, {}, exclude);
           });
         } else {
           const entries = top.map((id) => ({ uid: id, x: rects.get(id).x + dx, y: rects.get(id).y + dy }));
@@ -46719,7 +46929,8 @@ function boardToMarkdown(board2, rects) {
       } else {
         lines.push(`- ${oneLine(titleOf2(item))}`);
         const kids = [...item.content ?? []].sort((a, b) => (a[":block/order"] ?? 0) - (b[":block/order"] ?? 0));
-        content(kids, 1);
+        if (item.tableUid) lines.push("  - {{[[table]]}}");
+        content(kids, item.tableUid ? 2 : 1);
       }
     }
   };
@@ -47090,7 +47301,7 @@ function createInteractions({ actions, settings } = {}) {
     }
     const text4 = String(item.string ?? "").trim();
     const refCard = /^\(\(([\w-]+)\)\)$/.test(text4) || /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i.test(text4);
-    const marked = item.kind === "page" || item.kind === "image" || item.kind === "pdf" || item.kind === "block" || refCard || isRoamTableString(item.string);
+    const marked = item.kind === "page" || item.kind === "image" || item.kind === "pdf" || item.kind === "block" || refCard || Boolean(tableUidOf(item));
     if (!marked) {
       call("clearBlockTarget");
       return null;
@@ -55028,7 +55239,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const sized = parsedTableSize(table);
       const at = where(payload, sized);
       const pin2 = pinFor(doc, payload);
-      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: pageNoteBlocks(doc, table), ...pin2 ? { pin: pin2 } : {} });
+      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: pageNoteBlocks(doc, table), caption: parsedTableCaption(table, doc), ...pin2 ? { pin: pin2 } : {} });
       if (res?.ok) {
         pick2(res.uid ? [res.uid] : []);
         const merged = mergedCells(table);
@@ -72293,11 +72504,11 @@ function highlightPart(ask2, { uid = "", pdfUid = "", url = "" } = {}) {
 }
 
 // src/view/pdf-pages-dialog.js
-function openPdfPagesDialog(doc, { count = 0, lines = [], onApply, onCancel } = {}) {
+function openPdfPagesDialog(doc, { count = 0, lines = [], onApply, onCancel, label = "", headText = "", applyText = "" } = {}) {
   const root = doc.createElement("div");
   root.className = "pxd-view-dialog pxd-pdf-pages";
   root.setAttribute("role", "dialog");
-  root.setAttribute("aria-label", "Move PDFs to their own pages");
+  root.setAttribute("aria-label", label || "Move PDFs to their own pages");
   const stop3 = (event) => event.stopPropagation();
   root.addEventListener("pointerdown", stop3);
   root.addEventListener("mousedown", stop3);
@@ -72309,7 +72520,7 @@ function openPdfPagesDialog(doc, { count = 0, lines = [], onApply, onCancel } = 
   root.append(card2);
   const head = doc.createElement("p");
   head.className = "pxd-pdf-pages__head";
-  head.textContent = `Move ${count} ${count === 1 ? "PDF" : "PDFs"} on this board to ${count === 1 ? "its own page" : "their own pages"}? Each card becomes a link to the page. Highlights, pins and reads stay with the PDF.`;
+  head.textContent = headText || `Move ${count} ${count === 1 ? "PDF" : "PDFs"} on this board to ${count === 1 ? "its own page" : "their own pages"}? Each card becomes a link to the page. Highlights, pins and reads stay with the PDF.`;
   card2.append(head);
   const list = doc.createElement("ul");
   list.className = "pxd-pdf-pages__list";
@@ -72321,11 +72532,11 @@ function openPdfPagesDialog(doc, { count = 0, lines = [], onApply, onCancel } = 
   card2.append(list);
   const actions = doc.createElement("div");
   actions.className = "pxd-view-dialog__actions";
-  const button2 = (cls, label, run) => {
+  const button2 = (cls, label2, run) => {
     const node2 = doc.createElement("button");
     node2.type = "button";
     node2.className = `pxd-btn ${cls}`;
-    node2.textContent = label;
+    node2.textContent = label2;
     node2.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -72334,7 +72545,7 @@ function openPdfPagesDialog(doc, { count = 0, lines = [], onApply, onCancel } = 
     return node2;
   };
   const cancel = button2("pxd-pdf-pages-cancel", "Cancel", onCancel);
-  actions.append(button2("pxd-pdf-pages-apply", "Move", onApply), cancel);
+  actions.append(button2("pxd-pdf-pages-apply", applyText || "Move", onApply), cancel);
   card2.append(actions);
   let closed = false;
   const close = () => {
@@ -75982,6 +76193,7 @@ function buildMenu(kind, ctx = {}) {
         make2("copy-outline", "Copy as outline"),
         make2("sort-outline", "Sort outline by position"),
         ...c.inlinePdfs > 0 ? [make2("pdf-pages", "Move PDFs to their own pages")] : [],
+        ...c.oldTables > 0 ? [make2("table-captions", "Fold tables under captions")] : [],
         make2("open-outline", "Open outline in sidebar"),
         sep(),
         make2("fold-all", "Fold all cards"),
@@ -79264,6 +79476,59 @@ function buildBoardView(onFail, {
       pdfPagesDialog.focus?.();
     });
   };
+  const foldTableCaptions = async () => {
+    if (disposed) return null;
+    closePdfPagesDialog();
+    if (typeof session.foldTableCaptions !== "function") {
+      toast("Folding tables is not available here");
+      return null;
+    }
+    const b = board2();
+    if (!b) return null;
+    const plan = planTableCaptions(b, {
+      graph: (() => {
+        try {
+          return String(host?.graphName?.() || graphOfWindow(win2) || "");
+        } catch {
+          return "";
+        }
+      })(),
+      layoutOf: (id) => session.layoutOf?.(id) || null,
+      newUid: () => host?.generateUid?.() || ""
+    });
+    if (!plan.folds.length) {
+      toast("Every table on this board already has a caption");
+      return { folded: 0 };
+    }
+    const n2 = plan.folds.length;
+    return new Promise((resolve) => {
+      pdfPagesDialog = openPdfPagesDialog(doc, {
+        count: n2,
+        lines: tableCaptionLines(plan),
+        label: "Fold tables under captions",
+        headText: `Fold ${n2} ${n2 === 1 ? "table" : "tables"} on this board under ${n2 === 1 ? "a caption" : "captions"}? Each card becomes a one-line caption with the table folded under it, so the outline stops drawing every row.`,
+        applyText: "Fold",
+        onApply: () => {
+          closePdfPagesDialog();
+          Promise.resolve(session.foldTableCaptions(plan)).then((res) => {
+            if (disposed) return resolve(res);
+            if (res?.refused) toast("This board changed. Run the command again");
+            else if (res?.folded) toast(`Folded ${res.folded} ${res.folded === 1 ? "table" : "tables"} under ${res.folded === 1 ? "a caption" : "captions"}`, true);
+            resolve(res);
+          }, () => {
+            if (!disposed) toast("Couldn't fold the tables");
+            resolve(null);
+          });
+        },
+        onCancel: () => {
+          closePdfPagesDialog();
+          resolve(null);
+        }
+      });
+      root.append(pdfPagesDialog.el);
+      pdfPagesDialog.focus?.();
+    });
+  };
   const addPdfFiles = async (files, at) => {
     if (!files?.length) return;
     if (typeof host?.uploadFile !== "function" || typeof session.addPdfPageCards !== "function") {
@@ -81846,7 +82111,7 @@ function buildBoardView(onFail, {
       case "canvas":
         return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting2("task-tool") === true };
       case "board-menu":
-        return { inlinePdfs: inlinePdfCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn };
+        return { inlinePdfs: inlinePdfCards(b).length, oldTables: oldTableCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod, changes: typeof host?.editTimes === "function", changed: changedOn };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -82685,6 +82950,9 @@ function buildBoardView(onFail, {
         break;
       case "pdf-pages":
         void movePdfsToPages();
+        break;
+      case "table-captions":
+        void foldTableCaptions();
         break;
       case "fold-all-in":
         if (item) void session.collapseAll?.(true, { within: item.uid });
@@ -87025,6 +87293,9 @@ function buildBoardView(onFail, {
     movePdfsToPages() {
       return movePdfsToPages();
     },
+    foldTableCaptions() {
+      return foldTableCaptions();
+    },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;
       const world2 = at || { x: 80, y: 80 };
@@ -88391,6 +88662,7 @@ function renderTableThumb(doc, grid, { dark = false, width = THUMB_W, height: bo
 }
 
 // src/feature.js
+init_roam_table();
 init_deeplink();
 init_relchips();
 
@@ -90870,7 +91142,7 @@ async function installPlexusDiagram({
         prev: snapStore.get(key) || snapStore.get(uid),
         thumbs,
         tableThumbKey: (item) => {
-          if (item?.type === "section" || !/^\{\{\s*(\[\[table\]\]|table)\s*\}\}$/i.test(String(item?.string || "").trim())) return null;
+          if (!tableUidOf(item)) return null;
           const key2 = thumbKeyOf(item, dark);
           return key2 && snapStore.thumb(key2) ? key2 : null;
         }
@@ -93475,6 +93747,9 @@ async function installPlexusDiagram({
   function movePdfPagesCommand(context) {
     return targetView(context)?.movePdfsToPages?.();
   }
+  function foldTablesCommand(context) {
+    return targetView(context)?.foldTableCaptions?.();
+  }
   function newDrawingCommand(context) {
     return targetView(context)?.newDrawing?.();
   }
@@ -93499,7 +93774,8 @@ async function installPlexusDiagram({
     ["Plexus: Add page…", addPageCommand],
     ["Plexus: New drawing here", newDrawingCommand],
     ["Plexus: Resurface here", resurfaceCommand],
-    ["Plexus: Move PDFs to their own pages", movePdfPagesCommand]
+    ["Plexus: Move PDFs to their own pages", movePdfPagesCommand],
+    ["Plexus: Fold tables under captions", foldTablesCommand]
   ];
   function runCommand(label, fn) {
     return (context) => {

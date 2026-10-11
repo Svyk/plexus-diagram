@@ -103,6 +103,7 @@ import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
 import { LONG_PRESS_CANCEL_PX, LONG_PRESS_MS, longPressAt } from "../model/touch.js";
 import { closeTab, openTab, tabAt } from "../model/tabs.js";
 import { createPanel, parseDropPayload } from "./panel.js";
+import { createInbox } from "./inbox.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
@@ -1011,6 +1012,7 @@ function buildBoardView(onFail, {
   const labelsLayer = el("div", "pxd-labels", world);
   const itemsLayer = el("div", "pxd-items", world);
   const overlaySvg = svg("pxd-overlay", world);
+  let inboxCtl = null;
   const emptyHint = el("div", "pxd-empty pxd-chrome", root);
   const resizeGrip = el("div", "pxd-resize-grip pxd-chrome", root);
   resizeGrip.title = "Drag to resize the board";
@@ -3422,6 +3424,24 @@ function buildBoardView(onFail, {
     }
     return false;
   };
+  // Daily-note inbox: blocks on daily pages that cite this board's title. The first read waits for idle.
+  inboxCtl = createInbox({
+    doc,
+    root,
+    host,
+    timers,
+    titles: () => [typeof host?.pageTitleOf === "function" ? host.pageTitleOf(boardUid) : "", board()?.title || ""],
+    onBoard: () => {
+      const uids = new Set();
+      for (const item of board()?.items.values() || []) {
+        uids.add(item.uid);
+        if (item.target?.uid) uids.add(item.target.uid);
+      }
+      return uids;
+    },
+    skip: () => new Set([boardUid]),
+    place: (strings) => addStringsBeside(strings),
+  });
 
   // ------------------------------------------------------------ nested boards
   // `crumbs` entries are shared with the feature's record, so a rename shows up in both.
@@ -7722,6 +7742,7 @@ function buildBoardView(onFail, {
       if (laneMarks || lanePreviewLayout) applyLaneMarks();
       ensurePdfHighlightButtons(dirty.all || dirty.structural ? null : dirty.items);
       syncEmptyHint(emptyHint, b);
+      if (inboxCtl && (dirty.all || dirty.structural)) inboxCtl.sync();
       itemsChanged = true;
       syncTrailPaint(b);
       if ((dirty.all || dirty.structural) && panel.currentTab?.() === "trails") panel.refreshTrails?.();
@@ -8412,6 +8433,7 @@ function buildBoardView(onFail, {
         clearLaneMarks();
       });
       step(() => { offBasketPill(); basketPill?.remove(); basketPill = null; });
+      step(() => { inboxCtl?.dispose(); inboxCtl = null; });
       step(() => closeHalo());
       step(() => { regionMark?.destroy?.(); regionMark = null; });
       step(() => closeViewDialog());

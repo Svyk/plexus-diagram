@@ -8,6 +8,7 @@ import { placeNearAnchor } from "./avoid.js";
 import { createRowScheduler, isHeavyRow, mountFpsFromStamps } from "./progressive.js";
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { isQueryString } from "../model/query.js";
+import { createQueryCards } from "./query-card.js";
 import { dueChip, isTaskString, taskAttrId, taskMeta, taskNamesSig } from "../model/tasks.js";
 import { commentCount } from "../model/section6.js";
 import { LINKED_REF_CAP, linkedRefCard, linkedRefLabel } from "../model/refs.js";
@@ -1024,11 +1025,23 @@ export function createItemRenderer({
     armEmbedShield(node, live);
   };
 
-  const mountQuery = (parent, uid) => {
+  let queryCards = null;
+  const queryCardsOf = () => {
+    if (queryCards) return queryCards;
+    let storage = null;
+    try { storage = (doc?.defaultView || globalThis).localStorage || null; } catch { storage = null; }
+    queryCards = createQueryCards({ doc, host, storage, graph: () => host?.graph || "" });
+    return queryCards;
+  };
+  // A query Plexus can translate paints its own list after first paint. The rest stay a live Roam render.
+  const mountQuery = (parent, uid, string) => {
+    const own = typeof string === "string" ? queryCardsOf().mount(parent, uid, string) : null;
+    if (own) return own;
     const live = el("div", "pxd-rs pxd-item__query", parent);
     const mount = el("div", "pxd-rs__live", live);
     try { host.renderBlock(mount, uid); }
     catch { mount.textContent = "Query"; }
+    if (typeof string === "string") queryCardsOf().watchFallback(live, mount, uid);
     return live;
   };
 
@@ -3966,7 +3979,7 @@ export function createItemRenderer({
           enhanced: false,
         }, { openUid: ref });
       } else if (typeof refString === "string" && isQueryString(refString) && host?.renderBlock) {
-        budget.roots.push(mountQuery(body, ref));
+        budget.roots.push(mountQuery(body, ref, refString));
       } else if (isRoamTableString(refString)) {
         rec.el.classList.add("pxd-item--roam-table");
         mountTableHost(body, ref, budget);
@@ -4017,7 +4030,7 @@ export function createItemRenderer({
         armBlockWatch(rec, item);
       }
     } else if (isQueryString(item.string) && host?.renderBlock) {
-      budget.roots.push(mountQuery(body, item.uid));
+      budget.roots.push(mountQuery(body, item.uid, item.string));
     } else if (isRoamTableString(item.string)) {
       rec.el.classList.add("pxd-item--roam-table");
       mountTableHost(body, item.uid, budget);

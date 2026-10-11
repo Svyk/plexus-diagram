@@ -387,3 +387,49 @@ The outline pin. Hover stays Roam's. A click opens the popover. The crop loads o
 | `buildPinChip(doc, spec, onOpen)` | Out: `button.pxd-chip.pxd-chip--source` with `data-pin`. Click calls `onOpen(pinUid, event)` and stops the event. Fail: no uid, or a doc that cannot `createElement`, is null. |
 | `openPinPopover(opts)` | Out: `{el, close}`. The dialog shows the crop or `p. N`, the quote, the surrounding paragraph when present, and buttons Open in reader, Sidebar, Boards, Copy ref. Boards lists titles, or `No boards`. Copy ref passes `((uid))`. Fail: no doc or no region returns `{el: null}`. |
 | `mountPdfPin(opts)` | Out: `{el, loads, destroy}`. Hides Roam's region button and paints the quote plus `p. N`. `loadCrop` runs once, only after `IntersectionObserver` reports an intersection, and only when `pinPdfUrl` keeps the URL. A click with no Shift or Meta opens the popover. Shift calls `onOpen` with `sidebar`. Meta or Ctrl calls it with `main`. `destroy` removes the pin and shows the button. Fail: a region that is not `k=pdf`, or a button `claimRegionButton` rejects, returns a noop and does not call `loadCrop`. No observer means no crop. |
+
+## src/model/query-run.js, src/host/query-backend.js, src/view/query-card.js
+
+Query cards. A block whose whole string is `{{[[query]]: ...}}` or `{{query: ...}}` paints its own list when Plexus can translate it; otherwise Roam renders it and Plexus keeps the uids it rendered. Saved views of the Roam Reader "Advanced Query Builder" live on the page `Roam Reader Saved Views` (empty on the graphs checked, format undocumented), so they are not read.
+
+| Export | Contract |
+|---|---|
+| `parseQuery(string, {now})` | Out: `{ok: true, ast, title}`. Clauses: `{and:}`, `{or:}`, `{not:}` (inside `and` only, with one positive clause), `[[page]]`, `#tag`, `#[[page]]`, `((uid))`, `{between:}` of two dated pages or `yesterday`/`today`/`tomorrow` (31 days at most, expands to an `or` of daily pages). `[[TODO]]` and `[[DONE]]` are page refs. A bare list is an `and`. A leading `"title"` is kept. Fail: `{ok: false, reason}` for `{search:}`, `{by:}`, `{daily-notes:}`, other relative dates, a lone `not`, a bare word, or bad syntax. |
+| `runQuery(ast, backend, opts)` | Out: `{status: "ok", uids, partial}`. Each leaf is read once, with a yield between leaves. `and` intersects, `or` unions, `not` subtracts. Fail: `status` is `slow` (over 4 s), `error`, `cancelled` or `unsupported`, with no uids. |
+| `loadQueryRows(ast, backend, opts)` | Out: rows newest edit first, at most 200 (`total` is the count before the cap), painted 30 at a time. `partial` when a hot page skipped its wide read or the cap cut results. |
+| `queryRow(detail)` / `rowDragPayload(row)` | Out: a block row drags `((uid))`, a page row `[[Title]]`, on `application/x-plexus-card` and `text/plain`. |
+| `createQueryBackend(host)` | Out: `hits(leaf)`, `times(uids)`, `details(uids)`. A page or block leaf is the blocks that cite it, the blocks under those, and for a page the blocks on it. Over 1500 citing blocks it skips the descendant read and reports `partial`; over 3000 it reads nothing and reports `partial`. |
+| `createQueryCards({doc, host, storage, graph}).mount(parent, uid, string)` | Out: the card body, or `null` when the query needs Roam's renderer. Paints cached rows at once, runs once when idle, reuses a run for 15 s, and has a refresh button and "Show N more". |
+| `.watchFallback(card, live, uid)` | After 1.8 s, stores the uids Roam rendered. When the render failed or is empty it shows the last stored rows. |
+
+## src/model/inbox.js, src/view/inbox.js
+
+Daily-note inbox. The pill `Inbox (N)` appears on a board when daily-page blocks cite the board's page title or its `{{[[diagram]]: title}}` title. There is no `plexus.title` prop; the title is the block string.
+
+| Export | Contract |
+|---|---|
+| `inboxTitles({pageTitle, boardTitle})` | Out: unique names, never `Untitled board`. |
+| `inboxPlan(titles)` | Out: one `[:find (pull ?p [... {(limit :block/_refs 1000) [...]}]) :in $ ?t ...]` per title. No graph scan. |
+| `readInbox(q, titles)` / `inboxEntries(rows)` | Out: `{entries, full}`. Reads pull keys with or without `:block/`. `full` is true when a pull hit the 1000 limit. |
+| `filterInbox(entries, {onBoard, skip, cap})` | Out: daily-page blocks only (`isDailyTitle`), not on the board, newest first, at most 100. |
+| `createInbox(opts)` | Out: `{sync, refresh, rows, dispose}`. First read waits for idle, again when the list opens. Place and drag add a `((uid))` card through `addStringsBeside`; the row leaves at once. |
+
+## src/model/board-rule.js
+
+`window.__plexusDiagram.rules` carries the Datalog rule `(board-member ?board ?b)`. Checked live 2026-10-11: `roamAlphaAPI.data.q` accepts a rules string as a `%` input and combines it with Roam's own rules (`refs-page`), but no call registers a rule for other callers, and Roam's docs say custom rules are not supported. So the rule is a string you pass.
+
+| Export | Contract |
+|---|---|
+| `rules.boardMember` | The rule text. A card is a direct child of the board that is not a Connections, snapshots, regions or trails container, or a child of a section anywhere under the board. Sections themselves are members. Legacy heading sections with no `plexus` props are not. |
+| `rules.q(query, ...inputs)` | `roamAlphaAPI.data.q(query, rules.boardMember, ...inputs)`. The query needs `:in $ %`. |
+| `installBoardRules(api, win)` | Sets `api.rules`; the returned function removes it on unload. |
+
+```clojure
+[:find ?s
+ :in $ %
+ :where [?board :block/uid "X"]
+        (board-member ?board ?b)
+        [?b :block/string ?s]]
+```
+
+Pass `window.__plexusDiagram.rules.boardMember` as `%`, or call `window.__plexusDiagram.rules.q(query)`.

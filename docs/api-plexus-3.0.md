@@ -387,3 +387,28 @@ The outline pin. Hover stays Roam's. A click opens the popover. The crop loads o
 | `buildPinChip(doc, spec, onOpen)` | Out: `button.pxd-chip.pxd-chip--source` with `data-pin`. Click calls `onOpen(pinUid, event)` and stops the event. Fail: no uid, or a doc that cannot `createElement`, is null. |
 | `openPinPopover(opts)` | Out: `{el, close}`. The dialog shows the crop or `p. N`, the quote, the surrounding paragraph when present, and buttons Open in reader, Sidebar, Boards, Copy ref. Boards lists titles, or `No boards`. Copy ref passes `((uid))`. Fail: no doc or no region returns `{el: null}`. |
 | `mountPdfPin(opts)` | Out: `{el, loads, destroy}`. Hides Roam's region button and paints the quote plus `p. N`. `loadCrop` runs once, only after `IntersectionObserver` reports an intersection, and only when `pinPdfUrl` keeps the URL. A click with no Shift or Meta opens the popover. Shift calls `onOpen` with `sidebar`. Meta or Ctrl calls it with `main`. `destroy` removes the pin and shows the button. Fail: a region that is not `k=pdf`, or a button `claimRegionButton` rejects, returns a noop and does not call `loadCrop`. No observer means no crop. |
+
+## src/model/pdf-page.js
+
+A PDF card can be a page link. `[[Title]]` (or `[label]([[Title]])`) is a PDF card when the first top-level `{{[[pdf]]: url}}` / `{{pdf: url}}` block on that page is the PDF. The item is `kind: "pdf"` with `target: {kind: "block", uid: <pdf block>, page: <title>, pageUid}`, so everything keyed by the pdf block uid or url (cover, reader, parse, pins, Ask AI, search) resolves through the target. `semanticRef` of such a card is `[[Title]]`. Old-style cards (the pdf block itself on the board) keep `target.kind === "self"`. Pure: no reads, no writes.
+
+| Export | Contract |
+|---|---|
+| `isPdfString(s)` | True for a trimmed string that starts with `{{[[pdf]]:` or `{{pdf:` (lowercase only). |
+| `pageCardRef(s)` | `{title, label}` for `[[Title]]` or `[label]([[Title]])`. Nested refs or extra text return null. |
+| `pdfOfPageNode(node)` | A pulled page -> `{pageUid, title, pdfUid, string, children?}` for its first top-level pdf block by order, else null. `children` is the pdf block's sorted children when the pull carried them. |
+| `pdfPageName(title)` | The part before the first ` -- ` (Roam's own PDF page title is `<title> -- <authors> -- … -- <hash>`). |
+| `cleanPageTitle(s)`, `pdfPageBaseTitle({display, fileName})`, `uniquePageTitle(base, taken)` | A new page title: the card's display title, else the file name, else `PDF`; ` (2)`, ` (3)`, … while `taken(title)` is true. |
+| `isInlinePdfCard(item)`, `inlinePdfCards(board)` | Old-style PDF cards (type `card`, kind `pdf`, target `self`). |
+| `planPdfMigration(board, deps)` | The dry run of "Move PDFs to their own pages" for one board. deps `{graph, urlOf, layoutOf, findPage, pageExists, titleFor, newUid}`. Out `{graph, boardUid, moves, edges, skipped}`. A move carries `{pdfUid, url, parentUid, order, cardUid, cardString, layout, page: {uid | null, newUid?, title, reuse, why}}`. A second PDF with the same url is skipped (`same-file`); a found page whose pdf block is a different block is skipped (`page-has-pdf`). `edges` rewrites only connections that touch a moved card: new endpoint uid and the string rebuilt with `[[Title]]`. A board with no old-style card plans nothing. |
+| `migrationLines(plan)` | Lines for the dry-run dialog. |
+
+Session: `layoutOf(uid)`, `addPdfPageCards(rows)` (rows `{title, x, y, pageUid?, newPage?, url?}`; a new page gets the pdf block first), `movePdfsToPages(plan)` (one undo group: page create, drop `:plexus` from the pdf block (other props stay), `block.move` to order 0 of the page, the `[[Title]]` card at the old parent and order with the copied layout, then edge strings and endpoints; resolves `{moved, edges}`, `{moved: 0, refused: "graph" | "board"}` for a plan from another graph or board, and writes nothing on a second run). Host: `pdfOfPage(title)`, `findPdfPage({url, sha})` (`:pdf/url`, then `:pdf/content-hash` = the file's sha256, then a page whose top-level pdf block has the url), `pageExists(title)`, `createPage({uid, title})`, `graphName()`.
+
+## src/model/highlight-ask.js
+
+| Export | Contract |
+|---|---|
+| `highlightAsk({highlight, string, uid, parsed?, title?})` | `highlight` is `highlightModel(...)`. Text: with a parse, `{doc: parsed, focus: {selection, page}}` (the parse supplies the nearby text); without, a `selectionDoc`. Area: the `![](url)` snapshot is the figure `image`; with a parse the focus is the page, without it an `imageDoc`. `source` is `{sourceUid: uid}`. Null for an empty text highlight or an area with no image. |
+| `highlightPart(ask, {uid, pdfUid, url})` | The basket part, keyed `hl:<uid>`. |
+| `highlightImageUrl(string)` | The url of the first `![](url)`, else `""`. |

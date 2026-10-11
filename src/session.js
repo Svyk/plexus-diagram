@@ -28,6 +28,7 @@ import {
   worldRects,
 } from "./model/board.js";
 import { whyPlan } from "./model/why.js";
+import { isInlinePdfCard, pageCardString } from "./model/pdf-page.js";
 import { trailString } from "./model/trails.js";
 import {
   BOARD_PATTERNS,
@@ -418,6 +419,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   let virtualAllowed = virtual === true;
   const autoEnhanceOn = () => (typeof settings?.get === "function" ? settings.get("auto-enhance") : settings?.["auto-enhance"]) !== false;
   const autoBoardCache = new Map();
+  // Pages this session just wrote a pdf block on: the optimistic paint resolves them before Roam has the page.
+  const pendingPdfPages = new Map();
+  // Page cards whose page has no pdf block: not read again for NOT_PDF_PAGE_MS (the board watch does not cover pages).
+  const notPdfPages = new Map();
+  const NOT_PDF_PAGE_MS = 30000;
   const autoBoardOf = (id, cplexus, kids) => {
     if (!autoEnhanceOn()) return false;
     if (!autoBoardCache.has(id)) {
@@ -451,6 +457,16 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       knownHighlight: (id) => knownHighlights.has(id),
       plexusApi,
       autoBoard: autoBoardOf,
+      pdfOfPage: (title) => {
+        const pending = pendingPdfPages.get(title) || null;
+        const miss = notPdfPages.get(title);
+        if (!pending && miss && Date.now() - miss < NOT_PDF_PAGE_MS) return null;
+        let live = null;
+        try { live = host.pdfOfPage?.(title) || null; } catch { live = null; }
+        if (live) { pendingPdfPages.delete(title); notPdfPages.delete(title); return live; }
+        if (!pending) notPdfPages.set(title, Date.now());
+        return pending;
+      },
     }) : null;
     if (board && virtualAllowed && autoEnhanceOn() && !board.enhanced && !board.native) {
       board.enhanced = true;
@@ -858,6 +874,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       case "props": await host.updateProps(op.uid, op.plexus); break;
       case "string": await host.updateString(op.uid, op.string); break;
       case "open": await host.setOpen(op.uid, op.open); break;
+      case "page": await host.createPage({ uid: op.uid, title: op.title }); break;
       default: break;
     }
   }
@@ -1008,6 +1025,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       string(id, string) {
         rawString(id, string);
         ops.push({ op: "string", uid: id, string });
+      },
+      // A page outside the board. Nothing in the board tree changes.
+      page({ uid: id, title }) {
+        const newUid = id ?? host.generateUid();
+        ops.push({ op: "page", uid: newUid, title });
+        return newUid;
       },
       sync: rebuild,
     };
@@ -2123,6 +2146,68 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const ids = items.map(({ string, x, y, w, h }) => cardAt(t, string, x, y, w || h ? { w, h } : null));
         applyFit(t, ids);
         return ids;
+      });
+    },
+
+    // The stored :plexus layout of a board block (the migration copies it to the new page card).
+    layoutOf(id) {
+      const p = readPlexus(rawNode(id)?.[PROPS]);
+      return p && typeof p === "object" ? { ...p } : null;
+    },
+
+    // PDF cards that link the PDF's page. Each row: { title, x, y, pageUid?, newPage?: true, url? }.
+    // A new page gets the `{{[[pdf]]: url}}` block first on it; an existing page only gets the card.
+    addPdfPageCards(list) {
+      const rows = capBulk(list ?? [], emit).filter((row) => row && typeof row.title === "string" && row.title);
+      if (!rows.length) return Promise.resolve([]);
+      return txn((t) => {
+        const ids = [];
+        for (const row of rows) {
+          let pageUid = row.pageUid || null;
+          if (row.newPage) pageUid = t.page({ uid: pageUid || undefined, title: row.title });
+          if (row.url && pageUid) {
+            const string = `{{[[pdf]]: ${row.url}}}`;
+            const pdfUid = t.create({ parent: pageUid, order: 0, string });
+            pendingPdfPages.set(row.title, { pageUid, title: row.title, pdfUid, string });
+          }
+          ids.push(cardAt(t, pageCardString(row.title), row.x, row.y, DEFAULT_SIZES.pdf));
+        }
+        applyFit(t, ids);
+        return ids;
+      });
+    },
+
+    // "Move PDFs to their own pages": apply a plan from planPdfMigration for THIS board. One undo group.
+    // A pdf block that is no longer an old-style card on this board is skipped, so a second run writes nothing.
+    movePdfsToPages(plan) {
+      if (!plan || plan.boardUid !== uid) return Promise.resolve({ moved: 0, refused: "board" });
+      let graphNow = "";
+      try { graphNow = String(host.graphName?.() || ""); } catch { graphNow = ""; }
+      if (plan.graph && graphNow && plan.graph !== graphNow) return Promise.resolve({ moved: 0, refused: "graph" });
+      const moves = (plan.moves || []).filter((m) => isInlinePdfCard(board?.items?.get(m.pdfUid)) && m.cardUid && m.page?.title);
+      if (!moves.length) return Promise.resolve({ moved: 0 });
+      const moving = new Set(moves.map((m) => m.pdfUid));
+      return txn((t) => {
+        for (const m of moves) {
+          const parent = rawNode(m.parentUid) ? m.parentUid : board.items.get(m.pdfUid).parentUid;
+          const kids = kidsOf(rawNode(parent));
+          const at = Math.max(0, kids.findIndex((k) => k[UID] === m.pdfUid));
+          const pdfString = rawNode(m.pdfUid)?.[STR] || `{{[[pdf]]: ${m.url}}}`;
+          const pageUid = m.page.uid || t.page({ uid: m.page.newUid || undefined, title: m.page.title });
+          t.props(m.pdfUid, null);
+          t.move(m.pdfUid, pageUid, 0);
+          t.create({ parent, uid: m.cardUid, string: m.cardString, plexus: m.layout, order: at });
+          pendingPdfPages.set(m.page.title, { pageUid, title: m.page.title, pdfUid: m.pdfUid, string: pdfString });
+        }
+        let edges = 0;
+        for (const e of plan.edges || []) {
+          const cur = board.edges?.get(e.uid);
+          if (!cur || !(moving.has(cur.from) || moving.has(cur.to))) continue;
+          t.string(e.uid, e.string);
+          t.props(e.uid, edgePlexus(e.uid, { from: e.from, to: e.to }));
+          edges += 1;
+        }
+        return { moved: moves.length, edges };
       });
     },
 

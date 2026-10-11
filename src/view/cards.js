@@ -3174,15 +3174,19 @@ export function createItemRenderer({
     let cover = null;
     try { cover = host?.pdfCover?.(pdfSourceOf(item)); } catch { cover = null; }
     const url = pdfMacroUrl(pdfSourceOf(item));
+    // A [[page]] card is named by its page (or its alias label); the PDF's metadata title does not override it.
+    const pageNamed = Boolean(item?.target?.page);
     let metadataTitle = "";
-    try {
-      const got = typeof pdfMetaTitle === "function" ? pdfMetaTitle(url) : "";
-      metadataTitle = typeof got === "string" ? got : "";
-    } catch { metadataTitle = ""; }
+    if (!pageNamed) {
+      try {
+        const got = typeof pdfMetaTitle === "function" ? pdfMetaTitle(url) : "";
+        metadataTitle = typeof got === "string" ? got : "";
+      } catch { metadataTitle = ""; }
+    }
     const model = coverModel({
       metadataTitle,
       alias: humanAlias(item),
-      text: humanText(item),
+      text: pageNamed ? "" : humanText(item),
       title: typeof cover?.title === "string" ? cover.title : "",
       url: (typeof cover?.url === "string" && cover.url) || url,
       count: cover?.count,

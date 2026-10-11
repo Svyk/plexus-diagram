@@ -14,6 +14,7 @@ import {
 } from "../model/library.js";
 import { splitNeighbors } from "../model/neighbors.js";
 import { coverModel, pdfMacroUrl, pdfPagePlan } from "../model/pdf.js";
+import { pdfOfPageNode } from "../model/pdf-page.js";
 import { LINKED_REF_CAP } from "../model/refs.js";
 import { createCardCache } from "../model/card-cache.js";
 import { attrNameOf, classifyString, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
@@ -194,6 +195,12 @@ const PDF_PAGE_QUERY = `[:find ?u ?t :in $ ?url :where [?p :pdf/url ?url] [?p :b
 const PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
 const PDF_BLOCK_OUT_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?p :block/refs ?b] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 const PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?b :block/refs ?p] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
+// The pdf block's pins container and its pins: two levels, nothing deeper.
+const PDF_KIDS_PATTERN = `[:block/uid {:block/children [:block/uid :block/string :block/order :block/props
+ {:block/children [:block/uid :block/string :block/order :block/props]}]}]`;
+const PDF_PAGE_PATTERN = "[:block/uid :node/title {:block/children [:block/uid :block/string :block/order]}]";
+const PDF_HASH_PAGE_QUERY = `[:find ?u ?t :in $ ?h :where [?p :pdf/content-hash ?h] [?p :block/uid ?u] [?p :node/title ?t]]`;
+const PDF_TOP_BLOCK_QUERY = `[:find ?u ?t :in $ ?url :where [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/page ?p] [?p :block/children ?b] [?p :block/uid ?u] [?p :node/title ?t]]`;
 const BLOCK_PROPS_PATTERN = "[:block/string :block/props {:block/page [:node/title]}]";
 // Children too, so a highlight card sees its note change. The string path ignores child-only fires.
 const BLOCK_WATCH_PATTERN = "[:block/string {:block/children [:block/string :block/order :block/props]}]";
@@ -1670,6 +1677,79 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         return "";
       };
       return take(PDF_BLOCK_OUT_QUERY) || take(PDF_BLOCK_IN_QUERY);
+    },
+
+    // The PDF a `[[title]]` card links: the page's first top-level pdf block. Read-only; one paint burst shares a read.
+    pdfOfPage(title) {
+      const name = typeof title === "string" ? title : "";
+      if (!name) return null;
+      const key = `pdfpage:${name}`;
+      const hit = readBurst(key);
+      if (hit !== MISS) return hit;
+      let res = null;
+      try { res = pull(PDF_PAGE_PATTERN, [":node/title", name]); } catch { res = null; }
+      const value = pdfOfPageNode(res);
+      if (value) {
+        let kids = null;
+        try { kids = pull(PDF_KIDS_PATTERN, eidKey(value.pdfUid)); } catch { kids = null; }
+        const list = kids?.[":block/children"];
+        value.children = Array.isArray(list) ? list.slice().sort((a, b) => (a?.[":block/order"] ?? 0) - (b?.[":block/order"] ?? 0)) : [];
+      }
+      writeBurst(key, value);
+      return value;
+    },
+
+    // A page that already holds this file: Roam's own PDF page (:pdf/url, or :pdf/content-hash = sha256), else a
+    // page whose top-level pdf block has this url. { uid, title, pdfUid, why } or null. Read-only.
+    findPdfPage({ url = "", sha = "" } = {}) {
+      const needle = typeof url === "string" ? url.trim() : "";
+      const hash = typeof sha === "string" ? sha.trim().toLowerCase() : "";
+      const withPdf = (uid, title, why) => {
+        const pdf = host.pdfOfPage(title);
+        return { uid, title, pdfUid: pdf?.pdfUid || "", why };
+      };
+      if (needle) {
+        for (const row of queryRows(host, PDF_PAGE_QUERY, needle)) {
+          if (Array.isArray(row) && typeof row[0] === "string" && typeof row[1] === "string") return withPdf(row[0], row[1], "url");
+        }
+      }
+      if (/^[0-9a-f]{64}$/.test(hash)) {
+        for (const row of queryRows(host, PDF_HASH_PAGE_QUERY, hash)) {
+          if (Array.isArray(row) && typeof row[0] === "string" && typeof row[1] === "string") return withPdf(row[0], row[1], "sha");
+        }
+      }
+      if (needle) {
+        for (const row of queryRows(host, PDF_TOP_BLOCK_QUERY, needle)) {
+          if (!Array.isArray(row) || typeof row[0] !== "string" || typeof row[1] !== "string") continue;
+          const pdf = host.pdfOfPage(row[1]);
+          if (pdf && pdfMacroUrl(pdf.string) === needle) return { uid: row[0], title: row[1], pdfUid: pdf.pdfUid, why: "page" };
+        }
+      }
+      return null;
+    },
+
+    // The graph Roam has open (its own API first, the window hash second).
+    graphName() {
+      const live = api?.graph?.name;
+      return typeof live === "string" && live ? live : gname;
+    },
+
+    pageExists(title) {
+      const name = typeof title === "string" ? title.trim() : "";
+      if (!name) return false;
+      try { return Boolean(rawPull("[:block/uid]", [":node/title", name])?.[":block/uid"]); } catch { return true; }
+    },
+
+    // A new page with a known uid, so later writes in the same group can target it.
+    async createPage({ uid, title } = {}) {
+      const name = String(title ?? "").trim();
+      if (!name) throw new Error("createPage: no title");
+      const page = { title: name };
+      if (typeof uid === "string" && uid) page.uid = uid;
+      stats.writes++;
+      await data.page.create({ page });
+      noteWrite("create");
+      return page.uid || host.pageUid(name);
     },
 
     // Boards library: every enhanced (plexus.v === 2) board block in the graph. Read-only.

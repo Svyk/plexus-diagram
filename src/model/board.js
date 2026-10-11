@@ -26,6 +26,7 @@ import { parseTrails } from "./trails.js";
 import { highlightModel } from "./highlight.js";
 import { readWhy } from "./why.js";
 import { edgeMayTarget, endpointHitsKey } from "./endpoints.js";
+import { pageCardRef, pdfOfPageNode, pdfPageName } from "./pdf-page.js";
 
 const AUTO_GAP = 40;
 const AUTO_OFFSET = 48;
@@ -138,7 +139,19 @@ function highlightCandidate(text, refUid, known) {
   try { return known(refUid) === true; } catch { return false; }
 }
 
-export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighlight, autoBoard } = {}) {
+// A `[[Title]]` card whose page's first top-level block is a pdf block. The board pull may already carry the
+// page (with its children); otherwise `pdfOfPage(title)` reads it.
+function pagePdf(node, title, pdfOfPage) {
+  const embedded = refNodes(node).find((ref) => ref?.[":node/title"] === title);
+  if (embedded && Array.isArray(embedded[":block/children"])) return pdfOfPageNode(embedded);
+  if (typeof pdfOfPage !== "function") return null;
+  try {
+    const hit = pdfOfPage(title);
+    return hit && typeof hit.pdfUid === "string" && hit.pdfUid ? hit : null;
+  } catch { return null; }
+}
+
+export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighlight, autoBoard, pdfOfPage } = {}) {
   if (!pulled || typeof pulled !== "object") return null;
   const uid = pulled[":block/uid"];
   const string = pulled[":block/string"] ?? "";
@@ -231,8 +244,20 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
           }
         }
       }
+      let pdfPage = null;
+      if (type === "card" && (kind === "page" || kind === "note")) {
+        const ref = pageCardRef(cstring);
+        pdfPage = ref ? pagePdf(child, ref.title, pdfOfPage) : null;
+        if (pdfPage) {
+          kind = "pdf";
+          title = ref.label || pdfPageName(pdfPage.title || ref.title);
+        }
+      }
+      // A page card shows the pdf block's pins (they sit under the pdf block, not under the card).
+      const cardKids = pdfPage && !kids.length && Array.isArray(pdfPage.children) ? pdfPage.children : kids;
       let target;
-      if (kind === "page") target = { kind: "page", title: cls.title };
+      if (pdfPage) target = { kind: "block", uid: pdfPage.pdfUid, page: pdfPage.title, ...(pdfPage.pageUid ? { pageUid: pdfPage.pageUid } : {}) };
+      else if (kind === "page") target = { kind: "page", title: cls.title };
       else if (kind === "block" || kind === "region-ref" || kind === "drawing-ref" || (kind === "pdf" && cls.refUid) || (kind === "highlight" && cls.refUid)) target = { kind: "block", uid: cls.refUid };
       else target = { kind: "self", uid: cuid };
       const item = {
@@ -276,9 +301,9 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         ...(layout.landmark ? { landmark: true, glyph: layout.glyph || "", size: layout.size === "S" || layout.size === "L" ? layout.size : "M" } : {}),
         enhanced: kind === "board" && (cplexus?.v === 2 || (typeof autoBoard === "function" && autoBoard(cuid, cplexus, kids) === true)),
         members: [],
-        content: type === "section" ? [] : kids,
+        content: type === "section" ? [] : cardKids,
         // Regions and pins sit in content, which can change in place. This string is fixed at build, so the diff sees them.
-        ...(kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(kids) } : {}),
+        ...(kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(cardKids) } : {}),
       };
       items.set(cuid, item);
       preorder.push(cuid);

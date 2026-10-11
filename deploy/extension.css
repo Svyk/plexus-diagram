@@ -8771,6 +8771,25 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-paper {
   visibility: hidden;
 }
 
+.pxd-root .pxd-pdf-pages .pxd-view-dialog__card {
+  max-width: 440px;
+}
+
+.pxd-root .pxd-pdf-pages__head {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.pxd-root .pxd-pdf-pages__list {
+  max-height: 240px;
+  margin: 0;
+  padding-left: 18px;
+  overflow: auto;
+  color: var(--pxd-muted, inherit);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* PDF pin in the outline. Border carries the shape. No tinted fill, no shadow. */
 
 .pxd-pdf-pin {
@@ -9639,6 +9658,7 @@ body.roam-body.dark .pxd-root,
 
 .pxd-read-drawer__note,
 .pxd-read-drawer__place,
+.pxd-read-drawer__ask,
 .pxd-read-drawer__locate {
   display: inline-flex;
   align-items: center;

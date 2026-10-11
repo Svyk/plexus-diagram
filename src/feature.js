@@ -2778,6 +2778,11 @@ export async function installPlexusDiagram({
     return targetView(context)?.addPage?.();
   }
 
+  // Board-scoped: the board the command targets, never every board in the graph.
+  function movePdfPagesCommand(context) {
+    return targetView(context)?.movePdfsToPages?.();
+  }
+
   function newDrawingCommand(context) {
     return targetView(context)?.newDrawing?.();
   }
@@ -2805,6 +2810,7 @@ export async function installPlexusDiagram({
     ["Plexus: Add page…", addPageCommand],
     ["Plexus: New drawing here", newDrawingCommand],
     ["Plexus: Resurface here", resurfaceCommand],
+    ["Plexus: Move PDFs to their own pages", movePdfPagesCommand],
   ];
 
   function runCommand(label, fn) {

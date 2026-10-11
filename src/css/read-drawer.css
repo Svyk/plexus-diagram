@@ -234,6 +234,7 @@
 
 .pxd-read-drawer__note,
 .pxd-read-drawer__place,
+.pxd-read-drawer__ask,
 .pxd-read-drawer__locate {
   display: inline-flex;
   align-items: center;

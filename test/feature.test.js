@@ -933,6 +933,7 @@ test("PF-1: Commands… lists every action and keeps the focused block after the
       "Add page…",
       "New drawing here",
       "Resurface here",
+      "Move PDFs to their own pages",
     ]);
     t.env.focused = null;
     const row = t.doc.querySelectorAll(".pxd-commands__row").find((node) => node.textContent === "Enhance this diagram");

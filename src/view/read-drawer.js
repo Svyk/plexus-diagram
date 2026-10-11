@@ -53,6 +53,7 @@ export function createReadDrawer({
   onLocate,
   onPlace,
   onNote,
+  onAsk,
   onHover,
   storage,
   key = "",
@@ -228,6 +229,11 @@ export function createReadDrawer({
     const placeBtn = el("button", "pxd-read-drawer__place", acts);
     placeBtn.setAttribute("aria-label", "Place");
     placeBtn.append(icon(["M2.5 3.5h8v8h-8z", "M11 8h3M12.5 6.5v3"]));
+    if (typeof onAsk === "function") {
+      const ask = el("button", "pxd-read-drawer__ask", acts);
+      ask.setAttribute("aria-label", "Ask AI (Shift: add to question)");
+      ask.append(icon(["M8 2.5l1.4 3.1 3.1 1.4-3.1 1.4L8 11.5 6.6 8.4 3.5 7l3.1-1.4z", "M12.5 11v3M11 12.5h3"]));
+    }
     const locate = el("button", "pxd-read-drawer__locate", acts);
     locate.setAttribute("aria-label", "Locate");
     locate.append(icon(["M8 2.5v2M8 11.5v2M2.5 8h2M11.5 8h2", "M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"]));
@@ -427,6 +433,7 @@ export function createReadDrawer({
       paintSelected();
       if (closest(".pxd-read-drawer__note")) { call(onNote, row); return; }
       if (closest(".pxd-read-drawer__place")) { call(onPlace, row); return; }
+      if (closest(".pxd-read-drawer__ask")) { call(onAsk, row, { basket: event.shiftKey === true }); return; }
       if (closest(".pxd-read-drawer__locate") || !closest("button")) call(onLocate, row);
       return;
     }
@@ -503,6 +510,12 @@ export function createReadDrawer({
       event.preventDefault?.();
       event.stopPropagation?.();
       call(onLocate, row);
+      return;
+    }
+    if (keyName === "a" && typeof onAsk === "function") {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      call(onAsk, row, { basket: true });
       return;
     }
     if (keyName === "n" || keyName === "p") {

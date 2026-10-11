@@ -343,7 +343,7 @@ export function classifyString(s) {
   const block = /^\(\(([\w-]+)\)\)$/.exec(t);
   if (block) return { kind: "block", refUid: block[1] };
   if (/^\{\{(\[\[)?diagram/i.test(t)) return { kind: "board" };
-  if (t.startsWith("{{[[pdf]]:")) return { kind: "pdf" };
+  if (/^\{\{\s*(?:\[\[pdf\]\]|pdf)\s*:/.test(t)) return { kind: "pdf" };
   if (/^!\[[^\]]*\]\([^)]*\)$/.test(t)) return { kind: "image" };
   if (isContainerString(t)) return { kind: "regions" };
   if (parseRegion(t)) return { kind: "region" };
@@ -426,6 +426,8 @@ export function itemLabel(item, resolve) {
 export function semanticRef(item) {
   const t = item?.target;
   if (t?.kind === "page") return `[[${t.title}]]`;
+  // A PDF card that links the PDF's page names the page: a ((pdf)) ref would mount a reader in the outline.
+  if (t?.kind === "block" && t.page) return `[[${t.page}]]`;
   if (t?.kind === "block") return `((${t.refUid ?? t.uid}))`;
   return `((${item?.uid}))`;
 }

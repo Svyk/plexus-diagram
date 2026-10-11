@@ -1096,7 +1096,7 @@ function classifyString(s) {
   const block = /^\(\(([\w-]+)\)\)$/.exec(t);
   if (block) return { kind: "block", refUid: block[1] };
   if (/^\{\{(\[\[)?diagram/i.test(t)) return { kind: "board" };
-  if (t.startsWith("{{[[pdf]]:")) return { kind: "pdf" };
+  if (/^\{\{\s*(?:\[\[pdf\]\]|pdf)\s*:/.test(t)) return { kind: "pdf" };
   if (/^!\[[^\]]*\]\([^)]*\)$/.test(t)) return { kind: "image" };
   if (isContainerString(t)) return { kind: "regions" };
   if (parseRegion(t)) return { kind: "region" };
@@ -1166,6 +1166,7 @@ function itemLabel(item, resolve) {
 function semanticRef(item) {
   const t = item?.target;
   if (t?.kind === "page") return `[[${t.title}]]`;
+  if (t?.kind === "block" && t.page) return `[[${t.page}]]`;
   if (t?.kind === "block") return `((${t.refUid ?? t.uid}))`;
   return `((${item?.uid}))`;
 }
@@ -2901,6 +2902,724 @@ var init_endpoints = __esm({
   }
 });
 
+// src/model/title-cap.js
+function setTitleLexicon(words) {
+  titleLexicon = words && typeof words.has === "function" ? words : null;
+}
+function segmentToken(token, lexicon) {
+  const t = String(token || "");
+  if (!lexicon || t.length < SEG_MIN || !/^\p{L}+$/u.test(t)) return null;
+  const lower3 = t.toLowerCase();
+  if (lexicon.has(lower3)) return null;
+  const n2 = lower3.length;
+  const best = new Array(n2 + 1).fill(null);
+  best[0] = { count: 0, sq: 0, prev: -1 };
+  for (let i = 1; i <= n2; i++) {
+    for (let j = Math.max(0, i - 24); j < i; j++) {
+      if (!best[j]) continue;
+      const len = i - j;
+      const word = lower3.slice(j, i);
+      if (!(FUNCTION_WORDS.has(word) || len >= SEG_WORD_MIN && lexicon.has(word))) continue;
+      const cand = { count: best[j].count + 1, sq: best[j].sq + len * len, prev: j };
+      const cur = best[i];
+      if (!cur || cand.count < cur.count || cand.count === cur.count && cand.sq > cur.sq) best[i] = cand;
+    }
+  }
+  if (!best[n2] || best[n2].count < 3 || best[n2].count > SEG_MAX_WORDS) return null;
+  const out = [];
+  for (let i = n2; i > 0; i = best[i].prev) out.unshift(t.slice(best[i].prev, i));
+  if (!out.some((piece) => FUNCTION_WORDS.has(piece.toLowerCase()))) return null;
+  return out;
+}
+function segmentTitle(text4, lexicon = titleLexicon) {
+  const clean = typeof text4 === "string" ? text4 : "";
+  if (!lexicon || !clean) return clean;
+  return clean.replace(/\S*\p{L}{18,}\S*/gu, (word) => {
+    const runs = word.match(/\p{L}+|[^\p{L}]+/gu) || [];
+    let split = false;
+    const parts = runs.map((run) => {
+      const pieces2 = /^\p{L}{18,}$/u.test(run) ? segmentToken(run, lexicon) : null;
+      if (pieces2) split = true;
+      return pieces2 ? pieces2.join(" ") : run;
+    });
+    if (!split) return word;
+    let out = "";
+    for (let i = 0; i < parts.length; i++) {
+      const prev = runs[i - 1];
+      if (i && /^\p{L}/u.test(runs[i]) !== /^\p{L}/u.test(prev) && /\p{N}/u.test(/^\p{L}/u.test(runs[i]) ? prev : runs[i])) out += " ";
+      out += parts[i];
+    }
+    return out;
+  });
+}
+function capTitle(text4, cap4 = TITLE_CAP, lexicon = titleLexicon) {
+  const clean = segmentTitle(typeof text4 === "string" ? text4.replace(/\s+/g, " ").trim() : "", lexicon);
+  if (clean.length <= cap4) return clean;
+  const cut = clean.slice(0, cap4 + 1);
+  const space = cut.lastIndexOf(" ");
+  const head = (space > 0 ? cut.slice(0, space) : clean.slice(0, cap4)).replace(/[\s,;:.\-–—]+$/, "");
+  return `${head}…`;
+}
+function isCutPrefix(title, heading) {
+  const t = typeof title === "string" ? title.trim() : "";
+  const h = typeof heading === "string" ? heading.replace(/\s+/g, " ").trim() : "";
+  return t.length > 0 && h.length > t.length && h.toLowerCase().startsWith(t.toLowerCase()) && /\S/.test(h[t.length]);
+}
+function implausibleWord(word) {
+  const t = String(word || "").toLowerCase();
+  if (t.length < 5) return false;
+  const vowels = (t.match(/[aeiou]/g) || []).length;
+  const ratio = vowels / t.length;
+  if (ratio < 0.2 || ratio > 0.75) return true;
+  if (/[^aeiouy]{4,}/.test(t)) return true;
+  if (/(.)\1\1/.test(t)) return true;
+  if (/tth/.test(t)) return true;
+  if (t.length >= 8 && ratio > 0.55 && /([aeiou])\1/.test(t)) return true;
+  return false;
+}
+function isGibberishTitle(text4) {
+  const raw = typeof text4 === "string" ? text4 : "";
+  const judged = [];
+  for (const tok of raw.split(/\s+/)) {
+    if (!tok) continue;
+    const word = tok.replace(/[^A-Za-z]/g, "");
+    const digits = (tok.match(/\d/g) || []).length;
+    if (digits >= 4 && word.length <= digits) {
+      judged.push(true);
+      continue;
+    }
+    if (word.length < 5) continue;
+    judged.push(implausibleWord(word));
+  }
+  if (judged.length < 2) return false;
+  return judged.filter(Boolean).length / judged.length > 0.5;
+}
+function isJunkTitleText(text4) {
+  const t = typeof text4 === "string" ? text4.replace(/\s+/g, " ").trim() : "";
+  if (!t) return true;
+  if (JUNK_LINE_RES.some((re) => re.test(t))) return true;
+  const digits = (t.match(/\d/g) || []).length;
+  const letters = (t.match(/\p{L}/gu) || []).length;
+  return digits >= 6 && digits > letters * 2;
+}
+function titleWordCount(text4) {
+  return String(text4 ?? "").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+}
+function plainTitle(value) {
+  return String(value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function isBannerOf(text4, line, { exact = true } = {}) {
+  const a = plainTitle(text4);
+  const b = plainTitle(line);
+  if (!a || !b) return false;
+  if (a === b) return exact;
+  const at = b.indexOf(a);
+  if (at < 0) return false;
+  const before = b[at - 1];
+  const after = b[at + a.length];
+  if (before && /[\p{L}\p{N}]/u.test(before) || after && /[\p{L}\p{N}]/u.test(after)) return false;
+  const rest = `${b.slice(0, at)} ${b.slice(at + a.length)}`;
+  return (rest.match(/\d+/g) || []).length >= 2 && CITATION_REST.test(rest);
+}
+function isMetaBanner(metaTitle, { pageTitle = "", lines = [] } = {}) {
+  const meta = plainTitle(metaTitle);
+  const page = plainTitle(pageTitle);
+  if (!meta || !page || meta === page || page.startsWith(meta)) return false;
+  for (const line of Array.isArray(lines) ? lines : []) {
+    if (typeof line !== "string" || plainTitle(line) === page) continue;
+    if (isBannerOf(meta, line)) return true;
+  }
+  return false;
+}
+var TITLE_CAP, titleLexicon, SEG_MIN, SEG_MAX_WORDS, SEG_WORD_MIN, FUNCTION_WORDS, TITLE_REV, MONTHS2, JUNK_LINE_RES, CITATION_REST;
+var init_title_cap = __esm({
+  "src/model/title-cap.js"() {
+    TITLE_CAP = 80;
+    titleLexicon = null;
+    SEG_MIN = 18;
+    SEG_MAX_WORDS = 12;
+    SEG_WORD_MIN = 4;
+    FUNCTION_WORDS = /* @__PURE__ */ new Set(["of", "the", "and", "in", "to", "for", "per", "on", "at", "by", "with", "from", "or", "an", "a"]);
+    TITLE_REV = 3;
+    MONTHS2 = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+    JUNK_LINE_RES = [
+      /^(?:notes?|sources?)\s*(?:[:.\-–—]|$)/i,
+      /^[*†‡§¶•]/,
+      /^rates?\s+less\s+than\b/i,
+      /^\W*\d{1,4}\W*$/,
+      /^page\s+\d+(\s+of\s+\d+)?$/i,
+      /^\d{1,4}\s*\/\s*\d{1,4}$/,
+      /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/,
+      /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/,
+      new RegExp(`^(?:\\d{1,2}\\s+)?(?:${MONTHS2})\\.?\\s+(?:\\d{1,2},?\\s+)?\\d{4}$`, "i"),
+      /\bcontents lists? available at\b/i,
+      /\bjournal homepage\b/i,
+      /\b(?:https?:\/\/|www\.)\S+/i,
+      /\b[\w-]+\.(?:com|org|edu|gov|net|eu)\b/i,
+      /\bdoi\b\s*[:.]?|\b10\.\d{4,9}\//i,
+      /\bvol(?:ume)?\.?\s*\d+|\bissue\s+\d+|\bno\.\s*\d+\s*[,(]|\(\d{4}\)\s*\d{2,}/i,
+      /^(?:©|copyright\b)|\ball rights reserved\b/i,
+      /^(?:available online|received|accepted|revised|keywords?|abstract|article info|a r t i c l e)\b/i,
+      /^L\s*\d+\/\d+$/,
+      /^(?:\(\s*\d+\s*\)\s*)?united states patent\b/i,
+      /^(?:\(\s*\d+\s*\)\s*)?(?:patent\s+no\.?|date\s+of\s+patent)\b/i,
+      /^(?:\(\s*\d+\s*\)\s*)?references cited\b/i,
+      /^(?:\(\s*\d+\s*\)\s*)(?:appl\.?\s*no\.?|filed|inventor|applicant|assignee)\b/i,
+      /^(?:\(\s*\d+\s*\)\s*)(?:u\s*\.?\s*s\s*\.?\s*c[li]\.?|int\s*\.?\s*cl\.?)\b/i,
+      /^cpc\s+\.{3,}/i
+    ];
+    CITATION_REST = /^[\s\d().,:;/–—-]*$/;
+  }
+});
+
+// src/model/pdf.js
+function pdfMacroUrl(s) {
+  if (typeof s !== "string") return "";
+  const text4 = s.trim();
+  const head = PDF_MACRO.exec(text4);
+  if (!head) return "";
+  const match = /https?:\/\/[^\s}]+/.exec(text4.slice(head[0].length));
+  if (!match) return "";
+  return match[0];
+}
+function pdfPagePlan(url, pages) {
+  if (!Array.isArray(pages)) return null;
+  for (const row4 of pages) {
+    if (row4 && typeof row4 === "object" && row4.url === url) return row4;
+  }
+  return null;
+}
+function fileName(url) {
+  if (typeof url !== "string" || url === "") return "";
+  let path = url;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    path = url.split("#")[0].split("?")[0];
+  }
+  let seg = path.split("/").filter(Boolean).pop() || "";
+  try {
+    seg = decodeURIComponent(seg);
+  } catch {
+  }
+  seg = seg.split("/").filter(Boolean).pop() || "";
+  seg = seg.replace(/\.pdf$/i, "").replace(/_+/g, " ").replace(/\s+/g, " ").trim();
+  return seg;
+}
+function pdfFileTitle(url) {
+  const name = fileName(url);
+  return titleText(name);
+}
+function cleanPdfTitle(value) {
+  let text4 = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  text4 = text4.replace(/^(?:microsoft\s+(?:word|powerpoint|excel)\s*[-\u2013\u2014]\s*)/i, "").trim();
+  if (text4.length < 4) return "";
+  if (ROMAN_ONLY.test(text4)) return "";
+  if (/^untitled\b/i.test(text4)) return "";
+  return titleText(text4);
+}
+function isStorageTitle(value) {
+  const text4 = typeof value === "string" ? value.trim() : "";
+  if (!text4) return true;
+  if (text4.startsWith("{{") || text4.includes("{{[[")) return true;
+  if (/imgs\/app\//i.test(text4)) return true;
+  const last = text4.split("/").filter(Boolean).pop() || text4;
+  const bare = last.replace(/\.pdf$/i, "");
+  if (text4.includes("/") && /^[A-Za-z0-9_-]{9,}$/.test(bare) && !/\.pdf$/i.test(last)) return true;
+  if (!text4.includes(" ") && /^[A-Za-z0-9_-]{9,}$/.test(text4) && !/\.pdf$/i.test(text4)) return true;
+  return false;
+}
+function titleText(value) {
+  const text4 = typeof value === "string" ? value.trim() : "";
+  if (!text4 || text4 === "PDF" || isStorageTitle(text4)) return "";
+  return text4;
+}
+function pdfTitlePlan(source) {
+  const src = source && typeof source === "object" ? source : {};
+  const named2 = cleanPdfTitle(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title) || cleanPdfTitle(src.parsedTitle);
+  if (named2) return segmentTitle(named2);
+  const file = titleText(fileName(src.url));
+  return file ? segmentTitle(file) : "PDF";
+}
+function parsedTitleLines(doc) {
+  if (!doc || typeof doc !== "object") return [];
+  const out = [];
+  for (const r of Array.isArray(doc.removed) ? doc.removed : []) if (r?.text && r.reason !== "page-number") out.push(String(r.text));
+  const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
+  for (const id of Array.isArray(doc.order) ? doc.order : Object.keys(blocks)) {
+    const block = blocks[id];
+    if (!block || block.page !== 1 || typeof block.text !== "string") continue;
+    const text4 = block.text.replace(/\s+/g, " ").trim();
+    if (text4) out.push(text4.slice(0, 160));
+    if (out.length >= 80) break;
+  }
+  return [...new Set(out)].slice(0, 60);
+}
+function parsedDocTitle(doc) {
+  return capTitle(parsedDocTitleRaw(doc));
+}
+function nextParsedTitle(current3, incoming) {
+  const next = cleanPdfTitle(incoming);
+  if (next) return next;
+  return cleanPdfTitle(current3) || "";
+}
+function withKeptTitle(cloudDoc, localDoc) {
+  if (!cloudDoc || cloudDoc.engine !== "cloud") return cloudDoc;
+  if (parsedDocTitle(cloudDoc)) return cloudDoc;
+  const title = parsedDocTitle(localDoc);
+  if (!title) return cloudDoc;
+  return { ...cloudDoc, title };
+}
+function parsedDocTitleRaw(doc) {
+  if (!doc || typeof doc !== "object") return "";
+  const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
+  const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
+  const norm3 = (value) => String(value ?? "").replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
+  const runningTexts = (Array.isArray(doc.removed) ? doc.removed : []).filter((r) => r && r.reason !== "page-number" && r.text).map((r) => String(r.text));
+  const running = new Set(runningTexts.map(norm3));
+  const usable = (value) => {
+    const real = cleanPdfTitle(value);
+    if (!real || isJunkTitleText(real) || running.has(norm3(real))) return "";
+    return runningTexts.some((line) => isBannerOf(real, line, { exact: false })) ? "" : real;
+  };
+  const given = usable(doc.title);
+  if (given) {
+    const first = ids.map((id) => blocks[id]).find((b) => b?.type === "heading" && (b.level || 1) === 1);
+    if (!isCutPrefix(given, first?.text)) return given;
+  }
+  const fromPage = usable(doc.pageTitle);
+  if (fromPage) return fromPage;
+  for (const id of ids) {
+    const block = blocks[id];
+    if (block?.type !== "heading" || (block.level || 1) !== 1) continue;
+    const text4 = typeof block.text === "string" ? block.text.replace(/\s+/g, " ").trim() : "";
+    const real = usable(text4);
+    if (real) return real;
+  }
+  const clean = (value) => typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  for (const id of ids) {
+    const block = blocks[id];
+    if (block?.type === "table") break;
+    if (block?.type !== "heading" || (block.page || 1) !== 1) continue;
+    const real = usable(clean(block.text));
+    if (real && titleWordCount(real) >= 3) return real;
+  }
+  for (const id of ids) {
+    const block = blocks[id];
+    if (block?.type !== "table" || !block.caption) continue;
+    const text4 = clean(blocks[block.caption]?.text);
+    if (text4 && !isStorageTitle(text4)) return text4;
+  }
+  for (const id of ids) {
+    const block = blocks[id];
+    if (block?.type !== "para" || (block.page || 1) !== 1) continue;
+    const text4 = clean(block.text);
+    if (text4 && text4.length <= 160 && !/^scan\b/i.test(text4) && !isStorageTitle(text4) && !isJunkTitleText(text4) && !running.has(norm3(text4)) && titleWordCount(text4) >= 3) return text4;
+  }
+  return "";
+}
+function coverModel(source) {
+  const src = source && typeof source === "object" ? source : {};
+  const title = pdfTitlePlan(src);
+  const count = typeof src.count === "number" && Number.isFinite(src.count) && src.count >= 1 ? src.count : 0;
+  const label = count === 1 ? "1 highlight" : `${count} highlights`;
+  return { title, count, label };
+}
+function clampPdfCard(rect) {
+  const src = rect && typeof rect === "object" ? rect : {};
+  const out = { ...src };
+  const w = Number(src.w);
+  const h = Number(src.h);
+  if (Number.isFinite(w)) out.w = Math.min(PDF_CARD_MAX, w);
+  if (Number.isFinite(h)) out.h = Math.min(PDF_CARD_MAX, h);
+  return out;
+}
+function postersEnabled(source) {
+  if (!source || typeof source !== "object") return true;
+  return source.posters !== false;
+}
+function coverOuterBox(source) {
+  const cover = coverModel(source);
+  const w = Number(source?.w);
+  const h = Number(source?.h);
+  return {
+    title: cover.title,
+    w: Number.isFinite(w) && w > 0 ? Math.round(w) : PDF_READER_W,
+    h: Number.isFinite(h) && h > 0 ? Math.round(h) : PDF_READER_H
+  };
+}
+function readerRule(openUid, nextUid) {
+  const current3 = openUid || null;
+  if (nextUid == null || nextUid === "") return { open: current3, close: null };
+  if (nextUid === current3) return { open: current3, close: null };
+  return { open: nextUid, close: current3 };
+}
+function videoStem(url) {
+  const name = fileName(url);
+  if (!name) return "";
+  return name.replace(/\.(mp4|webm|mov|m4v|ogg)$/i, "");
+}
+function embedTitle(kind, name, url) {
+  if (name === "youtube") return "YouTube";
+  if (kind === "tweet") {
+    const handle = /(?:twitter\.com|x\.com)\/([A-Za-z0-9_]+)/i.exec(String(url || ""));
+    if (handle && handle[1].toLowerCase() !== "i" && handle[1].toLowerCase() !== "status") return `@${handle[1]}`;
+    return "Tweet";
+  }
+  if (kind === "iframe") {
+    try {
+      const host = new URL(url).hostname.replace(/^www\./, "");
+      if (host) return host;
+    } catch {
+    }
+    return "Embed";
+  }
+  if (kind === "video") return videoStem(url) || "Video";
+  return fileName(url) || "PDF";
+}
+function embedKind(name) {
+  const n2 = String(name || "").toLowerCase();
+  if (n2 === "youtube" || n2 === "iframe") return "iframe";
+  if (n2 === "tweet" || n2 === "twitter") return "tweet";
+  if (n2 === "video") return "video";
+  return "pdf";
+}
+function posterThumb(source) {
+  const src = source && typeof source === "object" ? source : {};
+  const direct = typeof src.thumb === "string" ? src.thumb.trim() : "";
+  if (direct.startsWith("data:image/") && !/["'()]/.test(direct)) return direct;
+  const img = src.thumb && typeof src.thumb === "object" ? src.thumb : null;
+  if (img && img.complete === true && Number(img.naturalWidth) > 0) {
+    const url = String(img.currentSrc || img.src || "");
+    if ((url.startsWith("data:image/") || url.startsWith("blob:")) && !/["'()]/.test(url)) return url;
+  }
+  const fromText = /data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/.exec(String(src.url || src.string || ""));
+  if (fromText && !/["'()]/.test(fromText[0])) return fromText[0];
+  return "";
+}
+function heavyEmbed(string, opts) {
+  if (opts && postersEnabled(opts) === false) return null;
+  const text4 = String(string ?? "").trim();
+  if (!text4) return null;
+  const match = HEAVY_ONE.exec(text4);
+  if (match) {
+    const name = match[1].toLowerCase();
+    const body = String(match[2] || "").trim();
+    const urlMatch = /https?:\/\/[^\s}]+/.exec(body);
+    const url = urlMatch ? urlMatch[0] : body;
+    const kind = embedKind(name);
+    return { kind, url, title: embedTitle(kind, name, url) };
+  }
+  if (/^<iframe\b/i.test(text4)) return { kind: "iframe", url: "", title: "Embed" };
+  if (/^<video\b/i.test(text4)) return { kind: "video", url: "", title: "Video" };
+  return null;
+}
+function heavyRefUid(string) {
+  const text4 = String(string ?? "").trim();
+  const block = REF_ONLY3.exec(text4);
+  if (block) return block[1];
+  const embed = EMBED_ONLY2.exec(text4);
+  if (embed) return embed[1];
+  return "";
+}
+function posterModel(source) {
+  const src = source && typeof source === "object" ? source : {};
+  const kind = embedKind(src.kind === "youtube" ? "iframe" : src.kind);
+  const thumb2 = posterThumb(src);
+  if (kind === "pdf" && (src.count != null || src.label || src.title || src.url)) {
+    const cover = coverModel(src);
+    const out2 = { kind: "pdf", title: cover.title, thumb: thumb2 };
+    if (typeof src.count === "number" && Number.isFinite(src.count)) {
+      out2.count = cover.count;
+      out2.label = cover.label;
+    }
+    return out2;
+  }
+  const given = typeof src.title === "string" ? src.title.trim() : "";
+  const title = given || embedTitle(kind, src.kind === "youtube" ? "youtube" : kind, src.url);
+  const out = { kind, title, thumb: thumb2 };
+  if (typeof src.count === "number" && Number.isFinite(src.count) && src.count >= 0) {
+    out.count = src.count;
+    out.label = typeof src.label === "string" && src.label.trim() ? src.label.trim() : String(src.count);
+  }
+  return out;
+}
+function embedPoster(string, opts = {}) {
+  if (postersEnabled(opts) === false) return null;
+  const { read: read2, cover, uid = "" } = opts;
+  const text4 = String(string ?? "").trim();
+  if (!text4) return null;
+  let hit = heavyEmbed(text4);
+  let mountUid = uid || "";
+  let source = text4;
+  if (!hit) {
+    const ref = heavyRefUid(text4);
+    if (!ref || typeof read2 !== "function") return null;
+    let inner = "";
+    try {
+      inner = read2(ref);
+    } catch {
+      inner = "";
+    }
+    if (typeof inner !== "string") return null;
+    hit = heavyEmbed(inner.trim());
+    if (!hit) return null;
+    mountUid = ref;
+    source = inner.trim();
+  }
+  if (hit.kind === "pdf") {
+    let got = null;
+    if (typeof cover === "function") {
+      try {
+        got = cover(source);
+      } catch {
+        got = null;
+      }
+    }
+    const carried = got && typeof got === "object" && typeof got.count === "number" && Number.isFinite(got.count);
+    const model2 = posterModel({
+      kind: "pdf",
+      title: got && typeof got.title === "string" && got.title.trim() || hit.title,
+      url: hit.url,
+      count: carried ? got.count : void 0,
+      thumb: got?.thumb
+    });
+    return { ...model2, uid: mountUid, url: hit.url };
+  }
+  const model = posterModel({ kind: hit.kind, title: hit.title, url: hit.url });
+  return { ...model, uid: mountUid, url: hit.url };
+}
+function embedSplit(string, opts = {}) {
+  const text4 = String(string ?? "");
+  const macros = [...text4.matchAll(new RegExp(HEAVY_MACRO.source, "gi"))].map((m) => m[0]);
+  if (macros.length) {
+    const posters = macros.map((macro) => embedPoster(macro, opts)).filter(Boolean);
+    const rest = text4.replace(new RegExp(HEAVY_MACRO.source, "gi"), " ").replace(/\s+/g, " ").trim();
+    return { posters, rest };
+  }
+  const one = embedPoster(text4, opts);
+  return { posters: one ? [one] : [], rest: "" };
+}
+function pdfCardForUrl(url, cards) {
+  if (typeof url !== "string" || url === "") return null;
+  if (!Array.isArray(cards)) return null;
+  for (const card2 of cards) {
+    if (!card2 || typeof card2 !== "object") continue;
+    if (pdfMacroUrl(card2.source) !== url) continue;
+    return typeof card2.uid === "string" && card2.uid !== "" ? card2.uid : null;
+  }
+  return null;
+}
+function writeReaderPage(input, page) {
+  if (!input || typeof input.dispatchEvent !== "function") return false;
+  if (typeof page !== "number" || !Number.isInteger(page) || page < 1) return false;
+  const text4 = String(page);
+  const ctor = globalThis.HTMLInputElement;
+  const proto = typeof ctor === "function" ? Object.getOwnPropertyDescriptor(ctor.prototype, "value") : null;
+  if (proto && typeof proto.set === "function") proto.set.call(input, text4);
+  else input.value = text4;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  return true;
+}
+function readPaneKey(graph) {
+  return `plexus-diagram:read:${typeof graph === "string" ? graph : ""}`;
+}
+function readPaneWidth(mountWidth, stored) {
+  const mount = typeof mountWidth === "number" && Number.isFinite(mountWidth) ? mountWidth : 0;
+  const stacked = mount > 0 && mount < 720;
+  const given = typeof stored === "number" && Number.isFinite(stored) ? stored : Number(stored);
+  const hasStored = Number.isFinite(given) && given > 0;
+  if (stacked) return { stacked: true, width: Math.round(mount) };
+  const raw = hasStored ? given : mount > 0 ? Math.round(mount * 0.42) : 360;
+  const room = mount > 0 ? Math.max(360, mount - 360) : 720;
+  const width = Math.min(720, room, Math.max(360, Math.round(raw)));
+  return { stacked: false, width };
+}
+var PDF_MACRO, PDF_READER_W, PDF_READER_H, PDF_CARD_MAX, ROMAN_ONLY, HEAVY_MACRO, HEAVY_ONE, REF_ONLY3, EMBED_ONLY2;
+var init_pdf = __esm({
+  "src/model/pdf.js"() {
+    init_title_cap();
+    PDF_MACRO = /^\{\{\s*(?:\[\[pdf\]\]|pdf)\s*:/;
+    PDF_READER_W = 640;
+    PDF_READER_H = 820;
+    PDF_CARD_MAX = 4e3;
+    ROMAN_ONLY = /^[ivxlcdm]+\.?$/i;
+    HEAVY_MACRO = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/gi;
+    HEAVY_ONE = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/i;
+    REF_ONLY3 = /^\(\(([\w-]+)\)\)$/;
+    EMBED_ONLY2 = /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i;
+  }
+});
+
+// src/model/pdf-page.js
+function isPdfString(s) {
+  return typeof s === "string" && PDF_HEAD.test(s.trim());
+}
+function pageCardRef(s) {
+  const t = String(s ?? "").trim();
+  if (t.startsWith("[[") && t.endsWith("]]")) {
+    const title = t.slice(2, -2);
+    if (title && !title.includes("[[") && !title.includes("]]")) return { title, label: "" };
+    return null;
+  }
+  const m = ALIAS_PAGE.exec(t);
+  if (!m || !m[2] || m[2].includes("[[")) return null;
+  return { title: m[2], label: m[1].trim() };
+}
+function pdfOfPageNode(node2) {
+  if (!node2 || typeof node2 !== "object") return null;
+  const pageUid = typeof node2[":block/uid"] === "string" ? node2[":block/uid"] : "";
+  const title = typeof node2[":node/title"] === "string" ? node2[":node/title"] : "";
+  if (!title) return null;
+  for (const kid of kidsOf(node2)) {
+    const string = kid?.[":block/string"];
+    const uid = kid?.[":block/uid"];
+    if (typeof uid === "string" && uid && isPdfString(string)) {
+      const kids = kid[":block/children"];
+      return { pageUid, title, pdfUid: uid, string, ...Array.isArray(kids) ? { children: kidsOf(kid) } : {} };
+    }
+  }
+  return null;
+}
+function pdfPageName(title) {
+  const t = String(title ?? "").trim();
+  const head = t.split(" -- ")[0].trim();
+  return head || t;
+}
+function cleanPageTitle(s) {
+  let t = String(s ?? "").replace(/[\r\n\t]+/g, " ");
+  t = t.replace(/\[\[|\]\]/g, "").replace(/^#+/, "").replace(/\s+/g, " ").trim();
+  if (t.length > 150) t = t.slice(0, 150).trimEnd();
+  return t;
+}
+function pdfPageBaseTitle({ display = "", fileName: fileName2 = "" } = {}) {
+  const shown = cleanPageTitle(display);
+  if (shown && shown !== "PDF") return shown;
+  const file = cleanPageTitle(String(fileName2 ?? "").replace(/\.pdf$/i, "").replace(/_+/g, " "));
+  return file || "PDF";
+}
+function uniquePageTitle(base, taken) {
+  const root = cleanPageTitle(base) || "PDF";
+  const used = (t) => {
+    try {
+      return typeof taken === "function" && taken(t) === true;
+    } catch {
+      return true;
+    }
+  };
+  if (!used(root)) return root;
+  for (let n2 = 2; n2 < 1e3; n2 += 1) {
+    const next = `${root} (${n2})`;
+    if (!used(next)) return next;
+  }
+  return `${root} (${Date.now()})`;
+}
+function isInlinePdfCard(item) {
+  return Boolean(item && item.type === "card" && item.kind === "pdf" && item.target?.kind === "self");
+}
+function inlinePdfCards(board2) {
+  const out = [];
+  for (const item of board2?.items?.values?.() || []) if (isInlinePdfCard(item)) out.push(item);
+  return out;
+}
+function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageExists, titleFor, newUid } = {}) {
+  const plan = { graph, boardUid: board2?.uid || "", moves: [], edges: [], skipped: [] };
+  if (!board2?.items) return plan;
+  const call = (fn, ...args) => {
+    try {
+      return typeof fn === "function" ? fn(...args) : null;
+    } catch {
+      return null;
+    }
+  };
+  const plannedTitles = /* @__PURE__ */ new Set();
+  const byUrl = /* @__PURE__ */ new Map();
+  const moved = /* @__PURE__ */ new Map();
+  for (const item of inlinePdfCards(board2)) {
+    const url = String(call(urlOf, item) || "");
+    const shown = cleanPageTitle(call(titleFor, item) || "") || "PDF";
+    if (url && byUrl.has(url)) {
+      plan.skipped.push({ pdfUid: item.uid, title: shown, reason: "same-file" });
+      continue;
+    }
+    const found = call(findPage, { url, uid: item.uid });
+    if (found?.pdfUid && found.pdfUid !== item.uid) {
+      plan.skipped.push({ pdfUid: item.uid, title: found.title || shown, reason: "page-has-pdf" });
+      continue;
+    }
+    let page;
+    if (found?.uid && found.title) {
+      page = { uid: found.uid, title: found.title, reuse: true, why: found.why || "url" };
+    } else {
+      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, fileName: pdfFileTitle(url) }), (t) => plannedTitles.has(t) || call(pageExists, t) === true);
+      page = { uid: null, newUid: String(call(newUid) || ""), title, reuse: false, why: "new" };
+    }
+    plannedTitles.add(page.title);
+    if (url) byUrl.set(url, page.title);
+    const layout = call(layoutOf, item.uid);
+    const move = {
+      pdfUid: item.uid,
+      url,
+      parentUid: item.parentUid,
+      order: Number.isInteger(item.order) ? item.order : 0,
+      cardUid: String(call(newUid) || ""),
+      cardString: pageCardString(page.title),
+      layout: layout && typeof layout === "object" ? { ...layout } : { type: "card", x: item.x, y: item.y, w: item.w, h: item.h },
+      page
+    };
+    plan.moves.push(move);
+    moved.set(item.uid, move);
+  }
+  if (!moved.size) return plan;
+  const refOf2 = (id) => {
+    const m = moved.get(id);
+    if (m) return pageCardString(m.page.title);
+    const item = board2.items.get(id);
+    return item ? semanticRef(item) : `((${id}))`;
+  };
+  for (const edge of board2.edges?.values?.() || []) {
+    if (!moved.has(edge.from) && !moved.has(edge.to)) continue;
+    const from = moved.get(edge.from)?.cardUid || edge.from;
+    const to = moved.get(edge.to)?.cardUid || edge.to;
+    const string = edgeString({
+      srcRef: refOf2(edge.from),
+      dstRef: refOf2(edge.to),
+      dir: edge.dir,
+      label: edge.label || "",
+      srcBlock: edge.fromBlock,
+      dstBlock: edge.toBlock
+    });
+    plan.edges.push({ uid: edge.uid, from, to, string });
+  }
+  return plan;
+}
+function migrationLines(plan) {
+  const lines = [];
+  for (const m of plan?.moves || []) {
+    lines.push(m.page.reuse ? `${m.page.title}: move to its existing page` : `${m.page.title}: new page`);
+  }
+  for (const s of plan?.skipped || []) {
+    lines.push(s.reason === "same-file" ? `${s.title}: left on the board (the same file is already moving)` : `${s.title}: left on the board (its page already holds a PDF block)`);
+  }
+  if (plan?.edges?.length) lines.push(`${plan.edges.length} ${plan.edges.length === 1 ? "connection" : "connections"} rewritten`);
+  return lines;
+}
+var PDF_HEAD, ALIAS_PAGE, kidsOf, pageCardString;
+var init_pdf_page = __esm({
+  "src/model/pdf-page.js"() {
+    init_schema();
+    init_pdf();
+    PDF_HEAD = /^\{\{\s*(?:\[\[pdf\]\]|pdf)\s*:/;
+    ALIAS_PAGE = /^\[([^\]]*)\]\(\[\[([^\]]+)\]\]\)$/;
+    kidsOf = (node2) => {
+      const kids = node2?.[":block/children"];
+      return Array.isArray(kids) ? kids.slice().sort((a, b) => (a?.[":block/order"] ?? 0) - (b?.[":block/order"] ?? 0)) : [];
+    };
+    pageCardString = (title) => `[[${title}]]`;
+  }
+});
+
 // src/model/board.js
 function viewsOf(boardKids, regionsUid) {
   const container = regionsUid ? boardKids.find((child) => child[":block/uid"] === regionsUid) : boardKids.find((child) => isContainerString(child[":block/string"] ?? ""));
@@ -3000,7 +3719,18 @@ function highlightCandidate(text4, refUid, known2) {
     return false;
   }
 }
-function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighlight, autoBoard } = {}) {
+function pagePdf(node2, title, pdfOfPage) {
+  const embedded = refNodes(node2).find((ref) => ref?.[":node/title"] === title);
+  if (embedded && Array.isArray(embedded[":block/children"])) return pdfOfPageNode(embedded);
+  if (typeof pdfOfPage !== "function") return null;
+  try {
+    const hit = pdfOfPage(title);
+    return hit && typeof hit.pdfUid === "string" && hit.pdfUid ? hit : null;
+  } catch {
+    return null;
+  }
+}
+function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighlight, autoBoard, pdfOfPage } = {}) {
   if (!pulled || typeof pulled !== "object") return null;
   const uid = pulled[":block/uid"];
   const string = pulled[":block/string"] ?? "";
@@ -3097,8 +3827,19 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
           }
         }
       }
+      let pdfPage = null;
+      if (type === "card" && (kind === "page" || kind === "note")) {
+        const ref = pageCardRef(cstring);
+        pdfPage = ref ? pagePdf(child, ref.title, pdfOfPage) : null;
+        if (pdfPage) {
+          kind = "pdf";
+          title = ref.label || pdfPageName(pdfPage.title || ref.title);
+        }
+      }
+      const cardKids = pdfPage && !kids.length && Array.isArray(pdfPage.children) ? pdfPage.children : kids;
       let target;
-      if (kind === "page") target = { kind: "page", title: cls.title };
+      if (pdfPage) target = { kind: "block", uid: pdfPage.pdfUid, page: pdfPage.title, ...pdfPage.pageUid ? { pageUid: pdfPage.pageUid } : {} };
+      else if (kind === "page") target = { kind: "page", title: cls.title };
       else if (kind === "block" || kind === "region-ref" || kind === "drawing-ref" || kind === "pdf" && cls.refUid || kind === "highlight" && cls.refUid) target = { kind: "block", uid: cls.refUid };
       else target = { kind: "self", uid: cuid };
       const item = {
@@ -3142,9 +3883,9 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         ...layout.landmark ? { landmark: true, glyph: layout.glyph || "", size: layout.size === "S" || layout.size === "L" ? layout.size : "M" } : {},
         enhanced: kind === "board" && (cplexus?.v === 2 || typeof autoBoard === "function" && autoBoard(cuid, cplexus, kids) === true),
         members: [],
-        content: type === "section" ? [] : kids,
+        content: type === "section" ? [] : cardKids,
         // Regions and pins sit in content, which can change in place. This string is fixed at build, so the diff sees them.
-        ...kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(kids) } : {}
+        ...kind === "image" || kind === "pdf" ? { hitsKey: endpointHitsKey(cardKids) } : {}
       };
       items.set(cuid, item);
       preorder.push(cuid);
@@ -3697,6 +4438,7 @@ var init_board = __esm({
     init_highlight();
     init_why();
     init_endpoints();
+    init_pdf_page();
     AUTO_GAP = 40;
     AUTO_OFFSET = 48;
     AUTO_ROWS = 4;
@@ -10519,176 +11261,6 @@ var init_figures = __esm({
   }
 });
 
-// src/model/title-cap.js
-function setTitleLexicon(words) {
-  titleLexicon = words && typeof words.has === "function" ? words : null;
-}
-function segmentToken(token, lexicon) {
-  const t = String(token || "");
-  if (!lexicon || t.length < SEG_MIN || !/^\p{L}+$/u.test(t)) return null;
-  const lower3 = t.toLowerCase();
-  if (lexicon.has(lower3)) return null;
-  const n2 = lower3.length;
-  const best = new Array(n2 + 1).fill(null);
-  best[0] = { count: 0, sq: 0, prev: -1 };
-  for (let i = 1; i <= n2; i++) {
-    for (let j = Math.max(0, i - 24); j < i; j++) {
-      if (!best[j]) continue;
-      const len = i - j;
-      const word = lower3.slice(j, i);
-      if (!(FUNCTION_WORDS.has(word) || len >= SEG_WORD_MIN && lexicon.has(word))) continue;
-      const cand = { count: best[j].count + 1, sq: best[j].sq + len * len, prev: j };
-      const cur = best[i];
-      if (!cur || cand.count < cur.count || cand.count === cur.count && cand.sq > cur.sq) best[i] = cand;
-    }
-  }
-  if (!best[n2] || best[n2].count < 3 || best[n2].count > SEG_MAX_WORDS) return null;
-  const out = [];
-  for (let i = n2; i > 0; i = best[i].prev) out.unshift(t.slice(best[i].prev, i));
-  if (!out.some((piece) => FUNCTION_WORDS.has(piece.toLowerCase()))) return null;
-  return out;
-}
-function segmentTitle(text4, lexicon = titleLexicon) {
-  const clean = typeof text4 === "string" ? text4 : "";
-  if (!lexicon || !clean) return clean;
-  return clean.replace(/\S*\p{L}{18,}\S*/gu, (word) => {
-    const runs = word.match(/\p{L}+|[^\p{L}]+/gu) || [];
-    let split = false;
-    const parts = runs.map((run) => {
-      const pieces2 = /^\p{L}{18,}$/u.test(run) ? segmentToken(run, lexicon) : null;
-      if (pieces2) split = true;
-      return pieces2 ? pieces2.join(" ") : run;
-    });
-    if (!split) return word;
-    let out = "";
-    for (let i = 0; i < parts.length; i++) {
-      const prev = runs[i - 1];
-      if (i && /^\p{L}/u.test(runs[i]) !== /^\p{L}/u.test(prev) && /\p{N}/u.test(/^\p{L}/u.test(runs[i]) ? prev : runs[i])) out += " ";
-      out += parts[i];
-    }
-    return out;
-  });
-}
-function capTitle(text4, cap4 = TITLE_CAP, lexicon = titleLexicon) {
-  const clean = segmentTitle(typeof text4 === "string" ? text4.replace(/\s+/g, " ").trim() : "", lexicon);
-  if (clean.length <= cap4) return clean;
-  const cut = clean.slice(0, cap4 + 1);
-  const space = cut.lastIndexOf(" ");
-  const head = (space > 0 ? cut.slice(0, space) : clean.slice(0, cap4)).replace(/[\s,;:.\-–—]+$/, "");
-  return `${head}…`;
-}
-function isCutPrefix(title, heading) {
-  const t = typeof title === "string" ? title.trim() : "";
-  const h = typeof heading === "string" ? heading.replace(/\s+/g, " ").trim() : "";
-  return t.length > 0 && h.length > t.length && h.toLowerCase().startsWith(t.toLowerCase()) && /\S/.test(h[t.length]);
-}
-function implausibleWord(word) {
-  const t = String(word || "").toLowerCase();
-  if (t.length < 5) return false;
-  const vowels = (t.match(/[aeiou]/g) || []).length;
-  const ratio = vowels / t.length;
-  if (ratio < 0.2 || ratio > 0.75) return true;
-  if (/[^aeiouy]{4,}/.test(t)) return true;
-  if (/(.)\1\1/.test(t)) return true;
-  if (/tth/.test(t)) return true;
-  if (t.length >= 8 && ratio > 0.55 && /([aeiou])\1/.test(t)) return true;
-  return false;
-}
-function isGibberishTitle(text4) {
-  const raw = typeof text4 === "string" ? text4 : "";
-  const judged = [];
-  for (const tok of raw.split(/\s+/)) {
-    if (!tok) continue;
-    const word = tok.replace(/[^A-Za-z]/g, "");
-    const digits = (tok.match(/\d/g) || []).length;
-    if (digits >= 4 && word.length <= digits) {
-      judged.push(true);
-      continue;
-    }
-    if (word.length < 5) continue;
-    judged.push(implausibleWord(word));
-  }
-  if (judged.length < 2) return false;
-  return judged.filter(Boolean).length / judged.length > 0.5;
-}
-function isJunkTitleText(text4) {
-  const t = typeof text4 === "string" ? text4.replace(/\s+/g, " ").trim() : "";
-  if (!t) return true;
-  if (JUNK_LINE_RES.some((re) => re.test(t))) return true;
-  const digits = (t.match(/\d/g) || []).length;
-  const letters = (t.match(/\p{L}/gu) || []).length;
-  return digits >= 6 && digits > letters * 2;
-}
-function titleWordCount(text4) {
-  return String(text4 ?? "").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
-}
-function plainTitle(value) {
-  return String(value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
-}
-function isBannerOf(text4, line, { exact = true } = {}) {
-  const a = plainTitle(text4);
-  const b = plainTitle(line);
-  if (!a || !b) return false;
-  if (a === b) return exact;
-  const at = b.indexOf(a);
-  if (at < 0) return false;
-  const before = b[at - 1];
-  const after = b[at + a.length];
-  if (before && /[\p{L}\p{N}]/u.test(before) || after && /[\p{L}\p{N}]/u.test(after)) return false;
-  const rest = `${b.slice(0, at)} ${b.slice(at + a.length)}`;
-  return (rest.match(/\d+/g) || []).length >= 2 && CITATION_REST.test(rest);
-}
-function isMetaBanner(metaTitle, { pageTitle = "", lines = [] } = {}) {
-  const meta = plainTitle(metaTitle);
-  const page = plainTitle(pageTitle);
-  if (!meta || !page || meta === page || page.startsWith(meta)) return false;
-  for (const line of Array.isArray(lines) ? lines : []) {
-    if (typeof line !== "string" || plainTitle(line) === page) continue;
-    if (isBannerOf(meta, line)) return true;
-  }
-  return false;
-}
-var TITLE_CAP, titleLexicon, SEG_MIN, SEG_MAX_WORDS, SEG_WORD_MIN, FUNCTION_WORDS, TITLE_REV, MONTHS2, JUNK_LINE_RES, CITATION_REST;
-var init_title_cap = __esm({
-  "src/model/title-cap.js"() {
-    TITLE_CAP = 80;
-    titleLexicon = null;
-    SEG_MIN = 18;
-    SEG_MAX_WORDS = 12;
-    SEG_WORD_MIN = 4;
-    FUNCTION_WORDS = /* @__PURE__ */ new Set(["of", "the", "and", "in", "to", "for", "per", "on", "at", "by", "with", "from", "or", "an", "a"]);
-    TITLE_REV = 3;
-    MONTHS2 = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
-    JUNK_LINE_RES = [
-      /^(?:notes?|sources?)\s*(?:[:.\-–—]|$)/i,
-      /^[*†‡§¶•]/,
-      /^rates?\s+less\s+than\b/i,
-      /^\W*\d{1,4}\W*$/,
-      /^page\s+\d+(\s+of\s+\d+)?$/i,
-      /^\d{1,4}\s*\/\s*\d{1,4}$/,
-      /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/,
-      /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/,
-      new RegExp(`^(?:\\d{1,2}\\s+)?(?:${MONTHS2})\\.?\\s+(?:\\d{1,2},?\\s+)?\\d{4}$`, "i"),
-      /\bcontents lists? available at\b/i,
-      /\bjournal homepage\b/i,
-      /\b(?:https?:\/\/|www\.)\S+/i,
-      /\b[\w-]+\.(?:com|org|edu|gov|net|eu)\b/i,
-      /\bdoi\b\s*[:.]?|\b10\.\d{4,9}\//i,
-      /\bvol(?:ume)?\.?\s*\d+|\bissue\s+\d+|\bno\.\s*\d+\s*[,(]|\(\d{4}\)\s*\d{2,}/i,
-      /^(?:©|copyright\b)|\ball rights reserved\b/i,
-      /^(?:available online|received|accepted|revised|keywords?|abstract|article info|a r t i c l e)\b/i,
-      /^L\s*\d+\/\d+$/,
-      /^(?:\(\s*\d+\s*\)\s*)?united states patent\b/i,
-      /^(?:\(\s*\d+\s*\)\s*)?(?:patent\s+no\.?|date\s+of\s+patent)\b/i,
-      /^(?:\(\s*\d+\s*\)\s*)?references cited\b/i,
-      /^(?:\(\s*\d+\s*\)\s*)(?:appl\.?\s*no\.?|filed|inventor|applicant|assignee)\b/i,
-      /^(?:\(\s*\d+\s*\)\s*)(?:u\s*\.?\s*s\s*\.?\s*c[li]\.?|int\s*\.?\s*cl\.?)\b/i,
-      /^cpc\s+\.{3,}/i
-    ];
-    CITATION_REST = /^[\s\d().,:;/–—-]*$/;
-  }
-});
-
 // src/model/parse/title.js
 function textOf(line) {
   return line.words.filter((w) => !w.sup && !w.sub).map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
@@ -12392,385 +12964,6 @@ var init_ocr_vote = __esm({
     WEAK_UNKNOWN_LEX = 0.5;
     WEAK_UNKNOWN_MEAN = 0.98;
     WEAK_UNKNOWN_MIN_CORES = 10;
-  }
-});
-
-// src/model/pdf.js
-function pdfMacroUrl(s) {
-  if (typeof s !== "string") return "";
-  const text4 = s.trim();
-  if (!text4.startsWith(PDF_MACRO)) return "";
-  const match = /https?:\/\/[^\s}]+/.exec(text4.slice(PDF_MACRO.length));
-  if (!match) return "";
-  return match[0];
-}
-function pdfPagePlan(url, pages) {
-  if (!Array.isArray(pages)) return null;
-  for (const row4 of pages) {
-    if (row4 && typeof row4 === "object" && row4.url === url) return row4;
-  }
-  return null;
-}
-function fileName(url) {
-  if (typeof url !== "string" || url === "") return "";
-  let path = url;
-  try {
-    path = new URL(url).pathname;
-  } catch {
-    path = url.split("#")[0].split("?")[0];
-  }
-  let seg = path.split("/").filter(Boolean).pop() || "";
-  try {
-    seg = decodeURIComponent(seg);
-  } catch {
-  }
-  seg = seg.split("/").filter(Boolean).pop() || "";
-  seg = seg.replace(/\.pdf$/i, "").replace(/_+/g, " ").replace(/\s+/g, " ").trim();
-  return seg;
-}
-function pdfFileTitle(url) {
-  const name = fileName(url);
-  return titleText(name);
-}
-function cleanPdfTitle(value) {
-  let text4 = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
-  text4 = text4.replace(/^(?:microsoft\s+(?:word|powerpoint|excel)\s*[-\u2013\u2014]\s*)/i, "").trim();
-  if (text4.length < 4) return "";
-  if (ROMAN_ONLY.test(text4)) return "";
-  if (/^untitled\b/i.test(text4)) return "";
-  return titleText(text4);
-}
-function isStorageTitle(value) {
-  const text4 = typeof value === "string" ? value.trim() : "";
-  if (!text4) return true;
-  if (text4.startsWith("{{") || text4.includes("{{[[")) return true;
-  if (/imgs\/app\//i.test(text4)) return true;
-  const last = text4.split("/").filter(Boolean).pop() || text4;
-  const bare = last.replace(/\.pdf$/i, "");
-  if (text4.includes("/") && /^[A-Za-z0-9_-]{9,}$/.test(bare) && !/\.pdf$/i.test(last)) return true;
-  if (!text4.includes(" ") && /^[A-Za-z0-9_-]{9,}$/.test(text4) && !/\.pdf$/i.test(text4)) return true;
-  return false;
-}
-function titleText(value) {
-  const text4 = typeof value === "string" ? value.trim() : "";
-  if (!text4 || text4 === "PDF" || isStorageTitle(text4)) return "";
-  return text4;
-}
-function pdfTitlePlan(source) {
-  const src = source && typeof source === "object" ? source : {};
-  const named2 = cleanPdfTitle(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title) || cleanPdfTitle(src.parsedTitle);
-  if (named2) return segmentTitle(named2);
-  const file = titleText(fileName(src.url));
-  return file ? segmentTitle(file) : "PDF";
-}
-function parsedTitleLines(doc) {
-  if (!doc || typeof doc !== "object") return [];
-  const out = [];
-  for (const r of Array.isArray(doc.removed) ? doc.removed : []) if (r?.text && r.reason !== "page-number") out.push(String(r.text));
-  const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
-  for (const id of Array.isArray(doc.order) ? doc.order : Object.keys(blocks)) {
-    const block = blocks[id];
-    if (!block || block.page !== 1 || typeof block.text !== "string") continue;
-    const text4 = block.text.replace(/\s+/g, " ").trim();
-    if (text4) out.push(text4.slice(0, 160));
-    if (out.length >= 80) break;
-  }
-  return [...new Set(out)].slice(0, 60);
-}
-function parsedDocTitle(doc) {
-  return capTitle(parsedDocTitleRaw(doc));
-}
-function nextParsedTitle(current3, incoming) {
-  const next = cleanPdfTitle(incoming);
-  if (next) return next;
-  return cleanPdfTitle(current3) || "";
-}
-function withKeptTitle(cloudDoc, localDoc) {
-  if (!cloudDoc || cloudDoc.engine !== "cloud") return cloudDoc;
-  if (parsedDocTitle(cloudDoc)) return cloudDoc;
-  const title = parsedDocTitle(localDoc);
-  if (!title) return cloudDoc;
-  return { ...cloudDoc, title };
-}
-function parsedDocTitleRaw(doc) {
-  if (!doc || typeof doc !== "object") return "";
-  const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
-  const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
-  const norm3 = (value) => String(value ?? "").replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
-  const runningTexts = (Array.isArray(doc.removed) ? doc.removed : []).filter((r) => r && r.reason !== "page-number" && r.text).map((r) => String(r.text));
-  const running = new Set(runningTexts.map(norm3));
-  const usable = (value) => {
-    const real = cleanPdfTitle(value);
-    if (!real || isJunkTitleText(real) || running.has(norm3(real))) return "";
-    return runningTexts.some((line) => isBannerOf(real, line, { exact: false })) ? "" : real;
-  };
-  const given = usable(doc.title);
-  if (given) {
-    const first = ids.map((id) => blocks[id]).find((b) => b?.type === "heading" && (b.level || 1) === 1);
-    if (!isCutPrefix(given, first?.text)) return given;
-  }
-  const fromPage = usable(doc.pageTitle);
-  if (fromPage) return fromPage;
-  for (const id of ids) {
-    const block = blocks[id];
-    if (block?.type !== "heading" || (block.level || 1) !== 1) continue;
-    const text4 = typeof block.text === "string" ? block.text.replace(/\s+/g, " ").trim() : "";
-    const real = usable(text4);
-    if (real) return real;
-  }
-  const clean = (value) => typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
-  for (const id of ids) {
-    const block = blocks[id];
-    if (block?.type === "table") break;
-    if (block?.type !== "heading" || (block.page || 1) !== 1) continue;
-    const real = usable(clean(block.text));
-    if (real && titleWordCount(real) >= 3) return real;
-  }
-  for (const id of ids) {
-    const block = blocks[id];
-    if (block?.type !== "table" || !block.caption) continue;
-    const text4 = clean(blocks[block.caption]?.text);
-    if (text4 && !isStorageTitle(text4)) return text4;
-  }
-  for (const id of ids) {
-    const block = blocks[id];
-    if (block?.type !== "para" || (block.page || 1) !== 1) continue;
-    const text4 = clean(block.text);
-    if (text4 && text4.length <= 160 && !/^scan\b/i.test(text4) && !isStorageTitle(text4) && !isJunkTitleText(text4) && !running.has(norm3(text4)) && titleWordCount(text4) >= 3) return text4;
-  }
-  return "";
-}
-function coverModel(source) {
-  const src = source && typeof source === "object" ? source : {};
-  const title = pdfTitlePlan(src);
-  const count = typeof src.count === "number" && Number.isFinite(src.count) && src.count >= 1 ? src.count : 0;
-  const label = count === 1 ? "1 highlight" : `${count} highlights`;
-  return { title, count, label };
-}
-function clampPdfCard(rect) {
-  const src = rect && typeof rect === "object" ? rect : {};
-  const out = { ...src };
-  const w = Number(src.w);
-  const h = Number(src.h);
-  if (Number.isFinite(w)) out.w = Math.min(PDF_CARD_MAX, w);
-  if (Number.isFinite(h)) out.h = Math.min(PDF_CARD_MAX, h);
-  return out;
-}
-function postersEnabled(source) {
-  if (!source || typeof source !== "object") return true;
-  return source.posters !== false;
-}
-function coverOuterBox(source) {
-  const cover = coverModel(source);
-  const w = Number(source?.w);
-  const h = Number(source?.h);
-  return {
-    title: cover.title,
-    w: Number.isFinite(w) && w > 0 ? Math.round(w) : PDF_READER_W,
-    h: Number.isFinite(h) && h > 0 ? Math.round(h) : PDF_READER_H
-  };
-}
-function readerRule(openUid, nextUid) {
-  const current3 = openUid || null;
-  if (nextUid == null || nextUid === "") return { open: current3, close: null };
-  if (nextUid === current3) return { open: current3, close: null };
-  return { open: nextUid, close: current3 };
-}
-function videoStem(url) {
-  const name = fileName(url);
-  if (!name) return "";
-  return name.replace(/\.(mp4|webm|mov|m4v|ogg)$/i, "");
-}
-function embedTitle(kind, name, url) {
-  if (name === "youtube") return "YouTube";
-  if (kind === "tweet") {
-    const handle = /(?:twitter\.com|x\.com)\/([A-Za-z0-9_]+)/i.exec(String(url || ""));
-    if (handle && handle[1].toLowerCase() !== "i" && handle[1].toLowerCase() !== "status") return `@${handle[1]}`;
-    return "Tweet";
-  }
-  if (kind === "iframe") {
-    try {
-      const host = new URL(url).hostname.replace(/^www\./, "");
-      if (host) return host;
-    } catch {
-    }
-    return "Embed";
-  }
-  if (kind === "video") return videoStem(url) || "Video";
-  return fileName(url) || "PDF";
-}
-function embedKind(name) {
-  const n2 = String(name || "").toLowerCase();
-  if (n2 === "youtube" || n2 === "iframe") return "iframe";
-  if (n2 === "tweet" || n2 === "twitter") return "tweet";
-  if (n2 === "video") return "video";
-  return "pdf";
-}
-function posterThumb(source) {
-  const src = source && typeof source === "object" ? source : {};
-  const direct = typeof src.thumb === "string" ? src.thumb.trim() : "";
-  if (direct.startsWith("data:image/") && !/["'()]/.test(direct)) return direct;
-  const img = src.thumb && typeof src.thumb === "object" ? src.thumb : null;
-  if (img && img.complete === true && Number(img.naturalWidth) > 0) {
-    const url = String(img.currentSrc || img.src || "");
-    if ((url.startsWith("data:image/") || url.startsWith("blob:")) && !/["'()]/.test(url)) return url;
-  }
-  const fromText = /data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/.exec(String(src.url || src.string || ""));
-  if (fromText && !/["'()]/.test(fromText[0])) return fromText[0];
-  return "";
-}
-function heavyEmbed(string, opts) {
-  if (opts && postersEnabled(opts) === false) return null;
-  const text4 = String(string ?? "").trim();
-  if (!text4) return null;
-  const match = HEAVY_ONE.exec(text4);
-  if (match) {
-    const name = match[1].toLowerCase();
-    const body = String(match[2] || "").trim();
-    const urlMatch = /https?:\/\/[^\s}]+/.exec(body);
-    const url = urlMatch ? urlMatch[0] : body;
-    const kind = embedKind(name);
-    return { kind, url, title: embedTitle(kind, name, url) };
-  }
-  if (/^<iframe\b/i.test(text4)) return { kind: "iframe", url: "", title: "Embed" };
-  if (/^<video\b/i.test(text4)) return { kind: "video", url: "", title: "Video" };
-  return null;
-}
-function heavyRefUid(string) {
-  const text4 = String(string ?? "").trim();
-  const block = REF_ONLY3.exec(text4);
-  if (block) return block[1];
-  const embed = EMBED_ONLY2.exec(text4);
-  if (embed) return embed[1];
-  return "";
-}
-function posterModel(source) {
-  const src = source && typeof source === "object" ? source : {};
-  const kind = embedKind(src.kind === "youtube" ? "iframe" : src.kind);
-  const thumb2 = posterThumb(src);
-  if (kind === "pdf" && (src.count != null || src.label || src.title || src.url)) {
-    const cover = coverModel(src);
-    const out2 = { kind: "pdf", title: cover.title, thumb: thumb2 };
-    if (typeof src.count === "number" && Number.isFinite(src.count)) {
-      out2.count = cover.count;
-      out2.label = cover.label;
-    }
-    return out2;
-  }
-  const given = typeof src.title === "string" ? src.title.trim() : "";
-  const title = given || embedTitle(kind, src.kind === "youtube" ? "youtube" : kind, src.url);
-  const out = { kind, title, thumb: thumb2 };
-  if (typeof src.count === "number" && Number.isFinite(src.count) && src.count >= 0) {
-    out.count = src.count;
-    out.label = typeof src.label === "string" && src.label.trim() ? src.label.trim() : String(src.count);
-  }
-  return out;
-}
-function embedPoster(string, opts = {}) {
-  if (postersEnabled(opts) === false) return null;
-  const { read: read2, cover, uid = "" } = opts;
-  const text4 = String(string ?? "").trim();
-  if (!text4) return null;
-  let hit = heavyEmbed(text4);
-  let mountUid = uid || "";
-  let source = text4;
-  if (!hit) {
-    const ref = heavyRefUid(text4);
-    if (!ref || typeof read2 !== "function") return null;
-    let inner = "";
-    try {
-      inner = read2(ref);
-    } catch {
-      inner = "";
-    }
-    if (typeof inner !== "string") return null;
-    hit = heavyEmbed(inner.trim());
-    if (!hit) return null;
-    mountUid = ref;
-    source = inner.trim();
-  }
-  if (hit.kind === "pdf") {
-    let got = null;
-    if (typeof cover === "function") {
-      try {
-        got = cover(source);
-      } catch {
-        got = null;
-      }
-    }
-    const carried = got && typeof got === "object" && typeof got.count === "number" && Number.isFinite(got.count);
-    const model2 = posterModel({
-      kind: "pdf",
-      title: got && typeof got.title === "string" && got.title.trim() || hit.title,
-      url: hit.url,
-      count: carried ? got.count : void 0,
-      thumb: got?.thumb
-    });
-    return { ...model2, uid: mountUid, url: hit.url };
-  }
-  const model = posterModel({ kind: hit.kind, title: hit.title, url: hit.url });
-  return { ...model, uid: mountUid, url: hit.url };
-}
-function embedSplit(string, opts = {}) {
-  const text4 = String(string ?? "");
-  const macros = [...text4.matchAll(new RegExp(HEAVY_MACRO.source, "gi"))].map((m) => m[0]);
-  if (macros.length) {
-    const posters = macros.map((macro) => embedPoster(macro, opts)).filter(Boolean);
-    const rest = text4.replace(new RegExp(HEAVY_MACRO.source, "gi"), " ").replace(/\s+/g, " ").trim();
-    return { posters, rest };
-  }
-  const one = embedPoster(text4, opts);
-  return { posters: one ? [one] : [], rest: "" };
-}
-function pdfCardForUrl(url, cards) {
-  if (typeof url !== "string" || url === "") return null;
-  if (!Array.isArray(cards)) return null;
-  for (const card2 of cards) {
-    if (!card2 || typeof card2 !== "object") continue;
-    if (pdfMacroUrl(card2.source) !== url) continue;
-    return typeof card2.uid === "string" && card2.uid !== "" ? card2.uid : null;
-  }
-  return null;
-}
-function writeReaderPage(input, page) {
-  if (!input || typeof input.dispatchEvent !== "function") return false;
-  if (typeof page !== "number" || !Number.isInteger(page) || page < 1) return false;
-  const text4 = String(page);
-  const ctor = globalThis.HTMLInputElement;
-  const proto = typeof ctor === "function" ? Object.getOwnPropertyDescriptor(ctor.prototype, "value") : null;
-  if (proto && typeof proto.set === "function") proto.set.call(input, text4);
-  else input.value = text4;
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  input.dispatchEvent(new Event("change", { bubbles: true }));
-  return true;
-}
-function readPaneKey(graph) {
-  return `plexus-diagram:read:${typeof graph === "string" ? graph : ""}`;
-}
-function readPaneWidth(mountWidth, stored) {
-  const mount = typeof mountWidth === "number" && Number.isFinite(mountWidth) ? mountWidth : 0;
-  const stacked = mount > 0 && mount < 720;
-  const given = typeof stored === "number" && Number.isFinite(stored) ? stored : Number(stored);
-  const hasStored = Number.isFinite(given) && given > 0;
-  if (stacked) return { stacked: true, width: Math.round(mount) };
-  const raw = hasStored ? given : mount > 0 ? Math.round(mount * 0.42) : 360;
-  const room = mount > 0 ? Math.max(360, mount - 360) : 720;
-  const width = Math.min(720, room, Math.max(360, Math.round(raw)));
-  return { stacked: false, width };
-}
-var PDF_MACRO, PDF_READER_W, PDF_READER_H, PDF_CARD_MAX, ROMAN_ONLY, HEAVY_MACRO, HEAVY_ONE, REF_ONLY3, EMBED_ONLY2;
-var init_pdf = __esm({
-  "src/model/pdf.js"() {
-    init_title_cap();
-    PDF_MACRO = "{{[[pdf]]:";
-    PDF_READER_W = 640;
-    PDF_READER_H = 820;
-    PDF_CARD_MAX = 4e3;
-    ROMAN_ONLY = /^[ivxlcdm]+\.?$/i;
-    HEAVY_MACRO = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/gi;
-    HEAVY_ONE = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/i;
-    REF_ONLY3 = /^\(\(([\w-]+)\)\)$/;
-    EMBED_ONLY2 = /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i;
   }
 });
 
@@ -28841,17 +29034,20 @@ function createItemRenderer({
       cover = null;
     }
     const url = pdfMacroUrl(pdfSourceOf(item));
+    const pageNamed = Boolean(item?.target?.page);
     let metadataTitle = "";
-    try {
-      const got = typeof pdfMetaTitle === "function" ? pdfMetaTitle(url) : "";
-      metadataTitle = typeof got === "string" ? got : "";
-    } catch {
-      metadataTitle = "";
+    if (!pageNamed) {
+      try {
+        const got = typeof pdfMetaTitle === "function" ? pdfMetaTitle(url) : "";
+        metadataTitle = typeof got === "string" ? got : "";
+      } catch {
+        metadataTitle = "";
+      }
     }
     const model = coverModel({
       metadataTitle,
       alias: humanAlias(item),
-      text: humanText(item),
+      text: pageNamed ? "" : humanText(item),
       title: typeof cover?.title === "string" ? cover.title : "",
       url: typeof cover?.url === "string" && cover.url || url,
       count: cover?.count
@@ -31807,6 +32003,7 @@ function createReadDrawer({
   onLocate,
   onPlace,
   onNote,
+  onAsk,
   onHover,
   storage,
   key = ""
@@ -31989,6 +32186,11 @@ function createReadDrawer({
     const placeBtn = el("button", "pxd-read-drawer__place", acts);
     placeBtn.setAttribute("aria-label", "Place");
     placeBtn.append(icon(["M2.5 3.5h8v8h-8z", "M11 8h3M12.5 6.5v3"]));
+    if (typeof onAsk === "function") {
+      const ask2 = el("button", "pxd-read-drawer__ask", acts);
+      ask2.setAttribute("aria-label", "Ask AI (Shift: add to question)");
+      ask2.append(icon(["M8 2.5l1.4 3.1 3.1 1.4-3.1 1.4L8 11.5 6.6 8.4 3.5 7l3.1-1.4z", "M12.5 11v3M11 12.5h3"]));
+    }
     const locate = el("button", "pxd-read-drawer__locate", acts);
     locate.setAttribute("aria-label", "Locate");
     locate.append(icon(["M8 2.5v2M8 11.5v2M2.5 8h2M11.5 8h2", "M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"]));
@@ -32201,6 +32403,10 @@ function createReadDrawer({
         call(onPlace, row4);
         return;
       }
+      if (closest(".pxd-read-drawer__ask")) {
+        call(onAsk, row4, { basket: event.shiftKey === true });
+        return;
+      }
       if (closest(".pxd-read-drawer__locate") || !closest("button")) call(onLocate, row4);
       return;
     }
@@ -32277,6 +32483,12 @@ function createReadDrawer({
       event.preventDefault?.();
       event.stopPropagation?.();
       call(onLocate, row4);
+      return;
+    }
+    if (keyName === "a" && typeof onAsk === "function") {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      call(onAsk, row4, { basket: true });
       return;
     }
     if (keyName === "n" || keyName === "p") {
@@ -34105,6 +34317,7 @@ init_section6();
 init_timeline();
 init_board();
 init_why();
+init_pdf_page();
 init_trails();
 init_schema();
 init_drawing_card();
@@ -34621,6 +34834,7 @@ function neighborLayout(rect, titles, { skip = [] } = {}) {
 
 // src/host/roam.js
 init_pdf();
+init_pdf_page();
 init_refs();
 
 // src/model/card-cache.js
@@ -35019,6 +35233,11 @@ var PDF_PAGE_QUERY = `[:find ?u ?t :in $ ?url :where [?p :pdf/url ?url] [?p :blo
 var PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
 var PDF_BLOCK_OUT_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?p :block/refs ?b] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 var PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?b :block/refs ?p] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
+var PDF_KIDS_PATTERN = `[:block/uid {:block/children [:block/uid :block/string :block/order :block/props
+ {:block/children [:block/uid :block/string :block/order :block/props]}]}]`;
+var PDF_PAGE_PATTERN = "[:block/uid :node/title {:block/children [:block/uid :block/string :block/order]}]";
+var PDF_HASH_PAGE_QUERY = `[:find ?u ?t :in $ ?h :where [?p :pdf/content-hash ?h] [?p :block/uid ?u] [?p :node/title ?t]]`;
+var PDF_TOP_BLOCK_QUERY = `[:find ?u ?t :in $ ?url :where [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/page ?p] [?p :block/children ?b] [?p :block/uid ?u] [?p :node/title ?t]]`;
 var BLOCK_PROPS_PATTERN = "[:block/string :block/props {:block/page [:node/title]}]";
 var BLOCK_WATCH_PATTERN = "[:block/string {:block/children [:block/string :block/order :block/props]}]";
 var HIGHLIGHT_TREE_PATTERN = `[:block/uid
@@ -36510,6 +36729,86 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       };
       return take(PDF_BLOCK_OUT_QUERY) || take(PDF_BLOCK_IN_QUERY);
     },
+    // The PDF a `[[title]]` card links: the page's first top-level pdf block. Read-only; one paint burst shares a read.
+    pdfOfPage(title) {
+      const name = typeof title === "string" ? title : "";
+      if (!name) return null;
+      const key = `pdfpage:${name}`;
+      const hit = readBurst(key);
+      if (hit !== MISS) return hit;
+      let res = null;
+      try {
+        res = pull(PDF_PAGE_PATTERN, [":node/title", name]);
+      } catch {
+        res = null;
+      }
+      const value = pdfOfPageNode(res);
+      if (value) {
+        let kids = null;
+        try {
+          kids = pull(PDF_KIDS_PATTERN, eidKey(value.pdfUid));
+        } catch {
+          kids = null;
+        }
+        const list = kids?.[":block/children"];
+        value.children = Array.isArray(list) ? list.slice().sort((a, b) => (a?.[":block/order"] ?? 0) - (b?.[":block/order"] ?? 0)) : [];
+      }
+      writeBurst(key, value);
+      return value;
+    },
+    // A page that already holds this file: Roam's own PDF page (:pdf/url, or :pdf/content-hash = sha256), else a
+    // page whose top-level pdf block has this url. { uid, title, pdfUid, why } or null. Read-only.
+    findPdfPage({ url = "", sha = "" } = {}) {
+      const needle = typeof url === "string" ? url.trim() : "";
+      const hash = typeof sha === "string" ? sha.trim().toLowerCase() : "";
+      const withPdf = (uid, title, why) => {
+        const pdf = host.pdfOfPage(title);
+        return { uid, title, pdfUid: pdf?.pdfUid || "", why };
+      };
+      if (needle) {
+        for (const row4 of queryRows(host, PDF_PAGE_QUERY, needle)) {
+          if (Array.isArray(row4) && typeof row4[0] === "string" && typeof row4[1] === "string") return withPdf(row4[0], row4[1], "url");
+        }
+      }
+      if (/^[0-9a-f]{64}$/.test(hash)) {
+        for (const row4 of queryRows(host, PDF_HASH_PAGE_QUERY, hash)) {
+          if (Array.isArray(row4) && typeof row4[0] === "string" && typeof row4[1] === "string") return withPdf(row4[0], row4[1], "sha");
+        }
+      }
+      if (needle) {
+        for (const row4 of queryRows(host, PDF_TOP_BLOCK_QUERY, needle)) {
+          if (!Array.isArray(row4) || typeof row4[0] !== "string" || typeof row4[1] !== "string") continue;
+          const pdf = host.pdfOfPage(row4[1]);
+          if (pdf && pdfMacroUrl(pdf.string) === needle) return { uid: row4[0], title: row4[1], pdfUid: pdf.pdfUid, why: "page" };
+        }
+      }
+      return null;
+    },
+    // The graph Roam has open (its own API first, the window hash second).
+    graphName() {
+      const live2 = api2?.graph?.name;
+      return typeof live2 === "string" && live2 ? live2 : gname;
+    },
+    pageExists(title) {
+      const name = typeof title === "string" ? title.trim() : "";
+      if (!name) return false;
+      try {
+        return Boolean(rawPull("[:block/uid]", [":node/title", name])?.[":block/uid"]);
+      } catch {
+        return true;
+      }
+    },
+    // A new page with a known uid, so later writes in the same group can target it.
+    async createPage({ uid, title } = {}) {
+      const name = String(title ?? "").trim();
+      if (!name) throw new Error("createPage: no title");
+      const page = { title: name };
+      if (typeof uid === "string" && uid) page.uid = uid;
+      stats.writes++;
+      await data.page.create({ page });
+      noteWrite("create");
+      return page.uid || host.pageUid(name);
+    },
     // Boards library: every enhanced (plexus.v === 2) board block in the graph. Read-only.
     listBoards({ limit = 200 } = {}) {
       const rows = host.q(
@@ -37986,7 +38285,7 @@ function sortKeys(v) {
   return v;
 }
 var stable = (v) => v == null ? "null" : JSON.stringify(sortKeys(v));
-function kidsOf(node2) {
+function kidsOf2(node2) {
   const kids = Array.isArray(node2?.[KIDS]) ? node2[KIDS] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[ORD] ?? a.i) - (b.c[ORD] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
@@ -38008,7 +38307,7 @@ function detach(idx, uid) {
   return hit;
 }
 function attach(parentNode, node2, order) {
-  const kids = kidsOf(parentNode);
+  const kids = kidsOf2(parentNode);
   if (order === "first") kids.unshift(node2);
   else if (order === "last" || typeof order !== "number") kids.push(node2);
   else kids.splice(Math.max(0, Math.min(order, kids.length)), 0, node2);
@@ -38053,8 +38352,8 @@ function sameTree(a, b, allowed, state, stack) {
     if ((a[":block/heading"] || 0) !== (b[":block/heading"] || 0)) return false;
     if (a[OPEN] !== false !== (b[OPEN] !== false)) return false;
     if (stable(a[PROPS] ?? null) !== stable(b[PROPS] ?? null)) return false;
-    const ak = kidsOf(a);
-    const bk = kidsOf(b);
+    const ak = kidsOf2(a);
+    const bk = kidsOf2(b);
     if (ak.length !== bk.length) return false;
     for (let i = 0; i < ak.length; i++) if (!sameTree(ak[i], bk[i], allowed, state, stack)) return false;
     const ar = refList(a);
@@ -38157,6 +38456,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   let virtualAllowed = virtual === true;
   const autoEnhanceOn = () => (typeof settings?.get === "function" ? settings.get("auto-enhance") : settings?.["auto-enhance"]) !== false;
   const autoBoardCache = /* @__PURE__ */ new Map();
+  const pendingPdfPages = /* @__PURE__ */ new Map();
+  const notPdfPages = /* @__PURE__ */ new Map();
+  const NOT_PDF_PAGE_MS = 3e4;
   const autoBoardOf = (id, cplexus, kids) => {
     if (!autoEnhanceOn()) return false;
     if (!autoBoardCache.has(id)) {
@@ -38191,7 +38493,25 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       },
       knownHighlight: (id) => knownHighlights.has(id),
       plexusApi,
-      autoBoard: autoBoardOf
+      autoBoard: autoBoardOf,
+      pdfOfPage: (title) => {
+        const pending = pendingPdfPages.get(title) || null;
+        const miss = notPdfPages.get(title);
+        if (!pending && miss && Date.now() - miss < NOT_PDF_PAGE_MS) return null;
+        let live2 = null;
+        try {
+          live2 = host.pdfOfPage?.(title) || null;
+        } catch {
+          live2 = null;
+        }
+        if (live2) {
+          pendingPdfPages.delete(title);
+          notPdfPages.delete(title);
+          return live2;
+        }
+        if (!pending) notPdfPages.set(title, Date.now());
+        return pending;
+      }
     }) : null;
     if (board2 && virtualAllowed && autoEnhanceOn() && !board2.enhanced && !board2.native) {
       board2.enhanced = true;
@@ -38230,7 +38550,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   const insertOrder = (parentUid) => {
     const node2 = raw ? rawNode(parentUid) : null;
     if (!node2) return "last";
-    const at = kidsOf(node2).findIndex((k) => {
+    const at = kidsOf2(node2).findIndex((k) => {
       const type = readPlexus(k[PROPS])?.type;
       if (type === "edges" || type === "snapshots" || type === "regions" || type === "trails") return true;
       return isContainerString(k[":block/string"] ?? k.string ?? "");
@@ -38382,7 +38702,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const walk2 = (n2) => {
         const nid = n2?.[UID];
         if (nid) allowed.add(nid);
-        for (const child of kidsOf(n2)) walk2(child);
+        for (const child of kidsOf2(n2)) walk2(child);
       };
       walk2(node2);
     }
@@ -38399,7 +38719,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         found = next;
         return;
       }
-      for (const child of kidsOf(node2)) walk2(child, next);
+      for (const child of kidsOf2(node2)) walk2(child, next);
     };
     walk2(root, null);
     return found;
@@ -38424,7 +38744,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (own) writeItemString(item, nextString);
     let dirty = own;
     if (item.type !== "section") {
-      const kids = kidsOf(node2);
+      const kids = kidsOf2(node2);
       if (contentSig(item.content) !== contentSig(kids)) dirty = true;
       item.content = kids;
     }
@@ -38615,6 +38935,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       case "open":
         await host.setOpen(op.uid, op.open);
         break;
+      case "page":
+        await host.createPage({ uid: op.uid, title: op.title });
+        break;
       default:
         break;
     }
@@ -38771,6 +39094,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         rawString(id, string);
         ops.push({ op: "string", uid: id, string });
       },
+      // A page outside the board. Nothing in the board tree changes.
+      page({ uid: id, title }) {
+        const newUid = id ?? host.generateUid();
+        ops.push({ op: "page", uid: newUid, title });
+        return newUid;
+      },
       sync: rebuild
     };
     const result = fn(t);
@@ -38810,7 +39139,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   };
   function ensureContainer(t) {
     if (board2.containerUid) return board2.containerUid;
-    const existing = kidsOf(raw).find((k) => readPlexus(k[PROPS])?.type === "edges");
+    const existing = kidsOf2(raw).find((k) => readPlexus(k[PROPS])?.type === "edges");
     if (existing) return existing[UID];
     return t.create({ parent: uid, order: "last", string: "Connections", plexus: { type: "edges" }, open: false });
   }
@@ -38961,7 +39290,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   }
   function ensureTrails(t) {
     if (board2.trailsUid) return board2.trailsUid;
-    const existing = kidsOf(raw).find((k) => readPlexus(k[PROPS])?.type === "trails");
+    const existing = kidsOf2(raw).find((k) => readPlexus(k[PROPS])?.type === "trails");
     if (existing) return existing[UID];
     return t.create({ parent: uid, order: "last", string: "Trails", plexus: { type: "trails" }, open: false });
   }
@@ -39806,7 +40135,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       for (const id of top) for (const d of descendantsOf(board2, id)) moved.add(d);
       const undoItems = top.map((id) => {
         const hit = ix().get(id);
-        return { uid: id, parentUid: hit.parent[UID], order: kidsOf(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])) };
+        return { uid: id, parentUid: hit.parent[UID], order: kidsOf2(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])) };
       }).sort((a, b) => a.order - b.order);
       const undoEdges = [];
       const info = { createdContainer: null };
@@ -39851,6 +40180,69 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         const ids = items.map(({ string, x, y, w, h }) => cardAt(t, string, x, y, w || h ? { w, h } : null));
         applyFit(t, ids);
         return ids;
+      });
+    },
+    // The stored :plexus layout of a board block (the migration copies it to the new page card).
+    layoutOf(id) {
+      const p = readPlexus(rawNode(id)?.[PROPS]);
+      return p && typeof p === "object" ? { ...p } : null;
+    },
+    // PDF cards that link the PDF's page. Each row: { title, x, y, pageUid?, newPage?: true, url? }.
+    // A new page gets the `{{[[pdf]]: url}}` block first on it; an existing page only gets the card.
+    addPdfPageCards(list) {
+      const rows = capBulk(list ?? [], emit2).filter((row4) => row4 && typeof row4.title === "string" && row4.title);
+      if (!rows.length) return Promise.resolve([]);
+      return txn((t) => {
+        const ids = [];
+        for (const row4 of rows) {
+          let pageUid = row4.pageUid || null;
+          if (row4.newPage) pageUid = t.page({ uid: pageUid || void 0, title: row4.title });
+          if (row4.url && pageUid) {
+            const string = `{{[[pdf]]: ${row4.url}}}`;
+            const pdfUid = t.create({ parent: pageUid, order: 0, string });
+            pendingPdfPages.set(row4.title, { pageUid, title: row4.title, pdfUid, string });
+          }
+          ids.push(cardAt(t, pageCardString(row4.title), row4.x, row4.y, DEFAULT_SIZES.pdf));
+        }
+        applyFit(t, ids);
+        return ids;
+      });
+    },
+    // "Move PDFs to their own pages": apply a plan from planPdfMigration for THIS board. One undo group.
+    // A pdf block that is no longer an old-style card on this board is skipped, so a second run writes nothing.
+    movePdfsToPages(plan) {
+      if (!plan || plan.boardUid !== uid) return Promise.resolve({ moved: 0, refused: "board" });
+      let graphNow = "";
+      try {
+        graphNow = String(host.graphName?.() || "");
+      } catch {
+        graphNow = "";
+      }
+      if (plan.graph && graphNow && plan.graph !== graphNow) return Promise.resolve({ moved: 0, refused: "graph" });
+      const moves = (plan.moves || []).filter((m) => isInlinePdfCard(board2?.items?.get(m.pdfUid)) && m.cardUid && m.page?.title);
+      if (!moves.length) return Promise.resolve({ moved: 0 });
+      const moving = new Set(moves.map((m) => m.pdfUid));
+      return txn((t) => {
+        for (const m of moves) {
+          const parent = rawNode(m.parentUid) ? m.parentUid : board2.items.get(m.pdfUid).parentUid;
+          const kids = kidsOf2(rawNode(parent));
+          const at = Math.max(0, kids.findIndex((k) => k[UID] === m.pdfUid));
+          const pdfString = rawNode(m.pdfUid)?.[STR] || `{{[[pdf]]: ${m.url}}}`;
+          const pageUid = m.page.uid || t.page({ uid: m.page.newUid || void 0, title: m.page.title });
+          t.props(m.pdfUid, null);
+          t.move(m.pdfUid, pageUid, 0);
+          t.create({ parent, uid: m.cardUid, string: m.cardString, plexus: m.layout, order: at });
+          pendingPdfPages.set(m.page.title, { pageUid, title: m.page.title, pdfUid: m.pdfUid, string: pdfString });
+        }
+        let edges = 0;
+        for (const e2 of plan.edges || []) {
+          const cur = board2.edges?.get(e2.uid);
+          if (!cur || !(moving.has(cur.from) || moving.has(cur.to))) continue;
+          t.string(e2.uid, e2.string);
+          t.props(e2.uid, edgePlexus(e2.uid, { from: e2.from, to: e2.to }));
+          edges += 1;
+        }
+        return { moved: moves.length, edges };
       });
     },
     // One ref card, centered on the board's content (the origin when nothing is placed yet).
@@ -40257,7 +40649,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         let moves = 0;
         for (const group of readingOrder(board2, rects)) {
           group.uids.forEach((id, index) => {
-            const kids = kidsOf(rawNode(group.parent));
+            const kids = kidsOf2(rawNode(group.parent));
             const at = kids.findIndex((k) => k[UID] === id);
             if (at < 0 || at === index) return;
             t.move(id, group.parent, index);
@@ -40413,7 +40805,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     },
     createTrail(name, cardUids) {
       return txn((t) => {
-        const had = Boolean(board2.trailsUid) || kidsOf(raw).some((k) => readPlexus(k[PROPS])?.type === "trails");
+        const had = Boolean(board2.trailsUid) || kidsOf2(raw).some((k) => readPlexus(k[PROPS])?.type === "trails");
         const parent = ensureTrails(t);
         const id = t.create({ parent, order: "last", string: trailString(name), plexus: { type: "trail" }, open: true });
         const ids = [];
@@ -40626,7 +41018,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         if (src.kind === "page") {
           const page = host.pullPage(src.target.title);
           if (!page) return { ok: false, reason: "no-page" };
-          const attr = kidsOf(page).find((k) => String(k[STR] ?? "").trim() === `${label}::`);
+          const attr = kidsOf2(page).find((k) => String(k[STR] ?? "").trim() === `${label}::`);
           if (attr) {
             await write(() => host.createBlock({ parentUid: attr[UID], order: "last", string: dstRef }));
             return { ok: true, reason: "appended" };
@@ -40791,7 +41183,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     let childContainer = null;
     const childEdges = () => {
       if (childContainer) return childContainer;
-      const existing = kidsOf(rawNode(boardUid)).find((k) => readPlexus(k[PROPS])?.type === "edges");
+      const existing = kidsOf2(rawNode(boardUid)).find((k) => readPlexus(k[PROPS])?.type === "edges");
       if (existing) {
         childContainer = existing[UID];
         return childContainer;
@@ -40806,7 +41198,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     for (const e2 of touched) {
       const hit = ix().get(e2.uid);
       if (hit?.parent) {
-        snapshots.set(e2.uid, { uid: e2.uid, parent: hit.parent[UID], order: kidsOf(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "" });
+        snapshots.set(e2.uid, { uid: e2.uid, parent: hit.parent[UID], order: kidsOf2(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "" });
       }
     }
     for (const e2 of touched) {
@@ -40864,7 +41256,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     txn,
     rawNode,
     ix,
-    kidsOf,
+    kidsOf: kidsOf2,
     rawPlexus,
     itemPlexus,
     edgePlexus,
@@ -55261,6 +55653,15 @@ function filesFromDataTransfer(dt) {
   }
   return out;
 }
+function pdfFilesFromDataTransfer(dt) {
+  const out = [];
+  for (const f of dt?.files ?? []) {
+    if (!f || out.includes(f) || out.length >= MAX_IMAGES) continue;
+    const type = typeof f.type === "string" ? f.type : "";
+    if (type === "application/pdf" || !type && /\.pdf$/i.test(String(f.name || ""))) out.push(f);
+  }
+  return out;
+}
 function dragHasImages(dt) {
   if (filesFromDataTransfer(dt).length) return true;
   for (const item of dt?.items ?? []) {
@@ -60542,6 +60943,7 @@ function createReadPane({
   onClose,
   onPlace,
   onNote,
+  onAskHighlight,
   onHover,
   onSwitch,
   onSnapshot,
@@ -62467,6 +62869,14 @@ function createReadPane({
       } catch {
       }
     },
+    ...typeof onAskHighlight === "function" ? {
+      onAsk(row4, opts) {
+        try {
+          onAskHighlight(row4, { ...opts || {}, url: pdfUrl(), cardUid: current3.cardUid || "" });
+        } catch {
+        }
+      }
+    } : {},
     onHover(uid, on) {
       try {
         onHover?.(uid, on);
@@ -69860,6 +70270,114 @@ function similarImages(items, records, sourceKey, limit = SIMILAR_LIMIT) {
   return { ok: true, rows };
 }
 
+// src/view/board-view.js
+init_parse_hash();
+init_pdf_page();
+
+// src/model/highlight-ask.js
+var IMAGE_MD = /!\[[^\]]*\]\(\s*([^)\s]+)[^)]*\)/;
+function highlightImageUrl(string) {
+  const m = IMAGE_MD.exec(String(string ?? ""));
+  return m ? m[1] : "";
+}
+function highlightAsk({ highlight, string = "", uid = "", parsed = null, title = "" } = {}) {
+  if (!highlight || typeof highlight !== "object") return null;
+  const page = Number.isInteger(highlight.page) && highlight.page >= 1 ? highlight.page : null;
+  const text4 = String(highlight.text ?? "").replace(/\s+/g, " ").trim();
+  const note = String(highlight.note ?? "").replace(/\s+/g, " ").trim();
+  const imageUrl = highlight.image ? highlightImageUrl(string) : "";
+  const hasParse = Boolean(parsed && parsed.blocks && Object.keys(parsed.blocks).length);
+  const caption = [note, page ? `Highlight on p. ${page}` : "Highlight"].filter(Boolean).join(" — ");
+  const image = imageUrl ? { key: "", url: imageUrl, caption, name: "highlight", thumb: imageUrl } : null;
+  const source = uid ? { sourceUid: uid } : {};
+  if (highlight.image) {
+    if (!imageUrl) return null;
+    if (hasParse && page) return { doc: parsed, focus: { page }, image, source, label: `Area · p. ${page}` };
+    return { doc: imageDoc({ caption, title }), focus: { blockId: "img" }, image, source, label: page ? `Area · p. ${page}` : "Area" };
+  }
+  if (!text4) return null;
+  if (hasParse) return { doc: parsed, focus: { selection: text4, ...page ? { page } : {} }, image: null, source, label: "" };
+  return { doc: selectionDoc({ text: text4, page: page || 1, title }), focus: { blockId: "sel", selection: text4 }, image: null, source, label: "" };
+}
+function highlightPart(ask2, { uid = "", pdfUid = "", url = "" } = {}) {
+  if (!ask2) return null;
+  const part = makePart({ doc: ask2.doc, focus: ask2.focus, pdfUid, url, image: ask2.image, source: ask2.source });
+  if (uid) part.key = `hl:${uid}`;
+  if (ask2.label) part.label = [ask2.label, part.docTitle].filter(Boolean).join(" · ");
+  return part;
+}
+
+// src/view/pdf-pages-dialog.js
+function openPdfPagesDialog(doc, { count = 0, lines = [], onApply, onCancel } = {}) {
+  const root = doc.createElement("div");
+  root.className = "pxd-view-dialog pxd-pdf-pages";
+  root.setAttribute("role", "dialog");
+  root.setAttribute("aria-label", "Move PDFs to their own pages");
+  const stop3 = (event) => event.stopPropagation();
+  root.addEventListener("pointerdown", stop3);
+  root.addEventListener("mousedown", stop3);
+  root.addEventListener("click", stop3);
+  root.addEventListener("wheel", stop3);
+  const card2 = doc.createElement("form");
+  card2.className = "pxd-view-dialog__card";
+  card2.addEventListener("submit", (event) => event.preventDefault());
+  root.append(card2);
+  const head = doc.createElement("p");
+  head.className = "pxd-pdf-pages__head";
+  head.textContent = `Move ${count} ${count === 1 ? "PDF" : "PDFs"} on this board to ${count === 1 ? "its own page" : "their own pages"}? Each card becomes a link to the page. Highlights, pins and reads stay with the PDF.`;
+  card2.append(head);
+  const list = doc.createElement("ul");
+  list.className = "pxd-pdf-pages__list";
+  for (const line of lines) {
+    const li = doc.createElement("li");
+    li.textContent = String(line);
+    list.append(li);
+  }
+  card2.append(list);
+  const actions = doc.createElement("div");
+  actions.className = "pxd-view-dialog__actions";
+  const button2 = (cls, label, run) => {
+    const node2 = doc.createElement("button");
+    node2.type = "button";
+    node2.className = `pxd-btn ${cls}`;
+    node2.textContent = label;
+    node2.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      run?.();
+    });
+    return node2;
+  };
+  const cancel = button2("pxd-pdf-pages-cancel", "Cancel", onCancel);
+  actions.append(button2("pxd-pdf-pages-apply", "Move", onApply), cancel);
+  card2.append(actions);
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    root.remove();
+  };
+  root.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    onCancel?.();
+  });
+  return {
+    el: root,
+    close,
+    cancel() {
+      onCancel?.();
+    },
+    focus() {
+      try {
+        cancel.focus();
+      } catch {
+      }
+    }
+  };
+}
+
 // src/model/ocr/manifest.js
 var CACHE_NAME = "plexus-diagram-models";
 var SCHEMA3 = "pxd-ocr/1";
@@ -73260,7 +73778,7 @@ function buildMenu(kind, ctx = {}) {
         ...c.isPdf ? [make2("parse-pdf", "Parse PDF…")] : [],
         ...c.isPdf && c.hasParse ? [make2("open-parsed", "Open parsed")] : [],
         ...c.isPdf && c.hasParse ? [make2("ask-ai", "Ask AI…"), make2("add-to-ask", "Add to question")] : [],
-        ...c.isImage ? [make2("ask-ai", "Ask AI…"), make2("add-to-ask", "Add to question")] : [],
+        ...c.isImage || c.isHighlight ? [make2("ask-ai", "Ask AI…"), make2("add-to-ask", "Add to question")] : [],
         ...c.officeFile ? [make2("convert-office", "Convert to cards")] : [],
         sep(),
         make2("copy", "Copy", { hint: "Cmd C" }),
@@ -73476,6 +73994,7 @@ function buildMenu(kind, ctx = {}) {
         make2("export-png", "Export as PNG"),
         make2("copy-outline", "Copy as outline"),
         make2("sort-outline", "Sort outline by position"),
+        ...c.inlinePdfs > 0 ? [make2("pdf-pages", "Move PDFs to their own pages")] : [],
         make2("open-outline", "Open outline in sidebar"),
         sep(),
         make2("fold-all", "Fold all cards"),
@@ -76297,6 +76816,9 @@ function buildBoardView(onFail, {
     session: parseActions(),
     settings: { get: (id) => readSetting2(id) },
     setSetting: (id, value) => typeof onSetDefaults === "function" ? onSetDefaults({ [id]: value }) : void 0,
+    onAskHighlight: (row4, { basket = false, url = "", cardUid = "" } = {}) => {
+      if (row4?.uid) void askHighlight(row4.uid, { basket, url, pdfCard: cardUid });
+    },
     onPlace: (row4) => {
       const items = [...board2()?.items.values() || []];
       const card2 = board2()?.items.get(readPane?.cardUid?.() || "");
@@ -76475,7 +76997,7 @@ function buildBoardView(onFail, {
         if (pdfUid) void itemsR?.openPdfAt?.(pdfUid, n2);
       },
       toast: (message) => toast(message),
-      addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfUid, ...answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) })
+      addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfBlockOfCard(pdfUid), ...answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) })
     });
   };
   const chartAboutParsed = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "" }) => {
@@ -76499,7 +77021,7 @@ function buildBoardView(onFail, {
       blockId,
       image: figureSpecFor(parsed, figure),
       toast: (message) => toast(message),
-      addTable: ({ table }) => parseActions().insertChartTable({ table, pdfUid, pdfBlockUid: pdfUid, ...answerSource({ doc: parsed, blockId, pdfUid }) })
+      addTable: ({ table }) => parseActions().insertChartTable({ table, pdfUid, pdfBlockUid: pdfBlockOfCard(pdfUid), ...answerSource({ doc: parsed, blockId, pdfUid }) })
     });
   };
   const askBasket = basketFor(graphOfWindow(win2));
@@ -76534,6 +77056,201 @@ function buildBoardView(onFail, {
     part.label = ["Image", caption && caption.length > 40 ? `${caption.slice(0, 39)}…` : caption, title].filter(Boolean).join(" · ");
     addedToBasket(part);
   };
+  const askHighlight = async (uid, { basket = false, url: knownUrl = "", pdfCard = "" } = {}) => {
+    if (!uid) return null;
+    let bag = null;
+    try {
+      bag = host?.blockProps?.(uid) || null;
+    } catch {
+      bag = null;
+    }
+    let children = [];
+    try {
+      children = host?.pullTree?.(uid, 1, 20) || [];
+    } catch {
+      children = [];
+    }
+    const highlight = bag ? highlightModel({ props: bag.props, string: bag.string, pageTitle: bag.pageTitle, children: (children || []).map((c) => ({ string: c?.string ?? "", props: c?.props ?? {} })) }) : null;
+    if (!highlight) {
+      toast("That highlight could not be read");
+      return null;
+    }
+    let url = knownUrl;
+    if (!url) {
+      try {
+        url = host?.pdfPageUrl?.(host?.blockPageUid?.(uid) || "") || "";
+      } catch {
+        url = "";
+      }
+    }
+    const parsed = url ? await loadParsedFor({ url }) : null;
+    if (disposed) return null;
+    const ask2 = highlightAsk({ highlight, string: bag.string, uid, parsed, title: bag.pageTitle || "" });
+    if (!ask2) {
+      toast("Nothing to ask about in that highlight");
+      return null;
+    }
+    const cardUid = pdfCard || (url ? pdfCardUidFor("", url) : "") || "";
+    if (basket) {
+      addedToBasket(highlightPart(ask2, { uid, pdfUid: cardUid, url }));
+      return null;
+    }
+    return openAskAI({
+      doc: ask2.doc,
+      ...ask2.focus,
+      ...ask2.image ? { image: ask2.image } : {},
+      document: doc,
+      jumpPage: (n2) => {
+        if (cardUid) void itemsR?.openPdfAt?.(cardUid, n2);
+      },
+      toast: (message) => toast(message),
+      addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid: cardUid || uid, pdfBlockUid: pdfBlockOfCard(cardUid), ...ask2.source })
+    });
+  };
+  let pdfPagesDialog = null;
+  const closePdfPagesDialog = () => {
+    try {
+      pdfPagesDialog?.close?.();
+    } catch {
+    }
+    pdfPagesDialog = null;
+  };
+  const planPdfPages = async () => {
+    const b = board2();
+    if (!b) return null;
+    const store = parseStoreShared();
+    const shaOf = /* @__PURE__ */ new Map();
+    for (const item of inlinePdfCards(b)) {
+      const url = pdfMacroUrl(pdfSourceOfItem(item));
+      if (!url || shaOf.has(url)) continue;
+      let hit = null;
+      try {
+        hit = await store.findByUrl(url);
+      } catch {
+        hit = null;
+      }
+      shaOf.set(url, hit?.sha256 || "");
+    }
+    if (disposed || board2() !== b) return null;
+    return planPdfMigration(b, {
+      graph: (() => {
+        try {
+          return String(host?.graphName?.() || graphOfWindow(win2) || "");
+        } catch {
+          return "";
+        }
+      })(),
+      urlOf: (item) => pdfMacroUrl(pdfSourceOfItem(item)),
+      layoutOf: (id) => session.layoutOf?.(id) || null,
+      findPage: ({ url }) => host?.findPdfPage?.({ url, sha: shaOf.get(url) || "" }) || null,
+      pageExists: (title) => host?.pageExists?.(title) === true,
+      titleFor: (item) => pdfDisplayTitle(item),
+      newUid: () => host?.generateUid?.() || ""
+    });
+  };
+  const movePdfsToPages = async () => {
+    if (disposed) return null;
+    closePdfPagesDialog();
+    if (typeof host?.createPage !== "function" || typeof session.movePdfsToPages !== "function") {
+      toast("Moving PDFs is not available here");
+      return null;
+    }
+    const plan = await planPdfPages();
+    if (disposed || !plan) return null;
+    if (!plan.moves.length) {
+      toast(plan.skipped.length ? "No PDF on this board can move to its own page" : "Every PDF on this board already has its own page");
+      return { moved: 0 };
+    }
+    return new Promise((resolve) => {
+      pdfPagesDialog = openPdfPagesDialog(doc, {
+        count: plan.moves.length,
+        lines: migrationLines(plan),
+        onApply: () => {
+          closePdfPagesDialog();
+          Promise.resolve(session.movePdfsToPages(plan)).then((res) => {
+            if (disposed) return resolve(res);
+            if (res?.refused) toast("This board changed. Run the command again");
+            else if (res?.moved) toast(`Moved ${res.moved} ${res.moved === 1 ? "PDF" : "PDFs"} to ${res.moved === 1 ? "its own page" : "their own pages"}`, true);
+            resolve(res);
+          }, () => {
+            if (!disposed) toast("Couldn't move the PDFs");
+            resolve(null);
+          });
+        },
+        onCancel: () => {
+          closePdfPagesDialog();
+          resolve(null);
+        }
+      });
+      root.append(pdfPagesDialog.el);
+      pdfPagesDialog.focus?.();
+    });
+  };
+  const addPdfFiles = async (files, at) => {
+    if (!files?.length) return;
+    if (typeof host?.uploadFile !== "function" || typeof session.addPdfPageCards !== "function") {
+      toast("PDF upload is not available here");
+      return;
+    }
+    const rows = [];
+    const titles = /* @__PURE__ */ new Set();
+    const h = DEFAULT_SIZES.pdf?.h || 420;
+    let failed = 0;
+    for (const file of files) {
+      let sha = "";
+      try {
+        sha = await sha256Hex(new Uint8Array(await file.arrayBuffer()));
+      } catch {
+        sha = "";
+      }
+      if (disposed) return;
+      const pos = { x: at.x, y: at.y + rows.length * (h + 24) };
+      const found = sha ? host?.findPdfPage?.({ sha }) : null;
+      if (found?.title && found.pdfUid) {
+        rows.push({ title: found.title, ...pos });
+        continue;
+      }
+      let known2 = "";
+      try {
+        known2 = found?.uid ? host?.pdfPageUrl?.(found.uid) || "" : "";
+      } catch {
+        known2 = "";
+      }
+      if (found?.title && known2) {
+        rows.push({ title: found.title, pageUid: found.uid, url: known2, ...pos });
+        continue;
+      }
+      let url = "";
+      try {
+        url = await host.uploadFile(file);
+      } catch (err) {
+        if (err?.message === "upload-unavailable") {
+          if (!disposed) toast("PDF upload is not available here");
+          return;
+        }
+        failed += 1;
+        continue;
+      }
+      if (disposed) return;
+      if (found?.title) {
+        rows.push({ title: found.title, pageUid: found.uid, url, ...pos });
+        continue;
+      }
+      const title = uniquePageTitle(pdfPageBaseTitle({ fileName: file?.name || "" }), (t) => titles.has(t) || host?.pageExists?.(t) === true);
+      titles.add(title);
+      rows.push({ title, newPage: true, pageUid: host?.generateUid?.() || void 0, url, ...pos });
+    }
+    if (!rows.length) {
+      if (failed) toast("Couldn't upload the PDF");
+      return;
+    }
+    const made = await Promise.resolve(session.addPdfPageCards(rows)).catch(() => null);
+    if (disposed) return;
+    if (Array.isArray(made) && made.length) {
+      ctl.select(made);
+      toast(failed ? `Added ${made.length} of ${files.length} PDFs` : `Added ${made.length} ${made.length === 1 ? "PDF" : "PDFs"}`, true);
+    }
+  };
   const openBasketAsk = () => openAskAI({
     multi: {
       basket: askBasket,
@@ -76546,7 +77263,7 @@ function buildBoardView(onFail, {
     addCard: ({ markdown, parts }) => parseActions().insertAnswerCard({
       markdown,
       pdfUid: parts?.[0]?.pdfUid || "",
-      pdfBlockUid: parts?.[0]?.pdfUid || "",
+      pdfBlockUid: pdfBlockOfCard(parts?.[0]?.pdfUid || ""),
       sources: (parts || []).map((p) => ({ pdfUid: p.pdfUid || "", url: p.url || "", ...p.source || {} }))
     })
   });
@@ -76682,6 +77399,10 @@ function buildBoardView(onFail, {
   const pdfBlockUid = (item) => {
     if (item?.target?.kind === "block" && typeof item.target.uid === "string" && item.target.uid) return item.target.uid;
     return typeof item?.uid === "string" ? item.uid : "";
+  };
+  const pdfBlockOfCard = (cardUid) => {
+    const item = cardUid ? board2()?.items.get(cardUid) : null;
+    return item?.kind === "pdf" ? pdfBlockUid(item) : cardUid || "";
   };
   const coverUrlOf = (item) => coverKey(pdfMacroUrl(pdfSourceOfItem(item)));
   const wholePage2 = (value) => {
@@ -79000,7 +79721,7 @@ function buildBoardView(onFail, {
       case "canvas":
         return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting2("task-tool") === true };
       case "board-menu":
-        return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod };
+        return { inlinePdfs: inlinePdfCards(b).length, snapshots: b?.snapshots || [], dock: b?.plexus?.dock, readOpen: root.classList?.contains?.("pxd-root--read") === true, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -79024,7 +79745,7 @@ function buildBoardView(onFail, {
           }
         }
         const officeFile = officeTargetFromText(officeText);
-        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", isHighlight: item?.kind === "highlight", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -79559,6 +80280,10 @@ function buildBoardView(onFail, {
           addImageToBasket(item);
           break;
         }
+        if (item?.kind === "highlight") {
+          void askHighlight(item.target?.uid, { basket: true });
+          break;
+        }
         if (!item || item.kind !== "pdf") break;
         void addParsedToBasket({ pdfUid: item.uid, url: pdfUrlOf(item.uid), wholeDoc: true });
         break;
@@ -79566,6 +80291,10 @@ function buildBoardView(onFail, {
       case "ask-ai": {
         if (item?.kind === "image") {
           askAboutImageCard(item);
+          break;
+        }
+        if (item?.kind === "highlight") {
+          void askHighlight(item.target?.uid);
           break;
         }
         if (!item || item.kind !== "pdf") break;
@@ -79797,6 +80526,9 @@ function buildBoardView(onFail, {
         break;
       case "sort-outline":
         void session.sortOutline?.();
+        break;
+      case "pdf-pages":
+        void movePdfsToPages();
         break;
       case "fold-all-in":
         if (item) void session.collapseAll?.(true, { within: item.uid });
@@ -81667,6 +82399,11 @@ function buildBoardView(onFail, {
         noteOverlayClosed();
         return true;
       }
+      if (pdfPagesDialog) {
+        pdfPagesDialog.cancel?.();
+        noteOverlayClosed();
+        return true;
+      }
       if (!laterCtl.isOpen()) return false;
       laterCtl.close();
       noteOverlayClosed();
@@ -82712,6 +83449,11 @@ function buildBoardView(onFail, {
     if (event.target?.closest?.(".pxd-read")) return;
     measure();
     const p = screenToWorld(vp, { x: event.clientX - rootRect.left, y: event.clientY - rootRect.top });
+    const pdfFiles = pdfFilesFromDataTransfer(event.dataTransfer);
+    if (pdfFiles.length) {
+      void addPdfFiles(pdfFiles, p);
+      return;
+    }
     const files = filesFromDataTransfer(event.dataTransfer);
     if (files.length) {
       void pasteImages(files, p);
@@ -84103,6 +84845,9 @@ function buildBoardView(onFail, {
     addPage(at = null) {
       addPage(at);
     },
+    movePdfsToPages() {
+      return movePdfsToPages();
+    },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;
       const world2 = at || { x: 80, y: 80 };
@@ -84128,6 +84873,7 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      closePdfPagesDialog();
       if (getFigureImages() === figureImages) setFigureImages(null);
       const step = (fn) => {
         try {
@@ -89136,6 +89882,9 @@ async function installPlexusDiagram({
   function addPageCommand(context) {
     return targetView(context)?.addPage?.();
   }
+  function movePdfPagesCommand(context) {
+    return targetView(context)?.movePdfsToPages?.();
+  }
   function newDrawingCommand(context) {
     return targetView(context)?.newDrawing?.();
   }
@@ -89159,7 +89908,8 @@ async function installPlexusDiagram({
   const sheetOnlyActions = [
     ["Plexus: Add page…", addPageCommand],
     ["Plexus: New drawing here", newDrawingCommand],
-    ["Plexus: Resurface here", resurfaceCommand]
+    ["Plexus: Resurface here", resurfaceCommand],
+    ["Plexus: Move PDFs to their own pages", movePdfPagesCommand]
   ];
   function runCommand(label, fn) {
     return (context) => {

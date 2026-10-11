@@ -40,6 +40,15 @@ export function chroma(lab) {
 const GRAY_CHROMA = 0.04;
 const CHROMA_MIN = 0.035;
 export const CLOSE_AT = 0.12;
+export const HEX_OK = 0.2;
+// Named chromatic colours are hue ranges in OKLCh: centre and half-width in degrees. Brown is the orange/red hue at low lightness.
+const HUE_RANGES = {
+  red: [25, 20], orange: [55, 18], yellow: [95, 18], green: [145, 35], teal: [195, 20], blue: [255, 30], purple: [300, 22], pink: [350, 18],
+  brown: [50, 30],
+};
+const HUE_CHROMA_MIN = 0.05;
+const BROWN_L_MAX = 0.55;
+const BROWN_C_MAX = 0.14;
 export const COLOR_MIN_SCORE = 0.15;
 
 const ANCHOR_HEX = {
@@ -148,7 +157,10 @@ export function colorQuery(text) {
   const t = String(text ?? "").trim().toLowerCase();
   if (!t) return null;
   const named = COLOR_ANCHORS[t];
-  if (named) return { name: named.name, hex: named.hex, lab: named.lab, achromatic: chroma(named.lab) < GRAY_CHROMA, token: t };
+  if (named) {
+    const achromatic = chroma(named.lab) < GRAY_CHROMA;
+    return { name: named.name, hex: named.hex, lab: named.lab, achromatic, hue: achromatic ? null : HUE_RANGES[named.name] || null, token: t };
+  }
   if (t.startsWith("#")) {
     const rgb = hexToRgb(t);
     if (!rgb) return null;
@@ -165,9 +177,18 @@ function closeness(entry, target) {
     const d = Math.hypot(entry.lab[0] - target.lab[0], entry.lab[1], entry.lab[2]);
     return Math.max(0, 1 - d / (target.name === "gray" ? 0.25 : CLOSE_AT * 1.5));
   }
+  if (target.hue) {
+    if (c < HUE_CHROMA_MIN) return 0;
+    const brown = target.name === "brown";
+    if (brown && (entry.lab[0] >= BROWN_L_MAX || c > BROWN_C_MAX)) return 0;
+    const h = ((Math.atan2(entry.lab[2], entry.lab[1]) * 180) / Math.PI + 360) % 360;
+    const diff = Math.abs(((h - target.hue[0] + 540) % 360) - 180);
+    const hueScore = Math.max(0, 1 - diff / target.hue[1]);
+    return hueScore * Math.min(1, (c - 0.03) / 0.08);
+  }
   if (c < CHROMA_MIN) return 0;
   const d = Math.hypot(0.5 * (entry.lab[0] - target.lab[0]), entry.lab[1] - target.lab[1], entry.lab[2] - target.lab[2]);
-  return Math.max(0, 1 - d / CLOSE_AT);
+  return Math.max(0, 1 - d / HEX_OK);
 }
 
 // Best palette entry: weight x closeness, 0 to 1.

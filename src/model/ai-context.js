@@ -32,7 +32,7 @@ export const DOC_INSTRUCTIONS = [
 
 // Added to the instructions only when the model is actually sent the picture.
 export const FIGURE_INSTRUCTIONS = [
-  "The question comes with the image of the figure. Look at it.",
+  "The context starts with the image of the selected part. Look at it.",
   "Read values off the chart: axes and their units, series or legend entries, and notable points (peaks, drops, crossings).",
   "Say when something is not legible instead of guessing. Do not invent numbers that are not visible; mark estimates read off a scale as approximate.",
   "Cite [p. N] for claims that rest on the document text; the caption and nearby text are in the context.",
@@ -514,10 +514,18 @@ export function imageAlt(caption, fallback = "Figure") {
 
 export const imageLine = (url, caption, fallback) => `![${imageAlt(caption, fallback)}](${String(url ?? "").trim()})`;
 
-// The prompt a vision model gets: the image line, then the question.
-export function promptWithImage(question, url, caption, fallback) {
+// Live AI turns an image line into a real image for Claude only inside the context, so the context carries the line (first, on its own line).
+export function contextWithImage(context, url, caption, fallback) {
+  const c = String(context ?? "");
+  return url ? `Image of the selected part:\n${imageLine(url, caption, fallback)}\n\n${c}` : c;
+}
+
+export const IMAGE_QUESTION_PREFIX = "Look at the image of the selected part. ";
+
+// The prompt stays plain text; with an image it points at the one in the context.
+export function promptWithImage(question, url) {
   const q = String(question ?? "");
-  return url ? `${imageLine(url, caption, fallback)}\n\n${q}` : q;
+  return url ? `${IMAGE_QUESTION_PREFIX}${q}` : q;
 }
 
 // A stand-in document for one image on a board: its own words and the page it sits on, no PDF pages.

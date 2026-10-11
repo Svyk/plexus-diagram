@@ -20039,7 +20039,10 @@ function colorQuery(text3) {
   const t = String(text3 ?? "").trim().toLowerCase();
   if (!t) return null;
   const named = COLOR_ANCHORS[t];
-  if (named) return { name: named.name, hex: named.hex, lab: named.lab, achromatic: chroma(named.lab) < GRAY_CHROMA, token: t };
+  if (named) {
+    const achromatic = chroma(named.lab) < GRAY_CHROMA;
+    return { name: named.name, hex: named.hex, lab: named.lab, achromatic, hue: achromatic ? null : HUE_RANGES[named.name] || null, token: t };
+  }
   if (t.startsWith("#")) {
     const rgb = hexToRgb(t);
     if (!rgb) return null;
@@ -20055,9 +20058,18 @@ function closeness(entry, target) {
     const d2 = Math.hypot(entry.lab[0] - target.lab[0], entry.lab[1], entry.lab[2]);
     return Math.max(0, 1 - d2 / (target.name === "gray" ? 0.25 : CLOSE_AT * 1.5));
   }
+  if (target.hue) {
+    if (c < HUE_CHROMA_MIN) return 0;
+    const brown = target.name === "brown";
+    if (brown && (entry.lab[0] >= BROWN_L_MAX || c > BROWN_C_MAX)) return 0;
+    const h = (Math.atan2(entry.lab[2], entry.lab[1]) * 180 / Math.PI + 360) % 360;
+    const diff = Math.abs((h - target.hue[0] + 540) % 360 - 180);
+    const hueScore = Math.max(0, 1 - diff / target.hue[1]);
+    return hueScore * Math.min(1, (c - 0.03) / 0.08);
+  }
   if (c < CHROMA_MIN) return 0;
   const d = Math.hypot(0.5 * (entry.lab[0] - target.lab[0]), entry.lab[1] - target.lab[1], entry.lab[2] - target.lab[2]);
-  return Math.max(0, 1 - d / CLOSE_AT);
+  return Math.max(0, 1 - d / HEX_OK);
 }
 function colorScore(palette, target) {
   if (!Array.isArray(palette) || !target) return 0;
@@ -20069,7 +20081,7 @@ function colorScore(palette, target) {
   }
   return best;
 }
-var LIN, hex2, toHex, GRAY_CHROMA, CHROMA_MIN, CLOSE_AT, COLOR_MIN_SCORE, ANCHOR_HEX, COLOR_NAMES, COLOR_ANCHORS;
+var LIN, hex2, toHex, GRAY_CHROMA, CHROMA_MIN, CLOSE_AT, HEX_OK, HUE_RANGES, HUE_CHROMA_MIN, BROWN_L_MAX, BROWN_C_MAX, COLOR_MIN_SCORE, ANCHOR_HEX, COLOR_NAMES, COLOR_ANCHORS;
 var init_color = __esm({
   "src/model/color.js"() {
     LIN = new Float32Array(256);
@@ -20082,6 +20094,21 @@ var init_color = __esm({
     GRAY_CHROMA = 0.04;
     CHROMA_MIN = 0.035;
     CLOSE_AT = 0.12;
+    HEX_OK = 0.2;
+    HUE_RANGES = {
+      red: [25, 20],
+      orange: [55, 18],
+      yellow: [95, 18],
+      green: [145, 35],
+      teal: [195, 20],
+      blue: [255, 30],
+      purple: [300, 22],
+      pink: [350, 18],
+      brown: [50, 30]
+    };
+    HUE_CHROMA_MIN = 0.05;
+    BROWN_L_MAX = 0.55;
+    BROWN_C_MAX = 0.14;
     COLOR_MIN_SCORE = 0.15;
     ANCHOR_HEX = {
       red: "#e02020",
@@ -21240,8 +21267,9 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     r.draggable = true;
     r.dataset.string = string;
     r.setAttribute("data-string", string);
-    if (label) el("span", "pxd-panel__row-label", r, label);
+    if (label && !thumb2) el("span", "pxd-panel__row-label", r, label);
     if (thumb2) {
+      r.classList.add("pxd-panel__row--image");
       const img = el("img", "pxd-panel__thumb", r);
       img.setAttribute("src", thumb2);
       img.setAttribute("alt", "");
@@ -21258,7 +21286,13 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
         shown = text3;
       }
     }
-    el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
+    if (thumb2) {
+      const col = el("span", "pxd-panel__row-col", r);
+      el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, col, shown);
+      if (label) el("span", "pxd-panel__row-label pxd-panel__row-sub", col, label);
+    } else {
+      el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
+    }
     paletteDots(r, palette);
     if (on.isOnBoard?.(string)) {
       r.classList.add("pxd-panel__row--on");
@@ -54284,7 +54318,7 @@ var DOC_INSTRUCTIONS = [
   "Refer to it as 'this document'; never mention section labels."
 ].join("\n");
 var FIGURE_INSTRUCTIONS = [
-  "The question comes with the image of the figure. Look at it.",
+  "The context starts with the image of the selected part. Look at it.",
   "Read values off the chart: axes and their units, series or legend entries, and notable points (peaks, drops, crossings).",
   "Say when something is not legible instead of guessing. Do not invent numbers that are not visible; mark estimates read off a scale as approximate.",
   "Cite [p. N] for claims that rest on the document text; the caption and nearby text are in the context."
@@ -54733,11 +54767,17 @@ function imageAlt2(caption, fallback = "Figure") {
   return clip5(text3, 120) || fallback;
 }
 var imageLine2 = (url, caption, fallback) => `![${imageAlt2(caption, fallback)}](${String(url ?? "").trim()})`;
-function promptWithImage(question, url, caption, fallback) {
-  const q = String(question ?? "");
-  return url ? `${imageLine2(url, caption, fallback)}
+function contextWithImage(context, url, caption, fallback) {
+  const c = String(context ?? "");
+  return url ? `Image of the selected part:
+${imageLine2(url, caption, fallback)}
 
-${q}` : q;
+${c}` : c;
+}
+var IMAGE_QUESTION_PREFIX = "Look at the image of the selected part. ";
+function promptWithImage(question, url) {
+  const q = String(question ?? "");
+  return url ? `${IMAGE_QUESTION_PREFIX}${q}` : q;
 }
 function imageDoc({ caption = "", title = "" } = {}) {
   return {
@@ -55282,8 +55322,8 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     const question = textarea ? textarea.value : prompt.text;
     preview.textContent = `${previewText({
       instructions: sending ? withImageInstructions(built.instructions) : built.instructions,
-      context: built.context,
-      prompt: sending ? promptWithImage(question, knownUrl || PENDING_URL, altText()) : question
+      context: sending ? contextWithImage(built.context, knownUrl || PENDING_URL, altText()) : built.context,
+      prompt: sending ? promptWithImage(question, true) : question
     })}
 
 (about ${built.tokensEstimate.toLocaleString?.() ?? built.tokensEstimate} tokens before the question)`;
@@ -55330,6 +55370,37 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     }
   };
   const visionKey = () => `${VISION_KEY}:${/#\/app\/([^/?#]+)/.exec(String(win2.location?.hash || ""))?.[1] || ""}`;
+  const nextModel = () => {
+    const at = models.findIndex((m) => m.id === modelSel?.value);
+    const cur = models[at];
+    const others = models.filter((m) => m.id !== cur?.id && (m.provider || "") !== (cur?.provider || ""));
+    const ordered = [...models.slice(at + 1), ...models.slice(0, Math.max(0, at))].filter((m) => others.includes(m));
+    return hasImage && ordered.find((m) => m.imageInput) || ordered[0] || null;
+  };
+  const showEmpty = () => {
+    const cur = models.find((m) => m.id === modelSel?.value);
+    out.replaceChildren?.();
+    status.textContent = "";
+    showActions(false);
+    const box2 = make(dom, "div", "pxd-ask__empty", out);
+    make(dom, "p", "pxd-ask__emptymsg", box2, `${cur?.name || "The model"} returned an empty answer. Live AI may not be set up for this provider; try another model.`);
+    const next = nextModel();
+    if (!next) return;
+    const btn2 = make(dom, "button", "pxd-ask__tryother", box2, `Try ${next.name}`);
+    btn2.type = "button";
+    btn2.addEventListener("click", () => {
+      modelSel.value = next.id;
+      if (hasImage && modelSees()) {
+        try {
+          storage()?.setItem(visionKey(), modelSel.value);
+        } catch {
+        }
+      }
+      paintNote();
+      if (!preview.hidden) refreshPreview();
+      void run();
+    });
+  };
   const run = async () => {
     if (!textarea || ctl) return;
     const question = textarea.value.trim();
@@ -55359,9 +55430,9 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     status.textContent = note ? `${note} Thinking…` : "Thinking…";
     if (note) say(note);
     const result = await ask({
-      context: built.context,
+      context: contextWithImage(built.context, sentUrl, altText()),
       systemPrompt: sentUrl ? withImageInstructions(built.instructions) : built.instructions,
-      prompt: promptWithImage(question, sentUrl, altText()),
+      prompt: promptWithImage(question, sentUrl),
       model: modelSel?.value || "",
       signal: ctl.signal,
       window: win2,
@@ -55375,12 +55446,21 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     if (mine !== token || dead) return;
     ctl = null;
     setBusy(false);
+    if (!result.ok && result.code === "EMPTY_RESPONSE" && !answer) {
+      showEmpty();
+      return;
+    }
     if (!result.ok) {
       status.textContent = result.error;
       if (answer) showActions(true);
       return;
     }
     answer = result.text || answer;
+    if (!answer.trim()) {
+      answer = "";
+      showEmpty();
+      return;
+    }
     paintAnswer(dom, out, answer, goPage);
     status.textContent = result.model ? `${result.model}${result.usage?.outputTokens ? ` · ${result.usage.outputTokens} tokens` : ""}` : "";
     showActions(Boolean(answer));

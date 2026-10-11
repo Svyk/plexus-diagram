@@ -126,3 +126,20 @@ test("searchImages: colour, text, both, unindexed", () => {
   const figs = [{ key: "f1", hay: "figure 1", page: 2 }, { key: "f2", hay: "figure 2", page: 9 }];
   assert.deepEqual(searchImages(figs, new Map(), { text: "figure", pages: "1-4" }).map((r) => r.key), ["f1"]);
 });
+
+test("hue ranges: mid blues match blue, teal is not blue, grays match no chromatic name", () => {
+  const solo = (hex) => [{ hex, lab: rgbToOklab(parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)), weight: 0.6 }];
+  for (const hex of ["#3070c0", "#2b56a9", "#1e5fb4"]) {
+    assert.ok(colorScore(solo(hex), colorQuery("blue")) >= COLOR_MIN_SCORE, hex);
+  }
+  const teal = solo("#2b9a8f");
+  assert.ok(colorScore(teal, colorQuery("teal")) >= COLOR_MIN_SCORE);
+  assert.ok(colorScore(teal, colorQuery("blue")) < COLOR_MIN_SCORE);
+  for (const hex of ["#808080", "#a0a0a0", "#303030"]) {
+    for (const name of ["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown"]) assert.equal(colorScore(solo(hex), colorQuery(name)), 0, `${hex} ${name}`);
+  }
+  assert.ok(colorScore(solo("#8b5a2b"), colorQuery("brown")) >= COLOR_MIN_SCORE);
+  assert.equal(colorScore(solo("#f08020"), colorQuery("brown")), 0);
+  const sky = colorPalette(pixels([[[0x2a, 0x8b, 0xe8], 0.7], [[255, 255, 255], 0.3]]));
+  assert.ok(colorScore(sky, colorQuery("#1e90ff")) >= COLOR_MIN_SCORE);
+});

@@ -317,8 +317,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     r.draggable = true;
     r.dataset.string = string;
     r.setAttribute("data-string", string);
-    if (label) el("span", "pxd-panel__row-label", r, label);
+    if (label && !thumb) el("span", "pxd-panel__row-label", r, label);
     if (thumb) {
+      r.classList.add("pxd-panel__row--image");
       const img = el("img", "pxd-panel__thumb", r);
       img.setAttribute("src", thumb);
       img.setAttribute("alt", "");
@@ -331,7 +332,13 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (kind === "pdf" && url) {
       try { shown = on.pdfTitle?.(url) || text; } catch { shown = text; }
     }
-    el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
+    if (thumb) {
+      const col = el("span", "pxd-panel__row-col", r);
+      el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, col, shown);
+      if (label) el("span", "pxd-panel__row-label pxd-panel__row-sub", col, label);
+    } else {
+      el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
+    }
     paletteDots(r, palette);
     if (on.isOnBoard?.(string)) {
       r.classList.add("pxd-panel__row--on");

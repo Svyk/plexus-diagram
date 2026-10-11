@@ -1,7 +1,7 @@
 // Ask AI dialog. One part of a parsed PDF goes to the user's Live AI Assistant (the only AI path) together
 // with the document around it. Floating, one at a time, closes on Esc.
 
-import { answerCardMarkdown, buildFocusContext, chipText, parseAnswer, previewText, promptWithImage, QUICK_PROMPTS, selectionDoc, splitCitations, withImageInstructions } from "../model/ai-context.js";
+import { answerCardMarkdown, buildFocusContext, chipText, contextWithImage, parseAnswer, previewText, promptWithImage, QUICK_PROMPTS, selectionDoc, splitCitations, withImageInstructions } from "../model/ai-context.js";
 import * as liveai from "../host/liveai.js";
 import { getFigureImages, isUsableImageUrl, noteFor } from "../host/figure-image.js";
 
@@ -173,8 +173,8 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     const question = textarea ? textarea.value : prompt.text;
     preview.textContent = `${previewText({
       instructions: sending ? withImageInstructions(built.instructions) : built.instructions,
-      context: built.context,
-      prompt: sending ? promptWithImage(question, knownUrl || PENDING_URL, altText()) : question,
+      context: sending ? contextWithImage(built.context, knownUrl || PENDING_URL, altText()) : built.context,
+      prompt: sending ? promptWithImage(question, true) : question,
     })}\n\n(about ${built.tokensEstimate.toLocaleString?.() ?? built.tokensEstimate} tokens before the question)`;
   };
   chip.addEventListener("click", () => {
@@ -204,6 +204,34 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
   const storage = () => { try { return win.localStorage || globalThis.localStorage || null; } catch { return null; } };
   const visionKey = () => `${VISION_KEY}:${/#\/app\/([^/?#]+)/.exec(String(win.location?.hash || ""))?.[1] || ""}`;
 
+  // The model that answers next: the following one from a different provider (one that sees images when the figure goes along).
+  const nextModel = () => {
+    const at = models.findIndex((m) => m.id === modelSel?.value);
+    const cur = models[at];
+    const others = models.filter((m) => m.id !== cur?.id && (m.provider || "") !== (cur?.provider || ""));
+    const ordered = [...models.slice(at + 1), ...models.slice(0, Math.max(0, at))].filter((m) => others.includes(m));
+    return (hasImage && ordered.find((m) => m.imageInput)) || ordered[0] || null;
+  };
+  const showEmpty = () => {
+    const cur = models.find((m) => m.id === modelSel?.value);
+    out.replaceChildren?.();
+    status.textContent = "";
+    showActions(false);
+    const box = make(dom, "div", "pxd-ask__empty", out);
+    make(dom, "p", "pxd-ask__emptymsg", box, `${cur?.name || "The model"} returned an empty answer. Live AI may not be set up for this provider; try another model.`);
+    const next = nextModel();
+    if (!next) return;
+    const btn = make(dom, "button", "pxd-ask__tryother", box, `Try ${next.name}`);
+    btn.type = "button";
+    btn.addEventListener("click", () => {
+      modelSel.value = next.id;
+      if (hasImage && modelSees()) { try { storage()?.setItem(visionKey(), modelSel.value); } catch { /* private mode */ } }
+      paintNote();
+      if (!preview.hidden) refreshPreview();
+      void run();
+    });
+  };
+
   const run = async () => {
     if (!textarea || ctl) return;
     const question = textarea.value.trim();
@@ -227,9 +255,9 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     status.textContent = note ? `${note} Thinking…` : "Thinking…";
     if (note) say(note);
     const result = await liveai.ask({
-      context: built.context,
+      context: contextWithImage(built.context, sentUrl, altText()),
       systemPrompt: sentUrl ? withImageInstructions(built.instructions) : built.instructions,
-      prompt: promptWithImage(question, sentUrl, altText()),
+      prompt: promptWithImage(question, sentUrl),
       model: modelSel?.value || "",
       signal: ctl.signal,
       window: win,
@@ -243,12 +271,14 @@ export function openAskAI({ doc: parsed = null, blockId = "", selection = "", pa
     if (mine !== token || dead) return;
     ctl = null;
     setBusy(false);
+    if (!result.ok && result.code === "EMPTY_RESPONSE" && !answer) { showEmpty(); return; }
     if (!result.ok) {
       status.textContent = result.error;
       if (answer) showActions(true);
       return;
     }
     answer = result.text || answer;
+    if (!answer.trim()) { answer = ""; showEmpty(); return; }
     paintAnswer(dom, out, answer, goPage);
     status.textContent = result.model ? `${result.model}${result.usage?.outputTokens ? ` · ${result.usage.outputTokens} tokens` : ""}` : "";
     showActions(Boolean(answer));

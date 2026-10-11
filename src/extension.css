@@ -1609,6 +1609,34 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   white-space: nowrap;
 }
 
+.pxd-panel__row--image {
+  align-items: center;
+}
+
+.pxd-panel__row-col {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pxd-panel__row-col .pxd-panel__row-text,
+.pxd-panel__row-col .pxd-panel__row-sub {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-panel__part-head .pxd-panel__row-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pxd-panel__thumb {
   flex: 0 0 auto;
   align-self: center;

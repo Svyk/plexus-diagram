@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { createPanel } from "../src/view/panel.js";
@@ -117,4 +118,31 @@ test("the footer shows the indexing count and hides at zero", (t) => {
   assert.notEqual(note.style.display, "none");
   f.panel.setIndexing(0);
   assert.equal(note.style.display, "none");
+});
+
+test("image row layout: thumbnail, then a text column with name over 'in page', then dots", async (t) => {
+  const f = setup({ on: { searchImages: async () => ({ images: [{ ...IMG, pageTitle: "A very long page title ".repeat(8) }], figures: [] }), searchParts: async () => [] } });
+  t.after(f.restore);
+  await search(f, "blue");
+  const row = q(f.root, ".pxd-panel__row--image");
+  assert.ok(row);
+  const kids = [...row.children].map((c) => c.className.split(" ")[0]);
+  assert.deepEqual(kids, ["pxd-panel__thumb", "pxd-panel__row-col", "pxd-panel__dots"]);
+  const col = q(row, ".pxd-panel__row-col");
+  assert.deepEqual([...col.children].map((c) => c.className.split(" ")[0]), ["pxd-panel__row-text", "pxd-panel__row-label"]);
+  assert.match(col.children[1].textContent, /^in A very long/);
+});
+
+test("image row layout CSS: text column can shrink and ellipsises; thumb and dots do not shrink", () => {
+  const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
+  const rule = (sel) => css.split("}").find((b) => b.includes(sel) && b.trim().startsWith(sel.split(",")[0].trim())) || "";
+  const col = rule(".pxd-panel__row-col {");
+  assert.match(col, /flex:\s*1 1 auto/);
+  assert.match(col, /min-width:\s*0/);
+  const sub = css.split("}").find((b) => b.includes(".pxd-panel__row-col .pxd-panel__row-sub")) || "";
+  assert.match(sub, /text-overflow:\s*ellipsis/);
+  assert.match(sub, /white-space:\s*nowrap/);
+  assert.match(sub, /min-width:\s*0/);
+  assert.match(rule(".pxd-panel__thumb {"), /flex:\s*0 0 auto/);
+  assert.match(rule(".pxd-panel__dots {"), /flex:\s*0 0 auto/);
 });

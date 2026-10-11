@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerCardMarkdown, buildFocusContext, imageAlt, imageDoc, imageLine, promptWithImage, FIGURE_INSTRUCTIONS } from "../src/model/ai-context.js";
+import { answerCardMarkdown, buildFocusContext, imageAlt, imageDoc, contextWithImage, imageLine, promptWithImage, FIGURE_INSTRUCTIONS } from "../src/model/ai-context.js";
 import { asBlob, createFigureImages, fitSize, isUsableImageUrl, noteFor, ENCRYPTED_NOTE, UPLOAD_FAILED_NOTE } from "../src/host/figure-image.js";
 import * as liveai from "../src/host/liveai.js";
 import { openAskAI } from "../src/view/ask-ai.js";
@@ -66,8 +66,10 @@ test("image line: captions with brackets, parens, bangs and breaks stay one matc
   assert.equal(imageAlt(""), "Figure");
   assert.equal(imageAlt("((", "Image"), "Image");
   assert.ok(imageAlt("a".repeat(400)).length <= 120);
-  assert.equal(promptWithImage("Why?", "https://x.test/a.png", "Fig"), "![Fig](https://x.test/a.png)\n\nWhy?");
-  assert.equal(promptWithImage("Why?", "", "Fig"), "Why?");
+  assert.equal(contextWithImage("CTX", "https://x.test/a.png", "Fig"), "Image of the selected part:\n![Fig](https://x.test/a.png)\n\nCTX");
+  assert.equal(contextWithImage("CTX", "", "Fig"), "CTX");
+  assert.equal(promptWithImage("Why?", "https://x.test/a.png"), "Look at the image of the selected part. Why?");
+  assert.equal(promptWithImage("Why?", ""), "Why?");
 });
 
 test("figure focus: caption in context, build reports the figure, image instructions read values and refuse invention", () => {
@@ -241,13 +243,16 @@ test("Send on a figure with a vision model uploads once, puts the image line in 
   area.value = "What is the peak?";
   // The preview shows the image line, with a placeholder until it exists, and never uploads.
   stub.dispatch(find(dialog.el, "pxd-ask__chip"), "click", {});
-  assert.match(find(dialog.el, "pxd-ask__preview").textContent, /!\[Figure 2\. Sodium mg by week n=12\]\(https:\/\/… \(uploaded when you press Send\)\)\n\nWhat is the peak\?/);
+  const pv = find(dialog.el, "pxd-ask__preview").textContent;
+  assert.match(pv, /--- context ---\nImage of the selected part:\n!\[Figure 2\. Sodium mg by week n=12\]\(https:\/\/… \(uploaded when you press Send\)\)\n/);
+  assert.match(pv, /--- question ---\nLook at the image of the selected part\. What is the peak\?/);
   assert.equal(uploads, 0);
   stub.dispatch(find(dialog.el, "pxd-ask__send"), "click", {});
   await flush();
   assert.equal(uploads, 1);
   assert.equal(w.sent.length, 1);
-  assert.equal(w.sent[0].prompt, "![Figure 2. Sodium mg by week n=12](https://f.test/a.png)\n\nWhat is the peak?");
+  assert.equal(w.sent[0].prompt, "Look at the image of the selected part. What is the peak?");
+  assert.ok(w.sent[0].context.startsWith("Image of the selected part:\n![Figure 2. Sodium mg by week n=12](https://f.test/a.png)\n"));
   assert.match(w.sent[0].systemPrompt, /Read values off the chart/);
   assert.match(w.sent[0].context, /Figure caption: Figure 2/);
   assert.equal(w.sent[0].model, "v");
@@ -334,7 +339,8 @@ test("image card: direct URL goes in the prompt without an upload; the context h
   find(dialog.el, "pxd-ask__send").click();
   await flush();
   assert.equal(uploads, 0);
-  assert.match(w.sent[0].prompt, /^!\[Line 2 layout — rev B\]\(https:\/\/files\.test\/layout\.png\)\n\n/);
+  assert.match(w.sent[0].context, /^Image of the selected part:\n!\[Line 2 layout — rev B\]\(https:\/\/files\.test\/layout\.png\)\n/);
+  assert.doesNotMatch(w.sent[0].prompt, /!\[/);
   assert.match(w.sent[0].context, /Line 2 layout/);
   assert.match(w.sent[0].context, /Plant notes/);
   assert.doesNotMatch(w.sent[0].context, /p\. 1/);
@@ -347,3 +353,37 @@ test("card menu offers Ask AI… on image cards only", () => {
   assert.equal(byId(buildMenu("card", {}), "ask-ai"), undefined);
   assert.equal(byId(buildMenu("card", { isPdf: true, hasParse: true, isImage: false }), "ask-ai").label, "Ask AI…");
 });
+
+test("empty answer: message with the model name, Try <next> from another provider re-sends, Copy and Add as card stay hidden", () => withDom(async (stub, doc) => {
+  const A = { id: "a", name: "GPT 6 Luna", provider: "OpenAI", isDefault: true, capabilities: { imageInput: false } };
+  const A2 = { id: "a2", name: "GPT 6 Sol", provider: "OpenAI", capabilities: { imageInput: false } };
+  const B = { id: "b", name: "Claude Fable", provider: "Anthropic", capabilities: { imageInput: false } };
+  const w = fakeWindow([A, A2, B], { generate: async (req) => { w.sent.push(req); return req.model === "b" ? { text: "Hello", model: "b" } : { text: "", model: req.model }; } });
+  const dialog = openAskAI({ doc: DOC, blockId: "f", document: doc, window: w });
+  find(dialog.el, "pxd-ask__send").click();
+  await flush();
+  const out = find(dialog.el, "pxd-ask__answer");
+  assert.match(out.textContent, /GPT 6 Luna returned an empty answer\. Live AI may not be set up for this provider; try another model\./);
+  assert.equal(find(dialog.el, "pxd-ask__actions").hidden, true);
+  const btn = find(dialog.el, "pxd-ask__tryother");
+  assert.equal(btn.textContent, "Try Claude Fable");
+  btn.click();
+  await flush();
+  assert.equal(w.sent.length, 2);
+  assert.equal(w.sent[1].model, "b");
+  assert.equal(find(dialog.el, "pxd-ask__model").value, "b");
+  assert.match(out.textContent, /Hello/);
+  assert.equal(find(dialog.el, "pxd-ask__actions").hidden, false);
+  dialog.close();
+}));
+
+test("empty answer: EMPTY_RESPONSE error shows the same message; one provider only means no Try button", () => withDom(async (stub, doc) => {
+  const w = fakeWindow([TEXT, VISION], { generate: async () => { throw Object.assign(new Error("[LiveAI_API] EMPTY_RESPONSE"), { code: "EMPTY_RESPONSE" }); } });
+  const dialog = openAskAI({ doc: DOC, blockId: "f", document: doc, window: w });
+  find(dialog.el, "pxd-ask__send").click();
+  await flush();
+  assert.match(find(dialog.el, "pxd-ask__answer").textContent, /Text returned an empty answer\. Live AI may not be set up for this provider; try another model\./);
+  assert.equal(find(dialog.el, "pxd-ask__tryother"), null);
+  assert.equal(find(dialog.el, "pxd-ask__actions").hidden, true);
+  dialog.close();
+}));

@@ -214,3 +214,15 @@
 .pxd-ask__hint--quiet {
   opacity: 0.7;
 }
+
+.pxd-ask__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.pxd-ask__emptymsg {
+  margin: 0;
+  color: var(--pxd-muted);
+}

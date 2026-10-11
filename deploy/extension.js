@@ -3487,20 +3487,46 @@ function pdfPageName(title) {
   const head = t.split(" -- ")[0].trim();
   return head || t;
 }
-function cleanPageTitle(s) {
+function cleanPageTitle(s, max = 150) {
   let t = String(s ?? "").replace(/[\r\n\t]+/g, " ");
-  t = t.replace(/\[\[|\]\]/g, "").replace(/^#+/, "").replace(/\s+/g, " ").trim();
-  if (t.length > 150) t = t.slice(0, 150).trimEnd();
+  t = t.replace(/\u2026|\.{3,}/g, " ").replace(/\s*\/+\s*/g, (m) => /\s/.test(m) ? " - " : "-");
+  t = t.replace(/\(\(|\)\)|\^\^|\*\*|__|~~|::/g, " ").replace(/[\[\]{}#`]/g, " ");
+  t = t.replace(/^[\s\-:;,.]+|[\s\-:;,]+$/g, "").replace(/\s+/g, " ").trim();
+  if (t.length > max) {
+    const cut = t.slice(0, max);
+    const space = cut.lastIndexOf(" ");
+    t = (t[max] === " " || space < max / 2 ? cut : cut.slice(0, space)).replace(/[\s\-:;,(]+$/, "");
+  }
   return t;
 }
-function pdfPageBaseTitle({ display = "", fileName: fileName2 = "" } = {}) {
-  const shown = cleanPageTitle(display);
-  if (shown && shown !== "PDF") return shown;
-  const file = cleanPageTitle(String(fileName2 ?? "").replace(/\.pdf$/i, "").replace(/_+/g, " "));
-  return file || "PDF";
+function looksRandomName(name) {
+  const n2 = String(name ?? "").trim();
+  if (!n2) return true;
+  return /^[A-Za-z0-9_ -]{1,12}$/.test(n2) && /[A-Z]/.test(n2.slice(1));
+}
+function pdfNameFromRefs(strings) {
+  for (const raw of Array.isArray(strings) ? strings : []) {
+    const m = /\b([\w.-]+)\.pdf\b/i.exec(String(raw ?? "").replace(/\{\{[^}]*\}\}|\(\([^)]*\)\)|https?:\/\/\S+/g, " "));
+    if (!m) continue;
+    const name = cleanPageTitle(m[1].replace(/_+/g, " "), TITLE_MAX);
+    if (meaningful(name)) return name;
+  }
+  return "";
+}
+function pdfPageBaseTitle({ display = "", alias = "", refs = [], fileName: fileName2 = "", now: now3 } = {}) {
+  const shown = cleanPageTitle(display, TITLE_MAX);
+  if (meaningful(shown)) return shown;
+  const label = cleanPageTitle(alias, TITLE_MAX);
+  if (meaningful(label)) return label;
+  const named2 = pdfNameFromRefs(refs);
+  if (named2) return named2;
+  const raw = String(fileName2 ?? "").replace(/\.pdf$/i, "");
+  const file = cleanPageTitle(raw.replace(/_+/g, " "), TITLE_MAX);
+  if (meaningful(file) && !looksRandomName(raw.replace(/_+/g, " ").trim())) return file;
+  return `PDF ${shortDate(now3)}`;
 }
 function uniquePageTitle(base, taken) {
-  const root = cleanPageTitle(base) || "PDF";
+  const root = cleanPageTitle(base, TITLE_MAX) || `PDF ${shortDate()}`;
   const used = (t) => {
     try {
       return typeof taken === "function" && taken(t) === true;
@@ -3523,7 +3549,7 @@ function inlinePdfCards(board2) {
   for (const item of board2?.items?.values?.() || []) if (isInlinePdfCard(item)) out.push(item);
   return out;
 }
-function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageExists, titleFor, newUid } = {}) {
+function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageExists, titleFor, aliasOf, refsOf, now: now3, newUid } = {}) {
   const plan = { graph, boardUid: board2?.uid || "", moves: [], edges: [], skipped: [] };
   if (!board2?.items) return plan;
   const call = (fn, ...args) => {
@@ -3538,7 +3564,7 @@ function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageE
   const moved = /* @__PURE__ */ new Map();
   for (const item of inlinePdfCards(board2)) {
     const url = String(call(urlOf, item) || "");
-    const shown = cleanPageTitle(call(titleFor, item) || "") || "PDF";
+    const shown = cleanPageTitle(call(titleFor, item) || "", TITLE_MAX) || "PDF";
     if (url && byUrl.has(url)) {
       plan.skipped.push({ pdfUid: item.uid, title: shown, reason: "same-file" });
       continue;
@@ -3552,7 +3578,7 @@ function planPdfMigration(board2, { graph = "", urlOf, layoutOf, findPage, pageE
     if (found?.uid && found.title) {
       page = { uid: found.uid, title: found.title, reuse: true, why: found.why || "url" };
     } else {
-      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, fileName: pdfFileTitle(url) }), (t) => plannedTitles.has(t) || call(pageExists, t) === true);
+      const title = uniquePageTitle(pdfPageBaseTitle({ display: shown, alias: call(aliasOf, item) || "", refs: call(refsOf, item) || [], fileName: pdfFileTitle(url), now: call(now3) }), (t) => plannedTitles.has(t) || call(pageExists, t) === true);
       page = { uid: null, newUid: String(call(newUid) || ""), title, reuse: false, why: "new" };
     }
     plannedTitles.add(page.title);
@@ -3605,7 +3631,7 @@ function migrationLines(plan) {
   if (plan?.edges?.length) lines.push(`${plan.edges.length} ${plan.edges.length === 1 ? "connection" : "connections"} rewritten`);
   return lines;
 }
-var PDF_HEAD, ALIAS_PAGE, kidsOf, pageCardString;
+var PDF_HEAD, ALIAS_PAGE, kidsOf, TITLE_MAX, MEANINGLESS, meaningful, shortDate, pageCardString;
 var init_pdf_page = __esm({
   "src/model/pdf-page.js"() {
     init_schema();
@@ -3615,6 +3641,14 @@ var init_pdf_page = __esm({
     kidsOf = (node2) => {
       const kids = node2?.[":block/children"];
       return Array.isArray(kids) ? kids.slice().sort((a, b) => (a?.[":block/order"] ?? 0) - (b?.[":block/order"] ?? 0)) : [];
+    };
+    TITLE_MAX = 100;
+    MEANINGLESS = /^(?:pdf|untitled(?:\b.*)?|document|scan(?:ned)?)$/i;
+    meaningful = (t) => t.length >= 3 && !MEANINGLESS.test(t);
+    shortDate = (now3) => {
+      const d = new Date(Number.isFinite(now3) ? now3 : Date.now());
+      const p = (n2) => String(n2).padStart(2, "0");
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
     };
     pageCardString = (title) => `[[${title}]]`;
   }
@@ -17063,6 +17097,10 @@ function changedSince(nodes, lastVisit, titleOf3 = (uid) => uid) {
   rows.sort((a, b) => b.time - a.time || String(a.uid).localeCompare(String(b.uid)));
   return rows;
 }
+function changedToggle(wasOn, tab = "") {
+  const on = wasOn !== true;
+  return { on, open: on, close: !on && tab === "changed" };
+}
 function timeAgo(time, now3 = Date.now()) {
   const s = Math.max(0, Math.floor((now3 - time) / 1e3));
   if (s < 60) return "just now";
@@ -20973,11 +21011,15 @@ async function loadQueryRows(ast, backend, opts = {}) {
   const run = await runQuery(ast, backend, opts);
   if (run.status !== "ok") return { status: run.status, rows: [], total: 0, partial: run.partial };
   const tick = opts.tick || defaultTick;
-  const times = backend.times(run.uids);
+  const skip = new Set(opts.exclude || []);
+  const uids = skip.size ? run.uids.filter((u) => !skip.has(u)) : run.uids;
+  const times = backend.times(uids);
   await tick();
-  const order = rankUids(run.uids, times, QUERY_RESULT_CAP);
+  const order = rankUids(uids, times, QUERY_RESULT_CAP);
   const details = backend.details(order);
-  return { status: "ok", rows: queryRows2(details, order), total: run.uids.length, partial: run.partial || run.uids.length > QUERY_RESULT_CAP };
+  const rows = queryRows2(details, order);
+  const total = uids.length - (order.length - rows.length);
+  return { status: "ok", rows, total, partial: run.partial || total > QUERY_RESULT_CAP };
 }
 function queryRow(detail) {
   const uid = String(detail?.uid ?? "");
@@ -21144,12 +21186,27 @@ function createQueryCards({ doc = globalThis.document, host, storage, graph = ""
     return node2;
   };
   const swallow = (event) => event.stopPropagation();
+  function excludeOf(uid) {
+    const out = /* @__PURE__ */ new Set([uid]);
+    const walk3 = (nodes) => {
+      for (const node2 of Array.isArray(nodes) ? nodes : []) {
+        const id = node2?.uid || node2?.[":block/uid"];
+        if (typeof id === "string") out.add(id);
+        walk3(node2?.children || node2?.[":block/children"]);
+      }
+    };
+    try {
+      walk3(host?.pullTree?.(uid, 6, 400));
+    } catch {
+    }
+    return out;
+  }
   function fetchRows(uid, ast, force) {
     const hit = runs.get(uid);
     if (!force && hit?.result && now3() - hit.at < REUSE_MS) return Promise.resolve(hit.result);
     if (hit?.promise) return hit.promise;
     const entry = { at: now3(), result: null, promise: null };
-    entry.promise = loadQueryRows(ast, source, { tick: () => new Promise((resolve) => later(resolve)) }).catch(() => ({ status: "error", rows: [], total: 0, partial: true })).then((result) => {
+    entry.promise = loadQueryRows(ast, source, { exclude: excludeOf(uid), tick: () => new Promise((resolve) => later(resolve)) }).catch(() => ({ status: "error", rows: [], total: 0, partial: true })).then((result) => {
       entry.promise = null;
       entry.at = now3();
       if (result.status === "ok") {
@@ -79031,6 +79088,17 @@ function buildBoardView(onFail, {
       findPage: ({ url }) => host?.findPdfPage?.({ url, sha: shaOf.get(url) || "" }) || null,
       pageExists: (title) => host?.pageExists?.(title) === true,
       titleFor: (item) => pdfDisplayTitle(item),
+      aliasOf: (item) => aliasOfCard(item),
+      refsOf: (item) => {
+        let rows = [];
+        try {
+          rows = host?.q?.("[:find ?s :in $ ?u :where [?b :block/uid ?u] [?r :block/refs ?b] [?r :block/string ?s]]", item.uid) || [];
+        } catch {
+          rows = [];
+        }
+        return rows.map((row4) => Array.isArray(row4) ? row4[0] : row4).filter((v) => typeof v === "string");
+      },
+      now: () => Date.now(),
       newUid: () => host?.generateUid?.() || ""
     });
   };
@@ -82091,9 +82159,11 @@ function buildBoardView(onFail, {
         break;
       }
       case "changed-since": {
-        changedOn = !changedOn;
+        const fx = changedToggle(changedOn, panel.isOpen?.() ? panel.currentTab?.() : "");
+        changedOn = fx.on;
         refreshChanged();
-        if (changedOn) panel.open("changed");
+        if (fx.open) panel.open("changed");
+        if (fx.close) panel.close();
         break;
       }
       case "comment": {
@@ -87062,7 +87132,7 @@ var SKETCH_MAX_BYTES = 200 * 1024;
 var SKETCH_HOLD_MS = 2e3;
 var SKETCH_ROOT_BORDER = 1;
 var PAIR_OFFSET2 = 18;
-var TITLE_MAX = 200;
+var TITLE_MAX2 = 200;
 var SVG_NS6 = "http://www.w3.org/2000/svg";
 function sketchKey(graph, uid) {
   return `plexus-diagram:sketch:${graph}:${uid}`;
@@ -87082,7 +87152,7 @@ function cleanItem2(item) {
     y: item.y,
     w: item.w,
     h: item.h,
-    title: String(item.title || "").slice(0, TITLE_MAX),
+    title: String(item.title || "").slice(0, TITLE_MAX2),
     color: typeof item.color === "string" ? item.color : "",
     fill: typeof item.fill === "string" ? item.fill : ""
   };

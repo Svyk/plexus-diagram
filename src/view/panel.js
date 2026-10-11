@@ -4,8 +4,9 @@
 
 import { closeInfoTab, infoTabList, nextPanelWidth, PANEL_WIDTH_DEFAULT } from "../model/info.js";
 import { mountTimeline } from "./timeline.js";
-import { LIBRARY_TYPES, libraryFilterActive } from "../model/library.js";
-import { CARD_MIME, parseDropPayload } from "../model/drop.js";
+import { LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, PARSE_PART_TYPES, libraryFilterActive } from "../model/library.js";
+import { PART_LABELS, partSnippet } from "../model/parts-search.js";
+import { CARD_MIME, PARSE_MIME, parseDropPayload } from "../model/drop.js";
 import { dailyTitle, startOfDay, stepDay } from "../model/journal.js";
 import { minimapSvg } from "./minimap-svg.js";
 
@@ -104,15 +105,58 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   input.placeholder = "Search pages and blocks…";
   input.setAttribute("placeholder", "Search pages and blocks…");
   const filters = el("div", "pxd-panel__filters", searchPane);
-  const typeSel = el("select", "pxd-panel__type", filters);
-  typeSel.setAttribute("aria-label", "Type");
-  const typeLabels = { all: "All", page: "Pages", block: "Blocks", board: "Boards", daily: "Dailies" };
-  for (const value of LIBRARY_TYPES) {
-    const opt = el("option", "pxd-panel__type-opt", typeSel, typeLabels[value]);
-    opt.value = value;
-    opt.setAttribute("value", value);
+  const typeBtn = el("button", "pxd-btn pxd-panel__type-btn", filters, "All");
+  typeBtn.type = "button";
+  typeBtn.setAttribute("aria-label", "Filter card type");
+  typeBtn.setAttribute("aria-haspopup", "true");
+  typeBtn.setAttribute("aria-expanded", "false");
+  const typePop = el("div", "pxd-panel__type-pop", filters);
+  typePop.style.display = "none";
+  typePop.setAttribute("role", "group");
+  typePop.setAttribute("aria-label", "Card types");
+  const typeLabels = {
+    page: "Page", block: "Block", board: "Board", daily: "Daily", pdf: "PDF", image: "Image", web: "Web link",
+    paragraph: "Paragraph", table: "Table", figure: "Figure", caption: "Caption", heading: "Heading", formula: "Formula", region: "Region", pin: "Pin",
+  };
+  const ALL_TYPES = [...LIBRARY_DOC_TYPES, ...LIBRARY_PART_TYPES];
+  const typeBoxes = new Map();
+  let checked = new Set(ALL_TYPES);
+  try {
+    const saved = on.loadTypes?.();
+    if (Array.isArray(saved)) checked = new Set(saved.filter((t) => ALL_TYPES.includes(t)));
+  } catch { /* default: every type */ }
+  const typeBulk = el("div", "pxd-panel__type-bulk", typePop);
+  const showAll = el("button", "pxd-btn pxd-panel__type-all", typeBulk, "Show all");
+  showAll.type = "button";
+  showAll.setAttribute("aria-label", "Show all");
+  const hideAll = el("button", "pxd-btn pxd-panel__type-none", typeBulk, "Hide all");
+  hideAll.type = "button";
+  hideAll.setAttribute("aria-label", "Hide all");
+  for (const [title, list] of [["Documents", LIBRARY_DOC_TYPES], ["Inside PDFs", LIBRARY_PART_TYPES]]) {
+    el("div", "pxd-panel__type-group", typePop, title);
+    for (const value of list) {
+      const line = el("label", "pxd-panel__type-row", typePop);
+      line.dataset.type = value;
+      const box = el("input", "pxd-panel__type-box", line);
+      box.type = "checkbox";
+      box.dataset.type = value;
+      box.setAttribute("data-type", value);
+      box.setAttribute("aria-label", typeLabels[value]);
+      line.append(typeLabels[value]);
+      typeBoxes.set(value, box);
+    }
   }
-  typeSel.value = "all";
+  const paintTypes = () => {
+    for (const [value, box] of typeBoxes) box.checked = checked.has(value);
+    const n = checked.size;
+    typeBtn.textContent = n === ALL_TYPES.length ? "All" : n === 0 ? "None" : `${n} ${n === 1 ? "type" : "types"}`;
+  };
+  paintTypes();
+  const setTypesOpen = (open) => {
+    typePop.style.display = open ? "" : "none";
+    typeBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  const typesOpen = () => typePop.style.display !== "none";
   const tagInput = el("input", "pxd-panel__tag", filters);
   tagInput.type = "text";
   tagInput.placeholder = "#tag";
@@ -124,6 +168,11 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   daysInput.placeholder = "days";
   daysInput.setAttribute("placeholder", "days");
   daysInput.setAttribute("aria-label", "Edited in the last N days");
+  const pagesInput = el("input", "pxd-panel__pages", filters);
+  pagesInput.type = "text";
+  pagesInput.placeholder = "p. 3-8";
+  pagesInput.setAttribute("placeholder", "p. 3-8");
+  pagesInput.setAttribute("aria-label", "Page range, PDF parts only");
   const orphanLabel = el("label", "pxd-panel__orphan", filters);
   const orphanBox = el("input", "pxd-panel__orphan-box", orphanLabel);
   orphanBox.type = "checkbox";
@@ -251,9 +300,42 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     return r;
   };
 
+  const partRow = (parent, part, needle) => {
+    const r = el("div", "pxd-panel__row pxd-panel__row--part", parent);
+    r.setAttribute("draggable", "true");
+    r.draggable = true;
+    r.dataset.part = part.blockId;
+    r.setAttribute("data-part", part.blockId);
+    r.dataset.kind = part.kind;
+    const head = el("div", "pxd-panel__part-head", r);
+    el("span", `pxd-panel__badge pxd-panel__badge--${part.kind}`, head, PART_LABELS[part.kind] || part.kind);
+    el("span", "pxd-panel__row-label", head, `p. ${part.page} · ${part.docTitle || "PDF"}`);
+    const snip = partSnippet(part.text, needle);
+    const body = el("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
+    if (snip.before) body.append(snip.before);
+    if (snip.hit) el("mark", "pxd-panel__mark", body, snip.hit);
+    if (snip.after) body.append(snip.after);
+    const payload = {
+      sha256: part.sha256, engine: part.engine || "builtin", optsHash: part.optsHash || "", ids: [part.blockId],
+      pdfUid: part.pdfUid || "", pdfBlockUid: part.pdfUid || "",
+      kind: part.kind === "table" || part.kind === "figure" || part.kind === "formula" ? part.kind : "blocks",
+    };
+    listen(r, "click", (event) => { event.stopPropagation(); on.addPart?.(payload); r.classList.add("pxd-panel__row--on"); });
+    listen(r, "dragstart", (event) => {
+      try {
+        const json = JSON.stringify(payload);
+        event.dataTransfer?.setData?.(PARSE_MIME, json);
+        event.dataTransfer?.setData?.("text/plain", json);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+      } catch { /* stub */ }
+    });
+    return r;
+  };
+
   const readFilter = () => ({
     text: input.value,
-    type: typeSel.value || "all",
+    types: checked.size === ALL_TYPES.length ? [] : ALL_TYPES.filter((t) => checked.has(t)),
+    pages: pagesInput.value,
     tag: tagInput.value,
     days: daysInput.value,
     orphan: orphanBox.checked === true,
@@ -263,6 +345,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     const filter = readFilter();
     const id = queryId += 1;
     results.replaceChildren();
+    if (checked.size === 0) { el("div", "pxd-panel__empty", results, "No card types selected"); return; }
     if (!libraryFilterActive(filter)) return;
     let pack = null;
     try {
@@ -293,9 +376,20 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     results.dataset.queryLog = log;
     results.setAttribute("data-query-log", log);
     const rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
+    let parts = [];
+    const needle = String(filter.text || "").trim();
+    const kinds = checked.size === ALL_TYPES.length ? [] : PARSE_PART_TYPES.filter((t) => checked.has(t));
+    if (typeof on.searchParts === "function" && (checked.size === ALL_TYPES.length || kinds.length > 0)
+      && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true) {
+      const t0 = Date.now();
+      try { parts = (await Promise.resolve(on.searchParts({ text: needle, kinds, pages: filter.pages }, LIMIT))) || []; } catch { parts = []; }
+      if (id !== queryId) return;
+      results.dataset.partsMs = String(Date.now() - t0);
+    }
     results.replaceChildren();
-    if (!rows.length) { el("div", "pxd-panel__empty", results, "No matches"); return; }
+    if (!rows.length && !parts.length) { el("div", "pxd-panel__empty", results, "No matches"); return; }
     rows.forEach((r) => row(results, r));
+    parts.forEach((part) => partRow(results, part, needle));
   };
 
   const scheduleSearch = () => {
@@ -306,14 +400,39 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   listen(input, "input", scheduleSearch);
   listen(tagInput, "input", scheduleSearch);
   listen(daysInput, "input", scheduleSearch);
-  listen(typeSel, "change", searchNow);
+  listen(pagesInput, "input", scheduleSearch);
+  const saveTypes = () => { try { on.saveTypes?.([...checked]); } catch { /* storage */ } };
+  const changeTypes = () => { paintTypes(); saveTypes(); searchNow(); };
+  listen(typeBtn, "click", (event) => {
+    event.stopPropagation();
+    setTypesOpen(!typesOpen());
+  });
+  listen(showAll, "click", () => { checked = new Set(ALL_TYPES); changeTypes(); });
+  listen(hideAll, "click", () => { checked = new Set(); changeTypes(); });
+  listen(typePop, "change", (event) => {
+    const box = event.target;
+    const value = box?.dataset?.type;
+    if (!ALL_TYPES.includes(value)) return;
+    if (box.checked) checked.add(value);
+    else checked.delete(value);
+    changeTypes();
+  });
+  listen(panel, "click", (event) => {
+    if (!typesOpen()) return;
+    const t = event.target;
+    if (t && (typePop.contains?.(t) || typeBtn.contains?.(t) || t === typeBtn)) return;
+    setTypesOpen(false);
+  });
+  listen(typePop, "keydown", (event) => {
+    if (event.key === "Escape") { event.stopPropagation(); setTypesOpen(false); try { typeBtn.focus?.(); } catch { /* stub */ } }
+  });
   listen(orphanBox, "change", searchNow);
   listen(input, "keydown", (event) => {
     event.stopPropagation();
     if (event.key === "Escape") { event.preventDefault(); api.close(); }
     if (event.key === "Enter") { event.preventDefault(); searchNow(); }
   });
-  for (const field of [tagInput, daysInput]) {
+  for (const field of [tagInput, daysInput, pagesInput]) {
     listen(field, "keydown", (event) => {
       if (event.key === "Enter") { event.preventDefault(); searchNow(); }
     });

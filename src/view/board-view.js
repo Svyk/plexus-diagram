@@ -106,6 +106,8 @@ import { createParseStore, restorableTitle } from "../host/parse-store.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { scheduleTitleLexiconWarm } from "./title-lexicon-warm.js";
 import { createParseActions, freeSpotBeside } from "./parse-actions.js";
+import { createPartsIndex } from "../host/parts-index.js";
+import { searchParts } from "../model/parts-search.js";
 import { createMenu } from "./menu.js";
 import { createShortcutSheet } from "./shortcut-sheet.js";
 import { createTypeAhead } from "./type-ahead.js";
@@ -5192,6 +5194,17 @@ function buildBoardView(onFail, {
     }
   };
   const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
+  const LIB_TYPES_KEY = `plexus-diagram:libtypes:${graph}`;
+  let partsIdx = null;
+  const partsIndex = () => {
+    if (!partsIdx) {
+      partsIdx = createPartsIndex({
+        store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
+        listPdfs: () => host?.listPdfBlocks?.() || [],
+      });
+    }
+    return partsIdx;
+  };
   let panelWidth = PANEL_WIDTH_DEFAULT;
   try {
     const stored = Number(storage?.getItem?.(PANEL_WIDTH_KEY));
@@ -5207,7 +5220,24 @@ function buildBoardView(onFail, {
       addBeside: (string) => addStringsBeside([string]),
       addMany: (strings) => addStringsBeside(strings),
       isOnBoard,
-      opened: (open) => { chrome.toolbar.setPanel(open); if (!open) sendPending = null; },
+      opened: (open) => {
+        chrome.toolbar.setPanel(open);
+        if (!open) sendPending = null;
+        else partsIdx?.invalidate();
+      },
+      loadTypes: () => {
+        try {
+          const raw = storage?.getItem?.(LIB_TYPES_KEY);
+          const list = raw ? JSON.parse(raw) : null;
+          return Array.isArray(list) ? list : null;
+        } catch { return null; }
+      },
+      saveTypes: (types) => { try { storage?.setItem?.(LIB_TYPES_KEY, JSON.stringify(types)); } catch { /* private mode */ } },
+      searchParts: async (query, limit) => {
+        if (typeof host?.listPdfBlocks !== "function") return [];
+        return searchParts(await partsIndex().get(), query, limit);
+      },
+      addPart: (payload) => { void parseActions().sendParsedToBoard(payload); },
       listBoards: () => Promise.resolve(host?.listBoards?.()).then((rows) => rows || []),
       openBoardByUid: (uid) => {
         if (sendPending) { const list = sendPending; sendPending = null; finishSend(list, uid); return; }

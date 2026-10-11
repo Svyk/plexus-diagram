@@ -30,11 +30,12 @@ const ids = (rows) => rows.map((r) => r.uid);
 
 test("normalize keeps tag case, strips a leading hash, and floors days", () => {
   assert.deepEqual(normalizeLibraryFilter({ type: "nope", tag: "#TODO", days: 2.9, orphan: true, text: " a " }), {
-    type: "all",
+    types: [],
     tag: "TODO",
     days: 2,
     orphan: true,
     text: "a",
+    pages: "",
   });
   assert.equal(normalizeLibraryFilter({ days: -4 }).days, 0);
   assert.equal(normalizeLibraryFilter({ tag: "[[TODO]]" }).tag, "TODO");

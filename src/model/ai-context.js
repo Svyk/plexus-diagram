@@ -30,6 +30,16 @@ export const DOC_INSTRUCTIONS = [
   "Refer to it as 'this document'; never mention section labels.",
 ].join("\n");
 
+// Added to the instructions only when the model is actually sent the picture.
+export const FIGURE_INSTRUCTIONS = [
+  "The question comes with the image of the figure. Look at it.",
+  "Read values off the chart: axes and their units, series or legend entries, and notable points (peaks, drops, crossings).",
+  "Say when something is not legible instead of guessing. Do not invent numbers that are not visible; mark estimates read off a scale as approximate.",
+  "Cite [p. N] for claims that rest on the document text; the caption and nearby text are in the context.",
+].join("\n");
+
+export const withImageInstructions = (instructions) => `${instructions}\n${FIGURE_INSTRUCTIONS}`;
+
 export const DEFAULT_PROMPT = "Explain this part in plain language.";
 
 export const QUICK_PROMPTS = Object.freeze([
@@ -421,7 +431,8 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
   let block = focus.blockId ? blocks[focus.blockId] || null : null;
   if (!block && Array.isArray(focus.blockIds)) block = blocks[focus.blockIds.find((id) => blocks[id])] || null;
   if (!block && selection) block = findSelectionBlock(safe, selection, focus.page ?? null);
-  const page = block ? block.page : (Number.isInteger(focus.page) ? focus.page : null);
+  const noPages = safe.noPages === true;
+  const page = noPages ? null : block ? block.page : (Number.isInteger(focus.page) ? focus.page : null);
   const extraIds = Array.isArray(focus.blockIds) ? focus.blockIds.filter((id) => blocks[id]) : [];
   const focusIds = new Set(extraIds.length ? extraIds : block ? [block.id] : []);
   for (const id of attachedCaptionIds(safe, block)) focusIds.add(id);
@@ -460,7 +471,7 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
   const header = (name) => `=== ${name} ===`;
   const section = `${header("Section")}\n${sectionText}`;
   const focusHead = block
-    ? `${header("Selected part")}\n(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})`
+    ? `${header("Selected part")}\n(${KIND_NAMES[block.type] || "Block"}${noPages ? "" : `, p. ${block.page}`})`
     : wholeDoc
       ? `${header("Relevant parts of the document")}`
       : `${header("Selected part")}\n(${page != null ? `page ${page}` : "no part found"})`;
@@ -479,8 +490,8 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
     : "";
 
   const outlineRoom = Math.min(outlineCap, Math.max(0, afterFixed - nearby.length - 120));
-  const outline = fitOutline(safe, ids, outlineRoom);
-  const documentPart = `${header("Document outline")}\nTitle: ${docTitle || "(untitled)"}\nPages: ${pageCount || "?"}${outline ? `\n\n${outline}` : ""}`;
+  const outline = noPages ? "" : fitOutline(safe, ids, outlineRoom);
+  const documentPart = `${header("Document outline")}\nTitle: ${docTitle || "(untitled)"}${noPages ? "" : `\nPages: ${pageCount || "?"}`}${outline ? `\n\n${outline}` : ""}`;
 
   const context = [documentPart, section, nearby, `${focusHead}\n${focusBounded}`].filter(Boolean).join("\n\n");
 
@@ -491,6 +502,33 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
     prompt: wholeDoc ? "Summarize this document in plain language." : DEFAULT_PROMPT,
     tokensEstimate: estimateTokens(context) + estimateTokens(instructions),
     focusIds: [...focusIds],
+    figure: block && block.type === "figure" ? { caption: captionOf(safe, block) } : null,
+  };
+}
+
+// A caption fit for `![alt](url)`: no brackets, parens, "!" or line breaks, so it stays one match of Roam's image pattern.
+export function imageAlt(caption, fallback = "Figure") {
+  const text = squash(String(caption ?? "").replace(/[[\]()!]/g, " "));
+  return clip(text, 120) || fallback;
+}
+
+export const imageLine = (url, caption, fallback) => `![${imageAlt(caption, fallback)}](${String(url ?? "").trim()})`;
+
+// The prompt a vision model gets: the image line, then the question.
+export function promptWithImage(question, url, caption, fallback) {
+  const q = String(question ?? "");
+  return url ? `${imageLine(url, caption, fallback)}\n\n${q}` : q;
+}
+
+// A stand-in document for one image on a board: its own words and the page it sits on, no PDF pages.
+export function imageDoc({ caption = "", title = "" } = {}) {
+  return {
+    schema: "pxd-parse/1",
+    title,
+    noPages: true,
+    pages: [{ n: 1 }],
+    order: ["img"],
+    blocks: { img: { id: "img", type: "figure", page: 1, caption: squash(caption), text: "" } },
   };
 }
 
@@ -588,10 +626,12 @@ export function answerBlocks(answer) {
 }
 
 // The card for an answer: one header bullet, then one bullet per paragraph or list item (indented for nesting).
-export function answerCardMarkdown({ answer = "", chip = null } = {}) {
+// With imageUrl (an image the model was sent), the first child is that image, so the card shows what the model saw.
+export function answerCardMarkdown({ answer = "", chip = null, imageUrl = "" } = {}) {
   const blocks = answerBlocks(answer).map((b) => ({ ...b, text: flattenLine(b.text) })).filter((b) => b.text);
   if (!blocks.length) return "";
   const head = `AI answer · ${chipText(chip) || "PDF"}`;
   const line = (text, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip(text, 1800)), { leading: true })}`;
-  return [line(head), ...blocks.slice(0, 40).map((b) => line(b.text, Math.min(b.depth, 3)))].join("\n");
+  const image = imageUrl ? [`  - ![](${String(imageUrl).trim()})`] : [];
+  return [line(head), ...image, ...blocks.slice(0, 40).map((b) => line(b.text, Math.min(b.depth, 3)))].join("\n");
 }

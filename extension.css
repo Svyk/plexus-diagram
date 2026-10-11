@@ -2322,6 +2322,30 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   white-space: nowrap;
 }
 
+.pxd-ask__imagerow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pxd-ask__thumb {
+  width: 56px;
+  height: 40px;
+  border: 1px solid var(--pxd-line, rgba(0, 0, 0, 0.15));
+  border-radius: 4px;
+  object-fit: contain;
+  background: #fff;
+}
+
+.pxd-ask__thumb[hidden] {
+  display: none;
+}
+
+.pxd-ask__imgnote {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
 .pxd-ask__chip[aria-expanded="true"] {
   border-color: var(--pxd-accent, #2563eb);
 }

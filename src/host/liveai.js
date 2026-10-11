@@ -38,6 +38,11 @@ export function isChatModel(m) {
   return !NON_CHAT_RE.test(`${m?.id || ""} ${m?.name || ""}`);
 }
 
+// ModelInfo.capabilities is { thinking, imageInput, webSearch, fileInput, videoInput, audioInput }.
+export function sendsImages(model) {
+  return model?.capabilities?.imageInput === true;
+}
+
 export function listModels(w) {
   const a = api(w);
   if (!a || typeof a.listModels !== "function") return [];
@@ -45,7 +50,7 @@ export function listModels(w) {
     const rows = a.listModels();
     return (Array.isArray(rows) ? rows : [])
       .filter((m) => m && typeof m.id === "string" && m.id && isChatModel(m))
-      .map((m) => ({ id: m.id, name: m.name || m.id, provider: m.provider || "", contextLength: m.contextLength ?? null, isDefault: Boolean(m.isDefault) }));
+      .map((m) => ({ id: m.id, name: m.name || m.id, provider: m.provider || "", contextLength: m.contextLength ?? null, isDefault: Boolean(m.isDefault), imageInput: sendsImages(m) }));
   } catch {
     return [];
   }

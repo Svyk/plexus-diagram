@@ -13530,11 +13530,11 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       units.push({ id, x0: 0, y0: 0, x1: pg.w, y1: pg.h });
     }
     const dots = pg.graphics.dots;
-    const shared2 = splitSharedCaptions(pg.free);
-    pg.free = shared2.lines;
+    const shared3 = splitSharedCaptions(pg.free);
+    pg.free = shared3.lines;
     const keepGutter = (list) => {
       const out = [...list];
-      for (const g of shared2.gutters) {
+      for (const g of shared3.gutters) {
         if (!out.some((o) => g.x0 <= o.x1 + 8 && o.x0 <= g.x1 + 8)) out.push(g);
       }
       return out.sort((a, b) => a.x0 - b.x0);
@@ -13572,8 +13572,8 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       const line = byY[k];
       let wide = rowWide.has(line) || gutters.some((g) => crossesGutter(line, g));
       if (!wide && lastWide && line.base - lastWide.base <= 1.7 * line.size && Math.abs(line.x0 - lastWide.x0) <= 1.5 * line.size && Math.abs(line.size - lastWide.size) <= 0.6) {
-        const shared3 = byY.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * line.size);
-        if (!shared3) wide = true;
+        const shared4 = byY.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * line.size);
+        if (!shared4) wide = true;
       }
       if (wide) {
         wideSeq.push(line);
@@ -23800,6 +23800,7 @@ var init_settings = __esm({
       parsePageReader: "parse-page-reader",
       parseAutoRead: "parse-auto-read",
       keepReads: "keep-reads",
+      askFigureImages: "ask-figure-images",
       parseLinkSafe: "parse-link-safe",
       parseNumbered: "parse-numbered",
       parseFootnotes: "parse-footnotes",
@@ -23872,6 +23873,7 @@ var init_settings = __esm({
       [SETTING_IDS.parsePageReader]: "all",
       [SETTING_IDS.parseAutoRead]: true,
       [SETTING_IDS.keepReads]: true,
+      [SETTING_IDS.askFigureImages]: true,
       [SETTING_IDS.parseLinkSafe]: true,
       [SETTING_IDS.parseNumbered]: false,
       [SETTING_IDS.parseFootnotes]: "inline",
@@ -24018,6 +24020,7 @@ var init_settings = __esm({
       [SETTING_IDS.imageText]: () => switchRow(SETTING_IDS.imageText, "Read text in images", "Off. On lets the board search find words inside pictures, using the in-browser reading models. It only runs when those models are already on this device, never downloads them, and reads at most a few dozen pictures per session."),
       [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
       [SETTING_IDS.keepReads]: () => switchRow(SETTING_IDS.keepReads, "Keep reads in the graph", "After a High accuracy, helper or cloud read, upload the read as one file to the graph and note it on the PDF block, so your other computers load it instead of reading again. The built-in parse is never kept. Off uploads nothing; reads already kept still load."),
+      [SETTING_IDS.askFigureImages]: () => switchRow(SETTING_IDS.askFigureImages, "Send figure images to AI", "Uploads the figure's image to your graph as a file the first time you ask about it."),
       [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
       [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
       [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"]),
@@ -24104,6 +24107,7 @@ var init_settings = __esm({
         SETTING_IDS.parsePageReader,
         SETTING_IDS.parseAutoRead,
         SETTING_IDS.keepReads,
+        SETTING_IDS.askFigureImages,
         SETTING_IDS.parseLinkSafe,
         SETTING_IDS.parseNumbered,
         SETTING_IDS.parseFootnotes,
@@ -33525,6 +33529,24 @@ function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CA
         return null;
       }
     },
+    // Small key/value records beside the URL index, under "meta:" so they never collide with a PDF URL.
+    async getMeta(key) {
+      try {
+        if (!key) return null;
+        const got = await backend.get(STORE_PARSE_INDEX, `meta:${key}`);
+        return got === void 0 ? null : got;
+      } catch {
+        return null;
+      }
+    },
+    async putMeta(key, value) {
+      try {
+        if (!key) return false;
+        return Boolean(await backend.put(STORE_PARSE_INDEX, `meta:${key}`, value));
+      } catch {
+        return false;
+      }
+    },
     async getImage(key) {
       try {
         if (!key) return null;
@@ -36420,6 +36442,15 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       };
       if (!fromPull()) fromQueries();
       return remember2(result);
+    },
+    // True when the graph is end-to-end encrypted: its files are .enc and no outside service can read them.
+    graphEncrypted() {
+      try {
+        const flag = api2.graph?.isEncrypted;
+        return typeof flag === "function" ? Boolean(flag.call(api2.graph)) : flag === true;
+      } catch {
+        return false;
+      }
     },
     async uploadFile(file) {
       const upload = api2.file?.upload;
@@ -43138,11 +43169,11 @@ function recencyNorm(editTime, now3) {
 }
 function strengthScore(components = {}, { trackOpens = false, now: now3 = components?.now ?? Date.now() } = {}) {
   const refs = normCount(components?.refs, REFS_CAP);
-  const shared2 = normCount(components?.shared, SHARED_CAP);
+  const shared3 = normCount(components?.shared, SHARED_CAP);
   const recency = recencyNorm(components?.editTime ?? components?.edit, now3);
-  if (trackOpens !== true) return clamp014(0.6 * refs + 0.25 * shared2 + 0.15 * recency);
+  if (trackOpens !== true) return clamp014(0.6 * refs + 0.25 * shared3 + 0.15 * recency);
   const opens = normCount(components?.opens, OPENS_CAP);
-  return clamp014(0.5 * refs + 0.2 * shared2 + 0.15 * recency + 0.15 * opens);
+  return clamp014(0.5 * refs + 0.2 * shared3 + 0.15 * recency + 0.15 * opens);
 }
 function strokeFor(score) {
   const s = clamp014(score);
@@ -43196,7 +43227,7 @@ function countPhrase(value, one, many) {
 }
 function explain(components = {}) {
   const refs = countPhrase(components?.refs, "ref", "refs");
-  const shared2 = countPhrase(components?.shared, "shared board", "shared boards");
+  const shared3 = countPhrase(components?.shared, "shared board", "shared boards");
   const edit = components?.editTime ?? components?.edit;
   const now3 = Number.isFinite(components?.now) ? components.now : Date.now();
   let when = "not edited";
@@ -43204,7 +43235,7 @@ function explain(components = {}) {
     const part = ageParts(Math.max(0, now3 - edit));
     when = part.unit === "today" ? "edited today" : `edited ${part.n} ${part.n === 1 ? part.unit : `${part.unit}s`} ago`;
   }
-  return `${refs}, ${shared2}, ${when}`;
+  return `${refs}, ${shared3}, ${when}`;
 }
 function edgeOpens(store, from, to) {
   if (typeof store?.get !== "function") return 0;
@@ -48848,7 +48879,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
   const order = [...doc.order || []];
   const applied = [];
   const used = /* @__PURE__ */ new Set();
-  const shared2 = sharedHosts(doc, structures);
+  const shared3 = sharedHosts(doc, structures);
   let seq = 0;
   for (const structure of structures) {
     if (!structure?.cells?.length || !structure.bbox) continue;
@@ -48859,7 +48890,7 @@ function applyVlmTables(doc, structures, { method = "vlm", minJaccard = 0.15, tr
       const trimmed = dropCaptionRow(built, pageWords);
       if (trimmed !== built) Object.assign(built, { cells: trimmed.cells, rows: trimmed.rows, headerRows: trimmed.headerRows });
     }
-    const sharedHost = shared2.get(structure);
+    const sharedHost = shared3.get(structure);
     if (sharedHost) {
       const hostBlock = blocks[sharedHost.id];
       if (hostBlock) {
@@ -54195,6 +54226,14 @@ var DOC_INSTRUCTIONS = [
   'The parts under "Relevant parts of the document" were chosen for the question and are not the whole document. When they do not cover something, say so instead of filling the gap from elsewhere.',
   "Refer to it as 'this document'; never mention section labels."
 ].join("\n");
+var FIGURE_INSTRUCTIONS = [
+  "The question comes with the image of the figure. Look at it.",
+  "Read values off the chart: axes and their units, series or legend entries, and notable points (peaks, drops, crossings).",
+  "Say when something is not legible instead of guessing. Do not invent numbers that are not visible; mark estimates read off a scale as approximate.",
+  "Cite [p. N] for claims that rest on the document text; the caption and nearby text are in the context."
+].join("\n");
+var withImageInstructions = (instructions) => `${instructions}
+${FIGURE_INSTRUCTIONS}`;
 var DEFAULT_PROMPT = "Explain this part in plain language.";
 var QUICK_PROMPTS = Object.freeze([
   { id: "explain", label: "Explain", prompt: "Explain this part in plain language." },
@@ -54565,7 +54604,8 @@ function buildFocusContext(doc, focus = {}, opts = {}) {
   let block = focus.blockId ? blocks[focus.blockId] || null : null;
   if (!block && Array.isArray(focus.blockIds)) block = blocks[focus.blockIds.find((id) => blocks[id])] || null;
   if (!block && selection) block = findSelectionBlock(safe, selection, focus.page ?? null);
-  const page = block ? block.page : Number.isInteger(focus.page) ? focus.page : null;
+  const noPages = safe.noPages === true;
+  const page = noPages ? null : block ? block.page : Number.isInteger(focus.page) ? focus.page : null;
   const extraIds = Array.isArray(focus.blockIds) ? focus.blockIds.filter((id) => blocks[id]) : [];
   const focusIds = new Set(extraIds.length ? extraIds : block ? [block.id] : []);
   for (const id of attachedCaptionIds(safe, block)) focusIds.add(id);
@@ -54600,7 +54640,7 @@ ${focusBody(safe, block)}`;
   const section2 = `${header("Section")}
 ${sectionText}`;
   const focusHead = block ? `${header("Selected part")}
-(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})` : wholeDoc ? `${header("Relevant parts of the document")}` : `${header("Selected part")}
+(${KIND_NAMES[block.type] || "Block"}${noPages ? "" : `, p. ${block.page}`})` : wholeDoc ? `${header("Relevant parts of the document")}` : `${header("Selected part")}
 (${page != null ? `page ${page}` : "no part found"})`;
   const fixedChars = section2.length + focusHead.length + 400;
   const focusRoom = Math.max(400, cap4 - fixedChars - 200);
@@ -54613,10 +54653,10 @@ ${sectionText}`;
   const nearby = nearbyBody || captionNear ? `${header("Nearby text")}
 ${[captionNear ? `Caption of the selected part: ${captionNear}` : "", nearbyBody].filter(Boolean).join("\n\n")}` : "";
   const outlineRoom = Math.min(outlineCap, Math.max(0, afterFixed - nearby.length - 120));
-  const outline = fitOutline(safe, ids, outlineRoom);
+  const outline = noPages ? "" : fitOutline(safe, ids, outlineRoom);
   const documentPart = `${header("Document outline")}
-Title: ${docTitle || "(untitled)"}
-Pages: ${pageCount || "?"}${outline ? `
+Title: ${docTitle || "(untitled)"}${noPages ? "" : `
+Pages: ${pageCount || "?"}`}${outline ? `
 
 ${outline}` : ""}`;
   const context = [documentPart, section2, nearby, `${focusHead}
@@ -54627,7 +54667,29 @@ ${focusBounded}`].filter(Boolean).join("\n\n");
     instructions,
     prompt: wholeDoc ? "Summarize this document in plain language." : DEFAULT_PROMPT,
     tokensEstimate: estimateTokens(context) + estimateTokens(instructions),
-    focusIds: [...focusIds]
+    focusIds: [...focusIds],
+    figure: block && block.type === "figure" ? { caption: captionOf(safe, block) } : null
+  };
+}
+function imageAlt2(caption, fallback = "Figure") {
+  const text3 = squash3(String(caption ?? "").replace(/[[\]()!]/g, " "));
+  return clip5(text3, 120) || fallback;
+}
+var imageLine2 = (url, caption, fallback) => `![${imageAlt2(caption, fallback)}](${String(url ?? "").trim()})`;
+function promptWithImage(question, url, caption, fallback) {
+  const q = String(question ?? "");
+  return url ? `${imageLine2(url, caption, fallback)}
+
+${q}` : q;
+}
+function imageDoc({ caption = "", title = "" } = {}) {
+  return {
+    schema: "pxd-parse/1",
+    title,
+    noPages: true,
+    pages: [{ n: 1 }],
+    order: ["img"],
+    blocks: { img: { id: "img", type: "figure", page: 1, caption: squash3(caption), text: "" } }
   };
 }
 function chipText2(chip) {
@@ -54716,12 +54778,13 @@ function answerBlocks(answer) {
   }
   return out;
 }
-function answerCardMarkdown({ answer = "", chip = null } = {}) {
+function answerCardMarkdown({ answer = "", chip = null, imageUrl = "" } = {}) {
   const blocks = answerBlocks(answer).map((b) => ({ ...b, text: flattenLine(b.text) })).filter((b) => b.text);
   if (!blocks.length) return "";
   const head = `AI answer · ${chipText2(chip) || "PDF"}`;
   const line = (text3, depth = 0) => `${"  ".repeat(depth)}- ${escapeMarkdownText(linkSafeText(clip5(text3, 1800)), { leading: true })}`;
-  return [line(head), ...blocks.slice(0, 40).map((b) => line(b.text, Math.min(b.depth, 3)))].join("\n");
+  const image = imageUrl ? [`  - ![](${String(imageUrl).trim()})`] : [];
+  return [line(head), ...image, ...blocks.slice(0, 40).map((b) => line(b.text, Math.min(b.depth, 3)))].join("\n");
 }
 
 // src/host/liveai.js
@@ -54757,12 +54820,15 @@ function isChatModel(m) {
   if (caps.some((c) => /image.?(output|gen)|embed|speech|audio.?output|tts|transcri/.test(c))) return false;
   return !NON_CHAT_RE.test(`${m?.id || ""} ${m?.name || ""}`);
 }
+function sendsImages(model) {
+  return model?.capabilities?.imageInput === true;
+}
 function listModels(w) {
   const a = api(w);
   if (!a || typeof a.listModels !== "function") return [];
   try {
     const rows = a.listModels();
-    return (Array.isArray(rows) ? rows : []).filter((m) => m && typeof m.id === "string" && m.id && isChatModel(m)).map((m) => ({ id: m.id, name: m.name || m.id, provider: m.provider || "", contextLength: m.contextLength ?? null, isDefault: Boolean(m.isDefault) }));
+    return (Array.isArray(rows) ? rows : []).filter((m) => m && typeof m.id === "string" && m.id && isChatModel(m)).map((m) => ({ id: m.id, name: m.name || m.id, provider: m.provider || "", contextLength: m.contextLength ?? null, isDefault: Boolean(m.isDefault), imageInput: sendsImages(m) }));
   } catch {
     return [];
   }
@@ -54837,7 +54903,172 @@ async function ask({ context = "", prompt = "", systemPrompt = "", model = "", o
   }
 }
 
+// src/host/figure-image.js
+var MAX_SIDE = 1600;
+var JPEG_ABOVE = 1.5 * 1024 * 1024;
+var URL_META_PREFIX = "figure-url:";
+var ENCRYPTED_NOTE = "This graph is encrypted, so the image can't be shared with the model; sending text only.";
+var UPLOAD_FAILED_NOTE = "Could not upload the figure; sending text only.";
+var NO_IMAGE_NOTE = "The figure's image is not available; sending text only.";
+function isUsableImageUrl(url) {
+  const text3 = String(url ?? "").trim();
+  if (!/^https:\/\/[^\s)]+$/i.test(text3)) return false;
+  const path = text3.split(/[?#]/)[0];
+  return !/\.enc$/i.test(path);
+}
+function fitSize(w, h, max = MAX_SIDE) {
+  const width = Number(w);
+  const height = Number(h);
+  if (!(width > 0) || !(height > 0)) return { w: 0, h: 0, scale: 1 };
+  const scale = Math.min(1, max / Math.max(width, height));
+  return { w: Math.max(1, Math.round(width * scale)), h: Math.max(1, Math.round(height * scale)), scale };
+}
+function asBlob(value, BlobCtor = globalThis.Blob) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(value);
+    if (!m || !m[2]) return null;
+    const bin = globalThis.atob(m[3]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+    return new BlobCtor([bytes], { type: m[1] || "image/png" });
+  }
+  if (typeof value.size === "number" && typeof value.type === "string") return value;
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return new BlobCtor([value], { type: "image/png" });
+  return null;
+}
+async function shrinkImage(blob, { doc = globalThis.document, maxSide = MAX_SIDE, jpegAbove = JPEG_ABOVE } = {}) {
+  try {
+    const decode = globalThis.createImageBitmap;
+    if (typeof decode !== "function" || !doc?.createElement) return blob;
+    const bitmap = await decode(blob);
+    const size = fitSize(bitmap.width, bitmap.height, maxSide);
+    if (size.scale === 1 && blob.size <= jpegAbove && /png/i.test(blob.type || "")) {
+      bitmap.close?.();
+      return blob;
+    }
+    const canvas = doc.createElement("canvas");
+    canvas.width = size.w;
+    canvas.height = size.h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return blob;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, size.w, size.h);
+    ctx.drawImage(bitmap, 0, 0, size.w, size.h);
+    bitmap.close?.();
+    const out = (type, q) => new Promise((resolve) => canvas.toBlob((b) => resolve(b), type, q));
+    const png = await out("image/png");
+    if (png && png.size <= jpegAbove) return png;
+    return await out("image/jpeg", 0.9) || png || blob;
+  } catch {
+    return blob;
+  }
+}
+var extOf = (blob) => /jpe?g/i.test(blob?.type || "") ? "jpg" : "png";
+function createFigureImages({ store = null, upload = null, encrypted = null, enabled = null, fetchFn = null, shrink = shrinkImage, now: now3 = Date.now } = {}) {
+  const inflight = /* @__PURE__ */ new Map();
+  const isOn = () => {
+    try {
+      return typeof enabled === "function" ? enabled() !== false : true;
+    } catch {
+      return true;
+    }
+  };
+  const isEncrypted = () => {
+    try {
+      return typeof encrypted === "function" ? Boolean(encrypted()) : false;
+    } catch {
+      return false;
+    }
+  };
+  const metaKey = (key) => `${URL_META_PREFIX}${key}`;
+  const doFetch = (...args) => typeof fetchFn === "function" ? fetchFn(...args) : typeof globalThis.fetch === "function" ? globalThis.fetch(...args) : Promise.reject(new Error("no-fetch"));
+  async function stillThere(url) {
+    try {
+      let res = await doFetch(url, { method: "HEAD" });
+      if (res && (res.status === 405 || res.status === 501)) res = await doFetch(url, { method: "GET", headers: { Range: "bytes=0-0" } });
+      return !(res && (res.status === 404 || res.status === 410));
+    } catch {
+      return true;
+    }
+  }
+  async function peek(key) {
+    try {
+      const got = key && typeof store?.getMeta === "function" ? await store.getMeta(metaKey(key)) : null;
+      return got && isUsableImageUrl(got.url) ? got.url : "";
+    } catch {
+      return "";
+    }
+  }
+  async function resolve({ key = "", url = "", getBlob = null, name = "figure" } = {}) {
+    if (!isOn()) return { ok: false, reason: "off" };
+    if (isEncrypted()) return { ok: false, reason: "encrypted" };
+    if (url) {
+      if (isUsableImageUrl(url)) return { ok: true, url: String(url).trim(), uploaded: false };
+      return { ok: false, reason: /\.enc(?:$|[?#])/i.test(String(url)) ? "encrypted" : "unusable" };
+    }
+    const cached = await peek(key);
+    if (cached && await stillThere(cached)) return { ok: true, url: cached, uploaded: false, cached: true };
+    if (typeof upload !== "function") return { ok: false, reason: "upload-failed" };
+    let blob = null;
+    try {
+      blob = asBlob(typeof getBlob === "function" ? await getBlob() : null);
+    } catch {
+      blob = null;
+    }
+    if (!blob) return { ok: false, reason: "no-image" };
+    let sent = blob;
+    try {
+      sent = await shrink(blob) || blob;
+    } catch {
+      sent = blob;
+    }
+    let got = "";
+    try {
+      const file = new File([sent], `${name}.${extOf(sent)}`, { type: sent.type || "image/png" });
+      got = String(await upload(file) ?? "").trim();
+    } catch {
+      return { ok: false, reason: "upload-failed" };
+    }
+    if (!isUsableImageUrl(got)) return { ok: false, reason: /\.enc(?:$|[?#])/i.test(got) ? "encrypted" : "upload-failed" };
+    try {
+      if (key) await store?.putMeta?.(metaKey(key), { url: got, at: now3() });
+    } catch {
+    }
+    return { ok: true, url: got, uploaded: true };
+  }
+  function ensureUrl(spec = {}) {
+    const key = spec.key || "";
+    if (key && inflight.has(key)) return inflight.get(key);
+    const job = resolve(spec).finally(() => {
+      if (key) inflight.delete(key);
+    });
+    if (key) inflight.set(key, job);
+    return job;
+  }
+  return { enabled: isOn, encrypted: isEncrypted, peek, ensureUrl };
+}
+function noteFor(reason) {
+  if (reason === "encrypted") return ENCRYPTED_NOTE;
+  if (reason === "no-image") return NO_IMAGE_NOTE;
+  if (reason === "off") return "";
+  return UPLOAD_FAILED_NOTE;
+}
+var shared = null;
+function setFigureImages(service) {
+  shared = service || null;
+}
+function getFigureImages() {
+  return shared;
+}
+
 // src/view/ask-ai.js
+var SEES_NOTE = "The model will see this image";
+var BLIND_NOTE = "This model can't see images — text only";
+var OFF_NOTE = "Figure images are off in settings — text only";
+var UPLOADING_NOTE = "Uploading figure…";
+var VISION_KEY = "pxd-ask-vision-model";
+var PENDING_URL = "https://… (uploaded when you press Send)";
 var openDialog = null;
 function make(doc, tag, cls, parent, text3) {
   const node2 = doc.createElement(tag);
@@ -54895,7 +55126,7 @@ function paintAnswer(doc, node2, text3, onPage) {
     }
   }
 }
-function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, wholeDoc = false, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null } = {}) {
+function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = null, blockIds = null, wholeDoc = false, jumpPage = null, addCard = null, toast = null, document: ownerDoc = null, window: w = null, image = null, imageService = null } = {}) {
   const dom = ownerDoc || (typeof document !== "undefined" ? document : null);
   if (!dom) return null;
   const win2 = w || dom.defaultView || globalThis;
@@ -54927,12 +55158,35 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   const closeBtn = make(dom, "button", "pxd-ask__close", head, "×");
   closeBtn.type = "button";
   closeBtn.setAttribute("aria-label", "Close");
+  const hasImage = Boolean(image) && !isWhole;
+  const service = imageService || getFigureImages();
+  const altText = () => image?.caption || built.figure?.caption || "";
   const chip = make(dom, "button", "pxd-ask__chip", root, chipText2(built.chip));
   chip.type = "button";
   chip.setAttribute("aria-expanded", "false");
   chip.setAttribute("title", "Show exactly what will be sent");
   const preview = make(dom, "pre", "pxd-ask__preview", root);
   preview.hidden = true;
+  let thumb2 = null;
+  let imageNote = null;
+  if (hasImage) {
+    const strip = make(dom, "div", "pxd-ask__imagerow", root);
+    thumb2 = make(dom, "img", "pxd-ask__thumb", strip);
+    thumb2.setAttribute("alt", "");
+    thumb2.hidden = true;
+    imageNote = make(dom, "span", "pxd-ask__imgnote", strip);
+    imageNote.setAttribute("aria-live", "polite");
+    const show = (src) => {
+      if (src) {
+        thumb2.setAttribute("src", src);
+        thumb2.hidden = false;
+      }
+    };
+    if (image.thumb) show(image.thumb);
+    else if (typeof image.getThumb === "function") void Promise.resolve().then(() => image.getThumb()).then(show, () => {
+    });
+    else if (image.url) show(image.url);
+  }
   const body = make(dom, "div", "pxd-ask__body", root);
   let dead = false;
   let ctl = null;
@@ -54949,9 +55203,31 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   let out = null;
   let status = null;
   let actions = null;
+  let models = [];
+  let knownUrl = "";
+  let sentUrl = "";
+  const modelSees = () => Boolean(models.find((m) => m.id === (modelSel?.value || ""))?.imageInput);
+  const imagesOn = () => {
+    try {
+      return service ? service.enabled() !== false : Boolean(image?.url);
+    } catch {
+      return true;
+    }
+  };
+  const willSend = () => hasImage && imagesOn() && modelSees();
+  const paintNote = () => {
+    if (!imageNote) return;
+    imageNote.textContent = !imagesOn() ? OFF_NOTE : modelSees() ? SEES_NOTE : BLIND_NOTE;
+  };
   const refreshPreview = () => {
     rebuild(textarea ? textarea.value : prompt.text);
-    preview.textContent = `${previewText({ instructions: built.instructions, context: built.context, prompt: textarea ? textarea.value : prompt.text })}
+    const sending = willSend();
+    const question = textarea ? textarea.value : prompt.text;
+    preview.textContent = `${previewText({
+      instructions: sending ? withImageInstructions(built.instructions) : built.instructions,
+      context: built.context,
+      prompt: sending ? promptWithImage(question, knownUrl || PENDING_URL, altText()) : question
+    })}
 
 (about ${built.tokensEstimate.toLocaleString?.() ?? built.tokensEstimate} tokens before the question)`;
   };
@@ -54981,6 +55257,22 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   const showActions = (on) => {
     if (actions) actions.hidden = !on;
   };
+  const ensureImage = async () => {
+    try {
+      if (service) return await service.ensureUrl(image);
+      return image.url && isUsableImageUrl(image.url) ? { ok: true, url: image.url } : { ok: false, reason: "upload-failed" };
+    } catch {
+      return { ok: false, reason: "upload-failed" };
+    }
+  };
+  const storage = () => {
+    try {
+      return win2.localStorage || globalThis.localStorage || null;
+    } catch {
+      return null;
+    }
+  };
+  const visionKey = () => `${VISION_KEY}:${/#\/app\/([^/?#]+)/.exec(String(win2.location?.hash || ""))?.[1] || ""}`;
   const run = async () => {
     if (!textarea || ctl) return;
     const question = textarea.value.trim();
@@ -54993,14 +55285,26 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     token += 1;
     const mine = token;
     answer = "";
-    status.textContent = "Thinking…";
+    sentUrl = "";
     paintAnswer(dom, out, "", goPage);
     showActions(false);
     setBusy(true);
+    let note = "";
+    if (willSend()) {
+      status.textContent = UPLOADING_NOTE;
+      const got = await ensureImage();
+      if (mine !== token || dead) return;
+      if (got.ok) {
+        sentUrl = got.url;
+        knownUrl = got.url;
+      } else note = noteFor(got.reason);
+    }
+    status.textContent = note ? `${note} Thinking…` : "Thinking…";
+    if (note) say(note);
     const result = await ask({
       context: built.context,
-      systemPrompt: built.instructions,
-      prompt: question,
+      systemPrompt: sentUrl ? withImageInstructions(built.instructions) : built.instructions,
+      prompt: promptWithImage(question, sentUrl, altText()),
       model: modelSel?.value || "",
       signal: ctl.signal,
       window: win2,
@@ -55031,14 +55335,45 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     make(dom, "label", "pxd-ask__label", row4, "Model");
     modelSel = make(dom, "select", "pxd-ask__model", row4);
     modelSel.setAttribute("aria-label", "Model");
-    const models = listModels(win2);
-    const def = defaultModel(win2);
+    models = listModels(win2);
+    let def = defaultModel(win2);
+    if (hasImage && !models.find((m) => m.id === def)?.imageInput) {
+      let last = "";
+      try {
+        last = String(storage()?.getItem(visionKey()) || "");
+      } catch {
+        last = "";
+      }
+      const pick = models.find((m) => m.id === last && m.imageInput) || models.find((m) => m.imageInput);
+      if (pick) def = pick.id;
+    }
     for (const m of models) {
       const opt = make(dom, "option", "", modelSel, m.provider ? `${m.name} · ${m.provider}` : m.name);
       opt.value = m.id;
       if (m.id === def) opt.selected = true;
     }
     if (def) modelSel.value = def;
+    modelSel.addEventListener("change", () => {
+      if (hasImage && modelSees()) {
+        try {
+          storage()?.setItem(visionKey(), modelSel.value);
+        } catch {
+        }
+      }
+      paintNote();
+      if (!preview.hidden) refreshPreview();
+    });
+    paintNote();
+    if (hasImage && image.url && isUsableImageUrl(image.url)) knownUrl = image.url;
+    else if (hasImage && service?.peek && image.key) {
+      void Promise.resolve(service.peek(image.key)).then((url) => {
+        if (url && !dead) {
+          knownUrl = url;
+          if (!preview.hidden) refreshPreview();
+        }
+      }, () => {
+      });
+    }
     const quick = make(dom, "div", "pxd-ask__quick", body);
     textarea = make(dom, "textarea", "pxd-ask__question", body);
     textarea.rows = 3;
@@ -55102,13 +55437,13 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
     const cardBtn = make(dom, "button", "pxd-ask__act", actions, "Add as card");
     cardBtn.type = "button";
     cardBtn.addEventListener("click", () => {
-      const markdown = answerCardMarkdown({ answer, chip: built.chip });
+      const markdown = answerCardMarkdown({ answer, chip: built.chip, imageUrl: sentUrl });
       if (!markdown || typeof addCard !== "function") {
         say("Cannot add a card here");
         return;
       }
       cardBtn.disabled = true;
-      void Promise.resolve(addCard({ markdown, chip: built.chip, blockId: blockId || "", answer })).catch(() => {
+      void Promise.resolve(addCard({ markdown, chip: built.chip, blockId: blockId || "", answer, imageUrl: sentUrl })).catch(() => {
       }).then(() => {
         cardBtn.disabled = false;
       });
@@ -55756,12 +56091,48 @@ function createParseView({
     const made = await session.ensurePdfPin(spec);
     return made?.uid || "";
   }
+  function figureImageSpec(block) {
+    const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
+    const url2 = typeof block.image?.url === "string" ? block.image.url : typeof block.url === "string" ? block.url : "";
+    let cropped = null;
+    const crop = async () => {
+      if (cropped) return cropped;
+      let src = "";
+      if (key && typeof store?.getImage === "function") {
+        try {
+          src = imageSrc2(await store.getImage(key));
+        } catch {
+          src = "";
+        }
+      }
+      if (!src) {
+        try {
+          src = await cropAt2x(block);
+        } catch {
+          src = "";
+        }
+      }
+      cropped = src || null;
+      return cropped;
+    };
+    return {
+      key,
+      url: url2,
+      name: `figure-p${block.page ?? 0}`,
+      getBlob: async () => {
+        const src = await crop();
+        return src ? dataUrlToBlob3(src) : null;
+      },
+      getThumb: () => crop()
+    };
+  }
   function askAbout(spec = {}) {
     if (!parsed) return null;
     const block = spec.blockId ? parsed.blocks?.[spec.blockId] : null;
     return openAskAI({
       doc: parsed,
       ...spec,
+      ...block?.type === "figure" ? { image: figureImageSpec(block) } : {},
       document: doc,
       jumpPage: (n2) => jumpPage?.(n2),
       toast: (message) => {
@@ -70615,13 +70986,13 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
   }
   return { status, download, cancel, read: read2, readCells, readBandTitle, readImageText, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
 }
-var shared = null;
+var shared2 = null;
 function sharedDeviceOcr() {
-  if (!shared) {
-    shared = createDeviceOcr();
-    if (supported(globalThis)) shared.warmTitleLexicon();
+  if (!shared2) {
+    shared2 = createDeviceOcr();
+    if (supported(globalThis)) shared2.warmTitleLexicon();
   }
-  return shared;
+  return shared2;
 }
 
 // src/view/title-lexicon-warm.js
@@ -71526,6 +71897,7 @@ function buildMenu(kind, ctx = {}) {
         ...c.isPdf ? [make2("parse-pdf", "Parse PDF…")] : [],
         ...c.isPdf && c.hasParse ? [make2("open-parsed", "Open parsed")] : [],
         ...c.isPdf && c.hasParse ? [make2("ask-ai", "Ask AI…")] : [],
+        ...c.isImage ? [make2("ask-ai", "Ask AI…")] : [],
         ...c.officeFile ? [make2("convert-office", "Convert to cards")] : [],
         sep(),
         make2("copy", "Copy", { hint: "Cmd C" }),
@@ -74654,6 +75026,59 @@ function buildBoardView(onFail, {
     if (!titleStore) titleStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
     return titleStore;
   };
+  const figureImages = createFigureImages({
+    store: { getMeta: (k) => parseStoreShared().getMeta?.(k), putMeta: (k, v) => parseStoreShared().putMeta?.(k, v) },
+    upload: (file) => host.uploadFile(file),
+    encrypted: () => host?.graphEncrypted?.() === true,
+    enabled: () => readSetting2("ask-figure-images") !== false,
+    fetchFn: (...args) => globalThis.fetch(...args),
+    shrink: (blob) => shrinkImage(blob, { doc })
+  });
+  setFigureImages(figureImages);
+  const figureSpecFor = (parsed, block) => {
+    const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
+    const url = typeof block.image?.url === "string" ? block.image.url : typeof block.url === "string" ? block.url : "";
+    let cached;
+    const crop = async () => {
+      if (cached !== void 0) return cached;
+      let src = "";
+      try {
+        const got = key ? await parseStoreShared().getImage(key) : "";
+        src = typeof got === "string" ? got : "";
+      } catch {
+        src = "";
+      }
+      cached = src || null;
+      return cached;
+    };
+    return { key, url, name: `figure-p${block.page ?? 0}`, getBlob: async () => {
+      const src = await crop();
+      return src ? dataUrlToBlob3(src) : null;
+    }, getThumb: crop };
+  };
+  const askAboutImageCard = (item) => {
+    const text3 = String(item?.string ?? "");
+    const m = /!\[([^\]]*)\]\(([^)\s]+)\)/.exec(text3);
+    const url = m ? m[2] : "";
+    const alt = m ? m[1] : "";
+    const rest = text3.replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+    const caption = [alt, rest].filter(Boolean).join(" — ");
+    let title = "";
+    try {
+      title = host?.pageTitleOf?.(item?.uid) || "";
+    } catch {
+      title = "";
+    }
+    if (!title) title = board2()?.title || "";
+    return openAskAI({
+      doc: imageDoc({ caption, title }),
+      blockId: "img",
+      document: doc,
+      toast: (message) => toast(message),
+      image: { key: "", url, caption: caption || "Image", name: "image", thumb: url },
+      addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid: item.uid, pdfBlockUid: item.uid })
+    });
+  };
   const askAboutParsed = async ({ pdfUid = "", url = "", sha256 = "", engine = "builtin", optsHash = "", blockId = "", page = null, wholeDoc = false }) => {
     let parsed = null;
     try {
@@ -74668,8 +75093,10 @@ function buildBoardView(onFail, {
       toast("Parse not found. Open the PDF and parse it again");
       return null;
     }
+    const figure = blockId && parsed.blocks?.[blockId]?.type === "figure" ? parsed.blocks[blockId] : null;
     return openAskAI({
       doc: parsed,
+      ...figure ? { image: figureSpecFor(parsed, figure) } : {},
       ...blockId ? { blockId } : {},
       ...page != null ? { page } : {},
       ...wholeDoc ? { wholeDoc: true } : {},
@@ -77130,7 +77557,7 @@ function buildBoardView(onFail, {
           }
         }
         const officeFile = officeTargetFromText(officeText);
-        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", isImage: item?.kind === "image", officeFile, hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -77661,6 +78088,10 @@ function buildBoardView(onFail, {
         break;
       }
       case "ask-ai": {
+        if (item?.kind === "image") {
+          askAboutImageCard(item);
+          break;
+        }
         if (!item || item.kind !== "pdf") break;
         void askAboutParsed({ pdfUid: item.uid, url: pdfUrlOf(item.uid), wholeDoc: true });
         break;
@@ -82210,6 +82641,7 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      if (getFigureImages() === figureImages) setFigureImages(null);
       const step = (fn) => {
         try {
           fn();

@@ -173,3 +173,11 @@ test("a 300-page index searches well under 50 ms", () => {
   assert.ok(ms < 50, `needle search took ${ms}ms`);
   assert.ok(ms2 < 50, `broad search took ${ms2}ms`);
 });
+
+test("a figure with no caption is still indexed, so colour search can find it", async () => {
+  const { buildPartsIndex } = await import("../src/model/parts-search.js");
+  const rows = buildPartsIndex({ sha256: "s", order: ["f1"], blocks: { f1: { id: "f1", type: "figure", page: 3 } } }, { url: "u", docTitle: "D" });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].kind, "figure");
+  assert.equal(rows[0].page, 3);
+});

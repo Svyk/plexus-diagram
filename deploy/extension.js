@@ -19796,6 +19796,7 @@ function buildPartsIndex(doc, { url = "", docTitle = "", pdfUid = "" } = {}) {
     let text3 = blockText(b);
     const cap4 = attached.get(b.id ?? id) || (typeof b.caption === "string" && !blocks[b.caption] ? squash2(b.caption) : "");
     if (cap4 && kind !== "caption" && !text3.includes(cap4)) text3 = text3 ? `${text3} ${cap4}` : cap4;
+    if (!text3 && kind === "figure") text3 = "Figure";
     if (!text3) continue;
     rows.push({
       kind,

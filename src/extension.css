@@ -1464,6 +1464,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   background: var(--pxd-accent-soft);
 }
 
+.pxd-root.pxd-root--panel-open .pxd-panel {
+  z-index: 13;
+}
+
 .pxd-root.pxd-root--types-open .pxd-panel {
   z-index: 30;
 }
@@ -1546,10 +1550,15 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   color: var(--pxd-muted);
 }
 
+.pxd-panel__list > * {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
 .pxd-panel__list {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden auto;
   display: flex;
   flex-direction: column;
   gap: 2px;

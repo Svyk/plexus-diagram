@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DIAGRAM_DB, DIAGRAM_DB_VERSION, STORE_IMAGE_INDEX, openDiagramDb } from "../src/host/diagram-db.js";
+import { DIAGRAM_DB, DIAGRAM_DB_VERSION, IMAGE_DB, STORE_IMAGE_INDEX, openDiagramDb, openImageDb } from "../src/host/diagram-db.js";
 import { OCR_MIN_H, OCR_MIN_W, RETRY_MS, createImageIndex } from "../src/host/image-index.js";
 import { colorQuery, colorScore } from "../src/model/color.js";
 
@@ -31,7 +31,8 @@ function makeDb() {
         }),
       };
     },
-    close() {},
+    closed: false,
+    close() { db.closed = true; },
   };
   return db;
 }
@@ -50,12 +51,19 @@ function fakeIDB() {
       dbs.set(name, db);
       return db;
     },
+    opens: [],
     open(name, version) {
       const req = {};
+      this.opens.push([name, version]);
       queueMicrotask(() => {
         let db = dbs.get(name);
         if (!db) { db = makeDb(); dbs.set(name, db); }
         req.result = db;
+        if (version < db.version) {
+          req.error = { name: "VersionError" };
+          req.onerror?.({ preventDefault() {} });
+          return;
+        }
         if (version > db.version) {
           db.version = version;
           req.onupgradeneeded?.();
@@ -106,19 +114,57 @@ function rig({ idb = fakeIDB(), sizes = {}, ocr = null, readText = false, now = 
   return { index, log, idb };
 }
 
-test("DB upgrade from version 2 adds only image-index and leaves the other stores alone", async () => {
-  assert.equal(DIAGRAM_DB_VERSION, 3);
+test("the shared DB stays at version 2 and the image index has its own database", async () => {
+  assert.equal(DIAGRAM_DB_VERSION, 2);
   const idb = fakeIDB();
   const old = idb.seed(DIAGRAM_DB, 2, { covers: [["c", { hash: "h" }]], parse: [["p", { sha256: "s" }]], "parse-images": [], "parse-index": [] });
   const db = await openDiagramDb(idb);
   assert.equal(db, old);
-  assert.equal(db.version, 3);
-  assert.ok(db.stores.has(STORE_IMAGE_INDEX));
-  assert.equal(db.stores.get("covers").get("c").hash, "h");
-  assert.equal(db.stores.get("parse").get("p").sha256, "s");
+  assert.equal(db.version, 2);
+  assert.ok(!db.stores.has(STORE_IMAGE_INDEX));
   const fresh = fakeIDB();
   const made = await openDiagramDb(fresh);
-  assert.deepEqual([...made.stores.keys()].sort(), ["covers", "image-index", "parse", "parse-images", "parse-index"]);
+  assert.deepEqual([...made.stores.keys()].sort(), ["covers", "parse", "parse-images", "parse-index"]);
+  const images = await openImageDb(fresh);
+  assert.deepEqual([...images.stores.keys()], [STORE_IMAGE_INDEX]);
+});
+
+test("image-index uses its own database and never opens plexus-diagram above version 2", async () => {
+  const idb = fakeIDB();
+  const shared = idb.seed(DIAGRAM_DB, 2, { covers: [], parse: [], "parse-images": [], "parse-index": [] });
+  const r = rig({ idb });
+  await r.index.enqueue([{ key: "https://x.test/red.png", url: "https://x.test/red.png" }]);
+  await settle(r.index);
+  assert.ok(idb.dbs.get(IMAGE_DB).stores.get(STORE_IMAGE_INDEX).size >= 1);
+  assert.equal(shared.version, 2);
+  assert.ok(!shared.stores.has(STORE_IMAGE_INDEX));
+  assert.ok(idb.opens.every(([name, version]) => name === IMAGE_DB && version === 1));
+  r.index.dispose();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(idb.dbs.get(IMAGE_DB).closed, true);
+});
+
+test("a connection closes itself on versionchange", async () => {
+  const idb = fakeIDB();
+  const db = await openDiagramDb(idb);
+  assert.equal(typeof db.onversionchange, "function");
+  assert.equal(db.closed, false);
+  db.onversionchange();
+  assert.equal(db.closed, true);
+  const images = await openImageDb(idb);
+  images.onversionchange();
+  assert.equal(images.closed, true);
+});
+
+test("a VersionError reopens the database without a version when it has the stores", async () => {
+  const idb = fakeIDB();
+  const ahead = idb.seed(DIAGRAM_DB, 3, { covers: [], parse: [], "parse-images": [], "parse-index": [], "image-index": [] });
+  const db = await openDiagramDb(idb);
+  assert.equal(db, ahead);
+  assert.deepEqual(idb.opens, [[DIAGRAM_DB, 2], [DIAGRAM_DB, undefined]]);
+  const bare = fakeIDB();
+  bare.seed(DIAGRAM_DB, 3, { covers: [] });
+  assert.equal(await openDiagramDb(bare), null);
 });
 
 test("indexes colours, persists, and does not fetch twice", async () => {
@@ -136,7 +182,7 @@ test("indexes colours, persists, and does not fetch twice", async () => {
   await settle(b.index);
   assert.equal(b.log.fetches.length, 0);
   assert.ok(colorScore(b.index.records.get("https://x.test/red.png").palette, colorQuery("red")) > 0.5);
-  assert.equal(idb.dbs.get(DIAGRAM_DB).stores.get(STORE_IMAGE_INDEX).size, 2);
+  assert.equal(idb.dbs.get(IMAGE_DB).stores.get(STORE_IMAGE_INDEX).size, 2);
 });
 
 test("at most two fetches at once", async () => {

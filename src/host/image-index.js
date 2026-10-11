@@ -1,10 +1,10 @@
 // Background index of images for search inside them: a colour palette and, when the user opts in, the text in the picture.
-// Records live in IndexedDB store "image-index", keyed by source key (graph image: its URL; PDF figure: imageKey).
+// Records live in the store "image-index" of their own database "plexus-diagram-images", keyed by source key (graph image: its URL; PDF figure: imageKey).
 // Nothing runs while the user types in the panel, and nothing runs at all until enqueue() is called.
 // Record: { palette: [{hex, lab, weight}], text?, w, h, at, v } or { failed: true, at }.
 
 import { colorPalette } from "../model/color.js";
-import { DIAGRAM_DB_VERSION, STORE_IMAGE_INDEX, openDiagramDb } from "./diagram-db.js";
+import { IMAGE_DB_VERSION, STORE_IMAGE_INDEX, openImageDb } from "./diagram-db.js";
 
 export const IMAGE_INDEX_V = 1;
 export const RETRY_MS = 7 * 86400000;
@@ -108,7 +108,7 @@ export function createImageIndex({
   const openDb = () => {
     if (dead) return Promise.resolve(null);
     if (!dbPromise) {
-      dbPromise = openDiagramDb(factory).then((db) => {
+      dbPromise = openImageDb(factory).then((db) => {
         if (!db) dead = true;
         return db;
       });
@@ -290,7 +290,11 @@ export function createImageIndex({
     disposed = true;
     colorQ.length = 0;
     ocrQ.length = 0;
+    const opened = dbPromise;
+    dbPromise = null;
+    dead = true;
+    if (opened) opened.then((db) => { try { db?.close?.(); } catch { /* gone */ } }, () => {});
   }
 
-  return { load, enqueue, pause, status, records, dispose, version: DIAGRAM_DB_VERSION };
+  return { load, enqueue, pause, status, records, dispose, version: IMAGE_DB_VERSION };
 }

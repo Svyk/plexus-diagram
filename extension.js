@@ -33110,13 +33110,12 @@ init_pdf();
 
 // src/host/diagram-db.js
 var DIAGRAM_DB = "plexus-diagram";
-var DIAGRAM_DB_VERSION = 3;
+var DIAGRAM_DB_VERSION = 2;
 var STORE_COVERS = "covers";
 var STORE_PARSE = "parse";
 var STORE_PARSE_IMAGES = "parse-images";
 var STORE_PARSE_INDEX = "parse-index";
-var STORE_IMAGE_INDEX = "image-index";
-var STORES = [STORE_COVERS, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX, STORE_IMAGE_INDEX];
+var STORES = [STORE_COVERS, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX];
 function arm(ms, fn) {
   try {
     const id = setTimeout(fn, ms);
@@ -33135,7 +33134,29 @@ function ensureStore(db, name) {
   } catch {
   }
 }
-function openDiagramDb(factory, { capMs = 2e3 } = {}) {
+var IMAGE_DB = "plexus-diagram-images";
+var IMAGE_DB_VERSION = 1;
+var STORE_IMAGE_INDEX = "image-index";
+function hasStores(db, stores) {
+  try {
+    return stores.every((name) => db.objectStoreNames?.contains?.(name));
+  } catch {
+    return false;
+  }
+}
+function arrange(db) {
+  try {
+    db.onversionchange = () => {
+      try {
+        db.close();
+      } catch {
+      }
+    };
+  } catch {
+  }
+  return db;
+}
+function openDb(factory, { name, version, stores, capMs = 2e3 }) {
   return new Promise((resolve) => {
     let settled = false;
     let timer = null;
@@ -33150,38 +33171,74 @@ function openDiagramDb(factory, { capMs = 2e3 } = {}) {
       }
       resolve(value);
     };
+    const attempt = (withVersion) => {
+      try {
+        const req = withVersion ? factory.open(name, version) : factory.open(name);
+        if (!req) {
+          done(null);
+          return;
+        }
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          for (const store of stores) ensureStore(db, store);
+        };
+        req.onsuccess = () => {
+          const db = req.result || null;
+          if (!db) {
+            done(null);
+            return;
+          }
+          if (settled) {
+            try {
+              db.close();
+            } catch {
+            }
+            return;
+          }
+          if (!withVersion && !hasStores(db, stores)) {
+            try {
+              db.close();
+            } catch {
+            }
+            done(null);
+            return;
+          }
+          done(arrange(db));
+        };
+        req.onerror = (event) => {
+          try {
+            event?.preventDefault?.();
+          } catch {
+          }
+          try {
+            req.preventDefault?.();
+          } catch {
+          }
+          const failure = req.error;
+          if (withVersion && !settled && failure && failure.name === "VersionError") {
+            attempt(false);
+            return;
+          }
+          done(null);
+        };
+        req.onblocked = () => done(null);
+      } catch {
+        done(null);
+      }
+    };
     timer = arm(capMs, () => done(null));
-    try {
-      if (!factory || typeof factory.open !== "function") {
-        done(null);
-        return;
-      }
-      const req = factory.open(DIAGRAM_DB, DIAGRAM_DB_VERSION);
-      if (!req) {
-        done(null);
-        return;
-      }
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        for (const name of STORES) ensureStore(db, name);
-      };
-      req.onsuccess = () => done(req.result || null);
-      req.onerror = (event) => {
-        try {
-          event?.preventDefault?.();
-        } catch {
-        }
-        try {
-          req.preventDefault?.();
-        } catch {
-        }
-        done(null);
-      };
-      req.onblocked = () => done(null);
-    } catch {
+    if (!factory || typeof factory.open !== "function") {
       done(null);
+      return;
     }
+    attempt(true);
   });
+}
+function openDiagramDb(factory, { capMs = 2e3 } = {}) {
+  return openDb(factory, { name: DIAGRAM_DB, version: DIAGRAM_DB_VERSION, stores: STORES, capMs });
+}
+function openImageDb(factory, { capMs = 2e3 } = {}) {
+  return openDb(factory, { name: IMAGE_DB, version: IMAGE_DB_VERSION, stores: [STORE_IMAGE_INDEX], capMs });
 }
 
 // src/host/parse-store.js
@@ -42393,7 +42450,7 @@ function requestResult2(req) {
     }
   });
 }
-function openDb(factory) {
+function openDb2(factory) {
   return openDiagramDb(factory, { capMs: OPEN_CAP_MS });
 }
 async function blobToDataUrl(blob) {
@@ -42516,7 +42573,7 @@ function createCoverStore({ indexedDB, storage } = {}) {
   const open = () => {
     if (idbDead) return Promise.resolve(null);
     if (!dbPromise) {
-      dbPromise = openDb(factory).then((db) => {
+      dbPromise = openDb2(factory).then((db) => {
         if (!db) {
           idbDead = true;
           dbPromise = null;
@@ -68246,10 +68303,10 @@ function createImageIndex({
   let ocrDone = 0;
   let ocrBlocked = false;
   let disposed = false;
-  const openDb2 = () => {
+  const openDb3 = () => {
     if (dead) return Promise.resolve(null);
     if (!dbPromise) {
-      dbPromise = openDiagramDb(factory).then((db) => {
+      dbPromise = openImageDb(factory).then((db) => {
         if (!db) dead = true;
         return db;
       });
@@ -68259,7 +68316,7 @@ function createImageIndex({
   async function withStore(mode, fn) {
     if (dead) return { ok: false };
     try {
-      const db = await openDb2();
+      const db = await openDb3();
       if (!db || typeof db.transaction !== "function") {
         dead = true;
         return { ok: false };
@@ -68438,8 +68495,18 @@ function createImageIndex({
     disposed = true;
     colorQ.length = 0;
     ocrQ.length = 0;
+    const opened = dbPromise;
+    dbPromise = null;
+    dead = true;
+    if (opened) opened.then((db) => {
+      try {
+        db?.close?.();
+      } catch {
+      }
+    }, () => {
+    });
   }
-  return { load, enqueue, pause, status, records, dispose, version: DIAGRAM_DB_VERSION };
+  return { load, enqueue, pause, status, records, dispose, version: IMAGE_DB_VERSION };
 }
 
 // src/model/image-search.js

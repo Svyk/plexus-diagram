@@ -1,16 +1,15 @@
 // Shared IndexedDB open for the cover cache and the parse cache.
-// Database "plexus-diagram", version 3. One onupgradeneeded keeps "covers"
-// (version 1) and adds "parse", "parse-images", and "parse-index" (version 2), then "image-index" (version 3).
+// Database "plexus-diagram", version 2. One onupgradeneeded keeps "covers"
+// (version 1) and adds "parse", "parse-images", and "parse-index".
 
 export const DIAGRAM_DB = "plexus-diagram";
-export const DIAGRAM_DB_VERSION = 3;
+export const DIAGRAM_DB_VERSION = 2;
 export const STORE_COVERS = "covers";
 export const STORE_PARSE = "parse";
 export const STORE_PARSE_IMAGES = "parse-images";
 export const STORE_PARSE_INDEX = "parse-index";
-export const STORE_IMAGE_INDEX = "image-index";
 
-const STORES = [STORE_COVERS, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX, STORE_IMAGE_INDEX];
+const STORES = [STORE_COVERS, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX];
 
 function arm(ms, fn) {
   try {
@@ -28,8 +27,27 @@ function ensureStore(db, name) {
   } catch { /* the request's error path reports a failed upgrade */ }
 }
 
+export const IMAGE_DB = "plexus-diagram-images";
+export const IMAGE_DB_VERSION = 1;
+export const STORE_IMAGE_INDEX = "image-index";
+
+function hasStores(db, stores) {
+  try {
+    return stores.every((name) => db.objectStoreNames?.contains?.(name));
+  } catch {
+    return false;
+  }
+}
+
+// A connection that closes itself when another tab or a newer Plexus wants to upgrade the database.
+function arrange(db) {
+  try { db.onversionchange = () => { try { db.close(); } catch { /* gone */ } }; } catch { /* ignore */ }
+  return db;
+}
+
 // Resolves the database, or null when IndexedDB is missing, times out, or errors.
-export function openDiagramDb(factory, { capMs = 2000 } = {}) {
+// A database already at a higher version (VersionError) is reopened without a version and used when it has the stores.
+export function openDb(factory, { name, version, stores, capMs = 2000 }) {
   return new Promise((resolve) => {
     let settled = false;
     let timer = null;
@@ -41,24 +59,47 @@ export function openDiagramDb(factory, { capMs = 2000 } = {}) {
       }
       resolve(value);
     };
-    timer = arm(capMs, () => done(null));
-    try {
-      if (!factory || typeof factory.open !== "function") { done(null); return; }
-      const req = factory.open(DIAGRAM_DB, DIAGRAM_DB_VERSION);
-      if (!req) { done(null); return; }
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        for (const name of STORES) ensureStore(db, name);
-      };
-      req.onsuccess = () => done(req.result || null);
-      req.onerror = (event) => {
-        try { event?.preventDefault?.(); } catch { /* ignore */ }
-        try { req.preventDefault?.(); } catch { /* ignore */ }
+    const attempt = (withVersion) => {
+      try {
+        const req = withVersion ? factory.open(name, version) : factory.open(name);
+        if (!req) { done(null); return; }
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          for (const store of stores) ensureStore(db, store);
+        };
+        req.onsuccess = () => {
+          const db = req.result || null;
+          if (!db) { done(null); return; }
+          if (settled) { try { db.close(); } catch { /* ignore */ } return; }
+          if (!withVersion && !hasStores(db, stores)) {
+            try { db.close(); } catch { /* ignore */ }
+            done(null);
+            return;
+          }
+          done(arrange(db));
+        };
+        req.onerror = (event) => {
+          try { event?.preventDefault?.(); } catch { /* ignore */ }
+          try { req.preventDefault?.(); } catch { /* ignore */ }
+          const failure = req.error;
+          if (withVersion && !settled && failure && failure.name === "VersionError") { attempt(false); return; }
+          done(null);
+        };
+        req.onblocked = () => done(null);
+      } catch {
         done(null);
-      };
-      req.onblocked = () => done(null);
-    } catch {
-      done(null);
-    }
+      }
+    };
+    timer = arm(capMs, () => done(null));
+    if (!factory || typeof factory.open !== "function") { done(null); return; }
+    attempt(true);
   });
+}
+
+export function openDiagramDb(factory, { capMs = 2000 } = {}) {
+  return openDb(factory, { name: DIAGRAM_DB, version: DIAGRAM_DB_VERSION, stores: STORES, capMs });
+}
+
+export function openImageDb(factory, { capMs = 2000 } = {}) {
+  return openDb(factory, { name: IMAGE_DB, version: IMAGE_DB_VERSION, stores: [STORE_IMAGE_INDEX], capMs });
 }

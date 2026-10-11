@@ -44,6 +44,7 @@ import { openCloudConfirm } from "./cloud-confirm.js";
 import { llamaparseToParse, mistralToParse } from "../model/cloud-to-parse.js";
 import { localParseForCloud, mergeCloudFigures } from "../model/cloud-merge.js";
 import { ASYNC_CLIPBOARD_TYPES, copyViaEvent } from "./clipboard-io.js";
+import { openAskAI } from "./ask-ai.js";
 
 export const PARSE_MIME = "application/x-plexus-parse";
 export const BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
@@ -670,6 +671,23 @@ export function createParseView({
     const made = await session.ensurePdfPin(spec);
     return made?.uid || "";
   }
+  // Ask AI about one block, or a selection inside it. The answer card cites the block as its source pin.
+  function askAbout(spec = {}) {
+    if (!parsed) return null;
+    const block = spec.blockId ? parsed.blocks?.[spec.blockId] : null;
+    return openAskAI({
+      doc: parsed,
+      ...spec,
+      document: doc,
+      jumpPage: (n) => jumpPage?.(n),
+      toast: (message) => { try { onToast?.(message); } catch { /* host */ } },
+      addCard: async ({ markdown }) => {
+        if (typeof session?.insertAnswerCard !== "function") { try { onToast?.("Cannot add a card here"); } catch { /* host */ } return { ok: false }; }
+        const pin = block ? pinForBlock(block) : null;
+        return session.insertAnswerCard({ markdown, pdfUid: currentUid, pdfBlockUid: pdfBlockUidNow(), ...(pin ? { pin } : {}) });
+      },
+    });
+  }
   async function handleCopyMenu(id, block) {
     if (!parsed || !block) return false;
     try {
@@ -724,6 +742,7 @@ export function createParseView({
       return copyBlock(block).then((ok) => { try { onToast?.(ok ? "Copied" : "Could not copy"); } catch { /* host */ } return ok; });
     },
     copyMenu: (id, block) => handleCopyMenu(id, block),
+    ask: (block) => askAbout({ blockId: block?.id }),
     drag: (block, event) => beginPointerDrag(event, [block]),
     run: (act, item) => {
       if (act === "pin-ref") {
@@ -2215,6 +2234,8 @@ export function createParseView({
     showParsed: () => (pageChips ? pageChips.shown() : readShowParsed(storage)),
     setShowParsed(on) { return pageChips ? pageChips.setShown(on) : (writeShowParsed(storage, on), Boolean(on)); },
     hasParse: () => Boolean(parsed),
+    getDoc: () => parsed,
+    askAbout,
     selectedIds: () => selected.slice(),
     blockCount: () => shown().length,
     isBusy: () => phase === "running",

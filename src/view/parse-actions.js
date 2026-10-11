@@ -197,6 +197,23 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       return res || { ok: false, reason: "no-session" };
     },
 
+    // Ask AI. The answer as one card beside the PDF; a source pin (when the part has a box) rides along as Source::.
+    async insertAnswerCard(payload) {
+      const markdown = String(payload?.markdown || "").trim();
+      if (!markdown) return { ok: false, reason: "empty" };
+      let sourceUid = "";
+      if (payload.pin && typeof session?.ensurePdfPin === "function") {
+        try { sourceUid = (await session.ensurePdfPin(payload.pin))?.uid || ""; } catch { sourceUid = ""; }
+      }
+      const at = where(payload, CARD_SIZE);
+      const res = await session?.insertParsedCard?.({ ...at, markdown, ...(sourceUid ? { sourceUid } : {}) });
+      if (res?.ok) {
+        pick(res.uid ? [res.uid] : []);
+        say("Answer card inserted");
+      }
+      return res || { ok: false, reason: "no-session" };
+    },
+
     async insertParsedCard(payload) {
       const doc = await load(payload);
       if (!doc) return { ok: false, reason: "missing-cache" };

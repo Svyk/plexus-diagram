@@ -2087,6 +2087,170 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   opacity: 0.18;
 }
 
+/* Ask AI dialog. Appended to the document body, so tokens carry fallbacks (same as .pxd-copy-menu). */
+.pxd-ask {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(78vh, 720px);
+  padding: 12px;
+  overflow-y: auto;
+  color: var(--pxd-fg, var(--pxd-text, inherit));
+  background: var(--pxd-surface, #fff);
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  font-size: 13px;
+}
+
+.bp3-dark .pxd-ask,
+.pxd-root--dark ~ .pxd-ask {
+  color: var(--pxd-fg, #e5e7eb);
+  background: var(--pxd-surface, #111);
+  border-color: var(--pxd-border, #4b5563);
+}
+
+.pxd-ask__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pxd-ask__title {
+  font-weight: 600;
+}
+
+.pxd-ask button,
+.pxd-ask select,
+.pxd-ask textarea {
+  font: inherit;
+  color: inherit;
+}
+
+.pxd-ask__close,
+.pxd-ask__chip,
+.pxd-ask__quickbtn,
+.pxd-ask__send,
+.pxd-ask__stop,
+.pxd-ask__act {
+  padding: 3px 9px;
+  background: transparent;
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.pxd-ask__close {
+  border: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.pxd-ask__chip {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-ask__chip[aria-expanded="true"] {
+  border-color: var(--pxd-accent, #2563eb);
+}
+
+.pxd-ask__send {
+  border-color: var(--pxd-accent, #2563eb);
+  color: var(--pxd-accent, #2563eb);
+}
+
+.pxd-ask__preview {
+  max-height: 220px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  font: 11px/1.4 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+  background: rgba(127, 127, 127, 0.1);
+  border-radius: 6px;
+}
+
+.pxd-ask__preview[hidden],
+.pxd-ask [hidden] {
+  display: none;
+}
+
+.pxd-ask__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pxd-ask__row,
+.pxd-ask__quick,
+.pxd-ask__bar,
+.pxd-ask__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.pxd-ask__model {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  background: transparent;
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 6px;
+}
+
+.pxd-ask__model option {
+  color: initial;
+}
+
+.pxd-ask__question {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  resize: vertical;
+  background: transparent;
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 6px;
+}
+
+.pxd-ask__status {
+  flex: 1;
+  min-width: 0;
+  opacity: 0.7;
+}
+
+.pxd-ask__answer {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.pxd-ask__cite {
+  color: var(--pxd-accent, #2563eb);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.pxd-ask__hint {
+  margin: 0;
+}
+
+.pxd-ask__hint--quiet {
+  opacity: 0.7;
+}
+
 /* Plexus Diagram 1.2 backgrounds: the grid pattern (minor + major lines) and board tones. Rules are
    scoped .pxd-root .pxd-x or .pxd-root.pxd-bg-x (two classes at least). Tones only set --pxd-surface,
    which .pxd-root already paints; palette tones mix the palette line into the base surface at ~9%

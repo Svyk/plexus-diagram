@@ -2212,10 +2212,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
             ops.push({ op: "props", uid: e.uid, plexus: e.oldProps });
           }
           await execute(ops);
+          // Roam applies the move-back after execute resolves, so a created page can still hold its pdf block here.
           for (const r of records) {
             if (!r.pageCreated) continue;
-            const page = host.pullPage?.(r.pageTitle);
-            if (page && !(page[":block/children"] || []).length) await host.deletePage?.(r.pageUid);
+            for (let tries = 0; tries < 15; tries += 1) {
+              const page = host.pullPage?.(r.pageTitle);
+              if (!page) break;
+              if (!(page[":block/children"] || []).length) { await host.deletePage?.(r.pageUid); break; }
+              await new Promise((resolve) => setTimeout(resolve, 200));
+            }
           }
         },
         async redo() {

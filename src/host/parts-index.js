@@ -3,10 +3,26 @@
 
 import { parsedDocTitle, pdfFileTitle } from "../model/pdf.js";
 import { buildPartsIndex } from "../model/parts-search.js";
-import { readableParse } from "./parse-store.js";
+import { readableParse, subscribeParseStored } from "./parse-store.js";
 
 // Same options the reader uses for the plain built-in parse.
 const PLAIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
+
+// One parse-store listener for all live indexes; it detaches when the last index is disposed.
+const live = new Set();
+let offStored = null;
+
+function attach(index) {
+  live.add(index);
+  if (!offStored) {
+    offStored = subscribeParseStored((info) => { for (const one of [...live]) one.parseStored(info); });
+  }
+}
+
+function detach(index) {
+  live.delete(index);
+  if (!live.size && offStored) { offStored(); offStored = null; }
+}
 
 export function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS } = {}) {
   const perDoc = new Map();
@@ -43,7 +59,9 @@ export function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS
     return out;
   };
 
-  return {
+  const changed = new Set();
+
+  const index = {
     async get() {
       if (rows) return rows;
       if (!building) building = build().finally(() => { building = null; });
@@ -54,5 +72,21 @@ export function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS
       rows = null;
     },
     size: () => (rows ? rows.length : 0),
+    // A parse was just stored: drop that sha's cached rows and the merged rows; the next get() rebuilds.
+    parseStored({ sha256 } = {}) {
+      if (sha256) for (const key of [...perDoc.keys()]) if (key.startsWith(`${sha256}|`)) perDoc.delete(key);
+      index.invalidate();
+      for (const fn of [...changed]) { try { fn({ sha256 }); } catch { /* listener */ } }
+    },
+    onChange(fn) {
+      changed.add(fn);
+      return () => { changed.delete(fn); };
+    },
+    dispose() {
+      detach(index);
+      changed.clear();
+    },
   };
+  attach(index);
+  return index;
 }

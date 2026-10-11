@@ -419,6 +419,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     parts.forEach((part) => partRow(results, part, needle));
   };
 
+  let refreshTimer = null;
   const scheduleSearch = () => {
     debounce?.();
     debounce = timers.later(() => { debounce = null; void runSearch(); }, DEBOUNCE_MS);
@@ -990,6 +991,11 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     },
     currentTab: () => tab,
     refreshOutline() { if (api.isOpen() && tab === "outline") renderOutline(); },
+    refreshSearch() {
+      if (!api.isOpen() || tab !== "search" || !String(input.value || "").trim()) return;
+      refreshTimer?.();
+      refreshTimer = timers.later(() => { refreshTimer = null; searchNow(); }, 300);
+    },
     refreshBoards() { if (tab === "boards") void loadBoards(); },
     refreshTrails() {
       if (tab !== "trails" || !api.isOpen()) return;

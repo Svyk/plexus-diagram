@@ -24,9 +24,9 @@ export const INSTRUCTIONS = [
 
 export const DOC_INSTRUCTIONS = [
   "You are helping someone read a PDF as a whole.",
-  "Answer about the document as a whole. Use \"Document outline\" to locate things, and \"Document text (opening pages)\" for what the document says.",
+  "Answer about the document as a whole. Use \"Document outline\" to locate things, and \"Relevant parts of the document\" for what the document says.",
   "Cite pages as [p. N] using the page numbers shown in the context.",
-  "The provided text covers only the outline and the opening pages. When it does not cover something, say so instead of filling the gap from elsewhere.",
+  "The parts under \"Relevant parts of the document\" were chosen for the question and are not the whole document. When they do not cover something, say so instead of filling the gap from elsewhere.",
   "Refer to it as 'this document'; never mention section labels.",
 ].join("\n");
 
@@ -256,21 +256,154 @@ function pageFocus(doc, ids, page) {
   return parts.join("\n\n");
 }
 
-// The first pages' text, whole blocks in reading order, until the budget is spent.
-function openingText(doc, ids, budget) {
-  const parts = [];
-  let used = 0;
-  for (const id of ids) {
-    const b = doc.blocks[id];
-    if (b.type === "caption") continue;
-    const text = focusBody(doc, b);
-    if (!text) continue;
-    const line = `[p. ${b.page}] ${clip(text, PARA_CLIP)}`;
-    if (used + line.length + 2 > budget) break;
-    parts.push(line);
-    used += line.length + 2;
+const STOPWORDS = new Set("a an and are as at be but by for from has have he her his how i if in into is it its of on or our she so than that the their them then there these they this to was we were what when where which who why will with you your do does did can could should would not no".split(" "));
+// Words of a "summarize this document" style request; a question made only of these asks for no topic.
+const GENERIC_WORDS = new Set("summarize summarise summary overview describe explain tell me about document pdf paper report file main key points point plain language simple simply words sentences sentence three five short brief briefly give list whole entire all".split(" "));
+
+export function tokenize(text) {
+  const out = [];
+  for (const w of String(text ?? "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || []) {
+    if (w.length >= 2 && !STOPWORDS.has(w)) out.push(w);
   }
-  return parts.join("\n\n");
+  return out;
+}
+
+export function isGenericQuestion(question) {
+  const words = tokenize(question);
+  return !words.length || words.every((w) => GENERIC_WORDS.has(w));
+}
+
+const TABLE_CLIP = 3000;
+
+// Parts of the whole document for retrieval: every block with text except captions that belong to a table or figure.
+function retrievalParts(doc, ids) {
+  const blocks = doc.blocks;
+  const caps = new Map();
+  const attached = new Set();
+  for (const id of ids) {
+    const b = blocks[id];
+    if (b.type === "caption" && b.for && blocks[b.for] && !caps.has(b.for)) { caps.set(b.for, squash(b.text)); attached.add(id); }
+  }
+  const parts = [];
+  ids.forEach((id, order) => {
+    if (attached.has(id)) return;
+    const b = blocks[id];
+    let cap = "";
+    if (b.type === "table" || b.type === "figure") {
+      cap = caps.get(id) || "";
+      if (!cap && typeof b.caption === "string") { const hit = blocks[b.caption]; cap = squash(hit ? hit.text : b.caption); }
+      else if (!cap && b.caption && typeof b.caption === "object") cap = squash(b.caption.text);
+    }
+    const text = blockText(b);
+    const scored = cap ? `${cap} ${text}` : text;
+    if (!scored) return;
+    parts.push({ id, order, block: b, cap, tokens: tokenize(scored) });
+  });
+  return parts;
+}
+
+function bm25(parts, queryTokens) {
+  const k1 = 1.2;
+  const b = 0.75;
+  const uniq = [...new Set(queryTokens)];
+  const n = parts.length;
+  const df = new Map(uniq.map((t) => [t, 0]));
+  let total = 0;
+  const tfs = parts.map((part) => {
+    total += part.tokens.length;
+    const tf = new Map();
+    for (const t of part.tokens) if (df.has(t)) tf.set(t, (tf.get(t) || 0) + 1);
+    for (const t of tf.keys()) df.set(t, df.get(t) + 1);
+    return tf;
+  });
+  const avg = total / Math.max(1, n);
+  return parts.map((part, i) => {
+    const tf = tfs[i];
+    if (!tf.size) return 0;
+    const len = part.tokens.length;
+    let score = 0;
+    for (const [t, f] of tf) {
+      const d = df.get(t);
+      const idf = Math.log(1 + (n - d + 0.5) / (d + 0.5));
+      score += idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + b * (len / avg))));
+    }
+    return score;
+  });
+}
+
+function renderPart(part) {
+  const b = part.block;
+  const kind = KIND_NAMES[b.type] || "Block";
+  let body = focusBody(null, b);
+  if (b.type === "table") {
+    const md = tableToMarkdown(b);
+    body = [part.cap ? `Caption: ${part.cap}` : "", md || "(table with no readable cells)"].filter(Boolean).join("\n");
+  } else if (b.type === "figure") {
+    const inner = squash(b.text);
+    body = [`Figure caption: ${part.cap || "(none)"}`, inner && inner !== part.cap ? `Text inside the figure: ${inner}` : ""].filter(Boolean).join("\n");
+  }
+  return `${kind} [p. ${b.page}] ${clip(body, b.type === "table" ? TABLE_CLIP : PARA_CLIP)}`;
+}
+
+// Question-aware text from the whole document, whole parts in reading order, until the budget is spent.
+// Always: the title heading, the first paragraph, an abstract. Then top BM25 parts (or a spread for a generic question).
+function relevantParts(doc, ids, question, budget) {
+  const parts = retrievalParts(doc, ids);
+  if (!parts.length) return "";
+  const rendered = new Map();
+  const line = (part) => {
+    let text = rendered.get(part.id);
+    if (text == null) { text = renderPart(part); rendered.set(part.id, text); }
+    return text;
+  };
+  const picked = new Set();
+  let used = 0;
+  const take = (part, force = false) => {
+    if (picked.has(part.id)) return true;
+    const text = line(part);
+    if (!force && used + text.length + 2 > budget) return false;
+    picked.add(part.id);
+    used += text.length + 2;
+    return true;
+  };
+
+  const firstHeading = parts.find((p) => p.block.type === "heading");
+  if (firstHeading) take(firstHeading);
+  const firstPara = parts.find((p) => p.block.type === "para");
+  if (firstPara) take(firstPara);
+  const abstractAt = parts.findIndex((p) => p.block.type === "heading" && /^\s*(abstract|summary|executive summary)\b/i.test(p.block.text || ""));
+  if (abstractAt >= 0) { const next = parts.slice(abstractAt + 1).find((p) => p.block.type === "para"); if (next) take(next); }
+
+  const generic = isGenericQuestion(question);
+  if (!generic) {
+    const scores = bm25(parts, tokenize(question));
+    const ranked = parts.map((part, i) => ({ part, score: scores[i] })).filter((r) => r.score > 0).sort((x, y) => y.score - x.score || x.part.order - y.part.order);
+    for (const { part } of ranked) {
+      if (picked.has(part.id)) continue;
+      take(part);
+      if (used >= budget - 80) break;
+    }
+  }
+  if (generic || picked.size <= 3) {
+    // Spread: the first paragraph under each top-level heading, then every table and figure caption.
+    const headLevels = parts.filter((p) => p.block.type === "heading").map((p) => Math.max(1, Number(p.block.level) || 1));
+    const top = headLevels.length ? Math.min(...headLevels) : 1;
+    const topLevel = top === 1 && headLevels.filter((l) => l === 1).length <= 1 ? 2 : top;
+    let afterTop = false;
+    for (const part of parts) {
+      const b = part.block;
+      if (b.type === "heading") afterTop = (Number(b.level) || 1) <= topLevel;
+      else if (afterTop && (b.type === "para" || b.type === "list")) { take(part); afterTop = false; }
+    }
+    for (const part of parts) {
+      if (part.block.type === "table" || part.block.type === "figure") take(part);
+    }
+    for (const part of parts) {
+      if (used >= budget - 80) break;
+      if (part.block.type !== "caption") take(part);
+    }
+  }
+  return parts.filter((p) => picked.has(p.id)).map(line).join("\n\n");
 }
 
 // focus: { blockId } | { blockId, selection } | { selection, page? } | { blockIds } | { page } | { wholeDoc: true }.
@@ -314,7 +447,7 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
     focusText = pageFocus(safe, ids, page);
   } else if (wholeDoc) {
     // The outline rides in the document outline; the selected part is the opening text, leaving that room free.
-    focusText = openingText(safe, ids, Math.max(400, cap - outlineCap - 1000));
+    focusText = relevantParts(safe, ids, opts.question ?? focus.question ?? "", Math.max(400, cap - outlineCap - 1000));
   }
 
   const chain = block ? sectionChain(safe, ids, index) : [];
@@ -329,7 +462,7 @@ export function buildFocusContext(doc, focus = {}, opts = {}) {
   const focusHead = block
     ? `${header("Selected part")}\n(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})`
     : wholeDoc
-      ? `${header("Document text (opening pages)")}`
+      ? `${header("Relevant parts of the document")}`
       : `${header("Selected part")}\n(${page != null ? `page ${page}` : "no part found"})`;
 
   // Fixed parts first. The focus keeps its room; nearby and then the outline give way.

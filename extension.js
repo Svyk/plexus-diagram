@@ -18457,7 +18457,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     glyph.addEventListener("keydown", onKey);
     crumbOffs.push(() => glyph.removeEventListener("keydown", onKey));
   };
-  const attach2 = (input, edgeUid) => {
+  const attach3 = (input, edgeUid) => {
     const container = input.closest?.(".roam-block-container") || input.parentElement;
     if (!container) return;
     const zoom = container.parentElement?.querySelector?.(".rm-zoom");
@@ -18490,7 +18490,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     for (const input of found.slice(0, SCAN_CAP)) {
       const uid = uidFromElementId(input.id, cache.uids());
       if (uid) {
-        attach2(input, uid);
+        attach3(input, uid);
         continue;
       }
       if (input.closest?.(".pxd-root")) continue;
@@ -21155,6 +21155,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     rows.forEach((r) => row4(results, r));
     parts.forEach((part) => partRow(results, part, needle));
   };
+  let refreshTimer = null;
   const scheduleSearch = () => {
     debounce?.();
     debounce = timers.later(() => {
@@ -21837,6 +21838,14 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     currentTab: () => tab,
     refreshOutline() {
       if (api2.isOpen() && tab === "outline") renderOutline();
+    },
+    refreshSearch() {
+      if (!api2.isOpen() || tab !== "search" || !String(input.value || "").trim()) return;
+      refreshTimer?.();
+      refreshTimer = timers.later(() => {
+        refreshTimer = null;
+        searchNow();
+      }, 300);
     },
     refreshBoards() {
       if (tab === "boards") void loadBoards();
@@ -23921,7 +23930,7 @@ function resolveRegionTarget(hit, outline) {
 function createShowStash(now3 = () => Date.now()) {
   const clock = typeof now3 === "function" ? now3 : () => Date.now();
   let entry = null;
-  const live = () => {
+  const live2 = () => {
     if (!entry) return null;
     if (entry.until < clock()) {
       entry = null;
@@ -23932,7 +23941,7 @@ function createShowStash(now3 = () => Date.now()) {
   return {
     stash(spec) {
       const uid = spec?.uid;
-      if (uid == null || uid === "") return live();
+      if (uid == null || uid === "") return live2();
       const t = clock();
       const requested = Number(spec.until);
       const until = Number.isFinite(requested) ? Math.max(requested, t + STASH_MS) : t + STASH_MS;
@@ -23940,7 +23949,7 @@ function createShowStash(now3 = () => Date.now()) {
       return entry;
     },
     peek(uid) {
-      const cur = live();
+      const cur = live2();
       if (!cur) return null;
       if (uid == null || uid === "") return cur;
       return cur.uid === uid ? cur : null;
@@ -24747,14 +24756,14 @@ function mountRoamTable(doc, parent, { uid, renderBlock, portalParent, unmount }
   bar.append(open);
   const fit2 = doc.createElement("div");
   fit2.className = "pxd-roam-table__fit";
-  const live = doc.createElement("div");
-  live.className = "pxd-rs__live";
-  fit2.append(live);
+  const live2 = doc.createElement("div");
+  live2.className = "pxd-rs__live";
+  fit2.append(live2);
   host.append(bar, fit2);
   parent?.append?.(host);
   const rec = { host, grid: false, overlay: null };
-  drawBlock(renderBlock, live, uid);
-  const seeGrid = () => Boolean(live.querySelector?.("[data-roam-grid-uid], .rg-root"));
+  drawBlock(renderBlock, live2, uid);
+  const seeGrid = () => Boolean(live2.querySelector?.("[data-roam-grid-uid], .rg-root"));
   const syncGrid = () => {
     rec.grid = seeGrid();
     host.classList.toggle("pxd-roam-table--grid", rec.grid);
@@ -24765,7 +24774,7 @@ function mountRoamTable(doc, parent, { uid, renderBlock, portalParent, unmount }
   if (typeof Obs === "function") {
     mo = new Obs(() => syncGrid());
     try {
-      mo.observe(live, { childList: true, subtree: true, attributes: true });
+      mo.observe(live2, { childList: true, subtree: true, attributes: true });
     } catch {
     }
   }
@@ -25365,9 +25374,9 @@ function kidRowsOf(list, depth = 1, budget = { n: 0 }) {
   }
   return budget.n;
 }
-function cardContentKey(item, live = false, pdfOpen = false, chipSig = "", coverSig = "") {
+function cardContentKey(item, live2 = false, pdfOpen = false, chipSig = "", coverSig = "") {
   if (isSticky(item)) {
-    return ["sticky", live ? "live" : item.string, item.min ? "m" : "", item.fontSize || "", item.textColor || "", item.align || ""].join("");
+    return ["sticky", live2 ? "live" : item.string, item.min ? "m" : "", item.fontSize || "", item.textColor || "", item.align || ""].join("");
   }
   const parts = [
     item.kind,
@@ -25425,7 +25434,7 @@ function regionHub(win2) {
   let hub = regionHubs.get(win2);
   if (hub) return hub;
   hub = { win: win2, entries: /* @__PURE__ */ new Set(), listening: false };
-  const detach2 = () => {
+  const detach3 = () => {
     if (!hub.listening) return;
     try {
       win2.removeEventListener?.("roam-plexus:ready", hub.onReady);
@@ -25446,7 +25455,7 @@ function regionHub(win2) {
       } catch {
       }
     }
-    if (!hub.entries.size) detach2();
+    if (!hub.entries.size) detach3();
   };
   const fan = (key) => {
     prune();
@@ -25799,10 +25808,10 @@ function createItemRenderer({
       return "";
     }
   };
-  const contentKeyFor = (item, live = false) => {
+  const contentKeyFor = (item, live2 = false) => {
     let key = cardContentKey(
       item,
-      live,
+      live2,
       item?.kind === "pdf" ? onReadPane ? false : pdfOpenUid === item.uid : ownsOpen(item),
       item?.kind === "pdf" ? chipsFor(item).map((chip) => `${chip.page}:${chip.count}`).join(",") : "",
       item?.kind === "pdf" ? coverSigOf(coverImageOf(item)) : ""
@@ -25926,12 +25935,12 @@ function createItemRenderer({
     if (!rec?.el?.style || !(h > 0) || rec.el.style.height) return;
     rec.el.style.height = `${Math.round(h)}px`;
   };
-  const armEmbedShield = (node2, live) => {
+  const armEmbedShield = (node2, live2) => {
     if (node2?.classList?.contains("pxd-embed-live") && !node2.style?.height) {
       fitEmbedOuter(node2, embedBoxFor(node2.getAttribute?.("data-pxd-embed")));
     }
     const syncShield = () => {
-      const hit = live.querySelector?.(EMBED_SEL);
+      const hit = live2.querySelector?.(EMBED_SEL);
       let shield = null;
       for (const child of node2.children || []) if (child.classList?.contains("pxd-embed-shield")) shield = child;
       if (hit && !shield) {
@@ -25944,7 +25953,7 @@ function createItemRenderer({
     if (typeof MO !== "function") return;
     const mo = new MO(guardCallback("embed-shield", () => syncShield()));
     try {
-      mo.observe(live, { childList: true, subtree: true });
+      mo.observe(live2, { childList: true, subtree: true });
     } catch {
       return;
     }
@@ -26013,12 +26022,12 @@ function createItemRenderer({
     if (liveUid) node2.setAttribute("data-pxd-embed", liveUid);
     const box2 = embedBoxFor(liveUid);
     fitEmbedOuter(node2, box2);
-    const live = el("div", "pxd-rs__live", node2);
-    fitEmbedOuter(live, box2);
+    const live2 = el("div", "pxd-rs__live", node2);
+    fitEmbedOuter(live2, box2);
     let mountedLive = false;
     if (liveUid && host?.renderBlock) {
       try {
-        host.renderBlock(live, liveUid);
+        host.renderBlock(live2, liveUid);
         mountedLive = true;
       } catch {
         mountedLive = false;
@@ -26026,27 +26035,27 @@ function createItemRenderer({
     }
     if (!mountedLive) {
       try {
-        live.replaceChildren?.();
+        live2.replaceChildren?.();
       } catch {
       }
       try {
-        if (host?.renderString) host.renderString(live, string);
-        else live.textContent = plainText(string);
+        if (host?.renderString) host.renderString(live2, string);
+        else live2.textContent = plainText(string);
       } catch {
-        live.textContent = plainText(string);
+        live2.textContent = plainText(string);
       }
     }
-    armEmbedShield(node2, live);
+    armEmbedShield(node2, live2);
   };
   const mountQuery = (parent, uid) => {
-    const live = el("div", "pxd-rs pxd-item__query", parent);
-    const mount = el("div", "pxd-rs__live", live);
+    const live2 = el("div", "pxd-rs pxd-item__query", parent);
+    const mount = el("div", "pxd-rs__live", live2);
     try {
       host.renderBlock(mount, uid);
     } catch {
       mount.textContent = "Query";
     }
-    return live;
+    return live2;
   };
   let statusPal = null;
   const statusWin = () => doc?.defaultView || globalThis;
@@ -26141,14 +26150,14 @@ function createItemRenderer({
     row4.dataset.uid = ref.uid;
     row4.setAttribute("data-uid", ref.uid);
     const liveWrap = el("div", "pxd-rs", row4);
-    const live = el("div", "pxd-rs__live", liveWrap);
+    const live2 = el("div", "pxd-rs__live", liveWrap);
     try {
-      if (host?.renderBlock) host.renderBlock(live, ref.uid);
-      else live.textContent = String(ref.string || "");
+      if (host?.renderBlock) host.renderBlock(live2, ref.uid);
+      else live2.textContent = String(ref.string || "");
     } catch {
-      live.textContent = String(ref.string || "");
+      live2.textContent = String(ref.string || "");
     }
-    armEmbedShield(liveWrap, live);
+    armEmbedShield(liveWrap, live2);
     rec.roots.push(liveWrap);
     for (const type of ["pointerdown", "mousedown", "dblclick"]) on(row4, type, stopEvent);
     on(row4, "dragstart", (event) => {
@@ -26247,7 +26256,7 @@ function createItemRenderer({
       }
       return node2;
     }
-    const live = el("div", "pxd-rs__live", node2);
+    const live2 = el("div", "pxd-rs__live", node2);
     const buffered = [];
     const origError = console.error;
     console.error = (...args) => {
@@ -26255,26 +26264,26 @@ function createItemRenderer({
     };
     let thrown = null;
     try {
-      if (host?.renderString) host.renderString(live, string);
-      else live.textContent = plainText(string);
+      if (host?.renderString) host.renderString(live2, string);
+      else live2.textContent = plainText(string);
     } catch (error) {
       thrown = error;
     } finally {
       console.error = origError;
     }
-    const renderedText = String(live.textContent || "");
-    const failed = Boolean(thrown) || RENDER_FAILS.some((t) => renderedText.includes(t)) || Boolean(live.querySelector?.(".rm-render-failed, .rm-api-render--failed"));
+    const renderedText = String(live2.textContent || "");
+    const failed = Boolean(thrown) || RENDER_FAILS.some((t) => renderedText.includes(t)) || Boolean(live2.querySelector?.(".rm-render-failed, .rm-api-render--failed"));
     if (!failed) {
       for (const args of buffered) origError.apply(console, args);
-      armEmbedShield(node2, live);
+      armEmbedShield(node2, live2);
       return node2;
     }
     try {
-      host?.unmount?.(live);
+      host?.unmount?.(live2);
     } catch {
     }
     try {
-      live.remove();
+      live2.remove();
     } catch {
     }
     if (plain2) showPlainRow(node2, string);
@@ -26353,14 +26362,14 @@ function createItemRenderer({
     rec.pdfReader = null;
     if (!rec.roots?.length) return;
     for (const node2 of rec.roots) {
-      const live = node2.querySelector?.(".pxd-rs__live");
-      if (!live && !node2.classList?.contains("pxd-embed-live")) continue;
+      const live2 = node2.querySelector?.(".pxd-rs__live");
+      if (!live2 && !node2.classList?.contains("pxd-embed-live")) continue;
       try {
         node2.__pxdEmbedMo?.disconnect();
       } catch {
       }
       try {
-        host?.unmount?.(live || embedLive(node2));
+        host?.unmount?.(live2 || embedLive(node2));
       } catch {
       }
     }
@@ -27502,18 +27511,18 @@ function createItemRenderer({
       rec.rowSched?.drop?.(uid);
     }
     const line = childWithClass(prow, "pxd-row");
-    const live = [...line?.children || []].find((node2) => node2.classList?.contains("pxd-rs") || node2.classList?.contains("pxd-embed-live") || node2.classList?.contains("pxd-rs--board"));
-    if (!live) return;
+    const live2 = [...line?.children || []].find((node2) => node2.classList?.contains("pxd-rs") || node2.classList?.contains("pxd-embed-live") || node2.classList?.contains("pxd-rs--board"));
+    if (!live2) return;
     try {
-      live.__pxdEmbedMo?.disconnect();
+      live2.__pxdEmbedMo?.disconnect();
     } catch {
     }
     try {
-      host?.unmount?.(live.querySelector?.(".pxd-rs__live") || embedLive(live));
+      host?.unmount?.(live2.querySelector?.(".pxd-rs__live") || embedLive(live2));
     } catch {
     }
-    if (rec.pageRoots) rec.pageRoots = rec.pageRoots.filter((node2) => node2 !== live);
-    if (rec.roots) rec.roots = rec.roots.filter((node2) => node2 !== live);
+    if (rec.pageRoots) rec.pageRoots = rec.pageRoots.filter((node2) => node2 !== live2);
+    if (rec.roots) rec.roots = rec.roots.filter((node2) => node2 !== live2);
   };
   const patchRowString = (rec, prow, spec) => {
     const line = childWithClass(prow, "pxd-row");
@@ -27527,36 +27536,36 @@ function createItemRenderer({
       entry.plain.textContent = heavy ? "…" : plainText(spec.string);
       return;
     }
-    const live = [...line?.children || []].find((node2) => node2.classList?.contains("pxd-rs") || node2.classList?.contains("pxd-embed-live") || node2.classList?.contains("pxd-rs--board"));
-    if (isRoamTableString(spec.string) && live?.classList?.contains("pxd-roam-table")) return;
+    const live2 = [...line?.children || []].find((node2) => node2.classList?.contains("pxd-rs") || node2.classList?.contains("pxd-embed-live") || node2.classList?.contains("pxd-rs--board"));
+    if (isRoamTableString(spec.string) && live2?.classList?.contains("pxd-roam-table")) return;
     const dropLive = () => {
       try {
-        live.__pxdEmbedMo?.disconnect();
+        live2.__pxdEmbedMo?.disconnect();
       } catch {
       }
       try {
-        host?.unmount?.(live.querySelector?.(".pxd-rs__live") || embedLive(live));
+        host?.unmount?.(live2.querySelector?.(".pxd-rs__live") || embedLive(live2));
       } catch {
       }
-      if (rec.pageRoots) rec.pageRoots = rec.pageRoots.filter((node2) => node2 !== live);
-      if (rec.roots) rec.roots = rec.roots.filter((node2) => node2 !== live);
-      live.remove();
+      if (rec.pageRoots) rec.pageRoots = rec.pageRoots.filter((node2) => node2 !== live2);
+      if (rec.roots) rec.roots = rec.roots.filter((node2) => node2 !== live2);
+      live2.remove();
     };
     if (isRoamTableString(spec.string)) {
-      if (live) dropLive();
+      if (live2) dropLive();
       const node2 = mountTableHost(line, spec.uid);
       for (const name of ["pxd-rs", "pxd-block__text"]) node2.classList.add(name);
       rec.pageRoots = [...rec.pageRoots || [], node2];
       rec.roots = [...rec.roots || [], node2];
       return;
     }
-    if (live?.classList?.contains("pxd-roam-table")) {
+    if (live2?.classList?.contains("pxd-roam-table")) {
       dropLive();
       addPlainRow(rec, line, spec.string, spec.uid);
       return;
     }
     const split = embedSplit(spec.string, embedOptsFor(spec.uid));
-    if (!live) {
+    if (!live2) {
       if (split.posters.length) {
         const root = renderRoot(line, spec.string, "pxd-rs pxd-block__text", spec.uid);
         if (root.classList?.contains("pxd-embed-live") || root.querySelector?.(".pxd-rs__live")) {
@@ -27566,18 +27575,18 @@ function createItemRenderer({
       } else addPlainRow(rec, line, spec.string, spec.uid);
       return;
     }
-    if (live.classList.contains("pxd-embed-live") || live.classList.contains("pxd-rs--board") || split.posters.length) {
+    if (live2.classList.contains("pxd-embed-live") || live2.classList.contains("pxd-rs--board") || split.posters.length) {
       try {
-        live.__pxdEmbedMo?.disconnect();
+        live2.__pxdEmbedMo?.disconnect();
       } catch {
       }
       try {
-        host?.unmount?.(live.querySelector?.(".pxd-rs__live") || embedLive(live));
+        host?.unmount?.(live2.querySelector?.(".pxd-rs__live") || embedLive(live2));
       } catch {
       }
-      if (rec.pageRoots) rec.pageRoots = rec.pageRoots.filter((node2) => node2 !== live);
-      if (rec.roots) rec.roots = rec.roots.filter((node2) => node2 !== live);
-      live.remove();
+      if (rec.pageRoots) rec.pageRoots = rec.pageRoots.filter((node2) => node2 !== live2);
+      if (rec.roots) rec.roots = rec.roots.filter((node2) => node2 !== live2);
+      live2.remove();
       const root = renderRoot(line, spec.string, "pxd-rs pxd-block__text", spec.uid);
       if (root.classList?.contains("pxd-embed-live") || root.querySelector?.(".pxd-rs__live")) {
         rec.pageRoots = [...rec.pageRoots || [], root];
@@ -27585,7 +27594,7 @@ function createItemRenderer({
       }
       return;
     }
-    const inner = childWithClass(live, "pxd-rs__live") || embedLive(live);
+    const inner = childWithClass(live2, "pxd-rs__live") || embedLive(live2);
     if (inner && host?.renderString) {
       try {
         host.renderString(inner, spec.string);
@@ -27941,12 +27950,12 @@ function createItemRenderer({
   };
   const measureMarked = (rec, mark) => {
     const pin2 = Boolean(mark.getAttribute?.("data-pxd-pin"));
-    const live = Boolean(rec.el?.classList?.contains("pxd-pdf-live"));
-    if (pin2 && !live) return { pin: true, face: true };
+    const live2 = Boolean(rec.el?.classList?.contains("pxd-pdf-live"));
+    if (pin2 && !live2) return { pin: true, face: true };
     const z = zoomCache || 1;
     const card2 = rec.el.getBoundingClientRect();
     const r = mark.getBoundingClientRect();
-    if (pin2 && live && r.width > 16 && r.height > 16) {
+    if (pin2 && live2 && r.width > 16 && r.height > 16) {
       return {
         region: true,
         pin: true,
@@ -28548,13 +28557,13 @@ function createItemRenderer({
     const reader = el("div", "pxd-pdf-reader", rec.body);
     const readerChips = chipsFor(item);
     if (readerChips.length) paintPdfChipStrip(doc, reader, readerChips, chipHandlers(item));
-    const live = el("div", "pxd-rs__live", reader);
+    const live2 = el("div", "pxd-rs__live", reader);
     const uid = item.target?.kind === "block" ? item.target.uid : item.uid;
     try {
-      host?.renderBlock?.(live, uid);
+      host?.renderBlock?.(live2, uid);
     } catch {
     }
-    armEmbedShield(reader, live);
+    armEmbedShield(reader, live2);
     rec.pdfReader = reader;
     const interact = el("button", "pxd-pdf-interact pxd-chrome", reader);
     interact.type = "button";
@@ -28924,8 +28933,8 @@ function createItemRenderer({
       } catch {
       }
       try {
-        const live = prev.querySelector?.(".pxd-rs__live");
-        if (live) host?.unmount?.(live);
+        const live2 = prev.querySelector?.(".pxd-rs__live");
+        if (live2) host?.unmount?.(live2);
       } catch {
       }
       const i = rec.roots?.indexOf(prev) ?? -1;
@@ -28949,18 +28958,18 @@ function createItemRenderer({
   };
   const refreshBlockRef = (rec, item, after) => {
     if (disposed || editing?.uid === rec.uid || rec.body?.isConnected === false) return;
-    const live = lastBoard?.items.get(rec.uid);
-    if (!live || live.kind !== "block" || live.target?.uid !== item.target?.uid) return;
+    const live2 = lastBoard?.items.get(rec.uid);
+    if (!live2 || live2.kind !== "block" || live2.target?.uid !== item.target?.uid) return;
     const watched = after?.[":block/string"];
     const refString = typeof watched === "string" ? watched : null;
     if (refString == null || refString === rec.refString) return;
     rec.refString = refString;
     rec.refBoard = classifyString(refString).kind === "board";
     rec.refTitle = rec.refBoard ? parseBoardTitle(refString) || "Untitled board" : firstLine(refString).slice(0, REF_TITLE_MAX);
-    if (!rec.renaming && rec.header) rec.header.textContent = String(rec.refTitle || live.title || "").slice(0, HEADER_TEXT_MAX);
-    if (rec.el) rec.el.setAttribute("aria-label", `${rec.refTitle || live.title || "Untitled"}, ${live.type}`);
+    if (!rec.renaming && rec.header) rec.header.textContent = String(rec.refTitle || live2.title || "").slice(0, HEADER_TEXT_MAX);
+    if (rec.el) rec.el.setAttribute("aria-label", `${rec.refTitle || live2.title || "Untitled"}, ${live2.type}`);
     if (rec.refBoard) return;
-    paintBlockString(rec, refString, live.target.uid);
+    paintBlockString(rec, refString, live2.target.uid);
   };
   const freshPending = /* @__PURE__ */ new Map();
   let freshTimer = null;
@@ -29408,11 +29417,11 @@ function createItemRenderer({
         blob: detail ? blob : void 0,
         regions,
         open: ({ sidebar } = {}) => {
-          const live = roamPlexus2();
-          if (live && typeof live.open === "function") {
+          const live2 = roamPlexus2();
+          if (live2 && typeof live2.open === "function") {
             if (drawingEditorMounted(ref)) return;
             try {
-              live.open(ref, { sidebar: Boolean(sidebar) });
+              live2.open(ref, { sidebar: Boolean(sidebar) });
             } catch {
             }
             return;
@@ -29463,15 +29472,15 @@ function createItemRenderer({
       thumbnail: detail ? (opts) => {
         if (!interopAllowed()) return null;
         if (lod !== "detail" || rec.el.classList.contains("pxd-item--offscreen")) return null;
-        const live = regionWindow().RoamPlexus;
-        if (!ref || typeof live?.thumbnail !== "function") return null;
-        return live.thumbnail(ref, { maxWidth: opts?.maxWidth });
+        const live2 = regionWindow().RoamPlexus;
+        if (!ref || typeof live2?.thumbnail !== "function") return null;
+        return live2.thumbnail(ref, { maxWidth: opts?.maxWidth });
       } : void 0,
       open: ({ sidebar } = {}) => {
-        const live = regionWindow().RoamPlexus;
-        if (!ref || typeof live?.open !== "function") return;
+        const live2 = regionWindow().RoamPlexus;
+        if (!ref || typeof live2?.open !== "function") return;
         try {
-          live.open(ref, { region: true, sidebar: Boolean(sidebar) });
+          live2.open(ref, { region: true, sidebar: Boolean(sidebar) });
         } catch {
         }
       }
@@ -29779,36 +29788,36 @@ function createItemRenderer({
   const previewMove = (uids, dx, dy, board2, rects) => {
     const set = new Set(uids);
     for (const u of uids) for (const d of descendantsOf(board2, u)) set.add(d);
-    const live = /* @__PURE__ */ new Map();
+    const live2 = /* @__PURE__ */ new Map();
     for (const uid of set) {
       const rec = shells.get(uid);
       const r = rects.get(uid);
       if (!rec || !r) continue;
       const moved = { x: r.x + dx, y: r.y + dy, w: r.w, h: r.h };
       rec.el.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
-      live.set(uid, moved);
+      live2.set(uid, moved);
     }
-    return live;
+    return live2;
   };
   const previewRects = (list) => {
-    const live = /* @__PURE__ */ new Map();
+    const live2 = /* @__PURE__ */ new Map();
     for (const r of list) {
       const rec = shells.get(r.uid);
       if (!rec) continue;
       position(rec, { x: r.x, y: r.y, w: r.w, h: r.h });
-      live.set(r.uid, { x: r.x, y: r.y, w: r.w, h: r.h });
+      live2.set(r.uid, { x: r.x, y: r.y, w: r.w, h: r.h });
     }
-    return live;
+    return live2;
   };
   const previewSectionRects = (list) => {
-    const live = /* @__PURE__ */ new Map();
+    const live2 = /* @__PURE__ */ new Map();
     for (const r of list || []) {
       const rec = shells.get(r.uid);
       if (!rec || rec.type !== "section") continue;
       position(rec, { x: r.x, y: r.y, w: r.w, h: r.h });
-      live.set(r.uid, { x: r.x, y: r.y, w: r.w, h: r.h });
+      live2.set(r.uid, { x: r.x, y: r.y, w: r.w, h: r.h });
     }
-    return live;
+    return live2;
   };
   const resetRects = (rectsMap, uids = null) => {
     for (const uid of uids ? [...uids] : [...shells.keys()]) {
@@ -30598,18 +30607,18 @@ function createItemRenderer({
       rec.el.classList.add("pxd-item--bare");
     }
     if (!silent && !disposed) {
-      const live = lastBoard?.items.get(uid) || item;
-      if (live && shells.has(uid)) {
-        mountContent(rec, live);
-        paintShell(rec, live);
+      const live2 = lastBoard?.items.get(uid) || item;
+      if (live2 && shells.has(uid)) {
+        mountContent(rec, live2);
+        paintShell(rec, live2);
         mounted.set(uid, now2());
         renderBadges(rec);
       }
       onEditChange?.(null);
       const need2 = contentH + (["page", "board"].includes(item.kind) || item.collapsed ? HEADER_H : 0) + 20;
-      if (contentH > 0 && live && item.kind !== "page" && need2 > live.h) {
+      if (contentH > 0 && live2 && item.kind !== "page" && need2 > live2.h) {
         const grow = Math.min(GROW_CAP, need2);
-        if (grow > live.h) (onGrow || ((u, h) => session?.growToFit?.(u, h)))(uid, grow);
+        if (grow > live2.h) (onGrow || ((u, h) => session?.growToFit?.(u, h)))(uid, grow);
       }
     }
   };
@@ -30693,9 +30702,9 @@ function createItemRenderer({
       h.removeEventListener("pointerdown", stopEvent);
       h.removeEventListener("dblclick", stopEvent);
       const next = String(h.textContent || "").trim();
-      const live = lastBoard?.items.get(uid) || item;
-      h.textContent = live.title || "";
-      h.classList.toggle("pxd-item__header--muted", isUntitledBoard(live.title));
+      const live2 = lastBoard?.items.get(uid) || item;
+      h.textContent = live2.title || "";
+      h.classList.toggle("pxd-item__header--muted", isUntitledBoard(live2.title));
       if (commit && next !== seed) commitBoardName(uid, next);
     };
     const onKey = (event) => {
@@ -30753,8 +30762,8 @@ function createItemRenderer({
       h.removeEventListener("pointerdown", stopEvent);
       h.removeEventListener("dblclick", stopEvent);
       const next = String(h.textContent || "").trim();
-      const live = lastBoard?.items.get(uid) || item;
-      h.textContent = String(live.title || seed).slice(0, HEADER_TEXT_MAX);
+      const live2 = lastBoard?.items.get(uid) || item;
+      h.textContent = String(live2.title || seed).slice(0, HEADER_TEXT_MAX);
       if (commit && next && next !== seed) onRenamePage?.(seed, next);
     };
     const onKey = (event) => {
@@ -30820,8 +30829,8 @@ function createItemRenderer({
       if (!ref) continue;
       if (item.kind === "drawing-ref") {
         if (eventUid && ref !== eventUid) continue;
-        const live = shells.get(item.uid);
-        if (live && mounted.has(item.uid) && editing?.uid !== item.uid) {
+        const live2 = shells.get(item.uid);
+        if (live2 && mounted.has(item.uid) && editing?.uid !== item.uid) {
           unmountContent(item.uid);
           changed2 = true;
         }
@@ -32877,6 +32886,23 @@ init_parse();
 var PARSE_DOC_CAP = 50;
 var PARSE_IMAGE_CAP = 200 * 1024 * 1024;
 var META_KEY = "meta:lru";
+var storedListeners = /* @__PURE__ */ new Set();
+function subscribeParseStored(fn) {
+  if (typeof fn !== "function") return () => {
+  };
+  storedListeners.add(fn);
+  return () => {
+    storedListeners.delete(fn);
+  };
+}
+function notifyParseStored(doc) {
+  for (const fn of [...storedListeners]) {
+    try {
+      fn({ sha256: doc.sha256, engine: doc.engine });
+    } catch {
+    }
+  }
+}
 function parseKey(sha256, engine, optsHash) {
   return `${sha256}|${engine}|${optsHash}`;
 }
@@ -33165,6 +33191,7 @@ function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CA
           }
         }
         await saveMeta(meta);
+        notifyParseStored(stored);
         return stored;
       } catch {
         return null;
@@ -34858,13 +34885,13 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     }
     return MISS;
   };
-  const parentFromLive = (id, live) => {
-    const parents = live[":block/parents"];
+  const parentFromLive = (id, live2) => {
+    const parents = live2[":block/parents"];
     const list = Array.isArray(parents) ? parents : parents && typeof parents === "object" ? [parents] : [];
     for (const parent of list) {
       if (typeof parent?.[":block/string"] === "string") return parent[":block/string"];
     }
-    const rev = live[":block/_children"];
+    const rev = live2[":block/_children"];
     const first = Array.isArray(rev) ? rev[0] : rev;
     if (typeof first?.[":block/string"] === "string") return first[":block/string"];
     const key = `b:${id}`;
@@ -35274,8 +35301,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     pullTree(uid, depth = 2, limit = 12) {
       const id = String(uid ?? "");
-      const live = liveCached(id);
-      if (live && ":block/children" in live) return trimTree(live, depth, { left: limit });
+      const live2 = liveCached(id);
+      if (live2 && ":block/children" in live2) return trimTree(live2, depth, { left: limit });
       const burstKey = `tr:${id}\0${depth}\0${limit}`;
       const burst = readBurst(burstKey);
       if (burst !== MISS) return burst;
@@ -35422,8 +35449,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     // Anything else is memoised for one paint burst, so a repaint does not pull the same block 10 times.
     blockString(uid) {
       const id = String(uid ?? "");
-      const live = liveCached(id);
-      if (live && typeof live[":block/string"] === "string") return live[":block/string"];
+      const live2 = liveCached(id);
+      if (live2 && typeof live2[":block/string"] === "string") return live2[":block/string"];
       const hit = readBurst(id);
       if (hit !== MISS) return hit;
       const res = pull("[:block/string]", eidKey(uid));
@@ -35446,9 +35473,9 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
           out.set(id, null);
           continue;
         }
-        const live = liveCached(id);
-        if (live && typeof live[":block/string"] === "string") {
-          out.set(id, live[":block/string"]);
+        const live2 = liveCached(id);
+        if (live2 && typeof live2[":block/string"] === "string") {
+          out.set(id, live2[":block/string"]);
           continue;
         }
         const hit = burstMemo.get(id);
@@ -35484,10 +35511,10 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     // A warm descendant without its own :block/page shares the watched board's page.
     blockPageUid(uid) {
       const id = String(uid ?? "");
-      const live = liveCached(id);
-      if (live) {
-        if (":block/page" in live) {
-          const own = pageNodeOf(live)?.[":block/uid"];
+      const live2 = liveCached(id);
+      if (live2) {
+        if (":block/page" in live2) {
+          const own = pageNodeOf(live2)?.[":block/uid"];
           if (typeof own === "string" && own) return own;
         } else if (!cache.isRef(id)) {
           const boardPage = pageOfCoveringBoard(id);
@@ -35549,9 +35576,9 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     parentString(uid) {
       const id = String(uid ?? "");
-      const live = liveCached(id);
-      if (live) {
-        const found = parentFromLive(id, live);
+      const live2 = liveCached(id);
+      if (live2) {
+        const found = parentFromLive(id, live2);
         if (found !== MISS) return found;
       }
       const burst = readBurst(`ps:${id}`);
@@ -35841,8 +35868,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     pdfPageUrl(pageUid) {
       const uid = typeof pageUid === "string" ? pageUid : "";
       if (!uid) return "";
-      const live = liveCached(uid);
-      if (live && typeof live[":pdf/url"] === "string") return live[":pdf/url"];
+      const live2 = liveCached(uid);
+      if (live2 && typeof live2[":pdf/url"] === "string") return live2[":pdf/url"];
       const watched = watchedPdfUrl(uid);
       if (watched !== MISS) return watched;
       const burst = readBurst(`url:${uid}`);
@@ -37888,15 +37915,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     onBoard(host.pullBoard(uid));
   };
   syncHighlightWatches = () => {
-    const live = /* @__PURE__ */ new Set();
+    const live2 = /* @__PURE__ */ new Set();
     if (board2 && !destroyed) {
       for (const item of board2.items.values()) {
         if (item.kind !== "highlight") continue;
         const id = item.target?.uid;
-        if (typeof id !== "string" || id === "" || live.has(id)) continue;
+        if (typeof id !== "string" || id === "" || live2.has(id)) continue;
         if (typeof host.coversBlock === "function" && host.coversBlock(id)) continue;
-        if (live.size >= HIGHLIGHT_WATCH_CAP) break;
-        live.add(id);
+        if (live2.size >= HIGHLIGHT_WATCH_CAP) break;
+        live2.add(id);
         if (highlightWatches.has(id) || typeof host.watchBlock !== "function") continue;
         highlightWatches.set(id, () => {
         });
@@ -37928,7 +37955,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       }
     }
     for (const id of [...highlightWatches.keys()]) {
-      if (!live.has(id)) disposeHighlightWatch(id);
+      if (!live2.has(id)) disposeHighlightWatch(id);
     }
   };
   highlightWatchReady = true;
@@ -50628,7 +50655,7 @@ function uidOf2(result) {
   }
   return "";
 }
-async function makeHighlight({ block, live, pageEl, page, getContext, adoptCreated, toast } = {}) {
+async function makeHighlight({ block, live: live2, pageEl, page, getContext, adoptCreated, toast } = {}) {
   if (!block || block.type !== "para" && block.type !== "heading" && block.type !== "list" && block.type !== "caption" && block.type !== "footnote" && block.type !== "code") {
     return { path: "skip", reason: "not-text" };
   }
@@ -50651,7 +50678,7 @@ async function makeHighlight({ block, live, pageEl, page, getContext, adoptCreat
     }
   }
   const pageNode = typeof pageEl === "function" ? pageEl(block.page) : pageEl;
-  const doc = pageNode?.ownerDocument || live?.ownerDocument || null;
+  const doc = pageNode?.ownerDocument || live2?.ownerDocument || null;
   const spans = spansInBbox(pageNode, block.bbox, page);
   selectSpans(doc, spans);
   const layer = pageNode?.querySelector?.(".textLayer") || pageNode;
@@ -53845,9 +53872,9 @@ var INSTRUCTIONS = [
 ].join("\n");
 var DOC_INSTRUCTIONS = [
   "You are helping someone read a PDF as a whole.",
-  'Answer about the document as a whole. Use "Document outline" to locate things, and "Document text (opening pages)" for what the document says.',
+  'Answer about the document as a whole. Use "Document outline" to locate things, and "Relevant parts of the document" for what the document says.',
   "Cite pages as [p. N] using the page numbers shown in the context.",
-  "The provided text covers only the outline and the opening pages. When it does not cover something, say so instead of filling the gap from elsewhere.",
+  'The parts under "Relevant parts of the document" were chosen for the question and are not the whole document. When they do not cover something, say so instead of filling the gap from elsewhere.',
   "Refer to it as 'this document'; never mention section labels."
 ].join("\n");
 var DEFAULT_PROMPT = "Explain this part in plain language.";
@@ -54060,20 +54087,154 @@ function pageFocus(doc, ids, page) {
   }
   return parts.join("\n\n");
 }
-function openingText(doc, ids, budget) {
-  const parts = [];
-  let used = 0;
-  for (const id of ids) {
-    const b = doc.blocks[id];
-    if (b.type === "caption") continue;
-    const text3 = focusBody(doc, b);
-    if (!text3) continue;
-    const line = `[p. ${b.page}] ${clip5(text3, PARA_CLIP)}`;
-    if (used + line.length + 2 > budget) break;
-    parts.push(line);
-    used += line.length + 2;
+var STOPWORDS = new Set("a an and are as at be but by for from has have he her his how i if in into is it its of on or our she so than that the their them then there these they this to was we were what when where which who why will with you your do does did can could should would not no".split(" "));
+var GENERIC_WORDS = new Set("summarize summarise summary overview describe explain tell me about document pdf paper report file main key points point plain language simple simply words sentences sentence three five short brief briefly give list whole entire all".split(" "));
+function tokenize(text3) {
+  const out = [];
+  for (const w of String(text3 ?? "").toLowerCase().match(/[\p{L}\p{N}]+/gu) || []) {
+    if (w.length >= 2 && !STOPWORDS.has(w)) out.push(w);
   }
-  return parts.join("\n\n");
+  return out;
+}
+function isGenericQuestion(question) {
+  const words = tokenize(question);
+  return !words.length || words.every((w) => GENERIC_WORDS.has(w));
+}
+var TABLE_CLIP = 3e3;
+function retrievalParts(doc, ids) {
+  const blocks = doc.blocks;
+  const caps = /* @__PURE__ */ new Map();
+  const attached = /* @__PURE__ */ new Set();
+  for (const id of ids) {
+    const b = blocks[id];
+    if (b.type === "caption" && b.for && blocks[b.for] && !caps.has(b.for)) {
+      caps.set(b.for, squash3(b.text));
+      attached.add(id);
+    }
+  }
+  const parts = [];
+  ids.forEach((id, order) => {
+    if (attached.has(id)) return;
+    const b = blocks[id];
+    let cap4 = "";
+    if (b.type === "table" || b.type === "figure") {
+      cap4 = caps.get(id) || "";
+      if (!cap4 && typeof b.caption === "string") {
+        const hit = blocks[b.caption];
+        cap4 = squash3(hit ? hit.text : b.caption);
+      } else if (!cap4 && b.caption && typeof b.caption === "object") cap4 = squash3(b.caption.text);
+    }
+    const text3 = blockText2(b);
+    const scored = cap4 ? `${cap4} ${text3}` : text3;
+    if (!scored) return;
+    parts.push({ id, order, block: b, cap: cap4, tokens: tokenize(scored) });
+  });
+  return parts;
+}
+function bm25(parts, queryTokens) {
+  const k1 = 1.2;
+  const b = 0.75;
+  const uniq = [...new Set(queryTokens)];
+  const n2 = parts.length;
+  const df = new Map(uniq.map((t) => [t, 0]));
+  let total = 0;
+  const tfs = parts.map((part) => {
+    total += part.tokens.length;
+    const tf = /* @__PURE__ */ new Map();
+    for (const t of part.tokens) if (df.has(t)) tf.set(t, (tf.get(t) || 0) + 1);
+    for (const t of tf.keys()) df.set(t, df.get(t) + 1);
+    return tf;
+  });
+  const avg = total / Math.max(1, n2);
+  return parts.map((part, i) => {
+    const tf = tfs[i];
+    if (!tf.size) return 0;
+    const len = part.tokens.length;
+    let score = 0;
+    for (const [t, f] of tf) {
+      const d = df.get(t);
+      const idf = Math.log(1 + (n2 - d + 0.5) / (d + 0.5));
+      score += idf * (f * (k1 + 1) / (f + k1 * (1 - b + b * (len / avg))));
+    }
+    return score;
+  });
+}
+function renderPart(part) {
+  const b = part.block;
+  const kind = KIND_NAMES[b.type] || "Block";
+  let body = focusBody(null, b);
+  if (b.type === "table") {
+    const md = tableToMarkdown(b);
+    body = [part.cap ? `Caption: ${part.cap}` : "", md || "(table with no readable cells)"].filter(Boolean).join("\n");
+  } else if (b.type === "figure") {
+    const inner = squash3(b.text);
+    body = [`Figure caption: ${part.cap || "(none)"}`, inner && inner !== part.cap ? `Text inside the figure: ${inner}` : ""].filter(Boolean).join("\n");
+  }
+  return `${kind} [p. ${b.page}] ${clip5(body, b.type === "table" ? TABLE_CLIP : PARA_CLIP)}`;
+}
+function relevantParts(doc, ids, question, budget) {
+  const parts = retrievalParts(doc, ids);
+  if (!parts.length) return "";
+  const rendered = /* @__PURE__ */ new Map();
+  const line = (part) => {
+    let text3 = rendered.get(part.id);
+    if (text3 == null) {
+      text3 = renderPart(part);
+      rendered.set(part.id, text3);
+    }
+    return text3;
+  };
+  const picked = /* @__PURE__ */ new Set();
+  let used = 0;
+  const take = (part, force = false) => {
+    if (picked.has(part.id)) return true;
+    const text3 = line(part);
+    if (!force && used + text3.length + 2 > budget) return false;
+    picked.add(part.id);
+    used += text3.length + 2;
+    return true;
+  };
+  const firstHeading = parts.find((p) => p.block.type === "heading");
+  if (firstHeading) take(firstHeading);
+  const firstPara = parts.find((p) => p.block.type === "para");
+  if (firstPara) take(firstPara);
+  const abstractAt = parts.findIndex((p) => p.block.type === "heading" && /^\s*(abstract|summary|executive summary)\b/i.test(p.block.text || ""));
+  if (abstractAt >= 0) {
+    const next = parts.slice(abstractAt + 1).find((p) => p.block.type === "para");
+    if (next) take(next);
+  }
+  const generic = isGenericQuestion(question);
+  if (!generic) {
+    const scores = bm25(parts, tokenize(question));
+    const ranked = parts.map((part, i) => ({ part, score: scores[i] })).filter((r) => r.score > 0).sort((x, y) => y.score - x.score || x.part.order - y.part.order);
+    for (const { part } of ranked) {
+      if (picked.has(part.id)) continue;
+      take(part);
+      if (used >= budget - 80) break;
+    }
+  }
+  if (generic || picked.size <= 3) {
+    const headLevels = parts.filter((p) => p.block.type === "heading").map((p) => Math.max(1, Number(p.block.level) || 1));
+    const top = headLevels.length ? Math.min(...headLevels) : 1;
+    const topLevel = top === 1 && headLevels.filter((l) => l === 1).length <= 1 ? 2 : top;
+    let afterTop = false;
+    for (const part of parts) {
+      const b = part.block;
+      if (b.type === "heading") afterTop = (Number(b.level) || 1) <= topLevel;
+      else if (afterTop && (b.type === "para" || b.type === "list")) {
+        take(part);
+        afterTop = false;
+      }
+    }
+    for (const part of parts) {
+      if (part.block.type === "table" || part.block.type === "figure") take(part);
+    }
+    for (const part of parts) {
+      if (used >= budget - 80) break;
+      if (part.block.type !== "caption") take(part);
+    }
+  }
+  return parts.filter((p) => picked.has(p.id)).map(line).join("\n\n");
 }
 function buildFocusContext(doc, focus = {}, opts = {}) {
   const outlineCap = (Number(opts.outlineTokens) > 0 ? Number(opts.outlineTokens) : OUTLINE_TOKEN_CAP) * CHARS_PER_TOKEN;
@@ -54112,7 +54273,7 @@ ${focusBody(safe, block)}`;
   } else if (page != null) {
     focusText = pageFocus(safe, ids, page);
   } else if (wholeDoc) {
-    focusText = openingText(safe, ids, Math.max(400, cap4 - outlineCap - 1e3));
+    focusText = relevantParts(safe, ids, opts.question ?? focus.question ?? "", Math.max(400, cap4 - outlineCap - 1e3));
   }
   const chain = block ? sectionChain(safe, ids, index) : [];
   const sectionText = chain.length ? `${chain.map((h) => h.text).join(" > ")} (starts p. ${chain[chain.length - 1].page})` : "(before the first heading, or no headings found)";
@@ -54121,7 +54282,7 @@ ${focusBody(safe, block)}`;
   const section2 = `${header("Section")}
 ${sectionText}`;
   const focusHead = block ? `${header("Selected part")}
-(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})` : wholeDoc ? `${header("Document text (opening pages)")}` : `${header("Selected part")}
+(${KIND_NAMES[block.type] || "Block"}, p. ${block.page})` : wholeDoc ? `${header("Relevant parts of the document")}` : `${header("Selected part")}
 (${page != null ? `page ${page}` : "no part found"})`;
   const fixedChars = section2.length + focusHead.length + 400;
   const focusRoom = Math.max(400, cap4 - fixedChars - 200);
@@ -54427,7 +54588,17 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   const hasBlocks = parsed && parsed.blocks && Object.keys(parsed.blocks).length;
   const source = hasBlocks ? parsed : selection ? selectionDoc({ text: selection, page: Number.isInteger(page) ? page : 1 }) : parsed;
   const focus = hasBlocks ? { ...blockId ? { blockId } : {}, ...blockIds ? { blockIds } : {}, ...selection ? { selection } : {}, ...page != null ? { page } : {}, ...wholeDoc ? { wholeDoc: true } : {} } : { blockId: "sel", selection };
-  const built = buildFocusContext(source, focus);
+  let built = buildFocusContext(source, focus);
+  const isWhole = Boolean(wholeDoc) && !focus.blockId && !focus.blockIds && !focus.selection && focus.page == null && hasBlocks;
+  let builtFor = built.prompt;
+  const rebuild = (question) => {
+    if (!isWhole) return;
+    const q = String(question ?? "").trim();
+    if (q === builtFor) return;
+    builtFor = q;
+    built = buildFocusContext(source, focus, { question: q });
+    chip.textContent = chipText2(built.chip);
+  };
   const root = make(dom, "div", "pxd-ask", null);
   root.setAttribute("role", "dialog");
   root.setAttribute("aria-label", "Ask AI");
@@ -54461,6 +54632,7 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
   let status = null;
   let actions = null;
   const refreshPreview = () => {
+    rebuild(textarea ? textarea.value : prompt.text);
     preview.textContent = `${previewText({ instructions: built.instructions, context: built.context, prompt: textarea ? textarea.value : prompt.text })}
 
 (about ${built.tokensEstimate.toLocaleString?.() ?? built.tokensEstimate} tokens before the question)`;
@@ -54498,6 +54670,7 @@ function openAskAI({ doc: parsed = null, blockId = "", selection = "", page = nu
       status.textContent = "Type a question first.";
       return;
     }
+    rebuild(question);
     ctl = typeof win2.AbortController === "function" ? new win2.AbortController() : new AbortController();
     token += 1;
     const mine = token;
@@ -58463,7 +58636,7 @@ function createReadPane({
   setHidden2(progress, true);
   const progressFill = el("div", "pxd-read__progressfill", progress);
   const stage = el("div", "pxd-read__stage", pane);
-  const live = el("div", "pxd-read__live", stage);
+  const live2 = el("div", "pxd-read__live", stage);
   const pill = el("div", "pxd-read__pill", stage);
   pill.setAttribute("role", "toolbar");
   pill.setAttribute("aria-label", "Reader");
@@ -58494,7 +58667,7 @@ function createReadPane({
   barHandle.textContent = "⠿";
   barHandle.setAttribute("aria-label", "Drag to the board");
   barHandle.setAttribute("data-tip", "read.sel.drag");
-  const textLayer = createTextLayer({ doc, readerEl: live });
+  const textLayer = createTextLayer({ doc, readerEl: live2 });
   let colorSel = null;
   let pageFilt = null;
   let snipFilt = null;
@@ -58604,15 +58777,15 @@ function createReadPane({
     disarm2();
     detachReaderWatch();
     try {
-      host?.unmount?.(live);
+      host?.unmount?.(live2);
     } catch {
     }
-    live.replaceChildren?.();
+    live2.replaceChildren?.();
     liveBlock = "";
   };
   const readerField = () => {
-    const bar2 = live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
-    const boxed = live.querySelector?.(".rm-pdf-container");
+    const bar2 = live2.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
+    const boxed = live2.querySelector?.(".rm-pdf-container");
     const pool = bar2?.querySelectorAll ? [...bar2.querySelectorAll("input")] : [];
     const inputs = pool.length ? pool : [...boxed?.querySelectorAll?.("input") || []];
     const named = inputs.find((node2) => node2.classList?.contains?.("bp3-input") && /^\d+$/.test(String(node2.value || "").trim()));
@@ -58657,7 +58830,7 @@ function createReadPane({
     holdImg = null;
   };
   const pagePainted = () => {
-    const nodes = live.querySelectorAll?.(".rm-pdf-container canvas, .page canvas, canvas") || [];
+    const nodes = live2.querySelectorAll?.(".rm-pdf-container canvas, .page canvas, canvas") || [];
     for (const node2 of nodes) {
       const box2 = node2.getBoundingClientRect?.();
       const w = Number(node2.width) || Number(box2?.width) || 0;
@@ -58689,7 +58862,7 @@ function createReadPane({
     holdWait = later(tick, 150);
   };
   const readerScale = () => {
-    const viewer = viewerFromFiber(fiberOf(live.querySelector?.(".PdfHighlighter")));
+    const viewer = viewerFromFiber(fiberOf(live2.querySelector?.(".PdfHighlighter")));
     if (!viewer) return null;
     const value = viewer.currentScaleValue;
     const scale = Number(viewer.currentScale);
@@ -58735,7 +58908,7 @@ function createReadPane({
       pageWait = null;
       if (gen !== pageGen || !openFlag) return;
       const input = readerField();
-      const ready = input && live.querySelector?.(".rm-pdf-container .page");
+      const ready = input && live2.querySelector?.(".rm-pdf-container .page");
       if (!ready) {
         if (Date.now() - started < 5e3) pageWait = later(tick, 100);
         else finish();
@@ -58756,11 +58929,11 @@ function createReadPane({
   };
   const mountReader = (blockUid2) => {
     if (!blockUid2) return false;
-    if (liveBlock === blockUid2 && live.querySelector?.(".rm-pdf-container")) return false;
+    if (liveBlock === blockUid2 && live2.querySelector?.(".rm-pdf-container")) return false;
     clearLive();
     liveBlock = blockUid2;
     try {
-      host?.renderBlock?.(live, blockUid2);
+      host?.renderBlock?.(live2, blockUid2);
     } catch {
     }
     try {
@@ -59146,7 +59319,7 @@ function createReadPane({
     armedUid = "";
     armedHighlight = null;
     armedPart = null;
-    live.classList?.remove("pxd-read__live--overmark");
+    live2.classList?.remove("pxd-read__live--overmark");
   };
   const armTarget = (node2, found, part) => {
     if (!node2 || !found?.uid) {
@@ -59166,7 +59339,7 @@ function createReadPane({
       node2.setAttribute?.("draggable", "true");
     } catch {
     }
-    live.classList?.add("pxd-read__live--overmark");
+    live2.classList?.add("pxd-read__live--overmark");
   };
   const pointIn = (rect, x, y) => {
     if (!rect) return false;
@@ -59192,7 +59365,7 @@ function createReadPane({
     }
     return hit;
   };
-  const readerContext = () => highlighterContext(live.querySelector?.(".PdfHighlighter"));
+  const readerContext = () => highlighterContext(live2.querySelector?.(".PdfHighlighter"));
   const selectionBusy = () => {
     const ctx = readerContext();
     if (!ctx || typeof ctx.isSelectionInProgress !== "function") return false;
@@ -59218,7 +59391,7 @@ function createReadPane({
     lastMove = null;
     if (!move || dragging) return;
     const target = move.target;
-    if (!target || !live.contains?.(target)) {
+    if (!target || !live2.contains?.(target)) {
       disarm2();
       return;
     }
@@ -59227,7 +59400,7 @@ function createReadPane({
       return;
     }
     const page = typeof target.closest === "function" ? target.closest(".page") : null;
-    if (!page || !live.contains?.(page)) {
+    if (!page || !live2.contains?.(page)) {
       disarm2();
       return;
     }
@@ -59404,7 +59577,7 @@ function createReadPane({
     }
   };
   const selectionUnder = (x, y) => {
-    const info = selectionInReader(selectionOf(), live);
+    const info = selectionInReader(selectionOf(), live2);
     if (!info?.range) return null;
     let rects = [];
     try {
@@ -59553,7 +59726,7 @@ function createReadPane({
     const node2 = sel.anchorNode || sel.focusNode;
     if (!node2) return;
     const el2 = node2.nodeType === 1 ? node2 : node2.parentElement;
-    if (!el2 || !live.contains?.(el2)) return;
+    if (!el2 || !live2.contains?.(el2)) return;
     try {
       sel.removeAllRanges();
     } catch {
@@ -59593,13 +59766,13 @@ function createReadPane({
     setHidden2(bar, true);
   }
   const tipRect = () => {
-    const tip = live.querySelector?.(".PdfHighlighter__tip-container");
+    const tip = live2.querySelector?.(".PdfHighlighter__tip-container");
     const r = rectOf6(tip);
     return r && r.right > r.left && r.bottom > r.top ? r : null;
   };
   const placeBar = () => {
     if (!openFlag || dragging) return;
-    const info = selectionInReader(selectionOf(), live);
+    const info = selectionInReader(selectionOf(), live2);
     if (!info || !info.rect) {
       hideBar();
       return;
@@ -59717,7 +59890,7 @@ function createReadPane({
   };
   const flashFrac = (frac) => {
     const style = fracStyle(frac);
-    const page = live.querySelector?.(".rm-pdf-container .page") || live.querySelector?.(".page");
+    const page = live2.querySelector?.(".rm-pdf-container .page") || live2.querySelector?.(".page");
     if (!style || !page) return;
     clearFlash();
     const mark = doc.createElement("div");
@@ -59752,7 +59925,7 @@ function createReadPane({
     }, FLASH_MS);
   };
   const fallbackScroll = (part) => {
-    const scroller = live.querySelector?.(".PdfHighlighter");
+    const scroller = live2.querySelector?.(".PdfHighlighter");
     if (!scroller || !part) return;
     let mark = null;
     let view2 = null;
@@ -59774,7 +59947,7 @@ function createReadPane({
     scroller.scrollTop = Math.max(0, next);
   };
   const partsFor = (uid) => {
-    const nodes = live.querySelectorAll?.(PDF_MARK) || [];
+    const nodes = live2.querySelectorAll?.(PDF_MARK) || [];
     const parts = [];
     let highlight = null;
     for (const node2 of nodes) {
@@ -59788,7 +59961,7 @@ function createReadPane({
   const locateHighlight = (uid) => {
     if (!openFlag || typeof uid !== "string" || uid === "") return;
     const { parts, highlight: fromMark } = partsFor(uid);
-    const highlight = fromMark || highlightById(fiberOf(live.querySelector?.(".PdfHighlighter")), uid);
+    const highlight = fromMark || highlightById(fiberOf(live2.querySelector?.(".PdfHighlighter")), uid);
     if (!highlight && !parts.length) return;
     let scrolled = false;
     const ctx = readerContext();
@@ -59866,7 +60039,7 @@ function createReadPane({
     pane.classList.toggle("pxd-read--tools", toolsOn || searchHold);
   };
   const totalCandidates = (input) => {
-    const bar2 = input?.closest?.(".rm-pdf-toolbar") || live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
+    const bar2 = input?.closest?.(".rm-pdf-toolbar") || live2.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
     const out = [];
     const push = (node2) => {
       if (!node2 || node2 === input) return;
@@ -59904,14 +60077,14 @@ function createReadPane({
     if (total != null && next > total) return;
     jumpPage(next);
   };
-  const toolbarEl = () => live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
+  const toolbarEl = () => live2.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
   const toolbarButtons = () => {
     const bar2 = toolbarEl();
     if (!bar2?.querySelectorAll) return [];
     return [...bar2.querySelectorAll("button")];
   };
   const searchInput = () => {
-    const box2 = live.querySelector?.(".rm-pdf-container");
+    const box2 = live2.querySelector?.(".rm-pdf-container");
     const inputs = [...box2?.querySelectorAll?.("input") || []];
     const page = readerField();
     return inputs.find((node2) => node2 !== page) || null;
@@ -59958,7 +60131,7 @@ function createReadPane({
     const parts = pageParts();
     const source = current3.source || "";
     try {
-      onSnapshot(live, {
+      onSnapshot(live2, {
         as,
         page: parts.page,
         pageCount: parts.total,
@@ -60049,7 +60222,7 @@ function createReadPane({
   };
   const noteSettled = () => {
     if (settleNoted || !openFlag) return;
-    if (!live.querySelector?.(".rm-pdf-container .page")) return;
+    if (!live2.querySelector?.(".rm-pdf-container .page")) return;
     settleNoted = true;
     paintPill();
     attachReaderWatch();
@@ -60063,7 +60236,7 @@ function createReadPane({
     fitGen += 1;
   };
   const paintedCanvas2 = () => {
-    const nodes = live.querySelectorAll?.(".page canvas") || [];
+    const nodes = live2.querySelectorAll?.(".page canvas") || [];
     for (const node2 of nodes) {
       const backing = Number(node2?.width);
       if (Number.isFinite(backing) && backing > 0) return true;
@@ -60078,8 +60251,8 @@ function createReadPane({
     return false;
   };
   const fitGeom = () => {
-    const scroller = live.querySelector?.(".PdfHighlighter") || live.querySelector?.(".rm-pdf-viewer-container");
-    const page = live.querySelector?.(".page");
+    const scroller = live2.querySelector?.(".PdfHighlighter") || live2.querySelector?.(".rm-pdf-viewer-container");
+    const page = live2.querySelector?.(".page");
     if (!scroller || !page) return null;
     let pageW = 0;
     let viewW = 0;
@@ -60169,7 +60342,7 @@ function createReadPane({
         return;
       }
       const hasButtons = Boolean(pillActions(toolbarButtons()).zoomIn);
-      const viewer = viewerFromFiber(fiberOf(live.querySelector?.(".PdfHighlighter")));
+      const viewer = viewerFromFiber(fiberOf(live2.querySelector?.(".PdfHighlighter")));
       if (!fitDecision({ userZoomed, hasFit: Boolean(viewer) || hasButtons, settled: true })) {
         fitDone = true;
         return;
@@ -60209,7 +60382,7 @@ function createReadPane({
     const tick = () => {
       settleTimer = null;
       if (gen !== settleGen || !openFlag) return;
-      if (live.querySelector?.(".rm-pdf-container .page")) {
+      if (live2.querySelector?.(".rm-pdf-container .page")) {
         noteSettled();
         return;
       }
@@ -60289,7 +60462,7 @@ function createReadPane({
       stage.style.flex = "1 1 auto";
       stage.style.minHeight = "0";
     }
-    if (live?.style) live.style.minHeight = "0";
+    if (live2?.style) live2.style.minHeight = "0";
     if (drawerMount?.style) {
       drawerMount.style.flex = "0 0 auto";
       drawerMount.style.minHeight = "";
@@ -60370,17 +60543,17 @@ function createReadPane({
   listen(pane, "dragover", onDragOver);
   listen(pane, "drop", onDrop);
   listen(pane, "dragend", endPdfDrag);
-  listen(live, "scroll", onReaderScroll, true);
-  listen(live, "pointermove", onPointerMove, { capture: true, passive: true });
-  listen(live, "pointerleave", onLiveLeave);
-  listen(live, "pointerdown", onLiveDown);
-  listen(live, "mousedown", onLiveMouseDown, true);
-  listen(live, "mouseup", onLiveMouseUp);
+  listen(live2, "scroll", onReaderScroll, true);
+  listen(live2, "pointermove", onPointerMove, { capture: true, passive: true });
+  listen(live2, "pointerleave", onLiveLeave);
+  listen(live2, "pointerdown", onLiveDown);
+  listen(live2, "mousedown", onLiveMouseDown, true);
+  listen(live2, "mouseup", onLiveMouseUp);
   listen(drawerMount, "pointerdown", onDrawerDown, true);
   listen(bar, "click", onSelBarClick);
   listen(bar, "mousedown", onSelBarMouseDown);
   listen(barHandle, "pointerdown", onBarHandleDown);
-  listen(live, "dragstart", onMarkDrag);
+  listen(live2, "dragstart", onMarkDrag);
   if (root) listen(root, "drop", clearDragClass);
   listen(list, "click", onListClick);
   listen(list, "dragstart", onListDrag);
@@ -60491,7 +60664,7 @@ function createReadPane({
   };
   const readerPdf = () => {
     try {
-      const fiber = fiberOf(live.querySelector?.(".PdfHighlighter"));
+      const fiber = fiberOf(live2.querySelector?.(".PdfHighlighter"));
       return viewerFromFiber(fiber)?.pdfDocument || pdfDocumentFromFiber(fiber);
     } catch {
       return null;
@@ -60499,7 +60672,7 @@ function createReadPane({
   };
   const getPdf = async () => readerPdf();
   const pageElement = (n2) => {
-    const pages = live.querySelectorAll?.(".page") || [];
+    const pages = live2.querySelectorAll?.(".page") || [];
     for (const node2 of pages) {
       if (Number(node2.getAttribute?.("data-page-number")) === Number(n2)) return node2;
     }
@@ -60730,7 +60903,7 @@ function createReadPane({
           return;
         }
       }
-      if (live.querySelector?.(".rm-pdf-container")) await waitReaderPdf(bgGen);
+      if (live2.querySelector?.(".rm-pdf-container")) await waitReaderPdf(bgGen);
       const t0 = Date.now();
       const before = ocrGot;
       ocrRun = { state: "running", source, ms: 0, progress: null };
@@ -60895,7 +61068,7 @@ function createReadPane({
       jumpPage,
       pageNow: () => Number(String(readerField()?.value || "").trim()) || 1,
       pageEl: pageElement,
-      readerEl: live,
+      readerEl: live2,
       onToast: (message) => {
         try {
           host?.toast?.(message);
@@ -61025,7 +61198,7 @@ function createReadPane({
       drawer?.close?.();
     } catch {
     }
-    if (viewMode === "both" && pane.classList.contains("pxd-read--narrow") && !live.querySelector?.(".rm-pdf-container")) {
+    if (viewMode === "both" && pane.classList.contains("pxd-read--narrow") && !live2.querySelector?.(".rm-pdf-container")) {
       settleNoted = false;
       mountReader(current3.blockUid);
       armSettle();
@@ -61066,7 +61239,7 @@ function createReadPane({
     event.stopPropagation?.();
     narrowTab = narrowTab === "outline" ? "page" : "outline";
     applyModeClass();
-    if (narrowTab === "outline" && !live.querySelector?.(".rm-pdf-container")) {
+    if (narrowTab === "outline" && !live2.querySelector?.(".rm-pdf-container")) {
       settleNoted = false;
       mountReader(current3.blockUid);
       armSettle();
@@ -62686,7 +62859,7 @@ function createPdfFlip({ doc, win: win2, lib = null, timers = null, urlOf = null
     wheelNode = null;
     wheelFn = null;
   };
-  const detach2 = () => {
+  const detach3 = () => {
     unwheel();
     try {
       layer?.remove?.();
@@ -62731,7 +62904,7 @@ function createPdfFlip({ doc, win: win2, lib = null, timers = null, urlOf = null
     currentUrl = "";
     page = 1;
     total = 1;
-    detach2();
+    detach3();
     destroyQuiet(oldTask);
     destroyQuiet(oldPdf);
     announce(false);
@@ -62748,7 +62921,7 @@ function createPdfFlip({ doc, win: win2, lib = null, timers = null, urlOf = null
   const mount = (paper) => {
     if (!doc || typeof doc.createElement !== "function" || !paper) return;
     if (host === paper && layer && canvas) return;
-    detach2();
+    detach3();
     host = paper;
     layer = doc.createElement("div");
     layer.className = "pxd-pdf-flip";
@@ -62901,7 +63074,7 @@ function createPdfFlip({ doc, win: win2, lib = null, timers = null, urlOf = null
       loading = false;
       currentUid2 = "";
       currentUrl = "";
-      detach2();
+      detach3();
       announce(false);
       return;
     }
@@ -68102,12 +68275,12 @@ function inkProjection(mask, pageW, pageH, box2) {
       }
     }
   }
-  const live = h - ruleRow.reduce((s, v) => s + v, 0);
+  const live2 = h - ruleRow.reduce((s, v) => s + v, 0);
   for (let x = 0; x < w; x++) {
-    if (cols[x] >= 0.92 * live && live >= 6) {
+    if (cols[x] >= 0.92 * live2 && live2 >= 6) {
       const left = x > 0 ? cols[x - 1] : 0;
       const right = x < w - 1 ? cols[x + 1] : 0;
-      if (left < 0.6 * live || right < 0.6 * live) cols[x] = 0;
+      if (left < 0.6 * live2 || right < 0.6 * live2) cols[x] = 0;
     }
   }
   let top = -1;
@@ -69766,6 +69939,23 @@ function scheduleTitleLexiconWarm({ win: win2, hasPdf, ocr, isDisposed, onWarm, 
 init_pdf();
 init_parts_search();
 var PLAIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
+var live = /* @__PURE__ */ new Set();
+var offStored = null;
+function attach2(index) {
+  live.add(index);
+  if (!offStored) {
+    offStored = subscribeParseStored((info) => {
+      for (const one of [...live]) one.parseStored(info);
+    });
+  }
+}
+function detach2(index) {
+  live.delete(index);
+  if (!live.size && offStored) {
+    offStored();
+    offStored = null;
+  }
+}
 function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS } = {}) {
   const perDoc = /* @__PURE__ */ new Map();
   let rows = null;
@@ -69807,7 +69997,8 @@ function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS } = {}
     if (mine === epoch) rows = out;
     return out;
   };
-  return {
+  const changed2 = /* @__PURE__ */ new Set();
+  const index = {
     async get() {
       if (rows) return rows;
       if (!building) building = build().finally(() => {
@@ -69819,8 +70010,33 @@ function createPartsIndex({ store, listPdfs, plainOptions = PLAIN_OPTIONS } = {}
       epoch += 1;
       rows = null;
     },
-    size: () => rows ? rows.length : 0
+    size: () => rows ? rows.length : 0,
+    // A parse was just stored: drop that sha's cached rows and the merged rows; the next get() rebuilds.
+    parseStored({ sha256 } = {}) {
+      if (sha256) {
+        for (const key of [...perDoc.keys()]) if (key.startsWith(`${sha256}|`)) perDoc.delete(key);
+      }
+      index.invalidate();
+      for (const fn of [...changed2]) {
+        try {
+          fn({ sha256 });
+        } catch {
+        }
+      }
+    },
+    onChange(fn) {
+      changed2.add(fn);
+      return () => {
+        changed2.delete(fn);
+      };
+    },
+    dispose() {
+      detach2(index);
+      changed2.clear();
+    }
   };
+  attach2(index);
+  return index;
 }
 
 // src/view/board-view.js
@@ -70973,7 +71189,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     let page = startPage(spec?.page, 0);
     let total = 0;
     let seq = 0;
-    let live = true;
+    let live2 = true;
     const paint2 = () => {
       pages.textContent = total ? `${page} / ${total}` : "";
       prev.disabled = page <= 1;
@@ -70989,7 +71205,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
       } catch {
         return;
       }
-      if (!live || mine !== seq || !proxy) return;
+      if (!live2 || mine !== seq || !proxy) return;
       let base = null;
       try {
         base = proxy.getViewport({ scale: 1 });
@@ -71048,7 +71264,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     const keyTarget = win2 || doc;
     keyTarget.addEventListener("keydown", onKey, true);
     pdfOff = () => {
-      live = false;
+      live2 = false;
       keyTarget.removeEventListener("keydown", onKey, true);
       try {
         render?.cancel?.();
@@ -71081,7 +71297,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
           got = null;
         }
       }
-      if (!live) return;
+      if (!live2) return;
       if (!got) {
         try {
           pdfOff?.();
@@ -72058,9 +72274,9 @@ var rgbOf = (value) => {
 function pdfClickShield(target) {
   return Boolean(target?.closest?.(".pxd-pdf-live"));
 }
-function pdfEscapeAction({ live, fullscreen } = {}) {
+function pdfEscapeAction({ live: live2, fullscreen } = {}) {
   if (fullscreen) return "native";
-  if (live) return "end-interact";
+  if (live2) return "end-interact";
   return "pass";
 }
 var CONTEXTS_QUERY = '[:find ?u ?s ?pt ?t ?ps :in $ ?uid :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/uid ?u] [?b :block/string ?s] [?b :create/time ?t] [?b :block/page ?pg] [?pg :node/title ?pt] [?b :block/parents ?p] [?p :block/children ?b] [(get-else $ ?p :block/string "") ?ps]]';
@@ -72331,8 +72547,8 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
       box2.setAttribute("data-uid", row4.uid || "");
       box2.addEventListener("change", () => {
         if (row4.placed) return;
-        const live = rowsState.find((item) => item.uid === row4.uid);
-        if (live && live.placed !== true) live.selected = box2.checked === true;
+        const live2 = rowsState.find((item) => item.uid === row4.uid);
+        if (live2 && live2.placed !== true) live2.selected = box2.checked === true;
       });
       const bar = doc.createElement("span");
       bar.className = "pxd-hl-bar";
@@ -72897,9 +73113,9 @@ function buildBoardView(onFail, {
     if (!prev || !outlineHost) return;
     for (const row4 of [...outlineHost.children]) {
       if (!row4.querySelector?.(".pxd-embed-live")) continue;
-      const live = row4.querySelector(".pxd-rs__live");
+      const live2 = row4.querySelector(".pxd-rs__live");
       try {
-        if (live) host?.unmount?.(live);
+        if (live2) host?.unmount?.(live2);
       } catch {
       }
       outlined.delete(row4);
@@ -72924,9 +73140,9 @@ function buildBoardView(onFail, {
     for (const row4 of [...outlineHost.children]) {
       const heavies = outlineHeavies(row4.dataset?.uid);
       const hit = heavies.some((poster) => (poster.uid || row4.dataset?.uid) === uid);
-      const live = row4.querySelector?.(".pxd-embed-live");
-      if (!hit && !live) continue;
-      const node2 = live?.querySelector?.(".pxd-rs__live");
+      const live2 = row4.querySelector?.(".pxd-embed-live");
+      if (!hit && !live2) continue;
+      const node2 = live2?.querySelector?.(".pxd-rs__live");
       try {
         if (node2) host?.unmount?.(node2);
       } catch {
@@ -72958,9 +73174,9 @@ function buildBoardView(onFail, {
           const liveWrap = el("div", "pxd-embed-poster pxd-embed-live", row4);
           liveWrap.setAttribute("data-pxd-embed", mount);
           if (poster.kind) liveWrap.setAttribute("data-kind", poster.kind);
-          const live = el("div", "pxd-rs__live", liveWrap);
+          const live2 = el("div", "pxd-rs__live", liveWrap);
           try {
-            host?.renderBlock?.(live, mount);
+            host?.renderBlock?.(live2, mount);
           } catch {
           }
         } else {
@@ -72993,9 +73209,9 @@ function buildBoardView(onFail, {
       dropEmbedPoster(node2);
     }
     const h = rowHeight(row4);
-    const live = row4.querySelector?.(".pxd-rs__live");
+    const live2 = row4.querySelector?.(".pxd-rs__live");
     try {
-      if (live) host?.unmount?.(live);
+      if (live2) host?.unmount?.(live2);
     } catch {
     }
     try {
@@ -73631,8 +73847,8 @@ function buildBoardView(onFail, {
     onPlace: (row4) => {
       const items = [...board2()?.items.values() || []];
       const card2 = board2()?.items.get(readPane?.cardUid?.() || "");
-      const live = card2 ? rects().get(card2.uid) || { x: card2.x, y: card2.y, w: card2.w, h: card2.h } : null;
-      const decision = placeDecision(row4, items, originBeside(live));
+      const live2 = card2 ? rects().get(card2.uid) || { x: card2.x, y: card2.y, w: card2.w, h: card2.h } : null;
+      const decision = placeDecision(row4, items, originBeside(live2));
       if (decision.kind === "pulse") {
         if (decision.uid) pulseItem(decision.uid);
         return;
@@ -74131,8 +74347,8 @@ function buildBoardView(onFail, {
       pageUrl = "";
     }
     if (coverKey(pageUrl) !== pdfUrl) return;
-    const live = root.querySelector?.(".pxd-read__live");
-    const nodes = live?.querySelectorAll?.(PDF_MARK) || [];
+    const live2 = root.querySelector?.(".pxd-read__live");
+    const nodes = live2?.querySelectorAll?.(PDF_MARK) || [];
     for (const node2 of nodes) {
       let found = null;
       try {
@@ -75562,19 +75778,19 @@ function buildBoardView(onFail, {
       snapshots: b.snapshots || [],
       motion: setting("motion", "full"),
       onFrame(frame) {
-        const live = board2();
-        if (!live) return;
+        const live2 = board2();
+        if (!live2) return;
         laneMarks = { future: new Set(frame.future), fresh: new Set(frame.fresh) };
         applyLaneMarks();
         edgesR.setLaneHidden?.(frame.hiddenEdges);
-        updateLaneEdges(live);
+        updateLaneEdges(live2);
       },
       onPreview(preview) {
-        const live = board2();
+        const live2 = board2();
         lanePreview = true;
         lanePreviewLayout = preview.layout;
         applyLaneMarks();
-        if (live) updateLaneEdges(live);
+        if (live2) updateLaneEdges(live2);
       }
     });
   };
@@ -76751,13 +76967,13 @@ function buildBoardView(onFail, {
         if (!item || item.kind !== "image") break;
         const api2 = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
         if (typeof api2?.create !== "function") break;
-        const live = rects().get(item.uid);
+        const live2 = rects().get(item.uid);
         const plan = annotatePlan({
           uid: item.uid,
-          x: live?.x ?? item.x,
-          y: live?.y ?? item.y,
-          w: live?.w ?? item.w,
-          h: live?.h ?? item.h
+          x: live2?.x ?? item.x,
+          y: live2?.y ?? item.y,
+          w: live2?.w ?? item.w,
+          h: live2?.h ?? item.h
         }, boardUid);
         void (async () => {
           let made = null;
@@ -76878,8 +77094,8 @@ function buildBoardView(onFail, {
       case "query-results": {
         if (!item) break;
         const sourceUid = isQueryString(item.string) ? item.uid : item.target?.kind === "block" ? item.target.uid : item.uid;
-        const live = root.querySelector?.(`[data-uid="${item.uid}"] .pxd-item__query .pxd-rs__live`);
-        const list = queryResultLayout(rects().get(item.uid), queryResultUids(live, sourceUid));
+        const live2 = root.querySelector?.(`[data-uid="${item.uid}"] .pxd-item__query .pxd-rs__live`);
+        const list = queryResultLayout(rects().get(item.uid), queryResultUids(live2, sourceUid));
         if (!list.length) {
           toast("No results in this query");
           break;
@@ -77154,14 +77370,14 @@ function buildBoardView(onFail, {
     } catch {
       base = null;
     }
-    const live = board2()?.plexus;
-    if (!base || typeof base !== "object") base = live && typeof live === "object" ? live : null;
-    if (live && typeof live === "object" && live.v === 2 && (!base || base.v !== 2)) base = live;
+    const live2 = board2()?.plexus;
+    if (!base || typeof base !== "object") base = live2 && typeof live2 === "object" ? live2 : null;
+    if (live2 && typeof live2 === "object" && live2.v === 2 && (!base || base.v !== 2)) base = live2;
     if (!base || typeof base !== "object") return;
     if (board2()?.enhanced && base.v !== 2) return;
     if (base.highlighterTags === flag2) return;
     const next = { ...base, highlighterTags: flag2 };
-    if (live && typeof live === "object") live.highlighterTags = flag2;
+    if (live2 && typeof live2 === "object") live2.highlighterTags = flag2;
     if (typeof host?.updateProps !== "function") return;
     try {
       await host.updateProps(boardUid, next);
@@ -77841,11 +78057,18 @@ function buildBoardView(onFail, {
   const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
   const LIB_TYPES_KEY = `plexus-diagram:libtypes:${graph}`;
   let partsIdx = null;
+  let offPartsChange = null;
   const partsIndex = () => {
     if (!partsIdx) {
       partsIdx = createPartsIndex({
         store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
         listPdfs: () => host?.listPdfBlocks?.() || []
+      });
+      offPartsChange = partsIdx.onChange(() => {
+        try {
+          panel?.refreshSearch?.();
+        } catch {
+        }
       });
     }
     return partsIdx;
@@ -78574,9 +78797,9 @@ function buildBoardView(onFail, {
     const next = new Set(plan.map((p) => p.uid));
     const stale = [...grown].filter((u) => !next.has(u));
     if (stale.length) itemsR.resetRects(rects(), stale);
-    const live = itemsR.previewSectionRects(plan.map(({ uid, rect }) => ({ uid, x: rect.x, y: rect.y, w: rect.w, h: rect.h })));
+    const live2 = itemsR.previewSectionRects(plan.map(({ uid, rect }) => ({ uid, x: rect.x, y: rect.y, w: rect.w, h: rect.h })));
     if (!liveRects) liveRects = /* @__PURE__ */ new Map();
-    for (const [uid, rect] of live) liveRects.set(uid, rect);
+    for (const [uid, rect] of live2) liveRects.set(uid, rect);
     grown = next;
   };
   const shortcutSheet = createShortcutSheet({ doc, root, settings: settingsProxy });
@@ -79696,10 +79919,10 @@ function buildBoardView(onFail, {
     }
     const placed = [...board2()?.items.values() || []];
     const rows = highlightRows(tree, { placed });
-    const live = rects().get(item.uid);
+    const live2 = rects().get(item.uid);
     const origin = {
-      x: (live?.x ?? item.x ?? 0) + (live?.w ?? item.w ?? 0) + 40,
-      y: live?.y ?? item.y ?? 0
+      x: (live2?.x ?? item.x ?? 0) + (live2?.w ?? item.w ?? 0) + 40,
+      y: live2?.y ?? item.y ?? 0
     };
     const node2 = openHighlightDialog(doc, {
       rows,
@@ -81126,8 +81349,8 @@ function buildBoardView(onFail, {
       }
       if (opensBefore !== trackOpensOn() && strengthOn) void refreshStrength();
       if (interopBefore !== (readSetting2("interop") !== false)) {
-        const live = board2();
-        if (live) for (const item of live.items.values()) {
+        const live2 = board2();
+        if (live2) for (const item of live2.items.values()) {
           if (item?.kind === "drawing-ref" || item?.kind === "region-ref") dirty.items.add(item.uid);
         }
       }
@@ -81334,6 +81557,11 @@ function buildBoardView(onFail, {
       step(() => readPane?.dispose?.());
       step(() => itemsR.dispose());
       step(() => edgesR.dispose());
+      step(() => {
+        offPartsChange?.();
+        partsIdx?.dispose();
+        partsIdx = null;
+      });
       step(() => panel.dispose());
       step(() => propsPanel.dispose());
       step(() => tooltip.dispose());
@@ -81739,7 +81967,7 @@ function createBoardChips({ doc = globalThis.document, cache } = {}) {
     const uid = container.getAttribute?.("data-block-uid") || "";
     return Boolean(uid && cache?.hasTarget?.(uid) && ownHighlight(container));
   };
-  const attach2 = (container) => {
+  const attach3 = (container) => {
     if (!qualifies(container)) return;
     if (childWith(container, "pxd-boardchip")) return;
     const chip = doc.createElement("button");
@@ -81771,14 +81999,14 @@ function createBoardChips({ doc = globalThis.document, cache } = {}) {
     if (typeof node2.querySelectorAll === "function") {
       for (const el of node2.querySelectorAll(".roam-block-container")) found.push(el);
     }
-    for (const el of found) attach2(el);
+    for (const el of found) attach3(el);
     reconcile();
   };
   const scanUids = (uids) => {
     if (!doc?.querySelectorAll) return;
     for (const uid of uids || []) {
       if (!/^[\w-]+$/.test(String(uid))) continue;
-      for (const el of doc.querySelectorAll(`.roam-block-container[data-block-uid="${uid}"]`)) attach2(el);
+      for (const el of doc.querySelectorAll(`.roam-block-container[data-block-uid="${uid}"]`)) attach3(el);
     }
     reconcile();
   };
@@ -82234,7 +82462,7 @@ function createCardChips({
       else parent.append(more);
     }
   };
-  const attach2 = (container, memo) => {
+  const attach3 = (container, memo) => {
     if (!container || container.nodeType !== 1 || container.closest?.(SKIP2)) return;
     let uid = container.getAttribute?.("data-block-uid") || "";
     if (!uid) {
@@ -82394,7 +82622,7 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
     const memo = /* @__PURE__ */ new Map();
     const list = containersOf(node2);
     const end = Math.min(SCAN_CAP, list.length);
-    for (let i = 0; i < end; i += 1) attach2(list[i], memo);
+    for (let i = 0; i < end; i += 1) attach3(list[i], memo);
     refreshPage(node2);
     if (list.length <= SCAN_CAP || sweepTimer != null) return;
     const gen = sweepGen;
@@ -82402,7 +82630,7 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
     const run = (start) => {
       if (gen !== sweepGen) return;
       const next = Math.min(start + SCAN_CAP, pending.length);
-      for (let i = start; i < next; i += 1) attach2(pending[i], memo);
+      for (let i = start; i < next; i += 1) attach3(pending[i], memo);
       if (next >= pending.length) return;
       const set2 = view().setTimeout?.bind(view());
       if (!set2) return;
@@ -84190,16 +84418,16 @@ async function installPlexusDiagram({
   function sketchStandIn(handoff) {
     const queued = [];
     const call = (name, args) => {
-      const live = handoff.view;
-      if (live && typeof live[name] === "function") return live[name](...args);
+      const live2 = handoff.view;
+      if (live2 && typeof live2[name] === "function") return live2[name](...args);
       queued.push([name, args]);
     };
     handoff.flushQueued = () => {
-      const live = handoff.view;
-      if (!live) return;
+      const live2 = handoff.view;
+      if (!live2) return;
       for (const [name, args] of queued.splice(0)) {
         try {
-          live[name]?.(...args);
+          live2[name]?.(...args);
         } catch {
         }
       }
@@ -84232,11 +84460,11 @@ async function installPlexusDiagram({
       },
       dispose() {
         queued.length = 0;
-        const live = handoff.view;
+        const live2 = handoff.view;
         handoff.view = null;
         cancelSketchHandoff(handoff.rec);
         try {
-          live?.dispose?.();
+          live2?.dispose?.();
         } catch {
         }
       },
@@ -84457,9 +84685,9 @@ async function installPlexusDiagram({
         throw error;
       }
       removeSketch(rec.mountEl);
-      const live = finishLive(rec, view, logging, t0);
+      const live2 = finishLive(rec, view, logging, t0);
       if (logging) shiftWatch.watchMount(rec.mountEl);
-      return live;
+      return live2;
     }
     if (logging) shiftWatch.watchMount(rec.mountEl);
     return beginSketchHandoff(rec, vp, { autofocus, viewport, logging, t0 });

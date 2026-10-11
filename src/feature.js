@@ -13,6 +13,11 @@ import {
   SKETCH_ROOT_BORDER,
 } from "./view/sketch.js";
 import { isTextEntryTarget } from "./view/cards.js";
+import { createBoardSnapStore } from "./host/boardsnap-store.js";
+import { armSnapGestures, captureBoardSnap, paintBoardSnap, removeBoardSnap, resolveSnapViewport } from "./view/boardsnap-paint.js";
+import { itemSig, tableGrid } from "./model/boardsnap.js";
+import { renderTableThumb, tableThumbKey, thumbBox } from "./view/table-thumb.js";
+import { applyFullscreenChrome } from "./view/fullscreen.js";
 import { assignDeepLink, hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
 import { createRelChips } from "./relchips.js";
@@ -221,20 +226,25 @@ export async function installPlexusDiagram({
   perfLog.bind(host.stats);
   const shiftWatch = createShiftWatch();
   // Same graph string the viewport store uses. host.graph wins when a test or host sets it.
+  const graphKey = () => {
+    if (typeof host.graph === "string" && host.graph) return host.graph;
+    try {
+      const match = /#\/app\/([^/?#]+)/.exec(String(globalThis.location?.hash || ""));
+      if (match) return decodeURIComponent(match[1]);
+    } catch { /* the hash is not a graph name */ }
+    return graphFromHash();
+  };
   const sketchStore = createSketchStore({
     storage,
-    graph: () => {
-      if (typeof host.graph === "string" && host.graph) return host.graph;
-      try {
-        const match = /#\/app\/([^/?#]+)/.exec(String(globalThis.location?.hash || ""));
-        if (match) return decodeURIComponent(match[1]);
-      } catch { /* the hash is not a graph name */ }
-      return graphFromHash();
-    },
+    graph: graphKey,
     enabled: () => notedSpeedFlags().sketch !== false,
   });
   const sketchTimers = new Map();
   const sketchHandoffs = new Map();
+  const snapTimers = new Map(); // rec -> settle timer
+  const SNAP_SETTLE_MS = 1000;
+  const SNAP_WARM_WAIT_MS = 50;
+  const openPerf = { lastOpen: null, opens: [] };
 
   let settings = readSettings(extensionAPI);
   // Hidden speed-flags. The panel never lists this id, so the next gate re-reads the store.
@@ -243,6 +253,13 @@ export async function installPlexusDiagram({
     catch { return null; }
   });
   lifecycle.add(() => bindSpeedFlagSource(null));
+  // INSTANT-1. Board open snapshots: own IndexedDB database, warmed into memory at install.
+  // Created after the speed flags are bound, so the warm read sees this install's flags.
+  const snapStore = createBoardSnapStore({
+    indexedDB: win.indexedDB ?? globalThis.indexedDB,
+    graph: graphKey,
+    enabled: () => notedSpeedFlags().snapshot !== false,
+  });
   const speedFlags = () => notedSpeedFlags();
   // Sessions outlive a settings change (they are ref-counted and kept), so they read through this accessor.
   const liveSettings = { get: (id) => settings[id] };
@@ -755,6 +772,7 @@ export async function installPlexusDiagram({
   function forgetSketch(rec) {
     if (!rec) return;
     clearSketchTimer(rec);
+    clearSnapTimer(rec);
     cancelSketchHandoff(rec);
   }
 
@@ -777,6 +795,7 @@ export async function installPlexusDiagram({
 
   function scheduleSketch(rec) {
     clearSketchTimer(rec);
+    scheduleSnap(rec);
     if (speedFlags().sketch === false) return;
     if (stopped || !rec || mounts.get(rec.native) !== rec || !liveSketchView(rec)) return;
     const timer = setTimeout(() => writeSketch(rec), SKETCH_DEBOUNCE_MS);
@@ -786,6 +805,7 @@ export async function installPlexusDiagram({
 
   function saveSketchNow(rec) {
     clearSketchTimer(rec);
+    saveSnapNow(rec);
     if (speedFlags().sketch === false) return;
     if (!rec?.view || !rec.session?.board || sketchGesturing(rec)) return;
     try {
@@ -795,6 +815,345 @@ export async function installPlexusDiagram({
       sketchStore.set(uid, sketch);
       sketchStore.flushAll();
     } catch { /* storage is optional */ }
+  }
+
+
+  // ---------------------------------------------------------------- INSTANT-1 open snapshots
+  const snapAllowed = () => speedFlags().snapshot !== false;
+  const readsNow = () => Number(host.stats?.reads) || 0;
+  const runIdle = (fn) => {
+    const ric = win.requestIdleCallback ?? globalThis.requestIdleCallback;
+    if (typeof ric === "function") return ric(() => fn(), { timeout: 2000 });
+    const t = setTimeout(fn, 0);
+    t?.unref?.();
+    return t;
+  };
+  const isDarkTheme = (rec) => {
+    try {
+      if (rec?.view?.root?.classList?.contains?.("pxd-root--dark")) return true;
+      return Boolean(doc?.body?.classList?.contains?.("bp3-dark"));
+    } catch { return false; }
+  };
+  const thumbKeyOf = (item, dark) => {
+    const base = tableThumbKey(item, itemSig(item));
+    const box = thumbBox(item);
+    return base ? `${base}:${box.width}x${box.height}:${dark ? "d" : "l"}` : "";
+  };
+  function tableThumbFor(rec, item) {
+    if (!snapAllowed()) return null;
+    const dark = isDarkTheme(rec);
+    return snapStore.thumb(thumbKeyOf(item, dark)) || null;
+  }
+  const thumbAsked = new Set();
+  function tableShown(rec, item) {
+    if (!snapAllowed() || !item?.uid) return;
+    const dark = isDarkTheme(rec);
+    const key = thumbKeyOf(item, dark);
+    if (!key || snapStore.thumb(key) || thumbAsked.has(key)) return;
+    thumbAsked.add(key);
+    runIdle(() => {
+      thumbAsked.delete(key);
+      if (stopped || snapStore.thumb(key)) return;
+      let url = "";
+      try { url = renderTableThumb(doc, tableGrid(item), { dark, ...thumbBox(item) }); } catch { url = ""; }
+      if (!url || !snapStore.putThumb(key, url)) return;
+      try { rec.view?.repaintThumb?.(item.uid); } catch { /* the card mounted its table meanwhile */ }
+      scheduleSnap(rec);
+    });
+  }
+  // One snapshot per mount kind: a sidebar copy has its own width, chrome and camera.
+  // The main copy's key is the bare uid; another kind falls back to it, cards only.
+  function snapKindOf(rec) {
+    if (rec?.fullscreen) return "fullscreen";
+    try { return inRightSidebar(rec?.native) ? "sidebar" : "main"; } catch { return "main"; }
+  }
+  const snapKey = (uid, kind) => (kind && kind !== "main" ? `${uid}@${kind}` : uid);
+  function snapFor(rec, uid) {
+    const kind = snapKindOf(rec);
+    const own = snapStore.get(snapKey(uid, kind));
+    if (own || kind === "main") return own;
+    const main = snapStore.get(uid);
+    return main ? { ...main, chrome: [] } : null;
+  }
+  function clearSnapTimer(rec) {
+    const timer = snapTimers.get(rec);
+    if (timer) clearTimeout(timer);
+    snapTimers.delete(rec);
+  }
+  // Returns true when stored, false when there is nothing to store, null to try again later (mid gesture).
+  function captureSnap(rec) {
+    if (!snapAllowed() || stopped || !rec?.view || rec.view.sketchStandIn === true) return false;
+    let src = null;
+    try { src = rec.view.snapshotSource?.() ?? null; } catch { src = null; }
+    if (!src) return false;
+    if (src.gesturing) return null;
+    const uid = currentUid(rec);
+    if (!uid) return false;
+    const key = snapKey(uid, snapKindOf(rec));
+    const dark = isDarkTheme(rec);
+    const thumbs = new Map();
+    let snap = null;
+    try {
+      snap = captureBoardSnap({
+        ...src,
+        uid,
+        prev: snapStore.get(key) || snapStore.get(uid),
+        thumbs,
+        tableThumbKey: (item) => {
+          if (item?.type === "section" || !/^\{\{\s*(\[\[table\]\]|table)\s*\}\}$/i.test(String(item?.string || "").trim())) return null;
+          const key = thumbKeyOf(item, dark);
+          return key && snapStore.thumb(key) ? key : null;
+        },
+      });
+    } catch { snap = null; }
+    if (!snap) return false;
+    rec.snapDirty = false;
+    return snapStore.set(key, snap, thumbs);
+  }
+  // After a change or a settled camera: 1 s quiet, then an idle slot.
+  function scheduleSnap(rec) {
+    if (!snapAllowed() || stopped || !rec || mounts.get(rec.native) !== rec) return;
+    rec.snapDirty = true;
+    clearSnapTimer(rec);
+    const timer = setTimeout(() => {
+      snapTimers.delete(rec);
+      runIdle(() => {
+        if (stopped || mounts.get(rec.native) !== rec) return;
+        if (captureSnap(rec) === null) scheduleSnap(rec);
+      });
+    }, SNAP_SETTLE_MS);
+    timer?.unref?.();
+    snapTimers.set(rec, timer);
+  }
+  // Leaving the board (page change, park, nested open): the live DOM is still here.
+  function saveSnapNow(rec) {
+    const pending = snapTimers.has(rec);
+    clearSnapTimer(rec);
+    if (!rec?.snapDirty && !pending) return;
+    try { captureSnap(rec); } catch { /* storage is optional */ }
+    try { void snapStore.flush(); } catch { /* storage is optional */ }
+  }
+
+  function openStart(rec, kind) {
+    rec.openT0 = perfNow();
+    rec.openReads0 = readsNow();
+    rec.openKind = kind;
+    rec.openSnap = false;
+    rec.openPaint = null;
+  }
+  function publishOpen(rec, entry) {
+    openPerf.lastOpen = entry;
+    openPerf.opens.push(entry);
+    if (openPerf.opens.length > 20) openPerf.opens.shift();
+  }
+  // First board paint: the snapshot (snap) or the live board's first frame (no snap).
+  // Queries are host reads between mount start and that paint.
+  function notePaint(rec, snap) {
+    if (rec.openT0 == null || rec.openPaint) return;
+    const queries = readsNow() - (rec.openReads0 || 0);
+    const t0 = rec.openT0;
+    rec.openSnap = snap;
+    rec.openPaint = { queries, at: perfNow() - t0 };
+    const raf = globalThis.requestAnimationFrame;
+    const settle = () => {
+      if (!rec.openPaint) return;
+      rec.openPaint.frame = perfNow() - t0;
+      if (!snap) noteLive(rec);
+    };
+    if (typeof raf === "function") raf(settle);
+    else settle();
+  }
+  function noteLive(rec) {
+    if (rec.openT0 == null || !rec.openPaint) return;
+    const entry = {
+      uid: currentUid(rec),
+      kind: rec.openKind || "main",
+      snap: Boolean(rec.openSnap),
+      firstPaintMs: Math.round((rec.openPaint.frame ?? rec.openPaint.at) * 10) / 10,
+      paintTaskMs: Math.round(rec.openPaint.at * 10) / 10,
+      liveMs: Math.round((perfNow() - rec.openT0) * 10) / 10,
+      queriesBeforePaint: rec.openPaint.queries,
+      queriesBeforeLive: readsNow() - (rec.openReads0 || 0),
+    };
+    rec.openT0 = null;
+    publishOpen(rec, entry);
+  }
+
+  // Paint the stored snapshot into the mount in this turn. No Roam read: the camera
+  // comes from the viewport store (localStorage) and the snapshot itself.
+  function paintSnapFor(rec, initialViewport) {
+    if (!snapAllowed() || !rec?.mountEl) return null;
+    const uid = currentUid(rec);
+    const snap = snapFor(rec, uid);
+    if (!snap?.items?.length) return null;
+    let fsOff = null;
+    try {
+      let stored = null;
+      try {
+        const id = viewportStorageId(rec.native, uid, null);
+        stored = host.viewports?.get?.(id) || null;
+        if (!stored && id !== uid) stored = host.viewports?.get?.(uid) || null;
+      } catch { stored = null; }
+      const vp = resolveSnapViewport({ initial: initialViewport, stored, snap });
+      anchorMount(rec.mountEl);
+      if (rec.fullscreen) fsOff = applyFullscreenChrome(rec.mountEl, true, doc);
+      else if (snap.height) {
+        rec.mountEl.style.height = `${snap.height}px`;
+        rec.mountEl.style.minHeight = `${snap.height}px`;
+      }
+      const painted = paintBoardSnap(doc, rec.mountEl, snap, vp, { thumbs: snapStore.thumbs, fullscreen: rec.fullscreen });
+      if (!painted) throw new Error("snapshot paint failed");
+      painted.snap = snap;
+      painted.vp = vp;
+      painted.fsOff = fsOff;
+      painted.fullscreen = Boolean(rec.fullscreen);
+      notePaint(rec, true);
+      return painted;
+    } catch {
+      try { fsOff?.(); } catch { /* observers already gone */ }
+      if (rec.fullscreen) { try { applyFullscreenChrome(rec.mountEl, false, doc); } catch { /* mount gone */ } }
+      try { removeBoardSnap(rec.mountEl); } catch { /* already gone */ }
+      return null;
+    }
+  }
+  // A painted snapshot that never got a live board (cancel, park, unmount).
+  function dropSnapPaint(rec, painted, { live = false } = {}) {
+    if (!painted) return;
+    try { painted.gestureOff?.(); } catch { /* already off */ }
+    try { painted.fsOff?.(); } catch { /* observers already gone */ }
+    painted.fsOff = null;
+    if (!live && painted.fullscreen) { try { applyFullscreenChrome(rec.mountEl, false, doc); } catch { /* mount gone */ } }
+    try { removeBoardSnap(rec.mountEl); } catch { /* already gone */ }
+  }
+
+  // Replay the one gesture made on the snapshot onto what is under it now.
+  function replaySnapGesture(handoff, view) {
+    const queued = handoff.queue?.splice(0) || [];
+    for (const snap of queued) {
+      const keyEvent = String(snap.type || "").startsWith("key");
+      let target = keyEvent ? handoff.win : null;
+      if (!keyEvent) {
+        try { target = doc.elementFromPoint?.(snap.clientX, snap.clientY) || null; } catch { target = null; }
+        if (!target || !view?.root?.contains?.(target)) target = view?.root ?? null;
+      }
+      if (typeof target?.dispatchEvent !== "function") continue;
+      try { target.dispatchEvent(makeSketchEvent(snap)); } catch { /* replay is best-effort */ }
+    }
+  }
+
+  function finishSnapHandoff(handoff) {
+    if (!handoff || handoff.finished) return;
+    handoff.finished = true;
+    const rec = handoff.rec;
+    try { replaySnapGesture(handoff, handoff.view); } catch { /* best-effort */ }
+    noteLive(rec);
+    cancelSketchHandoff(rec);
+  }
+
+  function runSnapMount(handoff, standIn, { autofocus, viewport, acquire, onLive, logging, t0 }) {
+    const rec = handoff.rec;
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
+    handoff.mounted = true;
+    const fail = (error) => {
+      handoff.cancelled = true;
+      clearSketchHandoffTimers(handoff);
+      sketchHandoffs.delete(rec);
+      dropSnapPaint(rec, handoff.painted);
+      try {
+        if (error) noteMountFail(currentUid(rec), error);
+        unmount(rec);
+      } catch { /* already down */ }
+    };
+    if (typeof acquire === "function") {
+      let ok = false;
+      try { ok = acquire() !== false; } catch (error) { fail(error); return; }
+      if (!ok) { fail(null); return; }
+    }
+    const state = handoff.painted?.state;
+    const vpNow = state?.moved ? { ...state.vp } : viewport;
+    let view;
+    try {
+      view = callMountView(rec, autofocus, vpNow, {
+        snapshot: { snap: handoff.painted.snap, shells: handoff.painted.shells },
+        onFirstPaint: () => finishSnapHandoff(handoff),
+      });
+    } catch (error) {
+      fail(error);
+      return;
+    }
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) {
+      try { view?.dispose?.(); } catch { /* already gone */ }
+      dropSnapPaint(rec, handoff.painted);
+      return;
+    }
+    handoff.view = view;
+    handoff.live = true;
+    try { handoff.flushQueued?.(); } catch { /* a queued call can fail closed */ }
+    finishLive(rec, view, logging, t0);
+    try { onLive?.(); } catch (error) { console.warn("[plexus-diagram] open tail failed", error); }
+    // Safety: a board that never draws a frame (suspended, empty) still loses the snapshot.
+    const timer = setTimeout(() => {
+      handoff.holdTimer = null;
+      finishSnapHandoff(handoff);
+    }, SKETCH_HOLD_MS);
+    timer?.unref?.();
+    handoff.holdTimer = timer;
+  }
+
+  // The snapshot is on screen. One frame and a macrotask later the session is read,
+  // the live board mounts and adopts the snapshot shells in its first frame.
+  function beginSnapHandoff(rec, painted, { autofocus = false, viewport = null, acquire = null, onLive = null } = {}) {
+    const logging = settings[SETTING_IDS.speedLog] === true;
+    const handoff = {
+      rec,
+      vp: painted.vp,
+      win,
+      painted,
+      snapPath: true,
+      cancelled: false,
+      mounted: false,
+      live: false,
+      finished: false,
+      queue: [],
+      view: null,
+      rafId: null,
+      timeoutId: null,
+      holdRaf: null,
+      holdTimer: null,
+      soonTimer: null,
+      observer: null,
+    };
+    sketchHandoffs.set(rec, handoff);
+    const standIn = sketchStandIn(handoff);
+    rec.view = standIn;
+    painted.gestureOff = armSnapGestures(painted, {
+      win,
+      onFirstGesture: (events) => {
+        if (handoff.finished || handoff.cancelled) return;
+        handoff.queue.push(...events);
+      },
+    });
+    const opts = { autofocus, viewport, acquire, onLive, logging, t0: logging ? perfNow() : 0 };
+    if (logging) shiftWatch.watchMount(rec.mountEl);
+    const start = () => {
+      handoff.timeoutId = null;
+      runSnapMount(handoff, standIn, opts);
+    };
+    const raf = globalThis.requestAnimationFrame;
+    if (typeof raf === "function") {
+      handoff.rafId = raf(() => {
+        handoff.rafId = null;
+        if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
+        const timer = setTimeout(start, 0);
+        timer?.unref?.();
+        handoff.timeoutId = timer;
+      });
+    } else {
+      const timer = setTimeout(start, 0);
+      timer?.unref?.();
+      handoff.timeoutId = timer;
+    }
+    return standIn;
   }
 
   const SKETCH_INPUT = ["keydown", "keyup", "pointerdown", "pointerup"];
@@ -835,8 +1194,13 @@ export async function installPlexusDiagram({
       detachSketchInput(handoff);
       try { handoff.observer?.disconnect?.(); } catch { /* already gone */ }
       handoff.observer = null;
+      if (handoff.painted) dropSnapPaint(rec, handoff.painted, { live: handoff.live });
     }
     if (rec) try { removeSketch(rec.mountEl); } catch { /* already gone */ }
+    if (rec?.snapPaint) {
+      dropSnapPaint(rec, rec.snapPaint);
+      rec.snapPaint = null;
+    }
   }
 
   // Only input aimed at this board's own mount is held. Typing in a Roam block or clicking
@@ -992,8 +1356,13 @@ export async function installPlexusDiagram({
     handoff.holdTimer = timer;
   }
 
-  function callMountView(rec, autofocus, viewport) {
+  function callMountView(rec, autofocus, viewport, extra = {}) {
     return mountView({
+      onFirstPaint: () => notePaint(rec, false),
+      onSettled: () => scheduleSnap(rec),
+      tableThumb: (item) => tableThumbFor(rec, item),
+      onTableShown: (item) => tableShown(rec, item),
+      ...extra,
       host,
       session: rec.session,
       mountEl: rec.mountEl,
@@ -1448,6 +1817,13 @@ export async function installPlexusDiagram({
     if (settings[SETTING_IDS.speedLog] === true) perfLog.watchOpen(rec.mountEl, perfNow());
   }
 
+  // A kept canvas for this mount is waiting: reattaching it beats any snapshot.
+  function claimAliveKept(rec) {
+    let kind = null;
+    try { kind = rec.poolKind || poolKind(rec.native); } catch { kind = null; }
+    return alive.some((entry) => entry.boardUid === rec.uid && entry.kind === kind && aliveUsable(entry));
+  }
+
   function claimAlive(rec, boardUid, native) {
     const pooled = takeAlive(boardUid, poolKind(native));
     if (aliveUsable(pooled)) {
@@ -1535,6 +1911,53 @@ export async function installPlexusDiagram({
         }
         return;
       }
+      // A nested board with a stored snapshot paints before its first read.
+      if (snapAllowed() && snapFor(rec, target)?.items?.length) {
+        try { commit?.(); } catch { /* history is optional */ }
+        saveSketchNow(rec);
+        forgetSketch(rec);
+        detachCurrent(rec);
+        rec.crumbs = next;
+        openStart(rec, "nested");
+        const painted = paintSnapFor(rec, viewport || null);
+        if (painted) {
+          try {
+            rec.view = beginSnapHandoff(rec, painted, {
+              autofocus: true,
+              viewport: viewport || null,
+              acquire: () => {
+                rec.session = acquireSession(target, { host, settings: liveSettings, ...virtualOptions(virtual) });
+                if (!rec.session?.board) {
+                  rec.session?.release?.();
+                  rec.session = null;
+                  return false;
+                }
+                return true;
+              },
+              onLive: () => {
+                rec.off = watchRec(rec);
+                publishCards(rec.session?.board);
+              },
+            });
+          } catch (error) {
+            dropSnapPaint(rec, painted);
+            noteMountFail(rec.uid, error);
+            unmount(rec);
+          }
+          return;
+        }
+        try {
+          rec.session = acquireSession(target, { host, settings: liveSettings, ...virtualOptions(virtual) });
+          if (!rec.session?.board) throw new Error("nested board is gone");
+          rec.view = mountRecView(rec, { autofocus: true, viewport: viewport || null });
+          rec.off = watchRec(rec);
+          publishCards(rec.session?.board);
+        } catch (error) {
+          noteMountFail(rec.uid, error);
+          unmount(rec);
+        }
+        return;
+      }
       let session;
       try {
         session = acquireSession(target, { host, settings: liveSettings, ...virtualOptions(virtual) });
@@ -1552,6 +1975,7 @@ export async function installPlexusDiagram({
       detachCurrent(rec);
       rec.session = session;
       rec.crumbs = next;
+      openStart(rec, "nested");
       try {
         rec.view = mountRecView(rec, { autofocus: true, viewport: viewport || null });
         rec.off = watchRec(rec);
@@ -1595,8 +2019,13 @@ export async function installPlexusDiagram({
     // A diagram inside the right sidebar is a copy in a window the user may never scroll to.
     // Leave a gap and let the viewport watcher build the canvas only when that window is on screen.
     if (inRightSidebar(native) && typeof IntersectionObserver === "function") {
-      const h = native.getBoundingClientRect?.().height || 0;
-      rec.mountEl.style.minHeight = `${Math.max(160, Math.round(h))}px`;
+      openStart(rec, "sidebar");
+      // A stored snapshot paints now and sizes the gap; the live board waits for the viewport watcher.
+      rec.snapPaint = claimAliveKept(rec) ? null : paintSnapFor(rec, null);
+      if (!rec.snapPaint) {
+        const h = native.getBoundingClientRect?.().height || 0;
+        rec.mountEl.style.minHeight = `${Math.max(160, Math.round(h))}px`;
+      }
       rec.dormant = true;
       ensureViewportWatch();
       recByMount.set(mountEl, rec);
@@ -1605,15 +2034,45 @@ export async function installPlexusDiagram({
       publicEmit("mount", { boardUid: uid });
       return rec;
     }
+    // Everything that reads the session or Roam. With a snapshot it runs after the live board is in.
+    const openTail = () => {
+      unmountOutlineCopies(rec);
+      resumeNestedOpen(rec);
+      applyShow(rec);
+      // An embed must not collapse the board. The original mount still does, once.
+      if (rec.session?.board?.virtual) markCollapsed(uid);
+      else if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
+      if (currentUid(rec) === uid) migrateLegacy(rec);
+    };
+    let deferred = false;
     try {
       if (!claimAlive(rec, uid, native)) {
-        rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
+        openStart(rec, "main");
         // Only the main window's copy goes fullscreen; a sidebar copy of the same board would cover it.
         rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false
           && !routeLeftZoomedDiagram(uid) && !isSecondaryMount(rec);
-        rec.view = mountRecView(rec);
-        rec.off = watchRec(rec);
-        publishCards(rec.session?.board);
+        if (rec.fullscreen) rec.openKind = "fullscreen";
+        const painted = paintSnapFor(rec, null);
+        if (painted) {
+          deferred = true;
+          rec.view = beginSnapHandoff(rec, painted, {
+            acquire: () => {
+              rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
+              return Boolean(rec.session);
+            },
+            onLive: () => {
+              rec.off = watchRec(rec);
+              publishCards(rec.session?.board);
+              openTail();
+              applyVisibility(rec, sidebarWindows(), false);
+            },
+          });
+        } else {
+          rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
+          rec.view = mountRecView(rec);
+          rec.off = watchRec(rec);
+          publishCards(rec.session?.board);
+        }
       } else {
         // A kept board left fullscreen when its page went away; a zoomed return puts it back.
         const wantFull = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid) && !isSecondaryMount(rec);
@@ -1625,17 +2084,11 @@ export async function installPlexusDiagram({
       return null;
     }
     mountFail.delete(uid);
-    unmountOutlineCopies(rec);
-    resumeNestedOpen(rec);
-    applyShow(rec);
-    // An embed must not collapse the board. The original mount still does, once.
-    if (rec.session?.board?.virtual) markCollapsed(uid);
-    else if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
-    if (currentUid(rec) === uid) migrateLegacy(rec);
+    if (!deferred) openTail();
     ensureViewportWatch();
     recByMount.set(mountEl, rec);
     viewportWatch?.observe(mountEl);
-    applyVisibility(rec, sidebarWindows(), false);
+    if (!deferred) applyVisibility(rec, sidebarWindows(), false);
     publicEmit("mount", { boardUid: uid });
     return rec;
   }
@@ -1806,6 +2259,45 @@ export async function installPlexusDiagram({
   function wake(rec) {
     if (!rec || !rec.dormant || stopped || rec.mountEl.isConnected === false) return;
     rec.dormant = false;
+    const wakeTail = () => {
+      if (rec.session?.board?.virtual) markCollapsed(currentUid(rec));
+      else if (!embedOwnerUid(rec.native, (id) => host.blockString?.(id))) collapseOnce(currentUid(rec), rec.native);
+      if (currentUid(rec) === rec.uid) migrateLegacy(rec);
+      applyShow(rec);
+    };
+    let painted = rec.snapPaint || null;
+    rec.snapPaint = null;
+    if (!painted && !claimAliveKept(rec)) {
+      if (rec.openT0 == null) openStart(rec, "wake");
+      painted = paintSnapFor(rec, rec.parkedVp || null);
+    }
+    if (painted && !claimAliveKept(rec)) {
+      try {
+        rec.view = beginSnapHandoff(rec, painted, {
+          viewport: rec.parkedVp || null,
+          acquire: () => {
+            rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(rec.virtual && virtualUids.has(currentUid(rec))) });
+            if (!rec.session?.board) {
+              rec.session?.release?.();
+              rec.session = null;
+              return false;
+            }
+            return true;
+          },
+          onLive: () => {
+            rec.off = watchRec(rec);
+            publishCards(rec.session?.board);
+            wakeTail();
+          },
+        });
+      } catch (error) {
+        dropSnapPaint(rec, painted);
+        noteMountFail(currentUid(rec), error);
+        unmount(rec);
+      }
+      return;
+    }
+    if (painted) dropSnapPaint(rec, painted);
     rec.mountEl.style.minHeight = "";
     try {
       if (!claimAlive(rec, rec.uid, rec.native)) {
@@ -3315,6 +3807,13 @@ export async function installPlexusDiagram({
       const rec = pickCameraMount([...mounts.values()], boardUid, isSidebarMount, currentUid);
       try { return rec?.view?.cameraRect?.() ?? null; } catch { return null; }
     },
+    // INSTANT-1. Open timings: { snap, firstPaintMs, liveMs, queriesBeforePaint } per open.
+    perf: openPerf,
+    snapshots: {
+      size: () => snapStore.size(),
+      has: (uid) => snapStore.has(uid),
+      ready: () => snapStore.ready,
+    },
     // Caller must release(). A second acquire of the same board shares the session.
     session(uid) {
       if (!uid) return null;
@@ -3477,11 +3976,22 @@ export async function installPlexusDiagram({
   lifecycle.add(() => {
     for (const rec of mounts.values()) forgetSketch(rec);
     sketchStore.dispose();
+    void snapStore.dispose();
   });
   // Registered last so it runs first on dispose: nothing may mount while teardown is in flight.
   lifecycle.add(() => { stopped = true; viewportWatch?.disconnect(); });
   syncSpeedLog();
   rememberPin(win.location?.hash || doc?.location?.hash || "");
+  // Boards already on the page paint from their snapshots when the warm read is quick.
+  if (snapAllowed()) {
+    let cap = null;
+    await Promise.race([
+      snapStore.ready.catch(() => 0),
+      new Promise((resolve) => { cap = setTimeout(resolve, SNAP_WARM_WAIT_MS); cap?.unref?.(); }),
+    ]);
+    if (cap) clearTimeout(cap);
+    if (stopped) return;
+  }
   reconcile();
 }
 

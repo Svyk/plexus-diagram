@@ -68,6 +68,7 @@ import {
   worldToScreen,
   zoomAt,
 } from "../model/geometry.js";
+import { itemSig } from "../model/boardsnap.js";
 import { captionForView, selectionViewRect } from "../model/view-save.js";
 import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parsePastedText } from "../model/clipboard.js";
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
@@ -832,6 +833,11 @@ function buildBoardView(onFail, {
   onSelectTab = null,
   tabStore = null,
   boardsOf = null,
+  snapshot = null,
+  tableThumb = null,
+  onTableShown = null,
+  onFirstPaint = null,
+  onSettled = null,
 } = {}) {
   const doc = globalThis.document;
   const win = globalThis.window;
@@ -1592,6 +1598,23 @@ function buildBoardView(onFail, {
     const title = typeof card?.title === "string" ? card.title.trim() : "";
     return title && title !== "PDF" && !title.startsWith("{{") ? title : "PDF";
   };
+  // INSTANT-1. Snapshot shells handed to the renderer once each, by uid. A face whose
+  // sig no longer matches the live item is dropped; the card stays bare until its body mounts.
+  const snapShells = snapshot?.shells instanceof Map ? snapshot.shells : null;
+  const snapItems = new Map((snapshot?.snap?.items || []).map((item) => [item.uid, item]));
+  const adoptShell = snapShells ? (uid, item) => {
+    const node = snapShells.get(uid);
+    if (!node) return null;
+    snapShells.delete(uid);
+    const old = snapItems.get(uid);
+    if (old && item && old.sig !== itemSig(item)) {
+      for (const child of [...(node.children || [])]) {
+        if (child.classList?.contains("pxd-item__body")) child.replaceChildren?.();
+      }
+      node.classList?.remove("pxd-item--thumb");
+    }
+    return node;
+  } : null;
   itemsR = createItemRenderer({
     doc,
     host,
@@ -1599,6 +1622,9 @@ function buildBoardView(onFail, {
     itemsLayer,
     sectionsLayer,
     timers,
+    adoptShell,
+    tableThumb,
+    onTableShown,
     onEditChange: (uid) => {
       root.classList.toggle("pxd-root--editing", Boolean(uid));
       session.setEditing?.(uid || null);
@@ -3370,6 +3396,34 @@ function buildBoardView(onFail, {
     };
     timers.idle(() => runChunk(misses));
   };
+  // INSTANT-3. Badge counts from the snapshot paint in the first frame. They are
+  // stamped stale, so the idle refresh still reads the graph once.
+  const seedSnapshotBadges = () => {
+    const b = board();
+    if (!b || !snapItems.size || !flag("show-card-badges", true)) return;
+    let seeded = 0;
+    for (const item of b.items.values()) {
+      const stats = snapItems.get(item.uid)?.badges;
+      if (!stats || item.type !== "card" || !item.target) continue;
+      const key = badgeKeyOf(item);
+      if (badgeCache.has(key)) continue;
+      badgeCache.set(key, { at: 0, stats: { refs: 0, boards: 0, open: 0, done: 0, ...stats } });
+      seeded += 1;
+    }
+    if (seeded) applyBadges();
+  };
+  // Last known counts per card uid, for the open snapshot.
+  const badgeStatsByUid = () => {
+    const out = new Map();
+    const b = board();
+    if (!b) return out;
+    for (const item of b.items.values()) {
+      if (item.type !== "card" || !item.target) continue;
+      const hit = badgeCache.get(badgeKeyOf(item));
+      if (hit?.stats) out.set(item.uid, hit.stats);
+    }
+    return out;
+  };
   const scheduleBadges = (ms = 0) => {
     if (disposed || suspended) return;
     badgeTimer?.();
@@ -3396,6 +3450,7 @@ function buildBoardView(onFail, {
       // Fit and other camera moves are not pointer gestures, so the gesture-end
       // warm pass never runs. Look again once the viewport has settled.
       considerCoverWarm();
+      if (typeof onSettled === "function") { try { onSettled(); } catch { /* the owner's hook */ } }
     }, RESUME_MS);
   };
   const refreshThumbnails = () => {
@@ -7932,6 +7987,7 @@ function buildBoardView(onFail, {
   routeOff = watchRouteExit({ boardUid: routeUid, onExit: () => { if (isFullscreen) requestFullscreen(false); }, win });
 
   // ------------------------------------------------------------ render frame
+  let firstPainted = false;
   const renderFrame = () => {
     if (disposed || suspended) return;
     const b = board();
@@ -7968,6 +8024,12 @@ function buildBoardView(onFail, {
       itemsChanged = true;
       syncTrailPaint(b);
       if ((dirty.all || dirty.structural) && panel.currentTab?.() === "trails") panel.refreshTrails?.();
+      if (!firstPainted) {
+        firstPainted = true;
+        // Snapshot shells the live board did not keep (deleted since) go with the snapshot root.
+        snapShells?.clear();
+        if (typeof onFirstPaint === "function") { try { onFirstPaint(); } catch { /* the owner's hook */ } }
+      }
     }
     const edgesDue = dirty.all || dirty.structural || dirty.links || dirty.edges.size;
     // A collapse dirties only the section. Edges into its members still have to move
@@ -8324,6 +8386,7 @@ function buildBoardView(onFail, {
   applyMotion();
   applyLod();
   itemsR.setShowBadges(flag("show-card-badges", true));
+  seedSnapshotBadges();
   dirty.viewport = true;
   markAll();
   consumeDeepLink();
@@ -8627,6 +8690,29 @@ function buildBoardView(onFail, {
       const ok = await writeClipboard({ text });
       if (!disposed) toast(ok ? "Outline copied" : "Copy failed");
       return text;
+    },
+    repaintThumb(uid) { return disposed ? false : itemsR.repaintThumb?.(uid) === true; },
+    // INSTANT-1. What the open snapshot is captured from. Read-only; no layout read.
+    snapshotSource() {
+      if (disposed || suspended) return null;
+      const b = board();
+      if (!b) return null;
+      let height = 0;
+      if (!isFullscreen) {
+        height = parseFloat(root.style?.height) || 0;
+      }
+      return {
+        root,
+        board: b,
+        rects: paintRects(),
+        vp: { ...vp },
+        height,
+        width: size.width || 0,
+        shellOf: (uid) => itemsR.shellOf(uid),
+        badges: badgeStatsByUid(),
+        threshold: mapThreshold(),
+        gesturing: Boolean(gesturing),
+      };
     },
     stats() {
       return { timers: timers.count(), listeners: listeners.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount() };

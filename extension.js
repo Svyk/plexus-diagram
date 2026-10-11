@@ -1864,17 +1864,17 @@ function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
     });
     parent.append(btn2);
   });
-  const walk2 = doc.createElement("button");
-  walk2.type = "button";
-  walk2.className = "pxd-trail-strip__walk";
-  walk2.textContent = "Walk";
-  walk2.setAttribute("aria-label", "Walk trail");
-  walk2.addEventListener("click", (event) => {
+  const walk3 = doc.createElement("button");
+  walk3.type = "button";
+  walk3.className = "pxd-trail-strip__walk";
+  walk3.textContent = "Walk";
+  walk3.setAttribute("aria-label", "Walk trail");
+  walk3.addEventListener("click", (event) => {
     event.preventDefault?.();
     event.stopPropagation?.();
     onWalk?.();
   });
-  parent.append(walk2);
+  parent.append(walk3);
   parent.__pxdStrip = { list, onStop, onWalk };
   if (!parent.__pxdStripKeys) {
     parent.__pxdStripKeys = true;
@@ -2209,7 +2209,7 @@ function edgeBox(edge) {
     l: Number(src.l) || 0
   };
 }
-function paintedContentRect(rect, natural, { fit: fit2 = "fill", position = "50% 50%", zoom = 1, padding, border } = {}) {
+function paintedContentRect(rect, natural, { fit: fit3 = "fill", position = "50% 50%", zoom = 1, padding, border } = {}) {
   const box2 = boxOf(rect);
   if (!box2) return null;
   const z = Number(zoom) > 0 ? Number(zoom) : 1;
@@ -2224,7 +2224,7 @@ function paintedContentRect(rect, natural, { fit: fit2 = "fill", position = "50%
   const nw = Number(natural?.width) || Number(natural?.naturalWidth) || 0;
   const nh = Number(natural?.height) || Number(natural?.naturalHeight) || 0;
   if (!(nw > 0) || !(nh > 0)) return content;
-  const mode = String(fit2 || "fill").trim().toLowerCase();
+  const mode = String(fit3 || "fill").trim().toLowerCase();
   const pos = parseObjectPosition(position);
   const place2 = (usedW, usedH) => ({
     left: left + (width - usedW) * pos.x,
@@ -2259,31 +2259,31 @@ function cssPx(style, inline, camel, kebab) {
   const n2 = Number.parseFloat(cssPick(style, inline, camel, kebab));
   return Number.isFinite(n2) ? n2 : 0;
 }
-function paintedRectOfElement(el, { zoom = 1 } = {}) {
-  if (!el || typeof el.getBoundingClientRect !== "function") return null;
+function paintedRectOfElement(el2, { zoom = 1 } = {}) {
+  if (!el2 || typeof el2.getBoundingClientRect !== "function") return null;
   let rect = null;
   try {
-    rect = el.getBoundingClientRect();
+    rect = el2.getBoundingClientRect();
   } catch {
     rect = null;
   }
   if (!rect) return null;
-  const view = el.ownerDocument?.defaultView;
+  const view = el2.ownerDocument?.defaultView;
   const getStyle = view?.getComputedStyle || globalThis.getComputedStyle;
   let style = null;
   try {
-    style = typeof getStyle === "function" ? getStyle(el) : null;
+    style = typeof getStyle === "function" ? getStyle(el2) : null;
   } catch {
     style = null;
   }
-  const inline = el.style || {};
-  const fit2 = cssPick(style, inline, "objectFit", "object-fit") || "fill";
+  const inline = el2.style || {};
+  const fit3 = cssPick(style, inline, "objectFit", "object-fit") || "fill";
   const position = cssPick(style, inline, "objectPosition", "object-position") || "50% 50%";
   return paintedContentRect(
     { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-    { width: el.naturalWidth, height: el.naturalHeight },
+    { width: el2.naturalWidth, height: el2.naturalHeight },
     {
-      fit: fit2,
+      fit: fit3,
       position,
       zoom,
       padding: {
@@ -3757,7 +3757,7 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
     if (trailsUid === null && marker === "trails") trailsUid = child[":block/uid"];
   });
   const sectionDefaults = normalizeSectionDefaults(plexus?.defaults?.section);
-  const walk2 = (children, parentUid, depth) => {
+  const walk3 = (children, parentUid, depth) => {
     const siblings = [];
     for (const child of children) {
       const cuid = child[":block/uid"];
@@ -3891,13 +3891,13 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
       preorder.push(cuid);
       siblings.push(item);
       if (type === "section") {
-        item.members = walk2(kids, cuid, depth + 1).map((m) => m.uid);
+        item.members = walk3(kids, cuid, depth + 1).map((m) => m.uid);
       }
     }
     autoPlace(siblings);
     return siblings;
   };
-  for (const item of walk2(boardKids, uid, 0)) roots.push(item.uid);
+  for (const item of walk3(boardKids, uid, 0)) roots.push(item.uid);
   const sections = preorder.filter((u) => items.get(u).type === "section");
   const rest = preorder.filter((u) => items.get(u).type !== "section");
   sections.sort((a, b) => items.get(a).depth - items.get(b).depth);
@@ -3978,12 +3978,12 @@ function anchorUid(board2, uid) {
     if (parent?.type === "section") cur = parent.uid;
   }
   let collapsed = null;
-  let walk2 = cur;
-  while (walk2 && walk2 !== board2.uid) {
-    const item = board2.items.get(walk2);
+  let walk3 = cur;
+  while (walk3 && walk3 !== board2.uid) {
+    const item = board2.items.get(walk3);
     if (!item) break;
     if (item.type === "section" && item.collapsed) collapsed = item.uid;
-    walk2 = item.parentUid;
+    walk3 = item.parentUid;
   }
   return collapsed || cur;
 }
@@ -8724,7 +8724,7 @@ function selectRows(rows, seedIndexes, size) {
   const lo = Math.min(...seedIndexes);
   const hi = Math.max(...seedIndexes);
   const gapBetween = (a, b) => a < b ? rows[b].row.y0 - rows[a].row.y1 : rows[a].row.y0 - rows[b].row.y1;
-  const walk2 = (start, step) => {
+  const walk3 = (start, step) => {
     let last = start;
     let i = start + step;
     let headSeen = false;
@@ -8775,8 +8775,8 @@ function selectRows(rows, seedIndexes, size) {
       if (hangs) return;
     }
   };
-  walk2(lo, -1);
-  walk2(hi, 1);
+  walk3(lo, -1);
+  walk3(hi, 1);
   return keep;
 }
 function buildEntries(rows) {
@@ -11654,13 +11654,13 @@ function formulaInner(inner) {
   const multi = /^[A-Z][a-z]?\d*(?:[A-Z][a-z]?\d*)+$/.test(inner);
   const parenElement = /^[A-Z][a-z]?\d+$/.test(inner);
   if (!multi && !parenElement) return inner;
-  return inner.replace(/([A-Z][a-z]?)(\d+)/g, (_, el, digits) => el + subscriptDigits(digits));
+  return inner.replace(/([A-Z][a-z]?)(\d+)/g, (_, el2, digits) => el2 + subscriptDigits(digits));
 }
 function chemicalSubscripts(text4) {
   let s = String(text4 || "");
   s = s.replace(/\(([A-Z][a-z]?\d*(?:[A-Z][a-z]?\d*)*)\)/g, (m, inner) => `(${formulaInner(inner)})`);
   s = s.replace(/\b([A-Z][a-z]?\d*(?:[A-Z][a-z]?\d*)+)\b/g, (m) => formulaInner(m));
-  s = s.replace(/\b([A-Z][a-z]?)(\d+)\b/g, (m, el, digits) => ELEMENT.has(el) && digits !== "1" ? el + subscriptDigits(digits) : m);
+  s = s.replace(/\b([A-Z][a-z]?)(\d+)\b/g, (m, el2, digits) => ELEMENT.has(el2) && digits !== "1" ? el2 + subscriptDigits(digits) : m);
   return s;
 }
 function normalizeThousands(table) {
@@ -14504,9 +14504,9 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
     w?.removeEventListener?.("pointercancel", state.up, true);
   };
   const pageBox = (pageNumber) => {
-    const el = pageEl?.(pageNumber);
+    const el2 = pageEl?.(pageNumber);
     const info = pageOf3?.(pageNumber) || {};
-    return { el, info };
+    return { el: el2, info };
   };
   const add = (parent, cls) => {
     const node2 = doc.createElement("div");
@@ -14520,11 +14520,11 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
     clearNow();
     if (!block || !doc) return null;
     const pageNumber = block.page;
-    const { el, info } = pageBox(pageNumber);
-    if (!el) return null;
-    const rect = bboxToPageRect(block.bbox, info, el);
+    const { el: el2, info } = pageBox(pageNumber);
+    if (!el2) return null;
+    const rect = bboxToPageRect(block.bbox, info, el2);
     if (!rect) return null;
-    const node2 = add(el, "pxd-parse-region");
+    const node2 = add(el2, "pxd-parse-region");
     place(node2, rect);
     node2.setAttribute("data-block", block.id || "");
     return node2;
@@ -14532,21 +14532,21 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
   const showGrid = (table) => {
     clearNow();
     if (!table || !doc) return;
-    const { el, info } = pageBox(table.page);
-    if (!el) return;
+    const { el: el2, info } = pageBox(table.page);
+    if (!el2) return;
     const grid = table.grid || {};
     const xs2 = Array.isArray(grid.xs) ? grid.xs : [];
     const ys2 = Array.isArray(grid.ys) ? grid.ys : [];
-    const tableRect = bboxToPageRect(table.bbox, info, el);
+    const tableRect = bboxToPageRect(table.bbox, info, el2);
     if (tableRect) {
-      const frame = add(el, "pxd-parse-region pxd-parse-region--table");
+      const frame = add(el2, "pxd-parse-region pxd-parse-region--table");
       place(frame, tableRect);
     }
     for (let r = 0; r < ys2.length - 1; r += 1) {
       for (let c = 0; c < xs2.length - 1; c += 1) {
-        const cell = bboxToPageRect([xs2[c], ys2[r], xs2[c + 1], ys2[r + 1]], info, el);
+        const cell = bboxToPageRect([xs2[c], ys2[r], xs2[c + 1], ys2[r + 1]], info, el2);
         if (!cell) continue;
-        const node2 = add(el, "pxd-parse-grid");
+        const node2 = add(el2, "pxd-parse-grid");
         place(node2, cell);
       }
     }
@@ -14554,14 +14554,14 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
       const rs = cell.rowSpan ?? 1;
       const cs = cell.colSpan ?? 1;
       if (rs < 2 && cs < 2) continue;
-      const rect = bboxToPageRect(cell.bbox, info, el);
+      const rect = bboxToPageRect(cell.bbox, info, el2);
       if (!rect) continue;
-      const node2 = add(el, "pxd-parse-merge");
+      const node2 = add(el2, "pxd-parse-merge");
       place(node2, rect);
     }
     const upright = !normRotation(Math.round(num2(info?.textRotation) / 90) * 90);
     for (let i = 1; upright && i < xs2.length - 1; i += 1) {
-      const line = bboxToPageRect([xs2[i], ys2[0] ?? table.bbox?.[1] ?? 0, xs2[i], ys2[ys2.length - 1] ?? table.bbox?.[3] ?? 0], info, el);
+      const line = bboxToPageRect([xs2[i], ys2[0] ?? table.bbox?.[1] ?? 0, xs2[i], ys2[ys2.length - 1] ?? table.bbox?.[3] ?? 0], info, el2);
       if (!line) continue;
       const handle = doc.createElement("div");
       handle.className = "pxd-parse-col";
@@ -14574,12 +14574,12 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
       handle.setAttribute("data-col", String(i));
       handle.setAttribute("role", "separator");
       handle.setAttribute("aria-orientation", "vertical");
-      el.append(handle);
+      el2.append(handle);
       owned.push(handle);
       const onDown = (event) => {
         if (event.button != null && event.button !== 0) return;
         event.stopPropagation?.();
-        const scale = line.scale || bboxToPageRect([0, 0, 1, 1], info, el)?.scale || 1;
+        const scale = line.scale || bboxToPageRect([0, 0, 1, 1], info, el2)?.scale || 1;
         const startX = num2(event.clientX);
         const origin = xs2.slice();
         const move = (ev) => {
@@ -14588,7 +14588,7 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
           const lo = origin[i - 1] + 4;
           const hi = origin[i + 1] - 4;
           next[i] = Math.min(hi, Math.max(lo, origin[i] + dx));
-          const moved = bboxToPageRect([next[i], 0, next[i], 1], info, el);
+          const moved = bboxToPageRect([next[i], 0, next[i], 1], info, el2);
           if (moved) handle.style.left = `${moved.left - 3}px`;
           drag.xs = next;
         };
@@ -14822,9 +14822,9 @@ function pxdPinTarget(hash) {
   if (!UID_RE4.test(pin2)) return null;
   return { pinUid: pin2, pageUid: pageUidFromHash(text4), graph: graphFromDeepLink(text4) };
 }
-function pinClickMode({ shiftKey = false, metaKey = false, ctrlKey = false } = {}) {
+function pinClickMode({ shiftKey = false, metaKey: metaKey2 = false, ctrlKey = false } = {}) {
   if (shiftKey) return "sidebar";
-  if (metaKey || ctrlKey) return "main";
+  if (metaKey2 || ctrlKey) return "main";
   return "popover";
 }
 function pinOpenPlan(region) {
@@ -17042,15 +17042,15 @@ function createVisitStore({ storage = globalThis.localStorage, graph = "" } = {}
 }
 function latestEdit(node2) {
   let best = { time: 0, user: "" };
-  const walk2 = (n2) => {
+  const walk3 = (n2) => {
     if (!n2 || typeof n2 !== "object") return;
     const t = Number(n2[":edit/time"] ?? n2[":create/time"]);
     if (Number.isFinite(t) && t > best.time) best = { time: t, user: userName(n2[":edit/user"]) };
     const kids = n2[":block/children"];
-    if (Array.isArray(kids)) for (const kid of kids) walk2(kid);
+    if (Array.isArray(kids)) for (const kid of kids) walk3(kid);
   };
-  if (Array.isArray(node2)) for (const part of node2) walk2(part);
-  else walk2(node2);
+  if (Array.isArray(node2)) for (const part of node2) walk3(part);
+  else walk3(node2);
   return best;
 }
 function changedSince(nodes, lastVisit, titleOf3 = (uid) => uid) {
@@ -18235,15 +18235,15 @@ function placeBasic({ anchor, size, viewport, bounds, gap = POP_GAP } = {}) {
 }
 function rowFraction(blocks, uid) {
   const rows = [];
-  const walk2 = (list) => {
+  const walk3 = (list) => {
     for (const c of list || []) {
       const str2 = c?.[":block/string"] ?? c?.string ?? "";
       if (attrNameOf(str2) === "BT_attrDue") continue;
       rows.push(c?.[":block/uid"] ?? c?.uid ?? "");
-      if (c?.open !== false && c?.[":block/open"] !== false) walk2(c?.[":block/children"] ?? c?.children);
+      if (c?.open !== false && c?.[":block/open"] !== false) walk3(c?.[":block/children"] ?? c?.children);
     }
   };
-  walk2(blocks);
+  walk3(blocks);
   const i = rows.indexOf(uid);
   return i < 0 || !rows.length ? null : (i + 0.5) / rows.length;
 }
@@ -18531,10 +18531,10 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     const board2 = boardUid ? modelOf(boardUid) : null;
     const rel = board2 ? relationOf(board2, edgeUid, { blockText: blockText3 }) : null;
     const model = board2 ? previewModel(board2, edgeUid, { blockText: blockText3 }) : null;
-    const el = doc.createElement("div");
-    el.className = `pxd-root ${POP_CLASS}`;
-    el.setAttribute("role", "dialog");
-    el.setAttribute("aria-label", "Connection preview");
+    const el2 = doc.createElement("div");
+    el2.className = `pxd-root ${POP_CLASS}`;
+    el2.setAttribute("role", "dialog");
+    el2.setAttribute("aria-label", "Connection preview");
     const mk = (tag, cls, parent, text4) => {
       const n2 = doc.createElement(tag);
       n2.className = cls;
@@ -18542,7 +18542,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
       parent?.append(n2);
       return n2;
     };
-    const head = mk("div", "pxd-relpop__head", el);
+    const head = mk("div", "pxd-relpop__head", el2);
     mk("div", "pxd-relpop__title", head, rel ? chipText({ ...rel }).replace(/^↗ /, "") : "This connection is no longer on a board");
     if (endpointUid) {
       let text4 = "";
@@ -18561,7 +18561,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
           drawing = "";
         }
         const src = /!\[[^\]]*\]\(([^)]+)\)/.exec(drawing)?.[1] || "";
-        const frame = mk("div", "pxd-relpop__crop", el);
+        const frame = mk("div", "pxd-relpop__crop", el2);
         mountLazyCrop(doc, frame, {
           src,
           frac: cropFrac,
@@ -18570,12 +18570,12 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
         });
       }
       const caption = rel?.label || region?.caption || "";
-      if (caption) mk("div", "pxd-relpop__note", el, caption);
+      if (caption) mk("div", "pxd-relpop__note", el2, caption);
     }
-    if (model) drawPreview(doc, el, model);
-    else mk("div", "pxd-relpop__empty", el, "The connected cards could not be found on the board.");
-    if (!endpointUid && rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip3(rel.toBlockText, 60)}”`);
-    const row4 = mk("div", "pxd-relpop__actions", el);
+    if (model) drawPreview(doc, el2, model);
+    else mk("div", "pxd-relpop__empty", el2, "The connected cards could not be found on the board.");
+    if (!endpointUid && rel?.toBlockText) mk("div", "pxd-relpop__note", el2, `Ends on the block “${clip3(rel.toBlockText, 60)}”`);
+    const row4 = mk("div", "pxd-relpop__actions", el2);
     const button2 = (tip, text4, fn) => {
       const b = mk("button", "pxd-btn pxd-relpop__btn", row4, text4);
       b.type = "button";
@@ -18599,7 +18599,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
         }
       }
     });
-    doc.body.append(el);
+    doc.body.append(el2);
     const scrollParent = (node2) => {
       for (let n2 = node2?.parentElement; n2; n2 = n2.parentElement) {
         const o = win2?.getComputedStyle?.(n2)?.overflowY;
@@ -18625,15 +18625,15 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
       const hr = holder?.getBoundingClientRect?.();
       const at = placePopover({
         anchor: cr,
-        size: { w: el.offsetWidth || 380, h: pop?.natural ?? (el.offsetHeight || 300) },
+        size: { w: el2.offsetWidth || 380, h: pop?.natural ?? (el2.offsetHeight || 300) },
         viewport: { left: 0, top: 0, right: vw, bottom: vh },
         bounds: hr ? { left: hr.left, top: hr.top, right: hr.right, bottom: hr.bottom } : null
       });
-      el.style.left = `${at.left}px`;
-      el.style.top = `${at.top}px`;
-      el.style.maxHeight = at.maxHeight ? `${at.maxHeight}px` : "";
-      el.style.overflowY = at.scroll ? "auto" : "";
-      el.setAttribute("data-side", at.side);
+      el2.style.left = `${at.left}px`;
+      el2.style.top = `${at.top}px`;
+      el2.style.maxHeight = at.maxHeight ? `${at.maxHeight}px` : "";
+      el2.style.overflowY = at.scroll ? "auto" : "";
+      el2.setAttribute("data-side", at.side);
     };
     const offs = [];
     const on = (target, type, fn, opts) => {
@@ -18647,7 +18647,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
       }
     }, true);
     on(doc, "pointerdown", (event) => {
-      if (!el.contains?.(event.target) && !chip.contains?.(event.target)) closePop();
+      if (!el2.contains?.(event.target) && !chip.contains?.(event.target)) closePop();
     }, true);
     let queued = null;
     const again = () => {
@@ -18659,7 +18659,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
       queued = () => win2?.cancelAnimationFrame?.(id);
     };
     on(win2, "scroll", (event) => {
-      if (!el.contains?.(event.target)) again();
+      if (!el2.contains?.(event.target)) again();
     }, { capture: true, passive: true });
     on(win2, "resize", again, { passive: true });
     offs.push(() => {
@@ -18668,11 +18668,11 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     });
     let tooltip = null;
     try {
-      tooltip = createTooltip({ doc, root: el, timers, setting });
+      tooltip = createTooltip({ doc, root: el2, timers, setting });
     } catch {
       tooltip = null;
     }
-    pop = { el, offs, tooltip, chip, natural: el.offsetHeight || 300 };
+    pop = { el: el2, offs, tooltip, chip, natural: el2.offsetHeight || 300 };
     place2();
   };
   const buildChip = (edgeUid) => {
@@ -18764,7 +18764,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     glyph.setAttribute("aria-label", CRUMB_TIP);
     (items[items.length - 1] || zoom).append(glyph);
     crumbGlyphs.add(glyph);
-    for (const el of [...items, glyph]) {
+    for (const el2 of [...items, glyph]) {
       const swallow = (event) => {
         if (plain2(event)) stop3(event);
       };
@@ -18772,14 +18772,14 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
         if (!plain2(event)) return;
         stop3(event);
         event.preventDefault?.();
-        openPop(el, edgeUid, avoid());
+        openPop(el2, edgeUid, avoid());
       };
       for (const type of ["pointerdown", "mousedown", "mouseup"]) {
-        el.addEventListener(type, swallow, true);
-        crumbOffs.push(() => el.removeEventListener(type, swallow, true));
+        el2.addEventListener(type, swallow, true);
+        crumbOffs.push(() => el2.removeEventListener(type, swallow, true));
       }
-      el.addEventListener("click", open, true);
-      crumbOffs.push(() => el.removeEventListener("click", open, true));
+      el2.addEventListener("click", open, true);
+      crumbOffs.push(() => el2.removeEventListener("click", open, true));
     }
     const onKey = (event) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -18815,9 +18815,9 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     const found = [];
     if (node2.classList?.contains("roam-block") && isInput(node2)) found.push(node2);
     if (typeof node2.querySelectorAll === "function") {
-      for (const el of node2.querySelectorAll(BLOCK_SELECTOR)) {
-        if (!isInput(el)) continue;
-        found.push(el);
+      for (const el2 of node2.querySelectorAll(BLOCK_SELECTOR)) {
+        if (!isInput(el2)) continue;
+        found.push(el2);
         if (found.length >= SCAN_CAP) break;
       }
     }
@@ -18889,7 +18889,7 @@ var init_relchips = __esm({
     BLOCK_MAX = 24;
     MODEL_TTL_MS = 5e3;
     BLOCK_SELECTOR = ".roam-block";
-    isInput = (el) => String(el?.id || "").startsWith("block-input-");
+    isInput = (el2) => String(el2?.id || "").startsWith("block-input-");
     clip3 = (text4, max) => {
       const t = String(text4 ?? "").replace(/\s+/g, " ").trim();
       return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
@@ -19247,13 +19247,13 @@ var init_avoid = __esm({
 });
 
 // src/view/task-popover.js
-function focusEl3(el) {
-  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+function focusEl3(el2) {
+  if (!el2 || typeof el2.focus !== "function" || el2.isConnected === false) return;
   try {
-    el.focus({ preventScroll: true });
+    el2.focus({ preventScroll: true });
   } catch {
     try {
-      el.focus();
+      el2.focus();
     } catch {
     }
   }
@@ -19279,7 +19279,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     placeAgain = () => {
     };
   };
-  const el = (tag, cls, parent, text4) => {
+  const el2 = (tag, cls, parent, text4) => {
     const n2 = doc.createElement(tag);
     n2.className = cls;
     if (text4 != null) n2.textContent = text4;
@@ -19292,7 +19292,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     if (!res.ok) toast({ message: `Better Tasks could not change that: ${res.reason}` });
   };
   const button2 = (parent, label, run, cls = "pxd-task-pop__btn") => {
-    const b = el("button", cls, parent, label);
+    const b = el2("button", cls, parent, label);
     b.type = "button";
     b.setAttribute("aria-label", label);
     b.addEventListener("click", (event) => {
@@ -19303,7 +19303,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
   };
   const fillDue = (box2, uid) => {
     for (const choice of dayChoices(today())) button2(box2, choice.label, () => apply(uid, { due: choice.value }));
-    const pick2 = el("input", "pxd-task-pop__input", box2);
+    const pick2 = el2("input", "pxd-task-pop__input", box2);
     pick2.type = "date";
     pick2.setAttribute("aria-label", "Pick a date");
     pick2.addEventListener("change", () => {
@@ -19312,12 +19312,12 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     button2(box2, "Clear", () => apply(uid, { due: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
   const fillProject = (box2, uid) => {
-    const list = el("div", "pxd-task-pop__list", box2);
-    el("div", "pxd-task-pop__hint", list, "Loading projects");
+    const list = el2("div", "pxd-task-pop__list", box2);
+    el2("div", "pxd-task-pop__hint", list, "Loading projects");
     void bt.projects().then((names) => {
       if (!node2 || openFor !== uid) return;
       list.replaceChildren();
-      if (!names.length) el("div", "pxd-task-pop__hint", list, "No projects yet");
+      if (!names.length) el2("div", "pxd-task-pop__hint", list, "No projects yet");
       for (const name of names) button2(list, name, () => apply(uid, { project: name }));
       placeAgain();
       const active = doc.activeElement;
@@ -19333,7 +19333,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     button2(box2, "Clear", () => apply(uid, { priority: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
   const fillRepeat = (box2, uid) => {
-    const input = el("input", "pxd-task-pop__input", box2);
+    const input = el2("input", "pxd-task-pop__input", box2);
     input.type = "text";
     input.placeholder = "every Friday";
     input.setAttribute("aria-label", "Repeat rule");
@@ -19364,11 +19364,11 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     close();
     if (!root || !FILL[kind]) return false;
     openFor = uid;
-    node2 = el("div", "pxd-task-pop pxd-chrome", root);
+    node2 = el2("div", "pxd-task-pop pxd-chrome", root);
     node2.setAttribute("role", "dialog");
     node2.setAttribute("aria-label", `${TITLES2[kind]} for this task`);
     node2.setAttribute("data-task-pop", kind);
-    el("div", "pxd-task-pop__title", node2, TITLES2[kind]);
+    el2("div", "pxd-task-pop__title", node2, TITLES2[kind]);
     FILL[kind](node2, uid);
     if (kind !== "repeat") focusEl3(node2.querySelector("button"));
     const a = anchor?.getBoundingClientRect?.();
@@ -19432,42 +19432,42 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
   const root = avoid?.nodeType === 1 ? avoid : avoid?.root?.nodeType === 1 ? avoid.root : null;
   const home = root || doc.body;
   if (doc.querySelector?.(".bp3-dialog") || home?.querySelector?.(".bp3-dialog")) return null;
-  const el = (tag, cls, parent) => {
+  const el2 = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
     if (cls) node2.className = cls;
     parent?.append(node2);
     return node2;
   };
-  const pop = el("div", "pxd-status-chooser pxd-task-pop pxd-chrome", home);
+  const pop = el2("div", "pxd-status-chooser pxd-task-pop pxd-chrome", home);
   pop.setAttribute("role", "dialog");
   pop.setAttribute("aria-label", "Status");
-  const list = el("div", "pxd-status-chooser__list", pop);
+  const list = el2("div", "pxd-status-chooser__list", pop);
   list.setAttribute("role", "listbox");
   const want = String(current3 ?? "").trim().toLowerCase();
   let currentRow = null;
   for (const entry of paletteEntries(palette)) {
     const name = String(entry?.name || "").trim();
     if (!name) continue;
-    const row4 = el("button", "pxd-status-chooser__row", list);
+    const row4 = el2("button", "pxd-status-chooser__row", list);
     row4.type = "button";
     row4.setAttribute("role", "option");
     row4.setAttribute("aria-label", name);
     row4.setAttribute("data-name", name);
-    const glyph = el("span", "pxd-status-chooser__glyph", row4);
+    const glyph = el2("span", "pxd-status-chooser__glyph", row4);
     glyph.setAttribute("data-status", entry.glyph || "diamond");
     glyph.setAttribute("aria-hidden", "true");
-    const label = el("span", "pxd-status-chooser__name", row4);
+    const label = el2("span", "pxd-status-chooser__name", row4);
     label.textContent = name;
     if (name.toLowerCase() === want) {
       row4.setAttribute("aria-selected", "true");
       currentRow = row4;
     }
   }
-  const remove = el("button", "pxd-status-chooser__row pxd-status-chooser__row--remove", list);
+  const remove = el2("button", "pxd-status-chooser__row pxd-status-chooser__row--remove", list);
   remove.type = "button";
   remove.setAttribute("data-remove", "true");
   remove.setAttribute("aria-label", "Remove status");
-  const removeLabel = el("span", "pxd-status-chooser__name", remove);
+  const removeLabel = el2("span", "pxd-status-chooser__name", remove);
   removeLabel.textContent = "Remove status";
   let closed = false;
   let picked = false;
@@ -21136,7 +21136,7 @@ function createQueryCards({ doc = globalThis.document, host, storage, graph = ""
     if (!ms && typeof win2.requestIdleCallback === "function") return win2.requestIdleCallback(() => fn(), { timeout: 1500 });
     return setTimeout(fn, ms);
   });
-  const el = (tag, cls, parent, text4) => {
+  const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     if (cls) node2.className = cls;
     if (text4 != null) node2.textContent = text4;
@@ -21162,14 +21162,14 @@ function createQueryCards({ doc = globalThis.document, host, storage, graph = ""
     return entry.promise;
   }
   function rowEl(parent, row4) {
-    const node2 = el("div", "pxd-qc__row", parent);
+    const node2 = el2("div", "pxd-qc__row", parent);
     node2.draggable = true;
     node2.setAttribute("draggable", "true");
     node2.dataset.uid = row4.uid;
     node2.setAttribute("data-uid", row4.uid);
     node2.setAttribute("data-kind", row4.kind);
-    el("span", "pxd-qc__text", node2, row4.text);
-    if (row4.crumb) el("span", "pxd-qc__crumb", node2, row4.crumb);
+    el2("span", "pxd-qc__text", node2, row4.text);
+    if (row4.crumb) el2("span", "pxd-qc__crumb", node2, row4.crumb);
     for (const type of ["pointerdown", "mousedown", "dblclick"]) node2.addEventListener(type, swallow);
     node2.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -21200,17 +21200,17 @@ function createQueryCards({ doc = globalThis.document, host, storage, graph = ""
   function mount(parent, uid, string) {
     const parsed = parseQuery(string);
     if (!parsed.ok || !parsed.ast || !source) return null;
-    const root = el("div", "pxd-qc", parent);
+    const root = el2("div", "pxd-qc", parent);
     root.dataset.uid = uid;
-    const bar = el("div", "pxd-qc__bar", root);
-    const count = el("span", "pxd-qc__count", bar, parsed.title || "Query");
-    const refresh = el("button", "pxd-qc__refresh", bar, "↻");
+    const bar = el2("div", "pxd-qc__bar", root);
+    const count = el2("span", "pxd-qc__count", bar, parsed.title || "Query");
+    const refresh = el2("button", "pxd-qc__refresh", bar, "↻");
     refresh.type = "button";
     refresh.title = "Run the query again";
     refresh.setAttribute("aria-label", "Run the query again");
     for (const type of ["pointerdown", "mousedown", "dblclick"]) refresh.addEventListener(type, swallow);
-    const list = el("div", "pxd-qc__list", root);
-    const more = el("button", "pxd-qc__more", root);
+    const list = el2("div", "pxd-qc__list", root);
+    const more = el2("button", "pxd-qc__more", root);
     more.type = "button";
     more.hidden = true;
     for (const type of ["pointerdown", "mousedown", "dblclick"]) more.addEventListener(type, swallow);
@@ -21228,7 +21228,7 @@ function createQueryCards({ doc = globalThis.document, host, storage, graph = ""
       more.hidden = hidden === 0;
       if (hidden) more.textContent = `Show ${Math.min(QUERY_SHOW, hidden)} more (${hidden} left)`;
       if (!rows.length) {
-        el("div", "pxd-qc__empty", list, stale ? "Could not run this query. Open it in Roam." : "No results");
+        el2("div", "pxd-qc__empty", list, stale ? "Could not run this query. Open it in Roam." : "No results");
       }
       const parts = [`${total || rows.length} ${(total || rows.length) === 1 ? "result" : "results"}`];
       if (partial) parts.push("partial");
@@ -21248,7 +21248,7 @@ function createQueryCards({ doc = globalThis.document, host, storage, graph = ""
       stale = true;
       paint2();
     } else {
-      el("div", "pxd-qc__empty", list, "Running…");
+      el2("div", "pxd-qc__empty", list, "Running…");
     }
     const run = (force) => {
       root.classList.add("pxd-qc--busy");
@@ -21294,10 +21294,10 @@ function createQueryCards({ doc = globalThis.document, host, storage, graph = ""
       }
       const cached = cache.get(uid);
       if (!cached?.rows?.length) return;
-      const box2 = el("div", "pxd-qc pxd-qc--static", null);
-      const bar = el("div", "pxd-qc__bar", box2);
-      el("span", "pxd-qc__count", bar, `Last results · ${cached.total} saved`);
-      const list = el("div", "pxd-qc__list", box2);
+      const box2 = el2("div", "pxd-qc pxd-qc--static", null);
+      const bar = el2("div", "pxd-qc__bar", box2);
+      el2("span", "pxd-qc__count", bar, `Last results · ${cached.total} saved`);
+      const list = el2("div", "pxd-qc__list", box2);
       for (const row4 of cached.rows.slice(0, QUERY_SHOW)) rowEl(list, row4);
       card2.append(box2);
     }, FALLBACK_WAIT_MS);
@@ -21320,10 +21320,10 @@ var init_query_card = __esm({
 function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}) {
   const document2 = doc || globalThis.document;
   if (!document2?.createElement) throw new Error("mountTimeline needs a document");
-  const el = document2.createElement("div");
-  el.className = "pxd-timeline";
-  el.setAttribute("role", "region");
-  el.setAttribute("aria-label", "Timeline");
+  const el2 = document2.createElement("div");
+  el2.className = "pxd-timeline";
+  el2.setAttribute("role", "region");
+  el2.setAttribute("aria-label", "Timeline");
   let grouped = [];
   const collapsed = /* @__PURE__ */ new Set();
   let disposed = false;
@@ -21338,7 +21338,7 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
   const onClick = (event) => {
     if (disposed) return;
     const show = event.target?.closest?.(".pxd-timeline__show");
-    if (show && el.contains(show)) {
+    if (show && el2.contains(show)) {
       event.preventDefault?.();
       event.stopPropagation?.();
       const day = dayOf2(show.getAttribute("data-page-uid") || "");
@@ -21347,7 +21347,7 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
       return;
     }
     const yearBtn = event.target?.closest?.(".pxd-timeline__year");
-    if (yearBtn && el.contains(yearBtn)) {
+    if (yearBtn && el2.contains(yearBtn)) {
       event.preventDefault?.();
       event.stopPropagation?.();
       const year = Number(yearBtn.getAttribute("data-year"));
@@ -21363,7 +21363,7 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
       return;
     }
     const dayRow = event.target?.closest?.(".pxd-timeline__day");
-    if (dayRow && el.contains(dayRow)) {
+    if (dayRow && el2.contains(dayRow)) {
       event.preventDefault?.();
       event.stopPropagation?.();
       const pageUid = dayRow.getAttribute("data-page-uid") || "";
@@ -21373,12 +21373,12 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
   const render = (nextRows) => {
     if (disposed) return;
     grouped = groupTimeline(nextRows);
-    el.replaceChildren();
+    el2.replaceChildren();
     if (!grouped.length) {
       const empty = document2.createElement("div");
       empty.className = "pxd-timeline__empty";
       empty.textContent = EMPTY;
-      el.append(empty);
+      el2.append(empty);
       return;
     }
     for (const year of grouped) {
@@ -21420,28 +21420,28 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
         days.append(row4);
       }
       group.append(button2, days);
-      el.append(group);
+      el2.append(group);
     }
   };
   const onKey = (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     onClick(event);
   };
-  el.addEventListener("click", onClick);
-  el.addEventListener("keydown", onKey);
+  el2.addEventListener("click", onClick);
+  el2.addEventListener("keydown", onKey);
   render(rows);
-  parent?.append?.(el);
+  parent?.append?.(el2);
   return {
-    el,
+    el: el2,
     update(nextRows) {
       render(nextRows);
     },
     dispose() {
       if (disposed) return;
       disposed = true;
-      el.removeEventListener("click", onClick);
-      el.removeEventListener("keydown", onKey);
-      el.remove();
+      el2.removeEventListener("click", onClick);
+      el2.removeEventListener("keydown", onKey);
+      el2.remove();
     }
   };
 }
@@ -21883,23 +21883,23 @@ var init_color = __esm({
 // src/view/panel.js
 function createPanel({ doc = globalThis.document, root, host, timers, on = {}, width } = {}) {
   const listeners3 = [];
-  const listen = (el2, type, fn, opts) => {
-    el2.addEventListener(type, fn, opts);
-    listeners3.push(() => el2.removeEventListener(type, fn, opts));
+  const listen = (el3, type, fn, opts) => {
+    el3.addEventListener(type, fn, opts);
+    listeners3.push(() => el3.removeEventListener(type, fn, opts));
   };
-  const el = (tag, cls, parent, text4) => {
+  const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
     if (text4 !== void 0) node2.textContent = text4;
     parent?.append(node2);
     return node2;
   };
-  const panel = el("aside", "pxd-panel pxd-chrome", root);
+  const panel = el2("aside", "pxd-panel pxd-chrome", root);
   panel.style.display = "none";
   if (Number.isFinite(Number(width))) panel.style.width = `${nextPanelWidth(width, 0)}px`;
   const publishWidth = (w) => root?.style?.setProperty?.("--pxd-panel-w", `${w}px`);
   publishWidth(parseFloat(panel.style.width) || PANEL_WIDTH_DEFAULT);
-  const resize = el("div", "pxd-panel__resize", panel);
+  const resize = el2("div", "pxd-panel__resize", panel);
   resize.title = "Resize";
   for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "keydown", "keyup"]) {
     listen(panel, type, (event) => {
@@ -21938,16 +21938,16 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     publishWidth(next);
     on.rememberWidth?.(next);
   });
-  const head = el("div", "pxd-panel__head", panel);
-  const tabs = el("div", "pxd-panel__tabs", head);
+  const head = el2("div", "pxd-panel__head", panel);
+  const tabs = el2("div", "pxd-panel__tabs", head);
   const tabBtn = (name, label, icon, on2) => {
-    const b = el("button", `pxd-btn pxd-iconbtn pxd-panel__tab${on2 ? " pxd-panel__tab--on" : ""}`, tabs);
+    const b = el2("button", `pxd-btn pxd-iconbtn pxd-panel__tab${on2 ? " pxd-panel__tab--on" : ""}`, tabs);
     b.type = "button";
     b.title = label;
     b.setAttribute("aria-label", label);
     b.dataset.tab = name;
     b.setAttribute("data-tab", name);
-    const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+    const i = el2("span", `bp3-icon bp3-icon-${icon}`, b);
     i.setAttribute("aria-hidden", "true");
     return b;
   };
@@ -21960,26 +21960,26 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   const tabTrails = tabBtn("trails", "Trails", "flows");
   const tabChanged = tabBtn("changed", "Changed", "history");
   const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, journal: tabJournal, info: tabInfo, trails: tabTrails, changed: tabChanged };
-  const closeBtn = el("button", "pxd-btn pxd-iconbtn pxd-panel__close", head);
+  const closeBtn = el2("button", "pxd-btn pxd-iconbtn pxd-panel__close", head);
   closeBtn.type = "button";
   closeBtn.title = "Close";
   closeBtn.setAttribute("aria-label", "Close");
-  el("span", "bp3-icon bp3-icon-small-cross", closeBtn).setAttribute("aria-hidden", "true");
-  const searchPane = el("div", "pxd-panel__pane pxd-panel__pane--search", panel);
-  const relatedPane = el("div", "pxd-panel__pane pxd-panel__pane--related", panel);
+  el2("span", "bp3-icon bp3-icon-small-cross", closeBtn).setAttribute("aria-hidden", "true");
+  const searchPane = el2("div", "pxd-panel__pane pxd-panel__pane--search", panel);
+  const relatedPane = el2("div", "pxd-panel__pane pxd-panel__pane--related", panel);
   relatedPane.style.display = "none";
-  const input = el("input", "pxd-input pxd-panel__input", searchPane);
+  const input = el2("input", "pxd-input pxd-panel__input", searchPane);
   input.type = "text";
   input.setAttribute("aria-label", "Search pages and blocks");
   input.placeholder = "Search pages and blocks…";
   input.setAttribute("placeholder", "Search pages and blocks…");
-  const filters = el("div", "pxd-panel__filters", searchPane);
-  const typeBtn = el("button", "pxd-btn pxd-panel__type-btn", filters, "All");
+  const filters = el2("div", "pxd-panel__filters", searchPane);
+  const typeBtn = el2("button", "pxd-btn pxd-panel__type-btn", filters, "All");
   typeBtn.type = "button";
   typeBtn.setAttribute("aria-label", "Filter card type");
   typeBtn.setAttribute("aria-haspopup", "true");
   typeBtn.setAttribute("aria-expanded", "false");
-  const typePop = el("div", "pxd-panel__type-pop", filters);
+  const typePop = el2("div", "pxd-panel__type-pop", filters);
   typePop.style.display = "none";
   typePop.setAttribute("role", "group");
   typePop.setAttribute("aria-label", "Card types");
@@ -22009,19 +22009,19 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     if (Array.isArray(saved2)) checked = new Set(saved2.filter((t) => ALL_TYPES.includes(t)));
   } catch {
   }
-  const typeBulk = el("div", "pxd-panel__type-bulk", typePop);
-  const showAll = el("button", "pxd-btn pxd-panel__type-all", typeBulk, "Show all");
+  const typeBulk = el2("div", "pxd-panel__type-bulk", typePop);
+  const showAll = el2("button", "pxd-btn pxd-panel__type-all", typeBulk, "Show all");
   showAll.type = "button";
   showAll.setAttribute("aria-label", "Show all");
-  const hideAll = el("button", "pxd-btn pxd-panel__type-none", typeBulk, "Hide all");
+  const hideAll = el2("button", "pxd-btn pxd-panel__type-none", typeBulk, "Hide all");
   hideAll.type = "button";
   hideAll.setAttribute("aria-label", "Hide all");
   for (const [title, list] of [["Documents", LIBRARY_DOC_TYPES], ["Inside PDFs", LIBRARY_PART_TYPES]]) {
-    el("div", "pxd-panel__type-group", typePop, title);
+    el2("div", "pxd-panel__type-group", typePop, title);
     for (const value of list) {
-      const line = el("label", "pxd-panel__type-row", typePop);
+      const line = el2("label", "pxd-panel__type-row", typePop);
       line.dataset.type = value;
-      const box2 = el("input", "pxd-panel__type-box", line);
+      const box2 = el2("input", "pxd-panel__type-box", line);
       box2.type = "checkbox";
       box2.dataset.type = value;
       box2.setAttribute("data-type", value);
@@ -22043,34 +22043,34 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     typeBtn.setAttribute("aria-expanded", open ? "true" : "false");
   };
   const typesOpen = () => typePop.style.display !== "none";
-  const tagInput = el("input", "pxd-panel__tag", filters);
+  const tagInput = el2("input", "pxd-panel__tag", filters);
   tagInput.type = "text";
   tagInput.placeholder = "#tag";
   tagInput.setAttribute("placeholder", "#tag");
   tagInput.setAttribute("aria-label", "Tag");
-  const daysInput = el("input", "pxd-panel__days", filters);
+  const daysInput = el2("input", "pxd-panel__days", filters);
   daysInput.type = "number";
   daysInput.min = "0";
   daysInput.placeholder = "days";
   daysInput.setAttribute("placeholder", "days");
   daysInput.setAttribute("aria-label", "Edited in the last N days");
-  const pagesInput = el("input", "pxd-panel__pages", filters);
+  const pagesInput = el2("input", "pxd-panel__pages", filters);
   pagesInput.type = "text";
   pagesInput.placeholder = "p. 3-8";
   pagesInput.setAttribute("placeholder", "p. 3-8");
   pagesInput.setAttribute("aria-label", "Page range, PDF parts only");
-  const orphanLabel = el("label", "pxd-panel__orphan", filters);
-  const orphanBox = el("input", "pxd-panel__orphan-box", orphanLabel);
+  const orphanLabel = el2("label", "pxd-panel__orphan", filters);
+  const orphanBox = el2("input", "pxd-panel__orphan-box", orphanLabel);
   orphanBox.type = "checkbox";
   orphanBox.setAttribute("aria-label", "Not on any board");
   orphanLabel.append("Not on any board");
-  swatches = el("div", "pxd-panel__swatches", searchPane);
+  swatches = el2("div", "pxd-panel__swatches", searchPane);
   swatches.style.display = "none";
   swatches.setAttribute("role", "group");
   swatches.setAttribute("aria-label", "Search images by colour");
   const swatchBtns = /* @__PURE__ */ new Map();
   for (const name of COLOR_NAMES) {
-    const b = el("button", "pxd-panel__swatch", swatches);
+    const b = el2("button", "pxd-panel__swatch", swatches);
     b.type = "button";
     b.dataset.color = name;
     b.setAttribute("data-color", name);
@@ -22081,33 +22081,33 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     swatchBtns.set(name, b);
   }
   paintTypes();
-  const likeChip = el("div", "pxd-panel__like", searchPane);
+  const likeChip = el2("div", "pxd-panel__like", searchPane);
   likeChip.style.display = "none";
-  const likeText = el("span", "pxd-panel__like-text", likeChip);
-  const likeClear = el("button", "pxd-panel__like-x", likeChip, "×");
+  const likeText = el2("span", "pxd-panel__like-text", likeChip);
+  const likeClear = el2("button", "pxd-panel__like-x", likeChip, "×");
   likeClear.type = "button";
   likeClear.setAttribute("aria-label", "Clear similar-image search");
   likeClear.setAttribute("title", "Clear");
-  const results = el("div", "pxd-panel__list", searchPane);
-  const indexNote = el("div", "pxd-panel__index-note", searchPane);
+  const results = el2("div", "pxd-panel__list", searchPane);
+  const indexNote = el2("div", "pxd-panel__index-note", searchPane);
   indexNote.style.display = "none";
   indexNote.setAttribute("aria-live", "polite");
-  const relatedHead = el("div", "pxd-panel__related-head", relatedPane);
-  const relatedTitle = el("span", "pxd-panel__related-title", relatedHead, "Select a card");
-  const addAll = el("button", "pxd-btn pxd-panel__add-all", relatedHead, "Add all");
+  const relatedHead = el2("div", "pxd-panel__related-head", relatedPane);
+  const relatedTitle = el2("span", "pxd-panel__related-title", relatedHead, "Select a card");
+  const addAll = el2("button", "pxd-btn pxd-panel__add-all", relatedHead, "Add all");
   addAll.type = "button";
   addAll.setAttribute("aria-label", "Add all");
   addAll.style.display = "none";
-  const relatedList = el("div", "pxd-panel__list", relatedPane);
-  const boardsPane = el("div", "pxd-panel__pane pxd-panel__pane--boards", panel);
+  const relatedList = el2("div", "pxd-panel__list", relatedPane);
+  const boardsPane = el2("div", "pxd-panel__pane pxd-panel__pane--boards", panel);
   boardsPane.style.display = "none";
-  const boardsFilter = el("input", "pxd-input pxd-panel__input pxd-panel__boards-filter", boardsPane);
+  const boardsFilter = el2("input", "pxd-input pxd-panel__input pxd-panel__boards-filter", boardsPane);
   boardsFilter.type = "text";
   boardsFilter.setAttribute("aria-label", "Filter boards");
   boardsFilter.placeholder = "Filter boards…";
   boardsFilter.setAttribute("placeholder", "Filter boards…");
-  const viewsList = el("div", "pxd-panel__views", boardsPane);
-  const boardsList = el("div", "pxd-panel__list pxd-panel__boards", boardsPane);
+  const viewsList = el2("div", "pxd-panel__views", boardsPane);
+  const boardsList = el2("div", "pxd-panel__list pxd-panel__boards", boardsPane);
   let viewSig = "";
   const viewSignature = (views) => (Array.isArray(views) ? views : []).map((view) => `${view?.uid}|${view?.caption}|${(view?.v || []).join(",")}|${(view?.ids || []).join(",")}`).join("\n");
   const renderViews = () => {
@@ -22120,23 +22120,23 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     }
     viewSig = viewSignature(views);
     if (!Array.isArray(views) || !views.length) return;
-    el("div", "pxd-panel__views-title", viewsList, "Views");
+    el2("div", "pxd-panel__views-title", viewsList, "Views");
     for (const view of views) {
       if (!view?.uid) continue;
-      const row5 = el("div", "pxd-view-row", viewsList);
+      const row5 = el2("div", "pxd-view-row", viewsList);
       row5.setAttribute("data-view", view.uid);
       row5.append(minimapSvg(doc, { v: view.v, items: view.items || [] }));
-      el("span", "pxd-view-caption", row5, view.caption || "View");
-      const go = el("button", "pxd-btn pxd-view-go", row5, "Go");
+      el2("span", "pxd-view-caption", row5, view.caption || "View");
+      const go = el2("button", "pxd-btn pxd-view-go", row5, "Go");
       go.type = "button";
       go.setAttribute("data-act", "go");
-      const copy = el("button", "pxd-btn pxd-view-copy", row5, "Copy ref");
+      const copy = el2("button", "pxd-btn pxd-view-copy", row5, "Copy ref");
       copy.type = "button";
       copy.setAttribute("data-act", "copy");
-      const rename = el("button", "pxd-btn pxd-view-rename", row5, "Rename");
+      const rename = el2("button", "pxd-btn pxd-view-rename", row5, "Rename");
       rename.type = "button";
       rename.setAttribute("data-act", "rename");
-      const del = el("button", "pxd-btn pxd-view-delete", row5, "Delete");
+      const del = el2("button", "pxd-btn pxd-view-delete", row5, "Delete");
       del.type = "button";
       del.setAttribute("data-act", "delete");
     }
@@ -22153,41 +22153,41 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     else if (act === "rename") on.renameView?.(uid);
     else if (act === "delete") on.deleteView?.(uid);
   });
-  const outlinePane = el("div", "pxd-panel__pane pxd-panel__pane--outline", panel);
+  const outlinePane = el2("div", "pxd-panel__pane pxd-panel__pane--outline", panel);
   outlinePane.style.display = "none";
-  const outlineList = el("div", "pxd-panel__list pxd-panel__outline", outlinePane);
-  const journalPane = el("div", "pxd-panel__pane pxd-panel__pane--journal", panel);
+  const outlineList = el2("div", "pxd-panel__list pxd-panel__outline", outlinePane);
+  const journalPane = el2("div", "pxd-panel__pane pxd-panel__pane--journal", panel);
   journalPane.style.display = "none";
-  const journalBar = el("div", "pxd-journal__bar", journalPane);
-  const journalPrev = el("button", "pxd-btn pxd-journal__prev", journalBar, "‹");
+  const journalBar = el2("div", "pxd-journal__bar", journalPane);
+  const journalPrev = el2("button", "pxd-btn pxd-journal__prev", journalBar, "‹");
   journalPrev.type = "button";
   journalPrev.setAttribute("aria-label", "Previous day");
-  const journalDate = el("div", "pxd-journal__date", journalBar);
-  const journalToday = el("button", "pxd-btn pxd-journal__today", journalBar, "Today");
+  const journalDate = el2("div", "pxd-journal__date", journalBar);
+  const journalToday = el2("button", "pxd-btn pxd-journal__today", journalBar, "Today");
   journalToday.type = "button";
   journalToday.setAttribute("aria-label", "Today");
-  const journalNext = el("button", "pxd-btn pxd-journal__next", journalBar, "›");
+  const journalNext = el2("button", "pxd-btn pxd-journal__next", journalBar, "›");
   journalNext.type = "button";
   journalNext.setAttribute("aria-label", "Next day");
-  const journalList = el("div", "pxd-panel__list pxd-journal__list", journalPane);
-  const infoPane = el("div", "pxd-panel__pane pxd-panel__pane--info", panel);
+  const journalList = el2("div", "pxd-panel__list pxd-journal__list", journalPane);
+  const infoPane = el2("div", "pxd-panel__pane pxd-panel__pane--info", panel);
   infoPane.style.display = "none";
-  const trailsPane = el("div", "pxd-panel__pane pxd-panel__pane--trails", panel);
+  const trailsPane = el2("div", "pxd-panel__pane pxd-panel__pane--trails", panel);
   trailsPane.style.display = "none";
-  const trailsBar = el("div", "pxd-trails__bar", trailsPane);
-  const trailsNew = el("button", "pxd-btn pxd-trails__new", trailsBar, "New trail");
+  const trailsBar = el2("div", "pxd-trails__bar", trailsPane);
+  const trailsNew = el2("button", "pxd-btn pxd-trails__new", trailsBar, "New trail");
   trailsNew.setAttribute("aria-label", "New trail");
   trailsNew.type = "button";
   trailsNew.dataset.trailAction = "new";
-  const trailsList = el("div", "pxd-trails__list", trailsPane);
-  const changedPane = el("div", "pxd-panel__pane pxd-panel__pane--changed", panel);
+  const trailsList = el2("div", "pxd-trails__list", trailsPane);
+  const changedPane = el2("div", "pxd-panel__pane pxd-panel__pane--changed", panel);
   changedPane.style.display = "none";
-  const changedHead = el("div", "pxd-panel__empty", changedPane);
-  const changedList = el("div", "pxd-panel__list", changedPane);
+  const changedHead = el2("div", "pxd-panel__empty", changedPane);
+  const changedList = el2("div", "pxd-panel__list", changedPane);
   let trailSig = "";
   let trailDrag = null;
-  const infoTabsBar = el("div", "pxd-panel__infotabs", infoPane);
-  const infoScroll = el("div", "pxd-panel__info", infoPane);
+  const infoTabsBar = el2("div", "pxd-panel__infotabs", infoPane);
+  const infoScroll = el2("div", "pxd-panel__info", infoPane);
   let tab = "search";
   let like = null;
   let debounce = null;
@@ -22199,36 +22199,36 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   let journalDay = startOfDay(journalNow());
   const paletteDots = (parent, palette) => {
     if (!Array.isArray(palette) || !palette.length) return;
-    const wrap = el("span", "pxd-panel__dots", parent);
+    const wrap = el2("span", "pxd-panel__dots", parent);
     for (const hex of palette.slice(0, 3)) {
-      const dot = el("span", "pxd-panel__dot", wrap);
+      const dot = el2("span", "pxd-panel__dot", wrap);
       dot.style.background = hex;
     }
   };
   const likeButton = (parent, key, name) => {
     if (!key || typeof on.searchImages !== "function") return;
-    const b = el("button", "pxd-panel__row-act pxd-panel__row-like", parent);
+    const b = el2("button", "pxd-panel__row-act pxd-panel__row-like", parent);
     b.setAttribute("type", "button");
     b.setAttribute("aria-label", "More like this");
     b.setAttribute("title", "More like this");
     b.dataset.like = key;
     b.setAttribute("data-like", key);
-    el("span", "bp3-icon bp3-icon-style", b).setAttribute("aria-hidden", "true");
+    el2("span", "bp3-icon bp3-icon-style", b).setAttribute("aria-hidden", "true");
     listen(b, "click", (event) => {
       event.stopPropagation();
       startLike(key, name);
     });
   };
   const row4 = (parent, { string, label, text: text4, kind, url, thumb: thumb2, palette, likeKey, likeName }) => {
-    const r = el("div", "pxd-panel__row", parent);
+    const r = el2("div", "pxd-panel__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
     r.dataset.string = string;
     r.setAttribute("data-string", string);
-    if (label && !thumb2) el("span", "pxd-panel__row-label", r, label);
+    if (label && !thumb2) el2("span", "pxd-panel__row-label", r, label);
     if (thumb2) {
       r.classList.add("pxd-panel__row--image");
-      const img = el("img", "pxd-panel__thumb", r);
+      const img = el2("img", "pxd-panel__thumb", r);
       img.setAttribute("src", thumb2);
       img.setAttribute("alt", "");
       img.setAttribute("loading", "lazy");
@@ -22245,17 +22245,17 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       }
     }
     if (thumb2) {
-      const col2 = el("span", "pxd-panel__row-col", r);
-      el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, col2, shown);
-      if (label) el("span", "pxd-panel__row-label pxd-panel__row-sub", col2, label);
+      const col2 = el2("span", "pxd-panel__row-col", r);
+      el2("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, col2, shown);
+      if (label) el2("span", "pxd-panel__row-label pxd-panel__row-sub", col2, label);
     } else {
-      el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
+      el2("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, shown);
     }
     paletteDots(r, palette);
     likeButton(r, likeKey, likeName);
     if (on.isOnBoard?.(string)) {
       r.classList.add("pxd-panel__row--on");
-      el("span", "pxd-panel__row-on", r, "on board");
+      el2("span", "pxd-panel__row-on", r, "on board");
     }
     listen(r, "click", (event) => {
       event.stopPropagation();
@@ -22273,39 +22273,39 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     return r;
   };
   const partRow = (parent, part, needle) => {
-    const r = el("div", "pxd-panel__row pxd-panel__row--part", parent);
+    const r = el2("div", "pxd-panel__row pxd-panel__row--part", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
     r.dataset.part = part.blockId;
     r.setAttribute("data-part", part.blockId);
     r.dataset.kind = part.kind;
-    const head2 = el("div", "pxd-panel__part-head", r);
-    el("span", `pxd-panel__badge pxd-panel__badge--${part.kind}`, head2, PART_LABELS[part.kind] || part.kind);
-    el("span", "pxd-panel__row-label", head2, `p. ${part.page} · ${part.docTitle || "PDF"}`);
+    const head2 = el2("div", "pxd-panel__part-head", r);
+    el2("span", `pxd-panel__badge pxd-panel__badge--${part.kind}`, head2, PART_LABELS[part.kind] || part.kind);
+    el2("span", "pxd-panel__row-label", head2, `p. ${part.page} · ${part.docTitle || "PDF"}`);
     if (typeof on.askPart === "function") {
-      const ask2 = el("button", "pxd-panel__row-act", head2);
+      const ask2 = el2("button", "pxd-panel__row-act", head2);
       ask2.setAttribute("type", "button");
       ask2.setAttribute("aria-label", "Ask AI");
       ask2.setAttribute("title", "Ask AI");
-      el("span", "bp3-icon bp3-icon-lightbulb", ask2).setAttribute("aria-hidden", "true");
+      el2("span", "bp3-icon bp3-icon-lightbulb", ask2).setAttribute("aria-hidden", "true");
       listen(ask2, "click", (event) => {
         event.stopPropagation();
         on.askPart(part);
       });
     }
     if (part.kind === "figure" && typeof on.chartPart === "function") {
-      const chart = el("button", "pxd-panel__row-act pxd-panel__row-chart", head2);
+      const chart = el2("button", "pxd-panel__row-act pxd-panel__row-chart", head2);
       chart.setAttribute("type", "button");
       chart.setAttribute("aria-label", "Chart to table");
       chart.setAttribute("title", "Chart → table");
-      el("span", "bp3-icon bp3-icon-timeline-line-chart", chart).setAttribute("aria-hidden", "true");
+      el2("span", "bp3-icon bp3-icon-timeline-line-chart", chart).setAttribute("aria-hidden", "true");
       listen(chart, "click", (event) => {
         event.stopPropagation();
         on.chartPart(part);
       });
     }
     if (typeof on.basketPart === "function") {
-      const add = el("button", "pxd-panel__row-act", head2, "+");
+      const add = el2("button", "pxd-panel__row-act", head2, "+");
       add.setAttribute("type", "button");
       add.setAttribute("aria-label", "Add to question");
       add.setAttribute("title", "Add to question");
@@ -22315,9 +22315,9 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       });
     }
     const snip = partSnippet(part.text, needle);
-    const body = el("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
+    const body = el2("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
     if (snip.before) body.append(snip.before);
-    if (snip.hit) el("mark", "pxd-panel__mark", body, snip.hit);
+    if (snip.hit) el2("mark", "pxd-panel__mark", body, snip.hit);
     if (snip.after) body.append(snip.after);
     paletteDots(r, part.palette);
     if (part.kind === "figure") likeButton(head2, part.key, `Figure p. ${part.page}`);
@@ -22366,7 +22366,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const wantImages = checked.has("image");
     const wantFigures = checked.has("figure");
     if (!wantImages && !wantFigures) {
-      el("div", "pxd-panel__empty", results, "Turn on Image or Figure to compare");
+      el2("div", "pxd-panel__empty", results, "Turn on Image or Figure to compare");
       return;
     }
     let found = null;
@@ -22378,13 +22378,13 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     if (id !== queryId || !like) return;
     results.replaceChildren();
     if (found?.similar === false) {
-      el("div", "pxd-panel__empty", results, "This image has no colours yet. Try again in a moment");
+      el2("div", "pxd-panel__empty", results, "This image has no colours yet. Try again in a moment");
       return;
     }
     const images = Array.isArray(found?.images) ? found.images : [];
     const figures = Array.isArray(found?.figures) ? found.figures : [];
     if (!images.length && !figures.length) {
-      el("div", "pxd-panel__empty", results, "No similar images");
+      el2("div", "pxd-panel__empty", results, "No similar images");
       return;
     }
     const draw = (item, figure) => {
@@ -22422,7 +22422,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       return;
     }
     if (checked.size === 0) {
-      el("div", "pxd-panel__empty", results, "No card types selected");
+      el2("div", "pxd-panel__empty", results, "No card types selected");
       return;
     }
     if (!libraryFilterActive(filter)) return;
@@ -22486,7 +22486,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const figures = Array.isArray(found.figures) ? found.figures : [];
     results.replaceChildren();
     if (!rows.length && !parts.length && !images.length && !figures.length) {
-      el("div", "pxd-panel__empty", results, "No matches");
+      el2("div", "pxd-panel__empty", results, "No matches");
       return;
     }
     rows.forEach((r) => row4(results, r));
@@ -22651,11 +22651,11 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const rows = model.rows || [];
     changedHead.textContent = `Changed (${rows.length})`;
     for (const row5 of rows) {
-      const node2 = el("button", "pxd-btn pxd-changed__row", changedList, row5.title || "Card");
+      const node2 = el2("button", "pxd-btn pxd-changed__row", changedList, row5.title || "Card");
       node2.type = "button";
       node2.dataset.changed = row5.uid;
       node2.setAttribute("data-changed", row5.uid);
-      const meta = el("span", "pxd-changed__meta", node2, `${row5.user ? `${row5.user}, ` : ""}${timeAgo(row5.time)}`);
+      const meta = el2("span", "pxd-changed__meta", node2, `${row5.user ? `${row5.user}, ` : ""}${timeAgo(row5.time)}`);
       meta.setAttribute("aria-hidden", "true");
     }
   };
@@ -22684,34 +22684,34 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const focusedStop = trailsList.contains?.(doc.activeElement) ? doc.activeElement?.dataset?.stop || "" : "";
     trailsList.replaceChildren();
     if (!trails.length) {
-      el("div", "pxd-panel__empty", trailsList, "No trails yet");
+      el2("div", "pxd-panel__empty", trailsList, "No trails yet");
       return;
     }
     for (const trail of trails) {
-      const row5 = el("div", `pxd-trail-row${trail.uid === active ? " pxd-trail-row--on" : ""}`, trailsList);
+      const row5 = el2("div", `pxd-trail-row${trail.uid === active ? " pxd-trail-row--on" : ""}`, trailsList);
       row5.dataset.trail = trail.uid;
-      const head2 = el("div", "pxd-trail__head", row5);
-      const name = el("button", "pxd-btn pxd-trail__name", head2, trail.name || "Trail");
+      const head2 = el2("div", "pxd-trail__head", row5);
+      const name = el2("button", "pxd-btn pxd-trail__name", head2, trail.name || "Trail");
       name.type = "button";
       name.dataset.trailAction = "select";
       name.dataset.trail = trail.uid;
       name.setAttribute("aria-label", trail.name || "Trail");
-      const rename = el("button", "pxd-btn pxd-trail__rename", head2, "Rename");
+      const rename = el2("button", "pxd-btn pxd-trail__rename", head2, "Rename");
       rename.type = "button";
       rename.dataset.trailAction = "rename";
       rename.dataset.trail = trail.uid;
       rename.setAttribute("aria-label", "Rename trail");
-      const walk2 = el("button", "pxd-btn pxd-trail__walk", head2, "Walk");
-      walk2.type = "button";
-      walk2.dataset.trailAction = "walk";
-      walk2.dataset.trail = trail.uid;
-      walk2.setAttribute("aria-label", "Walk trail");
-      const del = el("button", "pxd-btn pxd-trail__delete", head2, "Delete");
+      const walk3 = el2("button", "pxd-btn pxd-trail__walk", head2, "Walk");
+      walk3.type = "button";
+      walk3.dataset.trailAction = "walk";
+      walk3.dataset.trail = trail.uid;
+      walk3.setAttribute("aria-label", "Walk trail");
+      const del = el2("button", "pxd-btn pxd-trail__delete", head2, "Delete");
       del.type = "button";
       del.dataset.trailAction = "delete";
       del.dataset.trail = trail.uid;
       del.setAttribute("aria-label", "Delete trail");
-      const stops = el("ol", "pxd-trail__stops", row5);
+      const stops = el2("ol", "pxd-trail__stops", row5);
       for (const stop3 of trail.stops || []) {
         let title = stop3.ref;
         try {
@@ -22719,7 +22719,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
         } catch {
           title = stop3.ref;
         }
-        const li = el("li", "pxd-trail__stop", stops, title || "Trail stop");
+        const li = el2("li", "pxd-trail__stop", stops, title || "Trail stop");
         li.dataset.stop = stop3.uid;
         li.dataset.trail = trail.uid;
         li.dataset.ref = stop3.ref || "";
@@ -22728,7 +22728,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
         li.setAttribute("tabindex", "0");
         li.setAttribute("role", "button");
         li.setAttribute("aria-label", title || "Trail stop");
-        if (stop3.note) el("div", "pxd-trail__note", li, stop3.note);
+        if (stop3.note) el2("div", "pxd-trail__note", li, stop3.note);
         if (focusedStop && stop3.uid === focusedStop) {
           try {
             li.focus({ preventScroll: true });
@@ -22834,14 +22834,14 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const uid = String(item?.uid || "");
     if (!uid) return null;
     const string = item.string || `((${uid}))`;
-    const r = el("div", "pxd-panel__row pxd-journal__row", parent);
+    const r = el2("div", "pxd-panel__row pxd-journal__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
     r.dataset.string = string;
     r.setAttribute("data-string", string);
     r.dataset.uid = uid;
     r.setAttribute("data-uid", uid);
-    el("span", "pxd-panel__row-text pxd-panel__row-text--block", r, item.text ?? "");
+    el2("span", "pxd-panel__row-text pxd-panel__row-text--block", r, item.text ?? "");
     listen(r, "click", (event) => {
       event.preventDefault?.();
       event.stopPropagation();
@@ -22861,7 +22861,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     journalDate.textContent = pack?.title || dailyTitle(journalDay);
     const rows = Array.isArray(pack?.rows) ? pack.rows : [];
     if (!rows.length) {
-      el("div", "pxd-panel__empty pxd-journal__empty", journalList, "Nothing on this day.");
+      el2("div", "pxd-panel__empty pxd-journal__empty", journalList, "Nothing on this day.");
       return;
     }
     for (const item of rows) journalRow(journalList, item);
@@ -22920,7 +22920,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       relatedRows.push({ string });
       row4(relatedList, { string, label: rel.relation || "related", text: text4, kind: t.kind });
     }
-    if (!list.length) el("div", "pxd-panel__empty", relatedList, "Nothing related yet");
+    if (!list.length) el2("div", "pxd-panel__empty", relatedList, "Nothing related yet");
     addAll.style.display = list.length ? "" : "none";
   };
   let boardRows = [];
@@ -22930,20 +22930,20 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const shown = boardRows.filter((b) => !q || `${b.title || ""}
 ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     if (!shown.length) {
-      el("div", "pxd-panel__empty", boardsList, boardRows.length ? "No matching boards" : "No boards found");
+      el2("div", "pxd-panel__empty", boardsList, boardRows.length ? "No matching boards" : "No boards found");
       return;
     }
     for (const b of shown) {
-      const r = el("div", "pxd-panel__board-row", boardsList);
+      const r = el2("div", "pxd-panel__board-row", boardsList);
       r.dataset.uid = b.uid;
       r.setAttribute("data-uid", b.uid);
-      const text4 = el("div", "pxd-panel__board-text", r);
-      el("span", "pxd-panel__board-title", text4, b.title || "Untitled board");
+      const text4 = el2("div", "pxd-panel__board-text", r);
+      el2("span", "pxd-panel__board-title", text4, b.title || "Untitled board");
       const page = b.page || b.pageTitle;
-      if (page) el("span", "pxd-panel__board-page", text4, page);
+      if (page) el2("span", "pxd-panel__board-page", text4, page);
       const n2 = b.count ?? b.itemCount ?? b.items;
-      if (Number.isFinite(n2)) el("span", "pxd-panel__board-count", r, `${n2} ${n2 === 1 ? "item" : "items"}`);
-      const add = el("button", "pxd-btn pxd-panel__board-add", r, "Add shortcut");
+      if (Number.isFinite(n2)) el2("span", "pxd-panel__board-count", r, `${n2} ${n2 === 1 ? "item" : "items"}`);
+      const add = el2("button", "pxd-btn pxd-panel__board-add", r, "Add shortcut");
       add.type = "button";
       add.title = "Add a card for this board to the current board";
       add.setAttribute("aria-label", "Add shortcut");
@@ -22962,7 +22962,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     const id = queryId += 1;
     renderViews();
     boardsList.replaceChildren();
-    el("div", "pxd-panel__empty", boardsList, "Loading boards…");
+    el2("div", "pxd-panel__empty", boardsList, "Loading boards…");
     let rows = [];
     try {
       rows = await Promise.resolve(on.listBoards?.()) || [];
@@ -22990,21 +22990,21 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       rows = [];
     }
     if (!Array.isArray(rows) || !rows.length) {
-      el("div", "pxd-panel__empty", outlineList, "Nothing on this board yet");
+      el2("div", "pxd-panel__empty", outlineList, "Nothing on this board yet");
       return;
     }
     for (const o of rows) {
       const depth = Math.max(0, Number(o.depth) || 0);
-      const r = el("div", "pxd-panel__outline-row", outlineList);
+      const r = el2("div", "pxd-panel__outline-row", outlineList);
       r.dataset.uid = o.uid;
       r.setAttribute("data-uid", o.uid);
       r.dataset.depth = String(depth);
       r.setAttribute("data-depth", String(depth));
       r.style.paddingLeft = `${8 + depth * 14}px`;
-      const dot = el("span", `pxd-panel__outline-dot${o.color ? ` pxd-c-${o.color}` : ""}`, r);
+      const dot = el2("span", `pxd-panel__outline-dot${o.color ? ` pxd-c-${o.color}` : ""}`, r);
       dot.setAttribute("aria-hidden", "true");
-      el("span", "pxd-panel__outline-title", r, o.title || "Untitled");
-      if (Number.isFinite(o.count) && o.count > 0) el("span", "pxd-panel__outline-count", r, String(o.count));
+      el2("span", "pxd-panel__outline-title", r, o.title || "Untitled");
+      if (Number.isFinite(o.count) && o.count > 0) el2("span", "pxd-panel__outline-count", r, String(o.count));
     }
   };
   listen(outlineList, "click", (event) => {
@@ -23021,13 +23021,13 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
   const renderCardTabs = () => {
     infoTabsBar.replaceChildren();
     for (const t of cardTabs) {
-      const row5 = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
-      const name = el("button", "pxd-btn pxd-panel__infotab-name", row5, cardItems.get(t.uid)?.title || "Untitled");
+      const row5 = el2("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
+      const name = el2("button", "pxd-btn pxd-panel__infotab-name", row5, cardItems.get(t.uid)?.title || "Untitled");
       name.type = "button";
       name.setAttribute("aria-label", name.textContent || "Untitled");
       name.dataset.uid = t.uid;
       name.setAttribute("data-uid", t.uid);
-      const closer = el("button", "pxd-btn pxd-panel__infotab-x", row5, "×");
+      const closer = el2("button", "pxd-btn pxd-panel__infotab-x", row5, "×");
       closer.type = "button";
       closer.title = "Close";
       closer.setAttribute("aria-label", "Close");
@@ -23074,7 +23074,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       }
       timelineView = null;
     }
-    const section2 = el("section", "pxd-panel__info-sec", infoScroll);
+    const section2 = el2("section", "pxd-panel__info-sec", infoScroll);
     timelineView = mountTimeline(section2, {
       doc,
       rows,
@@ -23093,8 +23093,8 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     });
   };
   const infoSection = (label) => {
-    const section2 = el("section", "pxd-panel__info-sec", infoScroll);
-    el("div", "pxd-panel__info-h", section2, label);
+    const section2 = el2("section", "pxd-panel__info-sec", infoScroll);
+    el2("div", "pxd-panel__info-h", section2, label);
     return section2;
   };
   const loadInfo = async () => {
@@ -23104,7 +23104,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     const tabItem = cardCurrent ? cardItems.get(cardCurrent) || null : null;
     const subject = followInfoSelection ? selected : tabItem || selected;
     if (!subject || subject.type === "section") {
-      el("div", "pxd-panel__empty", infoScroll, "Select a card");
+      el2("div", "pxd-panel__empty", infoScroll, "Select a card");
       void paintTimeline(id);
       return;
     }
@@ -23118,13 +23118,13 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     unmountInfo();
     infoScroll.replaceChildren();
     if (!info) {
-      el("div", "pxd-panel__empty", infoScroll, "Nothing to show");
+      el2("div", "pxd-panel__empty", infoScroll, "Nothing to show");
       void paintTimeline(id);
       return;
     }
     const bodySec = infoSection("Card");
-    el("div", "pxd-panel__info-body", bodySec, info.body || "");
-    const mount = el("div", "pxd-panel__info-mount", bodySec);
+    el2("div", "pxd-panel__info-body", bodySec, info.body || "");
+    const mount = el2("div", "pxd-panel__info-mount", bodySec);
     if (on.isFullscreen?.()) {
       try {
         if (info.kind === "page" && info.pageUid && host?.renderPage) {
@@ -23137,7 +23137,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       } catch {
       }
     } else {
-      el("div", "pxd-panel__info-note", mount, "Editing in the right sidebar");
+      el2("div", "pxd-panel__info-note", mount, "Editing in the right sidebar");
       try {
         on.openSidebarEditor?.(subject);
       } catch {
@@ -23153,19 +23153,19 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     if (id !== queryId || tab !== "info") return;
     if (contextText) {
       const ctxSec = infoSection("Context");
-      el("div", "pxd-panel__info-context", ctxSec, contextText);
+      el2("div", "pxd-panel__info-context", ctxSec, contextText);
     }
     const attrSec = infoSection("Attributes");
-    if (!info.attributes?.length) el("div", "pxd-panel__empty", attrSec, "No attributes");
+    if (!info.attributes?.length) el2("div", "pxd-panel__empty", attrSec, "No attributes");
     else for (const attr of info.attributes) {
-      const row5 = el("div", "pxd-panel__info-attr", attrSec);
-      el("span", "pxd-panel__info-name", row5, attr.name);
-      el("span", "pxd-panel__info-value", row5, attr.value);
+      const row5 = el2("div", "pxd-panel__info-attr", attrSec);
+      el2("span", "pxd-panel__info-name", row5, attr.name);
+      el2("span", "pxd-panel__info-value", row5, attr.value);
     }
     const refSec = infoSection("Linked references");
-    if (!info.refs?.length) el("div", "pxd-panel__empty", refSec, "No linked references");
+    if (!info.refs?.length) el2("div", "pxd-panel__empty", refSec, "No linked references");
     else for (const ref of info.refs) {
-      const row5 = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
+      const row5 = el2("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
       row5.type = "button";
       row5.setAttribute("aria-label", ref.string || ref.uid);
       row5.dataset.uid = ref.uid;
@@ -23173,21 +23173,21 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       if (ref.pageTitle) row5.title = ref.pageTitle;
     }
     const boardSec = infoSection("On boards");
-    if (!info.boards?.length) el("div", "pxd-panel__empty", boardSec, "Not on another board");
+    if (!info.boards?.length) el2("div", "pxd-panel__empty", boardSec, "Not on another board");
     else for (const board2 of info.boards) {
-      const row5 = el("button", "pxd-btn pxd-panel__info-board", boardSec);
+      const row5 = el2("button", "pxd-btn pxd-panel__info-board", boardSec);
       row5.type = "button";
       row5.setAttribute("aria-label", board2.title || "Untitled board");
       row5.dataset.uid = board2.uid;
       row5.setAttribute("data-uid", board2.uid);
-      el("span", "pxd-panel__info-board-title", row5, board2.title || "Untitled board");
-      if (board2.pageTitle) el("span", "pxd-panel__info-board-page", row5, board2.pageTitle);
+      el2("span", "pxd-panel__info-board-title", row5, board2.title || "Untitled board");
+      if (board2.pageTitle) el2("span", "pxd-panel__info-board-page", row5, board2.pageTitle);
     }
     const tagSec = infoSection("Tags");
-    if (!info.tags?.length) el("div", "pxd-panel__empty", tagSec, "No tags");
+    if (!info.tags?.length) el2("div", "pxd-panel__empty", tagSec, "No tags");
     else {
-      const wrap = el("div", "pxd-panel__info-tags", tagSec);
-      for (const name of info.tags) el("span", "pxd-panel__info-tag", wrap, name);
+      const wrap = el2("div", "pxd-panel__info-tags", tagSec);
+      for (const name of info.tags) el2("span", "pxd-panel__info-tag", wrap, name);
     }
     void paintTimeline(id);
   };
@@ -23848,10 +23848,10 @@ function releaseThumb2(node2) {
 function stop(event) {
   event.stopPropagation?.();
 }
-function onPress(el, fn) {
-  el.addEventListener("pointerdown", stop);
-  el.addEventListener("mousedown", stop);
-  el.addEventListener("click", (event) => {
+function onPress(el2, fn) {
+  el2.addEventListener("pointerdown", stop);
+  el2.addEventListener("mousedown", stop);
+  el2.addEventListener("click", (event) => {
     stop(event);
     fn();
   });
@@ -23939,35 +23939,35 @@ function paintRegions(doc, node2, bar, hooks) {
   });
 }
 function renderDrawingCard(doc, node2, model, hooks = {}) {
-  const el = node2 || doc.createElement("div");
-  el.classList.add("pxd-item--drawing");
-  let title = el.querySelector(".pxd-drawing-title");
+  const el2 = node2 || doc.createElement("div");
+  el2.classList.add("pxd-item--drawing");
+  let title = el2.querySelector(".pxd-drawing-title");
   if (!title) {
     title = doc.createElement("div");
     title.className = "pxd-drawing-title";
-    el.append(title);
+    el2.append(title);
   }
   title.textContent = String(model?.title ?? model?.caption ?? "");
-  let bar = el.querySelector(".pxd-drawing-bar");
+  let bar = el2.querySelector(".pxd-drawing-bar");
   if (!bar) {
     bar = doc.createElement("div");
     bar.className = "pxd-drawing-bar";
-    el.append(bar);
+    el2.append(bar);
   }
   const open = typeof hooks.open === "function" ? hooks.open : () => {
   };
   mountButton2(doc, bar, "pxd-drawing-open", "Open drawing", () => open({ sidebar: false }));
   mountButton2(doc, bar, "pxd-drawing-sidebar", "Open in sidebar", () => open({ sidebar: true }));
-  paintRegions(doc, el, bar, hooks);
-  el.pxdUnmount = () => {
-    clearThumb(el);
+  paintRegions(doc, el2, bar, hooks);
+  el2.pxdUnmount = () => {
+    clearThumb(el2);
   };
   if (!showThumb(hooks)) {
-    clearThumb(el);
-    return el;
+    clearThumb(el2);
+    return el2;
   }
-  paintThumb2(doc, el, hooks.blob);
-  return el;
+  paintThumb2(doc, el2, hooks.blob);
+  return el2;
 }
 function copyDrawingPixels(img, doc) {
   const canvas = doc.createElement("canvas");
@@ -24289,12 +24289,12 @@ function clickInsideRoot(entry) {
   return Boolean(node2.closest(".pxd-root"));
 }
 function panFps(deltas) {
-  const finite7 = [];
+  const finite9 = [];
   for (const value of deltas || []) {
     const n2 = Number(value);
-    if (Number.isFinite(n2) && n2 > 0) finite7.push(n2);
+    if (Number.isFinite(n2) && n2 > 0) finite9.push(n2);
   }
-  const median7 = percentile(finite7, 0.5);
+  const median7 = percentile(finite9, 0.5);
   if (!(median7 > 0)) return null;
   return 1e3 / median7;
 }
@@ -24599,7 +24599,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -25048,7 +25048,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -25414,13 +25414,13 @@ function clientRect(node2) {
 function openHoverPopover({ doc, win: win2, anchor, delayMs, build, obstacles, timers } = {}) {
   const document2 = doc || globalThis.document;
   const view = win2 || document2?.defaultView || globalThis;
-  const el = document2.createElement("div");
-  el.className = "pxd-root pxd-region-pop";
-  el.style.position = "fixed";
+  const el2 = document2.createElement("div");
+  el2.className = "pxd-root pxd-region-pop";
+  el2.style.position = "fixed";
   const stop3 = (event) => {
     event.stopPropagation?.();
   };
-  for (const type of STOP_TYPES) el.addEventListener(type, stop3);
+  for (const type of STOP_TYPES) el2.addEventListener(type, stop3);
   let closed = false;
   let shown = false;
   let cancelTimer = null;
@@ -25434,9 +25434,9 @@ function openHoverPopover({ doc, win: win2, anchor, delayMs, build, obstacles, t
     closed = true;
     cancelTimer?.();
     cancelTimer = null;
-    for (const type of STOP_TYPES) el.removeEventListener(type, stop3);
+    for (const type of STOP_TYPES) el2.removeEventListener(type, stop3);
     for (const off of offs.splice(0)) off();
-    el.remove?.();
+    el2.remove?.();
   };
   const place2 = () => {
     if (closed) return;
@@ -25447,8 +25447,8 @@ function openHoverPopover({ doc, win: win2, anchor, delayMs, build, obstacles, t
     const spec = {
       anchor: clientRect(anchor),
       size: {
-        w: Number(el.offsetWidth) || Number(el.clientWidth) || 240,
-        h: Number(el.offsetHeight) || Number(el.clientHeight) || 120
+        w: Number(el2.offsetWidth) || Number(el2.clientWidth) || 240,
+        h: Number(el2.offsetHeight) || Number(el2.clientHeight) || 120
       },
       viewport: {
         left: 0,
@@ -25459,10 +25459,10 @@ function openHoverPopover({ doc, win: win2, anchor, delayMs, build, obstacles, t
     };
     if (obstacles !== void 0) spec.obstacles = obstacles;
     const at = placePopover(spec);
-    el.style.left = `${at.left}px`;
-    el.style.top = `${at.top}px`;
-    el.style.maxHeight = at.maxHeight ? `${at.maxHeight}px` : "";
-    el.style.overflowY = at.scroll ? "auto" : "";
+    el2.style.left = `${at.left}px`;
+    el2.style.top = `${at.top}px`;
+    el2.style.maxHeight = at.maxHeight ? `${at.maxHeight}px` : "";
+    el2.style.overflowY = at.scroll ? "auto" : "";
   };
   const show = () => {
     cancelTimer = null;
@@ -25472,8 +25472,8 @@ function openHoverPopover({ doc, win: win2, anchor, delayMs, build, obstacles, t
       close();
       return;
     }
-    document2.body?.append(el);
-    build?.(el);
+    document2.body?.append(el2);
+    build?.(el2);
     if (closed) return;
     place2();
     if (closed) return;
@@ -25481,7 +25481,7 @@ function openHoverPopover({ doc, win: win2, anchor, delayMs, build, obstacles, t
       if (event.key === "Escape" || event.key === "Esc") close();
     }, true);
     on(document2, "pointerdown", (event) => {
-      if (!el.contains?.(event.target)) close();
+      if (!el2.contains?.(event.target)) close();
     }, true);
     const again = () => {
       if (!closed) place2();
@@ -25498,7 +25498,7 @@ function openHoverPopover({ doc, win: win2, anchor, delayMs, build, obstacles, t
     const id = set(show, wait2);
     cancelTimer = () => clear(id);
   }
-  return { close, el };
+  return { close, el: el2 };
 }
 var STASH_MS, STOP_TYPES;
 var init_region_open = __esm({
@@ -26174,10 +26174,10 @@ var init_pdf_pin_view = __esm({
 });
 
 // src/view/table-card.js
-function drawBlock(renderBlock, el, uid) {
-  if (typeof renderBlock !== "function" || !el) return;
+function drawBlock(renderBlock, el2, uid) {
+  if (typeof renderBlock !== "function" || !el2) return;
   try {
-    renderBlock(el, uid);
+    renderBlock(el2, uid);
   } catch {
   }
 }
@@ -26193,12 +26193,12 @@ function mountRoamTable(doc, parent, { uid, renderBlock, portalParent, unmount }
   open.setAttribute("aria-label", "Open grid");
   open.textContent = "Open grid";
   bar.append(open);
-  const fit2 = doc.createElement("div");
-  fit2.className = "pxd-roam-table__fit";
+  const fit3 = doc.createElement("div");
+  fit3.className = "pxd-roam-table__fit";
   const live2 = doc.createElement("div");
   live2.className = "pxd-rs__live";
-  fit2.append(live2);
-  host.append(bar, fit2);
+  fit3.append(live2);
+  host.append(bar, fit3);
   parent?.append?.(host);
   const rec = { host, grid: false, overlay: null };
   drawBlock(renderBlock, live2, uid);
@@ -26574,10 +26574,10 @@ function pageBodyWantsWheel(target, event) {
   if (!card2 || card2.classList?.contains("pxd-item--editing")) return null;
   return scrollRoom(body, dy) ? body : null;
 }
-function scrollRoom(el, dy) {
-  const room = (Number(el.scrollHeight) || 0) - (Number(el.clientHeight) || 0);
+function scrollRoom(el2, dy) {
+  const room = (Number(el2.scrollHeight) || 0) - (Number(el2.clientHeight) || 0);
   if (room <= 1) return false;
-  const top = Number(el.scrollTop) || 0;
+  const top = Number(el2.scrollTop) || 0;
   if (dy > 0 ? top >= room - 1 : top <= 0) return false;
   return true;
 }
@@ -26601,17 +26601,17 @@ function synthesizeBlockClick(host) {
   }
   return true;
 }
-function focusRoamInput(el) {
-  if (!el) return false;
+function focusRoamInput(el2) {
+  if (!el2) return false;
   try {
-    el.focus?.({ preventScroll: true });
+    el2.focus?.({ preventScroll: true });
   } catch {
     try {
-      el.focus?.();
+      el2.focus?.();
     } catch {
     }
   }
-  synthesizeBlockClick(el);
+  synthesizeBlockClick(el2);
   return true;
 }
 function pageEditScrollTop(scrollTop, inputOffset, rowOffset, zoom) {
@@ -26631,11 +26631,11 @@ function pageCaretText(node2) {
   return String(node2.nodeValue ?? node2.textContent ?? "");
 }
 function pageCaretChrome(node2) {
-  let el = node2?.nodeType === 1 ? node2 : node2?.parentElement;
-  while (el && el.nodeType === 1) {
-    if (el.classList?.contains("pxd-row__fold") || el.classList?.contains("pxd-row__more") || el.classList?.contains("pxd-grip") || el.classList?.contains("pxd-port")) return true;
-    if (el.hasAttribute?.("data-pxd-row")) return false;
-    el = el.parentElement;
+  let el2 = node2?.nodeType === 1 ? node2 : node2?.parentElement;
+  while (el2 && el2.nodeType === 1) {
+    if (el2.classList?.contains("pxd-row__fold") || el2.classList?.contains("pxd-row__more") || el2.classList?.contains("pxd-grip") || el2.classList?.contains("pxd-port")) return true;
+    if (el2.hasAttribute?.("data-pxd-row")) return false;
+    el2 = el2.parentElement;
   }
   return false;
 }
@@ -26683,10 +26683,10 @@ function pageCaretOffset(root, node2, offset) {
   return count;
 }
 function pageCaretRow(node2) {
-  const el = node2?.nodeType === 1 ? node2 : node2?.parentElement;
-  if (!el) return null;
-  if (el.matches?.("[data-pxd-row]")) return el;
-  return el.closest?.("[data-pxd-row]") || null;
+  const el2 = node2?.nodeType === 1 ? node2 : node2?.parentElement;
+  if (!el2) return null;
+  if (el2.matches?.("[data-pxd-row]")) return el2;
+  return el2.closest?.("[data-pxd-row]") || null;
 }
 function caretHit(doc, x, y) {
   const px = Number(x);
@@ -26722,9 +26722,9 @@ function pageCaretAtPoint(doc, x, y) {
 function noteCaretAtPoint(doc, x, y) {
   const hit = caretHit(doc, x, y);
   if (!hit) return null;
-  const el = hit.node.nodeType === 1 ? hit.node : hit.node.parentElement;
-  if (!el || el.closest?.(NOTE_CARET_SKIP)) return null;
-  const root = el.closest?.(".pxd-item__string") || el.closest?.(".pxd-rs");
+  const el2 = hit.node.nodeType === 1 ? hit.node : hit.node.parentElement;
+  if (!el2 || el2.closest?.(NOTE_CARET_SKIP)) return null;
+  const root = el2.closest?.(".pxd-item__string") || el2.closest?.(".pxd-rs");
   if (!root || root.closest?.(NOTE_CARET_SKIP)) return null;
   const card2 = root.closest?.("[data-uid]");
   return {
@@ -26770,9 +26770,9 @@ function nextFrame() {
     else setTimeout(resolve, 16);
   });
 }
-async function waitHydrateQuiet(el, capMs = HYDRATE_CAP_MS) {
+async function waitHydrateQuiet(el2, capMs = HYDRATE_CAP_MS) {
   const MO = globalThis.MutationObserver;
-  if (!el || typeof MO !== "function") {
+  if (!el2 || typeof MO !== "function") {
     await nextFrame();
     await nextFrame();
     return;
@@ -26782,7 +26782,7 @@ async function waitHydrateQuiet(el, capMs = HYDRATE_CAP_MS) {
     mutations += 1;
   });
   try {
-    observer.observe(el, { childList: true, subtree: true, attributes: true, characterData: true });
+    observer.observe(el2, { childList: true, subtree: true, attributes: true, characterData: true });
   } catch {
   }
   const start = Date.now();
@@ -26858,14 +26858,14 @@ function cardContentKey(item, live2 = false, pdfOpen = false, chipSig = "", cove
     walkBoard(item.content || [], 1);
     return parts.join("");
   }
-  const walk2 = (kids, depth) => {
+  const walk3 = (kids, depth) => {
     if (depth > CONTENT_DEPTH) return;
     for (const c of kids) {
       parts.push(childString4(c));
-      walk2(childKids(c), depth + 1);
+      walk3(childKids(c), depth + 1);
     }
   };
-  walk2(item.content || [], 1);
+  walk3(item.content || [], 1);
   return parts.join("");
 }
 function regionHub(win2) {
@@ -27096,7 +27096,10 @@ function createItemRenderer({
   readingUid = null,
   onPinOpen = null,
   settings: speedSettings = null,
-  interopOn = null
+  interopOn = null,
+  adoptShell = null,
+  tableThumb = null,
+  onTableShown = null
 } = {}) {
   const speedOf = () => {
     if (speedSettings == null) return notedSpeedFlags();
@@ -27342,7 +27345,7 @@ function createItemRenderer({
     const t = setTimeout(() => fn({ timeRemaining: () => CHUNK_MS, didTimeout: true }), 0);
     return () => clearTimeout(t);
   };
-  const el = (tag, cls, parent) => {
+  const el2 = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
     parent?.append(node2);
@@ -27383,7 +27386,7 @@ function createItemRenderer({
       let shield = null;
       for (const child of node2.children || []) if (child.classList?.contains("pxd-embed-shield")) shield = child;
       if (hit && !shield) {
-        const cover = el("div", "pxd-embed-shield", node2);
+        const cover = el2("div", "pxd-embed-shield", node2);
         cover.setAttribute("aria-hidden", "true");
       } else if (!hit && shield) shield.remove();
     };
@@ -27436,14 +27439,14 @@ function createItemRenderer({
       }
       pushString(text4, item.target.uid);
     } else pushString(item.string || "", item.uid);
-    const walk2 = (list, depth) => {
+    const walk3 = (list, depth) => {
       if (!Array.isArray(list) || depth > CONTENT_DEPTH) return;
       for (const child of list) {
         pushString(childString4(child), childUid(child) || item.uid);
-        walk2(childKids(child), depth + 1);
+        walk3(childKids(child), depth + 1);
       }
     };
-    if (item.kind !== "page") walk2(item.content, 1);
+    if (item.kind !== "page") walk3(item.content, 1);
     return out;
   };
   const posterTitleOf = (item) => {
@@ -27461,7 +27464,7 @@ function createItemRenderer({
     if (liveUid) node2.setAttribute("data-pxd-embed", liveUid);
     const box2 = embedBoxFor(liveUid);
     fitEmbedOuter(node2, box2);
-    const live2 = el("div", "pxd-rs__live", node2);
+    const live2 = el2("div", "pxd-rs__live", node2);
     fitEmbedOuter(live2, box2);
     let mountedLive = false;
     if (liveUid && host?.renderBlock) {
@@ -27501,8 +27504,8 @@ function createItemRenderer({
   const mountQuery = (parent, uid, string) => {
     const own = typeof string === "string" ? queryCardsOf().mount(parent, uid, string) : null;
     if (own) return own;
-    const live2 = el("div", "pxd-rs pxd-item__query", parent);
-    const mount = el("div", "pxd-rs__live", live2);
+    const live2 = el2("div", "pxd-rs pxd-item__query", parent);
+    const mount = el2("div", "pxd-rs__live", live2);
     try {
       host.renderBlock(mount, uid);
     } catch {
@@ -27544,7 +27547,7 @@ function createItemRenderer({
   };
   const mountStatusControl = (line, item, meta) => {
     if (!statusApi(statusWin()) || meta?.done) return;
-    const ctl = el("span", "pxd-task-check__status", line);
+    const ctl = el2("span", "pxd-task-check__status", line);
     ctl.setAttribute("role", "button");
     ctl.setAttribute("tabindex", "0");
     const name = meta?.status || "";
@@ -27577,9 +27580,9 @@ function createItemRenderer({
   };
   const mountTaskLine = (parent, item) => {
     const meta = taskMeta(item.string, item.content);
-    const line = el("div", "pxd-item__taskline", parent);
+    const line = el2("div", "pxd-item__taskline", parent);
     mountStatusControl(line, item, meta);
-    const box2 = el("span", `pxd-task-check${meta?.done ? " pxd-task-check--done" : ""}${meta?.cancelled ? " pxd-task-check--cancelled" : ""}`, line);
+    const box2 = el2("span", `pxd-task-check${meta?.done ? " pxd-task-check--done" : ""}${meta?.cancelled ? " pxd-task-check--cancelled" : ""}`, line);
     if (meta?.status) {
       box2.setAttribute("data-status", statusLook(meta.status, palette()).glyph);
       applyStatusVars(box2, meta.status);
@@ -27598,13 +27601,13 @@ function createItemRenderer({
   const addRefRow = (list, rec, ref, on) => {
     const payload = linkedRefCard(ref?.uid);
     if (!payload) return;
-    const row4 = el("div", "pxd-refs__row", list);
+    const row4 = el2("div", "pxd-refs__row", list);
     row4.draggable = true;
     row4.setAttribute("draggable", "true");
     row4.dataset.uid = ref.uid;
     row4.setAttribute("data-uid", ref.uid);
-    const liveWrap = el("div", "pxd-rs", row4);
-    const live2 = el("div", "pxd-rs__live", liveWrap);
+    const liveWrap = el2("div", "pxd-rs", row4);
+    const live2 = el2("div", "pxd-rs__live", liveWrap);
     try {
       if (host?.renderBlock) host.renderBlock(live2, ref.uid);
       else live2.textContent = String(ref.string || "");
@@ -27640,13 +27643,13 @@ function createItemRenderer({
     rec.refOff = () => {
       for (const off of offs.splice(0)) off();
     };
-    const wrap = el("div", "pxd-refs", body);
-    const toggle = el("button", "pxd-refs__toggle", wrap);
+    const wrap = el2("div", "pxd-refs", body);
+    const toggle = el2("button", "pxd-refs__toggle", wrap);
     toggle.type = "button";
     toggle.textContent = linkedRefLabel(refs.length);
     toggle.setAttribute("aria-label", toggle.textContent);
     toggle.setAttribute("aria-expanded", "false");
-    const list = el("div", "pxd-refs__list", wrap);
+    const list = el2("div", "pxd-refs__list", wrap);
     setHidden2(list, true);
     for (const type of ["pointerdown", "mousedown", "dblclick"]) on(toggle, type, stopEvent);
     let filled = false;
@@ -27665,10 +27668,10 @@ function createItemRenderer({
   const loggedRenderErrors = /* @__PURE__ */ new Set();
   const showRenderChip = (node2, uid) => {
     node2.classList.add("pxd-item--error");
-    const chip = el("div", "pxd-render-chip", node2);
-    el("span", "pxd-render-chip__label", chip).textContent = "Could not render";
-    el("span", "pxd-render-chip__uid", chip).textContent = uid;
-    const open = el("button", "pxd-btn pxd-render-chip__open", chip);
+    const chip = el2("div", "pxd-render-chip", node2);
+    el2("span", "pxd-render-chip__label", chip).textContent = "Could not render";
+    el2("span", "pxd-render-chip__uid", chip).textContent = uid;
+    const open = el2("button", "pxd-btn pxd-render-chip__open", chip);
     open.type = "button";
     open.textContent = "Open";
     open.setAttribute("aria-label", "Open");
@@ -27683,10 +27686,10 @@ function createItemRenderer({
   const RENDER_FAILS = [RENDER_FAIL, "Failed to render"];
   const showPlainRow = (node2, string) => {
     node2.classList.add("pxd-rs--plain");
-    el("span", "pxd-rs__plain", node2).textContent = String(string ?? "");
+    el2("span", "pxd-rs__plain", node2).textContent = String(string ?? "");
   };
   const renderRoot = (parent, string, cls = "pxd-rs", uid = "", { plain: plain2 = false } = {}) => {
-    const node2 = el("div", cls, parent);
+    const node2 = el2("div", cls, parent);
     if (!string) return node2;
     const split = embedSplit(String(string), embedOptsFor(uid));
     if (split.posters.length && speedOf().posters === false) {
@@ -27700,7 +27703,7 @@ function createItemRenderer({
         return node2;
       }
       if (split.rest) {
-        const rest = el("div", "pxd-embed-rest", node2);
+        const rest = el2("div", "pxd-embed-rest", node2);
         rest.textContent = plainText(split.rest);
       }
       for (const poster of split.posters) {
@@ -27710,7 +27713,7 @@ function createItemRenderer({
       }
       return node2;
     }
-    const live2 = el("div", "pxd-rs__live", node2);
+    const live2 = el2("div", "pxd-rs__live", node2);
     const buffered = [];
     const origError = console.error;
     console.error = (...args) => {
@@ -27843,7 +27846,7 @@ function createItemRenderer({
     return typeof inner === "string" && classifyString(inner).kind === "board" ? { uid: m[1], string: inner } : null;
   };
   const mountBoardRow = (parent, cls, target) => {
-    const node2 = el("div", `${cls} pxd-rs--board`, parent);
+    const node2 = el2("div", `${cls} pxd-rs--board`, parent);
     const title = parseBoardTitle(target.string) || "Untitled board";
     const self = target.uid === lastBoard?.uid;
     const open = (event) => {
@@ -27854,7 +27857,7 @@ function createItemRenderer({
     const raw = self ? null : host?.pullBoard?.(target.uid);
     const content = raw?.[":block/children"] ?? raw?.children ?? [];
     if (self || !raw || rowThumbs <= 0) {
-      const chip = el("button", "pxd-btn pxd-board-row pxd-board-row--chip", node2);
+      const chip = el2("button", "pxd-btn pxd-board-row pxd-board-row--chip", node2);
       chip.type = "button";
       const n2 = self ? 0 : boardPreview({ uid: target.uid, string: target.string, content }).count;
       const label = self ? "this board" : `${n2} ${n2 === 1 ? "item" : "items"}`;
@@ -27866,7 +27869,7 @@ function createItemRenderer({
       return node2;
     }
     rowThumbs -= 1;
-    const wrap = el("div", "pxd-board-row", node2);
+    const wrap = el2("div", "pxd-board-row", node2);
     mountBoardBody(wrap, {
       uid: target.uid,
       string: target.string,
@@ -27886,10 +27889,10 @@ function createItemRenderer({
     const node2 = mountRoamTable(doc, parent, {
       uid,
       // open:false is display only: the table macro draws from the children, which must not list again as bullets.
-      renderBlock: typeof host?.renderBlock === "function" ? (el2, id) => host.renderBlock(el2, id, { open: false }) : null,
-      unmount: (el2) => {
+      renderBlock: typeof host?.renderBlock === "function" ? (el3, id) => host.renderBlock(el3, id, { open: false }) : null,
+      unmount: (el3) => {
         try {
-          host?.unmount?.(el2);
+          host?.unmount?.(el3);
         } catch {
         }
       },
@@ -27909,9 +27912,9 @@ function createItemRenderer({
     return target ? mountBoardRow(parent, cls, target) : renderRoot(parent, string, cls, uid, { plain: true });
   };
   const buildPorts = (parent) => {
-    const wrap = el("div", "pxd-ports", parent);
+    const wrap = el2("div", "pxd-ports", parent);
     for (const side2 of SIDES3) {
-      const p = el("div", `pxd-port pxd-port--${side2}`, wrap);
+      const p = el2("div", `pxd-port pxd-port--${side2}`, wrap);
       p.dataset.side = side2;
       p.setAttribute("data-side", side2);
       p.title = "Drag to connect";
@@ -27920,31 +27923,100 @@ function createItemRenderer({
   };
   const buildGrips = (parent) => {
     for (const part of ["right", "bottom", "corner"]) {
-      const g = el("div", `pxd-grip pxd-grip--${part}`, parent);
+      const g = el2("div", `pxd-grip pxd-grip--${part}`, parent);
       g.dataset.part = part;
       g.setAttribute("data-part", part);
     }
   };
+  const paintThumb3 = (rec, item) => {
+    if (typeof tableThumb !== "function" || item?.type === "section" || !rec?.body) return;
+    if (!isRoamTableString(item.string)) return;
+    let url = null;
+    try {
+      url = tableThumb(item);
+    } catch {
+      url = null;
+    }
+    if (typeof url !== "string" || !url.startsWith("data:image/")) {
+      if (typeof onTableShown === "function") {
+        try {
+          onTableShown(item);
+        } catch {
+        }
+      }
+      return;
+    }
+    let img = rec.body.querySelector?.("img.pxd-table-thumb");
+    if (!img) {
+      img = el2("img", "pxd-table-thumb", rec.body);
+      img.setAttribute("alt", "");
+      img.setAttribute("draggable", "false");
+    }
+    if (img.getAttribute?.("src") !== url) img.setAttribute("src", url);
+    rec.faced = true;
+    rec.thumbed = true;
+    rec.el.classList.add("pxd-item--thumb");
+    rec.el.classList.remove("pxd-item--bare");
+  };
+  const adoptedNode = (item) => {
+    if (typeof adoptShell !== "function") return null;
+    let node2 = null;
+    try {
+      node2 = adoptShell(item.uid, item);
+    } catch {
+      node2 = null;
+    }
+    if (!node2 || !node2.classList) return null;
+    const section2 = item.type === "section";
+    if (node2.classList.contains("pxd-section") !== section2) return null;
+    return node2;
+  };
   const buildShell = (item) => {
     const rec = { uid: item.uid, type: item.type, roots: [], contentKey: null, rect: null, bare: item.type === "card" };
-    if (item.type === "section") {
-      const node2 = el("div", "pxd-section", null);
+    const adopted = adoptedNode(item);
+    if (adopted && item.type === "section") {
+      adopted.replaceChildren?.();
+      rec.el = adopted;
+      rec.title = el2("div", "pxd-section__title", adopted);
+      rec.note = el2("div", "pxd-section__note", adopted);
+      for (const side2 of ["t", "r", "b", "l"]) el2("div", `pxd-section__edge pxd-section__edge--${side2}`, adopted);
+      buildGrips(adopted);
+      buildPorts(adopted);
+    } else if (adopted) {
+      const kids = [...adopted.children || []];
+      const header = kids.find((child) => child.classList?.contains("pxd-item__header")) || null;
+      const body = kids.find((child) => child.classList?.contains("pxd-item__body")) || null;
+      for (const child of kids) {
+        if (child !== header && child !== body) child.remove();
+      }
+      rec.el = adopted;
+      rec.header = header || el2("div", "pxd-item__header", null);
+      if (!header) adopted.insertBefore?.(rec.header, adopted.firstChild || null);
+      rec.body = body || el2("div", "pxd-item__body", adopted);
+      rec.faced = Boolean(rec.body.firstChild);
+      rec.thumbed = adopted.classList.contains("pxd-item--thumb");
+      buildPorts(adopted);
+      buildGrips(adopted);
+      if (item.kind === "page") armPageCaret(rec);
+    } else if (item.type === "section") {
+      const node2 = el2("div", "pxd-section", null);
       rec.el = node2;
-      rec.title = el("div", "pxd-section__title", node2);
-      rec.note = el("div", "pxd-section__note", node2);
-      for (const side2 of ["t", "r", "b", "l"]) el("div", `pxd-section__edge pxd-section__edge--${side2}`, node2);
+      rec.title = el2("div", "pxd-section__title", node2);
+      rec.note = el2("div", "pxd-section__note", node2);
+      for (const side2 of ["t", "r", "b", "l"]) el2("div", `pxd-section__edge pxd-section__edge--${side2}`, node2);
       buildGrips(node2);
       buildPorts(node2);
     } else {
-      const node2 = el("div", `pxd-item pxd-item--${item.type}`, null);
+      const node2 = el2("div", `pxd-item pxd-item--${item.type}`, null);
       rec.el = node2;
-      rec.header = el("div", "pxd-item__header", node2);
-      rec.body = el("div", "pxd-item__body", node2);
+      rec.header = el2("div", "pxd-item__header", node2);
+      rec.body = el2("div", "pxd-item__body", node2);
       buildPorts(node2);
       buildGrips(node2);
       if (item.kind === "page") armPageCaret(rec);
     }
-    rec.el.dataset.uid = item.uid;
+    if (item.type !== "section") paintThumb3(rec, item);
+    if (rec.el.dataset) rec.el.dataset.uid = item.uid;
     rec.el.setAttribute("data-uid", item.uid);
     rec.el.setAttribute("role", "group");
     rec.el.tabIndex = -1;
@@ -27976,9 +28048,9 @@ function createItemRenderer({
     shells.set(item.uid, rec);
     return rec;
   };
-  const setVar = (el2, name, value) => {
-    if (value) el2.style.setProperty(name, value);
-    else el2.style.removeProperty(name);
+  const setVar2 = (el3, name, value) => {
+    if (value) el3.style.setProperty(name, value);
+    else el3.style.removeProperty(name);
   };
   const boardRoot = () => itemsLayer?.closest?.(".pxd-root") || sectionsLayer?.closest?.(".pxd-root") || null;
   const paintTagChip = (rec, info) => {
@@ -27989,16 +28061,16 @@ function createItemRenderer({
       }
       return;
     }
-    if (!rec.tagChip || !rec.tagChip.isConnected) rec.tagChip = el("span", "pxd-hl-chip", rec.el);
+    if (!rec.tagChip || !rec.tagChip.isConnected) rec.tagChip = el2("span", "pxd-hl-chip", rec.el);
     let swatch = rec.tagChip.querySelector?.(".pxd-hl-swatch");
-    if (!swatch) swatch = el("span", "pxd-hl-swatch", rec.tagChip);
+    if (!swatch) swatch = el2("span", "pxd-hl-swatch", rec.tagChip);
     swatch.style.setProperty("background", info.color);
     swatch.style.setProperty("display", "inline-block");
     swatch.style.setProperty("width", "10px");
     swatch.style.setProperty("height", "10px");
     swatch.setAttribute("aria-hidden", "true");
     let name = rec.tagChip.querySelector?.(".pxd-hl-name");
-    if (!name) name = el("span", "pxd-hl-name", rec.tagChip);
+    if (!name) name = el2("span", "pxd-hl-name", rec.tagChip);
     if (name.textContent !== info.name) name.textContent = info.name;
     rec.tagChip.setAttribute("data-tag", info.name);
   };
@@ -28019,8 +28091,8 @@ function createItemRenderer({
       const titleSize = item.titleSize ?? d.titleSize;
       const titleColor = item.titleColor ?? d.titleColor;
       const titleFill = item.titleFill ?? d.titleFill;
-      setVar(node2, "--pxd-fill", cssColor(area2, "fill"));
-      setVar(node2, "--pxd-line", cssColor(border, "line") || hexColor(item.color) || "");
+      setVar2(node2, "--pxd-fill", cssColor(area2, "fill"));
+      setVar2(node2, "--pxd-line", cssColor(border, "line") || hexColor(item.color) || "");
       if (rec.title) {
         rec.title.style.fontSize = titleSize ? `${titleSize}px` : "";
         rec.title.style.color = cssColor(titleColor, "text") || "";
@@ -28031,11 +28103,11 @@ function createItemRenderer({
     const accent = hexColor(item.color);
     const propsFill = cssColor(item.fill, "fill") || "";
     const tagFill = propsFill ? null : tagFillOf(item);
-    setVar(node2, "--pxd-card-fs", item.fontSize ? `${item.fontSize}px` : "");
-    setVar(node2, "--pxd-text-fs", item.type === "text" && item.fontSize ? `${item.fontSize}px` : "");
-    setVar(node2, "--pxd-text-c", cssColor(item.textColor, "text") || accent || "");
-    setVar(node2, "--pxd-fill", propsFill || tagFill?.color || accent || "");
-    setVar(node2, "--pxd-line", cssColor(item.border, "line") || accent || "");
+    setVar2(node2, "--pxd-card-fs", item.fontSize ? `${item.fontSize}px` : "");
+    setVar2(node2, "--pxd-text-fs", item.type === "text" && item.fontSize ? `${item.fontSize}px` : "");
+    setVar2(node2, "--pxd-text-c", cssColor(item.textColor, "text") || accent || "");
+    setVar2(node2, "--pxd-fill", propsFill || tagFill?.color || accent || "");
+    setVar2(node2, "--pxd-line", cssColor(item.border, "line") || accent || "");
     node2.style.textAlign = item.align || "";
     const stickyHex = item.type === "text" && item.look === "sticky" && !item.shape ? hexColor(item.fill) || accent || "" : "";
     node2.style.backgroundColor = stickyHex;
@@ -28054,10 +28126,10 @@ function createItemRenderer({
       return;
     }
     if (!rec.shapeEl) {
-      const svg = doc.createElementNS(SVG_NS, "svg");
+      const svg = doc.createElementNS(SVG_NS2, "svg");
       svg.setAttribute("class", "pxd-shape");
       svg.setAttribute("aria-hidden", "true");
-      const path = doc.createElementNS(SVG_NS, "path");
+      const path = doc.createElementNS(SVG_NS2, "path");
       svg.append(path);
       const before = rec.body || null;
       if (before) rec.el.insertBefore(svg, before);
@@ -28075,7 +28147,7 @@ function createItemRenderer({
     rec.shapeKey = key;
   };
   const stickyBtn = (parent, cls, tip, label) => {
-    const b = el("button", cls, parent);
+    const b = el2("button", cls, parent);
     b.type = "button";
     b.setAttribute("data-tip", tip);
     b.setAttribute("aria-label", label);
@@ -28084,8 +28156,8 @@ function createItemRenderer({
   };
   const buildStickyHeader = (rec) => {
     rec.header.textContent = "";
-    const title = el("span", "pxd-sticky__title", rec.header);
-    const swatches = el("span", "pxd-sticky__swatches", rec.header);
+    const title = el2("span", "pxd-sticky__title", rec.header);
+    const swatches = el2("span", "pxd-sticky__swatches", rec.header);
     swatches.hidden = true;
     for (const color of PALETTE) {
       const sw = stickyBtn(swatches, `pxd-swatch pxd-sticky__swatch pxd-c-${color}`, "sticky.swatch", color);
@@ -28178,7 +28250,8 @@ function createItemRenderer({
     if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
     if (item.type !== "section") {
       if (isKidsCard(item)) cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
-      if (rec.bare) cls.push("pxd-item--bare");
+      if (rec.bare && !rec.faced) cls.push("pxd-item--bare");
+      if (rec.thumbed) cls.push("pxd-item--thumb");
       if (rec.refBoard) cls.push("pxd-item--wb");
       if (rec.regionImg) cls.push("pxd-item--imgregion");
       if (item.kind === "region-ref") cls.push("pxd-item--region");
@@ -28257,7 +28330,7 @@ function createItemRenderer({
       }
       return;
     }
-    if (!rec.landmarkEl) rec.landmarkEl = el("span", "pxd-landmark", rec.el);
+    if (!rec.landmarkEl) rec.landmarkEl = el2("span", "pxd-landmark", rec.el);
     const text4 = item.glyph || "";
     if (rec.landmarkEl.textContent !== text4) rec.landmarkEl.textContent = text4;
   };
@@ -28270,7 +28343,7 @@ function createItemRenderer({
       }
       return;
     }
-    if (!rec.trailBadge) rec.trailBadge = el("span", "pxd-trail-badge", rec.el);
+    if (!rec.trailBadge) rec.trailBadge = el2("span", "pxd-trail-badge", rec.el);
     const text4 = String(n2);
     if (rec.trailBadge.textContent !== text4) rec.trailBadge.textContent = text4;
   };
@@ -28460,8 +28533,8 @@ function createItemRenderer({
     } catch {
     }
   };
-  const peekRowsOf = (rec, item, done) => {
-    const take = (list) => done(visibleKids(list).slice(0, PEEK_TOP));
+  const peekRowsOf = (rec, item, done2) => {
+    const take = (list) => done2(visibleKids(list).slice(0, PEEK_TOP));
     if (item.kind === "note") return take(item.content);
     const tree = host?.pullTree?.(item.target.uid, 2, 200);
     if (tree && typeof tree.then === "function") tree.then(take).catch(() => {
@@ -28475,12 +28548,12 @@ function createItemRenderer({
     if (disposed || peek || !root || !rec.kidsBtn || !item || !isKidsCard(item) || editing || paused) return;
     peekRowsOf(rec, item, (rows) => {
       if (disposed || peek || !rec.kidsBtn?.isConnected || !rows.length) return;
-      const node2 = el("div", "pxd-kids-peek", root);
+      const node2 = el2("div", "pxd-kids-peek", root);
       node2.setAttribute("role", "tooltip");
       for (const c of rows) {
-        el("div", "pxd-kids-peek__row", node2).textContent = plainText(childString4(c), PEEK_TEXT_MAX);
+        el2("div", "pxd-kids-peek__row", node2).textContent = plainText(childString4(c), PEEK_TEXT_MAX);
         for (const g of visibleKids(childKids(c)).slice(0, PEEK_SUB)) {
-          el("div", "pxd-kids-peek__row pxd-kids-peek__row--sub", node2).textContent = plainText(childString4(g), PEEK_TEXT_MAX);
+          el2("div", "pxd-kids-peek__row pxd-kids-peek__row--sub", node2).textContent = plainText(childString4(g), PEEK_TEXT_MAX);
         }
       }
       placeNearAnchor(node2, rec.kidsBtn.getBoundingClientRect(), root, { gap: 6 });
@@ -28516,7 +28589,7 @@ function createItemRenderer({
     if (!want) return dropKidsBadge(rec);
     const text4 = `${item.kids ? "▾" : "▸"} ${rec.kidCount}`;
     if (!rec.kidsBtn) {
-      const btn2 = el("button", "pxd-kids", rec.el);
+      const btn2 = el2("button", "pxd-kids", rec.el);
       btn2.type = "button";
       rec.kidsOffs = [];
       const on = (type, fn) => {
@@ -28559,7 +28632,7 @@ function createItemRenderer({
         mountTableHost(parent, rowUid, budget);
         continue;
       }
-      const row4 = el("div", "pxd-block", parent);
+      const row4 = el2("div", "pxd-block", parent);
       row4.dataset.uid = rowUid;
       row4.setAttribute("data-pxd-row", rowUid);
       const posterCount = embedSplit(String(s || ""), embedOptsFor(rowUid)).posters.length;
@@ -28568,7 +28641,7 @@ function createItemRenderer({
       budget.roots.push(node2);
       const kids = childKids(b);
       if (kids.length && depth < CONTENT_DEPTH) {
-        const wrap = el("div", "pxd-block__children", row4);
+        const wrap = el2("div", "pxd-block__children", row4);
         renderBlocks(wrap, kids, depth + 1, budget);
       }
     }
@@ -28581,12 +28654,12 @@ function createItemRenderer({
   const mountBoardBody = (body, item, { openUid = item.uid } = {}) => {
     const innerW = Math.max(1, (Number(item.w) || 0) - 24);
     const preview = boardPreview(item, { aspect: innerW / Math.max(40, (Number(item.h) || 0) - HEADER_H - META_H) });
-    const wrap = el("div", "pxd-item__board", body);
-    const holder = el("div", "pxd-board-preview", wrap);
+    const wrap = el2("div", "pxd-item__board", body);
+    const holder = el2("div", "pxd-board-preview", wrap);
     if (preview.empty) {
-      el("div", "pxd-board-preview__empty", holder).textContent = "Empty board";
+      el2("div", "pxd-board-preview__empty", holder).textContent = "Empty board";
     } else {
-      const canvas = el("div", "pxd-board-preview__canvas", holder);
+      const canvas = el2("div", "pxd-board-preview__canvas", holder);
       const pct2 = (n2) => `${Math.round(n2 * 1e4) / 100}%`;
       const addMini = (r) => {
         const cls = ["pxd-mini"];
@@ -28594,7 +28667,7 @@ function createItemRenderer({
         else if (r.type === "text") cls.push("pxd-mini--text");
         if (r.color) cls.push(`pxd-c-${r.color}`);
         if (r.w * innerW < TINY_MINI_PX) cls.push("pxd-mini--tiny");
-        const mini = el("div", cls.join(" "), canvas);
+        const mini = el2("div", cls.join(" "), canvas);
         mini.style.left = pct2(r.x);
         mini.style.top = pct2(r.y);
         mini.style.width = pct2(r.w);
@@ -28605,16 +28678,16 @@ function createItemRenderer({
           if (typeof text4 === "string") title = firstLine(text4).slice(0, REF_TITLE_MAX);
         }
         if (!title && r.kind === "image") title = "Image";
-        if (title) el("div", "pxd-mini__title", mini).textContent = title;
+        if (title) el2("div", "pxd-mini__title", mini).textContent = title;
       };
       for (const r of preview.rects) if (r.type === "section") addMini(r);
       if (preview.edges.length) {
-        const svg = doc.createElementNS(SVG_NS, "svg");
+        const svg = doc.createElementNS(SVG_NS2, "svg");
         svg.setAttribute("class", "pxd-board-preview__edges");
         svg.setAttribute("viewBox", "0 0 1 1");
         svg.setAttribute("preserveAspectRatio", "none");
         for (const e2 of preview.edges) {
-          const line = doc.createElementNS(SVG_NS, "line");
+          const line = doc.createElementNS(SVG_NS2, "line");
           line.setAttribute("x1", String(e2.x1));
           line.setAttribute("y1", String(e2.y1));
           line.setAttribute("x2", String(e2.x2));
@@ -28626,18 +28699,18 @@ function createItemRenderer({
       for (const r of preview.rects) if (r.type !== "section") addMini(r);
     }
     if (item.enhanced && isUntitledBoard(item.title)) {
-      const input = el("input", "pxd-input pxd-item__board-name", wrap);
+      const input = el2("input", "pxd-input pxd-item__board-name", wrap);
       input.type = "text";
       input.setAttribute("aria-label", "Board name");
       input.placeholder = "Name this board…";
       input.setAttribute("placeholder", "Name this board…");
       for (const type of ["pointerdown", "mousedown", "click", "dblclick"]) input.addEventListener(type, stopEvent);
-      let done = false;
+      let done2 = false;
       const commit = () => {
-        if (done) return;
+        if (done2) return;
         const name = String(input.value || "").trim();
         if (!name) return;
-        done = true;
+        done2 = true;
         commitBoardName(item.uid, name);
       };
       input.addEventListener("keydown", (event) => {
@@ -28654,9 +28727,9 @@ function createItemRenderer({
       });
       input.addEventListener("blur", commit);
     }
-    const meta = el("div", "pxd-item__board-meta", wrap);
-    el("span", "pxd-item__board-count", meta).textContent = `${preview.count} ${preview.count === 1 ? "item" : "items"}`;
-    const open = el("button", "pxd-btn pxd-item__open", meta);
+    const meta = el2("div", "pxd-item__board-meta", wrap);
+    el2("span", "pxd-item__board-count", meta).textContent = `${preview.count} ${preview.count === 1 ? "item" : "items"}`;
+    const open = el2("button", "pxd-btn pxd-item__open", meta);
     open.type = "button";
     open.textContent = "Open";
     open.setAttribute("aria-label", "Open");
@@ -28695,13 +28768,13 @@ function createItemRenderer({
   };
   const pageKeyOf = (blocks) => {
     const parts = [];
-    const walk2 = (list) => {
+    const walk3 = (list) => {
       for (const c of list) {
         parts.push(childUid(c), childString4(c), c.open === false ? "0" : "1");
-        walk2(childKids(c));
+        walk3(childKids(c));
       }
     };
-    walk2(blocks || []);
+    walk3(blocks || []);
     return parts.join("");
   };
   const countRows = (blocks) => {
@@ -28718,7 +28791,7 @@ function createItemRenderer({
     if (id) host?.openPage?.(id);
   };
   const moreRow = (parent, n2, title, uid) => {
-    const more = el("button", "pxd-row__more", parent);
+    const more = el2("button", "pxd-row__more", parent);
     more.type = "button";
     more.textContent = `+${n2} more`;
     more.setAttribute("aria-label", `${n2} more blocks, open the page`);
@@ -28748,7 +28821,7 @@ function createItemRenderer({
     if (!rec.rowTable) return;
     holdHeight(line, KID_ROW_H);
     const heavy = isHeavyRow(string);
-    const plain2 = el("div", `pxd-block__text pxd-block__plain${heavy ? " pxd-block__plain--heavy" : ""}`, line);
+    const plain2 = el2("div", `pxd-block__text pxd-block__plain${heavy ? " pxd-block__plain--heavy" : ""}`, line);
     plain2.textContent = heavy ? "…" : plainText(string);
     plain2.setAttribute("data-pxd-plain", uid);
     rec.rowTable.set(uid, { line, plain: plain2, string, heavy });
@@ -28855,16 +28928,16 @@ function createItemRenderer({
   };
   const buildOutlineRow = (parent, spec, rec, b) => {
     const { uid, string: s, folded, hasKids, kids, depth } = spec;
-    const row4 = el("div", "pxd-block pxd-prow", parent);
+    const row4 = el2("div", "pxd-block pxd-prow", parent);
     row4.dataset.uid = uid;
     row4.setAttribute("data-uid", uid);
     row4.__pxdKids = kids;
-    const line = el("div", "pxd-row", row4);
+    const line = el2("div", "pxd-row", row4);
     line.dataset.pxdRow = uid;
     line.setAttribute("data-pxd-row", uid);
     let fold = null;
     if (hasKids) {
-      fold = el("button", "pxd-row__fold", line);
+      fold = el2("button", "pxd-row__fold", line);
       fold.type = "button";
       fold.setAttribute("aria-label", folded ? "Unfold" : "Fold");
       fold.setAttribute("aria-expanded", folded ? "false" : "true");
@@ -28883,7 +28956,7 @@ function createItemRenderer({
       addPlainRow(rec, line, s, uid);
     }
     if (!hasKids) return row4;
-    const wrap = el("div", "pxd-block__children", row4);
+    const wrap = el2("div", "pxd-block__children", row4);
     let filled = !folded;
     const fill = () => {
       if (filled) return;
@@ -28936,7 +29009,7 @@ function createItemRenderer({
     const specs = [];
     let more = 0;
     let n2 = 0;
-    const walk2 = (list, depth, parentUid) => {
+    const walk3 = (list, depth, parentUid) => {
       for (const blk of list || []) {
         const s = childString4(blk);
         if (skipChildString(s)) continue;
@@ -28950,10 +29023,10 @@ function createItemRenderer({
         }
         n2 += 1;
         specs.push({ uid, string: s, depth, parentUid, folded, hasKids, kids });
-        if (hasKids && !folded) walk2(kids, depth + 1, uid);
+        if (hasKids && !folded) walk3(kids, depth + 1, uid);
       }
     };
-    walk2(blocks, 0, null);
+    walk3(blocks, 0, null);
     return { specs, more };
   };
   const releaseRowRoot = (rec, uid, prow) => {
@@ -29154,7 +29227,7 @@ function createItemRenderer({
       if (!syncTail(holder, "pxd-row__more", text4)) moreRow(holder, more, rec.pageTitle, rec.pageUid);
     } else syncTail(holder, "pxd-row__more", null);
     if (!specs.length) {
-      if (!syncTail(holder, "pxd-item__placeholder", "Empty page")) el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
+      if (!syncTail(holder, "pxd-item__placeholder", "Empty page")) el2("div", "pxd-item__placeholder", holder).textContent = "Empty page";
     } else syncTail(holder, "pxd-item__placeholder", null);
     const next = /* @__PURE__ */ new Map();
     for (const spec of specs) next.set(spec.uid, { string: spec.string, depth: spec.depth, parentUid: spec.parentUid, folded: spec.folded, hasKids: spec.hasKids });
@@ -29187,7 +29260,7 @@ function createItemRenderer({
     rec.pageTitle = p?.title || rec.pageTitle || "";
     if (!p?.exists) {
       rec.pageKey = "";
-      el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
+      el2("div", "pxd-item__placeholder", holder).textContent = "Empty page";
       onPageLayout?.(rec.uid);
       return [];
     }
@@ -29195,7 +29268,7 @@ function createItemRenderer({
     rec.pageKey = pageKeyOf(p.blocks);
     const b = { n: 0, more: 0, roots: [] };
     renderOutline(holder, p.blocks || [], b, rec);
-    if (!b.n) el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
+    if (!b.n) el2("div", "pxd-item__placeholder", holder).textContent = "Empty page";
     if (b.more) moreRow(holder, b.more, rec.pageTitle, rec.pageUid);
     rec.pageRoots = [...b.roots];
     rec.primed = primeRows(rec);
@@ -29344,7 +29417,7 @@ function createItemRenderer({
       layer?.remove();
       return;
     }
-    if (!layer) layer = el("div", "pxd-region-hits", hostEl);
+    if (!layer) layer = el2("div", "pxd-region-hits", hostEl);
     else if (layer.parentElement !== hostEl) hostEl.append(layer);
     const img = hostEl.matches?.("img") ? hostEl : hostEl.querySelector?.("img");
     const beforePlace = regionLayerSig(layer);
@@ -29358,7 +29431,7 @@ function createItemRenderer({
     };
     const ordered = regions.slice().sort((a, b) => areaOf(b) - areaOf(a));
     for (const region of ordered) {
-      const hit = el("div", "pxd-region-hit", layer);
+      const hit = el2("div", "pxd-region-hit", layer);
       hit.setAttribute("data-pxd-region", region.uid);
       const f = fracParts3(region.frac);
       if (f) hit.setAttribute("data-pxd-area", String(f.rw * f.rh));
@@ -29382,7 +29455,7 @@ function createItemRenderer({
       }
     }
     pins.forEach((pin2, i) => {
-      const hit = el("div", "pxd-pin-hit", layer);
+      const hit = el2("div", "pxd-pin-hit", layer);
       hit.setAttribute("data-pxd-pin", pin2.uid);
       if (readMode && fracParts3(pin2.frac)) placeFrac(hit, pin2.frac);
       else {
@@ -29646,7 +29719,7 @@ function createItemRenderer({
       budget.roots.push(renderRoot(rec.body, item.string, "pxd-rs pxd-item__text", item.uid));
       return;
     }
-    const editor = el("div", "pxd-item__editor pxd-item__editor--sticky", rec.body);
+    const editor = el2("div", "pxd-item__editor pxd-item__editor--sticky", rec.body);
     if (!rec.bodyWired) {
       rec.bodyWired = true;
       for (const type of EDITOR_STOPPED) rec.body.addEventListener(type, (event) => {
@@ -29867,7 +29940,7 @@ function createItemRenderer({
     const showImage = state === "ready" && src && lod === "detail";
     const titleText2 = String(safe.title || "PDF");
     const count = typeof safe.count === "number" && Number.isFinite(safe.count) && safe.count >= 1 ? safe.count : 0;
-    const node2 = el("div", `pxd-pdf-cover pxd-pdf-cover--${state}`, rec.body);
+    const node2 = el2("div", `pxd-pdf-cover pxd-pdf-cover--${state}`, rec.body);
     node2.setAttribute("data-cover", state);
     if (state === "ready" && src) {
       try {
@@ -29876,38 +29949,38 @@ function createItemRenderer({
       }
       node2.setAttribute("data-cover-img", "1");
     }
-    const paper = el("div", "pxd-pdf-paper", node2);
+    const paper = el2("div", "pxd-pdf-paper", node2);
     if (lod !== "overview") {
       if (showImage) {
-        const img = el("img", "pxd-pdf-img", paper);
+        const img = el2("img", "pxd-pdf-img", paper);
         img.alt = "";
         img.setAttribute("alt", "");
         img.setAttribute("decoding", "async");
         img.setAttribute("loading", "lazy");
         img.setAttribute("src", src);
       } else if (state === "loading") {
-        const skel = el("div", "pxd-pdf-skel", paper);
+        const skel = el2("div", "pxd-pdf-skel", paper);
         skel.setAttribute("aria-hidden", "true");
-        for (let i = 0; i < 6; i += 1) el("span", "pxd-pdf-skel__line", skel);
+        for (let i = 0; i < 6; i += 1) el2("span", "pxd-pdf-skel__line", skel);
       } else if (state === "error") {
         paintPdfGlyph(doc, paper, 28);
-        el("div", "pxd-pdf-miss", paper).textContent = "Could not read";
+        el2("div", "pxd-pdf-miss", paper).textContent = "Could not read";
       } else {
         paintPdfGlyph(doc, paper, 28);
       }
       if (lod === "map" && !src || state === "loading" || state === "none") {
-        const face = el("div", "pxd-pdf-title pxd-pdf-title--face", paper);
+        const face = el2("div", "pxd-pdf-title pxd-pdf-title--face", paper);
         face.textContent = titleText2;
       }
     }
     const ticks = lod === "detail" && Array.isArray(image?.ticks) ? image.ticks : [];
     if (ticks.length) {
-      const density = el("div", "pxd-pdf-density", node2);
+      const density = el2("div", "pxd-pdf-density", node2);
       density.setAttribute("aria-label", "Highlights");
       for (const tick of ticks) {
         const y01 = tickY01(tick);
         const page = tickPage(tick);
-        const mark = el("button", "pxd-pdf-tick pxd-chrome", density);
+        const mark = el2("button", "pxd-pdf-tick pxd-chrome", density);
         mark.type = "button";
         mark.style.top = `${y01 * 100}%`;
         mark.setAttribute("data-y01", String(y01));
@@ -29927,19 +30000,19 @@ function createItemRenderer({
       }
     }
     if (lod !== "overview") {
-      const hover = el("div", "pxd-pdf-hover", node2);
+      const hover = el2("div", "pxd-pdf-hover", node2);
       if (!count) hover.setAttribute("hidden", "");
-      const hoverTitle = el("div", "pxd-pdf-title", hover);
+      const hoverTitle = el2("div", "pxd-pdf-title", hover);
       hoverTitle.textContent = titleText2;
       if (count) {
-        const countEl = el("div", "pxd-pdf-count", hover);
+        const countEl = el2("div", "pxd-pdf-count", hover);
         countEl.textContent = String(count);
         countEl.setAttribute("aria-label", typeof safe.label === "string" && safe.label ? safe.label : `${count} highlights`);
       }
       const coverChips = chipsFor(item);
       if (coverChips.length) paintPdfChipStrip(doc, hover, coverChips, chipHandlers(item));
-      const pills = el("div", "pxd-pdf-pills", node2);
-      const open = el("button", "pxd-pdf-open pxd-pdf-pill pxd-chrome", pills);
+      const pills = el2("div", "pxd-pdf-pills", node2);
+      const open = el2("button", "pxd-pdf-open pxd-pdf-pill pxd-chrome", pills);
       open.type = "button";
       open.textContent = "Open";
       open.setAttribute("aria-label", "Open reader");
@@ -29962,7 +30035,7 @@ function createItemRenderer({
         }
         openPdf(item.uid);
       });
-      const parse = el("button", "pxd-pdf-parse pxd-pdf-pill pxd-chrome", pills);
+      const parse = el2("button", "pxd-pdf-parse pxd-pdf-pill pxd-chrome", pills);
       parse.type = "button";
       parse.textContent = "Parse";
       parse.setAttribute("aria-label", "Parse PDF");
@@ -29976,7 +30049,7 @@ function createItemRenderer({
         }
       });
     }
-    const dot = el("span", "pxd-pdf-dot", node2);
+    const dot = el2("span", "pxd-pdf-dot", node2);
     dot.setAttribute("aria-hidden", "true");
     const pdfSelected = () => rec.selected === true || selectedPrimary === item.uid;
     const onKey = (event) => {
@@ -30011,10 +30084,10 @@ function createItemRenderer({
     };
   };
   const paintPdfReader = (rec, item) => {
-    const reader = el("div", "pxd-pdf-reader", rec.body);
+    const reader = el2("div", "pxd-pdf-reader", rec.body);
     const readerChips = chipsFor(item);
     if (readerChips.length) paintPdfChipStrip(doc, reader, readerChips, chipHandlers(item));
-    const live2 = el("div", "pxd-rs__live", reader);
+    const live2 = el2("div", "pxd-rs__live", reader);
     const uid = item.target?.kind === "block" ? item.target.uid : item.uid;
     try {
       host?.renderBlock?.(live2, uid);
@@ -30022,7 +30095,7 @@ function createItemRenderer({
     }
     armEmbedShield(reader, live2);
     rec.pdfReader = reader;
-    const interact = el("button", "pxd-pdf-interact pxd-chrome", reader);
+    const interact = el2("button", "pxd-pdf-interact pxd-chrome", reader);
     interact.type = "button";
     interact.textContent = "Interact";
     for (const type of ["pointerdown", "mousedown", "dblclick"]) interact.addEventListener(type, stopEvent);
@@ -30312,33 +30385,33 @@ function createItemRenderer({
     }
     const image = hl.image === true && lod === "detail";
     if (image) {
-      const media = el("div", "pxd-highlight-media", rec.body);
+      const media = el2("div", "pxd-highlight-media", rec.body);
       const ratio = highlightRatio(hl.natural);
       if (ratio) media.style.aspectRatio = ratio;
       if (hl.text) budget.roots.push(renderRoot(media, hl.text, "pxd-rs pxd-item__string", uid));
     }
-    const bar = el("div", "pxd-highlight-bar", rec.body);
+    const bar = el2("div", "pxd-highlight-bar", rec.body);
     bar.setAttribute("data-color", String(hl.color || ""));
     if (lod !== "detail") {
       const line = firstLine(hl.text || "");
-      if (line) el("div", "pxd-highlight-line", rec.body).textContent = line;
+      if (line) el2("div", "pxd-highlight-line", rec.body).textContent = line;
       return;
     }
     if (!image && hl.text) budget.roots.push(renderRoot(rec.body, hl.text, "pxd-rs pxd-item__string pxd-highlight-quote", uid));
     rec.hlNote = typeof hl.note === "string" ? hl.note : "";
     rec.hlNoteBox = null;
     if (rec.hlNote.trim()) {
-      rec.hlNoteBox = el("div", "pxd-highlight-note", rec.body);
+      rec.hlNoteBox = el2("div", "pxd-highlight-note", rec.body);
       budget.roots.push(renderRoot(rec.hlNoteBox, rec.hlNote, "pxd-rs", uid));
     }
     const chipTitle = highlightChipTitle(hl.footer);
     const chipPage = highlightChipPage(hl);
-    const foot = el("button", "pxd-highlight-foot pxd-highlight-chip pxd-chrome", rec.body);
+    const foot = el2("button", "pxd-highlight-foot pxd-highlight-chip pxd-chrome", rec.body);
     foot.type = "button";
     rec.hlFoot = foot;
     paintPdfGlyph(doc, foot, 16);
-    if (chipTitle) el("span", "pxd-highlight-chip__title", foot).textContent = chipTitle;
-    if (chipPage) el("span", "pxd-highlight-chip__page", foot).textContent = chipTitle ? ` · ${chipPage}` : chipPage;
+    if (chipTitle) el2("span", "pxd-highlight-chip__title", foot).textContent = chipTitle;
+    if (chipPage) el2("span", "pxd-highlight-chip__page", foot).textContent = chipTitle ? ` · ${chipPage}` : chipPage;
     foot.setAttribute("aria-label", [chipTitle, chipPage].filter(Boolean).join(", ") || "Open highlight");
     const openFoot = (event) => {
       stopEvent(event);
@@ -30350,7 +30423,7 @@ function createItemRenderer({
     };
     for (const type of ["pointerdown", "mousedown", "dblclick", "click"]) foot.addEventListener(type, openFoot);
     if (typeof onHighlightMenu === "function") {
-      const more = el("button", "pxd-highlight-chip__more pxd-chrome", rec.body);
+      const more = el2("button", "pxd-highlight-chip__more pxd-chrome", rec.body);
       more.type = "button";
       more.textContent = "▾";
       more.setAttribute("aria-label", "Where to open this highlight");
@@ -30366,7 +30439,7 @@ function createItemRenderer({
       for (const type of ["pointerdown", "mousedown", "dblclick", "click"]) more.addEventListener(type, openMore);
     }
     if (typeof onHighlightNote === "function" && item.target?.uid) {
-      const noteBtn = el("button", "pxd-highlight-notebtn pxd-chrome", rec.body);
+      const noteBtn = el2("button", "pxd-highlight-notebtn pxd-chrome", rec.body);
       noteBtn.type = "button";
       noteBtn.textContent = "Note";
       noteBtn.setAttribute("aria-label", "Open the note for this highlight");
@@ -30581,7 +30654,10 @@ function createItemRenderer({
     rec.stickyLive = false;
     rec.editor = null;
     rec.bare = false;
+    rec.faced = false;
+    rec.thumbed = false;
     rec.el.classList.remove("pxd-item--bare");
+    rec.el.classList.remove("pxd-item--thumb");
     rec.el.classList.remove("pxd-item--roam-table");
     const budget = { n: 0, roots: [] };
     if (item.collapsed) {
@@ -30594,7 +30670,7 @@ function createItemRenderer({
     } else if (item.type === "text") {
       budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__text", item.uid));
     } else if (item.kind === "image") {
-      budget.roots.push(renderRoot(el("div", "pxd-item__media", body), item.string, "pxd-rs", item.uid));
+      budget.roots.push(renderRoot(el2("div", "pxd-item__media", body), item.string, "pxd-rs", item.uid));
       syncEndpointHits(rec, item.content);
     } else if (item.kind === "board") {
       mountBoardBody(body, item);
@@ -30604,7 +30680,7 @@ function createItemRenderer({
         rec.contentKey = contentKeyFor(item);
         return;
       }
-      const holder = el("div", "pxd-item__page", body);
+      const holder = el2("div", "pxd-item__page", body);
       rec.pageHolder = holder;
       if (onPageLayout && !rec.scrollOff) {
         const onScroll = () => onPageLayout(rec.uid);
@@ -30680,7 +30756,7 @@ function createItemRenderer({
         rec.blockStringNode = null;
         const imageRef = typeof refString === "string" && classifyString(refString).kind === "image";
         if (typeof refString === "string" && refString.trim()) {
-          const parent = imageRef ? el("div", "pxd-item__media", body) : body;
+          const parent = imageRef ? el2("div", "pxd-item__media", body) : body;
           const node2 = renderRoot(parent, refString, imageRef ? "pxd-rs" : "pxd-rs pxd-item__string", ref);
           rec.blockStringNode = node2;
           budget.roots.push(node2);
@@ -30689,7 +30765,7 @@ function createItemRenderer({
         const apply = (blocks, sync2 = false) => {
           if (disposed || !body.isConnected || !sync2 && rec.contentKey !== contentKeyFor(item)) return;
           startRows();
-          if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
+          if (!refString?.trim() && !blocks?.length) el2("div", "pxd-item__placeholder", body).textContent = "Empty card";
           rec.kidCount = visibleKids(blocks).length;
           rec.kidRows = kidRowsOf(blocks);
           if (imageRef) syncEndpointHits(rec, blocks);
@@ -30730,6 +30806,12 @@ function createItemRenderer({
       rec.el.classList.add("pxd-item--roam-table");
       mountTableHost(body, item.uid, budget);
       armLayoutWatch(rec);
+      if (typeof onTableShown === "function") {
+        try {
+          onTableShown(item);
+        } catch {
+        }
+      }
       rec.kidCount = 0;
       rec.kidRows = 0;
       paintPinChip(body, item.content);
@@ -30739,7 +30821,7 @@ function createItemRenderer({
       rec.kidRows = kidRowsOf(item.content);
       if (item.kids) renderBlocks(body, item.content || [], 1, budget);
       if (!item.string?.trim() && !(item.content || []).length) {
-        el("div", "pxd-item__placeholder", body).textContent = "Empty card";
+        el2("div", "pxd-item__placeholder", body).textContent = "Empty card";
       }
       paintPinChip(body, item.content);
     }
@@ -30972,8 +31054,11 @@ function createItemRenderer({
       dropKidsBadge(rec);
       if (rec.type === "card") {
         rec.bare = true;
+        rec.faced = false;
         rec.el.classList.add("pxd-item--bare");
       }
+      const gone = lastBoard?.items.get(uid);
+      if (gone) paintThumb3(rec, gone);
       onPageLayout?.(uid);
     }
     rec.contentKey = null;
@@ -31062,7 +31147,7 @@ function createItemRenderer({
       const text4 = rec.body.textContent || "";
       unmountRoots(rec);
       rec.body.replaceChildren();
-      if (text4) el("div", "pxd-quiet", rec.body).textContent = text4;
+      if (text4) el2("div", "pxd-quiet", rec.body).textContent = text4;
     } else {
       unmountRoots(rec);
     }
@@ -31373,9 +31458,9 @@ function createItemRenderer({
     const key = JSON.stringify(chips);
     if (rec.badgeEl && rec.badgeKey === key) return;
     clear();
-    const row4 = el("div", "pxd-item__badges", rec.el);
+    const row4 = el2("div", "pxd-item__badges", rec.el);
     for (const chip of chips) {
-      const node2 = el(chip.action || chip.task ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row4);
+      const node2 = el2(chip.action || chip.task ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row4);
       node2.textContent = chip.text;
       if (chip.overdue) node2.classList.add("pxd-badge-chip--overdue");
       if (chip.today) node2.classList.add("pxd-badge-chip--today");
@@ -31892,14 +31977,14 @@ function createItemRenderer({
       const delta = (Number(taskText.offsetLeft) || 0) - (Number(taskLine.offsetLeft) || 0);
       if (delta > 1) taskPad = Math.round(delta);
     }
-    const ghost = el("div", "pxd-item__ghost");
+    const ghost = el2("div", "pxd-item__ghost");
     ghost.setAttribute("aria-hidden", "true");
     for (const node2 of [...rec.body.children || []]) ghost.append(node2);
     rec.body.append(ghost);
     rec.ghost = ghost;
     rec.contentKey = null;
     mounted.delete(uid);
-    const editor = el("div", pageEdit ? "pxd-item__editor pxd-page-edit" : "pxd-item__editor", rec.body);
+    const editor = el2("div", pageEdit ? "pxd-item__editor pxd-page-edit" : "pxd-item__editor", rec.body);
     if (taskPad) editor.style.setProperty("--pxd-task-pad", `${taskPad}px`);
     for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
     editing = { uid, rec, editor, targetUid, item, ready: false, fadeCancel: null, releaseCancel: null };
@@ -32465,6 +32550,15 @@ function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    // INSTANT-4. A table thumbnail arrived: show it on the card if its body is still bare.
+    repaintThumb: (uid) => {
+      const rec = shells.get(uid);
+      const item = lastBoard?.items.get(uid);
+      if (!rec || !item || disposed || mounted.has(uid) || editing?.uid === uid) return false;
+      if (!rec.bare && !rec.thumbed) return false;
+      paintThumb3(rec, item);
+      return rec.thumbed === true;
+    },
     drawnRect: (uid) => drawnRect(uid, lastRects?.get(uid)) ?? null,
     measureRow,
     setLayoutWatch,
@@ -32527,7 +32621,7 @@ function createItemRenderer({
     dispose
   };
 }
-var SIDES3, CHUNK_MS, LRU_CAP, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString4, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
+var SIDES3, CHUNK_MS, LRU_CAP, UNMOUNT_AFTER_MS, HYDRATE_CAP_MS, CONTENT_LIMIT, CONTENT_DEPTH, OUTLINE_CAP, OUTLINE_FETCH, PAGE_WATCH_MAX, PAGE_REFRESH_MS, BLOCK_REFRESH_MS, GROW_CAP, HEADER_H, META_H, REF_TITLE_MAX, HEADER_TEXT_MAX, TINY_MINI_PX, ATTR_CHIPS_MAX, SVG_NS2, ROW_BOARD_W, ROW_BOARD_H, ROW_BOARD_THUMBS, BOARD_KEY_DEPTH, BOARD_KEY_NODES, KID_ROW_H, PEEK_DELAY_MS, PEEK_TOP, PEEK_SUB, PEEK_TEXT_MAX, now2, HL_NAMES2, NOTE_CARET_SKIP, childString4, childKids, childUid, childProps, KIDS_KINDS, isKidsCard, isSticky, STICKY_TITLE_MAX, stickyTitleOf, isTaskAttrString, skipChildString, visibleKids, taskBlockOn, statusSig, TASK_MARK, isTaskCard, regionHubs;
 var init_cards = __esm({
   "src/view/cards.js"() {
     init_card_face();
@@ -32587,7 +32681,7 @@ var init_cards = __esm({
     HEADER_TEXT_MAX = 160;
     TINY_MINI_PX = 28;
     ATTR_CHIPS_MAX = 3;
-    SVG_NS = "http://www.w3.org/2000/svg";
+    SVG_NS2 = "http://www.w3.org/2000/svg";
     ROW_BOARD_W = 220;
     ROW_BOARD_H = 90;
     ROW_BOARD_THUMBS = 4;
@@ -32765,7 +32859,7 @@ function createReadDrawer({
   storage,
   key = ""
 } = {}) {
-  const el = (tag, cls, parent) => {
+  const el2 = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
     if (cls) node2.className = cls;
     if (tag === "button") {
@@ -32789,44 +32883,44 @@ function createReadDrawer({
     }
   };
   const view = () => doc?.defaultView || globalThis;
-  const root = el("div", "pxd-read-drawer");
+  const root = el2("div", "pxd-read-drawer");
   root.setAttribute("role", "region");
   root.setAttribute("aria-label", "Highlights");
-  const pill = el("div", "pxd-read-drawer__pill", root);
+  const pill = el2("div", "pxd-read-drawer__pill", root);
   pill.setAttribute("role", "status");
   hide(pill, true);
-  el("span", "pxd-read-drawer__pilltext", pill).textContent = "New highlight · ";
-  const pillBtn = el("button", "pxd-read-drawer__pillplace", pill);
+  el2("span", "pxd-read-drawer__pilltext", pill).textContent = "New highlight · ";
+  const pillBtn = el2("button", "pxd-read-drawer__pillplace", pill);
   pillBtn.textContent = "Place on board";
-  const edge = el("div", "pxd-read-drawer__edge", root);
+  const edge = el2("div", "pxd-read-drawer__edge", root);
   edge.setAttribute("role", "separator");
   edge.setAttribute("aria-orientation", "horizontal");
   edge.setAttribute("aria-label", "Resize highlights");
   hide(edge, true);
-  const strip = el("div", "pxd-read-drawer__strip", root);
-  const chevron = el("button", "pxd-read-drawer__chevron", strip);
+  const strip = el2("div", "pxd-read-drawer__strip", root);
+  const chevron = el2("button", "pxd-read-drawer__chevron", strip);
   chevron.textContent = "▸";
   chevron.setAttribute("aria-expanded", "false");
   chevron.setAttribute("aria-label", "Open highlights");
-  const count = el("span", "pxd-read-drawer__count", strip);
+  const count = el2("span", "pxd-read-drawer__count", strip);
   count.textContent = countLabel(0);
-  const dots = el("div", "pxd-read-drawer__dots", strip);
+  const dots = el2("div", "pxd-read-drawer__dots", strip);
   dots.setAttribute("role", "group");
   dots.setAttribute("aria-label", "Colours");
-  const pages = el("div", "pxd-pdf-chips pxd-chrome", strip);
+  const pages = el2("div", "pxd-pdf-chips pxd-chrome", strip);
   pages.setAttribute("role", "group");
   pages.setAttribute("aria-label", "Pages");
-  const searchBtn = el("button", "pxd-read-drawer__search", strip);
+  const searchBtn = el2("button", "pxd-read-drawer__search", strip);
   searchBtn.textContent = "⌕";
   searchBtn.setAttribute("aria-label", "Search highlights");
   searchBtn.setAttribute("aria-expanded", "false");
-  const find = el("input", "pxd-read-drawer__find", strip);
+  const find = el2("input", "pxd-read-drawer__find", strip);
   find.setAttribute("type", "search");
   find.setAttribute("aria-label", "Search highlights");
   hide(find, true);
-  const body = el("div", "pxd-read-drawer__body", root);
+  const body = el2("div", "pxd-read-drawer__body", root);
   hide(body, true);
-  const list = el("div", "pxd-read-drawer__list", body);
+  const list = el2("div", "pxd-read-drawer__list", body);
   list.tabIndex = 0;
   list.setAttribute("role", "listbox");
   list.setAttribute("aria-label", "Highlights");
@@ -32936,25 +33030,25 @@ function createReadDrawer({
     return svg;
   };
   const makeActs = () => {
-    const acts = el("div", "pxd-read-drawer__acts");
-    const note = el("button", "pxd-read-drawer__note", acts);
+    const acts = el2("div", "pxd-read-drawer__acts");
+    const note = el2("button", "pxd-read-drawer__note", acts);
     note.setAttribute("aria-label", "Note");
     note.append(icon(["M3 4.5h10v6H6.5L3 13z"]));
-    const placeBtn = el("button", "pxd-read-drawer__place", acts);
+    const placeBtn = el2("button", "pxd-read-drawer__place", acts);
     placeBtn.setAttribute("aria-label", "Place");
     placeBtn.append(icon(["M2.5 3.5h8v8h-8z", "M11 8h3M12.5 6.5v3"]));
     if (typeof onAsk === "function") {
-      const ask2 = el("button", "pxd-read-drawer__ask", acts);
+      const ask2 = el2("button", "pxd-read-drawer__ask", acts);
       ask2.setAttribute("aria-label", "Ask AI (Shift: add to question)");
       ask2.append(icon(["M8 2.5l1.4 3.1 3.1 1.4-3.1 1.4L8 11.5 6.6 8.4 3.5 7l3.1-1.4z", "M12.5 11v3M11 12.5h3"]));
     }
-    const locate = el("button", "pxd-read-drawer__locate", acts);
+    const locate = el2("button", "pxd-read-drawer__locate", acts);
     locate.setAttribute("aria-label", "Locate");
     locate.append(icon(["M8 2.5v2M8 11.5v2M2.5 8h2M11.5 8h2", "M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"]));
     return acts;
   };
   const boardMark = () => {
-    const mark = el("span", "pxd-read-drawer__on");
+    const mark = el2("span", "pxd-read-drawer__on");
     mark.setAttribute("role", "img");
     mark.setAttribute("aria-label", "On board");
     mark.append(icon(["M2 3h12v10H2z", "M2 6h12"]));
@@ -32988,11 +33082,11 @@ function createReadDrawer({
   const paintDots = () => {
     dots.replaceChildren?.();
     for (const name of colorsPresent(catalog)) {
-      const dot = el("button", "pxd-read-drawer__dot", dots);
+      const dot = el2("button", "pxd-read-drawer__dot", dots);
       dot.setAttribute("data-color", name);
       dot.setAttribute("aria-label", name);
       dot.setAttribute("aria-pressed", "false");
-      const mark = el("span", "pxd-read-drawer__dotmark", dot);
+      const mark = el2("span", "pxd-read-drawer__dotmark", dot);
       const line = LINES[name] || "var(--pxd-muted, #5f6b7c)";
       if (typeof mark.style?.setProperty === "function") mark.style.setProperty("--pxd-dot", line);
       else if (mark.style) mark.style["--pxd-dot"] = line;
@@ -33001,7 +33095,7 @@ function createReadDrawer({
   const paintPages = () => {
     pages.replaceChildren?.();
     for (const n2 of pagesPresent(catalog)) {
-      const chip = el("button", "pxd-pdf-chip pxd-chrome", pages);
+      const chip = el2("button", "pxd-pdf-chip pxd-chrome", pages);
       chip.setAttribute("data-page", String(n2));
       chip.setAttribute("aria-label", `Page ${n2}`);
       chip.setAttribute("aria-pressed", "false");
@@ -33032,27 +33126,27 @@ function createReadDrawer({
     }
   };
   const renderRow = (row4) => {
-    const node2 = el("div", "pxd-read-drawer__row");
+    const node2 = el2("div", "pxd-read-drawer__row");
     node2.setAttribute("role", "option");
     node2.setAttribute("data-uid", String(row4.uid || ""));
     node2.draggable = true;
     node2.setAttribute("draggable", "true");
     node2.tabIndex = -1;
-    const bar = el("span", "pxd-read-drawer__bar", node2);
+    const bar = el2("span", "pxd-read-drawer__bar", node2);
     bar.setAttribute("data-color", String(row4.color || ""));
     const string = typeof row4.string === "string" ? row4.string : "";
     if (string.includes("![") && typeof host?.renderString === "function") {
-      const media = el("div", "pxd-read-drawer__media", node2);
+      const media = el2("div", "pxd-read-drawer__media", node2);
       try {
         host.renderString(media, string);
       } catch {
         media.textContent = row4.snippet || "";
       }
     } else if (row4.snippet) {
-      el("div", "pxd-read-drawer__snip", node2).textContent = String(row4.snippet);
+      el2("div", "pxd-read-drawer__snip", node2).textContent = String(row4.snippet);
     }
-    const meta = el("div", "pxd-read-drawer__meta", node2);
-    if (typeof row4.page === "number") el("span", "pxd-read-drawer__pg", meta).textContent = `p. ${row4.page}`;
+    const meta = el2("div", "pxd-read-drawer__meta", node2);
+    if (typeof row4.page === "number") el2("span", "pxd-read-drawer__pg", meta).textContent = `p. ${row4.page}`;
     if (row4.placed === true) meta.append(boardMark());
     return node2;
   };
@@ -34343,7 +34437,7 @@ function openDb(factory, { name, version, stores, capMs = 2e3 }) {
   return new Promise((resolve) => {
     let settled = false;
     let timer = null;
-    const done = (value) => {
+    const done2 = (value) => {
       if (settled) return;
       settled = true;
       if (timer != null) {
@@ -34358,7 +34452,7 @@ function openDb(factory, { name, version, stores, capMs = 2e3 }) {
       try {
         const req = withVersion ? factory.open(name, version) : factory.open(name);
         if (!req) {
-          done(null);
+          done2(null);
           return;
         }
         req.onupgradeneeded = () => {
@@ -34368,7 +34462,7 @@ function openDb(factory, { name, version, stores, capMs = 2e3 }) {
         req.onsuccess = () => {
           const db = req.result || null;
           if (!db) {
-            done(null);
+            done2(null);
             return;
           }
           if (settled) {
@@ -34383,10 +34477,10 @@ function openDb(factory, { name, version, stores, capMs = 2e3 }) {
               db.close();
             } catch {
             }
-            done(null);
+            done2(null);
             return;
           }
-          done(arrange(db));
+          done2(arrange(db));
         };
         req.onerror = (event) => {
           try {
@@ -34402,16 +34496,16 @@ function openDb(factory, { name, version, stores, capMs = 2e3 }) {
             attempt(false);
             return;
           }
-          done(null);
+          done2(null);
         };
-        req.onblocked = () => done(null);
+        req.onblocked = () => done2(null);
       } catch {
-        done(null);
+        done2(null);
       }
     };
-    timer = arm(capMs, () => done(null));
+    timer = arm(capMs, () => done2(null));
     if (!factory || typeof factory.open !== "function") {
-      done(null);
+      done2(null);
       return;
     }
     attempt(true);
@@ -34545,22 +34639,22 @@ function imageKey(sha256, blockId) {
 function requestResult(req) {
   return new Promise((resolve) => {
     let settled = false;
-    const done = (value) => {
+    const done2 = (value) => {
       if (settled) return;
       settled = true;
       resolve(value);
     };
     try {
-      req.onsuccess = () => done({ ok: true, result: req.result });
+      req.onsuccess = () => done2({ ok: true, result: req.result });
       req.onerror = (event) => {
         try {
           event?.preventDefault?.();
         } catch {
         }
-        done({ ok: false, result: null });
+        done2({ ok: false, result: null });
       };
     } catch {
-      done({ ok: false, result: null });
+      done2({ ok: false, result: null });
     }
   });
 }
@@ -36046,7 +36140,7 @@ function collectTargets(node2) {
   const titles = [];
   const uids = [];
   const stats = [];
-  const walk2 = (cur, isRoot) => {
+  const walk3 = (cur, isRoot) => {
     if (!cur || typeof cur !== "object") return;
     if (!isRoot) {
       const uid = cur[":block/uid"];
@@ -36060,9 +36154,9 @@ function collectTargets(node2) {
         stats.push({ kind: "block", uid: cls.refUid });
       }
     }
-    for (const kid of childNodes(cur)) walk2(kid, false);
+    for (const kid of childNodes(cur)) walk3(kid, false);
   };
-  walk2(node2, true);
+  walk3(node2, true);
   return { titles: uniqueStrings(titles), uids: uniqueStrings(uids), stats };
 }
 function unpackPulls(rows) {
@@ -36472,10 +36566,56 @@ function markdownRootUids(result) {
   }
   return roots;
 }
+var READ_FNS = /* @__PURE__ */ new Set(["q", "pull", "pull_many"]);
+function countReads(data, stats) {
+  if (!data || typeof data !== "object" || typeof Proxy !== "function") return data;
+  stats.reads = 0;
+  const wrapped = /* @__PURE__ */ new Map();
+  const wrap = (owner, prop2, fn) => {
+    const key = owner === data ? prop2 : `fast.${prop2}`;
+    const hit = wrapped.get(key);
+    if (hit && hit.fn === fn) return hit.out;
+    const out = function counted(...args) {
+      stats.reads += 1;
+      return fn.apply(owner, args);
+    };
+    wrapped.set(key, { fn, out });
+    return out;
+  };
+  let fastProxy = null;
+  let fastOf = null;
+  return new Proxy(data, {
+    get(target, prop2) {
+      const value = target[prop2];
+      if (typeof prop2 === "string" && READ_FNS.has(prop2) && typeof value === "function") return wrap(target, prop2, value);
+      if (prop2 === "fast" && value && typeof value === "object") {
+        if (fastOf !== value) {
+          fastOf = value;
+          fastProxy = new Proxy(value, {
+            get(fast, name) {
+              const fn = fast[name];
+              return name === "q" && typeof fn === "function" ? wrap(fast, name, fn) : fn;
+            }
+          });
+        }
+        return fastProxy;
+      }
+      if (typeof value === "function") {
+        const key = `bound.${String(prop2)}`;
+        const hit = wrapped.get(key);
+        if (hit && hit.fn === value) return hit.out;
+        const out = value.bind(target);
+        wrapped.set(key, { fn: value, out });
+        return out;
+      }
+      return value;
+    }
+  });
+}
 function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
   const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
   bindGuardStats(stats);
-  const data = api2.data;
+  const data = countReads(api2.data, stats);
   const undoLog = [];
   const redoLog = [];
   const UNDO_LOG_MAX = 200;
@@ -36498,9 +36638,9 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     redoLog.length = 0;
     if (openGroup) {
       if (openGroup.n >= MAX_GROUP_WRITES) {
-        const done = openGroup;
-        openGroup = { n: 0, kinds: [], label: done.label || "" };
-        closeChunk(done);
+        const done2 = openGroup;
+        openGroup = { n: 0, kinds: [], label: done2.label || "" };
+        closeChunk(done2);
       }
       openGroup.n++;
       if (kind && !openGroup.kinds.includes(kind)) openGroup.kinds.push(kind);
@@ -36516,6 +36656,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
   const pdfUrls = /* @__PURE__ */ new Map();
   const boardCovers = /* @__PURE__ */ new Map();
   const watchedBoards = /* @__PURE__ */ new Map();
+  const unwatchedAt = /* @__PURE__ */ new Map();
+  let pullSeq = 0;
   const watchedBlocks = /* @__PURE__ */ new Map();
   const eidByUid = /* @__PURE__ */ new Map();
   const eidByTitle = /* @__PURE__ */ new Map();
@@ -36618,7 +36760,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     const notePdf = (pageUid, url) => {
       if (typeof pageUid === "string" && pageUid && typeof url === "string") pdfUrls.set(pdfPrefix + pageUid, url);
     };
-    const walk2 = (cur, asRef, isRoot) => {
+    const walk3 = (cur, asRef, isRoot) => {
       if (!cur || typeof cur !== "object") return;
       const id = typeof cur[":block/uid"] === "string" ? cur[":block/uid"] : "";
       const title = typeof cur[":node/title"] === "string" ? cur[":node/title"] : "";
@@ -36637,10 +36779,10 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         cache.notePageBoard(title, boardUid);
         see(`t:${title}`);
       }
-      for (const ref of refNodes2(cur)) walk2(ref, true, false);
-      for (const kid of childNodes(cur)) walk2(kid, asRef, false);
+      for (const ref of refNodes2(cur)) walk3(ref, true, false);
+      for (const kid of childNodes(cur)) walk3(kid, asRef, false);
     };
-    walk2(node2, false, true);
+    walk3(node2, false, true);
     const inferred = inferBoardPage(node2);
     if (inferred) boardPageOf.set(boardUid, inferred);
     else if (honored) boardPageOf.set(boardUid, "");
@@ -36665,7 +36807,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
   };
   const addEntity = (boardUid, node2) => {
     const keys = boardKeys.get(boardUid) || /* @__PURE__ */ new Set();
-    const walk2 = (cur) => {
+    const walk3 = (cur) => {
       if (!cur || typeof cur !== "object") return;
       const id = typeof cur[":block/uid"] === "string" ? cur[":block/uid"] : "";
       const title = typeof cur[":node/title"] === "string" ? cur[":node/title"] : "";
@@ -36680,9 +36822,9 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         cache.notePageBoard(title, boardUid);
         keys.add(`t:${title}`);
       }
-      for (const kid of childNodes(cur)) walk2(kid);
+      for (const kid of childNodes(cur)) walk3(kid);
     };
-    walk2(node2);
+    walk3(node2);
     boardKeys.set(boardUid, keys);
   };
   const servePull = (pattern, entity) => {
@@ -36869,9 +37011,11 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         const later = (fn) => typeof idle === "function" ? idle(() => fn(), { timeout: 1500 }) : setTimeout(fn, 250);
         const titles = found.titles;
         const targets = found.stats;
+        const pulledAt = ++pullSeq;
         let ti = 0;
         let statsDone = false;
         const step = () => {
+          if (unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
           if (ti === 0 && !statsDone) dropStats(uid);
           if (ti < titles.length) {
             try {
@@ -36922,6 +37066,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         watchedBoards.set(uid, slot2);
       } else if (covers2) slot2.coversRefs = true;
       slot2.n += 1;
+      unwatchedAt.delete(uid);
       const entity = watchEntity(uid);
       const wrapped = guardCallback("watchBoard", (before, after) => {
         if (after?.[":block/uid"]) absorb(uid, after, hasRefs(after));
@@ -36938,6 +37083,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         stats.watches--;
         slot2.n = Math.max(0, slot2.n - 1);
         if (slot2.n === 0 && slot2.pages.size === 0) watchedBoards.delete(uid);
+        if (slot2.n === 0) unwatchedAt.set(uid, pullSeq);
       };
     },
     // True when this ref was joined into a board pull whose one watch still includes it.
@@ -37373,25 +37519,25 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!res || typeof res !== "object") return null;
       const top = Array.isArray(res[":block/children"]) ? [...res[":block/children"]] : [];
       top.sort((a, b) => (a[":block/order"] ?? 0) - (b[":block/order"] ?? 0));
-      const strOf = (b) => typeof b?.[":block/string"] === "string" ? b[":block/string"] : "";
+      const strOf2 = (b) => typeof b?.[":block/string"] === "string" ? b[":block/string"] : "";
       const kids = (b) => Array.isArray(b?.[":block/children"]) ? b[":block/children"] : [];
       let max = 0;
       const re = /\[\((\d+)\)\]\(\(\([^)]*\)\)\)/g;
-      const walk2 = (b) => {
+      const walk3 = (b) => {
         re.lastIndex = 0;
         let m;
-        const text4 = strOf(b);
+        const text4 = strOf2(b);
         while (m = re.exec(text4)) max = Math.max(max, Number(m[1]) || 0);
-        for (const k of kids(b)) walk2(k);
+        for (const k of kids(b)) walk3(k);
       };
-      for (const b of top) walk2(b);
-      const at = top.findIndex((b) => strOf(b).trim() === header);
+      for (const b of top) walk3(b);
+      const at = top.findIndex((b) => strOf2(b).trim() === header);
       const node2 = at >= 0 ? top[at] : null;
       return {
         headerUid: node2 && typeof node2[":block/uid"] === "string" ? node2[":block/uid"] : null,
         count: node2 ? kids(node2).length : 0,
         max,
-        hasLine: at > 0 && strOf(top[at - 1]).trim() === "---"
+        hasLine: at > 0 && strOf2(top[at - 1]).trim() === "---"
       };
     },
     // { parentUid, order } for a block, or null when Roam has no integer order.
@@ -37482,16 +37628,16 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       lastWriteAt = Date.now();
       const entry = undoLog.pop();
       const span = entry ? groupSpan(entry) : 1;
-      let done = 0;
+      let done2 = 0;
       try {
-        for (; done < span; done++) await data.undo();
+        for (; done2 < span; done2++) await data.undo();
       } finally {
         lastWriteAt = Date.now();
         if (entry) {
-          if (done >= span) redoLog.push(entry);
+          if (done2 >= span) redoLog.push(entry);
           else {
-            if (done > 0) redoLog.push({ n: done });
-            undoLog.push({ n: span - done });
+            if (done2 > 0) redoLog.push({ n: done2 });
+            undoLog.push({ n: span - done2 });
           }
         }
       }
@@ -37500,14 +37646,14 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       lastWriteAt = Date.now();
       const entry = redoLog.pop();
       const span = entry ? groupSpan(entry) : 1;
-      let done = 0;
+      let done2 = 0;
       try {
-        for (; done < span; done++) await data.redo();
+        for (; done2 < span; done2++) await data.redo();
       } finally {
         lastWriteAt = Date.now();
         if (entry) {
-          if (done > 0) undoLog.push(done >= span ? entry : { n: done });
-          if (done < span) redoLog.push({ n: span - done });
+          if (done2 > 0) undoLog.push(done2 >= span ? entry : { n: done2 });
+          if (done2 < span) redoLog.push({ n: span - done2 });
         }
       }
     },
@@ -37526,24 +37672,24 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     openPage(uid) {
       return api2.ui.mainWindow.openPage({ page: { uid } });
     },
-    renderString(el, string) {
+    renderString(el2, string) {
       stats.renders++;
-      return api2.ui.components.renderString({ el, string });
+      return api2.ui.components.renderString({ el: el2, string });
     },
-    renderBlock(el, uid, { open = true } = {}) {
+    renderBlock(el2, uid, { open = true } = {}) {
       stats.renders++;
-      return api2.ui.components.renderBlock({ uid, el, "open?": open });
+      return api2.ui.components.renderBlock({ uid, el: el2, "open?": open });
     },
-    renderPage(el, uid, opts) {
+    renderPage(el2, uid, opts) {
       stats.renders++;
-      const props = { uid, el };
+      const props = { uid, el: el2 };
       if (opts && typeof opts === "object") {
         for (const key of Object.keys(opts)) if (key !== "uid" && key !== "el") props[key] = opts[key];
       }
       return api2.ui.components.renderPage(props);
     },
-    unmount(el) {
-      return api2.ui.components.unmountNode({ el });
+    unmount(el2) {
+      return api2.ui.components.unmountNode({ el: el2 });
     },
     q(query, ...inputs) {
       return data.fast?.q ? data.fast.q(query, ...inputs) : data.q(query, ...inputs);
@@ -39178,11 +39324,11 @@ function kidsOf2(node2) {
 }
 function indexTree(root) {
   const map = /* @__PURE__ */ new Map();
-  const walk2 = (node2, parent) => {
+  const walk3 = (node2, parent) => {
     map.set(node2[UID], { node: node2, parent });
-    for (const c of node2[KIDS] ?? []) walk2(c, node2);
+    for (const c of node2[KIDS] ?? []) walk3(c, node2);
   };
-  if (root) walk2(root, null);
+  if (root) walk3(root, null);
   return map;
 }
 function detach(idx, uid) {
@@ -39254,14 +39400,14 @@ function sameTree(a, b, allowed, state, stack) {
 }
 function contentSig(nodes) {
   const out = [];
-  const walk2 = (list) => {
+  const walk3 = (list) => {
     for (const node2 of list || []) {
       out.push(node2?.[UID] ?? "", node2?.[STR] ?? "");
       const kids = node2?.[KIDS];
-      if (Array.isArray(kids) && kids.length) walk2(kids);
+      if (Array.isArray(kids) && kids.length) walk3(kids);
     }
   };
-  walk2(nodes);
+  walk3(nodes);
   return out.join("\0");
 }
 function canPatchString(item, string) {
@@ -39314,7 +39460,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   };
   const ledger = createEchoLedger({ graceMs, now: now3 });
   let destroyed = false;
-  let raw = clone(host.pullBoard(uid));
+  let raw = clone(host.pullBoard(uid, { light: true }));
   let board2 = null;
   let editingUid = null;
   let rects = /* @__PURE__ */ new Map();
@@ -39586,19 +39732,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (!item) return allowed;
     const node2 = findChild(root, id);
     if (node2) {
-      const walk2 = (n2) => {
+      const walk3 = (n2) => {
         const nid = n2?.[UID];
         if (nid) allowed.add(nid);
-        for (const child of kidsOf2(n2)) walk2(child);
+        for (const child of kidsOf2(n2)) walk3(child);
       };
-      walk2(node2);
+      walk3(node2);
     }
     if (item.target?.uid) allowed.add(item.target.uid);
     return allowed;
   };
   const ownerOf = (root, id) => {
     let found = null;
-    const walk2 = (node2, itemUid) => {
+    const walk3 = (node2, itemUid) => {
       if (!node2 || found) return;
       const nid = node2[UID];
       const next = nid && board2?.items.has(nid) ? nid : itemUid;
@@ -39606,9 +39752,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         found = next;
         return;
       }
-      for (const child of kidsOf2(node2)) walk2(child, next);
+      for (const child of kidsOf2(node2)) walk3(child, next);
     };
-    walk2(root, null);
+    walk3(root, null);
     return found;
   };
   const typingFlush = (prev, next, id) => {
@@ -40355,10 +40501,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   let linkPromise = null;
   let linkResolve = null;
   function finishLinks() {
-    const done = linkResolve;
+    const done2 = linkResolve;
     linkPromise = null;
     linkResolve = null;
-    done?.();
+    done2?.();
   }
   function runLinks() {
     linkTimer = null;
@@ -41972,9 +42118,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       try {
         counts = await queue.run(() => grouped(async () => {
           ledger.clear();
-          const done = await executeImport(plan, host, board2);
+          const done2 = await executeImport(plan, host, board2);
           if (collapse) await host.setOpen(uid, false);
-          return done;
+          return done2;
         }));
       } catch (err) {
         handleFailure(err);
@@ -42523,16 +42669,16 @@ extendSession((session, api2) => {
       else if (item.kind === "page") tree = plain2(host.pagePreview(item.target.title, preset.depth, max)?.blocks ?? []);
       else return Promise.resolve(none);
       const flat3 = [];
-      const walk2 = (list, depth, parent) => {
+      const walk3 = (list, depth, parent) => {
         for (const n2 of list) {
           if (depth > preset.depth || flat3.some((f) => f.uid === n2.uid)) continue;
           if (!preset.includeRefs && classifyString(n2.string).kind === "block") continue;
           const entry = { uid: n2.uid, depth, parent, at: flat3.length };
           flat3.push(entry);
-          walk2(n2.children, depth + 1, n2.uid);
+          walk3(n2.children, depth + 1, n2.uid);
         }
       };
-      walk2(tree, 1, null);
+      walk3(tree, 1, null);
       const chosen = new Set([...flat3].sort((a, b) => a.depth - b.depth || a.at - b.at).slice(0, Math.max(0, max)).map((f) => f.uid));
       const picked = flat3.filter((f) => chosen.has(f.uid));
       if (!picked.length) return Promise.resolve(none);
@@ -43676,8 +43822,8 @@ function warmPlan(input) {
     if (src.hasLive || src.hasPane || src.saveData || src.inFlight || src.moving) return null;
     const since = Number(src.sinceOpenMs);
     if (!Number.isFinite(since) || since < WARM_AFTER_MS) return null;
-    const done = Number(src.done);
-    if (!Number.isFinite(done) || done < 0 || done >= WARM_MAX) return null;
+    const done2 = Number(src.done);
+    if (!Number.isFinite(done2) || done2 < 0 || done2 >= WARM_MAX) return null;
     const cards = Array.isArray(src.cards) ? src.cards : [];
     for (const card2 of cards) {
       if (!card2 || typeof card2 !== "object") continue;
@@ -43905,7 +44051,7 @@ function withCap(work, ms) {
   return new Promise((resolve) => {
     let settled = false;
     let timer = null;
-    const done = (value) => {
+    const done2 = (value) => {
       if (settled) return;
       settled = true;
       if (timer != null) {
@@ -43916,20 +44062,20 @@ function withCap(work, ms) {
       }
       resolve(value);
     };
-    timer = arm2(ms, () => done(null));
-    Promise.resolve().then(work).then((value) => done(value), () => done(null));
+    timer = arm2(ms, () => done2(null));
+    Promise.resolve().then(work).then((value) => done2(value), () => done2(null));
   });
 }
 function requestResult2(req) {
   return new Promise((resolve) => {
     let settled = false;
-    const done = (value) => {
+    const done2 = (value) => {
       if (settled) return;
       settled = true;
       resolve(value);
     };
     try {
-      req.onsuccess = () => done({ ok: true, result: req.result });
+      req.onsuccess = () => done2({ ok: true, result: req.result });
       req.onerror = (event) => {
         try {
           event?.preventDefault?.();
@@ -43939,10 +44085,10 @@ function requestResult2(req) {
           req.preventDefault?.();
         } catch {
         }
-        done({ ok: false, result: null });
+        done2({ ok: false, result: null });
       };
     } catch {
-      done({ ok: false, result: null });
+      done2({ ok: false, result: null });
     }
   });
 }
@@ -44485,13 +44631,13 @@ function readHaloPull(pulled) {
 // src/view/halo-pop.js
 init_relchips();
 var NS2 = "http://www.w3.org/2000/svg";
-function focusEl(el) {
-  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+function focusEl(el2) {
+  if (!el2 || typeof el2.focus !== "function" || el2.isConnected === false) return;
   try {
-    el.focus({ preventScroll: true });
+    el2.focus({ preventScroll: true });
   } catch {
     try {
-      el.focus();
+      el2.focus();
     } catch {
     }
   }
@@ -44596,19 +44742,19 @@ function openHaloPopover({
   const refs = doc.createElement("div");
   refs.className = "pxd-halo__refs";
   const times = model.refTimes || [];
-  const finite7 = times.filter((value) => Number.isFinite(Number(value))).map(Number);
-  if (!finite7.length) {
-    refs.textContent = refsLine(finite7, model.refTotal);
+  const finite9 = times.filter((value) => Number.isFinite(Number(value))).map(Number);
+  if (!finite9.length) {
+    refs.textContent = refsLine(finite9, model.refTotal);
   } else {
-    const shown = Number.isFinite(model.refTotal) && model.refTotal >= finite7.length ? model.refTotal : finite7.length;
+    const shown = Number.isFinite(model.refTotal) && model.refTotal >= finite9.length ? model.refTotal : finite9.length;
     const noun = shown === 1 ? "time" : "times";
     refs.append(`Referenced ${shown} ${noun}, first `);
-    refs.append(dateNode(doc, Math.min(...finite7), { pageExists, renderString, mounts }));
+    refs.append(dateNode(doc, Math.min(...finite9), { pageExists, renderString, mounts }));
     refs.append(", last ");
-    refs.append(dateNode(doc, Math.max(...finite7), { pageExists, renderString, mounts }));
+    refs.append(dateNode(doc, Math.max(...finite9), { pageExists, renderString, mounts }));
   }
   pop.append(refs);
-  const counts = buckets(finite7);
+  const counts = buckets(finite9);
   const spark = sparkline(doc, counts);
   spark.setAttribute("data-sum", String(counts.reduce((sum, n3) => sum + n3, 0)));
   pop.append(spark);
@@ -44669,9 +44815,9 @@ function openHaloPopover({
   if (first) focusEl(first);
   else focusEl(pop);
   const close = () => {
-    for (const el of mounts) {
+    for (const el2 of mounts) {
       try {
-        unmount?.(el);
+        unmount?.(el2);
       } catch {
       }
     }
@@ -44842,8 +44988,8 @@ function createOpenStore({ storage = globalThis.localStorage, graph = "", enable
 
 // src/view/strength-lens.js
 var saved = /* @__PURE__ */ new WeakMap();
-function lineOf(el) {
-  return el?.querySelector?.(".pxd-edge__line") || el;
+function lineOf(el2) {
+  return el2?.querySelector?.(".pxd-edge__line") || el2;
 }
 function lookup(table, uid, index) {
   if (table == null) return void 0;
@@ -44855,41 +45001,41 @@ function lookup(table, uid, index) {
   if (uid != null && typeof table === "object" && Object.prototype.hasOwnProperty.call(table, uid)) return table[uid];
   return void 0;
 }
-function uidOf(el) {
-  return el?.getAttribute?.("data-uid") || el?.dataset?.uid || "";
+function uidOf(el2) {
+  return el2?.getAttribute?.("data-uid") || el2?.dataset?.uid || "";
 }
-function remember(el) {
-  if (!el || saved.has(el)) return;
-  saved.set(el, {
-    strokeWidth: el.style?.strokeWidth || "",
-    strokeOpacity: el.style?.strokeOpacity || "",
-    title: el.hasAttribute?.("title") ? el.getAttribute("title") : null
+function remember(el2) {
+  if (!el2 || saved.has(el2)) return;
+  saved.set(el2, {
+    strokeWidth: el2.style?.strokeWidth || "",
+    strokeOpacity: el2.style?.strokeOpacity || "",
+    title: el2.hasAttribute?.("title") ? el2.getAttribute("title") : null
   });
 }
-function restore(el) {
-  if (!el || !saved.has(el)) return;
-  const prev = saved.get(el);
-  saved.delete(el);
-  if (el.style) {
-    el.style.strokeWidth = prev.strokeWidth;
-    el.style.strokeOpacity = prev.strokeOpacity;
+function restore(el2) {
+  if (!el2 || !saved.has(el2)) return;
+  const prev = saved.get(el2);
+  saved.delete(el2);
+  if (el2.style) {
+    el2.style.strokeWidth = prev.strokeWidth;
+    el2.style.strokeOpacity = prev.strokeOpacity;
   }
-  if (prev.title == null) el.removeAttribute?.("title");
-  else el.setAttribute?.("title", prev.title);
+  if (prev.title == null) el2.removeAttribute?.("title");
+  else el2.setAttribute?.("title", prev.title);
 }
-function dropTip(el) {
-  const tips = el?.querySelectorAll?.(".pxd-strength__tip") || [];
+function dropTip(el2) {
+  const tips = el2?.querySelectorAll?.(".pxd-strength__tip") || [];
   for (const tip of tips) tip.remove?.();
 }
-function putTip(el, text4) {
-  el.setAttribute?.("title", text4);
-  const doc = el.ownerDocument || globalThis.document;
+function putTip(el2, text4) {
+  el2.setAttribute?.("title", text4);
+  const doc = el2.ownerDocument || globalThis.document;
   if (!doc?.createElement) return;
-  let tip = el.querySelector?.(".pxd-strength__tip");
+  let tip = el2.querySelector?.(".pxd-strength__tip");
   if (!tip) {
     tip = doc.createElementNS?.("http://www.w3.org/2000/svg", "title") || doc.createElement("title");
     tip.setAttribute?.("class", "pxd-strength__tip");
-    el.append?.(tip);
+    el2.append?.(tip);
   }
   tip.textContent = text4;
 }
@@ -44909,24 +45055,24 @@ function lists(edges, cards) {
 }
 function applyStrength(edgeEls, scores) {
   const list = [...edgeEls || []];
-  list.forEach((el, index) => {
-    if (!el) return;
-    const raw = lookup(scores, uidOf(el), index);
+  list.forEach((el2, index) => {
+    if (!el2) return;
+    const raw = lookup(scores, uidOf(el2), index);
     if (raw === void 0) return;
     const { score, components } = partsOf(raw);
     if (!Number.isFinite(score)) return;
     const stroke = strokeFor(score);
-    const node2 = lineOf(el);
+    const node2 = lineOf(el2);
     remember(node2);
-    if (node2 !== el) remember(el);
+    if (node2 !== el2) remember(el2);
     if (node2?.style) {
       node2.style.strokeWidth = `${stroke.width}px`;
       node2.style.strokeOpacity = String(stroke.opacity);
     }
     if (components) {
       const text4 = `${explain(components)} Heuristic.`;
-      putTip(el, text4);
-      if (node2 !== el) node2?.setAttribute?.("title", text4);
+      putTip(el2, text4);
+      if (node2 !== el2) node2?.setAttribute?.("title", text4);
     }
   });
 }
@@ -44936,57 +45082,57 @@ function dustItem(raw) {
 }
 function applyDust(cardEls, ages, period) {
   const list = [...cardEls || []];
-  list.forEach((el, index) => {
-    if (!el) return;
-    const raw = lookup(ages, uidOf(el), index);
+  list.forEach((el2, index) => {
+    if (!el2) return;
+    const raw = lookup(ages, uidOf(el2), index);
     const item = dustItem(raw);
     const on = item ? dusty(item, period) : false;
     if (!on) {
-      el.classList?.remove("pxd-item--dust");
-      el.removeAttribute?.("data-dust-age");
-      dropTip(el);
-      restore(el);
+      el2.classList?.remove("pxd-item--dust");
+      el2.removeAttribute?.("data-dust-age");
+      dropTip(el2);
+      restore(el2);
       return;
     }
     const age = typeof raw === "number" ? raw : dustAge(item.editTime ?? item.edit, item.createTime ?? item.create, Number.isFinite(item.now) ? item.now : Date.now());
     const label = ageLabel(age);
-    remember(el);
-    el.classList?.add("pxd-item--dust");
-    el.setAttribute?.("data-dust-age", label);
-    el.setAttribute?.("title", `Untouched for ${label}. Heuristic.`);
+    remember(el2);
+    el2.classList?.add("pxd-item--dust");
+    el2.setAttribute?.("data-dust-age", label);
+    el2.setAttribute?.("title", `Untouched for ${label}. Heuristic.`);
   });
 }
 function clearLens(edges, cards) {
   const spec = lists(edges, cards);
-  for (const el of spec.edges || []) {
-    if (!el) continue;
-    const node2 = lineOf(el);
-    dropTip(el);
-    if (node2 !== el) {
+  for (const el2 of spec.edges || []) {
+    if (!el2) continue;
+    const node2 = lineOf(el2);
+    dropTip(el2);
+    if (node2 !== el2) {
       dropTip(node2);
       restore(node2);
     }
-    restore(el);
+    restore(el2);
   }
-  for (const el of spec.cards || []) {
-    if (!el) continue;
-    el.classList?.remove("pxd-item--dust");
-    el.removeAttribute?.("data-dust-age");
-    dropTip(el);
-    restore(el);
+  for (const el2 of spec.cards || []) {
+    if (!el2) continue;
+    el2.classList?.remove("pxd-item--dust");
+    el2.removeAttribute?.("data-dust-age");
+    dropTip(el2);
+    restore(el2);
   }
 }
 
 // src/view/why-pop.js
 init_relchips();
 var openPops = /* @__PURE__ */ new Set();
-function focusEl2(el) {
-  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+function focusEl2(el2) {
+  if (!el2 || typeof el2.focus !== "function" || el2.isConnected === false) return;
   try {
-    el.focus({ preventScroll: true });
+    el2.focus({ preventScroll: true });
   } catch {
     try {
-      el.focus();
+      el2.focus();
     } catch {
     }
   }
@@ -45039,9 +45185,9 @@ function openWhyPopover({
   pop.append(showWhy ? whyField : labelField, hint);
   openPops.add(pop);
   const offs = [];
-  const on = (el, type, fn) => {
-    el.addEventListener(type, fn);
-    offs.push(() => el.removeEventListener(type, fn));
+  const on = (el2, type, fn) => {
+    el2.addEventListener(type, fn);
+    offs.push(() => el2.removeEventListener(type, fn));
   };
   let closed = false;
   const close = (save) => {
@@ -45185,10 +45331,10 @@ function mountContextsDrawer({
   onOpen,
   schedule = (fn) => setTimeout(fn, 0)
 } = {}) {
-  const el = doc.createElement("div");
-  el.className = "pxd-contexts";
-  el.setAttribute("role", "dialog");
-  el.setAttribute("aria-label", "References");
+  const el2 = doc.createElement("div");
+  el2.className = "pxd-contexts";
+  el2.setAttribute("role", "dialog");
+  el2.setAttribute("aria-label", "References");
   const grouped = groupRefs(rows);
   const flat3 = grouped.groups.flatMap((group) => group.rows.map((row4) => ({ ...row4, year: group.year })));
   const chunks = rowChunks(flat3);
@@ -45205,13 +45351,13 @@ function mountContextsDrawer({
         node2.hidden = !shown.has(node2.getAttribute("data-uid"));
       }
     });
-    el.append(filter);
+    el2.append(filter);
   }
   if (grouped.hidden > 0) {
     const note = doc.createElement("div");
     note.className = "pxd-contexts__cap";
     note.textContent = `Showing ${flat3.length} of ${grouped.total}`;
-    el.append(note);
+    el2.append(note);
   }
   let year;
   const paint2 = (chunk) => {
@@ -45243,19 +45389,19 @@ function mountContextsDrawer({
     }
   };
   if (chunks[0]) paint2(chunks[0]);
-  el.append(list);
-  parent?.append(el);
+  el2.append(list);
+  parent?.append(el2);
   const pending = chunks.slice(1);
   const step = () => {
-    if (!el.isConnected || !pending.length) return;
+    if (!el2.isConnected || !pending.length) return;
     paint2(pending.shift());
     if (pending.length) schedule(step);
   };
   if (pending.length) schedule(step);
   return {
-    el,
+    el: el2,
     close() {
-      el.remove();
+      el2.remove();
     }
   };
 }
@@ -45649,8 +45795,8 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
       if (!input) return { ok: false, reason: "no checkbox rendered" };
       fire2(input, "pointerdown");
       input.click();
-      const done = await until(() => taskState(host.blockString?.(uid)) === "DONE", DONE_MS);
-      if (!done) return { ok: false, reason: "the block did not turn DONE" };
+      const done2 = await until(() => taskState(host.blockString?.(uid)) === "DONE", DONE_MS);
+      if (!done2) return { ok: false, reason: "the block did not turn DONE" };
       await wait2(GRACE_MS);
       return { ok: true };
     } finally {
@@ -45674,6 +45820,534 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
 init_avoid();
 init_query();
 init_geometry();
+
+// src/model/boardsnap.js
+var SNAP_VERSION = 1;
+var SNAP_MAX_BYTES = 300 * 1024;
+var SNAP_MAX_ITEMS = 500;
+var FACE_MAX_NODES = 400;
+var FACE_MAX_CHARS = 16 * 1024;
+var LAYER_MAX_NODES = 1500;
+var TEXT_MAX = 2e3;
+var CLASS_MAX = 8;
+var DEPTH_MAX = 16;
+var THUMB_DATA_MAX = 160 * 1024;
+var TAGS = /* @__PURE__ */ new Set([
+  "div",
+  "span",
+  "p",
+  "ul",
+  "ol",
+  "li",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "u",
+  "s",
+  "del",
+  "ins",
+  "code",
+  "pre",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "blockquote",
+  "table",
+  "thead",
+  "tbody",
+  "tfoot",
+  "tr",
+  "td",
+  "th",
+  "colgroup",
+  "col",
+  "br",
+  "hr",
+  "img",
+  "label",
+  "sup",
+  "sub",
+  "mark",
+  "small",
+  "button",
+  "svg",
+  "g",
+  "path",
+  "circle",
+  "rect",
+  "line",
+  "polyline",
+  "polygon",
+  "ellipse",
+  "text",
+  "tspan",
+  "defs",
+  "marker"
+]);
+var SVG_TAGS = /* @__PURE__ */ new Set(["svg", "g", "path", "circle", "rect", "line", "polyline", "polygon", "ellipse", "text", "tspan", "defs", "marker"]);
+var RENAME = { a: "span" };
+var SKIP2 = /* @__PURE__ */ new Set(["script", "style", "iframe", "object", "embed", "textarea", "input", "select", "video", "audio", "canvas", "noscript", "template", "link", "meta", "foreignobject"]);
+var SVG_ATTRS = /* @__PURE__ */ new Set([
+  "viewBox",
+  "d",
+  "fill",
+  "stroke",
+  "stroke-width",
+  "stroke-linejoin",
+  "stroke-linecap",
+  "stroke-dasharray",
+  "opacity",
+  "fill-opacity",
+  "stroke-opacity",
+  "width",
+  "height",
+  "cx",
+  "cy",
+  "r",
+  "rx",
+  "ry",
+  "x",
+  "y",
+  "x1",
+  "y1",
+  "x2",
+  "y2",
+  "points",
+  "transform",
+  "marker-end",
+  "marker-start",
+  "markerWidth",
+  "markerHeight",
+  "refX",
+  "refY",
+  "orient",
+  "text-anchor",
+  "dominant-baseline",
+  "font-size",
+  "id",
+  "preserveAspectRatio"
+]);
+var STYLE_PROPS = [
+  "width",
+  "height",
+  "max-width",
+  "min-height",
+  "transform",
+  "background",
+  "background-color",
+  "color",
+  "border-color",
+  "background-size",
+  "background-position",
+  "display",
+  "left",
+  "top"
+];
+var CLASS_RE = /^[A-Za-z0-9_-]{1,64}$/;
+var DATA_RE = /^data-[a-z0-9-]{1,32}$/;
+var UNSAFE_VALUE = /(javascript:|expression\(|url\(|@import|<)/i;
+var TRANSIENT = /* @__PURE__ */ new Set([
+  "pxd-item--selected",
+  "pxd-section--selected",
+  "pxd-item--drop",
+  "pxd-item--editing",
+  "pxd-item--typing",
+  "pxd-item--pulse",
+  "pxd-item--flash",
+  "pxd-item--hit",
+  "pxd-item--dim",
+  "pxd-item--offscreen",
+  "pxd-item--future",
+  "pxd-item--fresh",
+  "pxd-pdf-live",
+  "pxd-item--lift",
+  "pxd-item--snap"
+]);
+var ROOT_TRANSIENT = /* @__PURE__ */ new Set(["pxd-root--gesturing", "pxd-root--editing", "pxd-root--searching", "pxd-root--focus", "pxd-root--present"]);
+function fnv(text4) {
+  let h = 2166136261;
+  const s = String(text4 ?? "");
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+var strOf = (node2) => String(node2?.[":block/string"] ?? node2?.string ?? "");
+var kidsOf3 = (node2) => {
+  const kids = node2?.[":block/children"] ?? node2?.children;
+  if (!Array.isArray(kids)) return [];
+  return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c?.[":block/order"] ?? a.i) - (b.c?.[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
+};
+function contentText(nodes, depth = 0, out = []) {
+  if (!Array.isArray(nodes) || depth > 4 || out.length > 400) return out;
+  for (const node2 of nodes) {
+    out.push(`${depth}:${strOf(node2)}`);
+    contentText(kidsOf3(node2), depth + 1, out);
+  }
+  return out;
+}
+function itemSig(item) {
+  if (!item) return "";
+  return fnv(JSON.stringify([
+    item.type,
+    item.kind,
+    item.string ?? "",
+    item.title ?? "",
+    Boolean(item.collapsed),
+    item.color ?? "",
+    item.fill ?? "",
+    item.target?.uid ?? "",
+    item.target?.title ?? "",
+    contentText(item.content)
+  ]));
+}
+function boardStamp(board2, rects = null) {
+  if (!board2?.items) return "";
+  const parts = [];
+  for (const uid of board2.order || board2.items.keys()) {
+    const item = board2.items.get(uid);
+    if (!item) continue;
+    const r = rects?.get?.(uid) || item;
+    parts.push(`${uid}|${r.x},${r.y},${r.w},${r.h}|${item.parentUid ?? ""}|${itemSig(item)}`);
+  }
+  for (const edge of board2.edges?.values?.() || []) parts.push(`e:${edge.uid}|${edge.from}|${edge.to}|${edge.label ?? ""}`);
+  return fnv(parts.join("\n"));
+}
+function tableGrid2(item, { rows: maxRows = 30, cols: maxCols = 10 } = {}) {
+  const rows = [];
+  for (const row4 of kidsOf3({ ":block/children": item?.content })) {
+    if (rows.length >= maxRows) break;
+    const cells = [];
+    let cell = row4;
+    while (cell && cells.length < maxCols) {
+      cells.push(plainCell(strOf(cell)));
+      cell = kidsOf3(cell)[0];
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+function plainCell(text4) {
+  return String(text4 || "").replace(/\[\[([^\]]*)\]\]/g, "$1").replace(/\(\(([^)]*)\)\)/g, "…").replace(/\*\*|__|\^\^|~~/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+function cleanClasses(value, drop = TRANSIENT) {
+  const out = [];
+  for (const name of String(value || "").split(/\s+/)) {
+    if (!name || !CLASS_RE.test(name) || drop.has(name)) continue;
+    out.push(name);
+  }
+  return out;
+}
+function classOf(el2) {
+  const raw = typeof el2.getAttribute === "function" ? el2.getAttribute("class") : el2.className;
+  return typeof raw === "string" ? raw : raw?.baseVal ?? "";
+}
+function readStyle(el2, thumbs) {
+  const style = el2.style;
+  if (!style) return null;
+  const out = {};
+  let n2 = 0;
+  const get = (name) => (typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : style[name]) || "";
+  for (const name of STYLE_PROPS) {
+    const value = String(get(name) || "").trim();
+    if (!value || value.length > 120 || UNSAFE_VALUE.test(value)) continue;
+    out[name] = value;
+    n2 += 1;
+  }
+  const cover = String(get("--pxd-cover") || "");
+  const m = /url\(\s*["']?(data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+)["']?\s*\)/.exec(cover);
+  if (m && thumbs && m[1].length <= THUMB_DATA_MAX) {
+    const key = `d:${fnv(m[1])}:${m[1].length}`;
+    thumbs.set(key, m[1]);
+    out["--pxd-cover"] = `@${key}`;
+    n2 += 1;
+  }
+  return n2 ? out : null;
+}
+function imageSrc(src, thumbs) {
+  const value = String(src || "");
+  if (/^https:\/\//i.test(value) && value.length <= 2e3 && !/["'<>\s]/.test(value)) return value;
+  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value) && value.length <= THUMB_DATA_MAX && thumbs) {
+    const key = `d:${fnv(value)}:${value.length}`;
+    thumbs.set(key, value);
+    return `@${key}`;
+  }
+  return "";
+}
+function captureFace(el2, { thumbs = null, skip = null, maxNodes = FACE_MAX_NODES, maxChars = FACE_MAX_CHARS, canvases = false } = {}) {
+  const budget = { nodes: 0, chars: 0, maxNodes, maxChars, canvases };
+  return walk2(el2, budget, thumbs, skip, 0, false);
+}
+function canvasFace(el2, thumbs) {
+  if (!thumbs || typeof el2.toDataURL !== "function") return null;
+  const w = Number(el2.width) || 0;
+  const h = Number(el2.height) || 0;
+  if (!w || !h || w * h > 400 * 400) return null;
+  let url = "";
+  try {
+    url = el2.toDataURL("image/png");
+  } catch {
+    return null;
+  }
+  const src = imageSrc(url, thumbs);
+  if (!src) return null;
+  const node2 = { t: "img", s: src, a: { width: String(w), height: String(h) } };
+  const cls = cleanClasses(classOf(el2)).slice(0, CLASS_MAX);
+  if (cls.length) node2.c = cls.join(" ");
+  return node2;
+}
+function walk2(el2, budget, thumbs, skip, depth, inSvg) {
+  if (!el2 || budget.nodes >= budget.maxNodes || budget.chars >= budget.maxChars) return null;
+  if (el2.nodeType === 3) {
+    const text4 = String(el2.nodeValue ?? el2.textContent ?? "");
+    if (!text4) return null;
+    const cut = text4.slice(0, Math.min(TEXT_MAX, budget.maxChars - budget.chars));
+    budget.chars += cut.length;
+    return cut;
+  }
+  if (el2.nodeType !== 1) return null;
+  const raw = String(el2.localName || el2.tagName || "").toLowerCase();
+  if (raw === "canvas" && budget.canvases) {
+    budget.nodes += 1;
+    return canvasFace(el2, thumbs);
+  }
+  if (!raw || SKIP2.has(raw)) return null;
+  const tag = RENAME[raw] || raw;
+  if (!TAGS.has(tag)) return null;
+  if (skip && skip(el2)) return null;
+  if (depth > DEPTH_MAX) return null;
+  budget.nodes += 1;
+  const svg = inSvg || tag === "svg";
+  const node2 = { t: tag };
+  const cls = cleanClasses(classOf(el2)).slice(0, CLASS_MAX);
+  if (cls.length) node2.c = cls.join(" ");
+  const attrs = {};
+  let hasAttr = false;
+  for (const attr of [...el2.attributes || []]) {
+    const name = attr.name;
+    const value = String(attr.value ?? "");
+    if (!name || name === "class" || name === "style" || /^on/i.test(name)) continue;
+    if (value.length > 400 || UNSAFE_VALUE.test(value)) continue;
+    if (DATA_RE.test(name) || name === "aria-hidden" || name === "hidden" || svg && SVG_ATTRS.has(name) || tag === "img" && (name === "width" || name === "height" || name === "alt")) {
+      attrs[name] = value.slice(0, 200);
+      hasAttr = true;
+    }
+  }
+  if (tag === "img") {
+    const src = imageSrc(el2.getAttribute?.("src") ?? el2.src, thumbs);
+    if (!src) {
+      budget.nodes -= 1;
+      return null;
+    }
+    node2.s = src;
+  }
+  if (hasAttr) node2.a = attrs;
+  const style = readStyle(el2, thumbs);
+  if (style) node2.y = style;
+  const kids = [];
+  const childNodes2 = [...el2.childNodes || el2.children || []];
+  for (const child of childNodes2) {
+    const face = walk2(child, budget, thumbs, skip, depth + 1, svg);
+    if (face != null) kids.push(face);
+  }
+  if (!childNodes2.length && typeof el2.textContent === "string" && el2.textContent) {
+    const cut = el2.textContent.slice(0, Math.min(TEXT_MAX, budget.maxChars - budget.chars));
+    budget.chars += cut.length;
+    if (cut) kids.push(cut);
+  }
+  if (kids.length) node2.k = kids;
+  return node2;
+}
+var SVG_NS = "http://www.w3.org/2000/svg";
+function buildFace(doc, face, { thumbs = null, inSvg = false } = {}) {
+  if (face == null) return null;
+  if (typeof face === "string") return typeof doc.createTextNode === "function" ? doc.createTextNode(face.slice(0, TEXT_MAX)) : null;
+  if (typeof face !== "object") return null;
+  const tag = String(face.t || "");
+  if (!TAGS.has(tag)) return null;
+  const svg = inSvg || tag === "svg";
+  let el2;
+  try {
+    el2 = svg && SVG_TAGS.has(tag) && typeof doc.createElementNS === "function" ? doc.createElementNS(SVG_NS, tag) : doc.createElement(tag);
+  } catch {
+    return null;
+  }
+  const cls = cleanClasses(face.c).slice(0, CLASS_MAX);
+  if (cls.length) el2.setAttribute("class", cls.join(" "));
+  if (face.a && typeof face.a === "object") {
+    for (const [name, raw] of Object.entries(face.a)) {
+      const value = String(raw ?? "");
+      if (/^on/i.test(name) || value.length > 400 || UNSAFE_VALUE.test(value)) continue;
+      if (DATA_RE.test(name) || name === "aria-hidden" || name === "hidden" || svg && SVG_ATTRS.has(name) || tag === "img" && (name === "width" || name === "height" || name === "alt")) {
+        try {
+          el2.setAttribute(name, value);
+        } catch {
+        }
+      }
+    }
+  }
+  if (tag === "img") {
+    const src = resolveSrc(face.s, thumbs);
+    if (!src) return null;
+    el2.setAttribute("src", src);
+    el2.setAttribute("draggable", "false");
+    el2.setAttribute("alt", el2.getAttribute?.("alt") || "");
+  }
+  if (tag === "button") {
+    el2.setAttribute("type", "button");
+    el2.setAttribute("tabindex", "-1");
+  }
+  if (face.y && typeof face.y === "object" && el2.style) {
+    for (const [name, raw] of Object.entries(face.y)) {
+      const value = String(raw ?? "");
+      if (name === "--pxd-cover") {
+        const data = resolveSrc(value, thumbs);
+        if (data.startsWith("data:image/")) setStyle(el2, name, `url("${data}")`);
+        continue;
+      }
+      if (!STYLE_PROPS.includes(name) || value.length > 120 || UNSAFE_VALUE.test(value)) continue;
+      setStyle(el2, name, value);
+    }
+  }
+  for (const kid of Array.isArray(face.k) ? face.k : []) {
+    const node2 = buildFace(doc, kid, { thumbs, inSvg: svg });
+    if (node2) el2.append(node2);
+  }
+  return el2;
+}
+function setStyle(el2, name, value) {
+  try {
+    if (typeof el2.style.setProperty === "function") el2.style.setProperty(name, value);
+    else el2.style[name] = value;
+  } catch {
+  }
+}
+function resolveSrc(value, thumbs) {
+  const s = String(value || "");
+  if (s.startsWith("@")) {
+    const data = thumbs?.get?.(s.slice(1));
+    return typeof data === "string" && /^data:image\/(png|jpeg|jpg|webp|gif);base64,/.test(data) ? data : "";
+  }
+  return /^https:\/\//i.test(s) && !/["'<>\s]/.test(s) ? s : "";
+}
+function faceThumbKeys(face, out = /* @__PURE__ */ new Set()) {
+  if (!face || typeof face !== "object") return out;
+  if (typeof face.s === "string" && face.s.startsWith("@")) out.add(face.s.slice(1));
+  const cover = face.y?.["--pxd-cover"];
+  if (typeof cover === "string" && cover.startsWith("@")) out.add(cover.slice(1));
+  for (const kid of Array.isArray(face.k) ? face.k : []) faceThumbKeys(kid, out);
+  return out;
+}
+function snapThumbKeys(snap) {
+  const out = /* @__PURE__ */ new Set();
+  for (const item of snap?.items || []) {
+    faceThumbKeys(item.face, out);
+    if (item.thumb) out.add(item.thumb);
+  }
+  for (const layer of [snap?.edges, snap?.labels, ...snap?.chrome || []]) faceThumbKeys(layer, out);
+  return out;
+}
+var finite5 = (n2) => typeof n2 === "number" && Number.isFinite(n2);
+function isSnapViewport(vp) {
+  return Boolean(vp) && finite5(vp.x) && finite5(vp.y) && finite5(vp.zoom) && vp.zoom > 0;
+}
+function cleanItem(item) {
+  if (!item || typeof item.uid !== "string" || !item.uid || item.uid.length > 64) return null;
+  if (!finite5(item.x) || !finite5(item.y) || !finite5(item.w) || !finite5(item.h)) return null;
+  const out = {
+    uid: item.uid,
+    section: item.section === true,
+    x: item.x,
+    y: item.y,
+    w: item.w,
+    h: item.h,
+    cls: cleanClasses(item.cls).join(" "),
+    sig: typeof item.sig === "string" ? item.sig.slice(0, 16) : ""
+  };
+  if (typeof item.parent === "string" && item.parent.length <= 64) out.parent = item.parent;
+  if (typeof item.thumb === "string" && item.thumb.length <= 200) out.thumb = item.thumb;
+  if (item.face && typeof item.face === "object") out.face = item.face;
+  if (item.badges && typeof item.badges === "object") out.badges = cleanBadges(item.badges);
+  return out;
+}
+function cleanBadges(b) {
+  const out = {};
+  for (const key of ["refs", "boards", "open", "done"]) if (finite5(b[key])) out[key] = b[key];
+  return out;
+}
+function cleanRootStyle(style) {
+  const out = {};
+  for (const [name, raw] of Object.entries(style || {})) {
+    const value = String(raw ?? "");
+    if (!/^--pxd-[a-z0-9-]{1,40}$/.test(name) || value.length > 120 || UNSAFE_VALUE.test(value)) continue;
+    out[name] = value;
+  }
+  return out;
+}
+function cleanSnapshot(value) {
+  if (!value || typeof value !== "object" || value.v !== SNAP_VERSION || !Array.isArray(value.items)) return null;
+  if (value.items.length > SNAP_MAX_ITEMS) return null;
+  const items = [];
+  for (const item of value.items) {
+    const clean = cleanItem(item);
+    if (clean) items.push(clean);
+  }
+  const height = finite5(value.height) && value.height >= 40 && value.height <= 4e3 ? value.height : 0;
+  return {
+    v: SNAP_VERSION,
+    uid: typeof value.uid === "string" ? value.uid : "",
+    stamp: typeof value.stamp === "string" ? value.stamp.slice(0, 16) : "",
+    savedAt: finite5(value.savedAt) ? value.savedAt : 0,
+    height,
+    width: finite5(value.width) && value.width > 0 ? value.width : 0,
+    vp: isSnapViewport(value.vp) ? { x: value.vp.x, y: value.vp.y, zoom: value.vp.zoom } : null,
+    rootCls: cleanClasses(value.rootCls, ROOT_TRANSIENT).join(" "),
+    rootStyle: cleanRootStyle(value.rootStyle),
+    grid: value.grid && typeof value.grid === "object" ? value.grid : null,
+    edges: value.edges && typeof value.edges === "object" ? value.edges : null,
+    labels: value.labels && typeof value.labels === "object" ? value.labels : null,
+    chrome: Array.isArray(value.chrome) ? value.chrome.filter((face) => face && typeof face === "object").slice(0, 16) : [],
+    threshold: finite5(value.threshold) && value.threshold > 0 && value.threshold < 4 ? value.threshold : 0.45,
+    items
+  };
+}
+function packSnapshot(snap) {
+  const clean = cleanSnapshot(snap);
+  if (!clean) return null;
+  const fit3 = (value) => {
+    const text5 = JSON.stringify(value);
+    return text5.length <= SNAP_MAX_BYTES ? text5 : null;
+  };
+  let text4 = fit3(clean);
+  if (text4) return text4;
+  const lean = { ...clean, labels: null, chrome: [] };
+  text4 = fit3(lean);
+  if (text4) return text4;
+  lean.edges = null;
+  text4 = fit3(lean);
+  if (text4) return text4;
+  const items = lean.items.map((item) => ({ ...item }));
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    if (!items[i].face) continue;
+    delete items[i].face;
+    text4 = fit3({ ...lean, items });
+    if (text4) return text4;
+  }
+  return null;
+}
+function parseSnapshot2(raw) {
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    return cleanSnapshot(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
 
 // src/model/export.js
 init_geometry();
@@ -45717,7 +46391,7 @@ var titleOf2 = (item) => {
   if (item.kind === "image") return "Image";
   return item.string || "Untitled";
 };
-function imageSrc(string) {
+function imageSrc2(string) {
   const m = /!\[[^\]]*\]\(([^)]*)\)/.exec(String(string ?? "").trim());
   return m ? m[1].trim() : "";
 }
@@ -45884,14 +46558,14 @@ function boardToMarkdown(board2, rects) {
       content(c[":block/children"], depth + 1);
     }
   };
-  const walk2 = (uids) => {
+  const walk3 = (uids) => {
     for (const uid of readingOrder2(uids)) {
       const item = board2.items.get(uid);
       if (!item) continue;
       if (item.type === "section") {
         if (lines.length) lines.push("");
         lines.push(`${"#".repeat(Math.min(6, item.depth + 1))} ${oneLine(titleOf2(item))}`);
-        walk2(item.members);
+        walk3(item.members);
       } else {
         lines.push(`- ${oneLine(titleOf2(item))}`);
         const kids = [...item.content ?? []].sort((a, b) => (a[":block/order"] ?? 0) - (b[":block/order"] ?? 0));
@@ -45899,7 +46573,7 @@ function boardToMarkdown(board2, rects) {
       }
     }
   };
-  walk2(board2.roots);
+  walk3(board2.roots);
   const edges = [...board2.edges.values()].filter((e2) => e2.valid);
   if (edges.length) {
     if (lines.length) lines.push("");
@@ -47044,8 +47718,8 @@ function createInteractions({ actions, settings } = {}) {
     if (kept.length) call("toast", { message: "Pinned items were not deleted. Unpin first." });
     if (!uids.length) return true;
     selectItems(kept);
-    Promise.resolve(call("deleteItems", uids, { withContents: Boolean(withContents) })).then((done) => {
-      if (done === null) return;
+    Promise.resolve(call("deleteItems", uids, { withContents: Boolean(withContents) })).then((done2) => {
+      if (done2 === null) return;
       call("toast", { message: "Deleted", action: { label: "Undo", run: () => call("undo") } });
     }, () => {
     });
@@ -47353,23 +48027,23 @@ function openAddToBoard({ doc = globalThis.document, listBoards, onPick } = {}) 
     target.addEventListener(type, fn, capture);
     offs.push(() => target.removeEventListener(type, fn, capture));
   };
-  const el = (tag, cls, parent, text4) => {
+  const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
     if (text4 !== void 0) node2.textContent = text4;
     parent?.append(node2);
     return node2;
   };
-  const back = el("div", "pxd-addboard-back", doc.body);
-  const box2 = el("div", "pxd-addboard", doc.body);
-  el("div", "pxd-addboard__title", box2, "Add to board");
-  const filter = el("input", "pxd-addboard__filter", box2);
+  const back = el2("div", "pxd-addboard-back", doc.body);
+  const box2 = el2("div", "pxd-addboard", doc.body);
+  el2("div", "pxd-addboard__title", box2, "Add to board");
+  const filter = el2("input", "pxd-addboard__filter", box2);
   filter.type = "text";
   filter.setAttribute("aria-label", "Filter boards");
   filter.placeholder = "Filter boards…";
   filter.setAttribute("placeholder", "Filter boards…");
-  const list = el("div", "pxd-addboard__list", box2);
-  el("div", "pxd-addboard__empty", list, "Loading boards…");
+  const list = el2("div", "pxd-addboard__list", box2);
+  el2("div", "pxd-addboard__empty", list, "Loading boards…");
   let rows = [];
   let closed = false;
   let busy = false;
@@ -47389,17 +48063,17 @@ function openAddToBoard({ doc = globalThis.document, listBoards, onPick } = {}) 
     const shown = rows.filter((b) => !q || `${b.title || ""}
 ${b.pageTitle || b.page || ""}`.toLowerCase().includes(q));
     if (!shown.length) {
-      el("div", "pxd-addboard__empty", list, rows.length ? "No matching boards" : "No boards found");
+      el2("div", "pxd-addboard__empty", list, rows.length ? "No matching boards" : "No boards found");
       return;
     }
     for (const b of shown) {
-      const row4 = el("div", "pxd-addboard__row", list);
+      const row4 = el2("div", "pxd-addboard__row", list);
       row4.dataset.uid = b.uid;
       row4.setAttribute("data-uid", b.uid);
-      const text4 = el("span", "pxd-addboard__text", row4);
-      el("span", "pxd-addboard__name", text4, b.title || "Untitled board");
+      const text4 = el2("span", "pxd-addboard__text", row4);
+      el2("span", "pxd-addboard__name", text4, b.title || "Untitled board");
       const page = b.pageTitle || b.page;
-      if (page) el("span", "pxd-addboard__page", text4, page);
+      if (page) el2("span", "pxd-addboard__page", text4, page);
     }
   };
   on(box2, "pxd-close", () => close());
@@ -47456,23 +48130,23 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
     target.addEventListener(type, fn, capture);
     offs.push(() => target.removeEventListener(type, fn, capture));
   };
-  const el = (tag, cls, parent, text4) => {
+  const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
     if (text4 !== void 0) node2.textContent = text4;
     parent?.append(node2);
     return node2;
   };
-  const back = el("div", "pxd-addboard-back", doc.body);
-  const box2 = el("div", "pxd-addboard pxd-addpage", doc.body);
-  el("div", "pxd-addboard__title", box2, "Add page");
-  const filter = el("input", "pxd-addboard__filter", box2);
+  const back = el2("div", "pxd-addboard-back", doc.body);
+  const box2 = el2("div", "pxd-addboard pxd-addpage", doc.body);
+  el2("div", "pxd-addboard__title", box2, "Add page");
+  const filter = el2("input", "pxd-addboard__filter", box2);
   filter.type = "text";
   filter.setAttribute("aria-label", "Search pages");
   filter.placeholder = "Search pages…";
   filter.setAttribute("placeholder", "Search pages…");
-  const list = el("div", "pxd-addboard__list", box2);
-  el("div", "pxd-addboard__empty", list, "Type to search pages");
+  const list = el2("div", "pxd-addboard__list", box2);
+  el2("div", "pxd-addboard__empty", list, "Type to search pages");
   let closed = false;
   let busy = false;
   let timer = null;
@@ -47491,15 +48165,15 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
   const show = (rows, text4) => {
     list.replaceChildren();
     if (!rows.length) {
-      el("div", "pxd-addboard__empty", list, text4 ? "No matching pages" : "Type to search pages");
+      el2("div", "pxd-addboard__empty", list, text4 ? "No matching pages" : "Type to search pages");
       return;
     }
     for (const page of rows) {
-      const row4 = el("div", "pxd-addboard__row", list);
+      const row4 = el2("div", "pxd-addboard__row", list);
       row4.dataset.title = page.title;
       row4.setAttribute("data-title", page.title);
-      const label = el("span", "pxd-addboard__text", row4);
-      el("span", "pxd-addboard__name", label, page.title);
+      const label = el2("span", "pxd-addboard__text", row4);
+      el2("span", "pxd-addboard__name", label, page.title);
     }
   };
   const run = () => {
@@ -48099,8 +48773,8 @@ async function readSSE(response, { onProgress, onPage }) {
     return event;
   };
   for (; ; ) {
-    const { done, value } = await reader.read();
-    if (done) break;
+    const { done: done2, value } = await reader.read();
+    if (done2) break;
     buf += decoder.decode(value, { stream: true });
     buf = buf.replace(/\r\n/g, "\n");
     const frames = buf.split("\n\n");
@@ -48264,12 +48938,12 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
     if (h.state === "models-missing") {
       const report = await models();
       const bytes = Number(report?.bytes) || 0;
-      const done = Number(report?.done) || 0;
-      const fraction = Number.isFinite(report?.fraction) ? report.fraction : bytes ? done / bytes : 0;
+      const done2 = Number(report?.done) || 0;
+      const fraction = Number.isFinite(report?.fraction) ? report.fraction : bytes ? done2 / bytes : 0;
       if (report?.state === "downloading") {
-        return { ...h, state: "downloading", paired: true, progress: { bytes, done, fraction } };
+        return { ...h, state: "downloading", paired: true, progress: { bytes, done: done2, fraction } };
       }
-      return { ...h, paired: true, progress: { bytes, done, fraction } };
+      return { ...h, paired: true, progress: { bytes, done: done2, fraction } };
     }
     return { ...h, paired: true };
   }
@@ -51747,11 +52421,11 @@ function createPageChips({
     if (tip) node2.setAttribute("data-tip", tip);
     return node2;
   };
-  const fire2 = (item, block, event, el) => {
+  const fire2 = (item, block, event, el2) => {
     let from = null;
     try {
-      const page = el?.getBoundingClientRect?.();
-      const r = bboxToPageRect(block.bbox, info(block.page), el);
+      const page = el2?.getBoundingClientRect?.();
+      const r = bboxToPageRect(block.bbox, info(block.page), el2);
       if (page && r) from = { left: page.left + r.left, top: page.top + r.top, width: r.width, height: r.height };
     } catch {
       from = null;
@@ -51896,17 +52570,17 @@ function createPageChips({
     if (held) return;
     const n2 = pageNumberOf3(event.target, parsed);
     const entry = n2 ? layers.get(n2) : null;
-    const el = entry?.el;
-    if (!el) {
+    const el2 = entry?.el;
+    if (!el2) {
       showCopy(null);
       return;
     }
-    const box2 = el.getBoundingClientRect();
+    const box2 = el2.getBoundingClientRect();
     const x = (Number(event.clientX) || 0) - box2.left;
     const y = (Number(event.clientY) || 0) - box2.top;
     showCopy(copyHoverId(entry.rects, x, y, { w: box2.width, h: box2.height }));
   };
-  const buildLayer = (n2, el, parsed) => {
+  const buildLayer = (n2, el2, parsed) => {
     const layer = doc.createElement("div");
     layer.className = "pxd-parsed-layer";
     layer.style.pointerEvents = "none";
@@ -51926,7 +52600,7 @@ function createPageChips({
     }
     let pageBox = null;
     try {
-      pageBox = el?.getBoundingClientRect?.() || null;
+      pageBox = el2?.getBoundingClientRect?.() || null;
     } catch {
       pageBox = null;
     }
@@ -51978,18 +52652,18 @@ function createPageChips({
       rects.push({ id: plan.id, left: plan.left, top: plan.top, width: plan.width, height: plan.height, dy: nudge });
       boxCount += 1;
     }
-    el.append(layer);
+    el2.append(layer);
     let observer = null;
     const MO = win2()?.MutationObserver;
     if (typeof MO === "function") {
       observer = new MO(() => queueSync());
       try {
-        observer.observe(el, { childList: true });
+        observer.observe(el2, { childList: true });
       } catch {
         observer = null;
       }
     }
-    return { layer, boxes, icons, mores, rects, observer, el };
+    return { layer, boxes, icons, mores, rects, observer, el: el2 };
   };
   const dropLayers = () => {
     for (const entry of layers.values()) {
@@ -52016,15 +52690,15 @@ function createPageChips({
     const els = [];
     let marked = false;
     for (const n2 of pages) {
-      const el = pageEl?.(n2);
-      if (!el) continue;
-      if (el.hasAttribute?.("data-loaded")) marked = true;
-      els.push([n2, el]);
+      const el2 = pageEl?.(n2);
+      if (!el2) continue;
+      if (el2.hasAttribute?.("data-loaded")) marked = true;
+      els.push([n2, el2]);
     }
-    for (const [n2, el] of els) {
+    for (const [n2, el2] of els) {
       const entry = layers.get(n2);
       if (entry) {
-        if (entry.el !== el) {
+        if (entry.el !== el2) {
           try {
             entry.observer?.disconnect();
           } catch {
@@ -52032,12 +52706,12 @@ function createPageChips({
           drop(entry.layer);
           layers.delete(n2);
         } else {
-          if (entry.layer.parentElement !== el) el.append(entry.layer);
+          if (entry.layer.parentElement !== el2) el2.append(entry.layer);
           continue;
         }
       }
-      if (marked && !el.hasAttribute?.("data-loaded")) continue;
-      layers.set(n2, buildLayer(n2, el, parsed));
+      if (marked && !el2.hasAttribute?.("data-loaded")) continue;
+      layers.set(n2, buildLayer(n2, el2, parsed));
     }
     if (layers.size === 0 && syncRetries < SYNC_RETRIES) {
       syncRetries += 1;
@@ -52174,9 +52848,9 @@ function createPageChips({
     for (const entry of layers.values()) icon = entry.icons.get(use.id) || icon;
     runCopyMenu(id, use, icon);
   };
-  const show = (block, el, parsed) => {
+  const show = (block, el2, parsed) => {
     const plan = chipPlan(block, parsed, { latexReady: Boolean(isLatexReady?.()) });
-    const rect = bboxToPageRect(block.bbox, info(block.page), el);
+    const rect = bboxToPageRect(block.bbox, info(block.page), el2);
     if (!plan || !rect) return;
     hide();
     current3 = block.id;
@@ -52189,7 +52863,7 @@ function createPageChips({
     outline.style.width = `${Math.max(0, rect.width)}px`;
     outline.style.height = `${Math.max(0, rect.height)}px`;
     outline.style.pointerEvents = "none";
-    el.append(outline);
+    el2.append(outline);
     chipNode = doc.createElement("div");
     chipNode.className = `pxd-page-chip pxd-page-chip--${plan.type}`;
     chipNode.setAttribute("data-block", block.id);
@@ -52208,7 +52882,7 @@ function createPageChips({
     on(node2, "mousedown", swallow);
     on(main, "click", (event) => {
       event.stopPropagation?.();
-      fire2(plan.primary, block, event, el);
+      fire2(plan.primary, block, event, el2);
     });
     if (plan.menu.length) {
       const caret = button2("pxd-page-chip__more", "▾", "page-chip.more");
@@ -52232,7 +52906,7 @@ function createPageChips({
             entry.setAttribute("aria-checked", next ? "true" : "false");
             return;
           }
-          fire2(item, block, event, el);
+          fire2(item, block, event, el2);
         });
         menu.append(entry);
       }
@@ -52244,7 +52918,7 @@ function createPageChips({
       chipNode.append(caret);
       chipNode.append(menu);
     }
-    el.append(chipNode);
+    el2.append(chipNode);
     {
       let w = 0;
       try {
@@ -52254,7 +52928,7 @@ function createPageChips({
       }
       if (!(w > 0)) w = 16 + String(chipLabel2).length * 7 + (plan.menu.length ? 22 : 0);
       const r = layers.get(block.page)?.rects.find((q) => q.id === block.id);
-      const bx = el.getBoundingClientRect?.();
+      const bx = el2.getBoundingClientRect?.();
       const pagePx = { w: bx?.width > 0 ? bx.width : info(block.page)?.w, h: bx?.height > 0 ? bx.height : info(block.page)?.h };
       const spot = r ? copyIconSpot(r, pagePx, r.dy) : null;
       const top = Math.max(0, rect.top);
@@ -52285,15 +52959,15 @@ function createPageChips({
       return;
     }
     const n2 = pageNumberOf3(event.target, parsed);
-    const el = n2 ? pageEl?.(n2) : null;
+    const el2 = n2 ? pageEl?.(n2) : null;
     let hit = null;
-    if (el) {
-      const box2 = el.getBoundingClientRect();
+    if (el2) {
+      const box2 = el2.getBoundingClientRect();
       const x = (Number(event.clientX) || 0) - box2.left;
       const y = (Number(event.clientY) || 0) - box2.top;
       let best = Infinity;
       for (const block of pageBlocks(parsed, n2)) {
-        const r = bboxToPageRect(block.bbox, info(n2), el);
+        const r = bboxToPageRect(block.bbox, info(n2), el2);
         if (!r || x < r.left || x > r.left + r.width || y < r.top || y > r.top + r.height) continue;
         const area2 = r.width * r.height;
         if (area2 < best) {
@@ -52309,7 +52983,7 @@ function createPageChips({
     stopTimer();
     if (hit.id === current3) return;
     release();
-    show(hit, el, parsed);
+    show(hit, el2, parsed);
   };
   const clearDots = () => {
     for (const node2 of dots) drop(node2);
@@ -52323,9 +52997,9 @@ function createPageChips({
     for (let i = 0; i < order.length && count < DOT_CAP; i += 1) {
       const block = parsed.blocks?.[order[i]];
       if (!block) continue;
-      const el = pageEl?.(block.page);
-      if (!el) continue;
-      const rect = bboxToPageRect(block.bbox, info(block.page), el);
+      const el2 = pageEl?.(block.page);
+      if (!el2) continue;
+      const rect = bboxToPageRect(block.bbox, info(block.page), el2);
       if (!rect) continue;
       const dot = doc.createElement("div");
       dot.className = "pxd-page-dot";
@@ -52334,7 +53008,7 @@ function createPageChips({
       dot.style.left = `${rect.left}px`;
       dot.style.top = `${rect.top}px`;
       dot.style.pointerEvents = "none";
-      el.append(dot);
+      el2.append(dot);
       dots.push(dot);
       count += 1;
     }
@@ -52754,33 +53428,33 @@ function ghostOrigin(pointer, grab, size, sx, sy) {
   return { x: pointer.x - grab.fx * size.w * sx, y: pointer.y - grab.fy * size.h * sy };
 }
 function buildGhost(doc, content) {
-  const el = (tag, cls, parent) => {
+  const el2 = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
     if (cls) node2.className = cls;
     parent?.append?.(node2);
     return node2;
   };
-  const card2 = el("div", "pxd-item pxd-item--card pxd-ghost");
+  const card2 = el2("div", "pxd-item pxd-item--card pxd-ghost");
   card2.setAttribute("aria-hidden", "true");
   card2.setAttribute("data-kind", content.kind);
-  const body = el("div", "pxd-ghost__body", card2);
+  const body = el2("div", "pxd-ghost__body", card2);
   if (content.color) {
-    const bar = el("span", "pxd-ghost__bar", body);
+    const bar = el2("span", "pxd-ghost__bar", body);
     bar.setAttribute("data-color", content.color);
   }
   if (content.kind === "table" && content.rows.length) {
-    const table = el("table", "pxd-ghost__table", body);
+    const table = el2("table", "pxd-ghost__table", body);
     for (const row4 of content.rows) {
-      const tr = el("tr", "", table);
-      for (const cell of row4) el("td", "", tr).textContent = cell;
+      const tr = el2("tr", "", table);
+      for (const cell of row4) el2("td", "", tr).textContent = cell;
     }
   } else if (content.kind === "figure" && content.src) {
-    const img = el("img", "pxd-ghost__img", body);
+    const img = el2("img", "pxd-ghost__img", body);
     img.alt = "";
     img.src = content.src;
   }
-  if (content.text && !(content.kind === "table" && content.rows.length)) el("div", "pxd-ghost__text", body).textContent = content.text;
-  if (content.page) el("div", "pxd-ghost__page", body).textContent = `p. ${content.page}`;
+  if (content.text && !(content.kind === "table" && content.rows.length)) el2("div", "pxd-ghost__text", body).textContent = content.text;
+  if (content.page) el2("div", "pxd-ghost__page", body).textContent = `p. ${content.page}`;
   return card2;
 }
 function createDragGhost({
@@ -53051,7 +53725,7 @@ function startPlacement({
     root?.classList?.add?.("pxd-root--placing");
   } catch {
   }
-  let done = false;
+  let done2 = false;
   let swallowUntil = 0;
   const clock = () => typeof now3 === "function" ? now3() : globalThis.performance?.now?.() ?? Date.now();
   const bound = [];
@@ -53066,7 +53740,7 @@ function startPlacement({
     }
   };
   const finish = () => {
-    done = true;
+    done2 = true;
     swallowUntil = clock() + SWALLOW_MS;
     try {
       root?.classList?.remove?.("pxd-root--placing");
@@ -53080,7 +53754,7 @@ function startPlacement({
     }
   };
   const cancel = (reason = "cancel") => {
-    if (done) return;
+    if (done2) return;
     ghost.cancel();
     finish();
     try {
@@ -53089,7 +53763,7 @@ function startPlacement({
     }
   };
   const place2 = () => {
-    if (done) return;
+    if (done2) return;
     const at = ghost.dropPoint();
     ghost.land();
     finish();
@@ -53104,10 +53778,10 @@ function startPlacement({
     event.stopImmediatePropagation?.();
   };
   on("pointermove", (event) => {
-    if (!done) ghost.move(event.clientX, event.clientY);
+    if (!done2) ghost.move(event.clientX, event.clientY);
   });
   on("pointerdown", (event) => {
-    if (done) {
+    if (done2) {
       if (clock() <= swallowUntil) eat(event);
       return;
     }
@@ -53122,27 +53796,27 @@ function startPlacement({
     else cancel("outside");
   });
   on("mousedown", (event) => {
-    if (!done || clock() <= swallowUntil) eat(event);
+    if (!done2 || clock() <= swallowUntil) eat(event);
   });
   on("click", (event) => {
-    if (!done || clock() <= swallowUntil) eat(event);
+    if (!done2 || clock() <= swallowUntil) eat(event);
   });
   on("contextmenu", (event) => {
-    if (done && clock() > swallowUntil) return;
+    if (done2 && clock() > swallowUntil) return;
     eat(event);
     cancel("button");
   });
   on("keydown", (event) => {
-    if (done || event.key !== "Escape") return;
+    if (done2 || event.key !== "Escape") return;
     eat(event);
     cancel("escape");
   });
   return {
-    active: () => !done,
+    active: () => !done2,
     cancel: () => cancel("api"),
     ghost,
     dispose() {
-      if (!done) cancel("dispose");
+      if (!done2) cancel("dispose");
       release();
     }
   };
@@ -54997,8 +55671,8 @@ async function readSSE2(response, onEvent) {
     onEvent(event, payload);
   };
   for (; ; ) {
-    const { done, value } = await reader.read();
-    if (done) break;
+    const { done: done2, value } = await reader.read();
+    if (done2) break;
     buf += decoder.decode(value, { stream: true });
     buf = buf.replace(/\r\n/g, "\n");
     const frames = buf.split("\n\n");
@@ -55145,12 +55819,12 @@ async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tie
   }
   if (status === "CANCELLED") throw fail2("cancelled", "cancelled", 499);
   if (status !== "COMPLETED") throw fail2("failed", "LlamaParse failed the job", 502);
-  const done = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}?${LLAMA_EXPAND}`, {
+  const done2 = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}?${LLAMA_EXPAND}`, {
     headers,
     signal
   });
-  const provider = await done.json().catch(() => null);
-  if (done.status < 200 || done.status >= 300) throw statusError(done.status, provider);
+  const provider = await done2.json().catch(() => null);
+  if (done2.status < 200 || done2.status >= 300) throw statusError(done2.status, provider);
   return provider;
 }
 async function parseCloud({
@@ -55330,7 +56004,7 @@ function openCloudConfirm({
 } = {}) {
   let chosenTier = tier;
   let chosenScope = scope;
-  let done = false;
+  let done2 = false;
   let resolvePromise = () => {
   };
   const promise = new Promise((resolve) => {
@@ -55529,7 +56203,7 @@ function openCloudConfirm({
   }
   const win2 = doc.defaultView;
   function onKey(event) {
-    if (done) return;
+    if (done2) return;
     event.stopPropagation?.();
     event.stopImmediatePropagation?.();
     if (event.key === "Escape") {
@@ -55547,8 +56221,8 @@ function openCloudConfirm({
     }
   }
   function finish(value) {
-    if (done) return;
-    done = true;
+    if (done2) return;
+    done2 = true;
     try {
       win2?.removeEventListener?.("keydown", onKey, true);
     } catch {
@@ -55928,7 +56602,7 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
     order.push(block.id);
     return block;
   };
-  const walk2 = (item, pageNumber, fallback) => {
+  const walk3 = (item, pageNumber, fallback) => {
     if (!item || typeof item !== "object") return;
     const type = item.type;
     if (type === "header" || type === "footer") {
@@ -56118,7 +56792,7 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
         emitLayout(image, item);
         continue;
       }
-      const block = walk2(item, pageNumber);
+      const block = walk3(item, pageNumber);
       if (block?.type === "table") tables.push({ block, item });
     }
     for (const image of figureImages) {
@@ -56956,7 +57630,7 @@ function createFigureImages({ store = null, upload = null, encrypted = null, ena
       return false;
     }
   };
-  const metaKey = (key) => `${URL_META_PREFIX}${key}`;
+  const metaKey2 = (key) => `${URL_META_PREFIX}${key}`;
   const doFetch = (...args) => typeof fetchFn === "function" ? fetchFn(...args) : typeof globalThis.fetch === "function" ? globalThis.fetch(...args) : Promise.reject(new Error("no-fetch"));
   async function stillThere(url) {
     try {
@@ -56969,7 +57643,7 @@ function createFigureImages({ store = null, upload = null, encrypted = null, ena
   }
   async function peek(key) {
     try {
-      const got = key && typeof store?.getMeta === "function" ? await store.getMeta(metaKey(key)) : null;
+      const got = key && typeof store?.getMeta === "function" ? await store.getMeta(metaKey2(key)) : null;
       return got && isUsableImageUrl(got.url) ? got.url : "";
     } catch {
       return "";
@@ -57007,7 +57681,7 @@ function createFigureImages({ store = null, upload = null, encrypted = null, ena
     }
     if (!isUsableImageUrl(got)) return { ok: false, reason: /\.enc(?:$|[?#])/i.test(got) ? "encrypted" : "upload-failed" };
     try {
-      if (key) await store?.putMeta?.(metaKey(key), { url: got, at: now3() });
+      if (key) await store?.putMeta?.(metaKey2(key), { url: got, at: now3() });
     } catch {
     }
     return { ok: true, url: got, uploaded: true };
@@ -58039,9 +58713,9 @@ async function runChartToTable({ doc, blockId, image = null, imageService = null
     return { ok: false, reason: got?.reason || "no-image" };
   }
   const { caption, nearby } = nearbyOf(doc, blockId);
-  const request = { context: chartContext({ url: got.url, caption, nearby }), prompt: CHART_PROMPT, systemPrompt: CHART_SYSTEM_PROMPT, model: model.id, window: w };
-  let res = await api2.ask({ ...request, json: true });
-  if (!res.ok) res = await api2.ask(request);
+  const request2 = { context: chartContext({ url: got.url, caption, nearby }), prompt: CHART_PROMPT, systemPrompt: CHART_SYSTEM_PROMPT, model: model.id, window: w };
+  let res = await api2.ask({ ...request2, json: true });
+  if (!res.ok) res = await api2.ask(request2);
   if (!res.ok) {
     say(res.error || "Live AI Assistant could not read the chart.");
     return { ok: false, reason: res.code || "error" };
@@ -58376,7 +59050,7 @@ function createParseView({
   keep = null,
   fetch: fetchImpl = null
 } = {}) {
-  const el = (tag, cls, parent) => {
+  const el2 = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
     if (cls) node2.className = cls;
     parent?.append?.(node2);
@@ -58384,82 +59058,82 @@ function createParseView({
   };
   const now3 = () => typeof clock === "function" ? clock() : Date.now();
   const anydocHost = anydoc || createAnydocHost();
-  const root = el("div", "pxd-parse");
+  const root = el2("div", "pxd-parse");
   root.tabIndex = -1;
   root.setAttribute("role", "region");
   root.setAttribute("aria-label", "Parsed PDF");
-  const bar = el("div", "pxd-parse__bar", root);
-  const engineMenu = el("div", "pxd-parse__menu", bar);
-  const chip = el("button", "pxd-parse__engine", engineMenu);
+  const bar = el2("div", "pxd-parse__bar", root);
+  const engineMenu = el2("div", "pxd-parse__menu", bar);
+  const chip = el2("button", "pxd-parse__engine", engineMenu);
   chip.type = "button";
   chip.textContent = "Built-in";
   chip.setAttribute("aria-haspopup", "menu");
-  const enginePop = el("div", "pxd-parse__pop", engineMenu);
+  const enginePop = el2("div", "pxd-parse__pop", engineMenu);
   enginePop.setAttribute("role", "menu");
   setHidden(enginePop, true);
-  const againBtn = el("button", "pxd-parse__again", enginePop);
+  const againBtn = el2("button", "pxd-parse__again", enginePop);
   againBtn.type = "button";
   againBtn.textContent = "Parse again (built-in)";
-  const doclingBtn = el("button", "pxd-parse__docling", enginePop);
+  const doclingBtn = el2("button", "pxd-parse__docling", enginePop);
   doclingBtn.type = "button";
   doclingBtn.textContent = "Parse with Docling";
   doclingBtn.setAttribute("data-tip", "parse.docling");
   setHidden(doclingBtn, true);
-  const cloudBtn = el("button", "pxd-parse__cloud", enginePop);
+  const cloudBtn = el2("button", "pxd-parse__cloud", enginePop);
   cloudBtn.type = "button";
   cloudBtn.textContent = "Read with LlamaParse";
   cloudBtn.setAttribute("data-tip", "parse.cloud");
-  const mistralBtn = el("button", "pxd-parse__mistral", enginePop);
+  const mistralBtn = el2("button", "pxd-parse__mistral", enginePop);
   mistralBtn.type = "button";
   mistralBtn.textContent = "Read with Mistral OCR";
   mistralBtn.setAttribute("data-tip", "parse.mistral");
-  const altBtn = el("button", "pxd-parse__alt", enginePop);
+  const altBtn = el2("button", "pxd-parse__alt", enginePop);
   altBtn.type = "button";
-  const altLabel = el("span", "pxd-parse__alt-label", altBtn);
+  const altLabel = el2("span", "pxd-parse__alt-label", altBtn);
   altLabel.textContent = "Alternative read";
-  const altNote = el("span", "pxd-parse__alt-note", altBtn);
+  const altNote = el2("span", "pxd-parse__alt-note", altBtn);
   altNote.textContent = "no tables guarantee";
   altBtn.setAttribute("aria-label", "Alternative read, no tables guarantee");
   altBtn.setAttribute("data-guarantee", "no tables guarantee");
-  const cancelBtn = el("button", "pxd-parse__cancel", enginePop);
+  const cancelBtn = el2("button", "pxd-parse__cancel", enginePop);
   cancelBtn.type = "button";
   cancelBtn.textContent = "Cancel";
   cancelBtn.setAttribute("data-tip", "parse.cancel");
   setHidden(cancelBtn, true);
-  const rangeMenu = el("div", "pxd-parse__menu", bar);
-  const rangeBtn = el("button", "pxd-parse__rangebtn", rangeMenu);
+  const rangeMenu = el2("div", "pxd-parse__menu", bar);
+  const rangeBtn = el2("button", "pxd-parse__rangebtn", rangeMenu);
   rangeBtn.type = "button";
   rangeBtn.textContent = "All";
   rangeBtn.setAttribute("aria-label", "Page range");
   rangeBtn.setAttribute("aria-haspopup", "menu");
-  const rangePop = el("div", "pxd-parse__pop", rangeMenu);
+  const rangePop = el2("div", "pxd-parse__pop", rangeMenu);
   rangePop.setAttribute("role", "menu");
   setHidden(rangePop, true);
-  const currentBtn = el("button", "pxd-parse__chip", rangePop);
+  const currentBtn = el2("button", "pxd-parse__chip", rangePop);
   currentBtn.type = "button";
   currentBtn.textContent = "Current page";
   currentBtn.setAttribute("data-range", "current");
-  const allBtn = el("button", "pxd-parse__chip", rangePop);
+  const allBtn = el2("button", "pxd-parse__chip", rangePop);
   allBtn.type = "button";
   allBtn.textContent = "All";
   allBtn.setAttribute("data-range", "all");
   allBtn.setAttribute("aria-pressed", "true");
-  const rangeInput = el("input", "pxd-parse__range", rangePop);
+  const rangeInput = el2("input", "pxd-parse__range", rangePop);
   rangeInput.type = "text";
   rangeInput.value = "";
   rangeInput.placeholder = "3-7";
   rangeInput.setAttribute("aria-label", "Page range");
   rangeInput.setAttribute("data-tip", "parse.range");
-  const filterMenu = el("div", "pxd-parse__menu", bar);
-  const filterBtn = el("button", "pxd-parse__filterbtn", filterMenu);
+  const filterMenu = el2("div", "pxd-parse__menu", bar);
+  const filterBtn = el2("button", "pxd-parse__filterbtn", filterMenu);
   filterBtn.type = "button";
   filterBtn.textContent = "Filter";
   filterBtn.setAttribute("aria-haspopup", "menu");
   filterBtn.setAttribute("aria-label", "Filter blocks");
-  const filterPop = el("div", "pxd-parse__pop", filterMenu);
+  const filterPop = el2("div", "pxd-parse__pop", filterMenu);
   filterPop.setAttribute("role", "menu");
   setHidden(filterPop, true);
-  const scanBtn = el("button", "pxd-parse__scan", bar);
+  const scanBtn = el2("button", "pxd-parse__scan", bar);
   scanBtn.type = "button";
   scanBtn.textContent = "Read the scan";
   scanBtn.hidden = true;
@@ -58467,64 +59141,64 @@ function createParseView({
   const filterBtns = {};
   for (const name of ["Text", "Tables", "Figures", "Formulas"]) {
     const key = name === "Tables" ? "table" : name === "Figures" ? "figure" : name === "Formulas" ? "formula" : "text";
-    const button2 = el("button", "pxd-parse__filter", filterPop);
+    const button2 = el2("button", "pxd-parse__filter", filterPop);
     button2.type = "button";
     button2.textContent = name;
     button2.setAttribute("aria-pressed", "true");
     button2.setAttribute("data-filter", key);
     filterBtns[key] = button2;
   }
-  const searchBtn = el("button", "pxd-parse__searchbtn", bar);
+  const searchBtn = el2("button", "pxd-parse__searchbtn", bar);
   searchBtn.type = "button";
   searchBtn.textContent = "⌕";
   searchBtn.setAttribute("aria-label", "Search");
   searchBtn.setAttribute("data-tip", "parse.search");
-  const search = el("input", "pxd-parse__search", bar);
+  const search = el2("input", "pxd-parse__search", bar);
   search.type = "search";
   search.placeholder = "Search";
   search.setAttribute("aria-label", "Search parsed text");
   search.setAttribute("data-tip", "parse.search");
   setHidden(search, true);
-  const lockBtn = el("button", "pxd-parse__lock", bar);
+  const lockBtn = el2("button", "pxd-parse__lock", bar);
   lockBtn.type = "button";
   lockBtn.textContent = "⇅";
   lockBtn.setAttribute("aria-label", "Sync scroll");
   lockBtn.setAttribute("aria-pressed", "true");
   lockBtn.setAttribute("data-tip", "parse.sync");
-  const track = el("div", "pxd-parse__track", root);
-  const fill = el("div", "pxd-parse__fill", track);
+  const track = el2("div", "pxd-parse__track", root);
+  const fill = el2("div", "pxd-parse__fill", track);
   setHidden(track, true);
-  const body = el("div", "pxd-parse__body", root);
+  const body = el2("div", "pxd-parse__body", root);
   body.tabIndex = 0;
-  const empty = el("div", "pxd-parse__empty", body);
+  const empty = el2("div", "pxd-parse__empty", body);
   empty.textContent = "No parse yet · Parse (built-in)";
-  const parseBtn = el("button", "pxd-parse__go", empty);
+  const parseBtn = el2("button", "pxd-parse__go", empty);
   parseBtn.type = "button";
   parseBtn.textContent = "Parse (built-in)";
-  const foot = el("div", "pxd-parse__foot", root);
+  const foot = el2("div", "pxd-parse__foot", root);
   setHidden(foot, true);
-  const summary = el("span", "pxd-parse__summary", foot);
-  const copyBtn = el("button", "pxd-parse__act", foot);
+  const summary = el2("span", "pxd-parse__summary", foot);
+  const copyBtn = el2("button", "pxd-parse__act", foot);
   copyBtn.type = "button";
   copyBtn.textContent = "Copy";
   copyBtn.setAttribute("data-tip", "parse.copy");
-  const insertBtn = el("button", "pxd-parse__act", foot);
+  const insertBtn = el2("button", "pxd-parse__act", foot);
   insertBtn.type = "button";
   insertBtn.textContent = "Insert below PDF";
   insertBtn.setAttribute("data-tip", "parse.insert");
-  const sendBtn = el("button", "pxd-parse__act", foot);
+  const sendBtn = el2("button", "pxd-parse__act", foot);
   sendBtn.type = "button";
   sendBtn.textContent = "Send to board";
   sendBtn.setAttribute("data-tip", "parse.send");
-  const hlBtn = el("button", "pxd-parse__act", foot);
+  const hlBtn = el2("button", "pxd-parse__act", foot);
   hlBtn.type = "button";
   hlBtn.textContent = "Make highlight";
   hlBtn.setAttribute("data-tip", "parse.highlight");
-  const tableMenu = el("details", "pxd-parse__insert", foot);
-  const tableSum = el("summary", "", tableMenu);
+  const tableMenu = el2("details", "pxd-parse__insert", foot);
+  const tableSum = el2("summary", "", tableMenu);
   tableSum.textContent = "Insert table";
   for (const [mode, label] of [["grid", "Roam Grid"], ["native", "Native"], ["flat", "Flat"]]) {
-    const button2 = el("button", "pxd-parse__act", tableMenu);
+    const button2 = el2("button", "pxd-parse__act", tableMenu);
     button2.type = "button";
     button2.textContent = label;
     button2.setAttribute("data-mode", mode);
@@ -58667,7 +59341,7 @@ function createParseView({
       let src = "";
       if (key && typeof store?.getImage === "function") {
         try {
-          src = imageSrc2(await store.getImage(key));
+          src = imageSrc3(await store.getImage(key));
         } catch {
           src = "";
         }
@@ -58987,14 +59661,14 @@ ${sourceAttrString(source)}` : markdown;
   }
   function renderTable(table, parent) {
     const grid = tableGrid(table);
-    const node2 = el("table", "pxd-parse__table", parent);
+    const node2 = el2("table", "pxd-parse__table", parent);
     for (const row4 of grid) {
-      const tr = el("tr", "", node2);
+      const tr = el2("tr", "", node2);
       for (const slot2 of row4) {
         if (slot2.covered) continue;
         const cell = slot2.cell;
         const tag = cell?.header ? "th" : "td";
-        const td = el(tag, cell?.align === "right" || cell?.numeric ? "pxd-parse__num" : "", tr);
+        const td = el2(tag, cell?.align === "right" || cell?.numeric ? "pxd-parse__num" : "", tr);
         if ((cell?.rowSpan ?? 1) > 1) td.setAttribute("rowspan", String(cell.rowSpan));
         if ((cell?.colSpan ?? 1) > 1) td.setAttribute("colspan", String(cell.colSpan));
         td.textContent = cell ? String(cell.text ?? "") : "";
@@ -59003,14 +59677,14 @@ ${sourceAttrString(source)}` : markdown;
     return node2;
   }
   function renderOutlineRow(block, main) {
-    const label = el(block.type === "heading" ? "div" : "div", `pxd-parse__olabel pxd-parse__olabel--${block.type}`, main);
+    const label = el2(block.type === "heading" ? "div" : "div", `pxd-parse__olabel pxd-parse__olabel--${block.type}`, main);
     label.textContent = outlineLabel(block);
     if (block.type === "heading") label.style.paddingLeft = `${outlineIndent(block.level)}px`;
-    const page = el("span", "pxd-parse__opage", main);
+    const page = el2("span", "pxd-parse__opage", main);
     page.textContent = block.page ? `p. ${block.page}` : "";
   }
   function renderBlock(block, parent) {
-    const row4 = el("article", "pxd-parse__block", parent);
+    const row4 = el2("article", "pxd-parse__block", parent);
     row4.tabIndex = 0;
     row4.setAttribute("data-id", block.id);
     row4.setAttribute("data-type", block.type);
@@ -59018,37 +59692,37 @@ ${sourceAttrString(source)}` : markdown;
     if (typeof block.confidence === "number" && block.confidence < LOW_CONFIDENCE) row4.classList.add("pxd-parse__block--low");
     if (selected.includes(block.id)) row4.classList.add("pxd-parse__block--on");
     if (focusId === block.id) row4.classList.add("pxd-parse__block--focus");
-    const gutter = el("div", "pxd-parse__gutter", row4);
-    const handle = el("button", "pxd-parse__handle", gutter);
+    const gutter = el2("div", "pxd-parse__gutter", row4);
+    const handle = el2("button", "pxd-parse__handle", gutter);
     handle.type = "button";
     handle.textContent = "⋮⋮";
     handle.draggable = true;
     handle.setAttribute("aria-label", "Drag");
-    const check = el("input", "pxd-parse__check", gutter);
+    const check = el2("input", "pxd-parse__check", gutter);
     check.type = "checkbox";
     check.checked = selected.includes(block.id);
     check.setAttribute("aria-label", "Select");
-    const main = el("div", "pxd-parse__main", row4);
+    const main = el2("div", "pxd-parse__main", row4);
     if (outline && !String(query || "").trim()) {
       row4.classList.add("pxd-parse__orow");
       renderOutlineRow(block, main);
     } else if (block.type === "heading") {
       const level = Math.min(6, Math.max(1, block.level || 1));
-      const heading = el(`h${level}`, "pxd-parse__h", main);
+      const heading = el2(`h${level}`, "pxd-parse__h", main);
       heading.textContent = block.text || "";
     } else if (block.type === "list") {
-      const list = el(block.ordered ? "ol" : "ul", "pxd-parse__list", main);
+      const list = el2(block.ordered ? "ol" : "ul", "pxd-parse__list", main);
       for (const item of block.items || []) {
-        const li = el("li", "", list);
+        const li = el2("li", "", list);
         li.textContent = item.text || "";
         if (item.level) li.style.marginLeft = `${item.level * 16}px`;
       }
     } else if (block.type === "table") {
       renderTable(block, main);
-      const menu = el("details", "pxd-parse__tmenu", main);
-      const sum = el("summary", "pxd-parse__tchip", menu);
+      const menu = el2("details", "pxd-parse__tmenu", main);
+      const sum = el2("summary", "pxd-parse__tchip", menu);
       sum.textContent = tableChipLabel(block);
-      const again = el("button", "pxd-parse__act", menu);
+      const again = el2("button", "pxd-parse__act", menu);
       again.type = "button";
       again.textContent = "Re-parse with Docling";
       listenBlock(again, "click", (event) => {
@@ -59057,7 +59731,7 @@ ${sourceAttrString(source)}` : markdown;
       });
     } else if (block.type === "formula") {
       if (block.latex) {
-        const math = el("div", "pxd-parse__math", main);
+        const math = el2("div", "pxd-parse__math", main);
         try {
           if (typeof host?.renderString === "function") host.renderString(math, `$$${block.latex}$$`);
           else math.textContent = block.latex;
@@ -59065,23 +59739,23 @@ ${sourceAttrString(source)}` : markdown;
           math.textContent = block.latex;
         }
         if (!math.textContent && !math.childElementCount) {
-          const code = el("code", "pxd-parse__code", math);
+          const code = el2("code", "pxd-parse__code", math);
           code.textContent = block.latex;
         }
       } else {
-        const img = el("img", "pxd-parse__crop", main);
+        const img = el2("img", "pxd-parse__crop", main);
         img.alt = block.text || "Formula";
         void paintCrop2(block, img);
       }
     } else if (block.type === "figure") {
-      const img = el("img", "pxd-parse__crop", main);
+      const img = el2("img", "pxd-parse__crop", main);
       img.alt = block.text || "Figure";
       void paintCrop2(block, img);
     } else if (block.type === "code") {
-      const code = el("code", "pxd-parse__code", main);
+      const code = el2("code", "pxd-parse__code", main);
       code.textContent = block.text || "";
     } else {
-      const p = el("p", "pxd-parse__p", main);
+      const p = el2("p", "pxd-parse__p", main);
       p.textContent = block.text || "";
     }
     listenBlock(handle, "dragstart", (event) => beginDrag(event, [block]));
@@ -59138,19 +59812,19 @@ ${sourceAttrString(source)}` : markdown;
       body.append(empty);
       empty.textContent = "";
       empty.append(parseBtn);
-      const lead = el("div", "pxd-parse__lead", empty);
+      const lead = el2("div", "pxd-parse__lead", empty);
       lead.textContent = "No parse yet · Parse (built-in)";
       paintFoot();
       paintChip();
       return;
     }
     if (!blocks.length) {
-      const note = el("div", "pxd-parse__empty", body);
+      const note = el2("div", "pxd-parse__empty", body);
       const scan = scanSpan(parsed);
       const filtered = Boolean(query) || Object.values(filters).some((on) => !on);
       if (scan && !filtered) {
-        el("span", "pxd-parse__scantext", note).textContent = scan;
-        const read2 = el("button", "pxd-parse__readtext", note);
+        el2("span", "pxd-parse__scantext", note).textContent = scan;
+        const read2 = el2("button", "pxd-parse__readtext", note);
         read2.type = "button";
         read2.textContent = "Read text";
         read2.setAttribute("data-tip", "parse.read-text");
@@ -59165,7 +59839,7 @@ ${sourceAttrString(source)}` : markdown;
     for (const block of blocks) {
       if (block.page !== page) {
         page = block.page;
-        const divider = el("div", "pxd-parse__page", body);
+        const divider = el2("div", "pxd-parse__page", body);
         divider.textContent = `p. ${page}`;
         divider.setAttribute("data-page", String(page));
       }
@@ -59173,11 +59847,11 @@ ${sourceAttrString(source)}` : markdown;
     }
     const removed = removedSummary(parsed.removed);
     if (removed) {
-      const box2 = el("details", "pxd-parse__removed", body);
-      const sum = el("summary", "", box2);
+      const box2 = el2("details", "pxd-parse__removed", body);
+      const sum = el2("summary", "", box2);
       sum.textContent = removed;
       for (const row4 of parsed.removed || []) {
-        const line = el("div", "pxd-parse__removedrow", box2);
+        const line = el2("div", "pxd-parse__removedrow", box2);
         line.textContent = row4.text || "";
       }
     }
@@ -59283,7 +59957,7 @@ ${sourceAttrString(source)}` : markdown;
       const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
       if (key && store?.getImage) {
         try {
-          src = imageSrc2(await store.getImage(key));
+          src = imageSrc3(await store.getImage(key));
         } catch {
         }
       }
@@ -59468,7 +60142,7 @@ ${sourceAttrString(source)}` : markdown;
     render();
     overlay.showGrid(parsed.blocks[table.id]);
   }
-  function imageSrc2(cached) {
+  function imageSrc3(cached) {
     if (typeof cached === "string" && cached) return cached;
     return "";
   }
@@ -59480,7 +60154,7 @@ ${sourceAttrString(source)}` : markdown;
       let src = "";
       if (typeof store.getImage === "function") {
         try {
-          src = imageSrc2(await store.getImage(key));
+          src = imageSrc3(await store.getImage(key));
         } catch {
           src = "";
         }
@@ -59566,7 +60240,7 @@ ${sourceAttrString(source)}` : markdown;
     if (key && store?.getImage) {
       try {
         const cached = await store.getImage(key);
-        const src = imageSrc2(cached);
+        const src = imageSrc3(cached);
         if (src && img.isConnected !== false) {
           img.src = src;
           img.removeAttribute("data-crop");
@@ -60755,10 +61429,10 @@ function renderEnginesPanel(doc, parent, deps = {}) {
   const pollMs = deps.pollMs > 0 ? deps.pollMs : DEFAULT_POLL_MS;
   const setIv = deps.setInterval || ((fn, ms) => globalThis.setInterval(fn, ms));
   const clearIv = deps.clearInterval || ((id) => globalThis.clearInterval(id));
-  const el = doc.createElement("div");
-  el.className = "pxd-engines pxd-chrome";
-  el.setAttribute("role", "region");
-  el.setAttribute("aria-label", "Engines");
+  const el2 = doc.createElement("div");
+  el2.className = "pxd-engines pxd-chrome";
+  el2.setAttribute("role", "region");
+  el2.setAttribute("aria-label", "Engines");
   const stop3 = (event) => event.stopPropagation?.();
   const heldStatic = [];
   const heldRows = [];
@@ -60770,7 +61444,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
   const release = (store) => {
     for (const [node2, type, fn] of store.splice(0)) node2.removeEventListener?.(type, fn);
   };
-  for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTo(heldStatic)(el, type, stop3);
+  for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTo(heldStatic)(el2, type, stop3);
   const title = doc.createElement("div");
   title.className = "pxd-engines__title";
   title.textContent = "Engines";
@@ -60778,7 +61452,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
   list.className = "pxd-engines__rows";
   const sheetHost = doc.createElement("div");
   sheetHost.className = "pxd-engines__sheet-host";
-  el.append(title, list, sheetHost);
+  el2.append(title, list, sheetHost);
   let state = null;
   let sheetKind = null;
   let signature = "";
@@ -61034,7 +61708,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     void act("save-token");
   });
   advanced.append(summary, tokenInput, tokenSave);
-  el.append(advanced);
+  el2.append(advanced);
   async function act(id) {
     if (disposed) return;
     if (id === "setup" || id === "start") {
@@ -61052,24 +61726,24 @@ function renderEnginesPanel(doc, parent, deps = {}) {
       return;
     }
     if (id === "cloud-save") {
-      const typed = String(el.querySelector("[data-cloud-key]")?.value || "");
-      const mistralTyped = String(el.querySelector("[data-mistral-key]")?.value || "");
+      const typed = String(el2.querySelector("[data-cloud-key]")?.value || "");
+      const mistralTyped = String(el2.querySelector("[data-mistral-key]")?.value || "");
       writeCloudPrefs(storage, {
         key: typed.trim() ? typed : null,
-        region: el.querySelector("[data-cloud-region]")?.value,
-        tier: el.querySelector("[data-cloud-tier]")?.value,
-        relay: el.querySelector("[data-cloud-relay]")?.value ?? ""
+        region: el2.querySelector("[data-cloud-region]")?.value,
+        tier: el2.querySelector("[data-cloud-tier]")?.value,
+        relay: el2.querySelector("[data-cloud-relay]")?.value ?? ""
       });
       writeMistralKey(storage, mistralTyped.trim() ? mistralTyped : null);
       say("Saved on this device");
     } else if (id === "cloud-clear") {
       writeCloudPrefs(storage, { key: "" });
-      const input = el.querySelector("[data-cloud-key]");
+      const input = el2.querySelector("[data-cloud-key]");
       if (input) input.value = "";
       say("LlamaParse key removed from this device");
     } else if (id === "mistral-clear") {
       writeMistralKey(storage, "");
-      const input = el.querySelector("[data-mistral-key]");
+      const input = el2.querySelector("[data-mistral-key]");
       if (input) input.value = "";
       say("Mistral key removed from this device");
     } else if (id === "pair") {
@@ -61126,11 +61800,11 @@ function renderEnginesPanel(doc, parent, deps = {}) {
   function setVisible(value) {
     visible2 = Boolean(value);
     if (visible2) {
-      el.removeAttribute("hidden");
+      el2.removeAttribute("hidden");
       startTimer();
       void refresh();
     } else {
-      el.setAttribute("hidden", "");
+      el2.setAttribute("hidden", "");
       stopTimer();
     }
   }
@@ -61144,12 +61818,12 @@ function renderEnginesPanel(doc, parent, deps = {}) {
     release(heldRows);
     release(heldSheet);
     release(heldStatic);
-    el.remove?.();
+    el2.remove?.();
   }
-  parent.append(el);
+  parent.append(el2);
   startTimer();
   void refresh();
-  return { el, refresh, setVisible, showSheet, dispose };
+  return { el: el2, refresh, setVisible, showSheet, dispose };
 }
 
 // src/view/parse-status.js
@@ -61254,10 +61928,10 @@ var TIP_FOR_ACTION = {
   cancel: "parse.strip.cancel"
 };
 function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
-  const el = doc.createElement("div");
-  el.className = "pxd-parse-status pxd-chrome";
-  el.setAttribute("role", "status");
-  el.setAttribute("aria-live", "polite");
+  const el2 = doc.createElement("div");
+  el2.className = "pxd-parse-status pxd-chrome";
+  el2.setAttribute("role", "status");
+  el2.setAttribute("aria-live", "polite");
   const stop3 = (event) => event.stopPropagation?.();
   const heldStatic = [];
   const heldButtons = [];
@@ -61265,8 +61939,8 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
     for (const [node2, type, fn] of store.splice(0)) node2.removeEventListener?.(type, fn);
   };
   for (const type of ["pointerdown", "mousedown", "dblclick"]) {
-    el.addEventListener(type, stop3);
-    heldStatic.push([el, type, stop3]);
+    el2.addEventListener(type, stop3);
+    heldStatic.push([el2, type, stop3]);
   }
   let current3 = null;
   let hideTimer = null;
@@ -61280,11 +61954,11 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
   };
   const paint2 = (model) => {
     release(heldButtons);
-    el.innerHTML = "";
+    el2.innerHTML = "";
     const text4 = doc.createElement("span");
     text4.className = "pxd-parse-status__text";
     text4.textContent = model.text;
-    el.append(text4);
+    el2.append(text4);
     if (model.progress != null) {
       const bar = doc.createElement("span");
       bar.className = "pxd-parse-status__bar";
@@ -61296,7 +61970,7 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
       fill.className = "pxd-parse-status__fill";
       fill.style.width = `${Math.round(model.progress * 100)}%`;
       bar.append(fill);
-      el.append(bar);
+      el2.append(bar);
     }
     for (const b of model.buttons) {
       const node2 = doc.createElement("button");
@@ -61312,7 +61986,7 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
       };
       node2.addEventListener("click", onClick);
       heldButtons.push([node2, "click", onClick]);
-      el.append(node2);
+      el2.append(node2);
     }
   };
   function update(next) {
@@ -61323,13 +61997,13 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
       current3 = null;
       clearTimer();
       release(heldButtons);
-      el.innerHTML = "";
-      el.setAttribute("hidden", "");
-      el.setAttribute("data-kind", "");
+      el2.innerHTML = "";
+      el2.setAttribute("hidden", "");
+      el2.setAttribute("data-kind", "");
       return;
     }
-    el.removeAttribute("hidden");
-    el.setAttribute("data-kind", model.kind);
+    el2.removeAttribute("hidden");
+    el2.setAttribute("data-kind", model.kind);
     const same2 = current3 && current3.kind === model.kind && current3.text === model.text && current3.progress === model.progress && current3.buttons.map((b) => b.id).join() === model.buttons.map((b) => b.id).join();
     if (!same2) paint2(model);
     if (model.autoHideMs && (!current3 || current3.kind !== model.kind)) {
@@ -61341,9 +62015,9 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
           if (!disposed && mine === generation && current3?.kind === "helper-done") {
             current3 = null;
             release(heldButtons);
-            el.innerHTML = "";
-            el.setAttribute("hidden", "");
-            el.setAttribute("data-kind", "");
+            el2.innerHTML = "";
+            el2.setAttribute("hidden", "");
+            el2.setAttribute("data-kind", "");
           }
         }, model.autoHideMs);
       }
@@ -61357,11 +62031,11 @@ function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
     clearTimer();
     release(heldButtons);
     release(heldStatic);
-    el.remove?.();
+    el2.remove?.();
   }
-  parent.append(el);
+  parent.append(el2);
   update(input);
-  return { el, update, kind: () => current3?.kind ?? null, dispose };
+  return { el: el2, update, kind: () => current3?.kind ?? null, dispose };
 }
 
 // src/view/text-layer.js
@@ -61616,20 +62290,20 @@ function createTextLayer({ doc = globalThis.document, readerEl = null, measure =
       if (!ours && !needsTextLayer(layer)) continue;
       plan.push({ layer, record, widthPx, key });
     }
-    const done = [];
+    const done2 = [];
     for (const job of plan) {
       const res = mountWords(job.layer, job.record, { doc, widthPx: job.widthPx, measure: width, key: job.key, now: now3 });
       stats.mounts += 1;
       stats.words += res.count;
       stats.lastMs = res.ms;
       stats.maxMs = Math.max(stats.maxMs, res.ms);
-      done.push(Number(job.key.split(":")[0]));
+      done2.push(Number(job.key.split(":")[0]));
     }
     try {
       observer?.takeRecords?.();
     } catch {
     }
-    return done;
+    return done2;
   }
   return {
     setPages(input) {
@@ -61794,8 +62468,8 @@ function crossGlyph(doc) {
   path?.setAttribute?.("stroke-linecap", "round");
   return svg;
 }
-function pillButton(doc, el, parent, label, text4) {
-  const button2 = el("button", "pxd-read__pillbtn", parent);
+function pillButton(doc, el2, parent, label, text4) {
+  const button2 = el2("button", "pxd-read__pillbtn", parent);
   button2.type = "button";
   button2.textContent = text4;
   button2.setAttribute("aria-label", label);
@@ -61849,7 +62523,7 @@ function createReadPane({
   // read({ pages, url, getPdf, signal, onProgress }) -> pxd-ocr/1 page records }. None ships yet.
   deviceOcr = null
 } = {}) {
-  const el = (tag, cls, parent) => {
+  const el2 = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
     if (cls) node2.className = cls;
     parent?.append(node2);
@@ -61861,54 +62535,54 @@ function createReadPane({
     if (on) node2.setAttribute("hidden", "");
     else node2.removeAttribute("hidden");
   };
-  const pane = el("aside", "pxd-read");
+  const pane = el2("aside", "pxd-read");
   pane.setAttribute("role", "complementary");
   pane.setAttribute("aria-label", "PDF reader");
-  const split = el("div", "pxd-read__split", pane);
+  const split = el2("div", "pxd-read__split", pane);
   split.setAttribute("role", "separator");
   split.setAttribute("aria-orientation", "vertical");
-  const head = el("div", "pxd-read__head", pane);
-  const dot = el("span", "pxd-read__dot", head);
+  const head = el2("div", "pxd-read__head", pane);
+  const dot = el2("span", "pxd-read__dot", head);
   dot.setAttribute("aria-hidden", "true");
-  const glyph = el("span", "pxd-read__glyph", head);
+  const glyph = el2("span", "pxd-read__glyph", head);
   glyph.setAttribute("aria-hidden", "true");
   const glyphSvg = pdfGlyph(doc);
   if (glyphSvg) glyph.append(glyphSvg);
-  const titleNode = el("div", "pxd-read__title", head);
-  const switchBtn = el("button", "pxd-read__switchbtn pxd-chrome", head);
+  const titleNode = el2("div", "pxd-read__title", head);
+  const switchBtn = el2("button", "pxd-read__switchbtn pxd-chrome", head);
   switchBtn.type = "button";
   switchBtn.textContent = "▾";
   switchBtn.setAttribute("aria-label", "PDFs on this board");
-  const switcher = el("select", "pxd-read__switch", head);
+  const switcher = el2("select", "pxd-read__switch", head);
   switcher.setAttribute("aria-label", "PDF on this board");
-  const hlBtn = el("button", "pxd-read__highlights pxd-chrome", head);
+  const hlBtn = el2("button", "pxd-read__highlights pxd-chrome", head);
   hlBtn.type = "button";
   hlBtn.setAttribute("aria-label", "Highlights");
   hlBtn.setAttribute("aria-pressed", "false");
-  el("span", "pxd-read__hicon", hlBtn).textContent = "☰";
-  const countNode = el("span", "pxd-read__count", hlBtn);
+  el2("span", "pxd-read__hicon", hlBtn).textContent = "☰";
+  const countNode = el2("span", "pxd-read__count", hlBtn);
   countNode.textContent = "";
   countNode.hidden = true;
-  const toolsBtn = el("button", "pxd-read__tools pxd-chrome", head);
+  const toolsBtn = el2("button", "pxd-read__tools pxd-chrome", head);
   toolsBtn.type = "button";
   toolsBtn.textContent = "⚙";
   toolsBtn.setAttribute("aria-label", "Roam tools");
   toolsBtn.setAttribute("aria-pressed", "false");
-  const closeBtn = el("button", "pxd-read__close pxd-chrome", head);
+  const closeBtn = el2("button", "pxd-read__close pxd-chrome", head);
   closeBtn.type = "button";
   const cross = crossGlyph(doc);
   if (cross) closeBtn.append(cross);
   else closeBtn.textContent = "✕";
   closeBtn.setAttribute("aria-label", "Close");
-  const stripMount = el("div", "pxd-read__strip", pane);
-  const enginesMount = el("div", "pxd-read__engines", pane);
-  const modes = el("div", "pxd-read__modes", pane);
+  const stripMount = el2("div", "pxd-read__strip", pane);
+  const enginesMount = el2("div", "pxd-read__engines", pane);
+  const modes = el2("div", "pxd-read__modes", pane);
   modes.setAttribute("role", "toolbar");
   modes.setAttribute("aria-label", "Reader mode");
   setHidden2(modes, true);
   const modeBtns = {};
   for (const [id, label, tip] of [["reader", "Read", "parse.mode.reader"], ["both", "Read + Outline", "parse.mode.both"]]) {
-    const button2 = el("button", "pxd-read__mode", modes);
+    const button2 = el2("button", "pxd-read__mode", modes);
     button2.type = "button";
     button2.textContent = label;
     button2.setAttribute("data-mode", id);
@@ -61917,50 +62591,50 @@ function createReadPane({
     button2.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
     modeBtns[id] = button2;
   }
-  const showParsedBtn = el("button", "pxd-read__mode pxd-read__showparsed", modes);
+  const showParsedBtn = el2("button", "pxd-read__mode pxd-read__showparsed", modes);
   showParsedBtn.type = "button";
   showParsedBtn.textContent = "Show parsed";
   showParsedBtn.setAttribute("data-tip", "parse.show-parsed");
   showParsedBtn.setAttribute("aria-label", "Show parsed text boxes");
   showParsedBtn.setAttribute("aria-pressed", readShowParsed(storage) ? "true" : "false");
-  const outlineTabBtn = el("button", "pxd-read__mode pxd-read__outlinetab", modes);
+  const outlineTabBtn = el2("button", "pxd-read__mode pxd-read__outlinetab", modes);
   outlineTabBtn.type = "button";
   outlineTabBtn.textContent = "Outline";
   outlineTabBtn.setAttribute("data-tip", "parse.outline-tab");
   outlineTabBtn.setAttribute("aria-label", "Show the outline");
   outlineTabBtn.setAttribute("aria-pressed", "false");
   setHidden2(outlineTabBtn, true);
-  const progress = el("div", "pxd-read__progress", pane);
+  const progress = el2("div", "pxd-read__progress", pane);
   setHidden2(progress, true);
-  const progressFill = el("div", "pxd-read__progressfill", progress);
-  const stage = el("div", "pxd-read__stage", pane);
-  const live2 = el("div", "pxd-read__live", stage);
-  const pill = el("div", "pxd-read__pill", stage);
+  const progressFill = el2("div", "pxd-read__progressfill", progress);
+  const stage = el2("div", "pxd-read__stage", pane);
+  const live2 = el2("div", "pxd-read__live", stage);
+  const pill = el2("div", "pxd-read__pill", stage);
   pill.setAttribute("role", "toolbar");
   pill.setAttribute("aria-label", "Reader");
-  const zoomOutBtn = pillButton(doc, el, pill, "Zoom out", "−");
-  const zoomInBtn = pillButton(doc, el, pill, "Zoom in", "+");
-  const fitBtn = pillButton(doc, el, pill, "Fit width", "⇔");
-  const prevPageBtn = pillButton(doc, el, pill, "Previous page", "‹");
+  const zoomOutBtn = pillButton(doc, el2, pill, "Zoom out", "−");
+  const zoomInBtn = pillButton(doc, el2, pill, "Zoom in", "+");
+  const fitBtn = pillButton(doc, el2, pill, "Fit width", "⇔");
+  const prevPageBtn = pillButton(doc, el2, pill, "Previous page", "‹");
   prevPageBtn.classList.add("pxd-read__pageprev");
-  const pageNode2 = el("span", "pxd-read__pages", pill);
-  const nextPageBtn = pillButton(doc, el, pill, "Next page", "›");
+  const pageNode2 = el2("span", "pxd-read__pages", pill);
+  const nextPageBtn = pillButton(doc, el2, pill, "Next page", "›");
   nextPageBtn.classList.add("pxd-read__pagenext");
-  const searchBtn = pillButton(doc, el, pill, "Search", "⌕");
-  const parsedMount = el("div", "pxd-read__parsed", pane);
-  const drawerMount = el("div", "pxd-read__drawer", pane);
-  const bar = el("div", "pxd-selbar", pane);
+  const searchBtn = pillButton(doc, el2, pill, "Search", "⌕");
+  const parsedMount = el2("div", "pxd-read__parsed", pane);
+  const drawerMount = el2("div", "pxd-read__drawer", pane);
+  const bar = el2("div", "pxd-selbar", pane);
   bar.setAttribute("role", "toolbar");
   bar.setAttribute("aria-label", "Selection");
   setHidden2(bar, true);
   for (const [act, text4, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"], ["ask", "Ask AI", "read.sel.ask"], ["basket", "Add to question", "read.sel.basket"]]) {
-    const button2 = el("button", "pxd-selbar__btn pxd-chrome", bar);
+    const button2 = el2("button", "pxd-selbar__btn pxd-chrome", bar);
     button2.type = "button";
     button2.textContent = text4;
     button2.setAttribute("data-act", act);
     button2.setAttribute("data-tip", tip);
   }
-  const barHandle = el("button", "pxd-selbar__handle pxd-chrome", bar);
+  const barHandle = el2("button", "pxd-selbar__handle pxd-chrome", bar);
   barHandle.type = "button";
   barHandle.textContent = "⠿";
   barHandle.setAttribute("aria-label", "Drag to the board");
@@ -62140,7 +62814,7 @@ function createReadPane({
     dropHold();
     const url = typeof src === "string" ? src.trim() : "";
     if (!url) return;
-    const img = el("img", "pxd-read__hold", stage);
+    const img = el2("img", "pxd-read__hold", stage);
     img.alt = "";
     img.setAttribute("aria-hidden", "true");
     img.src = url;
@@ -62271,7 +62945,7 @@ function createReadPane({
     switcher.replaceChildren?.();
     for (const card2 of pdfs) {
       if (!card2 || card2.kind !== "pdf" || !card2.uid) continue;
-      const opt = el("option", "", switcher);
+      const opt = el2("option", "", switcher);
       opt.value = card2.uid;
       opt.textContent = cardTitle(card2);
     }
@@ -62319,25 +62993,25 @@ function createReadPane({
     return catalog;
   };
   const legacyDrawer = () => {
-    const legacyBox = el("div", "pxd-read__legacy", drawerMount);
-    const filters = el("div", "pxd-read__filters", legacyBox);
-    const color = el("select", "pxd-read__color", filters);
+    const legacyBox = el2("div", "pxd-read__legacy", drawerMount);
+    const filters = el2("div", "pxd-read__filters", legacyBox);
+    const color = el2("select", "pxd-read__color", filters);
     color.setAttribute("aria-label", "Colour");
-    const all = el("option", "", color);
+    const all = el2("option", "", color);
     all.value = "";
     all.textContent = "All colours";
     for (const name of COLORS) {
-      const opt = el("option", "", color);
+      const opt = el2("option", "", color);
       opt.value = name;
       opt.textContent = name;
     }
-    const pageField = el("input", "pxd-read__pagefilt", filters);
+    const pageField = el2("input", "pxd-read__pagefilt", filters);
     pageField.setAttribute("aria-label", "Page");
     pageField.placeholder = "Page";
-    const find = el("input", "pxd-read__find", filters);
+    const find = el2("input", "pxd-read__find", filters);
     find.setAttribute("aria-label", "Snippet");
     find.placeholder = "Snippet";
-    const rowsEl = el("div", "pxd-read__list", legacyBox);
+    const rowsEl = el2("div", "pxd-read__list", legacyBox);
     rowsEl.tabIndex = 0;
     rowsEl.setAttribute("role", "listbox");
     rowsEl.setAttribute("aria-label", "Highlights");
@@ -62357,17 +63031,17 @@ function createReadPane({
       });
       rowsEl.replaceChildren?.();
       for (const row4 of shown) {
-        const node2 = el("div", "pxd-read__row", rowsEl);
+        const node2 = el2("div", "pxd-read__row", rowsEl);
         node2.setAttribute("role", "option");
         node2.setAttribute("data-uid", row4.uid);
         node2.draggable = true;
         node2.setAttribute("draggable", "true");
-        const bar2 = el("span", "pxd-read__bar", node2);
+        const bar2 = el2("span", "pxd-read__bar", node2);
         bar2.setAttribute("data-color", String(row4.color || ""));
         const source = sourceByUid.get(row4.uid);
         const model = source ? highlightModel({ string: source.string, props: source.props, children: source.children }) : null;
         if (model?.image && source) {
-          const media = el("div", "pxd-read__media", node2);
+          const media = el2("div", "pxd-read__media", node2);
           const ratioW = model.natural?.w;
           const ratioH = model.natural?.h;
           if (typeof ratioW === "number" && typeof ratioH === "number" && ratioW > 0 && ratioH > 0) {
@@ -62380,21 +63054,21 @@ function createReadPane({
             media.textContent = source.string;
           }
         } else if (row4.snippet && !String(row4.snippet).startsWith("![")) {
-          el("div", "pxd-read__snip", node2).textContent = row4.snippet;
+          el2("div", "pxd-read__snip", node2).textContent = row4.snippet;
         }
-        const meta = el("div", "pxd-read__meta", node2);
-        if (typeof row4.page === "number") el("span", "pxd-read__pg", meta).textContent = `p. ${row4.page}`;
-        if (row4.placed) el("span", "pxd-read__on", meta).textContent = "On board";
+        const meta = el2("div", "pxd-read__meta", node2);
+        if (typeof row4.page === "number") el2("span", "pxd-read__pg", meta).textContent = `p. ${row4.page}`;
+        if (row4.placed) el2("span", "pxd-read__on", meta).textContent = "On board";
         if (typeof row4.note === "string" && row4.note.trim()) {
-          const mark = el("span", "pxd-read__mark", meta);
+          const mark = el2("span", "pxd-read__mark", meta);
           mark.textContent = "Note";
           mark.setAttribute("aria-label", "Note");
         }
-        const noteBtn = el("button", "pxd-read__note pxd-chrome", meta);
+        const noteBtn = el2("button", "pxd-read__note pxd-chrome", meta);
         noteBtn.type = "button";
         noteBtn.textContent = "Note";
         noteBtn.setAttribute("aria-label", "Note");
-        const place2 = el("button", "pxd-read__place pxd-chrome", meta);
+        const place2 = el2("button", "pxd-read__place pxd-chrome", meta);
         place2.type = "button";
         place2.textContent = "Place";
       }
@@ -62953,13 +63627,13 @@ function createReadPane({
   };
   const paintChip = (data, color, text4) => {
     dropChip();
-    const chip = el("div", "pxd-read__drag");
+    const chip = el2("div", "pxd-read__drag");
     chip.style.position = "fixed";
     chip.style.left = "-1000px";
     chip.style.top = "0";
-    const bar2 = el("span", "pxd-read__bar", chip);
+    const bar2 = el2("span", "pxd-read__bar", chip);
     if (color) bar2.setAttribute("data-color", color);
-    el("span", "pxd-read__dragtext", chip).textContent = text4 || "";
+    el2("span", "pxd-read__dragtext", chip).textContent = text4 || "";
     pane.append(chip);
     try {
       data?.setDragImage?.(chip, 8, 8);
@@ -63023,8 +63697,8 @@ function createReadPane({
     if (!sel || typeof sel.removeAllRanges !== "function") return;
     const node2 = sel.anchorNode || sel.focusNode;
     if (!node2) return;
-    const el2 = node2.nodeType === 1 ? node2 : node2.parentElement;
-    if (!el2 || !live2.contains?.(el2)) return;
+    const el3 = node2.nodeType === 1 ? node2 : node2.parentElement;
+    if (!el3 || !live2.contains?.(el3)) return;
     try {
       sel.removeAllRanges();
     } catch {
@@ -64788,11 +65462,11 @@ function timersOf(timers) {
 }
 function blobFrom(canvas, timers) {
   return new Promise((resolve) => {
-    let done = false;
+    let done2 = false;
     let timer = null;
     const finish = (blob) => {
-      if (done) return;
-      done = true;
+      if (done2) return;
+      done2 = true;
       if (timer != null) {
         try {
           timers.clear(timer);
@@ -65169,8 +65843,8 @@ function foreignReader(doc, holder) {
     return false;
   }
 }
-function applyHolderStyle(el) {
-  const style = el.style;
+function applyHolderStyle(el2) {
+  const style = el2.style;
   if (!style) return;
   style.position = "absolute";
   style.left = "-10000px";
@@ -65533,8 +66207,8 @@ function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst 
         const gen = generation;
         let resolve = () => {
         };
-        const promise = new Promise((done) => {
-          resolve = done;
+        const promise = new Promise((done2) => {
+          resolve = done2;
         });
         const job = {
           uid,
@@ -65856,13 +66530,13 @@ function readProp(style, name) {
   }
   return "";
 }
-function computed(doc, el, name) {
-  if (!el) return "";
+function computed(doc, el2, name) {
+  if (!el2) return "";
   try {
     const view = doc?.defaultView;
     const fn = view && typeof view.getComputedStyle === "function" ? view.getComputedStyle.bind(view) : typeof globalThis.getComputedStyle === "function" ? globalThis.getComputedStyle : null;
     if (!fn) return "";
-    return readProp(fn(el), name);
+    return readProp(fn(el2), name);
   } catch {
     return "";
   }
@@ -66309,10 +66983,10 @@ function createPdfFlip({ doc, win: win2, lib = null, timers = null, urlOf = null
     const bw = Number(base?.width) || 0;
     const bh = Number(base?.height) || 0;
     if (bw < 1 || bh < 1) return;
-    const fit2 = Math.min(px.cssW / bw, px.cssH / bh);
+    const fit3 = Math.min(px.cssW / bw, px.cssH / bh);
     let view = null;
     try {
-      view = proxy.getViewport({ scale: fit2 * px.dpr });
+      view = proxy.getViewport({ scale: fit3 * px.dpr });
     } catch {
       return;
     }
@@ -66552,13 +67226,13 @@ function createPdfFlip({ doc, win: win2, lib = null, timers = null, urlOf = null
 }
 
 // src/view/view-dialog.js
-function focusEl5(el) {
-  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+function focusEl5(el2) {
+  if (!el2 || typeof el2.focus !== "function" || el2.isConnected === false) return;
   try {
-    el.focus({ preventScroll: true });
+    el2.focus({ preventScroll: true });
   } catch {
     try {
-      el.focus();
+      el2.focus();
     } catch {
     }
   }
@@ -66739,25 +67413,25 @@ init_offscreen();
 // src/view/editor-keys.js
 var UID5 = /^[A-Za-z0-9_-]{9,15}$/;
 function blockUidFromNode(node2) {
-  let el = node2;
-  while (el && el.nodeType === 1) {
-    const id = String(el.id || el.getAttribute?.("id") || "");
+  let el2 = node2;
+  while (el2 && el2.nodeType === 1) {
+    const id = String(el2.id || el2.getAttribute?.("id") || "");
     if (id.startsWith("block-input-")) {
       const rest = id.slice("block-input-".length);
       if (UID5.test(rest)) return rest;
     }
     if (UID5.test(id)) return id;
-    const data = el.dataset?.uid || el.getAttribute?.("data-uid") || "";
+    const data = el2.dataset?.uid || el2.getAttribute?.("data-uid") || "";
     if (UID5.test(data)) return data;
-    el = el.parentElement;
+    el2 = el2.parentElement;
   }
   return null;
 }
 var inside7 = (node2, ancestor) => {
-  let el = node2;
-  while (el && el.nodeType === 1) {
-    if (el === ancestor) return true;
-    el = el.parentElement;
+  let el2 = node2;
+  while (el2 && el2.nodeType === 1) {
+    if (el2 === ancestor) return true;
+    el2 = el2.parentElement;
   }
   return false;
 };
@@ -66832,12 +67506,12 @@ function paintSuggest(doc, svg, lines) {
 }
 
 // src/view/edges.js
-var SVG_NS2 = "http://www.w3.org/2000/svg";
+var SVG_NS3 = "http://www.w3.org/2000/svg";
 var PAIR_OFFSET = 18;
 var LABEL_HIDE_ZOOM = 0.3;
-var setClass = (el, name) => {
-  el.setAttribute("class", name);
-  if (el.classList && !el.classList.contains(name.split(" ")[0])) el.className = name;
+var setClass = (el2, name) => {
+  el2.setAttribute("class", name);
+  if (el2.classList && !el2.classList.contains(name.split(" ")[0])) el2.className = name;
 };
 function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText: blockText3, onHover } = {}) {
   const edgeEls = /* @__PURE__ */ new Map();
@@ -66857,14 +67531,14 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const measures = /* @__PURE__ */ new Map();
   const listeners3 = [];
   const mk = (tag, cls, parent) => {
-    const el = doc.createElementNS(SVG_NS2, tag);
-    setClass(el, cls);
-    parent?.append(el);
-    return el;
+    const el2 = doc.createElementNS(SVG_NS3, tag);
+    setClass(el2, cls);
+    parent?.append(el2);
+    return el2;
   };
-  const listen = (el, type, fn, opts) => {
-    el.addEventListener(type, fn, opts);
-    listeners3.push(() => el.removeEventListener(type, fn, opts));
+  const listen = (el2, type, fn, opts) => {
+    el2.addEventListener(type, fn, opts);
+    listeners3.push(() => el2.removeEventListener(type, fn, opts));
   };
   const pairOffset2 = (board2, edge) => {
     for (const other of board2.edges.values()) {
@@ -67071,8 +67745,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     const maxW = Math.max(PILL_MIN, cardScreen - PILL_PAD);
     const wantW = Math.max(PILL_MIN, full.length * PILL_CHAR + PILL_PAD);
     const w = Math.round(Math.min(wantW, maxW));
-    const fit2 = Math.max(1, Math.floor((w - PILL_PAD) / PILL_CHAR));
-    const label = full.length > fit2 ? `${full.slice(0, Math.max(1, fit2 - 1))}…` : full;
+    const fit3 = Math.max(1, Math.floor((w - PILL_PAD) / PILL_CHAR));
+    const label = full.length > fit3 ? `${full.slice(0, Math.max(1, fit3 - 1))}…` : full;
     const key = `${clamp4 || ""}|${side2 || ""}|${label}|${w}`;
     if (bend.pillKey !== key) {
       bend.pillKey = key;
@@ -67472,11 +68146,11 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     while (guideEls.length > guides.length) guideEls.pop().remove();
     while (guideEls.length < guides.length) guideEls.push(mk("line", "pxd-guide", overlaySvg));
     guides.forEach((gd, i) => {
-      const el = guideEls[i];
-      el.setAttribute("x1", String(gd.x1));
-      el.setAttribute("y1", String(gd.y1));
-      el.setAttribute("x2", String(gd.x2));
-      el.setAttribute("y2", String(gd.y2));
+      const el2 = guideEls[i];
+      el2.setAttribute("x1", String(gd.x1));
+      el2.setAttribute("y1", String(gd.y1));
+      el2.setAttribute("x2", String(gd.x2));
+      el2.setAttribute("y2", String(gd.y2));
     });
   };
   const setMarquee = (rect, kind = "select") => {
@@ -67516,11 +68190,11 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     while (ghostEls.length > rects.length) ghostEls.pop().remove();
     while (ghostEls.length < rects.length) ghostEls.push(mk("rect", "pxd-ghost", overlaySvg));
     rects.forEach((r, i) => {
-      const el = ghostEls[i];
-      el.setAttribute("x", String(r.x));
-      el.setAttribute("y", String(r.y));
-      el.setAttribute("width", String(r.w));
-      el.setAttribute("height", String(r.h));
+      const el2 = ghostEls[i];
+      el2.setAttribute("x", String(r.x));
+      el2.setAttribute("y", String(r.y));
+      el2.setAttribute("width", String(r.w));
+      el2.setAttribute("height", String(r.h));
     });
   };
   const applySearchClasses = () => {
@@ -67547,27 +68221,27 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const editLabel = (uid) => {
     const rec = edgeEls.get(uid);
     if (!rec || editingLabel) return false;
-    const el = rec.label;
-    const previous = el.textContent || "";
+    const el2 = rec.label;
+    const previous = el2.textContent || "";
     editingLabel = { uid, previous };
-    el.classList.remove("pxd-label--empty");
-    el.classList.add("pxd-label--editing");
-    el.contentEditable = "true";
-    el.setAttribute("contenteditable", "true");
-    el.spellcheck = false;
+    el2.classList.remove("pxd-label--empty");
+    el2.classList.add("pxd-label--editing");
+    el2.contentEditable = "true";
+    el2.setAttribute("contenteditable", "true");
+    el2.spellcheck = false;
     const finish = (commit) => {
       if (!editingLabel || editingLabel.uid !== uid) return;
       editingLabel = null;
-      el.contentEditable = "false";
-      el.removeAttribute("contenteditable");
-      el.classList.remove("pxd-label--editing");
-      el.removeEventListener("keydown", onKey);
-      el.removeEventListener("blur", onBlur);
-      el.removeEventListener("pointerdown", stop3);
-      const next = String(el.textContent || "").trim();
+      el2.contentEditable = "false";
+      el2.removeAttribute("contenteditable");
+      el2.classList.remove("pxd-label--editing");
+      el2.removeEventListener("keydown", onKey);
+      el2.removeEventListener("blur", onBlur);
+      el2.removeEventListener("pointerdown", stop3);
+      const next = String(el2.textContent || "").trim();
       if (commit && next !== previous) onLabelCommit?.(uid, next);
-      else el.textContent = previous;
-      if (!el.textContent && !el.classList.contains("pxd-label--why")) el.classList.add("pxd-label--empty");
+      else el2.textContent = previous;
+      if (!el2.textContent && !el2.classList.contains("pxd-label--why")) el2.classList.add("pxd-label--empty");
     };
     const onKey = (event) => {
       if (event.key === "Enter") {
@@ -67582,18 +68256,18 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     };
     const onBlur = () => finish(true);
     const stop3 = (event) => event.stopPropagation();
-    el.addEventListener("keydown", onKey);
-    el.addEventListener("blur", onBlur);
-    el.addEventListener("pointerdown", stop3);
+    el2.addEventListener("keydown", onKey);
+    el2.addEventListener("blur", onBlur);
+    el2.addEventListener("pointerdown", stop3);
     try {
-      el.focus({ preventScroll: true });
+      el2.focus({ preventScroll: true });
     } catch {
-      el.focus?.();
+      el2.focus?.();
     }
     try {
-      const d = el.ownerDocument;
+      const d = el2.ownerDocument;
       const r = d.createRange();
-      r.selectNodeContents(el);
+      r.selectNodeContents(el2);
       const s = d.getSelection();
       s.removeAllRanges();
       s.addRange(r);
@@ -67911,11 +68585,11 @@ var NOTE_KINDS = ["note", "block", "page"];
 function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {}, crumbs = [] } = {}) {
   const setting = (k) => typeof settings?.get === "function" ? settings.get(k) : settings?.[k];
   const listeners3 = [];
-  const listen = (el2, type, fn, opts) => {
-    el2.addEventListener(type, fn, opts);
-    listeners3.push(() => el2.removeEventListener(type, fn, opts));
+  const listen = (el3, type, fn, opts) => {
+    el3.addEventListener(type, fn, opts);
+    listeners3.push(() => el3.removeEventListener(type, fn, opts));
   };
-  const el = (tag, cls, parent, text4) => {
+  const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
     if (text4 !== void 0) node2.textContent = text4;
@@ -67928,7 +68602,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     return node2;
   };
   const button2 = (parent, cls, label, title, onClick) => {
-    const b = el("button", `pxd-btn ${cls}`, parent, label);
+    const b = el2("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     tip(b, tipIdForClass(cls));
     const name = String(label || "").trim() || title || "";
@@ -67950,7 +68624,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const iconButton = (parent, cls, icon, label, title, onClick) => {
     const b = button2(parent, `pxd-iconbtn ${cls}`, "", title || label, onClick);
     b.setAttribute("aria-label", label);
-    const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+    const i = el2("span", `bp3-icon bp3-icon-${icon}`, b);
     i.setAttribute("aria-hidden", "true");
     return b;
   };
@@ -67961,7 +68635,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     if (i && icon) i.className = `bp3-icon bp3-icon-${icon}`;
   };
   const swatches = (parent, onPick, { key = "color", paper = false } = {}) => {
-    const wrap = el("div", "pxd-swatches", parent);
+    const wrap = el2("div", "pxd-swatches", parent);
     const none = button2(wrap, "pxd-swatch pxd-swatch--none", "", key === "tone" ? "Default" : "No color", () => onPick(null));
     tip(none, "swatch.none");
     none.dataset[key] = "";
@@ -67985,9 +68659,9 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       listen(node2, type, (event) => event.stopPropagation());
     }
   };
-  const toolbar = el("div", "pxd-toolbar pxd-chrome", root);
+  const toolbar = el2("div", "pxd-toolbar pxd-chrome", root);
   stopAll(toolbar);
-  const crumbsEl = el("div", "pxd-toolbar__group pxd-crumbs", toolbar);
+  const crumbsEl = el2("div", "pxd-toolbar__group pxd-crumbs", toolbar);
   let overflow = [];
   let crumbMenu = null;
   const closeCrumbMenu = () => {
@@ -67997,9 +68671,9 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const openCrumbMenu = () => {
     closeCrumbMenu();
     if (!overflow.length) return;
-    crumbMenu = el("div", "pxd-crumb-menu", crumbsEl);
+    crumbMenu = el2("div", "pxd-crumb-menu", crumbsEl);
     for (const entry of overflow) {
-      const b = el("button", "pxd-btn pxd-crumb", crumbMenu, entry.title);
+      const b = el2("button", "pxd-btn pxd-crumb", crumbMenu, entry.title);
       b.type = "button";
       tip(b, "crumb");
       b.setAttribute("aria-label", entry.title);
@@ -68052,22 +68726,22 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     }
     shown.forEach((i, n2) => {
       if (n2 === 1 && overflow.length) {
-        const more = el("button", "pxd-crumb__more", crumbsEl, "…");
+        const more = el2("button", "pxd-crumb__more", crumbsEl, "…");
         more.type = "button";
         tip(more, "crumb.more");
         more.setAttribute("data-tip-extra", overflow.map((c2) => c2.title).join(" › "));
         more.setAttribute("aria-label", "Hidden boards");
         more.setAttribute("aria-haspopup", "menu");
-        el("span", "pxd-crumb__sep", crumbsEl, "›");
+        el2("span", "pxd-crumb__sep", crumbsEl, "›");
       }
       const c = items[i];
       if (i === last) {
-        const cur = el("span", "pxd-crumb pxd-crumb--current", crumbsEl, c.title);
+        const cur = el2("span", "pxd-crumb pxd-crumb--current", crumbsEl, c.title);
         tip(cur, "crumb.current");
         cur.setAttribute("aria-label", c.title);
         return;
       }
-      const b = el("button", "pxd-btn pxd-crumb", crumbsEl, c.title);
+      const b = el2("button", "pxd-btn pxd-crumb", crumbsEl, c.title);
       b.type = "button";
       tip(b, "crumb");
       b.setAttribute("aria-label", c.title);
@@ -68077,11 +68751,11 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         b.dataset.board = c.uid;
         b.setAttribute("data-board", c.uid);
       }
-      el("span", "pxd-crumb__sep", crumbsEl, "›");
+      el2("span", "pxd-crumb__sep", crumbsEl, "›");
     });
   };
   renderCrumbs(crumbs);
-  const toolGroup = el("div", "pxd-toolbar__group pxd-toolbar__tools", toolbar);
+  const toolGroup = el2("div", "pxd-toolbar__group pxd-toolbar__tools", toolbar);
   const toolButtons = /* @__PURE__ */ new Map();
   for (const [id, label, key, icon] of TOOL_LIST) {
     const b = iconButton(toolGroup, "pxd-tool", icon, label, `${label} (${key}). Double-click to lock`, () => on.setTool?.(id, false));
@@ -68091,11 +68765,11 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     b.__pxdLock = () => on.setTool?.(id, true);
     toolButtons.set(id, b);
   }
-  const group2 = el("div", "pxd-toolbar__group", toolbar);
+  const group2 = el2("div", "pxd-toolbar__group", toolbar);
   const addBtn = iconButton(group2, "pxd-toolbar__add", "plus", "Add", "Add cards from the graph", () => on.togglePanel?.());
   iconButton(group2, "pxd-toolbar__info", "info-sign", "Info", "Card info (I)", () => on.openInfo?.());
   const linksBtn = iconButton(group2, "pxd-toolbar__links", LINK_ICONS.all, LINK_LABELS.all, "Graph links (L)", () => on.openLinksMenu ? on.openLinksMenu(linksBtn) : on.cycleLinks?.());
-  const groupView = el("div", "pxd-toolbar__group", toolbar);
+  const groupView = el2("div", "pxd-toolbar__group", toolbar);
   const tableBtn = iconButton(groupView, "pxd-toolbar__table", "th", "Table", "Table view", () => on.toggleTable?.());
   tableBtn.setAttribute("aria-pressed", "false");
   const kanbanBtn = iconButton(groupView, "pxd-toolbar__kanban", "layout-auto", "Kanban", "Kanban view", () => on.toggleKanban?.());
@@ -68108,7 +68782,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const r = moreBtn.getBoundingClientRect();
     on.openMore?.({ x: r.left, y: r.bottom, w: r.width, h: r.height });
   });
-  const group3 = el("div", "pxd-toolbar__group pxd-toolbar__zoom", toolbar);
+  const group3 = el2("div", "pxd-toolbar__group pxd-toolbar__zoom", toolbar);
   iconButton(group3, "pxd-toolbar__zoom-out", "minus", "Zoom out", "Zoom out (Cmd −)", () => on.zoomOut?.());
   const zoomLabel = button2(group3, "pxd-toolbar__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
   iconButton(group3, "pxd-toolbar__zoom-in", "plus", "Zoom in", "Zoom in (Cmd =)", () => on.zoomIn?.());
@@ -68128,25 +68802,25 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     }
     const ver = String(version || "").replace(/^v/, "");
     const entry = changelogEntry(CHANGELOG_TEXT, ver);
-    logEl = el("div", "pxd-changelog pxd-chrome", root);
+    logEl = el2("div", "pxd-changelog pxd-chrome", root);
     logEl.setAttribute("role", "dialog");
     logEl.setAttribute("aria-label", "Changelog");
-    el("div", "pxd-changelog__title", logEl, ver ? `v${ver}` : "Changelog");
-    el("pre", "pxd-changelog__body", logEl, entry || "No changelog entry for this version.");
+    el2("div", "pxd-changelog__title", logEl, ver ? `v${ver}` : "Changelog");
+    el2("pre", "pxd-changelog__body", logEl, entry || "No changelog entry for this version.");
     listen(logEl, "pointerdown", (event) => event.stopPropagation());
   };
   const badge = button2(toolbar, "pxd-badge", version ? `v${version}` : "", "Show changelog", toggleLog);
-  const sync = el("span", "pxd-sync", toolbar);
+  const sync = el2("span", "pxd-sync", toolbar);
   tip(sync, "sync", "idle");
   sync.setAttribute("aria-label", "Synced");
-  const railEl = el("div", "pxd-rail pxd-chrome", root);
+  const railEl = el2("div", "pxd-rail pxd-chrome", root);
   stopAll(railEl);
   railEl.setAttribute("role", "toolbar");
   railEl.setAttribute("aria-label", "Diagram controls");
   const railBtn = (cls, icon, title, fn) => {
     const b = button2(railEl, `pxd-rail__btn ${cls}`, "", title, fn);
     b.setAttribute("aria-label", title);
-    const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+    const i = el2("span", `bp3-icon bp3-icon-${icon}`, b);
     i.setAttribute("aria-hidden", "true");
     return b;
   };
@@ -68158,37 +68832,37 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   railBtn("pxd-rail__outline", "list", "Open outline in sidebar", () => on.openOutline?.());
   const railEdit = railBtn("pxd-rail__edit", "edit", "Edit Block", () => on.editBlock?.());
   const railFull = railBtn("pxd-rail__fullscreen", "maximize", "Maximize", () => on.toggleFullscreen?.());
-  const railExtra = el("div", "pxd-rail__extra", railEl);
+  const railExtra = el2("div", "pxd-rail__extra", railEl);
   const railZoom = button2(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
   const railBadge = button2(railExtra, "pxd-badge pxd-rail__badge", version ? `v${version}` : "", "Show changelog", toggleLog);
-  const palette = el("div", "pxd-palette pxd-dock pxd-chrome", root);
-  const paletteBar = el("div", "pxd-palette__bar pxd-dock__bar", palette);
-  const dockIndicator = el("span", "pxd-dock__indicator", paletteBar);
+  const palette = el2("div", "pxd-palette pxd-dock pxd-chrome", root);
+  const paletteBar = el2("div", "pxd-palette__bar pxd-dock__bar", palette);
+  const dockIndicator = el2("span", "pxd-dock__indicator", paletteBar);
   dockIndicator.setAttribute("aria-hidden", "true");
-  el("span", "bp3-icon bp3-icon-lock pxd-dock__lock", dockIndicator);
+  el2("span", "bp3-icon bp3-icon-lock pxd-dock__lock", dockIndicator);
   const paletteButtons = /* @__PURE__ */ new Map();
   DOCK_GROUPS.forEach((ids, n2) => {
-    if (n2) el("span", "pxd-dock__sep", paletteBar);
-    const group = el("div", "pxd-dock__group", paletteBar);
+    if (n2) el2("span", "pxd-dock__sep", paletteBar);
+    const group = el2("div", "pxd-dock__group", paletteBar);
     for (const id of ids) {
       const [, label, key, icon] = PALETTE_LIST.find((entry) => entry[0] === id);
       const b = iconButton(group, "pxd-palette__btn pxd-dock__btn", icon, label, `${label} (${key})`, () => on.setTool?.(id, false));
       b.dataset.tool = id;
       b.setAttribute("data-tool", id);
       tip(b, `tool.${id}`);
-      const tag = el("span", "pxd-dock__label", b);
+      const tag = el2("span", "pxd-dock__label", b);
       tag.setAttribute("data-label", label);
       tag.setAttribute("aria-hidden", "true");
       b.__pxdLock = () => on.setTool?.(id, true);
       paletteButtons.set(id, b);
     }
   });
-  const dockOptions = el("div", "pxd-dock__options", paletteBar);
+  const dockOptions = el2("div", "pxd-dock__options", paletteBar);
   dockOptions.style.display = "none";
-  el("span", "pxd-dock__sep", dockOptions);
+  el2("span", "pxd-dock__sep", dockOptions);
   const optionSets = /* @__PURE__ */ new Map();
   const optionSet = (cls) => {
-    const node2 = el("div", `pxd-dock__optset ${cls}`, dockOptions);
+    const node2 = el2("div", `pxd-dock__optset ${cls}`, dockOptions);
     node2.style.display = "none";
     return node2;
   };
@@ -68267,7 +68941,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         closeDockMenu();
         return;
       }
-      dockMenu = el("div", "pxd-dock__more-menu", paletteBar);
+      dockMenu = el2("div", "pxd-dock__more-menu", paletteBar);
       dockMenu.setAttribute("role", "menu");
       for (const [id, b] of gone) {
         const label = b.getAttribute("aria-label") || id;
@@ -68494,14 +69168,14 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     },
     bgButton: bgBtn
   };
-  const popEl = el("div", "pxd-popover pxd-popover--bg pxd-chrome", root);
+  const popEl = el2("div", "pxd-popover pxd-popover--bg pxd-chrome", root);
   popEl.style.display = "none";
   popEl.setAttribute("role", "dialog");
   popEl.setAttribute("aria-label", "Background");
   stopAll(popEl);
-  el("div", "pxd-popover__title", popEl, "Background");
-  el("div", "pxd-popover__label", popEl, "Pattern");
-  const patternSeg = el("div", "pxd-seg pxd-bg__pattern", popEl);
+  el2("div", "pxd-popover__title", popEl, "Background");
+  el2("div", "pxd-popover__label", popEl, "Pattern");
+  const patternSeg = el2("div", "pxd-seg pxd-bg__pattern", popEl);
   const patternButtons = /* @__PURE__ */ new Map();
   for (const pattern of BOARD_PATTERNS) {
     const b = button2(patternSeg, "pxd-seg__btn", PATTERN_LABELS[pattern] || pattern, PATTERN_LABELS[pattern] || pattern, () => on.setBackground?.({ bg: pattern }));
@@ -68510,10 +69184,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     tip(b, `bg.pattern.${pattern}`);
     patternButtons.set(pattern, b);
   }
-  el("div", "pxd-popover__label", popEl, "Tone");
+  el2("div", "pxd-popover__label", popEl, "Tone");
   const toneWrap = swatches(popEl, (tone) => on.setBackground?.({ bgColor: tone }), { key: "tone", paper: true });
   toneWrap.classList.add("pxd-bg__tones");
-  const popFoot = el("div", "pxd-popover__foot", popEl);
+  const popFoot = el2("div", "pxd-popover__foot", popEl);
   button2(popFoot, "pxd-bg__default", "Use as default", "Use this pattern and tone for every board", () => on.useBackgroundAsDefault?.());
   const resetBtn = button2(popFoot, "pxd-bg__reset", "Reset", "Clear this board's override", () => on.setBackground?.({ bg: null, bgColor: null }));
   let bgOffs = [];
@@ -68569,7 +69243,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     },
     isVisible: () => backEl.style.display !== "none"
   };
-  const ctx = el("div", "pxd-ctx pxd-chrome", root);
+  const ctx = el2("div", "pxd-ctx pxd-chrome", root);
   ctx.style.display = "none";
   stopAll(ctx);
   let ctxAnchor = null;
@@ -68586,7 +69260,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const wasOpen = btn2.getAttribute("aria-expanded") === "true";
     closeEdgePops();
     if (wasOpen) return;
-    const pop = el("div", "pxd-ctx__pop", ctx);
+    const pop = el2("div", "pxd-ctx__pop", ctx);
     fill(pop);
     btn2.setAttribute("aria-expanded", "true");
     btn2.classList.add("pxd-btn--active");
@@ -68614,15 +69288,15 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     on.chromeRebuilt?.();
     ctx.dataset.kind = kind;
     ctx.setAttribute("data-kind", kind);
-    const row4 = el("div", "pxd-ctx__row", ctx);
+    const row4 = el2("div", "pxd-ctx__row", ctx);
     const btn2 = (cls, icon, label, title, fn) => iconButton(row4, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
     const seg = (cls, options, current3, fn, parent = row4) => {
-      const wrap = el("div", `pxd-seg ${cls}`, parent);
+      const wrap = el2("div", `pxd-seg ${cls}`, parent);
       for (const [value, label, title, icon] of options) {
         const b = button2(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}${icon ? " pxd-iconbtn" : ""}`, icon ? "" : label, title || label, () => fn(value));
         if (icon) {
           b.setAttribute("aria-label", title || label);
-          const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+          const i = el2("span", `bp3-icon bp3-icon-${icon}`, b);
           i.setAttribute("aria-hidden", "true");
         }
         b.dataset.value = String(value);
@@ -68643,7 +69317,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       case "card":
       case "cards": {
         if (kind === "card") {
-          const picker = el("div", "pxd-ctx__picker", ctx);
+          const picker = el2("div", "pxd-ctx__picker", ctx);
           picker.style.display = "none";
           let pickerBuilt = false;
           const colorBtn = iconBtn("pxd-ctx__color", "tint", "Color", "Color", () => {
@@ -68685,7 +69359,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           );
           const n2 = Number(model?.refs) || 0;
           const refs = iconBtn("pxd-ctx__refs", "link", "References", `${n2} ${n2 === 1 ? "reference" : "references"}`, () => on.showRefs?.());
-          el("span", "pxd-ctx__refs-count", refs, String(n2));
+          el2("span", "pxd-ctx__refs-count", refs, String(n2));
         }
         swatches(row4, (c) => on.setColor?.(c));
         if (kind === "card") {
@@ -68783,7 +69457,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         colorBtn.setAttribute("aria-expanded", "false");
         tip(colorBtn, "ctx.edge-color");
         const named2 = typeof model?.color === "string" && PALETTE.includes(model.color);
-        el("span", `pxd-ctx__dot${named2 ? ` pxd-c-${model.color}` : " pxd-ctx__dot--none"}`, colorBtn);
+        el2("span", `pxd-ctx__dot${named2 ? ` pxd-c-${model.color}` : " pxd-ctx__dot--none"}`, colorBtn);
         btn2("pxd-ctx__label", "tag", "Label", "Edit the label", () => on.label?.());
         btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         popBtn("pxd-ctx__edge-more", "more", "More", "More arrow actions", (pop) => {
@@ -68792,9 +69466,9 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
               closeEdgePops();
               fn();
             });
-            const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+            const i = el2("span", `bp3-icon bp3-icon-${icon}`, b);
             i.setAttribute("aria-hidden", "true");
-            el("span", "pxd-ctx__more-label", b, label);
+            el2("span", "pxd-ctx__more-label", b, label);
           };
           item("pxd-ctx__flip", "swap-horizontal", "Flip", "Swap endpoints", () => on.flip?.());
           if (model?.fromBlock || model?.toBlock) item("pxd-ctx__unblock", "document", "Page", "Connect to the page instead of a block", () => on.unblock?.());
@@ -68804,7 +69478,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         break;
       }
       case "link": {
-        const list = el("div", "pxd-ctx__sources", row4);
+        const list = el2("div", "pxd-ctx__sources", row4);
         for (const s of model?.sources || []) {
           const b = button2(list, "pxd-ctx__source", (s.string || s.uid || "").slice(0, 60), "Open in the sidebar", () => on.openSource?.(s.uid));
           b.dataset.uid = s.uid;
@@ -68834,7 +69508,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   };
   const openCtxMore = (hidden) => {
     closeCtxMore();
-    const menu = el("div", "pxd-ctx__more-menu", ctx);
+    const menu = el2("div", "pxd-ctx__more-menu", ctx);
     for (const node2 of hidden) {
       const buttons = node2.tagName === "BUTTON" ? [node2] : [...node2.querySelectorAll("button")];
       for (const src of buttons) {
@@ -69010,7 +69684,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     reposition: positionCtx,
     isOpen: () => ctx.style.display !== "none"
   };
-  const toast = el("div", "pxd-toast pxd-chrome", root);
+  const toast = el2("div", "pxd-toast pxd-chrome", root);
   toast.style.display = "none";
   stopAll(toast);
   let toastTimer = null;
@@ -69018,7 +69692,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     el: toast,
     show({ message, action } = {}) {
       toast.replaceChildren();
-      el("span", "pxd-toast__text", toast, message || "");
+      el2("span", "pxd-toast__text", toast, message || "");
       if (action?.label) {
         button2(toast, "pxd-toast__action", action.label, action.label, () => {
           action.run?.();
@@ -69035,15 +69709,15 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       toastTimer = null;
     }
   };
-  const search = el("div", "pxd-search pxd-chrome", root);
+  const search = el2("div", "pxd-search pxd-chrome", root);
   search.style.display = "none";
   stopAll(search);
-  const searchInput = el("input", "pxd-input pxd-search__input", search);
+  const searchInput = el2("input", "pxd-input pxd-search__input", search);
   searchInput.type = "text";
   searchInput.setAttribute("aria-label", "Search this board");
   searchInput.placeholder = "Search this board…";
   searchInput.setAttribute("placeholder", "Search this board…");
-  const searchCount = el("span", "pxd-search__count", search, "");
+  const searchCount = el2("span", "pxd-search__count", search, "");
   listen(searchInput, "input", () => {
     const n2 = on.searchFilter?.(searchInput.value || "") ?? 0;
     searchCount.textContent = searchInput.value ? `${n2}` : "";
@@ -69078,10 +69752,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     },
     isOpen: () => search.style.display !== "none"
   };
-  const minimap = el("div", "pxd-minimap pxd-chrome", root);
+  const minimap = el2("div", "pxd-minimap pxd-chrome", root);
   tip(minimap, "minimap");
   stopAll(minimap);
-  const canvas = el("canvas", "pxd-minimap__canvas", minimap);
+  const canvas = el2("canvas", "pxd-minimap__canvas", minimap);
   canvas.width = MINIMAP_W2;
   canvas.height = MINIMAP_H2;
   let mmDirty = true;
@@ -69195,7 +69869,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
 
 // src/view/region-hover-geom.js
 init_geometry();
-function finite5(n2) {
+function finite6(n2) {
   return typeof n2 === "number" && Number.isFinite(n2);
 }
 function fracParts2(frac) {
@@ -69207,7 +69881,7 @@ function viewParts(v) {
   return v || {};
 }
 function previewImageBox(w, h, max = 480) {
-  if (![w, h, max].every((n2) => finite5(n2) && n2 > 0)) return null;
+  if (![w, h, max].every((n2) => finite6(n2) && n2 > 0)) return null;
   const scale = Math.min(1, max / w, max / h);
   return { w: w * scale, h: h * scale, scale };
 }
@@ -69219,7 +69893,7 @@ function holeRect(box2, frac) {
   const ry = Number(parts.ry);
   const rw = Number(parts.rw);
   const rh = Number(parts.rh);
-  if (![bw, bh, rx, ry, rw, rh].every(finite5)) return null;
+  if (![bw, bh, rx, ry, rw, rh].every(finite6)) return null;
   if (!(bw > 0) || !(bh > 0)) return null;
   return { x: rx * bw, y: ry * bh, w: rw * bw, h: rh * bh };
 }
@@ -69238,7 +69912,7 @@ function regionCamera({ imageRect, frac, size } = {}) {
   const ih = Number(imageRect?.h ?? imageRect?.height);
   const vw = Number(size?.width);
   const vh = Number(size?.height);
-  if (![rx, ry, rw, rh, ix, iy, iw, ih, vw, vh].every(finite5)) return null;
+  if (![rx, ry, rw, rh, ix, iy, iw, ih, vw, vh].every(finite6)) return null;
   if (!(iw > 0) || !(ih > 0) || !(rw > 0) || !(rh > 0) || !(vw > 0) || !(vh > 0)) return null;
   const worldW = rw * iw;
   const worldH = rh * ih;
@@ -69255,7 +69929,7 @@ function setCameraFromView(v, size) {
   const h = Number(view.h);
   const vw = Number(size?.width);
   const vh = Number(size?.height);
-  if (![x, y, w, h, vw, vh].every(finite5)) return null;
+  if (![x, y, w, h, vw, vh].every(finite6)) return null;
   if (!(w > 0) || !(h > 0) || !(vw > 0) || !(vh > 0)) return null;
   return viewportFromWorldRect({ x, y, w, h }, { width: vw, height: vh });
 }
@@ -69761,9 +70435,9 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
   box2.append(grid);
   const offs = [];
   const paintOffs = [];
-  const listen = (el, type, fn, bucket = offs) => {
-    el.addEventListener(type, fn);
-    bucket.push(() => el.removeEventListener(type, fn));
+  const listen = (el2, type, fn, bucket = offs) => {
+    el2.addEventListener(type, fn);
+    bucket.push(() => el2.removeEventListener(type, fn));
   };
   const stop3 = (event) => event.stopPropagation();
   for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu"]) {
@@ -70140,11 +70814,11 @@ function groupByStatus(items, palette) {
     count: 0
   }));
   const none = { name: NO_STATUS, key: "", glyph: "diamond", cards: [], count: 0 };
-  const done = { name: DONE_COLUMN, key: "done", glyph: "", cards: [], count: 0 };
+  const done2 = { name: DONE_COLUMN, key: "done", glyph: "", cards: [], count: 0 };
   const byName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
   for (const item of items || []) {
     if (isDoneItem(item)) {
-      done.cards.push(item);
+      done2.cards.push(item);
       continue;
     }
     const name = taskStatusOf(item?.string ?? "", palette);
@@ -70153,8 +70827,8 @@ function groupByStatus(items, palette) {
   }
   for (const column of columns) column.count = column.cards.length;
   none.count = none.cards.length;
-  done.count = done.cards.length;
-  return [...columns, none, done];
+  done2.count = done2.cards.length;
+  return [...columns, none, done2];
 }
 
 // src/view/kanban-view.js
@@ -70198,9 +70872,9 @@ function mountKanban({
   box2.append(columnsEl);
   const offs = [];
   const paintOffs = [];
-  const listen = (el, type, fn, bucket = offs, capture = false) => {
-    el?.addEventListener?.(type, fn, capture);
-    bucket.push(() => el?.removeEventListener?.(type, fn, capture));
+  const listen = (el2, type, fn, bucket = offs, capture = false) => {
+    el2?.addEventListener?.(type, fn, capture);
+    bucket.push(() => el2?.removeEventListener?.(type, fn, capture));
   };
   const stop3 = (event) => event.stopPropagation();
   for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu"]) {
@@ -70533,11 +71207,11 @@ var DASH_LABELS = [["solid", "Solid"], ["dashed", "Dashed"], ["animated", "Anima
 var ROUTE_LABELS = [["straight", "Straight"], ["elbow", "Smooth step"], ["curve", "Curve"]];
 function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } = {}) {
   const listeners3 = [];
-  const listen = (el2, type, fn) => {
-    el2.addEventListener(type, fn);
-    listeners3.push(() => el2.removeEventListener(type, fn));
+  const listen = (el3, type, fn) => {
+    el3.addEventListener(type, fn);
+    listeners3.push(() => el3.removeEventListener(type, fn));
   };
-  const el = (tag, cls, parent, text4) => {
+  const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
     if (text4 !== void 0) node2.textContent = text4;
@@ -70545,7 +71219,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     return node2;
   };
   const button2 = (parent, cls, label, title, fn, tipId) => {
-    const b = el("button", `pxd-btn ${cls}`, parent, label);
+    const b = el2("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     if (tipId) b.setAttribute("data-tip", tipId);
     else if (title) b.title = title;
@@ -70559,7 +71233,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     return b;
   };
   let collapsed = storage?.getItem?.(STORAGE_KEY) === "1";
-  const panel = el("div", "pxd-props pxd-chrome", root);
+  const panel = el2("div", "pxd-props pxd-chrome", root);
   panel.setAttribute("role", "region");
   panel.setAttribute("aria-label", "Properties");
   for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu"]) {
@@ -70573,7 +71247,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     place2();
   }, "props.toggle");
   head.setAttribute("aria-expanded", collapsed ? "false" : "true");
-  const body = el("div", "pxd-props__body", panel);
+  const body = el2("div", "pxd-props__body", panel);
   const paintCollapsed = () => {
     panel.classList.toggle("pxd-props--collapsed", collapsed);
     body.style.display = collapsed ? "none" : "";
@@ -70585,7 +71259,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     panel.style.top = `${8 + (h ? h + 6 : 44)}px`;
   };
   const choice = (parent, options, current3, fn, tip) => {
-    const wrap = el("div", "pxd-seg pxd-props__choices", parent);
+    const wrap = el2("div", "pxd-seg pxd-props__choices", parent);
     for (const [value, label] of options) {
       const b = button2(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value), `props.choice.${tip}`);
       b.setAttribute("data-value", value);
@@ -70594,8 +71268,8 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
   };
   const stepper = (parent, { value, fallback, min, max, aria, onCommit }) => {
     const shown = Number.isInteger(value) ? value : fallback;
-    const row4 = el("div", "pxd-props__step", parent);
-    const input = el("input", "pxd-input pxd-props__num", row4);
+    const row4 = el2("div", "pxd-props__step", parent);
+    const input = el2("input", "pxd-input pxd-props__num", row4);
     input.type = "number";
     input.min = String(min);
     input.max = String(max);
@@ -70623,8 +71297,8 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     });
   };
   const colorField = (parent, label, value, fn) => {
-    const row4 = el("div", "pxd-props__field", parent);
-    el("span", "pxd-props__label", row4, label);
+    const row4 = el2("div", "pxd-props__field", parent);
+    el2("span", "pxd-props__label", row4, label);
     const chip = button2(row4, "pxd-props__chip", "", label, () => {
       const open = row4.querySelector(".pxd-picker");
       if (open) {
@@ -70635,15 +71309,15 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       row4.append(picker);
     }, "props.chip");
     chip.setAttribute("aria-label", label);
-    const sw = el("span", "pxd-props__chip-swatch", chip);
+    const sw = el2("span", "pxd-props__chip-swatch", chip);
     const painted = value === "paper" ? "#eeeded" : cssColor(value, "fill") || "";
     if (painted) sw.style.background = painted;
     else sw.classList.add("pxd-props__chip-swatch--empty");
   };
   const group = (title, key) => {
-    const g = el("section", "pxd-props__group", body);
+    const g = el2("section", "pxd-props__group", body);
     g.setAttribute("data-group", key);
-    const h = el("h3", "pxd-props__heading", g, title);
+    const h = el2("h3", "pxd-props__heading", g, title);
     h.setAttribute("data-tip", `props.group.${key}`);
     return g;
   };
@@ -70654,7 +71328,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     const sample = cards[0] || text4[0];
     const fallback = sample?.type === "text" ? 24 : CARD_FONT_DEFAULT;
     const same2 = items.every((it) => (it.fontSize ?? fallback) === (sample.fontSize ?? fallback));
-    el("span", "pxd-props__label", g, "Text size");
+    el2("span", "pxd-props__label", g, "Text size");
     stepper(g, {
       value: same2 ? sample.fontSize : void 0,
       fallback,
@@ -70664,7 +71338,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       onCommit: (v) => on.setItemStyle?.({ fontSize: v })
     });
     colorField(g, "Text color", same2 ? sample.textColor : void 0, (c) => on.setItemStyle?.({ textColor: c }));
-    el("span", "pxd-props__label", g, "Align");
+    el2("span", "pxd-props__label", g, "Align");
     const align = same2 ? sample.align || "" : "";
     choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }), "align");
     colorField(g, "Fill", same2 ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
@@ -70673,13 +71347,13 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
   };
   const edgeGroup = (edge) => {
     const g = group("Connection", "edge");
-    el("span", "pxd-props__label", g, "Direction");
+    el2("span", "pxd-props__label", g, "Direction");
     choice(g, DIR_LABELS, DIRS.includes(edge.dir) ? edge.dir : "one", (v) => on.setEdge?.({ dir: v }), "dir");
-    el("span", "pxd-props__label", g, "Decoration");
+    el2("span", "pxd-props__label", g, "Decoration");
     choice(g, DASH_LABELS, edge.dash || "solid", (v) => on.setEdge?.({ dash: v }), "dash");
-    el("span", "pxd-props__label", g, "Type");
+    el2("span", "pxd-props__label", g, "Type");
     choice(g, ROUTE_LABELS, ROUTES.includes(edge.route) ? edge.route : "curve", (v) => on.setEdge?.({ route: v }), "route");
-    el("span", "pxd-props__label", g, "Weight");
+    el2("span", "pxd-props__label", g, "Weight");
     choice(g, [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], [1, 2, 3, 4].includes(edge.weight) ? edge.weight : 1, (v) => on.setEdge?.({ weight: v }), "weight");
     colorField(g, "Color", edge.color, (c) => on.setEdge?.({ color: c }));
     button2(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.(), "props.reset");
@@ -70692,7 +71366,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       const values = items.map((it) => it[field] ?? defs[field] ?? fallback);
       return values.every((v) => v === values[0]) ? values[0] : void 0;
     };
-    el("span", "pxd-props__label", g, "Title size");
+    el2("span", "pxd-props__label", g, "Title size");
     stepper(g, {
       value: sample.titleSize ?? defs.titleSize,
       fallback: SECTION_TITLE_DEFAULT,
@@ -70722,7 +71396,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     const g = group("Diagram", "diagram");
     const bg = board2?.plexus || {};
     colorField(g, "Background", bg.bgColor, (c) => on.setBackground?.({ bgColor: c }));
-    el("span", "pxd-props__label", g, "Texture");
+    el2("span", "pxd-props__label", g, "Texture");
     const pattern = BOARD_PATTERNS.includes(bg.bg) ? bg.bg : "";
     choice(g, [["", "Default"], ...BOARD_PATTERNS.map((p) => [p, PATTERN_LABELS2[p] || p])], pattern, (v) => on.setBackground?.({ bg: v || null }), "texture");
     button2(g, "pxd-props__reset", "Reset default", "Clear this board's background", () => on.setBackground?.({ bg: null, bgColor: null }), "props.reset");
@@ -70868,7 +71542,7 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
   let disposed = false;
   let reading = null;
   let loaded = false;
-  const el = (tag, cls, parent, text4) => {
+  const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     if (cls) node2.className = cls;
     if (text4 != null) node2.textContent = text4;
@@ -70882,9 +71556,9 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
   const paintList = () => {
     if (!panel) return;
     panel.replaceChildren?.();
-    const head = el("div", "pxd-inbox__head", panel);
-    el("span", "pxd-inbox__title", head, "Daily notes that mention this board");
-    const all = el("button", "pxd-inbox__all", head, "Place all");
+    const head = el2("div", "pxd-inbox__head", panel);
+    el2("span", "pxd-inbox__title", head, "Daily notes that mention this board");
+    const all = el2("button", "pxd-inbox__all", head, "Place all");
     all.type = "button";
     all.disabled = rows.length === 0;
     for (const type of ["pointerdown", "mousedown", "dblclick"]) all.addEventListener(type, swallow);
@@ -70898,18 +71572,18 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
       sync();
     });
     if (!rows.length) {
-      el("div", "pxd-inbox__empty", panel, loaded ? "Nothing waiting." : "Reading daily notes…");
+      el2("div", "pxd-inbox__empty", panel, loaded ? "Nothing waiting." : "Reading daily notes…");
       return;
     }
-    const list = el("div", "pxd-inbox__list", panel);
+    const list = el2("div", "pxd-inbox__list", panel);
     for (const row4 of rows) {
-      const node2 = el("div", "pxd-inbox__row", list);
+      const node2 = el2("div", "pxd-inbox__row", list);
       node2.draggable = true;
       node2.setAttribute("draggable", "true");
       node2.dataset.uid = row4.uid;
-      el("span", "pxd-inbox__text", node2, row4.text);
-      el("span", "pxd-inbox__page", node2, row4.page);
-      const go = el("button", "pxd-inbox__place", node2, "Place");
+      el2("span", "pxd-inbox__text", node2, row4.text);
+      el2("span", "pxd-inbox__page", node2, row4.page);
+      const go = el2("button", "pxd-inbox__place", node2, "Place");
       go.type = "button";
       for (const type of ["pointerdown", "mousedown", "dblclick"]) node2.addEventListener(type, swallow);
       go.addEventListener("click", (event) => {
@@ -70936,7 +71610,7 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
       return;
     }
     if (!btn2) {
-      btn2 = el("button", "pxd-inbox pxd-chrome", root);
+      btn2 = el2("button", "pxd-inbox pxd-chrome", root);
       btn2.type = "button";
       for (const type of ["pointerdown", "mousedown", "dblclick"]) btn2.addEventListener(type, swallow);
       btn2.addEventListener("click", (event) => {
@@ -70980,7 +71654,7 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
     if (disposed) return;
     open = !open;
     if (open) {
-      panel = el("div", "pxd-inbox__panel pxd-chrome", root);
+      panel = el2("div", "pxd-inbox__panel pxd-chrome", root);
       for (const type of ["pointerdown", "mousedown", "dblclick", "wheel"]) panel.addEventListener(type, swallow);
       refresh();
     } else {
@@ -73322,8 +73996,8 @@ async function readBody(res, onBytes, signal) {
   let size = 0;
   for (; ; ) {
     throwIfAborted2(signal);
-    const { done, value } = await reader.read();
-    if (done) break;
+    const { done: done2, value } = await reader.read();
+    if (done2) break;
     parts.push(value);
     size += value.byteLength;
     onBytes(size);
@@ -73521,13 +74195,13 @@ function createOcrWeb({
   async function prefetch({ signal = null, onProgress = null } = {}) {
     const list = assetList();
     const total = list.reduce((n2, a) => n2 + a.spec.bytes, 0);
-    let done = 0;
+    let done2 = 0;
     for (const { spec, model, urls: urls2 } of list) {
-      const onBytes = (n2) => onProgress?.(done + Math.min(spec.bytes, n2), total);
+      const onBytes = (n2) => onProgress?.(done2 + Math.min(spec.bytes, n2), total);
       if (model) await loadModel(spec, signal, onBytes);
       else await loadVerified(urls2[0], spec, signal, onBytes);
-      done += spec.bytes;
-      onProgress?.(done, total);
+      done2 += spec.bytes;
+      onProgress?.(done2, total);
     }
     try {
       await lexicon({ signal });
@@ -73660,11 +74334,11 @@ function createOcrWeb({
           }
           reject(abortError());
         };
-        const done = (fn) => (value) => {
+        const done2 = (fn) => (value) => {
           signal2?.removeEventListener?.("abort", onAbort);
           fn(value);
         };
-        pending.set(id, { resolve: done(resolve), reject: done(reject) });
+        pending.set(id, { resolve: done2(resolve), reject: done2(reject) });
         signal2?.addEventListener?.("abort", onAbort, { once: true });
         try {
           worker.postMessage({ ...msg, id }, transfers || []);
@@ -73872,7 +74546,7 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
     if (downloading) return downloading.done;
     const ctl = new AbortController();
     progress = 0;
-    const done = (async () => {
+    const done2 = (async () => {
       try {
         await web().prefetch({ signal: ctl.signal, onProgress: (got, total) => {
           progress = total ? got / total : 0;
@@ -73886,8 +74560,8 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
         downloading = null;
       }
     })();
-    downloading = { ctl, done };
-    return done;
+    downloading = { ctl, done: done2 };
+    return done2;
   }
   function cancel() {
     try {
@@ -74157,7 +74831,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
   const entries = /* @__PURE__ */ new Map();
   const levels = [];
   let disposed = false;
-  const el = (tag, cls, parent, text4) => {
+  const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
     if (text4 !== void 0) node2.textContent = text4;
@@ -74232,7 +74906,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     const level = { container: parent, rows: [], active: null, depth };
     for (const item of items) {
       if (item.separator) {
-        el("div", "pxd-menu__sep", parent);
+        el2("div", "pxd-menu__sep", parent);
         continue;
       }
       let cls = "pxd-menu__item";
@@ -74240,7 +74914,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       if (item.danger) cls += " pxd-menu__item--danger";
       if (item.checked) cls += " pxd-menu__item--checked";
       if (item.children?.length) cls += " pxd-menu__item--parent";
-      const row4 = el("div", cls, parent);
+      const row4 = el2("div", cls, parent);
       row4.setAttribute("role", item.checked ? "menuitemradio" : "menuitem");
       row4.setAttribute("aria-label", item.label || item.id);
       row4.tabIndex = item.disabled ? -1 : 0;
@@ -74248,14 +74922,14 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       if (item.disabled) row4.setAttribute("aria-disabled", "true");
       row4.setAttribute("data-id", item.id);
       row4.dataset.id = item.id;
-      el("span", "pxd-menu__label", row4, item.label);
-      if (item.hint) el("span", "pxd-menu__hint", row4, item.hint);
+      el2("span", "pxd-menu__label", row4, item.label);
+      if (item.hint) el2("span", "pxd-menu__hint", row4, item.hint);
       const entry = { item, level: depth, sub: null };
       entries.set(row4, entry);
       level.rows.push(row4);
       if (item.children?.length) {
-        el("span", "pxd-menu__arrow", row4, "›");
-        const container = el("div", "pxd-menu__sub", row4);
+        el2("span", "pxd-menu__arrow", row4, "›");
+        const container = el2("div", "pxd-menu__sub", row4);
         container.style.display = "none";
         container.setAttribute("role", "menu");
         entry.sub = build(item.children, container, depth + 1);
@@ -74351,7 +75025,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       close();
       const list = Array.isArray(items) ? items : [];
       if (!list.some((item) => !item.separator)) return false;
-      menuEl = el("div", "pxd-menu pxd-chrome", root);
+      menuEl = el2("div", "pxd-menu pxd-chrome", root);
       api2.el = menuEl;
       menuEl.setAttribute("role", "menu");
       menuEl.style.left = "0px";
@@ -74446,13 +75120,13 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
 }
 
 // src/view/shortcut-sheet.js
-function focusEl6(el) {
-  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+function focusEl6(el2) {
+  if (!el2 || typeof el2.focus !== "function" || el2.isConnected === false) return;
   try {
-    el.focus({ preventScroll: true });
+    el2.focus({ preventScroll: true });
   } catch {
     try {
-      el.focus();
+      el2.focus();
     } catch {
     }
   }
@@ -74594,15 +75268,15 @@ function createTypeAhead({ doc, isTarget, later, armMs = ARM_MS } = {}) {
       } catch {
       }
     }
-    let done = false;
+    let done2 = false;
     if (doc?.activeElement === target && typeof doc.execCommand === "function") {
       try {
-        done = doc.execCommand("insertText", false, text4) === true;
+        done2 = doc.execCommand("insertText", false, text4) === true;
       } catch {
-        done = false;
+        done2 = false;
       }
     }
-    if (done) return true;
+    if (done2) return true;
     if (typeof target.setRangeText !== "function") return false;
     const value = String(target.value ?? "");
     const start = Number.isFinite(target.selectionStart) ? target.selectionStart : value.length;
@@ -75202,7 +75876,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
   let cancelPending = null;
   let disposed = false;
   const offs = [];
-  const el = (tag, cls, parent, text4) => {
+  const el2 = (tag, cls, parent, text4) => {
     const n2 = doc.createElement(tag);
     n2.className = cls;
     if (text4 !== void 0) n2.textContent = text4;
@@ -75210,7 +75884,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     return n2;
   };
   const renderRoot = (parent, string, cls) => {
-    const n2 = el("div", cls, parent);
+    const n2 = el2("div", cls, parent);
     roots.push(n2);
     if (!string) return n2;
     try {
@@ -75225,10 +75899,10 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     for (const b of blocks || []) {
       if (budget.n >= LIMIT2 * 4) return;
       budget.n += 1;
-      const row4 = el("div", "pxd-ql__block", parent);
+      const row4 = el2("div", "pxd-ql__block", parent);
       renderRoot(row4, childString5(b), "pxd-rs pxd-ql__text");
       const kids = childKids2(b);
-      if (kids.length && depth < DEPTH) renderBlocks(el("div", "pxd-ql__children", row4), kids, depth + 1, budget);
+      if (kids.length && depth < DEPTH) renderBlocks(el2("div", "pxd-ql__children", row4), kids, depth + 1, budget);
     }
   };
   const unmountRoots = () => {
@@ -75277,16 +75951,16 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     const lib = engine();
     if (!lib || !firstPageAllowed(url)) return false;
     node2.classList.add("pxd-quicklook--pdf");
-    const stage = el("div", "pxd-ql__pdf", body);
-    const canvas = el("canvas", "pxd-ql__canvas", stage);
-    const pill = el("div", "pxd-ql__pill", node2);
+    const stage = el2("div", "pxd-ql__pdf", body);
+    const canvas = el2("canvas", "pxd-ql__canvas", stage);
+    const pill = el2("div", "pxd-ql__pill", node2);
     pill.setAttribute("role", "toolbar");
     pill.setAttribute("aria-label", "Pages");
-    const prev = el("button", "pxd-ql__step", pill, "‹");
+    const prev = el2("button", "pxd-ql__step", pill, "‹");
     prev.type = "button";
     prev.setAttribute("aria-label", "Previous page");
-    const pages = el("span", "pxd-ql__pages", pill, "");
-    const next = el("button", "pxd-ql__step", pill, "›");
+    const pages = el2("span", "pxd-ql__pages", pill, "");
+    const next = el2("button", "pxd-ql__step", pill, "›");
     next.type = "button";
     next.setAttribute("aria-label", "Next page");
     let pdf = null;
@@ -75453,11 +76127,11 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
       } catch {
         count = 0;
       }
-      el("div", "pxd-ql__summary", body, `${count} ${count === 1 ? "item" : "items"}`);
+      el2("div", "pxd-ql__summary", body, `${count} ${count === 1 ? "item" : "items"}`);
     } else if (item.kind === "page") {
       settle2(host?.pagePreview?.(item.title, DEPTH, LIMIT2), (p) => {
         if (!p?.exists) {
-          el("div", "pxd-ql__placeholder", body, "Empty page");
+          el2("div", "pxd-ql__placeholder", body, "Empty page");
           return;
         }
         blocksInto(p.blocks);
@@ -75467,7 +76141,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
       const s = host?.blockString?.(ref);
       if (typeof s === "string" && s.trim()) renderRoot(body, s, "pxd-rs pxd-ql__string");
       settle2(host?.pullTree?.(ref, DEPTH, LIMIT2), (t) => {
-        if (!(typeof s === "string" && s.trim()) && !(t || []).length) el("div", "pxd-ql__placeholder", body, "Empty card");
+        if (!(typeof s === "string" && s.trim()) && !(t || []).length) el2("div", "pxd-ql__placeholder", body, "Empty card");
         blocksInto(t);
       });
     } else {
@@ -75475,7 +76149,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
       const kids = item.content?.length ? item.content : null;
       if (kids) blocksInto(kids);
       else settle2(host?.pullTree?.(item.uid, DEPTH, LIMIT2), (t) => {
-        if (!item.string?.trim() && !(t || []).length) el("div", "pxd-ql__placeholder", body, "Empty card");
+        if (!item.string?.trim() && !(t || []).length) el2("div", "pxd-ql__placeholder", body, "Empty card");
         blocksInto(t);
       });
     }
@@ -75484,26 +76158,26 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     if (disposed || !item) return false;
     close();
     current3 = item;
-    node2 = el("div", "pxd-quicklook pxd-chrome", root);
+    node2 = el2("div", "pxd-quicklook pxd-chrome", root);
     node2.setAttribute("role", "dialog");
     node2.setAttribute("aria-label", "Quick Look");
     for (const type of STOP_EVENTS2) listen(node2, type, (event) => event.stopPropagation());
-    const head = el("div", "pxd-ql__head", node2);
+    const head = el2("div", "pxd-ql__head", node2);
     let shown = "";
     try {
       shown = item.kind === "pdf" ? on.titleOf?.(item) || "" : "";
     } catch {
       shown = "";
     }
-    el("div", "pxd-ql__title", head, item.kind === "board" ? item.title : item.kind === "pdf" ? quickLookTitle(item, shown) : item.title || item.string || "");
+    el2("div", "pxd-ql__title", head, item.kind === "board" ? item.title : item.kind === "pdf" ? quickLookTitle(item, shown) : item.title || item.string || "");
     let refs = null;
     try {
       refs = on.getRefCount?.(item);
     } catch {
       refs = null;
     }
-    if (typeof refs === "number" && refs > 0) el("span", "pxd-ql__refs", head, String(refs));
-    const body = el("div", "pxd-ql__body", node2);
+    if (typeof refs === "number" && refs > 0) el2("span", "pxd-ql__refs", head, String(refs));
+    const body = el2("div", "pxd-ql__body", node2);
     fill(body, item);
     listen(doc, "pointerdown", (event) => {
       if (node2 && !node2.contains(event.target)) close();
@@ -75568,7 +76242,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
   let drawing = false;
   const strokes = [];
   const offs = [];
-  const el = (tag, cls, parent, text4) => {
+  const el2 = (tag, cls, parent, text4) => {
     const n2 = doc.createElement(tag);
     n2.className = cls;
     if (text4 !== void 0) n2.textContent = text4;
@@ -75576,7 +76250,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     return n2;
   };
   const button2 = (parent, cls, label, fn) => {
-    const b = el("button", `pxd-btn ${cls}`, parent, label);
+    const b = el2("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     if (label) b.setAttribute("aria-label", label);
     const click = (event) => {
@@ -75678,10 +76352,10 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     }
     active = true;
     root?.classList.add("pxd-root--presenting");
-    hud = el("div", "pxd-present-hud pxd-chrome", root);
-    titleEl = el("span", "pxd-present-hud__title", hud);
-    noteEl = el("span", "pxd-present-hud__note", hud);
-    countEl = el("span", "pxd-present-hud__count", hud);
+    hud = el2("div", "pxd-present-hud pxd-chrome", root);
+    titleEl = el2("span", "pxd-present-hud__title", hud);
+    noteEl = el2("span", "pxd-present-hud__note", hud);
+    countEl = el2("span", "pxd-present-hud__count", hud);
     prevBtn = button2(hud, "pxd-present-hud__prev", "Prev", () => goto(index - 1));
     nextBtn = button2(hud, "pxd-present-hud__next", "Next", () => goto(index + 1));
     button2(hud, "pxd-present-hud__laser", "Laser", () => {
@@ -75695,8 +76369,8 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
       root?.classList.remove("pxd-root--laser");
     });
     button2(hud, "pxd-present-hud__exit", "Exit", () => stop3());
-    ink = el("div", "pxd-present-ink", root);
-    const dot = el("div", "pxd-present-laser", ink);
+    ink = el2("div", "pxd-present-ink", root);
+    const dot = el2("div", "pxd-present-laser", ink);
     const onMove = (event) => {
       if (!active) return;
       const box2 = root?.getBoundingClientRect?.();
@@ -75724,7 +76398,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
           run = [];
           return;
         }
-        const line = el("div", "pxd-present-stroke", ink);
+        const line = el2("div", "pxd-present-stroke", ink);
         line.style.left = `${run[0].x}px`;
         line.style.top = `${run[0].y}px`;
         line.style.width = `${Math.hypot(run[run.length - 1].x - run[0].x, run[run.length - 1].y - run[0].y)}px`;
@@ -75779,8 +76453,8 @@ function raf(callback) {
 function firstMatch(root, selectors) {
   if (!root?.querySelector) return null;
   for (const selector of selectors) {
-    const el = root.querySelector(selector);
-    if (el) return el;
+    const el2 = root.querySelector(selector);
+    if (el2) return el2;
   }
   return null;
 }
@@ -75901,7 +76575,7 @@ init_section6();
 // src/view/later-views.js
 init_section6();
 var TITLES = { gallery: "Gallery", timeline: "Timeline", graph: "Graph" };
-var SVG_NS3 = "http://www.w3.org/2000/svg";
+var SVG_NS4 = "http://www.w3.org/2000/svg";
 function mountLater({ doc = globalThis.document, root, host, getBoard, onClose } = {}) {
   const resolve = (uid) => host?.blockString?.(uid);
   const box2 = doc.createElement("div");
@@ -75923,9 +76597,9 @@ function mountLater({ doc = globalThis.document, root, host, getBoard, onClose }
   box2.append(bar, body);
   let mode = null;
   const offs = [];
-  const listen = (el, type, fn) => {
-    el.addEventListener(type, fn);
-    offs.push(() => el.removeEventListener(type, fn));
+  const listen = (el2, type, fn) => {
+    el2.addEventListener(type, fn);
+    offs.push(() => el2.removeEventListener(type, fn));
   };
   const stop3 = (event) => event.stopPropagation?.();
   for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu"]) {
@@ -76018,7 +76692,7 @@ function mountLater({ doc = globalThis.document, root, host, getBoard, onClose }
     const height = Math.round(maxY - minY + 80);
     body.style.minWidth = `${width}px`;
     body.style.minHeight = `${height}px`;
-    const svg = doc.createElementNS(SVG_NS3, "svg");
+    const svg = doc.createElementNS(SVG_NS4, "svg");
     svg.setAttribute("class", "pxd-later__links");
     svg.setAttribute("width", String(width));
     svg.setAttribute("height", String(height));
@@ -76028,7 +76702,7 @@ function mountLater({ doc = globalThis.document, root, host, getBoard, onClose }
       if (!a || !b) continue;
       const pa = at(a);
       const pb = at(b);
-      const line = doc.createElementNS(SVG_NS3, "line");
+      const line = doc.createElementNS(SVG_NS4, "line");
       line.setAttribute("class", "pxd-later__link");
       line.setAttribute("x1", String(pa.x));
       line.setAttribute("y1", String(pa.y));
@@ -76095,7 +76769,7 @@ init_changes();
 init_comments();
 init_endpoints();
 init_image_region();
-var SVG_NS4 = "http://www.w3.org/2000/svg";
+var SVG_NS5 = "http://www.w3.org/2000/svg";
 var pointerBoard = null;
 function sidebarMountKind(nativeEl) {
   const win2 = nativeEl?.closest?.(".rm-sidebar-window");
@@ -76176,23 +76850,23 @@ function editingPlainText(root) {
   if (areas.length) return areas.map((t) => t.value || "").join("\n");
   return typeof editor.textContent === "string" ? editor.textContent : "";
 }
-function commitTextareaValue(el, value) {
-  if (!el) return;
-  const view = el.ownerDocument?.defaultView || globalThis;
+function commitTextareaValue(el2, value) {
+  if (!el2) return;
+  const view = el2.ownerDocument?.defaultView || globalThis;
   const Proto = view.HTMLTextAreaElement;
   const set = Proto && Object.getOwnPropertyDescriptor(Proto.prototype, "value")?.set;
   if (typeof set === "function") {
     try {
-      set.call(el, value);
+      set.call(el2, value);
     } catch {
-      el.value = value;
+      el2.value = value;
     }
-  } else el.value = value;
+  } else el2.value = value;
   try {
     const Ev = view.Event || globalThis.Event;
-    if (typeof Ev === "function" && typeof el.dispatchEvent === "function") {
-      el.dispatchEvent(new Ev("input", { bubbles: true }));
-      el.dispatchEvent(new Ev("change", { bubbles: true }));
+    if (typeof Ev === "function" && typeof el2.dispatchEvent === "function") {
+      el2.dispatchEvent(new Ev("input", { bubbles: true }));
+      el2.dispatchEvent(new Ev("change", { bubbles: true }));
     }
   } catch {
   }
@@ -76360,7 +77034,7 @@ function pinAnnotateToast(doc, win2 = globalThis) {
   pinned = { node: node2, cancel: () => win2.clearTimeout?.(id) };
 }
 function isDarkHost(root, doc = globalThis.document) {
-  const has = (el, name) => Boolean(el?.classList?.contains?.(name));
+  const has = (el2, name) => Boolean(el2?.classList?.contains?.(name));
   let node2 = root;
   while (node2) {
     if (has(node2, "bp3-dark") || has(node2, "rm-dark-theme") || has(node2, "bt-theme-dark")) return true;
@@ -76501,11 +77175,11 @@ function pdfHighlightButton(doc, onClick, count = 0) {
   btn2.setAttribute("aria-label", PDF_HIGHLIGHTS_LABEL);
   btn2.setAttribute("data-tip", "pdf.highlights");
   if (typeof doc.createElementNS === "function") {
-    const svg = doc.createElementNS(SVG_NS4, "svg");
+    const svg = doc.createElementNS(SVG_NS5, "svg");
     svg.setAttribute("class", "pxd-pdf-highlights__glyph");
     svg.setAttribute("viewBox", "0 0 16 16");
     svg.setAttribute("aria-hidden", "true");
-    const path = doc.createElementNS(SVG_NS4, "path");
+    const path = doc.createElementNS(SVG_NS5, "path");
     path.setAttribute("d", HL_GLYPH);
     path.setAttribute("fill", "none");
     path.setAttribute("stroke", "currentColor");
@@ -76799,7 +77473,12 @@ function buildBoardView(onFail, {
   lifecycle = null,
   onSelectTab = null,
   tabStore = null,
-  boardsOf = null
+  boardsOf = null,
+  snapshot = null,
+  tableThumb = null,
+  onTableShown = null,
+  onFirstPaint = null,
+  onSettled = null
 } = {}) {
   const doc = globalThis.document;
   const win2 = globalThis.window;
@@ -76831,13 +77510,13 @@ function buildBoardView(onFail, {
   const observers = [];
   const subs = [];
   let suspended = false;
-  const listen = (el2, type, fn, opts) => {
+  const listen = (el3, type, fn, opts) => {
     const wrapped = (event) => {
       if (suspended) return;
       return fn(event);
     };
-    el2.addEventListener(type, wrapped, opts);
-    const off = () => el2.removeEventListener(type, wrapped, opts);
+    el3.addEventListener(type, wrapped, opts);
+    const off = () => el3.removeEventListener(type, wrapped, opts);
     listeners3.push(off);
     return off;
   };
@@ -76895,14 +77574,14 @@ function buildBoardView(onFail, {
       }
     }
   };
-  const el = (tag, cls, parent) => {
+  const el2 = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
     parent?.append(node2);
     return node2;
   };
   const svg = (cls, parent) => {
-    const node2 = doc.createElementNS(SVG_NS4, "svg");
+    const node2 = doc.createElementNS(SVG_NS5, "svg");
     node2.setAttribute("class", cls);
     if (node2.classList && !node2.classList.contains(cls)) node2.className = cls;
     parent?.append(node2);
@@ -77019,7 +77698,7 @@ function buildBoardView(onFail, {
     return next;
   };
   const heightKey = `plexus-diagram:h:${graph}:${routeUid}`;
-  const root = el("div", "pxd-root", mountEl);
+  const root = el2("div", "pxd-root", mountEl);
   const typeAhead = createTypeAhead({
     doc,
     later: (fn, ms) => timers.later(fn, ms),
@@ -77033,17 +77712,17 @@ function buildBoardView(onFail, {
   root.dataset.tool = "select";
   root.setAttribute("data-tool", "select");
   root.dataset.board = boardUid;
-  const viewport = el("div", "pxd-viewport", root);
-  const grid = el("div", "pxd-grid", viewport);
-  const world = el("div", "pxd-world", viewport);
-  const sectionsLayer = el("div", "pxd-sections", world);
+  const viewport = el2("div", "pxd-viewport", root);
+  const grid = el2("div", "pxd-grid", viewport);
+  const world = el2("div", "pxd-world", viewport);
+  const sectionsLayer = el2("div", "pxd-sections", world);
   const edgesSvg = svg("pxd-edges", world);
-  const labelsLayer = el("div", "pxd-labels", world);
-  const itemsLayer = el("div", "pxd-items", world);
+  const labelsLayer = el2("div", "pxd-labels", world);
+  const itemsLayer = el2("div", "pxd-items", world);
   const overlaySvg = svg("pxd-overlay", world);
   let inboxCtl = null;
-  const emptyHint = el("div", "pxd-empty pxd-chrome", root);
-  const resizeGrip = el("div", "pxd-resize-grip pxd-chrome", root);
+  const emptyHint = el2("div", "pxd-empty pxd-chrome", root);
+  const resizeGrip = el2("div", "pxd-resize-grip pxd-chrome", root);
   resizeGrip.title = "Drag to resize the board";
   let repaintItemStyles = () => {
   };
@@ -77206,19 +77885,19 @@ function buildBoardView(onFail, {
       const split = embedSplit(text4, { read: outlineRead, cover: outlineCover, uid: id });
       for (const poster of split.posters) add(poster, id);
     };
-    const walk2 = (id, depth) => {
+    const walk3 = (id, depth) => {
       if (!id || depth > 8 || seenUid.has(id)) return;
       seenUid.add(id);
       fromText(outlineRead(id), id);
       const item = board2()?.items.get(id);
-      for (const member of item?.members || []) walk2(member, depth + 1);
+      for (const member of item?.members || []) walk3(member, depth + 1);
       for (const kid of item?.content || []) {
         const kidUid = kid?.[":block/uid"] || kid?.uid || "";
-        if (kidUid) walk2(kidUid, depth + 1);
+        if (kidUid) walk3(kidUid, depth + 1);
         else fromText(kid?.[":block/string"] ?? kid?.string ?? "", id);
       }
     };
-    if (uid) walk2(uid, 0);
+    if (uid) walk3(uid, 0);
     return posters;
   };
   const readSidebarMode = () => {
@@ -77319,16 +77998,16 @@ function buildBoardView(onFail, {
       const own = outlineRead(uid);
       const ownSplit = embedSplit(own, { read: outlineRead, cover: outlineCover, uid });
       if (!ownSplit.posters.length && own.trim()) {
-        const text4 = el("div", "pxd-outline-rest", row4);
+        const text4 = el2("div", "pxd-outline-rest", row4);
         text4.textContent = plainText(own);
       }
       for (const poster of heavies) {
         const mount = poster.uid || uid;
         if (outlineLiveUid && mount === outlineLiveUid) {
-          const liveWrap = el("div", "pxd-embed-poster pxd-embed-live", row4);
+          const liveWrap = el2("div", "pxd-embed-poster pxd-embed-live", row4);
           liveWrap.setAttribute("data-pxd-embed", mount);
           if (poster.kind) liveWrap.setAttribute("data-kind", poster.kind);
-          const live2 = el("div", "pxd-rs__live", liveWrap);
+          const live2 = el2("div", "pxd-rs__live", liveWrap);
           try {
             host?.renderBlock?.(live2, mount);
           } catch {
@@ -77453,7 +78132,7 @@ function buildBoardView(onFail, {
     for (const uid of uids) {
       let row4 = have.get(uid);
       if (!row4) {
-        row4 = el("div", "pxd-sidebar-outline__row");
+        row4 = el2("div", "pxd-sidebar-outline__row");
         row4.dataset.uid = uid;
         row4.setAttribute("data-uid", uid);
         if (cursor) outlineHost.insertBefore(row4, cursor);
@@ -77535,7 +78214,7 @@ function buildBoardView(onFail, {
   };
   if (inSidebar) {
     root.classList.add("pxd-root--sidebar");
-    const modeBar = el("div", "pxd-mode pxd-chrome", root);
+    const modeBar = el2("div", "pxd-mode pxd-chrome", root);
     modeBar.setAttribute("role", "group");
     modeBar.setAttribute("aria-label", "Sidebar view");
     const modeBtn = (cls, label, on) => {
@@ -77556,7 +78235,7 @@ function buildBoardView(onFail, {
       writeSidebarMode("board");
       setOutline(false);
     });
-    outlineHost = el("div", "pxd-sidebar-outline pxd-chrome", root);
+    outlineHost = el2("div", "pxd-sidebar-outline pxd-chrome", root);
   }
   const rects = () => session.rects || worldRects(board2());
   const effectiveRects = () => {
@@ -77665,6 +78344,21 @@ function buildBoardView(onFail, {
     const title = typeof card2?.title === "string" ? card2.title.trim() : "";
     return title && title !== "PDF" && !title.startsWith("{{") ? title : "PDF";
   };
+  const snapShells = snapshot?.shells instanceof Map ? snapshot.shells : null;
+  const snapItems = new Map((snapshot?.snap?.items || []).map((item) => [item.uid, item]));
+  const adoptShell = snapShells ? (uid, item) => {
+    const node2 = snapShells.get(uid);
+    if (!node2) return null;
+    snapShells.delete(uid);
+    const old = snapItems.get(uid);
+    if (old && item && old.sig !== itemSig(item)) {
+      for (const child of [...node2.children || []]) {
+        if (child.classList?.contains("pxd-item__body")) child.replaceChildren?.();
+      }
+      node2.classList?.remove("pxd-item--thumb");
+    }
+    return node2;
+  } : null;
   itemsR = createItemRenderer({
     doc,
     host,
@@ -77672,6 +78366,9 @@ function buildBoardView(onFail, {
     itemsLayer,
     sectionsLayer,
     timers,
+    adoptShell,
+    tableThumb,
+    onTableShown,
     onEditChange: (uid) => {
       root.classList.toggle("pxd-root--editing", Boolean(uid));
       session.setEditing?.(uid || null);
@@ -79794,6 +80491,31 @@ function buildBoardView(onFail, {
     };
     timers.idle(() => runChunk(misses));
   };
+  const seedSnapshotBadges = () => {
+    const b = board2();
+    if (!b || !snapItems.size || !flag("show-card-badges", true)) return;
+    let seeded = 0;
+    for (const item of b.items.values()) {
+      const stats = snapItems.get(item.uid)?.badges;
+      if (!stats || item.type !== "card" || !item.target) continue;
+      const key = badgeKeyOf(item);
+      if (badgeCache.has(key)) continue;
+      badgeCache.set(key, { at: 0, stats: { refs: 0, boards: 0, open: 0, done: 0, ...stats } });
+      seeded += 1;
+    }
+    if (seeded) applyBadges();
+  };
+  const badgeStatsByUid = () => {
+    const out = /* @__PURE__ */ new Map();
+    const b = board2();
+    if (!b) return out;
+    for (const item of b.items.values()) {
+      if (item.type !== "card" || !item.target) continue;
+      const hit = badgeCache.get(badgeKeyOf(item));
+      if (hit?.stats) out.set(item.uid, hit.stats);
+    }
+    return out;
+  };
   const scheduleBadges = (ms = 0) => {
     if (disposed || suspended) return;
     badgeTimer?.();
@@ -79820,6 +80542,12 @@ function buildBoardView(onFail, {
       pdfFlip?.settle?.();
       scheduleSharpCovers();
       considerCoverWarm();
+      if (typeof onSettled === "function") {
+        try {
+          onSettled();
+        } catch {
+        }
+      }
     }, RESUME_MS);
   };
   const refreshThumbnails = () => {
@@ -80266,12 +80994,12 @@ function buildBoardView(onFail, {
     const b = board2();
     if (!b) return;
     for (const item of b.items.values()) {
-      const el2 = itemsR.shellOf(item.uid);
-      if (!el2) continue;
-      el2.classList.toggle("pxd-item--future", Boolean(laneMarks?.future.has(item.uid)));
-      el2.classList.toggle("pxd-item--fresh", Boolean(laneMarks?.fresh.has(item.uid)));
+      const el3 = itemsR.shellOf(item.uid);
+      if (!el3) continue;
+      el3.classList.toggle("pxd-item--future", Boolean(laneMarks?.future.has(item.uid)));
+      el3.classList.toggle("pxd-item--fresh", Boolean(laneMarks?.fresh.has(item.uid)));
       const moved = lanePreviewLayout?.get(item.uid);
-      if (moved) el2.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
+      if (moved) el3.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
     }
   };
   const clearLaneMarks = () => {
@@ -80279,11 +81007,11 @@ function buildBoardView(onFail, {
     laneMarks = null;
     lanePreviewLayout = null;
     for (const item of b?.items.values() || []) {
-      const el2 = itemsR.shellOf(item.uid);
-      el2?.classList.remove("pxd-item--future", "pxd-item--fresh");
-      if (lanePreview && el2) {
+      const el3 = itemsR.shellOf(item.uid);
+      el3?.classList.remove("pxd-item--future", "pxd-item--fresh");
+      if (lanePreview && el3) {
         const rect = rects().get(item.uid);
-        if (rect) el2.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
+        if (rect) el3.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
       }
     }
     lanePreview = false;
@@ -81405,7 +82133,7 @@ function buildBoardView(onFail, {
         if (item?.type === "section") void session.setSectionLook?.(item.uid, "timer");
         stopTimer();
         timerState = { remainingMs: FOCUS_MS, running: true, endsAt: Date.now() + FOCUS_MS };
-        timerHud = el("div", "pxd-timer pxd-chrome", root);
+        timerHud = el2("div", "pxd-timer pxd-chrome", root);
         paintTimer();
         armTimer();
         break;
@@ -82505,7 +83233,7 @@ function buildBoardView(onFail, {
   });
   const tooltip = createTooltip({ doc, root, timers, setting: readSetting2 });
   tooltipCheck = () => tooltip.check();
-  const lensPop = el("div", "pxd-popover pxd-lens pxd-chrome", root);
+  const lensPop = el2("div", "pxd-popover pxd-lens pxd-chrome", root);
   lensPop.style.display = "none";
   lensPop.setAttribute("role", "dialog");
   lensPop.setAttribute("aria-label", "Tag lens");
@@ -82517,21 +83245,21 @@ function buildBoardView(onFail, {
   const paintLens = () => {
     const catalog = rebuildLens();
     lensPop.replaceChildren();
-    const title = el("div", "pxd-popover__title", lensPop);
+    const title = el2("div", "pxd-popover__title", lensPop);
     title.textContent = "Tag lens";
-    const all = el("button", `pxd-lens__row${lensTag ? "" : " is-on"}`, lensPop);
+    const all = el2("button", `pxd-lens__row${lensTag ? "" : " is-on"}`, lensPop);
     all.type = "button";
     all.textContent = "All cards";
     all.setAttribute("aria-label", "All cards");
     all.dataset.tag = "";
     all.setAttribute("data-tag", "");
     if (!catalog.tags.length) {
-      const empty = el("div", "pxd-lens__empty", lensPop);
+      const empty = el2("div", "pxd-lens__empty", lensPop);
       empty.textContent = "No tags on this board";
     }
     for (const tag of catalog.tags) {
       const label = lensRowLabel(tag);
-      const row4 = el("button", `pxd-lens__row${tag === lensTag ? " is-on" : ""}`, lensPop);
+      const row4 = el2("button", `pxd-lens__row${tag === lensTag ? " is-on" : ""}`, lensPop);
       row4.type = "button";
       row4.textContent = label;
       row4.setAttribute("aria-label", label);
@@ -82605,7 +83333,7 @@ function buildBoardView(onFail, {
     }
     const d = pts.map((p, i) => `${i ? "L" : "M"}${p.x} ${p.y}`).join(" ");
     if (!trailPath) {
-      trailPath = doc.createElementNS(SVG_NS4, "path");
+      trailPath = doc.createElementNS(SVG_NS5, "path");
       trailPath.setAttribute("class", "pxd-trail");
       trailPath.setAttribute("fill", "none");
       overlaySvg.append(trailPath);
@@ -82634,10 +83362,10 @@ function buildBoardView(onFail, {
     const sig = dots.map((d) => `${d.uid}:${d.glyph}:${Math.round(d.x)}:${Math.round(d.y)}`).join("|");
     if (sig === mmSig && mmMarks) return;
     mmSig = sig;
-    if (!mmMarks) mmMarks = el("div", "pxd-minimap__marks", chrome.minimap.el);
+    if (!mmMarks) mmMarks = el2("div", "pxd-minimap__marks", chrome.minimap.el);
     mmMarks.replaceChildren();
     for (const dot of dots) {
-      const n2 = el("span", "pxd-minimap__mark", mmMarks);
+      const n2 = el2("span", "pxd-minimap__mark", mmMarks);
       n2.textContent = dot.glyph || "•";
       n2.style.left = `${dot.x}px`;
       n2.style.top = `${dot.y}px`;
@@ -83103,7 +83831,7 @@ function buildBoardView(onFail, {
     session.setLinkMode?.(linkMode);
   };
   const hiddenAttrs = /* @__PURE__ */ new Set();
-  const legend = el("div", "pxd-legend pxd-chrome", root);
+  const legend = el2("div", "pxd-legend pxd-chrome", root);
   legend.hidden = true;
   legend.setAttribute("hidden", "");
   const attrStyleMap = () => parseAttrStyles(setting("attr-styles", ""));
@@ -83268,7 +83996,7 @@ function buildBoardView(onFail, {
     root.classList.add("pxd-root--fstabs");
     if (!tabStrip || !root.contains(tabStrip)) {
       for (const stray of root.querySelectorAll?.(".pxd-fstabs") || []) if (stray.parentElement === root) stray.remove();
-      tabStrip = el("div", "pxd-fstabs pxd-chrome");
+      tabStrip = el2("div", "pxd-fstabs pxd-chrome");
       tabStrip.setAttribute("role", "tablist");
       tabStrip.setAttribute("aria-label", "Boards");
       listen(tabStrip, "click", (event) => {
@@ -83286,14 +84014,14 @@ function buildBoardView(onFail, {
     tabStrip.replaceChildren();
     for (const tab of tabs) {
       const on = tab.uid === current3;
-      const node2 = el("div", `pxd-fstab${on ? " pxd-fstab--on" : ""}`, tabStrip);
+      const node2 = el2("div", `pxd-fstab${on ? " pxd-fstab--on" : ""}`, tabStrip);
       node2.setAttribute("role", "tab");
       node2.setAttribute("data-uid", tab.uid);
       node2.dataset.uid = tab.uid;
       node2.setAttribute("aria-selected", on ? "true" : "false");
-      const name = el("span", "pxd-fstab__name", node2);
+      const name = el2("span", "pxd-fstab__name", node2);
       name.textContent = tab.title || "Untitled board";
-      const x = el("button", "pxd-btn pxd-fstab__x", node2);
+      const x = el2("button", "pxd-btn pxd-fstab__x", node2);
       x.type = "button";
       x.textContent = "×";
       x.setAttribute("aria-label", `Close ${tab.title || "board"}`);
@@ -83372,7 +84100,7 @@ function buildBoardView(onFail, {
   };
   const editBoardBlock = () => {
     if (blockEdit || disposed) return;
-    const node2 = el("div", "pxd-block-edit pxd-chrome", root);
+    const node2 = el2("div", "pxd-block-edit pxd-chrome", root);
     for (const type of ["pointerdown", "pointerup", "mousedown", "click", "dblclick", "wheel"]) {
       node2.addEventListener(type, (event) => event.stopPropagation());
     }
@@ -85077,10 +85805,10 @@ function buildBoardView(onFail, {
         const payload = copyPayload(b, selection.items, rects());
         if (!payload.text) return null;
         if (cut) {
-          const snapshot = session.snapshotItems?.(selection.items);
-          if (snapshot) {
+          const snapshot2 = session.snapshotItems?.(selection.items);
+          if (snapshot2) {
             try {
-              payload.mime = JSON.stringify({ ...JSON.parse(payload.mime), snapshot });
+              payload.mime = JSON.stringify({ ...JSON.parse(payload.mime), snapshot: snapshot2 });
             } catch {
             }
           }
@@ -85264,6 +85992,7 @@ function buildBoardView(onFail, {
   routeOff = watchRouteExit({ boardUid: routeUid, onExit: () => {
     if (isFullscreen) requestFullscreen(false);
   }, win: win2 });
+  let firstPainted = false;
   const renderFrame = () => {
     if (disposed || suspended) return;
     const b = board2();
@@ -85305,6 +86034,16 @@ function buildBoardView(onFail, {
       itemsChanged = true;
       syncTrailPaint(b);
       if ((dirty.all || dirty.structural) && panel.currentTab?.() === "trails") panel.refreshTrails?.();
+      if (!firstPainted) {
+        firstPainted = true;
+        snapShells?.clear();
+        if (typeof onFirstPaint === "function") {
+          try {
+            onFirstPaint();
+          } catch {
+          }
+        }
+      }
     }
     const edgesDue = dirty.all || dirty.structural || dirty.links || dirty.edges.size;
     const itemsMoveEdges = dirty.items.size && !dirty.all && !dirty.structural;
@@ -85544,10 +86283,10 @@ function buildBoardView(onFail, {
           return false;
         }
       },
-      renderString: (el2, string) => host?.renderString?.(el2, string),
-      unmount: (el2) => {
+      renderString: (el3, string) => host?.renderString?.(el3, string),
+      unmount: (el3) => {
         try {
-          host?.unmount?.(el2);
+          host?.unmount?.(el3);
         } catch {
         }
       },
@@ -85713,6 +86452,7 @@ function buildBoardView(onFail, {
   applyMotion();
   applyLod();
   itemsR.setShowBadges(flag("show-card-badges", true));
+  seedSnapshotBadges();
   dirty.viewport = true;
   markAll();
   consumeDeepLink();
@@ -85760,7 +86500,7 @@ function buildBoardView(onFail, {
     const hrefs = /* @__PURE__ */ new Map();
     for (const item of pictured.items.values()) {
       if (item.kind !== "image") continue;
-      const data = await dataUrlFor(imageSrc(item.string));
+      const data = await dataUrlFor(imageSrc2(item.string));
       if (data) hrefs.set(item.uid, data);
     }
     const text4 = boardToSvg(pictured, rects(), { dark: root.classList.contains("pxd-root--dark"), imageHrefs: hrefs });
@@ -85940,9 +86680,9 @@ function buildBoardView(onFail, {
           const card2 = rects().get(region.cardUid);
           const shell = itemsR.shellOf(region.cardUid);
           const img = shell?.querySelector?.("img");
-          const shellBox = shell?.getBoundingClientRect?.();
+          const shellBox2 = shell?.getBoundingClientRect?.();
           const imgBox = img && paintedRectOfElement(img, { zoom: vp?.zoom || 1 }) || img?.getBoundingClientRect?.();
-          const ready = card2 && shellBox && imgBox && shellBox.width > 0 && shellBox.height > 0 && imgBox.width > 0 && imgBox.height > 0;
+          const ready = card2 && shellBox2 && imgBox && shellBox2.width > 0 && shellBox2.height > 0 && imgBox.width > 0 && imgBox.height > 0;
           if (!ready) {
             if (card2 && !nudged) {
               nudged = true;
@@ -85956,10 +86696,10 @@ function buildBoardView(onFail, {
             return;
           }
           const imageRect = {
-            x: card2.x + (imgBox.left - shellBox.left) / shellBox.width * card2.w,
-            y: card2.y + (imgBox.top - shellBox.top) / shellBox.height * card2.h,
-            w: imgBox.width / shellBox.width * card2.w,
-            h: imgBox.height / shellBox.height * card2.h
+            x: card2.x + (imgBox.left - shellBox2.left) / shellBox2.width * card2.w,
+            y: card2.y + (imgBox.top - shellBox2.top) / shellBox2.height * card2.h,
+            w: imgBox.width / shellBox2.width * card2.w,
+            h: imgBox.height / shellBox2.height * card2.h
           };
           const shown = imageRegionFrac(region) || (Array.isArray(region.f) ? { rx: region.f[0], ry: region.f[1], rw: region.f[2], rh: region.f[3] } : null);
           setViewport(regionCamera({ imageRect, frac: shown || region.f, size: viewSize() }));
@@ -86102,6 +86842,31 @@ function buildBoardView(onFail, {
       const ok = await writeClipboard({ text: text4 });
       if (!disposed) toast(ok ? "Outline copied" : "Copy failed");
       return text4;
+    },
+    repaintThumb(uid) {
+      return disposed ? false : itemsR.repaintThumb?.(uid) === true;
+    },
+    // INSTANT-1. What the open snapshot is captured from. Read-only; no layout read.
+    snapshotSource() {
+      if (disposed || suspended) return null;
+      const b = board2();
+      if (!b) return null;
+      let height = 0;
+      if (!isFullscreen) {
+        height = parseFloat(root.style?.height) || 0;
+      }
+      return {
+        root,
+        board: b,
+        rects: paintRects(),
+        vp: { ...vp },
+        height,
+        width: size.width || 0,
+        shellOf: (uid) => itemsR.shellOf(uid),
+        badges: badgeStatsByUid(),
+        threshold: mapThreshold(),
+        gesturing: Boolean(gesturing)
+      };
     },
     stats() {
       return { timers: timers.count(), listeners: listeners3.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount() };
@@ -86298,19 +87063,19 @@ var SKETCH_HOLD_MS = 2e3;
 var SKETCH_ROOT_BORDER = 1;
 var PAIR_OFFSET2 = 18;
 var TITLE_MAX = 200;
-var SVG_NS5 = "http://www.w3.org/2000/svg";
+var SVG_NS6 = "http://www.w3.org/2000/svg";
 function sketchKey(graph, uid) {
   return `plexus-diagram:sketch:${graph}:${uid}`;
 }
-function finite6(n2) {
+function finite7(n2) {
   return typeof n2 === "number" && Number.isFinite(n2);
 }
 function isSketchViewport(vp) {
-  return Boolean(vp) && finite6(vp.x) && finite6(vp.y) && finite6(vp.zoom) && vp.zoom > 0;
+  return Boolean(vp) && finite7(vp.x) && finite7(vp.y) && finite7(vp.zoom) && vp.zoom > 0;
 }
-function cleanItem(item) {
+function cleanItem2(item) {
   if (!item || typeof item.uid !== "string" || !item.uid) return null;
-  if (!finite6(item.x) || !finite6(item.y) || !finite6(item.w) || !finite6(item.h)) return null;
+  if (!finite7(item.x) || !finite7(item.y) || !finite7(item.w) || !finite7(item.h)) return null;
   return {
     uid: item.uid,
     x: item.x,
@@ -86334,7 +87099,7 @@ function packSketch(sketch) {
   const items = [];
   for (const item of sketch?.items || []) {
     if (items.length >= SKETCH_MAX_ITEMS) break;
-    const clean = cleanItem(item);
+    const clean = cleanItem2(item);
     if (clean) items.push(clean);
   }
   const edges = [];
@@ -86342,26 +87107,26 @@ function packSketch(sketch) {
     const clean = cleanEdge(edge);
     if (clean) edges.push(clean);
   }
-  const fit2 = (next) => {
+  const fit3 = (next) => {
     const text5 = JSON.stringify(next);
     return text5.length <= SKETCH_MAX_BYTES ? text5 : null;
   };
   let payload = { items, edges };
-  let text4 = fit2(payload);
+  let text4 = fit3(payload);
   if (text4) return text4;
   payload = { items, edges: [] };
-  text4 = fit2(payload);
+  text4 = fit3(payload);
   if (text4) return text4;
   payload = {
     items: items.map((item) => ({ ...item, title: item.title.slice(0, 40) })),
     edges: []
   };
-  text4 = fit2(payload);
+  text4 = fit3(payload);
   if (text4) return text4;
   let kept = payload.items;
   while (kept.length) {
     kept = kept.slice(0, kept.length - 1);
-    text4 = fit2({ items: kept, edges: [] });
+    text4 = fit3({ items: kept, edges: [] });
     if (text4) return text4;
   }
   return null;
@@ -86377,7 +87142,7 @@ function parseSketch(raw) {
   if (!value || typeof value !== "object" || !Array.isArray(value.items)) return null;
   const items = [];
   for (const item of value.items) {
-    const clean = cleanItem(item);
+    const clean = cleanItem2(item);
     if (!clean) return null;
     items.push(clean);
   }
@@ -86495,7 +87260,7 @@ function captureSketch(board2) {
     const rect = rects.get(uid);
     const item = board2.items.get(uid);
     if (!rect || !item) continue;
-    const clean = cleanItem({
+    const clean = cleanItem2({
       uid,
       x: rect.x,
       y: rect.y,
@@ -86525,7 +87290,7 @@ function resolveSketchViewport({ stored, initial, board: board2, size } = {}) {
   return fitViewport(boundsOf([...rects.values()]), box2, { padding: 64, maxZoom: 1 });
 }
 function svgEl2(doc, tag) {
-  if (typeof doc.createElementNS === "function") return doc.createElementNS(SVG_NS5, tag);
+  if (typeof doc.createElementNS === "function") return doc.createElementNS(SVG_NS6, tag);
   return doc.createElement(tag);
 }
 function placeLayer(mountEl, layer) {
@@ -86590,7 +87355,7 @@ function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER } = 
       edges.append(path);
     }
     for (const item of parsed.items) {
-      const clean = cleanItem(item);
+      const clean = cleanItem2(item);
       if (!clean) continue;
       const card2 = doc.createElement("div");
       card2.className = "pxd-sketch__card";
@@ -86628,6 +87393,809 @@ function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER } = 
 
 // src/feature.js
 init_cards();
+
+// src/host/boardsnap-store.js
+var SNAP_DB = "plexus-diagram-snapshots";
+var SNAP_DB_VERSION = 1;
+var SNAP_STORE_BOARDS = "boards";
+var SNAP_STORE_THUMBS = "thumbs";
+var SNAP_STORE_META = "meta";
+var SNAP_LRU = 20;
+var SNAP_KEEP = 40;
+var SNAP_DEBOUNCE_MS = 1e3;
+var THUMB_CAP = 300;
+var STORES2 = [SNAP_STORE_BOARDS, SNAP_STORE_THUMBS, SNAP_STORE_META];
+function request(req) {
+  return new Promise((resolve) => {
+    if (!req) {
+      resolve(null);
+      return;
+    }
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = (event) => {
+      try {
+        event?.preventDefault?.();
+      } catch {
+      }
+      resolve(null);
+    };
+  });
+}
+function done(tx) {
+  return new Promise((resolve) => {
+    if (!tx) {
+      resolve(false);
+      return;
+    }
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => resolve(false);
+    tx.onabort = () => resolve(false);
+  });
+}
+var boardKey = (graph, uid) => `${graph}\0${uid}`;
+var metaKey = (graph) => `recent\0${graph}`;
+function defaultIdle(fn) {
+  const ric = globalThis.requestIdleCallback;
+  if (typeof ric === "function") return ric(() => fn(), { timeout: 2e3 });
+  const t = setTimeout(fn, 50);
+  t?.unref?.();
+  return t;
+}
+function createBoardSnapStore({
+  indexedDB = globalThis.indexedDB,
+  graph = "",
+  now: now3 = Date.now,
+  idle = defaultIdle,
+  lruSize = SNAP_LRU,
+  keep = SNAP_KEEP,
+  debounceMs = SNAP_DEBOUNCE_MS,
+  enabled = () => true
+} = {}) {
+  const graphOf = typeof graph === "function" ? graph : () => graph;
+  const lru = /* @__PURE__ */ new Map();
+  const thumbs = /* @__PURE__ */ new Map();
+  const pendingThumbs = /* @__PURE__ */ new Set();
+  const pending = /* @__PURE__ */ new Map();
+  const timers = /* @__PURE__ */ new Map();
+  let recent = null;
+  let dbPromise = null;
+  let disposed = false;
+  let writing = Promise.resolve();
+  const allow = () => {
+    if (disposed) return false;
+    try {
+      return enabled() !== false;
+    } catch {
+      return true;
+    }
+  };
+  const db = () => {
+    if (!dbPromise) {
+      dbPromise = openDb(indexedDB, { name: SNAP_DB, version: SNAP_DB_VERSION, stores: STORES2 }).catch(() => null);
+    }
+    return dbPromise;
+  };
+  const touch = (uid, entry) => {
+    lru.delete(uid);
+    lru.set(uid, entry);
+    while (lru.size > lruSize) {
+      const oldest = lru.keys().next().value;
+      lru.delete(oldest);
+    }
+  };
+  const capThumbs = () => {
+    if (thumbs.size <= THUMB_CAP) return;
+    const used = /* @__PURE__ */ new Set();
+    for (const { snap } of lru.values()) for (const key of snapThumbKeys(snap)) used.add(key);
+    for (const key of [...thumbs.keys()]) {
+      if (thumbs.size <= THUMB_CAP) break;
+      if (!used.has(key)) thumbs.delete(key);
+    }
+  };
+  async function loadThumbs(handle, keys) {
+    const missing2 = [...keys].filter((key) => !thumbs.has(key));
+    if (!missing2.length || !handle) return;
+    let tx;
+    try {
+      tx = handle.transaction([SNAP_STORE_THUMBS], "readonly");
+    } catch {
+      return;
+    }
+    const store = tx.objectStore(SNAP_STORE_THUMBS);
+    const rows = await Promise.all(missing2.map((key) => request(store.get(key))));
+    rows.forEach((value, i) => {
+      if (typeof value === "string" && value.startsWith("data:image/")) thumbs.set(missing2[i], value);
+    });
+    capThumbs();
+  }
+  async function loadBoards(handle, uids) {
+    if (!handle || !uids.length) return [];
+    const g = graphOf();
+    let tx;
+    try {
+      tx = handle.transaction([SNAP_STORE_BOARDS], "readonly");
+    } catch {
+      return [];
+    }
+    const store = tx.objectStore(SNAP_STORE_BOARDS);
+    const rows = await Promise.all(uids.map((uid) => request(store.get(boardKey(g, uid)))));
+    const out = [];
+    rows.forEach((row4, i) => {
+      const snap = parseSnapshot2(row4?.text);
+      if (snap) out.push({ uid: uids[i], snap, text: row4.text });
+    });
+    return out;
+  }
+  async function readRecent(handle) {
+    if (recent) return recent;
+    if (!handle) return [];
+    let tx;
+    try {
+      tx = handle.transaction([SNAP_STORE_META], "readonly");
+    } catch {
+      return [];
+    }
+    const list = await request(tx.objectStore(SNAP_STORE_META).get(metaKey(graphOf())));
+    recent = Array.isArray(list) ? list.filter((row4) => row4 && typeof row4.uid === "string").slice(0, keep * 2) : [];
+    return recent;
+  }
+  async function warm() {
+    if (!allow()) return 0;
+    const handle = await db();
+    if (!handle || disposed) return 0;
+    const list = await readRecent(handle);
+    const uids = list.slice(0, lruSize).map((row4) => row4.uid).filter((uid) => !lru.has(uid));
+    const loaded = await loadBoards(handle, uids);
+    if (disposed) return 0;
+    for (const entry of loaded.reverse()) {
+      if (!lru.has(entry.uid)) {
+        lru.set(entry.uid, { snap: entry.snap, text: entry.text });
+        while (lru.size > lruSize) lru.delete(lru.keys().next().value);
+      }
+    }
+    const keys = /* @__PURE__ */ new Set();
+    for (const { snap } of lru.values()) for (const key of snapThumbKeys(snap)) keys.add(key);
+    await loadThumbs(handle, keys);
+    return loaded.length;
+  }
+  async function load(uid) {
+    if (!allow() || !uid) return null;
+    if (lru.has(uid)) return lru.get(uid).snap;
+    const handle = await db();
+    if (!handle || disposed) return null;
+    const [entry] = await loadBoards(handle, [uid]);
+    if (!entry || disposed) return null;
+    if (!lru.has(uid)) touch(uid, { snap: entry.snap, text: entry.text });
+    await loadThumbs(handle, snapThumbKeys(entry.snap));
+    return lru.get(uid)?.snap ?? null;
+  }
+  async function writeNow(uids) {
+    const handle = await db();
+    if (!handle) return false;
+    const g = graphOf();
+    const rows = [];
+    for (const uid of uids) {
+      if (!pending.has(uid)) continue;
+      rows.push({ uid, text: pending.get(uid) });
+      pending.delete(uid);
+    }
+    const thumbRows = [];
+    for (const key of [...pendingThumbs]) {
+      if (thumbs.has(key)) thumbRows.push([key, thumbs.get(key)]);
+      pendingThumbs.delete(key);
+    }
+    if (!rows.length && !thumbRows.length) return true;
+    const list = (await readRecent(handle)).slice();
+    const at = now3();
+    for (const row4 of rows) {
+      const index = list.findIndex((entry) => entry.uid === row4.uid);
+      if (index >= 0) list.splice(index, 1);
+      list.unshift({ uid: row4.uid, savedAt: at });
+    }
+    const dropped = list.splice(keep);
+    recent = list;
+    let tx;
+    try {
+      tx = handle.transaction(STORES2, "readwrite");
+    } catch {
+      return false;
+    }
+    try {
+      const boards = tx.objectStore(SNAP_STORE_BOARDS);
+      for (const row4 of rows) boards.put({ uid: row4.uid, savedAt: at, text: row4.text }, boardKey(g, row4.uid));
+      for (const row4 of dropped) boards.delete(boardKey(g, row4.uid));
+      const thumbStore = tx.objectStore(SNAP_STORE_THUMBS);
+      for (const [key, value] of thumbRows) thumbStore.put(value, key);
+      tx.objectStore(SNAP_STORE_META).put(list, metaKey(g));
+    } catch {
+      try {
+        tx.abort();
+      } catch {
+      }
+      return false;
+    }
+    return done(tx);
+  }
+  const schedule = (uid) => {
+    if (timers.has(uid)) return;
+    const timer = setTimeout(() => {
+      timers.delete(uid);
+      if (disposed) return;
+      idle(() => {
+        if (disposed) return;
+        writing = writing.then(() => writeNow([uid])).catch(() => false);
+      });
+    }, debounceMs);
+    timer?.unref?.();
+    timers.set(uid, timer);
+  };
+  const ready = allow() ? warm().catch(() => 0) : Promise.resolve(0);
+  return {
+    ready,
+    warm,
+    load,
+    // Synchronous: the LRU only. A miss means "paint the old way".
+    get(uid) {
+      if (!allow() || !uid) return null;
+      const hit = lru.get(uid);
+      if (!hit) return null;
+      touch(uid, hit);
+      return hit.snap;
+    },
+    has(uid) {
+      return lru.has(uid);
+    },
+    thumb(key) {
+      return thumbs.get(key) ?? null;
+    },
+    thumbs: { get: (key) => thumbs.get(key) ?? null, has: (key) => thumbs.has(key) },
+    putThumb(key, dataUrl) {
+      if (!allow() || typeof key !== "string" || typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) return false;
+      if (thumbs.get(key) === dataUrl) return true;
+      thumbs.set(key, dataUrl);
+      pendingThumbs.add(key);
+      capThumbs();
+      return true;
+    },
+    // snap is a raw snapshot object; thumbData is the key -> data URL map captured with it.
+    // Returns false when the board is too large or the JSON is over the cap.
+    set(uid, snap, thumbData = null) {
+      if (!allow() || !uid || !snap) return false;
+      const text4 = packSnapshot(snap);
+      if (!text4) return false;
+      const parsed = parseSnapshot2(text4);
+      if (!parsed) return false;
+      const used = snapThumbKeys(parsed);
+      if (thumbData) {
+        for (const key of used) {
+          const value = thumbData.get?.(key);
+          if (typeof value === "string" && value.startsWith("data:image/") && thumbs.get(key) !== value) {
+            thumbs.set(key, value);
+            pendingThumbs.add(key);
+          }
+        }
+      }
+      const prev = lru.get(uid);
+      touch(uid, { snap: parsed, text: text4 });
+      capThumbs();
+      if (prev?.text === text4 && !pendingThumbs.size) return true;
+      pending.set(uid, text4);
+      schedule(uid);
+      return true;
+    },
+    // Unmount and unload: skip the debounce, keep the idle-free async write.
+    flush() {
+      const uids = [...timers.keys()];
+      for (const uid of uids) clearTimeout(timers.get(uid));
+      timers.clear();
+      if (!pending.size && !pendingThumbs.size) return writing;
+      const all = [.../* @__PURE__ */ new Set([...uids, ...pending.keys()])];
+      writing = writing.then(() => writeNow(all)).catch(() => false);
+      return writing;
+    },
+    forget(uid) {
+      lru.delete(uid);
+      pending.delete(uid);
+      const timer = timers.get(uid);
+      if (timer) clearTimeout(timer);
+      timers.delete(uid);
+    },
+    size() {
+      return lru.size;
+    },
+    // Pending writes still land, then the connection closes.
+    dispose() {
+      if (disposed) return writing;
+      const uids = [...timers.keys()];
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+      const all = [.../* @__PURE__ */ new Set([...uids, ...pending.keys()])];
+      const tail = (all.length || pendingThumbs.size) && dbPromise ? writing.then(() => writeNow(all)).catch(() => false) : writing;
+      disposed = true;
+      lru.clear();
+      const close = () => {
+        pending.clear();
+        thumbs.clear();
+        void dbPromise?.then((handle) => {
+          try {
+            handle?.close?.();
+          } catch {
+          }
+        });
+      };
+      return Promise.resolve(tail).then(close, close);
+    }
+  };
+}
+
+// src/view/boardsnap-paint.js
+init_geometry();
+init_board();
+var SNAP_CLASS = "pxd-item--snap";
+var CHROME_KEEP = /(^|\s)(pxd-toolbar|pxd-rail|pxd-palette|pxd-dock|pxd-mode|pxd-minimap|pxd-props|pxd-resize-grip|pxd-tabs|pxd-fstabs)(\s|$)/;
+var SNAP_ROOT_CLASS = "pxd-snap-root";
+var finite8 = (n2) => typeof n2 === "number" && Number.isFinite(n2);
+function rootVars(root) {
+  const out = {};
+  const style = root?.style;
+  if (!style) return out;
+  const n2 = Number(style.length) || 0;
+  for (let i = 0; i < n2; i += 1) {
+    const name = style[i];
+    if (typeof name !== "string" || !name.startsWith("--pxd-")) continue;
+    const value = typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : "";
+    if (value) out[name] = String(value).trim();
+  }
+  return out;
+}
+var skipChrome = (el2) => {
+  const cls = typeof el2.getAttribute === "function" ? String(el2.getAttribute("class") || "") : "";
+  return /(^|\s)(pxd-ports|pxd-grip|pxd-port|pxd-item__editor|pxd-ctx|pxd-tip|pxd-table-thumb)(\s|$)/.test(cls);
+};
+function captureBoardSnap({
+  uid,
+  root,
+  board: board2,
+  rects,
+  vp,
+  height = 0,
+  width = 0,
+  shellOf,
+  badges = null,
+  tableThumbKey: tableThumbKey2 = null,
+  threshold = 0.45,
+  prev = null,
+  thumbs = /* @__PURE__ */ new Map(),
+  now: now3 = Date.now
+} = {}) {
+  if (!board2?.items || !rects || !isSnapViewport(vp) || typeof shellOf !== "function") return null;
+  if (board2.items.size > SNAP_MAX_ITEMS) return null;
+  const prevItems = new Map((prev?.items || []).map((item) => [item.uid, item]));
+  const items = [];
+  const order = Array.isArray(board2.order) ? board2.order : [...board2.items.keys()];
+  for (const id of order) {
+    const item = board2.items.get(id);
+    const rect = rects.get(id);
+    const el2 = shellOf(id);
+    if (!item || !rect || !el2) continue;
+    const section2 = item.type === "section";
+    const sig = itemSig(item);
+    const cls = cleanClasses(typeof el2.getAttribute === "function" ? el2.getAttribute("class") : el2.className);
+    const bare = cls.includes("pxd-item--bare") || cls.includes("pxd-item--collapsed");
+    let face = captureFace(el2, { thumbs, skip: skipChrome });
+    const old = prevItems.get(id);
+    if (!section2 && bare && old?.face && old.sig === sig && !cls.includes("pxd-item--collapsed")) {
+      face = mergeBareFace(face, old.face);
+    }
+    const box2 = shellBox(el2) || rect;
+    const out = {
+      uid: id,
+      section: section2,
+      x: box2.x,
+      y: box2.y,
+      w: box2.w,
+      h: box2.h,
+      cls: cls.join(" "),
+      sig,
+      face
+    };
+    if (item.parentUid && item.parentUid !== board2.uid) out.parent = item.parentUid;
+    const stats = badges?.get?.(id);
+    if (stats) out.badges = stats;
+    const thumb2 = tableThumbKey2?.(item);
+    if (thumb2) out.thumb = thumb2;
+    items.push(out);
+  }
+  const world = root?.querySelector?.(".pxd-world");
+  const edgesEl = world?.querySelector?.("svg.pxd-edges");
+  const labelsEl = world?.querySelector?.(".pxd-labels");
+  const gridEl = root?.querySelector?.(".pxd-grid");
+  const layer = (el2) => el2 ? captureFace(el2, { thumbs, maxNodes: LAYER_MAX_NODES, maxChars: 64 * 1024 }) : null;
+  const chrome = [];
+  for (const child of [...root?.children || []]) {
+    const cls = String(child.getAttribute?.("class") || "");
+    if (!CHROME_KEEP.test(cls) || child.hasAttribute?.("hidden")) continue;
+    const face = captureFace(child, { thumbs, maxNodes: 300, maxChars: 8 * 1024, canvases: true });
+    if (face) chrome.push(face);
+  }
+  return {
+    v: SNAP_VERSION,
+    uid: uid || board2.uid,
+    stamp: boardStamp(board2, rects),
+    savedAt: now3(),
+    height: finite8(height) ? height : 0,
+    width: finite8(width) ? width : 0,
+    threshold: finite8(threshold) ? threshold : 0.45,
+    vp: { x: vp.x, y: vp.y, zoom: vp.zoom },
+    rootCls: typeof root?.getAttribute === "function" ? root.getAttribute("class") || "" : "",
+    rootStyle: rootVars(root),
+    grid: gridEl ? { c: cleanClasses(gridEl.getAttribute?.("class") || "").join(" ") } : null,
+    edges: layer(edgesEl),
+    labels: layer(labelsEl),
+    chrome,
+    items
+  };
+}
+function shellBox(el2) {
+  const style = el2?.style;
+  if (!style) return null;
+  const m = /translate\(\s*(-?[\d.e+-]+)px\s*,\s*(-?[\d.e+-]+)px\s*\)/.exec(String(style.transform || ""));
+  const w = parseFloat(style.width);
+  const h = parseFloat(style.height);
+  if (!m || !Number.isFinite(w) || !Number.isFinite(h)) return null;
+  const x = Number(m[1]);
+  const y = Number(m[2]);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y, w, h } : null;
+}
+function mergeBareFace(live2, old) {
+  const kids = Array.isArray(live2?.k) ? live2.k.slice() : [];
+  const oldBody = (old?.k || []).find((kid) => typeof kid === "object" && String(kid.c || "").split(" ").includes("pxd-item__body"));
+  if (!oldBody) return live2;
+  const index = kids.findIndex((kid) => typeof kid === "object" && String(kid.c || "").split(" ").includes("pxd-item__body"));
+  if (index >= 0) kids[index] = oldBody;
+  else kids.push(oldBody);
+  return { ...live2 || { t: "div" }, k: kids };
+}
+function resolveSnapViewport({ initial, stored, snap, size } = {}) {
+  if (isSnapViewport(initial)) return { x: initial.x, y: initial.y, zoom: initial.zoom };
+  if (isSnapViewport(stored)) return { x: stored.x, y: stored.y, zoom: stored.zoom };
+  if (isSnapViewport(snap?.vp)) return { ...snap.vp };
+  const rects = (snap?.items || []).map((item) => ({ x: item.x, y: item.y, w: item.w, h: item.h }));
+  const box2 = size && size.width > 0 && size.height > 0 ? size : { width: snap?.width || 800, height: snap?.height || 560 };
+  return fitViewport(boundsOf(rects), box2, { padding: 64, maxZoom: 1 });
+}
+function setVar(el2, name, value) {
+  try {
+    el2.style.setProperty(name, value);
+  } catch {
+  }
+}
+function applyCamera(state) {
+  const { vp, world, grid, root, threshold, pattern } = state;
+  world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
+  const tier = lodTier(vp.zoom, state.tier || "detail", { threshold });
+  state.tier = tier;
+  root.classList.toggle("pxd-lod-map", tier !== "detail");
+  root.classList.toggle("pxd-lod-overview", tier === "overview");
+  const f = lodFonts(vp.zoom);
+  setVar(root, "--pxd-map-font", `${f.map}px`);
+  setVar(root, "--pxd-ui", String(f.ui));
+  setVar(root, "--pxd-overview-font", `${f.section}px`);
+  setVar(root, "--pxd-inv-zoom", String(invZoom(vp.zoom)));
+  setVar(root, "--pxd-screen-px", String(screenPx(vp.zoom)));
+  if (grid) {
+    const g = gridBackground(vp, pattern);
+    if (g) {
+      grid.style.backgroundSize = `${g.size}px ${g.size}px`;
+      grid.style.backgroundPosition = `${g.x}px ${g.y}px`;
+    }
+  }
+}
+function el(doc, tag, cls, parent) {
+  const node2 = doc.createElement(tag);
+  if (cls) node2.className = cls;
+  if (parent) parent.append(node2);
+  return node2;
+}
+function removeBoardSnap(mountEl) {
+  const nodes = mountEl?.querySelectorAll?.(`.${SNAP_ROOT_CLASS}`);
+  for (const node2 of [...nodes || []]) {
+    try {
+      node2.__pxdSnap?.off?.();
+    } catch {
+    }
+    try {
+      node2.remove();
+    } catch {
+    }
+  }
+}
+function paintBoardSnap(doc, mountEl, snap, vp, { thumbs = null, faceOk = null, height = 0, fullscreen = false } = {}) {
+  if (!doc || !mountEl || !snap || !isSnapViewport(vp)) return null;
+  removeBoardSnap(mountEl);
+  let root;
+  try {
+    const rootCls = cleanClasses(snap.rootCls).filter((name) => name !== SNAP_ROOT_CLASS);
+    if (!rootCls.includes("pxd-root")) rootCls.unshift("pxd-root");
+    if (fullscreen && !rootCls.includes("pxd-root--fullscreen")) rootCls.push("pxd-root--fullscreen");
+    root = el(doc, "div", `${rootCls.join(" ")} ${SNAP_ROOT_CLASS}`);
+    root.setAttribute("data-pxd-snap", "1");
+    root.setAttribute("aria-busy", "true");
+    for (const [name, value] of Object.entries(snap.rootStyle || {})) setVar(root, name, value);
+    root.style.position = "absolute";
+    root.style.left = "0";
+    root.style.top = "0";
+    root.style.right = "0";
+    root.style.bottom = "0";
+    root.style.zIndex = "2";
+    if (!fullscreen) {
+      const h = height || snap.height;
+      if (h) root.style.height = `${h}px`;
+    } else root.style.height = "auto";
+    const viewport = el(doc, "div", "pxd-viewport", root);
+    const grid = el(doc, "div", cleanClasses(snap.grid?.c || "pxd-grid").join(" ") || "pxd-grid", viewport);
+    const world = el(doc, "div", "pxd-world", viewport);
+    const sections = el(doc, "div", "pxd-sections", world);
+    const edges = snap.edges ? buildFace(doc, snap.edges, { thumbs }) : null;
+    if (edges) world.append(edges);
+    const labels = snap.labels ? buildFace(doc, snap.labels, { thumbs }) : null;
+    if (labels) world.append(labels);
+    const itemsLayer = el(doc, "div", "pxd-items", world);
+    const shells = /* @__PURE__ */ new Map();
+    const boxW = (snap.width || 1600) / vp.zoom;
+    const boxH = ((fullscreen ? 0 : height || snap.height) || 1e3) / vp.zoom;
+    const seen = {
+      x: -vp.x / vp.zoom - boxW * 0.25,
+      y: -vp.y / vp.zoom - boxH * 0.25,
+      w: boxW * 1.5,
+      h: boxH * 1.5
+    };
+    const onScreen = (item) => item.x < seen.x + seen.w && item.x + item.w > seen.x && item.y < seen.y + seen.h && item.y + item.h > seen.y;
+    for (const item of snap.items || []) {
+      const node2 = el(doc, "div", `${cleanClasses(item.cls).join(" ")} ${SNAP_CLASS}`, item.section ? sections : itemsLayer);
+      node2.setAttribute("data-uid", item.uid);
+      if (node2.dataset) node2.dataset.uid = item.uid;
+      node2.style.transform = `translate(${item.x}px, ${item.y}px)`;
+      node2.style.width = `${item.w}px`;
+      node2.style.height = `${item.h}px`;
+      const okFace = (!faceOk || faceOk(item.uid, item.sig) !== false) && (item.section || onScreen(item));
+      for (const kid of Array.isArray(item.face?.k) ? item.face.k : []) {
+        const isBody = typeof kid === "object" && String(kid.c || "").split(" ").includes("pxd-item__body");
+        if (isBody && !okFace) {
+          el(doc, "div", "pxd-item__body", node2);
+          continue;
+        }
+        if (!okFace && !item.section && typeof kid === "object" && !String(kid.c || "").split(" ").includes("pxd-item__header")) continue;
+        const child = buildFace(doc, kid, { thumbs });
+        if (child) node2.append(child);
+      }
+      if (!item.section && !node2.querySelector?.(".pxd-item__header")) {
+        const header = el(doc, "div", "pxd-item__header");
+        node2.insertBefore ? node2.insertBefore(header, node2.firstChild || null) : node2.append(header);
+      }
+      if (!item.section && !node2.querySelector?.(".pxd-item__body")) el(doc, "div", "pxd-item__body", node2);
+      if (item.thumb && thumbs?.get?.(item.thumb)) paintThumbFace(doc, node2, thumbs.get(item.thumb));
+      shells.set(item.uid, node2);
+    }
+    for (const face of Array.isArray(snap.chrome) ? snap.chrome : []) {
+      const node2 = buildFace(doc, face, { thumbs });
+      if (node2) root.append(node2);
+    }
+    const pattern = (cleanClasses(snap.grid?.c || "").find((name) => name.startsWith("pxd-grid--")) || "pxd-grid--dots").slice("pxd-grid--".length);
+    const state = { vp: { ...vp }, world, grid, root, threshold: finite8(snap.threshold) ? snap.threshold : 0.45, pattern, tier: null, moved: false };
+    applyCamera(state);
+    root.__pxdSnap = { state, shells };
+    if (typeof mountEl.insertBefore === "function" && mountEl.firstChild) mountEl.insertBefore(root, mountEl.firstChild);
+    else mountEl.append(root);
+    return { root, shells, state };
+  } catch {
+    removeBoardSnap(mountEl);
+    return null;
+  }
+}
+var TABLE_THUMB_CLASS = "pxd-table-thumb";
+function paintThumbFace(doc, shell, dataUrl) {
+  if (!shell || typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) return null;
+  const body = shell.querySelector?.(".pxd-item__body");
+  if (!body) return null;
+  let img = body.querySelector?.(`img.${TABLE_THUMB_CLASS}`);
+  if (!img) {
+    img = doc.createElement("img");
+    img.className = TABLE_THUMB_CLASS;
+    img.setAttribute("alt", "");
+    img.setAttribute("draggable", "false");
+    body.append(img);
+  }
+  if (img.getAttribute("src") !== dataUrl) img.setAttribute("src", dataUrl);
+  shell.classList.add("pxd-item--thumb");
+  return img;
+}
+function armSnapGestures(painted, { win: win2 = globalThis.window, onFirstGesture = null } = {}) {
+  const { root, state } = painted || {};
+  if (!root || !state || typeof root.addEventListener !== "function") return () => {
+  };
+  let drag = null;
+  let gestured = false;
+  const wheel = (event) => {
+    try {
+      event.preventDefault?.();
+    } catch {
+    }
+    event.stopPropagation?.();
+    const vp = state.vp;
+    if (event.ctrlKey || event.metaKey) {
+      const box2 = root.getBoundingClientRect?.() || { left: 0, top: 0 };
+      const px = (Number(event.clientX) || 0) - (box2.left || 0);
+      const py = (Number(event.clientY) || 0) - (box2.top || 0);
+      const zoom = Math.min(4, Math.max(0.05, vp.zoom * Math.exp(-(Number(event.deltaY) || 0) * 0.01)));
+      const k = zoom / vp.zoom;
+      state.vp = { x: px - (px - vp.x) * k, y: py - (py - vp.y) * k, zoom };
+    } else {
+      state.vp = { x: vp.x - (Number(event.deltaX) || 0), y: vp.y - (Number(event.deltaY) || 0), zoom: vp.zoom };
+    }
+    state.moved = true;
+    applyCamera(state);
+  };
+  const move = (event) => {
+    if (!drag) return;
+    const dx = (Number(event.clientX) || 0) - drag.x;
+    const dy = (Number(event.clientY) || 0) - drag.y;
+    if (!drag.panning && Math.hypot(dx, dy) < 4) return;
+    drag.panning = true;
+    state.vp = { x: drag.vp.x + dx, y: drag.vp.y + dy, zoom: drag.vp.zoom };
+    state.moved = true;
+    applyCamera(state);
+  };
+  const up = (event) => {
+    const was = drag;
+    drag = null;
+    win2?.removeEventListener?.("pointermove", move, true);
+    win2?.removeEventListener?.("pointerup", up, true);
+    if (was && !was.panning && !gestured) {
+      gestured = true;
+      onFirstGesture?.([was.down, snapEvent(event)]);
+    }
+  };
+  const down2 = (event) => {
+    if (event.button != null && event.button !== 0) return;
+    event.stopPropagation?.();
+    drag = { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0, vp: { ...state.vp }, panning: false, down: snapEvent(event) };
+    win2?.addEventListener?.("pointermove", move, true);
+    win2?.addEventListener?.("pointerup", up, true);
+  };
+  const key = (event) => {
+    if (gestured || !root.isConnected) return;
+    const target = event.target;
+    if (target && target !== root && !root.contains?.(target) && target !== win2?.document?.body) return;
+    gestured = true;
+    onFirstGesture?.([snapEvent(event)]);
+  };
+  root.addEventListener("wheel", wheel, { passive: false });
+  root.addEventListener("pointerdown", down2);
+  root.addEventListener("keydown", key);
+  const off = () => {
+    root.removeEventListener("wheel", wheel, { passive: false });
+    root.removeEventListener("pointerdown", down2);
+    root.removeEventListener("keydown", key);
+    win2?.removeEventListener?.("pointermove", move, true);
+    win2?.removeEventListener?.("pointerup", up, true);
+  };
+  if (root.__pxdSnap) root.__pxdSnap.off = off;
+  return off;
+}
+function snapEvent(event) {
+  const out = { type: event?.type };
+  for (const key of ["key", "code", "repeat", "shiftKey", "altKey", "metaKey", "ctrlKey", "button", "buttons", "clientX", "clientY", "pointerId", "pointerType"]) {
+    if (event?.[key] != null) out[key] = event[key];
+  }
+  return out;
+}
+
+// src/view/table-thumb.js
+var THUMB_W = 320;
+var THUMB_MAX = 480;
+var ROW_H = 24;
+var PAD = 7;
+function tableThumbKey(item, sig) {
+  return item?.uid && sig ? `t:${item.uid}:${sig}` : "";
+}
+function columnWidths(grid, width = THUMB_W) {
+  const cols = Math.max(0, ...grid.map((row4) => row4.length));
+  if (!cols) return [];
+  const want = [];
+  for (let c = 0; c < cols; c += 1) {
+    let n2 = 3;
+    for (const row4 of grid) n2 = Math.max(n2, Math.min(40, String(row4[c] ?? "").length));
+    want.push(n2);
+  }
+  const total = want.reduce((a, b) => a + b, 0);
+  const raw = want.map((n2) => Math.max(40, n2 / total * width));
+  const scale = width / raw.reduce((a, b) => a + b, 0);
+  return raw.map((w) => w * scale);
+}
+function fit2(g, text4, max) {
+  const s = String(text4 ?? "");
+  if (!s || typeof g.measureText !== "function" || g.measureText(s).width <= max) return s;
+  let lo = 0;
+  let hi = s.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (g.measureText(`${s.slice(0, mid)}…`).width <= max) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo ? `${s.slice(0, lo)}…` : "";
+}
+function thumbBox(item) {
+  const w = Number(item?.w) > 0 ? Number(item.w) : THUMB_W;
+  const h = Number(item?.h) > 0 ? Number(item.h) : 200;
+  const k = Math.min(1, THUMB_MAX / Math.max(w, h));
+  return { width: Math.max(120, Math.round(w * k)), height: Math.max(48, Math.round(h * k)) };
+}
+function renderTableThumb(doc, grid, { dark = false, width = THUMB_W, height: boxH = 0 } = {}) {
+  if (!doc || !Array.isArray(grid) || !grid.length) return "";
+  const widths = columnWidths(grid, width);
+  if (!widths.length) return "";
+  const height = Math.min(boxH > 0 ? boxH : grid.length * ROW_H + 1, grid.length * ROW_H + 1);
+  let canvas;
+  try {
+    canvas = doc.createElement("canvas");
+  } catch {
+    return "";
+  }
+  const g = canvas?.getContext?.("2d");
+  if (!g || typeof canvas.toDataURL !== "function") return "";
+  const scale = 1;
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  g.scale(scale, scale);
+  const ink = dark ? "#d6dde4" : "#1f2937";
+  const line = dark ? "#3a4450" : "#d0d7de";
+  const head = dark ? "#26303a" : "#f3f4f6";
+  g.fillStyle = dark ? "#1c232b" : "#ffffff";
+  g.fillRect(0, 0, width, height);
+  g.textBaseline = "middle";
+  grid.forEach((row4, r) => {
+    const y = r * ROW_H;
+    if (y >= height) return;
+    if (r === 0) {
+      g.fillStyle = head;
+      g.fillRect(0, y, width, ROW_H);
+    }
+    g.font = `${r === 0 ? "600 " : ""}13px -apple-system, system-ui, sans-serif`;
+    g.fillStyle = ink;
+    let x2 = 0;
+    widths.forEach((w, c) => {
+      g.fillText(fit2(g, row4[c], w - PAD * 2), x2 + PAD, y + ROW_H / 2);
+      x2 += w;
+    });
+  });
+  g.strokeStyle = line;
+  g.lineWidth = 1;
+  g.beginPath();
+  for (let r = 0; r <= grid.length && r * ROW_H <= height; r += 1) {
+    const y = Math.min(height - 0.5, r * ROW_H + 0.5);
+    g.moveTo(0, y);
+    g.lineTo(width, y);
+  }
+  let x = 0;
+  for (const w of widths) {
+    const px = Math.min(width - 0.5, Math.round(x) + 0.5);
+    g.moveTo(px, 0);
+    g.lineTo(px, height);
+    x += w;
+  }
+  g.moveTo(width - 0.5, 0);
+  g.lineTo(width - 0.5, height);
+  g.stroke();
+  try {
+    const url = canvas.toDataURL("image/png");
+    return typeof url === "string" && url.startsWith("data:image/png") ? url : "";
+  } catch {
+    return "";
+  }
+}
+
+// src/feature.js
 init_deeplink();
 init_relchips();
 
@@ -86681,16 +88249,16 @@ function createBoardChips({ doc = globalThis.document, cache } = {}) {
     const found = [];
     if (node2.matches?.(".roam-block-container")) found.push(node2);
     if (typeof node2.querySelectorAll === "function") {
-      for (const el of node2.querySelectorAll(".roam-block-container")) found.push(el);
+      for (const el2 of node2.querySelectorAll(".roam-block-container")) found.push(el2);
     }
-    for (const el of found) attach3(el);
+    for (const el2 of found) attach3(el2);
     reconcile();
   };
   const scanUids = (uids) => {
     if (!doc?.querySelectorAll) return;
     for (const uid of uids || []) {
       if (!/^[\w-]+$/.test(String(uid))) continue;
-      for (const el of doc.querySelectorAll(`.roam-block-container[data-block-uid="${uid}"]`)) attach3(el);
+      for (const el2 of doc.querySelectorAll(`.roam-block-container[data-block-uid="${uid}"]`)) attach3(el2);
     }
     reconcile();
   };
@@ -86724,11 +88292,11 @@ function same(a, b) {
   return true;
 }
 var HOVER_SEL = ".pxd-cardchip, .pxd-boardchip, .pxd-crumb, .rm-block-ref, .rm-page-ref, [data-link-title], .pxd-item--board";
-function schedulePrefetch(uids, el) {
-  current2?.schedule(uids, el);
+function schedulePrefetch(uids, el2) {
+  current2?.schedule(uids, el2);
 }
-function cancelPrefetch(el) {
-  current2?.cancel(el);
+function cancelPrefetch(el2) {
+  current2?.cancel(el2);
 }
 function createPrefetch({
   doc = globalThis.document,
@@ -86839,17 +88407,17 @@ function createPrefetch({
     if (jobs.length) Promise.all(jobs).then(settle2, settle2);
     else settle2();
   }
-  function schedule(uids, el) {
+  function schedule(uids, el2) {
     if (enabled() === false) return;
     const list = dedupe(Array.isArray(uids) ? uids : [uids]);
     if (!list.length) return;
     if (timer && same(pending, list)) {
-      if (el) pendingEl = el;
+      if (el2) pendingEl = el2;
       return;
     }
     cancel();
     pending = list;
-    pendingEl = el || null;
+    pendingEl = el2 || null;
     timer = setTimer(() => {
       timer = null;
       const batch = pending;
@@ -86858,8 +88426,8 @@ function createPrefetch({
       fire2(batch);
     }, delayMs);
   }
-  function cancel(el) {
-    if (el && pendingEl !== el) return;
+  function cancel(el2) {
+    if (el2 && pendingEl !== el2) return;
     if (timer != null) clearTimer(timer);
     timer = null;
     pending = [];
@@ -86894,7 +88462,7 @@ function createPrefetch({
 }
 
 // src/cardchips.js
-var SKIP2 = ".pxd-root, .rm-pdf-container, .rm-search-results, .rm-search";
+var SKIP3 = ".pxd-root, .rm-pdf-container, .rm-search-results, .rm-search";
 var OPT_OUT = "plexus-no-chips";
 var OWN = ".pxd-cardchip-row, .pxd-cardchip, .pxd-cardchip-more, .pxd-cardpop";
 var HOVER_GRACE_MS = 250;
@@ -86914,7 +88482,7 @@ function optedOut(scope) {
   return false;
 }
 function blocked2(node2, memo) {
-  if (node2?.closest?.(SKIP2)) return true;
+  if (node2?.closest?.(SKIP3)) return true;
   const page = articleOf(node2);
   if (!page) return false;
   if (!memo) return optedOut(page);
@@ -86996,21 +88564,21 @@ function createCardChips({
     } catch {
       preview = null;
     }
-    const el = doc.createElement("div");
-    el.className = "pxd-cardpop pxd-root";
-    el.style.position = "fixed";
-    el.style.width = "320px";
+    const el2 = doc.createElement("div");
+    el2.className = "pxd-cardpop pxd-root";
+    el2.style.position = "fixed";
+    el2.style.width = "320px";
     const title = doc.createElement("div");
     title.className = "pxd-cardpop__title";
     title.textContent = preview?.title || cache?.titleOf?.(boardUid) || "Untitled board";
-    el.append(title);
+    el2.append(title);
     if (preview?.section) {
       const section2 = doc.createElement("div");
       section2.className = "pxd-cardpop__section";
       section2.textContent = preview.section;
-      el.append(section2);
+      el2.append(section2);
     }
-    if (preview?.svg) el.append(preview.svg);
+    if (preview?.svg) el2.append(preview.svg);
     const open = doc.createElement("button");
     open.type = "button";
     open.className = "pxd-cardpop__open";
@@ -87027,17 +88595,17 @@ function createCardChips({
       event.stopPropagation();
       onOpen?.({ boardUid, cardUid, sidebar: true });
     });
-    el.append(open, side2);
-    doc.body?.append(el);
+    el2.append(open, side2);
+    doc.body?.append(el2);
     const rect = chip.getBoundingClientRect?.() || { left: 8, top: 8, right: 40, bottom: 28, width: 32, height: 20 };
     const placed = placePopover({
       anchor: rect,
       size: { w: 320, h: 200 },
       viewport: { left: 0, top: 0, right: view().innerWidth || 800, bottom: view().innerHeight || 600 }
     });
-    el.style.left = `${placed.left}px`;
-    el.style.top = `${placed.top}px`;
-    pop = el;
+    el2.style.left = `${placed.left}px`;
+    el2.style.top = `${placed.top}px`;
+    pop = el2;
   };
   const onPointerDown = (event) => {
     const chip = event.target?.closest?.(".pxd-cardchip");
@@ -87147,7 +88715,7 @@ function createCardChips({
     }
   };
   const attach3 = (container, memo) => {
-    if (!container || container.nodeType !== 1 || container.closest?.(SKIP2)) return;
+    if (!container || container.nodeType !== 1 || container.closest?.(SKIP3)) return;
     let uid = container.getAttribute?.("data-block-uid") || "";
     if (!uid) {
       const input = container.querySelector?.("textarea");
@@ -87173,10 +88741,10 @@ function createCardChips({
     fill(container, kids, uid);
   };
   const outside = (scope, selector) => {
-    for (const el of scope.querySelectorAll?.(selector) || []) {
-      if (el.closest?.(".pxd-root, .rm-pdf-container, .rm-search-results, .rm-search")) continue;
-      if (el.closest?.("h1.rm-title-display")) continue;
-      return el;
+    for (const el2 of scope.querySelectorAll?.(selector) || []) {
+      if (el2.closest?.(".pxd-root, .rm-pdf-container, .rm-search-results, .rm-search")) continue;
+      if (el2.closest?.("h1.rm-title-display")) continue;
+      return el2;
     }
     return null;
   };
@@ -87251,7 +88819,7 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
     const list = [];
     if (node2.matches?.(".roam-block-container")) list.push(node2);
     if (typeof node2.querySelectorAll === "function") {
-      for (const el of node2.querySelectorAll(".roam-block-container")) list.push(el);
+      for (const el2 of node2.querySelectorAll(".roam-block-container")) list.push(el2);
     }
     return list;
   };
@@ -87338,7 +88906,7 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
     rows.clear();
     const body = doc?.body;
     if (!body?.querySelectorAll) return;
-    for (const el of body.querySelectorAll(".pxd-cardchip, .pxd-cardchip-more, .pxd-cardchip-row, .pxd-cardpop")) el.remove();
+    for (const el2 of body.querySelectorAll(".pxd-cardchip, .pxd-cardchip-more, .pxd-cardchip-row, .pxd-cardpop")) el2.remove();
   };
   const dispose = () => {
     cancelPlace();
@@ -88129,13 +89697,13 @@ init_perf_log();
 var OPEN_FRAMES2 = 120;
 var REGIONS = /* @__PURE__ */ new Set(["cards", "chrome", "panel", "page"]);
 function attributeShiftNode(node2) {
-  let el = node2;
-  if (el && el.nodeType === 3) el = el.parentElement || el.parentNode;
-  if (!el || typeof el.closest !== "function") return null;
-  if (el.closest(".pxd-item")) return "cards";
-  if (el.closest(".pxd-toolbar") || el.closest(".pxd-dock")) return "chrome";
-  if (el.closest(".pxd-panel")) return "panel";
-  if (el.closest(".pxd-root")) return null;
+  let el2 = node2;
+  if (el2 && el2.nodeType === 3) el2 = el2.parentElement || el2.parentNode;
+  if (!el2 || typeof el2.closest !== "function") return null;
+  if (el2.closest(".pxd-item")) return "cards";
+  if (el2.closest(".pxd-toolbar") || el2.closest(".pxd-dock")) return "chrome";
+  if (el2.closest(".pxd-panel")) return "panel";
+  if (el2.closest(".pxd-root")) return null;
   return "page";
 }
 function regionOf(entry) {
@@ -88338,8 +89906,8 @@ function sameTrail(a, b) {
   for (let i = 0; i < a.length; i += 1) if (a[i].uid !== b[i].uid) return false;
   return true;
 }
-function setClassToken(el, name, on) {
-  const list = el?.classList;
+function setClassToken(el2, name, on) {
+  const list = el2?.classList;
   if (!list || typeof list.contains !== "function" || !name) return;
   const has = Boolean(list.contains(name));
   if (on) {
@@ -88419,13 +89987,13 @@ async function installPlexusDiagram({
     } catch {
     }
     const nodes = doc?.querySelectorAll?.("[class*='pxd-']");
-    for (const el of [...nodes || []]) {
+    for (const el2 of [...nodes || []]) {
       try {
-        const classes = String(el.getAttribute?.("class") ?? el.className ?? "").split(/\s+/).filter(Boolean);
+        const classes = String(el2.getAttribute?.("class") ?? el2.className ?? "").split(/\s+/).filter(Boolean);
         if (classes.some((name) => /^(rm-|roam-)/.test(name))) {
-          for (const name of classes) if (name.startsWith("pxd-")) el.classList.remove(name);
+          for (const name of classes) if (name.startsWith("pxd-")) el2.classList.remove(name);
         } else {
-          el.remove();
+          el2.remove();
         }
       } catch {
       }
@@ -88439,21 +90007,26 @@ async function installPlexusDiagram({
   const perfLog = createPerfLog();
   perfLog.bind(host.stats);
   const shiftWatch = createShiftWatch();
+  const graphKey = () => {
+    if (typeof host.graph === "string" && host.graph) return host.graph;
+    try {
+      const match = /#\/app\/([^/?#]+)/.exec(String(globalThis.location?.hash || ""));
+      if (match) return decodeURIComponent(match[1]);
+    } catch {
+    }
+    return graphFromHash();
+  };
   const sketchStore = createSketchStore({
     storage,
-    graph: () => {
-      if (typeof host.graph === "string" && host.graph) return host.graph;
-      try {
-        const match = /#\/app\/([^/?#]+)/.exec(String(globalThis.location?.hash || ""));
-        if (match) return decodeURIComponent(match[1]);
-      } catch {
-      }
-      return graphFromHash();
-    },
+    graph: graphKey,
     enabled: () => notedSpeedFlags().sketch !== false
   });
   const sketchTimers = /* @__PURE__ */ new Map();
   const sketchHandoffs = /* @__PURE__ */ new Map();
+  const snapTimers = /* @__PURE__ */ new Map();
+  const SNAP_SETTLE_MS = 1e3;
+  const SNAP_WARM_WAIT_MS = 50;
+  const openPerf = { lastOpen: null, opens: [] };
   let settings = readSettings(extensionAPI);
   bindSpeedFlagSource(() => {
     try {
@@ -88463,6 +90036,11 @@ async function installPlexusDiagram({
     }
   });
   lifecycle.add(() => bindSpeedFlagSource(null));
+  const snapStore = createBoardSnapStore({
+    indexedDB: win2.indexedDB ?? globalThis.indexedDB,
+    graph: graphKey,
+    enabled: () => notedSpeedFlags().snapshot !== false
+  });
   const speedFlags = () => notedSpeedFlags();
   const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
@@ -88725,7 +90303,7 @@ async function installPlexusDiagram({
     disposeAlive();
     for (const observer of portalObservers.values()) observer.disconnect();
     portalObservers.clear();
-    for (const el of [...doc?.querySelectorAll?.(`.${OUTLINE_NATIVE_CLASS}`) || []]) setClassToken(el, OUTLINE_NATIVE_CLASS, false);
+    for (const el2 of [...doc?.querySelectorAll?.(`.${OUTLINE_NATIVE_CLASS}`) || []]) setClassToken(el2, OUTLINE_NATIVE_CLASS, false);
     guardStyle?.remove?.();
     guardStyle = null;
   });
@@ -88958,6 +90536,7 @@ async function installPlexusDiagram({
   function forgetSketch(rec) {
     if (!rec) return;
     clearSketchTimer(rec);
+    clearSnapTimer(rec);
     cancelSketchHandoff(rec);
   }
   function liveSketchView(rec) {
@@ -88980,6 +90559,7 @@ async function installPlexusDiagram({
   }
   function scheduleSketch(rec) {
     clearSketchTimer(rec);
+    scheduleSnap(rec);
     if (speedFlags().sketch === false) return;
     if (stopped || !rec || mounts.get(rec.native) !== rec || !liveSketchView(rec)) return;
     const timer = setTimeout(() => writeSketch(rec), SKETCH_DEBOUNCE_MS);
@@ -88988,6 +90568,7 @@ async function installPlexusDiagram({
   }
   function saveSketchNow(rec) {
     clearSketchTimer(rec);
+    saveSnapNow(rec);
     if (speedFlags().sketch === false) return;
     if (!rec?.view || !rec.session?.board || sketchGesturing(rec)) return;
     try {
@@ -88998,6 +90579,403 @@ async function installPlexusDiagram({
       sketchStore.flushAll();
     } catch {
     }
+  }
+  const snapAllowed = () => speedFlags().snapshot !== false;
+  const readsNow = () => Number(host.stats?.reads) || 0;
+  const runIdle = (fn) => {
+    const ric = win2.requestIdleCallback ?? globalThis.requestIdleCallback;
+    if (typeof ric === "function") return ric(() => fn(), { timeout: 2e3 });
+    const t = setTimeout(fn, 0);
+    t?.unref?.();
+    return t;
+  };
+  const isDarkTheme = (rec) => {
+    try {
+      if (rec?.view?.root?.classList?.contains?.("pxd-root--dark")) return true;
+      return Boolean(doc?.body?.classList?.contains?.("bp3-dark"));
+    } catch {
+      return false;
+    }
+  };
+  const thumbKeyOf = (item, dark) => {
+    const base = tableThumbKey(item, itemSig(item));
+    const box2 = thumbBox(item);
+    return base ? `${base}:${box2.width}x${box2.height}:${dark ? "d" : "l"}` : "";
+  };
+  function tableThumbFor(rec, item) {
+    if (!snapAllowed()) return null;
+    const dark = isDarkTheme(rec);
+    return snapStore.thumb(thumbKeyOf(item, dark)) || null;
+  }
+  const thumbAsked = /* @__PURE__ */ new Set();
+  function tableShown(rec, item) {
+    if (!snapAllowed() || !item?.uid) return;
+    const dark = isDarkTheme(rec);
+    const key = thumbKeyOf(item, dark);
+    if (!key || snapStore.thumb(key) || thumbAsked.has(key)) return;
+    thumbAsked.add(key);
+    runIdle(() => {
+      thumbAsked.delete(key);
+      if (stopped || snapStore.thumb(key)) return;
+      let url = "";
+      try {
+        url = renderTableThumb(doc, tableGrid2(item), { dark, ...thumbBox(item) });
+      } catch {
+        url = "";
+      }
+      if (!url || !snapStore.putThumb(key, url)) return;
+      try {
+        rec.view?.repaintThumb?.(item.uid);
+      } catch {
+      }
+      scheduleSnap(rec);
+    });
+  }
+  function snapKindOf(rec) {
+    if (rec?.fullscreen) return "fullscreen";
+    try {
+      return inRightSidebar(rec?.native) ? "sidebar" : "main";
+    } catch {
+      return "main";
+    }
+  }
+  const snapKey = (uid, kind) => kind && kind !== "main" ? `${uid}@${kind}` : uid;
+  function snapFor(rec, uid) {
+    const kind = snapKindOf(rec);
+    const own = snapStore.get(snapKey(uid, kind));
+    if (own || kind === "main") return own;
+    const main = snapStore.get(uid);
+    return main ? { ...main, chrome: [] } : null;
+  }
+  function clearSnapTimer(rec) {
+    const timer = snapTimers.get(rec);
+    if (timer) clearTimeout(timer);
+    snapTimers.delete(rec);
+  }
+  function captureSnap(rec) {
+    if (!snapAllowed() || stopped || !rec?.view || rec.view.sketchStandIn === true) return false;
+    let src = null;
+    try {
+      src = rec.view.snapshotSource?.() ?? null;
+    } catch {
+      src = null;
+    }
+    if (!src) return false;
+    if (src.gesturing) return null;
+    const uid = currentUid(rec);
+    if (!uid) return false;
+    const key = snapKey(uid, snapKindOf(rec));
+    const dark = isDarkTheme(rec);
+    const thumbs = /* @__PURE__ */ new Map();
+    let snap = null;
+    try {
+      snap = captureBoardSnap({
+        ...src,
+        uid,
+        prev: snapStore.get(key) || snapStore.get(uid),
+        thumbs,
+        tableThumbKey: (item) => {
+          if (item?.type === "section" || !/^\{\{\s*(\[\[table\]\]|table)\s*\}\}$/i.test(String(item?.string || "").trim())) return null;
+          const key2 = thumbKeyOf(item, dark);
+          return key2 && snapStore.thumb(key2) ? key2 : null;
+        }
+      });
+    } catch {
+      snap = null;
+    }
+    if (!snap) return false;
+    rec.snapDirty = false;
+    return snapStore.set(key, snap, thumbs);
+  }
+  function scheduleSnap(rec) {
+    if (!snapAllowed() || stopped || !rec || mounts.get(rec.native) !== rec) return;
+    rec.snapDirty = true;
+    clearSnapTimer(rec);
+    const timer = setTimeout(() => {
+      snapTimers.delete(rec);
+      runIdle(() => {
+        if (stopped || mounts.get(rec.native) !== rec) return;
+        if (captureSnap(rec) === null) scheduleSnap(rec);
+      });
+    }, SNAP_SETTLE_MS);
+    timer?.unref?.();
+    snapTimers.set(rec, timer);
+  }
+  function saveSnapNow(rec) {
+    const pending = snapTimers.has(rec);
+    clearSnapTimer(rec);
+    if (!rec?.snapDirty && !pending) return;
+    try {
+      captureSnap(rec);
+    } catch {
+    }
+    try {
+      void snapStore.flush();
+    } catch {
+    }
+  }
+  function openStart(rec, kind) {
+    rec.openT0 = perfNow();
+    rec.openReads0 = readsNow();
+    rec.openKind = kind;
+    rec.openSnap = false;
+    rec.openPaint = null;
+  }
+  function publishOpen(rec, entry) {
+    openPerf.lastOpen = entry;
+    openPerf.opens.push(entry);
+    if (openPerf.opens.length > 20) openPerf.opens.shift();
+  }
+  function notePaint(rec, snap) {
+    if (rec.openT0 == null || rec.openPaint) return;
+    const queries = readsNow() - (rec.openReads0 || 0);
+    const t0 = rec.openT0;
+    rec.openSnap = snap;
+    rec.openPaint = { queries, at: perfNow() - t0 };
+    const raf2 = globalThis.requestAnimationFrame;
+    const settle2 = () => {
+      if (!rec.openPaint) return;
+      rec.openPaint.frame = perfNow() - t0;
+      if (!snap) noteLive(rec);
+    };
+    if (typeof raf2 === "function") raf2(settle2);
+    else settle2();
+  }
+  function noteLive(rec) {
+    if (rec.openT0 == null || !rec.openPaint) return;
+    const entry = {
+      uid: currentUid(rec),
+      kind: rec.openKind || "main",
+      snap: Boolean(rec.openSnap),
+      firstPaintMs: Math.round((rec.openPaint.frame ?? rec.openPaint.at) * 10) / 10,
+      paintTaskMs: Math.round(rec.openPaint.at * 10) / 10,
+      liveMs: Math.round((perfNow() - rec.openT0) * 10) / 10,
+      queriesBeforePaint: rec.openPaint.queries,
+      queriesBeforeLive: readsNow() - (rec.openReads0 || 0)
+    };
+    rec.openT0 = null;
+    publishOpen(rec, entry);
+  }
+  function paintSnapFor(rec, initialViewport) {
+    if (!snapAllowed() || !rec?.mountEl) return null;
+    const uid = currentUid(rec);
+    const snap = snapFor(rec, uid);
+    if (!snap?.items?.length) return null;
+    let fsOff = null;
+    try {
+      let stored = null;
+      try {
+        const id = viewportStorageId(rec.native, uid, null);
+        stored = host.viewports?.get?.(id) || null;
+        if (!stored && id !== uid) stored = host.viewports?.get?.(uid) || null;
+      } catch {
+        stored = null;
+      }
+      const vp = resolveSnapViewport({ initial: initialViewport, stored, snap });
+      anchorMount(rec.mountEl);
+      if (rec.fullscreen) fsOff = applyFullscreenChrome(rec.mountEl, true, doc);
+      else if (snap.height) {
+        rec.mountEl.style.height = `${snap.height}px`;
+        rec.mountEl.style.minHeight = `${snap.height}px`;
+      }
+      const painted = paintBoardSnap(doc, rec.mountEl, snap, vp, { thumbs: snapStore.thumbs, fullscreen: rec.fullscreen });
+      if (!painted) throw new Error("snapshot paint failed");
+      painted.snap = snap;
+      painted.vp = vp;
+      painted.fsOff = fsOff;
+      painted.fullscreen = Boolean(rec.fullscreen);
+      notePaint(rec, true);
+      return painted;
+    } catch {
+      try {
+        fsOff?.();
+      } catch {
+      }
+      if (rec.fullscreen) {
+        try {
+          applyFullscreenChrome(rec.mountEl, false, doc);
+        } catch {
+        }
+      }
+      try {
+        removeBoardSnap(rec.mountEl);
+      } catch {
+      }
+      return null;
+    }
+  }
+  function dropSnapPaint(rec, painted, { live: live2 = false } = {}) {
+    if (!painted) return;
+    try {
+      painted.gestureOff?.();
+    } catch {
+    }
+    try {
+      painted.fsOff?.();
+    } catch {
+    }
+    painted.fsOff = null;
+    if (!live2 && painted.fullscreen) {
+      try {
+        applyFullscreenChrome(rec.mountEl, false, doc);
+      } catch {
+      }
+    }
+    try {
+      removeBoardSnap(rec.mountEl);
+    } catch {
+    }
+  }
+  function replaySnapGesture(handoff, view) {
+    const queued = handoff.queue?.splice(0) || [];
+    for (const snap of queued) {
+      const keyEvent = String(snap.type || "").startsWith("key");
+      let target = keyEvent ? handoff.win : null;
+      if (!keyEvent) {
+        try {
+          target = doc.elementFromPoint?.(snap.clientX, snap.clientY) || null;
+        } catch {
+          target = null;
+        }
+        if (!target || !view?.root?.contains?.(target)) target = view?.root ?? null;
+      }
+      if (typeof target?.dispatchEvent !== "function") continue;
+      try {
+        target.dispatchEvent(makeSketchEvent(snap));
+      } catch {
+      }
+    }
+  }
+  function finishSnapHandoff(handoff) {
+    if (!handoff || handoff.finished) return;
+    handoff.finished = true;
+    const rec = handoff.rec;
+    try {
+      replaySnapGesture(handoff, handoff.view);
+    } catch {
+    }
+    noteLive(rec);
+    cancelSketchHandoff(rec);
+  }
+  function runSnapMount(handoff, standIn, { autofocus, viewport, acquire, onLive, logging, t0 }) {
+    const rec = handoff.rec;
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
+    handoff.mounted = true;
+    const fail4 = (error) => {
+      handoff.cancelled = true;
+      clearSketchHandoffTimers(handoff);
+      sketchHandoffs.delete(rec);
+      dropSnapPaint(rec, handoff.painted);
+      try {
+        if (error) noteMountFail(currentUid(rec), error);
+        unmount(rec);
+      } catch {
+      }
+    };
+    if (typeof acquire === "function") {
+      let ok = false;
+      try {
+        ok = acquire() !== false;
+      } catch (error) {
+        fail4(error);
+        return;
+      }
+      if (!ok) {
+        fail4(null);
+        return;
+      }
+    }
+    const state = handoff.painted?.state;
+    const vpNow = state?.moved ? { ...state.vp } : viewport;
+    let view;
+    try {
+      view = callMountView(rec, autofocus, vpNow, {
+        snapshot: { snap: handoff.painted.snap, shells: handoff.painted.shells },
+        onFirstPaint: () => finishSnapHandoff(handoff)
+      });
+    } catch (error) {
+      fail4(error);
+      return;
+    }
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) {
+      try {
+        view?.dispose?.();
+      } catch {
+      }
+      dropSnapPaint(rec, handoff.painted);
+      return;
+    }
+    handoff.view = view;
+    handoff.live = true;
+    try {
+      handoff.flushQueued?.();
+    } catch {
+    }
+    finishLive(rec, view, logging, t0);
+    try {
+      onLive?.();
+    } catch (error) {
+      console.warn("[plexus-diagram] open tail failed", error);
+    }
+    const timer = setTimeout(() => {
+      handoff.holdTimer = null;
+      finishSnapHandoff(handoff);
+    }, SKETCH_HOLD_MS);
+    timer?.unref?.();
+    handoff.holdTimer = timer;
+  }
+  function beginSnapHandoff(rec, painted, { autofocus = false, viewport = null, acquire = null, onLive = null } = {}) {
+    const logging = settings[SETTING_IDS.speedLog] === true;
+    const handoff = {
+      rec,
+      vp: painted.vp,
+      win: win2,
+      painted,
+      snapPath: true,
+      cancelled: false,
+      mounted: false,
+      live: false,
+      finished: false,
+      queue: [],
+      view: null,
+      rafId: null,
+      timeoutId: null,
+      holdRaf: null,
+      holdTimer: null,
+      soonTimer: null,
+      observer: null
+    };
+    sketchHandoffs.set(rec, handoff);
+    const standIn = sketchStandIn(handoff);
+    rec.view = standIn;
+    painted.gestureOff = armSnapGestures(painted, {
+      win: win2,
+      onFirstGesture: (events) => {
+        if (handoff.finished || handoff.cancelled) return;
+        handoff.queue.push(...events);
+      }
+    });
+    const opts = { autofocus, viewport, acquire, onLive, logging, t0: logging ? perfNow() : 0 };
+    if (logging) shiftWatch.watchMount(rec.mountEl);
+    const start = () => {
+      handoff.timeoutId = null;
+      runSnapMount(handoff, standIn, opts);
+    };
+    const raf2 = globalThis.requestAnimationFrame;
+    if (typeof raf2 === "function") {
+      handoff.rafId = raf2(() => {
+        handoff.rafId = null;
+        if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
+        const timer = setTimeout(start, 0);
+        timer?.unref?.();
+        handoff.timeoutId = timer;
+      });
+    } else {
+      const timer = setTimeout(start, 0);
+      timer?.unref?.();
+      handoff.timeoutId = timer;
+    }
+    return standIn;
   }
   const SKETCH_INPUT = ["keydown", "keyup", "pointerdown", "pointerup"];
   function clearSketchHandoffTimers(handoff) {
@@ -89046,10 +91024,15 @@ async function installPlexusDiagram({
       } catch {
       }
       handoff.observer = null;
+      if (handoff.painted) dropSnapPaint(rec, handoff.painted, { live: handoff.live });
     }
     if (rec) try {
       removeSketch(rec.mountEl);
     } catch {
+    }
+    if (rec?.snapPaint) {
+      dropSnapPaint(rec, rec.snapPaint);
+      rec.snapPaint = null;
     }
   }
   function sketchHandoffOwns(handoff, event) {
@@ -89247,8 +91230,13 @@ async function installPlexusDiagram({
     timer.unref?.();
     handoff.holdTimer = timer;
   }
-  function callMountView(rec, autofocus, viewport) {
+  function callMountView(rec, autofocus, viewport, extra = {}) {
     return mountView({
+      onFirstPaint: () => notePaint(rec, false),
+      onSettled: () => scheduleSnap(rec),
+      tableThumb: (item) => tableThumbFor(rec, item),
+      onTableShown: (item) => tableShown(rec, item),
+      ...extra,
       host,
       session: rec.session,
       mountEl: rec.mountEl,
@@ -89474,13 +91462,13 @@ async function installPlexusDiagram({
     visit(rec, trail);
     const focus = (left) => {
       if (stopped || mounts.get(rec.native) !== rec) return;
-      let done = false;
+      let done2 = false;
       try {
-        done = Boolean(rec.view?.focusUid?.(edgeUid));
+        done2 = Boolean(rec.view?.focusUid?.(edgeUid));
       } catch {
-        done = false;
+        done2 = false;
       }
-      if (!done && left > 0) lifecycle.timeout(() => focus(left - 1), 150);
+      if (!done2 && left > 0) lifecycle.timeout(() => focus(left - 1), 150);
     };
     queueMicrotask(() => focus(8));
   }
@@ -89759,6 +91747,15 @@ async function installPlexusDiagram({
     }
     if (settings[SETTING_IDS.speedLog] === true) perfLog.watchOpen(rec.mountEl, perfNow());
   }
+  function claimAliveKept(rec) {
+    let kind = null;
+    try {
+      kind = rec.poolKind || poolKind(rec.native);
+    } catch {
+      kind = null;
+    }
+    return alive.some((entry) => entry.boardUid === rec.uid && entry.kind === kind && aliveUsable(entry));
+  }
   function claimAlive(rec, boardUid, native) {
     const pooled = takeAlive(boardUid, poolKind(native));
     if (aliveUsable(pooled)) {
@@ -89854,6 +91851,55 @@ async function installPlexusDiagram({
         }
         return;
       }
+      if (snapAllowed() && snapFor(rec, target)?.items?.length) {
+        try {
+          commit?.();
+        } catch {
+        }
+        saveSketchNow(rec);
+        forgetSketch(rec);
+        detachCurrent(rec);
+        rec.crumbs = next;
+        openStart(rec, "nested");
+        const painted = paintSnapFor(rec, viewport || null);
+        if (painted) {
+          try {
+            rec.view = beginSnapHandoff(rec, painted, {
+              autofocus: true,
+              viewport: viewport || null,
+              acquire: () => {
+                rec.session = acquireSession2(target, { host, settings: liveSettings, ...virtualOptions(virtual) });
+                if (!rec.session?.board) {
+                  rec.session?.release?.();
+                  rec.session = null;
+                  return false;
+                }
+                return true;
+              },
+              onLive: () => {
+                rec.off = watchRec(rec);
+                publishCards(rec.session?.board);
+              }
+            });
+          } catch (error) {
+            dropSnapPaint(rec, painted);
+            noteMountFail(rec.uid, error);
+            unmount(rec);
+          }
+          return;
+        }
+        try {
+          rec.session = acquireSession2(target, { host, settings: liveSettings, ...virtualOptions(virtual) });
+          if (!rec.session?.board) throw new Error("nested board is gone");
+          rec.view = mountRecView(rec, { autofocus: true, viewport: viewport || null });
+          rec.off = watchRec(rec);
+          publishCards(rec.session?.board);
+        } catch (error) {
+          noteMountFail(rec.uid, error);
+          unmount(rec);
+        }
+        return;
+      }
       let session;
       try {
         session = acquireSession2(target, { host, settings: liveSettings, ...virtualOptions(virtual) });
@@ -89874,6 +91920,7 @@ async function installPlexusDiagram({
       detachCurrent(rec);
       rec.session = session;
       rec.crumbs = next;
+      openStart(rec, "nested");
       try {
         rec.view = mountRecView(rec, { autofocus: true, viewport: viewport || null });
         rec.off = watchRec(rec);
@@ -89914,8 +91961,12 @@ async function installPlexusDiagram({
     native.after(mountEl);
     mounts.set(native, rec);
     if (inRightSidebar(native) && typeof IntersectionObserver === "function") {
-      const h = native.getBoundingClientRect?.().height || 0;
-      rec.mountEl.style.minHeight = `${Math.max(160, Math.round(h))}px`;
+      openStart(rec, "sidebar");
+      rec.snapPaint = claimAliveKept(rec) ? null : paintSnapFor(rec, null);
+      if (!rec.snapPaint) {
+        const h = native.getBoundingClientRect?.().height || 0;
+        rec.mountEl.style.minHeight = `${Math.max(160, Math.round(h))}px`;
+      }
       rec.dormant = true;
       ensureViewportWatch();
       recByMount.set(mountEl, rec);
@@ -89924,13 +91975,41 @@ async function installPlexusDiagram({
       publicEmit("mount", { boardUid: uid });
       return rec;
     }
+    const openTail = () => {
+      unmountOutlineCopies(rec);
+      resumeNestedOpen(rec);
+      applyShow(rec);
+      if (rec.session?.board?.virtual) markCollapsed(uid);
+      else if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
+      if (currentUid(rec) === uid) migrateLegacy(rec);
+    };
+    let deferred = false;
     try {
       if (!claimAlive(rec, uid, native)) {
-        rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
+        openStart(rec, "main");
         rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid) && !isSecondaryMount(rec);
-        rec.view = mountRecView(rec);
-        rec.off = watchRec(rec);
-        publishCards(rec.session?.board);
+        if (rec.fullscreen) rec.openKind = "fullscreen";
+        const painted = paintSnapFor(rec, null);
+        if (painted) {
+          deferred = true;
+          rec.view = beginSnapHandoff(rec, painted, {
+            acquire: () => {
+              rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
+              return Boolean(rec.session);
+            },
+            onLive: () => {
+              rec.off = watchRec(rec);
+              publishCards(rec.session?.board);
+              openTail();
+              applyVisibility(rec, sidebarWindows(), false);
+            }
+          });
+        } else {
+          rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
+          rec.view = mountRecView(rec);
+          rec.off = watchRec(rec);
+          publishCards(rec.session?.board);
+        }
       } else {
         const wantFull = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid) && !isSecondaryMount(rec);
         if (wantFull !== Boolean(rec.fullscreen)) setFullscreen(rec, wantFull);
@@ -89941,16 +92020,11 @@ async function installPlexusDiagram({
       return null;
     }
     mountFail.delete(uid);
-    unmountOutlineCopies(rec);
-    resumeNestedOpen(rec);
-    applyShow(rec);
-    if (rec.session?.board?.virtual) markCollapsed(uid);
-    else if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
-    if (currentUid(rec) === uid) migrateLegacy(rec);
+    if (!deferred) openTail();
     ensureViewportWatch();
     recByMount.set(mountEl, rec);
     viewportWatch?.observe(mountEl);
-    applyVisibility(rec, sidebarWindows(), false);
+    if (!deferred) applyVisibility(rec, sidebarWindows(), false);
     publicEmit("mount", { boardUid: uid });
     return rec;
   }
@@ -90127,6 +92201,45 @@ async function installPlexusDiagram({
   function wake(rec) {
     if (!rec || !rec.dormant || stopped || rec.mountEl.isConnected === false) return;
     rec.dormant = false;
+    const wakeTail = () => {
+      if (rec.session?.board?.virtual) markCollapsed(currentUid(rec));
+      else if (!embedOwnerUid(rec.native, (id) => host.blockString?.(id))) collapseOnce(currentUid(rec), rec.native);
+      if (currentUid(rec) === rec.uid) migrateLegacy(rec);
+      applyShow(rec);
+    };
+    let painted = rec.snapPaint || null;
+    rec.snapPaint = null;
+    if (!painted && !claimAliveKept(rec)) {
+      if (rec.openT0 == null) openStart(rec, "wake");
+      painted = paintSnapFor(rec, rec.parkedVp || null);
+    }
+    if (painted && !claimAliveKept(rec)) {
+      try {
+        rec.view = beginSnapHandoff(rec, painted, {
+          viewport: rec.parkedVp || null,
+          acquire: () => {
+            rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(rec.virtual && virtualUids.has(currentUid(rec))) });
+            if (!rec.session?.board) {
+              rec.session?.release?.();
+              rec.session = null;
+              return false;
+            }
+            return true;
+          },
+          onLive: () => {
+            rec.off = watchRec(rec);
+            publishCards(rec.session?.board);
+            wakeTail();
+          }
+        });
+      } catch (error) {
+        dropSnapPaint(rec, painted);
+        noteMountFail(currentUid(rec), error);
+        unmount(rec);
+      }
+      return;
+    }
+    if (painted) dropSnapPaint(rec, painted);
     rec.mountEl.style.minHeight = "";
     try {
       if (!claimAlive(rec, rec.uid, rec.native)) {
@@ -90237,23 +92350,23 @@ async function installPlexusDiagram({
     const have = convertButtons.get(native);
     if (have && have.uid === uid && have.el.isConnected !== false) return;
     dropConvert(native);
-    const el = doc.createElement("button");
-    el.type = "button";
-    el.className = "pxd-convert pxd-convert--chip";
-    el.textContent = CONVERT_LABEL;
-    el.title = CONVERT_TITLE;
-    el.addEventListener("pointerdown", (event) => event.stopPropagation?.());
-    el.addEventListener("click", (event) => {
+    const el2 = doc.createElement("button");
+    el2.type = "button";
+    el2.className = "pxd-convert pxd-convert--chip";
+    el2.textContent = CONVERT_LABEL;
+    el2.title = CONVERT_TITLE;
+    el2.addEventListener("pointerdown", (event) => event.stopPropagation?.());
+    el2.addEventListener("click", (event) => {
       event.preventDefault?.();
       event.stopPropagation?.();
-      if (!active() || el.disabled) return;
-      el.disabled = true;
+      if (!active() || el2.disabled) return;
+      el2.disabled = true;
       enhanceCommand({}, uid).catch((error) => console.warn("[plexus-diagram] Enhance failed", error)).finally(() => {
-        el.disabled = false;
+        el2.disabled = false;
       });
     });
-    native.after(el);
-    convertButtons.set(native, { el, uid });
+    native.after(el2);
+    convertButtons.set(native, { el: el2, uid });
   }
   function consider(native, options) {
     if (stopped || !native || mounts.has(native) || native.isConnected === false) return;
@@ -90575,8 +92688,8 @@ async function installPlexusDiagram({
     node2.style.width = `${w}px`;
     node2.style.height = `${h}px`;
   }
-  function fillImagePopover(el, button2, region, onOpen) {
-    const popDoc = el.ownerDocument || doc;
+  function fillImagePopover(el2, button2, region, onOpen) {
+    const popDoc = el2.ownerDocument || doc;
     const crop = button2?.parentElement?.querySelector?.(".pxd-region-crop");
     const img = crop?.querySelector?.("img");
     const box2 = previewImageBox(img?.naturalWidth, img?.naturalHeight);
@@ -90628,20 +92741,20 @@ async function installPlexusDiagram({
         sizedInline(holeSpan, hole.w, hole.h);
         preview.append(holeSpan);
       }
-      el.append(preview);
+      el2.append(preview);
     }
     const caption = popDoc.createElement("span");
     caption.className = "pxd-region-pop__caption";
     caption.textContent = region.caption || "";
-    el.append(caption);
-    popButton(el, "Open", false, onOpen);
-    popButton(el, "Open in sidebar", true, onOpen);
+    el2.append(caption);
+    popButton(el2, "Open", false, onOpen);
+    popButton(el2, "Open in sidebar", true, onOpen);
   }
-  function fillViewPopover(el, region, onOpen) {
-    const popDoc = el.ownerDocument || doc;
+  function fillViewPopover(el2, region, onOpen) {
+    const popDoc = el2.ownerDocument || doc;
     const board2 = loadViewBoard(region);
     if (board2) {
-      const svg = drawViewMap(popDoc, el, viewMapModel(board2, region.v, region.ids));
+      const svg = drawViewMap(popDoc, el2, viewMapModel(board2, region.v, region.ids));
       const w = parseFloat(svg.style.width);
       const h = parseFloat(svg.style.height);
       if (w > 0 && h > 0) {
@@ -90652,10 +92765,10 @@ async function installPlexusDiagram({
     if (region.caption) {
       const caption = popDoc.createElement("span");
       caption.textContent = region.caption;
-      el.append(caption);
+      el2.append(caption);
     }
-    popButton(el, "Open", false, onOpen);
-    popButton(el, "Open in sidebar", true, onOpen);
+    popButton(el2, "Open", false, onOpen);
+    popButton(el2, "Open in sidebar", true, onOpen);
   }
   function rememberPin(hash) {
     const target = pxdPinTarget(String(hash || ""));
@@ -90854,9 +92967,9 @@ async function installPlexusDiagram({
       if (region.kind === "view") openViewTarget(region, uid, Boolean(shiftKey));
       else openImageTarget(region, uid, Boolean(shiftKey));
     };
-    const buildPopover = (el) => {
-      if (region.kind === "view") fillViewPopover(el, region, onOpen);
-      else fillImagePopover(el, button2, region, onOpen);
+    const buildPopover = (el2) => {
+      if (region.kind === "view") fillViewPopover(el2, region, onOpen);
+      else fillImagePopover(el2, button2, region, onOpen);
     };
     const handle = region.kind === "view" ? openRegionView({
       doc,
@@ -90877,7 +92990,7 @@ async function installPlexusDiagram({
       obstacles,
       loadFile: (parsed) => {
         try {
-          const src = imageSrc(host.blockString?.(parsed.drawingUid) || "");
+          const src = imageSrc2(host.blockString?.(parsed.drawingUid) || "");
           return src && typeof host.getFile === "function" ? host.getFile(src) : null;
         } catch {
           return null;
@@ -91593,14 +93706,14 @@ async function installPlexusDiagram({
       if (rect) cards.push(rect);
     }
     const bounds = boardBounds(cards.length ? cards : [...rects.values()]);
-    const fit2 = fitThumbSize(bounds.w, bounds.h, maxWidth);
-    if (!fit2) return Promise.resolve(null);
-    const svg = minimapSvg(doc, { v: bounds, items: cards, size: fit2.width });
-    svg.setAttribute("width", String(fit2.width));
-    svg.setAttribute("height", String(fit2.height));
+    const fit3 = fitThumbSize(bounds.w, bounds.h, maxWidth);
+    if (!fit3) return Promise.resolve(null);
+    const svg = minimapSvg(doc, { v: bounds, items: cards, size: fit3.width });
+    svg.setAttribute("width", String(fit3.width));
+    svg.setAttribute("height", String(fit3.height));
     const stroke = borderStroke();
     for (const node2 of svg.querySelectorAll?.("[stroke]") || []) node2.setAttribute("stroke", stroke);
-    return rasterBoard(svg, fit2.width, fit2.height);
+    return rasterBoard(svg, fit3.width, fit3.height);
   }
   function mountSize(rec) {
     const root = rec?.view?.root || rec?.mountEl;
@@ -91618,13 +93731,13 @@ async function installPlexusDiagram({
     }
     return null;
   }
-  function waitOpenMount(boardUid, sidebar, left, done) {
+  function waitOpenMount(boardUid, sidebar, left, done2) {
     const rec = findOpenMount(boardUid, sidebar);
     if (rec || left <= 0) {
-      done(rec);
+      done2(rec);
       return;
     }
-    lifecycle.timeout(() => waitOpenMount(boardUid, sidebar, left - 1, done), 50);
+    lifecycle.timeout(() => waitOpenMount(boardUid, sidebar, left - 1, done2), 50);
   }
   function showCard(rec, cardUid) {
     try {
@@ -91770,6 +93883,13 @@ async function installPlexusDiagram({
       } catch {
         return null;
       }
+    },
+    // INSTANT-1. Open timings: { snap, firstPaintMs, liveMs, queriesBeforePaint } per open.
+    perf: openPerf,
+    snapshots: {
+      size: () => snapStore.size(),
+      has: (uid) => snapStore.has(uid),
+      ready: () => snapStore.ready
     },
     // Caller must release(). A second acquire of the same board shares the session.
     session(uid) {
@@ -91957,6 +94077,7 @@ async function installPlexusDiagram({
   lifecycle.add(() => {
     for (const rec of mounts.values()) forgetSketch(rec);
     sketchStore.dispose();
+    void snapStore.dispose();
   });
   lifecycle.add(() => {
     stopped = true;
@@ -91964,6 +94085,18 @@ async function installPlexusDiagram({
   });
   syncSpeedLog();
   rememberPin(win2.location?.hash || doc?.location?.hash || "");
+  if (snapAllowed()) {
+    let cap4 = null;
+    await Promise.race([
+      snapStore.ready.catch(() => 0),
+      new Promise((resolve) => {
+        cap4 = setTimeout(resolve, SNAP_WARM_WAIT_MS);
+        cap4?.unref?.();
+      })
+    ]);
+    if (cap4) clearTimeout(cap4);
+    if (stopped) return;
+  }
   reconcile();
 }
 

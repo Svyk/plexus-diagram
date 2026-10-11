@@ -216,11 +216,11 @@ export function normalizeSetting(id, value) {
   return value;
 }
 
-// FAST-9. All six on. A missing key stays on. JSON that does not parse leaves this.
-const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount"];
+// FAST-9 + INSTANT-1. All seven on. A missing key stays on. JSON that does not parse leaves this.
+const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot"];
 
 export function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true };
 }
 
 export function parseSpeedFlags(raw) {

@@ -11420,6 +11420,49 @@ body.roam-body.dark .pxd-resurface,
   color: #e6edf3;
 }
 
+/* INSTANT-1. The open snapshot: a static copy of the last settled board, painted before
+   the first Roam read. It sits over the live root until the live board's first frame. */
+.pxd-mount > .pxd-root.pxd-snap-root {
+  overflow: hidden;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pxd-root.pxd-snap-root .pxd-chrome,
+.pxd-root.pxd-snap-root .pxd-chrome *,
+.pxd-root.pxd-snap-root .pxd-item--snap,
+.pxd-root.pxd-snap-root .pxd-item--snap *,
+.pxd-root.pxd-snap-root .pxd-labels,
+.pxd-root.pxd-snap-root svg.pxd-edges {
+  pointer-events: none;
+}
+
+.pxd-root.pxd-snap-root .pxd-item--snap button {
+  cursor: default;
+}
+
+/* INSTANT-4. A table card's PNG face. It stays visible at map and overview zoom,
+   where the body of a bare card is otherwise hidden. */
+.pxd-root .pxd-item.pxd-item--thumb > .pxd-item__body {
+  overflow: hidden;
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--thumb > .pxd-item__body,
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--thumb > .pxd-item__body {
+  display: block;
+}
+
+.pxd-root .pxd-item__body > img.pxd-table-thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: top left;
+  pointer-events: none;
+}
+
 /* HEP-4. Reading-page source chip. A border and a clear fill. Dark mode keeps the border and no tinted fill. */
 
 .pxd-chip.pxd-chip--source {

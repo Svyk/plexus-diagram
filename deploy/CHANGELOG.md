@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.20.0 — 2026-10-11
+
+Filter the search panel by type, search inside your parsed PDFs, and ask AI about one table or paragraph with the rest of the PDF as context.
+
+- **Type filter.** The Search tab's type list is now a Type button with toggles in two groups: Documents (Page, Block, Board, Daily, PDF, Image, Web link) and Inside PDFs (Paragraph, Table, Figure, Caption, Heading, Formula, Region, Pin), with Show all / Hide all. Your choice is kept per graph. PDF, image and web-link rows show a title, file name or thumbnail instead of the raw macro.
+- **Search inside parsed PDFs.** Tables, paragraphs, figures, captions, headings and formulas of every parsed PDF in the graph are searchable, with a page range ("p. 3-8"). Every word must match, in any order; "quotes" keep a phrase. Results show the part type, page and PDF title. Click opens the reader at that page when the PDF is on the board, otherwise adds the part as a card.
+- **Ask AI.** Ask about one part of a PDF from the reader's selection bar, a part's menu in the parsed view, a part in search results, or a whole PDF from its card menu. Plexus sends the part, its caption and section heading, the text around it and an outline of the PDF, and asks the model to answer about that part only. Answers stream, cite pages as [p. N] links that open the reader, and can be copied or added to the board as a card with a Source link back to the part. Uses the Live AI Assistant extension: turn on its "Enable Public API" setting. Plexus calls no AI service of its own.
+- The search panel sits above the tool palette, and long result lists keep each row readable.
+
 ## 3.19.0 — 2026-10-10
 
 High accuracy reads every scanned page with the page model, a finished read follows you to your other computers, and old tables, photographed pages and figures read much closer to the page.

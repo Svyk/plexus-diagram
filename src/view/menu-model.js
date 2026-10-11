@@ -241,6 +241,7 @@ export function buildMenu(kind, ctx = {}) {
         item?.look === "card" ? make("show-as-block", "Show as block") : make("show-as-card", "Show as card"),
         ...(c.canMakeTask ? [make("make-task", "Make task")] : []),
         make("apply-template", "Add attribute template"),
+        ...(c.canComment ? [make("comment", "Comment…")] : []),
         make("version-peek", "Version history"),
         foldItem(folded),
         make("fit-height", "Fit height", { disabled: folded }),
@@ -425,6 +426,7 @@ export function buildMenu(kind, ctx = {}) {
         ...snapshotMenus(),
         make("save-view", "Save view…"),
         make("memory-lane", "Memory lane", { hint: "Shift T" }),
+        ...(c.changes ? [make("changed-since", "Changed since last visit", { checked: c.changed === true })] : []),
         ...(c.lens ? [
           make("lens-strength", "Strength", { checked: c.strength === true }),
           make("lens-dust", "Dust", {

@@ -20,6 +20,7 @@ import { attrNameOf, classifyString, mergePropsForWrite, parseBoardTitle, plainK
 import { dailyTitle, dailyUid, journalRows } from "../model/journal.js";
 import { closeTab, normalizeTabs, openTab, tabStorageKey } from "../model/tabs.js";
 import { bindGuardStats, guardCallback } from "../guard.js";
+import { installCommentHost } from "./comments.js";
 
 export const BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -2516,5 +2517,6 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   host.prefetchBoard.warm = (uid) => Boolean(cache.blockOf(String(uid ?? ""))?.[":block/uid"]);
   host.prefetchBoard.refBoards = (uid) => cache.refBoardsOf(String(uid ?? ""));
   host.prefetchBoard.pageBoards = (title) => cache.pageBoardsOf(typeof title === "string" ? title : "");
+  installCommentHost(host, { api, data });
   return host;
 }

@@ -5848,6 +5848,12 @@ function buildBoardView(onFail, {
       identLoadStarted = true;
       void names.load().then(() => {
         if (disposed) return;
+        // A whole-board repaint only when a PDF card here now has a first-page title to show.
+        let named = false;
+        for (const it of board()?.items.values() || []) {
+          if (it.kind === "pdf" && names.get(pdfMacroUrl(pdfSourceOfItem(it)))?.title) { named = true; break; }
+        }
+        if (!named) return;
         try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
         try { readPane?.refreshCards?.(); } catch { /* switcher */ }
       }).catch(() => {});
@@ -5878,10 +5884,12 @@ function buildBoardView(onFail, {
   const pdfNameOf = (card) => {
     const url = typeof card?.url === "string" ? card.url : "";
     const uid = typeof card?.uid === "string" ? card.uid : "";
-    let info = pdfNameInfo.get(uid);
+    // Keyed by uid and url: Ask AI asks for parts with no PDF block uid, and one "" entry would name every PDF alike.
+    const infoKey = `${uid}\n${url}`;
+    let info = pdfNameInfo.get(infoKey);
     if (!info) {
       try { info = host?.pdfNameInfo?.(uid, url) || {}; } catch { info = {}; }
-      pdfNameInfo.set(uid, info);
+      pdfNameInfo.set(infoKey, info);
     }
     const names = pdfNamesR();
     const ident = names.get(url);

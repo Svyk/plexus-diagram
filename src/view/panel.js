@@ -13,6 +13,7 @@ import { COLOR_ANCHORS, COLOR_NAMES } from "../model/color.js";
 import { CARD_MIME, PARSE_MIME, parseDropPayload } from "../model/drop.js";
 import { dailyTitle, startOfDay, stepDay } from "../model/journal.js";
 import { timeAgo } from "../model/changes.js";
+import { DEFAULT_SORT, metaFilterActive, metaLine, normalizeMetaFilter, normalizeSort, SORTS, sortLabel } from "../model/search-sort.js";
 import { minimapSvg } from "./minimap-svg.js";
 
 export { CARD_MIME, parseDropPayload };
@@ -51,6 +52,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       event.stopPropagation();
       // Trails controls share this listener so listenersPerBoard does not rise.
       if (type === "click") { trailClick(event); changedClick(event); searchClick(event); }
+      else if (type === "keyup") underKey(event);
       else if (type === "pointerdown") trailPointerDown(event);
       else if (type === "keydown") trailKey(event);
     });
@@ -164,12 +166,141 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   };
   paintTypes();
   const setTypesOpen = (open) => {
+    if (open) { try { setPopsOpen(null); } catch { /* popovers not built yet */ } }
     typePop.style.display = open ? "" : "none";
     // The panel is its own stacking context, under the palette: lift it while the list is open.
     root?.classList?.toggle?.("pxd-root--types-open", open);
     typeBtn.setAttribute("aria-expanded", open ? "true" : "false");
   };
   const typesOpen = () => typePop.style.display !== "none";
+  // Sort (one quiet control beside the types) and the Roam-powered filters (More). Both are popovers like the types list.
+  let sort = DEFAULT_SORT;
+  try { sort = normalizeSort(on.loadSort?.()); } catch { /* default */ }
+  const sortBtn = el("button", "pxd-btn pxd-panel__sort-btn", filters, sortLabel(sort));
+  sortBtn.type = "button";
+  sortBtn.setAttribute("aria-label", "Sort results");
+  sortBtn.setAttribute("aria-haspopup", "true");
+  sortBtn.setAttribute("aria-expanded", "false");
+  const sortPop = el("div", "pxd-panel__type-pop pxd-panel__sort-pop", filters);
+  sortPop.style.display = "none";
+  sortPop.setAttribute("role", "menu");
+  sortPop.setAttribute("aria-label", "Sort by");
+  const sortItems = new Map();
+  for (const item of SORTS) {
+    const b = el("button", "pxd-panel__sort-item", sortPop, item.label);
+    b.type = "button";
+    b.setAttribute("role", "menuitemradio");
+    b.setAttribute("aria-label", item.label);
+    b.setAttribute("data-sort", item.id);
+    b.dataset.sort = item.id;
+    sortItems.set(item.id, b);
+  }
+  const paintSort = () => {
+    sortBtn.textContent = sortLabel(sort);
+    sortBtn.classList.toggle("pxd-panel__sort-btn--on", sort !== DEFAULT_SORT);
+    for (const [id, b] of sortItems) b.setAttribute("aria-checked", id === sort ? "true" : "false");
+  };
+  paintSort();
+  const moreBtn = el("button", "pxd-btn pxd-panel__more-btn", filters, "More");
+  moreBtn.type = "button";
+  moreBtn.setAttribute("aria-label", "More filters");
+  moreBtn.setAttribute("aria-haspopup", "true");
+  moreBtn.setAttribute("aria-expanded", "false");
+  const morePop = el("div", "pxd-panel__type-pop pxd-panel__more-pop", filters);
+  morePop.style.display = "none";
+  morePop.setAttribute("role", "group");
+  morePop.setAttribute("aria-label", "More filters");
+  const field = (label, control, parent = morePop) => {
+    const line = el("label", "pxd-panel__more-row", parent);
+    el("span", "pxd-panel__more-label", line, label);
+    line.append(control);
+    return line;
+  };
+  const choose = (aria) => {
+    const sel = el("select", "pxd-panel__more-select", null);
+    sel.setAttribute("aria-label", aria);
+    return sel;
+  };
+  const createdBySel = choose("Created by");
+  const editedBySel = choose("Edited by");
+  const fillUsers = (sel, names) => {
+    sel.replaceChildren();
+    for (const name of ["", ...names]) {
+      const o = el("option", "", sel, name || "Anyone");
+      o.value = name;
+      o.setAttribute("value", name);
+    }
+  };
+  fillUsers(createdBySel, []);
+  fillUsers(editedBySel, []);
+  field("Created by", createdBySel);
+  field("Edited by", editedBySel);
+  const dayModeSel = choose("Days count from");
+  for (const [v, t] of [["edited", "Edited"], ["created", "Created"]]) {
+    const o = el("option", "", dayModeSel, t);
+    o.value = v;
+    o.setAttribute("value", v);
+  }
+  field("Days box counts", dayModeSel);
+  const underInput = el("input", "pxd-panel__more-under", null);
+  underInput.type = "text";
+  underInput.placeholder = "Page title";
+  underInput.setAttribute("placeholder", "Page title");
+  underInput.setAttribute("aria-label", "Under page");
+  underInput.setAttribute("list", "pxd-panel-under-pages");
+  field("Under page", underInput);
+  const underList = el("datalist", "pxd-panel__more-pages", morePop);
+  underList.id = "pxd-panel-under-pages";
+  const check = (label, aria) => {
+    const line = el("label", "pxd-panel__more-check", morePop);
+    const box = el("input", "pxd-panel__more-box", line);
+    box.type = "checkbox";
+    box.setAttribute("aria-label", aria);
+    line.append(label);
+    return box;
+  };
+  const refsBox = check("Has linked references", "Has linked references");
+  const childrenBox = check("Has children", "Has children");
+  const parsedBox = check("Parsed PDFs only", "Parsed PDFs only");
+  const highlightsBox = check("PDFs with highlights", "PDFs with highlights");
+  const thisBoardBox = check("On this board", "On this board");
+  const moreOpen = () => morePop.style.display !== "none";
+  let usersLoaded = false;
+  const loadUsers = () => {
+    if (usersLoaded) return;
+    usersLoaded = true;
+    let names = [];
+    try { names = on.userNames?.() || host?.userNames?.() || []; } catch { names = []; }
+    const keep = [createdBySel.value, editedBySel.value];
+    fillUsers(createdBySel, names);
+    fillUsers(editedBySel, names);
+    createdBySel.value = keep[0];
+    editedBySel.value = keep[1];
+  };
+  const readMeta = () => normalizeMetaFilter({
+    createdBy: createdBySel.value,
+    editedBy: editedBySel.value,
+    dayMode: dayModeSel.value,
+    refs: refsBox.checked,
+    children: childrenBox.checked,
+    under: underInput.value,
+    parsed: parsedBox.checked,
+    highlights: highlightsBox.checked,
+    thisBoard: thisBoardBox.checked,
+  });
+  const paintMore = () => {
+    const n = [createdBySel.value, editedBySel.value, underInput.value.trim(), dayModeSel.value === "created", refsBox.checked, childrenBox.checked, parsedBox.checked, highlightsBox.checked, thisBoardBox.checked].filter(Boolean).length + (orphanBox.checked ? 1 : 0);
+    moreBtn.textContent = n ? `More · ${n}` : "More";
+    moreBtn.classList.toggle("pxd-panel__more-btn--on", n > 0);
+  };
+  const setPopsOpen = (which) => {
+    sortPop.style.display = which === "sort" ? "" : "none";
+    sortBtn.setAttribute("aria-expanded", which === "sort" ? "true" : "false");
+    morePop.style.display = which === "more" ? "" : "none";
+    moreBtn.setAttribute("aria-expanded", which === "more" ? "true" : "false");
+    if (which === "more") loadUsers();
+    root?.classList?.toggle?.("pxd-root--types-open", which != null || typesOpen());
+  };
   const tagInput = el("input", "pxd-panel__tag", filters);
   tagInput.type = "text";
   tagInput.placeholder = "#tag";
@@ -428,6 +559,10 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     }
     paletteDots(r, palette);
     likeButton(r, likeKey, likeName);
+    if (card.meta && sort !== DEFAULT_SORT) {
+      const line = metaLine(card, sort, journalNow());
+      if (line) { r.classList.add("pxd-panel__row--meta"); el("span", "pxd-panel__row-meta", r, line); }
+    }
     if (on.isOnBoard?.(string)) {
       r.classList.add("pxd-panel__row--on");
       el("span", "pxd-panel__row-on", r, "on board");
@@ -512,6 +647,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     tag: tagInput.value,
     days: daysInput.value,
     orphan: orphanBox.checked === true,
+    ...readMeta(),
   });
 
   const paintLike = () => {
@@ -563,11 +699,25 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const searchClick = (event) => {
     const t = event.target;
     if (t === relClear || relClear.contains?.(t)) { related = null; paintRelated(); searchNow(); return; }
+    if (t === sortBtn || sortBtn.contains?.(t)) { setPopsOpen(sortPop.style.display === "none" ? "sort" : null); return; }
+    if (t === moreBtn || moreBtn.contains?.(t)) { setPopsOpen(moreOpen() ? null : "more"); return; }
+    const pick = t?.closest?.("[data-sort]")?.dataset?.sort || t?.getAttribute?.("data-sort");
+    if (pick && sortItems.has(pick)) {
+      sort = normalizeSort(pick);
+      try { on.saveSort?.(sort); } catch { /* storage */ }
+      paintSort();
+      setPopsOpen(null);
+      searchNow();
+      return;
+    }
     if (t === meaningBox) { try { on.saveMeaning?.(meaningBox.checked); } catch { /* storage */ } searchNow(); }
   };
 
   const semanticRowsFor = (raw, filter) => {
-    try { return host?.semanticRows?.(raw, filter, LIMIT)?.rows || []; } catch { return []; }
+    try {
+      const rows = host?.semanticRows?.(raw, filter, LIMIT, { sort })?.rows || [];
+      return filter.thisBoard === true ? rows.filter((c) => on.isOnBoard?.(c.string)) : rows;
+    } catch { return []; }
   };
   const wantNames = (cards, opts) => {
     const pdfs = (cards || []).filter((c) => c?.kind === "pdf" && c.url);
@@ -589,7 +739,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const scheduleSemantic = (id, filter, keywordCards) => {
     const text = String(filter.text || "").trim();
     const sem = on.semantic;
-    if (!text || !meaningBox.checked || !semanticOn() || typeof host?.semanticRows !== "function" || typeof sem?.search !== "function") return;
+    if (!text || !meaningBox.checked || !semanticOn() || filter.parsed === true || filter.highlights === true || typeof host?.semanticRows !== "function" || typeof sem?.search !== "function") return;
     const cached = sem.peek?.(text);
     if (cached) paintSemantic(id, semanticRowsFor(cached.data, filter), keywordCards);
     if (cached && !cached.stale) return;
@@ -636,6 +786,16 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (like) { await runSimilar(id); return; }
     if (related) { await runRelated(id); return; }
     if (checked.size === 0) { results.replaceChildren(); el("div", "pxd-panel__empty", results, "No card types selected"); return; }
+    if (!libraryFilterActive(filter) && !metaFilterActive(filter) && sort !== DEFAULT_SORT && typeof host?.browse === "function") {
+      let found = null;
+      try { found = await Promise.resolve(host.browse(sort, LIMIT)); } catch { found = null; }
+      if (id !== queryId) return;
+      results.replaceChildren();
+      const list = Array.isArray(found?.rows) ? found.rows : [];
+      if (!list.length) el("div", "pxd-panel__empty", results, "No pages");
+      list.forEach((r) => row(results, r));
+      return;
+    }
     if (!libraryFilterActive(filter)) {
       results.replaceChildren();
       if (on.semantic && !semanticOn()) el("div", "pxd-panel__empty pxd-panel__hint", results, SEMANTIC_HINT);
@@ -649,7 +809,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       if (wantImages && !hostFilter.types.length) {
         pack = { rows: [], queries: [] };
       } else if (typeof host?.librarySearch === "function") {
-        pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT, { pdfMatch: on.pdfMatch, pdfList: on.pdfList }));
+        pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT, { pdfMatch: on.pdfMatch, pdfList: on.pdfList, sort }));
       } else {
         const q = String(filter.text || "").trim();
         if (!q) return;
@@ -674,19 +834,34 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     const log = JSON.stringify(queries.map((q) => ({ name: q.name, ms: Math.round((Number(q.ms) || 0) * 10) / 10 })));
     results.dataset.queryLog = log;
     results.setAttribute("data-query-log", log);
-    const rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
+    let rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
+    // What only the board knows: on this board, a kept parse, highlights (PDFs only).
+    if (filter.thisBoard) rows = rows.filter((r) => on.isOnBoard?.(r.string));
+    if (filter.parsed || filter.highlights) {
+      const pdfs = rows.filter((r) => r.kind === "pdf");
+      const keep = await Promise.all(pdfs.map(async (r) => {
+        try {
+          if (filter.parsed && !(await on.isParsed?.(r.url))) return false;
+          if (filter.highlights && !((await on.highlightCount?.(r.string)) > 0)) return false;
+          return true;
+        } catch { return false; }
+      }));
+      if (id !== queryId) return;
+      const ok = new Set(pdfs.filter((_, i) => keep[i]));
+      rows = rows.filter((r) => ok.has(r));
+    }
     let parts = [];
     const needle = String(filter.text || "").trim();
     const kinds = checked.size === ALL_TYPES.length && !wantFigures ? [] : PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
     if (typeof on.searchParts === "function" && (checked.size === ALL_TYPES.length || kinds.length > 0)
-      && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true) {
+      && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
       const t0 = Date.now();
       try { parts = (await Promise.resolve(on.searchParts({ text: needle, kinds, pages: filter.pages }, LIMIT))) || []; } catch { parts = []; }
       if (id !== queryId) return;
       results.dataset.partsMs = String(Date.now() - t0);
     }
     let found = { images: [], figures: [] };
-    if ((wantImages || wantFigures) && (needle || filter.types.length) && !filter.tag && !filter.days && filter.orphan !== true) {
+    if ((wantImages || wantFigures) && (needle || filter.types.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
       try { found = (await Promise.resolve(on.searchImages({ text: needle, images: wantImages, figures: wantFigures, pages: filter.pages }, LIMIT))) || found; } catch { /* keep none */ }
       if (id !== queryId) return;
     }
@@ -754,6 +929,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     changeTypes();
   });
   listen(panel, "click", (event) => {
+    const u = event.target;
+    const inside = (n) => u && (n === u || n.contains?.(u));
+    if ((sortPop.style.display !== "none" && !inside(sortPop) && !inside(sortBtn)) || (moreOpen() && !inside(morePop) && !inside(moreBtn))) setPopsOpen(null);
     if (!typesOpen()) return;
     const t = event.target;
     if (t && (typePop.contains?.(t) || typeBtn.contains?.(t) || t === typeBtn)) return;
@@ -762,7 +940,18 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   listen(typePop, "keydown", (event) => {
     if (event.key === "Escape") { event.stopPropagation(); setTypesOpen(false); try { typeBtn.focus?.(); } catch { /* stub */ } }
   });
-  listen(orphanBox, "change", searchNow);
+  morePop.append(orphanLabel);
+  listen(morePop, "change", () => { paintMore(); searchNow(); });
+  const underKey = (event) => {
+    if (event.target !== underInput) return;
+    const q = underInput.value.trim();
+    underList.replaceChildren();
+    if (q.length >= 2) {
+      let found = [];
+      try { found = host?.searchPages?.(q, 12) || []; } catch { found = []; }
+      for (const p of found) { const o = el("option", "", underList); o.value = p.title; o.setAttribute("value", p.title); }
+    }
+  };
   listen(input, "keydown", (event) => {
     event.stopPropagation();
     if (event.key === "Escape") { event.preventDefault(); api.close(); }
@@ -776,6 +965,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
 
   const setTab = (next) => {
     setTypesOpen(false);
+    setPopsOpen(null);
     if (tab === "info" && next !== "info") unmountInfo();
     tab = next;
     for (const [name, b] of Object.entries(tabButtons)) b.classList.toggle("pxd-panel__tab--on", tab === name);

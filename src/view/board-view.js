@@ -5746,6 +5746,7 @@ function buildBoardView(onFail, {
   };
   const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
   const LIB_TYPES_KEY = `plexus-diagram:libtypes:${graph}`;
+  const SORT_KEY = "plexus-diagram:panel-sort";
   let partsIdx = null;
   let offPartsChange = null;
   const partsIndex = () => {
@@ -5910,6 +5911,11 @@ function buildBoardView(onFail, {
         } catch { return null; }
       },
       pdfTitle: (url) => parsedTitles.get(url) || "",
+      isParsed: async (url) => { try { return Boolean(url) && Boolean(await parseStoreShared().findByUrl(url)); } catch { return false; } },
+      highlightCount: (string) => { try { return host?.pdfCover?.(string)?.count || 0; } catch { return 0; } },
+      userNames: () => { try { return host?.userNames?.() || []; } catch { return []; } },
+      loadSort: () => { try { return storage?.getItem?.(SORT_KEY) || ""; } catch { return ""; } },
+      saveSort: (id) => { try { storage?.setItem?.(SORT_KEY, id); } catch { /* private mode */ } },
       pdfName: (card) => pdfNameOf(card),
       wantPdfNames: (cards, opts) => wantPdfNames(cards, opts),
       pdfList: () => pdfBlocks(),

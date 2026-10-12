@@ -4319,18 +4319,18 @@ function readingOrder(board2, rects) {
     const pb = key(b);
     return pa.y - pb.y || pa.x - pb.x || (a < b ? -1 : a > b ? 1 : 0);
   });
-  const groups = [];
+  const groups2 = [];
   const visit = (parent, uids) => {
     const sorted = byPos(uids);
     if (!sorted.length) return;
-    groups.push({ parent, uids: sorted });
+    groups2.push({ parent, uids: sorted });
     for (const uid of sorted) {
       const item = board2.items.get(uid);
       if (item?.type === "section") visit(uid, item.members);
     }
   };
   visit(board2.uid, board2.roots);
-  return groups;
+  return groups2;
 }
 function outlineOrder(board2) {
   const byOrder2 = (uids) => uids.map((u, i) => ({ u, i, o: board2.items.get(u)?.order ?? i })).sort((a, b) => a.o - b.o || a.i - b.i).map(({ u }) => u);
@@ -5414,7 +5414,7 @@ function decodePathData(data) {
   return subpaths;
 }
 function snapRules(rules, { tol = 1.5, join = 2 } = {}) {
-  const groups = { h: [], v: [] };
+  const groups2 = { h: [], v: [] };
   for (const axis2 of ["h", "v"]) {
     const list = rules.filter((r) => r.axis === axis2).map((r) => ({
       pos: axis2 === "h" ? (r.y0 + r.y1) / 2 : (r.x0 + r.x1) / 2,
@@ -5430,10 +5430,10 @@ function snapRules(rules, { tol = 1.5, join = 2 } = {}) {
         g.pos = (g.pos * (g.items.length - 1) + r.pos) / g.items.length;
       } else {
         g = { pos: r.pos, items: [r] };
-        groups[axis2].push(g);
+        groups2[axis2].push(g);
       }
     }
-    for (const grp of groups[axis2]) {
+    for (const grp of groups2[axis2]) {
       grp.items.sort((p, q) => p.a - q.a);
       const ivs = [];
       for (const r of grp.items) {
@@ -5448,7 +5448,7 @@ function snapRules(rules, { tol = 1.5, join = 2 } = {}) {
       delete grp.items;
     }
   }
-  return groups;
+  return groups2;
 }
 var OP, FILL_OPS, STROKE_OPS, RULE_MIN_LEN, RULE_MAX_THICK, DOT_MAX;
 var init_rules = __esm({
@@ -5617,18 +5617,18 @@ function tabularBetween(words, box2) {
     if (CAPTION_START_RE.test(r.text) && r.words.length >= 3 && r.x0 - box2.x0 <= 0.15 * width) return { rows, tabular: false, reason: "caption" };
   }
   if (rows.length === 1 && rows[0].tokens === 1 && rows[0].words.length <= 6) return { rows, tabular: true, reason: "label row" };
-  const groups = [];
+  const groups2 = [];
   for (const r of rows) {
     const y0 = r.base - 0.8 * r.size;
     const y1 = r.base + 0.22 * r.size;
-    const g = groups[groups.length - 1];
+    const g = groups2[groups2.length - 1];
     if (g && y0 < g.y1 - 1) {
       g.y1 = Math.max(g.y1, y1);
       g.rows.push(r);
-    } else groups.push({ y0, y1, rows: [r] });
+    } else groups2.push({ y0, y1, rows: [r] });
   }
   let multi = 0;
-  for (const g of groups) {
+  for (const g of groups2) {
     if (g.rows.some((r) => r.tokens >= 2)) {
       multi++;
       continue;
@@ -5638,7 +5638,7 @@ function tabularBetween(words, box2) {
     if (disjoint) multi++;
   }
   const fragments = rows.every((r) => r.tokens >= 2 || r.words.length <= 4);
-  return { rows, tabular: multi >= Math.ceil(groups.length * 0.5) || multi >= 1 && fragments, reason: "single-token rows" };
+  return { rows, tabular: multi >= Math.ceil(groups2.length * 0.5) || multi >= 1 && fragments, reason: "single-token rows" };
 }
 function boxGridRules(boxes) {
   const big = (boxes || []).filter((b) => b.x1 - b.x0 >= 8 && b.y1 - b.y0 >= 4 && !((luminanceOf(b.fill) ?? 0) >= 0.97));
@@ -6055,17 +6055,17 @@ function splitRowsByText(grid, words) {
   return { ...grid, ys: newYs, rows: newYs.length - 1, top: newTop, left: newLeft, splitRows: true };
 }
 function proseRowCuts(rowsIn, colOf) {
-  const groups = [[rowsIn[0]]];
+  const groups2 = [[rowsIn[0]]];
   const hasLabel = (r) => r.words.some((w) => colOf(w) === 0);
   for (let i = 1; i < rowsIn.length; i++) {
     const a = rowsIn[i - 1];
     const b = rowsIn[i];
-    if (b.base - a.base > 1.7 * Math.min(a.size, b.size) && hasLabel(b)) groups.push([b]);
-    else groups[groups.length - 1].push(b);
+    if (b.base - a.base > 1.7 * Math.min(a.size, b.size) && hasLabel(b)) groups2.push([b]);
+    else groups2[groups2.length - 1].push(b);
   }
-  if (groups.length < 2) return [];
+  if (groups2.length < 2) return [];
   let aligned = 0;
-  for (const g of groups) {
+  for (const g of groups2) {
     const cols = /* @__PURE__ */ new Set();
     for (const w of g[0].words) {
       const c = colOf(w);
@@ -6073,11 +6073,11 @@ function proseRowCuts(rowsIn, colOf) {
     }
     if (cols.size >= 2) aligned++;
   }
-  if (aligned < Math.ceil(groups.length * 0.5)) return [];
+  if (aligned < Math.ceil(groups2.length * 0.5)) return [];
   const cuts = [];
-  for (let i = 1; i < groups.length; i++) {
-    const a = groups[i - 1][groups[i - 1].length - 1];
-    const b = groups[i][0];
+  for (let i = 1; i < groups2.length; i++) {
+    const a = groups2[i - 1][groups2[i - 1].length - 1];
+    const b = groups2[i][0];
     cuts.push((a.base + 0.22 * a.size + b.base - 0.8 * b.size) / 2);
   }
   return cuts;
@@ -7018,8 +7018,8 @@ function splitColumn(rowsIn, col2, size) {
     const tightL = spread(left.map((w) => w.x1)) <= tol;
     const tightR = spread(right.map((w) => w.x0)) <= tol;
     const numeric = (ws) => ws.filter((w) => isNumericText(w.text)).length >= 0.6 * ws.length;
-    const groups = right.every((w) => /^\d{3}$/.test(w.text)) && left.every((w) => /^\d{1,3}$/.test(w.text));
-    if (groups) continue;
+    const groups2 = right.every((w) => /^\d{3}$/.test(w.text)) && left.every((w) => /^\d{1,3}$/.test(w.text));
+    if (groups2) continue;
     const expCount = right.filter((w) => /^E[+\-−–]?\d+$/.test(w.text)).length;
     const exponent = expCount >= 0.7 * right.length && left.some((w) => /\d/.test(w.text));
     if (exponent) continue;
@@ -7183,16 +7183,16 @@ function bandRows(words) {
 }
 function baselineGroups(words) {
   const sorted = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
-  const groups = [];
+  const groups2 = [];
   for (const w of sorted) {
-    const g = groups[groups.length - 1];
+    const g = groups2[groups2.length - 1];
     if (g && Math.abs(g.base - w.base) <= 0.3 * Math.max(g.size, w.size)) {
       g.words.push(w);
       g.y0 = Math.min(g.y0, w.y0);
       g.y1 = Math.max(g.y1, w.y1);
-    } else groups.push({ base: w.base, size: w.size, y0: w.y0, y1: w.y1, words: [w] });
+    } else groups2.push({ base: w.base, size: w.size, y0: w.y0, y1: w.y1, words: [w] });
   }
-  return groups;
+  return groups2;
 }
 function rowTokens(row4) {
   const byLine = /* @__PURE__ */ new Map();
@@ -8013,7 +8013,7 @@ function numericGrid(run) {
 function headerRowGroups(words) {
   const base = baselineGroups(words);
   const toks = base.map((g) => tokenizeLine({ words: [...g.words].sort((a, b) => a.x0 - b.x0), size: g.size }));
-  const groups = [];
+  const groups2 = [];
   for (let i = 0; i < base.length; i++) {
     const g = base[i];
     const prev = base[i - 1];
@@ -8022,15 +8022,15 @@ function headerRowGroups(words) {
       const spans = toks[i - 1].some((t) => toks[i].filter((u) => u.x0 < t.x1 - 1 && u.x1 > t.x0 + 1).length >= 2);
       split = spans || Math.abs(g.size - prev.size) > 0.6 || g.base - prev.base > 1.9 * Math.max(g.size, prev.size);
     }
-    if (split) groups.push({ y0: g.y0, y1: g.y1, words: [...g.words] });
+    if (split) groups2.push({ y0: g.y0, y1: g.y1, words: [...g.words] });
     else {
-      const last = groups[groups.length - 1];
+      const last = groups2[groups2.length - 1];
       last.words.push(...g.words);
       last.y0 = Math.min(last.y0, g.y0);
       last.y1 = Math.max(last.y1, g.y1);
     }
   }
-  return groups;
+  return groups2;
 }
 function mergeWrappedLabelRows(rowsIn, headerRows = 0) {
   for (let i = Math.max(1, headerRows + 1); i < rowsIn.length; i++) {
@@ -11070,7 +11070,7 @@ function splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH) {
   }
   if (ordered.length < 2) return false;
   const cuts = ordered.map((c) => c.y0);
-  const groups = new Map(ordered.map((c) => [c.key, []]));
+  const groups2 = new Map(ordered.map((c) => [c.key, []]));
   for (const prim of ink) {
     for (let i = 0; i < ordered.length; i++) {
       const top = i === 0 ? 0 : cuts[i - 1];
@@ -11081,12 +11081,12 @@ function splitPlateBands(figures, ink, caps, lines, bodySize, pageW, pageH) {
       const pw = prim.x1 - prim.x0;
       const bandH = Math.max(1, bot - top);
       if (pw < 16 && y1 - y0 > 0.55 * bandH) continue;
-      groups.get(ordered[i].key).push({ ...prim, y0, y1 });
+      groups2.get(ordered[i].key).push({ ...prim, y0, y1 });
     }
   }
   const pageArea = pageW * pageH;
   const made = [];
-  for (const [key, items] of groups) {
+  for (const [key, items] of groups2) {
     if (items.length < 4) continue;
     const hull = hullOf(items);
     if (!hull) continue;
@@ -11176,7 +11176,7 @@ function splitSideBySidePlates(figures, ink, caps, lines, bodySize, pageW, pageH
   const numbered = new Set(caps.filter((c) => c.key !== "" && c.key !== "title").map((c) => c.key));
   if (numbered.size !== cols.length) return false;
   const cuts = cols.slice(1).map((c) => c.x0 - 4);
-  const groups = new Map(cols.map((c) => [c.key, []]));
+  const groups2 = new Map(cols.map((c) => [c.key, []]));
   for (const prim of ink) {
     const cx = (prim.x0 + prim.x1) / 2;
     let i = 0;
@@ -11189,11 +11189,11 @@ function splitSideBySidePlates(figures, ink, caps, lines, bodySize, pageW, pageH
     const ph = prim.y1 - prim.y0;
     const pw = prim.x1 - prim.x0;
     if (ph <= 4 && pw > 40 && x1 - x0 < 0.85 * pw) continue;
-    groups.get(cols[i].key).push({ ...prim, x0, x1 });
+    groups2.get(cols[i].key).push({ ...prim, x0, x1 });
   }
   const pageArea = pageW * pageH;
   const made = [];
-  for (const [key, items] of groups) {
+  for (const [key, items] of groups2) {
     if (items.length < 4) continue;
     const hull = hullOf(items);
     if (!hull) continue;
@@ -11262,7 +11262,7 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
     dropCoveredDrawings(figures);
     return;
   }
-  const groups = /* @__PURE__ */ new Map();
+  const groups2 = /* @__PURE__ */ new Map();
   for (const prim of ink) {
     let key = "plate";
     if (caps.length) {
@@ -11274,11 +11274,11 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
         key = near2.key;
       }
     }
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(prim);
+    if (!groups2.has(key)) groups2.set(key, []);
+    groups2.get(key).push(prim);
   }
   const pageArea = pageW * pageH;
-  for (const [key, items] of groups) {
+  for (const [key, items] of groups2) {
     if (items.length < 6 && !items.some((p) => p.kind === "ink")) continue;
     const hull = hullOf(items);
     if (!hull) continue;
@@ -11512,7 +11512,7 @@ function spansOf(lines) {
   return spans;
 }
 function groupParagraphs(lines, { bodySize = 10 } = {}) {
-  const groups = [];
+  const groups2 = [];
   let cur = [];
   const gaps = [];
   for (let i = 1; i < lines.length; i++) gaps.push(lines[i].base - lines[i - 1].base);
@@ -11542,13 +11542,13 @@ function groupParagraphs(lines, { bodySize = 10 } = {}) {
       }
     }
     if (!join && cur.length) {
-      groups.push(cur);
+      groups2.push(cur);
       cur = [];
     }
     cur.push(line);
   }
-  if (cur.length) groups.push(cur);
-  return groups;
+  if (cur.length) groups2.push(cur);
+  return groups2;
 }
 function median4(values) {
   if (!values.length) return void 0;
@@ -17867,10 +17867,10 @@ var init_tooltip_text = __esm({
       "read.sel.drag": e("Drag to the board", "Drag the selection onto the board as a card. Hold Alt when you drop for a quote."),
       "parse.range": e("Page range", "All, the current page, or a range such as 1–5."),
       "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),
-      "parse.chip": e("Parse engine", "Built-in runs on this machine. Docling uses the local helper."),
-      "parse.docling": e("Parse with Docling", "Send this PDF to the local helper. Nothing is sent until you press this."),
-      "parse.cloud": e("Read with LlamaParse", "Opens a confirm in the outline. Nothing is sent until you press Send. LlamaParse is the main cloud read."),
-      "parse.mistral": e("Read with Mistral OCR", "Opens a confirm in the outline. Nothing is sent until you press Send. No install. The browser calls Mistral directly. Tables are weaker than LlamaParse."),
+      "parse.chip": e("Parse engine", "Free. Built-in runs in Roam on this computer. Docling runs on this Mac through the local helper. Cloud engines use your credits and always ask first."),
+      "parse.docling": e("Parse with Docling", "Free. Runs on this Mac through the local helper. The PDF never leaves your computer."),
+      "parse.cloud": e("Read with LlamaParse", "Cloud. Uses your LlamaParse credits. Opens a confirm in the outline. Nothing is sent until you press Send. LlamaParse is the main cloud read."),
+      "parse.mistral": e("Read with Mistral OCR", "Cloud. Uses your Mistral credits. Opens a confirm in the outline. Nothing is sent until you press Send. No install. The browser calls Mistral directly. Tables are weaker than LlamaParse."),
       "parse.docling-off": e("Local helper: off", "Open Engines (the gear) to set up or start the local helper."),
       "parse.docling-token": e("Local helper: wrong token", "Open Engines (the gear) and pair the local helper again."),
       "parse.docling-models": e("Local helper: downloading models", "The helper is downloading models. Parsing waits until they are ready."),
@@ -17881,10 +17881,10 @@ var init_tooltip_text = __esm({
       "parse.strip.setup-helper": e("Set up helper", "Open Engines to install the local helper (Docling and Apple Vision)."),
       "parse.strip.retry": e("Retry", "Try to read this page again."),
       "parse.strip.cancel": e("Cancel", "Stop reading this page."),
-      "engines.builtin": e("On this device", "The built-in parser. It runs in Roam and needs nothing installed."),
-      "engines.ocr": e("In-browser reading (beta)", "Reads the words on scanned pages inside Roam. The models download once, after you ask. Less accurate than the local helper, which is used instead when it is ready."),
-      "engines.helper": e("Local helper", "Apple Vision for scans. The light helper is about 15 MB on a Mac. Docling, for layout, formulas and tables, is an optional add-on. It listens only on 127.0.0.1."),
-      "engines.cloud": e("Cloud", "LlamaParse is the main read: your key, then a helper with the cloud engine, your relay, or the hosted relay. Mistral OCR is the no-install read: cheaper, and its tables are weaker. Both keys stay on this device. Nothing is sent until you confirm the cost."),
+      "engines.builtin": e("On this device", "Free. The built-in parser runs in Roam and needs nothing installed."),
+      "engines.ocr": e("In-browser reading (beta)", "Free. Reads the words on scanned pages inside Roam. The models download once, after you ask. Less accurate than the local helper, which is used instead when it is ready."),
+      "engines.helper": e("Local helper", "Free. Runs on this Mac: Apple Vision for scans. The light helper is about 15 MB on a Mac. Docling, for layout, formulas and tables, is an optional add-on. It listens only on 127.0.0.1."),
+      "engines.cloud": e("Cloud", "Paid: uses your LlamaParse or Mistral credits. LlamaParse is the main read: your key, then a helper with the cloud engine, your relay, or the hosted relay. Mistral OCR is the no-install read: cheaper, and its tables are weaker. Both keys stay on this device. Nothing is sent until you confirm the cost."),
       "engines.cloud-setup": e("Set up", "Save a LlamaParse key and, if you want it, a Mistral OCR key. Both stay on this device."),
       "engines.pair": e("Pair", "Pair with the helper on this Mac. A dialog on the Mac asks you to allow it."),
       "engines.setup": e("Set up", "Show the one command that installs the local helper."),
@@ -29403,15 +29403,15 @@ function createItemRenderer({
       if (!prev || prev.string !== spec.string) patchRowString(rec, prow, spec);
       if (!prev || prev.folded !== spec.folded || prev.hasKids !== spec.hasKids) syncFold(prow, spec);
     }
-    const groups = /* @__PURE__ */ new Map();
+    const groups2 = /* @__PURE__ */ new Map();
     for (const spec of specs) {
       const prow = byUid.get(spec.uid);
       if (!prow) continue;
       const parent = spec.parentUid ? childWithClass(byUid.get(spec.parentUid), "pxd-block__children") || holder : holder;
-      if (!groups.has(parent)) groups.set(parent, []);
-      groups.get(parent).push(prow);
+      if (!groups2.has(parent)) groups2.set(parent, []);
+      groups2.get(parent).push(prow);
     }
-    for (const [parent, rows] of groups) reorderProws(parent, rows);
+    for (const [parent, rows] of groups2) reorderProws(parent, rows);
     if (more) {
       const text4 = `+${more} more`;
       if (!syncTail(holder, "pxd-row__more", text4)) moreRow(holder, more, rec.pageTitle, rec.pageUid);
@@ -39361,8 +39361,8 @@ function planNative(board2, source, gen) {
     return p;
   };
   const sectionOf = /* @__PURE__ */ new Map();
-  const groups = nodes.filter((n2) => n2.type === "group");
-  for (const g of groups) {
+  const groups2 = nodes.filter((n2) => n2.type === "group");
+  for (const g of groups2) {
     const existing = g.blockUid && board2.items.has(g.blockUid);
     const uid = existing ? g.blockUid : gen();
     const a = absOf(g);
@@ -39378,7 +39378,7 @@ function planNative(board2, source, gen) {
       entry: { uid, title: g.title || board2.items.get(uid)?.title || "Section", layout: null, members: [], parent: null, existing: Boolean(existing) }
     });
   }
-  for (const g of groups) {
+  for (const g of groups2) {
     const s = sectionOf.get(g.key);
     const parent = g.parentNode ? sectionOf.get(g.parentNode) : null;
     const base = parent ? { x: parent.abs.x, y: parent.abs.y } : { x: 0, y: 0 };
@@ -39395,7 +39395,7 @@ function planNative(board2, source, gen) {
   }
   const sectionUids = new Set(plan.sections.map((s) => s.uid));
   const uidOfKey = /* @__PURE__ */ new Map();
-  for (const g of groups) uidOfKey.set(g.key, sectionOf.get(g.key).uid);
+  for (const g of groups2) uidOfKey.set(g.key, sectionOf.get(g.key).uid);
   for (const n2 of nodes) {
     if (n2.type === "group") continue;
     const item = n2.blockUid ? board2.items.get(n2.blockUid) : null;
@@ -42131,21 +42131,21 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     tidyItems(uids, mode = "grid", { gap } = {}) {
       return txn((t) => {
         const top = topLevelOf(board2, uids ?? []);
-        const groups = /* @__PURE__ */ new Map();
+        const groups2 = /* @__PURE__ */ new Map();
         if (top.length === 1 && board2.items.get(top[0]).type === "section") {
-          groups.set(top[0], board2.items.get(top[0]).members.filter((m) => !board2.items.get(m).pinned));
+          groups2.set(top[0], board2.items.get(top[0]).members.filter((m) => !board2.items.get(m).pinned));
         } else {
           for (const id of top) {
             const it = board2.items.get(id);
             if (it.pinned) continue;
-            if (!groups.has(it.parentUid)) groups.set(it.parentUid, []);
-            groups.get(it.parentUid).push(id);
+            if (!groups2.has(it.parentUid)) groups2.set(it.parentUid, []);
+            groups2.get(it.parentUid).push(id);
           }
         }
         const opts = gap !== void 0 ? { gap } : {};
         if (mode === "outline") opts.order = outlineOrder(board2);
         const moved = [];
-        for (const ids of groups.values()) {
+        for (const ids of groups2.values()) {
           if (ids.length < 2) continue;
           const list = ids.map((id) => {
             const it = board2.items.get(id);
@@ -45739,17 +45739,17 @@ function filterRows(rows, query) {
 function groupRefs(rows, cap4 = CONTEXT_CAP) {
   const sorted = [...rows || []].filter((row4) => row4?.uid).sort((a, b) => (b.time || 0) - (a.time || 0) || String(a.uid).localeCompare(String(b.uid)));
   const shown = sorted.slice(0, cap4);
-  const groups = [];
+  const groups2 = [];
   for (const row4 of shown) {
     const year = Number.isFinite(row4.time) ? new Date(row4.time).getFullYear() : 0;
-    let group = groups.find((item) => item.year === year);
+    let group = groups2.find((item) => item.year === year);
     if (!group) {
       group = { year, rows: [] };
-      groups.push(group);
+      groups2.push(group);
     }
     group.rows.push(row4);
   }
-  return { groups, total: sorted.length, hidden: Math.max(0, sorted.length - shown.length) };
+  return { groups: groups2, total: sorted.length, hidden: Math.max(0, sorted.length - shown.length) };
 }
 function rowChunks(rows, size = CONTEXT_CHUNK) {
   const list = rows || [];
@@ -49256,7 +49256,54 @@ async function readSSE(response, { onProgress, onPage }) {
   if (buf.trim()) dispatch(buf);
 }
 var TOKEN_SETTING = "parse-helper-token";
-var OCR_PAGE_CAP = 50;
+var OCR_BATCH = 25;
+var OCR_CELL_CAP = 400;
+var VLM_PAGE_CAP = 40;
+var VLM_REGION_CAP = 40;
+function groups(list, size) {
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+function mergeBodies(parts) {
+  if (parts.length === 1) return parts[0];
+  const out = { ...parts[0] };
+  for (const part of parts.slice(1)) {
+    for (const [key, value] of Object.entries(part || {})) {
+      if (Array.isArray(value) && Array.isArray(out[key])) out[key] = [...out[key], ...value];
+      else if (key === "elapsedMs" && Number.isFinite(value) && Number.isFinite(out[key])) out[key] += value;
+      else if (!(key in out)) out[key] = value;
+    }
+  }
+  return out;
+}
+function planVlmBatches(pages, regions) {
+  const byPage = /* @__PURE__ */ new Map();
+  for (const region of regions) {
+    if (!byPage.has(region.page)) byPage.set(region.page, []);
+    byPage.get(region.page).push(region);
+  }
+  const list = pages.length ? pages : [...byPage.keys()].sort((a, b) => a - b);
+  const batches = [];
+  let cur = { pages: [], regions: [] };
+  const flush = () => {
+    if (cur.pages.length) batches.push(cur);
+    cur = { pages: [], regions: [] };
+  };
+  for (const page of list) {
+    const own = byPage.get(page) || [];
+    if (own.length > VLM_REGION_CAP) {
+      flush();
+      for (const slice of groups(own, VLM_REGION_CAP)) batches.push({ pages: [page], regions: slice });
+      continue;
+    }
+    if (cur.pages.length >= VLM_PAGE_CAP || cur.regions.length + own.length > VLM_REGION_CAP) flush();
+    cur.pages.push(page);
+    cur.regions.push(...own);
+  }
+  flush();
+  return batches;
+}
 var TOKEN_BACKUP_KEY = "plexus-diagram:parse-helper-token";
 var PAIR_POLL_MS = 500;
 var PAIR_WAIT_MS = 6e4;
@@ -49623,20 +49670,26 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
   }
   async function ocr({ bytes, sha256, pages, cells, signal, onChunk } = {}) {
     const sha = sha256 || await sha256Hex(bytes);
-    if (!(cells && cells.length) && Array.isArray(pages) && pages.length > OCR_PAGE_CAP) {
-      let merged = null;
-      for (let i = 0; i < pages.length; i += OCR_PAGE_CAP) {
-        if (signal?.aborted) throw signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" });
-        const part = await ocrOnce({ bytes, sha, pages: pages.slice(i, i + OCR_PAGE_CAP), signal });
-        merged = merged ? { ...merged, pages: [...merged.pages || [], ...part.pages || []] } : { ...part, pages: [...part.pages || []] };
-        try {
-          onChunk?.({ done: Math.min(i + OCR_PAGE_CAP, pages.length), total: pages.length });
-        } catch {
-        }
+    const aborted2 = () => signal?.aborted && (signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" }));
+    if (cells && cells.length) {
+      const parts2 = [];
+      for (const slice of groups(cells, OCR_CELL_CAP)) {
+        if (aborted2()) throw aborted2();
+        parts2.push(await ocrOnce({ bytes, sha, cells: slice, signal }));
       }
-      return merged;
+      return mergeBodies(parts2);
     }
-    return ocrOnce({ bytes, sha, pages, cells, signal });
+    if (!Array.isArray(pages) || !pages.length) throw helperError("ocr-pages", "ocr needs an explicit page list");
+    const parts = [];
+    for (const batch of groups(pages, OCR_BATCH)) {
+      if (aborted2()) throw aborted2();
+      parts.push(await ocrOnce({ bytes, sha, pages: batch, signal }));
+      try {
+        onChunk?.({ done: Math.min(parts.length * OCR_BATCH, pages.length), total: pages.length });
+      } catch {
+      }
+    }
+    return mergeBodies(parts);
   }
   async function ocrOnce({ bytes, sha, pages, cells, signal }) {
     const { url, token } = config();
@@ -49669,8 +49722,17 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     return { ...body, sha256: sha };
   }
   async function tables({ bytes, sha256, pages, tables: regions, signal } = {}) {
-    const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
+    const list = regions || [];
+    const parts = [];
+    for (const slice of list.length > VLM_REGION_CAP ? groups(list, VLM_REGION_CAP) : [list]) {
+      if (signal?.aborted) throw signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" });
+      parts.push(await tablesOnce({ bytes, pages, regions: slice, signal }));
+    }
+    return { ...mergeBodies(parts), sha256: sha };
+  }
+  async function tablesOnce({ bytes, pages, regions, signal }) {
+    const { url, token } = config();
     const options = {};
     if (pages && pages.length) options.pages = pages;
     if (regions && regions.length) options.tables = regions.map((t) => ({ page: t.page, bbox: t.bbox }));
@@ -49694,11 +49756,23 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
       error.status = res.status;
       throw error;
     }
-    return { ...body, sha256: sha };
+    return body || {};
   }
   async function vlm({ bytes, sha256, pages, tables: regions, text: text4 = false, numericPages, boxMode, layoutOnly = false, signal } = {}) {
-    const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
+    const asked = pages || [];
+    const boxes = regions || [];
+    const batches = asked.length <= VLM_PAGE_CAP && boxes.length <= VLM_REGION_CAP ? [{ pages: asked, regions: boxes }] : planVlmBatches(asked, boxes);
+    const parts = [];
+    for (const batch of batches) {
+      if (signal?.aborted) throw signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" });
+      const numeric = numericPages && numericPages.length ? numericPages.filter((n2) => batch.pages.includes(n2)) : numericPages;
+      parts.push(await vlmOnce({ bytes, pages: batch.pages, regions: batch.regions, text: text4, numericPages: numeric, boxMode, layoutOnly, signal }));
+    }
+    return { ...mergeBodies(parts), sha256: sha };
+  }
+  async function vlmOnce({ bytes, pages, regions, text: text4, numericPages, boxMode, layoutOnly, signal }) {
+    const { url, token } = config();
     const options = { text: text4 === true };
     if (layoutOnly === true) options.layoutOnly = true;
     if (pages && pages.length) options.pages = pages;
@@ -49725,7 +49799,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
       error.status = res.status;
       throw error;
     }
-    return { ...body, sha256: sha };
+    return body || {};
   }
   function endpoint() {
     const { url, token } = config();
@@ -50006,10 +50080,10 @@ function wordsFromCtc({ logits, time, classes, dict, box: box2 }) {
   const chars = ctcDecode(logits, time, classes, dict);
   if (!chars.length || !box2) return [];
   const span = Math.max(0.4, box2.x1 - box2.x0);
-  const groups = [];
+  const groups2 = [];
   let cur = [];
   const flush = () => {
-    if (cur.length) groups.push(cur);
+    if (cur.length) groups2.push(cur);
     cur = [];
   };
   for (const ch of chars) {
@@ -50017,17 +50091,17 @@ function wordsFromCtc({ logits, time, classes, dict, box: box2 }) {
     else cur.push(ch);
   }
   flush();
-  if (!groups.length) return [];
-  if (groups.length === 1 && !chars.some((ch) => SPACE.has(ch.ch))) {
-    const text4 = groups[0].map((ch) => ch.ch).join("");
+  if (!groups2.length) return [];
+  if (groups2.length === 1 && !chars.some((ch) => SPACE.has(ch.ch))) {
+    const text4 = groups2[0].map((ch) => ch.ch).join("");
     const parts = softenPhrase(text4).split(/\s+/).filter(Boolean);
     if (parts.length <= 1) {
-      const conf2 = groups[0].reduce((s, ch) => s + ch.conf, 0) / groups[0].length;
+      const conf2 = groups2[0].reduce((s, ch) => s + ch.conf, 0) / groups2[0].length;
       return text4 ? [wordItem(text4, box2.x0, box2.x1, box2, conf2)] : [];
     }
     const total = parts.reduce((s, p) => s + p.length, 0);
     let x = box2.x0;
-    const conf = groups[0].reduce((s, ch) => s + ch.conf, 0) / groups[0].length;
+    const conf = groups2[0].reduce((s, ch) => s + ch.conf, 0) / groups2[0].length;
     return parts.map((part) => {
       const w = span * (part.length / total);
       const item = wordItem(part, x, x + w, box2, conf);
@@ -50035,7 +50109,7 @@ function wordsFromCtc({ logits, time, classes, dict, box: box2 }) {
       return item;
     });
   }
-  return groups.map((group) => {
+  return groups2.map((group) => {
     const text4 = group.map((ch) => ch.ch).join("");
     const t0 = group[0].t;
     const t1 = group[group.length - 1].t + 1;
@@ -51631,10 +51705,10 @@ function gridReading(table) {
     if (!byCol.has(cell.c)) byCol.set(cell.c, []);
     byCol.get(cell.c).push(text4);
   }
-  const groups = [...byCol.values()];
-  if (groups.length === 2) {
-    const intCol = groups.some((col2) => col2.length >= 4 && col2.filter((t) => /^\d{1,4}\.?$/.test(t)).length >= 0.6 * col2.length);
-    const proseCol = groups.some((col2) => col2.filter((t) => letterCount2(t) >= 12).length >= 0.5 * col2.length);
+  const groups2 = [...byCol.values()];
+  if (groups2.length === 2) {
+    const intCol = groups2.some((col2) => col2.length >= 4 && col2.filter((t) => /^\d{1,4}\.?$/.test(t)).length >= 0.6 * col2.length);
+    const proseCol = groups2.some((col2) => col2.filter((t) => letterCount2(t) >= 12).length >= 0.5 * col2.length);
     if (intCol && proseCol) return false;
   }
   return texts.filter((t) => isNumericToken(t)).length / texts.length >= 0.45;
@@ -52525,7 +52599,7 @@ function captionPlatePages(doc, pages) {
   }
   return out;
 }
-async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true, alt = null } = {}) {
+async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, onProgress, lexicon = null, lines = true, alt = null } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n2) => !from || !to || n2 >= from && n2 <= to);
   const high = helper.vlmHigh === true && typeof helper.vlm === "function";
@@ -52540,7 +52614,7 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   let got = null;
   if (wanted.length) {
     onPhase?.({ phase: "ocr", pages: wanted });
-    const gotRaw = await helper.ocr({ bytes, sha256, pages: wanted, signal });
+    const gotRaw = await helper.ocr({ bytes, sha256, pages: wanted, signal, onChunk: onProgress });
     throwIfAborted3();
     got = gotRaw;
   }
@@ -52710,6 +52784,21 @@ function mergeOcrPageRecords({ base, ocrPages, records, pages, numPages, info = 
   const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...base?.options || {}, ...options, ocr: "vision" }, from: lo, to: hi });
   const merged = mergeOcrDocument(base, fresh, { pages: wanted });
   return { doc: merged.doc, choices: merged.choices, records: next };
+}
+
+// src/view/engine-tags.js
+var TAG_MAC = "Free · on this Mac";
+var TAG_ROAM = "Free · in Roam";
+var TAG_LLAMA = "Cloud · uses your LlamaParse credits";
+var TAG_MISTRAL = "Cloud · uses your Mistral credits";
+var tagKind = (text4) => String(text4).startsWith("Free") ? "free" : "cloud";
+function pagesText(n2) {
+  const count = Number(n2);
+  if (!Number.isFinite(count) || count < 1) return "";
+  return count === 1 ? "1 page" : `${count} pages`;
+}
+function localChipText(name, { pages = 0, seconds = "" } = {}) {
+  return [name, "free", pagesText(pages), seconds].filter(Boolean).join(" · ");
 }
 
 // src/view/parse-view.js
@@ -60776,22 +60865,26 @@ function formatSeconds(ms) {
   const text4 = s < 10 ? s.toFixed(1) : String(Math.round(s));
   return `${text4} s`;
 }
-function defaultRangeChoice(pageCount) {
-  const n2 = Number(pageCount);
-  if (!Number.isFinite(n2) || n2 <= 0 || n2 <= 60) return "all";
-  return "current";
+function defaultRangeChoice() {
+  return "all";
+}
+function parsedPageCount(parsed) {
+  const range = parsed?.stats?.range;
+  if (Array.isArray(range) && range.length === 2 && range.every(Number.isFinite)) return Math.max(0, range[1] - range[0] + 1);
+  return Number(parsed?.pageCount) || 0;
 }
 function cloudLabel(provider) {
   return provider === "mistral" ? "Mistral OCR" : "LlamaParse";
 }
-function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "", credits = null, read: read2 = "" } = {}) {
+function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, pages = 0, helper = "", credits = null, read: read2 = "" } = {}) {
   if (phase !== "running" && engine === "anydoc") {
     if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
     return { text: "Alternative read" };
   }
   if (phase === "running") {
     const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : engine === "cloud" ? cloudLabel(provider) : "built-in";
-    return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
+    const local = engine !== "cloud";
+    return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: local ? `${which} · free` : which };
   }
   if (helper === "not-running" || helper === "disabled") {
     return { text: "Local helper: off", tip: "Open Engines (the gear) to set up or start the local helper." };
@@ -60799,22 +60892,25 @@ function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = nu
   if (helper === "wrong-token") return { text: "Local helper: wrong token", tip: "Open Engines (the gear) and pair the local helper again." };
   if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
   if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
-  if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
+  if ((engine === "docling" || engine === "mixed") && ms != null) {
+    return { text: localChipText("Docling", { pages, seconds: formatSeconds(ms) }), tip: TAG_MAC };
+  }
+  const cloudTag = provider === "mistral" ? TAG_MISTRAL : TAG_LLAMA;
   if (engine === "cloud" && ms != null) {
     const text4 = `${cloudLabel(provider)} · ${formatSeconds(ms)}`;
     const n2 = Number(credits);
     if (provider !== "mistral" && Number.isFinite(n2) && n2 >= 0) {
-      return { text: text4, tip: `${text4} · ${n2} ${n2 === 1 ? "credit" : "credits"}` };
+      return { text: text4, tip: `${cloudTag} · ${n2} ${n2 === 1 ? "credit" : "credits"}` };
     }
-    return { text: text4 };
+    return { text: text4, tip: cloudTag };
   }
-  if (engine === "cloud") return { text: cloudLabel(provider) };
+  if (engine === "cloud") return { text: cloudLabel(provider), tip: cloudTag };
   if (read2 === "high") {
-    const text4 = ms != null ? `High accuracy · ${formatSeconds(ms)}` : "High accuracy";
-    return { text: text4, tip: "Qwen3-VL for page text, PaddleOCR-VL for tables, PP-DocLayoutV2" };
+    const text4 = localChipText("High accuracy", { seconds: ms != null ? formatSeconds(ms) : "" });
+    return { text: text4, tip: `${TAG_MAC}. Qwen3-VL for page text, PaddleOCR-VL for tables, PP-DocLayoutV2` };
   }
-  if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
-  return { text: "Built-in" };
+  if (ms != null) return { text: localChipText("Built-in", { pages, seconds: formatSeconds(ms) }), tip: TAG_ROAM };
+  return { text: "Built-in", tip: TAG_ROAM };
 }
 function blockGroup(type) {
   if (type === "table") return "table";
@@ -61021,7 +61117,8 @@ function createParseView({
   adoptCreated = null,
   getContext = null,
   clock = null,
-  scanAuto = false,
+  scanAuto = null,
+  defaultEngine = "local",
   ocrSource = null,
   ocrAlt = null,
   pageReader = null,
@@ -61047,6 +61144,15 @@ function createParseView({
     return node2;
   };
   const now4 = () => typeof clock === "function" ? clock() : Date.now();
+  const tagged = (button3, text4) => {
+    let span = null;
+    for (const child of Array.from(button3.children || [])) if (String(child.className).includes("pxd-parse__tag")) span = child;
+    if (!span) span = el2("span", "pxd-parse__tag", button3);
+    span.className = `pxd-parse__tag pxd-parse__tag--${tagKind(text4)}`;
+    span.textContent = text4;
+    button3.setAttribute("data-engine-tag", text4);
+    return button3;
+  };
   const anydocHost = anydoc || createAnydocHost();
   const root = el2("div", "pxd-parse");
   root.tabIndex = -1;
@@ -61064,18 +61170,22 @@ function createParseView({
   const againBtn = el2("button", "pxd-parse__again", enginePop);
   againBtn.type = "button";
   againBtn.textContent = "Parse again (built-in)";
+  tagged(againBtn, TAG_ROAM);
   const doclingBtn = el2("button", "pxd-parse__docling", enginePop);
   doclingBtn.type = "button";
   doclingBtn.textContent = "Parse with Docling";
+  tagged(doclingBtn, TAG_MAC);
   doclingBtn.setAttribute("data-tip", "parse.docling");
   setHidden(doclingBtn, true);
   const cloudBtn = el2("button", "pxd-parse__cloud", enginePop);
   cloudBtn.type = "button";
   cloudBtn.textContent = "Read with LlamaParse";
+  tagged(cloudBtn, TAG_LLAMA);
   cloudBtn.setAttribute("data-tip", "parse.cloud");
   const mistralBtn = el2("button", "pxd-parse__mistral", enginePop);
   mistralBtn.type = "button";
   mistralBtn.textContent = "Read with Mistral OCR";
+  tagged(mistralBtn, TAG_MISTRAL);
   mistralBtn.setAttribute("data-tip", "parse.mistral");
   const altBtn = el2("button", "pxd-parse__alt", enginePop);
   altBtn.type = "button";
@@ -61165,6 +61275,7 @@ function createParseView({
   const parseBtn = el2("button", "pxd-parse__go", empty);
   parseBtn.type = "button";
   parseBtn.textContent = "Parse (built-in)";
+  tagged(parseBtn, TAG_ROAM);
   const foot = el2("div", "pxd-parse__foot", root);
   setHidden(foot, true);
   const summary = el2("span", "pxd-parse__summary", foot);
@@ -61709,8 +61820,23 @@ ${sourceAttrString(source)}` : markdown;
       motion({ type: motionCancelled ? "cancel" : "error" });
     }
   }
+  function engineChoice() {
+    let pick2 = "local";
+    try {
+      pick2 = typeof defaultEngine === "function" ? defaultEngine() : defaultEngine;
+    } catch {
+      pick2 = "local";
+    }
+    return pick2 === "builtin" || pick2 === "llamaparse" || pick2 === "mistral" ? pick2 : "local";
+  }
+  function paintParseLabel() {
+    const docling = helperDocling && engineChoice() === "local";
+    parseBtn.textContent = docling ? "Parse (Docling)" : "Parse (built-in)";
+    tagged(parseBtn, docling ? TAG_MAC : TAG_ROAM);
+  }
   function paintChip() {
     paintMotion();
+    paintParseLabel();
     const state = engineChip({
       phase,
       engine: progress.engine || parsed?.engine || "builtin",
@@ -61718,6 +61844,7 @@ ${sourceAttrString(source)}` : markdown;
       ms: phase === "running" ? null : parsed?.stats?.ms,
       page: progress.page,
       pageCount: progress.pageCount,
+      pages: parsedPageCount(parsed),
       helper: phase === "running" ? "" : helperState,
       credits: phase === "running" ? null : parsed?.stats?.credits,
       read: phase === "running" ? "" : parsed?.ocr?.mode === "high" ? "high" : ""
@@ -62521,12 +62648,13 @@ ${sourceAttrString(source)}` : markdown;
       to
     });
     await finishDoc(finalDoc, now4() - t0);
-    if (scanAuto && scanPagesOf(finalDoc).length) {
+    if (autoScan && scanPagesOf(finalDoc).length) {
       await refreshHelper();
       const engine = ocrEngine();
       if (engine && (engine === ocrSource || helperOcr)) await readScanNow();
     }
   }
+  const autoScan = scanAuto ?? typeof onScan !== "function";
   function ocrEngine() {
     if (ocrSource && typeof ocrSource.ocr === "function") return ocrSource;
     if (helper && typeof helper.ocr === "function") return helper;
@@ -62540,6 +62668,7 @@ ${sourceAttrString(source)}` : markdown;
     if (!scanBtn.hidden) {
       const name = helper && helper.vlmHigh === true ? "High accuracy" : "Read the scan";
       scanBtn.textContent = pages.length === 1 ? `${name} (p. ${pages[0]})` : `${name} (${pages.length} pages)`;
+      tagged(scanBtn, engine === ocrSource ? TAG_ROAM : TAG_MAC);
     }
   }
   async function readScanNow() {
@@ -62590,8 +62719,14 @@ ${sourceAttrString(source)}` : markdown;
         options: { textPages: readerMode === "all" ? "all" : "weak" },
         alt: extra && typeof extra.ocr === "function" ? extra : null,
         lexicon: extra?.lexicon || null,
+        // One report per batch of pages, so a long scan visibly moves.
+        onProgress: (info) => {
+          progress = { page: Number(info?.done) || 0, pageCount: Number(info?.total) || pages.length, engine: "builtin" };
+          paintChip();
+          onProgress?.({ page: progress.page, pageCount: progress.pageCount, fraction: 0.3 * (progress.page / Math.max(1, progress.pageCount)) });
+        },
         onPhase: (info) => {
-          progress = { page: info?.phase === "cells" ? pages.length : 0, pageCount: pages.length, engine: "builtin" };
+          progress = { page: info?.phase === "cells" ? pages.length : info?.phase === "ocr" ? progress.page : 0, pageCount: pages.length, engine: "builtin" };
           paintChip();
           onProgress?.({ page: progress.page, pageCount: pages.length, fraction: info?.phase === "cells" ? 0.9 : 0.3 });
         }
@@ -62678,7 +62813,7 @@ ${sourceAttrString(source)}` : markdown;
     if (!helper || !helperDocling) {
       helperState = helperState || "not-running";
       paintChip();
-      return;
+      return null;
     }
     cancel();
     const ctrl = new AbortController();
@@ -62711,7 +62846,7 @@ ${sourceAttrString(source)}` : markdown;
       phase = "idle";
       if (error?.name === "AbortError") {
         paintChip();
-        return;
+        return null;
       }
       failure = error?.reason === "empty-pdf" ? "Couldn't read this PDF file — it downloaded empty." : error?.reason === "job-rejected" ? `The helper rejected the PDF (HTTP ${error.status}).` : error?.status === 409 ? "The helper is busy with another job." : `Docling failed: ${error?.message || error}`;
       try {
@@ -62720,12 +62855,24 @@ ${sourceAttrString(source)}` : markdown;
       }
       paintChip();
       render();
-      return;
+      return false;
     }
     jobId = result?.job || jobId;
     if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? 0);
     else phase = "idle";
     paintChip();
+    return Boolean(result?.doc);
+  }
+  async function parseDefault() {
+    const pick2 = engineChoice();
+    if (pick2 === "llamaparse") return parseLlama();
+    if (pick2 === "mistral") return parseMistralNow();
+    if (pick2 === "local") {
+      await refreshHelper();
+      if (helperDocling && await parseDocling() === false) return parseBuiltin();
+      if (helperDocling) return void 0;
+    }
+    return parseBuiltin();
   }
   let cloudConfirm = null;
   function closeCloudConfirm() {
@@ -63119,7 +63266,7 @@ ${sourceAttrString(source)}` : markdown;
   }
   listen(parseBtn, "click", () => {
     closeMenus();
-    void parseBuiltin();
+    void parseDefault();
   });
   listen(chip, "click", () => {
     toggleMenu(enginePop);
@@ -63321,6 +63468,7 @@ ${sourceAttrString(source)}` : markdown;
     restore: restore2,
     parseBuiltin,
     parseDocling,
+    parse: parseDefault,
     cancel,
     showDoc(docResult) {
       parsed = docResult;
@@ -63476,7 +63624,7 @@ async function loadEngineState({ client, device, force = true } = {}) {
 }
 var button2 = (id, label, tip) => ({ id, label, tip });
 function deviceOcrRow(device) {
-  const row4 = { id: "device-ocr", name: "In-browser reading (beta)", tip: "engines.ocr" };
+  const row4 = { id: "device-ocr", name: "In-browser reading (beta)", tip: "engines.ocr", tags: [TAG_ROAM] };
   switch (device?.state) {
     case "ready":
       return { ...row4, dot: "ok", text: "Ready", button: null };
@@ -63497,7 +63645,7 @@ function deviceOcrRow(device) {
   }
 }
 function helperRow(helper) {
-  const row4 = { id: "helper", name: "Local helper", tip: "engines.helper" };
+  const row4 = { id: "helper", name: "Local helper", tip: "engines.helper", tags: [TAG_MAC] };
   switch (helper?.state) {
     case "ready": {
       const scansOnly = helper.ocr === true && helper.docling === false;
@@ -63538,7 +63686,7 @@ function helperRow(helper) {
 }
 var MISTRAL_TRADE = "Mistral OCR: no install, cheaper, weaker tables.";
 function cloudRow(prefs, helper) {
-  const row4 = { id: "cloud", name: "Cloud", tip: "engines.cloud" };
+  const row4 = { id: "cloud", name: "Cloud", tip: "engines.cloud", tags: [TAG_LLAMA, TAG_MISTRAL] };
   const key = Boolean(String(prefs?.key || "").trim());
   const mistral = Boolean(String(prefs?.mistralKey || "").trim());
   const trade = mistral ? "Mistral OCR: key saved, no install, cheaper, weaker tables." : MISTRAL_TRADE;
@@ -63553,7 +63701,7 @@ function cloudRow(prefs, helper) {
 function engineRows(state, { platform = "mac" } = {}) {
   void platform;
   return [
-    { id: "device", name: "On this device", dot: "ok", text: "Built-in parser · ready", button: null, tip: "engines.builtin" },
+    { id: "device", name: "On this device", dot: "ok", text: "Built-in parser · ready", button: null, tip: "engines.builtin", tags: [TAG_ROAM] },
     deviceOcrRow(state?.device),
     helperRow(state?.helper),
     cloudRow(state?.cloud, state?.helper)
@@ -63673,7 +63821,14 @@ function renderEnginesPanel(doc, parent, deps = {}) {
       const text4 = doc.createElement("span");
       text4.className = "pxd-engines__text";
       text4.textContent = row4.text;
-      node2.append(dot, name, text4);
+      node2.append(dot, name);
+      for (const label of row4.tags || []) {
+        const tag = doc.createElement("span");
+        tag.className = `pxd-engines__tag pxd-engines__tag--${tagKind(label)}`;
+        tag.textContent = label;
+        node2.append(tag);
+      }
+      node2.append(text4);
       if (row4.progress != null) {
         const bar = doc.createElement("span");
         bar.className = "pxd-engines__bar";
@@ -64078,7 +64233,7 @@ function stripModel(kind, input = {}) {
       const t = secondsText(ocr.ms);
       return {
         kind,
-        text: t ? `Read with local helper · ${t}` : "Read with local helper",
+        text: t ? `Read with local helper · free · ${t}` : "Read with local helper · free",
         tip: "engines.helper",
         buttons: [],
         autoHideMs: DONE_VISIBLE_MS
@@ -75534,17 +75689,17 @@ function segmentLine(mask, pageW, pageH, box2, { gapRatio = 0.35, minGapPx = 2 }
   }));
   return { proj, inkH, minGap, segments };
 }
-function snapWords(groups, seg, proj) {
+function snapWords(groups2, seg, proj) {
   const [c0, c1] = seg.cols;
-  if (groups.length <= 1) {
-    return groups.map((g) => ({ text: g.text, x0: proj.x0 + c0, x1: proj.x0 + c1 }));
+  if (groups2.length <= 1) {
+    return groups2.map((g) => ({ text: g.text, x0: proj.x0 + c0, x1: proj.x0 + c1 }));
   }
   const span = c1 - c0;
   const gaps = innerGaps(proj.cols, c0, c1);
   const cuts = [];
   const used = /* @__PURE__ */ new Set();
-  for (let i = 1; i < groups.length; i++) {
-    const want = (groups[i - 1].c1 + groups[i].c0) / 2;
+  for (let i = 1; i < groups2.length; i++) {
+    const want = (groups2[i - 1].c1 + groups2[i].c0) / 2;
     let best = -1;
     let bestD = Infinity;
     gaps.forEach((gap, k) => {
@@ -75567,7 +75722,7 @@ function snapWords(groups, seg, proj) {
   cuts.sort((a, b) => a.x0 - b.x0);
   const words = [];
   let from = c0;
-  groups.forEach((g, i) => {
+  groups2.forEach((g, i) => {
     const to = i < cuts.length ? cuts[i].x0 : c1;
     words.push({ text: g.text, x0: proj.x0 + from, x1: proj.x0 + Math.max(from + 1, to) });
     if (i < cuts.length) from = cuts[i].x1;
@@ -76034,7 +76189,7 @@ async function readSegments(image, w, h, boxes, mask, scaleX, scaleY, runRec, di
     const read2 = reads[k];
     const chars = ctcDecode(read2.logits, read2.time, read2.classes, dict);
     if (crop.seg.ink && mask) restoreDashes(chars, crop, read2.time, mask, w);
-    const groups = [];
+    const groups2 = [];
     let cur = null;
     for (const ch of chars) {
       if (SPACE_CH.has(ch.ch)) {
@@ -76043,13 +76198,13 @@ async function readSegments(image, w, h, boxes, mask, scaleX, scaleY, runRec, di
       }
       if (!cur) {
         cur = { chars: [] };
-        groups.push(cur);
+        groups2.push(cur);
       }
       cur.chars.push(ch);
     }
-    if (!groups.length) return;
+    if (!groups2.length) return;
     const toCol = (t) => crop.cropLeft + t / read2.time * crop.cropW - crop.proj.x0;
-    const named2 = groups.map((g) => ({
+    const named2 = groups2.map((g) => ({
       text: g.chars.map((c) => c.ch).join(""),
       c0: toCol(g.chars[0].t),
       c1: toCol(g.chars[g.chars.length - 1].t + 1),
@@ -76976,7 +77131,8 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
       docKey = key;
     }
     const wanted = (pages || []).filter((n2) => Number.isFinite(Number(n2)) && Number(n2) > 0).map(Number);
-    const list = wanted.length ? wanted : [1];
+    const total = Number(pdf?.numPages) || 0;
+    const list = wanted.length ? wanted : total > 0 ? Array.from({ length: total }, (_, i) => i + 1) : [1];
     const out = [];
     for (let i = 0; i < list.length; i++) {
       if (signal?.aborted) throw abortError2();
@@ -82663,7 +82819,7 @@ function buildBoardView(onFail, {
   };
   const markLinkedRows = (b, measured) => {
     rowEdges.clear();
-    const groups = /* @__PURE__ */ new Map();
+    const groups2 = /* @__PURE__ */ new Map();
     for (const e2 of b.edges.values()) {
       const m = measured.get(e2.uid);
       if (!m) continue;
@@ -82673,14 +82829,14 @@ function buildBoardView(onFail, {
         const card2 = end === "from" ? e2.from : e2.to;
         const other = cardName(b, end === "from" ? e2.to : e2.from);
         const key = `${card2}|${row4}`;
-        const g = groups.get(key) || { card: card2, row: row4, edges: [], color: edgeTone(e2), tips: [] };
+        const g = groups2.get(key) || { card: card2, row: row4, edges: [], color: edgeTone(e2), tips: [] };
         g.edges.push(e2.uid);
         g.tips.push(`${end === "to" ? "Linked from" : "Links to"} ${other}${e2.label ? ` · ${e2.label}` : ""}`);
-        groups.set(key, g);
+        groups2.set(key, g);
       }
     }
-    for (const [key, g] of groups) rowEdges.set(key, g.edges);
-    const marks = [...groups.values()].map((g) => ({ card: g.card, row: g.row, edges: g.edges, color: g.color, tip: g.tips.join(" | ") }));
+    for (const [key, g] of groups2) rowEdges.set(key, g.edges);
+    const marks = [...groups2.values()].map((g) => ({ card: g.card, row: g.row, edges: g.edges, color: g.color, tip: g.tips.join(" | ") }));
     const markKey = JSON.stringify(marks.map((g) => [g.card, g.row, g.edges.join(" "), g.color, g.tip]).sort((a, b2) => String(a[0] + a[1]).localeCompare(String(b2[0] + b2[1]))));
     if (markKey === rowMarkKey) return;
     rowMarkKey = markKey;

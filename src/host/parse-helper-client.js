@@ -147,8 +147,61 @@ async function readSSE(response, { onProgress, onPage }) {
 }
 
 export const TOKEN_SETTING = "parse-helper-token";
-// The helper's per-request OCR page cap (MAX_PAGES in tools/parse-helper/plexus_parse_helper/ocr.py).
+// The helper's per-request caps: OCR pages (MAX_PAGES in ocr.py), OCR cells (server.py), VLM pages and
+// regions (MAX_PAGES in vlm_read.py, MAX_REGIONS in vlm_tables.py). A longer request is never refused: the
+// client sends batches and merges the answers. OCR batches are smaller than the cap so a long read moves.
 export const OCR_PAGE_CAP = 50;
+export const OCR_BATCH = 25;
+export const OCR_CELL_CAP = 400;
+export const VLM_PAGE_CAP = 40;
+export const VLM_REGION_CAP = 40;
+
+function groups(list, size) {
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
+// Batch answers back into one: arrays are joined in order, elapsed times add, the rest keeps the first batch.
+export function mergeBodies(parts) {
+  if (parts.length === 1) return parts[0];
+  const out = { ...parts[0] };
+  for (const part of parts.slice(1)) {
+    for (const [key, value] of Object.entries(part || {})) {
+      if (Array.isArray(value) && Array.isArray(out[key])) out[key] = [...out[key], ...value];
+      else if (key === "elapsedMs" && Number.isFinite(value) && Number.isFinite(out[key])) out[key] += value;
+      else if (!(key in out)) out[key] = value;
+    }
+  }
+  return out;
+}
+
+// Pages and regions split so no request goes over the helper's page or region cap. A page with more regions
+// than the cap is sent alone, its regions in slices.
+export function planVlmBatches(pages, regions) {
+  const byPage = new Map();
+  for (const region of regions) {
+    if (!byPage.has(region.page)) byPage.set(region.page, []);
+    byPage.get(region.page).push(region);
+  }
+  const list = pages.length ? pages : [...byPage.keys()].sort((a, b) => a - b);
+  const batches = [];
+  let cur = { pages: [], regions: [] };
+  const flush = () => { if (cur.pages.length) batches.push(cur); cur = { pages: [], regions: [] }; };
+  for (const page of list) {
+    const own = byPage.get(page) || [];
+    if (own.length > VLM_REGION_CAP) {
+      flush();
+      for (const slice of groups(own, VLM_REGION_CAP)) batches.push({ pages: [page], regions: slice });
+      continue;
+    }
+    if (cur.pages.length >= VLM_PAGE_CAP || cur.regions.length + own.length > VLM_REGION_CAP) flush();
+    cur.pages.push(page);
+    cur.regions.push(...own);
+  }
+  flush();
+  return batches;
+}
 export const TOKEN_BACKUP_KEY = "plexus-diagram:parse-helper-token";
 export const PAIR_POLL_MS = 500;
 export const PAIR_WAIT_MS = 60_000;
@@ -510,18 +563,27 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
   // (cached by the helper); `cells` → re-read of single cells, never cached. One call.
   async function ocr({ bytes, sha256, pages, cells, signal, onChunk } = {}) {
     const sha = sha256 || await sha256Hex(bytes);
-    // The helper reads at most OCR_PAGE_CAP pages per request: longer scans go in batches, each cached by the helper.
-    if (!(cells && cells.length) && Array.isArray(pages) && pages.length > OCR_PAGE_CAP) {
-      let merged = null;
-      for (let i = 0; i < pages.length; i += OCR_PAGE_CAP) {
-        if (signal?.aborted) throw signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" });
-        const part = await ocrOnce({ bytes, sha, pages: pages.slice(i, i + OCR_PAGE_CAP), signal });
-        merged = merged ? { ...merged, pages: [...(merged.pages || []), ...(part.pages || [])] } : { ...part, pages: [...(part.pages || [])] };
-        try { onChunk?.({ done: Math.min(i + OCR_PAGE_CAP, pages.length), total: pages.length }); } catch { /* caller */ }
+    const aborted = () => signal?.aborted && (signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" }));
+    if (cells && cells.length) {
+      // Cell re-reads: the helper answers at most OCR_CELL_CAP per request, in request order.
+      const parts = [];
+      for (const slice of groups(cells, OCR_CELL_CAP)) {
+        if (aborted()) throw aborted();
+        parts.push(await ocrOnce({ bytes, sha, cells: slice, signal }));
       }
-      return merged;
+      return mergeBodies(parts);
     }
-    return ocrOnce({ bytes, sha, pages, cells, signal });
+    // A whole-document read has to name its pages: the client cannot guess the page count, and the helper
+    // would stop at its cap.
+    if (!Array.isArray(pages) || !pages.length) throw helperError("ocr-pages", "ocr needs an explicit page list");
+    // The helper reads at most OCR_PAGE_CAP pages per request: longer scans go in batches, each cached by the helper.
+    const parts = [];
+    for (const batch of groups(pages, OCR_BATCH)) {
+      if (aborted()) throw aborted();
+      parts.push(await ocrOnce({ bytes, sha, pages: batch, signal }));
+      try { onChunk?.({ done: Math.min(parts.length * OCR_BATCH, pages.length), total: pages.length }); } catch { /* caller */ }
+    }
+    return mergeBodies(parts);
   }
 
   async function ocrOnce({ bytes, sha, pages, cells, signal }) {
@@ -555,8 +617,18 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
   // Table crops for a helper that advertises vlm-tables. Same PDF body as ocr().
   // `tables` is [{page, bbox}] in PDF points, origin top-left.
   async function tables({ bytes, sha256, pages, tables: regions, signal } = {}) {
-    const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
+    const list = regions || [];
+    const parts = [];
+    for (const slice of list.length > VLM_REGION_CAP ? groups(list, VLM_REGION_CAP) : [list]) {
+      if (signal?.aborted) throw signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" });
+      parts.push(await tablesOnce({ bytes, pages, regions: slice, signal }));
+    }
+    return { ...mergeBodies(parts), sha256: sha };
+  }
+
+  async function tablesOnce({ bytes, pages, regions, signal }) {
+    const { url, token } = config();
     const options = {};
     if (pages && pages.length) options.pages = pages;
     if (regions && regions.length) options.tables = regions.map((t) => ({ page: t.page, bbox: t.bbox }));
@@ -576,7 +648,7 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
       error.status = res.status;
       throw error;
     }
-    return { ...body, sha256: sha };
+    return body || {};
   }
 
   // High-accuracy read. Layout boxes, table readings, optional OCR lines, figure hints.
@@ -584,8 +656,23 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
   // are pages with aligned numeric columns. `boxMode` is optional. `layoutOnly`
   // runs the layout model alone (figure boxes), reading no table or text.
   async function vlm({ bytes, sha256, pages, tables: regions, text = false, numericPages, boxMode, layoutOnly = false, signal } = {}) {
-    const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
+    const asked = pages || [];
+    const boxes = regions || [];
+    const batches = asked.length <= VLM_PAGE_CAP && boxes.length <= VLM_REGION_CAP
+      ? [{ pages: asked, regions: boxes }]
+      : planVlmBatches(asked, boxes);
+    const parts = [];
+    for (const batch of batches) {
+      if (signal?.aborted) throw signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" });
+      const numeric = numericPages && numericPages.length ? numericPages.filter((n) => batch.pages.includes(n)) : numericPages;
+      parts.push(await vlmOnce({ bytes, pages: batch.pages, regions: batch.regions, text, numericPages: numeric, boxMode, layoutOnly, signal }));
+    }
+    return { ...mergeBodies(parts), sha256: sha };
+  }
+
+  async function vlmOnce({ bytes, pages, regions, text, numericPages, boxMode, layoutOnly, signal }) {
+    const { url, token } = config();
     const options = { text: text === true };
     if (layoutOnly === true) options.layoutOnly = true;
     if (pages && pages.length) options.pages = pages;
@@ -608,7 +695,7 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
       error.status = res.status;
       throw error;
     }
-    return { ...body, sha256: sha };
+    return body || {};
   }
 
   function endpoint() {

@@ -349,7 +349,8 @@ test("parse view shows Read the scan for an OCR source with no helper", async ()
   view.showDoc(parsed);
   const btn = view.element().querySelector(".pxd-parse__scan");
   assert.equal(btn.hidden, false);
-  assert.equal(btn.textContent, "Read the scan (p. 1)");
+  assert.ok(btn.textContent.startsWith("Read the scan (p. 1)"));
+  assert.equal(btn.getAttribute("data-engine-tag"), "Free · in Roam");
 });
 
 test("the extension entry does not import the OCR runtime", () => {

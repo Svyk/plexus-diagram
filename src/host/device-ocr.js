@@ -92,7 +92,9 @@ export function createDeviceOcr({ source = null, env = globalThis, dpi = 300, cr
     const src = web();
     if (key !== docKey) { src.forget?.(); docKey = key; }
     const wanted = (pages || []).filter((n) => Number.isFinite(Number(n)) && Number(n) > 0).map(Number);
-    const list = wanted.length ? wanted : [1];
+    // No page list is the whole document, not the first page.
+    const total = Number(pdf?.numPages) || 0;
+    const list = wanted.length ? wanted : (total > 0 ? Array.from({ length: total }, (_, i) => i + 1) : [1]);
     const out = [];
     for (let i = 0; i < list.length; i++) {
       if (signal?.aborted) throw abortError();

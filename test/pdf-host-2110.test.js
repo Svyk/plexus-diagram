@@ -124,3 +124,28 @@ test("two :pdf-highlight rows count 2 and pdfCover still does not write", () => 
   assert.equal(host.stats.writes, 0);
   assert.equal(fake.writesLog().length, 0);
 });
+
+test("a board with many PDFs reads covers from one index, not two queries per card paint", async () => {
+  const { fake, host } = setup();
+  const urls = [1, 2, 3, 4, 5, 6].map((i) => `https://example.test/p${i}.pdf`);
+  const calls = [];
+  fake.setQ((query, ...inputs) => {
+    calls.push([query, ...inputs]);
+    const q = String(query);
+    if (q.includes("?url ?u ?t")) return urls.map((u, i) => [u, `page${i}`, `Paper ${i}`]);
+    if (q.includes("?u ?b ?props")) return [["page0", 1, { ":pdf-highlight": {} }], ["page0", 2, { ":pdf-highlight": {} }], ["page3", 3, {}], ["page5", 4, { "pdf-highlight": {} }]];
+    if (q.includes(":in $ ?url")) { const i = urls.indexOf(inputs[0]); return i < 0 ? [] : [[`page${i}`, `Paper ${i}`]]; }
+    if (q.includes(":in $ ?uid")) return [];
+    return [];
+  });
+  const covers = [];
+  for (let round = 0; round < 20; round += 1) {
+    for (const u of urls) covers.push(host.pdfCover(`{{[[pdf]]: ${u}}}`));
+    await Promise.resolve();
+  }
+  const last = covers.slice(-6);
+  assert.deepEqual(last.map((c) => [c.title, c.count, c.pageUid]), [["Paper 0", 2, "page0"], ["Paper 1", 0, "page1"], ["Paper 2", 0, "page2"], ["Paper 3", 0, "page3"], ["Paper 4", 0, "page4"], ["Paper 5", 1, "page5"]]);
+  assert.ok(calls.length <= 3 * 2 + 2, `bounded reads, got ${calls.length}`);
+  assert.equal(host.pdfCover("{{[[pdf]]: https://example.test/none.pdf}}").pageUid, null);
+  assert.equal(host.stats.writes, 0);
+});

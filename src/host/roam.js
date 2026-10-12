@@ -228,6 +228,13 @@ const USER_EID_QUERIES = Object.freeze([
   "[:find ?x ?n :where [?x :user/uid _] [?x :user/display-page ?d] [?d :node/title ?n]]",
 ]);
 const PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
+// Every Roam PDF page, and every block with props on one: one read covers all PDF cards on a big board.
+const PDF_PAGES_ALL_QUERY = `[:find ?url ?u ?t :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
+const PDF_PAGE_PROPS_ALL_QUERY = `[:find ?u ?b ?props :where [?p :pdf/url _] [?p :block/uid ?u] [?b :block/page ?p] [?b :block/props ?props]]`;
+// A board that names this many PDFs reads covers from one index (PhD board: 122 PDFs asked ~8,900 times in one open,
+// 5 ms each, against 31 ms for the whole index). The index lives COVER_INDEX_MIN_MS, or 40× its own read time.
+export const COVER_INDEX_URLS = 4;
+export const COVER_INDEX_MIN_MS = 2000;
 const PDF_BLOCK_OUT_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?p :block/refs ?b] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 const PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?b :block/refs ?p] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 // The pdf block's pins container and its pins: two levels, nothing deeper.
@@ -1015,7 +1022,39 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
   let coverMemo = null;
   const repairedPdfBlocks = new Set();
+  // Distinct urls asked recently; once a board asks for COVER_INDEX_URLS of them, covers come from coverIndex.
+  let coverAsks = { at: 0, urls: new Set() };
+  let coverIndex = null;
+  const coverIndexNow = () => {
+    const now = Date.now();
+    if (coverIndex && now - coverIndex.at < coverIndex.ttl) return coverIndex;
+    const t0 = Date.now();
+    const pages = new Map();
+    for (const row of queryRows(host, PDF_PAGES_ALL_QUERY)) {
+      if (!Array.isArray(row) || typeof row[0] !== "string" || typeof row[1] !== "string" || row[1] === "") continue;
+      if (!pages.has(row[0])) pages.set(row[0], []);
+      pages.get(row[0]).push({ uid: row[1], title: typeof row[2] === "string" ? row[2] : "", url: row[0] });
+    }
+    const counts = new Map();
+    for (const row of queryRows(host, PDF_PAGE_PROPS_ALL_QUERY)) {
+      if (Array.isArray(row) && hasPdfHighlight(row[2])) counts.set(row[0], (counts.get(row[0]) || 0) + 1);
+    }
+    coverIndex = { at: now, ttl: Math.max(COVER_INDEX_MIN_MS, (Date.now() - t0) * 40), pages, counts };
+    return coverIndex;
+  };
+  const useCoverIndex = (url) => {
+    const now = Date.now();
+    if (now - coverAsks.at > COVER_INDEX_MIN_MS) coverAsks = { at: now, urls: new Set() };
+    coverAsks.urls.add(url);
+    return coverAsks.urls.size >= COVER_INDEX_URLS || Boolean(coverIndex && now - coverIndex.at < coverIndex.ttl);
+  };
   const readPdfCover = (url) => {
+    if (useCoverIndex(url)) {
+      const index = coverIndexNow();
+      const page = pdfPagePlan(url, index.pages.get(url) || []);
+      if (!page) return { ...coverModel({ url, count: 0 }), pageUid: null };
+      return { ...coverModel({ title: page.title, url, count: index.counts.get(page.uid) || 0 }), pageUid: page.uid };
+    }
     const pages = [];
     for (const row of queryRows(host, PDF_PAGE_QUERY, url)) {
       if (!Array.isArray(row)) continue;

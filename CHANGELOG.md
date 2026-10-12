@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.24.0 — 2026-10-11
+
+Find a PDF by what it is, search your graph by meaning with Roam's semantic search, and talk to Live AI with its full composer.
+
+- **PDFs have names.** A PDF that only lives as a link on a daily page now shows its real title, authors' journal and page count in search ("A Cumulative Spore Killing Approach… · Open Forum Infectious Diseases · 7 pages · on October 6th, 2026"). Plexus reads the first page once, in the background, only for PDFs the panel lists, and remembers it. Searching its title words, authors or journal finds it.
+- **Search by meaning.** With Roam's semantic search on (Settings → Graph), the panel's "Meaning" toggle adds results that match what you mean, not only the words, under "By meaning" a moment after the word matches. "Find related" on a card lists notes related to it, ready to drag onto the board.
+- **Live AI's composer in the chat.** Mention pages with `[[` or `#` and blocks with `((`; `/` opens Live AI's commands and your own `#liveai/prompt` prompts and `#liveai/style` styles; pick the context (this part, the page, linked references, sidebar, daily notes), a style and the thinking level. Tools and agents open Live AI's own chat with your conversation.
+- **Dark mode for the chat.** Proper light and dark colours (AA contrast), quiet icon buttons, and your question no longer scrolls under the context bar.
+- **Copy ▾ is back** on parsed parts: every copy format, plus Ask AI and Add to question. The copy menu closes on Esc and outside clicks.
+
 ## 3.23.0 — 2026-10-11
 
 Parsing shows what it finds as it reads, local engines just run (and say they are free), and Ask AI is a floating chat that looks like Live AI's own.

@@ -5,7 +5,7 @@ import test from "node:test";
 import { answerCardMarkdown } from "../src/model/ai-context.js";
 import { findSourceCard } from "../src/model/ask-basket.js";
 import { nestMarkdownUnderFirst } from "../src/session.js";
-import { MIN_WIDTH, openAskAI, WIDTH_KEY } from "../src/view/ask-ai.js";
+import { openAskAI } from "../src/view/ask-ai.js";
 import { createParseActions } from "../src/view/parse-actions.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -183,26 +183,6 @@ test("H1: part chips are a wrapping flex row; chips never shrink to a sliver, la
   assert.match(block(".pxd-ask__chip"), /height: auto/);
 }));
 
-test("H2: multi mode and table answers get the wide dialog; a plain single-part answer stays 440px", () => withDom(async (stub, doc) => {
-  assert.match(block(".pxd-ask"), /width: min\(440px, calc\(100vw - 32px\)\)/);
-  assert.match(block(".pxd-ask--wide"), /width: min\(720px, calc\(100vw - 48px\)\)/);
-  const multi = openAskAI({ document: doc, window: fakeWindow(), multi: { basket: basket([part(1), part(2)]), jump() {} } });
-  assert.ok(multi.el.classList.contains("pxd-ask--wide"));
-  multi.close();
-  const plain = openAskAI({ doc: DOC, blockId: "p", document: doc, window: fakeWindow("Just a paragraph.") });
-  assert.ok(!plain.el.classList.contains("pxd-ask--wide"));
-  findAll(plain.el, "pxd-ask__send")[0].click();
-  await flush();
-  assert.ok(!plain.el.classList.contains("pxd-ask--wide"));
-  plain.close();
-  const tab = openAskAI({ doc: DOC, blockId: "p", document: doc, window: fakeWindow("| A | B |\n|---|---|\n| 1 | 2 |") });
-  findAll(tab.el, "pxd-ask__send")[0].click();
-  await flush();
-  assert.ok(tab.el.classList.contains("pxd-ask--wide"));
-  assert.equal(findAll(tab.el, "pxd-ask__table").length, 1);
-  tab.close();
-}));
-
 test("H2: tables lay out by content and break words only as a last resort; the dialog stays in the viewport", () => {
   assert.match(block(".pxd-ask__table"), /table-layout: auto/);
   const cell = css.match(/\.pxd-ask__table th,\s*\.pxd-ask__table td \{([^}]*)\}/)[1];
@@ -210,63 +190,32 @@ test("H2: tables lay out by content and break words only as a last resort; the d
   assert.match(cell, /word-break: normal/);
   assert.match(cell, /overflow-wrap: break-word/);
   assert.doesNotMatch(cell, /anywhere/);
-  assert.match(block(".pxd-ask"), /max-width: calc\(100vw - 32px\)/);
-  assert.match(block(".pxd-ask"), /right: 16px/);
+  assert.match(block(".pxd-ask"), /max-width: calc\(100vw - 16px\)/);
+  assert.match(block(".pxd-ask"), /max-height: calc\(100vh - 16px\)/);
+  assert.match(block(".pxd-ask"), /position: fixed/);
 });
 
-test("H2: a 6px left-edge grip drags the width, clamps at 360px and the viewport, and stores it per graph", () => withDom(async (stub, doc) => {
-  assert.match(block(".pxd-ask__grip"), /width: 6px/);
-  assert.match(block(".pxd-ask__grip"), /left: 0/);
-  assert.match(block(".pxd-ask__grip"), /cursor: ew-resize/);
-  const w = fakeWindow();
-  const d = openAskAI({ doc: DOC, blockId: "p", document: doc, window: w });
-  const grip = findAll(d.el, "pxd-ask__grip")[0];
-  d.el.getBoundingClientRect = () => ({ width: 440 });
-  stub.dispatch(grip, "pointerdown", { clientX: 600 });
-  stub.dispatch(doc, "pointermove", { clientX: 500 });
-  assert.equal(d.el.style.width, "540px");
-  stub.dispatch(doc, "pointermove", { clientX: 900 });
-  assert.equal(d.el.style.width, `${MIN_WIDTH}px`);
-  stub.dispatch(doc, "pointermove", { clientX: -2000 });
-  assert.equal(d.el.style.width, "968px");
-  stub.dispatch(doc, "pointermove", { clientX: 450 });
-  stub.dispatch(doc, "pointerup", {});
-  assert.equal(w.store.get(`${WIDTH_KEY}:mygraph`), "590");
-  stub.dispatch(doc, "pointermove", { clientX: 100 });
-  assert.equal(d.el.style.width, "590px");
-  d.close();
-  const again = openAskAI({ doc: DOC, blockId: "p", document: doc, window: w });
-  assert.equal(again.el.style.width, "590px");
-  again.close();
-  const other = fakeWindow();
-  other.location.hash = "#/app/othergraph/page/x";
-  const o = openAskAI({ doc: DOC, blockId: "p", document: doc, window: other });
-  assert.equal(o.el.style.width || "", "");
-  o.close();
-}));
-
-test("H3: the question textarea grows from 2 to 6 lines on input and when a quick prompt sets it", () => withDom(async (stub, doc) => {
-  assert.match(block(".pxd-ask__question"), /min-height: calc\(2 \* 18px \+ 14px\)/);
-  assert.match(block(".pxd-ask__question"), /max-height: calc\(6 \* 18px \+ 14px\)/);
+test("H3: the question textarea grows from 1 to 8 lines on input and when a quick prompt sets it", () => withDom(async (stub, doc) => {
+  assert.match(block(".pxd-ask__question"), /max-height: calc\(8 \* 20px \+ 16px\)/);
   assert.match(block(".pxd-ask__question"), /resize: none/);
   const d = openAskAI({ doc: DOC, blockId: "p", document: doc, window: fakeWindow() });
   const ta = findAll(d.el, "pxd-ask__question")[0];
-  assert.equal(ta.rows, 2);
+  assert.equal(ta.rows, 1);
   ta.value = "a\nb\nc\nd";
   stub.dispatch(ta, "input", {});
   assert.equal(ta.rows, 4);
   ta.value = Array.from({ length: 12 }, (_, i) => `line ${i}`).join("\n");
   stub.dispatch(ta, "input", {});
-  assert.equal(ta.rows, 6);
+  assert.equal(ta.rows, 8);
   ta.value = "x".repeat(200);
   stub.dispatch(ta, "input", {});
-  assert.equal(ta.rows, 4);
+  assert.equal(ta.rows, 5);
   ta.value = "short";
   stub.dispatch(ta, "input", {});
-  assert.equal(ta.rows, 2);
+  assert.equal(ta.rows, 1);
   const quick = findAll(d.el, "pxd-ask__quickbtn")[0];
   ta.value = "z";
   quick.click();
-  assert.ok(ta.rows >= 2);
+  assert.ok(ta.rows >= 1);
   d.close();
 }));

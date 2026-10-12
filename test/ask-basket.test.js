@@ -354,6 +354,7 @@ test("multi dialog: figure parts upload their own image on Send, and only for a 
   sel.value = "txt";
   stub.dispatch(sel, "change", {});
   assert.match(find(d.el, "pxd-ask__imgnote").textContent, /can't see images/);
+  find(d.el, "pxd-ask__question").value = "And without the picture?";
   find(d.el, "pxd-ask__send").click();
   await flush();
   assert.equal(uploads, 1);

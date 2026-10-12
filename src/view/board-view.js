@@ -7621,7 +7621,7 @@ function buildBoardView(onFail, {
       if (action === "native") return true;
       return false;
     };
-    if (event.target?.closest?.(".pxd-read")) return;
+    if (event.target?.closest?.(".pxd-read") || event.target?.closest?.(".pxd-ask")) return;
     // The arrow label lives on document.body. It is outside the board, but it is not a Roam edit.
     // Delete and Backspace in the empty label delete the arrow. A Caret .cs-sel wrapper still counts.
     const inWhy = Boolean(event.target?.closest?.(".pxd-why") || doc.activeElement?.closest?.(".pxd-why"));

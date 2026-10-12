@@ -251,3 +251,29 @@ test("selecting Changed since last visit again turns it off and closes the Chang
   assert.deepEqual(changedToggle(true, "search"), { on: false, open: false, close: false });
   assert.deepEqual(changedToggle(true, ""), { on: false, open: false, close: false });
 });
+
+test("comment thread rows are read once for chunked card-stat calls and again after addComment", async () => {
+  const { installCommentHost } = await import("../src/host/comments.js");
+  let queries = 0;
+  const host = {
+    resolveEid: () => 7,
+    q: (query) => {
+      const text = String(query);
+      if (text.includes("?container")) { queries += 1; return [["cardA", "anchorA", 2]]; }
+      if (text.includes("?pu :in $ ?u")) return [["pageA"]];
+      if (text.includes(":user/display-page")) return [["Me"]];
+      return [];
+    },
+    generateUid: () => "uidX",
+    group: async (fn) => fn(),
+    createBlock: async ({ uid }) => uid || "newUid",
+    openInSidebar() {},
+  };
+  installCommentHost(host, { api: { user: { uid: () => "u" } }, data: { pull: () => null } });
+  for (let i = 0; i < 5; i += 1) host.commentThreads(["cardA", `other${i}`]);
+  assert.equal(queries, 1);
+  assert.equal(host.commentThreads(["cardA"]).get("cardA")?.count, 2);
+  await host.addComment("cardA", "hello");
+  host.commentThreads(["cardA"]);
+  assert.equal(queries, 2);
+});

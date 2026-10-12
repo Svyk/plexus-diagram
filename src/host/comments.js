@@ -18,6 +18,7 @@ const THREAD_QUERY = `[:find ?cell ?au (count ?comment) :in $ ?cp :where
 const PAGE_QUERY = `[:find ?pu :in $ ?u :where [?b :block/uid ?u] [?b :block/page ?p] [?p :block/uid ?pu]]`;
 const CONTAINER_QUERY = `[:find ?cu :in $ ?pu ?cp :where [?p :block/uid ?pu] [?p :block/children ?c] [?c :block/refs ?cp] [?c :block/uid ?cu]]`;
 const AUTHOR_QUERY = `[:find ?title :in $ ?uid :where [?u :user/uid ?uid] [?u :user/display-page ?p] [?p :node/title ?title]]`;
+export const THREAD_TTL_MS = 5000;
 const TREE_PULL = `[:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order]}]}]}]`;
 
 export function installCommentHost(host, { api, data = api?.data, now = () => new Date() } = {}) {
@@ -26,13 +27,24 @@ export function installCommentHost(host, { api, data = api?.data, now = () => ne
     try { return host.resolveEid({ title: COMMENTS_PAGE }); } catch { return null; }
   };
 
+  // The whole-graph thread rows, kept THREAD_TTL_MS: card stats arrive in idle chunks of 80, and each chunk re-ran
+  // the query (PhD main board: 40 chunks, 8 s). addComment clears it.
+  let threadRows = null;
+  const threadRowsNow = (cp) => {
+    const t = Date.now();
+    if (threadRows && threadRows.cp === cp && t - threadRows.at < THREAD_TTL_MS) return threadRows.rows;
+    const rows = host.q(THREAD_QUERY, cp) || [];
+    threadRows = { cp, at: t, rows };
+    return rows;
+  };
+
   // Map<cardUid, { count, threadUid, threads }>. Empty when the graph has no comment page.
   host.commentThreads = (uids) => {
     const list = [...new Set((uids || []).map((u) => String(u || "")).filter(Boolean))];
     const cp = commentsEid();
     if (cp == null || !list.length) return new Map();
     const want = new Set(list);
-    try { return commentIndexFromRows((host.q(THREAD_QUERY, cp) || []).filter((row) => want.has(String(row?.[0] ?? "")))); } catch { return new Map(); }
+    try { return commentIndexFromRows(threadRowsNow(cp).filter((row) => want.has(String(row?.[0] ?? "")))); } catch { return new Map(); }
   };
 
   const baseStats = typeof host.cardStats === "function" ? host.cardStats.bind(host) : null;
@@ -60,6 +72,7 @@ export function installCommentHost(host, { api, data = api?.data, now = () => ne
 
   // Writes the same four-level shape Roam writes, then the comment body. Returns { anchorUid, commentUid }.
   host.addComment = async (targetUid, body) => {
+    threadRows = null;
     const text = String(body ?? "").trim();
     const target = String(targetUid || "");
     if (!target || !text) return null;
@@ -89,6 +102,7 @@ export function installCommentHost(host, { api, data = api?.data, now = () => ne
       }
       commentUid = await host.createBlock({ parentUid: plan.anchorUid, order: "last", string: text });
     }, "comment");
+    threadRows = null;
     return { anchorUid: plan.anchorUid, commentUid, existed: plan.existed };
   };
 

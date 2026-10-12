@@ -563,8 +563,12 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 /* An image card's picture fills the card body and scales with it (contain, centred): no fixed height cap. */
+/* Plain class selectors, not :is(): a rightmost :is() list is matched against every element Roam restyles. */
 .pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media,
-.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media :is(.pxd-rs, .pxd-rs__live, .rm-inline-img__resize, .react-resizable) {
+.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media .pxd-rs,
+.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media .pxd-rs__live,
+.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media .rm-inline-img__resize,
+.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media .react-resizable {
   height: 100%;
 }
 
@@ -573,7 +577,8 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   height: 100%;
 }
 
-.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media :is(.rm-inline-img__resize, .react-resizable) {
+.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media .rm-inline-img__resize,
+.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media .react-resizable {
   width: 100% !important;
   max-width: 100% !important;
 }
@@ -2672,11 +2677,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   cursor: pointer;
 }
 
-/* The number is what @Part N refers to: bold, and larger on hover. */
+/* The number is what @Part N refers to: bold, and larger on hover (no font-size transition: that is a layout per frame). */
 .pxd-ask__partno {
   font-weight: 700;
   font-size: 12px;
-  transition: font-size 80ms ease-out;
 }
 
 .pxd-ask__partchip:hover .pxd-ask__partno,

@@ -16973,7 +16973,8 @@ function normalizeMetaFilter(raw = {}) {
 }
 function metaFilterHostActive(raw) {
   const f = normalizeMetaFilter(raw);
-  return Boolean(f.createdBy || f.editedBy || f.refs || f.children || f.under || f.dayMode === "created");
+  const days = Math.floor(Number(raw?.days) || 0) > 0;
+  return Boolean(f.createdBy || f.editedBy || f.refs || f.children || f.under || f.dayMode === "created" && days);
 }
 function metaFilterActive(raw) {
   const f = normalizeMetaFilter(raw);
@@ -17000,31 +17001,36 @@ function narrowByMeta(rows, raw, { days = 0, now: now4 = Date.now() } = {}) {
     return true;
   });
 }
-function createMetaCache(read2, { ttl = META_TTL_MS, now: now4 = () => Date.now() } = {}) {
+function createMetaCache(read2, { ttl = META_TTL_MS, now: now4 = () => Date.now(), max = META_MAX } = {}) {
   const cache = /* @__PURE__ */ new Map();
   return {
     get(uids) {
       const out = /* @__PURE__ */ new Map();
-      const need2 = [];
+      const need2 = /* @__PURE__ */ new Set();
       const t = now4();
       for (const uid of uids || []) {
         const hit = cache.get(uid);
         if (hit && t - hit.at < ttl) out.set(uid, hit.meta);
-        else if (uid && !need2.includes(uid)) need2.push(uid);
+        else if (uid) need2.add(uid);
       }
-      if (need2.length) {
+      if (need2.size) {
+        const list = [...need2];
         let got = null;
         try {
-          got = read2(need2);
+          got = read2(list);
         } catch {
           got = null;
         }
-        for (const uid of need2) {
+        for (const uid of list) {
           const meta = got?.get?.(uid) || null;
-          if (meta) {
-            cache.set(uid, { meta, at: t });
-            out.set(uid, meta);
-          }
+          if (!meta) continue;
+          cache.delete(uid);
+          cache.set(uid, { meta, at: t });
+          out.set(uid, meta);
+        }
+        for (const uid of cache.keys()) {
+          if (cache.size <= max) break;
+          cache.delete(uid);
         }
       }
       return out;
@@ -17033,28 +17039,50 @@ function createMetaCache(read2, { ttl = META_TTL_MS, now: now4 = () => Date.now(
     clear: () => cache.clear()
   };
 }
-function assembleMeta(uids, q2) {
+function assembleMeta(uids, { pullMany, q: q2 }) {
   const out = /* @__PURE__ */ new Map();
-  const run = (name, chunk) => {
+  const list = (uids || []).filter(Boolean);
+  for (let i = 0; i < list.length; i += META_CHUNK) {
+    const chunk = list.slice(i, i + META_CHUNK);
+    let nodes = [];
     try {
-      const r = q2(META_QUERIES[name], chunk);
-      return Array.isArray(r) ? r : [];
+      nodes = pullMany(META_PULL, chunk.map((u) => [":block/uid", u])) || [];
     } catch {
-      return [];
+      nodes = [];
     }
-  };
-  for (let i = 0; i < uids.length; i += META_CHUNK) {
-    const chunk = uids.slice(i, i + META_CHUNK);
-    for (const [u, c, e2] of run("times", chunk)) out.set(u, { created: num4(c) || null, edited: num4(e2) || null, createdBy: "", editedBy: "", refs: 0, children: 0, length: null });
-    for (const name of ["createdByPage", "createdBy"]) for (const [u, n2] of run(name, chunk)) if (out.has(u)) out.get(u).createdBy = String(n2);
-    for (const name of ["editedByPage", "editedBy"]) for (const [u, n2] of run(name, chunk)) if (out.has(u)) out.get(u).editedBy = String(n2);
-    for (const [u, n2] of run("refs", chunk)) if (out.has(u)) out.get(u).refs = Number(n2) || 0;
-    for (const [u, n2] of run("children", chunk)) if (out.has(u)) out.get(u).children = Number(n2) || 0;
-    for (const [u, s] of run("lengths", chunk)) if (out.has(u)) out.get(u).length = String(s).length;
+    const byEid = /* @__PURE__ */ new Map();
+    for (const node2 of nodes) {
+      const uid = node2?.[":block/uid"];
+      if (typeof uid !== "string") continue;
+      const s = node2[":block/string"];
+      const kids = node2[":block/children"];
+      const meta = {
+        created: num4(node2[":create/time"]) || null,
+        edited: num4(node2[":edit/time"]) || null,
+        createdBy: userName(node2[":create/user"]),
+        editedBy: userName(node2[":edit/user"]),
+        refs: 0,
+        children: Array.isArray(kids) ? kids.length : 0,
+        length: typeof s === "string" ? s.length : null
+      };
+      out.set(uid, meta);
+      if (node2[":db/id"] != null) byEid.set(node2[":db/id"], meta);
+    }
+    if (!byEid.size) continue;
+    let counts = [];
+    try {
+      counts = q2(META_REFS, [...byEid.keys()]) || [];
+    } catch {
+      counts = [];
+    }
+    for (const [eid, n2] of Array.isArray(counts) ? counts : []) {
+      const m = byEid.get(eid);
+      if (m) m.refs = Number(n2) || 0;
+    }
   }
   return out;
 }
-var SORTS, DEFAULT_SORT, SORT_IDS, normalizeSort, sortLabel, num4, titleOf, lengthOf, byNumber, COMPARE, sortNeedsMeta, MONTHS6, by, plural, DAY_MS2, META_QUERIES, USER_NAME_QUERIES, META_CHUNK, META_TTL_MS;
+var SORTS, DEFAULT_SORT, SORT_IDS, normalizeSort, sortLabel, num4, titleOf, lengthOf, byNumber, COMPARE, sortNeedsMeta, MONTHS6, by, plural, DAY_MS2, USER_PULL, META_PULL, META_REFS, USER_NAME_QUERIES, META_CHUNK, META_TTL_MS, META_MAX, userName;
 var init_search_sort = __esm({
   "src/model/search-sort.js"() {
     SORTS = Object.freeze([
@@ -17096,24 +17124,21 @@ var init_search_sort = __esm({
     by = (name) => name && String(name).length <= 20 ? ` by ${name}` : "";
     plural = (n2, one, many) => `${n2.toLocaleString("en-US")} ${n2 === 1 ? one : many}`;
     DAY_MS2 = 864e5;
-    META_QUERIES = Object.freeze({
-      times: "[:find ?u ?c ?e :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :create/time 0) ?c] [(get-else $ ?b :edit/time 0) ?e]]",
-      createdBy: "[:find ?u ?n :in $ [?u ...] :where [?b :block/uid ?u] [?b :create/user ?x] [?x :user/display-name ?n]]",
-      editedBy: "[:find ?u ?n :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/user ?x] [?x :user/display-name ?n]]",
-      // Graphs whose user entities carry no :user/display-name (the Readwisenotes graph): the name is the title of the
-      // user's display page.
-      createdByPage: "[:find ?u ?n :in $ [?u ...] :where [?b :block/uid ?u] [?b :create/user ?x] [?x :user/display-page ?d] [?d :node/title ?n]]",
-      editedByPage: "[:find ?u ?n :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/user ?x] [?x :user/display-page ?d] [?d :node/title ?n]]",
-      refs: "[:find ?u (count ?r) :in $ [?u ...] :where [?b :block/uid ?u] [?r :block/refs ?b]]",
-      children: "[:find ?u (count ?c) :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/children ?c]]",
-      lengths: "[:find ?u ?s :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/string ?s]]"
-    });
+    USER_PULL = "[:user/display-name {:user/display-page [:node/title]}]";
+    META_PULL = `[:db/id :block/uid :create/time :edit/time :block/string {:create/user ${USER_PULL}} {:edit/user ${USER_PULL}} {:block/children [:db/id]}]`;
+    META_REFS = "[:find ?b (count ?r) :in $ [?b ...] :where [?r :block/refs ?b]]";
     USER_NAME_QUERIES = Object.freeze([
       "[:find ?n :where [?x :user/display-name ?n]]",
       "[:find ?n :where [?x :user/uid ?i] [?x :user/display-page ?d] [?d :node/title ?n]]"
     ]);
     META_CHUNK = 100;
     META_TTL_MS = 6e4;
+    META_MAX = 2e3;
+    userName = (u) => {
+      if (!u || typeof u !== "object") return "";
+      const n2 = u[":user/display-name"] ?? u[":user/display-page"]?.[":node/title"];
+      return typeof n2 === "string" ? n2 : "";
+    };
   }
 });
 
@@ -17490,7 +17515,7 @@ function latestEdit(node2) {
   const walk3 = (n2) => {
     if (!n2 || typeof n2 !== "object") return;
     const t = Number(n2[":edit/time"] ?? n2[":create/time"]);
-    if (Number.isFinite(t) && t > best.time) best = { time: t, user: userName(n2[":edit/user"]) };
+    if (Number.isFinite(t) && t > best.time) best = { time: t, user: userName2(n2[":edit/user"]) };
     const kids = n2[":block/children"];
     if (Array.isArray(kids)) for (const kid of kids) walk3(kid);
   };
@@ -17522,13 +17547,13 @@ function timeAgo(time, now4 = Date.now()) {
   const d = Math.floor(h / 24);
   return `${d} ${d === 1 ? "day" : "days"} ago`;
 }
-var CHANGE_CAP, USER, CHANGE_PULL, userName;
+var CHANGE_CAP, USER, CHANGE_PULL, userName2;
 var init_changes = __esm({
   "src/model/changes.js"() {
     CHANGE_CAP = 500;
     USER = "{:edit/user [:user/display-name {:user/display-page [:node/title]}]}";
     CHANGE_PULL = `[:db/id :block/uid :edit/time :create/time ${USER} {:block/children [:block/uid :edit/time ${USER} {:block/children [:block/uid :edit/time ${USER}]}]}]`;
-    userName = (user) => {
+    userName2 = (user) => {
       const name = user?.[":user/display-name"];
       if (name) return String(name);
       const title = user?.[":user/display-page"]?.[":node/title"];
@@ -22894,8 +22919,9 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     thisBoard: thisBoardBox.checked
   });
   const paintMore = () => {
-    const n2 = [createdBySel.value, editedBySel.value, underInput.value.trim(), dayModeSel.value === "created", refsBox.checked, childrenBox.checked, parsedBox.checked, highlightsBox.checked, thisBoardBox.checked].filter(Boolean).length + (orphanBox.checked ? 1 : 0);
-    moreBtn.textContent = n2 ? `More · ${n2}` : "More";
+    const n2 = [createdBySel.value, editedBySel.value, underInput.value.trim(), dayModeSel.value === "created" && Number(daysInput.value) > 0, refsBox.checked, childrenBox.checked, parsedBox.checked, highlightsBox.checked, thisBoardBox.checked].filter(Boolean).length + (orphanBox.checked ? 1 : 0);
+    const label = n2 ? `More · ${n2}` : "More";
+    if (moreBtn.textContent !== label) moreBtn.textContent = label;
     moreBtn.classList.toggle("pxd-panel__more-btn--on", n2 > 0);
   };
   const setPopsOpen = (which) => {
@@ -23476,6 +23502,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   };
   const runSearch = async ({ quiet = false } = {}) => {
     const filter = readFilter();
+    paintMore();
     const id = queryId += 1;
     const started = Date.now();
     semTimer?.();
@@ -23494,7 +23521,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       el2("div", "pxd-panel__empty", results, "No card types selected");
       return;
     }
-    if (!libraryFilterActive(filter) && !metaFilterActive(filter) && sort !== DEFAULT_SORT && typeof host?.browse === "function") {
+    if (!libraryFilterActive(filter) && !metaFilterActive(filter) && BROWSE_SORTS.has(sort) && typeof host?.browse === "function") {
       let found2 = null;
       try {
         found2 = await Promise.resolve(host.browse(sort, LIMIT));
@@ -23705,23 +23732,34 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     paintMore();
     searchNow();
   });
+  let underTimer = null;
+  let underAsked = "";
   const underKey = (event) => {
     if (event.target !== underInput) return;
     const q2 = underInput.value.trim();
-    underList.replaceChildren();
-    if (q2.length >= 2) {
+    if (q2 === underAsked) return;
+    underAsked = q2;
+    underTimer?.();
+    underTimer = null;
+    if (q2.length < 2) {
+      underList.replaceChildren();
+      return;
+    }
+    underTimer = timers.later(() => {
+      underTimer = null;
       let found = [];
       try {
         found = host?.searchPages?.(q2, 12) || [];
       } catch {
         found = [];
       }
+      underList.replaceChildren();
       for (const p of found) {
         const o = el2("option", "", underList);
         o.value = p.title;
         o.setAttribute("value", p.title);
       }
-    }
+    }, UNDER_PAUSE_MS);
   };
   listen(input, "keydown", (event) => {
     event.stopPropagation();
@@ -24506,6 +24544,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q2));
     dispose() {
       debounce?.();
       semTimer?.();
+      underTimer?.();
       queryId += 1;
       journalId += 1;
       unmountInfo();
@@ -24515,7 +24554,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q2));
   };
   return api3;
 }
-var DEBOUNCE_MS, LIMIT, SEMANTIC_PAUSE_MS, SEMANTIC_HINT;
+var DEBOUNCE_MS, UNDER_PAUSE_MS, BROWSE_SORTS, LIMIT, SEMANTIC_PAUSE_MS, SEMANTIC_HINT;
 var init_panel = __esm({
   "src/view/panel.js"() {
     init_ask_icon();
@@ -24532,6 +24571,8 @@ var init_panel = __esm({
     init_search_sort();
     init_minimap_svg();
     DEBOUNCE_MS = 150;
+    UNDER_PAUSE_MS = 200;
+    BROWSE_SORTS = /* @__PURE__ */ new Set(["edited", "created", "oldest", "title"]);
     LIMIT = 40;
     SEMANTIC_PAUSE_MS = 300;
     SEMANTIC_HINT = "Turn on Roam's semantic search: Settings → Graph → Semantic search";
@@ -37888,6 +37929,7 @@ function countReads(data, stats) {
     }
   });
 }
+var BROWSE_TTL_MS = 3e4;
 function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
   const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
   bindGuardStats(stats);
@@ -38261,7 +38303,11 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     return { ...coverModel({ title: page.title, url, count }), pageUid: page.uid };
   };
   const gname = graph ?? graphName();
-  const metaCache = createMetaCache((uids) => assembleMeta(uids, (query, chunk) => host.q(query, chunk)));
+  const metaCache = createMetaCache((uids) => assembleMeta(uids, {
+    pullMany: (pattern, eids) => typeof data.pull_many === "function" ? data.pull_many(pattern, eids) : eids.map((e2) => rawPull(pattern, e2)),
+    q: (query, ...inputs) => host.q(query, ...inputs)
+  }));
+  let browsePages = null;
   const attachMeta = (rows) => {
     const uids = rows.map((r) => r.uid).filter(Boolean);
     if (!uids.length) return rows;
@@ -39815,7 +39861,17 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // Reads one page-level query (titles and times, never blocks) and keeps `limit` rows.
     browse(sort = "edited", limit = 40) {
       const id = ["edited", "created", "oldest", "title"].includes(sort) ? sort : "edited";
-      const rows = (host.q("[:find ?t ?u ?c ?e :where [?p :node/title ?t] [?p :block/uid ?u] [(get-else $ ?p :create/time 0) ?c] [(get-else $ ?p :edit/time 0) ?e]]") || []).filter((r) => typeof r?.[0] === "string" && !r[0].startsWith("roam/") && r[1]).map((r) => ({ kind: "page", title: r[0], uid: String(r[1]), meta: { created: r[2] || null, edited: r[3] || null, createdBy: "", editedBy: "", refs: null, children: null, length: null }, onBoard: false, tags: [] }));
+      const now4 = Date.now();
+      if (!browsePages || now4 - browsePages.at > BROWSE_TTL_MS) {
+        const pages = [];
+        for (const [p] of host.q(`[:find (pull ?p [:node/title :block/uid :create/time :edit/time]) :where [?p :node/title]]`) || []) {
+          const title = p?.[":node/title"];
+          const uid = p?.[":block/uid"];
+          if (typeof title === "string" && !title.startsWith("roam/") && uid) pages.push({ title, uid: String(uid), created: Number(p[":create/time"]) || null, edited: Number(p[":edit/time"]) || null });
+        }
+        browsePages = { at: now4, pages };
+      }
+      const rows = browsePages.pages.map((p) => ({ kind: "page", title: p.title, uid: p.uid, meta: { created: p.created, edited: p.edited, createdBy: "", editedBy: "", refs: null, children: null, length: null }, onBoard: false, tags: [] }));
       const top = sortRows(rows, id).slice(0, Math.max(1, Math.floor(Number(limit) || 40)));
       attachMeta(top);
       return { rows: top.map(libraryCard), queries: [] };
@@ -46152,13 +46208,13 @@ function formatMade(ms) {
   const date = new Date(n2);
   return `${MONTHS7[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
 }
-function headerText({ created, board: board2, section: section2, userName: userName2 } = {}) {
+function headerText({ created, board: board2, section: section2, userName: userName3 } = {}) {
   const when = formatMade(created);
   const where2 = String(board2 || "").trim() || "Untitled board";
   let text4 = when ? `Made ${when} on ${where2}` : `Made on ${where2}`;
   const sec = String(section2 || "").trim();
   if (sec) text4 += ` › ${sec}`;
-  const name = String(userName2 || "").trim();
+  const name = String(userName3 || "").trim();
   if (name) text4 += ` by ${name}`;
   return text4;
 }
@@ -89344,6 +89400,14 @@ function buildBoardView(onFail, {
       identLoadStarted = true;
       void names.load().then(() => {
         if (disposed) return;
+        let named2 = false;
+        for (const it of board2()?.items.values() || []) {
+          if (it.kind === "pdf" && names.get(pdfMacroUrl(pdfSourceOfItem(it)))?.title) {
+            named2 = true;
+            break;
+          }
+        }
+        if (!named2) return;
         try {
           itemsR?.repaintStyles?.();
         } catch {
@@ -89383,14 +89447,16 @@ function buildBoardView(onFail, {
   const pdfNameOf = (card2) => {
     const url = typeof card2?.url === "string" ? card2.url : "";
     const uid = typeof card2?.uid === "string" ? card2.uid : "";
-    let info = pdfNameInfo.get(uid);
+    const infoKey = `${uid}
+${url}`;
+    let info = pdfNameInfo.get(infoKey);
     if (!info) {
       try {
         info = host?.pdfNameInfo?.(uid, url) || {};
       } catch {
         info = {};
       }
-      pdfNameInfo.set(uid, info);
+      pdfNameInfo.set(infoKey, info);
     }
     const names = pdfNamesR();
     const ident = names.get(url);

@@ -59,14 +59,16 @@ export async function build(argv) {
   await cdp.connect();
   const sidebar0 = await cdp.call(sidebarCount);
   if (sidebar0) log(`note: right sidebar has ${sidebar0} windows (not touched)`);
-  await cdp.call(goDaily);
+  await cdp.mut(1, goDaily);
   const timings = (state.timings ||= {});
   const run = async (name, fn) => {
     if (!args.stages.includes(name)) return;
     const t0 = Date.now();
+    const { limiter } = await import("./lib/limit.mjs");
+    const w0 = limiter.waitedMs();
     log(`stage ${name}`);
     const out = await fn();
-    timings[name] = { ms: Date.now() - t0, ...(out || {}), at: new Date().toISOString() };
+    timings[name] = { ms: Date.now() - t0, rateWaitMs: limiter.waitedMs() - w0, ...(out || {}), at: new Date().toISOString() };
     state.stages[name] = "done";
     save();
     log(`stage ${name} done in ${((Date.now() - t0) / 1000).toFixed(1)} s`, JSON.stringify(out || {}).slice(0, 400));
@@ -132,7 +134,7 @@ export async function build(argv) {
         if (!state.uploads[p.id]) {
           const t0 = Date.now();
           try {
-            const r = await cdp.call(uploadFrom, { src: server.url(`${p.id}.pdf`), name: `phd-${p.id}.pdf` }, 300000);
+            const r = await cdp.mut(1, uploadFrom, { src: server.url(`${p.id}.pdf`), name: `phd-${p.id}.pdf` }, 300000);
             state.uploads[p.id] = r.url;
             out.uploaded += 1;
             out.uploadMs += Date.now() - t0;
@@ -164,18 +166,29 @@ export async function build(argv) {
           }
           save();
           if (items.length) {
-            const open = await cdp.call(readerOpen, { pdfUid: p.pdfBlockUid });
+            const open = await cdp.mut(1, readerOpen, { pdfUid: p.pdfBlockUid });
             if (!open.ok) { log(`  ${p.id}: ${open.reason}`); out.failedPdfs.push(p.id); continue; }
             const t0 = Date.now();
             for (let i = 0; i < items.length; i += args.hlChunk) {
-              const r = await cdp.call(readerHighlight, { url, items: items.slice(i, i + args.hlChunk) }, 900000);
+              const r = await cdp.mut(2 * Math.min(args.hlChunk, items.length - i), readerHighlight, { url, items: items.slice(i, i + args.hlChunk) }, 900000);
               Object.assign(state.hl, r.made);
+              if (r.limited) {
+                // Roam's mutation cap refused some: wait out the window and redo this chunk's missing ones.
+                const { limiter } = await import("./lib/limit.mjs");
+                await limiter.saturate();
+                log(`  ${p.id}: mutation cap hit during highlights; retrying ${r.missed.length}`);
+                const again = items.slice(i, i + args.hlChunk).filter((it) => r.missed.includes(it.key));
+                const r2 = await cdp.mut(2 * again.length, readerHighlight, { url, items: again }, 900000);
+                Object.assign(state.hl, r2.made);
+                r.missed = r2.missed;
+                Object.assign(r.made, r2.made);
+              }
               for (const k of r.missed) { state.hlMissed[k] = "roam made no block"; out.missedRoam += 1; }
               out.highlights += Object.keys(r.made).length;
               save();
             }
             out.hlMs += Date.now() - t0;
-            await cdp.call(goDaily);
+            await cdp.mut(1, goDaily);
           }
         }
         // 4. colour, note
@@ -190,13 +203,13 @@ export async function build(argv) {
         if (updates.length) {
           const cur = await cdp.call((uids) => Object.fromEntries((window.roamAlphaAPI.data.pull_many("[:block/uid :block/string]", uids.map((u) => [":block/uid", u])) || []).filter(Boolean).map((r) => [r[":block/uid"], r[":block/string"]])), updates.map((u) => u.uid));
           const list = updates.filter((u) => typeof cur[u.uid] === "string" && / #h\/yellow$/.test(cur[u.uid])).map((u) => ({ uid: u.uid, string: cur[u.uid].replace(/ #h\/yellow$/, ` #h/${u.colour}`) }));
-          if (list.length) await cdp.call(updateBlocks, { list });
+          if (list.length) for (let i = 0; i < list.length; i += 200) await cdp.mut(Math.min(200, list.length - i), updateBlocks, { list: list.slice(i, i + 200) });
         }
         if (notes.length) await writeAll(cdp, notes, { alias: state.alias, conc: args.conc, log, label: `notes ${p.id}` });
         // 5. Roam made its own PDF page (:pdf/url, :pdf/content-hash, Notes by …). Put the pdf block on top of it,
         //    drop our placeholder page, and give Roam's page the library title.
         if (!state.pdfPage[p.id]) {
-          const r = await cdp.call(async ({ url, pdfUid, ourPage, title }) => {
+          const r = await cdp.mut(4, async ({ url, pdfUid, ourPage, title }) => {
             const a = window.roamAlphaAPI;
             const roamPage = a.data.q("[:find ?u . :in $ ?url :where [?p :pdf/url ?url] [?p :block/uid ?u]]", url);
             if (!roamPage || roamPage === ourPage) return { page: ourPage, moved: false };
@@ -222,7 +235,7 @@ export async function build(argv) {
       }
     } finally {
       await server.close();
-      await cdp.call(goDaily);
+      await cdp.mut(1, goDaily);
     }
     out.hlPerSec = out.hlMs ? +(out.highlights / (out.hlMs / 1000)).toFixed(2) : 0;
     return out;
@@ -237,7 +250,7 @@ export async function build(argv) {
       const pdfUrl = state.uploads[c.image?.source];
       if (!pdfUrl) { out.failed += 1; continue; }
       try {
-        const r = await cdp.call(cropUpload, { pdfUrl, page: c.image.page, crop: c.image.crop, name: `phd-${c.id}.png` }, 300000);
+        const r = await cdp.mut(1, cropUpload, { pdfUrl, page: c.image.page, crop: c.image.crop, name: `phd-${c.id}.png` }, 300000);
         state.images[c.id] = r.url;
         out.made += 1;
         if (out.made % 10 === 0) save();
@@ -264,5 +277,8 @@ export async function build(argv) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  build(process.argv.slice(2)).catch((e) => { console.error(e.stack || e.message); process.exit(1); });
+  build(process.argv.slice(2)).then(async () => {
+    const { limiter } = await import("./lib/limit.mjs");
+    console.log(`rate limiter waited ${Math.round(limiter.waitedMs() / 1000)} s in total`);
+  }).catch((e) => { console.error(e.stack || e.message); process.exit(1); });
 }

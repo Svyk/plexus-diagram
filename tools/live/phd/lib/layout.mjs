@@ -2,7 +2,7 @@
 // blueprints may give absolute board coordinates or section-relative ones, detected per board.
 
 export const SIZES = {
-  note: { w: 280, h: 160 }, quote: { w: 280, h: 160 }, claim: { w: 280, h: 160 }, question: { w: 280, h: 160 },
+  text: { w: 240, h: 48 }, note: { w: 280, h: 160 }, quote: { w: 280, h: 160 }, claim: { w: 280, h: 160 }, question: { w: 280, h: 160 },
   pageref: { w: 280, h: 160 }, blockref: { w: 280, h: 160 }, pdf: { w: 240, h: 320 }, image: { w: 320, h: 240 },
   board: { w: 320, h: 220 }, query: { w: 360, h: 280 }, "ai-answer": { w: 360, h: 260 }, todo: { w: 280, h: 80 },
   embed: { w: 320, h: 220 }, formula: { w: 280, h: 120 }, code: { w: 420, h: 260 }, web: { w: 280, h: 120 },
@@ -87,6 +87,8 @@ export function placeBoard(board, cards) {
   const absSec = sectionRects(board, mode);
   const sections = new Map();
   for (const s of board.sections || []) {
+    // rx/ry: the blueprint already gives the parent-relative position.
+    if (typeof s.rx === "number" && typeof s.ry === "number") { sections.set(s.id, { x: s.rx, y: s.ry, w: s.w, h: s.h }); continue; }
     const r = absSec.get(s.id);
     const p = s.parent ? absSec.get(s.parent) : null;
     sections.set(s.id, { x: p ? r.x - p.x : r.x, y: p ? r.y - p.y : r.y, w: r.w, h: r.h });
@@ -100,6 +102,7 @@ export function placeBoard(board, cards) {
     const w = typeof c.w === "number" ? c.w : size.w;
     const h = typeof c.h === "number" ? c.h : size.h;
     const sec = c.section ? absSec.get(c.section) : null;
+    if (typeof c.rx === "number" && typeof c.ry === "number") { out.set(c.id, { x: c.rx, y: c.ry, w, h }); continue; }
     if (typeof c.x === "number" && typeof c.y === "number") {
       const x = mode === "absolute" && sec ? c.x - sec.x : c.x;
       const y = mode === "absolute" && sec ? c.y - sec.y : c.y;

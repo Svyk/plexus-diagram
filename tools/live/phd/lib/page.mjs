@@ -49,19 +49,28 @@ export async function writeOps({ ops, conc = 8 }) {
     if (op.open !== undefined && op.open !== null) block.open = op.open;
     await a.data.block.create({ location: { "parent-uid": op.parent, order: "last" }, block });
   };
+  // Roam's mutation cap: stop at the first refusal and hand back everything not written, in order, for a retry.
+  let limited = false;
+  const rest = [];
   const worker = async () => {
     for (;;) {
       const list = queue.shift();
       if (!list) return;
-      for (const op of list) {
-        try { await one(op); done += 1; } catch (e) { failed.push({ uid: op.uid, key: op.key, err: String(e?.message || e).slice(0, 200) }); }
+      for (let i = 0; i < list.length; i += 1) {
+        const op = list[i];
+        if (limited) { rest.push(...list.slice(i)); break; }
+        try { await one(op); done += 1; } catch (e) {
+          const err = String(e?.message || e).slice(0, 200);
+          if (/maximum mutation rate limit/i.test(err)) { limited = true; rest.push(...list.slice(i)); break; }
+          failed.push({ uid: op.uid, key: op.key, err });
+        }
       }
       await new Promise((r) => setTimeout(r, 0));
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, conc) }, worker));
   clearInterval(timer);
-  return { done, failed, ms: Math.round(performance.now() - t0), maxGap: Math.round(maxGap) };
+  return { done, failed, limited, rest, ms: Math.round(performance.now() - t0), maxGap: Math.round(maxGap) };
 }
 
 export async function updateBlocks({ list }) {
@@ -196,8 +205,10 @@ export async function readerHighlight({ url, items, settleMs = 4000 }) {
     }
     return [];
   };
+  let limited = false;
   for (const it of items) {
-    select(it);
+    if (limited) { missed.push(it.key); continue; }
+    try { select(it); } catch (e) { if (/maximum mutation rate limit/i.test(String(e?.message || e))) { limited = true; missed.push(it.key); continue; } throw e; }
     let fresh = await waitNew(settleMs);
     if (!fresh.length && !toggled) {
       // Highlight mode was off: the selection only made a ghost. Turn it on (toolbar highlight button) and retry once.
@@ -211,5 +222,5 @@ export async function readerHighlight({ url, items, settleMs = 4000 }) {
     if (fresh.length) made[it.key] = fresh[0];
     else missed.push(it.key);
   }
-  return { made, missed, pageUid: pageUid() };
+  return { made, missed, limited, pageUid: pageUid() };
 }

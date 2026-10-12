@@ -9,7 +9,7 @@ import { detectMode, placeBoard, tableSize, chartRows, overlaps } from "../tools
 import { buildPlan, resolveString, refFor, libraryTitle, shapeOf } from "../tools/live/phd/lib/plan.mjs";
 import { locate, locateLoose, normalizeKey, loadPdfText } from "../tools/live/phd/lib/pdftext.mjs";
 import { levels } from "../tools/live/phd/lib/write.mjs";
-import { refTitles } from "../tools/live/phd/cleanup.mjs";
+import { refTitles, cutPlan } from "../tools/live/phd/cleanup.mjs";
 import { phrases, rng, joinItems } from "../tools/live/phd/synth.mjs";
 import { readPlexus, classifyString, parseEdgeLabel } from "../src/model/schema.js";
 import { parseRegion } from "../src/model/regions.js";
@@ -214,4 +214,36 @@ test("synth phrases are verbatim word windows", () => {
   assert.ok(out.length >= 1);
   for (const p of out) assert.ok(text.includes(p));
   assert.equal(joinItems([{ str: "Sal", transform: [1, 0, 0, 1, 0, 0], width: 10, height: 10 }, { str: "monella", transform: [1, 0, 0, 1, 10, 0], width: 30, height: 10, hasEOL: true }, { str: "grows", transform: [1, 0, 0, 1, 0, -12], width: 20, height: 10 }]), "Salmonella grows");
+});
+
+test("the mutation limiter keeps every 60 s window under budget", async () => {
+  const { createLimiter } = await import("../tools/live/phd/lib/limit.mjs");
+  let t = 0;
+  const slept = [];
+  const lim = createLimiter({ budget: 100, windowMs: 1000, now: () => t, sleep: async (ms) => { slept.push(ms); t += ms; } });
+  await lim.take(60);
+  await lim.take(40);
+  assert.equal(slept.length, 0);
+  await lim.take(10);
+  assert.ok(t >= 1000, "waited for the first booking to leave the window");
+  await lim.saturate();
+  const before = t;
+  await lim.take(1);
+  assert.ok(t - before >= 1000);
+  await lim.take(500);
+  assert.ok(lim.used() <= 100);
+});
+
+test("cleanup cuts a big page into bounded subtrees", () => {
+  const nodes = [
+    { uid: "root", parent: null, size: 600 },
+    { uid: "a", parent: "root", size: 300 },
+    { uid: "a1", parent: "a", size: 150 },
+    { uid: "a2", parent: "a", size: 149 },
+    { uid: "b", parent: "root", size: 200 },
+    { uid: "b1", parent: "b", size: 199 },
+    { uid: "c", parent: "root", size: 99 },
+    { uid: "small", parent: null, size: 3 },
+  ];
+  assert.deepEqual(cutPlan(nodes, 250).sort(), ["a1", "a2", "b", "c", "small"]);
 });

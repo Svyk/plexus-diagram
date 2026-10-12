@@ -86,5 +86,12 @@ export class Cdp {
     }
   }
 
+  // A call that writes `cost` Roam mutations: waits for room in the shared budget first.
+  async mut(cost, fn, arg, timeoutMs) {
+    const { limiter } = await import("./limit.mjs");
+    await limiter.take(cost);
+    return this.call(fn, arg, timeoutMs);
+  }
+
   close() { try { this.ws?.close(); } catch { /* closed */ } }
 }

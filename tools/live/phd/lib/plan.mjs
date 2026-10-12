@@ -15,7 +15,7 @@ import { COMMENTS_CONTAINER_STRING, commentAnchorString } from "../../../../src/
 import { imageRegionString } from "../../../../src/model/image-region.js";
 import { TABLE_ROOT } from "../../../../src/model/roam-table.js";
 import { cleanPageTitle, pageCardString } from "../../../../src/model/pdf-page.js";
-import { DEFAULT_ROOT, parseHighlightRef } from "./blueprint.mjs";
+import { parseHighlightRef, rootTitleOf } from "./blueprint.mjs";
 import { chartRows, placeBoard } from "./layout.mjs";
 import { uidFor } from "./uid.mjs";
 
@@ -33,6 +33,7 @@ const firstAuthorLast = (s) => {
 
 // `PhD/Library/<short>`: the source's `short`, else "<first author> <year> - <title (60)>". No "/" inside.
 export function libraryTitle(source) {
+  if (typeof source.pageTitle === "string" && source.pageTitle.startsWith("PhD/") && !/\[\[|\]\]/.test(source.pageTitle)) return source.pageTitle;
   const short = source.short ? cleanPageTitle(source.short, 90) : cleanPageTitle(`${firstAuthorLast(source)} ${source.year || ""} - ${source.title || source.id}`, 90);
   return `PhD/Library/${short || source.id}`;
 }
@@ -75,6 +76,48 @@ const tableRowsOf = (card) => {
   return card.table?.rows || [];
 };
 
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+// "October 1st, 2026" -> Date (local noon), or null.
+export function parseDailyTitle(title) {
+  const m = /^([A-Z][a-z]+) (\d{1,2})(?:st|nd|rd|th), (\d{4})$/.exec(String(title ?? "").trim());
+  if (!m || !MONTH_NAMES.includes(m[1])) return null;
+  return new Date(Number(m[3]), MONTH_NAMES.indexOf(m[1]), Number(m[2]), 12);
+}
+
+// The real blueprint's extras keys (WO P1) -> the builder's own shape. Unknown keys stay for the warning pass.
+export function normalizeExtras(ex = {}, library = []) {
+  const out = { ...ex };
+  const info = ["rootPage", "templates", "dailyPagesReferenced", "newAttributes", "newTags", "landmarks", "libraryPages"];
+  for (const k of info) delete out[k];
+  if (ex.libraryPages) for (const s of library) if (ex.libraryPages[s.id]) s.pageTitle = ex.libraryPages[s.id];
+  const notebook = [];
+  const byPage = new Map();
+  for (const n of ex.notebook || []) {
+    if (n.blocks) { notebook.push(n); continue; }
+    if (!n.page) continue;
+    const key = n.page;
+    if (!byPage.has(key)) { byPage.set(key, { ...(String(n.page).startsWith("PhD/") ? { title: n.page } : { dailyTitle: n.page }), blocks: [] }); notebook.push(byPage.get(key)); }
+    byPage.get(key).blocks.push({ id: n.id, text: n.text, children: n.children });
+  }
+  for (const d of ex.dailyInbox || []) {
+    const key = `daily:${d.page}`;
+    if (!byPage.has(key)) { byPage.set(key, { dailyTitle: d.page, blocks: [] }); notebook.push(byPage.get(key)); }
+    byPage.get(key).blocks.push({ id: d.id, text: d.text });
+  }
+  delete out.dailyInbox;
+  out.notebook = notebook;
+  out.trails = (ex.trails || []).map((t) => ({ board: t.board, name: t.name || t.title, stops: (t.stops || []).map((st) => (typeof st === "string" ? st : { card: st.card || st.item, note: st.note })) }));
+  out.views = [...(ex.views || []), ...(ex.savedViews || []).map((v) => ({ board: v.board, caption: v.caption || v.name, cards: v.cards, sections: v.sections, rect: v.rect }))];
+  delete out.savedViews;
+  out.snapshots = (ex.snapshots || []).map((sn) => ({ ...sn, title: sn.title || sn.name }));
+  out.pages = [...(ex.pages || []), ...(ex.conceptPages || []).map((t) => (typeof t === "string" ? { title: t, blocks: [] } : t))];
+  delete out.conceptPages;
+  if (ex.roamQueries) out.queries = ex.roamQueries;
+  delete out.roamQueries;
+  return out;
+}
+
 export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {}) {
   if (!salt) throw new Error("buildPlan needs a salt");
   const U = (key) => uidFor(salt, key);
@@ -98,17 +141,23 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
     });
   };
 
-  const rootTitle = bp.meta?.root || DEFAULT_ROOT;
+  const rootTitle = rootTitleOf(bp);
+  const landmarks = new Set(Array.isArray(bp.extras?.landmarks) ? bp.extras.landmarks : []);
+  bp = { ...bp, extras: normalizeExtras(bp.extras || {}, bp.library || []) };
   const sources = new Map((bp.library || []).map((s) => [s.id, s]));
   const boards = new Map((bp.boards || []).map((b) => [b.id, b]));
   const cards = new Map((bp.cards || []).map((c) => [c.id, c]));
-  const cardUidOf = (id) => (cards.has(id) ? U(`card:${id}`) : null);
+  // Ids a blueprint may cite in ((…)) / ref: cards, notebook and inbox entries.
+  const otherIds = new Set();
+  for (const n of bp.extras.notebook || []) for (const b of n.blocks || []) if (b?.id) otherIds.add(b.id);
+  const cardUidOf = (id) => (cards.has(id) ? U(`card:${id}`) : otherIds.has(id) ? U(`nbid:${id}`) : null);
   const cardsOn = new Map();
   for (const c of bp.cards || []) {
     if (!cardsOn.has(c.board)) cardsOn.set(c.board, []);
     cardsOn.get(c.board).push(c);
   }
   const nestedOf = new Map([...boards.values()].filter((b) => b.parent && b.card).map((b) => [b.card, b]));
+  for (const c of bp.cards || []) if (c.type === "board" && c.child && boards.has(c.child) && !nestedOf.has(c.id)) nestedOf.set(c.id, boards.get(c.child));
   const root = [...boards.values()].find((b) => !b.parent);
   const rootPage = U("page:root");
 
@@ -160,6 +209,12 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
     if (!p?.title || !String(p.title).startsWith("PhD/")) { warnings.push(`extras.pages: ${p?.title} is outside PhD/ (skipped)`); continue; }
     if (pageTitles.has(p.title)) continue;
     pageTitles.add(p.title);
+    if (!(p.blocks || []).length) {
+      // A concept page with no text still gets one marker block: Roam drops a page that has no blocks and no refs.
+      const page = push({ kind: "page", stage: "pages", key: `page:x:${p.title}`, title: p.title });
+      block("pages", `xp:${p.title}:0`, page, "PhD concept page (stress build)", { props: topProps() });
+      continue;
+    }
     const page = push({ kind: "page", stage: "pages", key: `page:x:${p.title}`, title: p.title });
     (p.blocks || []).forEach((b, i) => {
       const node = typeof b === "string" ? { text: b } : b;
@@ -172,6 +227,7 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
   const cardOps = new Map(); // card id -> op
   const placed = new Map(); // board id -> placeBoard result
   const absRect = new Map(); // card id -> absolute rect on its board
+  const secRect = new Map(); // "board:section" -> absolute rect
   const libTitleOf = (id) => sources.get(id)?._title || `PhD/Library/${id}`;
 
   const writeBoardContent = (b, boardUid) => {
@@ -194,6 +250,7 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
       const parentUid = s.parent ? secParentUid.get(s.parent) : boardUid;
       const pAbs = s.parent ? secAbs.get(s.parent) : { x: 0, y: 0 };
       secAbs.set(s.id, { x: pAbs.x + rel.x, y: pAbs.y + rel.y, w: rel.w, h: rel.h });
+      secRect.set(`${b.id}:${s.id}`, secAbs.get(s.id));
       const layout = { type: "section", x: rel.x, y: rel.y, w: rel.w, h: rel.h, color: PALETTE.includes(s.color) ? s.color : undefined };
       if (s.look === "lane") { layout.look = "lane"; layout.axis = s.axis === "vertical" ? "vertical" : "horizontal"; }
       else if (s.look === "calendar" || s.look === "timer") layout.look = s.look;
@@ -221,6 +278,8 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
     let boardChild = null;
     let isTable = false;
     let pin = null;
+    let imgRegion = null;
+    if (landmarks.has(c.id)) layout.landmark = true;
     if (src && c.highlight !== undefined) {
       const h = src.highlights[c.highlight];
       if (src.kind === "pdf") {
@@ -229,12 +288,25 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
         if (text && text !== string) kids.unshift(text);
       } else string = `> ${flatten(h.text)}`;
       if (!kids.some((k) => /^Source::/.test(typeof k === "string" ? k : k.text))) kids.push(`Source:: ${pageCardString(src._title)}`);
-    } else if (c.region && src?.kind === "pdf") {
-      pin = { pinKey: `pin:${c.id}`, containerKey: `pins:${src.id}` };
+    } else if (c.region && src?.kind === "pdf" && !c.region.target) {
+      pin = { pinKey: `pin:${c.id}`, containerKey: `pins:${src.id}`, src };
       string = `((${U(pin.pinKey)}))`;
       if (text) kids.unshift(text);
+    } else if (c.region?.target && cards.has(c.region.target)) {
+      // A region card: the region lives under its target (an image card's regions, or the PDF's pins); the card is a ((ref)).
+      const t = cards.get(c.region.target);
+      const tsrc = t.source ? sources.get(t.source) : null;
+      if (t.type === "image") {
+        imgRegion = { target: t.id };
+        string = `((${U(`region:${c.id}`)}))`;
+      } else if (tsrc?.kind === "pdf") {
+        pin = { pinKey: `pin:${c.id}`, containerKey: `pins:${tsrc.id}`, src: tsrc };
+        string = `((${U(pin.pinKey)}))`;
+      }
+      if (text && string !== text) kids.unshift(text);
     } else {
       switch (c.type) {
+        case "text": layout.type = "text"; string = text; break;
         case "quote": string = text.startsWith(">") ? text : `> ${text}`; break;
         case "pageref": string = /^#?\[\[/.test(text.trim()) ? text.trim() : pageCardString(cleanPageTitle(text, 150)); break;
         case "blockref": {
@@ -242,11 +314,11 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
           string = ref;
           break;
         }
-        case "pdf": string = pageCardString(libTitleOf(c.source)); if (text) kids.unshift(text); break;
+        case "pdf": string = pageCardString(libTitleOf(c.source)); if (text && text !== string) kids.unshift(text); break;
         case "image": {
           const alt = flatten(c.image?.caption || c.text || "").replace(/[[\]]/g, "");
           const url = c.image?.url || `⟦IMG:${c.id}⟧`;
-          string = `![${alt}](${url})`;
+          string = /^!\[[^\]]*\]\([^)]*\)$/.test(text.trim()) && (!c.image?.url || text.includes(c.image.url)) ? text.trim() : `![${alt.replace(/^!|\(.*$/g, "")}](${url})`;
           fallback = alt ? `Image: ${alt}` : "Image";
           break;
         }
@@ -286,16 +358,29 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
       }
       if (src && c.type !== "pdf" && !kids.some((k) => /^Source::/.test(typeof k === "string" ? k : k.text))) kids.push(`Source:: ${pageCardString(src._title)}`);
     }
-    if (!isTable && c.type !== "board") {
+    if (Array.isArray(c.tags) && c.tags.length) {
+      const tags = c.tags.map((t) => `#[[${String(t).replace(/[[\]]/g, "")}]]`).join(" ");
+      if (classifyString(shapeOf(string)).kind === "note" && !isTable) string = `${string} ${tags}`;
+      else kids.push(`tags:: ${tags}`);
+    }
+    if (!isTable && c.type !== "board" && c.type !== "text") {
       const look = lookForNewString(shapeOf(string), "block");
       if (c.look === "card" || c.look === "block") layout.look = c.look;
       else if (look) layout.look = c.type === "claim" || c.type === "question" ? "card" : look;
     }
     const uid = block("structure", key, parentUid, string, { props: { plexus: serializeItemLayout(layout) }, open, fallback, card: c.id });
     cardOps.set(c.id, ops[ops.length - 1]);
+    if (imgRegion) {
+      const targetUid = U(`card:${imgRegion.target}`);
+      const ck = `regions:${imgRegion.target}`;
+      if (!keys.has(ck)) block("structure", ck, targetUid, CONTAINER_STRING, { open: false, props: { plexus: { type: "regions" } } });
+      const [rx, ry, rw, rh] = c.region.f;
+      const rs = imageRegionString(targetUid, { rx, ry, rw, rh }, flatten(c.region.caption || c.text || "").slice(0, 300));
+      if (rs) block("structure", `region:${c.id}`, U(ck), rs);
+    }
     if (pin) {
       // The pin lives under the PDF block (Plexus planPinWrites: container then pin). The pdf block is made in the pdf stage.
-      const pdfBlock = U(`pdf:${src.id}`);
+      const pdfBlock = U(`pdf:${pin.src.id}`);
       if (!keys.has(pin.containerKey)) {
         block("structure", pin.containerKey, pdfBlock, PIN_CONTAINER_STRING, { open: false, props: { plexus: { type: "regions" } }, after: "pdf" });
       }
@@ -312,8 +397,9 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
       });
     }
     children("structure", `kid:${c.id}`, uid, kids);
-    if (c.type === "image" && c.region) {
-      const container = block("structure", `regions:${c.id}`, uid, CONTAINER_STRING, { open: false, props: { plexus: { type: "regions" } } });
+    if (c.type === "image" && c.region && !c.region.target) {
+      const ck = `regions:${c.id}`;
+      const container = keys.has(ck) ? U(ck) : block("structure", ck, uid, CONTAINER_STRING, { open: false, props: { plexus: { type: "regions" } } });
       const [rx, ry, rw, rh] = c.region.f;
       const s = imageRegionString(uid, { rx, ry, rw, rh }, flatten(c.region.caption || "").slice(0, 300));
       if (s) block("structure", `region:${c.id}`, container, s);
@@ -325,7 +411,7 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
   if (root) {
     const rootLayout = { v: SCHEMA_VERSION };
     if (BOARD_PATTERNS.includes(root.bg)) rootLayout.bg = root.bg;
-    const boardUid = block("structure", `board:${root.id}`, rootPage, boardString(flatten(root.title) || "Dissertation map"), { props: topProps({ plexus: serializeItemLayout(rootLayout) }) });
+    const boardUid = block("structure", `board:${root.id}`, rootPage, boardString(flatten(root.title) || "Dissertation map"), { open: false, props: topProps({ plexus: serializeItemLayout(rootLayout) }) });
     writeBoardContent(root, boardUid);
   }
   const boardUidOf = (id) => (id === root?.id ? U(`board:${id}`) : U(`card:${boards.get(id)?.card}`));
@@ -397,8 +483,8 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
       block("extras", `comment:${n += 1}`, anchors.get(akey), flatten(cm.text));
     }
   }
-  const boardWorld = (boardId, ids) => {
-    const rects = ids.map((id) => absRect.get(id)).filter(Boolean);
+  const boardWorld = (boardId, ids, secIds = []) => {
+    const rects = [...ids.map((id) => absRect.get(id)), ...secIds.map((id) => secRect.get(`${boardId}:${id}`))].filter(Boolean);
     if (!rects.length) return null;
     const x = Math.min(...rects.map((r) => r.x)) - 48;
     const y = Math.min(...rects.map((r) => r.y)) - 48;
@@ -406,14 +492,21 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
     const btm = Math.max(...rects.map((q) => q.y + q.h)) + 48;
     return [x, y, r - x, btm - y];
   };
+  // A board item a blueprint names: a card or a section of that board.
+  const itemUid = (boardId, id) => (cards.get(id)?.board === boardId ? U(`card:${id}`) : secRect.has(`${boardId}:${id}`) ? U(`sec:${boardId}:${id}`) : null);
   const regionsFor = new Set();
   (ex.views || []).forEach((v, i) => {
     if (!boards.has(v.board)) { warnings.push(`view ${i}: board ${v.board} missing`); return; }
     const ids = (v.cards || []).filter((id) => cards.get(id)?.board === v.board);
-    const rect = Array.isArray(v.rect) ? v.rect : boardWorld(v.board, ids);
+    const secIds = (v.sections || []).filter((id) => secRect.has(`${v.board}:${id}`));
+    // A view that names nothing frames the whole board ("Whole map", a kanban board's full view).
+    const whole = !ids.length && !secIds.length;
+    const rect = Array.isArray(v.rect) ? v.rect : whole
+      ? boardWorld(v.board, (cardsOn.get(v.board) || []).map((c) => c.id), (boards.get(v.board).sections || []).map((x) => x.id))
+      : boardWorld(v.board, ids, secIds);
     if (!rect) { warnings.push(`view ${i}: no cards to frame`); return; }
     const bUid = boardUidOf(v.board);
-    const string = viewBlockString({ drawingUid: bUid, caption: flatten(v.caption || v.name || `View ${i + 1}`), v: rect, ids: ids.map((id) => U(`card:${id}`)) });
+    const string = viewBlockString({ drawingUid: bUid, caption: flatten(v.caption || v.name || `View ${i + 1}`), v: rect, ids: [...ids.map((id) => U(`card:${id}`)), ...secIds.map((id) => U(`sec:${v.board}:${id}`))] });
     if (!string) { warnings.push(`view ${i}: rejected by viewBlockString`); return; }
     const ck = `views:${v.board}`;
     if (!regionsFor.has(ck)) { regionsFor.add(ck); block("extras", ck, bUid, CONTAINER_STRING, { open: false, props: { plexus: { type: "regions" } } }); }
@@ -450,38 +543,42 @@ export function buildPlan(bp, { salt, author = "Svy", today = new Date() } = {})
     const trail = block("extras", `trail:${t.board}:${i}`, U(ck), trailString(flatten(t.name)), { open: true, props: { plexus: { type: "trail" } } });
     (t.stops || []).forEach((stop, j) => {
       const id = typeof stop === "string" ? stop : stop?.card;
-      if (!cards.has(id) || cards.get(id).board !== t.board) { warnings.push(`trail ${i} stop ${j}: ${id} not on ${t.board}`); return; }
-      const s = block("extras", `stop:${t.board}:${i}:${j}`, trail, `((${U(`card:${id}`)}))`, { open: true });
+      const stopUid = itemUid(t.board, id);
+      if (!stopUid) { warnings.push(`trail ${i} stop ${j}: ${id} not on ${t.board}`); return; }
+      const s = block("extras", `stop:${t.board}:${i}:${j}`, trail, `((${stopUid}))`, { open: true });
       if (stop?.note) block("extras", `stopnote:${t.board}:${i}:${j}`, s, flatten(stop.note));
     });
   });
   const daily = [];
+  const nbKey = (b, i, j) => (b?.id ? `nbid:${b.id}` : `nb:${i}:${j}`);
   (ex.notebook || []).forEach((nb, i) => {
+    let pageUid;
     if (nb.title) {
       if (!String(nb.title).startsWith("PhD/")) { warnings.push(`notebook ${i}: ${nb.title} outside PhD/`); return; }
       const key = `page:x:${nb.title}`;
-      const page = keys.has(key) ? U(key) : push({ kind: "page", stage: "extras", key, title: nb.title });
-      (nb.blocks || []).forEach((b, j) => {
-        const node = typeof b === "string" ? { text: b } : b;
-        const uid = block("extras", `nb:${i}:${j}`, page, textRefs(node.text, cardUidOf), { props: topProps() });
-        if (node.children?.length) children("extras", `nb:${i}:${j}`, uid, node.children);
-      });
-      return;
+      pageUid = keys.has(key) ? U(key) : push({ kind: "page", stage: "extras", key, title: nb.title });
+    } else {
+      const d = nb.dailyTitle ? parseDailyTitle(nb.dailyTitle) : new Date(`${nb.date}T12:00:00`);
+      if (!d || Number.isNaN(d.getTime())) { warnings.push(`notebook ${i}: bad date ${nb.dailyTitle || nb.date}`); return; }
+      const title = dailyPageTitle(d);
+      const pad = (n) => String(n).padStart(2, "0");
+      pageUid = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${d.getFullYear()}`;
+      const key = `daily:${pageUid}`;
+      if (!keys.has(key)) { push({ kind: "page", stage: "extras", key, uid: pageUid, title, daily: true }); daily.push({ uid: pageUid, title }); }
     }
-    const d = new Date(`${nb.date}T12:00:00`);
-    if (Number.isNaN(d.getTime())) { warnings.push(`notebook ${i}: bad date ${nb.date}`); return; }
-    const title = dailyPageTitle(d);
-    const pad = (n) => String(n).padStart(2, "0");
-    const pageUid = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${d.getFullYear()}`;
-    const key = `daily:${pageUid}`;
-    if (!keys.has(key)) { push({ kind: "page", stage: "extras", key, uid: pageUid, title, daily: true }); daily.push({ uid: pageUid, title }); }
     (nb.blocks || []).forEach((b, j) => {
       const node = typeof b === "string" ? { text: b } : b;
-      const uid = block("extras", `nb:${i}:${j}`, pageUid, textRefs(node.text, cardUidOf), { props: topProps() });
-      if (node.children?.length) children("extras", `nb:${i}:${j}`, uid, node.children);
+      const k = nbKey(node, i, j);
+      if (keys.has(k)) { warnings.push(`notebook ${node.id}: duplicate id`); return; }
+      const uid = block("extras", k, pageUid, textRefs(node.text, cardUidOf), { props: topProps() });
+      if (node.children?.length) children("extras", k, uid, node.children);
     });
   });
-  for (const k of Object.keys(ex)) if (!["notebook", "comments", "views", "snapshots", "trails", "pages"].includes(k)) warnings.push(`extras.${k}: not built (unknown key)`);
+  (ex.queries || []).forEach((q, i) => {
+    const text = typeof q === "string" ? q : q?.text;
+    if (text) block("extras", `query:${i}`, rootPage, text, { props: topProps() });
+  });
+  for (const k of Object.keys(ex)) if (!["notebook", "comments", "views", "snapshots", "trails", "pages", "queries"].includes(k)) warnings.push(`extras.${k}: not built (unknown key)`);
 
   return { rootTitle, rootPage, ops, pdfs, daily, warnings, cardOps, absRect, boardUidOf, salt };
 }

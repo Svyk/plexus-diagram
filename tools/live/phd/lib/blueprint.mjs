@@ -4,11 +4,12 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 export const SCHEMA = "pxd-phd/1";
-export const CARD_TYPES = ["note", "quote", "claim", "question", "pageref", "blockref", "pdf", "image", "table", "chart",
+export const CARD_TYPES = ["text", "note", "quote", "claim", "question", "pageref", "blockref", "pdf", "image", "table", "chart",
   "query", "ai-answer", "board", "todo", "embed", "formula", "code", "web"];
 export const HL_COLORS = ["yellow", "red", "green", "blue", "purple"];
 export const VIEWS = ["board", "kanban", "timeline", "gallery", "graph"];
 export const DEFAULT_ROOT = "PhD/Cronobacter & Spore Control in PIF";
+export const rootTitleOf = (bp) => bp?.meta?.root || bp?.meta?.rootPage || bp?.extras?.rootPage || DEFAULT_ROOT;
 
 // The scale the real blueprint must reach (schema.md "Scale targets").
 export const TARGETS = {
@@ -125,7 +126,8 @@ export function validate(bp) {
     if (c.type === "table" && !(c.table?.rows?.length)) err(`card ${c.id}: table without rows`);
     if (c.type === "chart" && !(c.chart?.series?.length || c.table?.rows?.length)) err(`card ${c.id}: chart without series`);
     if (c.region && !(Array.isArray(c.region.f) && c.region.f.length === 4)) err(`card ${c.id}: region.f needs [x,y,w,h]`);
-    if (c.region && c.type !== "image" && !c.source) err(`card ${c.id}: region needs a source PDF or an image card`);
+    if (c.region && c.type !== "image" && !c.source && !c.region.target) err(`card ${c.id}: region needs a source PDF, an image card or a target`);
+    if (c.region?.target && !(bp.cards || []).some((x) => x.id === c.region.target)) err(`card ${c.id}: region target ${c.region.target} missing`);
     if (c.type === "image" && !(c.image?.url || (c.image?.source && c.image?.page))) err(`card ${c.id}: image needs url or source+page`);
     if (!isNum(c.x) || !isNum(c.y)) warn(`card ${c.id}: no x/y (auto-placed)`);
   }
@@ -152,6 +154,7 @@ export function validate(bp) {
   };
   for (const id of boards.keys()) depth(id);
   const nestedFor = new Map([...boards.values()].filter((b) => b.card).map((b) => [b.card, b.id]));
+  for (const c of cards.values()) if (c.child && !nestedFor.has(c.id)) nestedFor.set(c.id, c.child);
   for (const c of cards.values()) if (c.type === "board" && !nestedFor.has(c.id)) warn(`card ${c.id}: board card with no nested board (written empty)`);
 
   const edgeIds = new Map();

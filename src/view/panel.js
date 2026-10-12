@@ -1638,6 +1638,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     },
     close() {
       setTypesOpen(false);
+      // A quiet re-search waiting for a name or a refresh has nothing to show on a hidden panel.
+      refreshTimer?.();
+      refreshTimer = null;
       if (tab === "info") unmountInfo();
       panel.style.display = "none";
       root.removeAttribute("data-pxd-panel-open");

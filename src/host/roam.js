@@ -647,7 +647,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     const named = typeof chunk.label === "string" && chunk.label ? chunk.label : (chunk.kinds || []).join("+");
     stats.lastAction = { label: named, writes: chunk.n || 0 };
   };
+  let structureEpoch = 0;
   const noteWrite = (kind) => {
+    // A block made, moved or deleted can put a card on a board or take it off: "Not on any board" browses re-run.
+    if (kind === "create" || kind === "move" || kind === "delete") structureEpoch += 1;
     dropBurst();
     lastWriteAt = Date.now();
     if (silent) return;
@@ -2622,7 +2625,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const now = Date.now();
       const spec = browseSpec(filter, { now });
       if (!spec) return { rows: [], queries, spec: null, defaulted: false };
-      const key = typeof keep === "function" ? "" : browseKey(spec, sort, lim, parsedUrls instanceof Set ? parsedUrls.size : -1);
+      // "Not on any board" depends on the boards: its key carries the structure epoch (a card added here misses it).
+      const key = typeof keep === "function" ? "" : browseKey(spec, sort, lim, [parsedUrls instanceof Set ? parsedUrls.size : -1, spec.orphan ? structureEpoch : 0]);
       const hit = key ? filterBrowseCache.get(key) : null;
       if (hit && now - hit.at < FILTER_BROWSE_TTL_MS) {
         queries.push({ name: "browse-cache", ms: 0 });

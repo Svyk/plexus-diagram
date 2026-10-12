@@ -70,6 +70,16 @@ export function createPartGutter({
   let placedKey = "";
 
   const stopShow = () => { unlater(showTimer); showTimer = null; pendingBlock = null; };
+  // While the pill is up, any scroll in the document (the part's own scroller, wherever it sits) hides it: the part
+  // moved and the pill would stay behind. Armed only while shown.
+  let scrollArmed = false;
+  const onAnyScroll = () => hideNow();
+  const armScroll = (on) => {
+    if (on === scrollArmed || !doc?.addEventListener) return;
+    scrollArmed = on;
+    if (on) doc.addEventListener("scroll", onAnyScroll, true);
+    else doc.removeEventListener?.("scroll", onAnyScroll, true);
+  };
   const stopHide = () => { unlater(hideTimer); hideTimer = null; };
 
   const stop = (event) => { event.stopPropagation?.(); };
@@ -192,11 +202,13 @@ export function createPartGutter({
     moreBtn.hidden = typeof onMenu !== "function";
     pill.classList.add("pxd-pgutter--show");
     shown = true;
+    armScroll(true);
   };
 
   function hideNow() {
     stopShow();
     stopHide();
+    armScroll(false);
     shown = false;
     over = false;
     block = null;

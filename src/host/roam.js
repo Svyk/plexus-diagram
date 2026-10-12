@@ -12,6 +12,7 @@ import {
   recentDailyTitles,
   wantsType,
 } from "../model/library.js";
+import { assembleMeta, createMetaCache, USER_NAME_QUERIES, metaFilterHostActive, narrowByMeta, sortNeedsMeta, sortRows } from "../model/search-sort.js";
 import { splitNeighbors } from "../model/neighbors.js";
 import { coverModel, pdfMacroUrl, pdfPagePlan } from "../model/pdf.js";
 import { pdfOfPageNode } from "../model/pdf-page.js";
@@ -996,6 +997,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     return { ...coverModel({ title: page.title, url, count }), pageUid: page.uid };
   };
   const gname = graph ?? graphName();
+
+  // Created / edited / by whom / linked refs / children for the rows a search is about to show, cached by uid.
+  const metaCache = createMetaCache((uids) => assembleMeta(uids, (query, chunk) => host.q(query, chunk)));
+  const attachMeta = (rows) => {
+    const uids = rows.map((r) => r.uid).filter(Boolean);
+    if (!uids.length) return rows;
+    const got = metaCache.get(uids);
+    for (const row of rows) { const m = got.get(row.uid); if (m) row.meta = m; }
+    return rows;
+  };
 
   const host = {
     api,
@@ -2176,7 +2187,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     // Add-panel filters. Read-only. Each query is timed. Days and orphan never scan the graph alone.
     // `pdfMatch(url, terms)` → the PDF's identity text when it holds every term (pdf-ident), else "".
     // `pdfList()` → the graph's PDF blocks ({ uid, string, pageTitle }), cached by the caller, so typing runs no extra query.
-    librarySearch(filter, limit = 40, { pdfMatch = null, pdfList = null } = {}) {
+    librarySearch(filter, limit = 40, { pdfMatch = null, pdfList = null, sort = "best" } = {}) {
       const f = normalizeLibraryFilter(filter);
       const queries = [];
       const lim = Math.max(1, Math.floor(Number(limit) || 40));
@@ -2483,8 +2494,34 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
       if (f.orphan) markOnBoard(candidates, timed);
 
-      const rows = narrowLibrary(candidates, f, nowMs).slice(0, lim).map(libraryCard);
+      let kept = narrowLibrary(candidates, f, nowMs);
+      // Roam's own numbers (created, edited, who, linked refs, children) for the rows that survived: one read each,
+      // over at most the capped candidate list, only when a sort or a Roam filter needs them.
+      if (sortNeedsMeta(sort) || metaFilterHostActive(filter)) {
+        timed("meta", () => { attachMeta(kept); return []; });
+        kept = narrowByMeta(kept, filter, { days: f.days, now: nowMs });
+      }
+      const rows = sortRows(kept, sort).slice(0, lim).map(libraryCard);
       return { rows, queries };
+    },
+
+    // Rows with no search text: the pages a sort puts first (recently edited / created, oldest, title), with their numbers.
+    // Reads one page-level query (titles and times, never blocks) and keeps `limit` rows.
+    browse(sort = "edited", limit = 40) {
+      const id = ["edited", "created", "oldest", "title"].includes(sort) ? sort : "edited";
+      const rows = (host.q("[:find ?t ?u ?c ?e :where [?p :node/title ?t] [?p :block/uid ?u] [(get-else $ ?p :create/time 0) ?c] [(get-else $ ?p :edit/time 0) ?e]]") || [])
+        .filter((r) => typeof r?.[0] === "string" && !r[0].startsWith("roam/") && r[1])
+        .map((r) => ({ kind: "page", title: r[0], uid: String(r[1]), meta: { created: r[2] || null, edited: r[3] || null, createdBy: "", editedBy: "", refs: null, children: null, length: null }, onBoard: false, tags: [] }));
+      const top = sortRows(rows, id).slice(0, Math.max(1, Math.floor(Number(limit) || 40)));
+      attachMeta(top);
+      return { rows: top.map(libraryCard), queries: [] };
+    },
+
+    // Display names of the graph's users, for the created-by / edited-by filters.
+    userNames() {
+      const names = new Set();
+      for (const query of USER_NAME_QUERIES) for (const r of host.q(query) || []) if (typeof r?.[0] === "string" && r[0]) names.add(r[0]);
+      return [...names].sort((a, b) => a.localeCompare(b));
     },
 
     // What names a PDF block besides its file: the page it owns (first top-level PDF of a non-daily page)
@@ -2513,7 +2550,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     },
 
     // Roam semantic-search results → Add-panel rows with the panel's filters (type, tag, days, not on any board).
-    semanticRows(raw, filter, limit = 40) {
+    semanticRows(raw, filter, limit = 40, { sort = "best" } = {}) {
       const f = normalizeLibraryFilter(filter);
       const queries = [];
       const timed = (name, fn) => {
@@ -2536,7 +2573,12 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         .filter((row) => !(row.kind === "block" && DIAGRAM_STRING.test(row.string)));
       queries.push({ name: "sem-pull", ms: performance.now() - t0 });
       if (f.orphan) markOnBoard(candidates, timed);
-      const kept = narrowLibrary(candidates, { ...f, text: "" }, Date.now());
+      let kept = narrowLibrary(candidates, { ...f, text: "" }, Date.now());
+      if (sortNeedsMeta(sort) || metaFilterHostActive(filter)) {
+        timed("sem-meta", () => { attachMeta(kept); return []; });
+        kept = narrowByMeta(kept, filter, { days: f.days });
+      }
+      if (sort !== "best") kept = sortRows(kept, sort);
       return { rows: kept.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map((row) => ({ ...libraryCard(row), semantic: true })), queries };
     },
 

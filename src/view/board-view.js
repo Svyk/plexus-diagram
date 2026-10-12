@@ -2051,6 +2051,7 @@ function buildBoardView(onFail, {
       ...(page != null ? { page } : {}),
       ...(wholeDoc ? { wholeDoc: true } : {}),
       document: doc,
+      pdfName: () => askPdfName(pdfUid, url),
       jumpPage: (n) => { if (pdfUid) void itemsR?.openPdfAt?.(pdfUid, n); },
       toast: (message) => toast(message),
       addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfBlockOfCard(pdfUid), ...answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) }),
@@ -2271,11 +2272,16 @@ function buildBoardView(onFail, {
     if (disposed) return;
     if (Array.isArray(made) && made.length) { ctl.select(made); toast(failed ? `Added ${made.length} of ${files.length} PDFs` : `Added ${made.length} ${made.length === 1 ? "PDF" : "PDFs"}`, true); }
   };
+  // The PDF's real name for the Ask AI chips and the context (the same name the Add panel row shows).
+  const askPdfName = (pdfUid, url) => {
+    try { return pdfNameOf({ uid: pdfUid || "", url: url || "" }).title || ""; } catch { return ""; }
+  };
   const openBasketAsk = () => openAskAI({
     multi: {
       basket: askBasket,
       jump: (part, n) => { if (part?.kind !== "image" && part?.pdfUid) void itemsR?.openPdfAt?.(part.pdfUid, n || 1); },
     },
+    pdfName: (part) => (part?.url || part?.pdfUid ? askPdfName(part.pdfUid, part.url) : ""),
     document: doc,
     toast: (message) => toast(message),
     addCard: ({ markdown, parts }) => parseActions().insertAnswerCard({
@@ -5747,6 +5753,7 @@ function buildBoardView(onFail, {
   };
   const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
   const LIB_TYPES_KEY = `plexus-diagram:libtypes:${graph}`;
+  const SORT_KEY = "plexus-diagram:panel-sort";
   let partsIdx = null;
   let offPartsChange = null;
   const partsIndex = () => {
@@ -5946,6 +5953,11 @@ function buildBoardView(onFail, {
         } catch { return null; }
       },
       pdfTitle: (url) => parsedTitles.get(url) || "",
+      isParsed: async (url) => { try { return Boolean(url) && Boolean(await parseStoreShared().findByUrl(url)); } catch { return false; } },
+      highlightCount: (string) => { try { return host?.pdfCover?.(string)?.count || 0; } catch { return 0; } },
+      userNames: () => { try { return host?.userNames?.() || []; } catch { return []; } },
+      loadSort: () => { try { return storage?.getItem?.(SORT_KEY) || ""; } catch { return ""; } },
+      saveSort: (id) => { try { storage?.setItem?.(SORT_KEY, id); } catch { /* private mode */ } },
       pdfName: (card) => pdfNameOf(card),
       wantPdfNames: (cards, opts) => wantPdfNames(cards, opts),
       pdfList: () => pdfBlocks(),

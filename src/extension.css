@@ -1561,6 +1561,96 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   background: var(--pxd-fill);
 }
 
+/* Sort and More filters: same quiet buttons and popovers as the type list. */
+.pxd-root .pxd-panel__sort-btn,
+.pxd-root .pxd-panel__more-btn {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: var(--pxd-card);
+  color: var(--pxd-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-panel__sort-btn--on,
+.pxd-root .pxd-panel__more-btn--on,
+.pxd-root .pxd-panel__sort-btn[aria-expanded="true"],
+.pxd-root .pxd-panel__more-btn[aria-expanded="true"] {
+  color: var(--pxd-text);
+  border-color: var(--pxd-accent);
+}
+
+.pxd-root .pxd-panel__sort-item {
+  display: block;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pxd-text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-panel__sort-item[aria-checked="true"] {
+  font-weight: 600;
+  background: var(--pxd-accent-soft);
+}
+
+.pxd-root .pxd-panel__sort-item:hover {
+  background: var(--pxd-fill);
+}
+
+.pxd-panel__more-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 4px;
+}
+
+.pxd-panel__more-label {
+  color: var(--pxd-muted);
+}
+
+.pxd-panel__more-select,
+.pxd-panel__more-under {
+  box-sizing: border-box;
+  max-width: 130px;
+  padding: 2px 4px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 4px;
+  background: var(--pxd-card);
+  color: var(--pxd-text);
+  font-size: 12px;
+}
+
+.pxd-panel__more-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  cursor: pointer;
+}
+
+.pxd-panel__row--meta {
+  flex-wrap: wrap;
+}
+
+.pxd-panel__row-meta {
+  flex: 1 0 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pxd-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pxd-panel__part-head {
   display: flex;
   align-items: center;

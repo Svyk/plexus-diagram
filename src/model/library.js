@@ -199,6 +199,11 @@ export function blockDisplay(string, kind = blockKind(string), { pdfTitle = null
 }
 
 export function libraryCard(row) {
+  const card = libraryCardBase(row);
+  return row?.meta ? { ...card, meta: row.meta } : card;
+}
+
+function libraryCardBase(row) {
   const kind = libraryKind(row);
   if (kind === "page" || kind === "daily") {
     const title = String(row?.title ?? row?.text ?? "");

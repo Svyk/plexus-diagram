@@ -422,10 +422,10 @@ function arrowHeadPath(point, angle, size) {
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);
   const bx = point.x - dx * size;
-  const by = point.y - dy * size;
+  const by2 = point.y - dy * size;
   const hw = size * 0.45;
-  const p1 = { x: bx - dy * hw, y: by + dx * hw };
-  const p2 = { x: bx + dy * hw, y: by - dx * hw };
+  const p1 = { x: bx - dy * hw, y: by2 + dx * hw };
+  const p2 = { x: bx + dy * hw, y: by2 - dx * hw };
   return `M${num(point.x)} ${num(point.y)}L${num(p1.x)} ${num(p1.y)}L${num(p2.x)} ${num(p2.y)}Z`;
 }
 function arrowSize(zoom, weight = 1) {
@@ -898,15 +898,15 @@ function mergePropsForWrite(props, plexus) {
 }
 function normalizeItemLayout(plexus) {
   const p = isObject(plexus) ? plexus : {};
-  const num8 = (v) => isNum(v) ? v : void 0;
+  const num9 = (v) => isNum(v) ? v : void 0;
   const type = ITEM_TYPES.includes(p.type) ? p.type : "card";
   const section2 = type === "section";
   return {
     type,
-    x: num8(p.x),
-    y: num8(p.y),
-    w: num8(p.w),
-    h: num8(p.h),
+    x: num9(p.x),
+    y: num9(p.y),
+    w: num9(p.w),
+    h: num9(p.h),
     color: styleColor(p.color),
     collapsed: p.collapsed === true ? true : p.collapsed === false ? false : void 0,
     // Sections use titleSize. Cards and text take an integer 10–48 (text used to be the four steps only).
@@ -1857,7 +1857,7 @@ function parseTrails(containerNode) {
   }
   return out;
 }
-function trailStrip(stops, titleOf3, limit = 8) {
+function trailStrip(stops, titleOf4, limit = 8) {
   const list = Array.isArray(stops) ? stops : [];
   const cap4 = Number.isFinite(limit) ? Math.max(0, limit) : 8;
   const out = [];
@@ -1866,9 +1866,9 @@ function trailStrip(stops, titleOf3, limit = 8) {
     const uid = stop3?.ref || stop3?.uid || "";
     if (!uid) continue;
     let title = "";
-    if (typeof titleOf3 === "function") {
+    if (typeof titleOf4 === "function") {
       try {
-        title = titleOf3(uid) || "";
+        title = titleOf4(uid) || "";
       } catch {
         title = "";
       }
@@ -2196,12 +2196,12 @@ function fracFromDrag(rect, x0, y0, x1, y1) {
   const ax = clamp(pts[0], box2.x, right);
   const ay = clamp(pts[1], box2.y, bottom);
   const bx = clamp(pts[2], box2.x, right);
-  const by = clamp(pts[3], box2.y, bottom);
+  const by2 = clamp(pts[3], box2.y, bottom);
   const f = normalizeFrac([
     (Math.min(ax, bx) - box2.x) / box2.width,
-    (Math.min(ay, by) - box2.y) / box2.height,
+    (Math.min(ay, by2) - box2.y) / box2.height,
     Math.abs(bx - ax) / box2.width,
-    Math.abs(by - ay) / box2.height
+    Math.abs(by2 - ay) / box2.height
   ]);
   if (!f) return null;
   return { rx: f[0], ry: f[1], rw: f[2], rh: f[3] };
@@ -5230,13 +5230,13 @@ function extractGraphics(ops, { transform = [1, 0, 0, 1, 0, 0], maxSegments = 5e
       const t = strokeWidth(lineWidth, ctm);
       for (let i = 1; i < points.length; i++) {
         const [ax, ay] = points[i - 1];
-        const [bx, by] = points[i];
+        const [bx, by2] = points[i];
         const dx = Math.abs(bx - ax);
-        const dy = Math.abs(by - ay);
+        const dy = Math.abs(by2 - ay);
         if (stroked && dy <= 0.5 && dx >= RULE_MIN_LEN) {
-          out.rules.push({ axis: "h", x0: Math.min(ax, bx), x1: Math.max(ax, bx), y0: (ay + by) / 2, y1: (ay + by) / 2, thick: t });
+          out.rules.push({ axis: "h", x0: Math.min(ax, bx), x1: Math.max(ax, bx), y0: (ay + by2) / 2, y1: (ay + by2) / 2, thick: t });
         } else if (stroked && dx <= 0.5 && dy >= RULE_MIN_LEN) {
-          out.rules.push({ axis: "v", x0: (ax + bx) / 2, x1: (ax + bx) / 2, y0: Math.min(ay, by), y1: Math.max(ay, by), thick: t });
+          out.rules.push({ axis: "v", x0: (ax + bx) / 2, x1: (ax + bx) / 2, y0: Math.min(ay, by2), y1: Math.max(ay, by2), thick: t });
         } else drawn++;
       }
       if (filled && !stroked) {
@@ -6671,7 +6671,7 @@ function headingLevel(line, { bodySize, classes, nextIsBody = true, isolated = f
     return Math.min(4, classes.length + 1);
   }
   const depth = numberedDepth(text4);
-  const rest = depth ? text4.replace(NUMBERED_RE, (m, num8, a, b, ...r) => m.slice(m.length - 1)) : "";
+  const rest = depth ? text4.replace(NUMBERED_RE, (m, num9, a, b, ...r) => m.slice(m.length - 1)) : "";
   const wordy = depth && /^[A-Z][A-Za-z]{2,}/.test(rest) && (line.mathShare || 0) < 0.1 && !line.words.some((w) => w.sup || w.sub);
   if (wordy && bodySized && wordCount(text4) <= 14 && !/[.?!,;:]$/.test(text4) && (line.bold || line.italic || isolated) && nextIsBody) {
     return Math.min(6, classes.length + depth);
@@ -8238,9 +8238,9 @@ function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeG
         if (!run.length && tokens2.length === 1) {
           const nxt2 = rows[j + 1];
           const nt = nxt2 ? tokensOf2(nxt2) : [];
-          const num8 = nt.find((t) => /^\d{1,4}$/.test(t.text));
-          const label = nt.find((t) => /[A-Za-z]/.test(t.text || "") && num8 && t.x1 < num8.x0 - 4);
-          if (num8 && label && tokens2[0].x0 > label.x1 && Math.abs(tokens2[0].x0 - num8.x0) <= 24) {
+          const num9 = nt.find((t) => /^\d{1,4}$/.test(t.text));
+          const label = nt.find((t) => /[A-Za-z]/.test(t.text || "") && num9 && t.x1 < num9.x0 - 4);
+          if (num9 && label && tokens2[0].x0 > label.x1 && Math.abs(tokens2[0].x0 - num9.x0) <= 24) {
             run.push({ row: row4, tokens: tokens2 });
             headerRowsHint = Math.max(headerRowsHint, 1);
             lastBase = row4.base;
@@ -9065,8 +9065,8 @@ function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
   const n2 = pages.length;
   const need2 = Math.max(2, Math.min(3, n2), Math.ceil(n2 * 0.5));
   const candidates2 = /* @__PURE__ */ new Map();
-  const cand = (line, page, where) => {
-    const key = `${where}|${normalizeFurniture(line.text)}`;
+  const cand = (line, page, where2) => {
+    const key = `${where2}|${normalizeFurniture(line.text)}`;
     if (!candidates2.has(key)) candidates2.set(key, []);
     candidates2.get(key).push({ page, line, y: line.base });
   };
@@ -9094,9 +9094,9 @@ function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
         ok = ok || ys2.some((y) => Math.abs(y - e2.y) <= 3) || ys2.length === 0;
       }
       if (!ok) continue;
-      const where = key.startsWith("top") ? "running-header" : "running-footer";
+      const where2 = key.startsWith("top") ? "running-header" : "running-footer";
       marks.add(e2.line);
-      removed.push({ page: e2.page, bbox: [r2(e2.line.x0), r2(e2.line.y0), r2(e2.line.x1), r2(e2.line.y1)], text: text4, reason: pageNum && !recurring ? "page-number" : where });
+      removed.push({ page: e2.page, bbox: [r2(e2.line.x0), r2(e2.line.y0), r2(e2.line.x1), r2(e2.line.y1)], text: text4, reason: pageNum && !recurring ? "page-number" : where2 });
     }
   }
   for (const pg of pages) {
@@ -9866,7 +9866,7 @@ function normalizeFigSpelling(text4) {
   t = t.replace(/\bfigu[nr]e\b/gi, (m) => m[0] === "f" ? "figure" : "Figure");
   t = t.replace(/\b([A-Za-z]{2,})\s*,\s*(?=\d)/g, "$1. ");
   t = t.replace(/\b((?:fig(?:ure)?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s+)[lI|](?=\s|$|[.:])/gi, "$11");
-  t = t.replace(/\b((?:fig(?:ure)?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s+)(II)(?=\s|$|[.:—–-])/gi, (full, pre, num8) => num8 === "II" ? `${pre}11` : full);
+  t = t.replace(/\b((?:fig(?:ure)?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?\s+)(II)(?=\s|$|[.:—–-])/gi, (full, pre, num9) => num9 === "II" ? `${pre}11` : full);
   return t;
 }
 function figCaptionKey(text4) {
@@ -10146,11 +10146,11 @@ function labelSpan(words, i) {
 }
 function orderedLabelWords(group) {
   const fig = group.find((w) => FIG_TOKEN.test(String(w.text || "").trim()));
-  const num8 = group.find((w) => FIG_NUM.test(String(w.text || "").trim()));
+  const num9 = group.find((w) => FIG_NUM.test(String(w.text || "").trim()));
   const dots = group.filter((w) => /^[.:]$/.test(String(w.text || "").trim()));
-  if (!fig || !num8 || !(num8.x0 <= fig.x0 + 2 && fig.x0 - num8.x1 < 8)) return group;
+  if (!fig || !num9 || !(num9.x0 <= fig.x0 + 2 && fig.x0 - num9.x1 < 8)) return group;
   const figWord = { ...fig, text: String(fig.text || "").replace(/\.?$/, ".") };
-  return [figWord, { ...num8 }];
+  return [figWord, { ...num9 }];
 }
 function normalizeFigWord(w) {
   const m = /^(\d+[A-Za-z]?)\.fig(?:ure)?\.?$/i.exec(String(w.text || "").trim());
@@ -11839,8 +11839,8 @@ function moveStubTotal(table) {
   const label = table.cells.find((k) => k.r === r && k.c === 0 && (k.colSpan || 1) === 1);
   const value = table.cells.find((k) => k.r === r && k.c === table.cols - 1 && (k.colSpan || 1) === 1);
   if (!label || !value || String(value.text || "").trim()) return null;
-  const num8 = String(label.text || "").trim();
-  if (!isNumericText(num8)) return null;
+  const num9 = String(label.text || "").trim();
+  if (!isNumericText(num9)) return null;
   let valueNums = 0;
   let labelNums = 0;
   const samples = [];
@@ -11853,12 +11853,12 @@ function moveStubTotal(table) {
     }
     if (lab && isNumericText(lab.text)) labelNums++;
   }
-  if (valueNums < 2 || labelNums > 0 || !fitsColumn(num8, samples)) return null;
-  value.text = num8;
+  if (valueNums < 2 || labelNums > 0 || !fitsColumn(num9, samples)) return null;
+  value.text = num9;
   value.numeric = true;
   label.text = "";
   label.numeric = false;
-  return { r, text: num8 };
+  return { r, text: num9 };
 }
 function deleteRow(table, r) {
   table.cells = table.cells.filter((c) => c.r !== r);
@@ -16857,6 +16857,10 @@ function blockDisplay(string, kind = blockKind(string), { pdfTitle = null } = {}
   return { text: s.slice(0, 120), url: "", thumb: "" };
 }
 function libraryCard(row4) {
+  const card2 = libraryCardBase(row4);
+  return row4?.meta ? { ...card2, meta: row4.meta } : card2;
+}
+function libraryCardBase(row4) {
   const kind = libraryKind(row4);
   if (kind === "page" || kind === "daily") {
     const title = String(row4?.title ?? row4?.text ?? "");
@@ -16910,6 +16914,206 @@ var init_library = __esm({
     WEB_RE = /^(?:\[[^\]]*\]\(\s*https?:\/\/[^\s)]+\s*\)|https?:\/\/\S+)$/i;
     PDF_URL_RE = /\{\{(?:\[\[)?pdf(?:\]\])?:\s*(https?:\/\/[^\s}]+)/i;
     IMAGE_PARTS_RE = /!\[([^\]]*)\]\(\s*([^)\s]+)[^)]*\)/;
+  }
+});
+
+// src/model/search-sort.js
+function sortRows(rows, sort) {
+  const list = Array.isArray(rows) ? rows.slice() : [];
+  const cmp = COMPARE[normalizeSort(sort)];
+  if (!cmp) return list;
+  return list.map((row4, i) => [row4, i]).sort((a, b) => cmp(a[0], b[0]) || a[1] - b[1]).map((x) => x[0]);
+}
+function ago(time, now4) {
+  const s = Math.max(0, Math.floor((now4 - time) / 1e3));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.floor(h / 24);
+  return d < 30 ? `${d} ${d === 1 ? "day" : "days"} ago` : "";
+}
+function dateText(time, now4) {
+  const d = new Date(time);
+  const nowY = new Date(now4).getFullYear();
+  return `${MONTHS6[d.getMonth()]} ${d.getDate()}${d.getFullYear() === nowY ? "" : `, ${d.getFullYear()}`}`;
+}
+function metaLine(row4, sort, now4 = Date.now()) {
+  const meta = row4?.meta;
+  if (!meta) return "";
+  const id = normalizeSort(sort);
+  if (id === "edited") {
+    const t = num4(meta.edited);
+    return t ? `edited ${ago(t, now4) || dateText(t, now4)}${by(meta.editedBy)}` : "";
+  }
+  if (id === "created" || id === "oldest") {
+    const t = num4(meta.created);
+    return t ? `created ${dateText(t, now4)}${by(meta.createdBy)}` : "";
+  }
+  if (id === "linked") return num4(meta.refs) != null ? plural(meta.refs, "ref", "refs") : "";
+  if (id === "children") return num4(meta.children) != null ? plural(meta.children, "child", "children") : "";
+  if (id === "longest") return `${plural(lengthOf(row4), "character", "characters")}`;
+  return "";
+}
+function normalizeMetaFilter(raw = {}) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const name = (v) => String(v ?? "").trim();
+  return {
+    createdBy: name(src.createdBy),
+    editedBy: name(src.editedBy),
+    dayMode: src.dayMode === "created" ? "created" : "edited",
+    refs: src.refs === true,
+    children: src.children === true,
+    under: name(src.under),
+    parsed: src.parsed === true,
+    highlights: src.highlights === true,
+    thisBoard: src.thisBoard === true
+  };
+}
+function metaFilterHostActive(raw) {
+  const f = normalizeMetaFilter(raw);
+  return Boolean(f.createdBy || f.editedBy || f.refs || f.children || f.under || f.dayMode === "created");
+}
+function metaFilterActive(raw) {
+  const f = normalizeMetaFilter(raw);
+  return metaFilterHostActive(f) || f.parsed || f.highlights || f.thisBoard;
+}
+function narrowByMeta(rows, raw, { days = 0, now: now4 = Date.now() } = {}) {
+  const f = normalizeMetaFilter(raw);
+  const n2 = Math.max(0, Math.floor(Number(days) || 0));
+  const lower4 = (s) => String(s ?? "").toLowerCase();
+  return (Array.isArray(rows) ? rows : []).filter((row4) => {
+    const m = row4?.meta || {};
+    if (f.dayMode === "created" && n2) {
+      const t = num4(m.created);
+      if (t == null || t <= now4 - n2 * DAY_MS2) return false;
+    }
+    if (f.createdBy && lower4(m.createdBy) !== lower4(f.createdBy)) return false;
+    if (f.editedBy && lower4(m.editedBy) !== lower4(f.editedBy)) return false;
+    if (f.refs && !(num4(m.refs) > 0)) return false;
+    if (f.children && !(num4(m.children) > 0)) return false;
+    if (f.under) {
+      const where2 = row4?.kind === "page" ? row4.title : row4?.pageTitle;
+      if (lower4(where2) !== lower4(f.under)) return false;
+    }
+    return true;
+  });
+}
+function createMetaCache(read2, { ttl = META_TTL_MS, now: now4 = () => Date.now() } = {}) {
+  const cache = /* @__PURE__ */ new Map();
+  return {
+    get(uids) {
+      const out = /* @__PURE__ */ new Map();
+      const need2 = [];
+      const t = now4();
+      for (const uid of uids || []) {
+        const hit = cache.get(uid);
+        if (hit && t - hit.at < ttl) out.set(uid, hit.meta);
+        else if (uid && !need2.includes(uid)) need2.push(uid);
+      }
+      if (need2.length) {
+        let got = null;
+        try {
+          got = read2(need2);
+        } catch {
+          got = null;
+        }
+        for (const uid of need2) {
+          const meta = got?.get?.(uid) || null;
+          if (meta) {
+            cache.set(uid, { meta, at: t });
+            out.set(uid, meta);
+          }
+        }
+      }
+      return out;
+    },
+    size: () => cache.size,
+    clear: () => cache.clear()
+  };
+}
+function assembleMeta(uids, q2) {
+  const out = /* @__PURE__ */ new Map();
+  const run = (name, chunk) => {
+    try {
+      const r = q2(META_QUERIES[name], chunk);
+      return Array.isArray(r) ? r : [];
+    } catch {
+      return [];
+    }
+  };
+  for (let i = 0; i < uids.length; i += META_CHUNK) {
+    const chunk = uids.slice(i, i + META_CHUNK);
+    for (const [u, c, e2] of run("times", chunk)) out.set(u, { created: num4(c) || null, edited: num4(e2) || null, createdBy: "", editedBy: "", refs: 0, children: 0, length: null });
+    for (const name of ["createdByPage", "createdBy"]) for (const [u, n2] of run(name, chunk)) if (out.has(u)) out.get(u).createdBy = String(n2);
+    for (const name of ["editedByPage", "editedBy"]) for (const [u, n2] of run(name, chunk)) if (out.has(u)) out.get(u).editedBy = String(n2);
+    for (const [u, n2] of run("refs", chunk)) if (out.has(u)) out.get(u).refs = Number(n2) || 0;
+    for (const [u, n2] of run("children", chunk)) if (out.has(u)) out.get(u).children = Number(n2) || 0;
+    for (const [u, s] of run("lengths", chunk)) if (out.has(u)) out.get(u).length = String(s).length;
+  }
+  return out;
+}
+var SORTS, DEFAULT_SORT, SORT_IDS, normalizeSort, sortLabel, num4, titleOf, lengthOf, byNumber, COMPARE, sortNeedsMeta, MONTHS6, by, plural, DAY_MS2, META_QUERIES, USER_NAME_QUERIES, META_CHUNK, META_TTL_MS;
+var init_search_sort = __esm({
+  "src/model/search-sort.js"() {
+    SORTS = Object.freeze([
+      { id: "best", label: "Best match" },
+      { id: "edited", label: "Recently edited" },
+      { id: "created", label: "Recently created" },
+      { id: "oldest", label: "Oldest created" },
+      { id: "linked", label: "Most linked" },
+      { id: "children", label: "Most children" },
+      { id: "longest", label: "Longest" },
+      { id: "title", label: "Title A–Z" }
+    ]);
+    DEFAULT_SORT = "best";
+    SORT_IDS = new Set(SORTS.map((s) => s.id));
+    normalizeSort = (raw) => SORT_IDS.has(raw) ? raw : DEFAULT_SORT;
+    sortLabel = (id) => SORTS.find((s) => s.id === normalizeSort(id))?.label || "Best match";
+    num4 = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+    titleOf = (row4) => String(row4?.title ?? row4?.text ?? row4?.string ?? "");
+    lengthOf = (row4) => num4(row4?.meta?.length) ?? String(row4?.string ?? row4?.text ?? row4?.title ?? "").length;
+    byNumber = (pick2, dir) => (a, b) => {
+      const x = pick2(a);
+      const y = pick2(b);
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      return dir * (x - y);
+    };
+    COMPARE = {
+      edited: byNumber((r) => num4(r.meta?.edited ?? r.edited), -1),
+      created: byNumber((r) => num4(r.meta?.created), -1),
+      oldest: byNumber((r) => num4(r.meta?.created), 1),
+      linked: byNumber((r) => num4(r.meta?.refs), -1),
+      children: byNumber((r) => num4(r.meta?.children), -1),
+      longest: byNumber((r) => lengthOf(r), -1),
+      title: (a, b) => titleOf(a).localeCompare(titleOf(b), void 0, { sensitivity: "base", numeric: true })
+    };
+    sortNeedsMeta = (sort) => normalizeSort(sort) !== DEFAULT_SORT && normalizeSort(sort) !== "title";
+    MONTHS6 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    by = (name) => name && String(name).length <= 20 ? ` by ${name}` : "";
+    plural = (n2, one, many) => `${n2.toLocaleString("en-US")} ${n2 === 1 ? one : many}`;
+    DAY_MS2 = 864e5;
+    META_QUERIES = Object.freeze({
+      times: "[:find ?u ?c ?e :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :create/time 0) ?c] [(get-else $ ?b :edit/time 0) ?e]]",
+      createdBy: "[:find ?u ?n :in $ [?u ...] :where [?b :block/uid ?u] [?b :create/user ?x] [?x :user/display-name ?n]]",
+      editedBy: "[:find ?u ?n :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/user ?x] [?x :user/display-name ?n]]",
+      // Graphs whose user entities carry no :user/display-name (the Readwisenotes graph): the name is the title of the
+      // user's display page.
+      createdByPage: "[:find ?u ?n :in $ [?u ...] :where [?b :block/uid ?u] [?b :create/user ?x] [?x :user/display-page ?d] [?d :node/title ?n]]",
+      editedByPage: "[:find ?u ?n :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/user ?x] [?x :user/display-page ?d] [?d :node/title ?n]]",
+      refs: "[:find ?u (count ?r) :in $ [?u ...] :where [?b :block/uid ?u] [?r :block/refs ?b]]",
+      children: "[:find ?u (count ?c) :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/children ?c]]",
+      lengths: "[:find ?u ?s :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/string ?s]]"
+    });
+    USER_NAME_QUERIES = Object.freeze([
+      "[:find ?n :where [?x :user/display-name ?n]]",
+      "[:find ?n :where [?x :user/uid ?i] [?x :user/display-page ?d] [?d :node/title ?n]]"
+    ]);
+    META_CHUNK = 100;
+    META_TTL_MS = 6e4;
   }
 });
 
@@ -17294,12 +17498,12 @@ function latestEdit(node2) {
   else walk3(node2);
   return best;
 }
-function changedSince(nodes, lastVisit, titleOf3 = (uid) => uid) {
+function changedSince(nodes, lastVisit, titleOf4 = (uid) => uid) {
   if (!Number.isFinite(lastVisit)) return [];
   const rows = [];
   for (const [uid, node2] of nodes || []) {
     const edit = latestEdit(node2);
-    if (edit.time > lastVisit) rows.push({ uid, time: edit.time, user: edit.user, title: titleOf3(uid) });
+    if (edit.time > lastVisit) rows.push({ uid, time: edit.time, user: edit.user, title: titleOf4(uid) });
   }
   rows.sort((a, b) => b.time - a.time || String(a.uid).localeCompare(String(b.uid)));
   return rows;
@@ -19184,7 +19388,7 @@ function parseRoamDay(title) {
   const day = Number(m[2]);
   const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
   if (m[3] !== suffix || day < 1 || day > 31) return null;
-  const month = MONTHS8.indexOf(m[1]);
+  const month = MONTHS9.indexOf(m[1]);
   if (month < 0) return null;
   return { y: Number(m[4]), m: month + 1, d: day };
 }
@@ -19265,7 +19469,7 @@ function taskMeta(string, content, today = /* @__PURE__ */ new Date(), names = l
   }
   return meta;
 }
-var ACTIVITY_LOG, lower, DEFAULT_LABELS, DEFAULT_IDS, liveNames, namesSig, taskNamesSig, TASK_RE, taskState, isTaskString, isBareTask, MONTHS8, DAILY_RE3, SHORT_MONTHS, iso, isoDay, PRIORITY_GLYPH, STATUS_TAG;
+var ACTIVITY_LOG, lower, DEFAULT_LABELS, DEFAULT_IDS, liveNames, namesSig, taskNamesSig, TASK_RE, taskState, isTaskString, isBareTask, MONTHS9, DAILY_RE3, SHORT_MONTHS, iso, isoDay, PRIORITY_GLYPH, STATUS_TAG;
 var init_tasks = __esm({
   "src/model/tasks.js"() {
     init_schema();
@@ -19295,8 +19499,8 @@ var init_tasks = __esm({
     taskState = (string) => TASK_RE.exec(String(string ?? ""))?.[1] ?? "";
     isTaskString = (string) => TASK_RE.test(String(string ?? ""));
     isBareTask = (string) => isTaskString(string) && !String(string).replace(TASK_RE, "").replace(/#\[\[task-status\/[^\]]*\]\]/g, "").trim();
-    MONTHS8 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    DAILY_RE3 = new RegExp(`^(${MONTHS8.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+    MONTHS9 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    DAILY_RE3 = new RegExp(`^(${MONTHS9.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
     SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     isoDay = iso;
@@ -19925,7 +20129,7 @@ function placeBarClear(bar, { anchor, soft = [], hard = [], gap = 12, margin = 8
   };
   const midX = anchor.x + anchor.w / 2;
   const midY = anchor.y + anchor.h / 2;
-  const at = (left, top, where) => ({ left, top, w: bar.w, h: bar.h, where });
+  const at = (left, top, where2) => ({ left, top, w: bar.w, h: bar.h, where: where2 });
   const primary = [
     at(midX - bar.w / 2, anchor.y - gap - bar.h, "above"),
     at(midX - bar.w / 2, anchor.y + anchor.h + gap, "below"),
@@ -21250,11 +21454,11 @@ function queryRow(detail) {
   };
 }
 function queryRows2(details, order) {
-  const by = new Map((details || []).map((d) => [String(d?.uid), d]));
-  const list = order || [...by.keys()];
+  const by2 = new Map((details || []).map((d) => [String(d?.uid), d]));
+  const list = order || [...by2.keys()];
   const rows = [];
   for (const uid of list) {
-    const d = by.get(uid);
+    const d = by2.get(uid);
     if (d && BLOCK_UID.test(uid)) rows.push(queryRow(d));
   }
   return rows;
@@ -21316,9 +21520,9 @@ function createQueryBackend(host) {
   };
   return {
     hits(leaf) {
-      const { where, input } = entityClause(leaf);
-      const refs = `${where} [?r :block/refs ?p]`;
-      const direct = num4(q2(`[:find (count ?r) :in $ ?k :where ${refs}]`, input));
+      const { where: where2, input } = entityClause(leaf);
+      const refs = `${where2} [?r :block/refs ?p]`;
+      const direct = num5(q2(`[:find (count ?r) :in $ ?k :where ${refs}]`, input));
       const uids = /* @__PURE__ */ new Set();
       let partial = false;
       if (direct > DIRECT_CAP) {
@@ -21329,7 +21533,7 @@ function createQueryBackend(host) {
         for (const u of col(q2(`[:find ?u :in $ ?k :where ${refs} [?b :block/parents ?r] [?b :block/uid ?u]]`, input))) uids.add(u);
       } else partial = true;
       if (leaf.op === "page") {
-        const onPage = num4(q2("[:find (count ?b) :in $ ?k :where [?p :node/title ?k] [?b :block/page ?p]]", input));
+        const onPage = num5(q2("[:find (count ?b) :in $ ?k :where [?p :node/title ?k] [?b :block/page ?p]]", input));
         if (onPage <= PAGE_LIMIT) {
           for (const u of col(q2("[:find ?u :in $ ?k :where [?p :node/title ?k] [?b :block/page ?p] [?b :block/uid ?u]]", input))) uids.add(u);
         } else partial = true;
@@ -21346,27 +21550,27 @@ function createQueryBackend(host) {
       return out;
     },
     details(uids) {
-      const by = /* @__PURE__ */ new Map();
+      const by2 = /* @__PURE__ */ new Map();
       for (let i = 0; i < uids.length; i += DETAIL_CHUNK) {
         const chunk = uids.slice(i, i + DETAIL_CHUNK);
         for (const [u, s, title, t] of q2(
           '[:find ?u ?s ?title ?t :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :block/string "") ?s] [(get-else $ ?b :node/title "") ?title] [(get-else $ ?b :edit/time 0) ?t]]',
           chunk
-        )) by.set(u, { uid: u, string: s, title, time: Number(t) || 0 });
+        )) by2.set(u, { uid: u, string: s, title, time: Number(t) || 0 });
         for (const [u, page] of q2("[:find ?u ?pt :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]", chunk)) {
-          const d = by.get(u);
+          const d = by2.get(u);
           if (d) d.page = page;
         }
         for (const [u, parent] of q2("[:find ?u ?ps :in $ [?u ...] :where [?b :block/uid ?u] [?pa :block/children ?b] [?pa :block/string ?ps]]", chunk)) {
-          const d = by.get(u);
+          const d = by2.get(u);
           if (d) d.parent = parent;
         }
       }
-      return [...by.values()];
+      return [...by2.values()];
     }
   };
 }
-var DIRECT_CAP, WIDE_LIMIT, PAGE_LIMIT, CHUNK, DETAIL_CHUNK, col, num4;
+var DIRECT_CAP, WIDE_LIMIT, PAGE_LIMIT, CHUNK, DETAIL_CHUNK, col, num5;
 var init_query_backend = __esm({
   "src/host/query-backend.js"() {
     DIRECT_CAP = 3e3;
@@ -21375,7 +21579,7 @@ var init_query_backend = __esm({
     CHUNK = 200;
     DETAIL_CHUNK = 50;
     col = (rows) => Array.isArray(rows) ? rows.map((r) => r?.[0]).filter((u) => typeof u === "string") : [];
-    num4 = (rows) => Number(rows?.[0]?.[0]) || 0;
+    num5 = (rows) => Number(rows?.[0]?.[0]) || 0;
   }
 });
 
@@ -22426,7 +22630,8 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
         trailClick(event);
         changedClick(event);
         searchClick(event);
-      } else if (type === "pointerdown") trailPointerDown(event);
+      } else if (type === "keyup") underKey(event);
+      else if (type === "pointerdown") trailPointerDown(event);
       else if (type === "keydown") trailKey(event);
     });
   }
@@ -22556,11 +22761,151 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   };
   paintTypes();
   const setTypesOpen = (open) => {
+    if (open) {
+      try {
+        setPopsOpen(null);
+      } catch {
+      }
+    }
     typePop.style.display = open ? "" : "none";
     root?.classList?.toggle?.("pxd-root--types-open", open);
     typeBtn.setAttribute("aria-expanded", open ? "true" : "false");
   };
   const typesOpen = () => typePop.style.display !== "none";
+  let sort = DEFAULT_SORT;
+  try {
+    sort = normalizeSort(on.loadSort?.());
+  } catch {
+  }
+  const sortBtn = el2("button", "pxd-btn pxd-panel__sort-btn", filters, sortLabel(sort));
+  sortBtn.type = "button";
+  sortBtn.setAttribute("aria-label", "Sort results");
+  sortBtn.setAttribute("aria-haspopup", "true");
+  sortBtn.setAttribute("aria-expanded", "false");
+  const sortPop = el2("div", "pxd-panel__type-pop pxd-panel__sort-pop", filters);
+  sortPop.style.display = "none";
+  sortPop.setAttribute("role", "menu");
+  sortPop.setAttribute("aria-label", "Sort by");
+  const sortItems = /* @__PURE__ */ new Map();
+  for (const item of SORTS) {
+    const b = el2("button", "pxd-panel__sort-item", sortPop, item.label);
+    b.type = "button";
+    b.setAttribute("role", "menuitemradio");
+    b.setAttribute("aria-label", item.label);
+    b.setAttribute("data-sort", item.id);
+    b.dataset.sort = item.id;
+    sortItems.set(item.id, b);
+  }
+  const paintSort = () => {
+    sortBtn.textContent = sortLabel(sort);
+    sortBtn.classList.toggle("pxd-panel__sort-btn--on", sort !== DEFAULT_SORT);
+    for (const [id, b] of sortItems) b.setAttribute("aria-checked", id === sort ? "true" : "false");
+  };
+  paintSort();
+  const moreBtn = el2("button", "pxd-btn pxd-panel__more-btn", filters, "More");
+  moreBtn.type = "button";
+  moreBtn.setAttribute("aria-label", "More filters");
+  moreBtn.setAttribute("aria-haspopup", "true");
+  moreBtn.setAttribute("aria-expanded", "false");
+  const morePop = el2("div", "pxd-panel__type-pop pxd-panel__more-pop", filters);
+  morePop.style.display = "none";
+  morePop.setAttribute("role", "group");
+  morePop.setAttribute("aria-label", "More filters");
+  const field = (label, control, parent = morePop) => {
+    const line = el2("label", "pxd-panel__more-row", parent);
+    el2("span", "pxd-panel__more-label", line, label);
+    line.append(control);
+    return line;
+  };
+  const choose = (aria) => {
+    const sel = el2("select", "pxd-panel__more-select", null);
+    sel.setAttribute("aria-label", aria);
+    return sel;
+  };
+  const createdBySel = choose("Created by");
+  const editedBySel = choose("Edited by");
+  const fillUsers = (sel, names) => {
+    sel.replaceChildren();
+    for (const name of ["", ...names]) {
+      const o = el2("option", "", sel, name || "Anyone");
+      o.value = name;
+      o.setAttribute("value", name);
+    }
+  };
+  fillUsers(createdBySel, []);
+  fillUsers(editedBySel, []);
+  field("Created by", createdBySel);
+  field("Edited by", editedBySel);
+  const dayModeSel = choose("Days count from");
+  for (const [v, t] of [["edited", "Edited"], ["created", "Created"]]) {
+    const o = el2("option", "", dayModeSel, t);
+    o.value = v;
+    o.setAttribute("value", v);
+  }
+  field("Days box counts", dayModeSel);
+  const underInput = el2("input", "pxd-panel__more-under", null);
+  underInput.type = "text";
+  underInput.placeholder = "Page title";
+  underInput.setAttribute("placeholder", "Page title");
+  underInput.setAttribute("aria-label", "Under page");
+  underInput.setAttribute("list", "pxd-panel-under-pages");
+  field("Under page", underInput);
+  const underList = el2("datalist", "pxd-panel__more-pages", morePop);
+  underList.id = "pxd-panel-under-pages";
+  const check = (label, aria) => {
+    const line = el2("label", "pxd-panel__more-check", morePop);
+    const box2 = el2("input", "pxd-panel__more-box", line);
+    box2.type = "checkbox";
+    box2.setAttribute("aria-label", aria);
+    line.append(label);
+    return box2;
+  };
+  const refsBox = check("Has linked references", "Has linked references");
+  const childrenBox = check("Has children", "Has children");
+  const parsedBox = check("Parsed PDFs only", "Parsed PDFs only");
+  const highlightsBox = check("PDFs with highlights", "PDFs with highlights");
+  const thisBoardBox = check("On this board", "On this board");
+  const moreOpen = () => morePop.style.display !== "none";
+  let usersLoaded = false;
+  const loadUsers = () => {
+    if (usersLoaded) return;
+    usersLoaded = true;
+    let names = [];
+    try {
+      names = on.userNames?.() || host?.userNames?.() || [];
+    } catch {
+      names = [];
+    }
+    const keep = [createdBySel.value, editedBySel.value];
+    fillUsers(createdBySel, names);
+    fillUsers(editedBySel, names);
+    createdBySel.value = keep[0];
+    editedBySel.value = keep[1];
+  };
+  const readMeta = () => normalizeMetaFilter({
+    createdBy: createdBySel.value,
+    editedBy: editedBySel.value,
+    dayMode: dayModeSel.value,
+    refs: refsBox.checked,
+    children: childrenBox.checked,
+    under: underInput.value,
+    parsed: parsedBox.checked,
+    highlights: highlightsBox.checked,
+    thisBoard: thisBoardBox.checked
+  });
+  const paintMore = () => {
+    const n2 = [createdBySel.value, editedBySel.value, underInput.value.trim(), dayModeSel.value === "created", refsBox.checked, childrenBox.checked, parsedBox.checked, highlightsBox.checked, thisBoardBox.checked].filter(Boolean).length + (orphanBox.checked ? 1 : 0);
+    moreBtn.textContent = n2 ? `More · ${n2}` : "More";
+    moreBtn.classList.toggle("pxd-panel__more-btn--on", n2 > 0);
+  };
+  const setPopsOpen = (which) => {
+    sortPop.style.display = which === "sort" ? "" : "none";
+    sortBtn.setAttribute("aria-expanded", which === "sort" ? "true" : "false");
+    morePop.style.display = which === "more" ? "" : "none";
+    moreBtn.setAttribute("aria-expanded", which === "more" ? "true" : "false");
+    if (which === "more") loadUsers();
+    root?.classList?.toggle?.("pxd-root--types-open", which != null || typesOpen());
+  };
   const tagInput = el2("input", "pxd-panel__tag", filters);
   tagInput.type = "text";
   tagInput.placeholder = "#tag";
@@ -22841,6 +23186,13 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     }
     paletteDots(r, palette);
     likeButton(r, likeKey, likeName);
+    if (card2.meta && sort !== DEFAULT_SORT) {
+      const line = metaLine(card2, sort, journalNow());
+      if (line) {
+        r.classList.add("pxd-panel__row--meta");
+        el2("span", "pxd-panel__row-meta", r, line);
+      }
+    }
     if (on.isOnBoard?.(string)) {
       r.classList.add("pxd-panel__row--on");
       el2("span", "pxd-panel__row-on", r, "on board");
@@ -22941,7 +23293,8 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     pages: pagesInput.value,
     tag: tagInput.value,
     days: daysInput.value,
-    orphan: orphanBox.checked === true
+    orphan: orphanBox.checked === true,
+    ...readMeta()
   });
   const paintLike = () => {
     likeChip.style.display = like ? "" : "none";
@@ -23014,6 +23367,26 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       searchNow();
       return;
     }
+    if (t === sortBtn || sortBtn.contains?.(t)) {
+      setPopsOpen(sortPop.style.display === "none" ? "sort" : null);
+      return;
+    }
+    if (t === moreBtn || moreBtn.contains?.(t)) {
+      setPopsOpen(moreOpen() ? null : "more");
+      return;
+    }
+    const pick2 = t?.closest?.("[data-sort]")?.dataset?.sort || t?.getAttribute?.("data-sort");
+    if (pick2 && sortItems.has(pick2)) {
+      sort = normalizeSort(pick2);
+      try {
+        on.saveSort?.(sort);
+      } catch {
+      }
+      paintSort();
+      setPopsOpen(null);
+      searchNow();
+      return;
+    }
     if (t === meaningBox) {
       try {
         on.saveMeaning?.(meaningBox.checked);
@@ -23024,7 +23397,8 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   };
   const semanticRowsFor = (raw, filter) => {
     try {
-      return host?.semanticRows?.(raw, filter, LIMIT)?.rows || [];
+      const rows = host?.semanticRows?.(raw, filter, LIMIT, { sort })?.rows || [];
+      return filter.thisBoard === true ? rows.filter((c) => on.isOnBoard?.(c.string)) : rows;
     } catch {
       return [];
     }
@@ -23053,7 +23427,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   const scheduleSemantic = (id, filter, keywordCards) => {
     const text4 = String(filter.text || "").trim();
     const sem = on.semantic;
-    if (!text4 || !meaningBox.checked || !semanticOn() || typeof host?.semanticRows !== "function" || typeof sem?.search !== "function") return;
+    if (!text4 || !meaningBox.checked || !semanticOn() || filter.parsed === true || filter.highlights === true || typeof host?.semanticRows !== "function" || typeof sem?.search !== "function") return;
     const cached = sem.peek?.(text4);
     if (cached) paintSemantic(id, semanticRowsFor(cached.data, filter), keywordCards);
     if (cached && !cached.stale) return;
@@ -23120,6 +23494,20 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       el2("div", "pxd-panel__empty", results, "No card types selected");
       return;
     }
+    if (!libraryFilterActive(filter) && !metaFilterActive(filter) && sort !== DEFAULT_SORT && typeof host?.browse === "function") {
+      let found2 = null;
+      try {
+        found2 = await Promise.resolve(host.browse(sort, LIMIT));
+      } catch {
+        found2 = null;
+      }
+      if (id !== queryId) return;
+      results.replaceChildren();
+      const list = Array.isArray(found2?.rows) ? found2.rows : [];
+      if (!list.length) el2("div", "pxd-panel__empty", results, "No pages");
+      list.forEach((r) => row4(results, r));
+      return;
+    }
     if (!libraryFilterActive(filter)) {
       results.replaceChildren();
       if (on.semantic && !semanticOn()) el2("div", "pxd-panel__empty pxd-panel__hint", results, SEMANTIC_HINT);
@@ -23133,7 +23521,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       if (wantImages && !hostFilter.types.length) {
         pack = { rows: [], queries: [] };
       } else if (typeof host?.librarySearch === "function") {
-        pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT, { pdfMatch: on.pdfMatch, pdfList: on.pdfList }));
+        pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT, { pdfMatch: on.pdfMatch, pdfList: on.pdfList, sort }));
       } else {
         const q2 = String(filter.text || "").trim();
         if (!q2) return;
@@ -23159,11 +23547,27 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const log = JSON.stringify(queries.map((q2) => ({ name: q2.name, ms: Math.round((Number(q2.ms) || 0) * 10) / 10 })));
     results.dataset.queryLog = log;
     results.setAttribute("data-query-log", log);
-    const rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
+    let rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
+    if (filter.thisBoard) rows = rows.filter((r) => on.isOnBoard?.(r.string));
+    if (filter.parsed || filter.highlights) {
+      const pdfs = rows.filter((r) => r.kind === "pdf");
+      const keep = await Promise.all(pdfs.map(async (r) => {
+        try {
+          if (filter.parsed && !await on.isParsed?.(r.url)) return false;
+          if (filter.highlights && !(await on.highlightCount?.(r.string) > 0)) return false;
+          return true;
+        } catch {
+          return false;
+        }
+      }));
+      if (id !== queryId) return;
+      const ok = new Set(pdfs.filter((_, i) => keep[i]));
+      rows = rows.filter((r) => ok.has(r));
+    }
     let parts = [];
     const needle = String(filter.text || "").trim();
     const kinds = checked.size === ALL_TYPES.length && !wantFigures ? [] : PARSE_PART_TYPES.filter((t) => checked.has(t) && !(wantFigures && t === "figure"));
-    if (typeof on.searchParts === "function" && (checked.size === ALL_TYPES.length || kinds.length > 0) && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true) {
+    if (typeof on.searchParts === "function" && (checked.size === ALL_TYPES.length || kinds.length > 0) && (needle || kinds.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
       const t0 = Date.now();
       try {
         parts = await Promise.resolve(on.searchParts({ text: needle, kinds, pages: filter.pages }, LIMIT)) || [];
@@ -23174,7 +23578,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       results.dataset.partsMs = String(Date.now() - t0);
     }
     let found = { images: [], figures: [] };
-    if ((wantImages || wantFigures) && (needle || filter.types.length) && !filter.tag && !filter.days && filter.orphan !== true) {
+    if ((wantImages || wantFigures) && (needle || filter.types.length) && !filter.tag && !filter.days && filter.orphan !== true && !metaFilterActive(filter)) {
       try {
         found = await Promise.resolve(on.searchImages({ text: needle, images: wantImages, figures: wantFigures, pages: filter.pages }, LIMIT)) || found;
       } catch {
@@ -23278,6 +23682,9 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     changeTypes();
   });
   listen(panel, "click", (event) => {
+    const u = event.target;
+    const inside8 = (n2) => u && (n2 === u || n2.contains?.(u));
+    if (sortPop.style.display !== "none" && !inside8(sortPop) && !inside8(sortBtn) || moreOpen() && !inside8(morePop) && !inside8(moreBtn)) setPopsOpen(null);
     if (!typesOpen()) return;
     const t = event.target;
     if (t && (typePop.contains?.(t) || typeBtn.contains?.(t) || t === typeBtn)) return;
@@ -23293,7 +23700,29 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       }
     }
   });
-  listen(orphanBox, "change", searchNow);
+  morePop.append(orphanLabel);
+  listen(morePop, "change", () => {
+    paintMore();
+    searchNow();
+  });
+  const underKey = (event) => {
+    if (event.target !== underInput) return;
+    const q2 = underInput.value.trim();
+    underList.replaceChildren();
+    if (q2.length >= 2) {
+      let found = [];
+      try {
+        found = host?.searchPages?.(q2, 12) || [];
+      } catch {
+        found = [];
+      }
+      for (const p of found) {
+        const o = el2("option", "", underList);
+        o.value = p.title;
+        o.setAttribute("value", p.title);
+      }
+    }
+  };
   listen(input, "keydown", (event) => {
     event.stopPropagation();
     if (event.key === "Escape") {
@@ -23305,8 +23734,8 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       searchNow();
     }
   });
-  for (const field of [tagInput, daysInput, pagesInput]) {
-    listen(field, "keydown", (event) => {
+  for (const field2 of [tagInput, daysInput, pagesInput]) {
+    listen(field2, "keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
         searchNow();
@@ -23315,6 +23744,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   }
   const setTab = (next) => {
     setTypesOpen(false);
+    setPopsOpen(null);
     if (tab === "info" && next !== "info") unmountInfo();
     tab = next;
     for (const [name, b] of Object.entries(tabButtons)) b.classList.toggle("pxd-panel__tab--on", tab === name);
@@ -24099,6 +24529,7 @@ var init_panel = __esm({
     init_drop();
     init_journal();
     init_changes();
+    init_search_sort();
     init_minimap_svg();
     DEBOUNCE_MS = 150;
     LIMIT = 40;
@@ -33486,7 +33917,7 @@ var init_cards = __esm({
 function listOf2(rows) {
   return Array.isArray(rows) ? rows : [];
 }
-function sortRows(rows) {
+function sortRows2(rows) {
   return listOf2(rows).map((row4, index) => ({ row: row4, index })).sort((a, b) => {
     const ap = typeof a.row?.page === "number" ? a.row.page : Infinity;
     const bp = typeof b.row?.page === "number" ? b.row.page : Infinity;
@@ -34196,7 +34627,7 @@ function createReadDrawer({
   listen(root, "pointerdown", onEdgeDown);
   listen(root, "input", onInput);
   const refresh = () => {
-    const sorted = sortRows(readRows());
+    const sorted = sortRows2(readRows());
     const have = readPlaced();
     const marked = sorted.map((row5) => {
       if (!row5 || typeof row5 !== "object" || row5.placed === true || !have.has(row5.uid)) return row5;
@@ -36450,6 +36881,7 @@ function autoEligibility({ plexus, nativeNodeCount = 0, storedLayout = false } =
 init_deeplink();
 init_info();
 init_library();
+init_search_sort();
 
 // src/model/neighbors.js
 init_schema();
@@ -37829,6 +38261,17 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     return { ...coverModel({ title: page.title, url, count }), pageUid: page.uid };
   };
   const gname = graph ?? graphName();
+  const metaCache = createMetaCache((uids) => assembleMeta(uids, (query, chunk) => host.q(query, chunk)));
+  const attachMeta = (rows) => {
+    const uids = rows.map((r) => r.uid).filter(Boolean);
+    if (!uids.length) return rows;
+    const got = metaCache.get(uids);
+    for (const row4 of rows) {
+      const m = got.get(row4.uid);
+      if (m) row4.meta = m;
+    }
+    return rows;
+  };
   const host = {
     api: api3,
     pull,
@@ -39056,7 +39499,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // Add-panel filters. Read-only. Each query is timed. Days and orphan never scan the graph alone.
     // `pdfMatch(url, terms)` → the PDF's identity text when it holds every term (pdf-ident), else "".
     // `pdfList()` → the graph's PDF blocks ({ uid, string, pageTitle }), cached by the caller, so typing runs no extra query.
-    librarySearch(filter, limit = 40, { pdfMatch = null, pdfList = null } = {}) {
+    librarySearch(filter, limit = 40, { pdfMatch = null, pdfList = null, sort = "best" } = {}) {
       const f = normalizeLibraryFilter(filter);
       const queries = [];
       const lim = Math.max(1, Math.floor(Number(limit) || 40));
@@ -39089,23 +39532,23 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (f.text && typeof pdfMatch === "function" && wantsType(f, "pdf")) {
         const terms = queryTerms(f.text);
         const inputs = ["$", "?kind"];
-        const where = [];
+        const where2 = [];
         const args = [BLOCK_KIND_PATTERNS.pdf];
         if (f.tag) {
           inputs.push("?name");
           args.push(f.tag);
-          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
+          where2.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
         }
-        where.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]", "[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
+        where2.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]", "[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
         const find = ["?s", "?u", "?t"];
         if (since != null) {
           inputs.push("?since");
           args.push(since);
           find.push("?e");
-          where.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
+          where2.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
         }
         const cached = !f.tag && since == null && typeof pdfList === "function" ? pdfList() : null;
-        const found = Array.isArray(cached) ? cached.map((r) => [r.string, r.uid, r.pageTitle]) : timed("pdf-names", () => host.q(`[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`, ...args));
+        const found = Array.isArray(cached) ? cached.map((r) => [r.string, r.uid, r.pageTitle]) : timed("pdf-names", () => host.q(`[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where2.join(" ")}]`, ...args));
         for (const rec of found) {
           const string = rec?.[0];
           const uid = rec?.[1];
@@ -39140,28 +39583,28 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (wantPage && (f.text || f.tag) || wantDaily && f.tag) {
         const find = ["?t", "?u"];
         const inputs = ["$"];
-        const where = [];
+        const where2 = [];
         const args = [];
         if (f.tag) {
           inputs.push("?name");
           args.push(f.tag);
-          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]", "[?b :block/page ?p]");
+          where2.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]", "[?b :block/page ?p]");
         }
-        where.push("[?p :node/title ?t]");
+        where2.push("[?p :node/title ?t]");
         if (f.text) {
           inputs.push("?pat");
           args.push(ciPattern(queryTerms(f.text)[0] || f.text));
-          where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?t)]");
+          where2.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?t)]");
         }
-        where.push("[?p :block/uid ?u]");
+        where2.push("[?p :block/uid ?u]");
         if (since != null) {
           inputs.push("?since");
           args.push(since);
           find.push("?e");
-          where.push("[?p :edit/time ?e]", "[(> ?e ?since)]");
+          where2.push("[?p :edit/time ?e]", "[(> ?e ?since)]");
         }
         const found = timed("pages", () => host.q(
-          `[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`,
+          `[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where2.join(" ")}]`,
           ...args
         ));
         const needle = f.text.toLowerCase();
@@ -39189,28 +39632,28 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (wantBlock && (f.text || f.tag)) {
         const find = ["?s", "?u", "?t"];
         const inputs = ["$"];
-        const where = [];
+        const where2 = [];
         const args = [];
         if (f.tag) {
           inputs.push("?name");
           args.push(f.tag);
-          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
+          where2.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
         }
-        where.push("[?b :block/string ?s]");
+        where2.push("[?b :block/string ?s]");
         if (f.text) {
           inputs.push("?pat");
           args.push(ciPattern(queryTerms(f.text)[0] || f.text));
-          where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?s)]");
+          where2.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?s)]");
         }
-        where.push("[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
+        where2.push("[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
         if (since != null) {
           inputs.push("?since");
           args.push(since);
           find.push("?e");
-          where.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
+          where2.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
         }
         const found = timed("blocks", () => host.q(
-          `[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`,
+          `[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where2.join(" ")}]`,
           ...args
         ));
         for (const rec of found) {
@@ -39284,28 +39727,28 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (!f.types.includes(kind)) continue;
         const find = ["?s", "?u", "?t"];
         const inputs = ["$", "?kind"];
-        const where = [];
+        const where2 = [];
         const args = [BLOCK_KIND_PATTERNS[kind]];
         if (f.tag) {
           inputs.push("?name");
           args.push(f.tag);
-          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
+          where2.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
         }
-        where.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]");
+        where2.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]");
         if (f.text) {
           inputs.push("?pat");
           args.push(ciPattern(queryTerms(f.text)[0] || f.text));
-          where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?s)]");
+          where2.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?s)]");
         }
-        where.push("[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
+        where2.push("[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
         if (since != null) {
           inputs.push("?since");
           args.push(since);
           find.push("?e");
-          where.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
+          where2.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
         }
         const found = timed(kind, () => host.q(
-          `[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`,
+          `[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where2.join(" ")}]`,
           ...args
         ));
         for (const rec of found) {
@@ -39331,14 +39774,14 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         if (titles.length) {
           const find = "?t ?u ?e";
           const inputs = "$ [?t ...]";
-          const where = ["[?p :node/title ?t]", "[?p :block/uid ?u]", "[?p :edit/time ?e]"];
+          const where2 = ["[?p :node/title ?t]", "[?p :block/uid ?u]", "[?p :edit/time ?e]"];
           const args = [titles];
           if (since != null) {
-            where.push("[(> ?e ?since)]");
+            where2.push("[(> ?e ?since)]");
             args.push(since);
           }
           const found = timed("dailies", () => host.q(
-            `[:find ${find} :in ${since != null ? `${inputs} ?since` : inputs} :where ${where.join(" ")}]`,
+            `[:find ${find} :in ${since != null ? `${inputs} ?since` : inputs} :where ${where2.join(" ")}]`,
             ...args
           ));
           for (const rec of found) {
@@ -39357,8 +39800,31 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         }
       }
       if (f.orphan) markOnBoard(candidates2, timed);
-      const rows = narrowLibrary(candidates2, f, nowMs2).slice(0, lim).map(libraryCard);
+      let kept = narrowLibrary(candidates2, f, nowMs2);
+      if (sortNeedsMeta(sort) || metaFilterHostActive(filter)) {
+        timed("meta", () => {
+          attachMeta(kept);
+          return [];
+        });
+        kept = narrowByMeta(kept, filter, { days: f.days, now: nowMs2 });
+      }
+      const rows = sortRows(kept, sort).slice(0, lim).map(libraryCard);
       return { rows, queries };
+    },
+    // Rows with no search text: the pages a sort puts first (recently edited / created, oldest, title), with their numbers.
+    // Reads one page-level query (titles and times, never blocks) and keeps `limit` rows.
+    browse(sort = "edited", limit = 40) {
+      const id = ["edited", "created", "oldest", "title"].includes(sort) ? sort : "edited";
+      const rows = (host.q("[:find ?t ?u ?c ?e :where [?p :node/title ?t] [?p :block/uid ?u] [(get-else $ ?p :create/time 0) ?c] [(get-else $ ?p :edit/time 0) ?e]]") || []).filter((r) => typeof r?.[0] === "string" && !r[0].startsWith("roam/") && r[1]).map((r) => ({ kind: "page", title: r[0], uid: String(r[1]), meta: { created: r[2] || null, edited: r[3] || null, createdBy: "", editedBy: "", refs: null, children: null, length: null }, onBoard: false, tags: [] }));
+      const top = sortRows(rows, id).slice(0, Math.max(1, Math.floor(Number(limit) || 40)));
+      attachMeta(top);
+      return { rows: top.map(libraryCard), queries: [] };
+    },
+    // Display names of the graph's users, for the created-by / edited-by filters.
+    userNames() {
+      const names = /* @__PURE__ */ new Set();
+      for (const query of USER_NAME_QUERIES) for (const r of host.q(query) || []) if (typeof r?.[0] === "string" && r[0]) names.add(r[0]);
+      return [...names].sort((a, b) => a.localeCompare(b));
     },
     // What names a PDF block besides its file: the page it owns (first top-level PDF of a non-daily page)
     // and Roam's PDF page for its url (:pdf/url). Read-only.
@@ -39388,7 +39854,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       return out;
     },
     // Roam semantic-search results → Add-panel rows with the panel's filters (type, tag, days, not on any board).
-    semanticRows(raw, filter, limit = 40) {
+    semanticRows(raw, filter, limit = 40, { sort = "best" } = {}) {
       const f = normalizeLibraryFilter(filter);
       const queries = [];
       const timed = (name, fn) => {
@@ -39415,7 +39881,15 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const candidates2 = semanticCandidates(raw, { pull: (uid) => pull(SEM_PULL, eidKey(uid)), pdfBlockOf }).filter((row4) => !(row4.kind === "block" && DIAGRAM_STRING.test(row4.string)));
       queries.push({ name: "sem-pull", ms: performance.now() - t0 });
       if (f.orphan) markOnBoard(candidates2, timed);
-      const kept = narrowLibrary(candidates2, { ...f, text: "" }, Date.now());
+      let kept = narrowLibrary(candidates2, { ...f, text: "" }, Date.now());
+      if (sortNeedsMeta(sort) || metaFilterHostActive(filter)) {
+        timed("sem-meta", () => {
+          attachMeta(kept);
+          return [];
+        });
+        kept = narrowByMeta(kept, filter, { days: f.days });
+      }
+      if (sort !== "best") kept = sortRows(kept, sort);
       return { rows: kept.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map((row4) => ({ ...libraryCard(row4), semantic: true })), queries };
     },
     // A card's text for "Find related": the page title or block string and its first children.
@@ -45287,13 +45761,13 @@ function revive(raw) {
     pageCount: Number.isInteger(raw.pageCount) && raw.pageCount >= 1 ? raw.pageCount : null,
     w: Number.isInteger(raw.w) && raw.w >= 1 ? raw.w : null,
     h: Number.isInteger(raw.h) && raw.h >= 1 ? raw.h : null,
-    ...titleOf(raw),
+    ...titleOf2(raw),
     ts: typeof raw.ts === "number" && Number.isFinite(raw.ts) ? raw.ts : 0
   };
 }
 var TITLE_LINES = 60;
 var TITLE_LINE_CHARS = 160;
-function titleOf(raw) {
+function titleOf2(raw) {
   const titleRev = Number.isInteger(raw?.titleRev) && raw.titleRev > 0 ? raw.titleRev : 0;
   const pageTitle = typeof raw?.pageTitle === "string" ? raw.pageTitle.slice(0, 300) : null;
   const lines = Array.isArray(raw?.titleLines) ? raw.titleLines.filter((t) => typeof t === "string").slice(0, TITLE_LINES).map((t) => t.slice(0, TITLE_LINE_CHARS)) : [];
@@ -45430,7 +45904,7 @@ function createCoverStore({ indexedDB, storage } = {}) {
         pageCount: record.pageCount ?? null,
         w: record.w ?? null,
         h: record.h ?? null,
-        ...titleOf(record),
+        ...titleOf2(record),
         ts: typeof record.ts === "number" ? record.ts : 0
       };
       remember2(record.url);
@@ -45488,7 +45962,7 @@ function createCoverStore({ indexedDB, storage } = {}) {
           pageCount: Number.isInteger(record.pageCount) && record.pageCount >= 1 ? record.pageCount : null,
           w: Number.isInteger(record.w) && record.w >= 1 ? record.w : null,
           h: Number.isInteger(record.h) && record.h >= 1 ? record.h : null,
-          ...titleOf(record),
+          ...titleOf2(record),
           ts: typeof record.ts === "number" && Number.isFinite(record.ts) ? record.ts : 0
         };
         if (!idbDead) {
@@ -45619,8 +46093,8 @@ function highlightLensTag(color) {
 }
 
 // src/model/halo.js
-var DAY_MS2 = 864e5;
-var MONTHS6 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+var DAY_MS3 = 864e5;
+var MONTHS7 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 var HALO_PULL_LIGHT = "[:create/time :edit/time {:create/user [:user/display-name]}]";
 var HALO_REF_CAP = 200;
 var HALO_REFS_SPAN_QUERY = "[:find (count ?r) (min ?t) (max ?t) :in $ ?u :where [?e :block/uid ?u] [?r :block/refs ?e] [?r :create/time ?t]]";
@@ -45676,12 +46150,12 @@ function formatMade(ms) {
   const n2 = finite4(ms);
   if (n2 == null) return "";
   const date = new Date(n2);
-  return `${MONTHS6[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
+  return `${MONTHS7[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
 }
 function headerText({ created, board: board2, section: section2, userName: userName2 } = {}) {
   const when = formatMade(created);
-  const where = String(board2 || "").trim() || "Untitled board";
-  let text4 = when ? `Made ${when} on ${where}` : `Made on ${where}`;
+  const where2 = String(board2 || "").trim() || "Untitled board";
+  let text4 = when ? `Made ${when} on ${where2}` : `Made on ${where2}`;
   const sec = String(section2 || "").trim();
   if (sec) text4 += ` › ${sec}`;
   const name = String(userName2 || "").trim();
@@ -45697,7 +46171,7 @@ function company(rows, uid) {
   for (const row4 of list) {
     if (!row4 || row4.uid === uid) continue;
     const stamp2 = finite4(row4.created);
-    if (stamp2 == null || Math.abs(stamp2 - created) > DAY_MS2) continue;
+    if (stamp2 == null || Math.abs(stamp2 - created) > DAY_MS3) continue;
     out.push(row4.uid);
     if (out.length >= 6) break;
   }
@@ -45845,9 +46319,9 @@ function openHaloPopover({
   head.className = "pxd-halo__head";
   head.append("Made ");
   head.append(dateNode(doc, model.created, { pageExists, renderString, mounts }));
-  const where = String(model.board || "").trim() || "Untitled board";
+  const where2 = String(model.board || "").trim() || "Untitled board";
   const section2 = String(model.section || "").trim();
-  head.append(` on ${where}${section2 ? ` › ${section2}` : ""}`);
+  head.append(` on ${where2}${section2 ? ` › ${section2}` : ""}`);
   const name = String(model.userName || "").trim();
   if (name) head.append(` by ${name}`);
   pop.append(head);
@@ -46657,8 +47131,8 @@ function mountMemoryLane({
 // src/model/suggest.js
 var SUGGEST_CAP = 60;
 var SUGGEST_LIMIT = 300;
-var MONTHS7 = "January|February|March|April|May|June|July|August|September|October|November|December";
-var DAILY_RE2 = new RegExp(`^(${MONTHS7}) \\d{1,2}(?:st|nd|rd|th), \\d{4}$`);
+var MONTHS8 = "January|February|March|April|May|June|July|August|September|October|November|December";
+var DAILY_RE2 = new RegExp(`^(${MONTHS8}) \\d{1,2}(?:st|nd|rd|th), \\d{4}$`);
 var escapeReg = (text4) => String(text4).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function isDailyTitle2(title) {
   return DAILY_RE2.test(String(title ?? "").trim());
@@ -47519,7 +47993,7 @@ var THEME = {
 };
 var esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 var n1 = (n2) => Math.round(n2 * 10) / 10;
-var titleOf2 = (item) => {
+var titleOf3 = (item) => {
   if (item.title) return item.title;
   if (item.kind === "image") return "Image";
   return item.string || "Untitled";
@@ -47621,9 +48095,9 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
       const rx = lane2 ? 0 : 12;
       body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="${rx}" fill="${fill}" fill-opacity="${dark ? 0.6 : 1}" stroke="${line}" stroke-width="2"/>`);
       if (lane2 && item.axis !== "vertical") {
-        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + r.h / 2)}" font-size="16" font-weight="700" dominant-baseline="central" fill="${text4}">${esc(titleOf2(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + r.h / 2)}" font-size="16" font-weight="700" dominant-baseline="central" fill="${text4}">${esc(titleOf3(item))}</text>`);
       } else {
-        body.push(`<text x="${n1(r.x + 4)}" y="${n1(r.y - 10)}" font-size="16" font-weight="700" fill="${text4}">${esc(titleOf2(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 4)}" y="${n1(r.y - 10)}" font-size="16" font-weight="700" fill="${text4}">${esc(titleOf3(item))}</text>`);
       }
     } else if (item.type === "text") {
       const size = item.fontSize || 16;
@@ -47632,7 +48106,7 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
         const stroke = item.border ? hex(item.border)[0] : item.color ? line : theme.border;
         const ink = item.textColor ? hex(item.textColor)[2] : theme.text;
         body.push(`<path d="${shapePath(r, item.shape)}" fill="${paint2}" stroke="${stroke}" stroke-width="2"/>`);
-        body.push(`<text x="${n1(r.x + r.w / 2)}" y="${n1(r.y + r.h / 2)}" font-size="${size}" text-anchor="middle" dominant-baseline="central" fill="${ink}">${esc(titleOf2(item))}</text>`);
+        body.push(`<text x="${n1(r.x + r.w / 2)}" y="${n1(r.y + r.h / 2)}" font-size="${size}" text-anchor="middle" dominant-baseline="central" fill="${ink}">${esc(titleOf3(item))}</text>`);
       } else if (item.look === "sticky") {
         const paper = item.fill ? hex(item.fill)[1] : item.color ? fill : hex("yellow")[1];
         const ink = item.textColor ? hex(item.textColor)[2] : item.color ? text4 : hex("yellow")[2];
@@ -47640,9 +48114,9 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
           defs.push(`<filter id="pxd-sticky-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#1c1917" flood-opacity="0.22"/></filter>`);
         }
         body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="2" fill="${paper}" filter="url(#pxd-sticky-shadow)"/>`);
-        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + size + 8)}" font-size="${size}" fill="${ink}">${esc(titleOf2(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + size + 8)}" font-size="${size}" fill="${ink}">${esc(titleOf3(item))}</text>`);
       } else {
-        body.push(`<text x="${n1(r.x)}" y="${n1(r.y + size)}" font-size="${size}" fill="${theme.text}">${esc(titleOf2(item))}</text>`);
+        body.push(`<text x="${n1(r.x)}" y="${n1(r.y + size)}" font-size="${size}" fill="${theme.text}">${esc(titleOf3(item))}</text>`);
       }
     } else {
       const clip7 = `pxd-clip-${index}`;
@@ -47654,7 +48128,7 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
         const iy = r.y + 8;
         body.push(`<image href="${esc(picture)}" x="${n1(ix)}" y="${n1(iy)}" width="${n1(Math.max(1, r.w - 16))}" height="${n1(Math.max(1, r.h - 16))}" preserveAspectRatio="xMidYMid meet"/>`);
       } else {
-        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip7})">${esc(titleOf2(item))}</text>`);
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip7})">${esc(titleOf3(item))}</text>`);
       }
     }
   });
@@ -47697,10 +48171,10 @@ function boardToMarkdown(board2, rects) {
       if (!item) continue;
       if (item.type === "section") {
         if (lines.length) lines.push("");
-        lines.push(`${"#".repeat(Math.min(6, item.depth + 1))} ${oneLine(titleOf2(item))}`);
+        lines.push(`${"#".repeat(Math.min(6, item.depth + 1))} ${oneLine(titleOf3(item))}`);
         walk3(item.members);
       } else {
-        lines.push(`- ${oneLine(titleOf2(item))}`);
+        lines.push(`- ${oneLine(titleOf3(item))}`);
         const kids = [...item.content ?? []].sort((a, b) => (a[":block/order"] ?? 0) - (b[":block/order"] ?? 0));
         if (item.tableUid) lines.push("  - {{[[table]]}}");
         content(kids, item.tableUid ? 2 : 1);
@@ -47713,8 +48187,8 @@ function boardToMarkdown(board2, rects) {
     if (lines.length) lines.push("");
     lines.push("## Connections");
     for (const e2 of edges) {
-      const a = oneLine(titleOf2(board2.items.get(e2.from)));
-      const b = oneLine(titleOf2(board2.items.get(e2.to)));
+      const a = oneLine(titleOf3(board2.items.get(e2.from)));
+      const b = oneLine(titleOf3(board2.items.get(e2.to)));
       lines.push(e2.label ? `${a} -> ${e2.label} -> ${b}` : `${a} -> ${b}`);
     }
   }
@@ -55291,7 +55765,7 @@ var PLACE_PREVIEW_MIN = 0.6;
 var PREVIEW_VIEW_FRACTION = 0.9;
 var MIN_SCALE = 0.05;
 var MAX_SCALE = 4;
-var num5 = (value, fallback = 0) => {
+var num6 = (value, fallback = 0) => {
   const n2 = Number(value);
   return Number.isFinite(n2) ? n2 : fallback;
 };
@@ -55322,14 +55796,14 @@ function zoneAt(x, y, { rootRect = null, paneRect = null, blocked: blocked3 = []
   return "board";
 }
 function zoneScale(zone, zoom) {
-  if (zone === "board") return clamp3(num5(zoom, 1) || 1, MIN_SCALE, MAX_SCALE);
+  if (zone === "board") return clamp3(num6(zoom, 1) || 1, MIN_SCALE, MAX_SCALE);
   return PANE_SCALE;
 }
 function ghostContent(source = {}) {
   const kind = ["text", "table", "figure", "highlight", "blocks"].includes(source.kind) ? source.kind : "text";
   const text4 = String(source.text ?? "").replace(/\s+/g, " ").trim();
-  const rowCap = clamp3(Math.round(num5(source.rowCap, 3)) || 3, 1, 12);
-  const colCap = clamp3(Math.round(num5(source.colCap, 6)) || 6, 1, 12);
+  const rowCap = clamp3(Math.round(num6(source.rowCap, 3)) || 3, 1, 12);
+  const colCap = clamp3(Math.round(num6(source.colCap, 6)) || 6, 1, 12);
   const rows = Array.isArray(source.rows) ? source.rows.slice(0, rowCap).map((row4) => Array.isArray(row4) ? row4.slice(0, colCap).map((cell) => String(cell ?? "")) : []) : [];
   const src = typeof source.src === "string" ? source.src : "";
   const color = typeof source.color === "string" ? source.color : "";
@@ -55388,7 +55862,7 @@ function createDragGhost({
   const host = root || doc?.body;
   const look = ghostContent(content);
   const node2 = buildGhost(doc, look);
-  const ghostW = clamp3(num5(width, GHOST_W) || GHOST_W, 120, 1200);
+  const ghostW = clamp3(num6(width, GHOST_W) || GHOST_W, 120, 1200);
   node2.style.width = `${ghostW}px`;
   if (ghostW !== GHOST_W) node2.style.maxWidth = "none";
   node2.style.transform = "translate3d(-10000px, -10000px, 0)";
@@ -55398,8 +55872,8 @@ function createDragGhost({
   try {
     node2.style.transform = "translate3d(0px, 0px, 0)";
     const box2 = node2.getBoundingClientRect?.();
-    if (box2) origin = { x: num5(box2.left), y: num5(box2.top) };
-    height = num5(node2.offsetHeight, 0) || num5(box2?.height, 0) || 120;
+    if (box2) origin = { x: num6(box2.left), y: num6(box2.top) };
+    height = num6(node2.offsetHeight, 0) || num6(box2?.height, 0) || 120;
   } catch {
   }
   const size = { w: ghostW, h: height };
@@ -55409,23 +55883,23 @@ function createDragGhost({
     blocked: blocked3 || chromeObstacles(root, { win: win2 })
   };
   if (rects.rootRect && !(rects.rootRect.right > rects.rootRect.left)) rects.rootRect = null;
-  const zoomNow = zoom != null ? num5(zoom, 1) : boardZoom(root, win2);
-  const start = { x: num5(pointer?.x), y: num5(pointer?.y) };
-  const src = from && num5(from.width) > 0 && num5(from.height) > 0 ? from : { left: start.x - 8, top: start.y - 8, width: 16, height: 16 };
-  const grab = grabAt ? { fx: clamp3(num5(grabAt.fx, 0.5), 0, 1), fy: clamp3(num5(grabAt.fy, 0.5), 0, 1) } : {
-    fx: clamp3((start.x - num5(src.left)) / num5(src.width, 1), 0, 1),
-    fy: clamp3((start.y - num5(src.top)) / num5(src.height, 1), 0, 1)
+  const zoomNow = zoom != null ? num6(zoom, 1) : boardZoom(root, win2);
+  const start = { x: num6(pointer?.x), y: num6(pointer?.y) };
+  const src = from && num6(from.width) > 0 && num6(from.height) > 0 ? from : { left: start.x - 8, top: start.y - 8, width: 16, height: 16 };
+  const grab = grabAt ? { fx: clamp3(num6(grabAt.fx, 0.5), 0, 1), fy: clamp3(num6(grabAt.fy, 0.5), 0, 1) } : {
+    fx: clamp3((start.x - num6(src.left)) / num6(src.width, 1), 0, 1),
+    fy: clamp3((start.y - num6(src.top)) / num6(src.height, 1), 0, 1)
   };
   let current3 = { x: start.x, y: start.y };
   let zone = rects.rootRect ? zoneAt(start.x, start.y, rects) : "pane";
-  let sx = clamp3(num5(src.width) / size.w, MIN_SCALE, MAX_SCALE);
-  let sy = clamp3(num5(src.height) / size.h, MIN_SCALE, MAX_SCALE);
-  const footSize = { w: clamp3(num5(footprint?.w, ghostW) || ghostW, 1, 4e3), h: clamp3(num5(footprint?.h, size.h) || size.h, 1, 4e3) };
+  let sx = clamp3(num6(src.width) / size.w, MIN_SCALE, MAX_SCALE);
+  let sy = clamp3(num6(src.height) / size.h, MIN_SCALE, MAX_SCALE);
+  const footSize = { w: clamp3(num6(footprint?.w, ghostW) || ghostW, 1, 4e3), h: clamp3(num6(footprint?.h, size.h) || size.h, 1, 4e3) };
   const targetScale = (z) => {
     if (z !== "board") return PANE_SCALE;
     const zoomScale = zoneScale(z, zoomNow);
     if (!(previewMin > 0) || zoomScale >= previewMin) return zoomScale;
-    const room = num5(rects.rootRect?.right) - num5(rects.rootRect?.left) || num5(win2?.innerWidth, 0) || 0;
+    const room = num6(rects.rootRect?.right) - num6(rects.rootRect?.left) || num6(win2?.innerWidth, 0) || 0;
     const cap4 = room > 0 ? room * PREVIEW_VIEW_FRACTION / size.w : previewMin;
     return Math.max(zoomScale, Math.min(previewMin, cap4));
   };
@@ -55544,7 +56018,7 @@ function createDragGhost({
     element: () => node2,
     move(x, y) {
       if (ended) return;
-      current3 = { x: num5(x, current3.x), y: num5(y, current3.y) };
+      current3 = { x: num6(x, current3.x), y: num6(y, current3.y) };
       const next = rects.rootRect ? zoneAt(current3.x, current3.y, rects) : zone;
       if (next !== zone) {
         zone = next;
@@ -55579,10 +56053,10 @@ function createDragGhost({
 }
 function dispatchDrop({ doc = globalThis.document, root, pointer, at, entries = [], altKey = false } = {}) {
   const win2 = doc?.defaultView || globalThis;
-  const target = doc?.elementFromPoint?.(num5(pointer?.x), num5(pointer?.y)) || null;
+  const target = doc?.elementFromPoint?.(num6(pointer?.x), num6(pointer?.y)) || null;
   if (!target || root && !root.contains?.(target) || target.closest?.(".pxd-read")) return false;
-  const x = num5(at?.x, num5(pointer?.x));
-  const y = num5(at?.y, num5(pointer?.y));
+  const x = num6(at?.x, num6(pointer?.x));
+  const y = num6(at?.y, num6(pointer?.y));
   const Transfer = win2.DataTransfer;
   const Drag = win2.DragEvent;
   if (typeof Transfer === "function" && typeof Drag === "function") {
@@ -56459,7 +56933,7 @@ ${imageLine(p.imageUrl, p.caption || buildFocusContext(p.doc, focusOf(p)).figure
       const pc = built.pieces;
       const label = p.label || chipText2(built.chip) || `Part ${i + 1}`;
       const lines = [`=== Part ${i + 1} — ${label} ===`];
-      if (pc.docTitle) lines.push(`Document: ${pc.docTitle}`);
+      if (p.docName || pc.docTitle) lines.push(`Document: ${p.docName || pc.docTitle}`);
       if (pc.section && !/^\(before/.test(pc.section)) lines.push(`Section: ${pc.section}`);
       lines.push(pc.focus);
       if (pc.nearby) lines.push(`Nearby text:
@@ -56625,7 +57099,7 @@ function mergedCells(table) {
   }
   return n2;
 }
-function plural(n2, one, many) {
+function plural2(n2, one, many) {
   return `${n2} ${n2 === 1 ? one : many}`;
 }
 function pinFor(doc, payload) {
@@ -56699,7 +57173,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     } catch {
     }
   };
-  const where = (payload, size) => {
+  const where2 = (payload, size) => {
     const c = payload?.client;
     if (c && Number.isFinite(c.x) && Number.isFinite(c.y) && typeof toWorld === "function") {
       let p = null;
@@ -56750,8 +57224,8 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const res = await session?.insertParsedBelow?.({ pdfUid: payload.pdfUid, markdown, blockEstimate, ...pin2 ? { pin: pin2 } : {} });
       if (res?.ok) {
         pick2(res.uids);
-        const where2 = res.path === "card" ? "beside the PDF" : "below the PDF";
-        say(`Inserted ${plural(blockEstimate, "block", "blocks")} ${where2}`);
+        const where3 = res.path === "card" ? "beside the PDF" : "below the PDF";
+        say(`Inserted ${plural2(blockEstimate, "block", "blocks")} ${where3}`);
       }
       return res || { ok: false, reason: "no-session" };
     },
@@ -56761,14 +57235,14 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const table = selectBlocks(doc, payload.ids).find((b) => b?.type === "table");
       if (!table) return { ok: false, reason: "empty" };
       const sized = parsedTableSize(table);
-      const at = where(payload, sized);
+      const at = where2(payload, sized);
       const pin2 = pinFor(doc, payload);
       const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: pageNoteBlocks(doc, table), caption: parsedTableCaption(table, doc), ...pin2 ? { pin: pin2 } : {} });
       if (res?.ok) {
         pick2(res.uid ? [res.uid] : []);
         const merged = mergedCells(table);
         const how = res.path === "grid" ? "Roam Grid" : res.path === "flat" ? "flat Roam table" : "native Roam table";
-        say(merged ? `Table inserted · ${how} with ${plural(merged, "merged cell", "merged cells")}` : `Table inserted · ${how}`);
+        say(merged ? `Table inserted · ${how} with ${plural2(merged, "merged cell", "merged cells")}` : `Table inserted · ${how}`);
       }
       return res || { ok: false, reason: "no-session" };
     },
@@ -56781,16 +57255,16 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       const plan = planParseInsert(withImages, { ...payload, kind: "blocks", footnoteFormat: fnFormat() });
       const pin2 = pinFor(doc, payload);
       if (plan.action === "sections") {
-        const at = where(payload, CARD_SIZE);
+        const at = where2(payload, CARD_SIZE);
         const res = await session?.sendParsedToBoard?.({ ...at, sections: plan.sections, ...pin2 ? { pin: pin2 } : {} });
         if (res?.ok) {
           pick2(res.uids);
-          say(`Sent ${plural(plan.sections.length, "card", "cards")} to the board`);
+          say(`Sent ${plural2(plan.sections.length, "card", "cards")} to the board`);
         }
         return res || { ok: false, reason: "no-session" };
       }
       if (plan.action === "card") {
-        const at = where(payload, CARD_SIZE);
+        const at = where2(payload, CARD_SIZE);
         const res = await session?.insertParsedCard?.({ ...at, markdown: plan.markdown, ...pin2 ? { pin: pin2 } : {} });
         if (res?.ok) {
           pick2(res.uid ? [res.uid] : []);
@@ -56804,7 +57278,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     async insertTextCard(payload) {
       const markdown = textCardMarkdown(payload || {});
       if (!markdown) return { ok: false, reason: "empty" };
-      const at = where(payload, CARD_SIZE);
+      const at = where2(payload, CARD_SIZE);
       const res = await session?.insertParsedCard?.({ ...at, markdown });
       if (res?.ok) {
         pick2(res.uid ? [res.uid] : []);
@@ -56830,7 +57304,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
         resolved.push({ uid, pinUid: src?.pin ? uid : "", pdfUid: typeof src?.pdfUid === "string" ? src.pdfUid : "", url: typeof src?.url === "string" ? src.url : "" });
       }
       const uids = [...new Set(resolved.map((r) => r.uid).filter(Boolean))];
-      const at = where(payload, CARD_SIZE);
+      const at = where2(payload, CARD_SIZE);
       const res = await session?.insertParsedCard?.({ ...at, markdown, ...uids[0] ? { sourceUid: uids[0] } : {}, ...uids.length > 1 ? { sourceUids: uids.slice(1) } : {} });
       if (res?.ok) {
         pick2(res.uid ? [res.uid] : []);
@@ -56843,7 +57317,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
     async insertChartTable(payload) {
       const table = payload?.table;
       if (!table || table.type !== "table" || !(table.rows > 0)) return { ok: false, reason: "empty" };
-      const at = where(payload, parsedTableSize(table));
+      const at = where2(payload, parsedTableSize(table));
       const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: [], ...payload.pin ? { pin: payload.pin } : {} });
       if (res?.ok) {
         pick2(res.uid ? [res.uid] : []);
@@ -56856,7 +57330,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
       if (!doc) return { ok: false, reason: "missing-cache" };
       const withImages = await withUploadedImages(doc, payload.ids);
       const { markdown } = toRoamMarkdown(withImages, payload.ids, { footnoteFormat: fnFormat() });
-      const at = where(payload, CARD_SIZE);
+      const at = where2(payload, CARD_SIZE);
       const pin2 = pinFor(withImages, payload);
       const res = await session?.insertParsedCard?.({ ...at, markdown, ...pin2 ? { pin: pin2 } : {} });
       if (res?.ok) {
@@ -57761,7 +58235,7 @@ async function parseCloud({
   const key = String(apiKey || "").trim();
   if (!key) throw fail2("no-key", "Add a LlamaParse key in Engines. It stays on this device.");
   if (!Object.prototype.hasOwnProperty.call(TIER_CREDITS, tier)) throw fail2("bad-tier", "bad tier");
-  const where = region === "eu" ? "eu" : "us";
+  const where2 = region === "eu" ? "eu" : "us";
   try {
     if (transport.kind === "helper") {
       const provider = await helperParse({
@@ -57769,7 +58243,7 @@ async function parseCloud({
         transport,
         bytes,
         apiKey: key,
-        region: where,
+        region: where2,
         tier,
         pages,
         signal,
@@ -57783,7 +58257,7 @@ async function parseCloud({
         transport,
         bytes,
         apiKey: key,
-        region: where,
+        region: where2,
         tier,
         pages,
         layout,
@@ -57946,11 +58420,11 @@ function openCloudConfirm({
   title.textContent = initial.title;
   sheet.append(title);
   if (initial.region) {
-    const where = doc.createElement("p");
-    where.className = "pxd-cloud-confirm__region";
-    where.setAttribute("data-cloud-region", initial.region);
-    where.textContent = `Region · ${initial.region}`;
-    sheet.append(where);
+    const where2 = doc.createElement("p");
+    where2.className = "pxd-cloud-confirm__region";
+    where2.setAttribute("data-cloud-region", initial.region);
+    where2.textContent = `Region · ${initial.region}`;
+    sheet.append(where2);
   }
   const tiers = doc.createElement("div");
   tiers.className = "pxd-cloud-confirm__tiers";
@@ -59597,6 +60071,8 @@ function triggerAt(text4, caret) {
   if (blk) return { kind: "block", query: blk.q, start: blk.i };
   const tag = /(^|[\s(])#([^\s#[\]()]{0,60})$/.exec(before);
   if (tag) return { kind: "tag", query: tag[2], start: before.length - tag[2].length - 1 };
+  const mention = /(^|[\s(])@([^\s@]{0,40}(?: \d{1,3})?)$/.exec(before);
+  if (mention) return { kind: "at", query: mention[2], start: before.length - mention[2].length - 1 };
   return null;
 }
 function applyMention(text4, trigger, caret, insert) {
@@ -60144,6 +60620,199 @@ async function currentPageTitle(w) {
   return page?.[0] || "";
 }
 
+// src/model/ask-parts.js
+init_pdf();
+var AT_ALL = "@All parts";
+var atToken = (n2) => `@Part ${n2}`;
+var squash4 = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+var clipText = (text4, max) => {
+  const t = squash4(text4);
+  return t.length <= max ? t : `${t.slice(0, Math.max(1, max - 1)).replace(/\s+\S*$/, "").trimEnd() || t.slice(0, max - 1)}…`;
+};
+function letterSpaced2(text4) {
+  const words = squash4(text4).split(" ").filter(Boolean);
+  return words.length >= 5 && words.filter((w) => w.length <= 2).length / words.length >= 0.7;
+}
+function partPdfName(part) {
+  for (const c of [part?.docName, part?.docTitle]) {
+    const t = squash4(c);
+    if (t && !letterSpaced2(t)) return t;
+  }
+  return part?.url && pdfFileTitle(part.url) || "PDF";
+}
+function partType(part) {
+  if (!part) return "part";
+  if (part.wholeDoc) return "whole";
+  if (part.kind === "image") return "figure";
+  if (part.image) return "figure";
+  const b = part.doc?.blocks?.[part.blockId];
+  const t = b?.type;
+  if (t === "figure" || t === "table" || t === "heading") return t;
+  if (t === "caption") return "figure";
+  if (part.selection) return "selection";
+  if (t === "para" || t === "list" || t === "text") return "paragraph";
+  if (part.page != null && !part.blockId) return "page";
+  return "part";
+}
+var TYPE_WORDS = {
+  figure: "figure fig image chart picture",
+  table: "table",
+  heading: "heading section title",
+  paragraph: "paragraph text para",
+  selection: "selection highlight text",
+  page: "page",
+  whole: "whole pdf document",
+  part: ""
+};
+function partBase(part) {
+  let label = squash4(part?.label);
+  const doc = squash4(part?.docTitle);
+  if (doc && label.endsWith(` · ${doc}`)) label = label.slice(0, -(doc.length + 3)).trim();
+  if (part?.wholeDoc) return "Whole document";
+  return label || "Part";
+}
+function describeParts(parts) {
+  return (parts || []).filter(Boolean).map((p, i) => {
+    const pdf = partPdfName(p);
+    const base = partBase(p);
+    const thumb2 = p.image && typeof p.image.thumb === "string" ? p.image.thumb : "";
+    return {
+      n: i + 1,
+      key: p.key,
+      type: partType(p),
+      base,
+      pdf,
+      full: `${base} · ${pdf}`,
+      short: `${clipText(base, 30)} · ${clipText(pdf, 26)}`,
+      thumb: thumb2
+    };
+  });
+}
+function atItems({ parts = [], mentions = [] } = {}) {
+  const d = Array.isArray(parts) && parts.length && parts[0]?.n ? parts : describeParts(parts);
+  const items = [];
+  if (d.length > 1) items.push({ id: "all", group: "All", label: "All parts", detail: `${d.length} parts`, token: AT_ALL, all: true, hay: "all parts every everything" });
+  for (const x of d) {
+    items.push({
+      id: `part:${x.key}`,
+      group: x.type === "whole" ? "Whole PDF" : "Parts",
+      label: `Part ${x.n} · ${x.base}`,
+      detail: x.pdf,
+      thumb: x.thumb,
+      token: atToken(x.n),
+      n: x.n,
+      key: x.key,
+      hay: `part ${x.n} ${TYPE_WORDS[x.type] || ""} ${x.base} ${x.pdf}`.toLowerCase()
+    });
+  }
+  for (const m of mentions || []) {
+    if (m.kind === "block") items.push({ id: `block:${m.uid}`, group: "Pages and blocks", label: `Block: ${clipText(m.label || m.uid, 60)}`, detail: "", insert: `((${m.uid}))`, mention: m, hay: `block ${m.label || ""} ${m.uid}`.toLowerCase() });
+    else items.push({ id: `page:${m.title}`, group: "Pages and blocks", label: `Page: ${m.title}`, detail: "", insert: `[[${m.title}]]`, mention: m, hay: `page ${m.title}`.toLowerCase() });
+  }
+  return items;
+}
+var GROUPS = ["All", "Parts", "Whole PDF", "Pages and blocks"];
+function filterAtItems(items, query, limit = 30) {
+  const words = squash4(query).toLowerCase().split(" ").filter(Boolean);
+  const hits = [];
+  (items || []).forEach((it, order) => {
+    let rank = 2;
+    for (const w of words) {
+      if (/^\d+$/.test(w)) {
+        if (it.n == null) {
+          if (!it.hay.includes(w)) return;
+          continue;
+        }
+        const s = String(it.n);
+        if (s === w) rank = Math.min(rank, 0);
+        else if (s.startsWith(w)) rank = Math.min(rank, 1);
+        else return;
+      } else if (!it.hay.includes(w)) return;
+    }
+    hits.push([GROUPS.indexOf(it.group), rank, order, it]);
+  });
+  hits.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+  return hits.slice(0, limit).map((h) => h[3]);
+}
+var REF_RE3 = /(^|[^\w@])@(?:Part\s+(\d{1,3})(?!\d)(\s*\(removed\))?|All parts\b)/gi;
+function parseAtRefs(text4) {
+  const src = String(text4 ?? "");
+  const out = [];
+  let m;
+  REF_RE3.lastIndex = 0;
+  while (m = REF_RE3.exec(src)) {
+    const index = m.index + m[1].length;
+    out.push({ index, length: m[0].length - m[1].length, n: m[2] ? Number(m[2]) : null, all: !m[2], removed: Boolean(m[3]) });
+  }
+  return out;
+}
+function danglingAtRefs(text4, count) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const r of parseAtRefs(text4)) {
+    if (r.all) continue;
+    if (!r.removed && r.n >= 1 && r.n <= count) continue;
+    if (seen.has(r.n)) continue;
+    seen.add(r.n);
+    out.push({ n: r.n, token: atToken(r.n), removed: r.removed });
+  }
+  return out;
+}
+function afterPartRemoved(text4, removedNo) {
+  let hit = false;
+  const next = String(text4 ?? "").replace(REF_RE3, (all, pre, n2, gone) => {
+    if (!n2 || gone) return all;
+    const k = Number(n2);
+    if (k === removedNo) {
+      hit = true;
+      return `${pre}@Part ${k} (removed)`;
+    }
+    if (k > removedNo) return `${pre}@Part ${k - 1}`;
+    return all;
+  });
+  return { text: next, hit };
+}
+function danglingMessage(dangling) {
+  if (!dangling.length) return "";
+  const names = dangling.map((d) => d.token).join(", ");
+  const verb = dangling.length === 1 ? "no longer exists" : "no longer exist";
+  return `${names} ${verb}. Delete ${dangling.length === 1 ? "it" : "them"} from the question or add the part back.`;
+}
+function insertToken(text4, caret, token) {
+  const src = String(text4 ?? "");
+  const at = Number.isInteger(caret) ? Math.max(0, Math.min(caret, src.length)) : src.length;
+  const head = src.slice(0, at);
+  const tail = src.slice(at);
+  const lead = head && !/\s$/.test(head) ? " " : "";
+  const trail = tail && /^\s/.test(tail) ? "" : " ";
+  const next = `${head}${lead}${token}${trail}${tail}`;
+  return { text: next, caret: head.length + lead.length + token.length + trail.length };
+}
+var where = (d) => d.type === "whole" ? `the whole PDF "${d.pdf}"` : `${d.base.replace(/ · /g, ", ")} of "${d.pdf}"`;
+function atPreamble(text4, descs, { numbered = true } = {}) {
+  const seen = /* @__PURE__ */ new Set();
+  const lines = [];
+  for (const r of parseAtRefs(text4)) {
+    if (r.removed) continue;
+    if (r.all) {
+      if (seen.has("all") || !descs.length) continue;
+      seen.add("all");
+      lines.push(`@All parts means every part of the context (${descs.length}).`);
+      continue;
+    }
+    const d = descs[r.n - 1];
+    if (!d || seen.has(r.n)) continue;
+    seen.add(r.n);
+    lines.push(`${atToken(r.n)} means ${numbered ? `Part ${r.n} of the context` : "the part in the context"}: ${where(d)}.`);
+  }
+  return lines.length ? `In my question, ${lines.join(" ")}` : "";
+}
+function withAtPreamble(prompt, preamble) {
+  return preamble ? `${preamble}
+
+${prompt}` : String(prompt ?? "");
+}
+
 // src/view/ask-composer.js
 var make = (doc, tag, cls, parent, text4) => {
   const node2 = doc.createElement(tag);
@@ -60397,6 +61066,11 @@ function createSuggest(doc, host) {
       }
       const r = make(doc, "div", "pxd-ask__sitem", el2);
       r.setAttribute("role", "option");
+      if (entry.thumb) {
+        const img = make(doc, "img", "pxd-ask__sthumb", r);
+        img.setAttribute("src", entry.thumb);
+        img.setAttribute("alt", "");
+      }
       make(doc, "span", "pxd-ask__slabel", r, entry.label);
       if (entry.detail) make(doc, "span", "pxd-ask__sdetail", r, entry.detail);
       r._entry = entry;
@@ -60455,8 +61129,9 @@ var OFF_NOTE = "Figure images are off in settings — text only";
 var UPLOADING_NOTE = "Uploading figure…";
 var VISION_KEY = "pxd-ask-vision-model";
 var TITLE = "Live AI Chat";
-var PLACEHOLDER = "Ask… (/ for commands, [[ or # for pages)";
+var PLACEHOLDER = "Ask… (/ for commands, [[ or # for pages, @ for parts)";
 var BLOCK_SEARCH_MS = 150;
+var FLASH_MS = 1200;
 var GEOM_KEY = "pxd-ask-window";
 var MIN_WIDTH = 340;
 var MIN_HEIGHT = 320;
@@ -60601,9 +61276,17 @@ function makeEntry(o) {
     jumpPage: o.jumpPage || null,
     addCard: o.addCard || null,
     toast: o.toast || null,
-    opts: o
+    opts: o,
+    pdfName: typeof o.pdfName === "function" ? o.pdfName : null
   };
 }
+var callName = (fn, arg) => {
+  try {
+    return typeof fn === "function" ? String(fn(arg) ?? "") : "";
+  } catch {
+    return "";
+  }
+};
 var asPart = (e2) => ({
   key: e2.key,
   label: e2.label,
@@ -60614,7 +61297,9 @@ var asPart = (e2) => ({
   page: e2.focus.page ?? null,
   wholeDoc: e2.isWhole,
   image: e2.hasImage ? e2.image : null,
-  service: e2.service
+  service: e2.service,
+  docTitle: e2.built.chip?.docTitle || "",
+  docName: callName(e2.pdfName, e2)
 });
 var chat = null;
 var active = () => chat?.session || null;
@@ -60973,7 +61658,8 @@ function startSession(s, o) {
   const ta = () => s.composer?.textarea || null;
   const modelSel = () => s.composer?.model || null;
   const multiLike = () => Boolean(multi) || entries.length > 1;
-  const ctxParts = () => multi ? parts.map((p) => ({ ...p, service: multiService })) : entries.map(asPart);
+  const ctxParts = () => multi ? parts.map((p) => ({ ...p, service: multiService, docName: callName(o.pdfName, p) })) : entries.map(asPart);
+  const descs = () => describeParts(ctxParts());
   const multiLabel = () => {
     const n2 = multi ? parts.length : entries.length;
     return `${n2} part${n2 === 1 ? "" : "s"}`;
@@ -61019,6 +61705,7 @@ function startSession(s, o) {
     e2.built = buildFocusContext(e2.source, e2.focus, { question: q2 });
     s.chip.textContent = chipText2(e2.built.chip);
   };
+  const atPrompt = (asked) => sources.part ? withAtPreamble(asked, atPreamble(asked, descs(), { numbered: multiLike() })) : asked;
   const defaultPrompt = () => multiLike() ? MULTI_DEFAULT_PROMPT : one()?.built.prompt || "";
   const questionText = () => {
     const t = ta();
@@ -61079,7 +61766,7 @@ ${lines.join("\n")}` : "";
     if (multiLike()) {
       const shown = ctxParts().map((p) => p.image && sending ? { ...p, imageUrl: knownUrls.get(p.key) || PENDING_URL } : p);
       const b = buildMultiContext(shown, question);
-      s.preview.textContent = `${previewText({ instructions: b.instructions, context: b.context, prompt: promptWithImages(question, shown.some((p) => p.imageUrl)) })}
+      s.preview.textContent = `${previewText({ instructions: b.instructions, context: b.context, prompt: promptWithImages(atPrompt(question), shown.some((p) => p.imageUrl)) })}
 
 (about ${b.tokensEstimate.toLocaleString?.() ?? b.tokensEstimate} tokens before the question)`;
       return;
@@ -61090,7 +61777,7 @@ ${lines.join("\n")}` : "";
     s.preview.textContent = `${previewText({
       instructions: sending ? withImageInstructions(built.instructions) : built.instructions,
       context: sending ? contextWithImage(built.context, e2.knownUrl || PENDING_URL, e2.image?.caption || built.figure?.caption || "") : built.context,
-      prompt: sending ? promptWithImage(question, true) : question
+      prompt: sending ? promptWithImage(atPrompt(question), true) : atPrompt(question)
     })}
 
 (about ${built.tokensEstimate.toLocaleString?.() ?? built.tokensEstimate} tokens before the question)`;
@@ -61127,9 +61814,25 @@ ${lines.join("\n")}` : "";
     s.parts.hidden = !multiLike();
     if (multiLike()) {
       const list = multi ? parts : entries;
+      const named2 = descs();
       list.forEach((p, i) => {
+        const d = named2[i];
         const c = make2(dom, "span", "pxd-ask__partchip", s.parts);
-        make2(dom, "span", "pxd-ask__partlabel", c, `Part ${i + 1}: ${p.label || "Part"}`);
+        c.setAttribute("data-key", p.key);
+        const label = make2(dom, "span", "pxd-ask__partlabel", c);
+        label.setAttribute("role", "button");
+        label.setAttribute("tabindex", "0");
+        label.setAttribute("title", `${atToken(i + 1)}: ${d?.full || p.label || "Part"}. Click to mention it in the question.`);
+        make2(dom, "b", "pxd-ask__partno", label, `Part ${i + 1}`);
+        label.append(dom.createTextNode(`: ${d?.short || p.label || "Part"}`));
+        const mention = () => mentionPart(i + 1);
+        label.addEventListener("click", mention);
+        label.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault?.();
+            mention();
+          }
+        });
         const x = button(dom, "pxd-ask__partx", c, "×", `Remove part ${i + 1}`);
         x.addEventListener("click", () => removePart(p.key));
       });
@@ -61179,15 +61882,61 @@ ${lines.join("\n")}` : "";
     paintContext();
     return e2;
   };
+  const dropRefs = (before, after) => {
+    const t = ta();
+    if (!t) return;
+    const gone = before.map((k, i) => [k, i + 1]).filter(([k]) => !after.includes(k)).map(([, n2]) => n2).sort((a, b) => b - a);
+    let text4 = t.value;
+    const lost = [];
+    for (const n2 of gone) {
+      const r = afterPartRemoved(text4, n2);
+      text4 = r.text;
+      if (r.hit) lost.push(n2);
+    }
+    if (text4 !== t.value) {
+      t.value = text4;
+      growQuestion(t);
+    }
+    if (lost.length) {
+      const names = lost.sort((a, b) => a - b).map(atToken).join(", ");
+      s.status.textContent = `${names} no longer ${lost.length === 1 ? "exists" : "exist"}`;
+    }
+  };
   const removePart = (key) => {
     if (multi) {
       multi.basket.remove(key);
       return;
     }
     if (entries.length < 2) return;
+    dropRefs(entries.map((e2) => e2.key), entries.filter((e2) => e2.key !== key).map((e2) => e2.key));
     entries = entries.filter((e2) => e2.key !== key);
     multiBuilt = null;
     paintContext();
+  };
+  const flashPart = (keys) => {
+    for (const c of [...s.parts.children || []]) {
+      if (!keys.includes(c.getAttribute?.("data-key"))) continue;
+      c.classList.add("pxd-ask__partchip--flash");
+      setTimeout(() => c.classList?.remove("pxd-ask__partchip--flash"), FLASH_MS);
+    }
+  };
+  const mentionPart = (n2) => {
+    const t = ta();
+    if (!t) return;
+    const untouched = !t.value || t.value === lastPrefill;
+    const base = untouched ? "" : t.value;
+    const caret = !untouched && Number.isInteger(t.selectionStart) ? t.selectionStart : base.length;
+    const next = insertToken(base, caret, atToken(n2));
+    if (untouched) lastPrefill = "";
+    t.value = next.text;
+    try {
+      t.setSelectionRange?.(next.caret, next.caret);
+    } catch {
+    }
+    growQuestion(t);
+    refreshPreview();
+    flashPart([descs()[n2 - 1]?.key]);
+    focus();
   };
   const goPage = (n2, partNo) => {
     try {
@@ -61346,7 +62095,7 @@ ${lines.join("\n")}` : "";
       } catch {
       }
       growQuestion(cur);
-      addMention(mention);
+      if (mention) addMention(mention);
       refreshPreview();
       try {
         cur.focus();
@@ -61363,6 +62112,24 @@ ${lines.join("\n")}` : "";
       stopBlockSearch();
       const hits = rankTitles(titleIndex(), trig.query, MAX_SUGGESTIONS);
       sug.show(hits.map((title) => ({ label: title, item: title })), { title: "Pages", empty: trig.query ? "No page matches" : "", pick: (e2) => insert(pageMention(e2.item), { kind: "page", title: e2.item }) });
+      return;
+    }
+    if (trig.kind === "at") {
+      stopBlockSearch();
+      const hits = filterAtItems(atItems({ parts: descs(), mentions }), trig.query);
+      sug.show(hits.map((it) => ({ label: it.label, detail: it.detail, thumb: it.thumb, group: it.group, item: it })), {
+        title: "Mention in the question",
+        empty: "No part matches",
+        pick: (e2) => {
+          const it = e2.item;
+          if (it.insert) {
+            insert(it.insert, it.mention);
+            return;
+          }
+          insert(it.token, null);
+          flashPart(it.all ? descs().map((x) => x.key) : [it.key]);
+        }
+      });
       return;
     }
     const query = trig.query.trim();
@@ -61646,6 +62413,13 @@ ${lines.join("\n")}` : "";
       s.status.textContent = "Type a question first.";
       return;
     }
+    if (!retry && !command && sources.part) {
+      const bad = danglingAtRefs(question, descs().length);
+      if (bad.length) {
+        s.status.textContent = danglingMessage(bad);
+        return;
+      }
+    }
     if (!retry && !command) takeTyped(question);
     rebuild(command ? command.name : question);
     ctl = typeof win2.AbortController === "function" ? new win2.AbortController() : new AbortController();
@@ -61692,7 +62466,7 @@ ${lines.join("\n")}` : "";
       const b = buildMultiContext(shown2, question);
       sendContext = b.context;
       sendInstructions = b.instructions;
-      sendPrompt = promptWithImages(asked, urls2.size > 0);
+      sendPrompt = promptWithImages(atPrompt(asked), urls2.size > 0);
       turn.sentUrl = urls2.size ? "multi" : "";
     } else {
       const e2 = one();
@@ -61707,7 +62481,7 @@ ${lines.join("\n")}` : "";
       }
       sendContext = contextWithImage(e2.built.context, turn.sentUrl, e2.image?.caption || e2.built.figure?.caption || "");
       sendInstructions = turn.sentUrl ? withImageInstructions(e2.built.instructions) : e2.built.instructions;
-      sendPrompt = promptWithImage(asked, turn.sentUrl);
+      sendPrompt = promptWithImage(atPrompt(asked), turn.sentUrl);
     }
     const needTitle = sources.page || sources.linkedRefs;
     const currentTitle = needTitle ? await currentPageTitle(win2) : "";
@@ -61870,7 +62644,7 @@ ${lines.join("\n")}` : "";
       if (!x.answer.trim()) continue;
       history.push({ role: "user", content: x.asked && x.asked !== x.q ? x.asked : x.q }, { role: "assistant", content: x.answer });
     }
-    if (pending) history.push({ role: "user", content: pending });
+    if (pending) history.push({ role: "user", content: atPrompt(pending) });
     if (head) {
       if (history[0]?.role === "user") history[0] = { role: "user", content: `${head}
 
@@ -62035,6 +62809,7 @@ ${note}` };
     peekMulti();
     offBasket = multi.basket.subscribe((list) => {
       if (dead) return;
+      dropRefs(parts.map((p) => p.key), list.map((p) => p.key));
       parts = list;
       if (!parts.length) {
         close();
@@ -62134,17 +62909,17 @@ var CHART_SYSTEM_PROMPT = [
   "Use notes for anything not legible, a broken axis, or a log scale. If the image is not a chart, return an empty series list and say so in notes."
 ].join("\n");
 var CHART_PROMPT = "Read the chart in the image and return the JSON object described in the instructions.";
-var squash4 = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
+var squash5 = (text4) => String(text4 ?? "").replace(/\s+/g, " ").trim();
 var clip6 = (text4, max) => {
   const t = String(text4 ?? "");
   return t.length <= max ? t : `${t.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 };
-var altOf = (caption) => clip6(squash4(String(caption ?? "").replace(/[[\]()!]/g, " ")), 120) || "Chart";
+var altOf = (caption) => clip6(squash5(String(caption ?? "").replace(/[[\]()!]/g, " ")), 120) || "Chart";
 function chartContext({ url = "", caption = "", nearby = "" } = {}) {
   const parts = [];
   if (url) parts.push(`Image of the chart:
 ![${altOf(caption)}](${String(url).trim()})`);
-  const cap4 = squash4(caption);
+  const cap4 = squash5(caption);
   if (cap4) parts.push(`Caption: ${clip6(cap4, 400)}`);
   const near2 = String(nearby ?? "").trim();
   if (near2) parts.push(`Nearby text:
@@ -62153,7 +62928,7 @@ ${clip6(near2, 1200)}`);
 }
 var LABEL_RE2 = /^((?:figure|fig\.?|chart|graph|plate|exhibit)\s+[A-Za-z]?\d+(?:\.\d+)?[A-Za-z]?)/i;
 function figureLabel(doc, blockId, caption = "") {
-  const m = LABEL_RE2.exec(squash4(caption));
+  const m = LABEL_RE2.exec(squash5(caption));
   if (m) {
     const [, word, rest] = /^([A-Za-z]+)\.?\s+(.+)$/.exec(m[1].replace(/\s+/g, " "));
     const name = /^fig/i.test(word) ? "Figure" : `${word[0].toUpperCase()}${word.slice(1).toLowerCase()}`;
@@ -62170,12 +62945,12 @@ function figureLabel(doc, blockId, caption = "") {
   return "Figure";
 }
 function chartTitle({ label = "Figure", page = null, docTitle = "" } = {}) {
-  return ["Chart data", squash4(label) || "Figure", Number.isInteger(page) && page > 0 ? `p. ${page}` : "", squash4(docTitle)].filter(Boolean).join(" · ");
+  return ["Chart data", squash5(label) || "Figure", Number.isInteger(page) && page > 0 ? `p. ${page}` : "", squash5(docTitle)].filter(Boolean).join(" · ");
 }
 function chartNote(modelName = "", extra = []) {
-  const who = squash4(modelName);
+  const who = squash5(modelName);
   const base = who ? `Values read from the chart by ${who}; approximate.` : "Values read from the chart by a model; approximate.";
-  const more = (Array.isArray(extra) ? extra : []).map((t) => squash4(t)).filter(Boolean);
+  const more = (Array.isArray(extra) ? extra : []).map((t) => squash5(t)).filter(Boolean);
   return [base, ...more].join(" ");
 }
 function stripFence(text4) {
@@ -62235,7 +63010,7 @@ function toNumber(value) {
   const n2 = Number(t);
   return Number.isFinite(n2) ? n2 : NaN;
 }
-var text3 = (value, max = 120) => typeof value === "string" || typeof value === "number" ? clip6(squash4(value), max) : "";
+var text3 = (value, max = 120) => typeof value === "string" || typeof value === "number" ? clip6(squash5(value), max) : "";
 function axisOf(value) {
   if (typeof value === "string") return { label: text3(value), unit: "" };
   const a = value && typeof value === "object" ? value : {};
@@ -62309,8 +63084,8 @@ function formatValue(n2) {
   return String(Number(n2.toPrecision(6)));
 }
 var withUnit = (label, unit) => {
-  const l = squash4(label);
-  const u = squash4(unit);
+  const l = squash5(label);
+  const u = squash5(unit);
   if (!u) return l;
   if (!l) return u;
   return l.toLowerCase().includes(u.toLowerCase()) ? l : `${l} (${u})`;
@@ -62336,7 +63111,7 @@ function chartToTable(chart, { title = "", note = "" } = {}) {
   let r = 0;
   const headerRows = (title ? 1 : 0) + 1;
   if (title) {
-    cells.push({ r, c: 0, text: squash4(title), colSpan: cols });
+    cells.push({ r, c: 0, text: squash5(title), colSpan: cols });
     r += 1;
   }
   cells.push({ r, c: 0, text: withUnit(chart?.x?.label || "x", chart?.x?.unit) });
@@ -62352,7 +63127,7 @@ function chartToTable(chart, { title = "", note = "" } = {}) {
     r += 1;
   }
   if (note) {
-    cells.push({ r, c: 0, text: squash4(note), colSpan: cols });
+    cells.push({ r, c: 0, text: squash5(note), colSpan: cols });
     r += 1;
   }
   const filled = new Set(cells.map((c) => `${c.r}:${c.c}`));
@@ -62458,16 +63233,16 @@ var GUTTER = Object.freeze({ button: 24, gap: 6, pad: 2, intentMs: 120, hideMs: 
 var GUTTER_CARET = 12;
 var GUTTER_W = GUTTER.button + 4;
 var GUTTER_H = GUTTER.button * 2 + GUTTER_CARET + 8;
-var num6 = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
+var num7 = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
 function gutterSpot(box2, host, { w = GUTTER_W, h = GUTTER_H, gap = GUTTER.gap, pad: pad2 = GUTTER.pad, side: side2 = "left" } = {}) {
-  const left = num6(box2?.left);
-  const top = num6(box2?.top);
-  const right = num6(box2?.right, left + num6(box2?.width));
-  const bottom = num6(box2?.bottom, top + num6(box2?.height));
-  const hl = num6(host?.left);
-  const ht = num6(host?.top);
-  const hr = num6(host?.right, hl + num6(host?.width));
-  const hb = num6(host?.bottom, ht + num6(host?.height));
+  const left = num7(box2?.left);
+  const top = num7(box2?.top);
+  const right = num7(box2?.right, left + num7(box2?.width));
+  const bottom = num7(box2?.bottom, top + num7(box2?.height));
+  const hl = num7(host?.left);
+  const ht = num7(host?.top);
+  const hr = num7(host?.right, hl + num7(host?.width));
+  const hb = num7(host?.bottom, ht + num7(host?.height));
   let x = side2 === "right" ? right - w - gap : left - gap - w;
   let inside8 = side2 === "right";
   const minX = hl + pad2;
@@ -62653,10 +63428,10 @@ function createPartGutter({
     } catch {
       origin = null;
     }
-    const x = Math.round(spot.x - num6(origin?.left));
-    const y = Math.round(spot.y - num6(origin?.top));
+    const x = Math.round(spot.x - num7(origin?.left));
+    const y = Math.round(spot.y - num7(origin?.top));
     pill.style.transform = `translate(${x}px, ${y}px)`;
-    placedKey = `${Math.round(num6(rect.left))},${Math.round(num6(rect.top))},${Math.round(num6(rect.right))},${Math.round(num6(rect.bottom))}`;
+    placedKey = `${Math.round(num7(rect.left))},${Math.round(num7(rect.top))},${Math.round(num7(rect.right))},${Math.round(num7(rect.bottom))}`;
     pill.classList.toggle("pxd-pgutter--inside", spot.inside);
     return true;
   };
@@ -62705,7 +63480,7 @@ function createPartGutter({
       if (disposed || !target || !rect) return;
       stopHide();
       if (shown && block?.id === target.id) {
-        const key = `${Math.round(num6(rect.left))},${Math.round(num6(rect.top))},${Math.round(num6(rect.right))},${Math.round(num6(rect.bottom))}`;
+        const key = `${Math.round(num7(rect.left))},${Math.round(num7(rect.top))},${Math.round(num7(rect.right))},${Math.round(num7(rect.bottom))}`;
         if (key !== placedKey) {
           placedKey = key;
           place3(rect, opts);
@@ -62801,14 +63576,14 @@ function docCounts(doc) {
   }
   return partCounts(blocks);
 }
-var plural2 = (n2, one, many) => `${n2} ${n2 === 1 ? one : many}`;
+var plural3 = (n2, one, many) => `${n2} ${n2 === 1 ? one : many}`;
 function countLabel(counts, ms = null) {
   const c = counts || {};
   const bits = [];
-  if (c.tables) bits.push(plural2(c.tables, "table", "tables"));
-  if (c.paragraphs) bits.push(plural2(c.paragraphs, "paragraph", "paragraphs"));
-  if (c.figures) bits.push(plural2(c.figures, "figure", "figures"));
-  if (c.formulas) bits.push(plural2(c.formulas, "formula", "formulas"));
+  if (c.tables) bits.push(plural3(c.tables, "table", "tables"));
+  if (c.paragraphs) bits.push(plural3(c.paragraphs, "paragraph", "paragraphs"));
+  if (c.figures) bits.push(plural3(c.figures, "figure", "figures"));
+  if (c.formulas) bits.push(plural3(c.formulas, "formula", "formulas"));
   const time = typeof ms === "number" && Number.isFinite(ms) && ms >= 0 ? `${(ms / 1e3).toFixed(1)} s` : "";
   if (!bits.length) return time ? `No parts found · ${time}` : "Reading…";
   if (time) bits.push(time);
@@ -66912,7 +67687,7 @@ var NEAR_EMPTY_CHARS = 8;
 var FONT_PX = 100;
 var FALLBACK_EM = 0.52;
 var ASCENT = 0.8;
-var num7 = (value, fallback = 0) => {
+var num8 = (value, fallback = 0) => {
   const n2 = Number(value);
   return Number.isFinite(n2) ? n2 : fallback;
 };
@@ -66923,9 +67698,9 @@ function ocrWords(record) {
     for (const box2 of record.boxes) {
       if (!Array.isArray(box2)) continue;
       const text4 = String(box2[0] ?? "").trim();
-      const w = num7(box2[3]);
-      const h = num7(box2[4]);
-      if (text4 && w > 0 && h > 0) out.push({ text: text4, x: num7(box2[1]), y: num7(box2[2]), w, h });
+      const w = num8(box2[3]);
+      const h = num8(box2[4]);
+      if (text4 && w > 0 && h > 0) out.push({ text: text4, x: num8(box2[1]), y: num8(box2[2]), w, h });
     }
     return out;
   }
@@ -66934,13 +67709,13 @@ function ocrWords(record) {
       const text4 = String(item?.str ?? "").trim();
       if (!text4) continue;
       const m = Array.isArray(item.transform) ? item.transform : [0, 0, 0, 0, 0, 0];
-      const height = num7(item.height, Math.hypot(num7(m[2]), num7(m[3])));
-      const y0 = Number.isFinite(Number(item.y0)) ? Number(item.y0) : num7(m[5]) - height;
-      const y1 = Number.isFinite(Number(item.y1)) ? Number(item.y1) : num7(m[5]);
+      const height = num8(item.height, Math.hypot(num8(m[2]), num8(m[3])));
+      const y0 = Number.isFinite(Number(item.y0)) ? Number(item.y0) : num8(m[5]) - height;
+      const y1 = Number.isFinite(Number(item.y1)) ? Number(item.y1) : num8(m[5]);
       const h = y1 - y0 > 0 ? y1 - y0 : height;
-      const w = num7(item.width);
+      const w = num8(item.width);
       if (!(h > 0) || !(w > 0)) continue;
-      out.push({ text: text4, x: num7(m[4]), y: y0, w, h });
+      out.push({ text: text4, x: num8(m[4]), y: y0, w, h });
     }
     return out;
   }
@@ -66948,10 +67723,10 @@ function ocrWords(record) {
   for (const word of words) {
     const text4 = String(word?.text ?? "").trim();
     if (!text4 || word.rotated) continue;
-    const size = num7(word.size);
-    const w = num7(word.x1) - num7(word.x0);
+    const size = num8(word.size);
+    const w = num8(word.x1) - num8(word.x0);
     if (!(size > 0) || !(w > 0)) continue;
-    out.push({ text: text4, x: num7(word.x0), y: num7(word.base) - size * ASCENT, w, h: size });
+    out.push({ text: text4, x: num8(word.x0), y: num8(word.base) - size * ASCENT, w, h: size });
   }
   return out;
 }
@@ -67019,7 +67794,7 @@ function createMeasure(doc) {
 }
 function wordStyle(word, scale, naturalAt100) {
   const font = word.h * scale;
-  const natural = num7(naturalAt100) * font / FONT_PX;
+  const natural = num8(naturalAt100) * font / FONT_PX;
   const target = word.w * scale;
   const sx = natural > 0 ? target / natural : 1;
   return `left:${(word.x * scale).toFixed(2)}px;top:${(word.y * scale).toFixed(2)}px;font-size:${font.toFixed(2)}px;transform:scaleX(${sx.toFixed(4)})`;
@@ -67029,7 +67804,7 @@ function prepared(record) {
   let hit = prepCache.get(record);
   if (!hit) {
     const ordered = orderWords(ocrWords(record));
-    hit = { w: num7(record?.w, 612) || 612, words: ordered.words, breaks: ordered.breaks };
+    hit = { w: num8(record?.w, 612) || 612, words: ordered.words, breaks: ordered.breaks };
     prepCache.set(record, hit);
   }
   return hit;
@@ -67080,8 +67855,8 @@ function compactPage(record) {
   const r23 = (v) => Math.round(v * 100) / 100;
   return {
     n: Number(record?.n),
-    w: num7(record?.w, 612) || 612,
-    h: num7(record?.h, 792) || 792,
+    w: num8(record?.w, 612) || 612,
+    h: num8(record?.h, 792) || 792,
     boxes: ocrWords(record).map((word) => [word.text, r23(word.x), r23(word.y), r23(word.w), r23(word.h)])
   };
 }
@@ -67149,7 +67924,7 @@ function createTextLayer({ doc = globalThis.document, readerEl = null, measure =
       if (!record) continue;
       const layer = pageEl.querySelector?.(".textLayer");
       if (!layer) continue;
-      const widthPx = num7(pageEl.clientWidth);
+      const widthPx = num8(pageEl.clientWidth);
       const key = `${n2}:${Math.round(widthPx)}`;
       const ours = layer.querySelector?.(`[${WORD_ATTR}]`);
       if (ours && layer.getAttribute?.(MARK_ATTR) === key) continue;
@@ -67222,7 +67997,7 @@ Promise.resolve().then(() => (init_read_drawer(), read_drawer_exports)).then((mo
 });
 var PLACE_W = 300;
 var PLACE_H = 140;
-var FLASH_MS = 1600;
+var FLASH_MS2 = 1600;
 var ONE_REF = /^\(\(([\w-]+)\)\)$/;
 var COLORS = ["gray", ...HIGHLIGHT_COLORS];
 var READ_MODE_KEY = "pxd-read-mode";
@@ -67354,7 +68129,7 @@ function indexNodes(nodes, map) {
     if (Array.isArray(node2.children)) indexNodes(node2.children, map);
   }
 }
-function sortRows2(rows) {
+function sortRows3(rows) {
   return rows.map((row4, index) => ({ row: row4, index })).sort((a, b) => {
     const ap = typeof a.row.page === "number" ? a.row.page : Infinity;
     const bp = typeof b.row.page === "number" ? b.row.page : Infinity;
@@ -67381,7 +68156,7 @@ function createReadPane({
   onParseMotion = null,
   cards,
   placed,
-  titleOf: titleOf3,
+  titleOf: titleOf4,
   coverSrc,
   createDrawer,
   session = null,
@@ -67794,9 +68569,9 @@ function createReadPane({
     return true;
   };
   const cardTitle = (card2) => {
-    if (typeof titleOf3 === "function") {
+    if (typeof titleOf4 === "function") {
       try {
-        const title = titleOf3(card2);
+        const title = titleOf4(card2);
         if (typeof title === "string" && title.trim()) return title.trim();
       } catch {
       }
@@ -67861,7 +68636,7 @@ function createReadPane({
     } catch {
       rows = [];
     }
-    catalog = sortRows2(rows);
+    catalog = sortRows3(rows);
     return catalog;
   };
   const legacyDrawer = () => {
@@ -68760,7 +69535,7 @@ function createReadPane({
     flashTimer = later(() => {
       flashTimer = null;
       clearFlash();
-    }, FLASH_MS);
+    }, FLASH_MS2);
   };
   const flashParts = (parts, color) => {
     clearFlash();
@@ -68777,7 +69552,7 @@ function createReadPane({
     flashTimer = later(() => {
       flashTimer = null;
       clearFlash();
-    }, FLASH_MS);
+    }, FLASH_MS2);
   };
   const fallbackScroll = (part) => {
     const scroller = live2.querySelector?.(".PdfHighlighter");
@@ -74678,13 +75453,13 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
     const ax = px((x0 ?? 0) * box2.w);
     const ay = px((y0 ?? 0) * box2.h);
     const bx = px((x1 ?? x0 ?? 0) * box2.w);
-    const by = px((y1 ?? y0 ?? 0) * box2.h);
+    const by2 = px((y1 ?? y0 ?? 0) * box2.h);
     const left = imgLeft - rootLeft + Math.min(ax, bx);
-    const top = imgTop - rootTop + Math.min(ay, by);
+    const top = imgTop - rootTop + Math.min(ay, by2);
     draft.style.left = `${left}px`;
     draft.style.top = `${top}px`;
     draft.style.width = `${Math.abs(bx - ax)}px`;
-    draft.style.height = `${Math.abs(by - ay)}px`;
+    draft.style.height = `${Math.abs(by2 - ay)}px`;
     const rootW = axis(rootBox, "width", "w") || 1;
     const rootH = axis(rootBox, "height", "h") || 1;
     svg.style.position = "absolute";
@@ -74711,7 +75486,7 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
       bar.style.top = `${penTop + penBox.rh * box2.h + 4}px`;
     } else {
       bar.style.left = `${left}px`;
-      bar.style.top = `${top + Math.abs(by - ay) + 4}px`;
+      bar.style.top = `${top + Math.abs(by2 - ay) + 4}px`;
     }
   };
   const destroy = () => {
@@ -74969,7 +75744,7 @@ function filterRows3(rows, text4) {
   const cols = tableColumns(rows);
   return (rows || []).filter((row4) => cols.some((column) => cellText2(row4, column).toLowerCase().includes(needle)));
 }
-function sortRows3(rows, column, dir = "asc") {
+function sortRows4(rows, column, dir = "asc") {
   const sign = dir === "desc" ? -1 : 1;
   const list = (rows || []).slice();
   list.sort((a, b) => {
@@ -75130,7 +75905,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
   };
   const shownRows = (rows) => {
     const filtered = filterRows3(rows, filterText);
-    return sortColumn ? sortRows3(filtered, sortColumn, sortDir) : filtered;
+    return sortColumn ? sortRows4(filtered, sortColumn, sortDir) : filtered;
   };
   const commitFill = async (row4, column, raw) => {
     const key = `${row4.uid}\0${column}`;
@@ -77855,10 +78630,10 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
         const bh = part.y1 - part.y0 + 1;
         if (bw < minW || bh < minH) continue;
         if (bw * bh >= 0.8 * pageArea || part.area < solid * bw * bh) continue;
-        const share = (ax, ay, bx, by) => {
+        const share = (ax, ay, bx, by2) => {
           let hit = 0;
           let n3 = 0;
-          for (let y = ay; y <= by; y++) for (let x = ax; x <= bx; x++) {
+          for (let y = ay; y <= by2; y++) for (let x = ax; x <= bx; x++) {
             n3++;
             if (part.mask[y * lw + x]) hit++;
           }
@@ -82167,9 +82942,9 @@ function pdfHighlightButton(doc, onClick, count = 0) {
     svg.append(path);
     btn2.append(svg);
   }
-  const num8 = doc.createElement("span");
-  num8.className = "pxd-pdf-highlights__count";
-  btn2.append(num8);
+  const num9 = doc.createElement("span");
+  num9.className = "pxd-pdf-highlights__count";
+  btn2.append(num9);
   setHighlightCount(btn2, count);
   const stop3 = (event) => {
     event.preventDefault?.();
@@ -82187,11 +82962,11 @@ function pdfHighlightButton(doc, onClick, count = 0) {
 function setHighlightCount(btn2, count) {
   const n2 = Number(count);
   const text4 = Number.isFinite(n2) && n2 > 0 ? String(Math.floor(n2)) : "";
-  const num8 = btn2?.querySelector?.(".pxd-pdf-highlights__count");
-  if (num8 && num8.textContent !== text4) num8.textContent = text4;
-  if (num8) {
-    if (text4) num8.removeAttribute?.("hidden");
-    else num8.setAttribute?.("hidden", "");
+  const num9 = btn2?.querySelector?.(".pxd-pdf-highlights__count");
+  if (num9 && num9.textContent !== text4) num9.textContent = text4;
+  if (num9) {
+    if (text4) num9.removeAttribute?.("hidden");
+    else num9.setAttribute?.("hidden", "");
   }
   btn2?.setAttribute?.("data-count", text4 || "0");
   return text4;
@@ -83869,6 +84644,7 @@ function buildBoardView(onFail, {
       ...page != null ? { page } : {},
       ...wholeDoc ? { wholeDoc: true } : {},
       document: doc,
+      pdfName: () => askPdfName(pdfUid, url),
       jumpPage: (n2) => {
         if (pdfUid) void itemsR?.openPdfAt?.(pdfUid, n2);
       },
@@ -84191,6 +84967,13 @@ function buildBoardView(onFail, {
       toast(failed ? `Added ${made.length} of ${files.length} PDFs` : `Added ${made.length} ${made.length === 1 ? "PDF" : "PDFs"}`, true);
     }
   };
+  const askPdfName = (pdfUid, url) => {
+    try {
+      return pdfNameOf({ uid: pdfUid || "", url: url || "" }).title || "";
+    } catch {
+      return "";
+    }
+  };
   const openBasketAsk = () => openAskAI({
     multi: {
       basket: askBasket,
@@ -84198,6 +84981,7 @@ function buildBoardView(onFail, {
         if (part?.kind !== "image" && part?.pdfUid) void itemsR?.openPdfAt?.(part.pdfUid, n2 || 1);
       }
     },
+    pdfName: (part) => part?.url || part?.pdfUid ? askPdfName(part.pdfUid, part.url) : "",
     document: doc,
     toast: (message) => toast(message),
     addCard: ({ markdown, parts }) => parseActions().insertAnswerCard({
@@ -85181,12 +85965,12 @@ function buildBoardView(onFail, {
     }
     const rows = await askRows("[:find ?u ?e ?c :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :edit/time -1) ?e] [(get-else $ ?b :create/time -1) ?c]]", ids);
     if (disposed || gen !== dustGen || dustPeriod === "off") return;
-    const by = /* @__PURE__ */ new Map();
+    const by2 = /* @__PURE__ */ new Map();
     for (const row4 of rows) {
       if (!Array.isArray(row4)) continue;
       const edit = Number(row4[1]);
       const create = Number(row4[2]);
-      by.set(String(row4[0]), {
+      by2.set(String(row4[0]), {
         edit: Number.isFinite(edit) && edit >= 0 ? edit : null,
         create: Number.isFinite(create) && create >= 0 ? create : null
       });
@@ -85194,7 +85978,7 @@ function buildBoardView(onFail, {
     const now4 = Date.now();
     const ages = /* @__PURE__ */ new Map();
     for (const pair2 of pairs) {
-      const hit = by.get(pair2.target) || {};
+      const hit = by2.get(pair2.target) || {};
       const age = { now: now4 };
       if (hit.edit != null) age.editTime = hit.edit;
       if (hit.create != null) age.createTime = hit.create;
@@ -88440,6 +89224,7 @@ function buildBoardView(onFail, {
   };
   const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
   const LIB_TYPES_KEY = `plexus-diagram:libtypes:${graph}`;
+  const SORT_KEY = "plexus-diagram:panel-sort";
   let partsIdx = null;
   let offPartsChange = null;
   const partsIndex = () => {
@@ -88689,6 +89474,40 @@ function buildBoardView(onFail, {
         }
       },
       pdfTitle: (url) => parsedTitles.get(url) || "",
+      isParsed: async (url) => {
+        try {
+          return Boolean(url) && Boolean(await parseStoreShared().findByUrl(url));
+        } catch {
+          return false;
+        }
+      },
+      highlightCount: (string) => {
+        try {
+          return host?.pdfCover?.(string)?.count || 0;
+        } catch {
+          return 0;
+        }
+      },
+      userNames: () => {
+        try {
+          return host?.userNames?.() || [];
+        } catch {
+          return [];
+        }
+      },
+      loadSort: () => {
+        try {
+          return storage?.getItem?.(SORT_KEY) || "";
+        } catch {
+          return "";
+        }
+      },
+      saveSort: (id) => {
+        try {
+          storage?.setItem?.(SORT_KEY, id);
+        } catch {
+        }
+      },
       pdfName: (card2) => pdfNameOf(card2),
       wantPdfNames: (cards, opts) => wantPdfNames(cards, opts),
       pdfList: () => pdfBlocks(),

@@ -9,6 +9,7 @@ import * as liveai from "../host/liveai.js";
 import { getFigureImages, isUsableImageUrl, noteFor } from "../host/figure-image.js";
 import { applyMention, blockMention, BUILTIN_STYLES, buildRoamContext, COMMAND_CATEGORIES, COMMANDS, CONTEXT_SOURCES, customItems, DEFAULT_LOG_DAYS, effortOptions, effortsFor, filterCommands, LIVE_TOOLS, MAX_SUGGESTIONS, pageMention, parseMentions, prepareTitles, rankTitles, TOOL_CATEGORIES, TRANSLATIONS, triggerAt, withStyle } from "../model/ask-composer.js";
 import * as lookup from "../host/roam-lookup.js";
+import { afterPartRemoved, atItems, atPreamble, atToken, danglingAtRefs, danglingMessage, describeParts, filterAtItems, insertToken, withAtPreamble } from "../model/ask-parts.js";
 import { createPopover, createSuggest, iconButton, ROW_ICONS } from "./ask-composer.js";
 import { floatingDark } from "./theme-follow.js";
 
@@ -18,9 +19,11 @@ export const OFF_NOTE = "Figure images are off in settings — text only";
 export const UPLOADING_NOTE = "Uploading figure…";
 export const VISION_KEY = "pxd-ask-vision-model";
 export const TITLE = "Live AI Chat";
-export const PLACEHOLDER = "Ask… (/ for commands, [[ or # for pages)";
+export const PLACEHOLDER = "Ask… (/ for commands, [[ or # for pages, @ for parts)";
 // A (( block search waits this long after the last key.
 export const BLOCK_SEARCH_MS = 150;
+// A part chip lights up this long after its @ mention.
+export const FLASH_MS = 1200;
 // Position and size of the window, per device: { w, h, x, y }; x/y null = the default place, bottom-right.
 export const GEOM_KEY = "pxd-ask-window";
 export const MIN_WIDTH = 340;
@@ -177,8 +180,12 @@ function makeEntry(o) {
     addCard: o.addCard || null,
     toast: o.toast || null,
     opts: o,
+    pdfName: typeof o.pdfName === "function" ? o.pdfName : null,
   };
 }
+
+// The PDF's real name from the host's resolver (a thrown or empty answer is just "no name yet").
+const callName = (fn, arg) => { try { return typeof fn === "function" ? String(fn(arg) ?? "") : ""; } catch { return ""; } };
 
 // An entry in the shape buildMultiContext() takes, for a conversation about several entries.
 const asPart = (e) => ({
@@ -192,6 +199,8 @@ const asPart = (e) => ({
   wholeDoc: e.isWhole,
   image: e.hasImage ? e.image : null,
   service: e.service,
+  docTitle: e.built.chip?.docTitle || "",
+  docName: callName(e.pdfName, e),
 });
 
 // ------------------------------------------------------------------ the window (built once per document)
@@ -545,7 +554,8 @@ function startSession(s, o) {
   const ta = () => s.composer?.textarea || null;
   const modelSel = () => s.composer?.model || null;
   const multiLike = () => Boolean(multi) || entries.length > 1;
-  const ctxParts = () => (multi ? parts.map((p) => ({ ...p, service: multiService })) : entries.map(asPart));
+  const ctxParts = () => (multi ? parts.map((p) => ({ ...p, service: multiService, docName: callName(o.pdfName, p) })) : entries.map(asPart));
+  const descs = () => describeParts(ctxParts());
   const multiLabel = () => { const n = multi ? parts.length : entries.length; return `${n} part${n === 1 ? "" : "s"}`; };
   const one = () => entries[0] || null;
   const say = (msg) => { try { toast?.(msg); } catch { /* host */ } };
@@ -577,6 +587,8 @@ function startSession(s, o) {
     e.built = buildFocusContext(e.source, e.focus, { question: q });
     s.chip.textContent = chipText(e.built.chip);
   };
+  // The question with the note that says which context block each @Part N is (only while the PDF context goes along).
+  const atPrompt = (asked) => (sources.part ? withAtPreamble(asked, atPreamble(asked, descs(), { numbered: multiLike() })) : asked);
   const defaultPrompt = () => (multiLike() ? MULTI_DEFAULT_PROMPT : one()?.built.prompt || "");
   const questionText = () => {
     const t = ta();
@@ -628,7 +640,7 @@ function startSession(s, o) {
     if (multiLike()) {
       const shown = ctxParts().map((p) => (p.image && sending ? { ...p, imageUrl: knownUrls.get(p.key) || PENDING_URL } : p));
       const b = buildMultiContext(shown, question);
-      s.preview.textContent = `${previewText({ instructions: b.instructions, context: b.context, prompt: promptWithImages(question, shown.some((p) => p.imageUrl)) })}\n\n(about ${b.tokensEstimate.toLocaleString?.() ?? b.tokensEstimate} tokens before the question)`;
+      s.preview.textContent = `${previewText({ instructions: b.instructions, context: b.context, prompt: promptWithImages(atPrompt(question), shown.some((p) => p.imageUrl)) })}\n\n(about ${b.tokensEstimate.toLocaleString?.() ?? b.tokensEstimate} tokens before the question)`;
       return;
     }
     const e = one();
@@ -637,7 +649,7 @@ function startSession(s, o) {
     s.preview.textContent = `${previewText({
       instructions: sending ? withImageInstructions(built.instructions) : built.instructions,
       context: sending ? contextWithImage(built.context, e.knownUrl || PENDING_URL, e.image?.caption || built.figure?.caption || "") : built.context,
-      prompt: sending ? promptWithImage(question, true) : question,
+      prompt: sending ? promptWithImage(atPrompt(question), true) : atPrompt(question),
     })}\n\n(about ${built.tokensEstimate.toLocaleString?.() ?? built.tokensEstimate} tokens before the question)`;
   };
 
@@ -674,9 +686,20 @@ function startSession(s, o) {
     s.parts.hidden = !multiLike();
     if (multiLike()) {
       const list = multi ? parts : entries;
+      const named = descs();
       list.forEach((p, i) => {
+        const d = named[i];
         const c = make(dom, "span", "pxd-ask__partchip", s.parts);
-        make(dom, "span", "pxd-ask__partlabel", c, `Part ${i + 1}: ${p.label || "Part"}`);
+        c.setAttribute("data-key", p.key);
+        const label = make(dom, "span", "pxd-ask__partlabel", c);
+        label.setAttribute("role", "button");
+        label.setAttribute("tabindex", "0");
+        label.setAttribute("title", `${atToken(i + 1)}: ${d?.full || p.label || "Part"}. Click to mention it in the question.`);
+        make(dom, "b", "pxd-ask__partno", label, `Part ${i + 1}`);
+        label.append(dom.createTextNode(`: ${d?.short || p.label || "Part"}`));
+        const mention = () => mentionPart(i + 1);
+        label.addEventListener("click", mention);
+        label.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault?.(); mention(); } });
         const x = button(dom, "pxd-ask__partx", c, "×", `Remove part ${i + 1}`);
         x.addEventListener("click", () => removePart(p.key));
       });
@@ -711,12 +734,55 @@ function startSession(s, o) {
     paintContext();
     return e;
   };
+  // A part goes: references to it in the question stay as "@Part 3 (removed)", the later ones move up (ask-parts.js).
+  const dropRefs = (before, after) => {
+    const t = ta();
+    if (!t) return;
+    const gone = before.map((k, i) => [k, i + 1]).filter(([k]) => !after.includes(k)).map(([, n]) => n).sort((a, b) => b - a);
+    let text = t.value;
+    const lost = [];
+    for (const n of gone) {
+      const r = afterPartRemoved(text, n);
+      text = r.text;
+      if (r.hit) lost.push(n);
+    }
+    if (text !== t.value) { t.value = text; growQuestion(t); }
+    if (lost.length) {
+      const names = lost.sort((a, b) => a - b).map(atToken).join(", ");
+      s.status.textContent = `${names} no longer ${lost.length === 1 ? "exists" : "exist"}`;
+    }
+  };
   const removePart = (key) => {
     if (multi) { multi.basket.remove(key); return; }
     if (entries.length < 2) return;
+    dropRefs(entries.map((e) => e.key), entries.filter((e) => e.key !== key).map((e) => e.key));
     entries = entries.filter((e) => e.key !== key);
     multiBuilt = null;
     paintContext();
+  };
+
+  const flashPart = (keys) => {
+    for (const c of [...(s.parts.children || [])]) {
+      if (!keys.includes(c.getAttribute?.("data-key"))) continue;
+      c.classList.add("pxd-ask__partchip--flash");
+      setTimeout(() => c.classList?.remove("pxd-ask__partchip--flash"), FLASH_MS);
+    }
+  };
+  // Click on a part chip: its @Part N at the caret.
+  const mentionPart = (n) => {
+    const t = ta();
+    if (!t) return;
+    const untouched = !t.value || t.value === lastPrefill;
+    const base = untouched ? "" : t.value;
+    const caret = !untouched && Number.isInteger(t.selectionStart) ? t.selectionStart : base.length;
+    const next = insertToken(base, caret, atToken(n));
+    if (untouched) lastPrefill = "";
+    t.value = next.text;
+    try { t.setSelectionRange?.(next.caret, next.caret); } catch { /* stub */ }
+    growQuestion(t);
+    refreshPreview();
+    flashPart([descs()[n - 1]?.key]);
+    focus();
   };
 
   const goPage = (n, partNo) => {
@@ -833,7 +899,7 @@ function startSession(s, o) {
     return titles;
   };
   const stopBlockSearch = () => { if (blockTimer) { clearTimeout(blockTimer); blockTimer = null; } };
-  // The question's text before the caret decides the suggestion list: / commands, [[ or # pages, (( blocks.
+  // The question's text before the caret decides the suggestion list: / commands, [[ or # pages, (( blocks, @ parts.
   const suggestFor = () => {
     const t = ta();
     const sug = s.composer?.suggest;
@@ -857,7 +923,7 @@ function startSession(s, o) {
       cur.value = next.text;
       try { cur.setSelectionRange?.(next.caret, next.caret); } catch { /* stub */ }
       growQuestion(cur);
-      addMention(mention);
+      if (mention) addMention(mention);
       refreshPreview();
       try { cur.focus(); } catch { /* stub */ }
     };
@@ -871,6 +937,21 @@ function startSession(s, o) {
       stopBlockSearch();
       const hits = rankTitles(titleIndex(), trig.query, MAX_SUGGESTIONS);
       sug.show(hits.map((title) => ({ label: title, item: title })), { title: "Pages", empty: trig.query ? "No page matches" : "", pick: (e) => insert(pageMention(e.item), { kind: "page", title: e.item }) });
+      return;
+    }
+    if (trig.kind === "at") {
+      stopBlockSearch();
+      const hits = filterAtItems(atItems({ parts: descs(), mentions }), trig.query);
+      sug.show(hits.map((it) => ({ label: it.label, detail: it.detail, thumb: it.thumb, group: it.group, item: it })), {
+        title: "Mention in the question",
+        empty: "No part matches",
+        pick: (e) => {
+          const it = e.item;
+          if (it.insert) { insert(it.insert, it.mention); return; }
+          insert(it.token, null);
+          flashPart(it.all ? descs().map((x) => x.key) : [it.key]);
+        },
+      });
       return;
     }
     // (( block search: after a short pause, at least two letters.
@@ -1113,6 +1194,10 @@ function startSession(s, o) {
     const question = retry ? retry.q : command ? `/${command.name}` : t.value.trim();
     const asked = retry ? retry.asked || retry.q : command ? command.prompt : question;
     if (!question) { s.status.textContent = "Type a question first."; return; }
+    if (!retry && !command && sources.part) {
+      const bad = danglingAtRefs(question, descs().length);
+      if (bad.length) { s.status.textContent = danglingMessage(bad); return; }
+    }
     if (!retry && !command) takeTyped(question);
     rebuild(command ? command.name : question);
     ctl = typeof win.AbortController === "function" ? new win.AbortController() : new AbortController();
@@ -1156,7 +1241,7 @@ function startSession(s, o) {
       const b = buildMultiContext(shown, question);
       sendContext = b.context;
       sendInstructions = b.instructions;
-      sendPrompt = promptWithImages(asked, urls.size > 0);
+      sendPrompt = promptWithImages(atPrompt(asked), urls.size > 0);
       turn.sentUrl = urls.size ? "multi" : "";
     } else {
       const e = one();
@@ -1168,7 +1253,7 @@ function startSession(s, o) {
       }
       sendContext = contextWithImage(e.built.context, turn.sentUrl, e.image?.caption || e.built.figure?.caption || "");
       sendInstructions = turn.sentUrl ? withImageInstructions(e.built.instructions) : e.built.instructions;
-      sendPrompt = promptWithImage(asked, turn.sentUrl);
+      sendPrompt = promptWithImage(atPrompt(asked), turn.sentUrl);
     }
     // Mentioned pages and blocks and the toggled sources go as Live AI's roamContext (the part then rides in the
     // first message, see liveai.ask).
@@ -1297,7 +1382,7 @@ function startSession(s, o) {
       if (!x.answer.trim()) continue;
       history.push({ role: "user", content: x.asked && x.asked !== x.q ? x.asked : x.q }, { role: "assistant", content: x.answer });
     }
-    if (pending) history.push({ role: "user", content: pending });
+    if (pending) history.push({ role: "user", content: atPrompt(pending) });
     if (head) {
       if (history[0]?.role === "user") history[0] = { role: "user", content: `${head}\n\n${history[0].content}` };
       else history.unshift({ role: "user", content: head });
@@ -1417,6 +1502,7 @@ function startSession(s, o) {
     peekMulti();
     offBasket = multi.basket.subscribe((list) => {
       if (dead) return;
+      dropRefs(parts.map((p) => p.key), list.map((p) => p.key));
       parts = list;
       if (!parts.length) { close(); return; }
       multiBuilt = null;

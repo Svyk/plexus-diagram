@@ -46,6 +46,30 @@ pub fn close_window(path: &Path) -> bool {
     }
 }
 
+fn applescript_quote(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Ask on this Mac whether the page at `origin` may use the helper. True only on Allow.
+/// Anywhere but macOS there is no dialog, so the answer is no.
+pub fn mac_consent(origin: &str) -> bool {
+    if !cfg!(target_os = "macos") {
+        return false;
+    }
+    let prompt = format!(
+        "Allow Plexus Diagram in Roam ({}) to use the parse helper on this Mac?",
+        applescript_quote(origin)
+    );
+    let script = format!(
+        "display dialog \"{prompt}\" buttons {{\"Don\u{2019}t Allow\", \"Allow\"}} default button \"Allow\" with title \"Plexus parse helper\" giving up after 60"
+    );
+    let Ok(done) = std::process::Command::new("osascript").arg("-e").arg(script).output() else {
+        return false;
+    };
+    let out = String::from_utf8_lossy(&done.stdout);
+    done.status.success() && out.contains("button returned:Allow") && !out.contains("gave up:true")
+}
+
 fn now() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
@@ -63,5 +87,10 @@ mod tests {
         assert!(close_window(&path));
         assert!(!window_open(&path));
         assert!(!close_window(&path));
+    }
+
+    #[test]
+    fn applescript_quote_escapes_quotes_and_backslashes() {
+        assert_eq!(applescript_quote(r#"a"b\c"#), r#"a\"b\\c"#);
     }
 }

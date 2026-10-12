@@ -1,6 +1,6 @@
 # plexus-parse-helper-rs
 
-The default local parse helper on macOS. It speaks the same HTTP contract as `tools/parse-helper` for `/v1/health`, `/v1/pair`, `/v1/ocr` (Apple Vision, pdfium, the same 300 dpi tiling), and `/v1/cloud/parse` (LlamaParse). It does not run Docling or TableFormer. `/v1/jobs` returns 501. The Python helper stays available as the Docling add-on (`install.sh --docling`).
+The default local parse helper on macOS. It speaks the same HTTP contract as `tools/parse-helper` for `/v1/health`, `/v1/pair`, `/v1/pair/request`, `/v1/ocr` (Apple Vision, pdfium, the same 300 dpi tiling), and `/v1/cloud/parse` (LlamaParse). It does not run Docling or TableFormer. `/v1/jobs` returns 501. The Python helper stays available as the Docling add-on (`install.sh --docling`).
 
 On any system that is not macOS the binary exits immediately and names the Python install. Apple Vision is the only OCR engine here.
 
@@ -43,6 +43,7 @@ node tools/parse-bench/scan.mjs scan.pdf truth.json --helper-url http://127.0.0.
 - Authed health: `engines` is `["ocr", "cloud"]`. `models.layout` and `models.tableformer` are `"missing"`, `models.ocr` is `"ready"`, `warm` is false.
 - Origin is checked before the body. Allowed origin defaults to `https://roamresearch.com`. CORS mirrors the Python helper, including `Access-Control-Allow-Private-Network: true`. OPTIONS is 204. `Access-Control-Allow-Headers` is `Authorization, Content-Type, X-Pxd-Options, X-Pxd-Cloud-Key`.
 - `GET /v1/pair` returns the token once while the window is open and the Origin is allowed. Otherwise 404.
+- `POST /v1/pair/request` (allowed Origin, no bearer) shows a macOS consent dialog via `osascript` on a background thread and answers 202; Allow opens the pair window for `GET /v1/pair`. A decline reads 403 once; a dialog already up answers 202 without a second one; a new dialog within 10 s of the last answers 429.
 - `POST /v1/ocr` takes the PDF (200 MB cap) and `X-Pxd-Options` `{pages, cells}`. Page response is `pxd-ocr/1`: `pageCount`, `pages` (word `items`, `rules`, `deskew`, `dpi`), `sha256`, `elapsedMs`, `cached`. Cell response is `{cells:[{page,bbox,text,conf,glyph}]}` and is never cached.
 - Options hashes match the Python helper (see `src/hashutil.rs` tests).
 

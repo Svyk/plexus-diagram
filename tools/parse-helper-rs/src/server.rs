@@ -1,4 +1,5 @@
-//! HTTP contract of the Python helper, for `/v1/health`, `/v1/pair`, `/v1/ocr`, and `/v1/cloud/parse`.
+//! HTTP contract of the Python helper, for `/v1/health`, `/v1/pair`, `/v1/pair/request`, `/v1/ocr`, and
+//! `/v1/cloud/parse`.
 //! `/v1/jobs` answers 501: Docling / TableFormer is not in this process.
 
 use std::collections::{HashMap, HashSet};
@@ -29,7 +30,7 @@ use crate::cloud::{
 };
 use crate::hashutil::{ocr_options_hash, sha256_hex};
 use crate::ocr::{run_cells, run_pdf};
-use crate::pair::{close_window, window_open};
+use crate::pair::{close_window, mac_consent, open_window, window_open, PAIR_SECONDS};
 use crate::pdf;
 
 pub const HELPER_NAME: &str = "plexus-parse-helper";
@@ -53,6 +54,20 @@ pub struct App {
     /// Empty in `serve`. Tests point LlamaParse at a local mock.
     pub cloud_base: Option<String>,
     pub cloud_jobs: Mutex<HashMap<String, Cancel>>,
+    /// Consent dialog state, under `pair_lock`: one dialog at a time, one new dialog per 10 s, and a "no"
+    /// that the next request reads once.
+    pub consent: Mutex<Consent>,
+    /// The Mac dialog in `serve`; tests answer it.
+    pub consent_runner: Arc<dyn Fn(&str) -> bool + Send + Sync>,
+    /// Monotonic seconds; tests move it.
+    pub clock: Arc<dyn Fn() -> f64 + Send + Sync>,
+}
+
+#[derive(Default)]
+pub struct Consent {
+    pub showing: bool,
+    pub last: Option<f64>,
+    pub declined_until: f64,
 }
 
 impl App {
@@ -75,14 +90,23 @@ impl App {
             cloud: CloudClient::new()?,
             cloud_base: None,
             cloud_jobs: Mutex::new(HashMap::new()),
+            consent: Mutex::new(Consent::default()),
+            consent_runner: Arc::new(mac_consent),
+            clock: Arc::new(monotonic),
         })
     }
+}
+
+fn monotonic() -> f64 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_secs_f64()
 }
 
 pub fn router(state: Arc<App>) -> Router {
     Router::new()
         .route("/v1/health", get(health))
         .route("/v1/pair", get(pair_route))
+        .route("/v1/pair/request", post(pair_request))
         .route("/v1/models", get(models))
         .route(
             "/v1/models/download",
@@ -220,6 +244,56 @@ async fn pair_route(State(state): State<Arc<App>>, headers: HeaderMap) -> Respon
         header::HeaderValue::from_static("no-store"),
     );
     response
+}
+
+/// No bearer. Opens a consent dialog on the Mac; Allow opens the pairing window, which the browser then
+/// collects with GET /v1/pair. 202 asking, 403 declined (once), 429 too soon.
+async fn pair_request(State(state): State<Arc<App>>, headers: HeaderMap) -> Response {
+    let origin = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok());
+    let Some(origin) = origin.filter(|o| state.allow.contains(*o)).map(str::to_string) else {
+        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+    };
+    {
+        let _guard = state.pair_lock.lock().unwrap_or_else(|err| err.into_inner());
+        if window_open(&state.pair_path) {
+            return (StatusCode::ACCEPTED, Json(json!({"status": "open"}))).into_response();
+        }
+        let mut consent = state.consent.lock().unwrap_or_else(|err| err.into_inner());
+        let at = (state.clock)();
+        if consent.declined_until > at {
+            consent.declined_until = 0.0;
+            return (StatusCode::FORBIDDEN, Json(json!({"error": "declined"}))).into_response();
+        }
+        if consent.showing {
+            return (StatusCode::ACCEPTED, Json(json!({"status": "asking"}))).into_response();
+        }
+        if consent.last.is_some_and(|last| at - last < 10.0) {
+            return (StatusCode::TOO_MANY_REQUESTS, Json(json!({"error": "too soon"}))).into_response();
+        }
+        consent.showing = true;
+        consent.last = Some(at);
+    }
+    let app = state.clone();
+    std::thread::Builder::new()
+        .name("pair-consent".into())
+        .spawn(move || {
+            let allowed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (app.consent_runner)(&origin)))
+                .unwrap_or(false);
+            let _guard = app.pair_lock.lock().unwrap_or_else(|err| err.into_inner());
+            let mut consent = app.consent.lock().unwrap_or_else(|err| err.into_inner());
+            consent.showing = false;
+            if allowed {
+                let _ = open_window(&app.pair_path, PAIR_SECONDS);
+            } else {
+                consent.declined_until = (app.clock)() + 30.0;
+            }
+        })
+        .map(|_| ())
+        .unwrap_or_else(|_| {
+            let mut consent = state.consent.lock().unwrap_or_else(|err| err.into_inner());
+            consent.showing = false;
+        });
+    (StatusCode::ACCEPTED, Json(json!({"status": "asking"}))).into_response()
 }
 
 async fn models(State(state): State<Arc<App>>, headers: HeaderMap) -> Response {
@@ -964,5 +1038,157 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(second.status(), StatusCode::NOT_FOUND);
+    }
+
+    type Clock = Arc<dyn Fn() -> f64 + Send + Sync>;
+
+    fn pair_app(tag: &str, runner: Arc<dyn Fn(&str) -> bool + Send + Sync>) -> (Router, Arc<App>, PathBuf) {
+        pair_app_at(tag, runner, None)
+    }
+
+    fn pair_app_at(
+        tag: &str,
+        runner: Arc<dyn Fn(&str) -> bool + Send + Sync>,
+        clock: Option<Clock>,
+    ) -> (Router, Arc<App>, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("pxd-rs-preq-{}-{}", tag, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pair_path = dir.join("pair-until");
+        let mut app = App::new(
+            "tok",
+            HashSet::from(["https://roamresearch.com".into()]),
+            pair_path.clone(),
+            ParseCache::new(dir.join("cache"), 1_000_000),
+            PathBuf::from("/missing"),
+        )
+        .unwrap();
+        app.consent_runner = runner;
+        if let Some(clock) = clock {
+            app.clock = clock;
+        }
+        let app = Arc::new(app);
+        (router(app.clone()), app, pair_path)
+    }
+
+    async fn request_pair(app: &Router, origin: Option<&str>) -> Response {
+        let mut req = Request::builder().uri("/v1/pair/request").method("POST");
+        if let Some(origin) = origin {
+            req = req.header("origin", origin);
+        }
+        app.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap()
+    }
+
+    async fn wait_for(mut done: impl FnMut() -> bool) -> bool {
+        for _ in 0..200 {
+            if done() {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        false
+    }
+
+    const ROAM: &str = "https://roamresearch.com";
+
+    #[tokio::test]
+    async fn pair_request_needs_an_allowed_origin() {
+        let asked = Arc::new(Mutex::new(Vec::<String>::new()));
+        let seen = asked.clone();
+        let (app, _, _) = pair_app("origin", Arc::new(move |o: &str| { seen.lock().unwrap().push(o.into()); true }));
+        assert_eq!(request_pair(&app, None).await.status(), StatusCode::NOT_FOUND);
+        assert_eq!(request_pair(&app, Some("https://evil.example")).await.status(), StatusCode::FORBIDDEN);
+        assert!(asked.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn pair_request_allow_opens_the_window_and_get_pair_collects_it() {
+        let (app, _, pair_path) = pair_app("allow", Arc::new(|_: &str| true));
+        let first = request_pair(&app, Some(ROAM)).await;
+        assert_eq!(first.status(), StatusCode::ACCEPTED);
+        assert_eq!(first.headers().get("access-control-allow-origin").unwrap(), ROAM);
+        assert!(wait_for(|| pair::window_open(&pair_path)).await);
+        let got = app
+            .clone()
+            .oneshot(Request::builder().uri("/v1/pair").header("origin", ROAM).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(got.status(), StatusCode::OK);
+        assert_eq!(body_json(got).await["token"], "tok");
+    }
+
+    #[tokio::test]
+    async fn pair_request_is_202_while_the_window_is_already_open() {
+        let asked = Arc::new(AtomicU32::new(0));
+        let count = asked.clone();
+        let (app, _, pair_path) = pair_app("open", Arc::new(move |_: &str| { count.fetch_add(1, Ordering::SeqCst); true }));
+        pair::open_window(&pair_path, pair::PAIR_SECONDS).unwrap();
+        let res = request_pair(&app, Some(ROAM)).await;
+        assert_eq!(res.status(), StatusCode::ACCEPTED);
+        assert_eq!(body_json(res).await["status"], "open");
+        assert_eq!(asked.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn pair_request_decline_reads_403_once() {
+        let (app, state, pair_path) = pair_app("decline", Arc::new(|_: &str| false));
+        assert_eq!(request_pair(&app, Some(ROAM)).await.status(), StatusCode::ACCEPTED);
+        assert!(wait_for(|| !state.consent.lock().unwrap().showing).await);
+        assert_eq!(request_pair(&app, Some(ROAM)).await.status(), StatusCode::FORBIDDEN);
+        assert!(!pair::window_open(&pair_path));
+    }
+
+    #[tokio::test]
+    async fn pair_request_does_not_stack_dialogs_and_rate_limits() {
+        let release = Arc::new(std::sync::Barrier::new(2));
+        let asked = Arc::new(AtomicU32::new(0));
+        let (gate, count) = (release.clone(), asked.clone());
+        let clock = Arc::new(Mutex::new(100.0_f64));
+        let now = clock.clone();
+        let (app, state, _) = pair_app_at(
+            "stack",
+            Arc::new(move |_: &str| {
+                count.fetch_add(1, Ordering::SeqCst);
+                gate.wait();
+                false
+            }),
+            Some(Arc::new(move || *now.lock().unwrap())),
+        );
+        assert_eq!(request_pair(&app, Some(ROAM)).await.status(), StatusCode::ACCEPTED);
+        assert!(wait_for(|| asked.load(Ordering::SeqCst) == 1).await);
+        let again = request_pair(&app, Some(ROAM)).await;
+        assert_eq!(again.status(), StatusCode::ACCEPTED);
+        assert_eq!(body_json(again).await["status"], "asking");
+        assert_eq!(asked.load(Ordering::SeqCst), 1, "no second dialog while one is up");
+        release.wait();
+        assert!(wait_for(|| !state.consent.lock().unwrap().showing).await);
+        assert_eq!(request_pair(&app, Some(ROAM)).await.status(), StatusCode::FORBIDDEN);
+        *clock.lock().unwrap() += 5.0;
+        assert_eq!(request_pair(&app, Some(ROAM)).await.status(), StatusCode::TOO_MANY_REQUESTS);
+        *clock.lock().unwrap() += 6.0;
+        let release2 = release.clone();
+        let opener = std::thread::spawn(move || release2.wait());
+        assert_eq!(request_pair(&app, Some(ROAM)).await.status(), StatusCode::ACCEPTED);
+        opener.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn pair_request_preflight_is_answered_for_an_allowed_origin() {
+        let (app, _, _) = pair_app("preflight", Arc::new(|_: &str| false));
+        let pre = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/pair/request")
+                    .method("OPTIONS")
+                    .header("origin", ROAM)
+                    .header("access-control-request-method", "POST")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(pre.status(), StatusCode::NO_CONTENT);
+        assert_eq!(pre.headers().get("access-control-allow-origin").unwrap(), ROAM);
+        assert!(pre.headers().get("access-control-allow-methods").unwrap().to_str().unwrap().contains("POST"));
     }
 }

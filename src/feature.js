@@ -30,6 +30,7 @@ import { createResurface } from "./view/resurface-panel.js";
 import { closeOpenWhyPopovers } from "./view/why-pop.js";
 import { createCardCache } from "./model/card-cache.js";
 import { imageSrc } from "./model/export.js";
+import { closeAskAI } from "./view/ask-ai.js";
 import { imageRegionFrac, polygonClipPath } from "./model/image-region.js";
 import { parseRegion } from "./model/regions.js";
 import { boardsFromRefs, PIN_BOARDS_QUERY, pinOpenFallback, pinOpenPlan, pinPdfUrl, pxdPinTarget } from "./model/pdf-pin.js";
@@ -3972,6 +3973,8 @@ export async function installPlexusDiagram({
   bindErrorStats(host.stats);
   lifecycle.add(() => clearErrorStats());
   lifecycle.interval(guardCallback("reconcile", reconcile, { stats: host.stats }), RECONCILE_INTERVAL_MS);
+  // The floating chat: its resize and Live AI listeners and an answer still streaming go with the extension.
+  lifecycle.add(() => closeAskAI());
   lifecycle.add(() => {
     for (const rec of mounts.values()) forgetSketch(rec);
     sketchStore.dispose();

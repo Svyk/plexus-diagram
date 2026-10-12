@@ -1839,3 +1839,44 @@ test("fullscreen-on-zoom leaves a right-sidebar copy of the zoomed board inline"
     if (prev) globalThis.IntersectionObserver = prev;
   }
 });
+
+test("C1: unload closes the floating chat: its resize listener goes and a streaming answer is aborted", async () => {
+  const { createDomStub } = await import("./fixtures/dom-stub.js");
+  const { openAskAI } = await import("../src/view/ask-ai.js");
+  const t = setup({ enhanced: [] });
+  try {
+    await t.install();
+    const stub = createDomStub();
+    const listeners = new Map();
+    let signal = null;
+    const w = {
+      innerWidth: 1200, innerHeight: 800, AbortController,
+      localStorage: { getItem: () => null, setItem() {} },
+      location: { hash: "#/app/g/page/x" },
+      addEventListener(type, fn) { listeners.set(type, [...(listeners.get(type) || []), fn]); },
+      removeEventListener(type, fn) { listeners.set(type, (listeners.get(type) || []).filter((f) => f !== fn)); },
+      LiveAI_API: {
+        isAvailable: () => true,
+        listModels: () => [{ id: "m1", name: "M1", provider: "P", isDefault: true }],
+        getDefaultModel: () => "m1",
+        generate: (options) => { signal = options.signal || null; return new Promise(() => {}); },
+      },
+    };
+    const doc = { schema: "pxd-parse/1", pages: [{ n: 1 }], order: ["p"], blocks: { p: { id: "p", type: "para", page: 1, text: "x" } } };
+    const a = openAskAI({ doc, blockId: "p", document: stub.document, window: w });
+    assert.ok(a);
+    assert.equal((listeners.get("resize") || []).length, 1);
+    await new Promise((r) => setTimeout(r, 0));
+    const find = (n, cls) => { if (n.className?.split?.(" ").includes(cls)) return n; for (const k of n.children || []) { const hit = find(k, cls); if (hit) return hit; } return null; };
+    find(a.el, "pxd-ask__question").value = "q?";
+    find(a.el, "pxd-ask__send").click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(signal, "the answer is streaming");
+    assert.equal(signal.aborted, false);
+    await t.lifecycle.dispose();
+    assert.equal((listeners.get("resize") || []).length, 0);
+    assert.equal(signal.aborted, true);
+  } finally {
+    t.restore();
+  }
+});

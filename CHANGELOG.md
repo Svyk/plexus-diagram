@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.25.0 — 2026-10-11
+
+Point at a part with @ in the chat, sort and filter search with what Roam knows, and PDF cards that resize and read sharp.
+
+- **@ parts in the chat.** Type `@` to pick a part, a figure, a whole PDF or a mentioned page (`@3`, `@fig`, `@spore` filter the list); clicking a chip inserts it too. The model is told exactly which part each `@Part N` means, and a removed part is flagged instead of sent as a dangling reference. Chips name the PDF by its real title.
+- **Sort search.** Best match, recently edited, recently created, oldest, most linked, most children, longest or A–Z, with the sort key on each row ("edited 2 h ago", "12 refs").
+- **Filter with Roam's data.** Created or edited by, created or edited within N days, under a page, has linked references, has children, parsed PDFs, PDFs with highlights, on this board.
+- **PDF cards resize** again, and the cover is redrawn sharp at the new size once you let go. **Image cards** scale their picture with the card.
+- **Real PDF names everywhere.** Letter-spaced banners such as "M A J O R  A R T I C L E" are no longer taken as a title; cards, the reader and chat chips use the paper's title.
+- **Roam's highlight toolbar** shows whenever a PDF is open in the reader, not only after opening the engine settings.
+- **Faster.** The first sorted search of a query is about twice as fast (one batched read instead of eight queries), browsing with an empty box is about ten times faster, and the "Under page" box waits for a pause before searching.
+
 ## 3.24.0 — 2026-10-11
 
 Find a PDF by what it is, search your graph by meaning with Roam's semantic search, and talk to Live AI with its full composer.

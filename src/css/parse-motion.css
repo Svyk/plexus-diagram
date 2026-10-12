@@ -1,0 +1,310 @@
+/* Parse motion ("reading"): a soft beam over the page, part outlines that draw in, a 14 px ring with a running
+   count. Transform, opacity and stroke-dashoffset only; every node is absolutely positioned inside a box that
+   already exists, so nothing shifts. Reduced motion keeps the ring and the count. */
+
+.pxd-pmotion {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+  opacity: 1;
+  transition: opacity 400ms ease-out;
+}
+
+.pxd-pmotion.pxd-pmotion--fading {
+  opacity: 0;
+}
+
+.pxd-pmotion > .pxd-pmotion__carrier {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  transform: translateY(0%);
+  will-change: transform;
+}
+
+.pxd-pmotion .pxd-pmotion__beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -16px;
+  height: 32px;
+  background: linear-gradient(to bottom,
+    transparent,
+    color-mix(in srgb, var(--pxd-accent, #2563eb) 12%, transparent) 50%,
+    transparent);
+  transition: opacity 300ms ease-out;
+}
+
+.pxd-pmotion.pxd-pmotion--done .pxd-pmotion__beam,
+.pxd-pmotion.pxd-pmotion--error .pxd-pmotion__beam {
+  opacity: 0;
+}
+
+.pxd-pmotion.pxd-pmotion--loop > .pxd-pmotion__carrier {
+  transition: none;
+  animation: pxd-pmotion-sweep 1.6s linear infinite;
+}
+
+@keyframes pxd-pmotion-sweep {
+  from { transform: translateY(0%); }
+  to { transform: translateY(100%); }
+}
+
+.pxd-pmotion > .pxd-pmotion__parts {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.pxd-pmotion .pxd-pmotion__part {
+  fill: none;
+  stroke: color-mix(in srgb, var(--pxd-muted, #6b7280) 40%, transparent);
+  stroke-width: 1.25;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  transition: stroke-dashoffset 220ms ease-out, opacity 220ms ease-out;
+}
+
+.pxd-pmotion .pxd-pmotion__part--table {
+  stroke: var(--pxd-accent, #2563eb);
+}
+
+.pxd-pmotion .pxd-pmotion__part--figure,
+.pxd-pmotion .pxd-pmotion__part--formula {
+  stroke: var(--pxd-teal-line, #0d9488);
+}
+
+.pxd-pmotion .pxd-pmotion__part--heading {
+  stroke: color-mix(in srgb, var(--pxd-text, #111827) 55%, transparent);
+}
+
+.pxd-pmotion .pxd-pmotion__part--caption {
+  stroke: color-mix(in srgb, var(--pxd-teal-line, #0d9488) 55%, transparent);
+}
+
+/* Past the stagger cap the outlines fade in together instead of drawing. */
+.pxd-pmotion .pxd-pmotion__part--fade {
+  stroke-dashoffset: 0;
+  opacity: 0;
+}
+
+.pxd-pmotion .pxd-pmotion__part.pxd-pmotion__part--in {
+  stroke-dashoffset: 0;
+  opacity: 1;
+}
+
+.pxd-pmotion.pxd-pmotion--done .pxd-pmotion__part {
+  animation: pxd-pmotion-pulse 600ms ease-out forwards;
+}
+
+@keyframes pxd-pmotion-pulse {
+  from { opacity: 1; }
+  to { opacity: 0.35; }
+}
+
+/* Header badge: ring + count. */
+.pxd-pmotion-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  max-width: 320px;
+  padding: 2px 9px 2px 5px;
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 999px;
+  background: var(--pxd-chrome-bg, var(--pxd-surface, #ffffff));
+  box-shadow: var(--pxd-shadow, none);
+  color: var(--pxd-text, #111827);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 400ms ease-out;
+}
+
+.pxd-pmotion-head.pxd-pmotion--fading {
+  opacity: 0;
+}
+
+.pxd-pmotion-head > .pxd-pmotion-head__ring {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.pxd-pmotion-head .pxd-pmotion-head__track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--pxd-muted, #6b7280) 28%, transparent);
+  stroke-width: 2;
+}
+
+.pxd-pmotion-head .pxd-pmotion-head__fill {
+  fill: none;
+  stroke: var(--pxd-accent, #2563eb);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  transition: stroke-dashoffset 200ms ease-out;
+}
+
+.pxd-pmotion-head > .pxd-pmotion-head__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pxd-pmotion-head.pxd-pmotion-head--spin > .pxd-pmotion-head__ring {
+  animation: pxd-pmotion-spin 1s linear infinite;
+}
+
+@keyframes pxd-pmotion-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.pxd-pmotion-head.pxd-pmotion--error .pxd-pmotion-head__fill {
+  stroke: var(--pxd-orange-line, #d97706);
+}
+
+.pxd-pmotion-head.pxd-pmotion--error {
+  color: var(--pxd-orange-text, #9a3412);
+  border-color: var(--pxd-orange-line, #d97706);
+}
+
+/* Where the badge sits: the reader stage's top-left corner, and the PDF card's cover (screen-sized). */
+.pxd-read .pxd-read__pmotion {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 5;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.pxd-root .pxd-pdf-cover > .pxd-pmotion-head {
+  top: 6px;
+  left: 6px;
+  max-width: calc((100% - 12px) / var(--pxd-screen-px, 1));
+  transform: scale(var(--pxd-screen-px, 1));
+  transform-origin: top left;
+}
+
+/* Per-part gutter: Ask AI over Copy, beside the part under the pointer. */
+.pxd-read .pxd-pgutter {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+  padding: 2px;
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg, var(--pxd-surface, #ffffff));
+  box-shadow: var(--pxd-shadow, 0 1px 3px rgba(0, 0, 0, 0.12));
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 120ms ease-out, visibility 0s linear 120ms;
+}
+
+.pxd-read .pxd-pgutter.pxd-pgutter--show {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 120ms ease-out, visibility 0s;
+}
+
+.pxd-read .pxd-pgutter > .pxd-pgutter__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pxd-muted, #6b7280);
+  cursor: pointer;
+}
+
+.pxd-read .pxd-pgutter > .pxd-pgutter__btn:hover,
+.pxd-read .pxd-pgutter > .pxd-pgutter__btn:focus-visible {
+  background: var(--pxd-accent-soft, rgba(37, 99, 235, 0.1));
+  color: var(--pxd-text, #111827);
+  outline: none;
+}
+
+.pxd-read .pxd-pgutter > .pxd-pgutter__btn:focus-visible {
+  box-shadow: inset 0 0 0 1.5px var(--pxd-accent, #2563eb);
+}
+
+.pxd-read .pxd-pgutter > .pxd-pgutter__ask:hover {
+  color: var(--pxd-accent, #2563eb);
+}
+
+.pxd-read .pxd-pgutter > .pxd-pgutter__copy.pxd-pgutter__copy--done {
+  color: var(--pxd-accent, #2563eb);
+}
+
+.pxd-read .pxd-pgutter > .pxd-pgutter__copy.pxd-pgutter__copy--fail {
+  color: var(--pxd-red-line, #dc2626);
+}
+
+.pxd-read .pxd-pgutter > .pxd-pgutter__btn > svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+/* The Ask AI mark beside menu and button labels. */
+.pxd-root .pxd-menu__item > .pxd-menu__icon {
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  display: flex;
+  color: var(--pxd-muted, #6b7280);
+  transform: translateY(-50%);
+}
+
+.pxd-copy-menu__item > .pxd-ask-icon,
+.pxd-read .pxd-selbar__btn > .pxd-ask-icon {
+  display: inline-block;
+  margin-right: 5px;
+  vertical-align: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pxd-pmotion {
+    display: none;
+  }
+
+  .pxd-pmotion-head.pxd-pmotion-head--spin > .pxd-pmotion-head__ring {
+    animation: none;
+  }
+
+  .pxd-pmotion-head .pxd-pmotion-head__fill,
+  .pxd-pmotion-head,
+  .pxd-read .pxd-pgutter,
+  .pxd-read .pxd-pgutter.pxd-pgutter--show {
+    transition: none;
+  }
+}

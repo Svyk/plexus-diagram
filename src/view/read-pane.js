@@ -28,6 +28,8 @@ import { selectionDoc } from "../model/ai-context.js";
 import { BASKET_MESSAGES, basketFor, makePart } from "../model/ask-basket.js";
 import { graphOfWindow } from "../model/ask-models.js";
 import { compactPage, createTextLayer, pageRecords } from "./text-layer.js";
+import { createParseMotion, motionMode, prefersReducedMotion } from "./parse-motion.js";
+import { askAiIcon } from "./ask-icon.js";
 
 // U4 owns the visible drawer. The import is async so a missing file leaves the pane's own list.
 let liveDrawer = null;
@@ -204,6 +206,8 @@ export function createReadPane({
   onSnapshot,
   onReadingChange,
   onParsedTitle,
+  // (cardUid, event): parse motion reports, so the board can show them on the PDF card too.
+  onParseMotion = null,
   cards,
   placed,
   titleOf,
@@ -306,6 +310,8 @@ export function createReadPane({
   const progressFill = el("div", "pxd-read__progressfill", progress);
   const stage = el("div", "pxd-read__stage", pane);
   const live = el("div", "pxd-read__live", stage);
+  // The parse ring and running count sit over the stage's top-left corner (absolutely, so nothing moves).
+  const motionSlot = el("div", "pxd-read__pmotion", stage);
   const pill = el("div", "pxd-read__pill", stage);
   pill.setAttribute("role", "toolbar");
   pill.setAttribute("aria-label", "Reader");
@@ -328,7 +334,9 @@ export function createReadPane({
   for (const [act, text, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"], ["ask", "Ask AI", "read.sel.ask"], ["basket", "Add to question", "read.sel.basket"]]) {
     const button = el("button", "pxd-selbar__btn pxd-chrome", bar);
     button.type = "button";
-    button.textContent = text;
+    const mark = act === "ask" && typeof doc.createTextNode === "function" ? askAiIcon(doc, 14) : null;
+    if (mark) button.append(mark, doc.createTextNode(text));
+    else button.textContent = text;
     button.setAttribute("data-act", act);
     button.setAttribute("data-tip", tip);
   }
@@ -2314,6 +2322,57 @@ export function createReadPane({
     if (!readKeeper) readKeeper = createReadKeeper({ host, session, store: ensureStore(), settings });
     return readKeeper;
   };
+  // Parse motion on the reader: the beam and part outlines go on the page being read when it is on screen,
+  // else on the page the reader shows. The quiet background read in Read mode stays still, like its bar.
+  let pmotion = null;
+  const pmotionMode = () => {
+    if (!openFlag || !pane.isConnected) return "off";
+    if (bgParsing && viewMode === "reader") return "off";
+    return motionMode({ reduced: prefersReducedMotion(doc.defaultView) });
+  };
+  const pageOnScreen = (node) => {
+    try {
+      const r = node.getBoundingClientRect();
+      const box = live.getBoundingClientRect();
+      return r.height > 0 && r.bottom > box.top && r.top < box.bottom;
+    } catch { return false; }
+  };
+  const motionTarget = (n) => {
+    const at = n ? pageElement(n) : null;
+    if (at && pageOnScreen(at)) return [at, n];
+    const shown = pageNowOf();
+    return [pageElement(shown), shown];
+  };
+  const readerMotion = (event) => {
+    if (!event?.type) return;
+    if (event.type === "start") {
+      if (!pmotion) pmotion = createParseMotion({ doc, headHost: motionSlot, mode: pmotionMode, cls: "pxd-pmotion--reader" });
+      const [node, n] = motionTarget(0);
+      pmotion.setOverlayHost(node, n);
+      pmotion.start();
+      return;
+    }
+    if (!pmotion) return;
+    if (event.type === "progress" || event.type === "page") {
+      const [node, n] = motionTarget(Number(event.page) || 0);
+      pmotion.setOverlayHost(node, n);
+      pmotion.progress(event);
+      if (event.type === "page") pmotion.parts(event.page, event.boxes);
+    } else if (event.type === "done") {
+      const n = pmotion.overlayPage() || pageNowOf();
+      let boxes = [];
+      try { boxes = typeof event.boxesOf === "function" ? event.boxesOf(n) : []; } catch { boxes = []; }
+      pmotion.done({ counts: event.counts, ms: event.ms, boxes, keep: parsedView?.showParsed?.() === true });
+    } else if (event.type === "error") {
+      pmotion.fail();
+    } else if (event.type === "cancel") {
+      pmotion.cancel();
+    }
+  };
+  const dropMotion = () => {
+    try { pmotion?.dispose(); } catch { /* gone */ }
+    pmotion = null;
+  };
   const ensureParsed = () => {
     if (parsedView) return parsedView;
     parsedView = createParseView({
@@ -2357,6 +2416,11 @@ export function createReadPane({
       onOcrPages: (pages, sha) => { setOcrPages(pages, { sha256: sha || "" }); },
       ghostRoot: root,
       ghostPane: pane,
+      gutterMount: pane,
+      onMotion: (event) => {
+        readerMotion(event);
+        try { onParseMotion?.(current.cardUid, event); } catch { /* host */ }
+      },
       scanAuto: false,
       lazyKeys: true,
     });
@@ -2368,6 +2432,7 @@ export function createReadPane({
   function dropParsed() {
     try { parsedView?.dispose?.(); } catch { /* gone */ }
     parsedView = null;
+    dropMotion();
     parsedTitle = "";
     viewMode = "reader";
     setHidden(modes, true);

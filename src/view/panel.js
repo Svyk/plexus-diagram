@@ -2,6 +2,7 @@
 // board in the graph) and Outline (the board's cards as an indented tree).
 // Rows click-add beside the selection and drag onto the board with a custom MIME.
 
+import { askAiIcon } from "./ask-icon.js";
 import { closeInfoTab, infoTabList, nextPanelWidth, PANEL_WIDTH_DEFAULT } from "../model/info.js";
 import { mountTimeline } from "./timeline.js";
 import { LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, PARSE_PART_TYPES, libraryCard, libraryFilterActive } from "../model/library.js";
@@ -397,7 +398,8 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       ask.setAttribute("type", "button");
       ask.setAttribute("aria-label", "Ask AI");
       ask.setAttribute("title", "Ask AI");
-      el("span", "bp3-icon bp3-icon-lightbulb", ask).setAttribute("aria-hidden", "true");
+      const mark = askAiIcon(doc, 16);
+      if (mark) ask.append(mark);
       listen(ask, "click", (event) => { event.stopPropagation(); on.askPart(part); });
     }
     if (part.kind === "figure" && typeof on.chartPart === "function") {

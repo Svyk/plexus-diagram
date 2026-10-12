@@ -48,6 +48,10 @@ import { openAskAI } from "./ask-ai.js";
 import { runChartToTable } from "./chart-table.js";
 import { BASKET_MESSAGES, basketFor, makePart } from "../model/ask-basket.js";
 import { graphOfWindow } from "../model/ask-models.js";
+import { createPartGutter } from "./part-gutter.js";
+import { docCounts, partBoxes } from "./parse-motion.js";
+import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
+import { present as liveAiPresent, SETUP_HINT } from "../host/liveai.js";
 
 export const PARSE_MIME = "application/x-plexus-parse";
 export const BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
@@ -380,6 +384,10 @@ export function createParseView({
   anydoc = null,
   keep = null,
   fetch: fetchImpl = null,
+  // The pane element that holds the per-part Ask AI / Copy gutter. No gutter without it.
+  gutterMount = null,
+  // Parse motion events: { type: "start" | "progress" | "page" | "done" | "error" | "cancel", ... }.
+  onMotion = null,
 } = {}) {
   const el = (tag, cls, parent) => {
     const node = doc.createElement(tag);
@@ -573,6 +581,23 @@ export function createParseView({
   let phase = "idle";
   let failure = "";
   let dead = false;
+  // Motion: one start, then progress/page reports, then exactly one done, error or cancel.
+  let motionLive = false;
+  let motionFinished = false;
+  let motionCancelled = false;
+  let motionOwnProgress = false;
+  const motion = (event) => {
+    if (typeof onMotion !== "function") return;
+    try { onMotion(event); } catch { /* host */ }
+  };
+  const blocksOnPage = (doc, n) => {
+    const out = [];
+    for (const id of doc?.order || []) {
+      const block = doc.blocks?.[id];
+      if (block && block.page === n) out.push(block);
+    }
+    return out;
+  };
   let progress = { page: 0, pageCount: 0, engine: "builtin" };
   let keyFn = null;
   let wheelFn = null;
@@ -786,9 +811,56 @@ export function createParseView({
       return false;
     }
   }
+  // The pane's one Ask AI / Copy pill, shared by the reader page and the outline rows.
+  let partGutter = null;
+  function gutterOn() {
+    if (partGutter || !gutterMount || dead) return partGutter;
+    partGutter = createPartGutter({
+      doc,
+      mount: gutterMount,
+      onAsk: (block, { shift } = {}) => gutterAsk(block, shift),
+      onCopy: (block) => gutterCopy(block),
+      onMenu: (block, anchor) => pageChips?.openCopyMenu?.(block, anchor),
+    });
+    return partGutter;
+  }
+  // Ask AI about one part with the rest of the PDF as context; Shift adds it to the question instead.
+  function gutterAsk(block, shift) {
+    if (!parsed || !block) return null;
+    if (shift) return basketAdd({ blockId: block.id });
+    if (!liveAiPresent(doc.defaultView)) {
+      try { onToast?.(SETUP_HINT); } catch { /* host */ }
+      return null;
+    }
+    return askAbout({ blockId: block.id });
+  }
+  // Roam-ready text: a table as a {{[[table]]}} outline, anything else as the Copy button copies it.
+  async function gutterCopy(block) {
+    if (!parsed || !block) return false;
+    let ok = false;
+    if (block.type === "table") {
+      try { await writeTextOnly(toRoamMarkdown(parsed, [block.id]).markdown); ok = true; } catch { ok = false; }
+    } else {
+      ok = await copyBlock(block);
+    }
+    try { onToast?.(ok ? "Copied" : "Could not copy"); } catch { /* host */ }
+    return ok;
+  }
+  const rowGutter = (row, immediate) => {
+    const gutter = gutterOn();
+    const block = row ? parsed?.blocks?.[row.getAttribute?.("data-id")] : null;
+    if (!gutter || !block) return;
+    let rect = null;
+    let area = null;
+    try { rect = row.getBoundingClientRect(); area = body.getBoundingClientRect(); } catch { return; }
+    gutter.intent(block, rect, { host: area, side: "right", immediate });
+  };
+
   const chipsOn = () => pageChips || (pageChips = createPageChips({
     doc,
     host: readerEl || null,
+    gutter: gutterOn(),
+    gutterHost: readerEl || null,
     getParsed: () => parsed,
     pageEl: (n) => pageEl?.(n) || null,
     pageOf: (n) => pageInfo(n),
@@ -888,7 +960,29 @@ export function createParseView({
     });
   }
 
+  function paintMotion() {
+    if (typeof onMotion !== "function") return;
+    const running = phase === "running";
+    if (running && !motionLive) {
+      motionLive = true;
+      motionFinished = false;
+      motionCancelled = false;
+      motion({ type: "start", engine: progress.engine || "builtin" });
+      return;
+    }
+    if (running) {
+      if (!motionOwnProgress) motion({ type: "progress", page: Number(progress.page) || 0, pageCount: Number(progress.pageCount) || 0, engine: progress.engine || "" });
+      return;
+    }
+    if (motionLive && !motionFinished) {
+      motionLive = false;
+      motionOwnProgress = false;
+      motion({ type: motionCancelled ? "cancel" : "error" });
+    }
+  }
+
   function paintChip() {
+    paintMotion();
     const state = engineChip({
       phase,
       engine: progress.engine || parsed?.engine || "builtin",
@@ -1492,6 +1586,7 @@ export function createParseView({
     const total = Number(parsed?.pageCount) || Number(progress.pageCount) || 0;
     parsed = { ...docResult, optsHash, stats: { ...(docResult.stats || {}), ms } };
     phase = "idle";
+    if (motionLive) motionFinished = true;
     try {
       await store?.putParse?.(parsed);
       if (currentUrl) {
@@ -1506,6 +1601,17 @@ export function createParseView({
     }
     render();
     onProgress?.({ page: progress.pageCount, pageCount: progress.pageCount, fraction: 1 });
+    if (motionLive && motionFinished) {
+      motionLive = false;
+      motionOwnProgress = false;
+      const done = parsed;
+      motion({
+        type: "done",
+        counts: docCounts(done),
+        ms: Number(done?.stats?.ms) || 0,
+        boxesOf: (n) => partBoxes(blocksOnPage(done, n), pageInfo(n)),
+      });
+    }
   }
 
   async function readAlternative() {
@@ -1563,6 +1669,8 @@ export function createParseView({
     if (!explicit?.pages && !rangeTouched) applyDefaultRange(total);
     const [from, to] = explicit?.pages || rangeOf(total);
     const t0 = now();
+    const span = Math.max(1, to - from + 1);
+    motionOwnProgress = motionLive;
     records = [];
     let sha = parsed?.sha256 || "";
     try {
@@ -1573,7 +1681,15 @@ export function createParseView({
       progress = { page: n, pageCount: to, engine: "builtin" };
       paintChip();
       onProgress?.({ page: n, pageCount: to, fraction: (n - from + 1) / Math.max(1, to - from + 1) });
-      const rec = await geometryOf(n, pdf);
+      if (motionOwnProgress) motion({ type: "progress", page: n, pageCount: to, fraction: (n - from) / span, engine: "builtin" });
+      let rec;
+      try { rec = await geometryOf(n, pdf); } catch (error) {
+        // A page that throws ends the read: the chip and the motion stop instead of spinning on.
+        if (ctrl.signal.aborted || dead) return;
+        phase = "idle";
+        paintChip();
+        throw error;
+      }
       if (ctrl.signal.aborted) return;
       records.push(rec);
       const preview = assembleDocument(records, {
@@ -1586,6 +1702,17 @@ export function createParseView({
       preview.stats = { ...(preview.stats || {}), ms: now() - t0 };
       parsed = preview;
       render();
+      if (motionOwnProgress) {
+        motion({
+          type: "page",
+          page: n,
+          pageCount: to,
+          fraction: (n - from + 1) / span,
+          counts: docCounts(preview),
+          boxes: partBoxes(blocksOnPage(preview, n), pageInfo(n)),
+          engine: "builtin",
+        });
+      }
       if (n < to) await new Promise((resolve) => setTimeout(resolve, 0));
     }
     if (ctrl.signal.aborted) return;
@@ -1970,6 +2097,7 @@ export function createParseView({
   }
 
   function cancel() {
+    if (phase === "running") motionCancelled = true;
     try { abort?.abort?.(); } catch { /* already */ }
     abort = null;
     if (jobId && typeof helper?.cancel === "function") {
@@ -2228,6 +2356,22 @@ export function createParseView({
     lockBtn.setAttribute("aria-label", locked ? "Sync scroll off" : "Sync scroll");
   });
   listen(copyBtn, "click", (event) => { void copySelection(Boolean(event.shiftKey)); });
+  if (gutterMount) {
+    // Outline rows: hover or keyboard focus brings the pane's Ask AI / Copy pill to the row's right edge.
+    const rowOf = (node) => node?.closest?.(".pxd-parse__block") || null;
+    listen(body, "pointerover", (event) => {
+      const row = rowOf(event.target);
+      if (row) rowGutter(row, false);
+      else partGutter?.leave();
+    });
+    listen(body, "pointerleave", () => partGutter?.leave());
+    listen(body, "focusin", (event) => {
+      const row = event.target?.classList?.contains?.("pxd-parse__block") ? event.target : null;
+      if (row) rowGutter(row, true);
+    });
+    listen(body, "focusout", (event) => { if (!partGutter?.contains(event?.relatedTarget)) partGutter?.leave(); });
+    listen(body, "scroll", () => partGutter?.hide(), true);
+  }
   listen(insertBtn, "click", () => { insertSelection(); });
   listen(sendBtn, "click", () => { callSession("sendParsedToBoard"); });
   listen(hlBtn, "click", () => {
@@ -2372,6 +2516,9 @@ export function createParseView({
       try { placing?.dispose(); } catch { /* gone */ }
       placing = null;
       pageChips?.dispose();
+      try { partGutter?.dispose(); } catch { /* gone */ }
+      partGutter = null;
+      if (motionLive) { motionLive = false; motion({ type: "cancel" }); }
       clearBlockListeners();
       for (const [node, type, fn, capture] of armed) {
         if (type === "observer") { try { fn(); } catch { /* observer */ } continue; }

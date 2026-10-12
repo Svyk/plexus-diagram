@@ -4,9 +4,12 @@
 // "Show parsed" adds a persistent soft box per parsed block with a copy icon at its left edge.
 // Paragraph boxes are pointer-events none; only their icons take clicks (one delegated listener).
 // A figure or formula box takes the pointer when a drag callback is passed, so the crop can be dragged.
+// With a `gutter` (part-gutter.js) any parsed part under the pointer gets the pane's Ask AI / Copy pill instead of
+// the per-box copy icon; the icons stay in the layer for their click, menu and keyboard paths.
 
 import { gestureSource, readWithSource, writeWithSource, COPY_MENU } from "../model/pdf-pin.js";
 import { bboxToPagePercent, bboxToPageRect } from "./parse-overlay.js";
+import { askAiIcon } from "./ask-icon.js";
 
 const HIDE_MS = 220;
 const SYNC_RETRIES = 40;
@@ -224,6 +227,8 @@ export function createPageChips({
   drag = null,
   storage = null,
   boxCap = 4000,
+  gutter = null,
+  gutterHost = null,
 } = {}) {
   const win = () => doc?.defaultView || null;
   const bound = [];
@@ -332,6 +337,7 @@ export function createPageChips({
   let pressStart = null;
   const showCopy = (id) => {
     if (id === copyShown) return;
+    if (gutter) { copyShown = id; return; }
     for (const entry of layers.values()) {
       if (copyShown) {
         entry.icons.get(copyShown)?.classList.remove("pxd-parsed-copy--show");
@@ -381,6 +387,8 @@ export function createPageChips({
     }
     if (typeof ask === "function") {
       const entry = button("pxd-copy-menu__item", "Ask AI…");
+      const mark = askAiIcon(doc, 14);
+      if (mark) entry.prepend?.(mark);
       entry.setAttribute("role", "menuitem");
       entry.setAttribute("data-copy", "ask-ai");
       on(entry, "click", (event) => {
@@ -688,6 +696,45 @@ export function createPageChips({
     runCopyMenu(id, use, icon);
   };
 
+  // The gutter follows the smallest parsed part under the pointer, any type, on the page the pointer is over.
+  const gutterHover = (event, parsed) => {
+    if (selecting()) { gutter.leave(); return; }
+    const n = pageNumberOf(event.target, parsed);
+    const el = n ? pageEl?.(n) : null;
+    if (!el) { gutter.leave(); return; }
+    const box = el.getBoundingClientRect();
+    const x = (Number(event.clientX) || 0) - box.left;
+    const y = (Number(event.clientY) || 0) - box.top;
+    const pagePx = { w: box.width > 0 ? box.width : info(n)?.w, h: box.height > 0 ? box.height : info(n)?.h };
+    let hit = null;
+    let hitRect = null;
+    let best = Infinity;
+    for (const id of parsed?.order || []) {
+      const block = parsed.blocks?.[id];
+      if (!block || block.page !== n || !Array.isArray(block.bbox)) continue;
+      const r = bboxToPageRect(block.bbox, info(n), el);
+      if (!r) continue;
+      if (x < r.left - BOX_PAD || x > r.left + r.width + BOX_PAD || y < r.top - BOX_PAD || y > r.top + r.height + BOX_PAD) continue;
+      const area = r.width * r.height;
+      if (area >= best) continue;
+      const plan = parsedBoxPlan(block, info(n));
+      if (!plan || skipParsedBox(block, plan, pagePx)) continue;
+      best = area;
+      hit = block;
+      hitRect = r;
+    }
+    if (!hit) { gutter.leave(); return; }
+    copyShown = hit.id;
+    let area = null;
+    try { area = (gutterHost || host)?.getBoundingClientRect?.() || null; } catch { area = null; }
+    gutter.intent(hit, {
+      left: box.left + hitRect.left - BOX_PAD,
+      top: box.top + hitRect.top - BOX_PAD,
+      right: box.left + hitRect.left + hitRect.width + BOX_PAD,
+      bottom: box.top + hitRect.top + hitRect.height + BOX_PAD,
+    }, area ? { host: area } : {});
+  };
+
   const show = (block, el, parsed) => {
     const plan = chipPlan(block, parsed, { latexReady: Boolean(isLatexReady?.()) });
     const rect = bboxToPageRect(block.bbox, info(block.page), el);
@@ -781,6 +828,7 @@ export function createPageChips({
     if (!parsed) return;
     if (showParsed && layers.size === 0) queueSync();
     updateCopy(event, parsed);
+    if (gutter) gutterHover(event, parsed);
     if (chipNode && chipNode.contains?.(event.target)) { stopTimer(); return; }
     if (selecting()) { if (current) hideAll(); return; }
     const n = pageNumberOf(event.target, parsed);
@@ -846,6 +894,7 @@ export function createPageChips({
     const to = event?.relatedTarget;
     if (to && (target === doc ? to !== doc.documentElement : target.contains?.(to))) return;
     showCopy(null);
+    gutter?.leave();
     if (current && hideTimer == null) hideTimer = later(hideAll, HIDE_MS);
   };
 
@@ -867,6 +916,7 @@ export function createPageChips({
   on(target, "pointerup", onCopyUp, true);
   on(win(), "keydown", onCopyKey, true);
   on(target, "scroll", queueSync, true);
+  if (gutter) on(target, "scroll", () => gutter.hide(), true);
   if (showParsed) queueSync();
 
   return {
@@ -891,6 +941,7 @@ export function createPageChips({
       return showParsed;
     },
     boxCount: () => boxCount,
+    openCopyMenu: (block, anchor) => openCopyMenu(block, anchor),
     dispose() {
       disposed = true;
       closeCopyMenu();

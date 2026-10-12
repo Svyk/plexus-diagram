@@ -1,65 +1,73 @@
-/* Ask AI dialog. Appended to the document body, so tokens carry fallbacks (same as .pxd-copy-menu). */
+/* Ask AI chat window, in the style of Live AI Assistant's chat. Appended to the document body and placed by
+   ask-ai.js (left/top/width/height inline), so it floats above a fullscreen board (.pxd-mount--fullscreen is
+   z-index 40) and Roam's sidebars. Buttons use two classes: Blueprint's `.bp3-dark button` beats one. */
 .pxd-ask {
+  --pxd-ask-bg: #f5f8fa;
+  --pxd-ask-head: #fff;
+  --pxd-ask-ctx: #ebf1f5;
+  --pxd-ask-card: #fff;
+  --pxd-ask-line: rgba(16, 22, 26, 0.12);
+  --pxd-ask-fg: #182026;
+  --pxd-ask-muted: #5c7080;
+  --pxd-ask-user: #607d8b;
+  --pxd-ask-accent: #667eea;
+  --pxd-ask-hover: rgba(167, 182, 194, 0.22);
   position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 60;
+  left: 0;
+  top: 0;
+  z-index: 1000;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   box-sizing: border-box;
-  width: min(440px, calc(100vw - 32px));
-  min-width: min(360px, calc(100vw - 32px));
-  max-width: calc(100vw - 32px);
-  max-height: min(78vh, 720px, calc(100vh - 32px));
-  padding: 12px;
+  width: 420px;
+  height: 560px;
+  min-width: min(340px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
   overflow: hidden;
-  color: var(--pxd-fg, var(--pxd-text, inherit));
-  background: var(--pxd-surface, #fff);
-  border: 1px solid var(--pxd-border, #d1d5db);
-  border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-bg);
+  border: 1px solid var(--pxd-ask-line);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(16, 22, 26, 0.22), 0 2px 6px rgba(16, 22, 26, 0.12);
   font-size: 13px;
-}
-
-/* A table or several parts need room. A width the user dragged to is an inline style and wins. */
-.pxd-ask--wide {
-  width: min(720px, calc(100vw - 48px));
-}
-
-/* Drag this strip on the left edge to change the width. */
-.pxd-ask__grip {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 1;
-  width: 6px;
-  cursor: ew-resize;
-  touch-action: none;
-}
-
-.pxd-ask__grip:hover {
-  background: var(--pxd-accent, #2563eb);
-  opacity: 0.35;
+  line-height: 1.45;
+  contain: layout;
 }
 
 .bp3-dark .pxd-ask,
-.pxd-root--dark ~ .pxd-ask {
-  color: var(--pxd-fg, #e5e7eb);
-  background: var(--pxd-surface, #111);
-  border-color: var(--pxd-border, #4b5563);
+.pxd-ask.pxd-ask--dark {
+  --pxd-ask-bg: #293742;
+  --pxd-ask-head: #30404d;
+  --pxd-ask-ctx: #202b33;
+  --pxd-ask-card: #394b59;
+  --pxd-ask-line: rgba(255, 255, 255, 0.12);
+  --pxd-ask-fg: #f5f8fa;
+  --pxd-ask-muted: #a7b6c2;
+  --pxd-ask-user: #5c7c8f;
+  --pxd-ask-accent: #8b9cf4;
+  --pxd-ask-hover: rgba(255, 255, 255, 0.08);
 }
 
-.pxd-ask__head {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.pxd-ask.pxd-ask--over-fullscreen {
+  z-index: 1001;
 }
 
-.pxd-ask__title {
-  font-weight: 600;
+.pxd-ask.pxd-ask--dragging {
+  will-change: transform;
+  user-select: none;
+}
+
+.pxd-ask.pxd-ask--collapsed {
+  height: auto;
+}
+
+.pxd-ask.pxd-ask--collapsed > :not(.pxd-ask__head) {
+  display: none;
+}
+
+.pxd-ask [hidden] {
+  display: none !important;
 }
 
 .pxd-ask button,
@@ -69,153 +77,316 @@
   color: inherit;
 }
 
-.pxd-ask__close,
-.pxd-ask__chip,
-.pxd-ask__quickbtn,
-.pxd-ask__send,
-.pxd-ask__stop,
-.pxd-ask__act {
-  padding: 3px 9px;
+/* ---- header: title left, buttons right; the header is the drag handle */
+.pxd-ask__head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  background: var(--pxd-ask-head);
+  border-bottom: 1px solid var(--pxd-ask-line);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.pxd-ask--dragging .pxd-ask__head {
+  cursor: grabbing;
+}
+
+.pxd-ask__title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pxd-ask__headbtns {
+  display: flex;
+  gap: 6px;
+}
+
+.pxd-ask .pxd-ask__hbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--pxd-ask-muted);
   background: transparent;
-  border: 1px solid var(--pxd-border, #d1d5db);
+  border: 1px solid var(--pxd-ask-line);
   border-radius: 6px;
+  font-size: 15px;
+  line-height: 1;
   cursor: pointer;
 }
 
-.pxd-ask__close {
-  border: 0;
-  font-size: 18px;
-  line-height: 1;
+.pxd-ask .pxd-ask__hbtn:hover {
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-hover);
 }
 
-.pxd-ask__chip {
+/* ---- context bar: what the questions are about */
+.pxd-ask__context {
   flex: 0 0 auto;
-  align-self: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 6px 10px;
+  color: var(--pxd-ask-muted);
+  background: var(--pxd-ask-ctx);
+  border-bottom: 1px solid var(--pxd-ask-line);
+  font-size: 12px;
+}
+
+.pxd-ask .pxd-ask__chip,
+.pxd-ask .pxd-ask__addwhole {
+  padding: 2px 8px;
+  color: var(--pxd-ask-muted);
+  background: transparent;
+  border: 1px solid var(--pxd-ask-line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.pxd-ask .pxd-ask__chip {
+  flex: 0 0 auto;
   max-width: 100%;
   height: auto;
   overflow: hidden;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-card);
+}
+
+.pxd-ask .pxd-ask__chip[aria-expanded="true"] {
+  border-color: var(--pxd-ask-accent);
+}
+
+.pxd-ask .pxd-ask__addwhole {
+  border-style: dashed;
+}
+
+.pxd-ask .pxd-ask__chip:hover,
+.pxd-ask .pxd-ask__addwhole:hover {
+  border-color: var(--pxd-ask-accent);
+}
+
+.pxd-ask__parts {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 4px;
+  width: 100%;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.pxd-ask__partchip {
+  flex: 0 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  padding: 2px 4px 2px 8px;
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-card);
+  border: 1px solid var(--pxd-ask-line);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.pxd-ask__partlabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-ask .pxd-ask__partx {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  color: var(--pxd-ask-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pxd-ask .pxd-ask__partx:hover {
+  background: var(--pxd-ask-hover);
 }
 
 .pxd-ask__imagerow {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
 }
 
 .pxd-ask__thumb {
   width: 56px;
   height: 40px;
-  border: 1px solid var(--pxd-line, rgba(0, 0, 0, 0.15));
+  border: 1px solid var(--pxd-ask-line);
   border-radius: 4px;
   object-fit: contain;
   background: #fff;
 }
 
-.pxd-ask__thumb[hidden] {
-  display: none;
-}
-
 .pxd-ask__imgnote {
   font-size: 11px;
-  opacity: 0.75;
-}
-
-.pxd-ask__chip[aria-expanded="true"] {
-  border-color: var(--pxd-accent, #2563eb);
-}
-
-.pxd-ask__send {
-  border-color: var(--pxd-accent, #2563eb);
-  color: var(--pxd-accent, #2563eb);
 }
 
 .pxd-ask__preview {
-  max-height: 220px;
+  flex: 0 0 auto;
+  max-height: 200px;
   margin: 0;
-  padding: 8px;
+  padding: 8px 10px;
   overflow: auto;
   font: 11px/1.4 ui-monospace, Menlo, monospace;
   white-space: pre-wrap;
-  background: rgba(127, 127, 127, 0.1);
-  border-radius: 6px;
+  background: var(--pxd-ask-ctx);
+  border-bottom: 1px solid var(--pxd-ask-line);
 }
 
-.pxd-ask__preview[hidden],
-.pxd-ask [hidden] {
-  display: none;
-}
-
-.pxd-ask__body {
-  display: flex;
+/* ---- the conversation */
+.pxd-ask__log {
   flex: 1 1 auto;
+  display: flex;
   flex-direction: column;
   gap: 8px;
   min-height: 0;
+  padding: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-.pxd-ask__row,
-.pxd-ask__quick,
-.pxd-ask__bar,
-.pxd-ask__actions {
-  flex-shrink: 0;
+.pxd-ask__welcome,
+.pxd-ask__setup {
+  flex: 0 0 auto;
+}
+
+.pxd-ask__quick {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 6px;
 }
 
-.pxd-ask__model {
-  flex: 1;
-  min-width: 0;
-  padding: 3px 6px;
-  background: transparent;
-  border: 1px solid var(--pxd-border, #d1d5db);
-  border-radius: 6px;
+.pxd-ask .pxd-ask__quickbtn {
+  padding: 4px 10px;
+  color: var(--pxd-ask-accent);
+  background: var(--pxd-ask-card);
+  border: 1px solid rgba(102, 126, 234, 0.35);
+  border-radius: 999px;
+  cursor: pointer;
 }
 
-.pxd-ask__model option {
-  color: initial;
+.pxd-ask .pxd-ask__quickbtn:hover {
+  background: rgba(102, 126, 234, 0.1);
 }
 
-.pxd-ask__question {
+.pxd-ask__card {
+  padding: 10px 12px;
+  background: var(--pxd-ask-card);
+  border: 1px dashed var(--pxd-ask-line);
+  border-radius: 12px;
+}
+
+.pxd-ask__hint {
+  margin: 0 0 6px;
+}
+
+.pxd-ask__hint:last-child {
+  margin-bottom: 0;
+}
+
+.pxd-ask__hint--quiet {
+  color: var(--pxd-ask-muted);
+  font-size: 12px;
+}
+
+.pxd-ask__msg {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.pxd-ask__msg--user {
+  align-items: flex-end;
+}
+
+.pxd-ask__bubble {
   box-sizing: border-box;
-  width: 100%;
-  padding: 6px 8px;
-  flex-shrink: 0;
-  min-height: calc(2 * 18px + 14px);
-  max-height: calc(6 * 18px + 14px);
-  line-height: 18px;
-  overflow-y: auto;
-  resize: none;
-  background: transparent;
-  border: 1px solid var(--pxd-border, #d1d5db);
-  border-radius: 6px;
+  max-width: 88%;
+  padding: 8px 12px;
+  overflow-wrap: anywhere;
+  background: var(--pxd-ask-card);
+  border: 1px solid var(--pxd-ask-line);
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(16, 22, 26, 0.06);
 }
 
-.pxd-ask__status {
-  flex: 1;
-  min-width: 0;
-  opacity: 0.7;
+.pxd-ask__msg--ai .pxd-ask__bubble {
+  max-width: 100%;
+  border-top-left-radius: 4px;
+}
+
+.pxd-ask__msg--user .pxd-ask__bubble {
+  color: #fff;
+  background: var(--pxd-ask-user);
+  border-color: transparent;
+  border-top-right-radius: 4px;
+  white-space: pre-wrap;
 }
 
 .pxd-ask__answer {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  overflow-wrap: anywhere;
-  line-height: 1.45;
+  min-height: 1.45em;
+  overflow-x: auto;
 }
 
 .pxd-ask__actions {
   flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+}
+
+.pxd-ask .pxd-ask__act,
+.pxd-ask .pxd-ask__tryother {
+  padding: 2px 8px;
+  color: var(--pxd-ask-muted);
+  background: transparent;
+  border: 1px solid var(--pxd-ask-line);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pxd-ask .pxd-ask__act:hover,
+.pxd-ask .pxd-ask__tryother:hover {
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-hover);
 }
 
 .pxd-ask__p {
   margin: 0 0 8px;
+}
+
+.pxd-ask__p:last-child {
+  margin-bottom: 0;
 }
 
 .pxd-ask__list {
@@ -263,17 +434,9 @@
 }
 
 .pxd-ask__cite {
-  color: var(--pxd-accent, #2563eb);
+  color: var(--pxd-ask-accent);
   text-decoration: underline;
   cursor: pointer;
-}
-
-.pxd-ask__hint {
-  margin: 0;
-}
-
-.pxd-ask__hint--quiet {
-  opacity: 0.7;
 }
 
 .pxd-ask__empty {
@@ -285,10 +448,155 @@
 
 .pxd-ask__emptymsg {
   margin: 0;
-  color: var(--pxd-muted);
+  color: var(--pxd-ask-muted);
 }
 
-/* Basket pill on the board and the part chips in the dialog. */
+.pxd-ask__status {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 0 12px;
+  overflow: hidden;
+  color: var(--pxd-ask-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-ask__status:empty {
+  display: none;
+}
+
+/* ---- composer: model and board actions, then the question with a round send button */
+.pxd-ask__composer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px 8px;
+}
+
+.pxd-ask__tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pxd-ask .pxd-ask__model {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 70%;
+  padding: 2px 4px;
+  color: var(--pxd-ask-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pxd-ask .pxd-ask__model:hover {
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-hover);
+}
+
+.pxd-ask__model option {
+  color: initial;
+}
+
+.pxd-ask .pxd-ask__addboard {
+  margin-left: auto;
+  padding: 2px 8px;
+  color: var(--pxd-ask-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pxd-ask .pxd-ask__addboard:hover:not(:disabled) {
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-hover);
+}
+
+.pxd-ask .pxd-ask__addboard:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pxd-ask__inputrow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.pxd-ask .pxd-ask__question {
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  max-height: calc(8 * 20px + 16px);
+  padding: 7px 10px;
+  line-height: 20px;
+  overflow-y: auto;
+  resize: none;
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-card);
+  border: 2px solid var(--pxd-ask-line);
+  border-radius: 12px;
+  outline: none;
+}
+
+.pxd-ask .pxd-ask__question:focus {
+  border-color: var(--pxd-ask-accent);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.12);
+}
+
+.pxd-ask .pxd-ask__question::placeholder {
+  color: #a0a8b0;
+}
+
+.pxd-ask .pxd-ask__send,
+.pxd-ask .pxd-ask__stop {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: #fff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 3px 10px rgba(102, 126, 234, 0.35);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pxd-ask .pxd-ask__stop {
+  background: #5c7080;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.pxd-ask .pxd-ask__send:hover,
+.pxd-ask .pxd-ask__stop:hover {
+  filter: brightness(1.08);
+}
+
+/* Bottom-right corner: drag to resize. */
+.pxd-ask__resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: linear-gradient(135deg, transparent 50%, var(--pxd-ask-line) 50%, var(--pxd-ask-line) 60%, transparent 60%, transparent 72%, var(--pxd-ask-line) 72%, var(--pxd-ask-line) 82%, transparent 82%);
+  border-bottom-right-radius: 10px;
+}
+
+/* Basket pill on the board. */
 .pxd-basket {
   position: absolute;
   left: 12px;
@@ -308,44 +616,4 @@
   color: var(--pxd-fg, #e5e7eb);
   background: var(--pxd-surface, #111);
   border-color: var(--pxd-border, #4b5563);
-}
-
-.pxd-ask__parts {
-  flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 4px;
-  max-height: 96px;
-  overflow-y: auto;
-}
-
-.pxd-ask__partchip {
-  flex: 0 1 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  max-width: 100%;
-  height: auto;
-  padding: 2px 4px 2px 8px;
-  border: 1px solid var(--pxd-border, #d1d5db);
-  border-radius: 999px;
-  font-size: 12px;
-}
-
-.pxd-ask__partlabel {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pxd-ask__partx {
-  flex: 0 0 18px;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  line-height: 1;
-  cursor: pointer;
 }

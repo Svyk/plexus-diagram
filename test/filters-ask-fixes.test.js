@@ -186,13 +186,13 @@ function dialogWindow(generate) {
   };
 }
 
-test("answer area scrolls and the action row sits below it", () => {
+test("the conversation scrolls between the context bar and the composer; answers scroll tables sideways", () => {
   const css = readFileSync(new URL("../src/css/ask-ai.css", import.meta.url), "utf8");
   const block = (sel) => new RegExp(`${sel.replace(/[.]/g, "\\.")} \\{([^}]*)\\}`).exec(css)?.[1] || "";
-  assert.match(block(".pxd-ask__answer"), /flex: 1 1 auto/);
-  assert.match(block(".pxd-ask__answer"), /min-height: 0/);
-  assert.match(block(".pxd-ask__answer"), /overflow: auto/);
-  assert.match(block(".pxd-ask__body"), /min-height: 0/);
+  assert.match(block(".pxd-ask__log"), /flex: 1 1 auto/);
+  assert.match(block(".pxd-ask__log"), /min-height: 0/);
+  assert.match(block(".pxd-ask__log"), /overflow-y: auto/);
+  assert.match(block(".pxd-ask__answer"), /overflow-x: auto/);
   assert.match(block(".pxd-ask"), /overflow: hidden/);
   assert.match(block(".pxd-ask"), /100vh/);
   assert.match(css, /\.pxd-ask__actions \{\s*flex: 0 0 auto;/);

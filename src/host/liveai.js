@@ -93,11 +93,15 @@ export function friendlyError(error) {
   return msg || "Live AI Assistant could not answer.";
 }
 
-// ask({ context, prompt, systemPrompt, model, onChunk, signal, json }) -> { ok, text, json?, model, provider, usage } | { ok:false, error, code }
+// ask({ context, prompt, messages, systemPrompt, model, onChunk, signal, json }) -> { ok, text, json?, model, provider, usage } | { ok:false, error, code }
+// messages: earlier turns [{ role: "user" | "assistant", content }]; with any, the prompt goes to Live AI as a message array.
 // json: true asks Live AI for responseFormat "json_object" (answer parsed into result.json; the reply comes whole, no chunks).
-export async function ask({ context = "", prompt = "", systemPrompt = "", model = "", onChunk = null, signal = null, json = false, window: w } = {}) {
+export async function ask({ context = "", prompt = "", messages = null, systemPrompt = "", model = "", onChunk = null, signal = null, json = false, window: w } = {}) {
   if (!available(w)) return { ok: false, code: "UNAVAILABLE", error: SETUP_HINT };
-  const options = { prompt: String(prompt), caller: CALLER };
+  const prior = (Array.isArray(messages) ? messages : [])
+    .filter((m) => (m?.role === "user" || m?.role === "assistant") && String(m.content ?? "").trim())
+    .map((m) => ({ role: m.role, content: String(m.content) }));
+  const options = { prompt: prior.length ? [...prior, { role: "user", content: String(prompt) }] : String(prompt), caller: CALLER };
   if (context) options.context = String(context);
   if (systemPrompt) {
     options.systemPrompt = String(systemPrompt);

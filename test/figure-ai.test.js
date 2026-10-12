@@ -266,7 +266,8 @@ test("Send on a figure with a vision model uploads once, puts the image line in 
   assert.equal(cards.length, 1);
   assert.equal(cards[0].imageUrl, "https://f.test/a.png");
   assert.equal(cards[0].markdown.split("\n")[1], "  - ![](https://f.test/a.png)");
-  // Asking again reuses the cached URL.
+  // Asking again (a follow-up in the same conversation) reuses the cached URL.
+  find(dialog.el, "pxd-ask__question").value = "And the lowest?";
   find(dialog.el, "pxd-ask__send").click();
   await flush();
   assert.equal(uploads, 1);

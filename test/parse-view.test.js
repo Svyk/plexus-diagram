@@ -93,10 +93,14 @@ function mount() {
 
 test("removed furniture, chips, copy, and scan copy are pure", () => {
   assert.equal(removedSummary(sample().removed), "Removed: running header (3) · page numbers (3)");
-  assert.equal(engineChip({ ms: 400 }).text, "Built-in · 0.4 s");
-  assert.equal(engineChip({ ms: 42000, read: "high" }).text, "High accuracy · 42 s");
-  assert.equal(engineChip({ ms: 42000, read: "high" }).tip, "Qwen3-VL for page text, PaddleOCR-VL for tables, PP-DocLayoutV2");
-  assert.equal(engineChip({ engine: "docling", ms: 24000 }).text, "Docling · 24 s");
+  assert.equal(engineChip({ ms: 400 }).text, "Built-in · free · 0.4 s");
+  assert.equal(engineChip({ ms: 400, pages: 110 }).text, "Built-in · free · 110 pages · 0.4 s");
+  assert.equal(engineChip({ ms: 42000, read: "high" }).text, "High accuracy · free · 42 s");
+  assert.equal(engineChip({ ms: 42000, read: "high" }).tip, "Free · on this Mac. Qwen3-VL for page text, PaddleOCR-VL for tables, PP-DocLayoutV2");
+  assert.equal(engineChip({ engine: "docling", ms: 24000 }).text, "Docling · free · 24 s");
+  assert.equal(engineChip({ engine: "docling", ms: 42000, pages: 110 }).text, "Docling · free · 110 pages · 42 s");
+  assert.equal(engineChip({ engine: "docling", ms: 42000, pages: 110 }).tip, "Free · on this Mac");
+  assert.equal(engineChip({ engine: "cloud", provider: "mistral", ms: 2000 }).tip, "Cloud · uses your Mistral credits");
   assert.equal(engineChip({ helper: "not-running" }).text, "Local helper: off");
   assert.match(engineChip({ helper: "not-running" }).tip, /Engines/);
   assert.match(engineChip({ helper: "disabled" }).tip, /Engines/);
@@ -211,7 +215,7 @@ test("parsed body keeps reading order, filters, spans, selection, and keys", asy
     assert.match(body.textContent, /Removed: running header \(3\)/);
     assert.equal(body.querySelector(".pxd-parse__math").textContent, "E=mc^2");
     assert.equal(body.querySelector(".pxd-parse__crop").getAttribute("data-crop"), "pending");
-    assert.equal(view.chipText(), "Built-in · 0.4 s");
+    assert.match(view.chipText(), /^Built-in · free · .*0\.4 s$/);
 
     body.querySelector('[data-filter="text"]') || view.element().querySelector('[data-filter="text"]').click();
     assert.equal(view.element().querySelector('[data-id="h1"]'), null);
@@ -453,10 +457,11 @@ test("the PDF card Parse button sits beside Open and calls onPdfParse", () => {
   }
 });
 
-test("default range is all through 60 pages and current after that", () => {
+test("default range is the whole document, however long: a local parse has no page limit", () => {
   assert.equal(defaultRangeChoice(1), "all");
   assert.equal(defaultRangeChoice(60), "all");
-  assert.equal(defaultRangeChoice(61), "current");
+  assert.equal(defaultRangeChoice(61), "all");
+  assert.equal(defaultRangeChoice(110), "all");
   assert.equal(defaultRangeChoice(0), "all");
   assert.equal(defaultRangeChoice(undefined), "all");
 });

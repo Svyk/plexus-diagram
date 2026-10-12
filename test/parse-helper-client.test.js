@@ -371,8 +371,78 @@ test("ocr: a scan longer than the helper's page cap goes in batches and the page
   const chunks = [];
   const got = await client.ocr({ bytes: new Uint8Array([1]), sha256: "abc", pages, onChunk: (c) => chunks.push(c.done) });
   assert.equal(OCR_PAGE_CAP, 50);
-  assert.deepEqual(sent.map((p) => p.length), [50, 50, 10]);
+  assert.ok(sent.every((p) => p.length <= OCR_PAGE_CAP));
+  assert.deepEqual(sent.map((p) => p.length), [25, 25, 25, 25, 10]);
   assert.deepEqual(got.pages.map((p) => p.n), pages);
-  assert.deepEqual(chunks, [50, 100, 110]);
+  assert.deepEqual(chunks, [25, 50, 75, 100, 110]);
   assert.equal(got.sha256, "abc");
+});
+
+function bodyClient(answer) {
+  const sent = [];
+  const fetch = async (url, init) => {
+    const opts = JSON.parse(init.headers["X-Pxd-Options"] || "{}");
+    sent.push({ url, opts });
+    return { status: 200, json: async () => answer(url, opts) };
+  };
+  const settings = { get: (k) => (k === "parse-helper-token" ? "tok" : undefined) };
+  return { sent, client: createHelperClient({ fetch, settings, setSetting: () => {} }) };
+}
+
+test("ocr: every call names its pages, so a whole-document read is batched, never silently capped", async () => {
+  const { sent, client } = bodyClient((url, opts) => ({ pages: (opts.pages || []).map((n) => ({ n })), elapsedMs: 10 }));
+  await assert.rejects(client.ocr({ bytes: new Uint8Array([1]), sha256: "abc" }), (error) => error.reason === "ocr-pages");
+  assert.equal(sent.length, 0);
+  const pages = Array.from({ length: 230 }, (_, i) => i + 1);
+  const got = await client.ocr({ bytes: new Uint8Array([1]), sha256: "abc", pages });
+  assert.equal(got.pages.length, 230);
+  assert.equal(got.elapsedMs, 100);
+  assert.ok(sent.every((call) => call.opts.pages.length <= 50));
+});
+
+test("ocr: cell re-reads over the helper's cell cap go in batches and keep the caller's ids in order", async () => {
+  const { sent, client } = bodyClient((url, opts) => ({ cells: opts.cells.map((c) => ({ text: `p${c.page}` })) }));
+  const cells = Array.from({ length: 900 }, (_, i) => ({ id: `c${i}`, page: i + 1, bbox: [0, 0, 1, 1] }));
+  const got = await client.ocr({ bytes: new Uint8Array([1]), sha256: "abc", cells });
+  assert.deepEqual(sent.map((call) => call.opts.cells.length), [400, 400, 100]);
+  assert.equal(got.cells.length, 900);
+  assert.equal(got.cells[0].id, "c0");
+  assert.equal(got.cells[899].id, "c899");
+  assert.equal(got.cells[899].text, "p900");
+});
+
+test("ocr: a batch that is aborted stops the read", async () => {
+  const { sent, client } = bodyClient((url, opts) => ({ pages: opts.pages.map((n) => ({ n })) }));
+  const ctl = new AbortController();
+  const pages = Array.from({ length: 80 }, (_, i) => i + 1);
+  await assert.rejects(client.ocr({ bytes: new Uint8Array([1]), sha256: "abc", pages, signal: ctl.signal, onChunk: () => ctl.abort() }));
+  assert.equal(sent.length, 1);
+});
+
+test("vlm: pages and regions over the helper's caps go in batches and the readings join", async () => {
+  const { planVlmBatches } = await import("../src/host/parse-helper-client.js");
+  const { sent, client } = bodyClient((url, opts) => ({ model: "m", tables: (opts.tables || []).map((t) => ({ page: t.page })), layout: opts.pages.map((n) => ({ page: n })), decode: { greedy: true } }));
+  const pages = Array.from({ length: 95 }, (_, i) => i + 1);
+  const tables = pages.map((n) => ({ page: n, bbox: [0, 0, 1, 1] }));
+  const got = await client.vlm({ bytes: new Uint8Array([1]), sha256: "abc", pages, tables, numericPages: [3, 50, 90] });
+  assert.ok(sent.every((call) => call.opts.pages.length <= 40 && (call.opts.tables || []).length <= 40));
+  assert.deepEqual(sent.map((call) => call.opts.pages.length), [40, 40, 15]);
+  assert.deepEqual(sent.map((call) => call.opts.numericPages || null), [[3], [50], [90]]);
+  assert.equal(got.tables.length, 95);
+  assert.equal(got.layout.length, 95);
+  assert.equal(got.model, "m");
+  assert.equal(got.sha256, "abc");
+  const small = bodyClient(() => ({ tables: [] }));
+  await small.client.vlm({ bytes: new Uint8Array([1]), sha256: "abc", pages: [1, 2], tables: [] });
+  assert.equal(small.sent.length, 1);
+  const crowded = Array.from({ length: 90 }, () => ({ page: 7, bbox: [0, 0, 1, 1] }));
+  assert.deepEqual(planVlmBatches([6, 7], crowded).map((b) => [b.pages.join(), b.regions.length]), [["6", 0], ["7", 40], ["7", 40], ["7", 10]]);
+});
+
+test("tables: regions over the helper's region cap go in batches", async () => {
+  const { sent, client } = bodyClient((url, opts) => ({ model: "t", tables: opts.tables.map((t) => ({ page: t.page })) }));
+  const tables = Array.from({ length: 85 }, (_, i) => ({ page: i + 1, bbox: [0, 0, 1, 1] }));
+  const got = await client.tables({ bytes: new Uint8Array([1]), sha256: "abc", pages: tables.map((t) => t.page), tables });
+  assert.deepEqual(sent.map((call) => call.opts.tables.length), [40, 40, 5]);
+  assert.equal(got.tables.length, 85);
 });

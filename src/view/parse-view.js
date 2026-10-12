@@ -22,6 +22,7 @@ import { parsedDocTitle, parsedTitleLines, withKeptTitle } from "../model/pdf.js
 import { helperCanDocling, helperCanOcr } from "../host/parse-helper-client.js";
 import { loadPageData, mergeOcrPageRecords, readScan, rereadCells, rereadLines } from "./parse-engine.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
+import { TAG_LLAMA, TAG_MAC, TAG_MISTRAL, TAG_ROAM, localChipText, tagKind } from "./engine-tags.js";
 import { createParseOverlay } from "./parse-overlay.js";
 import { createPageChips, PLACE_ACTS, readShowParsed, runChipAction, writeShowParsed } from "./page-chips.js";
 import { cropRect, createCropQueue, dataUrlToBlob } from "./parse-crop.js";
@@ -97,25 +98,32 @@ export function formatSeconds(ms) {
   return `${text} s`;
 }
 
-// All when the document is short or the count is not known yet. Current page past 60.
-export function defaultRangeChoice(pageCount) {
-  const n = Number(pageCount);
-  if (!Number.isFinite(n) || n <= 0 || n <= 60) return "all";
-  return "current";
+// Always the whole document. The built-in parse runs on this computer and is free, so a long PDF is not cut
+// down to one page; the range menu still narrows it on request.
+export function defaultRangeChoice() {
+  return "all";
+}
+
+// Pages the last parse covered: its range when it had one, else the whole document.
+function parsedPageCount(parsed) {
+  const range = parsed?.stats?.range;
+  if (Array.isArray(range) && range.length === 2 && range.every(Number.isFinite)) return Math.max(0, range[1] - range[0] + 1);
+  return Number(parsed?.pageCount) || 0;
 }
 
 function cloudLabel(provider) {
   return provider === "mistral" ? "Mistral OCR" : "LlamaParse";
 }
 
-export function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, helper = "", credits = null, read = "" } = {}) {
+export function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, pages = 0, helper = "", credits = null, read = "" } = {}) {
   if (phase !== "running" && engine === "anydoc") {
     if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
     return { text: "Alternative read" };
   }
   if (phase === "running") {
     const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : engine === "cloud" ? cloudLabel(provider) : "built-in";
-    return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
+    const local = engine !== "cloud";
+    return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: local ? `${which} · free` : which };
   }
   if (helper === "not-running" || helper === "disabled") {
     return { text: "Local helper: off", tip: "Open Engines (the gear) to set up or start the local helper." };
@@ -123,22 +131,25 @@ export function engineChip({ phase = "idle", engine = "builtin", provider = "", 
   if (helper === "wrong-token") return { text: "Local helper: wrong token", tip: "Open Engines (the gear) and pair the local helper again." };
   if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
   if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
-  if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
+  if ((engine === "docling" || engine === "mixed") && ms != null) {
+    return { text: localChipText("Docling", { pages, seconds: formatSeconds(ms) }), tip: TAG_MAC };
+  }
+  const cloudTag = provider === "mistral" ? TAG_MISTRAL : TAG_LLAMA;
   if (engine === "cloud" && ms != null) {
     const text = `${cloudLabel(provider)} · ${formatSeconds(ms)}`;
     const n = Number(credits);
     if (provider !== "mistral" && Number.isFinite(n) && n >= 0) {
-      return { text, tip: `${text} · ${n} ${n === 1 ? "credit" : "credits"}` };
+      return { text, tip: `${cloudTag} · ${n} ${n === 1 ? "credit" : "credits"}` };
     }
-    return { text };
+    return { text, tip: cloudTag };
   }
-  if (engine === "cloud") return { text: cloudLabel(provider) };
+  if (engine === "cloud") return { text: cloudLabel(provider), tip: cloudTag };
   if (read === "high") {
-    const text = ms != null ? `High accuracy · ${formatSeconds(ms)}` : "High accuracy";
-    return { text, tip: "Qwen3-VL for page text, PaddleOCR-VL for tables, PP-DocLayoutV2" };
+    const text = localChipText("High accuracy", { seconds: ms != null ? formatSeconds(ms) : "" });
+    return { text, tip: `${TAG_MAC}. Qwen3-VL for page text, PaddleOCR-VL for tables, PP-DocLayoutV2` };
   }
-  if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
-  return { text: "Built-in" };
+  if (ms != null) return { text: localChipText("Built-in", { pages, seconds: formatSeconds(ms) }), tip: TAG_ROAM };
+  return { text: "Built-in", tip: TAG_ROAM };
 }
 
 export function blockGroup(type) {
@@ -366,7 +377,8 @@ export function createParseView({
   adoptCreated = null,
   getContext = null,
   clock = null,
-  scanAuto = false,
+  scanAuto = null,
+  defaultEngine = "local",
   ocrSource = null,
   ocrAlt = null,
   pageReader = null,
@@ -388,6 +400,16 @@ export function createParseView({
     return node;
   };
   const now = () => (typeof clock === "function" ? clock() : Date.now());
+  // Free or paid, said on the control itself: "Free · on this Mac", "Cloud · uses your LlamaParse credits".
+  const tagged = (button, text) => {
+    let span = null;
+    for (const child of Array.from(button.children || [])) if (String(child.className).includes("pxd-parse__tag")) span = child;
+    if (!span) span = el("span", "pxd-parse__tag", button);
+    span.className = `pxd-parse__tag pxd-parse__tag--${tagKind(text)}`;
+    span.textContent = text;
+    button.setAttribute("data-engine-tag", text);
+    return button;
+  };
   const anydocHost = anydoc || createAnydocHost();
   const root = el("div", "pxd-parse");
   root.tabIndex = -1;
@@ -405,18 +427,22 @@ export function createParseView({
   const againBtn = el("button", "pxd-parse__again", enginePop);
   againBtn.type = "button";
   againBtn.textContent = "Parse again (built-in)";
+  tagged(againBtn, TAG_ROAM);
   const doclingBtn = el("button", "pxd-parse__docling", enginePop);
   doclingBtn.type = "button";
   doclingBtn.textContent = "Parse with Docling";
+  tagged(doclingBtn, TAG_MAC);
   doclingBtn.setAttribute("data-tip", "parse.docling");
   setHidden(doclingBtn, true);
   const cloudBtn = el("button", "pxd-parse__cloud", enginePop);
   cloudBtn.type = "button";
   cloudBtn.textContent = "Read with LlamaParse";
+  tagged(cloudBtn, TAG_LLAMA);
   cloudBtn.setAttribute("data-tip", "parse.cloud");
   const mistralBtn = el("button", "pxd-parse__mistral", enginePop);
   mistralBtn.type = "button";
   mistralBtn.textContent = "Read with Mistral OCR";
+  tagged(mistralBtn, TAG_MISTRAL);
   mistralBtn.setAttribute("data-tip", "parse.mistral");
   const altBtn = el("button", "pxd-parse__alt", enginePop);
   altBtn.type = "button";
@@ -508,6 +534,7 @@ export function createParseView({
   const parseBtn = el("button", "pxd-parse__go", empty);
   parseBtn.type = "button";
   parseBtn.textContent = "Parse (built-in)";
+  tagged(parseBtn, TAG_ROAM);
   const foot = el("div", "pxd-parse__foot", root);
   setHidden(foot, true);
   const summary = el("span", "pxd-parse__summary", foot);
@@ -888,7 +915,22 @@ export function createParseView({
     });
   }
 
+  // "local" (default): Docling through a paired helper, else the built-in parser. "builtin", "llamaparse" and
+  // "mistral" are the user's explicit pick; a cloud engine is never chosen otherwise.
+  function engineChoice() {
+    let pick = "local";
+    try { pick = typeof defaultEngine === "function" ? defaultEngine() : defaultEngine; } catch { pick = "local"; }
+    return pick === "builtin" || pick === "llamaparse" || pick === "mistral" ? pick : "local";
+  }
+
+  function paintParseLabel() {
+    const docling = helperDocling && engineChoice() === "local";
+    parseBtn.textContent = docling ? "Parse (Docling)" : "Parse (built-in)";
+    tagged(parseBtn, docling ? TAG_MAC : TAG_ROAM);
+  }
+
   function paintChip() {
+    paintParseLabel();
     const state = engineChip({
       phase,
       engine: progress.engine || parsed?.engine || "builtin",
@@ -896,6 +938,7 @@ export function createParseView({
       ms: phase === "running" ? null : parsed?.stats?.ms,
       page: progress.page,
       pageCount: progress.pageCount,
+      pages: parsedPageCount(parsed),
       helper: phase === "running" ? "" : helperState,
       credits: phase === "running" ? null : parsed?.stats?.credits,
       read: phase === "running" ? "" : (parsed?.ocr?.mode === "high" ? "high" : ""),
@@ -1598,12 +1641,16 @@ export function createParseView({
     });
     await finishDoc(finalDoc, now() - t0);
     // Engine "auto" with a ready helper reads scanned pages without a click.
-    if (scanAuto && scanPagesOf(finalDoc).length) {
+    if (autoScan && scanPagesOf(finalDoc).length) {
       await refreshHelper();
       const engine = ocrEngine();
       if (engine && (engine === ocrSource || helperOcr)) await readScanNow();
     }
   }
+
+  // Pages with no text layer are read in the same run on a local route, no click. A host that takes the scan
+  // itself (onScan) keeps its own auto-read, so the view stays out of its way.
+  const autoScan = scanAuto ?? typeof onScan !== "function";
 
   // A caller-supplied OCR source (same ocr() shape as the helper) wins. Otherwise the helper.
   function ocrEngine() {
@@ -1620,6 +1667,7 @@ export function createParseView({
     if (!scanBtn.hidden) {
       const name = helper && helper.vlmHigh === true ? "High accuracy" : "Read the scan";
       scanBtn.textContent = pages.length === 1 ? `${name} (p. ${pages[0]})` : `${name} (${pages.length} pages)`;
+      tagged(scanBtn, engine === ocrSource ? TAG_ROAM : TAG_MAC);
     }
   }
 
@@ -1661,8 +1709,14 @@ export function createParseView({
         options: { textPages: readerMode === "all" ? "all" : "weak" },
         alt: extra && typeof extra.ocr === "function" ? extra : null,
         lexicon: extra?.lexicon || null,
+        // One report per batch of pages, so a long scan visibly moves.
+        onProgress: (info) => {
+          progress = { page: Number(info?.done) || 0, pageCount: Number(info?.total) || pages.length, engine: "builtin" };
+          paintChip();
+          onProgress?.({ page: progress.page, pageCount: progress.pageCount, fraction: 0.3 * (progress.page / Math.max(1, progress.pageCount)) });
+        },
         onPhase: (info) => {
-          progress = { page: info?.phase === "cells" ? pages.length : 0, pageCount: pages.length, engine: "builtin" };
+          progress = { page: info?.phase === "cells" ? pages.length : (info?.phase === "ocr" ? progress.page : 0), pageCount: pages.length, engine: "builtin" };
           paintChip();
           onProgress?.({ page: progress.page, pageCount: pages.length, fraction: info?.phase === "cells" ? 0.9 : 0.3 });
         },
@@ -1738,7 +1792,7 @@ export function createParseView({
     if (!helper || !helperDocling) {
       helperState = helperState || "not-running";
       paintChip();
-      return;
+      return null;
     }
     cancel();
     const ctrl = new AbortController();
@@ -1769,7 +1823,7 @@ export function createParseView({
       });
     } catch (error) {
       phase = "idle";
-      if (error?.name === "AbortError") { paintChip(); return; }
+      if (error?.name === "AbortError") { paintChip(); return null; }
       failure = error?.reason === "empty-pdf" ? "Couldn't read this PDF file \u2014 it downloaded empty."
         : error?.reason === "job-rejected" ? `The helper rejected the PDF (HTTP ${error.status}).`
           : error?.status === 409 ? "The helper is busy with another job."
@@ -1777,12 +1831,27 @@ export function createParseView({
       try { onToast?.(failure); } catch { /* host */ }
       paintChip();
       render();
-      return;
+      return false;
     }
     jobId = result?.job || jobId;
     if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? 0);
     else phase = "idle";
     paintChip();
+    return Boolean(result?.doc);
+  }
+
+  // The Parse button: the best local route, no questions. A Docling job that fails (helper busy, bad PDF)
+  // falls back to the built-in parser, which also reads any scanned pages itself.
+  async function parseDefault() {
+    const pick = engineChoice();
+    if (pick === "llamaparse") return parseLlama();
+    if (pick === "mistral") return parseMistralNow();
+    if (pick === "local") {
+      await refreshHelper();
+      if (helperDocling && await parseDocling() === false) return parseBuiltin();
+      if (helperDocling) return undefined;
+    }
+    return parseBuiltin();
   }
 
   let cloudConfirm = null;
@@ -2143,7 +2212,7 @@ export function createParseView({
     }
     paintRangeButton();
   }
-  listen(parseBtn, "click", () => { closeMenus(); void parseBuiltin(); });
+  listen(parseBtn, "click", () => { closeMenus(); void parseDefault(); });
   listen(chip, "click", () => { toggleMenu(enginePop); });
   listen(againBtn, "click", () => { closeMenus(); void parseBuiltin(); });
   listen(cancelBtn, "click", () => { closeMenus(); cancel(); });
@@ -2297,6 +2366,7 @@ export function createParseView({
     restore,
     parseBuiltin,
     parseDocling,
+    parse: parseDefault,
     cancel,
     showDoc(docResult) {
       parsed = docResult;

@@ -52,7 +52,7 @@ const CASES = [
   }],
   ["helper just read it", withOcr({ state: "done", source: "helper", ms: 1234 }), {
     kind: "helper-done",
-    text: "Read with local helper · 1.2 s",
+    text: "Read with local helper · free · 1.2 s",
     buttons: [],
   }],
   ["device read finished: no strip", withOcr({ state: "done", source: "device", ms: 800 }, { scanned: false }), null],

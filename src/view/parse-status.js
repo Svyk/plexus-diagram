@@ -91,7 +91,7 @@ export function stripModel(kind, input = {}) {
       const t = secondsText(ocr.ms);
       return {
         kind,
-        text: t ? `Read with local helper · ${t}` : "Read with local helper",
+        text: t ? `Read with local helper · free · ${t}` : "Read with local helper · free",
         tip: "engines.helper",
         buttons: [],
         autoHideMs: DONE_VISIBLE_MS,

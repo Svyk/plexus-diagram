@@ -133,6 +133,18 @@
   font-weight: 500;
 }
 
+.pxd-engines .pxd-engines__tag {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--pxd-muted, #5f6b7c);
+  white-space: nowrap;
+}
+
+.pxd-engines .pxd-engines__tag--free {
+  color: var(--pxd-accent, #0f766e);
+}
+
 .pxd-engines .pxd-engines__text {
   flex: 1 1 120px;
   min-width: 0;

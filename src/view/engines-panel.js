@@ -30,6 +30,8 @@ import {
   MISTRAL_PRICE_CHECKED,
 } from "../host/cloud-parse.js";
 
+import { TAG_LLAMA, TAG_MAC, TAG_MISTRAL, TAG_ROAM, tagKind } from "./engine-tags.js";
+
 export const INSTALL_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh";
 export const DOCLING_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh -s -- --docling";
 export const RESTART_COMMAND = 'launchctl kickstart -k "gui/$(id -u)/com.plexus.parse-helper"';
@@ -52,7 +54,7 @@ export async function loadEngineState({ client, device, force = true } = {}) {
 const button = (id, label, tip) => ({ id, label, tip });
 
 function deviceOcrRow(device) {
-  const row = { id: "device-ocr", name: "In-browser reading (beta)", tip: "engines.ocr" };
+  const row = { id: "device-ocr", name: "In-browser reading (beta)", tip: "engines.ocr", tags: [TAG_ROAM] };
   switch (device?.state) {
     case "ready":
       return { ...row, dot: "ok", text: "Ready", button: null };
@@ -71,7 +73,7 @@ function deviceOcrRow(device) {
 }
 
 function helperRow(helper) {
-  const row = { id: "helper", name: "Local helper", tip: "engines.helper" };
+  const row = { id: "helper", name: "Local helper", tip: "engines.helper", tags: [TAG_MAC] };
   switch (helper?.state) {
     case "ready": {
       const scansOnly = helper.ocr === true && helper.docling === false;
@@ -113,7 +115,7 @@ function helperRow(helper) {
 const MISTRAL_TRADE = "Mistral OCR: no install, cheaper, weaker tables.";
 
 export function cloudRow(prefs, helper) {
-  const row = { id: "cloud", name: "Cloud", tip: "engines.cloud" };
+  const row = { id: "cloud", name: "Cloud", tip: "engines.cloud", tags: [TAG_LLAMA, TAG_MISTRAL] };
   const key = Boolean(String(prefs?.key || "").trim());
   const mistral = Boolean(String(prefs?.mistralKey || "").trim());
   const trade = mistral ? "Mistral OCR: key saved, no install, cheaper, weaker tables." : MISTRAL_TRADE;
@@ -129,7 +131,7 @@ export function cloudRow(prefs, helper) {
 export function engineRows(state, { platform = "mac" } = {}) {
   void platform;
   return [
-    { id: "device", name: "On this device", dot: "ok", text: "Built-in parser · ready", button: null, tip: "engines.builtin" },
+    { id: "device", name: "On this device", dot: "ok", text: "Built-in parser · ready", button: null, tip: "engines.builtin", tags: [TAG_ROAM] },
     deviceOcrRow(state?.device),
     helperRow(state?.helper),
     cloudRow(state?.cloud, state?.helper),
@@ -249,7 +251,14 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
       const text = doc.createElement("span");
       text.className = "pxd-engines__text";
       text.textContent = row.text;
-      node.append(dot, name, text);
+      node.append(dot, name);
+      for (const label of row.tags || []) {
+        const tag = doc.createElement("span");
+        tag.className = `pxd-engines__tag pxd-engines__tag--${tagKind(label)}`;
+        tag.textContent = label;
+        node.append(tag);
+      }
+      node.append(text);
       if (row.progress != null) {
         const bar = doc.createElement("span");
         bar.className = "pxd-engines__bar";

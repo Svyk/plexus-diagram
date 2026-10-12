@@ -1,7 +1,8 @@
 """One warm Docling worker. Cancel terminates the process and respawns it.
 
 Page ranges run in chunks of 4 so the server can emit SSE progress. Docling has
-no per-page callback.
+no per-page callback. A document of any length is one job: only the chunk in
+flight is held by Docling, and the exported chunk dicts are merged at the end.
 """
 
 from __future__ import annotations
@@ -40,8 +41,6 @@ def expand_pages(spec, page_count: int) -> list[int]:
             else:
                 raise ValueError(f"bad page spec {item!r}")
     out = sorted({p for p in pages if 1 <= p <= page_count})
-    if len(out) > 400:
-        raise ValueError("page range cap is 400")
     if not out:
         raise ValueError("no pages in range")
     return out

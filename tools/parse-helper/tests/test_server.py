@@ -35,6 +35,12 @@ def test_page_spec_and_chunks():
         expand_pages([1], 0)
 
 
+def test_long_documents_are_not_capped():
+    assert expand_pages(None, 1200) == list(range(1, 1201))
+    assert expand_pages([[1, 900]], 1000)[-1] == 900
+    assert len(chunk_pages(expand_pages(None, 1200))) == 300
+
+
 def _app(tmp_path, runner):
     jobs = JobManager(runner=runner)
     cache = ParseCache(tmp_path / "cache", max_bytes=5_000_000)

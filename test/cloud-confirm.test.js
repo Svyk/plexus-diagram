@@ -287,9 +287,9 @@ test("the parse chip tooltip shows LlamaParse usage credits", async () => {
     view.element().querySelector("[data-cloud-send]").click();
     await until(() => view.chipText() === "LlamaParse · 2.5 s");
     const chip = view.element().querySelector(".pxd-parse__engine");
-    assert.equal(chip.getAttribute("data-tip-extra"), "LlamaParse · 2.5 s · 10 credits");
-    assert.equal(engineChip({ engine: "cloud", provider: "llamaparse", ms: 2500, credits: 10 }).tip, "LlamaParse · 2.5 s · 10 credits");
-    assert.equal(engineChip({ engine: "cloud", provider: "llamaparse", ms: 2500, credits: 1 }).tip, "LlamaParse · 2.5 s · 1 credit");
+    assert.equal(chip.getAttribute("data-tip-extra"), "Cloud · uses your LlamaParse credits · 10 credits");
+    assert.equal(engineChip({ engine: "cloud", provider: "llamaparse", ms: 2500, credits: 10 }).tip, "Cloud · uses your LlamaParse credits · 10 credits");
+    assert.equal(engineChip({ engine: "cloud", provider: "llamaparse", ms: 2500, credits: 1 }).tip, "Cloud · uses your LlamaParse credits · 1 credit");
     assert.equal(cloudUsageCredits({ job: { usage: { credits: 10 } } }), 10);
   } finally {
     restore();

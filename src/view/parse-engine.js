@@ -139,7 +139,7 @@ function captionPlatePages(doc, pages) {
   return out;
 }
 
-export async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, lexicon = null, lines = true, alt = null } = {}) {
+export async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, onProgress, lexicon = null, lines = true, alt = null } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
   const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n) => !from || !to || (n >= from && n <= to));
   const high = helper.vlmHigh === true && typeof helper.vlm === "function";
@@ -152,7 +152,7 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   let got = null;
   if (wanted.length) {
     onPhase?.({ phase: "ocr", pages: wanted });
-    const gotRaw = await helper.ocr({ bytes, sha256, pages: wanted, signal });
+    const gotRaw = await helper.ocr({ bytes, sha256, pages: wanted, signal, onChunk: onProgress });
     throwIfAborted();
     got = gotRaw;
   }

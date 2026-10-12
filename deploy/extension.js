@@ -92029,7 +92029,7 @@ async function installPlexusDiagram({
     };
     queueMicrotask(() => focus(80));
   }
-  function openNestedConnection(boardUid, edgeUid) {
+  function openNestedConnection(boardUid, edgeUid, pageHint = "") {
     if (stopped || !boardUid || !edgeUid) return false;
     const trail = seedCrumbs(boardUid);
     const root = trail[0].uid;
@@ -92038,11 +92038,13 @@ async function installPlexusDiagram({
       enterNested(open, trail, edgeUid);
       return true;
     }
-    let pageUid = "";
-    try {
-      pageUid = host.blockPageUid?.(boardUid) || "";
-    } catch {
-      pageUid = "";
+    let pageUid = pageHint;
+    if (!pageUid) {
+      try {
+        pageUid = host.blockPageUid?.(boardUid) || "";
+      } catch {
+        pageUid = "";
+      }
     }
     if (!pageUid) {
       try {
@@ -92052,12 +92054,10 @@ async function installPlexusDiagram({
       return true;
     }
     const mine = ++nestOpen;
-    assignDeepLink(globalThis.location, { graph: host.graph || graphFromHash(), pageUid, cardUid: root }, () => {
-      try {
-        win2.dispatchEvent?.(new Event("hashchange"));
-      } catch {
-      }
-    });
+    try {
+      void host.openPage?.(pageUid);
+    } catch {
+    }
     waitOpenMount(root, false, 160, (rec) => {
       if (stopped || mine !== nestOpen) return;
       if (rec) {
@@ -93071,12 +93071,15 @@ async function installPlexusDiagram({
     }
     return pageUidFromHash(globalThis.location?.hash || "");
   }
-  function deepLinkTo(pageUid, cardUid) {
-    assignDeepLink(globalThis.location, {
-      graph: host.graph || graphFromHash(),
-      pageUid,
-      cardUid
-    }, () => applyShowAll());
+  function deepLinkTo(pageUid) {
+    if (pageUid && openPageUid() === pageUid) {
+      applyShowAll();
+      return;
+    }
+    try {
+      void host.openPage?.(pageUid);
+    } catch {
+    }
   }
   function pulseOutline(img, frac) {
     if (!img || !doc) return;
@@ -93175,7 +93178,7 @@ async function installPlexusDiagram({
     }
     if (target.kind === "board") {
       revealMain(target.boardUid);
-      deepLinkTo(target.pageUid, regionUid);
+      deepLinkTo(target.pageUid);
       return;
     }
     const shown = imageRegionFrac(region);
@@ -93198,7 +93201,7 @@ async function installPlexusDiagram({
       pageUid = "";
     }
     revealMain(boardUid);
-    if (pageUid) deepLinkTo(pageUid, regionUid);
+    if (pageUid) deepLinkTo(pageUid);
   }
   function loadViewBoard(region) {
     const id = region?.drawingUid;
@@ -93975,16 +93978,7 @@ async function installPlexusDiagram({
             hit = null;
           }
           if (!hit?.pageUid || !hit?.cardUid) return;
-          assignDeepLink(globalThis.location, {
-            graph: host.graph || graphFromHash(),
-            pageUid: hit.pageUid,
-            cardUid: hit.cardUid
-          }, () => {
-            try {
-              win2.dispatchEvent?.(new Event("hashchange"));
-            } catch {
-            }
-          });
+          openNestedConnection(hit.boardUid || hit.cardUid, hit.cardUid, hit.pageUid);
         }
       });
       await lifecycle.command(extensionAPI.ui.blockContextMenu, {

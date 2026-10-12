@@ -19,7 +19,7 @@ import { itemSig, tableGrid } from "./model/boardsnap.js";
 import { renderTableThumb, tableThumbKey, thumbBox } from "./view/table-thumb.js";
 import { tableUidOf } from "./model/roam-table.js";
 import { applyFullscreenChrome } from "./view/fullscreen.js";
-import { assignDeepLink, hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
+import { hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
 import { createRelChips } from "./relchips.js";
 import { createBoardChips } from "./boardchips.js";
@@ -1587,19 +1587,18 @@ export async function installPlexusDiagram({
     };
     queueMicrotask(() => focus(80));
   }
-  function openNestedConnection(boardUid, edgeUid) {
+  function openNestedConnection(boardUid, edgeUid, pageHint = "") {
     if (stopped || !boardUid || !edgeUid) return false;
     const trail = seedCrumbs(boardUid);
     const root = trail[0].uid;
     const open = findOpenMount(root, false) || findOpenMount(root, true);
     if (open) { enterNested(open, trail, edgeUid); return true; }
-    let pageUid = "";
-    try { pageUid = host.blockPageUid?.(boardUid) || ""; } catch { pageUid = ""; }
+    let pageUid = pageHint;
+    if (!pageUid) { try { pageUid = host.blockPageUid?.(boardUid) || ""; } catch { pageUid = ""; } }
     if (!pageUid) { try { void host.openBlock?.(boardUid); } catch { /* host unavailable */ } return true; }
     const mine = ++nestOpen;
-    assignDeepLink(globalThis.location, { graph: host.graph || graphFromHash(), pageUid, cardUid: root }, () => {
-      try { win.dispatchEvent?.(new Event("hashchange")); } catch { /* already there */ }
-    });
+    // Roam's own navigation: a raw hash change made from a click is put back by Roam's router.
+    try { void host.openPage?.(pageUid); } catch { /* host unavailable */ }
     // About 8 s at 50 ms: a cold page with a large board can take a few seconds to mount.
     waitOpenMount(root, false, 160, (rec) => {
       if (stopped || mine !== nestOpen) return;
@@ -2578,12 +2577,11 @@ export async function installPlexusDiagram({
     return pageUidFromHash(globalThis.location?.hash || "");
   }
 
-  function deepLinkTo(pageUid, cardUid) {
-    assignDeepLink(globalThis.location, {
-      graph: host.graph || graphFromHash(),
-      pageUid,
-      cardUid,
-    }, () => applyShowAll());
+  // The target waits in the show stash and is applied when the board mounts. Roam puts a raw hash change made
+  // from a click back, so the page opens through Roam.
+  function deepLinkTo(pageUid) {
+    if (pageUid && openPageUid() === pageUid) { applyShowAll(); return; }
+    try { void host.openPage?.(pageUid); } catch { /* host unavailable */ }
   }
 
   function pulseOutline(img, frac) {
@@ -2668,7 +2666,7 @@ export async function installPlexusDiagram({
     }
     if (target.kind === "board") {
       revealMain(target.boardUid);
-      deepLinkTo(target.pageUid, regionUid);
+      deepLinkTo(target.pageUid);
       return;
     }
     const shown = imageRegionFrac(region);
@@ -2685,7 +2683,7 @@ export async function installPlexusDiagram({
     let pageUid = "";
     try { pageUid = host.blockPageUid?.(boardUid) || ""; } catch { pageUid = ""; }
     revealMain(boardUid);
-    if (pageUid) deepLinkTo(pageUid, regionUid);
+    if (pageUid) deepLinkTo(pageUid);
   }
 
   function loadViewBoard(region) {
@@ -3420,13 +3418,7 @@ export async function installPlexusDiagram({
           let hit = null;
           try { hit = uid ? host.showOnBoard?.(uid) : null; } catch { hit = null; }
           if (!hit?.pageUid || !hit?.cardUid) return;
-          assignDeepLink(globalThis.location, {
-            graph: host.graph || graphFromHash(),
-            pageUid: hit.pageUid,
-            cardUid: hit.cardUid,
-          }, () => {
-            try { win.dispatchEvent?.(new Event("hashchange")); } catch { /* already on this card */ }
-          });
+          openNestedConnection(hit.boardUid || hit.cardUid, hit.cardUid, hit.pageUid);
         },
       });
       await lifecycle.command(extensionAPI.ui.blockContextMenu, {

@@ -182,7 +182,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
 
   const props = new Map(enhanced.map((uid) => [uid, { ":plexus": { ":v": 2 }, ":rf-diagram": { ":x": 1 } }]));
   const strings = new Map();
-  const writes = { createBlock: [], openBlock: [], setOpen: [], other: 0 };
+  const writes = { createBlock: [], openBlock: [], openPage: [], setOpen: [], other: 0 };
   const legacyTree = legacy && {
     ":block/uid": "meta",
     ":block/children": [
@@ -220,6 +220,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
     generateUid: () => "newBoard01",
     createBlock: async (args) => { writes.createBlock.push(args); return args.uid; },
     openBlock: async (uid) => { writes.openBlock.push(uid); },
+    openPage: async (uid) => { writes.openPage.push(uid); },
     setOpen: async (uid, open) => { writes.setOpen.push([uid, open]); },
   };
 
@@ -567,7 +568,7 @@ test("RG-7: Add to board acquires the picked board with the live host and places
   }
 });
 
-test("Show on board is hidden for an ordinary block and opens the card deep link", async () => {
+test("Show on board is hidden for an ordinary block and opens the card's page through Roam", async () => {
   const t = setup({ hash: "#/app/Readwisenotes/page/otherPAGE" });
   const hits = {
     cardAAAA1: { boardUid: "board0001", pageUid: "pageLAB99", cardUid: "cardAAAA1" },
@@ -589,15 +590,15 @@ test("Show on board is hidden for an ordinary block and opens the card deep link
     assert.equal(cmd["display-conditional"]({ "block-uid": "srcBLOCK1" }), true);
     assert.equal(cmd["display-conditional"]({ "block-uid": "plainBLOCK" }), false);
     assert.equal(cmd["display-conditional"]({}), false);
+    const opened = [];
+    t.host.openPage = async (uid) => { opened.push(uid); };
     cmd.callback({ "block-uid": "srcBLOCK1" });
-    assert.equal(globalThis.location.hash, "#/app/Readwisenotes/page/pageLAB99?pxd=cardREF01");
+    assert.deepEqual(opened, ["pageLAB99"], "the page opens through Roam, not a hash change");
     assert.equal(same, 0);
     cmd.callback({ "block-uid": "cardAAAA1" });
-    assert.equal(globalThis.location.hash, "#/app/Readwisenotes/page/pageLAB99?pxd=cardAAAA1");
-    cmd.callback({ "block-uid": "cardAAAA1" });
-    assert.equal(same, 1, "the same link asks the open board to pulse again");
+    assert.deepEqual(opened, ["pageLAB99", "pageLAB99"]);
     cmd.callback({ "block-uid": "plainBLOCK" });
-    assert.equal(globalThis.location.hash, "#/app/Readwisenotes/page/pageLAB99?pxd=cardAAAA1");
+    assert.equal(opened.length, 2, "an ordinary block opens nothing");
   } finally {
     await t.lifecycle.dispose().catch(() => {});
     t.restore();
@@ -1044,7 +1045,7 @@ test("F2 Open on board waits for the page's board to mount (Roam drops ?pxd=), e
     t.host.blockPageUid = () => "pageLAB99";
     await t.install();
     assert.equal(t.env.win.__plexusDiagram.openConnection("childBBB1", "edgeEEE01"), true);
-    assert.equal(globalThis.location.hash, "#/app/Readwisenotes/page/pageLAB99?pxd=boardAAA1", "page link first");
+    assert.deepEqual(t.writes.openPage, ["pageLAB99"], "the page opens through Roam first");
     addNative(t.doc, "boardAAA1");
     t.tick();
     await new Promise((resolve) => setTimeout(resolve, 150));

@@ -4,7 +4,9 @@
 export const WARM_AFTER_MS = 1500;
 export const WARM_MAX = 8;
 export const COVER_MAX_W = 320;
-export const SHARP_CAP = 1600;
+export const SHARP_CAP = 2048;
+export const SHARP_DPR_CAP = 2;
+export const SHARP_BUCKET = 256;
 
 function imageOf(value) {
   if (typeof value === "string") return value.length > 0;
@@ -55,7 +57,7 @@ export function coverValid(record, hash) {
 }
 
 // Draw the page at exactly maxW pixels wide, scaling a PDF-point viewport up
-// when the card on screen is wider than that viewport. Capped at 1600.
+// when the card on screen is wider than that viewport. The long side stays within SHARP_CAP.
 export function sharpBox(w, h, maxW = SHARP_CAP) {
   try {
     const width = Number(w);
@@ -63,9 +65,11 @@ export function sharpBox(w, h, maxW = SHARP_CAP) {
     if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) return null;
     const cap = Number(maxW);
     const limit = Number.isFinite(cap) && cap > 0 ? Math.min(cap, SHARP_CAP) : COVER_MAX_W;
-    const targetH = height * (limit / width);
+    const long = Math.max(1, height / width);
+    const fitW = long > 1 ? Math.min(limit, SHARP_CAP / long) : limit;
+    const targetH = height * (fitW / width);
     return {
-      w: Math.max(1, Math.round(limit)),
+      w: Math.max(1, Math.round(fitW)),
       h: Math.max(1, Math.round(targetH)),
     };
   } catch {
@@ -94,7 +98,8 @@ export function scaleBox(w, h, maxW = COVER_MAX_W) {
 }
 
 // A sharper page-1 render, or null when the stored cover already covers the screen.
-// maxW is capped at 1600. The caller keeps that bitmap in memory only.
+// Device pixels count at most SHARP_DPR_CAP, and maxW rounds up to a SHARP_BUCKET step so a card resized
+// a little (or back and forth) asks for the same bitmap. Capped at SHARP_CAP. The caller keeps it in memory only.
 export function sharpCoverPlan(input) {
   try {
     const src = input && typeof input === "object" ? input : {};
@@ -103,14 +108,34 @@ export function sharpCoverPlan(input) {
     const zoom = Number(src.zoom);
     const dpr = Number(src.dpr);
     const zoomN = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-    const dprN = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
+    const dprN = Math.min(SHARP_DPR_CAP, Number.isFinite(dpr) && dpr > 0 ? dpr : 1);
     const pixels = cardW * zoomN * dprN;
     const stored = Number(src.coverW);
     const have = Number.isFinite(stored) && stored > 0 ? stored : 0;
     if (pixels <= have + 1) return null;
-    const maxW = Math.min(SHARP_CAP, Math.ceil(pixels));
+    const maxW = Math.min(SHARP_CAP, Math.ceil(pixels / SHARP_BUCKET) * SHARP_BUCKET);
     if (!(maxW > have)) return null;
     return { maxW };
+  } catch {
+    return null;
+  }
+}
+
+// The one card whose cover should be redrawn sharper, or null. Pure.
+// Never at the map or overview tier, never during a gesture, never off screen or collapsed.
+// cards: [{ url, cardW, onScreen, collapsed }]; coverW(url) is the widest bitmap held for that url.
+export function sharpPick(input) {
+  try {
+    const src = input && typeof input === "object" ? input : {};
+    if (src.gesturing || (src.tier && src.tier !== "detail")) return null;
+    const cards = Array.isArray(src.cards) ? src.cards : [];
+    for (const card of cards) {
+      if (!card || typeof card !== "object" || !card.url || card.collapsed || card.onScreen !== true) continue;
+      const have = typeof src.coverW === "function" ? Number(src.coverW(card.url)) : COVER_MAX_W;
+      const plan = sharpCoverPlan({ cardW: card.cardW, zoom: src.zoom, dpr: src.dpr, coverW: have });
+      if (plan) return { url: card.url, maxW: plan.maxW };
+    }
+    return null;
   } catch {
     return null;
   }

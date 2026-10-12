@@ -17,6 +17,7 @@ import {
   scaleBox,
   sharpBox,
   sharpCoverPlan,
+  sharpPick,
   warmPlan,
 } from "../src/model/pdf-cover.js";
 
@@ -127,9 +128,10 @@ test("coverValid rejects a hash mismatch and a record with no image", () => {
   assert.equal(coverValid(undefined, ""), false);
 });
 
-test("sharpBox scales a PDF-point page up to the card and never past 1600", () => {
-  assert.deepEqual(sharpBox(595, 791, 1600), { w: 1600, h: 2127 });
-  assert.deepEqual(sharpBox(2000, 1000, 2400), { w: 1600, h: 800 });
+test("sharpBox scales a PDF-point page up to the card and keeps the long side within 2048", () => {
+  assert.deepEqual(sharpBox(595, 791, 1000), { w: 1000, h: 1329 });
+  assert.deepEqual(sharpBox(595, 791, 2048), { w: 1541, h: 2048 });
+  assert.deepEqual(sharpBox(2000, 1000, 2400), { w: 2048, h: 1024 });
   assert.equal(sharpBox(0, 791, 1600), null);
 });
 
@@ -147,14 +149,50 @@ test("scaleBox fits the measured 512×688 page into 320px and does not scale up"
 });
 
 test("sharpCoverPlan renders a wider page only when the card outgrows the stored cover", () => {
-  assert.equal(SHARP_CAP, 1600);
+  assert.equal(SHARP_CAP, 2048);
   assert.equal(sharpCoverPlan({}), null);
   assert.equal(sharpCoverPlan({ cardW: 200, zoom: 1, dpr: 1, coverW: 320 }), null);
   assert.equal(sharpCoverPlan({ cardW: 321, zoom: 1, dpr: 1, coverW: 320 }), null);
-  assert.deepEqual(sharpCoverPlan({ cardW: 322, zoom: 1, dpr: 1, coverW: 320 }), { maxW: 322 });
-  assert.deepEqual(sharpCoverPlan({ cardW: 400, zoom: 2, dpr: 2, coverW: 320 }), { maxW: 1600 });
-  assert.deepEqual(sharpCoverPlan({ cardW: 2000, zoom: 2, dpr: 2, coverW: 320 }), { maxW: 1600 });
+  assert.deepEqual(sharpCoverPlan({ cardW: 322, zoom: 1, dpr: 1, coverW: 320 }), { maxW: 512 });
+  assert.deepEqual(sharpCoverPlan({ cardW: 400, zoom: 1, dpr: 2, coverW: 320 }), { maxW: 1024 });
+  assert.deepEqual(sharpCoverPlan({ cardW: 400, zoom: 2, dpr: 2, coverW: 320 }), { maxW: 1792 });
+  assert.deepEqual(sharpCoverPlan({ cardW: 2000, zoom: 2, dpr: 2, coverW: 320 }), { maxW: 2048 });
   assert.equal(sharpCoverPlan({ zoom: 2, dpr: 2, coverW: 100 }), null);
+});
+
+test("sharpCoverPlan counts at most 2x device pixels and rounds up to a 256 bucket", () => {
+  assert.deepEqual(sharpCoverPlan({ cardW: 300, zoom: 1, dpr: 3, coverW: 320 }), { maxW: 768 });
+  assert.deepEqual(sharpCoverPlan({ cardW: 300, zoom: 1, dpr: 2, coverW: 320 }), { maxW: 768 });
+  assert.deepEqual(sharpCoverPlan({ cardW: 500, zoom: 1, dpr: 1, coverW: 320 }), { maxW: 512 });
+  assert.deepEqual(sharpCoverPlan({ cardW: 513, zoom: 1, dpr: 1, coverW: 320 }), { maxW: 768 });
+});
+
+test("sharpCoverPlan reuses a held bitmap: resizing back and forth inside a bucket asks for nothing", () => {
+  let held = 320;
+  const ask = (cardW) => {
+    const plan = sharpCoverPlan({ cardW, zoom: 1, dpr: 1, coverW: held });
+    if (plan) held = plan.maxW;
+    return plan;
+  };
+  assert.deepEqual(ask(700), { maxW: 768 });
+  assert.equal(ask(480), null, "shrinking keeps the held bitmap");
+  assert.equal(ask(760), null, "growing inside the bucket reuses it");
+  assert.equal(ask(700), null);
+  assert.deepEqual(ask(800), { maxW: 1024 });
+});
+
+test("sharpPick draws only visible, expanded cards at detail tier and never during a gesture", () => {
+  const card = (url, over = {}) => ({ url, cardW: 600, onScreen: true, collapsed: false, ...over });
+  const base = { zoom: 1, dpr: 1, tier: "detail", gesturing: false, coverW: () => 320 };
+  assert.deepEqual(sharpPick({ ...base, cards: [card("u")] }), { url: "u", maxW: 768 });
+  assert.equal(sharpPick({ ...base, gesturing: true, cards: [card("u")] }), null, "not during the drag");
+  assert.equal(sharpPick({ ...base, tier: "map", cards: [card("u")] }), null);
+  assert.equal(sharpPick({ ...base, tier: "overview", cards: [card("u")] }), null);
+  assert.equal(sharpPick({ ...base, cards: [card("u", { onScreen: false })] }), null);
+  assert.equal(sharpPick({ ...base, cards: [card("u", { collapsed: true })] }), null);
+  assert.deepEqual(sharpPick({ ...base, cards: [card("off", { onScreen: false }), card("on")] }), { url: "on", maxW: 768 });
+  assert.equal(sharpPick({ ...base, coverW: () => 768, cards: [card("u")] }), null, "already held");
+  assert.equal(sharpPick(null), null);
 });
 
 test("densityTicks places one tick per highlight at (page - 1) / pageCount", () => {

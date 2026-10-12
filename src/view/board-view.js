@@ -24,7 +24,7 @@ import { answerSource, gestureSource, pasteCardPlan, pinOpenPlan, readWithSource
 import { parseRegion } from "../model/regions.js";
 import { isMetaBanner } from "../model/title-cap.js";
 import { createSharpStore } from "./sharp-store.js";
-import { COVER_MAX_W, WARM_AFTER_MS, coverKey, coverState, densityTicks, sharpCoverPlan, warmPlan } from "../model/pdf-cover.js";
+import { COVER_MAX_W, WARM_AFTER_MS, coverKey, coverState, densityTicks, sharpPick, warmPlan } from "../model/pdf-cover.js";
 import { PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { createCoverStore } from "../host/cover-store.js";
 import { chipsForPdf } from "../model/pdf-chips.js";
@@ -2565,21 +2565,24 @@ function buildBoardView(onFail, {
     }
     const dpr = Number(win?.devicePixelRatio) > 0 ? Number(win.devicePixelRatio) : 1;
     const zoom = Number(vp?.zoom) > 0 ? Number(vp.zoom) : 1;
-    let picked = null;
+    const view = size.width ? visibleWorldRect(vp, size, 0) : null;
+    const cards = [];
     for (const item of board()?.items.values() || []) {
-      if (!item || item.kind !== "pdf" || item.collapsed) continue;
+      if (!item || item.kind !== "pdf") continue;
       const url = coverUrlOf(item);
       if (!url || !firstPageAllowed(url)) continue;
       const rect = rects().get(item.uid);
       if (!rect) continue;
-      const sharp = sharpFaces.get(url);
-      const stored = coverFaces.get(url);
-      const coverW = sharp?.w || stored?.w || COVER_MAX_W;
-      const plan = sharpCoverPlan({ cardW: rect.w, zoom, dpr, coverW });
-      if (!plan) continue;
-      picked = { url, maxW: plan.maxW };
-      break;
+      cards.push({ url, cardW: rect.w, collapsed: item.collapsed, onScreen: !view || rectsIntersect(rect, view) });
     }
+    const picked = sharpPick({
+      cards,
+      zoom,
+      dpr,
+      tier,
+      gesturing,
+      coverW: (url) => sharpFaces.get(url)?.w || coverFaces.get(url)?.w || COVER_MAX_W,
+    });
     if (!picked) return;
     const token = sharpStore.begin(picked.url);
     Promise.resolve(firstPage.render({ url: picked.url, maxW: picked.maxW, title: false })).then((result) => {

@@ -129,11 +129,11 @@ test("P32-2: the renderer draws page 1 at the cover width, destroys the document
 test("P32-2: a sharp maxW scales a PDF-point page up instead of stopping at the point width", async () => {
   const { lib, log } = fakeLib({ width: 595, height: 792 });
   const r = createFirstPageRenderer({ doc: canvasDoc(), lib, timers: fakeTimers() });
-  const shot = await r.render({ url: PDF_URL, maxW: 1600 });
-  assert.equal(shot.w, 1600);
-  assert.equal(shot.h, 2130);
-  assert.equal(await shot.blob.text(), "page1-1600x2130");
-  assert.deepEqual(log.filter((row) => row[0] === "render"), [["render", 1600, 2130]]);
+  const shot = await r.render({ url: PDF_URL, maxW: 1000 });
+  assert.equal(shot.w, 1000);
+  assert.equal(shot.h, 1331);
+  assert.equal(await shot.blob.text(), "page1-1000x1331");
+  assert.deepEqual(log.filter((row) => row[0] === "render"), [["render", 1000, 1331]]);
 });
 
 test("P32-2: a second render while one is in flight resolves null, and the timeout destroys", async () => {

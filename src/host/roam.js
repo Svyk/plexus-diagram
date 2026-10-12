@@ -77,6 +77,24 @@ const OPEN_PATTERN = `[:db/id :block/uid :block/string :block/order :block/headi
      ${NATIVE_PULL}
      {(limit :block/children nil) ...}]}]}]`;
 
+// OPEN_PATTERN joins every ref's whole body into the board pull, and the board's pull watch re-runs it on every
+// change. Its cost follows the blocks with refs (PhD boards: <= 100 → mostly < 100 ms; 300 → ~1 s; main board 8,298
+// → 11.3 s and 148 MB per pull). Above this many, the board pull is BOARD_PATTERN and refs are pulled once.
+export const OPEN_PULL_MAX_REFS = 120;
+const REF_TEXT = /\[\[|\(\(|#\S|::/;
+// Blocks under the root whose text names a page, a block, a tag or an attribute (stops past `cap`).
+export function refBlocksOf(node, cap = Infinity) {
+  let n = 0;
+  const stack = [...childNodes(node)];
+  while (stack.length && n <= cap) {
+    const cur = stack.pop();
+    if (!cur || typeof cur !== "object") continue;
+    if (REF_TEXT.test(String(cur[":block/string"] ?? ""))) n += 1;
+    for (const kid of childNodes(cur)) stack.push(kid);
+  }
+  return n;
+}
+
 const LINKED_MANY = `[:find ?title ?u ?ss ?pt :in $ [?title ...] :where
  [?p :node/title ?title] [?b :block/refs ?p] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`;
 
@@ -1171,11 +1189,17 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       }
       warm.delete(uid);
       const boardEntity = eidKey(uid);
+      // The structure first; the wide pull only when few blocks carry refs.
+      let plain = null;
+      try { plain = rawPull(BOARD_PATTERN, boardEntity); } catch { plain = null; }
       let node = null;
-      try { node = rawPull(OPEN_PATTERN, boardEntity); } catch { node = null; }
+      const refBlocks = plain?.[":block/uid"] ? refBlocksOf(plain, OPEN_PULL_MAX_REFS) : 0;
+      if (!plain?.[":block/uid"] || (refBlocks > 0 && refBlocks <= OPEN_PULL_MAX_REFS)) {
+        try { node = rawPull(OPEN_PATTERN, boardEntity); } catch { node = null; }
+      }
       let honored = Boolean(node?.[":block/uid"] && hasRefs(node));
       if (!node?.[":block/uid"]) {
-        try { node = rawPull(BOARD_PATTERN, boardEntity); } catch { node = null; }
+        node = plain;
         honored = false;
       }
       if (!node?.[":block/uid"]) return null;

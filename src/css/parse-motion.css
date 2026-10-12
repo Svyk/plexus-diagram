@@ -197,6 +197,7 @@
 .pxd-root .pxd-pdf-cover > .pxd-pmotion-head {
   top: 6px;
   left: 6px;
+  max-width: calc((100% - 12px) / var(--pxd-screen-px, 1));
   transform: scale(var(--pxd-screen-px, 1));
   transform-origin: top left;
 }

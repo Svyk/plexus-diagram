@@ -1292,7 +1292,13 @@ function startSession(s, o) {
     if (!result.ok && result.code === "EMPTY_RESPONSE" && !turn.answer) { showEmpty(turn); return; }
     if (!result.ok) {
       s.status.textContent = result.error;
-      if (turn.answer) { paintTurn(turn); showActions(turn, true); }
+      if (turn.answer) { paintTurn(turn); showActions(turn, true); return; }
+      // Nothing came back (rate limit, no key, provider error): no empty bubble, and the question goes back.
+      dropTurn(turn);
+      const t = ta();
+      if (t && !t.value.trim() && turn.asked === turn.q) { t.value = turn.q; growQuestion(t); }
+      if (!turns.length) paintQuick();
+      showActions(null, false);
       return;
     }
     turn.answer = result.text || turn.answer;
@@ -1537,7 +1543,8 @@ export function openAskAI(opts = {}) {
   const handle = (built) => ({ el: s.root, close: () => cur2()?.close(), built });
   let session = cur;
   const cur2 = () => session;
-  if (s.collapsed && cur) s.collapse.click();
+  // A chat closed while collapsed opens expanded again.
+  if (s.collapsed) s.collapse.click();
   if (cur && cur.win === win && !opts.multi && !cur.multi) {
     paintTheme(s, dom);
     const e = cur.addEntry(opts);
@@ -1560,6 +1567,8 @@ export function openAskAI(opts = {}) {
   if (!s.root.isConnected) (dom.body || dom.documentElement)?.append?.(s.root);
   session = startSession(s, opts);
   chat.session = session;
+  // The first sync focused the question before chat.session was set, so its focus listener selected nothing.
+  try { if (s.composer?.textarea && s.dom.activeElement === s.composer.textarea) session.focusQuestion(); } catch { /* stub */ }
   askPerf.lastOpenMs = now() - t0;
   return handle(session.built());
 }

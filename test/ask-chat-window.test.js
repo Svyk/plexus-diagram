@@ -364,3 +364,46 @@ test("the status line names the answering model by its picker label, from the na
   assert.equal(modelLabel(options, "gpt-6-sol"), "GPT 6 Sol · OpenAI");
   assert.equal(modelLabel(options, "mystery-1"), "");
 });
+
+// WO M hunt, C2 / C3 / C5 (~/wo/pxd-r6/hunt-matrix.md).
+test("C2: a failed send with no answer leaves no empty bubble and puts the question back", () => withDom(async (stub, doc) => {
+  const w = fakeWindow({ generate: async () => { throw Object.assign(new Error("Too many requests"), { code: "RATE_LIMIT" }); } });
+  const d = openAskAI({ doc: DOC, blockId: "p", document: doc, window: w });
+  const q = find(d.el, "pxd-ask__question");
+  q.value = "What does it say?";
+  find(d.el, "pxd-ask__send").click();
+  await tick();
+  await tick();
+  assert.equal(w.sent.length, 1);
+  assert.ok(find(d.el, "pxd-ask__status").textContent, "the error is shown");
+  assert.equal(q.value, "What does it say?");
+  assert.equal(findAll(d.el, "pxd-ask__msg--ai").length + findAll(d.el, "pxd-ask__msg--user").length, 0, "no bubbles left");
+}));
+
+test("C3: a chat closed while collapsed opens expanded on the next Ask", () => withDom(async (stub, doc) => {
+  const w = fakeWindow();
+  const d = openAskAI({ doc: DOC, blockId: "p", document: doc, window: w });
+  find(d.el, "pxd-ask__collapse").click();
+  assert.ok(d.el.classList.contains("pxd-ask--collapsed"));
+  d.close();
+  const again = openAskAI({ doc: DOC, blockId: "t", document: doc, window: w });
+  assert.equal(again.el, d.el);
+  assert.ok(!again.el.classList.contains("pxd-ask--collapsed"));
+  assert.equal(find(again.el, "pxd-ask__collapse").getAttribute("aria-expanded"), "true");
+}));
+
+test("C5: the first open selects the default question, so typing replaces it", () => withDom(async (stub, doc) => {
+  const selected = [];
+  const make = doc.createElement.bind(doc);
+  doc.createElement = (tag) => {
+    const node = make(tag);
+    if (String(tag).toLowerCase() === "textarea") node.select = () => selected.push(node.value);
+    return node;
+  };
+  const w = fakeWindow();
+  const d = openAskAI({ doc: DOC, blockId: "p", document: doc, window: w });
+  const q = find(d.el, "pxd-ask__question");
+  assert.ok(q.value, "a default question is filled in");
+  assert.equal(doc.activeElement, q);
+  assert.deepEqual(selected, [q.value]);
+}));

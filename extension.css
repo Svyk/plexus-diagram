@@ -2319,17 +2319,31 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 /* Ask AI chat window, in the style of Live AI Assistant's chat. Appended to the document body and placed by
    ask-ai.js (left/top/width/height inline), so it floats above a fullscreen board (.pxd-mount--fullscreen is
    z-index 40) and Roam's sidebars. Buttons use two classes: Blueprint's `.bp3-dark button` beats one. */
+/* Colours: one light set and one dark set (Live AI's dark chat over Blueprint's dark palette). The dark set applies
+   under .bp3-dark and with .pxd-ask--dark, which ask-ai.js sets from the board and Roam's own dark markers and
+   background (floatingDark). test/ask-dark.test.js checks the text pairs against WCAG AA. */
 .pxd-ask {
   --pxd-ask-bg: #f5f8fa;
-  --pxd-ask-head: #fff;
+  --pxd-ask-head: #ffffff;
   --pxd-ask-ctx: #ebf1f5;
-  --pxd-ask-card: #fff;
+  --pxd-ask-card: #ffffff;
+  --pxd-ask-raised: #ffffff;
+  --pxd-ask-field: #ffffff;
   --pxd-ask-line: rgba(16, 22, 26, 0.12);
+  --pxd-ask-line-strong: rgba(16, 22, 26, 0.22);
   --pxd-ask-fg: #182026;
   --pxd-ask-muted: #5c7080;
-  --pxd-ask-user: #607d8b;
+  --pxd-ask-user: #4f6b7a;
+  --pxd-ask-user-fg: #ffffff;
   --pxd-ask-accent: #667eea;
+  --pxd-ask-accent-fg: #4255c4;
+  --pxd-ask-accent-soft: rgba(102, 126, 234, 0.12);
+  --pxd-ask-link: #106ba3;
   --pxd-ask-hover: rgba(167, 182, 194, 0.22);
+  --pxd-ask-code: rgba(16, 22, 26, 0.06);
+  --pxd-ask-rule: rgba(16, 22, 26, 0.18);
+  --pxd-ask-shadow: 0 12px 32px rgba(16, 22, 26, 0.22), 0 2px 6px rgba(16, 22, 26, 0.12);
+  --pxd-ask-pop-shadow: 0 8px 24px rgba(16, 22, 26, 0.2);
   position: fixed;
   left: 0;
   top: 0;
@@ -2347,7 +2361,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   background: var(--pxd-ask-bg);
   border: 1px solid var(--pxd-ask-line);
   border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(16, 22, 26, 0.22), 0 2px 6px rgba(16, 22, 26, 0.12);
+  box-shadow: var(--pxd-ask-shadow);
   font-size: 13px;
   line-height: 1.45;
   contain: layout;
@@ -2355,16 +2369,28 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .bp3-dark .pxd-ask,
 .pxd-ask.pxd-ask--dark {
-  --pxd-ask-bg: #293742;
-  --pxd-ask-head: #30404d;
-  --pxd-ask-ctx: #202b33;
-  --pxd-ask-card: #394b59;
-  --pxd-ask-line: rgba(255, 255, 255, 0.12);
-  --pxd-ask-fg: #f5f8fa;
-  --pxd-ask-muted: #a7b6c2;
-  --pxd-ask-user: #5c7c8f;
+  --pxd-ask-bg: #1f2a33;
+  --pxd-ask-head: #26323c;
+  --pxd-ask-ctx: #222d36;
+  --pxd-ask-card: #2a3641;
+  --pxd-ask-raised: #2f3b46;
+  --pxd-ask-field: #26323c;
+  --pxd-ask-line: rgba(255, 255, 255, 0.08);
+  --pxd-ask-line-strong: rgba(255, 255, 255, 0.14);
+  --pxd-ask-fg: #e6edf3;
+  --pxd-ask-muted: #9fb0bf;
+  --pxd-ask-user: #3d5a80;
+  --pxd-ask-user-fg: #f5f8fa;
   --pxd-ask-accent: #8b9cf4;
-  --pxd-ask-hover: rgba(255, 255, 255, 0.08);
+  --pxd-ask-accent-fg: #a5b4fc;
+  --pxd-ask-accent-soft: rgba(139, 156, 244, 0.16);
+  --pxd-ask-link: #48aff0;
+  --pxd-ask-hover: rgba(255, 255, 255, 0.07);
+  --pxd-ask-code: rgba(255, 255, 255, 0.08);
+  --pxd-ask-rule: rgba(255, 255, 255, 0.16);
+  --pxd-ask-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --pxd-ask-pop-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
 }
 
 .pxd-ask.pxd-ask--over-fullscreen {
@@ -2464,7 +2490,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   padding: 2px 8px;
   color: var(--pxd-ask-muted);
   background: transparent;
-  border: 1px solid var(--pxd-ask-line);
+  border: 1px solid var(--pxd-ask-line-strong);
   border-radius: 999px;
   cursor: pointer;
 }
@@ -2491,6 +2517,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-ask .pxd-ask__chip:hover,
 .pxd-ask .pxd-ask__addwhole:hover {
+  color: var(--pxd-ask-fg);
   border-color: var(--pxd-ask-accent);
 }
 
@@ -2516,7 +2543,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   padding: 2px 4px 2px 8px;
   color: var(--pxd-ask-fg);
   background: var(--pxd-ask-card);
-  border: 1px solid var(--pxd-ask-line);
+  border: 1px solid var(--pxd-ask-line-strong);
   border-radius: 999px;
   font-size: 12px;
 }
@@ -2578,14 +2605,15 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   border-bottom: 1px solid var(--pxd-ask-line);
 }
 
-/* ---- the conversation */
+/* ---- the conversation. The scroll padding keeps a question clear of the context bar when it is scrolled to. */
 .pxd-ask__log {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   min-height: 0;
-  padding: 10px;
+  padding: 12px 10px;
+  scroll-padding-top: 8px;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -2604,21 +2632,22 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-ask .pxd-ask__quickbtn {
   padding: 4px 10px;
-  color: var(--pxd-ask-accent);
+  color: var(--pxd-ask-accent-fg);
   background: var(--pxd-ask-card);
-  border: 1px solid rgba(102, 126, 234, 0.35);
+  border: 1px solid var(--pxd-ask-accent-soft);
+  border-color: color-mix(in srgb, var(--pxd-ask-accent) 40%, transparent);
   border-radius: 999px;
   cursor: pointer;
 }
 
 .pxd-ask .pxd-ask__quickbtn:hover {
-  background: rgba(102, 126, 234, 0.1);
+  background: var(--pxd-ask-accent-soft);
 }
 
 .pxd-ask__card {
   padding: 10px 12px;
   background: var(--pxd-ask-card);
-  border: 1px dashed var(--pxd-ask-line);
+  border: 1px dashed var(--pxd-ask-line-strong);
   border-radius: 12px;
 }
 
@@ -2641,6 +2670,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
+  scroll-margin-top: 8px;
 }
 
 .pxd-ask__msg--user {
@@ -2658,13 +2688,18 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   box-shadow: 0 1px 4px rgba(16, 22, 26, 0.06);
 }
 
+.pxd-ask.pxd-ask--dark .pxd-ask__bubble,
+.bp3-dark .pxd-ask .pxd-ask__bubble {
+  box-shadow: none;
+}
+
 .pxd-ask__msg--ai .pxd-ask__bubble {
   max-width: 100%;
   border-top-left-radius: 4px;
 }
 
 .pxd-ask__msg--user .pxd-ask__bubble {
-  color: #fff;
+  color: var(--pxd-ask-user-fg);
   background: var(--pxd-ask-user);
   border-color: transparent;
   border-top-right-radius: 4px;
@@ -2687,7 +2722,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   padding: 2px 8px;
   color: var(--pxd-ask-muted);
   background: transparent;
-  border: 1px solid var(--pxd-ask-line);
+  border: 1px solid var(--pxd-ask-line-strong);
   border-radius: 6px;
   font-size: 12px;
   cursor: pointer;
@@ -2727,7 +2762,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 .pxd-ask__table th,
 .pxd-ask__table td {
   padding: 3px 6px;
-  border: 1px solid rgba(127, 127, 127, 0.4);
+  border: 1px solid var(--pxd-ask-rule);
   min-width: 7em;
   text-align: left;
   vertical-align: top;
@@ -2737,7 +2772,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-ask__table th {
   font-weight: 600;
-  background: rgba(127, 127, 127, 0.12);
+  background: var(--pxd-ask-code);
 }
 
 .pxd-ask__li--n1 { margin-left: 16px; }
@@ -2747,12 +2782,13 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 .pxd-ask__code {
   padding: 0 3px;
   font: 12px ui-monospace, Menlo, monospace;
-  background: rgba(127, 127, 127, 0.15);
+  color: inherit;
+  background: var(--pxd-ask-code);
   border-radius: 3px;
 }
 
 .pxd-ask__cite {
-  color: var(--pxd-ask-accent);
+  color: var(--pxd-ask-link);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -2802,19 +2838,27 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   min-width: 0;
 }
 
+/* Row buttons are ghost buttons: no border or fill until hover; accent when a setting is on; faded when disabled. */
 .pxd-ask .pxd-ask__rowbtn {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  height: 26px;
-  min-width: 26px;
-  padding: 0 5px;
+  box-sizing: border-box;
+  height: 28px;
+  min-width: 28px;
+  margin: 0;
+  padding: 0 6px;
   color: var(--pxd-ask-muted);
   background: transparent;
   border: 0;
   border-radius: 6px;
+  box-shadow: none;
+  appearance: none;
   font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -2824,13 +2868,21 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   background: var(--pxd-ask-hover);
 }
 
+.pxd-ask .pxd-ask__rowbtn:disabled {
+  color: var(--pxd-ask-muted);
+  background: transparent;
+  opacity: 0.4;
+  cursor: default;
+}
+
 .pxd-ask .pxd-ask__rowbtn:focus-visible {
   outline: 2px solid var(--pxd-ask-accent);
   outline-offset: -2px;
 }
 
 .pxd-ask .pxd-ask__rowbtn.pxd-ask__rowbtn--on {
-  color: var(--pxd-ask-accent);
+  color: var(--pxd-ask-accent-fg);
+  background: var(--pxd-ask-accent-soft);
 }
 
 .pxd-ask .pxd-ask__rowbtn[hidden] {
@@ -2843,40 +2895,72 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-ask .pxd-ask__rowicon {
   color: inherit;
-  font-size: 14px;
+  font-size: 15px;
+  line-height: 1;
 }
 
+/* Model picker: the gear, the name (regular weight, cut with an ellipsis, full name in the title) and a chevron. */
 .pxd-ask__modelwrap {
+  position: relative;
   display: inline-flex;
   flex: 0 1 auto;
   align-items: center;
   gap: 2px;
   min-width: 0;
-  padding-left: 5px;
+  height: 28px;
+  padding-left: 6px;
   color: var(--pxd-ask-muted);
+}
+
+.pxd-ask__modelwrap::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
 }
 
 .pxd-ask .pxd-ask__model {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 150px;
+  max-width: 190px;
+  height: 28px;
+  margin: 0;
+  padding: 0 22px 0 4px;
+  overflow: hidden;
   text-overflow: ellipsis;
-  padding: 2px 4px;
+  white-space: nowrap;
   color: var(--pxd-ask-muted);
   background: transparent;
   border: 0;
   border-radius: 6px;
+  box-shadow: none;
+  appearance: none;
   font-size: 12px;
+  font-weight: 400;
+  line-height: 28px;
   cursor: pointer;
 }
 
-.pxd-ask .pxd-ask__model:hover {
+.pxd-ask .pxd-ask__model:hover,
+.pxd-ask .pxd-ask__model:focus-visible {
   color: var(--pxd-ask-fg);
   background: var(--pxd-ask-hover);
+  outline: none;
+}
+
+.pxd-ask__modelwrap:hover {
+  color: var(--pxd-ask-fg);
 }
 
 .pxd-ask__model option {
-  color: initial;
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-raised);
 }
 
 .pxd-ask__inputrow {
@@ -2895,19 +2979,21 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   overflow-y: auto;
   resize: none;
   color: var(--pxd-ask-fg);
-  background: var(--pxd-ask-card);
-  border: 2px solid var(--pxd-ask-line);
+  background: var(--pxd-ask-field);
+  border: 1px solid var(--pxd-ask-line-strong);
   border-radius: 12px;
+  box-shadow: none;
   outline: none;
 }
 
 .pxd-ask .pxd-ask__question:focus {
   border-color: var(--pxd-ask-accent);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.12);
+  box-shadow: 0 0 0 3px var(--pxd-ask-accent-soft);
 }
 
 .pxd-ask .pxd-ask__question::placeholder {
-  color: #a0a8b0;
+  color: var(--pxd-ask-muted);
+  opacity: 1;
 }
 
 .pxd-ask .pxd-ask__send,
@@ -2957,14 +3043,14 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   padding: 1px 2px 1px 8px;
   color: var(--pxd-ask-fg);
   background: var(--pxd-ask-card);
-  border: 1px solid var(--pxd-ask-line);
+  border: 1px solid var(--pxd-ask-line-strong);
   border-radius: 999px;
   font-size: 11px;
 }
 
 .pxd-ask__mchip--page,
 .pxd-ask__mchip--block {
-  border-color: var(--pxd-ask-accent);
+  border-color: color-mix(in srgb, var(--pxd-ask-accent) 60%, transparent);
 }
 
 .pxd-ask__mchiplabel {
@@ -2990,10 +3076,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   max-height: 320px;
   padding: 4px;
   color: var(--pxd-ask-fg);
-  background: var(--pxd-ask-head);
-  border: 1px solid var(--pxd-ask-line);
+  background: var(--pxd-ask-raised);
+  border: 1px solid var(--pxd-ask-line-strong);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(16, 22, 26, 0.2);
+  box-shadow: var(--pxd-ask-pop-shadow);
 }
 
 .pxd-ask__mlist {
@@ -3006,11 +3092,16 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   margin-bottom: 4px;
   padding: 5px 8px;
   color: var(--pxd-ask-fg);
-  background: var(--pxd-ask-card);
-  border: 1px solid var(--pxd-ask-line);
+  background: var(--pxd-ask-field);
+  border: 1px solid var(--pxd-ask-line-strong);
   border-radius: 6px;
   outline: none;
   font-size: 12px;
+}
+
+.pxd-ask .pxd-ask__mfilter::placeholder {
+  color: var(--pxd-ask-muted);
+  opacity: 1;
 }
 
 .pxd-ask__mhead,
@@ -3040,9 +3131,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   cursor: pointer;
 }
 
+.pxd-ask .pxd-ask__mitem:hover,
 .pxd-ask .pxd-ask__mitem.pxd-ask__mitem--active,
 .pxd-ask .pxd-ask__mitem:focus-visible {
-  background: var(--pxd-ask-hover);
+  background: var(--pxd-ask-accent-soft);
   outline: none;
 }
 
@@ -3053,7 +3145,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-ask__mcheck {
   flex: 0 0 12px;
-  color: var(--pxd-ask-accent);
+  color: var(--pxd-ask-accent-fg);
 }
 
 .pxd-ask__mdetail,
@@ -3081,8 +3173,8 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   width: 56px;
   padding: 2px 4px;
   color: var(--pxd-ask-fg);
-  background: var(--pxd-ask-card);
-  border: 1px solid var(--pxd-ask-line);
+  background: var(--pxd-ask-field);
+  border: 1px solid var(--pxd-ask-line-strong);
   border-radius: 4px;
 }
 
@@ -3105,10 +3197,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   overflow-y: auto;
   padding: 4px;
   color: var(--pxd-ask-fg);
-  background: var(--pxd-ask-head);
-  border: 1px solid var(--pxd-ask-line);
+  background: var(--pxd-ask-raised);
+  border: 1px solid var(--pxd-ask-line-strong);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(16, 22, 26, 0.2);
+  box-shadow: var(--pxd-ask-pop-shadow);
 }
 
 .pxd-ask__suggest[hidden] {
@@ -3125,8 +3217,9 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   cursor: pointer;
 }
 
+.pxd-ask__sitem:hover,
 .pxd-ask__sitem.pxd-ask__sitem--active {
-  background: var(--pxd-ask-hover);
+  background: var(--pxd-ask-accent-soft);
 }
 
 .pxd-ask__slabel {
@@ -7756,11 +7849,32 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   cursor: pointer;
 }
 
+.pxd-copy-menu__item:hover,
+.pxd-copy-menu__item:focus-visible {
+  background: rgba(167, 182, 194, 0.22);
+  outline: none;
+}
+
+/* The menu is appended to the body, outside the board's tokens: page-chips adds --dark from the board under it. */
 .bp3-dark .pxd-copy-menu,
-.pxd-root--dark .pxd-copy-menu {
-  background: var(--pxd-surface, #111);
-  border-color: #fff;
-  box-shadow: none;
+.pxd-root--dark .pxd-copy-menu,
+.pxd-copy-menu.pxd-copy-menu--dark {
+  color: #e6edf3;
+  background: #2f3b46;
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.bp3-dark .pxd-copy-menu .pxd-copy-menu__item,
+.pxd-copy-menu.pxd-copy-menu--dark .pxd-copy-menu__item {
+  color: #e6edf3;
+}
+
+.bp3-dark .pxd-copy-menu .pxd-copy-menu__item:hover,
+.bp3-dark .pxd-copy-menu .pxd-copy-menu__item:focus-visible,
+.pxd-copy-menu.pxd-copy-menu--dark .pxd-copy-menu__item:hover,
+.pxd-copy-menu.pxd-copy-menu--dark .pxd-copy-menu__item:focus-visible {
+  background: rgba(139, 156, 244, 0.16);
 }
 
 /* Click-to-place: the preview is solid and the board shows where it lands. */

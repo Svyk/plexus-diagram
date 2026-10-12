@@ -62772,9 +62772,10 @@ ${sourceAttrString(source)}` : markdown;
         onPhase: (info) => {
           if (info?.phase === "check") {
             const done2 = Number(info.done) || 0;
-            progress = { page: done2, pageCount: pages.length, engine: "builtin", step: "check" };
+            const total = Number(info.total) || pages.length;
+            progress = { page: done2, pageCount: total, engine: "builtin", step: "check" };
             paintChip();
-            onProgress?.({ page: done2, pageCount: pages.length, fraction: 0.3 + 0.55 * (done2 / Math.max(1, pages.length)) });
+            onProgress?.({ page: done2, pageCount: total, fraction: 0.3 + 0.55 * (done2 / Math.max(1, total)) });
             return;
           }
           const step = info?.phase === "ocr" ? "" : "finish";
@@ -62795,7 +62796,7 @@ ${sourceAttrString(source)}` : markdown;
         } catch {
         }
       }
-      await finishDoc(result.doc, (parsed.stats?.ms || 0) + (now4() - t0));
+      await finishDoc(result.doc, (parsed.ocr ? 0 : parsed.stats?.ms || 0) + (now4() - t0));
     } catch (error) {
       if (error?.name !== "AbortError") {
         try {

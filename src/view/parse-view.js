@@ -1852,9 +1852,11 @@ export function createParseView({
         onPhase: (info) => {
           if (info?.phase === "check") {
             const done = Number(info.done) || 0;
-            progress = { page: done, pageCount: pages.length, engine: "builtin", step: "check" };
+            // The second reading checks only the doubtful pages: count against those.
+            const total = Number(info.total) || pages.length;
+            progress = { page: done, pageCount: total, engine: "builtin", step: "check" };
             paintChip();
-            onProgress?.({ page: done, pageCount: pages.length, fraction: 0.3 + 0.55 * (done / Math.max(1, pages.length)) });
+            onProgress?.({ page: done, pageCount: total, fraction: 0.3 + 0.55 * (done / Math.max(1, total)) });
             return;
           }
           const step = info?.phase === "ocr" ? "" : "finish";
@@ -1870,7 +1872,7 @@ export function createParseView({
       }
       const read = (result?.records || []).filter((rec) => rec?.ocr && (result.pages || pages).includes(rec.n));
       if (read.length) { try { onOcrPages?.(read, parsed.sha256); } catch { /* host */ } }
-      await finishDoc(result.doc, (parsed.stats?.ms || 0) + (now() - t0));
+      await finishDoc(result.doc, (parsed.ocr ? 0 : (parsed.stats?.ms || 0)) + (now() - t0));
     } catch (error) {
       if (error?.name !== "AbortError") { try { onToast?.(`Read the scan failed: ${error?.message || error}`); } catch { /* host */ } }
       phase = "idle";

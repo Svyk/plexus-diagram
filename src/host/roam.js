@@ -1244,7 +1244,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     tabs: createTabStore({ storage, graph: gname }),
 
     // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
-    pullBoard(uid, { light = false } = {}) {
+    pullBoard(uid, { light = false, deferRefs = false } = {}) {
       if (warm.has(uid)) {
         const cached = cache.blockOf(uid);
         if (cached?.[":block/uid"]) return cached;
@@ -1267,9 +1267,15 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!node?.[":block/uid"]) return null;
       absorb(uid, node, honored);
       const found = collectTargets(node);
-      if (!honored && (found.uids.length || found.titles.length)) {
-        for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
-      }
+      const pullRefs = () => {
+        if (!honored && (found.uids.length || found.titles.length)) {
+          for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
+        }
+      };
+      // A keep-alive catch-up already shows its cards: their refs are read again in the first idle slice
+      // (PhD main board: 1,000 refs, 0.54 s of the reattach task).
+      const refsLater = light && deferRefs;
+      if (!refsLater) pullRefs();
       boardCovers.set(uid, honored);
       // A keep-alive catch-up is light: the board shows at once. Badge and linked-ref
       // reads run when the browser is idle.
@@ -1303,9 +1309,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         let ti = 0;
         let si = 0;
         let statsDone = false;
+        let refsDone = !refsLater;
         const step = () => {
           // The board's last watch went away after this pull (closed, parked): skip the reads.
           if (unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
+          if (!refsDone) {
+            refsDone = true;
+            try { pullRefs(); } catch { /* cards read their refs on demand */ }
+            later(step);
+            return;
+          }
           if (ti === 0 && si === 0 && !statsDone) dropStats(uid);
           if (ti < titles.length) {
             try { fetchLinked(titles.slice(ti, ti + PRIME_CHUNK)); } catch { /* a later linkedRefs ask reads Roam */ }

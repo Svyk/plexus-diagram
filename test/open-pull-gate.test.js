@@ -47,3 +47,24 @@ test("a board with a few ref blocks still takes the wide OPEN pull", () => {
   host.pullBoard("bigBoard1");
   assert.deepEqual(patterns, ["board", "open"]);
 });
+
+test("a keep-alive catch-up pull reads the board's refs in the first idle slice, not inline", () => {
+  const fake = createFakeRoam();
+  fake.seedPage({ title: "Ref page", uid: "refPage01" });
+  fake.seedBoard({ uid: "catchUp1", props: { plexus: { v: 2 } }, children: [{ uid: "cardRef01", string: "[[Ref page]]", props: { plexus: { x: 0, y: 0, w: 200, h: 100 } } }] });
+  const queued = [];
+  const previous = globalThis.requestIdleCallback;
+  globalThis.requestIdleCallback = (fn) => { queued.push(fn); return queued.length; };
+  try {
+    const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+    let many = 0;
+    const pm = fake.api.data.pull_many;
+    fake.api.data.pull_many = (...args) => { many += 1; return pm.apply(fake.api.data, args); };
+    host.pullBoard("catchUp1", { light: true, deferRefs: true });
+    assert.equal(many, 0);
+    queued.shift()();
+    assert.equal(many, 1);
+  } finally {
+    globalThis.requestIdleCallback = previous;
+  }
+});

@@ -4,6 +4,7 @@
 // One delegated click and pointerover listener serve the whole menu, so a close leaves nothing behind.
 
 import { chromeObstacles, placeNearAnchor, pointAnchor } from "./avoid.js";
+import { askAiIcon } from "./ask-icon.js";
 
 const MARGIN = 4;
 const HOP = 120;
@@ -112,6 +113,10 @@ export function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       if (item.disabled) row.setAttribute("aria-disabled", "true");
       row.setAttribute("data-id", item.id);
       row.dataset.id = item.id;
+      if (item.icon === "ask-ai") {
+        const mark = askAiIcon(doc, 14);
+        if (mark) el("span", "pxd-menu__icon", row).append(mark);
+      }
       el("span", "pxd-menu__label", row, item.label);
       if (item.hint) el("span", "pxd-menu__hint", row, item.hint);
       const entry = { item, level: depth, sub: null };

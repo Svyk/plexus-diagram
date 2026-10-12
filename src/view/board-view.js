@@ -76,6 +76,7 @@ import { createInteractions, emptyLabelShouldDeleteEdge, whyLabelField } from ".
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
+import { createCardMotionRelay } from "./card-parse-motion.js";
 import { runChartToTable } from "./chart-table.js";
 import { openAskAI, setAskSettings } from "./ask-ai.js";
 import { BASKET_MESSAGES, basketFor, makePart, pillText } from "../model/ask-basket.js";
@@ -1829,9 +1830,15 @@ function buildBoardView(onFail, {
     }
     return parseActionsObj;
   };
+  let cardMotion = null;
   const makeReadPane = () => (createReadPane({
     doc,
     root,
+    onParseMotion: (cardUid, event) => {
+      if (disposed || !cardUid) return;
+      if (!cardMotion) cardMotion = createCardMotionRelay({ doc, root, pageOf: (uid) => pdfFlip?.pageOf?.(uid) || 1 });
+      cardMotion.handle(cardUid, event);
+    },
     host: readPaneHost(host, (message) => toast(message)),
     deviceOcr: sharedDeviceOcr(),
     onNote: (row) => { void openHighlightNote(row?.uid); },
@@ -8858,6 +8865,7 @@ function buildBoardView(onFail, {
       step(() => { try { themeFollow?.stop?.(); } catch { /* theme */ } });
       step(() => { if (coverWarmWait) { coverWarmWait(); coverWarmWait = null; } });
       step(() => readPane?.dispose?.());
+      step(() => { cardMotion?.dispose(); cardMotion = null; });
       step(() => itemsR.dispose());
       step(() => edgesR.dispose());
       step(() => { offPartsChange?.(); partsIdx?.dispose(); partsIdx = null; });

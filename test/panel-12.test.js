@@ -517,7 +517,7 @@ test("PDF part rows: Ask AI button does not add the card; click opens the board'
   const row = q(f.root, ".pxd-panel__row--part");
   const btn = q(row, ".pxd-panel__row-act");
   assert.equal(btn.getAttribute("aria-label"), "Ask AI");
-  assert.equal(q(btn, ".bp3-icon").className, "bp3-icon bp3-icon-lightbulb");
+  assert.ok(q(btn, ".pxd-ask-icon"), "the one Ask AI mark");
   f.stub.dispatch(btn, "click");
   assert.deepEqual(asked, [part]);
   assert.equal(opened.length, 0);

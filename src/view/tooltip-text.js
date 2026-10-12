@@ -213,6 +213,8 @@ export const TIP_TEXT = {
   "page-chip.formula": e("Formula", "Send this formula to the board as a card. Click the board to place it; Esc cancels."),
   "page-chip.heading": e("Section", "Send this heading and the text up to the next heading to the board as a card. Click the board to place it; Esc cancels."),
   "page-chip.copy": e("Copy", "Copy this block's text, or the table as Markdown."),
+  "gutter.ask": e("Ask AI about this part", "Ask your Live AI Assistant about this part, with the rest of the PDF as context. Shift-click: add to question."),
+  "gutter.copy": e("Copy", "Copy this part as Roam-ready text; a table copies as a {{[[table]]}} outline. Right-click for more copy options."),
   "parse.show-parsed": e("Show parsed", "Draw a soft box around every parsed block on the page, with a copy button at its left edge. Remembered on this device."),
   "page-chip.list": e("List", "Insert this list below the PDF."),
   "parse.helper-url": e("Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),

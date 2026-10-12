@@ -2,6 +2,7 @@
 // Listeners are delegated on the drawer root. Resize listeners live only while the pointer is down.
 // No setPointerCapture. No document key listener. No :pdf-highlight write.
 
+import { askAiIcon } from "./ask-icon.js";
 import { isTextEntryTarget } from "./cards.js";
 import {
   colorsPresent,
@@ -232,7 +233,8 @@ export function createReadDrawer({
     if (typeof onAsk === "function") {
       const ask = el("button", "pxd-read-drawer__ask", acts);
       ask.setAttribute("aria-label", "Ask AI (Shift: add to question)");
-      ask.append(icon(["M8 2.5l1.4 3.1 3.1 1.4-3.1 1.4L8 11.5 6.6 8.4 3.5 7l3.1-1.4z", "M12.5 11v3M11 12.5h3"]));
+      const mark = askAiIcon(doc, 16);
+      if (mark) ask.append(mark);
     }
     const locate = el("button", "pxd-read-drawer__locate", acts);
     locate.setAttribute("aria-label", "Locate");

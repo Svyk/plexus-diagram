@@ -24700,6 +24700,8 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q2));
     },
     close() {
       setTypesOpen(false);
+      refreshTimer?.();
+      refreshTimer = null;
       if (tab === "info") unmountInfo();
       panel.style.display = "none";
       root.removeAttribute("data-pxd-panel-open");
@@ -28516,6 +28518,7 @@ function createItemRenderer({
   onHighlightNote = null,
   coverImage = null,
   pdfMetaTitle = null,
+  pdfIdentTitle = null,
   onPdfOpenRequest = null,
   onPdfParse = null,
   pdfCardPage = null,
@@ -31289,9 +31292,16 @@ function createItemRenderer({
     const url = pdfMacroUrl(pdfSourceOf(item));
     const pageNamed = Boolean(item?.target?.page);
     let metadataTitle = "";
+    let identTitle = "";
     if (!pageNamed) {
       try {
-        const got = typeof pdfMetaTitle === "function" ? pdfMetaTitle(url) : "";
+        const got = typeof pdfIdentTitle === "function" && url ? pdfIdentTitle(url) : "";
+        identTitle = typeof got === "string" ? got : "";
+      } catch {
+        identTitle = "";
+      }
+      try {
+        const got = !identTitle && typeof pdfMetaTitle === "function" ? pdfMetaTitle(url) : "";
         metadataTitle = typeof got === "string" ? got : "";
       } catch {
         metadataTitle = "";
@@ -31299,6 +31309,7 @@ function createItemRenderer({
     }
     const model = coverModel({
       metadataTitle,
+      identTitle,
       alias: humanAlias(item),
       text: pageNamed ? "" : humanText(item),
       title: typeof cover?.title === "string" ? cover.title : "",
@@ -33957,6 +33968,23 @@ function createItemRenderer({
     mounted.clear();
     dropRegionWatch();
   };
+  function repaintShells(uids) {
+    if (!lastBoard) return;
+    for (const uid of uids) {
+      const rec = shells.get(uid);
+      if (!rec || editing?.uid === uid) continue;
+      const item = lastBoard.items.get(uid);
+      if (!item) continue;
+      paintShell(rec, item);
+      if (item.kind !== "pdf" || rec.contentKey == null) continue;
+      const key = contentKeyFor(item);
+      if (key === rec.contentKey) continue;
+      unmountRoots(rec);
+      rec.body?.replaceChildren?.();
+      rec.contentKey = null;
+      mountContent(rec, item);
+    }
+  }
   return {
     sync,
     scheduleContent,
@@ -34010,19 +34038,19 @@ function createItemRenderer({
     // A reading-card change (pane open/close) does not change the highlighter, so it skips that probe.
     repaintStyles({ highlighter: highlighter2 = true } = {}) {
       if (highlighter2) syncBoardHighlighter(doc, boardRoot());
-      if (!lastBoard) return;
-      for (const [uid, rec] of shells) {
-        if (editing?.uid === uid) continue;
-        const item = lastBoard.items.get(uid);
-        if (!item) continue;
-        paintShell(rec, item);
-        if (item.kind !== "pdf" || rec.contentKey == null) continue;
-        const key = contentKeyFor(item);
-        if (key === rec.contentKey) continue;
-        unmountRoots(rec);
-        rec.body?.replaceChildren?.();
-        rec.contentKey = null;
-        mountContent(rec, item);
+      repaintShells(shells.keys());
+    },
+    // The same for these cards only (a PDF identity landed for them).
+    repaintItems(uids) {
+      const list = [...uids || []];
+      repaintShells(list);
+      for (const uid of list) {
+        const rec = shells.get(uid);
+        const title = rec?.pdfCover?.title;
+        if (!title || editing?.uid === uid) continue;
+        for (const node2 of rec.body?.querySelectorAll?.(".pxd-pdf-title") || []) {
+          if (node2.textContent !== title) node2.textContent = title;
+        }
       }
     },
     expireContent(uids) {
@@ -35891,6 +35919,67 @@ function mergeCloudFigures(cloudDoc, localDoc) {
   }
   return doc;
 }
+var LINKS = ["caption", "for", "continues"];
+function fillFreePages(paid, free) {
+  if (!paid || !free) return paid || free || null;
+  const paidPages = new Set(pagesOf(paid));
+  const fill = pagesOf(free).filter((n3) => !paidPages.has(n3)).sort((a, b) => a - b);
+  if (!fill.length) return paid;
+  const fillSet = new Set(fill);
+  const blocks = { ...paid.blocks || {} };
+  const rename = /* @__PURE__ */ new Map();
+  const taken = new Set(Object.keys(blocks));
+  const freeIds = (free.order || []).filter((id) => fillSet.has(free.blocks?.[id]?.page));
+  for (const id of Object.keys(free.blocks || {})) {
+    if (!fillSet.has(free.blocks[id]?.page)) continue;
+    let next = id;
+    while (taken.has(next)) next = `${next}~f`;
+    taken.add(next);
+    rename.set(id, next);
+  }
+  for (const [id, next] of rename) {
+    const block = { ...free.blocks[id], id: next };
+    for (const key of LINKS) {
+      if (typeof block[key] !== "string") continue;
+      if (rename.has(block[key])) block[key] = rename.get(block[key]);
+      else delete block[key];
+    }
+    blocks[next] = block;
+  }
+  const pageOf3 = (id) => blocks[id]?.page ?? 0;
+  const tagged = [
+    ...(paid.order || []).map((id, i) => ({ id, page: pageOf3(id), side: 0, i })),
+    ...freeIds.map((id, i) => ({ id: rename.get(id), page: free.blocks[id].page, side: 1, i }))
+  ];
+  tagged.sort((a, b) => a.page - b.page || a.side - b.side || a.i - b.i);
+  const pageRows = /* @__PURE__ */ new Map();
+  for (const p of free.pages || []) if (fillSet.has(p?.n)) pageRows.set(p.n, { ...p });
+  for (const p of paid.pages || []) if (Number.isInteger(p?.n)) pageRows.set(p.n, p);
+  const pages = [...pageRows.values()].sort((a, b) => a.n - b.n);
+  return {
+    ...paid,
+    title: paid.title || free.title || null,
+    pageCount: Math.max(Number(paid.pageCount) || 0, Number(free.pageCount) || 0, pages.length),
+    pages,
+    blocks,
+    order: tagged.map((row4) => row4.id),
+    filledFrom: { engine: free.engine || null, pages: fill, pageCount: paid.pageCount ?? null }
+  };
+}
+function paidPagesOnly(doc) {
+  if (!doc?.filledFrom) return doc;
+  const drop = new Set(doc.filledFrom.pages || []);
+  const blocks = {};
+  for (const [id, block] of Object.entries(doc.blocks || {})) if (!drop.has(block?.page)) blocks[id] = block;
+  const { filledFrom, ...rest } = doc;
+  return {
+    ...rest,
+    pageCount: filledFrom.pageCount ?? rest.pageCount,
+    pages: (doc.pages || []).filter((p) => !drop.has(p?.n)),
+    blocks,
+    order: (doc.order || []).filter((id) => Object.prototype.hasOwnProperty.call(blocks, id))
+  };
+}
 
 // src/host/parse-store.js
 init_pdf();
@@ -36072,13 +36161,18 @@ async function restorableParse(store, sha, { engines, plainHash, readHashOf = nu
     listed2 = [];
   }
   listed2 = listed2.filter((row4) => !isStaleParse(row4.doc));
+  const paid = engines?.includes?.("cloud") ? listed2.filter((row4) => row4.engine === "cloud").pop() : null;
+  const free = await freeParse(store, sha, listed2.filter((row4) => row4.engine !== "cloud"), {
+    engines: (engines || []).filter((e2) => e2 !== "cloud"),
+    plainHash,
+    readHashOf
+  });
+  return paid ? fillFreePages(paid.doc, free) : free;
+}
+async function freeParse(store, sha, listed2, { engines, plainHash, readHashOf }) {
   const most = Math.max(0, ...listed2.map((row4) => pagesSeen(row4.doc)));
   const whole2 = listed2.filter((row4) => pagesSeen(row4.doc) >= most);
   if (whole2.length) listed2 = whole2;
-  if (engines?.includes?.("cloud")) {
-    const paid = listed2.filter((row4) => row4.engine === "cloud").pop();
-    if (paid) return paid.doc;
-  }
   for (const engine of engines) {
     const read2 = listed2.filter((row4) => row4.engine === engine && row4.doc?.options?.ocr === "vision" && !scanPagesOf(row4.doc).length).pop();
     if (read2) return read2.doc;
@@ -36323,6 +36417,7 @@ function createParseStore({ indexedDB: factory, now: now4, docCap = PARSE_DOC_CA
     },
     async putParse(doc) {
       try {
+        doc = paidPagesOnly(doc);
         if (!doc || typeof doc !== "object" || !doc.sha256 || !doc.engine) return null;
         const optsHash = typeof doc.optsHash === "string" && doc.optsHash ? doc.optsHash : await optionsHash(doc.options || {});
         const key = parseKey(doc.sha256, doc.engine, optsHash);
@@ -37593,6 +37688,25 @@ function asTree(list) {
 }
 
 // src/host/roam.js
+var READER_STATE = ":pdf-settings";
+function sameButReaderState(a, b) {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) if (!sameButReaderState(a[i], b[i])) return false;
+    return true;
+  }
+  if (Array.isArray(b)) return false;
+  let n3 = 0;
+  for (const k in a) {
+    if (k === READER_STATE) continue;
+    n3 += 1;
+    if (!(k in b) || !sameButReaderState(a[k], b[k])) return false;
+  }
+  for (const k in b) if (k !== READER_STATE) n3 -= 1;
+  return n3 === 0;
+}
 var BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
    {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -38172,7 +38286,9 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     const named2 = typeof chunk.label === "string" && chunk.label ? chunk.label : (chunk.kinds || []).join("+");
     stats.lastAction = { label: named2, writes: chunk.n || 0 };
   };
+  let structureEpoch = 0;
   const noteWrite = (kind) => {
+    if (kind === "create" || kind === "move" || kind === "delete") structureEpoch += 1;
     dropBurst();
     lastWriteAt = Date.now();
     if (silent) return;
@@ -38721,6 +38837,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       unwatchedAt.delete(uid);
       const entity = watchEntity(uid);
       const wrapped = guardCallback("watchBoard", (before, after) => {
+        if (covers2 && before && after && sameButReaderState(before, after)) return;
         if (after?.[":block/uid"]) absorb(uid, after, hasRefs(after));
         cb(after);
         if (covers2) notifyPages(slot2, after);
@@ -40179,7 +40296,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const now4 = Date.now();
       const spec = browseSpec(filter, { now: now4 });
       if (!spec) return { rows: [], queries, spec: null, defaulted: false };
-      const key = typeof keep === "function" ? "" : browseKey(spec, sort, lim, parsedUrls instanceof Set ? parsedUrls.size : -1);
+      const key = typeof keep === "function" ? "" : browseKey(spec, sort, lim, [parsedUrls instanceof Set ? parsedUrls.size : -1, spec.orphan ? structureEpoch : 0]);
       const hit = key ? filterBrowseCache.get(key) : null;
       if (hit && now4 - hit.at < FILTER_BROWSE_TTL_MS) {
         queries.push({ name: "browse-cache", ms: 0 });
@@ -60902,12 +61019,13 @@ function openChat(opts = {}, w) {
   if (opts.roamContext && Object.keys(opts.roamContext).length) o.roamContext = opts.roamContext;
   if (opts.style) o.style = opts.style;
   if (opts.forcedTools?.length || opts.forcedTools?.size) o.forcedTools = new Set(opts.forcedTools);
+  let got;
   try {
-    void Promise.resolve(open(o)).catch(() => {
-    });
+    got = open(o);
   } catch {
     return false;
   }
+  if (got && typeof got.then === "function") return Promise.resolve(got).then(() => true, () => false);
   return true;
 }
 
@@ -61472,6 +61590,10 @@ function createPopover(doc, host) {
     el2.setAttribute("role", "menu");
     if (spec.label) el2.setAttribute("aria-label", spec.label);
     el2.addEventListener("keydown", onKey);
+    el2.tabIndex = -1;
+    el2.addEventListener("pointerdown", (event) => {
+      if (!event.target?.closest?.("input")) event.preventDefault?.();
+    });
     if (spec.filter) {
       filterBox = make(doc, "input", "pxd-ask__mfilter", el2);
       filterBox.type = "text";
@@ -61487,7 +61609,7 @@ function createPopover(doc, host) {
     anchor?.setAttribute?.("aria-expanded", "true");
     doc.addEventListener?.("pointerdown", outside, true);
     try {
-      (filterBox || rows[0] || el2).focus?.();
+      (filterBox || rows.find((r) => !r.disabled) || el2).focus?.();
     } catch {
     }
     return true;
@@ -61635,6 +61757,42 @@ function createSuggest(doc, host) {
   };
 }
 
+// src/model/pdf-name-for.js
+var resolver = null;
+function setPdfNameResolver(fn) {
+  resolver = typeof fn === "function" ? fn : null;
+  return () => {
+    if (resolver === fn) resolver = null;
+  };
+}
+function pdfNameFor(uidOrUrl) {
+  const key = typeof uidOrUrl === "string" ? uidOrUrl.trim() : "";
+  if (!key || !resolver) return "";
+  try {
+    const name = resolver(key);
+    return typeof name === "string" && name && name !== "PDF" ? name : "";
+  } catch {
+    return "";
+  }
+}
+var nameListeners = /* @__PURE__ */ new Set();
+function onPdfNamesChange(fn) {
+  if (typeof fn !== "function") return () => {
+  };
+  nameListeners.add(fn);
+  return () => {
+    nameListeners.delete(fn);
+  };
+}
+function notifyPdfNames(urls2) {
+  for (const fn of [...nameListeners]) {
+    try {
+      fn(urls2);
+    } catch {
+    }
+  }
+}
+
 // src/view/ask-ai.js
 var SEES_NOTE = "The model will see this image";
 var BLIND_NOTE = "This model can't see images — text only";
@@ -61769,7 +61927,7 @@ function makeEntry(o) {
   const focus = hasBlocks ? { ...o.blockId ? { blockId: o.blockId } : {}, ...o.blockIds ? { blockIds: o.blockIds } : {}, ...selection ? { selection } : {}, ...o.page != null ? { page: o.page } : {}, ...o.wholeDoc ? { wholeDoc: true } : {} } : { blockId: "sel", selection };
   const isWhole = Boolean(o.wholeDoc) && !focus.blockId && !focus.blockIds && !focus.selection && focus.page == null && hasBlocks;
   const built = buildFocusContext(source, focus);
-  const what = isWhole ? "doc" : focus.blockId && focus.blockId !== "sel" ? focus.blockId : focus.blockIds ? focus.blockIds.join(",") : focus.selection ? `sel:${focus.selection.slice(0, 80)}` : focus.page != null ? `pg${focus.page}` : "x";
+  const what = isWhole ? "doc" : focus.blockId && focus.blockId !== "sel" ? focus.blockId : focus.blockIds ? focus.blockIds.join(",") : focus.selection ? `sel:${focus.page ?? ""}:${focus.selection.length}:${fnv(focus.selection)}` : focus.page != null ? `pg${focus.page}` : "x";
   return {
     key: `${docId(parsed)}|${what}`,
     label: isWhole ? `Whole document · ${built.chip?.label || "PDF"}` : chipText2(built.chip) || "Part",
@@ -61953,8 +62111,12 @@ function ensureComposer(s) {
   });
   textarea.addEventListener("click", () => active()?.caretMoved());
   textarea.addEventListener("focus", () => active()?.focusQuestion());
-  textarea.addEventListener("blur", () => suggest.hide());
+  textarea.addEventListener("blur", () => {
+    suggest.hide();
+    active()?.questionBlurred();
+  });
   textarea.addEventListener("keydown", (event) => {
+    if (event.isComposing || event.keyCode === 229) return;
     if (suggest.key(event)) {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -62168,6 +62330,10 @@ function startSession(s, o) {
   let custom = null;
   let blockTimer = null;
   let blockAsked = "";
+  const flashTimers = /* @__PURE__ */ new Set();
+  let offNames = () => {
+  };
+  let running = null;
   const comp = () => s.composer;
   const ta = () => s.composer?.textarea || null;
   const modelSel = () => s.composer?.model || null;
@@ -62374,7 +62540,8 @@ ${lines.join("\n")}` : "";
     t.value = lastPrefill;
     growQuestion(t);
   };
-  const paintContext = () => {
+  const paintChips = () => {
+    stopFlash();
     s.chip.textContent = multiLike() ? multiLabel() : chipText2(one()?.built.chip) || "No context loaded";
     clear2(s.parts);
     s.parts.hidden = !multiLike();
@@ -62403,6 +62570,9 @@ ${lines.join("\n")}` : "";
         x.addEventListener("click", () => removePart(p.key));
       });
     }
+  };
+  const paintContext = () => {
+    paintChips();
     const base = !multi ? entries.find((e2) => e2.hasBlocks && !e2.isWhole) : null;
     s.addWhole.hidden = !base || entries.some((e2) => e2.isWhole && e2.parsed === base.parsed);
     paintThumb3();
@@ -62479,11 +62649,19 @@ ${lines.join("\n")}` : "";
     multiBuilt = null;
     paintContext();
   };
+  const stopFlash = () => {
+    for (const id of flashTimers) clearTimeout(id);
+    flashTimers.clear();
+  };
   const flashPart = (keys) => {
     for (const c of [...s.parts.children || []]) {
       if (!keys.includes(c.getAttribute?.("data-key"))) continue;
       c.classList.add("pxd-ask__partchip--flash");
-      setTimeout(() => c.classList?.remove("pxd-ask__partchip--flash"), FLASH_MS);
+      const id = setTimeout(() => {
+        flashTimers.delete(id);
+        c.classList?.remove("pxd-ask__partchip--flash");
+      }, FLASH_MS);
+      flashTimers.add(id);
     }
   };
   const mentionPart = (n3) => {
@@ -62780,11 +62958,23 @@ ${lines.join("\n")}` : "";
       ] }]
     })
   };
+  const REFOCUS_MENUS = /* @__PURE__ */ new Set(["style", "effort", "more"]);
   const openMenu = (name) => {
     const c = s.composer;
     if (!c || !menuSpecs[name]) return;
     c.suggest.hide();
-    c.popover.open(menuSpecs[name](), c.buttons[name]);
+    const spec = menuSpecs[name]();
+    if (REFOCUS_MENUS.has(name)) {
+      const inner = spec.sections;
+      spec.sections = (q2) => (typeof inner === "function" ? inner(q2) : inner).map((sec) => sec?.items ? {
+        ...sec,
+        items: sec.items.map((it) => typeof it.onPick === "function" && !it.keep ? { ...it, onPick: (x) => {
+          it.onPick(x);
+          if (!dead) focus();
+        } } : it)
+      } : sec);
+    }
+    c.popover.open(spec, c.buttons[name]);
   };
   const fillModels = () => {
     const sel = modelSel();
@@ -63004,6 +63194,7 @@ ${lines.join("\n")}` : "";
       clear2(turn.bubble);
     }
     turn.sentUrl = "";
+    running = turn;
     lastPaint = 0;
     showActions(turn, false);
     setBusy(true);
@@ -63014,40 +63205,38 @@ ${lines.join("\n")}` : "";
     let sendPrompt = "";
     if (!sources.part) {
       sendPrompt = asked;
-    } else if (multiLike()) {
-      const list = ctxParts();
+    } else {
       const urls2 = /* @__PURE__ */ new Map();
       if (willSend()) {
         s.status.textContent = UPLOADING_NOTE;
-        for (const p of list.filter((x) => x.image)) {
+        const tried = /* @__PURE__ */ new Set();
+        const nextUp = () => ctxParts().find((x) => x.image && !tried.has(x.key));
+        for (let p = nextUp(); p; p = nextUp()) {
+          tried.add(p.key);
           const got = await ensureImage(p.image, p.service);
           if (mine !== token || dead) return;
           if (got.ok) {
             urls2.set(p.key, got.url);
             knownUrls.set(p.key, got.url);
+            const e2 = entries.find((x) => x.key === p.key);
+            if (e2) e2.knownUrl = got.url;
           } else note = noteFor(got.reason);
         }
       }
-      const shown2 = list.map((p) => urls2.has(p.key) ? { ...p, imageUrl: urls2.get(p.key) } : p);
-      const b = buildMultiContext(shown2, question);
-      sendContext = b.context;
-      sendInstructions = b.instructions;
-      sendPrompt = promptWithImages(atPrompt(asked), urls2.size > 0);
-      turn.sentUrl = urls2.size ? "multi" : "";
-    } else {
-      const e2 = one();
-      if (willSend()) {
-        s.status.textContent = UPLOADING_NOTE;
-        const got = await ensureImage(e2.image, e2.service);
-        if (mine !== token || dead) return;
-        if (got.ok) {
-          turn.sentUrl = got.url;
-          e2.knownUrl = got.url;
-        } else note = noteFor(got.reason);
+      if (multiLike()) {
+        const shown2 = ctxParts().map((p) => urls2.has(p.key) ? { ...p, imageUrl: urls2.get(p.key) } : p);
+        const b = buildMultiContext(shown2, question);
+        sendContext = b.context;
+        sendInstructions = b.instructions;
+        sendPrompt = promptWithImages(atPrompt(asked), urls2.size > 0);
+        turn.sentUrl = urls2.size ? "multi" : "";
+      } else {
+        const e2 = one();
+        turn.sentUrl = urls2.get(e2.key) || "";
+        sendContext = contextWithImage(e2.built.context, turn.sentUrl, e2.image?.caption || e2.built.figure?.caption || "");
+        sendInstructions = turn.sentUrl ? withImageInstructions(e2.built.instructions) : e2.built.instructions;
+        sendPrompt = promptWithImage(atPrompt(asked), turn.sentUrl);
       }
-      sendContext = contextWithImage(e2.built.context, turn.sentUrl, e2.image?.caption || e2.built.figure?.caption || "");
-      sendInstructions = turn.sentUrl ? withImageInstructions(e2.built.instructions) : e2.built.instructions;
-      sendPrompt = promptWithImage(atPrompt(asked), turn.sentUrl);
     }
     const needTitle = sources.page || sources.linkedRefs;
     const currentTitle = needTitle ? await currentPageTitle(win2) : "";
@@ -63084,6 +63273,7 @@ ${lines.join("\n")}` : "";
     });
     if (mine !== token || dead) return;
     ctl = null;
+    running = null;
     setBusy(false);
     if (!result.ok && result.code === "EMPTY_RESPONSE" && !turn.answer) {
       showEmpty(turn);
@@ -63132,7 +63322,8 @@ ${lines.join("\n")}` : "";
     }
     setBusy(false);
     s.status.textContent = "Stopped.";
-    const turn = turns[turns.length - 1];
+    const turn = running && turns.includes(running) ? running : turns[turns.length - 1];
+    running = null;
     if (!turn) return;
     if (turn.answer) {
       paintTurn(turn);
@@ -63237,8 +63428,14 @@ ${history[0].content}` };
 ${note}` };
       else history.unshift({ role: "user", content: note });
     }
-    openChat({ conversationHistory: history, model: modelSel()?.value || void 0, style: style?.name || "", forcedTools: extra.forcedTools || null }, win2);
-    close();
+    const opened = openChat({ conversationHistory: history, model: modelSel()?.value || void 0, style: style?.name || "", forcedTools: extra.forcedTools || null }, win2);
+    const settle2 = (ok) => {
+      if (dead) return;
+      if (ok) close();
+      else say("Live AI's chat did not open. This conversation stays here.");
+    };
+    if (opened && typeof opened.then === "function") void opened.then(settle2, () => settle2(false));
+    else settle2(Boolean(opened));
   };
   const openInLiveAI = () => handOff({});
   const escape = (target) => {
@@ -63281,6 +63478,12 @@ ${note}` };
       paintTimer = null;
     }
     stopBlockSearch();
+    stopFlash();
+    try {
+      offNames();
+    } catch {
+    }
+    running = null;
     s.composer?.popover.close({ refocus: false });
     s.composer?.suggest.hide();
     clear2(s.mentions);
@@ -63348,6 +63551,12 @@ ${note}` };
       refreshPreview();
     },
     caretMoved: () => suggestFor(),
+    questionBlurred: () => stopBlockSearch(),
+    // Opened again on this conversation: page titles and tagged prompts/styles are read afresh when next needed.
+    refreshCaches: () => {
+      titles = null;
+      custom = null;
+    },
     focusQuestion: () => {
       const t = ta();
       if (t && t.value && t.value === lastPrefill) {
@@ -63398,6 +63607,12 @@ ${note}` };
     peekImage(entries[0]);
   }
   paintContext();
+  offNames = onPdfNamesChange(() => {
+    if (!dead) {
+      multiBuilt = null;
+      paintChips();
+    }
+  });
   const offReady = onReady(sync, win2);
   if (!formReady && s.setup.hidden) sync(available(win2));
   win2.addEventListener?.("resize", onResize);
@@ -63424,6 +63639,7 @@ function openAskAI(opts = {}) {
   if (s.collapsed) s.collapse.click();
   if (cur && cur.win === win2 && !opts.multi && !cur.multi) {
     paintTheme(s, dom);
+    cur.refreshCaches?.();
     const e2 = cur.addEntry(opts);
     cur.focus();
     markFullscreen(s);
@@ -63431,6 +63647,8 @@ function openAskAI(opts = {}) {
     return handle(e2.built);
   }
   if (cur && opts.multi && cur.multi && cur.multi.basket === opts.multi.basket && cur.win === win2) {
+    paintTheme(s, dom);
+    cur.refreshCaches?.();
     cur.focus();
     askPerf.lastOpenMs = now3() - t0;
     return handle(cur.built());
@@ -63453,6 +63671,15 @@ function openAskAI(opts = {}) {
   }
   askPerf.lastOpenMs = now3() - t0;
   return handle(session.built());
+}
+function askThemeChanged() {
+  if (chat?.session && chat.shell) paintTheme(chat.shell, chat.dom);
+}
+function closeAskAI() {
+  try {
+    chat?.session?.close();
+  } catch {
+  }
 }
 
 // src/model/chart-data.js
@@ -63873,6 +64100,14 @@ function createPartGutter({
     showTimer = null;
     pendingBlock = null;
   };
+  let scrollArmed = false;
+  const onAnyScroll = () => hideNow();
+  const armScroll = (on2) => {
+    if (on2 === scrollArmed || !doc?.addEventListener) return;
+    scrollArmed = on2;
+    if (on2) doc.addEventListener("scroll", onAnyScroll, true);
+    else doc.removeEventListener?.("scroll", onAnyScroll, true);
+  };
   const stopHide = () => {
     unlater(hideTimer);
     hideTimer = null;
@@ -64030,10 +64265,12 @@ function createPartGutter({
     moreBtn.hidden = typeof onMenu !== "function";
     pill.classList.add("pxd-pgutter--show");
     shown = true;
+    armScroll(true);
   };
   function hideNow() {
     stopShow();
     stopHide();
+    armScroll(false);
     shown = false;
     over = false;
     block = null;
@@ -64652,27 +64889,6 @@ function createParseMotion({ doc, overlayHost = null, overlayPage = 0, headHost 
 
 // src/view/parse-view.js
 init_parse_to_roam_md();
-
-// src/model/pdf-name-for.js
-var resolver = null;
-function setPdfNameResolver(fn) {
-  resolver = typeof fn === "function" ? fn : null;
-  return () => {
-    if (resolver === fn) resolver = null;
-  };
-}
-function pdfNameFor(uidOrUrl) {
-  const key = typeof uidOrUrl === "string" ? uidOrUrl.trim() : "";
-  if (!key || !resolver) return "";
-  try {
-    const name = resolver(key);
-    return typeof name === "string" && name && name !== "PDF" ? name : "";
-  } catch {
-    return "";
-  }
-}
-
-// src/view/parse-view.js
 var PARSE_MIME2 = "application/x-plexus-parse";
 var BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
 var SYNC_MS = 250;
@@ -67441,7 +67657,7 @@ ${sourceAttrString(source)}` : markdown;
       }
       pageWatch = null;
       let lastPage = 0;
-      const apply = () => {
+      const follow = () => {
         const page = Number(String(input.value || "").trim());
         if (!page || page === lastPage) return;
         lastPage = page;
@@ -67450,6 +67666,19 @@ ${sourceAttrString(source)}` : markdown;
         const node2 = page > 1 ? body.querySelector?.(`[data-page="${page}"]`) : null;
         body.scrollTop = node2 ? outlineScrollTop(node2, body) : 0;
         echo = false;
+      };
+      const win2 = doc.defaultView;
+      let frame2 = 0;
+      const apply = () => {
+        if (frame2) return;
+        if (typeof win2?.requestAnimationFrame !== "function") {
+          follow();
+          return;
+        }
+        frame2 = win2.requestAnimationFrame(() => {
+          frame2 = 0;
+          follow();
+        });
       };
       input.addEventListener?.("input", apply);
       let obs = null;
@@ -67465,6 +67694,13 @@ ${sourceAttrString(source)}` : markdown;
         try {
           obs?.disconnect();
         } catch {
+        }
+        if (frame2) {
+          try {
+            win2?.cancelAnimationFrame?.(frame2);
+          } catch {
+          }
+          frame2 = 0;
         }
       };
       pageWatch = { input, off };
@@ -68610,6 +68846,181 @@ function createTextLayer({ doc = globalThis.document, readerEl = null, measure =
 
 // src/view/read-pane.js
 init_ask_icon();
+
+// src/view/card-parse-motion.js
+function motionRouter(currentUid2) {
+  let runUid = "";
+  return (event) => {
+    if (event?.type === "start") runUid = currentUid2() || "";
+    const uid = runUid || currentUid2() || "";
+    if (event?.type === "done" || event?.type === "error" || event?.type === "cancel") runUid = "";
+    return uid;
+  };
+}
+var esc2 = (uid) => String(uid || "").replace(/["\\]/g, "\\$&");
+function createCardMotionRelay({ doc, root, pageOf: pageOf3 = null, lod = null, viewport: viewport2 = null } = {}) {
+  const live2 = /* @__PURE__ */ new Map();
+  const finishing = /* @__PURE__ */ new Map();
+  const prune = () => {
+    for (const [uid, entry] of finishing) {
+      if (entry.motion.state?.() === "idle") {
+        finishing.delete(uid);
+        try {
+          entry.motion.dispose();
+        } catch {
+        }
+      }
+    }
+  };
+  const retire = (uid, entry) => {
+    live2.delete(uid);
+    const old = finishing.get(uid);
+    if (old && old !== entry) {
+      try {
+        old.motion.dispose();
+      } catch {
+      }
+    }
+    finishing.set(uid, entry);
+  };
+  const cardEl = (uid) => {
+    if (!uid || !root?.querySelector) return null;
+    try {
+      return root.querySelector(`.pxd-item[data-uid="${esc2(uid)}"]`);
+    } catch {
+      return null;
+    }
+  };
+  const hosts = (uid) => {
+    const card2 = cardEl(uid);
+    return {
+      card: card2,
+      paper: card2?.querySelector?.(".pxd-pdf-paper") || null,
+      cover: card2?.querySelector?.(".pxd-pdf-cover") || null
+    };
+  };
+  const onScreen = (card2) => {
+    if (!card2?.getBoundingClientRect) return false;
+    try {
+      const r = card2.getBoundingClientRect();
+      const v = (typeof viewport2 === "function" ? viewport2() : null) || root?.getBoundingClientRect?.();
+      if (!v || !(r.width > 0) || !(r.height > 0)) return false;
+      return r.right > v.left && r.left < v.right && r.bottom > v.top && r.top < v.bottom;
+    } catch {
+      return false;
+    }
+  };
+  const tier = () => {
+    try {
+      return (typeof lod === "function" ? lod() : root?.getAttribute?.("data-pxd-lod")) || "detail";
+    } catch {
+      return "detail";
+    }
+  };
+  const pageFor = (uid) => {
+    try {
+      return Number(pageOf3?.(uid)) || 1;
+    } catch {
+      return 1;
+    }
+  };
+  const controllerFor = (uid) => {
+    let entry = live2.get(uid);
+    if (entry) return entry;
+    entry = { uid, motion: null };
+    entry.motion = createParseMotion({
+      doc,
+      cls: "pxd-pmotion--card",
+      mode: () => motionMode({ reduced: prefersReducedMotion(doc?.defaultView), visible: onScreen(entry.card), lod: tier() })
+    });
+    live2.set(uid, entry);
+    return entry;
+  };
+  const rebind = (entry) => {
+    const { card: card2, paper, cover } = hosts(entry.uid);
+    entry.card = card2;
+    entry.motion.setOverlayHost(paper, paper ? pageFor(entry.uid) : 0);
+    entry.motion.setHeadHost(cover);
+  };
+  const drop = (uid) => {
+    const entry = live2.get(uid);
+    if (!entry) return;
+    live2.delete(uid);
+    try {
+      entry.motion.dispose();
+    } catch {
+    }
+  };
+  return {
+    handle(uid, event) {
+      if (!uid || !event?.type) return;
+      prune();
+      if (event.type === "start") {
+        const old = finishing.get(uid);
+        if (old) {
+          finishing.delete(uid);
+          try {
+            old.motion.dispose();
+          } catch {
+          }
+        }
+        const entry2 = controllerFor(uid);
+        rebind(entry2);
+        entry2.motion.start();
+        return;
+      }
+      if (event.type === "cancel") {
+        const old = finishing.get(uid);
+        if (old) {
+          finishing.delete(uid);
+          try {
+            old.motion.dispose();
+          } catch {
+          }
+        }
+      }
+      const entry = live2.get(uid);
+      if (!entry) return;
+      rebind(entry);
+      if (event.type === "progress" || event.type === "page") {
+        entry.motion.progress(event);
+        if (event.type === "page") entry.motion.parts(event.page, event.boxes);
+        return;
+      }
+      if (event.type === "done") {
+        const page = entry.motion.overlayPage() || pageFor(uid);
+        let boxes = [];
+        try {
+          boxes = typeof event.boxesOf === "function" ? event.boxesOf(page) : [];
+        } catch {
+          boxes = [];
+        }
+        entry.motion.done({ counts: event.counts, ms: event.ms, boxes });
+        retire(uid, entry);
+        return;
+      }
+      if (event.type === "error") {
+        entry.motion.fail();
+        retire(uid, entry);
+        return;
+      }
+      if (event.type === "cancel") drop(uid);
+    },
+    active: () => [...live2.keys()],
+    dispose() {
+      for (const entry of [...live2.values(), ...finishing.values()]) {
+        try {
+          entry.motion.dispose();
+        } catch {
+        }
+      }
+      live2.clear();
+      finishing.clear();
+    }
+  };
+}
+
+// src/view/read-pane.js
 var liveDrawer = null;
 Promise.resolve().then(() => (init_read_drawer(), read_drawer_exports)).then((mod) => {
   liveDrawer = typeof mod?.createReadDrawer === "function" ? mod.createReadDrawer : null;
@@ -69408,6 +69819,7 @@ function createReadPane({
     if (row4) showHighlight(row4);
   };
   const onPaneKey = (event) => {
+    userMoves += 1;
     if (event.metaKey || event.ctrlKey) return;
     const target = event.target;
     if (target?.closest?.(".rm-pdf-container")) return;
@@ -70236,10 +70648,13 @@ function createReadPane({
     }
     return "";
   };
+  let userMoves = 0;
   const onWheel = (event) => {
+    userMoves += 1;
     event.stopPropagation();
   };
   const onPointer = (event) => {
+    userMoves += 1;
     event.stopPropagation();
   };
   const onDragOver = (event) => {
@@ -71361,6 +71776,7 @@ function createReadPane({
     }
     pmotion = null;
   };
+  const motionCardOf = motionRouter(() => current3.cardUid);
   const ensureParsed = () => {
     if (parsedView) return parsedView;
     parsedView = createParseView({
@@ -71425,8 +71841,9 @@ function createReadPane({
       gutterMount: pane,
       onMotion: (event) => {
         readerMotion(event);
+        const uid = motionCardOf(event);
         try {
-          onParseMotion?.(current3.cardUid, event);
+          onParseMotion?.(uid, event);
         } catch {
         }
       },
@@ -71441,6 +71858,36 @@ function createReadPane({
     return parsedView;
   };
   const pageNowOf = () => Number(String(readerField()?.value || "").trim()) || 1;
+  const layoutShape = () => `${pane.style.width}|${pane.className}`;
+  let resizeKeep = null;
+  const keepPageAfterResize = (page) => {
+    if (resizeKeep) {
+      cancelLater(resizeKeep.timer);
+    }
+    if (!(page > 0) || pageTarget || settleTimer) {
+      resizeKeep = null;
+      return;
+    }
+    const keep = { page: resizeKeep?.page || page, moves: userMoves, left: 3, timer: null };
+    resizeKeep = keep;
+    const check = () => {
+      keep.timer = null;
+      if (resizeKeep !== keep) return;
+      if (!openFlag || pageTarget || userMoves !== keep.moves) {
+        resizeKeep = null;
+        return;
+      }
+      const input = readerField();
+      if (input && String(input.value).trim() !== String(keep.page)) {
+        writeReaderPage(input, keep.page);
+        paintPill();
+      }
+      keep.left -= 1;
+      if (keep.left > 0) keep.timer = later(check, 150);
+      else resizeKeep = null;
+    };
+    keep.timer = later(check, 120);
+  };
   function dropParsed() {
     try {
       parsedView?.dispose?.();
@@ -71600,6 +72047,10 @@ function createReadPane({
   });
   function close(opts) {
     cancelPageWait();
+    if (resizeKeep) {
+      cancelLater(resizeKeep.timer);
+      resizeKeep = null;
+    }
     cancelSettle();
     cancelFit();
     cancelMove();
@@ -71735,11 +72186,15 @@ function createReadPane({
       for (const [node2, type, fn, capture] of armed) node2.removeEventListener?.(type, fn, capture);
       armed.length = 0;
     },
+    // A resize (fullscreen, sidebar, window) changes the pane's box only: never the mode, never the page.
     layout(mountWidth) {
       if (typeof mountWidth === "number" && Number.isFinite(mountWidth) && mountWidth > 0) mountW = mountWidth;
       if (!openFlag) return;
+      const shape = layoutShape();
+      const page = readerField() ? pageNowOf() : 0;
       applyBox();
       applyModeClass();
+      if (layoutShape() !== shape) keepPageAfterResize(page);
     },
     isOpen: () => openFlag && Boolean(pane.isConnected),
     cardUid: () => current3.cardUid || "",
@@ -71771,125 +72226,6 @@ function createReadPane({
     ocrRun: () => ({ ...ocrRun }),
     textLayerStats: () => textLayer.stats(),
     selectionBarOpen: () => Boolean(barInfo) && !bar.hasAttribute("hidden")
-  };
-}
-
-// src/view/card-parse-motion.js
-var esc2 = (uid) => String(uid || "").replace(/["\\]/g, "\\$&");
-function createCardMotionRelay({ doc, root, pageOf: pageOf3 = null, lod = null, viewport: viewport2 = null } = {}) {
-  const live2 = /* @__PURE__ */ new Map();
-  const cardEl = (uid) => {
-    if (!uid || !root?.querySelector) return null;
-    try {
-      return root.querySelector(`.pxd-item[data-uid="${esc2(uid)}"]`);
-    } catch {
-      return null;
-    }
-  };
-  const hosts = (uid) => {
-    const card2 = cardEl(uid);
-    return {
-      card: card2,
-      paper: card2?.querySelector?.(".pxd-pdf-paper") || null,
-      cover: card2?.querySelector?.(".pxd-pdf-cover") || null
-    };
-  };
-  const onScreen = (card2) => {
-    if (!card2?.getBoundingClientRect) return false;
-    try {
-      const r = card2.getBoundingClientRect();
-      const v = (typeof viewport2 === "function" ? viewport2() : null) || root?.getBoundingClientRect?.();
-      if (!v || !(r.width > 0) || !(r.height > 0)) return false;
-      return r.right > v.left && r.left < v.right && r.bottom > v.top && r.top < v.bottom;
-    } catch {
-      return false;
-    }
-  };
-  const tier = () => {
-    try {
-      return (typeof lod === "function" ? lod() : root?.getAttribute?.("data-pxd-lod")) || "detail";
-    } catch {
-      return "detail";
-    }
-  };
-  const pageFor = (uid) => {
-    try {
-      return Number(pageOf3?.(uid)) || 1;
-    } catch {
-      return 1;
-    }
-  };
-  const controllerFor = (uid) => {
-    let entry = live2.get(uid);
-    if (entry) return entry;
-    entry = { uid, motion: null };
-    entry.motion = createParseMotion({
-      doc,
-      cls: "pxd-pmotion--card",
-      mode: () => motionMode({ reduced: prefersReducedMotion(doc?.defaultView), visible: onScreen(entry.card), lod: tier() })
-    });
-    live2.set(uid, entry);
-    return entry;
-  };
-  const rebind = (entry) => {
-    const { card: card2, paper, cover } = hosts(entry.uid);
-    entry.card = card2;
-    entry.motion.setOverlayHost(paper, paper ? pageFor(entry.uid) : 0);
-    entry.motion.setHeadHost(cover);
-  };
-  const drop = (uid) => {
-    const entry = live2.get(uid);
-    if (!entry) return;
-    live2.delete(uid);
-    try {
-      entry.motion.dispose();
-    } catch {
-    }
-  };
-  return {
-    handle(uid, event) {
-      if (!uid || !event?.type) return;
-      if (event.type === "start") {
-        const entry2 = controllerFor(uid);
-        rebind(entry2);
-        entry2.motion.start();
-        return;
-      }
-      const entry = live2.get(uid);
-      if (!entry) return;
-      rebind(entry);
-      if (event.type === "progress" || event.type === "page") {
-        entry.motion.progress(event);
-        if (event.type === "page") entry.motion.parts(event.page, event.boxes);
-        return;
-      }
-      if (event.type === "done") {
-        const page = entry.motion.overlayPage() || pageFor(uid);
-        let boxes = [];
-        try {
-          boxes = typeof event.boxesOf === "function" ? event.boxesOf(page) : [];
-        } catch {
-          boxes = [];
-        }
-        entry.motion.done({ counts: event.counts, ms: event.ms, boxes });
-        return;
-      }
-      if (event.type === "error") {
-        entry.motion.fail();
-        return;
-      }
-      if (event.type === "cancel") drop(uid);
-    },
-    active: () => [...live2.keys()],
-    dispose() {
-      for (const entry of live2.values()) {
-        try {
-          entry.motion.dispose();
-        } catch {
-        }
-      }
-      live2.clear();
-    }
   };
 }
 
@@ -77727,6 +78063,7 @@ init_anydoc_to_parse();
 // src/host/semantic.js
 var SEM_TTL_MS = 5 * 60 * 1e3;
 var SEM_MAX = 50;
+var SEM_RETRY_MS = 30 * 1e3;
 function semanticEnabled(api3) {
   try {
     return api3?.data?.semanticSearchEnabled?.() === true && typeof api3?.data?.async?.semanticSearch === "function";
@@ -77734,15 +78071,16 @@ function semanticEnabled(api3) {
     return false;
   }
 }
-function createSemantic({ api: api3 = () => globalThis.roamAlphaAPI, now: now4 = () => Date.now(), ttl = SEM_TTL_MS, max = SEM_MAX } = {}) {
+function createSemantic({ api: api3 = () => globalThis.roamAlphaAPI, now: now4 = () => Date.now(), ttl = SEM_TTL_MS, max = SEM_MAX, retry = SEM_RETRY_MS } = {}) {
   const cache = /* @__PURE__ */ new Map();
   const inflight = /* @__PURE__ */ new Map();
   let calls = 0;
-  const remember2 = (key, data) => {
+  const remember2 = (key, data, life = ttl) => {
     cache.delete(key);
-    cache.set(key, { at: now4(), data });
+    cache.set(key, { at: now4(), data, life });
     while (cache.size > max) cache.delete(cache.keys().next().value);
   };
+  const lifeOf = (hit) => Number.isFinite(hit?.life) ? hit.life : ttl;
   const fetchFresh = (key) => {
     const pending = inflight.get(key);
     if (pending) return pending;
@@ -77754,7 +78092,9 @@ function createSemantic({ api: api3 = () => globalThis.roamAlphaAPI, now: now4 =
       try {
         raw = await a.data.async.semanticSearch({ "search-str": key });
       } catch {
-        raw = [];
+        const had = cache.get(key)?.data || [];
+        remember2(key, had, retry);
+        return had;
       }
       const data = Array.isArray(raw) ? raw : [];
       remember2(key, data);
@@ -77769,14 +78109,14 @@ function createSemantic({ api: api3 = () => globalThis.roamAlphaAPI, now: now4 =
     peek(query) {
       const key = String(query ?? "").trim();
       const hit = key ? cache.get(key) : null;
-      return hit ? { data: hit.data, stale: now4() - hit.at >= ttl } : null;
+      return hit ? { data: hit.data, stale: now4() - hit.at >= lifeOf(hit) } : null;
     },
     // Fresh cache → it. Stale → it at once, then `onFresh(data)` after the background refresh. None → the engine.
     async search(query, { onFresh } = {}) {
       const key = String(query ?? "").trim();
       if (!key) return [];
       const hit = cache.get(key);
-      if (hit && now4() - hit.at < ttl) {
+      if (hit && now4() - hit.at < lifeOf(hit)) {
         cache.delete(key);
         cache.set(key, hit);
         return hit.data;
@@ -77912,8 +78252,27 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
   };
   const write = () => {
     saveCancel = null;
-    const entries = [...idents.entries()].filter(([, v]) => !v.noLib).slice(-IDENTS_CAP);
-    void Promise.resolve(store?.putMeta?.(IDENTS_KEY, { v: IDENT_V, items: Object.fromEntries(entries) })).catch(() => {
+    void (async () => {
+      let saved2 = null;
+      try {
+        saved2 = await store?.getMeta?.(IDENTS_KEY);
+      } catch {
+        saved2 = null;
+      }
+      const rows = saved2 && typeof saved2 === "object" && saved2.items && typeof saved2.items === "object" ? saved2.items : {};
+      const merged = /* @__PURE__ */ new Map();
+      for (const [url, ident] of Object.entries(rows)) if (ident && typeof ident === "object") merged.set(url, ident);
+      for (const [url, ident] of idents) {
+        if (ident.noLib) continue;
+        const old = merged.get(url);
+        if (old && (Number(old.at) || 0) > (Number(ident.at) || 0)) continue;
+        merged.delete(url);
+        merged.set(url, ident);
+      }
+      for (const [url, ident] of merged) if (!idents.has(url)) idents.set(url, ident);
+      const entries = [...merged.entries()].slice(-IDENTS_CAP);
+      await store?.putMeta?.(IDENTS_KEY, { v: IDENT_V, items: Object.fromEntries(entries) });
+    })().catch(() => {
     });
   };
   const save = () => {
@@ -84139,6 +84498,10 @@ function buildBoardView(onFail, {
     const flipped = themeKey !== null && key !== themeKey;
     themeKey = key;
     if (!flipped || disposed) return;
+    try {
+      askThemeChanged();
+    } catch {
+    }
     repaintItemStyles();
     scheduleContent();
   };
@@ -84815,6 +85178,7 @@ function buildBoardView(onFail, {
     interopOn: () => readSetting2("interop") !== false,
     coverImage: (url) => coverImageFor(url),
     pdfMetaTitle: (url) => notePdfMeta(url),
+    pdfIdentTitle: (url) => identTitleOf(url),
     readingUid: () => readingCard,
     onPdfOpenRequest: (uid) => {
       try {
@@ -89959,7 +90323,24 @@ function buildBoardView(onFail, {
       },
       idle,
       onChange: (urls2) => {
-        if (!disposed) panel.refreshPdfNames(urls2);
+        if (disposed) return;
+        panel.refreshPdfNames(urls2);
+        const landed = new Set(urls2 || []);
+        const uids = [];
+        for (const it of board2()?.items.values() || []) {
+          if (it.kind === "pdf" && landed.has(pdfMacroUrl(pdfSourceOfItem(it)))) uids.push(it.uid);
+        }
+        if (uids.length) {
+          try {
+            itemsR?.repaintItems?.(uids);
+          } catch {
+          }
+          try {
+            readPane?.refreshCards?.();
+          } catch {
+          }
+        }
+        notifyPdfNames(urls2);
       },
       timers: warmTimers
     });
@@ -90029,7 +90410,7 @@ ${url}`;
       } catch {
         info = {};
       }
-      pdfNameInfo.set(infoKey, info);
+      if (info.ownTitle || info.pdfPageTitle) pdfNameInfo.set(infoKey, info);
     }
     const names = pdfNamesR();
     const ident = names.get(url);
@@ -100811,6 +101192,7 @@ async function installPlexusDiagram({
   bindErrorStats(host.stats);
   lifecycle.add(() => clearErrorStats());
   lifecycle.interval(guardCallback("reconcile", reconcile, { stats: host.stats }), RECONCILE_INTERVAL_MS);
+  lifecycle.add(() => closeAskAI());
   lifecycle.add(() => {
     for (const rec of mounts.values()) forgetSketch(rec);
     sketchStore.dispose();

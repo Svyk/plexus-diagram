@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.27.0 — 2026-10-12
+
+The rest of the bug hunt: every item on its Later list is fixed.
+
+- **A paid read wins its pages.** When you have a LlamaParse or Mistral read of some pages and a fuller free parse, the paid read is used for its pages and the free parse fills the rest. Saving never writes free pages over the paid record.
+- **Smoother reader scrolling.** Plexus's share of a reader scroll went from about 90 ms to about 15 ms over 40 steps: the outline follows the page once per frame instead of inside the scroll, and a page turn no longer makes the board refresh itself.
+- **Resizing the reader keeps your place.** Going full screen and back never changes the reading mode, and the page you were on is put back if the new width moved it.
+- **PDF names stay current.** A card or chat chip picks up a PDF's real name as soon as it is known, without redrawing the whole board; boards open in the main view and the sidebar no longer overwrite each other's names.
+- **Search.** A failing semantic search keeps the results you had and retries in 30 seconds; "Not on any board" refreshes as soon as a card is added; a closed panel no longer searches in the background.
+- **Chat.** Unloading Plexus closes the chat and stops a running answer; focus returns to the question after picking a style or thinking level; the More menu keeps keyboard focus; an input-method Enter no longer picks a suggestion; Stop stops the answer you meant; "Open in Live AI" only closes this chat once Live AI has opened.
+- **Parse motion** always follows the card that started the parse.
+- **Rust helper:** one-click Pair from Roam, with the same Allow dialog as the Python helper.
+
 ## 3.26.0 — 2026-10-12
 
 Filters that browse your graph on their own, PDF filters on meaning results, chat tips, and eight bug fixes from a scored bug hunt.

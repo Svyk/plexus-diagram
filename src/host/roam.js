@@ -27,6 +27,27 @@ import { closeTab, normalizeTabs, openTab, tabStorageKey } from "../model/tabs.j
 import { bindGuardStats, guardCallback } from "../guard.js";
 import { installCommentHost } from "./comments.js";
 
+// Pull results equal but for Roam's own reader state (:pdf-settings: page, scale). Exits at the first other change.
+const READER_STATE = ":pdf-settings";
+export function sameButReaderState(a, b) {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) if (!sameButReaderState(a[i], b[i])) return false;
+    return true;
+  }
+  if (Array.isArray(b)) return false;
+  let n = 0;
+  for (const k in a) {
+    if (k === READER_STATE) continue;
+    n += 1;
+    if (!(k in b) || !sameButReaderState(a[k], b[k])) return false;
+  }
+  for (const k in b) if (k !== READER_STATE) n -= 1;
+  return n === 0;
+}
+
 export const BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
    {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -1198,6 +1219,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       unwatchedAt.delete(uid);
       const entity = watchEntity(uid);
       const wrapped = guardCallback("watchBoard", (before, after) => {
+        // K6. Roam's PDF reader writes its page into the PDF block's :pdf-settings on every page change; a board
+        // that holds that PDF hears it through its refs. Plexus never reads it, so that alone repaints nothing.
+        if (covers && before && after && sameButReaderState(before, after)) return;
         if (after?.[":block/uid"]) absorb(uid, after, hasRefs(after));
         cb(after);
         if (covers) notifyPages(slot, after);

@@ -2632,7 +2632,7 @@ export function createParseView({
       // Roam re-renders its page field many times while a PDF loads. Each scroll here forces a layout of the
       // whole reader, so act only when the page number actually changed.
       let lastPage = 0;
-      const apply = () => {
+      const follow = () => {
         const page = Number(String(input.value || "").trim());
         if (!page || page === lastPage) return;
         lastPage = page;
@@ -2641,6 +2641,15 @@ export function createParseView({
         const node = page > 1 ? body.querySelector?.(`[data-page="${page}"]`) : null;
         body.scrollTop = node ? outlineScrollTop(node, body) : 0;
         echo = false;
+      };
+      // K6. The field changes inside the reader's scroll task (Roam's render, then this observer): follow once per
+      // frame, never inside that task, so the outline's layout read is not forced in the middle of a scroll.
+      const win = doc.defaultView;
+      let frame = 0;
+      const apply = () => {
+        if (frame) return;
+        if (typeof win?.requestAnimationFrame !== "function") { follow(); return; }
+        frame = win.requestAnimationFrame(() => { frame = 0; follow(); });
       };
       input.addEventListener?.("input", apply);
       let obs = null;
@@ -2651,6 +2660,7 @@ export function createParseView({
       const off = () => {
         input.removeEventListener?.("input", apply);
         try { obs?.disconnect(); } catch { /* gone */ }
+        if (frame) { try { win?.cancelAnimationFrame?.(frame); } catch { /* gone */ } frame = 0; }
       };
       pageWatch = { input, off };
       armed.push([null, "observer", off, false]);

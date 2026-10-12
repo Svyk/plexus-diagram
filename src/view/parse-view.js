@@ -20,6 +20,7 @@ import { toCSV, toMarkdown } from "../model/parse-to-text.js";
 import { imageKey, restorableByUrl } from "../host/parse-store.js";
 import { parsedDocTitle, parsedTitleLines, withKeptTitle } from "../model/pdf.js";
 import { helperCanDocling, helperCanOcr } from "../host/parse-helper-client.js";
+import { readKind } from "../host/read-keep.js";
 import { loadPageData, mergeOcrPageRecords, readScan, rereadCells, rereadLines } from "./parse-engine.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { TAG_LLAMA, TAG_MAC, TAG_MISTRAL, TAG_ROAM, localChipText, tagKind } from "./engine-tags.js";
@@ -1027,7 +1028,8 @@ export function createParseView({
     paintParseLabel();
     const state = engineChip({
       phase,
-      engine: progress.engine || parsed?.engine || "builtin",
+      // A restored doc names its own engine; `progress` still holds the last run's (built-in by default).
+      engine: (phase === "running" ? progress.engine : parsed?.engine) || progress.engine || "builtin",
       provider: progress.provider || parsed?.options?.provider || "",
       ms: phase === "running" ? null : parsed?.stats?.ms,
       page: progress.page,
@@ -1927,6 +1929,7 @@ export function createParseView({
     phase = "running";
     progress = { page: 0, pageCount: 0, engine: "docling" };
     paintChip();
+    const t0 = now();
     const pdf = typeof getPdf === "function" ? await getPdf() : null;
     const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
     failure = "";
@@ -1961,7 +1964,10 @@ export function createParseView({
       return false;
     }
     jobId = result?.job || jobId;
-    if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? 0);
+    // The time this read took: a doc the helper already had comes back in a second, not its first run's minutes.
+    const took = now() - t0;
+    const ran = Number(result?.doc?.stats?.ms);
+    if (result?.doc) await finishDoc(result.doc, Number.isFinite(ran) && ran >= 0 ? Math.min(ran, took) : took);
     else phase = "idle";
     paintChip();
     return Boolean(result?.doc);
@@ -1979,6 +1985,19 @@ export function createParseView({
       if (helperDocling) return undefined;
     }
     return parseBuiltin();
+  }
+
+  // The card's or the pane's Parse: no read yet, or only the instant built-in read, runs the default engine
+  // (Docling first). A Docling, cloud or High accuracy read is already the better one and stays.
+  async function parseUpgrade() {
+    if (phase === "running" && progress.engine !== "builtin") return false;
+    if (phase !== "running" && parsed && ((parsed.engine || "builtin") !== "builtin" || readKind(parsed)?.mode === "high")) return false;
+    if (parsed && engineChoice() === "local") {
+      await refreshHelper();
+      if (!helperDocling) return false;
+    }
+    await parseDefault();
+    return true;
   }
 
   let cloudConfirm = null;
@@ -2511,6 +2530,7 @@ export function createParseView({
     parseBuiltin,
     parseDocling,
     parse: parseDefault,
+    parseUpgrade,
     cancel,
     showDoc(docResult) {
       parsed = docResult;

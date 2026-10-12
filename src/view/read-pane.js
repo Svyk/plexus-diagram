@@ -2449,9 +2449,9 @@ export function createReadPane({
   // (no network, no graph writes, a yield between pages). It feeds the chips, the title and the scan strip.
   let bgParsing = false;
   let bgGen = 0;
-  const waitReaderPdf = async (gen) => {
+  const waitReaderPdf = async (gen, key = current.blockUid) => {
     for (let i = 0; i < 80; i += 1) {
-      if (gen !== bgGen || !openFlag) return null;
+      if ((gen != null && gen !== bgGen) || !openFlag || key !== current.blockUid) return null;
       const pdf = readerPdf();
       if (pdf) return pdf;
       await new Promise((resolve) => { const id = setTimeout(resolve, 250); id?.unref?.(); });
@@ -2494,7 +2494,7 @@ export function createReadPane({
       }
     } catch { /* store */ }
   }
-  async function enterParsed() {
+  async function enterParsed(_mode, opts) {
     if (!openFlag) return;
     revealModes();
     viewMode = "both";
@@ -2515,6 +2515,15 @@ export function createReadPane({
     if (!openFlag) return;
     // The outline opens at the top, or at the first block of the page the reader is on (never at the end).
     try { view.scrollToPage?.(pageTarget || pageNowOf()); } catch { /* view */ }
+    // Every engine reads the reader's own pdf.js document; a Parse straight after opening waits for it,
+    // or the read would see no document (one page, no bytes for the helper).
+    if ((opts?.run || (!found && view.blockCount() === 0)) && !(await waitReaderPdf(null))) return;
+    // Parse (card or pane) runs the default engine over a missing or instant built-in read; opening the
+    // outline only shows what is there.
+    if (opts?.run && typeof view.parseUpgrade === "function") {
+      try { await view.parseUpgrade(); } catch { /* parse */ }
+      return;
+    }
     if (!found && view.blockCount() === 0) {
       try { await view.parseBuiltin(); } catch { /* parse */ }
     }
@@ -2693,7 +2702,7 @@ export function createReadPane({
     // P32-3 probe: which path fitted the page (viewer | steps | viewer+steps | none) and the presses it took.
     fitInfo: () => ({ path: fitState.path, clicks: fitState.clicks, done: fitDone, userZoomed }),
     element: () => pane,
-    parse() { void enterParsed("both"); },
+    parse() { void enterParsed("both", { run: true }); },
     showParsed() { void enterParsed("both"); },
     showOutline() { void enterParsed("both"); },
     mode: () => viewMode,

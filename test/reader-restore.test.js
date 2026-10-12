@@ -161,6 +161,43 @@ test("restorableByUrl falls back to the plain parse, and to null for an unknown 
   assert.equal(await restorableByUrl(null, URL, { plainOptions: BUILTIN_OPTIONS }), null);
 });
 
+test("restorableByUrl returns a Docling parse over the plain built-in one, and a scan read over both", async () => {
+  const plainHash = await optionsHash(BUILTIN_OPTIONS);
+  const readHash = await optionsHash({ ...BUILTIN_OPTIONS, ocr: "vision" });
+  const docling = { ...scanOnly(), engine: "docling", options: {}, order: ["d1"], blocks: { d1: { id: "d1", type: "para", page: 1, text: "Dry Blending", bbox: [0, 0, 10, 10] } } };
+  const make = (withRead) => {
+    const idb = fakeIDB();
+    const rows = [
+      [`${SHA}|builtin|${plainHash}`, { doc: scanOnly(), optsHash: plainHash, at: 100 }],
+      [`${SHA}|docling|x`, { doc: docling, optsHash: "x", at: 150 }],
+    ];
+    if (withRead) rows.push([`${SHA}|builtin|${readHash}`, { doc: readDoc(), optsHash: readHash, at: 200 }]);
+    idb.seed(DIAGRAM_DB, 2, { covers: [], parse: rows, "parse-images": [], "parse-index": [[URL, { sha256: SHA, pageCount: 1, at: 50 }]] });
+    return createParseStore({ indexedDB: idb, now: () => 300 });
+  };
+  assert.equal((await restorableByUrl(await make(false), URL, { plainOptions: BUILTIN_OPTIONS })).engine, "docling");
+  assert.equal((await restorableByUrl(await make(true), URL, { plainOptions: BUILTIN_OPTIONS })).options.ocr, "vision");
+});
+
+test("restorableByUrl skips a read that saw fewer pages than another parse of the file", async () => {
+  // A page-1 range read (or a Parse before the reader loaded its PDF) holds one page of 110.
+  const readHash = await optionsHash({ ...BUILTIN_OPTIONS, ocr: "vision" });
+  const pages = Array.from({ length: 110 }, (_, i) => ({ n: i + 1, w: 600, h: 400 }));
+  const docling = { ...scanOnly(), engine: "docling", pageCount: 110, pages, options: {}, order: [], blocks: {} };
+  const idb = fakeIDB();
+  idb.seed(DIAGRAM_DB, 2, {
+    covers: [],
+    parse: [
+      [`${SHA}|builtin|${readHash}`, { doc: readDoc(), optsHash: readHash, at: 200 }],
+      [`${SHA}|docling|x`, { doc: docling, optsHash: "x", at: 150 }],
+    ],
+    "parse-images": [],
+    "parse-index": [[URL, { sha256: SHA, pageCount: 110, at: 50 }]],
+  });
+  const store = await createParseStore({ indexedDB: idb, now: () => 300 });
+  assert.equal((await restorableByUrl(store, URL, { plainOptions: BUILTIN_OPTIONS })).engine, "docling");
+});
+
 test("a title lookup never names a read PDF from its scan-only parse", async () => {
   // noteCached used to read the plain hash only: "" for a scan, which blanked the title the restore had set.
   const store = await seeded();

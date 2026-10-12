@@ -8492,7 +8492,32 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 }
 
 .pxd-parse .pxd-parse__engine {
-  max-width: 232px;
+  max-width: min(232px, 100%);
+}
+
+/* Read the scan sits in the 32 px bar: one line, shrinks before the chip, never wraps over it. */
+.pxd-parse .pxd-parse__scan {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+  height: 22px;
+  margin: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 1px solid var(--pxd-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pxd-text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pxd-parse .pxd-parse__scan[hidden] {
+  display: none;
 }
 
 .pxd-parse .pxd-parse__alt-note {

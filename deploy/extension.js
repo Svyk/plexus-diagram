@@ -9068,8 +9068,8 @@ function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
   const removed = [];
   const marks = /* @__PURE__ */ new Set();
   for (const [key, list] of candidates2) {
-    const pagesSeen = new Set(list.map((e2) => e2.page));
-    const recurring = pagesSeen.size >= need2 && n2 >= 2;
+    const pagesSeen2 = new Set(list.map((e2) => e2.page));
+    const recurring = pagesSeen2.size >= need2 && n2 >= 2;
     for (const e2 of list) {
       const text4 = e2.line.text.trim();
       const pageNum = PAGE_NUM_RE.test(text4) && alone.has(e2.line);
@@ -34816,6 +34816,7 @@ function isStaleParse(doc) {
   if (!doc || doc.engine !== "builtin" || ocrRead(doc)) return false;
   return !(Number(doc.parseRev) >= PARSE_REV);
 }
+var pagesSeen = (doc) => (Array.isArray(doc?.pages) ? doc.pages.length : 0) || Number(doc?.pageCount) || 0;
 async function restorableParse(store, sha, { engines, plainHash, readHashOf = null } = {}) {
   if (!store || !sha) return null;
   let listed2 = [];
@@ -34825,21 +34826,27 @@ async function restorableParse(store, sha, { engines, plainHash, readHashOf = nu
     listed2 = [];
   }
   listed2 = listed2.filter((row4) => !isStaleParse(row4.doc));
+  const most = Math.max(0, ...listed2.map((row4) => pagesSeen(row4.doc)));
+  const whole2 = listed2.filter((row4) => pagesSeen(row4.doc) >= most);
+  if (whole2.length) listed2 = whole2;
   if (engines?.includes?.("cloud")) {
     const paid = listed2.filter((row4) => row4.engine === "cloud").pop();
     if (paid) return paid.doc;
   }
   for (const engine of engines) {
-    const mine = listed2.filter((row4) => row4.engine === engine);
-    const read2 = mine.filter((row4) => row4.doc?.options?.ocr === "vision" && !scanPagesOf(row4.doc).length).pop();
+    const read2 = listed2.filter((row4) => row4.engine === engine && row4.doc?.options?.ocr === "vision" && !scanPagesOf(row4.doc).length).pop();
     if (read2) return read2.doc;
+  }
+  const plainOrder = engines.includes("docling") && engines.includes("builtin") ? ["docling", ...engines.filter((e2) => e2 !== "docling")] : engines;
+  for (const engine of plainOrder) {
+    const mine = listed2.filter((row4) => row4.engine === engine);
     let plain2 = await store.getParse(sha, engine, plainHash);
-    if (isStaleParse(plain2)) plain2 = null;
+    if (isStaleParse(plain2) || plain2 && pagesSeen(plain2) < most) plain2 = null;
     plain2 = plain2 || mine.pop()?.doc || null;
     if (!plain2) continue;
     if (scanPagesOf(plain2).length && readHashOf) {
       const alt = await store.getParse(sha, engine, await readHashOf(plain2));
-      if (alt && !isStaleParse(alt)) return alt;
+      if (alt && !isStaleParse(alt) && pagesSeen(alt) >= most) return alt;
     }
     return plain2;
   }
@@ -61840,7 +61847,8 @@ ${sourceAttrString(source)}` : markdown;
     paintParseLabel();
     const state = engineChip({
       phase,
-      engine: progress.engine || parsed?.engine || "builtin",
+      // A restored doc names its own engine; `progress` still holds the last run's (built-in by default).
+      engine: (phase === "running" ? progress.engine : parsed?.engine) || progress.engine || "builtin",
       provider: progress.provider || parsed?.options?.provider || "",
       ms: phase === "running" ? null : parsed?.stats?.ms,
       page: progress.page,
@@ -62822,6 +62830,7 @@ ${sourceAttrString(source)}` : markdown;
     phase = "running";
     progress = { page: 0, pageCount: 0, engine: "docling" };
     paintChip();
+    const t0 = now4();
     const pdf = typeof getPdf === "function" ? await getPdf() : null;
     const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
     failure = "";
@@ -62859,7 +62868,9 @@ ${sourceAttrString(source)}` : markdown;
       return false;
     }
     jobId = result?.job || jobId;
-    if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? 0);
+    const took = now4() - t0;
+    const ran = Number(result?.doc?.stats?.ms);
+    if (result?.doc) await finishDoc(result.doc, Number.isFinite(ran) && ran >= 0 ? Math.min(ran, took) : took);
     else phase = "idle";
     paintChip();
     return Boolean(result?.doc);
@@ -62874,6 +62885,16 @@ ${sourceAttrString(source)}` : markdown;
       if (helperDocling) return void 0;
     }
     return parseBuiltin();
+  }
+  async function parseUpgrade() {
+    if (phase === "running" && progress.engine !== "builtin") return false;
+    if (phase !== "running" && parsed && ((parsed.engine || "builtin") !== "builtin" || readKind(parsed)?.mode === "high")) return false;
+    if (parsed && engineChoice() === "local") {
+      await refreshHelper();
+      if (!helperDocling) return false;
+    }
+    await parseDefault();
+    return true;
   }
   let cloudConfirm = null;
   function closeCloudConfirm() {
@@ -63470,6 +63491,7 @@ ${sourceAttrString(source)}` : markdown;
     parseBuiltin,
     parseDocling,
     parse: parseDefault,
+    parseUpgrade,
     cancel,
     showDoc(docResult) {
       parsed = docResult;
@@ -67542,9 +67564,9 @@ function createReadPane({
   }
   let bgParsing = false;
   let bgGen = 0;
-  const waitReaderPdf = async (gen) => {
+  const waitReaderPdf = async (gen, key = current3.blockUid) => {
     for (let i = 0; i < 80; i += 1) {
-      if (gen !== bgGen || !openFlag) return null;
+      if (gen != null && gen !== bgGen || !openFlag || key !== current3.blockUid) return null;
       const pdf = readerPdf();
       if (pdf) return pdf;
       await new Promise((resolve) => {
@@ -67602,7 +67624,7 @@ function createReadPane({
     } catch {
     }
   }
-  async function enterParsed() {
+  async function enterParsed(_mode, opts) {
     if (!openFlag) return;
     revealModes();
     viewMode = "both";
@@ -67634,6 +67656,14 @@ function createReadPane({
     try {
       view2.scrollToPage?.(pageTarget || pageNowOf());
     } catch {
+    }
+    if ((opts?.run || !found && view2.blockCount() === 0) && !await waitReaderPdf(null)) return;
+    if (opts?.run && typeof view2.parseUpgrade === "function") {
+      try {
+        await view2.parseUpgrade();
+      } catch {
+      }
+      return;
     }
     if (!found && view2.blockCount() === 0) {
       try {
@@ -67825,7 +67855,7 @@ function createReadPane({
     fitInfo: () => ({ path: fitState.path, clicks: fitState.clicks, done: fitDone, userZoomed }),
     element: () => pane,
     parse() {
-      void enterParsed("both");
+      void enterParsed("both", { run: true });
     },
     showParsed() {
       void enterParsed("both");

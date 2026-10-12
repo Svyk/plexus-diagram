@@ -133,7 +133,8 @@ test("the Parse button runs Docling through a paired helper by default, without 
       order: ["p1"], blocks: { p1: { id: "p1", type: "para", page: 1, text: "Hi", bbox: [0, 0, 10, 10] } }, removed: [], stats: { ms: 42000 },
     };
     const helper = localHelper({ parse: async (req) => { jobs.push(req); return { doc: docling, cached: false, job: "j1" }; } });
-    const view = createParseView({ doc: stub.document, store: createParseStore({}), storage: stub.localStorage, url: "https://example.test/c.pdf", helper, getPdf: PDF(3), loadGeometry: async (n) => scanGeometry(n) });
+    let t = 0;
+    const view = createParseView({ doc: stub.document, store: createParseStore({}), storage: stub.localStorage, url: "https://example.test/c.pdf", helper, getPdf: PDF(3), loadGeometry: async (n) => scanGeometry(n), clock: () => (t += 50000) });
     await view.refreshHelper();
     const go = view.element().querySelector(".pxd-parse__go");
     assert.match(go.textContent, /^Parse \(Docling\)/);
@@ -142,6 +143,14 @@ test("the Parse button runs Docling through a paired helper by default, without 
     assert.ok(await until(() => view.hasParse()));
     assert.equal(jobs.length, 1);
     assert.equal(view.chipText(), "Docling · free · 3 pages · 42 s");
+    // The helper hands back a doc it already had: the chip shows this run's time, not the first run's.
+    t = 0;
+    let fast = 0;
+    const again = createParseView({ doc: stub.document, store: createParseStore({}), storage: stub.localStorage, url: "https://example.test/c2.pdf", helper, getPdf: PDF(3), loadGeometry: async (n) => scanGeometry(n), clock: () => (fast += 300) });
+    await again.refreshHelper();
+    await again.parse();
+    assert.match(again.chipText(), /^Docling · free · 3 pages · \d\.\d s$/);
+    again.dispose();
     view.dispose();
   } finally {
     restore();
@@ -246,4 +255,26 @@ test("in-browser reading with no page list reads the whole document, not page 1"
   const out = await device.read({ pages: [], url: "u", getPdf: async () => ({ numPages: 7, getPage() {} }) });
   assert.deepEqual(read, [1, 2, 3, 4, 5, 6, 7]);
   assert.equal(out.pages.length, 7);
+});
+
+test("a restored Docling read names Docling on the chip, not the built-in default", async () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const store = createParseStore({});
+    const url = "https://example.test/r.pdf";
+    const docling = {
+      schema: "pxd-parse/1", engine: "docling", sha256: "r".repeat(64), pageCount: 2, optsHash: "o",
+      pages: [{ n: 1, w: 100, h: 100, rotation: 0, kind: "text" }, { n: 2, w: 100, h: 100, rotation: 0, kind: "text" }],
+      order: ["p1"], blocks: { p1: { id: "p1", type: "para", page: 1, text: "Hi", bbox: [0, 0, 10, 10] } }, removed: [], stats: { ms: 5000 },
+    };
+    await store.putParse(docling);
+    await store.indexUrl(url, { sha256: docling.sha256, pageCount: 2 });
+    const view = createParseView({ doc: stub.document, store, storage: stub.localStorage, url, helper: localHelper({}), getPdf: PDF(2), loadGeometry: async (n) => scanGeometry(n) });
+    assert.ok(await view.restore());
+    assert.match(view.chipText(), /^Docling · free · 2 pages/);
+    view.dispose();
+  } finally {
+    restore();
+  }
 });

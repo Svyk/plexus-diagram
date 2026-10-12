@@ -48,27 +48,42 @@ export function isStaleParse(doc) {
 
 // The parse to restore for a PDF. Per engine (in order): the newest OCR-read parse (no scanned page
 // left unread) wins over the scan-only one saved before the read; otherwise the plain options hash.
+// Pages a stored parse actually holds.
+const pagesSeen = (doc) => (Array.isArray(doc?.pages) ? doc.pages.length : 0) || Number(doc?.pageCount) || 0;
+
 export async function restorableParse(store, sha, { engines, plainHash, readHashOf = null } = {}) {
   if (!store || !sha) return null;
   let listed = [];
   try { listed = typeof store.listParses === "function" ? await store.listParses(sha) : []; } catch { listed = []; }
   listed = listed.filter((row) => !isStaleParse(row.doc));
+  // A parse that covers fewer pages than another parse of the same file (a page range, or a PDF that was
+  // not loaded yet) loses to the fuller one.
+  const most = Math.max(0, ...listed.map((row) => pagesSeen(row.doc)));
+  const whole = listed.filter((row) => pagesSeen(row.doc) >= most);
+  if (whole.length) listed = whole;
   // A stored cloud parse is the one the user paid for. It wins when this list includes it.
   if (engines?.includes?.("cloud")) {
     const paid = listed.filter((row) => row.engine === "cloud").pop();
     if (paid) return paid.doc;
   }
+  // A finished scan read (no unread scan pages) of any engine comes before a plain parse.
   for (const engine of engines) {
-    const mine = listed.filter((row) => row.engine === engine);
-    const read = mine.filter((row) => row.doc?.options?.ocr === "vision" && !scanPagesOf(row.doc).length).pop();
+    const read = listed.filter((row) => row.engine === engine && row.doc?.options?.ocr === "vision" && !scanPagesOf(row.doc).length).pop();
     if (read) return read.doc;
+  }
+  // Then plain parses, Docling before the instant built-in one: Parse runs Docling first, so its read is the
+  // one the user asked for.
+  const plainOrder = engines.includes("docling") && engines.includes("builtin")
+    ? ["docling", ...engines.filter((e) => e !== "docling")] : engines;
+  for (const engine of plainOrder) {
+    const mine = listed.filter((row) => row.engine === engine);
     let plain = await store.getParse(sha, engine, plainHash);
-    if (isStaleParse(plain)) plain = null;
+    if (isStaleParse(plain) || (plain && pagesSeen(plain) < most)) plain = null;
     plain = plain || mine.pop()?.doc || null;
     if (!plain) continue;
     if (scanPagesOf(plain).length && readHashOf) {
       const alt = await store.getParse(sha, engine, await readHashOf(plain));
-      if (alt && !isStaleParse(alt)) return alt;
+      if (alt && !isStaleParse(alt) && pagesSeen(alt) >= most) return alt;
     }
     return plain;
   }

@@ -45374,7 +45374,9 @@ function createSharpStore({ revoke, later, delay = REVOKE_DELAY_MS } = {}) {
 var WARM_AFTER_MS = 1500;
 var WARM_MAX = 8;
 var COVER_MAX_W = 320;
-var SHARP_CAP = 1600;
+var SHARP_CAP = 2048;
+var SHARP_DPR_CAP = 2;
+var SHARP_BUCKET = 256;
 function imageOf(value) {
   if (typeof value === "string") return value.length > 0;
   if (!value || typeof value !== "object") return false;
@@ -45433,9 +45435,11 @@ function sharpBox(w, h, maxW = SHARP_CAP) {
     if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) return null;
     const cap4 = Number(maxW);
     const limit = Number.isFinite(cap4) && cap4 > 0 ? Math.min(cap4, SHARP_CAP) : COVER_MAX_W;
-    const targetH = height * (limit / width);
+    const long = Math.max(1, height / width);
+    const fitW = long > 1 ? Math.min(limit, SHARP_CAP / long) : limit;
+    const targetH = height * (fitW / width);
     return {
-      w: Math.max(1, Math.round(limit)),
+      w: Math.max(1, Math.round(fitW)),
       h: Math.max(1, Math.round(targetH))
     };
   } catch {
@@ -45467,14 +45471,30 @@ function sharpCoverPlan(input) {
     const zoom = Number(src.zoom);
     const dpr = Number(src.dpr);
     const zoomN = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-    const dprN = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
+    const dprN = Math.min(SHARP_DPR_CAP, Number.isFinite(dpr) && dpr > 0 ? dpr : 1);
     const pixels = cardW * zoomN * dprN;
     const stored = Number(src.coverW);
     const have = Number.isFinite(stored) && stored > 0 ? stored : 0;
     if (pixels <= have + 1) return null;
-    const maxW = Math.min(SHARP_CAP, Math.ceil(pixels));
+    const maxW = Math.min(SHARP_CAP, Math.ceil(pixels / SHARP_BUCKET) * SHARP_BUCKET);
     if (!(maxW > have)) return null;
     return { maxW };
+  } catch {
+    return null;
+  }
+}
+function sharpPick(input) {
+  try {
+    const src = input && typeof input === "object" ? input : {};
+    if (src.gesturing || src.tier && src.tier !== "detail") return null;
+    const cards = Array.isArray(src.cards) ? src.cards : [];
+    for (const card2 of cards) {
+      if (!card2 || typeof card2 !== "object" || !card2.url || card2.collapsed || card2.onScreen !== true) continue;
+      const have = typeof src.coverW === "function" ? Number(src.coverW(card2.url)) : COVER_MAX_W;
+      const plan = sharpCoverPlan({ cardW: card2.cardW, zoom: src.zoom, dpr: src.dpr, coverW: have });
+      if (plan) return { url: card2.url, maxW: plan.maxW };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -85353,21 +85373,24 @@ function buildBoardView(onFail, {
     }
     const dpr = Number(win2?.devicePixelRatio) > 0 ? Number(win2.devicePixelRatio) : 1;
     const zoom = Number(vp?.zoom) > 0 ? Number(vp.zoom) : 1;
-    let picked = null;
+    const view2 = size.width ? visibleWorldRect(vp, size, 0) : null;
+    const cards = [];
     for (const item of board2()?.items.values() || []) {
-      if (!item || item.kind !== "pdf" || item.collapsed) continue;
+      if (!item || item.kind !== "pdf") continue;
       const url = coverUrlOf(item);
       if (!url || !firstPageAllowed(url)) continue;
       const rect = rects().get(item.uid);
       if (!rect) continue;
-      const sharp = sharpFaces.get(url);
-      const stored = coverFaces.get(url);
-      const coverW = sharp?.w || stored?.w || COVER_MAX_W;
-      const plan = sharpCoverPlan({ cardW: rect.w, zoom, dpr, coverW });
-      if (!plan) continue;
-      picked = { url, maxW: plan.maxW };
-      break;
+      cards.push({ url, cardW: rect.w, collapsed: item.collapsed, onScreen: !view2 || rectsIntersect(rect, view2) });
     }
+    const picked = sharpPick({
+      cards,
+      zoom,
+      dpr,
+      tier,
+      gesturing,
+      coverW: (url) => sharpFaces.get(url)?.w || coverFaces.get(url)?.w || COVER_MAX_W
+    });
     if (!picked) return;
     const token = sharpStore.begin(picked.url);
     Promise.resolve(firstPage.render({ url: picked.url, maxW: picked.maxW, title: false })).then((result) => {

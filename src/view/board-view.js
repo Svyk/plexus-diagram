@@ -2512,6 +2512,28 @@ function buildBoardView(onFail, {
     const data = await blobToDataUrl(image);
     return typeof data === "string" && data.startsWith("data:") ? data : "";
   };
+  // A loaded cover repaints the cards that show it; covers that land in one turn share one pass.
+  // Repainting every shell per cover was 14.5 s on the PhD main board (122 PDF covers × 1,512 shells).
+  let coverRepaint = null;
+  const repaintForCover = (url) => {
+    if (disposed) return;
+    if (!coverRepaint) {
+      coverRepaint = new Set();
+      const run = () => {
+        const urls = coverRepaint;
+        coverRepaint = null;
+        if (disposed || !urls?.size) return;
+        const uids = [];
+        for (const item of board()?.items.values() || []) {
+          if (item?.kind === "pdf" && urls.has(coverUrlOf(item))) uids.push(item.uid);
+        }
+        if (uids.length) itemsR.repaintItems(uids);
+        try { refreshPdfHighlightCounts(); } catch { /* count */ }
+      };
+      Promise.resolve().then(run);
+    }
+    coverRepaint.add(url);
+  };
   const loadCover = (url) => {
     const gen = (coverGen.get(url) || 0) + 1;
     coverGen.set(url, gen);
@@ -2531,7 +2553,7 @@ function buildBoardView(onFail, {
           ? { state: "ready", src, w: record?.w ?? null, h: record?.h ?? null, lastPage: record?.lastPage ?? null, pageCount: record?.pageCount ?? null, ...titleFace(record) }
           : emptyFace("error", record));
       }
-      if (!disposed) itemsR.repaintStyles();
+      repaintForCover(url);
       if (!disposed && typeof record?.pageTitle === "string" && record.pageTitle) {
         try { readPane?.refreshCards?.(); } catch { /* switcher */ }
       }
@@ -2539,7 +2561,7 @@ function buildBoardView(onFail, {
     }).catch(() => {
       if (disposed || coverGen.get(url) !== gen) return;
       coverFaces.set(url, emptyFace("none", null));
-      if (!disposed) itemsR.repaintStyles();
+      repaintForCover(url);
     });
   };
   const coverImageFor = (url) => {

@@ -63041,7 +63041,16 @@ ${lines.join("\n")}` : "";
       if (turn.answer) {
         paintTurn(turn);
         showActions(turn, true);
+        return;
       }
+      dropTurn(turn);
+      const t2 = ta();
+      if (t2 && !t2.value.trim() && turn.asked === turn.q) {
+        t2.value = turn.q;
+        growQuestion(t2);
+      }
+      if (!turns.length) paintQuick();
+      showActions(null, false);
       return;
     }
     turn.answer = result.text || turn.answer;
@@ -63359,7 +63368,7 @@ function openAskAI(opts = {}) {
   const handle = (built) => ({ el: s.root, close: () => cur2()?.close(), built });
   let session = cur;
   const cur2 = () => session;
-  if (s.collapsed && cur) s.collapse.click();
+  if (s.collapsed) s.collapse.click();
   if (cur && cur.win === win2 && !opts.multi && !cur.multi) {
     paintTheme(s, dom);
     const e2 = cur.addEntry(opts);
@@ -63385,6 +63394,10 @@ function openAskAI(opts = {}) {
   if (!s.root.isConnected) (dom.body || dom.documentElement)?.append?.(s.root);
   session = startSession(s, opts);
   chat.session = session;
+  try {
+    if (s.composer?.textarea && s.dom.activeElement === s.composer.textarea) session.focusQuestion();
+  } catch {
+  }
   askPerf.lastOpenMs = now3() - t0;
   return handle(session.built());
 }
@@ -64586,6 +64599,27 @@ function createParseMotion({ doc, overlayHost = null, overlayPage = 0, headHost 
 
 // src/view/parse-view.js
 init_parse_to_roam_md();
+
+// src/model/pdf-name-for.js
+var resolver = null;
+function setPdfNameResolver(fn) {
+  resolver = typeof fn === "function" ? fn : null;
+  return () => {
+    if (resolver === fn) resolver = null;
+  };
+}
+function pdfNameFor(uidOrUrl) {
+  const key = typeof uidOrUrl === "string" ? uidOrUrl.trim() : "";
+  if (!key || !resolver) return "";
+  try {
+    const name = resolver(key);
+    return typeof name === "string" && name && name !== "PDF" ? name : "";
+  } catch {
+    return "";
+  }
+}
+
+// src/view/parse-view.js
 var PARSE_MIME2 = "application/x-plexus-parse";
 var BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
 var SYNC_MS = 250;
@@ -65066,6 +65100,7 @@ function createParseView({
     button3.setAttribute("data-mode", mode);
   }
   let currentUrl = url || "";
+  let targetGen = 0;
   let currentUid2 = pdfUid || "";
   let parsed = null;
   let records = [];
@@ -65257,6 +65292,7 @@ function createParseView({
       ...spec,
       ...block?.type === "figure" ? { image: figureImageSpec(block) } : {},
       document: doc,
+      pdfName: () => pdfNameFor(currentUid2) || pdfNameFor(currentUrl),
       jumpPage: (n3) => jumpPage?.(n3),
       toast: (message) => {
         try {
@@ -66261,10 +66297,10 @@ ${sourceAttrString(source)}` : markdown;
     }
     return [1, total];
   }
-  async function finishDoc(docResult, ms) {
-    if (dead) return;
+  async function finishDoc(docResult, ms, gen = targetGen) {
+    if (dead || gen !== targetGen) return;
     const optsHash = await optionsHash(docResult.options || BUILTIN_OPTIONS);
-    if (dead) return;
+    if (dead || gen !== targetGen) return;
     const total = Number(parsed?.pageCount) || Number(progress.pageCount) || 0;
     parsed = { ...docResult, optsHash, stats: { ...docResult.stats || {}, ms } };
     phase = "idle";
@@ -66302,6 +66338,7 @@ ${sourceAttrString(source)}` : markdown;
   async function readAlternative() {
     if (dead || phase === "running") return;
     const previous = parsed;
+    const gen = targetGen;
     phase = "running";
     progress = { page: 0, pageCount: progress.pageCount || 0, engine: "anydoc" };
     paintChip();
@@ -66328,7 +66365,7 @@ ${sourceAttrString(source)}` : markdown;
         sha256: sha,
         createdAt: new Date(now4()).toISOString()
       });
-      await finishDoc(docResult, typeof converted.ms === "number" ? converted.ms : now4() - t0);
+      await finishDoc(docResult, typeof converted.ms === "number" ? converted.ms : now4() - t0, gen);
     } catch (err) {
       if (dead) return;
       phase = "idle";
@@ -66341,6 +66378,7 @@ ${sourceAttrString(source)}` : markdown;
   }
   async function parseBuiltin(explicit) {
     cancel();
+    const gen = targetGen;
     failure = "";
     const ctrl = new AbortController();
     abort = ctrl;
@@ -66410,7 +66448,7 @@ ${sourceAttrString(source)}` : markdown;
       from,
       to
     });
-    await finishDoc(finalDoc, now4() - t0);
+    await finishDoc(finalDoc, now4() - t0, gen);
     if (autoScan && scanPagesOf(finalDoc).length) {
       await refreshHelper();
       const engine = ocrEngine();
@@ -66447,6 +66485,7 @@ ${sourceAttrString(source)}` : markdown;
       return;
     }
     cancel();
+    const gen = targetGen;
     const ctrl = new AbortController();
     abort = ctrl;
     phase = "running";
@@ -66522,7 +66561,7 @@ ${sourceAttrString(source)}` : markdown;
         } catch {
         }
       }
-      await finishDoc(result.doc, (parsed.ocr ? 0 : parsed.stats?.ms || 0) + (now4() - t0));
+      await finishDoc(result.doc, (parsed.ocr ? 0 : parsed.stats?.ms || 0) + (now4() - t0), gen);
     } catch (error) {
       if (error?.name !== "AbortError") {
         try {
@@ -66541,6 +66580,7 @@ ${sourceAttrString(source)}` : markdown;
     const pages = scanPagesOf(parsed).filter((n3) => incoming.some((p) => Number(p.n) === n3));
     if (!pages.length) return false;
     const base = parsed;
+    const gen = targetGen;
     try {
       const pdf = typeof getPdf === "function" ? await getPdf() : null;
       if (dead || parsed !== base) return false;
@@ -66582,7 +66622,7 @@ ${sourceAttrString(source)}` : markdown;
         } catch {
         }
       }
-      await finishDoc(merged.doc, (base.stats?.ms || 0) + (now4() - t0));
+      await finishDoc(merged.doc, (base.stats?.ms || 0) + (now4() - t0), gen);
       return true;
     } catch {
       return false;
@@ -66595,6 +66635,7 @@ ${sourceAttrString(source)}` : markdown;
       return null;
     }
     cancel();
+    const gen = targetGen;
     const ctrl = new AbortController();
     abort = ctrl;
     phase = "running";
@@ -66623,6 +66664,7 @@ ${sourceAttrString(source)}` : markdown;
         }
       });
     } catch (error) {
+      if (abort !== ctrl) return null;
       phase = "idle";
       if (error?.name === "AbortError") {
         paintChip();
@@ -66637,8 +66679,9 @@ ${sourceAttrString(source)}` : markdown;
       render();
       return false;
     }
+    if (abort !== ctrl) return null;
     jobId = result?.job || jobId;
-    if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? now4() - t0);
+    if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? now4() - t0, gen);
     else phase = "idle";
     paintChip();
     return Boolean(result?.doc);
@@ -66743,6 +66786,7 @@ ${sourceAttrString(source)}` : markdown;
     if (dead || !answer?.ok) return;
     const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
     cancel();
+    const gen = targetGen;
     const ctrl = new AbortController();
     abort = ctrl;
     phase = "running";
@@ -66777,7 +66821,7 @@ ${sourceAttrString(source)}` : markdown;
       const credits = cloudUsageCredits(result.provider);
       if (credits != null) docResult.stats = { ...docResult.stats || {}, credits };
       if (ctrl.signal.aborted) return;
-      await finishDoc(docResult, now4() - started);
+      await finishDoc(docResult, now4() - started, gen);
     } catch (error) {
       if (phase === "running") phase = "idle";
       cloudToast(error, "llamaparse");
@@ -66812,6 +66856,7 @@ ${sourceAttrString(source)}` : markdown;
     if (dead || !answer?.ok) return;
     const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
     cancel();
+    const gen = targetGen;
     const ctrl = new AbortController();
     abort = ctrl;
     phase = "running";
@@ -66834,7 +66879,7 @@ ${sourceAttrString(source)}` : markdown;
       const local = await localParseForCloud(store, sha, parsed?.engine === "cloud" ? null : parsed);
       const docResult = withKeptTitle(mistralToParse(result.provider, { sha256: sha }), local);
       if (ctrl.signal.aborted) return;
-      await finishDoc(docResult, now4() - started);
+      await finishDoc(docResult, now4() - started, gen);
     } catch (error) {
       if (phase === "running") phase = "idle";
       cloudToast(error, "mistral");
@@ -66848,6 +66893,7 @@ ${sourceAttrString(source)}` : markdown;
       render();
       return;
     }
+    const gen = targetGen;
     const pdf = typeof getPdf === "function" ? await getPdf() : null;
     const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
     const result = await helper.reparseTable({
@@ -66858,9 +66904,9 @@ ${sourceAttrString(source)}` : markdown;
       base: parsed
     });
     if (result?.job) jobId = result.job;
-    if (result?.merged) {
+    if (result?.merged && gen === targetGen) {
       parsed = result.merged;
-      await finishDoc(parsed, parsed.stats?.ms ?? 0);
+      await finishDoc(parsed, parsed.stats?.ms ?? 0, gen);
     }
   }
   function cancel() {
@@ -67230,6 +67276,7 @@ ${sourceAttrString(source)}` : markdown;
   }
   async function restore2() {
     if (!store || !currentUrl) return null;
+    const gen = targetGen;
     let found = await restorableByUrl(store, currentUrl, { plainOptions: BUILTIN_OPTIONS });
     if (!found && keep && typeof keep.restoreRead === "function") {
       found = await keep.restoreRead({
@@ -67241,7 +67288,7 @@ ${sourceAttrString(source)}` : markdown;
         }
       });
     }
-    if (!found) return null;
+    if (!found || gen !== targetGen) return null;
     parsed = found;
     rememberParsedUrl(storage, currentUrl);
     try {
@@ -67272,8 +67319,16 @@ ${sourceAttrString(source)}` : markdown;
     readScan: readScanNow,
     applyOcr,
     setTarget(next) {
-      currentUrl = next?.url || "";
+      const nextUrl = next?.url || "";
       currentUid2 = next?.pdfUid || "";
+      if (nextUrl === currentUrl) return;
+      targetGen += 1;
+      if (phase === "running") cancel();
+      currentUrl = nextUrl;
+      parsed = null;
+      records = [];
+      failure = "";
+      render();
     },
     restore: restore2,
     parseBuiltin,
@@ -69979,6 +70034,7 @@ function createReadPane({
       openAskAI({
         ...spec,
         document: doc,
+        pdfName: () => pdfNameFor(current3.cardUid) || pdfNameFor(pdfUrl()),
         jumpPage: (n3) => jumpPage(n3),
         toast,
         addCard: ({ markdown }) => session?.insertAnswerCard?.({ markdown, pdfUid: current3.cardUid || "" })
@@ -77700,6 +77756,7 @@ var IDENTS_KEY = `pdf-idents:${IDENT_V}:${TITLE_REV}`;
 var IDENTS_CAP = 600;
 var READ_TIMEOUT_MS = 12e3;
 var RETRY_FAILED_MS = 7 * 864e5;
+var RETRY_NO_LIB_MS = 6e4;
 var COVER_CHARS = 200;
 function raceAbort(promise, signal, ms, timers) {
   return new Promise((resolve, reject) => {
@@ -77779,6 +77836,7 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
   let cancelIdle = null;
   let saveCancel = null;
   let stopped = false;
+  let gone = false;
   let stats = { read: 0, parse: 0, failed: 0, ms: 0 };
   const later = typeof idle === "function" ? idle : (fn) => {
     const id = setTimeout(fn, 30);
@@ -77799,19 +77857,20 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
     })();
     return loading;
   };
+  const write = () => {
+    saveCancel = null;
+    const entries = [...idents.entries()].filter(([, v]) => !v.noLib).slice(-IDENTS_CAP);
+    void Promise.resolve(store?.putMeta?.(IDENTS_KEY, { v: IDENT_V, items: Object.fromEntries(entries) })).catch(() => {
+    });
+  };
   const save = () => {
     saveCancel?.();
-    saveCancel = later(() => {
-      saveCancel = null;
-      const entries = [...idents.entries()].slice(-IDENTS_CAP);
-      void Promise.resolve(store?.putMeta?.(IDENTS_KEY, { v: IDENT_V, items: Object.fromEntries(entries) })).catch(() => {
-      });
-    });
+    saveCancel = later(write);
   };
   const known2 = (url) => {
     const got = idents.get(url);
     if (!got) return false;
-    if (got.failed) return now4() - (Number(got.at) || 0) < RETRY_FAILED_MS;
+    if (got.failed) return now4() - (Number(got.at) || 0) < (got.noLib ? RETRY_NO_LIB_MS : RETRY_FAILED_MS);
     return true;
   };
   const pump = () => {
@@ -77843,6 +77902,7 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
         ident = null;
       }
       if (signal?.aborted) return;
+      let noLib = false;
       if (!ident || !ident.title) {
         const pdfLib = (() => {
           try {
@@ -77851,6 +77911,7 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
             return null;
           }
         })();
+        noLib = !pdfLib;
         const got = pdfLib ? await read2(pdfLib, url, { signal, timers }) : null;
         if (signal?.aborted) return;
         if (got) {
@@ -77858,7 +77919,8 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
           stats.read += 1;
         }
       }
-      if (!ident) {
+      if (!ident && noLib) idents.set(url, { failed: true, noLib: true, at: now4() });
+      else if (!ident) {
         stats.failed += 1;
         idents.set(url, { failed: true, at: now4() });
       } else idents.set(url, { ...ident, at: now4() });
@@ -77892,6 +77954,7 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
     pending: (url) => queued.has(url) || running === url,
     // Queue urls (front: read these before the rest). Known urls are skipped.
     async want(urls2, { front = false } = {}) {
+      if (gone) return 0;
       stopped = false;
       await load();
       const fresh = [];
@@ -77932,19 +77995,15 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
       return out;
     },
     report: () => ({ ...stats, known: idents.size, queued: queue.length, running }),
+    // Board gone: stop reading, and write a pending save now (its idle callback is cancelled with it).
     dispose() {
+      gone = true;
       this.stop();
-      saveCancel?.();
+      if (saveCancel) {
+        saveCancel();
+        write();
+      }
     }
-  };
-}
-
-// src/model/pdf-name-for.js
-var resolver = null;
-function setPdfNameResolver(fn) {
-  resolver = typeof fn === "function" ? fn : null;
-  return () => {
-    if (resolver === fn) resolver = null;
   };
 }
 
@@ -93628,6 +93687,7 @@ ${url}`;
         partsIdx = null;
       });
       step(() => imgIndex?.dispose());
+      step(() => pdfNames?.dispose());
       step(() => panel.dispose());
       step(() => propsPanel.dispose());
       step(() => tooltip.dispose());

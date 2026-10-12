@@ -236,3 +236,29 @@ test("a question without @ is sent exactly as typed", () => withDom(async (stub,
   await flush();
   assert.equal(w.sent[0].prompt, "Compare them");
 }));
+
+const tipKeys = (el) => findAll(el, "pxd-ask__tipkey").map((n) => n.textContent);
+
+test("the welcome tips row lists the triggers, hides after the first turn, and a click on @ inserts it and opens the parts list", () => withDom(async (stub, doc) => {
+  const w = fakeWindow();
+  const { d, ta } = openThree(doc, w);
+  assert.deepEqual(tipKeys(d.el), ["@", "[[", "#", "((", "/"]);
+  assert.equal(find(d.el, "pxd-ask__tips").textContent, "@ a part · [[ or # a page · (( a block · / a command");
+  ta.value = "how does";
+  ta.selectionStart = 8;
+  stub.dispatch(findAll(d.el, "pxd-ask__tipkey")[0], "click", {});
+  assert.equal(ta.value, "how does @");
+  assert.deepEqual(rows(d.el), ["All parts", "Part 1 · Paragraph · p. 1", "Part 2 · Figure 1 · p. 4", "Part 3 · Table 3 · p. 3"]);
+  type(stub, ta, "how does @Part 1 ");
+  find(d.el, "pxd-ask__send").click();
+  await flush();
+  assert.equal(find(d.el, "pxd-ask__welcome").hidden, true);
+}));
+
+test("the @ tip is hidden when no parts are in context", () => withDom(async (stub, doc) => {
+  const w = fakeWindow();
+  const basket = createBasket();
+  const d = openAskAI({ multi: { basket }, document: doc, window: w });
+  const tips = find(d.el, "pxd-ask__tips");
+  assert.ok(!tips || !tipKeys(d.el).includes("@"));
+}));

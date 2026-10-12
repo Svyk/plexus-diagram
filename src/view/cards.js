@@ -684,6 +684,7 @@ export function createItemRenderer({
   onHighlightNote = null,
   coverImage = null,
   pdfMetaTitle = null,
+  pdfIdentTitle = null,
   onPdfOpenRequest = null,
   onPdfParse = null,
   pdfCardPage = null,
@@ -3260,14 +3261,21 @@ export function createItemRenderer({
     // A [[page]] card is named by its page (or its alias label); the PDF's metadata title does not override it.
     const pageNamed = Boolean(item?.target?.page);
     let metadataTitle = "";
+    let identTitle = "";
     if (!pageNamed) {
+      // The page-1 identity names the paper; the file's metadata Title only stands in until it is known.
       try {
-        const got = typeof pdfMetaTitle === "function" ? pdfMetaTitle(url) : "";
+        const got = typeof pdfIdentTitle === "function" && url ? pdfIdentTitle(url) : "";
+        identTitle = typeof got === "string" ? got : "";
+      } catch { identTitle = ""; }
+      try {
+        const got = !identTitle && typeof pdfMetaTitle === "function" ? pdfMetaTitle(url) : "";
         metadataTitle = typeof got === "string" ? got : "";
       } catch { metadataTitle = ""; }
     }
     const model = coverModel({
       metadataTitle,
+      identTitle,
       alias: humanAlias(item),
       text: pageNamed ? "" : humanText(item),
       title: typeof cover?.title === "string" ? cover.title : "",
@@ -5685,6 +5693,26 @@ export function createItemRenderer({
     dropRegionWatch();
   };
 
+
+  // Shells repainted in place; a PDF card whose cover (title, image) changed remounts its body.
+  function repaintShells(uids) {
+    if (!lastBoard) return;
+    for (const uid of uids) {
+      const rec = shells.get(uid);
+      if (!rec || editing?.uid === uid) continue;
+      const item = lastBoard.items.get(uid);
+      if (!item) continue;
+      paintShell(rec, item);
+      // The integrator has a new cover for this card. The shell class is already current.
+      if (item.kind !== "pdf" || rec.contentKey == null) continue;
+      const key = contentKeyFor(item);
+      if (key === rec.contentKey) continue;
+      unmountRoots(rec);
+      rec.body?.replaceChildren?.();
+      rec.contentKey = null;
+      mountContent(rec, item);
+    }
+  }
   return {
     sync,
     scheduleContent,
@@ -5738,20 +5766,20 @@ export function createItemRenderer({
     // A reading-card change (pane open/close) does not change the highlighter, so it skips that probe.
     repaintStyles({ highlighter = true } = {}) {
       if (highlighter) syncBoardHighlighter(doc, boardRoot());
-      if (!lastBoard) return;
-      for (const [uid, rec] of shells) {
-        if (editing?.uid === uid) continue;
-        const item = lastBoard.items.get(uid);
-        if (!item) continue;
-        paintShell(rec, item);
-        // The integrator has a new cover for this card. The shell class is already current.
-        if (item.kind !== "pdf" || rec.contentKey == null) continue;
-        const key = contentKeyFor(item);
-        if (key === rec.contentKey) continue;
-        unmountRoots(rec);
-        rec.body?.replaceChildren?.();
-        rec.contentKey = null;
-        mountContent(rec, item);
+      repaintShells(shells.keys());
+    },
+    // The same for these cards only (a PDF identity landed for them).
+    repaintItems(uids) {
+      const list = [...(uids || [])];
+      repaintShells(list);
+      // The cover's own title lines take the new title in place (no remount).
+      for (const uid of list) {
+        const rec = shells.get(uid);
+        const title = rec?.pdfCover?.title;
+        if (!title || editing?.uid === uid) continue;
+        for (const node of rec.body?.querySelectorAll?.(".pxd-pdf-title") || []) {
+          if (node.textContent !== title) node.textContent = title;
+        }
       }
     },
     expireContent(uids) {

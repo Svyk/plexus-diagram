@@ -78,7 +78,7 @@ import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWh
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
 import { createCardMotionRelay } from "./card-parse-motion.js";
 import { runChartToTable } from "./chart-table.js";
-import { openAskAI, setAskSettings } from "./ask-ai.js";
+import { askThemeChanged, openAskAI, setAskSettings } from "./ask-ai.js";
 import { BASKET_MESSAGES, basketFor, makePart, pillText } from "../model/ask-basket.js";
 import { graphOfWindow } from "../model/ask-models.js";
 import { BUILTIN_OPTIONS, readParsedUrls } from "./parse-view.js";
@@ -113,7 +113,7 @@ import { createParseStore, imageKey, readableParse, restorableTitle } from "../h
 import { createSemantic } from "../host/semantic.js";
 import { identHaystack, identMatches, pdfRowName, pdfRowSub } from "../model/pdf-ident.js";
 import { createPdfNames } from "./pdf-names.js";
-import { setPdfNameResolver } from "../model/pdf-name-for.js";
+import { notifyPdfNames, setPdfNameResolver } from "../model/pdf-name-for.js";
 import { createImageIndex } from "../host/image-index.js";
 import { searchImages, similarImages } from "../model/image-search.js";
 import { createFigureImages, getFigureImages, setFigureImages, shrinkImage } from "../host/figure-image.js";
@@ -1112,6 +1112,7 @@ function buildBoardView(onFail, {
     const flipped = themeKey !== null && key !== themeKey;
     themeKey = key;
     if (!flipped || disposed) return;
+    try { askThemeChanged(); } catch { /* chat */ }
     repaintItemStyles();
     scheduleContent();
   };
@@ -1688,6 +1689,7 @@ function buildBoardView(onFail, {
     interopOn: () => readSetting("interop") !== false,
     coverImage: (url) => coverImageFor(url),
     pdfMetaTitle: (url) => notePdfMeta(url),
+    pdfIdentTitle: (url) => identTitleOf(url),
     readingUid: () => readingCard,
     onPdfOpenRequest: (uid) => { try { itemsR.openPdf?.(uid); } catch { /* host */ } },
     // Parse opens the reader on the card's page (page 1 unless the card was flipped), so the outline starts at
@@ -5839,7 +5841,21 @@ function buildBoardView(onFail, {
         return doc ? { doc, title: parsedTitles.get(url) || parsedDocTitle(doc) } : null;
       },
       idle,
-      onChange: (urls) => { if (!disposed) panel.refreshPdfNames(urls); },
+      onChange: (urls) => {
+        if (disposed) return;
+        panel.refreshPdfNames(urls);
+        // A PDF card here whose identity just landed gets its title now: that card only, not the board.
+        const landed = new Set(urls || []);
+        const uids = [];
+        for (const it of board()?.items.values() || []) {
+          if (it.kind === "pdf" && landed.has(pdfMacroUrl(pdfSourceOfItem(it)))) uids.push(it.uid);
+        }
+        if (uids.length) {
+          try { itemsR?.repaintItems?.(uids); } catch { /* paint */ }
+          try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+        }
+        notifyPdfNames(urls);
+      },
       timers: warmTimers,
     });
     return pdfNames;
@@ -5893,7 +5909,8 @@ function buildBoardView(onFail, {
     let info = pdfNameInfo.get(infoKey);
     if (!info) {
       try { info = host?.pdfNameInfo?.(uid, url) || {}; } catch { info = {}; }
-      pdfNameInfo.set(infoKey, info);
+      // Only a real answer is kept: an empty one (no PDF page yet) is asked again next time.
+      if (info.ownTitle || info.pdfPageTitle) pdfNameInfo.set(infoKey, info);
     }
     const names = pdfNamesR();
     const ident = names.get(url);

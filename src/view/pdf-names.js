@@ -95,10 +95,27 @@ export function createPdfNames({ store, lib = () => null, readParse = async () =
     return loading;
   };
 
+  // Read-modify-write: another board (main + sidebar) saves the same record, so its rows are kept. Per url the
+  // newer `at` wins; rows this board did not know are taken into memory too.
   const write = () => {
     saveCancel = null;
-    const entries = [...idents.entries()].filter(([, v]) => !v.noLib).slice(-IDENTS_CAP);
-    void Promise.resolve(store?.putMeta?.(IDENTS_KEY, { v: IDENT_V, items: Object.fromEntries(entries) })).catch(() => {});
+    void (async () => {
+      let saved = null;
+      try { saved = await store?.getMeta?.(IDENTS_KEY); } catch { saved = null; }
+      const rows = saved && typeof saved === "object" && saved.items && typeof saved.items === "object" ? saved.items : {};
+      const merged = new Map();
+      for (const [url, ident] of Object.entries(rows)) if (ident && typeof ident === "object") merged.set(url, ident);
+      for (const [url, ident] of idents) {
+        if (ident.noLib) continue;
+        const old = merged.get(url);
+        if (old && (Number(old.at) || 0) > (Number(ident.at) || 0)) continue;
+        merged.delete(url);
+        merged.set(url, ident);
+      }
+      for (const [url, ident] of merged) if (!idents.has(url)) idents.set(url, ident);
+      const entries = [...merged.entries()].slice(-IDENTS_CAP);
+      await store?.putMeta?.(IDENTS_KEY, { v: IDENT_V, items: Object.fromEntries(entries) });
+    })().catch(() => {});
   };
   const save = () => {
     saveCancel?.();

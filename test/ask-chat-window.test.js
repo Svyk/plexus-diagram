@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { isTextEntryTarget } from "../src/view/cards.js";
-import { askPerf, closeAskAI, DEFAULT_HEIGHT, DEFAULT_WIDTH, EDGE, GEOM_KEY, MIN_HEIGHT, MIN_WIDTH, openAskAI, PAINT_MS, PLACEHOLDER, TITLE } from "../src/view/ask-ai.js";
+import { askPerf, closeAskAI, DEFAULT_HEIGHT, DEFAULT_WIDTH, EDGE, GEOM_KEY, MIN_HEIGHT, MIN_WIDTH, modelLabel, openAskAI, PAINT_MS, PLACEHOLDER, TITLE } from "../src/view/ask-ai.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const DOC = {
@@ -351,3 +351,11 @@ test("collapse leaves only the header; a new Ask opens it again", () => withDom(
   assert.ok(!d.el.classList.contains("pxd-ask--collapsed"));
   assert.equal(d.el.style.height, `${DEFAULT_HEIGHT}px`);
 }));
+
+test("the status line names the answering model by its picker label, from the name or the API id", () => {
+  const options = [{ value: "Claude Sonnet 5.5", textContent: "Claude Sonnet 5.5 · Anthropic" }, { value: "GPT 6 Sol", textContent: "GPT 6 Sol · OpenAI" }];
+  assert.equal(modelLabel(options, "claude-sonnet-5-5"), "Claude Sonnet 5.5 · Anthropic");
+  assert.equal(modelLabel(options, "Claude Sonnet 5.5"), "Claude Sonnet 5.5 · Anthropic");
+  assert.equal(modelLabel(options, "gpt-6-sol"), "GPT 6 Sol · OpenAI");
+  assert.equal(modelLabel(options, "mystery-1"), "");
+});

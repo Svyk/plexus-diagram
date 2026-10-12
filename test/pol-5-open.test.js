@@ -52,3 +52,20 @@ test("POL-5: without a ResizeObserver fullscreen still places at once", () => {
     globalThis.ResizeObserver = prevRO;
   }
 });
+
+test("fullscreen follows the article's border box, so a docked panel closing (padding only) widens the board again", () => {
+  const root = fakeRoot([]);
+  const seen = [];
+  const prevRO = globalThis.ResizeObserver;
+  const prevRaf = globalThis.requestAnimationFrame;
+  globalThis.ResizeObserver = class { constructor(cb) { this.cb = cb; } observe(el, opts) { seen.push(opts); } disconnect() {} };
+  globalThis.requestAnimationFrame = () => 0;
+  try {
+    const stop = applyFullscreenChrome({ classList: { toggle() {} }, style: {} }, true, root);
+    assert.deepEqual(seen[0], { box: "border-box" });
+    stop();
+  } finally {
+    globalThis.ResizeObserver = prevRO;
+    globalThis.requestAnimationFrame = prevRaf;
+  }
+});

@@ -97,7 +97,9 @@ export function applyFullscreenChrome(mount, on, root = globalThis.document) {
   if (typeof RO === "function") {
     try {
       const ro = new RO(() => place());
-      if (article) { ro.observe(article); observed = true; }
+      // Border box: Roam narrows the article for a docked panel (Live AI's chat) through its padding, and the
+      // content box stays the same width, so a default observer never fires when the panel closes.
+      if (article) { ro.observe(article, { box: "border-box" }); observed = true; }
       if (sidebar) { ro.observe(sidebar); observed = true; }
       if (rightSidebar && rightSidebar !== sidebar && rightSidebar !== article) { ro.observe(rightSidebar); observed = true; }
       disconnects.push(() => ro.disconnect());

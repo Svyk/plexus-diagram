@@ -447,6 +447,17 @@ function markFullscreen(s) {
 
 // ------------------------------------------------------------------ one conversation
 
+const modelKey = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+// The picker option text for a model Live AI answered with, matched by its name or its API id.
+export function modelLabel(options, model) {
+  const key = modelKey(model);
+  if (!key) return "";
+  const list = [...(options || [])];
+  const hit = list.find((o) => o.value === model) || list.find((o) => modelKey(o.value) === key);
+  return hit?.textContent || "";
+}
+
 function startSession(s, o) {
   const dom = s.dom;
   const win = s.win;
@@ -886,8 +897,9 @@ function startSession(s, o) {
     turn.answer = result.text || turn.answer;
     if (!turn.answer.trim()) { turn.answer = ""; showEmpty(turn); return; }
     paintTurn(turn);
-    // The picker's label ("Claude Sonnet 5.5 · Anthropic"), not the raw model id.
-    const shown = result.model ? ([...(s.composer?.model?.options || [])].find((o) => o.value === result.model)?.textContent || result.model) : "";
+    // The picker's label ("Claude Sonnet 5.5 · Anthropic"), not the raw model id. Live AI names a model
+    // "Claude Sonnet 5.5" in the picker and answers with the API id "claude-sonnet-5-5".
+    const shown = result.model ? (modelLabel(s.composer?.model?.options, result.model) || result.model) : "";
     s.status.textContent = shown ? `${shown}${result.usage?.outputTokens ? ` · ${result.usage.outputTokens} tokens` : ""}` : "";
     showActions(turn, true);
   }

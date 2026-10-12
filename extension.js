@@ -58865,6 +58865,14 @@ function markFullscreen(s) {
   const body = s.dom.body;
   s.root.classList.toggle("pxd-ask--over-fullscreen", Boolean(body?.classList?.contains?.("pxd-has-fullscreen")));
 }
+var modelKey = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+function modelLabel(options, model) {
+  const key = modelKey(model);
+  if (!key) return "";
+  const list = [...options || []];
+  const hit = list.find((o) => o.value === model) || list.find((o) => modelKey(o.value) === key);
+  return hit?.textContent || "";
+}
 function startSession(s, o) {
   const dom = s.dom;
   const win2 = s.win;
@@ -59397,7 +59405,7 @@ function startSession(s, o) {
       return;
     }
     paintTurn(turn);
-    const shown = result.model ? [...s.composer?.model?.options || []].find((o2) => o2.value === result.model)?.textContent || result.model : "";
+    const shown = result.model ? modelLabel(s.composer?.model?.options, result.model) || result.model : "";
     s.status.textContent = shown ? `${shown}${result.usage?.outputTokens ? ` · ${result.usage.outputTokens} tokens` : ""}` : "";
     showActions(turn, true);
   }
@@ -79112,7 +79120,7 @@ function applyFullscreenChrome(mount, on, root = globalThis.document) {
     try {
       const ro = new RO(() => place3());
       if (article) {
-        ro.observe(article);
+        ro.observe(article, { box: "border-box" });
         observed = true;
       }
       if (sidebar) {

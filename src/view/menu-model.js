@@ -275,6 +275,7 @@ export function buildMenu(kind, ctx = {}) {
       out.push(
         make("send-to", "Send to board…"),
         make("related", "Related…"),
+        make("find-related", "Find related"),
         make("context", "Context"),
         trailItem(c),
         landmarkItem(c),

@@ -15,6 +15,7 @@ import {
 import { splitNeighbors } from "../model/neighbors.js";
 import { coverModel, pdfMacroUrl, pdfPagePlan } from "../model/pdf.js";
 import { pdfOfPageNode } from "../model/pdf-page.js";
+import { SEM_PULL, relatedQueryText, semanticCandidates } from "../model/semantic.js";
 import { LINKED_REF_CAP } from "../model/refs.js";
 import { createCardCache } from "../model/card-cache.js";
 import { attrNameOf, classifyString, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
@@ -937,6 +938,43 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const notifyPages = (slot, after) => {
     for (const set of slot.pages.values()) for (const fn of set) fn(after);
   };
+  // Sets row.onBoard: a block on a board (as a card or through a ref card), a page linked from a board.
+  const markOnBoard = (candidates, timed) => {
+    const blockUids = candidates.filter((row) => row.kind === "block" && row.uid).map((row) => row.uid);
+    const pageTitles = candidates.filter((row) => row.kind === "page" && row.title).map((row) => row.title);
+    const onUid = new Set();
+    const onTitle = new Set();
+    if (blockUids.length) {
+      const direct = timed("orphan-parents", () => host.q(
+        `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?b :block/parents ?d] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
+        blockUids,
+        DIAGRAM_RE,
+      ));
+      const via = timed("orphan-refs", () => host.q(
+        `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?card :block/refs ?b] [?card :block/parents ?d]
+ [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
+        blockUids,
+        DIAGRAM_RE,
+      ));
+      for (const rec of [...direct, ...via]) if (rec?.[0]) onUid.add(rec[0]);
+    }
+    if (pageTitles.length) {
+      const via = timed("orphan-pages", () => host.q(
+        `[:find ?t :in $ [?t ...] ?pat :where [?p :node/title ?t] [?card :block/refs ?p] [?card :block/parents ?d]
+ [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
+        pageTitles,
+        DIAGRAM_RE,
+      ));
+      for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
+    }
+    for (const row of candidates) {
+      if (row.kind === "board") row.onBoard = true;
+      else if (row.kind === "block") row.onBoard = onUid.has(row.uid);
+      else row.onBoard = onTitle.has(row.title);
+    }
+  };
+
   let coverMemo = null;
   const repairedPdfBlocks = new Set();
   const readPdfCover = (url) => {
@@ -2110,7 +2148,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         if (typeof string !== "string" || !uid) continue;
         const url = pdfMacroUrl(string) || (/https?:\/\/[^\s}]+/.exec(string) || [""])[0];
         if (!url) continue;
-        out.push({ uid: String(uid), url, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
+        out.push({ uid: String(uid), url, string, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
         if (out.length >= limit) break;
       }
       return out;
@@ -2136,7 +2174,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     },
 
     // Add-panel filters. Read-only. Each query is timed. Days and orphan never scan the graph alone.
-    librarySearch(filter, limit = 40) {
+    // `pdfMatch(url, terms)` → the PDF's identity text when it holds every term (pdf-ident), else "".
+    // `pdfList()` → the graph's PDF blocks ({ uid, string, pageTitle }), cached by the caller, so typing runs no extra query.
+    librarySearch(filter, limit = 40, { pdfMatch = null, pdfList = null } = {}) {
       const f = normalizeLibraryFilter(filter);
       const queries = [];
       const lim = Math.max(1, Math.floor(Number(limit) || 40));
@@ -2166,6 +2206,52 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         queries.push({ name, ms: performance.now() - t0 });
         return out;
       };
+      // PDFs named by what they are (title, authors, venue, first words), ahead of the capped text queries.
+      if (f.text && typeof pdfMatch === "function" && wantsType(f, "pdf")) {
+        const terms = queryTerms(f.text);
+        const inputs = ["$", "?kind"];
+        const where = [];
+        const args = [BLOCK_KIND_PATTERNS.pdf];
+        if (f.tag) {
+          inputs.push("?name");
+          args.push(f.tag);
+          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
+        }
+        where.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]", "[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
+        const find = ["?s", "?u", "?t"];
+        if (since != null) {
+          inputs.push("?since");
+          args.push(since);
+          find.push("?e");
+          where.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
+        }
+        const cached = !f.tag && since == null && typeof pdfList === "function" ? pdfList() : null;
+        const found = Array.isArray(cached)
+          ? cached.map((r) => [r.string, r.uid, r.pageTitle])
+          : timed("pdf-names", () => host.q(`[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`, ...args));
+        for (const rec of found) {
+          const string = rec?.[0];
+          const uid = rec?.[1];
+          const pageTitle = rec?.[2];
+          if (typeof string !== "string" || !uid) continue;
+          if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) continue;
+          const url = pdfMacroUrl(string);
+          let hay = "";
+          try { hay = url ? String(pdfMatch(url, terms) || "") : ""; } catch { hay = ""; }
+          if (!hay) continue;
+          if (!push({
+            kind: "block",
+            uid: String(uid),
+            string,
+            text: hay,
+            pageTitle: typeof pageTitle === "string" ? pageTitle : "",
+            edited: since != null ? editedOf(rec?.[3]) : null,
+            tags: f.tag ? [f.tag] : [],
+            onBoard: false,
+          })) break;
+        }
+      }
+
       const wantPage = wantsType(f, "page");
       const wantBlock = wantsType(f, "block");
       const wantBoard = wantsType(f, "board");
@@ -2395,44 +2481,79 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         }
       }
 
-      if (f.orphan) {
-        const blockUids = candidates.filter((row) => row.kind === "block" && row.uid).map((row) => row.uid);
-        const pageTitles = candidates.filter((row) => row.kind === "page" && row.title).map((row) => row.title);
-        const onUid = new Set();
-        const onTitle = new Set();
-        if (blockUids.length) {
-          const direct = timed("orphan-parents", () => host.q(
-            `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?b :block/parents ?d] [?d :block/string ?s]
- [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
-            blockUids,
-            DIAGRAM_RE,
-          ));
-          const via = timed("orphan-refs", () => host.q(
-            `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?card :block/refs ?b] [?card :block/parents ?d]
- [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
-            blockUids,
-            DIAGRAM_RE,
-          ));
-          for (const rec of [...direct, ...via]) if (rec?.[0]) onUid.add(rec[0]);
-        }
-        if (pageTitles.length) {
-          const via = timed("orphan-pages", () => host.q(
-            `[:find ?t :in $ [?t ...] ?pat :where [?p :node/title ?t] [?card :block/refs ?p] [?card :block/parents ?d]
- [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
-            pageTitles,
-            DIAGRAM_RE,
-          ));
-          for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
-        }
-        for (const row of candidates) {
-          if (row.kind === "board") row.onBoard = true;
-          else if (row.kind === "block") row.onBoard = onUid.has(row.uid);
-          else row.onBoard = onTitle.has(row.title);
-        }
-      }
+      if (f.orphan) markOnBoard(candidates, timed);
 
       const rows = narrowLibrary(candidates, f, nowMs).slice(0, lim).map(libraryCard);
       return { rows, queries };
+    },
+
+    // What names a PDF block besides its file: the page it owns (first top-level PDF of a non-daily page)
+    // and Roam's PDF page for its url (:pdf/url). Read-only.
+    pdfNameInfo(uid, url = "") {
+      const out = { ownTitle: "", pdfPageTitle: "" };
+      if (uid) {
+        try {
+          // Roam's own pull: the card cache may hold the page without its children.
+          const res = rawPull("[:block/uid {:block/parents [:db/id]} {:block/page [:block/uid :node/title {:block/children [:block/uid :block/string :block/order]}]}]", eidKey(uid));
+          const page = res?.[":block/page"];
+          const parents = res?.[":block/parents"];
+          const title = page?.[":node/title"];
+          if (typeof title === "string" && Array.isArray(parents) && parents.length === 1 && !isDailyTitle(title)) {
+            if (pdfOfPageNode(page)?.pdfUid === uid) out.ownTitle = title;
+          }
+        } catch { /* no name */ }
+      }
+      if (url) {
+        for (const row of queryRows(host, PDF_PAGE_QUERY, url)) {
+          const title = Array.isArray(row) ? row[1] : "";
+          if (typeof title === "string" && title && !/^notes by\b/i.test(title) && !isDailyTitle(title)) { out.pdfPageTitle = title; break; }
+        }
+      }
+      return out;
+    },
+
+    // Roam semantic-search results → Add-panel rows with the panel's filters (type, tag, days, not on any board).
+    semanticRows(raw, filter, limit = 40) {
+      const f = normalizeLibraryFilter(filter);
+      const queries = [];
+      const timed = (name, fn) => {
+        const t0 = performance.now();
+        let out = [];
+        try { const res = fn(); out = Array.isArray(res) ? res : []; } catch { out = []; }
+        queries.push({ name, ms: performance.now() - t0 });
+        return out;
+      };
+      const pdfBlockOf = (url) => {
+        const rows = timed("sem-pdf", () => host.q(
+          `[:find ?u ?s ?t :in $ ?kind :where [?b :block/string ?s] [(re-pattern ?kind) ?kre] [(re-find ?kre ?s)] [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]`,
+          BLOCK_KIND_PATTERNS.pdf,
+        ));
+        for (const [u, string, t] of rows) if (pdfMacroUrl(string) === url) return { uid: u, string, pageTitle: t };
+        return null;
+      };
+      const t0 = performance.now();
+      const candidates = semanticCandidates(raw, { pull: (uid) => pull(SEM_PULL, eidKey(uid)), pdfBlockOf })
+        .filter((row) => !(row.kind === "block" && DIAGRAM_STRING.test(row.string)));
+      queries.push({ name: "sem-pull", ms: performance.now() - t0 });
+      if (f.orphan) markOnBoard(candidates, timed);
+      const kept = narrowLibrary(candidates, { ...f, text: "" }, Date.now());
+      return { rows: kept.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map((row) => ({ ...libraryCard(row), semantic: true })), queries };
+    },
+
+    // A card's text for "Find related": the page title or block string and its first children.
+    relatedText(ref) {
+      if (!ref) return "";
+      try {
+        const res = ref.kind === "page"
+          ? pull("[:node/title {:block/children [:block/string :block/order]}]", [":node/title", ref.title])
+          : pull("[:block/string :node/title {:block/children [:block/string :block/order]}]", eidKey(ref.uid));
+        const kids = (Array.isArray(res?.[":block/children"]) ? res[":block/children"] : [])
+          .slice().sort((a, b) => (a?.[":block/order"] ?? 0) - (b?.[":block/order"] ?? 0))
+          .map((c) => c?.[":block/string"] || "");
+        return relatedQueryText({ title: res?.[":node/title"] || ref.title || "", string: res?.[":block/string"] || "", children: kids });
+      } catch {
+        return "";
+      }
     },
 
     // Graph neighbours of a card target, ordered for the Related panel:

@@ -7,6 +7,9 @@ import { answerCardMarkdown, buildFocusContext, buildMultiContext, chipText, con
 import { graphOfWindow, modelPickKey, pickAskModel } from "../model/ask-models.js";
 import * as liveai from "../host/liveai.js";
 import { getFigureImages, isUsableImageUrl, noteFor } from "../host/figure-image.js";
+import { applyMention, blockMention, BUILTIN_STYLES, buildRoamContext, COMMAND_CATEGORIES, COMMANDS, CONTEXT_SOURCES, customItems, DEFAULT_LOG_DAYS, effortOptions, effortsFor, filterCommands, LIVE_TOOLS, MAX_SUGGESTIONS, pageMention, parseMentions, prepareTitles, rankTitles, TOOL_CATEGORIES, TRANSLATIONS, triggerAt, withStyle } from "../model/ask-composer.js";
+import * as lookup from "../host/roam-lookup.js";
+import { createPopover, createSuggest, iconButton, ROW_ICONS } from "./ask-composer.js";
 
 export const SEES_NOTE = "The model will see this image";
 export const BLIND_NOTE = "This model can't see images — text only";
@@ -14,7 +17,9 @@ export const OFF_NOTE = "Figure images are off in settings — text only";
 export const UPLOADING_NOTE = "Uploading figure…";
 export const VISION_KEY = "pxd-ask-vision-model";
 export const TITLE = "Live AI Chat";
-export const PLACEHOLDER = "Ask about this part…";
+export const PLACEHOLDER = "Ask… (/ for commands, [[ or # for pages)";
+// A (( block search waits this long after the last key.
+export const BLOCK_SEARCH_MS = 150;
 // Position and size of the window, per device: { w, h, x, y }; x/y null = the default place, bottom-right.
 export const GEOM_KEY = "pxd-ask-window";
 export const MIN_WIDTH = 340;
@@ -34,6 +39,7 @@ const clipQuestion = (text) => {
   const q = String(text ?? "").replace(/\s+/g, " ").trim();
   return q.length > 60 ? `${q.slice(0, 59).trimEnd()}…` : q;
 };
+const titleCase = (c) => String(c || "").toLowerCase().replace(/^\w/, (x) => x.toUpperCase());
 const now = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
 const clamp = (n, lo, hi) => Math.min(Math.max(n, lo), Math.max(lo, hi));
 
@@ -244,6 +250,8 @@ function buildShell(dom) {
   s.addWhole = button(dom, "pxd-ask__addwhole", ctx, "+ whole PDF");
   s.addWhole.setAttribute("title", "Also ask about the whole document");
   s.addWhole.addEventListener("click", () => active()?.addWholeDoc());
+  s.mentions = make(dom, "div", "pxd-ask__mentions", ctx);
+  s.mentions.hidden = true;
   s.imageRow = make(dom, "div", "pxd-ask__imagerow", ctx);
   s.thumb = make(dom, "img", "pxd-ask__thumb", s.imageRow);
   s.thumb.setAttribute("alt", "");
@@ -276,39 +284,70 @@ function buildShell(dom) {
   return s;
 }
 
-// The composer is built the first time Live AI is ready, then kept.
+// The composer is built the first time Live AI is ready, then kept. Its row is Live AI's: tools, context, style,
+// Prompts, model, thinking, agents, more. Menus and suggestions are built when opened.
 function ensureComposer(s) {
   if (s.composer) return s.composer;
   const dom = s.dom;
   const comp = make(dom, "div", "pxd-ask__composer", null);
   s.root.insertBefore(comp, s.resize);
   const tools = make(dom, "div", "pxd-ask__tools", comp);
-  const model = make(dom, "select", "pxd-ask__model", tools);
+  const btn = (key, cls, label, text) => iconButton(dom, tools, { cls, icon: ROW_ICONS[key], label, text });
+  const toolsBtn = btn("tools", "pxd-ask__toolsbtn", "Live AI tools (continue in Live AI's chat)");
+  const ctxBtn = btn("context", "pxd-ask__ctxbtn", "Context");
+  const styleBtn = btn("style", "pxd-ask__stylebtn", "Style");
+  const promptsBtn = btn("prompts", "pxd-ask__promptsbtn", "Prompts", "Prompts");
+  const modelWrap = make(dom, "label", "pxd-ask__modelwrap", tools);
+  make(dom, "span", `bp3-icon bp3-icon-${ROW_ICONS.model} pxd-ask__rowicon`, modelWrap).setAttribute("aria-hidden", "true");
+  const model = make(dom, "select", "pxd-ask__model", modelWrap);
   model.setAttribute("aria-label", "Model");
   model.setAttribute("title", "Model");
-  const addBoard = button(dom, "pxd-ask__addboard", tools, "Add to board");
-  addBoard.setAttribute("title", "Add the last answer to the board as a card");
-  addBoard.disabled = true;
+  const effortBtn = btn("effort", "pxd-ask__effortbtn", "Thinking");
+  effortBtn.hidden = true;
+  const agentsBtn = btn("agents", "pxd-ask__agentsbtn", "Agents and Council (continue in Live AI's chat)");
+  const moreBtn = btn("more", "pxd-ask__morebtn", "More");
   const row = make(dom, "div", "pxd-ask__inputrow", comp);
   const textarea = make(dom, "textarea", "pxd-ask__question", row);
   textarea.setAttribute("aria-label", "Question");
   textarea.setAttribute("placeholder", PLACEHOLDER);
+  textarea.setAttribute("aria-autocomplete", "list");
   textarea.rows = QUESTION_MIN_ROWS;
   const send = button(dom, "pxd-ask__send", row, "↑", "Send");
   const stopBtn = button(dom, "pxd-ask__stop", row, "■", "Stop");
   stopBtn.hidden = true;
+  const popover = createPopover(dom, comp);
+  const suggest = createSuggest(dom, comp);
+  const menu = (name) => (event) => { event?.preventDefault?.(); active()?.openMenu(name); };
+  toolsBtn.addEventListener("click", menu("tools"));
+  ctxBtn.addEventListener("click", menu("context"));
+  styleBtn.addEventListener("click", menu("style"));
+  promptsBtn.addEventListener("click", menu("prompts"));
+  effortBtn.addEventListener("click", menu("effort"));
+  agentsBtn.addEventListener("click", menu("agents"));
+  moreBtn.addEventListener("click", menu("more"));
   model.addEventListener("change", () => active()?.modelChanged());
-  addBoard.addEventListener("click", () => active()?.addLast(addBoard));
   send.addEventListener("click", () => { void active()?.send(); });
   stopBtn.addEventListener("click", () => active()?.stop());
   textarea.addEventListener("input", () => { growQuestion(textarea); active()?.questionChanged(); });
+  textarea.addEventListener("click", () => active()?.caretMoved());
   textarea.addEventListener("focus", () => active()?.focusQuestion());
+  textarea.addEventListener("blur", () => suggest.hide());
   textarea.addEventListener("keydown", (event) => {
+    if (suggest.key(event)) { event.preventDefault?.(); event.stopPropagation?.(); return; }
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") {
+      setTimeout(() => active()?.caretMoved(), 0);
+      return;
+    }
     if (event.key !== "Enter" || event.shiftKey || event.altKey || event.isComposing) return;
     event.preventDefault();
     void active()?.send();
   });
-  s.composer = { el: comp, model, addBoard, textarea, send, stop: stopBtn };
+  s.composer = {
+    el: comp, model, textarea, send, stop: stopBtn, popover, suggest,
+    buttons: { tools: toolsBtn, context: ctxBtn, style: styleBtn, prompts: promptsBtn, effort: effortBtn, agents: agentsBtn, more: moreBtn },
+    // The last answer's "Add to board" lives in the More menu; this says whether it is ready.
+    addBoard: { disabled: true },
+  };
   return s.composer;
 }
 
@@ -482,6 +521,17 @@ function startSession(s, o) {
   let lastPaint = 0;
   let resizeQueued = false;
   let offBasket = () => {};
+  // Composer state, per conversation: context sources, mentioned pages/blocks, style, thinking effort.
+  const sources = { part: true, page: false, linkedRefs: false, sidebar: false, logPages: false };
+  let logDays = DEFAULT_LOG_DAYS;
+  let mentions = [];
+  const dropped = new Set();
+  let style = null;
+  let effort = "";
+  let titles = null;
+  let custom = null;
+  let blockTimer = null;
+  let blockAsked = "";
 
   const comp = () => s.composer;
   const ta = () => s.composer?.textarea || null;
@@ -543,8 +593,27 @@ function startSession(s, o) {
     else if (typeof image.getThumb === "function") void Promise.resolve().then(() => image.getThumb()).then(show, () => {});
     else if (image.url) show(image.url);
   };
+  // What the preview adds for the Roam side: Live AI pulls those itself when the question goes.
+  const roamNote = () => {
+    const bits = [
+      ...mentions.map((m) => (m.kind === "block" ? `block ((${m.uid}))` : `page [[${m.title}]]`)),
+      ...CONTEXT_SOURCES.filter((x) => x.key !== "part" && sources[x.key]).map((x) => sourceLabel(x.key).toLowerCase()),
+    ];
+    const lines = [];
+    if (bits.length) lines.push(`Live AI adds from Roam: ${bits.join(", ")}.`);
+    if (style) lines.push(`Style: ${style.name}.`);
+    return lines.length ? `\n\n${lines.join("\n")}` : "";
+  };
   const refreshPreview = () => {
     if (s.preview.hidden) return;
+    if (!sources.part) {
+      s.preview.textContent = `The PDF part is off: only the question goes.${roamNote()}`;
+      return;
+    }
+    paintPreview();
+    s.preview.textContent += roamNote();
+  };
+  const paintPreview = () => {
     const question = questionText();
     rebuild(question);
     const sending = willSend();
@@ -659,6 +728,206 @@ function startSession(s, o) {
     } catch { /* reader */ }
   };
 
+  // ---- composer: mentions, / commands, menus
+  const mentionKey = (m) => (m.kind === "block" ? `b:${m.uid}` : `p:${m.title}`);
+  const addMention = (m) => {
+    const key = mentionKey(m);
+    dropped.delete(key);
+    if (mentions.some((x) => mentionKey(x) === key)) return;
+    mentions.push(m);
+    paintMentions();
+  };
+  const removeMention = (key) => {
+    mentions = mentions.filter((x) => mentionKey(x) !== key);
+    dropped.add(key);
+    paintMentions();
+  };
+  // Mentions typed straight into the question count too (unless their chip was removed), when the page or block exists.
+  const takeTyped = (text) => {
+    const found = parseMentions(text);
+    for (const title of found.pages) if (!dropped.has(`p:${title}`) && !mentions.some((m) => m.title === title) && lookup.pageUid(win, title)) addMention({ kind: "page", title });
+    for (const uid of found.blocks) {
+      if (dropped.has(`b:${uid}`) || mentions.some((m) => m.uid === uid)) continue;
+      const str = lookup.blockString(win, uid);
+      if (str) addMention({ kind: "block", uid, label: clipQuestion(str) });
+    }
+  };
+  const chip = (label, onX, cls = "") => {
+    const c = make(dom, "span", `pxd-ask__mchip${cls ? ` ${cls}` : ""}`, s.mentions);
+    make(dom, "span", "pxd-ask__mchiplabel", c, label);
+    const x = button(dom, "pxd-ask__partx", c, "×", `Remove ${label}`);
+    x.addEventListener("click", onX);
+    return c;
+  };
+  const sourceLabel = (key) => (key === "logPages" ? `Daily notes (${logDays} days)` : CONTEXT_SOURCES.find((x) => x.key === key)?.label || key);
+  function paintMentions() {
+    clear(s.mentions);
+    for (const m of mentions) chip(m.kind === "block" ? `Block: ${m.label || m.uid}` : `Page: ${m.title}`, () => removeMention(mentionKey(m)), m.kind === "block" ? "pxd-ask__mchip--block" : "pxd-ask__mchip--page");
+    for (const src of CONTEXT_SOURCES) if (src.key !== "part" && sources[src.key]) chip(sourceLabel(src.key), () => toggleSource(src.key), "pxd-ask__mchip--source");
+    if (style) chip(`Style: ${style.name}`, () => setStyle(null), "pxd-ask__mchip--style");
+    s.mentions.hidden = !s.mentions.firstChild;
+    s.chip.classList.toggle("pxd-ask__chip--off", !sources.part);
+    s.chip.setAttribute("title", sources.part ? "Show exactly what will be sent" : "The PDF part is off for the next question (Context menu)");
+    paintRowState();
+  }
+  const paintRowState = () => {
+    const b = s.composer?.buttons;
+    if (!b) return;
+    const ctxOn = mentions.length || CONTEXT_SOURCES.some((x) => x.key !== "part" && sources[x.key]) || !sources.part;
+    b.context.classList.toggle("pxd-ask__rowbtn--on", Boolean(ctxOn));
+    b.style.classList.toggle("pxd-ask__rowbtn--on", Boolean(style));
+    b.style.setAttribute("title", style ? `Style: ${style.name}` : "Style");
+    b.effort.classList.toggle("pxd-ask__rowbtn--on", Boolean(effort));
+    b.effort.setAttribute("title", effort ? `Thinking: ${effort === "off" ? "off" : effort}` : "Thinking");
+  };
+  const toggleSource = (key) => {
+    sources[key] = !sources[key];
+    paintMentions();
+    refreshPreview();
+  };
+  const setStyle = (next) => {
+    style = next && next.prompt ? next : null;
+    paintMentions();
+  };
+  const curModel = () => models.find((m) => m.id === (modelSel()?.value || "")) || null;
+  const paintEffort = () => {
+    const b = s.composer?.buttons?.effort;
+    if (!b) return;
+    const levels = effortsFor(curModel());
+    b.hidden = !levels.length;
+    if (effort && effort !== "off" && !levels.includes(effort)) effort = "";
+    if (!levels.length) effort = "";
+    paintRowState();
+  };
+  const customList = () => {
+    if (!custom) {
+      custom = {
+        prompts: customItems(lookup.taggedBlocks(win, "liveai/prompt"), "liveai/prompt"),
+        styles: customItems(lookup.taggedBlocks(win, "liveai/style"), "liveai/style"),
+      };
+    }
+    return custom;
+  };
+  const styleItems = () => [...BUILTIN_STYLES.map((x) => ({ ...x, category: "STYLES", style: true })), ...customList().styles.map((x) => ({ ...x, style: true }))];
+  const commandItems = () => [...COMMANDS, ...TRANSLATIONS, ...customList().prompts, ...styleItems()];
+  const order = (items) => [...items].sort((a, b) => COMMAND_CATEGORIES.indexOf(a.category) - COMMAND_CATEGORIES.indexOf(b.category));
+  const doCommand = (item) => {
+    const t = ta();
+    if (t && /^\//.test(t.value)) { t.value = ""; lastPrefill = ""; growQuestion(t); }
+    if (item.style) { setStyle(item); focus(); return; }
+    void run({ command: item });
+  };
+  const titleIndex = () => {
+    if (!titles) titles = prepareTitles(lookup.pageTitles(win));
+    return titles;
+  };
+  const stopBlockSearch = () => { if (blockTimer) { clearTimeout(blockTimer); blockTimer = null; } };
+  // The question's text before the caret decides the suggestion list: / commands, [[ or # pages, (( blocks.
+  const suggestFor = () => {
+    const t = ta();
+    const sug = s.composer?.suggest;
+    if (!t || !sug) return;
+    const caret = Number.isInteger(t.selectionStart) ? t.selectionStart : t.value.length;
+    const trig = t.value === lastPrefill ? null : triggerAt(t.value, caret);
+    if (!trig) { stopBlockSearch(); sug.hide(); return; }
+    const insert = (text, mention) => {
+      const cur = ta();
+      if (!cur) return;
+      const at = Number.isInteger(cur.selectionStart) ? cur.selectionStart : cur.value.length;
+      const live = triggerAt(cur.value, at) || trig;
+      const next = applyMention(cur.value, live, at, text);
+      cur.value = next.text;
+      try { cur.setSelectionRange?.(next.caret, next.caret); } catch { /* stub */ }
+      growQuestion(cur);
+      addMention(mention);
+      refreshPreview();
+      try { cur.focus(); } catch { /* stub */ }
+    };
+    if (trig.kind === "command") {
+      stopBlockSearch();
+      const hits = order(filterCommands(commandItems(), trig.query, 40));
+      sug.show(hits.map((it) => ({ label: it.name, group: it.category === "STYLES" ? "Styles" : titleCase(it.category), item: it })), { title: "Commands", empty: "No command matches", pick: (e) => doCommand(e.item) });
+      return;
+    }
+    if (trig.kind === "page" || trig.kind === "tag") {
+      stopBlockSearch();
+      const hits = rankTitles(titleIndex(), trig.query, MAX_SUGGESTIONS);
+      sug.show(hits.map((title) => ({ label: title, item: title })), { title: "Pages", empty: trig.query ? "No page matches" : "", pick: (e) => insert(pageMention(e.item), { kind: "page", title: e.item }) });
+      return;
+    }
+    // (( block search: after a short pause, at least two letters.
+    const query = trig.query.trim();
+    if (query.length < 2) { stopBlockSearch(); sug.show([], { title: "Blocks", empty: "Type to search blocks" }); return; }
+    if (query === blockAsked && sug.isOpen) return;
+    stopBlockSearch();
+    blockTimer = setTimeout(() => {
+      blockTimer = null;
+      if (dead) return;
+      blockAsked = query;
+      const hits = lookup.searchBlocks(win, query, MAX_SUGGESTIONS);
+      sug.show(hits.map((b) => ({ label: clipQuestion(b.string), detail: b.page, item: b })), { title: "Blocks", empty: "No block matches", pick: (e) => insert(blockMention(e.item.uid), { kind: "block", uid: e.item.uid, label: clipQuestion(e.item.string) }) });
+    }, BLOCK_SEARCH_MS);
+  };
+
+  // ---- the row's menus
+  const menuSpecs = {
+    tools: () => ({
+      label: "Live AI tools",
+      sections: () => [
+        { title: "Tools run in Live AI's chat: the conversation continues there", items: [] },
+        ...Object.entries(TOOL_CATEGORIES).map(([cat, title]) => ({ title, items: LIVE_TOOLS.filter((x) => x.category === cat).map((x) => ({ id: x.id, label: x.name, detail: x.description, onPick: () => handOff({ forcedTools: [x.id] }) })) })),
+      ],
+    }),
+    context: () => ({
+      label: "Context",
+      sections: () => [
+        { title: "Send with the question", items: CONTEXT_SOURCES.map((x) => ({ id: x.key, label: x.key === "part" ? (multiLike() ? "The PDF parts" : x.label) : x.label, checked: Boolean(sources[x.key]), keep: true, onPick: () => toggleSource(x.key) })) },
+        { items: [{ input: true, label: "Days of daily notes", value: logDays, onInput: (v) => { const n = Math.round(Number(v)); if (n > 0) { logDays = Math.min(n, 365); paintMentions(); } } }] },
+        { title: "Mention pages with [[ or #, blocks with ((", items: [] },
+      ],
+    }),
+    style: () => ({
+      label: "Style",
+      sections: () => [{ title: "Answer style", items: [{ id: "Normal", label: "Normal", checked: !style, onPick: () => setStyle(null) }, ...styleItems().map((x) => ({ id: x.id, label: x.name, checked: style?.id === x.id, onPick: () => setStyle(x) }))] }],
+    }),
+    prompts: () => ({
+      label: "Prompts",
+      filter: "Filter prompts…",
+      empty: "No prompt matches",
+      sections: (q) => {
+        const hits = filterCommands([...COMMANDS, ...TRANSLATIONS, ...customList().prompts], q, 200);
+        return COMMAND_CATEGORIES.filter((c) => c !== "STYLES").map((c) => ({ title: titleCase(c), items: hits.filter((x) => x.category === c).map((x) => ({ id: x.id, label: x.name, onPick: () => doCommand(x) })) }));
+      },
+    }),
+    effort: () => ({
+      label: "Thinking",
+      sections: () => [{ title: "Thinking", items: [
+        { id: "", label: "Model default", checked: !effort, onPick: () => { effort = ""; paintRowState(); } },
+        { id: "off", label: "Off", checked: effort === "off", onPick: () => { effort = "off"; paintRowState(); } },
+        ...effortsFor(curModel()).map((lvl) => ({ id: lvl, label: lvl[0].toUpperCase() + lvl.slice(1), checked: effort === lvl, onPick: () => { effort = lvl; paintRowState(); } })),
+      ] }],
+    }),
+    agents: () => ({
+      label: "Agents and Council",
+      sections: () => [{ title: "Agents and Council run in Live AI's chat", items: [{ id: "handoff", label: "Continue in Live AI's chat", detail: "Turn on Council or agents there with the people button", onPick: () => handOff({}) }] }],
+    }),
+    more: () => ({
+      label: "More",
+      sections: () => [{ items: [
+        { id: "add-board", label: "Add last answer to board", disabled: !lastAnswered(), onPick: () => addLast(s.composer?.addBoard || {}) },
+        { id: "copy-chat", label: "Copy conversation", disabled: !turns.some((x) => x.answer.trim()), onPick: () => copyConversation() },
+        { id: "clear-chat", label: "Clear conversation", disabled: !turns.length, onPick: () => clearConversation() },
+        { id: "open-live", label: "Open in Live AI", disabled: !liveai.canOpenChat(win), onPick: () => openInLiveAI() },
+      ] }],
+    }),
+  };
+  const openMenu = (name) => {
+    const c = s.composer;
+    if (!c || !menuSpecs[name]) return;
+    c.suggest.hide();
+    c.popover.open(menuSpecs[name](), c.buttons[name]);
+  };
+
   // ---- models and Live AI availability
   const fillModels = () => {
     const sel = modelSel();
@@ -675,6 +944,7 @@ function startSession(s, o) {
       if (m.id === def) opt.selected = true;
     }
     if (def) sel.value = def;
+    paintEffort();
   };
   const rememberModel = () => {
     const sel = modelSel();
@@ -802,20 +1072,25 @@ function startSession(s, o) {
     }
   };
 
-  async function run({ retry = null } = {}) {
+  // command: a / command or prompt ({ name, prompt }); its name shows as the question, its prompt is what is asked.
+  async function run({ retry = null, command = null } = {}) {
     const t = ta();
     if (!t || ctl || dead) return;
+    s.composer?.suggest.hide();
+    s.composer?.popover.close({ refocus: false });
     let turn = retry;
-    const question = retry ? retry.q : t.value.trim();
+    const question = retry ? retry.q : command ? `/${command.name}` : t.value.trim();
+    const asked = retry ? retry.asked || retry.q : command ? command.prompt : question;
     if (!question) { s.status.textContent = "Type a question first."; return; }
-    rebuild(question);
+    if (!retry && !command) takeTyped(question);
+    rebuild(command ? command.name : question);
     ctl = typeof win.AbortController === "function" ? new win.AbortController() : new AbortController();
     token += 1;
     const mine = token;
     if (!turn) {
-      turn = { q: question, prompt: "", answer: "", sentUrl: "", user: userBubble(question), msg: null, bubble: null };
+      turn = { q: question, asked, prompt: "", answer: "", sentUrl: "", user: userBubble(question), msg: null, bubble: null };
       turns.push(turn);
-      t.value = "";
+      if (!command || /^\//.test(t.value) || t.value === lastPrefill) t.value = "";
       lastPrefill = "";
       growQuestion(t);
       s.welcome.hidden = true;
@@ -833,7 +1108,9 @@ function startSession(s, o) {
     let sendContext = "";
     let sendInstructions = "";
     let sendPrompt = "";
-    if (multiLike()) {
+    if (!sources.part) {
+      sendPrompt = asked;
+    } else if (multiLike()) {
       const list = ctxParts();
       const urls = new Map();
       if (willSend()) {
@@ -848,7 +1125,7 @@ function startSession(s, o) {
       const b = buildMultiContext(shown, question);
       sendContext = b.context;
       sendInstructions = b.instructions;
-      sendPrompt = promptWithImages(question, urls.size > 0);
+      sendPrompt = promptWithImages(asked, urls.size > 0);
       turn.sentUrl = urls.size ? "multi" : "";
     } else {
       const e = one();
@@ -860,8 +1137,14 @@ function startSession(s, o) {
       }
       sendContext = contextWithImage(e.built.context, turn.sentUrl, e.image?.caption || e.built.figure?.caption || "");
       sendInstructions = turn.sentUrl ? withImageInstructions(e.built.instructions) : e.built.instructions;
-      sendPrompt = promptWithImage(question, turn.sentUrl);
+      sendPrompt = promptWithImage(asked, turn.sentUrl);
     }
+    // Mentioned pages and blocks and the toggled sources go as Live AI's roamContext (the part then rides in the
+    // first message, see liveai.ask).
+    const needTitle = sources.page || sources.linkedRefs;
+    const currentTitle = needTitle ? await lookup.currentPageTitle(win) : "";
+    if (mine !== token || dead) return;
+    const roamContext = buildRoamContext({ pages: mentions.filter((m) => m.kind === "page").map((m) => m.title), blocks: mentions.filter((m) => m.kind === "block").map((m) => m.uid), sources, logDays, currentTitle });
     turn.prompt = sendPrompt;
     s.status.textContent = note ? `${note} Thinking…` : "Thinking…";
     if (note) say(note);
@@ -870,10 +1153,12 @@ function startSession(s, o) {
       .flatMap((x) => [{ role: "user", content: x.prompt || x.q }, { role: "assistant", content: x.answer }]);
     const result = await liveai.ask({
       context: sendContext,
-      systemPrompt: sendInstructions,
+      roamContext,
+      systemPrompt: withStyle(sendInstructions, style),
       prompt: sendPrompt,
       messages,
       model: modelSel()?.value || "",
+      ...effortOptions(effort, curModel()),
       signal: ctl.signal,
       window: win,
       onChunk: (chunk) => {
@@ -919,7 +1204,7 @@ function startSession(s, o) {
     // Nothing came back: the question goes back into the composer.
     dropTurn(turn);
     const t = ta();
-    if (t && !t.value.trim()) { t.value = turn.q; growQuestion(t); }
+    if (t && !t.value.trim() && turn.asked === turn.q) { t.value = turn.q; growQuestion(t); }
     if (!turns.length) paintQuick();
     showActions(null, false);
   };
@@ -946,28 +1231,57 @@ function startSession(s, o) {
     void clip.writeText(turn.answer).then(() => say("Copied"), () => say("Could not copy"));
   };
 
-  // Live AI's own chat takes the conversation over: the context goes first, in the first user message.
-  const openInLiveAI = () => {
-    const open = win.LiveAI?.openChatPopup;
-    if (typeof open !== "function") return;
+  const copyConversation = () => {
+    const clip = win.navigator?.clipboard || globalThis.navigator?.clipboard;
+    const text = turns.filter((x) => x.answer.trim()).map((x) => `**You:** ${x.q}\n\n**AI:** ${x.answer}`).join("\n\n---\n\n");
+    if (!text || !clip?.writeText) { say("Could not copy"); return; }
+    void clip.writeText(text).then(() => say("Conversation copied"), () => say("Could not copy"));
+  };
+  const clearConversation = () => {
+    if (ctl) stop();
+    for (const x of [...turns]) dropTurn(x);
+    s.actions.remove?.();
+    showActions(null, false);
+    s.status.textContent = "";
+    lastPrefill = "";
+    const t = ta();
+    if (t) t.value = "";
+    paintQuick();
+    prefill();
+    focus();
+  };
+
+  // Live AI's own chat takes the conversation over: the context goes first, in the first user message. Mentions and
+  // toggled sources go as its roamContext, the style by name; extra.forcedTools turns a Live AI tool on there.
+  const handOff = (extra = {}) => {
+    if (!liveai.canOpenChat(win)) { say("Live AI's chat is not available. Update Live AI Assistant."); return; }
     const t = ta();
     const pending = t && t.value.trim() && t.value !== lastPrefill ? t.value.trim() : "";
+    if (pending) takeTyped(pending);
     rebuild(pending || (turns[0]?.q ?? ""));
     const b = multiLike() ? multiBuilt : one()?.built;
-    const head = [`Context from Plexus Diagram (${multiLike() ? multiLabel() : chipText(one()?.built.chip) || "PDF"}):`, b?.instructions || "", b?.context || ""].filter(Boolean).join("\n\n");
+    const head = sources.part ? [`Context from Plexus Diagram (${multiLike() ? multiLabel() : chipText(one()?.built.chip) || "PDF"}):`, b?.instructions || "", b?.context || ""].filter(Boolean).join("\n\n") : "";
     const history = [];
     for (const x of turns) {
       if (!x.answer.trim()) continue;
-      history.push({ role: "user", content: x.q }, { role: "assistant", content: x.answer });
+      history.push({ role: "user", content: x.asked && x.asked !== x.q ? x.asked : x.q }, { role: "assistant", content: x.answer });
     }
     if (pending) history.push({ role: "user", content: pending });
-    if (history[0]?.role === "user") history[0] = { role: "user", content: `${head}\n\n${history[0].content}` };
-    else history.unshift({ role: "user", content: head });
-    try { void Promise.resolve(open({ conversationHistory: history, model: modelSel()?.value || undefined })).catch(() => {}); } catch { /* Live AI */ }
+    if (head) {
+      if (history[0]?.role === "user") history[0] = { role: "user", content: `${head}\n\n${history[0].content}` };
+      else history.unshift({ role: "user", content: head });
+    }
+    const roamContext = buildRoamContext({ pages: mentions.filter((m) => m.kind === "page").map((m) => m.title), blocks: mentions.filter((m) => m.kind === "block").map((m) => m.uid), sources: { ...sources, page: false, linkedRefs: false }, logDays }) || {};
+    if (sources.page) roamContext.page = true;
+    if (sources.linkedRefs) roamContext.linkedRefs = true;
+    liveai.openChat({ conversationHistory: history, model: modelSel()?.value || undefined, roamContext, style: style?.name || "", forcedTools: extra.forcedTools || null }, win);
     close();
   };
+  const openInLiveAI = () => handOff({});
 
   const escape = (target) => {
+    if (s.composer?.popover.close()) return;
+    if (s.composer?.suggest.isOpen) { s.composer.suggest.hide(); return; }
     if (ctl) { stop(); return; }
     const t = ta();
     if (t && target === t && t.value.trim() && t.value !== lastPrefill) return;
@@ -988,6 +1302,11 @@ function startSession(s, o) {
     try { ctl?.abort(); } catch { /* done */ }
     ctl = null;
     if (paintTimer) { clearTimeout(paintTimer); paintTimer = null; }
+    stopBlockSearch();
+    s.composer?.popover.close({ refocus: false });
+    s.composer?.suggest.hide();
+    clear(s.mentions);
+    s.mentions.hidden = true;
     try { offReady(); } catch { /* gone */ }
     try { win.removeEventListener?.("resize", onResize); } catch { /* gone */ }
     for (const t of [...turns]) dropTurn(t);
@@ -1011,6 +1330,11 @@ function startSession(s, o) {
     addLast,
     copyLast,
     openInLiveAI,
+    handOff,
+    openMenu,
+    copyConversation,
+    clearConversation,
+    get composerState() { return { sources: { ...sources }, logDays, mentions: mentions.slice(), style, effort }; },
     addWholeDoc: () => {
       const base = entries.find((e) => e.hasBlocks && !e.isWhole);
       if (!base) return;
@@ -1023,8 +1347,9 @@ function startSession(s, o) {
       s.chip.setAttribute("aria-expanded", show ? "true" : "false");
       refreshPreview();
     },
-    modelChanged: () => { rememberModel(); paintNote(); refreshPreview(); },
-    questionChanged: () => refreshPreview(),
+    modelChanged: () => { rememberModel(); paintEffort(); paintNote(); refreshPreview(); },
+    questionChanged: () => { suggestFor(); refreshPreview(); },
+    caretMoved: () => suggestFor(),
     focusQuestion: () => {
       const t = ta();
       if (t && t.value && t.value === lastPrefill) { try { t.select?.(); } catch { /* stub */ } }
@@ -1040,7 +1365,15 @@ function startSession(s, o) {
   s.status.textContent = "";
   s.preview.hidden = true;
   s.chip.setAttribute("aria-expanded", "false");
-  if (s.composer) { s.composer.textarea.value = ""; s.composer.el.hidden = true; s.composer.addBoard.disabled = true; setBusy(false); }
+  if (s.composer) {
+    s.composer.textarea.value = "";
+    s.composer.el.hidden = true;
+    s.composer.addBoard.disabled = true;
+    s.composer.popover.close({ refocus: false });
+    s.composer.suggest.hide();
+    setBusy(false);
+  }
+  paintMentions();
   if (multi) {
     peekMulti();
     offBasket = multi.basket.subscribe((list) => {

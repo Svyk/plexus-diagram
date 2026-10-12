@@ -1,4 +1,4 @@
-// Per-part gutter: a small vertical pill (Ask AI over Copy) beside the parsed part under the pointer or the
+// Per-part gutter: a small vertical pill (Ask AI over a Copy | ▾ split button; ▾ opens the copy menu) beside the parsed part under the pointer or the
 // keyboard focus. One element per pane, moved with a transform; built on first use. It shows after a short
 // hover intent, fades in, stays while the pointer travels onto it, and hides when the pointer leaves both.
 // No setPointerCapture, no graph writes; the host callbacks do the work.
@@ -6,9 +6,10 @@
 import { askAiIcon, copyIcon } from "./ask-icon.js";
 
 export const GUTTER = Object.freeze({ button: 24, gap: 6, pad: 2, intentMs: 120, hideMs: 160, copiedMs: 1200 });
-// The pill: two 24 px buttons, 2 px apart, inside a 2 px border.
+// The pill: two 24 px buttons and the 12 px copy-menu arrow, 2 px apart, inside a 2 px border.
+export const GUTTER_CARET = 12;
 export const GUTTER_W = GUTTER.button + 4;
-export const GUTTER_H = GUTTER.button * 2 + 6;
+export const GUTTER_H = GUTTER.button * 2 + GUTTER_CARET + 8;
 
 const num = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
 
@@ -57,6 +58,7 @@ export function createPartGutter({
   let pill = null;
   let askBtn = null;
   let copyBtn = null;
+  let moreBtn = null;
   let block = null;
   let pendingBlock = null;
   let showTimer = null;
@@ -94,7 +96,15 @@ export function createPartGutter({
     copyBtn.tabIndex = -1;
     const cp = copyIcon(doc, 16);
     if (cp) copyBtn.append(cp);
-    pill.append(askBtn, copyBtn);
+    moreBtn = doc.createElement("button");
+    moreBtn.type = "button";
+    moreBtn.className = "pxd-pgutter__btn pxd-pgutter__more pxd-chrome";
+    moreBtn.setAttribute("aria-label", "Copy as…");
+    moreBtn.setAttribute("aria-haspopup", "menu");
+    moreBtn.setAttribute("data-tip", "gutter.copy-more");
+    moreBtn.tabIndex = -1;
+    moreBtn.textContent = "▾";
+    pill.append(askBtn, copyBtn, moreBtn);
     for (const type of ["pointerdown", "mousedown", "dblclick"]) {
       on(pill, type, (event) => { stop(event); if (type !== "dblclick") event.preventDefault?.(); });
     }
@@ -124,6 +134,19 @@ export function createPartGutter({
       event.preventDefault?.();
       try { onMenu(block, copyBtn); } catch { /* menu */ }
     });
+    // The split button's arrow: the copy menu with every format, under the arrow. From the keyboard (Enter, Space,
+    // ArrowDown) the menu's first item takes the focus.
+    const openMenu = (event, fromKey) => {
+      stop(event);
+      event.preventDefault?.();
+      if (typeof onMenu !== "function" || !block) return;
+      try { onMenu(block, moreBtn); } catch { /* menu */ }
+      if (!fromKey) return;
+      const first = doc.querySelector?.(".pxd-copy-menu .pxd-copy-menu__item");
+      try { first?.focus?.(); } catch { /* menu */ }
+    };
+    on(moreBtn, "click", (event) => openMenu(event, event.detail === 0));
+    on(moreBtn, "keydown", (event) => { if (event.key === "ArrowDown") openMenu(event, true); });
     mount.append(pill);
     return pill;
   };
@@ -165,6 +188,8 @@ export function createPartGutter({
     pill.setAttribute("aria-hidden", "false");
     askBtn.tabIndex = 0;
     copyBtn.tabIndex = 0;
+    moreBtn.tabIndex = typeof onMenu === "function" ? 0 : -1;
+    moreBtn.hidden = typeof onMenu !== "function";
     pill.classList.add("pxd-pgutter--show");
     shown = true;
   };
@@ -181,6 +206,7 @@ export function createPartGutter({
     pill.removeAttribute("data-block");
     if (askBtn) askBtn.tabIndex = -1;
     if (copyBtn) copyBtn.tabIndex = -1;
+    if (moreBtn) moreBtn.tabIndex = -1;
   }
 
   function hideSoon() {
@@ -224,6 +250,7 @@ export function createPartGutter({
       pill = null;
       askBtn = null;
       copyBtn = null;
+      moreBtn = null;
     },
   };
 }

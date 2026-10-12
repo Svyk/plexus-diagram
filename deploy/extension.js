@@ -61883,6 +61883,7 @@ function buildShell(dom) {
   s.log.setAttribute("aria-live", "polite");
   s.welcome = make2(dom, "div", "pxd-ask__welcome", s.log);
   s.quick = make2(dom, "div", "pxd-ask__quick", s.welcome);
+  s.tips = make2(dom, "div", "pxd-ask__tips", s.welcome);
   s.setup = make2(dom, "div", "pxd-ask__setup", s.log);
   s.setup.hidden = true;
   s.status = make2(dom, "div", "pxd-ask__status", root);
@@ -62295,10 +62296,62 @@ ${lines.join("\n")}` : "";
 
 (about ${built.tokensEstimate.toLocaleString?.() ?? built.tokensEstimate} tokens before the question)`;
   };
+  const TIPS = [
+    { keys: ["@"], text: "a part", parts: true },
+    { keys: ["[[", "#"], text: "a page" },
+    { keys: ["(("], text: "a block" },
+    { keys: ["/"], text: "a command" }
+  ];
+  const insertTrigger = (trigger) => {
+    const t = ta();
+    if (!t) return;
+    const untouched = !t.value || t.value === lastPrefill;
+    const base = untouched ? "" : t.value;
+    const caret = !untouched && Number.isInteger(t.selectionStart) ? Math.min(t.selectionStart, base.length) : base.length;
+    const before = base.slice(0, caret);
+    const lead = before && !/\s$/.test(before) ? " " : "";
+    const next = `${before}${lead}${trigger}${base.slice(caret)}`;
+    const at = before.length + lead.length + trigger.length;
+    if (untouched) lastPrefill = "";
+    t.value = next;
+    try {
+      t.setSelectionRange?.(at, at);
+    } catch {
+    }
+    t.selectionStart = at;
+    t.selectionEnd = at;
+    growQuestion(t);
+    refreshPreview();
+    focus();
+    suggestFor();
+  };
+  const paintTips = () => {
+    clear2(s.tips);
+    const shown = TIPS.filter((x) => !x.parts || multiLike() && (multi ? parts : entries).length > 0);
+    shown.forEach((tip, i) => {
+      if (i) s.tips.append(dom.createTextNode(" · "));
+      tip.keys.forEach((k, j) => {
+        if (j) s.tips.append(dom.createTextNode(" or "));
+        const kbd = make2(dom, "kbd", "pxd-ask__tipkey", s.tips, k);
+        kbd.setAttribute("role", "button");
+        kbd.setAttribute("tabindex", "0");
+        kbd.setAttribute("title", `Type ${k} for ${tip.text}`);
+        kbd.addEventListener("click", () => insertTrigger(k));
+        kbd.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault?.();
+            insertTrigger(k);
+          }
+        });
+      });
+      s.tips.append(dom.createTextNode(` ${tip.text}`));
+    });
+  };
   const paintQuick = () => {
     clear2(s.quick);
     s.welcome.hidden = turns.length > 0 || !formReady;
     if (s.welcome.hidden) return;
+    paintTips();
     const wholeOnly = !multiLike() && one()?.isWhole;
     for (const q2 of multiLike() ? MULTI_QUICK_PROMPTS : QUICK_PROMPTS) {
       const btn2 = button(dom, "pxd-ask__quickbtn", s.quick, q2.label);

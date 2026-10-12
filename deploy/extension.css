@@ -2791,6 +2791,31 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   background: var(--pxd-ask-accent-soft);
 }
 
+.pxd-ask__tips {
+  margin-top: 8px;
+  color: var(--pxd-ask-muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.pxd-ask .pxd-ask__tipkey {
+  display: inline-block;
+  padding: 0 5px;
+  color: var(--pxd-ask-muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--pxd-ask-card);
+  border: 1px solid var(--pxd-ask-line-strong);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.pxd-ask .pxd-ask__tipkey:hover {
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-hover);
+}
+
 .pxd-ask__card {
   padding: 10px 12px;
   background: var(--pxd-ask-card);

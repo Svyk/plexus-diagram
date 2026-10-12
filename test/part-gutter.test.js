@@ -91,7 +91,7 @@ test("gutter: built on first use, shows after hover intent, one element moved wi
     assert.equal(h.gutter.current().id, "p2", "moving between parts follows at once");
     assert.equal(h.mount.querySelectorAll(".pxd-pgutter").length, 1, "one element per pane");
     const buttons = pill.querySelectorAll("button");
-    assert.deepEqual(buttons.map((b) => b.getAttribute("data-tip")), ["gutter.ask", "gutter.copy"]);
+    assert.deepEqual(buttons.map((b) => b.getAttribute("data-tip")), ["gutter.ask", "gutter.copy", "gutter.copy-more"]);
     assert.ok(buttons[0].querySelector(".pxd-ask-icon"));
   } finally { h.gutter.dispose(); h.restore(); }
 });

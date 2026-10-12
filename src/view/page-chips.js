@@ -10,6 +10,7 @@
 import { gestureSource, readWithSource, writeWithSource, COPY_MENU } from "../model/pdf-pin.js";
 import { bboxToPagePercent, bboxToPageRect } from "./parse-overlay.js";
 import { askAiIcon } from "./ask-icon.js";
+import { floatingDark } from "./theme-follow.js";
 
 const HIDE_MS = 220;
 const SYNC_RETRIES = 40;
@@ -350,9 +351,42 @@ export function createPageChips({
     }
     copyShown = id;
   };
+  // While the copy menu is open: a press outside it or Esc closes it (Esc gives the focus back to its button), and
+  // the arrow keys move between its items. Esc is heard on the window: the board's window-capture keys stop it first.
+  let copyMenuAnchor = null;
+  const onMenuOutside = (event) => {
+    const t = event.target;
+    if (!copyMenuEl || copyMenuEl.contains?.(t) || copyMenuAnchor === t || copyMenuAnchor?.contains?.(t)) return;
+    closeCopyMenu();
+  };
+  const onMenuKeys = (event) => {
+    if (!copyMenuEl) return;
+    if (event.key === "Escape") {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      const back = copyMenuAnchor;
+      closeCopyMenu();
+      try { back?.focus?.(); } catch { /* gone */ }
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    const items = [...(copyMenuEl.querySelectorAll?.(".pxd-copy-menu__item") || [])];
+    if (!items.length) return;
+    const at = items.indexOf(doc.activeElement);
+    if (at < 0 && !copyMenuEl.contains?.(doc.activeElement)) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    const next = items[(at + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length];
+    try { next.focus?.(); } catch { /* gone */ }
+  };
   const closeCopyMenu = () => {
+    if (copyMenuEl) {
+      doc.removeEventListener?.("pointerdown", onMenuOutside, true);
+      (win() || doc).removeEventListener?.("keydown", onMenuKeys, true);
+    }
     try { copyMenuEl?.remove(); } catch { /* gone */ }
     copyMenuEl = null;
+    copyMenuAnchor = null;
   };
   const blockFromId = (id) => getParsed?.()?.blocks?.[id] || null;
   const finishCopy = (icon, ok) => { if (ok === false) markFail(icon); else markCopied(icon); };
@@ -365,11 +399,13 @@ export function createPageChips({
     }
     finishCopy(icon, result === false ? false : true);
   };
+  // The same button again closes its own menu (the gutter's ▾ is a toggle).
   const openCopyMenu = (block, anchor) => {
+    const again = Boolean(copyMenuEl && anchor && copyMenuAnchor === anchor && copyMenuEl.getAttribute?.("data-block") === block?.id);
     closeCopyMenu();
-    if (!block) return;
+    if (!block || again) return;
     const menu = doc.createElement("div");
-    menu.className = "pxd-copy-menu";
+    menu.className = floatingDark(doc, anchor) ? "pxd-copy-menu pxd-copy-menu--dark" : "pxd-copy-menu";
     menu.setAttribute("role", "menu");
     menu.setAttribute("data-block", block.id);
     for (const item of COPY_MENU) {
@@ -429,6 +465,9 @@ export function createPageChips({
     menu.style.top = `${(rect?.bottom || 0) + 4}px`;
     (doc.body || doc.documentElement)?.append?.(menu);
     copyMenuEl = menu;
+    copyMenuAnchor = anchor || null;
+    doc.addEventListener?.("pointerdown", onMenuOutside, true);
+    (win() || doc).addEventListener?.("keydown", onMenuKeys, true);
   };
   const updateCopy = (event, parsed) => {
     if (!showParsed || layers.size === 0) { showCopy(null); return; }

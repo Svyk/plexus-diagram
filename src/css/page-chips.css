@@ -207,11 +207,32 @@
   cursor: pointer;
 }
 
+.pxd-copy-menu__item:hover,
+.pxd-copy-menu__item:focus-visible {
+  background: rgba(167, 182, 194, 0.22);
+  outline: none;
+}
+
+/* The menu is appended to the body, outside the board's tokens: page-chips adds --dark from the board under it. */
 .bp3-dark .pxd-copy-menu,
-.pxd-root--dark .pxd-copy-menu {
-  background: var(--pxd-surface, #111);
-  border-color: #fff;
-  box-shadow: none;
+.pxd-root--dark .pxd-copy-menu,
+.pxd-copy-menu.pxd-copy-menu--dark {
+  color: #e6edf3;
+  background: #2f3b46;
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.bp3-dark .pxd-copy-menu .pxd-copy-menu__item,
+.pxd-copy-menu.pxd-copy-menu--dark .pxd-copy-menu__item {
+  color: #e6edf3;
+}
+
+.bp3-dark .pxd-copy-menu .pxd-copy-menu__item:hover,
+.bp3-dark .pxd-copy-menu .pxd-copy-menu__item:focus-visible,
+.pxd-copy-menu.pxd-copy-menu--dark .pxd-copy-menu__item:hover,
+.pxd-copy-menu.pxd-copy-menu--dark .pxd-copy-menu__item:focus-visible {
+  background: rgba(139, 156, 244, 0.16);
 }
 
 /* Click-to-place: the preview is solid and the board shows where it lands. */

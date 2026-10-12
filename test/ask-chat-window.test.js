@@ -266,14 +266,19 @@ test("a conversation: Enter sends, the composer clears, earlier turns go along a
   assert.equal(find(d.el, "pxd-ask__welcome").hidden, true);
 }));
 
-test("Add to board in the composer adds the last answer as a card", () => withDom(async (stub, doc) => {
+test("Add last answer to board (composer ⋯ menu) adds the last answer as a card", () => withDom(async (stub, doc) => {
   const cards = [];
   const w = fakeWindow({ generate: async () => ({ text: "The answer.", model: "m1" }) });
   const d = openAskAI({ doc: DOC, blockId: "p", document: doc, window: w, addCard: async (c) => { cards.push(c); } });
-  const add = find(d.el, "pxd-ask__addboard");
-  assert.equal(add.disabled, true);
+  const more = find(d.el, "pxd-ask__morebtn");
+  const addItem = () => findAll(d.el, "pxd-ask__mitem").find((n) => n.getAttribute("data-id") === "add-board");
+  more.click();
+  assert.equal(addItem().disabled, true);
+  more.click();
   find(d.el, "pxd-ask__send").click();
   await tick();
+  more.click();
+  const add = addItem();
   assert.equal(add.disabled, false);
   add.click();
   await tick();

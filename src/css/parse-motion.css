@@ -269,6 +269,18 @@
   color: var(--pxd-red-line, #dc2626);
 }
 
+/* Copy | ▾: the arrow under Copy opens the copy menu with every format. */
+.pxd-read .pxd-pgutter > .pxd-pgutter__btn.pxd-pgutter__more {
+  height: 12px;
+  margin-top: -2px;
+  font-size: 9px;
+  line-height: 12px;
+}
+
+.pxd-read .pxd-pgutter > .pxd-pgutter__btn.pxd-pgutter__more[hidden] {
+  display: none;
+}
+
 .pxd-read .pxd-pgutter > .pxd-pgutter__btn > svg {
   display: block;
   width: 16px;

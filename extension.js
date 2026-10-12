@@ -490,7 +490,7 @@ function distributeRects(list, axis2) {
   const h = axis2 === "h";
   const pos = h ? "x" : "y";
   const dim = h ? "w" : "h";
-  const sorted = [...list].sort((p, q) => p[pos] - q[pos]);
+  const sorted = [...list].sort((p, q2) => p[pos] - q2[pos]);
   if (sorted.length < 3) return sorted.map((r) => ({ uid: r.uid, x: r.x, y: r.y }));
   const first = sorted[0];
   const last = sorted[sorted.length - 1];
@@ -590,10 +590,10 @@ function parseIds(raw, cap4) {
   if (!ids.length || cap4 && ids.length > MAX_IDS || ids.some((id) => !isId(id))) return null;
   return ids;
 }
-function parseRegion(blockString2) {
-  if (typeof blockString2 !== "string") return null;
-  if (blockString2.indexOf(REGION_COMPONENT) === -1 && blockString2.indexOf(PIN_COMPONENT) === -1) return null;
-  const m = HEAD_RE.exec(blockString2);
+function parseRegion(blockString3) {
+  if (typeof blockString3 !== "string") return null;
+  if (blockString3.indexOf(REGION_COMPONENT) === -1 && blockString3.indexOf(PIN_COMPONENT) === -1) return null;
+  const m = HEAD_RE.exec(blockString3);
   if (!m) return null;
   const isPin = m[1] === PIN_COMPONENT;
   const caption = (m[3] ?? "").trim();
@@ -1630,14 +1630,14 @@ var init_roam_table = __esm({
 });
 
 // src/model/region-card.js
-function accepted(targetString, api2) {
-  if (api2 == null || typeof api2.apiVersion !== "number" || api2.apiVersion < 6) return null;
+function accepted(targetString, api3) {
+  if (api3 == null || typeof api3.apiVersion !== "number" || api3.apiVersion < 6) return null;
   const region = parseRegion(targetString);
   if (!region || region.owner !== "roam-plexus" || region.error != null) return null;
   return region;
 }
-function regionRefModel(targetString, api2) {
-  const region = accepted(targetString, api2);
+function regionRefModel(targetString, api3) {
+  const region = accepted(targetString, api3);
   if (!region) return null;
   return {
     kind: "region-ref",
@@ -1668,14 +1668,14 @@ function drawingRefModel(targetString) {
 function drawingCreateSpec(boardUid) {
   return { parentUid: boardUid, order: "last", string: DRAWING_STRING };
 }
-function droppedDrawingUids(strings, blockString2) {
+function droppedDrawingUids(strings, blockString3) {
   const out = [];
   for (const string of strings || []) {
     const match = String(string ?? "").trim().match(REF_ONLY);
     if (!match) continue;
     let text4 = "";
     try {
-      text4 = blockString2?.(match[1]) || "";
+      text4 = blockString3?.(match[1]) || "";
     } catch {
       text4 = "";
     }
@@ -2558,8 +2558,8 @@ function refsIn(string) {
   }
   return out;
 }
-function endpointKindOf(blockString2) {
-  const region = parseRegion(blockString2);
+function endpointKindOf(blockString3) {
+  const region = parseRegion(blockString3);
   if (!region || region.error) return null;
   if (region.supported) {
     if (region.kind === "img") return "region";
@@ -2569,8 +2569,8 @@ function endpointKindOf(blockString2) {
   if (region.kind === "imgpoly" || region.kind === "imgrect") return "region";
   return null;
 }
-function endpointDisplayText(blockString2) {
-  const text4 = String(blockString2 ?? "");
+function endpointDisplayText(blockString3) {
+  const text4 = String(blockString3 ?? "");
   const region = parseRegion(text4);
   if (!region) return text4;
   if (region.caption) return region.caption;
@@ -2968,16 +2968,16 @@ function setTitleLexicon(words) {
 function segmentToken(token, lexicon) {
   const t = String(token || "");
   if (!lexicon || t.length < SEG_MIN || !/^\p{L}+$/u.test(t)) return null;
-  const lower3 = t.toLowerCase();
-  if (lexicon.has(lower3)) return null;
-  const n2 = lower3.length;
+  const lower4 = t.toLowerCase();
+  if (lexicon.has(lower4)) return null;
+  const n2 = lower4.length;
   const best = new Array(n2 + 1).fill(null);
   best[0] = { count: 0, sq: 0, prev: -1 };
   for (let i = 1; i <= n2; i++) {
     for (let j = Math.max(0, i - 24); j < i; j++) {
       if (!best[j]) continue;
       const len = i - j;
-      const word = lower3.slice(j, i);
+      const word = lower4.slice(j, i);
       if (!(FUNCTION_WORDS.has(word) || len >= SEG_WORD_MIN && lexicon.has(word))) continue;
       const cand = { count: best[j].count + 1, sq: best[j].sq + len * len, prev: j };
       const cur = best[i];
@@ -3528,7 +3528,7 @@ function pageCardRef(s) {
 }
 function pdfOfPageNode(node2) {
   if (!node2 || typeof node2 !== "object") return null;
-  const pageUid = typeof node2[":block/uid"] === "string" ? node2[":block/uid"] : "";
+  const pageUid2 = typeof node2[":block/uid"] === "string" ? node2[":block/uid"] : "";
   const title = typeof node2[":node/title"] === "string" ? node2[":node/title"] : "";
   if (!title) return null;
   for (const kid of kidsOf(node2)) {
@@ -3536,7 +3536,7 @@ function pdfOfPageNode(node2) {
     const uid = kid?.[":block/uid"];
     if (typeof uid === "string" && uid && isPdfString(string)) {
       const kids = kid[":block/children"];
-      return { pageUid, title, pdfUid: uid, string, ...Array.isArray(kids) ? { children: kidsOf(kid) } : {} };
+      return { pageUid: pageUid2, title, pdfUid: uid, string, ...Array.isArray(kids) ? { children: kidsOf(kid) } : {} };
     }
   }
   return null;
@@ -4572,9 +4572,9 @@ function graphFromDeepLink(hash) {
   const match = /#\/app\/([^/?#]+)/.exec(String(hash ?? ""));
   return match ? decodePart(match[1]) : "";
 }
-function cardDeepLink({ graph, pageUid, cardUid } = {}) {
+function cardDeepLink({ graph, pageUid: pageUid2, cardUid } = {}) {
   const g = String(graph ?? "").trim();
-  const page = String(pageUid ?? "").trim();
+  const page = String(pageUid2 ?? "").trim();
   const card2 = String(cardUid ?? "").trim();
   if (!g || !UID_RE3.test(page) || !UID_RE3.test(card2)) return "";
   return `#/app/${encodeURIComponent(g)}/page/${encodeURIComponent(page)}?pxd=${encodeURIComponent(card2)}`;
@@ -4586,20 +4586,20 @@ function hashFromUrl(url) {
 }
 function pxdTarget(hash) {
   const text4 = String(hash ?? "");
-  const q = text4.indexOf("?");
-  if (q < 0) return null;
+  const q2 = text4.indexOf("?");
+  if (q2 < 0) return null;
   let card2 = "";
   try {
-    card2 = new URLSearchParams(text4.slice(q + 1).split("#")[0]).get("pxd") || "";
+    card2 = new URLSearchParams(text4.slice(q2 + 1).split("#")[0]).get("pxd") || "";
   } catch {
     return null;
   }
   if (!UID_RE3.test(card2)) return null;
   return { cardUid: card2, pageUid: pageUidFromHash(text4), graph: graphFromDeepLink(text4) };
 }
-function copyLinkText(item, { graph, pageUid, cardUid } = {}) {
+function copyLinkText(item, { graph, pageUid: pageUid2, cardUid } = {}) {
   const ref = semanticRef(item);
-  const url = cardDeepLink({ graph, pageUid, cardUid: cardUid || item?.uid });
+  const url = cardDeepLink({ graph, pageUid: pageUid2, cardUid: cardUid || item?.uid });
   return url ? `${ref}
 ${url}` : ref;
 }
@@ -4611,7 +4611,7 @@ function locateShowTarget(uid, placements) {
   for (const row4 of placements || []) {
     const boardUid = String(row4?.boardUid ?? "").trim();
     const cardUid = String(row4?.cardUid ?? "").trim();
-    const pageUid = String(row4?.pageUid ?? "").trim();
+    const pageUid2 = String(row4?.pageUid ?? "").trim();
     if (!boardUid || !cardUid) continue;
     const refs = Array.isArray(row4.refUids) ? row4.refUids.map((r) => String(r)) : [];
     if (cardUid !== id && !refs.includes(id)) continue;
@@ -4619,7 +4619,7 @@ function locateShowTarget(uid, placements) {
 ${cardUid}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    hits.push({ boardUid, pageUid, cardUid });
+    hits.push({ boardUid, pageUid: pageUid2, cardUid });
   }
   if (!hits.length) return null;
   const self = hits.filter((hit) => hit.cardUid === id);
@@ -4627,8 +4627,8 @@ ${cardUid}`;
   pool.sort((a, b) => a.boardUid.localeCompare(b.boardUid) || a.cardUid.localeCompare(b.cardUid));
   return pool[0];
 }
-function assignDeepLink(loc, { graph, pageUid, cardUid } = {}, onSame) {
-  const link = cardDeepLink({ graph, pageUid, cardUid });
+function assignDeepLink(loc, { graph, pageUid: pageUid2, cardUid } = {}, onSame) {
+  const link = cardDeepLink({ graph, pageUid: pageUid2, cardUid });
   if (!link || !loc) return "";
   if (loc.hash === link) {
     if (typeof onSame === "function") onSame();
@@ -4762,12 +4762,12 @@ function mergeSmallCapRows(rows) {
     const mark = [];
     for (const p of a.pieces) if (!p.space) mark.push({ x: p.x0, k: 0 });
     for (const p of b.pieces) if (!p.space) mark.push({ x: p.x0, k: 1 });
-    mark.sort((p, q) => p.x - q.x);
+    mark.sort((p, q2) => p.x - q2.x);
     let n2 = 0;
     for (let i = 1; i < mark.length; i++) if (mark[i].k !== mark[i - 1].k) n2++;
     return n2;
   };
-  const initialTouches = (big, small) => big.pieces.some((p) => !p.space && /^[A-Za-z]{1,3}$/.test(p.text || "") && small.pieces.some((q) => !q.space && (Math.abs(q.x0 - p.x1) <= 2.5 || Math.abs(q.x1 - p.x0) <= 2.5)));
+  const initialTouches = (big, small) => big.pieces.some((p) => !p.space && /^[A-Za-z]{1,3}$/.test(p.text || "") && small.pieces.some((q2) => !q2.space && (Math.abs(q2.x0 - p.x1) <= 2.5 || Math.abs(q2.x1 - p.x0) <= 2.5)));
   for (const a of rows) {
     if (dead.has(a)) continue;
     for (const b of rows) {
@@ -4845,7 +4845,7 @@ function mergeJitteredOcrRows(rows) {
         if (shift <= 0.22 * h.size || shift > 0.5 * h.size) continue;
         const hostInk = ink(h);
         if (hostInk.length <= extraInk.length) continue;
-        if (!extraInk.every((p) => hostInk.every((q) => !overlaps2(p, q)))) continue;
+        if (!extraInk.every((p) => hostInk.every((q2) => !overlaps2(p, q2)))) continue;
         const h0 = Math.min(...hostInk.map((p) => p.x0));
         const h1 = Math.max(...hostInk.map((p) => p.x1));
         const e0 = Math.min(...extraInk.map((p) => p.x0));
@@ -4874,8 +4874,8 @@ function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGa
     let row4 = null;
     for (let i = rows.length - 1; i >= 0 && rows[i].base >= p.base - 2 * p.size; i--) {
       const r = rows[i];
-      const overlaps2 = p.text && r.pieces.some((q) => !q.space && p.x0 < q.x1 - 0.8 && q.x0 < p.x1 - 0.8);
-      const wide = p.font === "ocr" && r.pieces.some((q) => q.font === "ocr") && !overlaps2;
+      const overlaps2 = p.text && r.pieces.some((q2) => !q2.space && p.x0 < q2.x1 - 0.8 && q2.x0 < p.x1 - 0.8);
+      const wide = p.font === "ocr" && r.pieces.some((q2) => q2.font === "ocr") && !overlaps2;
       const tol = wide ? 0.48 : 0.3;
       if (Math.abs(r.base - p.base) <= tol * Math.max(r.size, p.size) && Math.abs(r.size - p.size) <= 0.15 * Math.max(r.size, p.size)) {
         row4 = r;
@@ -5422,7 +5422,7 @@ function snapRules(rules, { tol = 1.5, join = 2 } = {}) {
       b: axis2 === "h" ? r.x1 : r.y1,
       thick: r.thick || 0.5,
       fromBox: Boolean(r.fromBox)
-    })).sort((p, q) => p.pos - q.pos || p.a - q.a);
+    })).sort((p, q2) => p.pos - q2.pos || p.a - q2.a);
     let g = null;
     for (const r of list) {
       if (g && Math.abs(r.pos - g.pos) <= tol) {
@@ -5434,7 +5434,7 @@ function snapRules(rules, { tol = 1.5, join = 2 } = {}) {
       }
     }
     for (const grp of groups2[axis2]) {
-      grp.items.sort((p, q) => p.a - q.a);
+      grp.items.sort((p, q2) => p.a - q2.a);
       const ivs = [];
       for (const r of grp.items) {
         const last = ivs[ivs.length - 1];
@@ -6792,7 +6792,7 @@ function explodeLeaders(words) {
       continue;
     }
     const parts = text4.split(/([.·…]{4,})/).filter(Boolean);
-    const interior = parts.some((p, idx) => dot(p) && parts.slice(0, idx).some((q) => !dot(q)) && parts.slice(idx + 1).some((q) => !dot(q)));
+    const interior = parts.some((p, idx) => dot(p) && parts.slice(0, idx).some((q2) => !dot(q2)) && parts.slice(idx + 1).some((q2) => !dot(q2)));
     const suffix = dot(parts[parts.length - 1]) && parts.every((p, idx) => idx === parts.length - 1 || !dot(p));
     const prefix = dot(parts[0]) && parts.every((p, idx) => idx === 0 || !dot(p));
     const next = src[i + 1];
@@ -6888,8 +6888,8 @@ function splitRepeatedHeads(token) {
 }
 function projectColumns(rows) {
   const counts = rows.map((r) => r.length).sort((a, b) => a - b);
-  const q = counts[Math.min(counts.length - 1, Math.floor(counts.length * 0.6))] || 0;
-  const full = rows.filter((r) => r.length >= q && r.length >= 2);
+  const q2 = counts[Math.min(counts.length - 1, Math.floor(counts.length * 0.6))] || 0;
+  const full = rows.filter((r) => r.length >= q2 && r.length >= 2);
   const ivs = full.flat().filter((t) => !/^[.·…\s]+$/.test(t.text)).map((t) => [t.x0, t.x1]).sort((a, b) => a[0] - b[0]);
   const cols = [];
   for (const [a, b] of ivs) {
@@ -7147,11 +7147,11 @@ function ocrApart(row4, w, words = [], typical = 0) {
 function centredLine(row4, w, words, em) {
   if (w.base - row4.words[0].base > 0.8 * em) return false;
   const line = words.filter((v) => v.conf != null && !row4.words.includes(v) && Math.abs(v.base - w.base) <= 0.3 * em);
-  const lower3 = words.filter((v) => v.conf != null && v.base > w.base + 0.4 * em && v.base < w.base + 1.3 * em);
+  const lower4 = words.filter((v) => v.conf != null && v.base > w.base + 0.4 * em && v.base < w.base + 1.3 * em);
   const mid = (p) => (p.x0 + p.x1) / 2;
   let echoed = 0;
   for (const m of line) {
-    if (lower3.some((v) => Math.abs(mid(v) - mid(m)) <= Math.max(6, 0.9 * em))) echoed += 1;
+    if (lower4.some((v) => Math.abs(mid(v) - mid(m)) <= Math.max(6, 0.9 * em))) echoed += 1;
   }
   if (echoed >= 2) return false;
   const overlaps2 = (a, b) => Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 0;
@@ -7430,7 +7430,7 @@ function foldHeaderLines(rows) {
     const unit = unitTok && !isNumericText(unitTok.text) && String(unitTok.text || "").trim().length <= 12 && a.tokens.some((u) => overlapsX(u, unitTok));
     if (complementary) {
       a.tokens.push(...b.tokens);
-      a.tokens.sort((p, q) => p.x0 - q.x0);
+      a.tokens.sort((p, q2) => p.x0 - q2.x0);
       a.y1 = Math.max(a.y1, b.y1);
       out.splice(i + 1, 1);
       continue;
@@ -8849,13 +8849,13 @@ function selectRows(rows, seedIndexes, size) {
       let found = false;
       let steps = 0;
       while (j >= 0 && j < rows.length && steps < 3) {
-        const q = rows[j];
-        if (gapBetween(prev, j) > 3 * size || q.kind === "stop") break;
-        if (q.kind === "head") {
+        const q2 = rows[j];
+        if (gapBetween(prev, j) > 3 * size || q2.kind === "stop") break;
+        if (q2.kind === "head") {
           found = step < 0;
           break;
         }
-        if (q.kind === "entry" || q.kind === "num") {
+        if (q2.kind === "entry" || q2.kind === "num") {
           found = true;
           break;
         }
@@ -8899,7 +8899,7 @@ function buildEntries(rows) {
     }
     if (r.kind === "group") {
       if (pending.length) {
-        out.push({ label: pending.join(" "), page: "", y0: Math.min(...pendingRows.map((q) => q.y0)), y1: Math.max(...pendingRows.map((q) => q.y1)) });
+        out.push({ label: pending.join(" "), page: "", y0: Math.min(...pendingRows.map((q2) => q2.y0)), y1: Math.max(...pendingRows.map((q2) => q2.y1)) });
         pending = [];
         pendingRows = [];
       }
@@ -14913,20 +14913,20 @@ function pasteCardPlan(data, point) {
     sourceUid: parsed.source || ""
   };
 }
-function pinDeepLink({ graph, pageUid, pinUid } = {}) {
+function pinDeepLink({ graph, pageUid: pageUid2, pinUid } = {}) {
   const g = String(graph ?? "").trim();
-  const page = String(pageUid ?? "").trim();
+  const page = String(pageUid2 ?? "").trim();
   const pin2 = String(pinUid ?? "").trim();
   if (!g || !UID_RE4.test(page) || !UID_RE4.test(pin2)) return "";
   return `#/app/${encodeURIComponent(g)}/page/${encodeURIComponent(page)}?pxd-pin=${encodeURIComponent(pin2)}`;
 }
 function pxdPinTarget(hash) {
   const text4 = String(hash ?? "");
-  const q = text4.indexOf("?");
-  if (q < 0) return null;
+  const q2 = text4.indexOf("?");
+  if (q2 < 0) return null;
   let pin2 = "";
   try {
-    pin2 = new URLSearchParams(text4.slice(q + 1).split("#")[0]).get("pxd-pin") || "";
+    pin2 = new URLSearchParams(text4.slice(q2 + 1).split("#")[0]).get("pxd-pin") || "";
   } catch {
     return null;
   }
@@ -14945,9 +14945,9 @@ function pinOpenPlan(region) {
   if (!pdfUid || !Number.isInteger(page) || page < 1 || !Array.isArray(region.f)) return null;
   return { pdfUid, page, frac: region.f.slice(), pinUid: String(region.uid || "") };
 }
-function pinOpenFallback({ opened = false, plan = null, pageUid = "", now: now4 = 0 } = {}) {
+function pinOpenFallback({ opened = false, plan = null, pageUid: pageUid2 = "", now: now4 = 0 } = {}) {
   if (opened || !plan?.pinUid) return null;
-  const page = String(pageUid || "").trim();
+  const page = String(pageUid2 || "").trim();
   if (!UID_RE4.test(page)) return null;
   return { openPage: page, pending: { pinUid: plan.pinUid, until: Number(now4) + PIN_PENDING_MS } };
 }
@@ -15382,9 +15382,9 @@ function imageRegionRows(content) {
     };
   });
 }
-function renameRegionCaption(blockString2, caption) {
-  if (typeof blockString2 !== "string") return null;
-  const match = MACRO_RE.exec(blockString2);
+function renameRegionCaption(blockString3, caption) {
+  if (typeof blockString3 !== "string") return null;
+  const match = MACRO_RE.exec(blockString3);
   if (!match) return null;
   const next = String(caption ?? "").replace(/\s+/g, " ").trim();
   return next ? `${match[1]} ${next}` : match[1];
@@ -15702,10 +15702,10 @@ function backgroundImage(url) {
   if (/[\s"'()<>]/.test(s)) return null;
   return s;
 }
-function versionPeekRequest(api2) {
-  if (!api2 || typeof api2 !== "object") return null;
-  if (typeof api2.block?.history === "function") return "block.history";
-  if (typeof api2.ui?.blockHistory === "function") return "ui.blockHistory";
+function versionPeekRequest(api3) {
+  if (!api3 || typeof api3 !== "object") return null;
+  if (typeof api3.block?.history === "function") return "block.history";
+  if (typeof api3.ui?.blockHistory === "function") return "ui.blockHistory";
   return null;
 }
 var MONTHS3, DAY, ATTRIBUTE_TEMPLATE, FOCUS_MS, THUMBNAIL_CAP, VIA_CAP;
@@ -16046,7 +16046,7 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
       order.push(m[1]);
     }
   }
-  const make3 = typeof uid === "function" ? uid : () => `fn${Math.random().toString(36).slice(2, 11)}`;
+  const make4 = typeof uid === "function" ? uid : () => `fn${Math.random().toString(36).slice(2, 11)}`;
   const limit = Math.max(0, Math.min(FOOTNOTE_CAP, Math.floor(Number(cap4) || 0)));
   const notes = [];
   const overflow = [];
@@ -16055,7 +16055,7 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
     const d = known2.get(id);
     const n2 = Math.max(0, Math.floor(startAt)) + i + 1;
     if (i < limit) {
-      const note = { id, uid: make3(), n: n2, mark: d.mark, text: d.text };
+      const note = { id, uid: make4(), n: n2, mark: d.mark, text: d.text };
       notes.push(note);
       byId2.set(id, { kind: "note", note });
     } else {
@@ -17186,9 +17186,9 @@ function commentTargetUid(item) {
   if (target?.kind === "page") return null;
   return String(target?.uid || item.uid || "") || null;
 }
-function commentThreadPlan(tree, { pageUid, targetUid, dateTitle, authorTitle, generateUid } = {}) {
+function commentThreadPlan(tree, { pageUid: pageUid2, targetUid, dateTitle, authorTitle, generateUid } = {}) {
   const anchorString = commentAnchorString(targetUid);
-  if (!pageUid) throw new Error("A comment needs the page that holds the commented block");
+  if (!pageUid2) throw new Error("A comment needs the page that holds the commented block");
   if (!anchorString) throw new Error("A comment needs a target block uid");
   if (!dateTitle) throw new Error("A comment needs today's daily-note title");
   if (!authorTitle) throw new Error("A comment needs the author's display-page title");
@@ -17200,7 +17200,7 @@ function commentThreadPlan(tree, { pageUid, targetUid, dateTitle, authorTitle, g
     ops.push({ type: "create", parentUid, uid, string, order, ...extra });
     return { uid, children: [], existed: false };
   };
-  const container = level(pageUid, tree?.children, COMMENTS_CONTAINER_STRING, "last", { open: false });
+  const container = level(pageUid2, tree?.children, COMMENTS_CONTAINER_STRING, "last", { open: false });
   const date = level(container.uid, container.children, `[[${dateTitle}]]`, "first");
   const author = level(date.uid, date.children, `[[${authorTitle}]]`, "last");
   const anchor = level(author.uid, author.children, anchorString, "last");
@@ -17349,12 +17349,12 @@ function fromProbe(probe, name) {
   if (typeof probe !== "function") return "";
   const direct = probed(probe, name);
   if (direct) return direct;
-  const lower3 = name.toLowerCase();
-  if (lower3 !== name) {
-    const folded = probed(probe, lower3);
+  const lower4 = name.toLowerCase();
+  if (lower4 !== name) {
+    const folded = probed(probe, lower4);
     if (folded) return folded;
   }
-  return probed(probe, `--cl-lh-${lower3}`) || probed(probe, `--cl-dk-${lower3}`);
+  return probed(probe, `--cl-lh-${lower4}`) || probed(probe, `--cl-dk-${lower4}`);
 }
 function fillFromTags(tags, probe) {
   const parsed = typeof tags === "string" || tags == null ? highlighterTags(tags) : tags;
@@ -17966,7 +17966,8 @@ var init_tooltip_text = __esm({
       "page-chip.heading": e("Section", "Send this heading and the text up to the next heading to the board as a card. Click the board to place it; Esc cancels."),
       "page-chip.copy": e("Copy", "Copy this block's text, or the table as Markdown."),
       "gutter.ask": e("Ask AI about this part", "Ask your Live AI Assistant about this part, with the rest of the PDF as context. Shift-click: add to question."),
-      "gutter.copy": e("Copy", "Copy this part as Roam-ready text; a table copies as a {{[[table]]}} outline. Right-click for more copy options."),
+      "gutter.copy": e("Copy", "Copy this part as Roam-ready text; a table copies as a {{[[table]]}} outline. The arrow below (or right-click) has every copy format."),
+      "gutter.copy-more": e("Copy as…", "All the ways to copy this part: plain text, Markdown, a table outline, a block reference and more."),
       "parse.show-parsed": e("Show parsed", "Draw a soft box around every parsed block on the page, with a copy button at its left edge. Remembered on this device."),
       "page-chip.list": e("List", "Insert this list below the PDF."),
       "parse.helper-url": e("Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
@@ -18350,7 +18351,7 @@ function placePopover({ anchor, size, viewport: viewport2, bounds, gap = POP_GAP
   const clampX = (x, w) => Math.max(box2.left + edge, Math.min(x, box2.right - edge - w));
   const clampY = (y, h) => Math.max(box2.top + edge, Math.min(y, box2.bottom - edge - h));
   const sides = ["below", "above", "right", "left"];
-  const make3 = (side2, along, h, scroll) => {
+  const make4 = (side2, along, h, scroll) => {
     const vertical = side2 === "below" || side2 === "above";
     const left = vertical ? clampX(along, width) : side2 === "right" ? anchor.right + gap : anchor.left - gap - width;
     const top = vertical ? side2 === "below" ? anchor.bottom + gap : anchor.top - gap - h : clampY(along, h);
@@ -18375,7 +18376,7 @@ function placePopover({ anchor, size, viewport: viewport2, bounds, gap = POP_GAP
   for (const side2 of sides) {
     if (!fitsSide(side2)) continue;
     for (const along of alongOf(side2, size.h)) {
-      const p = make3(side2, along, size.h, false);
+      const p = make4(side2, along, size.h, false);
       if (!wall.some((o) => rectsHit(spanOf(p), o))) return p;
     }
   }
@@ -18383,7 +18384,7 @@ function placePopover({ anchor, size, viewport: viewport2, bounds, gap = POP_GAP
   for (const side2 of sides) {
     for (const along of alongOf(side2, size.h)) {
       const vertical = side2 === "below" || side2 === "above";
-      const probe = make3(side2, along, vertical ? 1 : size.h, false);
+      const probe = make4(side2, along, vertical ? 1 : size.h, false);
       let room;
       if (vertical) {
         const xs2 = { left: probe.left, right: probe.left + probe.width };
@@ -18399,7 +18400,7 @@ function placePopover({ anchor, size, viewport: viewport2, bounds, gap = POP_GAP
         room = hi - lo;
         if (room < 80) continue;
         const h = Math.min(size.h, room);
-        const p = make3(side2, along, h, true);
+        const p = make4(side2, along, h, true);
         if (side2 === "above") p.top = Math.round(hi - h);
         if (!best || h > best.h) best = { p, h };
       } else {
@@ -18419,7 +18420,7 @@ function placePopover({ anchor, size, viewport: viewport2, bounds, gap = POP_GAP
         if (straddles) continue;
         const h = Math.min(size.h, hi - lo);
         if (h < 80) continue;
-        const p = make3(side2, 0, h, true);
+        const p = make4(side2, 0, h, true);
         p.top = Math.round(Math.max(lo, Math.min(anchor.top, hi - h)));
         if (!best || h > best.h) best = { p, h };
       }
@@ -18733,13 +18734,13 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
       if (openNested?.(boardUid, edgeUid)) return;
     } catch {
     }
-    let pageUid = "";
+    let pageUid2 = "";
     try {
-      pageUid = host?.blockPageUid?.(boardUid) || "";
+      pageUid2 = host?.blockPageUid?.(boardUid) || "";
     } catch {
-      pageUid = "";
+      pageUid2 = "";
     }
-    if (!pageUid) {
+    if (!pageUid2) {
       try {
         void host?.openBlock?.(boardUid);
       } catch {
@@ -18748,7 +18749,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     }
     assignDeepLink(win2?.location, {
       graph: (typeof graph === "function" ? graph() : graph) || host?.graph || "",
-      pageUid,
+      pageUid: pageUid2,
       cardUid: edgeUid
     }, () => {
       try {
@@ -19308,9 +19309,9 @@ function statusKey(name) {
   return String(name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 function statusApi(win2) {
-  const api2 = win2?.RoamTaskStatusTags;
-  if (!api2 || api2.apiVersion !== 1 || typeof api2.statuses !== "function") return null;
-  return api2;
+  const api3 = win2?.RoamTaskStatusTags;
+  if (!api3 || api3.apiVersion !== 1 || typeof api3.statuses !== "function") return null;
+  return api3;
 }
 function normalize(raw) {
   const name = String(raw?.name || "").trim();
@@ -19327,11 +19328,11 @@ function normalize(raw) {
     dark: raw?.dark ? side(raw.dark) : known2 ? { ...known2.dark } : { ...NEUTRAL.dark }
   };
 }
-function statusPalette(api2) {
+function statusPalette(api3) {
   let rows = null;
-  if (api2 && typeof api2.statuses === "function") {
+  if (api3 && typeof api3.statuses === "function") {
     try {
-      const got = api2.statuses();
+      const got = api3.statuses();
       if (Array.isArray(got) && got.length) rows = got;
     } catch {
       rows = null;
@@ -19860,9 +19861,9 @@ function avoidObstacles(bar, obstacles, { topLimit = 0, margin = 8, bounds = {} 
   const list = (obstacles || []).filter((o) => o && o.right > o.left && o.bottom > o.top);
   if (!bar || !list.length) return bar;
   const box2 = (b) => ({ left: b.left, top: b.top, right: b.left + b.w, bottom: b.top + b.h });
-  const clear2 = (b) => !list.some((o) => overlaps(box2(b), o));
+  const clear3 = (b) => !list.some((o) => overlaps(box2(b), o));
   const fits = (b) => b.left >= margin && b.top >= topLimit && (bounds.right == null || b.left + b.w <= bounds.right) && (bounds.bottom == null || b.top + b.h <= bounds.bottom);
-  if (clear2(bar)) return bar;
+  if (clear3(bar)) return bar;
   let cur = bar;
   for (let pass = 0; pass < 4; pass += 1) {
     const hit = list.find((o) => overlaps(box2(cur), o));
@@ -19872,13 +19873,13 @@ function avoidObstacles(bar, obstacles, { topLimit = 0, margin = 8, bounds = {} 
       { ...cur, top: hit.top - margin - cur.h },
       { ...cur, top: hit.bottom + margin }
     ];
-    const whole2 = options.find((o) => fits(o) && clear2(o));
+    const whole2 = options.find((o) => fits(o) && clear3(o));
     if (whole2) return whole2;
     const part = options.find((o) => fits(o) && !overlaps(box2(o), hit));
     if (!part) return bar;
     cur = part;
   }
-  return clear2(cur) ? cur : bar;
+  return clear3(cur) ? cur : bar;
 }
 function placeBarClear(bar, { anchor, soft = [], hard = [], gap = 12, margin = 8, bounds = {} } = {}) {
   if (!bar || !anchor) return bar ? { ...bar, where: "fallback" } : null;
@@ -19902,7 +19903,7 @@ function placeBarClear(bar, { anchor, soft = [], hard = [], gap = 12, margin = 8
     top = Math.max(hi, Math.min(top, Math.max(hi, maxTop)));
     return { ...b, left, top };
   };
-  const clear2 = (b) => {
+  const clear3 = (b) => {
     const c = slide(b, false);
     if (!c || !fits(c) || hits(c, softList) || hits(c, hardList)) return null;
     return c;
@@ -19917,7 +19918,7 @@ function placeBarClear(bar, { anchor, soft = [], hard = [], gap = 12, margin = 8
     at(anchor.x + anchor.w + gap, midY - bar.h / 2, "beside")
   ];
   for (const c of primary) {
-    const hit = clear2(c);
+    const hit = clear3(c);
     if (hit) return hit;
   }
   for (const o of softList) {
@@ -19928,7 +19929,7 @@ function placeBarClear(bar, { anchor, soft = [], hard = [], gap = 12, margin = 8
       at(midX - bar.w / 2, o.bottom + margin, "below")
     ];
     for (const c of extra) {
-      const hit = clear2(c);
+      const hit = clear3(c);
       if (hit) return hit;
     }
   }
@@ -21294,7 +21295,7 @@ function entityClause(leaf) {
   return leaf.op === "page" ? { where: "[?p :node/title ?k]", input: leaf.title } : { where: "[?p :block/uid ?k]", input: leaf.uid };
 }
 function createQueryBackend(host) {
-  const q = (query, ...inputs) => {
+  const q2 = (query, ...inputs) => {
     const rows = host.q(query, ...inputs);
     return Array.isArray(rows) ? rows : [];
   };
@@ -21302,20 +21303,20 @@ function createQueryBackend(host) {
     hits(leaf) {
       const { where, input } = entityClause(leaf);
       const refs = `${where} [?r :block/refs ?p]`;
-      const direct = num4(q(`[:find (count ?r) :in $ ?k :where ${refs}]`, input));
+      const direct = num4(q2(`[:find (count ?r) :in $ ?k :where ${refs}]`, input));
       const uids = /* @__PURE__ */ new Set();
       let partial = false;
       if (direct > DIRECT_CAP) {
         return { uids: [], partial: true };
       }
-      for (const u of col(q(`[:find ?u :in $ ?k :where ${refs} [?r :block/uid ?u]]`, input))) uids.add(u);
+      for (const u of col(q2(`[:find ?u :in $ ?k :where ${refs} [?r :block/uid ?u]]`, input))) uids.add(u);
       if (direct <= WIDE_LIMIT) {
-        for (const u of col(q(`[:find ?u :in $ ?k :where ${refs} [?b :block/parents ?r] [?b :block/uid ?u]]`, input))) uids.add(u);
+        for (const u of col(q2(`[:find ?u :in $ ?k :where ${refs} [?b :block/parents ?r] [?b :block/uid ?u]]`, input))) uids.add(u);
       } else partial = true;
       if (leaf.op === "page") {
-        const onPage = num4(q("[:find (count ?b) :in $ ?k :where [?p :node/title ?k] [?b :block/page ?p]]", input));
+        const onPage = num4(q2("[:find (count ?b) :in $ ?k :where [?p :node/title ?k] [?b :block/page ?p]]", input));
         if (onPage <= PAGE_LIMIT) {
-          for (const u of col(q("[:find ?u :in $ ?k :where [?p :node/title ?k] [?b :block/page ?p] [?b :block/uid ?u]]", input))) uids.add(u);
+          for (const u of col(q2("[:find ?u :in $ ?k :where [?p :node/title ?k] [?b :block/page ?p] [?b :block/uid ?u]]", input))) uids.add(u);
         } else partial = true;
       }
       return { uids: [...uids], partial };
@@ -21324,7 +21325,7 @@ function createQueryBackend(host) {
     times(uids) {
       const out = /* @__PURE__ */ new Map();
       for (let i = 0; i < uids.length; i += CHUNK) {
-        const rows = q("[:find ?u ?t :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :edit/time 0) ?t]]", uids.slice(i, i + CHUNK));
+        const rows = q2("[:find ?u ?t :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :edit/time 0) ?t]]", uids.slice(i, i + CHUNK));
         for (const [u, t] of rows) out.set(u, Number(t) || 0);
       }
       return out;
@@ -21333,15 +21334,15 @@ function createQueryBackend(host) {
       const by = /* @__PURE__ */ new Map();
       for (let i = 0; i < uids.length; i += DETAIL_CHUNK) {
         const chunk = uids.slice(i, i + DETAIL_CHUNK);
-        for (const [u, s, title, t] of q(
+        for (const [u, s, title, t] of q2(
           '[:find ?u ?s ?title ?t :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :block/string "") ?s] [(get-else $ ?b :node/title "") ?title] [(get-else $ ?b :edit/time 0) ?t]]',
           chunk
         )) by.set(u, { uid: u, string: s, title, time: Number(t) || 0 });
-        for (const [u, page] of q("[:find ?u ?pt :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]", chunk)) {
+        for (const [u, page] of q2("[:find ?u ?pt :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]", chunk)) {
           const d = by.get(u);
           if (d) d.page = page;
         }
-        for (const [u, parent] of q("[:find ?u ?ps :in $ [?u ...] :where [?b :block/uid ?u] [?pa :block/children ?b] [?pa :block/string ?ps]]", chunk)) {
+        for (const [u, parent] of q2("[:find ?u ?ps :in $ [?u ...] :where [?b :block/uid ?u] [?pa :block/children ?b] [?pa :block/string ?ps]]", chunk)) {
           const d = by.get(u);
           if (d) d.parent = parent;
         }
@@ -21427,8 +21428,8 @@ function createQueryCards({ doc = globalThis.document, host, storage, graph = ""
       event.stopPropagation();
       if (row4.kind === "page") {
         const title = row4.string.slice(2, -2);
-        const pageUid = host?.pageUid?.(title);
-        if (pageUid) host?.openInSidebar?.(pageUid, "outline");
+        const pageUid2 = host?.pageUid?.(title);
+        if (pageUid2) host?.openInSidebar?.(pageUid2, "outline");
       } else host?.openInSidebar?.(row4.uid, "block");
     });
     node2.addEventListener("dragstart", (event) => {
@@ -21571,22 +21572,22 @@ var init_query_card = __esm({
 // src/view/ask-icon.js
 function askAiIcon(doc, size = 16) {
   if (!doc) return null;
-  const make3 = (tag) => typeof doc.createElementNS === "function" ? doc.createElementNS(SVG_NS2, tag) : doc.createElement(tag);
-  const svg = make3("svg");
+  const make4 = (tag) => typeof doc.createElementNS === "function" ? doc.createElementNS(SVG_NS2, tag) : doc.createElement(tag);
+  const svg = make4("svg");
   svg.setAttribute("viewBox", "0 0 16 16");
   svg.setAttribute("width", String(size));
   svg.setAttribute("height", String(size));
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("focusable", "false");
   svg.setAttribute("class", "pxd-ask-icon");
-  const bubble = make3("path");
+  const bubble = make4("path");
   bubble.setAttribute("d", ASK_AI_BUBBLE);
   bubble.setAttribute("fill", "none");
   bubble.setAttribute("stroke", "currentColor");
   bubble.setAttribute("stroke-width", "1.5");
   bubble.setAttribute("stroke-linecap", "round");
   bubble.setAttribute("stroke-linejoin", "round");
-  const spark = make3("path");
+  const spark = make4("path");
   spark.setAttribute("d", ASK_AI_SPARKLE);
   spark.setAttribute("fill", "currentColor");
   spark.setAttribute("stroke", "currentColor");
@@ -21597,15 +21598,15 @@ function askAiIcon(doc, size = 16) {
 }
 function copyIcon(doc, size = 16) {
   if (!doc) return null;
-  const make3 = (tag) => typeof doc.createElementNS === "function" ? doc.createElementNS(SVG_NS2, tag) : doc.createElement(tag);
-  const svg = make3("svg");
+  const make4 = (tag) => typeof doc.createElementNS === "function" ? doc.createElementNS(SVG_NS2, tag) : doc.createElement(tag);
+  const svg = make4("svg");
   svg.setAttribute("viewBox", "0 0 16 16");
   svg.setAttribute("width", String(size));
   svg.setAttribute("height", String(size));
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("focusable", "false");
   for (const d of COPY_PATHS) {
-    const path = make3("path");
+    const path = make4("path");
     path.setAttribute("d", d);
     path.setAttribute("fill", "none");
     path.setAttribute("stroke", "currentColor");
@@ -21637,10 +21638,10 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
   let grouped = [];
   const collapsed = /* @__PURE__ */ new Set();
   let disposed = false;
-  const dayOf2 = (pageUid) => {
+  const dayOf2 = (pageUid2) => {
     for (const year of grouped) {
       for (const day of year.days) {
-        if (day.pageUid === pageUid) return day;
+        if (day.pageUid === pageUid2) return day;
       }
     }
     return null;
@@ -21676,8 +21677,8 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
     if (dayRow && el2.contains(dayRow)) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      const pageUid = dayRow.getAttribute("data-page-uid") || "";
-      if (pageUid) onOpenDay?.(pageUid);
+      const pageUid2 = dayRow.getAttribute("data-page-uid") || "";
+      if (pageUid2) onOpenDay?.(pageUid2);
     }
   };
   const render = (nextRows) => {
@@ -23119,11 +23120,11 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       } else if (typeof host?.librarySearch === "function") {
         pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT, { pdfMatch: on.pdfMatch, pdfList: on.pdfList }));
       } else {
-        const q = String(filter.text || "").trim();
-        if (!q) return;
+        const q2 = String(filter.text || "").trim();
+        if (!q2) return;
         const [pages, blocks] = await Promise.all([
-          Promise.resolve(host?.searchPages?.(q, LIMIT) || []),
-          Promise.resolve(host?.searchBlocks?.(q, LIMIT) || [])
+          Promise.resolve(host?.searchPages?.(q2, LIMIT) || []),
+          Promise.resolve(host?.searchBlocks?.(q2, LIMIT) || [])
         ]);
         pack = {
           rows: [
@@ -23137,10 +23138,10 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     }
     if (id !== queryId) return;
     const queries = Array.isArray(pack?.queries) ? pack.queries : [];
-    const ms = queries.reduce((max, q) => Math.max(max, Number(q?.ms) || 0), 0);
+    const ms = queries.reduce((max, q2) => Math.max(max, Number(q2?.ms) || 0), 0);
     results.dataset.queryMs = String(ms);
     results.setAttribute("data-query-ms", String(ms));
-    const log = JSON.stringify(queries.map((q) => ({ name: q.name, ms: Math.round((Number(q.ms) || 0) * 10) / 10 })));
+    const log = JSON.stringify(queries.map((q2) => ({ name: q2.name, ms: Math.round((Number(q2.ms) || 0) * 10) / 10 })));
     results.dataset.queryLog = log;
     results.setAttribute("data-query-log", log);
     const rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
@@ -23282,7 +23283,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     event.stopPropagation();
     if (event.key === "Escape") {
       event.preventDefault();
-      api2.close();
+      api3.close();
     }
     if (event.key === "Enter") {
       event.preventDefault();
@@ -23518,7 +23519,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const name = b?.dataset?.tab;
     if (name && tabs.contains?.(b) && Object.prototype.hasOwnProperty.call(tabButtons, name)) setTab(name);
   });
-  listen(closeBtn, "click", () => api2.close());
+  listen(closeBtn, "click", () => api3.close());
   const journalRow = (parent, item) => {
     const uid = String(item?.uid || "");
     if (!uid) return null;
@@ -23615,9 +23616,9 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   let boardRows = [];
   const renderBoards = () => {
     boardsList.replaceChildren();
-    const q = String(boardsFilter.value || "").trim().toLowerCase();
-    const shown = boardRows.filter((b) => !q || `${b.title || ""}
-${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
+    const q2 = String(boardsFilter.value || "").trim().toLowerCase();
+    const shown = boardRows.filter((b) => !q2 || `${b.title || ""}
+${b.page || b.pageTitle || ""}`.toLowerCase().includes(q2));
     if (!shown.length) {
       el2("div", "pxd-panel__empty", boardsList, boardRows.length ? "No matching boards" : "No boards found");
       return;
@@ -23667,7 +23668,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     event.stopPropagation();
     if (event.key === "Escape") {
       event.preventDefault();
-      api2.close();
+      api3.close();
     }
   });
   const renderOutline = () => {
@@ -23767,9 +23768,9 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     timelineView = mountTimeline(section2, {
       doc,
       rows,
-      onOpenDay: (pageUid) => {
+      onOpenDay: (pageUid2) => {
         try {
-          on.openDay?.(pageUid);
+          on.openDay?.(pageUid2);
         } catch {
         }
       },
@@ -23915,7 +23916,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     on.focusInfoTab?.(uid);
     void loadInfo();
   });
-  const api2 = {
+  const api3 = {
     el: panel,
     open(which = tab) {
       paintMeaning();
@@ -23939,10 +23940,10 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       indexNote.style.display = count ? "" : "none";
     },
     refreshOutline() {
-      if (api2.isOpen() && tab === "outline") renderOutline();
+      if (api3.isOpen() && tab === "outline") renderOutline();
     },
     refreshSearch() {
-      if (!api2.isOpen() || tab !== "search" || !String(input.value || "").trim()) return;
+      if (!api3.isOpen() || tab !== "search" || !String(input.value || "").trim()) return;
       refreshTimer?.();
       refreshTimer = timers.later(() => {
         refreshTimer = null;
@@ -23954,7 +23955,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     },
     // PDF identities landed: rows repaint in place; a PDF the typed words now match brings a quiet re-search.
     refreshPdfNames(urls2) {
-      if (!api2.isOpen() || tab !== "search") return;
+      if (!api3.isOpen() || tab !== "search") return;
       const set = new Set(Array.isArray(urls2) ? urls2 : []);
       const terms = queryTerms(input.value);
       const shown = /* @__PURE__ */ new Set();
@@ -23989,20 +23990,20 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       related = { query: text4, label: String(label || "this card").replace(/\s+/g, " ").trim().slice(0, 40), exclude: String(exclude || "") };
       paintRelated();
       input.value = "";
-      api2.open("search");
+      api3.open("search");
       searchNow();
     },
     relatedQuery: () => related?.query || "",
     refreshChanged() {
-      if (tab === "changed" && api2.isOpen()) renderChanged();
+      if (tab === "changed" && api3.isOpen()) renderChanged();
     },
     refreshTrails() {
-      if (tab !== "trails" || !api2.isOpen()) return;
+      if (tab !== "trails" || !api3.isOpen()) return;
       trailSig = "";
       renderTrails();
     },
     refreshViews() {
-      if (tab !== "boards" || !api2.isOpen()) return;
+      if (tab !== "boards" || !api3.isOpen()) return;
       let views = [];
       try {
         views = on.listViews?.() || [];
@@ -24020,16 +24021,16 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       on.opened?.(false);
     },
     toggle() {
-      if (api2.isOpen()) api2.close();
-      else api2.open();
+      if (api3.isOpen()) api3.close();
+      else api3.open();
     },
     isOpen: () => panel.style.display !== "none",
     setSelection(item) {
       selected = item && item.type !== "section" ? item : null;
       followInfoSelection = true;
       if (selected && cardItems.has(selected.uid)) cardCurrent = selected.uid;
-      if (api2.isOpen() && tab === "related") void loadRelated();
-      if (api2.isOpen() && tab === "info") {
+      if (api3.isOpen() && tab === "related") void loadRelated();
+      if (api3.isOpen() && tab === "info") {
         renderCardTabs();
         void loadInfo();
       }
@@ -24067,7 +24068,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       panel.remove();
     }
   };
-  return api2;
+  return api3;
 }
 var DEBOUNCE_MS, LIMIT, SEMANTIC_PAUSE_MS, SEMANTIC_HINT;
 var init_panel = __esm({
@@ -24797,9 +24798,9 @@ function plainVersion(value) {
   if (typeof value === "string" && value.trim()) return value.trim();
   return "";
 }
-function apiVersionText(api2) {
-  if (!api2 || typeof api2 !== "object") return "";
-  const text4 = plainVersion(api2.apiVersion);
+function apiVersionText(api3) {
+  if (!api3 || typeof api3 !== "object") return "";
+  const text4 = plainVersion(api3.apiVersion);
   return text4 ? `apiVersion ${text4}` : "";
 }
 function row3(id, label, state, version) {
@@ -24823,21 +24824,21 @@ function betterTasks(win2) {
   return row3("better-tasks", "Better Tasks", FOUND, version);
 }
 function taskStatusTags(win2) {
-  const api2 = read(win2, "RoamTaskStatusTags");
-  if (!api2 || typeof api2 !== "object") return missing("task-status-tags", "Task Status Tags");
-  return row3("task-status-tags", "Task Status Tags", FOUND, apiVersionText(api2));
+  const api3 = read(win2, "RoamTaskStatusTags");
+  if (!api3 || typeof api3 !== "object") return missing("task-status-tags", "Task Status Tags");
+  return row3("task-status-tags", "Task Status Tags", FOUND, apiVersionText(api3));
 }
 function roamPlexus(win2) {
-  const api2 = read(win2, "RoamPlexus");
-  if (!api2 || typeof api2 !== "object") return missing("roam-plexus", "Roam Plexus");
-  return row3("roam-plexus", "Roam Plexus", FOUND, apiVersionText(api2));
+  const api3 = read(win2, "RoamPlexus");
+  if (!api3 || typeof api3 !== "object") return missing("roam-plexus", "Roam Plexus");
+  return row3("roam-plexus", "Roam Plexus", FOUND, apiVersionText(api3));
 }
 function compass(win2) {
-  const api2 = read(win2, "RoamCompass");
+  const api3 = read(win2, "RoamCompass");
   const flag = plainVersion(read(win2, "__ROAM_COMPASS_VERSION"));
-  const apiOn = api2 != null && typeof api2 === "object";
+  const apiOn = api3 != null && typeof api3 === "object";
   if (!apiOn && !flag) return missing("compass", "Compass");
-  return row3("compass", "Compass", FOUND, flag || apiVersionText(api2));
+  return row3("compass", "Compass", FOUND, flag || apiVersionText(api3));
 }
 function styleText(doc) {
   let text4 = "";
@@ -26037,11 +26038,11 @@ function chipWithAuthor(chip, authorString) {
   const author = authorFrom([String(authorString ?? "")]);
   return { ...chip, author, text: author ? `${chip.title} · ${author}` : chip.title };
 }
-function sourceChipFor({ pageTitle, pageUid, pageChildren } = {}) {
+function sourceChipFor({ pageTitle, pageUid: pageUid2, pageChildren } = {}) {
   const title = readingTitle(pageTitle);
   if (!title) return null;
   const author = authorFrom(pageChildren);
-  const uid = typeof pageUid === "string" ? pageUid : "";
+  const uid = typeof pageUid2 === "string" ? pageUid2 : "";
   return {
     title,
     author,
@@ -26231,9 +26232,9 @@ function openHoverPopover({ doc, win: win2, anchor, delayMs, build, obstacles, t
   if (typeof timers?.later === "function") cancelTimer = timers.later(show, wait2);
   else {
     const set = view?.setTimeout?.bind(view) || globalThis.setTimeout.bind(globalThis);
-    const clear2 = view?.clearTimeout?.bind(view) || globalThis.clearTimeout.bind(globalThis);
+    const clear3 = view?.clearTimeout?.bind(view) || globalThis.clearTimeout.bind(globalThis);
     const id = set(show, wait2);
-    cancelTimer = () => clear2(id);
+    cancelTimer = () => clear3(id);
   }
   return { close, el: el2 };
 }
@@ -26378,17 +26379,17 @@ function cropFrame(frac, naturalW, naturalH, maxH = CROP_MAX_H) {
     top: -ry * imgH
   };
 }
-function regionUidForButton(button3, blockString2) {
+function regionUidForButton(button3, blockString3) {
   const refUid = button3?.closest?.(".rm-block-ref[data-uid]")?.getAttribute?.("data-uid");
   if (refUid) return refUid;
   const card2 = button3?.closest?.(".pxd-item[data-uid]");
   const cardUid = card2?.getAttribute?.("data-uid") || "";
   const container = button3?.closest?.(".roam-block-container[data-block-uid]");
   const containerInside = Boolean(container && card2?.contains?.(container));
-  if (!containerInside && cardUid && typeof blockString2 === "function") {
+  if (!containerInside && cardUid && typeof blockString3 === "function") {
     let text4 = "";
     try {
-      text4 = blockString2(cardUid) || "";
+      text4 = blockString3(cardUid) || "";
     } catch {
       text4 = "";
     }
@@ -27913,27 +27914,27 @@ function createItemRenderer({
     if (raw && typeof raw === "object") return raw[":block/children"] || raw.children || [];
     return [];
   };
-  const pageChildrenOf = (pageUid) => {
-    if (!pageUid) return [];
-    if (pageKids.has(pageUid)) return pageKids.get(pageUid);
+  const pageChildrenOf = (pageUid2) => {
+    if (!pageUid2) return [];
+    if (pageKids.has(pageUid2)) return pageKids.get(pageUid2);
     let raw = null;
     try {
-      raw = host?.pullTree?.(pageUid, 1, 80);
+      raw = host?.pullTree?.(pageUid2, 1, 80);
     } catch {
       raw = null;
     }
     if (raw && typeof raw.then === "function") {
       const pass = sourcePass;
-      pageKids.set(pageUid, []);
+      pageKids.set(pageUid2, []);
       raw.then((value) => {
         if (pass !== sourcePass) return;
-        pageKids.set(pageUid, sourceKids(value));
+        pageKids.set(pageUid2, sourceKids(value));
       }).catch(() => {
       });
       return [];
     }
     const kids = sourceKids(raw);
-    pageKids.set(pageUid, kids);
+    pageKids.set(pageUid2, kids);
     return kids;
   };
   const paintPinChip = (body, children) => {
@@ -27970,13 +27971,13 @@ function createItemRenderer({
     }
     const text4 = typeof title === "string" ? title.trim() : "";
     if (!text4.startsWith("Articles/") && !text4.startsWith("Media Captures/")) return null;
-    let pageUid = "";
+    let pageUid2 = "";
     try {
-      pageUid = host?.pageUid?.(text4) || "";
+      pageUid2 = host?.pageUid?.(text4) || "";
     } catch {
-      pageUid = "";
+      pageUid2 = "";
     }
-    return sourceChipFor({ pageTitle: text4, pageUid, pageChildren: pageChildrenOf(pageUid) });
+    return sourceChipFor({ pageTitle: text4, pageUid: pageUid2, pageChildren: pageChildrenOf(pageUid2) });
   };
   const readingUidOf = () => {
     if (typeof readingUid !== "function") return "";
@@ -28267,11 +28268,11 @@ function createItemRenderer({
   };
   const taskUidOf = (item) => item?.target?.kind === "block" && item.target.uid ? item.target.uid : item?.uid;
   const setTaskStatus = async (uid, name) => {
-    const api2 = statusApi(statusWin());
-    if (!api2 || !uid) return;
+    const api3 = statusApi(statusWin());
+    if (!api3 || !uid) return;
     let result = null;
     try {
-      result = await api2.setStatus(uid, name);
+      result = await api3.setStatus(uid, name);
     } catch {
       result = { status: "unknown", reason: "set-status-failed" };
     }
@@ -31575,8 +31576,8 @@ function createItemRenderer({
   };
   const regionWindow = () => doc.defaultView || globalThis;
   const roamPlexus2 = () => {
-    const api2 = regionWindow().RoamPlexus ?? globalThis.RoamPlexus;
-    return api2 && typeof api2 === "object" ? api2 : null;
+    const api3 = regionWindow().RoamPlexus ?? globalThis.RoamPlexus;
+    return api3 && typeof api3 === "object" ? api3 : null;
   };
   const drawingEditorMounted = (drawingUid) => {
     if (!drawingUid) return false;
@@ -31658,17 +31659,17 @@ function createItemRenderer({
     dropSnapshot(snap);
     return blob;
   };
-  const loadDrawingBlob = async (api2, drawingUid) => {
-    if (interopAllowed() && api2 && Number(api2.apiVersion) >= 6 && typeof api2.thumbnail === "function") {
+  const loadDrawingBlob = async (api3, drawingUid) => {
+    if (interopAllowed() && api3 && Number(api3.apiVersion) >= 6 && typeof api3.thumbnail === "function") {
       let shot2 = null;
       try {
-        shot2 = await blobOf(api2.thumbnail(drawingUid, { maxWidth: 160 }));
+        shot2 = await blobOf(api3.thumbnail(drawingUid, { maxWidth: 160 }));
       } catch {
         shot2 = null;
       }
       if (shot2 == null) {
         try {
-          shot2 = await blobOf(api2.thumbnail(drawingUid, { maxWidth: 160, render: true }));
+          shot2 = await blobOf(api3.thumbnail(drawingUid, { maxWidth: 160, render: true }));
         } catch {
           shot2 = null;
         }
@@ -31679,13 +31680,13 @@ function createItemRenderer({
   };
   const mountDrawingBody = (rec, item) => {
     const ref = item.target?.uid;
-    const api2 = roamPlexus2();
+    const api3 = roamPlexus2();
     const off = rec.el.classList.contains("pxd-item--offscreen");
     const detail = lod === "detail" && !off;
     let regions;
-    if (api2 && typeof api2.regionsOf === "function" && ref) {
+    if (api3 && typeof api3.regionsOf === "function" && ref) {
       try {
-        const rows = api2.regionsOf(ref);
+        const rows = api3.regionsOf(ref);
         regions = Array.isArray(rows) ? rows : [];
       } catch {
         regions = [];
@@ -31730,13 +31731,13 @@ function createItemRenderer({
     };
     paint2(null);
     if (!detail || !ref) return;
-    void loadDrawingBlob(api2, ref).then((blob) => {
+    void loadDrawingBlob(api3, ref).then((blob) => {
       if (blob) paint2(blob);
     }).catch(() => {
     });
   };
   const mountRegionBody = (rec, item) => {
-    const api2 = regionWindow().RoamPlexus ?? null;
+    const api3 = regionWindow().RoamPlexus ?? null;
     const ref = item.target?.uid;
     let text4 = "";
     try {
@@ -31744,7 +31745,7 @@ function createItemRenderer({
     } catch {
       text4 = "";
     }
-    const model = regionRefModel(text4, api2);
+    const model = regionRefModel(text4, api3);
     const caption = model?.caption ?? item.title ?? "";
     if (model?.drawingUid) item.regionDrawing = model.drawingUid;
     const off = rec.el.classList.contains("pxd-item--offscreen");
@@ -32177,14 +32178,14 @@ function createItemRenderer({
     }
     const item = lastBoard?.items.get(rec.uid);
     const visible2 = showBadges && lod === "detail" && rec.type === "card" && item && editing?.uid !== rec.uid;
-    const clear2 = () => {
+    const clear3 = () => {
       if (rec.badgeEl) {
         rec.badgeEl.remove();
         rec.badgeEl = null;
       }
       rec.badgeKey = null;
     };
-    if (!visible2) return clear2();
+    if (!visible2) return clear3();
     const info = badgeMap?.get?.(rec.uid) || null;
     const chips = [];
     if (info?.refs > 0) chips.push({ cls: "refs", text: countText(info.refs, "ref", "refs"), title: `${countText(info.refs, "reference", "references")} to this card` });
@@ -32202,10 +32203,10 @@ function createItemRenderer({
       if (due) chips.unshift({ cls: "due", text: due.text, title: "Due", overdue: due.overdue });
     }
     for (const text4 of attrChipsOf(rec, item)) chips.push({ cls: "attr", text: text4 });
-    if (!chips.length) return clear2();
+    if (!chips.length) return clear3();
     const key = JSON.stringify(chips);
     if (rec.badgeEl && rec.badgeKey === key) return;
-    clear2();
+    clear3();
     const row4 = el2("div", "pxd-item__badges", rec.el);
     for (const chip of chips) {
       const node2 = el2(chip.action || chip.task ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row4);
@@ -32755,8 +32756,8 @@ function createItemRenderer({
     let ok = true;
     try {
       if (pageEdit) {
-        const pageUid = host.pageUid?.(item.title);
-        if (pageUid && host.renderPage) host.renderPage(editor, pageUid, { "hide-mentions?": true });
+        const pageUid2 = host.pageUid?.(item.title);
+        if (pageUid2 && host.renderPage) host.renderPage(editor, pageUid2, { "hide-mentions?": true });
         else host.renderBlock(editor, item.uid);
       } else {
         host.renderBlock(editor, targetUid);
@@ -33107,13 +33108,13 @@ function createItemRenderer({
     refreshRegionKinds(eventUid);
   };
   const bindRegionWatch = () => {
-    const api2 = regionWindow().RoamPlexus;
-    if (regionWatch === api2) return;
+    const api3 = regionWindow().RoamPlexus;
+    if (regionWatch === api3) return;
     try {
       regionWatch?.removeEventListener?.("change", onRegionChange);
     } catch {
     }
-    regionWatch = api2 && typeof api2.addEventListener === "function" ? api2 : null;
+    regionWatch = api3 && typeof api3.addEventListener === "function" ? api3 : null;
     try {
       regionWatch?.addEventListener("change", onRegionChange);
     } catch {
@@ -33121,7 +33122,7 @@ function createItemRenderer({
   };
   const refreshRegionKinds = (eventUid) => {
     if (disposed || !lastBoard) return;
-    const api2 = regionWindow().RoamPlexus ?? null;
+    const api3 = regionWindow().RoamPlexus ?? null;
     let changed2 = false;
     for (const item of lastBoard.items.values()) {
       if (item.type !== "card" || item.kind !== "block" && item.kind !== "region-ref" && item.kind !== "drawing-ref") continue;
@@ -33143,7 +33144,7 @@ function createItemRenderer({
       } catch {
         text4 = null;
       }
-      const model = regionRefModel(typeof text4 === "string" ? text4 : "", api2);
+      const model = regionRefModel(typeof text4 === "string" ? text4 : "", api3);
       const drawing = model?.drawingUid || item.regionDrawing || "";
       if (eventUid && drawing !== eventUid && ref !== eventUid) continue;
       const nextKind = model ? "region-ref" : "block";
@@ -33481,12 +33482,12 @@ function sortRows(rows) {
 function filterRows2(rows, { colors, page, needle } = {}) {
   const set = colors instanceof Set && colors.size > 0 ? colors : null;
   const pageWant = typeof page === "number" && Number.isFinite(page) ? page : null;
-  const q = typeof needle === "string" ? needle.trim().toLowerCase() : "";
+  const q2 = typeof needle === "string" ? needle.trim().toLowerCase() : "";
   return listOf2(rows).filter((row4) => {
     if (!row4 || typeof row4 !== "object") return false;
     if (set && !set.has(row4.color)) return false;
     if (pageWant != null && row4.page !== pageWant) return false;
-    if (q && !String(row4.snippet || "").toLowerCase().includes(q)) return false;
+    if (q2 && !String(row4.snippet || "").toLowerCase().includes(q2)) return false;
     return true;
   });
 }
@@ -36388,8 +36389,8 @@ function findDiagramUidFromEl(element, isDiagramUid) {
     if (zoomed && !/^\d{2}-\d{2}-\d{4}(-|$)/.test(zoomed[1])) return zoomed[1];
   }
   if (element.closest?.(".rm-zoom-block-wrapper")) {
-    const pageUid = diagramUidFromLocation();
-    if (pageUid) return pageUid;
+    const pageUid2 = diagramUidFromLocation();
+    if (pageUid2) return pageUid2;
   }
   const host = element.closest?.("[data-uid]");
   if (host?.dataset?.uid) return host.dataset.uid;
@@ -36407,10 +36408,10 @@ function diagramsWithin(root) {
 function isEnhancedProps(pulledProps) {
   return readPlexus(pulledProps)?.v === SCHEMA_VERSION;
 }
-function readEnhanced(api2, uid) {
+function readEnhanced(api3, uid) {
   if (!uid) return false;
   try {
-    const pulled = api2?.data?.pull?.("[:block/props]", [":block/uid", uid]);
+    const pulled = api3?.data?.pull?.("[:block/props]", [":block/uid", uid]);
     return isEnhancedProps(pulled?.[":block/props"] ?? pulled?.props ?? null);
   } catch {
     return false;
@@ -36773,7 +36774,7 @@ var PAGE_QUERY = `[:find ?pu :in $ ?u :where [?b :block/uid ?u] [?b :block/page 
 var CONTAINER_QUERY = `[:find ?cu :in $ ?pu ?cp :where [?p :block/uid ?pu] [?p :block/children ?c] [?c :block/refs ?cp] [?c :block/uid ?cu]]`;
 var AUTHOR_QUERY = `[:find ?title :in $ ?uid :where [?u :user/uid ?uid] [?u :user/display-page ?p] [?p :node/title ?title]]`;
 var TREE_PULL = `[:block/uid :block/string :block/order {:block/children [:block/uid :block/string :block/order {:block/children [:block/uid :block/string :block/order {:block/children [:block/uid :block/string :block/order]}]}]}]`;
-function installCommentHost(host, { api: api2, data = api2?.data, now: now4 = () => /* @__PURE__ */ new Date() } = {}) {
+function installCommentHost(host, { api: api3, data = api3?.data, now: now4 = () => /* @__PURE__ */ new Date() } = {}) {
   if (!host || !data) return host;
   const commentsEid = () => {
     try {
@@ -36824,13 +36825,13 @@ function installCommentHost(host, { api: api2, data = api2?.data, now: now4 = ()
     const target = String(targetUid || "");
     if (!target || !text4) return null;
     const pageRows = host.q(PAGE_QUERY, target) || [];
-    const pageUid = pageRows[0]?.[0] ? String(pageRows[0][0]) : "";
-    const authorRows = host.q(AUTHOR_QUERY, String(api2?.user?.uid?.() || "")) || [];
+    const pageUid2 = pageRows[0]?.[0] ? String(pageRows[0][0]) : "";
+    const authorRows = host.q(AUTHOR_QUERY, String(api3?.user?.uid?.() || "")) || [];
     const authorTitle = authorRows[0]?.[0] ? String(authorRows[0][0]) : "";
     const cp = commentsEid();
     let tree = { children: [] };
-    if (cp != null && pageUid) {
-      const found = host.q(CONTAINER_QUERY, pageUid, cp) || [];
+    if (cp != null && pageUid2) {
+      const found = host.q(CONTAINER_QUERY, pageUid2, cp) || [];
       const containers = [];
       for (const row4 of found) {
         const node2 = data.pull(TREE_PULL, [":block/uid", String(row4[0])]);
@@ -36839,7 +36840,7 @@ function installCommentHost(host, { api: api2, data = api2?.data, now: now4 = ()
       tree = { children: containers };
     }
     const plan = commentThreadPlan(tree, {
-      pageUid,
+      pageUid: pageUid2,
       targetUid: target,
       dateTitle: dailyTitle(now4()),
       authorTitle,
@@ -37440,10 +37441,10 @@ function countReads(data, stats) {
     }
   });
 }
-function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
+function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
   const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
   bindGuardStats(stats);
-  const data = countReads(api2.data, stats);
+  const data = countReads(api3.data, stats);
   const undoLog = [];
   const redoLog = [];
   const UNDO_LOG_MAX = 200;
@@ -37547,10 +37548,10 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     }
     return "";
   };
-  const watchedPdfUrl = (pageUid) => {
+  const watchedPdfUrl = (pageUid2) => {
     for (const [boardUid, slot2] of watchedBoards) {
       if (!slot2 || slot2.n <= 0) continue;
-      const url = pdfUrls.get(`${boardUid}\0${pageUid}`);
+      const url = pdfUrls.get(`${boardUid}\0${pageUid2}`);
       if (typeof url === "string") return url;
     }
     return MISS;
@@ -37587,8 +37588,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     if (honored) {
       for (const key of pdfUrls.keys()) if (key.startsWith(pdfPrefix)) pdfUrls.delete(key);
     }
-    const notePdf = (pageUid, url) => {
-      if (typeof pageUid === "string" && pageUid && typeof url === "string") pdfUrls.set(pdfPrefix + pageUid, url);
+    const notePdf = (pageUid2, url) => {
+      if (typeof pageUid2 === "string" && pageUid2 && typeof url === "string") pdfUrls.set(pdfPrefix + pageUid2, url);
     };
     const walk3 = (cur, asRef, isRoot) => {
       if (!cur || typeof cur !== "object") return;
@@ -37759,7 +37760,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
   };
   const markOnBoard = (candidates2, timed) => {
     const blockUids = candidates2.filter((row4) => row4.kind === "block" && row4.uid).map((row4) => row4.uid);
-    const pageTitles = candidates2.filter((row4) => row4.kind === "page" && row4.title).map((row4) => row4.title);
+    const pageTitles2 = candidates2.filter((row4) => row4.kind === "page" && row4.title).map((row4) => row4.title);
     const onUid = /* @__PURE__ */ new Set();
     const onTitle = /* @__PURE__ */ new Set();
     if (blockUids.length) {
@@ -37777,11 +37778,11 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       ));
       for (const rec of [...direct, ...via]) if (rec?.[0]) onUid.add(rec[0]);
     }
-    if (pageTitles.length) {
+    if (pageTitles2.length) {
       const via = timed("orphan-pages", () => host.q(
         `[:find ?t :in $ [?t ...] ?pat :where [?p :node/title ?t] [?card :block/refs ?p] [?card :block/parents ?d]
  [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
-        pageTitles,
+        pageTitles2,
         DIAGRAM_RE2
       ));
       for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
@@ -37814,7 +37815,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
   };
   const gname = graph ?? graphName();
   const host = {
-    api: api2,
+    api: api3,
     pull,
     // A fresh read, never the board cache: false only when Roam has no block with this uid.
     blockExists(uid) {
@@ -38198,8 +38199,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!missing2.length) return out;
       let rows = [];
       try {
-        const q = data.fast?.q ? data.fast.q.bind(data.fast) : data.q?.bind(data);
-        rows = q ? q("[:find ?u ?s :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/string ?s]]", missing2) || [] : [];
+        const q2 = data.fast?.q ? data.fast.q.bind(data.fast) : data.q?.bind(data);
+        rows = q2 ? q2("[:find ?u ?s :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/string ?s]]", missing2) || [] : [];
       } catch {
         rows = [];
       }
@@ -38274,12 +38275,12 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     // Bytes for a graph file. Encrypted graphs only decrypt through file.get; the URL itself taints a canvas.
     async getFile(url) {
-      const get = api2.file?.get;
+      const get = api3.file?.get;
       if (typeof get !== "function") return null;
       const src = String(url ?? "").trim();
       if (!src) return null;
       try {
-        return await get.call(api2.file, { url: src });
+        return await get.call(api3.file, { url: src });
       } catch {
         return null;
       }
@@ -38314,10 +38315,10 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       return id;
     },
     generateUid() {
-      return api2.util.generateUID();
+      return api3.util.generateUID();
     },
     async createBlock({ parentUid, order = "last", uid, string = "", props, open, viewType } = {}) {
-      const id = uid ?? api2.util.generateUID();
+      const id = uid ?? api3.util.generateUID();
       const block = { uid: id, string };
       if (props !== void 0) block.props = plainKeys(props);
       if (open !== void 0) block.open = open;
@@ -38373,8 +38374,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     // Footnotes already on a page: the top-level header block (exact text) with its note count,
     // the highest (N) alias label anywhere on the page, and whether a "---" rule sits just above
     // the header. null when the page cannot be read.
-    footnoteState(pageUid, header = "#footnotes") {
-      const id = String(pageUid ?? "");
+    footnoteState(pageUid2, header = "#footnotes") {
+      const id = String(pageUid2 ?? "");
       if (!id) return null;
       let res = null;
       try {
@@ -38568,21 +38569,21 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       redoLog.length = 0;
     },
     openInSidebar(uid, type = "block") {
-      return api2.ui.rightSidebar.addWindow({ window: { type, "block-uid": uid } });
+      return api3.ui.rightSidebar.addWindow({ window: { type, "block-uid": uid } });
     },
     openBlock(uid) {
-      return api2.ui.mainWindow.openBlock({ block: { uid } });
+      return api3.ui.mainWindow.openBlock({ block: { uid } });
     },
     openPage(uid) {
-      return api2.ui.mainWindow.openPage({ page: { uid } });
+      return api3.ui.mainWindow.openPage({ page: { uid } });
     },
     renderString(el2, string) {
       stats.renders++;
-      return api2.ui.components.renderString({ el: el2, string });
+      return api3.ui.components.renderString({ el: el2, string });
     },
     renderBlock(el2, uid, { open = true } = {}) {
       stats.renders++;
-      return api2.ui.components.renderBlock({ uid, el: el2, "open?": open });
+      return api3.ui.components.renderBlock({ uid, el: el2, "open?": open });
     },
     renderPage(el2, uid, opts) {
       stats.renders++;
@@ -38590,17 +38591,17 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       if (opts && typeof opts === "object") {
         for (const key of Object.keys(opts)) if (key !== "uid" && key !== "el") props[key] = opts[key];
       }
-      return api2.ui.components.renderPage(props);
+      return api3.ui.components.renderPage(props);
     },
     unmount(el2) {
-      return api2.ui.components.unmountNode({ el: el2 });
+      return api3.ui.components.unmountNode({ el: el2 });
     },
     q(query, ...inputs) {
       return data.fast?.q ? data.fast.q(query, ...inputs) : data.q(query, ...inputs);
     },
     // Page children for the highlight picker, four levels. No url query.
-    pdfHighlightTree(pageUid) {
-      const uid = typeof pageUid === "string" ? pageUid : "";
+    pdfHighlightTree(pageUid2) {
+      const uid = typeof pageUid2 === "string" ? pageUid2 : "";
       if (!uid) return [];
       let res = null;
       try {
@@ -38613,8 +38614,8 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     // Page attribute only. No block query and no file fetch.
     // A watched board's pull already carries :pdf/url for ref pages.
-    pdfPageUrl(pageUid) {
-      const uid = typeof pageUid === "string" ? pageUid : "";
+    pdfPageUrl(pageUid2) {
+      const uid = typeof pageUid2 === "string" ? pageUid2 : "";
       if (!uid) return "";
       const live2 = liveCached(uid);
       if (live2 && typeof live2[":pdf/url"] === "string") return live2[":pdf/url"];
@@ -38654,12 +38655,12 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       if (typeof url !== "string") return "";
       const needle = url.trim();
       if (!needle || /[\r\n]/.test(url)) return "";
-      const pageUid = readPdfCover(needle)?.pageUid;
-      if (typeof pageUid !== "string" || pageUid === "") return "";
+      const pageUid2 = readPdfCover(needle)?.pageUid;
+      if (typeof pageUid2 !== "string" || pageUid2 === "") return "";
       const take = (query) => {
-        for (const row4 of queryRows(host, query, pageUid, needle)) {
+        for (const row4 of queryRows(host, query, pageUid2, needle)) {
           const cell = Array.isArray(row4) ? row4[0] : row4;
-          if (typeof cell === "string" && cell && cell !== pageUid) return cell;
+          if (typeof cell === "string" && cell && cell !== pageUid2) return cell;
         }
         return "";
       };
@@ -38731,7 +38732,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     // The graph Roam has open (its own API first, the window hash second).
     graphName() {
-      const live2 = api2?.graph?.name;
+      const live2 = api3?.graph?.name;
       return typeof live2 === "string" && live2 ? live2 : gname;
     },
     pageExists(title) {
@@ -38762,7 +38763,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         DIAGRAM_RE2
       ) || [];
       const out = [];
-      for (const [uid, string, pageTitle, pageUid] of rows) {
+      for (const [uid, string, pageTitle, pageUid2] of rows) {
         let res;
         try {
           res = pull(BOARD_META_PATTERN, eidKey(uid));
@@ -38782,7 +38783,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
           uid,
           title: parseBoardTitle(string) || "Untitled board",
           pageTitle,
-          pageUid,
+          pageUid: pageUid2,
           count,
           edited: Number.isFinite(edited) ? edited : null
         });
@@ -38961,16 +38962,16 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     // True when the graph is end-to-end encrypted: its files are .enc and no outside service can read them.
     graphEncrypted() {
       try {
-        const flag = api2.graph?.isEncrypted;
-        return typeof flag === "function" ? Boolean(flag.call(api2.graph)) : flag === true;
+        const flag = api3.graph?.isEncrypted;
+        return typeof flag === "function" ? Boolean(flag.call(api3.graph)) : flag === true;
       } catch {
         return false;
       }
     },
     async uploadFile(file) {
-      const upload = api2.file?.upload;
+      const upload = api3.file?.upload;
       if (typeof upload !== "function") throw new Error("upload-unavailable");
-      const res = await upload.call(api2.file, { file });
+      const res = await upload.call(api3.file, { file });
       const raw = typeof res === "string" ? res : res?.url;
       const md = typeof raw === "string" ? /^\s*!\[[^\]]*\]\((.+)\)\s*$/s.exec(raw) : null;
       const hit = typeof raw === "string" ? /https?:\/\/[^\s)}\]"']+/.exec(raw) : null;
@@ -39536,12 +39537,12 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       const cardUid = String(item.uid ?? "");
       const targetUid = kind === "block" ? String(item.target?.uid || cardUid) : cardUid;
       const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
-      let pageUid = null;
+      let pageUid2 = null;
       let body = String(item.string ?? "");
       let attrSource = [];
       if (pageTitle) {
         const page = host.pullPage(pageTitle);
-        pageUid = page?.[":block/uid"] ?? null;
+        pageUid2 = page?.[":block/uid"] ?? null;
         const kids = Array.isArray(page?.[":block/children"]) ? page[":block/children"] : [];
         attrSource = kids.map((k) => k?.[":block/string"] ?? "");
         body = pageTitle;
@@ -39602,9 +39603,9 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       }
       return {
         kind,
-        uid: pageTitle ? pageUid : targetUid,
+        uid: pageTitle ? pageUid2 : targetUid,
         cardUid,
-        pageUid,
+        pageUid: pageUid2,
         title: item.title || pageTitle || "",
         body,
         attributes: attributeRows(attrSource),
@@ -39640,18 +39641,18 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       const placements = [];
       for (const row4 of direct) {
         const boardUid = row4?.[0];
-        const pageUid = row4?.[1];
-        if (!boardUid || !pageUid || !enhanced(boardUid)) continue;
+        const pageUid2 = row4?.[1];
+        if (!boardUid || !pageUid2 || !enhanced(boardUid)) continue;
         if (!isShowableCard(propsOf(id)?.plexus)) continue;
-        placements.push({ boardUid, pageUid, cardUid: id, refUids: [] });
+        placements.push({ boardUid, pageUid: pageUid2, cardUid: id, refUids: [] });
       }
       for (const row4 of via) {
         const boardUid = row4?.[0];
-        const pageUid = row4?.[1];
+        const pageUid2 = row4?.[1];
         const cardUid = row4?.[2];
-        if (!boardUid || !pageUid || !cardUid || cardUid === id || !enhanced(boardUid)) continue;
+        if (!boardUid || !pageUid2 || !cardUid || cardUid === id || !enhanced(boardUid)) continue;
         if (!isShowableCard(propsOf(cardUid)?.plexus)) continue;
-        placements.push({ boardUid, pageUid, cardUid, refUids: [id] });
+        placements.push({ boardUid, pageUid: pageUid2, cardUid, refUids: [id] });
       }
       return locateShowTarget(id, placements);
     }
@@ -39659,7 +39660,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
   host.prefetchBoard.warm = (uid) => Boolean(cache.blockOf(String(uid ?? ""))?.[":block/uid"]);
   host.prefetchBoard.refBoards = (uid) => cache.refBoardsOf(String(uid ?? ""));
   host.prefetchBoard.pageBoards = (title) => cache.pageBoardsOf(typeof title === "string" ? title : "");
-  installCommentHost(host, { api: api2, data });
+  installCommentHost(host, { api: api3, data });
   return host;
 }
 
@@ -40205,9 +40206,9 @@ function addPublicCard(opts = {}, createFn) {
     x: Number.isFinite(x) ? x : 40,
     y: Number.isFinite(y) ? y : 40
   };
-  const make3 = typeof create === "function" ? create : createFn;
-  if (typeof make3 !== "function") return op;
-  return make3(op);
+  const make4 = typeof create === "function" ? create : createFn;
+  if (typeof make4 !== "function") return op;
+  return make4(op);
 }
 var PARSE_BLOCK_CHUNK = 400;
 var PARSE_CHUNK_CAP = 10;
@@ -41589,8 +41590,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const hasDefs = defs && Object.keys(defs).length > 0;
     if (!hasDefs && !hasFootnoteTokens(list)) return null;
     if (footnoteFormatNow() !== "extension") return plainFootnotes(list, { defs });
-    const pageUid = anchor && host.blockPageUid?.(anchor) || host.blockPageUid?.(uid) || "";
-    const state = pageUid ? host.footnoteState?.(pageUid, FOOTNOTES_HEADER) : null;
+    const pageUid2 = anchor && host.blockPageUid?.(anchor) || host.blockPageUid?.(uid) || "";
+    const state = pageUid2 ? host.footnoteState?.(pageUid2, FOOTNOTES_HEADER) : null;
     const headerWrites = state && !state.headerUid ? 2 : 0;
     const cap4 = state ? Math.max(0, Math.min(FOOTNOTE_CAP, WRITE_BUDGET - reserve - headerWrites)) : 0;
     const plan = planFootnotes(list, {
@@ -41602,9 +41603,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (plan.notes.length) {
       let header = state.headerUid;
       if (!header) {
-        await host.createBlock({ parentUid: pageUid, order: "last", string: "---" });
+        await host.createBlock({ parentUid: pageUid2, order: "last", string: "---" });
         header = host.generateUid();
-        await host.createBlock({ parentUid: pageUid, order: "last", uid: header, string: FOOTNOTES_HEADER, viewType: "numbered" });
+        await host.createBlock({ parentUid: pageUid2, order: "last", uid: header, string: FOOTNOTES_HEADER, viewType: "numbered" });
       }
       for (const note of plan.notes) {
         await host.createBlock({ parentUid: header, order: "last", uid: note.uid, string: note.text });
@@ -42111,10 +42112,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     createDrawing({ x, y } = {}) {
       if (!board2 || destroyed || gone) return Promise.resolve(void 0);
       const spec = drawingCreateSpec(uid);
-      const api3 = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
+      const api4 = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
       const place3 = () => {
-        if (api3 && typeof api3.create === "function") {
-          return Promise.resolve(api3.create({ parentUid: spec.parentUid, order: spec.order })).then((made) => {
+        if (api4 && typeof api4.create === "function") {
+          return Promise.resolve(api4.create({ parentUid: spec.parentUid, order: spec.order })).then((made) => {
             const id = made?.uid || null;
             if (id) host.adoptCreated?.(id);
             return id;
@@ -42235,12 +42236,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return txn((t) => {
         const ids = [];
         for (const row4 of rows) {
-          let pageUid = row4.pageUid || null;
-          if (row4.newPage) pageUid = t.page({ uid: pageUid || void 0, title: row4.title });
-          if (row4.url && pageUid) {
+          let pageUid2 = row4.pageUid || null;
+          if (row4.newPage) pageUid2 = t.page({ uid: pageUid2 || void 0, title: row4.title });
+          if (row4.url && pageUid2) {
             const string = `{{[[pdf]]: ${row4.url}}}`;
-            const pdfUid = t.create({ parent: pageUid, order: 0, string });
-            pendingPdfPages.set(row4.title, { pageUid, title: row4.title, pdfUid, string });
+            const pdfUid = t.create({ parent: pageUid2, order: 0, string });
+            pendingPdfPages.set(row4.title, { pageUid: pageUid2, title: row4.title, pdfUid, string });
           }
           ids.push(cardAt(t, pageCardString(row4.title), row4.x, row4.y, DEFAULT_SIZES.pdf));
         }
@@ -42304,12 +42305,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           const at = Math.max(0, kids.findIndex((k) => k[UID] === m.pdfUid));
           const pdfString = rawNode(m.pdfUid)?.[STR] || `{{[[pdf]]: ${m.url}}}`;
           const originalProps = clone(rawPlexus(m.pdfUid));
-          const pageUid = m.page.uid || t.page({ uid: m.page.newUid || void 0, title: m.page.title });
-          records.push({ pdfUid: m.pdfUid, originalParentUid: parent, originalOrder: at, originalProps, newCardUid: m.cardUid, pageUid, pageTitle: m.page.title, pageCreated: !m.page.uid });
+          const pageUid2 = m.page.uid || t.page({ uid: m.page.newUid || void 0, title: m.page.title });
+          records.push({ pdfUid: m.pdfUid, originalParentUid: parent, originalOrder: at, originalProps, newCardUid: m.cardUid, pageUid: pageUid2, pageTitle: m.page.title, pageCreated: !m.page.uid });
           t.props(m.pdfUid, null);
-          t.move(m.pdfUid, pageUid, 0);
+          t.move(m.pdfUid, pageUid2, 0);
           t.create({ parent, uid: m.cardUid, string: m.cardString, plexus: m.layout, order: at });
-          pendingPdfPages.set(m.page.title, { pageUid, title: m.page.title, pdfUid: m.pdfUid, string: pdfString });
+          pendingPdfPages.set(m.page.title, { pageUid: pageUid2, title: m.page.title, pdfUid: m.pdfUid, string: pdfString });
         }
         let edges = 0;
         for (const e2 of plan.edges || []) {
@@ -43397,7 +43398,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     return sectionUid;
   }
   if (linkMode !== "off" && board2) refreshLinks();
-  const api2 = {
+  const api3 = {
     uid,
     host,
     settings,
@@ -43424,7 +43425,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   };
   for (const fn of [...extensions]) {
     try {
-      fn(session, api2);
+      fn(session, api3);
     } catch (err) {
       console.error("[plexus session] extension", err);
     }
@@ -43480,12 +43481,12 @@ function findNode2(node2, uid) {
   return null;
 }
 var isEnhancedBoardNode = (node2) => Boolean(node2) && readPlexus(node2[PROPS2])?.v === 2 && classifyString(node2[STR2]).kind === "board";
-extendSession((session, api2) => {
-  const { host } = api2;
+extendSession((session, api3) => {
+  const { host } = api3;
   const gen = () => host.generateUid();
   function placeCard(t, string, x, y, { w, h, color } = {}, exclude) {
-    const board2 = api2.board();
-    const rects = api2.rects();
+    const board2 = api3.board();
+    const rects = api3.rects();
     const cw = w ?? DEFAULT_SIZES.card.w;
     const ch = h ?? DEFAULT_SIZES.card.h;
     const parent = containerAt(board2, { x: x + cw / 2, y: y + ch / 2 }, { rects, exclude });
@@ -43494,7 +43495,7 @@ extendSession((session, api2) => {
     if (w !== void 0) layout.w = w;
     if (h !== void 0) layout.h = h;
     if (color) layout.color = color;
-    const look = lookForNewString(string, api2.setting("default-card-look", "block"));
+    const look = lookForNewString(string, api3.setting("default-card-look", "block"));
     if (look) layout.look = look;
     return t.create({ parent, string, plexus: serializeItemLayout(layout) });
   }
@@ -43512,8 +43513,8 @@ extendSession((session, api2) => {
     }
   }
   function cloneSet(t, src, entries, exclude) {
-    const board2 = api2.board();
-    const rects = api2.rects();
+    const board2 = api3.board();
+    const rects = api3.rects();
     const at = new Map(entries.map((e2) => [e2.uid, e2]));
     const uidMap = /* @__PURE__ */ new Map();
     const tops = [];
@@ -43525,8 +43526,8 @@ extendSession((session, api2) => {
       if (item.kind === "board" && !item.enhanced) continue;
       const parent = containerAt(board2, { x: e2.x + item.w / 2, y: e2.y + item.h / 2 }, { rects, exclude });
       const rel = toRelative(board2, parent, { x: e2.x, y: e2.y }, rects);
-      const x = api2.round1(rel.x);
-      const y = api2.round1(rel.y);
+      const x = api3.round1(rel.x);
+      const y = api3.round1(rel.y);
       const simple = item.type === "text" || ["page", "block", "image"].includes(item.kind);
       if (simple) {
         const plexus = { ...readPlexus(node2[PROPS2]) ?? {}, x, y };
@@ -43541,7 +43542,7 @@ extendSession((session, api2) => {
       const patch = { x, y };
       if (item.type === "section") Object.assign(patch, { type: "section", w: item.w, h: item.h });
       const tree = isOldTableCard(item) ? wrapTableNode(node2, item.title) : node2;
-      const plan = planSubtreeClone(tree, { genUid: gen, parentUid: parent, order: api2.insertOrder(parent), plexusPatch: patch, uidMap });
+      const plan = planSubtreeClone(tree, { genUid: gen, parentUid: parent, order: api3.insertOrder(parent), plexusPatch: patch, uidMap });
       const oldOf = new Map([...uidMap].map(([o, n2]) => [n2, o]));
       for (const c of plan.creates) {
         const plexus = c.props?.[PLEXUS_KEY] ? { ...c.props[PLEXUS_KEY] } : null;
@@ -43570,7 +43571,7 @@ extendSession((session, api2) => {
         const it = src.board.items.get(old);
         refs.set(fresh, it && (it.target?.kind === "page" || it.target?.kind === "block") ? semanticRef(it) : `((${fresh}))`);
       }
-      const containerUid = api2.ensureContainer(t);
+      const containerUid = api3.ensureContainer(t);
       for (const c of planEdgeClones(edges, uidMap, { genUid: gen, containerUid, refOfNew: (fresh) => refs.get(fresh) })) {
         t.create({ parent: c.parent, uid: c.uid, string: c.string, plexus: c.props[PLEXUS_KEY], order: "last" });
       }
@@ -43582,9 +43583,9 @@ extendSession((session, api2) => {
   Object.assign(session, {
     // New top-level uids. asRef=true makes ref cards instead. The pinned flag is not copied.
     duplicateItems(uids, { dx = 24, dy = 24, asRef = false } = {}) {
-      return api2.txn((t) => {
-        const board2 = api2.board();
-        const rects = api2.rects();
+      return api3.txn((t) => {
+        const board2 = api3.board();
+        const rects = api3.rects();
         const top = topLevelOf(board2, uids ?? []);
         if (!top.length) return [];
         const exclude = new Set(top);
@@ -43593,26 +43594,26 @@ extendSession((session, api2) => {
           made = top.map((id) => {
             const r = rects.get(id);
             const tableUid = board2.items.get(id)?.tableUid;
-            return placeCard(t, tableUid ? `((${tableUid}))` : api2.refOf(id), r.x + dx, r.y + dy, {}, exclude);
+            return placeCard(t, tableUid ? `((${tableUid}))` : api3.refOf(id), r.x + dx, r.y + dy, {}, exclude);
           });
         } else {
           const entries = top.map((id) => ({ uid: id, x: rects.get(id).x + dx, y: rects.get(id).y + dy }));
-          made = cloneSet(t, { board: board2, node: api2.rawNode }, entries, exclude);
+          made = cloneSet(t, { board: board2, node: api3.rawNode }, entries, exclude);
         }
-        api2.applyFit(t, made);
+        api3.applyFit(t, made);
         return made;
       }).then((made) => made ?? []);
     },
     // A detached copy of the items (and their subtrees and the connections between them) as a synthetic board
     // tree. A cut puts it in the clipboard payload, so the paste no longer depends on the deleted blocks.
     snapshotItems(uids) {
-      const board2 = api2.board();
+      const board2 = api3.board();
       if (!board2) return null;
       const top = topLevelOf(board2, uids ?? []);
       if (!top.length) return null;
       const set = new Set(top);
       for (const id of top) for (const d of descendantsOf(board2, id)) set.add(d);
-      const copy = (id) => JSON.parse(JSON.stringify(api2.rawNode(id) ?? null));
+      const copy = (id) => JSON.parse(JSON.stringify(api3.rawNode(id) ?? null));
       const nodes = top.map(copy).filter(Boolean);
       if (!nodes.length) return null;
       const edgeNodes = [...board2.edges.values()].filter((e2) => e2.valid && set.has(e2.from) && set.has(e2.to)).map((e2) => copy(e2.uid)).filter(Boolean);
@@ -43626,7 +43627,7 @@ extendSession((session, api2) => {
       const payload = data?.kind === "plexus" ? data.data : data;
       if (!payload || !Array.isArray(payload.items) || !payload.items.length) return Promise.resolve([]);
       if (payload.snapshot && typeof payload.snapshot === "object") mode = "clone";
-      return api2.txn((t) => {
+      return api3.txn((t) => {
         let made;
         if (mode === "clone") {
           let src;
@@ -43634,7 +43635,7 @@ extendSession((session, api2) => {
             const board2 = buildBoard(payload.snapshot);
             if (!board2) return [];
             src = { board: board2, node: (id) => findNode2(payload.snapshot, id) };
-          } else if (payload.board === session.uid) src = { board: api2.board(), node: api2.rawNode };
+          } else if (payload.board === session.uid) src = { board: api3.board(), node: api3.rawNode };
           else {
             const pulled = host.pullBoard(payload.board);
             const board2 = pulled ? buildBoard(pulled) : null;
@@ -43645,9 +43646,9 @@ extendSession((session, api2) => {
           const entries = payload.items.map((i) => ({ uid: i.uid, x: x + (i.x - bounds.x), y: y + (i.y - bounds.y) }));
           made = cloneSet(t, src, entries);
         } else {
-          made = capBulk(refCardStrings(payload, { x, y }), api2.emit).map((c) => placeCard(t, c.string, c.x, c.y, { w: c.w, h: c.h, color: c.color }));
+          made = capBulk(refCardStrings(payload, { x, y }), api3.emit).map((c) => placeCard(t, c.string, c.x, c.y, { w: c.w, h: c.h, color: c.color }));
         }
-        api2.applyFit(t, made);
+        api3.applyFit(t, made);
         return made;
       }).then((made) => made ?? []);
     },
@@ -43655,25 +43656,25 @@ extendSession((session, api2) => {
     pasteText(text4, { x = 0, y = 0 } = {}) {
       const list = (Array.isArray(text4) ? text4 : parsePastedText(text4)).map((e2) => typeof e2 === "string" ? e2 : e2?.string).filter((s) => typeof s === "string" && s.trim() !== "");
       if (!list.length) return Promise.resolve([]);
-      return api2.txn((t) => {
-        const made = capBulk(stackAt(list, x, y), api2.emit).map((c) => placeCard(t, c.string, c.x, c.y));
-        api2.applyFit(t, made);
+      return api3.txn((t) => {
+        const made = capBulk(stackAt(list, x, y), api3.emit).map((c) => placeCard(t, c.string, c.x, c.y));
+        api3.applyFit(t, made);
         return made;
       }).then((made) => made ?? []);
     },
     // Adds ref cards for the items to the right of the target board's content. Resolves {added, title} or null.
     sendToBoard(uids, targetUid) {
-      const board2 = api2.board();
+      const board2 = api3.board();
       if (!board2 || !targetUid || targetUid === session.uid) return Promise.resolve(null);
       const top = topLevelOf(board2, uids ?? []).filter((id) => id !== targetUid);
       if (!top.length) return Promise.resolve(null);
-      const node2 = api2.rawNode(targetUid);
+      const node2 = api3.rawNode(targetUid);
       if (node2) {
         if (!isEnhancedBoardNode(node2)) return Promise.resolve(null);
         const origin2 = outlineOrigin(boardPreview({ uid: targetUid, string: node2[STR2], content: node2[KIDS2] ?? [] }));
         const title = parseBoardTitle(node2[STR2]) || UNTITLED_BOARD;
-        return api2.txn((t) => {
-          for (const c of stackAt(top.map((id) => api2.refOf(id)), origin2.x, origin2.y)) {
+        return api3.txn((t) => {
+          for (const c of stackAt(top.map((id) => api3.refOf(id)), origin2.x, origin2.y)) {
             t.create({ parent: targetUid, string: c.string, plexus: serializeItemLayout({ x: c.x, y: c.y }) });
           }
           return { added: top.length, title };
@@ -43683,8 +43684,8 @@ extendSession((session, api2) => {
       if (!isEnhancedBoardNode(pulled)) return Promise.resolve(null);
       const target = buildBoard(pulled);
       const origin = outlineOrigin(boardPreview({ uid: targetUid, string: pulled[STR2], content: pulled[KIDS2] ?? [] }));
-      const cards = stackAt(top.map((id) => api2.refOf(id)), origin.x, origin.y);
-      return api2.queue.run(async () => {
+      const cards = stackAt(top.map((id) => api3.refOf(id)), origin.x, origin.y);
+      return api3.queue.run(async () => {
         for (let i = 0; i < cards.length; i++) {
           await host.createBlock({
             parentUid: targetUid,
@@ -43696,7 +43697,7 @@ extendSession((session, api2) => {
         return { added: cards.length, title: target.title || UNTITLED_BOARD };
       }).catch((err) => {
         console.error("[plexus session] sendToBoard", err);
-        api2.emit("toast", { message: "Couldn't send the cards to that board." });
+        api3.emit("toast", { message: "Couldn't send the cards to that board." });
         return null;
       });
     },
@@ -43704,7 +43705,7 @@ extendSession((session, api2) => {
     // Children already on the board as ref cards are skipped. Two writes per child, so the cap is 22.
     spreadChildren(cardUid) {
       const none = { added: 0, skipped: 0 };
-      const board2 = api2.board();
+      const board2 = api3.board();
       const item = board2?.items.get(cardUid);
       if (!item || item.type !== "card") return Promise.resolve(none);
       let kids;
@@ -43728,13 +43729,13 @@ extendSession((session, api2) => {
       }
       if (!fresh.length) return Promise.resolve({ added: 0, skipped });
       const list = fresh.length > SPREAD_CAP ? fresh.slice(0, SPREAD_CAP) : fresh;
-      if (fresh.length > SPREAD_CAP) api2.emit("toast", { message: `Added ${SPREAD_CAP} of ${fresh.length} (Roam undo holds 50 changes)` });
-      const own = api2.rects().get(cardUid);
+      if (fresh.length > SPREAD_CAP) api3.emit("toast", { message: `Added ${SPREAD_CAP} of ${fresh.length} (Roam undo holds 50 changes)` });
+      const own = api3.rects().get(cardUid);
       if (!own) return Promise.resolve(none);
       const x = own.x + own.w + SPREAD_GAP;
-      return api2.txn((t) => {
-        const refOfCard = api2.refOf(cardUid);
-        const container = api2.ensureContainer(t);
+      return api3.txn((t) => {
+        const refOfCard = api3.refOf(cardUid);
+        const container = api3.ensureContainer(t);
         const made = [];
         let y = own.y;
         for (const k of list) {
@@ -43748,7 +43749,7 @@ extendSession((session, api2) => {
           });
           y += DEFAULT_SIZES.card.h + STACK_GAP;
         }
-        api2.applyFit(t, made);
+        api3.applyFit(t, made);
         return { added: made.length, skipped, total: fresh.length };
       }).then((res) => res ?? none);
     },
@@ -43767,7 +43768,7 @@ extendSession((session, api2) => {
         colorBranches: opts.colorBranches
       });
       const gaps = MIND_GAPS[preset.spacing];
-      const board2 = api2.board();
+      const board2 = api3.board();
       const item = board2?.items.get(cardUid);
       if (!item || item.type !== "card") return Promise.resolve(none);
       const plain2 = (list) => list.filter((n2) => n2?.uid).map((n2) => ({
@@ -43778,10 +43779,10 @@ extendSession((session, api2) => {
       const rawTree = (list) => list.filter((n2) => n2?.[UID2]).map((n2) => ({
         uid: n2[UID2],
         string: n2[STR2] ?? "",
-        children: rawTree(api2.kidsOf(n2))
+        children: rawTree(api3.kidsOf(n2))
       }));
       let tree;
-      if (item.kind === "note") tree = rawTree(api2.kidsOf({ [KIDS2]: item.content }));
+      if (item.kind === "note") tree = rawTree(api3.kidsOf({ [KIDS2]: item.content }));
       else if (item.kind === "block") tree = plain2(host.pullTree(item.target.uid, preset.depth, max) ?? []);
       else if (item.kind === "page") tree = plain2(host.pagePreview(item.target.title, preset.depth, max)?.blocks ?? []);
       else return Promise.resolve(none);
@@ -43799,7 +43800,7 @@ extendSession((session, api2) => {
       const chosen = new Set([...flat3].sort((a, b) => a.depth - b.depth || a.at - b.at).slice(0, Math.max(0, max)).map((f) => f.uid));
       const picked = flat3.filter((f) => chosen.has(f.uid));
       if (!picked.length) return Promise.resolve(none);
-      const rects = api2.rects();
+      const rects = api3.rects();
       const own = rects.get(cardUid);
       const onBoard = /* @__PURE__ */ new Map();
       for (const it of board2.items.values()) {
@@ -43821,9 +43822,9 @@ extendSession((session, api2) => {
           else colorOf3.set(f.uid, branchColor(branch++));
         }
       }
-      return api2.txn((t) => {
+      return api3.txn((t) => {
         const cardOf = /* @__PURE__ */ new Map();
-        const refOfCard = /* @__PURE__ */ new Map([[cardUid, api2.refOf(cardUid)]]);
+        const refOfCard = /* @__PURE__ */ new Map([[cardUid, api3.refOf(cardUid)]]);
         const created = [];
         const shift = /* @__PURE__ */ new Map();
         for (const f of picked) {
@@ -43833,7 +43834,7 @@ extendSession((session, api2) => {
             const r = rects.get(have);
             shift.set(f.uid, r ? { dx: r.x - (own.x + p.x), dy: r.y - (own.y + p.y) } : { dx: 0, dy: 0 });
             cardOf.set(f.uid, have);
-            refOfCard.set(have, api2.refOf(have));
+            refOfCard.set(have, api3.refOf(have));
             continue;
           }
           const inherited = shift.get(f.parent) ?? { dx: 0, dy: 0 };
@@ -43849,7 +43850,7 @@ extendSession((session, api2) => {
           const from = f.parent && cardOf.has(f.parent) ? cardOf.get(f.parent) : cardUid;
           const to = cardOf.get(f.uid);
           if (from === to || findEdge(board2, from, to)) continue;
-          container ?? (container = api2.ensureContainer(t));
+          container ?? (container = api3.ensureContainer(t));
           t.create({
             parent: container,
             order: "last",
@@ -43858,7 +43859,7 @@ extendSession((session, api2) => {
           });
           edges++;
         }
-        api2.applyFit(t, created);
+        api3.applyFit(t, created);
         const skipped = flat3.length - picked.length;
         return skipped > 0 ? { added: created.length, edges, skipped, total: flat3.length } : { added: created.length, edges };
       }).then((res) => res ?? none);
@@ -43978,16 +43979,16 @@ async function writeChunks(chunks, write, toast) {
     if (chunks.length > 1) toast(`Template ${i + 1} of ${chunks.length}`);
   }
 }
-extendSession((session, api2) => {
-  const { host } = api2;
+extendSession((session, api3) => {
+  const { host } = api3;
   session.insertTemplate = (id, rect) => {
     const starter = starterById(id);
-    const board2 = api2.board();
+    const board2 = api3.board();
     if (!starter || !board2) return Promise.resolve(null);
     const d = DEFAULT_BOARD_CARD;
     const r = { x: rect?.x ?? 0, y: rect?.y ?? 0, w: rect?.w ?? d.w, h: rect?.h ?? d.h };
-    const parent = containerAt(board2, { x: r.x + r.w / 2, y: r.y + r.h / 2 }, { rects: api2.rects() });
-    const rel = toRelative(board2, parent, { x: r.x, y: r.y }, api2.rects());
+    const parent = containerAt(board2, { x: r.x + r.w / 2, y: r.y + r.h / 2 }, { rects: api3.rects() });
+    const rel = toRelative(board2, parent, { x: r.x, y: r.y }, api3.rects());
     const plan = planTemplate(id, {
       genUid: () => host.generateUid(),
       parentUid: parent,
@@ -43995,7 +43996,7 @@ extendSession((session, api2) => {
     });
     if (!plan?.creates.length) return Promise.resolve(null);
     const rootUid = plan.rootUid;
-    return writeChunks(plan.chunks, (chunk) => api2.txn((t) => {
+    return writeChunks(plan.chunks, (chunk) => api3.txn((t) => {
       for (const op of chunk) {
         t.create({
           uid: op.uid,
@@ -44006,23 +44007,23 @@ extendSession((session, api2) => {
           open: op.open
         });
       }
-    }), (message) => api2.emit("toast", { message })).then(() => {
-      api2.emit("toast", {
+    }), (message) => api3.emit("toast", { message })).then(() => {
+      api3.emit("toast", {
         message: `Inserted ${starter.title}`,
-        action: { label: "Undo", run: () => api2.txn((t) => t.del(rootUid)) }
+        action: { label: "Undo", run: () => api3.txn((t) => t.del(rootUid)) }
       });
       return rootUid;
     });
   };
   session.saveAsTemplate = async () => {
-    const tree = api2.rawNode(api2.uid);
+    const tree = api3.rawNode(api3.uid);
     if (!tree) return null;
-    const pageUid = await host.ensurePage?.(TEMPLATE_PAGE);
-    if (!pageUid) {
-      api2.emit("toast", { message: "Couldn't open the templates page." });
+    const pageUid2 = await host.ensurePage?.(TEMPLATE_PAGE);
+    if (!pageUid2) {
+      api3.emit("toast", { message: "Couldn't open the templates page." });
       return null;
     }
-    const plan = planCopy(tree, { genUid: () => host.generateUid(), parentUid: pageUid });
+    const plan = planCopy(tree, { genUid: () => host.generateUid(), parentUid: pageUid2 });
     if (!plan.creates.length) return null;
     const rootUid = plan.rootUid;
     await writeChunks(plan.chunks, async (chunk) => {
@@ -44038,8 +44039,8 @@ extendSession((session, api2) => {
           });
         }
       });
-    }, (message) => api2.emit("toast", { message }));
-    api2.emit("toast", {
+    }, (message) => api3.emit("toast", { message }));
+    api3.emit("toast", {
       message: "Saved board as template",
       action: { label: "Undo", run: () => host.deleteBlock(rootUid) }
     });
@@ -44049,18 +44050,18 @@ extendSession((session, api2) => {
 
 // src/snapshots.js
 init_snapshots();
-extendSession((session, api2) => {
+extendSession((session, api3) => {
   session.saveSnapshot = (now4 = /* @__PURE__ */ new Date()) => {
-    const board2 = api2.board();
+    const board2 = api3.board();
     if (!board2) return Promise.resolve(null);
     const title = snapshotTitle(now4);
     if (!title) return Promise.resolve(null);
     const items = captureLayout(board2);
-    return api2.txn((t) => {
+    return api3.txn((t) => {
       let parent = board2.snapshotsUid;
       if (!parent) {
         parent = t.create({
-          parent: api2.uid,
+          parent: api3.uid,
           string: SNAPSHOTS_TITLE,
           plexus: { type: "snapshots" },
           open: false
@@ -44074,16 +44075,16 @@ extendSession((session, api2) => {
     });
   };
   session.restoreSnapshot = async (snapUid) => {
-    const board2 = api2.board();
+    const board2 = api3.board();
     const snap = board2?.snapshots?.find((item) => item.uid === snapUid);
     if (!snap) return false;
     const chunks = planRestore(snap.items, board2);
     for (const chunk of chunks) {
-      await api2.txn((t) => {
+      await api3.txn((t) => {
         for (const op of chunk) {
           if (op.op === "move") t.move(op.uid, op.parent);
           else {
-            t.props(op.uid, api2.itemPlexus(op.uid, {
+            t.props(op.uid, api3.itemPlexus(op.uid, {
               x: op.x,
               y: op.y,
               w: op.w,
@@ -44095,11 +44096,11 @@ extendSession((session, api2) => {
         }
       });
     }
-    api2.emit("toast", { message: `Restored ${snap.title}` });
+    api3.emit("toast", { message: `Restored ${snap.title}` });
     return true;
   };
-  session.deleteSnapshot = (snapUid) => api2.txn((t) => {
-    const snap = api2.board()?.snapshots?.find((item) => item.uid === snapUid);
+  session.deleteSnapshot = (snapUid) => api3.txn((t) => {
+    const snap = api3.board()?.snapshots?.find((item) => item.uid === snapUid);
     if (!snap) return false;
     t.del(snapUid);
     return true;
@@ -44159,45 +44160,45 @@ function captionForView(sections, point, fallbackTitle) {
 var UID3 = ":block/uid";
 var STR3 = ":block/string";
 var CONTAINER = "{{[[plexus-regions]]}}";
-function regionsParent(api2, board2) {
+function regionsParent(api3, board2) {
   if (board2.regionsUid) return board2.regionsUid;
-  const root = api2.rawNode(api2.uid);
-  for (const child of api2.kidsOf(root)) {
+  const root = api3.rawNode(api3.uid);
+  for (const child of api3.kidsOf(root)) {
     const text4 = child[STR3] ?? child.string ?? "";
     if (isContainerString(text4)) return child[UID3] || child.uid;
   }
   return null;
 }
-function viewRegion(api2, uid) {
-  const node2 = api2.rawNode(uid);
+function viewRegion(api3, uid) {
+  const node2 = api3.rawNode(uid);
   if (!node2) return null;
   const region = parseRegion(node2[STR3] ?? node2.string ?? "");
   if (!region || region.kind !== "view" || region.supported !== true) return null;
   return region;
 }
-function imageCardContainer(api2, cardUid) {
-  const card2 = api2.rawNode(cardUid);
+function imageCardContainer(api3, cardUid) {
+  const card2 = api3.rawNode(cardUid);
   if (!card2) return null;
-  for (const child of api2.kidsOf(card2)) {
+  for (const child of api3.kidsOf(card2)) {
     const id = child[UID3] || child.uid;
     if (!id) continue;
     const text4 = child[STR3] ?? child.string ?? "";
-    if (isContainerString(text4) || api2.rawPlexus(id)?.type === "regions") return id;
+    if (isContainerString(text4) || api3.rawPlexus(id)?.type === "regions") return id;
   }
   return null;
 }
-extendSession((session, api2) => {
+extendSession((session, api3) => {
   session.addView = ({ caption = "", v, ids } = {}) => {
-    const board2 = api2.board();
+    const board2 = api3.board();
     if (!board2) return Promise.resolve(null);
-    const string = viewBlockString({ drawingUid: api2.uid, caption, v, ids });
+    const string = viewBlockString({ drawingUid: api3.uid, caption, v, ids });
     if (!string) return Promise.resolve(null);
-    const uid = api2.host.generateUid();
-    const promise = api2.txn((t) => {
-      let parent = regionsParent(api2, board2);
+    const uid = api3.host.generateUid();
+    const promise = api3.txn((t) => {
+      let parent = regionsParent(api3, board2);
       if (!parent) {
         parent = t.create({
-          parent: api2.uid,
+          parent: api3.uid,
           string: CONTAINER,
           plexus: { type: "regions" },
           open: false,
@@ -44211,7 +44212,7 @@ extendSession((session, api2) => {
     return promise;
   };
   session.renameView = (uid, caption) => {
-    const region = viewRegion(api2, uid);
+    const region = viewRegion(api3, uid);
     if (!region) return Promise.resolve(false);
     let string;
     try {
@@ -44219,14 +44220,14 @@ extendSession((session, api2) => {
     } catch {
       return Promise.resolve(false);
     }
-    return api2.txn((t) => {
+    return api3.txn((t) => {
       t.string(uid, string);
       return true;
     });
   };
   session.deleteView = (uid) => {
-    if (!viewRegion(api2, uid)) return Promise.resolve(false);
-    return api2.txn((t) => {
+    if (!viewRegion(api3, uid)) return Promise.resolve(false);
+    return api3.txn((t) => {
       t.del(uid);
       return true;
     });
@@ -44234,10 +44235,10 @@ extendSession((session, api2) => {
   session.addImageRegion = (cardUid, frac, caption, uid) => {
     const string = imageRegionString(cardUid, frac, caption);
     if (string == null) return Promise.resolve(null);
-    const regionUid = uid || api2.host.generateUid();
-    const existing = imageCardContainer(api2, cardUid);
+    const regionUid = uid || api3.host.generateUid();
+    const existing = imageCardContainer(api3, cardUid);
     if (!existing) {
-      api2.txn((t) => {
+      api3.txn((t) => {
         t.create({
           parent: cardUid,
           string: CONTAINER,
@@ -44247,8 +44248,8 @@ extendSession((session, api2) => {
         });
       });
     }
-    const parent = existing || imageCardContainer(api2, cardUid);
-    const promise = api2.txn((t) => {
+    const parent = existing || imageCardContainer(api3, cardUid);
+    const promise = api3.txn((t) => {
       t.create({ parent, uid: regionUid, string, order: "last" });
       return regionUid;
     });
@@ -44258,10 +44259,10 @@ extendSession((session, api2) => {
   session.addHighlightRegion = (highlightUid, frac, caption, uid) => {
     const string = imageRegionString(highlightUid, frac, caption);
     if (string == null) return Promise.resolve(null);
-    const regionUid = uid || api2.host.generateUid();
+    const regionUid = uid || api3.host.generateUid();
     let existing = null;
     try {
-      for (const kid of api2.host.pullTree?.(highlightUid, 1, 200) || []) {
+      for (const kid of api3.host.pullTree?.(highlightUid, 1, 200) || []) {
         if (kid?.uid && isContainerString(kid.string ?? "")) {
           existing = kid.uid;
           break;
@@ -44270,7 +44271,7 @@ extendSession((session, api2) => {
     } catch {
       existing = null;
     }
-    const promise = api2.txn((t) => {
+    const promise = api3.txn((t) => {
       const parent = existing || t.create({
         parent: highlightUid,
         string: CONTAINER,
@@ -44660,17 +44661,17 @@ function hayOf(item, resolve) {
   return bits.filter(Boolean).join("\n").toLowerCase();
 }
 function findOnBoard(board2, query, nested = [], resolve) {
-  const q = String(query || "").trim().toLowerCase();
-  if (!q || !board2?.items) return [];
+  const q2 = String(query || "").trim().toLowerCase();
+  if (!q2 || !board2?.items) return [];
   const hits = [];
   for (const item of board2.items.values()) {
-    if (!hayOf(item, resolve).includes(q)) continue;
+    if (!hayOf(item, resolve).includes(q2)) continue;
     hits.push({ uid: item.uid, focus: item.uid, kind: item.type === "section" ? "section" : "card" });
   }
   for (const edge of board2.edges?.values?.() || []) {
     const label = `${edge.label || ""}
 ${plainText(edge.string, 500)}`.toLowerCase();
-    if (!label.includes(q)) continue;
+    if (!label.includes(q2)) continue;
     hits.push({ uid: edge.uid, focus: edge.from, kind: "edge" });
   }
   for (const nest of nested || []) {
@@ -45541,8 +45542,8 @@ function chipsForPdf(item, items, lookup2) {
   const list = items && typeof items.values === "function" ? items.values() : [];
   for (const other of list) {
     if (other?.kind !== "highlight" || !other.target?.uid) continue;
-    const pageUid = typeof lookup2.pageUid === "function" ? lookup2.pageUid(other.target.uid) || "" : "";
-    const pageUrl = pageUid && typeof lookup2.pageUrl === "function" ? lookup2.pageUrl(pageUid) || "" : "";
+    const pageUid2 = typeof lookup2.pageUid === "function" ? lookup2.pageUid(other.target.uid) || "" : "";
+    const pageUrl = pageUid2 && typeof lookup2.pageUrl === "function" ? lookup2.pageUrl(pageUid2) || "" : "";
     rows.push({ page: other.highlight?.page, uid: other.uid, url: pageUrl });
   }
   return pageChips(rows, url);
@@ -45609,12 +45610,12 @@ var HALO_PULL_LIGHT = "[:create/time :edit/time {:create/user [:user/display-nam
 var HALO_REF_CAP = 200;
 var HALO_REFS_SPAN_QUERY = "[:find (count ?r) (min ?t) (max ?t) :in $ ?u :where [?e :block/uid ?u] [?r :block/refs ?e] [?r :create/time ?t]]";
 var HALO_REFS_TIMES_QUERY = "[:find ?r ?t :in $ ?u :where [?e :block/uid ?u] [?r :block/refs ?e] [?r :create/time ?t]]";
-function haloRefs(q, uid, cap4 = HALO_REF_CAP) {
+function haloRefs(q2, uid, cap4 = HALO_REF_CAP) {
   const none = { total: 0, times: [] };
-  if (typeof q !== "function" || !uid) return none;
+  if (typeof q2 !== "function" || !uid) return none;
   let span = null;
   try {
-    span = (q(HALO_REFS_SPAN_QUERY, uid) || [])[0] || null;
+    span = (q2(HALO_REFS_SPAN_QUERY, uid) || [])[0] || null;
   } catch {
     return none;
   }
@@ -45622,7 +45623,7 @@ function haloRefs(q, uid, cap4 = HALO_REF_CAP) {
   if (total <= 0) return none;
   let rows = [];
   try {
-    rows = q(HALO_REFS_TIMES_QUERY, uid) || [];
+    rows = q2(HALO_REFS_TIMES_QUERY, uid) || [];
   } catch {
     rows = [];
   }
@@ -46413,9 +46414,9 @@ function snippetOf2(text4, max = 200) {
   return clip4(text4, max);
 }
 function filterRows(rows, query) {
-  const q = String(query ?? "").trim().toLowerCase();
-  if (!q) return rows || [];
-  return (rows || []).filter((row4) => `${row4.crumb || ""} ${row4.snippet || ""}`.toLowerCase().includes(q));
+  const q2 = String(query ?? "").trim().toLowerCase();
+  if (!q2) return rows || [];
+  return (rows || []).filter((row4) => `${row4.crumb || ""} ${row4.snippet || ""}`.toLowerCase().includes(q2));
 }
 function groupRefs(rows, cap4 = CONTEXT_CAP) {
   const sorted = [...rows || []].filter((row4) => row4?.uid).sort((a, b) => (b.time || 0) - (a.time || 0) || String(a.uid).localeCompare(String(b.uid)));
@@ -48353,7 +48354,7 @@ function createInteractions({ actions, settings } = {}) {
       g.dy = dy;
       if (g.dup) {
         const r0 = rects();
-        call("showGhosts", g.uids.map((u) => r0?.get(u)).filter(Boolean).map((q) => ({ x: q.x + dx, y: q.y + dy, w: q.w, h: q.h })));
+        call("showGhosts", g.uids.map((u) => r0?.get(u)).filter(Boolean).map((q2) => ({ x: q2.x + dx, y: q2.y + dy, w: q2.w, h: q2.h })));
       } else if (g.uids.length) {
         call("previewMove", g.uids, dx, dy);
       }
@@ -49195,18 +49196,18 @@ function openAddToBoard({ doc = globalThis.document, listBoards, onPick } = {}) 
   const close = () => {
     if (closed) return;
     closed = true;
-    if (current === api2) current = null;
+    if (current === api3) current = null;
     for (const off of offs) off();
     back.remove();
     box2.remove();
   };
-  const api2 = { close };
-  current = api2;
+  const api3 = { close };
+  current = api3;
   const render = () => {
     list.replaceChildren();
-    const q = String(filter.value || "").trim().toLowerCase();
-    const shown = rows.filter((b) => !q || `${b.title || ""}
-${b.pageTitle || b.page || ""}`.toLowerCase().includes(q));
+    const q2 = String(filter.value || "").trim().toLowerCase();
+    const shown = rows.filter((b) => !q2 || `${b.title || ""}
+${b.pageTitle || b.page || ""}`.toLowerCase().includes(q2));
     if (!shown.length) {
       el2("div", "pxd-addboard__empty", list, rows.length ? "No matching boards" : "No boards found");
       return;
@@ -49266,7 +49267,7 @@ ${b.pageTitle || b.page || ""}`.toLowerCase().includes(q));
     filter.focus();
   } catch {
   }
-  return api2;
+  return api3;
 }
 function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs = 150 } = {}) {
   current?.close();
@@ -49299,14 +49300,14 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
   const close = () => {
     if (closed) return;
     closed = true;
-    if (current === api2) current = null;
+    if (current === api3) current = null;
     if (timer) clearTimeout(timer);
     for (const off of offs) off();
     back.remove();
     box2.remove();
   };
-  const api2 = { close };
-  current = api2;
+  const api3 = { close };
+  current = api3;
   const show = (rows, text4) => {
     list.replaceChildren();
     if (!rows.length) {
@@ -49383,7 +49384,7 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
     filter.focus();
   } catch {
   }
-  return api2;
+  return api3;
 }
 
 // src/view/board-view.js
@@ -50576,28 +50577,28 @@ function applyCasing(model, word) {
   if (model[0] === model[0].toUpperCase()) return word[0].toUpperCase() + word.slice(1);
   return word;
 }
-function candidates(lower3, low, maxSwaps) {
+function candidates(lower4, low, maxSwaps) {
   const out = /* @__PURE__ */ new Set();
   const positions = [];
-  for (let i = 0; i < lower3.length; i++) if (low[i] && SWAPS[lower3[i]]) positions.push(i);
+  for (let i = 0; i < lower4.length; i++) if (low[i] && SWAPS[lower4[i]]) positions.push(i);
   const swapAt = (s, i) => (SWAPS[s[i]] || []).map((ch) => s.slice(0, i) + ch + s.slice(i + 1));
   for (const i of positions) {
-    for (const one of swapAt(lower3, i)) {
+    for (const one of swapAt(lower4, i)) {
       out.add(one);
       if (maxSwaps < 2) continue;
       for (const j of positions) if (j > i) for (const two of swapAt(one, j)) out.add(two);
     }
   }
   for (const [from, to] of MULTI) {
-    let at = lower3.indexOf(from);
+    let at = lower4.indexOf(from);
     while (at >= 0) {
       let touches = false;
       for (let k = at; k < at + from.length; k++) if (low[k]) touches = true;
-      if (touches) out.add(lower3.slice(0, at) + to + lower3.slice(at + from.length));
-      at = lower3.indexOf(from, at + 1);
+      if (touches) out.add(lower4.slice(0, at) + to + lower4.slice(at + from.length));
+      at = lower4.indexOf(from, at + 1);
     }
   }
-  out.delete(lower3);
+  out.delete(lower4);
   return out;
 }
 function correctWord(token, { lexicon, confs = null, conf = 1, keep = null } = {}) {
@@ -50606,9 +50607,9 @@ function correctWord(token, { lexicon, confs = null, conf = 1, keep = null } = {
   if (!m) return token;
   const [, lead, core, tail] = m;
   if (core.length < MIN_LEN) return token;
-  const lower3 = core.toLowerCase();
-  if (lexicon.has(lower3)) return token;
-  if (keep && keep.has(lower3)) return token;
+  const lower4 = core.toLowerCase();
+  if (lexicon.has(lower4)) return token;
+  if (keep && keep.has(lower4)) return token;
   let low;
   let maxSwaps;
   if (confs && confs.length === core.length) {
@@ -50620,7 +50621,7 @@ function correctWord(token, { lexicon, confs = null, conf = 1, keep = null } = {
     maxSwaps = 1;
   }
   if (!low.some(Boolean)) return token;
-  const hits = [...candidates(lower3, low, maxSwaps)].filter((w) => lexicon.has(w));
+  const hits = [...candidates(lower4, low, maxSwaps)].filter((w) => lexicon.has(w));
   if (hits.length !== 1) return token;
   return lead + applyCasing(core, hits[0]) + tail;
 }
@@ -50632,8 +50633,8 @@ function suspiciousWord(token, { lexicon = null, keep = null } = {}) {
   if (/[A-Za-z][^A-Za-z0-9\-'’.&/]+[A-Za-z]/.test(core)) return true;
   if (oddCase(core)) return true;
   if (!lexicon || !lexicon.size || !LETTERS.test(core) || core.length < MIN_LEN) return false;
-  const lower3 = core.toLowerCase();
-  return !lexicon.has(lower3) && !(keep && keep.has(lower3));
+  const lower4 = core.toLowerCase();
+  return !lexicon.has(lower4) && !(keep && keep.has(lower4));
 }
 function properNouns(words) {
   const count = /* @__PURE__ */ new Map();
@@ -50655,9 +50656,9 @@ function splitJoined(token, lexicon, { low = false } = {}) {
   if (!m || !lexicon || !lexicon.size) return [token];
   const [, lead, core, tail] = m;
   if (core.length < 10 || !/^[A-Z]?[a-z]+$/.test(core) || lexicon.has(core.toLowerCase())) return [token];
-  const lower3 = core.toLowerCase();
+  const lower4 = core.toLowerCase();
   const cuts = [];
-  for (let i = 4; i <= lower3.length - 4; i++) if (lexicon.has(lower3.slice(0, i)) && lexicon.has(lower3.slice(i))) cuts.push(i);
+  for (let i = 4; i <= lower4.length - 4; i++) if (lexicon.has(lower4.slice(0, i)) && lexicon.has(lower4.slice(i))) cuts.push(i);
   if (cuts.length === 1) return [lead + core.slice(0, cuts[0]), core.slice(cuts[0]) + tail];
   const pieces2 = segmentToken(core, lexicon);
   if (!pieces2) return [token];
@@ -53492,6 +53493,460 @@ init_parse_overlay();
 init_pdf_pin();
 init_parse_overlay();
 init_ask_icon();
+
+// src/model/theme-colors.js
+var BODY_CONTRAST = 4.5;
+var SURFACE_MIX = 0.04;
+var THEME_VARS = Object.freeze([
+  "--pxd-link",
+  "--pxd-surface",
+  "--pxd-card",
+  "--pxd-text",
+  "--pxd-muted",
+  "--pxd-border",
+  "--pxd-border-strong",
+  "--pxd-accent",
+  "--pxd-accent-soft",
+  "--pxd-edge",
+  "--pxd-chrome-bg"
+]);
+function byte(n2) {
+  const x = Number(n2);
+  if (!Number.isFinite(x)) return null;
+  return Math.max(0, Math.min(255, Math.round(x)));
+}
+function alpha(n2) {
+  if (n2 == null || n2 === "") return 1;
+  const raw = String(n2).trim();
+  const pct2 = raw.endsWith("%");
+  const x = Number(pct2 ? raw.slice(0, -1) : raw);
+  if (!Number.isFinite(x)) return null;
+  const v = pct2 ? x / 100 : x;
+  return Math.max(0, Math.min(1, v));
+}
+function hexByte(text4) {
+  const n2 = Number.parseInt(text4, 16);
+  return Number.isFinite(n2) ? n2 : null;
+}
+function fromHex(text4) {
+  const hex = text4.slice(1);
+  if (hex.length === 3 || hex.length === 4) {
+    const r = hexByte(hex[0] + hex[0]);
+    const g = hexByte(hex[1] + hex[1]);
+    const b = hexByte(hex[2] + hex[2]);
+    const a = hex.length === 4 ? alpha(hexByte(hex[3] + hex[3]) / 255) : 1;
+    if (r == null || g == null || b == null || a == null) return null;
+    return { r, g, b, a };
+  }
+  if (hex.length === 6 || hex.length === 8) {
+    const r = hexByte(hex.slice(0, 2));
+    const g = hexByte(hex.slice(2, 4));
+    const b = hexByte(hex.slice(4, 6));
+    const a = hex.length === 8 ? alpha(hexByte(hex.slice(6, 8)) / 255) : 1;
+    if (r == null || g == null || b == null || a == null) return null;
+    return { r, g, b, a };
+  }
+  return null;
+}
+function hslToRgb(h, s, l, a) {
+  const hue = (Number(h) % 360 + 360) % 360;
+  const sat = Math.max(0, Math.min(100, Number(s))) / 100;
+  const lig = Math.max(0, Math.min(100, Number(l))) / 100;
+  if (!Number.isFinite(hue) || !Number.isFinite(sat) || !Number.isFinite(lig)) return null;
+  const c = (1 - Math.abs(2 * lig - 1)) * sat;
+  const hp = hue / 60;
+  const x = c * (1 - Math.abs(hp % 2 - 1));
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (hp < 1) {
+    r = c;
+    g = x;
+  } else if (hp < 2) {
+    r = x;
+    g = c;
+  } else if (hp < 3) {
+    g = c;
+    b = x;
+  } else if (hp < 4) {
+    g = x;
+    b = c;
+  } else if (hp < 5) {
+    r = x;
+    b = c;
+  } else {
+    r = c;
+    b = x;
+  }
+  const m = lig - c / 2;
+  return {
+    r: Math.round((r + m) * 255),
+    g: Math.round((g + m) * 255),
+    b: Math.round((b + m) * 255),
+    a: a == null ? 1 : a
+  };
+}
+function fromFunc(text4) {
+  const match = /^(rgba?|hsla?)\(([^)]+)\)$/i.exec(text4.trim());
+  if (!match) return null;
+  const kind = match[1].toLowerCase();
+  const parts = match[2].split(/[,\s/]+/).map((part) => part.trim()).filter(Boolean);
+  if (kind === "rgb" || kind === "rgba") {
+    if (parts.length < 3) return null;
+    const r = byte(parts[0]);
+    const g = byte(parts[1]);
+    const b = byte(parts[2]);
+    const a = alpha(parts[3]);
+    if (r == null || g == null || b == null || a == null) return null;
+    return { r, g, b, a };
+  }
+  if (parts.length < 3) return null;
+  const s = String(parts[1]).replace("%", "");
+  const l = String(parts[2]).replace("%", "");
+  return hslToRgb(parts[0], s, l, alpha(parts[3]));
+}
+function parseColor(input) {
+  if (typeof input !== "string") return null;
+  const text4 = input.trim().toLowerCase();
+  if (!text4 || text4 === "transparent") return null;
+  if (text4.startsWith("#")) return fromHex(text4);
+  if (text4.startsWith("rgb") || text4.startsWith("hsl")) return fromFunc(text4);
+  return null;
+}
+function channel(v) {
+  const s = v / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+}
+function luminance(color) {
+  const c = color && typeof color === "object" && "r" in color ? color : parseColor(color);
+  if (!c) return 0;
+  return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+}
+function contrast(a, b) {
+  const la = luminance(a);
+  const lb = luminance(b);
+  const hi = Math.max(la, lb);
+  const lo = Math.min(la, lb);
+  return (hi + 0.05) / (lo + 0.05);
+}
+function mix(a, b, t) {
+  const from = typeof a === "string" ? parseColor(a) : a;
+  const to = typeof b === "string" ? parseColor(b) : b;
+  if (!from || !to) return null;
+  const amount = Number.isFinite(Number(t)) ? Math.max(0, Math.min(1, Number(t))) : 0;
+  return {
+    r: Math.round(from.r * (1 - amount) + to.r * amount),
+    g: Math.round(from.g * (1 - amount) + to.g * amount),
+    b: Math.round(from.b * (1 - amount) + to.b * amount),
+    a: from.a * (1 - amount) + to.a * amount
+  };
+}
+function cssColor2(color) {
+  const c = color && typeof color === "object" ? color : parseColor(color);
+  if (!c) return "";
+  const r = byte(c.r);
+  const g = byte(c.g);
+  const b = byte(c.b);
+  const a = alpha(c.a);
+  if (r == null || g == null || b == null || a == null) return "";
+  if (a >= 0.999) return `rgb(${r}, ${g}, ${b})`;
+  const shown = Math.round(a * 1e3) / 1e3;
+  return `rgba(${r}, ${g}, ${b}, ${shown})`;
+}
+function opaque(color) {
+  if (!color) return null;
+  return { r: color.r, g: color.g, b: color.b, a: 1 };
+}
+function composite(fg, bg) {
+  if (!fg || !bg) return null;
+  const a = alpha(fg.a);
+  if (a == null) return null;
+  if (a >= 0.999) return opaque(fg);
+  return {
+    r: Math.round(fg.r * a + bg.r * (1 - a)),
+    g: Math.round(fg.g * a + bg.g * (1 - a)),
+    b: Math.round(fg.b * a + bg.b * (1 - a)),
+    a: 1
+  };
+}
+function deriveTheme(sample) {
+  const src = sample && typeof sample === "object" ? sample : {};
+  const background = parseColor(src.background);
+  const text4 = parseColor(src.text);
+  if (!background || !text4 || background.a < 0.5 || text4.a <= 0) return null;
+  const bg = opaque(background);
+  const ink = composite(text4, bg) || opaque(text4);
+  const dark = src.dark === true || luminance(bg) < 0.4;
+  const card2 = mix(bg, ink, SURFACE_MIX);
+  if (!card2) return null;
+  const cardOpaque = opaque(card2);
+  if (contrast(ink, cardOpaque) < BODY_CONTRAST || contrast(ink, bg) < BODY_CONTRAST) return null;
+  let muted = parseColor(src.muted);
+  const mutedOnCard = muted ? composite(muted, cardOpaque) : null;
+  if (!mutedOnCard || contrast(mutedOnCard, cardOpaque) < 3) muted = mix(ink, bg, 0.4);
+  let border = parseColor(src.border);
+  if (!border || border.a < 0.2) border = mix(bg, ink, dark ? 0.28 : 0.18);
+  const borderStrong = mix(border, ink, 0.35);
+  let accent = parseColor(src.link);
+  const accentOnCard = accent ? composite(accent, cardOpaque) : null;
+  if (!accentOnCard || contrast(accentOnCard, cardOpaque) < 3) {
+    accent = hslToRgb(175, dark ? 60 : 80, dark ? 55 : 30, 1);
+  }
+  const accentSoft = { ...opaque(accent), a: dark ? 0.22 : 0.18 };
+  const linkSrc = parseColor(src.link);
+  const linkOnCard = linkSrc ? composite(linkSrc, cardOpaque) : null;
+  const link = linkOnCard && contrast(linkOnCard, cardOpaque) >= 3 ? opaque(linkSrc) : opaque(accent);
+  const edge = mix(bg, ink, dark ? 0.55 : 0.45);
+  const chrome = { ...cardOpaque, a: 0.96 };
+  const vars = {
+    "--pxd-surface": cssColor2(bg),
+    "--pxd-card": cssColor2(cardOpaque),
+    "--pxd-text": cssColor2(ink),
+    "--pxd-muted": cssColor2(opaque(muted)),
+    "--pxd-border": cssColor2(opaque(border)),
+    "--pxd-border-strong": cssColor2(opaque(borderStrong)),
+    "--pxd-accent": cssColor2(opaque(accent)),
+    "--pxd-link": cssColor2(link),
+    "--pxd-accent-soft": cssColor2(accentSoft),
+    "--pxd-edge": cssColor2(opaque(edge)),
+    "--pxd-chrome-bg": cssColor2(chrome)
+  };
+  return { dark, vars };
+}
+function applyThemeVars(style, vars) {
+  if (!style || typeof style.setProperty !== "function") return;
+  if (!vars || typeof vars !== "object") {
+    for (const name of THEME_VARS) {
+      try {
+        style.removeProperty(name);
+      } catch {
+      }
+    }
+    return;
+  }
+  for (const name of THEME_VARS) {
+    const value = vars[name];
+    try {
+      if (typeof value === "string" && value) style.setProperty(name, value);
+      else style.removeProperty(name);
+    } catch {
+    }
+  }
+}
+
+// src/view/theme-follow.js
+function readProp(style, name) {
+  if (!style || !name) return "";
+  try {
+    if (typeof style.getPropertyValue === "function") {
+      const direct = style.getPropertyValue(name);
+      if (direct) return String(direct);
+      const camel = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      const camelValue = style.getPropertyValue(camel);
+      if (camelValue) return String(camelValue);
+    }
+  } catch {
+  }
+  try {
+    const camel = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    if (style[camel]) return String(style[camel]);
+    if (style[name]) return String(style[name]);
+  } catch {
+  }
+  return "";
+}
+function computed(doc, el2, name) {
+  if (!el2) return "";
+  try {
+    const view = doc?.defaultView;
+    const fn = view && typeof view.getComputedStyle === "function" ? view.getComputedStyle.bind(view) : typeof globalThis.getComputedStyle === "function" ? globalThis.getComputedStyle : null;
+    if (!fn) return "";
+    return readProp(fn(el2), name);
+  } catch {
+    return "";
+  }
+}
+function opaqueColor(value) {
+  const color = parseColor(value);
+  if (!color || color.a < 0.5) return "";
+  return String(value);
+}
+function classText(node2) {
+  if (!node2) return "";
+  if (typeof node2.className === "string") return node2.className;
+  return "";
+}
+function hasClass2(node2, name) {
+  if (!node2 || !name) return false;
+  try {
+    if (node2.classList?.contains?.(name)) return true;
+  } catch {
+  }
+  return new RegExp(`(?:^|\\s)${name}(?:\\s|$)`).test(classText(node2));
+}
+function hostDark(doc, background) {
+  const root = doc?.documentElement;
+  const body = doc?.body;
+  if (hasClass2(root, "bp3-dark") || hasClass2(body, "bp3-dark")) return true;
+  if (hasClass2(body, "bt-theme-dark") || hasClass2(root, "bt-theme-dark")) return true;
+  if (hasClass2(root, "rm-dark-theme") || hasClass2(body, "rm-dark-theme")) return true;
+  if (hasClass2(body, "roam-body") && hasClass2(body, "dark")) return true;
+  const color = parseColor(background);
+  return Boolean(color && luminance(color) < 0.4);
+}
+function sampleRoam(doc) {
+  const d = doc || globalThis.document;
+  if (!d || typeof d.querySelector !== "function") {
+    return { background: "", text: "", muted: "", border: "", link: "", dark: false };
+  }
+  let main = null;
+  let article = null;
+  let link = null;
+  let block = null;
+  try {
+    main = d.querySelector(".roam-body-main") || d.body;
+  } catch {
+    main = d.body || null;
+  }
+  try {
+    article = d.querySelector(".roam-article") || main;
+  } catch {
+    article = main;
+  }
+  try {
+    for (const sel of [".roam-article .rm-block__input .rm-page-ref--link", ".roam-article .rm-page-ref--link", ".rm-page-ref"]) {
+      link = [...d.querySelectorAll(sel)].find((n2) => !n2.closest?.(".pxd-root")) || null;
+      if (link) break;
+    }
+  } catch {
+    link = null;
+  }
+  try {
+    block = d.querySelector(".roam-block-container") || article;
+  } catch {
+    block = article;
+  }
+  const background = opaqueColor(computed(d, main, "background-color")) || opaqueColor(computed(d, d.body, "background-color")) || opaqueColor(computed(d, article, "background-color"));
+  const text4 = opaqueColor(computed(d, article, "color")) || opaqueColor(computed(d, d.body, "color"));
+  const borderPx = Number.parseFloat(computed(d, block, "border-top-width")) || Number.parseFloat(computed(d, article, "border-top-width")) || 0;
+  const border = borderPx > 0 ? opaqueColor(computed(d, block, "border-top-color")) || opaqueColor(computed(d, article, "border-top-color")) : "";
+  const linkColor = link ? opaqueColor(computed(d, link, "color")) : "";
+  return {
+    background,
+    text: text4,
+    muted: "",
+    border,
+    link: linkColor,
+    dark: hostDark(d, background)
+  };
+}
+function floatingDark(doc, anchor) {
+  const d = doc || globalThis.document;
+  try {
+    const board2 = anchor?.closest?.(".pxd-root");
+    if (board2) return hasClass2(board2, "pxd-root--dark");
+  } catch {
+  }
+  try {
+    if (d?.querySelector?.(".pxd-root--dark")) return true;
+  } catch {
+  }
+  try {
+    return Boolean(sampleRoam(d).dark);
+  } catch {
+    return false;
+  }
+}
+function createThemeFollow({ doc, root, getMode, timers } = {}) {
+  let observer = null;
+  let pending = null;
+  const mode = () => {
+    try {
+      const value = typeof getMode === "function" ? getMode() : "follow-roam";
+      return value === "plexus" ? "plexus" : "follow-roam";
+    } catch {
+      return "follow-roam";
+    }
+  };
+  const paint2 = () => {
+    const node2 = root;
+    if (!node2?.classList || !node2.style) return;
+    if (mode() !== "follow-roam") {
+      applyThemeVars(node2.style, null);
+      try {
+        node2.classList.remove("pxd-theme--roam");
+      } catch {
+      }
+      return;
+    }
+    let derived = null;
+    try {
+      derived = deriveTheme(sampleRoam(doc));
+    } catch {
+      derived = null;
+    }
+    if (!derived?.vars) {
+      applyThemeVars(node2.style, null);
+      try {
+        node2.classList.remove("pxd-theme--roam");
+      } catch {
+      }
+      return;
+    }
+    applyThemeVars(node2.style, derived.vars);
+    try {
+      node2.classList.add("pxd-theme--roam");
+    } catch {
+    }
+  };
+  const cancelPending = () => {
+    if (typeof pending === "function") {
+      try {
+        pending();
+      } catch {
+      }
+    }
+    pending = null;
+  };
+  const schedule = () => {
+    if (pending) return;
+    if (typeof timers?.later === "function") {
+      pending = timers.later(() => {
+        pending = null;
+        paint2();
+      }, 150);
+      return;
+    }
+    paint2();
+  };
+  const start = () => {
+    const head = doc?.head;
+    const Observer = doc?.defaultView?.MutationObserver || globalThis.MutationObserver;
+    if (!head || typeof Observer !== "function" || observer) return;
+    try {
+      observer = new Observer(() => schedule());
+      observer.observe(head, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["href", "rel", "media", "disabled"]
+      });
+    } catch {
+      observer = null;
+    }
+  };
+  const stop3 = () => {
+    try {
+      observer?.disconnect?.();
+    } catch {
+    }
+    observer = null;
+    cancelPending();
+  };
+  return { apply: paint2, paint: paint2, start, stop: stop3, sample: () => sampleRoam(doc) };
+}
+
+// src/view/page-chips.js
 var HIDE_MS = 220;
 var SYNC_RETRIES = 40;
 var SYNC_RETRY_MS = 250;
@@ -53808,12 +54263,49 @@ function createPageChips({
     }
     copyShown = id;
   };
+  let copyMenuAnchor = null;
+  const onMenuOutside = (event) => {
+    const t = event.target;
+    if (!copyMenuEl || copyMenuEl.contains?.(t) || copyMenuAnchor === t || copyMenuAnchor?.contains?.(t)) return;
+    closeCopyMenu();
+  };
+  const onMenuKeys = (event) => {
+    if (!copyMenuEl) return;
+    if (event.key === "Escape") {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      const back = copyMenuAnchor;
+      closeCopyMenu();
+      try {
+        back?.focus?.();
+      } catch {
+      }
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    const items = [...copyMenuEl.querySelectorAll?.(".pxd-copy-menu__item") || []];
+    if (!items.length) return;
+    const at = items.indexOf(doc.activeElement);
+    if (at < 0 && !copyMenuEl.contains?.(doc.activeElement)) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    const next = items[(at + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length];
+    try {
+      next.focus?.();
+    } catch {
+    }
+  };
   const closeCopyMenu = () => {
+    if (copyMenuEl) {
+      doc.removeEventListener?.("pointerdown", onMenuOutside, true);
+      (win2() || doc).removeEventListener?.("keydown", onMenuKeys, true);
+    }
     try {
       copyMenuEl?.remove();
     } catch {
     }
     copyMenuEl = null;
+    copyMenuAnchor = null;
   };
   const blockFromId = (id) => getParsed?.()?.blocks?.[id] || null;
   const finishCopy = (icon, ok) => {
@@ -53835,10 +54327,11 @@ function createPageChips({
     finishCopy(icon, result === false ? false : true);
   };
   const openCopyMenu = (block, anchor) => {
+    const again = Boolean(copyMenuEl && anchor && copyMenuAnchor === anchor && copyMenuEl.getAttribute?.("data-block") === block?.id);
     closeCopyMenu();
-    if (!block) return;
+    if (!block || again) return;
     const menu = doc.createElement("div");
-    menu.className = "pxd-copy-menu";
+    menu.className = floatingDark(doc, anchor) ? "pxd-copy-menu pxd-copy-menu--dark" : "pxd-copy-menu";
     menu.setAttribute("role", "menu");
     menu.setAttribute("data-block", block.id);
     for (const item of COPY_MENU) {
@@ -53907,6 +54400,9 @@ function createPageChips({
     menu.style.top = `${(rect?.bottom || 0) + 4}px`;
     (doc.body || doc.documentElement)?.append?.(menu);
     copyMenuEl = menu;
+    copyMenuAnchor = anchor || null;
+    doc.addEventListener?.("pointerdown", onMenuOutside, true);
+    (win2() || doc).addEventListener?.("keydown", onMenuKeys, true);
   };
   const updateCopy = (event, parsed) => {
     if (!showParsed || layers.size === 0) {
@@ -54324,7 +54820,7 @@ function createPageChips({
         w = 0;
       }
       if (!(w > 0)) w = 16 + String(chipLabel2).length * 7 + (plan.menu.length ? 22 : 0);
-      const r = layers.get(block.page)?.rects.find((q) => q.id === block.id);
+      const r = layers.get(block.page)?.rects.find((q2) => q2.id === block.id);
       const bx = el2.getBoundingClientRect?.();
       const pagePx = { w: bx?.width > 0 ? bx.width : info(block.page)?.w, h: bx?.height > 0 ? bx.height : info(block.page)?.h };
       const spot = r ? copyIconSpot(r, pagePx, r.dy) : null;
@@ -55714,8 +56210,8 @@ ${c}` : c;
 }
 var IMAGE_QUESTION_PREFIX = "Look at the image of the selected part. ";
 function promptWithImage(question, url) {
-  const q = String(question ?? "");
-  return url ? `${IMAGE_QUESTION_PREFIX}${q}` : q;
+  const q2 = String(question ?? "");
+  return url ? `${IMAGE_QUESTION_PREFIX}${q2}` : q2;
 }
 function imageDoc({ caption = "", title = "" } = {}) {
   return {
@@ -56999,15 +57495,15 @@ function estimateMistralCost({ pages } = {}) {
 function headerValue(response, name) {
   const headers = response?.headers;
   if (!headers) return null;
-  const lower3 = String(name).toLowerCase();
+  const lower4 = String(name).toLowerCase();
   if (typeof headers.get === "function") {
     try {
-      const value = headers.get(name) ?? headers.get(lower3);
+      const value = headers.get(name) ?? headers.get(lower4);
       if (value != null && String(value).trim() !== "") return String(value).trim();
     } catch {
     }
   }
-  const direct = headers[lower3] ?? headers[name];
+  const direct = headers[lower4] ?? headers[name];
   if (direct != null && String(direct).trim() !== "") return String(direct).trim();
   return null;
 }
@@ -58826,14 +59322,438 @@ __export(liveai_exports, {
   UNLOADED_EVENT: () => UNLOADED_EVENT,
   ask: () => ask,
   available: () => available,
+  canOpenChat: () => canOpenChat,
   defaultModel: () => defaultModel,
   friendlyError: () => friendlyError,
   isChatModel: () => isChatModel,
   listModels: () => listModels,
   onReady: () => onReady,
+  openChat: () => openChat,
   present: () => present,
   sendsImages: () => sendsImages
 });
+
+// src/model/ask-composer.js
+var COMMAND_CATEGORIES = Object.freeze(["CONTENT ANALYSIS", "CRITICAL REASONING TOOLKIT", "REPHRASING", "TRANSLATION", "ACTION", "CUSTOM PROMPTS", "STYLES"]);
+var SAME_LANGUAGE = "\nAnswer in the language of the content unless I ask otherwise.";
+var COMMANDS = Object.freeze([
+  {
+    id: "summarize",
+    name: "Summarize",
+    category: "CONTENT ANALYSIS",
+    keywords: "summary resume abstract",
+    prompt: `Please provide a concise, cohesive summary of the following content, focusing on:
+- Essential main ideas and key arguments
+- Critical supporting evidence and examples
+- Major conclusions or recommendations
+- Underlying themes or patterns
+Keep the summary significantly shorter than the original while preserving core meaning and context. Present it in well-structured paragraph(s) that flow naturally, avoiding fragmented bullet points. If the content has a clear chronological or logical progression, maintain this structure in your summary.${SAME_LANGUAGE}`
+  },
+  {
+    id: "keyInsights",
+    name: "Extract key insights",
+    category: "CONTENT ANALYSIS",
+    keywords: "key points takeaways",
+    prompt: `Analyze the provided content and identify the most significant, novel, or actionable insights. For each insight:
+  1. State the core idea clearly and concisely
+  2. Explain why it's particularly noteworthy or valuable
+  3. Highlight its potential applications or implications
+  4. If relevant, note how it challenges conventional thinking or offers unique perspectives
+Please organize these insights by their potential impact rather than their order of appearance in the original content.${SAME_LANGUAGE}`
+  },
+  {
+    id: "extractActionable",
+    name: "Extract actionable items",
+    category: "CONTENT ANALYSIS",
+    keywords: "tasks todo actions",
+    prompt: `Please analyze the following content and extract all actionable items. Present them as a prioritized task list that:
+  1. Identifies only concrete, specific actions (not vague goals)
+  2. Orders tasks by both urgency and logical sequence (dependencies)
+  3. Uses clear, action-oriented language starting with verbs
+  4. Groups related tasks together when appropriate
+  5. Indicates any dependencies between tasks
+  6. Specifies if any tasks can be done in parallel
+Please ensure each action item is specific enough to be executed without needing additional clarification.${SAME_LANGUAGE}`
+  },
+  {
+    id: "quiz",
+    name: "Quiz on provided content",
+    category: "CONTENT ANALYSIS",
+    keywords: "test questions learn",
+    prompt: `You are a quiz creator. Based on the content provided, create an engaging quiz:
+1. Identify 1-3 key points worth testing: core concepts and definitions, strong arguments, commonly misunderstood elements, critical insights.
+2. Number each question (1., 2., …) and give 3-4 plausible multiple-choice options (a), b), c)…). Allow single or multiple correct answers when appropriate.
+3. I will answer like 1a, 2b. Then give detailed feedback for each answer, explain why the right answers are right and the wrong ones wrong, and ask if I want more questions on the same content.${SAME_LANGUAGE}`
+  },
+  {
+    id: "explanation",
+    name: "Explanation",
+    category: "CRITICAL REASONING TOOLKIT",
+    keywords: "explain meaning understand",
+    prompt: `Provide a clear and precise explanation of the element provided. Answer the question: 'What exactly does this mean and how should it be understood?'
+1. Adapt the explanation to the element's type: terms (semantic fields and usage), concepts (theoretical framework and scope), statements (logical structure and implications), reasoning (premises and inferential patterns).
+2. Break down the internal components and their relationships, then place the element in its broader context.
+3. Focus on meaning and understanding, avoid justification or mere examples. Use clear, straightforward language and stay concise: avoid multiplying bullet points and focus on the key points.${SAME_LANGUAGE}`
+  },
+  {
+    id: "meaning",
+    name: "Definition, meaning",
+    category: "CRITICAL REASONING TOOLKIT",
+    keywords: "define definition term",
+    prompt: `Provide a clear and precise semantic explanation of the term, concept or statement provided. Be concise and direct, unambiguous (no circular definitions or vague terms), self-contained, rigorous yet accessible, and explain the meaning specifically within the provided context. Format your response as a straightforward definition focused solely on meaning.${SAME_LANGUAGE}`
+  },
+  {
+    id: "example",
+    name: "Example",
+    category: "CRITICAL REASONING TOOLKIT",
+    keywords: "illustrate instance",
+    prompt: `Provide a paradigmatic example that illustrates the idea or statement provided. Make it concrete, vivid, and thought-provoking while capturing the essence of what it exemplifies. Express it in clear, straightforward language without any introductory phrases or commentary.${SAME_LANGUAGE}`
+  },
+  {
+    id: "causalExplanation",
+    name: "Causal explanation",
+    category: "CRITICAL REASONING TOOLKIT",
+    keywords: "why cause mechanism",
+    prompt: `Provide a causal explanation of the element provided. Focus strictly on what produces, generates, or brings about it: identify the mechanisms, forces, or principles at work and the most relevant type of causation. Avoid mere semantic explanation or justification. Stay concise, structure the response from fundamental to derivative causes, and if the input is not suitable for causal explanation, say so and explain why.${SAME_LANGUAGE}`
+  },
+  {
+    id: "analogicalExplanation",
+    name: "Explanation by analogy",
+    category: "CRITICAL REASONING TOOLKIT",
+    keywords: "analogy compare",
+    prompt: `Provide a clear and illuminating analogical explanation of the element provided. Compare its structure and relationships to those found in a different, more familiar domain, point out the key structural correspondences, and use imagery that is immediately graspable yet thought-provoking. Be concise and elegant, without unnecessary technical language.${SAME_LANGUAGE}`
+  },
+  {
+    id: "argument",
+    name: "Argument",
+    category: "CRITICAL REASONING TOOLKIT",
+    keywords: "support justify reason",
+    prompt: `Provide a strong, well-structured argument supporting the statement or idea provided. Make the premises explicit, rely on evidence or sound reasoning, and keep it concise and clear.${SAME_LANGUAGE}`
+  },
+  {
+    id: "objection",
+    name: "Objection, counterargument",
+    category: "CRITICAL REASONING TOOLKIT",
+    keywords: "critique criticism counter",
+    prompt: `Generate one significant potential objection challenging the provided statement, idea or reasoning. Make its premises explicit, base it on evidence or sound reasoning, and keep it concise and clear.${SAME_LANGUAGE}`
+  },
+  {
+    id: "counterExample",
+    name: "Counterexample",
+    category: "CRITICAL REASONING TOOLKIT",
+    keywords: "refute exception",
+    prompt: `Provide a relevant counterexample to the idea or statement provided, significant enough to deeply challenge its truth. Make it concrete, vivid, and thought-provoking. Express it in clear, straightforward language.${SAME_LANGUAGE}`
+  },
+  {
+    id: "challengeMyIdeas",
+    name: "Challenge my ideas!",
+    category: "CRITICAL REASONING TOOLKIT",
+    keywords: "critique assumptions flaws",
+    prompt: `Act as a rigorous critical thinker and challenge the ideas presented by:
+- Identifying key hidden assumptions and questioning their validity
+- Pointing out potential logical flaws or inconsistencies
+- Highlighting practical implementation challenges
+- Raising specific counterexamples that test the robustness of the reasoning
+- Suggesting alternative perspectives that could lead to different conclusions
+Keep your response focused on only 2-3 most significant challenges. Be direct and specific. Aim to deepen the analysis rather than dismiss the ideas.${SAME_LANGUAGE}`
+  },
+  {
+    id: "raiseQuestions",
+    name: "Raise questions",
+    category: "CRITICAL REASONING TOOLKIT",
+    keywords: "questions inquiry",
+    prompt: `Analyze the content carefully and generate thought-provoking questions about it. Your questions should challenge underlying assumptions, question what seems taken for granted, propose alternative perspectives, explore implications that are not immediately obvious, and include both naive and sophisticated questions. Format your response as a numbered list of clear, direct questions, from fundamental to more subtle. Avoid any redundancy and do not suggest more than 7 questions.${SAME_LANGUAGE}`
+  },
+  {
+    id: "perspectiveShift",
+    name: "Perspective shift",
+    category: "CRITICAL REASONING TOOLKIT",
+    keywords: "reframe angle",
+    prompt: `Help me see the content provided in a radically different light. Choose the single most relevant strategy: three unconventional angles I haven't considered; thought-provoking 'what if' questions that flip my assumptions; how three very different people would interpret it; or hidden opportunities in what looks like a limitation. Be bold and creative while staying logically coherent, and end with a key question that makes me reconsider my perspective.${SAME_LANGUAGE}`
+  },
+  {
+    id: "rephrase",
+    name: "Rephrase",
+    category: "REPHRASING",
+    keywords: "paraphrase reword",
+    prompt: `Please rephrase the following text, keeping exactly the same meaning and information, but using different words and structures. Use natural, straightforward language without jargon or flowery vocabulary. Maintain the original tone and level of formality.${SAME_LANGUAGE}`
+  },
+  {
+    id: "shorten",
+    name: "Shorter",
+    category: "REPHRASING",
+    keywords: "concise shorten",
+    prompt: `Please rephrase the following text to be more concise while closely preserving its original style, tone, and intent. Keep the same key phrases where possible, only removing redundancies and shortening overly complex sentences. Maintain the same level of formality and all core ideas.${SAME_LANGUAGE}`
+  },
+  {
+    id: "accessible",
+    name: "Simpler, more accessible",
+    category: "REPHRASING",
+    keywords: "simple plain easy",
+    prompt: `Rephrase the following text using simpler, more accessible language while keeping all the information. Avoid complex sentences and technical terms. The result should be easily understood by a general audience.${SAME_LANGUAGE}`
+  },
+  {
+    id: "clearer",
+    name: "Clearer and more explicit",
+    category: "REPHRASING",
+    keywords: "clarify clear",
+    prompt: `Please rephrase the following text: keep its core meaning and the author's voice, break complex or lengthy sentences into clearer ones, make vague or implicit statements explicit, replace jargon with clearer alternatives, and eliminate redundant or empty phrases.${SAME_LANGUAGE}`
+  },
+  {
+    id: "outline",
+    name: "Paragraph to Outline",
+    category: "REPHRASING",
+    keywords: "structure bullets hierarchy",
+    prompt: `Convert the following text into a hierarchically structured outline that reflects its logical organization. Keep the original wording, use indentation to show hierarchical relationships, keep all content but reorganize it to show relative importance and connections, and begin each bullet with "-". Do not paraphrase or modify the original text.`
+  },
+  {
+    id: "actionPlan",
+    name: "Action plan for a project",
+    category: "ACTION",
+    keywords: "plan steps project",
+    prompt: `Based on the content provided, propose a concrete action plan: the goal, the main steps in logical order, the key actions for each step, likely obstacles and how to handle them, and how to know each step is done. Keep it practical and concise.${SAME_LANGUAGE}`
+  },
+  {
+    id: "howTo",
+    name: "How to... (active learning)",
+    category: "ACTION",
+    keywords: "learn guide steps",
+    prompt: `Explain how to do what the content describes, as an active learning guide: the prerequisites, the steps in order with the reasoning behind each, the common mistakes to avoid, and a small exercise I can do to check I understood.${SAME_LANGUAGE}`
+  }
+]);
+var LANGUAGES = Object.freeze(["English", "French", "Spanish", "German", "Italian", "Portuguese", "Russian", "Ukrainian", "Chinese", "Japanese", "Korean", "Arabic"]);
+var translatePrompt = (language) => `YOUR JOB: Translate the content provided into clear and correct ${language} (without verbosity or overly formal expressions), taking care to adapt idiomatic expressions rather than providing a too-literal translation. The content provided can be a sentence, a whole text or a simple word. Don't insert any line breaks if the provided statement doesn't have line breaks itself.`;
+var TRANSLATIONS = Object.freeze(LANGUAGES.map((language, i) => ({
+  id: `translate:${language}`,
+  name: `Translate to ${language}`,
+  category: "TRANSLATION",
+  keywords: `translate translation ${language}`,
+  prompt: translatePrompt(language)
+})));
+var STYLE_INTRO = "All your responses will follow the following style format constraints and instructions. Any other provided instructions are of course also to apply, unless they are contrary to these ones:\n\n";
+var BUILTIN_STYLES = Object.freeze([
+  { id: "Concise", name: "Concise", prompt: "The response must be concise and quickly get to the point. The user expects an immediately understandable and actionable answer to their request, which does not require a long reading and interpretation. Avoid all unnecessary elaborations, embellishments, examples or digressions." },
+  { id: "Conversational", name: "Conversational", prompt: "Respond as if you are having a lively and oral conversation with the human user. The tone should be that of a friendly, spoken conversation. Your responses should be brief (unless asked to elaborate) and end with a question or an invitation to continue the conversation." },
+  { id: "No bullet points", name: "No bullet points", prompt: "Never break down your response into multiple bullet points, but always write complete sentences. If your response consists of several points, they should either be brief and logically articulated in a paragraph, or developed in separate paragraphs." },
+  { id: "Socratic", name: "Socratic", prompt: "Your response should be formulated in the style of Socrates, as he appears in Plato's dialogues. Instead of directly answering requests and presenting supposedly established knowledge, address the user with questions that lead them to examine their own beliefs and reasoning. Address only one point per response, or even just one step of reasoning at a time, seeking the user's agreement before moving on." }
+]);
+var TOOL_CATEGORIES = Object.freeze({ context: "Context", edit: "Edit the graph", skills: "Skills", interaction: "Interaction" });
+var LIVE_TOOLS = Object.freeze([
+  { id: "add_to_context", name: "Add to context", category: "context", description: "Add Roam content (pages, blocks, linked references, sidebar, daily notes) to the chat context." },
+  { id: "ask_your_graph", name: "Ask Your Graph", category: "context", description: "Natural-language queries over the graph to find matching pages or blocks." },
+  { id: "vector_search", name: "Vector search", category: "context", description: "Semantic search over the indexed graph and uploaded files (needs Live AI's vector store)." },
+  { id: "select_results_by_criteria", name: "Select results", category: "context", description: "Check or filter context results by date, content pattern or meaning." },
+  { id: "color_highlighter", name: "Color highlighter", category: "context", description: "Extract passages by highlight colour, or apply colours (Color Highlighter extension)." },
+  { id: "get_help", name: "Live AI help", category: "context", description: "Fetch Live AI's own documentation." },
+  { id: "create_block", name: "Create blocks", category: "edit", description: "Write blocks into Roam." },
+  { id: "create_page", name: "Create a page", category: "edit", description: "Create a Roam page from Markdown." },
+  { id: "update_block", name: "Update blocks", category: "edit", description: "Edit, move, open or collapse blocks." },
+  { id: "delete_block", name: "Delete blocks", category: "edit", description: "Delete blocks and their children." },
+  { id: "run_smartblock", name: "Run a SmartBlock", category: "edit", description: "Trigger a SmartBlocks workflow." },
+  { id: "live_ai_skills", name: "Skills", category: "skills", description: "Use skills stored in Roam with #liveai/skill." },
+  { id: "ask_user_choice", name: "Ask me to choose", category: "interaction", description: "Inline choice forms: quizzes, polls, decisions." },
+  { id: "random_pick", name: "Random pick", category: "interaction", description: "Pick items at random from a list." }
+]);
+var CONTEXT_SOURCES = Object.freeze([
+  { key: "part", label: "This PDF part" },
+  { key: "page", label: "Current page" },
+  { key: "linkedRefs", label: "Linked references" },
+  { key: "sidebar", label: "Sidebar" },
+  { key: "logPages", label: "Daily notes" }
+]);
+var DEFAULT_LOG_DAYS = 7;
+var MAX_SUGGESTIONS = 20;
+function triggerAt(text4, caret) {
+  const src = String(text4 ?? "");
+  const at = Number.isInteger(caret) ? Math.max(0, Math.min(caret, src.length)) : src.length;
+  const before = src.slice(0, at);
+  const cmd = /^\/([^\n/]{0,60})$/.exec(before);
+  if (cmd) return { kind: "command", query: cmd[1], start: 0 };
+  const open = (o, c) => {
+    const i = before.lastIndexOf(o);
+    if (i < 0) return null;
+    const q2 = before.slice(i + 2);
+    if (q2.includes(c) || q2.includes("\n") || q2.length > 80) return null;
+    return { i, q: q2 };
+  };
+  const page = open("[[", "]]");
+  const blk = open("((", "))");
+  if (page && (!blk || page.i > blk.i)) return { kind: "page", query: page.q, start: page.i };
+  if (blk) return { kind: "block", query: blk.q, start: blk.i };
+  const tag = /(^|[\s(])#([^\s#[\]()]{0,60})$/.exec(before);
+  if (tag) return { kind: "tag", query: tag[2], start: before.length - tag[2].length - 1 };
+  return null;
+}
+function applyMention(text4, trigger, caret, insert) {
+  const src = String(text4 ?? "");
+  const at = Number.isInteger(caret) ? caret : src.length;
+  let end = at;
+  const close = trigger.kind === "block" ? "))" : trigger.kind === "page" ? "]]" : "";
+  if (close && src.slice(end, end + 2) === close) end += 2;
+  const head = src.slice(0, trigger.start);
+  let tail = src.slice(end);
+  const ins = String(insert);
+  if (tail && !/^\s/.test(tail)) tail = ` ${tail}`;
+  const next = `${head}${ins}${tail || " "}`;
+  return { text: next, caret: head.length + ins.length + 1 };
+}
+var pageMention = (title) => `[[${title}]]`;
+var blockMention = (uid) => `((${uid}))`;
+var lower3 = (s) => String(s ?? "").toLowerCase();
+function fuzzy(hay, needle) {
+  let pos = -1;
+  let gaps = 0;
+  for (const ch of needle) {
+    const next = hay.indexOf(ch, pos + 1);
+    if (next < 0) return null;
+    if (pos >= 0) gaps += next - pos - 1;
+    pos = next;
+  }
+  return gaps;
+}
+function prepareTitles(titles) {
+  const list = [];
+  for (const t of titles || []) if (typeof t === "string" && t && !t.startsWith("roam/")) list.push({ t, l: t.toLowerCase() });
+  return list;
+}
+function rankTitles(index, query, limit = MAX_SUGGESTIONS) {
+  const list = Array.isArray(index) && typeof index[0] === "string" ? prepareTitles(index) : index || [];
+  const q2 = lower3(query).trim();
+  if (!q2) return list.slice().sort((a, b) => a.t.length - b.t.length).slice(0, limit).map((x) => x.t);
+  const scored = [];
+  for (const x of list) {
+    let cls;
+    let extra = 0;
+    if (x.l === q2) cls = 0;
+    else if (x.l.startsWith(q2)) cls = 1;
+    else {
+      const i = x.l.indexOf(q2);
+      if (i > 0) cls = /[\s/([{\-_.:]/.test(x.l[i - 1]) ? 2 : 3;
+      else {
+        const g = q2.length > 1 ? fuzzy(x.l, q2) : null;
+        if (g == null || g > 24) continue;
+        cls = 4;
+        extra = g;
+      }
+    }
+    scored.push([cls, extra, x.t.length, x.t]);
+  }
+  scored.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || (a[3] < b[3] ? -1 : 1));
+  return scored.slice(0, limit).map((s) => s[3]);
+}
+function filterCommands(items, query, limit = 60) {
+  const words = lower3(query).trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return (items || []).slice(0, limit);
+  const hits = [];
+  for (const it of items || []) {
+    const name = lower3(it.name);
+    const hay = `${name} ${lower3(it.keywords)} ${lower3(it.category)}`;
+    if (!words.every((w) => hay.includes(w))) continue;
+    hits.push([name.startsWith(words[0]) ? 0 : name.includes(words[0]) ? 1 : 2, it]);
+  }
+  return hits.sort((a, b) => a[0] - b[0]).slice(0, limit).map((h) => h[1]);
+}
+function parseMentions(text4) {
+  const src = String(text4 ?? "");
+  const pages = [];
+  const blocks = [];
+  const re = /#?\[\[([^[\]\n]+)\]\]|(?:^|(?<=[\s(]))#([^\s#[\]()]+)|\(\(([\w-]{9})\)\)/g;
+  let m;
+  while (m = re.exec(src)) {
+    const title = (m[1] ?? m[2] ?? "").trim();
+    if (title) {
+      if (!pages.includes(title)) pages.push(title);
+      continue;
+    }
+    if (m[3] && !blocks.includes(m[3])) blocks.push(m[3]);
+  }
+  return { pages, blocks };
+}
+function buildRoamContext({ pages = [], blocks = [], sources = {}, logDays = DEFAULT_LOG_DAYS, currentTitle = "" } = {}) {
+  const rc = {};
+  const pageArgs = [...new Set(pages.filter(Boolean))];
+  if (sources.page && currentTitle && !pageArgs.includes(currentTitle)) pageArgs.unshift(currentTitle);
+  if (pageArgs.length) {
+    rc.page = true;
+    rc.pageArgument = pageArgs;
+  } else if (sources.page) rc.page = true;
+  if (sources.linkedRefs) {
+    rc.linkedRefs = true;
+    if (currentTitle) rc.linkedRefsArgument = [currentTitle];
+  }
+  if (blocks.length) {
+    rc.block = true;
+    rc.blockArgument = [...new Set(blocks.filter(Boolean))];
+  }
+  if (sources.sidebar) rc.sidebar = true;
+  if (sources.logPages) {
+    rc.logPages = true;
+    const n2 = Math.round(Number(logDays));
+    rc.logPagesArgument = Number.isFinite(n2) && n2 > 0 ? Math.min(n2, 365) : DEFAULT_LOG_DAYS;
+  }
+  return Object.keys(rc).length ? rc : null;
+}
+var PART_HEADER = "Context from the PDF (cite pages as [p. N]):";
+function withPartContext(messages, context) {
+  const list = (messages || []).map((m) => ({ ...m }));
+  const ctx = String(context ?? "").trim();
+  if (!ctx) return list;
+  const first = list.findIndex((m) => m.role === "user");
+  const head = `${PART_HEADER}
+
+${ctx}`;
+  if (first < 0) return [{ role: "user", content: head }, ...list];
+  list[first] = { ...list[first], content: `${head}
+
+---
+
+${list[first].content}` };
+  return list;
+}
+var TAG_RE = (tag) => new RegExp(`#\\[\\[${tag.replace("/", "\\/")}\\]\\]|#${tag.replace("/", "\\/")}\\b|\\[\\[${tag.replace("/", "\\/")}\\]\\]`, "gi");
+function flattenChildren(children, depth = 0) {
+  const out = [];
+  for (const c of children || []) {
+    const s = String(c?.string ?? "").trim();
+    if (s) out.push(`${"  ".repeat(depth)}- ${s}`);
+    if (c?.children?.length) out.push(flattenChildren(c.children, depth + 1));
+  }
+  return out.filter(Boolean).join("\n");
+}
+function customItems(rows, tag) {
+  const isStyle = /style/.test(tag);
+  const out = [];
+  for (const r of rows || []) {
+    if (!r?.uid) continue;
+    const bare = String(r.string ?? "").replace(TAG_RE(tag), "").replace(/\s+/g, " ").trim();
+    const name = bare.split(" ").slice(0, isStyle ? 4 : 6).join(" ") || (isStyle ? "Style" : "Prompt");
+    const kids = flattenChildren(r.children);
+    out.push({ id: `${isStyle ? "style" : "prompt"}:${r.uid}`, uid: r.uid, name, prompt: kids || bare, category: isStyle ? "STYLES" : "CUSTOM PROMPTS", custom: true });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name, void 0, { sensitivity: "base", ignorePunctuation: true }));
+}
+function withStyle(systemPrompt, style) {
+  const s = String(style?.prompt ?? "").trim();
+  if (!s) return String(systemPrompt ?? "");
+  const base = String(systemPrompt ?? "").trim();
+  return `${base ? `${base}
+
+` : ""}${STYLE_INTRO}${s}`;
+}
+function effortsFor(model) {
+  const list = Array.isArray(model?.thinkingEfforts) ? model.thinkingEfforts.filter((e2) => typeof e2 === "string" && e2) : [];
+  if (list.length) return list;
+  return model?.thinking ? ["low", "medium", "high"] : [];
+}
+function effortOptions(choice, model) {
+  if (!choice) return {};
+  const levels = effortsFor(model);
+  if (!levels.length) return {};
+  if (choice === "off") return { thinking: false };
+  return levels.includes(choice) ? { thinking: true, effort: choice } : {};
+}
+
+// src/host/liveai.js
 var CALLER = "Plexus Diagram";
 var READY_EVENT = "liveai:api-ready";
 var UNLOADED_EVENT = "liveai:api-unloaded";
@@ -58874,7 +59794,16 @@ function listModels(w) {
   if (!a || typeof a.listModels !== "function") return [];
   try {
     const rows = a.listModels();
-    return (Array.isArray(rows) ? rows : []).filter((m) => m && typeof m.id === "string" && m.id && isChatModel(m)).map((m) => ({ id: m.id, name: m.name || m.id, provider: m.provider || "", contextLength: m.contextLength ?? null, isDefault: Boolean(m.isDefault), imageInput: sendsImages(m) }));
+    return (Array.isArray(rows) ? rows : []).filter((m) => m && typeof m.id === "string" && m.id && isChatModel(m)).map((m) => ({
+      id: m.id,
+      name: m.name || m.id,
+      provider: m.provider || "",
+      contextLength: m.contextLength ?? null,
+      isDefault: Boolean(m.isDefault),
+      imageInput: sendsImages(m),
+      thinking: m.capabilities?.thinking === true,
+      thinkingEfforts: Array.isArray(m.thinkingEfforts) ? m.thinkingEfforts.filter((e2) => typeof e2 === "string") : []
+    }));
   } catch {
     return [];
   }
@@ -58928,16 +59857,22 @@ function friendlyError(error) {
   const msg = String(error?.message || "").replace(/^\[LiveAI_API\]\s*/, "").trim();
   return msg || "Live AI Assistant could not answer.";
 }
-async function ask({ context = "", prompt = "", messages = null, systemPrompt = "", model = "", onChunk = null, signal = null, json = false, window: w } = {}) {
+async function ask({ context = "", roamContext = null, prompt = "", messages = null, systemPrompt = "", model = "", thinking = void 0, effort = "", onChunk = null, signal = null, json = false, window: w } = {}) {
   if (!available(w)) return { ok: false, code: "UNAVAILABLE", error: SETUP_HINT };
   const prior = (Array.isArray(messages) ? messages : []).filter((m) => (m?.role === "user" || m?.role === "assistant") && String(m.content ?? "").trim()).map((m) => ({ role: m.role, content: String(m.content) }));
+  const roam = roamContext && typeof roamContext === "object" && Object.keys(roamContext).length ? roamContext : null;
   const options = { prompt: prior.length ? [...prior, { role: "user", content: String(prompt) }] : String(prompt), caller: CALLER };
-  if (context) options.context = String(context);
+  if (roam) {
+    options.roamContext = roam;
+    if (context) options.prompt = withPartContext(Array.isArray(options.prompt) ? options.prompt : [{ role: "user", content: options.prompt }], context);
+  } else if (context) options.context = String(context);
   if (systemPrompt) {
     options.systemPrompt = String(systemPrompt);
     options.useDefaultSystemPrompt = false;
   }
   if (model) options.model = model;
+  if (typeof thinking === "boolean") options.thinking = thinking;
+  if (effort) options.effort = String(effort);
   if (signal) options.signal = signal;
   if (json) options.responseFormat = "json_object";
   if (typeof onChunk === "function") options.onChunk = (chunk) => {
@@ -58952,6 +59887,24 @@ async function ask({ context = "", prompt = "", messages = null, systemPrompt = 
   } catch (error) {
     return { ok: false, code: error?.code || (error?.name === "AbortError" ? "ABORTED" : "ERROR"), error: friendlyError(error) };
   }
+}
+var canOpenChat = (w) => typeof win(w)?.LiveAI?.openChatPopup === "function";
+function openChat(opts = {}, w) {
+  const open = win(w)?.LiveAI?.openChatPopup;
+  if (typeof open !== "function") return false;
+  const o = {};
+  if (Array.isArray(opts.conversationHistory) && opts.conversationHistory.length) o.conversationHistory = opts.conversationHistory;
+  if (opts.model) o.model = opts.model;
+  if (opts.roamContext && Object.keys(opts.roamContext).length) o.roamContext = opts.roamContext;
+  if (opts.style) o.style = opts.style;
+  if (opts.forcedTools?.length || opts.forcedTools?.size) o.forcedTools = new Set(opts.forcedTools);
+  try {
+    void Promise.resolve(open(o)).catch(() => {
+    });
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 // src/host/figure-image.js
@@ -59007,7 +59960,7 @@ async function shrinkImage(blob, { doc = globalThis.document, maxSide = MAX_SIDE
     ctx.fillRect(0, 0, size.w, size.h);
     ctx.drawImage(bitmap, 0, 0, size.w, size.h);
     bitmap.close?.();
-    const out = (type, q) => new Promise((resolve) => canvas.toBlob((b) => resolve(b), type, q));
+    const out = (type, q2) => new Promise((resolve) => canvas.toBlob((b) => resolve(b), type, q2));
     const png = await out("image/png");
     if (png && png.size <= jpegAbove) return png;
     return await out("image/jpeg", 0.9) || png || blob;
@@ -59113,6 +60066,373 @@ function getFigureImages() {
   return shared;
 }
 
+// src/host/roam-lookup.js
+var api2 = (w) => (w || globalThis)?.roamAlphaAPI || globalThis.roamAlphaAPI || null;
+function q(w, query, ...inputs) {
+  const data = api2(w)?.data;
+  if (!data) return [];
+  try {
+    const rows = data.fast?.q ? data.fast.q(query, ...inputs) : data.q?.(query, ...inputs);
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+var ciPattern2 = (text4) => `(?i)${String(text4 ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
+function pageTitles(w) {
+  return q(w, "[:find ?t :where [?p :node/title ?t]]").map((r) => r[0]).filter((t) => typeof t === "string" && t);
+}
+function searchBlocks(w, text4, limit = 20) {
+  const needle = String(text4 ?? "").trim();
+  if (needle.length < 2) return [];
+  const rows = q(w, `[:find ?u ?s ?t :in $ ?pat :where [?b :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
+ [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]`, ciPattern2(needle));
+  return rows.filter(([, s, t]) => typeof s === "string" && !String(t).startsWith("roam/")).sort((a, b) => a[1].length - b[1].length).slice(0, limit).map(([uid, string, page]) => ({ uid, string, page }));
+}
+var CHILDREN = "[:block/string :block/order {:block/children ...}]";
+var sortKids = (node2) => {
+  const kids = (node2?.[":block/children"] || node2?.children || []).slice().sort((a, b) => (a[":block/order"] ?? 0) - (b[":block/order"] ?? 0));
+  return kids.map((k) => ({ string: k[":block/string"] ?? k.string ?? "", children: sortKids(k) }));
+};
+function taggedBlocks(w, tag) {
+  const rows = q(w, `[:find ?u ?s :in $ ?tag :where [?t :node/title ?tag] [?b :block/refs ?t] [?b :block/uid ?u] [?b :block/string ?s]]`, tag);
+  const pull = api2(w)?.data?.pull;
+  return rows.map(([uid, string]) => {
+    let tree = null;
+    try {
+      tree = typeof pull === "function" ? pull.call(api2(w).data, CHILDREN, [":block/uid", uid]) : null;
+    } catch {
+      tree = null;
+    }
+    return { uid, string, children: sortKids(tree) };
+  });
+}
+function pageUid(w, title) {
+  const row4 = q(w, "[:find ?u :in $ ?t :where [?p :node/title ?t] [?p :block/uid ?u]]", String(title ?? ""))[0];
+  return typeof row4?.[0] === "string" ? row4[0] : "";
+}
+function blockString(w, uid) {
+  const row4 = q(w, "[:find ?s :in $ ?u :where [?b :block/uid ?u] [?b :block/string ?s]]", uid)[0];
+  return typeof row4?.[0] === "string" ? row4[0] : "";
+}
+async function currentPageTitle(w) {
+  let uid = "";
+  try {
+    uid = String(await api2(w)?.ui?.mainWindow?.getOpenPageOrBlockUid?.() || "");
+  } catch {
+    uid = "";
+  }
+  if (!uid) return "";
+  const own = q(w, "[:find ?t :in $ ?u :where [?p :block/uid ?u] [?p :node/title ?t]]", uid)[0];
+  if (own?.[0]) return own[0];
+  const page = q(w, "[:find ?t :in $ ?u :where [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]", uid)[0];
+  return page?.[0] || "";
+}
+
+// src/view/ask-composer.js
+var make = (doc, tag, cls, parent, text4) => {
+  const node2 = doc.createElement(tag);
+  if (cls) node2.className = cls;
+  if (text4 != null) node2.textContent = text4;
+  if (parent) parent.append(node2);
+  return node2;
+};
+var clear = (node2) => {
+  if (node2.replaceChildren) node2.replaceChildren();
+  else while (node2.firstChild) node2.removeChild(node2.firstChild);
+};
+var ROW_ICONS = Object.freeze({ tools: "wrench", context: "locate", style: "edit", prompts: "rocket", model: "cog", effort: "predictive-analysis", agents: "people", more: "more" });
+function iconButton(doc, parent, { cls, icon, label, text: text4 = "" }) {
+  const b = make(doc, "button", `pxd-ask__rowbtn ${cls}`, parent);
+  b.type = "button";
+  b.setAttribute("aria-label", label);
+  b.setAttribute("title", label);
+  b.setAttribute("aria-haspopup", "menu");
+  b.setAttribute("aria-expanded", "false");
+  const i = make(doc, "span", `bp3-icon bp3-icon-${icon} pxd-ask__rowicon`, b);
+  i.setAttribute("aria-hidden", "true");
+  if (text4) make(doc, "span", "pxd-ask__rowtext", b, text4);
+  return b;
+}
+function createPopover(doc, host) {
+  let el2 = null;
+  let anchor = null;
+  let rows = [];
+  let at = -1;
+  let spec = null;
+  let filterBox = null;
+  let list = null;
+  const highlight = (i) => {
+    rows.forEach((r3, k) => r3.classList.toggle("pxd-ask__mitem--active", k === i));
+    at = i;
+    const r = rows[i];
+    if (r) {
+      try {
+        r.scrollIntoView?.({ block: "nearest" });
+      } catch {
+      }
+    }
+  };
+  const pick2 = (i) => {
+    const r = rows[i];
+    if (!r || r.disabled) return;
+    const item = r._item;
+    if (!item.keep) close({ refocus: false });
+    try {
+      item.onPick?.(item);
+    } catch {
+    }
+    if (item.keep && el2) paint2();
+  };
+  const paint2 = () => {
+    if (!el2 || !spec) return;
+    const sections = typeof spec.sections === "function" ? spec.sections(filterBox ? filterBox.value : "") : spec.sections;
+    clear(list);
+    rows = [];
+    for (const sec of sections || []) {
+      if (sec?.note) {
+        make(doc, "div", "pxd-ask__mnote", list, sec.note);
+        continue;
+      }
+      if (!sec?.items?.length) continue;
+      if (sec.title) make(doc, "div", "pxd-ask__mhead", list, sec.title);
+      for (const item of sec.items) {
+        if (item.input) {
+          const wrap = make(doc, "label", "pxd-ask__mfield", list);
+          make(doc, "span", "", wrap, item.label);
+          const inp = make(doc, "input", "pxd-ask__mnum", wrap);
+          inp.type = "number";
+          inp.min = "1";
+          inp.max = "365";
+          inp.value = String(item.value ?? "");
+          inp.setAttribute("aria-label", item.label);
+          inp.addEventListener("change", () => {
+            try {
+              item.onInput?.(inp.value);
+            } catch {
+            }
+          });
+          continue;
+        }
+        const b = make(doc, "button", `pxd-ask__mitem${item.checked ? " pxd-ask__mitem--on" : ""}`, list);
+        b.type = "button";
+        b.setAttribute("role", item.checked != null ? "menuitemcheckbox" : "menuitem");
+        if (item.checked != null) b.setAttribute("aria-checked", item.checked ? "true" : "false");
+        if (item.id != null) b.setAttribute("data-id", item.id);
+        b.tabIndex = -1;
+        if (item.checked != null) make(doc, "span", "pxd-ask__mcheck", b, item.checked ? "✓" : "");
+        make(doc, "span", "pxd-ask__mlabel", b, item.label);
+        if (item.detail) make(doc, "span", "pxd-ask__mdetail", b, item.detail);
+        b.disabled = Boolean(item.disabled);
+        b._item = item;
+        const k = rows.length;
+        b.addEventListener("click", (event) => {
+          event.preventDefault?.();
+          pick2(k);
+        });
+        b.addEventListener("pointermove", () => {
+          if (at !== k) highlight(k);
+        });
+        rows.push(b);
+      }
+    }
+    if (!rows.length && spec.empty) make(doc, "div", "pxd-ask__mempty", list, spec.empty);
+    highlight(rows.length ? Math.min(Math.max(at, 0), rows.length - 1) : -1);
+  };
+  const outside = (event) => {
+    const t = event.target;
+    if (!el2 || el2 === t || el2.contains?.(t) || anchor === t || anchor?.contains?.(t)) return;
+    close({ refocus: false });
+  };
+  const onKey = (event) => {
+    const k = event.key;
+    if (k === "Escape") {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      close();
+      return;
+    }
+    if (k === "ArrowDown" || k === "ArrowUp") {
+      event.preventDefault?.();
+      if (!rows.length) return;
+      highlight((at + (k === "ArrowDown" ? 1 : -1) + rows.length) % rows.length);
+      if (event.target !== filterBox) rows[at]?.focus?.();
+      return;
+    }
+    if ((k === "Enter" || k === " " && event.target !== filterBox) && at >= 0 && !event.target?.classList?.contains?.("pxd-ask__mnum")) {
+      event.preventDefault?.();
+      pick2(at);
+    }
+  };
+  function open(spec2, anchorEl) {
+    const same2 = el2 && anchor === anchorEl;
+    close({ refocus: false });
+    if (same2) return false;
+    spec = spec2;
+    anchor = anchorEl || null;
+    at = 0;
+    el2 = make(doc, "div", `pxd-ask__menu${spec.cls ? ` ${spec.cls}` : ""}`, host);
+    el2.setAttribute("role", "menu");
+    if (spec.label) el2.setAttribute("aria-label", spec.label);
+    el2.addEventListener("keydown", onKey);
+    if (spec.filter) {
+      filterBox = make(doc, "input", "pxd-ask__mfilter", el2);
+      filterBox.type = "text";
+      filterBox.setAttribute("placeholder", spec.filter);
+      filterBox.setAttribute("aria-label", spec.filter);
+      filterBox.addEventListener("input", () => {
+        at = 0;
+        paint2();
+      });
+    }
+    list = make(doc, "div", "pxd-ask__mlist", el2);
+    paint2();
+    anchor?.setAttribute?.("aria-expanded", "true");
+    doc.addEventListener?.("pointerdown", outside, true);
+    try {
+      (filterBox || rows[0] || el2).focus?.();
+    } catch {
+    }
+    return true;
+  }
+  function close({ refocus = true } = {}) {
+    if (!el2) return false;
+    doc.removeEventListener?.("pointerdown", outside, true);
+    try {
+      el2.remove();
+    } catch {
+    }
+    el2 = null;
+    filterBox = null;
+    list = null;
+    rows = [];
+    spec = null;
+    anchor?.setAttribute?.("aria-expanded", "false");
+    const a = anchor;
+    anchor = null;
+    if (refocus) {
+      try {
+        a?.focus?.();
+      } catch {
+      }
+    }
+    return true;
+  }
+  return {
+    open,
+    close,
+    refresh: () => paint2(),
+    get isOpen() {
+      return Boolean(el2);
+    },
+    get element() {
+      return el2;
+    },
+    get anchor() {
+      return anchor;
+    },
+    items: () => rows.map((r) => r._item),
+    pick: pick2,
+    contains: (node2) => Boolean(el2 && node2 && (el2 === node2 || el2.contains?.(node2)))
+  };
+}
+function createSuggest(doc, host) {
+  let el2 = null;
+  let rows = [];
+  let at = 0;
+  let onPick = null;
+  const highlight = (i) => {
+    at = i;
+    rows.forEach((r, k) => {
+      r.classList.toggle("pxd-ask__sitem--active", k === i);
+      r.setAttribute("aria-selected", k === i ? "true" : "false");
+    });
+    try {
+      rows[i]?.scrollIntoView?.({ block: "nearest" });
+    } catch {
+    }
+  };
+  const pick2 = (i = at) => {
+    const r = rows[i];
+    if (!r) return false;
+    const fn = onPick;
+    const entry = r._entry;
+    hide();
+    try {
+      fn?.(entry);
+    } catch {
+    }
+    return true;
+  };
+  function show(entries, { title = "", pick: fn, empty = "" } = {}) {
+    if (!el2) {
+      el2 = make(doc, "div", "pxd-ask__suggest", host);
+      el2.setAttribute("role", "listbox");
+      el2.addEventListener("pointerdown", (event) => event.preventDefault?.());
+    }
+    clear(el2);
+    rows = [];
+    onPick = fn;
+    if (title) make(doc, "div", "pxd-ask__shead", el2, title);
+    let lastGroup = "";
+    for (const entry of entries || []) {
+      if (entry.group && entry.group !== lastGroup) {
+        make(doc, "div", "pxd-ask__sgroup", el2, entry.group);
+        lastGroup = entry.group;
+      }
+      const r = make(doc, "div", "pxd-ask__sitem", el2);
+      r.setAttribute("role", "option");
+      make(doc, "span", "pxd-ask__slabel", r, entry.label);
+      if (entry.detail) make(doc, "span", "pxd-ask__sdetail", r, entry.detail);
+      r._entry = entry;
+      const k = rows.length;
+      r.addEventListener("click", () => pick2(k));
+      r.addEventListener("pointermove", () => {
+        if (at !== k) highlight(k);
+      });
+      rows.push(r);
+    }
+    if (!rows.length && empty) make(doc, "div", "pxd-ask__sempty", el2, empty);
+    el2.hidden = false;
+    highlight(0);
+  }
+  function hide() {
+    if (!el2) return;
+    el2.hidden = true;
+    clear(el2);
+    rows = [];
+    onPick = null;
+  }
+  function key(event) {
+    if (!el2 || el2.hidden) return false;
+    const k = event.key;
+    if (k === "Escape") {
+      hide();
+      return true;
+    }
+    if (!rows.length) return false;
+    if (k === "ArrowDown" || k === "ArrowUp") {
+      highlight((at + (k === "ArrowDown" ? 1 : -1) + rows.length) % rows.length);
+      return true;
+    }
+    if (k === "Enter" || k === "Tab") return pick2();
+    return false;
+  }
+  return {
+    show,
+    hide,
+    key,
+    pick: pick2,
+    get isOpen() {
+      return Boolean(el2 && !el2.hidden);
+    },
+    entries: () => rows.map((r) => r._entry),
+    get element() {
+      return el2;
+    }
+  };
+}
+
 // src/view/ask-ai.js
 var SEES_NOTE = "The model will see this image";
 var BLIND_NOTE = "This model can't see images — text only";
@@ -59120,7 +60440,8 @@ var OFF_NOTE = "Figure images are off in settings — text only";
 var UPLOADING_NOTE = "Uploading figure…";
 var VISION_KEY = "pxd-ask-vision-model";
 var TITLE = "Live AI Chat";
-var PLACEHOLDER = "Ask about this part…";
+var PLACEHOLDER = "Ask… (/ for commands, [[ or # for pages)";
+var BLOCK_SEARCH_MS = 150;
 var GEOM_KEY = "pxd-ask-window";
 var MIN_WIDTH = 340;
 var MIN_HEIGHT = 320;
@@ -59132,17 +60453,19 @@ var QUESTION_MIN_ROWS = 1;
 var QUESTION_MAX_ROWS = 8;
 var askPerf = { lastOpenMs: 0 };
 var PENDING_URL = "https://… (uploaded when you press Send)";
+var FOLLOW_GAP = 8;
 var clipQuestion = (text4) => {
-  const q = String(text4 ?? "").replace(/\s+/g, " ").trim();
-  return q.length > 60 ? `${q.slice(0, 59).trimEnd()}…` : q;
+  const q2 = String(text4 ?? "").replace(/\s+/g, " ").trim();
+  return q2.length > 60 ? `${q2.slice(0, 59).trimEnd()}…` : q2;
 };
+var titleCase = (c) => String(c || "").toLowerCase().replace(/^\w/, (x) => x.toUpperCase());
 var now3 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
 var clamp4 = (n2, lo, hi) => Math.min(Math.max(n2, lo), Math.max(lo, hi));
 var askModelSetting = () => "auto";
 function setAskSettings({ model = null } = {}) {
   askModelSetting = typeof model === "function" ? model : () => "auto";
 }
-function make(doc, tag, cls, parent, text4) {
+function make2(doc, tag, cls, parent, text4) {
   const node2 = doc.createElement(tag);
   if (cls) node2.className = cls;
   if (text4 != null) node2.textContent = text4;
@@ -59150,7 +60473,7 @@ function make(doc, tag, cls, parent, text4) {
   return node2;
 }
 var button = (doc, cls, parent, text4, label) => {
-  const b = make(doc, "button", cls, parent, text4);
+  const b = make2(doc, "button", cls, parent, text4);
   b.type = "button";
   if (label) {
     b.setAttribute("aria-label", label);
@@ -59158,7 +60481,7 @@ var button = (doc, cls, parent, text4, label) => {
   }
   return b;
 };
-var clear = (node2) => {
+var clear2 = (node2) => {
   if (node2.replaceChildren) node2.replaceChildren();
   else while (node2.firstChild) node2.removeChild(node2.firstChild);
 };
@@ -59168,7 +60491,7 @@ function citeInto(doc, parent, text4, onPage) {
       parent.append(doc.createTextNode(piece.text));
       continue;
     }
-    const link = make(doc, "a", "pxd-ask__cite", parent, piece.text);
+    const link = make2(doc, "a", "pxd-ask__cite", parent, piece.text);
     link.setAttribute("href", "#");
     if (piece.page != null) link.setAttribute("data-page", String(piece.page));
     if (piece.part != null) link.setAttribute("data-part", String(piece.part));
@@ -59190,35 +60513,35 @@ function inlineInto(doc, parent, text4, onPage) {
   const src = String(text4 ?? "");
   while (m = re.exec(src)) {
     if (m.index > last) citeInto(doc, parent, src.slice(last, m.index), onPage);
-    if (m[1] != null) make(doc, "code", "pxd-ask__code", parent, m[1]);
-    else if (m[2] != null) inlineInto(doc, make(doc, "strong", "", parent), m[2], onPage);
-    else inlineInto(doc, make(doc, "em", "", parent), m[3], onPage);
+    if (m[1] != null) make2(doc, "code", "pxd-ask__code", parent, m[1]);
+    else if (m[2] != null) inlineInto(doc, make2(doc, "strong", "", parent), m[2], onPage);
+    else inlineInto(doc, make2(doc, "em", "", parent), m[3], onPage);
     last = m.index + m[0].length;
   }
   if (last < src.length) citeInto(doc, parent, src.slice(last), onPage);
 }
 function paintAnswer(doc, node2, text4, onPage) {
-  clear(node2);
+  clear2(node2);
   for (const part of parseAnswer(text4)) {
     if (part.type === "p") {
-      inlineInto(doc, make(doc, "p", "pxd-ask__p", node2), part.text, onPage);
+      inlineInto(doc, make2(doc, "p", "pxd-ask__p", node2), part.text, onPage);
       continue;
     }
     if (part.type === "table") {
-      const wrap = make(doc, "div", "pxd-ask__tablewrap", node2);
-      const table = make(doc, "table", "pxd-ask__table", wrap);
+      const wrap = make2(doc, "div", "pxd-ask__tablewrap", node2);
+      const table = make2(doc, "table", "pxd-ask__table", wrap);
       const width = Math.max(...part.rows.map((r) => r.length));
-      const thead = make(doc, "thead", "", table);
-      const tbody = make(doc, "tbody", "", table);
+      const thead = make2(doc, "thead", "", table);
+      const tbody = make2(doc, "tbody", "", table);
       part.rows.forEach((row4, r) => {
-        const tr = make(doc, "tr", "", r === 0 ? thead : tbody);
-        for (let c = 0; c < width; c += 1) inlineInto(doc, make(doc, r === 0 ? "th" : "td", "", tr), row4[c] ?? "", onPage);
+        const tr = make2(doc, "tr", "", r === 0 ? thead : tbody);
+        for (let c = 0; c < width; c += 1) inlineInto(doc, make2(doc, r === 0 ? "th" : "td", "", tr), row4[c] ?? "", onPage);
       });
       continue;
     }
-    const list = make(doc, part.ordered ? "ol" : "ul", "pxd-ask__list", node2);
+    const list = make2(doc, part.ordered ? "ol" : "ul", "pxd-ask__list", node2);
     for (const item of part.items) {
-      const li = make(doc, "li", item.depth ? `pxd-ask__li pxd-ask__li--n${Math.min(item.depth, 3)}` : "pxd-ask__li", list);
+      const li = make2(doc, "li", item.depth ? `pxd-ask__li pxd-ask__li--n${Math.min(item.depth, 3)}` : "pxd-ask__li", list);
       inlineInto(doc, li, item.text, onPage);
     }
   }
@@ -59293,7 +60616,7 @@ function readGeom(win2) {
 }
 function buildShell(dom) {
   const s = { dom, win: null, geom: null, collapsed: false, composer: null };
-  const root = make(dom, "div", "pxd-ask", null);
+  const root = make2(dom, "div", "pxd-ask", null);
   root.setAttribute("role", "dialog");
   root.setAttribute("aria-label", TITLE);
   s.root = root;
@@ -59306,9 +60629,9 @@ function buildShell(dom) {
       active()?.escape(event.target);
     }
   });
-  const head = make(dom, "div", "pxd-ask__head", root);
-  make(dom, "span", "pxd-ask__title", head, TITLE);
-  const btns = make(dom, "div", "pxd-ask__headbtns", head);
+  const head = make2(dom, "div", "pxd-ask__head", root);
+  make2(dom, "span", "pxd-ask__title", head, TITLE);
+  const btns = make2(dom, "div", "pxd-ask__headbtns", head);
   s.openLive = button(dom, "pxd-ask__hbtn pxd-ask__openlive", btns, "↗", "Open in Live AI");
   s.collapse = button(dom, "pxd-ask__hbtn pxd-ask__collapse", btns, "–", "Collapse");
   s.collapse.setAttribute("aria-expanded", "true");
@@ -59324,34 +60647,36 @@ function buildShell(dom) {
     s.collapse.setAttribute("title", s.collapsed ? "Expand" : "Collapse");
     place2(s);
   });
-  const ctx = make(dom, "div", "pxd-ask__context", root);
+  const ctx = make2(dom, "div", "pxd-ask__context", root);
   s.ctx = ctx;
   s.chip = button(dom, "pxd-ask__chip", ctx, "");
   s.chip.setAttribute("aria-expanded", "false");
   s.chip.setAttribute("title", "Show exactly what will be sent");
   s.chip.addEventListener("click", () => active()?.togglePreview());
-  s.parts = make(dom, "div", "pxd-ask__parts", ctx);
+  s.parts = make2(dom, "div", "pxd-ask__parts", ctx);
   s.addWhole = button(dom, "pxd-ask__addwhole", ctx, "+ whole PDF");
   s.addWhole.setAttribute("title", "Also ask about the whole document");
   s.addWhole.addEventListener("click", () => active()?.addWholeDoc());
-  s.imageRow = make(dom, "div", "pxd-ask__imagerow", ctx);
-  s.thumb = make(dom, "img", "pxd-ask__thumb", s.imageRow);
+  s.mentions = make2(dom, "div", "pxd-ask__mentions", ctx);
+  s.mentions.hidden = true;
+  s.imageRow = make2(dom, "div", "pxd-ask__imagerow", ctx);
+  s.thumb = make2(dom, "img", "pxd-ask__thumb", s.imageRow);
   s.thumb.setAttribute("alt", "");
-  s.imageNote = make(dom, "span", "pxd-ask__imgnote", s.imageRow);
+  s.imageNote = make2(dom, "span", "pxd-ask__imgnote", s.imageRow);
   s.imageNote.setAttribute("aria-live", "polite");
-  s.preview = make(dom, "pre", "pxd-ask__preview", root);
+  s.preview = make2(dom, "pre", "pxd-ask__preview", root);
   s.preview.hidden = true;
-  s.log = make(dom, "div", "pxd-ask__log", root);
+  s.log = make2(dom, "div", "pxd-ask__log", root);
   s.log.setAttribute("aria-live", "polite");
-  s.welcome = make(dom, "div", "pxd-ask__welcome", s.log);
-  s.quick = make(dom, "div", "pxd-ask__quick", s.welcome);
-  s.setup = make(dom, "div", "pxd-ask__setup", s.log);
+  s.welcome = make2(dom, "div", "pxd-ask__welcome", s.log);
+  s.quick = make2(dom, "div", "pxd-ask__quick", s.welcome);
+  s.setup = make2(dom, "div", "pxd-ask__setup", s.log);
   s.setup.hidden = true;
-  s.status = make(dom, "div", "pxd-ask__status", root);
+  s.status = make2(dom, "div", "pxd-ask__status", root);
   s.status.setAttribute("aria-live", "polite");
-  s.resize = make(dom, "div", "pxd-ask__resize", root);
+  s.resize = make2(dom, "div", "pxd-ask__resize", root);
   s.resize.setAttribute("aria-hidden", "true");
-  s.actions = make(dom, "div", "pxd-ask__actions", null);
+  s.actions = make2(dom, "div", "pxd-ask__actions", null);
   s.actions.hidden = true;
   s.copyBtn = button(dom, "pxd-ask__act", s.actions, "Copy");
   s.cardBtn = button(dom, "pxd-ask__act", s.actions, "Add as card");
@@ -59364,25 +60689,46 @@ function buildShell(dom) {
 function ensureComposer(s) {
   if (s.composer) return s.composer;
   const dom = s.dom;
-  const comp = make(dom, "div", "pxd-ask__composer", null);
+  const comp = make2(dom, "div", "pxd-ask__composer", null);
   s.root.insertBefore(comp, s.resize);
-  const tools = make(dom, "div", "pxd-ask__tools", comp);
-  const model = make(dom, "select", "pxd-ask__model", tools);
+  const tools = make2(dom, "div", "pxd-ask__tools", comp);
+  const btn2 = (key, cls, label, text4) => iconButton(dom, tools, { cls, icon: ROW_ICONS[key], label, text: text4 });
+  const toolsBtn = btn2("tools", "pxd-ask__toolsbtn", "Live AI tools (continue in Live AI's chat)");
+  const ctxBtn = btn2("context", "pxd-ask__ctxbtn", "Context");
+  const styleBtn = btn2("style", "pxd-ask__stylebtn", "Style");
+  const promptsBtn = btn2("prompts", "pxd-ask__promptsbtn", "Prompts", "Prompts");
+  const modelWrap = make2(dom, "label", "pxd-ask__modelwrap", tools);
+  make2(dom, "span", `bp3-icon bp3-icon-${ROW_ICONS.model} pxd-ask__rowicon`, modelWrap).setAttribute("aria-hidden", "true");
+  const model = make2(dom, "select", "pxd-ask__model", modelWrap);
   model.setAttribute("aria-label", "Model");
   model.setAttribute("title", "Model");
-  const addBoard = button(dom, "pxd-ask__addboard", tools, "Add to board");
-  addBoard.setAttribute("title", "Add the last answer to the board as a card");
-  addBoard.disabled = true;
-  const row4 = make(dom, "div", "pxd-ask__inputrow", comp);
-  const textarea = make(dom, "textarea", "pxd-ask__question", row4);
+  const effortBtn = btn2("effort", "pxd-ask__effortbtn", "Thinking");
+  effortBtn.hidden = true;
+  const agentsBtn = btn2("agents", "pxd-ask__agentsbtn", "Agents and Council (continue in Live AI's chat)");
+  const moreBtn = btn2("more", "pxd-ask__morebtn", "More");
+  const row4 = make2(dom, "div", "pxd-ask__inputrow", comp);
+  const textarea = make2(dom, "textarea", "pxd-ask__question", row4);
   textarea.setAttribute("aria-label", "Question");
   textarea.setAttribute("placeholder", PLACEHOLDER);
+  textarea.setAttribute("aria-autocomplete", "list");
   textarea.rows = QUESTION_MIN_ROWS;
   const send = button(dom, "pxd-ask__send", row4, "↑", "Send");
   const stopBtn = button(dom, "pxd-ask__stop", row4, "■", "Stop");
   stopBtn.hidden = true;
+  const popover = createPopover(dom, comp);
+  const suggest = createSuggest(dom, comp);
+  const menu = (name) => (event) => {
+    event?.preventDefault?.();
+    active()?.openMenu(name);
+  };
+  toolsBtn.addEventListener("click", menu("tools"));
+  ctxBtn.addEventListener("click", menu("context"));
+  styleBtn.addEventListener("click", menu("style"));
+  promptsBtn.addEventListener("click", menu("prompts"));
+  effortBtn.addEventListener("click", menu("effort"));
+  agentsBtn.addEventListener("click", menu("agents"));
+  moreBtn.addEventListener("click", menu("more"));
   model.addEventListener("change", () => active()?.modelChanged());
-  addBoard.addEventListener("click", () => active()?.addLast(addBoard));
   send.addEventListener("click", () => {
     void active()?.send();
   });
@@ -59391,13 +60737,35 @@ function ensureComposer(s) {
     growQuestion(textarea);
     active()?.questionChanged();
   });
+  textarea.addEventListener("click", () => active()?.caretMoved());
   textarea.addEventListener("focus", () => active()?.focusQuestion());
+  textarea.addEventListener("blur", () => suggest.hide());
   textarea.addEventListener("keydown", (event) => {
+    if (suggest.key(event)) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      return;
+    }
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") {
+      setTimeout(() => active()?.caretMoved(), 0);
+      return;
+    }
     if (event.key !== "Enter" || event.shiftKey || event.altKey || event.isComposing) return;
     event.preventDefault();
     void active()?.send();
   });
-  s.composer = { el: comp, model, addBoard, textarea, send, stop: stopBtn };
+  s.composer = {
+    el: comp,
+    model,
+    textarea,
+    send,
+    stop: stopBtn,
+    popover,
+    suggest,
+    buttons: { tools: toolsBtn, context: ctxBtn, style: styleBtn, prompts: promptsBtn, effort: effortBtn, agents: agentsBtn, more: moreBtn },
+    // The last answer's "Add to board" lives in the More menu; this says whether it is ready.
+    addBoard: { disabled: true }
+  };
   return s.composer;
 }
 function growQuestion(ta) {
@@ -59540,6 +60908,9 @@ function markFullscreen(s) {
   const body = s.dom.body;
   s.root.classList.toggle("pxd-ask--over-fullscreen", Boolean(body?.classList?.contains?.("pxd-has-fullscreen")));
 }
+function paintTheme(s, dom) {
+  s.root.classList.toggle("pxd-ask--dark", floatingDark(dom));
+}
 var modelKey = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 function modelLabel(options, model) {
   const key = modelKey(model);
@@ -59573,6 +60944,16 @@ function startSession(s, o) {
   let resizeQueued = false;
   let offBasket = () => {
   };
+  const sources = { part: true, page: false, linkedRefs: false, sidebar: false, logPages: false };
+  let logDays = DEFAULT_LOG_DAYS;
+  let mentions = [];
+  const dropped = /* @__PURE__ */ new Set();
+  let style = null;
+  let effort = "";
+  let titles = null;
+  let custom = null;
+  let blockTimer = null;
+  let blockAsked = "";
   const comp = () => s.composer;
   const ta = () => s.composer?.textarea || null;
   const modelSel = () => s.composer?.model || null;
@@ -59610,17 +60991,17 @@ function startSession(s, o) {
   };
   const willSend = () => anyImage() && imagesOn() && modelSees();
   const rebuild = (question) => {
-    const q = String(question ?? "").trim();
+    const q2 = String(question ?? "").trim();
     if (multiLike()) {
-      if (multiBuilt && q === multiFor) return;
-      multiBuilt = buildMultiContext(ctxParts(), q);
-      multiFor = q;
+      if (multiBuilt && q2 === multiFor) return;
+      multiBuilt = buildMultiContext(ctxParts(), q2);
+      multiFor = q2;
       return;
     }
     const e2 = one();
-    if (!e2 || !e2.isWhole || q === e2.builtFor) return;
-    e2.builtFor = q;
-    e2.built = buildFocusContext(e2.source, e2.focus, { question: q });
+    if (!e2 || !e2.isWhole || q2 === e2.builtFor) return;
+    e2.builtFor = q2;
+    e2.built = buildFocusContext(e2.source, e2.focus, { question: q2 });
     s.chip.textContent = chipText2(e2.built.chip);
   };
   const defaultPrompt = () => multiLike() ? MULTI_DEFAULT_PROMPT : one()?.built.prompt || "";
@@ -59655,8 +61036,28 @@ function startSession(s, o) {
     });
     else if (image.url) show(image.url);
   };
+  const roamNote = () => {
+    const bits = [
+      ...mentions.map((m) => m.kind === "block" ? `block ((${m.uid}))` : `page [[${m.title}]]`),
+      ...CONTEXT_SOURCES.filter((x) => x.key !== "part" && sources[x.key]).map((x) => sourceLabel(x.key).toLowerCase())
+    ];
+    const lines = [];
+    if (bits.length) lines.push(`Live AI adds from Roam: ${bits.join(", ")}.`);
+    if (style) lines.push(`Style: ${style.name}.`);
+    return lines.length ? `
+
+${lines.join("\n")}` : "";
+  };
   const refreshPreview = () => {
     if (s.preview.hidden) return;
+    if (!sources.part) {
+      s.preview.textContent = `The PDF part is off: only the question goes.${roamNote()}`;
+      return;
+    }
+    paintPreview();
+    s.preview.textContent += roamNote();
+  };
+  const paintPreview = () => {
     const question = questionText();
     rebuild(question);
     const sending = willSend();
@@ -59680,16 +61081,16 @@ function startSession(s, o) {
 (about ${built.tokensEstimate.toLocaleString?.() ?? built.tokensEstimate} tokens before the question)`;
   };
   const paintQuick = () => {
-    clear(s.quick);
+    clear2(s.quick);
     s.welcome.hidden = turns.length > 0 || !formReady;
     if (s.welcome.hidden) return;
     const wholeOnly = !multiLike() && one()?.isWhole;
-    for (const q of multiLike() ? MULTI_QUICK_PROMPTS : QUICK_PROMPTS) {
-      const btn2 = button(dom, "pxd-ask__quickbtn", s.quick, q.label);
+    for (const q2 of multiLike() ? MULTI_QUICK_PROMPTS : QUICK_PROMPTS) {
+      const btn2 = button(dom, "pxd-ask__quickbtn", s.quick, q2.label);
       btn2.addEventListener("click", () => {
         const t = ta();
         if (!t) return;
-        t.value = wholeOnly ? q.prompt.replace("this part", "this document") : q.prompt;
+        t.value = wholeOnly ? q2.prompt.replace("this part", "this document") : q2.prompt;
         lastPrefill = "";
         growQuestion(t);
         refreshPreview();
@@ -59707,13 +61108,13 @@ function startSession(s, o) {
   };
   const paintContext = () => {
     s.chip.textContent = multiLike() ? multiLabel() : chipText2(one()?.built.chip) || "No context loaded";
-    clear(s.parts);
+    clear2(s.parts);
     s.parts.hidden = !multiLike();
     if (multiLike()) {
       const list = multi ? parts : entries;
       list.forEach((p, i) => {
-        const c = make(dom, "span", "pxd-ask__partchip", s.parts);
-        make(dom, "span", "pxd-ask__partlabel", c, `Part ${i + 1}: ${p.label || "Part"}`);
+        const c = make2(dom, "span", "pxd-ask__partchip", s.parts);
+        make2(dom, "span", "pxd-ask__partlabel", c, `Part ${i + 1}: ${p.label || "Part"}`);
         const x = button(dom, "pxd-ask__partx", c, "×", `Remove part ${i + 1}`);
         x.addEventListener("click", () => removePart(p.key));
       });
@@ -59790,9 +61191,256 @@ function startSession(s, o) {
     } catch {
     }
   };
+  const mentionKey = (m) => m.kind === "block" ? `b:${m.uid}` : `p:${m.title}`;
+  const addMention = (m) => {
+    const key = mentionKey(m);
+    dropped.delete(key);
+    if (mentions.some((x) => mentionKey(x) === key)) return;
+    mentions.push(m);
+    paintMentions();
+  };
+  const removeMention = (key) => {
+    mentions = mentions.filter((x) => mentionKey(x) !== key);
+    dropped.add(key);
+    paintMentions();
+  };
+  const takeTyped = (text4) => {
+    const found = parseMentions(text4);
+    for (const title of found.pages) if (!dropped.has(`p:${title}`) && !mentions.some((m) => m.title === title) && pageUid(win2, title)) addMention({ kind: "page", title });
+    for (const uid of found.blocks) {
+      if (dropped.has(`b:${uid}`) || mentions.some((m) => m.uid === uid)) continue;
+      const str3 = blockString(win2, uid);
+      if (str3) addMention({ kind: "block", uid, label: clipQuestion(str3) });
+    }
+  };
+  const chip = (label, onX, cls = "") => {
+    const c = make2(dom, "span", `pxd-ask__mchip${cls ? ` ${cls}` : ""}`, s.mentions);
+    make2(dom, "span", "pxd-ask__mchiplabel", c, label);
+    const x = button(dom, "pxd-ask__partx", c, "×", `Remove ${label}`);
+    x.addEventListener("click", onX);
+    return c;
+  };
+  const sourceLabel = (key) => key === "logPages" ? `Daily notes (${logDays} days)` : CONTEXT_SOURCES.find((x) => x.key === key)?.label || key;
+  function paintMentions() {
+    clear2(s.mentions);
+    for (const m of mentions) chip(m.kind === "block" ? `Block: ${m.label || m.uid}` : `Page: ${m.title}`, () => removeMention(mentionKey(m)), m.kind === "block" ? "pxd-ask__mchip--block" : "pxd-ask__mchip--page");
+    for (const src of CONTEXT_SOURCES) if (src.key !== "part" && sources[src.key]) chip(sourceLabel(src.key), () => toggleSource(src.key), "pxd-ask__mchip--source");
+    if (style) chip(`Style: ${style.name}`, () => setStyle2(null), "pxd-ask__mchip--style");
+    s.mentions.hidden = !s.mentions.firstChild;
+    s.chip.classList.toggle("pxd-ask__chip--off", !sources.part);
+    s.chip.setAttribute("title", sources.part ? "Show exactly what will be sent" : "The PDF part is off for the next question (Context menu)");
+    paintRowState();
+  }
+  const paintRowState = () => {
+    const b = s.composer?.buttons;
+    if (!b) return;
+    const ctxOn = mentions.length || CONTEXT_SOURCES.some((x) => x.key !== "part" && sources[x.key]) || !sources.part;
+    b.context.classList.toggle("pxd-ask__rowbtn--on", Boolean(ctxOn));
+    b.style.classList.toggle("pxd-ask__rowbtn--on", Boolean(style));
+    b.style.setAttribute("title", style ? `Style: ${style.name}` : "Style");
+    b.effort.classList.toggle("pxd-ask__rowbtn--on", Boolean(effort));
+    b.effort.setAttribute("title", effort ? `Thinking: ${effort === "off" ? "off" : effort}` : "Thinking");
+    const sel = modelSel();
+    const picked = [...sel?.options || sel?.children || []].find((o2) => o2.value === sel?.value);
+    sel?.setAttribute?.("title", picked?.textContent ? `Model: ${picked.textContent}` : "Model");
+  };
+  const toggleSource = (key) => {
+    sources[key] = !sources[key];
+    paintMentions();
+    refreshPreview();
+  };
+  const setStyle2 = (next) => {
+    style = next && next.prompt ? next : null;
+    paintMentions();
+  };
+  const curModel = () => models.find((m) => m.id === (modelSel()?.value || "")) || null;
+  const paintEffort = () => {
+    const b = s.composer?.buttons?.effort;
+    if (!b) return;
+    const levels = effortsFor(curModel());
+    b.hidden = !levels.length;
+    if (effort && effort !== "off" && !levels.includes(effort)) effort = "";
+    if (!levels.length) effort = "";
+    paintRowState();
+  };
+  const customList = () => {
+    if (!custom) {
+      custom = {
+        prompts: customItems(taggedBlocks(win2, "liveai/prompt"), "liveai/prompt"),
+        styles: customItems(taggedBlocks(win2, "liveai/style"), "liveai/style")
+      };
+    }
+    return custom;
+  };
+  const styleItems = () => [...BUILTIN_STYLES.map((x) => ({ ...x, category: "STYLES", style: true })), ...customList().styles.map((x) => ({ ...x, style: true }))];
+  const commandItems = () => [...COMMANDS, ...TRANSLATIONS, ...customList().prompts, ...styleItems()];
+  const order = (items) => [...items].sort((a, b) => COMMAND_CATEGORIES.indexOf(a.category) - COMMAND_CATEGORIES.indexOf(b.category));
+  const doCommand = (item) => {
+    const t = ta();
+    if (t && /^\//.test(t.value)) {
+      t.value = "";
+      lastPrefill = "";
+      growQuestion(t);
+    }
+    if (item.style) {
+      setStyle2(item);
+      focus();
+      return;
+    }
+    void run({ command: item });
+  };
+  const titleIndex = () => {
+    if (!titles) titles = prepareTitles(pageTitles(win2));
+    return titles;
+  };
+  const stopBlockSearch = () => {
+    if (blockTimer) {
+      clearTimeout(blockTimer);
+      blockTimer = null;
+    }
+  };
+  const suggestFor = () => {
+    const t = ta();
+    const sug = s.composer?.suggest;
+    if (!t || !sug) return;
+    if (lastPrefill && t.value.startsWith(`${lastPrefill}/`) && !t.value.slice(lastPrefill.length).includes("\n")) {
+      t.value = t.value.slice(lastPrefill.length);
+      lastPrefill = "";
+      try {
+        t.setSelectionRange?.(t.value.length, t.value.length);
+      } catch {
+      }
+      growQuestion(t);
+    }
+    const caret = Number.isInteger(t.selectionStart) ? t.selectionStart : t.value.length;
+    const trig = t.value === lastPrefill ? null : triggerAt(t.value, caret);
+    if (!trig) {
+      stopBlockSearch();
+      sug.hide();
+      return;
+    }
+    const insert = (text4, mention) => {
+      const cur = ta();
+      if (!cur) return;
+      const at = Number.isInteger(cur.selectionStart) ? cur.selectionStart : cur.value.length;
+      const live2 = triggerAt(cur.value, at) || trig;
+      const next = applyMention(cur.value, live2, at, text4);
+      cur.value = next.text;
+      try {
+        cur.setSelectionRange?.(next.caret, next.caret);
+      } catch {
+      }
+      growQuestion(cur);
+      addMention(mention);
+      refreshPreview();
+      try {
+        cur.focus();
+      } catch {
+      }
+    };
+    if (trig.kind === "command") {
+      stopBlockSearch();
+      const hits = order(filterCommands(commandItems(), trig.query, 200));
+      sug.show(hits.map((it) => ({ label: it.name, group: it.category === "STYLES" ? "Styles" : titleCase(it.category), item: it })), { empty: "No command matches", pick: (e2) => doCommand(e2.item) });
+      return;
+    }
+    if (trig.kind === "page" || trig.kind === "tag") {
+      stopBlockSearch();
+      const hits = rankTitles(titleIndex(), trig.query, MAX_SUGGESTIONS);
+      sug.show(hits.map((title) => ({ label: title, item: title })), { title: "Pages", empty: trig.query ? "No page matches" : "", pick: (e2) => insert(pageMention(e2.item), { kind: "page", title: e2.item }) });
+      return;
+    }
+    const query = trig.query.trim();
+    if (query.length < 2) {
+      stopBlockSearch();
+      sug.show([], { title: "Blocks", empty: "Type to search blocks" });
+      return;
+    }
+    if (query === blockAsked && sug.isOpen) return;
+    stopBlockSearch();
+    blockTimer = setTimeout(() => {
+      blockTimer = null;
+      if (dead) return;
+      blockAsked = query;
+      const hits = searchBlocks(win2, query, MAX_SUGGESTIONS);
+      sug.show(hits.map((b) => ({ label: clipQuestion(b.string), detail: b.page, item: b })), { title: "Blocks", empty: "No block matches", pick: (e2) => insert(blockMention(e2.item.uid), { kind: "block", uid: e2.item.uid, label: clipQuestion(e2.item.string) }) });
+    }, BLOCK_SEARCH_MS);
+  };
+  const menuSpecs = {
+    tools: () => ({
+      label: "Live AI tools",
+      sections: () => [
+        { note: "Tools run in Live AI's chat: picking one continues this conversation there." },
+        ...Object.entries(TOOL_CATEGORIES).map(([cat, title]) => ({ title, items: LIVE_TOOLS.filter((x) => x.category === cat).map((x) => ({ id: x.id, label: x.name, detail: x.description, onPick: () => handOff({ forcedTools: [x.id] }) })) }))
+      ]
+    }),
+    context: () => ({
+      label: "Context",
+      sections: () => [
+        { title: "Send with the question", items: CONTEXT_SOURCES.map((x) => ({ id: x.key, label: x.key === "part" ? multiLike() ? "The PDF parts" : x.label : x.label, checked: Boolean(sources[x.key]), keep: true, onPick: () => toggleSource(x.key) })) },
+        { items: [{ input: true, label: "Days of daily notes", value: logDays, onInput: (v) => {
+          const n2 = Math.round(Number(v));
+          if (n2 > 0) {
+            logDays = Math.min(n2, 365);
+            paintMentions();
+          }
+        } }] },
+        { note: "Mention pages with [[ or #, blocks with (( in the question." }
+      ]
+    }),
+    style: () => ({
+      label: "Style",
+      sections: () => [{ title: "Answer style", items: [{ id: "Normal", label: "Normal", checked: !style, onPick: () => setStyle2(null) }, ...styleItems().map((x) => ({ id: x.id, label: x.name, checked: style?.id === x.id, onPick: () => setStyle2(x) }))] }]
+    }),
+    prompts: () => ({
+      label: "Prompts",
+      filter: "Filter prompts…",
+      empty: "No prompt matches",
+      sections: (q2) => {
+        const hits = filterCommands([...COMMANDS, ...TRANSLATIONS, ...customList().prompts], q2, 200);
+        return COMMAND_CATEGORIES.filter((c) => c !== "STYLES").map((c) => ({ title: titleCase(c), items: hits.filter((x) => x.category === c).map((x) => ({ id: x.id, label: x.name, onPick: () => doCommand(x) })) }));
+      }
+    }),
+    effort: () => ({
+      label: "Thinking",
+      sections: () => [{ title: "Thinking", items: [
+        { id: "", label: "Model default", checked: !effort, onPick: () => {
+          effort = "";
+          paintRowState();
+        } },
+        { id: "off", label: "Off", checked: effort === "off", onPick: () => {
+          effort = "off";
+          paintRowState();
+        } },
+        ...effortsFor(curModel()).map((lvl) => ({ id: lvl, label: lvl[0].toUpperCase() + lvl.slice(1), checked: effort === lvl, onPick: () => {
+          effort = lvl;
+          paintRowState();
+        } }))
+      ] }]
+    }),
+    agents: () => ({
+      label: "Agents and Council",
+      sections: () => [{ title: "Agents and Council run in Live AI's chat", items: [{ id: "handoff", label: "Continue in Live AI's chat", detail: "Turn on Council or agents there with the people button", onPick: () => handOff({}) }] }]
+    }),
+    more: () => ({
+      label: "More",
+      sections: () => [{ items: [
+        { id: "add-board", label: "Add last answer to board", disabled: !lastAnswered(), onPick: () => addLast(s.composer?.addBoard || {}) },
+        { id: "copy-chat", label: "Copy conversation", disabled: !turns.some((x) => x.answer.trim()), onPick: () => copyConversation() },
+        { id: "clear-chat", label: "Clear conversation", disabled: !turns.length, onPick: () => clearConversation() },
+        { id: "open-live", label: "Open in Live AI", disabled: !canOpenChat(win2), onPick: () => openInLiveAI() }
+      ] }]
+    })
+  };
+  const openMenu = (name) => {
+    const c = s.composer;
+    if (!c || !menuSpecs[name]) return;
+    c.suggest.hide();
+    c.popover.open(menuSpecs[name](), c.buttons[name]);
+  };
   const fillModels = () => {
     const sel = modelSel();
-    clear(sel);
+    clear2(sel);
     models = listModels(win2);
     let remembered = "";
     try {
@@ -59809,11 +61457,12 @@ function startSession(s, o) {
     }
     const def = pickAskModel(models, { setting: askModel ?? askModelSetting(), remembered, liveDefault: defaultModel(win2), needImage: anyImage() });
     for (const m of models) {
-      const opt = make(dom, "option", "", sel, m.provider ? `${m.name} · ${m.provider}` : m.name);
+      const opt = make2(dom, "option", "", sel, m.provider ? `${m.name} · ${m.provider}` : m.name);
       opt.value = m.id;
       if (m.id === def) opt.selected = true;
     }
     if (def) sel.value = def;
+    paintEffort();
   };
   const rememberModel = () => {
     const sel = modelSel();
@@ -59829,10 +61478,10 @@ function startSession(s, o) {
     }
   };
   const paintSetup = () => {
-    clear(s.setup);
-    const box2 = make(dom, "div", "pxd-ask__card", s.setup);
-    make(dom, "p", "pxd-ask__hint", box2, present(win2) ? "Live AI Assistant has no model ready. Add a model and its API key in Live AI Assistant's settings." : SETUP_HINT);
-    make(dom, "p", "pxd-ask__hint pxd-ask__hint--quiet", box2, "How to enable: Roam Depot → Live AI Assistant (v29 or later) → Settings → Enable Public API, then reload Roam.");
+    clear2(s.setup);
+    const box2 = make2(dom, "div", "pxd-ask__card", s.setup);
+    make2(dom, "p", "pxd-ask__hint", box2, present(win2) ? "Live AI Assistant has no model ready. Add a model and its API key in Live AI Assistant's settings." : SETUP_HINT);
+    make2(dom, "p", "pxd-ask__hint pxd-ask__hint--quiet", box2, "How to enable: Roam Depot → Live AI Assistant (v29 or later) → Settings → Enable Public API, then reload Roam.");
   };
   const paintOpenLive = () => {
     s.openLive.hidden = typeof win2.LiveAI?.openChatPopup !== "function";
@@ -59884,7 +61533,14 @@ function startSession(s, o) {
   };
   const toBottom = () => {
     try {
-      s.log.scrollTop = s.log.scrollHeight;
+      const log = s.log;
+      let top = Number(log.scrollHeight) || 0;
+      const q2 = turns[turns.length - 1]?.user;
+      if (q2?.isConnected !== false && typeof q2?.getBoundingClientRect === "function" && typeof log.getBoundingClientRect === "function") {
+        const at = (Number(log.scrollTop) || 0) + q2.getBoundingClientRect().top - log.getBoundingClientRect().top - FOLLOW_GAP;
+        if (Number.isFinite(at)) top = Math.min(top, Math.max(0, at));
+      }
+      log.scrollTop = top;
     } catch {
     }
   };
@@ -59905,15 +61561,15 @@ function startSession(s, o) {
     into.append(dom.createTextNode(chunk));
   };
   const userBubble = (text4) => {
-    const msg = make(dom, "div", "pxd-ask__msg pxd-ask__msg--user", null);
-    make(dom, "div", "pxd-ask__bubble", msg, text4);
+    const msg = make2(dom, "div", "pxd-ask__msg pxd-ask__msg--user", null);
+    make2(dom, "div", "pxd-ask__bubble", msg, text4);
     s.log.append(msg);
     return msg;
   };
   const answerBubble = (turn) => {
     for (const old of s.log.querySelectorAll?.(".pxd-ask__answer") || []) old.classList.remove("pxd-ask__answer");
-    turn.msg = make(dom, "div", "pxd-ask__msg pxd-ask__msg--ai", null);
-    turn.bubble = make(dom, "div", "pxd-ask__bubble pxd-ask__answer", turn.msg);
+    turn.msg = make2(dom, "div", "pxd-ask__msg pxd-ask__msg--ai", null);
+    turn.bubble = make2(dom, "div", "pxd-ask__bubble pxd-ask__answer", turn.msg);
     s.log.append(turn.msg);
   };
   const dropTurn = (turn) => {
@@ -59938,17 +61594,18 @@ function startSession(s, o) {
   };
   const showEmpty = (turn) => {
     const cur = models.find((m) => m.id === modelSel()?.value);
-    clear(turn.bubble);
+    clear2(turn.bubble);
     s.status.textContent = "";
     showActions(turn, false);
-    const box2 = make(dom, "div", "pxd-ask__empty", turn.bubble);
-    make(dom, "p", "pxd-ask__emptymsg", box2, `${cur?.name || "The model"} returned an empty answer. Live AI may not be set up for this provider; try another model.`);
+    const box2 = make2(dom, "div", "pxd-ask__empty", turn.bubble);
+    make2(dom, "p", "pxd-ask__emptymsg", box2, `${cur?.name || "The model"} returned an empty answer. Live AI may not be set up for this provider; try another model.`);
     const next = nextModel();
     if (!next) return;
     const btn2 = button(dom, "pxd-ask__tryother", box2, `Try ${next.name}`);
     btn2.addEventListener("click", () => {
       modelSel().value = next.id;
       rememberModel();
+      paintEffort();
       paintNote();
       refreshPreview();
       void run({ retry: turn });
@@ -59962,30 +61619,34 @@ function startSession(s, o) {
       return { ok: false, reason: "upload-failed" };
     }
   };
-  async function run({ retry = null } = {}) {
+  async function run({ retry = null, command = null } = {}) {
     const t = ta();
     if (!t || ctl || dead) return;
+    s.composer?.suggest.hide();
+    s.composer?.popover.close({ refocus: false });
     let turn = retry;
-    const question = retry ? retry.q : t.value.trim();
+    const question = retry ? retry.q : command ? `/${command.name}` : t.value.trim();
+    const asked = retry ? retry.asked || retry.q : command ? command.prompt : question;
     if (!question) {
       s.status.textContent = "Type a question first.";
       return;
     }
-    rebuild(question);
+    if (!retry && !command) takeTyped(question);
+    rebuild(command ? command.name : question);
     ctl = typeof win2.AbortController === "function" ? new win2.AbortController() : new AbortController();
     token += 1;
     const mine = token;
     if (!turn) {
-      turn = { q: question, prompt: "", answer: "", sentUrl: "", user: userBubble(question), msg: null, bubble: null };
+      turn = { q: question, asked, prompt: "", answer: "", sentUrl: "", user: userBubble(question), msg: null, bubble: null };
       turns.push(turn);
-      t.value = "";
+      if (!command || /^\//.test(t.value) || t.value === lastPrefill) t.value = "";
       lastPrefill = "";
       growQuestion(t);
       s.welcome.hidden = true;
       answerBubble(turn);
     } else {
       turn.answer = "";
-      clear(turn.bubble);
+      clear2(turn.bubble);
     }
     turn.sentUrl = "";
     lastPaint = 0;
@@ -59996,7 +61657,9 @@ function startSession(s, o) {
     let sendContext = "";
     let sendInstructions = "";
     let sendPrompt = "";
-    if (multiLike()) {
+    if (!sources.part) {
+      sendPrompt = asked;
+    } else if (multiLike()) {
       const list = ctxParts();
       const urls2 = /* @__PURE__ */ new Map();
       if (willSend()) {
@@ -60014,7 +61677,7 @@ function startSession(s, o) {
       const b = buildMultiContext(shown2, question);
       sendContext = b.context;
       sendInstructions = b.instructions;
-      sendPrompt = promptWithImages(question, urls2.size > 0);
+      sendPrompt = promptWithImages(asked, urls2.size > 0);
       turn.sentUrl = urls2.size ? "multi" : "";
     } else {
       const e2 = one();
@@ -60029,18 +61692,24 @@ function startSession(s, o) {
       }
       sendContext = contextWithImage(e2.built.context, turn.sentUrl, e2.image?.caption || e2.built.figure?.caption || "");
       sendInstructions = turn.sentUrl ? withImageInstructions(e2.built.instructions) : e2.built.instructions;
-      sendPrompt = promptWithImage(question, turn.sentUrl);
+      sendPrompt = promptWithImage(asked, turn.sentUrl);
     }
+    const needTitle = sources.page || sources.linkedRefs;
+    const currentTitle = needTitle ? await currentPageTitle(win2) : "";
+    if (mine !== token || dead) return;
+    const roamContext = buildRoamContext({ pages: mentions.filter((m) => m.kind === "page").map((m) => m.title), blocks: mentions.filter((m) => m.kind === "block").map((m) => m.uid), sources, logDays, currentTitle });
     turn.prompt = sendPrompt;
     s.status.textContent = note ? `${note} Thinking…` : "Thinking…";
     if (note) say(note);
     const messages = turns.slice(0, turns.indexOf(turn)).filter((x) => x.answer.trim()).flatMap((x) => [{ role: "user", content: x.prompt || x.q }, { role: "assistant", content: x.answer }]);
     const result = await ask({
       context: sendContext,
-      systemPrompt: sendInstructions,
+      roamContext,
+      systemPrompt: withStyle(sendInstructions, style),
       prompt: sendPrompt,
       messages,
       model: modelSel()?.value || "",
+      ...effortOptions(effort, curModel()),
       signal: ctl.signal,
       window: win2,
       onChunk: (chunk) => {
@@ -60108,7 +61777,7 @@ function startSession(s, o) {
     }
     dropTurn(turn);
     const t = ta();
-    if (t && !t.value.trim()) {
+    if (t && !t.value.trim() && turn.asked === turn.q) {
       t.value = turn.q;
       growQuestion(t);
     }
@@ -60146,32 +61815,74 @@ function startSession(s, o) {
     }
     void clip7.writeText(turn.answer).then(() => say("Copied"), () => say("Could not copy"));
   };
-  const openInLiveAI = () => {
-    const open = win2.LiveAI?.openChatPopup;
-    if (typeof open !== "function") return;
+  const copyConversation = () => {
+    const clip7 = win2.navigator?.clipboard || globalThis.navigator?.clipboard;
+    const text4 = turns.filter((x) => x.answer.trim()).map((x) => `**You:** ${x.q}
+
+**AI:** ${x.answer}`).join("\n\n---\n\n");
+    if (!text4 || !clip7?.writeText) {
+      say("Could not copy");
+      return;
+    }
+    void clip7.writeText(text4).then(() => say("Conversation copied"), () => say("Could not copy"));
+  };
+  const clearConversation = () => {
+    if (ctl) stop3();
+    for (const x of [...turns]) dropTurn(x);
+    s.actions.remove?.();
+    showActions(null, false);
+    s.status.textContent = "";
+    lastPrefill = "";
+    const t = ta();
+    if (t) t.value = "";
+    paintQuick();
+    prefill();
+    focus();
+  };
+  const handOff = (extra = {}) => {
+    if (!canOpenChat(win2)) {
+      say("Live AI's chat is not available. Update Live AI Assistant.");
+      return;
+    }
     const t = ta();
     const pending = t && t.value.trim() && t.value !== lastPrefill ? t.value.trim() : "";
+    if (pending) takeTyped(pending);
     rebuild(pending || (turns[0]?.q ?? ""));
     const b = multiLike() ? multiBuilt : one()?.built;
-    const head = [`Context from Plexus Diagram (${multiLike() ? multiLabel() : chipText2(one()?.built.chip) || "PDF"}):`, b?.instructions || "", b?.context || ""].filter(Boolean).join("\n\n");
+    const head = sources.part ? [`Context from Plexus Diagram (${multiLike() ? multiLabel() : chipText2(one()?.built.chip) || "PDF"}):`, b?.instructions || "", b?.context || ""].filter(Boolean).join("\n\n") : "";
     const history = [];
     for (const x of turns) {
       if (!x.answer.trim()) continue;
-      history.push({ role: "user", content: x.q }, { role: "assistant", content: x.answer });
+      history.push({ role: "user", content: x.asked && x.asked !== x.q ? x.asked : x.q }, { role: "assistant", content: x.answer });
     }
     if (pending) history.push({ role: "user", content: pending });
-    if (history[0]?.role === "user") history[0] = { role: "user", content: `${head}
+    if (head) {
+      if (history[0]?.role === "user") history[0] = { role: "user", content: `${head}
 
 ${history[0].content}` };
-    else history.unshift({ role: "user", content: head });
-    try {
-      void Promise.resolve(open({ conversationHistory: history, model: modelSel()?.value || void 0 })).catch(() => {
-      });
-    } catch {
+      else history.unshift({ role: "user", content: head });
     }
+    const named2 = [
+      ...mentions.map((m) => m.kind === "block" ? blockMention(m.uid) : pageMention(m.title)),
+      ...CONTEXT_SOURCES.filter((x) => x.key !== "part" && sources[x.key]).map((x) => sourceLabel(x.key).toLowerCase())
+    ];
+    if (named2.length) {
+      const note = `Also use from my Roam graph: ${named2.join(", ")}.`;
+      if (history[0]?.role === "user") history[0] = { role: "user", content: `${history[0].content}
+
+${note}` };
+      else history.unshift({ role: "user", content: note });
+    }
+    openChat({ conversationHistory: history, model: modelSel()?.value || void 0, style: style?.name || "", forcedTools: extra.forcedTools || null }, win2);
     close();
   };
+  const openInLiveAI = () => handOff({});
   const escape = (target) => {
+    if (s.composer?.popover.close()) return;
+    if (s.composer?.suggest.isOpen) {
+      s.composer.suggest.hide();
+      return;
+    }
     if (ctl) {
       stop3();
       return;
@@ -60205,6 +61916,11 @@ ${history[0].content}` };
       clearTimeout(paintTimer);
       paintTimer = null;
     }
+    stopBlockSearch();
+    s.composer?.popover.close({ refocus: false });
+    s.composer?.suggest.hide();
+    clear2(s.mentions);
+    s.mentions.hidden = true;
     try {
       offReady();
     } catch {
@@ -60222,9 +61938,9 @@ ${history[0].content}` };
       s.root.remove();
     } catch {
     }
-    if (chat?.session === api2) chat.session = null;
+    if (chat?.session === api3) chat.session = null;
   }
-  const api2 = {
+  const api3 = {
     multi,
     win: win2,
     get entries() {
@@ -60238,6 +61954,13 @@ ${history[0].content}` };
     addLast,
     copyLast,
     openInLiveAI,
+    handOff,
+    openMenu,
+    copyConversation,
+    clearConversation,
+    get composerState() {
+      return { sources: { ...sources }, logDays, mentions: mentions.slice(), style, effort };
+    },
     addWholeDoc: () => {
       const base = entries.find((e2) => e2.hasBlocks && !e2.isWhole);
       if (!base) return;
@@ -60252,10 +61975,15 @@ ${history[0].content}` };
     },
     modelChanged: () => {
       rememberModel();
+      paintEffort();
       paintNote();
       refreshPreview();
     },
-    questionChanged: () => refreshPreview(),
+    questionChanged: () => {
+      suggestFor();
+      refreshPreview();
+    },
+    caretMoved: () => suggestFor(),
     focusQuestion: () => {
       const t = ta();
       if (t && t.value && t.value === lastPrefill) {
@@ -60273,8 +62001,8 @@ ${history[0].content}` };
     } catch {
     }
   };
-  api2.focus = focus;
-  clear(s.setup);
+  api3.focus = focus;
+  clear2(s.setup);
   s.setup.hidden = true;
   s.status.textContent = "";
   s.preview.hidden = true;
@@ -60283,8 +62011,11 @@ ${history[0].content}` };
     s.composer.textarea.value = "";
     s.composer.el.hidden = true;
     s.composer.addBoard.disabled = true;
+    s.composer.popover.close({ refocus: false });
+    s.composer.suggest.hide();
     setBusy(false);
   }
+  paintMentions();
   if (multi) {
     peekMulti();
     offBasket = multi.basket.subscribe((list) => {
@@ -60305,7 +62036,7 @@ ${history[0].content}` };
   const offReady = onReady(sync, win2);
   if (!formReady && s.setup.hidden) sync(available(win2));
   win2.addEventListener?.("resize", onResize);
-  return api2;
+  return api3;
 }
 function openAskAI(opts = {}) {
   const dom = opts.document || (typeof document !== "undefined" ? document : null);
@@ -60327,6 +62058,7 @@ function openAskAI(opts = {}) {
   const cur2 = () => session;
   if (s.collapsed && cur) s.collapse.click();
   if (cur && cur.win === win2 && !opts.multi && !cur.multi) {
+    paintTheme(s, dom);
     const e2 = cur.addEntry(opts);
     cur.focus();
     markFullscreen(s);
@@ -60345,8 +62077,7 @@ function openAskAI(opts = {}) {
   s.win = win2;
   s.geom = readGeom(win2);
   markFullscreen(s);
-  const dark = Boolean(dom.querySelector?.(".pxd-root--dark"));
-  s.root.classList.toggle("pxd-ask--dark", dark);
+  paintTheme(s, dom);
   place2(s);
   if (!s.root.isConnected) (dom.body || dom.documentElement)?.append?.(s.root);
   session = startSession(s, opts);
@@ -60639,7 +62370,7 @@ function nearbyOf(doc, blockId) {
     return { caption: "", nearby: "" };
   }
 }
-async function runChartToTable({ doc, blockId, image = null, imageService = null, toast = null, addTable = null, api: api2 = liveai_exports, window: w } = {}) {
+async function runChartToTable({ doc, blockId, image = null, imageService = null, toast = null, addTable = null, api: api3 = liveai_exports, window: w } = {}) {
   const say = (message) => {
     try {
       if (typeof toast === "function") toast(message);
@@ -60653,11 +62384,11 @@ async function runChartToTable({ doc, blockId, image = null, imageService = null
     say(OFF_TOAST);
     return { ok: false, reason: "off" };
   }
-  if (!api2.available(w)) {
-    say(api2.SETUP_HINT);
+  if (!api3.available(w)) {
+    say(api3.SETUP_HINT);
     return { ok: false, reason: "unavailable" };
   }
-  const model = pickVisionModel(api2.listModels(w));
+  const model = pickVisionModel(api3.listModels(w));
   if (!model) {
     say(NO_MODEL_TOAST);
     return { ok: false, reason: "no-model" };
@@ -60670,8 +62401,8 @@ async function runChartToTable({ doc, blockId, image = null, imageService = null
   }
   const { caption, nearby } = nearbyOf(doc, blockId);
   const request2 = { context: chartContext({ url: got.url, caption, nearby }), prompt: CHART_PROMPT, systemPrompt: CHART_SYSTEM_PROMPT, model: model.id, window: w };
-  let res = await api2.ask({ ...request2, json: true });
-  if (!res.ok) res = await api2.ask(request2);
+  let res = await api3.ask({ ...request2, json: true });
+  if (!res.ok) res = await api3.ask(request2);
   if (!res.ok) {
     say(res.error || "Live AI Assistant could not read the chart.");
     return { ok: false, reason: res.code || "error" };
@@ -60709,8 +62440,9 @@ async function runChartToTable({ doc, blockId, image = null, imageService = null
 // src/view/part-gutter.js
 init_ask_icon();
 var GUTTER = Object.freeze({ button: 24, gap: 6, pad: 2, intentMs: 120, hideMs: 160, copiedMs: 1200 });
+var GUTTER_CARET = 12;
 var GUTTER_W = GUTTER.button + 4;
-var GUTTER_H = GUTTER.button * 2 + 6;
+var GUTTER_H = GUTTER.button * 2 + GUTTER_CARET + 8;
 var num6 = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
 function gutterSpot(box2, host, { w = GUTTER_W, h = GUTTER_H, gap = GUTTER.gap, pad: pad2 = GUTTER.pad, side: side2 = "left" } = {}) {
   const left = num6(box2?.left);
@@ -60757,6 +62489,7 @@ function createPartGutter({
   let pill = null;
   let askBtn = null;
   let copyBtn = null;
+  let moreBtn = null;
   let block = null;
   let pendingBlock = null;
   let showTimer = null;
@@ -60801,7 +62534,15 @@ function createPartGutter({
     copyBtn.tabIndex = -1;
     const cp = copyIcon(doc, 16);
     if (cp) copyBtn.append(cp);
-    pill.append(askBtn, copyBtn);
+    moreBtn = doc.createElement("button");
+    moreBtn.type = "button";
+    moreBtn.className = "pxd-pgutter__btn pxd-pgutter__more pxd-chrome";
+    moreBtn.setAttribute("aria-label", "Copy as…");
+    moreBtn.setAttribute("aria-haspopup", "menu");
+    moreBtn.setAttribute("data-tip", "gutter.copy-more");
+    moreBtn.tabIndex = -1;
+    moreBtn.textContent = "▾";
+    pill.append(askBtn, copyBtn, moreBtn);
     for (const type of ["pointerdown", "mousedown", "dblclick"]) {
       on(pill, type, (event) => {
         stop3(event);
@@ -60852,6 +62593,25 @@ function createPartGutter({
       } catch {
       }
     });
+    const openMenu = (event, fromKey) => {
+      stop3(event);
+      event.preventDefault?.();
+      if (typeof onMenu !== "function" || !block) return;
+      try {
+        onMenu(block, moreBtn);
+      } catch {
+      }
+      if (!fromKey) return;
+      const first = doc.querySelector?.(".pxd-copy-menu .pxd-copy-menu__item");
+      try {
+        first?.focus?.();
+      } catch {
+      }
+    };
+    on(moreBtn, "click", (event) => openMenu(event, event.detail === 0));
+    on(moreBtn, "keydown", (event) => {
+      if (event.key === "ArrowDown") openMenu(event, true);
+    });
     mount.append(pill);
     return pill;
   };
@@ -60897,6 +62657,8 @@ function createPartGutter({
     pill.setAttribute("aria-hidden", "false");
     askBtn.tabIndex = 0;
     copyBtn.tabIndex = 0;
+    moreBtn.tabIndex = typeof onMenu === "function" ? 0 : -1;
+    moreBtn.hidden = typeof onMenu !== "function";
     pill.classList.add("pxd-pgutter--show");
     shown = true;
   };
@@ -60912,6 +62674,7 @@ function createPartGutter({
     pill.removeAttribute("data-block");
     if (askBtn) askBtn.tabIndex = -1;
     if (copyBtn) copyBtn.tabIndex = -1;
+    if (moreBtn) moreBtn.tabIndex = -1;
   }
   function hideSoon() {
     stopShow();
@@ -60972,6 +62735,7 @@ function createPartGutter({
       pill = null;
       askBtn = null;
       copyBtn = null;
+      moreBtn = null;
     }
   };
 }
@@ -62281,9 +64045,9 @@ ${sourceAttrString(source)}` : markdown;
       if (id === "link") {
         const uid = await ensurePin(block);
         if (!uid) return false;
-        const pageUid = host?.blockPageUid?.(pdfBlockUidNow()) || "";
+        const pageUid2 = host?.blockPageUid?.(pdfBlockUidNow()) || "";
         const graph = graphFromDeepLink(doc.defaultView?.location?.hash || globalThis.location?.hash || "");
-        const link = pinDeepLink({ graph, pageUid, pinUid: uid });
+        const link = pinDeepLink({ graph, pageUid: pageUid2, pinUid: uid });
         if (!link) return false;
         await writeTextOnly(link);
         return true;
@@ -64697,13 +66461,13 @@ function renderEnginesPanel(doc, parent, deps = {}) {
       event.stopPropagation?.();
       void act("cloud-save");
     });
-    const clear2 = doc.createElement("button");
-    clear2.type = "button";
-    clear2.setAttribute("type", "button");
-    clear2.className = "pxd-engines__btn";
-    clear2.setAttribute("data-action", "cloud-clear");
-    clear2.textContent = "Remove LlamaParse key";
-    bindTo(heldSheet)(clear2, "click", (event) => {
+    const clear3 = doc.createElement("button");
+    clear3.type = "button";
+    clear3.setAttribute("type", "button");
+    clear3.className = "pxd-engines__btn";
+    clear3.setAttribute("data-action", "cloud-clear");
+    clear3.textContent = "Remove LlamaParse key";
+    bindTo(heldSheet)(clear3, "click", (event) => {
       event.stopPropagation?.();
       void act("cloud-clear");
     });
@@ -64717,7 +66481,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
       event.stopPropagation?.();
       void act("mistral-clear");
     });
-    box2.append(head, routeLine, note, keyInput, region, tier, relay, mistralHead, mistralInput, save, clear2, clearMistral);
+    box2.append(head, routeLine, note, keyInput, region, tier, relay, mistralHead, mistralInput, save, clear3, clearMistral);
     sheetHost.append(box2);
   }
   function paintSheet() {
@@ -66056,10 +67820,10 @@ function createReadPane({
     }
   };
   const treeOf = () => {
-    const pageUid = current3.pageUid;
-    if (!pageUid || typeof host?.pdfHighlightTree !== "function") return [];
+    const pageUid2 = current3.pageUid;
+    if (!pageUid2 || typeof host?.pdfHighlightTree !== "function") return [];
     try {
-      const tree = host.pdfHighlightTree(pageUid);
+      const tree = host.pdfHighlightTree(pageUid2);
       return Array.isArray(tree) ? tree : [];
     } catch {
       return [];
@@ -68750,8 +70514,8 @@ function firstPageAllowed(url) {
 }
 function timersOf(timers) {
   const set = typeof timers?.setTimeout === "function" ? timers.setTimeout.bind(timers) : setTimeout;
-  const clear2 = typeof timers?.clearTimeout === "function" ? timers.clearTimeout.bind(timers) : clearTimeout;
-  return { set, clear: clear2 };
+  const clear3 = typeof timers?.clearTimeout === "function" ? timers.clearTimeout.bind(timers) : clearTimeout;
+  return { set, clear: clear3 };
 }
 function blobFrom(canvas, timers) {
   return new Promise((resolve) => {
@@ -69000,8 +70764,8 @@ function clockOf(now4) {
 }
 function timersOf2(timers) {
   const set = typeof timers?.setTimeout === "function" ? timers.setTimeout.bind(timers) : setTimeout;
-  const clear2 = typeof timers?.clearTimeout === "function" ? timers.clearTimeout.bind(timers) : clearTimeout;
-  return { set, clear: clear2 };
+  const clear3 = typeof timers?.clearTimeout === "function" ? timers.clearTimeout.bind(timers) : clearTimeout;
+  return { set, clear: clear3 };
 }
 function positiveInt(value) {
   const n2 = Number(value);
@@ -69560,441 +71324,6 @@ function createPdfWarm({ doc, root, host, store, timers, now: now4, renderFirst 
       return { spent: spentCount, pending, paths: { ...paths } };
     }
   };
-}
-
-// src/model/theme-colors.js
-var BODY_CONTRAST = 4.5;
-var SURFACE_MIX = 0.04;
-var THEME_VARS = Object.freeze([
-  "--pxd-link",
-  "--pxd-surface",
-  "--pxd-card",
-  "--pxd-text",
-  "--pxd-muted",
-  "--pxd-border",
-  "--pxd-border-strong",
-  "--pxd-accent",
-  "--pxd-accent-soft",
-  "--pxd-edge",
-  "--pxd-chrome-bg"
-]);
-function byte(n2) {
-  const x = Number(n2);
-  if (!Number.isFinite(x)) return null;
-  return Math.max(0, Math.min(255, Math.round(x)));
-}
-function alpha(n2) {
-  if (n2 == null || n2 === "") return 1;
-  const raw = String(n2).trim();
-  const pct2 = raw.endsWith("%");
-  const x = Number(pct2 ? raw.slice(0, -1) : raw);
-  if (!Number.isFinite(x)) return null;
-  const v = pct2 ? x / 100 : x;
-  return Math.max(0, Math.min(1, v));
-}
-function hexByte(text4) {
-  const n2 = Number.parseInt(text4, 16);
-  return Number.isFinite(n2) ? n2 : null;
-}
-function fromHex(text4) {
-  const hex = text4.slice(1);
-  if (hex.length === 3 || hex.length === 4) {
-    const r = hexByte(hex[0] + hex[0]);
-    const g = hexByte(hex[1] + hex[1]);
-    const b = hexByte(hex[2] + hex[2]);
-    const a = hex.length === 4 ? alpha(hexByte(hex[3] + hex[3]) / 255) : 1;
-    if (r == null || g == null || b == null || a == null) return null;
-    return { r, g, b, a };
-  }
-  if (hex.length === 6 || hex.length === 8) {
-    const r = hexByte(hex.slice(0, 2));
-    const g = hexByte(hex.slice(2, 4));
-    const b = hexByte(hex.slice(4, 6));
-    const a = hex.length === 8 ? alpha(hexByte(hex.slice(6, 8)) / 255) : 1;
-    if (r == null || g == null || b == null || a == null) return null;
-    return { r, g, b, a };
-  }
-  return null;
-}
-function hslToRgb(h, s, l, a) {
-  const hue = (Number(h) % 360 + 360) % 360;
-  const sat = Math.max(0, Math.min(100, Number(s))) / 100;
-  const lig = Math.max(0, Math.min(100, Number(l))) / 100;
-  if (!Number.isFinite(hue) || !Number.isFinite(sat) || !Number.isFinite(lig)) return null;
-  const c = (1 - Math.abs(2 * lig - 1)) * sat;
-  const hp = hue / 60;
-  const x = c * (1 - Math.abs(hp % 2 - 1));
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  if (hp < 1) {
-    r = c;
-    g = x;
-  } else if (hp < 2) {
-    r = x;
-    g = c;
-  } else if (hp < 3) {
-    g = c;
-    b = x;
-  } else if (hp < 4) {
-    g = x;
-    b = c;
-  } else if (hp < 5) {
-    r = x;
-    b = c;
-  } else {
-    r = c;
-    b = x;
-  }
-  const m = lig - c / 2;
-  return {
-    r: Math.round((r + m) * 255),
-    g: Math.round((g + m) * 255),
-    b: Math.round((b + m) * 255),
-    a: a == null ? 1 : a
-  };
-}
-function fromFunc(text4) {
-  const match = /^(rgba?|hsla?)\(([^)]+)\)$/i.exec(text4.trim());
-  if (!match) return null;
-  const kind = match[1].toLowerCase();
-  const parts = match[2].split(/[,\s/]+/).map((part) => part.trim()).filter(Boolean);
-  if (kind === "rgb" || kind === "rgba") {
-    if (parts.length < 3) return null;
-    const r = byte(parts[0]);
-    const g = byte(parts[1]);
-    const b = byte(parts[2]);
-    const a = alpha(parts[3]);
-    if (r == null || g == null || b == null || a == null) return null;
-    return { r, g, b, a };
-  }
-  if (parts.length < 3) return null;
-  const s = String(parts[1]).replace("%", "");
-  const l = String(parts[2]).replace("%", "");
-  return hslToRgb(parts[0], s, l, alpha(parts[3]));
-}
-function parseColor(input) {
-  if (typeof input !== "string") return null;
-  const text4 = input.trim().toLowerCase();
-  if (!text4 || text4 === "transparent") return null;
-  if (text4.startsWith("#")) return fromHex(text4);
-  if (text4.startsWith("rgb") || text4.startsWith("hsl")) return fromFunc(text4);
-  return null;
-}
-function channel(v) {
-  const s = v / 255;
-  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-}
-function luminance(color) {
-  const c = color && typeof color === "object" && "r" in color ? color : parseColor(color);
-  if (!c) return 0;
-  return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
-}
-function contrast(a, b) {
-  const la = luminance(a);
-  const lb = luminance(b);
-  const hi = Math.max(la, lb);
-  const lo = Math.min(la, lb);
-  return (hi + 0.05) / (lo + 0.05);
-}
-function mix(a, b, t) {
-  const from = typeof a === "string" ? parseColor(a) : a;
-  const to = typeof b === "string" ? parseColor(b) : b;
-  if (!from || !to) return null;
-  const amount = Number.isFinite(Number(t)) ? Math.max(0, Math.min(1, Number(t))) : 0;
-  return {
-    r: Math.round(from.r * (1 - amount) + to.r * amount),
-    g: Math.round(from.g * (1 - amount) + to.g * amount),
-    b: Math.round(from.b * (1 - amount) + to.b * amount),
-    a: from.a * (1 - amount) + to.a * amount
-  };
-}
-function cssColor2(color) {
-  const c = color && typeof color === "object" ? color : parseColor(color);
-  if (!c) return "";
-  const r = byte(c.r);
-  const g = byte(c.g);
-  const b = byte(c.b);
-  const a = alpha(c.a);
-  if (r == null || g == null || b == null || a == null) return "";
-  if (a >= 0.999) return `rgb(${r}, ${g}, ${b})`;
-  const shown = Math.round(a * 1e3) / 1e3;
-  return `rgba(${r}, ${g}, ${b}, ${shown})`;
-}
-function opaque(color) {
-  if (!color) return null;
-  return { r: color.r, g: color.g, b: color.b, a: 1 };
-}
-function composite(fg, bg) {
-  if (!fg || !bg) return null;
-  const a = alpha(fg.a);
-  if (a == null) return null;
-  if (a >= 0.999) return opaque(fg);
-  return {
-    r: Math.round(fg.r * a + bg.r * (1 - a)),
-    g: Math.round(fg.g * a + bg.g * (1 - a)),
-    b: Math.round(fg.b * a + bg.b * (1 - a)),
-    a: 1
-  };
-}
-function deriveTheme(sample) {
-  const src = sample && typeof sample === "object" ? sample : {};
-  const background = parseColor(src.background);
-  const text4 = parseColor(src.text);
-  if (!background || !text4 || background.a < 0.5 || text4.a <= 0) return null;
-  const bg = opaque(background);
-  const ink = composite(text4, bg) || opaque(text4);
-  const dark = src.dark === true || luminance(bg) < 0.4;
-  const card2 = mix(bg, ink, SURFACE_MIX);
-  if (!card2) return null;
-  const cardOpaque = opaque(card2);
-  if (contrast(ink, cardOpaque) < BODY_CONTRAST || contrast(ink, bg) < BODY_CONTRAST) return null;
-  let muted = parseColor(src.muted);
-  const mutedOnCard = muted ? composite(muted, cardOpaque) : null;
-  if (!mutedOnCard || contrast(mutedOnCard, cardOpaque) < 3) muted = mix(ink, bg, 0.4);
-  let border = parseColor(src.border);
-  if (!border || border.a < 0.2) border = mix(bg, ink, dark ? 0.28 : 0.18);
-  const borderStrong = mix(border, ink, 0.35);
-  let accent = parseColor(src.link);
-  const accentOnCard = accent ? composite(accent, cardOpaque) : null;
-  if (!accentOnCard || contrast(accentOnCard, cardOpaque) < 3) {
-    accent = hslToRgb(175, dark ? 60 : 80, dark ? 55 : 30, 1);
-  }
-  const accentSoft = { ...opaque(accent), a: dark ? 0.22 : 0.18 };
-  const linkSrc = parseColor(src.link);
-  const linkOnCard = linkSrc ? composite(linkSrc, cardOpaque) : null;
-  const link = linkOnCard && contrast(linkOnCard, cardOpaque) >= 3 ? opaque(linkSrc) : opaque(accent);
-  const edge = mix(bg, ink, dark ? 0.55 : 0.45);
-  const chrome = { ...cardOpaque, a: 0.96 };
-  const vars = {
-    "--pxd-surface": cssColor2(bg),
-    "--pxd-card": cssColor2(cardOpaque),
-    "--pxd-text": cssColor2(ink),
-    "--pxd-muted": cssColor2(opaque(muted)),
-    "--pxd-border": cssColor2(opaque(border)),
-    "--pxd-border-strong": cssColor2(opaque(borderStrong)),
-    "--pxd-accent": cssColor2(opaque(accent)),
-    "--pxd-link": cssColor2(link),
-    "--pxd-accent-soft": cssColor2(accentSoft),
-    "--pxd-edge": cssColor2(opaque(edge)),
-    "--pxd-chrome-bg": cssColor2(chrome)
-  };
-  return { dark, vars };
-}
-function applyThemeVars(style, vars) {
-  if (!style || typeof style.setProperty !== "function") return;
-  if (!vars || typeof vars !== "object") {
-    for (const name of THEME_VARS) {
-      try {
-        style.removeProperty(name);
-      } catch {
-      }
-    }
-    return;
-  }
-  for (const name of THEME_VARS) {
-    const value = vars[name];
-    try {
-      if (typeof value === "string" && value) style.setProperty(name, value);
-      else style.removeProperty(name);
-    } catch {
-    }
-  }
-}
-
-// src/view/theme-follow.js
-function readProp(style, name) {
-  if (!style || !name) return "";
-  try {
-    if (typeof style.getPropertyValue === "function") {
-      const direct = style.getPropertyValue(name);
-      if (direct) return String(direct);
-      const camel = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-      const camelValue = style.getPropertyValue(camel);
-      if (camelValue) return String(camelValue);
-    }
-  } catch {
-  }
-  try {
-    const camel = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-    if (style[camel]) return String(style[camel]);
-    if (style[name]) return String(style[name]);
-  } catch {
-  }
-  return "";
-}
-function computed(doc, el2, name) {
-  if (!el2) return "";
-  try {
-    const view = doc?.defaultView;
-    const fn = view && typeof view.getComputedStyle === "function" ? view.getComputedStyle.bind(view) : typeof globalThis.getComputedStyle === "function" ? globalThis.getComputedStyle : null;
-    if (!fn) return "";
-    return readProp(fn(el2), name);
-  } catch {
-    return "";
-  }
-}
-function opaqueColor(value) {
-  const color = parseColor(value);
-  if (!color || color.a < 0.5) return "";
-  return String(value);
-}
-function classText(node2) {
-  if (!node2) return "";
-  if (typeof node2.className === "string") return node2.className;
-  return "";
-}
-function hasClass2(node2, name) {
-  if (!node2 || !name) return false;
-  try {
-    if (node2.classList?.contains?.(name)) return true;
-  } catch {
-  }
-  return new RegExp(`(?:^|\\s)${name}(?:\\s|$)`).test(classText(node2));
-}
-function hostDark(doc, background) {
-  const root = doc?.documentElement;
-  const body = doc?.body;
-  if (hasClass2(root, "bp3-dark") || hasClass2(body, "bp3-dark")) return true;
-  if (hasClass2(body, "bt-theme-dark") || hasClass2(root, "bt-theme-dark")) return true;
-  if (hasClass2(root, "rm-dark-theme") || hasClass2(body, "rm-dark-theme")) return true;
-  if (hasClass2(body, "roam-body") && hasClass2(body, "dark")) return true;
-  const color = parseColor(background);
-  return Boolean(color && luminance(color) < 0.4);
-}
-function sampleRoam(doc) {
-  const d = doc || globalThis.document;
-  if (!d || typeof d.querySelector !== "function") {
-    return { background: "", text: "", muted: "", border: "", link: "", dark: false };
-  }
-  let main = null;
-  let article = null;
-  let link = null;
-  let block = null;
-  try {
-    main = d.querySelector(".roam-body-main") || d.body;
-  } catch {
-    main = d.body || null;
-  }
-  try {
-    article = d.querySelector(".roam-article") || main;
-  } catch {
-    article = main;
-  }
-  try {
-    for (const sel of [".roam-article .rm-block__input .rm-page-ref--link", ".roam-article .rm-page-ref--link", ".rm-page-ref"]) {
-      link = [...d.querySelectorAll(sel)].find((n2) => !n2.closest?.(".pxd-root")) || null;
-      if (link) break;
-    }
-  } catch {
-    link = null;
-  }
-  try {
-    block = d.querySelector(".roam-block-container") || article;
-  } catch {
-    block = article;
-  }
-  const background = opaqueColor(computed(d, main, "background-color")) || opaqueColor(computed(d, d.body, "background-color")) || opaqueColor(computed(d, article, "background-color"));
-  const text4 = opaqueColor(computed(d, article, "color")) || opaqueColor(computed(d, d.body, "color"));
-  const borderPx = Number.parseFloat(computed(d, block, "border-top-width")) || Number.parseFloat(computed(d, article, "border-top-width")) || 0;
-  const border = borderPx > 0 ? opaqueColor(computed(d, block, "border-top-color")) || opaqueColor(computed(d, article, "border-top-color")) : "";
-  const linkColor = link ? opaqueColor(computed(d, link, "color")) : "";
-  return {
-    background,
-    text: text4,
-    muted: "",
-    border,
-    link: linkColor,
-    dark: hostDark(d, background)
-  };
-}
-function createThemeFollow({ doc, root, getMode, timers } = {}) {
-  let observer = null;
-  let pending = null;
-  const mode = () => {
-    try {
-      const value = typeof getMode === "function" ? getMode() : "follow-roam";
-      return value === "plexus" ? "plexus" : "follow-roam";
-    } catch {
-      return "follow-roam";
-    }
-  };
-  const paint2 = () => {
-    const node2 = root;
-    if (!node2?.classList || !node2.style) return;
-    if (mode() !== "follow-roam") {
-      applyThemeVars(node2.style, null);
-      try {
-        node2.classList.remove("pxd-theme--roam");
-      } catch {
-      }
-      return;
-    }
-    let derived = null;
-    try {
-      derived = deriveTheme(sampleRoam(doc));
-    } catch {
-      derived = null;
-    }
-    if (!derived?.vars) {
-      applyThemeVars(node2.style, null);
-      try {
-        node2.classList.remove("pxd-theme--roam");
-      } catch {
-      }
-      return;
-    }
-    applyThemeVars(node2.style, derived.vars);
-    try {
-      node2.classList.add("pxd-theme--roam");
-    } catch {
-    }
-  };
-  const cancelPending = () => {
-    if (typeof pending === "function") {
-      try {
-        pending();
-      } catch {
-      }
-    }
-    pending = null;
-  };
-  const schedule = () => {
-    if (pending) return;
-    if (typeof timers?.later === "function") {
-      pending = timers.later(() => {
-        pending = null;
-        paint2();
-      }, 150);
-      return;
-    }
-    paint2();
-  };
-  const start = () => {
-    const head = doc?.head;
-    const Observer = doc?.defaultView?.MutationObserver || globalThis.MutationObserver;
-    if (!head || typeof Observer !== "function" || observer) return;
-    try {
-      observer = new Observer(() => schedule());
-      observer.observe(head, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ["href", "rel", "media", "disabled"]
-      });
-    } catch {
-      observer = null;
-    }
-  };
-  const stop3 = () => {
-    try {
-      observer?.disconnect?.();
-    } catch {
-    }
-    observer = null;
-    cancelPending();
-  };
-  return { apply: paint2, paint: paint2, start, stop: stop3, sample: () => sampleRoam(doc) };
 }
 
 // src/view/pdf-flip.js
@@ -71815,16 +73144,16 @@ function buildColorPicker(doc, onPick, listen, fourth) {
   hexRow.append(preview, input);
   box2.append(hexRow);
   row4("Named", PALETTE, true);
-  const clear2 = doc.createElement("button");
-  clear2.type = "button";
-  clear2.className = "pxd-btn pxd-picker__clear";
-  clear2.textContent = "No color";
-  clear2.setAttribute("aria-label", "No color");
-  on(clear2, "click", (event) => {
+  const clear3 = doc.createElement("button");
+  clear3.type = "button";
+  clear3.className = "pxd-btn pxd-picker__clear";
+  clear3.textContent = "No color";
+  clear3.setAttribute("aria-label", "No color");
+  on(clear3, "click", (event) => {
     stop3(event);
     onPick?.(null);
   });
-  box2.append(clear2);
+  box2.append(clear3);
   return box2;
 }
 
@@ -71914,7 +73243,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     });
     return b;
   };
-  const iconButton = (parent, cls, icon, label, title, onClick) => {
+  const iconButton2 = (parent, cls, icon, label, title, onClick) => {
     const b = button3(parent, `pxd-iconbtn ${cls}`, "", title || label, onClick);
     b.setAttribute("aria-label", label);
     const i = el2("span", `bp3-icon bp3-icon-${icon}`, b);
@@ -72051,7 +73380,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const toolGroup = el2("div", "pxd-toolbar__group pxd-toolbar__tools", toolbar);
   const toolButtons = /* @__PURE__ */ new Map();
   for (const [id, label, key, icon] of TOOL_LIST) {
-    const b = iconButton(toolGroup, "pxd-tool", icon, label, `${label} (${key}). Double-click to lock`, () => on.setTool?.(id, false));
+    const b = iconButton2(toolGroup, "pxd-tool", icon, label, `${label} (${key}). Double-click to lock`, () => on.setTool?.(id, false));
     b.dataset.tool = id;
     b.setAttribute("data-tool", id);
     tip(b, `tool.${id}`);
@@ -72059,30 +73388,30 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     toolButtons.set(id, b);
   }
   const group2 = el2("div", "pxd-toolbar__group", toolbar);
-  const addBtn = iconButton(group2, "pxd-toolbar__add", "plus", "Add", "Add cards from the graph", () => on.togglePanel?.());
-  iconButton(group2, "pxd-toolbar__info", "info-sign", "Info", "Card info (I)", () => on.openInfo?.());
-  const linksBtn = iconButton(group2, "pxd-toolbar__links", LINK_ICONS.all, LINK_LABELS.all, "Graph links (L)", () => on.openLinksMenu ? on.openLinksMenu(linksBtn) : on.cycleLinks?.());
+  const addBtn = iconButton2(group2, "pxd-toolbar__add", "plus", "Add", "Add cards from the graph", () => on.togglePanel?.());
+  iconButton2(group2, "pxd-toolbar__info", "info-sign", "Info", "Card info (I)", () => on.openInfo?.());
+  const linksBtn = iconButton2(group2, "pxd-toolbar__links", LINK_ICONS.all, LINK_LABELS.all, "Graph links (L)", () => on.openLinksMenu ? on.openLinksMenu(linksBtn) : on.cycleLinks?.());
   const groupView = el2("div", "pxd-toolbar__group", toolbar);
-  const tableBtn = iconButton(groupView, "pxd-toolbar__table", "th", "Table", "Table view", () => on.toggleTable?.());
+  const tableBtn = iconButton2(groupView, "pxd-toolbar__table", "th", "Table", "Table view", () => on.toggleTable?.());
   tableBtn.setAttribute("aria-pressed", "false");
-  const kanbanBtn = iconButton(groupView, "pxd-toolbar__kanban", "layout-auto", "Kanban", "Kanban view", () => on.toggleKanban?.());
+  const kanbanBtn = iconButton2(groupView, "pxd-toolbar__kanban", "layout-auto", "Kanban", "Kanban view", () => on.toggleKanban?.());
   kanbanBtn.setAttribute("aria-pressed", "false");
-  const bgBtn = iconButton(groupView, "pxd-toolbar__bg", "style", "Background", "Background pattern and tone", () => popover.isOpen() ? popover.close() : popover.open());
-  const lensBtn = iconButton(groupView, "pxd-toolbar__lens", "tag", "Tags", "Tag lens: keep cards with one tag bright", () => on.toggleLens?.());
-  const focusBtn = iconButton(groupView, "pxd-toolbar__focus", "eye-open", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
-  iconButton(groupView, "pxd-toolbar__present", "presentation", "Present", "Present this board", () => on.present?.());
-  const moreBtn = iconButton(groupView, "pxd-toolbar__more", "more", "More", "More board actions", () => {
+  const bgBtn = iconButton2(groupView, "pxd-toolbar__bg", "style", "Background", "Background pattern and tone", () => popover.isOpen() ? popover.close() : popover.open());
+  const lensBtn = iconButton2(groupView, "pxd-toolbar__lens", "tag", "Tags", "Tag lens: keep cards with one tag bright", () => on.toggleLens?.());
+  const focusBtn = iconButton2(groupView, "pxd-toolbar__focus", "eye-open", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
+  iconButton2(groupView, "pxd-toolbar__present", "presentation", "Present", "Present this board", () => on.present?.());
+  const moreBtn = iconButton2(groupView, "pxd-toolbar__more", "more", "More", "More board actions", () => {
     const r = moreBtn.getBoundingClientRect();
     on.openMore?.({ x: r.left, y: r.bottom, w: r.width, h: r.height });
   });
   const group3 = el2("div", "pxd-toolbar__group pxd-toolbar__zoom", toolbar);
-  iconButton(group3, "pxd-toolbar__zoom-out", "minus", "Zoom out", "Zoom out (Cmd −)", () => on.zoomOut?.());
+  iconButton2(group3, "pxd-toolbar__zoom-out", "minus", "Zoom out", "Zoom out (Cmd −)", () => on.zoomOut?.());
   const zoomLabel = button3(group3, "pxd-toolbar__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
-  iconButton(group3, "pxd-toolbar__zoom-in", "plus", "Zoom in", "Zoom in (Cmd =)", () => on.zoomIn?.());
-  iconButton(group3, "pxd-toolbar__fit", "zoom-to-fit", "Fit", "Fit all (Shift 1)", () => on.fit?.());
-  const minimapBtn = iconButton(group3, "pxd-toolbar__minimap", "map", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
-  const editBtn = iconButton(group3, "pxd-toolbar__edit", "edit", "Edit Block", "Edit the diagram block", () => on.editBlock?.());
-  const fullBtn = iconButton(group3, "pxd-toolbar__fullscreen", "fullscreen", "Fullscreen", "Fullscreen this board", () => on.toggleFullscreen?.());
+  iconButton2(group3, "pxd-toolbar__zoom-in", "plus", "Zoom in", "Zoom in (Cmd =)", () => on.zoomIn?.());
+  iconButton2(group3, "pxd-toolbar__fit", "zoom-to-fit", "Fit", "Fit all (Shift 1)", () => on.fit?.());
+  const minimapBtn = iconButton2(group3, "pxd-toolbar__minimap", "map", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
+  const editBtn = iconButton2(group3, "pxd-toolbar__edit", "edit", "Edit Block", "Edit the diagram block", () => on.editBlock?.());
+  const fullBtn = iconButton2(group3, "pxd-toolbar__fullscreen", "fullscreen", "Fullscreen", "Fullscreen this board", () => on.toggleFullscreen?.());
   let logEl = null;
   const closeLog = () => {
     logEl?.remove();
@@ -72139,7 +73468,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const group = el2("div", "pxd-dock__group", paletteBar);
     for (const id of ids) {
       const [, label, key, icon] = PALETTE_LIST.find((entry) => entry[0] === id);
-      const b = iconButton(group, "pxd-palette__btn pxd-dock__btn", icon, label, `${label} (${key})`, () => on.setTool?.(id, false));
+      const b = iconButton2(group, "pxd-palette__btn pxd-dock__btn", icon, label, `${label} (${key})`, () => on.setTool?.(id, false));
       b.dataset.tool = id;
       b.setAttribute("data-tool", id);
       tip(b, `tool.${id}`);
@@ -72229,7 +73558,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     if (!hidden.length) return;
     const gone = hidden.map((i) => tools[i]);
     for (const [, b] of gone) b.classList.add("pxd-dock__btn--overflow");
-    dockMore = iconButton(paletteBar, "pxd-palette__btn pxd-dock__btn pxd-dock__more", "more", "More tools", "More tools", () => {
+    dockMore = iconButton2(paletteBar, "pxd-palette__btn pxd-dock__btn pxd-dock__more", "more", "More tools", "More tools", () => {
       if (dockMenu) {
         closeDockMenu();
         return;
@@ -72582,7 +73911,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     ctx.dataset.kind = kind;
     ctx.setAttribute("data-kind", kind);
     const row4 = el2("div", "pxd-ctx__row", ctx);
-    const btn2 = (cls, icon, label, title, fn) => iconButton(row4, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
+    const btn2 = (cls, icon, label, title, fn) => iconButton2(row4, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
     const seg = (cls, options, current3, fn, parent = row4) => {
       const wrap = el2("div", `pxd-seg ${cls}`, parent);
       for (const [value, label, title, icon] of options) {
@@ -72853,7 +74182,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     });
     if (keep >= kids.length) return;
     const hidden = kids.slice(keep);
-    const btn2 = iconButton(row4, "pxd-ctx__btn pxd-ctx__more", "more", "More tools", "More tools", () => {
+    const btn2 = iconButton2(row4, "pxd-ctx__btn pxd-ctx__more", "more", "More tools", "More tools", () => {
       if (ctx.querySelector(".pxd-ctx__more-menu")) closeCtxMore();
       else openCtxMore(hidden);
     });
@@ -74188,8 +75517,8 @@ function mountKanban({
   const palette = () => typeof getPalette === "function" ? getPalette() : statusPalette(statusApi(doc.defaultView));
   const writer = () => {
     if (typeof setStatus === "function") return setStatus;
-    const api2 = statusApi(doc.defaultView);
-    return typeof api2?.setStatus === "function" ? api2.setStatus.bind(api2) : null;
+    const api3 = statusApi(doc.defaultView);
+    return typeof api3?.setStatus === "function" ? api3.setStatus.bind(api3) : null;
   };
   const commit = async (plan) => {
     try {
@@ -74782,13 +76111,13 @@ function inboxEntries(rows) {
   }
   return { entries: out, full };
 }
-async function readInbox(q, titles, { tick = () => Promise.resolve() } = {}) {
+async function readInbox(q2, titles, { tick = () => Promise.resolve() } = {}) {
   const all = [];
   let full = false;
   for (const step of inboxPlan(titles)) {
     let rows = [];
     try {
-      rows = q(step.query, ...step.inputs);
+      rows = q2(step.query, ...step.inputs);
     } catch {
       rows = [];
     }
@@ -74985,14 +76314,14 @@ init_anydoc_to_parse();
 // src/host/semantic.js
 var SEM_TTL_MS = 5 * 60 * 1e3;
 var SEM_MAX = 50;
-function semanticEnabled(api2) {
+function semanticEnabled(api3) {
   try {
-    return api2?.data?.semanticSearchEnabled?.() === true && typeof api2?.data?.async?.semanticSearch === "function";
+    return api3?.data?.semanticSearchEnabled?.() === true && typeof api3?.data?.async?.semanticSearch === "function";
   } catch {
     return false;
   }
 }
-function createSemantic({ api: api2 = () => globalThis.roamAlphaAPI, now: now4 = () => Date.now(), ttl = SEM_TTL_MS, max = SEM_MAX } = {}) {
+function createSemantic({ api: api3 = () => globalThis.roamAlphaAPI, now: now4 = () => Date.now(), ttl = SEM_TTL_MS, max = SEM_MAX } = {}) {
   const cache = /* @__PURE__ */ new Map();
   const inflight = /* @__PURE__ */ new Map();
   let calls = 0;
@@ -75005,7 +76334,7 @@ function createSemantic({ api: api2 = () => globalThis.roamAlphaAPI, now: now4 =
     const pending = inflight.get(key);
     if (pending) return pending;
     const job = (async () => {
-      const a = api2();
+      const a = api3();
       if (!semanticEnabled(a)) return [];
       calls += 1;
       let raw = [];
@@ -75022,7 +76351,7 @@ function createSemantic({ api: api2 = () => globalThis.roamAlphaAPI, now: now4 =
     return job;
   };
   return {
-    enabled: () => semanticEnabled(api2()),
+    enabled: () => semanticEnabled(api3()),
     // { data, stale } when cached, else null. Never calls the engine.
     peek(query) {
       const key = String(query ?? "").trim();
@@ -76015,7 +77344,7 @@ function dominantAngle(boxes) {
     if (w > 3 * h && w > 30 && Math.abs(box2.angle) <= 20) wide.push({ a: box2.angle, w });
   }
   if (!wide.length) return 0;
-  wide.sort((p, q) => p.a - q.a);
+  wide.sort((p, q2) => p.a - q2.a);
   const total = wide.reduce((s, r) => s + r.w, 0);
   let acc = 0;
   for (const row4 of wide) {
@@ -77017,7 +78346,7 @@ function baselineSkew(items, { minSpan = 150, minWords = 3, minRows = 3 } = {}) 
     votes.push({ a: Math.atan(sxy / sxx) * 180 / Math.PI, w: span });
   }
   if (votes.length < minRows) return null;
-  votes.sort((p, q) => p.a - q.a);
+  votes.sort((p, q2) => p.a - q2.a);
   const total = votes.reduce((s, v) => s + v.w, 0);
   let acc = 0;
   for (const v of votes) {
@@ -77931,11 +79260,11 @@ function createOcrWeb({
       else waiter.resolve(msg);
     };
     let dead = null;
-    let api2 = null;
+    let api3 = null;
     worker.onerror = (ev) => {
       dead = new Error(ev?.message || "ocr worker failed");
       rejectAll(dead);
-      if (api2 && engine === api2) engine = null;
+      if (api3 && engine === api3) engine = null;
     };
     function call(msg, transfers, signal2) {
       if (signal2?.aborted) return Promise.reject(abortError());
@@ -77975,7 +79304,7 @@ function createOcrWeb({
       }
       throw error;
     }
-    api2 = {
+    api3 = {
       stop() {
         try {
           worker.postMessage({ type: "abort" });
@@ -78028,7 +79357,7 @@ function createOcrWeb({
         return msg.cells;
       }
     };
-    return api2;
+    return api3;
   }
   async function ensure(signal) {
     if (engine) return engine;
@@ -78641,7 +79970,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     return void 0;
   };
   const rowOf = (event) => event.target?.closest?.(".pxd-menu__item") || null;
-  const api2 = {
+  const api3 = {
     el: null,
     open({ x = 0, y = 0, items = [] } = {}) {
       if (disposed) return false;
@@ -78649,7 +79978,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       const list = Array.isArray(items) ? items : [];
       if (!list.some((item) => !item.separator)) return false;
       menuEl = el2("div", "pxd-menu pxd-chrome", root);
-      api2.el = menuEl;
+      api3.el = menuEl;
       menuEl.setAttribute("role", "menu");
       menuEl.style.left = "0px";
       menuEl.style.top = "0px";
@@ -78736,10 +80065,10 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     dispose() {
       close();
       disposed = true;
-      api2.el = null;
+      api3.el = null;
     }
   };
-  return api2;
+  return api3;
 }
 
 // src/view/shortcut-sheet.js
@@ -79026,52 +80355,52 @@ function statusRows(source) {
   return [...value];
 }
 function statusSubmenu(c) {
-  const api2 = c.statusTags;
-  if (typeof api2?.available !== "function" || api2.available() !== true) return null;
+  const api3 = c.statusTags;
+  if (typeof api3?.available !== "function" || api3.available() !== true) return null;
   const current3 = String(c.status ?? "").trim().toLowerCase();
   const children = [];
-  for (const row4 of statusRows(api2.palette)) {
+  for (const row4 of statusRows(api3.palette)) {
     const name = String(row4?.name || "").trim();
     if (!name) continue;
-    children.push(make2(`status:${name}`, name, {
+    children.push(make3(`status:${name}`, name, {
       checked: name.toLowerCase() === current3,
       glyph: row4.glyph
     }));
   }
-  children.push(make2("status:remove", "Remove status"));
-  return make2("status", "Status ▸", { children });
+  children.push(make3("status:remove", "Remove status"));
+  return make3("status", "Status ▸", { children });
 }
 function trailChildren(c, prefix) {
   const trails = Array.isArray(c.trails) ? c.trails : [];
   const children = [];
   for (const trail of trails) {
     if (!trail?.uid) continue;
-    children.push(make2(`${prefix}:${trail.uid}`, trail.name || "Trail"));
+    children.push(make3(`${prefix}:${trail.uid}`, trail.name || "Trail"));
   }
-  children.push(make2(`${prefix}:new`, "New trail…"));
+  children.push(make3(`${prefix}:new`, "New trail…"));
   return children;
 }
 function trailItem(c) {
-  return make2("trail", "Add to trail ▸", { children: trailChildren(c, "trail-add") });
+  return make3("trail", "Add to trail ▸", { children: trailChildren(c, "trail-add") });
 }
 function selectionTrailItem(c) {
-  return make2("trail-sel", "Add selection to trail ▸", { children: trailChildren(c, "trail-sel") });
+  return make3("trail-sel", "Add selection to trail ▸", { children: trailChildren(c, "trail-sel") });
 }
 function landmarkItem(c) {
   const on = c.landmark === true;
-  if (!on) return make2("landmark-toggle", "Make landmark");
+  if (!on) return make3("landmark-toggle", "Make landmark");
   const size = c.landmarkSize === "S" || c.landmarkSize === "L" ? c.landmarkSize : "M";
-  return make2("landmark", "Landmark", {
+  return make3("landmark", "Landmark", {
     children: [
-      make2("landmark-toggle", "Remove landmark", { checked: true }),
-      make2("landmark-glyph", "Glyph…"),
-      make2("landmark-size:S", "Small", { checked: size === "S" }),
-      make2("landmark-size:M", "Medium", { checked: size === "M" }),
-      make2("landmark-size:L", "Large", { checked: size === "L" })
+      make3("landmark-toggle", "Remove landmark", { checked: true }),
+      make3("landmark-glyph", "Glyph…"),
+      make3("landmark-size:S", "Small", { checked: size === "S" }),
+      make3("landmark-size:M", "Medium", { checked: size === "M" }),
+      make3("landmark-size:L", "Large", { checked: size === "L" })
     ]
   });
 }
-var make2 = (id, label, extra = {}) => {
+var make3 = (id, label, extra = {}) => {
   const out = { id, label };
   for (const [key, value] of Object.entries(extra)) {
     if (value === void 0 || value === false) continue;
@@ -79086,23 +80415,23 @@ function buildMenu(kind, ctx = {}) {
   const empty = count === 0;
   let separators = 0;
   const sep = () => ({ id: `sep-${separators += 1}`, separator: true });
-  const templateMenu = () => make2("template", "New board from template…", {
-    children: STARTERS.map((s) => make2(`template:${s.id}`, s.id === "timeline" ? "Timeline template" : s.title))
+  const templateMenu = () => make3("template", "New board from template…", {
+    children: STARTERS.map((s) => make3(`template:${s.id}`, s.id === "timeline" ? "Timeline template" : s.title))
   });
-  const viewsMenu = () => make2("views", "Views", {
+  const viewsMenu = () => make3("views", "Views", {
     children: [
-      make2("gallery", "Gallery"),
-      make2("timeline", "Timeline"),
-      make2("graph", "Graph")
+      make3("gallery", "Gallery"),
+      make3("timeline", "Timeline"),
+      make3("graph", "Graph")
     ]
   });
   const mindPresetMenu = () => {
     const preset = normalizeMindPreset(c.mindPreset);
-    const dirs = MIND_DIRECTIONS.map((d) => make2(`mind-dir:${d}`, cap3(d), { checked: preset.direction === d }));
-    const spaces = MIND_SPACINGS.map((s) => make2(`mind-space:${s}`, cap3(s), { checked: preset.spacing === s }));
+    const dirs = MIND_DIRECTIONS.map((d) => make3(`mind-dir:${d}`, cap3(d), { checked: preset.direction === d }));
+    const spaces = MIND_SPACINGS.map((s) => make3(`mind-space:${s}`, cap3(s), { checked: preset.spacing === s }));
     const depths = [];
-    for (let d = MIND_DEPTH_MIN; d <= MIND_DEPTH_MAX; d++) depths.push(make2(`mind-depth:${d}`, `Depth ${d}`, { checked: preset.depth === d }));
-    return make2("mind-preset", "Mind map preset…", {
+    for (let d = MIND_DEPTH_MIN; d <= MIND_DEPTH_MAX; d++) depths.push(make3(`mind-depth:${d}`, `Depth ${d}`, { checked: preset.depth === d }));
+    return make3("mind-preset", "Mind map preset…", {
       children: [
         ...dirs,
         sep(),
@@ -79110,29 +80439,29 @@ function buildMenu(kind, ctx = {}) {
         sep(),
         ...depths,
         sep(),
-        make2("mind-refs:include", "Include block refs", { checked: preset.includeRefs }),
-        make2("mind-refs:skip", "Skip block refs", { checked: !preset.includeRefs }),
+        make3("mind-refs:include", "Include block refs", { checked: preset.includeRefs }),
+        make3("mind-refs:skip", "Skip block refs", { checked: !preset.includeRefs }),
         sep(),
-        make2("mind-color:on", "Color branches", { checked: preset.colorBranches }),
-        make2("mind-color:off", "No branch color", { checked: !preset.colorBranches })
+        make3("mind-color:on", "Color branches", { checked: preset.colorBranches }),
+        make3("mind-color:off", "No branch color", { checked: !preset.colorBranches })
       ]
     });
   };
   const snapshotMenus = () => {
     const parts = partitionSnapshots(c.snapshots);
     const items = [
-      make2("save-snapshot", "Save snapshot"),
-      make2("restore-snapshot", "Restore snapshot…", {
+      make3("save-snapshot", "Save snapshot"),
+      make3("restore-snapshot", "Restore snapshot…", {
         disabled: parts.newest.length === 0,
-        children: parts.newest.map((snap) => make2(`snapshot:${snap.uid}`, snap.title))
+        children: parts.newest.map((snap) => make3(`snapshot:${snap.uid}`, snap.title))
       })
     ];
     if (parts.older.length) {
-      items.push(make2("older-snapshots", "Older snapshots", {
-        children: parts.older.map((snap) => make2(`older:${snap.uid}`, snap.title, {
+      items.push(make3("older-snapshots", "Older snapshots", {
+        children: parts.older.map((snap) => make3(`older:${snap.uid}`, snap.title, {
           children: [
-            make2(`snapshot:${snap.uid}`, "Restore"),
-            make2(`delete-snapshot:${snap.uid}`, "Delete", { danger: true })
+            make3(`snapshot:${snap.uid}`, "Restore"),
+            make3(`delete-snapshot:${snap.uid}`, "Delete", { danger: true })
           ]
         }))
       }));
@@ -79141,96 +80470,96 @@ function buildMenu(kind, ctx = {}) {
   };
   const colorMenu = () => {
     const current3 = item?.color || null;
-    return make2("color", "Color", {
+    return make3("color", "Color", {
       children: [
-        make2("color:none", "No color", { checked: !current3 }),
-        ...PALETTE.map((name) => make2(`color:${name}`, cap3(name), { checked: current3 === name }))
+        make3("color:none", "No color", { checked: !current3 }),
+        ...PALETTE.map((name) => make3(`color:${name}`, cap3(name), { checked: current3 === name }))
       ]
     });
   };
-  const pinItem = (pinned2) => pinned2 ? make2("unpin", "Unpin") : make2("pin", "Pin");
-  const foldItem = (folded) => folded ? make2("unfold", "Unfold", { hint: "Cmd Alt Enter" }) : make2("fold", "Fold", { hint: "Cmd Alt Enter" });
-  const tidyMenu = (disabled) => make2("tidy", "Tidy", {
+  const pinItem = (pinned2) => pinned2 ? make3("unpin", "Unpin") : make3("pin", "Pin");
+  const foldItem = (folded) => folded ? make3("unfold", "Unfold", { hint: "Cmd Alt Enter" }) : make3("fold", "Fold", { hint: "Cmd Alt Enter" });
+  const tidyMenu = (disabled) => make3("tidy", "Tidy", {
     disabled,
     children: [
-      make2("tidy:grid", "Grid"),
-      make2("tidy:row", "Row"),
-      make2("tidy:column", "Column"),
-      make2("tidy:outline", "Outline order")
+      make3("tidy:grid", "Grid"),
+      make3("tidy:row", "Row"),
+      make3("tidy:column", "Column"),
+      make3("tidy:outline", "Outline order")
     ]
   });
   switch (kind) {
     case "canvas":
       return [
-        make2("new-card", "New card", { hint: "N" }),
-        ...c.taskTool === false ? [] : [make2("new-task", "New task", { hint: "K" })],
-        make2("new-text", "New text", { hint: "T" }),
-        make2("new-sticky", "New sticky"),
-        make2("new-section", "New section", { hint: "G" }),
-        make2("new-lane-h", "Horizontal lane"),
-        make2("new-lane-v", "Vertical lane"),
-        make2("new-board", "New board", { hint: "W" }),
-        make2("new-drawing", "New drawing here"),
-        make2("new-table", "Table", { hint: "B" }),
+        make3("new-card", "New card", { hint: "N" }),
+        ...c.taskTool === false ? [] : [make3("new-task", "New task", { hint: "K" })],
+        make3("new-text", "New text", { hint: "T" }),
+        make3("new-sticky", "New sticky"),
+        make3("new-section", "New section", { hint: "G" }),
+        make3("new-lane-h", "Horizontal lane"),
+        make3("new-lane-v", "Vertical lane"),
+        make3("new-board", "New board", { hint: "W" }),
+        make3("new-drawing", "New drawing here"),
+        make3("new-table", "Table", { hint: "B" }),
         templateMenu(),
-        make2("save-template", "Save board as template"),
+        make3("save-template", "Save board as template"),
         ...snapshotMenus(),
         sep(),
-        make2("paste", "Paste", { hint: "Cmd V", disabled: !c.canPaste }),
-        make2("paste-clone", "Paste as copies", { disabled: !c.canPaste }),
+        make3("paste", "Paste", { hint: "Cmd V", disabled: !c.canPaste }),
+        make3("paste-clone", "Paste as copies", { disabled: !c.canPaste }),
         sep(),
-        make2("add-page", "Add page…"),
-        make2("add-today", "Add today's journal"),
-        make2("add-week", "Add this week's journals"),
+        make3("add-page", "Add page…"),
+        make3("add-today", "Add today's journal"),
+        make3("add-week", "Add this week's journals"),
         sep(),
-        make2("select-all", "Select all", { hint: "Cmd A" }),
-        make2("fit-all", "Fit all", { hint: "Shift 1" }),
-        make2("fold-all", "Fold all cards"),
-        make2("unfold-all", "Unfold all cards"),
+        make3("select-all", "Select all", { hint: "Cmd A" }),
+        make3("fit-all", "Fit all", { hint: "Shift 1" }),
+        make3("fold-all", "Fold all cards"),
+        make3("unfold-all", "Unfold all cards"),
         sep(),
-        make2("background", "Background…"),
-        make2("bg-image", "Lock copied image as background"),
+        make3("background", "Background…"),
+        make3("bg-image", "Lock copied image as background"),
         viewsMenu(),
-        make2("print", "Print…"),
-        make2("highlights", "Highlight marks"),
-        make2("export-svg", "Export as SVG"),
-        make2("export-png", "Export as PNG"),
-        make2("copy-outline", "Copy as outline")
+        make3("print", "Print…"),
+        make3("highlights", "Highlight marks"),
+        make3("export-svg", "Export as SVG"),
+        make3("export-png", "Export as PNG"),
+        make3("copy-outline", "Copy as outline")
       ];
     case "card": {
       const folded = Boolean(c.collapsed);
       const out = [
-        make2("edit", c.isBoard ? "Rename board" : "Edit", { hint: "Enter" }),
-        make2("open", c.isBoard ? "Open board" : "Open"),
-        ...c.isBoard ? [make2("open-own-page", "Open nested board in its own page")] : [],
-        make2("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
-        ...c.compass && c.interop !== false ? [make2("open-compass", "Open in Compass")] : [],
-        ...c.isPdf ? [make2("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : [],
-        ...c.isPdf ? [make2("parse-pdf", "Parse PDF…")] : [],
-        ...c.isPdf && c.hasParse ? [make2("open-parsed", "Open parsed")] : [],
-        ...c.isPdf && c.hasParse ? [make2("ask-ai", "Ask AI…", { icon: "ask-ai" }), make2("add-to-ask", "Add to question")] : [],
-        ...c.isImage || c.isHighlight ? [make2("ask-ai", "Ask AI…", { icon: "ask-ai" }), make2("add-to-ask", "Add to question")] : [],
-        ...c.officeFile ? [make2("convert-office", "Convert to cards")] : [],
+        make3("edit", c.isBoard ? "Rename board" : "Edit", { hint: "Enter" }),
+        make3("open", c.isBoard ? "Open board" : "Open"),
+        ...c.isBoard ? [make3("open-own-page", "Open nested board in its own page")] : [],
+        make3("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
+        ...c.compass && c.interop !== false ? [make3("open-compass", "Open in Compass")] : [],
+        ...c.isPdf ? [make3("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : [],
+        ...c.isPdf ? [make3("parse-pdf", "Parse PDF…")] : [],
+        ...c.isPdf && c.hasParse ? [make3("open-parsed", "Open parsed")] : [],
+        ...c.isPdf && c.hasParse ? [make3("ask-ai", "Ask AI…", { icon: "ask-ai" }), make3("add-to-ask", "Add to question")] : [],
+        ...c.isImage || c.isHighlight ? [make3("ask-ai", "Ask AI…", { icon: "ask-ai" }), make3("add-to-ask", "Add to question")] : [],
+        ...c.officeFile ? [make3("convert-office", "Convert to cards")] : [],
         sep(),
-        make2("copy", "Copy", { hint: "Cmd C" }),
-        make2("copy-png", "Copy selection as PNG"),
-        make2("copy-ref", "Copy ref"),
-        make2("copy-link", "Copy link"),
-        make2("duplicate", "Duplicate", { hint: "Cmd D" }),
-        make2("duplicate-ref", "Duplicate as ref"),
+        make3("copy", "Copy", { hint: "Cmd C" }),
+        make3("copy-png", "Copy selection as PNG"),
+        make3("copy-ref", "Copy ref"),
+        make3("copy-link", "Copy link"),
+        make3("duplicate", "Duplicate", { hint: "Cmd D" }),
+        make3("duplicate-ref", "Duplicate as ref"),
         sep(),
         colorMenu(),
-        item?.look === "card" ? make2("show-as-block", "Show as block") : make2("show-as-card", "Show as card"),
-        ...c.canMakeTask ? [make2("make-task", "Make task")] : [],
-        make2("apply-template", "Add attribute template"),
-        ...c.canComment ? [make2("comment", "Comment…")] : [],
-        make2("version-peek", "Version history"),
+        item?.look === "card" ? make3("show-as-block", "Show as block") : make3("show-as-card", "Show as card"),
+        ...c.canMakeTask ? [make3("make-task", "Make task")] : [],
+        make3("apply-template", "Add attribute template"),
+        ...c.canComment ? [make3("comment", "Comment…")] : [],
+        make3("version-peek", "Version history"),
         foldItem(folded),
-        make2("fit-height", "Fit height", { disabled: folded }),
-        make2("reset-size", "Reset size", { disabled: folded }),
+        make3("fit-height", "Fit height", { disabled: folded }),
+        make3("reset-size", "Reset size", { disabled: folded }),
         pinItem(Boolean(c.pinned)),
-        make2("select-same-color", "Select same color"),
-        make2("select-connected", "Select connected")
+        make3("select-same-color", "Select same color"),
+        make3("select-connected", "Select connected")
       ];
       const regionsItem = regionMenu(c.regions);
       if (regionsItem) {
@@ -79243,219 +80572,219 @@ function buildMenu(kind, ctx = {}) {
         out.splice(at < 0 ? out.length : at + 1, 0, statusItem);
       }
       if (c.hasOutline) {
-        out.push(make2("mind-map", "Expand as mind map"));
+        out.push(make3("mind-map", "Expand as mind map"));
         out.push(mindPresetMenu());
       }
-      if (c.canSpread) out.push(make2("spread-children", "Spread children as cards"));
-      if (c.isQuery) out.push(make2("query-results", "Add results as cards"));
+      if (c.canSpread) out.push(make3("spread-children", "Spread children as cards"));
+      if (c.isQuery) out.push(make3("query-results", "Add results as cards"));
       if (c.canExpand) {
-        out.push(make2("neighbors:out", "Add pages it links to"));
-        out.push(make2("neighbors:in", "Add pages that link here"));
-        out.push(make2("neighbors:attr", "Add attribute values"));
+        out.push(make3("neighbors:out", "Add pages it links to"));
+        out.push(make3("neighbors:in", "Add pages that link here"));
+        out.push(make3("neighbors:attr", "Add attribute values"));
       }
-      if (c.canAnnotate) out.push(make2("annotate-drawing", "Annotate as drawing"));
+      if (c.canAnnotate) out.push(make3("annotate-drawing", "Annotate as drawing"));
       out.push(
-        make2("send-to", "Send to board…"),
-        make2("related", "Related…"),
-        make2("find-related", "Find related"),
-        make2("context", "Context"),
+        make3("send-to", "Send to board…"),
+        make3("related", "Related…"),
+        make3("find-related", "Find related"),
+        make3("context", "Context"),
         trailItem(c),
         landmarkItem(c),
         sep(),
-        make2("delete", "Delete", { hint: "Del", danger: true })
+        make3("delete", "Delete", { hint: "Del", danger: true })
       );
       return out;
     }
     case "section":
       return [
-        make2("rename", "Rename", { hint: "Enter" }),
-        make2("select-contents", "Select contents", { disabled: empty }),
-        make2("select-all-in-section", "Select all in section", { disabled: empty }),
-        make2("select-same-color", "Select same color"),
-        make2("select-connected", "Select connected"),
-        make2("collapse-section", c.collapsed ? "Expand" : "Collapse"),
-        make2("section-note", c.hasNote ? "Remove description" : "Add description"),
-        c.locked ? make2("unlock-contents", "Unlock") : make2("lock-contents", "Lock"),
-        make2("present-section", "Present this section"),
-        make2("layout-dates", "Lay out by date"),
-        make2("date-source", "Date source", {
+        make3("rename", "Rename", { hint: "Enter" }),
+        make3("select-contents", "Select contents", { disabled: empty }),
+        make3("select-all-in-section", "Select all in section", { disabled: empty }),
+        make3("select-same-color", "Select same color"),
+        make3("select-connected", "Select connected"),
+        make3("collapse-section", c.collapsed ? "Expand" : "Collapse"),
+        make3("section-note", c.hasNote ? "Remove description" : "Add description"),
+        c.locked ? make3("unlock-contents", "Unlock") : make3("lock-contents", "Lock"),
+        make3("present-section", "Present this section"),
+        make3("layout-dates", "Lay out by date"),
+        make3("date-source", "Date source", {
           children: [
-            make2("date-source:attribute", "Attribute", { checked: !c.dateSource || c.dateSource === "attribute" }),
-            make2("date-source:first", "First mention", { checked: c.dateSource === "first" }),
-            make2("date-source:last", "Last mention", { checked: c.dateSource === "last" })
+            make3("date-source:attribute", "Attribute", { checked: !c.dateSource || c.dateSource === "attribute" }),
+            make3("date-source:first", "First mention", { checked: c.dateSource === "first" }),
+            make3("date-source:last", "Last mention", { checked: c.dateSource === "last" })
           ]
         }),
-        make2("focus-timer", "Focus timer"),
+        make3("focus-timer", "Focus timer"),
         sep(),
-        make2("fit-section", "Fit to contents", { disabled: empty }),
-        make2("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
+        make3("fit-section", "Fit to contents", { disabled: empty }),
+        make3("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
         tidyMenu(empty),
-        make2("fold-all-in", "Fold all inside", { disabled: empty }),
-        make2("unfold-all-in", "Unfold all inside", { disabled: empty }),
+        make3("fold-all-in", "Fold all inside", { disabled: empty }),
+        make3("unfold-all-in", "Unfold all inside", { disabled: empty }),
         sep(),
         colorMenu(),
         pinItem(Boolean(c.pinned)),
-        make2("duplicate", "Duplicate", { hint: "Cmd D" }),
-        make2("copy-ref", "Copy ref"),
-        make2("copy-png", "Copy selection as PNG"),
+        make3("duplicate", "Duplicate", { hint: "Cmd D" }),
+        make3("copy-ref", "Copy ref"),
+        make3("copy-png", "Copy selection as PNG"),
         trailItem(c),
         landmarkItem(c),
         sep(),
-        make2("delete-frame", "Delete frame", { hint: "Del", danger: true }),
-        make2("delete-contents", "Delete frame and contents", { hint: "Shift Del", danger: true, disabled: empty })
+        make3("delete-frame", "Delete frame", { hint: "Del", danger: true }),
+        make3("delete-contents", "Delete frame and contents", { hint: "Shift Del", danger: true, disabled: empty })
       ];
     case "text":
       return [
-        make2("edit", "Edit", { hint: "Enter" }),
+        make3("edit", "Edit", { hint: "Enter" }),
         colorMenu(),
-        make2("size", "Size", {
-          children: FONT_SIZES.map((px) => make2(`size:${px}`, `${SIZE_LABELS[px] || px} (${px}px)`, { checked: item?.fontSize === px }))
+        make3("size", "Size", {
+          children: FONT_SIZES.map((px) => make3(`size:${px}`, `${SIZE_LABELS[px] || px} (${px}px)`, { checked: item?.fontSize === px }))
         }),
-        make2("shape", "Shape", {
-          children: SHAPES.map((name) => make2(`shape:${name}`, SHAPE_LABELS2[name] || name, { checked: item?.shape === name }))
+        make3("shape", "Shape", {
+          children: SHAPES.map((name) => make3(`shape:${name}`, SHAPE_LABELS2[name] || name, { checked: item?.shape === name }))
         }),
-        make2("duplicate", "Duplicate", { hint: "Cmd D" }),
+        make3("duplicate", "Duplicate", { hint: "Cmd D" }),
         pinItem(Boolean(c.pinned)),
-        make2("copy", "Copy", { hint: "Cmd C" }),
-        make2("copy-png", "Copy selection as PNG"),
+        make3("copy", "Copy", { hint: "Cmd C" }),
+        make3("copy-png", "Copy selection as PNG"),
         trailItem(c),
         landmarkItem(c),
         sep(),
-        make2("delete", "Delete", { hint: "Del", danger: true })
+        make3("delete", "Delete", { hint: "Del", danger: true })
       ];
     case "edge":
       return [
-        make2("dir", "Direction", {
+        make3("dir", "Direction", {
           children: [
-            make2("dir:one", "One way", { checked: c.dir === "one" }),
-            make2("dir:two", "Two way", { checked: c.dir === "two" }),
-            make2("dir:none", "No arrow", { checked: c.dir === "none" })
+            make3("dir:one", "One way", { checked: c.dir === "one" }),
+            make3("dir:two", "Two way", { checked: c.dir === "two" }),
+            make3("dir:none", "No arrow", { checked: c.dir === "none" })
           ]
         }),
-        make2("flip", "Flip direction"),
-        ...c.blockEnd ? [make2("unblock", "Connect to the page instead")] : [],
-        make2("route", "Route", {
+        make3("flip", "Flip direction"),
+        ...c.blockEnd ? [make3("unblock", "Connect to the page instead")] : [],
+        make3("route", "Route", {
           children: [
-            make2("route:curve", "Curve", { checked: c.route === "curve" }),
-            make2("route:straight", "Straight", { checked: c.route === "straight" }),
-            make2("route:elbow", "Elbow", { checked: c.route === "elbow" }),
-            make2("route:around", "Around cards", { checked: c.route === "around" })
+            make3("route:curve", "Curve", { checked: c.route === "curve" }),
+            make3("route:straight", "Straight", { checked: c.route === "straight" }),
+            make3("route:elbow", "Elbow", { checked: c.route === "elbow" }),
+            make3("route:around", "Around cards", { checked: c.route === "around" })
           ]
         }),
-        make2("dash", "Line", {
+        make3("dash", "Line", {
           children: [
-            make2("dash:solid", "Solid", { checked: c.dash === "solid" }),
-            make2("dash:dashed", "Dashed", { checked: c.dash === "dashed" })
+            make3("dash:solid", "Solid", { checked: c.dash === "solid" }),
+            make3("dash:dashed", "Dashed", { checked: c.dash === "dashed" })
           ]
         }),
         colorMenu(),
         sep(),
-        make2("add-bend", "Add bend"),
-        make2("clear-bends", "Clear bends"),
-        make2("label", "Label"),
-        make2("edit-why", "Edit why"),
-        make2("notes", "Notes"),
-        make2("write-to-graph", "Write to graph"),
+        make3("add-bend", "Add bend"),
+        make3("clear-bends", "Clear bends"),
+        make3("label", "Label"),
+        make3("edit-why", "Edit why"),
+        make3("notes", "Notes"),
+        make3("write-to-graph", "Write to graph"),
         sep(),
-        make2("copy-png", "Copy selection as PNG"),
-        make2("context", "Context"),
-        make2("delete", "Delete", { hint: "Del", danger: true })
+        make3("copy-png", "Copy selection as PNG"),
+        make3("context", "Context"),
+        make3("delete", "Delete", { hint: "Del", danger: true })
       ];
     case "multi": {
       const few = count !== null && count < 2;
       const statusItem = statusSubmenu(c);
       return [
-        make2("copy", "Copy", { hint: "Cmd C" }),
-        make2("copy-png", "Copy selection as PNG"),
-        make2("duplicate", "Duplicate", { hint: "Cmd D" }),
+        make3("copy", "Copy", { hint: "Cmd C" }),
+        make3("copy-png", "Copy selection as PNG"),
+        make3("duplicate", "Duplicate", { hint: "Cmd D" }),
         colorMenu(),
         ...statusItem ? [statusItem] : [],
         sep(),
-        make2("align", "Align", {
+        make3("align", "Align", {
           disabled: few,
-          children: ["left", "center", "right", "top", "middle", "bottom"].map((side2) => make2(`align:${side2}`, cap3(side2)))
+          children: ["left", "center", "right", "top", "middle", "bottom"].map((side2) => make3(`align:${side2}`, cap3(side2)))
         }),
-        make2("distribute", "Distribute", {
+        make3("distribute", "Distribute", {
           disabled: count !== null && count < 3,
-          children: [make2("distribute:h", "Horizontally"), make2("distribute:v", "Vertically")]
+          children: [make3("distribute:h", "Horizontally"), make3("distribute:v", "Vertically")]
         }),
         tidyMenu(false),
-        make2("same-size", "Same size", {
+        make3("same-size", "Same size", {
           disabled: few,
-          children: [make2("same-size:width", "Width"), make2("same-size:height", "Height"), make2("same-size:both", "Width and height")]
+          children: [make3("same-size:width", "Width"), make3("same-size:height", "Height"), make3("same-size:both", "Width and height")]
         }),
         foldItem(Boolean(c.anyCollapsed)),
         pinItem(Boolean(c.allPinned)),
         sep(),
-        ...c.sectionPair ? [make2("group-connect", "Connect sections")] : [],
-        make2("wrap-section", "Wrap in section", { hint: "Cmd G" }),
-        make2("wrap-board", "Move into new board"),
-        make2("save-view-selection", "Save view of selection"),
-        make2("send-to", "Send to board…"),
+        ...c.sectionPair ? [make3("group-connect", "Connect sections")] : [],
+        make3("wrap-section", "Wrap in section", { hint: "Cmd G" }),
+        make3("wrap-board", "Move into new board"),
+        make3("save-view-selection", "Save view of selection"),
+        make3("send-to", "Send to board…"),
         selectionTrailItem(c),
         sep(),
-        make2("delete", "Delete", { hint: "Del", danger: true })
+        make3("delete", "Delete", { hint: "Del", danger: true })
       ];
     }
     case "board-menu":
       return [
         templateMenu(),
-        make2("save-template", "Save board as template"),
+        make3("save-template", "Save board as template"),
         ...snapshotMenus(),
-        make2("save-view", "Save view…"),
-        make2("memory-lane", "Memory lane", { hint: "Shift T" }),
-        ...c.changes ? [make2("changed-since", "Changed since last visit", { checked: c.changed === true })] : [],
+        make3("save-view", "Save view…"),
+        make3("memory-lane", "Memory lane", { hint: "Shift T" }),
+        ...c.changes ? [make3("changed-since", "Changed since last visit", { checked: c.changed === true })] : [],
         ...c.lens ? [
-          make2("lens-strength", "Strength", { checked: c.strength === true }),
-          make2("lens-dust", "Dust", {
+          make3("lens-strength", "Strength", { checked: c.strength === true }),
+          make3("lens-dust", "Dust", {
             children: [
-              make2("lens-dust:off", "Off", { checked: !c.dust || c.dust === "off" }),
-              make2("lens-dust:6 months", "6 months", { checked: c.dust === "6 months" }),
-              make2("lens-dust:1 year", "1 year", { checked: c.dust === "1 year" }),
-              make2("lens-dust:2 years", "2 years", { checked: c.dust === "2 years" })
+              make3("lens-dust:off", "Off", { checked: !c.dust || c.dust === "off" }),
+              make3("lens-dust:6 months", "6 months", { checked: c.dust === "6 months" }),
+              make3("lens-dust:1 year", "1 year", { checked: c.dust === "1 year" }),
+              make3("lens-dust:2 years", "2 years", { checked: c.dust === "2 years" })
             ]
           })
         ] : [],
-        ...c.walk ? [make2("walk", "Walk", {
+        ...c.walk ? [make3("walk", "Walk", {
           children: [
-            make2("walk:reading", "Reading order"),
-            make2("walk:nearest", "Nearest next"),
-            make2("walk:trail", "Along the trail", { disabled: !c.hasTrail })
+            make3("walk:reading", "Reading order"),
+            make3("walk:nearest", "Nearest next"),
+            make3("walk:trail", "Along the trail", { disabled: !c.hasTrail })
           ]
         })] : [],
         sep(),
-        make2("export-svg", "Export as SVG"),
-        make2("export-png", "Export as PNG"),
-        make2("copy-outline", "Copy as outline"),
-        make2("sort-outline", "Sort outline by position"),
-        ...c.inlinePdfs > 0 ? [make2("pdf-pages", "Move PDFs to their own pages")] : [],
-        ...c.oldTables > 0 ? [make2("table-captions", "Fold tables under captions")] : [],
-        make2("open-outline", "Open outline in sidebar"),
+        make3("export-svg", "Export as SVG"),
+        make3("export-png", "Export as PNG"),
+        make3("copy-outline", "Copy as outline"),
+        make3("sort-outline", "Sort outline by position"),
+        ...c.inlinePdfs > 0 ? [make3("pdf-pages", "Move PDFs to their own pages")] : [],
+        ...c.oldTables > 0 ? [make3("table-captions", "Fold tables under captions")] : [],
+        make3("open-outline", "Open outline in sidebar"),
         sep(),
-        make2("fold-all", "Fold all cards"),
-        make2("unfold-all", "Unfold all cards"),
+        make3("fold-all", "Fold all cards"),
+        make3("unfold-all", "Unfold all cards"),
         sep(),
-        make2("add-page", "Add page…"),
-        make2("add-today", "Add today's journal"),
-        make2("add-week", "Add this week's journals"),
+        make3("add-page", "Add page…"),
+        make3("add-today", "Add today's journal"),
+        make3("add-week", "Add this week's journals"),
         sep(),
-        make2("background", "Background…"),
+        make3("background", "Background…"),
         ...c.readOpen ? [
-          make2("bar-table", "Table view"),
-          make2("bar-kanban", "Kanban view"),
-          make2("bar-lens", "Tag lens"),
-          make2("bar-focus", "Focus mode"),
-          make2("bar-present", "Present")
+          make3("bar-table", "Table view"),
+          make3("bar-kanban", "Kanban view"),
+          make3("bar-lens", "Tag lens"),
+          make3("bar-focus", "Focus mode"),
+          make3("bar-present", "Present")
         ] : [],
         viewsMenu(),
-        make2("dock", "Dock position for this board", {
+        make3("dock", "Dock position for this board", {
           children: [
-            ...DOCK_POSITIONS.map((d) => make2(`dock:${d}`, cap3(d), { checked: c.dock === d })),
+            ...DOCK_POSITIONS.map((d) => make3(`dock:${d}`, cap3(d), { checked: c.dock === d })),
             sep(),
-            make2("dock:default", "Use setting", { checked: !DOCK_POSITIONS.includes(c.dock) })
+            make3("dock:default", "Use setting", { checked: !DOCK_POSITIONS.includes(c.dock) })
           ]
         }),
-        make2("tidy:grid", "Tidy into a grid")
+        make3("tidy:grid", "Tidy into a grid")
       ];
     default:
       return [];
@@ -80464,9 +81793,9 @@ function rasterizeSvg(doc, svg) {
     img.src = url;
   });
 }
-function freshCardIsBlank({ blockString: blockString2, itemString, contentCount = 0, editorText = "" } = {}) {
+function freshCardIsBlank({ blockString: blockString3, itemString, contentCount = 0, editorText = "" } = {}) {
   if (contentCount > 0) return false;
-  return ![blockString2, itemString, editorText].some((s) => !isBareTask(s) && String(s ?? "").trim());
+  return ![blockString3, itemString, editorText].some((s) => !isBareTask(s) && String(s ?? "").trim());
 }
 function editingPlainText(root) {
   const editor = root.querySelector?.(".pxd-item--editing .pxd-item__editor");
@@ -83003,15 +84332,15 @@ function buildBoardView(onFail, {
     const rows = [];
     for (const other of board2()?.items.values() || []) {
       if (other?.kind !== "highlight" || !other.target?.uid) continue;
-      let pageUid = "";
+      let pageUid2 = "";
       let pageUrl = "";
       try {
-        pageUid = host?.blockPageUid?.(other.target.uid) || "";
+        pageUid2 = host?.blockPageUid?.(other.target.uid) || "";
       } catch {
-        pageUid = "";
+        pageUid2 = "";
       }
       try {
-        pageUrl = pageUid ? host?.pdfPageUrl?.(pageUid) || "" : "";
+        pageUrl = pageUid2 ? host?.pdfPageUrl?.(pageUid2) || "" : "";
       } catch {
         pageUrl = "";
       }
@@ -83253,15 +84582,15 @@ function buildBoardView(onFail, {
     if (!card2 || card2.kind !== "pdf") return;
     const pdfUrl = coverUrlOf(card2);
     if (!pdfUrl) return;
-    let pageUid = "";
+    let pageUid2 = "";
     let pageUrl = "";
     try {
-      pageUid = host?.blockPageUid?.(highlightUid) || "";
+      pageUid2 = host?.blockPageUid?.(highlightUid) || "";
     } catch {
-      pageUid = "";
+      pageUid2 = "";
     }
     try {
-      pageUrl = pageUid ? host?.pdfPageUrl?.(pageUid) || "" : "";
+      pageUrl = pageUid2 ? host?.pdfPageUrl?.(pageUid2) || "" : "";
     } catch {
       pageUrl = "";
     }
@@ -83601,13 +84930,13 @@ function buildBoardView(onFail, {
     }
     timelinePending = job;
     timelinePendingUid = uid;
-    const clear2 = () => {
+    const clear3 = () => {
       if (timelinePending === job) {
         timelinePending = null;
         timelinePendingUid = "";
       }
     };
-    job.then(clear2, clear2);
+    job.then(clear3, clear3);
     return job;
   };
   const aliasTimelineRows = (rows) => {
@@ -85340,10 +86669,10 @@ function buildBoardView(onFail, {
   const taskUidOf = (it) => it?.target?.kind === "block" && it.target.uid ? it.target.uid : it?.uid;
   const isTaskItem = (it) => Boolean(it) && isTaskString(it.string || (it.target?.kind === "block" ? host?.blockString?.(it.target.uid) : "") || "");
   const setStatusOf = async (uid, name) => {
-    const api2 = statusApi(statusWin());
-    if (!api2 || !uid) return { status: "unknown", reason: "no-api" };
+    const api3 = statusApi(statusWin());
+    if (!api3 || !uid) return { status: "unknown", reason: "no-api" };
     try {
-      return await api2.setStatus(uid, name);
+      return await api3.setStatus(uid, name);
     } catch {
       return { status: "unknown", reason: "set-status-failed" };
     }
@@ -85972,19 +87301,19 @@ function buildBoardView(onFail, {
         break;
       case "open-compass": {
         if (!item) break;
-        const api2 = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
-        if (typeof api2?.open !== "function") break;
+        const api3 = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
+        if (typeof api3?.open !== "function") break;
         let uid = null;
         if (item.target?.kind === "page") uid = host?.pageUid?.(item.target.title) || null;
         else if (item.target?.kind === "block") uid = item.target.uid || null;
         else uid = item.uid || null;
-        if (uid) api2.open(uid);
+        if (uid) api3.open(uid);
         break;
       }
       case "annotate-drawing": {
         if (!item || item.kind !== "image") break;
-        const api2 = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
-        if (typeof api2?.create !== "function") break;
+        const api3 = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
+        if (typeof api3?.create !== "function") break;
         const live2 = rects().get(item.uid);
         const plan = annotatePlan({
           uid: item.uid,
@@ -85996,7 +87325,7 @@ function buildBoardView(onFail, {
         void (async () => {
           let made = null;
           try {
-            made = await api2.create(plan.create);
+            made = await api3.create(plan.create);
           } catch {
             return;
           }
@@ -86020,7 +87349,7 @@ function buildBoardView(onFail, {
           if (disposed) return;
           pinAnnotateToast(doc);
           toast("Drop the image into the drawing");
-          if (typeof api2.open === "function") api2.open(drawingUid);
+          if (typeof api3.open === "function") api3.open(drawingUid);
         })();
         break;
       }
@@ -86032,14 +87361,14 @@ function buildBoardView(onFail, {
         break;
       case "copy-link": {
         if (!item) break;
-        let pageUid = "";
+        let pageUid2 = "";
         try {
-          pageUid = host?.blockPageUid?.(boardUid) || "";
+          pageUid2 = host?.blockPageUid?.(boardUid) || "";
         } catch {
-          pageUid = "";
+          pageUid2 = "";
         }
-        if (!pageUid) pageUid = pageUidFromHash(win2?.location?.hash || "");
-        copyText2(copyLinkText(item, { graph, pageUid }), "Link copied");
+        if (!pageUid2) pageUid2 = pageUidFromHash(win2?.location?.hash || "");
+        copyText2(copyLinkText(item, { graph, pageUid: pageUid2 }), "Link copied");
         break;
       }
       case "duplicate":
@@ -86542,15 +87871,15 @@ function buildBoardView(onFail, {
   });
   const openHighlightNote = async (hlUid) => {
     if (typeof hlUid !== "string" || !hlUid) return;
-    const api2 = host?.api;
+    const api3 = host?.api;
     let kids = [];
     try {
-      kids = api2?.data?.pull?.("[{:block/children [:block/uid :block/string :block/order :block/props]}]", [":block/uid", hlUid])?.[":block/children"] || [];
+      kids = api3?.data?.pull?.("[{:block/children [:block/uid :block/string :block/order :block/props]}]", [":block/uid", hlUid])?.[":block/children"] || [];
     } catch {
       kids = [];
     }
     const plan = noteActionPlan(kids);
-    const sidebar = api2?.ui?.rightSidebar;
+    const sidebar = api3?.ui?.rightSidebar;
     try {
       await sidebar?.addWindow?.({ window: { type: "block", "block-uid": hlUid } });
     } catch {
@@ -86564,15 +87893,15 @@ function buildBoardView(onFail, {
       const windowId = win3?.["window-id"];
       if (!windowId) return;
       try {
-        api2?.ui?.setBlockFocusAndSelection?.({ location: { "block-uid": noteUid, "window-id": windowId } });
+        api3?.ui?.setBlockFocusAndSelection?.({ location: { "block-uid": noteUid, "window-id": windowId } });
       } catch {
       }
     }, 200);
   };
   const openHighlightInReader = async (item) => {
     if (!item || item.kind !== "highlight" || !item.target?.uid) return;
-    const pageUid = host?.blockPageUid?.(item.target.uid) || "";
-    const url = pageUid ? host?.pdfPageUrl?.(pageUid) || "" : "";
+    const pageUid2 = host?.blockPageUid?.(item.target.uid) || "";
+    const url = pageUid2 ? host?.pdfPageUrl?.(pageUid2) || "" : "";
     const cards = [];
     for (const other of board2()?.items.values() || []) {
       if (other?.kind !== "pdf") continue;
@@ -87297,8 +88626,8 @@ function buildBoardView(onFail, {
       },
       semantic: {
         enabled: () => semanticR().enabled(),
-        peek: (q) => semanticR().peek(q),
-        search: (q, opts) => semanticR().search(q, opts)
+        peek: (q2) => semanticR().peek(q2),
+        search: (q2, opts) => semanticR().search(q2, opts)
       },
       loadMeaning: () => {
         try {
@@ -87432,9 +88761,9 @@ function buildBoardView(onFail, {
         startWalk("trail", fromRef);
       },
       ensureTimeline: () => loadTimelineRows(),
-      openDay: (pageUid) => {
+      openDay: (pageUid2) => {
         try {
-          host?.openInSidebar?.(pageUid, "block");
+          host?.openInSidebar?.(pageUid2, "block");
         } catch {
         }
       },
@@ -87739,24 +89068,24 @@ function buildBoardView(onFail, {
     }
     return out;
   };
-  const paintSearch = (b, hits, q) => {
+  const paintSearch = (b, hits, q2) => {
     const bright = new Set((hits || []).map((h) => h.focus));
     for (const item of b?.items.values() || []) {
       const shell = itemsR.shellOf(item.uid);
-      const on = Boolean(q) && bright.has(item.uid);
-      shell?.classList.toggle("pxd-item--dim", Boolean(q) && !on);
+      const on = Boolean(q2) && bright.has(item.uid);
+      shell?.classList.toggle("pxd-item--dim", Boolean(q2) && !on);
       shell?.classList.toggle("pxd-item--hit", on);
     }
-    const edges = q ? new Set((hits || []).filter((h) => h.kind === "edge").map((h) => h.uid)) : null;
+    const edges = q2 ? new Set((hits || []).filter((h) => h.kind === "edge").map((h) => h.uid)) : null;
     edgesR.setSearch(edges);
   };
   const searchFilter = (text4) => {
     const b = board2();
-    const q = String(text4 || "").trim().toLowerCase();
+    const q2 = String(text4 || "").trim().toLowerCase();
     searchIndex = -1;
-    setRootFlag("searching", Boolean(q));
-    searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
-    paintSearch(b, searchMatches, q);
+    setRootFlag("searching", Boolean(q2));
+    searchMatches = b && q2 ? findOnBoard(b, q2, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
+    paintSearch(b, searchMatches, q2);
     return searchMatches.length;
   };
   const searchNext = (dir = 1) => {
@@ -88439,10 +89768,10 @@ function buildBoardView(onFail, {
     openPage: (uid, { sidebar = false } = {}) => {
       const item = board2()?.items.get(uid);
       if (item?.kind !== "page") return;
-      const pageUid = host?.pageUid?.(item.target?.title || item.title);
-      if (!pageUid) return;
-      if (sidebar) host?.openInSidebar?.(pageUid, "outline");
-      else host?.openPage?.(pageUid);
+      const pageUid2 = host?.pageUid?.(item.target?.title || item.title);
+      if (!pageUid2) return;
+      if (sidebar) host?.openInSidebar?.(pageUid2, "outline");
+      else host?.openPage?.(pageUid2);
     },
     exitEdit: () => exitEdit(),
     isEditing: () => itemsR.isEditing(),
@@ -88942,19 +90271,19 @@ function buildBoardView(onFail, {
   const openRefFromClick = (event) => {
     const t = event.target;
     if (!t?.closest || !t.closest(".pxd-item") || t.closest(".pxd-item--editing")) return false;
-    const api2 = host?.api;
+    const api3 = host?.api;
     const page = t.closest("[data-link-uid]");
     const block = t.closest(".rm-block-ref[data-uid]");
     const uid = page?.getAttribute("data-link-uid") || block?.getAttribute("data-uid");
-    if (!uid || !api2?.ui) return false;
+    if (!uid || !api3?.ui) return false;
     const key = `${uid}:${event.shiftKey ? 1 : 0}`;
     const now4 = Date.now();
     if (key === lastRefKey && now4 - lastRefAt < 500) return true;
     lastRefKey = key;
     lastRefAt = now4;
-    if (event.shiftKey) api2.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
-    else if (page) api2.ui.mainWindow?.openPage?.({ page: { uid } });
-    else api2.ui.mainWindow?.openBlock?.({ block: { uid } });
+    if (event.shiftKey) api3.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
+    else if (page) api3.ui.mainWindow?.openPage?.({ page: { uid } });
+    else api3.ui.mainWindow?.openBlock?.({ block: { uid } });
     return true;
   };
   listen(root, "click", (event) => {
@@ -89134,15 +90463,15 @@ function buildBoardView(onFail, {
   const openHighlightPicker = (item, anchor) => {
     if (disposed || item?.kind !== "pdf") return;
     closeHighlightDialog();
-    let pageUid = null;
+    let pageUid2 = null;
     try {
-      pageUid = host?.pdfCover?.(pdfSourceOf(item))?.pageUid || null;
+      pageUid2 = host?.pdfCover?.(pdfSourceOf(item))?.pageUid || null;
     } catch {
-      pageUid = null;
+      pageUid2 = null;
     }
     let tree = [];
     try {
-      const pulled = pageUid ? host?.pdfHighlightTree?.(pageUid) : [];
+      const pulled = pageUid2 ? host?.pdfHighlightTree?.(pageUid2) : [];
       tree = Array.isArray(pulled) ? pulled : [];
     } catch {
       tree = [];
@@ -90230,13 +91559,13 @@ function buildBoardView(onFail, {
     const b = board2();
     const edge = b?.edges?.get(target.cardUid);
     if (!b || !b.items.has(target.cardUid) && !edge) return false;
-    let pageUid = "";
+    let pageUid2 = "";
     try {
-      pageUid = host?.blockPageUid?.(boardUid) || "";
+      pageUid2 = host?.blockPageUid?.(boardUid) || "";
     } catch {
-      pageUid = "";
+      pageUid2 = "";
     }
-    if (target.pageUid && pageUid && target.pageUid !== pageUid) return false;
+    if (target.pageUid && pageUid2 && target.pageUid !== pageUid2) return false;
     if (edge && !b.items.has(target.cardUid)) {
       ctl.selectEdge(edge.uid);
       const ends = focusEnds(b, edge);
@@ -92310,11 +93639,11 @@ function createPrefetch({
     cancel();
     doc?.removeEventListener?.("pointerover", onOver);
     doc?.removeEventListener?.("pointerout", onOut);
-    if (current2 === api2) current2 = null;
+    if (current2 === api3) current2 = null;
   }
-  const api2 = { schedule, cancel, dispose, misses: () => misses.length };
-  current2 = api2;
-  return api2;
+  const api3 = { schedule, cancel, dispose, misses: () => misses.length };
+  current2 = api3;
+  return api3;
 }
 
 // src/cardchips.js
@@ -92352,7 +93681,7 @@ function createCardChips({
   doc = globalThis.document,
   cache,
   enabled = () => true,
-  pageUid = () => "",
+  pageUid: pageUid2 = () => "",
   onOpen,
   onPreview
 } = {}) {
@@ -92615,7 +93944,7 @@ function createCardChips({
   };
   const placePage = (scope) => {
     if (!scope?.querySelector) return;
-    const uid = typeof pageUid === "function" ? pageUid() : "";
+    const uid = typeof pageUid2 === "function" ? pageUid2() : "";
     if (!uid || !cache?.hasTarget?.(uid)) return;
     const title = outside(scope, ".rm-title-display-container");
     const header = outside(scope, ".rm-reference-main");
@@ -92691,7 +94020,7 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
     return Boolean(articleOf(node2));
   };
   const isTargetPage = () => {
-    const uid = typeof pageUid === "function" ? pageUid() : "";
+    const uid = typeof pageUid2 === "function" ? pageUid2() : "";
     return Boolean(uid && cache?.hasTarget?.(uid));
   };
   const refreshPage = (node2) => {
@@ -92799,19 +94128,19 @@ function createBoardRules(win2 = globalThis) {
     boardMemberName: BOARD_MEMBER_NAME,
     // q("[:find ?s :in $ % :where [?board :block/uid \"X\"] (board-member ?board ?b) [?b :block/string ?s]]")
     q(query, ...inputs) {
-      const api2 = win2?.roamAlphaAPI?.data;
-      if (typeof api2?.q !== "function") throw new Error("roamAlphaAPI.data.q is not available");
-      return api2.q(query, BOARD_MEMBER_RULE, ...inputs);
+      const api3 = win2?.roamAlphaAPI?.data;
+      if (typeof api3?.q !== "function") throw new Error("roamAlphaAPI.data.q is not available");
+      return api3.q(query, BOARD_MEMBER_RULE, ...inputs);
     }
   };
 }
-function installBoardRules(api2, win2 = globalThis) {
-  if (!api2 || typeof api2 !== "object") return () => {
+function installBoardRules(api3, win2 = globalThis) {
+  if (!api3 || typeof api3 !== "object") return () => {
   };
   const rules = createBoardRules(win2);
-  api2.rules = rules;
+  api3.rules = rules;
   return () => {
-    if (api2.rules === rules) delete api2.rules;
+    if (api3.rules === rules) delete api3.rules;
   };
 }
 
@@ -93163,14 +94492,14 @@ function boardVersion(pulled) {
   }
   return readPlexus(pulled[":block/props"] ?? pulled.props)?.v;
 }
-function blockString(pulled) {
+function blockString2(pulled) {
   if (!pulled || typeof pulled !== "object") return "";
   if (typeof pulled[":block/string"] === "string") return pulled[":block/string"];
   if (typeof pulled.string === "string") return pulled.string;
   return "";
 }
 function boardTitle(pulled) {
-  return parseBoardTitle(blockString(pulled)) || "Untitled board";
+  return parseBoardTitle(blockString2(pulled)) || "Untitled board";
 }
 function parseAddRef(raw) {
   if (raw == null) return null;
@@ -93276,7 +94605,7 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
       }
     }
   }
-  const api2 = {
+  const api3 = {
     apiVersion: API_VERSION,
     version: String(version ?? ""),
     capabilities,
@@ -93288,7 +94617,7 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
         return false;
       }
     },
-    boardsOn(pageUid) {
+    boardsOn(pageUid2) {
       let listed2 = [];
       try {
         const rows = host?.listBoards?.();
@@ -93296,7 +94625,7 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
       } catch {
         listed2 = [];
       }
-      return listed2.filter((row4) => row4 && row4.pageUid === pageUid).map((row4) => ({ uid: row4.uid, title: row4.title || "Untitled board" }));
+      return listed2.filter((row4) => row4 && row4.pageUid === pageUid2).map((row4) => ({ uid: row4.uid, title: row4.title || "Untitled board" }));
     },
     boardsWith(targetUid) {
       let rows = [];
@@ -93390,33 +94719,33 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
         apiVersion: API_VERSION,
         events: [...API_EVENTS],
         capabilities: [...capabilities],
-        methods: Object.keys(api2).filter((key) => typeof api2[key] === "function").sort()
+        methods: Object.keys(api3).filter((key) => typeof api3[key] === "function").sort()
       };
     },
     help() {
       return "PlexusDiagram apiVersion 1. Listeners: change, mount, unmount. spec() lists the methods.";
     }
   };
-  const frozen = Object.freeze(api2);
+  const frozen = Object.freeze(api3);
   emitters.set(frozen, emit2);
   return frozen;
 }
-function emitPublicEvent(api2, type, detail) {
+function emitPublicEvent(api3, type, detail) {
   if (!EVENTS.has(type)) return;
-  emitters.get(api2)?.(type, detail);
+  emitters.get(api3)?.(type, detail);
 }
-function installPublicApi(api2, { win: win2 = globalThis.window ?? globalThis, CustomEventCtor } = {}) {
+function installPublicApi(api3, { win: win2 = globalThis.window ?? globalThis, CustomEventCtor } = {}) {
   const target = win2 ?? globalThis;
-  if (target.PlexusDiagram != null && target.PlexusDiagram !== api2) return false;
-  target.PlexusDiagram = api2;
+  if (target.PlexusDiagram != null && target.PlexusDiagram !== api3) return false;
+  target.PlexusDiagram = api3;
   fire(target, "plexus-diagram:ready", { apiVersion: API_VERSION }, CustomEventCtor);
   return true;
 }
-function uninstallPublicApi(api2, { win: win2 = globalThis.window ?? globalThis, CustomEventCtor } = {}) {
+function uninstallPublicApi(api3, { win: win2 = globalThis.window ?? globalThis, CustomEventCtor } = {}) {
   const target = win2 ?? globalThis;
   let ours = false;
   try {
-    ours = target.PlexusDiagram === api2;
+    ours = target.PlexusDiagram === api3;
     if (ours) delete target.PlexusDiagram;
   } catch {
     ours = false;
@@ -93808,9 +95137,9 @@ function uidFromLegacyString(value) {
 function readLegacyEnhanced(host) {
   const out = /* @__PURE__ */ new Set();
   try {
-    const pageUid = host.pageUid?.(LEGACY_METADATA_PAGE);
-    if (!pageUid) return out;
-    const tree = pullVia(host, "[:block/uid :block/string {:block/children ...}]", [":block/uid", pageUid]);
+    const pageUid2 = host.pageUid?.(LEGACY_METADATA_PAGE);
+    if (!pageUid2) return out;
+    const tree = pullVia(host, "[:block/uid :block/string {:block/children ...}]", [":block/uid", pageUid2]);
     const list = pulledChildren(tree).find((child) => /^enhanced::/i.test(pulledString(child).trim()));
     for (const entry of pulledChildren(list)) {
       const uid = uidFromLegacyString(pulledString(entry));
@@ -95342,15 +96671,15 @@ async function installPlexusDiagram({
       enterNested(open, trail, edgeUid);
       return true;
     }
-    let pageUid = pageHint;
-    if (!pageUid) {
+    let pageUid2 = pageHint;
+    if (!pageUid2) {
       try {
-        pageUid = host.blockPageUid?.(boardUid) || "";
+        pageUid2 = host.blockPageUid?.(boardUid) || "";
       } catch {
-        pageUid = "";
+        pageUid2 = "";
       }
     }
-    if (!pageUid) {
+    if (!pageUid2) {
       try {
         void host.openBlock?.(boardUid);
       } catch {
@@ -95359,7 +96688,7 @@ async function installPlexusDiagram({
     }
     const mine = ++nestOpen;
     try {
-      void host.openPage?.(pageUid);
+      void host.openPage?.(pageUid2);
     } catch {
     }
     waitOpenMount(root, false, 160, (rec) => {
@@ -96375,13 +97704,13 @@ async function installPlexusDiagram({
     }
     return pageUidFromHash(globalThis.location?.hash || "");
   }
-  function deepLinkTo(pageUid) {
-    if (pageUid && openPageUid() === pageUid) {
+  function deepLinkTo(pageUid2) {
+    if (pageUid2 && openPageUid() === pageUid2) {
       applyShowAll();
       return;
     }
     try {
-      void host.openPage?.(pageUid);
+      void host.openPage?.(pageUid2);
     } catch {
     }
   }
@@ -96424,8 +97753,8 @@ async function installPlexusDiagram({
     };
     kick(10);
   }
-  function openOutlineImage(pageUid, drawingUid, frac) {
-    if (!pageUid) return;
+  function openOutlineImage(pageUid2, drawingUid, frac) {
+    if (!pageUid2) return;
     const landed = (left) => {
       if (stopped) return;
       const img = outlineImage(drawingUid);
@@ -96435,18 +97764,18 @@ async function installPlexusDiagram({
       }
       pulseOutline(img, frac);
     };
-    if (openPageUid() === pageUid) {
+    if (openPageUid() === pageUid2) {
       landed(8);
       return;
     }
     try {
-      host.openPage?.(pageUid);
+      host.openPage?.(pageUid2);
     } catch {
     }
     let tries = 0;
     const wait2 = () => {
       if (stopped) return;
-      if (openPageUid() === pageUid) {
+      if (openPageUid() === pageUid2) {
         landed(8);
         return;
       }
@@ -96463,13 +97792,13 @@ async function installPlexusDiagram({
     } catch {
       hit = null;
     }
-    let pageUid = "";
+    let pageUid2 = "";
     try {
-      pageUid = host.blockPageUid?.(region.drawingUid) || "";
+      pageUid2 = host.blockPageUid?.(region.drawingUid) || "";
     } catch {
-      pageUid = "";
+      pageUid2 = "";
     }
-    const target = resolveRegionTarget(hit, { blockUid: region.drawingUid, pageUid });
+    const target = resolveRegionTarget(hit, { blockUid: region.drawingUid, pageUid: pageUid2 });
     if (shiftKey) {
       if (target.kind === "board") {
         try {
@@ -96498,14 +97827,14 @@ async function installPlexusDiagram({
       applyShowAll();
       return;
     }
-    let pageUid = "";
+    let pageUid2 = "";
     try {
-      pageUid = host.blockPageUid?.(boardUid) || "";
+      pageUid2 = host.blockPageUid?.(boardUid) || "";
     } catch {
-      pageUid = "";
+      pageUid2 = "";
     }
     revealMain(boardUid);
-    if (pageUid) deepLinkTo(pageUid);
+    if (pageUid2) deepLinkTo(pageUid2);
   }
   function loadViewBoard(region) {
     const id = region?.drawingUid;
@@ -96785,16 +98114,16 @@ async function installPlexusDiagram({
             return;
           }
           if (!plan) return;
-          let pageUid = "";
+          let pageUid2 = "";
           const opened = openPinOnBoard(plan);
           if (!opened) {
             try {
-              pageUid = host.blockPageUid?.(plan.pdfUid) || "";
+              pageUid2 = host.blockPageUid?.(plan.pdfUid) || "";
             } catch {
-              pageUid = "";
+              pageUid2 = "";
             }
           }
-          const fallback = pinOpenFallback({ opened, plan, pageUid, now: Date.now() });
+          const fallback = pinOpenFallback({ opened, plan, pageUid: pageUid2, now: Date.now() });
           if (!fallback) return;
           pendingPin = fallback.pending;
           try {
@@ -97654,14 +98983,14 @@ async function installPlexusDiagram({
         } catch {
         }
       } else {
-        let pageUid = "";
+        let pageUid2 = "";
         try {
-          pageUid = host.blockPageUid?.(boardUid) || "";
+          pageUid2 = host.blockPageUid?.(boardUid) || "";
         } catch {
-          pageUid = "";
+          pageUid2 = "";
         }
         try {
-          if (pageUid) void host.openPage?.(pageUid);
+          if (pageUid2) void host.openPage?.(pageUid2);
           else void host.openBlock?.(boardUid);
         } catch {
         }
@@ -97717,7 +99046,7 @@ async function installPlexusDiagram({
   });
   publicEmit = (type, detail) => emitPublicEvent(publicApi, type, detail);
   installPublicApi(publicApi, { win: win2 });
-  const api2 = {
+  const api3 = {
     version: badge,
     stats: host.stats,
     mounts: () => [...mounts.values()].map((rec) => ({
@@ -97760,11 +99089,11 @@ async function installPlexusDiagram({
       return acquireSession2(uid, { host, settings: liveSettings });
     }
   };
-  win2.__plexusDiagram = api2;
-  lifecycle.add(installBoardRules(api2, win2));
+  win2.__plexusDiagram = api3;
+  lifecycle.add(installBoardRules(api3, win2));
   lifecycle.add(() => {
     uninstallPublicApi(publicApi, { win: win2 });
-    if (win2.__plexusDiagram === api2) delete win2.__plexusDiagram;
+    if (win2.__plexusDiagram === api3) delete win2.__plexusDiagram;
   });
   syncGuard();
   await registerCommands();
@@ -97906,13 +99235,13 @@ async function installPlexusDiagram({
     };
     let statusApiSeen = null;
     const followStatusApi = () => {
-      const api3 = win2.RoamTaskStatusTags;
-      if (statusApiSeen === api3) return;
+      const api4 = win2.RoamTaskStatusTags;
+      if (statusApiSeen === api4) return;
       try {
         statusApiSeen?.removeEventListener?.("statuses", refreshStatuses);
       } catch {
       }
-      statusApiSeen = api3 && api3.apiVersion === 1 ? api3 : null;
+      statusApiSeen = api4 && api4.apiVersion === 1 ? api4 : null;
       try {
         statusApiSeen?.addEventListener?.("statuses", refreshStatuses);
       } catch {

@@ -1,6 +1,8 @@
 // Ask AI adapter for the Live AI Assistant extension's public API (window.LiveAI_API, v29+, "Enable Public API").
 // It is the only AI path. Inert and throw-free when the API is absent.
 
+import { withPartContext } from "../model/ask-composer.js";
+
 export const CALLER = "Plexus Diagram";
 export const READY_EVENT = "liveai:api-ready";
 export const UNLOADED_EVENT = "liveai:api-unloaded";
@@ -50,7 +52,16 @@ export function listModels(w) {
     const rows = a.listModels();
     return (Array.isArray(rows) ? rows : [])
       .filter((m) => m && typeof m.id === "string" && m.id && isChatModel(m))
-      .map((m) => ({ id: m.id, name: m.name || m.id, provider: m.provider || "", contextLength: m.contextLength ?? null, isDefault: Boolean(m.isDefault), imageInput: sendsImages(m) }));
+      .map((m) => ({
+        id: m.id,
+        name: m.name || m.id,
+        provider: m.provider || "",
+        contextLength: m.contextLength ?? null,
+        isDefault: Boolean(m.isDefault),
+        imageInput: sendsImages(m),
+        thinking: m.capabilities?.thinking === true,
+        thinkingEfforts: Array.isArray(m.thinkingEfforts) ? m.thinkingEfforts.filter((e) => typeof e === "string") : [],
+      }));
   } catch {
     return [];
   }
@@ -93,21 +104,30 @@ export function friendlyError(error) {
   return msg || "Live AI Assistant could not answer.";
 }
 
-// ask({ context, prompt, messages, systemPrompt, model, onChunk, signal, json }) -> { ok, text, json?, model, provider, usage } | { ok:false, error, code }
+// ask({ context, roamContext, prompt, messages, systemPrompt, model, thinking, effort, onChunk, signal, json }) -> { ok, text, json?, model, provider, usage } | { ok:false, error, code }
 // messages: earlier turns [{ role: "user" | "assistant", content }]; with any, the prompt goes to Live AI as a message array.
+// roamContext: Live AI pulls those pages/blocks/sources from the graph. generate() takes context or roamContext, not
+// both, so with a roamContext the context string goes at the head of the first user message instead.
+// thinking/effort: Live AI's thinking toggle and effort level (only sent when given).
 // json: true asks Live AI for responseFormat "json_object" (answer parsed into result.json; the reply comes whole, no chunks).
-export async function ask({ context = "", prompt = "", messages = null, systemPrompt = "", model = "", onChunk = null, signal = null, json = false, window: w } = {}) {
+export async function ask({ context = "", roamContext = null, prompt = "", messages = null, systemPrompt = "", model = "", thinking = undefined, effort = "", onChunk = null, signal = null, json = false, window: w } = {}) {
   if (!available(w)) return { ok: false, code: "UNAVAILABLE", error: SETUP_HINT };
   const prior = (Array.isArray(messages) ? messages : [])
     .filter((m) => (m?.role === "user" || m?.role === "assistant") && String(m.content ?? "").trim())
     .map((m) => ({ role: m.role, content: String(m.content) }));
+  const roam = roamContext && typeof roamContext === "object" && Object.keys(roamContext).length ? roamContext : null;
   const options = { prompt: prior.length ? [...prior, { role: "user", content: String(prompt) }] : String(prompt), caller: CALLER };
-  if (context) options.context = String(context);
+  if (roam) {
+    options.roamContext = roam;
+    if (context) options.prompt = withPartContext(Array.isArray(options.prompt) ? options.prompt : [{ role: "user", content: options.prompt }], context);
+  } else if (context) options.context = String(context);
   if (systemPrompt) {
     options.systemPrompt = String(systemPrompt);
     options.useDefaultSystemPrompt = false;
   }
   if (model) options.model = model;
+  if (typeof thinking === "boolean") options.thinking = thinking;
+  if (effort) options.effort = String(effort);
   if (signal) options.signal = signal;
   if (json) options.responseFormat = "json_object";
   if (typeof onChunk === "function") options.onChunk = (chunk) => { try { onChunk(chunk); } catch { /* view */ } };
@@ -117,4 +137,21 @@ export async function ask({ context = "", prompt = "", messages = null, systemPr
   } catch (error) {
     return { ok: false, code: error?.code || (error?.name === "AbortError" ? "ABORTED" : "ERROR"), error: friendlyError(error) };
   }
+}
+
+// Live AI's own chat panel (window.LiveAI.openChatPopup), where its tools, agents and council run.
+export const canOpenChat = (w) => typeof win(w)?.LiveAI?.openChatPopup === "function";
+// opts: { conversationHistory, model, roamContext, style, forcedTools: [ids] }. forcedTools goes over as the Set Live AI
+// expects. Returns true when the panel was asked to open.
+export function openChat(opts = {}, w) {
+  const open = win(w)?.LiveAI?.openChatPopup;
+  if (typeof open !== "function") return false;
+  const o = {};
+  if (Array.isArray(opts.conversationHistory) && opts.conversationHistory.length) o.conversationHistory = opts.conversationHistory;
+  if (opts.model) o.model = opts.model;
+  if (opts.roamContext && Object.keys(opts.roamContext).length) o.roamContext = opts.roamContext;
+  if (opts.style) o.style = opts.style;
+  if (opts.forcedTools?.length || opts.forcedTools?.size) o.forcedTools = new Set(opts.forcedTools);
+  try { void Promise.resolve(open(o)).catch(() => {}); } catch { return false; }
+  return true;
 }

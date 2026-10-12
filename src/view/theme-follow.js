@@ -107,6 +107,18 @@ export function sampleRoam(doc) {
   };
 }
 
+// Windows and menus appended to the body sit outside .pxd-root, so they ask here: the board under the anchor (or
+// any dark board on the page), then Roam's own dark markers and background.
+export function floatingDark(doc, anchor) {
+  const d = doc || globalThis.document;
+  try {
+    const board = anchor?.closest?.(".pxd-root");
+    if (board) return hasClass(board, "pxd-root--dark");
+  } catch { /* stub */ }
+  try { if (d?.querySelector?.(".pxd-root--dark")) return true; } catch { /* stub */ }
+  try { return Boolean(sampleRoam(d).dark); } catch { return false; }
+}
+
 export function createThemeFollow({ doc, root, getMode, timers } = {}) {
   let observer = null;
   let pending = null;

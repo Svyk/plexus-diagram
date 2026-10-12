@@ -2784,8 +2784,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   display: none;
 }
 
-/* ---- composer: model and board actions, then the question with a round send button */
+/* ---- composer: Live AI's row (tools, context, style, Prompts, model, thinking, agents, more), then the question
+   with a round send button. Menus and suggestions open above it. */
 .pxd-ask__composer {
+  position: relative;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
@@ -2796,14 +2798,69 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 .pxd-ask__tools {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   min-width: 0;
+}
+
+.pxd-ask .pxd-ask__rowbtn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0 5px;
+  color: var(--pxd-ask-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pxd-ask .pxd-ask__rowbtn:hover,
+.pxd-ask .pxd-ask__rowbtn[aria-expanded="true"] {
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-hover);
+}
+
+.pxd-ask .pxd-ask__rowbtn:focus-visible {
+  outline: 2px solid var(--pxd-ask-accent);
+  outline-offset: -2px;
+}
+
+.pxd-ask .pxd-ask__rowbtn.pxd-ask__rowbtn--on {
+  color: var(--pxd-ask-accent);
+}
+
+.pxd-ask .pxd-ask__rowbtn[hidden] {
+  display: none;
+}
+
+.pxd-ask .pxd-ask__morebtn {
+  margin-left: auto;
+}
+
+.pxd-ask .pxd-ask__rowicon {
+  color: inherit;
+  font-size: 14px;
+}
+
+.pxd-ask__modelwrap {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding-left: 5px;
+  color: var(--pxd-ask-muted);
 }
 
 .pxd-ask .pxd-ask__model {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 70%;
+  max-width: 150px;
+  text-overflow: ellipsis;
   padding: 2px 4px;
   color: var(--pxd-ask-muted);
   background: transparent;
@@ -2820,27 +2877,6 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-ask__model option {
   color: initial;
-}
-
-.pxd-ask .pxd-ask__addboard {
-  margin-left: auto;
-  padding: 2px 8px;
-  color: var(--pxd-ask-muted);
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.pxd-ask .pxd-ask__addboard:hover:not(:disabled) {
-  color: var(--pxd-ask-fg);
-  background: var(--pxd-ask-hover);
-}
-
-.pxd-ask .pxd-ask__addboard:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 .pxd-ask__inputrow {
@@ -2899,6 +2935,204 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 .pxd-ask .pxd-ask__send:hover,
 .pxd-ask .pxd-ask__stop:hover {
   filter: brightness(1.08);
+}
+
+/* Mentioned pages and blocks, toggled sources and the style, as removable chips under the PDF chip. */
+.pxd-ask__mentions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.pxd-ask__mentions[hidden] {
+  display: none;
+}
+
+.pxd-ask__mchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 1px 2px 1px 8px;
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-card);
+  border: 1px solid var(--pxd-ask-line);
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.pxd-ask__mchip--page,
+.pxd-ask__mchip--block {
+  border-color: var(--pxd-ask-accent);
+}
+
+.pxd-ask__mchiplabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-ask .pxd-ask__chip.pxd-ask__chip--off {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+/* One menu at a time, over the conversation, above the composer row. */
+.pxd-ask__menu {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% - 2px);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  padding: 4px;
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-head);
+  border: 1px solid var(--pxd-ask-line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(16, 22, 26, 0.2);
+}
+
+.pxd-ask__mlist {
+  overflow-y: auto;
+}
+
+.pxd-ask .pxd-ask__mfilter {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 5px 8px;
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-card);
+  border: 1px solid var(--pxd-ask-line);
+  border-radius: 6px;
+  outline: none;
+  font-size: 12px;
+}
+
+.pxd-ask__mhead,
+.pxd-ask__sgroup,
+.pxd-ask__shead {
+  padding: 6px 8px 2px;
+  color: var(--pxd-ask-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.pxd-ask .pxd-ask__mitem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  width: 100%;
+  padding: 5px 8px;
+  color: var(--pxd-ask-fg);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pxd-ask .pxd-ask__mitem.pxd-ask__mitem--active,
+.pxd-ask .pxd-ask__mitem:focus-visible {
+  background: var(--pxd-ask-hover);
+  outline: none;
+}
+
+.pxd-ask .pxd-ask__mitem:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pxd-ask__mcheck {
+  flex: 0 0 12px;
+  color: var(--pxd-ask-accent);
+}
+
+.pxd-ask__mdetail,
+.pxd-ask__sdetail {
+  flex: 1 0 100%;
+  color: var(--pxd-ask-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.pxd-ask__mitem > .pxd-ask__mcheck + .pxd-ask__mlabel + .pxd-ask__mdetail {
+  padding-left: 18px;
+}
+
+.pxd-ask__mfield {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px 4px 26px;
+  font-size: 12px;
+}
+
+.pxd-ask .pxd-ask__mnum {
+  width: 56px;
+  padding: 2px 4px;
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-card);
+  border: 1px solid var(--pxd-ask-line);
+  border-radius: 4px;
+}
+
+.pxd-ask__mnote,
+.pxd-ask__mempty,
+.pxd-ask__sempty {
+  padding: 8px;
+  color: var(--pxd-ask-muted);
+  font-size: 12px;
+}
+
+/* Suggestions for / commands and [[ # (( mentions, above the question. */
+.pxd-ask__suggest {
+  position: absolute;
+  left: 8px;
+  right: 52px;
+  bottom: calc(100% - 36px);
+  z-index: 4;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  color: var(--pxd-ask-fg);
+  background: var(--pxd-ask-head);
+  border: 1px solid var(--pxd-ask-line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(16, 22, 26, 0.2);
+}
+
+.pxd-ask__suggest[hidden] {
+  display: none;
+}
+
+.pxd-ask__sitem {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.pxd-ask__sitem.pxd-ask__sitem--active {
+  background: var(--pxd-ask-hover);
+}
+
+.pxd-ask__slabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Bottom-right corner: drag to resize. */
@@ -8109,6 +8343,18 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 
 .pxd-read .pxd-pgutter > .pxd-pgutter__copy.pxd-pgutter__copy--fail {
   color: var(--pxd-red-line, #dc2626);
+}
+
+/* Copy | ▾: the arrow under Copy opens the copy menu with every format. */
+.pxd-read .pxd-pgutter > .pxd-pgutter__btn.pxd-pgutter__more {
+  height: 12px;
+  margin-top: -2px;
+  font-size: 9px;
+  line-height: 12px;
+}
+
+.pxd-read .pxd-pgutter > .pxd-pgutter__btn.pxd-pgutter__more[hidden] {
+  display: none;
 }
 
 .pxd-read .pxd-pgutter > .pxd-pgutter__btn > svg {

@@ -252,7 +252,9 @@ test("/ opens commands (built-in, custom prompts, styles); a command sends its p
   const w = fakeWindow();
   const d = openAskAI({ doc: DOC, blockId: "p", document: doc, window: w });
   const ta = find(d.el, "pxd-ask__question");
-  type(stub, ta, "/");
+  assert.match(ta.value, /\S/, "the default question is in the composer");
+  type(stub, ta, `${ta.value}/`);
+  assert.equal(ta.value, "/", "a / onto the untouched default question starts a command");
   const all = suggestions(d.el);
   assert.ok(all.includes("Summarize"));
   assert.ok(all.includes("Make a glossary"), "custom #liveai/prompt");

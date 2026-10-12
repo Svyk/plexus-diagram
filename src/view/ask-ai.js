@@ -827,6 +827,13 @@ function startSession(s, o) {
     const t = ta();
     const sug = s.composer?.suggest;
     if (!t || !sug) return;
+    // A / typed onto the untouched default question starts a command: the default goes.
+    if (lastPrefill && t.value.startsWith(`${lastPrefill}/`) && !t.value.slice(lastPrefill.length).includes("\n")) {
+      t.value = t.value.slice(lastPrefill.length);
+      lastPrefill = "";
+      try { t.setSelectionRange?.(t.value.length, t.value.length); } catch { /* stub */ }
+      growQuestion(t);
+    }
     const caret = Number.isInteger(t.selectionStart) ? t.selectionStart : t.value.length;
     const trig = t.value === lastPrefill ? null : triggerAt(t.value, caret);
     if (!trig) { stopBlockSearch(); sug.hide(); return; }
@@ -845,8 +852,8 @@ function startSession(s, o) {
     };
     if (trig.kind === "command") {
       stopBlockSearch();
-      const hits = order(filterCommands(commandItems(), trig.query, 40));
-      sug.show(hits.map((it) => ({ label: it.name, group: it.category === "STYLES" ? "Styles" : titleCase(it.category), item: it })), { title: "Commands", empty: "No command matches", pick: (e) => doCommand(e.item) });
+      const hits = order(filterCommands(commandItems(), trig.query, 200));
+      sug.show(hits.map((it) => ({ label: it.name, group: it.category === "STYLES" ? "Styles" : titleCase(it.category), item: it })), { empty: "No command matches", pick: (e) => doCommand(e.item) });
       return;
     }
     if (trig.kind === "page" || trig.kind === "tag") {

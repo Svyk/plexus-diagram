@@ -191,7 +191,7 @@ test("pull_many returns the hand-counted map and does not run the collection que
   assert.equal(many.length, 1);
   assert.match(many[0][0], /\(limit :block\/_refs nil\) \[:db\/id \{:block\/parents \[:db\/id :block\/string\]\}\]/);
   assert.match(many[0][0], /\(limit :block\/_parents nil\) \[:db\/id \{:block\/refs \[:db\/id\]\}\]/);
-  assert.match(many[0][0], /\(limit :block\/_page nil\) \[:db\/id \{:block\/refs \[:db\/id\]\}\]/);
+  assert.match(many[0][0], /\{:block\/_page \[:db\/id \{:block\/refs \[:db\/id\]\}\]\}/);
   assert.deepEqual(many[0][1], [1, 2, 4, 3]);
   assert.equal(host.stats.writes, 0);
 });

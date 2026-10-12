@@ -202,7 +202,7 @@ const BLOCK_KIND_PATTERNS = {
 const DIAGRAM_STRING = /^\s*\{\{(?:\[\[)?diagram/i;
 const DIAGRAM_FIND = new RegExp(DIAGRAM_RE);
 // Index lookup. A `[?t ...]` binding on :block/refs scans every refs datom in the graph.
-const STATS_PULL = `[:db/id {(limit :block/_refs nil) [:db/id {:block/parents [:db/id :block/string]}]} {(limit :block/_parents nil) [:db/id {:block/refs [:db/id]}]} {(limit :block/_page nil) [:db/id {:block/refs [:db/id]}]}]`;
+const STATS_PULL = `[:db/id {(limit :block/_refs nil) [:db/id {:block/parents [:db/id :block/string]}]} {(limit :block/_parents nil) [:db/id {:block/refs [:db/id]}]} {:block/_page [:db/id {:block/refs [:db/id]}]}]`;
 
 function listOf(value) {
   if (value == null) return [];

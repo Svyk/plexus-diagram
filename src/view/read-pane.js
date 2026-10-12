@@ -31,6 +31,7 @@ import { compactPage, createTextLayer, pageRecords } from "./text-layer.js";
 import { createParseMotion, motionMode, prefersReducedMotion } from "./parse-motion.js";
 import { askAiIcon } from "./ask-icon.js";
 import { pdfNameFor } from "../model/pdf-name-for.js";
+import { motionRouter } from "./card-parse-motion.js";
 
 // U4 owns the visible drawer. The import is async so a missing file leaves the pane's own list.
 let liveDrawer = null;
@@ -2377,6 +2378,7 @@ export function createReadPane({
     try { pmotion?.dispose(); } catch { /* gone */ }
     pmotion = null;
   };
+  const motionCardOf = motionRouter(() => current.cardUid);
   const ensureParsed = () => {
     if (parsedView) return parsedView;
     parsedView = createParseView({
@@ -2423,7 +2425,8 @@ export function createReadPane({
       gutterMount: pane,
       onMotion: (event) => {
         readerMotion(event);
-        try { onParseMotion?.(current.cardUid, event); } catch { /* host */ }
+        const uid = motionCardOf(event);
+        try { onParseMotion?.(uid, event); } catch { /* host */ }
       },
       scanAuto: false,
       lazyKeys: true,

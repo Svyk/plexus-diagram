@@ -4,10 +4,34 @@
 
 import { createParseMotion, motionMode, prefersReducedMotion } from "./parse-motion.js";
 
+// A parse run belongs to the card it started on: its later reports (a cancel after a card switch) go there too.
+export function motionRouter(currentUid) {
+  let runUid = "";
+  return (event) => {
+    if (event?.type === "start") runUid = currentUid() || "";
+    const uid = runUid || currentUid() || "";
+    if (event?.type === "done" || event?.type === "error" || event?.type === "cancel") runUid = "";
+    return uid;
+  };
+}
+
 const esc = (uid) => String(uid || "").replace(/["\\]/g, "\\$&");
 
 export function createCardMotionRelay({ doc, root, pageOf = null, lod = null, viewport = null } = {}) {
   const live = new Map();
+  // Runs that ended: their summary still plays (done/error), then they go idle. Kept only to be disposed.
+  const finishing = new Map();
+  const prune = () => {
+    for (const [uid, entry] of finishing) {
+      if (entry.motion.state?.() === "idle") { finishing.delete(uid); try { entry.motion.dispose(); } catch { /* gone */ } }
+    }
+  };
+  const retire = (uid, entry) => {
+    live.delete(uid);
+    const old = finishing.get(uid);
+    if (old && old !== entry) { try { old.motion.dispose(); } catch { /* gone */ } }
+    finishing.set(uid, entry);
+  };
 
   const cardEl = (uid) => {
     if (!uid || !root?.querySelector) return null;
@@ -65,11 +89,18 @@ export function createCardMotionRelay({ doc, root, pageOf = null, lod = null, vi
   return {
     handle(uid, event) {
       if (!uid || !event?.type) return;
+      prune();
       if (event.type === "start") {
+        const old = finishing.get(uid);
+        if (old) { finishing.delete(uid); try { old.motion.dispose(); } catch { /* gone */ } }
         const entry = controllerFor(uid);
         rebind(entry);
         entry.motion.start();
         return;
+      }
+      if (event.type === "cancel") {
+        const old = finishing.get(uid);
+        if (old) { finishing.delete(uid); try { old.motion.dispose(); } catch { /* gone */ } }
       }
       const entry = live.get(uid);
       if (!entry) return;
@@ -85,17 +116,19 @@ export function createCardMotionRelay({ doc, root, pageOf = null, lod = null, vi
         try { boxes = typeof event.boxesOf === "function" ? event.boxesOf(page) : []; } catch { boxes = []; }
         // The controller clears its own nodes after the summary and can start again for the next parse.
         entry.motion.done({ counts: event.counts, ms: event.ms, boxes });
+        retire(uid, entry);
         return;
       }
-      if (event.type === "error") { entry.motion.fail(); return; }
+      if (event.type === "error") { entry.motion.fail(); retire(uid, entry); return; }
       if (event.type === "cancel") drop(uid);
     },
     active: () => [...live.keys()],
     dispose() {
-      for (const entry of live.values()) {
+      for (const entry of [...live.values(), ...finishing.values()]) {
         try { entry.motion.dispose(); } catch { /* gone */ }
       }
       live.clear();
+      finishing.clear();
     },
   };
 }

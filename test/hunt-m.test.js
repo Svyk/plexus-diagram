@@ -63,3 +63,13 @@ test("N2: the name reader is disposed with the board; dispose flushes the pendin
   await tick(120);
   assert.deepEqual(reads, ["a", "b"], "c and d are never read after dispose");
 });
+
+test("K1: Ask AI from the reader pane and the parse view names the PDF through the board's resolver", async () => {
+  const { setPdfNameResolver, pdfNameFor } = await import("../src/model/pdf-name-for.js");
+  assert.match(src("view/read-pane.js"), /openAskAI\(\{\s*\.\.\.spec,\s*document: doc,\s*pdfName: \(\) => pdfNameFor\(current\.cardUid\) \|\| pdfNameFor\(pdfUrl\(\)\)/);
+  assert.match(src("view/parse-view.js"), /pdfName: \(\) => pdfNameFor\(currentUid\) \|\| pdfNameFor\(currentUrl\)/);
+  const off = setPdfNameResolver((key) => (key === "https://x.test/a.pdf" ? "Real Paper Title" : key === "card" ? "PDF" : ""));
+  try {
+    assert.equal(pdfNameFor("card") || pdfNameFor("https://x.test/a.pdf"), "Real Paper Title", "a bare 'PDF' card name falls through to the url");
+  } finally { off(); }
+});

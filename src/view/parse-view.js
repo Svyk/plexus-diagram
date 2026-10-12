@@ -54,6 +54,7 @@ import { createPartGutter } from "./part-gutter.js";
 import { docCounts, partBoxes } from "./parse-motion.js";
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
 import { present as liveAiPresent, SETUP_HINT } from "../host/liveai.js";
+import { pdfNameFor } from "../model/pdf-name-for.js";
 
 export const PARSE_MIME = "application/x-plexus-parse";
 export const BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
@@ -765,6 +766,7 @@ export function createParseView({
       ...spec,
       ...(block?.type === "figure" ? { image: figureImageSpec(block) } : {}),
       document: doc,
+      pdfName: () => pdfNameFor(currentUid) || pdfNameFor(currentUrl),
       jumpPage: (n) => jumpPage?.(n),
       toast: (message) => { try { onToast?.(message); } catch { /* host */ } },
       addCard: async ({ markdown }) => {

@@ -30,6 +30,7 @@ import { graphOfWindow } from "../model/ask-models.js";
 import { compactPage, createTextLayer, pageRecords } from "./text-layer.js";
 import { createParseMotion, motionMode, prefersReducedMotion } from "./parse-motion.js";
 import { askAiIcon } from "./ask-icon.js";
+import { pdfNameFor } from "../model/pdf-name-for.js";
 
 // U4 owns the visible drawer. The import is async so a missing file leaves the pane's own list.
 let liveDrawer = null;
@@ -1335,6 +1336,7 @@ export function createReadPane({
       openAskAI({
         ...spec,
         document: doc,
+        pdfName: () => pdfNameFor(current.cardUid) || pdfNameFor(pdfUrl()),
         jumpPage: (n) => jumpPage(n),
         toast,
         addCard: ({ markdown }) => session?.insertAnswerCard?.({ markdown, pdfUid: current.cardUid || "" }),

@@ -781,6 +781,7 @@ export function createReadPane({
     if (row) showHighlight(row);
   };
   const onPaneKey = (event) => {
+    userMoves += 1;
     if (event.metaKey || event.ctrlKey) return;
     const target = event.target;
     if (target?.closest?.(".rm-pdf-container")) return;
@@ -1452,8 +1453,10 @@ export function createReadPane({
     }
     return "";
   };
-  const onWheel = (event) => { event.stopPropagation(); };
-  const onPointer = (event) => { event.stopPropagation(); };
+  // K7. The user's own moves in the pane: a page kept across a resize is not put back over them.
+  let userMoves = 0;
+  const onWheel = (event) => { userMoves += 1; event.stopPropagation(); };
+  const onPointer = (event) => { userMoves += 1; event.stopPropagation(); };
   const onDragOver = (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -2436,6 +2439,31 @@ export function createReadPane({
     return parsedView;
   };
   const pageNowOf = () => Number(String(readerField()?.value || "").trim()) || 1;
+  // K7. The reader re-fits a new width with its scroll offset kept, so a narrower pane lands on a later page
+  // (Read + Outline → narrow page tab showed p. 100). Put the page back unless a jump or the user moved it since.
+  const layoutShape = () => `${pane.style.width}|${pane.className}`;
+  let resizeKeep = null;
+  const keepPageAfterResize = (page) => {
+    if (resizeKeep) { cancelLater(resizeKeep.timer); }
+    // A reader still loading restores its own last page; that is not a resize moving it.
+    if (!(page > 0) || pageTarget || settleTimer) { resizeKeep = null; return; }
+    const keep = { page: resizeKeep?.page || page, moves: userMoves, left: 3, timer: null };
+    resizeKeep = keep;
+    const check = () => {
+      keep.timer = null;
+      if (resizeKeep !== keep) return;
+      if (!openFlag || pageTarget || userMoves !== keep.moves) { resizeKeep = null; return; }
+      const input = readerField();
+      if (input && String(input.value).trim() !== String(keep.page)) {
+        writeReaderPage(input, keep.page);
+        paintPill();
+      }
+      keep.left -= 1;
+      if (keep.left > 0) keep.timer = later(check, 150);
+      else resizeKeep = null;
+    };
+    keep.timer = later(check, 120);
+  };
   function dropParsed() {
     try { parsedView?.dispose?.(); } catch { /* gone */ }
     parsedView = null;
@@ -2566,6 +2594,7 @@ export function createReadPane({
 
   function close(opts) {
     cancelPageWait();
+    if (resizeKeep) { cancelLater(resizeKeep.timer); resizeKeep = null; }
     cancelSettle();
     cancelFit();
     cancelMove();
@@ -2694,11 +2723,15 @@ export function createReadPane({
       for (const [node, type, fn, capture] of armed) node.removeEventListener?.(type, fn, capture);
       armed.length = 0;
     },
+    // A resize (fullscreen, sidebar, window) changes the pane's box only: never the mode, never the page.
     layout(mountWidth) {
       if (typeof mountWidth === "number" && Number.isFinite(mountWidth) && mountWidth > 0) mountW = mountWidth;
       if (!openFlag) return;
+      const shape = layoutShape();
+      const page = readerField() ? pageNowOf() : 0;
       applyBox();
       applyModeClass();
+      if (layoutShape() !== shape) keepPageAfterResize(page);
     },
     isOpen: () => openFlag && Boolean(pane.isConnected),
     cardUid: () => current.cardUid || "",

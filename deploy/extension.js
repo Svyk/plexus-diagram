@@ -1177,13 +1177,13 @@ function edgeString({ srcRef, dstRef, dir = "one", label = "", srcBlock, dstBloc
   return label ? `${srcRef} ${a} ${label} ${a} ${dstRef}` : `${srcRef} ${a} ${dstRef}`;
 }
 function parseEdgeLabel(s, srcRef, dstRef) {
-  const str2 = String(s ?? "").trim();
+  const str3 = String(s ?? "").trim();
   if (srcRef && dstRef) {
     let rest = null;
     for (const a of ARROW_TOKENS) {
       const prefix = `${srcRef} ${a} `;
-      if (str2.startsWith(prefix)) {
-        rest = str2.slice(prefix.length);
+      if (str3.startsWith(prefix)) {
+        rest = str3.slice(prefix.length);
         break;
       }
     }
@@ -1195,7 +1195,7 @@ function parseEdgeLabel(s, srcRef, dstRef) {
       }
     }
   }
-  let out = str2;
+  let out = str3;
   for (const token of [srcRef, dstRef, ...ARROW_TOKENS]) {
     if (token) out = out.split(token).join(" ");
   }
@@ -1204,9 +1204,9 @@ function parseEdgeLabel(s, srcRef, dstRef) {
 function colorForLabel(label) {
   if (label == null || label === "" || label === "mentions") return "gray";
   let h = 2166136261;
-  const str2 = String(label);
-  for (let i = 0; i < str2.length; i++) {
-    h ^= str2.charCodeAt(i);
+  const str3 = String(label);
+  for (let i = 0; i < str3.length; i++) {
+    h ^= str3.charCodeAt(i);
     h = Math.imul(h, 16777619) >>> 0;
   }
   return PALETTE[1 + h % 9];
@@ -2475,14 +2475,14 @@ function simplifyPoly(points, { epsilon = 4e-3, max = 64 } = {}) {
     for (let i = 0; i < max; i += 1) picked.push(out[Math.round(i * step)]);
     out = picked;
   }
-  const clean = [];
+  const clean2 = [];
   for (const p of out) {
     const next = { x: round42(clamp012(p.x)), y: round42(clamp012(p.y)) };
-    const prev = clean[clean.length - 1];
+    const prev = clean2[clean2.length - 1];
     if (prev && prev.x === next.x && prev.y === next.y) continue;
-    clean.push(next);
+    clean2.push(next);
   }
-  return clean.length >= 3 ? clean : null;
+  return clean2.length >= 3 ? clean2 : null;
 }
 function imagePolyString(cardUid, points, caption) {
   const pairs = simplifyPoly(points) || polyPairs(points);
@@ -2991,9 +2991,9 @@ function segmentToken(token, lexicon) {
   return out;
 }
 function segmentTitle(text4, lexicon = titleLexicon) {
-  const clean = typeof text4 === "string" ? text4 : "";
-  if (!lexicon || !clean) return clean;
-  return clean.replace(/\S*\p{L}{18,}\S*/gu, (word) => {
+  const clean2 = typeof text4 === "string" ? text4 : "";
+  if (!lexicon || !clean2) return clean2;
+  return clean2.replace(/\S*\p{L}{18,}\S*/gu, (word) => {
     const runs = word.match(/\p{L}+|[^\p{L}]+/gu) || [];
     let split = false;
     const parts = runs.map((run) => {
@@ -3012,11 +3012,11 @@ function segmentTitle(text4, lexicon = titleLexicon) {
   });
 }
 function capTitle(text4, cap4 = TITLE_CAP, lexicon = titleLexicon) {
-  const clean = segmentTitle(typeof text4 === "string" ? text4.replace(/\s+/g, " ").trim() : "", lexicon);
-  if (clean.length <= cap4) return clean;
-  const cut = clean.slice(0, cap4 + 1);
+  const clean2 = segmentTitle(typeof text4 === "string" ? text4.replace(/\s+/g, " ").trim() : "", lexicon);
+  if (clean2.length <= cap4) return clean2;
+  const cut = clean2.slice(0, cap4 + 1);
   const space = cut.lastIndexOf(" ");
-  const head = (space > 0 ? cut.slice(0, space) : clean.slice(0, cap4)).replace(/[\s,;:.\-–—]+$/, "");
+  const head = (space > 0 ? cut.slice(0, space) : clean2.slice(0, cap4)).replace(/[\s,;:.\-–—]+$/, "");
   return `${head}…`;
 }
 function isCutPrefix(title, heading) {
@@ -3233,12 +3233,12 @@ function parsedDocTitleRaw(doc) {
   if (!doc || typeof doc !== "object") return "";
   const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
   const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
-  const norm3 = (value) => String(value ?? "").replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
+  const norm4 = (value) => String(value ?? "").replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
   const runningTexts = (Array.isArray(doc.removed) ? doc.removed : []).filter((r) => r && r.reason !== "page-number" && r.text).map((r) => String(r.text));
-  const running = new Set(runningTexts.map(norm3));
+  const running = new Set(runningTexts.map(norm4));
   const usable = (value) => {
     const real = cleanPdfTitle(value);
-    if (!real || isJunkTitleText(real) || running.has(norm3(real))) return "";
+    if (!real || isJunkTitleText(real) || running.has(norm4(real))) return "";
     return runningTexts.some((line) => isBannerOf(real, line, { exact: false })) ? "" : real;
   };
   const given = usable(doc.title);
@@ -3255,25 +3255,25 @@ function parsedDocTitleRaw(doc) {
     const real = usable(text4);
     if (real) return real;
   }
-  const clean = (value) => typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  const clean2 = (value) => typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type === "table") break;
     if (block?.type !== "heading" || (block.page || 1) !== 1) continue;
-    const real = usable(clean(block.text));
+    const real = usable(clean2(block.text));
     if (real && titleWordCount(real) >= 3) return real;
   }
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "table" || !block.caption) continue;
-    const text4 = clean(blocks[block.caption]?.text);
+    const text4 = clean2(blocks[block.caption]?.text);
     if (text4 && !isStorageTitle(text4)) return text4;
   }
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "para" || (block.page || 1) !== 1) continue;
-    const text4 = clean(block.text);
-    if (text4 && text4.length <= 160 && !/^scan\b/i.test(text4) && !isStorageTitle(text4) && !isJunkTitleText(text4) && !running.has(norm3(text4)) && titleWordCount(text4) >= 3) return text4;
+    const text4 = clean2(block.text);
+    if (text4 && text4.length <= 160 && !/^scan\b/i.test(text4) && !isStorageTitle(text4) && !isJunkTitleText(text4) && !running.has(norm4(text4)) && titleWordCount(text4) >= 3) return text4;
   }
   return "";
 }
@@ -4659,9 +4659,9 @@ function mul(a, b) {
 function applyPoint(m, x, y) {
   return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 }
-function normalizeText(str2) {
+function normalizeText(str3) {
   let out = "";
-  for (const ch of str2) {
+  for (const ch of str3) {
     const code = ch.codePointAt(0);
     if (ch === "­") continue;
     if (LIGATURES[ch]) {
@@ -4693,8 +4693,8 @@ function isMathChar(ch) {
   return MATH_CHAR_RE.test(ch);
 }
 function piecesOf(item, transform, fonts) {
-  const str2 = normalizeText(item.str || "");
-  if (!str2) return [];
+  const str3 = normalizeText(item.str || "");
+  if (!str3) return [];
   const m = mul(transform, item.transform);
   const size = Math.hypot(m[2], m[3]) || Math.hypot(m[0], m[1]);
   const angle = Math.atan2(m[1], m[0]);
@@ -4705,19 +4705,19 @@ function piecesOf(item, transform, fonts) {
   const width = (item.width || 0) * scaleX;
   const flags = fontFlags(item.fontName, fonts);
   const ocrWord = item.fontName === "ocr";
-  if (!str2.trim()) return [{ space: true, x0: x, x1: x + width, base, size, rotated, angle }];
-  const spaced = letterSpaced(str2) ? str2.replace(/\s+/g, "") : null;
+  if (!str3.trim()) return [{ space: true, x0: x, x1: x + width, base, size, rotated, angle }];
+  const spaced = letterSpaced(str3) ? str3.replace(/\s+/g, "") : null;
   if (spaced) {
     let math = 0;
     for (const ch of spaced) if (isMathChar(ch)) math++;
     return [{ text: spaced, x0: x, x1: x + width, base, size, font: item.fontName, fontName: flags.name, bold: flags.bold, italic: flags.italic, mathFont: flags.math, mono: flags.mono, mathChars: math, rotated, angle, leadingSpace: false, trailingSpace: false, spaced: true }];
   }
-  const perChar = width / Math.max(1, str2.length);
+  const perChar = width / Math.max(1, str3.length);
   const out = [];
   let i = 0;
   const re = /(\s+)|(\S+)/g;
   let match;
-  while (match = re.exec(str2)) {
+  while (match = re.exec(str3)) {
     const start = match.index;
     const end = start + match[0].length;
     if (match[1]) {
@@ -4740,8 +4740,8 @@ function piecesOf(item, transform, fonts) {
         mathChars: math,
         rotated,
         angle,
-        leadingSpace: ocrWord || start > 0 && str2[start - 1] === " ",
-        trailingSpace: ocrWord || end < str2.length && str2[end] === " ",
+        leadingSpace: ocrWord || start > 0 && str3[start - 1] === " ",
+        trailingSpace: ocrWord || end < str3.length && str3[end] === " ",
         conf: item.conf,
         boxY: ocrWord && item.y0 != null && item.y1 != null ? [item.y0, item.y1] : null
       });
@@ -4750,8 +4750,8 @@ function piecesOf(item, transform, fonts) {
   }
   return out;
 }
-function letterSpaced(str2) {
-  const parts = str2.trim().split(/\s+/);
+function letterSpaced(str3) {
+  const parts = str3.trim().split(/\s+/);
   if (parts.length < 4) return false;
   const single = parts.filter((p) => p.length === 1).length;
   return single >= 0.6 * parts.length;
@@ -12854,8 +12854,8 @@ function preferSpellings(items, lexicon, { rules = null, pageW = 612, pageH = 79
       }
     }
     if (!best) return item;
-    const str2 = replaceCore(item.str, core, best.word);
-    return str2 === item.str ? item : { ...item, str: str2 };
+    const str3 = replaceCore(item.str, core, best.word);
+    return str3 === item.str ? item : { ...item, str: str3 };
   });
 }
 function chooseReading(vision, other, lexicon) {
@@ -12976,8 +12976,8 @@ function voteItems(visionItems, otherItems, lexicon, regions) {
     if (regions.length && inRuledRegion(vBoxes[i], regions)) return item;
     const j = match.get(i);
     if (j == null) return item;
-    const str2 = chooseReading(item, otherItems[j], lexicon);
-    return str2 === item.str ? item : { ...item, str: str2 };
+    const str3 = chooseReading(item, otherItems[j], lexicon);
+    return str3 === item.str ? item : { ...item, str: str3 };
   });
   const lines = lineClusters(visionItems);
   const added = [];
@@ -16856,7 +16856,8 @@ function libraryCard(row4) {
   const label = row4?.pageTitle ? `in ${row4.pageTitle}` : "block";
   if (kind === "pdf" || kind === "image" || kind === "web") {
     const shown = blockDisplay(row4?.string ?? row4?.text, kind);
-    return { string: `((${uid}))`, text: shown.text, kind, label, ...shown.url ? { url: shown.url } : {}, ...shown.thumb ? { thumb: shown.thumb } : {} };
+    const pdf = kind === "pdf" ? { uid, pageTitle: String(row4?.pageTitle ?? "") } : {};
+    return { string: `((${uid}))`, text: shown.text, kind, label, ...pdf, ...shown.url ? { url: shown.url } : {}, ...shown.thumb ? { thumb: shown.thumb } : {} };
   }
   return { string: `((${uid}))`, text: String(row4?.string ?? row4?.text ?? "").slice(0, 120), kind, label };
 }
@@ -16894,6 +16895,120 @@ var init_library = __esm({
     WEB_RE = /^(?:\[[^\]]*\]\(\s*https?:\/\/[^\s)]+\s*\)|https?:\/\/\S+)$/i;
     PDF_URL_RE = /\{\{(?:\[\[)?pdf(?:\]\])?:\s*(https?:\/\/[^\s}]+)/i;
     IMAGE_PARTS_RE = /!\[([^\]]*)\]\(\s*([^)\s]+)[^)]*\)/;
+  }
+});
+
+// src/model/semantic.js
+function cleanText(s) {
+  if (!s) return "";
+  return String(s).replace(/\{\{[^}]*\}\}/g, "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\(([^)]*)\)/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\^\^([^^]+)\^\^/g, "$1").replace(/__([^_]+)__/g, "$1").replace(/~~([^~]+)~~/g, "$1").replace(/```[\s\S]*?```/g, " ").replace(/`([^`]+)`/g, "$1").replace(/\[\[([^[\]]+)\]\]/g, "$1").replace(/#([\w-]+)/g, "$1").replace(/\(\([^()]+\)\)/g, " ").replace(/https?:\/\/\S+/g, " ").replace(/\s+/g, " ").trim();
+}
+function relatedQueryText({ title = "", string = "", children = [] } = {}) {
+  const head = title && !DAILY.test(title) ? cleanText(title) : "";
+  const own = cleanText(string);
+  const kids = (Array.isArray(children) ? children : []).map((c) => cleanText(typeof c === "string" ? c : c?.string)).filter(Boolean).slice(0, RELATED_CHILDREN);
+  return [head, own, ...kids].filter(Boolean).join("\n").slice(0, RELATED_CHARS).trim();
+}
+function pdfOf(pulled) {
+  if (isPdfString(pulled?.[":block/string"])) return { uid: str(pulled[":block/uid"]), string: pulled[":block/string"] };
+  const parents = Array.isArray(pulled?.[":block/parents"]) ? pulled[":block/parents"] : [];
+  for (let i = parents.length - 1; i >= 0; i -= 1) {
+    if (isPdfString(parents[i]?.[":block/string"])) return { uid: str(parents[i][":block/uid"]), string: parents[i][":block/string"] };
+  }
+  const url = str(pulled?.[":block/page"]?.[":pdf/url"]);
+  return url ? { uid: "", string: "", url } : null;
+}
+function isConnection(pulled) {
+  const parents = Array.isArray(pulled?.[":block/parents"]) ? pulled[":block/parents"] : [];
+  return parents.some((p) => str(p?.[":block/string"]).trim() === "Connections") && parents.some((p) => DIAGRAM.test(str(p?.[":block/string"])));
+}
+function semanticCandidates(raw, { pull, pdfBlockOf = () => null, perPage = SEM_PER_PAGE } = {}) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const perPageCount = /* @__PURE__ */ new Map();
+  const list = Array.isArray(raw) ? raw : [];
+  for (let rank = 0; rank < list.length; rank += 1) {
+    const item = list[rank];
+    if (!item || !item.uid) continue;
+    const uids = Array.isArray(item.topUids) && item.topUids.length ? item.topUids : [item.uid];
+    let row4 = null;
+    const hits = [];
+    for (const uid of uids) {
+      let pulled = null;
+      try {
+        pulled = pull(uid);
+      } catch {
+        pulled = null;
+      }
+      if (!pulled) continue;
+      const title = str(pulled[":node/title"]);
+      if (title) {
+        if (title.startsWith("roam/")) continue;
+        row4 = { kind: "page", uid: str(pulled[":block/uid"]) || uid, title, pageUid: uid, edited: pulled[":edit/time"] ?? null, tags: [] };
+        break;
+      }
+      const string = str(pulled[":block/string"]);
+      const page = pulled[":block/page"] || {};
+      const pageTitle = str(page[":node/title"]);
+      if (pageTitle.startsWith("roam/")) continue;
+      const tags = (Array.isArray(pulled[":block/refs"]) ? pulled[":block/refs"] : []).map((r) => str(r?.[":node/title"])).filter(Boolean);
+      const pdf = pdfOf(pulled);
+      if (pdf) {
+        let target = pdf.uid ? { uid: pdf.uid, string: pdf.string, pageTitle } : null;
+        if (!target && pdf.url) {
+          try {
+            target = pdfBlockOf(pdf.url);
+          } catch {
+            target = null;
+          }
+        }
+        if (target?.uid && pdfMacroUrl(target.string)) {
+          row4 = { kind: "block", uid: target.uid, string: target.string, pageTitle: target.pageTitle || pageTitle, pageUid: str(page[":block/uid"]), edited: pulled[":edit/time"] ?? null, tags, via: uid };
+          break;
+        }
+      }
+      if (!cleanText(string) || isConnection(pulled)) continue;
+      hits.push({ kind: "block", uid: str(pulled[":block/uid"]) || uid, string, pageTitle, pageUid: str(page[":block/uid"]), edited: pulled[":edit/time"] ?? null, tags });
+    }
+    if (!row4 && hits.length) {
+      const attr = (h) => /^[^:\n]{1,40}::/.test(h.string);
+      row4 = hits.find((h) => !attr(h) && cleanText(h.string).length >= 20) || hits.find((h) => !attr(h)) || hits[0];
+    }
+    if (!row4) continue;
+    const key = `${row4.kind}:${row4.uid}`;
+    if (seen.has(key)) continue;
+    const pageKey2 = row4.pageUid || row4.uid;
+    const n2 = perPageCount.get(pageKey2) || 0;
+    if (n2 >= perPage) continue;
+    perPageCount.set(pageKey2, n2 + 1);
+    seen.add(key);
+    out.push({ ...row4, rank, semantic: true });
+  }
+  return out;
+}
+function mergeSemantic(keywordRows, semanticRows, limit = 40) {
+  const shown = new Set((Array.isArray(keywordRows) ? keywordRows : []).map((r) => r?.string).filter(Boolean));
+  const extra = [];
+  for (const row4 of Array.isArray(semanticRows) ? semanticRows : []) {
+    if (!row4?.string || shown.has(row4.string)) continue;
+    shown.add(row4.string);
+    extra.push({ ...row4, semantic: true });
+    if (extra.length >= limit) break;
+  }
+  return extra;
+}
+var SEM_PER_PAGE, RELATED_CHARS, RELATED_CHILDREN, SEM_PULL, DAILY, str, DIAGRAM;
+var init_semantic = __esm({
+  "src/model/semantic.js"() {
+    init_pdf_page();
+    init_pdf();
+    SEM_PER_PAGE = 2;
+    RELATED_CHARS = 600;
+    RELATED_CHILDREN = 10;
+    SEM_PULL = "[:block/uid :block/string :node/title :edit/time {:block/refs [:node/title]} {:block/page [:block/uid :node/title :pdf/url]} {:block/parents [:block/uid :block/string :node/title]}]";
+    DAILY = /^(January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}(st|nd|rd|th), \d{4}$/;
+    str = (v) => typeof v === "string" ? v : "";
+    DIAGRAM = /^\s*\{\{(?:\[\[)?diagram/i;
   }
 });
 
@@ -18354,8 +18469,8 @@ function rowFraction(blocks, uid) {
   const rows = [];
   const walk3 = (list) => {
     for (const c of list || []) {
-      const str2 = c?.[":block/string"] ?? c?.string ?? "";
-      if (attrNameOf(str2) === "BT_attrDue") continue;
+      const str3 = c?.[":block/string"] ?? c?.string ?? "";
+      if (attrNameOf(str3) === "BT_attrDue") continue;
       rows.push(c?.[":block/uid"] ?? c?.uid ?? "");
       if (c?.open !== false && c?.[":block/open"] !== false) walk3(c?.[":block/children"] ?? c?.children);
     }
@@ -21648,6 +21763,197 @@ var init_timeline2 = __esm({
   }
 });
 
+// src/model/pdf-ident.js
+function looksLikeAuthors(text4) {
+  const t = clean(text4);
+  if (t.length < 5 || t.length > 400) return false;
+  if (AFFILIATION.test(t)) return false;
+  if (/[.!?]\s+[a-z]/.test(t)) return false;
+  const words = t.replace(/[^\p{L}\p{M}\s.'’-]+/gu, " ").split(/\s+/).filter((w) => /\p{L}/u.test(w));
+  const named2 = words.filter((w) => !PARTICLES.has(w.toLowerCase()));
+  if (named2.length < 2) return false;
+  const capital = named2.filter((w) => /^[A-ZÀ-Þ]/.test(w)).length;
+  if (capital / named2.length < 0.85) return false;
+  return /,|\band\b|&/.test(t) || named2.length <= 4 && named2.some((w) => /^\p{Lu}\.$/u.test(w));
+}
+function labeledFields(rows) {
+  const out = {};
+  for (let i = 0; i < rows.length - 1 && i < 60; i += 1) {
+    const m = FIELD.exec(rows[i].text);
+    if (!m) continue;
+    const key = m[1].toLowerCase().replace(/s$/, "").replace("source", "journal");
+    const values = [];
+    for (let j = i + 1; j < rows.length && j <= i + 6 && !FIELD.test(rows[j].text) && !/^(permalink|issn|publication date|copyright|doi)\b/i.test(rows[j].text); j += 1) values.push(rows[j].text);
+    if (!values.length || out[key]) continue;
+    out[key] = key === "author" ? values.join(", ").replace(/,\s*(?=et al\.?)/i, " ") : values[0];
+  }
+  return out.title ? out : null;
+}
+function pageNameOk(title) {
+  const t = clean(title);
+  if (!t || t.startsWith("{{") || /imgs\/app\//i.test(t)) return false;
+  return !/^(?=.*[A-Z])(?=.*[a-z])[A-Za-z0-9_-]{9,12}$/.test(t) || /\s/.test(t);
+}
+function cleanAuthors(text4) {
+  return clean(String(text4 ?? "").replace(/[^\p{L}\p{M}\d\s.,'’&-]+/gu, " ").replace(/(^|[\s,])\d+(?:\s*,\s*\d+)*(?=[\s,]|$)/g, "$1").replace(/\s+,/g, ",")).replace(/,\s*,+/g, ",").replace(/^[,\s]+|[,\s]+$/g, "");
+}
+function venueText(text4) {
+  const t = clean(text4);
+  if (!t || t.length > 120) return "";
+  if (LABEL_LINE.test(t.replace(/\s+/g, ""))) return "";
+  if (/[:–—-]$|\b(?:in|of|the|and|for)$/i.test(t)) return "";
+  if (/https?:|www\.|doi[:\s]|^\d|©|copyright/i.test(t)) return "";
+  const words = t.split(/\s+/).filter((w) => /[A-Za-z]{2,}/.test(w));
+  if (words.length < 2) return "";
+  const cut = t.replace(/\s+(?:\d|vol\.|volume\b|\().*$/i, "").trim();
+  return cut.split(/\s+/).length >= 2 ? cut : t;
+}
+function identFromLines(lines, { pageTitle = "", pageCount = null, metaTitle = "" } = {}) {
+  const rows = (Array.isArray(lines) ? lines : []).map((l) => ({ text: clean(l?.text), size: Number(l?.size) || 0 })).filter((l) => l.text);
+  const fields = labeledFields(rows);
+  if (fields) {
+    const pages2 = Number.isInteger(pageCount) && pageCount > 0 ? pageCount : null;
+    const text5 = clean(rows.filter((l) => !FIELD.test(l.text)).map((l) => l.text).join(" ")).slice(0, IDENT_TEXT_CHARS);
+    return { v: IDENT_V, title: cleanPdfTitle(fields.title), authors: cleanAuthors(fields.author || ""), venue: clean(String(fields.journal || "").replace(/[,(]?\s*\d.*$/, "")), pages: pages2, text: text5 };
+  }
+  let at = -1;
+  const head = norm2(pageTitle).slice(0, 24);
+  if (head) at = rows.findIndex((l) => norm2(l.text).startsWith(head) || head.startsWith(norm2(l.text).slice(0, 24)) && l.text.length >= 8);
+  if (at < 0) {
+    const wordy = (t) => t.length >= 8 && (t.match(/\p{L}/gu) || []).length >= 0.7 * t.replace(/\s/g, "").length;
+    const top = rows.slice(0, 25).filter((l) => wordy(l.text));
+    const sizes = rows.map((l) => l.size).sort((a, b) => a - b);
+    const body = sizes[Math.floor(sizes.length / 2)] || 0;
+    const big = Math.max(0, ...top.map((l) => l.size));
+    if (big > 0 && big >= body * 1.25) at = rows.findIndex((l) => l.size === big && wordy(l.text));
+  }
+  let end = at;
+  if (at >= 0) {
+    while (end + 1 < rows.length && end - at < 5 && Math.abs(rows[end + 1].size - rows[at].size) < 0.6 && rows[at].size > 0) {
+      const next = norm2(rows[end + 1].text);
+      if (next.length >= 8 && norm2(rows.slice(at, end + 1).map((l) => l.text).join(" ")).startsWith(next.slice(0, 24))) break;
+      end += 1;
+    }
+  }
+  const fullTitle = at >= 0 ? clean(rows.slice(at, end + 1).map((l) => l.text).join(" ")) : "";
+  const read2 = cleanPdfTitle(fullTitle) || cleanPdfTitle(pageTitle);
+  const title = read2 && !isStorageTitle(read2) ? read2 : cleanPdfTitle(metaTitle);
+  let authors = "";
+  let authorsAt = -1;
+  for (let i = end + 1; at >= 0 && i < Math.min(rows.length, end + 4); i += 1) {
+    if (looksLikeAuthors(rows[i].text)) {
+      authors = cleanAuthors(rows[i].text);
+      authorsAt = i;
+      break;
+    }
+  }
+  let venue = "";
+  const above = at > 0 ? rows.slice(0, at) : [];
+  const named2 = above.map((l) => venueText(l.text)).filter(Boolean);
+  venue = named2.find((v) => VENUE_WORDS.test(v) && !/^supplementary\b/i.test(v)) || "";
+  if (!venue) {
+    const footer = rows.map((l) => l.text).find((t) => t.length <= 80 && /\b(?:journal|proceedings|transactions|annals|bulletin)\b/i.test(t));
+    venue = footer ? venueText(footer) : "";
+  }
+  const after = Math.max(end, authorsAt) + 1;
+  const rest = rows.slice(after).map((l) => l.text);
+  const text4 = clean([...rest.filter((t) => !AFFILIATION.test(t) || /^(?:abstract|background)\b/i.test(t)), ...rest.filter((t) => AFFILIATION.test(t) && !/^(?:abstract|background)\b/i.test(t))].join(" ")).slice(0, IDENT_TEXT_CHARS);
+  const pages = Number.isInteger(pageCount) && pageCount > 0 ? pageCount : null;
+  return { v: IDENT_V, title, authors, venue, pages, text: text4 };
+}
+function linesOfRecord(record) {
+  const out = [];
+  for (const line of record?.lines || []) {
+    const text4 = (line?.words || []).map((w) => w?.text ?? "").join(" ");
+    if (clean(text4)) out.push({ text: text4, size: Number(line.size) || 0 });
+  }
+  return out;
+}
+function identFromParse(doc, { title = "" } = {}) {
+  if (!doc || typeof doc !== "object") return null;
+  const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
+  const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
+  const lines = [];
+  for (const r of Array.isArray(doc.removed) ? doc.removed : []) {
+    if (r?.page === 1 && r.text && r.reason !== "page-number") lines.push({ text: r.text, size: 9 });
+  }
+  for (const id of ids) {
+    const b = blocks[id];
+    if (!b || (b.page || 1) !== 1 || typeof b.text !== "string") continue;
+    lines.push({ text: b.text, size: b.type === "heading" ? 20 - Math.min(5, b.level || 1) : 10 });
+    if (lines.length >= 60) break;
+  }
+  const count = Number(doc.numPages) || (Array.isArray(doc.pages) ? doc.pages.length : 0);
+  const out = identFromLines(lines, { pageTitle: title, pageCount: count || null });
+  if (title && !out.title) out.title = cleanPdfTitle(title);
+  return out;
+}
+function identHaystack(ident) {
+  if (!ident) return "";
+  return [ident.title, ident.authors, ident.venue, ident.text].filter(Boolean).join("\n").toLowerCase();
+}
+function identMatches(ident, terms) {
+  const list = Array.isArray(terms) ? terms.filter(Boolean) : [];
+  if (!list.length || !ident) return false;
+  const hay = identHaystack(ident);
+  return list.every((t) => hay.includes(t));
+}
+function pdfRowName({ ownTitle = "", pdfPageTitle = "", parsedTitle = "", coverTitle = "", metaTitle = "", ident = null, url = "", pending = false } = {}) {
+  const pick2 = [
+    pageNameOk(ownTitle) ? pdfPageName(ownTitle) : "",
+    pageNameOk(pdfPageTitle) ? pdfPageName(pdfPageTitle) : "",
+    cleanPdfTitle(parsedTitle),
+    cleanPdfTitle(coverTitle),
+    cleanPdfTitle(metaTitle),
+    ident?.title || ""
+  ].find(Boolean);
+  if (pick2) return { title: pick2, loading: false };
+  return { title: pdfFileTitle(url) || "PDF", loading: Boolean(pending) };
+}
+function pdfRowSub({ ident = null, pageTitle = "", title = "" } = {}) {
+  const parts = [];
+  if (ident?.venue && norm2(ident.venue) !== norm2(title)) parts.push(ident.venue);
+  else if (ident?.authors) parts.push(ident.authors.length > 60 ? `${ident.authors.slice(0, 58).replace(/[,\s]+\S*$/, "")}…` : ident.authors);
+  if (ident?.pages) parts.push(`${ident.pages} ${ident.pages === 1 ? "page" : "pages"}`);
+  const page = clean(pageTitle);
+  if (page && norm2(pdfPageName(page)) !== norm2(title)) parts.push(`on ${page}`);
+  return parts.join(" · ");
+}
+function markTerms(text4, terms) {
+  const s = String(text4 ?? "");
+  const list = (Array.isArray(terms) ? terms : []).map((t) => String(t || "").toLowerCase()).filter(Boolean);
+  if (!s || !list.length) return s ? [{ text: s, hit: false }] : [];
+  const low = s.toLowerCase();
+  const marks = new Array(s.length).fill(false);
+  for (const t of list) {
+    for (let i = low.indexOf(t); i >= 0; i = low.indexOf(t, i + 1)) marks.fill(true, i, i + t.length);
+  }
+  const out = [];
+  for (let i = 0; i < s.length; ) {
+    let j = i;
+    while (j < s.length && marks[j] === marks[i]) j += 1;
+    out.push({ text: s.slice(i, j), hit: marks[i] });
+    i = j;
+  }
+  return out;
+}
+var IDENT_V, IDENT_TEXT_CHARS, clean, norm2, LABEL_LINE, AFFILIATION, VENUE_WORDS, PARTICLES, FIELD;
+var init_pdf_ident = __esm({
+  "src/model/pdf-ident.js"() {
+    init_pdf();
+    init_pdf_page();
+    IDENT_V = 2;
+    IDENT_TEXT_CHARS = 400;
+    clean = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+    norm2 = (value) => clean(value).toLowerCase().replace(/[…]+$/, "").replace(/\.\.\.$/, "").trim();
+    LABEL_LINE = /^(?:major|original|research|review|brief|short|clinical|invited|special)?(?:article|report|communication|paper|letter|review|research)s?$/i;
+    AFFILIATION = /\b(?:abstract|universit|department|dept\.|institut|school|hospital|center|centre|college|laborator|faculty|division|ministry|inc\.|ltd|gmbh|corresponding|received|accepted|published|keywords?|background)\b|@|https?:|www\.|doi\b/i;
+    VENUE_WORDS = /\b(?:journal|proceedings|transactions|annals|bulletin|review|letters|forum|reports?|science|medicine|diseases|research|quarterly|magazine|conference|symposium|archives|international|food|microbiology|nature|cell|plos)\b/i;
+    PARTICLES = /* @__PURE__ */ new Set(["and", "&", "et", "al", "al.", "de", "van", "von", "da", "di", "la", "le", "der", "den", "du", "del", "y", "e"]);
+    FIELD = /^(title|journal|source|authors?|publication)$/i;
+  }
+});
+
 // src/model/parts-search.js
 function tableText(block) {
   const cells = Array.isArray(block?.cells) ? block.cells : [];
@@ -22103,6 +22409,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       if (type === "click") {
         trailClick(event);
         changedClick(event);
+        searchClick(event);
       } else if (type === "pointerdown") trailPointerDown(event);
       else if (type === "keydown") trailKey(event);
     });
@@ -22259,6 +22566,30 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   orphanBox.type = "checkbox";
   orphanBox.setAttribute("aria-label", "Not on any board");
   orphanLabel.append("Not on any board");
+  const meaningLabel = el2("label", "pxd-panel__meaning", filters);
+  meaningLabel.title = "Also find notes by meaning (Roam semantic search)";
+  const meaningBox = el2("input", "pxd-panel__meaning-box", meaningLabel);
+  meaningBox.type = "checkbox";
+  meaningBox.setAttribute("aria-label", "Meaning");
+  meaningBox.checked = (() => {
+    try {
+      return on.loadMeaning?.() !== false;
+    } catch {
+      return true;
+    }
+  })();
+  meaningLabel.append("Meaning");
+  const semanticOn = () => {
+    try {
+      return on.semantic?.enabled?.() === true;
+    } catch {
+      return false;
+    }
+  };
+  const paintMeaning = () => {
+    meaningLabel.style.display = semanticOn() ? "" : "none";
+  };
+  paintMeaning();
   swatches = el2("div", "pxd-panel__swatches", searchPane);
   swatches.style.display = "none";
   swatches.setAttribute("role", "group");
@@ -22283,6 +22614,13 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   likeClear.type = "button";
   likeClear.setAttribute("aria-label", "Clear similar-image search");
   likeClear.setAttribute("title", "Clear");
+  const relChip = el2("div", "pxd-panel__like pxd-panel__rel", searchPane);
+  relChip.style.display = "none";
+  const relText = el2("span", "pxd-panel__like-text", relChip);
+  const relClear = el2("button", "pxd-panel__like-x", relChip, "×");
+  relClear.type = "button";
+  relClear.setAttribute("aria-label", "Clear related search");
+  relClear.setAttribute("title", "Clear");
   const results = el2("div", "pxd-panel__list", searchPane);
   const indexNote = el2("div", "pxd-panel__index-note", searchPane);
   indexNote.style.display = "none";
@@ -22385,6 +22723,9 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   const infoScroll = el2("div", "pxd-panel__info", infoPane);
   let tab = "search";
   let like = null;
+  let related = null;
+  let semTimer = null;
+  let lastInputAt = 0;
   let debounce = null;
   let selected = null;
   let relatedRows = [];
@@ -22414,13 +22755,48 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       startLike(key, name);
     });
   };
-  const row4 = (parent, { string, label, text: text4, kind, url, thumb: thumb2, palette, likeKey, likeName }) => {
+  const paintPdf = (r, card2, terms) => {
+    let info = null;
+    try {
+      info = on.pdfName?.(card2) || null;
+    } catch {
+      info = null;
+    }
+    const title = info?.title || card2.text || "PDF";
+    const col2 = r.querySelector?.(".pxd-panel__row-col") || el2("span", "pxd-panel__row-col", r);
+    col2.replaceChildren();
+    const head2 = el2("span", "pxd-panel__row-text pxd-panel__row-text--pdf pxd-panel__row-title", col2);
+    for (const seg of markTerms(title, terms)) {
+      if (seg.hit) el2("mark", "pxd-panel__mark", head2, seg.text);
+      else head2.append(seg.text);
+    }
+    const sub = info?.sub ?? card2.label ?? "";
+    if (sub) el2("span", "pxd-panel__row-label pxd-panel__row-sub", col2, sub);
+    r.classList.toggle("pxd-panel__row--loading", info?.loading === true);
+    r.setAttribute("title", title);
+  };
+  const row4 = (parent, card2) => {
+    const { string, label, text: text4, kind, url, thumb: thumb2, palette, likeKey, likeName } = card2;
     const r = el2("div", "pxd-panel__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
     r.dataset.string = string;
     r.setAttribute("data-string", string);
-    if (label && !thumb2) el2("span", "pxd-panel__row-label", r, label);
+    if (card2.semantic) {
+      r.classList.add("pxd-panel__row--sem");
+      const sem = el2("span", "pxd-panel__sem", r, "≈");
+      sem.setAttribute("title", "Found by meaning");
+      sem.setAttribute("aria-label", "Found by meaning");
+    }
+    if (kind === "pdf" && typeof on.pdfName === "function") {
+      r.classList.add("pxd-panel__row--pdf");
+      r.dataset.pdfUrl = url || "";
+      r.setAttribute("data-pdf-url", url || "");
+      el2("span", "bp3-icon bp3-icon-document pxd-panel__row-icon", r).setAttribute("aria-hidden", "true");
+      r.pxdCard = card2;
+      paintPdf(r, card2, queryTerms(input.value));
+    }
+    if (label && !thumb2 && !r.pxdCard) el2("span", "pxd-panel__row-label", r, label);
     if (thumb2) {
       r.classList.add("pxd-panel__row--image");
       const img = el2("img", "pxd-panel__thumb", r);
@@ -22439,7 +22815,8 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
         shown = text4;
       }
     }
-    if (thumb2) {
+    if (r.pxdCard) {
+    } else if (thumb2) {
       const col2 = el2("span", "pxd-panel__row-col", r);
       el2("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, col2, shown);
       if (label) el2("span", "pxd-panel__row-label pxd-panel__row-sub", col2, label);
@@ -22609,19 +22986,129 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     event.stopPropagation();
     clearLike();
   });
-  const runSearch = async () => {
+  const paintRelated = () => {
+    relChip.style.display = related ? "" : "none";
+    relText.textContent = related ? `Related to: ${related.label}` : "";
+  };
+  const searchClick = (event) => {
+    const t = event.target;
+    if (t === relClear || relClear.contains?.(t)) {
+      related = null;
+      paintRelated();
+      searchNow();
+      return;
+    }
+    if (t === meaningBox) {
+      try {
+        on.saveMeaning?.(meaningBox.checked);
+      } catch {
+      }
+      searchNow();
+    }
+  };
+  const semanticRowsFor = (raw, filter) => {
+    try {
+      return host?.semanticRows?.(raw, filter, LIMIT)?.rows || [];
+    } catch {
+      return [];
+    }
+  };
+  const wantNames = (cards, opts) => {
+    const pdfs = (cards || []).filter((c) => c?.kind === "pdf" && c.url);
+    if (pdfs.length) {
+      try {
+        on.wantPdfNames?.(pdfs, opts);
+      } catch {
+      }
+    }
+  };
+  const paintSemantic = (id, cards, keywordCards) => {
+    if (id !== queryId) return;
+    for (const n2 of [...results.querySelectorAll(".pxd-panel__row--sem, .pxd-panel__sem-head")]) n2.remove();
+    const extra = mergeSemantic(keywordCards, cards, LIMIT);
+    results.dataset.semCount = String(extra.length);
+    results.setAttribute("data-sem-count", String(extra.length));
+    if (!extra.length) return;
+    for (const n2 of [...results.querySelectorAll(".pxd-panel__empty")]) n2.remove();
+    el2("div", "pxd-panel__sem-head", results, "By meaning");
+    extra.forEach((c) => row4(results, c));
+    wantNames(extra, { front: true });
+  };
+  const scheduleSemantic = (id, filter, keywordCards) => {
+    const text4 = String(filter.text || "").trim();
+    const sem = on.semantic;
+    if (!text4 || !meaningBox.checked || !semanticOn() || typeof host?.semanticRows !== "function" || typeof sem?.search !== "function") return;
+    const cached = sem.peek?.(text4);
+    if (cached) paintSemantic(id, semanticRowsFor(cached.data, filter), keywordCards);
+    if (cached && !cached.stale) return;
+    const wait2 = Math.max(0, SEMANTIC_PAUSE_MS - (Date.now() - lastInputAt));
+    semTimer = timers.later(async () => {
+      semTimer = null;
+      if (id !== queryId) return;
+      const t0 = Date.now();
+      let raw = [];
+      try {
+        raw = await sem.search(text4, { onFresh: (data) => paintSemantic(id, semanticRowsFor(data, filter), keywordCards) });
+      } catch {
+        raw = [];
+      }
+      if (id !== queryId) return;
+      results.dataset.semMs = String(Date.now() - t0);
+      results.setAttribute("data-sem-ms", String(Date.now() - t0));
+      paintSemantic(id, semanticRowsFor(raw, filter), keywordCards);
+    }, wait2);
+  };
+  const runRelated = async (id) => {
+    results.replaceChildren();
+    if (!semanticOn()) {
+      el2("div", "pxd-panel__empty pxd-panel__hint", results, SEMANTIC_HINT);
+      return;
+    }
+    el2("div", "pxd-panel__empty", results, "Finding related notes…");
+    let raw = [];
+    const t0 = Date.now();
+    try {
+      raw = await on.semantic.search(related.query);
+    } catch {
+      raw = [];
+    }
+    if (id !== queryId || !related) return;
+    results.dataset.semMs = String(Date.now() - t0);
+    results.setAttribute("data-sem-ms", String(Date.now() - t0));
+    const cards = semanticRowsFor(raw, { ...readFilter(), text: "" }).filter((c) => !related.exclude || c.string !== related.exclude);
+    results.replaceChildren();
+    if (!cards.length) {
+      el2("div", "pxd-panel__empty", results, "No related notes");
+      return;
+    }
+    cards.forEach((c) => row4(results, { ...c, semantic: false }));
+    wantNames(cards, { front: true });
+  };
+  const runSearch = async ({ quiet = false } = {}) => {
     const filter = readFilter();
     const id = queryId += 1;
-    results.replaceChildren();
+    const started = Date.now();
+    semTimer?.();
+    semTimer = null;
+    if (!quiet || like || related) results.replaceChildren();
     if (like) {
       await runSimilar(id);
       return;
     }
+    if (related) {
+      await runRelated(id);
+      return;
+    }
     if (checked.size === 0) {
+      results.replaceChildren();
       el2("div", "pxd-panel__empty", results, "No card types selected");
       return;
     }
-    if (!libraryFilterActive(filter)) return;
+    if (!libraryFilterActive(filter)) {
+      results.replaceChildren();
+      if (on.semantic && !semanticOn()) el2("div", "pxd-panel__empty pxd-panel__hint", results, SEMANTIC_HINT);
+      return;
+    }
     let pack = null;
     const wantImages = typeof on.searchImages === "function" && checked.has("image");
     const wantFigures = typeof on.searchImages === "function" && checked.has("figure");
@@ -22630,7 +23117,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       if (wantImages && !hostFilter.types.length) {
         pack = { rows: [], queries: [] };
       } else if (typeof host?.librarySearch === "function") {
-        pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT));
+        pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT, { pdfMatch: on.pdfMatch, pdfList: on.pdfList }));
       } else {
         const q = String(filter.text || "").trim();
         if (!q) return;
@@ -22681,14 +23168,15 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const images = Array.isArray(found.images) ? found.images : [];
     const figures = Array.isArray(found.figures) ? found.figures : [];
     results.replaceChildren();
-    if (!rows.length && !parts.length && !images.length && !figures.length) {
-      el2("div", "pxd-panel__empty", results, "No matches");
-      return;
-    }
+    if (!rows.length && !parts.length && !images.length && !figures.length) el2("div", "pxd-panel__empty", results, "No matches");
     rows.forEach((r) => row4(results, r));
     images.forEach((img) => row4(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette, likeKey: img.key, likeName: imageName(img) }));
     parts.forEach((part) => partRow(results, part, needle));
     figures.forEach((part) => partRow(results, part, needle));
+    results.dataset.paintMs = String(Date.now() - started);
+    results.setAttribute("data-paint-ms", String(Date.now() - started));
+    wantNames(rows, { front: true, all: checked.has("pdf") && checked.size < ALL_TYPES.length });
+    scheduleSemantic(id, filter, rows);
   };
   let refreshTimer = null;
   const scheduleSearch = () => {
@@ -22704,6 +23192,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     void runSearch();
   };
   listen(input, "input", () => {
+    lastInputAt = Date.now();
     try {
       on.typing?.();
     } catch {
@@ -22711,6 +23200,10 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     if (like) {
       like = null;
       paintLike();
+    }
+    if (related) {
+      related = null;
+      paintRelated();
     }
     paintSwatches();
     scheduleSearch();
@@ -23425,6 +23918,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
   const api2 = {
     el: panel,
     open(which = tab) {
+      paintMeaning();
       panel.style.display = "";
       root.setAttribute("data-pxd-panel-open", "");
       setTab(which);
@@ -23458,6 +23952,47 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     refreshBoards() {
       if (tab === "boards") void loadBoards();
     },
+    // PDF identities landed: rows repaint in place; a PDF the typed words now match brings a quiet re-search.
+    refreshPdfNames(urls2) {
+      if (!api2.isOpen() || tab !== "search") return;
+      const set = new Set(Array.isArray(urls2) ? urls2 : []);
+      const terms = queryTerms(input.value);
+      const shown = /* @__PURE__ */ new Set();
+      for (const r of results.querySelectorAll(".pxd-panel__row--pdf")) {
+        const url = r.dataset?.pdfUrl || r.getAttribute("data-pdf-url") || "";
+        shown.add(url);
+        if (r.pxdCard && (!set.size || set.has(url))) paintPdf(r, r.pxdCard, terms);
+      }
+      if (!terms.length || like || related || !checked.has("pdf") || typeof on.pdfMatch !== "function") return;
+      const fresh = [...set].some((url) => {
+        if (shown.has(url)) return false;
+        try {
+          return Boolean(on.pdfMatch(url, terms));
+        } catch {
+          return false;
+        }
+      });
+      if (!fresh) return;
+      refreshTimer?.();
+      refreshTimer = timers.later(() => {
+        refreshTimer = null;
+        void runSearch({ quiet: true });
+      }, 400);
+    },
+    // Card menu "Find related": semantic results for the card's text, ready to drag onto the board.
+    findRelated({ query = "", label = "", exclude = "" } = {}) {
+      const text4 = String(query || "").trim().slice(0, 600);
+      if (like) {
+        like = null;
+        paintLike();
+      }
+      related = { query: text4, label: String(label || "this card").replace(/\s+/g, " ").trim().slice(0, 40), exclude: String(exclude || "") };
+      paintRelated();
+      input.value = "";
+      api2.open("search");
+      searchNow();
+    },
+    relatedQuery: () => related?.query || "",
     refreshChanged() {
       if (tab === "changed" && api2.isOpen()) renderChanged();
     },
@@ -23524,6 +24059,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     },
     dispose() {
       debounce?.();
+      semTimer?.();
       queryId += 1;
       journalId += 1;
       unmountInfo();
@@ -23533,13 +24069,15 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
   };
   return api2;
 }
-var DEBOUNCE_MS, LIMIT;
+var DEBOUNCE_MS, LIMIT, SEMANTIC_PAUSE_MS, SEMANTIC_HINT;
 var init_panel = __esm({
   "src/view/panel.js"() {
     init_ask_icon();
     init_info();
     init_timeline2();
     init_library();
+    init_pdf_ident();
+    init_semantic();
     init_parts_search();
     init_color();
     init_drop();
@@ -23548,6 +24086,8 @@ var init_panel = __esm({
     init_minimap_svg();
     DEBOUNCE_MS = 150;
     LIMIT = 40;
+    SEMANTIC_PAUSE_MS = 300;
+    SEMANTIC_HINT = "Turn on Roam's semantic search: Settings → Graph → Semantic search";
   }
 });
 
@@ -35972,6 +36512,7 @@ function neighborLayout(rect, titles, { skip = [] } = {}) {
 // src/host/roam.js
 init_pdf();
 init_pdf_page();
+init_semantic();
 init_refs();
 
 // src/model/card-cache.js
@@ -37216,6 +37757,41 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
   const notifyPages = (slot2, after) => {
     for (const set of slot2.pages.values()) for (const fn of set) fn(after);
   };
+  const markOnBoard = (candidates2, timed) => {
+    const blockUids = candidates2.filter((row4) => row4.kind === "block" && row4.uid).map((row4) => row4.uid);
+    const pageTitles = candidates2.filter((row4) => row4.kind === "page" && row4.title).map((row4) => row4.title);
+    const onUid = /* @__PURE__ */ new Set();
+    const onTitle = /* @__PURE__ */ new Set();
+    if (blockUids.length) {
+      const direct = timed("orphan-parents", () => host.q(
+        `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?b :block/parents ?d] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
+        blockUids,
+        DIAGRAM_RE2
+      ));
+      const via = timed("orphan-refs", () => host.q(
+        `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?card :block/refs ?b] [?card :block/parents ?d]
+ [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
+        blockUids,
+        DIAGRAM_RE2
+      ));
+      for (const rec of [...direct, ...via]) if (rec?.[0]) onUid.add(rec[0]);
+    }
+    if (pageTitles.length) {
+      const via = timed("orphan-pages", () => host.q(
+        `[:find ?t :in $ [?t ...] ?pat :where [?p :node/title ?t] [?card :block/refs ?p] [?card :block/parents ?d]
+ [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
+        pageTitles,
+        DIAGRAM_RE2
+      ));
+      for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
+    }
+    for (const row4 of candidates2) {
+      if (row4.kind === "board") row4.onBoard = true;
+      else if (row4.kind === "block") row4.onBoard = onUid.has(row4.uid);
+      else row4.onBoard = onTitle.has(row4.title);
+    }
+  };
   let coverMemo = null;
   const repairedPdfBlocks = /* @__PURE__ */ new Set();
   const readPdfCover = (url) => {
@@ -38438,7 +39014,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         if (typeof string !== "string" || !uid) continue;
         const url = pdfMacroUrl(string) || (/https?:\/\/[^\s}]+/.exec(string) || [""])[0];
         if (!url) continue;
-        out.push({ uid: String(uid), url, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
+        out.push({ uid: String(uid), url, string, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
         if (out.length >= limit) break;
       }
       return out;
@@ -38462,7 +39038,9 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       return out;
     },
     // Add-panel filters. Read-only. Each query is timed. Days and orphan never scan the graph alone.
-    librarySearch(filter, limit = 40) {
+    // `pdfMatch(url, terms)` → the PDF's identity text when it holds every term (pdf-ident), else "".
+    // `pdfList()` → the graph's PDF blocks ({ uid, string, pageTitle }), cached by the caller, so typing runs no extra query.
+    librarySearch(filter, limit = 40, { pdfMatch = null, pdfList = null } = {}) {
       const f = normalizeLibraryFilter(filter);
       const queries = [];
       const lim = Math.max(1, Math.floor(Number(limit) || 40));
@@ -38492,6 +39070,52 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
         queries.push({ name, ms: performance.now() - t0 });
         return out;
       };
+      if (f.text && typeof pdfMatch === "function" && wantsType(f, "pdf")) {
+        const terms = queryTerms(f.text);
+        const inputs = ["$", "?kind"];
+        const where = [];
+        const args = [BLOCK_KIND_PATTERNS.pdf];
+        if (f.tag) {
+          inputs.push("?name");
+          args.push(f.tag);
+          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
+        }
+        where.push("[?b :block/string ?s]", "[(re-pattern ?kind) ?kre]", "[(re-find ?kre ?s)]", "[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
+        const find = ["?s", "?u", "?t"];
+        if (since != null) {
+          inputs.push("?since");
+          args.push(since);
+          find.push("?e");
+          where.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
+        }
+        const cached = !f.tag && since == null && typeof pdfList === "function" ? pdfList() : null;
+        const found = Array.isArray(cached) ? cached.map((r) => [r.string, r.uid, r.pageTitle]) : timed("pdf-names", () => host.q(`[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`, ...args));
+        for (const rec of found) {
+          const string = rec?.[0];
+          const uid = rec?.[1];
+          const pageTitle = rec?.[2];
+          if (typeof string !== "string" || !uid) continue;
+          if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) continue;
+          const url = pdfMacroUrl(string);
+          let hay = "";
+          try {
+            hay = url ? String(pdfMatch(url, terms) || "") : "";
+          } catch {
+            hay = "";
+          }
+          if (!hay) continue;
+          if (!push({
+            kind: "block",
+            uid: String(uid),
+            string,
+            text: hay,
+            pageTitle: typeof pageTitle === "string" ? pageTitle : "",
+            edited: since != null ? editedOf(rec?.[3]) : null,
+            tags: f.tag ? [f.tag] : [],
+            onBoard: false
+          })) break;
+        }
+      }
       const wantPage = wantsType(f, "page");
       const wantBlock = wantsType(f, "block");
       const wantBoard = wantsType(f, "board");
@@ -38716,43 +39340,78 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
           }
         }
       }
-      if (f.orphan) {
-        const blockUids = candidates2.filter((row4) => row4.kind === "block" && row4.uid).map((row4) => row4.uid);
-        const pageTitles = candidates2.filter((row4) => row4.kind === "page" && row4.title).map((row4) => row4.title);
-        const onUid = /* @__PURE__ */ new Set();
-        const onTitle = /* @__PURE__ */ new Set();
-        if (blockUids.length) {
-          const direct = timed("orphan-parents", () => host.q(
-            `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?b :block/parents ?d] [?d :block/string ?s]
- [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
-            blockUids,
-            DIAGRAM_RE2
-          ));
-          const via = timed("orphan-refs", () => host.q(
-            `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?card :block/refs ?b] [?card :block/parents ?d]
- [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
-            blockUids,
-            DIAGRAM_RE2
-          ));
-          for (const rec of [...direct, ...via]) if (rec?.[0]) onUid.add(rec[0]);
-        }
-        if (pageTitles.length) {
-          const via = timed("orphan-pages", () => host.q(
-            `[:find ?t :in $ [?t ...] ?pat :where [?p :node/title ?t] [?card :block/refs ?p] [?card :block/parents ?d]
- [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
-            pageTitles,
-            DIAGRAM_RE2
-          ));
-          for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
-        }
-        for (const row4 of candidates2) {
-          if (row4.kind === "board") row4.onBoard = true;
-          else if (row4.kind === "block") row4.onBoard = onUid.has(row4.uid);
-          else row4.onBoard = onTitle.has(row4.title);
-        }
-      }
+      if (f.orphan) markOnBoard(candidates2, timed);
       const rows = narrowLibrary(candidates2, f, nowMs2).slice(0, lim).map(libraryCard);
       return { rows, queries };
+    },
+    // What names a PDF block besides its file: the page it owns (first top-level PDF of a non-daily page)
+    // and Roam's PDF page for its url (:pdf/url). Read-only.
+    pdfNameInfo(uid, url = "") {
+      const out = { ownTitle: "", pdfPageTitle: "" };
+      if (uid) {
+        try {
+          const res = rawPull("[:block/uid {:block/parents [:db/id]} {:block/page [:block/uid :node/title {:block/children [:block/uid :block/string :block/order]}]}]", eidKey(uid));
+          const page = res?.[":block/page"];
+          const parents = res?.[":block/parents"];
+          const title = page?.[":node/title"];
+          if (typeof title === "string" && Array.isArray(parents) && parents.length === 1 && !isDailyTitle(title)) {
+            if (pdfOfPageNode(page)?.pdfUid === uid) out.ownTitle = title;
+          }
+        } catch {
+        }
+      }
+      if (url) {
+        for (const row4 of queryRows(host, PDF_PAGE_QUERY, url)) {
+          const title = Array.isArray(row4) ? row4[1] : "";
+          if (typeof title === "string" && title && !/^notes by\b/i.test(title) && !isDailyTitle(title)) {
+            out.pdfPageTitle = title;
+            break;
+          }
+        }
+      }
+      return out;
+    },
+    // Roam semantic-search results → Add-panel rows with the panel's filters (type, tag, days, not on any board).
+    semanticRows(raw, filter, limit = 40) {
+      const f = normalizeLibraryFilter(filter);
+      const queries = [];
+      const timed = (name, fn) => {
+        const t02 = performance.now();
+        let out = [];
+        try {
+          const res = fn();
+          out = Array.isArray(res) ? res : [];
+        } catch {
+          out = [];
+        }
+        queries.push({ name, ms: performance.now() - t02 });
+        return out;
+      };
+      const pdfBlockOf = (url) => {
+        const rows = timed("sem-pdf", () => host.q(
+          `[:find ?u ?s ?t :in $ ?kind :where [?b :block/string ?s] [(re-pattern ?kind) ?kre] [(re-find ?kre ?s)] [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]`,
+          BLOCK_KIND_PATTERNS.pdf
+        ));
+        for (const [u, string, t] of rows) if (pdfMacroUrl(string) === url) return { uid: u, string, pageTitle: t };
+        return null;
+      };
+      const t0 = performance.now();
+      const candidates2 = semanticCandidates(raw, { pull: (uid) => pull(SEM_PULL, eidKey(uid)), pdfBlockOf }).filter((row4) => !(row4.kind === "block" && DIAGRAM_STRING.test(row4.string)));
+      queries.push({ name: "sem-pull", ms: performance.now() - t0 });
+      if (f.orphan) markOnBoard(candidates2, timed);
+      const kept = narrowLibrary(candidates2, { ...f, text: "" }, Date.now());
+      return { rows: kept.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map((row4) => ({ ...libraryCard(row4), semantic: true })), queries };
+    },
+    // A card's text for "Find related": the page title or block string and its first children.
+    relatedText(ref) {
+      if (!ref) return "";
+      try {
+        const res = ref.kind === "page" ? pull("[:node/title {:block/children [:block/string :block/order]}]", [":node/title", ref.title]) : pull("[:block/string :node/title {:block/children [:block/string :block/order]}]", eidKey(ref.uid));
+        const kids = (Array.isArray(res?.[":block/children"]) ? res[":block/children"] : []).slice().sort((a, b) => (a?.[":block/order"] ?? 0) - (b?.[":block/order"] ?? 0)).map((c) => c?.[":block/string"] || "");
+        return relatedQueryText({ title: res?.[":node/title"] || ref.title || "", string: res?.[":block/string"] || "", children: kids });
+      } catch {
+        return "";
+      }
     },
     // Graph neighbours of a card target, ordered for the Related panel:
     // attribute relations (both directions) → pages it links to → pages that link to it (grouped, counted).
@@ -39011,7 +39670,7 @@ function sortedKids3(node2) {
   const kids = Array.isArray(node2?.[":block/children"]) ? node2[":block/children"] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
-var str = (n2) => String(n2?.[":block/string"] ?? "").trim();
+var str2 = (n2) => String(n2?.[":block/string"] ?? "").trim();
 function pair(text4) {
   const p = String(text4).split(",").map((s) => Number(s.trim()));
   return p.length >= 2 && p.slice(0, 2).every(Number.isFinite) ? { a: p[0], b: p[1], c: p[2] } : null;
@@ -39024,13 +39683,13 @@ var DIRS2 = { oneWay: "one", twoWay: "two", none: "none" };
 function readV06Entry(host, boardUid) {
   const page = host.pullPage(METADATA_PAGE);
   if (!page) return null;
-  const root = sortedKids3(page).find((c) => str(c) === "enhanced::");
+  const root = sortedKids3(page).find((c) => str2(c) === "enhanced::");
   if (!root) return null;
-  const entryNode = sortedKids3(root).find((c) => str(c) === boardUid);
+  const entryNode = sortedKids3(root).find((c) => str2(c) === boardUid);
   if (!entryNode) return null;
   const out = { nodes: /* @__PURE__ */ new Map(), sections: [], edges: [], viewport: null, entryUid: entryNode[":block/uid"], migrated: false };
   for (const child of sortedKids3(entryNode)) {
-    const line = str(child);
+    const line = str2(child);
     const vp = prop(line, "viewport");
     if (vp !== null) {
       const p = pair(vp);
@@ -39045,7 +39704,7 @@ function readV06Entry(host, boardUid) {
       const uid = line.slice(5).trim();
       const node2 = { x: void 0, y: void 0, w: void 0, h: void 0, color: void 0 };
       for (const k of sortedKids3(child)) {
-        const l = str(k);
+        const l = str2(k);
         const pos = prop(l, "pos");
         const size = prop(l, "size");
         const color = prop(l, "color");
@@ -39073,7 +39732,7 @@ function readV06Entry(host, boardUid) {
       if (!m) continue;
       const edge = { from: m[1].trim(), to: m[2].trim(), route: "curve", label: "", fromSide: "auto", toSide: "auto", dir: "one", color: void 0 };
       for (const k of sortedKids3(child)) {
-        const l = str(k);
+        const l = str2(k);
         const kind = prop(l, "kind");
         const label = prop(l, "label");
         const from = prop(l, "from");
@@ -39093,7 +39752,7 @@ function readV06Entry(host, boardUid) {
     if (line.startsWith("section ")) {
       const sec = { id: line.slice(8).trim(), x: void 0, y: void 0, w: void 0, h: void 0, title: "", color: void 0 };
       for (const k of sortedKids3(child)) {
-        const l = str(k);
+        const l = str2(k);
         const pos = prop(l, "pos");
         const size = prop(l, "size");
         const title = prop(l, "title");
@@ -41886,9 +42545,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           if (patch[k] == null) delete section2[k];
           else section2[k] = patch[k];
         }
-        const clean = normalizeSectionDefaults(section2);
+        const clean2 = normalizeSectionDefaults(section2);
         const next = { ...base, defaults: { ...prevDefaults } };
-        if (Object.keys(clean).length) next.defaults.section = clean;
+        if (Object.keys(clean2).length) next.defaults.section = clean2;
         else {
           delete next.defaults.section;
           if (!Object.keys(next.defaults).length) delete next.defaults;
@@ -43461,17 +44120,17 @@ var ID_RE2 = /^[A-Za-z0-9_-]+$/;
 function viewBlockString({ drawingUid, caption = "", v, ids } = {}) {
   const rect = normalizeView(Array.isArray(v) ? v : [v?.x, v?.y, v?.w, v?.h]);
   if (!rect) return null;
-  const clean = [];
+  const clean2 = [];
   for (const id of ids || []) {
-    if (clean.length >= VIEW_ID_CAP) break;
-    if (typeof id === "string" && ID_RE2.test(id)) clean.push(id);
+    if (clean2.length >= VIEW_ID_CAP) break;
+    if (typeof id === "string" && ID_RE2.test(id)) clean2.push(id);
   }
   return serializeRegion({
     kind: "view",
     drawingUid,
     caption,
     v: rect,
-    ...clean.length ? { ids: clean } : {}
+    ...clean2.length ? { ids: clean2 } : {}
   });
 }
 function selectionViewRect(rects) {
@@ -46752,8 +47411,8 @@ function cleanSnapshot(value) {
   if (value.items.length > SNAP_MAX_ITEMS) return null;
   const items = [];
   for (const item of value.items) {
-    const clean = cleanItem(item);
-    if (clean) items.push(clean);
+    const clean2 = cleanItem(item);
+    if (clean2) items.push(clean2);
   }
   const height = finite5(value.height) && value.height >= 40 && value.height <= 4e3 ? value.height : 0;
   return {
@@ -46775,15 +47434,15 @@ function cleanSnapshot(value) {
   };
 }
 function packSnapshot(snap) {
-  const clean = cleanSnapshot(snap);
-  if (!clean) return null;
+  const clean2 = cleanSnapshot(snap);
+  if (!clean2) return null;
   const fit3 = (value) => {
     const text5 = JSON.stringify(value);
     return text5.length <= SNAP_MAX_BYTES ? text5 : null;
   };
-  let text4 = fit3(clean);
+  let text4 = fit3(clean2);
   if (text4) return text4;
-  const lean = { ...clean, labels: null, chrome: [] };
+  const lean = { ...clean2, labels: null, chrome: [] };
   text4 = fit3(lean);
   if (text4) return text4;
   lean.edges = null;
@@ -51027,7 +51686,7 @@ function evidenceIn(page, box2) {
 function scoreTable(table, evidence, { reading = false } = {}) {
   const rows = evidence?.rows || [];
   const owner = distinctiveOwners(rows);
-  const clean = cleanCoverage(table, rows, owner);
+  const clean2 = cleanCoverage(table, rows, owner);
   const bag = cellBag(table);
   let bagCovered = 0;
   for (const row4 of rows) {
@@ -51037,8 +51696,8 @@ function scoreTable(table, evidence, { reading = false } = {}) {
     for (const key of keys) if (bagHas(bag, key)) hit += 1;
     if (hit / keys.length >= 0.5) bagCovered += 1;
   }
-  const counted = clean.counted;
-  const covered = Math.min(clean.covered, bagCovered);
+  const counted = clean2.counted;
+  const covered = Math.min(clean2.covered, bagCovered);
   const textRows = counted || rows.length;
   const rowTarget = ruledTarget(textRows, ruleCount(evidence?.rules, evidence?.box, "h"));
   const body = bodyTarget(rows);
@@ -58117,10 +58776,10 @@ var AUTO_ORDER = Object.freeze([
   "Gemini 3.8 Flash",
   "Gemini 3.1 Pro"
 ]);
-var norm2 = (s) => String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+var norm3 = (s) => String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 var named = (m, want) => {
-  const w = norm2(want);
-  return Boolean(w) && (norm2(m.name) === w || norm2(m.id) === w);
+  const w = norm3(want);
+  return Boolean(w) && (norm3(m.name) === w || norm3(m.id) === w);
 };
 var providerIs = (m, re) => re.test(`${m.provider || ""} ${m.id || ""} ${m.name || ""}`);
 function graphOfWindow(w) {
@@ -58138,7 +58797,7 @@ function pickAskModel(models, { setting = MODEL_SETTING_DEFAULT, remembered = ""
   const pickFrom = (pool) => pool.find(ok) || null;
   const mine = list.find((m) => m.id === remembered);
   if (ok(mine)) return mine.id;
-  const want = norm2(setting);
+  const want = norm3(setting);
   if (want && want !== MODEL_SETTING_DEFAULT) {
     const hit = list.find((m) => named(m, setting) && ok(m));
     if (hit) return hit.id;
@@ -74323,6 +74982,330 @@ function createInbox({ doc = globalThis.document, root, host, timers, titles, on
 init_drop();
 init_anydoc_to_parse();
 
+// src/host/semantic.js
+var SEM_TTL_MS = 5 * 60 * 1e3;
+var SEM_MAX = 50;
+function semanticEnabled(api2) {
+  try {
+    return api2?.data?.semanticSearchEnabled?.() === true && typeof api2?.data?.async?.semanticSearch === "function";
+  } catch {
+    return false;
+  }
+}
+function createSemantic({ api: api2 = () => globalThis.roamAlphaAPI, now: now4 = () => Date.now(), ttl = SEM_TTL_MS, max = SEM_MAX } = {}) {
+  const cache = /* @__PURE__ */ new Map();
+  const inflight = /* @__PURE__ */ new Map();
+  let calls = 0;
+  const remember2 = (key, data) => {
+    cache.delete(key);
+    cache.set(key, { at: now4(), data });
+    while (cache.size > max) cache.delete(cache.keys().next().value);
+  };
+  const fetchFresh = (key) => {
+    const pending = inflight.get(key);
+    if (pending) return pending;
+    const job = (async () => {
+      const a = api2();
+      if (!semanticEnabled(a)) return [];
+      calls += 1;
+      let raw = [];
+      try {
+        raw = await a.data.async.semanticSearch({ "search-str": key });
+      } catch {
+        raw = [];
+      }
+      const data = Array.isArray(raw) ? raw : [];
+      remember2(key, data);
+      return data;
+    })().finally(() => inflight.delete(key));
+    inflight.set(key, job);
+    return job;
+  };
+  return {
+    enabled: () => semanticEnabled(api2()),
+    // { data, stale } when cached, else null. Never calls the engine.
+    peek(query) {
+      const key = String(query ?? "").trim();
+      const hit = key ? cache.get(key) : null;
+      return hit ? { data: hit.data, stale: now4() - hit.at >= ttl } : null;
+    },
+    // Fresh cache → it. Stale → it at once, then `onFresh(data)` after the background refresh. None → the engine.
+    async search(query, { onFresh } = {}) {
+      const key = String(query ?? "").trim();
+      if (!key) return [];
+      const hit = cache.get(key);
+      if (hit && now4() - hit.at < ttl) {
+        cache.delete(key);
+        cache.set(key, hit);
+        return hit.data;
+      }
+      if (hit) {
+        fetchFresh(key).then((data) => {
+          try {
+            onFresh?.(data);
+          } catch {
+          }
+        }, () => {
+        });
+        return hit.data;
+      }
+      return fetchFresh(key);
+    },
+    clear: () => cache.clear(),
+    report: () => ({ calls, cached: cache.size, inflight: inflight.size })
+  };
+}
+
+// src/view/board-view.js
+init_pdf_ident();
+
+// src/view/pdf-names.js
+init_pdf_ident();
+init_parse();
+init_title_cap();
+var IDENTS_KEY = `pdf-idents:${IDENT_V}:${TITLE_REV}`;
+var IDENTS_CAP = 600;
+var READ_TIMEOUT_MS = 12e3;
+var RETRY_FAILED_MS = 7 * 864e5;
+var COVER_CHARS = 200;
+function raceAbort(promise, signal, ms, timers) {
+  return new Promise((resolve, reject) => {
+    let done2 = false;
+    const finish = (fn, v) => {
+      if (done2) return;
+      done2 = true;
+      try {
+        timers.clear(id);
+      } catch {
+      }
+      signal?.removeEventListener?.("abort", onAbort);
+      fn(v);
+    };
+    const onAbort = () => finish(reject, new Error("aborted"));
+    const id = timers.set(() => finish(reject, new Error("timeout")), ms);
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener?.("abort", onAbort);
+    Promise.resolve(promise).then((v) => finish(resolve, v), (e2) => finish(reject, e2));
+  });
+}
+async function readPdfIdent(lib, url, { signal = null, timeoutMs = READ_TIMEOUT_MS, timers = null } = {}) {
+  if (!lib || typeof lib.getDocument !== "function" || !firstPageAllowed(url)) return null;
+  const time = {
+    set: typeof timers?.setTimeout === "function" ? timers.setTimeout.bind(timers) : setTimeout,
+    clear: typeof timers?.clearTimeout === "function" ? timers.clearTimeout.bind(timers) : clearTimeout
+  };
+  let task = null;
+  let pdf = null;
+  try {
+    task = lib.getDocument({ url });
+    pdf = await raceAbort(task?.promise ?? task, signal, timeoutMs, time);
+    if (!pdf || typeof pdf.getPage !== "function") return null;
+    let metaTitle = "";
+    try {
+      metaTitle = String((await raceAbort(pdf.getMetadata?.(), signal, timeoutMs, time))?.info?.Title ?? "");
+    } catch (e2) {
+      if (signal?.aborted) throw e2;
+    }
+    const records = [];
+    const count = Number.isInteger(pdf.numPages) ? pdf.numPages : 1;
+    for (let n2 = 1; n2 <= Math.min(2, count); n2 += 1) {
+      const page = await raceAbort(pdf.getPage(n2), signal, timeoutMs, time);
+      records.push(parsePageGeometry(await raceAbort(loadPageData(page, { includeOps: n2 === 1 }), signal, timeoutMs, time), n2));
+      const chars = linesOfRecord(records[0]).reduce((s, l) => s + l.text.length, 0);
+      if (n2 === 1 && chars >= COVER_CHARS) break;
+    }
+    const found = quickPageTitle(records);
+    const first = linesOfRecord(records[0]);
+    const lines = first.reduce((s, l) => s + l.text.length, 0) < COVER_CHARS && records[1] ? [...first, ...linesOfRecord(records[1])] : first;
+    const ident = identFromLines(lines, { pageTitle: found.pageTitle || "", pageCount: Number.isInteger(pdf.numPages) ? pdf.numPages : null, metaTitle });
+    return { ...ident, meta: metaTitle.replace(/\s+/g, " ").trim(), from: "page1" };
+  } catch {
+    return null;
+  } finally {
+    try {
+      await pdf?.destroy?.();
+    } catch {
+    }
+    try {
+      await task?.destroy?.();
+    } catch {
+    }
+  }
+}
+function createPdfNames({ store, lib = () => null, readParse = async () => null, idle, onChange = () => {
+}, now: now4 = () => Date.now(), read: read2 = readPdfIdent, timers = null } = {}) {
+  const idents = /* @__PURE__ */ new Map();
+  const queue = [];
+  const queued = /* @__PURE__ */ new Set();
+  let loading = null;
+  let running = "";
+  let controller = null;
+  let cancelIdle = null;
+  let saveCancel = null;
+  let stopped = false;
+  let stats = { read: 0, parse: 0, failed: 0, ms: 0 };
+  const later = typeof idle === "function" ? idle : (fn) => {
+    const id = setTimeout(fn, 30);
+    return () => clearTimeout(id);
+  };
+  const load = () => {
+    if (loading) return loading;
+    loading = (async () => {
+      let saved2 = null;
+      try {
+        saved2 = await store?.getMeta?.(IDENTS_KEY);
+      } catch {
+        saved2 = null;
+      }
+      const rows = saved2 && typeof saved2 === "object" && saved2.items && typeof saved2.items === "object" ? saved2.items : {};
+      for (const [url, ident] of Object.entries(rows)) if (!idents.has(url) && ident && typeof ident === "object") idents.set(url, ident);
+      return idents.size;
+    })();
+    return loading;
+  };
+  const save = () => {
+    saveCancel?.();
+    saveCancel = later(() => {
+      saveCancel = null;
+      const entries = [...idents.entries()].slice(-IDENTS_CAP);
+      void Promise.resolve(store?.putMeta?.(IDENTS_KEY, { v: IDENT_V, items: Object.fromEntries(entries) })).catch(() => {
+      });
+    });
+  };
+  const known2 = (url) => {
+    const got = idents.get(url);
+    if (!got) return false;
+    if (got.failed) return now4() - (Number(got.at) || 0) < RETRY_FAILED_MS;
+    return true;
+  };
+  const pump = () => {
+    cancelIdle = null;
+    if (stopped || running) return;
+    const url = queue.shift();
+    if (!url) return;
+    queued.delete(url);
+    if (known2(url)) {
+      schedule();
+      return;
+    }
+    running = url;
+    controller = typeof AbortController === "function" ? new AbortController() : null;
+    const signal = controller?.signal ?? null;
+    const t0 = now4();
+    (async () => {
+      let ident = null;
+      try {
+        const parsed = await readParse(url);
+        if (parsed?.doc) {
+          ident = identFromParse(parsed.doc, { title: parsed.title || "" });
+          if (ident) {
+            ident.from = "parse";
+            stats.parse += 1;
+          }
+        }
+      } catch {
+        ident = null;
+      }
+      if (signal?.aborted) return;
+      if (!ident || !ident.title) {
+        const pdfLib = (() => {
+          try {
+            return lib();
+          } catch {
+            return null;
+          }
+        })();
+        const got = pdfLib ? await read2(pdfLib, url, { signal, timers }) : null;
+        if (signal?.aborted) return;
+        if (got) {
+          ident = ident ? { ...got, title: got.title || ident.title } : got;
+          stats.read += 1;
+        }
+      }
+      if (!ident) {
+        stats.failed += 1;
+        idents.set(url, { failed: true, at: now4() });
+      } else idents.set(url, { ...ident, at: now4() });
+      save();
+      try {
+        onChange([url]);
+      } catch {
+      }
+    })().catch(() => {
+    }).finally(() => {
+      stats.ms += Math.max(0, now4() - t0);
+      if (running === url) running = "";
+      controller = null;
+      schedule();
+    });
+  };
+  const schedule = () => {
+    if (stopped || running || cancelIdle || !queue.length) return;
+    cancelIdle = later(pump);
+  };
+  return {
+    load,
+    // The identity, or null (unknown or failed).
+    get(url) {
+      const got = idents.get(String(url || ""));
+      return got && !got.failed ? got : null;
+    },
+    // True once the url was read (named or failed); a failure is retried after a week.
+    known: (url) => known2(String(url || "")),
+    // True while the url waits in the queue or is being read.
+    pending: (url) => queued.has(url) || running === url,
+    // Queue urls (front: read these before the rest). Known urls are skipped.
+    async want(urls2, { front = false } = {}) {
+      stopped = false;
+      await load();
+      const fresh = [];
+      for (const u of Array.isArray(urls2) ? urls2 : []) {
+        const url = String(u || "").trim();
+        if (!url || known2(url) || running === url) continue;
+        if (queued.has(url)) {
+          if (front) {
+            queue.splice(queue.indexOf(url), 1);
+            fresh.push(url);
+          }
+          continue;
+        }
+        queued.add(url);
+        fresh.push(url);
+      }
+      if (front) queue.unshift(...fresh);
+      else queue.push(...fresh.filter((u) => !queue.includes(u)));
+      schedule();
+      return fresh.length;
+    },
+    // Panel closed: the queue empties and the read in flight is aborted.
+    stop() {
+      stopped = true;
+      cancelIdle?.();
+      cancelIdle = null;
+      queue.length = 0;
+      queued.clear();
+      try {
+        controller?.abort();
+      } catch {
+      }
+    },
+    // Urls whose identity holds every term.
+    matchUrls(terms) {
+      const out = /* @__PURE__ */ new Set();
+      for (const [url, ident] of idents) if (!ident.failed && identMatches(ident, terms)) out.add(url);
+      return out;
+    },
+    report: () => ({ ...stats, known: idents.size, queued: queue.length, running }),
+    dispose() {
+      this.stop();
+      saveCancel?.();
+    }
+  };
+}
+
 // src/host/image-index.js
 init_color();
 var IMAGE_INDEX_V = 1;
@@ -78274,6 +79257,7 @@ function buildMenu(kind, ctx = {}) {
       out.push(
         make2("send-to", "Send to board…"),
         make2("related", "Related…"),
+        make2("find-related", "Find related"),
         make2("context", "Context"),
         trailItem(c),
         landmarkItem(c),
@@ -85164,6 +86148,9 @@ function buildBoardView(onFail, {
       case "related":
         panel.open("related");
         break;
+      case "find-related":
+        if (item) findRelatedFor(item);
+        break;
       case "context": {
         const sub = edgeUid ? b.edges.get(edgeUid) : item;
         if (sub && sub.type !== "section") openHalo(sub);
@@ -86164,6 +87151,98 @@ function buildBoardView(onFail, {
       figures: searchImages(figItems, index.records, { text: text4, pages }, limit)
     };
   };
+  const MEANING_KEY = "plexus-diagram:panel-meaning";
+  let pdfNames = null;
+  let pdfListWanted = false;
+  let pdfBlockList = null;
+  const pdfBlocks = () => {
+    if (pdfBlockList) return pdfBlockList;
+    try {
+      pdfBlockList = host?.listPdfBlocks?.(1e3) || [];
+    } catch {
+      pdfBlockList = [];
+    }
+    return pdfBlockList;
+  };
+  const pdfNameInfo = /* @__PURE__ */ new Map();
+  const pdfNamesR = () => {
+    if (pdfNames) return pdfNames;
+    const idle = typeof win2?.requestIdleCallback === "function" ? (fn) => {
+      const id = win2.requestIdleCallback(fn, { timeout: 1500 });
+      return () => {
+        try {
+          win2.cancelIdleCallback(id);
+        } catch {
+        }
+      };
+    } : (fn) => timers.later(fn, 30);
+    pdfNames = createPdfNames({
+      store: parseStoreShared(),
+      lib: () => {
+        const found = detectPdfjs2(win2);
+        return found?.workerReady ? found.lib : null;
+      },
+      readParse: async (url) => {
+        const doc2 = await readableParse(parseStoreShared(), url, { plainOptions: BUILTIN_OPTIONS });
+        return doc2 ? { doc: doc2, title: parsedTitles.get(url) || parsedDocTitle(doc2) } : null;
+      },
+      idle,
+      onChange: (urls2) => {
+        if (!disposed) panel.refreshPdfNames(urls2);
+      },
+      timers: warmTimers
+    });
+    return pdfNames;
+  };
+  const pdfNameOf = (card2) => {
+    const url = typeof card2?.url === "string" ? card2.url : "";
+    const uid = typeof card2?.uid === "string" ? card2.uid : "";
+    let info = pdfNameInfo.get(uid);
+    if (!info) {
+      try {
+        info = host?.pdfNameInfo?.(uid, url) || {};
+      } catch {
+        info = {};
+      }
+      pdfNameInfo.set(uid, info);
+    }
+    const names = pdfNamesR();
+    const ident = names.get(url);
+    const meta = ident?.meta && cleanPdfTitle(ident.meta).toLowerCase() !== String(ident.venue || "").toLowerCase() ? ident.meta : "";
+    const named2 = pdfRowName({
+      ownTitle: info.ownTitle || "",
+      pdfPageTitle: info.pdfPageTitle || "",
+      parsedTitle: parsedTitles.get(url) || "",
+      coverTitle: warmTitleOf(url)?.pageTitle || "",
+      metaTitle: meta || (pdfMeta ? pdfMeta.title(url) : ""),
+      ident,
+      url,
+      pending: Boolean(url) && !ident && !names.known(url)
+    });
+    return { title: named2.title, loading: named2.loading, sub: pdfRowSub({ ident, pageTitle: card2?.pageTitle || "", title: named2.title }) };
+  };
+  const wantPdfNames = (cards, { front = false, all = false } = {}) => {
+    const names = pdfNamesR();
+    void names.want((cards || []).map((c) => c?.url).filter(Boolean), { front });
+    if (!all || pdfListWanted) return;
+    pdfListWanted = true;
+    void names.want(pdfBlocks().map((r) => r.url));
+  };
+  let semantic = null;
+  const semanticR = () => semantic || (semantic = createSemantic({ api: () => win2?.roamAlphaAPI ?? globalThis.roamAlphaAPI }));
+  const findRelatedFor = (item) => {
+    const target = item?.target;
+    if (!target || (target.kind === "page" ? !target.title : !target.uid)) return;
+    let query = "";
+    try {
+      query = host?.relatedText?.(target) || "";
+    } catch {
+      query = "";
+    }
+    if (!query) query = String(item.title || item.string || "").slice(0, 600);
+    const exclude = target.kind === "page" ? `[[${target.title}]]` : `((${target.uid}))`;
+    panel.findRelated({ query, label: item.title || target.title || "this card", exclude });
+  };
   let panelWidth = PANEL_WIDTH_DEFAULT;
   try {
     const stored = Number(storage?.getItem?.(PANEL_WIDTH_KEY));
@@ -86182,10 +87261,21 @@ function buildBoardView(onFail, {
       isOnBoard,
       opened: (open) => {
         chrome.toolbar.setPanel(open);
-        if (!open) sendPending = null;
-        else {
+        if (!open) {
+          sendPending = null;
+          pdfNames?.stop();
+        } else {
           partsIdx?.invalidate();
           imgList = null;
+          pdfNameInfo.clear();
+          pdfListWanted = false;
+          pdfBlockList = null;
+          timers.later(() => {
+            if (!disposed && panel.isOpen()) pdfBlocks();
+          }, 0);
+          void pdfNamesR().load().then((n2) => {
+            if (n2 && !disposed && panel.isOpen()) panel.refreshPdfNames([]);
+          });
         }
       },
       loadTypes: () => {
@@ -86198,6 +87288,31 @@ function buildBoardView(onFail, {
         }
       },
       pdfTitle: (url) => parsedTitles.get(url) || "",
+      pdfName: (card2) => pdfNameOf(card2),
+      wantPdfNames: (cards, opts) => wantPdfNames(cards, opts),
+      pdfList: () => pdfBlocks(),
+      pdfMatch: (url, terms) => {
+        const ident = pdfNames?.get(url);
+        return ident && identMatches(ident, terms) ? identHaystack(ident) : "";
+      },
+      semantic: {
+        enabled: () => semanticR().enabled(),
+        peek: (q) => semanticR().peek(q),
+        search: (q, opts) => semanticR().search(q, opts)
+      },
+      loadMeaning: () => {
+        try {
+          return storage?.getItem?.(MEANING_KEY) !== "0";
+        } catch {
+          return true;
+        }
+      },
+      saveMeaning: (on) => {
+        try {
+          storage?.setItem?.(MEANING_KEY, on ? "1" : "0");
+        } catch {
+        }
+      },
       saveTypes: (types) => {
         try {
           storage?.setItem?.(LIB_TYPES_KEY, JSON.stringify(types));
@@ -89524,6 +90639,15 @@ function buildBoardView(onFail, {
         menuOpen: menu.isOpen()
       };
     },
+    // "Find related" for the selected card: Roam semantic search on its text, results in the Add panel.
+    findRelated() {
+      const item = board2()?.items.get(selection.items[0] || "");
+      if (item && item.type !== "section") {
+        findRelatedFor(item);
+        return true;
+      }
+      return false;
+    },
     // Serializes the board to SVG text; with download it also offers the file through a temporary link.
     async exportSvg({ download = true } = {}) {
       const b = board2();
@@ -89831,13 +90955,13 @@ function packSketch(sketch) {
   const items = [];
   for (const item of sketch?.items || []) {
     if (items.length >= SKETCH_MAX_ITEMS) break;
-    const clean = cleanItem2(item);
-    if (clean) items.push(clean);
+    const clean2 = cleanItem2(item);
+    if (clean2) items.push(clean2);
   }
   const edges = [];
   for (const edge of sketch?.edges || []) {
-    const clean = cleanEdge(edge);
-    if (clean) edges.push(clean);
+    const clean2 = cleanEdge(edge);
+    if (clean2) edges.push(clean2);
   }
   const fit3 = (next) => {
     const text5 = JSON.stringify(next);
@@ -89874,14 +90998,14 @@ function parseSketch(raw) {
   if (!value || typeof value !== "object" || !Array.isArray(value.items)) return null;
   const items = [];
   for (const item of value.items) {
-    const clean = cleanItem2(item);
-    if (!clean) return null;
-    items.push(clean);
+    const clean2 = cleanItem2(item);
+    if (!clean2) return null;
+    items.push(clean2);
   }
   const edges = [];
   for (const edge of Array.isArray(value.edges) ? value.edges : []) {
-    const clean = cleanEdge(edge);
-    if (clean) edges.push(clean);
+    const clean2 = cleanEdge(edge);
+    if (clean2) edges.push(clean2);
   }
   return { items, edges };
 }
@@ -89992,7 +91116,7 @@ function captureSketch(board2) {
     const rect = rects.get(uid);
     const item = board2.items.get(uid);
     if (!rect || !item) continue;
-    const clean = cleanItem2({
+    const clean2 = cleanItem2({
       uid,
       x: rect.x,
       y: rect.y,
@@ -90002,7 +91126,7 @@ function captureSketch(board2) {
       color: item.color || "",
       fill: item.fill || ""
     });
-    if (clean) items.push(clean);
+    if (clean2) items.push(clean2);
   }
   const edges = [];
   if (typeof board2.edges?.values === "function") {
@@ -90078,40 +91202,40 @@ function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER } = 
     edges.style.pointerEvents = "none";
     world.append(edges);
     for (const edge of Array.isArray(parsed.edges) ? parsed.edges : []) {
-      const clean = cleanEdge(edge);
-      if (!clean) continue;
+      const clean2 = cleanEdge(edge);
+      if (!clean2) continue;
       const path = svgEl2(doc, "path");
       path.setAttribute("class", "pxd-sketch__edge");
-      path.setAttribute("d", clean.path);
+      path.setAttribute("d", clean2.path);
       path.setAttribute("fill", "none");
       edges.append(path);
     }
     for (const item of parsed.items) {
-      const clean = cleanItem2(item);
-      if (!clean) continue;
+      const clean2 = cleanItem2(item);
+      if (!clean2) continue;
       const card2 = doc.createElement("div");
       card2.className = "pxd-sketch__card";
-      card2.setAttribute("data-uid", clean.uid);
+      card2.setAttribute("data-uid", clean2.uid);
       card2.style.position = "absolute";
       card2.style.left = "0";
       card2.style.top = "0";
       card2.style.boxSizing = "border-box";
       card2.style.overflow = "hidden";
       card2.style.pointerEvents = "none";
-      card2.style.transform = `translate(${clean.x}px, ${clean.y}px)`;
-      card2.style.width = `${clean.w}px`;
-      card2.style.height = `${clean.h}px`;
-      if (PALETTE.includes(clean.color)) card2.classList.add(`pxd-c-${clean.color}`);
-      const fill = cssColor(clean.fill, "fill");
+      card2.style.transform = `translate(${clean2.x}px, ${clean2.y}px)`;
+      card2.style.width = `${clean2.w}px`;
+      card2.style.height = `${clean2.h}px`;
+      if (PALETTE.includes(clean2.color)) card2.classList.add(`pxd-c-${clean2.color}`);
+      const fill = cssColor(clean2.fill, "fill");
       if (fill) card2.style.background = fill;
-      else if (!PALETTE.includes(clean.color)) {
-        const accent = hexColor(clean.color);
+      else if (!PALETTE.includes(clean2.color)) {
+        const accent = hexColor(clean2.color);
         if (accent) card2.style.background = accent;
       }
       const title = doc.createElement("div");
       title.className = "pxd-sketch__title";
       title.style.pointerEvents = "none";
-      title.textContent = clean.title;
+      title.textContent = clean2.title;
       card2.append(title);
       world.append(card2);
     }
@@ -96017,6 +97141,9 @@ async function installPlexusDiagram({
   function foldTablesCommand(context) {
     return targetView(context)?.foldTableCaptions?.();
   }
+  function findRelatedCommand(context) {
+    return targetView(context)?.findRelated?.();
+  }
   function newDrawingCommand(context) {
     return targetView(context)?.newDrawing?.();
   }
@@ -96042,7 +97169,8 @@ async function installPlexusDiagram({
     ["Plexus: New drawing here", newDrawingCommand],
     ["Plexus: Resurface here", resurfaceCommand],
     ["Plexus: Move PDFs to their own pages", movePdfPagesCommand],
-    ["Plexus: Fold tables under captions", foldTablesCommand]
+    ["Plexus: Fold tables under captions", foldTablesCommand],
+    ["Plexus: Find related to the selected card", findRelatedCommand]
   ];
   function runCommand(label, fn) {
     return (context) => {

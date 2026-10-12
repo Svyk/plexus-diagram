@@ -17884,7 +17884,7 @@ var init_tooltip_text = __esm({
       "engines.helper": e("Local helper", "Apple Vision for scans. The light helper is about 15 MB on a Mac. Docling, for layout, formulas and tables, is an optional add-on. It listens only on 127.0.0.1."),
       "engines.cloud": e("Cloud", "LlamaParse is the main read: your key, then a helper with the cloud engine, your relay, or the hosted relay. Mistral OCR is the no-install read: cheaper, and its tables are weaker. Both keys stay on this device. Nothing is sent until you confirm the cost."),
       "engines.cloud-setup": e("Set up", "Save a LlamaParse key and, if you want it, a Mistral OCR key. Both stay on this device."),
-      "engines.pair": e("Pair", "Fetch the helper's token. Works for 90 seconds after the installer or plexus-parse-helper pair."),
+      "engines.pair": e("Pair", "Pair with the helper on this Mac. A dialog on the Mac asks you to allow it."),
       "engines.setup": e("Set up", "Show the one command that installs the local helper."),
       "engines.start": e("Start", "Show how to start the local helper."),
       "engines.download": e("Download", "Download the helper's models. They are stored on this Mac."),
@@ -49181,7 +49181,10 @@ async function readSSE(response, { onProgress, onPage }) {
   if (buf.trim()) dispatch(buf);
 }
 var TOKEN_SETTING = "parse-helper-token";
-function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
+var TOKEN_BACKUP_KEY = "plexus-diagram:parse-helper-token";
+var PAIR_POLL_MS = 500;
+var PAIR_WAIT_MS = 6e4;
+function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, now: now3, sleep, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
   const fetchFn = fetchImpl;
   const clock = typeof now3 === "function" ? now3 : () => Date.now();
   let healthCache = null;
@@ -49192,9 +49195,36 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
     vlmOn = tables2 === true;
     vlmHighOn = high === true;
   };
+  const pause = typeof sleep === "function" ? sleep : (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const readBackup = () => {
+    try {
+      return String(storage?.getItem?.(TOKEN_BACKUP_KEY) || "").trim();
+    } catch {
+      return "";
+    }
+  };
+  const writeBackup = (value) => {
+    try {
+      storage?.setItem?.(TOKEN_BACKUP_KEY, value);
+    } catch {
+    }
+  };
+  let restored = false;
   const config = () => {
     const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
-    const token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
+    let token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
+    const backup = readBackup();
+    if (!token && backup) {
+      token = backup;
+      if (!restored) try {
+        restored = true;
+        void Promise.resolve(setSetting?.(TOKEN_SETTING, backup)).catch(() => {
+        });
+      } catch {
+      }
+    } else if (token && token !== backup) {
+      writeBackup(token);
+    }
     return { url, token };
   };
   const call = (url, init, signal) => fetchFn(url, {
@@ -49336,15 +49366,19 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
     }
     return { ...h, paired: true };
   }
-  async function pair2({ signal } = {}) {
+  async function pair2({ signal, onWaiting } = {}) {
     const { url } = config();
     if (typeof fetchFn !== "function") return { ok: false, reason: "not-running" };
     if (typeof setSetting !== "function") return { ok: false, reason: "no-settings" };
-    const timer = withTimeout(timeoutMs, signal);
-    try {
-      const res = await call(`${url}/v1/pair`, { method: "GET" }, timer.signal);
-      if (res.status === 404) return { ok: false, reason: "window-closed" };
-      if (res.status < 200 || res.status >= 300) return { ok: false, reason: "error", status: res.status };
+    const fetchToken = async () => {
+      const timer = withTimeout(timeoutMs, signal);
+      try {
+        return await call(`${url}/v1/pair`, { method: "GET" }, timer.signal);
+      } finally {
+        timer.clear();
+      }
+    };
+    const accept = async (res) => {
       let body = null;
       try {
         body = await res.json();
@@ -49353,12 +49387,40 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
       }
       if (body?.helper !== HELPER_NAME || typeof body.token !== "string" || !body.token) return { ok: false, reason: "error" };
       await setSetting(TOKEN_SETTING, body.token);
+      writeBackup(body.token);
       invalidate();
       return { ok: true, version: body.version };
+    };
+    try {
+      const res = await fetchToken();
+      if (res.status !== 404) {
+        if (res.status < 200 || res.status >= 300) return { ok: false, reason: "error", status: res.status };
+        return await accept(res);
+      }
+      const timer = withTimeout(timeoutMs, signal);
+      let asked;
+      try {
+        asked = await call(`${url}/v1/pair/request`, { method: "POST" }, timer.signal);
+      } finally {
+        timer.clear();
+      }
+      if (asked.status === 403) return { ok: false, reason: "declined" };
+      if (asked.status !== 202) return { ok: false, reason: "window-closed" };
+      try {
+        onWaiting?.();
+      } catch {
+      }
+      const deadline = clock() + PAIR_WAIT_MS;
+      while (clock() < deadline) {
+        if (signal?.aborted) return { ok: false, reason: "not-running" };
+        await pause(PAIR_POLL_MS);
+        const poll = await fetchToken();
+        if (poll.status >= 200 && poll.status < 300) return await accept(poll);
+        if (poll.status !== 404) return { ok: false, reason: "error", status: poll.status };
+      }
+      return { ok: false, reason: "timeout" };
     } catch {
       return { ok: false, reason: "not-running" };
-    } finally {
-      timer.clear();
     }
   }
   async function downloadModels() {
@@ -61841,7 +61903,11 @@ function renderEnginesPanel(doc, parent, deps = {}) {
   list.className = "pxd-engines__rows";
   const sheetHost = doc.createElement("div");
   sheetHost.className = "pxd-engines__sheet-host";
-  el2.append(title, list, sheetHost);
+  const lastLine = doc.createElement("div");
+  lastLine.className = "pxd-engines__note pxd-engines__last";
+  lastLine.setAttribute("role", "status");
+  lastLine.setAttribute("hidden", "");
+  el2.append(title, list, lastLine, sheetHost);
   let state = null;
   let sheetKind = null;
   let signature = "";
@@ -61854,6 +61920,15 @@ function renderEnginesPanel(doc, parent, deps = {}) {
       toast?.(text4);
     } catch {
     }
+  };
+  const sayHere = (text4) => {
+    say(text4);
+    lastLine.textContent = text4;
+    lastLine.removeAttribute("hidden");
+  };
+  const clearHere = () => {
+    lastLine.textContent = "";
+    lastLine.setAttribute("hidden", "");
   };
   function paintRows() {
     const rows = engineRows(state, { platform });
@@ -62136,11 +62211,13 @@ function renderEnginesPanel(doc, parent, deps = {}) {
       if (input) input.value = "";
       say("Mistral key removed from this device");
     } else if (id === "pair") {
-      const result = await client?.pair?.();
-      if (result?.ok) say("Helper paired");
-      else if (result?.reason === "window-closed") say("Pairing window closed. Run plexus-parse-helper pair, then click Pair.");
-      else if (result?.reason === "not-running") say("The helper is not running.");
-      else say("Could not pair.");
+      const result = await client?.pair?.({ onWaiting: () => sayHere("Approve Plexus in the dialog on your Mac…") });
+      if (result?.ok) sayHere("Helper paired");
+      else if (result?.reason === "declined") sayHere("Pairing declined on the Mac.");
+      else if (result?.reason === "timeout") sayHere("No answer from the Mac dialog. Click Pair to try again.");
+      else if (result?.reason === "window-closed") sayHere("This helper is older. Run plexus-parse-helper pair in Terminal, then click Pair.");
+      else if (result?.reason === "not-running") sayHere("The helper is not running.");
+      else sayHere("Could not pair.");
     } else if (id === "download") {
       await client?.downloadModels?.();
     } else if (id === "cancel") {
@@ -62183,6 +62260,7 @@ function renderEnginesPanel(doc, parent, deps = {}) {
   }
   function startTimer() {
     if (timer == null && visible2 && !disposed) timer = setIv(() => {
+      clearHere();
       void refresh();
     }, pollMs);
   }
@@ -65012,7 +65090,13 @@ function createReadPane({
     return void 0;
   }
   const ensureHelper = () => {
-    if (!parseHelper) parseHelper = createHelperClient({ settings, setSetting: setSettingFn, fetch: doc.defaultView?.fetch });
+    if (!parseHelper) parseHelper = createHelperClient({ settings, setSetting: setSettingFn, fetch: doc.defaultView?.fetch, storage: (() => {
+      try {
+        return doc.defaultView?.localStorage;
+      } catch {
+        return void 0;
+      }
+    })() });
     return parseHelper;
   };
   const pdfUrl = () => pdfMacroUrl(current3.source || "") || "";
@@ -91605,6 +91689,9 @@ async function installPlexusDiagram({
     };
     return {
       sketchStandIn: true,
+      get live() {
+        return Boolean(handoff.view);
+      },
       get root() {
         return handoff.view?.root ?? null;
       },
@@ -91925,36 +92012,31 @@ async function installPlexusDiagram({
     forgetUid(rec, gone);
     navigate(rec, rec.crumbs.slice(0, -1), null);
   }
-  let pendingNest = null;
+  let nestOpen = 0;
   function enterNested(rec, trail, edgeUid) {
     visit(rec, trail);
     const focus = (left) => {
       if (stopped || mounts.get(rec.native) !== rec) return;
       let done2 = false;
-      try {
-        done2 = Boolean(rec.view?.focusUid?.(edgeUid));
-      } catch {
-        done2 = false;
+      if (!rec.view?.sketchStandIn || rec.view.live) {
+        try {
+          done2 = Boolean(rec.view?.focusUid?.(edgeUid));
+        } catch {
+          done2 = false;
+        }
       }
-      if (!done2 && left > 0) lifecycle.timeout(() => focus(left - 1), 150);
+      if (!done2 && left > 0) lifecycle.timeout(() => focus(left - 1), 100);
     };
-    queueMicrotask(() => focus(8));
-  }
-  function resumeNestedOpen(rec) {
-    const p = pendingNest;
-    if (!p || p.root !== rec.uid || !rec.view || Date.now() > p.until) return;
-    pendingNest = null;
-    enterNested(rec, p.trail, p.edgeUid);
+    queueMicrotask(() => focus(80));
   }
   function openNestedConnection(boardUid, edgeUid) {
     if (stopped || !boardUid || !edgeUid) return false;
     const trail = seedCrumbs(boardUid);
     const root = trail[0].uid;
-    for (const rec of mounts.values()) {
-      if (rec.uid === root && rec.view) {
-        enterNested(rec, trail, edgeUid);
-        return true;
-      }
+    const open = findOpenMount(root, false) || findOpenMount(root, true);
+    if (open) {
+      enterNested(open, trail, edgeUid);
+      return true;
     }
     let pageUid = "";
     try {
@@ -91969,19 +92051,21 @@ async function installPlexusDiagram({
       }
       return true;
     }
-    pendingNest = { root, trail, edgeUid, boardUid, until: Date.now() + 8e3 };
-    const mine = pendingNest;
-    lifecycle.timeout(() => {
-      if (pendingNest !== mine) return;
-      pendingNest = null;
-      try {
-        void host.openBlock?.(boardUid);
-      } catch {
-      }
-    }, 6e3);
+    const mine = ++nestOpen;
     assignDeepLink(globalThis.location, { graph: host.graph || graphFromHash(), pageUid, cardUid: root }, () => {
       try {
         win2.dispatchEvent?.(new Event("hashchange"));
+      } catch {
+      }
+    });
+    waitOpenMount(root, false, 160, (rec) => {
+      if (stopped || mine !== nestOpen) return;
+      if (rec) {
+        enterNested(rec, trail, edgeUid);
+        return;
+      }
+      try {
+        void host.openBlock?.(boardUid);
       } catch {
       }
     });
@@ -92445,7 +92529,6 @@ async function installPlexusDiagram({
     }
     const openTail = () => {
       unmountOutlineCopies(rec);
-      resumeNestedOpen(rec);
       applyShow(rec);
       if (rec.session?.board?.virtual) markCollapsed(uid);
       else if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
@@ -94295,7 +94378,13 @@ async function installPlexusDiagram({
   }
   const pdfTables = createPdfTables({
     store: createParseStore({ indexedDB: win2.indexedDB }),
-    helper: createHelperClient({ settings: extensionAPI?.settings, setSetting: (id, value) => extensionAPI?.settings?.set?.(id, value), fetch: win2.fetch?.bind(win2) }),
+    helper: createHelperClient({ settings: extensionAPI?.settings, setSetting: (id, value) => extensionAPI?.settings?.set?.(id, value), fetch: win2.fetch?.bind(win2), storage: (() => {
+      try {
+        return win2.localStorage;
+      } catch {
+        return void 0;
+      }
+    })() }),
     fetchBytes: async (url) => {
       const res = await win2.fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -99,3 +99,13 @@ test("the dock shrinks, loses labels and scrolls instead of running under the pa
   assert.match(css, /pxd-root--dock-labels\.pxd-root--read \.pxd-dock__label\s*\{[^}]*display:\s*none/);
   assert.match(css, /\.pxd-root\.pxd-root--read:not\(\.pxd-root--read-stack\) \.pxd-palette\s*\{[^}]*right:\s*calc\(var\(--pxd-read-w/);
 });
+
+test("a [[page]] PDF card names the reader by its page title before any parsed or metadata title", () => {
+  const src = read("../src/view/board-view.js");
+  const start = src.indexOf("pdfDisplayTitle = (card, source) => {");
+  assert.ok(start > 0);
+  const body = src.slice(start, src.indexOf("};", start));
+  const own = body.indexOf("card?.target?.page");
+  assert.ok(own > 0, "page cards are checked");
+  assert.ok(own < body.indexOf("notePdfMeta("), "page title wins before the parsed/metadata lookup");
+});

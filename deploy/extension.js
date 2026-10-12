@@ -81856,6 +81856,9 @@ function buildBoardView(onFail, {
   pdfDisplayTitle = (card2, source) => {
     const src = typeof source === "string" && source ? source : pdfSourceOfItem(card2);
     const url = pdfMacroUrl(src);
+    const pageName = typeof card2?.target?.page === "string" && card2.target.page ? aliasOfCard(card2) || pdfPageName(card2.target.page) : "";
+    const ownPage = pageName ? coverModel({ alias: pageName }).title : "";
+    if (ownPage && ownPage !== "PDF") return ownPage;
     const metadataTitle = url ? notePdfMeta(url) : "";
     let cover = null;
     try {

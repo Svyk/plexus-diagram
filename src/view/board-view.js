@@ -115,7 +115,7 @@ import { searchImages, similarImages } from "../model/image-search.js";
 import { createFigureImages, getFigureImages, setFigureImages, shrinkImage } from "../host/figure-image.js";
 import { imageDoc } from "../model/ai-context.js";
 import { sha256Hex } from "../model/parse-hash.js";
-import { inlinePdfCards, migrationLines, pdfPageBaseTitle, planPdfMigration, uniquePageTitle } from "../model/pdf-page.js";
+import { inlinePdfCards, migrationLines, pdfPageBaseTitle, pdfPageName, planPdfMigration, uniquePageTitle } from "../model/pdf-page.js";
 import { highlightAsk, highlightPart } from "../model/highlight-ask.js";
 import { openPdfPagesDialog } from "./pdf-pages-dialog.js";
 import { oldTableCards, planTableCaptions, tableCaptionLines } from "../model/table-captions.js";
@@ -2344,6 +2344,11 @@ function buildBoardView(onFail, {
   pdfDisplayTitle = (card, source) => {
     const src = typeof source === "string" && source ? source : pdfSourceOfItem(card);
     const url = pdfMacroUrl(src);
+    // A [[page]] PDF card is a PDF on its own page: the page title names it, never a parsed or metadata title.
+    // The card's title is its alias or the page name (board.js), so an alias still wins.
+    const pageName = typeof card?.target?.page === "string" && card.target.page ? (aliasOfCard(card) || pdfPageName(card.target.page)) : "";
+    const ownPage = pageName ? coverModel({ alias: pageName }).title : "";
+    if (ownPage && ownPage !== "PDF") return ownPage;
     const metadataTitle = url ? notePdfMeta(url) : "";
     let cover = null;
     try { cover = src ? host?.pdfCover?.(src) : null; } catch { cover = null; }

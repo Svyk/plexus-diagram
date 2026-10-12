@@ -683,7 +683,8 @@ function startSession(s, o) {
   };
   const paintTips = () => {
     clear(s.tips);
-    const shown = TIPS.filter((x) => !x.parts || (multiLike() && (multi ? parts : entries).length > 0));
+    // @ works for a single part as well as several: show it whenever the chat has any part in context.
+    const shown = TIPS.filter((x) => !x.parts || descs().length > 0);
     shown.forEach((tip, i) => {
       if (i) s.tips.append(dom.createTextNode(" · "));
       tip.keys.forEach((k, j) => {

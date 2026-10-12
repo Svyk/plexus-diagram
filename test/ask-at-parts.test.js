@@ -262,3 +262,9 @@ test("the @ tip is hidden when no parts are in context", () => withDom(async (st
   const tips = find(d.el, "pxd-ask__tips");
   assert.ok(!tips || !tipKeys(d.el).includes("@"));
 }));
+
+test("the @ tip shows for a chat opened on a single part", () => withDom(async (stub, doc) => {
+  const w = fakeWindow();
+  const d = openAskAI({ doc: DOC_A, blockId: "p", document: doc, window: w });
+  assert.ok(tipKeys(d.el).includes("@"));
+}));

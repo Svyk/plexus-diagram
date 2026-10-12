@@ -62327,7 +62327,7 @@ ${lines.join("\n")}` : "";
   };
   const paintTips = () => {
     clear2(s.tips);
-    const shown = TIPS.filter((x) => !x.parts || multiLike() && (multi ? parts : entries).length > 0);
+    const shown = TIPS.filter((x) => !x.parts || descs().length > 0);
     shown.forEach((tip, i) => {
       if (i) s.tips.append(dom.createTextNode(" · "));
       tip.keys.forEach((k, j) => {

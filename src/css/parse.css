@@ -347,6 +347,15 @@
   max-width: min(232px, 100%);
 }
 
+/* In a narrow bar only the engine chip and Read the scan shrink; Range and Filter keep their width. */
+.pxd-parse .pxd-parse__menu:not(:has(> .pxd-parse__engine)) {
+  flex: 0 0 auto;
+}
+
+.pxd-parse .pxd-parse__menu:has(> .pxd-parse__engine) {
+  min-width: 56px;
+}
+
 /* Read the scan sits in the 32 px bar: one line, shrinks before the chip, never wraps over it. */
 .pxd-parse .pxd-parse__scan {
   flex: 0 1 auto;

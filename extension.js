@@ -52634,8 +52634,10 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     }
     throwIfAborted3();
     let otherPages = [];
+    const checked = (f) => onPhase?.({ phase: "check", done: Math.round(Math.max(0, Math.min(1, Number(f) || 0)) * wanted.length), total: wanted.length });
+    checked(0);
     try {
-      const other = await alt.ocr({ pages: wanted, bytes, sha256, signal });
+      const other = await alt.ocr({ pages: wanted, bytes, sha256, signal, onProgress: checked });
       otherPages = other?.pages || [];
     } catch (error) {
       if (error?.name === "AbortError") throw error;
@@ -60884,7 +60886,7 @@ function parsedPageCount(parsed) {
 function cloudLabel(provider) {
   return provider === "mistral" ? "Mistral OCR" : "LlamaParse";
 }
-function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, pages = 0, helper = "", credits = null, read: read2 = "" } = {}) {
+function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, pages = 0, helper = "", credits = null, read: read2 = "", step = "" } = {}) {
   if (phase !== "running" && engine === "anydoc") {
     if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
     return { text: "Alternative read" };
@@ -60892,7 +60894,8 @@ function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = nu
   if (phase === "running") {
     const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : engine === "cloud" ? cloudLabel(provider) : "built-in";
     const local = engine !== "cloud";
-    return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: local ? `${which} · free` : which };
+    const text4 = step === "check" ? `Checking page ${page} of ${pageCount}` : step === "finish" ? "Finishing the read" : `Page ${page} of ${pageCount}`;
+    return { text: text4, cancel: true, detail: local ? `${which} · free` : which };
   }
   if (helper === "not-running" || helper === "disabled") {
     return { text: "Local helper: off", tip: "Open Engines (the gear) to set up or start the local helper." };
@@ -61856,7 +61859,8 @@ ${sourceAttrString(source)}` : markdown;
       pages: parsedPageCount(parsed),
       helper: phase === "running" ? "" : helperState,
       credits: phase === "running" ? null : parsed?.stats?.credits,
-      read: phase === "running" ? "" : parsed?.ocr?.mode === "high" ? "high" : ""
+      read: phase === "running" ? "" : parsed?.ocr?.mode === "high" ? "high" : "",
+      step: phase === "running" ? progress.step || "" : ""
     });
     chip.textContent = state.text;
     chip.title = state.tip || "";
@@ -62735,7 +62739,15 @@ ${sourceAttrString(source)}` : markdown;
           onProgress?.({ page: progress.page, pageCount: progress.pageCount, fraction: 0.3 * (progress.page / Math.max(1, progress.pageCount)) });
         },
         onPhase: (info) => {
-          progress = { page: info?.phase === "cells" ? pages.length : info?.phase === "ocr" ? progress.page : 0, pageCount: pages.length, engine: "builtin" };
+          if (info?.phase === "check") {
+            const done2 = Number(info.done) || 0;
+            progress = { page: done2, pageCount: pages.length, engine: "builtin", step: "check" };
+            paintChip();
+            onProgress?.({ page: done2, pageCount: pages.length, fraction: 0.3 + 0.55 * (done2 / Math.max(1, pages.length)) });
+            return;
+          }
+          const step = info?.phase === "ocr" ? "" : "finish";
+          progress = { page: info?.phase === "cells" ? pages.length : info?.phase === "ocr" ? progress.page : 0, pageCount: pages.length, engine: "builtin", step };
           paintChip();
           onProgress?.({ page: progress.page, pageCount: pages.length, fraction: info?.phase === "cells" ? 0.9 : 0.3 });
         }
@@ -67479,7 +67491,7 @@ function createReadPane({
       ocrAlt: () => {
         if (!deviceReady() || typeof deviceOcr?.read !== "function") return null;
         return {
-          ocr: (req) => deviceOcr.read({ pages: req?.pages, url: pdfUrl(), getPdf, signal: req?.signal }),
+          ocr: (req) => deviceOcr.read({ pages: req?.pages, url: pdfUrl(), getPdf, signal: req?.signal, onProgress: req?.onProgress }),
           lexicon: typeof deviceOcr.lexicon === "function" ? (req) => deviceOcr.lexicon({ signal: req?.signal }) : null
         };
       },

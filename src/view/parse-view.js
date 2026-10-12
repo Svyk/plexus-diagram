@@ -120,7 +120,7 @@ function cloudLabel(provider) {
   return provider === "mistral" ? "Mistral OCR" : "LlamaParse";
 }
 
-export function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, pages = 0, helper = "", credits = null, read = "" } = {}) {
+export function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = null, page = 0, pageCount = 0, pages = 0, helper = "", credits = null, read = "", step = "" } = {}) {
   if (phase !== "running" && engine === "anydoc") {
     if (ms != null) return { text: `Alternative read · ${formatSeconds(ms)}` };
     return { text: "Alternative read" };
@@ -128,7 +128,9 @@ export function engineChip({ phase = "idle", engine = "builtin", provider = "", 
   if (phase === "running") {
     const which = engine === "docling" ? "Docling" : engine === "anydoc" ? "Alternative read" : engine === "cloud" ? cloudLabel(provider) : "built-in";
     const local = engine !== "cloud";
-    return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: local ? `${which} · free` : which };
+    // A scan read after its OCR batches: the in-browser check of each page, then the line and cell rereads.
+    const text = step === "check" ? `Checking page ${page} of ${pageCount}` : step === "finish" ? "Finishing the read" : `Page ${page} of ${pageCount}`;
+    return { text, cancel: true, detail: local ? `${which} · free` : which };
   }
   if (helper === "not-running" || helper === "disabled") {
     return { text: "Local helper: off", tip: "Open Engines (the gear) to set up or start the local helper." };
@@ -1038,6 +1040,7 @@ export function createParseView({
       helper: phase === "running" ? "" : helperState,
       credits: phase === "running" ? null : parsed?.stats?.credits,
       read: phase === "running" ? "" : (parsed?.ocr?.mode === "high" ? "high" : ""),
+      step: phase === "running" ? progress.step || "" : "",
     });
     chip.textContent = state.text;
     chip.title = state.tip || "";
@@ -1845,7 +1848,15 @@ export function createParseView({
           onProgress?.({ page: progress.page, pageCount: progress.pageCount, fraction: 0.3 * (progress.page / Math.max(1, progress.pageCount)) });
         },
         onPhase: (info) => {
-          progress = { page: info?.phase === "cells" ? pages.length : (info?.phase === "ocr" ? progress.page : 0), pageCount: pages.length, engine: "builtin" };
+          if (info?.phase === "check") {
+            const done = Number(info.done) || 0;
+            progress = { page: done, pageCount: pages.length, engine: "builtin", step: "check" };
+            paintChip();
+            onProgress?.({ page: done, pageCount: pages.length, fraction: 0.3 + 0.55 * (done / Math.max(1, pages.length)) });
+            return;
+          }
+          const step = info?.phase === "ocr" ? "" : "finish";
+          progress = { page: info?.phase === "cells" ? pages.length : (info?.phase === "ocr" ? progress.page : 0), pageCount: pages.length, engine: "builtin", step };
           paintChip();
           onProgress?.({ page: progress.page, pageCount: pages.length, fraction: info?.phase === "cells" ? 0.9 : 0.3 });
         },

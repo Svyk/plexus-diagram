@@ -5,7 +5,7 @@ import test from "node:test";
 import { parsePageGeometry } from "../src/model/parse/index.js";
 import { createDeviceOcr } from "../src/host/device-ocr.js";
 import { createParseStore } from "../src/host/parse-store.js";
-import { createParseView } from "../src/view/parse-view.js";
+import { createParseView, engineChip } from "../src/view/parse-view.js";
 import { readScan } from "../src/view/parse-engine.js";
 import { engineRows, renderEnginesPanel } from "../src/view/engines-panel.js";
 import { tipEntry } from "../src/view/tooltip-text.js";
@@ -245,6 +245,19 @@ test("readScan names its pages even when the caller does not, and reports per ba
   await readScan({ helper, bytes: new Uint8Array([1]), sha256: "s", base, records: [1, 2, 3].map(scanGeometry), numPages: 3, lines: false, onProgress: (p) => seen.push(p) });
   assert.deepEqual(calls[0].pages, [1, 2, 3]);
   assert.deepEqual(seen, [{ done: 3, total: 3 }]);
+});
+
+test("the in-browser check after the helper's OCR reports its pages, and the chip names each step", async () => {
+  const base = { pageCount: 4, pages: [1, 2, 3, 4].map((n) => ({ n, kind: "scan", w: 300, h: 120 })), order: [], blocks: {}, removed: [], stats: {}, options: {} };
+  const helper = { async ocr(req) { return { pages: (req.pages || []).map(ocrPage) }; } };
+  const alt = { async ocr(req) { for (let i = 1; i <= 4; i += 1) req.onProgress?.(i / 4); return { pages: req.pages.map(ocrPage) }; } };
+  const phases = [];
+  await readScan({ helper, alt, bytes: new Uint8Array([1]), sha256: "s", base, records: [1, 2, 3, 4].map(scanGeometry), numPages: 4, lines: false, onPhase: (p) => phases.push(p) });
+  const checks = phases.filter((p) => p.phase === "check").map((p) => p.done);
+  assert.deepEqual(checks, [0, 1, 2, 3, 4]);
+  assert.equal(engineChip({ phase: "running", page: 2, pageCount: 4, step: "check" }).text, "Checking page 2 of 4");
+  assert.equal(engineChip({ phase: "running", page: 4, pageCount: 4, step: "finish" }).text, "Finishing the read");
+  assert.equal(engineChip({ phase: "running", page: 1, pageCount: 4 }).text, "Page 1 of 4");
 });
 
 test("in-browser reading with no page list reads the whole document, not page 1", async () => {

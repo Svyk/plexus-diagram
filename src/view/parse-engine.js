@@ -161,8 +161,11 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
     try { words = typeof lexicon === "function" ? await lexicon({ signal }) : lexicon; } catch { words = null; }
     throwIfAborted();
     let otherPages = [];
+    // The second, in-browser reading can take longer than the helper's: it reports its own pages.
+    const checked = (f) => onPhase?.({ phase: "check", done: Math.round(Math.max(0, Math.min(1, Number(f) || 0)) * wanted.length), total: wanted.length });
+    checked(0);
     try {
-      const other = await alt.ocr({ pages: wanted, bytes, sha256, signal });
+      const other = await alt.ocr({ pages: wanted, bytes, sha256, signal, onProgress: checked });
       otherPages = other?.pages || [];
     } catch (error) {
       if (error?.name === "AbortError") throw error;

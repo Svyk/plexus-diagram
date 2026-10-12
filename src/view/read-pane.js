@@ -2383,7 +2383,7 @@ export function createReadPane({
       ocrAlt: () => {
         if (!deviceReady() || typeof deviceOcr?.read !== "function") return null;
         return {
-          ocr: (req) => deviceOcr.read({ pages: req?.pages, url: pdfUrl(), getPdf, signal: req?.signal }),
+          ocr: (req) => deviceOcr.read({ pages: req?.pages, url: pdfUrl(), getPdf, signal: req?.signal, onProgress: req?.onProgress }),
           lexicon: typeof deviceOcr.lexicon === "function" ? (req) => deviceOcr.lexicon({ signal: req?.signal }) : null,
         };
       },

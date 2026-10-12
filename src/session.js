@@ -91,6 +91,8 @@ const LINK_MODES = ["off", "attributes", "all"];
 const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 const MAX_PARENT_STRINGS = 200;
+// Link-query targets per idle slice on a big board.
+const LINK_CHUNK = 120;
 const DAILY_GAP = 20;
 const HIGHLIGHT_WATCH_CAP = 60;
 
@@ -1378,8 +1380,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     if (changed || force) emit("links", { links: visibleLinks, coveredEdges: covered });
   }
 
-  function computeLinks() {
-    if (!board) return;
+  // Card eids by item, the board eid, and the distinct ref eids, or null when there is nothing to link.
+  function linkInputs() {
+    if (!board) return null;
     // One lookup per distinct ref. Two cards that share a page do not ask twice.
     const resolved = new Map();
     const resolveOnce = (ref) => {
@@ -1401,8 +1404,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       eidToItems.get(eid).push(item.uid);
     }
     const eids = [...eidToItems.keys()];
-    if (!eids.length || boardEid == null) { allLinks = []; return; }
-    const rows = host.q(linksQuery(), boardEid, eids, eids) || [];
+    if (!eids.length || boardEid == null) return null;
+    return { boardEid, eidToItems, eids };
+  }
+  function linkRows(inputs, targets) {
+    return host.q(linksQuery(), inputs.boardEid, inputs.eids, targets) || [];
+  }
+  function finishLinkRows(inputs, rows) {
     const parentStrings = new Map();
     let budget = MAX_PARENT_STRINGS;
     for (const row of rows) {
@@ -1415,9 +1423,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         if (ps != null) parentStrings.set(su, ps);
       }
     }
-    allLinks = reduceLinks(rows, { eidToItems, parentStrings });
+    allLinks = reduceLinks(rows, { eidToItems: inputs.eidToItems, parentStrings });
   }
-
   let linkTimer = null;
   let linkIdleId = null;
   let linkEpoch = 0;
@@ -1433,7 +1440,35 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     linkTimer = null;
     linkIdleId = null;
     if (!destroyed) {
-      try { computeLinks(); recomputeLinks(false); } catch (err) { console.error("[plexus session] links", err); }
+      let inputs = null;
+      try { inputs = linkInputs(); } catch (err) { console.error("[plexus session] links", err); }
+      const ric = globalThis.requestIdleCallback;
+      // A big board (PhD main board: ~1,000 card eids, one 1.7 s query) reads its link rows LINK_CHUNK targets
+      // per idle slice; the links publish once, after the last slice.
+      if (inputs && inputs.eids.length > LINK_CHUNK && typeof ric === "function" && !idle) {
+        const epoch = linkEpoch;
+        const rows = [];
+        let i = 0;
+        const step = () => {
+          linkIdleId = null;
+          if (destroyed || epoch !== linkEpoch) { finishLinks(); return; }
+          try {
+            rows.push(...linkRows(inputs, inputs.eids.slice(i, i + LINK_CHUNK)));
+            i += LINK_CHUNK;
+            if (i < inputs.eids.length) { linkIdleId = ric(step, { timeout: 1000 }); return; }
+            finishLinkRows(inputs, rows);
+            recomputeLinks(false);
+          } catch (err) { console.error("[plexus session] links", err); }
+          finishLinks();
+        };
+        step();
+        return;
+      }
+      try {
+        if (inputs) finishLinkRows(inputs, linkRows(inputs, inputs.eids));
+        else allLinks = [];
+        recomputeLinks(false);
+      } catch (err) { console.error("[plexus session] links", err); }
     }
     finishLinks();
   }

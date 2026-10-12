@@ -577,6 +577,8 @@ export function createParseView({
   }
 
   let currentUrl = url || "";
+  // Bumped when the view moves to another PDF: a read or restore that started before the move never lands.
+  let targetGen = 0;
   let currentUid = pdfUid || "";
   let parsed = null;
   let records = [];
@@ -1629,10 +1631,10 @@ export function createParseView({
     return [1, total];
   }
 
-  async function finishDoc(docResult, ms) {
-    if (dead) return;
+  async function finishDoc(docResult, ms, gen = targetGen) {
+    if (dead || gen !== targetGen) return;
     const optsHash = await optionsHash(docResult.options || BUILTIN_OPTIONS);
-    if (dead) return;
+    if (dead || gen !== targetGen) return;
     const total = Number(parsed?.pageCount) || Number(progress.pageCount) || 0;
     parsed = { ...docResult, optsHash, stats: { ...(docResult.stats || {}), ms } };
     phase = "idle";
@@ -1667,6 +1669,7 @@ export function createParseView({
   async function readAlternative() {
     if (dead || phase === "running") return;
     const previous = parsed;
+    const gen = targetGen;
     phase = "running";
     progress = { page: 0, pageCount: progress.pageCount || 0, engine: "anydoc" };
     paintChip();
@@ -1693,7 +1696,7 @@ export function createParseView({
         sha256: sha,
         createdAt: new Date(now()).toISOString(),
       });
-      await finishDoc(docResult, typeof converted.ms === "number" ? converted.ms : now() - t0);
+      await finishDoc(docResult, typeof converted.ms === "number" ? converted.ms : now() - t0, gen);
     } catch (err) {
       if (dead) return;
       phase = "idle";
@@ -1707,6 +1710,7 @@ export function createParseView({
 
   async function parseBuiltin(explicit) {
     cancel();
+    const gen = targetGen;
     failure = "";
     const ctrl = new AbortController();
     abort = ctrl;
@@ -1773,7 +1777,7 @@ export function createParseView({
       from,
       to,
     });
-    await finishDoc(finalDoc, now() - t0);
+    await finishDoc(finalDoc, now() - t0, gen);
     // Engine "auto" with a ready helper reads scanned pages without a click.
     if (autoScan && scanPagesOf(finalDoc).length) {
       await refreshHelper();
@@ -1815,6 +1819,7 @@ export function createParseView({
     if (!pages.length) pages = (parsed.pages || []).filter((p) => p.ocr && (p.kind === "scan" || p.scanLayer)).map((p) => p.n);
     if (!pages.length) { try { onToast?.("Every page already has its own text."); } catch { /* host */ } return; }
     cancel();
+    const gen = targetGen;
     const ctrl = new AbortController();
     abort = ctrl;
     phase = "running";
@@ -1874,7 +1879,7 @@ export function createParseView({
       }
       const read = (result?.records || []).filter((rec) => rec?.ocr && (result.pages || pages).includes(rec.n));
       if (read.length) { try { onOcrPages?.(read, parsed.sha256); } catch { /* host */ } }
-      await finishDoc(result.doc, (parsed.ocr ? 0 : (parsed.stats?.ms || 0)) + (now() - t0));
+      await finishDoc(result.doc, (parsed.ocr ? 0 : (parsed.stats?.ms || 0)) + (now() - t0), gen);
     } catch (error) {
       if (error?.name !== "AbortError") { try { onToast?.(`Read the scan failed: ${error?.message || error}`); } catch { /* host */ } }
       phase = "idle";
@@ -1893,6 +1898,7 @@ export function createParseView({
     const pages = scanPagesOf(parsed).filter((n) => incoming.some((p) => Number(p.n) === n));
     if (!pages.length) return false;
     const base = parsed;
+    const gen = targetGen;
     try {
       const pdf = typeof getPdf === "function" ? await getPdf() : null;
       if (dead || parsed !== base) return false;
@@ -1927,7 +1933,7 @@ export function createParseView({
           merged.doc.ocr = { ...(merged.doc.ocr || {}), rereads: rereads.reduce((n, r) => n + r.applied.length, 0) };
         } catch { /* keep the merged read */ }
       }
-      await finishDoc(merged.doc, (base.stats?.ms || 0) + (now() - t0));
+      await finishDoc(merged.doc, (base.stats?.ms || 0) + (now() - t0), gen);
       return true;
     } catch {
       return false;
@@ -1941,6 +1947,7 @@ export function createParseView({
       return null;
     }
     cancel();
+    const gen = targetGen;
     const ctrl = new AbortController();
     abort = ctrl;
     phase = "running";
@@ -1969,6 +1976,8 @@ export function createParseView({
         },
       });
     } catch (error) {
+      // Cancelled, or replaced by a newer run: that run owns the phase and the chip now.
+      if (abort !== ctrl) return null;
       phase = "idle";
       if (error?.name === "AbortError") { paintChip(); return null; }
       failure = error?.reason === "empty-pdf" ? "Couldn't read this PDF file \u2014 it downloaded empty."
@@ -1980,10 +1989,11 @@ export function createParseView({
       render();
       return false;
     }
+    if (abort !== ctrl) return null;
     jobId = result?.job || jobId;
     // The doc keeps its own read time even when the helper hands back one it already had: a changed time
     // would change the kept read's hash and upload the same read to the graph again.
-    if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? now() - t0);
+    if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? now() - t0, gen);
     else phase = "idle";
     paintChip();
     return Boolean(result?.doc);
@@ -2084,6 +2094,7 @@ export function createParseView({
     if (dead || !answer?.ok) return;
     const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
     cancel();
+    const gen = targetGen;
     const ctrl = new AbortController();
     abort = ctrl;
     phase = "running";
@@ -2118,7 +2129,7 @@ export function createParseView({
       const credits = cloudUsageCredits(result.provider);
       if (credits != null) docResult.stats = { ...(docResult.stats || {}), credits };
       if (ctrl.signal.aborted) return;
-      await finishDoc(docResult, now() - started);
+      await finishDoc(docResult, now() - started, gen);
     } catch (error) {
       if (phase === "running") phase = "idle";
       cloudToast(error, "llamaparse");
@@ -2147,6 +2158,7 @@ export function createParseView({
     if (dead || !answer?.ok) return;
     const fetchFn = fetchImpl || doc.defaultView?.fetch?.bind?.(doc.defaultView);
     cancel();
+    const gen = targetGen;
     const ctrl = new AbortController();
     abort = ctrl;
     phase = "running";
@@ -2169,7 +2181,7 @@ export function createParseView({
       const local = await localParseForCloud(store, sha, parsed?.engine === "cloud" ? null : parsed);
       const docResult = withKeptTitle(mistralToParse(result.provider, { sha256: sha }), local);
       if (ctrl.signal.aborted) return;
-      await finishDoc(docResult, now() - started);
+      await finishDoc(docResult, now() - started, gen);
     } catch (error) {
       if (phase === "running") phase = "idle";
       cloudToast(error, "mistral");
@@ -2184,6 +2196,7 @@ export function createParseView({
       render();
       return;
     }
+    const gen = targetGen;
     const pdf = typeof getPdf === "function" ? await getPdf() : null;
     const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
     const result = await helper.reparseTable({
@@ -2194,9 +2207,9 @@ export function createParseView({
       base: parsed,
     });
     if (result?.job) jobId = result.job;
-    if (result?.merged) {
+    if (result?.merged && gen === targetGen) {
       parsed = result.merged;
-      await finishDoc(parsed, parsed.stats?.ms ?? 0);
+      await finishDoc(parsed, parsed.stats?.ms ?? 0, gen);
     }
   }
 
@@ -2516,6 +2529,7 @@ export function createParseView({
 
   async function restore() {
     if (!store || !currentUrl) return null;
+    const gen = targetGen;
     // The OCR-merged parse supersedes the scan-only one saved before the read.
     let found = await restorableByUrl(store, currentUrl, { plainOptions: BUILTIN_OPTIONS });
     if (!found && keep && typeof keep.restoreRead === "function") {
@@ -2529,7 +2543,7 @@ export function createParseView({
         },
       });
     }
-    if (!found) return null;
+    if (!found || gen !== targetGen) return null;
     parsed = found;
     rememberParsedUrl(storage, currentUrl);
     try { onCached?.(currentUrl); } catch { /* host */ }
@@ -2560,8 +2574,17 @@ export function createParseView({
     readScan: readScanNow,
     applyOcr,
     setTarget(next) {
-      currentUrl = next?.url || "";
+      const nextUrl = next?.url || "";
       currentUid = next?.pdfUid || "";
+      if (nextUrl === currentUrl) return;
+      // Another PDF (the pane switched in Read + Outline): the old read stops and its outline goes.
+      targetGen += 1;
+      if (phase === "running") cancel();
+      currentUrl = nextUrl;
+      parsed = null;
+      records = [];
+      failure = "";
+      render();
     },
     restore,
     parseBuiltin,

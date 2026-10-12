@@ -359,3 +359,85 @@ test("parseDocling shows an empty-pdf or rejected-job failure in the pane instea
     assert.match(view.element().textContent, text);
   }
 });
+
+// WO M hunt, P1 / P2 (~/wo/pxd-r6/hunt-matrix.md).
+test("P1: a parse view moved to another PDF drops the old outline, and a read of the old PDF never lands on the new one", async () => {
+  const stub = createDomStub();
+  const restoreDom = stub.install();
+  try {
+    const doc = stub.document;
+    const sha = await sha256Hex(PDF);
+    const graph = makeGraph();
+    const a = makeDevice(graph);
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const view = createParseView({
+      doc, store: a.store, keep: a.keeper, pdfBlockUid: "blk", url: "https://x/a.pdf",
+      getPdf: async () => ({ getData: async () => PDF }),
+      helper: {
+        async health() { return { state: "ready", ocr: true, docling: true, engines: ["docling", "ocr"], version: "0.1.0" }; },
+        // A helper whose answer arrives although the browser stopped waiting.
+        async parse() { await gate; return { doc: doclingRead(sha), job: "j1" }; },
+      },
+    });
+    doc.body.append(view.element());
+    await view.refreshHelper();
+    view.showDoc(builtinPlain(sha));
+    const run = view.parseDocling();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(view.isBusy(), true);
+    view.setTarget({ url: "https://x/b.pdf", pdfUid: "cardB" });
+    assert.equal(view.hasParse(), false, "B does not show A's outline");
+    assert.equal(view.isBusy(), false, "A's read is cancelled");
+    release();
+    await run;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(await a.store.findByUrl("https://x/b.pdf"), null, "B's url is not indexed to A's parse");
+    assert.equal(graph.props.get("blk")[READS_KEY], undefined, "A's read is not kept under B's block");
+    assert.equal(view.hasParse(), false);
+    // Same url again: nothing is dropped.
+    view.showDoc(builtinPlain(sha));
+    view.setTarget({ url: "https://x/b.pdf", pdfUid: "cardB" });
+    assert.equal(view.hasParse(), true);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("P2: a Docling run replaced by a newer run leaves the newer run's phase alone", async () => {
+  const stub = createDomStub();
+  const restoreDom = stub.install();
+  try {
+    const doc = stub.document;
+    const sha = await sha256Hex(PDF);
+    const dev = makeDevice(makeGraph());
+    const gates = [];
+    const view = createParseView({
+      doc, store: dev.store, keep: dev.keeper, pdfBlockUid: "blk", url: "https://x/y.pdf",
+      getPdf: async () => ({ getData: async () => PDF }),
+      helper: {
+        async health() { return { state: "ready", ocr: true, docling: true, engines: ["docling", "ocr"], version: "0.1.0" }; },
+        parse({ signal }) {
+          return new Promise((resolve, reject) => {
+            gates.push(() => resolve({ doc: doclingRead(sha), job: "j" }));
+            signal?.addEventListener?.("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+          });
+        },
+      },
+    });
+    doc.body.append(view.element());
+    await view.refreshHelper();
+    view.showDoc(builtinPlain(sha));
+    const first = view.parseDocling();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = view.parseDocling();
+    assert.equal(await first, null);
+    assert.equal(view.isBusy(), true, "the second run is still running");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    gates.at(-1)();
+    assert.equal(await second, true);
+    assert.equal(view.isBusy(), false);
+  } finally {
+    restoreDom();
+  }
+});

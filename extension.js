@@ -13043,6 +13043,7 @@ function doubtfulOcrPages(pages, lexicon = null) {
     const items = page.items || [];
     if (items.filter((it) => Number.isFinite(it?.conf) && it.conf < 0.5).length >= DOUBT_MIN_WORDS) return true;
     return items.some((it) => {
+      if (!(Number.isFinite(it?.conf) && it.conf < 1)) return false;
       const core = wordCore(it?.str || it?.text || "").toLowerCase();
       return core.length >= 4 && /^[a-z]+$/.test(core) && !words.has(core);
     });
@@ -62710,8 +62711,15 @@ ${sourceAttrString(source)}` : markdown;
   async function readScanNow() {
     const engine = ocrEngine();
     if (!parsed || !engine || engine !== ocrSource && !helperOcr) return;
-    const pages = scanPagesOf(parsed);
-    if (!pages.length) return;
+    let pages = scanPagesOf(parsed);
+    if (!pages.length) pages = (parsed.pages || []).filter((p) => p.ocr && (p.kind === "scan" || p.scanLayer)).map((p) => p.n);
+    if (!pages.length) {
+      try {
+        onToast?.("Every page already has its own text.");
+      } catch {
+      }
+      return;
+    }
     cancel();
     const ctrl = new AbortController();
     abort = ctrl;

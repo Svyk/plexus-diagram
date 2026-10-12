@@ -128,7 +128,7 @@ test("readScan votes the alt reading and does not send cell re-reads to it", asy
   const scanRec = parsePageGeometry({ items: [], ops: { fnArray: [], argsArray: [] }, w: 612, h: 792, rotation: 0, fonts: {} }, 1);
   scanRec.kind = "scan";
   const base = assembleDocument([scanRec], { numPages: 1, from: 1, to: 1 });
-  const page = { n: 1, w: 612, h: 792, rules: [], items: [word("the", 70), word("prossure", 120), word("rose", 230)] };
+  const page = { n: 1, w: 612, h: 792, rules: [], items: [word("the", 70), { ...word("prossure", 120), conf: 0.95 }, word("rose", 230)] };
   const log = [];
   const helper = {
     async ocr({ cells }) {

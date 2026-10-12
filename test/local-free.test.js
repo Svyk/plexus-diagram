@@ -315,7 +315,8 @@ test("Read the scan: the in-browser second reading runs only on pages with doubt
   const doubt = { n: 2, items: [...Array.from({ length: 30 }, (_, i) => word(W[i % W.length], 0.99)), word("1O25", 0.3), word("CAM", 0.4), word("PBW", 0.2)] };
   const lexicon = new Set(W);
   assert.deepEqual(doubtfulOcrPages([sure, doubt], lexicon), [2]);
-  assert.deepEqual(doubtfulOcrPages([sure, { n: 3, items: [word("prossure", 1)] }], lexicon), [3], "a confident word the lexicon does not know");
+  assert.deepEqual(doubtfulOcrPages([sure, { n: 3, items: [word("prossure", 0.95)] }], lexicon), [3], "an unknown word the recogniser was not fully sure of");
+  assert.deepEqual(doubtfulOcrPages([{ n: 4, items: [word("blendhouse", 1), word("blend", 1)] }], lexicon), [], "an unknown name read at full confidence is not doubt");
   assert.deepEqual(doubtfulOcrPages([sure, doubt]), [1, 2], "no lexicon: every page, as before");
   const voted = voteOcrBodies([sure, doubt], [], null);
   assert.equal(voted[0], sure, "a page with no second reading is returned as read");

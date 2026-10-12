@@ -1808,8 +1808,10 @@ export function createParseView({
   async function readScanNow() {
     const engine = ocrEngine();
     if (!parsed || !engine || (engine !== ocrSource && !helperOcr)) return;
-    const pages = scanPagesOf(parsed);
-    if (!pages.length) return;
+    let pages = scanPagesOf(parsed);
+    // A re-run after a finished read: read the scanned pages again (their OCR text is replaced).
+    if (!pages.length) pages = (parsed.pages || []).filter((p) => p.ocr && (p.kind === "scan" || p.scanLayer)).map((p) => p.n);
+    if (!pages.length) { try { onToast?.("Every page already has its own text."); } catch { /* host */ } return; }
     cancel();
     const ctrl = new AbortController();
     abort = ctrl;

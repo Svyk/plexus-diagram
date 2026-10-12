@@ -465,8 +465,10 @@ export function doubtfulOcrPages(pages, lexicon = null) {
       if (!words) return true;
       const items = page.items || [];
       if (items.filter((it) => Number.isFinite(it?.conf) && it.conf < 0.5).length >= DOUBT_MIN_WORDS) return true;
-      // A confident misread ("prossure") is a word the lexicon does not know.
+      // A misread ("prossure") is a word the lexicon does not know that the recogniser was not fully sure of.
+      // Codes and names on forms are unknown words read at full confidence: they do not make a page doubtful.
       return items.some((it) => {
+        if (!(Number.isFinite(it?.conf) && it.conf < 1)) return false;
         const core = wordCore(it?.str || it?.text || "").toLowerCase();
         return core.length >= 4 && /^[a-z]+$/.test(core) && !words.has(core);
       });

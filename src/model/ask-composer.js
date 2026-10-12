@@ -182,8 +182,8 @@ export const MAX_SUGGESTIONS = 20;
 
 // ------------------------------------------------------------------ triggers
 
-// What the text before the caret is asking for: a / command (the composer starts with "/"), a [[page]], a #tag or a
-// ((block)). Returns { kind: "command" | "page" | "tag" | "block", query, start } or null; start is the trigger's index.
+// What the text before the caret is asking for: a / command (the composer starts with "/"), a [[page]], a #tag, a
+// ((block)) or an @ part. Returns { kind: "command" | "page" | "tag" | "block" | "at", query, start } or null; start is the trigger's index.
 export function triggerAt(text, caret) {
   const src = String(text ?? "");
   const at = Number.isInteger(caret) ? Math.max(0, Math.min(caret, src.length)) : src.length;
@@ -203,6 +203,8 @@ export function triggerAt(text, caret) {
   if (blk) return { kind: "block", query: blk.q, start: blk.i };
   const tag = /(^|[\s(])#([^\s#[\]()]{0,60})$/.exec(before);
   if (tag) return { kind: "tag", query: tag[2], start: before.length - tag[2].length - 1 };
+  const mention = /(^|[\s(])@([^\s@]{0,40}(?: \d{1,3})?)$/.exec(before);
+  if (mention) return { kind: "at", query: mention[2], start: before.length - mention[2].length - 1 };
   return null;
 }
 

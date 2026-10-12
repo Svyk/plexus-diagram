@@ -211,6 +211,11 @@ export function createSuggest(doc, host) {
       if (entry.group && entry.group !== lastGroup) { make(doc, "div", "pxd-ask__sgroup", el, entry.group); lastGroup = entry.group; }
       const r = make(doc, "div", "pxd-ask__sitem", el);
       r.setAttribute("role", "option");
+      if (entry.thumb) {
+        const img = make(doc, "img", "pxd-ask__sthumb", r);
+        img.setAttribute("src", entry.thumb);
+        img.setAttribute("alt", "");
+      }
       make(doc, "span", "pxd-ask__slabel", r, entry.label);
       if (entry.detail) make(doc, "span", "pxd-ask__sdetail", r, entry.detail);
       r._entry = entry;

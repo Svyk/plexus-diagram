@@ -752,7 +752,7 @@ export const MULTI_QUICK_PROMPTS = Object.freeze([
 export const IMAGE_QUESTION_PREFIX_MULTI = "Look at the images of the figure parts. ";
 export const promptWithImages = (question, any) => (any ? `${IMAGE_QUESTION_PREFIX_MULTI}${String(question ?? "")}` : String(question ?? ""));
 
-// parts: [{ doc, blockId?, blockIds?, selection?, page?, wholeDoc?, label?, imageUrl?, caption? }] -> the same fields as
+// parts: [{ doc, blockId?, blockIds?, selection?, page?, wholeDoc?, label?, docName?, imageUrl?, caption? }] -> the same fields as
 // buildFocusContext: { context, instructions, prompt, tokensEstimate, labels }. The budget is split evenly; nearby text goes
 // first when the whole is too long, then each part's own text is trimmed to its share.
 export function buildMultiContext(parts, question = "", opts = {}) {
@@ -786,7 +786,7 @@ export function buildMultiContext(parts, question = "", opts = {}) {
       const pc = built.pieces;
       const label = p.label || chipText(built.chip) || `Part ${i + 1}`;
       const lines = [`=== Part ${i + 1} — ${label} ===`];
-      if (pc.docTitle) lines.push(`Document: ${pc.docTitle}`);
+      if (p.docName || pc.docTitle) lines.push(`Document: ${p.docName || pc.docTitle}`);
       if (pc.section && !/^\(before/.test(pc.section)) lines.push(`Section: ${pc.section}`);
       lines.push(pc.focus);
       if (pc.nearby) lines.push(`Nearby text:\n${pc.nearby}`);

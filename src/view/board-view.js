@@ -2047,6 +2047,7 @@ function buildBoardView(onFail, {
       ...(page != null ? { page } : {}),
       ...(wholeDoc ? { wholeDoc: true } : {}),
       document: doc,
+      pdfName: () => askPdfName(pdfUid, url),
       jumpPage: (n) => { if (pdfUid) void itemsR?.openPdfAt?.(pdfUid, n); },
       toast: (message) => toast(message),
       addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfBlockOfCard(pdfUid), ...answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) }),
@@ -2267,11 +2268,16 @@ function buildBoardView(onFail, {
     if (disposed) return;
     if (Array.isArray(made) && made.length) { ctl.select(made); toast(failed ? `Added ${made.length} of ${files.length} PDFs` : `Added ${made.length} ${made.length === 1 ? "PDF" : "PDFs"}`, true); }
   };
+  // The PDF's real name for the Ask AI chips and the context (the same name the Add panel row shows).
+  const askPdfName = (pdfUid, url) => {
+    try { return pdfNameOf({ uid: pdfUid || "", url: url || "" }).title || ""; } catch { return ""; }
+  };
   const openBasketAsk = () => openAskAI({
     multi: {
       basket: askBasket,
       jump: (part, n) => { if (part?.kind !== "image" && part?.pdfUid) void itemsR?.openPdfAt?.(part.pdfUid, n || 1); },
     },
+    pdfName: (part) => (part?.url || part?.pdfUid ? askPdfName(part.pdfUid, part.url) : ""),
     document: doc,
     toast: (message) => toast(message),
     addCard: ({ markdown, parts }) => parseActions().insertAnswerCard({

@@ -235,6 +235,33 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+/* The number is what @Part N refers to: bold, and larger on hover. */
+.pxd-ask__partno {
+  font-weight: 700;
+  font-size: 12px;
+  transition: font-size 80ms ease-out;
+}
+
+.pxd-ask__partchip:hover .pxd-ask__partno,
+.pxd-ask__partlabel:focus-visible .pxd-ask__partno {
+  font-size: 15px;
+}
+
+.pxd-ask__partchip--flash {
+  background: var(--pxd-ask-accent-soft);
+  border-color: var(--pxd-ask-accent);
+}
+
+.pxd-ask__sthumb {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--pxd-ask-line);
 }
 
 .pxd-ask .pxd-ask__partx {

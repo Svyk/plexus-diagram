@@ -18,6 +18,8 @@ import { minimapSvg } from "./minimap-svg.js";
 
 export { CARD_MIME, parseDropPayload };
 const DEBOUNCE_MS = 150;
+const UNDER_PAUSE_MS = 200;
+const BROWSE_SORTS = new Set(["edited", "created", "oldest", "title"]);
 const LIMIT = 40;
 // Semantic search waits for a pause in typing; keyword results never wait for it.
 export const SEMANTIC_PAUSE_MS = 300;
@@ -289,8 +291,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     thisBoard: thisBoardBox.checked,
   });
   const paintMore = () => {
-    const n = [createdBySel.value, editedBySel.value, underInput.value.trim(), dayModeSel.value === "created", refsBox.checked, childrenBox.checked, parsedBox.checked, highlightsBox.checked, thisBoardBox.checked].filter(Boolean).length + (orphanBox.checked ? 1 : 0);
-    moreBtn.textContent = n ? `More · ${n}` : "More";
+    const n = [createdBySel.value, editedBySel.value, underInput.value.trim(), dayModeSel.value === "created" && Number(daysInput.value) > 0, refsBox.checked, childrenBox.checked, parsedBox.checked, highlightsBox.checked, thisBoardBox.checked].filter(Boolean).length + (orphanBox.checked ? 1 : 0);
+    const label = n ? `More · ${n}` : "More";
+    if (moreBtn.textContent !== label) moreBtn.textContent = label;
     moreBtn.classList.toggle("pxd-panel__more-btn--on", n > 0);
   };
   const setPopsOpen = (which) => {
@@ -778,6 +781,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
 
   const runSearch = async ({ quiet = false } = {}) => {
     const filter = readFilter();
+    paintMore();
     const id = queryId += 1;
     const started = Date.now();
     semTimer?.();
@@ -786,7 +790,8 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (like) { await runSimilar(id); return; }
     if (related) { await runRelated(id); return; }
     if (checked.size === 0) { results.replaceChildren(); el("div", "pxd-panel__empty", results, "No card types selected"); return; }
-    if (!libraryFilterActive(filter) && !metaFilterActive(filter) && sort !== DEFAULT_SORT && typeof host?.browse === "function") {
+    // Browse lists pages by time or title only; "Most linked" and the like would need every page's numbers.
+    if (!libraryFilterActive(filter) && !metaFilterActive(filter) && BROWSE_SORTS.has(sort) && typeof host?.browse === "function") {
       let found = null;
       try { found = await Promise.resolve(host.browse(sort, LIMIT)); } catch { found = null; }
       if (id !== queryId) return;
@@ -942,15 +947,24 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   });
   morePop.append(orphanLabel);
   listen(morePop, "change", () => { paintMore(); searchNow(); });
+  // Page titles for the Under page box: one title search after a pause in typing, not one per key (each scans every title).
+  let underTimer = null;
+  let underAsked = "";
   const underKey = (event) => {
     if (event.target !== underInput) return;
     const q = underInput.value.trim();
-    underList.replaceChildren();
-    if (q.length >= 2) {
+    if (q === underAsked) return;
+    underAsked = q;
+    underTimer?.();
+    underTimer = null;
+    if (q.length < 2) { underList.replaceChildren(); return; }
+    underTimer = timers.later(() => {
+      underTimer = null;
       let found = [];
       try { found = host?.searchPages?.(q, 12) || []; } catch { found = []; }
+      underList.replaceChildren();
       for (const p of found) { const o = el("option", "", underList); o.value = p.title; o.setAttribute("value", p.title); }
-    }
+    }, UNDER_PAUSE_MS);
   };
   listen(input, "keydown", (event) => {
     event.stopPropagation();
@@ -1618,6 +1632,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     dispose() {
       debounce?.();
       semTimer?.();
+      underTimer?.();
       queryId += 1;
       journalId += 1;
       unmountInfo();

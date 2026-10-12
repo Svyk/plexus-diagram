@@ -117,9 +117,11 @@ export function normalizeMetaFilter(raw = {}) {
 }
 
 // Filters the host can answer from `meta` (everything but parsed / highlights / thisBoard, which the board answers).
+// "Days box counts: Created" filters only when the days box holds a number.
 export function metaFilterHostActive(raw) {
   const f = normalizeMetaFilter(raw);
-  return Boolean(f.createdBy || f.editedBy || f.refs || f.children || f.under || f.dayMode === "created");
+  const days = Math.floor(Number(raw?.days) || 0) > 0;
+  return Boolean(f.createdBy || f.editedBy || f.refs || f.children || f.under || (f.dayMode === "created" && days));
 }
 export function metaFilterActive(raw) {
   const f = normalizeMetaFilter(raw);
@@ -152,48 +154,47 @@ export function narrowByMeta(rows, raw, { days = 0, now = Date.now() } = {}) {
 
 // ------------------------------------------------------------------ the numbers (host)
 
-// Datalog for rowMeta(uids): one bounded call per attribute group, all over the same uid list (never the graph).
-// Reference: Roam's :create/time, :edit/time, :create/user, :edit/user (each user has :user/display-name),
-// :block/refs (a block or page referenced by another block), :block/children.
-export const META_QUERIES = Object.freeze({
-  times: "[:find ?u ?c ?e :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :create/time 0) ?c] [(get-else $ ?b :edit/time 0) ?e]]",
-  createdBy: "[:find ?u ?n :in $ [?u ...] :where [?b :block/uid ?u] [?b :create/user ?x] [?x :user/display-name ?n]]",
-  editedBy: "[:find ?u ?n :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/user ?x] [?x :user/display-name ?n]]",
-  // Graphs whose user entities carry no :user/display-name (the Readwisenotes graph): the name is the title of the
-  // user's display page.
-  createdByPage: "[:find ?u ?n :in $ [?u ...] :where [?b :block/uid ?u] [?b :create/user ?x] [?x :user/display-page ?d] [?d :node/title ?n]]",
-  editedByPage: "[:find ?u ?n :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/user ?x] [?x :user/display-page ?d] [?d :node/title ?n]]",
-  refs: "[:find ?u (count ?r) :in $ [?u ...] :where [?b :block/uid ?u] [?r :block/refs ?b]]",
-  children: "[:find ?u (count ?c) :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/children ?c]]",
-  lengths: "[:find ?u ?s :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/string ?s]]",
-});
+// The numbers for rowMeta(uids): one pull_many over the uid list (times, string, who, children) and one aggregate count of
+// linked references bound by entity id. Datalog bound by [?u ...] uid costs ~45 ms a call in a large graph whatever the
+// list; the pull and the eid-bound count cost a few ms. Users carry :user/display-name in some graphs; in others (the
+// Readwisenotes graph) the name is the title of the user's display page.
+const USER_PULL = "[:user/display-name {:user/display-page [:node/title]}]";
+export const META_PULL = `[:db/id :block/uid :create/time :edit/time :block/string {:create/user ${USER_PULL}} {:edit/user ${USER_PULL}} {:block/children [:db/id]}]`;
+export const META_REFS = "[:find ?b (count ?r) :in $ [?b ...] :where [?r :block/refs ?b]]";
 export const USER_NAME_QUERIES = Object.freeze([
   "[:find ?n :where [?x :user/display-name ?n]]",
   "[:find ?n :where [?x :user/uid ?i] [?x :user/display-page ?d] [?d :node/title ?n]]",
 ]);
 export const META_CHUNK = 100;
 export const META_TTL_MS = 60000;
+export const META_MAX = 2000;
 
 // A cache of row meta by uid. `read(uids)` → Map(uid → meta) for the uids asked; only the missing or stale ones are read.
-export function createMetaCache(read, { ttl = META_TTL_MS, now = () => Date.now() } = {}) {
+// Holds at most `max` uids (the oldest reads go first).
+export function createMetaCache(read, { ttl = META_TTL_MS, now = () => Date.now(), max = META_MAX } = {}) {
   const cache = new Map();
   return {
     get(uids) {
       const out = new Map();
-      const need = [];
+      const need = new Set();
       const t = now();
       for (const uid of uids || []) {
         const hit = cache.get(uid);
         if (hit && t - hit.at < ttl) out.set(uid, hit.meta);
-        else if (uid && !need.includes(uid)) need.push(uid);
+        else if (uid) need.add(uid);
       }
-      if (need.length) {
+      if (need.size) {
+        const list = [...need];
         let got = null;
-        try { got = read(need); } catch { got = null; }
-        for (const uid of need) {
+        try { got = read(list); } catch { got = null; }
+        for (const uid of list) {
           const meta = got?.get?.(uid) || null;
-          if (meta) { cache.set(uid, { meta, at: t }); out.set(uid, meta); }
+          if (!meta) continue;
+          cache.delete(uid);
+          cache.set(uid, { meta, at: t });
+          out.set(uid, meta);
         }
+        for (const uid of cache.keys()) { if (cache.size <= max) break; cache.delete(uid); }
       }
       return out;
     },
@@ -202,18 +203,43 @@ export function createMetaCache(read, { ttl = META_TTL_MS, now = () => Date.now(
   };
 }
 
-// rows from the META_QUERIES (run by `q`) → Map(uid → meta).
-export function assembleMeta(uids, q) {
+const userName = (u) => {
+  if (!u || typeof u !== "object") return "";
+  const n = u[":user/display-name"] ?? u[":user/display-page"]?.[":node/title"];
+  return typeof n === "string" ? n : "";
+};
+
+// The META_PULL nodes and the META_REFS counts → Map(uid → meta). `pullMany(pattern, eids)` is roamAlphaAPI.data.pull_many
+// (null for a uid that is gone); `q` runs datalog.
+export function assembleMeta(uids, { pullMany, q }) {
   const out = new Map();
-  const run = (name, chunk) => { try { const r = q(META_QUERIES[name], chunk); return Array.isArray(r) ? r : []; } catch { return []; } };
-  for (let i = 0; i < uids.length; i += META_CHUNK) {
-    const chunk = uids.slice(i, i + META_CHUNK);
-    for (const [u, c, e] of run("times", chunk)) out.set(u, { created: num(c) || null, edited: num(e) || null, createdBy: "", editedBy: "", refs: 0, children: 0, length: null });
-    for (const name of ["createdByPage", "createdBy"]) for (const [u, n] of run(name, chunk)) if (out.has(u)) out.get(u).createdBy = String(n);
-    for (const name of ["editedByPage", "editedBy"]) for (const [u, n] of run(name, chunk)) if (out.has(u)) out.get(u).editedBy = String(n);
-    for (const [u, n] of run("refs", chunk)) if (out.has(u)) out.get(u).refs = Number(n) || 0;
-    for (const [u, n] of run("children", chunk)) if (out.has(u)) out.get(u).children = Number(n) || 0;
-    for (const [u, s] of run("lengths", chunk)) if (out.has(u)) out.get(u).length = String(s).length;
+  const list = (uids || []).filter(Boolean);
+  for (let i = 0; i < list.length; i += META_CHUNK) {
+    const chunk = list.slice(i, i + META_CHUNK);
+    let nodes = [];
+    try { nodes = pullMany(META_PULL, chunk.map((u) => [":block/uid", u])) || []; } catch { nodes = []; }
+    const byEid = new Map();
+    for (const node of nodes) {
+      const uid = node?.[":block/uid"];
+      if (typeof uid !== "string") continue;
+      const s = node[":block/string"];
+      const kids = node[":block/children"];
+      const meta = {
+        created: num(node[":create/time"]) || null,
+        edited: num(node[":edit/time"]) || null,
+        createdBy: userName(node[":create/user"]),
+        editedBy: userName(node[":edit/user"]),
+        refs: 0,
+        children: Array.isArray(kids) ? kids.length : 0,
+        length: typeof s === "string" ? s.length : null,
+      };
+      out.set(uid, meta);
+      if (node[":db/id"] != null) byEid.set(node[":db/id"], meta);
+    }
+    if (!byEid.size) continue;
+    let counts = [];
+    try { counts = q(META_REFS, [...byEid.keys()]) || []; } catch { counts = []; }
+    for (const [eid, n] of Array.isArray(counts) ? counts : []) { const m = byEid.get(eid); if (m) m.refs = Number(n) || 0; }
   }
   return out;
 }

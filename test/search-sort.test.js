@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  assembleMeta, createMetaCache, DEFAULT_SORT, META_QUERIES, USER_NAME_QUERIES, metaFilterActive, metaFilterHostActive, metaLine, narrowByMeta, normalizeMetaFilter, normalizeSort, SORTS, sortLabel, sortNeedsMeta, sortRows,
+  assembleMeta, createMetaCache, DEFAULT_SORT, META_PULL, META_REFS, USER_NAME_QUERIES, metaFilterActive, metaFilterHostActive, metaLine, narrowByMeta, normalizeMetaFilter, normalizeSort, SORTS, sortLabel, sortNeedsMeta, sortRows,
 } from "../src/model/search-sort.js";
 import { libraryCard } from "../src/model/library.js";
 import { createHost } from "../src/host/roam.js";
@@ -63,7 +63,9 @@ test("Roam filters: created by, edited by, created within N days, linked refs, c
   assert.equal(metaFilterActive({}), false);
   assert.equal(metaFilterActive({ thisBoard: true }), true);
   assert.equal(metaFilterHostActive({ thisBoard: true }), false, "board-only filters are not the host's");
-  assert.equal(metaFilterHostActive({ dayMode: "created" }), true);
+  assert.equal(metaFilterHostActive({ dayMode: "created" }), false, "the days mode alone filters nothing");
+  assert.equal(metaFilterActive({ dayMode: "created", days: "" }), false, "an empty days box keeps parts and browse on");
+  assert.equal(metaFilterHostActive({ dayMode: "created", days: 7 }), true);
   const run = (f, days = 0) => ids(narrowByMeta(ROWS, f, { days, now: NOW }));
   assert.deepEqual(run({ createdBy: "ann" }), ["a", "c"]);
   assert.deepEqual(run({ editedBy: "Bo" }), ["a", "b", "d"]);
@@ -76,33 +78,43 @@ test("Roam filters: created by, edited by, created within N days, linked refs, c
   assert.deepEqual(run({ refs: true, createdBy: "Bo" }), ["b", "d"]);
 });
 
-test("meta reads: one query per attribute over the uid list, chunked; the cache reads only what is missing and expires", () => {
+test("meta reads: one pull_many per 100 uids and one eid-bound ref count; the cache reads only what is missing, expires and stays bounded", () => {
   const calls = [];
-  const q = (query, uids) => {
-    calls.push([Object.keys(META_QUERIES).find((k) => META_QUERIES[k] === query), uids.length]);
-    if (query === META_QUERIES.times) return uids.map((u, i) => [u, 100 + i, 200 + i]);
-    if (query === META_QUERIES.createdBy) return uids.map((u) => [u, "Ann"]);
-    if (query === META_QUERIES.refs) return [[uids[0], 4]];
-    if (query === META_QUERIES.children) return [[uids[1], 2]];
-    if (query === META_QUERIES.lengths) return [[uids[0], "hello"]];
-    return [];
+  const node = (u, i) => ({
+    ":db/id": 1000 + i,
+    ":block/uid": u,
+    ":create/time": 100 + i,
+    ":edit/time": 200 + i,
+    ...(u === "u1" ? { ":block/string": "hello", ":create/user": { ":user/display-page": { ":node/title": "Ann" } } } : {}),
+    ...(u === "u2" ? { ":block/children": [{ ":db/id": 7 }, { ":db/id": 8 }], ":edit/user": { ":user/display-name": "Bo" } } : {}),
+  });
+  const pullMany = (pattern, eids) => {
+    calls.push(["pull", pattern, eids.length]);
+    return eids.map(([, u], i) => (u === "gone" ? null : node(u, i)));
   };
-  const m = assembleMeta(["u1", "u2"], q);
+  const q = (query, eids) => { calls.push(["q", query, eids.length]); return [[1000, 4]]; };
+  const m = assembleMeta(["u1", "u2", "gone"], { pullMany, q });
   assert.deepEqual(m.get("u1"), { created: 100, edited: 200, createdBy: "Ann", editedBy: "", refs: 4, children: 0, length: 5 });
-  assert.deepEqual(m.get("u2"), { created: 101, edited: 201, createdBy: "Ann", editedBy: "", refs: 0, children: 2, length: null });
-  assert.deepEqual(calls.map((c) => c[0]), ["times", "createdByPage", "createdBy", "editedByPage", "editedBy", "refs", "children", "lengths"]);
+  assert.deepEqual(m.get("u2"), { created: 101, edited: 201, createdBy: "", editedBy: "Bo", refs: 0, children: 2, length: null });
+  assert.equal(m.has("gone"), false);
+  assert.deepEqual(calls, [["pull", META_PULL, 3], ["q", META_REFS, 2]], "no uid-bound datalog");
   calls.length = 0;
-  assembleMeta(Array.from({ length: 230 }, (_, i) => `u${i}`), q);
-  assert.equal(calls.filter((c) => c[0] === "times").length, 3, "100 uids per call");
+  assembleMeta(Array.from({ length: 230 }, (_, i) => `u${i}`), { pullMany, q });
+  assert.equal(calls.filter((c) => c[0] === "pull").length, 3, "100 uids per pull");
+  assert.equal(calls.filter((c) => c[0] === "q").length, 3, "one ref count per chunk");
   let t = 0;
   const reads = [];
-  const cache = createMetaCache((uids) => { reads.push(uids.slice()); return assembleMeta(uids, q); }, { ttl: 1000, now: () => t });
+  const cache = createMetaCache((uids) => { reads.push(uids.slice()); return assembleMeta(uids, { pullMany, q }); }, { ttl: 1000, now: () => t, max: 3 });
   cache.get(["u1", "u2"]);
   cache.get(["u2", "u3"]);
   assert.deepEqual(reads, [["u1", "u2"], ["u3"]]);
   t = 5000;
   cache.get(["u1"]);
   assert.deepEqual(reads.at(-1), ["u1"], "stale entries are read again");
+  cache.get(["u4", "u5"]);
+  assert.equal(cache.size(), 3, "bounded");
+  cache.get(["u1"]);
+  assert.deepEqual(reads.at(-1), ["u4", "u5"], "the newest reads stay");
 });
 
 // ---- host
@@ -111,17 +123,27 @@ function hostWithGraph() {
   const fake = createFakeRoam();
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   const seen = [];
+  const META = {
+    pg1: { c: NOW - 9 * D, e: NOW - 1 * D, by: "Bo", refs: 20, kids: 5 },
+    pg2: { c: NOW - 2 * D, e: NOW - 3 * H, by: "Ann", refs: 1, kids: 0 },
+    pg3: { c: NOW - 30 * D, e: NOW - 29 * D, by: "Bo", refs: 0, kids: 8 },
+  };
+  const eidOf = (u) => 500 + Object.keys(META).indexOf(u);
+  fake.api.data.pull_many = (pattern, eids) => {
+    seen.push(pattern);
+    return eids.map(([, u]) => {
+      const m = META[u];
+      if (!m) return null;
+      return { ":db/id": eidOf(u), ":block/uid": u, ":create/time": m.c, ":edit/time": m.e, ":create/user": { ":user/display-name": m.by }, ":block/children": Array.from({ length: m.kids }, (_, i) => ({ ":db/id": i })) };
+    });
+  };
   fake.onQuery(/:find/, (query, ...inputs) => {
     seen.push(query);
-    if (query === META_QUERIES.times) return inputs[0].map((u) => [u, { pg1: NOW - 9 * D, pg2: NOW - 2 * D, pg3: NOW - 30 * D }[u] ?? 0, { pg1: NOW - 1 * D, pg2: NOW - 3 * H, pg3: NOW - 29 * D }[u] ?? 0]);
-    if (query === META_QUERIES.createdBy) return inputs[0].map((u) => [u, u === "pg2" ? "Ann" : "Bo"]);
-    if (query === META_QUERIES.refs) return [["pg1", 20], ["pg2", 1]];
-    if (query === META_QUERIES.children) return [["pg1", 5], ["pg3", 8]];
+    if (query === META_REFS) return inputs[0].map((eid) => [eid, META[Object.keys(META)[eid - 500]]?.refs || 0]).filter((r) => r[1]);
     if (query.includes("[?p :node/title ?t]") && query.includes("[(re-find ?re ?t)]")) return [["Plexus one", "pg1", Date.now()], ["Plexus two", "pg2", Date.now()], ["Plexus three", "pg3", Date.now()]];
     if (query === USER_NAME_QUERIES[0]) return [["Bo"]];
     if (query === USER_NAME_QUERIES[1]) return [["Ann"], ["Bo"]];
-    if (query === META_QUERIES.createdByPage) return [];
-    if (query.includes("[:find ?t ?u ?c ?e")) return [["Plexus one", "pg1", NOW - 9 * D, NOW - 1 * D], ["Plexus two", "pg2", NOW - 2 * D, NOW - 3 * H], ["roam/css", "r", 1, 1]];
+    if (query.includes("(pull ?p [:node/title :block/uid :create/time :edit/time])")) return [[{ ":node/title": "Plexus one", ":block/uid": "pg1", ":create/time": NOW - 9 * D, ":edit/time": NOW - 1 * D }], [{ ":node/title": "Plexus two", ":block/uid": "pg2", ":create/time": NOW - 2 * D, ":edit/time": NOW - 3 * H }], [{ ":node/title": "roam/css", ":block/uid": "r", ":create/time": 1, ":edit/time": 1 }]];
     return [];
   });
   return { host, seen };
@@ -131,7 +153,7 @@ test("librarySearch with a sort reads the numbers once for the candidates and or
   const { host, seen } = hostWithGraph();
   const best = host.librarySearch({ text: "plexus", types: ["page"] }, 40);
   assert.deepEqual(best.rows.map((r) => r.string), ["[[Plexus one]]", "[[Plexus two]]", "[[Plexus three]]"]);
-  assert.equal(seen.includes(META_QUERIES.times), false, "no extra reads for Best match");
+  assert.equal(seen.includes(META_PULL), false, "no extra reads for Best match");
   assert.equal(best.rows[0].meta, undefined);
   const edited = host.librarySearch({ text: "plexus", types: ["page"] }, 40, { sort: "edited" });
   assert.deepEqual(edited.rows.map((r) => r.string), ["[[Plexus two]]", "[[Plexus one]]", "[[Plexus three]]"]);
@@ -139,7 +161,7 @@ test("librarySearch with a sort reads the numbers once for the candidates and or
   assert.ok(edited.queries.some((q) => q.name === "meta"));
   const linked = host.librarySearch({ text: "plexus", types: ["page"] }, 40, { sort: "linked" });
   assert.deepEqual(linked.rows.map((r) => r.string), ["[[Plexus one]]", "[[Plexus two]]", "[[Plexus three]]"]);
-  assert.equal(seen.filter((x) => x === META_QUERIES.times).length, 1, "the second sort used the uid cache");
+  assert.equal(seen.filter((x) => x === META_PULL).length, 1, "the second sort used the uid cache");
   assert.deepEqual(host.librarySearch({ text: "plexus", types: ["page"], createdBy: "Ann" }, 40).rows.map((r) => r.string), ["[[Plexus two]]"]);
   assert.deepEqual(host.librarySearch({ text: "plexus", types: ["page"], children: true }, 40).rows.map((r) => r.string), ["[[Plexus one]]", "[[Plexus three]]"]);
   assert.deepEqual(host.librarySearch({ text: "plexus", types: ["page"], days: 7, dayMode: "created" }, 40).rows.map((r) => r.string), ["[[Plexus two]]"]);
@@ -151,6 +173,15 @@ test("browse (no text) lists pages by the sort from one page-level query; user n
   assert.deepEqual(host.browse("oldest", 10).rows.map((r) => r.text), ["Plexus one", "Plexus two"]);
   assert.deepEqual(host.browse("title", 1).rows.map((r) => r.text), ["Plexus one"]);
   assert.deepEqual(host.userNames(), ["Ann", "Bo"]);
+});
+
+test("browse reads the page list once and reuses it for the next sorts", () => {
+  const { host, seen } = hostWithGraph();
+  const isList = (x) => x.includes("(pull ?p [:node/title");
+  host.browse("edited", 10);
+  host.browse("created", 10);
+  host.browse("title", 10);
+  assert.equal(seen.filter(isList).length, 1);
 });
 
 // ---- panel
@@ -203,7 +234,10 @@ test("panel: Sort lists the choices, a pick re-runs the search with it, persists
   input.value = "";
   f.stub.dispatch(input, "keydown", { key: "Enter" });
   await tick();
-  assert.deepEqual(calls.at(-1), { browse: "linked" }, "an empty search lists pages by the sort");
+  assert.equal(calls.some((c) => c.browse), false, "Most linked does not browse: it would list recently edited pages under ref counts");
+  f.stub.dispatch(f.root.querySelectorAll(".pxd-panel__sort-item").find((b) => b.dataset.sort === "created"), "click");
+  await tick();
+  assert.deepEqual(calls.at(-1), { browse: "created" }, "an empty search lists pages by a time or title sort");
 });
 
 test("panel: More holds the Roam filters; changing one searches again with it, and the button counts them", async (t) => {
@@ -240,4 +274,25 @@ test("panel: More holds the Roam filters; changing one searches again with it, a
   await tick();
   assert.deepEqual(f.root.querySelectorAll(".pxd-panel__pane--search .pxd-panel__row").map((r) => r.dataset.string), ["[[Beta]]"]);
   assert.equal(pop.querySelectorAll("label").some((l) => l.className === "pxd-panel__orphan"), true, "Not on any board lives here too");
+});
+
+test("panel: Under page asks for page titles once after a pause, not on every key", async (t) => {
+  const asked = [];
+  const pending = [];
+  const later = (fn) => { const job = { fn, live: true }; pending.push(job); return () => { job.live = false; }; };
+  const stub = createDomStub();
+  const restore = stub.install();
+  t.after(restore);
+  const root = stub.document.createElement("div");
+  root.className = "pxd-root";
+  stub.document.body.append(root);
+  const panel = createPanel({ doc: stub.document, root, host: { searchPages: (text) => { asked.push(text); return [{ title: "Lab notes" }]; } }, timers: { later, frame: () => () => {} }, on: {} });
+  panel.open("search");
+  const under = root.querySelector(".pxd-panel__more-under");
+  for (const v of ["l", "la", "lab", "lab", "lab "]) { under.value = v; stub.dispatch(under, "keyup", { key: "x" }); }
+  assert.deepEqual(asked, [], "nothing read while typing");
+  for (const job of pending.splice(0)) if (job.live) job.fn();
+  assert.deepEqual(asked, ["lab"], "one read for the settled text");
+  assert.deepEqual(root.querySelectorAll(".pxd-panel__more-pages option").map((o) => o.getAttribute("value")), ["Lab notes"]);
+  panel.dispose();
 });

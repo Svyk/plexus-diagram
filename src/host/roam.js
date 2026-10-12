@@ -608,6 +608,8 @@ function countReads(data, stats) {
   });
 }
 
+const BROWSE_TTL_MS = 30000;
+
 export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
   const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
   bindGuardStats(stats);
@@ -999,7 +1001,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const gname = graph ?? graphName();
 
   // Created / edited / by whom / linked refs / children for the rows a search is about to show, cached by uid.
-  const metaCache = createMetaCache((uids) => assembleMeta(uids, (query, chunk) => host.q(query, chunk)));
+  const metaCache = createMetaCache((uids) => assembleMeta(uids, {
+    pullMany: (pattern, eids) => (typeof data.pull_many === "function" ? data.pull_many(pattern, eids) : eids.map((e) => rawPull(pattern, e))),
+    q: (query, ...inputs) => host.q(query, ...inputs),
+  }));
+  // The browse list's page titles and times: one pull over every page (~80 ms in a 6.5k-page graph), kept a short while
+  // so reopening the panel, switching sorts or clearing the box does not read the graph again.
+  let browsePages = null;
   const attachMeta = (rows) => {
     const uids = rows.map((r) => r.uid).filter(Boolean);
     if (!uids.length) return rows;
@@ -2509,9 +2517,17 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     // Reads one page-level query (titles and times, never blocks) and keeps `limit` rows.
     browse(sort = "edited", limit = 40) {
       const id = ["edited", "created", "oldest", "title"].includes(sort) ? sort : "edited";
-      const rows = (host.q("[:find ?t ?u ?c ?e :where [?p :node/title ?t] [?p :block/uid ?u] [(get-else $ ?p :create/time 0) ?c] [(get-else $ ?p :edit/time 0) ?e]]") || [])
-        .filter((r) => typeof r?.[0] === "string" && !r[0].startsWith("roam/") && r[1])
-        .map((r) => ({ kind: "page", title: r[0], uid: String(r[1]), meta: { created: r[2] || null, edited: r[3] || null, createdBy: "", editedBy: "", refs: null, children: null, length: null }, onBoard: false, tags: [] }));
+      const now = Date.now();
+      if (!browsePages || now - browsePages.at > BROWSE_TTL_MS) {
+        const pages = [];
+        for (const [p] of host.q(`[:find (pull ?p [:node/title :block/uid :create/time :edit/time]) :where [?p :node/title]]`) || []) {
+          const title = p?.[":node/title"];
+          const uid = p?.[":block/uid"];
+          if (typeof title === "string" && !title.startsWith("roam/") && uid) pages.push({ title, uid: String(uid), created: Number(p[":create/time"]) || null, edited: Number(p[":edit/time"]) || null });
+        }
+        browsePages = { at: now, pages };
+      }
+      const rows = browsePages.pages.map((p) => ({ kind: "page", title: p.title, uid: p.uid, meta: { created: p.created, edited: p.edited, createdBy: "", editedBy: "", refs: null, children: null, length: null }, onBoard: false, tags: [] }));
       const top = sortRows(rows, id).slice(0, Math.max(1, Math.floor(Number(limit) || 40)));
       attachMeta(top);
       return { rows: top.map(libraryCard), queries: [] };

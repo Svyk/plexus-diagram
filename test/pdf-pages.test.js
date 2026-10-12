@@ -37,6 +37,8 @@ test("pdf strings: both macro spellings classify as pdf and give the url", () =>
   assert.equal(classifyString(`{{pdf: ${URL_A}}}`).kind, "pdf");
   assert.equal(pdfMacroUrl(`{{pdf: ${URL_A}}}`), URL_A);
   assert.equal(pdfMacroUrl(pdf(URL_A)), URL_A);
+  assert.equal(pdfMacroUrl(`{{[[pdf]]: {{[[pdf]]: ${URL_A}}}}}`), URL_A);
+  assert.equal(pdfMacroUrl(`{{pdf: {{[[pdf]]: ${URL_A}}}}}`), URL_A);
 });
 
 test("pageCardRef: [[Title]] and [label]([[Title]]), nothing else", () => {
@@ -327,6 +329,23 @@ test("session: a new upload writes the page, its pdf block first, and a [[page]]
   const again = await session.addPdfPageCards([{ title: "Upload one", x: 2000, y: 400 }]);
   assert.equal(again.length, 1);
   assert.deepEqual(fake.writesLog().map((e) => e[0]), ["create"]);
+});
+
+test("host.pdfOfPage repairs a doubly wrapped pdf block once", async () => {
+  const { fake, host, session } = seeded();
+  await session.addPdfPageCards([{ title: "Broken up", newPage: true, pageUid: "brkPg", url: URL_B, x: 0, y: 0 }]);
+  const uid = fake.children("brkPg")[0];
+  fake.clearLog();
+  await host.updateString(uid, `{{[[pdf]]: ${pdf(URL_B)}}}`);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(host.pdfOfPage("Broken up").string, pdf(URL_B));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(fake.block(uid).string, pdf(URL_B));
+  const updates = () => fake.writesLog().filter((e) => e[0] === "update" && e[1] === uid).length;
+  assert.equal(updates(), 2);
+  host.pdfOfPage("Broken up");
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(updates(), 2);
 });
 
 // ---- highlights ----

@@ -938,6 +938,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     for (const set of slot.pages.values()) for (const fn of set) fn(after);
   };
   let coverMemo = null;
+  const repairedPdfBlocks = new Set();
   const readPdfCover = (url) => {
     const pages = [];
     for (const row of queryRows(host, PDF_PAGE_QUERY, url)) {
@@ -1775,6 +1776,15 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       try { res = pull(PDF_PAGE_PATTERN, [":node/title", name]); } catch { res = null; }
       const value = pdfOfPageNode(res);
       if (value) {
+        // A block an old upload left as `{{[[pdf]]: {{[[pdf]]: url}}}}` is rewritten once to the plain macro.
+        if (typeof value.string === "string" && /\{\{[^{}]*:\s*\{\{/.test(value.string) && !repairedPdfBlocks.has(value.pdfUid)) {
+          const fixed = pdfMacroUrl(value.string);
+          if (fixed) {
+            repairedPdfBlocks.add(value.pdfUid);
+            value.string = `{{[[pdf]]: ${fixed}}}`;
+            Promise.resolve(host.updateString(value.pdfUid, value.string)).catch(() => {});
+          }
+        }
         let kids = null;
         try { kids = pull(PDF_KIDS_PATTERN, eidKey(value.pdfUid)); } catch { kids = null; }
         const list = kids?.[":block/children"];
@@ -2046,10 +2056,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (typeof upload !== "function") throw new Error("upload-unavailable");
       const res = await upload.call(api.file, { file });
       const raw = typeof res === "string" ? res : res?.url;
-      // Roam's file.upload resolves to a ready-made markdown image (`![](url)`); callers want the bare URL.
+      // Roam's file.upload resolves to markup (`![](url)` for an image, `{{[[pdf]]: url}}` for a PDF); callers want the bare URL.
       const md = typeof raw === "string" ? /^\s*!\[[^\]]*\]\((.+)\)\s*$/s.exec(raw) : null;
-      const url = md ? md[1] : raw;
-      if (typeof url !== "string" || !url) throw new Error("upload-failed");
+      const hit = typeof raw === "string" ? /https?:\/\/[^\s)}\]"']+/.exec(raw) : null;
+      const url = md ? md[1] : hit ? hit[0] : "";
+      if (!url) throw new Error("upload-failed");
       stats.writes++;
       return url;
     },

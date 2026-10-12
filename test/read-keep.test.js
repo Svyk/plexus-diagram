@@ -331,3 +331,31 @@ test("the parse view keeps a finished helper read and restores a kept read into 
     restoreDom();
   }
 });
+
+test("parseDocling shows an empty-pdf or rejected-job failure in the pane instead of Nothing matches", async () => {
+  const stub = createDomStub();
+  const doc = stub.document;
+  const sha = await sha256Hex(PDF);
+  for (const [error, text] of [
+    [Object.assign(new Error("empty-pdf"), { reason: "empty-pdf" }), /downloaded empty/],
+    [Object.assign(new Error("job-rejected 400"), { reason: "job-rejected", status: 400 }), /rejected the PDF \(HTTP 400\)/],
+  ]) {
+    const toasts = [];
+    const dev = makeDevice(makeGraph());
+    const view = createParseView({
+      doc, store: dev.store, keep: dev.keeper, pdfBlockUid: "blk", url: "https://x/y.pdf",
+      getPdf: async () => ({ getData: async () => new Uint8Array(0) }),
+      onToast: (m) => toasts.push(m),
+      helper: {
+        async health() { return { state: "ready", ocr: true, docling: true, engines: ["docling"], version: "0.1.0" }; },
+        async parse() { throw error; },
+      },
+    });
+    doc.body.append(view.element());
+    await view.refreshHelper();
+    view.showDoc(builtinPlain(sha));
+    await view.parseDocling();
+    assert.match(toasts[0], text);
+    assert.match(view.element().textContent, text);
+  }
+});

@@ -288,6 +288,18 @@ test("uploadFile unwraps the markdown image Roam's file.upload returns, so the c
   assert.equal(await host.uploadFile(file), url);
 });
 
+test("uploadFile returns the bare url for a pdf macro, any {{…: url}}, a bare url, and throws without one", async () => {
+  const { fake, host } = setup();
+  const file = { name: "a.pdf" };
+  const url = "https://firebasestorage.googleapis.com/v0/b/x/o/a.pdf?alt=media&token=t";
+  for (const res of [`{{[[pdf]]: ${url}}}`, `{{pdf: ${url}}}`, `{{[[video]]: ${url}}}`, url, { url: `{{[[pdf]]: ${url}}}` }, `![](${url})`]) {
+    fake.setUpload(async () => res);
+    assert.equal(await host.uploadFile(file), url);
+  }
+  fake.setUpload(async () => "{{[[pdf]]: }}");
+  await assert.rejects(host.uploadFile(file), /upload-failed/);
+});
+
 const undoCalls = (fake) => fake.calls.filter((c) => c[0] === "undo" || c[0] === "redo").map((c) => c[0]);
 
 test("undo: a grouped write sequence is one step (N Roam undos), a lone write is one", async () => {

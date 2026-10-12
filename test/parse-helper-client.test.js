@@ -332,3 +332,27 @@ test("health with all three vlm engines sets vlmHigh and vlm() posts /v1/vlm", a
     boxMode: "caller",
   });
 });
+
+test("empty bytes: parse and reparseTable throw empty-pdf and never touch the helper", async () => {
+  const { api, calls } = client(() => ({ status: 200, json: async () => ({}) }));
+  for (const bytes of [new Uint8Array(0), null, undefined]) {
+    await assert.rejects(api.parse({ bytes, sha256: "e3b0c442", options: {} }), (error) => error.reason === "empty-pdf");
+  }
+  await assert.rejects(api.reparseTable({ bytes: new Uint8Array(0), page: 1, bbox: [0, 0, 1, 1] }), (error) => error.reason === "empty-pdf");
+  assert.equal(calls.length, 0);
+});
+
+test("a rejected job POST is job-rejected and never polls jobs/undefined", async () => {
+  const { api, calls } = client((url, init) => {
+    if (init.method === "HEAD") return { status: 404, json: async () => ({}) };
+    if (init.method === "POST") return { status: 400, json: async () => ({ error: "bad" }) };
+    return { status: 200, json: async () => ({}) };
+  });
+  await assert.rejects(api.parse({ bytes: new Uint8Array([1]), sha256: "abc", options: {} }), (error) => error.reason === "job-rejected" && error.status === 400);
+  await assert.rejects(api.reparseTable({ bytes: new Uint8Array([1]), page: 1, bbox: [0, 0, 1, 1] }), (error) => error.reason === "job-rejected" && error.status === 400);
+  assert.equal(calls.some((call) => call.url.includes("undefined")), false);
+  assert.equal(calls.some((call) => call.method === "GET"), false);
+  const ok = client((url, init) => (init.method === "HEAD" ? { status: 404, json: async () => ({}) } : { status: 202, json: async () => ({}) }));
+  await assert.rejects(ok.api.parse({ bytes: new Uint8Array([1]), sha256: "abc", options: {} }), (error) => error.reason === "job-rejected");
+  assert.equal(ok.calls.some((call) => call.url.includes("undefined")), false);
+});

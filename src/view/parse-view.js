@@ -571,6 +571,7 @@ export function createParseView({
     helperEngines = health?.engines;
   }
   let phase = "idle";
+  let failure = "";
   let dead = false;
   let progress = { page: 0, pageCount: 0, engine: "builtin" };
   let keyFn = null;
@@ -1053,6 +1054,7 @@ export function createParseView({
     clearBlockListeners();
     const blocks = shown();
     body.replaceChildren?.();
+    if (failure) el("div", "pxd-parse__empty", body).textContent = failure;
     if (parsed) {
       const chips = chipsOn();
       if (chips.__doc !== parsed) { chips.__doc = parsed; try { chips.refresh(); } catch { /* reader */ } }
@@ -1549,6 +1551,7 @@ export function createParseView({
 
   async function parseBuiltin(explicit) {
     cancel();
+    failure = "";
     const ctrl = new AbortController();
     abort = ctrl;
     phase = "running";
@@ -1745,22 +1748,37 @@ export function createParseView({
     paintChip();
     const pdf = typeof getPdf === "function" ? await getPdf() : null;
     const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
-    const result = await helper.parse({
-      bytes,
-      sha256: parsed?.sha256,
-      options: {},
-      signal: ctrl.signal,
-      onProgress: (info) => {
-        progress = { page: info?.page || progress.page, pageCount: info?.total || info?.pageCount || progress.pageCount, engine: "docling" };
-        paintChip();
-        onProgress?.(progress);
-      },
-      onPage: (info) => {
-        if (info?.job) jobId = info.job;
-        progress = { page: info?.page || progress.page, pageCount: info?.total || progress.pageCount, engine: "docling" };
-        paintChip();
-      },
-    });
+    failure = "";
+    let result = null;
+    try {
+      result = await helper.parse({
+        bytes,
+        sha256: parsed?.sha256,
+        options: {},
+        signal: ctrl.signal,
+        onProgress: (info) => {
+          progress = { page: info?.page || progress.page, pageCount: info?.total || info?.pageCount || progress.pageCount, engine: "docling" };
+          paintChip();
+          onProgress?.(progress);
+        },
+        onPage: (info) => {
+          if (info?.job) jobId = info.job;
+          progress = { page: info?.page || progress.page, pageCount: info?.total || progress.pageCount, engine: "docling" };
+          paintChip();
+        },
+      });
+    } catch (error) {
+      phase = "idle";
+      if (error?.name === "AbortError") { paintChip(); return; }
+      failure = error?.reason === "empty-pdf" ? "Couldn't read this PDF file \u2014 it downloaded empty."
+        : error?.reason === "job-rejected" ? `The helper rejected the PDF (HTTP ${error.status}).`
+          : error?.status === 409 ? "The helper is busy with another job."
+            : `Docling failed: ${error?.message || error}`;
+      try { onToast?.(failure); } catch { /* host */ }
+      paintChip();
+      render();
+      return;
+    }
     jobId = result?.job || jobId;
     if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? 0);
     else phase = "idle";

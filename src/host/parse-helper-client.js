@@ -413,7 +413,27 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
     return doc;
   }
 
+  const emptyBytes = (bytes) => !bytes || !(bytes.byteLength > 0 || bytes.length > 0 || bytes.size > 0);
+
+  function helperError(reason, message, status) {
+    const error = new Error(message);
+    error.reason = reason;
+    if (status !== undefined) error.status = status;
+    return error;
+  }
+
+  // A job POST that was not accepted never reaches the events poll.
+  async function readJobId(posted) {
+    let job = null;
+    try { job = await posted.json(); } catch { job = null; }
+    if (!(posted.status >= 200 && posted.status < 300) || typeof job?.job !== "string" || !job.job) {
+      throw helperError("job-rejected", `job-rejected ${posted.status}`, posted.status);
+    }
+    return job;
+  }
+
   async function parse({ bytes, sha256, options, onProgress, onPage, signal } = {}) {
+    if (emptyBytes(bytes)) throw helperError("empty-pdf", "empty-pdf");
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
     const optsHash = await optionsHash(options || {});
@@ -433,13 +453,14 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
       },
       body: bytes,
     }, signal);
-    const job = await posted.json();
     if (posted.status === 409) {
+      const job = await posted.json();
       const error = new Error("helper busy");
       error.status = 409;
       error.running = job?.running;
       throw error;
     }
+    const job = await readJobId(posted);
     const doc = await readJob(url, token, job.job, { onProgress, onPage, signal });
     return { doc, cached: false, sha256: sha, optsHash, job: job.job };
   }
@@ -456,6 +477,7 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
   // Scope requests are not cached. Pass `base` to merge the page result
   // (IoU ≥ 0.5) into a mixed document. Without `base`, `merged` is null.
   async function reparseTable({ bytes, sha256, page, bbox, base, onProgress, onPage, signal } = {}) {
+    if (emptyBytes(bytes)) throw helperError("empty-pdf", "empty-pdf");
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
     const ocr = readSetting(settings, "parse-ocr", "auto");
@@ -476,7 +498,7 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
       },
       body: bytes,
     }, signal);
-    const job = await posted.json();
+    const job = await readJobId(posted);
     const doc = await readJob(url, token, job.job, { onProgress, onPage, signal });
     const merged = base ? mergeScoped(base, doc, { page, bbox }) : null;
     return { doc, merged, cached: false, sha256: sha, job: job.job };

@@ -453,6 +453,27 @@ export function reframeItems(items, from, to) {
 // `otherPages` are PP-OCR page records. Vision pages keep their engine tag (unset
 // or whatever the helper wrote). They are not marked `ppocr-web`, so the line
 // re-read does not send them back through Vision.
+// Pages worth a second reading: the vote leaves weak pages as read, and a page the helper read with no doubt has
+// nothing to settle. DOUBT_MIN_WORDS words under 0.5 confidence make a page doubtful.
+export const DOUBT_MIN_WORDS = 3;
+export function doubtfulOcrPages(pages, lexicon = null) {
+  const words = lexicon instanceof Set ? lexicon : null;
+  return (pages || [])
+    .filter((page) => page && page.engine !== "ppocr-web" && (page.items || []).length && !weakOcrPage(page.items, words))
+    .filter((page) => {
+      // Without a lexicon there is no way to spot a confident misread: keep the second reading, as before.
+      if (!words) return true;
+      const items = page.items || [];
+      if (items.filter((it) => Number.isFinite(it?.conf) && it.conf < 0.5).length >= DOUBT_MIN_WORDS) return true;
+      // A confident misread ("prossure") is a word the lexicon does not know.
+      return items.some((it) => {
+        const core = wordCore(it?.str || it?.text || "").toLowerCase();
+        return core.length >= 4 && /^[a-z]+$/.test(core) && !words.has(core);
+      });
+    })
+    .map((page) => page.n);
+}
+
 export function voteOcrBodies(visionPages, otherPages, lexicon) {
   const words = lexicon instanceof Set ? lexicon : null;
   const byN = new Map((otherPages || []).map((page) => [page.n, page]));
@@ -462,6 +483,7 @@ export function voteOcrBodies(visionPages, otherPages, lexicon) {
     // is worse than Vision, so the page is left as read and marked for a text model.
     if (weakOcrPage(page.items, words)) return { ...page, weakText: true };
     const other = byN.get(page.n);
+    if (!other) return page;
     const regions = ruledRegions(page.rules, page.w, page.h);
     const items = voteItems(page.items || [], reframeItems(other?.items || [], other, page), words, regions);
     return { ...page, items };

@@ -13036,6 +13036,18 @@ function reframeItems(items, from, to) {
     return next;
   });
 }
+function doubtfulOcrPages(pages, lexicon = null) {
+  const words = lexicon instanceof Set ? lexicon : null;
+  return (pages || []).filter((page) => page && page.engine !== "ppocr-web" && (page.items || []).length && !weakOcrPage(page.items, words)).filter((page) => {
+    if (!words) return true;
+    const items = page.items || [];
+    if (items.filter((it) => Number.isFinite(it?.conf) && it.conf < 0.5).length >= DOUBT_MIN_WORDS) return true;
+    return items.some((it) => {
+      const core = wordCore(it?.str || it?.text || "").toLowerCase();
+      return core.length >= 4 && /^[a-z]+$/.test(core) && !words.has(core);
+    });
+  }).map((page) => page.n);
+}
 function voteOcrBodies(visionPages, otherPages, lexicon) {
   const words = lexicon instanceof Set ? lexicon : null;
   const byN = new Map((otherPages || []).map((page) => [page.n, page]));
@@ -13043,12 +13055,13 @@ function voteOcrBodies(visionPages, otherPages, lexicon) {
     if (!page || page.engine === "ppocr-web") return page;
     if (weakOcrPage(page.items, words)) return { ...page, weakText: true };
     const other = byN.get(page.n);
+    if (!other) return page;
     const regions = ruledRegions(page.rules, page.w, page.h);
     const items = voteItems(page.items || [], reframeItems(other?.items || [], other, page), words, regions);
     return { ...page, items };
   });
 }
-var WORD_RE, IOU_MIN, INSERT_CAP, WEAK_OCR_LOW, WEAK_OCR_MIN_WORDS, WEAK_SHORT_MEAN, WEAK_UNKNOWN_LEX, WEAK_UNKNOWN_MEAN, WEAK_UNKNOWN_MIN_CORES;
+var WORD_RE, IOU_MIN, INSERT_CAP, WEAK_OCR_LOW, WEAK_OCR_MIN_WORDS, WEAK_SHORT_MEAN, WEAK_UNKNOWN_LEX, WEAK_UNKNOWN_MEAN, WEAK_UNKNOWN_MIN_CORES, DOUBT_MIN_WORDS;
 var init_ocr_vote = __esm({
   "src/model/parse/ocr-vote.js"() {
     WORD_RE = /[A-Za-z][A-Za-z'-]*/g;
@@ -13060,6 +13073,7 @@ var init_ocr_vote = __esm({
     WEAK_UNKNOWN_LEX = 0.5;
     WEAK_UNKNOWN_MEAN = 0.98;
     WEAK_UNKNOWN_MIN_CORES = 10;
+    DOUBT_MIN_WORDS = 3;
   }
 });
 
@@ -52634,10 +52648,11 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     }
     throwIfAborted3();
     let otherPages = [];
-    const checked = (f) => onPhase?.({ phase: "check", done: Math.round(Math.max(0, Math.min(1, Number(f) || 0)) * wanted.length), total: wanted.length });
-    checked(0);
+    const doubtful = doubtfulOcrPages(got.pages, words instanceof Set ? words : null);
+    const checked = (f) => onPhase?.({ phase: "check", done: Math.round(Math.max(0, Math.min(1, Number(f) || 0)) * doubtful.length), total: doubtful.length });
+    if (doubtful.length) checked(0);
     try {
-      const other = await alt.ocr({ pages: wanted, bytes, sha256, signal, onProgress: checked });
+      const other = doubtful.length ? await alt.ocr({ pages: doubtful, bytes, sha256, signal, onProgress: checked }) : null;
       otherPages = other?.pages || [];
     } catch (error) {
       if (error?.name === "AbortError") throw error;

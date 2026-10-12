@@ -306,3 +306,17 @@ test("the engine menu closes on Esc and on a press outside it", async () => {
     restore();
   }
 });
+
+test("Read the scan: the in-browser second reading runs only on pages with doubtful words, and others keep the helper's read", async () => {
+  const { doubtfulOcrPages, voteOcrBodies } = await import("../src/model/parse/ocr-vote.js");
+  const word = (str, conf) => ({ str, conf, x: 0, y: 0, w: 10, h: 10 });
+  const W = ["blend", "powder", "lactoferrin", "verify", "weight", "minutes", "transfer", "hopper", "completed", "review"];
+  const sure = { n: 1, items: Array.from({ length: 20 }, (_, i) => word(W[i % W.length], 0.99)) };
+  const doubt = { n: 2, items: [...Array.from({ length: 30 }, (_, i) => word(W[i % W.length], 0.99)), word("1O25", 0.3), word("CAM", 0.4), word("PBW", 0.2)] };
+  const lexicon = new Set(W);
+  assert.deepEqual(doubtfulOcrPages([sure, doubt], lexicon), [2]);
+  assert.deepEqual(doubtfulOcrPages([sure, { n: 3, items: [word("prossure", 1)] }], lexicon), [3], "a confident word the lexicon does not know");
+  assert.deepEqual(doubtfulOcrPages([sure, doubt]), [1, 2], "no lexicon: every page, as before");
+  const voted = voteOcrBodies([sure, doubt], [], null);
+  assert.equal(voted[0], sure, "a page with no second reading is returned as read");
+});

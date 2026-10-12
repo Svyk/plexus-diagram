@@ -5,7 +5,7 @@ import { assembleDocument, dropFigureLabelTables, parsePageGeometry, parsePdf } 
 import { applyCellOcr, cellsToReread, tidyDocumentTables } from "../model/parse/ocr-fix.js";
 import { applyLineReads, linePages, linesToReread } from "../model/parse/ocr-lines.js";
 import { mergeOcrDocument, scanPagesOf } from "../model/parse/ocr-merge.js";
-import { voteOcrBodies, weakOcrPage } from "../model/parse/ocr-vote.js";
+import { doubtfulOcrPages, voteOcrBodies, weakOcrPage } from "../model/parse/ocr-vote.js";
 import { evidenceFromRecords } from "../model/parse/vlm-arbitrate.js";
 import { decimalColumnPagesOf, numericPagesOf } from "../model/parse/vlm-boxes.js";
 import { alignVlmText, applyLayoutFigures, applyVlmTables, dropFormulaTables, keepTextLayerReads, linkLayoutCaptions, tableRegions, withoutFormulaReads } from "../model/parse/vlm-tables.js";
@@ -162,10 +162,12 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
     throwIfAborted();
     let otherPages = [];
     // The second, in-browser reading can take longer than the helper's: it reports its own pages.
-    const checked = (f) => onPhase?.({ phase: "check", done: Math.round(Math.max(0, Math.min(1, Number(f) || 0)) * wanted.length), total: wanted.length });
-    checked(0);
+    // Only pages the vote can improve: not weak (those are left as read) and with some words the helper doubted.
+    const doubtful = doubtfulOcrPages(got.pages, words instanceof Set ? words : null);
+    const checked = (f) => onPhase?.({ phase: "check", done: Math.round(Math.max(0, Math.min(1, Number(f) || 0)) * doubtful.length), total: doubtful.length });
+    if (doubtful.length) checked(0);
     try {
-      const other = await alt.ocr({ pages: wanted, bytes, sha256, signal, onProgress: checked });
+      const other = doubtful.length ? await alt.ocr({ pages: doubtful, bytes, sha256, signal, onProgress: checked }) : null;
       otherPages = other?.pages || [];
     } catch (error) {
       if (error?.name === "AbortError") throw error;

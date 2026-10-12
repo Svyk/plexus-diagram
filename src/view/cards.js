@@ -4478,6 +4478,15 @@ export function createItemRenderer({
         if (keep && r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
     }
+    // More wanted bodies than LRU_CAP (a fit view of a 1,500-card board) made every mount evict another wanted body,
+    // which the scheduler mounted again: an endless mount/unmount loop. Keep section titles, then the nearest bodies.
+    if (next.size > LRU_CAP) {
+      const keepFirst = (uid) => (uid === editing?.uid ? 0 : shells.get(uid)?.type === "section" ? 1 : 2);
+      const ranked = [...next].map((uid) => [uid, keepFirst(uid), centreDist(uid, visibleRect)]);
+      ranked.sort((a, b) => a[1] - b[1] || a[2] - b[2]);
+      next.clear();
+      for (const [uid] of ranked.slice(0, LRU_CAP)) next.add(uid);
+    }
     wanted = next;
     const t = now();
     for (const uid of next) if (mounted.has(uid)) mounted.set(uid, t);

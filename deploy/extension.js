@@ -3061,6 +3061,19 @@ function isJunkTitleText(text4) {
   const letters = (t.match(/\p{L}/gu) || []).length;
   return digits >= 6 && digits > letters * 2;
 }
+function isBannerTitle(text4) {
+  const t = typeof text4 === "string" ? text4.replace(/\s+/g, " ").trim() : "";
+  if (!t) return false;
+  const tokens2 = t.split(" ");
+  if (tokens2.length >= 4) {
+    const spread = tokens2.filter((w) => w.length <= 2 && w === w.toUpperCase() && /\p{L}/u.test(w)).length;
+    if (spread / tokens2.length >= 0.7) return true;
+  }
+  if (ARTICLE_LABEL.test(t)) return true;
+  const letters = t.replace(/[^\p{L}]/gu, "");
+  if (letters.length >= 3 && letters === letters.toUpperCase() && letters !== letters.toLowerCase() && titleWordCount(t) <= 3 && !/\d/.test(t)) return true;
+  return false;
+}
 function titleWordCount(text4) {
   return String(text4 ?? "").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 }
@@ -3090,7 +3103,7 @@ function isMetaBanner(metaTitle, { pageTitle = "", lines = [] } = {}) {
   }
   return false;
 }
-var TITLE_CAP, titleLexicon, SEG_MIN, SEG_MAX_WORDS, SEG_WORD_MIN, FUNCTION_WORDS, TITLE_REV, MONTHS2, JUNK_LINE_RES, CITATION_REST;
+var TITLE_CAP, titleLexicon, SEG_MIN, SEG_MAX_WORDS, SEG_WORD_MIN, FUNCTION_WORDS, TITLE_REV, MONTHS2, JUNK_LINE_RES, ARTICLE_LABEL, CITATION_REST;
 var init_title_cap = __esm({
   "src/model/title-cap.js"() {
     TITLE_CAP = 80;
@@ -3127,6 +3140,7 @@ var init_title_cap = __esm({
       /^(?:\(\s*\d+\s*\)\s*)(?:u\s*\.?\s*s\s*\.?\s*c[li]\.?|int\s*\.?\s*cl\.?)\b/i,
       /^cpc\s+\.{3,}/i
     ];
+    ARTICLE_LABEL = /^(?:(?:major|original|research|review|brief|short|clinical|invited|special|regular|full|case|technical|systematic)\s+(?:article|report|communication|paper|letter|review|note|study|contribution)s?|article|editorial|commentary|perspective|viewpoint|abstract|supplementary (?:material|information|data)s?|letter to the editor|research letter|running head|original investigation|brief communication|case series)$/i;
     CITATION_REST = /^[\s\d().,:;/–—-]*$/;
   }
 });
@@ -3175,6 +3189,7 @@ function cleanPdfTitle(value) {
   if (text4.length < 4) return "";
   if (ROMAN_ONLY.test(text4)) return "";
   if (/^untitled\b/i.test(text4)) return "";
+  if (isBannerTitle(text4)) return "";
   return titleText(text4);
 }
 function isStorageTitle(value) {
@@ -3195,7 +3210,7 @@ function titleText(value) {
 }
 function pdfTitlePlan(source) {
   const src = source && typeof source === "object" ? source : {};
-  const named2 = cleanPdfTitle(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title) || cleanPdfTitle(src.parsedTitle);
+  const named2 = cleanPdfTitle(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || cleanPdfTitle(src.identTitle) || cleanPdfTitle(src.title) || cleanPdfTitle(src.parsedTitle);
   if (named2) return segmentTitle(named2);
   const file = titleText(fileName(src.url));
   return file ? segmentTitle(file) : "PDF";
@@ -21903,10 +21918,10 @@ function pdfRowName({ ownTitle = "", pdfPageTitle = "", parsedTitle = "", coverT
   const pick2 = [
     pageNameOk(ownTitle) ? pdfPageName(ownTitle) : "",
     pageNameOk(pdfPageTitle) ? pdfPageName(pdfPageTitle) : "",
+    cleanPdfTitle(ident?.title || ""),
     cleanPdfTitle(parsedTitle),
     cleanPdfTitle(coverTitle),
-    cleanPdfTitle(metaTitle),
-    ident?.title || ""
+    cleanPdfTitle(metaTitle)
   ].find(Boolean);
   if (pick2) return { title: pick2, loading: false };
   return { title: pdfFileTitle(url) || "PDF", loading: Boolean(pending) };
@@ -29063,7 +29078,7 @@ function createItemRenderer({
       rec.header.classList.toggle("pxd-item__header--muted", item.kind === "board" && isUntitledBoard(item.title));
     }
     node2.title = "";
-    const announced = item.type === "section" ? item.title || "Section" : String(rec.refTitle || item.title || "Untitled");
+    const announced = item.type === "section" ? item.title || "Section" : String(item.kind === "pdf" && rec.pdfCover?.title || rec.refTitle || item.title || "Untitled");
     node2.setAttribute("aria-label", `${announced}, ${item.type}`);
     if (item.landmark || rec.landmarkEl) paintLandmarkMark(rec, item);
     if (trailBadgeMap.size || rec.trailBadge) paintTrailBadge(rec, item.uid);
@@ -33308,7 +33323,7 @@ function createItemRenderer({
       paintThumb3(rec, item);
       return rec.thumbed === true;
     },
-    drawnRect: (uid) => drawnRect(uid, lastRects?.get(uid)) ?? null,
+    drawnRect: (uid, rect) => drawnRect(uid, rect ?? lastRects?.get(uid)) ?? null,
     measureRow,
     setLayoutWatch,
     markRows,
@@ -68876,7 +68891,7 @@ function createReadPane({
     hlBtn.setAttribute("aria-pressed", on ? "true" : "false");
   };
   const paintTools = () => {
-    pane.classList.toggle("pxd-read--tools", toolsOn || searchHold);
+    pane.classList.add("pxd-read--tools");
   };
   const totalCandidates = (input) => {
     const bar2 = input?.closest?.(".rm-pdf-toolbar") || live2.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
@@ -70276,6 +70291,7 @@ function createReadPane({
       const fresh = !pane.isConnected;
       if (fresh) root.append(pane);
       openFlag = true;
+      paintTools();
       emitReading(current3.cardUid);
       titleNode.textContent = shownTitle();
       ensureMotion();
@@ -76632,6 +76648,15 @@ function createPdfNames({ store, lib = () => null, readParse = async () => null,
       this.stop();
       saveCancel?.();
     }
+  };
+}
+
+// src/model/pdf-name-for.js
+var resolver = null;
+function setPdfNameResolver(fn) {
+  resolver = typeof fn === "function" ? fn : null;
+  return () => {
+    if (resolver === fn) resolver = null;
   };
 }
 
@@ -83211,8 +83236,8 @@ function buildBoardView(onFail, {
     let out = shown;
     for (const item of b.items.values()) {
       if (item.kind !== "pdf") continue;
-      const drawn = itemsR.drawnRect?.(item.uid);
       const own = shown.get(item.uid);
+      const drawn = own ? itemsR.drawnRect?.(item.uid, own) : null;
       if (!drawn || !own || drawn.w === own.w && drawn.h === own.h) continue;
       if (out === shown) out = new Map(shown);
       out.set(item.uid, drawn);
@@ -83296,6 +83321,7 @@ function buildBoardView(onFail, {
   let itemsR = null;
   let openPinFromChip = () => false;
   let notePdfMeta = () => "";
+  let identTitleOf = () => "";
   const parsedTitles = /* @__PURE__ */ new Map();
   const parsedEvidence = /* @__PURE__ */ new Map();
   let pdfDisplayTitle = (card2) => {
@@ -84265,7 +84291,8 @@ function buildBoardView(onFail, {
     const pageName = typeof card2?.target?.page === "string" && card2.target.page ? aliasOfCard(card2) || pdfPageName(card2.target.page) : "";
     const ownPage = pageName ? coverModel({ alias: pageName }).title : "";
     if (ownPage && ownPage !== "PDF") return ownPage;
-    const metadataTitle = url ? notePdfMeta(url) : "";
+    const identTitle = url ? identTitleOf(url) : "";
+    const metadataTitle = url && !identTitle ? notePdfMeta(url) : "";
     let cover = null;
     try {
       cover = src ? host?.pdfCover?.(src) : null;
@@ -84274,6 +84301,7 @@ function buildBoardView(onFail, {
     }
     return coverModel({
       metadataTitle,
+      identTitle,
       alias: aliasOfCard(card2),
       text: textOfCard(card2, src),
       title: typeof cover?.title === "string" ? cover.title : "",
@@ -88523,6 +88551,50 @@ function buildBoardView(onFail, {
     });
     return pdfNames;
   };
+  let identLoadStarted = false;
+  identTitleOf = (url) => {
+    if (!url) return "";
+    const names = pdfNamesR();
+    if (!identLoadStarted) {
+      identLoadStarted = true;
+      void names.load().then(() => {
+        if (disposed) return;
+        try {
+          itemsR?.repaintStyles?.();
+        } catch {
+        }
+        try {
+          readPane?.refreshCards?.();
+        } catch {
+        }
+      }).catch(() => {
+      });
+    }
+    const got = names.get(url);
+    return got && typeof got.title === "string" ? got.title : "";
+  };
+  subs.push(setPdfNameResolver((key) => {
+    const b = board2();
+    let item = b?.items.get(key);
+    if (item?.kind !== "pdf") {
+      item = null;
+      for (const it of b?.items.values() || []) {
+        if (it.kind === "pdf" && pdfMacroUrl(pdfSourceOfItem(it)) === key) {
+          item = it;
+          break;
+        }
+      }
+    }
+    if (item) return pdfDisplayTitle(item);
+    const ident = pdfNames?.get(key) || null;
+    return pdfRowName({
+      parsedTitle: parsedTitles.get(key) || "",
+      coverTitle: warmTitleOf(key)?.pageTitle || "",
+      metaTitle: pdfMeta ? pdfMeta.title(key) : "",
+      ident,
+      url: key
+    }).title;
+  }));
   const pdfNameOf = (card2) => {
     const url = typeof card2?.url === "string" ? card2.url : "";
     const uid = typeof card2?.uid === "string" ? card2.uid : "";

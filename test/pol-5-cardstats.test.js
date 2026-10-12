@@ -151,7 +151,7 @@ function createStatsHost({ pullMany, query = queryRows, statPull } = {}) {
     pull(pattern, entity) {
       const text = String(pattern);
       pulls.push([text, entity]);
-      if (text.includes(":block/_refs")) {
+      if (text.includes("block/_refs")) {
         if (statPull) return statPull(pattern, entity);
         const id = typeof entity === "number" ? entity : null;
         return NODES.get(id) ?? null;
@@ -174,7 +174,7 @@ function createStatsHost({ pullMany, query = queryRows, statPull } = {}) {
 }
 
 function statPulls(pulls) {
-  return pulls.filter(([pattern]) => pattern.includes(":block/_refs")).map(([, entity]) => entity);
+  return pulls.filter(([pattern]) => pattern.includes("block/_refs")).map(([, entity]) => entity);
 }
 
 test("pull_many returns the hand-counted map and does not run the collection queries", () => {
@@ -189,9 +189,9 @@ test("pull_many returns the hand-counted map and does not run the collection que
   assert.deepEqual([...stats], EXPECTED);
   assert.equal(queries.length, 0);
   assert.equal(many.length, 1);
-  assert.match(many[0][0], /:block\/_refs \[:db\/id \{:block\/parents \[:db\/id :block\/string\]\}\]/);
-  assert.match(many[0][0], /:block\/_parents \[:db\/id \{:block\/refs \[:db\/id\]\}\]/);
-  assert.match(many[0][0], /:block\/_page \[:db\/id \{:block\/refs \[:db\/id\]\}\]/);
+  assert.match(many[0][0], /\(limit :block\/_refs nil\) \[:db\/id \{:block\/parents \[:db\/id :block\/string\]\}\]/);
+  assert.match(many[0][0], /\(limit :block\/_parents nil\) \[:db\/id \{:block\/refs \[:db\/id\]\}\]/);
+  assert.match(many[0][0], /\(limit :block\/_page nil\) \[:db\/id \{:block\/refs \[:db\/id\]\}\]/);
   assert.deepEqual(many[0][1], [1, 2, 4, 3]);
   assert.equal(host.stats.writes, 0);
 });

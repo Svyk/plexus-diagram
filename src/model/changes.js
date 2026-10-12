@@ -3,7 +3,7 @@
 
 export const CHANGE_CAP = 500;
 const USER = "{:edit/user [:user/display-name {:user/display-page [:node/title]}]}";
-export const CHANGE_PULL = `[:db/id :block/uid :edit/time :create/time ${USER} {:block/children [:block/uid :edit/time ${USER} {:block/children [:block/uid :edit/time ${USER}]}]}]`;
+export const CHANGE_PULL = `[:db/id :block/uid :edit/time :create/time ${USER} {(limit :block/children nil) [:block/uid :edit/time ${USER} {(limit :block/children nil) [:block/uid :edit/time ${USER}]}]}]`;
 
 export function createVisitStore({ storage = globalThis.localStorage, graph = "" } = {}) {
   const key = (uid) => `plexus-diagram:visit:${graph}:${uid}`;

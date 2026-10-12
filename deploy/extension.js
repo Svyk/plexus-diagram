@@ -17125,7 +17125,7 @@ var init_search_sort = __esm({
     plural = (n3, one, many) => `${n3.toLocaleString("en-US")} ${n3 === 1 ? one : many}`;
     DAY_MS2 = 864e5;
     USER_PULL = "[:user/display-name {:user/display-page [:node/title]}]";
-    META_PULL = `[:db/id :block/uid :create/time :edit/time :block/string {:create/user ${USER_PULL}} {:edit/user ${USER_PULL}} {:block/children [:db/id]}]`;
+    META_PULL = `[:db/id :block/uid :create/time :edit/time :block/string {:create/user ${USER_PULL}} {:edit/user ${USER_PULL}} {(limit :block/children nil) [:db/id]}]`;
     META_REFS = "[:find ?b (count ?r) :in $ [?b ...] :where [?r :block/refs ?b]]";
     USER_NAME_QUERIES = Object.freeze([
       "[:find ?n :where [?x :user/display-name ?n]]",
@@ -17698,7 +17698,7 @@ var init_changes = __esm({
   "src/model/changes.js"() {
     CHANGE_CAP = 500;
     USER = "{:edit/user [:user/display-name {:user/display-page [:node/title]}]}";
-    CHANGE_PULL = `[:db/id :block/uid :edit/time :create/time ${USER} {:block/children [:block/uid :edit/time ${USER} {:block/children [:block/uid :edit/time ${USER}]}]}]`;
+    CHANGE_PULL = `[:db/id :block/uid :edit/time :create/time ${USER} {(limit :block/children nil) [:block/uid :edit/time ${USER} {(limit :block/children nil) [:block/uid :edit/time ${USER}]}]}]`;
     userName2 = (user) => {
       const name = user?.[":user/display-name"];
       if (name) return String(name);
@@ -37569,7 +37569,7 @@ var THREAD_QUERY = `[:find ?cell ?au (count ?comment) :in $ ?cp :where
 var PAGE_QUERY = `[:find ?pu :in $ ?u :where [?b :block/uid ?u] [?b :block/page ?p] [?p :block/uid ?pu]]`;
 var CONTAINER_QUERY = `[:find ?cu :in $ ?pu ?cp :where [?p :block/uid ?pu] [?p :block/children ?c] [?c :block/refs ?cp] [?c :block/uid ?cu]]`;
 var AUTHOR_QUERY = `[:find ?title :in $ ?uid :where [?u :user/uid ?uid] [?u :user/display-page ?p] [?p :node/title ?title]]`;
-var TREE_PULL = `[:block/uid :block/string :block/order {:block/children [:block/uid :block/string :block/order {:block/children [:block/uid :block/string :block/order {:block/children [:block/uid :block/string :block/order]}]}]}]`;
+var TREE_PULL = `[:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order]}]}]}]`;
 function installCommentHost(host, { api: api3, data = api3?.data, now: now4 = () => /* @__PURE__ */ new Date() } = {}) {
   if (!host || !data) return host;
   const commentsEid = () => {
@@ -37708,30 +37708,30 @@ function sameButReaderState(a, b) {
   return n3 === 0;
 }
 var BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
- {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
-   {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
-     {:block/children ...}]}]}]`;
+ {(limit :block/children nil) [:block/uid :block/string :block/order :block/heading :block/open :block/props
+   {(limit :block/children nil) [:block/uid :block/string :block/order :block/heading :block/open :block/props
+     {(limit :block/children nil) ...}]}]}]`;
 var REF_CHILD = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
- {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
-   {:block/children ...}]}]`;
+ {(limit :block/children nil) [:block/uid :block/string :block/order :block/heading :block/open :block/props
+   {(limit :block/children nil) ...}]}]`;
 var NATIVE_PULL = `{:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}`;
 var REF_BODY = `[:db/id :block/uid :block/string :node/title :block/order :block/heading :block/open :block/props :pdf/url
  {:block/page [:node/title :block/uid :pdf/url]}
  ${NATIVE_PULL}
- {:block/children ${REF_CHILD}}]`;
+ {(limit :block/children nil) ${REF_CHILD}}]`;
 var OPEN_PATTERN = `[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/page [:block/uid :pdf/url]}
  {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}
  ${NATIVE_PULL}
  {:block/refs ${REF_BODY}}
- {:block/children [:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
+ {(limit :block/children nil) [:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
    {:block/refs ${REF_BODY}}
    ${NATIVE_PULL}
-   {:block/children [:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
+   {(limit :block/children nil) [:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
      {:block/refs ${REF_BODY}}
      ${NATIVE_PULL}
-     {:block/children ...}]}]}]`;
+     {(limit :block/children nil) ...}]}]}]`;
 var LINKED_MANY = `[:find ?title ?u ?ss ?pt :in $ [?title ...] :where
  [?p :node/title ?title] [?b :block/refs ?p] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`;
 function childNodes(node2) {
@@ -37825,7 +37825,7 @@ var BLOCK_KIND_PATTERNS = {
 };
 var DIAGRAM_STRING = /^\s*\{\{(?:\[\[)?diagram/i;
 var DIAGRAM_FIND = new RegExp(DIAGRAM_RE2);
-var STATS_PULL = `[:db/id {:block/_refs [:db/id {:block/parents [:db/id :block/string]}]} {:block/_parents [:db/id {:block/refs [:db/id]}]} {:block/_page [:db/id {:block/refs [:db/id]}]}]`;
+var STATS_PULL = `[:db/id {(limit :block/_refs nil) [:db/id {:block/parents [:db/id :block/string]}]} {(limit :block/_parents nil) [:db/id {:block/refs [:db/id]}]} {(limit :block/_page nil) [:db/id {:block/refs [:db/id]}]}]`;
 function listOf(value) {
   if (value == null) return [];
   return Array.isArray(value) ? value : [value];
@@ -37852,7 +37852,7 @@ var SHOW_REF_QUERY = `[:find ?board ?page ?card :in $ ?uid ?pat :where
  [?target :block/uid ?uid] [?cardblock :block/refs ?target] [?cardblock :block/uid ?card]
  [?cardblock :block/parents ?diagram] [?diagram :block/uid ?board] [?diagram :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?diagram :block/page ?p] [?p :block/uid ?page]]`;
-var BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/props]}]";
+var BOARD_META_PATTERN = "[:block/props :edit/time {(limit :block/children nil) [:block/props]}]";
 var PDF_PAGE_QUERY = `[:find ?u ?t :in $ ?url :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
 var PDF_HIGHLIGHTS_QUERY = `[:find ?url ?props :where [?p :pdf/url ?url] [?b :block/page ?p] [?b :block/props ?props]]`;
 var CHILD_COUNTS = "[:find ?b (count ?k) :in $ [?b ...] :where [?b :block/children ?k]]";
@@ -37865,18 +37865,18 @@ var USER_EID_QUERIES = Object.freeze([
 var PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
 var PDF_BLOCK_OUT_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?p :block/refs ?b] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 var PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?b :block/refs ?p] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
-var PDF_KIDS_PATTERN = `[:block/uid {:block/children [:block/uid :block/string :block/order :block/props
- {:block/children [:block/uid :block/string :block/order :block/props]}]}]`;
-var PDF_PAGE_PATTERN = "[:block/uid :node/title {:block/children [:block/uid :block/string :block/order]}]";
+var PDF_KIDS_PATTERN = `[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/order :block/props
+ {(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]}]`;
+var PDF_PAGE_PATTERN = "[:block/uid :node/title {(limit :block/children nil) [:block/uid :block/string :block/order]}]";
 var PDF_HASH_PAGE_QUERY = `[:find ?u ?t :in $ ?h :where [?p :pdf/content-hash ?h] [?p :block/uid ?u] [?p :node/title ?t]]`;
 var PDF_TOP_BLOCK_QUERY = `[:find ?u ?t :in $ ?url :where [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/page ?p] [?p :block/children ?b] [?p :block/uid ?u] [?p :node/title ?t]]`;
 var BLOCK_PROPS_PATTERN = "[:block/string :block/props {:block/page [:node/title]}]";
-var BLOCK_WATCH_PATTERN = "[:block/string {:block/children [:block/string :block/order :block/props]}]";
+var BLOCK_WATCH_PATTERN = "[:block/string {(limit :block/children nil) [:block/string :block/order :block/props]}]";
 var HIGHLIGHT_TREE_PATTERN = `[:block/uid
- {:block/children [:block/uid :block/string :block/order :block/props
-   {:block/children [:block/uid :block/string :block/order :block/props
-     {:block/children [:block/uid :block/string :block/order :block/props
-       {:block/children [:block/uid :block/string :block/order :block/props]}]}]}]}]`;
+ {(limit :block/children nil) [:block/uid :block/string :block/order :block/props
+   {(limit :block/children nil) [:block/uid :block/string :block/order :block/props
+     {(limit :block/children nil) [:block/uid :block/string :block/order :block/props
+       {(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]}]}]}]`;
 var eidKey = (uid) => [":block/uid", uid];
 var watchEntity = (uid) => `[:block/uid "${String(uid).replace(/["\\]/g, "")}"]`;
 function sortedKids2(node2) {
@@ -37923,7 +37923,7 @@ function patternNeeds(pattern) {
   const text4 = String(pattern ?? "");
   const hit = patternMemo.get(text4);
   if (hit) return hit;
-  const tokens2 = text4.match(/\.\.\.|[[\]{}]|:[^\s[\]{}]+|[^\s[\]{}]+/g) || [];
+  const tokens2 = text4.replace(/\(limit\s+(:[^\s()]+)\s+(?:nil|\d+)\s*\)/g, "$1").match(/\.\.\.|[[\]{}]|:[^\s[\]{}]+|[^\s[\]{}]+/g) || [];
   let i = 0;
   const vector = () => {
     const out = [];
@@ -38985,7 +38985,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     dailyBlocks(when) {
       const title = dailyTitle(when);
       const expectUid = dailyUid(when);
-      const pattern = "[:block/uid :node/title {:block/children [:block/uid :block/string :block/order]}]";
+      const pattern = "[:block/uid :node/title {(limit :block/children nil) [:block/uid :block/string :block/order]}]";
       let res = null;
       try {
         res = pull(pattern, [":node/title", title]);
@@ -39281,7 +39281,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!id) return null;
       let res = null;
       try {
-        res = rawPull("[:block/uid {:block/children ...} :block/string :block/order]", eidKey(id));
+        res = rawPull("[:block/uid {(limit :block/children nil) ...} :block/string :block/order]", eidKey(id));
       } catch {
         return null;
       }
@@ -40426,7 +40426,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const out = { ownTitle: "", pdfPageTitle: "" };
       if (uid) {
         try {
-          const res = rawPull("[:block/uid {:block/parents [:db/id]} {:block/page [:block/uid :node/title {:block/children [:block/uid :block/string :block/order]}]}]", eidKey(uid));
+          const res = rawPull("[:block/uid {:block/parents [:db/id]} {:block/page [:block/uid :node/title {(limit :block/children nil) [:block/uid :block/string :block/order]}]}]", eidKey(uid));
           const page = res?.[":block/page"];
           const parents = res?.[":block/parents"];
           const title = page?.[":node/title"];
@@ -40506,7 +40506,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     relatedText(ref) {
       if (!ref) return "";
       try {
-        const res = ref.kind === "page" ? pull("[:node/title {:block/children [:block/string :block/order]}]", [":node/title", ref.title]) : pull("[:block/string :node/title {:block/children [:block/string :block/order]}]", eidKey(ref.uid));
+        const res = ref.kind === "page" ? pull("[:node/title {(limit :block/children nil) [:block/string :block/order]}]", [":node/title", ref.title]) : pull("[:block/string :node/title {(limit :block/children nil) [:block/string :block/order]}]", eidKey(ref.uid));
         const kids = (Array.isArray(res?.[":block/children"]) ? res[":block/children"] : []).slice().sort((a, b) => (a?.[":block/order"] ?? 0) - (b?.[":block/order"] ?? 0)).map((c) => c?.[":block/string"] || "");
         return relatedQueryText({ title: res?.[":node/title"] || ref.title || "", string: res?.[":block/string"] || "", children: kids });
       } catch {
@@ -40648,7 +40648,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       } else if (targetUid) {
         let res = null;
         try {
-          res = pull("[:block/string {:block/children [:block/string]}]", eidKey(targetUid));
+          res = pull("[:block/string {(limit :block/children nil) [:block/string]}]", eidKey(targetUid));
         } catch {
           res = null;
         }
@@ -61211,7 +61211,7 @@ function searchBlocks(w, text4, limit = 20) {
  [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]`, ciPattern2(needle));
   return rows.filter(([, s, t]) => typeof s === "string" && !String(t).startsWith("roam/")).sort((a, b) => a[1].length - b[1].length).slice(0, limit).map(([uid, string, page]) => ({ uid, string, page }));
 }
-var CHILDREN = "[:block/string :block/order {:block/children ...}]";
+var CHILDREN = "[:block/string :block/order {(limit :block/children nil) ...}]";
 var sortKids = (node2) => {
   const kids = (node2?.[":block/children"] || node2?.children || []).slice().sort((a, b) => (a[":block/order"] ?? 0) - (b[":block/order"] ?? 0));
   return kids.map((k) => ({ string: k[":block/string"] ?? k.string ?? "", children: sortKids(k) }));
@@ -89678,7 +89678,7 @@ function buildBoardView(onFail, {
     const api3 = host?.api;
     let kids = [];
     try {
-      kids = api3?.data?.pull?.("[{:block/children [:block/uid :block/string :block/order :block/props]}]", [":block/uid", hlUid])?.[":block/children"] || [];
+      kids = api3?.data?.pull?.("[{(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]", [":block/uid", hlUid])?.[":block/children"] || [];
     } catch {
       kids = [];
     }
@@ -97003,7 +97003,7 @@ var KEEP_ALIVE_MS = 3e5;
 var LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 var TITLE_PANEL_CLASS = "rm-diagram-title-panel";
 var NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
-var AUTO_PATTERN = "[:block/props {:block/children [:block/props]}]";
+var AUTO_PATTERN = "[:block/props {(limit :block/children nil) [:block/props]}]";
 var CONVERT_LABEL = "Open as Plexus board";
 var CONVERT_TITLE = "Imports this diagram's shapes and arrows into a Plexus board. Plexus: Restore native diagram gives it back.";
 var ANCESTORS_PATTERN = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
@@ -97065,7 +97065,7 @@ function readLegacyEnhanced(host) {
   try {
     const pageUid2 = host.pageUid?.(LEGACY_METADATA_PAGE);
     if (!pageUid2) return out;
-    const tree = pullVia(host, "[:block/uid :block/string {:block/children ...}]", [":block/uid", pageUid2]);
+    const tree = pullVia(host, "[:block/uid :block/string {(limit :block/children nil) ...}]", [":block/uid", pageUid2]);
     const list = pulledChildren(tree).find((child) => /^enhanced::/i.test(pulledString(child).trim()));
     for (const entry of pulledChildren(list)) {
       const uid = uidFromLegacyString(pulledString(entry));

@@ -5375,7 +5375,7 @@ function buildBoardView(onFail, {
     const api = host?.api;
     let kids = [];
     try {
-      kids = api?.data?.pull?.("[{:block/children [:block/uid :block/string :block/order :block/props]}]", [":block/uid", hlUid])?.[":block/children"] || [];
+      kids = api?.data?.pull?.("[{(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]", [":block/uid", hlUid])?.[":block/children"] || [];
     } catch { kids = []; }
     const plan = noteActionPlan(kids);
     // Opening a sidebar window is itself a Roam undo entry. Open first, so the create is the top step

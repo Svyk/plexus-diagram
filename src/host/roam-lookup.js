@@ -33,7 +33,7 @@ export function searchBlocks(w, text, limit = 20) {
     .map(([uid, string, page]) => ({ uid, string, page }));
 }
 
-const CHILDREN = "[:block/string :block/order {:block/children ...}]";
+const CHILDREN = "[:block/string :block/order {(limit :block/children nil) ...}]";
 const sortKids = (node) => {
   const kids = (node?.[":block/children"] || node?.children || []).slice().sort((a, b) => (a[":block/order"] ?? 0) - (b[":block/order"] ?? 0));
   return kids.map((k) => ({ string: k[":block/string"] ?? k.string ?? "", children: sortKids(k) }));

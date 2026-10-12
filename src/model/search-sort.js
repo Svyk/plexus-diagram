@@ -159,7 +159,7 @@ export function narrowByMeta(rows, raw, { days = 0, now = Date.now() } = {}) {
 // list; the pull and the eid-bound count cost a few ms. Users carry :user/display-name in some graphs; in others (the
 // Readwisenotes graph) the name is the title of the user's display page.
 const USER_PULL = "[:user/display-name {:user/display-page [:node/title]}]";
-export const META_PULL = `[:db/id :block/uid :create/time :edit/time :block/string {:create/user ${USER_PULL}} {:edit/user ${USER_PULL}} {:block/children [:db/id]}]`;
+export const META_PULL = `[:db/id :block/uid :create/time :edit/time :block/string {:create/user ${USER_PULL}} {:edit/user ${USER_PULL}} {(limit :block/children nil) [:db/id]}]`;
 export const META_REFS = "[:find ?b (count ?r) :in $ [?b ...] :where [?r :block/refs ?b]]";
 export const USER_NAME_QUERIES = Object.freeze([
   "[:find ?n :where [?x :user/display-name ?n]]",

@@ -204,7 +204,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
         pull(pattern, ref) {
           if (pattern.startsWith("[:block/open")) return env.openState?.[ref[1]] ?? null;
           if (pattern === "[:block/props]") return { ":block/props": props.get(ref[1]) ?? null };
-          if (pattern.startsWith("[:block/props {:block/children")) return { ":block/props": props.get(ref[1]) ?? null, ":block/children": env.autoKids?.[ref[1]] ?? [] };
+          if (pattern.startsWith("[:block/props {(limit :block/children nil)")) return { ":block/props": props.get(ref[1]) ?? null, ":block/children": env.autoKids?.[ref[1]] ?? [] };
           if (pattern.includes(":block/parents")) return env.ancestors?.[ref[1]] ?? null;
           if (pattern.includes("...")) return legacyTree;
           return null;

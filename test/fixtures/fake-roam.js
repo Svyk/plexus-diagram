@@ -183,7 +183,23 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
     return out;
   }
 
+  // Roam's DataScript pull returns at most 1000 values of a ref-many attribute unless the pattern says
+  // `(limit :block/children nil)`.
+  const CHILDREN_CAP = 1000;
+  function capChildren(node) {
+    const kids = node?.[":block/children"];
+    if (!kids) return;
+    if (kids.length > CHILDREN_CAP) node[":block/children"] = kids.slice(0, CHILDREN_CAP);
+    for (const k of node[":block/children"]) capChildren(k);
+  }
+
   function pull(pattern, entity) {
+    const out = pullUncapped(pattern, entity);
+    if (out && !String(pattern).includes("(limit :block/children nil)")) capChildren(out);
+    return out;
+  }
+
+  function pullUncapped(pattern, entity) {
     const { key, value } = parseEntity(entity);
     let out = null;
     if (key === ":node/title") {

@@ -20971,16 +20971,16 @@ function planFromParse(doc, { format = "", offset = 0, planSections } = {}) {
   }
   return { action: "empty" };
 }
-var ROW_CAP, ROW_TOAST, WRITE_CAP, WRITES_PER_CARD, OFFICE_BATCH, NEXT_OFFER, OFFICE_STEP, OFFICE_EXT, ENC;
+var ROW_CAP, ROW_TOAST, WRITE_CAP2, WRITES_PER_CARD, OFFICE_BATCH, NEXT_OFFER, OFFICE_STEP, OFFICE_EXT, ENC;
 var init_anydoc_to_parse = __esm({
   "src/model/anydoc-to-parse.js"() {
     init_parse_schema();
     init_parse_to_roam_md();
     ROW_CAP = 300;
     ROW_TOAST = "first 300 rows";
-    WRITE_CAP = 45;
+    WRITE_CAP2 = 45;
     WRITES_PER_CARD = 2;
-    OFFICE_BATCH = Math.floor(WRITE_CAP / WRITES_PER_CARD);
+    OFFICE_BATCH = Math.floor(WRITE_CAP2 / WRITES_PER_CARD);
     NEXT_OFFER = "next 45";
     OFFICE_STEP = 184;
     OFFICE_EXT = /* @__PURE__ */ new Set(["docx", "pptx", "xlsx", "odt", "ods", "odp", "epub", "csv"]);
@@ -32657,6 +32657,13 @@ function createItemRenderer({
         if (keep && r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
     }
+    if (next.size > LRU_CAP) {
+      const keepFirst = (uid) => uid === editing?.uid ? 0 : shells.get(uid)?.type === "section" ? 1 : 2;
+      const ranked = [...next].map((uid) => [uid, keepFirst(uid), centreDist(uid, visibleRect)]);
+      ranked.sort((a, b) => a[1] - b[1] || a[2] - b[2]);
+      next.clear();
+      for (const [uid] of ranked.slice(0, LRU_CAP)) next.add(uid);
+    }
     wanted = next;
     const t = now2();
     for (const uid of next) if (mounted.has(uid)) mounted.set(uid, t);
@@ -37569,6 +37576,7 @@ var THREAD_QUERY = `[:find ?cell ?au (count ?comment) :in $ ?cp :where
 var PAGE_QUERY = `[:find ?pu :in $ ?u :where [?b :block/uid ?u] [?b :block/page ?p] [?p :block/uid ?pu]]`;
 var CONTAINER_QUERY = `[:find ?cu :in $ ?pu ?cp :where [?p :block/uid ?pu] [?p :block/children ?c] [?c :block/refs ?cp] [?c :block/uid ?cu]]`;
 var AUTHOR_QUERY = `[:find ?title :in $ ?uid :where [?u :user/uid ?uid] [?u :user/display-page ?p] [?p :node/title ?title]]`;
+var THREAD_TTL_MS = 5e3;
 var TREE_PULL = `[:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order]}]}]}]`;
 function installCommentHost(host, { api: api3, data = api3?.data, now: now4 = () => /* @__PURE__ */ new Date() } = {}) {
   if (!host || !data) return host;
@@ -37579,13 +37587,21 @@ function installCommentHost(host, { api: api3, data = api3?.data, now: now4 = ()
       return null;
     }
   };
+  let threadRows = null;
+  const threadRowsNow = (cp) => {
+    const t = Date.now();
+    if (threadRows && threadRows.cp === cp && t - threadRows.at < THREAD_TTL_MS) return threadRows.rows;
+    const rows = host.q(THREAD_QUERY, cp) || [];
+    threadRows = { cp, at: t, rows };
+    return rows;
+  };
   host.commentThreads = (uids) => {
     const list = [...new Set((uids || []).map((u) => String(u || "")).filter(Boolean))];
     const cp = commentsEid();
     if (cp == null || !list.length) return /* @__PURE__ */ new Map();
     const want = new Set(list);
     try {
-      return commentIndexFromRows((host.q(THREAD_QUERY, cp) || []).filter((row4) => want.has(String(row4?.[0] ?? ""))));
+      return commentIndexFromRows(threadRowsNow(cp).filter((row4) => want.has(String(row4?.[0] ?? ""))));
     } catch {
       return /* @__PURE__ */ new Map();
     }
@@ -37617,6 +37633,7 @@ function installCommentHost(host, { api: api3, data = api3?.data, now: now4 = ()
     }
   };
   host.addComment = async (targetUid, body) => {
+    threadRows = null;
     const text4 = String(body ?? "").trim();
     const target = String(targetUid || "");
     if (!target || !text4) return null;
@@ -37649,6 +37666,7 @@ function installCommentHost(host, { api: api3, data = api3?.data, now: now4 = ()
       }
       commentUid = await host.createBlock({ parentUid: plan.anchorUid, order: "last", string: text4 });
     }, "comment");
+    threadRows = null;
     return { anchorUid: plan.anchorUid, commentUid, existed: plan.existed };
   };
   host.editTimes = (uids) => {
@@ -37732,6 +37750,19 @@ var OPEN_PATTERN = `[:db/id :block/uid :block/string :block/order :block/heading
      {:block/refs ${REF_BODY}}
      ${NATIVE_PULL}
      {(limit :block/children nil) ...}]}]}]`;
+var OPEN_PULL_MAX_REFS = 120;
+var REF_TEXT = /\[\[|\(\(|#\S|::/;
+function refBlocksOf(node2, cap4 = Infinity) {
+  let n3 = 0;
+  const stack = [...childNodes(node2)];
+  while (stack.length && n3 <= cap4) {
+    const cur = stack.pop();
+    if (!cur || typeof cur !== "object") continue;
+    if (REF_TEXT.test(String(cur[":block/string"] ?? ""))) n3 += 1;
+    for (const kid of childNodes(cur)) stack.push(kid);
+  }
+  return n3;
+}
 var LINKED_MANY = `[:find ?title ?u ?ss ?pt :in $ [?title ...] :where
  [?p :node/title ?title] [?b :block/refs ?p] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`;
 function childNodes(node2) {
@@ -37825,7 +37856,7 @@ var BLOCK_KIND_PATTERNS = {
 };
 var DIAGRAM_STRING = /^\s*\{\{(?:\[\[)?diagram/i;
 var DIAGRAM_FIND = new RegExp(DIAGRAM_RE2);
-var STATS_PULL = `[:db/id {(limit :block/_refs nil) [:db/id {:block/parents [:db/id :block/string]}]} {(limit :block/_parents nil) [:db/id {:block/refs [:db/id]}]} {(limit :block/_page nil) [:db/id {:block/refs [:db/id]}]}]`;
+var STATS_PULL = `[:db/id {(limit :block/_refs nil) [:db/id {:block/parents [:db/id :block/string]}]} {(limit :block/_parents nil) [:db/id {:block/refs [:db/id]}]} {:block/_page [:db/id {:block/refs [:db/id]}]}]`;
 function listOf(value) {
   if (value == null) return [];
   return Array.isArray(value) ? value : [value];
@@ -37863,6 +37894,10 @@ var USER_EID_QUERIES = Object.freeze([
   "[:find ?x ?n :where [?x :user/uid _] [?x :user/display-page ?d] [?d :node/title ?n]]"
 ]);
 var PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
+var PDF_PAGES_ALL_QUERY = `[:find ?url ?u ?t :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
+var PDF_PAGE_PROPS_ALL_QUERY = `[:find ?u ?b ?props :where [?p :pdf/url _] [?p :block/uid ?u] [?b :block/page ?p] [?b :block/props ?props]]`;
+var COVER_INDEX_URLS = 4;
+var COVER_INDEX_MIN_MS = 2e3;
 var PDF_BLOCK_OUT_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?p :block/refs ?b] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 var PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?b :block/refs ?p] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 var PDF_KIDS_PATTERN = `[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/order :block/props
@@ -38010,6 +38045,54 @@ function createWriteQueue({ onBusy } = {}) {
     idle() {
       if (pending === 0) return Promise.resolve();
       return new Promise((resolve) => waiters.push(resolve));
+    }
+  };
+}
+var WRITE_BURST = 200;
+var WRITE_GAP_MS = 100;
+var WRITE_CAP = 1200;
+function isRateLimitError(error) {
+  return /mutation rate limit|rate limit exceeded/i.test(String(error?.message ?? error ?? ""));
+}
+function createWritePacer({ now: now4 = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), burst = WRITE_BURST, gapMs = WRITE_GAP_MS, cap: cap4 = WRITE_CAP, windowMs = 6e4 } = {}) {
+  const stamps = [];
+  let chain = Promise.resolve();
+  const trim = (t) => {
+    while (stamps.length && t - stamps[0] >= windowMs) stamps.shift();
+  };
+  const take = async () => {
+    let t = now4();
+    trim(t);
+    if (stamps.length >= cap4) {
+      await sleep(stamps[0] + windowMs - t);
+      t = now4();
+      trim(t);
+    } else if (stamps.length >= burst) {
+      const wait2 = stamps[stamps.length - 1] + gapMs - t;
+      if (wait2 > 0) {
+        await sleep(wait2);
+        t = now4();
+      }
+    }
+    stamps.push(t);
+  };
+  return {
+    // Resolves when this write may go. Calls queue in order.
+    pace() {
+      const p = chain.then(take);
+      chain = p.catch(() => {
+      });
+      return p;
+    },
+    // Roam refused a write: count the window as full so the next write waits it out.
+    saturate() {
+      const t = now4();
+      trim(t);
+      while (stamps.length < cap4) stamps.push(t);
+    },
+    get recent() {
+      trim(now4());
+      return stamps.length;
     }
   };
 }
@@ -38266,6 +38349,18 @@ function countReads(data, stats) {
 }
 var BROWSE_TTL_MS = 3e4;
 function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
+  const pacer = createWritePacer();
+  const mutate = async (fn) => {
+    await pacer.pace();
+    try {
+      return await fn();
+    } catch (error) {
+      if (!isRateLimitError(error)) throw error;
+      pacer.saturate();
+      await pacer.pace();
+      return await fn();
+    }
+  };
   const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
   bindGuardStats(stats);
   const data = countReads(api3.data, stats);
@@ -38320,6 +38415,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const eidByTitle = /* @__PURE__ */ new Map();
   const statsCache = /* @__PURE__ */ new Map();
   const PRIME_CHUNK = 40;
+  const STATS_CHUNK = 80;
   const STATS_TTL_MS = 12e4;
   const MISS = /* @__PURE__ */ Symbol("pull-miss");
   const rawPull = typeof data.pull === "function" ? data.pull.bind(data) : () => null;
@@ -38621,7 +38717,38 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   };
   let coverMemo = null;
   const repairedPdfBlocks = /* @__PURE__ */ new Set();
+  let coverAsks = { at: 0, urls: /* @__PURE__ */ new Set() };
+  let coverIndex = null;
+  const coverIndexNow = () => {
+    const now4 = Date.now();
+    if (coverIndex && now4 - coverIndex.at < coverIndex.ttl) return coverIndex;
+    const t0 = Date.now();
+    const pages = /* @__PURE__ */ new Map();
+    for (const row4 of queryRows(host, PDF_PAGES_ALL_QUERY)) {
+      if (!Array.isArray(row4) || typeof row4[0] !== "string" || typeof row4[1] !== "string" || row4[1] === "") continue;
+      if (!pages.has(row4[0])) pages.set(row4[0], []);
+      pages.get(row4[0]).push({ uid: row4[1], title: typeof row4[2] === "string" ? row4[2] : "", url: row4[0] });
+    }
+    const counts = /* @__PURE__ */ new Map();
+    for (const row4 of queryRows(host, PDF_PAGE_PROPS_ALL_QUERY)) {
+      if (Array.isArray(row4) && hasPdfHighlight(row4[2])) counts.set(row4[0], (counts.get(row4[0]) || 0) + 1);
+    }
+    coverIndex = { at: now4, ttl: Math.max(COVER_INDEX_MIN_MS, (Date.now() - t0) * 40), pages, counts };
+    return coverIndex;
+  };
+  const useCoverIndex = (url) => {
+    const now4 = Date.now();
+    if (now4 - coverAsks.at > COVER_INDEX_MIN_MS) coverAsks = { at: now4, urls: /* @__PURE__ */ new Set() };
+    coverAsks.urls.add(url);
+    return coverAsks.urls.size >= COVER_INDEX_URLS || Boolean(coverIndex && now4 - coverIndex.at < coverIndex.ttl);
+  };
   const readPdfCover = (url) => {
+    if (useCoverIndex(url)) {
+      const index = coverIndexNow();
+      const page2 = pdfPagePlan(url, index.pages.get(url) || []);
+      if (!page2) return { ...coverModel({ url, count: 0 }), pageUid: null };
+      return { ...coverModel({ title: page2.title, url, count: index.counts.get(page2.uid) || 0 }), pageUid: page2.uid };
+    }
     const pages = [];
     for (const row4 of queryRows(host, PDF_PAGE_QUERY, url)) {
       if (!Array.isArray(row4)) continue;
@@ -38731,34 +38858,43 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     viewports: createViewportStore({ storage, graph: gname }),
     tabs: createTabStore({ storage, graph: gname }),
     // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
-    pullBoard(uid, { light = false } = {}) {
+    pullBoard(uid, { light = false, deferRefs = false } = {}) {
       if (warm.has(uid)) {
         const cached = cache.blockOf(uid);
         if (cached?.[":block/uid"]) return cached;
       }
       warm.delete(uid);
       const boardEntity = eidKey(uid);
-      let node2 = null;
+      let plain2 = null;
       try {
-        node2 = rawPull(OPEN_PATTERN, boardEntity);
+        plain2 = rawPull(BOARD_PATTERN, boardEntity);
       } catch {
-        node2 = null;
+        plain2 = null;
       }
-      let honored = Boolean(node2?.[":block/uid"] && hasRefs(node2));
-      if (!node2?.[":block/uid"]) {
+      let node2 = null;
+      const refBlocks = plain2?.[":block/uid"] ? refBlocksOf(plain2, OPEN_PULL_MAX_REFS) : 0;
+      if (!plain2?.[":block/uid"] || refBlocks > 0 && refBlocks <= OPEN_PULL_MAX_REFS) {
         try {
-          node2 = rawPull(BOARD_PATTERN, boardEntity);
+          node2 = rawPull(OPEN_PATTERN, boardEntity);
         } catch {
           node2 = null;
         }
+      }
+      let honored = Boolean(node2?.[":block/uid"] && hasRefs(node2));
+      if (!node2?.[":block/uid"]) {
+        node2 = plain2;
         honored = false;
       }
       if (!node2?.[":block/uid"]) return null;
       absorb(uid, node2, honored);
       const found = collectTargets(node2);
-      if (!honored && (found.uids.length || found.titles.length)) {
-        for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
-      }
+      const pullRefs = () => {
+        if (!honored && (found.uids.length || found.titles.length)) {
+          for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
+        }
+      };
+      const refsLater = light && deferRefs;
+      if (!refsLater) pullRefs();
       boardCovers.set(uid, honored);
       const prime = () => {
         try {
@@ -38766,12 +38902,25 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         } catch {
         }
         dropStats(uid);
-        if (found.stats.length) {
+        if (!found.stats.length) return;
+        try {
+          host.cardStats(found.stats.slice(0, STATS_CHUNK), { boardUid: uid });
+        } catch {
+        }
+        const idle = globalThis.requestIdleCallback;
+        const later = (fn) => typeof idle === "function" ? idle(() => fn(), { timeout: 1500 }) : setTimeout(fn, 250);
+        const pulledAt = pullSeq;
+        let si = STATS_CHUNK;
+        const step = () => {
+          if (si >= found.stats.length || unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
           try {
-            host.cardStats(found.stats, { boardUid: uid });
+            host.cardStats(found.stats.slice(si, si + STATS_CHUNK), { boardUid: uid });
           } catch {
           }
-        }
+          si += STATS_CHUNK;
+          later(step);
+        };
+        if (si < found.stats.length) later(step);
       };
       if (!light) prime();
       else {
@@ -38781,10 +38930,21 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         const targets = found.stats;
         const pulledAt = ++pullSeq;
         let ti = 0;
+        let si = 0;
         let statsDone = false;
+        let refsDone = !refsLater;
         const step = () => {
           if (unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
-          if (ti === 0 && !statsDone) dropStats(uid);
+          if (!refsDone) {
+            refsDone = true;
+            try {
+              pullRefs();
+            } catch {
+            }
+            later(step);
+            return;
+          }
+          if (ti === 0 && si === 0 && !statsDone) dropStats(uid);
           if (ti < titles.length) {
             try {
               fetchLinked(titles.slice(ti, ti + PRIME_CHUNK));
@@ -38792,10 +38952,12 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
             }
             ti += PRIME_CHUNK;
           } else if (!statsDone) {
-            statsDone = true;
-            if (targets.length) {
+            const part = targets.slice(si, si + STATS_CHUNK);
+            si += STATS_CHUNK;
+            if (si >= targets.length) statsDone = true;
+            if (part.length) {
               try {
-                host.cardStats(targets, { boardUid: uid });
+                host.cardStats(part, { boardUid: uid });
               } catch {
               }
             }
@@ -39014,7 +39176,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const existing = host.pageUid(name);
       if (existing) return existing;
       stats.writes++;
-      await data.page.create({ page: { title: name } });
+      await mutate(() => data.page.create({ page: { title: name } }));
       noteWrite("create");
       return host.pageUid(name);
     },
@@ -39041,7 +39203,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const uid = host.pageUid(oldTitle);
       if (!uid) return false;
       stats.writes++;
-      await data.page.update({ page: { uid, title: newTitle } });
+      await mutate(() => data.page.update({ page: { uid, title: newTitle } }));
       noteWrite("update");
       return true;
     },
@@ -39226,7 +39388,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (open !== void 0) block.open = open;
       if (viewType) block["children-view-type"] = viewType;
       stats.writes++;
-      await data.block.create({ location: { "parent-uid": parentUid, order }, block });
+      await mutate(() => data.block.create({ location: { "parent-uid": parentUid, order }, block }));
       noteWrite("create");
       return id;
     },
@@ -39237,10 +39399,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!parent) return [];
       const fn = data.block?.fromMarkdown;
       if (typeof fn !== "function") throw new Error("fromMarkdown is missing");
-      const result = await fn({
+      const result = await mutate(() => fn({
         location: { "parent-uid": parent, order },
         "markdown-string": String(markdown ?? "")
-      });
+      }));
       const roots = markdownRootUids(result);
       stats.writes++;
       noteWrite("create");
@@ -39328,7 +39490,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     async updateString(uid, string) {
       stats.writes++;
-      await data.block.update({ block: { uid, string } });
+      await mutate(() => data.block.update({ block: { uid, string } }));
       noteWrite("update");
       forgetUid(uid);
     },
@@ -39336,7 +39498,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       forgetUid(uid);
       const merged = mergePropsForWrite(host.pullProps(uid), plexus);
       stats.writes++;
-      await data.block.update({ block: { uid, props: merged } });
+      await mutate(() => data.block.update({ block: { uid, props: merged } }));
       noteWrite("update");
     },
     // Notes kept reads on a PDF block. Only the `plexus-reads` prop changes; every other prop stays.
@@ -39344,24 +39506,24 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       forgetUid(uid);
       const merged = { ...plainKeys(host.pullProps(uid)), "plexus-reads": plainKeys(reads) };
       stats.writes++;
-      await data.block.update({ block: { uid, props: merged } });
+      await mutate(() => data.block.update({ block: { uid, props: merged } }));
       noteWrite("update");
     },
     async moveBlock(uid, parentUid, order = "last") {
       stats.writes++;
-      await data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } });
+      await mutate(() => data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } }));
       noteWrite("move");
       forgetUid(uid);
     },
     async deleteBlock(uid) {
       stats.writes++;
-      await data.block.delete({ block: { uid } });
+      await mutate(() => data.block.delete({ block: { uid } }));
       noteWrite("delete");
       forgetUid(uid);
     },
     async setOpen(uid, open) {
       stats.writes++;
-      await data.block.update({ block: { uid, open } });
+      await mutate(() => data.block.update({ block: { uid, open } }));
       noteWrite("update");
       forgetUid(uid);
     },
@@ -39385,7 +39547,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     async deletePage(uid) {
       stats.writes++;
-      await data.page.delete({ page: { uid } });
+      await mutate(() => data.page.delete({ page: { uid } }));
       noteWrite("delete");
     },
     // A block another extension created inside the open group (Roam Plexus "New drawing").
@@ -39653,7 +39815,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const page = { title: name };
       if (typeof uid === "string" && uid) page.uid = uid;
       stats.writes++;
-      await data.page.create({ page });
+      await mutate(() => data.page.create({ page }));
       noteWrite("create");
       return page.uid || host.pageUid(name);
     },
@@ -39721,14 +39883,14 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     // Card footer stats. One reverse-attribute pull for the resolved targets.
     // The four collection-bound queries run only when that pull throws or is unusable.
     cardStats(targets, { boardUid } = {}) {
-      const keys = [];
+      const keySet = /* @__PURE__ */ new Set();
       for (const t of targets || []) {
         if (!t) continue;
         const ref = t.kind === "page" ? t.title ? { title: t.title } : null : t.uid ? { uid: t.uid } : null;
         if (!ref) continue;
-        const key = t.kind === "page" ? `page:${t.title}` : `uid:${t.uid}`;
-        if (!keys.includes(key)) keys.push(key);
+        keySet.add(t.kind === "page" ? `page:${t.title}` : `uid:${t.uid}`);
       }
+      const keys = [...keySet];
       if (keys.length && keys.every((key) => freshStat(boardUid, key))) {
         const result2 = /* @__PURE__ */ new Map();
         for (const key of keys) result2.set(key, { ...freshStat(boardUid, key) });
@@ -41292,6 +41454,7 @@ var LINK_MODES = ["off", "attributes", "all"];
 var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
 var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 var MAX_PARENT_STRINGS = 200;
+var LINK_CHUNK = 120;
 var DAILY_GAP = 20;
 var HIGHLIGHT_WATCH_CAP = 60;
 var registry = /* @__PURE__ */ new Map();
@@ -41938,7 +42101,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (destroyed || pausedHolds >= holders) return;
     let fresh = null;
     try {
-      fresh = host.pullBoard?.(uid, { light: true });
+      fresh = host.pullBoard?.(uid, { light: true, deferRefs: true });
     } catch {
       return;
     }
@@ -42555,8 +42718,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     linkFingerprint = fp;
     if (changed2 || force) emit2("links", { links: visibleLinks, coveredEdges: covered });
   }
-  function computeLinks() {
-    if (!board2) return;
+  function linkInputs() {
+    if (!board2) return null;
     const resolved = /* @__PURE__ */ new Map();
     const resolveOnce = (ref) => {
       const key = ref.title != null ? `title:${ref.title}` : `uid:${ref.uid}`;
@@ -42577,11 +42740,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       eidToItems.get(eid).push(item.uid);
     }
     const eids = [...eidToItems.keys()];
-    if (!eids.length || boardEid == null) {
-      allLinks = [];
-      return;
-    }
-    const rows = host.q(linksQuery(), boardEid, eids, eids) || [];
+    if (!eids.length || boardEid == null) return null;
+    return { boardEid, eidToItems, eids };
+  }
+  function linkRows(inputs, targets) {
+    return host.q(linksQuery(), inputs.boardEid, inputs.eids, targets) || [];
+  }
+  function finishLinkRows(inputs, rows) {
     const parentStrings = /* @__PURE__ */ new Map();
     let budget = MAX_PARENT_STRINGS;
     for (const row4 of rows) {
@@ -42594,7 +42759,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         if (ps != null) parentStrings.set(su, ps);
       }
     }
-    allLinks = reduceLinks(rows, { eidToItems, parentStrings });
+    allLinks = reduceLinks(rows, { eidToItems: inputs.eidToItems, parentStrings });
   }
   let linkTimer = null;
   let linkIdleId = null;
@@ -42611,8 +42776,43 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     linkTimer = null;
     linkIdleId = null;
     if (!destroyed) {
+      let inputs = null;
       try {
-        computeLinks();
+        inputs = linkInputs();
+      } catch (err) {
+        console.error("[plexus session] links", err);
+      }
+      const ric = globalThis.requestIdleCallback;
+      if (inputs && inputs.eids.length > LINK_CHUNK && typeof ric === "function" && !idle) {
+        const epoch = linkEpoch;
+        const rows = [];
+        let i = 0;
+        const step = () => {
+          linkIdleId = null;
+          if (destroyed || epoch !== linkEpoch) {
+            finishLinks();
+            return;
+          }
+          try {
+            rows.push(...linkRows(inputs, inputs.eids.slice(i, i + LINK_CHUNK)));
+            i += LINK_CHUNK;
+            if (i < inputs.eids.length) {
+              linkIdleId = ric(step, { timeout: 1e3 });
+              return;
+            }
+            finishLinkRows(inputs, rows);
+            recomputeLinks(false);
+          } catch (err) {
+            console.error("[plexus session] links", err);
+          }
+          finishLinks();
+        };
+        step();
+        return;
+      }
+      try {
+        if (inputs) finishLinkRows(inputs, linkRows(inputs, inputs.eids));
+        else allLinks = [];
         recomputeLinks(false);
       } catch (err) {
         console.error("[plexus session] links", err);
@@ -77624,10 +77824,32 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     body.style.display = collapsed ? "none" : "";
     head.setAttribute("aria-expanded", collapsed ? "false" : "true");
   };
-  const place3 = () => {
+  let observed = null;
+  let toolbarH = 0;
+  let resize = null;
+  const toolbarHeight = () => {
     const tb = root.querySelector?.(".pxd-toolbar");
-    const h = tb?.offsetHeight || 0;
-    panel.style.top = `${8 + (h ? h + 6 : 44)}px`;
+    if (!tb) return 0;
+    const RO = doc?.defaultView?.ResizeObserver || globalThis.ResizeObserver;
+    if (typeof RO !== "function") return tb.offsetHeight || 0;
+    if (observed !== tb) {
+      resize?.disconnect();
+      observed = tb;
+      toolbarH = tb.offsetHeight || 0;
+      resize = new RO(() => {
+        const next = observed?.offsetHeight || 0;
+        if (next === toolbarH) return;
+        toolbarH = next;
+        place3();
+      });
+      resize.observe(tb);
+    }
+    return toolbarH;
+  };
+  const place3 = () => {
+    const h = toolbarHeight();
+    const top = `${8 + (h ? h + 6 : 44)}px`;
+    if (panel.style.top !== top) panel.style.top = top;
   };
   const choice = (parent, options, current3, fn, tip) => {
     const wrap = el2("div", "pxd-seg pxd-props__choices", parent);
@@ -77803,6 +78025,9 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     isCollapsed: () => collapsed,
     dispose() {
       listeners3.splice(0).forEach((off) => off());
+      resize?.disconnect();
+      resize = null;
+      observed = null;
       panel.remove();
     }
   };
@@ -86222,6 +86447,29 @@ function buildBoardView(onFail, {
     const data = await blobToDataUrl2(image);
     return typeof data === "string" && data.startsWith("data:") ? data : "";
   };
+  let coverRepaint = null;
+  const repaintForCover = (url) => {
+    if (disposed) return;
+    if (!coverRepaint) {
+      coverRepaint = /* @__PURE__ */ new Set();
+      const run = () => {
+        const urls2 = coverRepaint;
+        coverRepaint = null;
+        if (disposed || !urls2?.size) return;
+        const uids = [];
+        for (const item of board2()?.items.values() || []) {
+          if (item?.kind === "pdf" && urls2.has(coverUrlOf(item))) uids.push(item.uid);
+        }
+        if (uids.length) itemsR.repaintItems(uids);
+        try {
+          refreshPdfHighlightCounts();
+        } catch {
+        }
+      };
+      Promise.resolve().then(run);
+    }
+    coverRepaint.add(url);
+  };
   const loadCover = (url) => {
     const gen = (coverGen.get(url) || 0) + 1;
     coverGen.set(url, gen);
@@ -86243,7 +86491,7 @@ function buildBoardView(onFail, {
         if (disposed || coverGen.get(url) !== gen) return;
         coverFaces.set(url, src ? { state: "ready", src, w: record?.w ?? null, h: record?.h ?? null, lastPage: record?.lastPage ?? null, pageCount: record?.pageCount ?? null, ...titleFace(record) } : emptyFace("error", record));
       }
-      if (!disposed) itemsR.repaintStyles();
+      repaintForCover(url);
       if (!disposed && typeof record?.pageTitle === "string" && record.pageTitle) {
         try {
           readPane?.refreshCards?.();
@@ -86254,7 +86502,7 @@ function buildBoardView(onFail, {
     }).catch(() => {
       if (disposed || coverGen.get(url) !== gen) return;
       coverFaces.set(url, emptyFace("none", null));
-      if (!disposed) itemsR.repaintStyles();
+      repaintForCover(url);
     });
   };
   const coverImageFor = (url) => {
@@ -100235,7 +100483,7 @@ async function installPlexusDiagram({
   }
   function scanAdded(node2) {
     for (const diagram of diagramsWithin(node2)) consider(diagram);
-    if (active2()) {
+    if (active2() && !node2.closest?.(".pxd-root")) {
       relChips.scan(node2);
       boardChips.scan(node2);
       cardChips.scan(node2);

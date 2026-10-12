@@ -61,7 +61,7 @@ def test_pair_returns_the_token_once_to_an_allowed_origin(tmp_path):
     open_window(tmp_path / "pair-until")
     first = client.get("/v1/pair", headers={"Origin": ROAM})
     assert first.status_code == 200
-    assert first.json() == {"token": TOKEN, "helper": "plexus-parse-helper", "version": "0.1.0"}
+    assert first.json() == {"token": TOKEN, "helper": "plexus-parse-helper", "version": "0.1.1"}
     assert first.headers["access-control-allow-origin"] == ROAM
     assert first.headers["cache-control"] == "no-store"
     assert client.get("/v1/pair", headers={"Origin": ROAM}).status_code == 404
@@ -242,3 +242,85 @@ def test_installer_script_text():
     assert "command -v uv" in text
     assert "subdirectory=tools/parse-helper" in text
     assert "Svyk/plexus-diagram" in text
+
+
+def _wait(cond, seconds=2.0):
+    import time
+    end = time.time() + seconds
+    while time.time() < end:
+        if cond():
+            return True
+        time.sleep(0.01)
+    return cond()
+
+
+def test_pair_request_needs_an_allowed_origin(tmp_path):
+    asked = []
+    client = _client(tmp_path, consent_runner=lambda origin: asked.append(origin) or True)
+    assert client.post("/v1/pair/request").status_code == 404
+    evil = client.post("/v1/pair/request", headers={"Origin": "https://evil.example"})
+    assert evil.status_code == 403
+    assert asked == []
+
+
+def test_pair_request_allow_opens_the_window_and_get_pair_collects_it(tmp_path):
+    client = _client(tmp_path, consent_runner=lambda origin: True)
+    first = client.post("/v1/pair/request", headers={"Origin": ROAM})
+    assert first.status_code == 202
+    assert _wait(lambda: window_open(tmp_path / "pair-until"))
+    got = client.get("/v1/pair", headers={"Origin": ROAM})
+    assert got.status_code == 200 and got.json()["token"] == TOKEN
+    assert first.headers.get("access-control-allow-origin") == ROAM
+
+
+def test_pair_request_is_202_while_the_window_is_already_open(tmp_path):
+    asked = []
+    client = _client(tmp_path, consent_runner=lambda origin: asked.append(origin) or True)
+    open_window(tmp_path / "pair-until")
+    assert client.post("/v1/pair/request", headers={"Origin": ROAM}).status_code == 202
+    assert asked == []
+
+
+def test_pair_request_decline_reads_403_once(tmp_path):
+    client = _client(tmp_path, consent_runner=lambda origin: False)
+    assert client.post("/v1/pair/request", headers={"Origin": ROAM}).status_code == 202
+    import time
+    time.sleep(0.2)
+    assert client.post("/v1/pair/request", headers={"Origin": ROAM}).status_code == 403
+    assert window_open(tmp_path / "pair-until") is False
+
+
+def test_pair_request_does_not_stack_dialogs_and_rate_limits(tmp_path, monkeypatch):
+    import threading
+    from plexus_parse_helper import server
+    release = threading.Event()
+    asked = []
+
+    def runner(origin):
+        asked.append(origin)
+        release.wait(2)
+        return False
+
+    clock = [100.0]
+    monkeypatch.setattr(server.time, "monotonic", lambda: clock[0])
+    client = _client(tmp_path, consent_runner=runner)
+    assert client.post("/v1/pair/request", headers={"Origin": ROAM}).status_code == 202
+    assert _wait(lambda: len(asked) == 1)
+    assert client.post("/v1/pair/request", headers={"Origin": ROAM}).status_code == 202
+    assert len(asked) == 1
+    release.set()
+    import time
+    time.sleep(0.2)
+    assert client.post("/v1/pair/request", headers={"Origin": ROAM}).status_code == 403
+    clock[0] += 5
+    assert client.post("/v1/pair/request", headers={"Origin": ROAM}).status_code == 429
+    clock[0] += 6
+    assert client.post("/v1/pair/request", headers={"Origin": ROAM}).status_code == 202
+
+
+def test_pair_request_preflight_is_answered_for_an_allowed_origin(tmp_path):
+    client = _client(tmp_path, consent_runner=lambda origin: False)
+    pre = client.options("/v1/pair/request", headers={"Origin": ROAM, "Access-Control-Request-Method": "POST"})
+    assert pre.status_code == 204
+    assert pre.headers["access-control-allow-origin"] == ROAM
+    assert "POST" in pre.headers["access-control-allow-methods"]

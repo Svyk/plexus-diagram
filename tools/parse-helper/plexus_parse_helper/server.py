@@ -20,7 +20,7 @@ from plexus_parse_helper.cloud import TIERS, CloudCancelled, CloudError, run_lla
 from plexus_parse_helper.jobs import JobCancelled, JobManager, expand_pages
 from plexus_parse_helper.models import model_report, start_download, stop_download
 from plexus_parse_helper.ocr import ocr_cells, ocr_options_hash, ocr_pdf
-from plexus_parse_helper.pair import close_window, window_open
+from plexus_parse_helper.pair import close_window, mac_consent, open_window, window_open
 from plexus_parse_helper.schema import normalize_options, options_hash, sha256_bytes
 from plexus_parse_helper.vlm_layout import layout_available
 from plexus_parse_helper.vlm_read import read_pages
@@ -187,7 +187,7 @@ class JobBook:
         return 204
 
 
-def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobManager | None = None, cache: ParseCache | None = None, ocr_runner=None, cell_runner=None, pair_file=None, cloud_runner=None, table_runner=None, vlm_runner=None) -> FastAPI:
+def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobManager | None = None, cache: ParseCache | None = None, ocr_runner=None, cell_runner=None, pair_file=None, cloud_runner=None, table_runner=None, vlm_runner=None, consent_runner=None) -> FastAPI:
     allow = set(allow_origins or ["https://roamresearch.com"])
     manager = jobs or JobManager()
     store = cache or ParseCache()
@@ -202,6 +202,10 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
     ocr_lock = threading.Lock()
     table_lock = threading.Lock()
     pair_lock = threading.Lock()
+    ask_consent = consent_runner or mac_consent
+    # Consent dialog state, all under pair_lock: one dialog at a time, one new dialog per 10 s,
+    # and a "no" that the next request reads once.
+    consent = {"showing": False, "last": None, "declined_until": 0.0}
     run_tables = table_runner or read_tables
     run_vlm = vlm_runner or read_pages
 
@@ -254,6 +258,43 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
             {"token": token, "helper": HELPER_NAME, "version": HELPER_VERSION},
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.post("/v1/pair/request")
+    def pair_request(request: Request):
+        """No bearer. Opens a consent dialog on the Mac; Allow opens the pairing window, which
+        the browser then collects with GET /v1/pair. 202 asking, 403 declined (once), 429 too soon."""
+        origin = request.headers.get("origin")
+        if not origin or origin not in allow:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        with pair_lock:
+            if window_open(pair_file):
+                return JSONResponse({"status": "open"}, status_code=202)
+            at = time.monotonic()
+            if consent["declined_until"] > at:
+                consent["declined_until"] = 0.0
+                return JSONResponse({"error": "declined"}, status_code=403)
+            if consent["showing"]:
+                return JSONResponse({"status": "asking"}, status_code=202)
+            if consent["last"] is not None and at - consent["last"] < 10:
+                return JSONResponse({"error": "too soon"}, status_code=429)
+            consent["showing"] = True
+            consent["last"] = at
+
+        def ask():
+            allowed = False
+            try:
+                allowed = bool(ask_consent(origin))
+            except Exception:
+                allowed = False
+            with pair_lock:
+                consent["showing"] = False
+                if allowed:
+                    open_window(pair_file)
+                else:
+                    consent["declined_until"] = time.monotonic() + 30
+
+        threading.Thread(target=ask, name="pair-consent", daemon=True).start()
+        return JSONResponse({"status": "asking"}, status_code=202)
 
     @app.get("/v1/models")
     def models(request: Request):

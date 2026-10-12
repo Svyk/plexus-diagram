@@ -358,15 +358,30 @@ test("Set up opens the sheet with the command; Copy needs a trusted click; Pair 
   assert.equal(panel.el.querySelector(".pxd-engines__sheet"), null, "the sheet closes once the helper is ready");
 });
 
-test("pair failure shows the reason instead of nothing", async () => {
-  const client = fakeClient({ state: "not-paired", paired: false });
-  client.pair = async () => ({ ok: false, reason: "window-closed" });
-  const toasts = [];
-  const { panel } = mount({ client, toast: (t) => toasts.push(t) });
-  await tick();
-  panel.el.querySelector('[data-action="pair"]').click();
-  await tick();
-  assert.match(toasts[0], /Pairing window closed/);
+test("pair outcomes show a message that also stays under the rows until the next poll", async () => {
+  const cases = [
+    [{ ok: false, reason: "window-closed" }, /This helper is older/],
+    [{ ok: false, reason: "declined" }, /Pairing declined on the Mac/],
+    [{ ok: false, reason: "timeout" }, /No answer from the Mac dialog/],
+    [{ ok: false, reason: "not-running" }, /not running/],
+  ];
+  for (const [result, pattern] of cases) {
+    const client = fakeClient({ state: "not-paired", paired: false });
+    client.pair = async ({ onWaiting } = {}) => { onWaiting?.(); return result; };
+    const toasts = [];
+    const { panel, intervals } = mount({ client, toast: (t) => toasts.push(t) });
+    await tick();
+    panel.el.querySelector('[data-action="pair"]').click();
+    await tick();
+    assert.match(toasts[0], /Approve Plexus in the dialog/);
+    assert.match(toasts[1], pattern);
+    const line = panel.el.querySelector(".pxd-engines__last");
+    assert.match(line.textContent, pattern);
+    assert.equal(line.hasAttribute("hidden"), false);
+    intervals[0].fn();
+    assert.equal(line.hasAttribute("hidden"), true);
+    panel.dispose();
+  }
 });
 
 test("model download shows progress with a Cancel, and cancel returns the Download button", async () => {

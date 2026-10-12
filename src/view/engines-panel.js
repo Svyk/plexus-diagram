@@ -199,7 +199,11 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
   list.className = "pxd-engines__rows";
   const sheetHost = doc.createElement("div");
   sheetHost.className = "pxd-engines__sheet-host";
-  el.append(title, list, sheetHost);
+  const lastLine = doc.createElement("div");
+  lastLine.className = "pxd-engines__note pxd-engines__last";
+  lastLine.setAttribute("role", "status");
+  lastLine.setAttribute("hidden", "");
+  el.append(title, list, lastLine, sheetHost);
 
   let state = null;
   let sheetKind = null;
@@ -210,6 +214,17 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
   let disposed = false;
 
   const say = (text) => { try { toast?.(text); } catch { /* a toast must never break the panel */ } };
+  // Pairing answers are easy to miss as a toast, so the last one also stays under the rows until
+  // the next timed status refresh.
+  const sayHere = (text) => {
+    say(text);
+    lastLine.textContent = text;
+    lastLine.removeAttribute("hidden");
+  };
+  const clearHere = () => {
+    lastLine.textContent = "";
+    lastLine.setAttribute("hidden", "");
+  };
 
   function paintRows() {
     const rows = engineRows(state, { platform });
@@ -500,11 +515,13 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
       if (input) input.value = "";
       say("Mistral key removed from this device");
     } else if (id === "pair") {
-      const result = await client?.pair?.();
-      if (result?.ok) say("Helper paired");
-      else if (result?.reason === "window-closed") say("Pairing window closed. Run plexus-parse-helper pair, then click Pair.");
-      else if (result?.reason === "not-running") say("The helper is not running.");
-      else say("Could not pair.");
+      const result = await client?.pair?.({ onWaiting: () => sayHere("Approve Plexus in the dialog on your Mac…") });
+      if (result?.ok) sayHere("Helper paired");
+      else if (result?.reason === "declined") sayHere("Pairing declined on the Mac.");
+      else if (result?.reason === "timeout") sayHere("No answer from the Mac dialog. Click Pair to try again.");
+      else if (result?.reason === "window-closed") sayHere("This helper is older. Run plexus-parse-helper pair in Terminal, then click Pair.");
+      else if (result?.reason === "not-running") sayHere("The helper is not running.");
+      else sayHere("Could not pair.");
     } else if (id === "download") {
       await client?.downloadModels?.();
     } else if (id === "cancel") {
@@ -549,7 +566,7 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
   }
 
   function startTimer() {
-    if (timer == null && visible && !disposed) timer = setIv(() => { void refresh(); }, pollMs);
+    if (timer == null && visible && !disposed) timer = setIv(() => { clearHere(); void refresh(); }, pollMs);
   }
 
   function setVisible(value) {

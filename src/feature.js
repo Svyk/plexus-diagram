@@ -3758,7 +3758,7 @@ export async function installPlexusDiagram({
 
   const pdfTables = createPdfTables({
     store: createParseStore({ indexedDB: win.indexedDB }),
-    helper: createHelperClient({ settings: extensionAPI?.settings, setSetting: (id, value) => extensionAPI?.settings?.set?.(id, value), fetch: win.fetch?.bind(win) }),
+    helper: createHelperClient({ settings: extensionAPI?.settings, setSetting: (id, value) => extensionAPI?.settings?.set?.(id, value), fetch: win.fetch?.bind(win), storage: (() => { try { return win.localStorage; } catch { return undefined; } })() }),
     fetchBytes: async (url) => {
       const res = await win.fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

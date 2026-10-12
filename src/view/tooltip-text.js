@@ -263,7 +263,7 @@ export const TIP_TEXT = {
   "engines.helper": e("Local helper", "Apple Vision for scans. The light helper is about 15 MB on a Mac. Docling, for layout, formulas and tables, is an optional add-on. It listens only on 127.0.0.1."),
   "engines.cloud": e("Cloud", "LlamaParse is the main read: your key, then a helper with the cloud engine, your relay, or the hosted relay. Mistral OCR is the no-install read: cheaper, and its tables are weaker. Both keys stay on this device. Nothing is sent until you confirm the cost."),
   "engines.cloud-setup": e("Set up", "Save a LlamaParse key and, if you want it, a Mistral OCR key. Both stay on this device."),
-  "engines.pair": e("Pair", "Fetch the helper's token. Works for 90 seconds after the installer or plexus-parse-helper pair."),
+  "engines.pair": e("Pair", "Pair with the helper on this Mac. A dialog on the Mac asks you to allow it."),
   "engines.setup": e("Set up", "Show the one command that installs the local helper."),
   "engines.start": e("Start", "Show how to start the local helper."),
   "engines.download": e("Download", "Download the helper's models. They are stored on this Mac."),

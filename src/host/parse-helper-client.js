@@ -147,8 +147,11 @@ async function readSSE(response, { onProgress, onPage }) {
 }
 
 export const TOKEN_SETTING = "parse-helper-token";
+export const TOKEN_BACKUP_KEY = "plexus-diagram:parse-helper-token";
+export const PAIR_POLL_MS = 500;
+export const PAIR_WAIT_MS = 60_000;
 
-export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
+export function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, now, sleep, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
   const fetchFn = fetchImpl;
   const clock = typeof now === "function" ? now : () => Date.now();
   let healthCache = null;
@@ -157,9 +160,29 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
   let vlmHighOn = false;
   const setVlm = (tables, high) => { vlmOn = tables === true; vlmHighOn = high === true; };
 
+  const pause = typeof sleep === "function" ? sleep : (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Roam Depot wipes extension settings when the URL entry is removed and re-added, so the token
+  // is also kept in a localStorage-like store and restored into settings when settings are empty.
+  const readBackup = () => {
+    try { return String(storage?.getItem?.(TOKEN_BACKUP_KEY) || "").trim(); } catch { return ""; }
+  };
+  const writeBackup = (value) => {
+    try { storage?.setItem?.(TOKEN_BACKUP_KEY, value); } catch { /* storage may be blocked */ }
+  };
+
+  let restored = false;
   const config = () => {
     const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
-    const token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
+    let token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
+    const backup = readBackup();
+    if (!token && backup) {
+      token = backup;
+      if (!restored) try {
+        restored = true; void Promise.resolve(setSetting?.(TOKEN_SETTING, backup)).catch(() => {}); } catch { /* settings may be unavailable */ }
+    } else if (token && token !== backup) {
+      writeBackup(token);
+    }
     return { url, token };
   };
 
@@ -297,27 +320,57 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now
     return { ...h, paired: true };
   }
 
-  // Ask the helper for its token. It answers only inside the 90 s pairing window and only to an
-  // allowed Origin, so this works right after install.sh or `plexus-parse-helper pair`.
-  async function pair({ signal } = {}) {
+  // Ask the helper for its token. Inside a pairing window (`plexus-parse-helper pair`) the GET
+  // answers at once. Without one, a newer helper takes POST /v1/pair/request, shows a consent
+  // dialog on the Mac, and the GET is polled until the user allows it.
+  async function pair({ signal, onWaiting } = {}) {
     const { url } = config();
     if (typeof fetchFn !== "function") return { ok: false, reason: "not-running" };
     if (typeof setSetting !== "function") return { ok: false, reason: "no-settings" };
-    const timer = withTimeout(timeoutMs, signal);
-    try {
-      const res = await call(`${url}/v1/pair`, { method: "GET" }, timer.signal);
-      if (res.status === 404) return { ok: false, reason: "window-closed" };
-      if (res.status < 200 || res.status >= 300) return { ok: false, reason: "error", status: res.status };
+    const fetchToken = async () => {
+      const timer = withTimeout(timeoutMs, signal);
+      try {
+        return await call(`${url}/v1/pair`, { method: "GET" }, timer.signal);
+      } finally {
+        timer.clear();
+      }
+    };
+    const accept = async (res) => {
       let body = null;
       try { body = await res.json(); } catch { body = null; }
       if (body?.helper !== HELPER_NAME || typeof body.token !== "string" || !body.token) return { ok: false, reason: "error" };
       await setSetting(TOKEN_SETTING, body.token);
+      writeBackup(body.token);
       invalidate();
       return { ok: true, version: body.version };
+    };
+    try {
+      const res = await fetchToken();
+      if (res.status !== 404) {
+        if (res.status < 200 || res.status >= 300) return { ok: false, reason: "error", status: res.status };
+        return await accept(res);
+      }
+      const timer = withTimeout(timeoutMs, signal);
+      let asked;
+      try {
+        asked = await call(`${url}/v1/pair/request`, { method: "POST" }, timer.signal);
+      } finally {
+        timer.clear();
+      }
+      if (asked.status === 403) return { ok: false, reason: "declined" };
+      if (asked.status !== 202) return { ok: false, reason: "window-closed" };
+      try { onWaiting?.(); } catch { /* a callback must not break pairing */ }
+      const deadline = clock() + PAIR_WAIT_MS;
+      while (clock() < deadline) {
+        if (signal?.aborted) return { ok: false, reason: "not-running" };
+        await pause(PAIR_POLL_MS);
+        const poll = await fetchToken();
+        if (poll.status >= 200 && poll.status < 300) return await accept(poll);
+        if (poll.status !== 404) return { ok: false, reason: "error", status: poll.status };
+      }
+      return { ok: false, reason: "timeout" };
     } catch {
       return { ok: false, reason: "not-running" };
-    } finally {
-      timer.clear();
     }
   }
 

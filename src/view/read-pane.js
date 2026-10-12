@@ -1996,7 +1996,7 @@ export function createReadPane({
     return undefined;
   }
   const ensureHelper = () => {
-    if (!parseHelper) parseHelper = createHelperClient({ settings, setSetting: setSettingFn, fetch: doc.defaultView?.fetch });
+    if (!parseHelper) parseHelper = createHelperClient({ settings, setSetting: setSettingFn, fetch: doc.defaultView?.fetch, storage: (() => { try { return doc.defaultView?.localStorage; } catch { return undefined; } })() });
     return parseHelper;
   };
   const pdfUrl = () => pdfMacroUrl(current.source || "") || "";

@@ -145,3 +145,68 @@ test("download and cancel hit /v1/models/download with the bearer token", async 
   assert.equal(await none.api.downloadModels(), false);
   assert.equal(none.calls.length, 0);
 });
+
+function makePair(handler, { token = "", backup = "", clock } = {}) {
+  const store = { "parse-helper-token": token };
+  const sets = [];
+  const local = new Map(backup ? [["plexus-diagram:parse-helper-token", backup]] : []);
+  const storage = { getItem: (k) => (local.has(k) ? local.get(k) : null), setItem: (k, v) => { local.set(k, String(v)); }, removeItem: (k) => { local.delete(k); } };
+  let t = 0;
+  const calls = [];
+  const api = createHelperClient({
+    fetch: async (url, init = {}) => { calls.push({ url, method: init.method || "GET", headers: init.headers }); return handler(url, init, calls); },
+    now: clock || (() => t),
+    sleep: async (ms) => { t += ms; },
+    settings: () => store,
+    setSetting: async (id, value) => { sets.push([id, value]); store[id] = value; },
+    storage,
+  });
+  return { api, calls, store, sets, local };
+}
+
+test("an empty settings token is restored from the storage backup, once", async () => {
+  const { api, sets, store } = makePair(() => res(401, { helper: "plexus-parse-helper" }), { backup: "kept" });
+  assert.equal(api.endpoint().token, "kept");
+  assert.equal(api.endpoint().token, "kept");
+  await Promise.resolve();
+  assert.deepEqual(sets, [["parse-helper-token", "kept"]]);
+  assert.equal(store["parse-helper-token"], "kept");
+});
+
+test("a settings token that differs from the backup refreshes the backup", () => {
+  const { api, local } = makePair(() => res(200, {}), { token: "fresh", backup: "old" });
+  assert.equal(api.endpoint().token, "fresh");
+  assert.equal(local.get("plexus-diagram:parse-helper-token"), "fresh");
+});
+
+test("pair with no window asks the Mac, polls, and stores the token and the backup", async () => {
+  let polls = 0;
+  let waiting = 0;
+  const { api, calls, store, local } = makePair((url, init) => {
+    if (url.endsWith("/v1/pair/request")) return res(202, { status: "asking" });
+    if (url.endsWith("/v1/pair")) {
+      polls += 1;
+      return polls < 3 ? res(404, { error: "not found" }) : res(200, { token: "tok", helper: "plexus-parse-helper", version: "0.1.1" });
+    }
+    throw new Error(url);
+  });
+  const result = await api.pair({ onWaiting: () => { waiting += 1; } });
+  assert.deepEqual(result, { ok: true, version: "0.1.1" });
+  assert.equal(waiting, 1);
+  assert.equal(store["parse-helper-token"], "tok");
+  assert.equal(local.get("plexus-diagram:parse-helper-token"), "tok");
+  const request = calls.find((c) => c.url.endsWith("/v1/pair/request"));
+  assert.equal(request.method, "POST");
+  assert.equal(request.headers, undefined);
+});
+
+test("pair request answered 403 is declined, 404 is window-closed, endless 404 polling is a timeout", async () => {
+  const declined = makePair((url) => (url.endsWith("/request") ? res(403, {}) : res(404, {})));
+  assert.deepEqual(await declined.api.pair(), { ok: false, reason: "declined" });
+  const older = makePair((url) => res(url.endsWith("/request") ? 405 : 404, {}));
+  assert.deepEqual(await older.api.pair(), { ok: false, reason: "window-closed" });
+  const slow = makePair((url) => (url.endsWith("/request") ? res(202, {}) : res(404, {})));
+  assert.deepEqual(await slow.api.pair(), { ok: false, reason: "timeout" });
+  const gone = makePair((url) => { if (url.endsWith("/request")) throw new Error("refused"); return res(404, {}); });
+  assert.deepEqual(await gone.api.pair(), { ok: false, reason: "not-running" });
+});

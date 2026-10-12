@@ -5,6 +5,8 @@ Origin exactly once. Outside the window the route is a plain 404."""
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -47,3 +49,25 @@ def close_window(path: Path | None = None) -> bool:
         return True
     except FileNotFoundError:
         return False
+
+
+def _applescript_quote(text: str) -> str:
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def mac_consent(origin: str) -> bool:
+    """Ask on this Mac whether the page at `origin` may use the helper. True only on Allow.
+    Anywhere but macOS there is no dialog, so the answer is no."""
+    if sys.platform != "darwin":
+        return False
+    prompt = f"Allow Plexus Diagram in Roam ({_applescript_quote(origin)}) to use the parse helper on this Mac?"
+    script = (
+        f'display dialog "{prompt}" buttons {{"Don\u2019t Allow", "Allow"}} '
+        'default button "Allow" with title "Plexus parse helper" giving up after 60'
+    )
+    try:
+        done = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=90)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    out = done.stdout or ""
+    return done.returncode == 0 and "button returned:Allow" in out and "gave up:true" not in out

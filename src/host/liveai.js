@@ -152,6 +152,9 @@ export function openChat(opts = {}, w) {
   if (opts.roamContext && Object.keys(opts.roamContext).length) o.roamContext = opts.roamContext;
   if (opts.style) o.style = opts.style;
   if (opts.forcedTools?.length || opts.forcedTools?.size) o.forcedTools = new Set(opts.forcedTools);
-  try { void Promise.resolve(open(o)).catch(() => {}); } catch { return false; }
+  // True when it opened; a Promise of that when Live AI answers asynchronously (false if it rejects).
+  let got;
+  try { got = open(o); } catch { return false; }
+  if (got && typeof got.then === "function") return Promise.resolve(got).then(() => true, () => false);
   return true;
 }

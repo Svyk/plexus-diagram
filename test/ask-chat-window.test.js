@@ -329,6 +329,8 @@ test("Open in Live AI hands over the conversation with the context first, then c
   assert.equal(h[1].content, "12 mg [p. 1]");
   assert.equal(h[2].content, "And salt?");
   assert.equal(calls[0].model, "m1");
+  // Ours closes once Live AI's chat opened (its openChatPopup is async here).
+  await tick();
   assert.equal(d.el.isConnected, false);
   const plain = openAskAI({ doc: DOC, blockId: "p", document: doc, window: fakeWindow() });
   assert.equal(find(plain.el, "pxd-ask__openlive").hidden, true);

@@ -18,3 +18,18 @@ export function pdfNameFor(uidOrUrl) {
     return "";
   }
 }
+
+// Names landed (identity reads finished): fn(urls) for whoever shows names right now (the open chat's chips).
+const nameListeners = new Set();
+
+export function onPdfNamesChange(fn) {
+  if (typeof fn !== "function") return () => {};
+  nameListeners.add(fn);
+  return () => { nameListeners.delete(fn); };
+}
+
+export function notifyPdfNames(urls) {
+  for (const fn of [...nameListeners]) {
+    try { fn(urls); } catch { /* a listener must not fail the names */ }
+  }
+}

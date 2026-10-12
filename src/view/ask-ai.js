@@ -12,6 +12,8 @@ import * as lookup from "../host/roam-lookup.js";
 import { afterPartRemoved, atItems, atPreamble, atToken, danglingAtRefs, danglingMessage, describeParts, filterAtItems, insertToken, withAtPreamble } from "../model/ask-parts.js";
 import { createPopover, createSuggest, iconButton, ROW_ICONS } from "./ask-composer.js";
 import { floatingDark } from "./theme-follow.js";
+import { fnv } from "../model/boardsnap.js";
+import { onPdfNamesChange } from "../model/pdf-name-for.js";
 
 export const SEES_NOTE = "The model will see this image";
 export const BLIND_NOTE = "This model can't see images — text only";
@@ -159,7 +161,7 @@ function makeEntry(o) {
     : { blockId: "sel", selection };
   const isWhole = Boolean(o.wholeDoc) && !focus.blockId && !focus.blockIds && !focus.selection && focus.page == null && hasBlocks;
   const built = buildFocusContext(source, focus);
-  const what = isWhole ? "doc" : focus.blockId && focus.blockId !== "sel" ? focus.blockId : focus.blockIds ? focus.blockIds.join(",") : focus.selection ? `sel:${focus.selection.slice(0, 80)}` : focus.page != null ? `pg${focus.page}` : "x";
+  const what = isWhole ? "doc" : focus.blockId && focus.blockId !== "sel" ? focus.blockId : focus.blockIds ? focus.blockIds.join(",") : focus.selection ? `sel:${focus.page ?? ""}:${focus.selection.length}:${fnv(focus.selection)}` : focus.page != null ? `pg${focus.page}` : "x";
   return {
     key: `${docId(parsed)}|${what}`,
     label: isWhole ? `Whole document · ${built.chip?.label || "PDF"}` : chipText(built.chip) || "Part",
@@ -344,8 +346,10 @@ function ensureComposer(s) {
   textarea.addEventListener("input", () => { growQuestion(textarea); active()?.questionChanged(); });
   textarea.addEventListener("click", () => active()?.caretMoved());
   textarea.addEventListener("focus", () => active()?.focusQuestion());
-  textarea.addEventListener("blur", () => suggest.hide());
+  textarea.addEventListener("blur", () => { suggest.hide(); active()?.questionBlurred(); });
   textarea.addEventListener("keydown", (event) => {
+    // The Enter (or arrow) that commits an IME composition belongs to the IME, not to the suggestions or Send.
+    if (event.isComposing || event.keyCode === 229) return;
     if (suggest.key(event)) { event.preventDefault?.(); event.stopPropagation?.(); return; }
     if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") {
       setTimeout(() => active()?.caretMoved(), 0);
@@ -550,6 +554,9 @@ function startSession(s, o) {
   let custom = null;
   let blockTimer = null;
   let blockAsked = "";
+  const flashTimers = new Set();
+  let offNames = () => {};
+  let running = null;
 
   const comp = () => s.composer;
   const ta = () => s.composer?.textarea || null;
@@ -727,7 +734,8 @@ function startSession(s, o) {
     t.value = lastPrefill;
     growQuestion(t);
   };
-  const paintContext = () => {
+  const paintChips = () => {
+    stopFlash();
     s.chip.textContent = multiLike() ? multiLabel() : chipText(one()?.built.chip) || "No context loaded";
     clear(s.parts);
     s.parts.hidden = !multiLike();
@@ -751,6 +759,9 @@ function startSession(s, o) {
         x.addEventListener("click", () => removePart(p.key));
       });
     }
+  };
+  const paintContext = () => {
+    paintChips();
     const base = !multi ? entries.find((e) => e.hasBlocks && !e.isWhole) : null;
     s.addWhole.hidden = !base || entries.some((e) => e.isWhole && e.parsed === base.parsed);
     paintThumb();
@@ -808,11 +819,13 @@ function startSession(s, o) {
     paintContext();
   };
 
+  const stopFlash = () => { for (const id of flashTimers) clearTimeout(id); flashTimers.clear(); };
   const flashPart = (keys) => {
     for (const c of [...(s.parts.children || [])]) {
       if (!keys.includes(c.getAttribute?.("data-key"))) continue;
       c.classList.add("pxd-ask__partchip--flash");
-      setTimeout(() => c.classList?.remove("pxd-ask__partchip--flash"), FLASH_MS);
+      const id = setTimeout(() => { flashTimers.delete(id); c.classList?.remove("pxd-ask__partchip--flash"); }, FLASH_MS);
+      flashTimers.add(id);
     }
   };
   // Click on a part chip: its @Part N at the caret.
@@ -1067,11 +1080,22 @@ function startSession(s, o) {
       ] }],
     }),
   };
+  // A pick in these menus changes a setting or runs an action here: the question box gets the focus back.
+  // The tools, agents and "Open in Live AI" picks close this window (hand-off), so nothing is refocused then.
+  const REFOCUS_MENUS = new Set(["style", "effort", "more"]);
   const openMenu = (name) => {
     const c = s.composer;
     if (!c || !menuSpecs[name]) return;
     c.suggest.hide();
-    c.popover.open(menuSpecs[name](), c.buttons[name]);
+    const spec = menuSpecs[name]();
+    if (REFOCUS_MENUS.has(name)) {
+      const inner = spec.sections;
+      spec.sections = (q) => (typeof inner === "function" ? inner(q) : inner).map((sec) => (sec?.items ? {
+        ...sec,
+        items: sec.items.map((it) => (typeof it.onPick === "function" && !it.keep ? { ...it, onPick: (x) => { it.onPick(x); if (!dead) focus(); } } : it)),
+      } : sec));
+    }
+    c.popover.open(spec, c.buttons[name]);
   };
 
   // ---- models and Live AI availability
@@ -1263,6 +1287,7 @@ function startSession(s, o) {
       clear(turn.bubble);
     }
     turn.sentUrl = "";
+    running = turn;
     lastPaint = 0;
     showActions(turn, false);
     setBusy(true);
@@ -1273,34 +1298,39 @@ function startSession(s, o) {
     let sendPrompt = "";
     if (!sources.part) {
       sendPrompt = asked;
-    } else if (multiLike()) {
-      const list = ctxParts();
+    } else {
+      // Pictures upload first. A part added while one uploads goes along too (its picture included).
       const urls = new Map();
       if (willSend()) {
         s.status.textContent = UPLOADING_NOTE;
-        for (const p of list.filter((x) => x.image)) {
+        const tried = new Set();
+        const nextUp = () => ctxParts().find((x) => x.image && !tried.has(x.key));
+        for (let p = nextUp(); p; p = nextUp()) {
+          tried.add(p.key);
           const got = await ensureImage(p.image, p.service);
           if (mine !== token || dead) return;
-          if (got.ok) { urls.set(p.key, got.url); knownUrls.set(p.key, got.url); } else note = noteFor(got.reason);
+          if (got.ok) {
+            urls.set(p.key, got.url);
+            knownUrls.set(p.key, got.url);
+            const e = entries.find((x) => x.key === p.key);
+            if (e) e.knownUrl = got.url;
+          } else note = noteFor(got.reason);
         }
       }
-      const shown = list.map((p) => (urls.has(p.key) ? { ...p, imageUrl: urls.get(p.key) } : p));
-      const b = buildMultiContext(shown, question);
-      sendContext = b.context;
-      sendInstructions = b.instructions;
-      sendPrompt = promptWithImages(atPrompt(asked), urls.size > 0);
-      turn.sentUrl = urls.size ? "multi" : "";
-    } else {
-      const e = one();
-      if (willSend()) {
-        s.status.textContent = UPLOADING_NOTE;
-        const got = await ensureImage(e.image, e.service);
-        if (mine !== token || dead) return;
-        if (got.ok) { turn.sentUrl = got.url; e.knownUrl = got.url; } else note = noteFor(got.reason);
+      if (multiLike()) {
+        const shown = ctxParts().map((p) => (urls.has(p.key) ? { ...p, imageUrl: urls.get(p.key) } : p));
+        const b = buildMultiContext(shown, question);
+        sendContext = b.context;
+        sendInstructions = b.instructions;
+        sendPrompt = promptWithImages(atPrompt(asked), urls.size > 0);
+        turn.sentUrl = urls.size ? "multi" : "";
+      } else {
+        const e = one();
+        turn.sentUrl = urls.get(e.key) || "";
+        sendContext = contextWithImage(e.built.context, turn.sentUrl, e.image?.caption || e.built.figure?.caption || "");
+        sendInstructions = turn.sentUrl ? withImageInstructions(e.built.instructions) : e.built.instructions;
+        sendPrompt = promptWithImage(atPrompt(asked), turn.sentUrl);
       }
-      sendContext = contextWithImage(e.built.context, turn.sentUrl, e.image?.caption || e.built.figure?.caption || "");
-      sendInstructions = turn.sentUrl ? withImageInstructions(e.built.instructions) : e.built.instructions;
-      sendPrompt = promptWithImage(atPrompt(asked), turn.sentUrl);
     }
     // Mentioned pages and blocks and the toggled sources go as Live AI's roamContext (the part then rides in the
     // first message, see liveai.ask).
@@ -1335,6 +1365,7 @@ function startSession(s, o) {
     });
     if (mine !== token || dead) return;
     ctl = null;
+    running = null;
     setBusy(false);
     if (!result.ok && result.code === "EMPTY_RESPONSE" && !turn.answer) { showEmpty(turn); return; }
     if (!result.ok) {
@@ -1367,7 +1398,9 @@ function startSession(s, o) {
     try { was.abort(); } catch { /* done */ }
     setBusy(false);
     s.status.textContent = "Stopped.";
-    const turn = turns[turns.length - 1];
+    // The turn being answered: a retried older turn ("Try another model") is not the newest one.
+    const turn = running && turns.includes(running) ? running : turns[turns.length - 1];
+    running = null;
     if (!turn) return;
     if (turn.answer) { paintTurn(turn); showActions(turn, true); return; }
     // Nothing came back: the question goes back into the composer.
@@ -1451,8 +1484,15 @@ function startSession(s, o) {
       if (history[0]?.role === "user") history[0] = { role: "user", content: `${history[0].content}\n\n${note}` };
       else history.unshift({ role: "user", content: note });
     }
-    liveai.openChat({ conversationHistory: history, model: modelSel()?.value || undefined, style: style?.name || "", forcedTools: extra.forcedTools || null }, win);
-    close();
+    const opened = liveai.openChat({ conversationHistory: history, model: modelSel()?.value || undefined, style: style?.name || "", forcedTools: extra.forcedTools || null }, win);
+    // Ours closes only once Live AI's chat opened; when it throws, this conversation stays.
+    const settle = (ok) => {
+      if (dead) return;
+      if (ok) close();
+      else say("Live AI's chat did not open. This conversation stays here.");
+    };
+    if (opened && typeof opened.then === "function") void opened.then(settle, () => settle(false));
+    else settle(Boolean(opened));
   };
   const openInLiveAI = () => handOff({});
 
@@ -1480,6 +1520,9 @@ function startSession(s, o) {
     ctl = null;
     if (paintTimer) { clearTimeout(paintTimer); paintTimer = null; }
     stopBlockSearch();
+    stopFlash();
+    try { offNames(); } catch { /* gone */ }
+    running = null;
     s.composer?.popover.close({ refocus: false });
     s.composer?.suggest.hide();
     clear(s.mentions);
@@ -1527,6 +1570,9 @@ function startSession(s, o) {
     modelChanged: () => { rememberModel(); paintEffort(); paintNote(); refreshPreview(); },
     questionChanged: () => { suggestFor(); refreshPreview(); },
     caretMoved: () => suggestFor(),
+    questionBlurred: () => stopBlockSearch(),
+    // Opened again on this conversation: page titles and tagged prompts/styles are read afresh when next needed.
+    refreshCaches: () => { titles = null; custom = null; },
     focusQuestion: () => {
       const t = ta();
       if (t && t.value && t.value === lastPrefill) { try { t.select?.(); } catch { /* stub */ } }
@@ -1566,6 +1612,8 @@ function startSession(s, o) {
     peekImage(entries[0]);
   }
   paintContext();
+  // A PDF's real name can land after the chat opened: the chips take it then.
+  offNames = onPdfNamesChange(() => { if (!dead) { multiBuilt = null; paintChips(); } });
   const offReady = liveai.onReady(sync, win);
   if (!formReady && s.setup.hidden) sync(liveai.available(win));
   win.addEventListener?.("resize", onResize);
@@ -1594,6 +1642,7 @@ export function openAskAI(opts = {}) {
   if (s.collapsed) s.collapse.click();
   if (cur && cur.win === win && !opts.multi && !cur.multi) {
     paintTheme(s, dom);
+    cur.refreshCaches?.();
     const e = cur.addEntry(opts);
     cur.focus();
     markFullscreen(s);
@@ -1601,6 +1650,8 @@ export function openAskAI(opts = {}) {
     return handle(e.built);
   }
   if (cur && opts.multi && cur.multi && cur.multi.basket === opts.multi.basket && cur.win === win) {
+    paintTheme(s, dom);
+    cur.refreshCaches?.();
     cur.focus();
     askPerf.lastOpenMs = now() - t0;
     return handle(cur.built());
@@ -1618,6 +1669,11 @@ export function openAskAI(opts = {}) {
   try { if (s.composer?.textarea && s.dom.activeElement === s.composer.textarea) session.focusQuestion(); } catch { /* stub */ }
   askPerf.lastOpenMs = now() - t0;
   return handle(session.built());
+}
+
+// The board's dark flag flipped: an open chat follows it.
+export function askThemeChanged() {
+  if (chat?.session && chat.shell) paintTheme(chat.shell, chat.dom);
 }
 
 export function closeAskAI() {

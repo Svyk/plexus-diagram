@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.22.1 — 2026-10-11
+
+- **Open on board is instant again.** "Open on board" in a connection preview, "Show on board" in a block's menu and region links now open the page through Roam. Roam put back the page link these used when it came from a click, so the board waited about six seconds and then opened zoomed in, without the connection selected. It now opens in about 0.2 s with the connection selected.
+- **Pairing survives a reinstall.** The helper token is also kept on this device, so removing and re-adding Plexus in Roam Depot no longer leaves the helper "Running, not paired".
+- **Pair from Roam.** With helper 0.1.1, Pair shows an Allow dialog on the Mac, so there is no Terminal step. The Engines sheet now says what happened.
+
 ## 3.22.0 — 2026-10-11
 
 Boards respond at once to zoom, hover, click, drag, edit and undo, and unfolding a board in the outline no longer draws every table.

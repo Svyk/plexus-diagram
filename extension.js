@@ -62888,9 +62888,7 @@ ${sourceAttrString(source)}` : markdown;
       return false;
     }
     jobId = result?.job || jobId;
-    const took = now4() - t0;
-    const ran = Number(result?.doc?.stats?.ms);
-    if (result?.doc) await finishDoc(result.doc, Number.isFinite(ran) && ran >= 0 ? Math.min(ran, took) : took);
+    if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? now4() - t0);
     else phase = "idle";
     paintChip();
     return Boolean(result?.doc);
@@ -63282,13 +63280,33 @@ ${sourceAttrString(source)}` : markdown;
     pointerTarget = event.target;
   });
   const pops = [enginePop, rangePop, filterPop];
+  const menuWin = doc.defaultView || null;
+  let menuArmed = false;
+  const onMenuPress = (event) => {
+    if (event.target?.closest?.(".pxd-parse__menu")) return;
+    closeMenus();
+  };
+  const onMenuKey = (event) => {
+    if (event.key !== "Escape") return;
+    event.stopPropagation?.();
+    closeMenus();
+  };
+  const armMenuClose = (on) => {
+    if (on === menuArmed) return;
+    menuArmed = on;
+    const verb = on ? "addEventListener" : "removeEventListener";
+    doc[verb]?.("pointerdown", onMenuPress, true);
+    (menuWin || doc)[verb]?.("keydown", onMenuKey, true);
+  };
   const closeMenus = () => {
     for (const pop of pops) setHidden(pop, true);
+    armMenuClose(false);
   };
   const toggleMenu = (pop) => {
     const open = pop.hidden !== true && !pop.hasAttribute?.("hidden");
     closeMenus();
     setHidden(pop, open);
+    armMenuClose(!open);
   };
   function paintRangeButton() {
     rangeBtn.textContent = rangeLabel === "Current page" ? "Current page" : rangeLabel || "All";
@@ -63597,6 +63615,7 @@ ${sourceAttrString(source)}` : markdown;
     },
     dispose() {
       dead = true;
+      armMenuClose(false);
       closeCloudConfirm();
       cancel();
       try {

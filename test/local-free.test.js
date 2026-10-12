@@ -133,8 +133,7 @@ test("the Parse button runs Docling through a paired helper by default, without 
       order: ["p1"], blocks: { p1: { id: "p1", type: "para", page: 1, text: "Hi", bbox: [0, 0, 10, 10] } }, removed: [], stats: { ms: 42000 },
     };
     const helper = localHelper({ parse: async (req) => { jobs.push(req); return { doc: docling, cached: false, job: "j1" }; } });
-    let t = 0;
-    const view = createParseView({ doc: stub.document, store: createParseStore({}), storage: stub.localStorage, url: "https://example.test/c.pdf", helper, getPdf: PDF(3), loadGeometry: async (n) => scanGeometry(n), clock: () => (t += 50000) });
+    const view = createParseView({ doc: stub.document, store: createParseStore({}), storage: stub.localStorage, url: "https://example.test/c.pdf", helper, getPdf: PDF(3), loadGeometry: async (n) => scanGeometry(n) });
     await view.refreshHelper();
     const go = view.element().querySelector(".pxd-parse__go");
     assert.match(go.textContent, /^Parse \(Docling\)/);
@@ -143,14 +142,6 @@ test("the Parse button runs Docling through a paired helper by default, without 
     assert.ok(await until(() => view.hasParse()));
     assert.equal(jobs.length, 1);
     assert.equal(view.chipText(), "Docling · free · 3 pages · 42 s");
-    // The helper hands back a doc it already had: the chip shows this run's time, not the first run's.
-    t = 0;
-    let fast = 0;
-    const again = createParseView({ doc: stub.document, store: createParseStore({}), storage: stub.localStorage, url: "https://example.test/c2.pdf", helper, getPdf: PDF(3), loadGeometry: async (n) => scanGeometry(n), clock: () => (fast += 300) });
-    await again.refreshHelper();
-    await again.parse();
-    assert.match(again.chipText(), /^Docling · free · 3 pages · \d\.\d s$/);
-    again.dispose();
     view.dispose();
   } finally {
     restore();
@@ -286,6 +277,30 @@ test("a restored Docling read names Docling on the chip, not the built-in defaul
     const view = createParseView({ doc: stub.document, store, storage: stub.localStorage, url, helper: localHelper({}), getPdf: PDF(2), loadGeometry: async (n) => scanGeometry(n) });
     assert.ok(await view.restore());
     assert.match(view.chipText(), /^Docling · free · 2 pages/);
+    view.dispose();
+  } finally {
+    restore();
+  }
+});
+
+test("the engine menu closes on Esc and on a press outside it", async () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const view = createParseView({ doc: stub.document, store: createParseStore({}), storage: stub.localStorage, url: "https://example.test/m.pdf", helper: localHelper({}), getPdf: PDF(1), loadGeometry: async (n) => scanGeometry(n) });
+    stub.document.body.appendChild(view.element());
+    const pop = () => view.element().querySelector(".pxd-parse__engine").parentElement.querySelector(".pxd-parse__pop");
+    const isOpen = () => pop().hidden !== true && !pop().hasAttribute("hidden");
+    view.element().querySelector(".pxd-parse__engine").click();
+    assert.ok(isOpen());
+    stub.document.dispatchEvent({ type: "keydown", key: "Escape", target: stub.document.body, stopPropagation() {} });
+    assert.ok(!isOpen());
+    view.element().querySelector(".pxd-parse__engine").click();
+    assert.ok(isOpen());
+    stub.document.dispatchEvent({ type: "pointerdown", target: pop().querySelector("button") });
+    assert.ok(isOpen(), "a press inside the menu keeps it open");
+    stub.document.dispatchEvent({ type: "pointerdown", target: stub.document.body });
+    assert.ok(!isOpen());
     view.dispose();
   } finally {
     restore();

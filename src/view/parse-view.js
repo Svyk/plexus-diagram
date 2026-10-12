@@ -1975,10 +1975,9 @@ export function createParseView({
       return false;
     }
     jobId = result?.job || jobId;
-    // The time this read took: a doc the helper already had comes back in a second, not its first run's minutes.
-    const took = now() - t0;
-    const ran = Number(result?.doc?.stats?.ms);
-    if (result?.doc) await finishDoc(result.doc, Number.isFinite(ran) && ran >= 0 ? Math.min(ran, took) : took);
+    // The doc keeps its own read time even when the helper hands back one it already had: a changed time
+    // would change the kept read's hash and upload the same read to the graph again.
+    if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? now() - t0);
     else phase = "idle";
     paintChip();
     return Boolean(result?.doc);
@@ -2348,11 +2347,32 @@ export function createParseView({
   });
   listen(root, "pointermove", (event) => { pointerTarget = event.target; });
   const pops = [enginePop, rangePop, filterPop];
-  const closeMenus = () => { for (const pop of pops) setHidden(pop, true); };
+  // An open menu closes on Esc or on a press outside it. The listeners exist only while a menu is open; Esc is
+  // heard on the window, because the board's own window-capture key handling stops it before the document.
+  const menuWin = doc.defaultView || null;
+  let menuArmed = false;
+  const onMenuPress = (event) => {
+    if (event.target?.closest?.(".pxd-parse__menu")) return;
+    closeMenus();
+  };
+  const onMenuKey = (event) => {
+    if (event.key !== "Escape") return;
+    event.stopPropagation?.();
+    closeMenus();
+  };
+  const armMenuClose = (on) => {
+    if (on === menuArmed) return;
+    menuArmed = on;
+    const verb = on ? "addEventListener" : "removeEventListener";
+    doc[verb]?.("pointerdown", onMenuPress, true);
+    (menuWin || doc)[verb]?.("keydown", onMenuKey, true);
+  };
+  const closeMenus = () => { for (const pop of pops) setHidden(pop, true); armMenuClose(false); };
   const toggleMenu = (pop) => {
     const open = pop.hidden !== true && !pop.hasAttribute?.("hidden");
     closeMenus();
     setHidden(pop, open);
+    armMenuClose(!open);
   };
   function paintRangeButton() {
     rangeBtn.textContent = rangeLabel === "Current page" ? "Current page" : (rangeLabel || "All");
@@ -2609,6 +2629,7 @@ export function createParseView({
     },
     dispose() {
       dead = true;
+      armMenuClose(false);
       closeCloudConfirm();
       cancel();
       try { cropObserver?.disconnect(); } catch { /* gone */ }

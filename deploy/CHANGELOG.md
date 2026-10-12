@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.26.0 — 2026-10-12
+
+Filters that browse your graph on their own, PDF filters on meaning results, chat tips, and eight bug fixes from a scored bug hunt.
+
+- **Filters work with an empty search box.** Days (created or edited), created or edited by, under a page, has linked references, has children, parsed PDFs, PDFs with highlights, on or not on this board now list matching pages and blocks straight from the graph, sorted as you choose. A filter with no natural limit shows the last 30 days and says so.
+- **PDF filters on Meaning results.** "Parsed PDFs" and "PDFs with highlights" apply to semantic results too; a hit on a PDF's Roam page counts as that PDF.
+- **Chat tips.** An empty chat shows "@ a part · [[ or # a page · (( a block · / a command"; click one to start typing it.
+- **Fixes.** PDF names no longer give up for a week when Roam's PDF viewer has not loaded yet, and stop reading when you leave the board. Ask AI from the reader names the paper, not the file. Switching PDFs in Read + Outline no longer shows the previous PDF's outline or saves a running parse under the wrong PDF, and cancelling a Docling run no longer resets the parse that replaced it. A failed send gives your question back; a chat closed while collapsed reopens whole; the first question is selected so typing replaces it.
+
 ## 3.25.0 — 2026-10-11
 
 Point at a part with @ in the chat, sort and filter search with what Roam knows, and PDF cards that resize and read sharp.

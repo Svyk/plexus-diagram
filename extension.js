@@ -59318,8 +59318,8 @@ function startSession(s, o) {
           } else note = noteFor(got.reason);
         }
       }
-      const shown = list.map((p) => urls2.has(p.key) ? { ...p, imageUrl: urls2.get(p.key) } : p);
-      const b = buildMultiContext(shown, question);
+      const shown2 = list.map((p) => urls2.has(p.key) ? { ...p, imageUrl: urls2.get(p.key) } : p);
+      const b = buildMultiContext(shown2, question);
       sendContext = b.context;
       sendInstructions = b.instructions;
       sendPrompt = promptWithImages(question, urls2.size > 0);
@@ -59388,7 +59388,8 @@ function startSession(s, o) {
       return;
     }
     paintTurn(turn);
-    s.status.textContent = result.model ? `${result.model}${result.usage?.outputTokens ? ` · ${result.usage.outputTokens} tokens` : ""}` : "";
+    const shown = result.model ? [...s.composer?.model?.options || []].find((o2) => o2.value === result.model)?.textContent || result.model : "";
+    s.status.textContent = shown ? `${shown}${result.usage?.outputTokens ? ` · ${result.usage.outputTokens} tokens` : ""}` : "";
     showActions(turn, true);
   }
   const stop3 = () => {

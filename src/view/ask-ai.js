@@ -886,7 +886,9 @@ function startSession(s, o) {
     turn.answer = result.text || turn.answer;
     if (!turn.answer.trim()) { turn.answer = ""; showEmpty(turn); return; }
     paintTurn(turn);
-    s.status.textContent = result.model ? `${result.model}${result.usage?.outputTokens ? ` · ${result.usage.outputTokens} tokens` : ""}` : "";
+    // The picker's label ("Claude Sonnet 5.5 · Anthropic"), not the raw model id.
+    const shown = result.model ? ([...(s.composer?.model?.options || [])].find((o) => o.value === result.model)?.textContent || result.model) : "";
+    s.status.textContent = shown ? `${shown}${result.usage?.outputTokens ? ` · ${result.usage.outputTokens} tokens` : ""}` : "";
     showActions(turn, true);
   }
 

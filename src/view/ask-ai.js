@@ -10,6 +10,7 @@ import { getFigureImages, isUsableImageUrl, noteFor } from "../host/figure-image
 import { applyMention, blockMention, BUILTIN_STYLES, buildRoamContext, COMMAND_CATEGORIES, COMMANDS, CONTEXT_SOURCES, customItems, DEFAULT_LOG_DAYS, effortOptions, effortsFor, filterCommands, LIVE_TOOLS, MAX_SUGGESTIONS, pageMention, parseMentions, prepareTitles, rankTitles, TOOL_CATEGORIES, TRANSLATIONS, triggerAt, withStyle } from "../model/ask-composer.js";
 import * as lookup from "../host/roam-lookup.js";
 import { createPopover, createSuggest, iconButton, ROW_ICONS } from "./ask-composer.js";
+import { floatingDark } from "./theme-follow.js";
 
 export const SEES_NOTE = "The model will see this image";
 export const BLIND_NOTE = "This model can't see images — text only";
@@ -34,6 +35,8 @@ export const QUESTION_MAX_ROWS = 8;
 // Time from openAskAI() to a painted window, for the live harness.
 export const askPerf = { lastOpenMs: 0 };
 const PENDING_URL = "https://… (uploaded when you press Send)";
+// Pixels kept above the question when an answer is followed down the log.
+const FOLLOW_GAP = 8;
 
 const clipQuestion = (text) => {
   const q = String(text ?? "").replace(/\s+/g, " ").trim();
@@ -484,6 +487,11 @@ function markFullscreen(s) {
   s.root.classList.toggle("pxd-ask--over-fullscreen", Boolean(body?.classList?.contains?.("pxd-has-fullscreen")));
 }
 
+// Dark tokens when Roam or the board under it is dark (bp3-dark, bt-theme-dark, a dark background, a dark board).
+function paintTheme(s, dom) {
+  s.root.classList.toggle("pxd-ask--dark", floatingDark(dom));
+}
+
 // ------------------------------------------------------------------ one conversation
 
 const modelKey = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -779,6 +787,9 @@ function startSession(s, o) {
     b.style.setAttribute("title", style ? `Style: ${style.name}` : "Style");
     b.effort.classList.toggle("pxd-ask__rowbtn--on", Boolean(effort));
     b.effort.setAttribute("title", effort ? `Thinking: ${effort === "off" ? "off" : effort}` : "Thinking");
+    const sel = modelSel();
+    const picked = [...(sel?.options || sel?.children || [])].find((o) => o.value === sel?.value);
+    sel?.setAttribute?.("title", picked?.textContent ? `Model: ${picked.textContent}` : "Model");
   };
   const toggleSource = (key) => {
     sources[key] = !sources[key];
@@ -1008,7 +1019,19 @@ function startSession(s, o) {
     const h = Number(log.scrollHeight) || 0;
     return !h || (Number(log.scrollTop) || 0) + (Number(log.clientHeight) || 0) >= h - 32;
   };
-  const toBottom = () => { try { s.log.scrollTop = s.log.scrollHeight; } catch { /* stub */ } };
+  // Follow the newest answer, but never past the question it answers: the question stays in view under the context bar.
+  const toBottom = () => {
+    try {
+      const log = s.log;
+      let top = Number(log.scrollHeight) || 0;
+      const q = turns[turns.length - 1]?.user;
+      if (q?.isConnected !== false && typeof q?.getBoundingClientRect === "function" && typeof log.getBoundingClientRect === "function") {
+        const at = (Number(log.scrollTop) || 0) + q.getBoundingClientRect().top - log.getBoundingClientRect().top - FOLLOW_GAP;
+        if (Number.isFinite(at)) top = Math.min(top, Math.max(0, at));
+      }
+      log.scrollTop = top;
+    } catch { /* stub */ }
+  };
   const paintTurn = (turn) => {
     if (paintTimer) { clearTimeout(paintTimer); paintTimer = null; }
     const stick = nearBottom();
@@ -1064,6 +1087,7 @@ function startSession(s, o) {
     btn.addEventListener("click", () => {
       modelSel().value = next.id;
       rememberModel();
+      paintEffort();
       paintNote();
       refreshPreview();
       void run({ retry: turn });
@@ -1429,6 +1453,7 @@ export function openAskAI(opts = {}) {
   const cur2 = () => session;
   if (s.collapsed && cur) s.collapse.click();
   if (cur && cur.win === win && !opts.multi && !cur.multi) {
+    paintTheme(s, dom);
     const e = cur.addEntry(opts);
     cur.focus();
     markFullscreen(s);
@@ -1444,8 +1469,7 @@ export function openAskAI(opts = {}) {
   s.win = win;
   s.geom = readGeom(win);
   markFullscreen(s);
-  const dark = Boolean(dom.querySelector?.(".pxd-root--dark"));
-  s.root.classList.toggle("pxd-ask--dark", dark);
+  paintTheme(s, dom);
   place(s);
   if (!s.root.isConnected) (dom.body || dom.documentElement)?.append?.(s.root);
   session = startSession(s, opts);

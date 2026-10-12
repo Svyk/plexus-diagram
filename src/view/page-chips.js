@@ -10,6 +10,7 @@
 import { gestureSource, readWithSource, writeWithSource, COPY_MENU } from "../model/pdf-pin.js";
 import { bboxToPagePercent, bboxToPageRect } from "./parse-overlay.js";
 import { askAiIcon } from "./ask-icon.js";
+import { floatingDark } from "./theme-follow.js";
 
 const HIDE_MS = 220;
 const SYNC_RETRIES = 40;
@@ -404,7 +405,7 @@ export function createPageChips({
     closeCopyMenu();
     if (!block || again) return;
     const menu = doc.createElement("div");
-    menu.className = "pxd-copy-menu";
+    menu.className = floatingDark(doc, anchor) ? "pxd-copy-menu pxd-copy-menu--dark" : "pxd-copy-menu";
     menu.setAttribute("role", "menu");
     menu.setAttribute("data-block", block.id);
     for (const item of COPY_MENU) {

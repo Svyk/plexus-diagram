@@ -13,6 +13,8 @@ export const IDENTS_KEY = `pdf-idents:${IDENT_V}:${TITLE_REV}`;
 export const IDENTS_CAP = 600;
 export const READ_TIMEOUT_MS = 12000;
 export const RETRY_FAILED_MS = 7 * 86400000;
+// Roam's pdf.js has no worker until a PDF is viewed: those urls were not read, so they are tried again soon and never saved.
+export const RETRY_NO_LIB_MS = 60000;
 const COVER_CHARS = 200;
 
 function raceAbort(promise, signal, ms, timers) {
@@ -77,6 +79,7 @@ export function createPdfNames({ store, lib = () => null, readParse = async () =
   let cancelIdle = null;
   let saveCancel = null;
   let stopped = false;
+  let gone = false;
   let stats = { read: 0, parse: 0, failed: 0, ms: 0 };
   const later = typeof idle === "function" ? idle : (fn) => { const id = setTimeout(fn, 30); return () => clearTimeout(id); };
 
@@ -92,19 +95,20 @@ export function createPdfNames({ store, lib = () => null, readParse = async () =
     return loading;
   };
 
+  const write = () => {
+    saveCancel = null;
+    const entries = [...idents.entries()].filter(([, v]) => !v.noLib).slice(-IDENTS_CAP);
+    void Promise.resolve(store?.putMeta?.(IDENTS_KEY, { v: IDENT_V, items: Object.fromEntries(entries) })).catch(() => {});
+  };
   const save = () => {
     saveCancel?.();
-    saveCancel = later(() => {
-      saveCancel = null;
-      const entries = [...idents.entries()].slice(-IDENTS_CAP);
-      void Promise.resolve(store?.putMeta?.(IDENTS_KEY, { v: IDENT_V, items: Object.fromEntries(entries) })).catch(() => {});
-    });
+    saveCancel = later(write);
   };
 
   const known = (url) => {
     const got = idents.get(url);
     if (!got) return false;
-    if (got.failed) return now() - (Number(got.at) || 0) < RETRY_FAILED_MS;
+    if (got.failed) return now() - (Number(got.at) || 0) < (got.noLib ? RETRY_NO_LIB_MS : RETRY_FAILED_MS);
     return true;
   };
 
@@ -126,13 +130,16 @@ export function createPdfNames({ store, lib = () => null, readParse = async () =
         if (parsed?.doc) { ident = identFromParse(parsed.doc, { title: parsed.title || "" }); if (ident) { ident.from = "parse"; stats.parse += 1; } }
       } catch { ident = null; }
       if (signal?.aborted) return;
+      let noLib = false;
       if (!ident || !ident.title) {
         const pdfLib = (() => { try { return lib(); } catch { return null; } })();
+        noLib = !pdfLib;
         const got = pdfLib ? await read(pdfLib, url, { signal, timers }) : null;
         if (signal?.aborted) return;
         if (got) { ident = ident ? { ...got, title: got.title || ident.title } : got; stats.read += 1; }
       }
-      if (!ident) { stats.failed += 1; idents.set(url, { failed: true, at: now() }); }
+      if (!ident && noLib) idents.set(url, { failed: true, noLib: true, at: now() });
+      else if (!ident) { stats.failed += 1; idents.set(url, { failed: true, at: now() }); }
       else idents.set(url, { ...ident, at: now() });
       save();
       try { onChange([url]); } catch { /* view */ }
@@ -162,6 +169,7 @@ export function createPdfNames({ store, lib = () => null, readParse = async () =
     pending: (url) => queued.has(url) || running === url,
     // Queue urls (front: read these before the rest). Known urls are skipped.
     async want(urls, { front = false } = {}) {
+      if (gone) return 0;
       stopped = false;
       await load();
       const fresh = [];
@@ -196,6 +204,11 @@ export function createPdfNames({ store, lib = () => null, readParse = async () =
       return out;
     },
     report: () => ({ ...stats, known: idents.size, queued: queue.length, running }),
-    dispose() { this.stop(); saveCancel?.(); },
+    // Board gone: stop reading, and write a pending save now (its idle callback is cancelled with it).
+    dispose() {
+      gone = true;
+      this.stop();
+      if (saveCancel) { saveCancel(); write(); }
+    },
   };
 }

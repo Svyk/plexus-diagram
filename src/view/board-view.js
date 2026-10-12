@@ -9054,6 +9054,7 @@ function buildBoardView(onFail, {
       step(() => edgesR.dispose());
       step(() => { offPartsChange?.(); partsIdx?.dispose(); partsIdx = null; });
       step(() => imgIndex?.dispose());
+      step(() => pdfNames?.dispose());
       step(() => panel.dispose());
       step(() => propsPanel.dispose());
       step(() => tooltip.dispose());

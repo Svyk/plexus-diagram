@@ -300,7 +300,7 @@ test("a foreground pullBoard reads card stats once", () => {
   assert.deepEqual(calls, [6]);
 });
 
-test("light prime keeps linked-ref chunks and reads every card stat in one idle slice", () => {
+test("light prime keeps linked-ref chunks and reads card stats in idle slices of 80", () => {
   const queued = [];
   const previous = globalThis.requestIdleCallback;
   globalThis.requestIdleCallback = (fn, opts) => {
@@ -322,8 +322,11 @@ test("light prime keeps linked-ref chunks and reads every card stat in one idle 
     assert.deepEqual(calls, []);
     assert.equal(queued.length, 3);
     queued[2].fn();
-    assert.deepEqual(calls, [82]);
-    assert.equal(queued.length, 3);
+    assert.deepEqual(calls, [80]);
+    assert.equal(queued.length, 4);
+    queued[3].fn();
+    assert.deepEqual(calls, [80, 2]);
+    assert.equal(queued.length, 4);
   } finally {
     globalThis.requestIdleCallback = previous;
   }

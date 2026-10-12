@@ -790,6 +790,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const eidByTitle = new Map();
   const statsCache = new Map();
   const PRIME_CHUNK = 40;
+  // Card-stat targets per idle slice (~1.3 ms each on a 28k-block board).
+  const STATS_CHUNK = 80;
   const STATS_TTL_MS = 120000;
   const MISS = Symbol("pull-miss");
   const rawPull = typeof data.pull === "function" ? data.pull.bind(data) : () => null;
@@ -1274,9 +1276,20 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const prime = () => {
         try { fetchLinked(found.titles); } catch { /* a later linkedRefs ask reads Roam */ }
         dropStats(uid);
-        if (found.stats.length) {
-          try { host.cardStats(found.stats, { boardUid: uid }); } catch { /* badges ask again */ }
-        }
+        if (!found.stats.length) return;
+        try { host.cardStats(found.stats.slice(0, STATS_CHUNK), { boardUid: uid }); } catch { /* badges ask again */ }
+        // The rest of a big board's stats in idle slices.
+        const idle = globalThis.requestIdleCallback;
+        const later = (fn) => (typeof idle === "function" ? idle(() => fn(), { timeout: 1500 }) : setTimeout(fn, 250));
+        const pulledAt = pullSeq;
+        let si = STATS_CHUNK;
+        const step = () => {
+          if (si >= found.stats.length || (unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt)) return;
+          try { host.cardStats(found.stats.slice(si, si + STATS_CHUNK), { boardUid: uid }); } catch { /* badges ask again */ }
+          si += STATS_CHUNK;
+          later(step);
+        };
+        if (si < found.stats.length) later(step);
       };
       if (!light) prime();
       else {
@@ -1288,18 +1301,22 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         const targets = found.stats;
         const pulledAt = ++pullSeq;
         let ti = 0;
+        let si = 0;
         let statsDone = false;
         const step = () => {
           // The board's last watch went away after this pull (closed, parked): skip the reads.
           if (unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
-          if (ti === 0 && !statsDone) dropStats(uid);
+          if (ti === 0 && si === 0 && !statsDone) dropStats(uid);
           if (ti < titles.length) {
             try { fetchLinked(titles.slice(ti, ti + PRIME_CHUNK)); } catch { /* a later linkedRefs ask reads Roam */ }
             ti += PRIME_CHUNK;
           } else if (!statsDone) {
-            statsDone = true;
-            if (targets.length) {
-              try { host.cardStats(targets, { boardUid: uid }); } catch { /* badges ask again */ }
+            // PhD main board: ~3,000 targets in one cardStats call was a 5.7 s task. STATS_CHUNK per idle slice.
+            const part = targets.slice(si, si + STATS_CHUNK);
+            si += STATS_CHUNK;
+            if (si >= targets.length) statsDone = true;
+            if (part.length) {
+              try { host.cardStats(part, { boardUid: uid }); } catch { /* badges ask again */ }
             }
           }
           if (ti < titles.length || !statsDone) later(step);
@@ -2189,14 +2206,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     // Card footer stats. One reverse-attribute pull for the resolved targets.
     // The four collection-bound queries run only when that pull throws or is unusable.
     cardStats(targets, { boardUid } = {}) {
-      const keys = [];
+      const keySet = new Set();
       for (const t of targets || []) {
         if (!t) continue;
         const ref = t.kind === "page" ? (t.title ? { title: t.title } : null) : t.uid ? { uid: t.uid } : null;
         if (!ref) continue;
-        const key = t.kind === "page" ? `page:${t.title}` : `uid:${t.uid}`;
-        if (!keys.includes(key)) keys.push(key);
+        keySet.add(t.kind === "page" ? `page:${t.title}` : `uid:${t.uid}`);
       }
+      const keys = [...keySet];
       if (keys.length && keys.every((key) => freshStat(boardUid, key))) {
         const result = new Map();
         for (const key of keys) result.set(key, { ...freshStat(boardUid, key) });

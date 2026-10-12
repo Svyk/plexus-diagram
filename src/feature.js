@@ -3089,7 +3089,9 @@ export async function installPlexusDiagram({
 
   function scanAdded(node) {
     for (const diagram of diagramsWithin(node)) consider(diagram);
-    if (active()) {
+    // The chip scanners skip board contents, but each still searched the added subtree and its article first:
+    // a board mounting 1,500 cards' Roam roots spent ~2 s there. Nodes inside a board skip them.
+    if (active() && !node.closest?.(".pxd-root")) {
       relChips.scan(node);
       boardChips.scan(node);
       cardChips.scan(node);

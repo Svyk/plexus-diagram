@@ -5,6 +5,7 @@ import {
   isDailyTitle,
   libraryCap,
   libraryCard,
+  libraryKind,
   librarySelective,
   narrowLibrary,
   queryTerms,
@@ -12,11 +13,12 @@ import {
   recentDailyTitles,
   wantsType,
 } from "../model/library.js";
-import { assembleMeta, createMetaCache, USER_NAME_QUERIES, metaFilterHostActive, narrowByMeta, sortNeedsMeta, sortRows } from "../model/search-sort.js";
+import { assembleMeta, createMetaCache, META_REFS, USER_NAME_QUERIES, metaFilterHostActive, narrowByMeta, sortNeedsMeta, sortRows } from "../model/search-sort.js";
 import { splitNeighbors } from "../model/neighbors.js";
 import { coverModel, pdfMacroUrl, pdfPagePlan } from "../model/pdf.js";
 import { pdfOfPageNode } from "../model/pdf-page.js";
 import { SEM_PULL, relatedQueryText, semanticCandidates } from "../model/semantic.js";
+import { BROWSE_CHUNK, BROWSE_ROWS, BROWSE_SCAN, FILTER_BROWSE_MAX, FILTER_BROWSE_TTL_MS, browseCountBy, browseKey, browseOrdered, browseQuery, browseSpec, orderBrowse } from "../model/filter-browse.js";
 import { LINKED_REF_CAP } from "../model/refs.js";
 import { createCardCache } from "../model/card-cache.js";
 import { attrNameOf, classifyString, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
@@ -195,6 +197,15 @@ const SHOW_REF_QUERY = `[:find ?board ?page ?card :in $ ?uid ?pat :where
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?diagram :block/page ?p] [?p :block/uid ?page]]`;
 const BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/props]}]";
 const PDF_PAGE_QUERY = `[:find ?u ?t :in $ ?url :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
+// Every block with props on a Roam PDF page, with the page's :pdf/url: highlight counts for all PDFs in one read.
+const PDF_HIGHLIGHTS_QUERY = `[:find ?url ?props :where [?p :pdf/url ?url] [?b :block/page ?p] [?b :block/props ?props]]`;
+const CHILD_COUNTS = "[:find ?b (count ?k) :in $ [?b ...] :where [?b :block/children ?k]]";
+const BROWSE_COUNT_MAX = 5000;
+const BROWSE_PULL = "[:db/id :block/uid :block/string :node/title :block/props {:block/page [:node/title]}]";
+const USER_EID_QUERIES = Object.freeze([
+  "[:find ?x ?n :where [?x :user/display-name ?n]]",
+  "[:find ?x ?n :where [?x :user/uid _] [?x :user/display-page ?d] [?d :node/title ?n]]",
+]);
 const PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
 const PDF_BLOCK_OUT_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?p :block/refs ?b] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 const PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?b :block/refs ?p] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
@@ -1005,6 +1016,67 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     pullMany: (pattern, eids) => (typeof data.pull_many === "function" ? data.pull_many(pattern, eids) : eids.map((e) => rawPull(pattern, e))),
     q: (query, ...inputs) => host.q(query, ...inputs),
   }));
+  // Filter browse (empty box + filters): results by filter set for 30 s, at most FILTER_BROWSE_MAX sets.
+  const filterBrowseCache = new Map();
+  // User name (lowercase) → user entity ids, for the created-by / edited-by clauses. Users change rarely.
+  let userEids = null;
+  const userIdsFor = (name) => {
+    const now = Date.now();
+    if (!userEids || now - userEids.at > 5 * 60000) {
+      const map = new Map();
+      for (const query of USER_EID_QUERIES) {
+        for (const [eid, n] of host.q(query) || []) {
+          if (typeof n !== "string" || eid == null) continue;
+          const key = n.toLowerCase();
+          if (!map.has(key)) map.set(key, []);
+          if (!map.get(key).includes(eid)) map.get(key).push(eid);
+        }
+      }
+      userEids = { at: now, map };
+    }
+    return userEids.map.get(String(name).toLowerCase()) || null;
+  };
+  // :pdf/url → highlight blocks on that Roam PDF page, all PDFs in one read, kept 30 s.
+  let highlightUrls = null;
+  const highlightCounts = (timed) => {
+    const now = Date.now();
+    if (highlightUrls && now - highlightUrls.at < FILTER_BROWSE_TTL_MS) return highlightUrls.map;
+    const map = new Map();
+    for (const [url, props] of timed("pdf-highlights", () => host.q(PDF_HIGHLIGHTS_QUERY))) {
+      if (typeof url === "string" && hasPdfHighlight(props)) map.set(url, (map.get(url) || 0) + 1);
+    }
+    highlightUrls = { at: now, map };
+    return map;
+  };
+  // Rows (cards or graph rows with a pdf string) that pass Parsed PDFs / PDFs with highlights. Parsed: the url is in the
+  // local parse store (`parsedUrls`) or the block keeps a read (`plexus-reads`, one pull_many for the rest).
+  const pdfKeep = (rows, { parsed = false, highlights = false, parsedUrls = null } = {}, timed) => {
+    const pdfs = rows.filter((r) => libraryKind(r) === "pdf" || r?.kind === "pdf");
+    if (!parsed && !highlights) return rows;
+    const urlOf = (r) => r.url || pdfMacroUrl(r.string) || "";
+    let marks = null;
+    if (highlights) marks = highlightCounts(timed);
+    let kept = highlights ? pdfs.filter((r) => (marks.get(urlOf(r)) || 0) > 0) : pdfs;
+    if (parsed) {
+      const local = parsedUrls instanceof Set ? parsedUrls : new Set();
+      const ask = kept.filter((r) => !local.has(urlOf(r)) && r.uid);
+      const reads = new Set();
+      if (ask.length) {
+        timed("pdf-reads", () => {
+          let nodes = [];
+          try { nodes = typeof data.pull_many === "function" ? data.pull_many("[:block/uid :block/props]", ask.map((r) => [":block/uid", r.uid])) || [] : []; } catch { nodes = []; }
+          for (const node of nodes) {
+            const props = node?.[":block/props"];
+            const held = props && typeof props === "object" ? plainKeys(props)?.["plexus-reads"] : null;
+            if (held && typeof held === "object" && Object.keys(held).length) reads.add(node[":block/uid"]);
+          }
+          return [];
+        });
+      }
+      kept = kept.filter((r) => local.has(urlOf(r)) || reads.has(r.uid));
+    }
+    return kept;
+  };
   // The browse list's page titles and times: one pull over every page (~80 ms in a 6.5k-page graph), kept a short while
   // so reopening the panel, switching sorts or clearing the box does not read the graph again.
   let browsePages = null;
@@ -2533,6 +2605,119 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return { rows: top.map(libraryCard), queries: [] };
     },
 
+    // Rows with no search text but with filters: one bounded datalog query from the filters (filter-browse.js), ordered by
+    // the sort, pulled in chunks until BROWSE_ROWS rows pass the filters the query cannot express (type, not on a board,
+    // on this board, parsed / highlights). `keep(cardString)` is the board's own filter. Cached 30 s by filter set unless
+    // `keep` is given (the board changes under it). Parsed PDFs / PDFs with highlights alone read the caller's PDF list.
+    filterBrowse(filter, limit = 40, { sort = "best", keep = null, parsedUrls = null, pdfList = null } = {}) {
+      const queries = [];
+      const timed = (name, fn) => {
+        const t0 = performance.now();
+        let out = [];
+        try { const res = fn(); out = Array.isArray(res) ? res : []; } catch { out = []; }
+        queries.push({ name, ms: performance.now() - t0 });
+        return out;
+      };
+      const lim = Math.max(1, Math.floor(Number(limit) || 40));
+      const now = Date.now();
+      const spec = browseSpec(filter, { now });
+      if (!spec) return { rows: [], queries, spec: null, defaulted: false };
+      const key = typeof keep === "function" ? "" : browseKey(spec, sort, lim, parsedUrls instanceof Set ? parsedUrls.size : -1);
+      const hit = key ? filterBrowseCache.get(key) : null;
+      if (hit && now - hit.at < FILTER_BROWSE_TTL_MS) {
+        queries.push({ name: "browse-cache", ms: 0 });
+        return { rows: hit.rows, queries, spec, defaulted: spec.defaulted };
+      }
+      const pass = (rows) => {
+        let out = narrowLibrary(rows, { types: spec.types });
+        if (spec.orphan && out.length) { markOnBoard(out, timed); out = out.filter((r) => !r.onBoard); }
+        if (spec.pdf) out = pdfKeep(out, { parsed: spec.parsed, highlights: spec.highlights, parsedUrls }, timed);
+        if (typeof keep === "function") out = out.filter((r) => { try { return keep(libraryCard(r).string); } catch { return false; } });
+        return out;
+      };
+      let kept = [];
+      let ordered = browseOrdered(spec, sort);
+      const pdfOnly = spec.pdf && typeof pdfList === "function" && spec.since == null && !spec.under && !spec.createdBy && !spec.editedBy && !spec.refs && !spec.children;
+      if (pdfOnly) {
+        let list = [];
+        try { list = pdfList() || []; } catch { list = []; }
+        const rows = list.filter((r) => r?.uid && !String(r.pageTitle || "").startsWith("roam/"))
+          .map((r) => ({ kind: "block", uid: String(r.uid), string: r.string, pageTitle: r.pageTitle || "", edited: null, tags: [], onBoard: false }));
+        kept = pass(rows);
+        // The list has no times: order by Roam's numbers.
+        ordered = false;
+      } else {
+        const users = {};
+        if (spec.createdBy) users.created = userIdsFor(spec.createdBy);
+        if (spec.editedBy) users.edited = userIdsFor(spec.editedBy);
+        const plan = browseQuery(spec, { patterns: { ...BLOCK_KIND_PATTERNS, board: DIAGRAM_RE }, users, sort });
+        const found = plan ? timed("browse", () => host.q(plan.query, ...plan.args)) : [];
+        // Most linked / Most children with that filter on: count by entity id over the newest BROWSE_COUNT_MAX rows.
+        let counts = null;
+        const countBy = browseCountBy(spec, sort);
+        if (countBy && found.length) {
+          const eids = orderBrowse(found, "edited").slice(0, BROWSE_COUNT_MAX).map((o) => o.eid);
+          counts = new Map();
+          for (const [eid, c] of timed("browse-count", () => host.q(countBy === "refs" ? META_REFS : CHILD_COUNTS, eids))) counts.set(eid, Number(c) || 0);
+        }
+        const order = orderBrowse(found, sort, counts);
+        const edited = plan?.time === "edited";
+        const wantBoard = spec.types.length === 0 || spec.types.includes("board");
+        const pullMany = (eids) => (typeof data.pull_many === "function" ? data.pull_many(BROWSE_PULL, eids) : eids.map((e) => rawPull(BROWSE_PULL, e)));
+        for (let i = 0; i < order.length && i < BROWSE_SCAN && kept.length < BROWSE_ROWS; i += BROWSE_CHUNK) {
+          const chunk = order.slice(i, Math.min(i + BROWSE_CHUNK, BROWSE_SCAN));
+          const nodes = timed("browse-pull", () => pullMany(chunk.map((o) => o.eid)) || []);
+          const rows = [];
+          nodes.forEach((node, j) => {
+            const uid = node?.[":block/uid"];
+            if (typeof uid !== "string" || !uid) return;
+            const o = chunk[j];
+            const title = node[":node/title"];
+            const base = { uid, edited: edited ? o.time : null, tags: [], onBoard: false };
+            if (typeof title === "string") {
+              if (!title.startsWith("roam/")) rows.push({ ...base, kind: "page", title });
+              return;
+            }
+            const string = typeof node[":block/string"] === "string" ? node[":block/string"] : "";
+            const pageTitle = node[":block/page"]?.[":node/title"];
+            if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) return;
+            if (DIAGRAM_STRING.test(string)) {
+              if (!wantBoard) return;
+              const props = node[":block/props"] && typeof node[":block/props"] === "object" ? plainKeys(node[":block/props"]) : {};
+              if (props?.plexus?.v !== 2) return;
+              rows.push({ ...base, kind: "board", title: parseBoardTitle(string) || "Untitled board", string, pageTitle: typeof pageTitle === "string" ? pageTitle : "", onBoard: true });
+              return;
+            }
+            rows.push({ ...base, kind: "block", string, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
+          });
+          for (const row of pass(rows)) { if (kept.length < BROWSE_ROWS) kept.push(row); }
+        }
+      }
+      // The query gave the order: numbers only for the rows shown. Otherwise every kept row's numbers, then the sort.
+      let top;
+      if (ordered) {
+        top = kept.slice(0, lim);
+        timed("meta", () => { attachMeta(top); return []; });
+      } else {
+        timed("meta", () => { attachMeta(kept); return []; });
+        top = sortRows(kept, pdfOnly && sort === "best" ? "edited" : sort).slice(0, lim);
+      }
+      const rows = top.map((r) => libraryCard(r));
+      if (key) {
+        filterBrowseCache.delete(key);
+        filterBrowseCache.set(key, { at: now, rows });
+        while (filterBrowseCache.size > FILTER_BROWSE_MAX) filterBrowseCache.delete(filterBrowseCache.keys().next().value);
+      }
+      return { rows, queries, spec, defaulted: spec.defaulted };
+    },
+
+    // Parsed PDFs / PDFs with highlights over rows another search found (keyword rows, Meaning rows). Non-PDF rows go.
+    pdfFilter(rows, { parsed = false, highlights = false, parsedUrls = null } = {}) {
+      const list = Array.isArray(rows) ? rows : [];
+      if (!parsed && !highlights) return list;
+      return pdfKeep(list, { parsed, highlights, parsedUrls }, (name, fn) => { try { const r = fn(); return Array.isArray(r) ? r : []; } catch { return []; } });
+    },
+
     // Display names of the graph's users, for the created-by / edited-by filters.
     userNames() {
       const names = new Set();
@@ -2566,7 +2751,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     },
 
     // Roam semantic-search results → Add-panel rows with the panel's filters (type, tag, days, not on any board).
-    semanticRows(raw, filter, limit = 40, { sort = "best" } = {}) {
+    semanticRows(raw, filter, limit = 40, { sort = "best", parsedUrls = null, pdfList = null } = {}) {
       const f = normalizeLibraryFilter(filter);
       const queries = [];
       const timed = (name, fn) => {
@@ -2576,7 +2761,18 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         queries.push({ name, ms: performance.now() - t0 });
         return out;
       };
+      // url → pdf block: the caller's cached PDF list first, then one string-pattern read; one answer per url per call.
+      const pdfByUrl = new Map();
       const pdfBlockOf = (url) => {
+        if (pdfByUrl.has(url)) return pdfByUrl.get(url);
+        let list = null;
+        try { list = typeof pdfList === "function" ? pdfList() : null; } catch { list = null; }
+        const listed = Array.isArray(list) ? list.find((r) => r?.uid && pdfMacroUrl(r.string) === url) : null;
+        const found = listed ? { uid: String(listed.uid), string: listed.string, pageTitle: listed.pageTitle || "" } : pdfBlockRead(url);
+        pdfByUrl.set(url, found);
+        return found;
+      };
+      const pdfBlockRead = (url) => {
         const rows = timed("sem-pdf", () => host.q(
           `[:find ?u ?s ?t :in $ ?kind :where [?b :block/string ?s] [(re-pattern ?kind) ?kre] [(re-find ?kre ?s)] [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]`,
           BLOCK_KIND_PATTERNS.pdf,
@@ -2585,7 +2781,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         return null;
       };
       const t0 = performance.now();
-      const candidates = semanticCandidates(raw, { pull: (uid) => pull(SEM_PULL, eidKey(uid)), pdfBlockOf })
+      const pdfPages = filter?.parsed === true || filter?.highlights === true;
+      const candidates = semanticCandidates(raw, { pull: (uid) => pull(SEM_PULL, eidKey(uid)), pdfBlockOf, pdfPages })
         .filter((row) => !(row.kind === "block" && DIAGRAM_STRING.test(row.string)));
       queries.push({ name: "sem-pull", ms: performance.now() - t0 });
       if (f.orphan) markOnBoard(candidates, timed);
@@ -2594,6 +2791,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         timed("sem-meta", () => { attachMeta(kept); return []; });
         kept = narrowByMeta(kept, filter, { days: f.days });
       }
+      // Parsed PDFs / PDFs with highlights: a hit on or under a PDF (or on its Roam PDF page) is that PDF's row; the rest go.
+      if (filter?.parsed === true || filter?.highlights === true) kept = pdfKeep(kept, { parsed: filter.parsed === true, highlights: filter.highlights === true, parsedUrls }, timed);
       if (sort !== "best") kept = sortRows(kept, sort);
       return { rows: kept.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map((row) => ({ ...libraryCard(row), semantic: true })), queries };
     },

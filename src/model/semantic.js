@@ -9,7 +9,7 @@ export const SEM_PER_PAGE = 2;
 export const RELATED_CHARS = 600;
 export const RELATED_CHILDREN = 10;
 
-export const SEM_PULL = "[:block/uid :block/string :node/title :edit/time {:block/refs [:node/title]} {:block/page [:block/uid :node/title :pdf/url]} {:block/parents [:block/uid :block/string :node/title]}]";
+export const SEM_PULL = "[:block/uid :block/string :node/title :pdf/url :edit/time {:block/refs [:node/title]} {:block/page [:block/uid :node/title :pdf/url]} {:block/parents [:block/uid :block/string :node/title]}]";
 
 // Roam markup → readable text (display and queries only).
 export function cleanText(s) {
@@ -64,8 +64,9 @@ function isConnection(pulled) {
 }
 
 // raw engine results → candidate rows in rank order, at most `perPage` per page, deduped by target.
-// `pdfBlockOf(url)` → { uid, string, pageTitle } | null resolves a Roam PDF page to its pdf block.
-export function semanticCandidates(raw, { pull, pdfBlockOf = () => null, perPage = SEM_PER_PAGE } = {}) {
+// `pdfBlockOf(url)` → { uid, string, pageTitle } | null resolves a Roam PDF page to its pdf block. With `pdfPages` (the
+// PDF filters are on) a hit on a Roam PDF page itself is that PDF's row too, not a page row.
+export function semanticCandidates(raw, { pull, pdfBlockOf = () => null, perPage = SEM_PER_PAGE, pdfPages = false } = {}) {
   const out = [];
   const seen = new Set();
   const perPageCount = new Map();
@@ -83,6 +84,15 @@ export function semanticCandidates(raw, { pull, pdfBlockOf = () => null, perPage
       const title = str(pulled[":node/title"]);
       if (title) {
         if (title.startsWith("roam/")) continue;
+        const pageUrl = pdfPages ? str(pulled[":pdf/url"]) : "";
+        if (pageUrl) {
+          let target = null;
+          try { target = pdfBlockOf(pageUrl); } catch { target = null; }
+          if (target?.uid && pdfMacroUrl(target.string)) {
+            row = { kind: "block", uid: target.uid, string: target.string, pageTitle: target.pageTitle || "", pageUid: str(pulled[":block/uid"]) || uid, edited: pulled[":edit/time"] ?? null, tags: [], via: uid };
+            break;
+          }
+        }
         row = { kind: "page", uid: str(pulled[":block/uid"]) || uid, title, pageUid: uid, edited: pulled[":edit/time"] ?? null, tags: [] };
         break;
       }

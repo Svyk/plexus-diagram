@@ -15,6 +15,7 @@ import { dailyTitle, startOfDay, stepDay } from "../model/journal.js";
 import { timeAgo } from "../model/changes.js";
 import { DEFAULT_SORT, metaFilterActive, metaLine, normalizeMetaFilter, normalizeSort, SORTS, sortLabel } from "../model/search-sort.js";
 import { minimapSvg } from "./minimap-svg.js";
+import { DEFAULT_WINDOW_NOTE, FILTER_DEBOUNCE_MS, browseEmptyText, wantsFilterBrowse } from "../model/filter-browse.js";
 
 export { CARD_MIME, parseDropPayload };
 const DEBOUNCE_MS = 150;
@@ -716,9 +717,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (t === meaningBox) { try { on.saveMeaning?.(meaningBox.checked); } catch { /* storage */ } searchNow(); }
   };
 
-  const semanticRowsFor = (raw, filter) => {
+  const semanticRowsFor = (raw, filter, parsedUrls = null) => {
     try {
-      const rows = host?.semanticRows?.(raw, filter, LIMIT, { sort })?.rows || [];
+      const rows = host?.semanticRows?.(raw, filter, LIMIT, { sort, parsedUrls, pdfList: typeof on.pdfList === "function" ? on.pdfList : null })?.rows || [];
       return filter.thisBoard === true ? rows.filter((c) => on.isOnBoard?.(c.string)) : rows;
     } catch { return []; }
   };
@@ -739,12 +740,13 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     extra.forEach((c) => row(results, c));
     wantNames(extra, { front: true });
   };
-  const scheduleSemantic = (id, filter, keywordCards) => {
+  // Parsed PDFs / PDFs with highlights apply to Meaning rows too: the host keeps only the PDF rows that pass.
+  const scheduleSemantic = (id, filter, keywordCards, parsedUrls = null) => {
     const text = String(filter.text || "").trim();
     const sem = on.semantic;
-    if (!text || !meaningBox.checked || !semanticOn() || filter.parsed === true || filter.highlights === true || typeof host?.semanticRows !== "function" || typeof sem?.search !== "function") return;
+    if (!text || !meaningBox.checked || !semanticOn() || typeof host?.semanticRows !== "function" || typeof sem?.search !== "function") return;
     const cached = sem.peek?.(text);
-    if (cached) paintSemantic(id, semanticRowsFor(cached.data, filter), keywordCards);
+    if (cached) paintSemantic(id, semanticRowsFor(cached.data, filter, parsedUrls), keywordCards);
     if (cached && !cached.stale) return;
     const wait = Math.max(0, SEMANTIC_PAUSE_MS - (Date.now() - lastInputAt));
     semTimer = timers.later(async () => {
@@ -753,12 +755,12 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       const t0 = Date.now();
       let raw = [];
       try {
-        raw = await sem.search(text, { onFresh: (data) => paintSemantic(id, semanticRowsFor(data, filter), keywordCards) });
+        raw = await sem.search(text, { onFresh: (data) => paintSemantic(id, semanticRowsFor(data, filter, parsedUrls), keywordCards) });
       } catch { raw = []; }
       if (id !== queryId) return;
       results.dataset.semMs = String(Date.now() - t0);
       results.setAttribute("data-sem-ms", String(Date.now() - t0));
-      paintSemantic(id, semanticRowsFor(raw, filter), keywordCards);
+      paintSemantic(id, semanticRowsFor(raw, filter, parsedUrls), keywordCards);
     }, wait);
   };
   // "Find related": semantic search on a card's text, nothing typed.
@@ -784,6 +786,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     paintMore();
     const id = queryId += 1;
     const started = Date.now();
+    if (results.dataset.browse) { delete results.dataset.browse; results.removeAttribute?.("data-browse"); }
     semTimer?.();
     semTimer = null;
     if (!quiet || like || related) results.replaceChildren();
@@ -801,6 +804,8 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       list.forEach((r) => row(results, r));
       return;
     }
+    // Empty box + filters: the filters browse the graph themselves (filter-browse.js).
+    if (wantsFilterBrowse(filter) && typeof host?.filterBrowse === "function") { await runFilterBrowse(id, filter, started); return; }
     if (!libraryFilterActive(filter)) {
       results.replaceChildren();
       if (on.semantic && !semanticOn()) el("div", "pxd-panel__empty pxd-panel__hint", results, SEMANTIC_HINT);
@@ -842,7 +847,11 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     let rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
     // What only the board knows: on this board, a kept parse, highlights (PDFs only).
     if (filter.thisBoard) rows = rows.filter((r) => on.isOnBoard?.(r.string));
-    if (filter.parsed || filter.highlights) {
+    const parsedUrls = filter.parsed ? await parsedSet() : null;
+    if (id !== queryId) return;
+    if ((filter.parsed || filter.highlights) && typeof host?.pdfFilter === "function" && (!filter.parsed || parsedUrls)) {
+      rows = host.pdfFilter(rows, { parsed: filter.parsed === true, highlights: filter.highlights === true, parsedUrls });
+    } else if (filter.parsed || filter.highlights) {
       const pdfs = rows.filter((r) => r.kind === "pdf");
       const keep = await Promise.all(pdfs.map(async (r) => {
         try {
@@ -882,7 +891,41 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     results.setAttribute("data-paint-ms", String(Date.now() - started));
     // The whole PDF list is read only when PDFs are what the user filters for.
     wantNames(rows, { front: true, all: checked.has("pdf") && checked.size < ALL_TYPES.length });
-    scheduleSemantic(id, filter, rows);
+    scheduleSemantic(id, filter, rows, parsedUrls);
+  };
+
+  // The local parse store's PDF urls (Parsed PDFs). Null when the board does not say.
+  const parsedSet = async () => {
+    if (typeof on.parsedUrls !== "function") return null;
+    try { const got = await on.parsedUrls(); return got instanceof Set ? got : new Set(Array.isArray(got) ? got : []); } catch { return null; }
+  };
+  const runFilterBrowse = async (id, filter, started) => {
+    const parsedUrls = filter.parsed ? await parsedSet() : null;
+    if (id !== queryId) return;
+    let pack = null;
+    try {
+      pack = await Promise.resolve(host.filterBrowse(filter, LIMIT, {
+        sort,
+        parsedUrls,
+        pdfList: typeof on.pdfList === "function" ? on.pdfList : null,
+        keep: filter.thisBoard ? (s) => on.isOnBoard?.(s) === true : null,
+      }));
+    } catch { pack = null; }
+    if (id !== queryId) return;
+    const queries = Array.isArray(pack?.queries) ? pack.queries : [];
+    const log = JSON.stringify(queries.map((q) => ({ name: q.name, ms: Math.round((Number(q.ms) || 0) * 10) / 10 })));
+    results.dataset.queryLog = log;
+    results.setAttribute("data-query-log", log);
+    results.replaceChildren();
+    const rows = Array.isArray(pack?.rows) ? pack.rows : [];
+    if (pack?.defaulted && rows.length) el("div", "pxd-panel__empty pxd-panel__hint pxd-panel__window", results, DEFAULT_WINDOW_NOTE);
+    if (!rows.length) el("div", "pxd-panel__empty", results, browseEmptyText(pack?.spec));
+    rows.forEach((r) => row(results, r));
+    results.dataset.browse = "filter";
+    results.setAttribute("data-browse", "filter");
+    results.dataset.paintMs = String(Date.now() - started);
+    results.setAttribute("data-paint-ms", String(Date.now() - started));
+    wantNames(rows, { front: true });
   };
 
   let refreshTimer = null;
@@ -891,6 +934,12 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     debounce = timers.later(() => { debounce = null; void runSearch(); }, DEBOUNCE_MS);
   };
   const searchNow = () => { debounce?.(); debounce = null; void runSearch(); };
+  // Filter changes (More, the days box) wait for a pause, so flipping several runs one search.
+  const scheduleFilter = () => {
+    paintMore();
+    debounce?.();
+    debounce = timers.later(() => { debounce = null; void runSearch(); }, FILTER_DEBOUNCE_MS);
+  };
   listen(input, "input", () => {
     lastInputAt = Date.now();
     try { on.typing?.(); } catch { /* host */ }
@@ -915,7 +964,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     searchNow();
   });
   listen(tagInput, "input", scheduleSearch);
-  listen(daysInput, "input", scheduleSearch);
+  listen(daysInput, "input", scheduleFilter);
   listen(pagesInput, "input", scheduleSearch);
   const saveTypes = () => { try { on.saveTypes?.([...checked]); } catch { /* storage */ } };
   const changeTypes = () => { paintTypes(); saveTypes(); searchNow(); };
@@ -946,7 +995,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (event.key === "Escape") { event.stopPropagation(); setTypesOpen(false); try { typeBtn.focus?.(); } catch { /* stub */ } }
   });
   morePop.append(orphanLabel);
-  listen(morePop, "change", () => { paintMore(); searchNow(); });
+  listen(morePop, "change", scheduleFilter);
   // Page titles for the Under page box: one title search after a pause in typing, not one per key (each scans every title).
   let underTimer = null;
   let underAsked = "";

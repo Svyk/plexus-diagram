@@ -5819,6 +5819,7 @@ function buildBoardView(onFail, {
   let pdfNames = null;
   let pdfListWanted = false;
   let pdfBlockList = null;
+  let parsedUrlSet = null;
   const pdfBlocks = () => {
     if (pdfBlockList) return pdfBlockList;
     try { pdfBlockList = host?.listPdfBlocks?.(1000) || []; } catch { pdfBlockList = []; }
@@ -5951,6 +5952,7 @@ function buildBoardView(onFail, {
           pdfNameInfo.clear();
           pdfListWanted = false;
           pdfBlockList = null;
+          parsedUrlSet = null;
           // The PDF list the keyword search matches names against: read once per opening, after first paint.
           timers.later(() => { if (!disposed && panel.isOpen()) pdfBlocks(); }, 0);
           void pdfNamesR().load().then((n) => { if (n && !disposed && panel.isOpen()) panel.refreshPdfNames([]); });
@@ -5964,6 +5966,15 @@ function buildBoardView(onFail, {
         } catch { return null; }
       },
       pdfTitle: (url) => parsedTitles.get(url) || "",
+      // Parsed PDFs filter: the parse store's urls, read once per 30 s (and again on each panel opening).
+      parsedUrls: async () => {
+        const now = Date.now();
+        if (parsedUrlSet && now - parsedUrlSet.at < 30000) return parsedUrlSet.set;
+        let list = [];
+        try { list = (await parseStoreShared().parsedUrls?.()) || []; } catch { list = []; }
+        parsedUrlSet = { at: now, set: new Set(list) };
+        return parsedUrlSet.set;
+      },
       isParsed: async (url) => { try { return Boolean(url) && Boolean(await parseStoreShared().findByUrl(url)); } catch { return false; } },
       highlightCount: (string) => { try { return host?.pdfCover?.(string)?.count || 0; } catch { return 0; } },
       userNames: () => { try { return host?.userNames?.() || []; } catch { return []; } },

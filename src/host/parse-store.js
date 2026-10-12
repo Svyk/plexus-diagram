@@ -377,6 +377,16 @@ export function createParseStore({ indexedDB: factory, now, docCap = PARSE_DOC_C
       }
     },
 
+    // Every PDF url with a stored parse (the Parsed PDFs filter): one key read, no records.
+    async parsedUrls() {
+      try {
+        const keys = await backend.keys(STORE_PARSE_INDEX);
+        return (Array.isArray(keys) ? keys : []).filter((k) => typeof k === "string" && k !== META_KEY && !k.startsWith("meta:"));
+      } catch {
+        return [];
+      }
+    },
+
     async indexUrl(url, info) {
       try {
         if (!url || !info || !info.sha256) return null;

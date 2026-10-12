@@ -277,6 +277,8 @@ test("Add panel filters narrow through librarySearch", async (t) => {
   assert.equal(typeBtn.textContent, "All");
   orphan.checked = true;
   f.stub.dispatch(orphan, "change");
+  // Filter changes wait 200 ms for a pause (these timers never fire); Enter searches now.
+  f.stub.dispatch(input, "keydown", { key: "Enter" });
   await tick();
   const orphans = strings();
   assert.ok(orphans.length < base.length);

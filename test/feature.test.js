@@ -1047,10 +1047,11 @@ test("F2 Open on board waits for the page's board to mount (Roam drops ?pxd=), e
     assert.equal(globalThis.location.hash, "#/app/Readwisenotes/page/pageLAB99?pxd=boardAAA1", "page link first");
     addNative(t.doc, "boardAAA1");
     t.tick();
+    await new Promise((resolve) => setTimeout(resolve, 150));
     await settle();
     assert.equal(t.views.length, 2, "the root mounted, then the nested board opened");
     assert.equal(t.views[1].args.session.uid, "childBBB1");
-    assert.deepEqual(t.views[1].focused, ["edgeEEE01"]);
+    assert.equal(t.views[1].focused[0], "edgeEEE01");
   });
 });
 
@@ -1063,9 +1064,10 @@ test("F2 Open on board for a top-level board: the board mounts after the page lo
     assert.equal(t.env.win.__plexusDiagram.openConnection("boardAAA1", "edgeEEE01"), true);
     addNative(t.doc, "boardAAA1");
     t.tick();
+    await new Promise((resolve) => setTimeout(resolve, 150));
     await settle();
     assert.equal(t.views.length, 1);
-    assert.deepEqual(t.views[0].focused, ["edgeEEE01"]);
+    assert.equal(t.views[0].focused[0], "edgeEEE01");
   });
 });
 

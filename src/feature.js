@@ -1297,6 +1297,7 @@ export async function installPlexusDiagram({
     };
     return {
       sketchStandIn: true,
+      get live() { return Boolean(handoff.view); },
       get root() { return handoff.view?.root ?? null; },
       viewport() {
         try { return handoff.view?.viewport?.() ?? handoff.vp ?? null; } catch { return handoff.vp ?? null; }
@@ -1569,45 +1570,41 @@ export async function installPlexusDiagram({
   }
 
   // "Open on board" for a connection: open the page's board (a link's ?pxd= is dropped by Roam before a board that is
-  // not mounted yet could read it, so the target waits here), enter a nested board through the normal navigation
+  // not mounted yet could read it, so this waits for the mount), enter a nested board through the normal navigation
   // (crumbs, history), then select the connection. If the root board never mounts, open the board block itself.
-  let pendingNest = null; // { root, trail, edgeUid, boardUid, until }
+  let nestOpen = 0;
   function enterNested(rec, trail, edgeUid) {
     visit(rec, trail);
-    // The board's data may still be loading right after a mount: retry for about a second.
+    // The board's data may still be loading right after a mount (snapshot stand-in, deferred prime): retry.
     const focus = (left) => {
       if (stopped || mounts.get(rec.native) !== rec) return;
       let done = false;
-      try { done = Boolean(rec.view?.focusUid?.(edgeUid)); } catch { done = false; }
-      if (!done && left > 0) lifecycle.timeout(() => focus(left - 1), 150);
+      // A snapshot stand-in queues calls until the live board is in; wait for the live view instead.
+      if (!rec.view?.sketchStandIn || rec.view.live) {
+        try { done = Boolean(rec.view?.focusUid?.(edgeUid)); } catch { done = false; }
+      }
+      if (!done && left > 0) lifecycle.timeout(() => focus(left - 1), 100);
     };
-    queueMicrotask(() => focus(8));
-  }
-  function resumeNestedOpen(rec) {
-    const p = pendingNest;
-    if (!p || p.root !== rec.uid || !rec.view || Date.now() > p.until) return;
-    pendingNest = null;
-    enterNested(rec, p.trail, p.edgeUid);
+    queueMicrotask(() => focus(80));
   }
   function openNestedConnection(boardUid, edgeUid) {
     if (stopped || !boardUid || !edgeUid) return false;
     const trail = seedCrumbs(boardUid);
     const root = trail[0].uid;
-    for (const rec of mounts.values()) {
-      if (rec.uid === root && rec.view) { enterNested(rec, trail, edgeUid); return true; }
-    }
+    const open = findOpenMount(root, false) || findOpenMount(root, true);
+    if (open) { enterNested(open, trail, edgeUid); return true; }
     let pageUid = "";
     try { pageUid = host.blockPageUid?.(boardUid) || ""; } catch { pageUid = ""; }
     if (!pageUid) { try { void host.openBlock?.(boardUid); } catch { /* host unavailable */ } return true; }
-    pendingNest = { root, trail, edgeUid, boardUid, until: Date.now() + 8000 };
-    const mine = pendingNest;
-    lifecycle.timeout(() => {
-      if (pendingNest !== mine) return;
-      pendingNest = null;
-      try { void host.openBlock?.(boardUid); } catch { /* host unavailable */ }
-    }, 6000);
+    const mine = ++nestOpen;
     assignDeepLink(globalThis.location, { graph: host.graph || graphFromHash(), pageUid, cardUid: root }, () => {
       try { win.dispatchEvent?.(new Event("hashchange")); } catch { /* already there */ }
+    });
+    // About 8 s at 50 ms: a cold page with a large board can take a few seconds to mount.
+    waitOpenMount(root, false, 160, (rec) => {
+      if (stopped || mine !== nestOpen) return;
+      if (rec) { enterNested(rec, trail, edgeUid); return; }
+      try { void host.openBlock?.(boardUid); } catch { /* host unavailable */ }
     });
     return true;
   }
@@ -2038,7 +2035,6 @@ export async function installPlexusDiagram({
     // Everything that reads the session or Roam. With a snapshot it runs after the live board is in.
     const openTail = () => {
       unmountOutlineCopies(rec);
-      resumeNestedOpen(rec);
       applyShow(rec);
       // An embed must not collapse the board. The original mount still does, once.
       if (rec.session?.board?.virtual) markCollapsed(uid);

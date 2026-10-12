@@ -73,7 +73,9 @@ test("image cards fill the card body and keep the picture contained and centred"
     return css.slice(at, css.indexOf("}", at));
   };
   assert.match(block(".pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media .rm-inline-img {"), /width:\s*100%[^}]*height:\s*100%[^}]*max-height:\s*none[^}]*object-fit:\s*contain/);
-  assert.match(block(".pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media :is(.rm-inline-img__resize, .react-resizable) {"), /width:\s*100%\s*!important/);
+  assert.match(block(".pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media .react-resizable {\n  width"), /width:\s*100%\s*!important/);
+  assert.match(css, /pxd-item__media \.rm-inline-img__resize,\n[^{]*\.react-resizable \{\n  width:\s*100%\s*!important/);
+  assert.doesNotMatch(css, /pxd-item--image[^{]*:is\(/, "no rightmost :is() list on the image-card rules");
   assert.match(css, /pxd-item--image > \.pxd-item__body > \.pxd-item__media,[^{]*\{\s*height:\s*100%/);
   // The 320px cap stays for any other media body.
   assert.match(block(".pxd-item__media .rm-inline-img {"), /max-height:\s*var\(--pxd-media-max, 320px\)/);

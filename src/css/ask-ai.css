@@ -238,11 +238,10 @@
   cursor: pointer;
 }
 
-/* The number is what @Part N refers to: bold, and larger on hover. */
+/* The number is what @Part N refers to: bold, and larger on hover (no font-size transition: that is a layout per frame). */
 .pxd-ask__partno {
   font-weight: 700;
   font-size: 12px;
-  transition: font-size 80ms ease-out;
 }
 
 .pxd-ask__partchip:hover .pxd-ask__partno,

@@ -131,6 +131,9 @@ export function createPopover(doc, host) {
     el.setAttribute("role", "menu");
     if (spec.label) el.setAttribute("aria-label", spec.label);
     el.addEventListener("keydown", onKey);
+    el.tabIndex = -1;
+    // A press on a disabled row (or the menu's gaps) keeps the focus in the menu, so Escape and the arrows still work.
+    el.addEventListener("pointerdown", (event) => { if (!event.target?.closest?.("input")) event.preventDefault?.(); });
     if (spec.filter) {
       filterBox = make(doc, "input", "pxd-ask__mfilter", el);
       filterBox.type = "text";
@@ -142,7 +145,7 @@ export function createPopover(doc, host) {
     paint();
     anchor?.setAttribute?.("aria-expanded", "true");
     doc.addEventListener?.("pointerdown", outside, true);
-    try { (filterBox || rows[0] || el).focus?.(); } catch { /* stub */ }
+    try { (filterBox || rows.find((r) => !r.disabled) || el).focus?.(); } catch { /* stub */ }
     return true;
   }
   function close({ refocus = true } = {}) {

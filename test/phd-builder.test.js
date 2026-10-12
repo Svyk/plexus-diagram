@@ -8,7 +8,7 @@ import { validate, parseJsonl, parseHighlightRef } from "../tools/live/phd/lib/b
 import { detectMode, placeBoard, tableSize, chartRows, overlaps } from "../tools/live/phd/lib/layout.mjs";
 import { buildPlan, resolveString, refFor, libraryTitle, shapeOf } from "../tools/live/phd/lib/plan.mjs";
 import { locate, locateLoose, normalizeKey, loadPdfText } from "../tools/live/phd/lib/pdftext.mjs";
-import { levels } from "../tools/live/phd/lib/write.mjs";
+import { levels, pendingHold } from "../tools/live/phd/lib/write.mjs";
 import { refTitles, cutPlan } from "../tools/live/phd/cleanup.mjs";
 import { phrases, rng, joinItems } from "../tools/live/phd/synth.mjs";
 import { readPlexus, classifyString, parseEdgeLabel } from "../src/model/schema.js";
@@ -246,4 +246,14 @@ test("cleanup cuts a big page into bounded subtrees", () => {
     { uid: "small", parent: null, size: 3 },
   ];
   assert.deepEqual(cutPlan(nodes, 250).sort(), ["a1", "a2", "b", "c", "small"]);
+});
+
+test("writes hold on the age of Roam's oldest unconfirmed write, not only its capped count", () => {
+  assert.equal(pendingHold(null), false);
+  assert.equal(pendingHold({ n: 289, lagMs: 1800000 }), true);
+  assert.equal(pendingHold({ n: 289, lagMs: 2000 }), false);
+  assert.equal(pendingHold({ n: 400, lagMs: 0 }), true);
+  assert.equal(pendingHold({ n: 0, lagMs: 99999 }), false);
+  assert.equal(pendingHold({ n: 50, lagMs: 9000 }), false);
+  assert.equal(pendingHold({ n: 50, lagMs: 9000 }, { resuming: true }), true);
 });

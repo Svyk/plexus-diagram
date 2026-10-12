@@ -257,3 +257,26 @@ export async function pendingCount() {
     } finally { db.close(); }
   } catch { return null; }
 }
+
+// The count above is capped: Roam keeps at most ~300 unconfirmed writes in IndexedDB and holds the rest of its
+// backlog in memory (2026-10-12: the count sat at 289 while 12k writes were still queued; a renderer crash lost
+// them). The age of the oldest unconfirmed write is the real signal: its tx_id is a push id whose first 8 chars
+// encode the write time in ms. Returns { n, lagMs } or null.
+export async function pendingLag() {
+  const graph = window.roamAlphaAPI?.graph?.name;
+  if (!graph) return null;
+  const PUSH = "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz";
+  try {
+    const db = await new Promise((res, rej) => { const r = indexedDB.open(`v10_SLASH_dbs_SLASH_${graph}`); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+    try {
+      if (!db.objectStoreNames.contains("unconfirmed-log")) return null;
+      const store = db.transaction("unconfirmed-log", "readonly").objectStore("unconfirmed-log");
+      const n = await new Promise((res) => { const q = store.count(); q.onsuccess = () => res(q.result); q.onerror = () => res(null); });
+      const head = await new Promise((res) => { const q = store.getAll(null, 1); q.onsuccess = () => res(q.result?.[0] || null); q.onerror = () => res(null); });
+      const id = typeof head?.tx_id === "string" ? head.tx_id : "";
+      let at = 0;
+      for (const ch of id.slice(0, 8)) at = at * 64 + Math.max(0, PUSH.indexOf(ch));
+      return { n, lagMs: id && at ? Math.max(0, Date.now() - at) : 0 };
+    } finally { db.close(); }
+  } catch { return null; }
+}

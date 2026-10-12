@@ -562,6 +562,32 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   object-fit: contain;
 }
 
+/* An image card's picture fills the card body and scales with it (contain, centred): no fixed height cap. */
+.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media,
+.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media :is(.pxd-rs, .pxd-rs__live, .rm-inline-img__resize, .react-resizable) {
+  height: 100%;
+}
+
+.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media .pxd-rs__live > span {
+  display: block;
+  height: 100%;
+}
+
+.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media :is(.rm-inline-img__resize, .react-resizable) {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.pxd-root .pxd-item.pxd-item--image > .pxd-item__body > .pxd-item__media .rm-inline-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: none;
+  object-fit: contain;
+  object-position: center;
+}
+
 .pxd-item__media .rm-inline-img__resize-handle,
 .pxd-item__media .rm-inline-img__edit,
 .pxd-item__media .rm-inline-img__extract {

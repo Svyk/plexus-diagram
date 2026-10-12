@@ -176,16 +176,16 @@ export function identMatches(ident, terms) {
   return list.every((t) => hay.includes(t));
 }
 
-// The name a PDF row shows, best first: its own page, its Roam PDF page, a parse, the cover read,
-// the file's metadata Title, the first-page read, the file name. `loading` while nothing better is known yet.
+// The name a PDF row shows, best first: its own page, its Roam PDF page, the first-page read, a parse, the cover read,
+// the file's metadata Title, the file name. Banners (letter-spaced words, all-caps labels) never count as a title. `loading` while nothing better is known yet.
 export function pdfRowName({ ownTitle = "", pdfPageTitle = "", parsedTitle = "", coverTitle = "", metaTitle = "", ident = null, url = "", pending = false } = {}) {
   const pick = [
     pageNameOk(ownTitle) ? pdfPageName(ownTitle) : "",
     pageNameOk(pdfPageTitle) ? pdfPageName(pdfPageTitle) : "",
+    cleanPdfTitle(ident?.title || ""),
     cleanPdfTitle(parsedTitle),
     cleanPdfTitle(coverTitle),
     cleanPdfTitle(metaTitle),
-    ident?.title || "",
   ].find(Boolean);
   if (pick) return { title: pick, loading: false };
   return { title: pdfFileTitle(url) || "PDF", loading: Boolean(pending) };

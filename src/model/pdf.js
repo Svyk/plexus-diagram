@@ -1,6 +1,6 @@
 // PDF-1 cover plan. The reader is Roam's. No fetch and no :pdf write.
 
-import { capTitle, isBannerOf, isCutPrefix, isJunkTitleText, segmentTitle, titleWordCount } from "./title-cap.js";
+import { capTitle, isBannerOf, isBannerTitle, isCutPrefix, isJunkTitleText, segmentTitle, titleWordCount } from "./title-cap.js";
 
 const PDF_MACRO = /^\{\{\s*(?:\[\[pdf\]\]|pdf)\s*:/;
 
@@ -59,6 +59,7 @@ export function cleanPdfTitle(value) {
   if (text.length < 4) return "";
   if (ROMAN_ONLY.test(text)) return "";
   if (/^untitled\b/i.test(text)) return "";
+  if (isBannerTitle(text)) return "";
   return titleText(text);
 }
 
@@ -84,8 +85,8 @@ function titleText(value) {
 // metadata Title (when real), then the block alias, then the block text, then a human page title, then the first parsed heading, then the file name.
 export function pdfTitlePlan(source) {
   const src = source && typeof source === "object" ? source : {};
-  const named = cleanPdfTitle(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title)
-    || cleanPdfTitle(src.parsedTitle);
+  const named = cleanPdfTitle(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || cleanPdfTitle(src.identTitle)
+    || cleanPdfTitle(src.title) || cleanPdfTitle(src.parsedTitle);
   if (named) return segmentTitle(named);
   const file = titleText(fileName(src.url));
   return file ? segmentTitle(file) : "PDF";

@@ -159,6 +159,25 @@ export function isJunkTitleText(text) {
   return digits >= 6 && digits > letters * 2;
 }
 
+const ARTICLE_LABEL = /^(?:(?:major|original|research|review|brief|short|clinical|invited|special|regular|full|case|technical|systematic)\s+(?:article|report|communication|paper|letter|review|note|study|contribution)s?|article|editorial|commentary|perspective|viewpoint|abstract|supplementary (?:material|information|data)s?|letter to the editor|research letter|running head|original investigation|brief communication|case series)$/i;
+
+// A banner is page chrome in title type, not a title: letters spread out by the type setter ("M A J O R",
+// or "MA J O R" once the first pair merged), an all-capitals line of three words or fewer ("MAJOR ARTICLE",
+// "ORIGINAL RESEARCH"), or an article-type label ("Research Article").
+export function isBannerTitle(text) {
+  const t = typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "";
+  if (!t) return false;
+  const tokens = t.split(" ");
+  if (tokens.length >= 4) {
+    const spread = tokens.filter((w) => w.length <= 2 && w === w.toUpperCase() && /\p{L}/u.test(w)).length;
+    if (spread / tokens.length >= 0.7) return true;
+  }
+  if (ARTICLE_LABEL.test(t)) return true;
+  const letters = t.replace(/[^\p{L}]/gu, "");
+  if (letters.length >= 3 && letters === letters.toUpperCase() && letters !== letters.toLowerCase() && titleWordCount(t) <= 3 && !/\d/.test(t)) return true;
+  return false;
+}
+
 export function titleWordCount(text) {
   return String(text ?? "").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 }

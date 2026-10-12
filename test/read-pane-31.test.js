@@ -168,12 +168,16 @@ test("header, tools class, pill proxies and the page pill", () => {
     assert.equal(built.hits.full, 0);
 
     const tools = head.querySelector(".pxd-read__tools");
-    tools.click();
+    // Roam's own toolbar shows as soon as a PDF is open; the gear only opens the Engines sheet.
     assert.equal(pane.element().classList.contains("pxd-read--tools"), true);
     assert.ok(root.querySelector(".rm-pdf-toolbar"));
+    tools.click();
+    assert.equal(pane.element().classList.contains("pxd-read--tools"), true);
+    assert.equal(tools.getAttribute("aria-pressed"), "true");
     assert.notEqual(root.querySelector(".rm-pdf-toolbar").style.display, "none");
     tools.click();
-    assert.equal(pane.element().classList.contains("pxd-read--tools"), false);
+    assert.equal(pane.element().classList.contains("pxd-read--tools"), true);
+    assert.equal(tools.getAttribute("aria-pressed"), "false");
     assert.ok(root.querySelector(".rm-pdf-toolbar"));
 
     const pillBtn = (label) => [...root.querySelectorAll(".pxd-read__pillbtn")].find((node) => node.getAttribute("aria-label") === label);
@@ -194,7 +198,7 @@ test("header, tools class, pill proxies and the page pill", () => {
     assert.equal(pane.element().classList.contains("pxd-read--tools"), true);
     assert.equal(doc.activeElement, built.find);
     stub.dispatch(built.find, "focusout");
-    assert.equal(pane.element().classList.contains("pxd-read--tools"), false);
+    assert.equal(pane.element().classList.contains("pxd-read--tools"), true);
 
     const drawer = root.querySelector(".pxd-read__drawer");
     assert.ok(drawer);
@@ -395,6 +399,7 @@ test("the pane source adds no document listener and the toolbar is tucked withou
   assert.match(tucked[0], /visibility:\s*hidden/);
   assert.equal(tucked[0].includes("display"), false);
   assert.match(css, /\.pxd-read\.pxd-read--tools \.rm-pdf-toolbar\s*\{[^}]*height:\s*40px/);
+  assert.match(paneSrc, /const paintTools = \(\) => \{\s*pane\.classList\.add\("pxd-read--tools"\);/);
   assert.match(css, /\.pxd-read \.pxd-read__live\s*\{[^}]*overflow:\s*hidden/);
   assert.match(css, /\.pxd-read \.pxd-read__list\s*\{[^}]*flex:\s*1 1 42%/);
   assert.match(css, /\.pxd-read \.pxd-read__pages\s*\{[^}]*tabular-nums/);

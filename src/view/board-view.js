@@ -113,6 +113,7 @@ import { createParseStore, imageKey, readableParse, restorableTitle } from "../h
 import { createSemantic } from "../host/semantic.js";
 import { identHaystack, identMatches, pdfRowName, pdfRowSub } from "../model/pdf-ident.js";
 import { createPdfNames } from "./pdf-names.js";
+import { setPdfNameResolver } from "../model/pdf-name-for.js";
 import { createImageIndex } from "../host/image-index.js";
 import { searchImages, similarImages } from "../model/image-search.js";
 import { createFigureImages, getFigureImages, setFigureImages, shrinkImage } from "../host/figure-image.js";
@@ -1545,8 +1546,9 @@ function buildBoardView(onFail, {
     let out = shown;
     for (const item of b.items.values()) {
       if (item.kind !== "pdf") continue;
-      const drawn = itemsR.drawnRect?.(item.uid);
       const own = shown.get(item.uid);
+      // From the rect being painted now: the renderer's last rects are the size before a resize commit.
+      const drawn = own ? itemsR.drawnRect?.(item.uid, own) : null;
       if (!drawn || !own || (drawn.w === own.w && drawn.h === own.h)) continue;
       if (out === shown) out = new Map(shown);
       out.set(item.uid, drawn);
@@ -1602,6 +1604,8 @@ function buildBoardView(onFail, {
   let itemsR = null;
   let openPinFromChip = () => false;
   let notePdfMeta = () => "";
+  // The first-page identity's title for a PDF url, from the identity cache ("" until it is loaded and known).
+  let identTitleOf = () => "";
   const parsedTitles = new Map();
   // Page-1 lines behind a parsed title, for the metadata banner check (url → { pageTitle, lines }).
   const parsedEvidence = new Map();
@@ -2352,11 +2356,14 @@ function buildBoardView(onFail, {
     const pageName = typeof card?.target?.page === "string" && card.target.page ? (aliasOfCard(card) || pdfPageName(card.target.page)) : "";
     const ownPage = pageName ? coverModel({ alias: pageName }).title : "";
     if (ownPage && ownPage !== "PDF") return ownPage;
-    const metadataTitle = url ? notePdfMeta(url) : "";
+    // The page-1 identity names the paper; the file's metadata Title only stands in until it is known.
+    const identTitle = url ? identTitleOf(url) : "";
+    const metadataTitle = url && !identTitle ? notePdfMeta(url) : "";
     let cover = null;
     try { cover = src ? host?.pdfCover?.(src) : null; } catch { cover = null; }
     return coverModel({
       metadataTitle,
+      identTitle,
       alias: aliasOfCard(card),
       text: textOfCard(card, src),
       title: typeof cover?.title === "string" ? cover.title : "",
@@ -5826,6 +5833,41 @@ function buildBoardView(onFail, {
     });
     return pdfNames;
   };
+  let identLoadStarted = false;
+  identTitleOf = (url) => {
+    if (!url) return "";
+    const names = pdfNamesR();
+    if (!identLoadStarted) {
+      identLoadStarted = true;
+      void names.load().then(() => {
+        if (disposed) return;
+        try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
+        try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+      }).catch(() => {});
+    }
+    const got = names.get(url);
+    return got && typeof got.title === "string" ? got.title : "";
+  };
+  // One sync name for chips and rows elsewhere: a card uid or a file url in, "" when nothing real is known.
+  subs.push(setPdfNameResolver((key) => {
+    const b = board();
+    let item = b?.items.get(key);
+    if (item?.kind !== "pdf") {
+      item = null;
+      for (const it of b?.items.values() || []) {
+        if (it.kind === "pdf" && pdfMacroUrl(pdfSourceOfItem(it)) === key) { item = it; break; }
+      }
+    }
+    if (item) return pdfDisplayTitle(item);
+    const ident = pdfNames?.get(key) || null;
+    return pdfRowName({
+      parsedTitle: parsedTitles.get(key) || "",
+      coverTitle: warmTitleOf(key)?.pageTitle || "",
+      metaTitle: pdfMeta ? pdfMeta.title(key) : "",
+      ident,
+      url: key,
+    }).title;
+  }));
   const pdfNameOf = (card) => {
     const url = typeof card?.url === "string" ? card.url : "";
     const uid = typeof card?.uid === "string" ? card.uid : "";

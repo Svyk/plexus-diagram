@@ -59,10 +59,34 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     head.setAttribute("aria-expanded", collapsed ? "false" : "true");
   };
 
-  const place = () => {
+  // The toolbar height comes from a ResizeObserver: offsetHeight here forced a layout of the whole board on every
+  // wheel pan and zoom frame (PhD main board, 25k nodes). Without ResizeObserver it is read directly.
+  let observed = null;
+  let toolbarH = 0;
+  let resize = null;
+  const toolbarHeight = () => {
     const tb = root.querySelector?.(".pxd-toolbar");
-    const h = tb?.offsetHeight || 0;
-    panel.style.top = `${8 + (h ? h + 6 : 44)}px`;
+    if (!tb) return 0;
+    const RO = doc?.defaultView?.ResizeObserver || globalThis.ResizeObserver;
+    if (typeof RO !== "function") return tb.offsetHeight || 0;
+    if (observed !== tb) {
+      resize?.disconnect();
+      observed = tb;
+      toolbarH = tb.offsetHeight || 0;
+      resize = new RO(() => {
+        const next = observed?.offsetHeight || 0;
+        if (next === toolbarH) return;
+        toolbarH = next;
+        place();
+      });
+      resize.observe(tb);
+    }
+    return toolbarH;
+  };
+  const place = () => {
+    const h = toolbarHeight();
+    const top = `${8 + (h ? h + 6 : 44)}px`;
+    if (panel.style.top !== top) panel.style.top = top;
   };
 
   const choice = (parent, options, current, fn, tip) => {
@@ -241,6 +265,9 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     isCollapsed: () => collapsed,
     dispose() {
       listeners.splice(0).forEach((off) => off());
+      resize?.disconnect();
+      resize = null;
+      observed = null;
       panel.remove();
     },
   };

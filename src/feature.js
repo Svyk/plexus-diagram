@@ -99,7 +99,7 @@ const KEEP_ALIVE_MS = 300000;
 const LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 const TITLE_PANEL_CLASS = "rm-diagram-title-panel";
 const NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
-const AUTO_PATTERN = "[:block/props {:block/children [:block/props]}]";
+const AUTO_PATTERN = "[:block/props {(limit :block/children nil) [:block/props]}]";
 const CONVERT_LABEL = "Open as Plexus board";
 const CONVERT_TITLE = "Imports this diagram's shapes and arrows into a Plexus board. Plexus: Restore native diagram gives it back.";
 const ANCESTORS_PATTERN = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
@@ -173,7 +173,7 @@ export function readLegacyEnhanced(host) {
   try {
     const pageUid = host.pageUid?.(LEGACY_METADATA_PAGE);
     if (!pageUid) return out;
-    const tree = pullVia(host, "[:block/uid :block/string {:block/children ...}]", [":block/uid", pageUid]);
+    const tree = pullVia(host, "[:block/uid :block/string {(limit :block/children nil) ...}]", [":block/uid", pageUid]);
     const list = pulledChildren(tree).find((child) => /^enhanced::/i.test(pulledString(child).trim()));
     for (const entry of pulledChildren(list)) {
       const uid = uidFromLegacyString(pulledString(entry));

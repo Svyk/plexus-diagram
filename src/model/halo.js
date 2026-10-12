@@ -3,7 +3,7 @@
 const DAY_MS = 86400000;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-export const HALO_PULL = "[:create/time :edit/time {:create/user [:user/display-name]} {:block/_refs [:create/time]}]";
+export const HALO_PULL = "[:create/time :edit/time {:create/user [:user/display-name]} {(limit :block/_refs nil) [:create/time]}]";
 
 // Same pull without the reverse refs. A heavily referenced block makes the full pull slow, so the refs are
 // counted by an aggregate and only the newest HALO_REF_CAP times are fetched (haloRefs).

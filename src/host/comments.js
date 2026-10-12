@@ -18,7 +18,7 @@ const THREAD_QUERY = `[:find ?cell ?au (count ?comment) :in $ ?cp :where
 const PAGE_QUERY = `[:find ?pu :in $ ?u :where [?b :block/uid ?u] [?b :block/page ?p] [?p :block/uid ?pu]]`;
 const CONTAINER_QUERY = `[:find ?cu :in $ ?pu ?cp :where [?p :block/uid ?pu] [?p :block/children ?c] [?c :block/refs ?cp] [?c :block/uid ?cu]]`;
 const AUTHOR_QUERY = `[:find ?title :in $ ?uid :where [?u :user/uid ?uid] [?u :user/display-page ?p] [?p :node/title ?title]]`;
-const TREE_PULL = `[:block/uid :block/string :block/order {:block/children [:block/uid :block/string :block/order {:block/children [:block/uid :block/string :block/order {:block/children [:block/uid :block/string :block/order]}]}]}]`;
+const TREE_PULL = `[:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order {(limit :block/children nil) [:block/uid :block/string :block/order]}]}]}]`;
 
 export function installCommentHost(host, { api, data = api?.data, now = () => new Date() } = {}) {
   if (!host || !data) return host;

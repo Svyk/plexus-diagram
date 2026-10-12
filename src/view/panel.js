@@ -5,7 +5,9 @@
 import { askAiIcon } from "./ask-icon.js";
 import { closeInfoTab, infoTabList, nextPanelWidth, PANEL_WIDTH_DEFAULT } from "../model/info.js";
 import { mountTimeline } from "./timeline.js";
-import { LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, PARSE_PART_TYPES, libraryCard, libraryFilterActive } from "../model/library.js";
+import { LIBRARY_DOC_TYPES, LIBRARY_PART_TYPES, PARSE_PART_TYPES, libraryCard, libraryFilterActive, queryTerms } from "../model/library.js";
+import { markTerms } from "../model/pdf-ident.js";
+import { mergeSemantic } from "../model/semantic.js";
 import { PART_LABELS, partSnippet } from "../model/parts-search.js";
 import { COLOR_ANCHORS, COLOR_NAMES } from "../model/color.js";
 import { CARD_MIME, PARSE_MIME, parseDropPayload } from "../model/drop.js";
@@ -16,6 +18,9 @@ import { minimapSvg } from "./minimap-svg.js";
 export { CARD_MIME, parseDropPayload };
 const DEBOUNCE_MS = 150;
 const LIMIT = 40;
+// Semantic search waits for a pause in typing; keyword results never wait for it.
+export const SEMANTIC_PAUSE_MS = 300;
+export const SEMANTIC_HINT = "Turn on Roam's semantic search: Settings → Graph → Semantic search";
 
 export function createPanel({ doc = globalThis.document, root, host, timers, on = {}, width } = {}) {
   const listeners = [];
@@ -45,7 +50,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       if ((type === "keydown" || type === "keyup") && event.target?.closest?.(".pxd-panel__info-mount")) return;
       event.stopPropagation();
       // Trails controls share this listener so listenersPerBoard does not rise.
-      if (type === "click") { trailClick(event); changedClick(event); }
+      if (type === "click") { trailClick(event); changedClick(event); searchClick(event); }
       else if (type === "pointerdown") trailPointerDown(event);
       else if (type === "keydown") trailKey(event);
     });
@@ -186,6 +191,16 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   orphanBox.type = "checkbox";
   orphanBox.setAttribute("aria-label", "Not on any board");
   orphanLabel.append("Not on any board");
+  const meaningLabel = el("label", "pxd-panel__meaning", filters);
+  meaningLabel.title = "Also find notes by meaning (Roam semantic search)";
+  const meaningBox = el("input", "pxd-panel__meaning-box", meaningLabel);
+  meaningBox.type = "checkbox";
+  meaningBox.setAttribute("aria-label", "Meaning");
+  meaningBox.checked = (() => { try { return on.loadMeaning?.() !== false; } catch { return true; } })();
+  meaningLabel.append("Meaning");
+  const semanticOn = () => { try { return on.semantic?.enabled?.() === true; } catch { return false; } };
+  const paintMeaning = () => { meaningLabel.style.display = semanticOn() ? "" : "none"; };
+  paintMeaning();
   swatches = el("div", "pxd-panel__swatches", searchPane);
   swatches.style.display = "none";
   swatches.setAttribute("role", "group");
@@ -210,6 +225,13 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   likeClear.type = "button";
   likeClear.setAttribute("aria-label", "Clear similar-image search");
   likeClear.setAttribute("title", "Clear");
+  const relChip = el("div", "pxd-panel__like pxd-panel__rel", searchPane);
+  relChip.style.display = "none";
+  const relText = el("span", "pxd-panel__like-text", relChip);
+  const relClear = el("button", "pxd-panel__like-x", relChip, "×");
+  relClear.type = "button";
+  relClear.setAttribute("aria-label", "Clear related search");
+  relClear.setAttribute("title", "Clear");
   const results = el("div", "pxd-panel__list", searchPane);
   const indexNote = el("div", "pxd-panel__index-note", searchPane);
   indexNote.style.display = "none";
@@ -309,6 +331,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
 
   let tab = "search";
   let like = null;
+  let related = null;
+  let semTimer = null;
+  let lastInputAt = 0;
   let debounce = null;
   let selected = null;
   let relatedRows = [];
@@ -338,13 +363,46 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     listen(b, "click", (event) => { event.stopPropagation(); startLike(key, name); });
   };
 
-  const row = (parent, { string, label, text, kind, url, thumb, palette, likeKey, likeName }) => {
+  // A PDF row: file icon, its title (two lines, query words marked), then venue · pages · page.
+  const paintPdf = (r, card, terms) => {
+    let info = null;
+    try { info = on.pdfName?.(card) || null; } catch { info = null; }
+    const title = info?.title || card.text || "PDF";
+    const col = r.querySelector?.(".pxd-panel__row-col") || el("span", "pxd-panel__row-col", r);
+    col.replaceChildren();
+    const head = el("span", "pxd-panel__row-text pxd-panel__row-text--pdf pxd-panel__row-title", col);
+    for (const seg of markTerms(title, terms)) {
+      if (seg.hit) el("mark", "pxd-panel__mark", head, seg.text);
+      else head.append(seg.text);
+    }
+    const sub = info?.sub ?? card.label ?? "";
+    if (sub) el("span", "pxd-panel__row-label pxd-panel__row-sub", col, sub);
+    r.classList.toggle("pxd-panel__row--loading", info?.loading === true);
+    r.setAttribute("title", title);
+  };
+
+  const row = (parent, card) => {
+    const { string, label, text, kind, url, thumb, palette, likeKey, likeName } = card;
     const r = el("div", "pxd-panel__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
     r.dataset.string = string;
     r.setAttribute("data-string", string);
-    if (label && !thumb) el("span", "pxd-panel__row-label", r, label);
+    if (card.semantic) {
+      r.classList.add("pxd-panel__row--sem");
+      const sem = el("span", "pxd-panel__sem", r, "≈");
+      sem.setAttribute("title", "Found by meaning");
+      sem.setAttribute("aria-label", "Found by meaning");
+    }
+    if (kind === "pdf" && typeof on.pdfName === "function") {
+      r.classList.add("pxd-panel__row--pdf");
+      r.dataset.pdfUrl = url || "";
+      r.setAttribute("data-pdf-url", url || "");
+      el("span", "bp3-icon bp3-icon-document pxd-panel__row-icon", r).setAttribute("aria-hidden", "true");
+      r.pxdCard = card;
+      paintPdf(r, card, queryTerms(input.value));
+    }
+    if (label && !thumb && !r.pxdCard) el("span", "pxd-panel__row-label", r, label);
     if (thumb) {
       r.classList.add("pxd-panel__row--image");
       const img = el("img", "pxd-panel__thumb", r);
@@ -359,7 +417,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (kind === "pdf" && url) {
       try { shown = on.pdfTitle?.(url) || text; } catch { shown = text; }
     }
-    if (thumb) {
+    if (r.pxdCard) {
+      // paintPdf drew the title column.
+    } else if (thumb) {
       const col = el("span", "pxd-panel__row-col", r);
       el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, col, shown);
       if (label) el("span", "pxd-panel__row-label pxd-panel__row-sub", col, label);
@@ -495,14 +555,92 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     searchNow();
   };
   listen(likeClear, "click", (event) => { event.stopPropagation(); clearLike(); });
+  const paintRelated = () => {
+    relChip.style.display = related ? "" : "none";
+    relText.textContent = related ? `Related to: ${related.label}` : "";
+  };
+  // Through the panel's one click listener (listenersPerBoard budget). A checkbox is already toggled at click time.
+  const searchClick = (event) => {
+    const t = event.target;
+    if (t === relClear || relClear.contains?.(t)) { related = null; paintRelated(); searchNow(); return; }
+    if (t === meaningBox) { try { on.saveMeaning?.(meaningBox.checked); } catch { /* storage */ } searchNow(); }
+  };
 
-  const runSearch = async () => {
+  const semanticRowsFor = (raw, filter) => {
+    try { return host?.semanticRows?.(raw, filter, LIMIT)?.rows || []; } catch { return []; }
+  };
+  const wantNames = (cards, opts) => {
+    const pdfs = (cards || []).filter((c) => c?.kind === "pdf" && c.url);
+    if (pdfs.length) { try { on.wantPdfNames?.(pdfs, opts); } catch { /* host */ } }
+  };
+  // Semantic hits below the keyword rows, deduped against them, each marked ≈.
+  const paintSemantic = (id, cards, keywordCards) => {
+    if (id !== queryId) return;
+    for (const n of [...results.querySelectorAll(".pxd-panel__row--sem, .pxd-panel__sem-head")]) n.remove();
+    const extra = mergeSemantic(keywordCards, cards, LIMIT);
+    results.dataset.semCount = String(extra.length);
+    results.setAttribute("data-sem-count", String(extra.length));
+    if (!extra.length) return;
+    for (const n of [...results.querySelectorAll(".pxd-panel__empty")]) n.remove();
+    el("div", "pxd-panel__sem-head", results, "By meaning");
+    extra.forEach((c) => row(results, c));
+    wantNames(extra, { front: true });
+  };
+  const scheduleSemantic = (id, filter, keywordCards) => {
+    const text = String(filter.text || "").trim();
+    const sem = on.semantic;
+    if (!text || !meaningBox.checked || !semanticOn() || typeof host?.semanticRows !== "function" || typeof sem?.search !== "function") return;
+    const cached = sem.peek?.(text);
+    if (cached) paintSemantic(id, semanticRowsFor(cached.data, filter), keywordCards);
+    if (cached && !cached.stale) return;
+    const wait = Math.max(0, SEMANTIC_PAUSE_MS - (Date.now() - lastInputAt));
+    semTimer = timers.later(async () => {
+      semTimer = null;
+      if (id !== queryId) return;
+      const t0 = Date.now();
+      let raw = [];
+      try {
+        raw = await sem.search(text, { onFresh: (data) => paintSemantic(id, semanticRowsFor(data, filter), keywordCards) });
+      } catch { raw = []; }
+      if (id !== queryId) return;
+      results.dataset.semMs = String(Date.now() - t0);
+      results.setAttribute("data-sem-ms", String(Date.now() - t0));
+      paintSemantic(id, semanticRowsFor(raw, filter), keywordCards);
+    }, wait);
+  };
+  // "Find related": semantic search on a card's text, nothing typed.
+  const runRelated = async (id) => {
+    results.replaceChildren();
+    if (!semanticOn()) { el("div", "pxd-panel__empty pxd-panel__hint", results, SEMANTIC_HINT); return; }
+    el("div", "pxd-panel__empty", results, "Finding related notes…");
+    let raw = [];
+    const t0 = Date.now();
+    try { raw = await on.semantic.search(related.query); } catch { raw = []; }
+    if (id !== queryId || !related) return;
+    results.dataset.semMs = String(Date.now() - t0);
+    results.setAttribute("data-sem-ms", String(Date.now() - t0));
+    const cards = semanticRowsFor(raw, { ...readFilter(), text: "" }).filter((c) => !related.exclude || c.string !== related.exclude);
+    results.replaceChildren();
+    if (!cards.length) { el("div", "pxd-panel__empty", results, "No related notes"); return; }
+    cards.forEach((c) => row(results, { ...c, semantic: false }));
+    wantNames(cards, { front: true });
+  };
+
+  const runSearch = async ({ quiet = false } = {}) => {
     const filter = readFilter();
     const id = queryId += 1;
-    results.replaceChildren();
+    const started = Date.now();
+    semTimer?.();
+    semTimer = null;
+    if (!quiet || like || related) results.replaceChildren();
     if (like) { await runSimilar(id); return; }
-    if (checked.size === 0) { el("div", "pxd-panel__empty", results, "No card types selected"); return; }
-    if (!libraryFilterActive(filter)) return;
+    if (related) { await runRelated(id); return; }
+    if (checked.size === 0) { results.replaceChildren(); el("div", "pxd-panel__empty", results, "No card types selected"); return; }
+    if (!libraryFilterActive(filter)) {
+      results.replaceChildren();
+      if (on.semantic && !semanticOn()) el("div", "pxd-panel__empty pxd-panel__hint", results, SEMANTIC_HINT);
+      return;
+    }
     let pack = null;
     const wantImages = typeof on.searchImages === "function" && checked.has("image");
     const wantFigures = typeof on.searchImages === "function" && checked.has("figure");
@@ -511,7 +649,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       if (wantImages && !hostFilter.types.length) {
         pack = { rows: [], queries: [] };
       } else if (typeof host?.librarySearch === "function") {
-        pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT));
+        pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT, { pdfMatch: on.pdfMatch, pdfList: on.pdfList }));
       } else {
         const q = String(filter.text || "").trim();
         if (!q) return;
@@ -555,11 +693,16 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     const images = Array.isArray(found.images) ? found.images : [];
     const figures = Array.isArray(found.figures) ? found.figures : [];
     results.replaceChildren();
-    if (!rows.length && !parts.length && !images.length && !figures.length) { el("div", "pxd-panel__empty", results, "No matches"); return; }
+    if (!rows.length && !parts.length && !images.length && !figures.length) el("div", "pxd-panel__empty", results, "No matches");
     rows.forEach((r) => row(results, r));
     images.forEach((img) => row(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette, likeKey: img.key, likeName: imageName(img) }));
     parts.forEach((part) => partRow(results, part, needle));
     figures.forEach((part) => partRow(results, part, needle));
+    results.dataset.paintMs = String(Date.now() - started);
+    results.setAttribute("data-paint-ms", String(Date.now() - started));
+    // The whole PDF list is read only when PDFs are what the user filters for.
+    wantNames(rows, { front: true, all: checked.has("pdf") && checked.size < ALL_TYPES.length });
+    scheduleSemantic(id, filter, rows);
   };
 
   let refreshTimer = null;
@@ -568,7 +711,14 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     debounce = timers.later(() => { debounce = null; void runSearch(); }, DEBOUNCE_MS);
   };
   const searchNow = () => { debounce?.(); debounce = null; void runSearch(); };
-  listen(input, "input", () => { try { on.typing?.(); } catch { /* host */ } if (like) { like = null; paintLike(); } paintSwatches(); scheduleSearch(); });
+  listen(input, "input", () => {
+    lastInputAt = Date.now();
+    try { on.typing?.(); } catch { /* host */ }
+    if (like) { like = null; paintLike(); }
+    if (related) { related = null; paintRelated(); }
+    paintSwatches();
+    scheduleSearch();
+  });
   const paintSwatches = () => {
     const have = new Set(input.value.toLowerCase().split(/\s+/));
     for (const [name, b] of swatchBtns) b.setAttribute("aria-pressed", have.has(name) ? "true" : "false");
@@ -1171,6 +1321,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const api = {
     el: panel,
     open(which = tab) {
+      paintMeaning();
       panel.style.display = "";
       root.setAttribute("data-pxd-panel-open", "");
       setTab(which);
@@ -1191,6 +1342,34 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       refreshTimer = timers.later(() => { refreshTimer = null; searchNow(); }, 300);
     },
     refreshBoards() { if (tab === "boards") void loadBoards(); },
+    // PDF identities landed: rows repaint in place; a PDF the typed words now match brings a quiet re-search.
+    refreshPdfNames(urls) {
+      if (!api.isOpen() || tab !== "search") return;
+      const set = new Set(Array.isArray(urls) ? urls : []);
+      const terms = queryTerms(input.value);
+      const shown = new Set();
+      for (const r of results.querySelectorAll(".pxd-panel__row--pdf")) {
+        const url = r.dataset?.pdfUrl || r.getAttribute("data-pdf-url") || "";
+        shown.add(url);
+        if (r.pxdCard && (!set.size || set.has(url))) paintPdf(r, r.pxdCard, terms);
+      }
+      if (!terms.length || like || related || !checked.has("pdf") || typeof on.pdfMatch !== "function") return;
+      const fresh = [...set].some((url) => { if (shown.has(url)) return false; try { return Boolean(on.pdfMatch(url, terms)); } catch { return false; } });
+      if (!fresh) return;
+      refreshTimer?.();
+      refreshTimer = timers.later(() => { refreshTimer = null; void runSearch({ quiet: true }); }, 400);
+    },
+    // Card menu "Find related": semantic results for the card's text, ready to drag onto the board.
+    findRelated({ query = "", label = "", exclude = "" } = {}) {
+      const text = String(query || "").trim().slice(0, 600);
+      if (like) { like = null; paintLike(); }
+      related = { query: text, label: String(label || "this card").replace(/\s+/g, " ").trim().slice(0, 40), exclude: String(exclude || "") };
+      paintRelated();
+      input.value = "";
+      api.open("search");
+      searchNow();
+    },
+    relatedQuery: () => related?.query || "",
     refreshChanged() { if (tab === "changed" && api.isOpen()) renderChanged(); },
     refreshTrails() {
       if (tab !== "trails" || !api.isOpen()) return;
@@ -1248,6 +1427,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     },
     dispose() {
       debounce?.();
+      semTimer?.();
       queryId += 1;
       journalId += 1;
       unmountInfo();

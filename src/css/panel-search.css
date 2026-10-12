@@ -1,0 +1,81 @@
+/* Add panel search: PDF rows named by what they are, the Meaning toggle, and semantic hits (≈). */
+
+.pxd-panel__meaning {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--pxd-muted);
+}
+
+.pxd-panel__row.pxd-panel__row--pdf {
+  align-items: flex-start;
+}
+
+.pxd-panel__row--pdf .pxd-panel__row-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--pxd-muted);
+}
+
+.pxd-panel__row--pdf .pxd-panel__row-col {
+  gap: 1px;
+}
+
+/* Two lines, always: a title that lands later swaps in without moving the rows below. */
+.pxd-panel__row-col .pxd-panel__row-text.pxd-panel__row-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-height: 2.6em;
+  line-height: 1.3em;
+  white-space: normal;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.pxd-panel__row--loading .pxd-panel__row-title {
+  color: var(--pxd-muted);
+  background: linear-gradient(90deg, transparent 0%, var(--pxd-accent-soft) 45%, transparent 90%);
+  background-size: 200% 100%;
+  border-radius: 3px;
+  animation: pxd-panel-shimmer 1.4s linear infinite;
+}
+
+@keyframes pxd-panel-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pxd-panel__row--loading .pxd-panel__row-title {
+    animation: none;
+  }
+}
+
+.pxd-panel__sem {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 12px;
+  color: var(--pxd-accent);
+  cursor: help;
+}
+
+.pxd-panel__sem-head {
+  margin: 6px 8px 2px;
+  font-size: 11px;
+  color: var(--pxd-muted);
+}
+
+.pxd-panel__hint {
+  opacity: 0.85;
+}
+
+/* A long page name must not push the hit text out of the row. */
+.pxd-panel__row > .pxd-panel__row-label {
+  flex: 0 1 auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

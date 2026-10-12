@@ -3275,6 +3275,10 @@ export async function installPlexusDiagram({
     return targetView(context)?.foldTableCaptions?.();
   }
 
+  function findRelatedCommand(context) {
+    return targetView(context)?.findRelated?.();
+  }
+
   function newDrawingCommand(context) {
     return targetView(context)?.newDrawing?.();
   }
@@ -3304,6 +3308,7 @@ export async function installPlexusDiagram({
     ["Plexus: Resurface here", resurfaceCommand],
     ["Plexus: Move PDFs to their own pages", movePdfPagesCommand],
     ["Plexus: Fold tables under captions", foldTablesCommand],
+    ["Plexus: Find related to the selected card", findRelatedCommand],
   ];
 
   function runCommand(label, fn) {

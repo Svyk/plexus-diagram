@@ -19,7 +19,7 @@ import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, highlightModel, noteActionPlan } from "../model/highlight.js";
-import { cleanPdfTitle, coverModel, embedSplit, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
+import { cleanPdfTitle, coverModel, embedSplit, parsedDocTitle, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
 import { answerSource, gestureSource, pasteCardPlan, pinOpenPlan, readWithSource } from "../model/pdf-pin.js";
 import { parseRegion } from "../model/regions.js";
 import { isMetaBanner } from "../model/title-cap.js";
@@ -110,6 +110,9 @@ import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
 import { createParseStore, imageKey, readableParse, restorableTitle } from "../host/parse-store.js";
+import { createSemantic } from "../host/semantic.js";
+import { identHaystack, identMatches, pdfRowName, pdfRowSub } from "../model/pdf-ident.js";
+import { createPdfNames } from "./pdf-names.js";
 import { createImageIndex } from "../host/image-index.js";
 import { searchImages, similarImages } from "../model/image-search.js";
 import { createFigureImages, getFigureImages, setFigureImages, shrinkImage } from "../host/figure-image.js";
@@ -5054,6 +5057,7 @@ function buildBoardView(onFail, {
       case "mind-color": if (item && arg) expandOutline(item.uid, { colorBranches: arg === "on" }); break;
       case "send-to": startSendTo(uids); break;
       case "related": panel.open("related"); break;
+      case "find-related": if (item) findRelatedFor(item); break;
       case "context": {
         const sub = edgeUid ? b.edges.get(edgeUid) : item;
         if (sub && sub.type !== "section") openHalo(sub);
@@ -5793,6 +5797,76 @@ function buildBoardView(onFail, {
       figures: searchImages(figItems, index.records, { text, pages }, limit),
     };
   };
+  // PDF rows in the Add panel are named by what the PDF is (pdf-names.js). Built on first panel use.
+  const MEANING_KEY = "plexus-diagram:panel-meaning";
+  let pdfNames = null;
+  let pdfListWanted = false;
+  let pdfBlockList = null;
+  const pdfBlocks = () => {
+    if (pdfBlockList) return pdfBlockList;
+    try { pdfBlockList = host?.listPdfBlocks?.(1000) || []; } catch { pdfBlockList = []; }
+    return pdfBlockList;
+  };
+  const pdfNameInfo = new Map();
+  const pdfNamesR = () => {
+    if (pdfNames) return pdfNames;
+    const idle = typeof win?.requestIdleCallback === "function"
+      ? (fn) => { const id = win.requestIdleCallback(fn, { timeout: 1500 }); return () => { try { win.cancelIdleCallback(id); } catch { /* gone */ } }; }
+      : (fn) => timers.later(fn, 30);
+    pdfNames = createPdfNames({
+      store: parseStoreShared(),
+      lib: () => { const found = detectPdfjs(win); return found?.workerReady ? found.lib : null; },
+      readParse: async (url) => {
+        const doc = await readableParse(parseStoreShared(), url, { plainOptions: BUILTIN_OPTIONS });
+        return doc ? { doc, title: parsedTitles.get(url) || parsedDocTitle(doc) } : null;
+      },
+      idle,
+      onChange: (urls) => { if (!disposed) panel.refreshPdfNames(urls); },
+      timers: warmTimers,
+    });
+    return pdfNames;
+  };
+  const pdfNameOf = (card) => {
+    const url = typeof card?.url === "string" ? card.url : "";
+    const uid = typeof card?.uid === "string" ? card.uid : "";
+    let info = pdfNameInfo.get(uid);
+    if (!info) {
+      try { info = host?.pdfNameInfo?.(uid, url) || {}; } catch { info = {}; }
+      pdfNameInfo.set(uid, info);
+    }
+    const names = pdfNamesR();
+    const ident = names.get(url);
+    const meta = ident?.meta && cleanPdfTitle(ident.meta).toLowerCase() !== String(ident.venue || "").toLowerCase() ? ident.meta : "";
+    const named = pdfRowName({
+      ownTitle: info.ownTitle || "",
+      pdfPageTitle: info.pdfPageTitle || "",
+      parsedTitle: parsedTitles.get(url) || "",
+      coverTitle: warmTitleOf(url)?.pageTitle || "",
+      metaTitle: meta || (pdfMeta ? pdfMeta.title(url) : ""),
+      ident,
+      url,
+      pending: Boolean(url) && !ident && !names.known(url),
+    });
+    return { title: named.title, loading: named.loading, sub: pdfRowSub({ ident, pageTitle: card?.pageTitle || "", title: named.title }) };
+  };
+  const wantPdfNames = (cards, { front = false, all = false } = {}) => {
+    const names = pdfNamesR();
+    void names.want((cards || []).map((c) => c?.url).filter(Boolean), { front });
+    if (!all || pdfListWanted) return;
+    pdfListWanted = true;
+    void names.want(pdfBlocks().map((r) => r.url));
+  };
+  let semantic = null;
+  const semanticR = () => semantic || (semantic = createSemantic({ api: () => win?.roamAlphaAPI ?? globalThis.roamAlphaAPI }));
+  const findRelatedFor = (item) => {
+    const target = item?.target;
+    if (!target || (target.kind === "page" ? !target.title : !target.uid)) return;
+    let query = "";
+    try { query = host?.relatedText?.(target) || ""; } catch { query = ""; }
+    if (!query) query = String(item.title || item.string || "").slice(0, 600);
+    const exclude = target.kind === "page" ? `[[${target.title}]]` : `((${target.uid}))`;
+    panel.findRelated({ query, label: item.title || target.title || "this card", exclude });
+  };
   let panelWidth = PANEL_WIDTH_DEFAULT;
   try {
     const stored = Number(storage?.getItem?.(PANEL_WIDTH_KEY));
@@ -5810,8 +5884,17 @@ function buildBoardView(onFail, {
       isOnBoard,
       opened: (open) => {
         chrome.toolbar.setPanel(open);
-        if (!open) sendPending = null;
-        else { partsIdx?.invalidate(); imgList = null; }
+        if (!open) { sendPending = null; pdfNames?.stop(); }
+        else {
+          partsIdx?.invalidate();
+          imgList = null;
+          pdfNameInfo.clear();
+          pdfListWanted = false;
+          pdfBlockList = null;
+          // The PDF list the keyword search matches names against: read once per opening, after first paint.
+          timers.later(() => { if (!disposed && panel.isOpen()) pdfBlocks(); }, 0);
+          void pdfNamesR().load().then((n) => { if (n && !disposed && panel.isOpen()) panel.refreshPdfNames([]); });
+        }
       },
       loadTypes: () => {
         try {
@@ -5821,6 +5904,20 @@ function buildBoardView(onFail, {
         } catch { return null; }
       },
       pdfTitle: (url) => parsedTitles.get(url) || "",
+      pdfName: (card) => pdfNameOf(card),
+      wantPdfNames: (cards, opts) => wantPdfNames(cards, opts),
+      pdfList: () => pdfBlocks(),
+      pdfMatch: (url, terms) => {
+        const ident = pdfNames?.get(url);
+        return ident && identMatches(ident, terms) ? identHaystack(ident) : "";
+      },
+      semantic: {
+        enabled: () => semanticR().enabled(),
+        peek: (q) => semanticR().peek(q),
+        search: (q, opts) => semanticR().search(q, opts),
+      },
+      loadMeaning: () => { try { return storage?.getItem?.(MEANING_KEY) !== "0"; } catch { return true; } },
+      saveMeaning: (on) => { try { storage?.setItem?.(MEANING_KEY, on ? "1" : "0"); } catch { /* private mode */ } },
       saveTypes: (types) => { try { storage?.setItem?.(LIB_TYPES_KEY, JSON.stringify(types)); } catch { /* private mode */ } },
       searchImages: searchImageCards,
       typing: () => imgIndex?.pause(),
@@ -8728,6 +8825,12 @@ function buildBoardView(onFail, {
         mounted: itemsR.mountedCount(),
         menuOpen: menu.isOpen(),
       };
+    },
+    // "Find related" for the selected card: Roam semantic search on its text, results in the Add panel.
+    findRelated() {
+      const item = board()?.items.get(selection.items[0] || "");
+      if (item && item.type !== "section") { findRelatedFor(item); return true; }
+      return false;
     },
     // Serializes the board to SVG text; with download it also offers the file through a temporary link.
     async exportSvg({ download = true } = {}) {

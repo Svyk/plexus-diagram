@@ -213,7 +213,8 @@ export function libraryCard(row) {
   const label = row?.pageTitle ? `in ${row.pageTitle}` : "block";
   if (kind === "pdf" || kind === "image" || kind === "web") {
     const shown = blockDisplay(row?.string ?? row?.text, kind);
-    return { string: `((${uid}))`, text: shown.text, kind, label, ...(shown.url ? { url: shown.url } : {}), ...(shown.thumb ? { thumb: shown.thumb } : {}) };
+    const pdf = kind === "pdf" ? { uid, pageTitle: String(row?.pageTitle ?? "") } : {};
+    return { string: `((${uid}))`, text: shown.text, kind, label, ...pdf, ...(shown.url ? { url: shown.url } : {}), ...(shown.thumb ? { thumb: shown.thumb } : {}) };
   }
   return { string: `((${uid}))`, text: String(row?.string ?? row?.text ?? "").slice(0, 120), kind, label };
 }

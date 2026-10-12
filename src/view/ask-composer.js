@@ -31,7 +31,7 @@ export function iconButton(doc, parent, { cls, icon, label, text = "" }) {
   return b;
 }
 
-// One popover over the composer. sections: [{ title?, items: [{ label, detail?, checked?, disabled?, onPick, keep? ,
+// One popover over the composer. sections: [{ note } | { title?, items: [{ label, detail?, checked?, disabled?, onPick, keep? ,
 // input? }] }]; opts: { filter: placeholder for a filter box, empty: text when nothing matches, anchor }.
 // Keyboard: arrows move, Enter/Space picks, Escape closes and gives focus back to the anchor.
 export function createPopover(doc, host) {
@@ -63,6 +63,7 @@ export function createPopover(doc, host) {
     clear(list);
     rows = [];
     for (const sec of sections || []) {
+      if (sec?.note) { make(doc, "div", "pxd-ask__mnote", list, sec.note); continue; }
       if (!sec?.items?.length) continue;
       if (sec.title) make(doc, "div", "pxd-ask__mhead", list, sec.title);
       for (const item of sec.items) {

@@ -881,7 +881,7 @@ function startSession(s, o) {
     tools: () => ({
       label: "Live AI tools",
       sections: () => [
-        { title: "Tools run in Live AI's chat: the conversation continues there", items: [] },
+        { note: "Tools run in Live AI's chat: picking one continues this conversation there." },
         ...Object.entries(TOOL_CATEGORIES).map(([cat, title]) => ({ title, items: LIVE_TOOLS.filter((x) => x.category === cat).map((x) => ({ id: x.id, label: x.name, detail: x.description, onPick: () => handOff({ forcedTools: [x.id] }) })) })),
       ],
     }),
@@ -890,7 +890,7 @@ function startSession(s, o) {
       sections: () => [
         { title: "Send with the question", items: CONTEXT_SOURCES.map((x) => ({ id: x.key, label: x.key === "part" ? (multiLike() ? "The PDF parts" : x.label) : x.label, checked: Boolean(sources[x.key]), keep: true, onPick: () => toggleSource(x.key) })) },
         { items: [{ input: true, label: "Days of daily notes", value: logDays, onInput: (v) => { const n = Math.round(Number(v)); if (n > 0) { logDays = Math.min(n, 365); paintMentions(); } } }] },
-        { title: "Mention pages with [[ or #, blocks with ((", items: [] },
+        { note: "Mention pages with [[ or #, blocks with (( in the question." },
       ],
     }),
     style: () => ({
@@ -1258,8 +1258,8 @@ function startSession(s, o) {
     focus();
   };
 
-  // Live AI's own chat takes the conversation over: the context goes first, in the first user message. Mentions and
-  // toggled sources go as its roamContext, the style by name; extra.forcedTools turns a Live AI tool on there.
+  // Live AI's own chat takes the conversation over: the context goes first, in the first user message; the style goes
+  // by name; extra.forcedTools turns a Live AI tool on there.
   const handOff = (extra = {}) => {
     if (!liveai.canOpenChat(win)) { say("Live AI's chat is not available. Update Live AI Assistant."); return; }
     const t = ta();
@@ -1278,10 +1278,18 @@ function startSession(s, o) {
       if (history[0]?.role === "user") history[0] = { role: "user", content: `${head}\n\n${history[0].content}` };
       else history.unshift({ role: "user", content: head });
     }
-    const roamContext = buildRoamContext({ pages: mentions.filter((m) => m.kind === "page").map((m) => m.title), blocks: mentions.filter((m) => m.kind === "block").map((m) => m.uid), sources: { ...sources, page: false, linkedRefs: false }, logDays }) || {};
-    if (sources.page) roamContext.page = true;
-    if (sources.linkedRefs) roamContext.linkedRefs = true;
-    liveai.openChat({ conversationHistory: history, model: modelSel()?.value || undefined, roamContext, style: style?.name || "", forcedTools: extra.forcedTools || null }, win);
+    // Mentions and toggled sources are named in the first message, not sent as roamContext: Live AI's chat panel
+    // opens a results-only view (without the conversation) when it gets one. Its add_to_context tool can load them.
+    const named = [
+      ...mentions.map((m) => (m.kind === "block" ? blockMention(m.uid) : pageMention(m.title))),
+      ...CONTEXT_SOURCES.filter((x) => x.key !== "part" && sources[x.key]).map((x) => sourceLabel(x.key).toLowerCase()),
+    ];
+    if (named.length) {
+      const note = `Also use from my Roam graph: ${named.join(", ")}.`;
+      if (history[0]?.role === "user") history[0] = { role: "user", content: `${history[0].content}\n\n${note}` };
+      else history.unshift({ role: "user", content: note });
+    }
+    liveai.openChat({ conversationHistory: history, model: modelSel()?.value || undefined, style: style?.name || "", forcedTools: extra.forcedTools || null }, win);
     close();
   };
   const openInLiveAI = () => handOff({});

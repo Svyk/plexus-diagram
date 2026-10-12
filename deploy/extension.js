@@ -226,8 +226,8 @@ function nearestInDirection(rects, fromUid, dir, { candidates: candidates2 = nul
 function center(r) {
   return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
 }
-function inflate(r, n2) {
-  return { x: r.x - n2, y: r.y - n2, w: r.w + 2 * n2, h: r.h + 2 * n2 };
+function inflate(r, n3) {
+  return { x: r.x - n3, y: r.y - n3, w: r.w + 2 * n3, h: r.h + 2 * n3 };
 }
 function unionRect(a, b) {
   const x = Math.min(a.x, b.x);
@@ -515,8 +515,8 @@ var num, clampNum, screenPx, invZoom, CONE, SIDES, INNER_NOTCH, INNER_MIN, CELL_
 var init_geometry = __esm({
   "src/model/geometry.js"() {
     init_shapes();
-    num = (n2) => {
-      const r = Math.round(n2 * 1e3) / 1e3;
+    num = (n3) => {
+      const r = Math.round(n3 * 1e3) / 1e3;
       return Object.is(r, -0) ? 0 : r;
     };
     clampNum = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -556,15 +556,15 @@ function normalizeFrac(f) {
   }
   if (!v || v.length !== 4) return null;
   const nums = v.map(Number);
-  if (nums.some((n2) => !Number.isFinite(n2))) return null;
-  const out = nums.map((n2) => round4(clamp01(n2)));
+  if (nums.some((n3) => !Number.isFinite(n3))) return null;
+  const out = nums.map((n3) => round4(clamp01(n3)));
   if (out[2] <= 0 || out[3] <= 0) return null;
   return out;
 }
 function normalizeView(v) {
   if (!Array.isArray(v) || v.length !== 4) return null;
   const nums = v.map(Number);
-  if (nums.some((n2) => !Number.isFinite(n2))) return null;
+  if (nums.some((n3) => !Number.isFinite(n3))) return null;
   const out = nums.map(round1);
   if (out[2] <= 0 || out[3] <= 0) return null;
   return out;
@@ -688,8 +688,8 @@ function parseRegion(blockString3) {
     const parts = args.get("p").split(",");
     if (parts.length < 6 || parts.length % 2) return "bad p";
     const nums = parts.map(Number);
-    if (nums.some((n2) => !Number.isFinite(n2))) return "bad p";
-    region.p = nums.map((n2) => round4(clamp01(n2)));
+    if (nums.some((n3) => !Number.isFinite(n3))) return "bad p";
+    region.p = nums.map((n3) => round4(clamp01(n3)));
     return null;
   };
   const takeIndex = () => {
@@ -839,9 +839,9 @@ var init_regions = __esm({
     OURS = /* @__PURE__ */ new Set(["img", "view", "pdf"]);
     DEFAULT_PAD = 10;
     MAX_IDS = 24;
-    clamp01 = (n2) => Math.min(1, Math.max(0, n2));
-    round4 = (n2) => Math.round(n2 * 1e4) / 1e4;
-    round1 = (n2) => Math.round(n2 * 10) / 10;
+    clamp01 = (n3) => Math.min(1, Math.max(0, n3));
+    round4 = (n3) => Math.round(n3 * 1e4) / 1e4;
+    round1 = (n3) => Math.round(n3 * 10) / 10;
     isId = (value) => typeof value === "string" && ID_RE.test(value);
   }
 });
@@ -1282,7 +1282,7 @@ var init_schema = __esm({
     intIn = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi ? v : void 0;
     isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
     isNum = (v) => typeof v === "number" && Number.isFinite(v);
-    round12 = (n2) => Math.round(n2 * 10) / 10;
+    round12 = (n3) => Math.round(n3 * 10) / 10;
     MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     cleanBoardTitle = (title) => String(title ?? "").replace(/\s*[\r\n]+\s*/g, " ").split("}}").join("").trim();
   }
@@ -1323,13 +1323,13 @@ function queryResultLayout(rect, uids) {
     list.push(uid);
     if (list.length >= QUERY_CARD_CAP) break;
   }
-  const n2 = list.length;
-  if (!n2) return [];
+  const n3 = list.length;
+  if (!n3) return [];
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
   const radius = Math.max(rect.w, rect.h) / 2 + 240;
   return list.map((uid, i) => {
-    const angle = -Math.PI / 2 + (n2 === 1 ? 0 : i / n2 * Math.PI * 2);
+    const angle = -Math.PI / 2 + (n3 === 1 ? 0 : i / n3 * Math.PI * 2);
     return {
       string: `((${uid}))`,
       x: Math.round(cx + Math.cos(angle) * radius - CARD_W / 2),
@@ -1348,8 +1348,8 @@ var init_query = __esm({
 });
 
 // src/model/roam-table.js
-function clampInt(n2, lo, hi) {
-  const v = Math.round(Number(n2));
+function clampInt(n3, lo, hi) {
+  const v = Math.round(Number(n3));
   if (!Number.isFinite(v)) return lo;
   return Math.min(hi, Math.max(lo, v));
 }
@@ -1370,12 +1370,12 @@ function tableShape(table) {
 }
 function fitWidths(raw, floors) {
   const lo = raw.map((_, i) => clampInt(floors?.[i] ?? COL_MIN, COL_MIN, COL_MAX));
-  let ws = raw.map((n2, i) => Math.max(lo[i], clampInt(n2, COL_MIN, COL_MAX)));
+  let ws = raw.map((n3, i) => Math.max(lo[i], clampInt(n3, COL_MIN, COL_MAX)));
   const sumOf = () => ws.reduce((a, b) => a + b, 0);
   let sum = sumOf();
   if (sum > WIDTH_CAP && ws.length) {
     const scale = WIDTH_CAP / sum;
-    ws = ws.map((n2, i) => Math.max(lo[i], clampInt(n2 * scale, COL_MIN, COL_MAX)));
+    ws = ws.map((n3, i) => Math.max(lo[i], clampInt(n3 * scale, COL_MIN, COL_MAX)));
     sum = sumOf();
     let guard = 0;
     while (sum > WIDTH_CAP && guard < ws.length * (COL_MAX - COL_MIN + 1)) {
@@ -1395,8 +1395,8 @@ function fitWidths(raw, floors) {
 function widthsFromXs(xs2, cols) {
   if (!Array.isArray(xs2) || xs2.length < 2) return null;
   const bounds = [];
-  for (const n2 of xs2) {
-    const v = Number(n2);
+  for (const n3 of xs2) {
+    const v = Number(n3);
     if (!Number.isFinite(v)) return null;
     if (bounds.length && v < bounds[bounds.length - 1]) return null;
     bounds.push(v);
@@ -1419,7 +1419,7 @@ function widthsFromText(table, cols) {
       longest[c + i] = Math.max(longest[c + i], share);
     }
   }
-  return longest.map((n2) => n2 * CHAR_PX + CELL_PAD);
+  return longest.map((n3) => n3 * CHAR_PX + CELL_PAD);
 }
 function textFloors(table, cols) {
   const count = Math.max(1, cols || 1);
@@ -1438,7 +1438,7 @@ function textFloors(table, cols) {
       if (isHead && span === 1) head[c + i] = Math.max(head[c + i], Math.min(22, text4.length));
     }
   }
-  return word.map((n2, i) => ({ word: n2, head: head[i] }));
+  return word.map((n3, i) => ({ word: n3, head: head[i] }));
 }
 function cardHeight(rows) {
   return Math.min(HEIGHT_CAP, COL_HEADER + Math.max(1, rows || 1) * ROW_PX + HEIGHT_CHROME);
@@ -1452,7 +1452,7 @@ function parsedTableSize(table) {
   const raw = rawGrid || widthsFromText(table, shape.cols);
   const est = textFloors(table, raw.length);
   const floors = est.map((e2) => e2.word ? e2.word * WORD_PX + WORD_PAD : 0);
-  const wanted = raw.map((n2, i) => Math.max(n2, floors[i], est[i].head ? est[i].head * WORD_PX + WORD_PAD : 0));
+  const wanted = raw.map((n3, i) => Math.max(n3, floors[i], est[i].head ? est[i].head * WORD_PX + WORD_PAD : 0));
   const fitted = fitWidths(wanted, floors);
   const fromGrid = rawGrid ? fitted : null;
   const chrome = fromGrid ? ROW_HEADER + GRID_PAD : NATIVE_PAD;
@@ -1475,8 +1475,8 @@ function tableUidOf(item) {
   return isRoamTableString(item.string) ? item.uid : null;
 }
 function rowsCaption(rows) {
-  const n2 = Math.max(0, Math.round(Number(rows) || 0));
-  return `Table · ${n2} ${n2 === 1 ? "row" : "rows"}`;
+  const n3 = Math.max(0, Math.round(Number(rows) || 0));
+  return `Table · ${n3} ${n3 === 1 ? "row" : "rows"}`;
 }
 function parsedTableCaption(table, doc = null) {
   if (!table || typeof table !== "object") return rowsCaption(0);
@@ -1798,7 +1798,7 @@ var init_snapshots = __esm({
     SNAPSHOTS_TITLE = "Snapshots";
     SNAPSHOT_KEEP = 10;
     SNAPSHOT_CHUNK = 45;
-    pad = (n2) => String(n2).padStart(2, "0");
+    pad = (n3) => String(n3).padStart(2, "0");
   }
 });
 
@@ -1814,8 +1814,8 @@ function plexusType(node2) {
   return plexus && typeof plexus === "object" ? plexus.type : void 0;
 }
 function trailString(name) {
-  const n2 = String(name ?? "").replace(/\s+/g, " ").trim();
-  return `{{[[plexus-trail]]}} ${n2 || "Trail"}`;
+  const n3 = String(name ?? "").replace(/\s+/g, " ").trim();
+  return `{{[[plexus-trail]]}} ${n3 || "Trail"}`;
 }
 function parseTrailName(string) {
   const m = TRAIL_RE.exec(String(string ?? "").trim());
@@ -1880,12 +1880,12 @@ function trailStrip(stops, titleOf4, limit = 8) {
 }
 function trailBadges(trail) {
   const map = /* @__PURE__ */ new Map();
-  let n2 = 0;
+  let n3 = 0;
   for (const stop3 of trail?.stops || []) {
-    n2 += 1;
+    n3 += 1;
     const ref = stop3?.ref;
     if (!ref || map.has(ref)) continue;
-    map.set(ref, n2);
+    map.set(ref, n3);
   }
   return map;
 }
@@ -2183,14 +2183,14 @@ function boxOf(rect) {
   if (width <= 0 || height <= 0) return null;
   return { x, y, width, height };
 }
-function clamp(n2, lo, hi) {
-  return Math.min(hi, Math.max(lo, n2));
+function clamp(n3, lo, hi) {
+  return Math.min(hi, Math.max(lo, n3));
 }
 function fracFromDrag(rect, x0, y0, x1, y1) {
   const box2 = boxOf(rect);
   if (!box2) return null;
   const pts = [x0, y0, x1, y1].map(finite);
-  if (pts.some((n2) => n2 === null)) return null;
+  if (pts.some((n3) => n3 === null)) return null;
   const right = box2.x + box2.width;
   const bottom = box2.y + box2.height;
   const ax = clamp(pts[0], box2.x, right);
@@ -2218,18 +2218,18 @@ function imageRegionString(cardUid, frac, caption) {
     return null;
   }
 }
-function round42(n2) {
-  return Math.round(n2 * 1e4) / 1e4;
+function round42(n3) {
+  return Math.round(n3 * 1e4) / 1e4;
 }
-function clamp012(n2) {
-  return clamp(n2, 0, 1);
+function clamp012(n3) {
+  return clamp(n3, 0, 1);
 }
 function posToken(token, axis2) {
   const text4 = String(token || "").trim().toLowerCase();
   if (!text4) return null;
   if (text4.endsWith("%")) {
-    const n2 = Number(text4.slice(0, -1));
-    return Number.isFinite(n2) ? n2 / 100 : null;
+    const n3 = Number(text4.slice(0, -1));
+    return Number.isFinite(n3) ? n3 / 100 : null;
   }
   if (axis2 === "x" && Object.prototype.hasOwnProperty.call(X_POS, text4) && text4 !== "center") return X_POS[text4];
   if (axis2 === "y" && Object.prototype.hasOwnProperty.call(Y_POS, text4) && text4 !== "center") return Y_POS[text4];
@@ -2315,8 +2315,8 @@ function cssPick(style, inline, camel, kebab) {
   return "";
 }
 function cssPx(style, inline, camel, kebab) {
-  const n2 = Number.parseFloat(cssPick(style, inline, camel, kebab));
-  return Number.isFinite(n2) ? n2 : 0;
+  const n3 = Number.parseFloat(cssPick(style, inline, camel, kebab));
+  return Number.isFinite(n3) ? n3 : 0;
 }
 function paintedRectOfElement(el2, { zoom = 1 } = {}) {
   if (!el2 || typeof el2.getBoundingClientRect !== "function") return null;
@@ -2417,7 +2417,7 @@ function imageRegionFrac(region) {
   const f = region.f;
   if (Array.isArray(f) && f.length === 4) {
     const nums = f.map(Number);
-    if (nums.every((n2) => Number.isFinite(n2)) && nums[2] > 0 && nums[3] > 0) {
+    if (nums.every((n3) => Number.isFinite(n3)) && nums[2] > 0 && nums[3] > 0) {
       return { rx: nums[0], ry: nums[1], rw: nums[2], rh: nums[3] };
     }
   }
@@ -2534,7 +2534,7 @@ function asBox(rect) {
 function asFrac(frac) {
   if (!frac) return null;
   const v = Array.isArray(frac) ? frac : [frac.rx, frac.ry, frac.rw, frac.rh];
-  if (v.length !== 4 || v.some((n2) => !Number.isFinite(Number(n2)))) return null;
+  if (v.length !== 4 || v.some((n3) => !Number.isFinite(Number(n3)))) return null;
   const [rx, ry, rw, rh] = v.map(Number);
   if (rw <= 0 || rh <= 0) return null;
   return { rx, ry, rw, rh };
@@ -2856,13 +2856,13 @@ function regionPolyFrac(imageRect, worldPoints) {
 function regionCaption(label, existingCount) {
   const text4 = String(label ?? "").trim();
   if (text4) return text4;
-  const n2 = Number.isFinite(existingCount) ? existingCount : 0;
-  return `Region ${n2 + 1}`;
+  const n3 = Number.isFinite(existingCount) ? existingCount : 0;
+  return `Region ${n3 + 1}`;
 }
 function endpointChipText({ count, boardTitle: boardTitle3 } = {}) {
-  const n2 = Math.max(0, Math.trunc(Number(count) || 0));
+  const n3 = Math.max(0, Math.trunc(Number(count) || 0));
   const board2 = clip(boardTitle3, 32) || "board";
-  return `⇢ ${n2} on ${board2}`;
+  return `⇢ ${n3} on ${board2}`;
 }
 function endpointIndex(rows) {
   const byBoard = /* @__PURE__ */ new Map();
@@ -2951,7 +2951,7 @@ var init_endpoints = __esm({
     EMBED_ONLY = /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i;
     REF_RE = /\(\(([\w-]{1,36})\)\)/g;
     MIN_MARQUEE = 8;
-    finite2 = (n2) => typeof n2 === "number" && Number.isFinite(n2) ? n2 : null;
+    finite2 = (n3) => typeof n3 === "number" && Number.isFinite(n3) ? n3 : null;
     INWARD = {
       left: [1, 0],
       right: [-1, 0],
@@ -2970,10 +2970,10 @@ function segmentToken(token, lexicon) {
   if (!lexicon || t.length < SEG_MIN || !/^\p{L}+$/u.test(t)) return null;
   const lower4 = t.toLowerCase();
   if (lexicon.has(lower4)) return null;
-  const n2 = lower4.length;
-  const best = new Array(n2 + 1).fill(null);
+  const n3 = lower4.length;
+  const best = new Array(n3 + 1).fill(null);
   best[0] = { count: 0, sq: 0, prev: -1 };
-  for (let i = 1; i <= n2; i++) {
+  for (let i = 1; i <= n3; i++) {
     for (let j = Math.max(0, i - 24); j < i; j++) {
       if (!best[j]) continue;
       const len = i - j;
@@ -2984,9 +2984,9 @@ function segmentToken(token, lexicon) {
       if (!cur || cand.count < cur.count || cand.count === cur.count && cand.sq > cur.sq) best[i] = cand;
     }
   }
-  if (!best[n2] || best[n2].count < 3 || best[n2].count > SEG_MAX_WORDS) return null;
+  if (!best[n3] || best[n3].count < 3 || best[n3].count > SEG_MAX_WORDS) return null;
   const out = [];
-  for (let i = n2; i > 0; i = best[i].prev) out.unshift(t.slice(best[i].prev, i));
+  for (let i = n3; i > 0; i = best[i].prev) out.unshift(t.slice(best[i].prev, i));
   if (!out.some((piece) => FUNCTION_WORDS.has(piece.toLowerCase()))) return null;
   return out;
 }
@@ -3352,10 +3352,10 @@ function embedTitle(kind, name, url) {
   return fileName(url) || "PDF";
 }
 function embedKind(name) {
-  const n2 = String(name || "").toLowerCase();
-  if (n2 === "youtube" || n2 === "iframe") return "iframe";
-  if (n2 === "tweet" || n2 === "twitter") return "tweet";
-  if (n2 === "video") return "video";
+  const n3 = String(name || "").toLowerCase();
+  if (n3 === "youtube" || n3 === "iframe") return "iframe";
+  if (n3 === "tweet" || n3 === "twitter") return "tweet";
+  if (n3 === "video") return "video";
   return "pdf";
 }
 function posterThumb(source) {
@@ -3574,9 +3574,9 @@ function cleanPageTitle(s, max = 150) {
   return t;
 }
 function looksRandomName(name) {
-  const n2 = String(name ?? "").trim();
-  if (!n2) return true;
-  return /^[A-Za-z0-9_ -]{1,12}$/.test(n2) && /[A-Z]/.test(n2.slice(1));
+  const n3 = String(name ?? "").trim();
+  if (!n3) return true;
+  return /^[A-Za-z0-9_ -]{1,12}$/.test(n3) && /[A-Z]/.test(n3.slice(1));
 }
 function pdfNameFromRefs(strings) {
   for (const raw of Array.isArray(strings) ? strings : []) {
@@ -3609,8 +3609,8 @@ function uniquePageTitle(base, taken) {
     }
   };
   if (!used(root)) return root;
-  for (let n2 = 2; n2 < 1e3; n2 += 1) {
-    const next = `${root} (${n2})`;
+  for (let n3 = 2; n3 < 1e3; n3 += 1) {
+    const next = `${root} (${n3})`;
     if (!used(next)) return next;
   }
   return `${root} (${Date.now()})`;
@@ -3721,7 +3721,7 @@ var init_pdf_page = __esm({
     meaningful = (t) => t.length >= 3 && !MEANINGLESS.test(t);
     shortDate = (now4) => {
       const d = new Date(Number.isFinite(now4) ? now4 : Date.now());
-      const p = (n2) => String(n2).padStart(2, "0");
+      const p = (n3) => String(n3).padStart(2, "0");
       return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
     };
     pageCardString = (title) => `[[${title}]]`;
@@ -4020,15 +4020,15 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
       if (eplexus?.type !== "edge") continue;
       const euid = e2[":block/uid"];
       const estring = e2[":block/string"] ?? "";
-      const n2 = normalizeEdge(eplexus);
-      const a = items.get(n2.from);
-      const b = items.get(n2.to);
+      const n3 = normalizeEdge(eplexus);
+      const a = items.get(n3.from);
+      const b = items.get(n3.to);
       const why = readWhy(sortedChildren2(e2));
       edges.set(euid, {
         uid: euid,
         string: estring,
-        ...n2,
-        label: parseEdgeLabel(estring, n2.fromBlock ? `((${n2.fromBlock}))` : a ? semanticRef(a) : "", n2.toBlock ? `((${n2.toBlock}))` : b ? semanticRef(b) : ""),
+        ...n3,
+        label: parseEdgeLabel(estring, n3.fromBlock ? `((${n3.fromBlock}))` : a ? semanticRef(a) : "", n3.toBlock ? `((${n3.toBlock}))` : b ? semanticRef(b) : ""),
         why: why?.text || "",
         whyUid: why?.uid || "",
         whyKids: why ? (sortedChildren2(e2).find((c) => c[":block/uid"] === why.uid)?.[":block/children"] || []).length : 0,
@@ -4375,13 +4375,13 @@ function onSegment(a, b, p) {
   return dot <= len2 + 1e-9;
 }
 function pointInPolygon(point, polygon) {
-  const n2 = polygon?.length ?? 0;
-  if (!point || n2 < 3) return false;
-  for (let i = 0, j = n2 - 1; i < n2; j = i++) {
+  const n3 = polygon?.length ?? 0;
+  if (!point || n3 < 3) return false;
+  for (let i = 0, j = n3 - 1; i < n3; j = i++) {
     if (onSegment(polygon[j], polygon[i], point)) return true;
   }
   let inside8 = false;
-  for (let i = 0, j = n2 - 1; i < n2; j = i++) {
+  for (let i = 0, j = n3 - 1; i < n3; j = i++) {
     const yi = polygon[i].y;
     const yj = polygon[j].y;
     const xi = polygon[i].x;
@@ -4778,9 +4778,9 @@ function mergeSmallCapRows(rows) {
     for (const p of a.pieces) if (!p.space) mark.push({ x: p.x0, k: 0 });
     for (const p of b.pieces) if (!p.space) mark.push({ x: p.x0, k: 1 });
     mark.sort((p, q2) => p.x - q2.x);
-    let n2 = 0;
-    for (let i = 1; i < mark.length; i++) if (mark[i].k !== mark[i - 1].k) n2++;
-    return n2;
+    let n3 = 0;
+    for (let i = 1; i < mark.length; i++) if (mark[i].k !== mark[i - 1].k) n3++;
+    return n3;
   };
   const initialTouches = (big, small) => big.pieces.some((p) => !p.space && /^[A-Za-z]{1,3}$/.test(p.text || "") && small.pieces.some((q2) => !q2.space && (Math.abs(q2.x0 - p.x1) <= 2.5 || Math.abs(q2.x1 - p.x0) <= 2.5)));
   for (const a of rows) {
@@ -4911,7 +4911,7 @@ function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGa
   const small = [];
   for (const r of rows) {
     const text4 = r.pieces.filter((p) => !p.space);
-    const chars = text4.reduce((n2, p) => n2 + p.text.length, 0);
+    const chars = text4.reduce((n3, p) => n3 + p.text.length, 0);
     r.chars = chars;
     main.push(r);
   }
@@ -5032,7 +5032,7 @@ function mergeWords(pieces2, rowSize) {
   return words;
 }
 function dominantRotation(rotated, lines) {
-  const upright = lines.reduce((n2, l) => n2 + l.chars, 0);
+  const upright = lines.reduce((n3, l) => n3 + l.chars, 0);
   const byAngle = /* @__PURE__ */ new Map();
   for (const p of rotated) {
     const deg = Math.round(p.angle * 180 / Math.PI / 90) * 90;
@@ -5040,8 +5040,8 @@ function dominantRotation(rotated, lines) {
   }
   let best = 0;
   let chars = 0;
-  for (const [deg, n2] of byAngle) if (n2 > chars) {
-    chars = n2;
+  for (const [deg, n3] of byAngle) if (n3 > chars) {
+    chars = n3;
     best = deg;
   }
   return chars > 1.5 * upright && chars >= 20 ? best : 0;
@@ -5067,8 +5067,8 @@ function makeLine(words) {
   }
   let size = 0;
   let best = -1;
-  for (const [k, n2] of sizes) if (n2 > best) {
-    best = n2;
+  for (const [k, n3] of sizes) if (n3 > best) {
+    best = n3;
     size = k;
   }
   if (!size) size = Math.max(...words.map((w) => w.size));
@@ -5094,8 +5094,8 @@ function median(values) {
   const mid = s.length >> 1;
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
-function round(n2) {
-  return Math.round(n2 * 100) / 100;
+function round(n3) {
+  return Math.round(n3 * 100) / 100;
 }
 function sharesLine(row4, w) {
   const size = Math.max(row4.size || 0, w.size || 0, 1);
@@ -5606,8 +5606,8 @@ function rowsBetween(words, { x0, x1, y0, y1 }) {
     r.words.sort((a, b) => a.x0 - b.x0);
     r.x0 = r.words[0].x0;
     r.x1 = Math.max(...r.words.map((w) => w.x1));
-    const chars = Math.max(1, r.words.reduce((n2, w) => n2 + w.text.length, 0));
-    const charW = r.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0) / chars || 0.5 * r.size;
+    const chars = Math.max(1, r.words.reduce((n3, w) => n3 + w.text.length, 0));
+    const charW = r.words.reduce((n3, w) => n3 + (w.x1 - w.x0), 0) / chars || 0.5 * r.size;
     const threshold = Math.max(1.8 * charW, 0.6 * r.size);
     let tokens2 = 0;
     let last = null;
@@ -5625,9 +5625,9 @@ function tabularBetween(words, box2) {
   if (!rows.length) return { rows, tabular: true, empty: true };
   const width = box2.x1 - box2.x0;
   for (const r of rows) {
-    const n2 = r.words.length;
+    const n3 = r.words.length;
     const chars = r.words.reduce((k, w) => k + w.text.length, 0);
-    const prose = n2 >= 7 && chars / n2 >= 3.5 && r.x1 - r.x0 >= 0.7 * width && (r.tokens === 1 || r.tokens < n2 / 2 && shortTokens(r) === 0 && longestToken(r) >= 5);
+    const prose = n3 >= 7 && chars / n3 >= 3.5 && r.x1 - r.x0 >= 0.7 * width && (r.tokens === 1 || r.tokens < n3 / 2 && shortTokens(r) === 0 && longestToken(r) >= 5);
     if (prose) return { rows, tabular: false, reason: "prose" };
     if (CAPTION_START_RE.test(r.text) && r.words.length >= 3 && r.x0 - box2.x0 <= 0.15 * width) return { rows, tabular: false, reason: "caption" };
   }
@@ -5692,7 +5692,7 @@ function boxGridRules(boxes) {
     const xs2 = uniqPositions(cl.items.flatMap((b) => [b.x0, b.x1]), 3);
     const ys2 = uniqPositions(cl.items.flatMap((b) => [b.y0, b.y1]), 3);
     if (xs2.length < 3 || ys2.length < 3) continue;
-    const covered = cl.items.reduce((n2, b) => n2 + area2(b), 0);
+    const covered = cl.items.reduce((n3, b) => n3 + area2(b), 0);
     if (covered < 0.45 * area2(cl)) continue;
     let overlap = 0;
     for (let i = 0; i < cl.items.length; i++) for (let j = i + 1; j < cl.items.length; j++) {
@@ -5716,8 +5716,8 @@ function boxGridRules(boxes) {
   return { rules, boxes: used };
 }
 function longestToken(row4) {
-  const chars = Math.max(1, row4.words.reduce((n2, w) => n2 + w.text.length, 0));
-  const charW = row4.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0) / chars || 0.5 * row4.size;
+  const chars = Math.max(1, row4.words.reduce((n3, w) => n3 + w.text.length, 0));
+  const charW = row4.words.reduce((n3, w) => n3 + (w.x1 - w.x0), 0) / chars || 0.5 * row4.size;
   const threshold = Math.max(1.8 * charW, 0.6 * row4.size);
   let best = 0;
   let cur = 0;
@@ -5731,8 +5731,8 @@ function longestToken(row4) {
   return best;
 }
 function shortTokens(row4) {
-  const chars = Math.max(1, row4.words.reduce((n2, w) => n2 + w.text.length, 0));
-  const charW = row4.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0) / chars || 0.5 * row4.size;
+  const chars = Math.max(1, row4.words.reduce((n3, w) => n3 + w.text.length, 0));
+  const charW = row4.words.reduce((n3, w) => n3 + (w.x1 - w.x0), 0) / chars || 0.5 * row4.size;
   const threshold = Math.max(1.8 * charW, 0.6 * row4.size);
   let count = 0;
   let cur = null;
@@ -6108,8 +6108,8 @@ function frameRows(cells, rows, cols) {
     const k = fullRow(r);
     if (!k) break;
     const text4 = cellTextOf(k.words);
-    const n2 = text4 ? text4.split(/\s+/).length : 0;
-    if (!text4 || CAPTION_START_RE.test(text4) || r === 0 && n2 >= 6) drop.add(r);
+    const n3 = text4 ? text4.split(/\s+/).length : 0;
+    if (!text4 || CAPTION_START_RE.test(text4) || r === 0 && n3 >= 6) drop.add(r);
     else break;
   }
   const trailing = [];
@@ -6437,8 +6437,8 @@ function tokensSplitColumns(words, xs2, ys2, r0, r1, c0, c1) {
   let split = 0;
   let considered = 0;
   for (const row4 of rows) {
-    const chars = Math.max(1, row4.words.reduce((n2, w) => n2 + w.text.length, 0));
-    const charW = row4.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0) / chars || 0.5 * row4.size;
+    const chars = Math.max(1, row4.words.reduce((n3, w) => n3 + w.text.length, 0));
+    const charW = row4.words.reduce((n3, w) => n3 + (w.x1 - w.x0), 0) / chars || 0.5 * row4.size;
     const threshold = Math.max(1.8 * charW, 0.6 * row4.size);
     const tokens2 = [];
     let cur = null;
@@ -6519,8 +6519,8 @@ var init_lattice = __esm({
     STANDALONE = new Set("a an of the and or in on at to for per from by with no as if be is it vs day year man men all not but its are was than into over note unit each both such only also more most less high low net out new old age end use oil gas".split(" "));
     SUPERS = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
     UF = class {
-      constructor(n2) {
-        this.p = Array.from({ length: n2 }, (_, i) => i);
+      constructor(n3) {
+        this.p = Array.from({ length: n3 }, (_, i) => i);
       }
       find(i) {
         while (this.p[i] !== i) {
@@ -6641,8 +6641,8 @@ function bodySizeOf(lines) {
   }
   let best = 0;
   let size = 10;
-  for (const [k, n2] of counts) if (n2 > best) {
-    best = n2;
+  for (const [k, n3] of counts) if (n3 > best) {
+    best = n3;
     size = k;
   }
   return size;
@@ -6822,9 +6822,9 @@ function explodeLeaders(words) {
     const chars = Math.max(1, [...text4].length);
     let at = 0;
     for (const part of parts) {
-      const n2 = [...part].length;
+      const n3 = [...part].length;
       const x0 = (w.x0 ?? 0) + width * (at / chars);
-      at += n2;
+      at += n3;
       const x1 = (w.x0 ?? 0) + width * (at / chars);
       out.push({ ...w, text: part, x0, x1 });
     }
@@ -6833,8 +6833,8 @@ function explodeLeaders(words) {
 }
 function tokenizeLine(line) {
   line = { ...line, words: explodeLeaders(line.words) };
-  const chars = Math.max(1, line.words.reduce((n2, w) => n2 + w.text.length, 0));
-  const inkW = line.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0);
+  const chars = Math.max(1, line.words.reduce((n3, w) => n3 + w.text.length, 0));
+  const inkW = line.words.reduce((n3, w) => n3 + (w.x1 - w.x0), 0);
   const charW = inkW / chars || 0.5 * line.size;
   const threshold = Math.max(1.8 * charW, 0.6 * line.size);
   const tokens2 = [];
@@ -6993,12 +6993,12 @@ function splitColumn(rowsIn, col2, size) {
   }
   if (rows.length < 3 || col2.x1 - col2.x0 < 2 * size) return { cols: [col2], seps: [] };
   const step = 0.5;
-  const n2 = Math.ceil((col2.x1 - col2.x0) / step) + 1;
-  const cover = new Int16Array(n2);
+  const n3 = Math.ceil((col2.x1 - col2.x0) / step) + 1;
+  const cover = new Int16Array(n3);
   for (const ws of rows) {
     for (const w of ws) {
       const i0 = Math.max(0, Math.floor((w.x0 - col2.x0) / step));
-      const i1 = Math.min(n2 - 1, Math.ceil((w.x1 - col2.x0) / step));
+      const i1 = Math.min(n3 - 1, Math.ceil((w.x1 - col2.x0) / step));
       for (let i2 = i0; i2 <= i1; i2++) cover[i2]++;
     }
   }
@@ -7006,13 +7006,13 @@ function splitColumn(rowsIn, col2, size) {
   const minGap = Math.max(2, 0.3 * size);
   const seps = [];
   let i = 0;
-  while (i < n2) {
+  while (i < n3) {
     if (cover[i] > allow) {
       i++;
       continue;
     }
     let j = i;
-    while (j < n2 && cover[j] <= allow) j++;
+    while (j < n3 && cover[j] <= allow) j++;
     const g0 = col2.x0 + i * step;
     const g1 = col2.x0 + (j - 1) * step;
     i = j;
@@ -7861,15 +7861,15 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, 
     }
   }
   let tight = 0;
-  let n2 = 0;
+  let n3 = 0;
   for (let c = 0; c < k; c++) {
     const body2 = cells.filter((cell) => cell.c === c && cell.colSpan === 1 && cell.text);
     if (body2.length < 2) continue;
-    n2++;
+    n3++;
     const edge = colAlign[c] === "right" ? body2.map((cell) => cell.bbox[2]) : body2.map((cell) => cell.bbox[0]);
     tight += Math.max(...edge) - Math.min(...edge) <= 2 ? 1 : 0.5;
   }
-  const alignment = n2 ? tight / n2 : 1;
+  const alignment = n3 ? tight / n3 : 1;
   return {
     type: "table",
     bbox: [round(xs2[0]), round(ys2[0]), round(xs2[k]), round(ys2[rows])],
@@ -7979,7 +7979,7 @@ function tableFromBand(band, words) {
     else if (r.tokens.length >= 2 && !codeLike) tabular++;
   }
   if (tabular < 2 || prose >= 0.4 * run.length) return null;
-  const headerRowsHint = edges.length > 2 ? bandsOf.slice(0, headerBands).reduce((n2, k) => n2 + k, 0) : 0;
+  const headerRowsHint = edges.length > 2 ? bandsOf.slice(0, headerBands).reduce((n3, k) => n3 + k, 0) : 0;
   mergeWrappedLabelRows(rowsIn, headerRowsHint);
   const table = buildTable(rowsIn, { bands: band, headerRowsHint });
   if (!table || lacksTabularEvidence(table)) return null;
@@ -8018,12 +8018,12 @@ function gridNumber(text4) {
   return /^\[[\d.,\s]+\]$/.test(s);
 }
 function numericGrid(run) {
-  let n2 = 0;
+  let n3 = 0;
   for (const r of run) {
     const nums = (r.tokens || []).filter((t) => gridNumber(t.text));
-    if (nums.length >= 3) n2 += 1;
+    if (nums.length >= 3) n3 += 1;
   }
-  return n2 >= 4;
+  return n3 >= 4;
 }
 function headerRowGroups(words) {
   const base = baselineGroups(words);
@@ -8170,13 +8170,13 @@ function valueToken(text4) {
 }
 function proseRow(row4, tokens2, columnWidth = Infinity) {
   const words = row4.words;
-  const n2 = words.length;
-  if (n2 < 6) return false;
+  const n3 = words.length;
+  if (n3 < 6) return false;
   const chars = words.reduce((k, w) => k + w.text.length, 0);
-  if (chars / n2 < 3.5) return false;
+  if (chars / n3 < 3.5) return false;
   if (Number.isFinite(columnWidth) && row4.x1 - row4.x0 < 0.6 * columnWidth) return false;
   const short = tokens2.filter((t) => t.words.length <= 2 || valueToken(t.text) || dateCell(t.text)).length;
-  return tokens2.length === 1 || tokens2.length < n2 / 2 && short === 0;
+  return tokens2.length === 1 || tokens2.length < n3 / 2 && short === 0;
 }
 function detectStreamRuns(lines, { dots = [], column = null, rules = [], bridgeGaps = true, ocr = false, handwriting = false } = {}) {
   const out = [];
@@ -8472,9 +8472,9 @@ function codeRun(run) {
   for (const r of run) {
     const first = r.tokens[0];
     if (!first || !/^\d{1,4}$/.test(first.text)) return null;
-    const n2 = Number(first.text);
-    if (expect != null && n2 !== expect) return null;
-    expect = n2 + 1;
+    const n3 = Number(first.text);
+    if (expect != null && n3 !== expect) return null;
+    expect = n3 + 1;
     if (r.tokens.length >= 2) withCode++;
   }
   if (withCode < 2) return null;
@@ -8569,9 +8569,9 @@ function repeatsHeader(tokens2, header) {
   const b = valueTokens(tokens2);
   if (a.length < 2 || b.length < 2) return false;
   let same2 = 0;
-  const n2 = Math.min(a.length, b.length);
-  for (let i = 0; i < n2; i++) if (a[i] === b[i]) same2++;
-  if (same2 >= 2 && same2 / n2 >= 0.6) return true;
+  const n3 = Math.min(a.length, b.length);
+  for (let i = 0; i < n3; i++) if (a[i] === b[i]) same2++;
+  if (same2 >= 2 && same2 / n3 >= 0.6) return true;
   const tail = b.slice(-a.length);
   return tail.length === a.length && tail.every((s, i) => s === a[i]);
 }
@@ -8696,8 +8696,8 @@ function titleHeader(table) {
     if (cells.length < 2) continue;
     const labels = cells.filter((cell) => {
       const text4 = String(cell.text).trim();
-      const n2 = words(text4).length;
-      return n2 >= 1 && n2 <= 8 && /[A-Za-z]/.test(text4) && !indexOrPage(text4);
+      const n3 = words(text4).length;
+      return n3 >= 1 && n3 <= 8 && /[A-Za-z]/.test(text4) && !indexOrPage(text4);
     });
     if (labels.length >= 2 && labels.length / cells.length >= 0.5 && labels.length >= Math.min(3, cols - 1)) return true;
   }
@@ -8750,7 +8750,7 @@ function looksLikeProse(run) {
   let wordy = 0;
   for (const r of run) {
     const words = r.row.words.length;
-    const chars = r.row.words.reduce((n2, w) => n2 + w.text.length, 0);
+    const chars = r.row.words.reduce((n3, w) => n3 + w.text.length, 0);
     if (r.tokens.some((t) => valueToken(t.text) || dateCell(t.text))) continue;
     if (words >= 6 && chars / words >= 3.5 && r.tokens.length < words / 2) wordy++;
   }
@@ -8972,9 +8972,9 @@ function growContentsTables(tables, textBlocks, bodySize) {
       if (o) touched.set(o, (touched.get(o) || 0) + 1);
     }
     const partial = /* @__PURE__ */ new Set();
-    for (const [o, n2] of touched) {
+    for (const [o, n3] of touched) {
       const total = o.lines ? o.lines.length : o.sourceLines.length;
-      if (n2 < total) partial.add(o);
+      if (n3 < total) partial.add(o);
     }
     const chosen = kept.filter((r) => !r.row.lines.some((l) => partial.has(owner.get(l))));
     if (debug) {
@@ -9062,8 +9062,8 @@ function isInstitutionLine(text4) {
   return words.every((word) => word.length >= 2 && /^[A-Z]+$/.test(word));
 }
 function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
-  const n2 = pages.length;
-  const need2 = Math.max(2, Math.min(3, n2), Math.ceil(n2 * 0.5));
+  const n3 = pages.length;
+  const need2 = Math.max(2, Math.min(3, n3), Math.ceil(n3 * 0.5));
   const candidates2 = /* @__PURE__ */ new Map();
   const cand = (line, page, where2) => {
     const key = `${where2}|${normalizeFurniture(line.text)}`;
@@ -9084,7 +9084,7 @@ function findFurniture(pages, { band = FURNITURE_BAND } = {}) {
   const marks = /* @__PURE__ */ new Set();
   for (const [key, list] of candidates2) {
     const pagesSeen2 = new Set(list.map((e2) => e2.page));
-    const recurring = pagesSeen2.size >= need2 && n2 >= 2;
+    const recurring = pagesSeen2.size >= need2 && n3 >= 2;
     for (const e2 of list) {
       const text4 = e2.line.text.trim();
       const pageNum = PAGE_NUM_RE.test(text4) && alone.has(e2.line);
@@ -9286,8 +9286,8 @@ function shortColumnGutters(lines, pageW, minLines) {
   }
   const cols = clusters.filter((c) => c.lines.length >= Math.max(6, minLines)).sort((a, b) => a.x - b.x);
   const measured = (list) => {
-    const n2 = list.filter((l) => /\d/.test(l.text || "") && String(l.text || "").trim().split(/\s+/).length <= 6).length;
-    return list.length >= 3 && n2 / list.length >= 0.5;
+    const n3 = list.filter((l) => /\d/.test(l.text || "") && String(l.text || "").trim().split(/\s+/).length <= 6).length;
+    return list.length >= 3 && n3 / list.length >= 0.5;
   };
   if (cols.some((c) => measured(c.lines))) return [];
   const gutters = [];
@@ -9333,8 +9333,8 @@ function internalGutters(lines, pageW, minLines) {
       if (gap < minGap || gap > maxGap) continue;
       const mid = (kept[i - 1].x1 + kept[i].x0) / 2;
       if (mid < 0.28 * pageW || mid > 0.72 * pageW) continue;
-      const leftChars = kept.slice(0, i).reduce((n2, w) => n2 + String(w.text || "").length, 0);
-      const rightChars = kept.slice(i).reduce((n2, w) => n2 + String(w.text || "").length, 0);
+      const leftChars = kept.slice(0, i).reduce((n3, w) => n3 + String(w.text || "").length, 0);
+      const rightChars = kept.slice(i).reduce((n3, w) => n3 + String(w.text || "").length, 0);
       if (leftChars < 8 || rightChars < 8) continue;
       cands.push({ gap, mid, x0: kept[i - 1].x1, x1: kept[i].x0 });
     }
@@ -9549,13 +9549,13 @@ function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), usedBoxe
     }
   }
   const gutters = detectColumns(columnLines(words), { pageW });
-  const textChars = pageTextChars == null ? words.reduce((n2, w) => n2 + (w.text || "").length, 0) : pageTextChars;
+  const textChars = pageTextChars == null ? words.reduce((n3, w) => n3 + (w.text || "").length, 0) : pageTextChars;
   const clusters = clusterBoxes(prims, 6);
   const figures = [];
   const used = /* @__PURE__ */ new Set();
   for (const cl of clusters) {
     const hasImage = cl.items.some((p) => p.kind === "image");
-    const count = cl.items.reduce((n2, p) => n2 + p.n, 0);
+    const count = cl.items.reduce((n3, p) => n3 + p.n, 0);
     const w = cl.x1 - cl.x0;
     const h = cl.y1 - cl.y0;
     if (!hasImage && !(count >= 6 && w >= 60 && h >= 40)) continue;
@@ -9637,13 +9637,13 @@ function releaseFigureWords(dropped, kept, lines, used) {
   }
 }
 function rasterScanPage({ images, shapes, words, pageW, pageH }) {
-  const segs = (shapes || []).reduce((n2, s) => n2 + (s.segs || 1), 0);
+  const segs = (shapes || []).reduce((n3, s) => n3 + (s.segs || 1), 0);
   return (words || []).length === 0 && imageCover(images, pageW, pageH) >= 0.65 && segs < 15;
 }
 function drawingSheetPage({ images, lines, tables, shapes, pageW, pageH, textChars }) {
   const pageArea = pageW * pageH;
   const pageImage = (images || []).some((im) => (im.x1 - im.x0) * (im.y1 - im.y0) >= 0.75 * pageArea);
-  const vectorArt = (shapes || []).reduce((n2, s) => n2 + (s.segs || 1), 0) >= 8;
+  const vectorArt = (shapes || []).reduce((n3, s) => n3 + (s.segs || 1), 0) >= 8;
   const textLines2 = (lines || []).filter((l) => (l.text || "").trim());
   const bodyish = textLines2.filter((l) => wordCount3(l.text) >= 8).length;
   const dense = (tables || []).some((t) => {
@@ -9732,9 +9732,9 @@ function alignedLineCount(lines) {
   let best = 0;
   for (const l of lines) {
     if (!String(l.text || "").trim()) continue;
-    let n2 = 0;
-    for (const o of lines) if (String(o.text || "").trim() && Math.abs(o.x0 - l.x0) <= 8) n2++;
-    if (n2 > best) best = n2;
+    let n3 = 0;
+    for (const o of lines) if (String(o.text || "").trim() && Math.abs(o.x0 - l.x0) <= 8) n3++;
+    if (n3 > best) best = n3;
   }
   return best;
 }
@@ -10002,11 +10002,11 @@ function numsNear(fig, lines, bodySize) {
     for (let i = 0; i < ws.length; i++) {
       const inline = /^(?:fig(?:ure)?\.?\s*)(\d+)/i.exec(ws[i].text);
       const split = /^fig(?:ure)?\.?$/i.test(ws[i].text) && ws[i + 1] ? /^(\d+)/.exec(ws[i + 1].text) : null;
-      const n2 = inline ? inline[1] : split ? split[1] : null;
-      if (!n2) continue;
+      const n3 = inline ? inline[1] : split ? split[1] : null;
+      if (!n3) continue;
       const host = inline ? ws[i] : ws[i + 1];
       if (host.x0 > fig.x1 + 12 || host.x1 < fig.x0 - 12) continue;
-      out.add(n2);
+      out.add(n3);
     }
   }
   return out;
@@ -10094,7 +10094,7 @@ function canUnion(a, b, lines, bodySize, pageW, pageH) {
   if (sameCol && captionBetween(a, b, lines)) return false;
   const na = numsNear(a, lines, bodySize);
   const nb = numsNear(b, lines, bodySize);
-  const differentNums = na.size && nb.size && !(na.size === nb.size && [...na].every((n2) => nb.has(n2)));
+  const differentNums = na.size && nb.size && !(na.size === nb.size && [...na].every((n3) => nb.has(n3)));
   if (differentNums && !(sameRow && sharedCaptionBelow(a, b, lines))) return false;
   if (bodyInGap(a, b, lines, bodySize)) return false;
   const area2 = (Math.max(a.x1, b.x1) - Math.min(a.x0, b.x0)) * (Math.max(a.y1, b.y1) - Math.min(a.y0, b.y0));
@@ -10102,12 +10102,12 @@ function canUnion(a, b, lines, bodySize, pageW, pageH) {
   return true;
 }
 function figLabelCount(lines) {
-  let n2 = 0;
+  let n3 = 0;
   for (const l of lines) {
     const t = l.text || "";
-    if (/fig(?:ure)?\.?\s*\d+[a-z]?/i.test(t) || REVERSED_FIG_RE.test(t.trim()) || FIG_GLUED.test(t.trim())) n2++;
+    if (/fig(?:ure)?\.?\s*\d+[a-z]?/i.test(t) || REVERSED_FIG_RE.test(t.trim()) || FIG_GLUED.test(t.trim())) n3++;
   }
-  return n2;
+  return n3;
 }
 function labelStarts(words) {
   const at = [];
@@ -10136,9 +10136,9 @@ function labelStarts(words) {
 function labelSpan(words, i) {
   let j = i;
   while (j + 1 < words.length) {
-    const n2 = words[j + 1];
-    const t = String(n2.text || "").trim();
-    if (n2.x0 - words[j].x1 > 24) break;
+    const n3 = words[j + 1];
+    const t = String(n3.text || "").trim();
+    if (n3.x0 - words[j].x1 > 24) break;
     if (!(FIG_TOKEN.test(t) || FIG_NUM.test(t) || /^[.:]$/.test(t) || FIG_GLUED.test(t))) break;
     j++;
   }
@@ -10460,7 +10460,7 @@ function drawingParts(box2, strokes, pageW, pageH) {
   const axes = longH.length >= 1 && longV.length >= 1 && (shortH.length + shortV.length >= 4 || curves.length > 0 || blobs.length > 0);
   const fragments = inside8.filter((g) => (g.kind === "ink" || g.kind === "shape") && Math.min(g.w, g.h) >= 6 && Math.max(g.w, g.h) >= 12 && g.w * g.h >= 80);
   const fragHull = hullOf(fragments);
-  const fragArea = fragments.reduce((n2, g) => n2 + g.w * g.h, 0);
+  const fragArea = fragments.reduce((n3, g) => n3 + g.w * g.h, 0);
   const many = fragments.length >= 8 && fragHull && fragArea >= 0.25 * Math.max(1, boxArea(fragHull));
   if (!blobs.length && !curves.length && !hatch && !axes && !many) return [];
   const parts = [];
@@ -10524,14 +10524,14 @@ function spansPlate(line, box2, parts) {
 }
 function holdsPageText(box2, lines) {
   const all = (lines || []).filter((line) => (line.text || "").trim());
-  const pageWords = all.reduce((n2, line) => n2 + wordCount3(line.text), 0);
+  const pageWords = all.reduce((n3, line) => n3 + wordCount3(line.text), 0);
   if (pageWords < 8) return false;
   const inside8 = all.filter((line) => lineCenterIn(line, box2));
-  const insideWords = inside8.reduce((n2, line) => n2 + wordCount3(line.text), 0);
+  const insideWords = inside8.reduce((n3, line) => n3 + wordCount3(line.text), 0);
   if (insideWords < 0.6 * pageWords) return false;
   const typeLines = inside8.filter((line) => wordCount3(line.text) >= 3);
   if (typeLines.length < 3) return false;
-  const typeWords = typeLines.reduce((n2, line) => n2 + wordCount3(line.text), 0);
+  const typeWords = typeLines.reduce((n3, line) => n3 + wordCount3(line.text), 0);
   return typeWords >= 0.5 * insideWords;
 }
 function textBlockBox(box2, lines) {
@@ -10766,11 +10766,11 @@ function mergeTouchingPictures(made, lines, pageH) {
   }
 }
 function diagramBand(box2, lines) {
-  let n2 = 0;
+  let n3 = 0;
   for (const line of lines || []) {
-    if (diagramLabel(line.text) && lineCenterIn(line, box2)) n2 += 1;
+    if (diagramLabel(line.text) && lineCenterIn(line, box2)) n3 += 1;
   }
-  return n2 >= 3;
+  return n3 >= 3;
 }
 function widenBetweenColumns(box2, lines, pageW, pageH) {
   const h = box2.y1 - box2.y0;
@@ -11303,7 +11303,7 @@ function coverPlates(figures, prims, lines, bodySize, pageW, pageH, inkBoxes = [
     if (w < 48 || h < 32 || area2 < 0.025 * pageArea || area2 > 0.92 * pageArea) continue;
     const drawings = figures.filter((f) => f.kind !== "image");
     const inside8 = drawings.filter((f) => insideFrac(f, hull) >= 0.5);
-    const insideArea = inside8.reduce((n2, f) => n2 + boxArea(f), 0);
+    const insideArea = inside8.reduce((n3, f) => n3 + boxArea(f), 0);
     const mine = caps.filter((c) => c.key === key);
     const cap4 = mine.filter((c) => c.y0 >= hull.y1 - 8).sort((a, b) => a.y0 - b.y0)[0] || mine.filter((c) => c.y1 <= hull.y0 + 8).sort((a, b) => b.y1 - a.y1)[0] || mine[0] || null;
     if (inside8.length && insideArea >= 0.55 * area2) {
@@ -11664,12 +11664,12 @@ function repairYearHeader(table) {
         if (y != null) votes.set(y - step * i, (votes.get(y - step * i) || 0) + 1);
       });
       let base = null;
-      let n2 = 0;
-      for (const [k, v] of votes) if (v > n2) {
-        n2 = v;
+      let n3 = 0;
+      for (const [k, v] of votes) if (v > n3) {
+        n3 = v;
         base = k;
       }
-      if (n2 < 0.6 * years.filter((y) => y != null).length || n2 < 3) continue;
+      if (n3 < 0.6 * years.filter((y) => y != null).length || n3 < 3) continue;
       years.forEach((y, i) => {
         if (y == null) return;
         const want = base + step * i;
@@ -11685,11 +11685,11 @@ function repairYearHeader(table) {
 }
 function editDistance(a, b) {
   const m = a.length;
-  const n2 = b.length;
-  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n2).fill(0)]);
-  for (let j = 1; j <= n2; j++) d[0][j] = j;
-  for (let i = 1; i <= m; i++) for (let j = 1; j <= n2; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-  return d[m][n2];
+  const n3 = b.length;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n3).fill(0)]);
+  for (let j = 1; j <= n3; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n3; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[m][n3];
 }
 function spanNoteRows(table, { numericCols = null } = {}) {
   const spans = [];
@@ -12155,8 +12155,8 @@ function restoreBareDecimals(table) {
     const fracLen = (t) => t.replace(/^0?\./, "").length;
     const anchors = dotted.filter((k) => /^0\.\d{3,6}$/.test(textOf2(k)));
     for (const cell of bare) {
-      const n2 = textOf2(cell).length;
-      const sample = anchors.find((k) => fracLen(textOf2(k)) === n2);
+      const n3 = textOf2(cell).length;
+      const sample = anchors.find((k) => fracLen(textOf2(k)) === n3);
       if (!sample) continue;
       const mag = Number(textOf2(sample).replace(/^0\./, "").replace(/^0+/, "") || "0");
       const bareN = Number(textOf2(cell));
@@ -12483,7 +12483,7 @@ function repairGlyphDigits(table) {
     if (values.length >= 4 && values.length === ints.length && marks.length === 1 && values[values.length - 1] - values[0] <= 40) {
       const have = new Set(values);
       const missing2 = [];
-      for (let n2 = values[0]; n2 <= values[values.length - 1]; n2 += 1) if (!have.has(n2)) missing2.push(n2);
+      for (let n3 = values[0]; n3 <= values[values.length - 1]; n3 += 1) if (!have.has(n3)) missing2.push(n3);
       if (missing2.length === 1) marks[0].text = String(missing2[0]);
     }
     const refreshed = body(c).filter((k) => textOf2(k));
@@ -12498,8 +12498,8 @@ function repairGlyphDigits(table) {
     if (dotted.length < 2 || dotted.length < 0.4 * refreshed.length) continue;
     const lengths = /* @__PURE__ */ new Map();
     for (const cell of dotted) {
-      const n2 = textOf2(cell).length - 1;
-      lengths.set(n2, (lengths.get(n2) || 0) + 1);
+      const n3 = textOf2(cell).length - 1;
+      lengths.set(n3, (lengths.get(n3) || 0) + 1);
     }
     for (const cell of refreshed) {
       const m = textOf2(cell).match(/^[lI|]\s*(\d{2,5})$/);
@@ -12642,8 +12642,8 @@ function fitsColumn(number, column) {
   for (const v of column) counts.set(decimals(v), (counts.get(decimals(v)) || 0) + 1);
   let typical = 0;
   let best = -1;
-  for (const [k, n2] of counts) if (n2 > best) {
-    best = n2;
+  for (const [k, n3] of counts) if (n3 > best) {
+    best = n3;
     typical = k;
   }
   if (decimals(number) !== typical) return false;
@@ -12747,9 +12747,9 @@ function editDistance2(a, b) {
   const s = String(a || "");
   const t = String(b || "");
   const m = s.length;
-  const n2 = t.length;
+  const n3 = t.length;
   const row4 = Array.from({ length: m + 1 }, (_, i) => i);
-  for (let j = 1; j <= n2; j += 1) {
+  for (let j = 1; j <= n3; j += 1) {
     let prev = row4[0];
     row4[0] = j;
     for (let i = 1; i <= m; i += 1) {
@@ -12833,9 +12833,9 @@ function inRuledRegion(box2, regions) {
   const cy = (box2[1] + box2[3]) / 2;
   return regions.some((r) => cx >= r[0] && cx <= r[2] && cy >= r[1] && cy <= r[3]);
 }
-function betterCount(n2, bestN, word, best, knownWord) {
-  if (!best || n2 > bestN) return true;
-  if (n2 < bestN) return false;
+function betterCount(n3, bestN, word, best, knownWord) {
+  if (!best || n3 > bestN) return true;
+  if (n3 < bestN) return false;
   if (knownWord !== best.known) return knownWord;
   return word < best.word;
 }
@@ -12856,16 +12856,16 @@ function preferSpellings(items, lexicon, { rules = null, pageW = 612, pageH = 79
     const mine = counts.get(core) || 0;
     let best = null;
     let bestN = 0;
-    for (const [word, n2] of counts) {
+    for (const [word, n3] of counts) {
       if (word === core || Math.abs(word.length - core.length) > 1) continue;
       if (editDistance2(core, word) !== 1) continue;
       if (dropsPlural(core, word)) continue;
       const inLex = known(lexicon, word);
-      const ok = inLex && n2 >= 2 && n2 >= mine * 2 || !inLex && n2 >= 3 && n2 >= mine * 3;
+      const ok = inLex && n3 >= 2 && n3 >= mine * 2 || !inLex && n3 >= 3 && n3 >= mine * 3;
       if (!ok) continue;
-      if (betterCount(n2, bestN, word, best, inLex)) {
+      if (betterCount(n3, bestN, word, best, inLex)) {
         best = { word, known: inLex };
-        bestN = n2;
+        bestN = n3;
       }
     }
     if (!best) return item;
@@ -13140,7 +13140,7 @@ function releaseOrphanFigureWords(used, figureWords, figures, tables) {
     if (!inside8) used.delete(word);
   }
 }
-function parsePageGeometry(data, n2) {
+function parsePageGeometry(data, n3) {
   const t0 = now();
   let w = data.w;
   let h = data.h;
@@ -13172,7 +13172,7 @@ function parsePageGeometry(data, n2) {
   const words = lines.flatMap((l) => l.words);
   const pageArea = w * h;
   const imageArea = (im) => (im.x1 - im.x0) * (im.y1 - im.y0);
-  const textChars = words.reduce((n3, wd) => n3 + (wd.text || "").length, 0);
+  const textChars = words.reduce((n4, wd) => n4 + (wd.text || "").length, 0);
   const scanRaster = rasterScanPage({ images: graphics.images, shapes: graphics.shapes, words, pageW: w, pageH: h });
   const strips = stripTiles(graphics.images, w, h, textChars);
   const bigImage = scanRaster || strips.length > 0 || graphics.images.some((im) => imageArea(im) >= 0.5 * pageArea);
@@ -13185,7 +13185,7 @@ function parsePageGeometry(data, n2) {
   const released = new Set(lattice.released);
   for (const t of lattice.tables) {
     if (isTitledBox(t)) continue;
-    t.page = n2;
+    t.page = n3;
     tables.push(t);
   }
   for (const w2 of lattice.usedWords) if (!released.has(w2)) used.add(w2);
@@ -13196,7 +13196,7 @@ function parsePageGeometry(data, n2) {
     const t = tableFromBand(band, free);
     if (!t || isTitledBox(t) || chartGrid(t)) continue;
     if (ocr && proseColumnTable(t)) continue;
-    t.page = n2;
+    t.page = n3;
     for (const w2 of t.usedWords) used.add(w2);
     delete t.usedWords;
     for (const s of band.segs) usedRules.add(s);
@@ -13210,7 +13210,7 @@ function parsePageGeometry(data, n2) {
   const figs = kind === "scan" ? { figures: [], used: /* @__PURE__ */ new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: figWords.filter((wd) => !used.has(wd)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments, pageTextChars: textChars, plates: ocr, textLines: lines });
   const figureWords = figs.used;
   for (const wd of figureWords) used.add(wd);
-  let figures = figs.figures.map((f) => ({ ...f, page: n2 }));
+  let figures = figs.figures.map((f) => ({ ...f, page: n3 }));
   const plated = ocr && figures.some((f) => f.fromPlate && boxArea2(f.bbox || f) >= 0.08 * pageArea && boxArea2(f.bbox || f) <= 0.9 * pageArea);
   if (plated) figures = figures.filter((f) => f.fromPlate || boxArea2(f.bbox || f) < 0.75 * pageArea);
   const pictureBoxes = figures.filter((f) => f.fromPicture);
@@ -13225,7 +13225,7 @@ function parsePageGeometry(data, n2) {
         bbox: [round(r.x0), round(r.y0), round(r.x1), round(r.y1)],
         kind: "image",
         count: 1,
-        page: n2
+        page: n3
       }));
     }
   }
@@ -13258,7 +13258,7 @@ function parsePageGeometry(data, n2) {
     for (const w2 of words) if (used.has(w2) && !figs.used.has(w2) && w2.x0 >= t.bbox[0] - 2 && w2.x1 <= t.bbox[2] + 2 && w2.base >= t.bbox[1] && w2.base <= t.bbox[3] + 2) used.delete(w2);
   }
   releaseOrphanFigureWords(used, figureWords, figures, tables);
-  return { n: n2, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, marginRotated, words: figWords, graphics, tables, figures, used, ms: round(now() - t0) };
+  return { n: n3, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, marginRotated, words: figWords, graphics, tables, figures, used, ms: round(now() - t0) };
 }
 function stripTiles(images, pageW, pageH, textChars) {
   if (textChars >= 400) return [];
@@ -13276,8 +13276,8 @@ function ocrGraphics(data, w, h) {
   for (const it of data.items || []) {
     if (!/^[.·•]+$/.test(it.str || "")) continue;
     const size = it.transform[0];
-    const n2 = it.str.length;
-    for (let i = 0; i < n2; i++) dots.push({ x: it.transform[4] + (it.width || size) * (i + 0.5) / n2, y: it.transform[5] - 0.05 * size, r: 0.4 });
+    const n3 = it.str.length;
+    for (let i = 0; i < n3; i++) dots.push({ x: it.transform[4] + (it.width || size) * (i + 0.5) / n3, y: it.transform[5] - 0.05 * size, r: 0.4 });
   }
   for (const r of data.rules || []) {
     const horizontal = Math.abs(r.x1 - r.x0) >= Math.abs(r.y1 - r.y0);
@@ -13440,14 +13440,14 @@ function attachDroppedFigDigit(blocks) {
     if (drop.has(b) || b.type !== "caption") continue;
     if (!/^(?:fig(?:ure)?s?|plates?|abb(?:ildung)?|tafeln?|tafel|taf)\.?$/i.test(normalizeFigSpelling(b.text))) continue;
     let next = null;
-    for (const n2 of blocks) {
-      if (n2 === b || drop.has(n2) || n2.type !== "para" && n2.type !== "caption" && n2.type !== "heading") continue;
-      if (!/^\d/.test(String(n2.text || "").trim())) continue;
-      if (n2.bbox.x0 < b.bbox.x1 - 4 || n2.bbox.x0 - b.bbox.x1 > 36) continue;
-      const overlap = Math.min(n2.bbox.y1, b.bbox.y1) - Math.max(n2.bbox.y0, b.bbox.y0);
-      const nh = n2.bbox.y1 - n2.bbox.y0;
+    for (const n3 of blocks) {
+      if (n3 === b || drop.has(n3) || n3.type !== "para" && n3.type !== "caption" && n3.type !== "heading") continue;
+      if (!/^\d/.test(String(n3.text || "").trim())) continue;
+      if (n3.bbox.x0 < b.bbox.x1 - 4 || n3.bbox.x0 - b.bbox.x1 > 36) continue;
+      const overlap = Math.min(n3.bbox.y1, b.bbox.y1) - Math.max(n3.bbox.y0, b.bbox.y0);
+      const nh = n3.bbox.y1 - n3.bbox.y0;
       if (!(nh > 0) || overlap < 0.35 * nh) continue;
-      if (!next || n2.bbox.x0 < next.bbox.x0) next = n2;
+      if (!next || n3.bbox.x0 < next.bbox.x0) next = n3;
     }
     if (!next) continue;
     b.text = normalizeFigSpelling(`${b.text} ${next.text}`.replace(/\s+/g, " ").trim());
@@ -13468,14 +13468,14 @@ function joinCaptionContinuation(blocks) {
   for (const b of blocks) {
     if (drop.has(b) || b.type !== "caption" || !figLabelOnly(b.text)) continue;
     let side2 = null;
-    for (const n2 of blocks) {
-      if (n2 === b || drop.has(n2) || n2.type !== "para" || !n2.bbox) continue;
-      const overlap = Math.min(n2.bbox.y1, b.bbox.y1) - Math.max(n2.bbox.y0, b.bbox.y0);
-      const nh = Math.max(1, n2.bbox.y1 - n2.bbox.y0);
+    for (const n3 of blocks) {
+      if (n3 === b || drop.has(n3) || n3.type !== "para" || !n3.bbox) continue;
+      const overlap = Math.min(n3.bbox.y1, b.bbox.y1) - Math.max(n3.bbox.y0, b.bbox.y0);
+      const nh = Math.max(1, n3.bbox.y1 - n3.bbox.y0);
       if (overlap < 0.5 * nh) continue;
-      if (n2.bbox.x0 < b.bbox.x1 - 4 || n2.bbox.x0 - b.bbox.x1 > 220) continue;
-      if (!/^[a-z]/.test(String(n2.text || "").trim())) continue;
-      if (!side2 || n2.bbox.x0 < side2.bbox.x0) side2 = n2;
+      if (n3.bbox.x0 < b.bbox.x1 - 4 || n3.bbox.x0 - b.bbox.x1 > 220) continue;
+      if (!/^[a-z]/.test(String(n3.text || "").trim())) continue;
+      if (!side2 || n3.bbox.x0 < side2.bbox.x0) side2 = n3;
     }
     if (!side2) continue;
     b.text = normalizeFigSpelling(`${b.text} ${side2.text}`.replace(/\s+/g, " ").trim());
@@ -13497,7 +13497,7 @@ function liftOrdinateNote(blocks) {
   for (const b of blocks) {
     if (b.type !== "caption" || !b.lines?.length) continue;
     const head = b.lines[0];
-    const side2 = blocks.find((n2) => n2 !== b && !drop.has(n2) && n2.lines?.length && Math.abs((n2.lines[0].base ?? n2.bbox.y1) - (head.base ?? head.y1)) <= 4 && n2.bbox.x0 >= (head.x1 ?? b.bbox.x0) - 6 && n2.bbox.x0 - (head.x1 ?? b.bbox.x1) < 160 && /\bordin/i.test(n2.text || ""));
+    const side2 = blocks.find((n3) => n3 !== b && !drop.has(n3) && n3.lines?.length && Math.abs((n3.lines[0].base ?? n3.bbox.y1) - (head.base ?? head.y1)) <= 4 && n3.bbox.x0 >= (head.x1 ?? b.bbox.x0) - 6 && n3.bbox.x0 - (head.x1 ?? b.bbox.x1) < 160 && /\bordin/i.test(n3.text || ""));
     if (!side2) continue;
     const rest = b.lines.slice(1);
     const joined = joinLines([head, ...side2.lines]);
@@ -13521,12 +13521,12 @@ function joinCaptionTails(blocks, bodySize) {
     let guard = 0;
     while (guard++ < 3) {
       let next = null;
-      for (const n2 of blocks) {
-        if (n2 === b || drop.has(n2) || n2.type !== "para") continue;
-        if (n2.bbox.y0 < b.bbox.y1 - 2 || n2.bbox.y0 - b.bbox.y1 > 1.8 * bodySize) continue;
-        const ox = Math.min(n2.bbox.x1, b.bbox.x1) - Math.max(n2.bbox.x0, b.bbox.x0);
+      for (const n3 of blocks) {
+        if (n3 === b || drop.has(n3) || n3.type !== "para") continue;
+        if (n3.bbox.y0 < b.bbox.y1 - 2 || n3.bbox.y0 - b.bbox.y1 > 1.8 * bodySize) continue;
+        const ox = Math.min(n3.bbox.x1, b.bbox.x1) - Math.max(n3.bbox.x0, b.bbox.x0);
         if (ox <= 8) continue;
-        if (!next || n2.bbox.y0 < next.bbox.y0) next = n2;
+        if (!next || n3.bbox.y0 < next.bbox.y0) next = n3;
       }
       if (!next) break;
       if (figCaptionKey(next.text) != null || /^(?:table|tab)\b/i.test(next.text) || wordCountText(next.text) > 24) break;
@@ -14415,9 +14415,9 @@ function dominantFont(lines) {
   const counts = /* @__PURE__ */ new Map();
   for (const l of lines) for (const w of l.words) counts.set(w.fontName, (counts.get(w.fontName) || 0) + w.text.length);
   let best = null;
-  let n2 = 0;
-  for (const [k, v] of counts) if (v > n2) {
-    n2 = v;
+  let n3 = 0;
+  for (const [k, v] of counts) if (v > n3) {
+    n3 = v;
     best = k;
   }
   return best;
@@ -14482,12 +14482,12 @@ var init_parse = __esm({
 
 // src/view/parse-overlay.js
 function normRotation(rotation) {
-  const n2 = Number(rotation) || 0;
-  return (n2 % 360 + 360) % 360;
+  const n3 = Number(rotation) || 0;
+  return (n3 % 360 + 360) % 360;
 }
 function num2(value, fallback = 0) {
-  const n2 = Number(value);
-  return Number.isFinite(n2) ? n2 : fallback;
+  const n3 = Number(value);
+  return Number.isFinite(n3) ? n3 : fallback;
 }
 function boxOf5(bbox) {
   if (!Array.isArray(bbox) || bbox.length < 4) return null;
@@ -14795,16 +14795,16 @@ function pinCaption(block, doc) {
   if (!block || typeof block !== "object") return "";
   if (block.type === "table") {
     const order = Array.isArray(doc?.order) ? doc.order : [];
-    let n2 = 0;
+    let n3 = 0;
     for (const id of order) {
-      if (doc?.blocks?.[id]?.type === "table") n2 += 1;
+      if (doc?.blocks?.[id]?.type === "table") n3 += 1;
       if (id === block.id) break;
     }
-    if (n2 < 1) n2 = 1;
+    if (n3 < 1) n3 = 1;
     const { rows, cols } = tableSize(block);
     const size = rows && cols ? ` · ${rows}×${cols}` : "";
     const page = Number(block.page) || 0;
-    return squash(`Table ${n2}${size}, p. ${page}`);
+    return squash(`Table ${n3}${size}, p. ${page}`);
   }
   if (block.type === "figure" || block.type === "formula") {
     let caption = "";
@@ -14967,13 +14967,13 @@ function pinOpenFallback({ opened = false, plan = null, pageUid: pageUid2 = "", 
   return { openPage: page, pending: { pinUid: plan.pinUid, until: Number(now4) + PIN_PENDING_MS } };
 }
 function pinnedToast(page) {
-  const n2 = Number(page);
-  return Number.isInteger(n2) && n2 >= 1 ? `Pinned p. ${n2}` : "Pinned";
+  const n3 = Number(page);
+  return Number.isInteger(n3) && n3 >= 1 ? `Pinned p. ${n3}` : "Pinned";
 }
 function fracStyle(frac) {
   if (!Array.isArray(frac) || frac.length < 4) return null;
   const nums = frac.slice(0, 4).map(Number);
-  if (nums.some((n2) => !Number.isFinite(n2))) return null;
+  if (nums.some((n3) => !Number.isFinite(n3))) return null;
   return {
     left: `${nums[0] * 100}%`,
     top: `${nums[1] * 100}%`,
@@ -15107,7 +15107,7 @@ var init_parse_hash = __esm({
 function boxOf6(value) {
   if (!Array.isArray(value) || value.length < 4) return null;
   const [x0, y0, x1, y1] = value;
-  if (![x0, y0, x1, y1].every((n2) => typeof n2 === "number" && Number.isFinite(n2))) return null;
+  if (![x0, y0, x1, y1].every((n3) => typeof n3 === "number" && Number.isFinite(n3))) return null;
   return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
 }
 function iou2(a, b) {
@@ -15229,7 +15229,7 @@ function selectBlocks(doc, idsOrRange) {
     return order.map((id) => blocks[id]).filter(Boolean);
   }
   if (Array.isArray(idsOrRange)) {
-    if (idsOrRange.length === 2 && idsOrRange.every((n2) => typeof n2 === "number")) {
+    if (idsOrRange.length === 2 && idsOrRange.every((n3) => typeof n3 === "number")) {
       return blocksInRange(doc, idsOrRange[0], idsOrRange[1]);
     }
     return idsOrRange.map((id) => blocks[id]).filter(Boolean);
@@ -15268,9 +15268,9 @@ function tableGrid(table) {
   return grid;
 }
 function freshId(used) {
-  let n2 = 1;
-  while (used.has(`d${n2}`)) n2 += 1;
-  const id = `d${n2}`;
+  let n3 = 1;
+  while (used.has(`d${n3}`)) n3 += 1;
+  const id = `d${n3}`;
   used.add(id);
   return id;
 }
@@ -15405,25 +15405,25 @@ function renameRegionCaption(blockString3, caption) {
   return next ? `${match[1]} ${next}` : match[1];
 }
 function regionBadge(count) {
-  const n2 = Number(count);
-  if (!Number.isInteger(n2) || n2 < 1) return "";
-  return `◬ ${n2}`;
+  const n3 = Number(count);
+  if (!Number.isInteger(n3) || n3 < 1) return "";
+  return `◬ ${n3}`;
 }
 function regionRefCount(raw) {
   if (raw == null || raw === "") return null;
   const value = Array.isArray(raw) ? Array.isArray(raw[0]) ? raw[0][0] : raw[0] : raw;
   if (value == null || value === "") return null;
-  const n2 = Number(value);
-  if (!Number.isInteger(n2) || n2 < 0) return null;
-  return n2;
+  const n3 = Number(value);
+  if (!Number.isInteger(n3) || n3 < 0) return null;
+  return n3;
 }
 function regionDeleteCopy(count) {
   if (count == null || count === "") return null;
-  const n2 = Number(count);
-  if (!Number.isInteger(n2) || n2 < 0) return null;
-  if (n2 === 0) return "";
-  const noun = n2 === 1 ? "block" : "blocks";
-  return `Referenced in ${n2} ${noun}. Delete anyway?`;
+  const n3 = Number(count);
+  if (!Number.isInteger(n3) || n3 < 0) return null;
+  if (n3 === 0) return "";
+  const noun = n3 === 1 ? "block" : "blocks";
+  return `Referenced in ${n3} ${noun}. Delete anyway?`;
 }
 function regionMenu(rows) {
   const list = (Array.isArray(rows) ? rows : []).filter((row4) => row4 && typeof row4.uid === "string" && row4.uid);
@@ -15489,13 +15489,13 @@ function galleryItems(board2, resolve) {
   return out;
 }
 function galleryGrid(items, { cols = 4, cell = 160, gap = 12 } = {}) {
-  const n2 = Math.max(1, cols);
+  const n3 = Math.max(1, cols);
   return (items || []).map((item, i) => ({
     uid: item.uid,
     title: item.title || "",
     src: item.src || null,
-    x: i % n2 * (cell + gap),
-    y: Math.floor(i / n2) * (cell + gap),
+    x: i % n3 * (cell + gap),
+    y: Math.floor(i / n3) * (cell + gap),
     w: cell,
     h: cell
   }));
@@ -15554,9 +15554,9 @@ function timelineAxis(cards, { width = 800, resolve } = {}) {
 function graphLayout(nodes, links, { iterations = 12 } = {}) {
   const ids = [...nodes || []];
   const pos = /* @__PURE__ */ new Map();
-  const n2 = ids.length || 1;
+  const n3 = ids.length || 1;
   ids.forEach((id, i) => {
-    const a = Math.PI * 2 * i / n2;
+    const a = Math.PI * 2 * i / n3;
     pos.set(id, { x: Math.cos(a) * 120, y: Math.sin(a) * 120 });
   });
   const steps = Math.max(0, Math.min(40, iterations));
@@ -15606,16 +15606,16 @@ function derivedGraph(board2) {
 function commentCount(board2, uid) {
   const item = board2?.items?.get?.(uid);
   if (!item) return 0;
-  let n2 = 0;
+  let n3 = 0;
   for (const member of item.members || []) {
     const kid = board2.items.get(member);
     if (!kid) continue;
     const title = String(kid.title || "").trim();
     const text4 = `${title} ${kid.string || ""}`.trim();
-    if (/^comments?$/i.test(title) && kid.members?.length) n2 += kid.members.length;
-    else if (/\{\{\[\[comment\]\]\}\}|^\[\[comment\]\]|^comment::/i.test(text4)) n2 += 1;
+    if (/^comments?$/i.test(title) && kid.members?.length) n3 += kid.members.length;
+    else if (/\{\{\[\[comment\]\]\}\}|^\[\[comment\]\]|^comment::/i.test(text4)) n3 += 1;
   }
-  return n2;
+  return n3;
 }
 function cardTemplatePlan(blocks) {
   const out = [];
@@ -15667,8 +15667,8 @@ function sectionPair(uids, getItem) {
 }
 function zoomThreshold(boardValue, settingValue) {
   const pick2 = (value) => {
-    const n2 = Number(value);
-    return Number.isFinite(n2) && n2 >= 0.05 && n2 <= 1.5 ? n2 : null;
+    const n3 = Number(value);
+    return Number.isFinite(n3) && n3 >= 0.05 && n3 <= 1.5 ? n3 : null;
   };
   return pick2(boardValue) ?? pick2(settingValue) ?? 0.45;
 }
@@ -15753,7 +15753,7 @@ function pageTitleToDate(title) {
   return date.getTime();
 }
 function parseIntervals(text4) {
-  const nums = String(text4 ?? "").split(",").map((part) => Number(part.trim())).filter((n2) => Number.isFinite(n2) && n2 > 0);
+  const nums = String(text4 ?? "").split(",").map((part) => Number(part.trim())).filter((n3) => Number.isFinite(n3) && n3 > 0);
   return nums.length ? nums : [...DEFAULT_INTERVALS];
 }
 function intervalLabel(days) {
@@ -16036,8 +16036,8 @@ function normalizeMark(mark) {
   for (const ch of s) out += SUP_MAP[ch] ?? ch;
   return out;
 }
-function aliasFor(n2, uid, sup2 = true) {
-  const alias = `[(${n2})](((${uid})))`;
+function aliasFor(n3, uid, sup2 = true) {
+  const alias = `[(${n3})](((${uid})))`;
   return sup2 ? `#sup^^${alias}^^` : alias;
 }
 function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = {}, sup: sup2 = true, uid } = {}) {
@@ -16068,13 +16068,13 @@ function planFootnotes(strings, { startAt = 0, cap: cap4 = FOOTNOTE_CAP, defs = 
   const byId2 = /* @__PURE__ */ new Map();
   order.forEach((id, i) => {
     const d = known2.get(id);
-    const n2 = Math.max(0, Math.floor(startAt)) + i + 1;
+    const n3 = Math.max(0, Math.floor(startAt)) + i + 1;
     if (i < limit) {
-      const note = { id, uid: make4(), n: n2, mark: d.mark, text: d.text };
+      const note = { id, uid: make4(), n: n3, mark: d.mark, text: d.text };
       notes.push(note);
       byId2.set(id, { kind: "note", note });
     } else {
-      const item = { id, n: n2, mark: d.mark, text: d.text };
+      const item = { id, n: n3, mark: d.mark, text: d.text };
       overflow.push(item);
       byId2.set(id, { kind: "overflow", item });
     }
@@ -16186,7 +16186,7 @@ function prepareTable(table, available2 = [], { format = "extension" } = {}) {
     out += text4.slice(at);
     return { ...cell, text: out.trim() };
   });
-  const used = new Set(found.filter((n2) => n2.row != null).map((n2) => n2.row));
+  const used = new Set(found.filter((n3) => n3.row != null).map((n3) => n3.row));
   let next = cells.filter((cell) => !used.has(cell.r)).map((cell) => {
     const shift = [...used].filter((r) => r < cell.r).length;
     return shift ? { ...cell, r: cell.r - shift } : cell;
@@ -16756,10 +16756,10 @@ function librarySelective(filter) {
   return f.types.some((t) => BOUNDED_TYPES.includes(t));
 }
 function editedSince(edited, days, now4 = Date.now()) {
-  const n2 = Math.max(0, Math.floor(Number(days) || 0));
-  if (!n2) return true;
+  const n3 = Math.max(0, Math.floor(Number(days) || 0));
+  if (!n3) return true;
   const t = now4 instanceof Date ? now4.getTime() : Number(now4);
-  return Number.isFinite(edited) && edited > t - n2 * DAY_MS;
+  return Number.isFinite(edited) && edited > t - n3 * DAY_MS;
 }
 function blockKind(string) {
   const s = typeof string === "string" ? string : "";
@@ -16881,10 +16881,10 @@ function libraryCardBase(row4) {
   return { string: `((${uid}))`, text: String(row4?.string ?? row4?.text ?? "").slice(0, 120), kind, label };
 }
 function recentDailyTitles(days = 14, now4 = /* @__PURE__ */ new Date()) {
-  const n2 = Math.max(1, Math.min(366, Math.floor(Number(days) || 14)));
+  const n3 = Math.max(1, Math.min(366, Math.floor(Number(days) || 14)));
   const base = now4 instanceof Date ? now4 : new Date(now4);
   const titles = [];
-  for (let i = 0; i < n2; i += 1) {
+  for (let i = 0; i < n3; i += 1) {
     const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i, 12, 0, 0, 0);
     titles.push(dailyPageTitle(d));
   }
@@ -16982,13 +16982,13 @@ function metaFilterActive(raw) {
 }
 function narrowByMeta(rows, raw, { days = 0, now: now4 = Date.now() } = {}) {
   const f = normalizeMetaFilter(raw);
-  const n2 = Math.max(0, Math.floor(Number(days) || 0));
+  const n3 = Math.max(0, Math.floor(Number(days) || 0));
   const lower4 = (s) => String(s ?? "").toLowerCase();
   return (Array.isArray(rows) ? rows : []).filter((row4) => {
     const m = row4?.meta || {};
-    if (f.dayMode === "created" && n2) {
+    if (f.dayMode === "created" && n3) {
       const t = num4(m.created);
-      if (t == null || t <= now4 - n2 * DAY_MS2) return false;
+      if (t == null || t <= now4 - n3 * DAY_MS2) return false;
     }
     if (f.createdBy && lower4(m.createdBy) !== lower4(f.createdBy)) return false;
     if (f.editedBy && lower4(m.editedBy) !== lower4(f.editedBy)) return false;
@@ -17075,9 +17075,9 @@ function assembleMeta(uids, { pullMany, q: q2 }) {
     } catch {
       counts = [];
     }
-    for (const [eid, n2] of Array.isArray(counts) ? counts : []) {
+    for (const [eid, n3] of Array.isArray(counts) ? counts : []) {
       const m = byEid.get(eid);
-      if (m) m.refs = Number(n2) || 0;
+      if (m) m.refs = Number(n3) || 0;
     }
   }
   return out;
@@ -17122,7 +17122,7 @@ var init_search_sort = __esm({
     sortNeedsMeta = (sort) => normalizeSort(sort) !== DEFAULT_SORT && normalizeSort(sort) !== "title";
     MONTHS6 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     by = (name) => name && String(name).length <= 20 ? ` by ${name}` : "";
-    plural = (n2, one, many) => `${n2.toLocaleString("en-US")} ${n2 === 1 ? one : many}`;
+    plural = (n3, one, many) => `${n3.toLocaleString("en-US")} ${n3 === 1 ? one : many}`;
     DAY_MS2 = 864e5;
     USER_PULL = "[:user/display-name {:user/display-page [:node/title]}]";
     META_PULL = `[:db/id :block/uid :create/time :edit/time :block/string {:create/user ${USER_PULL}} {:edit/user ${USER_PULL}} {:block/children [:db/id]}]`;
@@ -17136,8 +17136,8 @@ var init_search_sort = __esm({
     META_MAX = 2e3;
     userName = (u) => {
       if (!u || typeof u !== "object") return "";
-      const n2 = u[":user/display-name"] ?? u[":user/display-page"]?.[":node/title"];
-      return typeof n2 === "string" ? n2 : "";
+      const n3 = u[":user/display-name"] ?? u[":user/display-page"]?.[":node/title"];
+      return typeof n3 === "string" ? n3 : "";
     };
   }
 });
@@ -17166,7 +17166,7 @@ function isConnection(pulled) {
   const parents = Array.isArray(pulled?.[":block/parents"]) ? pulled[":block/parents"] : [];
   return parents.some((p) => str(p?.[":block/string"]).trim() === "Connections") && parents.some((p) => DIAGRAM.test(str(p?.[":block/string"])));
 }
-function semanticCandidates(raw, { pull, pdfBlockOf = () => null, perPage = SEM_PER_PAGE } = {}) {
+function semanticCandidates(raw, { pull, pdfBlockOf = () => null, perPage = SEM_PER_PAGE, pdfPages = false } = {}) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const perPageCount = /* @__PURE__ */ new Map();
@@ -17188,6 +17188,19 @@ function semanticCandidates(raw, { pull, pdfBlockOf = () => null, perPage = SEM_
       const title = str(pulled[":node/title"]);
       if (title) {
         if (title.startsWith("roam/")) continue;
+        const pageUrl = pdfPages ? str(pulled[":pdf/url"]) : "";
+        if (pageUrl) {
+          let target = null;
+          try {
+            target = pdfBlockOf(pageUrl);
+          } catch {
+            target = null;
+          }
+          if (target?.uid && pdfMacroUrl(target.string)) {
+            row4 = { kind: "block", uid: target.uid, string: target.string, pageTitle: target.pageTitle || "", pageUid: str(pulled[":block/uid"]) || uid, edited: pulled[":edit/time"] ?? null, tags: [], via: uid };
+            break;
+          }
+        }
         row4 = { kind: "page", uid: str(pulled[":block/uid"]) || uid, title, pageUid: uid, edited: pulled[":edit/time"] ?? null, tags: [] };
         break;
       }
@@ -17222,9 +17235,9 @@ function semanticCandidates(raw, { pull, pdfBlockOf = () => null, perPage = SEM_
     const key = `${row4.kind}:${row4.uid}`;
     if (seen.has(key)) continue;
     const pageKey2 = row4.pageUid || row4.uid;
-    const n2 = perPageCount.get(pageKey2) || 0;
-    if (n2 >= perPage) continue;
-    perPageCount.set(pageKey2, n2 + 1);
+    const n3 = perPageCount.get(pageKey2) || 0;
+    if (n3 >= perPage) continue;
+    perPageCount.set(pageKey2, n3 + 1);
     seen.add(key);
     out.push({ ...row4, rank, semantic: true });
   }
@@ -17249,17 +17262,150 @@ var init_semantic = __esm({
     SEM_PER_PAGE = 2;
     RELATED_CHARS = 600;
     RELATED_CHILDREN = 10;
-    SEM_PULL = "[:block/uid :block/string :node/title :edit/time {:block/refs [:node/title]} {:block/page [:block/uid :node/title :pdf/url]} {:block/parents [:block/uid :block/string :node/title]}]";
+    SEM_PULL = "[:block/uid :block/string :node/title :pdf/url :edit/time {:block/refs [:node/title]} {:block/page [:block/uid :node/title :pdf/url]} {:block/parents [:block/uid :block/string :node/title]}]";
     DAILY = /^(January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}(st|nd|rd|th), \d{4}$/;
     str = (v) => typeof v === "string" ? v : "";
     DIAGRAM = /^\s*\{\{(?:\[\[)?diagram/i;
   }
 });
 
+// src/model/filter-browse.js
+function wantsFilterBrowse(filter) {
+  const f = normalizeLibraryFilter(filter);
+  if (f.text || f.tag) return false;
+  return f.days > 0 || f.orphan || metaFilterActive(filter);
+}
+function browseSpec(filter, { now: now4 = Date.now() } = {}) {
+  const f = normalizeLibraryFilter(filter);
+  const m = normalizeMetaFilter(filter);
+  const pdf = m.parsed || m.highlights;
+  const all = f.types.length === 0;
+  const has = (t) => all || f.types.includes(t);
+  const pages = !pdf && (has("page") || has("daily"));
+  const plain2 = !pdf && has("block");
+  const kinds = pdf ? has("pdf") ? ["pdf"] : [] : BROWSE_KINDS.filter(has);
+  if (!pages && !plain2 && !kinds.length) return null;
+  const shape = pages && (plain2 || kinds.length) ? "any" : pages ? "pages" : plain2 ? "blocks" : "kinds";
+  const bounded = f.days > 0 || Boolean(m.under) || shape === "kinds";
+  const days = f.days > 0 ? f.days : bounded ? 0 : BROWSE_DEFAULT_DAYS;
+  return {
+    shape,
+    kinds: shape === "kinds" ? kinds : [],
+    types: f.types,
+    mode: f.days > 0 ? m.dayMode : "edited",
+    days,
+    since: days ? now4 - days * DAY_MS3 : null,
+    defaulted: !bounded,
+    under: m.under,
+    createdBy: m.createdBy,
+    editedBy: m.editedBy,
+    refs: m.refs,
+    children: m.children,
+    parsed: m.parsed,
+    highlights: m.highlights,
+    pdf,
+    orphan: f.orphan,
+    thisBoard: m.thisBoard
+  };
+}
+function browseKey(spec, sort, limit, extra = "") {
+  if (!spec) return "";
+  const { since: _since, ...rest } = spec;
+  return JSON.stringify([rest, normalizeSort(sort), limit, extra]);
+}
+function browseTime(spec, sort) {
+  const id = normalizeSort(sort);
+  if (id === "created" || id === "oldest") return "created";
+  if (id === "edited") return "edited";
+  return spec?.mode === "created" ? "created" : "edited";
+}
+function browseQuery(spec, { patterns = {}, users = {}, sort = "best" } = {}) {
+  if (!spec) return null;
+  const inputs = ["$"];
+  const where2 = [];
+  const args = [];
+  if (spec.under) {
+    inputs.push("?under");
+    args.push(spec.under);
+    where2.push("[?pg :node/title ?under]", "[?b :block/page ?pg]");
+  }
+  if (spec.shape === "kinds") {
+    const alt = spec.kinds.map((k) => patterns[k]).filter(Boolean).map((p) => `(?:${p})`).join("|");
+    if (!alt) return null;
+    inputs.push("?kpat");
+    args.push(alt);
+    where2.push("[?b :block/string ?s]", "[(re-pattern ?kpat) ?kre]", "[(re-find ?kre ?s)]");
+  }
+  const attr = (t) => t === "created" ? ":create/time" : ":edit/time";
+  const time = browseTime(spec, sort);
+  const windowed = spec.since != null;
+  if (windowed) {
+    const v = spec.mode === time ? "?t" : "?w";
+    inputs.push("?since");
+    args.push(spec.since);
+    where2.push(`[?b ${attr(spec.mode)} ${v}]`, `[(> ${v} ?since)]`);
+  }
+  if (spec.shape === "pages") where2.push("[?b :node/title _]");
+  else if (spec.shape === "blocks") where2.push("[?b :block/page _]");
+  for (const [key, a, v] of [["createdBy", ":create/user", "?cu"], ["editedBy", ":edit/user", "?eu"]]) {
+    if (!spec[key]) continue;
+    const ids = users[key === "createdBy" ? "created" : "edited"];
+    if (!Array.isArray(ids) || !ids.length) return null;
+    inputs.push(`[${v} ...]`);
+    args.push(ids);
+    where2.push(`[?b ${a} ${v}]`);
+  }
+  if (!windowed || spec.mode !== time) where2.push(`[?b ${attr(time)} ?t]`);
+  if (spec.refs) where2.push("[?r :block/refs ?b]");
+  if (spec.children) where2.push("[?b :block/children ?k]");
+  return { query: `[:find ?b ?t :in ${inputs.join(" ")} :where ${where2.join(" ")}]`, args, time };
+}
+function browseCountBy(spec, sort) {
+  const id = normalizeSort(sort);
+  if (id === "linked" && spec?.refs) return "refs";
+  if (id === "children" && spec?.children) return "children";
+  return null;
+}
+function orderBrowse(rows, sort, counts = null) {
+  const list = (Array.isArray(rows) ? rows : []).filter((r) => Array.isArray(r) && r[0] != null).map((r) => ({ eid: r[0], time: n2(r[1]) || null, count: counts ? n2(counts.get(r[0])) : null }));
+  const oldest = normalizeSort(sort) === "oldest";
+  const byTime = (a, b) => oldest ? (a.time || Infinity) - (b.time || Infinity) : (b.time || 0) - (a.time || 0);
+  return list.sort(counts ? (a, b) => b.count - a.count || byTime(a, b) : byTime);
+}
+function browseOrdered(spec, sort) {
+  const id = normalizeSort(sort);
+  if (id === "linked" || id === "children") return Boolean(browseCountBy(spec, sort));
+  return id === "best" || id === "edited" || id === "created" || id === "oldest";
+}
+function browseEmptyText(spec) {
+  if (spec?.parsed && spec?.highlights) return "No parsed PDFs with highlights";
+  if (spec?.parsed) return "No parsed PDFs";
+  if (spec?.highlights) return "No PDFs with highlights";
+  return spec?.defaulted ? `Nothing edited in the last ${BROWSE_DEFAULT_DAYS} days — set days to widen` : "No matches";
+}
+var BROWSE_DEFAULT_DAYS, BROWSE_ROWS, BROWSE_SCAN, BROWSE_CHUNK, FILTER_BROWSE_TTL_MS, FILTER_BROWSE_MAX, FILTER_DEBOUNCE_MS, DEFAULT_WINDOW_NOTE, DAY_MS3, BROWSE_KINDS, n2;
+var init_filter_browse = __esm({
+  "src/model/filter-browse.js"() {
+    init_library();
+    init_search_sort();
+    BROWSE_DEFAULT_DAYS = 30;
+    BROWSE_ROWS = 200;
+    BROWSE_SCAN = 2e3;
+    BROWSE_CHUNK = 200;
+    FILTER_BROWSE_TTL_MS = 3e4;
+    FILTER_BROWSE_MAX = 20;
+    FILTER_DEBOUNCE_MS = 200;
+    DEFAULT_WINDOW_NOTE = `Showing the last ${BROWSE_DEFAULT_DAYS} days — set days to widen`;
+    DAY_MS3 = 864e5;
+    BROWSE_KINDS = Object.freeze(["pdf", "image", "web", "region", "pin", "board"]);
+    n2 = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
+  }
+});
+
 // src/model/refs.js
 function linkedRefLabel(count) {
-  const n2 = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
-  return n2 === 1 ? "1 linked reference" : `${n2} linked references`;
+  const n3 = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  return n3 === 1 ? "1 linked reference" : `${n3} linked references`;
 }
 function linkedRefCard(uid) {
   const s = String(uid ?? "");
@@ -17354,9 +17500,9 @@ function signatureOf(error) {
   return `${name}|${frame2}`;
 }
 function countOf(hits, sig) {
-  let n2 = 0;
-  for (const hit of hits) if (hit.sig === sig) n2 += 1;
-  return n2;
+  let n3 = 0;
+  for (const hit of hits) if (hit.sig === sig) n3 += 1;
+  return n3;
 }
 function guardCallback(name, fn, opts = {}) {
   if (typeof fn !== "function") return fn;
@@ -17495,8 +17641,8 @@ function createVisitStore({ storage = globalThis.localStorage, graph = "" } = {}
   return {
     get(uid) {
       try {
-        const n2 = Number(storage?.getItem(key(uid)));
-        return Number.isFinite(n2) && n2 > 0 ? n2 : null;
+        const n3 = Number(storage?.getItem(key(uid)));
+        return Number.isFinite(n3) && n3 > 0 ? n3 : null;
       } catch {
         return null;
       }
@@ -17512,11 +17658,11 @@ function createVisitStore({ storage = globalThis.localStorage, graph = "" } = {}
 }
 function latestEdit(node2) {
   let best = { time: 0, user: "" };
-  const walk3 = (n2) => {
-    if (!n2 || typeof n2 !== "object") return;
-    const t = Number(n2[":edit/time"] ?? n2[":create/time"]);
-    if (Number.isFinite(t) && t > best.time) best = { time: t, user: userName2(n2[":edit/user"]) };
-    const kids = n2[":block/children"];
+  const walk3 = (n3) => {
+    if (!n3 || typeof n3 !== "object") return;
+    const t = Number(n3[":edit/time"] ?? n3[":create/time"]);
+    if (Number.isFinite(t) && t > best.time) best = { time: t, user: userName2(n3[":edit/user"]) };
+    const kids = n3[":block/children"];
     if (Array.isArray(kids)) for (const kid of kids) walk3(kid);
   };
   if (Array.isArray(node2)) for (const part of node2) walk3(part);
@@ -17763,9 +17909,9 @@ function highlightRows(blocks, { placed } = {}) {
 }
 function capOf(cap4) {
   if (typeof cap4 !== "number" || !Number.isFinite(cap4)) return CAP;
-  const n2 = Math.floor(cap4);
-  if (n2 < 0) return 0;
-  return Math.min(n2, CAP);
+  const n3 = Math.floor(cap4);
+  if (n3 < 0) return 0;
+  return Math.min(n3, CAP);
 }
 function originOf(origin) {
   const src = isObject3(origin) ? origin : {};
@@ -18279,11 +18425,11 @@ var init_tooltip_text = __esm({
     };
     for (const c of PALETTE) TIP_TEXT[`swatch.${c}`] = e(cap(c), `Color the selection ${c}, or tone the board ${c}.`);
     for (const s of SHAPES) TIP_TEXT[`dock.shape.${s}`] = e(cap(s), `Draw ${s === "rounded" ? "rounded rectangles" : `${s}s`} with the Shape tool, or change the selected shape.`);
-    for (const n2 of [16, 24, 32, 48]) {
-      const word = { 16: "Small", 24: "Medium", 32: "Large", 48: "Extra large" }[n2];
-      TIP_TEXT[`ctx.size.${n2}`] = e(`${word} text`, `Set the label to ${n2} px.`);
+    for (const n3 of [16, 24, 32, 48]) {
+      const word = { 16: "Small", 24: "Medium", 32: "Large", 48: "Extra large" }[n3];
+      TIP_TEXT[`ctx.size.${n3}`] = e(`${word} text`, `Set the label to ${n3} px.`);
     }
-    for (const n2 of [1, 2, 3, 4]) TIP_TEXT[`ctx.weight.${n2}`] = e(`Weight ${n2}`, `Draw the connection ${n2} px thick.`);
+    for (const n3 of [1, 2, 3, 4]) TIP_TEXT[`ctx.weight.${n3}`] = e(`Weight ${n3}`, `Draw the connection ${n3} px thick.`);
     BLOCKS = /^pxd-(toolbar|rail|ctx|bg)__([a-z0-9-]+)$/;
     SKIP = /* @__PURE__ */ new Set(["btn", "row", "group", "tools", "picker", "sources", "extra", "pattern", "tones", "pop-btn", "more-item", "more-label", "dot"]);
   }
@@ -19013,11 +19159,11 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     el2.setAttribute("role", "dialog");
     el2.setAttribute("aria-label", "Connection preview");
     const mk = (tag, cls, parent, text4) => {
-      const n2 = doc.createElement(tag);
-      n2.className = cls;
-      if (text4 !== void 0) n2.textContent = text4;
-      parent?.append(n2);
-      return n2;
+      const n3 = doc.createElement(tag);
+      n3.className = cls;
+      if (text4 !== void 0) n3.textContent = text4;
+      parent?.append(n3);
+      return n3;
     };
     const head = mk("div", "pxd-relpop__head", el2);
     mk("div", "pxd-relpop__title", head, rel ? chipText({ ...rel }).replace(/^↗ /, "") : "This connection is no longer on a board");
@@ -19078,9 +19224,9 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     });
     doc.body.append(el2);
     const scrollParent = (node2) => {
-      for (let n2 = node2?.parentElement; n2; n2 = n2.parentElement) {
-        const o = win2?.getComputedStyle?.(n2)?.overflowY;
-        if (o === "auto" || o === "scroll") return n2;
+      for (let n3 = node2?.parentElement; n3; n3 = n3.parentElement) {
+        const o = win2?.getComputedStyle?.(n3)?.overflowY;
+        if (o === "auto" || o === "scroll") return n3;
       }
       return null;
     };
@@ -19090,7 +19236,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
         closePop();
         return;
       }
-      const rects = [chip, ...[].concat(avoid || [])].map((n2) => n2?.getBoundingClientRect?.()).filter(Boolean);
+      const rects = [chip, ...[].concat(avoid || [])].map((n3) => n3?.getBoundingClientRect?.()).filter(Boolean);
       const cr = rects.length > 1 ? { left: Math.min(...rects.map((r) => r.left)), top: Math.min(...rects.map((r) => r.top)), right: Math.max(...rects.map((r) => r.right)), bottom: Math.max(...rects.map((r) => r.bottom)) } : rects[0] || { left: 0, top: 0, right: 0, bottom: 0 };
       const vw = win2?.innerWidth || 1024;
       const vh = win2?.innerHeight || 768;
@@ -19312,11 +19458,11 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     }
     if (node2.classList?.contains("rm-zoom")) crumbFor(node2);
     else if (typeof node2.querySelectorAll === "function") {
-      let n2 = 0;
+      let n3 = 0;
       for (const zoom of node2.querySelectorAll(".rm-zoom")) {
         crumbFor(zoom);
-        n2 += 1;
-        if (n2 >= SCAN_CAP) break;
+        n3 += 1;
+        if (n3 >= SCAN_CAP) break;
       }
     }
   };
@@ -19377,7 +19523,7 @@ var init_relchips = __esm({
       return block ? `${base} ▸ “${block}”` : base;
     };
     ROW_PAD = 10;
-    clamp013 = (n2) => Number.isFinite(n2) ? Math.min(1, Math.max(0, n2)) : 0.5;
+    clamp013 = (n3) => Number.isFinite(n3) ? Math.min(1, Math.max(0, n3)) : 0.5;
     POP_GAP = 8;
     rectsHit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     rowEnd = (item, other, bar) => {
@@ -19453,7 +19599,7 @@ function shortDay(day, today = /* @__PURE__ */ new Date()) {
   return now4 && day.y !== now4.y ? `${base}, ${day.y}` : base;
 }
 function dayChoices(today = /* @__PURE__ */ new Date()) {
-  const at = (n2) => iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + n2));
+  const at = (n3) => iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + n3));
   const toMonday = (8 - today.getDay()) % 7 || 7;
   return [
     { label: "Today", value: at(0) },
@@ -19757,11 +19903,11 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     };
   };
   const el2 = (tag, cls, parent, text4) => {
-    const n2 = doc.createElement(tag);
-    n2.className = cls;
-    if (text4 != null) n2.textContent = text4;
-    parent?.append(n2);
-    return n2;
+    const n3 = doc.createElement(tag);
+    n3.className = cls;
+    if (text4 != null) n3.textContent = text4;
+    parent?.append(n3);
+    return n3;
   };
   const apply = async (uid, attributes) => {
     close();
@@ -20050,8 +20196,8 @@ var init_task_popover = __esm({
 });
 
 // src/model/card-face.js
-function countText(n2, one, many) {
-  const raw = Number(n2);
+function countText(n3, one, many) {
+  const raw = Number(n3);
   const count = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
   return `${count} ${count === 1 ? one : many}`;
 }
@@ -20185,7 +20331,7 @@ function placeBarClear(bar, { anchor, soft = [], hard = [], gap = 12, margin = 8
   return parked || { ...primary[0], where: "fallback" };
 }
 function dockOverflow(widths, avail, { gap = 4, pad: pad2 = 14, more = 32, keep = -1 } = {}) {
-  const w = (widths || []).map((n2) => Math.max(0, Number(n2) || 0));
+  const w = (widths || []).map((n3) => Math.max(0, Number(n3) || 0));
   const total = (idx) => idx.reduce((sum, i) => sum + w[i], 0) + gap * Math.max(0, idx.length - 1);
   const all = w.map((_, i) => i);
   if (pad2 + total(all) <= avail) return [];
@@ -20209,9 +20355,9 @@ function quickLookTitle(item, displayTitle) {
   return item?.kind === "pdf" ? "PDF" : text4;
 }
 function startPage(cardPage, total) {
-  const n2 = Math.floor(Number(cardPage));
+  const n3 = Math.floor(Number(cardPage));
   const t = Math.floor(Number(total));
-  const at = Number.isFinite(n2) && n2 >= 1 ? n2 : 1;
+  const at = Number.isFinite(n3) && n3 >= 1 ? n3 : 1;
   return Number.isFinite(t) && t >= 1 ? Math.min(at, t) : at;
 }
 function pdfDockLift(card2, obstacles, zoom = 1, { clipBottom = Infinity } = {}) {
@@ -20698,10 +20844,10 @@ function capTable(table, cap4 = ROW_CAP) {
 function cardMarkdown(title, body) {
   const blocks = {};
   const order = [];
-  let n2 = 0;
+  let n3 = 0;
   const add = (block) => {
-    n2 += 1;
-    const id = `k${n2}`;
+    n3 += 1;
+    const id = `k${n3}`;
     const copy = { ...block, id };
     delete copy.note;
     blocks[id] = copy;
@@ -20939,8 +21085,8 @@ function textCardMarkdown({ text: text4, page, quote = false } = {}) {
   let line = flattenLine(text4);
   if (!line) return "";
   if (line.length > TEXT_CARD_MAX) line = `${line.slice(0, TEXT_CARD_MAX - 1).trimEnd()}…`;
-  const n2 = Number(page);
-  const suffix = Number.isInteger(n2) && n2 > 0 ? ` (p. ${n2})` : "";
+  const n3 = Number(page);
+  const suffix = Number.isInteger(n3) && n3 > 0 ? ` (p. ${n3})` : "";
   const body = escapeMarkdownText(linkSafeText(line) + suffix, { leading: !quote });
   return `- ${quote ? "> " : ""}${body}`;
 }
@@ -21342,7 +21488,7 @@ function parseCurly(s, at, now4) {
   }
   if (name === "between") {
     if (args.length !== 2 || args.some((a2) => a2.op !== "page" || a2.date == null)) return unsupported("between dates");
-    const [a, b] = args.map((n2) => n2.date).sort((x, y) => x - y);
+    const [a, b] = args.map((n3) => n3.date).sort((x, y) => x - y);
     const days = Math.round((b - a) / DAY4) + 1;
     if (days > QUERY_BETWEEN_DAYS) return unsupported("between range too long");
     const titles = [];
@@ -21492,8 +21638,8 @@ function rowDragPayload(row4) {
   return row4?.string ? String(row4.string) : "";
 }
 function visibleRows(rows, shown = QUERY_SHOW) {
-  const n2 = Math.max(0, Math.floor(Number(shown) || 0));
-  return { rows: rows.slice(0, n2), hidden: Math.max(0, rows.length - n2) };
+  const n3 = Math.max(0, Math.floor(Number(shown) || 0));
+  return { rows: rows.slice(0, n3), hidden: Math.max(0, rows.length - n3) };
 }
 function createQueryCache(storage, graph = "") {
   const key = (uid) => `plexus-diagram:qc:${graph}:${uid}`;
@@ -22254,13 +22400,13 @@ function buildPartsIndex(doc, { url = "", docTitle = "", pdfUid = "" } = {}) {
   return rows;
 }
 function countHits(hay, needle) {
-  let n2 = 0;
+  let n3 = 0;
   let at = hay.indexOf(needle);
   while (at !== -1) {
-    n2 += 1;
+    n3 += 1;
     at = hay.indexOf(needle, at + needle.length);
   }
-  return n2;
+  return n3;
 }
 function searchParts(rows, { text: text4 = "", kinds = [], pages = "" } = {}, limit = 40) {
   const phrase = String(text4 ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
@@ -22279,12 +22425,12 @@ function searchParts(rows, { text: text4 = "", kinds = [], pages = "" } = {}, li
       count = 0;
       let all = true;
       for (const t of terms) {
-        const n2 = countHits(row4.lower, t);
-        if (!n2) {
+        const n3 = countHits(row4.lower, t);
+        if (!n3) {
           all = false;
           break;
         }
-        count += n2;
+        count += n3;
       }
       if (!all) continue;
       if (terms.length > 1 && row4.lower.includes(phrase)) exact = 1;
@@ -22298,29 +22444,29 @@ function partSnippet(text4, needle, width = SNIPPET_W) {
   const t = squash2(text4);
   const low = t.toLowerCase();
   const phrase = String(needle ?? "").trim().replace(/\s+/g, " ").replace(/"/g, "").toLowerCase();
-  let n2 = "";
+  let n3 = "";
   let at = -1;
   if (phrase) {
     at = low.indexOf(phrase);
-    if (at !== -1) n2 = phrase;
+    if (at !== -1) n3 = phrase;
     else {
       for (const term of queryTerms(needle)) {
         at = low.indexOf(term);
         if (at !== -1) {
-          n2 = term;
+          n3 = term;
           break;
         }
       }
     }
   }
   if (at === -1) return { before: "", hit: "", after: t.length > width ? `${t.slice(0, width)}…` : t };
-  const room = Math.max(0, width - n2.length);
+  const room = Math.max(0, width - n3.length);
   const start = Math.max(0, at - Math.floor(room / 3));
-  const end = Math.min(t.length, at + n2.length + room - (at - start));
+  const end = Math.min(t.length, at + n3.length + room - (at - start));
   return {
     before: `${start > 0 ? "…" : ""}${t.slice(start, at)}`,
-    hit: t.slice(at, at + n2.length),
-    after: `${t.slice(at + n2.length, end)}${end < t.length ? "…" : ""}`
+    hit: t.slice(at, at + n3.length),
+    after: `${t.slice(at + n3.length, end)}${end < t.length ? "…" : ""}`
   };
 }
 var PART_OF, SNIPPET_W, squash2, PART_LABELS;
@@ -22374,12 +22520,12 @@ function oklabToHex([L, a, b]) {
   return toHex(enc(lin[0]), enc(lin[1]), enc(lin[2]));
 }
 function colorPalette(rgba, { k = 5, iterations = 10 } = {}) {
-  const n2 = Math.floor((rgba?.length || 0) / 4);
-  const L = new Float32Array(n2);
-  const A = new Float32Array(n2);
-  const B = new Float32Array(n2);
+  const n3 = Math.floor((rgba?.length || 0) / 4);
+  const L = new Float32Array(n3);
+  const A = new Float32Array(n3);
+  const B = new Float32Array(n3);
   let count = 0;
-  for (let i = 0; i < n2; i += 1) {
+  for (let i = 0; i < n3; i += 1) {
     if (rgba[i * 4 + 3] < 128) continue;
     const lab = rgbToOklab(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]);
     L[count] = lab[0];
@@ -22523,14 +22669,14 @@ function colorScore(palette, target) {
 function paletteDistance(a, b) {
   const A = Array.isArray(a) ? a : [];
   const B = Array.isArray(b) ? b : [];
-  const n2 = A.length;
+  const n3 = A.length;
   const m = B.length;
-  if (!n2 || !m) return Infinity;
-  const ra = new Float64Array(n2);
+  if (!n3 || !m) return Infinity;
+  const ra = new Float64Array(n3);
   const rb = new Float64Array(m);
   let sa = 0;
   let sb = 0;
-  for (let i = 0; i < n2; i += 1) {
+  for (let i = 0; i < n3; i += 1) {
     ra[i] = Math.max(0, Number(A[i]?.weight) || 0);
     sa += ra[i];
   }
@@ -22539,10 +22685,10 @@ function paletteDistance(a, b) {
     sb += rb[j];
   }
   if (!(sa > 0) || !(sb > 0)) return Infinity;
-  for (let i = 0; i < n2; i += 1) ra[i] /= sa;
+  for (let i = 0; i < n3; i += 1) ra[i] /= sa;
   for (let j = 0; j < m; j += 1) rb[j] /= sb;
-  const d = new Float64Array(n2 * m);
-  for (let i = 0; i < n2; i += 1) {
+  const d = new Float64Array(n3 * m);
+  for (let i = 0; i < n3; i += 1) {
     const x = A[i].lab;
     for (let j = 0; j < m; j += 1) {
       const y = B[j].lab;
@@ -22550,10 +22696,10 @@ function paletteDistance(a, b) {
     }
   }
   let cost = 0;
-  for (let step = 0; step < n2 + m; step += 1) {
+  for (let step = 0; step < n3 + m; step += 1) {
     let at = -1;
     let best = Infinity;
-    for (let i2 = 0; i2 < n2; i2 += 1) {
+    for (let i2 = 0; i2 < n3; i2 += 1) {
       if (ra[i2] <= 1e-12) continue;
       for (let j2 = 0; j2 < m; j2 += 1) {
         if (rb[j2] <= 1e-12) continue;
@@ -22582,7 +22728,7 @@ var init_color = __esm({
       const c = i / 255;
       LIN[i] = c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
     }
-    hex2 = (n2) => Math.max(0, Math.min(255, Math.round(n2))).toString(16).padStart(2, "0");
+    hex2 = (n3) => Math.max(0, Math.min(255, Math.round(n3))).toString(16).padStart(2, "0");
     toHex = (r, g, b) => `#${hex2(r)}${hex2(g)}${hex2(b)}`;
     GRAY_CHROMA = 0.04;
     CHROMA_MIN = 0.035;
@@ -22780,8 +22926,8 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   }
   const paintTypes = () => {
     for (const [value, box2] of typeBoxes) box2.checked = checked.has(value);
-    const n2 = checked.size;
-    typeBtn.textContent = n2 === ALL_TYPES.length ? "All" : n2 === 0 ? "None" : `${n2} ${n2 === 1 ? "type" : "types"}`;
+    const n3 = checked.size;
+    typeBtn.textContent = n3 === ALL_TYPES.length ? "All" : n3 === 0 ? "None" : `${n3} ${n3 === 1 ? "type" : "types"}`;
     if (swatches) swatches.style.display = typeof on.searchImages === "function" && (checked.has("image") || checked.has("figure")) ? "" : "none";
   };
   paintTypes();
@@ -22919,10 +23065,10 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     thisBoard: thisBoardBox.checked
   });
   const paintMore = () => {
-    const n2 = [createdBySel.value, editedBySel.value, underInput.value.trim(), dayModeSel.value === "created" && Number(daysInput.value) > 0, refsBox.checked, childrenBox.checked, parsedBox.checked, highlightsBox.checked, thisBoardBox.checked].filter(Boolean).length + (orphanBox.checked ? 1 : 0);
-    const label = n2 ? `More · ${n2}` : "More";
+    const n3 = [createdBySel.value, editedBySel.value, underInput.value.trim(), dayModeSel.value === "created" && Number(daysInput.value) > 0, refsBox.checked, childrenBox.checked, parsedBox.checked, highlightsBox.checked, thisBoardBox.checked].filter(Boolean).length + (orphanBox.checked ? 1 : 0);
+    const label = n3 ? `More · ${n3}` : "More";
     if (moreBtn.textContent !== label) moreBtn.textContent = label;
-    moreBtn.classList.toggle("pxd-panel__more-btn--on", n2 > 0);
+    moreBtn.classList.toggle("pxd-panel__more-btn--on", n3 > 0);
   };
   const setPopsOpen = (which) => {
     sortPop.style.display = which === "sort" ? "" : "none";
@@ -23421,9 +23567,9 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       searchNow();
     }
   };
-  const semanticRowsFor = (raw, filter) => {
+  const semanticRowsFor = (raw, filter, parsedUrls = null) => {
     try {
-      const rows = host?.semanticRows?.(raw, filter, LIMIT, { sort })?.rows || [];
+      const rows = host?.semanticRows?.(raw, filter, LIMIT, { sort, parsedUrls, pdfList: typeof on.pdfList === "function" ? on.pdfList : null })?.rows || [];
       return filter.thisBoard === true ? rows.filter((c) => on.isOnBoard?.(c.string)) : rows;
     } catch {
       return [];
@@ -23440,22 +23586,22 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   };
   const paintSemantic = (id, cards, keywordCards) => {
     if (id !== queryId) return;
-    for (const n2 of [...results.querySelectorAll(".pxd-panel__row--sem, .pxd-panel__sem-head")]) n2.remove();
+    for (const n3 of [...results.querySelectorAll(".pxd-panel__row--sem, .pxd-panel__sem-head")]) n3.remove();
     const extra = mergeSemantic(keywordCards, cards, LIMIT);
     results.dataset.semCount = String(extra.length);
     results.setAttribute("data-sem-count", String(extra.length));
     if (!extra.length) return;
-    for (const n2 of [...results.querySelectorAll(".pxd-panel__empty")]) n2.remove();
+    for (const n3 of [...results.querySelectorAll(".pxd-panel__empty")]) n3.remove();
     el2("div", "pxd-panel__sem-head", results, "By meaning");
     extra.forEach((c) => row4(results, c));
     wantNames(extra, { front: true });
   };
-  const scheduleSemantic = (id, filter, keywordCards) => {
+  const scheduleSemantic = (id, filter, keywordCards, parsedUrls = null) => {
     const text4 = String(filter.text || "").trim();
     const sem = on.semantic;
-    if (!text4 || !meaningBox.checked || !semanticOn() || filter.parsed === true || filter.highlights === true || typeof host?.semanticRows !== "function" || typeof sem?.search !== "function") return;
+    if (!text4 || !meaningBox.checked || !semanticOn() || typeof host?.semanticRows !== "function" || typeof sem?.search !== "function") return;
     const cached = sem.peek?.(text4);
-    if (cached) paintSemantic(id, semanticRowsFor(cached.data, filter), keywordCards);
+    if (cached) paintSemantic(id, semanticRowsFor(cached.data, filter, parsedUrls), keywordCards);
     if (cached && !cached.stale) return;
     const wait2 = Math.max(0, SEMANTIC_PAUSE_MS - (Date.now() - lastInputAt));
     semTimer = timers.later(async () => {
@@ -23464,14 +23610,14 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       const t0 = Date.now();
       let raw = [];
       try {
-        raw = await sem.search(text4, { onFresh: (data) => paintSemantic(id, semanticRowsFor(data, filter), keywordCards) });
+        raw = await sem.search(text4, { onFresh: (data) => paintSemantic(id, semanticRowsFor(data, filter, parsedUrls), keywordCards) });
       } catch {
         raw = [];
       }
       if (id !== queryId) return;
       results.dataset.semMs = String(Date.now() - t0);
       results.setAttribute("data-sem-ms", String(Date.now() - t0));
-      paintSemantic(id, semanticRowsFor(raw, filter), keywordCards);
+      paintSemantic(id, semanticRowsFor(raw, filter, parsedUrls), keywordCards);
     }, wait2);
   };
   const runRelated = async (id) => {
@@ -23505,6 +23651,10 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     paintMore();
     const id = queryId += 1;
     const started = Date.now();
+    if (results.dataset.browse) {
+      delete results.dataset.browse;
+      results.removeAttribute?.("data-browse");
+    }
     semTimer?.();
     semTimer = null;
     if (!quiet || like || related) results.replaceChildren();
@@ -23533,6 +23683,10 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       const list = Array.isArray(found2?.rows) ? found2.rows : [];
       if (!list.length) el2("div", "pxd-panel__empty", results, "No pages");
       list.forEach((r) => row4(results, r));
+      return;
+    }
+    if (wantsFilterBrowse(filter) && typeof host?.filterBrowse === "function") {
+      await runFilterBrowse(id, filter, started);
       return;
     }
     if (!libraryFilterActive(filter)) {
@@ -23576,7 +23730,11 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     results.setAttribute("data-query-log", log);
     let rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
     if (filter.thisBoard) rows = rows.filter((r) => on.isOnBoard?.(r.string));
-    if (filter.parsed || filter.highlights) {
+    const parsedUrls = filter.parsed ? await parsedSet() : null;
+    if (id !== queryId) return;
+    if ((filter.parsed || filter.highlights) && typeof host?.pdfFilter === "function" && (!filter.parsed || parsedUrls)) {
+      rows = host.pdfFilter(rows, { parsed: filter.parsed === true, highlights: filter.highlights === true, parsedUrls });
+    } else if (filter.parsed || filter.highlights) {
       const pdfs = rows.filter((r) => r.kind === "pdf");
       const keep = await Promise.all(pdfs.map(async (r) => {
         try {
@@ -23623,7 +23781,46 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     results.dataset.paintMs = String(Date.now() - started);
     results.setAttribute("data-paint-ms", String(Date.now() - started));
     wantNames(rows, { front: true, all: checked.has("pdf") && checked.size < ALL_TYPES.length });
-    scheduleSemantic(id, filter, rows);
+    scheduleSemantic(id, filter, rows, parsedUrls);
+  };
+  const parsedSet = async () => {
+    if (typeof on.parsedUrls !== "function") return null;
+    try {
+      const got = await on.parsedUrls();
+      return got instanceof Set ? got : new Set(Array.isArray(got) ? got : []);
+    } catch {
+      return null;
+    }
+  };
+  const runFilterBrowse = async (id, filter, started) => {
+    const parsedUrls = filter.parsed ? await parsedSet() : null;
+    if (id !== queryId) return;
+    let pack = null;
+    try {
+      pack = await Promise.resolve(host.filterBrowse(filter, LIMIT, {
+        sort,
+        parsedUrls,
+        pdfList: typeof on.pdfList === "function" ? on.pdfList : null,
+        keep: filter.thisBoard ? (s) => on.isOnBoard?.(s) === true : null
+      }));
+    } catch {
+      pack = null;
+    }
+    if (id !== queryId) return;
+    const queries = Array.isArray(pack?.queries) ? pack.queries : [];
+    const log = JSON.stringify(queries.map((q2) => ({ name: q2.name, ms: Math.round((Number(q2.ms) || 0) * 10) / 10 })));
+    results.dataset.queryLog = log;
+    results.setAttribute("data-query-log", log);
+    results.replaceChildren();
+    const rows = Array.isArray(pack?.rows) ? pack.rows : [];
+    if (pack?.defaulted && rows.length) el2("div", "pxd-panel__empty pxd-panel__hint pxd-panel__window", results, DEFAULT_WINDOW_NOTE);
+    if (!rows.length) el2("div", "pxd-panel__empty", results, browseEmptyText(pack?.spec));
+    rows.forEach((r) => row4(results, r));
+    results.dataset.browse = "filter";
+    results.setAttribute("data-browse", "filter");
+    results.dataset.paintMs = String(Date.now() - started);
+    results.setAttribute("data-paint-ms", String(Date.now() - started));
+    wantNames(rows, { front: true });
   };
   let refreshTimer = null;
   const scheduleSearch = () => {
@@ -23637,6 +23834,14 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     debounce?.();
     debounce = null;
     void runSearch();
+  };
+  const scheduleFilter = () => {
+    paintMore();
+    debounce?.();
+    debounce = timers.later(() => {
+      debounce = null;
+      void runSearch();
+    }, FILTER_DEBOUNCE_MS);
   };
   listen(input, "input", () => {
     lastInputAt = Date.now();
@@ -23675,7 +23880,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     searchNow();
   });
   listen(tagInput, "input", scheduleSearch);
-  listen(daysInput, "input", scheduleSearch);
+  listen(daysInput, "input", scheduleFilter);
   listen(pagesInput, "input", scheduleSearch);
   const saveTypes = () => {
     try {
@@ -23710,7 +23915,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   });
   listen(panel, "click", (event) => {
     const u = event.target;
-    const inside8 = (n2) => u && (n2 === u || n2.contains?.(u));
+    const inside8 = (n3) => u && (n3 === u || n3.contains?.(u));
     if (sortPop.style.display !== "none" && !inside8(sortPop) && !inside8(sortBtn) || moreOpen() && !inside8(morePop) && !inside8(moreBtn)) setPopsOpen(null);
     if (!typesOpen()) return;
     const t = event.target;
@@ -23728,10 +23933,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     }
   });
   morePop.append(orphanLabel);
-  listen(morePop, "change", () => {
-    paintMore();
-    searchNow();
-  });
+  listen(morePop, "change", scheduleFilter);
   let underTimer = null;
   let underAsked = "";
   const underKey = (event) => {
@@ -24114,8 +24316,8 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q2));
       el2("span", "pxd-panel__board-title", text4, b.title || "Untitled board");
       const page = b.page || b.pageTitle;
       if (page) el2("span", "pxd-panel__board-page", text4, page);
-      const n2 = b.count ?? b.itemCount ?? b.items;
-      if (Number.isFinite(n2)) el2("span", "pxd-panel__board-count", r, `${n2} ${n2 === 1 ? "item" : "items"}`);
+      const n3 = b.count ?? b.itemCount ?? b.items;
+      if (Number.isFinite(n3)) el2("span", "pxd-panel__board-count", r, `${n3} ${n3 === 1 ? "item" : "items"}`);
       const add = el2("button", "pxd-btn pxd-panel__board-add", r, "Add shortcut");
       add.type = "button";
       add.title = "Add a card for this board to the current board";
@@ -24417,8 +24619,8 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q2));
       }
     },
     currentTab: () => tab,
-    setIndexing(n2) {
-      const count = Math.max(0, Math.floor(Number(n2) || 0));
+    setIndexing(n3) {
+      const count = Math.max(0, Math.floor(Number(n3) || 0));
       indexNote.textContent = count ? `Indexing ${count} ${count === 1 ? "image" : "images"}…` : "";
       indexNote.style.display = count ? "" : "none";
     },
@@ -24570,6 +24772,7 @@ var init_panel = __esm({
     init_changes();
     init_search_sort();
     init_minimap_svg();
+    init_filter_browse();
     DEBOUNCE_MS = 150;
     UNDER_PAUSE_MS = 200;
     BROWSE_SORTS = /* @__PURE__ */ new Set(["edited", "created", "oldest", "title"]);
@@ -24665,13 +24868,13 @@ function menuToken(menu) {
 }
 function editorMenuSig(doc, anchor) {
   const box2 = anchor.getBoundingClientRect?.() || {};
-  const n2 = (value) => Math.round(Number(value) || 0);
+  const n3 = (value) => Math.round(Number(value) || 0);
   let menus = "";
   for (const menu of doc.querySelectorAll?.(MENU_SELECTOR) || []) {
     if (!menu || menu === anchor) continue;
     menus += `${menuToken(menu)},`;
   }
-  return `${n2(box2.left)},${n2(box2.top)},${n2(box2.width)},${n2(box2.height)}|${menus}`;
+  return `${n3(box2.left)},${n3(box2.top)},${n3(box2.width)},${n3(box2.height)}|${menus}`;
 }
 function stopMenuHub(hub) {
   hub.looping = false;
@@ -24799,9 +25002,9 @@ var init_editor_menus = __esm({
         const tf = computedTransform(node2);
         const parts = /matrix\(([^)]+)\)/.exec(tf || "");
         if (parts) {
-          const n2 = parts[1].split(",").map((s) => Number(s.trim()));
-          const x = n2[4] || 0;
-          const y = n2[5] || 0;
+          const n3 = parts[1].split(",").map((s) => Number(s.trim()));
+          const x = n3[4] || 0;
+          const y = n3[5] || 0;
           if (Math.abs(x) > 1 || Math.abs(y) > 1) return { x, y };
         }
         node2 = node2.parentElement;
@@ -25058,8 +25261,8 @@ var init_region_card2 = __esm({
 
 // src/view/drawing-card.js
 function pixelSize(value) {
-  const n2 = Number(value);
-  return Number.isFinite(n2) && n2 > 0 ? n2 : 0;
+  const n3 = Number(value);
+  return Number.isFinite(n3) && n3 > 0 ? n3 : 0;
 }
 function releaseThumb2(node2) {
   const url = node2?._pxdObjectUrl;
@@ -25435,18 +25638,18 @@ function perfNow() {
   return Date.now();
 }
 function percentile(samples, p) {
-  const n2 = samples.length;
-  if (!n2) return null;
+  const n3 = samples.length;
+  if (!n3) return null;
   const sorted = samples.slice().sort((a, b) => a - b);
-  return sorted[Math.floor((n2 - 1) * p)];
+  return sorted[Math.floor((n3 - 1) * p)];
 }
 function ring(cap4) {
   const samples = [];
   return {
     push(value) {
-      const n2 = Number(value);
-      if (!Number.isFinite(n2)) return false;
-      samples.push(n2);
+      const n3 = Number(value);
+      if (!Number.isFinite(n3)) return false;
+      samples.push(n3);
       if (samples.length > cap4) samples.splice(0, samples.length - cap4);
       return true;
     },
@@ -25516,8 +25719,8 @@ function clickInsideRoot(entry) {
 function panFps(deltas) {
   const finite9 = [];
   for (const value of deltas || []) {
-    const n2 = Number(value);
-    if (Number.isFinite(n2) && n2 > 0) finite9.push(n2);
+    const n3 = Number(value);
+    if (Number.isFinite(n3) && n3 > 0) finite9.push(n3);
   }
   const median7 = percentile(finite9, 0.5);
   if (!(median7 > 0)) return null;
@@ -25814,8 +26017,8 @@ function normalizeSetting(id, value) {
     return fallback;
   }
   if (NUMBERS.has(id)) {
-    const n2 = Number(value);
-    return Number.isFinite(n2) && n2 >= 40 ? n2 : fallback;
+    const n3 = Number(value);
+    return Number.isFinite(n3) && n3 >= 40 ? n3 : fallback;
   }
   if (ENUMS[id]) {
     const text4 = typeof value === "number" ? String(value) : value;
@@ -26013,8 +26216,8 @@ function refreshIntegrations(win2) {
   syncIntegrationText(win2);
   paintIntegrationRows();
 }
-function errorRow(n2) {
-  const text4 = `${n2} errors`;
+function errorRow(n3) {
+  const text4 = `${n3} errors`;
   return {
     id: ERROR_ROW_ID,
     name: text4,
@@ -26026,12 +26229,12 @@ function placeErrorRow() {
   if (!panelRef) return;
   const list = panelRef.settings;
   const idx = list.findIndex((row5) => row5.id === ERROR_ROW_ID);
-  const n2 = Number(statsRef?.errors) || 0;
-  if (n2 <= 0) {
+  const n3 = Number(statsRef?.errors) || 0;
+  if (n3 <= 0) {
     if (idx >= 0) list.splice(idx, 1);
     return;
   }
-  const row4 = errorRow(n2);
+  const row4 = errorRow(n3);
   if (idx >= 0) list[idx] = row4;
   else {
     const at = list.findIndex((entry) => entry.id === SETTING_IDS.showVersionBadge);
@@ -26072,10 +26275,10 @@ function createSettingsPanel({ stats } = {}) {
   });
   const panel = { tabTitle: "Plexus Diagram", settings };
   if (stats && typeof stats === "object") {
-    const n2 = Number(stats.errors) || 0;
-    if (n2 > 0) {
+    const n3 = Number(stats.errors) || 0;
+    if (n3 > 0) {
       const at = settings.findIndex((entry) => entry.id === SETTING_IDS.showVersionBadge);
-      settings.splice(at >= 0 ? at + 1 : settings.length, 0, errorRow(n2));
+      settings.splice(at >= 0 ? at + 1 : settings.length, 0, errorRow(n3));
     }
     return panel;
   }
@@ -26852,7 +27055,7 @@ function cropFrame(frac, naturalW, naturalH, maxH = CROP_MAX_H) {
   const ry = Number(parts.ry);
   const rw = Number(parts.rw);
   const rh = Number(parts.rh);
-  if (![rx, ry, rw, rh, naturalW, naturalH, maxH].every((n2) => typeof n2 === "number" && Number.isFinite(n2))) return null;
+  if (![rx, ry, rw, rh, naturalW, naturalH, maxH].every((n3) => typeof n3 === "number" && Number.isFinite(n3))) return null;
   if (rw <= 0 || rh <= 0 || naturalW <= 0 || naturalH <= 0 || maxH <= 0) return null;
   const scale = Math.min(1, maxH / (rh * naturalH));
   const imgW = naturalW * scale;
@@ -27529,7 +27732,7 @@ function gridOf(tree) {
   const grid = [];
   for (const row4 of Array.isArray(tree) ? tree : []) {
     const cells = [];
-    for (let n2 = row4; n2; n2 = n2.children?.[0]) cells.push({ uid: n2.uid, string: n2.string ?? "" });
+    for (let n3 = row4; n3; n3 = n3.children?.[0]) cells.push({ uid: n3.uid, string: n3.string ?? "" });
     grid.push(cells);
   }
   return grid;
@@ -27629,8 +27832,8 @@ function visibleClip(cell, host, body) {
     clip7 = { top: Math.max(clip7.top, r.top), bottom: Math.min(clip7.bottom, r.bottom), left: Math.max(clip7.left, r.left), right: Math.min(clip7.right, r.right) };
   };
   cut(host);
-  for (let n2 = cell?.parentElement; n2 && n2 !== host && n2 !== body; n2 = n2.parentElement) {
-    if (n2.scrollHeight > n2.clientHeight || n2.scrollWidth > n2.clientWidth) cut(n2);
+  for (let n3 = cell?.parentElement; n3 && n3 !== host && n3 !== body; n3 = n3.parentElement) {
+    if (n3.scrollHeight > n3.clientHeight || n3.scrollWidth > n3.clientWidth) cut(n3);
   }
   return clip7;
 }
@@ -27663,17 +27866,17 @@ function revealCell(cell, body) {
   if (!cell) return false;
   const r = rectOf4(cell);
   if (!r || !r.width && !r.height) return false;
-  for (let n2 = cell.parentElement; n2; n2 = n2.parentElement) {
-    const canY = n2.scrollHeight > n2.clientHeight;
-    const canX = n2.scrollWidth > n2.clientWidth;
+  for (let n3 = cell.parentElement; n3; n3 = n3.parentElement) {
+    const canY = n3.scrollHeight > n3.clientHeight;
+    const canX = n3.scrollWidth > n3.clientWidth;
     if (canY || canX) {
-      const v = rectOf4(n2);
+      const v = rectOf4(n3);
       if (v) {
-        if (canY) n2.scrollTop = Math.max(0, (Number(n2.scrollTop) || 0) + ((r.top + r.bottom) / 2 - (v.top + v.bottom) / 2));
-        if (canX) n2.scrollLeft = Math.max(0, (Number(n2.scrollLeft) || 0) + ((r.left + r.right) / 2 - (v.left + v.right) / 2));
+        if (canY) n3.scrollTop = Math.max(0, (Number(n3.scrollTop) || 0) + ((r.top + r.bottom) / 2 - (v.top + v.bottom) / 2));
+        if (canX) n3.scrollLeft = Math.max(0, (Number(n3.scrollLeft) || 0) + ((r.left + r.right) / 2 - (v.left + v.right) / 2));
       }
     }
-    if (n2 === body) break;
+    if (n3 === body) break;
   }
   return true;
 }
@@ -27723,15 +27926,15 @@ var init_table_cells = __esm({
     tableUidOf2 = (node2) => node2?.closest?.("[data-pxd-table]")?.getAttribute?.("data-pxd-table") || null;
     attrInt = (td, name) => {
       const v = td.getAttribute?.(name) ?? td.dataset?.[name.slice(5)];
-      const n2 = Number.parseInt(v, 10);
-      return Number.isInteger(n2) && n2 >= 0 ? n2 : null;
+      const n3 = Number.parseInt(v, 10);
+      return Number.isInteger(n3) && n3 >= 0 ? n3 : null;
     };
     rectOf4 = (node2) => {
       const r = node2?.getBoundingClientRect?.();
       if (!r) return null;
       return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width ?? r.right - r.left, height: r.height ?? r.bottom - r.top };
     };
-    round16 = (n2) => Math.round(n2 * 10) / 10;
+    round16 = (n3) => Math.round(n3 * 10) / 10;
     isTableCard = (card2) => hasClass(card2, "pxd-item--roam-table");
   }
 });
@@ -27869,9 +28072,9 @@ function pageCaretSize(node2) {
   if (node2.nodeType === 3) return pageCaretText(node2).length;
   const kids = node2.childNodes ? Array.from(node2.childNodes) : [];
   if (kids.length) {
-    let n2 = 0;
-    for (const kid of kids) n2 += pageCaretSize(kid);
-    return n2;
+    let n3 = 0;
+    for (const kid of kids) n3 += pageCaretSize(kid);
+    return n3;
   }
   return node2.nodeType === 1 ? String(node2.textContent ?? "").length : 0;
 }
@@ -27889,8 +28092,8 @@ function pageCaretOffset(root, node2, offset) {
       }
       const kids2 = current3.childNodes ? Array.from(current3.childNodes) : [];
       if (kids2.length) {
-        const n2 = Math.min(index, kids2.length);
-        for (let i = 0; i < n2; i += 1) count += pageCaretSize(kids2[i]);
+        const n3 = Math.min(index, kids2.length);
+        for (let i = 0; i < n3; i += 1) count += pageCaretSize(kids2[i]);
       } else {
         count += Math.min(index, String(current3.textContent ?? "").length);
       }
@@ -27978,8 +28181,8 @@ function restFontPx(node2) {
     const view = node2.ownerDocument?.defaultView || globalThis;
     const cs = view?.getComputedStyle?.(node2);
     const raw = cs?.fontSize || cs?.getPropertyValue?.("font-size") || "";
-    const n2 = parseFloat(raw);
-    if (n2 > 0 && Number.isFinite(n2)) return n2;
+    const n3 = parseFloat(raw);
+    if (n3 > 0 && Number.isFinite(n3)) return n3;
   } catch {
   }
   return 14;
@@ -28242,8 +28445,8 @@ function tickY01(tick) {
   return y;
 }
 function tickPage(tick) {
-  const n2 = Number(tick?.page);
-  return Number.isInteger(n2) && n2 >= 1 ? n2 : null;
+  const n3 = Number(tick?.page);
+  return Number.isInteger(n3) && n3 >= 1 ? n3 : null;
 }
 function highlightChipTitle(footer) {
   const text4 = typeof footer === "string" ? footer.trim() : "";
@@ -29084,8 +29287,8 @@ function createItemRenderer({
     if (self || !raw || rowThumbs <= 0) {
       const chip = el2("button", "pxd-btn pxd-board-row pxd-board-row--chip", node2);
       chip.type = "button";
-      const n2 = self ? 0 : boardPreview({ uid: target.uid, string: target.string, content }).count;
-      const label = self ? "this board" : `${n2} ${n2 === 1 ? "item" : "items"}`;
+      const n3 = self ? 0 : boardPreview({ uid: target.uid, string: target.string, content }).count;
+      const label = self ? "this board" : `${n3} ${n3 === 1 ? "item" : "items"}`;
       chip.textContent = `▦ ${title} · ${label}`;
       chip.dataset.action = "open";
       chip.setAttribute("aria-label", `Open board ${title}`);
@@ -29568,8 +29771,8 @@ function createItemRenderer({
     if (rec.landmarkEl.textContent !== text4) rec.landmarkEl.textContent = text4;
   };
   const paintTrailBadge = (rec, uid) => {
-    const n2 = trailBadgeMap.get(uid);
-    if (!n2) {
+    const n3 = trailBadgeMap.get(uid);
+    if (!n3) {
       if (rec.trailBadge) {
         rec.trailBadge.remove();
         rec.trailBadge = null;
@@ -29577,7 +29780,7 @@ function createItemRenderer({
       return;
     }
     if (!rec.trailBadge) rec.trailBadge = el2("span", "pxd-trail-badge", rec.el);
-    const text4 = String(n2);
+    const text4 = String(n3);
     if (rec.trailBadge.textContent !== text4) rec.trailBadge.textContent = text4;
   };
   const shownRect = (uid, rect) => {
@@ -29883,7 +30086,7 @@ function createItemRenderer({
     if (onOpenBoard) onOpenBoard(uid);
     else host?.openBlock?.(uid);
   };
-  const commitBoardName = (uid, name) => (onRenameBoard || ((u, n2) => session?.renameBoard?.(u, n2)))(uid, name);
+  const commitBoardName = (uid, name) => (onRenameBoard || ((u, n3) => session?.renameBoard?.(u, n3)))(uid, name);
   const mountBoardBody = (body, item, { openUid = item.uid } = {}) => {
     const innerW = Math.max(1, (Number(item.w) || 0) - 24);
     const preview = boardPreview(item, { aspect: innerW / Math.max(40, (Number(item.h) || 0) - HEADER_H - META_H) });
@@ -29893,7 +30096,7 @@ function createItemRenderer({
       el2("div", "pxd-board-preview__empty", holder).textContent = "Empty board";
     } else {
       const canvas = el2("div", "pxd-board-preview__canvas", holder);
-      const pct2 = (n2) => `${Math.round(n2 * 1e4) / 100}%`;
+      const pct2 = (n3) => `${Math.round(n3 * 1e4) / 100}%`;
       const addMini = (r) => {
         const cls = ["pxd-mini"];
         if (r.type === "section") cls.push("pxd-mini--section");
@@ -30011,23 +30214,23 @@ function createItemRenderer({
     return parts.join("");
   };
   const countRows = (blocks) => {
-    let n2 = 0;
+    let n3 = 0;
     for (const c of blocks) {
       if (skipChildString(childString4(c))) continue;
-      n2 += 1;
-      if (c.open !== false) n2 += countRows(childKids(c));
+      n3 += 1;
+      if (c.open !== false) n3 += countRows(childKids(c));
     }
-    return n2;
+    return n3;
   };
   const openPageByTitle = (title, uid) => {
     const id = uid || host?.pageUid?.(title);
     if (id) host?.openPage?.(id);
   };
-  const moreRow = (parent, n2, title, uid) => {
+  const moreRow = (parent, n3, title, uid) => {
     const more = el2("button", "pxd-row__more", parent);
     more.type = "button";
-    more.textContent = `+${n2} more`;
-    more.setAttribute("aria-label", `${n2} more blocks, open the page`);
+    more.textContent = `+${n3} more`;
+    more.setAttribute("aria-label", `${n3} more blocks, open the page`);
     for (const type of ["pointerdown", "mousedown", "dblclick"]) more.addEventListener(type, stopEvent);
     more.addEventListener("click", (event) => {
       stopEvent(event);
@@ -30133,12 +30336,12 @@ function createItemRenderer({
   const primeRows = (rec) => {
     if (!rec.rowSched || !rec.rowTable?.size) return 0;
     if (rec.rowIO || rec.rowIOHeavy) return 0;
-    let n2 = 0;
+    let n3 = 0;
     for (const uid of rec.rowTable.keys()) {
       rec.rowSched.want(uid, true);
-      n2 += 1;
+      n3 += 1;
     }
-    return n2;
+    return n3;
   };
   const stopRowSched = (rec) => {
     rec.rowSched?.dispose?.();
@@ -30241,7 +30444,7 @@ function createItemRenderer({
   const outlinePlan = (blocks) => {
     const specs = [];
     let more = 0;
-    let n2 = 0;
+    let n3 = 0;
     const walk3 = (list, depth, parentUid) => {
       for (const blk of list || []) {
         const s = childString4(blk);
@@ -30250,11 +30453,11 @@ function createItemRenderer({
         const kids = isRoamTableString(s) ? [] : childKids(blk);
         const hasKids = kids.length > 0;
         const folded = blk.open === false && hasKids;
-        if (n2 >= OUTLINE_CAP) {
+        if (n3 >= OUTLINE_CAP) {
           more += 1 + (folded ? 0 : countRows(kids));
           continue;
         }
-        n2 += 1;
+        n3 += 1;
         specs.push({ uid, string: s, depth, parentUid, folded, hasKids, kids });
         if (hasKids && !folded) walk3(kids, depth + 1, uid);
       }
@@ -30509,11 +30712,11 @@ function createItemRenderer({
     onPageLayout?.(rec.uid);
     return b.roots;
   };
-  const round17 = (n2) => Math.round(n2 * 10) / 10;
+  const round17 = (n3) => Math.round(n3 * 10) / 10;
   const fracParts3 = (frac) => {
     if (!frac) return null;
     const v = Array.isArray(frac) ? frac : [frac.rx, frac.ry, frac.rw, frac.rh];
-    if (v.length !== 4 || v.some((n2) => !Number.isFinite(Number(n2)))) return null;
+    if (v.length !== 4 || v.some((n3) => !Number.isFinite(Number(n3)))) return null;
     const [rx, ry, rw, rh] = v.map(Number);
     if (rw <= 0 || rh <= 0) return null;
     return { rx, ry, rw, rh };
@@ -32883,7 +33086,7 @@ function createItemRenderer({
   const findLiveTextarea = (e2) => {
     const list = [...e2.editor.querySelectorAll?.("textarea") || []];
     if (!list.length) return null;
-    const ta = [...list].reverse().find((n2) => String(n2.id || "").startsWith("block-input-")) || list[list.length - 1];
+    const ta = [...list].reverse().find((n3) => String(n3.id || "").startsWith("block-input-")) || list[list.length - 1];
     return ta?.isConnected ? ta : null;
   };
   const floorTick = (e2) => {
@@ -33144,8 +33347,8 @@ function createItemRenderer({
     if (fresh) {
       if (!caretRow) caretRow = String(pending.row || "");
       if (caretOff == null && (!row4 || row4 === pending.row)) {
-        const n2 = Number(pending.offset);
-        if (Number.isFinite(n2)) caretOff = n2;
+        const n3 = Number(pending.offset);
+        if (Number.isFinite(n3)) caretOff = n3;
       }
     }
     if (isSticky(item)) return focusSticky(uid);
@@ -34030,10 +34233,10 @@ function readKeyPair(raw) {
 }
 function writeKeyPair(raw, drawer) {
   const text4 = typeof raw === "string" ? raw.trim() : "";
-  const n2 = Number(drawer);
-  if (!Number.isFinite(n2) || n2 <= 0 || n2 > 1) return text4;
+  const n3 = Number(drawer);
+  if (!Number.isFinite(n3) || n3 <= 0 || n3 > 1) return text4;
   const first = text4 ? text4.split(/\s+/)[0] : "0";
-  const second = String(Math.round(n2 * 1e3) / 1e3);
+  const second = String(Math.round(n3 * 1e3) / 1e3);
   return `${first} ${second}`;
 }
 function cardDragPayload(uid) {
@@ -34073,12 +34276,12 @@ var read_drawer_exports = {};
 __export(read_drawer_exports, {
   createReadDrawer: () => createReadDrawer
 });
-function clampFraction(n2) {
-  if (typeof n2 !== "number" || !Number.isFinite(n2)) return OPEN2;
-  return Math.min(MAX_F, Math.max(MIN_F, n2));
+function clampFraction(n3) {
+  if (typeof n3 !== "number" || !Number.isFinite(n3)) return OPEN2;
+  return Math.min(MAX_F, Math.max(MIN_F, n3));
 }
-function countLabel2(n2) {
-  const value = Number.isFinite(n2) ? Math.max(0, Math.round(n2)) : 0;
+function countLabel2(n3) {
+  const value = Number.isFinite(n3) ? Math.max(0, Math.round(n3)) : 0;
   return value === 1 ? "1 highlight" : `${value} highlights`;
 }
 function createReadDrawer({
@@ -34302,8 +34505,8 @@ function createReadDrawer({
     return shown.find((entry) => entry.uid === uid) || null;
   };
   const paintCount = () => {
-    const n2 = pinnedCount != null ? pinnedCount : catalog.length;
-    count.textContent = countLabel2(n2);
+    const n3 = pinnedCount != null ? pinnedCount : catalog.length;
+    count.textContent = countLabel2(n3);
   };
   const paintPressed = () => {
     for (const dot of dots.querySelectorAll?.(".pxd-read-drawer__dot") || []) {
@@ -34331,12 +34534,12 @@ function createReadDrawer({
   };
   const paintPages = () => {
     pages.replaceChildren?.();
-    for (const n2 of pagesPresent(catalog)) {
+    for (const n3 of pagesPresent(catalog)) {
       const chip = el2("button", "pxd-pdf-chip pxd-chrome", pages);
-      chip.setAttribute("data-page", String(n2));
-      chip.setAttribute("aria-label", `Page ${n2}`);
+      chip.setAttribute("data-page", String(n3));
+      chip.setAttribute("aria-label", `Page ${n3}`);
       chip.setAttribute("aria-pressed", "false");
-      chip.textContent = `p.${n2}`;
+      chip.textContent = `p.${n3}`;
     }
   };
   const paintSelected = () => {
@@ -34512,8 +34715,8 @@ function createReadDrawer({
     const chip = closest(".pxd-pdf-chip");
     if (chip && pages.contains?.(chip)) {
       event.stopPropagation?.();
-      const n2 = Number(chip.getAttribute?.("data-page"));
-      page = page === n2 ? null : n2;
+      const n3 = Number(chip.getAttribute?.("data-page"));
+      page = page === n3 ? null : n3;
       paintPressed();
       paintRows();
       return;
@@ -34707,8 +34910,8 @@ function createReadDrawer({
       searchBtn.setAttribute("aria-expanded", "true");
       find.focus?.();
     },
-    setCount(n2) {
-      const value = typeof n2 === "number" && Number.isFinite(n2) ? Math.max(0, Math.round(n2)) : 0;
+    setCount(n3) {
+      const value = typeof n3 === "number" && Number.isFinite(n3) ? Math.max(0, Math.round(n3)) : 0;
       pinnedCount = value;
       paintCount();
     },
@@ -34901,29 +35104,29 @@ function sortedKids(node2) {
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
 function planSubtreeClone(node2, { genUid, parentUid, order = "last", plexusPatch = null, uidMap = /* @__PURE__ */ new Map() } = {}) {
-  const assign = (n2) => {
-    uidMap.set(n2[":block/uid"], genUid());
-    for (const c of sortedKids(n2)) assign(c);
+  const assign = (n3) => {
+    uidMap.set(n3[":block/uid"], genUid());
+    for (const c of sortedKids(n3)) assign(c);
   };
   assign(node2);
   const creates = [];
-  const emit2 = (n2, parent, ord, isRoot) => {
-    const props = n2[":block/props"] == null ? null : plainKeys(n2[":block/props"]);
+  const emit2 = (n3, parent, ord, isRoot) => {
+    const props = n3[":block/props"] == null ? null : plainKeys(n3[":block/props"]);
     let outProps = props;
     if (isRoot && plexusPatch) {
       outProps = { ...props ?? {} };
       outProps[PLEXUS_KEY] = { ...outProps[PLEXUS_KEY] ?? {}, ...plexusPatch };
     }
-    const uid = uidMap.get(n2[":block/uid"]);
+    const uid = uidMap.get(n3[":block/uid"]);
     creates.push({
       uid,
       parent,
       order: ord,
-      string: rewriteRefs(n2[":block/string"], uidMap),
+      string: rewriteRefs(n3[":block/string"], uidMap),
       props: outProps,
-      open: n2[":block/open"] !== false
+      open: n3[":block/open"] !== false
     });
-    sortedKids(n2).forEach((c, i) => emit2(c, uid, i, false));
+    sortedKids(n3).forEach((c, i) => emit2(c, uid, i, false));
   };
   emit2(node2, parentUid, order, true);
   return { creates, uidMap };
@@ -34949,7 +35152,7 @@ function planEdgeClones(edges, uidMap, { genUid, containerUid, refOfNew } = {}) 
 
 // src/model/layout.js
 var num3 = (v, d) => typeof v === "number" && Number.isFinite(v) ? v : d;
-var norm = (n2) => n2 + 0;
+var norm = (n3) => n3 + 0;
 function unionOf(list) {
   let x0 = Infinity;
   let y0 = Infinity;
@@ -34960,8 +35163,8 @@ function unionOf(list) {
   return { x: x0, y: y0 };
 }
 function gridPlace(items, origin, gap, columns) {
-  const n2 = items.length;
-  const cols = Math.max(1, Math.min(n2, Math.floor(num3(columns, 0)) || Math.ceil(Math.sqrt(n2))));
+  const n3 = items.length;
+  const cols = Math.max(1, Math.min(n3, Math.floor(num3(columns, 0)) || Math.ceil(Math.sqrt(n3))));
   const colW = new Array(cols).fill(0);
   const rowH = [];
   items.forEach((r, i) => {
@@ -35097,7 +35300,7 @@ function mindMapLayout(root, { direction = "right", hGap = 80, vGap = 24 } = {})
   const out = /* @__PURE__ */ new Map();
   if (!root) return out;
   const down2 = direction === "down";
-  const sizeOf = down2 ? (n2) => ({ dd: n2.h, bb: n2.w }) : (n2) => ({ dd: n2.w, bb: n2.h });
+  const sizeOf = down2 ? (n3) => ({ dd: n3.h, bb: n3.w }) : (n3) => ({ dd: n3.w, bb: n3.h });
   const toXY = (d, b) => down2 ? { x: norm(b), y: norm(d) } : { x: norm(d), y: norm(b) };
   const groupPlaces = (kids2) => {
     const s = subtree({ ...root, children: kids2 }, sizeOf, hGap, vGap);
@@ -35118,8 +35321,8 @@ function mindMapLayout(root, { direction = "right", hGap = 80, vGap = 24 } = {})
     return out;
   }
   if (direction === "radial") {
-    const radialSize = (n2) => {
-      const span = Math.max(num3(n2?.w, 0), num3(n2?.h, 0), 1);
+    const radialSize = (n3) => {
+      const span = Math.max(num3(n3?.w, 0), num3(n3?.h, 0), 1);
       return { dd: span, bb: span };
     };
     const s = subtree({ ...root, children: kids }, radialSize, hGap, vGap);
@@ -35333,8 +35536,8 @@ function chooseTable(fresh, layer) {
   const chose = layerScore > freshScore + 0.05 || sameShape && layerScore > freshScore + 0.02 ? "layer" : "fresh";
   return { chose, fresh: { ...f, score: round2(freshScore) }, layer: { ...l, score: round2(layerScore) } };
 }
-function round2(n2) {
-  return Math.round(n2 * 1e3) / 1e3;
+function round2(n3) {
+  return Math.round(n3 * 1e3) / 1e3;
 }
 function mergeOcrDocument(base, fresh, { pages = [] } = {}) {
   const set = new Set(pages);
@@ -35425,7 +35628,7 @@ function pagePairs(cloud, local) {
   const cloudPages = pagesOf(cloud);
   const localPages = new Set(pagesOf(local));
   const pairs = [];
-  for (const n2 of cloudPages) if (localPages.has(n2)) pairs.push([n2, n2]);
+  for (const n3 of cloudPages) if (localPages.has(n3)) pairs.push([n3, n3]);
   if (!pairs.length && cloudPages.length === 1 && localPages.size === 1) {
     pairs.push([cloudPages[0], [...localPages][0]]);
   }
@@ -35458,16 +35661,16 @@ function betterCaption(localText, cloudText) {
   return localScore > cloudScore ? local : cloud;
 }
 function clampConf(value, fallback) {
-  const n2 = Number(value);
-  if (!Number.isFinite(n2)) return fallback;
-  return Math.max(0, Math.min(1, n2));
+  const n3 = Number(value);
+  if (!Number.isFinite(n3)) return fallback;
+  return Math.max(0, Math.min(1, n3));
 }
 function idFactory(blocks) {
   const used = new Set(Object.keys(blocks));
   return (prefix) => {
-    let n2 = 1;
-    while (used.has(`${prefix}${n2}`)) n2 += 1;
-    const id = `${prefix}${n2}`;
+    let n3 = 1;
+    while (used.has(`${prefix}${n3}`)) n3 += 1;
+    const id = `${prefix}${n3}`;
     used.add(id);
     return id;
   };
@@ -35517,8 +35720,8 @@ function matchFigures(cloudFigs, localFigs) {
   }
   return { pairs, used };
 }
-function pageByN(doc, n2) {
-  for (const page of doc?.pages || []) if (page?.n === n2) return page;
+function pageByN(doc, n3) {
+  for (const page of doc?.pages || []) if (page?.n === n3) return page;
   return null;
 }
 function figureDetectionRan(localDoc, pageN) {
@@ -35527,9 +35730,9 @@ function figureDetectionRan(localDoc, pageN) {
   const kind = page?.kind;
   return kind === "text" || kind === "mixed";
 }
-function ocrPageListed(doc, n2) {
+function ocrPageListed(doc, n3) {
   const pages = doc?.ocr?.pages;
-  return Array.isArray(pages) && pages.includes(n2);
+  return Array.isArray(pages) && pages.includes(n3);
 }
 function isOcrRead(doc) {
   if (!doc) return false;
@@ -36163,6 +36366,15 @@ function createParseStore({ indexedDB: factory, now: now4, docCap = PARSE_DOC_CA
         return null;
       }
     },
+    // Every PDF url with a stored parse (the Parsed PDFs filter): one key read, no records.
+    async parsedUrls() {
+      try {
+        const keys = await backend.keys(STORE_PARSE_INDEX);
+        return (Array.isArray(keys) ? keys : []).filter((k) => typeof k === "string" && k !== META_KEY && !k.startsWith("meta:"));
+      } catch {
+        return [];
+      }
+    },
     async indexUrl(url, info) {
       try {
         if (!url || !info || !info.sha256) return null;
@@ -36279,7 +36491,7 @@ function isCompleteRead(doc, total = 0) {
   const range = doc?.stats?.range;
   if (Array.isArray(range) && range.length === 2 && (range[0] !== 1 || range[1] < count)) return false;
   const seen = new Set(pages.map((p) => p?.n));
-  for (let n2 = 1; n2 <= count; n2 += 1) if (!seen.has(n2)) return false;
+  for (let n3 = 1; n3 <= count; n3 += 1) if (!seen.has(n3)) return false;
   return true;
 }
 function readEntryKey(kind) {
@@ -36983,13 +37195,13 @@ function neighborLayout(rect, titles, { skip = [] } = {}) {
     list.push(string);
     if (list.length >= NEIGHBOR_CAP) break;
   }
-  const n2 = list.length;
-  if (!n2) return [];
+  const n3 = list.length;
+  if (!n3) return [];
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
   const radius = Math.max(rect.w, rect.h) / 2 + 240;
   return list.map((string, i) => {
-    const angle = -Math.PI / 2 + (n2 === 1 ? 0 : i / n2 * Math.PI * 2);
+    const angle = -Math.PI / 2 + (n3 === 1 ? 0 : i / n3 * Math.PI * 2);
     return {
       string,
       x: Math.round(cx + Math.cos(angle) * radius - CARD_W2 / 2),
@@ -37002,6 +37214,7 @@ function neighborLayout(rect, titles, { skip = [] } = {}) {
 init_pdf();
 init_pdf_page();
 init_semantic();
+init_filter_browse();
 init_refs();
 
 // src/model/card-cache.js
@@ -37235,17 +37448,17 @@ function closeTab(tabs, uid) {
 }
 function tabAt(tabs, index) {
   const list = normalizeTabs(tabs);
-  const n2 = Number(index);
-  if (!Number.isInteger(n2) || n2 < 0 || n2 >= list.length) return null;
-  return list[n2];
+  const n3 = Number(index);
+  if (!Number.isInteger(n3) || n3 < 0 || n3 >= list.length) return null;
+  return list[n3];
 }
-function isBoardTabEvent(ev, n2) {
-  if (!ev || !Number.isInteger(n2) || n2 < 1 || n2 > TAB_CAP) return false;
+function isBoardTabEvent(ev, n3) {
+  if (!ev || !Number.isInteger(n3) || n3 < 1 || n3 > TAB_CAP) return false;
   if (!(ev.meta || ev.ctrl) || ev.alt || ev.shift) return false;
   const key = String(ev.key ?? "");
   const code = String(ev.code ?? "");
-  if (code === `Digit${n2}`) return key === "" || key === String(n2);
-  return key === String(n2) && (code === "" || code === `Digit${n2}`);
+  if (code === `Digit${n3}`) return key === "" || key === String(n3);
+  return key === String(n3) && (code === "" || code === `Digit${n3}`);
 }
 
 // src/host/roam.js
@@ -37371,11 +37584,11 @@ function installCommentHost(host, { api: api3, data = api3?.data, now: now4 = ()
   return host;
 }
 function asTree(list) {
-  return (Array.isArray(list) ? list : []).map((n2) => ({
-    uid: n2[":block/uid"],
-    string: n2[":block/string"],
-    order: n2[":block/order"],
-    children: asTree(n2[":block/children"])
+  return (Array.isArray(list) ? list : []).map((n3) => ({
+    uid: n3[":block/uid"],
+    string: n3[":block/string"],
+    order: n3[":block/order"],
+    children: asTree(n3[":block/children"])
   }));
 }
 
@@ -37527,6 +37740,14 @@ var SHOW_REF_QUERY = `[:find ?board ?page ?card :in $ ?uid ?pat :where
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?diagram :block/page ?p] [?p :block/uid ?page]]`;
 var BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/props]}]";
 var PDF_PAGE_QUERY = `[:find ?u ?t :in $ ?url :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
+var PDF_HIGHLIGHTS_QUERY = `[:find ?url ?props :where [?p :pdf/url ?url] [?b :block/page ?p] [?b :block/props ?props]]`;
+var CHILD_COUNTS = "[:find ?b (count ?k) :in $ [?b ...] :where [?b :block/children ?k]]";
+var BROWSE_COUNT_MAX = 5e3;
+var BROWSE_PULL = "[:db/id :block/uid :block/string :node/title :block/props {:block/page [:node/title]}]";
+var USER_EID_QUERIES = Object.freeze([
+  "[:find ?x ?n :where [?x :user/display-name ?n]]",
+  "[:find ?x ?n :where [?x :user/uid _] [?x :user/display-page ?d] [?d :node/title ?n]]"
+]);
 var PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
 var PDF_BLOCK_OUT_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?p :block/refs ?b] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 var PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?b :block/refs ?p] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
@@ -37725,9 +37946,9 @@ function createEchoLedger({ graceMs = 800, now: now4 = Date.now } = {}) {
       return [...state.values()].map((s) => [s.uid, s.field]);
     },
     pendingCount(uid) {
-      let n2 = 0;
-      for (const s of state.values()) if (s.uid === uid) n2 += s.pending.length + s.inflight;
-      return n2;
+      let n3 = 0;
+      for (const s of state.values()) if (s.uid === uid) n3 += s.pending.length + s.inflight;
+      return n3;
     },
     clear() {
       state.clear();
@@ -38307,6 +38528,66 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     pullMany: (pattern, eids) => typeof data.pull_many === "function" ? data.pull_many(pattern, eids) : eids.map((e2) => rawPull(pattern, e2)),
     q: (query, ...inputs) => host.q(query, ...inputs)
   }));
+  const filterBrowseCache = /* @__PURE__ */ new Map();
+  let userEids = null;
+  const userIdsFor = (name) => {
+    const now4 = Date.now();
+    if (!userEids || now4 - userEids.at > 5 * 6e4) {
+      const map = /* @__PURE__ */ new Map();
+      for (const query of USER_EID_QUERIES) {
+        for (const [eid, n3] of host.q(query) || []) {
+          if (typeof n3 !== "string" || eid == null) continue;
+          const key = n3.toLowerCase();
+          if (!map.has(key)) map.set(key, []);
+          if (!map.get(key).includes(eid)) map.get(key).push(eid);
+        }
+      }
+      userEids = { at: now4, map };
+    }
+    return userEids.map.get(String(name).toLowerCase()) || null;
+  };
+  let highlightUrls = null;
+  const highlightCounts = (timed) => {
+    const now4 = Date.now();
+    if (highlightUrls && now4 - highlightUrls.at < FILTER_BROWSE_TTL_MS) return highlightUrls.map;
+    const map = /* @__PURE__ */ new Map();
+    for (const [url, props] of timed("pdf-highlights", () => host.q(PDF_HIGHLIGHTS_QUERY))) {
+      if (typeof url === "string" && hasPdfHighlight(props)) map.set(url, (map.get(url) || 0) + 1);
+    }
+    highlightUrls = { at: now4, map };
+    return map;
+  };
+  const pdfKeep = (rows, { parsed = false, highlights = false, parsedUrls = null } = {}, timed) => {
+    const pdfs = rows.filter((r) => libraryKind(r) === "pdf" || r?.kind === "pdf");
+    if (!parsed && !highlights) return rows;
+    const urlOf = (r) => r.url || pdfMacroUrl(r.string) || "";
+    let marks = null;
+    if (highlights) marks = highlightCounts(timed);
+    let kept = highlights ? pdfs.filter((r) => (marks.get(urlOf(r)) || 0) > 0) : pdfs;
+    if (parsed) {
+      const local = parsedUrls instanceof Set ? parsedUrls : /* @__PURE__ */ new Set();
+      const ask2 = kept.filter((r) => !local.has(urlOf(r)) && r.uid);
+      const reads = /* @__PURE__ */ new Set();
+      if (ask2.length) {
+        timed("pdf-reads", () => {
+          let nodes = [];
+          try {
+            nodes = typeof data.pull_many === "function" ? data.pull_many("[:block/uid :block/props]", ask2.map((r) => [":block/uid", r.uid])) || [] : [];
+          } catch {
+            nodes = [];
+          }
+          for (const node2 of nodes) {
+            const props = node2?.[":block/props"];
+            const held = props && typeof props === "object" ? plainKeys(props)?.["plexus-reads"] : null;
+            if (held && typeof held === "object" && Object.keys(held).length) reads.add(node2[":block/uid"]);
+          }
+          return [];
+        });
+      }
+      kept = kept.filter((r) => local.has(urlOf(r)) || reads.has(r.uid));
+    }
+    return kept;
+  };
   let browsePages = null;
   const attachMeta = (rows) => {
     const uids = rows.map((r) => r.uid).filter(Boolean);
@@ -38630,8 +38911,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       } catch {
         return 0;
       }
-      const n2 = Array.isArray(rows) ? rows[0]?.[0] : 0;
-      const count = Number(n2);
+      const n3 = Array.isArray(rows) ? rows[0]?.[0] : 0;
+      const count = Number(n3);
       return Number.isFinite(count) ? count : 0;
     },
     // One Roam undo step. Roam rewrites every [[old]] reference, including the card.
@@ -39876,6 +40157,146 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       attachMeta(top);
       return { rows: top.map(libraryCard), queries: [] };
     },
+    // Rows with no search text but with filters: one bounded datalog query from the filters (filter-browse.js), ordered by
+    // the sort, pulled in chunks until BROWSE_ROWS rows pass the filters the query cannot express (type, not on a board,
+    // on this board, parsed / highlights). `keep(cardString)` is the board's own filter. Cached 30 s by filter set unless
+    // `keep` is given (the board changes under it). Parsed PDFs / PDFs with highlights alone read the caller's PDF list.
+    filterBrowse(filter, limit = 40, { sort = "best", keep = null, parsedUrls = null, pdfList = null } = {}) {
+      const queries = [];
+      const timed = (name, fn) => {
+        const t0 = performance.now();
+        let out = [];
+        try {
+          const res = fn();
+          out = Array.isArray(res) ? res : [];
+        } catch {
+          out = [];
+        }
+        queries.push({ name, ms: performance.now() - t0 });
+        return out;
+      };
+      const lim = Math.max(1, Math.floor(Number(limit) || 40));
+      const now4 = Date.now();
+      const spec = browseSpec(filter, { now: now4 });
+      if (!spec) return { rows: [], queries, spec: null, defaulted: false };
+      const key = typeof keep === "function" ? "" : browseKey(spec, sort, lim, parsedUrls instanceof Set ? parsedUrls.size : -1);
+      const hit = key ? filterBrowseCache.get(key) : null;
+      if (hit && now4 - hit.at < FILTER_BROWSE_TTL_MS) {
+        queries.push({ name: "browse-cache", ms: 0 });
+        return { rows: hit.rows, queries, spec, defaulted: spec.defaulted };
+      }
+      const pass = (rows2) => {
+        let out = narrowLibrary(rows2, { types: spec.types });
+        if (spec.orphan && out.length) {
+          markOnBoard(out, timed);
+          out = out.filter((r) => !r.onBoard);
+        }
+        if (spec.pdf) out = pdfKeep(out, { parsed: spec.parsed, highlights: spec.highlights, parsedUrls }, timed);
+        if (typeof keep === "function") out = out.filter((r) => {
+          try {
+            return keep(libraryCard(r).string);
+          } catch {
+            return false;
+          }
+        });
+        return out;
+      };
+      let kept = [];
+      let ordered = browseOrdered(spec, sort);
+      const pdfOnly = spec.pdf && typeof pdfList === "function" && spec.since == null && !spec.under && !spec.createdBy && !spec.editedBy && !spec.refs && !spec.children;
+      if (pdfOnly) {
+        let list = [];
+        try {
+          list = pdfList() || [];
+        } catch {
+          list = [];
+        }
+        const rows2 = list.filter((r) => r?.uid && !String(r.pageTitle || "").startsWith("roam/")).map((r) => ({ kind: "block", uid: String(r.uid), string: r.string, pageTitle: r.pageTitle || "", edited: null, tags: [], onBoard: false }));
+        kept = pass(rows2);
+        ordered = false;
+      } else {
+        const users = {};
+        if (spec.createdBy) users.created = userIdsFor(spec.createdBy);
+        if (spec.editedBy) users.edited = userIdsFor(spec.editedBy);
+        const plan = browseQuery(spec, { patterns: { ...BLOCK_KIND_PATTERNS, board: DIAGRAM_RE2 }, users, sort });
+        const found = plan ? timed("browse", () => host.q(plan.query, ...plan.args)) : [];
+        let counts = null;
+        const countBy = browseCountBy(spec, sort);
+        if (countBy && found.length) {
+          const eids = orderBrowse(found, "edited").slice(0, BROWSE_COUNT_MAX).map((o) => o.eid);
+          counts = /* @__PURE__ */ new Map();
+          for (const [eid, c] of timed("browse-count", () => host.q(countBy === "refs" ? META_REFS : CHILD_COUNTS, eids))) counts.set(eid, Number(c) || 0);
+        }
+        const order = orderBrowse(found, sort, counts);
+        const edited = plan?.time === "edited";
+        const wantBoard = spec.types.length === 0 || spec.types.includes("board");
+        const pullMany2 = (eids) => typeof data.pull_many === "function" ? data.pull_many(BROWSE_PULL, eids) : eids.map((e2) => rawPull(BROWSE_PULL, e2));
+        for (let i = 0; i < order.length && i < BROWSE_SCAN && kept.length < BROWSE_ROWS; i += BROWSE_CHUNK) {
+          const chunk = order.slice(i, Math.min(i + BROWSE_CHUNK, BROWSE_SCAN));
+          const nodes = timed("browse-pull", () => pullMany2(chunk.map((o) => o.eid)) || []);
+          const rows2 = [];
+          nodes.forEach((node2, j) => {
+            const uid = node2?.[":block/uid"];
+            if (typeof uid !== "string" || !uid) return;
+            const o = chunk[j];
+            const title = node2[":node/title"];
+            const base = { uid, edited: edited ? o.time : null, tags: [], onBoard: false };
+            if (typeof title === "string") {
+              if (!title.startsWith("roam/")) rows2.push({ ...base, kind: "page", title });
+              return;
+            }
+            const string = typeof node2[":block/string"] === "string" ? node2[":block/string"] : "";
+            const pageTitle = node2[":block/page"]?.[":node/title"];
+            if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) return;
+            if (DIAGRAM_STRING.test(string)) {
+              if (!wantBoard) return;
+              const props = node2[":block/props"] && typeof node2[":block/props"] === "object" ? plainKeys(node2[":block/props"]) : {};
+              if (props?.plexus?.v !== 2) return;
+              rows2.push({ ...base, kind: "board", title: parseBoardTitle(string) || "Untitled board", string, pageTitle: typeof pageTitle === "string" ? pageTitle : "", onBoard: true });
+              return;
+            }
+            rows2.push({ ...base, kind: "block", string, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
+          });
+          for (const row4 of pass(rows2)) {
+            if (kept.length < BROWSE_ROWS) kept.push(row4);
+          }
+        }
+      }
+      let top;
+      if (ordered) {
+        top = kept.slice(0, lim);
+        timed("meta", () => {
+          attachMeta(top);
+          return [];
+        });
+      } else {
+        timed("meta", () => {
+          attachMeta(kept);
+          return [];
+        });
+        top = sortRows(kept, pdfOnly && sort === "best" ? "edited" : sort).slice(0, lim);
+      }
+      const rows = top.map((r) => libraryCard(r));
+      if (key) {
+        filterBrowseCache.delete(key);
+        filterBrowseCache.set(key, { at: now4, rows });
+        while (filterBrowseCache.size > FILTER_BROWSE_MAX) filterBrowseCache.delete(filterBrowseCache.keys().next().value);
+      }
+      return { rows, queries, spec, defaulted: spec.defaulted };
+    },
+    // Parsed PDFs / PDFs with highlights over rows another search found (keyword rows, Meaning rows). Non-PDF rows go.
+    pdfFilter(rows, { parsed = false, highlights = false, parsedUrls = null } = {}) {
+      const list = Array.isArray(rows) ? rows : [];
+      if (!parsed && !highlights) return list;
+      return pdfKeep(list, { parsed, highlights, parsedUrls }, (name, fn) => {
+        try {
+          const r = fn();
+          return Array.isArray(r) ? r : [];
+        } catch {
+          return [];
+        }
+      });
+    },
     // Display names of the graph's users, for the created-by / edited-by filters.
     userNames() {
       const names = /* @__PURE__ */ new Set();
@@ -39910,7 +40331,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       return out;
     },
     // Roam semantic-search results → Add-panel rows with the panel's filters (type, tag, days, not on any board).
-    semanticRows(raw, filter, limit = 40, { sort = "best" } = {}) {
+    semanticRows(raw, filter, limit = 40, { sort = "best", parsedUrls = null, pdfList = null } = {}) {
       const f = normalizeLibraryFilter(filter);
       const queries = [];
       const timed = (name, fn) => {
@@ -39925,7 +40346,21 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         queries.push({ name, ms: performance.now() - t02 });
         return out;
       };
+      const pdfByUrl = /* @__PURE__ */ new Map();
       const pdfBlockOf = (url) => {
+        if (pdfByUrl.has(url)) return pdfByUrl.get(url);
+        let list = null;
+        try {
+          list = typeof pdfList === "function" ? pdfList() : null;
+        } catch {
+          list = null;
+        }
+        const listed2 = Array.isArray(list) ? list.find((r) => r?.uid && pdfMacroUrl(r.string) === url) : null;
+        const found = listed2 ? { uid: String(listed2.uid), string: listed2.string, pageTitle: listed2.pageTitle || "" } : pdfBlockRead(url);
+        pdfByUrl.set(url, found);
+        return found;
+      };
+      const pdfBlockRead = (url) => {
         const rows = timed("sem-pdf", () => host.q(
           `[:find ?u ?s ?t :in $ ?kind :where [?b :block/string ?s] [(re-pattern ?kind) ?kre] [(re-find ?kre ?s)] [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]`,
           BLOCK_KIND_PATTERNS.pdf
@@ -39934,7 +40369,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         return null;
       };
       const t0 = performance.now();
-      const candidates2 = semanticCandidates(raw, { pull: (uid) => pull(SEM_PULL, eidKey(uid)), pdfBlockOf }).filter((row4) => !(row4.kind === "block" && DIAGRAM_STRING.test(row4.string)));
+      const pdfPages = filter?.parsed === true || filter?.highlights === true;
+      const candidates2 = semanticCandidates(raw, { pull: (uid) => pull(SEM_PULL, eidKey(uid)), pdfBlockOf, pdfPages }).filter((row4) => !(row4.kind === "block" && DIAGRAM_STRING.test(row4.string)));
       queries.push({ name: "sem-pull", ms: performance.now() - t0 });
       if (f.orphan) markOnBoard(candidates2, timed);
       let kept = narrowLibrary(candidates2, { ...f, text: "" }, Date.now());
@@ -39945,6 +40381,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         });
         kept = narrowByMeta(kept, filter, { days: f.days });
       }
+      if (filter?.parsed === true || filter?.highlights === true) kept = pdfKeep(kept, { parsed: filter.parsed === true, highlights: filter.highlights === true, parsedUrls }, timed);
       if (sort !== "best") kept = sortRows(kept, sort);
       return { rows: kept.slice(0, Math.max(1, Math.floor(Number(limit) || 40))).map((row4) => ({ ...libraryCard(row4), semantic: true })), queries };
     },
@@ -40216,7 +40653,7 @@ function sortedKids3(node2) {
   const kids = Array.isArray(node2?.[":block/children"]) ? node2[":block/children"] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
-var str2 = (n2) => String(n2?.[":block/string"] ?? "").trim();
+var str2 = (n3) => String(n3?.[":block/string"] ?? "").trim();
 function pair(text4) {
   const p = String(text4).split(",").map((s) => Number(s.trim()));
   return p.length >= 2 && p.slice(0, 2).every(Number.isFinite) ? { a: p[0], b: p[1], c: p[2] } : null;
@@ -40388,7 +40825,7 @@ function nativeColor(value) {
   if (/^#[0-9a-f]{6}$/.test(hex)) return styleColor(hex);
   const rgb = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/.exec(s);
   if (!rgb) return void 0;
-  const ch = (n2) => Math.max(0, Math.min(255, Number(n2))).toString(16).padStart(2, "0");
+  const ch = (n3) => Math.max(0, Math.min(255, Number(n3))).toString(16).padStart(2, "0");
   return styleColor(`#${ch(rgb[1])}${ch(rgb[2])}${ch(rgb[3])}`);
 }
 function styleBags(data) {
@@ -40411,9 +40848,9 @@ function mapNodeStyle(data, kind, defaults) {
     const raw = pickStyle(bags, defaults, from);
     if (raw === void 0) continue;
     if (to === "fontSize" || to === "titleSize") {
-      const n2 = Math.round(Number(raw));
-      if (!Number.isFinite(n2)) continue;
-      out[to] = Math.max(CARD_FONT_MIN, Math.min(CARD_FONT_MAX, n2));
+      const n3 = Math.round(Number(raw));
+      if (!Number.isFinite(n3)) continue;
+      out[to] = Math.max(CARD_FONT_MIN, Math.min(CARD_FONT_MAX, n3));
     } else if (to === "align") {
       if (NATIVE_ALIGN[raw]) out.align = NATIVE_ALIGN[raw];
     } else {
@@ -40455,12 +40892,12 @@ function readNative(host, boardUid) {
   const rawEdges = Array.isArray(pulled?.[":diagram/edges"]) ? pulled[":diagram/edges"] : [];
   const { boardStyle, blockDefaults, groupDefaults } = readDiagramStyle(pulled);
   const keyById = /* @__PURE__ */ new Map();
-  const nodes = rawNodes.map((n2) => {
-    const id = n2[":db/id"];
-    const blockUid2 = n2[":diagram.node/block"]?.[":block/uid"] ?? null;
+  const nodes = rawNodes.map((n3) => {
+    const id = n3[":db/id"];
+    const blockUid2 = n3[":diagram.node/block"]?.[":block/uid"] ?? null;
     const key = blockUid2 ?? `n${id}`;
     keyById.set(id, key);
-    const data = parseData(n2[":diagram.node/data"]);
+    const data = parseData(n3[":diagram.node/data"]);
     const abs = data.positionAbsolute && finite3(data.positionAbsolute.x) !== void 0 ? data.positionAbsolute : null;
     const pos = abs ?? data.position ?? {};
     const type = data.type === "group" ? "group" : "node";
@@ -40472,15 +40909,15 @@ function readNative(host, boardUid) {
       w: finite3(data.width) ?? finite3(data.measured?.width),
       h: finite3(data.height) ?? finite3(data.measured?.height),
       absolute: Boolean(abs),
-      parentId: n2[":diagram.node/parent-node"]?.[":db/id"],
+      parentId: n3[":diagram.node/parent-node"]?.[":db/id"],
       type,
-      title: n2[":diagram.node/block"]?.[":block/string"] ?? "",
+      title: n3[":diagram.node/block"]?.[":block/string"] ?? "",
       style: mapNodeStyle(data, type, type === "group" ? groupDefaults : blockDefaults)
     };
   });
-  for (const n2 of nodes) {
-    n2.parentNode = n2.parentId != null ? keyById.get(n2.parentId) : void 0;
-    delete n2.parentId;
+  for (const n3 of nodes) {
+    n3.parentNode = n3.parentId != null ? keyById.get(n3.parentId) : void 0;
+    delete n3.parentId;
   }
   const edges = [];
   for (const e2 of rawEdges) {
@@ -40493,12 +40930,12 @@ function readNative(host, boardUid) {
   }
   return { nodes, edges, boardStyle };
 }
-var round13 = (n2) => Math.round(n2 * 10) / 10;
+var round13 = (n3) => Math.round(n3 * 10) / 10;
 var centerOf2 = (r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 var inside2 = (r, p) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 function defaultGen() {
-  let n2 = 0;
-  return () => `imp${String(++n2).padStart(6, "0")}`;
+  let n3 = 0;
+  return () => `imp${String(++n3).padStart(6, "0")}`;
 }
 function refOf(board2, uid, sectionUids) {
   const item = board2.items.get(uid);
@@ -40568,27 +41005,27 @@ function planV06(board2, source, gen) {
 function planNative(board2, source, gen) {
   const plan = { itemLayouts: [], sections: [], memberLayouts: [], edges: [], viewport: null, markMigratedUid: null };
   const nodes = source.nodes;
-  const byKey = new Map(nodes.map((n2) => [n2.key, n2]));
-  const widths = nodes.filter((n2) => n2.type !== "group").map((n2) => n2.w).filter((w) => w > 0).sort((a, b) => a - b);
+  const byKey = new Map(nodes.map((n3) => [n3.key, n3]));
+  const widths = nodes.filter((n3) => n3.type !== "group").map((n3) => n3.w).filter((w) => w > 0).sort((a, b) => a - b);
   const typical = widths.length ? widths[Math.floor(widths.length / 2)] : 165;
   const scale = Math.max(1, 240 / typical);
   const absCache = /* @__PURE__ */ new Map();
-  const absOf = (n2, seen = /* @__PURE__ */ new Set()) => {
-    if (absCache.has(n2.key)) return absCache.get(n2.key);
-    let p = { x: n2.x, y: n2.y };
-    if (!n2.absolute && n2.parentNode && !seen.has(n2.key)) {
-      const parent = byKey.get(n2.parentNode);
+  const absOf = (n3, seen = /* @__PURE__ */ new Set()) => {
+    if (absCache.has(n3.key)) return absCache.get(n3.key);
+    let p = { x: n3.x, y: n3.y };
+    if (!n3.absolute && n3.parentNode && !seen.has(n3.key)) {
+      const parent = byKey.get(n3.parentNode);
       if (parent) {
-        seen.add(n2.key);
+        seen.add(n3.key);
         const pa = absOf(parent, seen);
-        p = { x: pa.x + n2.x, y: pa.y + n2.y };
+        p = { x: pa.x + n3.x, y: pa.y + n3.y };
       }
     }
-    absCache.set(n2.key, p);
+    absCache.set(n3.key, p);
     return p;
   };
   const sectionOf = /* @__PURE__ */ new Map();
-  const groups2 = nodes.filter((n2) => n2.type === "group");
+  const groups2 = nodes.filter((n3) => n3.type === "group");
   for (const g of groups2) {
     const existing = g.blockUid && board2.items.has(g.blockUid);
     const uid = existing ? g.blockUid : gen();
@@ -40623,20 +41060,20 @@ function planNative(board2, source, gen) {
   const sectionUids = new Set(plan.sections.map((s) => s.uid));
   const uidOfKey = /* @__PURE__ */ new Map();
   for (const g of groups2) uidOfKey.set(g.key, sectionOf.get(g.key).uid);
-  for (const n2 of nodes) {
-    if (n2.type === "group") continue;
-    const item = n2.blockUid ? board2.items.get(n2.blockUid) : null;
+  for (const n3 of nodes) {
+    if (n3.type === "group") continue;
+    const item = n3.blockUid ? board2.items.get(n3.blockUid) : null;
     if (!item || item.type === "section") continue;
-    uidOfKey.set(n2.key, item.uid);
-    const a = absOf(n2);
+    uidOfKey.set(n3.key, item.uid);
+    const a = absOf(n3);
     const abs = { x: a.x * scale, y: a.y * scale };
     const layout = {
       type: item.type,
-      w: Math.max(MIN_SIZES.card.w, Math.round((n2.w ?? item.w / scale) * scale)),
-      h: Math.max(MIN_SIZES.card.h, Math.round((n2.h ?? item.h / scale) * scale)),
-      ...n2.style || {}
+      w: Math.max(MIN_SIZES.card.w, Math.round((n3.w ?? item.w / scale) * scale)),
+      h: Math.max(MIN_SIZES.card.h, Math.round((n3.h ?? item.h / scale) * scale)),
+      ...n3.style || {}
     };
-    const sec = n2.parentNode ? sectionOf.get(n2.parentNode) : null;
+    const sec = n3.parentNode ? sectionOf.get(n3.parentNode) : null;
     if (sec) {
       sec.entry.members.push(item.uid);
       plan.memberLayouts.push({ uid: item.uid, layout: { ...layout, x: round13(abs.x - sec.abs.x), y: round13(abs.y - sec.abs.y) } });
@@ -40802,14 +41239,14 @@ function chunkParsedMarkdown(markdown, blockEstimate) {
   let count = 0;
   const treeBullets = (tree) => tree.filter((line) => /^\s*- /.test(line)).length;
   for (const tree of topLevelTrees(text4)) {
-    const n2 = treeBullets(tree);
-    if (count > 0 && count + n2 > PARSE_BLOCK_CHUNK) {
+    const n3 = treeBullets(tree);
+    if (count > 0 && count + n3 > PARSE_BLOCK_CHUNK) {
       chunks.push(buf.join("\n"));
       buf = [];
       count = 0;
     }
     buf.push(...tree);
-    count += n2;
+    count += n3;
   }
   if (buf.length) chunks.push(buf.join("\n"));
   if (chunks.length > PARSE_CHUNK_CAP) return { ok: false, reason: "too-large" };
@@ -40850,7 +41287,7 @@ function extendSession(fn) {
   };
 }
 var clone = (v) => v == null ? v : JSON.parse(JSON.stringify(v));
-var round14 = (n2) => Math.round(n2 * 10) / 10;
+var round14 = (n3) => Math.round(n3 * 10) / 10;
 function sortKeys(v) {
   if (Array.isArray(v)) return v.map(sortKeys);
   if (v && typeof v === "object") {
@@ -41118,8 +41555,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     return v === true || v === "true" ? true : v === false || v === "false" ? false : fallback;
   };
   const sizeSetting = (name, fallback) => {
-    const n2 = Number(setting(name, fallback));
-    return Number.isFinite(n2) && n2 >= 40 ? n2 : fallback;
+    const n3 = Number(setting(name, fallback));
+    return Number.isFinite(n3) && n3 >= 40 ? n3 : fallback;
   };
   const collapseOutline = () => (typeof settings?.get === "function" ? settings.get("collapse-outline") : settings?.["collapse-outline"]) !== false;
   const rawNode = (id) => id === uid ? raw : ix().get(id)?.node ?? null;
@@ -41275,10 +41712,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (!item) return allowed;
     const node2 = findChild(root, id);
     if (node2) {
-      const walk3 = (n2) => {
-        const nid = n2?.[UID];
+      const walk3 = (n3) => {
+        const nid = n3?.[UID];
         if (nid) allowed.add(nid);
-        for (const child of kidsOf2(n2)) walk3(child);
+        for (const child of kidsOf2(n3)) walk3(child);
       };
       walk3(node2);
     }
@@ -43034,7 +43471,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           const item = board2.items.get(id);
           return item && item.type !== "section";
         }), emit2);
-        let n2 = 0;
+        let n3 = 0;
         for (const id of ids) {
           const nextPatch = {};
           for (const k of ITEM_STYLE_KEYS) {
@@ -43044,10 +43481,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           const next = itemPlexus(id, nextPatch);
           if (stable(next) !== stable(rawPlexus(id))) {
             t.props(id, next);
-            n2++;
+            n3++;
           }
         }
-        return n2;
+        return n3;
       });
     },
     resetItemStyle(uids) {
@@ -43058,7 +43495,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     setSectionStyle(uids, patch = {}) {
       return txn((t) => {
         const ids = capBulk([...new Set(uids ?? [])].filter((id) => board2.items.get(id)?.type === "section"), emit2);
-        let n2 = 0;
+        let n3 = 0;
         for (const id of ids) {
           const nextPatch = {};
           for (const k of SECTION_STYLE_KEYS) {
@@ -43068,10 +43505,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           const next = itemPlexus(id, nextPatch);
           if (stable(next) !== stable(rawPlexus(id))) {
             t.props(id, next);
-            n2++;
+            n3++;
           }
         }
-        return n2;
+        return n3;
       });
     },
     resetSectionStyle(uids) {
@@ -44088,7 +44525,7 @@ extendSession((session, api3) => {
       if (item.type === "section") Object.assign(patch, { type: "section", w: item.w, h: item.h });
       const tree = isOldTableCard(item) ? wrapTableNode(node2, item.title) : node2;
       const plan = planSubtreeClone(tree, { genUid: gen, parentUid: parent, order: api3.insertOrder(parent), plexusPatch: patch, uidMap });
-      const oldOf = new Map([...uidMap].map(([o, n2]) => [n2, o]));
+      const oldOf = new Map([...uidMap].map(([o, n3]) => [n3, o]));
       for (const c of plan.creates) {
         const plexus = c.props?.[PLEXUS_KEY] ? { ...c.props[PLEXUS_KEY] } : null;
         if (plexus) {
@@ -44254,8 +44691,8 @@ extendSession((session, api3) => {
       const item = board2?.items.get(cardUid);
       if (!item || item.type !== "card") return Promise.resolve(none);
       let kids;
-      if (item.kind === "note") kids = (item.content ?? []).map((n2) => ({ uid: n2[UID2] ?? n2.uid, string: n2[STR2] ?? n2.string ?? "" }));
-      else if (item.kind === "block") kids = (host.pullTree(item.target.uid, 1, 60) ?? []).map((n2) => ({ uid: n2[UID2] ?? n2.uid, string: n2[STR2] ?? n2.string ?? "" }));
+      if (item.kind === "note") kids = (item.content ?? []).map((n3) => ({ uid: n3[UID2] ?? n3.uid, string: n3[STR2] ?? n3.string ?? "" }));
+      else if (item.kind === "block") kids = (host.pullTree(item.target.uid, 1, 60) ?? []).map((n3) => ({ uid: n3[UID2] ?? n3.uid, string: n3[STR2] ?? n3.string ?? "" }));
       else return Promise.resolve(none);
       const onBoard = /* @__PURE__ */ new Set();
       for (const it of board2.items.values()) if (it.target?.kind === "block" && it.target.uid) onBoard.add(it.target.uid);
@@ -44316,15 +44753,15 @@ extendSession((session, api3) => {
       const board2 = api3.board();
       const item = board2?.items.get(cardUid);
       if (!item || item.type !== "card") return Promise.resolve(none);
-      const plain2 = (list) => list.filter((n2) => n2?.uid).map((n2) => ({
-        uid: n2.uid,
-        string: n2.string ?? "",
-        children: plain2(n2.children ?? [])
+      const plain2 = (list) => list.filter((n3) => n3?.uid).map((n3) => ({
+        uid: n3.uid,
+        string: n3.string ?? "",
+        children: plain2(n3.children ?? [])
       }));
-      const rawTree = (list) => list.filter((n2) => n2?.[UID2]).map((n2) => ({
-        uid: n2[UID2],
-        string: n2[STR2] ?? "",
-        children: rawTree(api3.kidsOf(n2))
+      const rawTree = (list) => list.filter((n3) => n3?.[UID2]).map((n3) => ({
+        uid: n3[UID2],
+        string: n3[STR2] ?? "",
+        children: rawTree(api3.kidsOf(n3))
       }));
       let tree;
       if (item.kind === "note") tree = rawTree(api3.kidsOf({ [KIDS2]: item.content }));
@@ -44333,12 +44770,12 @@ extendSession((session, api3) => {
       else return Promise.resolve(none);
       const flat3 = [];
       const walk3 = (list, depth, parent) => {
-        for (const n2 of list) {
-          if (depth > preset.depth || flat3.some((f) => f.uid === n2.uid)) continue;
-          if (!preset.includeRefs && classifyString(n2.string).kind === "block") continue;
-          const entry = { uid: n2.uid, depth, parent, at: flat3.length };
+        for (const n3 of list) {
+          if (depth > preset.depth || flat3.some((f) => f.uid === n3.uid)) continue;
+          if (!preset.includeRefs && classifyString(n3.string).kind === "block") continue;
+          const entry = { uid: n3.uid, depth, parent, at: flat3.length };
           flat3.push(entry);
-          walk3(n2.children, depth + 1, n2.uid);
+          walk3(n3.children, depth + 1, n3.uid);
         }
       };
       walk3(tree, 1, null);
@@ -44477,7 +44914,7 @@ var row = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i) 
   h
 ));
 var STARTERS = [
-  { id: "five-why", title: "5-Why", tree: board("root", "5-Why", [1, 2, 3, 4, 5].map((n2) => card(`w${n2}`, `Why ${n2}`, 40, 40 + (n2 - 1) * 160))) },
+  { id: "five-why", title: "5-Why", tree: board("root", "5-Why", [1, 2, 3, 4, 5].map((n3) => card(`w${n3}`, `Why ${n3}`, 40, 40 + (n3 - 1) * 160))) },
   { id: "fishbone", title: "Fishbone (6M)", tree: board("root", "Fishbone (6M)", row(["Man", "Machine", "Method", "Material", "Measurement", "Environment"], 40, 240, 280, 16)) },
   { id: "8d", title: "8D", tree: board("root", "8D", row(["D1 Team", "D2 Problem", "D3 Containment", "D4 Root cause", "D5 Action", "D6 Implement", "D7 Prevent", "D8 Congratulate"], 40, 220, 240, 16)) },
   { id: "swot", title: "SWOT", tree: board("root", "SWOT", row(["Strengths", "Weaknesses", "Opportunities", "Threats"])) },
@@ -44517,7 +44954,7 @@ function planTemplate(id, opts) {
 }
 
 // src/templates.js
-var round15 = (n2) => Math.round(n2 * 10) / 10;
+var round15 = (n3) => Math.round(n3 * 10) / 10;
 async function writeChunks(chunks, write, toast) {
   for (let i = 0; i < chunks.length; i += 1) {
     await write(chunks[i]);
@@ -45387,8 +45824,8 @@ function text2(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 function whole(value) {
-  const n2 = Number(value);
-  return Number.isInteger(n2) && n2 >= 1 ? n2 : null;
+  const n3 = Number(value);
+  return Number.isInteger(n3) && n3 >= 1 ? n3 : null;
 }
 function visibleHas(visible2, uid) {
   if (visible2 == null) return false;
@@ -46169,7 +46606,7 @@ function highlightLensTag(color) {
 }
 
 // src/model/halo.js
-var DAY_MS3 = 864e5;
+var DAY_MS4 = 864e5;
 var MONTHS7 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 var HALO_PULL_LIGHT = "[:create/time :edit/time {:create/user [:user/display-name]}]";
 var HALO_REF_CAP = 200;
@@ -46223,9 +46660,9 @@ function ordinal(day) {
   }
 }
 function formatMade(ms) {
-  const n2 = finite4(ms);
-  if (n2 == null) return "";
-  const date = new Date(n2);
+  const n3 = finite4(ms);
+  if (n3 == null) return "";
+  const date = new Date(n3);
   return `${MONTHS7[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
 }
 function headerText({ created, board: board2, section: section2, userName: userName3 } = {}) {
@@ -46247,7 +46684,7 @@ function company(rows, uid) {
   for (const row4 of list) {
     if (!row4 || row4.uid === uid) continue;
     const stamp2 = finite4(row4.created);
-    if (stamp2 == null || Math.abs(stamp2 - created) > DAY_MS3) continue;
+    if (stamp2 == null || Math.abs(stamp2 - created) > DAY_MS4) continue;
     out.push(row4.uid);
     if (out.length >= 6) break;
   }
@@ -46257,19 +46694,19 @@ function buckets(times) {
   const counts = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   const list = [];
   for (const value of times || []) {
-    const n2 = finite4(value);
-    if (n2 != null) list.push(n2);
+    const n3 = finite4(value);
+    if (n3 != null) list.push(n3);
   }
   if (!list.length) return counts;
   let min = list[0];
   let max = list[0];
-  for (const n2 of list) {
-    if (n2 < min) min = n2;
-    if (n2 > max) max = n2;
+  for (const n3 of list) {
+    if (n3 < min) min = n3;
+    if (n3 > max) max = n3;
   }
   const span = max - min;
-  for (const n2 of list) {
-    let index = span <= 0 ? 0 : Math.floor((n2 - min) / span * 12);
+  for (const n3 of list) {
+    let index = span <= 0 ? 0 : Math.floor((n3 - min) / span * 12);
     if (index < 0) index = 0;
     if (index > 11) index = 11;
     counts[index] += 1;
@@ -46279,15 +46716,15 @@ function buckets(times) {
 function refsLine(times, total) {
   const list = [];
   for (const value of times || []) {
-    const n2 = finite4(value);
-    if (n2 != null) list.push(n2);
+    const n3 = finite4(value);
+    if (n3 != null) list.push(n3);
   }
   if (!list.length) return "Referenced 0 times";
   let min = list[0];
   let max = list[0];
-  for (const n2 of list) {
-    if (n2 < min) min = n2;
-    if (n2 > max) max = n2;
+  for (const n3 of list) {
+    if (n3 < min) min = n3;
+    if (n3 > max) max = n3;
   }
   const count = Number.isFinite(total) && total >= list.length ? total : list.length;
   const noun = count === 1 ? "time" : "times";
@@ -46439,12 +46876,12 @@ function openHaloPopover({
   pop.append(refs);
   const counts = buckets(finite9);
   const spark = sparkline(doc, counts);
-  spark.setAttribute("data-sum", String(counts.reduce((sum, n3) => sum + n3, 0)));
+  spark.setAttribute("data-sum", String(counts.reduce((sum, n4) => sum + n4, 0)));
   pop.append(spark);
   const boards = doc.createElement("div");
   boards.className = "pxd-halo__boards";
-  const n2 = Number(model.boards);
-  const count = Number.isFinite(n2) && n2 > 0 ? n2 : 0;
+  const n3 = Number(model.boards);
+  const count = Number.isFinite(n3) && n3 > 0 ? n3 : 0;
   boards.textContent = `On ${count} ${count === 1 ? "board" : "boards"}`;
   pop.append(boards);
   const age = String(dustAge2 ?? "").trim();
@@ -46534,15 +46971,15 @@ var DUST_PERIODS = Object.freeze({
   "2 years": 730 * DAY3
 });
 var OPEN_PREFIX = "plexus-diagram:opens:";
-function clamp014(n2) {
-  if (!Number.isFinite(n2) || n2 <= 0) return 0;
-  if (n2 >= 1) return 1;
-  return n2;
+function clamp014(n3) {
+  if (!Number.isFinite(n3) || n3 <= 0) return 0;
+  if (n3 >= 1) return 1;
+  return n3;
 }
 function normCount(value, cap4) {
-  const n2 = Number(value);
-  if (!Number.isFinite(n2) || n2 <= 0 || !(cap4 > 0)) return 0;
-  return Math.min(n2, cap4) / cap4;
+  const n3 = Number(value);
+  if (!Number.isFinite(n3) || n3 <= 0 || !(cap4 > 0)) return 0;
+  return Math.min(n3, cap4) / cap4;
 }
 function recencyNorm(editTime, now4) {
   if (!Number.isFinite(editTime) || !Number.isFinite(now4)) return 0;
@@ -46577,7 +47014,7 @@ function stampsOf(item) {
   };
 }
 function dustAge(editTime, createTime, now4) {
-  const stamps = [editTime, createTime].filter((n2) => Number.isFinite(n2));
+  const stamps = [editTime, createTime].filter((n3) => Number.isFinite(n3));
   if (!stamps.length || !Number.isFinite(now4)) return null;
   return Math.max(0, now4 - Math.max(...stamps));
 }
@@ -46603,8 +47040,8 @@ function ageLabel(ms) {
   return `${part.n} ${word}`;
 }
 function countPhrase(value, one, many) {
-  const n2 = Number(value);
-  const v = Number.isFinite(n2) && n2 > 0 ? Math.round(n2) : 0;
+  const n3 = Number(value);
+  const v = Number.isFinite(n3) && n3 > 0 ? Math.round(n3) : 0;
   return `${v} ${v === 1 ? one : many}`;
 }
 function explain(components = {}) {
@@ -46651,8 +47088,8 @@ function createOpenStore({ storage = globalThis.localStorage, graph = "", enable
       on = value === true;
     },
     get(uid) {
-      const n2 = Number(read2()[uid]);
-      return Number.isFinite(n2) && n2 > 0 ? n2 : 0;
+      const n3 = Number(read2()[uid]);
+      return Number.isFinite(n3) && n3 > 0 ? n3 : 0;
     },
     bump(uid) {
       if (!uid) return 0;
@@ -47734,13 +48171,13 @@ function readStyle(el2, thumbs) {
   const style = el2.style;
   if (!style) return null;
   const out = {};
-  let n2 = 0;
+  let n3 = 0;
   const get = (name) => (typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : style[name]) || "";
   for (const name of STYLE_PROPS) {
     const value = String(get(name) || "").trim();
     if (!value || value.length > 120 || UNSAFE_VALUE.test(value)) continue;
     out[name] = value;
-    n2 += 1;
+    n3 += 1;
   }
   const cover = String(get("--pxd-cover") || "");
   const m = /url\(\s*["']?(data:image\/(?:png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+)["']?\s*\)/.exec(cover);
@@ -47748,9 +48185,9 @@ function readStyle(el2, thumbs) {
     const key = `d:${fnv(m[1])}:${m[1].length}`;
     thumbs.set(key, m[1]);
     out["--pxd-cover"] = `@${key}`;
-    n2 += 1;
+    n3 += 1;
   }
-  return n2 ? out : null;
+  return n3 ? out : null;
 }
 function imageSrc(src, thumbs) {
   const value = String(src || "");
@@ -47935,7 +48372,7 @@ function snapThumbKeys(snap) {
   for (const layer of [snap?.edges, snap?.labels, ...snap?.chrome || []]) faceThumbKeys(layer, out);
   return out;
 }
-var finite5 = (n2) => typeof n2 === "number" && Number.isFinite(n2);
+var finite5 = (n3) => typeof n3 === "number" && Number.isFinite(n3);
 function isSnapViewport(vp) {
   return Boolean(vp) && finite5(vp.x) && finite5(vp.y) && finite5(vp.zoom) && vp.zoom > 0;
 }
@@ -48068,7 +48505,7 @@ var THEME = {
   dark: { bg: "#1e2a35", card: "#26333f", border: "#3b4b58", text: "#e6edf3", muted: "#a7b6c2", edge: "#a7b6c2" }
 };
 var esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-var n1 = (n2) => Math.round(n2 * 10) / 10;
+var n1 = (n3) => Math.round(n3 * 10) / 10;
 var titleOf3 = (item) => {
   if (item.title) return item.title;
   if (item.kind === "image") return "Image";
@@ -48378,14 +48815,14 @@ var SHORTCUTS = [
   { group: "Navigate", keys: "⌘[", label: "Back", action: "back", events: [{ key: "[", meta: true, code: "BracketLeft" }], match: (ev) => hasMod(ev) && !ev.shift && !ev.alt && (ev.code === "BracketLeft" || ev.key === "[") },
   { group: "Navigate", keys: "⌘]", label: "Forward", action: "forward", events: [{ key: "]", meta: true, code: "BracketRight" }], match: (ev) => hasMod(ev) && !ev.shift && !ev.alt && (ev.code === "BracketRight" || ev.key === "]") },
   // Cmd/Ctrl+1..9 select fullscreen board tabs. Shift+1 / Shift+2 stay Fit all / Fit selection (no modifier).
-  ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n2) => ({
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n3) => ({
     group: "Navigate",
-    keys: `⌘${n2}`,
-    label: `Board tab ${n2}`,
+    keys: `⌘${n3}`,
+    label: `Board tab ${n3}`,
     action: "boardTab",
-    tab: n2 - 1,
-    events: [{ key: String(n2), meta: true, code: `Digit${n2}` }],
-    match: (ev) => isBoardTabEvent(ev, n2)
+    tab: n3 - 1,
+    events: [{ key: String(n3), meta: true, code: `Digit${n3}` }],
+    match: (ev) => isBoardTabEvent(ev, n3)
   })),
   { group: "Present", keys: "→ ↓ Space", label: "Next", action: "presentNext", mode: "present", events: [{ key: "ArrowRight" }, { key: "ArrowDown" }, { key: "PageDown" }, { key: " ", code: "Space" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ArrowRight" || ev.key === "ArrowDown" || ev.key === "PageDown" || ev.code === "Space" || ev.key === " ") },
   { group: "Present", keys: "← ↑", label: "Previous", action: "presentPrev", mode: "present", events: [{ key: "ArrowLeft" }, { key: "ArrowUp" }, { key: "PageUp" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ArrowLeft" || ev.key === "ArrowUp" || ev.key === "PageUp") }
@@ -51013,7 +51450,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     const parts = [];
     for (const batch of batches) {
       if (signal?.aborted) throw signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" });
-      const numeric = numericPages && numericPages.length ? numericPages.filter((n2) => batch.pages.includes(n2)) : numericPages;
+      const numeric = numericPages && numericPages.length ? numericPages.filter((n3) => batch.pages.includes(n3)) : numericPages;
       parts.push(await vlmOnce({ bytes, pages: batch.pages, regions: batch.regions, text: text4, numericPages: numeric, boxMode, layoutOnly, signal }));
     }
     return { ...mergeBodies(parts), sha256: sha };
@@ -51209,7 +51646,7 @@ function properNouns(words) {
     const k = core.toLowerCase();
     count.set(k, (count.get(k) || 0) + 1);
   }
-  return new Set([...count].filter(([, n2]) => n2 >= 2).map(([k]) => k));
+  return new Set([...count].filter(([, n3]) => n3 >= 2).map(([k]) => k));
 }
 function cleanWord(token, lexicon) {
   const core = String(token || "").replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "");
@@ -51232,11 +51669,11 @@ function splitJoined(token, lexicon, { low = false } = {}) {
 
 // src/model/ocr/words-from-ctc.js
 var SPACE = /* @__PURE__ */ new Set([" ", "　", " "]);
-function round22(n2) {
-  return Math.round(n2 * 100) / 100;
+function round22(n3) {
+  return Math.round(n3 * 100) / 100;
 }
-function round3(n2) {
-  return Math.round(n2 * 1e3) / 1e3;
+function round3(n3) {
+  return Math.round(n3 * 1e3) / 1e3;
 }
 function softmaxAt(logits, row4, classes, index) {
   let max = -Infinity;
@@ -51310,18 +51747,18 @@ function ctcText({ logits, time, classes, dict }) {
   if (!chars.length) return { text: "", conf: 0 };
   let raw = "";
   let conf = 0;
-  let n2 = 0;
+  let n3 = 0;
   for (const ch of chars) {
     if (SPACE.has(ch.ch)) raw += " ";
     else {
       raw += ch.ch;
       conf += ch.conf;
-      n2++;
+      n3++;
     }
   }
   raw = raw.replace(/\s+/g, " ").trim();
   const text4 = /[A-Za-z]/.test(raw) ? softenPhrase(raw) : raw;
-  return { text: text4, conf: n2 ? Math.round(conf / n2 * 1e3) / 1e3 : 0 };
+  return { text: text4, conf: n3 ? Math.round(conf / n3 * 1e3) / 1e3 : 0 };
 }
 function wordsFromCtc({ logits, time, classes, dict, box: box2 }) {
   const chars = ctcDecode(logits, time, classes, dict);
@@ -51471,8 +51908,8 @@ var MIN_READ_CONF = 0.75;
 var AGREE_CONF = 0.9;
 var MAX_ASPECT = 38;
 var PAD_PT = 1.5;
-function r22(n2) {
-  return Math.round(n2 * 100) / 100;
+function r22(n3) {
+  return Math.round(n3 * 100) / 100;
 }
 function itemSize(it) {
   return Math.abs(it.transform?.[0] || it.height || 0);
@@ -51625,8 +52062,8 @@ function pieces(page, line) {
     };
   });
 }
-function tableBoxesOf(doc, n2) {
-  return Object.values(doc?.blocks || {}).filter((b) => b && b.type === "table" && b.page === n2 && Array.isArray(b.bbox)).map((b) => b.bbox);
+function tableBoxesOf(doc, n3) {
+  return Object.values(doc?.blocks || {}).filter((b) => b && b.type === "table" && b.page === n3 && Array.isArray(b.bbox)).map((b) => b.bbox);
 }
 function allWords(pages, doc) {
   const words = [];
@@ -51642,13 +52079,13 @@ function coreOf(t) {
   return String(t).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "").toLowerCase();
 }
 function lineScore(tokens2, oldTokens, opts) {
-  let n2 = tokens2.reduce((k, w) => k + (suspiciousWord(w, opts) ? 1 : 0), 0);
-  for (const t of oldTokens) if (NON_LETTER.test(t) && !tokens2.some((w) => w === t || t.length >= 2 && w.includes(t))) n2++;
+  let n3 = tokens2.reduce((k, w) => k + (suspiciousWord(w, opts) ? 1 : 0), 0);
+  for (const t of oldTokens) if (NON_LETTER.test(t) && !tokens2.some((w) => w === t || t.length >= 2 && w.includes(t))) n3++;
   const marks = (list) => list.join(" ").match(MARK) || [];
   const have = marks(tokens2);
   for (const m of marks(oldTokens)) {
     const at = have.indexOf(m);
-    if (at < 0) n2++;
+    if (at < 0) n3++;
     else have.splice(at, 1);
   }
   const cores = tokens2.map(coreOf);
@@ -51657,9 +52094,9 @@ function lineScore(tokens2, oldTokens, opts) {
     const c = coreOf(t);
     if (c.length < 3 || !/^[a-z]+$/.test(c) || pairs.has(c)) continue;
     const reach = Math.max(1, Math.floor(c.length / 3));
-    if (!cores.some((k) => k === c || Math.abs(k.length - c.length) <= reach && editDistance3(k, c) <= reach)) n2++;
+    if (!cores.some((k) => k === c || Math.abs(k.length - c.length) <= reach && editDistance3(k, c) <= reach)) n3++;
   }
-  return n2;
+  return n3;
 }
 function restoreClean(tokens2, oldTokens, opts) {
   if (!opts.lexicon) return tokens2;
@@ -51728,16 +52165,16 @@ function editDistance3(a, b) {
   return prev[b.length];
 }
 function alignTokens(a, b) {
-  const n2 = a.length;
+  const n3 = a.length;
   const m = b.length;
-  const cost = Array.from({ length: n2 + 1 }, (_, i2) => Array.from({ length: m + 1 }, (_2, j2) => i2 === 0 ? j2 : j2 === 0 ? i2 : 0));
-  for (let i2 = 1; i2 <= n2; i2++) {
+  const cost = Array.from({ length: n3 + 1 }, (_, i2) => Array.from({ length: m + 1 }, (_2, j2) => i2 === 0 ? j2 : j2 === 0 ? i2 : 0));
+  for (let i2 = 1; i2 <= n3; i2++) {
     for (let j2 = 1; j2 <= m; j2++) {
       cost[i2][j2] = Math.min(cost[i2 - 1][j2] + 1, cost[i2][j2 - 1] + 1, cost[i2 - 1][j2 - 1] + (a[i2 - 1] === b[j2 - 1] ? 0 : 1));
     }
   }
-  const pair2 = new Array(n2).fill(-1);
-  let i = n2;
+  const pair2 = new Array(n3).fill(-1);
+  let i = n3;
   let j = m;
   while (i > 0 && j > 0) {
     if (cost[i][j] === cost[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)) {
@@ -51798,7 +52235,7 @@ function lineItems(old, tokens2, confs) {
   const x0 = Math.min(...old.map((t) => t.transform[4]));
   const x1 = Math.max(...old.map((t) => t.transform[4] + t.width));
   const first = old[0];
-  const total = tokens2.reduce((n2, t) => n2 + t.length, 0) + Math.max(0, tokens2.length - 1);
+  const total = tokens2.reduce((n3, t) => n3 + t.length, 0) + Math.max(0, tokens2.length - 1);
   const unit = (x1 - x0) / Math.max(1, total);
   let x = x0;
   return tokens2.map((tok, k) => {
@@ -52113,11 +52550,11 @@ function filledShare(table, reading) {
   const rows = table?.rows || 0;
   const cols = table?.cols || 0;
   if (!rows || !cols) return 1;
-  let n2 = 0;
+  let n3 = 0;
   let empty = 0;
   for (let r = header; r < rows; r += 1) {
     for (let c = 0; c < cols; c += 1) {
-      n2 += 1;
+      n3 += 1;
       const covering = (table.cells || []).find((cell) => {
         const rs = cell.rowSpan || 1;
         const cs = cell.colSpan || 1;
@@ -52126,21 +52563,21 @@ function filledShare(table, reading) {
       if (!covering || !String(covering.text || "").trim()) empty += 1;
     }
   }
-  return n2 ? 1 - empty / n2 : 1;
+  return n3 ? 1 - empty / n3 : 1;
 }
 function tidyShare(table, reading) {
   const header = effectiveHeader(table, reading);
-  let n2 = 0;
+  let n3 = 0;
   let ok = 0;
   for (const cell of table?.cells || []) {
     if ((cell.colSpan || 1) > 1) continue;
     if (header && cell.r < header) continue;
     const raw = String(cell.text || "").trim();
     if (!raw) continue;
-    n2 += 1;
+    n3 += 1;
     if (plainNumber(raw) || isPlaceholder(raw) || plainPhrase(raw) || proseNote(raw)) ok += 1;
   }
-  return n2 ? ok / n2 : 1;
+  return n3 ? ok / n3 : 1;
 }
 function proseNote(text4) {
   const words = String(text4 || "").split(/\s+/).filter((w) => /[A-Za-z]/.test(w));
@@ -52155,69 +52592,69 @@ function isDebris(text4) {
 }
 function debrisShare(table, reading) {
   const header = effectiveHeader(table, reading);
-  let n2 = 0;
+  let n3 = 0;
   let bad = 0;
   for (const cell of table?.cells || []) {
     if ((cell.colSpan || 1) > 1) continue;
     if (header && cell.r < header) continue;
     const raw = String(cell.text || "").trim();
     if (!raw) continue;
-    n2 += 1;
+    n3 += 1;
     if (isDebris(raw)) bad += 1;
   }
-  return n2 ? bad / n2 : 0;
+  return n3 ? bad / n3 : 0;
 }
 function singleValues(table, reading) {
   const header = effectiveHeader(table, reading);
-  let n2 = 0;
+  let n3 = 0;
   let packed = 0;
   for (const cell of table?.cells || []) {
     if ((cell.colSpan || 1) > 1) continue;
     if (cell.header || cell.r < header) continue;
     if (scientificFactor(cell.text)) {
-      n2 += 1;
+      n3 += 1;
       continue;
     }
     const nums = tokens(cell.text).filter((token) => /\d/.test(token) && token.replace(/\D/g, "").length >= 2);
     if (!nums.length) continue;
-    n2 += 1;
+    n3 += 1;
     if (nums.length >= 2) packed += 1;
   }
-  return n2 ? 1 - packed / n2 : 1;
+  return n3 ? 1 - packed / n3 : 1;
 }
 function headerRowsOf(cells, rows) {
-  let n2 = 0;
+  let n3 = 0;
   for (let r = 0; r < rows; r += 1) {
     const row4 = (cells || []).filter((cell) => cell.r === r);
     if (!row4.length || !row4.every((cell) => cell.header)) break;
-    n2 += 1;
+    n3 += 1;
   }
-  return n2;
+  return n3;
 }
 function numericConsistency(table) {
   const validity = tableNumericValidity(table);
   if (validity.total >= 4) return validity.share;
   const header = table.headerRows || 0;
   let sum = 0;
-  let n2 = 0;
+  let n3 = 0;
   for (let c = 0; c < (table.cols || 0); c += 1) {
     const body = (table.cells || []).filter((cell) => cell.c === c && (cell.colSpan || 1) === 1 && cell.r >= header && String(cell.text || "").trim());
     if (body.length < 3) continue;
     const numeric = body.filter((cell) => numericLike(cell.text) || isPlaceholder(cell.text)).length / body.length;
     sum += Math.max(numeric, 1 - numeric);
-    n2 += 1;
+    n3 += 1;
   }
-  return n2 ? sum / n2 : 0.7;
+  return n3 ? sum / n3 : 0.7;
 }
 function headerScore(table, rows) {
   const marked = headerRowsOf(table.cells, table.rows || 0);
-  let n2 = table.headerRows || marked;
-  if (!n2 && (table.cells || []).some((cell) => cell.r === 0 && String(cell.text || "").trim())) n2 = 1;
-  const headerCells = (table.cells || []).filter((cell) => n2 ? cell.r < n2 : cell.header);
+  let n3 = table.headerRows || marked;
+  if (!n3 && (table.cells || []).some((cell) => cell.r === 0 && String(cell.text || "").trim())) n3 = 1;
+  const headerCells = (table.cells || []).filter((cell) => n3 ? cell.r < n3 : cell.header);
   const headerText2 = headerCells.map((cell) => cell.text).join(" ");
-  if (!n2 && !headerCells.length) return 0.65;
+  if (!n3 && !headerCells.length) return 0.65;
   if (!String(headerText2).trim()) return 0.15;
-  const keys = rows.slice(0, Math.max(1, n2)).flatMap((row4) => rowKeys(row4.words));
+  const keys = rows.slice(0, Math.max(1, n3)).flatMap((row4) => rowKeys(row4.words));
   if (!keys.length) return 0.65;
   const bag = tokens(headerText2);
   let hit = 0;
@@ -52384,8 +52821,8 @@ function parseLoose(text4) {
   if (!s) return null;
   if (/^\.\d+$/.test(s)) s = `0${s}`;
   if (!/^[+-]?\d+(?:\.\d+)?$/.test(s)) return null;
-  const n2 = Number(s);
-  return Number.isFinite(n2) ? n2 : null;
+  const n3 = Number(s);
+  return Number.isFinite(n3) ? n3 : null;
 }
 function totalColumn(table) {
   const cols = table?.cols || 0;
@@ -52402,17 +52839,17 @@ function totalColumn(table) {
   let best = null;
   let bestShare = 0;
   for (let c = 1; c < cols; c += 1) {
-    let n2 = 0;
+    let n3 = 0;
     let hundreds = 0;
     for (let r = start; r < rows; r += 1) {
       const text4 = cellTextAt(table, r, c);
       if (!text4) continue;
-      n2 += 1;
+      n3 += 1;
       const v = parseLoose(text4);
       if (v != null && Math.abs(v - 100) < 1e-3) hundreds += 1;
     }
-    if (n2 >= 3 && hundreds / n2 >= 0.6 && hundreds / n2 > bestShare) {
-      bestShare = hundreds / n2;
+    if (n3 >= 3 && hundreds / n3 >= 0.6 && hundreds / n3 > bestShare) {
+      bestShare = hundreds / n3;
       best = c;
     }
   }
@@ -52422,12 +52859,12 @@ function componentSum(table, row4, totalCol) {
   const parts = [];
   for (let c = 1; c < (table.cols || 0); c += 1) {
     if (c === totalCol) continue;
-    const n2 = parseLoose(cellTextAt(table, row4, c));
-    if (n2 == null) continue;
-    parts.push(n2);
+    const n3 = parseLoose(cellTextAt(table, row4, c));
+    if (n3 == null) continue;
+    parts.push(n3);
   }
   if (parts.length < 2) return null;
-  return parts.reduce((sum, n2) => sum + n2, 0);
+  return parts.reduce((sum, n3) => sum + n3, 0);
 }
 function sumsToTotal(table, row4, totalCol) {
   const total = parseLoose(cellTextAt(table, row4, totalCol));
@@ -52546,28 +52983,28 @@ function tablePitch(ys2) {
 }
 function letterCount(text4) {
   const raw = String(text4 || "");
-  let n2 = 0;
+  let n3 = 0;
   for (let i = 0; i < raw.length; i++) {
     const c = raw.charCodeAt(i);
-    if (c >= 65 && c <= 90 || c >= 97 && c <= 122) n2++;
+    if (c >= 65 && c <= 90 || c >= 97 && c <= 122) n3++;
   }
-  return n2;
+  return n3;
 }
 function listMarker(text4) {
   const token = String(text4 || "").replace(/\s+/g, "").replace(/[.,;:]+$/g, "");
   return /^\d{1,4}$/.test(token);
 }
 function sameLineLetters(words, y) {
-  let n2 = 0;
+  let n3 = 0;
   for (const word of words) {
     if (!word || listMarker(word.text) || isNumericToken(word.text)) continue;
     const box2 = wordBox3(word);
     if (!box2) continue;
     const cy = (box2[1] + box2[3]) / 2;
     if (Math.abs(cy - y) > ROW_GAP) continue;
-    n2 += letterCount(word.text);
+    n3 += letterCount(word.text);
   }
-  return n2;
+  return n3;
 }
 function alignedNumericColumns(words, { minRows = MIN_NUMERIC_ROWS, minCols = MIN_NUMERIC_COLS } = {}) {
   const nums = [];
@@ -52890,19 +53327,19 @@ function tableRegions(doc, pages) {
     if (!block || block.type !== "table" || !block.bbox) continue;
     if (want && !want.has(block.page)) continue;
     const bbox = Array.isArray(block.bbox) ? block.bbox : [block.bbox.x0, block.bbox.y0, block.bbox.x1, block.bbox.y1];
-    if (bbox.length < 4 || bbox.some((n2) => !Number.isFinite(n2))) continue;
+    if (bbox.length < 4 || bbox.some((n3) => !Number.isFinite(n3))) continue;
     out.push({ page: block.page, bbox });
   }
   return out;
 }
 function headerRowsOf2(cells, rows) {
-  let n2 = 0;
+  let n3 = 0;
   for (let r = 0; r < rows; r++) {
     const row4 = (cells || []).filter((c) => c.r === r);
     if (!row4.length || !row4.every((c) => c.header)) break;
-    n2++;
+    n3++;
   }
-  return n2;
+  return n3;
 }
 function tableFromVlm(structure, { id = "vlm", method = "vlm" } = {}) {
   const cells = (structure.cells || []).map((cell) => ({
@@ -52932,12 +53369,12 @@ function tableFromVlm(structure, { id = "vlm", method = "vlm" } = {}) {
 }
 function letterCount2(text4) {
   const raw = String(text4 || "");
-  let n2 = 0;
+  let n3 = 0;
   for (let i = 0; i < raw.length; i++) {
     const c = raw.charCodeAt(i);
-    if (c >= 65 && c <= 90 || c >= 97 && c <= 122) n2++;
+    if (c >= 65 && c <= 90 || c >= 97 && c <= 122) n3++;
   }
-  return n2;
+  return n3;
 }
 function gridReading(table) {
   const cells = table?.cells || [];
@@ -53148,13 +53585,13 @@ function splitByWidth(text4, widths) {
   if (widths.length === 1) return [words.join(" ")];
   const total = widths.reduce((sum, w) => sum + w, 0) || 1;
   const counts = widths.map((w) => Math.max(1, Math.round(words.length * w / total)));
-  let drift = words.length - counts.reduce((sum, n2) => sum + n2, 0);
+  let drift = words.length - counts.reduce((sum, n3) => sum + n3, 0);
   counts[counts.length - 1] = Math.max(0, counts[counts.length - 1] + drift);
   const out = [];
   let at = 0;
-  for (const n2 of counts) {
-    out.push(words.slice(at, at + n2).join(" "));
-    at += n2;
+  for (const n3 of counts) {
+    out.push(words.slice(at, at + n3).join(" "));
+    at += n3;
   }
   if (at < words.length) {
     const rest = words.slice(at).join(" ");
@@ -53195,12 +53632,12 @@ function matchWeight(a, b) {
   return 0.7 * Math.min(a.length, b.length, 8);
 }
 function weightedLcs(A, B) {
-  const n2 = A.length;
+  const n3 = A.length;
   const m = B.length;
-  if (!n2 || !m || n2 * m > ALIGN_CELLS_MAX) return [];
+  if (!n3 || !m || n3 * m > ALIGN_CELLS_MAX) return [];
   const W = m + 1;
-  const dp = new Float32Array((n2 + 1) * W);
-  for (let i2 = 1; i2 <= n2; i2++) {
+  const dp = new Float32Array((n3 + 1) * W);
+  for (let i2 = 1; i2 <= n3; i2++) {
     const a = A[i2 - 1];
     for (let j2 = 1; j2 <= m; j2++) {
       let best = Math.max(dp[(i2 - 1) * W + j2], dp[i2 * W + j2 - 1]);
@@ -53210,7 +53647,7 @@ function weightedLcs(A, B) {
     }
   }
   const pairs = [];
-  let i = n2;
+  let i = n3;
   let j = m;
   while (i > 0 && j > 0) {
     const here = dp[i * W + j];
@@ -53304,13 +53741,13 @@ function placePageText(text4, hosts) {
     if (before != null) pieces2.push({ host: before, tail: true, w: vStart[before] + visionCount[before] - 1 - lastV[before], h: 0 });
     for (const hi of between) pieces2.push({ host: hi, w: visionCount[hi], h: hostHeight(hosts[hi]) });
     if (after != null) pieces2.push({ host: after, head: true, w: firstV[after] - vStart[after], h: 0 });
-    const n2 = gapTo - gapFrom;
+    const n3 = gapTo - gapFrom;
     const need2 = pieces2.reduce((sum, p) => sum + p.w, 0);
     let shares;
-    if (n2 <= need2) shares = shareOut(n2, pieces2.map((p) => p.w), pieces2.map((p) => p.h));
+    if (n3 <= need2) shares = shareOut(n3, pieces2.map((p) => p.w), pieces2.map((p) => p.h));
     else {
       shares = pieces2.map((p) => p.w);
-      const extra = n2 - need2;
+      const extra = n3 - need2;
       const mids = pieces2.map((p, i) => !p.tail && !p.head ? i : -1).filter((i) => i >= 0);
       if (mids.length) {
         const split = shareOut(extra, mids.map((i) => pieces2[i].w), mids.map((i) => pieces2[i].h));
@@ -53326,14 +53763,14 @@ function placePageText(text4, hosts) {
     }
     let at = gapFrom;
     pieces2.forEach((piece, i) => {
-      const n3 = shares[i];
-      if (piece.tail) to[piece.host] = at + n3;
+      const n4 = shares[i];
+      if (piece.tail) to[piece.host] = at + n4;
       else if (piece.head) from[piece.host] = at;
       else {
         from[piece.host] = at;
-        to[piece.host] = at + n3;
+        to[piece.host] = at + n4;
       }
-      at += n3;
+      at += n4;
     });
   };
   const range = (a, b) => {
@@ -53456,14 +53893,14 @@ function withoutTableLines(text4, tables) {
     const left = new Map(bag);
     let hit = 0;
     for (const t of toks) {
-      const n2 = left.get(t) || 0;
-      if (n2 > 0) {
+      const n3 = left.get(t) || 0;
+      if (n3 > 0) {
         hit += 1;
-        left.set(t, n2 - 1);
+        left.set(t, n3 - 1);
       }
     }
     if (hit < 0.8 * toks.length) return true;
-    for (const [t, n2] of left) bag.set(t, n2);
+    for (const [t, n3] of left) bag.set(t, n3);
     return false;
   });
   return kept.length === lines.length ? text4 : kept.join("\n");
@@ -53659,17 +54096,17 @@ function applyLayoutFigures(doc, layout, pages) {
   let order = [...doc.order || []];
   const applied = [];
   let seq = 0;
-  for (const n2 of seen) {
-    const page = (doc.pages || []).find((p) => p && p.n === n2);
+  for (const n3 of seen) {
+    const page = (doc.pages || []).find((p) => p && p.n === n3);
     if (!page || !(page.w > 0) || !(page.h > 0)) continue;
     const pageArea = page.w * page.h;
-    const onPage = (layout || []).filter((b) => b && b.page === n2 && b.bbox && b.bbox.length >= 4 && (b.score ?? 0) >= LAYOUT_FIGURE_MIN_SCORE);
+    const onPage = (layout || []).filter((b) => b && b.page === n3 && b.bbox && b.bbox.length >= 4 && (b.score ?? 0) >= LAYOUT_FIGURE_MIN_SCORE);
     const clip7 = (b) => [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(page.w, b[2]), Math.min(page.h, b[3])];
-    const tables = order.map((id) => blocks[id]).filter((b) => b?.type === "table" && b.page === n2 && b.bbox).map((b) => b.bbox);
+    const tables = order.map((id) => blocks[id]).filter((b) => b?.type === "table" && b.page === n3 && b.bbox).map((b) => b.bbox);
     const hints = onPage.filter((b) => b.label === "image" || b.label === "chart").map((b) => clip7(b.bbox)).filter((b) => area(b) >= LAYOUT_FIGURE_MIN_AREA * pageArea && !tables.some((t) => mostlyInside(b, t)));
     const others = onPage.filter((b) => b.label !== "image" && b.label !== "chart").map((b) => clip7(b.bbox));
     const boxes = mergePanels(hints, page.w, page.h);
-    const locals = order.filter((id) => blocks[id]?.type === "figure" && blocks[id].page === n2 && blocks[id].bbox);
+    const locals = order.filter((id) => blocks[id]?.type === "figure" && blocks[id].page === n3 && blocks[id].bbox);
     const born = !page.ocr && !page.scanLayer && page.kind !== "scan";
     const next = [];
     const removed = /* @__PURE__ */ new Set();
@@ -53714,7 +54151,7 @@ function applyLayoutFigures(doc, layout, pages) {
         }
         const strong = over.filter((i) => insideShare(boxes[i], L) >= 0.7 && area(boxes[i]) >= 0.2 * area(L));
         const textShare = others.reduce((sum, b) => sum + interArea(b, L), 0) / area(L);
-        const panels = strong.length >= 2 && captionNamesOne(blocks, id, order, n2);
+        const panels = strong.length >= 2 && captionNamesOne(blocks, id, order, n3);
         if (strong.length >= 2 && !panels || textShare >= 0.5) {
           const use = strong.length >= 2 ? strong : over;
           use.forEach((i, k) => {
@@ -53732,7 +54169,7 @@ function applyLayoutFigures(doc, layout, pages) {
       const block = {
         id,
         type: "figure",
-        page: n2,
+        page: n3,
         bbox: item.box.map((v) => Math.round(v * 100) / 100),
         caption: host?.caption || null,
         image: { kind: "crop", source: "layout" },
@@ -53742,12 +54179,12 @@ function applyLayoutFigures(doc, layout, pages) {
       };
       blocks[id] = block;
       if (host?.caption && blocks[host.caption]) blocks[host.caption] = { ...blocks[host.caption], for: id };
-      const at = item.host ? order.indexOf(item.host) : order.findIndex((oid) => blocks[oid]?.page === n2 && blocks[oid].bbox && blocks[oid].type !== "figure" && blocks[oid].bbox[1] >= block.bbox[3]);
-      const last = order.map((oid) => blocks[oid]?.page).lastIndexOf(n2);
+      const at = item.host ? order.indexOf(item.host) : order.findIndex((oid) => blocks[oid]?.page === n3 && blocks[oid].bbox && blocks[oid].type !== "figure" && blocks[oid].bbox[1] >= block.bbox[3]);
+      const last = order.map((oid) => blocks[oid]?.page).lastIndexOf(n3);
       if (at >= 0) order.splice(at, 0, id);
       else if (last >= 0) order.splice(last + 1, 0, id);
       else order.push(id);
-      applied.push({ id, page: n2, replaced: item.host || null });
+      applied.push({ id, page: n3, replaced: item.host || null });
     }
     for (const id of removed) {
       const local = blocks[id];
@@ -53758,7 +54195,7 @@ function applyLayoutFigures(doc, layout, pages) {
       }
       delete blocks[id];
       order = order.filter((oid) => oid !== id);
-      if (!applied.some((a) => a.replaced === id)) applied.push({ id: null, page: n2, replaced: id });
+      if (!applied.some((a) => a.replaced === id)) applied.push({ id: null, page: n3, replaced: id });
     }
   }
   return { doc: { ...doc, blocks, order }, applied };
@@ -53824,10 +54261,10 @@ function weakTextPages(pages) {
 function captionPlatePages(doc, pages) {
   const wanted = new Set(pages || []);
   const out = [];
-  for (const n2 of wanted) {
-    const page = (doc?.pages || []).find((item) => item && item.n === n2);
+  for (const n3 of wanted) {
+    const page = (doc?.pages || []).find((item) => item && item.n === n3);
     if (!page || !(page.w > 0) || !(page.h > 0)) continue;
-    const blocks = (doc.order || []).map((id) => doc.blocks[id]).filter((block) => block && block.page === n2);
+    const blocks = (doc.order || []).map((id) => doc.blocks[id]).filter((block) => block && block.page === n3);
     const big = blocks.some((block) => {
       if (block.type !== "figure" || !block.bbox) return false;
       const area2 = Math.max(0, block.bbox[2] - block.bbox[0]) * Math.max(0, block.bbox[3] - block.bbox[1]);
@@ -53842,15 +54279,15 @@ function captionPlatePages(doc, pages) {
       const cy = (block.bbox[1] + block.bbox[3]) / 2;
       return cy <= page.h * 0.18 || cy >= page.h * 0.82;
     });
-    if (band) out.push(n2);
+    if (band) out.push(n3);
   }
   return out;
 }
 async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase, onProgress, lexicon = null, lines = true, alt = null } = {}) {
   if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
-  const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n2) => !from || !to || n2 >= from && n2 <= to);
+  const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n3) => !from || !to || n3 >= from && n3 <= to);
   const high = helper.vlmHigh === true && typeof helper.vlm === "function";
-  const layerPages = high ? textLayerPages(base, { from, to }).filter((n2) => !wanted.includes(n2)) : [];
+  const layerPages = high ? textLayerPages(base, { from, to }).filter((n3) => !wanted.includes(n3)) : [];
   if (!wanted.length && !layerPages.length) {
     tidyDocumentTables(base);
     return { doc: base, choices: [], rereads: [], pages: [] };
@@ -53903,14 +54340,14 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     const numericPages = high ? numericPagesOf(next, wanted, figures) : [];
     const decimalPages = high ? decimalColumnPagesOf(next, wanted, figures) : [];
     const regionPages = new Set(regions.map((r) => r.page));
-    const send = high ? vlmPages.filter((n2) => layerPages.includes(n2) || regionPages.has(n2) || numericPages.includes(n2) || decimalPages.includes(n2)) : wanted;
+    const send = high ? vlmPages.filter((n3) => layerPages.includes(n3) || regionPages.has(n3) || numericPages.includes(n3) || decimalPages.includes(n3)) : wanted;
     const explicitText = options.vlmText === true;
     const everyPage = options.textPages === "all";
-    const weak = new Set((everyPage ? wanted : weakTextPages(got?.pages)).filter((n2) => wanted.includes(n2)));
+    const weak = new Set((everyPage ? wanted : weakTextPages(got?.pages)).filter((n3) => wanted.includes(n3)));
     const plates = captionPlatePages(doc, wanted);
-    const tableSend = send.filter((n2) => explicitText || !weak.has(n2));
-    const textSend = [.../* @__PURE__ */ new Set([...weak, ...plates])].filter((n2) => !explicitText || !tableSend.includes(n2));
-    const layoutSend = high ? vlmPages.filter((n2) => !tableSend.includes(n2) && !textSend.includes(n2)) : [];
+    const tableSend = send.filter((n3) => explicitText || !weak.has(n3));
+    const textSend = [.../* @__PURE__ */ new Set([...weak, ...plates])].filter((n3) => !explicitText || !tableSend.includes(n3));
+    const layoutSend = high ? vlmPages.filter((n3) => !tableSend.includes(n3) && !textSend.includes(n3)) : [];
     try {
       if (high && (tableSend.length || textSend.length || layoutSend.length)) {
         onPhase?.({ phase: "vlm", count: tableSend.length + textSend.length, mode: "high" });
@@ -53921,7 +54358,7 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
             sha256,
             pages: pageList,
             tables: layoutOnly ? [] : regions.filter((r) => pageList.includes(r.page)),
-            numericPages: layoutOnly ? [] : numeric.filter((n2) => pageList.includes(n2)),
+            numericPages: layoutOnly ? [] : numeric.filter((n3) => pageList.includes(n3)),
             text: text4,
             layoutOnly,
             signal
@@ -53977,7 +54414,7 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
     dropFigureLabelTables(doc);
   }
   const rereads = await rereadCells({ doc, ocr: ask2, signal, onPhase });
-  doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), lines: lined.applied.length, vlm: vlmApplied.length, vlmFigures: vlmFigures.length, vlmLines: vlmLines.length, elapsedMs: got?.elapsedMs ?? null };
+  doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n3, r) => n3 + r.applied.length, 0), lines: lined.applied.length, vlm: vlmApplied.length, vlmFigures: vlmFigures.length, vlmLines: vlmLines.length, elapsedMs: got?.elapsedMs ?? null };
   tidyDocumentTables(doc);
   return { doc, choices: merged.choices, rereads, lines: lined.applied, pages: wanted, records: next, ocrPages: lined.pages };
 }
@@ -54027,7 +54464,7 @@ function mergeOcrPageRecords({ base, ocrPages, records, pages, numPages, info = 
   const wanted = pages && pages.length ? pages : scanPagesOf(base);
   const byPage = new Map((ocrPages || []).map((p) => [p.n, p]));
   const next = (records || []).map((rec) => byPage.has(rec.n) ? parsePageGeometry(byPage.get(rec.n), rec.n) : rec);
-  for (const n2 of wanted) if (byPage.has(n2) && !next.some((r) => r.n === n2)) next.push(parsePageGeometry(byPage.get(n2), n2));
+  for (const n3 of wanted) if (byPage.has(n3) && !next.some((r) => r.n === n3)) next.push(parsePageGeometry(byPage.get(n3), n3));
   next.sort((a, b) => a.n - b.n);
   const lo = from ?? next[0]?.n ?? 1;
   const hi = to ?? next[next.length - 1]?.n ?? numPages;
@@ -54042,8 +54479,8 @@ var TAG_ROAM = "Free · in Roam";
 var TAG_LLAMA = "Cloud · uses your LlamaParse credits";
 var TAG_MISTRAL = "Cloud · uses your Mistral credits";
 var tagKind = (text4) => String(text4).startsWith("Free") ? "free" : "cloud";
-function pagesText(n2) {
-  const count = Number(n2);
+function pagesText(n3) {
+  const count = Number(n3);
   if (!Number.isFinite(count) || count < 1) return "";
   return count === 1 ? "1 page" : `${count} pages`;
 }
@@ -54075,14 +54512,14 @@ var THEME_VARS = Object.freeze([
   "--pxd-edge",
   "--pxd-chrome-bg"
 ]);
-function byte(n2) {
-  const x = Number(n2);
+function byte(n3) {
+  const x = Number(n3);
   if (!Number.isFinite(x)) return null;
   return Math.max(0, Math.min(255, Math.round(x)));
 }
-function alpha(n2) {
-  if (n2 == null || n2 === "") return 1;
-  const raw = String(n2).trim();
+function alpha(n3) {
+  if (n3 == null || n3 === "") return 1;
+  const raw = String(n3).trim();
   const pct2 = raw.endsWith("%");
   const x = Number(pct2 ? raw.slice(0, -1) : raw);
   if (!Number.isFinite(x)) return null;
@@ -54090,8 +54527,8 @@ function alpha(n2) {
   return Math.max(0, Math.min(1, v));
 }
 function hexByte(text4) {
-  const n2 = Number.parseInt(text4, 16);
-  return Number.isFinite(n2) ? n2 : null;
+  const n3 = Number.parseInt(text4, 16);
+  return Number.isFinite(n3) ? n3 : null;
 }
 function fromHex(text4) {
   const hex = text4.slice(1);
@@ -54380,7 +54817,7 @@ function sampleRoam(doc) {
   }
   try {
     for (const sel of [".roam-article .rm-block__input .rm-page-ref--link", ".roam-article .rm-page-ref--link", ".rm-page-ref"]) {
-      link = [...d.querySelectorAll(sel)].find((n2) => !n2.closest?.(".pxd-root")) || null;
+      link = [...d.querySelectorAll(sel)].find((n3) => !n3.closest?.(".pxd-root")) || null;
       if (link) break;
     }
   } catch {
@@ -54750,20 +55187,20 @@ function createPageChips({
   const pageNumberOf3 = (target2, parsed) => {
     const hit = target2?.closest?.(".page");
     if (!hit) return 0;
-    const n2 = Number(hit.getAttribute?.("data-page-number"));
-    if (Number.isFinite(n2) && n2 > 0) return n2;
+    const n3 = Number(hit.getAttribute?.("data-page-number"));
+    if (Number.isFinite(n3) && n3 > 0) return n3;
     for (const page of parsed?.pages || []) if (pageEl?.(page.n) === hit) return page.n;
     return 0;
   };
-  const pageBlocks = (parsed, n2) => {
+  const pageBlocks = (parsed, n3) => {
     const out = [];
     for (const id of parsed?.order || []) {
       const block = parsed.blocks?.[id];
-      if (block && block.page === n2 && CHIP_TYPES.includes(block.type)) out.push(block);
+      if (block && block.page === n3 && CHIP_TYPES.includes(block.type)) out.push(block);
     }
     return out;
   };
-  const info = (n2) => pageOf3?.(n2) || {};
+  const info = (n3) => pageOf3?.(n3) || {};
   const hide = () => {
     stopTimer();
     if (current3) hot(current3, false);
@@ -54976,8 +55413,8 @@ function createPageChips({
     }
     const held = event.target?.closest?.(".pxd-parsed-copy, .pxd-parsed-copy-more, .pxd-copy-menu");
     if (held) return;
-    const n2 = pageNumberOf3(event.target, parsed);
-    const entry = n2 ? layers.get(n2) : null;
+    const n3 = pageNumberOf3(event.target, parsed);
+    const entry = n3 ? layers.get(n3) : null;
     const el2 = entry?.el;
     if (!el2) {
       showCopy(null);
@@ -54988,7 +55425,7 @@ function createPageChips({
     const y = (Number(event.clientY) || 0) - box2.top;
     showCopy(copyHoverId(entry.rects, x, y, { w: box2.width, h: box2.height }));
   };
-  const buildLayer = (n2, el2, parsed) => {
+  const buildLayer = (n3, el2, parsed) => {
     const layer = doc.createElement("div");
     layer.className = "pxd-parsed-layer";
     layer.style.pointerEvents = "none";
@@ -55001,8 +55438,8 @@ function createPageChips({
     for (const id of parsed?.order || []) {
       if (budget <= 0) break;
       const block = parsed.blocks?.[id];
-      if (!block || block.page !== n2) continue;
-      const plan = parsedBoxPlan(block, info(n2));
+      if (!block || block.page !== n3) continue;
+      const plan = parsedBoxPlan(block, info(n3));
       if (!plan) continue;
       entries.push({ block, plan });
     }
@@ -55012,7 +55449,7 @@ function createPageChips({
     } catch {
       pageBox = null;
     }
-    const fallback = info(n2);
+    const fallback = info(n3);
     const pagePx = {
       w: pageBox?.width > 0 ? pageBox.width : fallback?.w,
       h: pageBox?.height > 0 ? pageBox.height : fallback?.h
@@ -55097,14 +55534,14 @@ function createPageChips({
     }
     const els = [];
     let marked = false;
-    for (const n2 of pages) {
-      const el2 = pageEl?.(n2);
+    for (const n3 of pages) {
+      const el2 = pageEl?.(n3);
       if (!el2) continue;
       if (el2.hasAttribute?.("data-loaded")) marked = true;
-      els.push([n2, el2]);
+      els.push([n3, el2]);
     }
-    for (const [n2, el2] of els) {
-      const entry = layers.get(n2);
+    for (const [n3, el2] of els) {
+      const entry = layers.get(n3);
       if (entry) {
         if (entry.el !== el2) {
           try {
@@ -55112,14 +55549,14 @@ function createPageChips({
           } catch {
           }
           drop(entry.layer);
-          layers.delete(n2);
+          layers.delete(n3);
         } else {
           if (entry.layer.parentElement !== el2) el2.append(entry.layer);
           continue;
         }
       }
       if (marked && !el2.hasAttribute?.("data-loaded")) continue;
-      layers.set(n2, buildLayer(n2, el2, parsed));
+      layers.set(n3, buildLayer(n3, el2, parsed));
     }
     if (layers.size === 0 && syncRetries < SYNC_RETRIES) {
       syncRetries += 1;
@@ -55261,8 +55698,8 @@ function createPageChips({
       gutter.leave();
       return;
     }
-    const n2 = pageNumberOf3(event.target, parsed);
-    const el2 = n2 ? pageEl?.(n2) : null;
+    const n3 = pageNumberOf3(event.target, parsed);
+    const el2 = n3 ? pageEl?.(n3) : null;
     if (!el2) {
       gutter.leave();
       return;
@@ -55270,19 +55707,19 @@ function createPageChips({
     const box2 = el2.getBoundingClientRect();
     const x = (Number(event.clientX) || 0) - box2.left;
     const y = (Number(event.clientY) || 0) - box2.top;
-    const pagePx = { w: box2.width > 0 ? box2.width : info(n2)?.w, h: box2.height > 0 ? box2.height : info(n2)?.h };
+    const pagePx = { w: box2.width > 0 ? box2.width : info(n3)?.w, h: box2.height > 0 ? box2.height : info(n3)?.h };
     let hit = null;
     let hitRect = null;
     let best = Infinity;
     for (const id of parsed?.order || []) {
       const block = parsed.blocks?.[id];
-      if (!block || block.page !== n2 || !Array.isArray(block.bbox)) continue;
-      const r = bboxToPageRect(block.bbox, info(n2), el2);
+      if (!block || block.page !== n3 || !Array.isArray(block.bbox)) continue;
+      const r = bboxToPageRect(block.bbox, info(n3), el2);
       if (!r) continue;
       if (x < r.left - BOX_PAD || x > r.left + r.width + BOX_PAD || y < r.top - BOX_PAD || y > r.top + r.height + BOX_PAD) continue;
       const area3 = r.width * r.height;
       if (area3 >= best) continue;
-      const plan = parsedBoxPlan(block, info(n2));
+      const plan = parsedBoxPlan(block, info(n3));
       if (!plan || skipParsedBox(block, plan, pagePx)) continue;
       best = area3;
       hit = block;
@@ -55417,16 +55854,16 @@ function createPageChips({
       if (current3) hideAll();
       return;
     }
-    const n2 = pageNumberOf3(event.target, parsed);
-    const el2 = n2 ? pageEl?.(n2) : null;
+    const n3 = pageNumberOf3(event.target, parsed);
+    const el2 = n3 ? pageEl?.(n3) : null;
     let hit = null;
     if (el2) {
       const box2 = el2.getBoundingClientRect();
       const x = (Number(event.clientX) || 0) - box2.left;
       const y = (Number(event.clientY) || 0) - box2.top;
       let best = Infinity;
-      for (const block of pageBlocks(parsed, n2)) {
-        const r = bboxToPageRect(block.bbox, info(n2), el2);
+      for (const block of pageBlocks(parsed, n3)) {
+        const r = bboxToPageRect(block.bbox, info(n3), el2);
         if (!r || x < r.left || x > r.left + r.width || y < r.top || y > r.top + r.height) continue;
         const area2 = r.width * r.height;
         if (area2 < best) {
@@ -55842,8 +56279,8 @@ var PREVIEW_VIEW_FRACTION = 0.9;
 var MIN_SCALE = 0.05;
 var MAX_SCALE = 4;
 var num6 = (value, fallback = 0) => {
-  const n2 = Number(value);
-  return Number.isFinite(n2) ? n2 : fallback;
+  const n3 = Number(value);
+  return Number.isFinite(n3) ? n3 : fallback;
 };
 var clamp3 = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 var easeOut = (t) => 1 - (1 - clamp3(t, 0, 1)) ** 3;
@@ -56580,7 +57017,7 @@ function bm25(parts, queryTokens) {
   const k1 = 1.2;
   const b = 0.75;
   const uniq = [...new Set(queryTokens)];
-  const n2 = parts.length;
+  const n3 = parts.length;
   const df = new Map(uniq.map((t) => [t, 0]));
   let total = 0;
   const tfs = parts.map((part) => {
@@ -56590,7 +57027,7 @@ function bm25(parts, queryTokens) {
     for (const t of tf.keys()) df.set(t, df.get(t) + 1);
     return tf;
   });
-  const avg = total / Math.max(1, n2);
+  const avg = total / Math.max(1, n3);
   return parts.map((part, i) => {
     const tf = tfs[i];
     if (!tf.size) return 0;
@@ -56598,7 +57035,7 @@ function bm25(parts, queryTokens) {
     let score = 0;
     for (const [t, f] of tf) {
       const d = df.get(t);
-      const idf = Math.log(1 + (n2 - d + 0.5) / (d + 0.5));
+      const idf = Math.log(1 + (n3 - d + 0.5) / (d + 0.5));
       score += idf * (f * (k1 + 1) / (f + k1 * (1 - b + b * (len / avg))));
     }
     return score;
@@ -56986,7 +57423,7 @@ function buildMultiContext(parts, question = "", opts = {}) {
   const instructions = withImages ? `${MULTI_INSTRUCTIONS}
 ${MULTI_IMAGE_INSTRUCTIONS}` : MULTI_INSTRUCTIONS;
   const totalChars = (Number(opts.tokenCap) > 0 ? Number(opts.tokenCap) : MULTI_TOKEN_CAP) * CHARS_PER_TOKEN - instructions.length;
-  const n2 = Math.max(1, list.length);
+  const n3 = Math.max(1, list.length);
   const focusOf = (p) => ({
     ...p.blockId ? { blockId: p.blockId } : {},
     ...Array.isArray(p.blockIds) ? { blockIds: p.blockIds } : {},
@@ -57019,7 +57456,7 @@ ${pc.nearby}`);
     return [imagesText, ...blocks].filter(Boolean).join("\n\n");
   };
   const budget = totalChars - imagesText.length;
-  let share = Math.max(600, Math.floor(budget / n2) - 200);
+  let share = Math.max(600, Math.floor(budget / n3) - 200);
   let context = assemble(share, Math.min(NEARBY_CHAR_BUDGET / 2, Math.floor(share * 0.35)));
   if (context.length > totalChars) context = assemble(share, 0);
   for (let i = 0; i < 8 && context.length > totalChars; i += 1) {
@@ -57097,7 +57534,7 @@ var BASKET_MESSAGES = Object.freeze({
   have: "Already in your question",
   full: `Your question holds ${BASKET_MAX} parts. Remove one first`
 });
-var pillText = (n2) => `${n2} part${n2 === 1 ? "" : "s"} · Ask`;
+var pillText = (n3) => `${n3} part${n3 === 1 ? "" : "s"} · Ask`;
 function findSourceCard(items, { pinUid = "", pdfUid = "", url = "", pdfSourceOf = null } = {}) {
   const list = [...items || []];
   if (pinUid) {
@@ -57169,14 +57606,14 @@ function freeSpotBeside(rect, size, others = [], gap = 40) {
   return { x, y };
 }
 function mergedCells(table) {
-  let n2 = 0;
+  let n3 = 0;
   for (const cell of table?.cells || []) {
-    if ((cell.rowSpan ?? 1) > 1 || (cell.colSpan ?? 1) > 1) n2 += 1;
+    if ((cell.rowSpan ?? 1) > 1 || (cell.colSpan ?? 1) > 1) n3 += 1;
   }
-  return n2;
+  return n3;
 }
-function plural2(n2, one, many) {
-  return `${n2} ${n2 === 1 ? one : many}`;
+function plural2(n3, one, many) {
+  return `${n3} ${n3 === 1 ? one : many}`;
 }
 function pinFor(doc, payload) {
   if (!payload?.withSource || !doc) return null;
@@ -57952,14 +58389,14 @@ function estimateCloudCost({ pages, tier } = {}) {
   };
 }
 function formatUsd(usd) {
-  const n2 = Number(usd) || 0;
-  if (n2 >= 1) return `$${n2.toFixed(2)}`;
-  const text4 = n2.toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
+  const n3 = Number(usd) || 0;
+  if (n3 >= 1) return `$${n3.toFixed(2)}`;
+  const text4 = n3.toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
   return text4 === "0" ? "$0.00" : `$${text4}`;
 }
 function defaultCloudScope(pageCount) {
-  const n2 = Number(pageCount);
-  return Number.isFinite(n2) && n2 > 10 ? "current" : "all";
+  const n3 = Number(pageCount);
+  return Number.isFinite(n3) && n3 > 10 ? "current" : "all";
 }
 function tierChoiceLabel(tier) {
   const credits = TIER_CREDITS[tier];
@@ -57989,7 +58426,7 @@ function cloudSheetModel({
   const billed = chosen === "current" ? 1 : total;
   const safeTier = Object.prototype.hasOwnProperty.call(TIER_CREDITS, tier) ? tier : DEFAULT_TIER;
   const est = llama ? estimateCloudCost({ pages: billed, tier: safeTier }) : estimateMistralCost({ pages: billed });
-  const pageWord = (n2) => n2 === 1 ? "1 page" : `${n2} pages`;
+  const pageWord = (n3) => n3 === 1 ? "1 page" : `${n3} pages`;
   let estimate = "Page count unknown";
   if (billed) {
     estimate = llama ? `${pageWord(billed)}, ${est.credits} ${est.credits === 1 ? "credit" : "credits"}, about ${formatUsd(est.usd)}` : `${pageWord(billed)}, about ${formatUsd(est.usd)} ($4 / 1,000 pages, model card checked ${MISTRAL_PRICE_CHECKED})`;
@@ -58094,7 +58531,7 @@ function mistral429Message(response, body) {
 function pageSpec(value) {
   if (value == null || value === "") return "";
   if (Array.isArray(value)) {
-    return value.map((n2) => Number(n2)).filter((n2) => Number.isInteger(n2) && n2 >= 1).join(",");
+    return value.map((n3) => Number(n3)).filter((n3) => Number.isInteger(n3) && n3 >= 1).join(",");
   }
   return String(value).trim();
 }
@@ -58369,10 +58806,10 @@ function mistralPageIndexes(value) {
     if (range) {
       const from = Math.min(Number(range[1]), Number(range[2]));
       const to = Math.max(Number(range[1]), Number(range[2]));
-      for (let n2 = from; n2 <= to; n2 += 1) out.push(n2 - 1);
+      for (let n3 = from; n3 <= to; n3 += 1) out.push(n3 - 1);
     } else {
-      const n2 = Number(part);
-      if (Number.isInteger(n2) && n2 >= 1) out.push(n2 - 1);
+      const n3 = Number(part);
+      if (Number.isInteger(n3) && n3 >= 1) out.push(n3 - 1);
     }
   }
   return out.length ? out : void 0;
@@ -58714,8 +59151,8 @@ function openCloudConfirm({
 init_anydoc_to_parse();
 init_parse_schema();
 var ENGINE = "cloud";
-function round5(n2) {
-  return Math.round(Number(n2) * 100) / 100;
+function round5(n3) {
+  return Math.round(Number(n3) * 100) / 100;
 }
 function oneBox(box2) {
   if (!box2 || typeof box2 !== "object" || Array.isArray(box2)) return null;
@@ -58723,7 +59160,7 @@ function oneBox(box2) {
   const y = Number(box2.y);
   const w = Number(box2.w);
   const h = Number(box2.h);
-  if (![x, y, w, h].every((n2) => Number.isFinite(n2))) return null;
+  if (![x, y, w, h].every((n3) => Number.isFinite(n3))) return null;
   return [x, y, x + Math.max(0, w), y + Math.max(0, h)];
 }
 function llamaBox(value) {
@@ -58923,19 +59360,19 @@ function layoutImagesOf(provider) {
   });
 }
 function pageNumbersOf(pages) {
-  return (pages || []).map((page) => Number(page?.page_number)).filter((n2) => Number.isInteger(n2) && n2 >= 1);
+  return (pages || []).map((page) => Number(page?.page_number)).filter((n3) => Number.isInteger(n3) && n3 >= 1);
 }
 function layoutImagePage(filename, pageNumbers) {
-  const nums = (pageNumbers || []).map(Number).filter((n3) => Number.isInteger(n3) && n3 >= 1);
+  const nums = (pageNumbers || []).map(Number).filter((n4) => Number.isInteger(n4) && n4 >= 1);
   if (!nums.length) return null;
   const match = /(?:^|[^\d])page_(\d+)(?=[^\d]|$)/i.exec(String(filename || ""));
-  const n2 = match ? Number(match[1]) : null;
-  if (n2 == null) return nums.length === 1 ? nums[0] : null;
-  const absolute = nums.includes(n2);
-  const relative = n2 >= 1 && n2 <= nums.length;
-  if (absolute && !relative) return n2;
-  if (relative && !absolute) return nums[n2 - 1];
-  if (absolute && relative) return n2;
+  const n3 = match ? Number(match[1]) : null;
+  if (n3 == null) return nums.length === 1 ? nums[0] : null;
+  const absolute = nums.includes(n3);
+  const relative = n3 >= 1 && n3 <= nums.length;
+  if (absolute && !relative) return n3;
+  if (relative && !absolute) return nums[n3 - 1];
+  if (absolute && relative) return n3;
   return nums.length === 1 ? nums[0] : null;
 }
 function verticalGap(fig, cand) {
@@ -59050,10 +59487,10 @@ function llamaparseToParse(provider, { sha256 = null, tier = "agentic", region =
   const order = [];
   const removed = [];
   const pages = [];
-  let n2 = 0;
+  let n3 = 0;
   const nextId = (prefix) => {
-    n2 += 1;
-    return `${prefix}${n2}`;
+    n3 += 1;
+    return `${prefix}${n3}`;
   };
   let title = null;
   const layoutImages = layoutImagesOf(provider);
@@ -59325,7 +59762,7 @@ function cornerBox(raw) {
   const y0 = Number(raw.top_left_y);
   const x1 = Number(raw.bottom_right_x);
   const y1 = Number(raw.bottom_right_y);
-  if (![x0, y0, x1, y1].every((n2) => Number.isFinite(n2))) return null;
+  if (![x0, y0, x1, y1].every((n3) => Number.isFinite(n3))) return null;
   return [round5(Math.min(x0, x1)), round5(Math.min(y0, y1)), round5(Math.max(x0, x1)), round5(Math.max(y0, y1))];
 }
 function blockConfidence(raw) {
@@ -59472,10 +59909,10 @@ function mistralToParse(provider, { sha256 = null } = {}) {
   const order = [];
   const removed = [];
   const pages = [];
-  let n2 = 0;
+  let n3 = 0;
   const nextId = (prefix) => {
-    n2 += 1;
-    return `${prefix}${n2}`;
+    n3 += 1;
+    return `${prefix}${n3}`;
   };
   let title = null;
   const model = typeof provider?.model === "string" && provider.model ? provider.model : "mistral-ocr-latest";
@@ -60255,8 +60692,8 @@ function buildRoamContext({ pages = [], blocks = [], sources = {}, logDays = DEF
   if (sources.sidebar) rc.sidebar = true;
   if (sources.logPages) {
     rc.logPages = true;
-    const n2 = Math.round(Number(logDays));
-    rc.logPagesArgument = Number.isFinite(n2) && n2 > 0 ? Math.min(n2, 365) : DEFAULT_LOG_DAYS;
+    const n3 = Math.round(Number(logDays));
+    rc.logPagesArgument = Number.isFinite(n3) && n3 > 0 ? Math.min(n3, 365) : DEFAULT_LOG_DAYS;
   }
   return Object.keys(rc).length ? rc : null;
 }
@@ -60699,7 +61136,7 @@ async function currentPageTitle(w) {
 // src/model/ask-parts.js
 init_pdf();
 var AT_ALL = "@All parts";
-var atToken = (n2) => `@Part ${n2}`;
+var atToken = (n3) => `@Part ${n3}`;
 var squash4 = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 var clipText = (text4, max) => {
   const t = squash4(text4);
@@ -60836,9 +61273,9 @@ function danglingAtRefs(text4, count) {
 }
 function afterPartRemoved(text4, removedNo) {
   let hit = false;
-  const next = String(text4 ?? "").replace(REF_RE3, (all, pre, n2, gone) => {
-    if (!n2 || gone) return all;
-    const k = Number(n2);
+  const next = String(text4 ?? "").replace(REF_RE3, (all, pre, n3, gone) => {
+    if (!n3 || gone) return all;
+    const k = Number(n3);
     if (k === removedNo) {
       hit = true;
       return `${pre}@Part ${k} (removed)`;
@@ -61226,7 +61663,7 @@ var clipQuestion = (text4) => {
 };
 var titleCase = (c) => String(c || "").toLowerCase().replace(/^\w/, (x) => x.toUpperCase());
 var now3 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
-var clamp4 = (n2, lo, hi) => Math.min(Math.max(n2, lo), Math.max(lo, hi));
+var clamp4 = (n3, lo, hi) => Math.min(Math.max(n3, lo), Math.max(lo, hi));
 var askModelSetting = () => "auto";
 function setAskSettings({ model = null } = {}) {
   askModelSetting = typeof model === "function" ? model : () => "auto";
@@ -61547,7 +61984,7 @@ function ensureComposer(s) {
 function growQuestion(ta) {
   if (!ta) return;
   const value = String(ta.value ?? "");
-  const wrapped = value.split("\n").reduce((n2, line) => n2 + Math.max(1, Math.ceil(line.length / 46)), 0);
+  const wrapped = value.split("\n").reduce((n3, line) => n3 + Math.max(1, Math.ceil(line.length / 46)), 0);
   ta.rows = Math.min(QUESTION_MAX_ROWS, Math.max(QUESTION_MIN_ROWS, wrapped));
 }
 var viewport = (s) => ({ vw: Number(s.win?.innerWidth) || 1280, vh: Number(s.win?.innerHeight) || 800 });
@@ -61737,8 +62174,8 @@ function startSession(s, o) {
   const ctxParts = () => multi ? parts.map((p) => ({ ...p, service: multiService, docName: callName(o.pdfName, p) })) : entries.map(asPart);
   const descs = () => describeParts(ctxParts());
   const multiLabel = () => {
-    const n2 = multi ? parts.length : entries.length;
-    return `${n2} part${n2 === 1 ? "" : "s"}`;
+    const n3 = multi ? parts.length : entries.length;
+    return `${n3} part${n3 === 1 ? "" : "s"}`;
   };
   const one = () => entries[0] || null;
   const say = (msg) => {
@@ -61961,13 +62398,13 @@ ${lines.join("\n")}` : "";
   const dropRefs = (before, after) => {
     const t = ta();
     if (!t) return;
-    const gone = before.map((k, i) => [k, i + 1]).filter(([k]) => !after.includes(k)).map(([, n2]) => n2).sort((a, b) => b - a);
+    const gone = before.map((k, i) => [k, i + 1]).filter(([k]) => !after.includes(k)).map(([, n3]) => n3).sort((a, b) => b - a);
     let text4 = t.value;
     const lost = [];
-    for (const n2 of gone) {
-      const r = afterPartRemoved(text4, n2);
+    for (const n3 of gone) {
+      const r = afterPartRemoved(text4, n3);
       text4 = r.text;
-      if (r.hit) lost.push(n2);
+      if (r.hit) lost.push(n3);
     }
     if (text4 !== t.value) {
       t.value = text4;
@@ -61996,13 +62433,13 @@ ${lines.join("\n")}` : "";
       setTimeout(() => c.classList?.remove("pxd-ask__partchip--flash"), FLASH_MS);
     }
   };
-  const mentionPart = (n2) => {
+  const mentionPart = (n3) => {
     const t = ta();
     if (!t) return;
     const untouched = !t.value || t.value === lastPrefill;
     const base = untouched ? "" : t.value;
     const caret = !untouched && Number.isInteger(t.selectionStart) ? t.selectionStart : base.length;
-    const next = insertToken(base, caret, atToken(n2));
+    const next = insertToken(base, caret, atToken(n3));
     if (untouched) lastPrefill = "";
     t.value = next.text;
     try {
@@ -62011,23 +62448,23 @@ ${lines.join("\n")}` : "";
     }
     growQuestion(t);
     refreshPreview();
-    flashPart([descs()[n2 - 1]?.key]);
+    flashPart([descs()[n3 - 1]?.key]);
     focus();
   };
-  const goPage = (n2, partNo) => {
+  const goPage = (n3, partNo) => {
     try {
       if (multi) {
         const part = partNo != null ? parts[partNo - 1] : parts[0];
-        if (part && (n2 != null || partNo != null)) multi.jump?.(part, n2 != null ? n2 : part.page);
+        if (part && (n3 != null || partNo != null)) multi.jump?.(part, n3 != null ? n3 : part.page);
         return;
       }
       if (entries.length > 1) {
         const e2 = partNo != null ? entries[partNo - 1] : entries[0];
-        const pg = n2 != null ? n2 : e2?.focus.page ?? e2?.built.chip?.page ?? null;
+        const pg = n3 != null ? n3 : e2?.focus.page ?? e2?.built.chip?.page ?? null;
         if (e2 && pg != null) e2.jumpPage?.(pg);
         return;
       }
-      if (n2 != null) one()?.jumpPage?.(n2);
+      if (n3 != null) one()?.jumpPage?.(n3);
     } catch {
     }
   };
@@ -62237,9 +62674,9 @@ ${lines.join("\n")}` : "";
       sections: () => [
         { title: "Send with the question", items: CONTEXT_SOURCES.map((x) => ({ id: x.key, label: x.key === "part" ? multiLike() ? "The PDF parts" : x.label : x.label, checked: Boolean(sources[x.key]), keep: true, onPick: () => toggleSource(x.key) })) },
         { items: [{ input: true, label: "Days of daily notes", value: logDays, onInput: (v) => {
-          const n2 = Math.round(Number(v));
-          if (n2 > 0) {
-            logDays = Math.min(n2, 365);
+          const n3 = Math.round(Number(v));
+          if (n3 > 0) {
+            logDays = Math.min(n3, 365);
             paintMentions();
           }
         } }] },
@@ -62413,9 +62850,9 @@ ${lines.join("\n")}` : "";
     if (stick) toBottom();
   };
   const appendChunk = (turn, chunk) => {
-    let n2 = turn.bubble.lastChild;
-    while (n2 && n2.nodeType === 1 && /^(UL|OL)$/.test(n2.tagName) && n2.lastChild) n2 = n2.lastChild;
-    const into = n2 && n2.nodeType === 1 && /^(P|LI)$/.test(n2.tagName) ? n2 : turn.bubble;
+    let n3 = turn.bubble.lastChild;
+    while (n3 && n3.nodeType === 1 && /^(UL|OL)$/.test(n3.tagName) && n3.lastChild) n3 = n3.lastChild;
+    const into = n3 && n3.nodeType === 1 && /^(P|LI)$/.test(n3.tagName) ? n3 : turn.bubble;
     into.append(dom.createTextNode(chunk));
   };
   const userBubble = (text4) => {
@@ -63012,11 +63449,11 @@ function figureLabel(doc, blockId, caption = "") {
   }
   const blocks = doc?.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
   const order = Array.isArray(doc?.order) ? doc.order : Object.keys(blocks);
-  let n2 = 0;
+  let n3 = 0;
   for (const id of order) {
     if (blocks[id]?.type !== "figure") continue;
-    n2 += 1;
-    if (id === blockId) return `Figure ${n2}`;
+    n3 += 1;
+    if (id === blockId) return `Figure ${n3}`;
   }
   return "Figure";
 }
@@ -63083,8 +63520,8 @@ function toNumber(value) {
   if (paren) t = `-${paren[1]}`;
   t = t.replace(/(\d),(?=\d{3}(?:\D|$))/g, "$1").replace(/%$/, "").trim();
   if (!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/.test(t)) return NaN;
-  const n2 = Number(t);
-  return Number.isFinite(n2) ? n2 : NaN;
+  const n3 = Number(t);
+  return Number.isFinite(n3) ? n3 : NaN;
 }
 var text3 = (value, max = 120) => typeof value === "string" || typeof value === "number" ? clip6(squash5(value), max) : "";
 function axisOf(value) {
@@ -63093,8 +63530,8 @@ function axisOf(value) {
   return { label: text3(a.label ?? a.name ?? a.title), unit: text3(a.unit ?? a.units, 40) };
 }
 function xOf(value) {
-  const n2 = toNumber(value);
-  if (Number.isFinite(n2)) return Math.abs(n2) > MAX_ABS ? null : n2;
+  const n3 = toNumber(value);
+  if (Number.isFinite(n3)) return Math.abs(n3) > MAX_ABS ? null : n3;
   const t = text3(value, 60);
   return t || null;
 }
@@ -63140,7 +63577,7 @@ function normalizeChart(raw) {
     if (points.every((p) => typeof p.x === "number")) points.sort((a, b) => a.x - b.x);
     let name = text3(entry.name ?? entry.label ?? entry.series) || `Series ${series.length + 1}`;
     let base = name;
-    for (let n2 = 2; used.has(name.toLowerCase()); n2 += 1) name = `${base} (${n2})`;
+    for (let n3 = 2; used.has(name.toLowerCase()); n3 += 1) name = `${base} (${n3})`;
     used.add(name.toLowerCase());
     series.push({ name, points });
     if (series.length >= MAX_SERIES) break;
@@ -63155,9 +63592,9 @@ function normalizeChart(raw) {
     warnings
   };
 }
-function formatValue(n2) {
-  if (!Number.isFinite(n2)) return "";
-  return String(Number(n2.toPrecision(6)));
+function formatValue(n3) {
+  if (!Number.isFinite(n3)) return "";
+  return String(Number(n3.toPrecision(6)));
 }
 var withUnit = (label, unit) => {
   const l = squash5(label);
@@ -63622,7 +64059,7 @@ var MOTION_TIMING = Object.freeze({
   fractionMs: 300
 });
 var SVG_NS4 = "http://www.w3.org/2000/svg";
-var clamp015 = (n2) => Math.max(0, Math.min(1, n2));
+var clamp015 = (n3) => Math.max(0, Math.min(1, n3));
 function partKind(type) {
   const t = String(type || "").toLowerCase();
   if (t === "table") return "table";
@@ -63652,7 +64089,7 @@ function docCounts(doc) {
   }
   return partCounts(blocks);
 }
-var plural3 = (n2, one, many) => `${n2} ${n2 === 1 ? one : many}`;
+var plural3 = (n3, one, many) => `${n3} ${n3 === 1 ? one : many}`;
 function countLabel(counts, ms = null) {
   const c = counts || {};
   const bits = [];
@@ -63669,8 +64106,8 @@ function overallFraction({ fraction = null, page = 0, pageCount = 0 } = {}) {
   const f = Number(fraction);
   if (fraction != null && Number.isFinite(f)) return clamp015(f);
   const p = Number(page);
-  const n2 = Number(pageCount);
-  if (n2 > 0 && p > 0) return clamp015(p / n2);
+  const n3 = Number(pageCount);
+  if (n3 > 0 && p > 0) return clamp015(p / n3);
   return null;
 }
 function ringOffset(fraction) {
@@ -63685,9 +64122,9 @@ function pageSweepMs(durations, t = MOTION_TIMING) {
 }
 function beamPlan({ page = 0, pageCount = 0, fraction = null } = {}, lastPage = 0) {
   const p = Number(page) || 0;
-  const n2 = Number(pageCount) || 0;
-  if (p > 0 && n2 > 1) return { kind: "page", restart: p !== lastPage };
-  const f = overallFraction({ fraction, page: p, pageCount: n2 });
+  const n3 = Number(pageCount) || 0;
+  if (p > 0 && n3 > 1) return { kind: "page", restart: p !== lastPage };
+  const f = overallFraction({ fraction, page: p, pageCount: n3 });
   if (f == null) return { kind: "loop" };
   return { kind: "fraction", y: f };
 }
@@ -64155,8 +64592,8 @@ var SYNC_MS = 250;
 var LOW_CONFIDENCE = 0.75;
 var BOTH_MIN_PX = 640;
 function outlineIndent(level) {
-  const n2 = Math.min(6, Math.max(1, Math.floor(Number(level) || 1)));
-  return (n2 - 1) * 8;
+  const n3 = Math.min(6, Math.max(1, Math.floor(Number(level) || 1)));
+  return (n3 - 1) * 8;
 }
 function outlineScrollTop(node2, body) {
   const nr = node2?.getBoundingClientRect?.();
@@ -64180,7 +64617,7 @@ function removedSummary(removed) {
     counts.set(label, (counts.get(label) || 0) + 1);
   }
   if (!counts.size) return "";
-  const parts = [...counts].map(([label, n2]) => `${label} (${n2})`);
+  const parts = [...counts].map(([label, n3]) => `${label} (${n3})`);
   return `Removed: ${parts.join(" · ")}`;
 }
 function formatSeconds(ms) {
@@ -64222,9 +64659,9 @@ function engineChip({ phase = "idle", engine = "builtin", provider = "", ms = nu
   const cloudTag = provider === "mistral" ? TAG_MISTRAL : TAG_LLAMA;
   if (engine === "cloud" && ms != null) {
     const text4 = `${cloudLabel(provider)} · ${formatSeconds(ms)}`;
-    const n2 = Number(credits);
-    if (provider !== "mistral" && Number.isFinite(n2) && n2 >= 0) {
-      return { text: text4, tip: `${cloudTag} · ${n2} ${n2 === 1 ? "credit" : "credits"}` };
+    const n3 = Number(credits);
+    if (provider !== "mistral" && Number.isFinite(n3) && n3 >= 0) {
+      return { text: text4, tip: `${cloudTag} · ${n3} ${n3 === 1 ? "credit" : "credits"}` };
     }
     return { text: text4, tip: cloudTag };
   }
@@ -64247,7 +64684,7 @@ function visibleBlocks(doc, { filters, query, range } = {}) {
   const on = filters || { text: true, table: true, figure: true, formula: true };
   const needle = String(query || "").trim().toLowerCase();
   let blocks = selectBlocks(doc, range || null);
-  if (Array.isArray(range) && range.length === 2 && range.every((n2) => typeof n2 === "number")) {
+  if (Array.isArray(range) && range.length === 2 && range.every((n3) => typeof n3 === "number")) {
     blocks = selectBlocks(doc, range);
   }
   return blocks.filter((block) => {
@@ -64399,9 +64836,9 @@ function wordsFromTable(table) {
   }
   return words;
 }
-function emptyGeometry(n2) {
+function emptyGeometry(n3) {
   return {
-    n: n2,
+    n: n3,
     w: 612,
     h: 792,
     rotation: 0,
@@ -64672,11 +65109,11 @@ function createParseView({
     } catch {
     }
   };
-  const blocksOnPage = (doc2, n2) => {
+  const blocksOnPage = (doc2, n3) => {
     const out = [];
     for (const id of doc2?.order || []) {
       const block = doc2.blocks?.[id];
-      if (block && block.page === n2) out.push(block);
+      if (block && block.page === n3) out.push(block);
     }
     return out;
   };
@@ -64706,15 +65143,15 @@ function createParseView({
   };
   const overlay = createParseOverlay({
     doc,
-    pageEl: (n2) => pageEl?.(n2) || null,
-    pageOf: (n2) => pageInfo(n2),
+    pageEl: (n3) => pageEl?.(n3) || null,
+    pageOf: (n3) => pageInfo(n3),
     onResplit: (table, xs2) => {
       void commitResplit(table, xs2);
     }
   });
-  function pageInfo(n2) {
-    const fromDoc = (parsed?.pages || []).find((page) => page.n === n2);
-    const given = pageOf3?.(n2);
+  function pageInfo(n3) {
+    const fromDoc = (parsed?.pages || []).find((page) => page.n === n3);
+    const given = pageOf3?.(n3);
     return { w: fromDoc?.w || given?.w || 612, h: fromDoc?.h || given?.h || 792, rotation: fromDoc?.rotation || given?.rotation || 0, textRotation: fromDoc?.textRotation || 0, ...given || {} };
   }
   function shown() {
@@ -64820,7 +65257,7 @@ function createParseView({
       ...spec,
       ...block?.type === "figure" ? { image: figureImageSpec(block) } : {},
       document: doc,
-      jumpPage: (n2) => jumpPage?.(n2),
+      jumpPage: (n3) => jumpPage?.(n3),
       toast: (message) => {
         try {
           onToast?.(message);
@@ -64986,8 +65423,8 @@ ${sourceAttrString(source)}` : markdown;
     gutter: gutterOn(),
     gutterHost: readerEl || null,
     getParsed: () => parsed,
-    pageEl: (n2) => pageEl?.(n2) || null,
-    pageOf: (n2) => pageInfo(n2),
+    pageEl: (n3) => pageEl?.(n3) || null,
+    pageOf: (n3) => pageInfo(n3),
     isLatexReady: () => helperDocling,
     storage,
     copy: (block) => {
@@ -65805,16 +66242,16 @@ ${sourceAttrString(source)}` : markdown;
       }
     }
   }
-  async function geometryOf(n2, pdf) {
+  async function geometryOf(n3, pdf) {
     if (typeof loadGeometry === "function") {
-      const got = await loadGeometry(n2);
+      const got = await loadGeometry(n3);
       if (got?.lines) return got;
-      if (got) return parsePageGeometry(got, n2);
+      if (got) return parsePageGeometry(got, n3);
     }
-    if (!pdf || typeof pdf.getPage !== "function") return emptyGeometry(n2);
-    const page = await pdf.getPage(n2);
+    if (!pdf || typeof pdf.getPage !== "function") return emptyGeometry(n3);
+    const page = await pdf.getPage(n3);
     const data = await loadPageData(page);
-    return parsePageGeometry(data, n2);
+    return parsePageGeometry(data, n3);
   }
   function rangeOf(total) {
     if (Array.isArray(range) && range.length === 2) return [range[0], range[1]];
@@ -65858,7 +66295,7 @@ ${sourceAttrString(source)}` : markdown;
         type: "done",
         counts: docCounts(done2),
         ms: Number(done2?.stats?.ms) || 0,
-        boxesOf: (n2) => partBoxes(blocksOnPage(done2, n2), pageInfo(n2))
+        boxesOf: (n3) => partBoxes(blocksOnPage(done2, n3), pageInfo(n3))
       });
     }
   }
@@ -65925,15 +66362,15 @@ ${sourceAttrString(source)}` : markdown;
     } catch {
       sha = sha || "";
     }
-    for (let n2 = from; n2 <= to; n2 += 1) {
+    for (let n3 = from; n3 <= to; n3 += 1) {
       if (ctrl.signal.aborted) return;
-      progress = { page: n2, pageCount: to, engine: "builtin" };
+      progress = { page: n3, pageCount: to, engine: "builtin" };
       paintChip();
-      onProgress?.({ page: n2, pageCount: to, fraction: (n2 - from + 1) / Math.max(1, to - from + 1) });
-      if (motionOwnProgress) motion({ type: "progress", page: n2, pageCount: to, fraction: (n2 - from) / span, engine: "builtin" });
+      onProgress?.({ page: n3, pageCount: to, fraction: (n3 - from + 1) / Math.max(1, to - from + 1) });
+      if (motionOwnProgress) motion({ type: "progress", page: n3, pageCount: to, fraction: (n3 - from) / span, engine: "builtin" });
       let rec;
       try {
-        rec = await geometryOf(n2, pdf);
+        rec = await geometryOf(n3, pdf);
       } catch (error) {
         if (ctrl.signal.aborted || dead) return;
         phase = "idle";
@@ -65947,7 +66384,7 @@ ${sourceAttrString(source)}` : markdown;
         sha256: sha,
         options: BUILTIN_OPTIONS,
         from,
-        to: n2
+        to: n3
       });
       preview.stats = { ...preview.stats || {}, ms: now4() - t0 };
       parsed = preview;
@@ -65955,15 +66392,15 @@ ${sourceAttrString(source)}` : markdown;
       if (motionOwnProgress) {
         motion({
           type: "page",
-          page: n2,
+          page: n3,
           pageCount: to,
-          fraction: (n2 - from + 1) / span,
+          fraction: (n3 - from + 1) / span,
           counts: docCounts(preview),
-          boxes: partBoxes(blocksOnPage(preview, n2), pageInfo(n2)),
+          boxes: partBoxes(blocksOnPage(preview, n3), pageInfo(n3)),
           engine: "builtin"
         });
       }
-      if (n2 < to) await new Promise((resolve) => setTimeout(resolve, 0));
+      if (n3 < to) await new Promise((resolve) => setTimeout(resolve, 0));
     }
     if (ctrl.signal.aborted) return;
     const finalDoc = assembleDocument(records, {
@@ -66024,9 +66461,9 @@ ${sourceAttrString(source)}` : markdown;
       const [from, to] = parsed.stats?.range || [1, parsed.pageCount || 1];
       let recs = records.length ? records : [];
       if (!recs.length) {
-        for (let n2 = from; n2 <= to; n2 += 1) {
-          if (pages.includes(n2)) continue;
-          recs.push(await geometryOf(n2, pdf));
+        for (let n3 = from; n3 <= to; n3 += 1) {
+          if (pages.includes(n3)) continue;
+          recs.push(await geometryOf(n3, pdf));
           if (ctrl.signal.aborted) return;
         }
       }
@@ -66101,7 +66538,7 @@ ${sourceAttrString(source)}` : markdown;
   async function applyOcr(ocrPages, { readCells = null, signal = null, onPhase = null, lexicon = null } = {}) {
     if (dead || !parsed || phase === "running") return false;
     const incoming = (Array.isArray(ocrPages) ? ocrPages : []).filter((p) => p && Number.isFinite(Number(p.n)));
-    const pages = scanPagesOf(parsed).filter((n2) => incoming.some((p) => Number(p.n) === n2));
+    const pages = scanPagesOf(parsed).filter((n3) => incoming.some((p) => Number(p.n) === n3));
     if (!pages.length) return false;
     const base = parsed;
     try {
@@ -66110,9 +66547,9 @@ ${sourceAttrString(source)}` : markdown;
       const [from, to] = base.stats?.range || [1, base.pageCount || 1];
       const recs = records.length ? records : [];
       if (!recs.length) {
-        for (let n2 = from; n2 <= to; n2 += 1) {
-          if (pages.includes(n2)) continue;
-          recs.push(await geometryOf(n2, pdf));
+        for (let n3 = from; n3 <= to; n3 += 1) {
+          if (pages.includes(n3)) continue;
+          recs.push(await geometryOf(n3, pdf));
           if (dead || parsed !== base) return false;
         }
       }
@@ -66141,7 +66578,7 @@ ${sourceAttrString(source)}` : markdown;
       if (typeof readCells === "function") {
         try {
           const rereads = await rereadCells({ doc: merged.doc, ocr: readCells, signal, onPhase });
-          merged.doc.ocr = { ...merged.doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0) };
+          merged.doc.ocr = { ...merged.doc.ocr || {}, rereads: rereads.reduce((n3, r) => n3 + r.applied.length, 0) };
         } catch {
         }
       }
@@ -66877,10 +67314,10 @@ ${sourceAttrString(source)}` : markdown;
     refreshHelper,
     // Page 1 (or no page) is the top of the outline; another page is its first block.
     scrollToPage(page) {
-      const n2 = Number(page) || 1;
+      const n3 = Number(page) || 1;
       echo = true;
       echoUntil = now4() + SYNC_MS;
-      const node2 = n2 > 1 ? body.querySelector?.(`[data-page="${n2}"]`) : null;
+      const node2 = n3 > 1 ? body.querySelector?.(`[data-page="${n3}"]`) : null;
       body.scrollTop = node2 ? outlineScrollTop(node2, body) : 0;
       echo = false;
       return body.scrollTop;
@@ -67561,9 +67998,9 @@ function helperReadsScans(helper) {
   return helper.state === "ready";
 }
 function secondsText(ms) {
-  const n2 = Number(ms);
-  if (!Number.isFinite(n2) || n2 < 0) return "";
-  return `${(Math.round(n2 / 100) / 10).toFixed(1)} s`;
+  const n3 = Number(ms);
+  if (!Number.isFinite(n3) || n3 < 0) return "";
+  return `${(Math.round(n3 / 100) / 10).toFixed(1)} s`;
 }
 function stripKind(input = {}) {
   const ocr = input.ocr || {};
@@ -67764,8 +68201,8 @@ var FONT_PX = 100;
 var FALLBACK_EM = 0.52;
 var ASCENT = 0.8;
 var num8 = (value, fallback = 0) => {
-  const n2 = Number(value);
-  return Number.isFinite(n2) ? n2 : fallback;
+  const n3 = Number(value);
+  return Number.isFinite(n3) ? n3 : fallback;
 };
 function ocrWords(record) {
   if (!record || typeof record !== "object" || record.textRotation) return [];
@@ -67907,7 +68344,7 @@ function mountWords(layer, record, { doc = layer?.ownerDocument || globalThis.do
   const width = measure || createMeasure(doc);
   const frag = typeof doc.createDocumentFragment === "function" ? doc.createDocumentFragment() : null;
   const sink = frag || layer;
-  const n2 = record?.n ?? "";
+  const n3 = record?.n ?? "";
   prep.words.forEach((word, i) => {
     const span = doc.createElement("span");
     span.className = WORD_CLASS;
@@ -67924,7 +68361,7 @@ function mountWords(layer, record, { doc = layer?.ownerDocument || globalThis.do
     }
   });
   if (frag) layer.append(frag);
-  layer.setAttribute(MARK_ATTR, key || `${n2}:${Math.round(widthPx)}`);
+  layer.setAttribute(MARK_ATTR, key || `${n3}:${Math.round(widthPx)}`);
   return { count: prep.words.length, ms: now4() - t0 };
 }
 function compactPage(record) {
@@ -67995,13 +68432,13 @@ function createTextLayer({ doc = globalThis.document, readerEl = null, measure =
     const pages = readerEl.querySelectorAll?.(".page") || [];
     const plan = [];
     for (const pageEl of pages) {
-      const n2 = pageNumberOf2(pageEl);
-      const record = records.get(n2);
+      const n3 = pageNumberOf2(pageEl);
+      const record = records.get(n3);
       if (!record) continue;
       const layer = pageEl.querySelector?.(".textLayer");
       if (!layer) continue;
       const widthPx = num8(pageEl.clientWidth);
-      const key = `${n2}:${Math.round(widthPx)}`;
+      const key = `${n3}:${Math.round(widthPx)}`;
       const ours = layer.querySelector?.(`[${WORD_ATTR}]`);
       if (ours && layer.getAttribute?.(MARK_ATTR) === key) continue;
       if (!ours && !needsTextLayer(layer)) continue;
@@ -68033,7 +68470,7 @@ function createTextLayer({ doc = globalThis.document, readerEl = null, measure =
       }
       return list.length;
     },
-    hasPage: (n2) => records.has(Number(n2)),
+    hasPage: (n3) => records.has(Number(n3)),
     pageNumbers: () => [...records.keys()].sort((a, b) => a - b),
     clear() {
       records.clear();
@@ -68401,8 +68838,8 @@ function createReadPane({
     try {
       const raw = storage?.getItem?.(readPaneKey(graph));
       const first = String(raw ?? "").trim().split(/\s+/)[0];
-      const n2 = Number(first);
-      return Number.isFinite(n2) && n2 > 0 ? n2 : null;
+      const n3 = Number(first);
+      return Number.isFinite(n3) && n3 > 0 ? n3 : null;
     } catch {
       return null;
     }
@@ -69542,7 +69979,7 @@ function createReadPane({
       openAskAI({
         ...spec,
         document: doc,
-        jumpPage: (n2) => jumpPage(n2),
+        jumpPage: (n3) => jumpPage(n3),
         toast,
         addCard: ({ markdown }) => session?.insertAnswerCard?.({ markdown, pdfUid: current3.cardUid || "" })
       });
@@ -69724,16 +70161,16 @@ function createReadPane({
     close({ notify: true });
   };
   const paintCount = () => {
-    const n2 = catalog.length;
-    if (!n2) {
+    const n3 = catalog.length;
+    if (!n3) {
       countNode.textContent = "";
       countNode.hidden = true;
     } else {
       countNode.hidden = false;
-      countNode.textContent = String(n2);
+      countNode.textContent = String(n3);
     }
     try {
-      drawer?.setCount?.(n2);
+      drawer?.setCount?.(n3);
     } catch {
     }
   };
@@ -70018,8 +70455,8 @@ function createReadPane({
       const wait2 = () => {
         fitTimer = null;
         if (gen !== fitGen || !openFlag) return;
-        const n2 = fitGeom2();
-        if (n2 && n2.pageW !== last) {
+        const n3 = fitGeom2();
+        if (n3 && n3.pageW !== last) {
           step();
           return;
         }
@@ -70391,10 +70828,10 @@ function createReadPane({
     }
   };
   const getPdf = async () => readerPdf();
-  const pageElement = (n2) => {
+  const pageElement = (n3) => {
     const pages = live2.querySelectorAll?.(".page") || [];
     for (const node2 of pages) {
-      if (Number(node2.getAttribute?.("data-page-number")) === Number(n2)) return node2;
+      if (Number(node2.getAttribute?.("data-page-number")) === Number(n3)) return node2;
     }
     return null;
   };
@@ -70441,15 +70878,15 @@ function createReadPane({
   let ocrGot = 0;
   const setOcrPages = (input, { sha256 = "", persist = true } = {}) => {
     const pages = pageRecords(input);
-    const n2 = textLayer.setPages(pages);
-    if (n2) {
+    const n3 = textLayer.setPages(pages);
+    if (n3) {
       ocrCovered = true;
       ocrGot += 1;
       paintStrip();
     }
     const sha = sha256 || ocrSha;
-    if (n2 && persist && sha) void persistOcr(pages, sha);
-    return n2;
+    if (n3 && persist && sha) void persistOcr(pages, sha);
+    return n3;
   };
   const loadOcrLayer = async (sha) => {
     if (!sha) return 0;
@@ -70457,12 +70894,12 @@ function createReadPane({
     try {
       const raw = await ensureStore2().getImage(imageKey(sha, OCR_LAYER_ID));
       if (typeof raw !== "string" || !openFlag || sha !== ocrSha) return 0;
-      const n2 = textLayer.setPages(JSON.parse(raw));
-      if (n2) {
+      const n3 = textLayer.setPages(JSON.parse(raw));
+      if (n3) {
         ocrCovered = true;
         paintStrip();
       }
-      return n2;
+      return n3;
     } catch {
       return 0;
     }
@@ -70772,9 +71209,9 @@ function createReadPane({
       return false;
     }
   };
-  const motionTarget = (n2) => {
-    const at = n2 ? pageElement(n2) : null;
-    if (at && pageOnScreen(at)) return [at, n2];
+  const motionTarget = (n3) => {
+    const at = n3 ? pageElement(n3) : null;
+    if (at && pageOnScreen(at)) return [at, n3];
     const shown = pageNowOf();
     return [pageElement(shown), shown];
   };
@@ -70782,22 +71219,22 @@ function createReadPane({
     if (!event?.type) return;
     if (event.type === "start") {
       if (!pmotion) pmotion = createParseMotion({ doc, headHost: motionSlot, mode: pmotionMode, cls: "pxd-pmotion--reader" });
-      const [node2, n2] = motionTarget(0);
-      pmotion.setOverlayHost(node2, n2);
+      const [node2, n3] = motionTarget(0);
+      pmotion.setOverlayHost(node2, n3);
       pmotion.start();
       return;
     }
     if (!pmotion) return;
     if (event.type === "progress" || event.type === "page") {
-      const [node2, n2] = motionTarget(Number(event.page) || 0);
-      pmotion.setOverlayHost(node2, n2);
+      const [node2, n3] = motionTarget(Number(event.page) || 0);
+      pmotion.setOverlayHost(node2, n3);
       pmotion.progress(event);
       if (event.type === "page") pmotion.parts(event.page, event.boxes);
     } else if (event.type === "done") {
-      const n2 = pmotion.overlayPage() || pageNowOf();
+      const n3 = pmotion.overlayPage() || pageNowOf();
       let boxes = [];
       try {
-        boxes = typeof event.boxesOf === "function" ? event.boxesOf(n2) : [];
+        boxes = typeof event.boxesOf === "function" ? event.boxesOf(n3) : [];
       } catch {
         boxes = [];
       }
@@ -71420,9 +71857,9 @@ async function readPageTitle(pdf, { fonts = false, first = null } = {}) {
   try {
     const records = [];
     const count = Number.isInteger(pdf?.numPages) ? Math.min(2, pdf.numPages) : 1;
-    for (let n2 = 1; n2 <= count; n2 += 1) {
-      const page = n2 === 1 && first ? first : await pdf.getPage(n2);
-      records.push(parsePageGeometry(await loadPageData(page, { includeOps: fonts && n2 === 1 }), n2));
+    for (let n3 = 1; n3 <= count; n3 += 1) {
+      const page = n3 === 1 && first ? first : await pdf.getPage(n3);
+      records.push(parsePageGeometry(await loadPageData(page, { includeOps: fonts && n3 === 1 }), n3));
     }
     const found = quickPageTitle(records);
     return { pageTitle: found.pageTitle || "", titleLines: found.lines || [] };
@@ -71635,8 +72072,8 @@ function timersOf2(timers) {
   return { set, clear: clear3 };
 }
 function positiveInt(value) {
-  const n2 = Number(value);
-  return Number.isInteger(n2) && n2 >= 1 ? n2 : null;
+  const n3 = Number(value);
+  return Number.isInteger(n3) && n3 >= 1 ? n3 : null;
 }
 function arm3(timers, fn, ms) {
   try {
@@ -71687,8 +72124,8 @@ function countPages(root) {
     const nodes = pageNodes2(root);
     let max = 0;
     for (let i = 0; i < nodes.length; i += 1) {
-      const n2 = positiveInt(nodes[i]?.getAttribute?.("data-page-number"));
-      if (n2 && n2 > max) max = n2;
+      const n3 = positiveInt(nodes[i]?.getAttribute?.("data-page-number"));
+      if (n3 && n3 > max) max = n3;
     }
     return max || null;
   } catch {
@@ -73266,10 +73703,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   };
   const innerClass = (rec) => `pxd-inner${rec.innerCls || ""}`;
   const paintInner = (rec) => {
-    for (const n2 of Object.values(rec.inner || {})) {
-      setClass(n2.g, innerClass(rec));
-      if (rec.innerHex) n2.g.style.setProperty("--pxd-line", rec.innerHex);
-      else n2.g.style.removeProperty("--pxd-line");
+    for (const n3 of Object.values(rec.inner || {})) {
+      setClass(n3.g, innerClass(rec));
+      if (rec.innerHex) n3.g.style.setProperty("--pxd-line", rec.innerHex);
+      else n3.g.style.removeProperty("--pxd-line");
     }
   };
   const innerOf = (rec, end) => {
@@ -73286,9 +73723,9 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     return rec.inner[end];
   };
   const dropInner = (rec, end) => {
-    const n2 = rec.inner?.[end];
-    if (!n2) return;
-    n2.g.remove();
+    const n3 = rec.inner?.[end];
+    if (!n3) return;
+    n3.g.remove();
     delete rec.inner[end];
   };
   const placeInner = (rec, edge, geo, zoom) => {
@@ -73298,18 +73735,18 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         dropInner(rec, end);
         continue;
       }
-      const n2 = innerOf(rec, end);
-      n2.line.setAttribute("d", `M${spec.from.x} ${spec.from.y}L${spec.tip.x} ${spec.tip.y}`);
+      const n3 = innerOf(rec, end);
+      n3.line.setAttribute("d", `M${spec.from.x} ${spec.from.y}L${spec.tip.x} ${spec.tip.y}`);
       const arrow2 = end === "to" ? edge.dir !== "none" : edge.dir === "two";
       if (arrow2) {
-        n2.head.removeAttribute("display");
-        n2.head.setAttribute("d", arrowHeadPath(spec.tip, spec.angle, arrowSize(zoom, edge.weight)));
-        n2.dot.setAttribute("display", "none");
+        n3.head.removeAttribute("display");
+        n3.head.setAttribute("d", arrowHeadPath(spec.tip, spec.angle, arrowSize(zoom, edge.weight)));
+        n3.dot.setAttribute("display", "none");
       } else {
-        n2.head.setAttribute("display", "none");
-        n2.dot.removeAttribute("display");
-        n2.dot.setAttribute("cx", String(spec.tip.x));
-        n2.dot.setAttribute("cy", String(spec.tip.y));
+        n3.head.setAttribute("display", "none");
+        n3.dot.removeAttribute("display");
+        n3.dot.setAttribute("cx", String(spec.tip.x));
+        n3.dot.setAttribute("cy", String(spec.tip.y));
       }
       if (arrow2 && end === "to") rec.head.setAttribute("display", "none");
       if (arrow2 && end === "from") rec.tail.setAttribute("display", "none");
@@ -74213,8 +74650,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       overflow = [];
       for (let i = 1; i < last - 2; i += 1) overflow.push({ index: i, title: items[i].title, uid: items[i].uid });
     }
-    shown.forEach((i, n2) => {
-      if (n2 === 1 && overflow.length) {
+    shown.forEach((i, n3) => {
+      if (n3 === 1 && overflow.length) {
         const more = el2("button", "pxd-crumb__more", crumbsEl, "…");
         more.type = "button";
         tip(more, "crumb.more");
@@ -74330,8 +74767,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   dockIndicator.setAttribute("aria-hidden", "true");
   el2("span", "bp3-icon bp3-icon-lock pxd-dock__lock", dockIndicator);
   const paletteButtons = /* @__PURE__ */ new Map();
-  DOCK_GROUPS.forEach((ids, n2) => {
-    if (n2) el2("span", "pxd-dock__sep", paletteBar);
+  DOCK_GROUPS.forEach((ids, n3) => {
+    if (n3) el2("span", "pxd-dock__sep", paletteBar);
     const group = el2("div", "pxd-dock__group", paletteBar);
     for (const id of ids) {
       const [, label, key, icon] = PALETTE_LIST.find((entry) => entry[0] === id);
@@ -74416,7 +74853,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     dockMore = null;
     const size = (node2) => px(vertical ? node2.offsetHeight : node2.offsetWidth);
     const btnW = tools.map(([, b]) => size(b) || 36);
-    const natural = btnW.reduce((sum, n2) => sum + n2, 0) + DOCK_GAP * Math.max(0, tools.length - 1) + DOCK_PAD;
+    const natural = btnW.reduce((sum, n3) => sum + n3, 0) + DOCK_GAP * Math.max(0, tools.length - 1) + DOCK_PAD;
     const full = natural + (size(dockOptions) ? size(dockOptions) + DOCK_GAP : 0) + paletteBar.querySelectorAll(".pxd-dock__sep").length * (1 + DOCK_GAP);
     if (!tools.length || full <= avail) return;
     palette.classList.add("pxd-palette--tight");
@@ -74846,9 +75283,9 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
             closed ? "Show children" : "Hide children",
             () => on.toggleOpen?.()
           );
-          const n2 = Number(model?.refs) || 0;
-          const refs = iconBtn("pxd-ctx__refs", "link", "References", `${n2} ${n2 === 1 ? "reference" : "references"}`, () => on.showRefs?.());
-          el2("span", "pxd-ctx__refs-count", refs, String(n2));
+          const n3 = Number(model?.refs) || 0;
+          const refs = iconBtn("pxd-ctx__refs", "link", "References", `${n3} ${n3 === 1 ? "reference" : "references"}`, () => on.showRefs?.());
+          el2("span", "pxd-ctx__refs-count", refs, String(n3));
         }
         swatches(row4, (c) => on.setColor?.(c));
         if (kind === "card") {
@@ -75208,8 +75645,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   searchInput.setAttribute("placeholder", "Search this board…");
   const searchCount = el2("span", "pxd-search__count", search, "");
   listen(searchInput, "input", () => {
-    const n2 = on.searchFilter?.(searchInput.value || "") ?? 0;
-    searchCount.textContent = searchInput.value ? `${n2}` : "";
+    const n3 = on.searchFilter?.(searchInput.value || "") ?? 0;
+    searchCount.textContent = searchInput.value ? `${n3}` : "";
   });
   listen(searchInput, "keydown", (event) => {
     event.stopPropagation();
@@ -75358,8 +75795,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
 
 // src/view/region-hover-geom.js
 init_geometry();
-function finite6(n2) {
-  return typeof n2 === "number" && Number.isFinite(n2);
+function finite6(n3) {
+  return typeof n3 === "number" && Number.isFinite(n3);
 }
 function fracParts2(frac) {
   if (Array.isArray(frac)) return { rx: frac[0], ry: frac[1], rw: frac[2], rh: frac[3] };
@@ -75370,7 +75807,7 @@ function viewParts(v) {
   return v || {};
 }
 function previewImageBox(w, h, max = 480) {
-  if (![w, h, max].every((n2) => finite6(n2) && n2 > 0)) return null;
+  if (![w, h, max].every((n3) => finite6(n3) && n3 > 0)) return null;
   const scale = Math.min(1, max / w, max / h);
   return { w: w * scale, h: h * scale, scale };
 }
@@ -75431,8 +75868,8 @@ init_image_region();
 init_image_region();
 var inBar = (node2, bar) => Boolean(bar?.contains?.(node2));
 var axis = (rect, primary, fallback) => {
-  const n2 = rect?.[primary];
-  if (typeof n2 === "number" && Number.isFinite(n2)) return n2;
+  const n3 = rect?.[primary];
+  if (typeof n3 === "number" && Number.isFinite(n3)) return n3;
   const m = rect?.[fallback];
   return typeof m === "number" && Number.isFinite(m) ? m : 0;
 };
@@ -75525,7 +75962,7 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
     const imgTop = box2.top;
     const rootLeft = axis(rootBox, "left", "x");
     const rootTop = axis(rootBox, "top", "y");
-    const px = (n2) => Math.round(n2 * 1e6) / 1e6;
+    const px = (n3) => Math.round(n3 * 1e6) / 1e6;
     const ax = px((x0 ?? 0) * box2.w);
     const ay = px((y0 ?? 0) * box2.h);
     const bx = px((x1 ?? x0 ?? 0) * box2.w);
@@ -75881,14 +76318,14 @@ function tableRows(board2, resolve) {
 // src/view/table-view.js
 var EDITED_QUERY = "[:find ?u ?e :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/time ?e]]";
 function editedLabel(value) {
-  const n2 = Number(value);
-  if (!Number.isFinite(n2) || n2 <= 0) return "";
-  if (n2 < 1e11) return String(n2);
+  const n3 = Number(value);
+  if (!Number.isFinite(n3) || n3 <= 0) return "";
+  if (n3 < 1e11) return String(n3);
   try {
-    const d = new Date(n2);
-    return Number.isNaN(d.getTime()) ? String(n2) : d.toLocaleString();
+    const d = new Date(n3);
+    return Number.isNaN(d.getTime()) ? String(n3) : d.toLocaleString();
   } catch {
-    return String(n2);
+    return String(n3);
   }
 }
 function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
@@ -76765,8 +77202,8 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     input.value = String(shown);
     input.setAttribute("aria-label", aria);
     input.setAttribute("data-tip", "props.step.input");
-    const commit = (n2) => {
-      const v = Number(n2);
+    const commit = (n3) => {
+      const v = Number(n3);
       if (!Number.isInteger(v) || v < min || v > max) {
         input.value = String(shown);
         return;
@@ -77017,8 +77454,8 @@ function inboxRow(entry) {
     time: entry.time || 0
   };
 }
-function inboxLabel(n2) {
-  return `Inbox (${n2})`;
+function inboxLabel(n3) {
+  return `Inbox (${n3})`;
 }
 
 // src/view/inbox.js
@@ -77307,11 +77744,11 @@ async function readPdfIdent(lib, url, { signal = null, timeoutMs = READ_TIMEOUT_
     }
     const records = [];
     const count = Number.isInteger(pdf.numPages) ? pdf.numPages : 1;
-    for (let n2 = 1; n2 <= Math.min(2, count); n2 += 1) {
-      const page = await raceAbort(pdf.getPage(n2), signal, timeoutMs, time);
-      records.push(parsePageGeometry(await raceAbort(loadPageData(page, { includeOps: n2 === 1 }), signal, timeoutMs, time), n2));
+    for (let n3 = 1; n3 <= Math.min(2, count); n3 += 1) {
+      const page = await raceAbort(pdf.getPage(n3), signal, timeoutMs, time);
+      records.push(parsePageGeometry(await raceAbort(loadPageData(page, { includeOps: n3 === 1 }), signal, timeoutMs, time), n3));
       const chars = linesOfRecord(records[0]).reduce((s, l) => s + l.text.length, 0);
-      if (n2 === 1 && chars >= COVER_CHARS) break;
+      if (n3 === 1 && chars >= COVER_CHARS) break;
     }
     const found = quickPageTitle(records);
     const first = linesOfRecord(records[0]);
@@ -78065,8 +78502,8 @@ function joinUrl(base, path) {
 
 // src/model/ocr/components.js
 function labelComponents(mask, width, height) {
-  const n2 = width * height;
-  const labels = new Int32Array(n2);
+  const n3 = width * height;
+  const labels = new Int32Array(n3);
   const parent = [0];
   let next = 1;
   const find = (a) => {
@@ -78179,15 +78616,15 @@ function boxesFromProb(prob, mapW, mapH, srcW, srcH, opts = {}) {
     const bh = c.y1 - c.y0 + 1;
     if (bw < minSide || bh < minSide) continue;
     let sum = 0;
-    let n2 = 0;
+    let n3 = 0;
     for (let y = c.y0; y <= c.y1; y++) {
       const row4 = y * mapW;
       for (let x = c.x0; x <= c.x1; x++) {
         sum += prob[row4 + x];
-        n2++;
+        n3++;
       }
     }
-    const score = n2 ? sum / n2 : 0;
+    const score = n3 ? sum / n3 : 0;
     if (score < boxThresh) continue;
     const peri = 2 * (bw + bh);
     const d = peri > 0 ? bw * bh * unclipRatio / peri : 0;
@@ -78316,8 +78753,8 @@ function nchwNormalize(rgb, w, h) {
   }
   return out;
 }
-function round32(n2) {
-  return Math.max(32, Math.round(n2 / 32) * 32);
+function round32(n3) {
+  return Math.max(32, Math.round(n3 / 32) * 32);
 }
 function detResize(rgb, w, h, limit = 960) {
   const long = Math.max(w, h);
@@ -78481,8 +78918,8 @@ function morph1d(mask, width, height, length, horizontal, dilate) {
 function open1d(mask, width, height, length, horizontal) {
   return morph1d(morph1d(mask, width, height, length, horizontal, false), width, height, length, horizontal, true);
 }
-function round23(n2) {
-  return Math.round(n2 * 100) / 100;
+function round23(n3) {
+  return Math.round(n3 * 100) / 100;
 }
 function rulesFromCanvas(gray, width, height, scale, { minLenPt = 18, fills = [] } = {}) {
   if (!gray || width < 8 || height < 8 || !(scale > 0)) return [];
@@ -78708,12 +79145,12 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
         if (bw * bh >= 0.8 * pageArea || part.area < solid * bw * bh) continue;
         const share = (ax, ay, bx, by2) => {
           let hit = 0;
-          let n3 = 0;
+          let n4 = 0;
           for (let y = ay; y <= by2; y++) for (let x = ax; x <= bx; x++) {
-            n3++;
+            n4++;
             if (part.mask[y * lw + x]) hit++;
           }
-          return n3 ? hit / n3 : 0;
+          return n4 ? hit / n4 : 0;
         };
         const iy0 = Math.min(part.y1, part.y0 + 1);
         const iy1 = Math.max(part.y0, part.y1 - 1);
@@ -78724,11 +79161,11 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
         const corners = part.mask[part.y0 * lw + part.x0] + part.mask[part.y0 * lw + part.x1] + part.mask[part.y1 * lw + part.x0] + part.mask[part.y1 * lw + part.x1];
         if (corners < 3) continue;
         let sum = 0;
-        let n2 = 0;
+        let n3 = 0;
         for (let y = part.y0; y <= part.y1; y++) for (let x = part.x0; x <= part.x1; x++) {
           if (!part.mask[y * lw + x] || !local[y * lw + x]) continue;
           sum += g[(y + y0 - k) * sw + (x + x0 - k)];
-          n2++;
+          n3++;
         }
         const gx0 = part.x0 + x0 - k;
         const gy0 = part.y0 + y0 - k;
@@ -78737,7 +79174,7 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
           y0: round23(gy0 * step / scale),
           x1: round23((gx0 + bw) * step / scale),
           y1: round23((gy0 + bh) * step / scale),
-          gray: Math.round(sum / n2 / 255 * 1e3) / 1e3
+          gray: Math.round(sum / n3 / 255 * 1e3) / 1e3
         });
       }
     }
@@ -78890,11 +79327,11 @@ function inkRows(mask, pageW, proj, c0, c1) {
   for (let y = 0; y < proj.h; y++) {
     if (proj.ruleRow[y]) continue;
     const row4 = (proj.y0 + y) * pageW + proj.x0;
-    let n2 = 0;
-    for (let x = c0; x < c1; x++) n2 += mask[row4 + x];
-    rows[y] = n2;
-    if (span >= 4 && n2 >= 0.85 * span) solid++;
-    else if (n2) glyphRows++;
+    let n3 = 0;
+    for (let x = c0; x < c1; x++) n3 += mask[row4 + x];
+    rows[y] = n3;
+    if (span >= 4 && n3 >= 0.85 * span) solid++;
+    else if (n3) glyphRows++;
   }
   if (solid && glyphRows) {
     for (let y = 0; y < proj.h; y++) if (rows[y] >= 0.85 * span) rows[y] = 0;
@@ -79237,7 +79674,7 @@ function rotateItems(items, degrees, w, h, scaleX, scaleY) {
   const sin = Math.sin(rad);
   const cx = (w - 1) / 2;
   const cy = (h - 1) / 2;
-  const r23 = (n2) => Math.round(n2 * 100) / 100;
+  const r23 = (n3) => Math.round(n3 * 100) / 100;
   for (const it of items) {
     const dx = it.transform[4] * scaleX - cx;
     const dy = it.transform[5] * scaleY - cy;
@@ -79276,9 +79713,9 @@ function aborted() {
 function throwIfAborted(signal) {
   if (signal?.aborted) throw aborted();
 }
-function pageRecord(n2, items, rules, w, h, dpi, deskew, fills = [], ink = []) {
+function pageRecord(n3, items, rules, w, h, dpi, deskew, fills = [], ink = []) {
   return {
-    n: n2,
+    n: n3,
     w: round22(w),
     h: round22(h),
     rotation: 0,
@@ -79684,7 +80121,7 @@ async function readLine(prep, cell, runRec, dict, signal) {
     let text4 = "";
     const confs = [];
     let sum = 0;
-    let n2 = 0;
+    let n3 = 0;
     for (const ch of chars) {
       if (SPACE_CH.has(ch.ch)) {
         if (text4 && !text4.endsWith(" ")) {
@@ -79696,13 +80133,13 @@ async function readLine(prep, cell, runRec, dict, signal) {
       text4 += ch.ch;
       confs.push(Math.round(ch.conf * 100) / 100);
       sum += ch.conf;
-      n2++;
+      n3++;
     }
     if (text4.endsWith(" ")) {
       text4 = text4.slice(0, -1);
       confs.pop();
     }
-    const conf = n2 ? Math.round(sum / n2 * 1e3) / 1e3 : 0;
+    const conf = n3 ? Math.round(sum / n3 * 1e3) / 1e3 : 0;
     reads.push({ text: text4, conf, confs, scale: k });
     if (conf > best.conf) best = { page: cell.page, bbox: cell.bbox, text: text4, conf, confs, scale: k };
   }
@@ -79892,8 +80329,8 @@ function steadyImageScaling(ctx) {
   }
   return ctx;
 }
-async function renderPdfPage(pdfDoc, n2, dpi = DPI) {
-  const page = await pdfDoc.getPage(n2);
+async function renderPdfPage(pdfDoc, n3, dpi = DPI) {
+  const page = await pdfDoc.getPage(n3);
   const viewport2 = page.getViewport({ scale: dpi / 72 });
   const width = Math.ceil(viewport2.width);
   const height = Math.ceil(viewport2.height);
@@ -80016,10 +80453,10 @@ function createOcrWeb({
   }
   async function prefetch({ signal = null, onProgress = null } = {}) {
     const list = assetList();
-    const total = list.reduce((n2, a) => n2 + a.spec.bytes, 0);
+    const total = list.reduce((n3, a) => n3 + a.spec.bytes, 0);
     let done2 = 0;
     for (const { spec, model, urls: urls2 } of list) {
-      const onBytes = (n2) => onProgress?.(done2 + Math.min(spec.bytes, n2), total);
+      const onBytes = (n3) => onProgress?.(done2 + Math.min(spec.bytes, n3), total);
       if (model) await loadModel(spec, signal, onBytes);
       else await loadVerified(urls2[0], spec, signal, onBytes);
       done2 += spec.bytes;
@@ -80064,19 +80501,19 @@ function createOcrWeb({
   }
   function localEngine(runDet, runRec, dict) {
     return {
-      async page(n2, bytes, signal, band = 0) {
-        if (!(band > 0) && prepared2.has(n2)) return prepared2.get(n2).record;
-        const rendered = cropTopBand(await renderOne(bytes, n2, signal), band);
+      async page(n3, bytes, signal, band = 0) {
+        if (!(band > 0) && prepared2.has(n3)) return prepared2.get(n3).record;
+        const rendered = cropTopBand(await renderOne(bytes, n3, signal), band);
         const prep = await preparePageImage({
           ...rendered,
           dpi: rendered.dpi || dpi,
-          page: n2,
+          page: n3,
           runDet,
           runRec,
           dict,
           signal
         });
-        if (!(band > 0)) prepared2.set(n2, prep);
+        if (!(band > 0)) prepared2.set(n3, prep);
         return prep.record;
       },
       async image(rendered, signal) {
@@ -80085,20 +80522,20 @@ function createOcrWeb({
       },
       async cells(list, bytes, signal) {
         const need2 = [...new Set(list.map((c) => c.page))];
-        for (const n2 of need2) if (!prepared2.has(n2)) await this.page(n2, bytes, signal);
+        for (const n3 of need2) if (!prepared2.has(n3)) await this.page(n3, bytes, signal);
         return (await recognizeCells({ pages: prepared2, cells: list, runRec, dict, signal })).cells;
       }
     };
   }
-  async function renderOne(bytes, n2, signal) {
+  async function renderOne(bytes, n3, signal) {
     throwIfAborted2(signal);
-    if (typeof renderPage === "function") return renderPage({ bytes, page: n2, dpi, signal });
+    if (typeof renderPage === "function") return renderPage({ bytes, page: n3, dpi, signal });
     const lib = findPdfjs(pdfjs);
     if (!lib) throw new Error("pdf.js is not available");
     const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
     const task = lib.getDocument({ data, isEvalSupported: false, verbosity: 0 });
     const doc = await task.promise;
-    return renderPdfPage(doc, n2, dpi);
+    return renderPdfPage(doc, n3, dpi);
   }
   async function workerScriptUrl(signal) {
     if (workerUrl) return workerUrl;
@@ -80194,14 +80631,14 @@ function createOcrWeb({
         } catch {
         }
       },
-      async page(n2, bytes, signal2, band = 0) {
+      async page(n3, bytes, signal2, band = 0) {
         throwIfAborted2(signal2);
-        if (!(band > 0) && records.has(n2)) return records.get(n2);
-        const rendered = cropTopBand(await renderOne(bytes, n2, signal2), band);
+        if (!(band > 0) && records.has(n3)) return records.get(n3);
+        const rendered = cropTopBand(await renderOne(bytes, n3, signal2), band);
         const rgb = rendered.rgb;
         const msg = await call({
           type: "page",
-          n: n2,
+          n: n3,
           width: rendered.width,
           height: rendered.height,
           dpi: rendered.dpi,
@@ -80209,7 +80646,7 @@ function createOcrWeb({
           pointH: rendered.pointH,
           rgb
         }, [rgb.buffer], signal2);
-        if (!(band > 0)) records.set(n2, msg.record);
+        if (!(band > 0)) records.set(n3, msg.record);
         return msg.record;
       },
       async image(rendered, signal2) {
@@ -80228,7 +80665,7 @@ function createOcrWeb({
       },
       async cells(list, bytes, signal2) {
         const need2 = [...new Set(list.map((c) => c.page))];
-        for (const n2 of need2) if (!records.has(n2)) await this.page(n2, bytes, signal2);
+        for (const n3 of need2) if (!records.has(n3)) await this.page(n3, bytes, signal2);
         const msg = await call({ type: "cells", cells: list }, void 0, signal2);
         return msg.cells;
       }
@@ -80289,7 +80726,7 @@ function createOcrWeb({
     } else {
       const wanted = pages?.length ? pages : [1];
       const out = [];
-      for (const n2 of wanted) out.push(await ready.page(n2, bytes, signal, band));
+      for (const n3 of wanted) out.push(await ready.page(n3, bytes, signal, band));
       body = { pageCount: out.length, pages: out };
     }
     const elapsedMs = Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - t0);
@@ -80331,7 +80768,7 @@ function createOcrWeb({
 init_title_cap();
 init_lines();
 init_title();
-var DEVICE_OCR_BYTES = [...Object.values(ORT_FILES), ...Object.values(MODEL_FILES), LEXICON_FILE].reduce((n2, f) => n2 + f.bytes, 0);
+var DEVICE_OCR_BYTES = [...Object.values(ORT_FILES), ...Object.values(MODEL_FILES), LEXICON_FILE].reduce((n3, f) => n3 + f.bytes, 0);
 var MB = Math.round(DEVICE_OCR_BYTES / (1024 * 1024));
 function abortError2() {
   const error = new Error("ocr aborted");
@@ -80412,7 +80849,7 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
       src.forget?.();
       docKey = key;
     }
-    const wanted = (pages || []).filter((n2) => Number.isFinite(Number(n2)) && Number(n2) > 0).map(Number);
+    const wanted = (pages || []).filter((n3) => Number.isFinite(Number(n3)) && Number(n3) > 0).map(Number);
     const total = Number(pdf?.numPages) || 0;
     const list = wanted.length ? wanted : total > 0 ? Array.from({ length: total }, (_, i) => i + 1) : [1];
     const out = [];
@@ -81707,23 +82144,23 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
   let disposed = false;
   const offs = [];
   const el2 = (tag, cls, parent, text4) => {
-    const n2 = doc.createElement(tag);
-    n2.className = cls;
-    if (text4 !== void 0) n2.textContent = text4;
-    parent?.append(n2);
-    return n2;
+    const n3 = doc.createElement(tag);
+    n3.className = cls;
+    if (text4 !== void 0) n3.textContent = text4;
+    parent?.append(n3);
+    return n3;
   };
   const renderRoot = (parent, string, cls) => {
-    const n2 = el2("div", cls, parent);
-    roots.push(n2);
-    if (!string) return n2;
+    const n3 = el2("div", cls, parent);
+    roots.push(n3);
+    if (!string) return n3;
     try {
-      if (host?.renderString) host.renderString(n2, string);
-      else n2.textContent = string;
+      if (host?.renderString) host.renderString(n3, string);
+      else n3.textContent = string;
     } catch {
-      n2.textContent = string;
+      n3.textContent = string;
     }
-    return n2;
+    return n3;
   };
   const renderBlocks = (parent, blocks, depth, budget) => {
     for (const b of blocks || []) {
@@ -81736,9 +82173,9 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     }
   };
   const unmountRoots = () => {
-    for (const n2 of roots) {
+    for (const n3 of roots) {
       try {
-        host?.unmount?.(n2);
+        host?.unmount?.(n3);
       } catch {
       }
     }
@@ -82073,11 +82510,11 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
   const strokes = [];
   const offs = [];
   const el2 = (tag, cls, parent, text4) => {
-    const n2 = doc.createElement(tag);
-    n2.className = cls;
-    if (text4 !== void 0) n2.textContent = text4;
-    parent?.append(n2);
-    return n2;
+    const n3 = doc.createElement(tag);
+    n3.className = cls;
+    if (text4 !== void 0) n3.textContent = text4;
+    parent?.append(n3);
+    return n3;
   };
   const button3 = (parent, cls, label, fn) => {
     const b = el2("button", `pxd-btn ${cls}`, parent, label);
@@ -83036,8 +83473,8 @@ function pdfHighlightButton(doc, onClick, count = 0) {
   return btn2;
 }
 function setHighlightCount(btn2, count) {
-  const n2 = Number(count);
-  const text4 = Number.isFinite(n2) && n2 > 0 ? String(Math.floor(n2)) : "";
+  const n3 = Number(count);
+  const text4 = Number.isFinite(n3) && n3 > 0 ? String(Math.floor(n3)) : "";
   const num9 = btn2?.querySelector?.(".pxd-pdf-highlights__count");
   if (num9 && num9.textContent !== text4) num9.textContent = text4;
   if (num9) {
@@ -84224,11 +84661,11 @@ function buildBoardView(onFail, {
     },
     onRenameBoard: (uid, title) => session.renameBoard?.(uid, title),
     onRenamePage: (from, to) => {
-      const n2 = Number(host?.pageRefCount?.(from)) || 0;
+      const n3 = Number(host?.pageRefCount?.(from)) || 0;
       const go = () => host?.renamePage?.(from, to);
-      if (!pageRenameNeedsConfirm(n2)) return go();
+      if (!pageRenameNeedsConfirm(n3)) return go();
       chrome.toast.show({
-        message: `${n2} blocks link to ${from}. Rename it to ${to}?`,
+        message: `${n3} blocks link to ${from}. Rename it to ${to}?`,
         action: { label: "Rename", run: () => {
           void go();
         } }
@@ -84721,8 +85158,8 @@ function buildBoardView(onFail, {
       ...wholeDoc ? { wholeDoc: true } : {},
       document: doc,
       pdfName: () => askPdfName(pdfUid, url),
-      jumpPage: (n2) => {
-        if (pdfUid) void itemsR?.openPdfAt?.(pdfUid, n2);
+      jumpPage: (n3) => {
+        if (pdfUid) void itemsR?.openPdfAt?.(pdfUid, n3);
       },
       toast: (message) => toast(message),
       addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid, pdfBlockUid: pdfBlockOfCard(pdfUid), ...answerSource({ doc: parsed, blockId, pdfUid, wholeDoc }) })
@@ -84828,8 +85265,8 @@ function buildBoardView(onFail, {
       ...ask2.focus,
       ...ask2.image ? { image: ask2.image } : {},
       document: doc,
-      jumpPage: (n2) => {
-        if (cardUid) void itemsR?.openPdfAt?.(cardUid, n2);
+      jumpPage: (n3) => {
+        if (cardUid) void itemsR?.openPdfAt?.(cardUid, n3);
       },
       toast: (message) => toast(message),
       addCard: ({ markdown }) => parseActions().insertAnswerCard({ markdown, pdfUid: cardUid || uid, pdfBlockUid: pdfBlockOfCard(cardUid), ...ask2.source })
@@ -84949,13 +85386,13 @@ function buildBoardView(onFail, {
       toast("Every table on this board already has a caption");
       return { folded: 0 };
     }
-    const n2 = plan.folds.length;
+    const n3 = plan.folds.length;
     return new Promise((resolve) => {
       pdfPagesDialog = openPdfPagesDialog(doc, {
-        count: n2,
+        count: n3,
         lines: tableCaptionLines(plan),
         label: "Fold tables under captions",
-        headText: `Fold ${n2} ${n2 === 1 ? "table" : "tables"} on this board under ${n2 === 1 ? "a caption" : "captions"}? Each card becomes a one-line caption with the table folded under it, so the outline stops drawing every row.`,
+        headText: `Fold ${n3} ${n3 === 1 ? "table" : "tables"} on this board under ${n3 === 1 ? "a caption" : "captions"}? Each card becomes a one-line caption with the table folded under it, so the outline stops drawing every row.`,
         applyText: "Fold",
         onApply: () => {
           closePdfPagesDialog();
@@ -85053,8 +85490,8 @@ function buildBoardView(onFail, {
   const openBasketAsk = () => openAskAI({
     multi: {
       basket: askBasket,
-      jump: (part, n2) => {
-        if (part?.kind !== "image" && part?.pdfUid) void itemsR?.openPdfAt?.(part.pdfUid, n2 || 1);
+      jump: (part, n3) => {
+        if (part?.kind !== "image" && part?.pdfUid) void itemsR?.openPdfAt?.(part.pdfUid, n3 || 1);
       }
     },
     pdfName: (part) => part?.url || part?.pdfUid ? askPdfName(part.pdfUid, part.url) : "",
@@ -85069,8 +85506,8 @@ function buildBoardView(onFail, {
   });
   let basketPill = null;
   const paintBasketPill = () => {
-    const n2 = askBasket.size();
-    if (!n2) {
+    const n3 = askBasket.size();
+    if (!n3) {
       basketPill?.remove();
       basketPill = null;
       return;
@@ -85087,8 +85524,8 @@ function buildBoardView(onFail, {
       });
       root.append(basketPill);
     }
-    basketPill.textContent = pillText(n2);
-    basketPill.setAttribute("aria-label", `Ask AI about ${n2} part${n2 === 1 ? "" : "s"}`);
+    basketPill.textContent = pillText(n3);
+    basketPill.setAttribute("aria-label", `Ask AI about ${n3} part${n3 === 1 ? "" : "s"}`);
   };
   const offBasketPill = askBasket.subscribe(paintBasketPill);
   paintBasketPill();
@@ -85211,8 +85648,8 @@ function buildBoardView(onFail, {
   };
   const coverUrlOf = (item) => coverKey(pdfMacroUrl(pdfSourceOfItem(item)));
   const wholePage2 = (value) => {
-    const n2 = Number(value);
-    return Number.isInteger(n2) && n2 >= 1 ? n2 : null;
+    const n3 = Number(value);
+    return Number.isInteger(n3) && n3 >= 1 ? n3 : null;
   };
   const rowsForCover = (url) => {
     const key = coverKey(url);
@@ -85659,9 +86096,9 @@ function buildBoardView(onFail, {
         const face = coverFaces.get(card2.url);
         const tried = firstPage ? (Number(firstPage.report().tried) || 0) > triedBefore : false;
         if (card2.needsTitle && tried) {
-          const n2 = (titleTries.get(card2.url) || 0) + 1;
-          titleTries.set(card2.url, n2);
-          titleNextAt.set(card2.url, Date.now() + TITLE_BACKOFF_MS * 2 ** (n2 - 1));
+          const n3 = (titleTries.get(card2.url) || 0) + 1;
+          titleTries.set(card2.url, n3);
+          titleNextAt.set(card2.url, Date.now() + TITLE_BACKOFF_MS * 2 ** (n3 - 1));
         } else if (card2.needsTitle) {
           const asks = (titleAsks.get(card2.url) || 0) + 1;
           titleAsks.set(card2.url, asks);
@@ -85913,9 +86350,9 @@ function buildBoardView(onFail, {
   };
   const shareCount = (a, b) => {
     const left = new Set(boardsFor(a));
-    let n2 = 0;
-    for (const id of boardsFor(b)) if (id !== boardUid && left.has(id)) n2 += 1;
-    return n2;
+    let n3 = 0;
+    for (const id of boardsFor(b)) if (id !== boardUid && left.has(id)) n3 += 1;
+    return n3;
   };
   const endTarget = (itemUid) => timelineTargetUid(board2()?.items.get(itemUid)) || itemUid || "";
   const ensureOpenStore = () => {
@@ -85992,7 +86429,7 @@ function buildBoardView(onFail, {
     const track2 = Boolean(openStore && openStore.enabled);
     const scores = /* @__PURE__ */ new Map();
     for (const edge of ends) {
-      const times = [editAt.get(edge.from), editAt.get(edge.to)].filter((n2) => Number.isFinite(n2));
+      const times = [editAt.get(edge.from), editAt.get(edge.to)].filter((n3) => Number.isFinite(n3));
       const components = {
         refs: (refCount.get(edge.from) || 0) + (refCount.get(edge.to) || 0),
         shared: shareCount(edge.from, edge.to),
@@ -88996,9 +89433,9 @@ function buildBoardView(onFail, {
         const linked = it ? connectedUids(board2(), it.uid) : [];
         if (linked.length) ctl.select(linked);
       },
-      setFontSize: (n2) => {
+      setFontSize: (n3) => {
         const it = singleItem();
-        if (it) void session.setFontSize?.(it.uid, n2);
+        if (it) void session.setFontSize?.(it.uid, n3);
       },
       edgeDir: (dir) => {
         if (selection.edge) void session.updateEdge?.(selection.edge, { dir });
@@ -89295,10 +89732,10 @@ function buildBoardView(onFail, {
     if (!mmMarks) mmMarks = el2("div", "pxd-minimap__marks", chrome.minimap.el);
     mmMarks.replaceChildren();
     for (const dot of dots) {
-      const n2 = el2("span", "pxd-minimap__mark", mmMarks);
-      n2.textContent = dot.glyph || "•";
-      n2.style.left = `${dot.x}px`;
-      n2.style.top = `${dot.y}px`;
+      const n3 = el2("span", "pxd-minimap__mark", mmMarks);
+      n3.textContent = dot.glyph || "•";
+      n3.style.left = `${dot.x}px`;
+      n3.style.top = `${dot.y}px`;
     }
   };
   const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
@@ -89376,6 +89813,7 @@ function buildBoardView(onFail, {
   let pdfNames = null;
   let pdfListWanted = false;
   let pdfBlockList = null;
+  let parsedUrlSet = null;
   const pdfBlocks = () => {
     if (pdfBlockList) return pdfBlockList;
     try {
@@ -89545,11 +89983,12 @@ ${url}`;
           pdfNameInfo.clear();
           pdfListWanted = false;
           pdfBlockList = null;
+          parsedUrlSet = null;
           timers.later(() => {
             if (!disposed && panel.isOpen()) pdfBlocks();
           }, 0);
-          void pdfNamesR().load().then((n2) => {
-            if (n2 && !disposed && panel.isOpen()) panel.refreshPdfNames([]);
+          void pdfNamesR().load().then((n3) => {
+            if (n3 && !disposed && panel.isOpen()) panel.refreshPdfNames([]);
           });
         }
       },
@@ -89563,6 +90002,19 @@ ${url}`;
         }
       },
       pdfTitle: (url) => parsedTitles.get(url) || "",
+      // Parsed PDFs filter: the parse store's urls, read once per 30 s (and again on each panel opening).
+      parsedUrls: async () => {
+        const now4 = Date.now();
+        if (parsedUrlSet && now4 - parsedUrlSet.at < 3e4) return parsedUrlSet.set;
+        let list = [];
+        try {
+          list = await parseStoreShared().parsedUrls?.() || [];
+        } catch {
+          list = [];
+        }
+        parsedUrlSet = { at: now4, set: new Set(list) };
+        return parsedUrlSet.set;
+      },
       isParsed: async (url) => {
         try {
           return Boolean(url) && Boolean(await parseStoreShared().findByUrl(url));
@@ -92320,18 +92772,18 @@ ${url}`;
     return "";
   };
   const boardCount = (target) => {
-    let n2 = 1;
-    if (!target) return n2;
+    let n3 = 1;
+    if (!target) return n3;
     try {
       const list = win2?.PlexusDiagram?.boardsWith?.(target);
       if (Array.isArray(list) && list.length) {
         const here = board2()?.uid;
-        n2 = list.some((row4) => row4 && row4.uid === here) ? list.length : list.length + 1;
+        n3 = list.some((row4) => row4 && row4.uid === here) ? list.length : list.length + 1;
       }
     } catch {
-      n2 = 1;
+      n3 = 1;
     }
-    return n2;
+    return n3;
   };
   const cardLabel2 = (uid) => {
     const title = String(board2()?.items.get(uid)?.title || "").trim();
@@ -92518,7 +92970,7 @@ ${url}`;
     const rootBox = root.getBoundingClientRect?.() || { left: 0, top: 0 };
     if (!imgBox || !(imgBox.width > 0) || !(imgBox.height > 0)) return;
     const f = fracParts3(frac);
-    if (![f.rx, f.ry, f.rw, f.rh].every((n2) => Number.isFinite(n2))) return;
+    if (![f.rx, f.ry, f.rw, f.rh].every((n3) => Number.isFinite(n3))) return;
     const node2 = doc.createElement("div");
     node2.className = "pxd-item--pulse";
     node2.style.position = "absolute";
@@ -93232,8 +93684,8 @@ var SVG_NS8 = "http://www.w3.org/2000/svg";
 function sketchKey(graph, uid) {
   return `plexus-diagram:sketch:${graph}:${uid}`;
 }
-function finite7(n2) {
-  return typeof n2 === "number" && Number.isFinite(n2);
+function finite7(n3) {
+  return typeof n3 === "number" && Number.isFinite(n3);
 }
 function isSketchViewport(vp) {
   return Boolean(vp) && finite7(vp.x) && finite7(vp.y) && finite7(vp.zoom) && vp.zoom > 0;
@@ -93899,13 +94351,13 @@ init_board();
 var SNAP_CLASS = "pxd-item--snap";
 var CHROME_KEEP = /(^|\s)(pxd-toolbar|pxd-rail|pxd-palette|pxd-dock|pxd-mode|pxd-minimap|pxd-props|pxd-resize-grip|pxd-tabs|pxd-fstabs)(\s|$)/;
 var SNAP_ROOT_CLASS = "pxd-snap-root";
-var finite8 = (n2) => typeof n2 === "number" && Number.isFinite(n2);
+var finite8 = (n3) => typeof n3 === "number" && Number.isFinite(n3);
 function rootVars(root) {
   const out = {};
   const style = root?.style;
   if (!style) return out;
-  const n2 = Number(style.length) || 0;
-  for (let i = 0; i < n2; i += 1) {
+  const n3 = Number(style.length) || 0;
+  for (let i = 0; i < n3; i += 1) {
     const name = style[i];
     if (typeof name !== "string" || !name.startsWith("--pxd-")) continue;
     const value = typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : "";
@@ -94268,12 +94720,12 @@ function columnWidths(grid, width = THUMB_W) {
   if (!cols) return [];
   const want = [];
   for (let c = 0; c < cols; c += 1) {
-    let n2 = 3;
-    for (const row4 of grid) n2 = Math.max(n2, Math.min(40, String(row4[c] ?? "").length));
-    want.push(n2);
+    let n3 = 3;
+    for (const row4 of grid) n3 = Math.max(n3, Math.min(40, String(row4[c] ?? "").length));
+    want.push(n3);
   }
   const total = want.reduce((a, b) => a + b, 0);
-  const raw = want.map((n2) => Math.max(40, n2 / total * width));
+  const raw = want.map((n3) => Math.max(40, n3 / total * width));
   const scale = width / raw.reduce((a, b) => a + b, 0);
   return raw.map((w) => w * scale);
 }
@@ -95287,7 +95739,7 @@ function fail3(code, message) {
 function pageSet(pages, total) {
   if (pages == null) return null;
   const list = Array.isArray(pages) ? pages : [pages];
-  const set = new Set(list.map(Number).filter((n2) => Number.isInteger(n2) && n2 >= 1 && (!total || n2 <= total)));
+  const set = new Set(list.map(Number).filter((n3) => Number.isInteger(n3) && n3 >= 1 && (!total || n3 <= total)));
   return set.size ? set : null;
 }
 function tablesOfDoc(doc, wanted = null) {
@@ -95316,7 +95768,7 @@ function covers(doc, wanted) {
   if (!doc) return false;
   if (!wanted) return (doc.pages || []).every((p) => p.parsed !== false);
   const parsed = new Set((doc.pages || []).filter((p) => p.parsed !== false).map((p) => p.n));
-  for (const n2 of wanted) if (!parsed.has(n2)) return false;
+  for (const n3 of wanted) if (!parsed.has(n3)) return false;
   return true;
 }
 function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha256 = sha256Hex, ocrSource = null } = {}) {
@@ -95347,7 +95799,7 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
     const sha = await sha256(bytes);
     const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes).slice() }).promise;
     const numPages = pdf.numPages;
-    const want = wanted ? [...wanted].filter((n2) => n2 <= numPages) : null;
+    const want = wanted ? [...wanted].filter((n3) => n3 <= numPages) : null;
     const from = want ? Math.min(...want) : 1;
     const to = want ? Math.max(...want) : numPages;
     let info = null;
@@ -95357,10 +95809,10 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
       info = null;
     }
     const records = [];
-    for (let n2 = from; n2 <= to; n2 += 1) {
+    for (let n3 = from; n3 <= to; n3 += 1) {
       if (signal?.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
-      const page = await pdf.getPage(n2);
-      records.push(parsePageGeometry(await loadPageData(page), n2));
+      const page = await pdf.getPage(n3);
+      records.push(parsePageGeometry(await loadPageData(page), n3));
       try {
         page.cleanup?.();
       } catch {
@@ -95400,7 +95852,7 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
       }
     }
     if (wanted) wanted = pageSet([...wanted], doc.pageCount || 0);
-    const scanPages = scanPagesOf(doc).filter((n2) => !wanted || wanted.has(n2));
+    const scanPages = scanPagesOf(doc).filter((n3) => !wanted || wanted.has(n3));
     let ocr = { source: null, state: "none" };
     let engine = doc.engine;
     if (scanPages.length && scan !== "off") {
@@ -95425,7 +95877,7 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
         }
       }
     }
-    const needsOcr = scanPagesOf(doc).filter((n2) => !wanted || wanted.has(n2));
+    const needsOcr = scanPagesOf(doc).filter((n3) => !wanted || wanted.has(n3));
     return {
       tables: tablesOfDoc(doc, wanted),
       engine,
@@ -95547,7 +95999,7 @@ function boardBounds(rects) {
   let y1 = Infinity;
   let x2 = -Infinity;
   let y2 = -Infinity;
-  let n2 = 0;
+  let n3 = 0;
   for (const rect of rects) {
     if (!rect) continue;
     const x = Number(rect.x);
@@ -95559,9 +96011,9 @@ function boardBounds(rects) {
     y1 = Math.min(y1, y);
     x2 = Math.max(x2, x + w);
     y2 = Math.max(y2, y + h);
-    n2 += 1;
+    n3 += 1;
   }
-  if (!n2) return empty;
+  if (!n3) return empty;
   return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }
 function fire(win2, type, detail, Ctor) {
@@ -95998,8 +96450,8 @@ function createShiftWatch() {
   };
   const markUsable = (t) => {
     if (!on) return false;
-    const n2 = Number(t);
-    usableAt = Number.isFinite(n2) ? n2 : perfNow();
+    const n3 = Number(t);
+    usableAt = Number.isFinite(n3) ? n3 : perfNow();
     publish();
     return true;
   };
@@ -98572,9 +99024,9 @@ async function installPlexusDiagram({
   }
   function noteMountFail(uid, error) {
     const prev = mountFail.get(uid);
-    const n2 = (prev?.n || 0) + 1;
-    const wait2 = n2 <= MOUNT_BACKOFF_MS.length ? MOUNT_BACKOFF_MS[n2 - 1] : Infinity;
-    mountFail.set(uid, { n: n2, until: wait2 === Infinity ? Infinity : Date.now() + wait2 });
+    const n3 = (prev?.n || 0) + 1;
+    const wait2 = n3 <= MOUNT_BACKOFF_MS.length ? MOUNT_BACKOFF_MS[n3 - 1] : Infinity;
+    mountFail.set(uid, { n: n3, until: wait2 === Infinity ? Infinity : Date.now() + wait2 });
     if (!prev) console.warn("[plexus-diagram] Mount failed; native diagram restored", uid, error);
   }
   function mountCooling(uid) {
@@ -99208,12 +99660,12 @@ async function installPlexusDiagram({
     } catch {
       string = "";
     }
-    const mapKid = (n2) => ({
-      ":block/uid": n2?.[":block/uid"] || n2?.uid || "",
-      ":block/string": n2?.[":block/string"] ?? n2?.string ?? "",
-      ":block/order": n2?.[":block/order"] ?? n2?.order,
-      ":block/props": n2?.[":block/props"] ?? n2?.props,
-      ":block/children": (n2?.[":block/children"] || n2?.children || []).map(mapKid)
+    const mapKid = (n3) => ({
+      ":block/uid": n3?.[":block/uid"] || n3?.uid || "",
+      ":block/string": n3?.[":block/string"] ?? n3?.string ?? "",
+      ":block/order": n3?.[":block/order"] ?? n3?.order,
+      ":block/props": n3?.[":block/props"] ?? n3?.props,
+      ":block/children": (n3?.[":block/children"] || n3?.children || []).map(mapKid)
     });
     if (raw && !Array.isArray(raw) && (raw[":block/string"] != null || raw.string != null || raw[":block/uid"])) {
       const kids2 = raw[":block/children"] || raw.children || [];

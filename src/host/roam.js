@@ -413,6 +413,53 @@ export function createWriteQueue({ onBusy } = {}) {
   };
 }
 
+// Roam refuses more than 1,500 API mutations per 60 s ("maximum mutation rate limit exceeded"), and a long backlog of
+// unconfirmed writes drains in time that grows with its length (PhD stress build: 18k queued writes, ~30 h). Every
+// Plexus write waits here: `burst` writes per minute go at once (a 50-card drag, a 20-card delete), then one per
+// `gapMs`, and never more than `cap` in any 60 s.
+export const WRITE_BURST = 200;
+export const WRITE_GAP_MS = 100;
+export const WRITE_CAP = 1200;
+export function isRateLimitError(error) {
+  return /mutation rate limit|rate limit exceeded/i.test(String(error?.message ?? error ?? ""));
+}
+export function createWritePacer({ now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), burst = WRITE_BURST, gapMs = WRITE_GAP_MS, cap = WRITE_CAP, windowMs = 60000 } = {}) {
+  const stamps = [];
+  let chain = Promise.resolve();
+  const trim = (t) => { while (stamps.length && t - stamps[0] >= windowMs) stamps.shift(); };
+  const take = async () => {
+    let t = now();
+    trim(t);
+    if (stamps.length >= cap) {
+      await sleep(stamps[0] + windowMs - t);
+      t = now();
+      trim(t);
+    } else if (stamps.length >= burst) {
+      const wait = stamps[stamps.length - 1] + gapMs - t;
+      if (wait > 0) {
+        await sleep(wait);
+        t = now();
+      }
+    }
+    stamps.push(t);
+  };
+  return {
+    // Resolves when this write may go. Calls queue in order.
+    pace() {
+      const p = chain.then(take);
+      chain = p.catch(() => {});
+      return p;
+    },
+    // Roam refused a write: count the window as full so the next write waits it out.
+    saturate() {
+      const t = now();
+      trim(t);
+      while (stamps.length < cap) stamps.push(t);
+    },
+    get recent() { trim(now()); return stamps.length; },
+  };
+}
+
 const canon = (v) => (typeof v === "string" ? v : JSON.stringify(v));
 
 export function createEchoLedger({ graceMs = 800, now = Date.now } = {}) {
@@ -668,6 +715,19 @@ function countReads(data, stats) {
 const BROWSE_TTL_MS = 30000;
 
 export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
+  const pacer = createWritePacer();
+  // One Roam mutation, paced; a refusal at Roam's rate cap waits out the window and tries once more.
+  const mutate = async (fn) => {
+    await pacer.pace();
+    try {
+      return await fn();
+    } catch (error) {
+      if (!isRateLimitError(error)) throw error;
+      pacer.saturate();
+      await pacer.pace();
+      return await fn();
+    }
+  };
   const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
   bindGuardStats(stats);
   const data = countReads(api.data, stats);
@@ -1464,7 +1524,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const existing = host.pageUid(name);
       if (existing) return existing;
       stats.writes++;
-      await data.page.create({ page: { title: name } });
+      await mutate(() => data.page.create({ page: { title: name } }));
       noteWrite("create");
       return host.pageUid(name);
     },
@@ -1491,7 +1551,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const uid = host.pageUid(oldTitle);
       if (!uid) return false;
       stats.writes++;
-      await data.page.update({ page: { uid, title: newTitle } });
+      await mutate(() => data.page.update({ page: { uid, title: newTitle } }));
       noteWrite("update");
       return true;
     },
@@ -1663,7 +1723,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (open !== undefined) block.open = open;
       if (viewType) block["children-view-type"] = viewType;
       stats.writes++;
-      await data.block.create({ location: { "parent-uid": parentUid, order }, block });
+      await mutate(() => data.block.create({ location: { "parent-uid": parentUid, order }, block }));
       noteWrite("create");
       return id;
     },
@@ -1675,10 +1735,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!parent) return [];
       const fn = data.block?.fromMarkdown;
       if (typeof fn !== "function") throw new Error("fromMarkdown is missing");
-      const result = await fn({
+      const result = await mutate(() => fn({
         location: { "parent-uid": parent, order },
         "markdown-string": String(markdown ?? ""),
-      });
+      }));
       const roots = markdownRootUids(result);
       stats.writes++;
       noteWrite("create");
@@ -1761,7 +1821,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     async updateString(uid, string) {
       stats.writes++;
-      await data.block.update({ block: { uid, string } });
+      await mutate(() => data.block.update({ block: { uid, string } }));
       noteWrite("update");
       forgetUid(uid);
     },
@@ -1770,7 +1830,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       forgetUid(uid);
       const merged = mergePropsForWrite(host.pullProps(uid), plexus);
       stats.writes++;
-      await data.block.update({ block: { uid, props: merged } });
+      await mutate(() => data.block.update({ block: { uid, props: merged } }));
       noteWrite("update");
     },
 
@@ -1779,27 +1839,27 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       forgetUid(uid);
       const merged = { ...plainKeys(host.pullProps(uid)), "plexus-reads": plainKeys(reads) };
       stats.writes++;
-      await data.block.update({ block: { uid, props: merged } });
+      await mutate(() => data.block.update({ block: { uid, props: merged } }));
       noteWrite("update");
     },
 
     async moveBlock(uid, parentUid, order = "last") {
       stats.writes++;
-      await data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } });
+      await mutate(() => data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } }));
       noteWrite("move");
       forgetUid(uid);
     },
 
     async deleteBlock(uid) {
       stats.writes++;
-      await data.block.delete({ block: { uid } });
+      await mutate(() => data.block.delete({ block: { uid } }));
       noteWrite("delete");
       forgetUid(uid);
     },
 
     async setOpen(uid, open) {
       stats.writes++;
-      await data.block.update({ block: { uid, open } });
+      await mutate(() => data.block.update({ block: { uid, open } }));
       noteWrite("update");
       forgetUid(uid);
     },
@@ -1826,7 +1886,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     async deletePage(uid) {
       stats.writes++;
-      await data.page.delete({ page: { uid } });
+      await mutate(() => data.page.delete({ page: { uid } }));
       noteWrite("delete");
     },
 
@@ -2061,7 +2121,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const page = { title: name };
       if (typeof uid === "string" && uid) page.uid = uid;
       stats.writes++;
-      await data.page.create({ page });
+      await mutate(() => data.page.create({ page }));
       noteWrite("create");
       return page.uid || host.pageUid(name);
     },

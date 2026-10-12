@@ -37131,6 +37131,7 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
     for (const set of slot2.pages.values()) for (const fn of set) fn(after);
   };
   let coverMemo = null;
+  const repairedPdfBlocks = /* @__PURE__ */ new Set();
   const readPdfCover = (url) => {
     const pages = [];
     for (const row4 of queryRows(host, PDF_PAGE_QUERY, url)) {
@@ -38017,6 +38018,15 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       }
       const value = pdfOfPageNode(res);
       if (value) {
+        if (typeof value.string === "string" && /\{\{[^{}]*:\s*\{\{/.test(value.string) && !repairedPdfBlocks.has(value.pdfUid)) {
+          const fixed = pdfMacroUrl(value.string);
+          if (fixed) {
+            repairedPdfBlocks.add(value.pdfUid);
+            value.string = `{{[[pdf]]: ${fixed}}}`;
+            Promise.resolve(host.updateString(value.pdfUid, value.string)).catch(() => {
+            });
+          }
+        }
         let kids = null;
         try {
           kids = pull(PDF_KIDS_PATTERN, eidKey(value.pdfUid));
@@ -38301,8 +38311,9 @@ function createHost({ api: api2 = globalThis.roamAlphaAPI, storage = globalThis.
       const res = await upload.call(api2.file, { file });
       const raw = typeof res === "string" ? res : res?.url;
       const md = typeof raw === "string" ? /^\s*!\[[^\]]*\]\((.+)\)\s*$/s.exec(raw) : null;
-      const url = md ? md[1] : raw;
-      if (typeof url !== "string" || !url) throw new Error("upload-failed");
+      const hit = typeof raw === "string" ? /https?:\/\/[^\s)}\]"']+/.exec(raw) : null;
+      const url = md ? md[1] : hit ? hit[0] : "";
+      if (!url) throw new Error("upload-failed");
       stats.writes++;
       return url;
     },
@@ -49459,7 +49470,27 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     const doc = await finalRes.json();
     return doc;
   }
+  const emptyBytes = (bytes) => !bytes || !(bytes.byteLength > 0 || bytes.length > 0 || bytes.size > 0);
+  function helperError(reason, message, status2) {
+    const error = new Error(message);
+    error.reason = reason;
+    if (status2 !== void 0) error.status = status2;
+    return error;
+  }
+  async function readJobId(posted) {
+    let job = null;
+    try {
+      job = await posted.json();
+    } catch {
+      job = null;
+    }
+    if (!(posted.status >= 200 && posted.status < 300) || typeof job?.job !== "string" || !job.job) {
+      throw helperError("job-rejected", `job-rejected ${posted.status}`, posted.status);
+    }
+    return job;
+  }
   async function parse({ bytes, sha256, options, onProgress, onPage, signal } = {}) {
+    if (emptyBytes(bytes)) throw helperError("empty-pdf", "empty-pdf");
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
     const optsHash = await optionsHash(options || {});
@@ -49479,13 +49510,14 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
       },
       body: bytes
     }, signal);
-    const job = await posted.json();
     if (posted.status === 409) {
+      const job2 = await posted.json();
       const error = new Error("helper busy");
       error.status = 409;
-      error.running = job?.running;
+      error.running = job2?.running;
       throw error;
     }
+    const job = await readJobId(posted);
     const doc = await readJob(url, token, job.job, { onProgress, onPage, signal });
     return { doc, cached: false, sha256: sha, optsHash, job: job.job };
   }
@@ -49498,6 +49530,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     return res.status === 204 || res.status === 200;
   }
   async function reparseTable({ bytes, sha256, page, bbox, base, onProgress, onPage, signal } = {}) {
+    if (emptyBytes(bytes)) throw helperError("empty-pdf", "empty-pdf");
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
     const ocr2 = readSetting(settings, "parse-ocr", "auto");
@@ -49518,7 +49551,7 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
       },
       body: bytes
     }, signal);
-    const job = await posted.json();
+    const job = await readJobId(posted);
     const doc = await readJob(url, token, job.job, { onProgress, onPage, signal });
     const merged = base ? mergeScoped(base, doc, { page, bbox }) : null;
     return { doc, merged, cached: false, sha256: sha, job: job.job };
@@ -59685,6 +59718,7 @@ function createParseView({
     helperEngines = health?.engines;
   }
   let phase = "idle";
+  let failure = "";
   let dead = false;
   let progress = { page: 0, pageCount: 0, engine: "builtin" };
   let keyFn = null;
@@ -60238,6 +60272,7 @@ ${sourceAttrString(source)}` : markdown;
     clearBlockListeners();
     const blocks = shown();
     body.replaceChildren?.();
+    if (failure) el2("div", "pxd-parse__empty", body).textContent = failure;
     if (parsed) {
       const chips = chipsOn();
       if (chips.__doc !== parsed) {
@@ -60799,6 +60834,7 @@ ${sourceAttrString(source)}` : markdown;
   }
   async function parseBuiltin(explicit) {
     cancel();
+    failure = "";
     const ctrl = new AbortController();
     abort = ctrl;
     phase = "running";
@@ -61013,22 +61049,40 @@ ${sourceAttrString(source)}` : markdown;
     paintChip();
     const pdf = typeof getPdf === "function" ? await getPdf() : null;
     const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
-    const result = await helper.parse({
-      bytes,
-      sha256: parsed?.sha256,
-      options: {},
-      signal: ctrl.signal,
-      onProgress: (info) => {
-        progress = { page: info?.page || progress.page, pageCount: info?.total || info?.pageCount || progress.pageCount, engine: "docling" };
+    failure = "";
+    let result = null;
+    try {
+      result = await helper.parse({
+        bytes,
+        sha256: parsed?.sha256,
+        options: {},
+        signal: ctrl.signal,
+        onProgress: (info) => {
+          progress = { page: info?.page || progress.page, pageCount: info?.total || info?.pageCount || progress.pageCount, engine: "docling" };
+          paintChip();
+          onProgress?.(progress);
+        },
+        onPage: (info) => {
+          if (info?.job) jobId = info.job;
+          progress = { page: info?.page || progress.page, pageCount: info?.total || progress.pageCount, engine: "docling" };
+          paintChip();
+        }
+      });
+    } catch (error) {
+      phase = "idle";
+      if (error?.name === "AbortError") {
         paintChip();
-        onProgress?.(progress);
-      },
-      onPage: (info) => {
-        if (info?.job) jobId = info.job;
-        progress = { page: info?.page || progress.page, pageCount: info?.total || progress.pageCount, engine: "docling" };
-        paintChip();
+        return;
       }
-    });
+      failure = error?.reason === "empty-pdf" ? "Couldn't read this PDF file — it downloaded empty." : error?.reason === "job-rejected" ? `The helper rejected the PDF (HTTP ${error.status}).` : error?.status === 409 ? "The helper is busy with another job." : `Docling failed: ${error?.message || error}`;
+      try {
+        onToast?.(failure);
+      } catch {
+      }
+      paintChip();
+      render();
+      return;
+    }
     jobId = result?.job || jobId;
     if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? 0);
     else phase = "idle";

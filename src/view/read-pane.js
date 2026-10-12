@@ -1490,8 +1490,10 @@ export function createReadPane({
     const on = drawer?.isOpen?.() === true;
     hlBtn.setAttribute("aria-pressed", on ? "true" : "false");
   };
+  // Roam's own PDF toolbar (highlighter, area select, colour, zoom, fit, page box, search) is part of the reader:
+  // it shows with every open PDF. The gear opens the Engines sheet only.
   const paintTools = () => {
-    pane.classList.toggle("pxd-read--tools", toolsOn || searchHold);
+    pane.classList.add("pxd-read--tools");
   };
   // The "/ 9" span sits beside the page field. Roam wraps that field, so the span
   // is often the wrap's sibling, or just another short span in the toolbar.
@@ -2640,6 +2642,7 @@ export function createReadPane({
       const fresh = !pane.isConnected;
       if (fresh) root.append(pane);
       openFlag = true;
+      paintTools();
       emitReading(current.cardUid);
       titleNode.textContent = shownTitle();
       ensureMotion();

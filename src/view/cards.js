@@ -1807,7 +1807,7 @@ export function createItemRenderer({
       rec.header.classList.toggle("pxd-item__header--muted", item.kind === "board" && isUntitledBoard(item.title));
     }
     node.title = "";
-    const announced = item.type === "section" ? (item.title || "Section") : String(rec.refTitle || item.title || "Untitled");
+    const announced = item.type === "section" ? (item.title || "Section") : String((item.kind === "pdf" && rec.pdfCover?.title) || rec.refTitle || item.title || "Untitled");
     node.setAttribute("aria-label", `${announced}, ${item.type}`);
     if (item.landmark || rec.landmarkEl) paintLandmarkMark(rec, item);
     if (trailBadgeMap.size || rec.trailBadge) paintTrailBadge(rec, item.uid);
@@ -5726,7 +5726,7 @@ export function createItemRenderer({
       paintThumb(rec, item);
       return rec.thumbed === true;
     },
-    drawnRect: (uid) => drawnRect(uid, lastRects?.get(uid)) ?? null,
+    drawnRect: (uid, rect) => drawnRect(uid, rect ?? lastRects?.get(uid)) ?? null,
     measureRow,
     setLayoutWatch,
     markRows,

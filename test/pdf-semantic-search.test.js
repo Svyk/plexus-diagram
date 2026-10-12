@@ -58,12 +58,14 @@ test("junk metadata titles never name a PDF; a real one is used only when nothin
   assert.equal(pdfRowName({ metaTitle: "Untitled", url: URL1 }).title, "PDF");
   assert.equal(pdfRowName({ metaTitle: "Microsoft Word - Sanitation SOP rev 4", url: URL1 }).title, "Sanitation SOP rev 4");
   assert.equal(pdfRowName({ metaTitle: "I", ident: sporeIdent(), url: URL1 }).title, SPORE_TITLE);
-  // Order: own page → Roam PDF page → parse → cover read → metadata → first-page read.
+  // Order: own page → Roam PDF page → first-page read → parse → cover read → metadata → file name.
   const ident = sporeIdent();
   assert.equal(pdfRowName({ ownTitle: "Spore paper", pdfPageTitle: "PDF page", ident }).title, "Spore paper");
   assert.equal(pdfRowName({ pdfPageTitle: "Roam PDF -- Nerandzic -- OFID", parsedTitle: "Parsed", ident }).title, "Roam PDF");
-  assert.equal(pdfRowName({ parsedTitle: "Parsed title here", coverTitle: "Cover", ident }).title, "Parsed title here");
-  assert.equal(pdfRowName({ coverTitle: "Cover title here", metaTitle: "Meta title here", ident }).title, "Cover title here");
+  assert.equal(pdfRowName({ parsedTitle: "Parsed title here", coverTitle: "Cover", ident }).title, SPORE_TITLE, "the first-page read wins over a parse");
+  assert.equal(pdfRowName({ parsedTitle: "Parsed title here", coverTitle: "Cover" }).title, "Parsed title here");
+  assert.equal(pdfRowName({ coverTitle: "Cover title here", metaTitle: "Meta title here" }).title, "Cover title here");
+  assert.equal(pdfRowName({ parsedTitle: "MA J O R A R T I C L E", coverTitle: "MAJOR ARTICLE", metaTitle: "Open forum", ident: { title: "MA J O R A R T I C L E" } }).title, "Open forum", "a banner never names a PDF");
   assert.equal(pdfRowName({ ownTitle: "imgs/app/Readwisenotes/rISmpBtsk7", ident }).title, SPORE_TITLE, "a storage-path page title is not a name");
   const waiting = pdfRowName({ url: URL1, pending: true });
   assert.deepEqual(waiting, { title: "PDF", loading: true });

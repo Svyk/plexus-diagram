@@ -224,3 +224,36 @@ export async function readerHighlight({ url, items, settleMs = 4000 }) {
   }
   return { made, missed, limited, pageUid: pageUid() };
 }
+
+// Roam's sync icon state: "saving-remote" while Roam is still uploading writes to its servers.
+export function syncState() {
+  const el = document.querySelector(".rm-sync__icon");
+  const cls = el ? String(el.className) : "";
+  const m = /rm-sync--([\w-]+)/.exec(cls);
+  return m ? m[1] : "unknown";
+}
+
+// Waits (in the page) until Roam is no longer saving to remote, up to maxMs. Returns the ms waited.
+export async function waitSynced({ maxMs = 30000 }) {
+  const t0 = performance.now();
+  for (;;) {
+    const el = document.querySelector(".rm-sync__icon");
+    const saving = el && /rm-sync--saving/.test(String(el.className));
+    if (!saving || performance.now() - t0 > maxMs) return Math.round(performance.now() - t0);
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
+// Roam's own count of local writes not yet confirmed by its servers (IndexedDB v10_SLASH_dbs_SLASH_<graph>,
+// store unconfirmed-log). null when the store is not there. Read only.
+export async function pendingCount() {
+  const graph = window.roamAlphaAPI?.graph?.name;
+  if (!graph) return null;
+  try {
+    const db = await new Promise((res, rej) => { const r = indexedDB.open(`v10_SLASH_dbs_SLASH_${graph}`); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+    try {
+      if (!db.objectStoreNames.contains("unconfirmed-log")) return null;
+      return await new Promise((res) => { const q = db.transaction("unconfirmed-log", "readonly").objectStore("unconfirmed-log").count(); q.onsuccess = () => res(q.result); q.onerror = () => res(null); });
+    } finally { db.close(); }
+  } catch { return null; }
+}

@@ -34,6 +34,12 @@ highlight uids, page aliases, failures and per-stage timings. The state name def
   `order: "last"`; 8 parents at a time. A 50 ms timer in the page reports the longest main-thread stall per call;
   over 1 s halves the concurrency and pauses. The main window sits on the Daily Notes while writing (no board open).
   The right sidebar is never touched.
+- **Roam's limits** (measured 2026-10-12): the API refuses more than 1,500 mutations per 60 s (navigation counts),
+  so all writers share a 1,300/min budget (`lib/limit.mjs`); refused ops are handed back and retried in order.
+  Roam confirms queued writes one at a time and each confirmation costs time in proportion to the queue: a synth build
+  that wrote at ~21/s for 13 min left 18k unconfirmed writes that drained at ~5 a minute with the window at 100% CPU.
+  The writer therefore reads Roam's own queue (IndexedDB `v10_SLASH_dbs_SLASH_<graph>` / `unconfirmed-log`) before
+  every chunk and holds while it is over 300 (`PHD_MAX_PENDING`).
 - **Formats** come from Plexus's own pure serializers, imported from `src/model` in Node (`lib/plan.mjs`):
   `serializeItemLayout`, `serializeEdge`, `boardString` (schema.js), `serializeRegion` + container strings
   (regions.js), `viewBlockString` (view-save.js), `trailString` (trails.js), `snapshotProps` (snapshots.js),

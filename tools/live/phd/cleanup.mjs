@@ -86,9 +86,11 @@ function leftovers({ createdDaily, strays, startedAt }) {
 }
 
 async function deleteAll(cdp, kind, list, chunk = 100) {
+  const { waitPending } = await import("./lib/write.mjs");
   let n = 0;
   for (let i = 0; i < list.length;) {
     const part = list.slice(i, i + chunk);
+    if (kind !== "files") await waitPending(cdp, { log: console.log, label: `cleanup ${kind}` });
     const r = await cdp.mut(part.length, deleteMany, { [kind]: part }, 600000);
     n += r.n;
     if (r.errors.length) console.warn(`cleanup ${kind}:`, r.errors.slice(0, 3));

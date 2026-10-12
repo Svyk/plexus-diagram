@@ -1,6 +1,6 @@
 // Node side of the bulk writer: level the ops (a parent before its children), skip what exists, send chunks to
 // page.writeOps, and back off when Roam's main thread stalls.
-import { existing, pagesByTitle, writeOps } from "./page.mjs";
+import { existing, pagesByTitle, pendingCount, waitSynced, writeOps } from "./page.mjs";
 import { limiter } from "./limit.mjs";
 
 // depth 0 = pages; a block whose parent is not in this op list hangs off something that already exists (depth 1).
@@ -27,10 +27,26 @@ export function levels(ops) {
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Roam confirms queued writes one at a time and each confirmation costs time in proportion to the queue (18k queued
+// writes drained at ~5 a minute, CPU at 100%). Hold new writes until the queue is back under `max`.
+export const MAX_PENDING = Number(process.env.PHD_MAX_PENDING || 300);
+export async function waitPending(cdp, { max = MAX_PENDING, log = () => {}, label = "", maxWaitMs = 45 * 60000 } = {}) {
+  const t0 = Date.now();
+  let n = await cdp.call(pendingCount);
+  if (n == null || n <= max) return { waitedMs: 0, pending: n };
+  log(`  ${label}: Roam has ${n} unsynced writes; waiting for <= ${max}`);
+  while (n != null && n > max && Date.now() - t0 < maxWaitMs) {
+    await sleep(n > max * 4 ? 10000 : 2000);
+    n = await cdp.call(pendingCount);
+  }
+  if (n > max) throw new Error(`Roam sync backlog stayed at ${n} for ${Math.round(maxWaitMs / 60000)} min; stopping (re-run resumes)`);
+  return { waitedMs: Date.now() - t0, pending: n };
+}
+
 // ops are already resolved ({ kind, uid, parent, title, string, props, open, key }). alias maps a planned uid to the
 // uid that really exists (a page title that was already there). Returns stats.
-export async function writeAll(cdp, ops, { alias = {}, conc = 8, chunk = 150, log = () => {}, label = "" } = {}) {
-  const stats = { planned: ops.length, written: 0, skipped: 0, failed: [], ms: 0, calls: 0, maxGap: 0, backoffs: 0 };
+export async function writeAll(cdp, ops, { alias = {}, conc = 8, chunk = 150, log = () => {}, label = "", syncWaitMs = Number(process.env.PHD_SYNC_WAIT_MS ?? 30000) } = {}) {
+  const stats = { planned: ops.length, written: 0, skipped: 0, failed: [], ms: 0, calls: 0, maxGap: 0, backoffs: 0, syncWaitMs: 0, pendingWaitMs: 0, maxPending: 0 };
   const t0 = Date.now();
   const mapUid = (u) => alias[u] || u;
   for (const level of levels(ops)) {
@@ -48,6 +64,9 @@ export async function writeAll(cdp, ops, { alias = {}, conc = 8, chunk = 150, lo
     stats.skipped += want.length - todo.length;
     for (let i = 0; i < todo.length; i += chunk) {
       const part = todo.slice(i, i + chunk).map(({ kind, uid, parent, title, string, props, open, key }) => ({ kind, uid, parent, title, string, props, open, key }));
+      const pw = await waitPending(cdp, { log, label });
+      stats.pendingWaitMs += pw.waitedMs;
+      stats.maxPending = Math.max(stats.maxPending, pw.pending || 0);
       let r = await cdp.mut(part.length, writeOps, { ops: part, conc });
       stats.calls += 1;
       // Roam refused part of the chunk (mutation cap): wait out the window and write the rest, still in order.
@@ -81,6 +100,8 @@ export async function writeAll(cdp, ops, { alias = {}, conc = 8, chunk = 150, lo
         conc += 1;
       }
       if (r.failed.length) log(`  ${label}: ${r.failed.length} failed, e.g. ${r.failed[0].key}: ${r.failed[0].err}`);
+      // Without Roam's queue count, fall back to the sync icon (still "saving" = still uploading).
+      if (syncWaitMs > 0 && (await cdp.call(pendingCount)) == null) stats.syncWaitMs += await cdp.call(waitSynced, { maxMs: syncWaitMs }, syncWaitMs + 30000);
     }
   }
   stats.ms = Date.now() - t0;

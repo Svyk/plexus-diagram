@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.23.0 — 2026-10-11
+
+Parsing shows what it finds as it reads, local engines just run (and say they are free), and Ask AI is a floating chat that looks like Live AI's own.
+
+- **Watch the parse.** While a PDF parses, a soft beam sweeps each page and every table, paragraph and figure outlines itself as it is found, on the reader and on the card. A live count ("15 tables · 371 paragraphs · 88 figures") turns into a summary with the time when it is done. With Reduce motion on, only the ring and the count show.
+- **Ask AI on any part.** Hover a parsed part: a small Ask button (a new speech-bubble icon, now used everywhere for Ask AI) sends it to Live AI with the rest of the PDF as context; Copy copies it, tables as a Roam table. Shift-click Ask adds the part to a multi-part question.
+- **A floating Live AI chat.** Ask AI opens a chat window styled after Live AI's: the parts you ask about as chips, message bubbles, follow-up questions with page citations, a model picker. Drag it, resize it, and it stays above a full-screen board without the board reacting to it. "Open in Live AI" hands the conversation to Live AI's own chat.
+- **Local is free, and it just runs.** Parse uses Docling first when the helper is paired, reads scanned pages in the same run, never asks to confirm, and has no page limits: long scans and long documents are read in batches. Engines are labelled "Free · on this Mac", "Free · in Roam" or "Cloud · uses your credits", and the chip after a run reads like "Docling · free · 110 pages".
+- **Faster scan reads.** The in-browser second reading only checks pages with doubtful words, so a 110-page scanned record reads in about 8 minutes instead of 22. "Read the scan" can be run again on a PDF already read.
+- **PDF fixes.** A PDF dropped on a board is no longer stored as a doubled `{{[[pdf]]: {{[[pdf]]: …}}}}` block (Roam could not show it and Docling got an empty file); blocks already doubled are repaired. An empty file or a rejected job now says so instead of "Nothing matches". A PDF on its own page is titled by its page, and reopening it brings back its fullest read.
+- Parse menus close on Esc and on a click outside; a full-screen board widens again after Live AI's docked chat closes.
+
 ## 3.22.1 — 2026-10-11
 
 - **Open on board is instant again.** "Open on board" in a connection preview, "Show on board" in a block's menu and region links now open the page through Roam. Roam put back the page link these used when it came from a click, so the board waited about six seconds and then opened zoomed in, without the connection selected. It now opens in about 0.2 s with the connection selected.

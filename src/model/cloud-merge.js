@@ -347,3 +347,73 @@ export function mergeCloudFigures(cloudDoc, localDoc) {
   }
   return doc;
 }
+
+// A paid cloud read of some pages plus a free parse of more pages: the paid read's pages win and the
+// free parse fills the pages the paid read does not hold. The result stays the paid doc (engine
+// "cloud", its options) with `filledFrom` naming the free engine and the pages it gave. Free block ids
+// that clash with paid ones get a "~f" suffix; caption/for/continues links follow the rename.
+// Figure pictures are cached by block id and re-cropped by box when missing, so a rename is safe.
+const LINKS = ["caption", "for", "continues"];
+
+export function fillFreePages(paid, free) {
+  if (!paid || !free) return paid || free || null;
+  const paidPages = new Set(pagesOf(paid));
+  const fill = pagesOf(free).filter((n) => !paidPages.has(n)).sort((a, b) => a - b);
+  if (!fill.length) return paid;
+  const fillSet = new Set(fill);
+  const blocks = { ...(paid.blocks || {}) };
+  const rename = new Map();
+  const taken = new Set(Object.keys(blocks));
+  const freeIds = (free.order || []).filter((id) => fillSet.has(free.blocks?.[id]?.page));
+  for (const id of Object.keys(free.blocks || {})) {
+    if (!fillSet.has(free.blocks[id]?.page)) continue;
+    let next = id;
+    while (taken.has(next)) next = `${next}~f`;
+    taken.add(next);
+    rename.set(id, next);
+  }
+  for (const [id, next] of rename) {
+    const block = { ...free.blocks[id], id: next };
+    for (const key of LINKS) {
+      if (typeof block[key] !== "string") continue;
+      if (rename.has(block[key])) block[key] = rename.get(block[key]);
+      else delete block[key];
+    }
+    blocks[next] = block;
+  }
+  const pageOf = (id) => blocks[id]?.page ?? 0;
+  const tagged = [
+    ...(paid.order || []).map((id, i) => ({ id, page: pageOf(id), side: 0, i })),
+    ...freeIds.map((id, i) => ({ id: rename.get(id), page: free.blocks[id].page, side: 1, i })),
+  ];
+  tagged.sort((a, b) => a.page - b.page || a.side - b.side || a.i - b.i);
+  const pageRows = new Map();
+  for (const p of free.pages || []) if (fillSet.has(p?.n)) pageRows.set(p.n, { ...p });
+  for (const p of paid.pages || []) if (Number.isInteger(p?.n)) pageRows.set(p.n, p);
+  const pages = [...pageRows.values()].sort((a, b) => a.n - b.n);
+  return {
+    ...paid,
+    title: paid.title || free.title || null,
+    pageCount: Math.max(Number(paid.pageCount) || 0, Number(free.pageCount) || 0, pages.length),
+    pages,
+    blocks,
+    order: tagged.map((row) => row.id),
+    filledFrom: { engine: free.engine || null, pages: fill, pageCount: paid.pageCount ?? null },
+  };
+}
+
+// The paid read alone again (what the store keeps): the filled pages and their blocks go.
+export function paidPagesOnly(doc) {
+  if (!doc?.filledFrom) return doc;
+  const drop = new Set(doc.filledFrom.pages || []);
+  const blocks = {};
+  for (const [id, block] of Object.entries(doc.blocks || {})) if (!drop.has(block?.page)) blocks[id] = block;
+  const { filledFrom, ...rest } = doc;
+  return {
+    ...rest,
+    pageCount: filledFrom.pageCount ?? rest.pageCount,
+    pages: (doc.pages || []).filter((p) => !drop.has(p?.n)),
+    blocks,
+    order: (doc.order || []).filter((id) => Object.prototype.hasOwnProperty.call(blocks, id)),
+  };
+}

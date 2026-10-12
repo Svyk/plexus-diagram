@@ -4,7 +4,7 @@
 // the same API runs on an in-memory fallback. No graph writes.
 
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
-import { bestLocalDoc } from "../model/cloud-merge.js";
+import { bestLocalDoc, fillFreePages, paidPagesOnly } from "../model/cloud-merge.js";
 import { parsedDocTitle, parsedTitleLines } from "../model/pdf.js";
 import { openDiagramDb, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX } from "./diagram-db.js";
 import { optionsHash } from "../model/parse-hash.js";
@@ -56,16 +56,21 @@ export async function restorableParse(store, sha, { engines, plainHash, readHash
   let listed = [];
   try { listed = typeof store.listParses === "function" ? await store.listParses(sha) : []; } catch { listed = []; }
   listed = listed.filter((row) => !isStaleParse(row.doc));
+  // A stored cloud parse is the one the user paid for. Its pages win, even over a fuller free parse;
+  // the best free parse fills the pages it does not hold (a paid page range inside a whole-file parse).
+  const paid = engines?.includes?.("cloud") ? listed.filter((row) => row.engine === "cloud").pop() : null;
+  const free = await freeParse(store, sha, listed.filter((row) => row.engine !== "cloud"), {
+    engines: (engines || []).filter((e) => e !== "cloud"), plainHash, readHashOf,
+  });
+  return paid ? fillFreePages(paid.doc, free) : free;
+}
+
+async function freeParse(store, sha, listed, { engines, plainHash, readHashOf }) {
   // A parse that covers fewer pages than another parse of the same file (a page range, or a PDF that was
   // not loaded yet) loses to the fuller one.
   const most = Math.max(0, ...listed.map((row) => pagesSeen(row.doc)));
   const whole = listed.filter((row) => pagesSeen(row.doc) >= most);
   if (whole.length) listed = whole;
-  // A stored cloud parse is the one the user paid for. It wins when this list includes it.
-  if (engines?.includes?.("cloud")) {
-    const paid = listed.filter((row) => row.engine === "cloud").pop();
-    if (paid) return paid.doc;
-  }
   // A finished scan read (no unread scan pages) of any engine comes before a plain parse.
   for (const engine of engines) {
     const read = listed.filter((row) => row.engine === engine && row.doc?.options?.ocr === "vision" && !scanPagesOf(row.doc).length).pop();
@@ -330,6 +335,7 @@ export function createParseStore({ indexedDB: factory, now, docCap = PARSE_DOC_C
 
     async putParse(doc) {
       try {
+        doc = paidPagesOnly(doc);
         if (!doc || typeof doc !== "object" || !doc.sha256 || !doc.engine) return null;
         const optsHash = typeof doc.optsHash === "string" && doc.optsHash
           ? doc.optsHash

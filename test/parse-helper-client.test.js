@@ -356,3 +356,23 @@ test("a rejected job POST is job-rejected and never polls jobs/undefined", async
   await assert.rejects(ok.api.parse({ bytes: new Uint8Array([1]), sha256: "abc", options: {} }), (error) => error.reason === "job-rejected");
   assert.equal(ok.calls.some((call) => call.url.includes("undefined")), false);
 });
+
+test("ocr: a scan longer than the helper's page cap goes in batches and the pages merge in order", async () => {
+  const { createHelperClient, OCR_PAGE_CAP } = await import("../src/host/parse-helper-client.js");
+  const sent = [];
+  const fetch = async (url, init) => {
+    const opts = JSON.parse(init.headers["X-Pxd-Options"] || "{}");
+    sent.push(opts.pages);
+    return { status: 200, json: async () => ({ schema: "pxd-ocr/1", pageCount: 110, pages: opts.pages.map((n) => ({ n })) }) };
+  };
+  const settings = { get: (k) => (k === "parse-helper-token" ? "tok" : undefined) };
+  const client = createHelperClient({ fetch, settings, setSetting: () => {} });
+  const pages = Array.from({ length: 110 }, (_, i) => i + 1);
+  const chunks = [];
+  const got = await client.ocr({ bytes: new Uint8Array([1]), sha256: "abc", pages, onChunk: (c) => chunks.push(c.done) });
+  assert.equal(OCR_PAGE_CAP, 50);
+  assert.deepEqual(sent.map((p) => p.length), [50, 50, 10]);
+  assert.deepEqual(got.pages.map((p) => p.n), pages);
+  assert.deepEqual(chunks, [50, 100, 110]);
+  assert.equal(got.sha256, "abc");
+});

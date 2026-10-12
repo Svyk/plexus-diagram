@@ -49192,6 +49192,7 @@ async function readSSE(response, { onProgress, onPage }) {
   if (buf.trim()) dispatch(buf);
 }
 var TOKEN_SETTING = "parse-helper-token";
+var OCR_PAGE_CAP = 50;
 var TOKEN_BACKUP_KEY = "plexus-diagram:parse-helper-token";
 var PAIR_POLL_MS = 500;
 var PAIR_WAIT_MS = 6e4;
@@ -49556,9 +49557,25 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, storage, n
     const merged = base ? mergeScoped(base, doc, { page, bbox }) : null;
     return { doc, merged, cached: false, sha256: sha, job: job.job };
   }
-  async function ocr({ bytes, sha256, pages, cells, signal } = {}) {
-    const { url, token } = config();
+  async function ocr({ bytes, sha256, pages, cells, signal, onChunk } = {}) {
     const sha = sha256 || await sha256Hex(bytes);
+    if (!(cells && cells.length) && Array.isArray(pages) && pages.length > OCR_PAGE_CAP) {
+      let merged = null;
+      for (let i = 0; i < pages.length; i += OCR_PAGE_CAP) {
+        if (signal?.aborted) throw signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" });
+        const part = await ocrOnce({ bytes, sha, pages: pages.slice(i, i + OCR_PAGE_CAP), signal });
+        merged = merged ? { ...merged, pages: [...merged.pages || [], ...part.pages || []] } : { ...part, pages: [...part.pages || []] };
+        try {
+          onChunk?.({ done: Math.min(i + OCR_PAGE_CAP, pages.length), total: pages.length });
+        } catch {
+        }
+      }
+      return merged;
+    }
+    return ocrOnce({ bytes, sha, pages, cells, signal });
+  }
+  async function ocrOnce({ bytes, sha, pages, cells, signal }) {
+    const { url, token } = config();
     const options = {};
     if (pages && pages.length) options.pages = pages;
     if (cells && cells.length) options.cells = cells.map((c) => ({ page: c.page, bbox: c.bbox }));

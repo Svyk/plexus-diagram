@@ -147,6 +147,8 @@ async function readSSE(response, { onProgress, onPage }) {
 }
 
 export const TOKEN_SETTING = "parse-helper-token";
+// The helper's per-request OCR page cap (MAX_PAGES in tools/parse-helper/plexus_parse_helper/ocr.py).
+export const OCR_PAGE_CAP = 50;
 export const TOKEN_BACKUP_KEY = "plexus-diagram:parse-helper-token";
 export const PAIR_POLL_MS = 500;
 export const PAIR_WAIT_MS = 60_000;
@@ -506,9 +508,24 @@ export function createHelperClient({ fetch: fetchImpl, settings, setSetting, sto
 
   // Scanned pages: POST /v1/ocr with the PDF bytes. `pages` → pxd-ocr/1 page records
   // (cached by the helper); `cells` → re-read of single cells, never cached. One call.
-  async function ocr({ bytes, sha256, pages, cells, signal } = {}) {
-    const { url, token } = config();
+  async function ocr({ bytes, sha256, pages, cells, signal, onChunk } = {}) {
     const sha = sha256 || await sha256Hex(bytes);
+    // The helper reads at most OCR_PAGE_CAP pages per request: longer scans go in batches, each cached by the helper.
+    if (!(cells && cells.length) && Array.isArray(pages) && pages.length > OCR_PAGE_CAP) {
+      let merged = null;
+      for (let i = 0; i < pages.length; i += OCR_PAGE_CAP) {
+        if (signal?.aborted) throw signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" });
+        const part = await ocrOnce({ bytes, sha, pages: pages.slice(i, i + OCR_PAGE_CAP), signal });
+        merged = merged ? { ...merged, pages: [...(merged.pages || []), ...(part.pages || [])] } : { ...part, pages: [...(part.pages || [])] };
+        try { onChunk?.({ done: Math.min(i + OCR_PAGE_CAP, pages.length), total: pages.length }); } catch { /* caller */ }
+      }
+      return merged;
+    }
+    return ocrOnce({ bytes, sha, pages, cells, signal });
+  }
+
+  async function ocrOnce({ bytes, sha, pages, cells, signal }) {
+    const { url, token } = config();
     const options = {};
     if (pages && pages.length) options.pages = pages;
     if (cells && cells.length) options.cells = cells.map((c) => ({ page: c.page, bbox: c.bbox }));

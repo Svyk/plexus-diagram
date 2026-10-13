@@ -224,3 +224,15 @@ test("store: dispose still lands a pending write", async () => {
   assert.ok(again.get("b9"));
   await again.dispose();
 });
+
+test("packing a big snapshot over the cap stringifies it a few times, not once per face", () => {
+  const items = [];
+  for (let i = 0; i < 1500; i += 1) items.push(card(`p${i}`, { t: "div", k: ["face text ".repeat(40)] }));
+  const real = JSON.stringify;
+  let chars = 0;
+  JSON.stringify = (...args) => { const out = real(...args); chars += out?.length || 0; return out; };
+  let packed;
+  try { packed = packSnapshot(snapOf("b4", items)); } finally { JSON.stringify = real; }
+  assert.ok(packed);
+  assert.ok(chars < packed.length * 12, `stringified ${chars} chars for a ${packed.length}-char snapshot`);
+});

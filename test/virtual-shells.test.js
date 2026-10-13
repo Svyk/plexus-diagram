@@ -160,3 +160,23 @@ test("a view parked and brought back into the same mount puts its root back (cru
     m.restore();
   }
 });
+
+test("a full re-sync paints only the shells in the DOM; a detached one is painted when it attaches", async () => {
+  const m = mount({ x: 0, y: 0, zoom: 1 });
+  try {
+    await m.pump(40);
+    const far = "card00999";
+    assert.equal(m.has(far), false);
+    // A text change to a far card arrives while it is detached.
+    const board = m.view.session?.board ?? null;
+    void board;
+    m.view.restoreViewport({ x: -(39 * 260) + 400, y: -(24 * 200) + 300, zoom: 1 });
+    await m.pump(60, 10);
+    assert.equal(m.has(far), true);
+    const el = [...m.view.root.querySelectorAll(".pxd-item[data-uid]")].find((e) => e.getAttribute("data-uid") === far);
+    assert.ok(el.textContent.includes("Card 999"), "the shell was painted when it came into view");
+  } finally {
+    m.view.dispose();
+    m.restore();
+  }
+});

@@ -1942,9 +1942,23 @@ export function createItemRenderer({
     return orderIndex.get(uid) ?? order.length;
   };
   const layerOf = (rec) => (rec.type === "section" ? sectionsLayer : itemsLayer);
+  // A shell skipped by a sync while detached: paint it now, before it shows.
+  const freshen = (rec) => {
+    if (!rec?.stalePaint) return;
+    rec.stalePaint = false;
+    const item = lastBoard?.items.get(rec.uid);
+    if (!item) return;
+    noteRender(rec.uid);
+    paintShell(rec, item);
+    const rect = lastRects?.get(rec.uid);
+    rec.el.style.display = rect ? "" : "none";
+    if (rect) position(rec, rect);
+    if (showBadges) renderBadges(rec);
+  };
   // One shell into its layer at its board-order place.
   const attachShell = (rec) => {
     if (!rec?.el || isAttached(rec)) return;
+    freshen(rec);
     const layer = layerOf(rec);
     const order = lastBoard?.order || [];
     let before = null;
@@ -1965,6 +1979,7 @@ export function createItemRenderer({
       const rec = shells.get(uid);
       if (!rec?.el) continue;
       if (extra?.has(rec) || keepAttached(uid, rec, active) || nearView(uid)) {
+        freshen(rec);
         if (frag) (rec.type === "section" ? sectionNodes : itemNodes).append(rec.el);
         else layerOf(rec).append(rec.el);
       } else if (isAttached(rec)) rec.el.remove();
@@ -2014,6 +2029,7 @@ export function createItemRenderer({
       if (!rec?.el) continue;
       const layer = layerOf(rec);
       if (set.has(rec) && !isAttached(rec)) {
+        freshen(rec);
         const before = next.get(layer);
         if (before && typeof layer.insertBefore === "function") layer.insertBefore(rec.el, before);
         else layer.append(rec.el);
@@ -2128,6 +2144,13 @@ export function createItemRenderer({
       const rect = rects.get(uid);
       rec.el.style.display = rect ? "" : "none";
       if (fresh || !dirty || dirty.has(uid)) {
+        // A detached shell on a big board is painted when it attaches (a full sync painted all 1,558 shells of the
+        // PhD main board, 0.36 s, though ~100 were in the DOM).
+        if (!fresh && virtual() && !isAttached(rec) && editing?.uid !== uid && !mounted.has(uid)) {
+          rec.stalePaint = true;
+          if (rect) position(rec, rect);
+          continue;
+        }
         // Roam owns the open editor. A pull-watch echo of its text must not repaint this card or remount it.
         if (!fresh && editing?.uid === uid) {
           if (rect && (!rec.rect || rec.rect.x !== rect.x || rec.rect.y !== rect.y || rec.rect.w !== rect.w || rec.rect.h !== rect.h)) position(rec, rect);

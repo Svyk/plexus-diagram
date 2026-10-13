@@ -443,7 +443,16 @@ export function packSnapshot(snap) {
   lean.edges = null;
   text = fit(lean);
   if (text) return text;
+  // Faces from the tail, by their measured size: one stringify per face was ~0.9 s on a 1,558-item board.
   const items = lean.items.map((item) => ({ ...item }));
+  let over = JSON.stringify({ ...lean, items }).length - cap;
+  for (let i = items.length - 1; i >= 0 && over > 0; i -= 1) {
+    if (!items[i].face) continue;
+    over -= JSON.stringify(items[i].face).length + 8;
+    delete items[i].face;
+  }
+  text = fit({ ...lean, items });
+  if (text) return text;
   for (let i = items.length - 1; i >= 0; i -= 1) {
     if (!items[i].face) continue;
     delete items[i].face;

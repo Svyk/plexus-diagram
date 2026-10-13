@@ -446,9 +446,15 @@ export function isRateLimitError(error) {
   return /mutation rate limit|rate limit exceeded/i.test(String(error?.message ?? error ?? ""));
 }
 export function createWritePacer({ now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), burst = WRITE_BURST, gapMs = WRITE_GAP_MS, cap = WRITE_CAP, windowMs = 60000 } = {}) {
+  // `stamps` holds every call Roam counts (writes and watch calls) for the cap; `writes` holds writes alone for the
+  // burst gap, so the extension's own watch bookkeeping never slows a user's drag or undo.
   const stamps = [];
+  const writes = [];
   let chain = Promise.resolve();
-  const trim = (t) => { while (stamps.length && t - stamps[0] >= windowMs) stamps.shift(); };
+  const trim = (t) => {
+    while (stamps.length && t - stamps[0] >= windowMs) stamps.shift();
+    while (writes.length && t - writes[0] >= windowMs) writes.shift();
+  };
   const take = async () => {
     let t = now();
     trim(t);
@@ -456,14 +462,15 @@ export function createWritePacer({ now = Date.now, sleep = (ms) => new Promise((
       await sleep(stamps[0] + windowMs - t);
       t = now();
       trim(t);
-    } else if (stamps.length >= burst) {
-      const wait = stamps[stamps.length - 1] + gapMs - t;
+    } else if (writes.length >= burst) {
+      const wait = writes[writes.length - 1] + gapMs - t;
       if (wait > 0) {
         await sleep(wait);
         t = now();
       }
     }
     stamps.push(t);
+    writes.push(t);
   };
   return {
     // Resolves when this write may go. Calls queue in order.
@@ -472,7 +479,7 @@ export function createWritePacer({ now = Date.now, sleep = (ms) => new Promise((
       chain = p.catch(() => {});
       return p;
     },
-    // A call that Roam counts but that does not wait (add/removePullWatch).
+    // A call that Roam counts but that does not wait (add/removePullWatch): it counts toward the cap only.
     note() {
       const t = now();
       trim(t);

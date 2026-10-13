@@ -104,6 +104,9 @@ export const BULK_CARD_CAP = 45;
 // F12. Roam's sync queue confirms one write at a time, slower the longer the queue (18k queued writes wedged a
 // graph for ~30 hours on 2026-10-12). One transaction that plans this many writes asks first; past the second
 // line it is refused (duplicating one big section of the PhD main board was ~18.5k creates).
+// A transaction over this many writes is one custom undo entry with recorded inverse writes. It matches the host's
+// MAX_GROUP_WRITES: above it the host would split the native undo into one Cmd+Z per chunk of 45.
+export const CUSTOM_UNDO_ABOVE = 45;
 export const BULK_CONFIRM_WRITES = 600;
 export const BULK_REFUSE_WRITES = 3000;
 
@@ -1039,10 +1042,24 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return ok;
   }
 
-  function commit(ops, result, custom = null) {
+  // The inverse of a long transaction, recorded as it is built (txn). Null when some write cannot be undone exactly
+  // by writing back: a delete (its subtree and Roam-side props are not in the model), a page, a move into a block
+  // made in the same transaction (undo would delete a block that may still hold the moved one).
+  function autoUndo(list, inverse) {
+    const back = coalesce(inverse.slice().reverse());
+    const entry = {
+      forward: list,
+      async undo() { await execute(back); },
+      async redo() { await execute(entry.forward); },
+    };
+    return entry;
+  }
+
+  function commit(ops, result, custom = null, inverse = null) {
     if (!ops.length) return Promise.resolve(result);
     stampBoard(ops);
     const list = coalesce(ops);
+    if (!custom && inverse && list.length > CUSTOM_UNDO_ABOVE) custom = autoUndo(list, inverse);
     if (!bulkAllowed(list.length)) {
       // The optimistic model already holds the change: read the board back from Roam.
       repull();
@@ -1060,9 +1077,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   function txn(fn, custom = null) {
     if (!board || destroyed || gone) return Promise.resolve(undefined);
     const ops = [];
+    // Inverse writes, in call order, while the transaction stays exactly invertible.
+    const inverse = [];
+    const made = new Set();
+    let invertible = true;
     const t = {
       create({ parent, uid: id, string = "", plexus, open, order }) {
         const newUid = id ?? host.generateUid();
+        made.add(newUid);
+        inverse.push({ op: "delete", uid: newUid });
         const ord = order ?? insertOrder(parent);
         const node = { [UID]: newUid, [STR]: string, [ORD]: 0, [KIDS]: [] };
         if (plexus) node[PROPS] = { plexus: plainKeys(plexus) };
@@ -1072,23 +1095,30 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         return newUid;
       },
       move(id, parent, order = "last") {
+        const hit = ix().get(id);
+        if (!hit?.parent || made.has(parent) || made.has(id)) invertible = false;
+        else inverse.push({ op: "move", uid: id, parent: hit.parent[UID], order: kidsOf(hit.parent).indexOf(hit.node) });
         rawMove(id, parent, order);
         ops.push({ op: "move", uid: id, parent, order });
       },
       del(id) {
+        invertible = false;
         rawDelete(id);
         ops.push({ op: "delete", uid: id });
       },
       props(id, plexus) {
+        if (!made.has(id)) inverse.push({ op: "props", uid: id, plexus: clone(readPlexus(rawNode(id)?.[PROPS])) ?? null });
         rawProps(id, plexus);
         ops.push({ op: "props", uid: id, plexus });
       },
       string(id, string) {
+        if (!made.has(id)) inverse.push({ op: "string", uid: id, string: rawNode(id)?.[STR] ?? "" });
         rawString(id, string);
         ops.push({ op: "string", uid: id, string });
       },
       // A page outside the board. Nothing in the board tree changes.
       page({ uid: id, title }) {
+        invertible = false;
         const newUid = id ?? host.generateUid();
         ops.push({ op: "page", uid: newUid, title });
         return newUid;
@@ -1096,7 +1126,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       sync: rebuild,
     };
     const result = fn(t);
-    return commit(ops, result, custom);
+    return commit(ops, result, custom, invertible ? inverse : null);
   }
 
   // ---- layout helpers ----

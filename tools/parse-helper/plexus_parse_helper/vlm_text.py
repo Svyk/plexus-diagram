@@ -17,7 +17,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from plexus_parse_helper.vlm_tables import DECODE_SEED, DECODE_TEMPERATURE, _RepeatStop, greedy_sampler
+from plexus_parse_helper.vlm_tables import DECODE_SEED, DECODE_TEMPERATURE, _RepeatStop, drop_repeats, greedy_sampler
 from plexus_parse_helper.vlm_weights import TEXT_LABEL
 
 # The instruction used in the page-text bake-off. Not tuned to a page.
@@ -100,8 +100,9 @@ def read_page_text(image: Image.Image) -> str:
     eos = getattr(model.config, "eos_token_id", None) or []
     if not isinstance(eos, list):
         eos = [eos]
-    if not isinstance(getattr(tok, "stopping_criteria", None), _RepeatStop):
-        tok.stopping_criteria = _RepeatStop(eos, tok)
+    current = getattr(tok, "stopping_criteria", None)
+    if not isinstance(current, _RepeatStop) or not getattr(current, "text_mode", False):
+        tok.stopping_criteria = _RepeatStop(eos, tok, text_mode=True)
     if hasattr(mx, "reset_peak_memory"):
         mx.reset_peak_memory()
     if hasattr(mx, "random") and hasattr(mx.random, "seed"):
@@ -118,7 +119,7 @@ def read_page_text(image: Image.Image) -> str:
         stopping_criteria=tok.stopping_criteria,
         verbose=False,
     )
-    return _plain(out.text or "")
+    return drop_repeats(_plain(out.text or ""))
 
 
 def label() -> str:

@@ -651,9 +651,16 @@ function hostHeight(host) {
 const ANCHOR_WEIGHT = 5;
 
 export function placePageText(text, hosts) {
+  return placeSlices(text, hosts).parts;
+}
+
+// placePageText plus how each slice was decided: `anchored[i]` when host i
+// matched the transcription, `pinned[i]` when it is the only host between two
+// anchored neighbours, so its slice is fixed by them.
+function placeSlices(text, hosts) {
   const words = String(text || "").split(/\s+/).filter(Boolean);
   const k = hosts.length;
-  if (!k) return [];
+  if (!k) return { parts: [], anchored: [], pinned: [] };
   const keys = words.map(alignKey);
   const V = [];
   const visionCount = hosts.map((host, hi) => {
@@ -687,11 +694,13 @@ export function placePageText(text, hosts) {
     const shares = shareOut(words.length, visionCount, hosts.map(hostHeight));
     let at = 0;
     for (let hi = 0; hi < k; hi++) { from[hi] = at; at += shares[hi]; to[hi] = at; }
-    return hosts.map((_, hi) => words.slice(from[hi], to[hi]).join(" "));
+    return { parts: hosts.map((_, hi) => words.slice(from[hi], to[hi]).join(" ")), anchored: new Array(k).fill(false), pinned: new Array(k).fill(false) };
   }
+  const pinned = new Array(k).fill(false);
   for (const hi of anchored) { from[hi] = first[hi]; to[hi] = last[hi] + 1; }
   // Pieces of a gap: the earlier anchor's tail, the unanchored hosts, the later anchor's head.
   const fill = (gapFrom, gapTo, before, between, after) => {
+    if (before != null && after != null && between.length === 1) pinned[between[0]] = true;
     const pieces = [];
     if (before != null) pieces.push({ host: before, tail: true, w: vStart[before] + visionCount[before] - 1 - lastV[before], h: 0 });
     for (const hi of between) pieces.push({ host: hi, w: visionCount[hi], h: hostHeight(hosts[hi]) });
@@ -737,8 +746,76 @@ export function placePageText(text, hosts) {
   }
   const tail = anchored[anchored.length - 1];
   fill(last[tail] + 1, words.length, tail, range(tail + 1, k), null);
-  return hosts.map((_, hi) => words.slice(from[hi], to[hi]).join(" "));
+  return { parts: hosts.map((_, hi) => words.slice(from[hi], to[hi]).join(" ")), anchored: hosts.map((_, hi) => first[hi] >= 0), pinned };
 }
+
+function keysOf(text) {
+  return String(text || "").split(/\s+/).map(alignKey).filter((key) => key.length);
+}
+
+function bagOf(keys) {
+  const bag = new Map();
+  for (const key of keys) bag.set(key, (bag.get(key) || 0) + 1);
+  return bag;
+}
+
+// Take `key` out of `bag`: the same key, else a near spelling of a long word.
+function takeKey(bag, key) {
+  const n = bag.get(key) || 0;
+  if (n > 0) { bag.set(key, n - 1); return true; }
+  if (key.length < 5) return false;
+  for (const [other, count] of bag) {
+    if (count > 0 && matchWeight(key, other) > 0) { bag.set(other, count - 1); return true; }
+  }
+  return false;
+}
+
+// A page reading is checked against the page's own Vision words. With at least
+// SUPPORT_MIN_WORDS of them, a reading of which fewer than SUPPORT_MIN_SHARE of
+// the words are on the page (same word or near spelling) read something else:
+// a blank page's invented text, or another page. Where Vision found little,
+// the reading stands; that is the handwriting the page model is there for.
+const SUPPORT_MIN_WORDS = 20;
+const SUPPORT_MIN_SHARE = 0.2;
+
+export function pageReadSupport(text, visionTexts) {
+  const vision = visionTexts.flatMap(keysOf).filter((key) => key.length >= 2);
+  const read = keysOf(text).filter((key) => key.length >= 2);
+  const seen = new Set(vision);
+  const long = [...seen].filter((key) => key.length >= 5);
+  let supported = 0;
+  for (const key of read) {
+    if (seen.has(key) || (key.length >= 5 && long.some((v) => matchWeight(key, v) > 0))) supported += 1;
+  }
+  const share = read.length ? supported / read.length : 1;
+  return { visionWords: vision.length, readWords: read.length, share, keep: vision.length < SUPPORT_MIN_WORDS || share >= SUPPORT_MIN_SHARE };
+}
+
+// A slice placed on a host by position alone is that host's line only when
+// the two share a word, a word of each is a near spelling of the other (at
+// most half its letters differ), or their letters are close overall (a
+// handwritten value read two ways).
+function sliceFits(vision, slice) {
+  const a = keysOf(vision);
+  const b = keysOf(slice);
+  if (!a.length || !b.length) return true;
+  const mine = new Set(a);
+  if (b.some((key) => mine.has(key) && (key.length >= 2 || /\d/.test(key)))) return true;
+  const near = (x, y) => {
+    const limit = Math.floor(0.5 * Math.max(x.length, y.length));
+    return Math.min(x.length, y.length) >= 4 && editDistanceAtMost(x, y, limit) <= limit;
+  };
+  if (a.length * b.length <= 400 && a.some((x) => b.some((y) => near(x, y)))) return true;
+  const x = a.join("");
+  const y = b.join("");
+  const max = Math.max(x.length, y.length);
+  const limit = Math.ceil(0.5 * max) - 1;
+  return max <= 200 && limit >= 0 && editDistanceAtMost(x, y, limit) <= limit;
+}
+
+// Share of a host's Vision words needed among the words other lines gained
+// before an emptied host counts as merged into them.
+const MOVED_SHARE = 0.6;
 
 // Replace the text of Vision lines whose centres sit in a VLM text region.
 // The line boxes stay. `regions` are `{page, bbox, text}` in top-left PDF points.
@@ -746,11 +823,13 @@ export function placePageText(text, hosts) {
 // `reads` records each page transcription with its hosts' Vision text, for
 // the placement check (tools/parse-bench/text-placement.mjs).
 export function alignVlmText(doc, regions) {
-  if (!doc || !regions?.length) return { doc, applied: [], reads: [] };
+  if (!doc || !regions?.length) return { doc, applied: [], reads: [], dropped: [] };
   const blocks = { ...doc.blocks };
   let order = doc.order;
   const applied = [];
   const reads = [];
+  // Page readings left out by the support check: { page, visionWords, readWords, share }.
+  const dropped = [];
   const kinds = new Set(["para", "heading", "caption", "footnote"]);
   const covered = new Set(["table", "figure"]);
   for (const region of regions) {
@@ -795,10 +874,28 @@ export function alignVlmText(doc, regions) {
     const hostText = inside.map((b) => b.text).join(" ");
     if (texCommandCount(region.text) >= 2 && texCommandCount(hostText) === 0) continue;
     if (region.pageText) {
-      const tablesHere = (order || []).map((id) => blocks[id]).filter((b) => b && b.page === region.page && b.type === "table" && b.cells?.length);
-      const parts = placePageText(withoutTableLines(region.text, tablesHere), inside);
+      const onPage = (order || []).map((id) => blocks[id]).filter((b) => b && b.page === region.page);
+      const support = pageReadSupport(region.text, onPage.flatMap((b) => [b.text || "", ...(b.cells || []).map((c) => c.text || "")]));
+      if (!support.keep) {
+        dropped.push({ page: region.page, visionWords: support.visionWords, readWords: support.readWords, share: support.share });
+        continue;
+      }
+      const tablesHere = onPage.filter((b) => b.type === "table" && b.cells?.length);
+      const placed = placeSlices(withoutTableLines(region.text, tablesHere), inside);
       reads.push({ page: region.page, text: region.text, hosts: inside.map((block) => ({ id: block.id, vision: block.text || "" })) });
-      settleHosts(inside, parts);
+      // A host that matched nothing and is not pinned between two that did got
+      // its slice by position. Unless the slice shares evidence with it, the
+      // host keeps its Vision line and the slice becomes a line of its own.
+      const anyAnchor = placed.anchored.some(Boolean);
+      const extra = inside.map(() => "");
+      const parts = placed.parts.map((part, i) => {
+        const host = inside[i];
+        if (!anyAnchor || placed.anchored[i] || placed.pinned[i] || host.type === "caption" || !part || !keysOf(host.text).length) return part;
+        if (sliceFits(host.text, part)) return part;
+        extra[i] = part;
+        return host.text;
+      });
+      settleHosts(inside, parts, extra);
       continue;
     }
     inside.sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
@@ -816,12 +913,15 @@ export function alignVlmText(doc, regions) {
       applied.push(id);
     }
   }
-  return { doc: { ...doc, blocks, order }, applied, reads };
+  return { doc: { ...doc, blocks, order }, applied, reads, dropped };
 
   // Write each host's slice. A caption keeps its own reading of its label:
   // the words of its slice before the label, or a slice that is a different
-  // line, go to the nearest prose host. Returns the words no prose host took.
-  function settleHosts(hosts, parts) {
+  // line, go to the nearest prose host. `extra[i]` is a line placed after
+  // host i. A prose host left with no words is dropped when its Vision words
+  // are among those the other lines gained (a merged line), and keeps its
+  // Vision text otherwise. Returns the words no prose host took.
+  function settleHosts(hosts, parts, extra = []) {
     const out = hosts.map((_, i) => parts[i] || "");
     const before = hosts.map(() => []);
     const after = hosts.map(() => []);
@@ -840,11 +940,37 @@ export function alignVlmText(doc, regions) {
       if (k < hosts.length) before[k].push(moved);
       else spare = [spare, moved].filter(Boolean).join(" ");
     });
+    const texts = hosts.map((_, i) => [...before[i], out[i], ...after[i]].filter(Boolean).join(" "));
+    const gained = bagOf([...texts, ...extra, spare].flatMap(keysOf));
     hosts.forEach((block, i) => {
-      const text = [...before[i], out[i], ...after[i]].filter(Boolean).join(" ");
-      if (text === block.text || (!text && block.type === "caption")) return;
-      blocks[block.id] = { ...block, text };
-      applied.push(block.id);
+      if (texts[i] || block.type === "caption") for (const key of keysOf(block.text)) takeKey(gained, key);
+    });
+    hosts.forEach((block, i) => {
+      const text = texts[i];
+      if (!text && block.type !== "caption") {
+        const mine = keysOf(block.text);
+        const left = new Map(gained);
+        const moved = mine.filter((key) => takeKey(left, key)).length;
+        if (mine.length && moved >= MOVED_SHARE * mine.length) {
+          for (const [key, n] of left) gained.set(key, n);
+          if (order === doc.order) order = [...(doc.order || [])];
+          order = order.filter((id) => id !== block.id);
+          delete blocks[block.id];
+          applied.push(block.id);
+        }
+      } else if (text !== block.text && !(!text && block.type === "caption")) {
+        blocks[block.id] = { ...block, text };
+        applied.push(block.id);
+      }
+      if (extra[i]) {
+        if (order === doc.order) order = [...(doc.order || [])];
+        const id = `vlmtext-p${block.page}-${applied.length + 1}`;
+        blocks[id] = { id, type: "para", page: block.page, bbox: block.bbox.map((v) => Math.round(v)), text: extra[i], confidence: 0.6, engine: "vlm" };
+        const at = order.indexOf(block.id);
+        if (at >= 0) order.splice(at + 1, 0, id);
+        else order.push(id);
+        applied.push(id);
+      }
     });
     return spare;
   }

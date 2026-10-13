@@ -875,10 +875,11 @@ test("alignVlmText pours a page transcription in document order over every text 
   assert.equal(texts.filter(Boolean).join(" "), "one two three");
   assert.ok(texts[0].startsWith("one"));
   assert.notEqual(out.doc.blocks.out.text, "kept");
+  // A reading too short for every block leaves the rest with their Vision text, never empty.
   const short = alignVlmText(doc, [{ page: 1, bbox: [0, 0, 80, 60], text: "only", pageText: true }]);
   assert.equal(short.doc.blocks.late.text, "only");
-  assert.equal(short.doc.blocks.early.text, "");
-  assert.equal(short.doc.blocks.out.text, "");
+  assert.equal(short.doc.blocks.early.text, "vision early");
+  assert.equal(short.doc.blocks.out.text, "kept");
 });
 
 test("alignVlmText keeps a caption the page slice does not share a word with", () => {

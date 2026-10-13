@@ -101,6 +101,11 @@ const extensions = [];
 
 // Roam's undo stack holds 50 changes, so one bulk add stays under it: past 45 cards only the first 45 are made.
 export const BULK_CARD_CAP = 45;
+// F12. Roam's sync queue confirms one write at a time, slower the longer the queue (18k queued writes wedged a
+// graph for ~30 hours on 2026-10-12). One transaction that plans this many writes asks first; past the second
+// line it is refused (duplicating one big section of the PhD main board was ~18.5k creates).
+export const BULK_CONFIRM_WRITES = 600;
+export const BULK_REFUSE_WRITES = 3000;
 
 // One create. The parent is the board uid. x and y default to 40. No second parent.
 export function addPublicCard(opts = {}, createFn) {
@@ -383,7 +388,7 @@ function unknownKeys(plexus, known) {
   return out;
 }
 
-function createSession(uid, { host, settings = null, virtual = false, raf, now = Date.now, idle, linkDelay = 1500, graceMs = 800 } = {}) {
+function createSession(uid, { host, settings = null, virtual = false, raf, now = Date.now, idle, linkDelay = 1500, graceMs = 800, confirmBulk = null } = {}) {
   const schedule = raf ?? ((fn) => {
     if (typeof globalThis.requestAnimationFrame === "function") return globalThis.requestAnimationFrame(fn);
     const t = setTimeout(fn, 0);
@@ -1014,10 +1019,35 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return fn();
   }));
 
+  // F12. True when `n` planned writes may go to Roam: under the confirm line always, under the refuse line when
+  // the user says yes. A no shows one toast. The caller drops the change (a transaction repulls the board).
+  const askBulk = (n) => {
+    if (typeof confirmBulk === "function") return confirmBulk(n) === true;
+    const ask = globalThis.confirm;
+    if (typeof ask !== "function") return true;
+    try { return ask(`This change writes ${n} blocks to Roam at once. Roam syncs them one by one and can stall on thousands. Continue?`) === true; } catch { return false; }
+  };
+  function bulkAllowed(n) {
+    if (!(n > BULK_CONFIRM_WRITES)) return true;
+    if (n > BULK_REFUSE_WRITES) {
+      emit("toast", { message: `Plexus refused ${n} writes in one change: too many for Roam's sync. Split it into smaller steps.` });
+      return false;
+    }
+    let ok = false;
+    try { ok = askBulk(n); } catch { ok = false; }
+    if (!ok) emit("toast", { message: `Cancelled ${n} writes.` });
+    return ok;
+  }
+
   function commit(ops, result, custom = null) {
     if (!ops.length) return Promise.resolve(result);
     stampBoard(ops);
     const list = coalesce(ops);
+    if (!bulkAllowed(list.length)) {
+      // The optimistic model already holds the change: read the board back from Roam.
+      repull();
+      return Promise.resolve(undefined);
+    }
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish();
     if (custom) custom.forward = list;
@@ -3434,6 +3464,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     host,
     settings,
     txn,
+    bulkAllowed,
     rawNode,
     ix,
     kidsOf,

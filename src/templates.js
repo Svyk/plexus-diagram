@@ -62,6 +62,7 @@ extendSession((session, api) => {
     }
     const plan = planCopy(tree, { genUid: () => host.generateUid(), parentUid: pageUid });
     if (!plan.creates.length) return null;
+    if (api.bulkAllowed && !api.bulkAllowed(plan.creates.length)) return null;
     const rootUid = plan.rootUid;
     await writeChunks(plan.chunks, async (chunk) => {
       await host.group(async () => {

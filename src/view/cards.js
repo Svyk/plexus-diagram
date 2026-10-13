@@ -1296,6 +1296,8 @@ export function createItemRenderer({
     rec.blockUnwatch = null;
     try { rec.authorUnwatch?.(); } catch { /* already off */ }
     rec.authorUnwatch = null;
+    try { rec.contentUnwatch?.(); } catch { /* already off */ }
+    rec.contentUnwatch = null;
     rec.blockStringNode = null;
     rec.pageRoots = [];
     rec.pageHolder = null;
@@ -4288,6 +4290,13 @@ export function createItemRenderer({
     reserveCardHeight(rec, item);
     mountContentBody(rec, item);
     syncKidsBadge(rec, item);
+    // Big boards watch their cards' contents only while the card is mounted.
+    if (rec.type !== "section" && !rec.contentUnwatch && typeof host?.watchContent === "function") {
+      try {
+        const off = host.watchContent(item.uid);
+        if (typeof off === "function") rec.contentUnwatch = off;
+      } catch { /* contents refresh with the next board pull */ }
+    }
   };
 
   const mountSectionTitle = (rec, item) => {

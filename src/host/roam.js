@@ -26,6 +26,7 @@ import { dailyTitle, dailyUid, journalRows } from "../model/journal.js";
 import { closeTab, normalizeTabs, openTab, tabStorageKey } from "../model/tabs.js";
 import { bindGuardStats, guardCallback } from "../guard.js";
 import { installCommentHost } from "./comments.js";
+import { SPLIT_WATCH_MIN, createSplitWatch, treeSize } from "./split-watch.js";
 
 // Pull results equal but for Roam's own reader state (:pdf-settings: page, scale). Exits at the first other change.
 const READER_STATE = ":pdf-settings";
@@ -782,6 +783,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const pdfUrls = new Map();
   const boardCovers = new Map();
   const watchedBoards = new Map();
+  // Boards of SPLIT_WATCH_MIN blocks or more: uid -> their last full pull, and the split watch while one is live.
+  const bigBoards = new Map();
+  const splitWatches = new Map();
   // uid -> pull sequence number at which its last board watch was dropped.
   const unwatchedAt = new Map();
   let pullSeq = 0;
@@ -1060,6 +1064,50 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     }
     return hit.stats;
   };
+  const watchSplit = (uid, cb) => {
+    let slot = watchedBoards.get(uid);
+    if (!slot) {
+      slot = { coversRefs: false, n: 0, pages: new Map() };
+      watchedBoards.set(uid, slot);
+    }
+    slot.n += 1;
+    unwatchedAt.delete(uid);
+    let split = splitWatches.get(uid);
+    if (!split) {
+      const subs = new Set();
+      split = createSplitWatch({
+        uid,
+        seed: bigBoards.get(uid),
+        data,
+        pull: rawPull,
+        deepPattern: BOARD_PATTERN,
+        guard: (name, fn) => guardCallback(name, fn, { stats }),
+        onTree: (tree) => {
+          if (tree?.[":block/uid"]) absorb(uid, tree, false);
+          for (const fn of [...subs]) fn(tree);
+        },
+      });
+      split.subs = subs;
+      splitWatches.set(uid, split);
+    }
+    const fn = guardCallback("watchBoard", (tree) => cb(tree), { stats });
+    split.subs.add(fn);
+    stats.watches++;
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      split.subs.delete(fn);
+      if (!split.subs.size && splitWatches.get(uid) === split) {
+        split.dispose();
+        splitWatches.delete(uid);
+      }
+      stats.watches--;
+      slot.n = Math.max(0, slot.n - 1);
+      if (slot.n === 0 && slot.pages.size === 0) watchedBoards.delete(uid);
+      if (slot.n === 0) unwatchedAt.set(uid, pullSeq);
+    };
+  };
   const notifyPages = (slot, after) => {
     for (const set of slot.pages.values()) for (const fn of set) fn(after);
   };
@@ -1255,7 +1303,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       let plain = null;
       try { plain = rawPull(BOARD_PATTERN, boardEntity); } catch { plain = null; }
       let node = null;
-      const refBlocks = plain?.[":block/uid"] ? refBlocksOf(plain, OPEN_PULL_MAX_REFS) : 0;
+      const big = Boolean(plain?.[":block/uid"]) && treeSize(plain, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN;
+      const refBlocks = plain?.[":block/uid"] && !big ? refBlocksOf(plain, OPEN_PULL_MAX_REFS) : 0;
       if (!plain?.[":block/uid"] || (refBlocks > 0 && refBlocks <= OPEN_PULL_MAX_REFS)) {
         try { node = rawPull(OPEN_PATTERN, boardEntity); } catch { node = null; }
       }
@@ -1266,6 +1315,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       }
       if (!node?.[":block/uid"]) return null;
       absorb(uid, node, honored);
+      if (big) {
+        bigBoards.set(uid, node);
+        splitWatches.get(uid)?.reseed(node);
+      } else bigBoards.delete(uid);
       const found = collectTargets(node);
       const pullRefs = () => {
         if (!honored && (found.uids.length || found.titles.length)) {
@@ -1362,6 +1415,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     watchBoard(uid, cb) {
       const covers = boardCovers.get(uid) === true;
+      if (!covers && bigBoards.has(uid)) return watchSplit(uid, cb);
       const pattern = covers ? OPEN_PATTERN : BOARD_PATTERN;
       let slot = watchedBoards.get(uid);
       if (!slot) {
@@ -1391,6 +1445,19 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         if (slot.n === 0 && slot.pages.size === 0) watchedBoards.delete(uid);
         if (slot.n === 0) unwatchedAt.set(uid, pullSeq);
       };
+    },
+
+    // A mounted card on a big board keeps its contents live (the board's own watches stop at the cards).
+    // A no-op on other boards: their one board watch already covers every card's contents.
+    watchContent(itemUid) {
+      for (const split of splitWatches.values()) {
+        const off = split.watchItem(itemUid);
+        if (off) return off;
+      }
+      return () => {};
+    },
+    splitStats(uid) {
+      return splitWatches.get(uid)?.stats() ?? null;
     },
 
     // True when this ref was joined into a board pull whose one watch still includes it.

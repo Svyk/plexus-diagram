@@ -28,6 +28,76 @@ function parseEntity(entity) {
   return { key: ":block/uid", value: String(entity) };
 }
 
+// A pull pattern's :block/children shape: {kids: spec | "rec" | null}. Enough of EDN for the patterns Plexus uses.
+function parseEdn(text) {
+  const src = String(text);
+  let i = 0;
+  const ws = () => { while (i < src.length && /[\s,]/.test(src[i])) i += 1; };
+  const read = () => {
+    ws();
+    const c = src[i];
+    if (c === "[" || c === "(" || c === "{") {
+      const close = c === "[" ? "]" : c === "(" ? ")" : "}";
+      i += 1;
+      const items = [];
+      for (;;) {
+        ws();
+        if (src[i] === close) { i += 1; break; }
+        if (i >= src.length) break;
+        items.push(read());
+      }
+      return { t: c, items };
+    }
+    if (c === "\"") {
+      let j = i + 1;
+      while (j < src.length && src[j] !== "\"") j += src[j] === "\\" ? 2 : 1;
+      const v = src.slice(i + 1, j);
+      i = j + 1;
+      return v;
+    }
+    let j = i;
+    while (j < src.length && !/[\s,\[\]{}()]/.test(src[j])) j += 1;
+    const tok = src.slice(i, j);
+    i = j;
+    return tok;
+  };
+  return read();
+}
+function childSpec(vec) {
+  if (!vec || vec.t !== "[") return null;
+  for (const item of vec.items) {
+    if (item?.t !== "{") continue;
+    for (let k = 0; k + 1 < item.items.length; k += 2) {
+      const key = item.items[k];
+      const name = typeof key === "string" ? key : key?.t === "(" ? key.items[1] : null;
+      if (name !== ":block/children") continue;
+      const val = item.items[k + 1];
+      return { kids: val === "..." ? "rec" : childSpec(val) };
+    }
+  }
+  return { kids: null };
+}
+const specCache = new Map();
+const specOf = (pattern) => {
+  const key = String(pattern);
+  if (!specCache.has(key)) {
+    let spec = null;
+    try { spec = childSpec(parseEdn(key)); } catch { spec = null; }
+    specCache.set(key, spec);
+  }
+  return specCache.get(key);
+};
+const cutTree = (node, spec, counter) => {
+  if (!node || typeof node !== "object") return node;
+  if (counter) counter.n += 1;
+  const kids = node[":block/children"];
+  if (!spec || !Array.isArray(kids)) return node;
+  const next = spec.kids === "rec" ? spec : spec.kids;
+  if (!next) { delete node[":block/children"]; return node; }
+  node[":block/children"] = kids.map((k) => cutTree(k, next, counter));
+  return node;
+};
+
 export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fresh", hash = "#/app/testgraph" } = {}) {
   const blocks = new Map(); // uid -> {uid,string,order,heading,open,props,children[],parent,eid,diagram?}
   const pages = new Map(); // uid -> {uid,title,children[],eid}
@@ -47,6 +117,9 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
     calls: [],
     failNext: 0,
     hash,
+    roamWatch: false,
+    watchRuns: 0,
+    pullCounter: null,
   };
 
   const parentOf = (uid) => {
@@ -196,6 +269,11 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   function pull(pattern, entity) {
     const out = pullUncapped(pattern, entity);
     if (out && !String(pattern).includes("(limit :block/children nil)")) capChildren(out);
+    // fake.roamWatch: the pull keeps only the children levels the pattern names; fake.pulledNodes counts blocks.
+    if (out && fake.roamWatch) {
+      const spec = specOf(pattern);
+      if (spec) cutTree(out, spec, fake.pullCounter);
+    }
     return out;
   }
 
@@ -237,7 +315,29 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
     timers.add(t);
   }
 
+  // Roam: 100 ms after the last transaction every watch pulls again; a changed result calls back with old and new.
+  let roamTimer = null;
+  function roamNotify() {
+    if (roamTimer) { clearTimeout(roamTimer); timers.delete(roamTimer); }
+    roamTimer = setTimeout(() => {
+      timers.delete(roamTimer);
+      roamTimer = null;
+      fake.watchRuns += 1;
+      for (const w of watches.slice()) {
+        if (!watches.includes(w)) continue;
+        const after = pull(w.pattern, w.entity);
+        const key = JSON.stringify(after);
+        if (key === w.past) continue;
+        const before = w.past == null ? null : JSON.parse(w.past);
+        w.past = key;
+        w.cb(before, after);
+      }
+    }, fake.echoDelay);
+    timers.add(roamTimer);
+  }
+
   function notify(uid, before, chainBefore = []) {
+    if (fake.roamWatch) { roamNotify(); return; }
     const chain = new Set([...topUid(uid), ...chainBefore]);
     for (const w of watches.slice()) {
       if (!chain.has(w.uid)) continue;
@@ -251,6 +351,7 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
 
   function snapshotBefore(uid) {
     const before = new Map();
+    if (fake.roamWatch) return before;
     for (const w of watches) before.set(w.uid, structuredClone(pull(w.pattern, [":block/uid", w.uid])));
     return before;
   }
@@ -294,7 +395,8 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
       fast: { q: (...args) => runQ(...args) },
       addPullWatch(pattern, entity, cb) {
         const { value } = parseEntity(entity);
-        watches.push({ pattern, entity, cb, uid: value });
+        const past = fake.roamWatch ? JSON.stringify(pull(pattern, entity)) : null;
+        watches.push({ pattern, entity, cb, uid: value, past });
         return true;
       },
       removePullWatch(pattern, entity, cb) {

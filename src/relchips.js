@@ -459,7 +459,7 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
     const hit = models.get(boardUid);
     if (hit && Date.now() - hit.at < MODEL_TTL_MS) return hit.board;
     let raw = null;
-    try { raw = host?.pullBoard?.(boardUid); } catch { raw = null; }
+    try { raw = host?.pullBoard?.(boardUid, { prime: false }); } catch { raw = null; }
     const board = raw ? buildBoard(raw, { resolve: blockText }) : null;
     models.set(boardUid, { board, at: Date.now() });
     return board;

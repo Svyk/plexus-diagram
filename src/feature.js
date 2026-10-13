@@ -453,7 +453,7 @@ export async function installPlexusDiagram({
     if (!board) board = previewBoards.get(boardUid) || null;
     if (!board) {
       try {
-        const pulled = host.pullBoard?.(boardUid);
+        const pulled = host.pullBoard?.(boardUid, { prime: false });
         board = pulled ? buildBoard(pulled) : null;
       } catch { board = null; }
       if (board) {
@@ -3751,7 +3751,7 @@ export async function installPlexusDiagram({
   function thumbnailBoard(boardUid, opts = {}) {
     const maxWidth = Number.isFinite(opts?.maxWidth) && opts.maxWidth > 0 ? opts.maxWidth : 160;
     let pulled = null;
-    try { pulled = host.pullBoard?.(boardUid); } catch { pulled = null; }
+    try { pulled = host.pullBoard?.(boardUid, { prime: false }); } catch { pulled = null; }
     const board = pulled ? buildBoard(pulled) : null;
     if (!board || !doc) return Promise.resolve(null);
     const rects = worldRects(board);

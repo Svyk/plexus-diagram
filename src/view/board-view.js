@@ -6556,7 +6556,7 @@ function buildBoardView(onFail, {
       if (!target || target === b.uid || seen.has(target)) continue;
       seen.add(target);
       let raw = null;
-      try { raw = host.pullBoard(target); } catch { raw = null; }
+      try { raw = host.pullBoard(target, { prime: false }); } catch { raw = null; }
       if (!raw) continue;
       let child = null;
       try { child = buildBoard(raw); } catch { child = null; }

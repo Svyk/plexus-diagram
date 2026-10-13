@@ -1349,7 +1349,7 @@ export function createItemRenderer({
       if (event.shiftKey) host?.openInSidebar?.(target.uid, "block");
       else openBoard(target.uid);
     };
-    const raw = self ? null : host?.pullBoard?.(target.uid);
+    const raw = self ? null : host?.pullBoard?.(target.uid, { prime: false });
     const content = raw?.[":block/children"] ?? raw?.children ?? [];
     if (self || !raw || rowThumbs <= 0) {
       const chip = el("button", "pxd-btn pxd-board-row pxd-board-row--chip", node);
@@ -4259,7 +4259,7 @@ export function createItemRenderer({
           return;
         }
         // Whiteboard shortcut: the same thumbnail from the referenced board's children. Never renderString (a nested overlay).
-        const pulled = host?.pullBoard?.(ref);
+        const pulled = host?.pullBoard?.(ref, { prime: false });
         mountBoardBody(body, {
           uid: ref,
           string: refString,

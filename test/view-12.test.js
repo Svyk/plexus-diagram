@@ -2748,3 +2748,27 @@ test("the board root never scrolls: a scroll event puts it back to 0, inner scro
     f.restore();
   }
 });
+
+// Search into a nested board (and its thumbnail, board rows, chips) needs its structure only. A full pull primed the target board's card stats, and on the
+// PhD main board those ran in idle parts under the gestures of the board showing the thumbnail (P6).
+test("board search reads a nested board with prime: false", async () => {
+  const opts = [];
+  const nested = { ":block/uid": "nestCARD9", ":block/string": "{{[[diagram]]:Inner}}", ":block/props": { ":plexus": { ":v": 2 } }, ":block/children": [blockish("deepCARD1", "nested pebble", 0)] };
+  const f = mountFixture({
+    extra: [{ ":block/uid": "nestCARD9", ":block/string": "{{[[diagram]]:Inner}}", ":block/order": 8, ":block/props": { ":plexus": { ":v": 2, ":x": 800, ":y": 0, ":w": 220, ":h": 120 } }, ":block/children": [] }],
+    hostOverrides: { pullBoard: (uid, o) => { opts.push([uid, o]); return uid === "nestCARD9" ? nested : null; } },
+  });
+  try {
+    await f.flush();
+    f.root.focus();
+    key(f, "f", { metaKey: true });
+    const input = f.root.querySelector(".pxd-search__input");
+    input.value = "pebble";
+    f.stub.dispatch(input, "input", {});
+    const own = opts.filter(([uid]) => uid === "nestCARD9");
+    assert.ok(own.length > 0, "the search read the nested board");
+    assert.ok(own.every(([, o]) => o?.prime === false), JSON.stringify(own));
+  } finally {
+    f.restore();
+  }
+});

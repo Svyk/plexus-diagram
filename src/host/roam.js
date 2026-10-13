@@ -1534,7 +1534,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         };
         if (si < found.stats.length) later(step);
       };
-      // prime: false (the card-chip cache): structure and refs only; badges and linked refs are asked for on demand.
+      // prime: false (card-chip cache, chip and board-row previews, thumbnails): structure and refs only; badges and
+      // linked refs are asked for on demand. A preview of the PhD main board on another board primed its stats in idle
+      // parts under that board's gestures (C. botulinum: 53-146 ms frames on fit, hover and select).
       if (!light) { if (doPrime) prime(); } else {
         // Linked refs stay in chunks of PRIME_CHUNK. Card stats are one pull:
         // 300 cards measured about 19 ms, inside one idle slice.

@@ -62,8 +62,9 @@ export function createHitShield({ doc, root, onWheel, onPress, enabled = () => t
       // A wheel the board does not take must reach what is under the shield: Roam's pane scrolls from the next one.
       if (!handled) drop();
     }, { passive: false });
-    // The cursor moved: the next events must reach what is under it.
-    el.addEventListener("pointermove", () => drop());
+    // The cursor moved: the next events must reach what is under it. A drag (a button held) keeps the shield: the
+    // board raises it on every drag move, and dropping it here rebuilt it per move.
+    el.addEventListener("pointermove", (event) => { if (!event?.buttons) drop(); });
     // A press during the burst goes to the element under it. Board presses are read from pointerdown; the
     // compatibility mousedown that went to the shield is the one the board cancels anyway.
     el.addEventListener("pointerdown", (event) => {

@@ -95,3 +95,15 @@ test("a shield nobody drops goes away on its own", () => {
   live[0].fn();
   assert.equal(shield.isUp(), false);
 });
+
+// verify 3.28: a drag raises the shield on every move (onDocMove) and each move landed on the shield and dropped it,
+// so every drag move rebuilt the shield (ancestor style reads + append): C. botulinum drag p95 63 ms vs 9-13 ms.
+test("a move with a button held (a drag) keeps the shield up; a plain move still drops it", () => {
+  const { doc, root, later } = setup();
+  const shield = createHitShield({ doc, root, later });
+  shield.raise();
+  shield.element().fire("pointermove", { buttons: 1 });
+  assert.equal(shield.isUp(), true, "a drag move keeps it");
+  shield.element().fire("pointermove", { buttons: 0 });
+  assert.equal(shield.isUp(), false, "a hover move drops it");
+});

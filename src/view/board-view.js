@@ -2248,6 +2248,45 @@ function buildBoardView(onFail, {
       pdfPagesDialog.focus?.();
     });
   };
+  // "Fold sections in the outline" / "Unfold sections": Roam's own fold on the section blocks (never page or board
+  // cards). A preview with the count, one undo entry. This board only.
+  const foldSections = async (fold = true) => {
+    if (disposed) return null;
+    closePdfPagesDialog();
+    if (typeof session.sectionFoldPlan !== "function" || typeof session.foldSections !== "function") { toast("Folding sections is not available here"); return null; }
+    const plan = session.sectionFoldPlan(fold);
+    if (plan.refused === "setting") { toast("Turn on \"Collapse outline\" in the Plexus settings to fold sections"); return { changed: 0, refused: "setting" }; }
+    if (!plan.uids.length) { toast(plan.fold ? "Every section on this board is already folded" : "No section on this board is folded"); return { changed: 0 }; }
+    const n = plan.uids.length;
+    const noun = n === 1 ? "section" : "sections";
+    const b = board();
+    const titles = plan.uids.map((id) => b?.items.get(id)?.title || "Untitled section");
+    const lines = titles.slice(0, 12);
+    if (titles.length > lines.length) lines.push(`and ${titles.length - lines.length} more`);
+    return new Promise((resolve) => {
+      pdfPagesDialog = openPdfPagesDialog(doc, {
+        count: n,
+        lines,
+        label: plan.fold ? "Fold sections in the outline" : "Unfold sections",
+        headText: plan.fold
+          ? `Fold ${n} ${noun} in the Roam outline? Cards, pages and boards keep their contents; only the section rows collapse.`
+          : `Unfold ${n} ${noun} in the Roam outline?`,
+        applyText: plan.fold ? "Fold" : "Unfold",
+        onApply: () => {
+          closePdfPagesDialog();
+          Promise.resolve(session.foldSections(plan)).then((res) => {
+            if (disposed) return resolve(res);
+            if (res?.refused) toast("This board changed. Run the command again");
+            else if (res?.changed) toast(`${plan.fold ? "Folded" : "Unfolded"} ${res.changed} ${res.changed === 1 ? "section" : "sections"}`, true);
+            resolve(res);
+          }, () => { if (!disposed) toast("Couldn't change the sections"); resolve(null); });
+        },
+        onCancel: () => { closePdfPagesDialog(); resolve(null); },
+      });
+      root.append(pdfPagesDialog.el);
+      pdfPagesDialog.focus?.();
+    });
+  };
   // A PDF dropped from the computer: the file goes to its own page (an existing page with the same file is reused)
   // and the board gets a [[page]] card.
   const addPdfFiles = async (files, at) => {
@@ -9088,6 +9127,7 @@ function buildBoardView(onFail, {
     addPage(at = null) { addPage(at); },
     movePdfsToPages() { return movePdfsToPages(); },
     foldTableCaptions() { return foldTableCaptions(); },
+    foldSections(fold = true) { return foldSections(fold); },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;
       const world = at || { x: 80, y: 80 };

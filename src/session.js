@@ -2532,6 +2532,51 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       });
     },
 
+    // "Fold sections in the outline" / "Unfold sections": Roam's :block/open on SECTION blocks only. A page or board
+    // card folded in Roam blanks its body (cards.js), and a card's own children are its contents. Gated on the
+    // collapse-outline setting. `fold` false lists the folded sections for unfolding.
+    sectionFoldPlan(fold = true) {
+      const plan = { boardUid: uid, fold: fold !== false, uids: [] };
+      if (!board || destroyed || gone) return plan;
+      if (!collapseOutline()) return { ...plan, refused: "setting" };
+      for (const item of board.items.values()) {
+        if (item.type !== "section") continue;
+        const node = rawNode(item.uid);
+        if (!node) continue;
+        const isOpen = node[OPEN] !== false;
+        if (plan.fold === isOpen) plan.uids.push(item.uid);
+      }
+      return plan;
+    },
+
+    // Applies a sectionFoldPlan. Sections that no longer need the change are skipped. One custom undo entry; the
+    // writes go through execute(), so a long list pauses between batches while Roam's sync dot says saving.
+    async foldSections(plan) {
+      const none = { changed: 0 };
+      if (!plan || plan.boardUid !== uid || !board || destroyed || gone) return { ...none, refused: "board" };
+      if (!collapseOutline()) return { ...none, refused: "setting" };
+      const open = plan.fold === false;
+      const ops = [];
+      const back = [];
+      for (const id of plan.uids || []) {
+        const item = board.items.get(id);
+        const node = rawNode(id);
+        if (item?.type !== "section" || !node) continue;
+        if ((node[OPEN] !== false) === open) continue;
+        ops.push({ op: "open", uid: id, open });
+        back.push({ op: "open", uid: id, open: !open });
+        node[OPEN] = open;
+      }
+      if (!ops.length) return none;
+      const custom = {
+        forward: ops,
+        async undo() { await execute(back, { hold: false }); },
+        async redo() { await execute(custom.forward, { hold: false }); },
+      };
+      await commit(ops, undefined, custom);
+      return { changed: ops.length };
+    },
+
     // Roam :block/open on the card block only. Fold stays on plexus collapsed.
     setBlockOpen(id, open) {
       const item = board?.items.get(id);

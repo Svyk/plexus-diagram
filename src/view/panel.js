@@ -37,11 +37,13 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   let rowCap = 128;
   const listenRow = (el, type, fn, opts) => {
     el.addEventListener(type, fn, opts);
-    rowOffs.push({ el, off: () => el.removeEventListener(type, fn, opts) });
+    rowOffs.push({ el, off: () => el.removeEventListener(type, fn, opts), seen: el.isConnected !== false, misses: 0 });
     if (rowOffs.length <= rowCap) return;
     const keep = [];
     for (const entry of rowOffs) {
-      if (entry.el.isConnected === false && !root?.contains?.(entry.el)) entry.off();
+      if (entry.el.isConnected !== false || root?.contains?.(entry.el)) { entry.seen = true; entry.misses = 0; keep.push(entry); continue; }
+      // A row never seen connected may still be under construction: it goes only after two passes.
+      if (entry.seen || (entry.misses += 1) >= 2) entry.off();
       else keep.push(entry);
     }
     rowOffs.length = 0;

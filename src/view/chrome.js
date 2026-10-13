@@ -67,16 +67,22 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const listeners = [];
   let listenCap = 256;
   // The context bar and the crumbs rebuild their buttons on every selection change. Once the list is long, the
-  // listeners of elements that left the chrome are released; elements of a parked (detached) root stay.
+  // listeners of elements that left the chrome are released; elements of a parked (detached) root stay. An element
+  // that was never seen connected may still be under construction (the color picker is built detached and appended
+  // after it returns), so it is released only after it has missed two passes.
   const listen = (el, type, fn, opts) => {
     el.addEventListener(type, fn, opts);
     const off = () => el.removeEventListener(type, fn, opts);
     off.el = el;
+    off.seen = el.isConnected !== false;
+    off.misses = 0;
     listeners.push(off);
     if (listeners.length <= listenCap) return;
     const keep = [];
     for (const entry of listeners) {
-      if (entry.el && entry.el.isConnected === false && !root?.contains?.(entry.el)) entry();
+      if (!entry.el) { keep.push(entry); continue; }
+      if (entry.el.isConnected !== false || root?.contains?.(entry.el)) { entry.seen = true; entry.misses = 0; keep.push(entry); continue; }
+      if (entry.seen || (entry.misses += 1) >= 2) entry();
       else keep.push(entry);
     }
     listeners.length = 0;

@@ -63,6 +63,10 @@ export function mountTable({ doc = globalThis.document, root, host, getBoard } =
 
   let open = false;
   let filterText = "";
+  // Rows built per paint; "Show more" adds TABLE_PAGE. All 1,558 rows of the PhD main board with their cells and
+  // listeners were one 3 s task.
+  const TABLE_PAGE = 200;
+  let rowLimit = TABLE_PAGE;
   let sortColumn = null;
   let sortDir = "asc";
   const pending = [];
@@ -168,7 +172,7 @@ export function mountTable({ doc = globalThis.document, root, host, getBoard } =
     }
     thead.append(head);
     tbody.replaceChildren();
-    for (const row of body) {
+    for (const row of body.slice(0, rowLimit)) {
       const tr = doc.createElement("tr");
       tr.className = "pxd-table__row";
       tr.setAttribute("data-uid", row.uid);
@@ -214,10 +218,26 @@ export function mountTable({ doc = globalThis.document, root, host, getBoard } =
       }
       tbody.append(tr);
     }
+    if (body.length > rowLimit) {
+      const tr = doc.createElement("tr");
+      tr.className = "pxd-table__more";
+      const td = doc.createElement("td");
+      td.setAttribute("colspan", String(Math.max(1, cols.length)));
+      const more = doc.createElement("button");
+      more.type = "button";
+      more.className = "pxd-btn pxd-table__more-btn";
+      const next = Math.min(TABLE_PAGE, body.length - rowLimit);
+      more.textContent = `Show ${next} more of ${body.length - rowLimit}`;
+      listen(more, "click", () => { rowLimit += TABLE_PAGE; paint(); }, paintOffs);
+      td.append(more);
+      tr.append(td);
+      tbody.append(tr);
+    }
   };
 
   listen(filter, "input", () => {
     filterText = filter.value;
+    rowLimit = TABLE_PAGE;
     paint();
   });
   const addColumn = () => {

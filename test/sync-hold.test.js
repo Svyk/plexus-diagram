@@ -119,3 +119,79 @@ test("undo of a long action never waits", async () => {
   }
   assert.equal(SYNC_HOLD_BATCH, 100);
 });
+
+test("a 600-write transaction with the dot always saving waits at most the cap in all, not per batch", async () => {
+  let total = 0;
+  let calls = 0;
+  const hold = { wait: async ({ onHold, capMs } = {}) => { calls += 1; onHold?.(); total += capMs; return { held: true, waited: capMs, capped: true }; } };
+  const { session, restore } = sessionWith(hold, 600);
+  try {
+    await session.commitMove(Array.from({ length: 600 }, (_, i) => `c${i}`), 3, 0);
+    assert.ok(calls < 5, `later batches skip the hold once the budget is spent (${calls} waits)`);
+    assert.ok(total <= SYNC_HOLD_CAP_MS, `total hold ${total} ms`);
+  } finally {
+    restore();
+  }
+});
+
+test("a held transaction closes its undo group while it waits, so another session's write is its own step", async () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const fake = createFakeRoam({ echoDelay: 0 });
+    fake.trackUndo = true;
+    const cards = (n) => Array.from({ length: n }, (_, i) => ({ uid: `${n}c${i}`, string: `card ${i}`, props: { plexus: { x: i * 10, y: 0, w: 200, h: 100 } } }));
+    fake.seedBoard({ uid: "b1", props: { plexus: { v: 2 } }, children: cards(205) });
+    fake.seedBoard({ uid: "b2", props: { plexus: { v: 2 } }, children: cards(3) });
+    const host = createHost({ api: fake.api, storage: stub.localStorage, graph: "g" });
+    let other = null;
+    let duringWait = null;
+    const hold = { wait: async ({ onHold } = {}) => { onHold?.(); duringWait = other.commitMove(["3c0"], 9, 0); await duringWait; return { held: true, waited: 1, capped: false }; } };
+    const session = acquireSession("b1", { host, raf: (fn) => fn(), syncHold: hold });
+    other = acquireSession("b2", { host, raf: (fn) => fn() });
+    await session.commitMove(Array.from({ length: 205 }, (_, i) => `205c${i}`), 3, 0);
+    await duringWait;
+    fake.calls.length = 0;
+    // Newest first: the tail of the held run (5 writes), then the other board's single move, then the batches before it.
+    await host.undo();
+    const first = fake.calls.filter((c) => c[0] === "undo").length;
+    assert.ok(first > 0 && first <= 45, `the first undo is one chunk of the held run (${first} native steps)`);
+    let steps = 0;
+    let moveUndone = false;
+    for (let i = 0; i < 12 && !moveUndone; i += 1) {
+      fake.calls.length = 0;
+      await host.undo();
+      steps += 1;
+      moveUndone = fake.props("3c0")?.plexus?.x !== 9 && fake.props("3c0")?.plexus?.x === 0;
+    }
+    assert.ok(moveUndone, "the other board's move is undone as a step of its own");
+    assert.equal(fake.calls.filter((c) => c[0] === "undo").length, 1, "its undo step is a single native undo");
+  } finally {
+    restore();
+  }
+});
+
+test("the beforeunload guard goes up once for a held transaction and is gone after it, also when the session is destroyed", async () => {
+  const d = dotDoc("rm-sync__icon--saving-local");
+  let adds = 0;
+  let removes = 0;
+  d.doc.defaultView = { addEventListener: (t) => { if (t === "beforeunload") adds += 1; }, removeEventListener: (t) => { if (t === "beforeunload") removes += 1; } };
+  let t = 0;
+  const hold = createSyncHold({ doc: d.doc, now: () => t, sleep: async (ms) => { t += ms; } });
+  const first = await hold.wait({ keepGuard: true, capMs: 1000 });
+  const second = await hold.wait({ keepGuard: true, capMs: 1000 });
+  assert.equal(first.held && second.held, true);
+  assert.equal(adds, 1, "installed once");
+  assert.equal(removes, 0, "kept between the waits");
+  hold.release();
+  assert.equal(removes, 1);
+  hold.release();
+  assert.equal(removes, 1, "release is idempotent");
+  let destroyed = false;
+  let polls = 0;
+  const aborting = createSyncHold({ doc: d.doc, sleep: async () => { polls += 1; if (polls === 2) destroyed = true; } });
+  const out = await aborting.wait({ abort: () => destroyed, keepGuard: true });
+  aborting.release();
+  assert.equal(out.capped, false);
+  assert.equal(polls, 2, "the loop leaves as soon as the session is destroyed");
+});

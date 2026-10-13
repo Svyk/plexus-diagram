@@ -1,6 +1,6 @@
 import { namespaceParent } from "./model/namespace.js";
 import { READS_KEY, mergeReads } from "./host/read-keep.js";
-import { SYNC_HOLD_BATCH, createSyncHold } from "./host/sync-hold.js";
+import { SYNC_HOLD_BATCH, SYNC_HOLD_CAP_MS, createSyncHold } from "./host/sync-hold.js";
 import { CONTAINER_STRING, isContainerString, parseRegion, PIN_CONTAINER_STRING } from "./model/regions.js";
 import { imagePolyString, imageRegionString } from "./model/image-region.js";
 import { renameRegionCaption } from "./model/region-menu.js";
@@ -936,16 +936,30 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     throw last;
   }
 
-  // F10. A long write list pauses between batches while Roam's sync dot says it is saving (at most SYNC_HOLD_CAP_MS,
-  // never when the dot is missing or the browser is offline). A short list, an undo and a redo never wait.
+  // F10. A long write list pauses between batches while Roam's sync dot says it is saving, at most SYNC_HOLD_CAP_MS
+  // in all for one transaction (never when the dot is missing or the browser is offline). Only a commit holds; an
+  // undo, a redo and a migration never wait. While it waits the host's undo group is closed (`suspend`): the batches
+  // are separate native groups, so another session's writes cannot join this one and a foreign edit still
+  // invalidates the log. A custom undo entry cannot be split, so its group stays open.
   const holder = syncHold || (typeof document === "undefined" ? null : createSyncHold());
-  async function execute(list, { hold = true } = {}) {
+  async function execute(list, { hold = false, suspend = false } = {}) {
     let i = 0;
+    let budget = SYNC_HOLD_CAP_MS;
     try {
       for (; i < list.length; i++) {
-        if (hold && holder && i > 0 && i % SYNC_HOLD_BATCH === 0 && list.length > SYNC_HOLD_BATCH) {
+        if (hold && holder && budget > 0 && i > 0 && i % SYNC_HOLD_BATCH === 0 && list.length > SYNC_HOLD_BATCH) {
           let held = false;
-          try { await holder.wait({ onHold: () => { held = true; setSyncState("held"); } }); } catch { /* a failed look fails open */ }
+          let resume = null;
+          try {
+            const out = await holder.wait({
+              capMs: budget,
+              abort: () => destroyed,
+              keepGuard: true,
+              onHold: () => { held = true; setSyncState("held"); if (suspend) resume = host.suspendGroup?.() ?? null; },
+            });
+            if (out && Number.isFinite(out.waited)) budget -= out.waited;
+          } catch { /* a failed look fails open */ }
+          if (resume) resume();
           if (held) setSyncState("writing");
         }
         await runOpWithRetry(list[i]);
@@ -955,6 +969,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     } catch (err) {
       for (let j = i; j < list.length; j++) settleOp(list[j]);
       throw err;
+    } finally {
+      holder?.release?.();
     }
   }
 
@@ -1073,7 +1089,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return queue.run(() => grouped(async () => {
       if (custom) host.setCustomUndo?.(custom);
       try {
-        return await execute(list);
+        return await execute(list, { hold: true, suspend: !custom });
       } catch (err) {
         // The inverse covers the whole list, but only part of it ran: close as a native chunk of what did.
         if (custom) host.setCustomUndo?.(null);
@@ -2350,7 +2366,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
             ops.push({ op: "string", uid: e.uid, string: e.oldString });
             ops.push({ op: "props", uid: e.uid, plexus: e.oldProps });
           }
-          await execute(ops, { hold: false });
+          await execute(ops);
           // Roam applies the move-back after execute resolves, so a created page can still hold its pdf block here.
           for (const r of records) {
             if (!r.pageCreated) continue;
@@ -2364,7 +2380,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         },
         async redo() {
           const ops = custom.forward.filter((op) => op.op !== "page" || host.pageExists?.(op.title) !== true);
-          await execute(ops, { hold: false });
+          await execute(ops);
         },
       };
       return txn((t) => {
@@ -2421,7 +2437,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
             ops.push({ op: "string", uid: e.uid, string: e.oldString });
             ops.push({ op: "props", uid: e.uid, plexus: e.oldProps });
           }
-          await execute(ops, { hold: false });
+          await execute(ops);
           for (const r of back) {
             // Deleting a caption that still holds its table would delete the table: wait for Roam to apply the move.
             let out = false;
@@ -2430,11 +2446,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
               out = !loc || loc.parentUid !== r.captionUid;
               if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
             }
-            if (out) await execute([{ op: "delete", uid: r.captionUid }], { hold: false });
+            if (out) await execute([{ op: "delete", uid: r.captionUid }]);
           }
         },
         async redo() {
-          await execute(custom.forward, { hold: false });
+          await execute(custom.forward);
         },
       };
       return txn((t) => {
@@ -2536,7 +2552,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     },
 
     // Applies a sectionFoldPlan. Sections that no longer need the change are skipped. One custom undo entry; the
-    // writes go through execute(), so a long list pauses between batches while Roam's sync dot says saving.
+    // writes go through commit(), so a long list pauses between batches while Roam's sync dot says saving.
     async foldSections(plan) {
       const none = { changed: 0 };
       if (!plan || plan.boardUid !== uid || !board || destroyed || gone) return { ...none, refused: "board" };
@@ -2556,8 +2572,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       if (!ops.length) return none;
       const custom = {
         forward: ops,
-        async undo() { await execute(back, { hold: false }); },
-        async redo() { await execute(custom.forward, { hold: false }); },
+        async undo() { await execute(back); },
+        async redo() { await execute(custom.forward); },
       };
       await commit(ops, undefined, custom);
       return { changed: ops.length };

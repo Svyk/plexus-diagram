@@ -2055,6 +2055,17 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       }
     },
 
+    // Closes the open group as a chunk now and returns a function that opens a fresh one with the same label. A long
+    // wait between batches (the sync hold) is outside any undo group: another session's writes made meanwhile are
+    // their own steps, and invalidateUndo works. No-op with no group open.
+    suspendGroup() {
+      const done = openGroup;
+      if (!done) return () => {};
+      openGroup = null;
+      closeChunk(done);
+      return () => { if (!openGroup) openGroup = { n: 0, kinds: [], label: done.label || "" }; };
+    },
+
     // The open group becomes ONE entry that undoes and redoes through its own callbacks ({ undo, redo }, async),
     // not through a count of Roam's native undo steps (one Plexus write can be more than one native entry).
     // null drops it again: a transaction that failed midway closes as a native chunk of the writes that ran.

@@ -25,29 +25,46 @@ export function createSyncHold({
     return /saving/.test(cls);
   };
 
-  // Resolves when the dot is not saving, the cap passes, or there is nothing to wait on. `onHold` runs once, the
-  // first time it actually has to wait.
-  const wait = async ({ onHold } = {}) => {
+  // The beforeunload guard: installed at the first held wait, removed by release() (or at the end of a wait that did
+  // not ask to keep it).
+  const win = () => doc?.defaultView || null;
+  const guard = (event) => { event.preventDefault?.(); try { event.returnValue = ""; } catch { /* read-only in some runtimes */ } };
+  let guarded = null;
+  const installGuard = () => {
+    if (guarded) return;
+    const w = win();
+    try { w?.addEventListener?.("beforeunload", guard); guarded = w; } catch { /* no window */ }
+  };
+  const release = () => {
+    const w = guarded;
+    guarded = null;
+    try { w?.removeEventListener?.("beforeunload", guard); } catch { /* gone */ }
+  };
+
+  // Resolves when the dot is not saving, the cap passes, `abort()` says so, or there is nothing to wait on. `onHold`
+  // runs once, the first time it actually has to wait. `capMs` lowers the cap for this wait (the rest of a
+  // transaction's budget). `keepGuard` leaves the beforeunload guard up for the caller to release().
+  const wait = async ({ onHold, capMs: budget, abort, keepGuard = false } = {}) => {
     let state = saving();
     if (state !== true || !online()) return { waited: 0, capped: false, held: false };
+    const cap = Math.min(capMs, Number.isFinite(budget) ? budget : capMs);
     onHold?.();
-    const win = doc?.defaultView || null;
-    const guard = (event) => { event.preventDefault?.(); try { event.returnValue = ""; } catch { /* read-only in some runtimes */ } };
-    try { win?.addEventListener?.("beforeunload", guard); } catch { /* no window */ }
+    installGuard();
     const start = now();
     let capped = false;
     try {
       while (state === true) {
-        if (now() - start >= capMs) { capped = true; break; }
+        if (abort?.()) break;
+        if (now() - start >= cap) { capped = true; break; }
         await sleep(POLL_MS);
         if (!online()) break;
         state = saving();
       }
     } finally {
-      try { win?.removeEventListener?.("beforeunload", guard); } catch { /* gone */ }
+      if (!keepGuard) release();
     }
     return { waited: now() - start, capped, held: true };
   };
 
-  return { saving, wait };
+  return { saving, wait, release };
 }

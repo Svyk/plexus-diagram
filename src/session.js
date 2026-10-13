@@ -1060,9 +1060,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish();
     if (custom) custom.forward = list;
-    return queue.run(() => grouped(() => {
+    return queue.run(() => grouped(async () => {
       if (custom) host.setCustomUndo?.(custom);
-      return execute(list);
+      try {
+        return await execute(list);
+      } catch (err) {
+        // The inverse covers the whole list, but only part of it ran: close as a native chunk of what did.
+        if (custom) host.setCustomUndo?.(null);
+        throw err;
+      }
     })).then(() => result, (err) => { handleFailure(err); return result; });
   }
 

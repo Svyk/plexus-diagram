@@ -745,6 +745,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const UNDO_ECHO_MS = 900; // Roam echoes our own writes back through the pull watch; those are not foreign edits
   let openGroup = null;
   let silent = false; // inverse writes of a custom undo entry: they are not new user steps
+  // A custom entry's undo/redo writes land on Roam's native stack, so the native entries below it in the log no longer
+  // match that stack. They are dropped and this floor stops undo/redo from falling back to a blind data.undo().
+  let nativeFloor = false;
   let lastWriteAt = -Infinity;
   let dropBurst = () => {};
   // Debug only. The undo group that just closed, and how many create/update/move/delete writes it held.
@@ -2055,8 +2058,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     // The open group becomes ONE entry that undoes and redoes through its own callbacks ({ undo, redo }, async),
     // not through a count of Roam's native undo steps (one Plexus write can be more than one native entry).
+    // null drops it again: a transaction that failed midway closes as a native chunk of the writes that ran.
     setCustomUndo(entry) {
-      if (openGroup && entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
+      if (!openGroup) return;
+      if (entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
+      else if (!entry) delete openGroup.custom;
     },
 
     async deletePage(uid) {
@@ -2084,10 +2090,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     async undo() {
       lastWriteAt = Date.now();
       const entry = undoLog.pop();
+      if (!entry && nativeFloor) return;
       if (entry?.custom) {
         silent = true;
         try { await entry.custom.undo(); } catch (err) { undoLog.push(entry); throw err; } finally { silent = false; lastWriteAt = Date.now(); }
+        undoLog.length = 0;
+        redoLog.length = 0;
         redoLog.push(entry);
+        nativeFloor = true;
         return;
       }
       const span = entry ? groupSpan(entry) : 1;
@@ -2108,10 +2118,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     async redo() {
       lastWriteAt = Date.now();
       const entry = redoLog.pop();
+      if (!entry && nativeFloor) return;
       if (entry?.custom) {
         silent = true;
         try { await entry.custom.redo(); } catch (err) { redoLog.push(entry); throw err; } finally { silent = false; lastWriteAt = Date.now(); }
+        undoLog.length = 0;
+        redoLog.length = 0;
         undoLog.push(entry);
+        nativeFloor = true;
         return;
       }
       const span = entry ? groupSpan(entry) : 1;
@@ -2131,6 +2145,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (openGroup || Date.now() - lastWriteAt < UNDO_ECHO_MS) return;
       undoLog.length = 0;
       redoLog.length = 0;
+      nativeFloor = false;
     },
 
     openInSidebar(uid, type = "block") {

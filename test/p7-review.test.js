@@ -181,3 +181,23 @@ test("P7-3: a full pullBoard of an unchanged big board publishes nothing", async
   assert.equal(trees.length, n);
   off();
 });
+
+test("P7-4: a parked big board stops priming card stats", async () => {
+  const queued = [];
+  const prev = globalThis.requestIdleCallback;
+  globalThis.requestIdleCallback = (fn) => { queued.push(fn); return queued.length; };
+  try {
+    const { host } = setup();
+    host.pullBoard("main");
+    const w = host.watchBoard("main", () => {});
+    let n = 0;
+    const real = host.cardStats.bind(host);
+    host.cardStats = (t, o) => { n += 1; return real(t, o); };
+    w.pause();
+    let guard = 0;
+    while (queued.length && guard++ < 200) queued.shift()({ didTimeout: true, timeRemaining: () => 0 });
+    assert.equal(n, 0, "no cardStats after the park");
+    w.resume();
+    w();
+  } finally { globalThis.requestIdleCallback = prev; }
+});

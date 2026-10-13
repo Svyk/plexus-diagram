@@ -1171,7 +1171,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       // left the split is held like a parked one and goes after SPLIT_HOLD_MS.
       if (!own.disposed && splitWatches.get(uid) === own && [...own.subs].every((x) => x.paused)) holdSplit(uid, own);
       stats.watches--;
-      slot.n = Math.max(0, slot.n - 1);
+      // slot.n counts live subscribers: a paused one already left it.
+      if (!sub.paused) slot.n = Math.max(0, slot.n - 1);
       if (slot.n === 0 && slot.pages.size === 0) watchedBoards.delete(uid);
       if (slot.n === 0) unwatchedAt.set(uid, pullSeq);
     };
@@ -1181,12 +1182,18 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     off.pause = () => {
       if (!active || sub.paused) return;
       sub.paused = true;
+      // A parked board is not watched: cache readers stop trusting it and its idle card-stat parts stop.
+      slot.n = Math.max(0, slot.n - 1);
+      if (slot.n === 0) unwatchedAt.set(uid, pullSeq);
       const own = sub.split;
       if (!own.disposed && [...own.subs].every((x) => x.paused)) holdSplit(uid, own);
     };
     off.resume = () => {
       if (!active || !sub.paused) return;
       sub.paused = false;
+      slot.n += 1;
+      unwatchedAt.delete(uid);
+      if (watchedBoards.get(uid) !== slot && !watchedBoards.has(uid)) watchedBoards.set(uid, slot);
       let own = sub.split;
       if (own.disposed || splitWatches.get(uid) !== own) {
         // The hold expired: build the split again from a fresh read of the whole board, never from the open-time

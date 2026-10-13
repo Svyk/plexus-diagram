@@ -154,7 +154,13 @@ export function parsePageGeometry(data, n) {
   const tables = [];
   const lattice = findLatticeTables({ rules: graphics.rules, boxes: graphics.boxes, words });
   const released = new Set(lattice.released);
-  for (const t of lattice.tables) { if (isTitledBox(t)) continue; t.page = n; tables.push(t); }
+  for (const t of lattice.tables) {
+    const words = t.usedWords || [];
+    delete t.usedWords;
+    // A titled box is not a table: its words go back to the text pass.
+    if (isTitledBox(t)) { for (const w of words) released.add(w); continue; }
+    t.page = n; tables.push(t);
+  }
   for (const w of lattice.usedWords) if (!released.has(w)) used.add(w);
   const usedRules = new Set(lattice.usedRules);
   for (const band of lattice.bands) {

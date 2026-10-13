@@ -102,7 +102,8 @@ export async function builtinRecords(pdfPath, { pages } = {}) {
   const bytes = new Uint8Array(readFileSync(pdfPath));
   const doc = await pdfjs.getDocument({ data: bytes.slice(), useSystemFonts: true, disableFontFace: true, verbosity: 0 }).promise;
   const info = (await doc.getMetadata()).info;
-  const [from, to] = pages || [1, doc.numPages];
+  const [from, rawTo] = pages || [1, doc.numPages];
+  const to = Math.min(rawTo, doc.numPages);
   const records = [];
   for (let n = from; n <= to; n++) records.push(parsePageGeometry(await loadPageData(await doc.getPage(n)), n));
   const numPages = doc.numPages;

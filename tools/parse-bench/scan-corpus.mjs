@@ -9,6 +9,10 @@
 // and POSTs the page to PXD_VLM_URL /v1/vlm (default http://127.0.0.1:48766).
 // PXD_VLM_TEXT=1 also replaces Vision line text with the VLM OCR reading.
 // PXD_TEXT_PAGES=all sends every OCR page to the page reader (the "all" page reader setting).
+// PXD_CONTEXT=<n> (or --context <n>; "all" = the whole document) parses pages [p-n, p+n], clipped to the document,
+// through the same flow, and keeps only page p's blocks in the score and the dump, so cross-page furniture removal and
+// other multi-page behaviour run. Default 0 = one page, with the dumps unchanged. helper-vlm reads the OCR cache, so
+// the neighbouring pages must already be cached.
 //
 // builtin    — parseFile/assemble on the PDF as shipped (embedded text layer, or a scan block).
 // web-ocr    — that parse plus readScan --source ppocr-web (what a user without the helper gets).
@@ -36,6 +40,28 @@ import { fmt, micro, scorePage } from "./scan-score.mjs";
 const repo = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const DEFAULT_ROOT = "/tmp/wo/pxd14/scans";
 
+// 0 (default), a page count n, or "all".
+export function contextOf(value) {
+  if (value == null || value === "" || value === "0") return 0;
+  if (value === "all") return "all";
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) throw new Error(`--context is a page count or "all", got ${value}`);
+  return n;
+}
+
+// The document restricted to one page: blocks, order, removed furniture and the page list.
+export function pageOnly(doc, page) {
+  const blocks = {};
+  for (const [id, b] of Object.entries(doc.blocks || {})) if (b.page === page) blocks[id] = b;
+  return {
+    ...doc,
+    order: (doc.order || []).filter((id) => blocks[id]),
+    blocks,
+    removed: (doc.removed || []).filter((r) => r.page === page),
+    pages: (doc.pages || []).filter((p) => p.n === page),
+  };
+}
+
 function takeArgs(argv) {
   const consumed = new Set();
   const flag = (name) => {
@@ -53,6 +79,7 @@ function takeArgs(argv) {
     foldQuotes: argv.includes("--fold-quotes"),
     json: flag("--json"),
     dump: flag("--dump"),
+    context: contextOf(flag("--context") ?? process.env.PXD_CONTEXT),
   };
 }
 
@@ -239,12 +266,13 @@ export async function helperFor(engine, pdfPath, cacheDir, helperFlag) {
   return votingHelper({ vision: cached, alt, lexicon: await lexicon() });
 }
 
-export async function runEngine(pdfPath, page, engine, cacheDir, helperFlag) {
+export async function runEngine(pdfPath, page, engine, cacheDir, helperFlag, context = 0) {
   const t0 = performance.now();
-  const { records, info, numPages, from, to, bytes } = await builtinRecords(pdfPath, { pages: [page, page] });
+  const span = context === "all" ? [1, Number.MAX_SAFE_INTEGER] : [Math.max(1, page - context), page + context];
+  const { records, info, numPages, from, to, bytes } = await builtinRecords(pdfPath, { pages: context ? span : [page, page] });
   const base = assembleDocument(records, { numPages, info, from, to });
   const builtinMs = performance.now() - t0;
-  if (engine === "builtin") return { doc: base, ms: builtinMs, builtinMs };
+  if (engine === "builtin") return { doc: context ? pageOnly(base, page) : base, ms: builtinMs, builtinMs };
   const helper = await helperFor(engine, pdfPath, cacheDir, helperFlag);
   const wanted = scanPagesOf(base);
   const lineLexicon = engine === "web-ocr" ? await lexicon() : null;
@@ -254,7 +282,7 @@ export async function runEngine(pdfPath, page, engine, cacheDir, helperFlag) {
     options: { vlmText: process.env.PXD_VLM_TEXT === "1", keepVision: process.env.PXD_KEEP_VISION === "1", textPages: process.env.PXD_TEXT_PAGES === "all" ? "all" : "weak" },
     onPhase: (p) => process.stderr.write(`phase ${JSON.stringify(p)}\n`),
   });
-  return { ...result, ms: performance.now() - t0, builtinMs };
+  return { ...result, doc: context ? pageOnly(result.doc, page) : result.doc, ms: performance.now() - t0, builtinMs };
 }
 
 const QUOTE_FOLD = [
@@ -386,7 +414,7 @@ async function main(argv) {
     const truth = JSON.parse(readFileSync(truthPath, "utf8"));
     for (const engine of args.engines) {
       process.stderr.write(`\n== ${page.id} ${engine}\n`);
-      const result = await runEngine(pdf, page.page, engine, cacheDir, args.helper);
+      const result = await runEngine(pdf, page.page, engine, cacheDir, args.helper, args.context);
       const [scoreDoc, scoreTruth] = args.foldQuotes ? foldQuotes(result.doc, truth) : [result.doc, truth];
       const scored = scorePage(scoreDoc, scoreTruth);
       scored.id = page.id;

@@ -55979,7 +55979,7 @@ function takeKey(bag, key) {
     bag.set(key, n3 - 1);
     return true;
   }
-  if (key.length < 5) return false;
+  if (key.length < 5 || /\d/.test(key)) return false;
   for (const [other, count] of bag) {
     if (count > 0 && matchWeight(key, other) > 0) {
       bag.set(other, count - 1);
@@ -56019,7 +56019,7 @@ function sliceFits(vision, slice) {
   const limit = Math.ceil(0.5 * max) - 1;
   return max <= 200 && limit >= 0 && editDistanceAtMost(x, y, limit) <= limit;
 }
-var MOVED_SHARE = 0.6;
+var MOVED_SHARE = 1;
 function alignVlmText(doc, regions) {
   if (!doc || !regions?.length) return { doc, applied: [], reads: [], dropped: [] };
   const blocks = { ...doc.blocks };

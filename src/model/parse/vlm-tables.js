@@ -759,11 +759,12 @@ function bagOf(keys) {
   return bag;
 }
 
-// Take `key` out of `bag`: the same key, else a near spelling of a long word.
+// Take `key` out of `bag`: the same key, else a near spelling of a long
+// word. A number or a date is only ever itself: 20JUN2025 is not 24JUN2025.
 function takeKey(bag, key) {
   const n = bag.get(key) || 0;
   if (n > 0) { bag.set(key, n - 1); return true; }
-  if (key.length < 5) return false;
+  if (key.length < 5 || /\d/.test(key)) return false;
   for (const [other, count] of bag) {
     if (count > 0 && matchWeight(key, other) > 0) { bag.set(other, count - 1); return true; }
   }
@@ -814,8 +815,10 @@ function sliceFits(vision, slice) {
 }
 
 // Share of a host's Vision words needed among the words other lines gained
-// before an emptied host counts as merged into them.
-const MOVED_SHARE = 0.6;
+// before an emptied host counts as merged into them: all of them, so a line
+// is never dropped for a similar one ("by QA personnel", "by warehouse
+// personnel").
+const MOVED_SHARE = 1;
 
 // Replace the text of Vision lines whose centres sit in a VLM text region.
 // The line boxes stay. `regions` are `{page, bbox, text}` in top-left PDF points.

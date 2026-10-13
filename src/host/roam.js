@@ -156,15 +156,22 @@ function uniqueStrings(list) {
 // Card stats in idle chunks only past this many items (sections' members counted): Parse Lab is past
 // SPLIT_WATCH_MIN blocks (parsed PDFs) with few items, and its 80-target chunks were 58-98 ms tasks under the first pans.
 const STATS_CHUNK_ITEMS = 400;
+// Or past this many stat targets whatever the item count (400 cards of 40 rows each were one 16,400-target call).
+const STATS_ONE_CALL_MAX = 10000;
 function manyItems(node) {
   let n = 0;
-  for (const kid of childNodes(node)) {
-    n += 1;
-    if (containerKind(kid, true) === "struct") n += childNodes(kid).length;
-    if (n > STATS_CHUNK_ITEMS) return true;
-  }
-  return false;
+  const walk = (cur, atRoot) => {
+    for (const kid of childNodes(cur)) {
+      n += 1;
+      if (n > STATS_CHUNK_ITEMS) return true;
+      // Sections inside sections: their members are items too.
+      if (containerKind(kid, atRoot) === "struct" && walk(kid, false)) return true;
+    }
+    return false;
+  };
+  return walk(node, true);
 }
+const statsInParts = (node, targets) => manyItems(node) || targets.length > STATS_ONE_CALL_MAX;
 
 // Page cards and block refs named by card strings. Nested outline rows are not cards.
 function collectTargets(node) {
@@ -1575,7 +1582,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         if (!found.stats.length) return;
         // A normal board reads every stat in this call, as 3.27.0 did: each call pays four datalog queries of
         // ~40-55 ms whatever its size, so idle chunks on Parse Lab were 50-134 ms tasks under the first pans.
-        const chunk = manyItems(node) ? STATS_CHUNK : found.stats.length;
+        const chunk = statsInParts(node, found.stats) ? STATS_CHUNK : found.stats.length;
         try { host.cardStats(found.stats.slice(0, chunk), { boardUid: uid }); } catch { /* badges ask again */ }
         // The rest of a big board's stats in idle slices.
         const idle = globalThis.requestIdleCallback;
@@ -1610,6 +1617,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         // was ~0.5 s on the PhD main board).
         const titles = big ? [] : found.titles;
         const targets = big ? [] : found.stats;
+        // The same gate as a full open: many items read in parts, not one call.
+        const statsPart = statsInParts(node, targets) ? STATS_CHUNK : Infinity;
         const pulledAt = ++pullSeq;
         let ti = 0;
         let si = 0;
@@ -1636,8 +1645,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
             } else if (!statsDone) {
               // One call, as 3.27.0: a call costs four datalog queries whatever its size (titles and targets are
               // empty on a big board).
-              const part = targets.slice(si);
-              si = targets.length;
+              const part = targets.slice(si, si + statsPart);
+              si = Math.min(targets.length, si + statsPart);
               if (si >= targets.length) statsDone = true;
               if (part.length) {
                 try { host.cardStats(part, { boardUid: uid }); } catch { /* badges ask again */ }

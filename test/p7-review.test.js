@@ -333,3 +333,40 @@ test("P7-6: a parked big board drops its highlight watches and rebuilds them on 
   await fake.flush();
   assert.equal(blockWatches, 1, "and come back on resume");
 });
+
+function statsSpy(host) {
+  const calls = [];
+  const real = host.cardStats.bind(host);
+  host.cardStats = (targets, opts) => { calls.push(targets.length); return real(targets, opts); };
+  return calls;
+}
+test("P7-6: 400 cards with heavy bodies read stats in parts, not one 16k-target call", () => {
+  const fake = createFakeRoam();
+  const cards = Array.from({ length: 400 }, (_, i) => ({ uid: `hc${i}`, string: `card ${i}`, props: { plexus: { type: "card", x: i, y: 0, w: 200, h: 100 } }, children: Array.from({ length: 40 }, (_, j) => ({ uid: `hc${i}r${j}`, string: `row ${j}` })) }));
+  fake.seedBoard({ uid: "heavy", props: { plexus: { v: 2 } }, children: cards });
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  const calls = statsSpy(host);
+  host.pullBoard("heavy");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0], 80);
+});
+test("P7-6: cards under nested sections count as items for the stats gate", () => {
+  const fake = createFakeRoam();
+  const inner = (k) => ({ uid: `in${k}`, string: `Inner ${k}`, props: { plexus: { type: "section", x: 0, y: 0, w: 900, h: 800 } }, children: Array.from({ length: 250 }, (_, i) => ({ uid: `n${k}c${i}`, string: `card ${i}`, props: { plexus: { type: "card", x: i, y: 0, w: 200, h: 100 } } })) });
+  fake.seedBoard({ uid: "nested", props: { plexus: { v: 2 } }, children: [{ uid: "outer", string: "Outer", props: { plexus: { type: "section", x: 0, y: 0, w: 2000, h: 2000 } }, children: [inner(0), inner(1), inner(2)] }] });
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  const calls = statsSpy(host);
+  host.pullBoard("nested");
+  assert.equal(calls[0], 80);
+});
+test("P7-6: a keep-alive light read of a 1,500-card board reads stats in parts", async () => {
+  const fake = createFakeRoam();
+  const cards = Array.from({ length: 1500 }, (_, i) => ({ uid: `lc${i}`, string: `card ${i}`, props: { plexus: { type: "card", x: i, y: 0, w: 200, h: 100 } } }));
+  fake.seedBoard({ uid: "many", props: { plexus: { v: 2 } }, children: cards });
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  host.watchBoard("many", () => {});
+  const calls = statsSpy(host);
+  host.pullBoard("many", { light: true });
+  await new Promise((r) => setTimeout(r, 600));
+  assert.ok(calls.length > 1 && Math.max(...calls) <= 80, `calls ${JSON.stringify(calls.slice(0, 5))}`);
+});

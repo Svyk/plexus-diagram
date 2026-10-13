@@ -30,9 +30,12 @@ const ALL_ON = {
   sketch: true,
   budgetedMount: true,
   snapshot: true,
+  splitWatch: true,
+  virtualShells: true,
+  virtualEdges: true,
 };
 
-test("the panel has no speed-flags control, and bad JSON leaves all seven on", () => {
+test("the panel has no speed-flags control, and bad JSON leaves all ten on", () => {
   assert.equal(createSettingsPanel().settings.some((row) => row.id === "speed-flags"), false);
   assert.equal(Object.hasOwn(settingsDefaults(), "speed-flags"), false);
   assert.deepEqual(flagsDefault(), ALL_ON);
@@ -44,6 +47,7 @@ test("the panel has no speed-flags control, and bad JSON leaves all seven on", (
   assert.deepEqual(parseSpeedFlags([]), ALL_ON);
   assert.deepEqual(parseSpeedFlags({ posters: false }), { ...ALL_ON, posters: false });
   assert.deepEqual(parseSpeedFlags('{"sketch":"false","parking":true}'), { ...ALL_ON, sketch: false });
+  assert.deepEqual(parseSpeedFlags('{"splitWatch":false,"virtualShells":"false"}'), { ...ALL_ON, splitWatch: false, virtualShells: false });
   const read = readSettings({ settings: { get: (id) => (id === "speed-flags" ? "not-json" : null) } });
   assert.deepEqual(read["speed-flags"], ALL_ON);
   noteSpeedFlags(null);

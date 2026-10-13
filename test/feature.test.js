@@ -936,6 +936,7 @@ test("PF-1: Commands… lists every action and keeps the focused block after the
       "Resurface here",
       "Move PDFs to their own pages",
       "Fold tables under captions",
+      "Fold queries on this page",
       "Fold sections in the outline",
       "Unfold sections",
       "Find related to the selected card",

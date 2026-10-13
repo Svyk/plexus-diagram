@@ -18,6 +18,7 @@ import { armSnapGestures, captureBoardSnap, paintBoardSnap, removeBoardSnap, res
 import { itemSig, tableGrid } from "./model/boardsnap.js";
 import { renderTableThumb, tableThumbKey, thumbBox } from "./view/table-thumb.js";
 import { tableUidOf } from "./model/roam-table.js";
+import { shouldNudgeQueries } from "./model/query-fold.js";
 import { applyFullscreenChrome } from "./view/fullscreen.js";
 import { hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
@@ -254,6 +255,7 @@ export async function installPlexusDiagram({
   const SNAP_SETTLE_MS = 1000;
   const SNAP_WARM_WAIT_MS = 50;
   const openPerf = { lastOpen: null, opens: [] };
+  const QUERY_NUDGE_DELAY_MS = 4000;
 
   let settings = readSettings(extensionAPI);
   // Hidden speed-flags. The panel never lists this id, so the next gate re-reads the store.
@@ -992,6 +994,14 @@ export async function installPlexusDiagram({
     };
     rec.openT0 = null;
     publishOpen(rec, entry);
+    // U1. Roam held the first paint (open {{query}} blocks on the page): offer the fold once, well after the open.
+    if (shouldNudgeQueries({ entry })) {
+      const t = setTimeout(() => runIdle(() => {
+        if (stopped || mounts.get(rec.native) !== rec) return;
+        try { rec.view?.queryNudge?.(entry); } catch { /* optional */ }
+      }), QUERY_NUDGE_DELAY_MS);
+      t?.unref?.();
+    }
   }
 
   // Paint the stored snapshot into the mount in this turn. No Roam read: the camera
@@ -3369,6 +3379,10 @@ export async function installPlexusDiagram({
     return targetView(context)?.foldTableCaptions?.();
   }
 
+  function foldQueriesCommand(context) {
+    return targetView(context)?.foldPageQueries?.();
+  }
+
   function foldSectionsCommand(context) {
     return targetView(context)?.foldSections?.(true);
   }
@@ -3410,6 +3424,7 @@ export async function installPlexusDiagram({
     ["Plexus: Resurface here", resurfaceCommand],
     ["Plexus: Move PDFs to their own pages", movePdfPagesCommand],
     ["Plexus: Fold tables under captions", foldTablesCommand],
+    ["Plexus: Fold queries on this page", foldQueriesCommand],
     ["Plexus: Fold sections in the outline", foldSectionsCommand],
     ["Plexus: Unfold sections", unfoldSectionsCommand],
     ["Plexus: Find related to the selected card", findRelatedCommand],

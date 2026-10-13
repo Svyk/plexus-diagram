@@ -126,6 +126,7 @@ import { inlinePdfCards, migrationLines, pdfPageBaseTitle, pdfPageName, planPdfM
 import { highlightAsk, highlightPart } from "../model/highlight-ask.js";
 import { openPdfPagesDialog } from "./pdf-pages-dialog.js";
 import { oldTableCards, planTableCaptions, tableCaptionLines } from "../model/table-captions.js";
+import { queryFoldLines, queryNudgeKey, shouldNudgeQueries } from "../model/query-fold.js";
 import { dataUrlToBlob } from "./parse-crop.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { scheduleTitleLexiconWarm } from "./title-lexicon-warm.js";
@@ -2275,6 +2276,66 @@ function buildBoardView(onFail, {
       root.append(pdfPagesDialog.el);
       pdfPagesDialog.focus?.();
     });
+  };
+  // "Fold queries on this page": every {{query}} Roam draws on this board's page (outside every board) moves under a
+  // folded caption. Same dry-run dialog, one undo entry.
+  const foldPageQueries = async (plan = null) => {
+    if (disposed) return null;
+    closePdfPagesDialog();
+    if (typeof session.queryFoldPlan !== "function" || typeof session.foldPageQueries !== "function") { toast("Folding queries is not available here"); return null; }
+    const p = plan || session.queryFoldPlan();
+    if (!p.folds.length) {
+      toast("No open query on this page");
+      return { folded: 0 };
+    }
+    const n = p.folds.length;
+    const noun = n === 1 ? "query" : "queries";
+    return new Promise((resolve) => {
+      pdfPagesPending = resolve;
+      pdfPagesDialog = openPdfPagesDialog(doc, {
+        count: n,
+        lines: queryFoldLines(p),
+        label: "Fold queries on this page",
+        headText: `Fold ${n} ${noun} on this page under ${n === 1 ? "a caption" : "captions"}? `
+          + "Roam draws every open query before the page shows; a folded one runs when you open its caption.",
+        applyText: "Fold",
+        onApply: () => {
+          pdfPagesPending = null;
+          closePdfPagesDialog();
+          Promise.resolve(session.foldPageQueries(p)).then((res) => {
+            if (disposed) return resolve(res);
+            if (res?.refused === "bulk") { /* the session already said why */ }
+            else if (res?.refused) toast("This page changed. Run the command again");
+            else if (res?.folded) toast(`Folded ${res.folded} ${res.folded === 1 ? "query" : "queries"} under ${res.folded === 1 ? "a caption" : "captions"}`, true);
+            resolve(res);
+          }, () => { if (!disposed) toast("Couldn't fold the queries"); resolve(null); });
+        },
+        onCancel: () => { closePdfPagesDialog(); resolve(null); },
+      });
+      root.append(pdfPagesDialog.el);
+      pdfPagesDialog.focus?.();
+    });
+  };
+  // After an open that Roam held: one quiet toast per page per device when the page has open queries. Never writes.
+  const queryNudge = (entry) => {
+    if (disposed || typeof session.queryFoldPlan !== "function") return false;
+    let pageUid = "";
+    try { pageUid = String(host?.blockPageUid?.(boardUid) || ""); } catch { pageUid = ""; }
+    if (!pageUid) return false;
+    const key = queryNudgeKey(graph, pageUid);
+    let seen = false;
+    try { seen = storage?.getItem?.(key) != null; } catch { seen = false; }
+    if (!shouldNudgeQueries({ entry, seen })) return false;
+    const plan = session.queryFoldPlan({ limit: 5000 });
+    if (disposed || !plan.folds.length) return false;
+    try { storage?.setItem?.(key, String(Date.now())); } catch { /* storage is optional */ }
+    const k = plan.folds.length;
+    const secs = Math.max(1, Math.round((Number(entry.firstPaintMs) - Number(entry.paintTaskMs)) / 100) / 10);
+    chrome.toast.show({
+      message: `Roam took ${secs} s to draw ${k} ${k === 1 ? "query" : "queries"} on this page before the board could show.`,
+      action: { label: "Fold them", run: () => { void foldPageQueries(); } },
+    });
+    return true;
   };
   // "Fold sections in the outline" / "Unfold sections": Roam's own fold on the section blocks (never page or board
   // cards). A preview with the count, one undo entry. This board only.
@@ -9303,6 +9364,8 @@ function buildBoardView(onFail, {
     addPage(at = null) { addPage(at); },
     movePdfsToPages() { return movePdfsToPages(); },
     foldTableCaptions() { return foldTableCaptions(); },
+    foldPageQueries() { return foldPageQueries(); },
+    queryNudge(entry) { return queryNudge(entry); },
     foldSections(fold = true) { return foldSections(fold); },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;

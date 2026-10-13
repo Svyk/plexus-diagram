@@ -98,7 +98,49 @@ const cutTree = (node, spec, counter) => {
   return node;
 };
 
-export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fresh", hash = "#/app/testgraph" } = {}) {
+// Pull projection for patterns that name :edit/time: only the attributes the pattern lists come back, at every depth,
+// the way Roam's pull does. (Other patterns keep the fake's historic "everything but the cut children" result.)
+const attrOf = (key) => (typeof key === "string" ? key : key?.t === "(" ? key.items[1] : null);
+function project(node, vec) {
+  if (!node || typeof node !== "object" || !vec || vec.t !== "[") return node;
+  const out = {};
+  for (const item of vec.items) {
+    if (typeof item === "string") {
+      if (item === "*") Object.assign(out, node);
+      else if (node[item] !== undefined) out[item] = node[item];
+      continue;
+    }
+    if (item?.t !== "{") continue;
+    for (let k = 0; k + 1 < item.items.length; k += 2) {
+      const name = attrOf(item.items[k]);
+      const val = item.items[k + 1];
+      const value = name ? node[name] : undefined;
+      if (value === undefined) continue;
+      const sub = val === "..." ? vec : val?.t === "[" ? val : null;
+      if (Array.isArray(value)) out[name] = sub ? value.map((c) => project(c, sub)) : value;
+      else out[name] = sub && value && typeof value === "object" ? project(value, sub) : value;
+    }
+  }
+  return out;
+}
+// Blocks a projected pull returns, for fake.pullCounter.
+const countNodes = (node, vec) => {
+  const projected = project(node, vec);
+  let n = 0;
+  const walk = (x) => { if (!x || typeof x !== "object") return; n += 1; for (const k of x[":block/children"] || []) walk(k); };
+  walk(projected);
+  return n;
+};
+const stripStamps = (node) => {
+  if (!node || typeof node !== "object") return node;
+  delete node[":edit/time"];
+  delete node[":page/edit-time"];
+  delete node[":page/edit-nonce"];
+  if (Array.isArray(node[":block/children"])) node[":block/children"].forEach(stripStamps);
+  return node;
+};
+
+export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fresh", hash = "#/app/testgraph", pullMany = false, stamps = false } = {}) {
   const blocks = new Map(); // uid -> {uid,string,order,heading,open,props,children[],parent,eid,diagram?}
   const pages = new Map(); // uid -> {uid,title,children[],eid}
   const watches = []; // {pattern, entity, cb, uid}
@@ -120,7 +162,15 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
     roamWatch: false,
     watchRuns: 0,
     pullCounter: null,
+    // Roam's stamp clock: :edit/time on a block, :page/edit-time and a fresh :page/edit-nonce on its page per write tx.
+    clock: 1000,
+    // stamps: true models Roam's :edit/time rules and projects pulls onto the attributes the pattern names.
+    // Off, the fake returns no stamps, as it always did.
+    stamps,
+    // fake.pullLog = []: every pull and pull_many call is recorded as {pattern, entity}.
+    pullLog: null,
   };
+  const stamp = () => { fake.clock += 1; return fake.clock; };
 
   const parentOf = (uid) => {
     const b = blocks.get(uid);
@@ -158,6 +208,7 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
       children: [],
       parent: null,
       eid: ++eidCounter,
+      editTime: stamp(),
     };
     blocks.set(b.uid, b);
     return b;
@@ -171,9 +222,16 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   const redoStack = [];
   const takeState = () => ({ blocks: structuredClone([...blocks]), pages: structuredClone([...pages]) });
   const putState = (state) => {
+    const prior = new Map(blocks);
     blocks.clear(); pages.clear();
     for (const [k, v] of state.blocks) blocks.set(k, v);
     for (const [k, v] of state.pages) pages.set(k, v);
+    // Undo and redo are edits: a block that comes back different (or comes back at all) gets a fresh stamp.
+    for (const [k, b] of blocks) {
+      const was = prior.get(k);
+      if (!was || was.string !== b.string || JSON.stringify(was.props) !== JSON.stringify(b.props)) b.editTime = stamp();
+    }
+    for (const p of pages.values()) { p.editTime = stamp(); p.nonce = stamp(); }
     for (const w of watches.slice()) {
       schedule(() => { if (watches.includes(w)) w.cb(null, pull(w.pattern, [":block/uid", w.uid])); }, fake.echoDelay);
     }
@@ -228,7 +286,7 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   function pullBlock(uid) {
     const b = blocks.get(uid);
     if (!b) return null;
-    const out = { ":db/id": b.eid, ":block/uid": b.uid, ":block/string": b.string, ":block/order": b.order, ":block/open": b.open };
+    const out = { ":db/id": b.eid, ":block/uid": b.uid, ":block/string": b.string, ":block/order": b.order, ":block/open": b.open, ":edit/time": b.editTime };
     if (b.heading) out[":block/heading"] = b.heading;
     if (b.props && Object.keys(b.props).length) out[":block/props"] = colonKeys(b.props);
     if (b.children.length) out[":block/children"] = b.children.map(pullBlock);
@@ -251,7 +309,7 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   function pullPage(uid) {
     const p = pages.get(uid);
     if (!p) return null;
-    const out = { ":db/id": p.eid, ":block/uid": p.uid, ":node/title": p.title };
+    const out = { ":db/id": p.eid, ":block/uid": p.uid, ":node/title": p.title, ":page/edit-time": p.editTime ?? 0, ":page/edit-nonce": p.nonce ?? 0 };
     if (p.children.length) out[":block/children"] = p.children.map(pullBlock);
     return out;
   }
@@ -267,8 +325,16 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   }
 
   function pull(pattern, entity) {
-    const out = pullUncapped(pattern, entity);
+    if (fake.pullLog) fake.pullLog.push({ pattern: String(pattern), entity });
+    let out = pullUncapped(pattern, entity);
     if (out && !String(pattern).includes("(limit :block/children nil)")) capChildren(out);
+    if (out && stamps && /:edit\/time|:page\/edit-/.test(String(pattern))) {
+      let vec = null;
+      try { vec = parseEdn(String(pattern)); } catch { vec = null; }
+      if (fake.pullCounter) fake.pullCounter.n += countNodes(out, vec);
+      return vec ? project(out, vec) : out;
+    }
+    if (out) stripStamps(out);
     // fake.roamWatch: the pull keeps only the children levels the pattern names; fake.pulledNodes counts blocks.
     if (out && fake.roamWatch) {
       const spec = specOf(pattern);
@@ -373,6 +439,11 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
           redoStack.length = 0;
         }
         fn();
+        // Every write transaction stamps its page's :page/edit-time and a fresh :page/edit-nonce.
+        for (const id of new Set([...chainBefore, ...topUid(uid)])) {
+          const page = pages.get(id);
+          if (page) { page.editTime = stamp(); page.nonce = stamp(); }
+        }
         fake.log.push(logEntry);
         notify(uid, before, chainBefore);
         resolve();
@@ -393,6 +464,14 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
       pull,
       q: (...args) => runQ(...args),
       fast: { q: (...args) => runQ(...args) },
+      ...(pullMany ? {
+        pull_many(pattern, entities) {
+          if (fake.pullLog) fake.pullLog.push({ pattern: String(pattern), many: entities.length });
+          const log = fake.pullLog;
+          fake.pullLog = null;
+          try { return entities.map((entity) => pull(pattern, entity)); } finally { fake.pullLog = log; }
+        },
+      } : {}),
       addPullWatch(pattern, entity, cb) {
         const { value } = parseEntity(entity);
         const past = fake.roamWatch ? JSON.stringify(pull(pattern, entity)) : null;
@@ -417,8 +496,12 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
           return write(uid, () => {
             const b = blocks.get(uid);
             if (!b) throw new Error(`fake-roam: update unknown ${uid}`);
+            // Roam stamps :edit/time on the entity whose string or props changed, and on no other.
+            const nextProps = fields.props !== undefined ? plainKeys(fields.props) : undefined;
+            if ((fields.string !== undefined && fields.string !== b.string)
+              || (nextProps !== undefined && JSON.stringify(nextProps) !== JSON.stringify(b.props))) b.editTime = stamp();
             if (fields.string !== undefined) b.string = fields.string;
-            if (fields.props !== undefined) b.props = plainKeys(fields.props);
+            if (nextProps !== undefined) b.props = nextProps;
             if (fields.open !== undefined) b.open = fields.open;
             if (fields.heading !== undefined) b.heading = fields.heading;
           }, ["update", uid, structuredClone(fields)]);
@@ -556,6 +639,7 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   fake.setUpload = (fn) => { uploadStub = fn; };
   fake.setFileGet = (fn) => { fileGetStub = fn; };
   fake.watchCount = () => watches.length;
+  fake.watchList = () => watches.map((w) => ({ uid: w.uid, pattern: String(w.pattern) }));
   fake.pull = (uid) => pull("[*]", [":block/uid", uid]);
   fake.block = (uid) => {
     const b = blocks.get(uid);

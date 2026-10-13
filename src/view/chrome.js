@@ -65,9 +65,29 @@ const NOTE_KINDS = ["note", "block", "page"];
 export function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {}, crumbs = [] } = {}) {
   const setting = (k) => (typeof settings?.get === "function" ? settings.get(k) : settings?.[k]);
   const listeners = [];
+  let listenCap = 256;
+  // The context bar and the crumbs rebuild their buttons on every selection change. Once the list is long, the
+  // listeners of elements that left the chrome are released; elements of a parked (detached) root stay. An element
+  // that was never seen connected may still be under construction (the color picker is built detached and appended
+  // after it returns), so it is released only after it has missed two passes.
   const listen = (el, type, fn, opts) => {
     el.addEventListener(type, fn, opts);
-    listeners.push(() => el.removeEventListener(type, fn, opts));
+    const off = () => el.removeEventListener(type, fn, opts);
+    off.el = el;
+    off.seen = el.isConnected !== false;
+    off.misses = 0;
+    listeners.push(off);
+    if (listeners.length <= listenCap) return;
+    const keep = [];
+    for (const entry of listeners) {
+      if (!entry.el) { keep.push(entry); continue; }
+      if (entry.el.isConnected !== false || root?.contains?.(entry.el)) { entry.seen = true; entry.misses = 0; keep.push(entry); continue; }
+      if (entry.seen || (entry.misses += 1) >= 2) entry();
+      else keep.push(entry);
+    }
+    listeners.length = 0;
+    listeners.push(...keep);
+    listenCap = Math.max(256, listeners.length * 2);
   };
   const el = (tag, cls, parent, text) => {
     const node = doc.createElement(tag);
@@ -577,9 +597,9 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     },
     setSync(pending) {
       const name = pending === true ? "writing" : pending === false || pending == null ? "idle" : pending;
-      const titles = { idle: "Synced", writing: "Saving…", retrying: "Retrying…", failed: "Couldn't save" };
+      const titles = { idle: "Synced", writing: "Saving…", held: "Waiting for Roam…", retrying: "Retrying…", failed: "Couldn't save" };
       const state = titles[name] ? name : "idle";
-      sync.classList.remove("pxd-sync--pending", "pxd-sync--writing", "pxd-sync--retrying", "pxd-sync--failed");
+      sync.classList.remove("pxd-sync--pending", "pxd-sync--writing", "pxd-sync--held", "pxd-sync--retrying", "pxd-sync--failed");
       if (state === "writing") sync.classList.add("pxd-sync--pending", "pxd-sync--writing");
       else if (state !== "idle") sync.classList.add(`pxd-sync--${state}`);
       sync.setAttribute("data-tip-state", state);

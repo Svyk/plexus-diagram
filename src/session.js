@@ -1,5 +1,6 @@
 import { namespaceParent } from "./model/namespace.js";
 import { READS_KEY, mergeReads } from "./host/read-keep.js";
+import { SYNC_HOLD_BATCH, SYNC_HOLD_CAP_MS, createSyncHold } from "./host/sync-hold.js";
 import { CONTAINER_STRING, isContainerString, parseRegion, PIN_CONTAINER_STRING } from "./model/regions.js";
 import { imagePolyString, imageRegionString } from "./model/image-region.js";
 import { renameRegionCaption } from "./model/region-menu.js";
@@ -388,7 +389,7 @@ function unknownKeys(plexus, known) {
   return out;
 }
 
-function createSession(uid, { host, settings = null, virtual = false, raf, now = Date.now, idle, linkDelay = 1500, graceMs = 800, confirmBulk = null } = {}) {
+function createSession(uid, { host, settings = null, virtual = false, raf, now = Date.now, idle, linkDelay = 1500, graceMs = 800, confirmBulk = null, syncHold = null } = {}) {
   const schedule = raf ?? ((fn) => {
     if (typeof globalThis.requestAnimationFrame === "function") return globalThis.requestAnimationFrame(fn);
     const t = setTimeout(fn, 0);
@@ -589,14 +590,24 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     queueMicrotask(() => {
       dropQueued = false;
       if (destroyed || !board) return;
+      // A short published list is not proof of a delete: ask Roam. An edge that still exists there was lost by a read,
+      // so its dependents stay, and the board is read again in full.
+      let unconfirmed = false;
+      for (const id of [...lost]) {
+        if (host.blockExists?.(id) === true) { lost.delete(id); unconfirmed = true; }
+      }
       const still = victims.filter((id) => {
         const edge = board.edges.get(id);
         return edge && (lost.has(edge.from) || lost.has(edge.to));
       });
-      if (!still.length) return;
-      txn((t) => {
+      if (!still.length) {
+        if (unconfirmed) repull();
+        return;
+      }
+      const dropped = txn((t) => {
         for (const id of still) if (board.edges.has(id)) t.del(id);
       });
+      if (unconfirmed) dropped.then(() => repull());
     });
   }
 
@@ -925,10 +936,32 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     throw last;
   }
 
-  async function execute(list) {
+  // F10. A long write list pauses between batches while Roam's sync dot says it is saving, at most SYNC_HOLD_CAP_MS
+  // in all for one transaction (never when the dot is missing or the browser is offline). Only a commit holds; an
+  // undo, a redo and a migration never wait. While it waits the host's undo group is closed (`suspend`): the batches
+  // are separate native groups, so another session's writes cannot join this one and a foreign edit still
+  // invalidates the log. A custom undo entry cannot be split, so its group stays open.
+  const holder = syncHold || (typeof document === "undefined" ? null : createSyncHold());
+  async function execute(list, { hold = false, suspend = false } = {}) {
     let i = 0;
+    let budget = SYNC_HOLD_CAP_MS;
     try {
       for (; i < list.length; i++) {
+        if (hold && holder && budget > 0 && i > 0 && i % SYNC_HOLD_BATCH === 0 && list.length > SYNC_HOLD_BATCH) {
+          let held = false;
+          let resume = null;
+          try {
+            const out = await holder.wait({
+              capMs: budget,
+              abort: () => destroyed,
+              keepGuard: true,
+              onHold: () => { held = true; setSyncState("held"); if (suspend) resume = host.suspendGroup?.() ?? null; },
+            });
+            if (out && Number.isFinite(out.waited)) budget -= out.waited;
+          } catch { /* a failed look fails open */ }
+          if (resume) resume();
+          if (held) setSyncState("writing");
+        }
         await runOpWithRetry(list[i]);
         settleOp(list[i]);
       }
@@ -936,6 +969,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     } catch (err) {
       for (let j = i; j < list.length; j++) settleOp(list[j]);
       throw err;
+    } finally {
+      holder?.release?.();
     }
   }
 
@@ -1051,9 +1086,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish();
     if (custom) custom.forward = list;
-    return queue.run(() => grouped(() => {
+    return queue.run(() => grouped(async () => {
       if (custom) host.setCustomUndo?.(custom);
-      return execute(list);
+      try {
+        return await execute(list, { hold: true, suspend: !custom });
+      } catch (err) {
+        // The inverse covers the whole list, but only part of it ran: close as a native chunk of what did.
+        if (custom) host.setCustomUndo?.(null);
+        throw err;
+      }
     })).then(() => result, (err) => { handleFailure(err); return result; });
   }
 
@@ -1348,7 +1389,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       for (const m of board.items.get(sid).members) {
         if (grown.has(m)) continue;
         const mr = rects.get(m);
-        t.props(m, itemPlexus(m, { x: round1(mr.x - r.x), y: round1(mr.y - r.y) }));
+        const nx = round1(mr.x - r.x);
+        const ny = round1(mr.y - r.y);
+        // Only a member whose stored position changes is written.
+        const stored = rawPlexus(m);
+        if (stored.x === nx && stored.y === ny) continue;
+        t.props(m, itemPlexus(m, { x: nx, y: ny }));
       }
     }
   }
@@ -1524,8 +1570,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     }
     finishLinks();
   }
-  function cancelScheduledLinks() {
+  // One rAF chain is in flight at a time. A hidden tab pauses frames, and every board change used to queue
+  // another pair of closures behind the paused ones.
+  let linkChain = null;
+  function cancelScheduledLinks(keepChain = false) {
     linkEpoch += 1;
+    if (!keepChain) linkChain = null;
     if (linkTimer) clearTimeout(linkTimer);
     linkTimer = null;
     if (linkIdleId != null) {
@@ -1536,17 +1586,25 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   // The board is already published. Two frames let a sketch handoff mount
   // .pxd-item before this query; the idle timeout is 1s so the curves still show.
   function scheduleLinks() {
-    cancelScheduledLinks();
-    const epoch = linkEpoch;
+    cancelScheduledLinks(true);
     const ric = globalThis.requestIdleCallback;
     const raf = globalThis.requestAnimationFrame;
     if (linkDelay !== 0 && !idle && typeof ric === "function" && typeof raf === "function") {
+      if (linkChain) {
+        linkChain.epoch = linkEpoch;
+        return;
+      }
+      const chain = { epoch: linkEpoch };
+      linkChain = chain;
+      const live = () => linkChain === chain && chain.epoch === linkEpoch && !destroyed;
       raf(() => {
-        if (epoch !== linkEpoch || destroyed) return;
+        if (!live()) { if (linkChain === chain) linkChain = null; return; }
         raf(() => {
-          if (epoch !== linkEpoch || destroyed) return;
+          if (!live()) { if (linkChain === chain) linkChain = null; return; }
+          // From here the idle callback is the pending work; a later schedule cancels it and starts a new chain.
+          linkChain = null;
           linkIdleId = ric(() => {
-            if (epoch !== linkEpoch) return;
+            if (chain.epoch !== linkEpoch) return;
             linkIdleId = null;
             runLinks();
           }, { timeout: 1000 });
@@ -1554,6 +1612,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       });
       return;
     }
+    linkChain = null;
+    const epoch = linkEpoch;
     linkTimer = setTimeout(() => {
       if (epoch !== linkEpoch) return;
       linkTimer = null;
@@ -2472,6 +2532,51 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       return txn((t) => {
         if (board.items.has(id)) t.props(id, itemPlexus(id, { collapsed: value ? true : undefined }));
       });
+    },
+
+    // "Fold sections in the outline" / "Unfold sections": Roam's :block/open on SECTION blocks only. A page or board
+    // card folded in Roam blanks its body (cards.js), and a card's own children are its contents. Gated on the
+    // collapse-outline setting. `fold` false lists the folded sections for unfolding.
+    sectionFoldPlan(fold = true) {
+      const plan = { boardUid: uid, fold: fold !== false, uids: [] };
+      if (!board || destroyed || gone) return plan;
+      if (!collapseOutline()) return { ...plan, refused: "setting" };
+      for (const item of board.items.values()) {
+        if (item.type !== "section") continue;
+        const node = rawNode(item.uid);
+        if (!node) continue;
+        const isOpen = node[OPEN] !== false;
+        if (plan.fold === isOpen) plan.uids.push(item.uid);
+      }
+      return plan;
+    },
+
+    // Applies a sectionFoldPlan. Sections that no longer need the change are skipped. One custom undo entry; the
+    // writes go through commit(), so a long list pauses between batches while Roam's sync dot says saving.
+    async foldSections(plan) {
+      const none = { changed: 0 };
+      if (!plan || plan.boardUid !== uid || !board || destroyed || gone) return { ...none, refused: "board" };
+      if (!collapseOutline()) return { ...none, refused: "setting" };
+      const open = plan.fold === false;
+      const ops = [];
+      const back = [];
+      for (const id of plan.uids || []) {
+        const item = board.items.get(id);
+        const node = rawNode(id);
+        if (item?.type !== "section" || !node) continue;
+        if ((node[OPEN] !== false) === open) continue;
+        ops.push({ op: "open", uid: id, open });
+        back.push({ op: "open", uid: id, open: !open });
+        node[OPEN] = open;
+      }
+      if (!ops.length) return none;
+      const custom = {
+        forward: ops,
+        async undo() { await execute(back); },
+        async redo() { await execute(custom.forward); },
+      };
+      await commit(ops, undefined, custom);
+      return { changed: ops.length };
     },
 
     // Roam :block/open on the card block only. Fold stays on plexus collapsed.

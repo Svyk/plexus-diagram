@@ -1313,3 +1313,49 @@ test("RF-5: with the Hand tool a press on an item starts a move; Space or the mi
   h.ctl.handle(h.ev("pointerdown", { x: 200, y: 100 }, { target: grip }));
   assert.equal(h.ctl.gestureKind(), "pan", "Space pans");
 });
+
+test("a held arrow key writes once on key-up, not once per repeat", () => {
+  const h = harness();
+  h.ctl.select(["cardAAAA1", "cardBBBB2"]);
+  key(h, "ArrowRight");
+  assert.equal(h.named("commitMove").length, 1, "the first press moves at once");
+  for (let i = 0; i < 30; i += 1) key(h, "ArrowRight", { repeat: true });
+  assert.equal(h.named("commitMove").length, 1, "repeats only preview");
+  assert.deepEqual(h.named("previewMove").at(-1).slice(1), [["cardAAAA1", "cardBBBB2"], 30, 0]);
+  h.ctl.handle({ type: "keyup", key: "ArrowRight" });
+  assert.equal(h.named("commitMove").length, 2);
+  assert.deepEqual(h.named("commitMove").at(-1).slice(1), [["cardAAAA1", "cardBBBB2"], 30, 0]);
+  assert.equal(h.named("cancelPreview").length > 0, true);
+});
+
+test("held arrows flush after 250 ms idle, and a pointer press or another key flushes first", async () => {
+  const h = harness();
+  h.ctl.select(["cardAAAA1"]);
+  key(h, "ArrowDown");
+  key(h, "ArrowDown", { repeat: true });
+  key(h, "ArrowDown", { repeat: true, shift: true });
+  assert.equal(h.named("commitMove").length, 1);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(h.named("commitMove").length, 2);
+  assert.deepEqual(h.named("commitMove").at(-1).slice(1), [["cardAAAA1"], 0, 11]);
+  key(h, "ArrowLeft", { repeat: true });
+  key(h, "z", { meta: true });
+  assert.equal(h.named("commitMove").length, 3, "undo must see the nudge first");
+  assert.equal(h.named("undo").length, 1);
+});
+
+test("flush() writes a held-arrow nudge now, once, and does nothing when none is pending", () => {
+  const h = harness();
+  h.ctl.select(["cardAAAA1"]);
+  h.ctl.flush();
+  assert.equal(h.named("commitMove").length, 0);
+  h.ctl.handle({ type: "keydown", key: "ArrowRight" });
+  h.ctl.handle({ type: "keydown", key: "ArrowRight", repeat: true });
+  h.ctl.handle({ type: "keydown", key: "ArrowRight", repeat: true });
+  assert.equal(h.named("commitMove").length, 1, "the first press committed, the repeats are held");
+  h.ctl.flush();
+  assert.equal(h.named("commitMove").length, 2);
+  assert.deepEqual(h.named("commitMove").at(-1).slice(1), [["cardAAAA1"], 2, 0]);
+  h.ctl.flush();
+  assert.equal(h.named("commitMove").length, 2);
+});

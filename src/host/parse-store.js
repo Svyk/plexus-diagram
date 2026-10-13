@@ -6,7 +6,7 @@
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { bestLocalDoc, fillFreePages, paidPagesOnly } from "../model/cloud-merge.js";
 import { parsedDocTitle, parsedTitleLines } from "../model/pdf.js";
-import { openDiagramDb, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX } from "./diagram-db.js";
+import { forgetDiagramDb, openDiagramDb, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX } from "./diagram-db.js";
 import { optionsHash } from "../model/parse-hash.js";
 import { PARSE_REV } from "../model/parse/index.js";
 
@@ -199,38 +199,48 @@ export function createParseStore({ indexedDB: factory, now, docCap = PARSE_DOC_C
     images: new Map(),
     index: new Map(),
   };
-  let dbPromise = null;
   let idbDead = !factory;
 
+  // The shared connection is cached by openDiagramDb, which drops it when it closes or a newer version asks. The
+  // store never holds a connection of its own, so a closed one is replaced on the next call.
   const open = () => {
     if (idbDead) return Promise.resolve(null);
-    if (!dbPromise) {
-      dbPromise = openDiagramDb(factory).then((db) => {
-        if (!db) {
-          idbDead = true;
-          dbPromise = null;
-        }
-        return db;
-      });
-    }
-    return dbPromise;
+    return openDiagramDb(factory).then((db) => {
+      if (!db) idbDead = true;
+      return db;
+    });
   };
 
   const run = async (storeName, mode, fn) => {
     if (idbDead) return { ok: false };
-    try {
-      const db = await open();
-      if (!db || typeof db.transaction !== "function") {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      let store = null;
+      try {
+        const db = await open();
+        if (!db || typeof db.transaction !== "function") {
+          idbDead = true;
+          return { ok: false };
+        }
+        try {
+          store = db.transaction(storeName, mode).objectStore(storeName);
+        } catch {
+          // A connection that closed under us: open a fresh one once.
+          forgetDiagramDb(factory);
+          continue;
+        }
+      } catch {
         idbDead = true;
         return { ok: false };
       }
-      const tx = db.transaction(storeName, mode);
-      const store = tx.objectStore(storeName);
-      return await fn(store);
-    } catch {
-      idbDead = true;
-      return { ok: false };
+      try {
+        return await fn(store);
+      } catch {
+        idbDead = true;
+        return { ok: false };
+      }
     }
+    idbDead = true;
+    return { ok: false };
   };
 
   const backend = {

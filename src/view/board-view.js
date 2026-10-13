@@ -890,7 +890,11 @@ function buildBoardView(onFail, {
       return fn(event);
     };
     el.addEventListener(type, wrapped, opts);
-    const off = () => el.removeEventListener(type, wrapped, opts);
+    const off = () => {
+      el.removeEventListener(type, wrapped, opts);
+      const at = listeners.lastIndexOf(off);
+      if (at >= 0) listeners.splice(at, 1);
+    };
     listeners.push(off);
     return off;
   };
@@ -2149,7 +2153,16 @@ function buildBoardView(onFail, {
   // ---- PDFs on their own pages ----
   // "Move PDFs to their own pages": dry run in a dialog, then one undo group. This board only.
   let pdfPagesDialog = null;
-  const closePdfPagesDialog = () => { try { pdfPagesDialog?.close?.(); } catch { /* gone */ } pdfPagesDialog = null; };
+  // Resolves the command promise of the dialog on screen. Closing the dialog any other way than Apply (replaced by
+  // another command, cancelled, the view disposed) settles it with null so nobody awaits it forever.
+  let pdfPagesPending = null;
+  const closePdfPagesDialog = () => {
+    try { pdfPagesDialog?.close?.(); } catch { /* gone */ }
+    pdfPagesDialog = null;
+    const settle = pdfPagesPending;
+    pdfPagesPending = null;
+    settle?.(null);
+  };
   const planPdfPages = async () => {
     const b = board();
     if (!b) return null;
@@ -2191,10 +2204,12 @@ function buildBoardView(onFail, {
       return { moved: 0 };
     }
     return new Promise((resolve) => {
+      pdfPagesPending = resolve;
       pdfPagesDialog = openPdfPagesDialog(doc, {
         count: plan.moves.length,
         lines: migrationLines(plan),
         onApply: () => {
+          pdfPagesPending = null;
           closePdfPagesDialog();
           Promise.resolve(session.movePdfsToPages(plan)).then((res) => {
             if (disposed) return resolve(res);
@@ -2228,6 +2243,7 @@ function buildBoardView(onFail, {
     }
     const n = plan.folds.length;
     return new Promise((resolve) => {
+      pdfPagesPending = resolve;
       pdfPagesDialog = openPdfPagesDialog(doc, {
         count: n,
         lines: tableCaptionLines(plan),
@@ -2236,6 +2252,7 @@ function buildBoardView(onFail, {
           + "Each card becomes a one-line caption with the table folded under it, so the outline stops drawing every row.",
         applyText: "Fold",
         onApply: () => {
+          pdfPagesPending = null;
           closePdfPagesDialog();
           Promise.resolve(session.foldTableCaptions(plan)).then((res) => {
             if (disposed) return resolve(res);
@@ -2243,6 +2260,47 @@ function buildBoardView(onFail, {
             else if (res?.folded) toast(`Folded ${res.folded} ${res.folded === 1 ? "table" : "tables"} under ${res.folded === 1 ? "a caption" : "captions"}`, true);
             resolve(res);
           }, () => { if (!disposed) toast("Couldn't fold the tables"); resolve(null); });
+        },
+        onCancel: () => { closePdfPagesDialog(); resolve(null); },
+      });
+      root.append(pdfPagesDialog.el);
+      pdfPagesDialog.focus?.();
+    });
+  };
+  // "Fold sections in the outline" / "Unfold sections": Roam's own fold on the section blocks (never page or board
+  // cards). A preview with the count, one undo entry. This board only.
+  const foldSections = async (fold = true) => {
+    if (disposed) return null;
+    closePdfPagesDialog();
+    if (typeof session.sectionFoldPlan !== "function" || typeof session.foldSections !== "function") { toast("Folding sections is not available here"); return null; }
+    const plan = session.sectionFoldPlan(fold);
+    if (plan.refused === "setting") { toast("Turn on \"Collapse outline\" in the Plexus settings to fold sections"); return { changed: 0, refused: "setting" }; }
+    if (!plan.uids.length) { toast(plan.fold ? "Every section on this board is already folded" : "No section on this board is folded"); return { changed: 0 }; }
+    const n = plan.uids.length;
+    const noun = n === 1 ? "section" : "sections";
+    const b = board();
+    const titles = plan.uids.map((id) => b?.items.get(id)?.title || "Untitled section");
+    const lines = titles.slice(0, 12);
+    if (titles.length > lines.length) lines.push(`and ${titles.length - lines.length} more`);
+    return new Promise((resolve) => {
+      pdfPagesPending = resolve;
+      pdfPagesDialog = openPdfPagesDialog(doc, {
+        count: n,
+        lines,
+        label: plan.fold ? "Fold sections in the outline" : "Unfold sections",
+        headText: plan.fold
+          ? `Fold ${n} ${noun} in the Roam outline? Cards, pages and boards keep their contents; only the section rows collapse.`
+          : `Unfold ${n} ${noun} in the Roam outline?`,
+        applyText: plan.fold ? "Fold" : "Unfold",
+        onApply: () => {
+          pdfPagesPending = null;
+          closePdfPagesDialog();
+          Promise.resolve(session.foldSections(plan)).then((res) => {
+            if (disposed) return resolve(res);
+            if (res?.refused) toast("This board changed. Run the command again");
+            else if (res?.changed) toast(`${plan.fold ? "Folded" : "Unfolded"} ${res.changed} ${res.changed === 1 ? "section" : "sections"}`, true);
+            resolve(res);
+          }, () => { if (!disposed) toast("Couldn't change the sections"); resolve(null); });
         },
         onCancel: () => { closePdfPagesDialog(); resolve(null); },
       });
@@ -3959,7 +4017,7 @@ function buildBoardView(onFail, {
   };
 
   // ------------------------------------------------------------ 1.2 helpers
-  const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => session.undo?.() } : undefined });
+  const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => { ctl.flush?.(); session.undo?.(); } } : undefined });
   const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
   const closeLinksMenu = () => {
     const menu = linksMenu;
@@ -4775,6 +4833,7 @@ function buildBoardView(onFail, {
   const onMenuPick = (id) => {
     const b = board();
     if (!b || disposed) return;
+    ctl.flush?.();
     const mc = menuCtx || { kind: "canvas", uid: null, world: viewCenterWorld(), selection: [] };
     const world = mc.world || viewCenterWorld();
     const uids = mc.kind === "multi" ? selection.items.slice() : mc.uid && b.items.has(mc.uid) ? [mc.uid] : selection.items.slice();
@@ -6582,12 +6641,18 @@ function buildBoardView(onFail, {
   // ------------------------------------------------------------ fullscreen
   // The strip lives inside .pxd-root so chrome tokens and overlay hit-testing apply. Leaving fullscreen keeps the list.
   let tabStrip = null;
+  let tabStripOff = null;
+  const dropTabStrip = () => {
+    tabStrip?.remove();
+    tabStrip = null;
+    tabStripOff?.();
+    tabStripOff = null;
+  };
   const paintTabStrip = (tabs, current) => {
     // P32-6: one tab is just the board you are on. The strip shows from two tabs up; the list,
     // its persistence and Cmd+1..9 do not depend on the strip being painted.
     if (!isFullscreen || !Array.isArray(tabs) || tabs.length < 2) {
-      tabStrip?.remove();
-      tabStrip = null;
+      dropTabStrip();
       root.classList.remove("pxd-root--fstabs");
       root.style.setProperty("--pxd-tabs-h", "0px");
       return;
@@ -6596,11 +6661,12 @@ function buildBoardView(onFail, {
     if (!tabStrip || !root.contains(tabStrip)) {
       // A nested board opened in place reuses this root; a strip the previous view left must not stay.
       for (const stray of root.querySelectorAll?.(".pxd-fstabs") || []) if (stray.parentElement === root) stray.remove();
+      tabStripOff?.();
       tabStrip = el("div", "pxd-fstabs pxd-chrome");
       tabStrip.setAttribute("role", "tablist");
       tabStrip.setAttribute("aria-label", "Boards");
       // .pxd-chrome already keeps the board's own pointer handling off the strip; one tracked click listener.
-      listen(tabStrip, "click", (event) => {
+      tabStripOff = listen(tabStrip, "click", (event) => {
         event.preventDefault?.();
         event.stopPropagation();
         const closer = event.target?.closest?.(".pxd-fstab__x");
@@ -7095,8 +7161,8 @@ function buildBoardView(onFail, {
       return regionUid;
     },
     connectHint: (text, screen) => showConnectHint(text, screen),
-    undo: () => session.undo?.(),
-    redo: () => session.redo?.(),
+    undo: () => { ctl.flush?.(); return session.undo?.(); },
+    redo: () => { ctl.flush?.(); return session.redo?.(); },
     enterEdit: (uid, opts) => enterEdit(uid, opts),
     openPage: (uid, { sidebar = false } = {}) => {
       const item = board()?.items.get(uid);
@@ -9227,6 +9293,7 @@ function buildBoardView(onFail, {
     addPage(at = null) { addPage(at); },
     movePdfsToPages() { return movePdfsToPages(); },
     foldTableCaptions() { return foldTableCaptions(); },
+    foldSections(fold = true) { return foldSections(fold); },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;
       const world = at || { x: 80, y: 80 };
@@ -9285,7 +9352,7 @@ function buildBoardView(onFail, {
       };
       // Each step stands alone. A throw used to set disposed and skip the body popover and the window listeners.
       step(() => perfLog?.cancelPan?.());
-      step(() => { tabStrip?.remove(); tabStrip = null; root.classList.remove("pxd-root--fstabs"); });
+      step(() => { dropTabStrip(); root.classList.remove("pxd-root--fstabs"); });
       step(() => closeLinksMenu());
       step(() => { whyPop?.close(); whyPop = null; });
       step(() => { contextsDrawer?.close(); contextsDrawer = null; });
@@ -9348,6 +9415,8 @@ function buildBoardView(onFail, {
       step(() => { if (coverWarmWait) { coverWarmWait(); coverWarmWait = null; } });
       step(() => readPane?.dispose?.());
       step(() => { cardMotion?.dispose(); cardMotion = null; });
+      step(() => { pdfFlip?.destroy?.(); pdfFlip = null; });
+      step(() => pdfWarm?.cancelAll?.());
       step(() => itemsR.dispose());
       step(() => edgesR.dispose());
       step(() => { offPartsChange?.(); partsIdx?.dispose(); partsIdx = null; });

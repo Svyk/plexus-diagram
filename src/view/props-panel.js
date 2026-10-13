@@ -12,9 +12,11 @@ const ROUTE_LABELS = [["straight", "Straight"], ["elbow", "Smooth step"], ["curv
 
 export function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } = {}) {
   const listeners = [];
+  const bodyOffs = [];
+  let sink = listeners;
   const listen = (el, type, fn) => {
     el.addEventListener(type, fn);
-    listeners.push(() => el.removeEventListener(type, fn));
+    sink.push(() => el.removeEventListener(type, fn));
   };
   const el = (tag, cls, parent, text) => {
     const node = doc.createElement(tag);
@@ -237,21 +239,27 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     last = state || last;
     const active = doc.activeElement;
     if (active && panel.contains(active) && String(active.tagName).toLowerCase() === "input") return;
+    bodyOffs.splice(0).forEach((off) => off());
     body.replaceChildren();
     const items = (last?.items || []).filter(Boolean);
     const edge = last?.edge || null;
     const board = last?.board;
-    if (edge) edgeGroup(edge);
-    else {
-      const blocksItems = items.filter((it) => it.type === "card" || it.type === "text");
-      const sections = items.filter((it) => it.type === "section");
-      if (blocksItems.length) blocks(blocksItems);
-      if (sections.length) {
-        sectionGroup(sections, "Group", "group", (patch) => on.setSectionStyle?.(patch), "Reset", () => on.resetSections?.());
+    sink = bodyOffs;
+    try {
+      if (edge) edgeGroup(edge);
+      else {
+        const blocksItems = items.filter((it) => it.type === "card" || it.type === "text");
+        const sections = items.filter((it) => it.type === "section");
+        if (blocksItems.length) blocks(blocksItems);
+        if (sections.length) {
+          sectionGroup(sections, "Group", "group", (patch) => on.setSectionStyle?.(patch), "Reset", () => on.resetSections?.());
+        }
+        if (!blocksItems.length && !sections.length) defaultsGroup(board);
       }
-      if (!blocksItems.length && !sections.length) defaultsGroup(board);
+      diagram(board);
+    } finally {
+      sink = listeners;
     }
-    diagram(board);
     place();
   };
 
@@ -265,6 +273,7 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     isCollapsed: () => collapsed,
     dispose() {
       listeners.splice(0).forEach((off) => off());
+      bodyOffs.splice(0).forEach((off) => off());
       resize?.disconnect();
       resize = null;
       observed = null;

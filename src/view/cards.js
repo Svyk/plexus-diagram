@@ -5,7 +5,7 @@
 
 import { countText } from "../model/card-face.js";
 import { placeNearAnchor } from "./avoid.js";
-import { createRowScheduler, isHeavyRow, mountFpsFromStamps } from "./progressive.js";
+import { createRowScheduler, isHeavyRow, mountFpsFromStamps, pushFrameStamp } from "./progressive.js";
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { isQueryString } from "../model/query.js";
 import { createQueryCards } from "./query-card.js";
@@ -1314,6 +1314,10 @@ export function createItemRenderer({
     rec.pdfReader = null;
     if (!rec.roots?.length) return;
     for (const node of rec.roots) {
+      if (node.classList?.contains("pxd-item__editor--sticky")) {
+        try { host?.unmount?.(node); } catch { /* not mounted */ }
+        continue;
+      }
       const live = node.querySelector?.(".pxd-rs__live");
       if (!live && !node.classList?.contains("pxd-embed-live")) continue;
       try { node.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }
@@ -4572,7 +4576,7 @@ export function createItemRenderer({
     frameSample = timers.frame((t) => {
       frameSample = null;
       if (disposed) return;
-      frameStamps.push(Number.isFinite(t) ? t : now());
+      pushFrameStamp(frameStamps, Number.isFinite(t) ? t : now());
       publishMountFps();
       if (contentSched.pending() > 0) armFrames();
     });

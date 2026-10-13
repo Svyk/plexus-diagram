@@ -18260,7 +18260,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true, edgeFingerprint: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -18709,7 +18709,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace", "edgeFingerprint"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -19411,6 +19411,7 @@ var init_tooltip_text = __esm({
       sync: e("Saved", "Every change is written to Roam."),
       "sync:idle": e("Saved", "Every change is written to Roam."),
       "sync:writing": e("Saving", "Your last change is being written to Roam."),
+      "sync:held": e("Waiting for Roam", "A large change is paused while Roam catches up with the blocks already written. It continues by itself."),
       "sync:retrying": e("Retrying", "Roam did not take the last write. Plexus is trying again."),
       "sync:failed": e("Could not save", "The last change did not reach Roam. Undo it or try the action again."),
       // ---- tool dock and board-bar tools
@@ -19705,7 +19706,7 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
   let pending = null;
   let dismiss = [];
   const enabled = () => read2("tooltips") !== false;
-  const delay = () => tooltipDelay(read2("tooltip-delay"));
+  const delay2 = () => tooltipDelay(read2("tooltip-delay"));
   const closest = (node2) => {
     const hit = node2?.closest?.("[data-tip]");
     return hit && root.contains(hit) ? hit : null;
@@ -19813,7 +19814,7 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
       if (info) target.title = info.key ? `${info.name} (${[].concat(info.key).join(" ")}). ${info.desc}` : `${info.name}. ${info.desc}`;
       return;
     }
-    const wait2 = current3 ? 0 : delay();
+    const wait2 = current3 ? 0 : delay2();
     if (wait2 <= 0) {
       show(target);
       return;
@@ -20580,11 +20581,17 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     chips.add(chip);
   };
   const crumbs = /* @__PURE__ */ new WeakSet();
-  const crumbOffs = [];
+  const crumbOffs = /* @__PURE__ */ new Map();
   const crumbGlyphs = /* @__PURE__ */ new Set();
   const plain2 = (event) => event.button === 0 && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
   const crumbFor = (zoom) => {
     if (disposed || !zoom || crumbs.has(zoom) || zoom.querySelector?.(`.${CRUMB_CLASS}`)) return;
+    for (const old of [...crumbGlyphs]) {
+      if (old.isConnected !== false) continue;
+      for (const off of crumbOffs.get(old) || []) off();
+      crumbOffs.delete(old);
+      crumbGlyphs.delete(old);
+    }
     const holder = zoom.parentElement;
     const container = holder?.querySelector?.(".roam-block-container[data-block-uid]");
     const edgeUid = container?.getAttribute?.("data-block-uid");
@@ -20601,6 +20608,8 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     glyph.setAttribute("aria-label", CRUMB_TIP);
     (items[items.length - 1] || zoom).append(glyph);
     crumbGlyphs.add(glyph);
+    const offs = [];
+    crumbOffs.set(glyph, offs);
     for (const el2 of [...items, glyph]) {
       const swallow = (event) => {
         if (plain2(event)) stop3(event);
@@ -20613,10 +20622,10 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
       };
       for (const type of ["pointerdown", "mousedown", "mouseup"]) {
         el2.addEventListener(type, swallow, true);
-        crumbOffs.push(() => el2.removeEventListener(type, swallow, true));
+        offs.push(() => el2.removeEventListener(type, swallow, true));
       }
       el2.addEventListener("click", open, true);
-      crumbOffs.push(() => el2.removeEventListener("click", open, true));
+      offs.push(() => el2.removeEventListener("click", open, true));
     }
     const onKey = (event) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -20626,7 +20635,7 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
       }
     };
     glyph.addEventListener("keydown", onKey);
-    crumbOffs.push(() => glyph.removeEventListener("keydown", onKey));
+    offs.push(() => glyph.removeEventListener("keydown", onKey));
   };
   const attach3 = (input, edgeUid) => {
     const container = input.closest?.(".roam-block-container") || input.parentElement;
@@ -20695,7 +20704,8 @@ function createRelChips({ doc = globalThis.document, win: win2 = globalThis.wind
     closePop();
     for (const chip of chips) chip.remove();
     chips.clear();
-    for (const off of crumbOffs.splice(0)) off();
+    for (const offs of crumbOffs.values()) for (const off of offs) off();
+    crumbOffs.clear();
     for (const glyph of crumbGlyphs) glyph.remove();
     crumbGlyphs.clear();
     models.clear();
@@ -21611,6 +21621,11 @@ var init_card_face = __esm({
 });
 
 // src/view/progressive.js
+function pushFrameStamp(stamps, t, cap4 = MOUNT_STAMP_CAP) {
+  stamps.push(t);
+  if (stamps.length > cap4) stamps.splice(0, stamps.length - cap4);
+  return stamps;
+}
 function mountFpsFromStamps(stamps) {
   const deltas = [];
   const list = Array.isArray(stamps) ? stamps : [];
@@ -21786,11 +21801,12 @@ function createRowScheduler({ idle, now: now4 = () => Date.now(), budgetMs = 8, 
     }
   };
 }
-var HEAVY_RE, isHeavyRow;
+var HEAVY_RE, isHeavyRow, MOUNT_STAMP_CAP;
 var init_progressive = __esm({
   "src/view/progressive.js"() {
     HEAVY_RE = /\{\{\s*(?:\[\[)?(?:roam\/render|embed[\w-]*|video|youtube|iframe|pdf|query|diagram|table|calc)|!\[[^\]]*\]\(|<iframe/i;
     isHeavyRow = (string) => HEAVY_RE.test(String(string || ""));
+    MOUNT_STAMP_CAP = 120;
   }
 });
 
@@ -23993,6 +24009,27 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     el3.addEventListener(type, fn, opts);
     listeners3.push(() => el3.removeEventListener(type, fn, opts));
   };
+  const rowOffs = [];
+  let rowCap = 128;
+  const listenRow = (el3, type, fn, opts) => {
+    el3.addEventListener(type, fn, opts);
+    rowOffs.push({ el: el3, off: () => el3.removeEventListener(type, fn, opts), seen: el3.isConnected !== false, misses: 0 });
+    if (rowOffs.length <= rowCap) return;
+    const keep = [];
+    for (const entry of rowOffs) {
+      if (entry.el.isConnected !== false || root?.contains?.(entry.el)) {
+        entry.seen = true;
+        entry.misses = 0;
+        keep.push(entry);
+        continue;
+      }
+      if (entry.seen || (entry.misses += 1) >= 2) entry.off();
+      else keep.push(entry);
+    }
+    rowOffs.length = 0;
+    rowOffs.push(...keep);
+    rowCap = Math.max(128, rowOffs.length * 2);
+  };
   const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
     node2.className = cls;
@@ -24497,7 +24534,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     b.dataset.like = key;
     b.setAttribute("data-like", key);
     el2("span", "bp3-icon bp3-icon-style", b).setAttribute("aria-hidden", "true");
-    listen(b, "click", (event) => {
+    listenRow(b, "click", (event) => {
       event.stopPropagation();
       startLike(key, name);
     });
@@ -24583,12 +24620,12 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       r.classList.add("pxd-panel__row--on");
       el2("span", "pxd-panel__row-on", r, "on board");
     }
-    listen(r, "click", (event) => {
+    listenRow(r, "click", (event) => {
       event.stopPropagation();
       on.addBeside?.(string);
       r.classList.add("pxd-panel__row--on");
     });
-    listen(r, "dragstart", (event) => {
+    listenRow(r, "dragstart", (event) => {
       try {
         event.dataTransfer?.setData?.(CARD_MIME, string);
         event.dataTransfer?.setData?.("text/plain", string);
@@ -24615,7 +24652,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       ask2.setAttribute("title", "Ask AI");
       const mark = askAiIcon(doc, 16);
       if (mark) ask2.append(mark);
-      listen(ask2, "click", (event) => {
+      listenRow(ask2, "click", (event) => {
         event.stopPropagation();
         on.askPart(part);
       });
@@ -24626,7 +24663,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       chart.setAttribute("aria-label", "Chart to table");
       chart.setAttribute("title", "Chart → table");
       el2("span", "bp3-icon bp3-icon-timeline-line-chart", chart).setAttribute("aria-hidden", "true");
-      listen(chart, "click", (event) => {
+      listenRow(chart, "click", (event) => {
         event.stopPropagation();
         on.chartPart(part);
       });
@@ -24636,7 +24673,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       add.setAttribute("type", "button");
       add.setAttribute("aria-label", "Add to question");
       add.setAttribute("title", "Add to question");
-      listen(add, "click", (event) => {
+      listenRow(add, "click", (event) => {
         event.stopPropagation();
         on.basketPart(part);
       });
@@ -24657,12 +24694,12 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       pdfBlockUid: part.pdfUid || "",
       kind: part.kind === "table" || part.kind === "figure" || part.kind === "formula" ? part.kind : "blocks"
     };
-    listen(r, "click", (event) => {
+    listenRow(r, "click", (event) => {
       event.stopPropagation();
       if (on.openPart?.(part) !== true) on.addPart?.(payload);
       r.classList.add("pxd-panel__row--on");
     });
-    listen(r, "dragstart", (event) => {
+    listenRow(r, "dragstart", (event) => {
       try {
         const json = JSON.stringify(payload);
         event.dataTransfer?.setData?.(PARSE_MIME, json);
@@ -24860,7 +24897,25 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     cards.forEach((c) => row4(results, { ...c, semantic: false }));
     wantNames(cards, { front: true });
   };
-  const runSearch = async ({ quiet = false } = {}) => {
+  let browseLimit = LIMIT;
+  let pendingScroll = null;
+  const showMoreRow = (pack) => {
+    if (pendingScroll != null) {
+      results.scrollTop = pendingScroll;
+      pendingScroll = null;
+    }
+    if (pack?.more !== true) return;
+    const b = el2("button", "pxd-btn pxd-panel__show-more", results, "Show more");
+    b.type = "button";
+    listenRow(b, "click", (event) => {
+      event.stopPropagation();
+      browseLimit += LIMIT;
+      void runSearch({ quiet: true, more: true });
+    });
+  };
+  const runSearch = async ({ quiet = false, more = false } = {}) => {
+    if (!more) browseLimit = LIMIT;
+    pendingScroll = more ? results.scrollTop : null;
     const filter = readFilter();
     paintMore();
     const id = queryId += 1;
@@ -24916,7 +24971,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       if (wantImages && !hostFilter.types.length) {
         pack = { rows: [], queries: [] };
       } else if (typeof host?.librarySearch === "function") {
-        pack = await Promise.resolve(host.librarySearch(hostFilter, LIMIT, { pdfMatch: on.pdfMatch, pdfList: on.pdfList, sort }));
+        pack = await Promise.resolve(host.librarySearch(hostFilter, browseLimit, { pdfMatch: on.pdfMatch, pdfList: on.pdfList, sort }));
       } else {
         const q2 = String(filter.text || "").trim();
         if (!q2) return;
@@ -24942,7 +24997,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const log = JSON.stringify(queries.map((q2) => ({ name: q2.name, ms: Math.round((Number(q2.ms) || 0) * 10) / 10 })));
     results.dataset.queryLog = log;
     results.setAttribute("data-query-log", log);
-    let rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
+    let rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, browseLimit);
     if (filter.thisBoard) rows = rows.filter((r) => on.isOnBoard?.(r.string));
     const parsedUrls = filter.parsed ? await parsedSet() : null;
     if (id !== queryId) return;
@@ -24992,6 +25047,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     images.forEach((img) => row4(results, { ...libraryCard({ kind: "block", uid: img.uid, string: img.string, pageTitle: img.pageTitle }), palette: img.palette, likeKey: img.key, likeName: imageName(img) }));
     parts.forEach((part) => partRow(results, part, needle));
     figures.forEach((part) => partRow(results, part, needle));
+    showMoreRow(pack);
     results.dataset.paintMs = String(Date.now() - started);
     results.setAttribute("data-paint-ms", String(Date.now() - started));
     wantNames(rows, { front: true, all: checked.has("pdf") && checked.size < ALL_TYPES.length });
@@ -25011,7 +25067,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     if (id !== queryId) return;
     let pack = null;
     try {
-      pack = await Promise.resolve(host.filterBrowse(filter, LIMIT, {
+      pack = await Promise.resolve(host.filterBrowse(filter, browseLimit, {
         sort,
         parsedUrls,
         pdfList: typeof on.pdfList === "function" ? on.pdfList : null,
@@ -25030,6 +25086,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     if (pack?.defaulted && rows.length) el2("div", "pxd-panel__empty pxd-panel__hint pxd-panel__window", results, DEFAULT_WINDOW_NOTE);
     if (!rows.length) el2("div", "pxd-panel__empty", results, browseEmptyText(pack?.spec));
     rows.forEach((r) => row4(results, r));
+    showMoreRow(pack);
     results.dataset.browse = "filter";
     results.setAttribute("data-browse", "filter");
     results.dataset.paintMs = String(Date.now() - started);
@@ -25431,11 +25488,11 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     r.dataset.uid = uid;
     r.setAttribute("data-uid", uid);
     el2("span", "pxd-panel__row-text pxd-panel__row-text--block", r, item.text ?? "");
-    listen(r, "click", (event) => {
+    listenRow(r, "click", (event) => {
       event.preventDefault?.();
       event.stopPropagation();
     });
-    listen(r, "dragstart", (event) => {
+    listenRow(r, "dragstart", (event) => {
       try {
         event.dataTransfer?.setData?.(CARD_MIME, string);
         event.dataTransfer?.setData?.("text/plain", string);
@@ -25967,6 +26024,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q2));
       journalId += 1;
       unmountInfo();
       listeners3.splice(0).forEach((off) => off());
+      rowOffs.splice(0).forEach((entry) => entry.off());
       panel.remove();
     }
   };
@@ -29255,6 +29313,13 @@ function createItemRenderer({
     rec.pdfReader = null;
     if (!rec.roots?.length) return;
     for (const node2 of rec.roots) {
+      if (node2.classList?.contains("pxd-item__editor--sticky")) {
+        try {
+          host?.unmount?.(node2);
+        } catch {
+        }
+        continue;
+      }
       const live2 = node2.querySelector?.(".pxd-rs__live");
       if (!live2 && !node2.classList?.contains("pxd-embed-live")) continue;
       try {
@@ -32755,7 +32820,7 @@ function createItemRenderer({
     frameSample = timers.frame((t) => {
       frameSample = null;
       if (disposed) return;
-      frameStamps.push(Number.isFinite(t) ? t : now2());
+      pushFrameStamp(frameStamps, Number.isFinite(t) ? t : now2());
       publishMountFps();
       if (contentSched.pending() > 0) armFrames();
     });
@@ -36364,8 +36429,49 @@ function openDb(factory, { name, version, stores, capMs = 2e3 }) {
     attempt(true);
   });
 }
+var sharedDiagramDb = /* @__PURE__ */ new WeakMap();
 function openDiagramDb(factory, { capMs = 2e3 } = {}) {
-  return openDb(factory, { name: DIAGRAM_DB, version: DIAGRAM_DB_VERSION, stores: STORES, capMs });
+  const open = () => openDb(factory, { name: DIAGRAM_DB, version: DIAGRAM_DB_VERSION, stores: STORES, capMs });
+  if (!isKey(factory)) return open();
+  const have = sharedDiagramDb.get(factory);
+  if (have) return have;
+  const pending = open().then((db) => {
+    if (!db) {
+      if (sharedDiagramDb.get(factory) === pending) sharedDiagramDb.delete(factory);
+      return db;
+    }
+    const evict = () => {
+      if (sharedDiagramDb.get(factory) === pending) sharedDiagramDb.delete(factory);
+    };
+    const onVersion = db.onversionchange;
+    try {
+      db.onversionchange = (event) => {
+        evict();
+        if (typeof onVersion === "function") onVersion(event);
+      };
+      db.onclose = evict;
+    } catch {
+    }
+    return db;
+  });
+  sharedDiagramDb.set(factory, pending);
+  return pending;
+}
+var isKey = (factory) => Boolean(factory) && (typeof factory === "object" || typeof factory === "function");
+function forgetDiagramDb(factory) {
+  if (isKey(factory)) sharedDiagramDb.delete(factory);
+}
+function closeDiagramDb(factory) {
+  if (!isKey(factory)) return;
+  const have = sharedDiagramDb.get(factory);
+  sharedDiagramDb.delete(factory);
+  if (have) have.then((db) => {
+    try {
+      db?.close?.();
+    } catch {
+    }
+  }, () => {
+  });
 }
 function openImageDb(factory, { capMs = 2e3 } = {}) {
   return openDb(factory, { name: IMAGE_DB, version: IMAGE_DB_VERSION, stores: [STORE_IMAGE_INDEX], capMs });
@@ -36546,36 +36652,43 @@ function createParseStore({ indexedDB: factory, now: now4, docCap = PARSE_DOC_CA
     images: /* @__PURE__ */ new Map(),
     index: /* @__PURE__ */ new Map()
   };
-  let dbPromise = null;
   let idbDead = !factory;
   const open = () => {
     if (idbDead) return Promise.resolve(null);
-    if (!dbPromise) {
-      dbPromise = openDiagramDb(factory).then((db) => {
-        if (!db) {
-          idbDead = true;
-          dbPromise = null;
-        }
-        return db;
-      });
-    }
-    return dbPromise;
+    return openDiagramDb(factory).then((db) => {
+      if (!db) idbDead = true;
+      return db;
+    });
   };
   const run = async (storeName, mode, fn) => {
     if (idbDead) return { ok: false };
-    try {
-      const db = await open();
-      if (!db || typeof db.transaction !== "function") {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      let store = null;
+      try {
+        const db = await open();
+        if (!db || typeof db.transaction !== "function") {
+          idbDead = true;
+          return { ok: false };
+        }
+        try {
+          store = db.transaction(storeName, mode).objectStore(storeName);
+        } catch {
+          forgetDiagramDb(factory);
+          continue;
+        }
+      } catch {
         idbDead = true;
         return { ok: false };
       }
-      const tx = db.transaction(storeName, mode);
-      const store = tx.objectStore(storeName);
-      return await fn(store);
-    } catch {
-      idbDead = true;
-      return { ok: false };
+      try {
+        return await fn(store);
+      } catch {
+        idbDead = true;
+        return { ok: false };
+      }
     }
+    idbDead = true;
+    return { ok: false };
   };
   const backend = {
     async get(storeName, key) {
@@ -37031,6 +37144,83 @@ function createReadKeeper({ host = null, session = null, store = null, settings 
     }
   }
   return { keepRead, restoreRead, enabled };
+}
+
+// src/host/sync-hold.js
+var SYNC_HOLD_BATCH = 100;
+var SYNC_HOLD_CAP_MS = 3e4;
+var POLL_MS = 250;
+var ICON = ".rm-sync__icon";
+var delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function createSyncHold({
+  doc = globalThis.document,
+  sleep = delay,
+  now: now4 = () => Date.now(),
+  capMs = SYNC_HOLD_CAP_MS,
+  online = () => globalThis.navigator?.onLine !== false
+} = {}) {
+  const saving = () => {
+    let icon = null;
+    try {
+      icon = doc?.querySelector?.(ICON) || null;
+    } catch {
+      icon = null;
+    }
+    if (!icon) return null;
+    const cls = typeof icon.className === "string" ? icon.className : String(icon.classList ?? "");
+    return /saving/.test(cls);
+  };
+  const win2 = () => doc?.defaultView || null;
+  const guard = (event) => {
+    event.preventDefault?.();
+    try {
+      event.returnValue = "";
+    } catch {
+    }
+  };
+  let guarded = null;
+  const installGuard = () => {
+    if (guarded) return;
+    const w = win2();
+    try {
+      w?.addEventListener?.("beforeunload", guard);
+      guarded = w;
+    } catch {
+    }
+  };
+  const release = () => {
+    const w = guarded;
+    guarded = null;
+    try {
+      w?.removeEventListener?.("beforeunload", guard);
+    } catch {
+    }
+  };
+  const wait2 = async ({ onHold, capMs: budget, abort, keepGuard = false } = {}) => {
+    let state = saving();
+    if (state !== true || !online()) return { waited: 0, capped: false, held: false };
+    const cap4 = Math.min(capMs, Number.isFinite(budget) ? budget : capMs);
+    onHold?.();
+    installGuard();
+    const start = now4();
+    let capped = false;
+    try {
+      while (state === true) {
+        if (abort?.()) break;
+        if (now4() - start >= cap4) {
+          capped = true;
+          break;
+        }
+        await sleep(POLL_MS);
+        if (!online()) break;
+        state = saving();
+      }
+    } finally {
+      if (!keepGuard) release();
+    }
+    return { waited: now4() - start, capped, held: true };
+  };
+  return { saving, wait: wait2, release };
 }
 
 // src/session.js
@@ -37957,6 +38147,7 @@ init_schema();
 var A = ":block/uid :block/string :block/order :block/heading :block/open :block/props";
 var STRUCT_PATTERN = `[${A} {(limit :block/children nil) [${A}]}]`;
 var EDGES_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [:block/uid]}]}]}]`;
+var FINGERPRINT_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/order :edit/time {(limit :block/children nil) [:block/uid :block/order :edit/time {(limit :block/children nil) [:block/uid]}]}]}]";
 var THUMB_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [${A}]}]}]`;
 var THUMB_DEPTH = 2;
 var SPLIT_WATCH_MIN = 2e3;
@@ -38002,11 +38193,44 @@ function sameKids(a, b, depth = Infinity) {
   return true;
 }
 var isBoardItem = (node2) => classifyString(String(node2?.[":block/string"] ?? "")).kind === "board";
-function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
+var TIME = ":edit/time";
+var ORDER = ":block/order";
+function fingerprintOf(node2) {
+  const out = /* @__PURE__ */ new Map();
+  for (const edge of kidsOf2(node2)) {
+    const id = edge?.[UID];
+    if (!id) continue;
+    out.set(id, {
+      order: edge[ORDER] ?? null,
+      time: edge[TIME] ?? null,
+      whys: kidsOf2(edge).map((why) => [why?.[UID], why?.[TIME] ?? null, why?.[ORDER] ?? null, kidsOf2(why).map((g) => g?.[UID]).join(",")])
+    });
+  }
+  return out;
+}
+var sameWhys = (a, b) => a.length === b.length && a.every((w, i) => w[0] === b[i][0] && w[1] === b[i][1] && w[2] === b[i][2] && w[3] === b[i][3]);
+function diffFingerprints(prev, next) {
+  const changed2 = [];
+  const removed = [];
+  let reordered = false;
+  for (const [id, now4] of next) {
+    const was = prev.get(id);
+    if (!was) {
+      changed2.push(id);
+      continue;
+    }
+    if (was.time !== now4.time || !sameWhys(was.whys, now4.whys)) changed2.push(id);
+    else if (was.order !== now4.order) reordered = true;
+  }
+  for (const id of prev.keys()) if (!next.has(id)) removed.push(id);
+  return { changed: changed2, removed, reordered };
+}
+function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerprint = false, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
   const entityOf = (id) => `[:block/uid "${String(id).replace(/["\\]/g, "")}"]`;
   const nodes = /* @__PURE__ */ new Map();
   const kinds = /* @__PURE__ */ new Map([[uid, "struct"]]);
   const live2 = /* @__PURE__ */ new Map();
+  const fingerprints = /* @__PURE__ */ new Map();
   let content = /* @__PURE__ */ new Map();
   const itemWatch = /* @__PURE__ */ new Map();
   const pendingItems = /* @__PURE__ */ new Map();
@@ -38064,19 +38288,75 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = 
     } else nodes.set(id, after);
     kick();
   });
+  const readWholeEdges = (id) => {
+    const fresh = read2(EDGES_PATTERN, id);
+    return fresh?.[UID] ? fresh : null;
+  };
+  const readConsistent = (id) => {
+    const whole2 = readWholeEdges(id);
+    if (!whole2) return null;
+    const raw = read2(FINGERPRINT_PATTERN, id);
+    if (!raw?.[UID]) return null;
+    const print = fingerprintOf(raw);
+    const have = new Set(kidsOf2(whole2).map((edge) => edge?.[UID]));
+    for (const edgeUid of print.keys()) if (!have.has(edgeUid)) return null;
+    return { whole: whole2, print };
+  };
+  const onFingerprint = (id) => guard("watchEdges", (_before, after) => {
+    if (disposed) return;
+    if (!after?.[UID]) {
+      nodes.delete(id);
+      fingerprints.delete(id);
+      kick();
+      return;
+    }
+    const next = fingerprintOf(after);
+    const prev = fingerprints.get(id) || null;
+    const stored = nodes.get(id);
+    let reordered = false;
+    if (prev && stored?.[UID]) {
+      const diff = diffFingerprints(prev, next);
+      if (!diff.changed.length && !diff.removed.length) {
+        if (!diff.reordered) return;
+        reordered = true;
+      }
+    }
+    if (!reordered) {
+      const got = readConsistent(id);
+      if (!got) {
+        fingerprints.set(id, null);
+        return;
+      }
+      nodes.set(id, got.whole);
+      fingerprints.set(id, got.print);
+      kick();
+      return;
+    }
+    const kids = kidsOf2(stored).map((edge) => {
+      const order = next.get(edge[UID])?.order;
+      return order != null && edge[ORDER] !== order ? { ...edge, [ORDER]: order } : edge;
+    });
+    kids.sort((a, b) => (a[ORDER] ?? 0) - (b[ORDER] ?? 0));
+    nodes.set(id, { ...shallow(stored), [KIDS]: kids });
+    fingerprints.set(id, next);
+    kick();
+  });
   const sync = () => {
     for (const [id, kind] of kinds) {
       const have = live2.get(id);
       if (have && have.kind === kind) continue;
       if (have) data.removePullWatch(have.pattern, have.entity, have.cb);
-      const entry = { kind, pattern: patternOf(kind), entity: entityOf(id), cb: onContainer(id) };
+      const finger = fingerprint && kind === "edges";
+      const entry = { kind, pattern: finger ? FINGERPRINT_PATTERN : patternOf(kind), entity: entityOf(id), cb: finger ? onFingerprint(id) : onContainer(id) };
       data.addPullWatch(entry.pattern, entry.entity, entry.cb);
       live2.set(id, entry);
+      if (finger) fingerprints.set(id, null);
     }
     for (const [id, entry] of [...live2]) {
       if (kinds.has(id)) continue;
       data.removePullWatch(entry.pattern, entry.entity, entry.cb);
       live2.delete(id);
+      fingerprints.delete(id);
       nodes.delete(id);
     }
   };
@@ -38098,6 +38378,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = 
           if (!own?.[UID]) {
             own = read2(patternOf(kind), id) || kid;
             nodes.set(id, own);
+            if (kind === "edges" && fingerprints.has(id)) fingerprints.set(id, null);
           }
           kids.push(kind === "struct" ? build(own, false) : own);
           continue;
@@ -38148,6 +38429,11 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = 
     }
     itemWatch.clear();
     pendingItems.clear();
+    nodes.clear();
+    kinds.clear();
+    fingerprints.clear();
+    content = /* @__PURE__ */ new Map();
+    lastTree = null;
   };
   const watchItem = (id, { pending: pending2 = false } = {}) => {
     const key = String(id ?? "");
@@ -38217,8 +38503,10 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = 
       if (disposed) return null;
       for (const [id, kind] of kinds) {
         const fresh = read2(patternOf(kind), id);
-        if (fresh?.[UID]) nodes.set(id, fresh);
-        else if (id === uid) return null;
+        if (fresh?.[UID]) {
+          nodes.set(id, fresh);
+          if (kind === "edges" && fingerprints.has(id)) fingerprints.set(id, null);
+        } else if (id === uid) return null;
         else nodes.delete(id);
       }
       return assemble();
@@ -38227,6 +38515,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = 
     reseed(full) {
       if (disposed) return;
       seedFrom(full);
+      for (const id of fingerprints.keys()) fingerprints.set(id, null);
       sync();
       armPending();
     },
@@ -38915,6 +39204,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const UNDO_ECHO_MS = 900;
   let openGroup = null;
   let silent = false;
+  let nativeFloor = false;
   let lastWriteAt = -Infinity;
   let dropBurst = () => {
   };
@@ -38955,6 +39245,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const bigBoards = /* @__PURE__ */ new Map();
   const splitWatches = /* @__PURE__ */ new Map();
   const contentWants = /* @__PURE__ */ new Map();
+  const edgeFingerprintOn = () => {
+    try {
+      return notedSpeedFlags().edgeFingerprint !== false;
+    } catch {
+      return true;
+    }
+  };
   const splitWatchOn = () => {
     try {
       return notedSpeedFlags().splitWatch !== false;
@@ -39258,6 +39555,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         seed: bigBoards.get(uid),
         data,
         pull: rawPull,
+        fingerprint: edgeFingerprintOn(),
         deepPattern: BOARD_PATTERN,
         guard: (name, fn2) => guardCallback(name, fn2, { stats }),
         onTree: (tree) => {
@@ -40226,10 +40524,26 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         closeChunk(g);
       }
     },
+    // Closes the open group as a chunk now and returns a function that opens a fresh one with the same label. A long
+    // wait between batches (the sync hold) is outside any undo group: another session's writes made meanwhile are
+    // their own steps, and invalidateUndo works. No-op with no group open.
+    suspendGroup() {
+      const done2 = openGroup;
+      if (!done2) return () => {
+      };
+      openGroup = null;
+      closeChunk(done2);
+      return () => {
+        if (!openGroup) openGroup = { n: 0, kinds: [], label: done2.label || "" };
+      };
+    },
     // The open group becomes ONE entry that undoes and redoes through its own callbacks ({ undo, redo }, async),
     // not through a count of Roam's native undo steps (one Plexus write can be more than one native entry).
+    // null drops it again: a transaction that failed midway closes as a native chunk of the writes that ran.
     setCustomUndo(entry) {
-      if (openGroup && entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
+      if (!openGroup) return;
+      if (entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
+      else if (!entry) delete openGroup.custom;
     },
     async deletePage(uid) {
       stats.writes++;
@@ -40254,6 +40568,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     async undo() {
       lastWriteAt = Date.now();
       const entry = undoLog.pop();
+      if (!entry && nativeFloor) return;
       if (entry?.custom) {
         silent = true;
         try {
@@ -40265,7 +40580,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           silent = false;
           lastWriteAt = Date.now();
         }
+        undoLog.length = 0;
+        redoLog.length = 0;
         redoLog.push(entry);
+        nativeFloor = true;
         return;
       }
       const span = entry ? groupSpan(entry) : 1;
@@ -40286,6 +40604,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     async redo() {
       lastWriteAt = Date.now();
       const entry = redoLog.pop();
+      if (!entry && nativeFloor) return;
       if (entry?.custom) {
         silent = true;
         try {
@@ -40297,7 +40616,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
           silent = false;
           lastWriteAt = Date.now();
         }
+        undoLog.length = 0;
+        redoLog.length = 0;
         undoLog.push(entry);
+        nativeFloor = true;
         return;
       }
       const span = entry ? groupSpan(entry) : 1;
@@ -40317,6 +40639,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (openGroup || Date.now() - lastWriteAt < UNDO_ECHO_MS) return;
       undoLog.length = 0;
       redoLog.length = 0;
+      nativeFloor = false;
     },
     openInSidebar(uid, type = "block") {
       return api3.ui.rightSidebar.addWindow({ window: { type, "block-uid": uid } });
@@ -40798,7 +41121,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!librarySelective(f)) return { rows: [], queries };
       const nowMs2 = Date.now();
       const since = f.days ? nowMs2 - f.days * 864e5 : null;
-      const cap4 = libraryCap();
+      const cap4 = Math.max(libraryCap(), lim * 2);
       const candidates2 = [];
       const seen = /* @__PURE__ */ new Set();
       const push = (row4) => {
@@ -41101,7 +41424,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         kept = narrowByMeta(kept, filter, { days: f.days, now: nowMs2 });
       }
       const rows = sortRows(kept, sort).slice(0, lim).map(libraryCard);
-      return { rows, queries };
+      return { rows, queries, total: kept.length, more: kept.length > lim || candidates2.length >= cap4 };
     },
     // Rows with no search text: the pages a sort puts first (recently edited / created, oldest, title), with their numbers.
     // Reads one page-level query (titles and times, never blocks) and keeps `limit` rows.
@@ -41148,7 +41471,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const hit = key ? filterBrowseCache.get(key) : null;
       if (hit && now4 - hit.at < FILTER_BROWSE_TTL_MS) {
         queries.push({ name: "browse-cache", ms: 0 });
-        return { rows: hit.rows, queries, spec, defaulted: spec.defaulted };
+        return { rows: hit.rows, total: hit.total ?? hit.rows.length, more: hit.more === true, queries, spec, defaulted: spec.defaulted };
       }
       const pass = (rows2) => {
         let out = narrowLibrary(rows2, { types: spec.types });
@@ -41196,7 +41519,8 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
         const edited = plan?.time === "edited";
         const wantBoard = spec.types.length === 0 || spec.types.includes("board");
         const pullMany2 = (eids) => typeof data.pull_many === "function" ? data.pull_many(BROWSE_PULL, eids) : eids.map((e2) => rawPull(BROWSE_PULL, e2));
-        for (let i = 0; i < order.length && i < BROWSE_SCAN && kept.length < BROWSE_ROWS; i += BROWSE_CHUNK) {
+        const keepMax = Math.max(BROWSE_ROWS, lim);
+        for (let i = 0; i < order.length && i < BROWSE_SCAN && kept.length < keepMax; i += BROWSE_CHUNK) {
           const chunk = order.slice(i, Math.min(i + BROWSE_CHUNK, BROWSE_SCAN));
           const nodes = timed("browse-pull", () => pullMany2(chunk.map((o) => o.eid)) || []);
           const rows2 = [];
@@ -41223,7 +41547,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
             rows2.push({ ...base, kind: "block", string, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
           });
           for (const row4 of pass(rows2)) {
-            if (kept.length < BROWSE_ROWS) kept.push(row4);
+            if (kept.length < keepMax) kept.push(row4);
           }
         }
       }
@@ -41244,10 +41568,10 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       const rows = top.map((r) => libraryCard(r));
       if (key) {
         filterBrowseCache.delete(key);
-        filterBrowseCache.set(key, { at: now4, rows });
+        filterBrowseCache.set(key, { at: now4, rows, total: kept.length, more: kept.length > lim || !pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim) });
         while (filterBrowseCache.size > FILTER_BROWSE_MAX) filterBrowseCache.delete(filterBrowseCache.keys().next().value);
       }
-      return { rows, queries, spec, defaulted: spec.defaulted };
+      return { rows, total: kept.length, more: kept.length > lim || !pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim), queries, spec, defaulted: spec.defaulted };
     },
     // Parsed PDFs / PDFs with highlights over rows another search found (keyword rows, Meaning rows). Non-PDF rows go.
     pdfFilter(rows, { parsed = false, highlights = false, parsedUrls = null } = {}) {
@@ -42393,7 +42717,7 @@ function unknownKeys(plexus, known2) {
   for (const [k, v] of Object.entries(plexus ?? {})) if (!known2.includes(k)) out[k] = v;
   return out;
 }
-function createSession(uid, { host, settings = null, virtual = false, raf: raf2, now: now4 = Date.now, idle, linkDelay = 1500, graceMs = 800, confirmBulk = null } = {}) {
+function createSession(uid, { host, settings = null, virtual = false, raf: raf2, now: now4 = Date.now, idle, linkDelay = 1500, graceMs = 800, confirmBulk = null, syncHold = null } = {}) {
   const schedule = raf2 ?? ((fn) => {
     if (typeof globalThis.requestAnimationFrame === "function") return globalThis.requestAnimationFrame(fn);
     const t = setTimeout(fn, 0);
@@ -42600,14 +42924,25 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     queueMicrotask(() => {
       dropQueued = false;
       if (destroyed || !board2) return;
+      let unconfirmed = false;
+      for (const id of [...lost]) {
+        if (host.blockExists?.(id) === true) {
+          lost.delete(id);
+          unconfirmed = true;
+        }
+      }
       const still = victims.filter((id) => {
         const edge = board2.edges.get(id);
         return edge && (lost.has(edge.from) || lost.has(edge.to));
       });
-      if (!still.length) return;
-      txn((t) => {
+      if (!still.length) {
+        if (unconfirmed) repull();
+        return;
+      }
+      const dropped = txn((t) => {
         for (const id of still) if (board2.edges.has(id)) t.del(id);
       });
+      if (unconfirmed) dropped.then(() => repull());
     });
   }
   const publish = () => {
@@ -42956,10 +43291,32 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     throw last;
   }
-  async function execute(list) {
+  const holder = syncHold || (typeof document === "undefined" ? null : createSyncHold());
+  async function execute(list, { hold = false, suspend = false } = {}) {
     let i = 0;
+    let budget = SYNC_HOLD_CAP_MS;
     try {
       for (; i < list.length; i++) {
+        if (hold && holder && budget > 0 && i > 0 && i % SYNC_HOLD_BATCH === 0 && list.length > SYNC_HOLD_BATCH) {
+          let held = false;
+          let resume = null;
+          try {
+            const out = await holder.wait({
+              capMs: budget,
+              abort: () => destroyed,
+              keepGuard: true,
+              onHold: () => {
+                held = true;
+                setSyncState("held");
+                if (suspend) resume = host.suspendGroup?.() ?? null;
+              }
+            });
+            if (out && Number.isFinite(out.waited)) budget -= out.waited;
+          } catch {
+          }
+          if (resume) resume();
+          if (held) setSyncState("writing");
+        }
         await runOpWithRetry(list[i]);
         settleOp(list[i]);
       }
@@ -42967,6 +43324,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     } catch (err) {
       for (let j = i; j < list.length; j++) settleOp(list[j]);
       throw err;
+    } finally {
+      holder?.release?.();
     }
   }
   function coalesce(ops) {
@@ -43090,9 +43449,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish();
     if (custom) custom.forward = list;
-    return queue.run(() => grouped(() => {
+    return queue.run(() => grouped(async () => {
       if (custom) host.setCustomUndo?.(custom);
-      return execute(list);
+      try {
+        return await execute(list, { hold: true, suspend: !custom });
+      } catch (err) {
+        if (custom) host.setCustomUndo?.(null);
+        throw err;
+      }
     })).then(() => result, (err) => {
       handleFailure(err);
       return result;
@@ -43381,7 +43745,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       for (const m of board2.items.get(sid).members) {
         if (grown.has(m)) continue;
         const mr = rects.get(m);
-        t.props(m, itemPlexus(m, { x: round14(mr.x - r.x), y: round14(mr.y - r.y) }));
+        const nx = round14(mr.x - r.x);
+        const ny = round14(mr.y - r.y);
+        const stored = rawPlexus(m);
+        if (stored.x === nx && stored.y === ny) continue;
+        t.props(m, itemPlexus(m, { x: nx, y: ny }));
       }
     }
   }
@@ -43557,8 +43925,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     finishLinks();
   }
-  function cancelScheduledLinks() {
+  let linkChain = null;
+  function cancelScheduledLinks(keepChain = false) {
     linkEpoch += 1;
+    if (!keepChain) linkChain = null;
     if (linkTimer) clearTimeout(linkTimer);
     linkTimer = null;
     if (linkIdleId != null) {
@@ -43570,17 +43940,30 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
   }
   function scheduleLinks() {
-    cancelScheduledLinks();
-    const epoch = linkEpoch;
+    cancelScheduledLinks(true);
     const ric = globalThis.requestIdleCallback;
     const raf3 = globalThis.requestAnimationFrame;
     if (linkDelay !== 0 && !idle && typeof ric === "function" && typeof raf3 === "function") {
+      if (linkChain) {
+        linkChain.epoch = linkEpoch;
+        return;
+      }
+      const chain = { epoch: linkEpoch };
+      linkChain = chain;
+      const live2 = () => linkChain === chain && chain.epoch === linkEpoch && !destroyed;
       raf3(() => {
-        if (epoch !== linkEpoch || destroyed) return;
+        if (!live2()) {
+          if (linkChain === chain) linkChain = null;
+          return;
+        }
         raf3(() => {
-          if (epoch !== linkEpoch || destroyed) return;
+          if (!live2()) {
+            if (linkChain === chain) linkChain = null;
+            return;
+          }
+          linkChain = null;
           linkIdleId = ric(() => {
-            if (epoch !== linkEpoch) return;
+            if (chain.epoch !== linkEpoch) return;
             linkIdleId = null;
             runLinks();
           }, { timeout: 1e3 });
@@ -43588,6 +43971,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       });
       return;
     }
+    linkChain = null;
+    const epoch = linkEpoch;
     linkTimer = setTimeout(() => {
       if (epoch !== linkEpoch) return;
       linkTimer = null;
@@ -44478,6 +44863,53 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return txn((t) => {
         if (board2.items.has(id)) t.props(id, itemPlexus(id, { collapsed: value ? true : void 0 }));
       });
+    },
+    // "Fold sections in the outline" / "Unfold sections": Roam's :block/open on SECTION blocks only. A page or board
+    // card folded in Roam blanks its body (cards.js), and a card's own children are its contents. Gated on the
+    // collapse-outline setting. `fold` false lists the folded sections for unfolding.
+    sectionFoldPlan(fold = true) {
+      const plan = { boardUid: uid, fold: fold !== false, uids: [] };
+      if (!board2 || destroyed || gone) return plan;
+      if (!collapseOutline()) return { ...plan, refused: "setting" };
+      for (const item of board2.items.values()) {
+        if (item.type !== "section") continue;
+        const node2 = rawNode(item.uid);
+        if (!node2) continue;
+        const isOpen = node2[OPEN] !== false;
+        if (plan.fold === isOpen) plan.uids.push(item.uid);
+      }
+      return plan;
+    },
+    // Applies a sectionFoldPlan. Sections that no longer need the change are skipped. One custom undo entry; the
+    // writes go through commit(), so a long list pauses between batches while Roam's sync dot says saving.
+    async foldSections(plan) {
+      const none = { changed: 0 };
+      if (!plan || plan.boardUid !== uid || !board2 || destroyed || gone) return { ...none, refused: "board" };
+      if (!collapseOutline()) return { ...none, refused: "setting" };
+      const open = plan.fold === false;
+      const ops = [];
+      const back = [];
+      for (const id of plan.uids || []) {
+        const item = board2.items.get(id);
+        const node2 = rawNode(id);
+        if (item?.type !== "section" || !node2) continue;
+        if (node2[OPEN] !== false === open) continue;
+        ops.push({ op: "open", uid: id, open });
+        back.push({ op: "open", uid: id, open: !open });
+        node2[OPEN] = open;
+      }
+      if (!ops.length) return none;
+      const custom = {
+        forward: ops,
+        async undo() {
+          await execute(back);
+        },
+        async redo() {
+          await execute(custom.forward);
+        }
+      };
+      await commit(ops, void 0, custom);
+      return { changed: ops.length };
     },
     // Roam :block/open on the card block only. Fold stays on plexus collapsed.
     setBlockOpen(id, open) {
@@ -46338,6 +46770,10 @@ function createLifecycle() {
   let disposed = false;
   let idlePending = 0;
   const disposers = [];
+  const forget = (disposer) => {
+    const at = disposers.lastIndexOf(disposer);
+    if (at >= 0) disposers.splice(at, 1);
+  };
   const add = (disposer) => {
     if (typeof disposer !== "function") throw new TypeError("A disposer must be a function");
     if (disposed) {
@@ -46364,15 +46800,20 @@ function createLifecycle() {
       add(() => target.removeEventListener(type, listener, options));
       return listener;
     },
-    interval(callback, delay, ...args) {
+    interval(callback, delay2, ...args) {
       const guarded = guardCallback("interval", callback);
-      const id = globalThis.setInterval(guarded, delay, ...args);
+      const id = globalThis.setInterval(guarded, delay2, ...args);
       add(() => globalThis.clearInterval(id));
       return id;
     },
-    timeout(callback, delay, ...args) {
-      const id = globalThis.setTimeout(callback, delay, ...args);
-      add(() => globalThis.clearTimeout(id));
+    timeout(callback, delay2, ...args) {
+      let disposer = null;
+      const id = globalThis.setTimeout((...fired) => {
+        forget(disposer);
+        return callback(...fired);
+      }, delay2, ...args);
+      disposer = () => globalThis.clearTimeout(id);
+      add(disposer);
       return id;
     },
     // POL-3. One idle callback, dropped on dispose before it runs.
@@ -46385,31 +46826,38 @@ function createLifecycle() {
         idlePending -= 1;
       };
       idlePending += 1;
+      let disposer = null;
       const fire2 = (deadline) => {
         if (!open) return;
         close();
+        forget(disposer);
         if (disposed) return;
         guarded(deadline);
       };
       if (typeof globalThis.requestIdleCallback === "function") {
         const id2 = globalThis.requestIdleCallback(fire2, { timeout });
-        add(() => {
+        disposer = () => {
           globalThis.cancelIdleCallback?.(id2);
           close();
-        });
+        };
+        add(disposer);
         return id2;
       }
       const id = globalThis.setTimeout(() => {
         fire2({ didTimeout: true, timeRemaining: () => 0 });
       }, timeout);
-      add(() => {
+      disposer = () => {
         globalThis.clearTimeout(id);
         close();
-      });
+      };
+      add(disposer);
       return id;
     },
     pending() {
       return idlePending;
+    },
+    size() {
+      return disposers.length;
     },
     observer(observer, target, options) {
       if (observer && typeof observer.callback === "function") observer.callback = guardCallback("observer", observer.callback);
@@ -47027,7 +47475,7 @@ init_title_cap();
 
 // src/view/sharp-store.js
 var REVOKE_DELAY_MS = 4e3;
-function createSharpStore({ revoke, later, delay = REVOKE_DELAY_MS } = {}) {
+function createSharpStore({ revoke, later, delay: delay2 = REVOKE_DELAY_MS } = {}) {
   const faces = /* @__PURE__ */ new Map();
   const gens = /* @__PURE__ */ new Map();
   const pending = /* @__PURE__ */ new Set();
@@ -47045,7 +47493,7 @@ function createSharpStore({ revoke, later, delay = REVOKE_DELAY_MS } = {}) {
     entry.off = later(() => {
       pending.delete(entry);
       free(src);
-    }, delay);
+    }, delay2);
     pending.add(entry);
   };
   return {
@@ -47574,7 +48022,6 @@ function titleOf2(raw) {
 function createCoverStore({ indexedDB, storage } = {}) {
   const factory = indexedDB || null;
   const ls = storage || null;
-  let dbPromise = null;
   let idbDead = !factory;
   let book = null;
   const loadBook = () => {
@@ -47619,50 +48066,48 @@ function createCoverStore({ indexedDB, storage } = {}) {
   };
   const open = () => {
     if (idbDead) return Promise.resolve(null);
-    if (!dbPromise) {
-      dbPromise = openDb2(factory).then((db) => {
-        if (!db) {
-          idbDead = true;
-          dbPromise = null;
-        }
-        return db;
-      });
-    }
-    return dbPromise;
+    return openDb2(factory).then((db) => {
+      if (!db) idbDead = true;
+      return db;
+    });
   };
   const run = async (mode, fn) => {
     if (idbDead) return { ok: false, result: null };
-    try {
-      const db = await open();
-      if (!db || typeof db.transaction !== "function") {
-        idbDead = true;
-        return { ok: false, result: null };
-      }
-      let tx = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
       let store = null;
       try {
-        tx = db.transaction(COVER_STORE, mode);
-        store = tx.objectStore(COVER_STORE);
+        const db = await open();
+        if (!db || typeof db.transaction !== "function") {
+          idbDead = true;
+          return { ok: false, result: null };
+        }
+        let tx = null;
+        try {
+          tx = db.transaction(COVER_STORE, mode);
+          store = tx.objectStore(COVER_STORE);
+        } catch {
+          forgetDiagramDb(factory);
+          continue;
+        }
+        try {
+          tx.onerror = (event) => {
+            try {
+              event?.preventDefault?.();
+            } catch {
+            }
+          };
+          tx.onabort = () => {
+          };
+        } catch {
+        }
+        return await fn(store);
       } catch {
         idbDead = true;
         return { ok: false, result: null };
       }
-      try {
-        tx.onerror = (event) => {
-          try {
-            event?.preventDefault?.();
-          } catch {
-          }
-        };
-        tx.onabort = () => {
-        };
-      } catch {
-      }
-      return await fn(store);
-    } catch {
-      idbDead = true;
-      return { ok: false, result: null };
     }
+    idbDead = true;
+    return { ok: false, result: null };
   };
   const idbGet = (url) => withCap(
     () => run("readonly", (store) => requestResult2(store.get(url))),
@@ -49152,7 +49597,7 @@ init_tasks();
 var CHECKBOX = ".check-container input, .rm-checkbox input";
 var FIND_MS = 2500;
 var DONE_MS = 3e3;
-var POLL_MS = 40;
+var POLL_MS2 = 40;
 var GRACE_MS = 400;
 function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win: win2 = doc?.defaultView || globalThis } = {}) {
   const busy = /* @__PURE__ */ new Map();
@@ -49163,7 +49608,7 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
       const hit = probe();
       if (hit) return hit;
       if (Date.now() >= end) return null;
-      await wait2(POLL_MS);
+      await wait2(POLL_MS2);
     }
   };
   const fire2 = (target, type) => {
@@ -50161,6 +50606,8 @@ var TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row4) => row4.letter).map((
 var TOOLS = ["select", "hand", "card", "task", "text", "sticky", "shape", "section", "board", "table", "connect"];
 var SHAPE_PLACE = { w: 160, h: 100 };
 var DRAG_THRESHOLD_PX = 4;
+var NUDGE_IDLE_MS = 250;
+var ARROW_KEYS = /* @__PURE__ */ new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
 var REGION_HINT = "⌥ to mark a region · P switches pen";
 var REGION_BOX_HINT = "Drag a box on the image · P switches to pen · Esc cancels";
 var REGION_PEN_HINT = "Draw around the region · P switches to box · Esc cancels";
@@ -50209,6 +50656,7 @@ function createInteractions({ actions, settings } = {}) {
     return v === void 0 || v === null ? def : v;
   };
   const state = {
+    nudge: null,
     tool: "select",
     locked: false,
     selection: /* @__PURE__ */ new Set(),
@@ -50315,6 +50763,14 @@ function createInteractions({ actions, settings } = {}) {
     const g = state.gesture;
     call("setViewport", pinchViewport(g.vp0, { dist0: g.dist0, mid0: g.mid0, dist: pair2.dist, mid: pair2.mid }));
   };
+  function flushNudge() {
+    const pending = state.nudge;
+    if (!pending) return;
+    state.nudge = null;
+    if (pending.timer != null) clearTimeout(pending.timer);
+    if (pending.dx || pending.dy) call("commitMove", pending.uids, pending.dx, pending.dy);
+    call("cancelPreview");
+  }
   const begin = (g) => {
     state.gesture = { moved: false, ...g };
     call("setGesturing", true);
@@ -51325,7 +51781,20 @@ function createInteractions({ actions, settings } = {}) {
         const dx = key === "ArrowLeft" ? -step : key === "ArrowRight" ? step : 0;
         const dy = key === "ArrowUp" ? -step : key === "ArrowDown" ? step : 0;
         const uids = movingSet();
-        if (uids.length) call("commitMove", uids, dx, dy);
+        if (!uids.length) return true;
+        if (ev.repeat !== true) {
+          flushNudge();
+          call("commitMove", uids, dx, dy);
+          return true;
+        }
+        const same2 = state.nudge && state.nudge.uids.length === uids.length && state.nudge.uids.every((u, i) => u === uids[i]);
+        if (!same2) flushNudge();
+        if (!state.nudge) state.nudge = { uids, dx: 0, dy: 0, timer: null };
+        state.nudge.dx += dx;
+        state.nudge.dy += dy;
+        call("previewMove", uids, state.nudge.dx, state.nudge.dy);
+        if (state.nudge.timer != null) clearTimeout(state.nudge.timer);
+        state.nudge.timer = setTimeout(flushNudge, NUDGE_IDLE_MS);
         return true;
       }
       case "outline":
@@ -51395,6 +51864,7 @@ function createInteractions({ actions, settings } = {}) {
     return runShortcut(row4, ev);
   };
   const onKeyUp = (ev) => {
+    if (ARROW_KEYS.has(ev.key)) flushNudge();
     if (ev.code === "Space" || ev.key === " ") {
       if (state.space) {
         state.space = false;
@@ -51405,6 +51875,7 @@ function createInteractions({ actions, settings } = {}) {
     return false;
   };
   const handle = (ev) => {
+    if (state.nudge && ev?.type !== "keyup" && ev?.type !== "pointermove" && !(ev?.type === "keydown" && ARROW_KEYS.has(ev.key))) flushNudge();
     switch (ev?.type) {
       case "pointerdown":
         return onPointerDown(ev);
@@ -51444,7 +51915,10 @@ function createInteractions({ actions, settings } = {}) {
     isGesturing: () => Boolean(state.gesture),
     gestureKind: () => state.gesture?.kind ?? null,
     gestureMoved: () => Boolean(state.gesture?.moved),
+    // Writes a held-arrow nudge now: undo, redo and commands that do not come through handle() call it first.
+    flush: flushNudge,
     cancel: () => {
+      flushNudge();
       cancelOpen();
       endWheelZoom();
       onPointerCancel();
@@ -60008,13 +60482,13 @@ async function relayParse({ fetch: fetch2, transport, bytes, apiKey, region, tie
     });
   };
   signal?.addEventListener?.("abort", cancelRemote, { once: true });
-  let delay = 1e3;
+  let delay2 = 1e3;
   let status = startBody?.status || startBody?.job?.status || "PENDING";
   while (status !== "COMPLETED" && status !== "FAILED" && status !== "CANCELLED") {
     if (signal?.aborted) throw fail2("cancelled", "cancelled", 499);
     if (clock() >= deadline) throw fail2("timeout", "LlamaParse timed out", 504);
-    await pause(delay, signal);
-    delay = Math.min(delay * 2, 8e3);
+    await pause(delay2, signal);
+    delay2 = Math.min(delay2 * 2, 8e3);
     if (clock() >= deadline) throw fail2("timeout", "LlamaParse timed out", 504);
     const polled = await fetch2(`${transport.url}/api/v2/parse/${encodeURIComponent(jobId)}`, { headers, signal });
     const body = await polled.json().catch(() => null);
@@ -76285,9 +76759,33 @@ var NOTE_KINDS = ["note", "block", "page"];
 function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {}, crumbs = [] } = {}) {
   const setting = (k) => typeof settings?.get === "function" ? settings.get(k) : settings?.[k];
   const listeners3 = [];
+  let listenCap = 256;
   const listen = (el3, type, fn, opts) => {
     el3.addEventListener(type, fn, opts);
-    listeners3.push(() => el3.removeEventListener(type, fn, opts));
+    const off = () => el3.removeEventListener(type, fn, opts);
+    off.el = el3;
+    off.seen = el3.isConnected !== false;
+    off.misses = 0;
+    listeners3.push(off);
+    if (listeners3.length <= listenCap) return;
+    const keep = [];
+    for (const entry of listeners3) {
+      if (!entry.el) {
+        keep.push(entry);
+        continue;
+      }
+      if (entry.el.isConnected !== false || root?.contains?.(entry.el)) {
+        entry.seen = true;
+        entry.misses = 0;
+        keep.push(entry);
+        continue;
+      }
+      if (entry.seen || (entry.misses += 1) >= 2) entry();
+      else keep.push(entry);
+    }
+    listeners3.length = 0;
+    listeners3.push(...keep);
+    listenCap = Math.max(256, listeners3.length * 2);
   };
   const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
@@ -76817,9 +77315,9 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     },
     setSync(pending) {
       const name = pending === true ? "writing" : pending === false || pending == null ? "idle" : pending;
-      const titles = { idle: "Synced", writing: "Saving…", retrying: "Retrying…", failed: "Couldn't save" };
+      const titles = { idle: "Synced", writing: "Saving…", held: "Waiting for Roam…", retrying: "Retrying…", failed: "Couldn't save" };
       const state = titles[name] ? name : "idle";
-      sync.classList.remove("pxd-sync--pending", "pxd-sync--writing", "pxd-sync--retrying", "pxd-sync--failed");
+      sync.classList.remove("pxd-sync--pending", "pxd-sync--writing", "pxd-sync--held", "pxd-sync--retrying", "pxd-sync--failed");
       if (state === "writing") sync.classList.add("pxd-sync--pending", "pxd-sync--writing");
       else if (state !== "idle") sync.classList.add(`pxd-sync--${state}`);
       sync.setAttribute("data-tip-state", state);
@@ -78930,9 +79428,11 @@ var DASH_LABELS = [["solid", "Solid"], ["dashed", "Dashed"], ["animated", "Anima
 var ROUTE_LABELS = [["straight", "Straight"], ["elbow", "Smooth step"], ["curve", "Curve"]];
 function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } = {}) {
   const listeners3 = [];
+  const bodyOffs = [];
+  let sink = listeners3;
   const listen = (el3, type, fn) => {
     el3.addEventListener(type, fn);
-    listeners3.push(() => el3.removeEventListener(type, fn));
+    sink.push(() => el3.removeEventListener(type, fn));
   };
   const el2 = (tag, cls, parent, text4) => {
     const node2 = doc.createElement(tag);
@@ -79151,21 +79651,27 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     last = state || last;
     const active2 = doc.activeElement;
     if (active2 && panel.contains(active2) && String(active2.tagName).toLowerCase() === "input") return;
+    bodyOffs.splice(0).forEach((off) => off());
     body.replaceChildren();
     const items = (last?.items || []).filter(Boolean);
     const edge = last?.edge || null;
     const board2 = last?.board;
-    if (edge) edgeGroup(edge);
-    else {
-      const blocksItems = items.filter((it) => it.type === "card" || it.type === "text");
-      const sections = items.filter((it) => it.type === "section");
-      if (blocksItems.length) blocks(blocksItems);
-      if (sections.length) {
-        sectionGroup(sections, "Group", "group", (patch) => on.setSectionStyle?.(patch), "Reset", () => on.resetSections?.());
+    sink = bodyOffs;
+    try {
+      if (edge) edgeGroup(edge);
+      else {
+        const blocksItems = items.filter((it) => it.type === "card" || it.type === "text");
+        const sections = items.filter((it) => it.type === "section");
+        if (blocksItems.length) blocks(blocksItems);
+        if (sections.length) {
+          sectionGroup(sections, "Group", "group", (patch) => on.setSectionStyle?.(patch), "Reset", () => on.resetSections?.());
+        }
+        if (!blocksItems.length && !sections.length) defaultsGroup(board2);
       }
-      if (!blocksItems.length && !sections.length) defaultsGroup(board2);
+      diagram(board2);
+    } finally {
+      sink = listeners3;
     }
-    diagram(board2);
     place3();
   };
   paintCollapsed();
@@ -79177,6 +79683,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     isCollapsed: () => collapsed,
     dispose() {
       listeners3.splice(0).forEach((off) => off());
+      bodyOffs.splice(0).forEach((off) => off());
       resize?.disconnect();
       resize = null;
       observed = null;
@@ -85633,7 +86140,11 @@ function buildBoardView(onFail, {
       return fn(event);
     };
     el3.addEventListener(type, wrapped, opts);
-    const off = () => el3.removeEventListener(type, wrapped, opts);
+    const off = () => {
+      el3.removeEventListener(type, wrapped, opts);
+      const at = listeners3.lastIndexOf(off);
+      if (at >= 0) listeners3.splice(at, 1);
+    };
     listeners3.push(off);
     return off;
   };
@@ -87130,12 +87641,16 @@ function buildBoardView(onFail, {
     });
   };
   let pdfPagesDialog = null;
+  let pdfPagesPending = null;
   const closePdfPagesDialog = () => {
     try {
       pdfPagesDialog?.close?.();
     } catch {
     }
     pdfPagesDialog = null;
+    const settle3 = pdfPagesPending;
+    pdfPagesPending = null;
+    settle3?.(null);
   };
   const planPdfPages = async () => {
     const b = board2();
@@ -87195,10 +87710,12 @@ function buildBoardView(onFail, {
       return { moved: 0 };
     }
     return new Promise((resolve) => {
+      pdfPagesPending = resolve;
       pdfPagesDialog = openPdfPagesDialog(doc, {
         count: plan.moves.length,
         lines: migrationLines(plan),
         onApply: () => {
+          pdfPagesPending = null;
           closePdfPagesDialog();
           Promise.resolve(session.movePdfsToPages(plan)).then((res) => {
             if (disposed) return resolve(res);
@@ -87245,6 +87762,7 @@ function buildBoardView(onFail, {
     }
     const n3 = plan.folds.length;
     return new Promise((resolve) => {
+      pdfPagesPending = resolve;
       pdfPagesDialog = openPdfPagesDialog(doc, {
         count: n3,
         lines: tableCaptionLines(plan),
@@ -87252,6 +87770,7 @@ function buildBoardView(onFail, {
         headText: `Fold ${n3} ${n3 === 1 ? "table" : "tables"} on this board under ${n3 === 1 ? "a caption" : "captions"}? Each card becomes a one-line caption with the table folded under it, so the outline stops drawing every row.`,
         applyText: "Fold",
         onApply: () => {
+          pdfPagesPending = null;
           closePdfPagesDialog();
           Promise.resolve(session.foldTableCaptions(plan)).then((res) => {
             if (disposed) return resolve(res);
@@ -87260,6 +87779,58 @@ function buildBoardView(onFail, {
             resolve(res);
           }, () => {
             if (!disposed) toast("Couldn't fold the tables");
+            resolve(null);
+          });
+        },
+        onCancel: () => {
+          closePdfPagesDialog();
+          resolve(null);
+        }
+      });
+      root.append(pdfPagesDialog.el);
+      pdfPagesDialog.focus?.();
+    });
+  };
+  const foldSections = async (fold = true) => {
+    if (disposed) return null;
+    closePdfPagesDialog();
+    if (typeof session.sectionFoldPlan !== "function" || typeof session.foldSections !== "function") {
+      toast("Folding sections is not available here");
+      return null;
+    }
+    const plan = session.sectionFoldPlan(fold);
+    if (plan.refused === "setting") {
+      toast('Turn on "Collapse outline" in the Plexus settings to fold sections');
+      return { changed: 0, refused: "setting" };
+    }
+    if (!plan.uids.length) {
+      toast(plan.fold ? "Every section on this board is already folded" : "No section on this board is folded");
+      return { changed: 0 };
+    }
+    const n3 = plan.uids.length;
+    const noun = n3 === 1 ? "section" : "sections";
+    const b = board2();
+    const titles = plan.uids.map((id) => b?.items.get(id)?.title || "Untitled section");
+    const lines = titles.slice(0, 12);
+    if (titles.length > lines.length) lines.push(`and ${titles.length - lines.length} more`);
+    return new Promise((resolve) => {
+      pdfPagesPending = resolve;
+      pdfPagesDialog = openPdfPagesDialog(doc, {
+        count: n3,
+        lines,
+        label: plan.fold ? "Fold sections in the outline" : "Unfold sections",
+        headText: plan.fold ? `Fold ${n3} ${noun} in the Roam outline? Cards, pages and boards keep their contents; only the section rows collapse.` : `Unfold ${n3} ${noun} in the Roam outline?`,
+        applyText: plan.fold ? "Fold" : "Unfold",
+        onApply: () => {
+          pdfPagesPending = null;
+          closePdfPagesDialog();
+          Promise.resolve(session.foldSections(plan)).then((res) => {
+            if (disposed) return resolve(res);
+            if (res?.refused) toast("This board changed. Run the command again");
+            else if (res?.changed) toast(`${plan.fold ? "Folded" : "Unfolded"} ${res.changed} ${res.changed === 1 ? "section" : "sections"}`, true);
+            resolve(res);
+          }, () => {
+            if (!disposed) toast("Couldn't change the sections");
             resolve(null);
           });
         },
@@ -89189,7 +89760,10 @@ function buildBoardView(onFail, {
     }
     return false;
   };
-  const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => session.undo?.() } : void 0 });
+  const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => {
+    ctl.flush?.();
+    session.undo?.();
+  } } : void 0 });
   const pairKey2 = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
   const closeLinksMenu = () => {
     const menu2 = linksMenu;
@@ -90145,6 +90719,7 @@ function buildBoardView(onFail, {
   const onMenuPick = (id) => {
     const b = board2();
     if (!b || disposed) return;
+    ctl.flush?.();
     const mc = menuCtx || { kind: "canvas", uid: null, world: viewCenterWorld(), selection: [] };
     const world2 = mc.world || viewCenterWorld();
     const uids = mc.kind === "multi" ? selection.items.slice() : mc.uid && b.items.has(mc.uid) ? [mc.uid] : selection.items.slice();
@@ -92607,10 +93182,16 @@ ${url}`;
     }
   };
   let tabStrip = null;
+  let tabStripOff = null;
+  const dropTabStrip = () => {
+    tabStrip?.remove();
+    tabStrip = null;
+    tabStripOff?.();
+    tabStripOff = null;
+  };
   const paintTabStrip = (tabs, current3) => {
     if (!isFullscreen || !Array.isArray(tabs) || tabs.length < 2) {
-      tabStrip?.remove();
-      tabStrip = null;
+      dropTabStrip();
       root.classList.remove("pxd-root--fstabs");
       root.style.setProperty("--pxd-tabs-h", "0px");
       return;
@@ -92618,10 +93199,11 @@ ${url}`;
     root.classList.add("pxd-root--fstabs");
     if (!tabStrip || !root.contains(tabStrip)) {
       for (const stray of root.querySelectorAll?.(".pxd-fstabs") || []) if (stray.parentElement === root) stray.remove();
+      tabStripOff?.();
       tabStrip = el2("div", "pxd-fstabs pxd-chrome");
       tabStrip.setAttribute("role", "tablist");
       tabStrip.setAttribute("aria-label", "Boards");
-      listen(tabStrip, "click", (event) => {
+      tabStripOff = listen(tabStrip, "click", (event) => {
         event.preventDefault?.();
         event.stopPropagation();
         const closer = event.target?.closest?.(".pxd-fstab__x");
@@ -93226,8 +93808,14 @@ ${url}`;
       return regionUid;
     },
     connectHint: (text4, screen) => showConnectHint(text4, screen),
-    undo: () => session.undo?.(),
-    redo: () => session.redo?.(),
+    undo: () => {
+      ctl.flush?.();
+      return session.undo?.();
+    },
+    redo: () => {
+      ctl.flush?.();
+      return session.redo?.();
+    },
     enterEdit: (uid, opts) => enterEdit(uid, opts),
     openPage: (uid, { sidebar = false } = {}) => {
       const item = board2()?.items.get(uid);
@@ -95582,6 +96170,9 @@ ${url}`;
     foldTableCaptions() {
       return foldTableCaptions();
     },
+    foldSections(fold = true) {
+      return foldSections(fold);
+    },
     newDrawing(at = null) {
       const d = DEFAULT_SIZES.card;
       const world2 = at || { x: 80, y: 80 };
@@ -95646,8 +96237,7 @@ ${url}`;
       };
       step(() => perfLog?.cancelPan?.());
       step(() => {
-        tabStrip?.remove();
-        tabStrip = null;
+        dropTabStrip();
         root.classList.remove("pxd-root--fstabs");
       });
       step(() => closeLinksMenu());
@@ -95763,6 +96353,11 @@ ${url}`;
         cardMotion?.dispose();
         cardMotion = null;
       });
+      step(() => {
+        pdfFlip?.destroy?.();
+        pdfFlip = null;
+      });
+      step(() => pdfWarm?.cancelAll?.());
       step(() => itemsR.dispose());
       step(() => edgesR.dispose());
       step(() => {
@@ -97668,6 +98263,8 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
       return;
     }
     if (node2.closest?.(OWN)) return;
+    for (const chip of [...chips]) if (chip.isConnected === false) chips.delete(chip);
+    for (const row4 of [...rows]) if (row4.isConnected === false) rows.delete(row4);
     const memo = /* @__PURE__ */ new Map();
     const list = containersOf(node2);
     const end = Math.min(SCAN_CAP, list.length);
@@ -97906,6 +98503,103 @@ init_region_crop();
 init_avoid();
 init_minimap_svg();
 init_board();
+
+// src/host/doc-cache.js
+function createDocCache({ cap: cap4 = 4 } = {}) {
+  const entries = /* @__PURE__ */ new Map();
+  const destroy = (doc) => {
+    try {
+      doc?.destroy?.();
+    } catch {
+    }
+  };
+  const discard = (entry) => {
+    entry.out = true;
+    if (entry.users > 0) return;
+    if (entry.doc) destroy(entry.doc);
+    else entry.promise.then(destroy, () => {
+    });
+  };
+  const trim = () => {
+    while (entries.size > cap4) {
+      const [oldest] = entries.keys();
+      const entry = entries.get(oldest);
+      entries.delete(oldest);
+      discard(entry);
+    }
+  };
+  const touch = (key, entry) => {
+    entries.delete(key);
+    entries.set(key, entry);
+  };
+  return {
+    get(key) {
+      const entry = entries.get(key);
+      if (entry === void 0 || !entry.doc) return void 0;
+      touch(key, entry);
+      return entry.doc;
+    },
+    set(key, doc) {
+      const old = entries.get(key);
+      if (old && old.doc === doc) {
+        touch(key, old);
+        return;
+      }
+      if (old) {
+        entries.delete(key);
+        discard(old);
+      }
+      entries.set(key, { promise: Promise.resolve(doc), doc, users: 0, out: false });
+      trim();
+    },
+    // load() opens the document (a promise of it, or null). Returns { doc, release() }, or null when it could not open.
+    async acquire(key, load) {
+      let entry = entries.get(key);
+      if (entry) touch(key, entry);
+      else {
+        entry = { promise: null, doc: null, users: 0, out: false };
+        const mine = entry;
+        mine.promise = (async () => load())().then((doc2) => {
+          mine.doc = doc2 || null;
+          if (!doc2 && entries.get(key) === mine) entries.delete(key);
+          return mine.doc;
+        }, () => {
+          if (entries.get(key) === mine) entries.delete(key);
+          return null;
+        });
+        entries.set(key, mine);
+        trim();
+      }
+      entry.users += 1;
+      const held = entry;
+      const doc = await held.promise;
+      if (!doc) {
+        held.users -= 1;
+        return null;
+      }
+      let released = false;
+      return {
+        doc,
+        release() {
+          if (released) return;
+          released = true;
+          held.users -= 1;
+          if (held.out && held.users === 0) destroy(held.doc);
+        }
+      };
+    },
+    clear() {
+      for (const entry of entries.values()) {
+        entry.out = true;
+        if (entry.doc) destroy(entry.doc);
+        else entry.promise.then(destroy, () => {
+        });
+      }
+      entries.clear();
+    },
+    size: () => entries.size
+  };
+}
 
 // src/host/pdf-tables.js
 init_parse_hash();
@@ -99070,7 +99764,7 @@ async function installPlexusDiagram({
     return { title, section: section2, svg };
   }
   const regionCrops = /* @__PURE__ */ new Map();
-  const pinPdfDocs = /* @__PURE__ */ new Map();
+  const pinPdfDocs = createDocCache();
   let pendingPin = null;
   const showStash = createShowStash();
   let showWhere = "main";
@@ -99092,6 +99786,8 @@ async function installPlexusDiagram({
     for (const drop of [...regionCrops.values()]) drop();
     regionCrops.clear();
     pinPdfDocs.clear();
+    closeDiagramDb(win2.indexedDB ?? globalThis.indexedDB);
+    viewBoards.clear();
     pendingPin = null;
     resetCropUrls();
   });
@@ -101516,7 +102212,11 @@ async function installPlexusDiagram({
     const id = region?.drawingUid;
     if (!id) return null;
     const hit = viewBoards.get(id);
-    if (hit && Date.now() - hit.at < VIEW_BOARD_TTL_MS) return hit.board;
+    if (hit && Date.now() - hit.at < VIEW_BOARD_TTL_MS) {
+      viewBoards.delete(id);
+      viewBoards.set(id, hit);
+      return hit.board;
+    }
     let session = null;
     let board2 = null;
     try {
@@ -101530,7 +102230,9 @@ async function installPlexusDiagram({
       } catch {
       }
     }
+    viewBoards.delete(id);
     viewBoards.set(id, { board: board2, at: Date.now() });
+    while (viewBoards.size > 12) viewBoards.delete(viewBoards.keys().next().value);
     return board2;
   }
   function popButton(parent, text4, shiftKey, onOpen) {
@@ -101681,31 +102383,34 @@ async function installPlexusDiagram({
     if (!safe || !Array.isArray(frac) || frac.length < 4) return "";
     const lib = (doc?.defaultView || globalThis).pdfjsLib;
     if (!lib || typeof lib.getDocument !== "function") return "";
-    let pdf = pinPdfDocs.get(safe);
-    if (!pdf) {
-      const task2 = lib.getDocument({ url: safe });
-      pdf = task2?.promise ? await task2.promise : await task2;
-      if (!pdf || typeof pdf.getPage !== "function") return "";
-      pinPdfDocs.set(safe, pdf);
+    const lease = await pinPdfDocs.acquire(safe, async () => {
+      const task = lib.getDocument({ url: safe });
+      const pdf = task?.promise ? await task.promise : await task;
+      return pdf && typeof pdf.getPage === "function" ? pdf : null;
+    });
+    if (!lease) return "";
+    try {
+      const pdfPage = await lease.doc.getPage(Number(page));
+      if (!pdfPage || typeof pdfPage.getViewport !== "function") return "";
+      const viewport2 = pdfPage.getViewport({ scale: 2 });
+      const vw = Number(viewport2?.width) || 0;
+      const vh = Number(viewport2?.height) || 0;
+      if (!(vw > 0) || !(vh > 0)) return "";
+      const left = frac[0] * vw;
+      const top = frac[1] * vh;
+      const width = Math.max(1, frac[2] * vw);
+      const height = Math.max(1, frac[3] * vh);
+      const canvas = doc.createElement("canvas");
+      canvas.width = Math.ceil(width);
+      canvas.height = Math.ceil(height);
+      const ctx = canvas.getContext?.("2d");
+      if (!ctx || typeof pdfPage.render !== "function") return "";
+      const task = pdfPage.render({ canvasContext: ctx, viewport: viewport2, transform: [1, 0, 0, 1, -left, -top] });
+      if (task?.promise) await task.promise;
+      return typeof canvas.toDataURL === "function" ? canvas.toDataURL("image/png") || "" : "";
+    } finally {
+      lease.release();
     }
-    const pdfPage = await pdf.getPage(Number(page));
-    if (!pdfPage || typeof pdfPage.getViewport !== "function") return "";
-    const viewport2 = pdfPage.getViewport({ scale: 2 });
-    const vw = Number(viewport2?.width) || 0;
-    const vh = Number(viewport2?.height) || 0;
-    if (!(vw > 0) || !(vh > 0)) return "";
-    const left = frac[0] * vw;
-    const top = frac[1] * vh;
-    const width = Math.max(1, frac[2] * vw);
-    const height = Math.max(1, frac[3] * vh);
-    const canvas = doc.createElement("canvas");
-    canvas.width = Math.ceil(width);
-    canvas.height = Math.ceil(height);
-    const ctx = canvas.getContext?.("2d");
-    if (!ctx || typeof pdfPage.render !== "function") return "";
-    const task = pdfPage.render({ canvasContext: ctx, viewport: viewport2, transform: [1, 0, 0, 1, -left, -top] });
-    if (task?.promise) await task.promise;
-    return typeof canvas.toDataURL === "function" ? canvas.toDataURL("image/png") || "" : "";
   }
   function openPinOnBoard(plan) {
     if (!plan) return false;
@@ -102146,6 +102851,12 @@ async function installPlexusDiagram({
   function foldTablesCommand(context) {
     return targetView(context)?.foldTableCaptions?.();
   }
+  function foldSectionsCommand(context) {
+    return targetView(context)?.foldSections?.(true);
+  }
+  function unfoldSectionsCommand(context) {
+    return targetView(context)?.foldSections?.(false);
+  }
   function findRelatedCommand(context) {
     return targetView(context)?.findRelated?.();
   }
@@ -102175,6 +102886,8 @@ async function installPlexusDiagram({
     ["Plexus: Resurface here", resurfaceCommand],
     ["Plexus: Move PDFs to their own pages", movePdfPagesCommand],
     ["Plexus: Fold tables under captions", foldTablesCommand],
+    ["Plexus: Fold sections in the outline", foldSectionsCommand],
+    ["Plexus: Unfold sections", unfoldSectionsCommand],
     ["Plexus: Find related to the selected card", findRelatedCommand]
   ];
   function runCommand(label, fn) {

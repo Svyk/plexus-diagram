@@ -48,6 +48,7 @@ export const TIP_TEXT = {
   sync: e("Saved", "Every change is written to Roam."),
   "sync:idle": e("Saved", "Every change is written to Roam."),
   "sync:writing": e("Saving", "Your last change is being written to Roam."),
+  "sync:held": e("Waiting for Roam", "A large change is paused while Roam catches up with the blocks already written. It continues by itself."),
   "sync:retrying": e("Retrying", "Roam did not take the last write. Plexus is trying again."),
   "sync:failed": e("Could not save", "The last change did not reach Roam. Undo it or try the action again."),
 

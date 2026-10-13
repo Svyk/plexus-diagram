@@ -6,7 +6,7 @@
 
 import { TITLE_REV } from "../model/title-cap.js";
 import { coverKey } from "../model/pdf-cover.js";
-import { DIAGRAM_DB, DIAGRAM_DB_VERSION, STORE_COVERS, openDiagramDb } from "./diagram-db.js";
+import { DIAGRAM_DB, DIAGRAM_DB_VERSION, STORE_COVERS, forgetDiagramDb, openDiagramDb } from "./diagram-db.js";
 
 export const COVER_DB = DIAGRAM_DB;
 export const COVER_STORE = STORE_COVERS;
@@ -160,7 +160,6 @@ function titleOf(raw) {
 export function createCoverStore({ indexedDB, storage } = {}) {
   const factory = indexedDB || null;
   const ls = storage || null;
-  let dbPromise = null;
   let idbDead = !factory;
   let book = null;
 
@@ -207,43 +206,46 @@ export function createCoverStore({ indexedDB, storage } = {}) {
     data.order.push(url);
   };
 
+  // The shared connection is cached by openDiagramDb, which drops it when it closes or a newer version asks.
   const open = () => {
     if (idbDead) return Promise.resolve(null);
-    if (!dbPromise) {
-      dbPromise = openDb(factory).then((db) => {
-        if (!db) { idbDead = true; dbPromise = null; }
-        return db;
-      });
-    }
-    return dbPromise;
+    return openDb(factory).then((db) => {
+      if (!db) idbDead = true;
+      return db;
+    });
   };
 
   const run = async (mode, fn) => {
     if (idbDead) return { ok: false, result: null };
-    try {
-      const db = await open();
-      if (!db || typeof db.transaction !== "function") {
-        idbDead = true;
-        return { ok: false, result: null };
-      }
-      let tx = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
       let store = null;
       try {
-        tx = db.transaction(COVER_STORE, mode);
-        store = tx.objectStore(COVER_STORE);
+        const db = await open();
+        if (!db || typeof db.transaction !== "function") {
+          idbDead = true;
+          return { ok: false, result: null };
+        }
+        let tx = null;
+        try {
+          tx = db.transaction(COVER_STORE, mode);
+          store = tx.objectStore(COVER_STORE);
+        } catch {
+          // A connection that closed under us: open a fresh one once.
+          forgetDiagramDb(factory);
+          continue;
+        }
+        try {
+          tx.onerror = (event) => { try { event?.preventDefault?.(); } catch { /* ignore */ } };
+          tx.onabort = () => {};
+        } catch { /* the request result still settles */ }
+        return await fn(store);
       } catch {
         idbDead = true;
         return { ok: false, result: null };
       }
-      try {
-        tx.onerror = (event) => { try { event?.preventDefault?.(); } catch { /* ignore */ } };
-        tx.onabort = () => {};
-      } catch { /* the request result still settles */ }
-      return await fn(store);
-    } catch {
-      idbDead = true;
-      return { ok: false, result: null };
     }
+    idbDead = true;
+    return { ok: false, result: null };
   };
 
   const idbGet = (url) => withCap(

@@ -36,6 +36,7 @@ const ALL_ON = {
   hitShield: true,
   deferReveal: true,
   parkInPlace: true,
+  edgeFingerprint: true,
 };
 
 test("the panel has no speed-flags control, and bad JSON leaves all thirteen on", () => {

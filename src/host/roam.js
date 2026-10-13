@@ -745,6 +745,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const UNDO_ECHO_MS = 900; // Roam echoes our own writes back through the pull watch; those are not foreign edits
   let openGroup = null;
   let silent = false; // inverse writes of a custom undo entry: they are not new user steps
+  // A custom entry's undo/redo writes land on Roam's native stack, so the native entries below it in the log no longer
+  // match that stack. They are dropped and this floor stops undo/redo from falling back to a blind data.undo().
+  let nativeFloor = false;
   let lastWriteAt = -Infinity;
   let dropBurst = () => {};
   // Debug only. The undo group that just closed, and how many create/update/move/delete writes it held.
@@ -790,6 +793,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // Mounted cards that want their contents live: itemUid -> { n, offs: split -> release }. Kept here, not on the
   // split, so a split recreated after a keep-alive pause arms them again without the view asking.
   const contentWants = new Map();
+  const edgeFingerprintOn = () => { try { return notedSpeedFlags().edgeFingerprint !== false; } catch { return true; } };
   const splitWatchOn = () => { try { return notedSpeedFlags().splitWatch !== false; } catch { return true; } };
   const armContent = (key, want) => {
     for (const split of splitWatches.values()) {
@@ -1097,6 +1101,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         seed: bigBoards.get(uid),
         data,
         pull: rawPull,
+        fingerprint: edgeFingerprintOn(),
         deepPattern: BOARD_PATTERN,
         guard: (name, fn) => guardCallback(name, fn, { stats }),
         onTree: (tree) => {
@@ -2050,10 +2055,24 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       }
     },
 
+    // Closes the open group as a chunk now and returns a function that opens a fresh one with the same label. A long
+    // wait between batches (the sync hold) is outside any undo group: another session's writes made meanwhile are
+    // their own steps, and invalidateUndo works. No-op with no group open.
+    suspendGroup() {
+      const done = openGroup;
+      if (!done) return () => {};
+      openGroup = null;
+      closeChunk(done);
+      return () => { if (!openGroup) openGroup = { n: 0, kinds: [], label: done.label || "" }; };
+    },
+
     // The open group becomes ONE entry that undoes and redoes through its own callbacks ({ undo, redo }, async),
     // not through a count of Roam's native undo steps (one Plexus write can be more than one native entry).
+    // null drops it again: a transaction that failed midway closes as a native chunk of the writes that ran.
     setCustomUndo(entry) {
-      if (openGroup && entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
+      if (!openGroup) return;
+      if (entry && typeof entry.undo === "function" && typeof entry.redo === "function") openGroup.custom = entry;
+      else if (!entry) delete openGroup.custom;
     },
 
     async deletePage(uid) {
@@ -2081,10 +2100,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     async undo() {
       lastWriteAt = Date.now();
       const entry = undoLog.pop();
+      if (!entry && nativeFloor) return;
       if (entry?.custom) {
         silent = true;
         try { await entry.custom.undo(); } catch (err) { undoLog.push(entry); throw err; } finally { silent = false; lastWriteAt = Date.now(); }
+        undoLog.length = 0;
+        redoLog.length = 0;
         redoLog.push(entry);
+        nativeFloor = true;
         return;
       }
       const span = entry ? groupSpan(entry) : 1;
@@ -2105,10 +2128,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     async redo() {
       lastWriteAt = Date.now();
       const entry = redoLog.pop();
+      if (!entry && nativeFloor) return;
       if (entry?.custom) {
         silent = true;
         try { await entry.custom.redo(); } catch (err) { redoLog.push(entry); throw err; } finally { silent = false; lastWriteAt = Date.now(); }
+        undoLog.length = 0;
+        redoLog.length = 0;
         undoLog.push(entry);
+        nativeFloor = true;
         return;
       }
       const span = entry ? groupSpan(entry) : 1;
@@ -2128,6 +2155,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (openGroup || Date.now() - lastWriteAt < UNDO_ECHO_MS) return;
       undoLog.length = 0;
       redoLog.length = 0;
+      nativeFloor = false;
     },
 
     openInSidebar(uid, type = "block") {
@@ -2596,7 +2624,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!librarySelective(f)) return { rows: [], queries };
       const nowMs = Date.now();
       const since = f.days ? nowMs - f.days * 86400000 : null;
-      const cap = libraryCap();
+      // Room for one more page than is shown, so the panel can tell whether Show more has anything behind it.
+      const cap = Math.max(libraryCap(), lim * 2);
       const candidates = [];
       const seen = new Set();
       const push = (row) => {
@@ -2904,7 +2933,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         kept = narrowByMeta(kept, filter, { days: f.days, now: nowMs });
       }
       const rows = sortRows(kept, sort).slice(0, lim).map(libraryCard);
-      return { rows, queries };
+      return { rows, queries, total: kept.length, more: kept.length > lim || candidates.length >= cap };
     },
 
     // Rows with no search text: the pages a sort puts first (recently edited / created, oldest, title), with their numbers.
@@ -2949,7 +2978,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const hit = key ? filterBrowseCache.get(key) : null;
       if (hit && now - hit.at < FILTER_BROWSE_TTL_MS) {
         queries.push({ name: "browse-cache", ms: 0 });
-        return { rows: hit.rows, queries, spec, defaulted: spec.defaulted };
+        return { rows: hit.rows, total: hit.total ?? hit.rows.length, more: hit.more === true, queries, spec, defaulted: spec.defaulted };
       }
       const pass = (rows) => {
         let out = narrowLibrary(rows, { types: spec.types });
@@ -2987,7 +3016,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         const edited = plan?.time === "edited";
         const wantBoard = spec.types.length === 0 || spec.types.includes("board");
         const pullMany = (eids) => (typeof data.pull_many === "function" ? data.pull_many(BROWSE_PULL, eids) : eids.map((e) => rawPull(BROWSE_PULL, e)));
-        for (let i = 0; i < order.length && i < BROWSE_SCAN && kept.length < BROWSE_ROWS; i += BROWSE_CHUNK) {
+        const keepMax = Math.max(BROWSE_ROWS, lim);
+        for (let i = 0; i < order.length && i < BROWSE_SCAN && kept.length < keepMax; i += BROWSE_CHUNK) {
           const chunk = order.slice(i, Math.min(i + BROWSE_CHUNK, BROWSE_SCAN));
           const nodes = timed("browse-pull", () => pullMany(chunk.map((o) => o.eid)) || []);
           const rows = [];
@@ -3013,7 +3043,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
             }
             rows.push({ ...base, kind: "block", string, pageTitle: typeof pageTitle === "string" ? pageTitle : "" });
           });
-          for (const row of pass(rows)) { if (kept.length < BROWSE_ROWS) kept.push(row); }
+          for (const row of pass(rows)) { if (kept.length < keepMax) kept.push(row); }
         }
       }
       // The query gave the order: numbers only for the rows shown. Otherwise every kept row's numbers, then the sort.
@@ -3028,10 +3058,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const rows = top.map((r) => libraryCard(r));
       if (key) {
         filterBrowseCache.delete(key);
-        filterBrowseCache.set(key, { at: now, rows });
+        filterBrowseCache.set(key, { at: now, rows, total: kept.length, more: kept.length > lim || (!pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim)) });
         while (filterBrowseCache.size > FILTER_BROWSE_MAX) filterBrowseCache.delete(filterBrowseCache.keys().next().value);
       }
-      return { rows, queries, spec, defaulted: spec.defaulted };
+      return { rows, total: kept.length, more: kept.length > lim || (!pdfOnly && kept.length >= Math.max(BROWSE_ROWS, lim)), queries, spec, defaulted: spec.defaulted };
     },
 
     // Parsed PDFs / PDFs with highlights over rows another search found (keyword rows, Meaning rows). Non-PDF rows go.

@@ -96,8 +96,47 @@ export function openDb(factory, { name, version, stores, capMs = 2000 }) {
   });
 }
 
+// Every board view makes its own cover and parse stores. They share one connection per factory instead of
+// holding a connection each for the life of the tab. A failed open is not cached, and a connection that closes
+// itself (a newer Plexus upgrading) drops out so the next store opens a fresh one.
+const sharedDiagramDb = new WeakMap();
+
 export function openDiagramDb(factory, { capMs = 2000 } = {}) {
-  return openDb(factory, { name: DIAGRAM_DB, version: DIAGRAM_DB_VERSION, stores: STORES, capMs });
+  const open = () => openDb(factory, { name: DIAGRAM_DB, version: DIAGRAM_DB_VERSION, stores: STORES, capMs });
+  if (!isKey(factory)) return open();
+  const have = sharedDiagramDb.get(factory);
+  if (have) return have;
+  const pending = open().then((db) => {
+    if (!db) {
+      if (sharedDiagramDb.get(factory) === pending) sharedDiagramDb.delete(factory);
+      return db;
+    }
+    const evict = () => { if (sharedDiagramDb.get(factory) === pending) sharedDiagramDb.delete(factory); };
+    const onVersion = db.onversionchange;
+    try {
+      db.onversionchange = (event) => { evict(); if (typeof onVersion === "function") onVersion(event); };
+      db.onclose = evict;
+    } catch { /* a frozen handle */ }
+    return db;
+  });
+  sharedDiagramDb.set(factory, pending);
+  return pending;
+}
+
+const isKey = (factory) => Boolean(factory) && (typeof factory === "object" || typeof factory === "function");
+
+// The cached connection is gone or unusable (it closed, or a transaction on it threw): the next openDiagramDb opens a
+// fresh one. The stores call this instead of giving up on IndexedDB for the rest of the session.
+export function forgetDiagramDb(factory) {
+  if (isKey(factory)) sharedDiagramDb.delete(factory);
+}
+
+// Extension unload: close the shared connection so a newer Plexus can upgrade the database.
+export function closeDiagramDb(factory) {
+  if (!isKey(factory)) return;
+  const have = sharedDiagramDb.get(factory);
+  sharedDiagramDb.delete(factory);
+  if (have) have.then((db) => { try { db?.close?.(); } catch { /* gone */ } }, () => {});
 }
 
 export function openImageDb(factory, { capMs = 2000 } = {}) {

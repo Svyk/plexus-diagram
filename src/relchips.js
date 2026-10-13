@@ -656,11 +656,18 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
   // navigation leads to "Board > Connections"; a plain click opens the preview instead, Shift / Cmd / Ctrl / Alt keep
   // Roam's behavior. Listeners sit on the breadcrumb items only and go away with the layer.
   const crumbs = new WeakSet();
-  const crumbOffs = [];
+  const crumbOffs = new Map(); // glyph -> its listener removers
   const crumbGlyphs = new Set();
   const plain = (event) => event.button === 0 && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
   const crumbFor = (zoom) => {
     if (disposed || !zoom || crumbs.has(zoom) || zoom.querySelector?.(`.${CRUMB_CLASS}`)) return;
+    // Roam re-renders the breadcrumb on every page return; the glyphs of the old ones are dropped here.
+    for (const old of [...crumbGlyphs]) {
+      if (old.isConnected !== false) continue;
+      for (const off of crumbOffs.get(old) || []) off();
+      crumbOffs.delete(old);
+      crumbGlyphs.delete(old);
+    }
     const holder = zoom.parentElement;
     const container = holder?.querySelector?.(".roam-block-container[data-block-uid]");
     const edgeUid = container?.getAttribute?.("data-block-uid");
@@ -677,6 +684,8 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
     glyph.setAttribute("aria-label", CRUMB_TIP);
     (items[items.length - 1] || zoom).append(glyph);
     crumbGlyphs.add(glyph);
+    const offs = [];
+    crumbOffs.set(glyph, offs);
     for (const el of [...items, glyph]) {
       const swallow = (event) => { if (plain(event)) stop(event); };
       const open = (event) => {
@@ -685,15 +694,15 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
         event.preventDefault?.();
         openPop(el, edgeUid, avoid());
       };
-      for (const type of ["pointerdown", "mousedown", "mouseup"]) { el.addEventListener(type, swallow, true); crumbOffs.push(() => el.removeEventListener(type, swallow, true)); }
+      for (const type of ["pointerdown", "mousedown", "mouseup"]) { el.addEventListener(type, swallow, true); offs.push(() => el.removeEventListener(type, swallow, true)); }
       el.addEventListener("click", open, true);
-      crumbOffs.push(() => el.removeEventListener("click", open, true));
+      offs.push(() => el.removeEventListener("click", open, true));
     }
     const onKey = (event) => {
       if (event.key === "Enter" || event.key === " ") { stop(event); event.preventDefault?.(); openPop(glyph, edgeUid, avoid()); }
     };
     glyph.addEventListener("keydown", onKey);
-    crumbOffs.push(() => glyph.removeEventListener("keydown", onKey));
+    offs.push(() => glyph.removeEventListener("keydown", onKey));
   };
 
   const attach = (input, edgeUid) => {
@@ -759,7 +768,8 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
     closePop();
     for (const chip of chips) chip.remove();
     chips.clear();
-    for (const off of crumbOffs.splice(0)) off();
+    for (const offs of crumbOffs.values()) for (const off of offs) off();
+    crumbOffs.clear();
     for (const glyph of crumbGlyphs) glyph.remove();
     crumbGlyphs.clear();
     models.clear();

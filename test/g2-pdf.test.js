@@ -585,3 +585,21 @@ test("double-click and the card menu open the pane after a select-only click", a
     menu.restore();
   }
 });
+
+test("disposing a board destroys the pdf.js document its card flipper holds", async () => {
+  const f = mountBoard();
+  try {
+    await f.flush();
+    const paper = f.root.querySelector('[data-uid="pdfcard01"] .pxd-pdf-paper');
+    f.stub.dispatch(paper, "pointerdown", { button: 0, clientX: 30, clientY: 40, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointerup", { button: 0, clientX: 30, clientY: 40, pointerId: 1 });
+    f.stub.flushFrames();
+    await drain();
+    assert.ok(f.lib.made.length > 0, "the flipper opened a document");
+    assert.equal(f.lib.made.at(-1).destroyed, false, "the current document is open while selected");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+  assert.equal(f.lib.made.every((d) => d.destroyed), true, "dispose destroyed every opened document");
+});

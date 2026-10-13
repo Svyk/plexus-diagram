@@ -56,6 +56,9 @@ export const TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row) => row.letter
 export const TOOLS = ["select", "hand", "card", "task", "text", "sticky", "shape", "section", "board", "table", "connect"];
 const SHAPE_PLACE = { w: 160, h: 100 };
 export const DRAG_THRESHOLD_PX = 4;
+// A held arrow key repeats ~30 times a second. Repeats are previewed and written as one move on key-up or after this much quiet.
+export const NUDGE_IDLE_MS = 250;
+const ARROW_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
 export const REGION_HINT = "⌥ to mark a region · P switches pen";
 export const REGION_BOX_HINT = "Drag a box on the image · P switches to pen · Esc cancels";
 export const REGION_PEN_HINT = "Draw around the region · P switches to box · Esc cancels";
@@ -114,6 +117,7 @@ export function createInteractions({ actions, settings } = {}) {
   };
 
   const state = {
+    nudge: null,
     tool: "select",
     locked: false,
     selection: new Set(),
@@ -227,6 +231,15 @@ export function createInteractions({ actions, settings } = {}) {
     const g = state.gesture;
     call("setViewport", pinchViewport(g.vp0, { dist0: g.dist0, mid0: g.mid0, dist: pair.dist, mid: pair.mid }));
   };
+  // The held-arrow nudge not yet written (see the "nudge" shortcut).
+  function flushNudge() {
+    const pending = state.nudge;
+    if (!pending) return;
+    state.nudge = null;
+    if (pending.timer != null) clearTimeout(pending.timer);
+    if (pending.dx || pending.dy) call("commitMove", pending.uids, pending.dx, pending.dy);
+    call("cancelPreview");
+  }
   const begin = (g) => {
     state.gesture = { moved: false, ...g };
     call("setGesturing", true);
@@ -1160,7 +1173,21 @@ export function createInteractions({ actions, settings } = {}) {
         const dx = key === "ArrowLeft" ? -step : key === "ArrowRight" ? step : 0;
         const dy = key === "ArrowUp" ? -step : key === "ArrowDown" ? step : 0;
         const uids = movingSet();
-        if (uids.length) call("commitMove", uids, dx, dy);
+        if (!uids.length) return true;
+        if (ev.repeat !== true) {
+          flushNudge();
+          call("commitMove", uids, dx, dy);
+          return true;
+        }
+        // A repeat: keep the sum, show it, and write it once.
+        const same = state.nudge && state.nudge.uids.length === uids.length && state.nudge.uids.every((u, i) => u === uids[i]);
+        if (!same) flushNudge();
+        if (!state.nudge) state.nudge = { uids, dx: 0, dy: 0, timer: null };
+        state.nudge.dx += dx;
+        state.nudge.dy += dy;
+        call("previewMove", uids, state.nudge.dx, state.nudge.dy);
+        if (state.nudge.timer != null) clearTimeout(state.nudge.timer);
+        state.nudge.timer = setTimeout(flushNudge, NUDGE_IDLE_MS);
         return true;
       }
       case "outline": return ev.tabOwned === false ? false : selectOutline(ev.shift);
@@ -1214,6 +1241,7 @@ export function createInteractions({ actions, settings } = {}) {
   };
 
   const onKeyUp = (ev) => {
+    if (ARROW_KEYS.has(ev.key)) flushNudge();
     if (ev.code === "Space" || ev.key === " ") {
       if (state.space) { state.space = false; call("setSpace", false); }
       return true;
@@ -1222,6 +1250,8 @@ export function createInteractions({ actions, settings } = {}) {
   };
 
   const handle = (ev) => {
+    // Anything but the arrows that keep a nudge going writes it first, so undo, selection and drags see it.
+    if (state.nudge && ev?.type !== "keyup" && ev?.type !== "pointermove" && !(ev?.type === "keydown" && ARROW_KEYS.has(ev.key))) flushNudge();
     switch (ev?.type) {
       case "pointerdown": return onPointerDown(ev);
       case "pointermove": return onPointerMove(ev);
@@ -1252,7 +1282,9 @@ export function createInteractions({ actions, settings } = {}) {
     isGesturing: () => Boolean(state.gesture),
     gestureKind: () => state.gesture?.kind ?? null,
     gestureMoved: () => Boolean(state.gesture?.moved),
-    cancel: () => { cancelOpen(); endWheelZoom(); onPointerCancel(); },
+    // Writes a held-arrow nudge now: undo, redo and commands that do not come through handle() call it first.
+    flush: flushNudge,
+    cancel: () => { flushNudge(); cancelOpen(); endWheelZoom(); onPointerCancel(); },
     // Model changed under us: drop selection entries that no longer exist.
     reconcile() {
       const b = board();

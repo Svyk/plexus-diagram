@@ -44,6 +44,8 @@ import { holeRect, previewImageBox, setCameraFromView } from "./view/region-hove
 import { drawViewMap, minimapSvg, viewMapModel } from "./view/minimap-svg.js";
 import { boundsOf, buildBoard, worldRects } from "./model/board.js";
 import { createHelperClient } from "./host/parse-helper-client.js";
+import { closeDiagramDb } from "./host/diagram-db.js";
+import { createDocCache } from "./host/doc-cache.js";
 import { createParseStore } from "./host/parse-store.js";
 import { createPdfTables } from "./host/pdf-tables.js";
 import { boardBounds, createPublicApi, emitPublicEvent, fitThumbSize, installPublicApi, thumbStroke, uninstallPublicApi } from "./model/public-api.js";
@@ -485,7 +487,7 @@ export async function installPlexusDiagram({
     return { title, section, svg };
   }
   const regionCrops = new Map(); // region button -> its destroy
-  const pinPdfDocs = new Map();
+  const pinPdfDocs = createDocCache();
   let pendingPin = null;
   const showStash = createShowStash();
   let showWhere = "main";
@@ -505,6 +507,8 @@ export async function installPlexusDiagram({
     for (const drop of [...regionCrops.values()]) drop();
     regionCrops.clear();
     pinPdfDocs.clear();
+    closeDiagramDb(win.indexedDB ?? globalThis.indexedDB);
+    viewBoards.clear();
     pendingPin = null;
     resetCropUrls();
   });
@@ -2751,7 +2755,12 @@ export async function installPlexusDiagram({
     const id = region?.drawingUid;
     if (!id) return null;
     const hit = viewBoards.get(id);
-    if (hit && Date.now() - hit.at < VIEW_BOARD_TTL_MS) return hit.board;
+    if (hit && Date.now() - hit.at < VIEW_BOARD_TTL_MS) {
+      // Least recently used goes first when the cap trims: a viewed board moves to the end.
+      viewBoards.delete(id);
+      viewBoards.set(id, hit);
+      return hit.board;
+    }
     let session = null;
     let board = null;
     try {
@@ -2762,7 +2771,9 @@ export async function installPlexusDiagram({
     } finally {
       try { session?.release?.(); } catch { /* already released */ }
     }
+    viewBoards.delete(id);
     viewBoards.set(id, { board, at: Date.now() });
+    while (viewBoards.size > 12) viewBoards.delete(viewBoards.keys().next().value);
     return board;
   }
 
@@ -2898,31 +2909,34 @@ export async function installPlexusDiagram({
     if (!safe || !Array.isArray(frac) || frac.length < 4) return "";
     const lib = (doc?.defaultView || globalThis).pdfjsLib;
     if (!lib || typeof lib.getDocument !== "function") return "";
-    let pdf = pinPdfDocs.get(safe);
-    if (!pdf) {
+    const lease = await pinPdfDocs.acquire(safe, async () => {
       const task = lib.getDocument({ url: safe });
-      pdf = task?.promise ? await task.promise : await task;
-      if (!pdf || typeof pdf.getPage !== "function") return "";
-      pinPdfDocs.set(safe, pdf);
+      const pdf = task?.promise ? await task.promise : await task;
+      return pdf && typeof pdf.getPage === "function" ? pdf : null;
+    });
+    if (!lease) return "";
+    try {
+      const pdfPage = await lease.doc.getPage(Number(page));
+      if (!pdfPage || typeof pdfPage.getViewport !== "function") return "";
+      const viewport = pdfPage.getViewport({ scale: 2 });
+      const vw = Number(viewport?.width) || 0;
+      const vh = Number(viewport?.height) || 0;
+      if (!(vw > 0) || !(vh > 0)) return "";
+      const left = frac[0] * vw;
+      const top = frac[1] * vh;
+      const width = Math.max(1, frac[2] * vw);
+      const height = Math.max(1, frac[3] * vh);
+      const canvas = doc.createElement("canvas");
+      canvas.width = Math.ceil(width);
+      canvas.height = Math.ceil(height);
+      const ctx = canvas.getContext?.("2d");
+      if (!ctx || typeof pdfPage.render !== "function") return "";
+      const task = pdfPage.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -left, -top] });
+      if (task?.promise) await task.promise;
+      return typeof canvas.toDataURL === "function" ? canvas.toDataURL("image/png") || "" : "";
+    } finally {
+      lease.release();
     }
-    const pdfPage = await pdf.getPage(Number(page));
-    if (!pdfPage || typeof pdfPage.getViewport !== "function") return "";
-    const viewport = pdfPage.getViewport({ scale: 2 });
-    const vw = Number(viewport?.width) || 0;
-    const vh = Number(viewport?.height) || 0;
-    if (!(vw > 0) || !(vh > 0)) return "";
-    const left = frac[0] * vw;
-    const top = frac[1] * vh;
-    const width = Math.max(1, frac[2] * vw);
-    const height = Math.max(1, frac[3] * vh);
-    const canvas = doc.createElement("canvas");
-    canvas.width = Math.ceil(width);
-    canvas.height = Math.ceil(height);
-    const ctx = canvas.getContext?.("2d");
-    if (!ctx || typeof pdfPage.render !== "function") return "";
-    const task = pdfPage.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -left, -top] });
-    if (task?.promise) await task.promise;
-    return typeof canvas.toDataURL === "function" ? canvas.toDataURL("image/png") || "" : "";
   }
   function openPinOnBoard(plan) {
     if (!plan) return false;
@@ -3338,6 +3352,14 @@ export async function installPlexusDiagram({
     return targetView(context)?.foldTableCaptions?.();
   }
 
+  function foldSectionsCommand(context) {
+    return targetView(context)?.foldSections?.(true);
+  }
+
+  function unfoldSectionsCommand(context) {
+    return targetView(context)?.foldSections?.(false);
+  }
+
   function findRelatedCommand(context) {
     return targetView(context)?.findRelated?.();
   }
@@ -3371,6 +3393,8 @@ export async function installPlexusDiagram({
     ["Plexus: Resurface here", resurfaceCommand],
     ["Plexus: Move PDFs to their own pages", movePdfPagesCommand],
     ["Plexus: Fold tables under captions", foldTablesCommand],
+    ["Plexus: Fold sections in the outline", foldSectionsCommand],
+    ["Plexus: Unfold sections", unfoldSectionsCommand],
     ["Plexus: Find related to the selected card", findRelatedCommand],
   ];
 

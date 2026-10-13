@@ -2147,7 +2147,16 @@ function buildBoardView(onFail, {
   // ---- PDFs on their own pages ----
   // "Move PDFs to their own pages": dry run in a dialog, then one undo group. This board only.
   let pdfPagesDialog = null;
-  const closePdfPagesDialog = () => { try { pdfPagesDialog?.close?.(); } catch { /* gone */ } pdfPagesDialog = null; };
+  // Resolves the command promise of the dialog on screen. Closing the dialog any other way than Apply (replaced by
+  // another command, cancelled, the view disposed) settles it with null so nobody awaits it forever.
+  let pdfPagesPending = null;
+  const closePdfPagesDialog = () => {
+    try { pdfPagesDialog?.close?.(); } catch { /* gone */ }
+    pdfPagesDialog = null;
+    const settle = pdfPagesPending;
+    pdfPagesPending = null;
+    settle?.(null);
+  };
   const planPdfPages = async () => {
     const b = board();
     if (!b) return null;
@@ -2189,10 +2198,12 @@ function buildBoardView(onFail, {
       return { moved: 0 };
     }
     return new Promise((resolve) => {
+      pdfPagesPending = resolve;
       pdfPagesDialog = openPdfPagesDialog(doc, {
         count: plan.moves.length,
         lines: migrationLines(plan),
         onApply: () => {
+          pdfPagesPending = null;
           closePdfPagesDialog();
           Promise.resolve(session.movePdfsToPages(plan)).then((res) => {
             if (disposed) return resolve(res);
@@ -2226,6 +2237,7 @@ function buildBoardView(onFail, {
     }
     const n = plan.folds.length;
     return new Promise((resolve) => {
+      pdfPagesPending = resolve;
       pdfPagesDialog = openPdfPagesDialog(doc, {
         count: n,
         lines: tableCaptionLines(plan),
@@ -2234,6 +2246,7 @@ function buildBoardView(onFail, {
           + "Each card becomes a one-line caption with the table folded under it, so the outline stops drawing every row.",
         applyText: "Fold",
         onApply: () => {
+          pdfPagesPending = null;
           closePdfPagesDialog();
           Promise.resolve(session.foldTableCaptions(plan)).then((res) => {
             if (disposed) return resolve(res);
@@ -2264,6 +2277,7 @@ function buildBoardView(onFail, {
     const lines = titles.slice(0, 12);
     if (titles.length > lines.length) lines.push(`and ${titles.length - lines.length} more`);
     return new Promise((resolve) => {
+      pdfPagesPending = resolve;
       pdfPagesDialog = openPdfPagesDialog(doc, {
         count: n,
         lines,
@@ -2273,6 +2287,7 @@ function buildBoardView(onFail, {
           : `Unfold ${n} ${noun} in the Roam outline?`,
         applyText: plan.fold ? "Fold" : "Unfold",
         onApply: () => {
+          pdfPagesPending = null;
           closePdfPagesDialog();
           Promise.resolve(session.foldSections(plan)).then((res) => {
             if (disposed) return resolve(res);
@@ -3914,7 +3929,7 @@ function buildBoardView(onFail, {
   };
 
   // ------------------------------------------------------------ 1.2 helpers
-  const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => session.undo?.() } : undefined });
+  const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => { ctl.flush?.(); session.undo?.(); } } : undefined });
   const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
   const closeLinksMenu = () => {
     const menu = linksMenu;
@@ -4730,6 +4745,7 @@ function buildBoardView(onFail, {
   const onMenuPick = (id) => {
     const b = board();
     if (!b || disposed) return;
+    ctl.flush?.();
     const mc = menuCtx || { kind: "canvas", uid: null, world: viewCenterWorld(), selection: [] };
     const world = mc.world || viewCenterWorld();
     const uids = mc.kind === "multi" ? selection.items.slice() : mc.uid && b.items.has(mc.uid) ? [mc.uid] : selection.items.slice();
@@ -7052,8 +7068,8 @@ function buildBoardView(onFail, {
       return regionUid;
     },
     connectHint: (text, screen) => showConnectHint(text, screen),
-    undo: () => session.undo?.(),
-    redo: () => session.redo?.(),
+    undo: () => { ctl.flush?.(); return session.undo?.(); },
+    redo: () => { ctl.flush?.(); return session.redo?.(); },
     enterEdit: (uid, opts) => enterEdit(uid, opts),
     openPage: (uid, { sidebar = false } = {}) => {
       const item = board()?.items.get(uid);

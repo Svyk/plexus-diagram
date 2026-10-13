@@ -2710,7 +2710,12 @@ export async function installPlexusDiagram({
     const id = region?.drawingUid;
     if (!id) return null;
     const hit = viewBoards.get(id);
-    if (hit && Date.now() - hit.at < VIEW_BOARD_TTL_MS) return hit.board;
+    if (hit && Date.now() - hit.at < VIEW_BOARD_TTL_MS) {
+      // Least recently used goes first when the cap trims: a viewed board moves to the end.
+      viewBoards.delete(id);
+      viewBoards.set(id, hit);
+      return hit.board;
+    }
     let session = null;
     let board = null;
     try {
@@ -2721,6 +2726,7 @@ export async function installPlexusDiagram({
     } finally {
       try { session?.release?.(); } catch { /* already released */ }
     }
+    viewBoards.delete(id);
     viewBoards.set(id, { board, at: Date.now() });
     while (viewBoards.size > 12) viewBoards.delete(viewBoards.keys().next().value);
     return board;

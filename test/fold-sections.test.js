@@ -146,3 +146,29 @@ test("the view command previews the count, folds on Apply and reports it", async
     restore();
   }
 });
+
+test("a fold dialog replaced by another command, or left open at dispose, settles its promise with null", async () => {
+  const { mountBoardView } = await import("../src/view/board-view.js");
+  const stub = createDomStub({ width: 1400, height: 900 });
+  const restore = stub.install();
+  try {
+    const fake = createFakeRoam({ echoDelay: 0 });
+    fake.seedBoard({ uid: "b1", props: { plexus: { v: 2 } }, children: [
+      { uid: "s0", string: "Alpha", props: { plexus: { type: "section", x: 0, y: 0, w: 400, h: 300 } }, children: [] },
+    ] });
+    const host = createHost({ api: fake.api, storage: stub.localStorage, graph: "g" });
+    const session = acquireSession("b1", { host, raf: (fn) => fn() });
+    const mountEl = stub.document.createElement("div");
+    mountEl.className = "pxd-mount";
+    stub.document.body.append(mountEl);
+    const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "3.28.0" });
+    const first = view.foldSections(true);
+    assert.ok(view.root.querySelector(".pxd-pdf-pages"));
+    const second = view.foldSections(true);
+    assert.equal(await first, null, "the replaced dialog's promise settles");
+    view.dispose();
+    assert.equal(await second, null, "dispose settles the open dialog's promise");
+  } finally {
+    restore();
+  }
+});

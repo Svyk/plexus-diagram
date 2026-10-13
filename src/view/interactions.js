@@ -1281,6 +1281,8 @@ export function createInteractions({ actions, settings } = {}) {
     escape,
     isGesturing: () => Boolean(state.gesture),
     gestureKind: () => state.gesture?.kind ?? null,
+    // Writes a held-arrow nudge now: undo, redo and commands that do not come through handle() call it first.
+    flush: flushNudge,
     cancel: () => { flushNudge(); cancelOpen(); endWheelZoom(); onPointerCancel(); },
     // Model changed under us: drop selection entries that no longer exist.
     reconcile() {

@@ -1343,3 +1343,19 @@ test("held arrows flush after 250 ms idle, and a pointer press or another key fl
   assert.equal(h.named("commitMove").length, 3, "undo must see the nudge first");
   assert.equal(h.named("undo").length, 1);
 });
+
+test("flush() writes a held-arrow nudge now, once, and does nothing when none is pending", () => {
+  const h = harness();
+  h.ctl.select(["cardAAAA1"]);
+  h.ctl.flush();
+  assert.equal(h.named("commitMove").length, 0);
+  h.ctl.handle({ type: "keydown", key: "ArrowRight" });
+  h.ctl.handle({ type: "keydown", key: "ArrowRight", repeat: true });
+  h.ctl.handle({ type: "keydown", key: "ArrowRight", repeat: true });
+  assert.equal(h.named("commitMove").length, 1, "the first press committed, the repeats are held");
+  h.ctl.flush();
+  assert.equal(h.named("commitMove").length, 2);
+  assert.deepEqual(h.named("commitMove").at(-1).slice(1), [["cardAAAA1"], 2, 0]);
+  h.ctl.flush();
+  assert.equal(h.named("commitMove").length, 2);
+});

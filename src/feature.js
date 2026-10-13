@@ -44,6 +44,7 @@ import { holeRect, previewImageBox, setCameraFromView } from "./view/region-hove
 import { drawViewMap, minimapSvg, viewMapModel } from "./view/minimap-svg.js";
 import { boundsOf, buildBoard, worldRects } from "./model/board.js";
 import { createHelperClient } from "./host/parse-helper-client.js";
+import { closeDiagramDb } from "./host/diagram-db.js";
 import { createDocCache } from "./host/doc-cache.js";
 import { createParseStore } from "./host/parse-store.js";
 import { createPdfTables } from "./host/pdf-tables.js";
@@ -504,6 +505,7 @@ export async function installPlexusDiagram({
     for (const drop of [...regionCrops.values()]) drop();
     regionCrops.clear();
     pinPdfDocs.clear();
+    closeDiagramDb(win.indexedDB ?? globalThis.indexedDB);
     viewBoards.clear();
     pendingPin = null;
     resetCropUrls();

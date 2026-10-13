@@ -28251,7 +28251,7 @@ function scaleCardEditor(editor, zoom) {
   if (editor?.classList?.contains("pxd-page-edit")) return false;
   return applyEditorCounterScale(editor, zoom, restFontPx(editor?.parentElement), true);
 }
-function nextFrame() {
+function nextFrame2() {
   return new Promise((resolve) => {
     const raf2 = globalThis.requestAnimationFrame;
     if (typeof raf2 === "function") raf2(() => resolve());
@@ -28261,8 +28261,8 @@ function nextFrame() {
 async function waitHydrateQuiet(el2, capMs = HYDRATE_CAP_MS) {
   const MO = globalThis.MutationObserver;
   if (!el2 || typeof MO !== "function") {
-    await nextFrame();
-    await nextFrame();
+    await nextFrame2();
+    await nextFrame2();
     return;
   }
   let mutations = 0;
@@ -28280,7 +28280,7 @@ async function waitHydrateQuiet(el2, capMs = HYDRATE_CAP_MS) {
   try {
     while (Date.now() - start < capMs) {
       if (!saw && Date.now() - start >= grace) break;
-      await nextFrame();
+      await nextFrame2();
       if (mutations > 0) {
         saw = true;
         quiet = 0;
@@ -37152,9 +37152,24 @@ var SYNC_HOLD_CAP_MS = 3e4;
 var POLL_MS = 250;
 var ICON = ".rm-sync__icon";
 var delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+var nextFrame = () => new Promise((resolve) => {
+  let done2 = false;
+  const finish = () => {
+    if (!done2) {
+      done2 = true;
+      resolve();
+    }
+  };
+  try {
+    globalThis.requestAnimationFrame?.(finish);
+  } catch {
+  }
+  setTimeout(finish, 50);
+});
 function createSyncHold({
   doc = globalThis.document,
   sleep = delay,
+  frame: frame2 = nextFrame,
   now: now4 = () => Date.now(),
   capMs = SYNC_HOLD_CAP_MS,
   online = () => globalThis.navigator?.onLine !== false
@@ -37197,6 +37212,10 @@ function createSyncHold({
     }
   };
   const wait2 = async ({ onHold, capMs: budget, abort, keepGuard = false } = {}) => {
+    try {
+      await frame2();
+    } catch {
+    }
     let state = saving();
     if (state !== true || !online()) return { waited: 0, capped: false, held: false };
     const cap4 = Math.min(capMs, Number.isFinite(budget) ? budget : capMs);
@@ -47012,7 +47031,9 @@ function createHitShield({ doc, root, onWheel, onPress: onPress2, enabled = () =
       }
       if (!handled) drop();
     }, { passive: false });
-    el2.addEventListener("pointermove", () => drop());
+    el2.addEventListener("pointermove", (event) => {
+      if (!event?.buttons) drop();
+    });
     el2.addEventListener("pointerdown", (event) => {
       drop();
       event.preventDefault?.();
@@ -50252,7 +50273,7 @@ var THEME = {
   light: { bg: "#ffffff", card: "#ffffff", border: "#d0d7de", text: "#1f2937", muted: "#5f6b7c", edge: "#6b7a8a" },
   dark: { bg: "#1e2a35", card: "#26333f", border: "#3b4b58", text: "#e6edf3", muted: "#a7b6c2", edge: "#a7b6c2" }
 };
-var esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+var esc = (s) => String(s ?? "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 var n1 = (n3) => Math.round(n3 * 10) / 10;
 var titleOf3 = (item) => {
   if (item.title) return item.title;
@@ -66219,7 +66240,7 @@ function createParseMotion({ doc, overlayHost = null, overlayPage = 0, headHost 
     timers.add(id);
     return id;
   };
-  const nextFrame2 = (fn) => {
+  const nextFrame3 = (fn) => {
     const h = frame2(() => {
       frames.delete(h);
       fn();
@@ -66351,7 +66372,7 @@ function createParseMotion({ doc, overlayHost = null, overlayPage = 0, headHost 
     carrier.style.transition = "none";
     carrier.style.transform = "translateY(0%)";
     const node2 = carrier;
-    nextFrame2(() => nextFrame2(() => {
+    nextFrame3(() => nextFrame3(() => {
       if (node2 !== carrier) return;
       node2.style.transition = `transform ${ms}ms linear`;
       node2.style.transform = "translateY(100%)";
@@ -66377,7 +66398,7 @@ function createParseMotion({ doc, overlayHost = null, overlayPage = 0, headHost 
       partsSvg.append(rect);
       made.push(rect);
     }
-    if (animate && made.length) nextFrame2(() => nextFrame2(() => {
+    if (animate && made.length) nextFrame3(() => nextFrame3(() => {
       for (const rect of made) rect.classList?.add?.("pxd-pmotion__part--in");
     }));
     return made;
@@ -85409,6 +85430,12 @@ function viewportStorageId(nativeEl, boardUid, readString) {
   return boardUid;
 }
 var DEFAULT_HEIGHT2 = 560;
+var PNG_MAX_SIDE = 16384;
+var PNG_MAX_AREA = 64e6;
+function pngScale(w, h) {
+  const width = Math.max(1, w), height = Math.max(1, h);
+  return Math.min(2, PNG_MAX_SIDE / width, PNG_MAX_SIDE / height, Math.sqrt(PNG_MAX_AREA / (width * height)) * 0.999);
+}
 function rasterizeSvg(doc, svg) {
   return new Promise((resolve, reject) => {
     const Img = doc.defaultView?.Image || globalThis.Image;
@@ -85429,15 +85456,16 @@ function rasterizeSvg(doc, svg) {
         const canvas = doc.createElement("canvas");
         const w = img.naturalWidth || img.width || 1;
         const h = img.naturalHeight || img.height || 1;
-        canvas.width = Math.max(1, Math.round(w * 2));
-        canvas.height = Math.max(1, Math.round(h * 2));
+        const scale = pngScale(w, h);
+        canvas.width = Math.max(1, Math.round(w * scale));
+        canvas.height = Math.max(1, Math.round(h * scale));
         const g = canvas.getContext?.("2d");
         if (!g || typeof canvas.toBlob !== "function") {
           URL.revokeObjectURL(url);
           resolve(null);
           return;
         }
-        g.setTransform(2, 0, 0, 2, 0, 0);
+        g.setTransform(scale, 0, 0, scale, 0, 0);
         g.drawImage(img, 0, 0, w, h);
         canvas.toBlob((blob) => {
           URL.revokeObjectURL(url);
@@ -95041,7 +95069,7 @@ ${url}`;
     }
     const owned = event.target?.closest?.(".pxd-trail__stop, .pxd-region-layer");
     if (owned && root.contains(owned)) return;
-    const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused, tabOwned });
+    const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, repeat: event.repeat === true, inputFocused, tabOwned });
     if (handled) {
       event.preventDefault();
       event.stopPropagation();
@@ -100352,6 +100380,14 @@ async function installPlexusDiagram({
     noteLive(rec);
     cancelSketchHandoff(rec);
   }
+  function snapFirstPaint(handoff) {
+    let pending = handoff;
+    return () => {
+      const once = pending;
+      pending = null;
+      finishSnapHandoff(once);
+    };
+  }
   function runSnapMount(handoff, standIn, { autofocus, viewport: viewport2, acquire, onLive, logging, t0 }) {
     const rec = handoff.rec;
     if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
@@ -100386,7 +100422,7 @@ async function installPlexusDiagram({
     try {
       view = callMountView(rec, autofocus, vpNow, {
         snapshot: { snap: handoff.painted.snap, shells: handoff.painted.shells },
-        onFirstPaint: () => finishSnapHandoff(handoff)
+        onFirstPaint: snapFirstPaint(handoff)
       });
     } catch (error) {
       fail4(error);

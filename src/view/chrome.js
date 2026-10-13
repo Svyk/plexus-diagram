@@ -564,10 +564,12 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       if (line) toolbar.style.setProperty("--pxd-board-line", line);
       else toolbar.style.removeProperty("--pxd-board-line");
     },
+    // Every camera frame calls this. A text write even of the same label is a DOM mutation, and each one re-ran the
+    // board root's :has() invalidation (PhD main board: ~110 ms style recalc per wheel frame).
     setZoom(z) {
       const label = `${Math.round((z || 1) * 100)}%`;
-      zoomLabel.textContent = label;
-      railZoom.textContent = label;
+      if (zoomLabel.textContent !== label) zoomLabel.textContent = label;
+      if (railZoom.textContent !== label) railZoom.textContent = label;
     },
     setLinkMode(mode) {
       const key = LINK_ICONS[mode] ? mode : "all";

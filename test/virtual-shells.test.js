@@ -3,6 +3,7 @@ import test from "node:test";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { mountBoardView } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
+import { segmentMeetsRect } from "../src/view/edges.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 const COLS = 40;
@@ -111,4 +112,14 @@ test("a whole-board view builds the nearest shells first and reports first paint
     m.view.dispose();
     m.restore();
   }
+});
+
+test("an edge is near the view when the segment between its ends crosses it, not when only its box does", () => {
+  const view = { x: 0, y: 0, w: 100, h: 100 };
+  assert.equal(segmentMeetsRect(-50, 50, 150, 50, view), true);
+  assert.equal(segmentMeetsRect(-50, -50, 150, 150, view), true);
+  // Box covers the view, segment passes beside it.
+  assert.equal(segmentMeetsRect(-100, 150, 150, 300, view), false);
+  assert.equal(segmentMeetsRect(200, -100, 300, 400, view), false);
+  assert.equal(segmentMeetsRect(-300, 120, 400, 101, view), false);
 });

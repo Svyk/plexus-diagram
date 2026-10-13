@@ -16,6 +16,22 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const PAIR_OFFSET = 18;
 const LABEL_HIDE_ZOOM = 0.3;
 
+// Liang-Barsky clip of the segment (x1,y1)-(x2,y2) against rect r.
+export function segmentMeetsRect(x1, y1, x2, y2, r) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const clip = (p, q) => {
+    if (p === 0) return q >= 0;
+    const t = q / p;
+    if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; }
+    else { if (t < t0) return false; if (t < t1) t1 = t; }
+    return true;
+  };
+  return clip(-dx, x1 - r.x) && clip(dx, r.x + r.w - x1) && clip(-dy, y1 - r.y) && clip(dy, r.y + r.h - y1);
+}
+
 const setClass = (el, name) => {
   el.setAttribute("class", name);
   if (el.classList && !el.classList.contains(name.split(" ")[0])) el.className = name;
@@ -73,16 +89,23 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   // and reveal's `view`). An edge off to the side is built, painted and placed when it comes near.
   const VIRTUAL_EDGES = 300;
   let view = null;
+  // The segment between the two ends' centres meets the view, or an end box does. A bounding box was not enough:
+  // the PhD main board's links cross the whole board, so nearly every box met the view.
+  // Parking uses a wider box than attaching, so edges on the border do not flip in and out on every settle.
+  const widen = (r, f) => (r ? { x: r.x - r.w * f, y: r.y - r.h * f, w: r.w * (1 + 2 * f), h: r.h * (1 + 2 * f) } : r);
+  const edgeFar = (board, edge, rects) => {
+    const keep = view;
+    view = widen(keep, 0.5);
+    try { return !edgeNear(board, edge, rects); } finally { view = keep; }
+  };
   const edgeNear = (board, edge, rects) => {
     if (!view) return true;
     const a = rects.get(anchorUid(board, edge.from));
     const b = rects.get(anchorUid(board, edge.to));
     if (!a || !b) return true;
-    const x = Math.min(a.x, b.x);
-    const y = Math.min(a.y, b.y);
-    const r = Math.max(a.x + a.w, b.x + b.w);
-    const btm = Math.max(a.y + a.h, b.y + b.h);
-    return x < view.x + view.w && r > view.x && y < view.y + view.h && btm > view.y;
+    const meets = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
+    if (meets(a) || meets(b)) return true;
+    return segmentMeetsRect(a.x + a.w / 2, a.y + a.h / 2, b.x + b.w / 2, b.y + b.h / 2, view);
   };
   const parkEdge = (rec) => {
     if (rec.parked) return;
@@ -599,9 +622,12 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     for (const uid of [...edgeEls.keys()]) if (!board.edges.has(uid)) removeEdge(uid);
     for (const edge of board.edges.values()) {
       let rec = edgeEls.get(edge.uid);
-      if (virt && selection.edge !== edge.uid && editingLabel?.uid !== edge.uid && !edgeNear(board, edge, rects)) {
-        if (rec) parkEdge(rec);
-        continue;
+      if (virt && selection.edge !== edge.uid && editingLabel?.uid !== edge.uid) {
+        const attached = rec && !rec.parked;
+        if (attached ? edgeFar(board, edge, rects) : !edgeNear(board, edge, rects)) {
+          if (rec) parkEdge(rec);
+          continue;
+        }
       }
       const fresh = !rec;
       if (!rec) rec = buildEdge(edge);
@@ -641,6 +667,29 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       n += 1;
     }
     return n;
+  };
+
+  // A settled camera after a pointer or wheel-zoom gesture: park what left the view, put back what came near.
+  const cull = (rect) => {
+    if (!rect || !lastPass) return;
+    view = rect;
+    const { board, rects, coveredEdges, selection } = lastPass;
+    if (board.edges.size <= VIRTUAL_EDGES) return;
+    for (const edge of board.edges.values()) {
+      const rec = edgeEls.get(edge.uid);
+      const pinned = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
+      const near = pinned || (rec && !rec.parked ? !edgeFar(board, edge, rects) : edgeNear(board, edge, rects));
+      if (!near) {
+        if (rec) parkEdge(rec);
+        continue;
+      }
+      if (rec && !rec.parked && !rec.stale) continue;
+      const live = rec || buildEdge(edge);
+      if (rec?.parked) unparkEdge(live);
+      live.stale = false;
+      paintEdge(board, edge, live, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
+      placeEdge(board, edge, live, rects, zoomCache);
+    }
   };
 
   // Re-place only the given edges (drag preview): rects may be an override map.
@@ -911,6 +960,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     render,
     update,
     reveal,
+    cull,
     // Every built edge group, in the DOM or parked (lenses paint parked edges too).
     groups: () => [...edgeEls.values()].map((rec) => rec.g),
     attachedCount: () => {

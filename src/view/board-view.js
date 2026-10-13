@@ -3539,16 +3539,39 @@ function buildBoardView(onFail, {
     badgeTimer = timers.later(() => { badgeTimer = null; refreshBadges(); }, ms);
   };
 
+  let edgesZoomAt = NaN;
+  let wheelLayer = false;
+  let minimapAt = -Infinity;
+  const MINIMAP_WHEEL_MS = 150;
+  const perfNow = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+  // Arrow heads are max(8 + 2w, 6 / zoom): above 0.6 they do not change; below, in 25% steps.
+  const edgeZoomKey = (z) => (!(z > 0) ? "" : `${z >= 0.6 ? "hi" : Math.round(Math.log(z) / Math.log(1.25))}:${z < 0.3}`);
   const settle = () => {
     settleTimer?.();
     settleTimer = timers.later(() => {
       settleTimer = null;
       if (gesturing) return;
+      if (wheelLayer) {
+        wheelLayer = false;
+        world.style.willChange = "";
+      }
       applyLod();
       scheduleContent();
       vpStore.set(vpId, vp);
-      dirty.edges = new Set(board()?.edges.keys() || []); // arrow sizes depend on zoom
-      dirty.links = true;
+      // Arrow sizes, link heads and the label cut-off follow the zoom: re-place every edge only when they change.
+      // A pan settle on the PhD main board re-placed all 2,114 edges (~0.4 s each time the wheel paused).
+      if (vp.zoom !== edgesZoomAt) {
+        const full = edgeZoomKey(vp.zoom) !== edgeZoomKey(edgesZoomAt);
+        edgesZoomAt = vp.zoom;
+        if (full) {
+          dirty.edges = new Set(board()?.edges.keys() || []);
+          dirty.links = true;
+        } else {
+          // Block-end pills are sized in screen pixels.
+          for (const e of board()?.edges.values() || []) if (e.fromBlock || e.toBlock) dirty.edges.add(e.uid);
+        }
+      }
+      if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, CULL_MARGIN));
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -6717,6 +6740,7 @@ function buildBoardView(onFail, {
           applyLod();
           propsPanel.place();
           scheduleContent();
+          if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, CULL_MARGIN));
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
@@ -7520,7 +7544,17 @@ function buildBoardView(onFail, {
     if (pageBodyWantsWheel(event.target, event)) { event.stopPropagation(); return; }
     measure(); // the outer Roam page scrolls without any pointer event on the board
     const handled = ctl.handle(normalize(event, "wheel"));
-    if (handled) { event.preventDefault(); event.stopPropagation(); settle(); }
+    if (handled) {
+      event.preventDefault();
+      event.stopPropagation();
+      // A wheel pan or zoom is not a pointer gesture, so the world was never its own layer and every wheel frame
+      // repainted every shell and edge (PhD main board at map zoom: ~60% of a pan). The settle drops the layer.
+      if (!wheelLayer && !gesturing) {
+        wheelLayer = true;
+        world.style.willChange = "transform";
+      }
+      settle();
+    }
   }, { passive: false });
   // Right-click: the controller decides what was hit and asks us to open the menu; an editing card keeps the
   // browser's own menu (the controller returns false there). A long-press calls this same function.
@@ -8396,7 +8430,11 @@ function buildBoardView(onFail, {
       chrome.ctx.reposition();
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) scheduleLiftIdle();
-    if (itemsChanged || dirty.minimap || (dirty.viewport && !gesturing)) {
+    // During a wheel pan or zoom the minimap and landmark dots repaint at most every MINIMAP_WHEEL_MS (they rebuilt
+    // their marks every frame, and every DOM write inside Roam's block re-runs its :has() checks); the settle paints them.
+    const wheelMinimap = wheelLayer && !itemsChanged && !dirty.minimap;
+    if ((itemsChanged || dirty.minimap || (dirty.viewport && !gesturing)) && !(wheelMinimap && perfNow() - minimapAt < MINIMAP_WHEEL_MS)) {
+      minimapAt = perfNow();
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });
       paintLandmarkDots(b, shown);

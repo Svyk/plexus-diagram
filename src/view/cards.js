@@ -1925,6 +1925,7 @@ export function createItemRenderer({
   };
   const keepAttached = (uid, rec, active) => rec.type === "section" || uid === selectedPrimary || rec.hover
     || editing?.uid === uid || mounted.has(uid) || uid === active;
+  const farRect = () => (cullRect ? { x: cullRect.x - cullRect.w * 0.5, y: cullRect.y - cullRect.h * 0.5, w: cullRect.w * 2, h: cullRect.h * 2 } : null);
   const nearView = (uid, rect = cullRect) => {
     if (!rect) return true;
     const r = drawnRect(uid, lastRects?.get(uid));
@@ -1977,10 +1978,12 @@ export function createItemRenderer({
     if (!virtual() || !cullRect) return [];
     const active = activeShellUid();
     let add = [];
+    // Detaching uses a wider box than attaching, so shells on the border do not flip in and out on every settle.
+    const far = farRect();
     for (const [uid, rec] of shells) {
       if (!rec.el) continue;
-      const want = keepAttached(uid, rec, active) || nearView(uid);
       const on = isAttached(rec);
+      const want = keepAttached(uid, rec, active) || nearView(uid, on ? far : cullRect);
       if (want && !on) add.push(rec);
       else if (!want && on && !reveal) rec.el.remove();
     }
@@ -1994,12 +1997,30 @@ export function createItemRenderer({
       };
       add = add.map((rec) => [rec, dist(rec)]).sort((a, b) => a[1] - b[1]).slice(0, budget).map(([rec]) => rec);
     }
-    if (add.length > BULK_ATTACH) placeVirtual(new Set(add));
+    if (add.length > BULK_ATTACH) attachMany(new Set(add));
     else {
       add.sort((a, b) => indexOfUid(a.uid) - indexOfUid(b.uid));
       for (const rec of add) attachShell(rec);
     }
     return add;
+  };
+  // Many shells at once: one backward walk of the board order inserts each before the next attached shell of its
+  // layer. Attached shells are not moved (re-appending them all was ~2,000 DOM mutations per settle at map zoom).
+  const attachMany = (set) => {
+    const order = lastBoard?.order || [];
+    const next = new Map([[sectionsLayer, null], [itemsLayer, null]]);
+    for (let i = order.length - 1; i >= 0; i -= 1) {
+      const rec = shells.get(order[i]);
+      if (!rec?.el) continue;
+      const layer = layerOf(rec);
+      if (set.has(rec) && !isAttached(rec)) {
+        const before = next.get(layer);
+        if (before && typeof layer.insertBefore === "function") layer.insertBefore(rec.el, before);
+        else layer.append(rec.el);
+      }
+      if (rec.el.parentElement === layer) next.set(layer, rec.el);
+    }
+    for (const rec of set) if (!isAttached(rec)) layerOf(rec).append(rec.el);
   };
   const pumpShells = () => {
     // At most 40 shells and about PUMP_MS per frame.
@@ -4471,7 +4492,7 @@ export function createItemRenderer({
     rec.contentKey = null;
     mounted.delete(uid);
     contentSched?.drop(uid);
-    if (virtual() && isAttached(rec) && !keepAttached(uid, rec, activeShellUid()) && !nearView(uid)) rec.el.remove();
+    if (virtual() && isAttached(rec) && !keepAttached(uid, rec, activeShellUid()) && !nearView(uid, farRect())) rec.el.remove();
   };
 
   // One card body is one scheduler row. Already mounted bodies return done so renderBlock is not called again.
@@ -4592,7 +4613,9 @@ export function createItemRenderer({
   const paintOneOffscreen = (uid, rec, visibleRect) => {
     if (!rec.el || rec.type === "section") return;
     const rect = drawnRect(uid, lastRects?.get(uid));
-    const off = Boolean(visibleRect) && shellOffscreen(uid, rect, visibleRect, { editingUid: editing?.uid ?? null });
+    // A virtual board keeps far shells out of the DOM, so the attached ones never take content-visibility: toggling it
+    // on the border shells at every settle was ~2,000 class and style writes per pan.
+    const off = !virtual() && Boolean(visibleRect) && shellOffscreen(uid, rect, visibleRect, { editingUid: editing?.uid ?? null });
     if (rec.el.classList.contains("pxd-item--offscreen") !== off) {
       rec.el.classList.toggle("pxd-item--offscreen", off);
     }

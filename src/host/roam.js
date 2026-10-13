@@ -768,10 +768,31 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const data = countReads(api.data, stats);
   // add/removePullWatch count toward Roam's 1,500/min limiter too: they spend the write pacer's budget, so a burst of
   // watch churn makes writes wait instead of Roam refusing them (and openPage).
+  // Every registration this host holds (cb -> [pattern, entity] pairs), so dispose() can remove them all at unload.
+  const registered = new Map();
   const watchData = new Proxy(data, {
     get(target, prop) {
-      if (prop === "addPullWatch" || prop === "removePullWatch") {
-        return (...args) => { pacer.note(); return target[prop](...args); };
+      if (prop === "addPullWatch") {
+        return (pattern, entity, cb, ...rest) => {
+          pacer.note();
+          const out = target.addPullWatch(pattern, entity, cb, ...rest);
+          let list = registered.get(cb);
+          if (!list) { list = []; registered.set(cb, list); }
+          list.push([pattern, entity]);
+          return out;
+        };
+      }
+      if (prop === "removePullWatch") {
+        return (pattern, entity, cb, ...rest) => {
+          pacer.note();
+          const list = registered.get(cb);
+          if (list) {
+            const at = list.findIndex(([p, e]) => p === pattern && e === entity);
+            if (at >= 0) list.splice(at, 1);
+            if (!list.length) registered.delete(cb);
+          }
+          return target.removePullWatch(pattern, entity, cb, ...rest);
+        };
       }
       const value = target[prop];
       return typeof value === "function" ? value.bind(target) : value;
@@ -857,6 +878,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const off = split.watchItem(key, { pending: true });
       if (off) want.offs.set(split, off);
     }
+  };
+  // Idle prime parts still queued: dispose() cancels them.
+  const idleHandles = new Map();
+  const idleLater = (idle, fn) => {
+    const key = {};
+    const run = (deadline) => { idleHandles.delete(key); fn(deadline); };
+    if (typeof idle === "function") idleHandles.set(key, { idle: idle(run, { timeout: 1500 }) });
+    else idleHandles.set(key, { timer: setTimeout(run, 250) });
   };
   // uid -> pull sequence number at which its last board watch was dropped.
   const unwatchedAt = new Map();
@@ -1169,7 +1198,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       own.subs.delete(sub);
       // Leaving a page drops its crumb pool; the way back opens the same nested board again. With no subscriber
       // left the split is held like a parked one and goes after SPLIT_HOLD_MS.
-      if (!own.disposed && splitWatches.get(uid) === own && [...own.subs].every((x) => x.paused)) holdSplit(uid, own);
+      // A split already held (the last subscriber was parked) keeps its deadline.
+      if (!own.disposed && !own.held && splitWatches.get(uid) === own && [...own.subs].every((x) => x.paused)) holdSplit(uid, own);
       stats.watches--;
       // slot.n counts live subscribers: a paused one already left it.
       if (!sub.paused) slot.n = Math.max(0, slot.n - 1);
@@ -1541,7 +1571,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         try { host.cardStats(found.stats.slice(0, chunk), { boardUid: uid }); } catch { /* badges ask again */ }
         // The rest of a big board's stats in idle slices.
         const idle = globalThis.requestIdleCallback;
-        const later = (fn) => (typeof idle === "function" ? idle((deadline) => fn(deadline), { timeout: 1500 }) : setTimeout(fn, 250));
+        const later = (fn) => idleLater(idle, fn);
         const pulledAt = pullSeq;
         let si = chunk;
         const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
@@ -1567,7 +1597,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         // Linked refs stay in chunks of PRIME_CHUNK. Card stats are one pull:
         // 300 cards measured about 19 ms, inside one idle slice.
         const idle = globalThis.requestIdleCallback;
-        const later = (fn) => (typeof idle === "function" ? idle((deadline) => fn(deadline), { timeout: 1500 }) : setTimeout(fn, 250));
+        const later = (fn) => idleLater(idle, fn);
         // A big board reads linked refs and card stats for the cards on screen only (one part of 10 linked-ref titles
         // was ~0.5 s on the PhD main board).
         const titles = big ? [] : found.titles;
@@ -1694,6 +1724,30 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         for (const off of want.offs.values()) { try { off(); } catch { /* already gone */ } }
       };
     },
+    // Unload / teardown: every pull watch this host registered goes now, with every hold, arm and sweep timer.
+    // Held splits would otherwise keep Roam re-pulling them on every transaction for SPLIT_HOLD_MS after unload.
+    dispose() {
+      if (armTimer != null) { clearTimeout(armTimer); armTimer = null; }
+      for (const h of idleHandles.values()) {
+        if (h.timer != null) clearTimeout(h.timer);
+        else try { globalThis.cancelIdleCallback?.(h.idle); } catch { /* already ran */ }
+      }
+      idleHandles.clear();
+      for (const own of splitWatches.values()) {
+        unhold(own);
+        own.dispose();
+      }
+      splitWatches.clear();
+      for (const want of contentWants.values()) want.offs.clear();
+      for (const [cb, list] of [...registered]) {
+        for (const [pattern, entity] of [...list]) {
+          try { watchData.removePullWatch(pattern, entity, cb); } catch { /* already gone */ }
+        }
+      }
+      registered.clear();
+      watchedBlocks.clear();
+    },
+
     splitStats(uid) {
       return splitWatches.get(uid)?.stats() ?? null;
     },

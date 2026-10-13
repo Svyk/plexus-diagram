@@ -201,3 +201,79 @@ test("P7-4: a parked big board stops priming card stats", async () => {
     w();
   } finally { globalThis.requestIdleCallback = prev; }
 });
+
+test("P7-5: unload leaves 0 registered watches and 0 pending host timers", async () => {
+  const pending = new Set();
+  const realSet = globalThis.setTimeout;
+  const realClear = globalThis.clearTimeout;
+  globalThis.setTimeout = (fn, ms, ...a) => {
+    const id = realSet(() => { pending.delete(id); fn(...a); }, ms); id.stack = new Error().stack;
+    pending.add(id);
+    return id;
+  };
+  globalThis.clearTimeout = (id) => { pending.delete(id); realClear(id); };
+  let fake;
+  let host;
+  try {
+    ({ fake, host } = setup());
+    host.pullBoard("main");
+    acquireSession("main", { host, linkDelay: 0 });
+    const offs = Array.from({ length: 30 }, (_, i) => host.watchContent(`mc${i % SECTIONS}x${i % 7}`));
+    await fake.flush();
+    for (const off of offs.slice(0, 20)) off();
+    host.watchBlock("blkA", () => {});
+    resetSessions();
+    host.dispose();
+    assert.equal(fake.watchList().length, 0, "every pull watch removed");
+    assert.equal(host.splitStats?.("main") ?? null, null);
+  } finally {
+    globalThis.setTimeout = realSet;
+    globalThis.clearTimeout = realClear;
+  }
+  for (const id of pending) { if (process.env.P7DBG) console.log(id.stack); realClear(id); }
+  assert.equal(pending.size, 0, "no host timer left");
+});
+
+test("P7-5: a destroy during a park does not restart the hold", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const { fake, host } = setup();
+    host.pullBoard("main");
+    const off = host.watchBoard("main", () => {});
+    off.pause();
+    mock.timers.tick(SPLIT_HOLD_MS - 1000);
+    off();
+    mock.timers.tick(1000);
+    assert.equal(fake.watchList().length, 0, "the hold ends when it was due");
+  } finally { mock.timers.reset(); }
+});
+
+test("P7-5: the feature lifecycle disposes the host at unload", async () => {
+  const { createDomStub } = await import("./fixtures/dom-stub.js");
+  const { createLifecycle } = await import("../src/lifecycle.js");
+  const { installPlexusDiagram } = await import("../src/feature.js");
+  const dom = createDomStub();
+  dom.document.head = dom.document.createElement("head");
+  const restoreDom = dom.install();
+  const lifecycle = createLifecycle();
+  let disposed = 0;
+  const host = { listBoards: () => [], dispose: () => { disposed += 1; } };
+  const extensionAPI = {
+    settings: { get: () => null },
+    ui: {
+      commandPalette: { addCommand: async () => {}, removeCommand: async () => {} },
+      slashCommand: { addCommand: async () => {}, removeCommand: async () => {} },
+      blockContextMenu: { addCommand: async () => {}, removeCommand: async () => {} },
+    },
+    platform: { isMobile: () => false },
+  };
+  try {
+    await installPlexusDiagram({ extensionAPI, lifecycle, host, acquireSession: () => ({ release() {} }), mountView: () => ({ dispose() {} }) });
+    assert.equal(disposed, 0);
+    await lifecycle.dispose();
+    assert.equal(disposed, 1);
+  } finally {
+    await lifecycle.dispose().catch(() => {});
+    restoreDom();
+  }
+});

@@ -228,6 +228,9 @@ export async function installPlexusDiagram({
   if (!mountView) mountView = mountBoardView;
   const host = injectedHost;
   const acquireSession = injectedAcquire;
+  // Registered early so it runs after the views and sessions let go: held split watches and their timers go at
+  // unload instead of SPLIT_HOLD_MS later.
+  lifecycle.add(() => host.dispose?.());
   const perfLog = createPerfLog();
   perfLog.bind(host.stats);
   const shiftWatch = createShiftWatch();

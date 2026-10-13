@@ -1235,6 +1235,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-sync--pending,
 .pxd-sync--writing,
+.pxd-sync--held,
 .pxd-sync--retrying {
   background: var(--pxd-orange-line);
   opacity: 1;

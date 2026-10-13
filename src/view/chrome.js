@@ -591,9 +591,9 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     },
     setSync(pending) {
       const name = pending === true ? "writing" : pending === false || pending == null ? "idle" : pending;
-      const titles = { idle: "Synced", writing: "Saving…", retrying: "Retrying…", failed: "Couldn't save" };
+      const titles = { idle: "Synced", writing: "Saving…", held: "Waiting for Roam…", retrying: "Retrying…", failed: "Couldn't save" };
       const state = titles[name] ? name : "idle";
-      sync.classList.remove("pxd-sync--pending", "pxd-sync--writing", "pxd-sync--retrying", "pxd-sync--failed");
+      sync.classList.remove("pxd-sync--pending", "pxd-sync--writing", "pxd-sync--held", "pxd-sync--retrying", "pxd-sync--failed");
       if (state === "writing") sync.classList.add("pxd-sync--pending", "pxd-sync--writing");
       else if (state !== "idle") sync.classList.add(`pxd-sync--${state}`);
       sync.setAttribute("data-tip-state", state);

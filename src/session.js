@@ -1,5 +1,6 @@
 import { namespaceParent } from "./model/namespace.js";
 import { READS_KEY, mergeReads } from "./host/read-keep.js";
+import { SYNC_HOLD_BATCH, createSyncHold } from "./host/sync-hold.js";
 import { CONTAINER_STRING, isContainerString, parseRegion, PIN_CONTAINER_STRING } from "./model/regions.js";
 import { imagePolyString, imageRegionString } from "./model/image-region.js";
 import { renameRegionCaption } from "./model/region-menu.js";
@@ -391,7 +392,7 @@ function unknownKeys(plexus, known) {
   return out;
 }
 
-function createSession(uid, { host, settings = null, virtual = false, raf, now = Date.now, idle, linkDelay = 1500, graceMs = 800, confirmBulk = null } = {}) {
+function createSession(uid, { host, settings = null, virtual = false, raf, now = Date.now, idle, linkDelay = 1500, graceMs = 800, confirmBulk = null, syncHold = null } = {}) {
   const schedule = raf ?? ((fn) => {
     if (typeof globalThis.requestAnimationFrame === "function") return globalThis.requestAnimationFrame(fn);
     const t = setTimeout(fn, 0);
@@ -928,10 +929,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     throw last;
   }
 
-  async function execute(list) {
+  // F10. A long write list pauses between batches while Roam's sync dot says it is saving (at most SYNC_HOLD_CAP_MS,
+  // never when the dot is missing or the browser is offline). A short list, an undo and a redo never wait.
+  const holder = syncHold || (typeof document === "undefined" ? null : createSyncHold());
+  async function execute(list, { hold = true } = {}) {
     let i = 0;
     try {
       for (; i < list.length; i++) {
+        if (hold && holder && i > 0 && i % SYNC_HOLD_BATCH === 0 && list.length > SYNC_HOLD_BATCH) {
+          let held = false;
+          try { await holder.wait({ onHold: () => { held = true; setSyncState("held"); } }); } catch { /* a failed look fails open */ }
+          if (held) setSyncState("writing");
+        }
         await runOpWithRetry(list[i]);
         settleOp(list[i]);
       }
@@ -1049,8 +1058,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     const back = coalesce(inverse.slice().reverse());
     const entry = {
       forward: list,
-      async undo() { await execute(back); },
-      async redo() { await execute(entry.forward); },
+      async undo() { await execute(back, { hold: false }); },
+      async redo() { await execute(entry.forward, { hold: false }); },
     };
     return entry;
   }
@@ -2355,7 +2364,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
             ops.push({ op: "string", uid: e.uid, string: e.oldString });
             ops.push({ op: "props", uid: e.uid, plexus: e.oldProps });
           }
-          await execute(ops);
+          await execute(ops, { hold: false });
           // Roam applies the move-back after execute resolves, so a created page can still hold its pdf block here.
           for (const r of records) {
             if (!r.pageCreated) continue;
@@ -2369,7 +2378,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         },
         async redo() {
           const ops = custom.forward.filter((op) => op.op !== "page" || host.pageExists?.(op.title) !== true);
-          await execute(ops);
+          await execute(ops, { hold: false });
         },
       };
       return txn((t) => {
@@ -2426,7 +2435,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
             ops.push({ op: "string", uid: e.uid, string: e.oldString });
             ops.push({ op: "props", uid: e.uid, plexus: e.oldProps });
           }
-          await execute(ops);
+          await execute(ops, { hold: false });
           for (const r of back) {
             // Deleting a caption that still holds its table would delete the table: wait for Roam to apply the move.
             let out = false;
@@ -2435,11 +2444,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
               out = !loc || loc.parentUid !== r.captionUid;
               if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
             }
-            if (out) await execute([{ op: "delete", uid: r.captionUid }]);
+            if (out) await execute([{ op: "delete", uid: r.captionUid }], { hold: false });
           }
         },
         async redo() {
-          await execute(custom.forward);
+          await execute(custom.forward, { hold: false });
         },
       };
       return txn((t) => {

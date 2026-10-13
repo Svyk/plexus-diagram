@@ -6000,6 +6000,8 @@ export function createItemRenderer({
     },
     // The gesture underlay draws a box for every item whose shell is not in the DOM.
     isVirtual: () => virtual(),
+    // Past VIRTUAL_MIN items whatever the virtualShells kill switch says (the hit shield matters most with it off).
+    isBig: () => (lastBoard?.items?.size || 0) > VIRTUAL_MIN,
     attachedUid: (uid) => isAttached(shells.get(uid)),
     attachedCount: () => {
       let n = 0;

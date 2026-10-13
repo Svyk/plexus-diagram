@@ -370,3 +370,12 @@ test("P7-6: a keep-alive light read of a 1,500-card board reads stats in parts",
   await new Promise((r) => setTimeout(r, 600));
   assert.ok(calls.length > 1 && Math.max(...calls) <= 80, `calls ${JSON.stringify(calls.slice(0, 5))}`);
 });
+
+test("P7-7: the hit shield gates on board size, not on the virtualShells kill switch", async () => {
+  const { readFileSync } = await import("node:fs");
+  const view = readFileSync(new URL("../src/view/board-view.js", import.meta.url), "utf8");
+  const line = view.split("\n").find((l) => l.includes("notedSpeedFlags().hitShield"));
+  assert.match(line, /itemsR\.isBig\?\.\(\)/);
+  const cards = readFileSync(new URL("../src/view/cards.js", import.meta.url), "utf8");
+  assert.match(cards, /isBig: \(\) => \(lastBoard\?\.items\?\.size \|\| 0\) > VIRTUAL_MIN/);
+});

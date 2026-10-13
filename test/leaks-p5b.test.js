@@ -1,6 +1,7 @@
 // P5-B memory-leak guards: view-lifetime lists must not grow per refresh / gesture / page return.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createPanel } from "../src/view/panel.js";
 import { createPropsPanel } from "../src/view/props-panel.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { mountBoardView } from "../src/view/board-view.js";
@@ -96,6 +97,36 @@ test("1d: a sticky's live Roam block is unmounted when the view is disposed", ()
     assert.ok(editor, "the sticky mounted its live block");
     view.dispose();
     assert.ok(unmounted.includes(editor), "host.unmount received the sticky editor");
+  } finally {
+    restore();
+  }
+});
+
+test("2a: the add panel does not pin every result row it ever rendered", async () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const root = stub.document.createElement("div");
+    stub.document.body.append(root);
+    const pages = Array.from({ length: 30 }, (_, i) => ({ title: `Page ${i}` }));
+    const panel = createPanel({
+      doc: stub.document, root, host: { searchPages: () => pages, searchBlocks: () => [] },
+      timers: { later: () => () => {}, frame: () => () => {} }, on: {},
+    });
+    panel.open("search");
+    const input = root.querySelector(".pxd-panel__input");
+    const search = async (v) => {
+      input.value = v;
+      stub.dispatch(input, "keydown", { key: "Enter" });
+      await new Promise((r) => setTimeout(r, 0));
+    };
+    await search("page");
+    const once = stub.listenerCount();
+    for (let i = 0; i < 40; i += 1) await search(i % 2 ? "page" : "pag");
+    const live = root.querySelectorAll(".pxd-panel__row").length;
+    assert.ok(live > 0);
+    assert.ok(stub.listenerCount() < once + 3 * 30 + 200, `listeners ${stub.listenerCount()} vs first render ${once}`);
+    panel.dispose();
   } finally {
     restore();
   }

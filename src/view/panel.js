@@ -32,6 +32,22 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     el.addEventListener(type, fn, opts);
     listeners.push(() => el.removeEventListener(type, fn, opts));
   };
+  // Result rows come and go with every search. Their listeners are released once the row has left the panel.
+  const rowOffs = [];
+  let rowCap = 128;
+  const listenRow = (el, type, fn, opts) => {
+    el.addEventListener(type, fn, opts);
+    rowOffs.push({ el, off: () => el.removeEventListener(type, fn, opts) });
+    if (rowOffs.length <= rowCap) return;
+    const keep = [];
+    for (const entry of rowOffs) {
+      if (entry.el.isConnected === false) entry.off();
+      else keep.push(entry);
+    }
+    rowOffs.length = 0;
+    rowOffs.push(...keep);
+    rowCap = Math.max(128, rowOffs.length * 2);
+  };
   const el = (tag, cls, parent, text) => {
     const node = doc.createElement(tag);
     node.className = cls;
@@ -495,7 +511,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     b.dataset.like = key;
     b.setAttribute("data-like", key);
     el("span", "bp3-icon bp3-icon-style", b).setAttribute("aria-hidden", "true");
-    listen(b, "click", (event) => { event.stopPropagation(); startLike(key, name); });
+    listenRow(b, "click", (event) => { event.stopPropagation(); startLike(key, name); });
   };
 
   // A PDF row: file icon, its title (two lines, query words marked), then venue · pages · page.
@@ -571,8 +587,8 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       r.classList.add("pxd-panel__row--on");
       el("span", "pxd-panel__row-on", r, "on board");
     }
-    listen(r, "click", (event) => { event.stopPropagation(); on.addBeside?.(string); r.classList.add("pxd-panel__row--on"); });
-    listen(r, "dragstart", (event) => {
+    listenRow(r, "click", (event) => { event.stopPropagation(); on.addBeside?.(string); r.classList.add("pxd-panel__row--on"); });
+    listenRow(r, "dragstart", (event) => {
       try {
         event.dataTransfer?.setData?.(CARD_MIME, string);
         event.dataTransfer?.setData?.("text/plain", string);
@@ -599,7 +615,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       ask.setAttribute("title", "Ask AI");
       const mark = askAiIcon(doc, 16);
       if (mark) ask.append(mark);
-      listen(ask, "click", (event) => { event.stopPropagation(); on.askPart(part); });
+      listenRow(ask, "click", (event) => { event.stopPropagation(); on.askPart(part); });
     }
     if (part.kind === "figure" && typeof on.chartPart === "function") {
       const chart = el("button", "pxd-panel__row-act pxd-panel__row-chart", head);
@@ -607,14 +623,14 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       chart.setAttribute("aria-label", "Chart to table");
       chart.setAttribute("title", "Chart → table");
       el("span", "bp3-icon bp3-icon-timeline-line-chart", chart).setAttribute("aria-hidden", "true");
-      listen(chart, "click", (event) => { event.stopPropagation(); on.chartPart(part); });
+      listenRow(chart, "click", (event) => { event.stopPropagation(); on.chartPart(part); });
     }
     if (typeof on.basketPart === "function") {
       const add = el("button", "pxd-panel__row-act", head, "+");
       add.setAttribute("type", "button");
       add.setAttribute("aria-label", "Add to question");
       add.setAttribute("title", "Add to question");
-      listen(add, "click", (event) => { event.stopPropagation(); on.basketPart(part); });
+      listenRow(add, "click", (event) => { event.stopPropagation(); on.basketPart(part); });
     }
     const snip = partSnippet(part.text, needle);
     const body = el("span", "pxd-panel__row-text pxd-panel__row-text--part", r);
@@ -628,12 +644,12 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       pdfUid: part.pdfUid || "", pdfBlockUid: part.pdfUid || "",
       kind: part.kind === "table" || part.kind === "figure" || part.kind === "formula" ? part.kind : "blocks",
     };
-    listen(r, "click", (event) => {
+    listenRow(r, "click", (event) => {
       event.stopPropagation();
       if (on.openPart?.(part) !== true) on.addPart?.(payload);
       r.classList.add("pxd-panel__row--on");
     });
-    listen(r, "dragstart", (event) => {
+    listenRow(r, "dragstart", (event) => {
       try {
         const json = JSON.stringify(payload);
         event.dataTransfer?.setData?.(PARSE_MIME, json);
@@ -1233,11 +1249,11 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     r.dataset.uid = uid;
     r.setAttribute("data-uid", uid);
     el("span", "pxd-panel__row-text pxd-panel__row-text--block", r, item.text ?? "");
-    listen(r, "click", (event) => {
+    listenRow(r, "click", (event) => {
       event.preventDefault?.();
       event.stopPropagation();
     });
-    listen(r, "dragstart", (event) => {
+    listenRow(r, "dragstart", (event) => {
       try {
         event.dataTransfer?.setData?.(CARD_MIME, string);
         event.dataTransfer?.setData?.("text/plain", string);
@@ -1689,6 +1705,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       journalId += 1;
       unmountInfo();
       listeners.splice(0).forEach((off) => off());
+      rowOffs.splice(0).forEach((entry) => entry.off());
       panel.remove();
     },
   };

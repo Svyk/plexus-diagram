@@ -3023,8 +3023,8 @@ function buildBoardView(onFail, {
       if (wanted.has(item.uid) || (target && wanted.has(target))) pulseItem(item.uid);
     }
   };
-  const edgeList = () => root.querySelectorAll?.(".pxd-edge") || [];
-  const dustShells = () => [...(root.querySelectorAll?.(".pxd-item[data-uid]") || [])];
+  const edgeList = () => edgesR?.groups?.() || root.querySelectorAll?.(".pxd-edge") || [];
+  const dustShells = () => (itemsR?.shellEls ? itemsR.shellEls().filter((el) => el.classList?.contains("pxd-item")) : [...(root.querySelectorAll?.(".pxd-item[data-uid]") || [])]);
   const paintLenses = () => {
     if (disposed) return;
     if (strengthOn && strengthScores) {
@@ -8328,7 +8328,7 @@ function buildBoardView(onFail, {
         // An edge-only change used to call update(), which moves the path and skips
         // paintEdge, so dash and color never reached the DOM until a full render.
         const links = paintedLinks();
-        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
+        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges, view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null });
         paintLegend();
         if (suggestMode !== "off") refreshSuggest();
       }
@@ -8341,6 +8341,12 @@ function buildBoardView(onFail, {
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
+      // Big boards keep far shells and edges out of the DOM: put back what this camera brings near.
+      if (size.width) {
+        const near = visibleWorldRect(vp, size, CULL_MARGIN);
+        itemsR.reveal?.(near);
+        edgesR.reveal?.(near);
+      }
       // Roam Caret re-places its caret when a field on the board is focused and the camera moves.
       const focused = doc.activeElement;
       if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {

@@ -1904,8 +1904,101 @@ export function createItemRenderer({
     if (sectionNodes.childNodes.length) sectionsLayer.append(sectionNodes);
     if (itemNodes.childNodes.length) itemsLayer.append(itemNodes);
   };
+  // PhD main board: 1,512 shells and every edge stayed in the DOM (25k nodes), so each pan, zoom and marquee frame
+  // paid style and layout for all of them. On a board past VIRTUAL_MIN items a shell is in the DOM only near the
+  // view (the content cull rect), or while it is a section, selected, hovered, mounted, edited or focused. Its record
+  // and element stay alive detached, so class and state writes still reach it.
+  const VIRTUAL_MIN = 400;
+  const BULK_ATTACH = 64;
+  let cullRect = null;
+  const virtual = () => (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
+  const isAttached = (rec) => Boolean(rec?.el?.parentElement);
+  const activeShellUid = () => {
+    const active = doc.activeElement;
+    if (!active || typeof active.closest !== "function") return null;
+    return active.closest(".pxd-item[data-uid], .pxd-section[data-uid]")?.getAttribute?.("data-uid") || null;
+  };
+  const keepAttached = (uid, rec, active) => rec.type === "section" || uid === selectedPrimary || rec.hover
+    || editing?.uid === uid || mounted.has(uid) || uid === active;
+  const nearView = (uid, rect = cullRect) => {
+    if (!rect) return true;
+    const r = drawnRect(uid, lastRects?.get(uid));
+    return !r || rectsIntersect(r, rect);
+  };
+  let orderIndexOf = null;
+  let orderIndex = new Map();
+  const indexOfUid = (uid) => {
+    const order = lastBoard?.order || [];
+    if (orderIndexOf !== order) {
+      orderIndexOf = order;
+      orderIndex = new Map(order.map((u, i) => [u, i]));
+    }
+    return orderIndex.get(uid) ?? order.length;
+  };
+  const layerOf = (rec) => (rec.type === "section" ? sectionsLayer : itemsLayer);
+  // One shell into its layer at its board-order place.
+  const attachShell = (rec) => {
+    if (!rec?.el || isAttached(rec)) return;
+    const layer = layerOf(rec);
+    const order = lastBoard?.order || [];
+    let before = null;
+    for (let j = indexOfUid(rec.uid) + 1; j < order.length; j += 1) {
+      const next = shells.get(order[j]);
+      if (next?.el && next.el.parentElement === layer) { before = next.el; break; }
+    }
+    if (before && typeof layer.insertBefore === "function") layer.insertBefore(rec.el, before);
+    else layer.append(rec.el);
+  };
+  // Every wanted shell in board order in one pass; shells no longer wanted leave the DOM.
+  const placeVirtual = (extra = null) => {
+    const active = activeShellUid();
+    const frag = typeof doc.createDocumentFragment === "function";
+    const sectionNodes = frag ? doc.createDocumentFragment() : null;
+    const itemNodes = frag ? doc.createDocumentFragment() : null;
+    for (const uid of lastBoard?.order || []) {
+      const rec = shells.get(uid);
+      if (!rec?.el) continue;
+      if (extra?.has(rec) || keepAttached(uid, rec, active) || nearView(uid)) {
+        if (frag) (rec.type === "section" ? sectionNodes : itemNodes).append(rec.el);
+        else layerOf(rec).append(rec.el);
+      } else if (isAttached(rec)) rec.el.remove();
+    }
+    if (sectionNodes?.childNodes.length) sectionsLayer.append(sectionNodes);
+    if (itemNodes?.childNodes.length) itemsLayer.append(itemNodes);
+  };
+  // reveal: attach only (a gesture frame), at most `budget` shells, nearest the rect's centre first.
+  const cullShells = (rect, { reveal = false, budget = Infinity } = {}) => {
+    if (rect) cullRect = rect;
+    if (!virtual() || !cullRect) return [];
+    const active = activeShellUid();
+    let add = [];
+    for (const [uid, rec] of shells) {
+      if (!rec.el) continue;
+      const want = keepAttached(uid, rec, active) || nearView(uid);
+      const on = isAttached(rec);
+      if (want && !on) add.push(rec);
+      else if (!want && on && !reveal) rec.el.remove();
+    }
+    if (!add.length) return add;
+    if (add.length > budget) {
+      const cx = cullRect.x + cullRect.w / 2;
+      const cy = cullRect.y + cullRect.h / 2;
+      const dist = (rec) => {
+        const r = drawnRect(rec.uid, lastRects?.get(rec.uid));
+        return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
+      };
+      add = add.map((rec) => [rec, dist(rec)]).sort((a, b) => a[1] - b[1]).slice(0, budget).map(([rec]) => rec);
+    }
+    if (add.length > BULK_ATTACH) placeVirtual(new Set(add));
+    else {
+      add.sort((a, b) => indexOfUid(a.uid) - indexOfUid(b.uid));
+      for (const rec of add) attachShell(rec);
+    }
+    return add;
+  };
   const pumpShells = () => {
     const chunk = shellQueue.splice(0, 40);
+    const built = [];
     for (const uid of chunk) {
       const item = lastBoard?.items.get(uid);
       if (!item || shells.has(uid)) continue;
@@ -1915,10 +2008,18 @@ export function createItemRenderer({
       noteRender(uid);
       paintShell(rec, item);
       if (rect) position(rec, rect);
+      built.push(rec);
     }
-    if (chunk.length) placeShells();
-    // A shell built after the open pass still needs its offscreen size. The next gesture must not be the first paint.
-    if (chunk.length && lastContent) paintOffscreen(lastContent.visibleRect);
+    if (virtual()) {
+      // Shells off to the side stay detached: re-appending every shell per chunk moved 1,500 nodes 38 times.
+      const active = activeShellUid();
+      for (const rec of built) if (keepAttached(rec.uid, rec, active) || nearView(rec.uid)) attachShell(rec);
+      if (built.length && lastContent) for (const rec of built) if (isAttached(rec)) paintOneOffscreen(rec.uid, rec, lastContent.visibleRect);
+    } else {
+      if (chunk.length) placeShells();
+      // A shell built after the open pass still needs its offscreen size. The next gesture must not be the first paint.
+      if (chunk.length && lastContent) paintOffscreen(lastContent.visibleRect);
+    }
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
   };
   const sync = ({ board, rects, dirty: changed = null, structural = false, view = null }) => {
@@ -1997,7 +2098,11 @@ export function createItemRenderer({
         position(rec, rect);
       }
     }
-    if (orderChanged) placeShells();
+    if (orderChanged) {
+      if (view) cullRect = view;
+      if (virtual()) placeVirtual();
+      else placeShells();
+    }
     if (defer?.size) {
       shellQueue = [...defer];
       timers.frame(pumpShells);
@@ -4329,6 +4434,7 @@ export function createItemRenderer({
     rec.contentKey = null;
     mounted.delete(uid);
     contentSched?.drop(uid);
+    if (virtual() && isAttached(rec) && !keepAttached(uid, rec, activeShellUid()) && !nearView(uid)) rec.el.remove();
   };
 
   // One card body is one scheduler row. Already mounted bodies return done so renderBlock is not called again.
@@ -4446,30 +4552,37 @@ export function createItemRenderer({
   // PERF-3. Keep this call at the start of fillContent. An editing card is never a shell.
   const cssVar = (style, name) => (typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : style[name]) || "";
   // A later pass (gesture resume) must not rewrite a shell that is already right.
+  const paintOneOffscreen = (uid, rec, visibleRect) => {
+    if (!rec.el || rec.type === "section") return;
+    const rect = drawnRect(uid, lastRects?.get(uid));
+    const off = Boolean(visibleRect) && shellOffscreen(uid, rect, visibleRect, { editingUid: editing?.uid ?? null });
+    if (rec.el.classList.contains("pxd-item--offscreen") !== off) {
+      rec.el.classList.toggle("pxd-item--offscreen", off);
+    }
+    if (!off) {
+      if (cssVar(rec.el.style, "--pxd-iw")) rec.el.style.removeProperty("--pxd-iw");
+      if (cssVar(rec.el.style, "--pxd-ih")) rec.el.style.removeProperty("--pxd-ih");
+      const item = lastBoard?.items.get(uid);
+      if (!paused && item?.kind === "region-ref" && lod === "detail" && mounted.has(uid) && editing?.uid !== uid && thumbRequest(rec.regionWidth, rec.rect?.w)) {
+        mountContent(rec, item);
+      }
+      return;
+    }
+    const [iw, ih] = intrinsicSize(rect).split(" ");
+    if (cssVar(rec.el.style, "--pxd-iw") !== iw) rec.el.style.setProperty("--pxd-iw", iw);
+    if (cssVar(rec.el.style, "--pxd-ih") !== ih) rec.el.style.setProperty("--pxd-ih", ih);
+  };
   const paintOffscreen = (visibleRect) => {
+    const virt = virtual();
     for (const [uid, rec] of shells) {
-      if (!rec.el || rec.type === "section") continue;
-      const rect = drawnRect(uid, lastRects?.get(uid));
-      const off = Boolean(visibleRect) && shellOffscreen(uid, rect, visibleRect, { editingUid: editing?.uid ?? null });
-      if (rec.el.classList.contains("pxd-item--offscreen") !== off) {
-        rec.el.classList.toggle("pxd-item--offscreen", off);
-      }
-      if (!off) {
-        if (cssVar(rec.el.style, "--pxd-iw")) rec.el.style.removeProperty("--pxd-iw");
-        if (cssVar(rec.el.style, "--pxd-ih")) rec.el.style.removeProperty("--pxd-ih");
-        const item = lastBoard?.items.get(uid);
-        if (!paused && item?.kind === "region-ref" && lod === "detail" && mounted.has(uid) && editing?.uid !== uid && thumbRequest(rec.regionWidth, rec.rect?.w)) {
-          mountContent(rec, item);
-        }
-        continue;
-      }
-      const [iw, ih] = intrinsicSize(rect).split(" ");
-      if (cssVar(rec.el.style, "--pxd-iw") !== iw) rec.el.style.setProperty("--pxd-iw", iw);
-      if (cssVar(rec.el.style, "--pxd-ih") !== ih) rec.el.style.setProperty("--pxd-ih", ih);
+      // A detached shell is painted when it attaches.
+      if (virt && !isAttached(rec)) continue;
+      paintOneOffscreen(uid, rec, visibleRect);
     }
   };
   const fillContent = ({ visibleRect, zoom = zoomCache, tier = null, dirty = null } = {}) => {
     zoomCache = zoom;
+    cullShells(visibleRect);
     paintOffscreen(visibleRect);
     if (!lastBoard || !lastRects || !contentSched) return;
     const next = new Set();
@@ -4878,6 +4991,7 @@ export function createItemRenderer({
     if (primary === selectedPrimary) return;
     selectedPrimary = primary;
     if (!primary) return;
+    if (virtual()) attachShell(shells.get(primary));
     const heavy = ownHeavyUid(lastBoard?.items.get(primary));
     if (heavy) openEmbed(heavy, { implicit: true });
   };
@@ -5190,6 +5304,7 @@ export function createItemRenderer({
     const item = lastBoard?.items.get(uid);
     if (!rec || !item || rec.type === "section" || item.kind === "board" || item.kind === "drawing-ref" || rec.refBoard) return false;
     if (editing?.uid === uid) return true;
+    if (virtual()) attachShell(rec);
     const pending = pagePointer;
     const fresh = Boolean(pending && pending.uid === uid && (now() - pending.at) <= PAGE_CARET_MS);
     if (fresh) pagePointer = null;
@@ -5763,6 +5878,20 @@ export function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    // Every shell element, in the DOM or not (lenses paint detached shells too).
+    shellEls: () => [...shells.values()].map((rec) => rec.el).filter(Boolean),
+    // A gesture frame: attach shells coming into `rect` (a few per frame). Detaching waits for the settle.
+    reveal(rect, budget = 48) {
+      if (disposed || !rect || !virtual()) return 0;
+      const added = cullShells(rect, { reveal: true, budget });
+      for (const rec of added) paintOneOffscreen(rec.uid, rec, rect);
+      return added.length;
+    },
+    attachedCount: () => {
+      let n = 0;
+      for (const rec of shells.values()) if (isAttached(rec)) n += 1;
+      return n;
+    },
     // INSTANT-4. A table thumbnail arrived: show it on the card if its body is still bare.
     repaintThumb: (uid) => {
       const rec = shells.get(uid);

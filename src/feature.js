@@ -2856,31 +2856,34 @@ export async function installPlexusDiagram({
     if (!safe || !Array.isArray(frac) || frac.length < 4) return "";
     const lib = (doc?.defaultView || globalThis).pdfjsLib;
     if (!lib || typeof lib.getDocument !== "function") return "";
-    let pdf = pinPdfDocs.get(safe);
-    if (!pdf) {
+    const lease = await pinPdfDocs.acquire(safe, async () => {
       const task = lib.getDocument({ url: safe });
-      pdf = task?.promise ? await task.promise : await task;
-      if (!pdf || typeof pdf.getPage !== "function") return "";
-      pinPdfDocs.set(safe, pdf);
+      const pdf = task?.promise ? await task.promise : await task;
+      return pdf && typeof pdf.getPage === "function" ? pdf : null;
+    });
+    if (!lease) return "";
+    try {
+      const pdfPage = await lease.doc.getPage(Number(page));
+      if (!pdfPage || typeof pdfPage.getViewport !== "function") return "";
+      const viewport = pdfPage.getViewport({ scale: 2 });
+      const vw = Number(viewport?.width) || 0;
+      const vh = Number(viewport?.height) || 0;
+      if (!(vw > 0) || !(vh > 0)) return "";
+      const left = frac[0] * vw;
+      const top = frac[1] * vh;
+      const width = Math.max(1, frac[2] * vw);
+      const height = Math.max(1, frac[3] * vh);
+      const canvas = doc.createElement("canvas");
+      canvas.width = Math.ceil(width);
+      canvas.height = Math.ceil(height);
+      const ctx = canvas.getContext?.("2d");
+      if (!ctx || typeof pdfPage.render !== "function") return "";
+      const task = pdfPage.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -left, -top] });
+      if (task?.promise) await task.promise;
+      return typeof canvas.toDataURL === "function" ? canvas.toDataURL("image/png") || "" : "";
+    } finally {
+      lease.release();
     }
-    const pdfPage = await pdf.getPage(Number(page));
-    if (!pdfPage || typeof pdfPage.getViewport !== "function") return "";
-    const viewport = pdfPage.getViewport({ scale: 2 });
-    const vw = Number(viewport?.width) || 0;
-    const vh = Number(viewport?.height) || 0;
-    if (!(vw > 0) || !(vh > 0)) return "";
-    const left = frac[0] * vw;
-    const top = frac[1] * vh;
-    const width = Math.max(1, frac[2] * vw);
-    const height = Math.max(1, frac[3] * vh);
-    const canvas = doc.createElement("canvas");
-    canvas.width = Math.ceil(width);
-    canvas.height = Math.ceil(height);
-    const ctx = canvas.getContext?.("2d");
-    if (!ctx || typeof pdfPage.render !== "function") return "";
-    const task = pdfPage.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -left, -top] });
-    if (task?.promise) await task.promise;
-    return typeof canvas.toDataURL === "function" ? canvas.toDataURL("image/png") || "" : "";
   }
   function openPinOnBoard(plan) {
     if (!plan) return false;

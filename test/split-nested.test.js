@@ -105,3 +105,27 @@ test("a card mounted before the split watch has seen it still gets a live conten
   off();
   assert.equal(host.splitStats("big1").itemWatches, 0);
 });
+
+test("content watches come back after the board watch is paused and resumed (keep-alive)", async () => {
+  const fake = createFakeRoam({ echoDelay: 1 });
+  fake.roamWatch = true;
+  seedBig(fake);
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  host.pullBoard("big1");
+  const trees = [];
+  let off = host.watchBoard("big1", (t) => trees.push(t));
+  const offContent = host.watchContent("c3x5");
+  assert.equal(host.splitStats("big1").itemWatches, 1);
+  // Park: the session drops its board watch, which disposes the split and its item watches.
+  off();
+  assert.equal(host.splitStats("big1"), null);
+  // Return: a new split. The mounted card's content watch must be live on it without the view asking again.
+  off = host.watchBoard("big1", (t) => trees.push(t));
+  assert.equal(host.splitStats("big1").itemWatches, 1, "the mounted card is watched on the new split");
+  await fake.api.data.block.create({ location: { "parent-uid": "c3x5", order: "last" }, block: { uid: "lateKid", string: "typed after resume" } });
+  await fake.flush();
+  assert.ok(find(trees.at(-1), "lateKid"), "a child typed after the resume reaches the tree");
+  offContent();
+  assert.equal(host.splitStats("big1").itemWatches, 0);
+  off();
+});

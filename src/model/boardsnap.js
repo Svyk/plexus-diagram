@@ -453,9 +453,17 @@ export function packSnapshot(snap) {
   }
   text = fit({ ...lean, items });
   if (text) return text;
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    if (!items[i].face) continue;
-    delete items[i].face;
+  // The measured drop fell short (escaping): drop half of the remaining faces from the tail per try, so a
+  // 4,000-box snapshot costs a dozen stringifies, not one per face (~1.95 s of idle time).
+  let faced = items.filter((item) => item.face).length;
+  while (faced > 0) {
+    let drop = Math.max(1, Math.ceil(faced / 2));
+    for (let i = items.length - 1; i >= 0 && drop > 0; i -= 1) {
+      if (!items[i].face) continue;
+      delete items[i].face;
+      drop -= 1;
+      faced -= 1;
+    }
     text = fit({ ...lean, items });
     if (text) return text;
   }

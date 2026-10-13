@@ -158,9 +158,12 @@ export function createBoardSnapStore({
     }
     const keys = new Set();
     for (const { snap } of lru.values()) for (const key of snapThumbKeys(snap)) keys.add(key);
-    await loadThumbs(handle, keys);
+    // Boards are ready now; the open races `ready` for 50 ms and a face paints without its thumbnail. The thumbs
+    // follow on their own.
+    thumbsReady = loadThumbs(handle, keys).catch(() => {});
     return loaded.length;
   }
+  let thumbsReady = Promise.resolve();
 
   // One board read into the LRU (hover prefetch, or a board past the warm set).
   async function load(uid) {
@@ -234,6 +237,7 @@ export function createBoardSnapStore({
 
   return {
     ready,
+    get thumbsReady() { return thumbsReady; },
     warm,
     load,
     // Synchronous: the LRU only. A miss means "paint the old way".

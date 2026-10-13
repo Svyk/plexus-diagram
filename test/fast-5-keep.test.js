@@ -588,7 +588,7 @@ test("detach and reattach do not change :edit/time", async () => {
   }
 });
 
-test("a fullscreen mount and a focused mount are disposed instead of detached", async () => {
+test("a fullscreen mount and a mount with a text entry in progress are disposed instead of detached", async () => {
   const t = await openBoards();
   try {
     t.views[0].args.onRequestFullscreen(true);
@@ -597,10 +597,33 @@ test("a fullscreen mount and a focused mount are disposed instead of detached", 
     assert.equal(t.releases.filter((row) => row.uid === "boardAAA1" && row.paused === false).length, 1);
 
     t.views[1].args.onRequestFullscreen(false);
-    t.doc.activeElement = t.views[1].area;
+    const editor = t.doc.createElement("textarea");
+    t.views[1].area.append(editor);
+    t.doc.activeElement = editor;
     await go(t.views[1], "boardCCC3");
     assert.equal(t.views[1].disposed, 1);
     assert.equal(t.views[1].root.isConnected, false);
+  } finally {
+    await t.lifecycle.dispose().catch(() => {});
+    t.restore();
+  }
+});
+
+// A crumb, tab or card the user just clicked holds focus. Refusing the pool for that made crumbs, back and tabs
+// rebuild the board every time on the PhD main board.
+test("a mount whose focus is on a plain element (a clicked crumb or card) is detached and kept", async () => {
+  const t = await openBoards();
+  try {
+    await go(t.views[0], "boardBBB2");
+    let blurred = 0;
+    const crumb = t.doc.createElement("button");
+    crumb.blur = () => { blurred += 1; };
+    t.views[1].root.append(crumb);
+    t.doc.activeElement = crumb;
+    await go(t.views[1], "boardCCC3");
+    assert.equal(t.views[1].disposed, 0);
+    assert.equal(t.views[1].root.isConnected, false);
+    assert.equal(blurred, 1);
   } finally {
     await t.lifecycle.dispose().catch(() => {});
     t.restore();

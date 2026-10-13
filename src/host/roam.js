@@ -786,6 +786,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // Boards of SPLIT_WATCH_MIN blocks or more: uid -> their last full pull, and the split watch while one is live.
   const bigBoards = new Map();
   const splitWatches = new Map();
+  // Mounted cards that want their contents live: itemUid -> { n, offs: split -> release }. Kept here, not on the
+  // split, so a split recreated after a keep-alive pause arms them again without the view asking.
+  const contentWants = new Map();
+  const armContent = (key, want) => {
+    for (const split of splitWatches.values()) {
+      if (want.offs.has(split)) continue;
+      const off = split.watchItem(key, { pending: true });
+      if (off) want.offs.set(split, off);
+    }
+  };
   // uid -> pull sequence number at which its last board watch was dropped.
   const unwatchedAt = new Map();
   let pullSeq = 0;
@@ -1094,6 +1104,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       });
       split.subs = subs;
       splitWatches.set(uid, split);
+      for (const [key, want] of contentWants) armContent(key, want);
     }
     const fn = guardCallback("watchBoard", (tree) => cb(tree), { stats });
     split.subs.add(fn);
@@ -1106,6 +1117,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!split.subs.size && splitWatches.get(uid) === split) {
         split.dispose();
         splitWatches.delete(uid);
+        for (const want of contentWants.values()) want.offs.delete(split);
       }
       stats.watches--;
       slot.n = Math.max(0, slot.n - 1);
@@ -1438,12 +1450,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     // Hover warm of the session cache. No pull watch. A uid already in blockOf is not read again:
     // pullBoard drops the board root from its warm set, and a hover must not spend that read.
+    // A hover prefetch reads the structure only: badges, linked refs and card stats wait for the open (a full
+    // pull of the PhD main board primed ~1,000 refs and 1,500 card stats for a board that may never open).
     prefetchBoard(uid) {
       const id = String(uid ?? "");
       if (!id) return null;
       const cached = cache.blockOf(id);
       if (cached?.[":block/uid"]) return cached;
-      return host.pullBoard(id);
+      return host.pullBoard(id, { light: true, deferRefs: true });
     },
 
     // One unwatched read. Not added to the board pull watch.
@@ -1493,18 +1507,27 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     // A mounted card on a big board keeps its contents live (the board's own watches stop at the cards).
     // A no-op on other boards: their one board watch already covers every card's contents.
+    // A card the optimistic model mounted before Roam's echo is armed when a split sees it; a split recreated after
+    // a keep-alive pause arms every mounted card again.
     watchContent(itemUid) {
-      for (const split of splitWatches.values()) {
-        const off = split.watchItem(itemUid);
-        if (off) return off;
+      const key = String(itemUid ?? "");
+      if (!key) return () => {};
+      let want = contentWants.get(key);
+      if (!want) {
+        want = { n: 0, offs: new Map() };
+        contentWants.set(key, want);
+        armContent(key, want);
       }
-      // Not seen by any split yet (a card the optimistic model mounted before Roam's echo): armed when it appears.
-      const offs = [];
-      for (const split of splitWatches.values()) {
-        const off = split.watchItem(itemUid, { pending: true });
-        if (off) offs.push(off);
-      }
-      return () => { for (const off of offs) off(); };
+      want.n += 1;
+      let on = true;
+      return () => {
+        if (!on) return;
+        on = false;
+        want.n -= 1;
+        if (want.n > 0 || contentWants.get(key) !== want) return;
+        contentWants.delete(key);
+        for (const off of want.offs.values()) { try { off(); } catch { /* already gone */ } }
+      };
     },
     splitStats(uid) {
       return splitWatches.get(uid)?.stats() ?? null;

@@ -162,6 +162,7 @@ test("store: set serves the next get at once, writes after the debounce, and a n
   assert.equal(again.get("b1"), null, "nothing until the warm read lands");
   await again.ready;
   assert.equal(again.get("b1").items[0].face.k[0].k[0].s, "@d:1");
+  await again.thumbsReady;
   assert.equal(again.thumb("d:1"), "data:image/png;base64,AAAA");
   const otherGraph = createBoardSnapStore({ indexedDB: idb, graph: "h" });
   await otherGraph.ready;

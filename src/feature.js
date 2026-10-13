@@ -1658,7 +1658,14 @@ export async function installPlexusDiagram({
     if (speedFlags().keepAlive === false) return false;
     const view = rec?.view;
     if (!view || view.sketchStandIn === true) return false;
-    if (rec.fullscreen || holdsFocus(rec)) return false;
+    if (rec.fullscreen) return false;
+    if (holdsFocus(rec)) {
+      // The crumb, tab or card the user just clicked holds focus; parking drops it anyway. Only a text entry in
+      // progress keeps the view out of the pool (PhD main board: crumbs and back rebuilt the board every time).
+      const active = doc.activeElement;
+      if (isTextEntryTarget(active)) return false;
+      try { active?.blur?.(); } catch { /* focus stays where it is */ }
+    }
     const root = view.root;
     return Boolean(root && typeof root.remove === "function");
   }

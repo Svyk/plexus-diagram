@@ -30,8 +30,8 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Roam confirms queued writes one at a time and each confirmation costs time in proportion to the queue (18k queued
 // writes drained at ~5 a minute, CPU at 100%). Its IndexedDB count is capped near 300, so hold on the age of the
 // oldest unconfirmed write too: above PHD_MAX_LAG_MS wait until it is back under a third of that.
-export const MAX_PENDING = Number(process.env.PHD_MAX_PENDING || 300);
-export const MAX_LAG_MS = Number(process.env.PHD_MAX_LAG_MS || 15000);
+export const MAX_PENDING = Number(process.env.PHD_MAX_PENDING || 120);
+export const MAX_LAG_MS = Number(process.env.PHD_MAX_LAG_MS || 6000);
 export function pendingHold(p, { max = MAX_PENDING, maxLagMs = MAX_LAG_MS, resuming = false } = {}) {
   if (!p) return false;
   const lagLimit = resuming ? maxLagMs / 3 : maxLagMs;

@@ -39,7 +39,8 @@ highlight uids, page aliases, failures and per-stage timings. The state name def
   Roam confirms queued writes one at a time and each confirmation costs time in proportion to the queue: a synth build
   that wrote at ~21/s for 13 min left 18k unconfirmed writes that drained at ~5 a minute with the window at 100% CPU.
   The writer therefore reads Roam's own queue (IndexedDB `v10_SLASH_dbs_SLASH_<graph>` / `unconfirmed-log`) before
-  every chunk and holds while it is over 300 (`PHD_MAX_PENDING`).
+  every chunk and holds while it is over 120 (`PHD_MAX_PENDING`) or its oldest write is over 6 s old
+  (`PHD_MAX_LAG_MS`; the IndexedDB count is capped near 300, the age is not). `cleanup.mjs` holds the same way.
 - **Formats** come from Plexus's own pure serializers, imported from `src/model` in Node (`lib/plan.mjs`):
   `serializeItemLayout`, `serializeEdge`, `boardString` (schema.js), `serializeRegion` + container strings
   (regions.js), `viewBlockString` (view-save.js), `trailString` (trails.js), `snapshotProps` (snapshots.js),

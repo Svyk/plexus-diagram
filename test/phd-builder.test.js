@@ -251,9 +251,11 @@ test("cleanup cuts a big page into bounded subtrees", () => {
 test("writes hold on the age of Roam's oldest unconfirmed write, not only its capped count", () => {
   assert.equal(pendingHold(null), false);
   assert.equal(pendingHold({ n: 289, lagMs: 1800000 }), true);
-  assert.equal(pendingHold({ n: 289, lagMs: 2000 }), false);
-  assert.equal(pendingHold({ n: 400, lagMs: 0 }), true);
+  assert.equal(pendingHold({ n: 100, lagMs: 2000 }), false);
+  // Defaults: hold past 120 queued or an oldest write over 6 s (resume under 2 s).
+  assert.equal(pendingHold({ n: 130, lagMs: 0 }), true);
   assert.equal(pendingHold({ n: 0, lagMs: 99999 }), false);
-  assert.equal(pendingHold({ n: 50, lagMs: 9000 }), false);
-  assert.equal(pendingHold({ n: 50, lagMs: 9000 }, { resuming: true }), true);
+  assert.equal(pendingHold({ n: 50, lagMs: 5000 }), false);
+  assert.equal(pendingHold({ n: 50, lagMs: 7000 }), true);
+  assert.equal(pendingHold({ n: 50, lagMs: 3000 }, { resuming: true }), true);
 });

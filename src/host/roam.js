@@ -1311,7 +1311,15 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       }
       if (warm.has(uid)) {
         const cached = cache.blockOf(uid);
-        if (cached?.[":block/uid"]) return cached;
+        if (cached?.[":block/uid"]) {
+          // A nested board absorbed from its parent's pull is big by the same rule as a cold one: its watch must
+          // be the split, not one recursive pull (a 3,641-block nested board on the PhD main board).
+          if (treeSize(cached, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN) {
+            bigBoards.set(uid, cached);
+            splitWatches.get(uid)?.reseed(cached);
+          }
+          return cached;
+        }
       }
       warm.delete(uid);
       const boardEntity = eidKey(uid);

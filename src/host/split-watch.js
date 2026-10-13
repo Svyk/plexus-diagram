@@ -172,7 +172,8 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, g
         }
         let stored = content.get(id);
         if (stored === undefined) {
-          const pulled = read(isBoardItem(kid) ? THUMB_PATTERN : deepPattern, id);
+          // Whole: a nested board's thumbnail depth is not its subtree (cut and duplicate copy the stored contents).
+          const pulled = read(deepPattern, id);
           stored = kidsOf(pulled);
         }
         seenContent.set(id, stored);
@@ -214,18 +215,20 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, g
       if (disposed || !key || !content.has(key)) return null;
       let w = itemWatch.get(key);
       if (!w) {
+        // A nested board is watched at thumbnail depth (its own session watches the rest), but its stored contents
+        // stay the whole subtree: a change seen at that depth reads the subtree again.
         const board = isBoardItem(findItem(key));
         const pattern = board ? THUMB_PATTERN : deepPattern;
         const depth = board ? THUMB_DEPTH : Infinity;
+        const whole = (after) => (board ? kidsOf(read(deepPattern, key) || after) : kidsOf(after));
         w = {
           n: 0,
           pattern,
           entity: entityOf(key),
           cb: guard("watchContent", (_before, after) => {
             if (disposed || !after?.[UID] || !itemWatch.has(key)) return;
-            const kids = kidsOf(after);
-            if (sameKids(content.get(key), kids, depth)) return;
-            content.set(key, kids);
+            if (sameKids(content.get(key), kidsOf(after), depth)) return;
+            content.set(key, whole(after));
             kick();
           }),
         };
@@ -234,7 +237,7 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, g
         // Contents may have changed while the card was off screen.
         const now = read(pattern, key);
         if (now?.[UID] && !sameKids(content.get(key), kidsOf(now), depth)) {
-          content.set(key, kidsOf(now));
+          content.set(key, whole(now));
           kick();
         }
       }

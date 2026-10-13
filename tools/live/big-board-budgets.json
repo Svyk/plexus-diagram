@@ -1,0 +1,11 @@
+{
+  "watchesPerBoard": 60,
+  "blocksPerWatchFire": 4000,
+  "attachedShellsAtDetail": 120,
+  "attachedEdgesAtDetail": 650,
+  "domNodesAtDetail": 7500,
+  "listenersPerBigBoard": 48,
+  "attachedShellsAtMap": 900,
+  "attachedEdgesAtMap": 2000,
+  "domNodesAtMap": 25000
+}

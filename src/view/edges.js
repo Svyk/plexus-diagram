@@ -37,7 +37,7 @@ const setClass = (el, name) => {
   if (el.classList && !el.classList.contains(name.split(" ")[0])) el.className = name;
 };
 
-export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText, onHover } = {}) {
+export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText, onHover, virtualOff = () => false } = {}) {
   const edgeEls = new Map(); // uid → {g, hit, line, head, tail, dot, label}
   const laneHidden = new Set();
   const linkEls = new Map(); // key → {g, hit, line, head, label}
@@ -88,6 +88,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   // Past VIRTUAL_EDGES connections an edge is in the DOM only while the box of its two ends meets the view (render's
   // and reveal's `view`). An edge off to the side is built, painted and placed when it comes near.
   const VIRTUAL_EDGES = 300;
+  const virtualEdges = (board) => board.edges.size > VIRTUAL_EDGES && virtualOff() !== true;
   let view = null;
   // The segment between the two ends' centres meets the view, or an end box does. A bounding box was not enough:
   // the PhD main board's links cross the whole board, so nearly every box met the view.
@@ -621,7 +622,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     zoomCache = zoom;
     if (near !== undefined) view = near;
     lastPass = { board, rects, coveredEdges, selection };
-    const virt = Boolean(view) && board.edges.size > VIRTUAL_EDGES;
+    const virt = Boolean(view) && virtualEdges(board);
     for (const uid of [...edgeEls.keys()]) if (!board.edges.has(uid)) removeEdge(uid);
     for (const edge of board.edges.values()) {
       let rec = edgeEls.get(edge.uid);
@@ -657,7 +658,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (!rect || !lastPass) return 0;
     view = rect;
     const { board, rects, coveredEdges, selection } = lastPass;
-    if (board.edges.size <= VIRTUAL_EDGES) return 0;
+    if (!virtualEdges(board)) return 0;
     let n = 0;
     for (const edge of board.edges.values()) {
       if (n >= budget) break;
@@ -679,7 +680,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (!rect || !lastPass) return;
     view = rect;
     const { board, rects, coveredEdges, selection } = lastPass;
-    if (board.edges.size <= VIRTUAL_EDGES) return;
+    if (!virtualEdges(board)) return;
     for (const edge of board.edges.values()) {
       const rec = edgeEls.get(edge.uid);
       const pinned = selection.edge === edge.uid || editingLabel?.uid === edge.uid;

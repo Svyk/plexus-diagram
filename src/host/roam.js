@@ -27,6 +27,7 @@ import { closeTab, normalizeTabs, openTab, tabStorageKey } from "../model/tabs.j
 import { bindGuardStats, guardCallback } from "../guard.js";
 import { installCommentHost } from "./comments.js";
 import { SPLIT_WATCH_MIN, createSplitWatch, treeSize } from "./split-watch.js";
+import { notedSpeedFlags } from "../settings.js";
 
 // Pull results equal but for Roam's own reader state (:pdf-settings: page, scale). Exits at the first other change.
 const READER_STATE = ":pdf-settings";
@@ -789,6 +790,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // Mounted cards that want their contents live: itemUid -> { n, offs: split -> release }. Kept here, not on the
   // split, so a split recreated after a keep-alive pause arms them again without the view asking.
   const contentWants = new Map();
+  const splitWatchOn = () => { try { return notedSpeedFlags().splitWatch !== false; } catch { return true; } };
   const armContent = (key, want) => {
     for (const split of splitWatches.values()) {
       if (want.offs.has(split)) continue;
@@ -1473,7 +1475,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     watchBoard(uid, cb) {
       const covers = boardCovers.get(uid) === true;
-      if (!covers && bigBoards.has(uid)) return watchSplit(uid, cb);
+      if (!covers && bigBoards.has(uid) && splitWatchOn()) return watchSplit(uid, cb);
       const pattern = covers ? OPEN_PATTERN : BOARD_PATTERN;
       let slot = watchedBoards.get(uid);
       if (!slot) {

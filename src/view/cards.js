@@ -1916,7 +1916,8 @@ export function createItemRenderer({
   const viewWaiters = [];
   const BULK_ATTACH = 64;
   let cullRect = null;
-  const virtual = () => (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
+  let virtualOff = false; // the virtualShells kill switch, read once per sync
+  const virtual = () => !virtualOff && (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
   const isAttached = (rec) => Boolean(rec?.el?.parentElement);
   const activeShellUid = () => {
     const active = doc.activeElement;
@@ -2082,9 +2083,12 @@ export function createItemRenderer({
     pendingView = null;
     for (const fn of viewWaiters.splice(0)) { try { fn(); } catch { /* the owner's hook */ } }
   };
-  const sync = ({ board, rects, dirty: changed = null, structural = false, view = null }) => {
+  // view: a screen around the camera (which shells to build first, which bodies are offscreen). attachView: the tighter
+  // rect a big board's shells attach within.
+  const sync = ({ board, rects, dirty: changed = null, structural = false, view = null, attachView = null }) => {
     sourcePass += 1;
     pageKids = new Map();
+    try { virtualOff = speedOf().virtualShells === false; } catch { virtualOff = false; }
     lastBoard = board;
     lastRects = rects;
     // A highlight card placed, removed or changed moves its PDF's page chips and count, though the PDF card itself did not change.
@@ -2184,7 +2188,7 @@ export function createItemRenderer({
       }
     }
     if (orderChanged) {
-      if (view) cullRect = view;
+      if (attachView || view) cullRect = attachView || view;
       if (virtual()) placeVirtual();
       else placeShells();
     }

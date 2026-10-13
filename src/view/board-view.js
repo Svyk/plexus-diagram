@@ -6,6 +6,7 @@
 // 1.2 wiring: three-tier LOD flipped by class during a gesture, board backgrounds (pattern + tone), live
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
+import { notedSpeedFlags } from "../settings.js";
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
 import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/roam-table.js";
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
@@ -2936,6 +2937,7 @@ function buildBoardView(onFail, {
     svg: edgesSvg,
     labelsLayer,
     overlaySvg,
+    virtualOff: () => { try { return notedSpeedFlags().virtualEdges === false; } catch { return false; } },
     onLabelCommit: (uid, label) => session.updateEdge?.(uid, { label }),
     blockText: (uid) => host?.blockString?.(uid),
     onHover: (uid, on) => hoverRows(uid, on),
@@ -3553,6 +3555,15 @@ function buildBoardView(onFail, {
   const perfNow = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
   // Arrow heads are max(8 + 2w, 6 / zoom): above 0.6 they do not change; below, in 25% steps.
   const edgeZoomKey = (z) => (!(z > 0) ? "" : `${z >= 0.6 ? "hi" : Math.round(Math.log(z) / Math.log(1.25))}:${z < 0.3}`);
+  // A camera frame attaches what it brings near, a few shells and edges at a time. (One batch every ~90 ms with a
+  // larger budget was tried on the PhD main board and measured worse: bigger batches, longer recalcs.)
+  const revealNear = () => {
+    if (!size.width) return;
+    const near = visibleWorldRect(vp, size, ATTACH_MARGIN);
+    itemsR.reveal?.(near);
+    edgesR.reveal?.(near);
+  };
+
   const settle = () => {
     settleTimer?.();
     settleTimer = timers.later(() => {
@@ -3561,6 +3572,7 @@ function buildBoardView(onFail, {
       if (wheelLayer) {
         wheelLayer = false;
         world.style.willChange = "";
+        propsPanel.place();
       }
       applyLod();
       scheduleContent();
@@ -7551,12 +7563,17 @@ function buildBoardView(onFail, {
     measure();
     ctl.handle(normalize(event, "dblclick"));
   });
+  const WHEEL_MEASURE_MS = 150;
+  let wheelMeasuredAt = -Infinity;
   listen(root, "wheel", (event) => {
     if (leavesBoardPointer(event.target)) return;
     if (inRoamTable(event.target)) { event.stopPropagation(); return; }
     // PG-1: a plain wheel scrolls a long page card's body until it hits an end; Cmd/Ctrl+wheel still zooms.
     if (pageBodyWantsWheel(event.target, event)) { event.stopPropagation(); return; }
-    measure(); // the outer Roam page scrolls without any pointer event on the board
+    // The outer Roam page scrolls without any pointer event on the board, so the root is measured again; inside a
+    // wheel burst that read forced a style recalc of the whole board on every event (PhD main board: ~14 ms each).
+    const t = perfNow();
+    if (!wheelLayer || t - wheelMeasuredAt > WHEEL_MEASURE_MS) { measure(); wheelMeasuredAt = t; }
     const handled = ctl.handle(normalize(event, "wheel"));
     if (handled) {
       event.preventDefault();
@@ -8350,7 +8367,8 @@ function buildBoardView(onFail, {
         rects: paintRects(),
         dirty: dirty.all ? null : dirty.items,
         structural: dirty.structural,
-        view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null,
+        view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null,
+        attachView: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null,
       });
       if (laneMarks || lanePreviewLayout) applyLaneMarks();
       ensurePdfHighlightButtons(dirty.all || dirty.structural ? null : dirty.items);
@@ -8403,11 +8421,7 @@ function buildBoardView(onFail, {
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
       // Big boards keep far shells and edges out of the DOM: put back what this camera brings near.
-      if (size.width) {
-        const near = visibleWorldRect(vp, size, ATTACH_MARGIN);
-        itemsR.reveal?.(near);
-        edgesR.reveal?.(near);
-      }
+      if (size.width) revealNear();
       // Roam Caret re-places its caret when a field on the board is focused and the camera moves.
       const focused = doc.activeElement;
       if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {
@@ -8433,9 +8447,9 @@ function buildBoardView(onFail, {
       }
       chrome.toolbar.setZoom(vp.zoom);
       if (tooltip.isVisible()) tooltip.hide();
-      // offsetHeight in place() forces layout. During a gesture the toolbar height
-      // does not change, and that read was the long task on a 300-card board.
-      if (!gesturing) propsPanel.place();
+      // offsetHeight in place() forces layout. During a gesture or a wheel burst the toolbar height
+      // does not change, and that read was the long task on a 300-card board; the settle places it.
+      if (!gesturing && !wheelLayer) propsPanel.place();
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) liftBurst = true;
     if (dirty.selection || itemsChanged) {

@@ -8,10 +8,19 @@ const POLL_MS = 250;
 const ICON = ".rm-sync__icon";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Roam paints the dot on a frame. A burst of writes awaits only microtasks, so without one the dot still reads
+// "synced" at the batch boundary. A hidden window runs no frames: the timeout stands in.
+const nextFrame = () => new Promise((resolve) => {
+  let done = false;
+  const finish = () => { if (!done) { done = true; resolve(); } };
+  try { globalThis.requestAnimationFrame?.(finish); } catch { /* no frames */ }
+  setTimeout(finish, 50);
+});
 
 export function createSyncHold({
   doc = globalThis.document,
   sleep = delay,
+  frame = nextFrame,
   now = () => Date.now(),
   capMs = SYNC_HOLD_CAP_MS,
   online = () => globalThis.navigator?.onLine !== false,
@@ -45,6 +54,7 @@ export function createSyncHold({
   // runs once, the first time it actually has to wait. `capMs` lowers the cap for this wait (the rest of a
   // transaction's budget). `keepGuard` leaves the beforeunload guard up for the caller to release().
   const wait = async ({ onHold, capMs: budget, abort, keepGuard = false } = {}) => {
+    try { await frame(); } catch { /* read the dot as it is */ }
     let state = saving();
     if (state !== true || !online()) return { waited: 0, capped: false, held: false };
     const cap = Math.min(capMs, Number.isFinite(budget) ? budget : capMs);

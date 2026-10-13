@@ -195,3 +195,20 @@ test("the beforeunload guard goes up once for a held transaction and is gone aft
   assert.equal(out.capped, false);
   assert.equal(polls, 2, "the loop leaves as soon as the session is destroyed");
 });
+
+// verify 3.28: a burst of writes awaits only microtasks, so Roam has not repainted its dot when the first batch
+// boundary is reached (live: 241 duplicated blocks, the dot still read "synced", no hold, 400 pending). The hold
+// lets a frame pass before it reads the dot.
+test("wait lets Roam paint its dot before reading it", async () => {
+  const d = dotDoc("rm-sync__icon--synced");
+  let frames = 0;
+  let polls = 0;
+  const hold = createSyncHold({
+    doc: d.doc,
+    frame: async () => { frames += 1; d.set("rm-sync__icon--saving-local"); },
+    sleep: async () => { polls += 1; if (polls === 2) d.set("rm-sync__icon--synced"); },
+  });
+  const out = await hold.wait();
+  assert.equal(frames, 1, "one frame before the first read");
+  assert.equal(out.held, true, "the dot Roam painted after the burst is honoured");
+});

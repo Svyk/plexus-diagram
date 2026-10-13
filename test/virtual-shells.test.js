@@ -144,3 +144,19 @@ test("an Open button without its own listener (a snapshot face) still opens its 
     m.restore();
   }
 });
+
+test("a view parked and brought back into the same mount puts its root back (crumbs, board history)", async () => {
+  const m = mount({ x: 0, y: 0, zoom: 1 });
+  try {
+    await m.pump(10);
+    const mountEl = m.view.root.parentElement;
+    m.view.suspend();
+    m.view.root.remove();
+    m.view.rebind(mountEl);
+    m.view.resume?.();
+    assert.equal(m.view.root.parentElement, mountEl);
+  } finally {
+    m.view.dispose();
+    m.restore();
+  }
+});

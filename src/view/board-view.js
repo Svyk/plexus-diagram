@@ -8846,7 +8846,12 @@ function buildBoardView(onFail, {
     // A kept board comes back into a new mount element (Roam re-rendered the page).
     // Point the view at it and re-apply fullscreen chrome or the inline height there.
     rebind(nextMount) {
-      if (disposed || !nextMount || nextMount === mountEl) return;
+      if (disposed || !nextMount) return;
+      // Crumbs and board history park and bring back a view in the same mount: put the root back (it was removed).
+      if (nextMount === mountEl) {
+        if (root.parentElement !== mountEl) mountEl.append(root);
+        return;
+      }
       try { fsDispose(); } catch { /* no chrome applied */ }
       fsDispose = () => {};
       mountEl = nextMount;

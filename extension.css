@@ -1235,6 +1235,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-sync--pending,
 .pxd-sync--writing,
+.pxd-sync--held,
 .pxd-sync--retrying {
   background: var(--pxd-orange-line);
   opacity: 1;
@@ -1873,6 +1874,13 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   color: var(--pxd-muted);
   font-size: 12px;
   padding: 8px;
+}
+
+.pxd-panel__show-more {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 6px 8px 10px;
+  font-size: 12px;
 }
 
 .pxd-panel__resize {

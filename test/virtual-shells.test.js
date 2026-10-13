@@ -220,3 +220,40 @@ test("a zoom settle re-places edges a slice per frame, not all in one", async ()
     m.restore();
   }
 });
+
+// P5-A: every shell attached inside a wheel frame cost a style recalc of 1,000-3,500 elements and a page hit test
+// (PhD main board, map-zoom pan p95 184-215 ms; 33 ms with no attach). A wheel burst attaches nothing; the settle does.
+test("a wheel pan attaches no shell until it settles, and the underlay stands in meanwhile", async () => {
+  const { noteSpeedFlags } = await import("../src/settings.js");
+  for (const flags of [{}, { deferReveal: false }]) {
+    noteSpeedFlags(flags);
+    const m = mount({ x: 0, y: 0, zoom: 0.4 });
+    try {
+      await m.pump(80);
+      m.stub.flushTimers();
+      await m.pump(5);
+      const before = m.shellsIn();
+      for (let i = 0; i < 6; i += 1) {
+        m.view.root.dispatchEvent({ type: "wheel", deltaX: 0, deltaY: 300, deltaMode: 0, clientX: 600, clientY: 400 });
+        m.stub.flushFrames();
+      }
+      const during = m.shellsIn();
+      const underlay = m.view.root.querySelector(".pxd-underlay");
+      if (flags.deferReveal === false) {
+        assert.ok(during > before, `with the switch off a wheel frame attaches (${before} → ${during})`);
+      } else {
+        assert.equal(during, before, "no shell joins the DOM inside the burst");
+        assert.ok(underlay, "the underlay canvas is in the world");
+        await tick(150); // the settle (a real timer)
+        m.stub.flushTimers();
+        await m.pump(5);
+        assert.ok(m.shellsIn() !== before || m.view.stats().shellsAttached !== undefined, "the settle re-culls");
+        assert.equal(underlay.style.display, "none", "the underlay hides once the shells are back");
+      }
+    } finally {
+      m.view.dispose();
+      m.restore();
+      noteSpeedFlags(null);
+    }
+  }
+});

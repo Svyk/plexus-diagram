@@ -5994,6 +5994,9 @@ export function createItemRenderer({
       for (const rec of added) paintOneOffscreen(rec.uid, rec, rect);
       return added.length;
     },
+    // The gesture underlay draws a box for every item whose shell is not in the DOM.
+    isVirtual: () => virtual(),
+    attachedUid: (uid) => isAttached(shells.get(uid)),
     attachedCount: () => {
       let n = 0;
       for (const rec of shells.values()) if (isAttached(rec)) n += 1;

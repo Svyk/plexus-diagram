@@ -7,6 +7,8 @@
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
 import { notedSpeedFlags } from "../settings.js";
+import { createHitShield } from "./hit-shield.js";
+import { createGestureUnderlay } from "./gesture-underlay.js";
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
 import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/roam-table.js";
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
@@ -1059,9 +1061,13 @@ function buildBoardView(onFail, {
   const root = el("div", "pxd-root", mountEl);
   // Per-interaction root state lives in data-* attributes, never classes: other extensions ship
   // [class*="…"] selectors (zotero-roam), so any class change on the root restyles the whole board subtree.
+  // A write with the value already there still re-runs every attribute rule over the board (Chrome does not compare),
+  // so a flag that is already in that state is left alone.
   const setRootFlag = (name, on) => {
-    if (on) root.setAttribute(`data-pxd-${name}`, "");
-    else root.removeAttribute(`data-pxd-${name}`);
+    const attr = `data-pxd-${name}`;
+    if (typeof root.hasAttribute === "function" && root.hasAttribute(attr) === Boolean(on)) return;
+    if (on) root.setAttribute(attr, "");
+    else root.removeAttribute(attr);
   };
   // FIX-TYPE-1: keys typed before a new card's textarea is live are kept and replayed into it.
   const typeAhead = createTypeAhead({
@@ -3407,12 +3413,22 @@ function buildBoardView(onFail, {
   // ------------------------------------------------------------ LOD
   const mapThreshold = () => zoomThreshold(board()?.plexus?.lodZoom, setting("map-zoom", "0.45"));
   // Classes and font variables are written only when the tier changes (renderFrame) or a viewport settles.
+  // Each write is skipped when the value is already there: a settle that lands inside a wheel burst repainted the
+  // same tier and fonts, and every attribute or inherited-variable write on the root restyles the whole board
+  // (PhD main board: 3,500 elements per settle).
+  const rootPainted = new Map();
+  const paintRoot = (name, value) => {
+    if (rootPainted.get(name) === value) return;
+    rootPainted.set(name, value);
+    if (name === "data-pxd-lod") root.setAttribute(name, value);
+    else root.style.setProperty(name, value);
+  };
   const paintTier = () => {
-    root.setAttribute("data-pxd-lod", tier);
+    paintRoot("data-pxd-lod", tier);
     const f = lodFonts(vp.zoom);
-    root.style.setProperty("--pxd-map-font", `${f.map}px`);
-    root.style.setProperty("--pxd-ui", String(f.ui));
-    root.style.setProperty("--pxd-overview-font", `${f.section}px`);
+    paintRoot("--pxd-map-font", `${f.map}px`);
+    paintRoot("--pxd-ui", String(f.ui));
+    paintRoot("--pxd-overview-font", `${f.section}px`);
     itemsR.setLod(tier, vp.zoom);
   };
   // PO-5: one write per zoom change (a pan never touches it); the grips size themselves from it with calc().
@@ -3557,6 +3573,39 @@ function buildBoardView(onFail, {
   const edgeZoomKey = (z) => (!(z > 0) ? "" : `${z >= 0.6 ? "hi" : Math.round(Math.log(z) / Math.log(1.25))}:${z < 0.3}`);
   // A camera frame attaches what it brings near, a few shells and edges at a time. (One batch every ~90 ms with a
   // larger budget was tried on the PhD main board and measured worse: bigger batches, longer recalcs.)
+  // A wheel burst, a drag pan or a pinch attaches nothing until it settles (gesture-underlay.js has the numbers);
+  // the underlay shows what is not in the DOM yet. Kill switch: speed flag deferReveal.
+  const underlay = createGestureUnderlay({ doc, world, root, before: () => edgesSvg });
+  let underlayDrawn = false;
+  const deferOn = () => { try { return notedSpeedFlags().deferReveal !== false; } catch { return true; } };
+  const deferReveal = () => {
+    if (!wheelLayer && !gesturing) return false;
+    if (gesturing) { const kind = ctl.gestureKind?.(); if (kind && kind !== "pan" && kind !== "pinch") return false; }
+    return deferOn() && Boolean(itemsR.isVirtual?.());
+  };
+  const showUnderlay = () => {
+    if (underlayDrawn) return;
+    underlayDrawn = true;
+    const b = board();
+    if (!b) return;
+    const r = paintRects();
+    const items = [];
+    for (const item of b.items.values()) {
+      if (item.type === "section") continue;
+      const rect = r.get(item.uid);
+      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect });
+    }
+    const edges = [];
+    if (edgesR.isVirtual?.(b)) {
+      for (const e of b.edges.values()) {
+        if (edgesR.edgeShown(e.uid)) continue;
+        const a = r.get(e.from), c = r.get(e.to);
+        if (a && c) edges.push([a, c]);
+      }
+    }
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win?.devicePixelRatio || 1 });
+  };
+  const endUnderlay = () => { underlayDrawn = false; };
   const revealNear = () => {
     if (!size.width) return;
     const near = visibleWorldRect(vp, size, ATTACH_MARGIN);
@@ -3569,6 +3618,8 @@ function buildBoardView(onFail, {
     settleTimer = timers.later(() => {
       settleTimer = null;
       if (gesturing) return;
+      hitShield.drop();
+      endUnderlay();
       if (wheelLayer) {
         wheelLayer = false;
         world.style.willChange = "";
@@ -3591,6 +3642,8 @@ function buildBoardView(onFail, {
         }
       }
       if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
+      // The shells and edges near the view are in the DOM again (both culls attach at once).
+      underlay.hide();
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -6735,6 +6788,7 @@ function buildBoardView(onFail, {
     },
     setGesturing: (on, info) => {
       gesturing = Boolean(on);
+      if (!gesturing) { hitShield.drop(); endUnderlay(); }
       setRootFlag("gesturing", gesturing);
       world.style.willChange = gesturing ? "transform" : "";
       if (gesturing) {
@@ -6760,6 +6814,7 @@ function buildBoardView(onFail, {
           propsPanel.place();
           scheduleContent();
           if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
+          underlay.hide();
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
@@ -7280,6 +7335,9 @@ function buildBoardView(onFail, {
     notePressMove(event);
     if (suspended || !ctl.isGesturing()) return;
     ctl.handle(normalize(event, "pointermove"));
+    // Once a drag has moved, its click is gone, so its moves can land on the shield (the document listener reads
+    // coordinates only).
+    if (ctl.gestureMoved?.()) hitShield.raise();
   };
   const onDocUp = (event) => {
     endPress(event);
@@ -7563,13 +7621,29 @@ function buildBoardView(onFail, {
     measure();
     ctl.handle(normalize(event, "dblclick"));
   });
+  // A press that lands on the shield is handed to the element under it (the board reads presses from pointerdown).
+  const hitShield = createHitShield({
+    doc,
+    root,
+    enabled: () => { try { return notedSpeedFlags().hitShield !== false; } catch { return true; } },
+    later: (fn, ms) => timers.later(fn, ms),
+    onWheel: (event) => (disposed || suspended ? false : wheelBurst(event)),
+    onPress: (target, event) => {
+      const Ctor = doc.defaultView?.PointerEvent || globalThis.PointerEvent;
+      if (typeof Ctor !== "function") return;
+      target.dispatchEvent(new Ctor("pointerdown", {
+        bubbles: true, cancelable: true, composed: true, view: doc.defaultView,
+        clientX: event.clientX, clientY: event.clientY, screenX: event.screenX, screenY: event.screenY,
+        button: event.button, buttons: event.buttons, detail: event.detail,
+        ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, altKey: event.altKey, metaKey: event.metaKey,
+        pointerId: event.pointerId, pointerType: event.pointerType, isPrimary: event.isPrimary,
+      }));
+    },
+  });
   const WHEEL_MEASURE_MS = 150;
   let wheelMeasuredAt = -Infinity;
-  listen(root, "wheel", (event) => {
-    if (leavesBoardPointer(event.target)) return;
-    if (inRoamTable(event.target)) { event.stopPropagation(); return; }
-    // PG-1: a plain wheel scrolls a long page card's body until it hits an end; Cmd/Ctrl+wheel still zooms.
-    if (pageBodyWantsWheel(event.target, event)) { event.stopPropagation(); return; }
+  // The burst after its first event comes from the hit shield (the targets below are what the first event saw).
+  const wheelBurst = (event) => {
     // The outer Roam page scrolls without any pointer event on the board, so the root is measured again; inside a
     // wheel burst that read forced a style recalc of the whole board on every event (PhD main board: ~14 ms each).
     const t = perfNow();
@@ -7584,8 +7658,17 @@ function buildBoardView(onFail, {
         wheelLayer = true;
         world.style.willChange = "transform";
       }
+      hitShield.raise();
       settle();
     }
+    return handled;
+  };
+  listen(root, "wheel", (event) => {
+    if (leavesBoardPointer(event.target)) return;
+    if (inRoamTable(event.target)) { event.stopPropagation(); return; }
+    // PG-1: a plain wheel scrolls a long page card's body until it hits an end; Cmd/Ctrl+wheel still zooms.
+    if (pageBodyWantsWheel(event.target, event)) { event.stopPropagation(); return; }
+    wheelBurst(event);
   }, { passive: false });
   // Right-click: the controller decides what was hit and asks us to open the menu; an editing card keeps the
   // browser's own menu (the controller returns false there). A long-press calls this same function.
@@ -8421,7 +8504,8 @@ function buildBoardView(onFail, {
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
       // Big boards keep far shells and edges out of the DOM: put back what this camera brings near.
-      if (size.width) revealNear();
+      if (size.width && !deferReveal()) revealNear();
+      else if (size.width) showUnderlay();
       // Roam Caret re-places its caret when a field on the board is focused and the camera moves.
       const focused = doc.activeElement;
       if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {
@@ -8895,6 +8979,7 @@ function buildBoardView(onFail, {
     suspend() {
       if (disposed || suspended) return;
       suspended = true;
+      hitShield.drop();
       suspendedBoard = board();
       if (frameHandle) { const cancel = frameHandle; frameHandle = null; cancel(); }
       if (settleTimer) { settleTimer(); settleTimer = null; }
@@ -9125,6 +9210,8 @@ function buildBoardView(onFail, {
       if (disposing) return;
       disposing = true;
       disposed = true;
+      hitShield.drop();
+      underlay.dispose();
       closePdfPagesDialog();
       if (getFigureImages() === figureImages) setFigureImages(null);
       const step = (fn) => {

@@ -33,9 +33,11 @@ const ALL_ON = {
   splitWatch: true,
   virtualShells: true,
   virtualEdges: true,
+  hitShield: true,
+  deferReveal: true,
 };
 
-test("the panel has no speed-flags control, and bad JSON leaves all ten on", () => {
+test("the panel has no speed-flags control, and bad JSON leaves all twelve on", () => {
   assert.equal(createSettingsPanel().settings.some((row) => row.id === "speed-flags"), false);
   assert.equal(Object.hasOwn(settingsDefaults(), "speed-flags"), false);
   assert.deepEqual(flagsDefault(), ALL_ON);

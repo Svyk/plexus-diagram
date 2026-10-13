@@ -240,11 +240,14 @@ export function applyThemeVars(style, vars) {
     }
     return;
   }
+  // Unchanged values are not written again: the theme repaints whenever Roam's <head> changes (another extension
+  // rewriting its own style tag), and each inherited-variable write on the board root restyled the whole board.
+  const current = (name) => (typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : undefined);
   for (const name of THEME_VARS) {
     const value = vars[name];
     try {
-      if (typeof value === "string" && value) style.setProperty(name, value);
-      else style.removeProperty(name);
+      if (typeof value === "string" && value) { if (current(name) !== value) style.setProperty(name, value); }
+      else if (current(name) !== "") style.removeProperty(name);
     } catch { /* stub */ }
   }
 }

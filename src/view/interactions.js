@@ -1251,6 +1251,7 @@ export function createInteractions({ actions, settings } = {}) {
     escape,
     isGesturing: () => Boolean(state.gesture),
     gestureKind: () => state.gesture?.kind ?? null,
+    gestureMoved: () => Boolean(state.gesture?.moved),
     cancel: () => { cancelOpen(); endWheelZoom(); onPointerCancel(); },
     // Model changed under us: drop selection entries that no longer exist.
     reconcile() {

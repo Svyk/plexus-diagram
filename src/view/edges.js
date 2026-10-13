@@ -962,7 +962,11 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     editingLabel = null;
   };
 
+  // The gesture underlay draws a hairline for every edge that is not in the DOM.
+  const edgeShown = (uid) => { const rec = edgeEls.get(uid); return Boolean(rec && !rec.parked); };
   return {
+    edgeShown,
+    isVirtual: (board) => virtualEdges(board),
     render,
     update,
     reveal,

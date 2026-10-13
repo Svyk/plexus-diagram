@@ -135,18 +135,20 @@ export function createThemeFollow({ doc, root, getMode, timers } = {}) {
     if (!node?.classList || !node.style) return;
     if (mode() !== "follow-roam") {
       applyThemeVars(node.style, null);
-      try { node.classList.remove("pxd-theme--roam"); } catch { /* stub */ }
+      try { if (node.classList.contains("pxd-theme--roam")) node.classList.remove("pxd-theme--roam"); } catch { /* stub */ }
       return;
     }
     let derived = null;
     try { derived = deriveTheme(sampleRoam(doc)); } catch { derived = null; }
     if (!derived?.vars) {
       applyThemeVars(node.style, null);
-      try { node.classList.remove("pxd-theme--roam"); } catch { /* stub */ }
+      try { if (node.classList.contains("pxd-theme--roam")) node.classList.remove("pxd-theme--roam"); } catch { /* stub */ }
       return;
     }
     applyThemeVars(node.style, derived.vars);
-    try { node.classList.add("pxd-theme--roam"); } catch { /* stub */ }
+    // classList.add of a class that is already there still writes the attribute, and a class write on the root
+    // restyles the board subtree ([class*=…] selectors from other extensions).
+    try { if (!node.classList.contains("pxd-theme--roam")) node.classList.add("pxd-theme--roam"); } catch { /* stub */ }
   };
   const cancelPending = () => {
     if (typeof pending === "function") {

@@ -17708,6 +17708,1220 @@ var init_changes = __esm({
   }
 });
 
+// src/model/detect.js
+function read(win2, key) {
+  try {
+    return win2?.[key];
+  } catch {
+    return void 0;
+  }
+}
+function plainVersion(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string" && value.trim()) return value.trim();
+  return "";
+}
+function apiVersionText(api3) {
+  if (!api3 || typeof api3 !== "object") return "";
+  const text4 = plainVersion(api3.apiVersion);
+  return text4 ? `apiVersion ${text4}` : "";
+}
+function row(id, label, state, version) {
+  return { id, label, state, version: version || "" };
+}
+function missing(id, label) {
+  return row(id, label, MISSING, "");
+}
+function betterTasks(win2) {
+  let entry = null;
+  try {
+    entry = win2?.RoamExtensionTools?.["better-tasks"];
+  } catch {
+    entry = null;
+  }
+  const bt = read(win2, "betterTasks");
+  const entryOn = entry != null && typeof entry === "object";
+  const btOn = bt != null && typeof bt === "object";
+  if (!entryOn && !btOn) return missing("better-tasks", "Better Tasks");
+  const version = plainVersion(entry?.version) || plainVersion(bt?.version) || plainVersion(bt?.v1?.version) || plainVersion(bt?.v2?.version);
+  return row("better-tasks", "Better Tasks", FOUND, version);
+}
+function taskStatusTags(win2) {
+  const api3 = read(win2, "RoamTaskStatusTags");
+  if (!api3 || typeof api3 !== "object") return missing("task-status-tags", "Task Status Tags");
+  return row("task-status-tags", "Task Status Tags", FOUND, apiVersionText(api3));
+}
+function roamPlexus(win2) {
+  const api3 = read(win2, "RoamPlexus");
+  if (!api3 || typeof api3 !== "object") return missing("roam-plexus", "Roam Plexus");
+  return row("roam-plexus", "Roam Plexus", FOUND, apiVersionText(api3));
+}
+function compass(win2) {
+  const api3 = read(win2, "RoamCompass");
+  const flag = plainVersion(read(win2, "__ROAM_COMPASS_VERSION"));
+  const apiOn = api3 != null && typeof api3 === "object";
+  if (!apiOn && !flag) return missing("compass", "Compass");
+  return row("compass", "Compass", FOUND, flag || apiVersionText(api3));
+}
+function styleText(doc) {
+  let text4 = "";
+  try {
+    const nodes = typeof doc.querySelectorAll === "function" ? doc.querySelectorAll("style") : [];
+    for (const node2 of nodes || []) text4 += String(node2?.textContent || "");
+  } catch {
+  }
+  const sheets = doc?.styleSheets;
+  if (!sheets) return text4;
+  for (const sheet of sheets) {
+    try {
+      const rules = sheet?.cssRules || sheet?.rules;
+      if (!rules) continue;
+      for (const rule of rules) text4 += String(rule?.cssText || "");
+    } catch {
+    }
+  }
+  return text4;
+}
+function highlighterVars(win2) {
+  const doc = win2?.document;
+  const view = doc?.defaultView || win2;
+  const body = doc?.body;
+  if (!body || typeof view?.getComputedStyle !== "function") return false;
+  let style = null;
+  try {
+    style = view.getComputedStyle(body);
+  } catch {
+    return false;
+  }
+  if (!style || typeof style.getPropertyValue !== "function") return false;
+  for (const name of HL_NAMES) {
+    let light = "";
+    let dark = "";
+    try {
+      light = style.getPropertyValue(`--cl-lh-${name}`);
+      dark = style.getPropertyValue(`--cl-dk-${name}`);
+    } catch {
+      return false;
+    }
+    if (typeof light === "string" && light.trim() || typeof dark === "string" && dark.trim()) return true;
+  }
+  return false;
+}
+function highlighterMarker(win2) {
+  const doc = win2?.document;
+  if (!doc) return false;
+  try {
+    if (typeof doc.querySelector === "function" && doc.querySelector('[id*="roam-extension-color-highlighter"]')) return true;
+  } catch {
+  }
+  const text4 = styleText(doc);
+  return text4.includes('[data-tag^=".bg-"]') || text4.includes("--cl-lh-");
+}
+function highlighterGlobal(win2) {
+  for (const key of ["RoamColorHighlighter", "colorHighlighter"]) {
+    const value = read(win2, key);
+    if (value && typeof value === "object") return value;
+  }
+  return null;
+}
+function highlighter(win2) {
+  const global = highlighterGlobal(win2);
+  let marked = false;
+  try {
+    marked = highlighterVars(win2) || highlighterMarker(win2);
+  } catch {
+    marked = false;
+  }
+  if (!global && !marked) return missing("highlighter", "Colour highlighter");
+  return row("highlighter", "Colour highlighter", FOUND, plainVersion(global?.version));
+}
+function integrations(win2) {
+  return [betterTasks(win2), taskStatusTags(win2), roamPlexus(win2), compass(win2), highlighter(win2)];
+}
+function statusLine(row4, switchOn2) {
+  const label = String(row4?.label || "Integration");
+  const detected = row4?.state === FOUND;
+  const version = detected ? plainVersion(row4?.version) : "";
+  let line = detected ? `${label}: detected${version ? ` ${version}` : ""}` : `${label}: ${MISSING}`;
+  if (switchOn2 === true) line += " · on";
+  else if (switchOn2 === false) line += " · off";
+  return line;
+}
+var INTEGRATION_EVENTS, HL_NAMES, MISSING, FOUND;
+var init_detect = __esm({
+  "src/model/detect.js"() {
+    INTEGRATION_EVENTS = Object.freeze([
+      "roam-compass:ready",
+      "roam-compass:unload",
+      "roam-plexus:ready",
+      "roam-plexus:unload",
+      "roam-task-status-tags:ready",
+      "roam-task-status-tags:unload"
+    ]);
+    HL_NAMES = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "gray", "grey", "teal", "indigo"];
+    MISSING = "not installed";
+    FOUND = "detected";
+  }
+});
+
+// src/perf-log.js
+function perfNow() {
+  const clock = globalThis.performance;
+  if (clock && typeof clock.now === "function") return clock.now();
+  return Date.now();
+}
+function percentile(samples, p) {
+  const n3 = samples.length;
+  if (!n3) return null;
+  const sorted = samples.slice().sort((a, b) => a - b);
+  return sorted[Math.floor((n3 - 1) * p)];
+}
+function ring(cap4) {
+  const samples = [];
+  return {
+    push(value) {
+      const n3 = Number(value);
+      if (!Number.isFinite(n3)) return false;
+      samples.push(n3);
+      if (samples.length > cap4) samples.splice(0, samples.length - cap4);
+      return true;
+    },
+    clear() {
+      samples.length = 0;
+    },
+    get n() {
+      return samples.length;
+    },
+    summary() {
+      return { p50: percentile(samples, 0.5), p75: percentile(samples, 0.75), n: samples.length };
+    }
+  };
+}
+function isPlexusExtensionUrl(url, own = OWN_URL) {
+  const text4 = String(url || "");
+  if (typeof own !== "string") own = OWN_URL;
+  if (!text4) return false;
+  if (own && text4.split(/[?#]/)[0] === own.split(/[?#]/)[0]) return true;
+  if (text4.startsWith("blob:")) return false;
+  let path = text4;
+  try {
+    path = new URL(text4).pathname;
+  } catch {
+  }
+  return /(?:^|\/)plexus-diagram\/extension\.js$/i.test(path);
+}
+function addUrl(out, value) {
+  if (typeof value === "string" && value) out.push(value);
+}
+function scriptUrlsOf(entry) {
+  const out = [];
+  if (!entry || typeof entry !== "object") return out;
+  addUrl(out, entry.sourceURL);
+  addUrl(out, entry.scriptUrl);
+  addUrl(out, entry.scriptURL);
+  addUrl(out, entry.url);
+  const lists2 = [entry.attribution, entry.scripts];
+  for (const list of lists2) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (!item || typeof item !== "object") {
+        addUrl(out, item);
+        continue;
+      }
+      addUrl(out, item.sourceURL);
+      addUrl(out, item.scriptUrl);
+      addUrl(out, item.scriptURL);
+      addUrl(out, item.url);
+      addUrl(out, item.containerSrc);
+      addUrl(out, item.containerName);
+      addUrl(out, item.name);
+    }
+  }
+  return out;
+}
+function isPlexusLongTask(entry) {
+  return scriptUrlsOf(entry).some((url) => isPlexusExtensionUrl(url));
+}
+function clickInsideRoot(entry) {
+  if (!entry || entry.name !== "click") return false;
+  let node2 = entry.target;
+  if (node2 && node2.nodeType === 3) node2 = node2.parentElement;
+  if (!node2 || typeof node2.closest !== "function") return false;
+  return Boolean(node2.closest(".pxd-root"));
+}
+function panFps(deltas) {
+  const finite9 = [];
+  for (const value of deltas || []) {
+    const n3 = Number(value);
+    if (Number.isFinite(n3) && n3 > 0) finite9.push(n3);
+  }
+  const median7 = percentile(finite9, 0.5);
+  if (!(median7 > 0)) return null;
+  return 1e3 / median7;
+}
+function numText(value) {
+  if (!Number.isFinite(value)) return "—";
+  const rounded = Math.round(value * 10) / 10;
+  return String(rounded);
+}
+function perfReadoutText(perf) {
+  const bit = (label, series) => `${label} p50 ${numText(series?.p50)} p75 ${numText(series?.p75)}`;
+  return [
+    bit("Open", perf?.open),
+    bit("Click", perf?.click),
+    bit("Pan", perf?.fps),
+    bit("Long tasks", perf?.longtask)
+  ].join(" · ");
+}
+function readHostPerf() {
+  const win2 = globalThis.window ?? globalThis;
+  const stats = win2.__plexusDiagram?.stats;
+  if (stats && Object.prototype.hasOwnProperty.call(stats, "perf")) return stats.perf ?? null;
+  return latestPerf;
+}
+function bindPerfReadout(row4, blurb) {
+  readoutRow = row4 || null;
+  readoutBlurb = blurb || "";
+  paintReadout();
+}
+function paintReadout() {
+  if (!readoutRow) return;
+  const text4 = perfReadoutText(latestPerf);
+  readoutRow.description = readoutBlurb ? `${readoutBlurb} ${text4}` : text4;
+}
+function publishLatest(perf) {
+  latestPerf = perf ?? null;
+  paintReadout();
+}
+function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
+  const open = ring(cap4);
+  const click = ring(cap4);
+  const fps = ring(cap4);
+  const longtask = ring(cap4);
+  let longCount = 0;
+  let on = false;
+  let stats = null;
+  let eventObserver = null;
+  let longObserver = null;
+  let tracked = false;
+  const watches = /* @__PURE__ */ new Set();
+  const pan = { deltas: null, last: null, raf: 0 };
+  const current3 = () => {
+    if (!on) return null;
+    const tasks = longtask.summary();
+    tasks.count = longCount;
+    return { open: open.summary(), click: click.summary(), fps: fps.summary(), longtask: tasks };
+  };
+  const publish = () => {
+    const snap = current3();
+    if (stats) stats.perf = snap;
+    publishLatest(snap);
+    return snap;
+  };
+  const makeObserver = (type, take) => {
+    const PO = globalThis.PerformanceObserver;
+    if (typeof PO !== "function") return null;
+    let observer;
+    try {
+      observer = new PO((list) => {
+        if (!on) return;
+        const entries = typeof list?.getEntries === "function" ? list.getEntries() : [];
+        let changed2 = false;
+        for (const entry of entries) if (take(entry)) changed2 = true;
+        if (changed2) publish();
+      });
+    } catch {
+      return null;
+    }
+    const attempts = type === "event" ? [{ type, durationThreshold: 0 }, { type, durationThreshold: 16 }, { type }, { entryTypes: [type] }] : [{ type }, { entryTypes: [type] }];
+    for (const opts of attempts) {
+      try {
+        observer.observe(opts);
+        return observer;
+      } catch {
+      }
+    }
+    try {
+      observer.disconnect();
+    } catch {
+    }
+    return null;
+  };
+  const track2 = (lifecycle) => {
+    if (!lifecycle?.add || tracked) return;
+    tracked = true;
+    lifecycle.add(() => stop3());
+  };
+  const armEvent = (lifecycle) => {
+    track2(lifecycle);
+    if (!on || eventObserver) return eventObserver;
+    eventObserver = makeObserver("event", (entry) => {
+      if (!clickInsideRoot(entry)) return false;
+      return click.push(entry.duration);
+    });
+    return eventObserver;
+  };
+  const armLongTask = (lifecycle) => {
+    track2(lifecycle);
+    if (!on || longObserver) return longObserver;
+    longObserver = makeObserver("longtask", (entry) => {
+      if (!isPlexusLongTask(entry)) return false;
+      longCount += 1;
+      longtask.push(entry?.duration);
+      return true;
+    });
+    return longObserver;
+  };
+  const bind = (next) => {
+    if (!next || typeof next !== "object") return;
+    stats = next;
+    if (!on) stats.perf = null;
+  };
+  const cancelPan = () => {
+    pan.deltas = null;
+    pan.last = null;
+    if (pan.raf) {
+      try {
+        globalThis.cancelAnimationFrame?.(pan.raf);
+      } catch {
+      }
+      pan.raf = 0;
+    }
+  };
+  const cancelOpens = () => {
+    for (const cancel of watches) {
+      try {
+        cancel();
+      } catch {
+      }
+    }
+    watches.clear();
+  };
+  function stop3() {
+    on = false;
+    cancelPan();
+    cancelOpens();
+    try {
+      eventObserver?.disconnect();
+    } catch {
+    }
+    try {
+      longObserver?.disconnect();
+    } catch {
+    }
+    eventObserver = null;
+    longObserver = null;
+    open.clear();
+    click.clear();
+    fps.clear();
+    longtask.clear();
+    longCount = 0;
+    if (stats) stats.perf = null;
+    publishLatest(null);
+  }
+  const start = ({ stats: next, lifecycle, events = true, tasks = true } = {}) => {
+    if (next) bind(next);
+    track2(lifecycle);
+    on = true;
+    if (events) armEvent(lifecycle);
+    if (tasks) armLongTask(lifecycle);
+    publish();
+  };
+  const beginPan = () => {
+    if (!on || pan.deltas) return false;
+    pan.deltas = [];
+    pan.last = null;
+    const raf2 = globalThis.requestAnimationFrame;
+    if (typeof raf2 !== "function") return true;
+    const step = (t) => {
+      if (!pan.deltas) return;
+      if (pan.last != null) pan.deltas.push(t - pan.last);
+      pan.last = t;
+      pan.raf = raf2(step);
+    };
+    pan.raf = raf2(step);
+    return true;
+  };
+  const endPan = () => {
+    if (!pan.deltas) return null;
+    const deltas = pan.deltas;
+    cancelPan();
+    if (!on) return null;
+    const value = panFps(deltas);
+    if (value == null) return null;
+    fps.push(value);
+    publish();
+    return value;
+  };
+  const watchOpen = (mountEl, t0) => {
+    if (!on || !mountEl) return () => {
+    };
+    const finish = () => {
+      const ms = perfNow() - t0;
+      if (Number.isFinite(ms) && ms >= 0) open.push(ms);
+      publish();
+    };
+    if (mountEl.querySelector?.(".pxd-item")) {
+      finish();
+      return () => {
+      };
+    }
+    let stopped = false;
+    const cancel = () => {
+      stopped = true;
+    };
+    const raf2 = globalThis.requestAnimationFrame;
+    if (typeof raf2 !== "function") {
+      queueMicrotask(() => {
+        if (!stopped && on && mountEl.querySelector?.(".pxd-item")) finish();
+      });
+      watches.add(cancel);
+      return cancel;
+    }
+    let left = OPEN_FRAMES;
+    let id = 0;
+    const step = () => {
+      if (stopped || !on) return;
+      if (mountEl.isConnected === false) return;
+      if (mountEl.querySelector?.(".pxd-item")) {
+        finish();
+        return;
+      }
+      left -= 1;
+      if (left <= 0) return;
+      id = raf2(step);
+    };
+    const stopWatch = () => {
+      stopped = true;
+      if (id) try {
+        globalThis.cancelAnimationFrame?.(id);
+      } catch {
+      }
+    };
+    watches.add(stopWatch);
+    id = raf2(step);
+    return stopWatch;
+  };
+  return {
+    bind,
+    start,
+    stop: stop3,
+    armEvent,
+    armLongTask,
+    beginPan,
+    endPan,
+    cancelPan,
+    watchOpen,
+    current: current3,
+    get enabled() {
+      return on;
+    }
+  };
+}
+var PERF_CAP, OPEN_FRAMES, OWN_URL, latestPerf, readoutRow, readoutBlurb;
+var init_perf_log = __esm({
+  "src/perf-log.js"() {
+    PERF_CAP = 256;
+    OPEN_FRAMES = 120;
+    OWN_URL = (() => {
+      try {
+        return String(import.meta.url || "");
+      } catch {
+        return "";
+      }
+    })();
+    latestPerf = null;
+    readoutRow = null;
+    readoutBlurb = "";
+  }
+});
+
+// src/settings.js
+function settingsDefaults() {
+  return { ...DEFAULTS };
+}
+function normalizeSetting(id, value) {
+  const fallback = DEFAULTS[id];
+  if (value == null || value === "") return fallback;
+  if (typeof fallback === "boolean") {
+    if (typeof value === "boolean") return value;
+    if (value === "true") return true;
+    if (value === "false") return false;
+    return fallback;
+  }
+  if (NUMBERS.has(id)) {
+    const n3 = Number(value);
+    return Number.isFinite(n3) && n3 >= 40 ? n3 : fallback;
+  }
+  if (ENUMS[id]) {
+    const text4 = typeof value === "number" ? String(value) : value;
+    return ENUMS[id].includes(text4) ? text4 : fallback;
+  }
+  return value;
+}
+function defaultSpeedFlags() {
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true };
+}
+function parseSpeedFlags(raw) {
+  const base = defaultSpeedFlags();
+  if (raw == null || raw === "") return base;
+  let obj = raw;
+  if (typeof raw === "string") {
+    const text4 = raw.trim();
+    if (!text4) return base;
+    try {
+      obj = JSON.parse(text4);
+    } catch {
+      return base;
+    }
+  }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return base;
+  const out = { ...base };
+  for (const name of SPEED_FLAG_NAMES) {
+    if (!Object.prototype.hasOwnProperty.call(obj, name)) continue;
+    const value = obj[name];
+    if (value === false || value === "false") out[name] = false;
+    else if (value === true || value === "true") out[name] = true;
+  }
+  return out;
+}
+function noteSpeedFlags(raw) {
+  notedFlags = parseSpeedFlags(raw);
+  return notedFlags;
+}
+function notedSpeedFlags() {
+  if (typeof speedSource === "function") {
+    try {
+      return noteSpeedFlags(speedSource());
+    } catch {
+    }
+  }
+  return notedFlags;
+}
+function bindSpeedFlagSource(get) {
+  speedSource = typeof get === "function" ? get : null;
+}
+function readSettings(extensionAPI) {
+  const out = {};
+  for (const id of Object.keys(DEFAULTS)) {
+    let raw = null;
+    try {
+      raw = extensionAPI?.settings?.get?.(id);
+    } catch {
+      raw = null;
+    }
+    out[id] = normalizeSetting(id, raw);
+  }
+  let speedRaw = null;
+  try {
+    speedRaw = extensionAPI?.settings?.get?.(SETTING_IDS.speedFlags);
+  } catch {
+    speedRaw = null;
+  }
+  out[SETTING_IDS.speedFlags] = noteSpeedFlags(speedRaw);
+  return out;
+}
+async function initializeSettings(extensionAPI) {
+  settingsStore = extensionAPI ?? null;
+  if (extensionAPI.settings.canSet === false) return;
+  for (const [id, value] of Object.entries(DEFAULTS)) {
+    if (extensionAPI.settings.get(id) == null) {
+      await extensionAPI.settings.set(id, value);
+    }
+  }
+}
+function onSettingsChange(fn) {
+  listeners2.add(fn);
+  return () => listeners2.delete(fn);
+}
+function emit(id, value) {
+  if (INTEGRATION_SWITCH_IDS.has(id)) liveSwitches.set(id, normalizeSetting(id, value) === true);
+  for (const fn of [...listeners2]) {
+    try {
+      fn(id, value);
+    } catch (error) {
+      console.error("[plexus-diagram] Settings listener failed", error);
+    }
+  }
+  if (INTEGRATION_SWITCH_IDS.has(id)) refreshIntegrations();
+}
+function switchRow(id, name, description) {
+  return {
+    id,
+    name,
+    description,
+    action: { type: "switch", onChange: (event) => emit(id, event?.target?.checked ?? event) }
+  };
+}
+function inputRow(id, name, description, extra) {
+  const action = { type: "input", onChange: (event) => emit(id, event?.target?.value ?? event) };
+  if (extra && typeof extra === "object") {
+    if (extra.password) action.inputType = "password";
+    if (extra.placeholder) action.placeholder = extra.placeholder;
+  }
+  return { id, name, description, action };
+}
+function selectRow(id, name, description, items) {
+  return {
+    id,
+    name,
+    description,
+    action: { type: "select", items, onChange: (value) => emit(id, value?.target?.value ?? value) }
+  };
+}
+function groupRow(id, name, description, component) {
+  return {
+    id,
+    name,
+    description,
+    action: { type: "reactComponent", component: typeof component === "function" ? component : () => null }
+  };
+}
+async function resetPlexusSettings() {
+  const defaults = settingsDefaults();
+  for (const [id, value] of Object.entries(defaults)) {
+    try {
+      await settingsStore?.settings?.set?.(id, value);
+    } catch (error) {
+      console.warn("[plexus-diagram] Could not reset setting", id, error);
+    }
+    emit(id, value);
+  }
+}
+function integrationHost(win2) {
+  if (win2) return win2;
+  return globalThis.window ?? globalThis;
+}
+function switchOn(detectId) {
+  const settingId = SWITCH_FOR[detectId];
+  if (!settingId) return void 0;
+  if (liveSwitches.has(settingId)) return liveSwitches.get(settingId);
+  let raw = null;
+  try {
+    raw = settingsStore?.settings?.get?.(settingId);
+  } catch {
+    raw = null;
+  }
+  if (raw == null || raw === "") return DEFAULTS[settingId] === true;
+  return normalizeSetting(settingId, raw) === true;
+}
+function syncIntegrationText(win2) {
+  for (const found of integrations(integrationHost(win2))) {
+    const statusId = Object.keys(STATUS_FOR).find((id) => STATUS_FOR[id] === found.id);
+    if (!statusId) continue;
+    integrationText.set(statusId, statusLine(found, switchOn(found.id)));
+  }
+}
+function reactOf() {
+  const host = globalThis.window ?? globalThis;
+  const React = host?.React ?? globalThis.React;
+  return React && typeof React.createElement === "function" ? React : null;
+}
+function integrationStatusComponent(statusId) {
+  return function IntegrationStatus() {
+    const text4 = integrationText.get(statusId) || "";
+    const React = reactOf();
+    if (!React) return text4;
+    try {
+      return React.createElement("span", { className: "pxd-integration-status" }, text4);
+    } catch {
+      return text4;
+    }
+  };
+}
+function statusSettingRow(statusId, label) {
+  return {
+    id: statusId,
+    name: label,
+    description: integrationText.get(statusId) || `${label}: not installed`,
+    action: { type: "reactComponent", component: integrationStatusComponent(statusId) }
+  };
+}
+function paintIntegrationRows() {
+  const list = panelRef?.settings;
+  if (!list) return;
+  for (const entry of list) {
+    if (!integrationText.has(entry.id)) continue;
+    entry.description = integrationText.get(entry.id);
+  }
+}
+function refreshIntegrations(win2) {
+  syncIntegrationText(win2);
+  paintIntegrationRows();
+}
+function errorRow(n3) {
+  const text4 = `${n3} errors`;
+  return {
+    id: ERROR_ROW_ID,
+    name: text4,
+    description: "Callback errors since this copy loaded. Nothing is sent.",
+    action: { type: "reactComponent", component: () => text4 }
+  };
+}
+function placeErrorRow() {
+  if (!panelRef) return;
+  const list = panelRef.settings;
+  const idx = list.findIndex((row5) => row5.id === ERROR_ROW_ID);
+  const n3 = Number(statsRef?.errors) || 0;
+  if (n3 <= 0) {
+    if (idx >= 0) list.splice(idx, 1);
+    return;
+  }
+  const row4 = errorRow(n3);
+  if (idx >= 0) list[idx] = row4;
+  else {
+    const at = list.findIndex((entry) => entry.id === SETTING_IDS.showVersionBadge);
+    list.splice(at >= 0 ? at + 1 : list.length, 0, row4);
+  }
+}
+function bindErrorStats(stats) {
+  statsRef = stats && typeof stats === "object" ? stats : null;
+  if (!unhookErrors) unhookErrors = onGuardCount(() => placeErrorRow());
+  placeErrorRow();
+}
+function clearErrorStats() {
+  if (unhookErrors) {
+    unhookErrors();
+    unhookErrors = null;
+  }
+  statsRef = null;
+  placeErrorRow();
+}
+function performanceGroupRow(id, name, description) {
+  const text4 = () => perfReadoutText(readHostPerf());
+  const row4 = groupRow(id, name, `${description} ${text4()}`, text4);
+  bindPerfReadout(row4, description);
+  return row4;
+}
+function createSettingsPanel({ stats } = {}) {
+  syncIntegrationText();
+  const settings = [];
+  for (const [id, name, description, members] of SETTING_GROUPS) {
+    settings.push(id === "group-performance" ? performanceGroupRow(id, name, description) : groupRow(id, name, description));
+    for (const member of members) settings.push(SETTING_ROWS[member]());
+  }
+  settings.push({
+    id: "reset-plexus-settings",
+    name: "Reset",
+    description: "Put every Plexus setting back to its default. Open boards update right away.",
+    action: { type: "button", content: "Reset Plexus settings", onClick: () => resetPlexusSettings() }
+  });
+  const panel = { tabTitle: "Plexus Diagram", settings };
+  if (stats && typeof stats === "object") {
+    const n3 = Number(stats.errors) || 0;
+    if (n3 > 0) {
+      const at = settings.findIndex((entry) => entry.id === SETTING_IDS.showVersionBadge);
+      settings.splice(at >= 0 ? at + 1 : settings.length, 0, errorRow(n3));
+    }
+    return panel;
+  }
+  panelRef = panel;
+  placeErrorRow();
+  return panel;
+}
+var SETTING_IDS, DEFAULTS, BOARD_TONES2, MAP_ZOOMS, TOOLTIP_DELAYS, TASK_CHIPS, ENUMS, NUMBERS, SPEED_FLAG_NAMES, notedFlags, speedSource, settingsStore, listeners2, STATUS_IDS, STATUS_FOR, SWITCH_FOR, INTEGRATION_SWITCH_IDS, integrationText, liveSwitches, SETTING_ROWS, SETTING_GROUPS, ERROR_ROW_ID, panelRef, statsRef, unhookErrors;
+var init_settings = __esm({
+  "src/settings.js"() {
+    init_guard();
+    init_detect();
+    init_perf_log();
+    SETTING_IDS = Object.freeze({
+      enabled: "enabled",
+      autoEnhance: "auto-enhance",
+      fullscreenOnZoom: "fullscreen-on-zoom",
+      graphLinks: "graph-links",
+      attrStyles: "attr-styles",
+      wheel: "wheel",
+      emptyDrag: "empty-drag",
+      showMinimap: "show-minimap",
+      controlsPosition: "controls-position",
+      snapGuides: "snap-guides",
+      snapGrid: "snap-grid",
+      grid: "grid",
+      // G3. Optional Heptabase looks. Defaults keep today's canvas, sections, and highlight bar.
+      lookCanvas: "look-canvas",
+      lookSections: "look-sections",
+      lookHighlights: "look-highlights",
+      theme: "theme",
+      defaultCardWidth: "default-card-width",
+      defaultCardHeight: "default-card-height",
+      defaultCardLook: "default-card-look",
+      enableShortcuts: "enable-shortcuts",
+      showVersionBadge: "show-version-badge",
+      disableOnMobile: "disable-on-mobile",
+      collapseOutline: "collapse-outline",
+      boardTone: "board-tone",
+      mapZoom: "map-zoom",
+      autoFitSections: "auto-fit-sections",
+      spaceOut: "space-out",
+      showCardBadges: "show-card-badges",
+      cardChips: "card-chips",
+      whyPrompt: "why-prompt",
+      resurfaceIntervals: "resurface-intervals",
+      showPalette: "show-palette",
+      motion: "motion",
+      enterInCard: "enter-in-card",
+      toolbarLayout: "toolbar-layout",
+      dockPosition: "dock-position",
+      dockStyle: "dock-style",
+      dockLabels: "dock-labels",
+      chromeDensity: "chrome-density",
+      dockOptions: "dock-options",
+      tooltips: "tooltips",
+      tooltipDelay: "tooltip-delay",
+      taskTool: "task-tool",
+      taskChips: "task-chips",
+      taskDefaultProject: "task-default-project",
+      betterTasks: "better-tasks",
+      resurface: "resurface",
+      regionsInline: "regions-inline",
+      interop: "interop",
+      speedLog: "speed-log",
+      pdfCover: "pdf-cover",
+      pdfCoverWarm: "pdf-cover-warm",
+      highlightOpen: "highlight-open",
+      pdfDark: "pdf-dark",
+      parseHelperUrl: "parse-helper-url",
+      parseHelperToken: "parse-helper-token",
+      parseEngineDefault: "parse-engine-default",
+      parseFormula: "parse-formula",
+      parseOcr: "parse-ocr",
+      parsePageReader: "parse-page-reader",
+      parseAutoRead: "parse-auto-read",
+      keepReads: "keep-reads",
+      askFigureImages: "ask-figure-images",
+      askModel: "ask-model",
+      linkAnswers: "link-answer-sources",
+      parseLinkSafe: "parse-link-safe",
+      parseNumbered: "parse-numbered",
+      parseFootnotes: "parse-footnotes",
+      parseFootnoteFormat: "parse-footnote-format",
+      imageColors: "image-index-colors",
+      imageText: "image-read-text",
+      // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
+      speedFlags: "speed-flags"
+    });
+    DEFAULTS = Object.freeze({
+      [SETTING_IDS.enabled]: true,
+      [SETTING_IDS.autoEnhance]: true,
+      [SETTING_IDS.fullscreenOnZoom]: true,
+      [SETTING_IDS.graphLinks]: "all",
+      [SETTING_IDS.attrStyles]: "",
+      [SETTING_IDS.wheel]: "pan",
+      [SETTING_IDS.emptyDrag]: "pan",
+      [SETTING_IDS.showMinimap]: true,
+      [SETTING_IDS.controlsPosition]: "rail",
+      [SETTING_IDS.snapGuides]: true,
+      [SETTING_IDS.snapGrid]: false,
+      [SETTING_IDS.grid]: "dots",
+      [SETTING_IDS.lookCanvas]: "dots",
+      [SETTING_IDS.lookSections]: "none",
+      [SETTING_IDS.lookHighlights]: "bar",
+      [SETTING_IDS.theme]: "follow-roam",
+      [SETTING_IDS.defaultCardWidth]: 280,
+      [SETTING_IDS.defaultCardHeight]: 160,
+      [SETTING_IDS.defaultCardLook]: "block",
+      [SETTING_IDS.enableShortcuts]: true,
+      [SETTING_IDS.showVersionBadge]: true,
+      [SETTING_IDS.disableOnMobile]: true,
+      [SETTING_IDS.collapseOutline]: true,
+      [SETTING_IDS.boardTone]: "none",
+      [SETTING_IDS.mapZoom]: "0.45",
+      [SETTING_IDS.autoFitSections]: true,
+      [SETTING_IDS.spaceOut]: false,
+      [SETTING_IDS.showCardBadges]: true,
+      [SETTING_IDS.cardChips]: true,
+      [SETTING_IDS.whyPrompt]: false,
+      [SETTING_IDS.resurfaceIntervals]: "7,30,90,365",
+      [SETTING_IDS.showPalette]: true,
+      [SETTING_IDS.motion]: "full",
+      [SETTING_IDS.enterInCard]: "newline",
+      [SETTING_IDS.toolbarLayout]: "split",
+      [SETTING_IDS.dockPosition]: "bottom",
+      [SETTING_IDS.dockStyle]: "pill",
+      [SETTING_IDS.dockLabels]: false,
+      [SETTING_IDS.chromeDensity]: "comfortable",
+      [SETTING_IDS.dockOptions]: true,
+      [SETTING_IDS.tooltips]: true,
+      [SETTING_IDS.tooltipDelay]: "350 ms",
+      [SETTING_IDS.taskTool]: false,
+      [SETTING_IDS.taskChips]: "full",
+      [SETTING_IDS.taskDefaultProject]: "",
+      [SETTING_IDS.betterTasks]: false,
+      [SETTING_IDS.resurface]: true,
+      [SETTING_IDS.regionsInline]: true,
+      [SETTING_IDS.interop]: true,
+      [SETTING_IDS.speedLog]: false,
+      [SETTING_IDS.pdfCover]: "first",
+      [SETTING_IDS.pdfCoverWarm]: true,
+      [SETTING_IDS.highlightOpen]: "reader",
+      [SETTING_IDS.pdfDark]: "dim",
+      [SETTING_IDS.parseHelperUrl]: "http://127.0.0.1:48765",
+      [SETTING_IDS.parseHelperToken]: "",
+      [SETTING_IDS.parseEngineDefault]: "auto",
+      [SETTING_IDS.parseFormula]: false,
+      [SETTING_IDS.parseOcr]: "auto",
+      [SETTING_IDS.parsePageReader]: "all",
+      [SETTING_IDS.parseAutoRead]: true,
+      [SETTING_IDS.keepReads]: true,
+      [SETTING_IDS.askFigureImages]: true,
+      [SETTING_IDS.askModel]: "auto",
+      [SETTING_IDS.linkAnswers]: true,
+      [SETTING_IDS.parseLinkSafe]: true,
+      [SETTING_IDS.parseNumbered]: false,
+      [SETTING_IDS.parseFootnotes]: "inline",
+      [SETTING_IDS.parseFootnoteFormat]: "extension",
+      [SETTING_IDS.imageColors]: true,
+      [SETTING_IDS.imageText]: false
+    });
+    BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
+    MAP_ZOOMS = ["0.3", "0.45", "0.6"];
+    TOOLTIP_DELAYS = ["instant", "350 ms", "800 ms"];
+    TASK_CHIPS = ["full", "due only", "none"];
+    ENUMS = Object.freeze({
+      [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
+      [SETTING_IDS.wheel]: ["pan", "zoom"],
+      [SETTING_IDS.emptyDrag]: ["pan", "select"],
+      [SETTING_IDS.controlsPosition]: ["rail", "bar"],
+      [SETTING_IDS.grid]: ["dots", "lines", "grid", "plain"],
+      [SETTING_IDS.lookCanvas]: ["dots", "flat-grey"],
+      [SETTING_IDS.lookSections]: ["none", "pastel"],
+      [SETTING_IDS.lookHighlights]: ["bar", "tint"],
+      [SETTING_IDS.theme]: ["follow-roam", "plexus"],
+      [SETTING_IDS.defaultCardLook]: ["block", "card"],
+      [SETTING_IDS.boardTone]: BOARD_TONES2,
+      [SETTING_IDS.mapZoom]: MAP_ZOOMS,
+      [SETTING_IDS.motion]: ["full", "reduced", "none"],
+      [SETTING_IDS.enterInCard]: ["newline", "child"],
+      [SETTING_IDS.toolbarLayout]: ["split", "classic", "dock-only"],
+      [SETTING_IDS.dockPosition]: ["bottom", "left", "top"],
+      [SETTING_IDS.dockStyle]: ["pill", "strip"],
+      [SETTING_IDS.chromeDensity]: ["comfortable", "compact"],
+      [SETTING_IDS.tooltipDelay]: TOOLTIP_DELAYS,
+      [SETTING_IDS.taskChips]: TASK_CHIPS,
+      [SETTING_IDS.pdfCover]: ["first", "last-read"],
+      [SETTING_IDS.highlightOpen]: ["reader", "sidebar"],
+      [SETTING_IDS.pdfDark]: ["off", "dim", "invert"],
+      [SETTING_IDS.parseEngineDefault]: ["auto", "builtin", "docling"],
+      [SETTING_IDS.parseOcr]: ["auto", "on", "off"],
+      [SETTING_IDS.parsePageReader]: ["doubtful", "all"],
+      [SETTING_IDS.parseFootnotes]: ["inline", "end"],
+      [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
+    });
+    NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges"];
+    notedFlags = defaultSpeedFlags();
+    speedSource = null;
+    settingsStore = null;
+    listeners2 = /* @__PURE__ */ new Set();
+    STATUS_IDS = Object.freeze({
+      betterTasks: "status-better-tasks",
+      taskStatusTags: "status-task-status-tags",
+      roamPlexus: "status-roam-plexus",
+      compass: "status-compass",
+      highlighter: "status-highlighter"
+    });
+    STATUS_FOR = Object.freeze({
+      [STATUS_IDS.betterTasks]: "better-tasks",
+      [STATUS_IDS.taskStatusTags]: "task-status-tags",
+      [STATUS_IDS.roamPlexus]: "roam-plexus",
+      [STATUS_IDS.compass]: "compass",
+      [STATUS_IDS.highlighter]: "highlighter"
+    });
+    SWITCH_FOR = Object.freeze({
+      "better-tasks": SETTING_IDS.betterTasks,
+      "roam-plexus": SETTING_IDS.interop,
+      compass: SETTING_IDS.interop
+    });
+    INTEGRATION_SWITCH_IDS = /* @__PURE__ */ new Set([
+      SETTING_IDS.betterTasks,
+      SETTING_IDS.taskTool,
+      SETTING_IDS.cardChips,
+      SETTING_IDS.resurface,
+      SETTING_IDS.regionsInline,
+      SETTING_IDS.interop
+    ]);
+    integrationText = /* @__PURE__ */ new Map();
+    liveSwitches = /* @__PURE__ */ new Map();
+    SETTING_ROWS = {
+      [STATUS_IDS.betterTasks]: () => statusSettingRow(STATUS_IDS.betterTasks, "Better Tasks"),
+      [STATUS_IDS.taskStatusTags]: () => statusSettingRow(STATUS_IDS.taskStatusTags, "Task Status Tags"),
+      [STATUS_IDS.roamPlexus]: () => statusSettingRow(STATUS_IDS.roamPlexus, "Roam Plexus"),
+      [STATUS_IDS.compass]: () => statusSettingRow(STATUS_IDS.compass, "Compass"),
+      [STATUS_IDS.highlighter]: () => statusSettingRow(STATUS_IDS.highlighter, "Colour highlighter"),
+      [SETTING_IDS.enabled]: () => switchRow(SETTING_IDS.enabled, "Enabled", "Turn the diagram overlay on or off."),
+      [SETTING_IDS.autoEnhance]: () => switchRow(SETTING_IDS.autoEnhance, "Every diagram is a Plexus board", "On: every {{[[diagram]]}} opens as a Plexus board. Nothing is saved until you change the board. Off: only diagrams you enhance (Plexus: Enhance) or create with New whiteboard open in Plexus."),
+      [SETTING_IDS.fullscreenOnZoom]: () => switchRow(SETTING_IDS.fullscreenOnZoom, "Fullscreen on zoom", "Open a diagram full screen when you zoom into its block. Esc leaves it."),
+      [SETTING_IDS.graphLinks]: () => selectRow(SETTING_IDS.graphLinks, "Graph links", "Show lines between cards that share a page reference or an attribute.", ["all", "attributes", "off"]),
+      [SETTING_IDS.attrStyles]: () => inputRow(SETTING_IDS.attrStyles, "Attribute styles", "One JSON object. Each attribute name gets a palette color and a line: solid, dashed, or dotted."),
+      [SETTING_IDS.wheel]: () => selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch still zooms.", ["pan", "zoom"]),
+      [SETTING_IDS.emptyDrag]: () => selectRow(SETTING_IDS.emptyDrag, "Drag on empty canvas", "Pan: dragging empty space moves the board, and Shift-drag draws a selection box. Select: dragging empty space draws the box.", ["pan", "select"]),
+      [SETTING_IDS.showMinimap]: () => switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the small map of the whole board."),
+      [SETTING_IDS.showPalette]: () => switchRow(SETTING_IDS.showPalette, "Show tool palette", "Show the tool palette along the bottom of the board."),
+      [SETTING_IDS.motion]: () => selectRow(SETTING_IDS.motion, "Motion", "Full, reduced, or none. A system reduced-motion setting shortens Full.", ["full", "reduced", "none"]),
+      [SETTING_IDS.toolbarLayout]: () => selectRow(SETTING_IDS.toolbarLayout, "Toolbar layout", "Split: board bar on top, tools in the dock. Classic: the 2.1 look, tools in the top bar. Dock only: hide the top bar until the pointer is near the top edge.", ["split", "classic", "dock-only"]),
+      [SETTING_IDS.dockPosition]: () => selectRow(SETTING_IDS.dockPosition, "Tool dock position", "Where the tool dock sits. A board can override this from its More menu.", ["bottom", "left", "top"]),
+      [SETTING_IDS.dockStyle]: () => selectRow(SETTING_IDS.dockStyle, "Dock shape", "Pill is a rounded floating dock. Strip is a flat bar.", ["pill", "strip"]),
+      [SETTING_IDS.dockLabels]: () => switchRow(SETTING_IDS.dockLabels, "Show tool names under icons", "Label each tool in the dock."),
+      [SETTING_IDS.chromeDensity]: () => selectRow(SETTING_IDS.chromeDensity, "Button size", "Comfortable or compact buttons for both bars.", ["comfortable", "compact"]),
+      [SETTING_IDS.dockOptions]: () => switchRow(SETTING_IDS.dockOptions, "Show tool options in the dock", "Show the active tool's quick options (colors, look, shape) next to the dock."),
+      [SETTING_IDS.tooltips]: () => switchRow(SETTING_IDS.tooltips, "Hover tooltips", "Show a name, shortcut and one-line description when you hover or focus a control. Off falls back to the browser's plain tooltip."),
+      [SETTING_IDS.tooltipDelay]: () => selectRow(SETTING_IDS.tooltipDelay, "Tooltip delay", "How long to hover before a tooltip shows. Keyboard focus always shows it at once.", TOOLTIP_DELAYS),
+      [SETTING_IDS.controlsPosition]: () => selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical stack on the right. Bar is the horizontal zoom group.", ["rail", "bar"]),
+      [SETTING_IDS.snapGuides]: () => switchRow(SETTING_IDS.snapGuides, "Snap guides", "Line a dragged card up with its neighbours and show the guides."),
+      [SETTING_IDS.snapGrid]: () => switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping."),
+      [SETTING_IDS.grid]: () => selectRow(SETTING_IDS.grid, "Default board background: pattern", "Pattern for boards that do not set their own. A board can override it from Background.", ["dots", "lines", "grid", "plain"]),
+      [SETTING_IDS.lookCanvas]: () => selectRow(SETTING_IDS.lookCanvas, "Canvas", "Dots keeps the dot grid. Flat grey is a plain canvas, the Heptabase grey, with no grid.", ["dots", "flat-grey"]),
+      [SETTING_IDS.lookSections]: () => selectRow(SETTING_IDS.lookSections, "Section fill", "None leaves a section as it is today. Pastel washes it with its colour.", ["none", "pastel"]),
+      [SETTING_IDS.lookHighlights]: () => selectRow(SETTING_IDS.lookHighlights, "Highlight cards", "Bar keeps the colour strip. Tint fills the card with the highlight colour and hides the strip.", ["bar", "tint"]),
+      [SETTING_IDS.theme]: () => selectRow(SETTING_IDS.theme, "Theme", "Follow Roam uses the colours of the open graph. Plexus keeps the slate board.", ["follow-roam", "plexus"]),
+      [SETTING_IDS.boardTone]: () => selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Color wash for boards that do not set their own.", BOARD_TONES2),
+      [SETTING_IDS.mapZoom]: () => selectRow(SETTING_IDS.mapZoom, "Map view below (zoom)", "Below this zoom, cards show only their title.", MAP_ZOOMS),
+      [SETTING_IDS.autoFitSections]: () => switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section when a card is moved or resized past its edge."),
+      [SETTING_IDS.spaceOut]: () => switchRow(SETTING_IDS.spaceOut, "Space out cards", "After a move, push cards apart when they overlap."),
+      [SETTING_IDS.showCardBadges]: () => switchRow(SETTING_IDS.showCardBadges, "Show card badges", "Show how many references, tasks, and children a card has."),
+      [SETTING_IDS.cardChips]: () => switchRow(SETTING_IDS.cardChips, "Board chips", "Show a board chip under a block that is a card on a board."),
+      [SETTING_IDS.whyPrompt]: () => switchRow(SETTING_IDS.whyPrompt, "Ask why on a new connection", "After you draw a connection, open the why field."),
+      [SETTING_IDS.resurfaceIntervals]: () => inputRow(SETTING_IDS.resurfaceIntervals, "Resurface intervals", "Days, separated by commas. A daily page lists cards from those many days ago."),
+      [SETTING_IDS.betterTasks]: () => switchRow(SETTING_IDS.betterTasks, "Better Tasks integration", "Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam."),
+      [SETTING_IDS.taskTool]: () => switchRow(SETTING_IDS.taskTool, "Task tool", "Show the Task tool (K) in the dock. It makes a Roam TODO block; Better Tasks sets its due date and project."),
+      [SETTING_IDS.resurface]: () => switchRow(SETTING_IDS.resurface, "Resurface", "Allow the resurface macro. A daily page can list cards from earlier days, and Plexus Commands can insert the button."),
+      [SETTING_IDS.regionsInline]: () => switchRow(SETTING_IDS.regionsInline, "Inline region crops", "Show a region crop beside its button. Off leaves the button and hides the crop."),
+      [SETTING_IDS.interop]: () => switchRow(SETTING_IDS.interop, "Roam Plexus and Compass", "Use Roam Plexus and Compass when they are loaded. Off hides Open in Compass and stops thumbnail calls."),
+      [SETTING_IDS.taskChips]: () => selectRow(SETTING_IDS.taskChips, "Task chips", "What a task card shows under its title. Full: due date, project, priority, repeat, status. Due only: just the date. None: no chips.", TASK_CHIPS),
+      [SETTING_IDS.taskDefaultProject]: () => inputRow(SETTING_IDS.taskDefaultProject, "Default project for new tasks", "A page name. A task made from the board gets it as its Better Tasks project. Empty uses Better Tasks' own default."),
+      [SETTING_IDS.enterInCard]: () => selectRow(SETTING_IDS.enterInCard, "Enter in a card", "Newline adds a line to the card's block, like a native Roam diagram. Child makes a new child block inside the card.", ["newline", "child"]),
+      [SETTING_IDS.defaultCardLook]: () => selectRow(SETTING_IDS.defaultCardLook, "Default card look", "New note cards. Block is a plain Roam block. Card keeps a title row.", ["block", "card"]),
+      [SETTING_IDS.defaultCardWidth]: () => inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Width of a new card, in pixels."),
+      [SETTING_IDS.defaultCardHeight]: () => inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Height of a new card, in pixels."),
+      [SETTING_IDS.enableShortcuts]: () => switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Use keyboard shortcuts on the board."),
+      [SETTING_IDS.showVersionBadge]: () => switchRow(SETTING_IDS.showVersionBadge, "Show version badge", "Show the version on the board."),
+      [SETTING_IDS.disableOnMobile]: () => switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Do not open diagrams on a phone."),
+      [SETTING_IDS.collapseOutline]: () => switchRow(SETTING_IDS.collapseOutline, "Collapse the outline", "Fold an enhanced board once, so the outline does not list every card. Opening the bullet is remembered."),
+      [SETTING_IDS.speedLog]: () => switchRow(SETTING_IDS.speedLog, "Speed log", "Record open time, click-to-paint, pan frame rate, and long tasks in this tab. Nothing is sent or saved."),
+      [SETTING_IDS.pdfCover]: () => selectRow(SETTING_IDS.pdfCover, "PDF card cover", "First page shows page 1. Last page read shows the page that was open when the reader closed.", ["first", "last-read"]),
+      [SETTING_IDS.pdfCoverWarm]: () => switchRow(SETTING_IDS.pdfCoverWarm, "Prepare PDF covers in the background", "On. A quiet board prepares a cover for a visible PDF that does not have one: Roam's PDF engine draws page 1 when it is reachable, otherwise a hidden reader does."),
+      [SETTING_IDS.highlightOpen]: () => selectRow(SETTING_IDS.highlightOpen, "Highlight click opens", "Reader: the PDF pane scrolls to the highlight. Sidebar: Roam opens the highlight block in the right sidebar. Shift-click always opens the sidebar; the chip's arrow lists every choice.", ["reader", "sidebar"]),
+      [SETTING_IDS.pdfDark]: () => selectRow(SETTING_IDS.pdfDark, "PDF pages in dark mode", "When the board is dark. Off keeps white pages. Dim darkens the page. Invert flips the page colors. Marks stay readable.", ["off", "dim", "invert"]),
+      [SETTING_IDS.parseHelperUrl]: () => inputRow(SETTING_IDS.parseHelperUrl, "Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
+      [SETTING_IDS.parseHelperToken]: () => inputRow(SETTING_IDS.parseHelperToken, "Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address.", { password: true, placeholder: "Token" }),
+      [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
+      [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
+      [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
+      [SETTING_IDS.parsePageReader]: () => selectRow(SETTING_IDS.parsePageReader, "High accuracy page reader", "All (default) reads every scanned page with the page model: better on photographed, handwritten and old printed pages, about ten times slower per scanned page. Doubtful reads only the scanned pages the recogniser is unsure of.", ["doubtful", "all"]),
+      [SETTING_IDS.imageColors]: () => switchRow(SETTING_IDS.imageColors, "Index image colours", "On. While the board search panel lists Image or Figure cards, Plexus reads each picture once, in the background, to find its main colours so you can search by colour. Nothing leaves this device."),
+      [SETTING_IDS.imageText]: () => switchRow(SETTING_IDS.imageText, "Read text in images", "Off. On lets the board search find words inside pictures, using the in-browser reading models. It only runs when those models are already on this device, never downloads them, and reads at most a few dozen pictures per session."),
+      [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
+      [SETTING_IDS.keepReads]: () => switchRow(SETTING_IDS.keepReads, "Keep reads in the graph", "After a High accuracy, helper or cloud read, upload the read as one file to the graph and note it on the PDF block, so your other computers load it instead of reading again. The built-in parse is never kept. Off uploads nothing; reads already kept still load."),
+      [SETTING_IDS.askFigureImages]: () => switchRow(SETTING_IDS.askFigureImages, "Send figure images to AI", "Uploads the figure's image to your graph as a file the first time you ask about it."),
+      [SETTING_IDS.askModel]: () => inputRow(SETTING_IDS.askModel, "Ask AI model", "Auto picks Claude Sonnet 5.5, then Claude Opus 5.5, Claude Sonnet 5, Gemini 3.8 Flash, Gemini 3.1 Pro, then any Claude or Gemini, then your Live AI default. Or type a model name from Live AI Assistant. A model you pick in the Ask AI window is remembered for this graph and wins.", { placeholder: "auto" }),
+      [SETTING_IDS.linkAnswers]: () => switchRow(SETTING_IDS.linkAnswers, "Link answers to their sources", "When you add an AI answer as a card and its source (the PDF card, or a part card made from the same part) is on this board, draw a connection labelled source from the answer to it."),
+      [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
+      [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
+      [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"]),
+      [SETTING_IDS.parseFootnoteFormat]: () => selectRow(SETTING_IDS.parseFootnoteFormat, "PDF footnotes", "Extension writes each note under the page's #footnotes block and links it with an alias, the format of the Footnotes extension (it works without the extension). Plain keeps (N) in the text with the notes as lines. Off keeps the PDF's own marks.", ["extension", "plain", "off"])
+    };
+    SETTING_GROUPS = [
+      ["group-cards", "Cards", "How new cards look, and the marks on them.", [
+        SETTING_IDS.defaultCardLook,
+        SETTING_IDS.defaultCardWidth,
+        SETTING_IDS.defaultCardHeight,
+        SETTING_IDS.enterInCard,
+        SETTING_IDS.showCardBadges,
+        SETTING_IDS.spaceOut,
+        SETTING_IDS.pdfCover,
+        SETTING_IDS.pdfCoverWarm,
+        SETTING_IDS.highlightOpen,
+        SETTING_IDS.pdfDark
+      ]],
+      ["group-integrations", "Integrations", "Sibling extensions, and the switches that turn them on.", [
+        STATUS_IDS.betterTasks,
+        SETTING_IDS.betterTasks,
+        STATUS_IDS.taskStatusTags,
+        SETTING_IDS.taskTool,
+        SETTING_IDS.taskChips,
+        SETTING_IDS.taskDefaultProject,
+        STATUS_IDS.roamPlexus,
+        STATUS_IDS.compass,
+        SETTING_IDS.interop,
+        STATUS_IDS.highlighter,
+        SETTING_IDS.cardChips,
+        SETTING_IDS.resurface,
+        SETTING_IDS.regionsInline
+      ]],
+      ["group-sections", "Sections", "How a section grows around its cards.", [
+        SETTING_IDS.autoFitSections
+      ]],
+      ["group-connections", "Connections", "Lines drawn from page references and attributes.", [
+        SETTING_IDS.graphLinks,
+        SETTING_IDS.attrStyles,
+        SETTING_IDS.whyPrompt
+      ]],
+      ["group-board", "Board", "The canvas, the controls, and how you move around.", [
+        SETTING_IDS.enabled,
+        SETTING_IDS.autoEnhance,
+        SETTING_IDS.fullscreenOnZoom,
+        SETTING_IDS.wheel,
+        SETTING_IDS.emptyDrag,
+        SETTING_IDS.showMinimap,
+        SETTING_IDS.showPalette,
+        SETTING_IDS.toolbarLayout,
+        SETTING_IDS.dockPosition,
+        SETTING_IDS.dockStyle,
+        SETTING_IDS.dockLabels,
+        SETTING_IDS.chromeDensity,
+        SETTING_IDS.dockOptions,
+        SETTING_IDS.tooltips,
+        SETTING_IDS.tooltipDelay,
+        SETTING_IDS.controlsPosition,
+        SETTING_IDS.snapGuides,
+        SETTING_IDS.snapGrid,
+        SETTING_IDS.grid,
+        SETTING_IDS.boardTone,
+        SETTING_IDS.lookCanvas,
+        SETTING_IDS.lookSections,
+        SETTING_IDS.lookHighlights,
+        SETTING_IDS.theme,
+        SETTING_IDS.mapZoom,
+        SETTING_IDS.enableShortcuts,
+        SETTING_IDS.showVersionBadge,
+        SETTING_IDS.resurfaceIntervals
+      ]],
+      ["group-performance", "Performance", "Motion, and when the overlay stays off.", [
+        SETTING_IDS.motion,
+        SETTING_IDS.disableOnMobile,
+        SETTING_IDS.collapseOutline,
+        SETTING_IDS.speedLog
+      ]],
+      ["group-parse", "PDF parse", "A local helper for harder PDFs, and how parsed text is inserted.", [
+        SETTING_IDS.parseHelperUrl,
+        SETTING_IDS.parseHelperToken,
+        SETTING_IDS.parseEngineDefault,
+        SETTING_IDS.parseFormula,
+        SETTING_IDS.parseOcr,
+        SETTING_IDS.parsePageReader,
+        SETTING_IDS.parseAutoRead,
+        SETTING_IDS.keepReads,
+        SETTING_IDS.askFigureImages,
+        SETTING_IDS.askModel,
+        SETTING_IDS.linkAnswers,
+        SETTING_IDS.parseLinkSafe,
+        SETTING_IDS.parseNumbered,
+        SETTING_IDS.parseFootnotes,
+        SETTING_IDS.parseFootnoteFormat
+      ]],
+      ["group-images", "Image search", "Search inside pictures by colour and by the words in them.", [
+        SETTING_IDS.imageColors,
+        SETTING_IDS.imageText
+      ]]
+    ];
+    ERROR_ROW_ID = "plexus-errors";
+    panelRef = null;
+    statsRef = null;
+    unhookErrors = null;
+  }
+});
+
 // src/model/highlighter.js
 function bgName(match) {
   return match[1] || match[2] || match[4] || match[5] || match[7] || match[8] || null;
@@ -19681,7 +20895,7 @@ var init_tasks = __esm({
 });
 
 // src/model/status-tags.js
-function row2(key, name, glyph, lightBase, lightText, darkBase, darkText) {
+function row3(key, name, glyph, lightBase, lightText, darkBase, darkText) {
   return Object.freeze({
     key,
     name,
@@ -19800,13 +21014,13 @@ var init_status_tags = __esm({
       dark: Object.freeze({ base: "rgba(100, 116, 139, 0.2)", text: "rgb(158, 168, 183)" })
     });
     FALLBACK2 = Object.freeze([
-      row2("ACTIVE", "Active", "active", "rgba(20, 184, 166, 0.1)", "rgb(13, 116, 104)", "rgba(20, 184, 166, 0.2)", "rgb(68, 198, 184)"),
-      row2("WAITING", "Waiting", "waiting", "rgba(234, 179, 8, 0.1)", "rgb(131, 100, 4)", "rgba(234, 179, 8, 0.2)", "rgb(234, 179, 8)"),
-      row2("IN_REVIEW", "In Review", "in-review", "rgba(14, 165, 233, 0.1)", "rgb(9, 109, 154)", "rgba(14, 165, 233, 0.2)", "rgb(76, 188, 239)"),
-      row2("HOLDING", "Holding", "holding", "rgba(148, 163, 184, 0.1)", "rgb(95, 104, 118)", "rgba(148, 163, 184, 0.2)", "rgb(169, 181, 198)"),
-      row2("INCUBATING", "Incubating", "incubating", "rgba(99, 102, 241, 0.1)", "rgb(84, 86, 203)", "rgba(99, 102, 241, 0.2)", "rgb(158, 160, 246)"),
-      row2("ALERT", "Alert", "alert", "rgba(244, 63, 94, 0.1)", "rgb(184, 48, 71)", "rgba(244, 63, 94, 0.2)", "rgb(248, 130, 150)"),
-      row2("CANCELLED", "Cancelled", "cancelled", "rgba(30, 41, 59, 0.1)", "rgb(30, 41, 59)", "rgba(30, 41, 59, 0.2)", "rgb(145, 150, 159)")
+      row3("ACTIVE", "Active", "active", "rgba(20, 184, 166, 0.1)", "rgb(13, 116, 104)", "rgba(20, 184, 166, 0.2)", "rgb(68, 198, 184)"),
+      row3("WAITING", "Waiting", "waiting", "rgba(234, 179, 8, 0.1)", "rgb(131, 100, 4)", "rgba(234, 179, 8, 0.2)", "rgb(234, 179, 8)"),
+      row3("IN_REVIEW", "In Review", "in-review", "rgba(14, 165, 233, 0.1)", "rgb(9, 109, 154)", "rgba(14, 165, 233, 0.2)", "rgb(76, 188, 239)"),
+      row3("HOLDING", "Holding", "holding", "rgba(148, 163, 184, 0.1)", "rgb(95, 104, 118)", "rgba(148, 163, 184, 0.2)", "rgb(169, 181, 198)"),
+      row3("INCUBATING", "Incubating", "incubating", "rgba(99, 102, 241, 0.1)", "rgb(84, 86, 203)", "rgba(99, 102, 241, 0.2)", "rgb(158, 160, 246)"),
+      row3("ALERT", "Alert", "alert", "rgba(244, 63, 94, 0.1)", "rgb(184, 48, 71)", "rgba(244, 63, 94, 0.2)", "rgb(248, 130, 150)"),
+      row3("CANCELLED", "Cancelled", "cancelled", "rgba(30, 41, 59, 0.1)", "rgb(30, 41, 59)", "rgba(30, 41, 59, 0.2)", "rgb(145, 150, 159)")
     ]);
   }
 });
@@ -25477,1220 +26691,6 @@ var init_pdf_chip_strip = __esm({
   }
 });
 
-// src/model/detect.js
-function read(win2, key) {
-  try {
-    return win2?.[key];
-  } catch {
-    return void 0;
-  }
-}
-function plainVersion(value) {
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  if (typeof value === "string" && value.trim()) return value.trim();
-  return "";
-}
-function apiVersionText(api3) {
-  if (!api3 || typeof api3 !== "object") return "";
-  const text4 = plainVersion(api3.apiVersion);
-  return text4 ? `apiVersion ${text4}` : "";
-}
-function row3(id, label, state, version) {
-  return { id, label, state, version: version || "" };
-}
-function missing(id, label) {
-  return row3(id, label, MISSING, "");
-}
-function betterTasks(win2) {
-  let entry = null;
-  try {
-    entry = win2?.RoamExtensionTools?.["better-tasks"];
-  } catch {
-    entry = null;
-  }
-  const bt = read(win2, "betterTasks");
-  const entryOn = entry != null && typeof entry === "object";
-  const btOn = bt != null && typeof bt === "object";
-  if (!entryOn && !btOn) return missing("better-tasks", "Better Tasks");
-  const version = plainVersion(entry?.version) || plainVersion(bt?.version) || plainVersion(bt?.v1?.version) || plainVersion(bt?.v2?.version);
-  return row3("better-tasks", "Better Tasks", FOUND, version);
-}
-function taskStatusTags(win2) {
-  const api3 = read(win2, "RoamTaskStatusTags");
-  if (!api3 || typeof api3 !== "object") return missing("task-status-tags", "Task Status Tags");
-  return row3("task-status-tags", "Task Status Tags", FOUND, apiVersionText(api3));
-}
-function roamPlexus(win2) {
-  const api3 = read(win2, "RoamPlexus");
-  if (!api3 || typeof api3 !== "object") return missing("roam-plexus", "Roam Plexus");
-  return row3("roam-plexus", "Roam Plexus", FOUND, apiVersionText(api3));
-}
-function compass(win2) {
-  const api3 = read(win2, "RoamCompass");
-  const flag = plainVersion(read(win2, "__ROAM_COMPASS_VERSION"));
-  const apiOn = api3 != null && typeof api3 === "object";
-  if (!apiOn && !flag) return missing("compass", "Compass");
-  return row3("compass", "Compass", FOUND, flag || apiVersionText(api3));
-}
-function styleText(doc) {
-  let text4 = "";
-  try {
-    const nodes = typeof doc.querySelectorAll === "function" ? doc.querySelectorAll("style") : [];
-    for (const node2 of nodes || []) text4 += String(node2?.textContent || "");
-  } catch {
-  }
-  const sheets = doc?.styleSheets;
-  if (!sheets) return text4;
-  for (const sheet of sheets) {
-    try {
-      const rules = sheet?.cssRules || sheet?.rules;
-      if (!rules) continue;
-      for (const rule of rules) text4 += String(rule?.cssText || "");
-    } catch {
-    }
-  }
-  return text4;
-}
-function highlighterVars(win2) {
-  const doc = win2?.document;
-  const view = doc?.defaultView || win2;
-  const body = doc?.body;
-  if (!body || typeof view?.getComputedStyle !== "function") return false;
-  let style = null;
-  try {
-    style = view.getComputedStyle(body);
-  } catch {
-    return false;
-  }
-  if (!style || typeof style.getPropertyValue !== "function") return false;
-  for (const name of HL_NAMES) {
-    let light = "";
-    let dark = "";
-    try {
-      light = style.getPropertyValue(`--cl-lh-${name}`);
-      dark = style.getPropertyValue(`--cl-dk-${name}`);
-    } catch {
-      return false;
-    }
-    if (typeof light === "string" && light.trim() || typeof dark === "string" && dark.trim()) return true;
-  }
-  return false;
-}
-function highlighterMarker(win2) {
-  const doc = win2?.document;
-  if (!doc) return false;
-  try {
-    if (typeof doc.querySelector === "function" && doc.querySelector('[id*="roam-extension-color-highlighter"]')) return true;
-  } catch {
-  }
-  const text4 = styleText(doc);
-  return text4.includes('[data-tag^=".bg-"]') || text4.includes("--cl-lh-");
-}
-function highlighterGlobal(win2) {
-  for (const key of ["RoamColorHighlighter", "colorHighlighter"]) {
-    const value = read(win2, key);
-    if (value && typeof value === "object") return value;
-  }
-  return null;
-}
-function highlighter(win2) {
-  const global = highlighterGlobal(win2);
-  let marked = false;
-  try {
-    marked = highlighterVars(win2) || highlighterMarker(win2);
-  } catch {
-    marked = false;
-  }
-  if (!global && !marked) return missing("highlighter", "Colour highlighter");
-  return row3("highlighter", "Colour highlighter", FOUND, plainVersion(global?.version));
-}
-function integrations(win2) {
-  return [betterTasks(win2), taskStatusTags(win2), roamPlexus(win2), compass(win2), highlighter(win2)];
-}
-function statusLine(row4, switchOn2) {
-  const label = String(row4?.label || "Integration");
-  const detected = row4?.state === FOUND;
-  const version = detected ? plainVersion(row4?.version) : "";
-  let line = detected ? `${label}: detected${version ? ` ${version}` : ""}` : `${label}: ${MISSING}`;
-  if (switchOn2 === true) line += " · on";
-  else if (switchOn2 === false) line += " · off";
-  return line;
-}
-var INTEGRATION_EVENTS, HL_NAMES, MISSING, FOUND;
-var init_detect = __esm({
-  "src/model/detect.js"() {
-    INTEGRATION_EVENTS = Object.freeze([
-      "roam-compass:ready",
-      "roam-compass:unload",
-      "roam-plexus:ready",
-      "roam-plexus:unload",
-      "roam-task-status-tags:ready",
-      "roam-task-status-tags:unload"
-    ]);
-    HL_NAMES = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "gray", "grey", "teal", "indigo"];
-    MISSING = "not installed";
-    FOUND = "detected";
-  }
-});
-
-// src/perf-log.js
-function perfNow() {
-  const clock = globalThis.performance;
-  if (clock && typeof clock.now === "function") return clock.now();
-  return Date.now();
-}
-function percentile(samples, p) {
-  const n3 = samples.length;
-  if (!n3) return null;
-  const sorted = samples.slice().sort((a, b) => a - b);
-  return sorted[Math.floor((n3 - 1) * p)];
-}
-function ring(cap4) {
-  const samples = [];
-  return {
-    push(value) {
-      const n3 = Number(value);
-      if (!Number.isFinite(n3)) return false;
-      samples.push(n3);
-      if (samples.length > cap4) samples.splice(0, samples.length - cap4);
-      return true;
-    },
-    clear() {
-      samples.length = 0;
-    },
-    get n() {
-      return samples.length;
-    },
-    summary() {
-      return { p50: percentile(samples, 0.5), p75: percentile(samples, 0.75), n: samples.length };
-    }
-  };
-}
-function isPlexusExtensionUrl(url, own = OWN_URL) {
-  const text4 = String(url || "");
-  if (typeof own !== "string") own = OWN_URL;
-  if (!text4) return false;
-  if (own && text4.split(/[?#]/)[0] === own.split(/[?#]/)[0]) return true;
-  if (text4.startsWith("blob:")) return false;
-  let path = text4;
-  try {
-    path = new URL(text4).pathname;
-  } catch {
-  }
-  return /(?:^|\/)plexus-diagram\/extension\.js$/i.test(path);
-}
-function addUrl(out, value) {
-  if (typeof value === "string" && value) out.push(value);
-}
-function scriptUrlsOf(entry) {
-  const out = [];
-  if (!entry || typeof entry !== "object") return out;
-  addUrl(out, entry.sourceURL);
-  addUrl(out, entry.scriptUrl);
-  addUrl(out, entry.scriptURL);
-  addUrl(out, entry.url);
-  const lists2 = [entry.attribution, entry.scripts];
-  for (const list of lists2) {
-    if (!Array.isArray(list)) continue;
-    for (const item of list) {
-      if (!item || typeof item !== "object") {
-        addUrl(out, item);
-        continue;
-      }
-      addUrl(out, item.sourceURL);
-      addUrl(out, item.scriptUrl);
-      addUrl(out, item.scriptURL);
-      addUrl(out, item.url);
-      addUrl(out, item.containerSrc);
-      addUrl(out, item.containerName);
-      addUrl(out, item.name);
-    }
-  }
-  return out;
-}
-function isPlexusLongTask(entry) {
-  return scriptUrlsOf(entry).some((url) => isPlexusExtensionUrl(url));
-}
-function clickInsideRoot(entry) {
-  if (!entry || entry.name !== "click") return false;
-  let node2 = entry.target;
-  if (node2 && node2.nodeType === 3) node2 = node2.parentElement;
-  if (!node2 || typeof node2.closest !== "function") return false;
-  return Boolean(node2.closest(".pxd-root"));
-}
-function panFps(deltas) {
-  const finite9 = [];
-  for (const value of deltas || []) {
-    const n3 = Number(value);
-    if (Number.isFinite(n3) && n3 > 0) finite9.push(n3);
-  }
-  const median7 = percentile(finite9, 0.5);
-  if (!(median7 > 0)) return null;
-  return 1e3 / median7;
-}
-function numText(value) {
-  if (!Number.isFinite(value)) return "—";
-  const rounded = Math.round(value * 10) / 10;
-  return String(rounded);
-}
-function perfReadoutText(perf) {
-  const bit = (label, series) => `${label} p50 ${numText(series?.p50)} p75 ${numText(series?.p75)}`;
-  return [
-    bit("Open", perf?.open),
-    bit("Click", perf?.click),
-    bit("Pan", perf?.fps),
-    bit("Long tasks", perf?.longtask)
-  ].join(" · ");
-}
-function readHostPerf() {
-  const win2 = globalThis.window ?? globalThis;
-  const stats = win2.__plexusDiagram?.stats;
-  if (stats && Object.prototype.hasOwnProperty.call(stats, "perf")) return stats.perf ?? null;
-  return latestPerf;
-}
-function bindPerfReadout(row4, blurb) {
-  readoutRow = row4 || null;
-  readoutBlurb = blurb || "";
-  paintReadout();
-}
-function paintReadout() {
-  if (!readoutRow) return;
-  const text4 = perfReadoutText(latestPerf);
-  readoutRow.description = readoutBlurb ? `${readoutBlurb} ${text4}` : text4;
-}
-function publishLatest(perf) {
-  latestPerf = perf ?? null;
-  paintReadout();
-}
-function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
-  const open = ring(cap4);
-  const click = ring(cap4);
-  const fps = ring(cap4);
-  const longtask = ring(cap4);
-  let longCount = 0;
-  let on = false;
-  let stats = null;
-  let eventObserver = null;
-  let longObserver = null;
-  let tracked = false;
-  const watches = /* @__PURE__ */ new Set();
-  const pan = { deltas: null, last: null, raf: 0 };
-  const current3 = () => {
-    if (!on) return null;
-    const tasks = longtask.summary();
-    tasks.count = longCount;
-    return { open: open.summary(), click: click.summary(), fps: fps.summary(), longtask: tasks };
-  };
-  const publish = () => {
-    const snap = current3();
-    if (stats) stats.perf = snap;
-    publishLatest(snap);
-    return snap;
-  };
-  const makeObserver = (type, take) => {
-    const PO = globalThis.PerformanceObserver;
-    if (typeof PO !== "function") return null;
-    let observer;
-    try {
-      observer = new PO((list) => {
-        if (!on) return;
-        const entries = typeof list?.getEntries === "function" ? list.getEntries() : [];
-        let changed2 = false;
-        for (const entry of entries) if (take(entry)) changed2 = true;
-        if (changed2) publish();
-      });
-    } catch {
-      return null;
-    }
-    const attempts = type === "event" ? [{ type, durationThreshold: 0 }, { type, durationThreshold: 16 }, { type }, { entryTypes: [type] }] : [{ type }, { entryTypes: [type] }];
-    for (const opts of attempts) {
-      try {
-        observer.observe(opts);
-        return observer;
-      } catch {
-      }
-    }
-    try {
-      observer.disconnect();
-    } catch {
-    }
-    return null;
-  };
-  const track2 = (lifecycle) => {
-    if (!lifecycle?.add || tracked) return;
-    tracked = true;
-    lifecycle.add(() => stop3());
-  };
-  const armEvent = (lifecycle) => {
-    track2(lifecycle);
-    if (!on || eventObserver) return eventObserver;
-    eventObserver = makeObserver("event", (entry) => {
-      if (!clickInsideRoot(entry)) return false;
-      return click.push(entry.duration);
-    });
-    return eventObserver;
-  };
-  const armLongTask = (lifecycle) => {
-    track2(lifecycle);
-    if (!on || longObserver) return longObserver;
-    longObserver = makeObserver("longtask", (entry) => {
-      if (!isPlexusLongTask(entry)) return false;
-      longCount += 1;
-      longtask.push(entry?.duration);
-      return true;
-    });
-    return longObserver;
-  };
-  const bind = (next) => {
-    if (!next || typeof next !== "object") return;
-    stats = next;
-    if (!on) stats.perf = null;
-  };
-  const cancelPan = () => {
-    pan.deltas = null;
-    pan.last = null;
-    if (pan.raf) {
-      try {
-        globalThis.cancelAnimationFrame?.(pan.raf);
-      } catch {
-      }
-      pan.raf = 0;
-    }
-  };
-  const cancelOpens = () => {
-    for (const cancel of watches) {
-      try {
-        cancel();
-      } catch {
-      }
-    }
-    watches.clear();
-  };
-  function stop3() {
-    on = false;
-    cancelPan();
-    cancelOpens();
-    try {
-      eventObserver?.disconnect();
-    } catch {
-    }
-    try {
-      longObserver?.disconnect();
-    } catch {
-    }
-    eventObserver = null;
-    longObserver = null;
-    open.clear();
-    click.clear();
-    fps.clear();
-    longtask.clear();
-    longCount = 0;
-    if (stats) stats.perf = null;
-    publishLatest(null);
-  }
-  const start = ({ stats: next, lifecycle, events = true, tasks = true } = {}) => {
-    if (next) bind(next);
-    track2(lifecycle);
-    on = true;
-    if (events) armEvent(lifecycle);
-    if (tasks) armLongTask(lifecycle);
-    publish();
-  };
-  const beginPan = () => {
-    if (!on || pan.deltas) return false;
-    pan.deltas = [];
-    pan.last = null;
-    const raf2 = globalThis.requestAnimationFrame;
-    if (typeof raf2 !== "function") return true;
-    const step = (t) => {
-      if (!pan.deltas) return;
-      if (pan.last != null) pan.deltas.push(t - pan.last);
-      pan.last = t;
-      pan.raf = raf2(step);
-    };
-    pan.raf = raf2(step);
-    return true;
-  };
-  const endPan = () => {
-    if (!pan.deltas) return null;
-    const deltas = pan.deltas;
-    cancelPan();
-    if (!on) return null;
-    const value = panFps(deltas);
-    if (value == null) return null;
-    fps.push(value);
-    publish();
-    return value;
-  };
-  const watchOpen = (mountEl, t0) => {
-    if (!on || !mountEl) return () => {
-    };
-    const finish = () => {
-      const ms = perfNow() - t0;
-      if (Number.isFinite(ms) && ms >= 0) open.push(ms);
-      publish();
-    };
-    if (mountEl.querySelector?.(".pxd-item")) {
-      finish();
-      return () => {
-      };
-    }
-    let stopped = false;
-    const cancel = () => {
-      stopped = true;
-    };
-    const raf2 = globalThis.requestAnimationFrame;
-    if (typeof raf2 !== "function") {
-      queueMicrotask(() => {
-        if (!stopped && on && mountEl.querySelector?.(".pxd-item")) finish();
-      });
-      watches.add(cancel);
-      return cancel;
-    }
-    let left = OPEN_FRAMES;
-    let id = 0;
-    const step = () => {
-      if (stopped || !on) return;
-      if (mountEl.isConnected === false) return;
-      if (mountEl.querySelector?.(".pxd-item")) {
-        finish();
-        return;
-      }
-      left -= 1;
-      if (left <= 0) return;
-      id = raf2(step);
-    };
-    const stopWatch = () => {
-      stopped = true;
-      if (id) try {
-        globalThis.cancelAnimationFrame?.(id);
-      } catch {
-      }
-    };
-    watches.add(stopWatch);
-    id = raf2(step);
-    return stopWatch;
-  };
-  return {
-    bind,
-    start,
-    stop: stop3,
-    armEvent,
-    armLongTask,
-    beginPan,
-    endPan,
-    cancelPan,
-    watchOpen,
-    current: current3,
-    get enabled() {
-      return on;
-    }
-  };
-}
-var PERF_CAP, OPEN_FRAMES, OWN_URL, latestPerf, readoutRow, readoutBlurb;
-var init_perf_log = __esm({
-  "src/perf-log.js"() {
-    PERF_CAP = 256;
-    OPEN_FRAMES = 120;
-    OWN_URL = (() => {
-      try {
-        return String(import.meta.url || "");
-      } catch {
-        return "";
-      }
-    })();
-    latestPerf = null;
-    readoutRow = null;
-    readoutBlurb = "";
-  }
-});
-
-// src/settings.js
-function settingsDefaults() {
-  return { ...DEFAULTS };
-}
-function normalizeSetting(id, value) {
-  const fallback = DEFAULTS[id];
-  if (value == null || value === "") return fallback;
-  if (typeof fallback === "boolean") {
-    if (typeof value === "boolean") return value;
-    if (value === "true") return true;
-    if (value === "false") return false;
-    return fallback;
-  }
-  if (NUMBERS.has(id)) {
-    const n3 = Number(value);
-    return Number.isFinite(n3) && n3 >= 40 ? n3 : fallback;
-  }
-  if (ENUMS[id]) {
-    const text4 = typeof value === "number" ? String(value) : value;
-    return ENUMS[id].includes(text4) ? text4 : fallback;
-  }
-  return value;
-}
-function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true };
-}
-function parseSpeedFlags(raw) {
-  const base = defaultSpeedFlags();
-  if (raw == null || raw === "") return base;
-  let obj = raw;
-  if (typeof raw === "string") {
-    const text4 = raw.trim();
-    if (!text4) return base;
-    try {
-      obj = JSON.parse(text4);
-    } catch {
-      return base;
-    }
-  }
-  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return base;
-  const out = { ...base };
-  for (const name of SPEED_FLAG_NAMES) {
-    if (!Object.prototype.hasOwnProperty.call(obj, name)) continue;
-    const value = obj[name];
-    if (value === false || value === "false") out[name] = false;
-    else if (value === true || value === "true") out[name] = true;
-  }
-  return out;
-}
-function noteSpeedFlags(raw) {
-  notedFlags = parseSpeedFlags(raw);
-  return notedFlags;
-}
-function notedSpeedFlags() {
-  if (typeof speedSource === "function") {
-    try {
-      return noteSpeedFlags(speedSource());
-    } catch {
-    }
-  }
-  return notedFlags;
-}
-function bindSpeedFlagSource(get) {
-  speedSource = typeof get === "function" ? get : null;
-}
-function readSettings(extensionAPI) {
-  const out = {};
-  for (const id of Object.keys(DEFAULTS)) {
-    let raw = null;
-    try {
-      raw = extensionAPI?.settings?.get?.(id);
-    } catch {
-      raw = null;
-    }
-    out[id] = normalizeSetting(id, raw);
-  }
-  let speedRaw = null;
-  try {
-    speedRaw = extensionAPI?.settings?.get?.(SETTING_IDS.speedFlags);
-  } catch {
-    speedRaw = null;
-  }
-  out[SETTING_IDS.speedFlags] = noteSpeedFlags(speedRaw);
-  return out;
-}
-async function initializeSettings(extensionAPI) {
-  settingsStore = extensionAPI ?? null;
-  if (extensionAPI.settings.canSet === false) return;
-  for (const [id, value] of Object.entries(DEFAULTS)) {
-    if (extensionAPI.settings.get(id) == null) {
-      await extensionAPI.settings.set(id, value);
-    }
-  }
-}
-function onSettingsChange(fn) {
-  listeners2.add(fn);
-  return () => listeners2.delete(fn);
-}
-function emit(id, value) {
-  if (INTEGRATION_SWITCH_IDS.has(id)) liveSwitches.set(id, normalizeSetting(id, value) === true);
-  for (const fn of [...listeners2]) {
-    try {
-      fn(id, value);
-    } catch (error) {
-      console.error("[plexus-diagram] Settings listener failed", error);
-    }
-  }
-  if (INTEGRATION_SWITCH_IDS.has(id)) refreshIntegrations();
-}
-function switchRow(id, name, description) {
-  return {
-    id,
-    name,
-    description,
-    action: { type: "switch", onChange: (event) => emit(id, event?.target?.checked ?? event) }
-  };
-}
-function inputRow(id, name, description, extra) {
-  const action = { type: "input", onChange: (event) => emit(id, event?.target?.value ?? event) };
-  if (extra && typeof extra === "object") {
-    if (extra.password) action.inputType = "password";
-    if (extra.placeholder) action.placeholder = extra.placeholder;
-  }
-  return { id, name, description, action };
-}
-function selectRow(id, name, description, items) {
-  return {
-    id,
-    name,
-    description,
-    action: { type: "select", items, onChange: (value) => emit(id, value?.target?.value ?? value) }
-  };
-}
-function groupRow(id, name, description, component) {
-  return {
-    id,
-    name,
-    description,
-    action: { type: "reactComponent", component: typeof component === "function" ? component : () => null }
-  };
-}
-async function resetPlexusSettings() {
-  const defaults = settingsDefaults();
-  for (const [id, value] of Object.entries(defaults)) {
-    try {
-      await settingsStore?.settings?.set?.(id, value);
-    } catch (error) {
-      console.warn("[plexus-diagram] Could not reset setting", id, error);
-    }
-    emit(id, value);
-  }
-}
-function integrationHost(win2) {
-  if (win2) return win2;
-  return globalThis.window ?? globalThis;
-}
-function switchOn(detectId) {
-  const settingId = SWITCH_FOR[detectId];
-  if (!settingId) return void 0;
-  if (liveSwitches.has(settingId)) return liveSwitches.get(settingId);
-  let raw = null;
-  try {
-    raw = settingsStore?.settings?.get?.(settingId);
-  } catch {
-    raw = null;
-  }
-  if (raw == null || raw === "") return DEFAULTS[settingId] === true;
-  return normalizeSetting(settingId, raw) === true;
-}
-function syncIntegrationText(win2) {
-  for (const found of integrations(integrationHost(win2))) {
-    const statusId = Object.keys(STATUS_FOR).find((id) => STATUS_FOR[id] === found.id);
-    if (!statusId) continue;
-    integrationText.set(statusId, statusLine(found, switchOn(found.id)));
-  }
-}
-function reactOf() {
-  const host = globalThis.window ?? globalThis;
-  const React = host?.React ?? globalThis.React;
-  return React && typeof React.createElement === "function" ? React : null;
-}
-function integrationStatusComponent(statusId) {
-  return function IntegrationStatus() {
-    const text4 = integrationText.get(statusId) || "";
-    const React = reactOf();
-    if (!React) return text4;
-    try {
-      return React.createElement("span", { className: "pxd-integration-status" }, text4);
-    } catch {
-      return text4;
-    }
-  };
-}
-function statusSettingRow(statusId, label) {
-  return {
-    id: statusId,
-    name: label,
-    description: integrationText.get(statusId) || `${label}: not installed`,
-    action: { type: "reactComponent", component: integrationStatusComponent(statusId) }
-  };
-}
-function paintIntegrationRows() {
-  const list = panelRef?.settings;
-  if (!list) return;
-  for (const entry of list) {
-    if (!integrationText.has(entry.id)) continue;
-    entry.description = integrationText.get(entry.id);
-  }
-}
-function refreshIntegrations(win2) {
-  syncIntegrationText(win2);
-  paintIntegrationRows();
-}
-function errorRow(n3) {
-  const text4 = `${n3} errors`;
-  return {
-    id: ERROR_ROW_ID,
-    name: text4,
-    description: "Callback errors since this copy loaded. Nothing is sent.",
-    action: { type: "reactComponent", component: () => text4 }
-  };
-}
-function placeErrorRow() {
-  if (!panelRef) return;
-  const list = panelRef.settings;
-  const idx = list.findIndex((row5) => row5.id === ERROR_ROW_ID);
-  const n3 = Number(statsRef?.errors) || 0;
-  if (n3 <= 0) {
-    if (idx >= 0) list.splice(idx, 1);
-    return;
-  }
-  const row4 = errorRow(n3);
-  if (idx >= 0) list[idx] = row4;
-  else {
-    const at = list.findIndex((entry) => entry.id === SETTING_IDS.showVersionBadge);
-    list.splice(at >= 0 ? at + 1 : list.length, 0, row4);
-  }
-}
-function bindErrorStats(stats) {
-  statsRef = stats && typeof stats === "object" ? stats : null;
-  if (!unhookErrors) unhookErrors = onGuardCount(() => placeErrorRow());
-  placeErrorRow();
-}
-function clearErrorStats() {
-  if (unhookErrors) {
-    unhookErrors();
-    unhookErrors = null;
-  }
-  statsRef = null;
-  placeErrorRow();
-}
-function performanceGroupRow(id, name, description) {
-  const text4 = () => perfReadoutText(readHostPerf());
-  const row4 = groupRow(id, name, `${description} ${text4()}`, text4);
-  bindPerfReadout(row4, description);
-  return row4;
-}
-function createSettingsPanel({ stats } = {}) {
-  syncIntegrationText();
-  const settings = [];
-  for (const [id, name, description, members] of SETTING_GROUPS) {
-    settings.push(id === "group-performance" ? performanceGroupRow(id, name, description) : groupRow(id, name, description));
-    for (const member of members) settings.push(SETTING_ROWS[member]());
-  }
-  settings.push({
-    id: "reset-plexus-settings",
-    name: "Reset",
-    description: "Put every Plexus setting back to its default. Open boards update right away.",
-    action: { type: "button", content: "Reset Plexus settings", onClick: () => resetPlexusSettings() }
-  });
-  const panel = { tabTitle: "Plexus Diagram", settings };
-  if (stats && typeof stats === "object") {
-    const n3 = Number(stats.errors) || 0;
-    if (n3 > 0) {
-      const at = settings.findIndex((entry) => entry.id === SETTING_IDS.showVersionBadge);
-      settings.splice(at >= 0 ? at + 1 : settings.length, 0, errorRow(n3));
-    }
-    return panel;
-  }
-  panelRef = panel;
-  placeErrorRow();
-  return panel;
-}
-var SETTING_IDS, DEFAULTS, BOARD_TONES2, MAP_ZOOMS, TOOLTIP_DELAYS, TASK_CHIPS, ENUMS, NUMBERS, SPEED_FLAG_NAMES, notedFlags, speedSource, settingsStore, listeners2, STATUS_IDS, STATUS_FOR, SWITCH_FOR, INTEGRATION_SWITCH_IDS, integrationText, liveSwitches, SETTING_ROWS, SETTING_GROUPS, ERROR_ROW_ID, panelRef, statsRef, unhookErrors;
-var init_settings = __esm({
-  "src/settings.js"() {
-    init_guard();
-    init_detect();
-    init_perf_log();
-    SETTING_IDS = Object.freeze({
-      enabled: "enabled",
-      autoEnhance: "auto-enhance",
-      fullscreenOnZoom: "fullscreen-on-zoom",
-      graphLinks: "graph-links",
-      attrStyles: "attr-styles",
-      wheel: "wheel",
-      emptyDrag: "empty-drag",
-      showMinimap: "show-minimap",
-      controlsPosition: "controls-position",
-      snapGuides: "snap-guides",
-      snapGrid: "snap-grid",
-      grid: "grid",
-      // G3. Optional Heptabase looks. Defaults keep today's canvas, sections, and highlight bar.
-      lookCanvas: "look-canvas",
-      lookSections: "look-sections",
-      lookHighlights: "look-highlights",
-      theme: "theme",
-      defaultCardWidth: "default-card-width",
-      defaultCardHeight: "default-card-height",
-      defaultCardLook: "default-card-look",
-      enableShortcuts: "enable-shortcuts",
-      showVersionBadge: "show-version-badge",
-      disableOnMobile: "disable-on-mobile",
-      collapseOutline: "collapse-outline",
-      boardTone: "board-tone",
-      mapZoom: "map-zoom",
-      autoFitSections: "auto-fit-sections",
-      spaceOut: "space-out",
-      showCardBadges: "show-card-badges",
-      cardChips: "card-chips",
-      whyPrompt: "why-prompt",
-      resurfaceIntervals: "resurface-intervals",
-      showPalette: "show-palette",
-      motion: "motion",
-      enterInCard: "enter-in-card",
-      toolbarLayout: "toolbar-layout",
-      dockPosition: "dock-position",
-      dockStyle: "dock-style",
-      dockLabels: "dock-labels",
-      chromeDensity: "chrome-density",
-      dockOptions: "dock-options",
-      tooltips: "tooltips",
-      tooltipDelay: "tooltip-delay",
-      taskTool: "task-tool",
-      taskChips: "task-chips",
-      taskDefaultProject: "task-default-project",
-      betterTasks: "better-tasks",
-      resurface: "resurface",
-      regionsInline: "regions-inline",
-      interop: "interop",
-      speedLog: "speed-log",
-      pdfCover: "pdf-cover",
-      pdfCoverWarm: "pdf-cover-warm",
-      highlightOpen: "highlight-open",
-      pdfDark: "pdf-dark",
-      parseHelperUrl: "parse-helper-url",
-      parseHelperToken: "parse-helper-token",
-      parseEngineDefault: "parse-engine-default",
-      parseFormula: "parse-formula",
-      parseOcr: "parse-ocr",
-      parsePageReader: "parse-page-reader",
-      parseAutoRead: "parse-auto-read",
-      keepReads: "keep-reads",
-      askFigureImages: "ask-figure-images",
-      askModel: "ask-model",
-      linkAnswers: "link-answer-sources",
-      parseLinkSafe: "parse-link-safe",
-      parseNumbered: "parse-numbered",
-      parseFootnotes: "parse-footnotes",
-      parseFootnoteFormat: "parse-footnote-format",
-      imageColors: "image-index-colors",
-      imageText: "image-read-text",
-      // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
-      speedFlags: "speed-flags"
-    });
-    DEFAULTS = Object.freeze({
-      [SETTING_IDS.enabled]: true,
-      [SETTING_IDS.autoEnhance]: true,
-      [SETTING_IDS.fullscreenOnZoom]: true,
-      [SETTING_IDS.graphLinks]: "all",
-      [SETTING_IDS.attrStyles]: "",
-      [SETTING_IDS.wheel]: "pan",
-      [SETTING_IDS.emptyDrag]: "pan",
-      [SETTING_IDS.showMinimap]: true,
-      [SETTING_IDS.controlsPosition]: "rail",
-      [SETTING_IDS.snapGuides]: true,
-      [SETTING_IDS.snapGrid]: false,
-      [SETTING_IDS.grid]: "dots",
-      [SETTING_IDS.lookCanvas]: "dots",
-      [SETTING_IDS.lookSections]: "none",
-      [SETTING_IDS.lookHighlights]: "bar",
-      [SETTING_IDS.theme]: "follow-roam",
-      [SETTING_IDS.defaultCardWidth]: 280,
-      [SETTING_IDS.defaultCardHeight]: 160,
-      [SETTING_IDS.defaultCardLook]: "block",
-      [SETTING_IDS.enableShortcuts]: true,
-      [SETTING_IDS.showVersionBadge]: true,
-      [SETTING_IDS.disableOnMobile]: true,
-      [SETTING_IDS.collapseOutline]: true,
-      [SETTING_IDS.boardTone]: "none",
-      [SETTING_IDS.mapZoom]: "0.45",
-      [SETTING_IDS.autoFitSections]: true,
-      [SETTING_IDS.spaceOut]: false,
-      [SETTING_IDS.showCardBadges]: true,
-      [SETTING_IDS.cardChips]: true,
-      [SETTING_IDS.whyPrompt]: false,
-      [SETTING_IDS.resurfaceIntervals]: "7,30,90,365",
-      [SETTING_IDS.showPalette]: true,
-      [SETTING_IDS.motion]: "full",
-      [SETTING_IDS.enterInCard]: "newline",
-      [SETTING_IDS.toolbarLayout]: "split",
-      [SETTING_IDS.dockPosition]: "bottom",
-      [SETTING_IDS.dockStyle]: "pill",
-      [SETTING_IDS.dockLabels]: false,
-      [SETTING_IDS.chromeDensity]: "comfortable",
-      [SETTING_IDS.dockOptions]: true,
-      [SETTING_IDS.tooltips]: true,
-      [SETTING_IDS.tooltipDelay]: "350 ms",
-      [SETTING_IDS.taskTool]: false,
-      [SETTING_IDS.taskChips]: "full",
-      [SETTING_IDS.taskDefaultProject]: "",
-      [SETTING_IDS.betterTasks]: false,
-      [SETTING_IDS.resurface]: true,
-      [SETTING_IDS.regionsInline]: true,
-      [SETTING_IDS.interop]: true,
-      [SETTING_IDS.speedLog]: false,
-      [SETTING_IDS.pdfCover]: "first",
-      [SETTING_IDS.pdfCoverWarm]: true,
-      [SETTING_IDS.highlightOpen]: "reader",
-      [SETTING_IDS.pdfDark]: "dim",
-      [SETTING_IDS.parseHelperUrl]: "http://127.0.0.1:48765",
-      [SETTING_IDS.parseHelperToken]: "",
-      [SETTING_IDS.parseEngineDefault]: "auto",
-      [SETTING_IDS.parseFormula]: false,
-      [SETTING_IDS.parseOcr]: "auto",
-      [SETTING_IDS.parsePageReader]: "all",
-      [SETTING_IDS.parseAutoRead]: true,
-      [SETTING_IDS.keepReads]: true,
-      [SETTING_IDS.askFigureImages]: true,
-      [SETTING_IDS.askModel]: "auto",
-      [SETTING_IDS.linkAnswers]: true,
-      [SETTING_IDS.parseLinkSafe]: true,
-      [SETTING_IDS.parseNumbered]: false,
-      [SETTING_IDS.parseFootnotes]: "inline",
-      [SETTING_IDS.parseFootnoteFormat]: "extension",
-      [SETTING_IDS.imageColors]: true,
-      [SETTING_IDS.imageText]: false
-    });
-    BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
-    MAP_ZOOMS = ["0.3", "0.45", "0.6"];
-    TOOLTIP_DELAYS = ["instant", "350 ms", "800 ms"];
-    TASK_CHIPS = ["full", "due only", "none"];
-    ENUMS = Object.freeze({
-      [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
-      [SETTING_IDS.wheel]: ["pan", "zoom"],
-      [SETTING_IDS.emptyDrag]: ["pan", "select"],
-      [SETTING_IDS.controlsPosition]: ["rail", "bar"],
-      [SETTING_IDS.grid]: ["dots", "lines", "grid", "plain"],
-      [SETTING_IDS.lookCanvas]: ["dots", "flat-grey"],
-      [SETTING_IDS.lookSections]: ["none", "pastel"],
-      [SETTING_IDS.lookHighlights]: ["bar", "tint"],
-      [SETTING_IDS.theme]: ["follow-roam", "plexus"],
-      [SETTING_IDS.defaultCardLook]: ["block", "card"],
-      [SETTING_IDS.boardTone]: BOARD_TONES2,
-      [SETTING_IDS.mapZoom]: MAP_ZOOMS,
-      [SETTING_IDS.motion]: ["full", "reduced", "none"],
-      [SETTING_IDS.enterInCard]: ["newline", "child"],
-      [SETTING_IDS.toolbarLayout]: ["split", "classic", "dock-only"],
-      [SETTING_IDS.dockPosition]: ["bottom", "left", "top"],
-      [SETTING_IDS.dockStyle]: ["pill", "strip"],
-      [SETTING_IDS.chromeDensity]: ["comfortable", "compact"],
-      [SETTING_IDS.tooltipDelay]: TOOLTIP_DELAYS,
-      [SETTING_IDS.taskChips]: TASK_CHIPS,
-      [SETTING_IDS.pdfCover]: ["first", "last-read"],
-      [SETTING_IDS.highlightOpen]: ["reader", "sidebar"],
-      [SETTING_IDS.pdfDark]: ["off", "dim", "invert"],
-      [SETTING_IDS.parseEngineDefault]: ["auto", "builtin", "docling"],
-      [SETTING_IDS.parseOcr]: ["auto", "on", "off"],
-      [SETTING_IDS.parsePageReader]: ["doubtful", "all"],
-      [SETTING_IDS.parseFootnotes]: ["inline", "end"],
-      [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
-    });
-    NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot"];
-    notedFlags = defaultSpeedFlags();
-    speedSource = null;
-    settingsStore = null;
-    listeners2 = /* @__PURE__ */ new Set();
-    STATUS_IDS = Object.freeze({
-      betterTasks: "status-better-tasks",
-      taskStatusTags: "status-task-status-tags",
-      roamPlexus: "status-roam-plexus",
-      compass: "status-compass",
-      highlighter: "status-highlighter"
-    });
-    STATUS_FOR = Object.freeze({
-      [STATUS_IDS.betterTasks]: "better-tasks",
-      [STATUS_IDS.taskStatusTags]: "task-status-tags",
-      [STATUS_IDS.roamPlexus]: "roam-plexus",
-      [STATUS_IDS.compass]: "compass",
-      [STATUS_IDS.highlighter]: "highlighter"
-    });
-    SWITCH_FOR = Object.freeze({
-      "better-tasks": SETTING_IDS.betterTasks,
-      "roam-plexus": SETTING_IDS.interop,
-      compass: SETTING_IDS.interop
-    });
-    INTEGRATION_SWITCH_IDS = /* @__PURE__ */ new Set([
-      SETTING_IDS.betterTasks,
-      SETTING_IDS.taskTool,
-      SETTING_IDS.cardChips,
-      SETTING_IDS.resurface,
-      SETTING_IDS.regionsInline,
-      SETTING_IDS.interop
-    ]);
-    integrationText = /* @__PURE__ */ new Map();
-    liveSwitches = /* @__PURE__ */ new Map();
-    SETTING_ROWS = {
-      [STATUS_IDS.betterTasks]: () => statusSettingRow(STATUS_IDS.betterTasks, "Better Tasks"),
-      [STATUS_IDS.taskStatusTags]: () => statusSettingRow(STATUS_IDS.taskStatusTags, "Task Status Tags"),
-      [STATUS_IDS.roamPlexus]: () => statusSettingRow(STATUS_IDS.roamPlexus, "Roam Plexus"),
-      [STATUS_IDS.compass]: () => statusSettingRow(STATUS_IDS.compass, "Compass"),
-      [STATUS_IDS.highlighter]: () => statusSettingRow(STATUS_IDS.highlighter, "Colour highlighter"),
-      [SETTING_IDS.enabled]: () => switchRow(SETTING_IDS.enabled, "Enabled", "Turn the diagram overlay on or off."),
-      [SETTING_IDS.autoEnhance]: () => switchRow(SETTING_IDS.autoEnhance, "Every diagram is a Plexus board", "On: every {{[[diagram]]}} opens as a Plexus board. Nothing is saved until you change the board. Off: only diagrams you enhance (Plexus: Enhance) or create with New whiteboard open in Plexus."),
-      [SETTING_IDS.fullscreenOnZoom]: () => switchRow(SETTING_IDS.fullscreenOnZoom, "Fullscreen on zoom", "Open a diagram full screen when you zoom into its block. Esc leaves it."),
-      [SETTING_IDS.graphLinks]: () => selectRow(SETTING_IDS.graphLinks, "Graph links", "Show lines between cards that share a page reference or an attribute.", ["all", "attributes", "off"]),
-      [SETTING_IDS.attrStyles]: () => inputRow(SETTING_IDS.attrStyles, "Attribute styles", "One JSON object. Each attribute name gets a palette color and a line: solid, dashed, or dotted."),
-      [SETTING_IDS.wheel]: () => selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch still zooms.", ["pan", "zoom"]),
-      [SETTING_IDS.emptyDrag]: () => selectRow(SETTING_IDS.emptyDrag, "Drag on empty canvas", "Pan: dragging empty space moves the board, and Shift-drag draws a selection box. Select: dragging empty space draws the box.", ["pan", "select"]),
-      [SETTING_IDS.showMinimap]: () => switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the small map of the whole board."),
-      [SETTING_IDS.showPalette]: () => switchRow(SETTING_IDS.showPalette, "Show tool palette", "Show the tool palette along the bottom of the board."),
-      [SETTING_IDS.motion]: () => selectRow(SETTING_IDS.motion, "Motion", "Full, reduced, or none. A system reduced-motion setting shortens Full.", ["full", "reduced", "none"]),
-      [SETTING_IDS.toolbarLayout]: () => selectRow(SETTING_IDS.toolbarLayout, "Toolbar layout", "Split: board bar on top, tools in the dock. Classic: the 2.1 look, tools in the top bar. Dock only: hide the top bar until the pointer is near the top edge.", ["split", "classic", "dock-only"]),
-      [SETTING_IDS.dockPosition]: () => selectRow(SETTING_IDS.dockPosition, "Tool dock position", "Where the tool dock sits. A board can override this from its More menu.", ["bottom", "left", "top"]),
-      [SETTING_IDS.dockStyle]: () => selectRow(SETTING_IDS.dockStyle, "Dock shape", "Pill is a rounded floating dock. Strip is a flat bar.", ["pill", "strip"]),
-      [SETTING_IDS.dockLabels]: () => switchRow(SETTING_IDS.dockLabels, "Show tool names under icons", "Label each tool in the dock."),
-      [SETTING_IDS.chromeDensity]: () => selectRow(SETTING_IDS.chromeDensity, "Button size", "Comfortable or compact buttons for both bars.", ["comfortable", "compact"]),
-      [SETTING_IDS.dockOptions]: () => switchRow(SETTING_IDS.dockOptions, "Show tool options in the dock", "Show the active tool's quick options (colors, look, shape) next to the dock."),
-      [SETTING_IDS.tooltips]: () => switchRow(SETTING_IDS.tooltips, "Hover tooltips", "Show a name, shortcut and one-line description when you hover or focus a control. Off falls back to the browser's plain tooltip."),
-      [SETTING_IDS.tooltipDelay]: () => selectRow(SETTING_IDS.tooltipDelay, "Tooltip delay", "How long to hover before a tooltip shows. Keyboard focus always shows it at once.", TOOLTIP_DELAYS),
-      [SETTING_IDS.controlsPosition]: () => selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical stack on the right. Bar is the horizontal zoom group.", ["rail", "bar"]),
-      [SETTING_IDS.snapGuides]: () => switchRow(SETTING_IDS.snapGuides, "Snap guides", "Line a dragged card up with its neighbours and show the guides."),
-      [SETTING_IDS.snapGrid]: () => switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping."),
-      [SETTING_IDS.grid]: () => selectRow(SETTING_IDS.grid, "Default board background: pattern", "Pattern for boards that do not set their own. A board can override it from Background.", ["dots", "lines", "grid", "plain"]),
-      [SETTING_IDS.lookCanvas]: () => selectRow(SETTING_IDS.lookCanvas, "Canvas", "Dots keeps the dot grid. Flat grey is a plain canvas, the Heptabase grey, with no grid.", ["dots", "flat-grey"]),
-      [SETTING_IDS.lookSections]: () => selectRow(SETTING_IDS.lookSections, "Section fill", "None leaves a section as it is today. Pastel washes it with its colour.", ["none", "pastel"]),
-      [SETTING_IDS.lookHighlights]: () => selectRow(SETTING_IDS.lookHighlights, "Highlight cards", "Bar keeps the colour strip. Tint fills the card with the highlight colour and hides the strip.", ["bar", "tint"]),
-      [SETTING_IDS.theme]: () => selectRow(SETTING_IDS.theme, "Theme", "Follow Roam uses the colours of the open graph. Plexus keeps the slate board.", ["follow-roam", "plexus"]),
-      [SETTING_IDS.boardTone]: () => selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Color wash for boards that do not set their own.", BOARD_TONES2),
-      [SETTING_IDS.mapZoom]: () => selectRow(SETTING_IDS.mapZoom, "Map view below (zoom)", "Below this zoom, cards show only their title.", MAP_ZOOMS),
-      [SETTING_IDS.autoFitSections]: () => switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section when a card is moved or resized past its edge."),
-      [SETTING_IDS.spaceOut]: () => switchRow(SETTING_IDS.spaceOut, "Space out cards", "After a move, push cards apart when they overlap."),
-      [SETTING_IDS.showCardBadges]: () => switchRow(SETTING_IDS.showCardBadges, "Show card badges", "Show how many references, tasks, and children a card has."),
-      [SETTING_IDS.cardChips]: () => switchRow(SETTING_IDS.cardChips, "Board chips", "Show a board chip under a block that is a card on a board."),
-      [SETTING_IDS.whyPrompt]: () => switchRow(SETTING_IDS.whyPrompt, "Ask why on a new connection", "After you draw a connection, open the why field."),
-      [SETTING_IDS.resurfaceIntervals]: () => inputRow(SETTING_IDS.resurfaceIntervals, "Resurface intervals", "Days, separated by commas. A daily page lists cards from those many days ago."),
-      [SETTING_IDS.betterTasks]: () => switchRow(SETTING_IDS.betterTasks, "Better Tasks integration", "Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam."),
-      [SETTING_IDS.taskTool]: () => switchRow(SETTING_IDS.taskTool, "Task tool", "Show the Task tool (K) in the dock. It makes a Roam TODO block; Better Tasks sets its due date and project."),
-      [SETTING_IDS.resurface]: () => switchRow(SETTING_IDS.resurface, "Resurface", "Allow the resurface macro. A daily page can list cards from earlier days, and Plexus Commands can insert the button."),
-      [SETTING_IDS.regionsInline]: () => switchRow(SETTING_IDS.regionsInline, "Inline region crops", "Show a region crop beside its button. Off leaves the button and hides the crop."),
-      [SETTING_IDS.interop]: () => switchRow(SETTING_IDS.interop, "Roam Plexus and Compass", "Use Roam Plexus and Compass when they are loaded. Off hides Open in Compass and stops thumbnail calls."),
-      [SETTING_IDS.taskChips]: () => selectRow(SETTING_IDS.taskChips, "Task chips", "What a task card shows under its title. Full: due date, project, priority, repeat, status. Due only: just the date. None: no chips.", TASK_CHIPS),
-      [SETTING_IDS.taskDefaultProject]: () => inputRow(SETTING_IDS.taskDefaultProject, "Default project for new tasks", "A page name. A task made from the board gets it as its Better Tasks project. Empty uses Better Tasks' own default."),
-      [SETTING_IDS.enterInCard]: () => selectRow(SETTING_IDS.enterInCard, "Enter in a card", "Newline adds a line to the card's block, like a native Roam diagram. Child makes a new child block inside the card.", ["newline", "child"]),
-      [SETTING_IDS.defaultCardLook]: () => selectRow(SETTING_IDS.defaultCardLook, "Default card look", "New note cards. Block is a plain Roam block. Card keeps a title row.", ["block", "card"]),
-      [SETTING_IDS.defaultCardWidth]: () => inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Width of a new card, in pixels."),
-      [SETTING_IDS.defaultCardHeight]: () => inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Height of a new card, in pixels."),
-      [SETTING_IDS.enableShortcuts]: () => switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Use keyboard shortcuts on the board."),
-      [SETTING_IDS.showVersionBadge]: () => switchRow(SETTING_IDS.showVersionBadge, "Show version badge", "Show the version on the board."),
-      [SETTING_IDS.disableOnMobile]: () => switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Do not open diagrams on a phone."),
-      [SETTING_IDS.collapseOutline]: () => switchRow(SETTING_IDS.collapseOutline, "Collapse the outline", "Fold an enhanced board once, so the outline does not list every card. Opening the bullet is remembered."),
-      [SETTING_IDS.speedLog]: () => switchRow(SETTING_IDS.speedLog, "Speed log", "Record open time, click-to-paint, pan frame rate, and long tasks in this tab. Nothing is sent or saved."),
-      [SETTING_IDS.pdfCover]: () => selectRow(SETTING_IDS.pdfCover, "PDF card cover", "First page shows page 1. Last page read shows the page that was open when the reader closed.", ["first", "last-read"]),
-      [SETTING_IDS.pdfCoverWarm]: () => switchRow(SETTING_IDS.pdfCoverWarm, "Prepare PDF covers in the background", "On. A quiet board prepares a cover for a visible PDF that does not have one: Roam's PDF engine draws page 1 when it is reachable, otherwise a hidden reader does."),
-      [SETTING_IDS.highlightOpen]: () => selectRow(SETTING_IDS.highlightOpen, "Highlight click opens", "Reader: the PDF pane scrolls to the highlight. Sidebar: Roam opens the highlight block in the right sidebar. Shift-click always opens the sidebar; the chip's arrow lists every choice.", ["reader", "sidebar"]),
-      [SETTING_IDS.pdfDark]: () => selectRow(SETTING_IDS.pdfDark, "PDF pages in dark mode", "When the board is dark. Off keeps white pages. Dim darkens the page. Invert flips the page colors. Marks stay readable.", ["off", "dim", "invert"]),
-      [SETTING_IDS.parseHelperUrl]: () => inputRow(SETTING_IDS.parseHelperUrl, "Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
-      [SETTING_IDS.parseHelperToken]: () => inputRow(SETTING_IDS.parseHelperToken, "Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address.", { password: true, placeholder: "Token" }),
-      [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
-      [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
-      [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
-      [SETTING_IDS.parsePageReader]: () => selectRow(SETTING_IDS.parsePageReader, "High accuracy page reader", "All (default) reads every scanned page with the page model: better on photographed, handwritten and old printed pages, about ten times slower per scanned page. Doubtful reads only the scanned pages the recogniser is unsure of.", ["doubtful", "all"]),
-      [SETTING_IDS.imageColors]: () => switchRow(SETTING_IDS.imageColors, "Index image colours", "On. While the board search panel lists Image or Figure cards, Plexus reads each picture once, in the background, to find its main colours so you can search by colour. Nothing leaves this device."),
-      [SETTING_IDS.imageText]: () => switchRow(SETTING_IDS.imageText, "Read text in images", "Off. On lets the board search find words inside pictures, using the in-browser reading models. It only runs when those models are already on this device, never downloads them, and reads at most a few dozen pictures per session."),
-      [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
-      [SETTING_IDS.keepReads]: () => switchRow(SETTING_IDS.keepReads, "Keep reads in the graph", "After a High accuracy, helper or cloud read, upload the read as one file to the graph and note it on the PDF block, so your other computers load it instead of reading again. The built-in parse is never kept. Off uploads nothing; reads already kept still load."),
-      [SETTING_IDS.askFigureImages]: () => switchRow(SETTING_IDS.askFigureImages, "Send figure images to AI", "Uploads the figure's image to your graph as a file the first time you ask about it."),
-      [SETTING_IDS.askModel]: () => inputRow(SETTING_IDS.askModel, "Ask AI model", "Auto picks Claude Sonnet 5.5, then Claude Opus 5.5, Claude Sonnet 5, Gemini 3.8 Flash, Gemini 3.1 Pro, then any Claude or Gemini, then your Live AI default. Or type a model name from Live AI Assistant. A model you pick in the Ask AI window is remembered for this graph and wins.", { placeholder: "auto" }),
-      [SETTING_IDS.linkAnswers]: () => switchRow(SETTING_IDS.linkAnswers, "Link answers to their sources", "When you add an AI answer as a card and its source (the PDF card, or a part card made from the same part) is on this board, draw a connection labelled source from the answer to it."),
-      [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
-      [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
-      [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"]),
-      [SETTING_IDS.parseFootnoteFormat]: () => selectRow(SETTING_IDS.parseFootnoteFormat, "PDF footnotes", "Extension writes each note under the page's #footnotes block and links it with an alias, the format of the Footnotes extension (it works without the extension). Plain keeps (N) in the text with the notes as lines. Off keeps the PDF's own marks.", ["extension", "plain", "off"])
-    };
-    SETTING_GROUPS = [
-      ["group-cards", "Cards", "How new cards look, and the marks on them.", [
-        SETTING_IDS.defaultCardLook,
-        SETTING_IDS.defaultCardWidth,
-        SETTING_IDS.defaultCardHeight,
-        SETTING_IDS.enterInCard,
-        SETTING_IDS.showCardBadges,
-        SETTING_IDS.spaceOut,
-        SETTING_IDS.pdfCover,
-        SETTING_IDS.pdfCoverWarm,
-        SETTING_IDS.highlightOpen,
-        SETTING_IDS.pdfDark
-      ]],
-      ["group-integrations", "Integrations", "Sibling extensions, and the switches that turn them on.", [
-        STATUS_IDS.betterTasks,
-        SETTING_IDS.betterTasks,
-        STATUS_IDS.taskStatusTags,
-        SETTING_IDS.taskTool,
-        SETTING_IDS.taskChips,
-        SETTING_IDS.taskDefaultProject,
-        STATUS_IDS.roamPlexus,
-        STATUS_IDS.compass,
-        SETTING_IDS.interop,
-        STATUS_IDS.highlighter,
-        SETTING_IDS.cardChips,
-        SETTING_IDS.resurface,
-        SETTING_IDS.regionsInline
-      ]],
-      ["group-sections", "Sections", "How a section grows around its cards.", [
-        SETTING_IDS.autoFitSections
-      ]],
-      ["group-connections", "Connections", "Lines drawn from page references and attributes.", [
-        SETTING_IDS.graphLinks,
-        SETTING_IDS.attrStyles,
-        SETTING_IDS.whyPrompt
-      ]],
-      ["group-board", "Board", "The canvas, the controls, and how you move around.", [
-        SETTING_IDS.enabled,
-        SETTING_IDS.autoEnhance,
-        SETTING_IDS.fullscreenOnZoom,
-        SETTING_IDS.wheel,
-        SETTING_IDS.emptyDrag,
-        SETTING_IDS.showMinimap,
-        SETTING_IDS.showPalette,
-        SETTING_IDS.toolbarLayout,
-        SETTING_IDS.dockPosition,
-        SETTING_IDS.dockStyle,
-        SETTING_IDS.dockLabels,
-        SETTING_IDS.chromeDensity,
-        SETTING_IDS.dockOptions,
-        SETTING_IDS.tooltips,
-        SETTING_IDS.tooltipDelay,
-        SETTING_IDS.controlsPosition,
-        SETTING_IDS.snapGuides,
-        SETTING_IDS.snapGrid,
-        SETTING_IDS.grid,
-        SETTING_IDS.boardTone,
-        SETTING_IDS.lookCanvas,
-        SETTING_IDS.lookSections,
-        SETTING_IDS.lookHighlights,
-        SETTING_IDS.theme,
-        SETTING_IDS.mapZoom,
-        SETTING_IDS.enableShortcuts,
-        SETTING_IDS.showVersionBadge,
-        SETTING_IDS.resurfaceIntervals
-      ]],
-      ["group-performance", "Performance", "Motion, and when the overlay stays off.", [
-        SETTING_IDS.motion,
-        SETTING_IDS.disableOnMobile,
-        SETTING_IDS.collapseOutline,
-        SETTING_IDS.speedLog
-      ]],
-      ["group-parse", "PDF parse", "A local helper for harder PDFs, and how parsed text is inserted.", [
-        SETTING_IDS.parseHelperUrl,
-        SETTING_IDS.parseHelperToken,
-        SETTING_IDS.parseEngineDefault,
-        SETTING_IDS.parseFormula,
-        SETTING_IDS.parseOcr,
-        SETTING_IDS.parsePageReader,
-        SETTING_IDS.parseAutoRead,
-        SETTING_IDS.keepReads,
-        SETTING_IDS.askFigureImages,
-        SETTING_IDS.askModel,
-        SETTING_IDS.linkAnswers,
-        SETTING_IDS.parseLinkSafe,
-        SETTING_IDS.parseNumbered,
-        SETTING_IDS.parseFootnotes,
-        SETTING_IDS.parseFootnoteFormat
-      ]],
-      ["group-images", "Image search", "Search inside pictures by colour and by the words in them.", [
-        SETTING_IDS.imageColors,
-        SETTING_IDS.imageText
-      ]]
-    ];
-    ERROR_ROW_ID = "plexus-errors";
-    panelRef = null;
-    statsRef = null;
-    unhookErrors = null;
-  }
-});
-
 // src/model/source-chip.js
 function readingTitle(title) {
   const text4 = typeof title === "string" ? title.trim() : "";
@@ -29866,7 +29866,8 @@ function createItemRenderer({
   const viewWaiters = [];
   const BULK_ATTACH = 64;
   let cullRect = null;
-  const virtual = () => (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
+  let virtualOff = false;
+  const virtual = () => !virtualOff && (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
   const isAttached = (rec) => Boolean(rec?.el?.parentElement);
   const activeShellUid = () => {
     const active2 = doc.activeElement;
@@ -29874,7 +29875,7 @@ function createItemRenderer({
     return active2.closest(".pxd-item[data-uid], .pxd-section[data-uid]")?.getAttribute?.("data-uid") || null;
   };
   const keepAttached = (uid, rec, active2) => rec.type === "section" || uid === selectedPrimary || rec.hover || editing?.uid === uid || mounted.has(uid) || uid === active2;
-  const farRect = () => cullRect ? { x: cullRect.x - cullRect.w * 0.5, y: cullRect.y - cullRect.h * 0.5, w: cullRect.w * 2, h: cullRect.h * 2 } : null;
+  const farRect = () => cullRect ? { x: cullRect.x - cullRect.w * 0.125, y: cullRect.y - cullRect.h * 0.125, w: cullRect.w * 1.25, h: cullRect.h * 1.25 } : null;
   const nearView = (uid, rect = cullRect) => {
     if (!rect) return true;
     const r = drawnRect(uid, lastRects?.get(uid));
@@ -29936,7 +29937,8 @@ function createItemRenderer({
     if (sectionNodes?.childNodes.length) sectionsLayer.append(sectionNodes);
     if (itemNodes?.childNodes.length) itemsLayer.append(itemNodes);
   };
-  const cullShells = (rect, { reveal = false, budget = Infinity } = {}) => {
+  const cullShells = (rect, { reveal = false, budget = Infinity, ms = Infinity } = {}) => {
+    const t0 = ms < Infinity ? now2() : 0;
     if (rect) cullRect = rect;
     if (!virtual() || !cullRect) return [];
     const active2 = activeShellUid();
@@ -29962,7 +29964,15 @@ function createItemRenderer({
     if (add.length > BULK_ATTACH) attachMany(new Set(add));
     else {
       add.sort((a, b) => indexOfUid(a.uid) - indexOfUid(b.uid));
-      for (const rec of add) attachShell(rec);
+      let n3 = 0;
+      for (const rec of add) {
+        attachShell(rec);
+        n3 += 1;
+        if (t0 && n3 % 8 === 0 && now2() - t0 > ms) {
+          add.length = n3;
+          break;
+        }
+      }
     }
     return add;
   };
@@ -30023,9 +30033,14 @@ function createItemRenderer({
       }
     }
   };
-  const sync = ({ board: board2, rects, dirty: changed2 = null, structural = false, view = null }) => {
+  const sync = ({ board: board2, rects, dirty: changed2 = null, structural = false, view = null, attachView = null }) => {
     sourcePass += 1;
     pageKids = /* @__PURE__ */ new Map();
+    try {
+      virtualOff = speedOf().virtualShells === false;
+    } catch {
+      virtualOff = false;
+    }
     lastBoard = board2;
     lastRects = rects;
     let dirty = changed2;
@@ -30125,7 +30140,7 @@ function createItemRenderer({
       }
     }
     if (orderChanged) {
-      if (view) cullRect = view;
+      if (attachView || view) cullRect = attachView || view;
       if (virtual()) placeVirtual();
       else placeShells();
     }
@@ -32834,9 +32849,9 @@ function createItemRenderer({
       paintOneOffscreen(uid, rec, visibleRect);
     }
   };
-  const fillContent = ({ visibleRect, zoom = zoomCache, tier = null, dirty = null } = {}) => {
+  const fillContent = ({ visibleRect, attachRect = null, zoom = zoomCache, tier = null, dirty = null } = {}) => {
     zoomCache = zoom;
-    cullShells(visibleRect);
+    cullShells(attachRect || visibleRect);
     paintOffscreen(visibleRect);
     if (!lastBoard || !lastRects || !contentSched) return;
     const next = /* @__PURE__ */ new Set();
@@ -34242,9 +34257,9 @@ function createItemRenderer({
     // Every shell element, in the DOM or not (lenses paint detached shells too).
     shellEls: () => [...shells.values()].map((rec) => rec.el).filter(Boolean),
     // A gesture frame: attach shells coming into `rect` (a few per frame). Detaching waits for the settle.
-    reveal(rect, budget = 48) {
+    reveal(rect, budget = 48, ms = 4) {
       if (disposed || !rect || !virtual()) return 0;
-      const added = cullShells(rect, { reveal: true, budget });
+      const added = cullShells(rect, { reveal: true, budget, ms });
       for (const rec of added) paintOneOffscreen(rec.uid, rec, rect);
       return added.length;
     },
@@ -37991,6 +38006,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = 
   const live2 = /* @__PURE__ */ new Map();
   let content = /* @__PURE__ */ new Map();
   const itemWatch = /* @__PURE__ */ new Map();
+  const pendingItems = /* @__PURE__ */ new Map();
   let disposed = false;
   let pending = false;
   let lastTree = null;
@@ -38085,7 +38101,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = 
         }
         let stored = content.get(id);
         if (stored === void 0) {
-          const pulled = read2(isBoardItem(kid) ? THUMB_PATTERN : deepPattern, id);
+          const pulled = read2(deepPattern, id);
           stored = kidsOf2(pulled);
         }
         seenContent.set(id, stored);
@@ -38103,7 +38119,15 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = 
     content = seenContent;
     sync();
     lastTree = tree;
+    armPending();
     return tree;
+  };
+  const armPending = () => {
+    for (const [key, regs] of [...pendingItems]) {
+      if (!content.has(key)) continue;
+      pendingItems.delete(key);
+      for (const reg of regs) if (reg.on) reg.off = watchItem(key);
+    }
   };
   const dropAll = () => {
     for (const entry of live2.values()) {
@@ -38120,53 +38144,71 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = 
       }
     }
     itemWatch.clear();
+    pendingItems.clear();
+  };
+  const watchItem = (id, { pending: pending2 = false } = {}) => {
+    const key = String(id ?? "");
+    if (disposed || !key) return null;
+    if (!content.has(key)) {
+      if (!pending2) return null;
+      const reg = { on: true, off: null };
+      let regs = pendingItems.get(key);
+      if (!regs) {
+        regs = /* @__PURE__ */ new Set();
+        pendingItems.set(key, regs);
+      }
+      regs.add(reg);
+      return () => {
+        if (!reg.on) return;
+        reg.on = false;
+        regs.delete(reg);
+        if (!regs.size && pendingItems.get(key) === regs) pendingItems.delete(key);
+        reg.off?.();
+      };
+    }
+    let w = itemWatch.get(key);
+    if (!w) {
+      const board2 = isBoardItem(findItem(key));
+      const pattern = board2 ? THUMB_PATTERN : deepPattern;
+      const depth = board2 ? THUMB_DEPTH : Infinity;
+      const whole2 = (after) => board2 ? kidsOf2(read2(deepPattern, key) || after) : kidsOf2(after);
+      w = {
+        n: 0,
+        pattern,
+        entity: entityOf(key),
+        cb: guard("watchContent", (_before, after) => {
+          if (disposed || !after?.[UID] || !itemWatch.has(key)) return;
+          if (sameKids(content.get(key), kidsOf2(after), depth)) return;
+          content.set(key, whole2(after));
+          kick();
+        })
+      };
+      itemWatch.set(key, w);
+      data.addPullWatch(w.pattern, w.entity, w.cb);
+      const now4 = read2(pattern, key);
+      if (now4?.[UID] && !sameKids(content.get(key), kidsOf2(now4), depth)) {
+        content.set(key, whole2(now4));
+        kick();
+      }
+    }
+    w.n += 1;
+    let on = true;
+    return () => {
+      if (!on) return;
+      on = false;
+      w.n -= 1;
+      if (w.n > 0 || itemWatch.get(key) !== w) return;
+      itemWatch.delete(key);
+      try {
+        data.removePullWatch(w.pattern, w.entity, w.cb);
+      } catch {
+      }
+    };
   };
   seedFrom(seed);
   sync();
   return {
-    // A mounted card keeps its contents live. Null when the item is not on this board.
-    watchItem(id) {
-      const key = String(id ?? "");
-      if (disposed || !key || !content.has(key)) return null;
-      let w = itemWatch.get(key);
-      if (!w) {
-        const board2 = isBoardItem(findItem(key));
-        const pattern = board2 ? THUMB_PATTERN : deepPattern;
-        const depth = board2 ? THUMB_DEPTH : Infinity;
-        w = {
-          n: 0,
-          pattern,
-          entity: entityOf(key),
-          cb: guard("watchContent", (_before, after) => {
-            if (disposed || !after?.[UID] || !itemWatch.has(key)) return;
-            const kids = kidsOf2(after);
-            if (sameKids(content.get(key), kids, depth)) return;
-            content.set(key, kids);
-            kick();
-          })
-        };
-        itemWatch.set(key, w);
-        data.addPullWatch(w.pattern, w.entity, w.cb);
-        const now4 = read2(pattern, key);
-        if (now4?.[UID] && !sameKids(content.get(key), kidsOf2(now4), depth)) {
-          content.set(key, kidsOf2(now4));
-          kick();
-        }
-      }
-      w.n += 1;
-      let on = true;
-      return () => {
-        if (!on) return;
-        on = false;
-        w.n -= 1;
-        if (w.n > 0 || itemWatch.get(key) !== w) return;
-        itemWatch.delete(key);
-        try {
-          data.removePullWatch(w.pattern, w.entity, w.cb);
-        } catch {
-        }
-      };
-    },
+    watchItem,
     // Read every container again now (an undo, a refresh) and return the assembled tree; contents stay as stored.
     refresh() {
       if (disposed) return null;
@@ -38183,6 +38225,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = 
       if (disposed) return;
       seedFrom(full);
       sync();
+      armPending();
     },
     dispose() {
       if (disposed) return;
@@ -38203,6 +38246,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, guard = 
 }
 
 // src/host/roam.js
+init_settings();
 var READER_STATE = ":pdf-settings";
 function sameButReaderState(a, b) {
   if (a === b) return true;
@@ -38907,6 +38951,21 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
   const watchedBoards = /* @__PURE__ */ new Map();
   const bigBoards = /* @__PURE__ */ new Map();
   const splitWatches = /* @__PURE__ */ new Map();
+  const contentWants = /* @__PURE__ */ new Map();
+  const splitWatchOn = () => {
+    try {
+      return notedSpeedFlags().splitWatch !== false;
+    } catch {
+      return true;
+    }
+  };
+  const armContent = (key, want) => {
+    for (const split of splitWatches.values()) {
+      if (want.offs.has(split)) continue;
+      const off = split.watchItem(key, { pending: true });
+      if (off) want.offs.set(split, off);
+    }
+  };
   const unwatchedAt = /* @__PURE__ */ new Map();
   let pullSeq = 0;
   const watchedBlocks = /* @__PURE__ */ new Map();
@@ -39205,6 +39264,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       });
       split.subs = subs;
       splitWatches.set(uid, split);
+      for (const [key, want] of contentWants) armContent(key, want);
     }
     const fn = guardCallback("watchBoard", (tree) => cb(tree), { stats });
     split.subs.add(fn);
@@ -39217,6 +39277,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       if (!split.subs.size && splitWatches.get(uid) === split) {
         split.dispose();
         splitWatches.delete(uid);
+        for (const want of contentWants.values()) want.offs.delete(split);
       }
       stats.watches--;
       slot2.n = Math.max(0, slot2.n - 1);
@@ -39417,7 +39478,13 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
       }
       if (warm.has(uid)) {
         const cached = cache.blockOf(uid);
-        if (cached?.[":block/uid"]) return cached;
+        if (cached?.[":block/uid"]) {
+          if (treeSize(cached, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN) {
+            bigBoards.set(uid, cached);
+            splitWatches.get(uid)?.reseed(cached);
+          }
+          return cached;
+        }
       }
       warm.delete(uid);
       const boardEntity = eidKey(uid);
@@ -39550,12 +39617,14 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     // Hover warm of the session cache. No pull watch. A uid already in blockOf is not read again:
     // pullBoard drops the board root from its warm set, and a hover must not spend that read.
+    // A hover prefetch reads the structure only: badges, linked refs and card stats wait for the open (a full
+    // pull of the PhD main board primed ~1,000 refs and 1,500 card stats for a board that may never open).
     prefetchBoard(uid) {
       const id = String(uid ?? "");
       if (!id) return null;
       const cached = cache.blockOf(id);
       if (cached?.[":block/uid"]) return cached;
-      return host.pullBoard(id);
+      return host.pullBoard(id, { light: true, deferRefs: true });
     },
     // One unwatched read. Not added to the board pull watch.
     pullEntity(pattern, uid) {
@@ -39569,7 +39638,7 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     watchBoard(uid, cb) {
       const covers2 = boardCovers.get(uid) === true;
-      if (!covers2 && bigBoards.has(uid)) return watchSplit(uid, cb);
+      if (!covers2 && bigBoards.has(uid) && splitWatchOn()) return watchSplit(uid, cb);
       const pattern = covers2 ? OPEN_PATTERN : BOARD_PATTERN;
       let slot2 = watchedBoards.get(uid);
       if (!slot2) {
@@ -39600,12 +39669,32 @@ function createHost({ api: api3 = globalThis.roamAlphaAPI, storage = globalThis.
     },
     // A mounted card on a big board keeps its contents live (the board's own watches stop at the cards).
     // A no-op on other boards: their one board watch already covers every card's contents.
+    // A card the optimistic model mounted before Roam's echo is armed when a split sees it; a split recreated after
+    // a keep-alive pause arms every mounted card again.
     watchContent(itemUid) {
-      for (const split of splitWatches.values()) {
-        const off = split.watchItem(itemUid);
-        if (off) return off;
+      const key = String(itemUid ?? "");
+      if (!key) return () => {
+      };
+      let want = contentWants.get(key);
+      if (!want) {
+        want = { n: 0, offs: /* @__PURE__ */ new Map() };
+        contentWants.set(key, want);
+        armContent(key, want);
       }
+      want.n += 1;
+      let on = true;
       return () => {
+        if (!on) return;
+        on = false;
+        want.n -= 1;
+        if (want.n > 0 || contentWants.get(key) !== want) return;
+        contentWants.delete(key);
+        for (const off of want.offs.values()) {
+          try {
+            off();
+          } catch {
+          }
+        }
       };
     },
     splitStats(uid) {
@@ -42054,6 +42143,8 @@ var HIGHLIGHT_WATCH_CAP = 60;
 var registry = /* @__PURE__ */ new Map();
 var extensions = [];
 var BULK_CARD_CAP = 45;
+var BULK_CONFIRM_WRITES = 600;
+var BULK_REFUSE_WRITES = 3e3;
 function addPublicCard(opts = {}, createFn) {
   const { string = "", x, y, boardUid, create } = opts && typeof opts === "object" ? opts : {};
   const op = {
@@ -42299,7 +42390,7 @@ function unknownKeys(plexus, known2) {
   for (const [k, v] of Object.entries(plexus ?? {})) if (!known2.includes(k)) out[k] = v;
   return out;
 }
-function createSession(uid, { host, settings = null, virtual = false, raf: raf2, now: now4 = Date.now, idle, linkDelay = 1500, graceMs = 800 } = {}) {
+function createSession(uid, { host, settings = null, virtual = false, raf: raf2, now: now4 = Date.now, idle, linkDelay = 1500, graceMs = 800, confirmBulk = null } = {}) {
   const schedule = raf2 ?? ((fn) => {
     if (typeof globalThis.requestAnimationFrame === "function") return globalThis.requestAnimationFrame(fn);
     const t = setTimeout(fn, 0);
@@ -42960,10 +43051,39 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     await execute(list);
     return fn();
   }));
+  const askBulk = (n3) => {
+    if (typeof confirmBulk === "function") return confirmBulk(n3) === true;
+    const ask2 = globalThis.confirm;
+    if (typeof ask2 !== "function") return true;
+    try {
+      return ask2(`This change writes ${n3} blocks to Roam at once. Roam syncs them one by one and can stall on thousands. Continue?`) === true;
+    } catch {
+      return false;
+    }
+  };
+  function bulkAllowed(n3) {
+    if (!(n3 > BULK_CONFIRM_WRITES)) return true;
+    if (n3 > BULK_REFUSE_WRITES) {
+      emit2("toast", { message: `Plexus refused ${n3} writes in one change: too many for Roam's sync. Split it into smaller steps.` });
+      return false;
+    }
+    let ok = false;
+    try {
+      ok = askBulk(n3);
+    } catch {
+      ok = false;
+    }
+    if (!ok) emit2("toast", { message: `Cancelled ${n3} writes.` });
+    return ok;
+  }
   function commit(ops, result, custom = null) {
     if (!ops.length) return Promise.resolve(result);
     stampBoard(ops);
     const list = coalesce(ops);
+    if (!bulkAllowed(list.length)) {
+      repull();
+      return Promise.resolve(void 0);
+    }
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish();
     if (custom) custom.forward = list;
@@ -45316,6 +45436,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     host,
     settings,
     txn,
+    bulkAllowed,
     rawNode,
     ix,
     kidsOf: kidsOf3,
@@ -45836,7 +45957,7 @@ function flow() {
   ];
   return [...lanes, node("edges", "Connections", { type: "edges" }, edges, false)];
 }
-var row = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i) => section(
+var row2 = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i) => section(
   `c${i}`,
   title,
   40 + i * (w + gap),
@@ -45846,14 +45967,14 @@ var row = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i) 
 ));
 var STARTERS = [
   { id: "five-why", title: "5-Why", tree: board("root", "5-Why", [1, 2, 3, 4, 5].map((n3) => card(`w${n3}`, `Why ${n3}`, 40, 40 + (n3 - 1) * 160))) },
-  { id: "fishbone", title: "Fishbone (6M)", tree: board("root", "Fishbone (6M)", row(["Man", "Machine", "Method", "Material", "Measurement", "Environment"], 40, 240, 280, 16)) },
-  { id: "8d", title: "8D", tree: board("root", "8D", row(["D1 Team", "D2 Problem", "D3 Containment", "D4 Root cause", "D5 Action", "D6 Implement", "D7 Prevent", "D8 Congratulate"], 40, 220, 240, 16)) },
-  { id: "swot", title: "SWOT", tree: board("root", "SWOT", row(["Strengths", "Weaknesses", "Opportunities", "Threats"])) },
-  { id: "kanban", title: "Kanban", tree: board("root", "Kanban", row(["To do", "Doing", "Done"])) },
+  { id: "fishbone", title: "Fishbone (6M)", tree: board("root", "Fishbone (6M)", row2(["Man", "Machine", "Method", "Material", "Measurement", "Environment"], 40, 240, 280, 16)) },
+  { id: "8d", title: "8D", tree: board("root", "8D", row2(["D1 Team", "D2 Problem", "D3 Containment", "D4 Root cause", "D5 Action", "D6 Implement", "D7 Prevent", "D8 Congratulate"], 40, 220, 240, 16)) },
+  { id: "swot", title: "SWOT", tree: board("root", "SWOT", row2(["Strengths", "Weaknesses", "Opportunities", "Threats"])) },
+  { id: "kanban", title: "Kanban", tree: board("root", "Kanban", row2(["To do", "Doing", "Done"])) },
   { id: "timeline", title: "Timeline", tree: board("root", "Timeline", ["Start", "Middle", "Next", "End"].map((title, i) => card(`t${i}`, title, 40 + i * 300, 80, 240, 120))) },
   { id: "process", title: "Process flow", tree: board("root", "Process flow", flow()) },
-  { id: "meeting", title: "Meeting notes", tree: board("root", "Meeting notes", row(["Agenda", "Notes", "Actions"])) },
-  { id: "retro", title: "Retro", tree: board("root", "Retro", row(["Went well", "To improve", "Actions"])) }
+  { id: "meeting", title: "Meeting notes", tree: board("root", "Meeting notes", row2(["Agenda", "Notes", "Actions"])) },
+  { id: "retro", title: "Retro", tree: board("root", "Retro", row2(["Went well", "To improve", "Actions"])) }
 ];
 function starterById(id) {
   return STARTERS.find((s) => s.id === id) ?? null;
@@ -45938,6 +46059,7 @@ extendSession((session, api3) => {
     }
     const plan = planCopy(tree, { genUid: () => host.generateUid(), parentUid: pageUid2 });
     if (!plan.creates.length) return null;
+    if (api3.bulkAllowed && !api3.bulkAllowed(plan.creates.length)) return null;
     const rootUid = plan.rootUid;
     await writeChunks(plan.chunks, async (chunk) => {
       await host.group(async () => {
@@ -46361,6 +46483,7 @@ var package_default = {
 };
 
 // src/view/board-view.js
+init_settings();
 init_schema();
 init_roam_table();
 init_drawing_card();
@@ -49395,9 +49518,15 @@ function packSnapshot(snap) {
   }
   text4 = fit3({ ...lean, items });
   if (text4) return text4;
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    if (!items[i].face) continue;
-    delete items[i].face;
+  let faced = items.filter((item) => item.face).length;
+  while (faced > 0) {
+    let drop = Math.max(1, Math.ceil(faced / 2));
+    for (let i = items.length - 1; i >= 0 && drop > 0; i -= 1) {
+      if (!items[i].face) continue;
+      delete items[i].face;
+      drop -= 1;
+      faced -= 1;
+    }
     text4 = fit3({ ...lean, items });
     if (text4) return text4;
   }
@@ -74729,7 +74858,7 @@ var setClass = (el2, name) => {
   el2.setAttribute("class", name);
   if (el2.classList && !el2.classList.contains(name.split(" ")[0])) el2.className = name;
 };
-function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText: blockText3, onHover } = {}) {
+function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText: blockText3, onHover, virtualOff = () => false } = {}) {
   const edgeEls = /* @__PURE__ */ new Map();
   const laneHidden = /* @__PURE__ */ new Set();
   const linkEls = /* @__PURE__ */ new Map();
@@ -74775,11 +74904,12 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     return 0;
   };
   const VIRTUAL_EDGES = 300;
+  const virtualEdges = (board2) => board2.edges.size > VIRTUAL_EDGES && virtualOff() !== true;
   let view = null;
   const widen = (r, f) => r ? { x: r.x - r.w * f, y: r.y - r.h * f, w: r.w * (1 + 2 * f), h: r.h * (1 + 2 * f) } : r;
   const edgeFar = (board2, edge, rects) => {
     const keep = view;
-    view = widen(keep, 0.5);
+    view = widen(keep, 0.125);
     try {
       return !edgeNear(board2, edge, rects);
     } finally {
@@ -75195,7 +75325,9 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       pagePill(rec, end, highlightPill(page), geo ? end === "from" ? geo.start : geo.end : null);
     }
   };
+  let placements = 0;
   const placeEdge = (board2, edge, rec, rects, zoom) => {
+    placements += 1;
     const geo = geometryFor(board2, edge, rects);
     rec.geo = geo;
     if (!geo) {
@@ -75304,11 +75436,11 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     linkEls.delete(key);
   };
   let lastPass = null;
-  const render = ({ board: board2, rects, links = [], coveredEdges = /* @__PURE__ */ new Set(), selection = {}, zoom = 1, dirty = null, view: near2 = void 0 }) => {
+  const render = ({ board: board2, rects, links = [], coveredEdges = /* @__PURE__ */ new Set(), selection = {}, zoom = 1, dirty = null, view: near2 = void 0, skipLinks = false }) => {
     zoomCache = zoom;
     if (near2 !== void 0) view = near2;
     lastPass = { board: board2, rects, coveredEdges, selection };
-    const virt = Boolean(view) && board2.edges.size > VIRTUAL_EDGES;
+    const virt = Boolean(view) && virtualEdges(board2);
     for (const uid of [...edgeEls.keys()]) if (!board2.edges.has(uid)) removeEdge(uid);
     for (const edge of board2.edges.values()) {
       let rec = edgeEls.get(edge.uid);
@@ -75328,11 +75460,13 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         placeEdge(board2, edge, rec, rects, zoom);
       }
     }
-    const keys = new Set(links.map((l) => l.key));
-    for (const key of [...linkEls.keys()]) if (!keys.has(key)) removeLink(key);
-    for (const link of links) {
-      const rec = linkEls.get(link.key) || buildLink(link);
-      placeLink(link, rec, rects, zoom, selection.link === link.key);
+    if (!skipLinks) {
+      const keys = new Set(links.map((l) => l.key));
+      for (const key of [...linkEls.keys()]) if (!keys.has(key)) removeLink(key);
+      for (const link of links) {
+        const rec = linkEls.get(link.key) || buildLink(link);
+        placeLink(link, rec, rects, zoom, selection.link === link.key);
+      }
     }
     labelsLayer?.classList.toggle("pxd-labels--hidden", zoom < LABEL_HIDE_ZOOM);
   };
@@ -75340,7 +75474,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (!rect || !lastPass) return 0;
     view = rect;
     const { board: board2, rects, coveredEdges, selection } = lastPass;
-    if (board2.edges.size <= VIRTUAL_EDGES) return 0;
+    if (!virtualEdges(board2)) return 0;
     let n3 = 0;
     for (const edge of board2.edges.values()) {
       if (n3 >= budget) break;
@@ -75360,7 +75494,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (!rect || !lastPass) return;
     view = rect;
     const { board: board2, rects, coveredEdges, selection } = lastPass;
-    if (board2.edges.size <= VIRTUAL_EDGES) return;
+    if (!virtualEdges(board2)) return;
     for (const edge of board2.edges.values()) {
       const rec = edgeEls.get(edge.uid);
       const pinned2 = selection.edge === edge.uid || editingLabel?.uid === edge.uid;
@@ -75649,6 +75783,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       for (const rec of edgeEls.values()) if (!rec.parked) n3 += 1;
       return n3;
     },
+    placements: () => placements,
     setSelection,
     setHover,
     setTempWire,
@@ -84613,9 +84748,11 @@ function commitTextareaValue(el2, value) {
 }
 var MIN_HEIGHT2 = 240;
 var RESUME_MS = 120;
+var EDGE_SLICE = 250;
 var VP_PERSIST_MS = 500;
 var SECTION_TITLE_ALLOWANCE = 32;
 var CULL_MARGIN = 1;
+var ATTACH_MARGIN = 0.35;
 var BADGE_TTL_MS = 12e4;
 var BADGE_CHUNK = 12;
 var NATIVE_MENU_TARGETS = ".rm-page-ref, .rm-block-ref, [data-link-uid], a[href], img";
@@ -87705,6 +87842,13 @@ function buildBoardView(onFail, {
     svg: edgesSvg,
     labelsLayer,
     overlaySvg,
+    virtualOff: () => {
+      try {
+        return notedSpeedFlags().virtualEdges === false;
+      } catch {
+        return false;
+      }
+    },
     onLabelCommit: (uid, label) => session.updateEdge?.(uid, { label }),
     blockText: (uid) => host?.blockString?.(uid),
     onHover: (uid, on) => hoverRows(uid, on)
@@ -88263,7 +88407,7 @@ function buildBoardView(onFail, {
   const scheduleContent = () => {
     if (disposed || suspended || gesturing || !board2()) return;
     const changed2 = dirty.all ? null : dirty.items;
-    itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), zoom: vp.zoom, tier, dirty: changed2 });
+    itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), attachRect: visibleWorldRect(vp, size, ATTACH_MARGIN), zoom: vp.zoom, tier, dirty: changed2 });
   };
   const updateBackToContent = () => {
     if (disposed || suspended) return;
@@ -88390,6 +88534,12 @@ function buildBoardView(onFail, {
   const MINIMAP_WHEEL_MS = 150;
   const perfNow2 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
   const edgeZoomKey = (z) => !(z > 0) ? "" : `${z >= 0.6 ? "hi" : Math.round(Math.log(z) / Math.log(1.25))}:${z < 0.3}`;
+  const revealNear = () => {
+    if (!size.width) return;
+    const near2 = visibleWorldRect(vp, size, ATTACH_MARGIN);
+    itemsR.reveal?.(near2);
+    edgesR.reveal?.(near2);
+  };
   const settle2 = () => {
     settleTimer?.();
     settleTimer = timers.later(() => {
@@ -88398,6 +88548,7 @@ function buildBoardView(onFail, {
       if (wheelLayer) {
         wheelLayer = false;
         world.style.willChange = "";
+        propsPanel.place();
       }
       applyLod();
       scheduleContent();
@@ -88412,7 +88563,7 @@ function buildBoardView(onFail, {
           for (const e2 of board2()?.edges.values() || []) if (e2.fromBlock || e2.toBlock) dirty.edges.add(e2.uid);
         }
       }
-      if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, CULL_MARGIN));
+      if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -92402,7 +92553,7 @@ ${url}`;
           applyLod();
           propsPanel.place();
           scheduleContent();
-          if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, CULL_MARGIN));
+          if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
@@ -93276,6 +93427,8 @@ ${url}`;
     measure();
     ctl.handle(normalize2(event, "dblclick"));
   });
+  const WHEEL_MEASURE_MS = 150;
+  let wheelMeasuredAt = -Infinity;
   listen(root, "wheel", (event) => {
     if (leavesBoardPointer(event.target)) return;
     if (inRoamTable(event.target)) {
@@ -93286,7 +93439,11 @@ ${url}`;
       event.stopPropagation();
       return;
     }
-    measure();
+    const t = perfNow2();
+    if (!wheelLayer || t - wheelMeasuredAt > WHEEL_MEASURE_MS) {
+      measure();
+      wheelMeasuredAt = t;
+    }
     const handled = ctl.handle(normalize2(event, "wheel"));
     if (handled) {
       event.preventDefault();
@@ -94174,7 +94331,8 @@ ${url}`;
         rects: paintRects(),
         dirty: dirty.all ? null : dirty.items,
         structural: dirty.structural,
-        view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null
+        view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null,
+        attachView: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null
       });
       if (laneMarks || lanePreviewLayout) applyLaneMarks();
       ensurePdfHighlightButtons(dirty.all || dirty.structural ? null : dirty.items);
@@ -94202,11 +94360,19 @@ ${url}`;
     }
     const edgesDue = dirty.all || dirty.structural || dirty.links || dirty.edges.size;
     const itemsMoveEdges = dirty.items.size && !dirty.all && !dirty.structural;
+    let edgeRest = null;
     if (edgesDue || itemsMoveEdges) {
       const shown = paintRects();
       if (edgesDue) {
         const links = paintedLinks();
-        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges, view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null });
+        let part = dirty.all || dirty.structural || dirty.links && !dirty.edges.size ? null : dirty.edges;
+        if (part && part.size > EDGE_SLICE) {
+          const slice = /* @__PURE__ */ new Set();
+          edgeRest = /* @__PURE__ */ new Set();
+          for (const uid of part) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
+          part = slice;
+        }
+        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links });
         paintLegend();
         if (suggestMode !== "off") refreshSuggest();
       }
@@ -94219,11 +94385,7 @@ ${url}`;
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
-      if (size.width) {
-        const near2 = visibleWorldRect(vp, size, CULL_MARGIN);
-        itemsR.reveal?.(near2);
-        edgesR.reveal?.(near2);
-      }
+      if (size.width) revealNear();
       const focused = doc.activeElement;
       if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {
         try {
@@ -94255,7 +94417,7 @@ ${url}`;
       }
       chrome.toolbar.setZoom(vp.zoom);
       if (tooltip.isVisible()) tooltip.hide();
-      if (!gesturing) propsPanel.place();
+      if (!gesturing && !wheelLayer) propsPanel.place();
     }
     if (dirty.viewport && !gesturing && liftedUids.size + (liftHoverUid ? 1 : 0) + selection.items.length > 0) liftBurst = true;
     if (dirty.selection || itemsChanged) {
@@ -94295,12 +94457,15 @@ ${url}`;
     dirty.minimap = false;
     dirty.viewport = false;
     dirty.items = /* @__PURE__ */ new Set();
-    dirty.edges = /* @__PURE__ */ new Set();
+    dirty.edges = edgeRest || /* @__PURE__ */ new Set();
     dirty.structural = false;
     dirty.all = false;
     dirty.selection = false;
     dirty.links = false;
+    edgeSlicing = Boolean(edgeRest);
+    if (edgeRest) schedule();
   };
+  let edgeSlicing = false;
   const pulseItem = (uid) => {
     const shell = itemsR.shellOf(uid);
     if (!shell) return;
@@ -95056,7 +95221,7 @@ ${url}`;
       };
     },
     stats() {
-      return { timers: timers.count(), listeners: listeners3.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount() };
+      return { timers: timers.count(), listeners: listeners3.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount(), edgePlacements: edgesR.placements?.() ?? 0, edgesAttached: edgesR.attachedCount?.() ?? 0 };
     },
     // P32 live probes: cover source (pdf.js or hidden reader) and the pane's fit path. Read-only.
     pdfProbe() {
@@ -95747,9 +95912,11 @@ function createBoardSnapStore({
     }
     const keys = /* @__PURE__ */ new Set();
     for (const { snap } of lru.values()) for (const key of snapThumbKeys(snap)) keys.add(key);
-    await loadThumbs(handle, keys);
+    thumbsReady = loadThumbs(handle, keys).catch(() => {
+    });
     return loaded.length;
   }
+  let thumbsReady = Promise.resolve();
   async function load(uid) {
     if (!allow() || !uid) return null;
     if (lru.has(uid)) return lru.get(uid).snap;
@@ -95824,6 +95991,9 @@ function createBoardSnapStore({
   const ready = allow() ? warm().catch(() => 0) : Promise.resolve(0);
   return {
     ready,
+    get thumbsReady() {
+      return thumbsReady;
+    },
     warm,
     load,
     // Synchronous: the LRU only. A miss means "paint the old way".
@@ -99791,7 +99961,15 @@ async function installPlexusDiagram({
     if (speedFlags().keepAlive === false) return false;
     const view = rec?.view;
     if (!view || view.sketchStandIn === true) return false;
-    if (rec.fullscreen || holdsFocus(rec)) return false;
+    if (rec.fullscreen) return false;
+    if (holdsFocus(rec)) {
+      const active3 = doc.activeElement;
+      if (isTextEntryTarget(active3)) return false;
+      try {
+        active3?.blur?.();
+      } catch {
+      }
+    }
     const root = view.root;
     return Boolean(root && typeof root.remove === "function");
   }

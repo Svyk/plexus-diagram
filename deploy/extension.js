@@ -18260,7 +18260,7 @@ function normalizeSetting(id, value) {
   return value;
 }
 function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true };
 }
 function parseSpeedFlags(raw) {
   const base = defaultSpeedFlags();
@@ -18709,7 +18709,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseFootnoteFormat]: ["extension", "plain", "off"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges"];
+    SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace"];
     notedFlags = defaultSpeedFlags();
     speedSource = null;
     settingsStore = null;
@@ -34263,6 +34263,9 @@ function createItemRenderer({
       for (const rec of added) paintOneOffscreen(rec.uid, rec, rect);
       return added.length;
     },
+    // The gesture underlay draws a box for every item whose shell is not in the DOM.
+    isVirtual: () => virtual(),
+    attachedUid: (uid) => isAttached(shells.get(uid)),
     attachedCount: () => {
       let n3 = 0;
       for (const rec of shells.values()) if (isAttached(rec)) n3 += 1;
@@ -46484,6 +46487,234 @@ var package_default = {
 
 // src/view/board-view.js
 init_settings();
+
+// src/view/hit-shield.js
+var SHIELD_CLASS = "pxd-hit-shield";
+var SAFETY_MS = 1500;
+function createHitShield({ doc, root, onWheel, onPress: onPress2, enabled = () => true, later } = {}) {
+  let el2 = null;
+  let up = false;
+  let safety = null;
+  const view = () => doc?.defaultView || globalThis;
+  const visibleRect = () => {
+    const r = root?.getBoundingClientRect?.();
+    if (!r) return null;
+    const win2 = view();
+    let left = Math.max(0, r.left);
+    let top = Math.max(0, r.top);
+    let right = Math.min(win2.innerWidth || r.right, r.right);
+    let bottom = Math.min(win2.innerHeight || r.bottom, r.bottom);
+    for (let a = root.parentElement; a && a !== doc.body && a !== doc.documentElement; a = a.parentElement) {
+      let cs = null;
+      try {
+        cs = win2.getComputedStyle?.(a);
+      } catch {
+        cs = null;
+      }
+      if (!cs || cs.overflowX === "visible" && cs.overflowY === "visible") continue;
+      const q2 = a.getBoundingClientRect?.();
+      if (!q2) continue;
+      left = Math.max(left, q2.left);
+      top = Math.max(top, q2.top);
+      right = Math.min(right, q2.right);
+      bottom = Math.min(bottom, q2.bottom);
+    }
+    if (right - left < 8 || bottom - top < 8) return null;
+    return { left, top, width: right - left, height: bottom - top };
+  };
+  const clearSafety = () => {
+    if (typeof safety === "function") {
+      try {
+        safety();
+      } catch {
+      }
+    } else if (safety != null) clearTimeout(safety);
+    safety = null;
+  };
+  const armSafety = () => {
+    clearSafety();
+    safety = typeof later === "function" ? later(() => {
+      safety = null;
+      drop();
+    }, SAFETY_MS) : setTimeout(() => {
+      safety = null;
+      drop();
+    }, SAFETY_MS);
+  };
+  const drop = () => {
+    clearSafety();
+    if (!up) return;
+    up = false;
+    try {
+      el2?.remove?.();
+    } catch {
+    }
+  };
+  const build = () => {
+    el2 = doc.createElement("div");
+    el2.className = SHIELD_CLASS;
+    el2.setAttribute("aria-hidden", "true");
+    el2.addEventListener("wheel", (event) => {
+      armSafety();
+      let handled = false;
+      try {
+        handled = onWheel?.(event) === true;
+      } catch {
+        handled = false;
+      }
+      if (!handled) drop();
+    }, { passive: false });
+    el2.addEventListener("pointermove", () => drop());
+    el2.addEventListener("pointerdown", (event) => {
+      drop();
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      let target = null;
+      try {
+        target = doc.elementFromPoint(event.clientX, event.clientY);
+      } catch {
+        target = null;
+      }
+      if (!target) return;
+      try {
+        onPress2?.(target, event);
+      } catch {
+      }
+    });
+    el2.addEventListener("contextmenu", () => drop());
+  };
+  const raise = () => {
+    if (!enabled()) {
+      drop();
+      return false;
+    }
+    if (up) {
+      armSafety();
+      return true;
+    }
+    if (!doc?.body || doc.fullscreenElement) return false;
+    const rect = visibleRect();
+    if (!rect) return false;
+    if (!el2) build();
+    el2.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;z-index:2147483646;background:transparent;contain:strict;`;
+    doc.body.append(el2);
+    up = true;
+    armSafety();
+    return true;
+  };
+  return { raise, drop, isUp: () => up, element: () => el2 };
+}
+
+// src/view/gesture-underlay.js
+var MAX_SIDE = 2048;
+function createGestureUnderlay({ doc, world, root, before = null } = {}) {
+  let canvas = null;
+  let shown = false;
+  const colors = () => {
+    const read2 = (name, fallback) => {
+      let v = "";
+      try {
+        v = root?.style?.getPropertyValue?.(name) || "";
+      } catch {
+        v = "";
+      }
+      if (!v) {
+        try {
+          v = doc.defaultView?.getComputedStyle?.(root)?.getPropertyValue?.(name) || "";
+        } catch {
+          v = "";
+        }
+      }
+      return String(v).trim() || fallback;
+    };
+    return { card: read2("--pxd-card", "rgba(128,128,128,0.35)"), line: read2("--pxd-muted", "rgba(128,128,128,0.6)") };
+  };
+  const hide = () => {
+    shown = false;
+    if (canvas && canvas.style.display !== "none") canvas.style.display = "none";
+  };
+  const draw = ({ items = [], edges = [], zoom = 1, dpr = 1 } = {}) => {
+    if (!items.length && !edges.length) {
+      hide();
+      return 0;
+    }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const { rect: r } of items) {
+      x0 = Math.min(x0, r.x);
+      y0 = Math.min(y0, r.y);
+      x1 = Math.max(x1, r.x + r.w);
+      y1 = Math.max(y1, r.y + r.h);
+    }
+    for (const [a, b] of edges) for (const r of [a, b]) {
+      x0 = Math.min(x0, r.x + r.w / 2);
+      y0 = Math.min(y0, r.y + r.h / 2);
+      x1 = Math.max(x1, r.x + r.w / 2);
+      y1 = Math.max(y1, r.y + r.h / 2);
+    }
+    const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
+    const scale = Math.max(0.01, Math.min(zoom * Math.min(dpr, 1.25), MAX_SIDE / w, MAX_SIDE / h));
+    if (!canvas) {
+      canvas = doc.createElement("canvas");
+      canvas.className = "pxd-underlay";
+      canvas.setAttribute("aria-hidden", "true");
+      world.insertBefore(canvas, (typeof before === "function" ? before() : before) || world.firstChild);
+    }
+    const bw = Math.max(1, Math.ceil(w * scale)), bh = Math.max(1, Math.ceil(h * scale));
+    if (canvas.width !== bw) canvas.width = bw;
+    if (canvas.height !== bh) canvas.height = bh;
+    canvas.style.cssText = `position:absolute;left:${x0}px;top:${y0}px;width:${w}px;height:${h}px;pointer-events:none;`;
+    let ctx = null;
+    try {
+      ctx = canvas.getContext?.("2d") || null;
+    } catch {
+      ctx = null;
+    }
+    if (!ctx) {
+      hide();
+      return 0;
+    }
+    const c = colors();
+    try {
+      paint2(ctx, { items, edges, c, scale, x0, y0, bw, bh });
+    } catch {
+      hide();
+      return 0;
+    }
+    canvas.style.display = "";
+    shown = true;
+    return items.length;
+  };
+  const paint2 = (ctx, { items, edges, c, scale, x0, y0, bw, bh }) => {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, bw, bh);
+    ctx.setTransform(scale, 0, 0, scale, -x0 * scale, -y0 * scale);
+    if (edges.length) {
+      ctx.strokeStyle = c.line;
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = 1 / scale;
+      ctx.beginPath();
+      for (const [a, b] of edges) {
+        ctx.moveTo(a.x + a.w / 2, a.y + a.h / 2);
+        ctx.lineTo(b.x + b.w / 2, b.y + b.h / 2);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c.card;
+    for (const { rect: r } of items) ctx.fillRect(r.x, r.y, r.w, r.h);
+  };
+  const dispose = () => {
+    try {
+      canvas?.remove?.();
+    } catch {
+    }
+    canvas = null;
+    shown = false;
+  };
+  return { draw, hide, dispose, isShown: () => shown, element: () => canvas };
+}
+
+// src/view/board-view.js
 init_schema();
 init_roam_table();
 init_drawing_card();
@@ -51212,6 +51443,7 @@ function createInteractions({ actions, settings } = {}) {
     escape,
     isGesturing: () => Boolean(state.gesture),
     gestureKind: () => state.gesture?.kind ?? null,
+    gestureMoved: () => Boolean(state.gesture?.moved),
     cancel: () => {
       cancelOpen();
       endWheelZoom();
@@ -55798,11 +56030,13 @@ function applyThemeVars(style, vars) {
     }
     return;
   }
+  const current3 = (name) => typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : void 0;
   for (const name of THEME_VARS) {
     const value = vars[name];
     try {
-      if (typeof value === "string" && value) style.setProperty(name, value);
-      else style.removeProperty(name);
+      if (typeof value === "string" && value) {
+        if (current3(name) !== value) style.setProperty(name, value);
+      } else if (current3(name) !== "") style.removeProperty(name);
     } catch {
     }
   }
@@ -55948,7 +56182,7 @@ function createThemeFollow({ doc, root, getMode, timers } = {}) {
     if (mode() !== "follow-roam") {
       applyThemeVars(node2.style, null);
       try {
-        node2.classList.remove("pxd-theme--roam");
+        if (node2.classList.contains("pxd-theme--roam")) node2.classList.remove("pxd-theme--roam");
       } catch {
       }
       return;
@@ -55962,14 +56196,14 @@ function createThemeFollow({ doc, root, getMode, timers } = {}) {
     if (!derived?.vars) {
       applyThemeVars(node2.style, null);
       try {
-        node2.classList.remove("pxd-theme--roam");
+        if (node2.classList.contains("pxd-theme--roam")) node2.classList.remove("pxd-theme--roam");
       } catch {
       }
       return;
     }
     applyThemeVars(node2.style, derived.vars);
     try {
-      node2.classList.add("pxd-theme--roam");
+      if (!node2.classList.contains("pxd-theme--roam")) node2.classList.add("pxd-theme--roam");
     } catch {
     }
   };
@@ -61985,7 +62219,7 @@ function openChat(opts = {}, w) {
 }
 
 // src/host/figure-image.js
-var MAX_SIDE = 1600;
+var MAX_SIDE2 = 1600;
 var JPEG_ABOVE = 1.5 * 1024 * 1024;
 var URL_META_PREFIX = "figure-url:";
 var ENCRYPTED_NOTE = "This graph is encrypted, so the image can't be shared with the model; sending text only.";
@@ -61997,7 +62231,7 @@ function isUsableImageUrl(url) {
   const path = text4.split(/[?#]/)[0];
   return !/\.enc$/i.test(path);
 }
-function fitSize(w, h, max = MAX_SIDE) {
+function fitSize(w, h, max = MAX_SIDE2) {
   const width = Number(w);
   const height = Number(h);
   if (!(width > 0) || !(height > 0)) return { w: 0, h: 0, scale: 1 };
@@ -62018,7 +62252,7 @@ function asBlob(value, BlobCtor = globalThis.Blob) {
   if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return new BlobCtor([value], { type: "image/png" });
   return null;
 }
-async function shrinkImage(blob, { doc = globalThis.document, maxSide = MAX_SIDE, jpegAbove = JPEG_ABOVE } = {}) {
+async function shrinkImage(blob, { doc = globalThis.document, maxSide = MAX_SIDE2, jpegAbove = JPEG_ABOVE } = {}) {
   try {
     const decode = globalThis.createImageBitmap;
     if (typeof decode !== "function" || !doc?.createElement) return blob;
@@ -75771,7 +76005,13 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     listeners3.splice(0).forEach((off) => off());
     editingLabel = null;
   };
+  const edgeShown = (uid) => {
+    const rec = edgeEls.get(uid);
+    return Boolean(rec && !rec.parked);
+  };
   return {
+    edgeShown,
+    isVirtual: (board2) => virtualEdges(board2),
     render,
     update,
     reveal,
@@ -85577,8 +85817,10 @@ function buildBoardView(onFail, {
   const heightKey = `plexus-diagram:h:${graph}:${routeUid}`;
   const root = el2("div", "pxd-root", mountEl);
   const setRootFlag = (name, on) => {
-    if (on) root.setAttribute(`data-pxd-${name}`, "");
-    else root.removeAttribute(`data-pxd-${name}`);
+    const attr = `data-pxd-${name}`;
+    if (typeof root.hasAttribute === "function" && root.hasAttribute(attr) === Boolean(on)) return;
+    if (on) root.setAttribute(attr, "");
+    else root.removeAttribute(attr);
   };
   const typeAhead = createTypeAhead({
     doc,
@@ -88384,12 +88626,19 @@ function buildBoardView(onFail, {
     moveViewport({ x: size.width / 2 - worldPoint.x * vp.zoom, y: size.height / 2 - worldPoint.y * vp.zoom, zoom: vp.zoom });
   };
   const mapThreshold = () => zoomThreshold(board2()?.plexus?.lodZoom, setting("map-zoom", "0.45"));
+  const rootPainted = /* @__PURE__ */ new Map();
+  const paintRoot = (name, value) => {
+    if (rootPainted.get(name) === value) return;
+    rootPainted.set(name, value);
+    if (name === "data-pxd-lod") root.setAttribute(name, value);
+    else root.style.setProperty(name, value);
+  };
   const paintTier = () => {
-    root.setAttribute("data-pxd-lod", tier);
+    paintRoot("data-pxd-lod", tier);
     const f = lodFonts(vp.zoom);
-    root.style.setProperty("--pxd-map-font", `${f.map}px`);
-    root.style.setProperty("--pxd-ui", String(f.ui));
-    root.style.setProperty("--pxd-overview-font", `${f.section}px`);
+    paintRoot("--pxd-map-font", `${f.map}px`);
+    paintRoot("--pxd-ui", String(f.ui));
+    paintRoot("--pxd-overview-font", `${f.section}px`);
     itemsR.setLod(tier, vp.zoom);
   };
   let invZoomAt = 0;
@@ -88400,9 +88649,14 @@ function buildBoardView(onFail, {
     root.style.setProperty("--pxd-screen-px", String(screenPx(vp.zoom)));
   };
   const applyLod = () => {
+    const was = tier;
     tier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
     paintTier();
     paintInvZoom();
+    if (tier !== was) {
+      pdfFlip?.setLod?.(tier);
+      chrome.toolbar.scheduleDock?.();
+    }
   };
   const scheduleContent = () => {
     if (disposed || suspended || gesturing || !board2()) return;
@@ -88534,17 +88788,96 @@ function buildBoardView(onFail, {
   const MINIMAP_WHEEL_MS = 150;
   const perfNow2 = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
   const edgeZoomKey = (z) => !(z > 0) ? "" : `${z >= 0.6 ? "hi" : Math.round(Math.log(z) / Math.log(1.25))}:${z < 0.3}`;
+  const underlay = createGestureUnderlay({ doc, world, root, before: () => edgesSvg });
+  let underlayDrawn = false;
+  const deferOn = () => {
+    try {
+      return notedSpeedFlags().deferReveal !== false;
+    } catch {
+      return true;
+    }
+  };
+  const deferReveal = () => {
+    if (!wheelLayer && !gesturing) return false;
+    if (gesturing) {
+      const kind = ctl.gestureKind?.();
+      if (kind && kind !== "pan" && kind !== "pinch") return false;
+    }
+    return deferOn() && Boolean(itemsR.isVirtual?.());
+  };
+  const showUnderlay = () => {
+    if (underlayDrawn) return;
+    underlayDrawn = true;
+    const b = board2();
+    if (!b) return;
+    const r = paintRects();
+    const items = [];
+    for (const item of b.items.values()) {
+      if (item.type === "section") continue;
+      const rect = r.get(item.uid);
+      if (rect && !itemsR.attachedUid(item.uid)) items.push({ uid: item.uid, rect });
+    }
+    const edges = [];
+    if (edgesR.isVirtual?.(b)) {
+      for (const e2 of b.edges.values()) {
+        if (edgesR.edgeShown(e2.uid)) continue;
+        const a = r.get(e2.from), c = r.get(e2.to);
+        if (a && c) edges.push([a, c]);
+      }
+    }
+    underlay.draw({ items, edges, zoom: vp.zoom, dpr: win2?.devicePixelRatio || 1 });
+  };
+  const endUnderlay = () => {
+    underlayDrawn = false;
+  };
   const revealNear = () => {
     if (!size.width) return;
     const near2 = visibleWorldRect(vp, size, ATTACH_MARGIN);
     itemsR.reveal?.(near2);
     edgesR.reveal?.(near2);
   };
+  const paintGrid = () => {
+    const g = gridBackground(vp, bgPattern);
+    if (!g) return;
+    grid.style.backgroundSize = `${g.size}px ${g.size}px`;
+    grid.style.backgroundPosition = `${g.x}px ${g.y}px`;
+    if (bgPattern === "grid") {
+      const mod = (v) => (v % g.major + g.major) % g.major;
+      grid.style.setProperty("--pxd-grid-major", `${g.major}px`);
+      grid.style.setProperty("--pxd-grid-major-x", `${mod(vp.x)}px`);
+      grid.style.setProperty("--pxd-grid-major-y", `${mod(vp.y)}px`);
+    }
+  };
+  const SETTLE_WAIT_MS = 600;
+  let settleWaitAt = 0;
+  const inputPending = () => {
+    try {
+      return Boolean(win2?.navigator?.scheduling?.isInputPending?.({ includeContinuous: true }));
+    } catch {
+      return false;
+    }
+  };
   const settle2 = () => {
+    settleWaitAt = 0;
+    armSettle();
+  };
+  const armSettle = () => {
     settleTimer?.();
     settleTimer = timers.later(() => {
       settleTimer = null;
+      if (inputPending()) {
+        if (!settleWaitAt) settleWaitAt = perfNow2();
+        if (perfNow2() - settleWaitAt < SETTLE_WAIT_MS) {
+          armSettle();
+          return;
+        }
+      }
+      settleWaitAt = 0;
       if (gesturing) return;
+      hitShield.drop();
+      endUnderlay();
+      paintGrid();
+      chrome.toolbar.setZoom(vp.zoom);
       if (wheelLayer) {
         wheelLayer = false;
         world.style.willChange = "";
@@ -88564,6 +88897,7 @@ function buildBoardView(onFail, {
         }
       }
       if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
+      underlay.hide();
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -92524,6 +92858,11 @@ ${url}`;
     },
     setGesturing: (on, info) => {
       gesturing = Boolean(on);
+      guardSelection(gesturing && Boolean(ctl.gestureKind?.()));
+      if (!gesturing) {
+        hitShield.drop();
+        endUnderlay();
+      }
       setRootFlag("gesturing", gesturing);
       world.style.willChange = gesturing ? "transform" : "";
       if (gesturing) {
@@ -92552,8 +92891,11 @@ ${url}`;
           itemsR.setPaused(false);
           applyLod();
           propsPanel.place();
+          paintGrid();
+          chrome.toolbar.setZoom(vp.zoom);
           scheduleContent();
           if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
+          underlay.hide();
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
@@ -93153,6 +93495,7 @@ ${url}`;
     notePressMove(event);
     if (suspended || !ctl.isGesturing()) return;
     ctl.handle(normalize2(event, "pointermove"));
+    if (ctl.gestureMoved?.()) hitShield.raise();
   };
   const onDocUp = (event) => {
     endPress(event);
@@ -93427,18 +93770,57 @@ ${url}`;
     measure();
     ctl.handle(normalize2(event, "dblclick"));
   });
+  const hitShield = createHitShield({
+    doc,
+    root,
+    enabled: () => {
+      try {
+        return notedSpeedFlags().hitShield !== false;
+      } catch {
+        return true;
+      }
+    },
+    later: (fn, ms) => timers.later(fn, ms),
+    onWheel: (event) => disposed || suspended ? false : wheelBurst(event),
+    onPress: (target, event) => {
+      const Ctor = doc.defaultView?.PointerEvent || globalThis.PointerEvent;
+      if (typeof Ctor !== "function") return;
+      target.dispatchEvent(new Ctor("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: doc.defaultView,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        button: event.button,
+        buttons: event.buttons,
+        detail: event.detail,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        isPrimary: event.isPrimary
+      }));
+    }
+  });
+  const onSelectStart = (event) => {
+    if (!gesturing || isTextEntryTarget(event.target)) return;
+    event.preventDefault?.();
+  };
+  let selectGuard = false;
+  const guardSelection = (on) => {
+    if (on === selectGuard) return;
+    selectGuard = on;
+    if (on) doc.addEventListener?.("selectstart", onSelectStart, true);
+    else doc.removeEventListener?.("selectstart", onSelectStart, true);
+  };
   const WHEEL_MEASURE_MS = 150;
   let wheelMeasuredAt = -Infinity;
-  listen(root, "wheel", (event) => {
-    if (leavesBoardPointer(event.target)) return;
-    if (inRoamTable(event.target)) {
-      event.stopPropagation();
-      return;
-    }
-    if (pageBodyWantsWheel(event.target, event)) {
-      event.stopPropagation();
-      return;
-    }
+  const wheelBurst = (event) => {
     const t = perfNow2();
     if (!wheelLayer || t - wheelMeasuredAt > WHEEL_MEASURE_MS) {
       measure();
@@ -93452,8 +93834,23 @@ ${url}`;
         wheelLayer = true;
         world.style.willChange = "transform";
       }
+      if (!event.ctrlKey && !event.metaKey) hitShield.raise();
+      else hitShield.drop();
       settle2();
     }
+    return handled;
+  };
+  listen(root, "wheel", (event) => {
+    if (leavesBoardPointer(event.target)) return;
+    if (inRoamTable(event.target)) {
+      event.stopPropagation();
+      return;
+    }
+    if (pageBodyWantsWheel(event.target, event)) {
+      event.stopPropagation();
+      return;
+    }
+    wheelBurst(event);
   }, { passive: false });
   const onRootContextMenu = (event) => {
     if (leavesBoardPointer(event.target) || inRoamTable(event.target)) return;
@@ -94385,7 +94782,8 @@ ${url}`;
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
-      if (size.width) revealNear();
+      if (size.width && !deferReveal()) revealNear();
+      else if (size.width) showUnderlay();
       const focused = doc.activeElement;
       if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {
         try {
@@ -94396,26 +94794,14 @@ ${url}`;
       itemsR.setZoom(vp.zoom);
       if (!gesturing) paintInvZoom();
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
-      if (nextTier !== tier) {
+      if (nextTier !== tier && !deferReveal()) {
         tier = nextTier;
         paintTier();
         pdfFlip?.setLod?.(tier);
         chrome.toolbar.scheduleDock?.();
       }
-      if (!gesturing) {
-        const g = gridBackground(vp, bgPattern);
-        if (g) {
-          grid.style.backgroundSize = `${g.size}px ${g.size}px`;
-          grid.style.backgroundPosition = `${g.x}px ${g.y}px`;
-          if (bgPattern === "grid") {
-            const mod = (v) => (v % g.major + g.major) % g.major;
-            grid.style.setProperty("--pxd-grid-major", `${g.major}px`);
-            grid.style.setProperty("--pxd-grid-major-x", `${mod(vp.x)}px`);
-            grid.style.setProperty("--pxd-grid-major-y", `${mod(vp.y)}px`);
-          }
-        }
-      }
-      chrome.toolbar.setZoom(vp.zoom);
+      if (!gesturing && !deferReveal()) paintGrid();
+      if (!deferReveal()) chrome.toolbar.setZoom(vp.zoom);
       if (tooltip.isVisible()) tooltip.hide();
       if (!gesturing && !wheelLayer) propsPanel.place();
     }
@@ -94440,7 +94826,7 @@ ${url}`;
       minimapAt = perfNow2();
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });
-      paintLandmarkDots(b, shown);
+      if (!(deferReveal() && !itemsChanged)) paintLandmarkDots(b, shown);
     }
     if (itemsChanged && !gesturing) {
       scheduleContent();
@@ -94930,6 +95316,20 @@ ${url}`;
     },
     // A kept board comes back into a new mount element (Roam re-rendered the page).
     // Point the view at it and re-apply fullscreen chrome or the inline height there.
+    // Crumbs and board history: keep a parked root in its mount, unrendered (content-visibility:hidden keeps its
+    // style and layout). Removing it dropped every computed style, and the way back restyled the whole board before
+    // the first paint (PhD main board: 13,762 elements, 166 ms, plus 33 ms of layout).
+    park() {
+      if (disposed || !root.parentElement || !(size.width > 0)) return false;
+      root.style.width = `${size.width}px`;
+      root.setAttribute("data-pxd-parked", "");
+      return true;
+    },
+    unpark() {
+      if (!root.hasAttribute?.("data-pxd-parked")) return;
+      root.removeAttribute("data-pxd-parked");
+      root.style.width = "";
+    },
     rebind(nextMount) {
       if (disposed || !nextMount) return;
       if (nextMount === mountEl) {
@@ -94951,6 +95351,7 @@ ${url}`;
     suspend() {
       if (disposed || suspended) return;
       suspended = true;
+      hitShield.drop();
       suspendedBoard = board2();
       if (frameHandle) {
         const cancel = frameHandle;
@@ -95231,6 +95632,9 @@ ${url}`;
       if (disposing) return;
       disposing = true;
       disposed = true;
+      hitShield.drop();
+      underlay.dispose();
+      guardSelection(false);
       closePdfPagesDialog();
       if (getFigureImages() === figureImages) setFigureImages(null);
       const step = (fn) => {
@@ -98282,6 +98686,7 @@ var NEGATIVE_TTL_MS = 3e4;
 var MOUNT_BACKOFF_MS = [5e3, 3e4];
 var KEEP_ALIVE_CAP = 2;
 var KEEP_ALIVE_MS = 3e5;
+var BRIDGE_MIN_ITEMS = 400;
 var LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 var TITLE_PANEL_CLASS = "rm-diagram-title-panel";
 var NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
@@ -99961,7 +100366,15 @@ async function installPlexusDiagram({
     if (speedFlags().keepAlive === false) return false;
     const view = rec?.view;
     if (!view || view.sketchStandIn === true) return false;
-    if (rec.fullscreen || holdsFocus(rec)) return false;
+    if (rec.fullscreen) return false;
+    if (holdsFocus(rec)) {
+      const active3 = doc.activeElement;
+      if (isTextEntryTarget(active3)) return false;
+      try {
+        active3?.blur?.();
+      } catch {
+      }
+    }
     const root = view.root;
     return Boolean(root && typeof root.remove === "function");
   }
@@ -99998,7 +100411,7 @@ async function installPlexusDiagram({
     for (const entry of kept.filter((item) => item.rec === rec)) dropKept(entry);
   }
   function trimKept() {
-    while (kept.length > KEEP_ALIVE_CAP) dropKept(kept[0]);
+    while (kept.length > KEEP_ALIVE_CAP) dropKept(kept.find((entry) => entry.uid !== entry.rec?.uid) || kept[0]);
   }
   function remember2(rec, uid, view, session) {
     for (const entry2 of kept.filter((item) => item.rec === rec && item.uid === uid)) dropKept(entry2);
@@ -100014,10 +100427,16 @@ async function installPlexusDiagram({
     kept.push(entry);
     trimKept();
   }
-  function suspendView(view) {
+  function suspendView(view, inPlace = false) {
     try {
       view?.suspend?.();
     } catch {
+    }
+    if (inPlace && speedFlags().parkInPlace !== false) {
+      try {
+        if (view?.park?.()) return;
+      } catch {
+      }
     }
     try {
       view?.root?.remove?.();
@@ -100025,6 +100444,10 @@ async function installPlexusDiagram({
     }
   }
   function resumeView(rec, view) {
+    try {
+      view?.unpark?.();
+    } catch {
+    }
     const root = view?.root;
     if (typeof view?.rebind === "function" && rec.mountEl) {
       try {
@@ -100180,7 +100603,7 @@ async function installPlexusDiagram({
       session.pauseWatches?.();
     } catch {
     }
-    suspendView(view);
+    suspendView(view, true);
     remember2(rec, uid, view, session);
   }
   function takeKept(rec, uid) {
@@ -100194,23 +100617,44 @@ async function installPlexusDiagram({
     }
     return entry;
   }
+  function afterPaint(fn) {
+    const win3 = doc?.defaultView || globalThis;
+    if (typeof win3.requestAnimationFrame !== "function") {
+      fn();
+      return;
+    }
+    let done2 = false;
+    const once = () => {
+      if (done2) return;
+      done2 = true;
+      fn();
+    };
+    win3.requestAnimationFrame(() => setTimeout(once, 0));
+    setTimeout(once, 500);
+  }
   function reattach(rec, view) {
     rec.view = view;
     resumeView(rec, view);
-    try {
-      view?.setSettings?.(settings);
-    } catch {
-    }
-    try {
-      rec.session?.resumeWatches?.();
-    } catch {
-    }
-    rec.off = watchRec(rec);
-    publishCards(rec.session?.board);
-    try {
-      scheduleSketch(rec);
-    } catch {
-    }
+    const session = rec.session;
+    const rest = () => {
+      if (stopped || rec.view !== view || rec.session !== session) return;
+      try {
+        view?.setSettings?.(settings);
+      } catch {
+      }
+      try {
+        session?.resumeWatches?.();
+      } catch {
+      }
+      rec.off = watchRec(rec);
+      publishCards(session?.board);
+      try {
+        scheduleSketch(rec);
+      } catch {
+      }
+    };
+    if (speedFlags().parkInPlace === false) rest();
+    else afterPaint(rest);
     if (settings[SETTING_IDS.speedLog] === true) perfLog.watchOpen(rec.mountEl, perfNow());
   }
   function navigate(rec, next, viewport2, commit) {
@@ -100242,12 +100686,30 @@ async function installPlexusDiagram({
         detachCurrent(rec);
         rec.session = pooled.session;
         rec.crumbs = next;
-        try {
-          reattach(rec, pooled.view);
-        } catch (error) {
-          noteMountFail(rec.uid, error);
-          unmount(rec);
+        const big = (pooled.session?.board?.items?.size || 0) > BRIDGE_MIN_ITEMS;
+        const parked = Boolean(pooled.view?.root?.hasAttribute?.("data-pxd-parked"));
+        const bridge = big && parked && speedFlags().parkInPlace !== false ? paintSnapFor(rec, null) : null;
+        const take = () => {
+          try {
+            reattach(rec, pooled.view);
+          } catch (error) {
+            noteMountFail(rec.uid, error);
+            unmount(rec);
+          }
+        };
+        if (!bridge) {
+          take();
+          return;
         }
+        rec.view = pooled.view;
+        afterPaint(() => {
+          if (stopped || mounts.get(rec.native) !== rec || rec.view !== pooled.view) {
+            dropSnapPaint(rec, bridge);
+            return;
+          }
+          take();
+          dropSnapPaint(rec, bridge, { live: true });
+        });
         return;
       }
       if (snapAllowed() && snapFor(rec, target)?.items?.length) {

@@ -6823,6 +6823,7 @@ function buildBoardView(onFail, {
     },
     setGesturing: (on, info) => {
       gesturing = Boolean(on);
+      guardSelection(gesturing && Boolean(ctl.gestureKind?.()));
       if (!gesturing) { hitShield.drop(); endUnderlay(); }
       setRootFlag("gesturing", gesturing);
       world.style.willChange = gesturing ? "transform" : "";
@@ -7678,11 +7679,18 @@ function buildBoardView(onFail, {
     },
   });
   // A drag must not start a text selection. This was user-select:none on the root while gesturing, which
-  // restyled the whole board at every gesture start.
-  listen(doc, "selectstart", (event) => {
-    if (!gesturing || !ctl.gestureKind?.() || isTextEntryTarget(event.target)) return;
+  // restyled the whole board at every gesture start. The listener is on only while a pointer gesture runs.
+  const onSelectStart = (event) => {
+    if (!gesturing || isTextEntryTarget(event.target)) return;
     event.preventDefault?.();
-  }, true);
+  };
+  let selectGuard = false;
+  const guardSelection = (on) => {
+    if (on === selectGuard) return;
+    selectGuard = on;
+    if (on) doc.addEventListener?.("selectstart", onSelectStart, true);
+    else doc.removeEventListener?.("selectstart", onSelectStart, true);
+  };
   const WHEEL_MEASURE_MS = 150;
   let wheelMeasuredAt = -Infinity;
   // The burst after its first event comes from the hit shield (the targets below are what the first event saw).
@@ -9269,6 +9277,7 @@ function buildBoardView(onFail, {
       disposed = true;
       hitShield.drop();
       underlay.dispose();
+      guardSelection(false);
       closePdfPagesDialog();
       if (getFigureImages() === figureImages) setFigureImages(null);
       const step = (fn) => {

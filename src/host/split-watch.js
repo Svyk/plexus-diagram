@@ -216,6 +216,11 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, g
     }
     itemWatch.clear();
     pendingItems.clear();
+    // A parked card may still hold an off-closure from this generation; it must not pin the trees.
+    nodes.clear();
+    kinds.clear();
+    content = new Map();
+    lastTree = null;
   };
 
   // A mounted card keeps its contents live. Null when the item is not on this board; with `pending`, a card the

@@ -1,7 +1,10 @@
 // P5-B memory-leak guards: view-lifetime lists must not grow per refresh / gesture / page return.
 import assert from "node:assert/strict";
+import v8 from "node:v8";
+import vm from "node:vm";
 import test from "node:test";
 import { MOUNT_STAMP_CAP, mountFpsFromStamps, pushFrameStamp } from "../src/view/progressive.js";
+import { createSplitWatch } from "../src/host/split-watch.js";
 import { createChrome } from "../src/view/chrome.js";
 import { createPanel } from "../src/view/panel.js";
 import { createPropsPanel } from "../src/view/props-panel.js";
@@ -158,4 +161,30 @@ test("2c: the mount frame stamps stay bounded and keep the same median", () => {
   for (let i = 0; i < 5000; i += 1) pushFrameStamp(stamps, i * 16);
   assert.ok(stamps.length <= MOUNT_STAMP_CAP, `stamps ${stamps.length}`);
   assert.equal(mountFpsFromStamps(stamps), 63);
+});
+
+const gcNow = async () => {
+  v8.setFlagsFromString("--expose-gc");
+  const gc = vm.runInNewContext("gc");
+  for (let i = 0; i < 3; i += 1) { gc(); await new Promise((r) => setTimeout(r, 5)); }
+};
+
+test("2d: a stale watchItem off-closure does not pin a disposed split generation's tree", async () => {
+  const mk = () => {
+    const card = { ":block/uid": "cardA", ":block/string": "A", ":block/props": { ":plexus": { ":x": 0 } }, ":block/children": [{ ":block/uid": "k1", ":block/string": "kid" }] };
+    const sec = { ":block/uid": "secA", ":block/string": "Section", ":block/props": { ":plexus": { ":type": "section" } }, ":block/children": [card] };
+    return { ":block/uid": "boardX", ":block/string": "{{[[diagram]]:T}}", ":block/children": [sec] };
+  };
+  const data = { addPullWatch() {}, removePullWatch() {} };
+  const make = () => {
+    const seed = mk();
+    const split = createSplitWatch({ uid: "boardX", seed, data, pull: () => null, deepPattern: "[*]", onTree() {} });
+    const off = split.watchItem("cardA");
+    split.dispose();
+    return { off, ref: new WeakRef(seed) };
+  };
+  const { off, ref } = make();
+  await gcNow();
+  assert.equal(ref.deref(), undefined, "the disposed generation's seed tree was collected although a card still holds its off");
+  off();
 });

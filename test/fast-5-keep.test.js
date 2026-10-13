@@ -908,3 +908,20 @@ test("feature unload disposes the pool", async () => {
     t.restore();
   }
 });
+
+test("a board reattached from the pool still opens nested boards", async () => {
+  const t = await openBoards();
+  try {
+    const view = t.views[0];
+    leaveNative(t, diagramNative(t.doc.app));
+    arrive(t, "boardAAA1");
+    assert.equal(t.views.length, 1);
+    assert.equal(view.suspended, false);
+    await go(view, "boardBBB2");
+    assert.equal(t.views.length, 2, "the nested board mounted");
+    assert.equal(t.created.filter((uid) => uid === "boardBBB2").length, 1);
+  } finally {
+    await t.lifecycle.dispose().catch(() => {});
+    t.restore();
+  }
+});

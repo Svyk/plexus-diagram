@@ -269,6 +269,8 @@ export async function installPlexusDiagram({
   let closeAddToBoard = () => {};
   let closeCommandSheet = () => {};
   const mounts = new Map(); // native element -> record
+  // view -> { rec }: the mount record a view's callbacks act for (callMountView, adoptAlive).
+  const viewOwners = new WeakMap();
   const trusted = new Set(); // uids confirmed enhanced by this runtime (command results)
   const portalObservers = new Map(); // portal node -> its own added-nodes observer
   const negativeUntil = new Map(); // uid -> timestamp before which a failed pull is not repeated
@@ -1359,41 +1361,47 @@ export async function installPlexusDiagram({
     handoff.holdTimer = timer;
   }
 
-  function callMountView(rec, autofocus, viewport, extra = {}) {
-    return mountView({
-      onFirstPaint: () => notePaint(rec, false),
-      onSettled: () => scheduleSnap(rec),
-      tableThumb: (item) => tableThumbFor(rec, item),
-      onTableShown: (item) => tableShown(rec, item),
+  // The view's callbacks reach its mount record through `owner`: a kept-alive view adopted by a new record (adoptAlive)
+  // must navigate, snapshot and report for that record. Closing over the first record made nested opens, crumbs, tabs and
+  // history no-ops after any keep-alive reattach (visit() refuses a record that is no longer mounted).
+  function callMountView(rec0, autofocus, viewport, extra = {}) {
+    const owner = { rec: rec0 };
+    const view = mountView({
+      onFirstPaint: () => notePaint(owner.rec, false),
+      onSettled: () => scheduleSnap(owner.rec),
+      tableThumb: (item) => tableThumbFor(owner.rec, item),
+      onTableShown: (item) => tableShown(owner.rec, item),
       ...extra,
       host,
-      session: rec.session,
-      mountEl: rec.mountEl,
-      nativeEl: rec.native,
+      session: rec0.session,
+      mountEl: rec0.mountEl,
+      nativeEl: rec0.native,
       settings,
-      fullscreen: rec.fullscreen,
+      fullscreen: rec0.fullscreen,
       version: badge,
-      onRequestFullscreen: (want) => setFullscreen(rec, want === undefined ? !rec.fullscreen : want),
-      crumbs: rec.crumbs.slice(),
-      routeUid: rec.uid,
+      onRequestFullscreen: (want) => setFullscreen(owner.rec, want === undefined ? !owner.rec.fullscreen : want),
+      crumbs: rec0.crumbs.slice(),
+      routeUid: rec0.uid,
       autofocus,
       initialViewport: viewport,
-      onOpenBoard: (child) => visit(rec, [...rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
+      onOpenBoard: (child) => visit(owner.rec, [...owner.rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
       onSelectTab: (uid) => {
         if (!uid) return;
-        visit(rec, [{ uid, title: boardTitle(host.blockString?.(uid)) }]);
+        visit(owner.rec, [{ uid, title: boardTitle(host.blockString?.(uid)) }]);
       },
       tabStore: host.tabs,
       boardsOf: (uid) => {
         try { return cardCache.boardsOf(uid); } catch { return []; }
       },
-      onCrumb: (index) => visit(rec, rec.crumbs.slice(0, index + 1)),
-      onHistoryBack: () => historyMove(rec, "back"),
-      onHistoryForward: () => historyMove(rec, "forward"),
+      onCrumb: (index) => visit(owner.rec, owner.rec.crumbs.slice(0, index + 1)),
+      onHistoryBack: () => historyMove(owner.rec, "back"),
+      onHistoryForward: () => historyMove(owner.rec, "forward"),
       onSetDefaults: (patch) => setDefaults(patch),
       perfLog,
       lifecycle,
     });
+    if (view && typeof view === "object") viewOwners.set(view, owner);
+    return view;
   }
 
   function finishLive(rec, view, logging, t0) {
@@ -1802,6 +1810,8 @@ export async function installPlexusDiagram({
 
   // Same view root in the new mount. No sketch, no mountRecView. One pull on resume.
   function adoptAlive(rec, pooled) {
+    const owner = pooled.view ? viewOwners.get(pooled.view) : null;
+    if (owner) owner.rec = rec;
     rec.session = pooled.session;
     if (pooled.crumbs?.length) rec.crumbs = crumbCopy(pooled.crumbs);
     rec.view = pooled.view;

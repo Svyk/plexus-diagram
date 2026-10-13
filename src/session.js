@@ -1378,7 +1378,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       for (const m of board.items.get(sid).members) {
         if (grown.has(m)) continue;
         const mr = rects.get(m);
-        t.props(m, itemPlexus(m, { x: round1(mr.x - r.x), y: round1(mr.y - r.y) }));
+        const nx = round1(mr.x - r.x);
+        const ny = round1(mr.y - r.y);
+        // Only a member whose stored position changes is written.
+        const stored = rawPlexus(m);
+        if (stored.x === nx && stored.y === ny) continue;
+        t.props(m, itemPlexus(m, { x: nx, y: ny }));
       }
     }
   }

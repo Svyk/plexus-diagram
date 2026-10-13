@@ -68,3 +68,24 @@ test("a long action with deletes keeps the native chunked undo (a delete cannot 
     restore();
   }
 });
+
+test("growing a section left rebases the members once and a later move writes only the card", async () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const fake = createFakeRoam({ echoDelay: 0 });
+    const members = Array.from({ length: 40 }, (_, i) => ({ uid: `m${i}`, string: `m ${i}`, props: { plexus: { x: 20 + (i % 8) * 60, y: 40 + Math.floor(i / 8) * 50, w: i === 0 ? 200 : 50, h: i === 0 ? 120 : 40 } } }));
+    fake.seedBoard({ uid: "b1", props: { plexus: { v: 2 } }, children: [{ uid: "s1", string: "Sec", props: { plexus: { type: "section", x: 100, y: 100, w: 1000, h: 600 } }, children: members }] });
+    const host = createHost({ api: fake.api, storage: stub.localStorage, graph: "g" });
+    const session = acquireSession("b1", { host, raf: (fn) => fn() });
+    fake.clearLog();
+    await session.commitMove(["m0"], -100, 0);
+    const writes = fake.writesLog().length;
+    assert.equal(writes, 1 + 1 + 39, "card, section, and the 39 members whose relative x moved");
+    fake.clearLog();
+    await session.commitMove(["m0"], 3, 3);
+    assert.equal(fake.writesLog().length, 1, "a move inside the grown section rewrites nothing else");
+  } finally {
+    restore();
+  }
+});

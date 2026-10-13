@@ -8327,7 +8327,7 @@ function buildBoardView(onFail, {
     // POL-4. A trail stop and the region layer handle their own arrows and Enter.
     const owned = event.target?.closest?.(".pxd-trail__stop, .pxd-region-layer");
     if (owned && root.contains(owned)) return;
-    const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused, tabOwned });
+    const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, repeat: event.repeat === true, inputFocused, tabOwned });
     if (handled) { event.preventDefault(); event.stopPropagation(); }
   };
   const onKeyUp = (event) => {

@@ -1314,6 +1314,10 @@ export function createItemRenderer({
     rec.pdfReader = null;
     if (!rec.roots?.length) return;
     for (const node of rec.roots) {
+      if (node.classList?.contains("pxd-item__editor--sticky")) {
+        try { host?.unmount?.(node); } catch { /* not mounted */ }
+        continue;
+      }
       const live = node.querySelector?.(".pxd-rs__live");
       if (!live && !node.classList?.contains("pxd-embed-live")) continue;
       try { node.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }

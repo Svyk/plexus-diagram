@@ -6,7 +6,7 @@ import { buildBoard, worldRects } from "../src/model/board.js";
 import { mountBoardView } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
-export function mountSmall(stub, { cards = 6 } = {}) {
+export function mountSmall(stub, { cards = 6, sticky = false, unmounted = [] } = {}) {
   const kids = Array.from({ length: cards }, (_, i) => ({
     ":block/uid": `card${String(i).padStart(5, "0")}`,
     ":block/string": `Card ${i}`,
@@ -14,12 +14,13 @@ export function mountSmall(stub, { cards = 6 } = {}) {
     ":block/props": { ":plexus": { ":x": i * 260, ":y": 0, ":w": 240, ":h": 180 } },
     ":block/children": [],
   }));
+  if (sticky) kids[0][":block/props"][":plexus"] = { ":type": "text", ":look": "sticky", ":x": 0, ":y": 0, ":w": 240, ":h": 180 };
   const board = buildBoard({ ":block/uid": "smallboard1", ":block/string": "{{[[diagram]]:Small}}", ":block/props": { ":plexus": { ":v": 2 } }, ":block/children": kids });
   const host = {
     stats: {}, graph: "Svy",
     renderString(el, string) { el.textContent = string; },
     renderBlock(el, uid) { el.textContent = uid; },
-    unmount() {},
+    unmount(node) { unmounted.push(node); },
     pagePreview: () => ({ exists: false, blocks: [] }), pullTree: () => [], blockString: () => null,
     openBlock() {}, openInSidebar() {}, searchPages: () => [], searchBlocks: () => [], related: () => [],
   };
@@ -79,6 +80,22 @@ test("1c: pointerdown gestures on a card do not grow the view's listener list", 
     for (let i = 0; i < 30; i += 1) gesture();
     assert.equal(view.stats().listeners, base, "per-gesture listeners are released when the gesture ends");
     view.dispose();
+  } finally {
+    restore();
+  }
+});
+
+test("1d: a sticky's live Roam block is unmounted when the view is disposed", () => {
+  const stub = createDomStub({ width: 1400, height: 900 });
+  const restore = stub.install();
+  try {
+    const unmounted = [];
+    const { view, pump } = mountSmall(stub, { sticky: true, unmounted });
+    pump(20);
+    const editor = view.root.querySelector(".pxd-item__editor--sticky");
+    assert.ok(editor, "the sticky mounted its live block");
+    view.dispose();
+    assert.ok(unmounted.includes(editor), "host.unmount received the sticky editor");
   } finally {
     restore();
   }

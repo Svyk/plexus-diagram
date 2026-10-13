@@ -1498,7 +1498,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         const off = split.watchItem(itemUid);
         if (off) return off;
       }
-      return () => {};
+      // Not seen by any split yet (a card the optimistic model mounted before Roam's echo): armed when it appears.
+      const offs = [];
+      for (const split of splitWatches.values()) {
+        const off = split.watchItem(itemUid, { pending: true });
+        if (off) offs.push(off);
+      }
+      return () => { for (const off of offs) off(); };
     },
     splitStats(uid) {
       return splitWatches.get(uid)?.stats() ?? null;

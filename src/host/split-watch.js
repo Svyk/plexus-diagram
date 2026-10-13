@@ -75,6 +75,9 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, g
   const live = new Map();
   let content = new Map();
   const itemWatch = new Map();
+  // Cards asked for before a container watch has seen them (the optimistic model mounts a new card before Roam's
+  // echo): key -> registrations armed by the next assemble that finds the card.
+  const pendingItems = new Map();
   let disposed = false;
   let pending = false;
   let lastTree = null;
@@ -191,7 +194,16 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, g
     content = seenContent;
     sync();
     lastTree = tree;
+    armPending();
     return tree;
+  };
+
+  const armPending = () => {
+    for (const [key, regs] of [...pendingItems]) {
+      if (!content.has(key)) continue;
+      pendingItems.delete(key);
+      for (const reg of regs) if (reg.on) reg.off = watchItem(key);
+    }
   };
 
   const dropAll = () => {
@@ -203,55 +215,73 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, g
       try { data.removePullWatch(w.pattern, w.entity, w.cb); } catch { /* already gone */ }
     }
     itemWatch.clear();
+    pendingItems.clear();
+  };
+
+  // A mounted card keeps its contents live. Null when the item is not on this board; with `pending`, a card the
+  // board has not seen yet is armed once it appears.
+  const watchItem = (id, { pending = false } = {}) => {
+    const key = String(id ?? "");
+    if (disposed || !key) return null;
+    if (!content.has(key)) {
+      if (!pending) return null;
+      const reg = { on: true, off: null };
+      let regs = pendingItems.get(key);
+      if (!regs) { regs = new Set(); pendingItems.set(key, regs); }
+      regs.add(reg);
+      return () => {
+        if (!reg.on) return;
+        reg.on = false;
+        regs.delete(reg);
+        if (!regs.size && pendingItems.get(key) === regs) pendingItems.delete(key);
+        reg.off?.();
+      };
+    }
+    let w = itemWatch.get(key);
+    if (!w) {
+      // A nested board is watched at thumbnail depth (its own session watches the rest), but its stored contents
+      // stay the whole subtree: a change seen at that depth reads the subtree again.
+      const board = isBoardItem(findItem(key));
+      const pattern = board ? THUMB_PATTERN : deepPattern;
+      const depth = board ? THUMB_DEPTH : Infinity;
+      const whole = (after) => (board ? kidsOf(read(deepPattern, key) || after) : kidsOf(after));
+      w = {
+        n: 0,
+        pattern,
+        entity: entityOf(key),
+        cb: guard("watchContent", (_before, after) => {
+          if (disposed || !after?.[UID] || !itemWatch.has(key)) return;
+          if (sameKids(content.get(key), kidsOf(after), depth)) return;
+          content.set(key, whole(after));
+          kick();
+        }),
+      };
+      itemWatch.set(key, w);
+      data.addPullWatch(w.pattern, w.entity, w.cb);
+      // Contents may have changed while the card was off screen.
+      const now = read(pattern, key);
+      if (now?.[UID] && !sameKids(content.get(key), kidsOf(now), depth)) {
+        content.set(key, whole(now));
+        kick();
+      }
+    }
+    w.n += 1;
+    let on = true;
+    return () => {
+      if (!on) return;
+      on = false;
+      w.n -= 1;
+      if (w.n > 0 || itemWatch.get(key) !== w) return;
+      itemWatch.delete(key);
+      try { data.removePullWatch(w.pattern, w.entity, w.cb); } catch { /* already gone */ }
+    };
   };
 
   seedFrom(seed);
   sync();
 
   return {
-    // A mounted card keeps its contents live. Null when the item is not on this board.
-    watchItem(id) {
-      const key = String(id ?? "");
-      if (disposed || !key || !content.has(key)) return null;
-      let w = itemWatch.get(key);
-      if (!w) {
-        // A nested board is watched at thumbnail depth (its own session watches the rest), but its stored contents
-        // stay the whole subtree: a change seen at that depth reads the subtree again.
-        const board = isBoardItem(findItem(key));
-        const pattern = board ? THUMB_PATTERN : deepPattern;
-        const depth = board ? THUMB_DEPTH : Infinity;
-        const whole = (after) => (board ? kidsOf(read(deepPattern, key) || after) : kidsOf(after));
-        w = {
-          n: 0,
-          pattern,
-          entity: entityOf(key),
-          cb: guard("watchContent", (_before, after) => {
-            if (disposed || !after?.[UID] || !itemWatch.has(key)) return;
-            if (sameKids(content.get(key), kidsOf(after), depth)) return;
-            content.set(key, whole(after));
-            kick();
-          }),
-        };
-        itemWatch.set(key, w);
-        data.addPullWatch(w.pattern, w.entity, w.cb);
-        // Contents may have changed while the card was off screen.
-        const now = read(pattern, key);
-        if (now?.[UID] && !sameKids(content.get(key), kidsOf(now), depth)) {
-          content.set(key, whole(now));
-          kick();
-        }
-      }
-      w.n += 1;
-      let on = true;
-      return () => {
-        if (!on) return;
-        on = false;
-        w.n -= 1;
-        if (w.n > 0 || itemWatch.get(key) !== w) return;
-        itemWatch.delete(key);
-        try { data.removePullWatch(w.pattern, w.entity, w.cb); } catch { /* already gone */ }
-      };
-    },
+    watchItem,
     // Read every container again now (an undo, a refresh) and return the assembled tree; contents stay as stored.
     refresh() {
       if (disposed) return null;
@@ -268,6 +298,7 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, g
       if (disposed) return;
       seedFrom(full);
       sync();
+      armPending();
     },
     dispose() {
       if (disposed) return;

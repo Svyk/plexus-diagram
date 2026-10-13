@@ -81,3 +81,27 @@ test("a warm nested board over SPLIT_WATCH_MIN blocks gets the split watch, not 
   assert.ok(host.splitStats("nested01"), "the nested board has a split watch");
   off();
 });
+
+test("a card mounted before the split watch has seen it still gets a live content watch", async () => {
+  const fake = createFakeRoam({ echoDelay: 1 });
+  fake.roamWatch = true;
+  seedBig(fake);
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  host.pullBoard("big1");
+  const trees = [];
+  host.watchBoard("big1", (t) => trees.push(t));
+  // The optimistic model shows the new card at once; the view mounts it and asks for its content watch before
+  // Roam's echo reaches the board's container watches.
+  const made = fake.api.data.block.create({ location: { "parent-uid": "s2", order: "last" }, block: { uid: "fresh1", string: "fresh card", props: { plexus: { type: "card", x: 0, y: 0, w: 200, h: 100 } } } });
+  const off = host.watchContent("fresh1");
+  assert.equal(typeof off, "function");
+  await made;
+  await fake.flush();
+  assert.ok(find(trees.at(-1), "fresh1"), "the card reached the board tree");
+  await fake.api.data.block.create({ location: { "parent-uid": "fresh1", order: "last" }, block: { uid: "freshkid", string: "typed later" } });
+  await fake.flush();
+  assert.ok(find(trees.at(-1), "freshkid"), "a child typed into the mounted card reaches the tree");
+  assert.equal(host.splitStats("big1").itemWatches, 1);
+  off();
+  assert.equal(host.splitStats("big1").itemWatches, 0);
+});

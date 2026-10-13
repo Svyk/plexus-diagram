@@ -248,9 +248,15 @@ function commitTextareaValue(el, value) {
 }
 const MIN_HEIGHT = 240;
 const RESUME_MS = 120;
+// A settle after a zoom re-places every edge whose arrow size changed (2,114 on the PhD main board, ~0.2 s in one
+// task): a render frame places this many and the next frame takes the rest.
+const EDGE_SLICE = 250;
 const VP_PERSIST_MS = 500;
 const SECTION_TITLE_ALLOWANCE = 32; // px: section title pill (20 + padding) plus its 4px lift, fits above the frame
 const CULL_MARGIN = 1;
+// Shells and edges join the DOM within this fraction of a screen around the view (a big board's virtual shells); the
+// body mount keeps CULL_MARGIN. A whole screen on each side attached 755 shells at zoom 0.2 on the PhD main board.
+const ATTACH_MARGIN = 0.35;
 const BADGE_TTL_MS = 120000;
 const BADGE_CHUNK = 12;
 const NATIVE_MENU_TARGETS = ".rm-page-ref, .rm-block-ref, [data-link-uid], a[href], img";
@@ -3424,7 +3430,7 @@ function buildBoardView(onFail, {
     if (disposed || suspended || gesturing || !board()) return;
     // A null previous board marks every item dirty. Later diffs pass only the dirty uids.
     const changed = dirty.all ? null : dirty.items;
-    itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), zoom: vp.zoom, tier, dirty: changed });
+    itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), attachRect: visibleWorldRect(vp, size, ATTACH_MARGIN), zoom: vp.zoom, tier, dirty: changed });
   };
   // "Back to content": shown when no item intersects the visible world rect.
   const updateBackToContent = () => {
@@ -3572,7 +3578,7 @@ function buildBoardView(onFail, {
           for (const e of board()?.edges.values() || []) if (e.fromBlock || e.toBlock) dirty.edges.add(e.uid);
         }
       }
-      if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, CULL_MARGIN));
+      if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
       dirty.minimap = true;
       schedule();
       updateBackToContent();
@@ -6741,7 +6747,7 @@ function buildBoardView(onFail, {
           applyLod();
           propsPanel.place();
           scheduleContent();
-          if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, CULL_MARGIN));
+          if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
           vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
@@ -8344,7 +8350,7 @@ function buildBoardView(onFail, {
         rects: paintRects(),
         dirty: dirty.all ? null : dirty.items,
         structural: dirty.structural,
-        view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null,
+        view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null,
       });
       if (laneMarks || lanePreviewLayout) applyLaneMarks();
       ensurePdfHighlightButtons(dirty.all || dirty.structural ? null : dirty.items);
@@ -8369,13 +8375,21 @@ function buildBoardView(onFail, {
     // A collapse dirties only the section. Edges into its members still have to move
     // onto the short frame, even when no edge block itself changed.
     const itemsMoveEdges = dirty.items.size && !dirty.all && !dirty.structural;
+    let edgeRest = null;
     if (edgesDue || itemsMoveEdges) {
       const shown = paintRects();
       if (edgesDue) {
         // An edge-only change used to call update(), which moves the path and skips
         // paintEdge, so dash and color never reached the DOM until a full render.
         const links = paintedLinks();
-        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges, view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null });
+        let part = dirty.all || dirty.structural || (dirty.links && !dirty.edges.size) ? null : dirty.edges;
+        if (part && part.size > EDGE_SLICE) {
+          const slice = new Set();
+          edgeRest = new Set();
+          for (const uid of part) (slice.size < EDGE_SLICE ? slice : edgeRest).add(uid);
+          part = slice;
+        }
+        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: part, view: size.width ? visibleWorldRect(vp, size, ATTACH_MARGIN) : null, skipLinks: edgeSlicing && !dirty.links });
         paintLegend();
         if (suggestMode !== "off") refreshSuggest();
       }
@@ -8390,7 +8404,7 @@ function buildBoardView(onFail, {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
       // Big boards keep far shells and edges out of the DOM: put back what this camera brings near.
       if (size.width) {
-        const near = visibleWorldRect(vp, size, CULL_MARGIN);
+        const near = visibleWorldRect(vp, size, ATTACH_MARGIN);
         itemsR.reveal?.(near);
         edgesR.reveal?.(near);
       }
@@ -8462,12 +8476,15 @@ function buildBoardView(onFail, {
     dirty.minimap = false;
     dirty.viewport = false;
     dirty.items = new Set();
-    dirty.edges = new Set();
+    dirty.edges = edgeRest || new Set();
     dirty.structural = false;
     dirty.all = false;
     dirty.selection = false;
     dirty.links = false;
+    edgeSlicing = Boolean(edgeRest);
+    if (edgeRest) schedule();
   };
+  let edgeSlicing = false;
 
   // ------------------------------------------------------------ deep link
   const pulseItem = (uid) => {
@@ -9084,7 +9101,7 @@ function buildBoardView(onFail, {
       };
     },
     stats() {
-      return { timers: timers.count(), listeners: listeners.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount() };
+      return { timers: timers.count(), listeners: listeners.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount(), edgePlacements: edgesR.placements?.() ?? 0, edgesAttached: edgesR.attachedCount?.() ?? 0 };
     },
     // P32 live probes: cover source (pdf.js or hidden reader) and the pane's fit path. Read-only.
     pdfProbe() {

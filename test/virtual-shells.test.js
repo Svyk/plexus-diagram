@@ -180,3 +180,43 @@ test("a full re-sync paints only the shells in the DOM; a detached one is painte
     m.restore();
   }
 });
+
+// F1 step 0 (Fable round): the attach margin is a fraction of a screen, not a whole screen on each side. At map
+// zoom that was 755 attached shells at 0.2 and 430 at 0.3 on the PhD main board; the body-mount margin stays.
+test("at map zoom only the shells within a third of a screen of the view are attached", async () => {
+  const m = mount({ x: 0, y: 0, zoom: 0.4 });
+  try {
+    await m.pump(80);
+    assert.ok(m.shellsIn() > 100, `shells in view: ${m.shellsIn()}`);
+    assert.ok(m.shellsIn() <= 520, `shells attached at zoom 0.4: ${m.shellsIn()} of ${N}`);
+  } finally {
+    m.view.dispose();
+    m.restore();
+  }
+});
+
+// F2 (Fable round): a settle after a zoom re-placed every attached edge in one task. It is sliced over frames now.
+test("a zoom settle re-places edges a slice per frame, not all in one", async () => {
+  const m = mount({ x: 0, y: 0, zoom: 0.2 });
+  try {
+    await m.pump(80);
+    m.stub.flushTimers();
+    await m.pump(10);
+    const attached = m.view.stats().edgesAttached;
+    assert.ok(attached > 300, `edges attached at 0.2: ${attached}`);
+    const before = m.view.stats().edgePlacements;
+    m.view.restoreViewport({ x: 0, y: 0, zoom: 0.15 });
+    m.stub.flushFrames();
+    await tick(140); // the settle (RESUME_MS, a real timer)
+    m.stub.flushFrames(); // the first render after it
+    const first = m.view.stats().edgePlacements - before;
+    assert.ok(first > 0, "the settle re-places edges");
+    assert.ok(first <= 320 && first < attached / 1.5, `the first frame placed ${first} of ${attached} edges`);
+    await m.pump(20);
+    const total = m.view.stats().edgePlacements - before;
+    assert.ok(total >= attached, `all ${attached} attached edges were re-placed (${total})`);
+  } finally {
+    m.view.dispose();
+    m.restore();
+  }
+});

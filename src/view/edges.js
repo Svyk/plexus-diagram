@@ -95,7 +95,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   const widen = (r, f) => (r ? { x: r.x - r.w * f, y: r.y - r.h * f, w: r.w * (1 + 2 * f), h: r.h * (1 + 2 * f) } : r);
   const edgeFar = (board, edge, rects) => {
     const keep = view;
-    view = widen(keep, 0.5);
+    view = widen(keep, 0.125);
     try { return !edgeNear(board, edge, rects); } finally { view = keep; }
   };
   const edgeNear = (board, edge, rects) => {
@@ -507,7 +507,9 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       pagePill(rec, end, highlightPill(page), geo ? (end === "from" ? geo.start : geo.end) : null);
     }
   };
+  let placements = 0;
   const placeEdge = (board, edge, rec, rects, zoom) => {
+    placements += 1;
     const geo = geometryFor(board, edge, rects);
     rec.geo = geo;
     if (!geo) {
@@ -614,7 +616,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
 
   // Full or partial render. `dirty` = Set of edge uids to repaint; null = all.
   let lastPass = null;
-  const render = ({ board, rects, links = [], coveredEdges = new Set(), selection = {}, zoom = 1, dirty = null, view: near = undefined }) => {
+  // skipLinks: a continuation frame of a sliced settle; the links were placed with the first slice.
+  const render = ({ board, rects, links = [], coveredEdges = new Set(), selection = {}, zoom = 1, dirty = null, view: near = undefined, skipLinks = false }) => {
     zoomCache = zoom;
     if (near !== undefined) view = near;
     lastPass = { board, rects, coveredEdges, selection };
@@ -638,11 +641,13 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         placeEdge(board, edge, rec, rects, zoom);
       }
     }
-    const keys = new Set(links.map((l) => l.key));
-    for (const key of [...linkEls.keys()]) if (!keys.has(key)) removeLink(key);
-    for (const link of links) {
-      const rec = linkEls.get(link.key) || buildLink(link);
-      placeLink(link, rec, rects, zoom, selection.link === link.key);
+    if (!skipLinks) {
+      const keys = new Set(links.map((l) => l.key));
+      for (const key of [...linkEls.keys()]) if (!keys.has(key)) removeLink(key);
+      for (const link of links) {
+        const rec = linkEls.get(link.key) || buildLink(link);
+        placeLink(link, rec, rects, zoom, selection.link === link.key);
+      }
     }
     labelsLayer?.classList.toggle("pxd-labels--hidden", zoom < LABEL_HIDE_ZOOM);
   };
@@ -968,6 +973,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       for (const rec of edgeEls.values()) if (!rec.parked) n += 1;
       return n;
     },
+    placements: () => placements,
     setSelection,
     setHover,
     setTempWire,

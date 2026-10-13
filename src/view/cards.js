@@ -1925,7 +1925,7 @@ export function createItemRenderer({
   };
   const keepAttached = (uid, rec, active) => rec.type === "section" || uid === selectedPrimary || rec.hover
     || editing?.uid === uid || mounted.has(uid) || uid === active;
-  const farRect = () => (cullRect ? { x: cullRect.x - cullRect.w * 0.5, y: cullRect.y - cullRect.h * 0.5, w: cullRect.w * 2, h: cullRect.h * 2 } : null);
+  const farRect = () => (cullRect ? { x: cullRect.x - cullRect.w * 0.125, y: cullRect.y - cullRect.h * 0.125, w: cullRect.w * 1.25, h: cullRect.h * 1.25 } : null);
   const nearView = (uid, rect = cullRect) => {
     if (!rect) return true;
     const r = drawnRect(uid, lastRects?.get(uid));
@@ -1987,8 +1987,10 @@ export function createItemRenderer({
     if (sectionNodes?.childNodes.length) sectionsLayer.append(sectionNodes);
     if (itemNodes?.childNodes.length) itemsLayer.append(itemNodes);
   };
-  // reveal: attach only (a gesture frame), at most `budget` shells, nearest the rect's centre first.
-  const cullShells = (rect, { reveal = false, budget = Infinity } = {}) => {
+  // reveal: attach only (a gesture frame), at most `budget` shells and about `ms` of attach work, nearest the rect's
+  // centre first.
+  const cullShells = (rect, { reveal = false, budget = Infinity, ms = Infinity } = {}) => {
+    const t0 = ms < Infinity ? now() : 0;
     if (rect) cullRect = rect;
     if (!virtual() || !cullRect) return [];
     const active = activeShellUid();
@@ -2015,7 +2017,13 @@ export function createItemRenderer({
     if (add.length > BULK_ATTACH) attachMany(new Set(add));
     else {
       add.sort((a, b) => indexOfUid(a.uid) - indexOfUid(b.uid));
-      for (const rec of add) attachShell(rec);
+      let n = 0;
+      for (const rec of add) {
+        attachShell(rec);
+        n += 1;
+        // A gesture frame stops once its slice of time is spent; the next frame takes the rest.
+        if (t0 && n % 8 === 0 && now() - t0 > ms) { add.length = n; break; }
+      }
     }
     return add;
   };
@@ -4665,9 +4673,10 @@ export function createItemRenderer({
       paintOneOffscreen(uid, rec, visibleRect);
     }
   };
-  const fillContent = ({ visibleRect, zoom = zoomCache, tier = null, dirty = null } = {}) => {
+  const fillContent = ({ visibleRect, attachRect = null, zoom = zoomCache, tier = null, dirty = null } = {}) => {
     zoomCache = zoom;
-    cullShells(visibleRect);
+    // Bodies mount within visibleRect (a screen around the view); shells join the DOM within the tighter attachRect.
+    cullShells(attachRect || visibleRect);
     paintOffscreen(visibleRect);
     if (!lastBoard || !lastRects || !contentSched) return;
     const next = new Set();
@@ -5975,9 +5984,9 @@ export function createItemRenderer({
     // Every shell element, in the DOM or not (lenses paint detached shells too).
     shellEls: () => [...shells.values()].map((rec) => rec.el).filter(Boolean),
     // A gesture frame: attach shells coming into `rect` (a few per frame). Detaching waits for the settle.
-    reveal(rect, budget = 48) {
+    reveal(rect, budget = 48, ms = 4) {
       if (disposed || !rect || !virtual()) return 0;
-      const added = cullShells(rect, { reveal: true, budget });
+      const added = cullShells(rect, { reveal: true, budget, ms });
       for (const rec of added) paintOneOffscreen(rec.uid, rec, rect);
       return added.length;
     },

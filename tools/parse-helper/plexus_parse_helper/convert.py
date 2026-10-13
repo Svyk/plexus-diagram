@@ -30,7 +30,12 @@ _LABEL = {
     "table": "table",
     "code": "code",
     "list_item": "list_item",
+    "checkbox_selected": "para",
+    "checkbox_unselected": "para",
 }
+
+_LIST_GROUPS = {"list", "ordered_list"}
+_CHECK_GLYPH = re.compile(r"^\s*(?:\[\s*[xX\u2713\u2714]?\s*\]|[\u00b7\u2022\u25cf\u25cb\u25e6\u25aa\u25a0\u25a1\u2610\u2611\u2612\u2713\u2714\u2717\u2718*])\s*")
 
 _PREFIX = {
     "heading": "b",
@@ -318,9 +323,27 @@ def _list_items(group: dict, doc: dict, level: int) -> list[dict]:
     return items
 
 
-def _text_block(item: dict, doc: dict, ids: _Ids, *, seen_title: list[bool]) -> dict | None:
+def _list_item_refs(group: dict, doc: dict) -> list[str]:
+    refs = []
+    for child in group.get("children") or []:
+        ref = _ref_of(child)
+        node = _resolve(doc, ref) if ref else None
+        if not node:
+            continue
+        if node.get("label") == "list" or (isinstance(node.get("self_ref"), str) and node["self_ref"].startswith("#/groups")):
+            refs.extend(_list_item_refs(node, doc))
+        elif node.get("label") == "list_item":
+            refs.append(ref)
+    return refs
+
+
+def _text_block(
+    item: dict, doc: dict, ids: _Ids, *, seen_title: list[bool], fallback: bool = False
+) -> dict | None:
     label = item.get("label")
     kind = _LABEL.get(label)
+    if fallback and kind in {None, "list_item"}:
+        kind = "para"
     if kind in {None, "list_item"}:
         return None
     prov = _prov(item) or {}
@@ -328,6 +351,8 @@ def _text_block(item: dict, doc: dict, ids: _Ids, *, seen_title: list[bool]) -> 
     _, height = _page_size(doc, page)
     bbox = to_top_left(prov.get("bbox"), height)
     text = item.get("text") or ""
+    if label in {"checkbox_selected", "checkbox_unselected"}:
+        text = ("[x] " if label == "checkbox_selected" else "[ ] ") + _CHECK_GLYPH.sub("", text, count=1).strip()
     if kind == "heading":
         is_title = not seen_title[0] and heading_level_from_text(text) == 2 and not _NUM_HEAD.match(text or "")
         # First unnumbered heading is the title (level 1). Later unnumbered stay level 2.
@@ -400,6 +425,71 @@ def _text_block(item: dict, doc: dict, ids: _Ids, *, seen_title: list[bool]) -> 
     }
 
 
+# A "picture" is a text region when the text Docling read inside its box covers
+# at least this share of the box (summed text box area over picture area).
+# Diagrams and chart labels sit well below it; text-filled boxes sit above.
+PICTURE_TEXT_COVERAGE = 0.25
+_NON_TEXT_PICTURE = {
+    "bar_chart", "line_chart", "pie_chart", "scatter_chart", "stacked_bar_chart",
+    "flow_chart", "heatmap", "map", "natural_image", "photograph",
+    "engineering_drawing",
+}
+
+
+def _box(bbox: dict | None) -> tuple[float, float, float, float]:
+    bbox = bbox or {}
+    left, right = float(bbox.get("l") or 0), float(bbox.get("r") or 0)
+    top, bottom = float(bbox.get("t") or 0), float(bbox.get("b") or 0)
+    return min(left, right), min(top, bottom), max(left, right), max(top, bottom)
+
+
+def _picture_text_split(node: dict, doc: dict) -> tuple[list[str], list[str]]:
+    """Split a picture's children into (emit, keep_on_figure) refs.
+
+    Children whose box centre lies outside the picture box, and captions or
+    footnotes, are page text that Docling parented to the picture: always emit.
+    Text inside the box is emitted only when the picture is a text region:
+    the classifier (when it ran) does not call it a chart or photo, and the
+    text covers a sufficient share of the box.
+    """
+    prov = _prov(node) or {}
+    pic = _box(prov.get("bbox"))
+    area = max((pic[2] - pic[0]) * (pic[3] - pic[1]), 1e-6)
+    emit: list[str] = []
+    inside: list[tuple[str, float, int]] = []
+    for child in node.get("children") or []:
+        ref = _ref_of(child)
+        item = _resolve(doc, ref) if ref else None
+        if item is None:
+            continue
+        if not (item.get("text") or "").strip():
+            continue
+        iprov = _prov(item)
+        if item.get("label") in {"caption", "footnote"} or not iprov or int(iprov.get("page_no") or 0) != int(prov.get("page_no") or 0):
+            emit.append(ref)
+            continue
+        box = _box(iprov.get("bbox"))
+        cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+        if not (pic[0] <= cx <= pic[2] and pic[1] <= cy <= pic[3]):
+            emit.append(ref)
+            continue
+        inside.append((ref, (box[2] - box[0]) * (box[3] - box[1]), len(item.get("text") or "")))
+    classes = set()
+    for ann in node.get("annotations") or []:
+        for cls in (ann.get("predicted_classes") or [])[:1]:
+            name = cls.get("class_name")
+            if name:
+                classes.add(str(name))
+    non_text = bool(classes & _NON_TEXT_PICTURE)
+    covered = sum(a for _, a, _ in inside) / area
+    keep: list[str] = []
+    if inside and not non_text and covered >= PICTURE_TEXT_COVERAGE:
+        emit.extend(ref for ref, _, _ in inside)
+    else:
+        keep = [ref for ref, _, _ in inside]
+    return emit, keep
+
+
 def _removed(item: dict, doc: dict) -> dict:
     prov = _prov(item) or {}
     page = int(prov.get("page_no") or 1)
@@ -434,6 +524,19 @@ def _link_captions(block: dict, ref_to_id: dict[str, str], blocks: dict) -> None
     block.pop("_self", None)
 
 
+def _reading_slot(block: dict, order: list[str], blocks: dict) -> int:
+    """Index in `order` after the nearest earlier block (page, y, x) of the same document."""
+    key = (block["page"], block["bbox"][1], block["bbox"][0])
+    best = -1
+    best_key = None
+    for index, bid in enumerate(order):
+        other = blocks[bid]
+        other_key = (other["page"], other["bbox"][1], other["bbox"][0])
+        if other_key <= key and (best_key is None or other_key >= best_key):
+            best, best_key = index, other_key
+    return best + 1
+
+
 def convert_docling(
     doc: dict,
     *,
@@ -451,6 +554,7 @@ def convert_docling(
     seen: set[str] = set()
     seen_title = [False]
     ref_to_id: dict[str, str] = {}
+    stats_extra = {"pictureText": 0, "conserved": 0, "conservedBlocks": 0}
 
     def emit_ref(ref: str | None) -> None:
         if not ref or ref in seen:
@@ -464,11 +568,16 @@ def convert_docling(
         if label in {"page_header", "page_footer"} or layer == "furniture":
             removed.append(_removed(node, doc))
             return
-        if ref.startswith("#/groups") or label == "list":
+        if label in _LIST_GROUPS:
             block = _list_block(node, doc, ids)
             if block:
                 blocks[block["id"]] = block
                 order.append(block["id"])
+                seen.update(_list_item_refs(node, doc))
+            return
+        if ref.startswith("#/groups"):
+            for child in node.get("children") or []:
+                emit_ref(_ref_of(child))
             return
         if label == "table" or ref.startswith("#/tables"):
             block = _table_block(node, doc, ids)
@@ -477,6 +586,8 @@ def convert_docling(
             ref_to_id[ref] = block["id"]
             for cap in node.get("captions") or []:
                 emit_ref(_ref_of(cap))
+            for extra in list(node.get("footnotes") or []) + list(node.get("children") or []):
+                emit_ref(_ref_of(extra))
             return
         if label == "picture" or ref.startswith("#/pictures"):
             prov = _prov(node) or {}
@@ -498,6 +609,16 @@ def convert_docling(
             ref_to_id[ref] = block["id"]
             for cap in node.get("captions") or []:
                 emit_ref(_ref_of(cap))
+            emit_children, keep_children = _picture_text_split(node, doc)
+            for child_ref in emit_children:
+                child = _resolve(doc, child_ref)
+                if child and child.get("label") == "caption" and child_ref not in block["_captions"]:
+                    block["_captions"].append(child_ref)
+                emit_ref(child_ref)
+            for child_ref in keep_children:
+                if child_ref not in seen:
+                    seen.add(child_ref)
+                    stats_extra["pictureText"] += len((_resolve(doc, child_ref) or {}).get("text") or "")
             return
         block = _text_block(node, doc, ids, seen_title=seen_title)
         if block is None:
@@ -517,6 +638,33 @@ def convert_docling(
             removed.append(_removed(item, doc))
             if ref:
                 seen.add(ref)
+
+    # Conservation: any non-furniture text or table the walk never reached is
+    # still Docling's content. Emit it at its reading position.
+    for bucket in ("texts", "tables"):
+        for index, item in enumerate(doc.get(bucket) or []):
+            ref = item.get("self_ref") or f"#/{bucket}/{index}"
+            if ref in seen:
+                continue
+            if item.get("label") in {"page_header", "page_footer"} or item.get("content_layer") == "furniture":
+                continue
+            before = len(order)
+            if bucket == "tables":
+                block = _table_block(item, doc, ids)
+                chars = sum(len(c.get("text") or "") for c in block["cells"])
+            else:
+                if not (item.get("text") or "").strip():
+                    continue
+                block = _text_block(item, doc, ids, seen_title=seen_title, fallback=True)
+                if block is None:
+                    continue
+                chars = len(item.get("text") or "")
+            seen.add(ref)
+            blocks[block["id"]] = block
+            ref_to_id[ref] = block["id"]
+            order.insert(_reading_slot(block, order, blocks), block["id"])
+            stats_extra["conserved"] += chars
+            stats_extra["conservedBlocks"] += len(order) - before
 
     for block in list(blocks.values()):
         if block["type"] in {"table", "figure"}:
@@ -560,7 +708,7 @@ def convert_docling(
         "order": order,
         "blocks": blocks,
         "removed": removed,
-        "stats": {"ms": 0, "perPage": []},
+        "stats": {"ms": 0, "perPage": [], **stats_extra},
     }
     errors = validate_document(out)
     if errors:

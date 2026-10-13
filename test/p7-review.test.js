@@ -231,8 +231,9 @@ test("P7-5: unload leaves 0 registered watches and 0 pending host timers", async
     globalThis.setTimeout = realSet;
     globalThis.clearTimeout = realClear;
   }
-  for (const id of pending) { if (process.env.P7DBG) console.log(id.stack); realClear(id); }
-  assert.equal(pending.size, 0, "no host timer left");
+  const left = [...pending].map((id) => id.stack);
+  for (const id of pending) realClear(id);
+  assert.deepEqual(left, [], "no host timer left");
 });
 
 test("P7-5: a destroy during a park does not restart the hold", () => {
@@ -301,4 +302,34 @@ test("P7-6: a refused rebuild on resume leaves no orphan watch, stays held, and 
   await new Promise((r) => setTimeout(r, 5));
   assert.equal(main.board.items.get("ms4")?.string, "edit after failed resume");
   assert.ok(fake.watchList().length > 0, "watches back after the retry");
+});
+
+test("P7-6: a parked big board drops its highlight watches and rebuilds them on resume", async () => {
+  const fake = createFakeRoam({ echoDelay: 1 });
+  fake.roamWatch = true;
+  const board = seedBoard("main", "m");
+  board.children.push({ uid: "hlc", string: "((hl01))", props: { plexus: { type: "card", x: 0, y: -300, w: 200, h: 100 } } });
+  fake.seedBoard(board);
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  const readString = host.blockString.bind(host);
+  host.blockString = (id) => (id === "hl01" ? "text #h/yellow" : readString(id));
+  host.blockProps = () => ({ props: { "pdf-highlight": { type: "text", content: { text: "x" }, position: { boundingRect: { pageNumber: 1 } } } }, string: "text #h/yellow", pageTitle: "p.pdf" });
+  host.coversBlock = () => false;
+  let blockWatches = 0;
+  const watchBlock = host.watchBlock.bind(host);
+  host.watchBlock = (id, cb) => {
+    blockWatches += 1;
+    const off = watchBlock(id, cb);
+    return () => { blockWatches -= 1; off(); };
+  };
+  host.pullBoard("main");
+  const s = acquireSession("main", { host, linkDelay: 0, raf: (fn) => fn() });
+  await fake.flush();
+  assert.equal(s.board.items.get("hlc")?.kind, "highlight");
+  assert.equal(blockWatches, 1);
+  s.pauseWatches();
+  assert.equal(blockWatches, 0, "highlight watches go at the park");
+  s.resumeWatches();
+  await fake.flush();
+  assert.equal(blockWatches, 1, "and come back on resume");
 });

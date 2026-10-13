@@ -796,6 +796,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   let boardWatch = () => {};
   let boardWatchOn = false;
   let resumeRetry = null;
+  let highlightParked = false;
   // Paused through a host handle that keeps its watches registered (big boards): no remove/add per park.
   let boardWatchHeld = false;
   if (raw && typeof host.watchBoard === "function") {
@@ -836,7 +837,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     if (destroyed) return;
     const want = holders > pausedHolds && Boolean(raw);
     if (want && boardWatchOn && boardWatchHeld) {
-      // The host publishes once if the board changed while held; highlight watches stayed up.
+      // The host publishes once if the board changed while held.
       try {
         boardWatch.resume();
       } catch {
@@ -850,6 +851,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       boardWatchHeld = false;
       // A tree that arrived in the frame before the park was kept by the skipped flush; the host will not re-send it.
       if (latest && !scheduled) { scheduled = true; schedule(flush); }
+      // Highlight watches went at the park: rebuild them, and read their colours once.
+      const hadHighlights = highlightParked;
+      highlightParked = false;
+      try { syncHighlightWatches(); } catch { /* highlights follow the board watch */ }
+      if (hadHighlights) highlightDirty = true;
       if (highlightDirty && !highlightScheduled) { highlightScheduled = true; schedule(flushHighlights); }
     } else if (want && !boardWatchOn) {
       if (typeof host.watchBoard !== "function") return;
@@ -861,6 +867,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       if (typeof boardWatch.pause === "function") {
         boardWatch.pause();
         boardWatchHeld = true;
+        // Each highlight watch is re-pulled on every Roam transaction: they do not stay for the whole park.
+        highlightParked = highlightWatches.size > 0;
+        disposeHighlightWatches();
       } else dropBoardWatch();
     }
   }

@@ -1189,12 +1189,23 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       sub.paused = false;
       let own = sub.split;
       if (own.disposed || splitWatches.get(uid) !== own) {
+        // The hold expired: build the split again from a fresh read of the whole board, never from the open-time
+        // seed (cards edited since then would publish their old contents).
         own.subs.delete(sub);
-        own = attach();
         sub.missed = false;
+        let fresh = null;
+        try { fresh = rawPull(BOARD_PATTERN, eidKey(uid)); } catch { fresh = null; }
+        if (!fresh?.[":block/uid"]) {
+          queueMicrotask(() => { if (active && !sub.paused) sub.fn(null); });
+          return;
+        }
+        absorb(uid, fresh, false);
+        bigBoards.set(uid, fresh);
+        own = attach();
         queueMicrotask(() => {
-          if (!active || sub.paused || sub.split !== own) return;
-          const tree = own.refresh();
+          // A mounted card's compare read may have published already.
+          if (!active || sub.paused || sub.split !== own || own.tree) return;
+          const tree = own.current();
           if (tree?.[":block/uid"]) absorb(uid, tree, false);
           sub.fn(tree);
         });
@@ -1453,14 +1464,15 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         }
       }
       if (warm.has(uid)) {
+        // A split is the authority for its board: the cache can hold the parent board's older copy of it, or the
+        // pre-park tree of a held split. Never reseed a split from the cache.
+        const own = splitWatches.get(uid);
+        if (own && !own.disposed && own.tree?.[":block/uid"]) return own.tree;
         const cached = cache.blockOf(uid);
         if (cached?.[":block/uid"]) {
           // A nested board absorbed from its parent's pull is big by the same rule as a cold one: its watch must
           // be the split, not one recursive pull (a 3,641-block nested board on the PhD main board).
-          if (treeSize(cached, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN) {
-            bigBoards.set(uid, cached);
-            splitWatches.get(uid)?.reseed(cached);
-          }
+          if (treeSize(cached, SPLIT_WATCH_MIN) >= SPLIT_WATCH_MIN && !(own && !own.disposed)) bigBoards.set(uid, cached);
           return cached;
         }
       }

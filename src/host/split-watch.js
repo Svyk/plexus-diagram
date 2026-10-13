@@ -163,8 +163,11 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
     try { return pull(pattern, entityOf(id)); } catch { return null; }
   };
 
+  // True when the seed differs from what is stored (containers to their direct children, contents whole).
   const seedFrom = (full) => {
-    if (!full?.[UID]) return;
+    if (!full?.[UID]) return false;
+    const depthOf = (kind) => (kind === "edges" ? 3 : kind === "deep" ? Infinity : 2);
+    let changed = !sameKids([nodes.get(uid)], [full], 2);
     nodes.set(uid, full);
     const nextContent = new Map();
     const walk = (node, atRoot) => {
@@ -173,15 +176,20 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
         if (!id) continue;
         const kind = containerKind(kid, atRoot);
         if (kind) {
+          if (!changed && !sameKids([nodes.get(id)], [kid], depthOf(kind))) changed = true;
           kinds.set(id, kind);
           nodes.set(id, kid);
           if (kind === "struct") walk(kid, false);
-        } else nextContent.set(id, kidsOf(kid));
+        } else {
+          if (!changed && !sameKids(content.get(id), kidsOf(kid))) changed = true;
+          nextContent.set(id, kidsOf(kid));
+        }
       }
     };
     walk(full, true);
     for (const [id, kids] of content) if (!nextContent.has(id) && itemWatch.has(id)) nextContent.set(id, kids);
     content = nextContent;
+    return changed;
   };
 
   const kick = () => {
@@ -464,13 +472,22 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
       return assemble();
     },
     // A fresh full pull of the board (catch-up, refresh) replaces what the watches hold.
+    // Callers pass a fresh read only (a cached tree can be older than what the watches hold). A seed that differs
+    // from the stored tree publishes once (or marks a held split dirty): a card mounting later compares against the
+    // stored contents, so a silent reseed would hide the change from it.
     reseed(full) {
       if (disposed) return;
-      seedFrom(full);
+      const changed = seedFrom(full);
       // The seed may be older than what the watch already applied: the next Connections change reads whole.
       for (const id of fingerprints.keys()) fingerprints.set(id, null);
       sync();
       armPending();
+      if (changed) kick();
+    },
+    // The assembled tree without reading the containers again (a split just seeded from a fresh read).
+    current() {
+      if (disposed) return null;
+      return lastTree ?? assemble();
     },
     dispose() {
       if (disposed) return;

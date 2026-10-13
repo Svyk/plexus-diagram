@@ -67,3 +67,117 @@ test("P7-2: a tree delivered in the frame before a park is applied on a held res
   while (frames.length) frames.shift()();
   assert.equal(s.board.items.get("ms4")?.string, "Foreign rename");
 });
+
+const find = (n, uid) => (n?.[":block/uid"] === uid ? n : (n?.[":block/children"] || []).map((k) => find(k, uid)).find(Boolean) || null);
+function nestedSetup() {
+  const fake = createFakeRoam({ echoDelay: 1 });
+  fake.roamWatch = true;
+  const inner = seedBoard("nest", "n");
+  const nestedCard = { uid: "nest", string: "{{[[diagram]]:Inner}}", props: { plexus: { type: "card", x: 0, y: -400, w: 300, h: 200, v: 2 } }, children: inner.children };
+  const outer = seedBoard("main", "m");
+  outer.children.push(nestedCard);
+  fake.seedBoard(outer);
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  return { fake, host };
+}
+for (const held of [true, false]) {
+  test(`P7-3: a warm-cache pullBoard never reseeds a ${held ? "held" : "live"} split with a stale tree`, async () => {
+    const { fake, host } = nestedSetup();
+    host.pullBoard("main");
+    host.watchBoard("main", () => {});
+    host.pullBoard("nest");
+    const trees = [];
+    const off = host.watchBoard("nest", (t) => trees.push(t));
+    await fake.flush();
+    if (held) off.pause();
+    await fake.api.data.block.update({ block: { uid: "ns3", string: "edited elsewhere" } });
+    await fake.flush();
+    await fake.api.data.block.update({ block: { uid: "mc0x0", string: "main edit" } });
+    await fake.flush();
+    host.pullBoard("nest", { prime: false });
+    if (held) off.resume();
+    else await fake.api.data.block.update({ block: { uid: "ns9", string: "second edit" } });
+    await fake.flush();
+    await new Promise((r) => setTimeout(r, 5));
+    assert.equal(find(trees.at(-1), "ns3")?.[":block/string"], "edited elsewhere");
+  });
+}
+
+test("P7-3: hold expiry rebuilds from a fresh read, not the open-time seed", async () => {
+  const { fake, host } = setup();
+  host.pullBoard("main");
+  const trees = [];
+  const off = host.watchBoard("main", (t) => trees.push(t));
+  const offContent = host.watchContent("mc1x1");
+  await fake.flush();
+  await fake.api.data.block.update({ block: { uid: "mk1x1", string: "edited while mounted" } });
+  await fake.flush();
+  offContent();
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    off.pause();
+    mock.timers.tick(SPLIT_HOLD_MS);
+    assert.equal(fake.watchList().length, 0, "hold expired");
+  } finally { mock.timers.reset(); }
+  await fake.api.data.block.update({ block: { uid: "mk2x2", string: "edited after the hold" } });
+  await fake.api.data.block.update({ block: { uid: "ms7", string: "Renamed after the hold" } });
+  await fake.flush();
+  const n = trees.length;
+  off.resume();
+  await fake.flush();
+  const after = trees.slice(n);
+  assert.equal(after.length, 1, "one publish on resume");
+  assert.equal(find(after[0], "mk1x1")?.[":block/string"], "edited while mounted");
+  assert.equal(find(after[0], "mk2x2")?.[":block/string"], "edited after the hold");
+  assert.equal(find(after[0], "ms7")?.[":block/string"], "Renamed after the hold");
+  off();
+});
+
+for (const held of [true, false]) {
+  test(`P7-3: a full pullBoard reseed does not hide a foreign edit from the mount compare (${held ? "held" : "live"})`, async () => {
+    const { fake, host } = setup();
+    host.pullBoard("main");
+    const trees = [];
+    const off = host.watchBoard("main", (t) => trees.push(t));
+    await fake.flush();
+    if (held) off.pause();
+    await fake.api.data.block.update({ block: { uid: "mk5x5", string: "edited elsewhere" } });
+    await fake.flush();
+    host.pullBoard("main", { prime: false });
+    if (held) off.resume();
+    await fake.flush();
+    host.watchContent("mc5x5");
+    await fake.flush();
+    assert.equal(find(trees.at(-1), "mk5x5")?.[":block/string"], "edited elsewhere");
+    off();
+  });
+}
+
+test("P7-3: a session sees an unmounted card's foreign edit after a refreshCardCache pull and a mount", async () => {
+  const { fake, host } = setup();
+  host.pullBoard("main");
+  const s = acquireSession("main", { host, linkDelay: 0 });
+  await fake.flush();
+  await fake.api.data.block.update({ block: { uid: "mk5x5", string: "edited elsewhere" } });
+  await fake.flush();
+  host.pullBoard("main", { prime: false });
+  const off = host.watchContent("mc5x5");
+  await fake.flush();
+  await new Promise((r) => setTimeout(r, 5));
+  assert.deepEqual((s.board.items.get("mc5x5")?.content || []).map((k) => k[":block/string"]), ["edited elsewhere"]);
+  off();
+});
+
+test("P7-3: a full pullBoard of an unchanged big board publishes nothing", async () => {
+  const { fake, host } = setup();
+  host.pullBoard("main");
+  const trees = [];
+  const off = host.watchBoard("main", (t) => trees.push(t));
+  host.watchContent("mc1x1");
+  await fake.flush();
+  const n = trees.length;
+  host.pullBoard("main", { prime: false });
+  await fake.flush();
+  assert.equal(trees.length, n);
+  off();
+});

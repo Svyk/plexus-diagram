@@ -3539,6 +3539,7 @@ function buildBoardView(onFail, {
     badgeTimer = timers.later(() => { badgeTimer = null; refreshBadges(); }, ms);
   };
 
+  let suspendedBoard = null;
   let edgesZoomAt = NaN;
   let wheelLayer = false;
   let minimapAt = -Infinity;
@@ -8863,6 +8864,7 @@ function buildBoardView(onFail, {
     suspend() {
       if (disposed || suspended) return;
       suspended = true;
+      suspendedBoard = board();
       if (frameHandle) { const cancel = frameHandle; frameHandle = null; cancel(); }
       if (settleTimer) { settleTimer(); settleTimer = null; }
       if (resumeTimer) { resumeTimer(); resumeTimer = null; }
@@ -8879,8 +8881,17 @@ function buildBoardView(onFail, {
       suspended = false;
       resumeObservers();
       armCoverWarm();
-      dirty.all = true;
-      dirty.structural = true;
+      // The DOM was kept while parked. Only a board that changed meanwhile needs the full pass (a change that lands
+      // later arrives through the session as usual); otherwise the camera, selection and minimap are enough.
+      if (board() !== suspendedBoard) {
+        dirty.all = true;
+        dirty.structural = true;
+      } else {
+        dirty.viewport = true;
+        dirty.selection = true;
+        dirty.minimap = true;
+      }
+      suspendedBoard = null;
       schedule();
     },
     cameraRect() {
@@ -8937,6 +8948,9 @@ function buildBoardView(onFail, {
     // Swap the settings object (feature.js calls this when a setting changes) and re-apply what depends on it.
     setSettings(next) {
       if (disposed) return;
+      // Settings objects are replaced on change; a reattach hands back the same one. Re-applying it re-sampled Roam's
+      // styles and re-placed every edge (0.5 s on a crumb back to the PhD main board).
+      if (next === settingsRef) return;
       const minimapBefore = setting("show-minimap", true) !== false;
       const opensBefore = trackOpensOn();
       const interopBefore = readSetting("interop") !== false;

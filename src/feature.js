@@ -1658,14 +1658,12 @@ export async function installPlexusDiagram({
     if (speedFlags().keepAlive === false) return false;
     const view = rec?.view;
     if (!view || view.sketchStandIn === true) return false;
-    if (rec.fullscreen) return false;
-    if (holdsFocus(rec)) {
-      // The crumb, tab or card the user just clicked holds focus; parking drops it anyway. Only a text entry in
-      // progress keeps the view out of the pool (PhD main board: crumbs and back rebuilt the board every time).
-      const active = doc.activeElement;
-      if (isTextEntryTarget(active)) return false;
-      try { active?.blur?.(); } catch { /* focus stays where it is */ }
-    }
+    // A clicked crumb or card holds focus, so crumbs and back rebuild the board from its snapshot instead of taking
+    // the pool. Keeping the view here was tried (blur + keep, Fable round 2026-10-12) and measured worse on the PhD
+    // main board: a pooled reattach forces two full-document layouts (measure/syncCramped, propsPanel.place: 2 x
+    // 324 ms on a 113k-node page) plus ~0.8 s of resume work before anything paints, while the rebuild shows the
+    // snapshot in ~160 ms. Make the reattach paint-first before keeping a focused view.
+    if (rec.fullscreen || holdsFocus(rec)) return false;
     const root = view.root;
     return Boolean(root && typeof root.remove === "function");
   }

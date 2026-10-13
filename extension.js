@@ -99961,15 +99961,7 @@ async function installPlexusDiagram({
     if (speedFlags().keepAlive === false) return false;
     const view = rec?.view;
     if (!view || view.sketchStandIn === true) return false;
-    if (rec.fullscreen) return false;
-    if (holdsFocus(rec)) {
-      const active3 = doc.activeElement;
-      if (isTextEntryTarget(active3)) return false;
-      try {
-        active3?.blur?.();
-      } catch {
-      }
-    }
+    if (rec.fullscreen || holdsFocus(rec)) return false;
     const root = view.root;
     return Boolean(root && typeof root.remove === "function");
   }

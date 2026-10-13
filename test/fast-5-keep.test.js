@@ -609,21 +609,18 @@ test("a fullscreen mount and a mount with a text entry in progress are disposed 
   }
 });
 
-// A crumb, tab or card the user just clicked holds focus. Refusing the pool for that made crumbs, back and tabs
-// rebuild the board every time on the PhD main board.
-test("a mount whose focus is on a plain element (a clicked crumb or card) is detached and kept", async () => {
+// A clicked crumb or card holds focus: the board is rebuilt from its snapshot, not taken from the pool (keeping it
+// measured slower on the PhD main board; see canKeep).
+test("a mount whose focus is on a plain element (a clicked crumb or card) is disposed, not kept", async () => {
   const t = await openBoards();
   try {
     await go(t.views[0], "boardBBB2");
-    let blurred = 0;
     const crumb = t.doc.createElement("button");
-    crumb.blur = () => { blurred += 1; };
     t.views[1].root.append(crumb);
     t.doc.activeElement = crumb;
     await go(t.views[1], "boardCCC3");
-    assert.equal(t.views[1].disposed, 0);
+    assert.equal(t.views[1].disposed, 1);
     assert.equal(t.views[1].root.isConnected, false);
-    assert.equal(blurred, 1);
   } finally {
     await t.lifecycle.dispose().catch(() => {});
     t.restore();

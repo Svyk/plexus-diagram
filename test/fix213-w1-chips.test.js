@@ -283,3 +283,28 @@ test("page chip row sits right under the page title when Roam renders a title co
     restore();
   }
 });
+
+test("1a: cardChips does not keep chips or rows of a re-rendered page", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const cache = createCardCache();
+    cache.setBoard("b1", "Board", [{ uid: "c1", target: "block1" }]);
+    const chips = createCardChips({ doc: stub.document, cache });
+    for (let i = 0; i < 5; i += 1) {
+      const root = el(stub, "div");
+      root.append(block(stub, "block1"));
+      stub.document.body.append(root);
+      chips.scan(root);
+      root.remove();
+    }
+    const last = el(stub, "div");
+    last.append(block(stub, "block1"));
+    stub.document.body.append(last);
+    chips.scan(last);
+    assert.equal(chips.count(), 1, "chips of dropped pages are purged on the next scan");
+    chips.dispose();
+  } finally {
+    restore();
+  }
+});

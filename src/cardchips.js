@@ -452,6 +452,8 @@ export function createCardChips({
     }
     // Chips this module wrote come back through the mutation observer. They are not page content.
     if (node.closest?.(OWN)) return;
+    for (const chip of [...chips]) if (chip.isConnected === false) chips.delete(chip);
+    for (const row of [...rows]) if (row.isConnected === false) rows.delete(row);
     const memo = new Map();
     const list = containersOf(node);
     const end = Math.min(SCAN_CAP, list.length);

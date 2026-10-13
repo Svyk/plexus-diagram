@@ -7527,6 +7527,13 @@ function buildBoardView(onFail, {
     const kind = nativeClickKind(event.target);
     if (kind === "image" || kind === "checkbox") return;
     if (inRoamTable(event.target)) return;
+    // An Open button in a face adopted from the open snapshot is plain DOM until the card's body mounts again (the live
+    // button stops its own click). Its board opens from here.
+    const open = event.target?.closest?.(".pxd-item__open");
+    if (open) {
+      const uid = open.getAttribute?.("data-open-board") || open.closest?.(".pxd-item[data-uid]")?.getAttribute?.("data-uid");
+      if (uid) void openBoard(uid);
+    }
     if (!leavesBoardPointer(event.target)) event.stopPropagation();
   });
   listen(root, "dblclick", (event) => {

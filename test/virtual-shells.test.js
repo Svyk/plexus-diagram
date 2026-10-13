@@ -10,7 +10,7 @@ const COLS = 40;
 const N = 1000;
 const EDGES = 600;
 
-function bigBoard() {
+function bigBoard({ nested = false } = {}) {
   const cards = Array.from({ length: N }, (_, i) => ({
     ":block/uid": `card${String(i).padStart(5, "0")}`,
     ":block/string": `Card ${i}`,
@@ -25,14 +25,15 @@ function bigBoard() {
     ":block/props": { ":plexus": { ":type": "edge", ":from": cards[i][":block/uid"], ":to": cards[i + 1][":block/uid"] } },
   }));
   const conn = { ":block/uid": "connections1", ":block/string": "Connections", ":block/order": N, ":block/props": { ":plexus": { ":type": "edges" } }, ":block/children": edges };
-  return { ":block/uid": "bigboard01", ":block/string": "{{[[diagram]]:Big}}", ":block/props": { ":plexus": { ":v": 2 } }, ":block/children": [...cards, conn] };
+  const inner = nested ? [{ ":block/uid": "inner00001", ":block/string": "{{[[diagram]]:Inner}}", ":block/order": N + 1, ":block/props": { ":plexus": { ":x": 0, ":y": -400, ":w": 300, ":h": 200, ":v": 2 } }, ":block/children": [] }] : [];
+  return { ":block/uid": "bigboard01", ":block/string": "{{[[diagram]]:Big}}", ":block/props": { ":plexus": { ":v": 2 } }, ":block/children": [...cards, conn, ...inner] };
 }
 
-function mount(vp, extra = {}) {
+function mount(vp, extra = {}, fixture = {}) {
   const stub = createDomStub({ width: 1400, height: 900 });
   const restore = stub.install();
   stub.localStorage.setItem("plexus-diagram:vp:Svy:bigboard01", JSON.stringify(vp));
-  const board = buildBoard(bigBoard());
+  const board = buildBoard(bigBoard(fixture));
   const host = {
     stats: {}, graph: "Svy",
     renderString(el, string) { el.textContent = string; },
@@ -122,4 +123,24 @@ test("an edge is near the view when the segment between its ends crosses it, not
   assert.equal(segmentMeetsRect(-100, 150, 150, 300, view), false);
   assert.equal(segmentMeetsRect(200, -100, 300, 400, view), false);
   assert.equal(segmentMeetsRect(-300, 120, 400, 101, view), false);
+});
+
+test("an Open button without its own listener (a snapshot face) still opens its board", async () => {
+  const opened = [];
+  const m = mount({ x: 0, y: 0, zoom: 1 }, { onOpenBoard: (uid) => opened.push(uid) }, { nested: true });
+  try {
+    await m.pump(20);
+    const shell = [...m.view.root.querySelectorAll(".pxd-item[data-uid]")][0];
+    const doc = m.stub.document;
+    const button = doc.createElement("button");
+    button.className = "pxd-btn pxd-item__open";
+    button.setAttribute("data-open-board", "inner00001");
+    shell.append(button);
+    button.dispatchEvent({ type: "click", bubbles: true, target: button, stopPropagation() {}, preventDefault() {} });
+    await m.pump(2);
+    assert.deepEqual(opened, ["inner00001"]);
+  } finally {
+    m.view.dispose();
+    m.restore();
+  }
 });

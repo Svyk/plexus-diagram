@@ -2288,6 +2288,7 @@ export function createItemRenderer({
   };
 
   const openBoard = (uid) => { if (onOpenBoard) onOpenBoard(uid); else host?.openBlock?.(uid); };
+
   const commitBoardName = (uid, name) => (onRenameBoard || ((u, n) => session?.renameBoard?.(u, n)))(uid, name);
 
 
@@ -2371,6 +2372,7 @@ export function createItemRenderer({
     open.textContent = "Open";
     open.setAttribute("aria-label", "Open");
     open.dataset.action = "open";
+    open.setAttribute("data-open-board", openUid);
     for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
     open.addEventListener("click", (event) => { event.stopPropagation(); openBoard(openUid); });
   };

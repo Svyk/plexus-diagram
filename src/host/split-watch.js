@@ -249,6 +249,17 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, g
         try { data.removePullWatch(w.pattern, w.entity, w.cb); } catch { /* already gone */ }
       };
     },
+    // Read every container again now (an undo, a refresh) and return the assembled tree; contents stay as stored.
+    refresh() {
+      if (disposed) return null;
+      for (const [id, kind] of kinds) {
+        const fresh = read(patternOf(kind), id);
+        if (fresh?.[UID]) nodes.set(id, fresh);
+        else if (id === uid) return null;
+        else nodes.delete(id);
+      }
+      return assemble();
+    },
     // A fresh full pull of the board (catch-up, refresh) replaces what the watches hold.
     reseed(full) {
       if (disposed) return;

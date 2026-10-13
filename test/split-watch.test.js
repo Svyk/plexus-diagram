@@ -145,3 +145,14 @@ test("sameKids compares text, order and props to the given depth", () => {
   assert.equal(sameKids(a, b, 1), true);
   assert.equal(sameKids(a, b), false);
 });
+
+test("an undo's repull of a big board reads its containers, not the whole tree", async () => {
+  const { fake, host, full } = setup();
+  const total = size(full);
+  await fake.api.data.block.update({ block: { uid: "c5x5", string: "after undo" } });
+  fake.pullCounter = { n: 0 };
+  const tree = host.pullBoard("big1", { light: true });
+  assert.equal(find(tree, "c5x5")[":block/string"], "after undo");
+  assert.equal(find(tree, "k5x5")[":block/string"], "kid 5.5");
+  assert.ok(fake.pullCounter.n < total * 0.5, `repull read ${fake.pullCounter.n} of ${total} blocks`);
+});

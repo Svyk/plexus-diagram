@@ -1298,6 +1298,17 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
     pullBoard(uid, { light = false, deferRefs = false } = {}) {
+      // A big board under its split watch (undo, redo, refresh): its containers again, contents as stored. The whole
+      // tree plus every ref was 1.2 s on the PhD main board.
+      const split = light ? splitWatches.get(uid) : null;
+      if (split) {
+        const tree = split.refresh();
+        if (tree?.[":block/uid"]) {
+          absorb(uid, tree, false);
+          bigBoards.set(uid, tree);
+          return tree;
+        }
+      }
       if (warm.has(uid)) {
         const cached = cache.blockOf(uid);
         if (cached?.[":block/uid"]) return cached;
@@ -1373,8 +1384,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         // 300 cards measured about 19 ms, inside one idle slice.
         const idle = globalThis.requestIdleCallback;
         const later = (fn) => (typeof idle === "function" ? idle((deadline) => fn(deadline), { timeout: 1500 }) : setTimeout(fn, 250));
-        const titles = found.titles;
-        const targets = found.stats;
+        // A big board reads linked refs and card stats for the cards on screen only (one part of 10 linked-ref titles
+        // was ~0.5 s on the PhD main board).
+        const titles = big ? [] : found.titles;
+        const targets = big ? [] : found.stats;
         const pulledAt = ++pullSeq;
         let ti = 0;
         let si = 0;

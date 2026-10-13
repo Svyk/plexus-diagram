@@ -124,6 +124,9 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
   // Connections block uid -> fingerprint of its edges (null: unknown, the next change reads the whole block).
   const fingerprints = new Map();
   let content = new Map();
+  // Item contents as last published (or as seeded): the mount-time compare reads against these, so a reseed that
+  // replaced `content` with newer contents cannot hide a change the subscribers have not seen.
+  let published = new Map();
   const itemWatch = new Map();
   // Released item watches still registered: key -> released at (insertion order is release order).
   const idleItems = new Map();
@@ -163,7 +166,9 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
     try { return pull(pattern, entityOf(id)); } catch { return null; }
   };
 
-  // True when the seed differs from what is stored (containers to their direct children, contents whole).
+  // True when a container in the seed differs from the stored one (to its direct children). Contents are not
+  // compared here (a walk of every card body on each refreshCardCache pull): a mounting card compares against what
+  // was last published instead.
   const seedFrom = (full) => {
     if (!full?.[UID]) return false;
     const depthOf = (kind) => (kind === "edges" ? 3 : kind === "deep" ? Infinity : 2);
@@ -180,10 +185,7 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
           kinds.set(id, kind);
           nodes.set(id, kid);
           if (kind === "struct") walk(kid, false);
-        } else {
-          if (!changed && !sameKids(content.get(id), kidsOf(kid))) changed = true;
-          nextContent.set(id, kidsOf(kid));
-        }
+        } else nextContent.set(id, kidsOf(kid));
       }
     };
     walk(full, true);
@@ -352,6 +354,7 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
     for (const [id, kind] of seenKinds) kinds.set(id, kind);
     for (const [id, kids] of content) if (!seenContent.has(id) && itemWatch.has(id)) seenContent.set(id, kids);
     content = seenContent;
+    published = new Map(seenContent);
     sync();
     lastTree = tree;
     armPending();
@@ -383,6 +386,7 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
     kinds.clear();
     fingerprints.clear();
     content = new Map();
+    published = new Map();
     lastTree = null;
   };
 
@@ -432,9 +436,10 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
       };
       itemWatch.set(key, w);
       data.addPullWatch(w.pattern, w.entity, w.cb);
-      // Contents may have changed while the card was off screen.
+      // Contents may have changed while the card was off screen (compared with what subscribers last saw).
       const now = read(pattern, key);
-      if (now?.[UID] && !sameKids(content.get(key), kidsOf(now), depth)) {
+      const seen = published.has(key) ? published.get(key) : content.get(key);
+      if (now?.[UID] && !sameKids(seen, kidsOf(now), depth)) {
         content.set(key, whole(now));
         kick();
       }
@@ -454,6 +459,7 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
   };
 
   seedFrom(seed);
+  published = new Map(content);
   try {
     sync();
   } catch (error) {
@@ -479,9 +485,8 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
       return assemble();
     },
     // A fresh full pull of the board (catch-up, refresh) replaces what the watches hold.
-    // Callers pass a fresh read only (a cached tree can be older than what the watches hold). A seed that differs
-    // from the stored tree publishes once (or marks a held split dirty): a card mounting later compares against the
-    // stored contents, so a silent reseed would hide the change from it.
+    // Callers pass a fresh read only (a cached tree can be older than what the watches hold). A seed whose
+    // containers differ publishes once (or marks a held split dirty).
     reseed(full) {
       if (disposed) return;
       const changed = seedFrom(full);

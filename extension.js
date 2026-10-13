@@ -38255,6 +38255,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
   const live2 = /* @__PURE__ */ new Map();
   const fingerprints = /* @__PURE__ */ new Map();
   let content = /* @__PURE__ */ new Map();
+  let published = /* @__PURE__ */ new Map();
   const itemWatch = /* @__PURE__ */ new Map();
   const idleItems = /* @__PURE__ */ new Map();
   let idleTimer = null;
@@ -38312,10 +38313,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
           kinds.set(id, kind);
           nodes.set(id, kid);
           if (kind === "struct") walk3(kid, false);
-        } else {
-          if (!changed2 && !sameKids(content.get(id), kidsOf2(kid))) changed2 = true;
-          nextContent.set(id, kidsOf2(kid));
-        }
+        } else nextContent.set(id, kidsOf2(kid));
       }
     };
     walk3(full, true);
@@ -38469,6 +38467,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
     for (const [id, kind] of seenKinds) kinds.set(id, kind);
     for (const [id, kids] of content) if (!seenContent.has(id) && itemWatch.has(id)) seenContent.set(id, kids);
     content = seenContent;
+    published = new Map(seenContent);
     sync();
     lastTree = tree;
     armPending();
@@ -38506,6 +38505,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
     kinds.clear();
     fingerprints.clear();
     content = /* @__PURE__ */ new Map();
+    published = /* @__PURE__ */ new Map();
     lastTree = null;
   };
   const watchItem = (id, { pending: pending2 = false } = {}) => {
@@ -38553,7 +38553,8 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
       itemWatch.set(key, w);
       data.addPullWatch(w.pattern, w.entity, w.cb);
       const now4 = read2(pattern, key);
-      if (now4?.[UID] && !sameKids(content.get(key), kidsOf2(now4), depth)) {
+      const seen = published.has(key) ? published.get(key) : content.get(key);
+      if (now4?.[UID] && !sameKids(seen, kidsOf2(now4), depth)) {
         content.set(key, whole2(now4));
         kick();
       }
@@ -38572,6 +38573,7 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
     };
   };
   seedFrom(seed);
+  published = new Map(content);
   try {
     sync();
   } catch (error) {
@@ -38595,9 +38597,8 @@ function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerpr
       return assemble();
     },
     // A fresh full pull of the board (catch-up, refresh) replaces what the watches hold.
-    // Callers pass a fresh read only (a cached tree can be older than what the watches hold). A seed that differs
-    // from the stored tree publishes once (or marks a held split dirty): a card mounting later compares against the
-    // stored contents, so a silent reseed would hide the change from it.
+    // Callers pass a fresh read only (a cached tree can be older than what the watches hold). A seed whose
+    // containers differ publishes once (or marks a held split dirty).
     reseed(full) {
       if (disposed) return;
       const changed2 = seedFrom(full);

@@ -14,12 +14,10 @@ export const EDGES_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :
 // notes, and the why notes' child uids. Roam stamps :edit/time only on the entity whose string or props changed, so a
 // create, move or delete shows up as a changed uid list and a delete's renumbering as a changed :block/order.
 // Every children join takes (limit :block/children nil): without it Roam stops at 1,000 values and a short list
-// would read as deletions. This pattern is a watch only; reads and assembly stay on EDGES_PATTERN.
+// would read as deletions. This pattern is a watch only; reads and assembly stay on EDGES_PATTERN. A change that is
+// not order-only reads the Connections block whole: the published list always comes from a whole read, never from
+// patched pieces, so it can never be shorter than what Roam holds.
 export const FINGERPRINT_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/order :edit/time {(limit :block/children nil) [:block/uid :block/order :edit/time {(limit :block/children nil) [:block/uid]}]}]}]";
-// One edge as EDGES_PATTERN reads it.
-export const EDGE_BODY_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [:block/uid]}]}]`;
-export const FINGERPRINT_FULL_READ_ABOVE = 300;
-export const FINGERPRINT_CHUNK = 50;
 // A nested board's thumbnail: its items and their direct children (section members).
 export const THUMB_PATTERN = `[${A} {(limit :block/children nil) [${A} {(limit :block/children nil) [${A}]}]}]`;
 export const THUMB_DEPTH = 2;
@@ -81,7 +79,7 @@ const isBoardItem = (node) => classifyString(String(node?.[":block/string"] ?? "
 const TIME = ":edit/time";
 const ORDER = ":block/order";
 
-// uid -> { order, time, whys: [[uid, time, order, grandchildCount]] } for the children of a Connections block.
+// uid -> { order, time, whys: [[uid, time, order, grandchild uids joined]] } for the children of a Connections block.
 export function fingerprintOf(node) {
   const out = new Map();
   for (const edge of kidsOf(node)) {
@@ -90,7 +88,7 @@ export function fingerprintOf(node) {
     out.set(id, {
       order: edge[ORDER] ?? null,
       time: edge[TIME] ?? null,
-      whys: kidsOf(edge).map((why) => [why?.[UID], why?.[TIME] ?? null, why?.[ORDER] ?? null, kidsOf(why).length]),
+      whys: kidsOf(edge).map((why) => [why?.[UID], why?.[TIME] ?? null, why?.[ORDER] ?? null, kidsOf(why).map((g) => g?.[UID]).join(",")]),
     });
   }
   return out;
@@ -98,7 +96,7 @@ export function fingerprintOf(node) {
 
 const sameWhys = (a, b) => a.length === b.length && a.every((w, i) => w[0] === b[i][0] && w[1] === b[i][1] && w[2] === b[i][2] && w[3] === b[i][3]);
 
-// What changed between two fingerprints: uids whose body must be read again, uids that left, and whether any
+// What changed between two fingerprints: uids whose body changed or that are new, uids that left, and whether any
 // order moved. Stamps compare with !== because undo stamps again.
 export function diffFingerprints(prev, next) {
   const changed = [];
@@ -114,7 +112,7 @@ export function diffFingerprints(prev, next) {
   return { changed, removed, reordered };
 }
 
-export function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepPattern, onTree, fingerprint = false, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
+export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, fingerprint = false, guard = (_name, fn) => fn, schedule = (fn) => queueMicrotask(fn) }) {
   const entityOf = (id) => `[:block/uid "${String(id).replace(/["\\]/g, "")}"]`;
   const nodes = new Map();
   const kinds = new Map([[uid, "struct"]]);
@@ -181,36 +179,27 @@ export function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepP
     kick();
   });
 
-  // The fingerprint the watch will diff against. It must describe the same edges the stored block holds; if the uid
-  // lists differ (the stored block is older than the watch) the next change reads the whole block.
-  const initialFingerprint = (id) => {
-    const print = fingerprintOf(read(FINGERPRINT_PATTERN, id));
-    const stored = kidsOf(nodes.get(id)).map((edge) => edge?.[UID]);
-    if (stored.length !== print.size || stored.some((edgeUid) => !print.has(edgeUid))) return null;
-    return print;
-  };
-
-  const readEdgeBodies = (uids) => {
-    const out = new Map();
-    for (let i = 0; i < uids.length; i += FINGERPRINT_CHUNK) {
-      const chunk = uids.slice(i, i + FINGERPRINT_CHUNK);
-      let rows = null;
-      if (typeof pullMany === "function") {
-        try { rows = pullMany(EDGE_BODY_PATTERN, chunk.map((id) => [UID, id])); } catch { rows = null; }
-      }
-      if (!Array.isArray(rows) || rows.length !== chunk.length) rows = chunk.map((id) => read(EDGE_BODY_PATTERN, id));
-      chunk.forEach((id, at) => { if (rows[at]?.[UID]) out.set(id, rows[at]); });
-    }
-    return out;
-  };
-
   const readWholeEdges = (id) => {
     const fresh = read(EDGES_PATTERN, id);
-    if (fresh?.[UID]) nodes.set(id, fresh);
-    return fresh;
+    return fresh?.[UID] ? fresh : null;
   };
 
-  // The Connections watch: diff the fingerprint, read only the edges that changed, keep the rest as stored.
+  // The Connections block read whole and the fingerprint of the same moment, back to back in one synchronous turn.
+  // Null when either read failed or the block lacks an edge the fingerprint lists (a read caught mid-transaction):
+  // nothing is stored and the next change reads again.
+  const readConsistent = (id) => {
+    const whole = readWholeEdges(id);
+    if (!whole) return null;
+    const raw = read(FINGERPRINT_PATTERN, id);
+    if (!raw?.[UID]) return null;
+    const print = fingerprintOf(raw);
+    const have = new Set(kidsOf(whole).map((edge) => edge?.[UID]));
+    for (const edgeUid of print.keys()) if (!have.has(edgeUid)) return null;
+    return { whole, print };
+  };
+
+  // The Connections watch: diff the fingerprint. An order-only change re-sorts the stored edges; anything else reads
+  // the block whole.
   const onFingerprint = (id) => guard("watchEdges", (_before, after) => {
     if (disposed) return;
     if (!after?.[UID]) {
@@ -222,38 +211,33 @@ export function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepP
     const next = fingerprintOf(after);
     const prev = fingerprints.get(id) || null;
     const stored = nodes.get(id);
-    // Unknown history, or a block that came back empty: read it whole rather than trust a diff.
-    if (!prev || !stored?.[UID] || (next.size === 0 && prev.size > 0)) {
-      readWholeEdges(id);
-      fingerprints.set(id, next);
+    let reordered = false;
+    if (prev && stored?.[UID]) {
+      const diff = diffFingerprints(prev, next);
+      if (!diff.changed.length && !diff.removed.length) {
+        if (!diff.reordered) return;
+        reordered = true;
+      }
+    }
+    if (!reordered) {
+      const got = readConsistent(id);
+      if (!got) {
+        // Keep what is stored and read whole on the next change; never publish a list shorter than Roam's.
+        fingerprints.set(id, null);
+        return;
+      }
+      nodes.set(id, got.whole);
+      fingerprints.set(id, got.print);
       kick();
       return;
     }
-    const { changed, removed, reordered } = diffFingerprints(prev, next);
-    if (!changed.length && !removed.length && !reordered) return;
-    fingerprints.set(id, next);
-    let kids = kidsOf(stored);
-    if (changed.length > FINGERPRINT_FULL_READ_ABOVE) {
-      readWholeEdges(id);
-      kick();
-      return;
-    }
-    const fresh = changed.length ? readEdgeBodies(changed) : new Map();
-    const byUid = new Map(kids.map((edge) => [edge[UID], edge]));
-    for (const gone of removed) byUid.delete(gone);
-    for (const edgeUid of changed) {
-      const body = fresh.get(edgeUid);
-      if (body) byUid.set(edgeUid, body);
-      else byUid.delete(edgeUid);
-    }
-    kids = [];
-    for (const [edgeUid, edge] of byUid) {
-      const print = next.get(edgeUid);
-      if (!print) continue;
-      kids.push(print.order != null && edge[ORDER] !== print.order ? { ...edge, [ORDER]: print.order } : edge);
-    }
+    const kids = kidsOf(stored).map((edge) => {
+      const order = next.get(edge[UID])?.order;
+      return order != null && edge[ORDER] !== order ? { ...edge, [ORDER]: order } : edge;
+    });
     kids.sort((a, b) => (a[ORDER] ?? 0) - (b[ORDER] ?? 0));
     nodes.set(id, { ...shallow(stored), [KIDS]: kids });
+    fingerprints.set(id, next);
     kick();
   });
 
@@ -266,7 +250,9 @@ export function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepP
       const entry = { kind, pattern: finger ? FINGERPRINT_PATTERN : patternOf(kind), entity: entityOf(id), cb: finger ? onFingerprint(id) : onContainer(id) };
       data.addPullWatch(entry.pattern, entry.entity, entry.cb);
       live.set(id, entry);
-      if (finger) fingerprints.set(id, initialFingerprint(id));
+      // The stored block came from a seed or an earlier pull, not from a read taken with the fingerprint: the first
+      // change reads the block whole.
+      if (finger) fingerprints.set(id, null);
     }
     for (const [id, entry] of [...live]) {
       if (kinds.has(id)) continue;
@@ -296,6 +282,7 @@ export function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepP
           if (!own?.[UID]) {
             own = read(patternOf(kind), id) || kid;
             nodes.set(id, own);
+            if (kind === "edges" && fingerprints.has(id)) fingerprints.set(id, null);
           }
           kids.push(kind === "struct" ? build(own, false) : own);
           continue;
@@ -420,8 +407,10 @@ export function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepP
       if (disposed) return null;
       for (const [id, kind] of kinds) {
         const fresh = read(patternOf(kind), id);
-        if (fresh?.[UID]) nodes.set(id, fresh);
-        else if (id === uid) return null;
+        if (fresh?.[UID]) {
+          nodes.set(id, fresh);
+          if (kind === "edges" && fingerprints.has(id)) fingerprints.set(id, null);
+        } else if (id === uid) return null;
         else nodes.delete(id);
       }
       return assemble();
@@ -430,6 +419,8 @@ export function createSplitWatch({ uid, seed, data, pull, pullMany = null, deepP
     reseed(full) {
       if (disposed) return;
       seedFrom(full);
+      // The seed may be older than what the watch already applied: the next Connections change reads whole.
+      for (const id of fingerprints.keys()) fingerprints.set(id, null);
       sync();
       armPending();
     },

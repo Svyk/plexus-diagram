@@ -1101,7 +1101,6 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         seed: bigBoards.get(uid),
         data,
         pull: rawPull,
-        pullMany: typeof data.pull_many === "function" ? (pattern, entities) => data.pull_many(pattern, entities) : null,
         fingerprint: edgeFingerprintOn(),
         deepPattern: BOARD_PATTERN,
         guard: (name, fn) => guardCallback(name, fn, { stats }),

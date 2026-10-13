@@ -797,6 +797,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   // Card-stat targets per idle slice (~1.3 ms each on a 28k-block board).
   const STATS_CHUNK = 80;
   const STATS_TTL_MS = 120000;
+  // Idle work after an open: parts this small, until ~IDLE_SLICE_MS of a slice is used.
+  const IDLE_SLICE_MS = 40;
+  const IDLE_RESERVE_MS = 8;
+  const IDLE_PART = 10;
+  const IDLE_REF_PART = 60;
   const MISS = Symbol("pull-miss");
   const rawPull = typeof data.pull === "function" ? data.pull.bind(data) : () => null;
   const parseEntity = (entity) => {
@@ -1325,6 +1330,18 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
           for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
         }
       };
+      // The same reads in slices for idle time (PhD main board: 1,000 refs were one 0.54 s task).
+      let refAt = 0;
+      const pullRefsPart = (n) => {
+        if (honored) return true;
+        const total = found.uids.length + found.titles.length;
+        const end = Math.min(total, refAt + n);
+        const uids = found.uids.slice(Math.min(refAt, found.uids.length), Math.min(end, found.uids.length));
+        const titles = found.titles.slice(Math.max(0, refAt - found.uids.length), Math.max(0, end - found.uids.length));
+        refAt = end;
+        if (uids.length || titles.length) for (const entity of pullMany(uids, titles)) addEntity(uid, entity);
+        return refAt >= total;
+      };
       // A keep-alive catch-up already shows its cards: their refs are read again in the first idle slice
       // (PhD main board: 1,000 refs, 0.54 s of the reattach task).
       const refsLater = light && deferRefs;
@@ -1355,7 +1372,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         // Linked refs stay in chunks of PRIME_CHUNK. Card stats are one pull:
         // 300 cards measured about 19 ms, inside one idle slice.
         const idle = globalThis.requestIdleCallback;
-        const later = (fn) => (typeof idle === "function" ? idle(() => fn(), { timeout: 1500 }) : setTimeout(fn, 250));
+        const later = (fn) => (typeof idle === "function" ? idle((deadline) => fn(deadline), { timeout: 1500 }) : setTimeout(fn, 250));
         const titles = found.titles;
         const targets = found.stats;
         const pulledAt = ++pullSeq;
@@ -1363,29 +1380,34 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         let si = 0;
         let statsDone = false;
         let refsDone = !refsLater;
-        const step = () => {
+        let dropped = false;
+        const clock = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+        // Small parts until the idle slice is nearly spent (PhD main board: 80 card stats or all refs per slice were
+        // 0.2-0.6 s tasks). One part always runs, so a busy window still makes progress.
+        const step = (deadline) => {
           // The board's last watch went away after this pull (closed, parked): skip the reads.
           if (unwatchedAt.has(uid) && unwatchedAt.get(uid) >= pulledAt) return;
-          if (!refsDone) {
-            refsDone = true;
-            try { pullRefs(); } catch { /* cards read their refs on demand */ }
-            later(step);
-            return;
-          }
-          if (ti === 0 && si === 0 && !statsDone) dropStats(uid);
-          if (ti < titles.length) {
-            try { fetchLinked(titles.slice(ti, ti + PRIME_CHUNK)); } catch { /* a later linkedRefs ask reads Roam */ }
-            ti += PRIME_CHUNK;
-          } else if (!statsDone) {
-            // PhD main board: ~3,000 targets in one cardStats call was a 5.7 s task. STATS_CHUNK per idle slice.
-            const part = targets.slice(si, si + STATS_CHUNK);
-            si += STATS_CHUNK;
-            if (si >= targets.length) statsDone = true;
-            if (part.length) {
-              try { host.cardStats(part, { boardUid: uid }); } catch { /* badges ask again */ }
+          const t0 = clock();
+          const left = () => Math.min(IDLE_SLICE_MS - (clock() - t0), typeof deadline?.timeRemaining === "function" && !deadline.didTimeout ? deadline.timeRemaining() : Infinity);
+          do {
+            if (!refsDone) {
+              try { refsDone = pullRefsPart(IDLE_REF_PART); } catch { refsDone = true; /* cards read their refs on demand */ }
+              continue;
             }
-          }
-          if (ti < titles.length || !statsDone) later(step);
+            if (!dropped) { dropped = true; dropStats(uid); }
+            if (ti < titles.length) {
+              try { fetchLinked(titles.slice(ti, ti + IDLE_PART)); } catch { /* a later linkedRefs ask reads Roam */ }
+              ti += IDLE_PART;
+            } else if (!statsDone) {
+              const part = targets.slice(si, si + IDLE_PART);
+              si += IDLE_PART;
+              if (si >= targets.length) statsDone = true;
+              if (part.length) {
+                try { host.cardStats(part, { boardUid: uid }); } catch { /* badges ask again */ }
+              }
+            } else break;
+          } while (left() > IDLE_RESERVE_MS);
+          if (!refsDone || ti < titles.length || !statsDone) later(step);
         };
         later(step);
       }

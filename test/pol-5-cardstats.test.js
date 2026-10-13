@@ -300,33 +300,31 @@ test("a foreground pullBoard reads card stats once", () => {
   assert.deepEqual(calls, [6]);
 });
 
-test("light prime keeps linked-ref chunks and reads card stats in idle slices of 80", () => {
+test("light prime reads linked refs, then card stats, in parts of 10 while the idle slice lasts", () => {
   const queued = [];
   const previous = globalThis.requestIdleCallback;
   globalThis.requestIdleCallback = (fn, opts) => {
     queued.push({ fn, opts });
     return queued.length;
   };
+  const spent = { timeRemaining: () => 0, didTimeout: false };
   try {
     const { host, calls, linked } = pageBoard(41);
     host.pullBoard("b1", { light: true });
     assert.equal(queued.length, 1);
     assert.deepEqual(queued[0].opts, { timeout: 1500 });
     assert.deepEqual(calls, []);
-    queued[0].fn();
-    assert.deepEqual(linked, [40]);
+    // A spent slice runs one part.
+    for (let i = 0; i < 5; i += 1) queued[i].fn(spent);
+    assert.deepEqual(linked, [10, 10, 10, 10, 1]);
     assert.deepEqual(calls, []);
-    assert.equal(queued.length, 2);
-    queued[1].fn();
-    assert.deepEqual(linked, [40, 1]);
-    assert.deepEqual(calls, []);
-    assert.equal(queued.length, 3);
-    queued[2].fn();
-    assert.deepEqual(calls, [80]);
-    assert.equal(queued.length, 4);
-    queued[3].fn();
-    assert.deepEqual(calls, [80, 2]);
-    assert.equal(queued.length, 4);
+    queued[5].fn(spent);
+    assert.deepEqual(calls, [10]);
+    // A roomy slice runs the rest.
+    queued[6].fn({ timeRemaining: () => 50, didTimeout: false });
+    assert.equal(calls.reduce((a, n) => a + n, 0), 82);
+    assert.ok(calls.every((n) => n <= 10));
+    assert.equal(queued.length, 7);
   } finally {
     globalThis.requestIdleCallback = previous;
   }

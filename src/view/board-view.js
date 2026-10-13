@@ -3613,6 +3613,18 @@ function buildBoardView(onFail, {
     edgesR.reveal?.(near);
   };
 
+  const paintGrid = () => {
+    const g = gridBackground(vp, bgPattern);
+    if (!g) return;
+    grid.style.backgroundSize = `${g.size}px ${g.size}px`;
+    grid.style.backgroundPosition = `${g.x}px ${g.y}px`;
+    if (bgPattern === "grid") {
+      const mod = (v) => ((v % g.major) + g.major) % g.major;
+      grid.style.setProperty("--pxd-grid-major", `${g.major}px`);
+      grid.style.setProperty("--pxd-grid-major-x", `${mod(vp.x)}px`);
+      grid.style.setProperty("--pxd-grid-major-y", `${mod(vp.y)}px`);
+    }
+  };
   const settle = () => {
     settleTimer?.();
     settleTimer = timers.later(() => {
@@ -3620,6 +3632,7 @@ function buildBoardView(onFail, {
       if (gesturing) return;
       hitShield.drop();
       endUnderlay();
+      paintGrid();
       if (wheelLayer) {
         wheelLayer = false;
         world.style.willChange = "";
@@ -6812,6 +6825,7 @@ function buildBoardView(onFail, {
           itemsR.setPaused(false);
           applyLod();
           propsPanel.place();
+          paintGrid();
           scheduleContent();
           if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
           underlay.hide();
@@ -8516,19 +8530,10 @@ function buildBoardView(onFail, {
       // The tier flips (classes + font variables, once) the moment the zoom crosses the threshold, mid-gesture too.
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       if (nextTier !== tier) { tier = nextTier; paintTier(); pdfFlip?.setLod?.(tier); chrome.toolbar.scheduleDock?.(); }
-      if (!gesturing) {
-        const g = gridBackground(vp, bgPattern);
-        if (g) {
-          grid.style.backgroundSize = `${g.size}px ${g.size}px`;
-          grid.style.backgroundPosition = `${g.x}px ${g.y}px`;
-          if (bgPattern === "grid") {
-            const mod = (v) => ((v % g.major) + g.major) % g.major;
-            grid.style.setProperty("--pxd-grid-major", `${g.major}px`);
-            grid.style.setProperty("--pxd-grid-major-x", `${mod(vp.x)}px`);
-            grid.style.setProperty("--pxd-grid-major-y", `${mod(vp.y)}px`);
-          }
-        }
-      }
+      // A moving grid is a repaint of the page every frame (PhD page: paint + layerize ~20 ms); with the world as
+      // its own layer and nothing else written, a frame is a compositor move. The grid holds still during a drag
+      // or a wheel burst on a big board and catches up when it settles.
+      if (!gesturing && !deferReveal()) paintGrid();
       chrome.toolbar.setZoom(vp.zoom);
       if (tooltip.isVisible()) tooltip.hide();
       // offsetHeight in place() forces layout. During a gesture or a wheel burst the toolbar height
@@ -8557,7 +8562,9 @@ function buildBoardView(onFail, {
       minimapAt = perfNow();
       const shown = paintRects();
       chrome.minimap.update({ board: b, rects: shown, vp, size });
-      paintLandmarkDots(b, shown);
+      // The landmark dots are DOM inside the board: rebuilt mid-burst they cost a style recalc and layout per
+      // rebuild. The minimap canvas follows the camera; the dots follow at the settle.
+      if (!(deferReveal() && !itemsChanged)) paintLandmarkDots(b, shown);
     }
     if (itemsChanged && !gesturing) {
       scheduleContent();

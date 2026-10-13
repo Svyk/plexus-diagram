@@ -8,6 +8,7 @@ import { createCoverStore } from "../src/host/cover-store.js";
 import { createParseStore } from "../src/host/parse-store.js";
 import { createFakeIDB } from "./fixtures/fake-idb.js";
 import { createDocCache } from "../src/host/doc-cache.js";
+import { createRelChips } from "../src/relchips.js";
 import { createSplitWatch } from "../src/host/split-watch.js";
 import { createChrome } from "../src/view/chrome.js";
 import { createPanel } from "../src/view/panel.js";
@@ -217,4 +218,51 @@ test("2f: the pin crop document cache destroys what it evicts and what it clears
   assert.ok(cache.get("u9"));
   cache.clear();
   assert.equal(made.every((d) => d.destroyed), true);
+});
+
+test("2g: relchips breadcrumb glyphs and listeners of re-rendered Roam pages are released", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = stub.document;
+    stub.window.location = { hash: "#/app/Svy/page/x" };
+    const rawEdge = (uid, string, props, kids = [], order = 0) => ({ ":block/uid": uid, ":block/string": string, ":block/order": order, ":block/props": props, ":block/children": kids });
+    const plx = (o) => ({ plexus: o });
+    const board = rawEdge("board001", "{{[[diagram]]:Roadmap}}", plx({ v: 2 }), [
+      rawEdge("cardA001", "Alpha", plx({ x: 0, y: 0, w: 200, h: 100 }), [], 0),
+      rawEdge("cardB001", "Beta", plx({ x: 500, y: 0, w: 360, h: 480 }), [], 1),
+      rawEdge("conn0001", "Connections", plx({ type: "edges" }), [rawEdge("edge0001", "((cardA001)) → x → ((cardB001))", plx({ type: "edge", from: "cardA001", to: "cardB001" }), [], 0)], 2),
+    ]);
+    const host = { graph: "Svy", listConnectionBlocks: () => [["edge0001", "board001"]], pullBoard: () => board, blockString: () => null, blockPageUid: () => "pageUID01" };
+    const chips = createRelChips({ doc, win: stub.window, host, graph: () => "Svy", timers: { later: () => () => {}, frame: () => () => {} } });
+    chips.start();
+    const mk = (tag, cls, parent) => { const n = doc.createElement(tag); n.className = cls; parent?.append(n); return n; };
+    const render = () => {
+      const item = mk("div", "rm-reference-item", doc.body);
+      const holder = mk("div", "", item);
+      const zoom = mk("div", "rm-zoom zoom-mentions-view", holder);
+      mk("div", "rm-zoom-item", zoom);
+      mk("div", "rm-zoom-item", zoom);
+      const container = mk("div", "roam-block-container rm-block", holder);
+      container.setAttribute("data-block-uid", "edge0001");
+      const main = mk("div", "rm-block-main", container);
+      const input = mk("div", "rm-block__input roam-block", main);
+      input.id = "block-input-Svy-mentions-page-pageUID01-edge0001";
+      return item;
+    };
+    let item = render();
+    chips.scan(item);
+    const once = stub.listenerCount();
+    for (let i = 0; i < 25; i += 1) {
+      item.remove();
+      item = render();
+      chips.scan(item);
+    }
+    assert.equal(chips.crumbCount(), 1, "glyphs of dropped pages are not kept");
+    // The detached chips keep their own six listeners in the stub's ledger; the crumb listeners (12 per render) must go.
+    assert.ok(stub.listenerCount() <= once + 25 * 6, `listeners ${stub.listenerCount()} vs ${once}`);
+    chips.dispose();
+  } finally {
+    restore();
+  }
 });

@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   SNAP_MAX_BYTES,
   SNAP_MAX_ITEMS,
+  SNAP_MAX_BOXES,
   SNAP_VERSION,
   buildFace,
   captureFace,
@@ -99,7 +100,7 @@ test("a data: cover moves to the thumb table and comes back on build", () => {
   assert.equal(built.style["--pxd-cover"], `url("${data}")`);
 });
 
-test("pack drops layers, then faces, to stay under 300 KB; over 500 items is not cached", () => {
+test("pack drops layers, then faces, to stay under 300 KB; over SNAP_MAX_BOXES items is not cached", () => {
   const big = { t: "div", c: "pxd-item__body", k: ["x".repeat(16000)] };
   const items = [];
   for (let i = 0; i < 40; i += 1) items.push(card(`c${i}`, { t: "div", k: [big] }));
@@ -115,8 +116,14 @@ test("pack drops layers, then faces, to stay under 300 KB; over 500 items is not
   assert.equal(back.items[0].cls, "pxd-item pxd-item--card pxd-item--note", "transient shell classes dropped");
 
   const many = [];
-  for (let i = 0; i < SNAP_MAX_ITEMS + 1; i += 1) many.push(card(`m${i}`));
+  for (let i = 0; i < SNAP_MAX_BOXES + 1; i += 1) many.push(card(`m${i}`));
   assert.equal(packSnapshot(snapOf("b2", many)), null);
+  // A board past SNAP_MAX_ITEMS is cached: its byte cap grows with the boxes.
+  const mid = [];
+  for (let i = 0; i < SNAP_MAX_ITEMS * 3; i += 1) mid.push(card(`n${i}`));
+  const packedMid = packSnapshot(snapOf("b3", mid));
+  assert.ok(packedMid);
+  assert.equal(parseSnapshot(packedMid).items.length, SNAP_MAX_ITEMS * 3);
   assert.equal(parseSnapshot("{"), null);
   assert.equal(parseSnapshot(JSON.stringify({ v: 99, items: [] })), null);
 });

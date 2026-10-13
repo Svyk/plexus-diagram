@@ -1909,6 +1909,11 @@ export function createItemRenderer({
   // view (the content cull rect), or while it is a section, selected, hovered, mounted, edited or focused. Its record
   // and element stay alive detached, so class and state writes still reach it.
   const VIRTUAL_MIN = 400;
+  const OPEN_NOW_MAX = 150;
+  const PUMP_MS = 12;
+  // In-view shells still queued after the open pass, and who waits for them.
+  let pendingView = null;
+  const viewWaiters = [];
   const BULK_ATTACH = 64;
   let cullRect = null;
   const virtual = () => (lastBoard?.items?.size || 0) > VIRTUAL_MIN;
@@ -1997,9 +2002,14 @@ export function createItemRenderer({
     return add;
   };
   const pumpShells = () => {
-    const chunk = shellQueue.splice(0, 40);
+    // At most 40 shells and about PUMP_MS per frame.
+    const t0 = now();
     const built = [];
-    for (const uid of chunk) {
+    let taken = 0;
+    while (shellQueue.length && taken < 40 && (taken === 0 || now() - t0 < PUMP_MS)) {
+      const uid = shellQueue.shift();
+      taken += 1;
+      pendingView?.delete(uid);
       const item = lastBoard?.items.get(uid);
       if (!item || shells.has(uid)) continue;
       const rec = buildShell(item);
@@ -2016,11 +2026,16 @@ export function createItemRenderer({
       for (const rec of built) if (keepAttached(rec.uid, rec, active) || nearView(rec.uid)) attachShell(rec);
       if (built.length && lastContent) for (const rec of built) if (isAttached(rec)) paintOneOffscreen(rec.uid, rec, lastContent.visibleRect);
     } else {
-      if (chunk.length) placeShells();
+      if (taken) placeShells();
       // A shell built after the open pass still needs its offscreen size. The next gesture must not be the first paint.
-      if (chunk.length && lastContent) paintOffscreen(lastContent.visibleRect);
+      if (taken && lastContent) paintOffscreen(lastContent.visibleRect);
     }
+    if (pendingView && !pendingView.size) viewBuilt();
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
+  };
+  const viewBuilt = () => {
+    pendingView = null;
+    for (const fn of viewWaiters.splice(0)) { try { fn(); } catch { /* the owner's hook */ } }
   };
   const sync = ({ board, rects, dirty: changed = null, structural = false, view = null }) => {
     sourcePass += 1;
@@ -2063,6 +2078,24 @@ export function createItemRenderer({
         later.sort((a, b) => dist(a) - dist(b));
       }
       if (!now.length) now.push(...later.splice(0, 24));
+      // PhD main board at map zoom: all 1,558 items were in view and built in one 1.8 s task. The OPEN_NOW_MAX nearest
+      // the centre are built now, the rest of the view first in the frame-chunked pump; the snapshot (if any) stays up
+      // until the view is complete (whenViewBuilt).
+      if (now.length > OPEN_NOW_MAX && view) {
+        const cx = view.x + view.w / 2;
+        const cy = view.y + view.h / 2;
+        const dist = (uid) => {
+          const r = rects.get(uid);
+          return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
+        };
+        const ranked = now.slice().sort((a, b) => dist(a) - dist(b));
+        const keep = new Set(ranked.slice(0, OPEN_NOW_MAX));
+        const rest = ranked.slice(OPEN_NOW_MAX);
+        now.length = 0;
+        for (const uid of board.order) if (keep.has(uid)) now.push(uid);
+        pendingView = new Set(rest);
+        later.unshift(...rest);
+      }
       if (now.length && later.length) defer = new Set(later);
     }
     for (const uid of board.order) {
@@ -2106,6 +2139,10 @@ export function createItemRenderer({
     if (defer?.size) {
       shellQueue = [...defer];
       timers.frame(pumpShells);
+    }
+    if (pendingView) {
+      for (const uid of [...pendingView]) if (shells.has(uid) || !board.items.has(uid)) pendingView.delete(uid);
+      if (!pendingView.size) viewBuilt();
     }
   };
 
@@ -5878,6 +5915,15 @@ export function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    // fn runs once every shell in the open view is built (at once when none is queued).
+    whenViewBuilt(fn) {
+      if (typeof fn !== "function") return;
+      if (!pendingView?.size) { fn(); return; }
+      let fired = false;
+      const once = () => { if (!fired) { fired = true; fn(); } };
+      viewWaiters.push(once);
+      timers?.later?.(once, 3000);
+    },
     // Every shell element, in the DOM or not (lenses paint detached shells too).
     shellEls: () => [...shells.values()].map((rec) => rec.el).filter(Boolean),
     // A gesture frame: attach shells coming into `rect` (a few per frame). Detaching waits for the settle.

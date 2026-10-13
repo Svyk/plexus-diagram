@@ -9,6 +9,7 @@ import { boundsOf } from "../model/board.js";
 import {
   SNAP_VERSION,
   SNAP_MAX_ITEMS,
+  SNAP_MAX_BOXES,
   LAYER_MAX_NODES,
   buildFace,
   captureFace,
@@ -63,7 +64,8 @@ export function captureBoardSnap({
   now = Date.now,
 } = {}) {
   if (!board?.items || !rects || !isSnapViewport(vp) || typeof shellOf !== "function") return null;
-  if (board.items.size > SNAP_MAX_ITEMS) return null;
+  if (board.items.size > SNAP_MAX_BOXES) return null;
+  const faced = board.items.size > SNAP_MAX_ITEMS ? nearestFaces(board, rects, vp, width, height) : null;
   const prevItems = new Map((prev?.items || []).map((item) => [item.uid, item]));
   const items = [];
   const order = Array.isArray(board.order) ? board.order : [...board.items.keys()];
@@ -76,6 +78,16 @@ export function captureBoardSnap({
     const sig = itemSig(item);
     const cls = cleanClasses(typeof el.getAttribute === "function" ? el.getAttribute("class") : el.className);
     const bare = cls.includes("pxd-item--bare") || cls.includes("pxd-item--collapsed");
+    // A big board: a bare box for a card away from the camera (the painter draws no face off screen anyway).
+    if (faced && !section && !faced.has(id)) {
+      const box = shellBox(el) || rect;
+      const out = { uid: id, section, x: box.x, y: box.y, w: box.w, h: box.h, cls: cls.join(" "), sig };
+      if (item.parentUid && item.parentUid !== board.uid) out.parent = item.parentUid;
+      const stats = badges?.get?.(id);
+      if (stats) out.badges = stats;
+      items.push(out);
+      continue;
+    }
     let face = captureFace(el, { thumbs, skip: skipChrome });
     const old = prevItems.get(id);
     // A bare body at map zoom is not a face; the last detail face with the same sig is.
@@ -131,6 +143,24 @@ export function captureBoardSnap({
     chrome,
     items,
   };
+}
+
+// The SNAP_MAX_ITEMS cards nearest the camera centre among those in the painted view (a quarter view each side).
+function nearestFaces(board, rects, vp, width, height) {
+  const w = (width || 1600) / vp.zoom;
+  const h = (height || 1000) / vp.zoom;
+  const x = -vp.x / vp.zoom - w * 0.25;
+  const y = -vp.y / vp.zoom - h * 0.25;
+  const cx = x + w * 0.75;
+  const cy = y + h * 0.75;
+  const near = [];
+  for (const [id, r] of rects) {
+    if (!r || r.x > x + w * 1.5 || r.x + r.w < x || r.y > y + h * 1.5 || r.y + r.h < y) continue;
+    if (board.items.get(id)?.type === "section") continue;
+    near.push([id, (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2]);
+  }
+  near.sort((a, b) => a[1] - b[1]);
+  return new Set(near.slice(0, SNAP_MAX_ITEMS).map(([id]) => id));
 }
 
 // The shell's own inline box (what the renderer drew, PDF caps included). No layout read.
@@ -253,7 +283,10 @@ export function paintBoardSnap(doc, mountEl, snap, vp, { thumbs = null, faceOk =
       h: boxH * 1.5,
     };
     const onScreen = (item) => item.x < seen.x + seen.w && item.x + item.w > seen.x && item.y < seen.y + seen.h && item.y + item.h > seen.y;
+    // A big board's far cards are not drawn at all: the live board builds them later.
+    const big = (snap.items?.length || 0) > SNAP_MAX_ITEMS;
     for (const item of snap.items || []) {
+      if (big && !item.section && !onScreen(item)) continue;
       const node = el(doc, "div", `${cleanClasses(item.cls).join(" ")} ${SNAP_CLASS}`, item.section ? sections : itemsLayer);
       node.setAttribute("data-uid", item.uid);
       if (node.dataset) node.dataset.uid = item.uid;

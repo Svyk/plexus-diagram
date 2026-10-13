@@ -8315,7 +8315,12 @@ function buildBoardView(onFail, {
         firstPainted = true;
         // Snapshot shells the live board did not keep (deleted since) go with the snapshot root.
         snapShells?.clear();
-        if (typeof onFirstPaint === "function") { try { onFirstPaint(); } catch { /* the owner's hook */ } }
+        // A big board builds the rest of its view over a few frames: the snapshot stays up until it is complete.
+        if (typeof onFirstPaint === "function") {
+          const done = () => { if (!disposed) { try { onFirstPaint(); } catch { /* the owner's hook */ } } };
+          if (typeof itemsR.whenViewBuilt === "function") itemsR.whenViewBuilt(done);
+          else done();
+        }
       }
     }
     const edgesDue = dirty.all || dirty.structural || dirty.links || dirty.edges.size;

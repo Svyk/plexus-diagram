@@ -5,7 +5,12 @@
 
 export const SNAP_VERSION = 1;
 export const SNAP_MAX_BYTES = 300 * 1024;
+// Items with a face. A bigger board (PhD main board: 1,558 items) keeps faces for the SNAP_MAX_ITEMS items nearest
+// the camera and a bare box for the rest, up to SNAP_MAX_BOXES; each box adds BOX_BYTES to the byte cap.
 export const SNAP_MAX_ITEMS = 500;
+export const SNAP_MAX_BOXES = 4000;
+export const BOX_BYTES = 256;
+export const snapByteCap = (items) => SNAP_MAX_BYTES + BOX_BYTES * Math.max(0, (Number(items) || 0) - SNAP_MAX_ITEMS);
 export const FACE_MAX_NODES = 400;
 export const FACE_MAX_CHARS = 16 * 1024;
 export const LAYER_MAX_NODES = 1500;
@@ -394,7 +399,7 @@ function cleanRootStyle(style) {
 
 export function cleanSnapshot(value) {
   if (!value || typeof value !== "object" || value.v !== SNAP_VERSION || !Array.isArray(value.items)) return null;
-  if (value.items.length > SNAP_MAX_ITEMS) return null;
+  if (value.items.length > SNAP_MAX_BOXES) return null;
   const items = [];
   for (const item of value.items) {
     const clean = cleanItem(item);
@@ -420,14 +425,15 @@ export function cleanSnapshot(value) {
   };
 }
 
-// JSON under SNAP_MAX_BYTES: drop the edge/label layers, then faces from the
-// tail, then give up. A board over SNAP_MAX_ITEMS is not cached at all.
+// JSON under the byte cap: drop the edge/label layers, then faces from the
+// tail, then give up. A board over SNAP_MAX_BOXES is not cached at all.
 export function packSnapshot(snap) {
   const clean = cleanSnapshot(snap);
   if (!clean) return null;
+  const cap = snapByteCap(clean.items.length);
   const fit = (value) => {
     const text = JSON.stringify(value);
-    return text.length <= SNAP_MAX_BYTES ? text : null;
+    return text.length <= cap ? text : null;
   };
   let text = fit(clean);
   if (text) return text;

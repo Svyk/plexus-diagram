@@ -27,7 +27,7 @@ function bigBoard() {
   return { ":block/uid": "bigboard01", ":block/string": "{{[[diagram]]:Big}}", ":block/props": { ":plexus": { ":v": 2 } }, ":block/children": [...cards, conn] };
 }
 
-function mount(vp) {
+function mount(vp, extra = {}) {
   const stub = createDomStub({ width: 1400, height: 900 });
   const restore = stub.install();
   stub.localStorage.setItem("plexus-diagram:vp:Svy:bigboard01", JSON.stringify(vp));
@@ -44,7 +44,7 @@ function mount(vp) {
   const mountEl = stub.document.createElement("div");
   mountEl.className = "pxd-mount";
   stub.document.body.append(mountEl);
-  const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0" });
+  const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.0.0", ...extra });
   const pump = async (n, ms = 0) => { for (let i = 0; i < n; i += 1) { stub.flushFrames(); stub.flushIdle(); await tick(ms); } };
   const shellsIn = () => view.root.querySelectorAll(".pxd-item[data-uid]").length;
   const edgesIn = () => view.root.querySelectorAll(".pxd-edge").length;
@@ -90,6 +90,23 @@ test("a fit view of the whole board still shows every card", async () => {
   try {
     await m.pump(80);
     assert.equal(m.shellsIn(), N);
+  } finally {
+    m.view.dispose();
+    m.restore();
+  }
+});
+
+test("a whole-board view builds the nearest shells first and reports first paint once the view is built", async () => {
+  let painted = 0;
+  const m = mount({ x: 20, y: 20, zoom: 0.12 }, { onFirstPaint: () => { painted += 1; } });
+  try {
+    m.stub.flushFrames();
+    const first = m.shellsIn();
+    assert.ok(first > 0 && first <= 200, `built in the open pass: ${first}`);
+    assert.equal(painted, 0, "the snapshot stays until the view is complete");
+    await m.pump(120);
+    assert.equal(m.shellsIn(), N);
+    assert.equal(painted, 1);
   } finally {
     m.view.dispose();
     m.restore();

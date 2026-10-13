@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
-import { createHost } from "../src/host/roam.js";
+import { COVER_INDEX_URLS, createHost } from "../src/host/roam.js";
 
 const URL = "https://example.test/papers/Risk%20model.pdf";
 const MACRO = `{{[[pdf]]: ${URL}}}`;
@@ -127,7 +127,7 @@ test("two :pdf-highlight rows count 2 and pdfCover still does not write", () => 
 
 test("a board with many PDFs reads covers from one index, not two queries per card paint", async () => {
   const { fake, host } = setup();
-  const urls = [1, 2, 3, 4, 5, 6].map((i) => `https://example.test/p${i}.pdf`);
+  const urls = Array.from({ length: COVER_INDEX_URLS + 5 }, (_, i) => `https://example.test/p${i + 1}.pdf`);
   const calls = [];
   fake.setQ((query, ...inputs) => {
     calls.push([query, ...inputs]);
@@ -143,9 +143,26 @@ test("a board with many PDFs reads covers from one index, not two queries per ca
     for (const u of urls) covers.push(host.pdfCover(`{{[[pdf]]: ${u}}}`));
     await Promise.resolve();
   }
-  const last = covers.slice(-6);
+  const last = covers.slice(-urls.length).slice(0, 6);
   assert.deepEqual(last.map((c) => [c.title, c.count, c.pageUid]), [["Paper 0", 2, "page0"], ["Paper 1", 0, "page1"], ["Paper 2", 0, "page2"], ["Paper 3", 0, "page3"], ["Paper 4", 0, "page4"], ["Paper 5", 1, "page5"]]);
-  assert.ok(calls.length <= 3 * 2 + 2, `bounded reads, got ${calls.length}`);
+  assert.ok(calls.length <= (COVER_INDEX_URLS - 1) * 2 + 2, `bounded reads, got ${calls.length}`);
   assert.equal(host.pdfCover("{{[[pdf]]: https://example.test/none.pdf}}").pageUid, null);
   assert.equal(host.stats.writes, 0);
+});
+
+test("a board with a few PDFs reads covers per url and never the whole-graph index", async () => {
+  const { fake, host } = setup();
+  const urls = [1, 2, 3, 4, 5, 6].map((i) => `https://example.test/q${i}.pdf`);
+  const calls = [];
+  fake.setQ((query, ...inputs) => {
+    calls.push(String(query));
+    const q = String(query);
+    if (q.includes(":in $ ?url")) { const i = urls.indexOf(inputs[0]); return i < 0 ? [] : [[`page${i}`, `Paper ${i}`]]; }
+    return [];
+  });
+  for (let round = 0; round < 3; round += 1) {
+    for (const u of urls) host.pdfCover(`{{[[pdf]]: ${u}}}`);
+    await Promise.resolve();
+  }
+  assert.equal(calls.some((q) => q.includes("?url ?u ?t")), false);
 });

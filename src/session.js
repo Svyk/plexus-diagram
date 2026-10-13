@@ -590,14 +590,24 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     queueMicrotask(() => {
       dropQueued = false;
       if (destroyed || !board) return;
+      // A short published list is not proof of a delete: ask Roam. An edge that still exists there was lost by a read,
+      // so its dependents stay, and the board is read again in full.
+      let unconfirmed = false;
+      for (const id of [...lost]) {
+        if (host.blockExists?.(id) === true) { lost.delete(id); unconfirmed = true; }
+      }
       const still = victims.filter((id) => {
         const edge = board.edges.get(id);
         return edge && (lost.has(edge.from) || lost.has(edge.to));
       });
-      if (!still.length) return;
-      txn((t) => {
+      if (!still.length) {
+        if (unconfirmed) repull();
+        return;
+      }
+      const dropped = txn((t) => {
         for (const id of still) if (board.edges.has(id)) t.del(id);
       });
+      if (unconfirmed) dropped.then(() => repull());
     });
   }
 

@@ -165,10 +165,8 @@ body.roam-body.dark .pxd-root,
 
 /* ------------------------------------------------------------------ root states */
 
-:where(.pxd-root)[data-pxd-gesturing] {
-  user-select: none;
-  -webkit-user-select: none;
-}
+/* No user-select here: an inherited property on the root restyles every element of the board when a gesture
+   starts (PhD main board: 134 ms). board-view cancels selectstart during a pointer gesture instead. */
 
 :where(.pxd-root)[data-pxd-space],
 .pxd-root[data-tool="hand"] {

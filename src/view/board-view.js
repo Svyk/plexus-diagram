@@ -3440,9 +3440,12 @@ function buildBoardView(onFail, {
     root.style.setProperty("--pxd-screen-px", String(screenPx(vp.zoom)));
   };
   const applyLod = () => {
+    const was = tier;
     tier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
     paintTier();
     paintInvZoom();
+    // A tier held through a big-board gesture flips here, with what the frame-time flip does besides painting.
+    if (tier !== was) { pdfFlip?.setLod?.(tier); chrome.toolbar.scheduleDock?.(); }
   };
   const scheduleContent = () => {
     if (disposed || suspended || gesturing || !board()) return;
@@ -3651,6 +3654,7 @@ function buildBoardView(onFail, {
       hitShield.drop();
       endUnderlay();
       paintGrid();
+      chrome.toolbar.setZoom(vp.zoom);
       if (wheelLayer) {
         wheelLayer = false;
         world.style.willChange = "";
@@ -6844,6 +6848,7 @@ function buildBoardView(onFail, {
           applyLod();
           propsPanel.place();
           paintGrid();
+          chrome.toolbar.setZoom(vp.zoom);
           scheduleContent();
           if (size.width) edgesR.cull?.(visibleWorldRect(vp, size, ATTACH_MARGIN));
           underlay.hide();
@@ -7672,6 +7677,12 @@ function buildBoardView(onFail, {
       }));
     },
   });
+  // A drag must not start a text selection. This was user-select:none on the root while gesturing, which
+  // restyled the whole board at every gesture start.
+  listen(doc, "selectstart", (event) => {
+    if (!gesturing || !ctl.gestureKind?.() || isTextEntryTarget(event.target)) return;
+    event.preventDefault?.();
+  }, true);
   const WHEEL_MEASURE_MS = 150;
   let wheelMeasuredAt = -Infinity;
   // The burst after its first event comes from the hit shield (the targets below are what the first event saw).
@@ -8550,12 +8561,16 @@ function buildBoardView(onFail, {
       if (!gesturing) paintInvZoom(); // the resume path (applyLod) paints it once the gesture ends
       // The tier flips (classes + font variables, once) the moment the zoom crosses the threshold, mid-gesture too.
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
-      if (nextTier !== tier) { tier = nextTier; paintTier(); pdfFlip?.setLod?.(tier); chrome.toolbar.scheduleDock?.(); }
+      // On a big board a mid-burst flip restyled every attached shell (PhD main board: 117-175 ms frames, twice in a
+      // zoom from overview to detail); the shells scale with the world until the settle flips the tier.
+      if (nextTier !== tier && !deferReveal()) { tier = nextTier; paintTier(); pdfFlip?.setLod?.(tier); chrome.toolbar.scheduleDock?.(); }
       // A moving grid is a repaint of the page every frame (PhD page: paint + layerize ~20 ms); with the world as
       // its own layer and nothing else written, a frame is a compositor move. The grid holds still during a drag
       // or a wheel burst on a big board and catches up when it settles.
       if (!gesturing && !deferReveal()) paintGrid();
-      chrome.toolbar.setZoom(vp.zoom);
+      // The zoom label is text: a new value every zoom frame was a layout and a page hit test. Big-board bursts
+      // show the value at the settle.
+      if (!deferReveal()) chrome.toolbar.setZoom(vp.zoom);
       if (tooltip.isVisible()) tooltip.hide();
       // offsetHeight in place() forces layout. During a gesture or a wheel burst the toolbar height
       // does not change, and that read was the long task on a 300-card board; the settle places it.

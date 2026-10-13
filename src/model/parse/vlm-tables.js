@@ -886,12 +886,18 @@ export function alignVlmText(doc, regions) {
       // A host that matched nothing and is not pinned between two that did got
       // its slice by position. Unless the slice shares evidence with it, the
       // host keeps its Vision line and the slice becomes a line of its own.
+      // A host whose Vision words the reading already holds elsewhere (Vision
+      // read the line out of order) takes its slice too.
       const anyAnchor = placed.anchored.some(Boolean);
+      const reading = bagOf(placed.parts.flatMap(keysOf));
       const extra = inside.map(() => "");
       const parts = placed.parts.map((part, i) => {
         const host = inside[i];
         if (!anyAnchor || placed.anchored[i] || placed.pinned[i] || host.type === "caption" || !part || !keysOf(host.text).length) return part;
         if (sliceFits(host.text, part)) return part;
+        const mine = keysOf(host.text);
+        const left = new Map(reading);
+        if (mine.filter((key) => takeKey(left, key)).length >= MOVED_SHARE * mine.length) return part;
         extra[i] = part;
         return host.text;
       });
@@ -941,9 +947,15 @@ export function alignVlmText(doc, regions) {
       else spare = [spare, moved].filter(Boolean).join(" ");
     });
     const texts = hosts.map((_, i) => [...before[i], out[i], ...after[i]].filter(Boolean).join(" "));
+    // Words the lines gained: every new word, less each line's own Vision
+    // words that its new text still holds.
     const gained = bagOf([...texts, ...extra, spare].flatMap(keysOf));
     hosts.forEach((block, i) => {
-      if (texts[i] || block.type === "caption") for (const key of keysOf(block.text)) takeKey(gained, key);
+      if (!texts[i]) return;
+      const own = bagOf(keysOf(texts[i]));
+      for (const key of keysOf(block.text)) {
+        if (takeKey(own, key)) takeKey(gained, key);
+      }
     });
     hosts.forEach((block, i) => {
       const text = texts[i];

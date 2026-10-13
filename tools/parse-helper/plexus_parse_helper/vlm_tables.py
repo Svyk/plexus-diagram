@@ -214,8 +214,9 @@ def drop_repeats(text: str) -> str:
     """A page transcription without its loops.
 
     A unit of up to LOOP_UNIT characters with a letter or a digit repeated
-    over LOOP_CHARS keeps one copy, and a run of more than three identical
-    lines keeps the first.
+    over LOOP_CHARS keeps one copy, and so does a run of LOOP_COPIES or more
+    identical lines over LOOP_CHARS. A column of equal results (five lines of
+    "0.053") is the page, not a loop.
     """
     import re
 
@@ -225,14 +226,18 @@ def drop_repeats(text: str) -> str:
         return match.group(0) if keep else unit
 
     text = re.sub(r"(.{1,%d}?)\1{%d,}" % (LOOP_UNIT, LOOP_COPIES - 1), one, text, flags=re.S)
+    lines = text.split("\n")
     out = []
-    run = 0
-    for line in text.split("\n"):
-        run = run + 1 if out and line.strip() and line.strip() == out[-1].strip() else 1
-        if run <= 3:
-            out.append(line)
-        elif run == 4:
-            del out[-2:]
+    i = 0
+    while i < len(lines):
+        key = lines[i].strip()
+        j = i
+        while j < len(lines) and key and lines[j].strip() == key:
+            j += 1
+        run = max(1, j - i)
+        loop = key and any(ch.isalnum() for ch in key) and run >= LOOP_COPIES and run * (len(key) + 1) >= LOOP_CHARS
+        out.extend(lines[i:i + 1] if loop else lines[i:i + run])
+        i += run
     return "\n".join(out)
 
 

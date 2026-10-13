@@ -867,8 +867,10 @@ def test_drop_repeats_trims_loops_and_keeps_lists():
     from plexus_parse_helper.vlm_tables import drop_repeats
 
     assert drop_repeats("11.3.2." + "1.2." * 500) == "11.3.2.1.2."
-    assert drop_repeats("Item\nok\nok\nok\nok\nok\nok\nEnd") == "Item\nok\nEnd"
-    assert drop_repeats("ok\nok\nok") == "ok\nok\nok"
+    assert drop_repeats("Item\n" + "Line cleared\n" * 12 + "End") == "Item\nLine cleared\nEnd"
+    # A column of equal results is the page.
+    column = "Result\n" + "\n".join(["0.053"] * 5) + "\n0.05"
+    assert drop_repeats(column) == column
     numbered = "\n".join(f"{n}. Check the seal" for n in range(1, 40))
     assert drop_repeats(numbered) == numbered
     leader = "Contents " + "." * 150 + " 5"

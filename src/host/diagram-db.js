@@ -96,8 +96,31 @@ export function openDb(factory, { name, version, stores, capMs = 2000 }) {
   });
 }
 
+// Every board view makes its own cover and parse stores. They share one connection per factory instead of
+// holding a connection each for the life of the tab. A failed open is not cached, and a connection that closes
+// itself (a newer Plexus upgrading) drops out so the next store opens a fresh one.
+const sharedDiagramDb = new WeakMap();
+
 export function openDiagramDb(factory, { capMs = 2000 } = {}) {
-  return openDb(factory, { name: DIAGRAM_DB, version: DIAGRAM_DB_VERSION, stores: STORES, capMs });
+  const open = () => openDb(factory, { name: DIAGRAM_DB, version: DIAGRAM_DB_VERSION, stores: STORES, capMs });
+  if (!factory || (typeof factory !== "object" && typeof factory !== "function")) return open();
+  const have = sharedDiagramDb.get(factory);
+  if (have) return have;
+  const pending = open().then((db) => {
+    if (!db) {
+      if (sharedDiagramDb.get(factory) === pending) sharedDiagramDb.delete(factory);
+      return db;
+    }
+    const evict = () => { if (sharedDiagramDb.get(factory) === pending) sharedDiagramDb.delete(factory); };
+    const onVersion = db.onversionchange;
+    try {
+      db.onversionchange = (event) => { evict(); if (typeof onVersion === "function") onVersion(event); };
+      db.onclose = evict;
+    } catch { /* a frozen handle */ }
+    return db;
+  });
+  sharedDiagramDb.set(factory, pending);
+  return pending;
 }
 
 export function openImageDb(factory, { capMs = 2000 } = {}) {

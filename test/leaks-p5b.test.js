@@ -4,6 +4,9 @@ import v8 from "node:v8";
 import vm from "node:vm";
 import test from "node:test";
 import { MOUNT_STAMP_CAP, mountFpsFromStamps, pushFrameStamp } from "../src/view/progressive.js";
+import { createCoverStore } from "../src/host/cover-store.js";
+import { createParseStore } from "../src/host/parse-store.js";
+import { createFakeIDB } from "./fixtures/fake-idb.js";
 import { createSplitWatch } from "../src/host/split-watch.js";
 import { createChrome } from "../src/view/chrome.js";
 import { createPanel } from "../src/view/panel.js";
@@ -187,4 +190,18 @@ test("2d: a stale watchItem off-closure does not pin a disposed split generation
   await gcNow();
   assert.equal(ref.deref(), undefined, "the disposed generation's seed tree was collected although a card still holds its off");
   off();
+});
+
+test("2e: many views share one IndexedDB connection for the cover and parse caches", async () => {
+  const idb = createFakeIDB();
+  const stores = [];
+  for (let i = 0; i < 12; i += 1) {
+    const parse = createParseStore({ indexedDB: idb });
+    const cover = createCoverStore({ indexedDB: idb, storage: null });
+    stores.push(parse, cover);
+    await parse.getParse("sha", "builtin", "o");
+    await cover.get?.("https://example.test/a.pdf");
+  }
+  const diagramOpens = idb.opens.filter((o) => (o.name ?? o[0]) === "plexus-diagram");
+  assert.equal(diagramOpens.length, 1, `opens of plexus-diagram: ${diagramOpens.length}`);
 });

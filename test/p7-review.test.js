@@ -208,7 +208,8 @@ test("P7-5: unload leaves 0 registered watches and 0 pending host timers", async
   const realClear = globalThis.clearTimeout;
   globalThis.setTimeout = (fn, ms, ...a) => {
     const id = realSet(() => { pending.delete(id); fn(...a); }, ms); id.stack = new Error().stack;
-    pending.add(id);
+    // Host timers (hold, arm, sweep, idle parts) are 250 ms or longer; fake-roam echoes are not.
+    if (ms >= 250) pending.add(id);
     return id;
   };
   globalThis.clearTimeout = (id) => { pending.delete(id); realClear(id); };

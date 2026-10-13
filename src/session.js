@@ -31,6 +31,7 @@ import {
 import { whyPlan } from "./model/why.js";
 import { isInlinePdfCard, pageCardString } from "./model/pdf-page.js";
 import { isOldTableCard } from "./model/table-captions.js";
+import { hasQueryMacro, planQueryFolds } from "./model/query-fold.js";
 import { trailString } from "./model/trails.js";
 import {
   BOARD_PATTERNS,
@@ -2524,6 +2525,84 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         }
         return { folded: folds.length, edges };
       }, custom);
+    },
+
+    // "Fold queries on this page": the plan for the page that holds this board (queries outside every board).
+    queryFoldPlan({ limit } = {}) {
+      let pageUid = "";
+      try { pageUid = String(host.blockPageUid?.(uid) || ""); } catch { pageUid = ""; }
+      let graph = "";
+      try { graph = String(host.graphName?.() || ""); } catch { graph = ""; }
+      return planQueryFolds({
+        pageUid,
+        boardUid: uid,
+        graph,
+        limit,
+        kidsOfMany: (ids) => (typeof host.outlineKids === "function" ? host.outlineKids(ids) : new Map()),
+        newUid: () => host.generateUid?.() || "",
+      });
+    },
+
+    // Applies a queryFoldPlan: each query that is still where the plan saw it gets a folded caption in its place and
+    // moves under it. The blocks are outside the board, so this writes straight through the queue (no board model
+    // change). One custom undo entry with recorded inverse writes; a second run plans nothing.
+    foldPageQueries(plan) {
+      if (!plan || plan.boardUid !== uid || destroyed || gone) return Promise.resolve({ folded: 0, refused: "board" });
+      let graphNow = "";
+      try { graphNow = String(host.graphName?.() || ""); } catch { graphNow = ""; }
+      if (plan.graph && graphNow && plan.graph !== graphNow) return Promise.resolve({ folded: 0, refused: "graph" });
+      const folds = [];
+      for (const f of plan.folds || []) {
+        if (!f?.queryUid || !f.captionUid) continue;
+        let loc = null;
+        try { loc = host.blockLocation?.(f.queryUid) || null; } catch { loc = null; }
+        if (!loc || loc.parentUid !== f.parentUid) continue;
+        const now = host.pullEntity?.("[:block/string]", f.queryUid)?.[":block/string"];
+        if (!hasQueryMacro(now)) continue;
+        folds.push({ ...f, order: loc.order });
+      }
+      if (!folds.length) return Promise.resolve({ folded: 0 });
+      const list = [];
+      for (const f of folds) {
+        list.push({ op: "create", uid: f.captionUid, parent: f.parentUid, order: f.order, string: f.caption, open: false });
+        list.push({ op: "move", uid: f.queryUid, parent: f.captionUid, order: 0 });
+      }
+      if (!bulkAllowed(list.length)) return Promise.resolve({ folded: 0, refused: "bulk" });
+      const custom = {
+        forward: list,
+        async undo() {
+          // Highest original order first, per parent: each query lands right before its own caption.
+          const back = folds.slice().sort((a, b) => (a.parentUid < b.parentUid ? -1 : a.parentUid > b.parentUid ? 1 : b.order - a.order));
+          await execute(back.map((f) => ({ op: "move", uid: f.queryUid, parent: f.parentUid, order: f.order })));
+          for (const f of back) {
+            // Deleting a caption that still holds its query would delete the query: wait for Roam to apply the move.
+            let out = false;
+            for (let tries = 0; tries < 15 && !out; tries += 1) {
+              const loc = host.blockLocation?.(f.queryUid);
+              out = !loc || loc.parentUid !== f.captionUid;
+              if (!out) await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+            if (out) await execute([{ op: "delete", uid: f.captionUid }]);
+          }
+        },
+        async redo() {
+          await execute(custom.forward);
+        },
+      };
+      return queue.run(() => grouped(async () => {
+        host.setCustomUndo?.(custom);
+        try {
+          await execute(list, { hold: true });
+        } catch (err) {
+          host.setCustomUndo?.(null);
+          throw err;
+        }
+      })).then(() => ({ folded: folds.length }), (err) => {
+        console.error("[plexus session] fold queries failed", err);
+        setSyncState("failed");
+        emit("toast", { message: "Couldn't fold every query. Check the page in Roam." });
+        return { folded: 0, failed: true };
+      });
     },
 
     // One ref card, centered on the board's content (the origin when nothing is placed yet).

@@ -282,6 +282,7 @@ const PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?pa
 // The pdf block's pins container and its pins: two levels, nothing deeper.
 const PDF_KIDS_PATTERN = `[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/order :block/props
  {(limit :block/children nil) [:block/uid :block/string :block/order :block/props]}]}]`;
+const OUTLINE_KIDS_PATTERN = "[:block/uid {(limit :block/children nil) [:block/uid :block/string :block/open :block/order]}]";
 const PDF_PAGE_PATTERN = "[:block/uid :node/title {(limit :block/children nil) [:block/uid :block/string :block/order]}]";
 const PDF_HASH_PAGE_QUERY = `[:find ?u ?t :in $ ?h :where [?p :pdf/content-hash ?h] [?p :block/uid ?u] [?p :node/title ?t]]`;
 const PDF_TOP_BLOCK_QUERY = `[:find ?u ?t :in $ ?url :where [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/page ?p] [?p :block/children ?b] [?p :block/uid ?u] [?p :node/title ?t]]`;
@@ -1827,6 +1828,33 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const res = pull("[:block/props]", eidKey(uid));
       const props = res?.[":block/props"];
       return props && typeof props === "object" ? plainKeys(props) : {};
+    },
+
+    // One outline level per parent (page or block): Map(parentUid -> [{ uid, string, open, order }]). One pull_many
+    // for the whole level; "Fold queries on this page" walks only the open part of a page with it.
+    outlineKids(parentUids) {
+      const out = new Map();
+      const ids = [...new Set((parentUids || []).filter((id) => typeof id === "string" && id))];
+      if (!ids.length) return out;
+      let res = null;
+      try {
+        res = typeof data.pull_many === "function"
+          ? data.pull_many(OUTLINE_KIDS_PATTERN, ids.map(eidKey))
+          : ids.map((id) => rawPull(OUTLINE_KIDS_PATTERN, eidKey(id)));
+      } catch { res = null; }
+      if (!Array.isArray(res)) return out;
+      for (const node of res) {
+        const id = node?.[":block/uid"];
+        if (typeof id !== "string") continue;
+        const kids = Array.isArray(node[":block/children"]) ? node[":block/children"] : [];
+        out.set(id, kids.map((k) => ({
+          uid: k?.[":block/uid"],
+          string: typeof k?.[":block/string"] === "string" ? k[":block/string"] : "",
+          open: k?.[":block/open"] !== false,
+          order: Number.isFinite(k?.[":block/order"]) ? k[":block/order"] : 0,
+        })).filter((k) => typeof k.uid === "string" && k.uid));
+      }
+      return out;
     },
 
     pullTree(uid, depth = 2, limit = 12) {

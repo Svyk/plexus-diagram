@@ -14,6 +14,8 @@ import { createHost } from "../src/host/roam.js";
 import { acquireSession, resetSessions } from "../src/session.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createSplitWatch } from "../src/host/split-watch.js";
+import { createCardChips } from "../src/cardchips.js";
+import { createCardCache } from "../src/model/card-cache.js";
 import { createChrome } from "../src/view/chrome.js";
 import { createPanel } from "../src/view/panel.js";
 import { createPropsPanel } from "../src/view/props-panel.js";
@@ -308,6 +310,78 @@ test("2i: link scheduling does not stack rAF closures while frames are paused", 
     resetSessions();
     globalThis.requestAnimationFrame = prevRaf;
     globalThis.requestIdleCallback = prevRic;
+    restore();
+  }
+});
+
+// ---- Soak guard: the retained counts of a view and of the outline chips stay flat across many cycles.
+test("soak: mount, gesture, fullscreen, park and resume a view repeatedly; page returns with chips", () => {
+  const stub = createDomStub({ width: 1400, height: 900 });
+  const restore = stub.install();
+  try {
+    const { view, pump } = mountSmall(stub, { sticky: true });
+    pump(20);
+    const body = view.root.querySelector(".pxd-item[data-uid] .pxd-item__body") || view.root.querySelector(".pxd-item__header");
+    const cycle = () => {
+      stub.dispatch(body, "pointerdown", { button: 0, clientX: 50, clientY: 50, pointerId: 1 });
+      stub.dispatch(stub.document, "pointerup", { clientX: 50, clientY: 50, pointerId: 1 });
+      view.setFullscreen(true);
+      view.setFullscreen(false);
+      view.suspend();
+      view.resume();
+      pump(3);
+    };
+    cycle();
+    const base = view.stats();
+    const baseLedger = stub.listenerCount();
+    for (let i = 0; i < 25; i += 1) cycle();
+    const end = view.stats();
+    assert.equal(end.listeners, base.listeners, "view listeners");
+    assert.equal(end.observers, base.observers, "view observers");
+    assert.ok(end.timers <= base.timers + 2, `timers ${end.timers} vs ${base.timers}`);
+    assert.ok(stub.listenerCount() <= baseLedger + 6, `ledger ${stub.listenerCount()} vs ${baseLedger}`);
+    view.dispose();
+  } finally {
+    restore();
+  }
+});
+
+test("soak: outline chips stay bounded across page returns", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const cache = createCardCache();
+    cache.setBoard("b1", "Board", [{ uid: "c1", target: "block1" }, { uid: "c2", target: "page1" }]);
+    const chips = createCardChips({ doc: stub.document, cache, pageUid: () => "page1" });
+    const render = () => {
+      const article = stub.document.createElement("div");
+      article.className = "roam-article";
+      const title = stub.document.createElement("h1");
+      title.className = "rm-title-display";
+      const kids = stub.document.createElement("div");
+      kids.className = "rm-block-children";
+      const container = stub.document.createElement("div");
+      container.className = "roam-block-container";
+      container.setAttribute("data-block-uid", "block1");
+      container.append(stub.document.createElement("div"), stub.document.createElement("div"));
+      kids.append(container);
+      article.append(title, kids);
+      stub.document.body.append(article);
+      return article;
+    };
+    let page = render();
+    chips.scan(page);
+    const base = chips.count();
+    const ledger = stub.listenerCount();
+    for (let i = 0; i < 40; i += 1) {
+      page.remove();
+      page = render();
+      chips.scan(page);
+    }
+    assert.equal(chips.count(), base, "chips of dropped pages are purged");
+    assert.equal(stub.listenerCount(), ledger, "no per-page listeners");
+    chips.dispose();
+  } finally {
     restore();
   }
 });

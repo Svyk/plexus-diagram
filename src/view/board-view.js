@@ -9004,6 +9004,20 @@ function buildBoardView(onFail, {
     },
     // A kept board comes back into a new mount element (Roam re-rendered the page).
     // Point the view at it and re-apply fullscreen chrome or the inline height there.
+    // Crumbs and board history: keep a parked root in its mount, unrendered (content-visibility:hidden keeps its
+    // style and layout). Removing it dropped every computed style, and the way back restyled the whole board before
+    // the first paint (PhD main board: 13,762 elements, 166 ms, plus 33 ms of layout).
+    park() {
+      if (disposed || !root.parentElement || !(size.width > 0)) return false;
+      root.style.width = `${size.width}px`;
+      root.setAttribute("data-pxd-parked", "");
+      return true;
+    },
+    unpark() {
+      if (!root.hasAttribute?.("data-pxd-parked")) return;
+      root.removeAttribute("data-pxd-parked");
+      root.style.width = "";
+    },
     rebind(nextMount) {
       if (disposed || !nextMount) return;
       // Crumbs and board history park and bring back a view in the same mount: put the root back (it was removed).

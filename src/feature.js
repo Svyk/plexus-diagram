@@ -96,6 +96,8 @@ const MOUNT_BACKOFF_MS = [5000, 30000];
 // FAST-5. Navigation keeps this many canvases, off the document, per window.
 const KEEP_ALIVE_CAP = 2;
 const KEEP_ALIVE_MS = 300000;
+// A pooled board past this many items comes back behind its snapshot (navigate).
+const BRIDGE_MIN_ITEMS = 400;
 const LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 const TITLE_PANEL_CLASS = "rm-diagram-title-panel";
 const NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
@@ -1658,12 +1660,14 @@ export async function installPlexusDiagram({
     if (speedFlags().keepAlive === false) return false;
     const view = rec?.view;
     if (!view || view.sketchStandIn === true) return false;
-    // A clicked crumb or card holds focus, so crumbs and back rebuild the board from its snapshot instead of taking
-    // the pool. Keeping the view here was tried (blur + keep, Fable round 2026-10-12) and measured worse on the PhD
-    // main board: a pooled reattach forces two full-document layouts (measure/syncCramped, propsPanel.place: 2 x
-    // 324 ms on a 113k-node page) plus ~0.8 s of resume work before anything paints, while the rebuild shows the
-    // snapshot in ~160 ms. Make the reattach paint-first before keeping a focused view.
-    if (rec.fullscreen || holdsFocus(rec)) return false;
+    if (rec.fullscreen) return false;
+    if (holdsFocus(rec)) {
+      // The crumb, tab or card the user just clicked holds focus; parking drops it anyway. Only a text entry in
+      // progress keeps the view out of the pool.
+      const active = doc.activeElement;
+      if (isTextEntryTarget(active)) return false;
+      try { active?.blur?.(); } catch { /* focus stays where it is */ }
+    }
     const root = view.root;
     return Boolean(root && typeof root.remove === "function");
   }
@@ -1695,8 +1699,10 @@ export async function installPlexusDiagram({
     for (const entry of kept.filter((item) => item.rec === rec)) dropKept(entry);
   }
 
+  // The mount's own board (the first crumb) goes last: crumbs back home from any depth then take the pool.
+  // PhD main board: entering depth 3 dropped MAIN (the oldest of two), so the way back rebuilt it, a 0.9 s task.
   function trimKept() {
-    while (kept.length > KEEP_ALIVE_CAP) dropKept(kept[0]);
+    while (kept.length > KEEP_ALIVE_CAP) dropKept(kept.find((entry) => entry.uid !== entry.rec?.uid) || kept[0]);
   }
 
   function remember(rec, uid, view, session) {
@@ -1711,12 +1717,17 @@ export async function installPlexusDiagram({
     trimKept();
   }
 
-  function suspendView(view) {
+  // inPlace: the crumb pool, where the mount stays on the page; the view parks its root there unrendered.
+  function suspendView(view, inPlace = false) {
     try { view?.suspend?.(); } catch { /* observers are best-effort */ }
+    if (inPlace && speedFlags().parkInPlace !== false) {
+      try { if (view?.park?.()) return; } catch { /* fall back to removing it */ }
+    }
     try { view?.root?.remove?.(); } catch { /* already off the document */ }
   }
 
   function resumeView(rec, view) {
+    try { view?.unpark?.(); } catch { /* not parked */ }
     const root = view?.root;
     if (typeof view?.rebind === "function" && rec.mountEl) {
       try { view.rebind(rec.mountEl); } catch { /* the mount is gone */ }
@@ -1861,7 +1872,7 @@ export async function installPlexusDiagram({
       return;
     }
     try { session.pauseWatches?.(); } catch { /* a session without watches just stays held */ }
-    suspendView(view);
+    suspendView(view, true);
     remember(rec, uid, view, session);
   }
 
@@ -1878,14 +1889,33 @@ export async function installPlexusDiagram({
   }
 
   // Same view root, no sketch and no mountRecView. The open sample is this turn.
+  // Paint first: the parked DOM is already the board, so it shows in the click's frame. Settings, the catch-up
+  // read and the watches follow after that frame (PhD main board: ~0.3-0.4 s of resume work, which used to run
+  // before anything painted). A view navigated away before then is left to whoever took over.
+  function afterPaint(fn) {
+    const win = doc?.defaultView || globalThis;
+    // Without frames (node tests, a background window with no rAF) there is no paint to wait for.
+    if (typeof win.requestAnimationFrame !== "function") { fn(); return; }
+    // A hidden window runs no frames; the timer covers it.
+    let done = false;
+    const once = () => { if (done) return; done = true; fn(); };
+    win.requestAnimationFrame(() => setTimeout(once, 0));
+    setTimeout(once, 500);
+  }
   function reattach(rec, view) {
     rec.view = view;
     resumeView(rec, view);
-    try { view?.setSettings?.(settings); } catch { /* settings are optional */ }
-    try { rec.session?.resumeWatches?.(); } catch { /* the watch is already live */ }
-    rec.off = watchRec(rec);
-    publishCards(rec.session?.board);
-    try { scheduleSketch(rec); } catch { /* the live board is already up */ }
+    const session = rec.session;
+    const rest = () => {
+      if (stopped || rec.view !== view || rec.session !== session) return;
+      try { view?.setSettings?.(settings); } catch { /* settings are optional */ }
+      try { session?.resumeWatches?.(); } catch { /* the watch is already live */ }
+      rec.off = watchRec(rec);
+      publishCards(session?.board);
+      try { scheduleSketch(rec); } catch { /* the live board is already up */ }
+    };
+    if (speedFlags().parkInPlace === false) rest();
+    else afterPaint(rest);
     if (settings[SETTING_IDS.speedLog] === true) perfLog.watchOpen(rec.mountEl, perfNow());
   }
 
@@ -1916,12 +1946,27 @@ export async function installPlexusDiagram({
         detachCurrent(rec);
         rec.session = pooled.session;
         rec.crumbs = next;
-        try {
-          reattach(rec, pooled.view);
-        } catch (error) {
-          noteMountFail(rec.uid, error);
-          unmount(rec);
-        }
+        // A big parked board restyles on the way back (another extension's stylesheet change while it was parked
+        // marks it all: PhD main board 150 ms). Its snapshot paints in this frame and the board takes over in the
+        // next task, so the click still shows the board at once.
+        const big = (pooled.session?.board?.items?.size || 0) > BRIDGE_MIN_ITEMS;
+        const parked = Boolean(pooled.view?.root?.hasAttribute?.("data-pxd-parked"));
+        const bridge = big && parked && speedFlags().parkInPlace !== false ? paintSnapFor(rec, null) : null;
+        const take = () => {
+          try {
+            reattach(rec, pooled.view);
+          } catch (error) {
+            noteMountFail(rec.uid, error);
+            unmount(rec);
+          }
+        };
+        if (!bridge) { take(); return; }
+        rec.view = pooled.view;
+        afterPaint(() => {
+          if (stopped || mounts.get(rec.native) !== rec || rec.view !== pooled.view) { dropSnapPaint(rec, bridge); return; }
+          take();
+          dropSnapPaint(rec, bridge, { live: true });
+        });
         return;
       }
       // A nested board with a stored snapshot paints before its first read.

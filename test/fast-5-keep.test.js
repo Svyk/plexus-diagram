@@ -498,18 +498,19 @@ test("a change that arrived while detached is applied on reattach, not by mounti
   }
 });
 
-test("a fourth distinct board disposes the oldest detached view once", async () => {
+// P5-A: the mount's own board goes last, so a crumb home from any depth is a pooled reattach.
+test("a fourth distinct board disposes the oldest nested view once and keeps the mount's own board", async () => {
   const t = await openBoards();
   try {
     await go(t.views[0], "boardBBB2");
     await go(t.views[1], "boardCCC3");
     await go(t.views[2], "boardDDD4");
-    assert.equal(t.views[0].disposed, 1);
-    assert.equal(t.views[1].disposed, 0);
+    assert.equal(t.views[0].disposed, 0);
+    assert.equal(t.views[1].disposed, 1);
     assert.equal(t.views[2].disposed, 0);
     assert.equal(t.views[3].disposed, 0);
     assert.equal(t.views.length, 4);
-    const gone = t.releases.filter((row) => row.uid === "boardAAA1");
+    const gone = t.releases.filter((row) => row.uid === "boardBBB2");
     assert.equal(gone.length, 1);
     assert.equal(gone[0].paused, true);
     assert.equal(t.releases.length, 1);
@@ -611,16 +612,20 @@ test("a fullscreen mount and a mount with a text entry in progress are disposed 
 
 // A clicked crumb or card holds focus: the board is rebuilt from its snapshot, not taken from the pool (keeping it
 // measured slower on the PhD main board; see canKeep).
-test("a mount whose focus is on a plain element (a clicked crumb or card) is disposed, not kept", async () => {
+// P5-A: the reattach is paint-first now (feature.js reattach), so a clicked crumb or card no longer sends the board
+// to a rebuild. The focused button is blurred; a text entry in progress still disposes (test above).
+test("a mount whose focus is on a plain element (a clicked crumb or card) is blurred and kept", async () => {
   const t = await openBoards();
   try {
     await go(t.views[0], "boardBBB2");
     const crumb = t.doc.createElement("button");
+    let blurred = 0;
+    crumb.blur = () => { blurred += 1; };
     t.views[1].root.append(crumb);
     t.doc.activeElement = crumb;
     await go(t.views[1], "boardCCC3");
-    assert.equal(t.views[1].disposed, 1);
-    assert.equal(t.views[1].root.isConnected, false);
+    assert.equal(t.views[1].disposed, 0);
+    assert.equal(blurred, 1);
   } finally {
     await t.lifecycle.dispose().catch(() => {});
     t.restore();

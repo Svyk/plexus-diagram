@@ -219,10 +219,10 @@ export function normalizeSetting(id, value) {
 // FAST-9 + INSTANT-1. All seven on. A missing key stays on. JSON that does not parse leaves this.
 // splitWatch, virtualShells and virtualEdges are the big-board paths (PhD stress round): each off restores the
 // previous path without a release.
-const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal"];
+const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount", "snapshot", "splitWatch", "virtualShells", "virtualEdges", "hitShield", "deferReveal", "parkInPlace"];
 
 export function defaultSpeedFlags() {
-  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true };
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true, snapshot: true, splitWatch: true, virtualShells: true, virtualEdges: true, hitShield: true, deferReveal: true, parkInPlace: true };
 }
 
 export function parseSpeedFlags(raw) {

@@ -165,6 +165,17 @@ body.roam-body.dark .pxd-root,
 
 /* ------------------------------------------------------------------ root states */
 
+/* A board parked by crumbs or board history stays in its mount, unrendered and out of the flow (feature.js
+   suspendView). content-visibility keeps its style and layout for the way back; no inherited property changes. */
+.pxd-root[data-pxd-parked] {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  opacity: 0;
+  content-visibility: hidden;
+}
+
 /* No user-select here: an inherited property on the root restyles every element of the board when a gesture
    starts (PhD main board: 134 ms). board-view cancels selectstart during a pointer gesture instead. */
 

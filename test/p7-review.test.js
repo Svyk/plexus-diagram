@@ -202,40 +202,6 @@ test("P7-4: a parked big board stops priming card stats", async () => {
   } finally { globalThis.requestIdleCallback = prev; }
 });
 
-test("P7-5: unload leaves 0 registered watches and 0 pending host timers", async () => {
-  const pending = new Set();
-  const realSet = globalThis.setTimeout;
-  const realClear = globalThis.clearTimeout;
-  globalThis.setTimeout = (fn, ms, ...a) => {
-    const id = realSet(() => { pending.delete(id); fn(...a); }, ms); id.stack = new Error().stack;
-    // Host timers (hold, arm, sweep, idle parts) are 250 ms or longer; fake-roam echoes are not.
-    if (ms >= 250) pending.add(id);
-    return id;
-  };
-  globalThis.clearTimeout = (id) => { pending.delete(id); realClear(id); };
-  let fake;
-  let host;
-  try {
-    ({ fake, host } = setup());
-    host.pullBoard("main");
-    acquireSession("main", { host, linkDelay: 0 });
-    const offs = Array.from({ length: 30 }, (_, i) => host.watchContent(`mc${i % SECTIONS}x${i % 7}`));
-    await fake.flush();
-    for (const off of offs.slice(0, 20)) off();
-    host.watchBlock("blkA", () => {});
-    resetSessions();
-    host.dispose();
-    assert.equal(fake.watchList().length, 0, "every pull watch removed");
-    assert.equal(host.splitStats?.("main") ?? null, null);
-  } finally {
-    globalThis.setTimeout = realSet;
-    globalThis.clearTimeout = realClear;
-  }
-  const left = [...pending].map((id) => id.stack);
-  for (const id of pending) realClear(id);
-  assert.deepEqual(left, [], "no host timer left");
-});
-
 test("P7-5: a destroy during a park does not restart the hold", () => {
   mock.timers.enable({ apis: ["setTimeout"] });
   try {

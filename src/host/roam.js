@@ -1218,27 +1218,34 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const own = sub.split;
       if (!own.disposed && [...own.subs].every((x) => x.paused)) holdSplit(uid, own);
     };
+    // Throws (and stays paused) when Roam refuses the rebuild of an expired split; the caller tries again later.
     off.resume = () => {
       if (!active || !sub.paused) return;
-      sub.paused = false;
-      slot.n += 1;
-      unwatchedAt.delete(uid);
-      if (watchedBoards.get(uid) !== slot && !watchedBoards.has(uid)) watchedBoards.set(uid, slot);
+      const live = () => {
+        sub.paused = false;
+        slot.n += 1;
+        unwatchedAt.delete(uid);
+        if (watchedBoards.get(uid) !== slot && !watchedBoards.has(uid)) watchedBoards.set(uid, slot);
+      };
       let own = sub.split;
       if (own.disposed || splitWatches.get(uid) !== own) {
         // The hold expired: build the split again from a fresh read of the whole board, never from the open-time
         // seed (cards edited since then would publish their old contents).
-        own.subs.delete(sub);
-        sub.missed = false;
         let fresh = null;
         try { fresh = rawPull(BOARD_PATTERN, eidKey(uid)); } catch { fresh = null; }
         if (!fresh?.[":block/uid"]) {
+          own.subs.delete(sub);
+          sub.missed = false;
+          live();
           queueMicrotask(() => { if (active && !sub.paused) sub.fn(null); });
           return;
         }
         absorb(uid, fresh, false);
         bigBoards.set(uid, fresh);
+        own.subs.delete(sub);
         own = attach();
+        sub.missed = false;
+        live();
         queueMicrotask(() => {
           // A mounted card's compare read may have published already.
           if (!active || sub.paused || sub.split !== own || own.tree) return;
@@ -1248,6 +1255,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         });
         return;
       }
+      live();
       unhold(own);
       if (own.release()) sub.missed = false;
       if (!sub.missed) return;

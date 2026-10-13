@@ -92,6 +92,8 @@ const LINK_MODES = ["off", "attributes", "all"];
 const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 const MAX_PARENT_STRINGS = 200;
+// A held big board whose resume Roam refused (rate limit while rebuilding an expired hold) tries again after this.
+export const RESUME_RETRY_MS = 1000;
 // Link-query targets per idle slice on a big board.
 const LINK_CHUNK = 120;
 const DAILY_GAP = 20;
@@ -793,6 +795,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   };
   let boardWatch = () => {};
   let boardWatchOn = false;
+  let resumeRetry = null;
   // Paused through a host handle that keeps its watches registered (big boards): no remove/add per park.
   let boardWatchHeld = false;
   if (raw && typeof host.watchBoard === "function") {
@@ -834,8 +837,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     const want = holders > pausedHolds && Boolean(raw);
     if (want && boardWatchOn && boardWatchHeld) {
       // The host publishes once if the board changed while held; highlight watches stayed up.
+      try {
+        boardWatch.resume();
+      } catch {
+        // Roam refused the rebuild of an expired hold: still held, try again shortly.
+        if (resumeRetry == null) {
+          resumeRetry = setTimeout(() => { resumeRetry = null; syncBoardWatch(false); }, RESUME_RETRY_MS);
+          try { resumeRetry.unref?.(); } catch { /* a browser timer has no unref */ }
+        }
+        return;
+      }
       boardWatchHeld = false;
-      try { boardWatch.resume(); } catch { /* the watch is already live */ }
       // A tree that arrived in the frame before the park was kept by the skipped flush; the host will not re-send it.
       if (latest && !scheduled) { scheduled = true; schedule(flush); }
       if (highlightDirty && !highlightScheduled) { highlightScheduled = true; schedule(flushHighlights); }
@@ -3476,6 +3488,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         try { boardWatch(); } catch { /* already dropped */ }
       }
       boardWatch = () => {};
+      if (resumeRetry != null) { clearTimeout(resumeRetry); resumeRetry = null; }
       disposeHighlightWatches();
       cancelScheduledLinks();
       linkResolve?.();

@@ -277,3 +277,27 @@ test("P7-5: the feature lifecycle disposes the host at unload", async () => {
     restoreDom();
   }
 });
+
+test("P7-6: a refused rebuild on resume leaves no orphan watch, stays held, and retries", async () => {
+  const { RESUME_RETRY_MS } = await import("../src/session.js");
+  const { fake, host } = setup();
+  host.pullBoard("main");
+  const main = acquireSession("main", { host, linkDelay: 0 });
+  await fake.flush();
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try { main.pauseWatches(); mock.timers.tick(SPLIT_HOLD_MS); } finally { mock.timers.reset(); }
+  assert.equal(fake.watchList().length, 0);
+  const add = fake.api.data.addPullWatch.bind(fake.api.data);
+  let n = 0;
+  fake.api.data.addPullWatch = (...a) => { n += 1; if (n === 5) throw new Error("maximum mutation rate limit exceeded"); return add(...a); };
+  main.resumeWatches();
+  fake.api.data.addPullWatch = add;
+  assert.equal(fake.watchList().length, 0, "no orphan watch after the refused rebuild");
+  await fake.api.data.block.update({ block: { uid: "ms4", string: "edit after failed resume" } });
+  await fake.flush();
+  await new Promise((r) => setTimeout(r, RESUME_RETRY_MS + 50));
+  await fake.flush();
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(main.board.items.get("ms4")?.string, "edit after failed resume");
+  assert.ok(fake.watchList().length > 0, "watches back after the retry");
+});

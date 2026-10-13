@@ -454,7 +454,14 @@ export function createSplitWatch({ uid, seed, data, pull, deepPattern, onTree, f
   };
 
   seedFrom(seed);
-  sync();
+  try {
+    sync();
+  } catch (error) {
+    // Roam refused one of the adds (rate limit): nothing may stay registered for a split nobody holds.
+    disposed = true;
+    dropAll();
+    throw error;
+  }
 
   return {
     watchItem,

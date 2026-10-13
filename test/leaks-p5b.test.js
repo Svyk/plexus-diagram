@@ -1,6 +1,7 @@
 // P5-B memory-leak guards: view-lifetime lists must not grow per refresh / gesture / page return.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createChrome } from "../src/view/chrome.js";
 import { createPanel } from "../src/view/panel.js";
 import { createPropsPanel } from "../src/view/props-panel.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
@@ -127,6 +128,25 @@ test("2a: the add panel does not pin every result row it ever rendered", async (
     assert.ok(live > 0);
     assert.ok(stub.listenerCount() < once + 3 * 30 + 200, `listeners ${stub.listenerCount()} vs first render ${once}`);
     panel.dispose();
+  } finally {
+    restore();
+  }
+});
+
+test("2b: the chrome context bar does not pin the buttons of every selection it rebuilt", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const root = stub.document.createElement("div");
+    stub.document.body.append(root);
+    const chrome = createChrome({ doc: stub.document, root, settings: {}, timers: { later: () => () => {}, frame: () => () => {} }, on: {} });
+    const rect = { x: 10, y: 10, width: 100, height: 50, left: 10, top: 10, right: 110, bottom: 60 };
+    const show = () => chrome.ctx.show("card", { kind: "note" }, () => ({ kind: "items", rect }));
+    show();
+    const once = stub.listenerCount();
+    for (let i = 1; i < 120; i += 1) show();
+    assert.ok(stub.listenerCount() < once + 600, `listeners ${stub.listenerCount()} vs first build ${once}`);
+    chrome.dispose();
   } finally {
     restore();
   }

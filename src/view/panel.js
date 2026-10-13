@@ -41,7 +41,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (rowOffs.length <= rowCap) return;
     const keep = [];
     for (const entry of rowOffs) {
-      if (entry.el.isConnected === false) entry.off();
+      if (entry.el.isConnected === false && !root?.contains?.(entry.el)) entry.off();
       else keep.push(entry);
     }
     rowOffs.length = 0;

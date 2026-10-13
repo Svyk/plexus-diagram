@@ -65,9 +65,23 @@ const NOTE_KINDS = ["note", "block", "page"];
 export function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {}, crumbs = [] } = {}) {
   const setting = (k) => (typeof settings?.get === "function" ? settings.get(k) : settings?.[k]);
   const listeners = [];
+  let listenCap = 256;
+  // The context bar and the crumbs rebuild their buttons on every selection change. Once the list is long, the
+  // listeners of elements that left the chrome are released; elements of a parked (detached) root stay.
   const listen = (el, type, fn, opts) => {
     el.addEventListener(type, fn, opts);
-    listeners.push(() => el.removeEventListener(type, fn, opts));
+    const off = () => el.removeEventListener(type, fn, opts);
+    off.el = el;
+    listeners.push(off);
+    if (listeners.length <= listenCap) return;
+    const keep = [];
+    for (const entry of listeners) {
+      if (entry.el && entry.el.isConnected === false && !root?.contains?.(entry.el)) entry();
+      else keep.push(entry);
+    }
+    listeners.length = 0;
+    listeners.push(...keep);
+    listenCap = Math.max(256, listeners.length * 2);
   };
   const el = (tag, cls, parent, text) => {
     const node = doc.createElement(tag);

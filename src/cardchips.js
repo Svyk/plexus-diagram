@@ -423,9 +423,11 @@ export function createCardChips({
       scheduleArticle(articleOf(node));
       return;
     }
-    // Any other insert: one scoped check per article per frame, and only while its row is missing.
+    // Any other insert: one scoped check per article per frame, and only while its row is missing. An article already
+    // queued this frame is not searched again (unfolding the PhD main board inserted thousands of blocks, and the
+    // search of a 280k-node article per insert was 2.2 s).
     const article = articleOf(node) || node.querySelector?.(".roam-article");
-    if (article && !article.querySelector?.(".pxd-cardchip-row")) scheduleArticle(article);
+    if (article && !placeQueue?.has(article) && !article.querySelector?.(".pxd-cardchip-row")) scheduleArticle(article);
   };
 
   // Each turn attaches at most SCAN_CAP containers. The rest wait on a timer

@@ -225,3 +225,27 @@ test("card chips keep a 1px border and a clear fill", () => {
     assert.match(block.body, /background:\s*transparent/);
   }
 });
+
+test("blocks inserted into an article missing its chip row search the article once per frame, not once each", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const cache = createCardCache();
+    cache.setBoard("b1", "Fixture", [{ uid: "c1", target: "pageUid1" }]);
+    const { chips } = layer(stub, cache, { pageUid: () => "pageUid1" });
+    const article = stub.document.createElement("div");
+    article.className = "roam-article";
+    stub.document.body.append(article);
+    let searches = 0;
+    const real = article.querySelector.bind(article);
+    article.querySelector = (sel) => { if (sel === ".pxd-cardchip-row") searches += 1; return real(sel); };
+    for (let i = 0; i < 200; i += 1) {
+      const b = box(stub.document, `x${i}`);
+      article.append(b);
+      chips.scan(b);
+    }
+    assert.ok(searches <= 2, `searched the article ${searches} times`);
+  } finally {
+    restore();
+  }
+});

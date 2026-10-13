@@ -14,6 +14,11 @@ export function createLifecycle() {
   let idlePending = 0;
   const disposers = [];
 
+  const forget = (disposer) => {
+    const at = disposers.lastIndexOf(disposer);
+    if (at >= 0) disposers.splice(at, 1);
+  };
+
   const add = (disposer) => {
     if (typeof disposer !== "function") throw new TypeError("A disposer must be a function");
     if (disposed) {
@@ -53,8 +58,14 @@ export function createLifecycle() {
     },
 
     timeout(callback, delay, ...args) {
-      const id = globalThis.setTimeout(callback, delay, ...args);
-      add(() => globalThis.clearTimeout(id));
+      // A one-shot timer's disposer goes when it fires; polling loops would otherwise stack one per tick.
+      let disposer = null;
+      const id = globalThis.setTimeout((...fired) => {
+        forget(disposer);
+        return callback(...fired);
+      }, delay, ...args);
+      disposer = () => globalThis.clearTimeout(id);
+      add(disposer);
       return id;
     },
 
@@ -68,32 +79,40 @@ export function createLifecycle() {
         idlePending -= 1;
       };
       idlePending += 1;
+      let disposer = null;
       const fire = (deadline) => {
         if (!open) return;
         close();
+        forget(disposer);
         if (disposed) return;
         guarded(deadline);
       };
       if (typeof globalThis.requestIdleCallback === "function") {
         const id = globalThis.requestIdleCallback(fire, { timeout });
-        add(() => {
+        disposer = () => {
           globalThis.cancelIdleCallback?.(id);
           close();
-        });
+        };
+        add(disposer);
         return id;
       }
       const id = globalThis.setTimeout(() => {
         fire({ didTimeout: true, timeRemaining: () => 0 });
       }, timeout);
-      add(() => {
+      disposer = () => {
         globalThis.clearTimeout(id);
         close();
-      });
+      };
+      add(disposer);
       return id;
     },
 
     pending() {
       return idlePending;
+    },
+
+    size() {
+      return disposers.length;
     },
 
     observer(observer, target, options) {

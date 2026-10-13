@@ -9,6 +9,7 @@ import { createParseStore } from "../src/host/parse-store.js";
 import { createFakeIDB } from "./fixtures/fake-idb.js";
 import { createDocCache } from "../src/host/doc-cache.js";
 import { createRelChips } from "../src/relchips.js";
+import { createLifecycle } from "../src/lifecycle.js";
 import { createSplitWatch } from "../src/host/split-watch.js";
 import { createChrome } from "../src/view/chrome.js";
 import { createPanel } from "../src/view/panel.js";
@@ -265,4 +266,19 @@ test("2g: relchips breadcrumb glyphs and listeners of re-rendered Roam pages are
   } finally {
     restore();
   }
+});
+
+test("2h: lifecycle.timeout and idle drop their disposer once they fire", async () => {
+  const lifecycle = createLifecycle();
+  const base = lifecycle.size();
+  for (let i = 0; i < 50; i += 1) lifecycle.timeout(() => {}, 0);
+  assert.equal(lifecycle.size(), base + 50);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(lifecycle.size(), base, "fired timers leave nothing behind");
+  let cleared = 0;
+  const id = lifecycle.timeout(() => { cleared += 1; }, 50);
+  await lifecycle.dispose();
+  await new Promise((r) => setTimeout(r, 70));
+  assert.equal(cleared, 0, "a pending timer is still cleared on dispose");
+  void id;
 });

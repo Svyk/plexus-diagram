@@ -836,6 +836,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       // The host publishes once if the board changed while held; highlight watches stayed up.
       boardWatchHeld = false;
       try { boardWatch.resume(); } catch { /* the watch is already live */ }
+      // A tree that arrived in the frame before the park was kept by the skipped flush; the host will not re-send it.
+      if (latest && !scheduled) { scheduled = true; schedule(flush); }
       if (highlightDirty && !highlightScheduled) { highlightScheduled = true; schedule(flushHighlights); }
     } else if (want && !boardWatchOn) {
       if (typeof host.watchBoard !== "function") return;

@@ -47,3 +47,23 @@ test("P7-1: 30 writes right after 200+ watch calls on a big board resolve withou
   const ms = Date.now() - t0;
   assert.ok(ms < 500, `30 writes took ${ms} ms`);
 });
+
+test("P7-2: a tree delivered in the frame before a park is applied on a held resume", async () => {
+  const { fake, host } = setup();
+  host.pullBoard("main");
+  const frames = [];
+  const s = acquireSession("main", { host, linkDelay: 0, raf: (fn) => frames.push(fn) });
+  await fake.flush();
+  while (frames.length) frames.shift()();
+  await fake.api.data.block.update({ block: { uid: "ms4", string: "Foreign rename" } });
+  await fake.flush();
+  await new Promise((r) => setTimeout(r, 5));
+  assert.ok(frames.length > 0, "a flush is scheduled");
+  s.pauseWatches();
+  while (frames.length) frames.shift()();
+  s.resumeWatches();
+  await fake.flush();
+  await new Promise((r) => setTimeout(r, 5));
+  while (frames.length) frames.shift()();
+  assert.equal(s.board.items.get("ms4")?.string, "Foreign rename");
+});
